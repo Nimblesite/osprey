@@ -150,7 +150,7 @@ fn a_result_type_may_be_a_type_argument() {
     accepts(
         Flavor::Default,
         &format!(
-            r#"{IDENTITY}let quotient = identity<Result<int, MathError>>(10 / 2)
+            r#"{IDENTITY}let quotient = identity<Result<int, MathError>>(20 * 5)
 print("${{quotient ?: 0}}")"#
         ),
     );
@@ -220,11 +220,11 @@ fn a_binder_in_scope_may_be_applied_recursively() {
     accepts(
         Flavor::Default,
         &format!(
-            r#"fn repeat<T>(value: T, times: int) -> T = match times {{
+            r#"fn repeatOf<T>(value: T, times: int) -> T = match times {{
     0 => value
-    _ => repeat<T>(value, times - 1 ?: 0)
+    _ => repeatOf<T>(value, times - 1 ?: 0)
 }}
-print("${{repeat<int>(7, 3)}}")"#
+print("${{repeatOf<int>(7, 3)}}")"#
         ),
     );
 }
@@ -246,8 +246,9 @@ print("${{chosen}}")"#
     );
 }
 
-/// Call-site application coexists with the generic-EFFECT instantiation syntax
-/// that already ships (`perform Stash<int>.take()`): one `<` rule, two sites.
+/// Call-site application coexists with a generic effect whose instantiation is
+/// INFERRED — a written one is rejected on a dynamic effect ([STAGE-SIGNALS-EXACT]),
+/// so the `<` after a callee name must not be read as an effect mention.
 #[test]
 fn type_application_coexists_with_generic_effect_instantiation() {
     accepts(
@@ -257,9 +258,9 @@ fn type_application_coexists_with_generic_effect_instantiation() {
     take: fn() -> T
 }}
 {IDENTITY}fn main() -> Unit = {{
-    let held = handle Stash<int>
+    let held = handle Stash
         take => identity<int>(9)
-    in perform Stash<int>.take()
+    in perform Stash.take()
     print("${{held}}")
 }}"#
         ),

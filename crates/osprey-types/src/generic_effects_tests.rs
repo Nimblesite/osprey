@@ -5,9 +5,14 @@
 //! Discharge across instantiations is already exercised by
 //! `effect_rows_tests.rs`; this module states the parts of the generic-effect
 //! surface that module does not touch — the DECLARATION's variance positions,
-//! the written instantiation spellings (`handle Stash<int>`,
-//! `perform Stash<int>.take()`), rows with several generic entries, and the ML
-//! twins of each.
+//! the instantiation surface (inferred at `handle`/`perform`, WRITTEN only on
+//! an effect row), rows with several generic entries, and the ML twins of each.
+//!
+//! One boundary is easy to get wrong and is pinned below: a written
+//! instantiation is legal on a ROW (`!Stash<int>`) and rejected on a dynamic
+//! effect's `handle`/`perform` ([STAGE-SIGNALS-EXACT], spec 0035) — that
+//! spelling is reserved for `static effect`, where the instantiation IS the
+//! identity.
 
 use crate::testutil::{accepts, rejected_somehow, rejects_with, variance_position_message};
 use osprey_syntax::Flavor;
@@ -17,16 +22,19 @@ fn op_position_message(param: &str, marker: &str, position: &str, op: &str, owne
     variance_position_message(param, marker, position, "operation", op, owner)
 }
 
-/// A generic effect plus a handler that discharges it at `instantiation`.
-fn stash_program(instantiation: &str, answer: &str) -> String {
+/// A generic effect whose instantiation is INFERRED from the handler arm — the
+/// only spelling a dynamic effect accepts, since a written instantiation is
+/// rejected by [STAGE-SIGNALS-EXACT] (see
+/// `a_written_instantiation_on_a_dynamic_effect_is_rejected`).
+fn stash_program(answer: &str) -> String {
     format!(
         r#"effect Stash<T> {{
     take: fn() -> T
 }}
 fn main() -> Unit = {{
-    let held = handle Stash{instantiation}
+    let held = handle Stash
         take => {answer}
-    in perform Stash{instantiation}.take()
+    in perform Stash.take()
     print("${{held}}")
 }}"#
     )
@@ -131,22 +139,32 @@ print("declared")"#,
 /// "Each handler site instantiates a generic effect independently."
 #[test]
 fn a_written_instantiation_is_accepted_on_handle_and_perform() {
-    accepts(Flavor::Default, &stash_program("<int>", "9"));
+    accepts(Flavor::Default, &stash_program("9"));
 }
 
 /// The same program at a different instantiation.
 #[test]
 fn a_written_string_instantiation_is_accepted() {
-    accepts(Flavor::Default, &stash_program("<string>", "\"ready\""));
+    accepts(Flavor::Default, &stash_program("\"ready\""));
 }
 
 /// "Handler arm values and performs in the handled body must agree on that
-/// instantiation" — an arm answering the wrong type is rejected.
+/// instantiation" — an arm answering `string` cannot serve a body whose result
+/// is used as an `int`.
 #[test]
-fn a_handler_arm_disagreeing_with_the_written_instantiation_is_rejected() {
+fn a_handler_arm_disagreeing_with_the_body_is_rejected() {
     rejects_with(
         Flavor::Default,
-        &stash_program("<int>", "\"ready\""),
+        r#"effect Stash<T> {
+    take: fn() -> T
+}
+fn doubled() -> int = (perform Stash.take()) * 2 ?: 0
+fn main() -> Unit = {
+    let held = handle Stash
+        take => "ready"
+    in doubled()
+    print("${held}")
+}"#,
         "cannot unify",
     );
 }
@@ -154,12 +172,51 @@ fn a_handler_arm_disagreeing_with_the_written_instantiation_is_rejected() {
 /// The instantiation may also be left to inference at both sites.
 #[test]
 fn an_inferred_instantiation_is_accepted() {
-    accepts(Flavor::Default, &stash_program("", "9"));
+    accepts(Flavor::Default, &stash_program("9"));
 }
 
-/// A written `handle Stash<int>` does not discharge a `Stash<string>` perform.
+/// A written instantiation on a DYNAMIC effect's `perform` is rejected outright
+/// — the spelling belongs to `static effect`, whose identity IS the
+/// instantiation ([STAGE-SIGNALS-EXACT], pinned end-to-end by
+/// `examples/failscompilation/stage_signal_instantiated_dynamic_effect.ospo`).
 #[test]
-fn a_written_handler_instantiation_discharges_only_its_own_operations() {
+fn a_written_instantiation_on_a_dynamic_perform_is_rejected() {
+    rejects_with(
+        Flavor::Default,
+        r#"effect Stash<T> {
+    take: fn() -> T
+}
+fn main() -> Unit = {
+    let held = handle Stash
+        take => 9
+    in perform Stash<int>.take()
+    print("${held}")
+}"#,
+        "names an instantiation of dynamic effect",
+    );
+}
+
+/// The same restriction at the `handle` site.
+#[test]
+fn a_written_instantiation_on_a_dynamic_handle_is_rejected() {
+    rejected_somehow(
+        Flavor::Default,
+        r#"effect Stash<T> {
+    take: fn() -> T
+}
+fn main() -> Unit = {
+    let held = handle Stash<int>
+        take => 9
+    in perform Stash.take()
+    print("${held}")
+}"#,
+    );
+}
+
+/// A handler discharges only the instantiation it was INFERRED at: a handler
+/// answering `int` does not serve a `Stash<string>.put`.
+#[test]
+fn an_inferred_handler_instantiation_discharges_only_its_own_operations() {
     rejected_somehow(
         Flavor::Default,
         r#"effect Stash<T> {
@@ -167,16 +224,16 @@ fn a_written_handler_instantiation_discharges_only_its_own_operations() {
 }
 fn store() = perform Stash.put("text")
 fn main() -> Unit = {
-    let done = handle Stash<int>
-        put v => print("stored")
+    let done = handle Stash
+        put v => print("stored ${v + 1 ?: 0}")
     in store()
     print("${done}")
 }"#,
     );
 }
 
-/// Two handlers at two instantiations coexist in ONE program: the sites are
-/// independent, not one global instantiation.
+/// Two handlers at two instantiations coexist in ONE program: "Each handler
+/// site instantiates a generic effect independently", and each infers its own.
 #[test]
 fn two_instantiations_of_one_effect_coexist() {
     accepts(
@@ -185,30 +242,32 @@ fn two_instantiations_of_one_effect_coexist() {
     take: fn() -> T
 }
 fn main() -> Unit = {
-    let n = handle Stash<int>
+    let n = handle Stash
         take => 1
-    in perform Stash<int>.take()
-    let s = handle Stash<string>
+    in perform Stash.take()
+    let s = handle Stash
         take => "one"
-    in perform Stash<string>.take()
+    in perform Stash.take()
     print("${n}${s}")
 }"#,
     );
 }
 
-/// A written instantiation whose arity misses the declaration is rejected.
+/// A row's written instantiation IS checked for arity — the row is the surface
+/// that keeps the angle spelling, so the count contract lives there.
 #[test]
-fn a_written_effect_instantiation_arity_is_checked() {
+fn an_effect_row_instantiation_arity_is_checked() {
     rejected_somehow(
         Flavor::Default,
         r#"effect Stash<T> {
-    take: fn() -> T
+    put: fn(T) -> Unit
 }
+fn store() -> Unit !Stash<int, string> = perform Stash.put(42)
 fn main() -> Unit = {
-    let held = handle Stash<int, string>
-        take => 1
-    in perform Stash<int>.take()
-    print("${held}")
+    let done = handle Stash
+        put v => print("stored")
+    in store()
+    print("${done}")
 }"#,
     );
 }
@@ -228,7 +287,7 @@ fn a_row_entry_pins_the_instantiation() {
 }
 fn store() -> Unit !Stash<int> = perform Stash.put(42)
 fn main() -> Unit = {
-    let done = handle Stash<int>
+    let done = handle Stash
         put v => print("stored ${v}")
     in store()
     print("${done}")
@@ -246,7 +305,7 @@ fn a_body_contradicting_its_pinned_row_is_rejected() {
 }
 fn store() -> Unit !Stash<int> = perform Stash.put("text")
 fn main() -> Unit = {
-    let done = handle Stash<string>
+    let done = handle Stash
         put v => print("stored")
     in store()
     print("${done}")
@@ -340,7 +399,7 @@ fn ml_rows_apply_arguments_with_angles() {
          store : Unit -> Unit ! Stash<int>\n\
          store () = perform Stash.put 42\n\
          main () =\n\
-         \x20   done = handle Stash<int>\n\
+         \x20   done = handle Stash\n\
          \x20       put v => print \"stored\"\n\
          \x20   in store ()\n\
          \x20   print \"${done}\"\n",
@@ -376,9 +435,9 @@ fn ml_a_written_instantiation_is_accepted_on_handle_and_perform() {
         Flavor::Ml,
         "effect Stash T\n    take : Unit => T\n\
          main () =\n\
-         \x20   held = handle Stash<int>\n\
+         \x20   held = handle Stash\n\
          \x20       take => 9\n\
-         \x20   in perform Stash<int>.take ()\n\
+         \x20   in perform Stash.take ()\n\
          \x20   print \"${held}\"\n",
     );
 }

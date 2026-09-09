@@ -481,6 +481,8 @@ pub(crate) enum MlExpr {
         func: Box<MlExpr>,
         /// Written arguments in binder order.
         args: Vec<MlType>,
+        /// Callee position.
+        pos: Position,
     },
     /// Zero-argument application `func ()`.
     UnitApp {

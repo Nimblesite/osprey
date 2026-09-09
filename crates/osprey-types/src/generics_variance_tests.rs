@@ -122,13 +122,14 @@ fn out_inside_a_contravariant_constructor_argument_is_rejected() {
     );
 }
 
-/// The mirror: `in T` inside a contravariant argument lands in output.
+/// The mirror composes the other way and is LEGAL: a field is an output
+/// position, the contravariant argument flips it to input, and an input
+/// position is exactly where `in T` belongs (output x contravariant = input).
 #[test]
-fn in_inside_a_contravariant_constructor_argument_is_rejected() {
-    rejects_with(
+fn in_inside_a_contravariant_constructor_argument_is_legal() {
+    accepts(
         Flavor::Default,
         &format!("type Gate<in A> = {{ admit: (A) -> bool }}\n{}", decl("<in T>", "nested", "Gate<T>")),
-        &position_message("T", "in", "output", "nested", "Holder"),
     );
 }
 

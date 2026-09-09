@@ -685,11 +685,12 @@ fn main() = identity<List<int>>([1])
           (argument_list
             (expression
               (primary_expression
-                (list_literal
-                  (expression
-                    (primary_expression
-                      (literal
-                        (integer))))))))))))
+                (literal
+                  (list_literal
+                    (expression
+                      (primary_expression
+                        (literal
+                          (integer)))))))))))))
 
 ================================================================================
 A spaced comparison is not type application [TYPE-GENERICS-APPLY]

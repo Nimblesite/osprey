@@ -706,7 +706,19 @@ impl Checker {
         let fun_ty = Type::fun(params, ret);
         let declared = env.applied(&mut self.ctx, name).map(|(_, _, ps)| ps).unwrap_or_default();
         env.remove(name);
-        let scheme = self.generalize_with_obligations(env, &fun_ty);
+        let mut scheme = self.generalize_with_obligations(env, &fun_ty);
+        // Explicit binders are quantified even when the signature never uses
+        // them. Two applications of a phantom binder are still independent.
+        let env_vars = env.free_vars(&mut self.ctx);
+        for param in &declared {
+            let mut vars = BTreeSet::new();
+            self.ctx.free_vars(param, &mut vars);
+            for var in vars.difference(&env_vars) {
+                if !scheme.vars.contains(var) {
+                    scheme.vars.push(*var);
+                }
+            }
+        }
         env.insert(name, scheme);
         env.declare_type_params(name, declared);
     }

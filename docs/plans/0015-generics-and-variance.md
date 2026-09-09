@@ -188,6 +188,52 @@ its HM generalization rules remain separate work in
   concrete use case is specified.
 - **Higher-kinded type parameters** (`F<_>`): not represented, not planned.
 
+## Conflicts found while pinning the spec (2026-09-09)
+
+Four disagreements surfaced when the generics surface was written down as
+executable assertions. Each is recorded with the evidence that settles it.
+
+1. **Variance was inert at assignment sites, and the spec implied otherwise.**
+   `[TYPE-VARIANCE-ASSIGN]` opened with a directional rule and closed with
+   "bottoms out in exact unification". `unify_variant_arg`
+   (`crates/osprey-types/src/unify.rs`) recurses only through **same-name**
+   variance-declared constructors and then calls plain `unify`, so `int` versus
+   `Result<int, MathError>` is an exact mismatch at any depth. The one coercion
+   in the language (`T -> Result<T, E>`) is representation-changing and applies
+   at direct value sites only. **Resolution:** exact leaves win; spec 0004 now
+   says so in `[TYPE-VARIANCE-COERCION]`, and states the consequence outright —
+   `out`, `in` and unannotated accept and refuse the same programs today, so a
+   marker's observable effect is position checking alone. Pinned by
+   `the_three_markers_agree_on_every_assignment_outcome` and
+   `the_covariant_and_invariant_builtins_agree`, which go red the day a
+   representation-preserving subtype relation lands without a spec update.
+   The two shipped fixtures could not see this: both assert the one direction
+   all three markers already agree on.
+
+2. **`Map<K, out V>`'s "(keys invariant)" describes an uninstantiable
+   parameter.** The shipped map surface fixes keys to `string`
+   ([BUILTIN-MAP-GET], spec 0012), so no program can write `Map<int, int>` and
+   the key's variance is unobservable. Spec 0004's built-in table and spec 0012
+   disagree about whether `K` exists.
+
+3. **The dynamic-instantiation diagnostic contradicts the runtime it cites.**
+   `examples/failscompilation/stage_signal_instantiated_dynamic_effect.ospo`
+   rejects `perform Signal<Count>` on a dynamic effect because "a dynamic
+   handler is keyed by effect name at runtime, so instantiations share one
+   key" — but `crates/osprey-codegen/src/effects.rs` registers each handler
+   "under its instantiation-mangled key, so only same-instantiation performs
+   resolve to it", which is also what spec 0017 `[EFFECTS-GENERIC-RUNTIME]`
+   promises. The REJECTION is a shipped contract and stands; its stated REASON
+   is stale and would mislead anyone implementing against it. The surface rule
+   is now pinned as: `handle`/`perform` infer a dynamic effect's instantiation,
+   angles are legal on a ROW (`!Stash<int>`), and the written mention belongs
+   to `static effect`, whose identity IS the instantiation.
+
+4. **Spec 0017 writes `handle … do`; the language accepts `in`.** Intended:
+   the Default flavor is moving to `do` ([plan 0027](0027-arithmetic-effects.md)
+   phase 0). `the_spec_writes_a_handled_body_after_do` is a deliberate red pin
+   that turns green when that rename lands.
+
 ## TODO
 
 Core (done):

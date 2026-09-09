@@ -103,7 +103,7 @@ fn the_coercion_holds_at_a_direct_value_site() {
 #[test]
 fn the_inverse_coercion_never_holds() {
     blocked(
-        "fn half() -> Result<int, MathError> = 10 / 2\n",
+        "fn half() -> Result<int, MathError> = 20 * 5\n",
         "int",
         "half()",
     );

@@ -1335,6 +1335,17 @@ impl Analyzer<'_> {
         target_level: usize,
         arguments: &[Option<Value>],
     ) -> Value {
+        // Substitute the callee's children before inserting caller provenance.
+        // A replacement already belongs to the caller: walking it again can
+        // replace its parameter with itself indefinitely for nested records,
+        // and can also attribute a callback to the wrong lexical binder.
+        for nested in value.fields.values_mut() {
+            *nested = self.substitute_value_at(nested.clone(), target_level, arguments);
+        }
+        self.substitute_payload_at(&mut value.element, target_level, arguments);
+        self.substitute_payload_at(&mut value.result_payload, target_level, arguments);
+        self.substitute_payload_at(&mut value.fiber_payload, target_level, arguments);
+        value.deferred = self.substitute_summary_at(value.deferred, target_level, arguments);
         if let Some(callable) = value.callable.take() {
             match callable {
                 Callable::Parameter {
@@ -1384,13 +1395,6 @@ impl Analyzer<'_> {
                 Callable::Unknown => value.callable = Some(Callable::Unknown),
             }
         }
-        for nested in value.fields.values_mut() {
-            *nested = self.substitute_value_at(nested.clone(), target_level, arguments);
-        }
-        self.substitute_payload_at(&mut value.element, target_level, arguments);
-        self.substitute_payload_at(&mut value.result_payload, target_level, arguments);
-        self.substitute_payload_at(&mut value.fiber_payload, target_level, arguments);
-        value.deferred = self.substitute_summary_at(value.deferred, target_level, arguments);
         value
     }
 

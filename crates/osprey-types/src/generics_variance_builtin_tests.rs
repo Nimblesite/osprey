@@ -22,7 +22,6 @@ const BUILTINS: &str = "fn listInt() -> List<int> = [1]\n\
     fn listRes() -> List<Result<int, MathError>> = [20 * 5]\n\
     fn mapInt() -> Map<string, int> = { \"a\": 1 }\n\
     fn mapRes() -> Map<string, Result<int, MathError>> = { \"a\": 20 * 5 }\n\
-    fn mapIntKeys() -> Map<int, int> = { 1: 2 }\n\
     fn resInt() -> Result<int, MathError> = 20 * 5\n\
     fn one() = 1\n\
     fn fiberInt() -> Fiber<int> = spawn one()\n\
@@ -92,15 +91,15 @@ fn map_refuses_the_coercion_in_its_value() {
     blocked(BUILTINS, "Map<string, int>", "mapRes()");
 }
 
-/// …and so does the invariant key channel, which is the entry that would
-/// diverge first if argument positions ever started coercing.
+/// The key channel cannot be exercised for variance at all: the shipped map
+/// surface fixes keys to `string` ([BUILTIN-MAP-GET], spec 0012), so
+/// `Map<int, int>` has no producer and `Map<K, out V>`'s "(keys invariant)"
+/// describes a parameter no program can instantiate. Recorded as a spec/
+/// implementation conflict in plan 0015 rather than asserted as behaviour; what
+/// IS assertable is that a non-string key is refused.
 #[test]
-fn map_refuses_the_coercion_in_its_key() {
-    blocked(
-        BUILTINS,
-        "Map<Result<int, MathError>, int>",
-        "mapIntKeys()",
-    );
+fn a_non_string_map_key_is_refused() {
+    blocked(BUILTINS, "Map<int, int>", "mapInt()");
 }
 
 /// The identical map instantiation flows.

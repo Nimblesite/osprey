@@ -112,6 +112,26 @@ fn mkGate() -> Gate<(int) -> Result<int, MathError>> = Gate { admit: |f| => true
 print("fn-payload feed accepted: ${label(mkFeed())}")
 print("fn-payload gate accepted: ${describe(mkGate())}")
 
+/// --- Variance positions: every legal shape, exercised end to end ---
+/// `out T` sits in a field, a function RESULT, a covariant built-in and under
+/// two parameter flips; `in T` sits in a function parameter; an unannotated
+/// parameter sits in both at once. Each value is then USED, so a position that
+/// merely compiled but lowered wrongly is caught as well as one that was
+/// wrongly rejected. Assignment keeps the leaves exact under every marker —
+/// the refusals are in examples/failscompilation/variance_*.ospo.
+/// Implements [TYPE-VARIANCE-POSITIONS], [TYPE-VARIANCE-COERCION]
+type Source<out T> = Source { produce: T, make: (int) -> T, items: List<T> }
+type Sink<in T> = Sink { admit: (T) -> bool, hof: ((T) -> int) -> int }
+type Both<T> = Both { slot: T, consume: (T) -> int }
+
+fn srcInt() -> Source<int> = Source { produce: 4, make: |n| => n, items: [1, 2] }
+fn sinkInt() -> Sink<int> = Sink { admit: |x| => true, hof: |f| => 7 }
+fn bothInt() -> Both<int> = Both { slot: 5, consume: |x| => 6 }
+fn keepSource(s: Source<int>) = s.produce
+fn keepSink(g: Sink<int>) = g.hof(|n| => 3)
+
+print("variance produce=${srcInt().produce} make=${srcInt().make(9)} items=${length(srcInt().items)} admit=${toString(sinkInt().admit(1))} slot=${bothInt().slot} kept=${keepSource(srcInt())}/${keepSink(sinkInt())}")
+
 /// --- Call-site type application: pinning an instantiation in the source ---
 /// A written type-argument list pins the callee's declared binders left to
 /// right and is checked against what the value arguments infer. `emptyOf`'s
@@ -121,6 +141,12 @@ print("fn-payload gate accepted: ${describe(mkGate())}")
 fn identityOf<T>(x: T) -> T = x
 fn emptyOf<T>() -> List<T> = []
 fn pickOf<T, U>(first: T, second: U) -> T = first
+fn alsoOf<T>(x: T, f: (T) -> T) -> T = f(x)
+fn headOr<T>(items: List<T>, fallback: T) -> T = items.listGet(0) ?: fallback
+fn repeatOf<T>(value: T, times: int) -> T = match times {
+    0 => value
+    _ => repeatOf<T>(value, times - 1 ?: 0)
+}
 
 let appliedInt = identityOf<int>(5)
 let appliedText = identityOf<string>("os")
@@ -160,7 +186,37 @@ fn typeEqualityCase() = {
         identityOf<string>("os") == "os",
         length(identityOf<List<int>>([1, 2])) == 2,
         length(emptyOf<int>()) == 0,
-        pickOf<int, string>(7, "seven") == 7
+        pickOf<int, string>(7, "seven") == 7,
+        identityOf<bool>(true),
+        !identityOf<bool>(false),
+        identityOf<float>(2.5) == 2.5,
+        length(identityOf<List<string>>(["a", "b"])) == 2,
+        mapLength(identityOf<Map<string, List<int>>>({ "a": [1], "b": [2] })) == 2,
+        identityOf<Container<int>>(Container { value: 9 }).value == 9,
+        identityOf<Container<string>>(Container { value: "c" }).value == "c",
+        isEmpty(emptyOf<string>()),
+        pickOf<string, int>("first", 2) == "first",
+        pickOf<int, int>(3, 4) == 3,
+        alsoOf<int>(21, timesTwo) == 42,
+        identityOf<(int) -> int>(timesTwo)(21) == 42,
+        applyInt(f: identityOf<(int) -> int>(addOne), x: 9) == 10,
+        [4, 5].headOr<int>(0) == 4,
+        headOr<int>([], 9) == 9,
+        headOr<string>(["a"], "z") == "a",
+        repeatOf<int>(7, 3) == 7,
+        repeatOf<string>("os", 2) == "os",
+        (identityOf<Result<int, MathError>>(20 * 5) ?: 0) == 100,
+        identityOf<int>(identityOf<int>(6)) == 6,
+        srcInt().produce == 4,
+        srcInt().make(9) == 9,
+        length(srcInt().items) == 2,
+        (srcInt().items.listGet(1) ?: 0) == 2,
+        sinkInt().admit(1),
+        sinkInt().hof(|n| => 3) == 7,
+        bothInt().slot == 5,
+        bothInt().consume(1) == 6,
+        keepSource(srcInt()) == 4,
+        keepSink(sinkInt()) == 7
     ])
 }
 test("equivalent type shapes compose while union tags remain distinct", typeEqualityCase)

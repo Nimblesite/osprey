@@ -7,6 +7,8 @@ use crate::ty::{Type, VarId};
 use osprey_ast::Variance;
 use std::collections::{BTreeSet, HashMap};
 
+type RecordTemplate = (Vec<String>, Vec<(String, String)>);
+
 /// Holds every type variable's binding. Variable ids are indices into `subst`.
 #[derive(Debug, Default)]
 pub struct InferCtx {
@@ -16,7 +18,7 @@ pub struct InferCtx {
     /// [TYPE-VARIANCE-ASSIGN].
     variances: HashMap<String, Vec<Variance>>,
     /// Nominal record layouts, before instantiating their declaration binders.
-    records: HashMap<String, (Vec<String>, Vec<(String, String)>)>,
+    records: HashMap<String, RecordTemplate>,
 }
 
 impl InferCtx {

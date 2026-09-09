@@ -288,7 +288,7 @@ impl Resolver<'_> {
                 self.rewrite_expr(left, context, locals);
                 self.rewrite_expr(right, context, locals);
             }
-            Expr::TypeApply { function, type_args } => {
+            Expr::TypeApply { function, type_args, .. } => {
                 self.rewrite_expr(function, context, locals);
                 for argument in type_args {
                     self.rewrite_type(argument, context, locals);

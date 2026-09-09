@@ -7,6 +7,9 @@ use crate::ctx::InferCtx;
 use crate::ty::{Scheme, Type, VarId};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+/// One call's signature, deferred obligations, and ordered declared binders.
+pub(crate) type AppliedSignature = (Type, Vec<(String, Type)>, Vec<Type>);
+
 /// Maps names to their type schemes. Cloned to form child scopes (lambda
 /// bodies, match arms) — value semantics, so child bindings never leak out.
 #[derive(Debug, Clone, Default)]
@@ -65,7 +68,7 @@ impl TypeEnv {
 
     /// Instantiate the signature and its declared binders with one substitution.
     pub(crate) fn applied(&self, ctx: &mut InferCtx, name: &str)
-        -> Option<(Type, Vec<(String, Type)>, Vec<Type>)> {
+        -> Option<AppliedSignature> {
         let scheme = self.get(name)?;
         let map = scheme.vars.iter().map(|v| (*v, ctx.fresh())).collect();
         let params = self.type_params.get(name).into_iter().flatten()

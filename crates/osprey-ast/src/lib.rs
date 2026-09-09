@@ -773,6 +773,8 @@ pub enum Expr {
         function: Box<Expr>,
         /// Written type arguments, in declaration order.
         type_args: Vec<TypeExpr>,
+        /// Source position of the callee, for application diagnostics.
+        position: Option<Position>,
     },
     /// `a |> b` pipe.
     Pipe {

@@ -1153,6 +1153,7 @@ impl Parser<'_> {
     /// Whitespace application `f a b`, left-associative, recorded as nested
     /// single-argument [`MlExpr::App`] ([FLAVOR-ML-CALL]).
     fn application(&mut self) -> MlExpr {
+        let pos = self.pos();
         let mut func = self.postfix();
         // `Head(field = v, …)` is an inline record literal, not application: any
         // identifier immediately followed by `(ident = …`. An UPPERCASE head is
@@ -1182,7 +1183,7 @@ impl Parser<'_> {
             if !self.starts_atom() && !self.at_negative_literal_arg() {
                 self.error("type arguments require a call argument");
             }
-            func = MlExpr::TypeApply { func: Box::new(func), args };
+            func = MlExpr::TypeApply { func: Box::new(func), args, pos };
         }
         // `f ()` is a zero-argument application, not application to unit.
         if matches!(self.peek(), TokKind::LParen) && matches!(self.peek_at(1), TokKind::RParen) {

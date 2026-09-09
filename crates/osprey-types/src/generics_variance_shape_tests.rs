@@ -71,7 +71,7 @@ fn map_keys_refuse_both_markers() {
 /// A record that both holds and consumes its parameter demands both
 /// directions, so only an invariant parameter fits.
 fn both_positions(params: &str) -> String {
-    format!("type Holder{params} = {{{{ held: T, consume: (T) -> int }}}}\nprint(\"declared\")")
+    format!("type Holder{params} = {{ held: T, consume: (T) -> int }}\nprint(\"declared\")")
 }
 
 /// The invariant spelling is accepted.
