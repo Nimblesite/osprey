@@ -217,6 +217,21 @@ pub struct TypeExpr {
 }
 
 impl TypeExpr {
+    /// A module contract supplies a type without adding a written annotation.
+    /// Line zero is reserved for compiler-generated source metadata.
+    #[must_use]
+    pub fn as_contract_annotation(&self) -> Self {
+        let mut ty = self.clone();
+        ty.position = Some(Position { line: 0, column: 0 });
+        ty
+    }
+
+    /// Whether this annotation was supplied by module-signature elaboration.
+    #[must_use]
+    pub fn is_from_contract(&self) -> bool {
+        self.position.is_some_and(|position| position.line == 0)
+    }
+
     /// A bare named type like `Int` or `Ptr`.
     pub fn named(name: impl Into<String>) -> Self {
         TypeExpr {

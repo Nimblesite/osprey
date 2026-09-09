@@ -7,7 +7,11 @@
 //! runtime's supported alternatives (`print`, `toString`, `length`,
 //! `isEmpty`); `builtin_constraints` checks their concrete call-site types.
 //! Result-returning runtime builtins return `Result<T, Error>` — the shape the C
-//! runtime actually returns — while arithmetic operators use `MathError`.
+//! runtime actually returns — while arithmetic uses `MathError`. The split is
+//! by what can fail, not by who implements it: `abs` and `intDiv` are
+//! arithmetic and carry `MathError` even though the runtime provides them.
+//! `checkedAdd`/`checkedSub`/`checkedMul` keep the generic `Error` channel for
+//! compatibility.
 
 use crate::env::TypeEnv;
 use crate::ty::{names, Scheme, Type};
@@ -167,10 +171,17 @@ fn core(e: &mut TypeEnv) {
         vec![i()],
         Type::result(i(), Type::prim(names::MATH_ERROR)),
     );
-    // Truncating integer division, divide-by-zero-checked → Result<int, Error>.
-    // The `/` operator is float-only (Osprey spec); this is its integer sibling.
-    // Implements [BUILTIN-INTDIV].
-    mono(e, "intDiv", vec![i(), i()], res(i()));
+    // Truncating integer division, divide-by-zero-checked. The `/` operator is
+    // float-only (Osprey spec); this is its integer sibling, so its faults are
+    // MATH faults and it carries the same `MathError` channel as `abs` and as
+    // the operators — not the runtime's generic `Error`. Implements
+    // [BUILTIN-INTDIV].
+    mono(
+        e,
+        "intDiv",
+        vec![i(), i()],
+        Type::result(i(), Type::prim(names::MATH_ERROR)),
+    );
     // Widening int → float. Total, so it is bare `float` rather than a Result:
     // every i64 has a nearest double. Implements [BUILTIN-TOFLOAT] and the GPU
     // surface's explicit element conversion [GPU-CONVERT].

@@ -142,36 +142,64 @@ pub(crate) enum TokKind {
     Eof,
 }
 
+/// Every keyword spelling paired with the kind it lexes to. This is the ONE
+/// list: [`keyword_or_ident`] reads it forwards and [`keyword_spelling`] reads
+/// it backwards, so a keyword cannot be added to one direction only.
+const KEYWORDS: &[(&str, TokKind)] = &[
+    ("mut", TokKind::KwMut),
+    ("true", TokKind::KwTrue),
+    ("false", TokKind::KwFalse),
+    ("match", TokKind::KwMatch),
+    ("type", TokKind::KwType),
+    ("extern", TokKind::KwExtern),
+    ("spawn", TokKind::KwSpawn),
+    ("effect", TokKind::KwEffect),
+    ("perform", TokKind::KwPerform),
+    ("handle", TokKind::KwHandle),
+    ("resume", TokKind::KwResume),
+    ("in", TokKind::KwIn),
+    ("await", TokKind::KwAwait),
+    ("yield", TokKind::KwYield),
+    ("send", TokKind::KwSend),
+    ("recv", TokKind::KwRecv),
+    ("select", TokKind::KwSelect),
+    ("import", TokKind::KwImport),
+    ("namespace", TokKind::KwNamespace),
+    ("module", TokKind::KwModule),
+    ("signature", TokKind::KwSignature),
+    ("export", TokKind::KwExport),
+    ("opaque", TokKind::KwOpaque),
+    ("state", TokKind::KwState),
+    ("as", TokKind::KwAs),
+];
+
+/// Spellings held back for a future syntax. They lex to [`TokKind::Reserved`],
+/// which already carries its own text, so they stay out of [`KEYWORDS`].
+const RESERVED: &[&str] = &["handler", "do"];
+
 /// Map a bare identifier spelling to its keyword/reserved kind, or treat it as
 /// an ordinary identifier.
 pub(crate) fn keyword_or_ident(text: &str) -> TokKind {
-    match text {
-        "mut" => TokKind::KwMut,
-        "true" => TokKind::KwTrue,
-        "false" => TokKind::KwFalse,
-        "match" => TokKind::KwMatch,
-        "type" => TokKind::KwType,
-        "extern" => TokKind::KwExtern,
-        "spawn" => TokKind::KwSpawn,
-        "effect" => TokKind::KwEffect,
-        "perform" => TokKind::KwPerform,
-        "handle" => TokKind::KwHandle,
-        "resume" => TokKind::KwResume,
-        "in" => TokKind::KwIn,
-        "await" => TokKind::KwAwait,
-        "yield" => TokKind::KwYield,
-        "send" => TokKind::KwSend,
-        "recv" => TokKind::KwRecv,
-        "select" => TokKind::KwSelect,
-        "import" => TokKind::KwImport,
-        "namespace" => TokKind::KwNamespace,
-        "module" => TokKind::KwModule,
-        "signature" => TokKind::KwSignature,
-        "export" => TokKind::KwExport,
-        "opaque" => TokKind::KwOpaque,
-        "state" => TokKind::KwState,
-        "as" => TokKind::KwAs,
-        "handler" | "do" => TokKind::Reserved(text.to_owned()),
-        _ => TokKind::Ident(text.to_owned()),
+    if RESERVED.contains(&text) {
+        return TokKind::Reserved(text.to_owned());
     }
+    match KEYWORDS.iter().find(|(spelling, _)| *spelling == text) {
+        Some((_, kind)) => kind.clone(),
+        None => TokKind::Ident(text.to_owned()),
+    }
+}
+
+/// The spelling a keyword token was lexed from — the inverse of
+/// [`keyword_or_ident`].
+///
+/// A word reserved for one syntactic position is still an ordinary NAME in a
+/// position where only a name can appear. Effect operation names are such a
+/// position (`effect Chan { send : T => Unit }`), the same contextual rule
+/// [`super::parser::Parser::operation_markers`] already applies to `abort` /
+/// `once` / `many`. Implements [FLAVOR-ML-EFFECT-OP-NAME].
+pub(crate) fn keyword_spelling(kind: &TokKind) -> Option<&'static str> {
+    KEYWORDS
+        .iter()
+        .find(|(_, candidate)| candidate == kind)
+        .map(|(spelling, _)| *spelling)
 }

@@ -181,7 +181,9 @@ fn optional_type(ty: &mut Option<TypeExpr>, offset: u32) {
 }
 
 fn offset_type(ty: &mut TypeExpr, offset: u32) {
-    shift(&mut ty.position, offset);
+    if !ty.is_from_contract() {
+        shift(&mut ty.position, offset);
+    }
     for parameter in &mut ty.generic_params {
         offset_type(parameter, offset);
     }

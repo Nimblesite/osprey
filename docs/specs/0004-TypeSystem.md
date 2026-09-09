@@ -890,11 +890,9 @@ reading the annotation: `string -> int -> string` is redundant on one function
 and load-bearing on the next. It is decided by inference, and only by
 inference.
 
-**The decision procedure.** For each annotation, replace it with a fresh type
-variable, solve the enclosing definition, and generalise. Compare the result to
-the type that was written, up to renaming of bound type variables. Equal ⇒
-redundant. More general ⇒ the annotation was constraining something and is
-kept. Ill-typed without it ⇒ kept.
+**The decision procedure.** Start from a well-typed program. Erase exactly one written parameter, return, lambda, or binding annotation from a copy of that program and run inference again. Compare all solved function, binding, lambda, list, handler, and operation types, including effect arguments and the relationships between declared generic binders and those types. The comparison uses one consistent bijection between inference variables. Report a warning only when the copied program remains well-typed and every compared type is equal under that renaming. Any changed type, changed binder relationship, or type error keeps the annotation.
+
+Each warning is evaluated against the original program with its other annotations present. Several independent warnings do not prove that all their annotations can be removed together. For example, either annotation in `fn identity<T>(x: T) -> T = x` can individually be inferred from the other; deleting both would disconnect the declared `T` from the function's parameter. Re-run diagnostics after a deletion. An ML signature header is one source construct containing several canonical slots; deleting its whole header requires checking the whole edit.
 
 ```mermaid
 flowchart LR
@@ -913,11 +911,11 @@ surfaces ([FLAVOR-BOUNDARY]) — an ML `f : string -> int` header and a Default
 identically.
 
 ```osprey-ml
-// redundant: `quote key + ":" + toString value` already fixes every slot.
-numField : string -> int -> string
-numField key value = quote key + ":" + toString value
+(** Both slots are inferred as string from concatenation. *)
+decorate : string -> string
+decorate text = text + "!"
 
-// kept: the empty literal constrains nothing on its own.
+(** Kept: the empty literal constrains nothing on its own. *)
 seen : List<int>
 seen = []
 ```
@@ -926,13 +924,20 @@ seen = []
 declaration rather than as a constraint on an inferred one, and no annotation
 in them is ever reported:
 
-- a `signature` block's members ([MODULES-SIGNATURE](0025-ModulesAndNamespaces.md#signatures-modules-signature)) — a signature *is* the module's public contract, and a module body that repeats one of its types is judged like any other function;
+- a `signature` block's members ([MODULES-SIGNATURE](0025-ModulesAndNamespaces.md#signatures-modules-signature)) — a signature *is* the module's public contract. Elaboration copies a signature's types onto the members that left them off, and it marks every type it supplies, so a member that wrote nothing is never blamed for the copy. A member that *writes* the same type again is judged like any other function: that duplicate is a real line, and deleting it changes nothing;
 - record field declarations and union variant payloads, whose types are their definition;
 - `extern` and foreign declarations ([Foreign Function Interface](0019-ForeignFunctionInterface.md)), which have no body to infer from;
-- an annotation whose erasure leaves a free type variable the solver never grounds.
+- an annotation whose erasure changes a type variable's constraints or its relationship to a declared binder.
+
+Types inserted by module-signature elaboration are compiler-generated constraints and never receive a redundancy warning. A written annotation in a module body is checked normally, even if its spelling equals the module's signature. The compiler records this provenance when it inserts a constraint; matching member names or type spellings is not evidence that an annotation was generated.
 
 An annotation that would erase a `Result` is not redundant either — it is a
 type error ([Result Preservation](#result-preservation)), reported as one.
+
+**An ill-typed program reports none.** The types inferred for a program that
+does not typecheck are the checker's best effort at code it has already
+rejected, and no comparison drawn from them would be trustworthy. Type errors
+come first; the redundancy pass runs on programs that pass.
 
 **Severity.** The diagnostic is a **Warning**. It changes no exit code and no
 generated code: a program whose only diagnostics are redundant annotations
@@ -941,13 +946,23 @@ configurable per rule; the rule identifier is `redundant-annotation`, and it is
 that identifier a future configuration names.
 
 **The message** identifies the annotation and prints the type inference derives
-without it, so the fix is to delete the annotation and nothing else:
+without that slot. There is
+one line per slot the rule judges:
 
 ```
-warning: redundant type annotation on `numField`: inference derives `(string, int) -> string` without it
+redundant type annotation on parameter `key` of `numField`: inference derives `string` without it
+redundant return type annotation on `numField`: inference derives `string` without it
+redundant type annotation on `seen`: inference derives `List<int>` without it
 ```
 
-Every front end reports it: `osprey build` and `osprey check` on stderr, and
-the language server as a Warning diagnostic spanning the annotation alone
-([LSP-DIAGNOSTICS](0020-LanguageServerAndEditors.md#diagnostics-lsp-diagnostics)), so the squiggle covers
-the text to delete.
+An annotation written on an anonymous function names `<lambda>` as its owner,
+and a name that assembly mangled is reported in its source spelling
+([MODULES-ABI](0025-ModulesAndNamespaces.md#name-mangling-and-abi-modules-abi)),
+so `bank::Api::json` is never shown as its encoded symbol.
+
+Every front end reports it: `osprey build` and `osprey FILE --check` on stderr,
+grouped by source file under an aligned `line:column` gutter and closed by a
+count and the rules that raised it; and the language server as a Warning
+diagnostic anchored at the containing declaration and spanning the rest of that source line
+([LSP-DIAGNOSTICS](0020-LanguageServerAndEditors.md#diagnostics-lsp-diagnostics)),
+The message names the parameter, return, or binding slot. The range identifies the declaration; it is not a deletion edit. The compiler does not offer an automatic bulk deletion based on these independent warnings.

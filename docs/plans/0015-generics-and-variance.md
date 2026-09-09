@@ -297,3 +297,116 @@ Remaining:
       `generic_effects_tests.rs` ([EFFECTS-GENERIC-*], plus the
       `handle … do` spelling spec 0017 writes and the language does not accept —
       [plan 0027](0027-arithmetic-effects.md) phase 0 owns that rename).
+
+## Frozen-test conflicts (2026-09-09, second sweep)
+
+The assertion sweep above was then frozen: no agent may edit, flip or reformat
+any test in this tree, so the following are recorded rather than repaired. Each
+names the side that is **right**, so whoever lifts the freeze knows which half
+to change. Rulings are OspreyAstra1's.
+
+1. **The compiler is right; the test is wrong — HM generalization.**
+   `fn empty<T>() -> List<T> = []` then `let held = empty()` and
+   `length(held)` compiles and prints `0`, and so does a bare `let xs = []`.
+   An unconstrained binder at an immutable `let` generalizes; nothing observes
+   `T`'s identity, so there is nothing to reject. Written type arguments *pin*
+   an instantiation, they are never *required*.
+   `generics_apply_tests.rs::the_unpinnable_binder_is_the_control_for_that_case`
+   demands a rejection and must become an acceptance.
+
+2. **The compiler is right; the test is wrong — ML tuple heads are flat.**
+   `pick<T, U> : (T, U) -> T` with `pick (first, second) = first` declares a
+   flat two-parameter head, so `pick<int, string> 1 "two"` is not a curried
+   application of it. Now stated outright in
+   [spec 0024](../specs/0024-MLFlavorSyntax.md) `[FLAVOR-ML-CURRY]` with both
+   the accepted and the rejected spelling.
+   `generics_apply_ml_tests.rs::ml_type_application_survives_curried_application`
+   must call `pick<int, string> (1, "two")`.
+
+3. **The compiler is right; the test is wrong — dynamic effects infer their
+   instantiation.** A written instantiation *is* the identity, so only a
+   `static effect` may carry one at a `perform` or a `handle`; a row may pin in
+   either stage. That a runtime key happens to be mangled per instantiation
+   does not license the written form. Now stated with accepted/rejected
+   examples in [spec 0035](../specs/0035-StagedEffects.md)
+   `[STAGE-SIGNALS-EXACT]`.
+   `generic_effects_tests.rs::a_bracketed_row_carries_several_generic_entries`
+   writes `handle Read<int>` on a dynamic effect and must drop the arguments.
+
+4. **The compiler is right; the test is wrong — handler identity is exact.**
+   A `Stash<string>` handler does not discharge a `Stash<int>` request, so
+   `unhandled effect operations` is the truthful diagnostic; effect names
+   matching is not effect identities matching.
+   `generic_effects_tests.rs::a_handler_arm_disagreeing_with_the_body_is_rejected`
+   expects `cannot unify` and must instead put the disagreeing arm on a
+   *direct* `perform` under the handler, where the arm and the operation's
+   return really do meet.
+
+5. **The compiler is right; the corpus program is wrong — double flip is an
+   output position.** `type Sink<in T>` carries
+   `hof: ((T) -> int) -> int`. A field is read out of the record (+), the
+   outer function's argument flips it (−) and the inner function's argument
+   flips it back (+), so `T` lands in output position and `in T` forbids it.
+   `type_equality_comprehensive.test.osp` line 124 must give `hof` a shape
+   that keeps `T` negative.
+
+6. **Three ML fixtures never reach the ML parser.**
+   `ml_turbofish_type_arg_arity.ospo`, `ml_turbofish_no_declared_binder.ospo`
+   and `ml_variance_covariant_no_inward_coercion.ospo` lack the
+   `// osprey: flavor=ml` marker that every other `ml_*.ospo` carries. The
+   `.ospo` extension resolves to Default ([`resolve_flavor`]), so they are
+   parsed as Default and emit a page of syntax errors instead of the
+   diagnostic they assert. The `ml_` prefix is a naming convention only — it
+   selects nothing.
+
+7. **The stage diagnostic's phase is asserted twice, incompatibly.**
+   `crates/osprey-syntax/src/lib.rs`'s
+   `an_instantiated_dynamic_effect_is_rejected_rather_than_shared` requires the
+   rejection in `parse_program_with_flavor(...).errors`, while
+   `generic_effects_tests.rs::a_written_instantiation_on_a_dynamic_perform_is_rejected`
+   requires it from the checker. Both cannot hold. Until the freeze lifts the
+   diagnostic stays where it is — a stage rule reading as a `SyntaxError` is a
+   layering wart, but moving it changes a published phase contract.
+
+8. **A stale golden.** `stage_signal_instantiated_dynamic_effect.ospo.expectedoutput`
+   still carries the superseded "keyed by effect name at runtime, so
+   instantiations share one key" rationale; `crates/osprey-ast/src/stage.rs`
+   already emits the replacement prose. The golden is the stale side.
+
+9. **The compiler is right; the ML twin is wrong — ML has no brace expression.**
+   `type_equality_comprehensive.test.ospml` line 233 writes a Default-flavor
+   map literal, `identityOf<Map<string, List<int>>> { "a": [1], "b": [2] }`.
+   ML builds a map with `[k => v]`; `{` lexes only so a structural PATTERN can
+   spell `{ heading, .. }` and has no expression form at all — the rule
+   `examples/failscompilation/ml_brace_record_and_question_sigil.ospo` exists to
+   pin. The line must become `[ "a" => [1], "b" => [2] ]` — verified: with that
+   spelling the whole application parses, type-checks and runs, so the triple
+   `>` and the call-site type arguments are not implicated.
+
+Fixed in this sweep rather than recorded, because no test asserted the broken
+behaviour: a glued `<` after a name committed to call-site type arguments with
+no lookahead, so `x<3` and `x<y` stopped parsing as comparisons. The commit is
+now gated on the whole shape — a balanced angle run of type tokens followed by
+the argument the application applies to — mirroring `at_generic_record`.
+`send` likewise stopped being a hard keyword in the three positions that hold an
+effect operation name ([FLAVOR-ML-EFFECT-OP-NAME]).
+
+**The same regression is still live in the Default flavor** and is the one
+outstanding defect this sweep found in shipped behaviour: `fn lit(x) = x<3` is a
+syntax error, while the spaced `x < 3` compiles. The fix belongs in
+`tree-sitter-osprey/grammar.js`, and it is the rule the ML side now follows — a
+glued `<` may not commit to type arguments on its own; the whole shape must be
+there, a balanced angle run of type-only tokens followed by the argument the
+application applies to.
+
+Two failures in this sweep are **not** generics work:
+
+- `recursive_generic_needs_annotation.ospo` is now *accepted*, so 1 of 144
+  must-reject programs compiles. Ruled correct: a recursive generic's return is
+  now specialized from its arguments, so the program really is well-formed and
+  the **fixture** is the stale side — it must move to the corpus or be replaced
+  by a program that still needs the annotation.
+- `cli_e2e`'s `llvm_reports_a_codegen_error` and `run_reports_a_codegen_error`
+  no longer reach codegen: `GENERIC_AS_VALUE` is caught by the checker, so their
+  `stderr` never says `codegen` and **no program exercises the CLI's
+  codegen-error path**. That path needs a program that still fails there.

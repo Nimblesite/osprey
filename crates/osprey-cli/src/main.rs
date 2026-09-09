@@ -30,6 +30,7 @@ mod test_cmd;
 mod test_coverage;
 mod test_skips;
 mod toolchain;
+mod warnings;
 mod wasm;
 
 use osprey_syntax::Flavor;
@@ -473,10 +474,7 @@ pub(crate) fn report_type_errors(input: &CompilationInput) -> usize {
     for e in &errors {
         eprintln!("{}", input.diagnostic(e.position, &e.message));
     }
-    for warning in osprey_types::redundant_annotations(input.program()) {
-        let text = format!("warning: {}", warning.message);
-        eprintln!("{}", input.diagnostic(warning.position, &text));
-    }
+    warnings::report(input, &osprey_types::redundant_annotations(input.program()));
     errors.len()
 }
 

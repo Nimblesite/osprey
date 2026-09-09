@@ -30,6 +30,8 @@
 #     legal C spelling.
 tests/effects/errors/direct_recovery.test.osp C ABI: unhandled effect operations at library export `requirePositive`: RecoveryError.missingInt; add a matching `handle`
 tests/effects/errors/direct_recovery.test.ospml C ABI: unhandled effect operations at library export `requirePositive`: RecoveryError.missingInt; add a matching `handle`
+tests/effects/injection/storage_injection.test.osp C ABI: unhandled effect operations at library export `countNotes`: Storage.exists, Storage.load; add a matching `handle`
+tests/effects/injection/storage_injection.test.ospml C ABI: unhandled effect operations at library export `countNotes`: Storage.exists, Storage.load; add a matching `handle`
 tests/effects/multiplicity/multiplicity.test.osp a continuation for `Charge.charge` (a suspended continuation cannot cross or outlive a synchronous host call)
 tests/effects/multiplicity/multiplicity.test.ospml a continuation for `Charge.charge` (a suspended continuation cannot cross or outlive a synchronous host call)
 tests/effects/resume/resume_abort_early_exit.test.osp a continuation for `Stop.check` (a suspended continuation cannot cross or outlive a synchronous host call)

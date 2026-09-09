@@ -42,7 +42,7 @@ use super::cst::{
     MlVariant,
 };
 use super::lexer::lex;
-use super::token::{TokKind, Token};
+use super::token::{keyword_spelling, TokKind, Token};
 use crate::SyntaxError;
 use osprey_ast::{Multiplicity, Position, Stage, REPLAYABLE_KEYWORD, STATIC_STAGE_KEYWORD};
 
@@ -640,24 +640,39 @@ impl Parser<'_> {
     fn operation_markers(&mut self) -> Option<(Option<Multiplicity>, bool, String)> {
         let mut multiplicity = None;
         let mut replayable = false;
-        let mut word = self.ident()?;
+        let mut word = self.operation_ident()?;
         if let Some(declared) = Multiplicity::from_keyword(&word) {
             if self.at_operation_name() {
                 multiplicity = Some(declared);
-                word = self.ident()?;
+                word = self.operation_ident()?;
             }
         }
         if word == REPLAYABLE_KEYWORD && self.at_operation_name() {
             replayable = true;
-            word = self.ident()?;
+            word = self.operation_ident()?;
         }
         Some((multiplicity, replayable, word))
     }
 
-    /// Whether the cursor sits on an identifier — the token that proves the
+    /// Whether the cursor sits on an operation name — the token that proves the
     /// word just read was a marker rather than the operation's own name.
     fn at_operation_name(&self) -> bool {
-        matches!(self.peek(), TokKind::Ident(_))
+        matches!(self.peek(), TokKind::Ident(_)) || keyword_spelling(self.peek()).is_some()
+    }
+
+    /// An effect operation's name. Operation names are their own namespace, so
+    /// a word this flavor reserves elsewhere still names an operation here:
+    /// `send : T => Unit` declares an operation called `send`, exactly as
+    /// `abort : string => Unit` declares one called `abort`. The position is
+    /// unambiguous — an `effect` block's indented lines, the name after
+    /// `perform Effect.`, and a handler arm's head admit nothing but a name.
+    /// Implements [FLAVOR-ML-EFFECT-OP-NAME].
+    fn operation_ident(&mut self) -> Option<String> {
+        if let Some(spelling) = keyword_spelling(self.peek()) {
+            self.advance();
+            return Some(spelling.to_owned());
+        }
+        self.ident()
     }
 
     /// Consume a `(** … *)` doc token sitting in front of an operation line.
@@ -1175,14 +1190,11 @@ impl Parser<'_> {
                 func = self.inline_record(name, type_args);
             }
         }
-        if record_head(&func).is_some() && self.at_angle_open() && self.glued() {
+        if record_head(&func).is_some() && self.glued() && self.at_type_application() {
             let args = match self.ty_generic_args(String::new()) {
                 MlType::App { args, .. } => args,
                 _ => Vec::new(),
             };
-            if !self.starts_atom() && !self.at_negative_literal_arg() {
-                self.error("type arguments require a call argument");
-            }
             func = MlExpr::TypeApply {
                 func: Box::new(func),
                 args,
@@ -1312,8 +1324,14 @@ impl Parser<'_> {
 
     /// Whether the next token can begin an argument atom.
     fn starts_atom(&self) -> bool {
+        self.starts_atom_at(0)
+    }
+
+    /// Whether the token `j` ahead of the cursor could begin an atom. Lookahead
+    /// needs this to decide a shape before committing to it.
+    fn starts_atom_at(&self, j: usize) -> bool {
         matches!(
-            self.peek(),
+            self.peek_at(j),
             TokKind::Int(_)
                 | TokKind::Float(_)
                 | TokKind::Str(_)
@@ -1545,7 +1563,7 @@ impl Parser<'_> {
         if !self.eat(&TokKind::Dot) {
             self.error("expected '.' between effect and operation in perform");
         }
-        let operation = self.ident().unwrap_or_default();
+        let operation = self.operation_ident().unwrap_or_default();
         // `op ()` is a zero-argument performance, not application to unit.
         if matches!(self.peek(), TokKind::LParen) && matches!(self.peek_at(1), TokKind::RParen) {
             self.advance();
@@ -1637,7 +1655,7 @@ impl Parser<'_> {
     /// One `op param* => body` arm of a `handle` expression.
     pub(super) fn handle_arm(&mut self) -> MlHandleArm {
         let pos = self.pos();
-        let operation = self.ident().unwrap_or_default();
+        let operation = self.operation_ident().unwrap_or_default();
         let mut params = Vec::new();
         while let TokKind::Ident(name) = self.peek() {
             params.push(name.clone());
@@ -2021,9 +2039,29 @@ impl Parser<'_> {
     /// followed by an inline record (`Ctor<int>(field = v)`): scan a balanced
     /// `<…>` of type-shaped tokens, then require the `( Ident =` record
     /// opener — so a `Ctor < x` comparison never misparses.
-    fn at_generic_record(&self) -> bool {
-        if !matches!(self.peek(), TokKind::Op(op) if op == "<") {
-            return false;
+    /// Whether a glued `<` opens **call-site type arguments** rather than a
+    /// comparison. `<` alone cannot decide: `x<3` and `x<y` are ordinary
+    /// comparisons, so committing on the bracket swallows them. The whole shape
+    /// must be present first — a balanced angle run holding only tokens a type
+    /// can hold, then the argument the application applies to, which is what
+    /// makes `identity<int> 5` an application and `x<y` a comparison.
+    /// Implements [TYPE-GENERICS-APPLY], [FLAVOR-ML-GENERICS].
+    fn at_type_application(&self) -> bool {
+        match self.past_angle_run() {
+            Some(j) => self.starts_atom_at(j),
+            None => false,
+        }
+    }
+
+    /// Scan a `<…>` run that holds only tokens a TYPE can hold, and answer with
+    /// the offset just past its closing `>`. `None` means the cursor is not on
+    /// a `<`, or the run holds something no type can (`x<3`), or it never
+    /// closes — in every one of those the `<` was an operator, and the caller
+    /// must not commit to a generic form. Nested runs close with `>>`, which
+    /// this flavor lexes as two `>` tokens, so counting depth is enough.
+    fn past_angle_run(&self) -> Option<usize> {
+        if !self.at_angle_open() {
+            return None;
         }
         let mut depth = 0usize;
         let mut j = 0usize;
@@ -2033,9 +2071,7 @@ impl Parser<'_> {
                 TokKind::Op(op) if op == ">" => {
                     depth = depth.saturating_sub(1);
                     if depth == 0 {
-                        return matches!(self.peek_at(j + 1), TokKind::LParen)
-                            && matches!(self.peek_at(j + 2), TokKind::Ident(_))
-                            && matches!(self.peek_at(j + 3), TokKind::Eq);
+                        return Some(j + 1);
                     }
                 }
                 TokKind::Ident(_)
@@ -2043,10 +2079,19 @@ impl Parser<'_> {
                 | TokKind::Arrow
                 | TokKind::LParen
                 | TokKind::RParen => {}
-                _ => return false,
+                _ => return None,
             }
             j += 1;
         }
+    }
+
+    fn at_generic_record(&self) -> bool {
+        let Some(j) = self.past_angle_run() else {
+            return false;
+        };
+        matches!(self.peek_at(j), TokKind::LParen)
+            && matches!(self.peek_at(j + 1), TokKind::Ident(_))
+            && matches!(self.peek_at(j + 2), TokKind::Eq)
     }
 
     // --- bodies and helpers ----------------------------------------------

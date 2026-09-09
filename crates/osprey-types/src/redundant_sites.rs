@@ -22,6 +22,9 @@ pub(crate) enum Slot {
         owner: String,
         /// The annotated parameter's name.
         parameter: String,
+        /// Its position in the parameter list, which is how a signature — that
+        /// names types and not parameters — addresses it.
+        index: usize,
     },
     /// A function's or lambda's declared return type.
     Return {
@@ -99,9 +102,13 @@ fn render(annotation: &TypeExpr) -> String {
     type_expr_to_type(annotation, &HashMap::new()).to_string()
 }
 
-/// Hand every annotation slot in `program` to `visit`, in pre-order.
+/// Visit written annotations, retaining the types supplied by module contracts.
 fn walk(program: &mut Program, visit: Visit<'_>) {
-    walk_statements(&mut program.statements, visit);
+    walk_statements(&mut program.statements, &mut |slot, position, annotation| {
+        if !annotation.as_ref().is_some_and(TypeExpr::is_from_contract) {
+            visit(slot, position, annotation);
+        }
+    });
 }
 
 /// Walk a statement sequence — a program body, a namespace, or a block.
@@ -137,7 +144,9 @@ fn walk_statement(statement: &mut Stmt, visit: Visit<'_>) {
         } => visit(Slot::Binding { name: name.clone() }, *position, ty),
         _ => {}
     }
-    statement_children_mut(statement, &mut |expression| walk_expr(expression, &mut *visit));
+    statement_children_mut(statement, &mut |expression| {
+        walk_expr(expression, &mut *visit);
+    });
 }
 
 /// Walk the annotation slots reachable through an expression.
@@ -152,7 +161,13 @@ fn walk_expr(expression: &mut Expr, visit: Visit<'_>) {
         ..
     } = expression
     {
-        walk_signature(LAMBDA_OWNER, parameters, return_type, *position, &mut *visit);
+        walk_signature(
+            LAMBDA_OWNER,
+            parameters,
+            return_type,
+            *position,
+            &mut *visit,
+        );
     }
     if let Expr::Block { statements, value } = expression {
         walk_statements(statements, &mut *visit);
@@ -172,10 +187,11 @@ fn walk_signature(
     position: Option<Position>,
     visit: Visit<'_>,
 ) {
-    for parameter in parameters {
+    for (index, parameter) in parameters.iter_mut().enumerate() {
         let slot = Slot::Param {
             owner: owner.to_string(),
             parameter: parameter.name.clone(),
+            index,
         };
         visit(slot, position, &mut parameter.ty);
     }

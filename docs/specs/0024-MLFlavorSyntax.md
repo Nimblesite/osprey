@@ -97,6 +97,28 @@ it. The parenthesised list is a tuple
 known head is exactly this flat call — which is why the ML and Default twins
 share IR.
 
+Currying is a property of the **declaration**, never of the call site. A head
+declared flat stays flat everywhere it is applied, so juxtaposing its arguments
+one at a time is not a partial application of it — there is nothing to bind one
+argument to — and the program is rejected. `add 10 20` above is not another
+spelling of `add (10, 20)`: the head takes one two-element tuple, so that line
+reads as applying `int` to `20` and is refused.
+
+Written type arguments do not change which of the two a callee is
+([TYPE-GENERICS-APPLY](0004-TypeSystem.md#generics-and-variance)). They pin the
+callee's binders and leave its parameter shape exactly as declared:
+
+```osprey-ml
+pick<T, U> : (T, U) -> T
+pick (first, second) = first
+
+kept = pick<int, string> (1, "two")
+// pick<int, string> 1 "two" is rejected for the same reason `add 10 20` is.
+```
+
+Reach for whitespace parameters when partial application is wanted, and for a
+parenthesised list when it is not.
+
 Lambdas follow the same split: `\x y => body` is curried and
 `\(x, y) => body` is flat. `name () = body` is a zero-parameter function;
 `name = body` is a value binding.
@@ -216,6 +238,33 @@ total = perform Db.count ()
 An effect declaration lowers to `Stmt::Effect`; a performance lowers to
 `Expr::Perform`. `resume` and `resume value` lower to `Expr::Resume` inside a
 handler arm.
+
+`[FLAVOR-ML-EFFECT-OP-NAME]` Operation names are their own namespace. Exactly
+three positions hold one, and each admits nothing else, so a word this flavor
+reserves elsewhere still names an operation in all three:
+
+1. the name on an operation line of an `effect` block,
+2. the name after the dot in `perform Effect.name`,
+3. the head of a handler arm.
+
+```osprey-ml
+effect Chan T
+    send : T => Unit
+    select : Unit => T
+
+relay x =
+    handle Chan
+        send v => print "sent ${v}"
+        select => x
+    in perform Chan.send x
+```
+
+This is the rule `abort` / `once` / `many` / `replayable` already follow under
+[FLAVOR-ML-EFFECT-ANNOTATIONS](#effects): a marker is a marker only when another
+name follows it, so `abort : string => Unit` declares an operation *called*
+`abort`. Every other position keeps its ordinary meaning — `send`, `recv` and
+`select` remain the channel forms wherever an expression is expected, and
+`handler` and `do` stay reserved and name nothing.
 
 `[FLAVOR-ML-EFFECT-ANNOTATIONS]` An effect declaration carries two axes beyond
 its operations, and ML spells both as prefix keywords: `static` before `effect`

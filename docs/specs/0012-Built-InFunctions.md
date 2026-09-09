@@ -72,19 +72,22 @@ editor integration are specified in [Testing Framework](0027-TestingFramework.md
 
 ## Numeric Functions
 
-The numeric builtins are inside the arithmetic totality guarantee: none may trap, panic, wrap silently, or return an unspecified value ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). `abs` and `intDiv` follow the operators — plain `int`, with faults dispatched to the `Arith` handler. `checkedAdd`/`checkedSub`/`checkedMul` return a `Result` and are the explicit value-level form for code that wants overflow as data.
+The numeric builtins are inside the arithmetic totality guarantee: none may trap, panic, wrap silently, or return an unspecified value ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). `abs` and `intDiv` follow the operators, so whatever the operators return, they return. `checkedAdd`/`checkedSub`/`checkedMul` are the explicit value-level form for code that wants overflow as data, and keep the runtime's generic `Error` channel.
 
-### `abs(n: int) -> int` — [BUILTIN-ABS] Returns the absolute value. Because `2^63` is not representable, the minimum signed 64-bit input performs `Arith.overflow`; it never wraps or panics.
+**What ships today is the checked-`Result` form.** `abs` and `intDiv` return `Result<int, MathError>` — the same `MathError` channel the arithmetic operators use, because a division fault is a math fault and not a runtime fault — and a caller discharges it with `match` or `?:`. [Plan 0027](../plans/0027-arithmetic-effects.md) retires that shape in favour of a plain `int` whose faults dispatch to a compiler-declared `Arith` handler, which is what [spec 0037](0037-ArithmeticEffects.md) specifies as the normative target; **no part of it is implemented yet**. The signatures below are written in the shipped form, and the `Arith.*` faults name what each one performs once that plan lands.
 
-### `intDiv(a: int, b: int) -> int` — [BUILTIN-INTDIV]
-Truncates toward zero. A zero divisor performs `Arith.remainderByZero`; `intDiv(-9223372036854775808, -1)` performs `Arith.overflow`; every other input yields the quotient. The `/` operator instead returns `float`.
+### `abs(n: int) -> Result<int, MathError>` — [BUILTIN-ABS]
+Returns the absolute value. Because `2^63` is not representable, the minimum signed 64-bit input is the `Error` case (`Arith.overflow` under plan 0027); it never wraps or panics.
+
+### `intDiv(a: int, b: int) -> Result<int, MathError>` — [BUILTIN-INTDIV]
+Truncates toward zero. A zero divisor is the `Error` case (`Arith.remainderByZero`), as is `intDiv(-9223372036854775808, -1)` (`Arith.overflow`); every other input yields the quotient. The `/` operator instead returns `float`.
 
 ```osprey
-intDiv(7, 2)        // 3
-intDiv(255643, 10)  // 25564
-intDiv(5, 0)        // performs Arith.remainderByZero
-intDiv(-9223372036854775808, -1) // performs Arith.overflow
-fn half(n) = intDiv(n, 2)
+intDiv(7, 2) ?: 0        // 3
+intDiv(255643, 10) ?: 0  // 25564
+intDiv(5, 0)             // Error — division by zero
+intDiv(-9223372036854775808, -1) // Error — integer overflow
+fn half(n) = intDiv(n, 2) ?: 0
 ```
 
 ### `toFloat(n: int) -> float` — [BUILTIN-TOFLOAT]

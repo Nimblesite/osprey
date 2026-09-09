@@ -88,7 +88,10 @@ impl TypeEnv {
             .map(|(name, ty)| (name.clone(), subst_vars(ty, &map)))
             .collect();
         Some(AppliedSignature {
-            ty: subst_vars(&scheme.ty, &map), obligations, params, bindings: map,
+            ty: subst_vars(&scheme.ty, &map),
+            obligations,
+            params,
+            bindings: map,
         })
     }
 

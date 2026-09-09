@@ -56,28 +56,22 @@ pub fn redundant_annotations(program: &Program) -> Vec<TypeWarning> {
         return Vec::new();
     }
     let baseline = published(program);
-    if preserves(&baseline, &erase(program, &mut |_| false)) {
-        return written.iter().map(warn).collect();
-    }
-    attribute(program, &baseline, &written)
-}
-
-/// Test each annotation on its own, once erasing all of them at once has been
-/// ruled out. One of them is load-bearing; only re-solving with exactly one
-/// removed says which.
-fn attribute(program: &Program, baseline: &Published, written: &[Site]) -> Vec<TypeWarning> {
     written
         .iter()
         .enumerate()
-        .filter(|(index, _)| preserves(baseline, &erase(program, &mut |site| site != *index)))
+        .filter(|(index, _)| preserves(program, &baseline, *index))
         .map(|(_, site)| warn(site))
         .collect()
 }
 
-/// Whether `candidate` — `program` minus some annotations — still typechecks
-/// and still publishes the same types, up to renaming of type variables.
-fn preserves(baseline: &Published, candidate: &Program) -> bool {
-    check_program(candidate).is_empty() && same_types(baseline, &published(candidate))
+/// Whether erasing this annotation leaves `program` typechecking
+/// and publishing the same types, up to renaming of type variables.
+///
+/// The published types are compared first because they are what usually
+/// differs, and re-checking is a second full solve this can then skip.
+fn preserves(program: &Program, baseline: &Published, index: usize) -> bool {
+    let candidate = erase(program, &mut |site| site != index);
+    same_types(baseline, &published(&candidate)) && check_program(&candidate).is_empty()
 }
 
 /// Everything the inferrer resolved, labelled so two runs compare entry by
@@ -91,11 +85,32 @@ fn published(program: &Program) -> Published {
         };
         (format!("fn {name}"), signature)
     });
-    functions
+    let mut published: Published = functions
         .chain(sited("let", &types.lets))
         .chain(sited("lambda", &types.lambdas))
         .chain(sited("list", &types.lists))
-        .collect()
+        .collect();
+    for (function, binders) in &types.declared_params {
+        for (name, ty) in binders {
+            let _ = published.insert(format!("binder {function} {name}"), ty.clone());
+        }
+    }
+    for (position, site) in &types.performs {
+        publish_operation(&mut published, &format!("perform {position:?}"), &site.op, &site.effect_args);
+    }
+    for (position, site) in &types.handler_ops {
+        for (operation, op) in &site.ops {
+            publish_operation(&mut published, &format!("handler {position:?} {operation}"), op, &site.effect_args);
+        }
+    }
+    published
+}
+
+fn publish_operation(published: &mut Published, label: &str, operation: &crate::info::OpType, arguments: &[Type]) {
+    let _ = published.insert(label.to_owned(), Type::fun(operation.params.clone(), operation.ret.clone()));
+    for (index, argument) in arguments.iter().enumerate() {
+        let _ = published.insert(format!("{label} argument {index}"), argument.clone());
+    }
 }
 
 /// Label one position-keyed table so its entries join the same flat map.
@@ -115,7 +130,9 @@ fn sited<'a>(
 fn warn(site: &Site) -> TypeWarning {
     let written = &site.written;
     let message = match &site.slot {
-        Slot::Param { owner, parameter } => format!(
+        Slot::Param {
+            owner, parameter, ..
+        } => format!(
             "redundant type annotation on parameter `{parameter}` of `{owner}`: inference derives `{written}` without it"
         ),
         Slot::Return { owner } => format!(
@@ -126,7 +143,7 @@ fn warn(site: &Site) -> TypeWarning {
         ),
     };
     TypeWarning {
-        message,
+        message: osprey_ast::symbol::demangle_message(&message).into_owned(),
         position: site.position,
         rule: REDUNDANT_ANNOTATION,
     }

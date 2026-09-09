@@ -25,8 +25,8 @@ pub(crate) struct Instances {
     /// final fragment overwrite the others.
     pub(crate) performs: HashMap<(u32, u32), Vec<Vec<String>>>,
     pub(crate) handlers: HashMap<(u32, u32), Vec<String>>,
-    /// Fully resolved operation arguments available to refine a handler.
-    pub(crate) concrete_arguments: HashMap<Vec<String>, Vec<crate::ty::Type>>,
+    /// Substituted operation arguments available to refine a handler.
+    pub(crate) argument_types: HashMap<Vec<String>, Vec<crate::ty::Type>>,
     /// Candidate instantiations required by each handler's body after calls
     /// and callbacks have propagated through the closed-program summary.
     pub(crate) handler_inference: RefCell<HandlerCandidates>,
@@ -482,7 +482,7 @@ impl Analyzer<'_> {
 
     fn function_body(&self, function: &Function<'_>) -> Summary {
         self.expression(
-            &function.body,
+            function.body,
             &function.scope,
             &self.scoped_env(&function.parameters),
         )
@@ -490,7 +490,7 @@ impl Analyzer<'_> {
 
     fn function_return(&self, function: &Function<'_>) -> Option<Value> {
         let mut env = self.scoped_env(&function.parameters);
-        self.returned_value(&function.body, &function.scope, &mut env)
+        self.returned_value(function.body, &function.scope, &mut env)
     }
 
     fn returned_value(
@@ -660,7 +660,7 @@ impl Analyzer<'_> {
                 if let Some(position) = position {
                     let candidates = body_summary.required.iter().filter(|requirement| {
                         requirement.effect == *effect && handled.contains(&requirement.operation)
-                            && self.instances.concrete_arguments.contains_key(&requirement.arguments)
+                            && self.instances.argument_types.contains_key(&requirement.arguments)
                     }).map(|requirement| requirement.arguments.clone());
                     self.instances.handler_inference.borrow_mut()
                         .entry((position.line, position.column)).or_default().extend(candidates);
@@ -999,7 +999,11 @@ impl Analyzer<'_> {
 
     fn value(&self, expression: &Expr, scope: &[String], env: &CallableEnv) -> Option<Value> {
         let mut value = self.raw_value(expression, scope, env)?;
-        if let Some(bindings) = self.instances.instantiations.get(&std::ptr::from_ref(expression).addr()) {
+        if let Some(bindings) = self
+            .instances
+            .instantiations
+            .get(&std::ptr::from_ref(expression).addr())
+        {
             specialize_value(&mut value, bindings);
         }
         Some(value)
@@ -1925,7 +1929,12 @@ fn merge_callable(slot: &mut Option<Callable>, incoming: Callable) {
     })));
 }
 
-fn bind_pattern(pattern: &Pattern, value: Option<&Value>, index: &Index<'_>, env: &mut CallableEnv) {
+fn bind_pattern(
+    pattern: &Pattern,
+    value: Option<&Value>,
+    index: &Index<'_>,
+    env: &mut CallableEnv,
+) {
     match pattern {
         Pattern::Binding(name) | Pattern::TypeAnnotated { name, .. } => {
             let _ = env.shadowed.insert(name.clone());
@@ -2140,35 +2149,58 @@ fn specialize_argument(argument: &str, bindings: &HashMap<String, String>) -> St
         } else {
             result.push_str(bindings.get(&token).unwrap_or(&token));
             token.clear();
-            if character != '\0' { result.push(character); }
+            if character != '\0' {
+                result.push(character);
+            }
         }
     }
     result
 }
 
 fn specialize_requirements(requirements: &mut Requirements, bindings: &HashMap<String, String>) {
-    *requirements = std::mem::take(requirements).into_iter().map(|mut requirement| {
-        requirement.arguments = requirement.arguments.iter().map(|arg| specialize_argument(arg, bindings)).collect();
-        requirement
-    }).collect();
+    *requirements = std::mem::take(requirements)
+        .into_iter()
+        .map(|mut requirement| {
+            requirement.arguments = requirement
+                .arguments
+                .iter()
+                .map(|arg| specialize_argument(arg, bindings))
+                .collect();
+            requirement
+        })
+        .collect();
 }
 
 fn specialize_summary(summary: &mut Summary, bindings: &HashMap<String, String>) {
     specialize_requirements(&mut summary.required, bindings);
-    summary.parameter_uses = std::mem::take(&mut summary.parameter_uses).into_iter().map(|mut use_| {
-        specialize_requirements(&mut use_.excluded, bindings);
-        use_
-    }).collect();
+    summary.parameter_uses = std::mem::take(&mut summary.parameter_uses)
+        .into_iter()
+        .map(|mut use_| {
+            specialize_requirements(&mut use_.excluded, bindings);
+            use_
+        })
+        .collect();
 }
 
 fn specialize_value(value: &mut Value, bindings: &HashMap<String, String>) {
     specialize_summary(&mut value.deferred, bindings);
     if let Some(Callable::Known(known)) = &mut value.callable {
         specialize_summary(&mut known.summary, bindings);
-        if let Some(returned) = &mut known.returned { specialize_value(returned, bindings); }
+        if let Some(returned) = &mut known.returned {
+            specialize_value(returned, bindings);
+        }
     }
-    for nested in value.fields.values_mut() { specialize_value(nested, bindings); }
-    for nested in [value.element.as_mut(), value.result_payload.as_mut(), value.fiber_payload.as_mut()].into_iter().flatten() {
+    for nested in value.fields.values_mut() {
+        specialize_value(nested, bindings);
+    }
+    for nested in [
+        value.element.as_mut(),
+        value.result_payload.as_mut(),
+        value.fiber_payload.as_mut(),
+    ]
+    .into_iter()
+    .flatten()
+    {
         specialize_value(nested, bindings);
     }
 }
@@ -2268,14 +2300,18 @@ pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) 
                 .filter(|requirement| {
                     !function.declared_effects.iter().any(|declared| {
                         declared.name == requirement.effect
-                            && declared
-                                .arguments
-                                .as_ref()
-                                .is_none_or(|arguments| {
-                                    let bindings = instances.binders.get(&function.name);
-                                    arguments.iter().map(|arg| bindings.map_or_else(|| arg.clone(), |b| specialize_argument(arg, b)))
-                                        .eq(requirement.arguments.iter().cloned())
-                                })
+                            && declared.arguments.as_ref().is_none_or(|arguments| {
+                                let bindings = instances.binders.get(&function.name);
+                                arguments
+                                    .iter()
+                                    .map(|arg| {
+                                        bindings.map_or_else(
+                                            || arg.clone(),
+                                            |b| specialize_argument(arg, b),
+                                        )
+                                    })
+                                    .eq(requirement.arguments.iter().cloned())
+                            })
                     })
                 })
                 .map(requirement_name)
@@ -2294,7 +2330,7 @@ pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) 
         validate_handler_arms(
             &analyzer,
             &axis,
-            &function.body,
+            function.body,
             &function.scope,
             &analyzer.scoped_env(&function.parameters),
             &mut errors,
@@ -2601,7 +2637,7 @@ fn reachable_bodies<'a>(
         {
             if visited.insert(id) {
                 if let Some(function) = index.functions.get(id) {
-                    regions.push((&function.body, &function.scope));
+                    regions.push((function.body, &function.scope));
                 }
             }
         }

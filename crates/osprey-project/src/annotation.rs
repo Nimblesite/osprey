@@ -23,7 +23,7 @@ impl Resolver<'_> {
     ) {
         match (statement, annotation) {
             (Stmt::Let { ty, .. }, SignatureItem::Value { ty: contract, .. }) if ty.is_none() => {
-                *ty = Some(contract.clone());
+                *ty = Some(contract.as_contract_annotation());
             }
             (
                 Stmt::Function {
@@ -49,11 +49,11 @@ impl Resolver<'_> {
                 }
                 for (parameter, contract) in parameters.iter_mut().zip(contracts) {
                     if parameter.ty.is_none() {
-                        parameter.ty = Some(contract.clone());
+                        parameter.ty = Some(contract.as_contract_annotation());
                     }
                 }
                 if return_type.is_none() {
-                    *return_type = Some(contract_return.clone());
+                    *return_type = Some(contract_return.as_contract_annotation());
                 }
                 if effects.is_empty() {
                     effects.clone_from(contract_effects);

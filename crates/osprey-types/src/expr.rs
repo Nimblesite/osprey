@@ -550,7 +550,9 @@ impl Checker {
             // ([`crate::ty::Scheme::obligations`]).
             self.builtin_uses.extend(applied.obligations);
             if let Some(site) = site {
-                let _ = self.instantiations.insert(std::ptr::from_ref(site).addr(), applied.bindings);
+                let _ = self
+                    .instantiations
+                    .insert(std::ptr::from_ref(site).addr(), applied.bindings);
             }
             return applied.ty;
         }
@@ -578,7 +580,10 @@ impl Checker {
                 type_args,
                 position,
             } => self.infer_type_application(function, type_args, *position, env),
-            Expr::Identifier(name) => (Some(name.clone()), self.lookup_ident_at(name, env, Some(function))),
+            Expr::Identifier(name) => (
+                Some(name.clone()),
+                self.lookup_ident_at(name, env, Some(function)),
+            ),
             Expr::Path(path) => {
                 let name = path.to_string();
                 let ty = self.lookup_ident_at(&name, env, Some(function));
@@ -608,12 +613,19 @@ impl Checker {
         let Some(applied) = env.applied(&mut self.ctx, &name) else {
             return (Some(name.clone()), self.lookup_ident(&name, env));
         };
-        let crate::env::AppliedSignature { ty, obligations, params, bindings } = applied;
+        let crate::env::AppliedSignature {
+            ty,
+            obligations,
+            params,
+            bindings,
+        } = applied;
         self.builtin_uses.extend(obligations);
         if let Some(position) = position {
             self.application_tys.push((position, bindings.clone()));
         }
-        let _ = self.instantiations.insert(std::ptr::from_ref(function).addr(), bindings);
+        let _ = self
+            .instantiations
+            .insert(std::ptr::from_ref(function).addr(), bindings);
         if params.len() == type_args.len() {
             let binder = self.current_fn_typarams.clone();
             for (param, arg) in params.iter().zip(type_args) {

@@ -10,9 +10,28 @@ use crate::error::{CodegenError, Result};
 use crate::llty::{LType, Value};
 use crate::pattern::gen_match;
 use crate::runtime::{gen_print, to_string_value};
-use osprey_ast::{Expr, InterpolatedPart, NamedArgument, Parameter, Stmt};
+use osprey_ast::{Expr, InterpolatedPart, NamedArgument, Parameter, Position, Stmt};
 
 pub(crate) fn gen_expr(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
+    let inferred = match expr {
+        Expr::Integer(_) => Some(osprey_types::Type::con(osprey_types::names::INT, Vec::new())),
+        Expr::Float(_) => Some(osprey_types::Type::con(osprey_types::names::FLOAT, Vec::new())),
+        Expr::Bool(_) => Some(osprey_types::Type::con(osprey_types::names::BOOL, Vec::new())),
+        Expr::Str(_) | Expr::InterpolatedStr(_) => Some(osprey_types::Type::con(osprey_types::names::STRING, Vec::new())),
+        Expr::Call { function, .. } => cg.callee_fn_type(function).and_then(|ty| match ty {
+            osprey_types::Type::Fun { ret, .. } => Some(*ret),
+            _ => None,
+        }),
+        Expr::List(_, position) => cg.prog.list_elem_type(*position).cloned().map(|element| osprey_types::Type::con(osprey_types::names::LIST, vec![element])),
+        Expr::Perform { position, .. } => position.and_then(|p| cg.prog.performs.get(&(p.line, p.column))).map(|site| site.op.ret.clone()),
+        _ => None,
+    };
+    let mut value = gen_expr_raw(cg, expr)?;
+    if let Some(ty) = inferred.filter(|ty| !osprey_types::has_type_var(ty)) { value.inferred_type = Some(ty); }
+    Ok(value)
+}
+
+fn gen_expr_raw(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
     match expr {
         Expr::Integer(n) => Ok(Value::new(n.to_string(), LType::I64)),
         Expr::Float(f) => Ok(Value::new(fmt_double(*f), LType::Double)),
@@ -801,6 +820,22 @@ const BUILTIN_DISPATCH: [BuiltinDispatch; 8] = [
     crate::extern_call::gen,
 ];
 
+pub(crate) fn unapplied(mut expression: &Expr) -> &Expr {
+    while let Expr::TypeApply { function, .. } = expression { expression = function; }
+    expression
+}
+
+pub(crate) fn with_application<R>(cg: &mut Codegen, position: Option<Position>, generate: impl FnOnce(&mut Codegen) -> R) -> R {
+    let bindings = position.and_then(|p| cg.prog.applications.get(&(p.line, p.column))).cloned();
+    let original = bindings.map(|b| {
+        let specialized = cg.prog.specialized(&b);
+        std::mem::replace(&mut cg.prog, specialized)
+    });
+    let result = generate(cg);
+    if let Some(original) = original { cg.prog = original; }
+    result
+}
+
 fn gen_call(
     cg: &mut Codegen,
     function: &Expr,
@@ -808,12 +843,7 @@ fn gen_call(
     named: &[NamedArgument],
 ) -> Result<Value> {
     if let Expr::TypeApply { function, position, .. } = function {
-        let bindings = position.and_then(|p| cg.prog.applications.get(&(p.line, p.column))).cloned().unwrap_or_default();
-        let specialized = cg.prog.specialized(&bindings);
-        let original = std::mem::replace(&mut cg.prog, specialized);
-        let result = gen_call(cg, function, arguments, named);
-        cg.prog = original;
-        return result;
+        return with_application(cg, *position, |cg| gen_call(cg, function, arguments, named));
     }
     // A directly-applied lambda (`x |> fn(y) => …`, `(fn(y) => …)(x)`) is
     // beta-reduced inline.

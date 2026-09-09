@@ -110,13 +110,19 @@ fn type_diagnostics(
     program: &Program,
     encoding: PositionEncoding,
 ) -> Vec<Diagnostic> {
-    osprey_types::check_program(program)
+    let mut diagnostics: Vec<_> = osprey_types::check_program(program)
         .iter()
         .map(|e| {
             let pos = e.position.unwrap_or(Position { line: 1, column: 0 });
             diagnostic(source, pos, &e.message, "type-error", encoding)
         })
-        .collect()
+        .collect();
+    if diagnostics.is_empty() {
+        diagnostics.extend(osprey_types::redundant_annotations(program).into_iter().map(|raised| {
+            warning(source, raised.position.unwrap_or(Position { line: 1, column: 0 }), &raised.message, raised.rule, encoding)
+        }));
+    }
+    diagnostics
 }
 
 /// Single-source assembly for a module-bearing file that no project claims —
@@ -194,7 +200,8 @@ fn assembled_type_errors(
     project: &AssembledProject,
     encoding: PositionEncoding,
 ) -> Vec<Diagnostic> {
-    osprey_types::check_program(&project.program)
+    let errors = osprey_types::check_program(&project.program);
+    let mut diagnostics: Vec<_> = errors
         .iter()
         .filter_map(|error| {
             let position = if let Some(global) = error.position {
@@ -217,7 +224,15 @@ fn assembled_type_errors(
                 encoding,
             ))
         })
-        .collect()
+        .collect();
+    if errors.is_empty() {
+        diagnostics.extend(osprey_types::redundant_annotations(&project.program).into_iter().filter_map(|raised| {
+            let global = raised.position?;
+            let (owner, line) = project.source_at_line(global.line)?;
+            same_path(&owner.path, file).then(|| warning(source, Position { line, column: global.column }, &raised.message, raised.rule, encoding))
+        }));
+    }
+    diagnostics
 }
 
 fn project_errors(

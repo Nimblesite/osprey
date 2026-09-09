@@ -288,7 +288,10 @@ fn gen_bind(cg: &mut Codegen, name: &str, value: &Expr, position: Option<Positio
     // and a handle received before its first `send` was tagged with nothing at
     // all — each of those made `recv` hand back the raw `i64` wire word, so a
     // list element arrived as an integer ([CONCURRENCY-CHANNEL]).
-    let v = tag_handle_element(cg, position, v);
+    let mut v = tag_handle_element(cg, position, v);
+    if let Some(ty) = cg.prog.let_type(position).filter(|ty| !osprey_types::has_type_var(ty)) {
+        v.inferred_type = Some(ty.clone());
+    }
     // A non-lambda (re)binding invalidates any stale beta-reduction entry or
     // call alias for the name — `mut f = fn(x) => …; f = makeAdder(10)` must
     // call the new closure, not the old inline body.
@@ -362,7 +365,7 @@ fn generic_returned_lambda(cg: &Codegen, value: &Expr) -> Option<ReturnedLambda>
     let Expr::Call { function, .. } = value else {
         return None;
     };
-    let Expr::Identifier(callee) = &**function else {
+    let Expr::Identifier(callee) = crate::expr::unapplied(function) else {
         return None;
     };
     // A CONCRETELY-typed result materializes a real cell on the ordinary path,

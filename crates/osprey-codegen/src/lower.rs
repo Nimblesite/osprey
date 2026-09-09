@@ -80,7 +80,9 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
 
 fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> Result<String> {
     let options = with_kernel_mode(options)?;
-    let prog = osprey_types::infer_program(program);
+    let mut prog = osprey_types::infer_program(program);
+    let elaborated = prog.elaborate_calls(program);
+    let program = &elaborated;
     let mut cg = Codegen::with_options(prog, options);
     // Seed the coverage denominator from the source, not from what lowering
     // happens to reach [TESTING-COVERAGE-CODEGEN].
@@ -305,7 +307,8 @@ fn gen_function(
     let mut params = Vec::new();
     for (i, (p, (pty, owner))) in parameters.iter().zip(param_sig.iter()).enumerate() {
         let reg = crate::llty::param_register(i);
-        let v = crate::cast::incoming_param(cg, format!("%{reg}"), pty.clone(), owner.clone());
+        let mut v = crate::cast::incoming_param(cg, format!("%{reg}"), pty.clone(), owner.clone());
+        v.inferred_type = cg.prog.param_types(name).and_then(|types| types.get(i)).cloned();
         cg.emit_debug_param(&p.name, &v);
         cg.bind(p.name.clone(), v);
         params.push((pty.ty, reg));

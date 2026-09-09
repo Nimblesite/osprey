@@ -13,6 +13,7 @@
 //! [`redundant_annotations`] returns the [`TypeWarning`]s for annotations the
 //! inferrer would have derived on its own ([TYPE-ANNOTATION-REDUNDANT]).
 
+mod applications;
 mod builtin_constraints;
 mod builtin_docs;
 mod builtin_docs_lang;

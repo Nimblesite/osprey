@@ -335,6 +335,14 @@ impl Checker {
 
     /// Pass one: fill the declaration tables and the base environment.
     fn collect(&mut self, program: &Program, env: &mut TypeEnv) {
+        self.collect_statements(program.statements.iter(), env);
+    }
+
+    fn collect_statements<'a>(
+        &mut self,
+        statements: impl Iterator<Item = &'a Stmt> + Clone,
+        env: &mut TypeEnv,
+    ) {
         // `env` is exactly the builtin table on entry — snapshot it so
         // `collect_function` can reject redefinition of a built-in.
         if self.builtins.is_empty() {
@@ -343,7 +351,7 @@ impl Checker {
         // Register every declared type's variance first, so position
         // validation sees nested constructors' variance regardless of
         // declaration order. Implements [TYPE-VARIANCE-DECL].
-        for stmt in &program.statements {
+        for stmt in statements.clone() {
             if let Stmt::Type {
                 name, type_params, ..
             } = stmt
@@ -354,7 +362,7 @@ impl Checker {
                 );
             }
         }
-        for stmt in &program.statements {
+        for stmt in statements {
             match stmt {
                 Stmt::Type {
                     name,
@@ -638,7 +646,11 @@ impl Checker {
 
     /// Pass two: infer bodies and run top-level statements.
     fn check(&mut self, program: &Program, env: &mut TypeEnv) {
-        for stmt in &program.statements {
+        self.check_statements(&mut program.statements.iter(), env);
+    }
+
+    fn check_statements(&mut self, statements: &mut dyn Iterator<Item = &Stmt>, env: &mut TypeEnv) {
+        for stmt in statements {
             match stmt {
                 Stmt::Function {
                     name,
@@ -650,26 +662,23 @@ impl Checker {
                 } => self.check_function(name, parameters, effects, body, env, *position),
                 Stmt::Module { body, .. } => {
                     let mut inner = env.child();
-                    let prog = Program {
-                        statements: body
-                            .iter()
-                            .map(|item| item.declaration.as_ref().clone())
-                            .collect(),
-                    };
                     // Module declarations live in their own lexical scope. Run
                     // both checker passes there: the old implementation only
                     // ran pass two, so module functions were never registered
                     // and their bodies were silently skipped.
-                    self.collect(&prog, &mut inner);
-                    self.check(&prog, &mut inner);
+                    self.collect_statements(
+                        body.iter().map(|item| item.declaration.as_ref()),
+                        &mut inner,
+                    );
+                    self.check_statements(
+                        &mut body.iter().map(|item| item.declaration.as_ref()),
+                        &mut inner,
+                    );
                 }
                 Stmt::Namespace { body, .. } => {
                     let mut inner = env.child();
-                    let prog = Program {
-                        statements: body.clone(),
-                    };
-                    self.collect(&prog, &mut inner);
-                    self.check(&prog, &mut inner);
+                    self.collect_statements(body.iter(), &mut inner);
+                    self.check_statements(&mut body.iter(), &mut inner);
                 }
                 // `let` / assignment / bare-expr statements infer the same way at
                 // top level and inside a block.
@@ -1081,6 +1090,8 @@ pub fn check_program_exports(program: &Program, exports: &[&str]) -> Vec<TypeErr
 pub fn infer_program(program: &Program) -> crate::info::ProgramTypes {
     use crate::info::{CtorLayout, ProgramTypes};
     let mut checker = checked_program(program);
+    let call_bindings =
+        crate::applications::collect(program, &checker.instantiations, &mut checker.ctx);
 
     let functions = checker
         .fn_sigs
@@ -1171,12 +1182,33 @@ pub fn infer_program(program: &Program) -> crate::info::ProgramTypes {
         lists,
         performs,
         handler_ops,
-        applications: checker.application_tys.iter().map(|(position, bindings)| {
-            ((position.line, position.column), bindings.iter().map(|(var, ty)| (*var, checker.ctx.apply(ty))).collect())
-        }).collect(),
-        declared_params: checker.fn_typarams.iter().map(|(name, bindings)| {
-            (name.clone(), bindings.iter().map(|(name, ty)| (name.clone(), checker.ctx.apply(ty))).collect())
-        }).collect(),
+        call_bindings,
+        applications: checker
+            .application_tys
+            .iter()
+            .map(|(position, bindings)| {
+                (
+                    (position.line, position.column),
+                    bindings
+                        .iter()
+                        .map(|(var, ty)| (*var, checker.ctx.apply(ty)))
+                        .collect(),
+                )
+            })
+            .collect(),
+        declared_params: checker
+            .fn_typarams
+            .iter()
+            .map(|(name, bindings)| {
+                (
+                    name.clone(),
+                    bindings
+                        .iter()
+                        .map(|(name, ty)| (name.clone(), checker.ctx.apply(ty)))
+                        .collect(),
+                )
+            })
+            .collect(),
     }
 }
 
@@ -1208,9 +1240,28 @@ fn checked_program_with_exports(program: &Program, exports: &[&str]) -> Checker 
 
 /// Publish the current inference solution for the closed-program effect proof.
 fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Instances {
-    let substitutions: HashMap<_, HashMap<_, _>> = checker.instantiations.iter().map(|(site, bindings)| {
-        (*site, bindings.iter().map(|(var, ty)| (*var, checker.ctx.apply(ty))).collect())
-    }).collect();
+    let substitutions: HashMap<_, HashMap<_, _>> = checker
+        .instantiations
+        .iter()
+        .map(|(site, bindings)| {
+            (
+                *site,
+                bindings
+                    .iter()
+                    .map(|(var, ty)| (*var, checker.ctx.apply(ty)))
+                    .collect(),
+            )
+        })
+        .collect();
+    let substitutions: HashMap<_, _> = substitutions
+        .iter()
+        .map(|(site, bindings)| {
+            (
+                *site,
+                crate::applications::expanded(bindings, &substitutions),
+            )
+        })
+        .collect();
     let resolved_arguments: Vec<Vec<Type>> = checker
         .perform_tys
         .clone()
@@ -1221,10 +1272,16 @@ fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Instances {
                 .collect::<Vec<_>>()
         })
         .collect();
-    let concrete_arguments = resolved_arguments.iter().cloned().chain(substitutions.values().flat_map(|bindings| {
-        resolved_arguments.iter().map(move |args| args.iter().map(|arg| crate::env::subst_vars(arg, bindings)).collect())
-    }))
-        .filter(|args| args.iter().all(type_is_resolved))
+    let argument_types = resolved_arguments
+        .iter()
+        .cloned()
+        .chain(substitutions.values().flat_map(|bindings| {
+            resolved_arguments.iter().map(move |args| {
+                args.iter()
+                    .map(|arg| crate::env::subst_vars(arg, bindings))
+                    .collect()
+            })
+        }))
         .map(|args| (args.iter().map(ToString::to_string).collect(), args))
         .collect();
     let perform_tys = checker.perform_tys.clone();
@@ -1280,16 +1337,39 @@ fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Instances {
             )
         })),
 
-        concrete_arguments,
-        instantiations: substitutions.into_iter().map(|(site, bindings)| (site, bindings.into_iter().map(|(var, ty)| (Type::Var(var).to_string(), ty.to_string())).collect())).collect(),
-        binders: checker.fn_typarams.iter().map(|(name, binders)| (name.clone(), binders.iter().map(|(name, ty)| (name.clone(), checker.ctx.apply(ty).to_string())).collect())).collect(),
+        argument_types,
+        instantiations: substitutions
+            .into_iter()
+            .map(|(site, bindings)| {
+                (
+                    site,
+                    bindings
+                        .into_iter()
+                        .map(|(var, ty)| (Type::Var(var).to_string(), ty.to_string()))
+                        .collect(),
+                )
+            })
+            .collect(),
+        binders: checker
+            .fn_typarams
+            .iter()
+            .map(|(name, binders)| {
+                (
+                    name.clone(),
+                    binders
+                        .iter()
+                        .map(|(name, ty)| (name.clone(), checker.ctx.apply(ty).to_string()))
+                        .collect(),
+                )
+            })
+            .collect(),
         ..Default::default()
     }
 }
 
 /// A handler whose arms leave its binder open learns that binder from the
 /// operations its body requires, including requirements behind function calls.
-/// Only one concrete candidate may refine it; incompatible instantiations stay
+/// Only one candidate may refine it; incompatible instantiations stay
 /// distinct and the ordinary discharge proof rejects the remaining operation.
 fn refine_handler_arguments(
     checker: &mut Checker,
@@ -1316,7 +1396,9 @@ fn refine_handler_arguments(
         if arguments.len() != choice.len() {
             continue;
         }
-        let Some(types) = instances.concrete_arguments.get(choice) else { continue; };
+        let Some(types) = instances.argument_types.get(choice) else {
+            continue;
+        };
         for (argument, concrete) in arguments.iter().zip(types) {
             checker.push_unify(argument, concrete);
         }

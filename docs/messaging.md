@@ -234,6 +234,15 @@ These constraints materially affect how the language must be described:
   answered twice stops the program when it runs rather than when it is written.
   Describe it only as specified behaviour, on the same footing as the other
   normative targets, and never as something a developer can use now.
+- Integer arithmetic returns a `Result`, not a plain `int`. `+`, `-`, `*`, `abs`
+  and `intDiv` all carry a `MathError` channel that the caller must discharge,
+  usually with `?:`. That is a real cost to describe honestly: a `?: 0` on an
+  overflowing expression fabricates a value and the program exits successfully
+  with a wrong answer ([#230](https://github.com/Nimblesite/osprey/issues/230)).
+  [Spec 0037](specs/0037-ArithmeticEffects.md) specifies the replacement — plain
+  `int` with faults dispatched to an `Arith` handler — as a normative target;
+  **none of it is implemented**. Describe today's arithmetic as checked and
+  explicit, and the effect form only as specified behaviour.
 - Tail-call optimisation is not implemented.
 - Multi-file project modules and cross-flavor imports are implemented. A package manager remains roadmap work; describe further module or generic features according to their individual implementation status.
 - GPU computation is a typed language surface with a host execution backend:

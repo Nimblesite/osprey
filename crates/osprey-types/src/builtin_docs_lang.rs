@@ -71,9 +71,9 @@ pub(crate) static CORE: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "intDiv",
-        "Truncating integer division. Zero returns Error(division by zero); INT64_MIN / -1 returns Error(integer overflow).",
+        "Returns Result<int, MathError>. Truncating integer division; a zero divisor is Error(division by zero) and INT64_MIN / -1 is Error(integer overflow).",
         ["a" => "The dividend", "b" => "The divisor"],
-        "fn half(n) -> int = intDiv(n, 2)  // half(7) == 3",
+        "fn half(n) = intDiv(n, 2) ?: 0  // half(7) == 3",
     ),
     builtin_doc!(
         "toFloat",
