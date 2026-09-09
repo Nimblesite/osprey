@@ -32,9 +32,11 @@ _test_ios: _test_ios_goldens
 ## Every program that the ios-sim target accepts is built as a library, linked
 ## into a C host and run in an iPhone simulator, then held to the byte-exact
 ## output the native backend produces. The rest report as named skips pinned in
-## tests/IOS_UNPORTABLE.txt. Without this the target was gated by seven
-## hand-picked programs, which cannot notice a boundary that truncates a
-## string, loses a bool's high bits or miscompiles arithmetic inside an archive.
+## tests/MOBILE_UNPORTABLE.txt — the same manifest Android is held to, because
+## the two targets share one C ABI implementation and therefore one set of
+## holes. Without this the target was gated by seven hand-picked programs,
+## which cannot notice a boundary that truncates a string, loses a bool's high
+## bits or miscompiles arithmetic inside an archive.
 _test_ios_goldens:
 	@echo "==> [ios-sim] golden stdout comparison in the simulator..."
 	@OSPREY_TARGET=ios-sim zsh crates/run_test_corpus.sh
