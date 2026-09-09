@@ -150,6 +150,15 @@ jobs:
       - name: Make node dependency guard intact
         run: node scripts/verify-node-deps-guard.mjs
 
+      # The release pipeline runs only on a tag, so nothing on a PR exercises
+      # it. Every way it had of publishing nothing and reporting success was
+      # therefore invisible until a release went out. This asserts those ways
+      # stay closed, on the PR that would reopen one.
+      - name: Release failure gates intact
+        run: |
+          node scripts/verify-release-gates.mjs
+          python3 scripts/test-release-gate.py
+
       - name: Format check
         run: cargo fmt --all --check
 
@@ -273,7 +282,10 @@ jobs:
         run: make _runtime_wasm
 
       - name: Install cargo-llvm-cov
-        run: cargo install cargo-llvm-cov --locked || true
+        # `|| true` here hid a failed install behind a confusing `make
+        # _test_rust` error several steps later. `cargo install` is already a
+        # no-op when the binary is present, so it needs no help succeeding.
+        run: cargo install cargo-llvm-cov --locked
 
       - name: Tests with coverage
         run: make _test_rust
@@ -653,8 +665,10 @@ jobs:
         run: |
           set -euo pipefail
           sdk_root=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}
-          sdkmanager=$(ls -d "$sdk_root"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort -V | tail -1 || true)
-          [ -x "$sdkmanager" ] || { echo "no sdkmanager under $sdk_root/cmdline-tools"; exit 1; }
+          sdk_tools="$sdk_root/cmdline-tools"
+          [ -d "$sdk_tools" ] || { echo "::error::no cmdline-tools directory under $sdk_root"; exit 1; }
+          sdkmanager=$(find "$sdk_tools" -maxdepth 3 -path '*/bin/sdkmanager' -type f | sort -V | tail -1)
+          [ -x "$sdkmanager" ] || { echo "::error::no sdkmanager under $sdk_tools"; exit 1; }
           "$sdkmanager" "ndk;28.2.13676358" "platforms;android-34" "build-tools;34.0.0"
           echo "ANDROID_HOME=$sdk_root" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$sdk_root/ndk/28.2.13676358" >> "$GITHUB_ENV"

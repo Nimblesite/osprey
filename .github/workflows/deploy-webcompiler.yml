@@ -21,11 +21,11 @@ jobs:
 
       - name: Deploy to Fly.io
         id: deploy
-        # Optional add-on: a Fly outage or an invalid/banned FLY_API_TOKEN must
-        # not fail a release. The browser compiler is not a release artifact.
-        # But the failure must NOT be silent (that froze the live playground on a
-        # stale build for weeks) — the next step surfaces it loudly.
-        continue-on-error: true
+        # This was `continue-on-error: true` plus a warning, on the reasoning
+        # that the browser compiler is an add-on rather than a release artifact.
+        # A warning inside a green run is read by nobody, and the live playground
+        # duly served a stale build for weeks. A deploy we chose to run and that
+        # did not happen is a failure, whoever triggered it.
         run: |
           if [ -z "${FLY_API_TOKEN}" ]; then
             echo "::error title=Missing FLY_API_TOKEN::The FLY_API_TOKEN secret is empty. Mint one with 'fly tokens create deploy -a osprey' and set it via 'gh secret set FLY_API_TOKEN'."
@@ -35,13 +35,9 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
-      - name: Surface deploy failure
-        if: steps.deploy.outcome == 'failure'
+      # The deploy step above now fails the job by itself. This runs only on
+      # that path, to say what broke and how to fix it before the job ends.
+      - name: Explain the deploy failure
+        if: failure() && steps.deploy.outcome == 'failure'
         run: |
-          echo "::warning title=Web compiler deploy FAILED::flyctl deploy did not succeed (banned/expired token or Fly outage). The live playground backend at https://osprey.fly.dev is now STALE. Fix: 'fly tokens create deploy -a osprey' then 'gh secret set FLY_API_TOKEN'."
-          # A manual redeploy that fails should fail the run so the operator
-          # notices immediately; a release-triggered deploy stays non-fatal.
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "Manual deploy failed — failing the job so it is not missed."
-            exit 1
-          fi
+          echo "::error title=Web compiler deploy FAILED::flyctl deploy did not succeed (banned/expired token or Fly outage). The live playground backend at https://osprey.fly.dev is STALE. Fix: 'fly tokens create deploy -a osprey' then 'gh secret set FLY_API_TOKEN'."

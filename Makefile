@@ -279,6 +279,8 @@ lint: _deslop _lint
 _lint: $(EXT_NODE_DEPS)
 	@echo "==> Linting..."
 	node scripts/verify-node-deps-guard.mjs
+	node scripts/verify-release-gates.mjs
+	python3 scripts/test-release-gate.py
 	cargo fmt --all --check
 	cargo clippy --workspace --all-targets -- -D warnings
 	cd $(EXT_DIR) && npm run lint
