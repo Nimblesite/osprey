@@ -464,10 +464,18 @@ fn dispatch(cli: &Cli, input: &CompilationInput) -> ExitCode {
 
 /// Type-check `program`, print every error in `file:line:col: message` form,
 /// and return how many there were. The shared gate for every compiling mode.
+///
+/// Warnings print alongside the errors and are deliberately not counted: a
+/// redundant annotation is a defect to delete, never a reason to fail a build
+/// ([TYPE-ANNOTATION-REDUNDANT]).
 pub(crate) fn report_type_errors(input: &CompilationInput) -> usize {
     let errors = osprey_types::check_program(input.program());
     for e in &errors {
         eprintln!("{}", input.diagnostic(e.position, &e.message));
+    }
+    for warning in osprey_types::redundant_annotations(input.program()) {
+        let text = format!("warning: {}", warning.message);
+        eprintln!("{}", input.diagnostic(warning.position, &text));
     }
     errors.len()
 }

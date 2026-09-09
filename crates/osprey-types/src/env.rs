@@ -8,7 +8,12 @@ use crate::ty::{Scheme, Type, VarId};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 /// One call's signature, deferred obligations, and ordered declared binders.
-pub(crate) type AppliedSignature = (Type, Vec<(String, Type)>, Vec<Type>);
+pub(crate) struct AppliedSignature {
+    pub ty: Type,
+    pub obligations: Vec<(String, Type)>,
+    pub params: Vec<Type>,
+    pub bindings: HashMap<VarId, Type>,
+}
 
 /// Maps names to their type schemes. Cloned to form child scopes (lambda
 /// bodies, match arms) — value semantics, so child bindings never leak out.
@@ -82,7 +87,9 @@ impl TypeEnv {
             .iter()
             .map(|(name, ty)| (name.clone(), subst_vars(ty, &map)))
             .collect();
-        Some((subst_vars(&scheme.ty, &map), obligations, params))
+        Some(AppliedSignature {
+            ty: subst_vars(&scheme.ty, &map), obligations, params, bindings: map,
+        })
     }
 
     /// A fresh child scope (a clone — bindings added to the child don't leak).
@@ -143,7 +150,7 @@ pub fn generalize(ctx: &mut InferCtx, env: &TypeEnv, ty: &Type) -> Scheme {
     }
 }
 
-fn subst_vars(t: &Type, map: &HashMap<VarId, Type>) -> Type {
+pub(crate) fn subst_vars(t: &Type, map: &HashMap<VarId, Type>) -> Type {
     match t {
         Type::Var(v) => map.get(v).cloned().unwrap_or_else(|| t.clone()),
         Type::Con { name, args } => Type::Con {

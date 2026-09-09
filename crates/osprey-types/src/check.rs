@@ -129,6 +129,10 @@ pub struct Checker {
     /// representation from, so this table is its only source of one. Resolved
     /// and published by [`infer_program`].
     pub(crate) list_tys: Vec<(Position, Type)>,
+    /// Fresh substitutions at value uses, retained for the effect proof.
+    pub(crate) instantiations: HashMap<usize, HashMap<VarId, Type>>,
+    /// Explicit applications have stable source positions for backend cloning.
+    pub(crate) application_tys: Vec<(Position, HashMap<VarId, Type>)>,
     /// Concrete arguments passed to representation-sensitive built-ins. These
     /// are validated after inference so a variable constrained later in the
     /// same body is checked at its final type.
@@ -188,6 +192,8 @@ impl Checker {
             lambda_tys: Vec::new(),
             let_tys: Vec::new(),
             list_tys: Vec::new(),
+            instantiations: HashMap::new(),
+            application_tys: Vec::new(),
             builtin_uses: Vec::new(),
             discards: Vec::new(),
             builtins: HashSet::new(),
@@ -713,7 +719,7 @@ impl Checker {
         let fun_ty = Type::fun(params, ret);
         let declared = env
             .applied(&mut self.ctx, name)
-            .map(|(_, _, ps)| ps)
+            .map(|applied| applied.params)
             .unwrap_or_default();
         env.remove(name);
         let mut scheme = self.generalize_with_obligations(env, &fun_ty);
@@ -1165,6 +1171,12 @@ pub fn infer_program(program: &Program) -> crate::info::ProgramTypes {
         lists,
         performs,
         handler_ops,
+        applications: checker.application_tys.iter().map(|(position, bindings)| {
+            ((position.line, position.column), bindings.iter().map(|(var, ty)| (*var, checker.ctx.apply(ty))).collect())
+        }).collect(),
+        declared_params: checker.fn_typarams.iter().map(|(name, bindings)| {
+            (name.clone(), bindings.iter().map(|(name, ty)| (name.clone(), checker.ctx.apply(ty))).collect())
+        }).collect(),
     }
 }
 
@@ -1196,7 +1208,10 @@ fn checked_program_with_exports(program: &Program, exports: &[&str]) -> Checker 
 
 /// Publish the current inference solution for the closed-program effect proof.
 fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Instances {
-    let concrete_arguments = checker
+    let substitutions: HashMap<_, HashMap<_, _>> = checker.instantiations.iter().map(|(site, bindings)| {
+        (*site, bindings.iter().map(|(var, ty)| (*var, checker.ctx.apply(ty))).collect())
+    }).collect();
+    let resolved_arguments: Vec<Vec<Type>> = checker
         .perform_tys
         .clone()
         .into_iter()
@@ -1205,8 +1220,12 @@ fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Instances {
                 .map(|arg| checker.ctx.apply(arg))
                 .collect::<Vec<_>>()
         })
+        .collect();
+    let concrete_arguments = resolved_arguments.iter().cloned().chain(substitutions.values().flat_map(|bindings| {
+        resolved_arguments.iter().map(move |args| args.iter().map(|arg| crate::env::subst_vars(arg, bindings)).collect())
+    }))
         .filter(|args| args.iter().all(type_is_resolved))
-        .map(|args| args.iter().map(ToString::to_string).collect())
+        .map(|args| (args.iter().map(ToString::to_string).collect(), args))
         .collect();
     let perform_tys = checker.perform_tys.clone();
     let perform_actual_tys = checker.perform_actual_tys.clone();
@@ -1262,6 +1281,8 @@ fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Instances {
         })),
 
         concrete_arguments,
+        instantiations: substitutions.into_iter().map(|(site, bindings)| (site, bindings.into_iter().map(|(var, ty)| (Type::Var(var).to_string(), ty.to_string())).collect())).collect(),
+        binders: checker.fn_typarams.iter().map(|(name, binders)| (name.clone(), binders.iter().map(|(name, ty)| (name.clone(), checker.ctx.apply(ty).to_string())).collect())).collect(),
         ..Default::default()
     }
 }
@@ -1295,9 +1316,9 @@ fn refine_handler_arguments(
         if arguments.len() != choice.len() {
             continue;
         }
-        for (argument, concrete) in arguments.iter().zip(choice) {
-            let ty = type_name_to_type(concrete, &HashMap::new());
-            checker.push_unify(argument, &ty);
+        let Some(types) = instances.concrete_arguments.get(choice) else { continue; };
+        for (argument, concrete) in arguments.iter().zip(types) {
+            checker.push_unify(argument, concrete);
         }
     }
     checker.ctx.bound_count() != before

@@ -807,8 +807,13 @@ fn gen_call(
     arguments: &[Expr],
     named: &[NamedArgument],
 ) -> Result<Value> {
-    if let Expr::TypeApply { function, .. } = function {
-        return gen_call(cg, function, arguments, named);
+    if let Expr::TypeApply { function, position, .. } = function {
+        let bindings = position.and_then(|p| cg.prog.applications.get(&(p.line, p.column))).cloned().unwrap_or_default();
+        let specialized = cg.prog.specialized(&bindings);
+        let original = std::mem::replace(&mut cg.prog, specialized);
+        let result = gen_call(cg, function, arguments, named);
+        cg.prog = original;
+        return result;
     }
     // A directly-applied lambda (`x |> fn(y) => …`, `(fn(y) => …)(x)`) is
     // beta-reduced inline.

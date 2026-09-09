@@ -26,10 +26,12 @@ pub(crate) struct Instances {
     pub(crate) performs: HashMap<(u32, u32), Vec<Vec<String>>>,
     pub(crate) handlers: HashMap<(u32, u32), Vec<String>>,
     /// Fully resolved operation arguments available to refine a handler.
-    pub(crate) concrete_arguments: HashSet<Vec<String>>,
+    pub(crate) concrete_arguments: HashMap<Vec<String>, Vec<crate::ty::Type>>,
     /// Candidate instantiations required by each handler's body after calls
     /// and callbacks have propagated through the closed-program summary.
     pub(crate) handler_inference: RefCell<HandlerCandidates>,
+    pub(crate) instantiations: HashMap<usize, HashMap<String, String>>,
+    pub(crate) binders: HashMap<String, HashMap<String, String>>,
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -154,19 +156,19 @@ struct DeclaredEffect {
 }
 
 #[derive(Clone)]
-struct Function {
+struct Function<'a> {
     name: String,
     qualified: String,
     scope: Vec<String>,
     parameters: Vec<String>,
     declared_effects: Vec<DeclaredEffect>,
-    body: Expr,
+    body: &'a Expr,
     position: Option<Position>,
 }
 
 #[derive(Default)]
-struct Index {
-    functions: Vec<Function>,
+struct Index<'a> {
+    functions: Vec<Function<'a>>,
     qualified: HashMap<String, usize>,
     bare: HashMap<String, Vec<usize>>,
     effects: HashMap<String, usize>,
@@ -176,14 +178,14 @@ struct Index {
     externs: HashSet<String>,
 }
 
-impl Index {
-    fn collect(program: &Program) -> Self {
+impl<'a> Index<'a> {
+    fn collect(program: &'a Program) -> Self {
         let mut index = Self::default();
         index.collect_stmts(&program.statements, &[]);
         index
     }
 
-    fn collect_stmts(&mut self, statements: &[Stmt], scope: &[String]) {
+    fn collect_stmts(&mut self, statements: &'a [Stmt], scope: &[String]) {
         for statement in statements {
             match statement {
                 Stmt::Extern { name, .. } => {
@@ -223,7 +225,7 @@ impl Index {
                                 }),
                             })
                             .collect(),
-                        body: body.clone(),
+                        body,
                         position: *position,
                     });
                     let _ = self.qualified.insert(qualified, id);
@@ -261,7 +263,7 @@ impl Index {
         }
     }
 
-    fn collect_module_items(&mut self, items: &[ModuleItem], scope: &[String]) {
+    fn collect_module_items(&mut self, items: &'a [ModuleItem], scope: &[String]) {
         for item in items {
             self.collect_stmts(std::slice::from_ref(item.declaration.as_ref()), scope);
         }
@@ -412,7 +414,7 @@ impl CallableEnv {
 }
 
 struct Analyzer<'a> {
-    index: &'a Index,
+    index: &'a Index<'a>,
     rows: &'a [Summary],
     returns: &'a [Option<Value>],
     instances: &'a Instances,
@@ -478,7 +480,7 @@ impl Analyzer<'_> {
         env
     }
 
-    fn function_body(&self, function: &Function) -> Summary {
+    fn function_body(&self, function: &Function<'_>) -> Summary {
         self.expression(
             &function.body,
             &function.scope,
@@ -486,7 +488,7 @@ impl Analyzer<'_> {
         )
     }
 
-    fn function_return(&self, function: &Function) -> Option<Value> {
+    fn function_return(&self, function: &Function<'_>) -> Option<Value> {
         let mut env = self.scoped_env(&function.parameters);
         self.returned_value(&function.body, &function.scope, &mut env)
     }
@@ -658,7 +660,7 @@ impl Analyzer<'_> {
                 if let Some(position) = position {
                     let candidates = body_summary.required.iter().filter(|requirement| {
                         requirement.effect == *effect && handled.contains(&requirement.operation)
-                            && self.instances.concrete_arguments.contains(&requirement.arguments)
+                            && self.instances.concrete_arguments.contains_key(&requirement.arguments)
                     }).map(|requirement| requirement.arguments.clone());
                     self.instances.handler_inference.borrow_mut()
                         .entry((position.line, position.column)).or_default().extend(candidates);
@@ -995,11 +997,19 @@ impl Analyzer<'_> {
         payload
     }
 
+    fn value(&self, expression: &Expr, scope: &[String], env: &CallableEnv) -> Option<Value> {
+        let mut value = self.raw_value(expression, scope, env)?;
+        if let Some(bindings) = self.instances.instantiations.get(&std::ptr::from_ref(expression).addr()) {
+            specialize_value(&mut value, bindings);
+        }
+        Some(value)
+    }
+
     #[expect(
         clippy::too_many_lines,
         reason = "value provenance mirrors the exhaustive expression fold"
     )]
-    fn value(&self, expression: &Expr, scope: &[String], env: &CallableEnv) -> Option<Value> {
+    fn raw_value(&self, expression: &Expr, scope: &[String], env: &CallableEnv) -> Option<Value> {
         match expression {
             Expr::TypeApply { function, .. } => self.value(function, scope, env),
             Expr::Identifier(name) => {
@@ -1592,7 +1602,7 @@ fn expression_name(expression: &Expr) -> Option<&str> {
 /// Trusting every unshadowed name let `let siren = ring` / `fn relay() =
 /// siren()` type-check with `Alarm.ring` never handled, because the call
 /// contributed nothing at all, not even a provenance failure.
-fn statically_named_callee(expression: &Expr, env: &CallableEnv, index: &Index) -> bool {
+fn statically_named_callee(expression: &Expr, env: &CallableEnv, index: &Index<'_>) -> bool {
     match expression {
         Expr::TypeApply { function, .. } => statically_named_callee(function, env, index),
         Expr::Identifier(name) => {
@@ -1915,7 +1925,7 @@ fn merge_callable(slot: &mut Option<Callable>, incoming: Callable) {
     })));
 }
 
-fn bind_pattern(pattern: &Pattern, value: Option<&Value>, index: &Index, env: &mut CallableEnv) {
+fn bind_pattern(pattern: &Pattern, value: Option<&Value>, index: &Index<'_>, env: &mut CallableEnv) {
     match pattern {
         Pattern::Binding(name) | Pattern::TypeAnnotated { name, .. } => {
             let _ = env.shadowed.insert(name.clone());
@@ -1987,7 +1997,7 @@ fn bind_pattern(pattern: &Pattern, value: Option<&Value>, index: &Index, env: &m
 fn advance_function(
     analyzer: &Analyzer<'_>,
     id: usize,
-    function: &Function,
+    function: &Function<'_>,
     rows: &mut [Summary],
     returns: &mut [Option<Value>],
 ) -> bool {
@@ -2028,7 +2038,7 @@ fn advance_function(
 /// that has not been walked yet, so one pass is a complete answer for the rows
 /// it was given. The enclosing fixed point re-derives it as those rows sharpen.
 fn file_scope_env(
-    index: &Index,
+    index: &Index<'_>,
     instances: &Instances,
     statements: &[Stmt],
     rows: &[Summary],
@@ -2049,7 +2059,7 @@ fn file_scope_env(
 /// Least fixed point over every function's row and return provenance:
 /// recursive and forward calls only add requirements.
 fn converge(
-    index: &Index,
+    index: &Index<'_>,
     instances: &Instances,
     statements: &[Stmt],
     rows: &mut Vec<Summary>,
@@ -2117,6 +2127,49 @@ fn clear_value_verdicts(value: &mut Value) {
     .flatten()
     {
         clear_value_verdicts(nested);
+    }
+}
+
+/// Substitute complete type-name tokens, so `t3` never rewrites `t30`.
+fn specialize_argument(argument: &str, bindings: &HashMap<String, String>) -> String {
+    let mut result = String::new();
+    let mut token = String::new();
+    for character in argument.chars().chain(std::iter::once('\0')) {
+        if character.is_alphanumeric() || character == '_' {
+            token.push(character);
+        } else {
+            result.push_str(bindings.get(&token).unwrap_or(&token));
+            token.clear();
+            if character != '\0' { result.push(character); }
+        }
+    }
+    result
+}
+
+fn specialize_requirements(requirements: &mut Requirements, bindings: &HashMap<String, String>) {
+    *requirements = std::mem::take(requirements).into_iter().map(|mut requirement| {
+        requirement.arguments = requirement.arguments.iter().map(|arg| specialize_argument(arg, bindings)).collect();
+        requirement
+    }).collect();
+}
+
+fn specialize_summary(summary: &mut Summary, bindings: &HashMap<String, String>) {
+    specialize_requirements(&mut summary.required, bindings);
+    summary.parameter_uses = std::mem::take(&mut summary.parameter_uses).into_iter().map(|mut use_| {
+        specialize_requirements(&mut use_.excluded, bindings);
+        use_
+    }).collect();
+}
+
+fn specialize_value(value: &mut Value, bindings: &HashMap<String, String>) {
+    specialize_summary(&mut value.deferred, bindings);
+    if let Some(Callable::Known(known)) = &mut value.callable {
+        specialize_summary(&mut known.summary, bindings);
+        if let Some(returned) = &mut known.returned { specialize_value(returned, bindings); }
+    }
+    for nested in value.fields.values_mut() { specialize_value(nested, bindings); }
+    for nested in [value.element.as_mut(), value.result_payload.as_mut(), value.fiber_payload.as_mut()].into_iter().flatten() {
+        specialize_value(nested, bindings);
     }
 }
 
@@ -2218,7 +2271,11 @@ pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) 
                             && declared
                                 .arguments
                                 .as_ref()
-                                .is_none_or(|arguments| arguments == &requirement.arguments)
+                                .is_none_or(|arguments| {
+                                    let bindings = instances.binders.get(&function.name);
+                                    arguments.iter().map(|arg| bindings.map_or_else(|| arg.clone(), |b| specialize_argument(arg, b)))
+                                        .eq(requirement.arguments.iter().cloned())
+                                })
                     })
                 })
                 .map(requirement_name)
@@ -2527,7 +2584,7 @@ fn fibered_operation(
 /// happens. Over-reaching costs a rejection the plan already fails closed on;
 /// under-reaching would miss the fiber boundary this rule exists to find.
 fn reachable_bodies<'a>(
-    index: &'a Index,
+    index: &'a Index<'_>,
     body: &'a Expr,
     scope: &'a [String],
 ) -> Vec<(&'a Expr, &'a [String])> {

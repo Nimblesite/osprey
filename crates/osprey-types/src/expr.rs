@@ -55,8 +55,8 @@ impl Checker {
                 }
                 Type::string()
             }
-            Expr::Identifier(name) => self.lookup_ident(name, env),
-            Expr::Path(path) => self.lookup_ident(&path.to_string(), env),
+            Expr::Identifier(name) => self.lookup_ident_at(name, env, Some(e)),
+            Expr::Path(path) => self.lookup_ident_at(&path.to_string(), env, Some(e)),
             Expr::List(items, position) => {
                 let elem = self.ctx.fresh();
                 for it in items {
@@ -526,6 +526,10 @@ impl Checker {
     }
 
     fn lookup_ident(&mut self, name: &str, env: &TypeEnv) -> Type {
+        self.lookup_ident_at(name, env, None)
+    }
+
+    fn lookup_ident_at(&mut self, name: &str, env: &TypeEnv, site: Option<&Expr>) -> Type {
         // A bare nullary constructor (`Red`, `Empty`) is a value of its owner type.
         if self.ctors.get(name).is_some_and(|i| i.fields.is_empty()) {
             if let Some((args, _f, owner, is_record)) = self.ctor_instance(name) {
@@ -539,14 +543,16 @@ impl Checker {
                 };
             }
         }
-        if let Some(scheme) = env.get(name).cloned() {
+        if let Some(applied) = env.applied(&mut self.ctx, name) {
             // Re-state the scheme's built-in obligations against this site's
             // fresh variables, so a generalized wrapper's constraint is checked
             // against the types this call actually supplies
             // ([`crate::ty::Scheme::obligations`]).
-            let (ty, obligations) = crate::env::instantiated(&mut self.ctx, &scheme);
-            self.builtin_uses.extend(obligations);
-            return ty;
+            self.builtin_uses.extend(applied.obligations);
+            if let Some(site) = site {
+                let _ = self.instantiations.insert(std::ptr::from_ref(site).addr(), applied.bindings);
+            }
+            return applied.ty;
         }
         self.errors
             .push(TypeError::new(format!("unknown identifier `{name}`")));
@@ -572,10 +578,10 @@ impl Checker {
                 type_args,
                 position,
             } => self.infer_type_application(function, type_args, *position, env),
-            Expr::Identifier(name) => (Some(name.clone()), self.lookup_ident(name, env)),
+            Expr::Identifier(name) => (Some(name.clone()), self.lookup_ident_at(name, env, Some(function))),
             Expr::Path(path) => {
                 let name = path.to_string();
-                let ty = self.lookup_ident(&name, env);
+                let ty = self.lookup_ident_at(&name, env, Some(function));
                 (Some(name), ty)
             }
             other => (None, self.infer_expr(other, env)),
@@ -599,10 +605,15 @@ impl Checker {
                 return (None, self.infer_expr(function, env));
             }
         };
-        let Some((ty, obligations, params)) = env.applied(&mut self.ctx, &name) else {
+        let Some(applied) = env.applied(&mut self.ctx, &name) else {
             return (Some(name.clone()), self.lookup_ident(&name, env));
         };
+        let crate::env::AppliedSignature { ty, obligations, params, bindings } = applied;
         self.builtin_uses.extend(obligations);
+        if let Some(position) = position {
+            self.application_tys.push((position, bindings.clone()));
+        }
+        let _ = self.instantiations.insert(std::ptr::from_ref(function).addr(), bindings);
         if params.len() == type_args.len() {
             let binder = self.current_fn_typarams.clone();
             for (param, arg) in params.iter().zip(type_args) {

@@ -11,6 +11,7 @@
 - [Built-in Error Types](#built-in-error-types)
 - [The `any` Type](#the-any-type--type-any)
 - [Type Annotations](#type-annotations--type-annotation-check)
+- [Redundant Annotations](#redundant-annotations--type-annotation-redundant)
 
 ## Hindley-Milner Inference
 
@@ -46,7 +47,10 @@ compose (f, g)   = \x => f (g x)             // <A,B,C>((B)->C,(A)->B) -> (A)->C
 `add` follows [ARITH-CHECKED](0013-ErrorHandling.md#arithmetic--arith-checked): integer `+ - *` return `int`. With a `float` operand, the integer is promoted and the IEEE-754 operation returns plain `float`.
 
 Record fields and foreign declarations include types as part of their syntax;
-annotations on bindings and functions constrain the inferred type.
+annotations on bindings and functions constrain the inferred type. An
+annotation that constrains nothing — one inference would have derived anyway —
+is a defect the compiler reports
+([TYPE-ANNOTATION-REDUNDANT](#redundant-annotations--type-annotation-redundant)).
 
 A polymorphic function is monomorphised independently at each call site:
 
@@ -871,3 +875,79 @@ fn half(n: int) -> Result<int, Error> = intDiv(n, 2)
 
 Writing `-> int` for `half` would be a type error; a return annotation cannot
 erase the body's `Result` ([Result Preservation](#result-preservation)).
+
+## Redundant Annotations — [TYPE-ANNOTATION-REDUNDANT]
+
+An annotation the inferrer would have derived on its own carries no
+information. It cannot change what the program means — by construction the
+solver reaches the same type without it — so it can only go stale, disagree
+with the body a later edit produces, and cost a reader a second reading to
+confirm it says nothing. Osprey reports every one of them.
+
+**The rule.** A written type is *redundant* when erasing it leaves the solved
+type unchanged. Redundancy is not a syntactic property and cannot be decided by
+reading the annotation: `string -> int -> string` is redundant on one function
+and load-bearing on the next. It is decided by inference, and only by
+inference.
+
+**The decision procedure.** For each annotation, replace it with a fresh type
+variable, solve the enclosing definition, and generalise. Compare the result to
+the type that was written, up to renaming of bound type variables. Equal ⇒
+redundant. More general ⇒ the annotation was constraining something and is
+kept. Ill-typed without it ⇒ kept.
+
+```mermaid
+flowchart LR
+  A["written annotation"] --> B["erase → fresh var"]
+  B --> C["infer + generalise"]
+  C --> D{"solved type<br/>vs written"}
+  D -- "alpha-equal" --> E["redundant — report"]
+  D -- "strictly more general" --> F["constraining — keep"]
+  D -- "no solution" --> F
+```
+
+**Where it applies.** Function parameter annotations, function return
+annotations, lambda parameter annotations, and binding annotations, in both
+surfaces ([FLAVOR-BOUNDARY]) — an ML `f : string -> int` header and a Default
+`fn f(x: string) -> int` are the same canonical annotation and are judged
+identically.
+
+```osprey-ml
+// redundant: `quote key + ":" + toString value` already fixes every slot.
+numField : string -> int -> string
+numField key value = quote key + ":" + toString value
+
+// kept: the empty literal constrains nothing on its own.
+seen : List<int>
+seen = []
+```
+
+**What is never redundant.** Four constructs carry types as part of their
+declaration rather than as a constraint on an inferred one, and no annotation
+in them is ever reported:
+
+- a `signature` block's members ([MODULES-SIGNATURE](0025-ModulesAndNamespaces.md#signatures-modules-signature)) — a signature *is* the module's public contract, and a module body that repeats one of its types is judged like any other function;
+- record field declarations and union variant payloads, whose types are their definition;
+- `extern` and foreign declarations ([Foreign Function Interface](0019-ForeignFunctionInterface.md)), which have no body to infer from;
+- an annotation whose erasure leaves a free type variable the solver never grounds.
+
+An annotation that would erase a `Result` is not redundant either — it is a
+type error ([Result Preservation](#result-preservation)), reported as one.
+
+**Severity.** The diagnostic is a **Warning**. It changes no exit code and no
+generated code: a program whose only diagnostics are redundant annotations
+compiles and runs exactly as it did. Severity is fixed today and becomes
+configurable per rule; the rule identifier is `redundant-annotation`, and it is
+that identifier a future configuration names.
+
+**The message** identifies the annotation and prints the type inference derives
+without it, so the fix is to delete the annotation and nothing else:
+
+```
+warning: redundant type annotation on `numField`: inference derives `(string, int) -> string` without it
+```
+
+Every front end reports it: `osprey build` and `osprey check` on stderr, and
+the language server as a Warning diagnostic spanning the annotation alone
+([LSP-DIAGNOSTICS](0020-LanguageServerAndEditors.md#diagnostics-lsp-diagnostics)), so the squiggle covers
+the text to delete.
