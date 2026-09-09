@@ -39,16 +39,37 @@ impl InferCtx {
     }
 
     /// Register a record's generic field template [TYPE-GENERICS-DECL].
-    pub(crate) fn set_record(&mut self, name: String, params: Vec<String>, fields: Vec<(String, String)>) {
+    pub(crate) fn set_record(
+        &mut self,
+        name: String,
+        params: Vec<String>,
+        fields: Vec<(String, String)>,
+    ) {
         let _ = self.records.insert(name, (params, fields));
     }
 
     /// Resolve a nominal record application to its instantiated fields.
-    pub(crate) fn record_fields(&self, name: &str, args: &[Type]) -> Option<std::collections::BTreeMap<String, Type>> {
+    pub(crate) fn record_fields(
+        &self,
+        name: &str,
+        args: &[Type],
+    ) -> Option<std::collections::BTreeMap<String, Type>> {
         let (params, fields) = self.records.get(name)?;
-        if params.len() != args.len() { return None; }
+        if params.len() != args.len() {
+            return None;
+        }
         let binder = params.iter().cloned().zip(args.iter().cloned()).collect();
-        Some(fields.iter().map(|(field, ty)| (field.clone(), crate::convert::type_name_to_type(ty, &binder))).collect())
+        Some(
+            fields
+                .iter()
+                .map(|(field, ty)| {
+                    (
+                        field.clone(),
+                        crate::convert::type_name_to_type(ty, &binder),
+                    )
+                })
+                .collect(),
+        )
     }
 
     /// Allocate a fresh, unbound type variable.

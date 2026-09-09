@@ -424,7 +424,8 @@ impl Checker {
                 .map(|f| (f.name.clone(), f.ty.clone()))
                 .collect();
             if is_record {
-                self.ctx.set_record(name.to_owned(), param_names.clone(), fields.clone());
+                self.ctx
+                    .set_record(name.to_owned(), param_names.clone(), fields.clone());
             }
             let _ = self.ctors.insert(
                 v.name.clone(),
@@ -603,7 +604,10 @@ impl Checker {
         for tp in type_params {
             let v = self.ctx.fresh();
             if typarams.insert(tp.name.clone(), v).is_some() {
-                self.errors.push(TypeError::new(format!("duplicate type parameter `{}`", tp.name)));
+                self.errors.push(TypeError::new(format!(
+                    "duplicate type parameter `{}`",
+                    tp.name
+                )));
             }
         }
         let params: Vec<Type> = parameters
@@ -617,7 +621,10 @@ impl Checker {
             Some(te) => type_expr_to_type(te, &typarams),
             None => self.ctx.fresh(),
         };
-        let ordered = type_params.iter().filter_map(|p| typarams.get(&p.name).cloned()).collect();
+        let ordered = type_params
+            .iter()
+            .filter_map(|p| typarams.get(&p.name).cloned())
+            .collect();
         let _ = self.fn_typarams.insert(name.to_string(), typarams);
         self.publish_signature(name, parameters, params, ret, env);
         env.declare_type_params(name, ordered);
@@ -704,7 +711,10 @@ impl Checker {
         // variables would count as "free in the environment" and nothing would
         // generalize.
         let fun_ty = Type::fun(params, ret);
-        let declared = env.applied(&mut self.ctx, name).map(|(_, _, ps)| ps).unwrap_or_default();
+        let declared = env
+            .applied(&mut self.ctx, name)
+            .map(|(_, _, ps)| ps)
+            .unwrap_or_default();
         env.remove(name);
         let mut scheme = self.generalize_with_obligations(env, &fun_ty);
         // Explicit binders are quantified even when the signature never uses
@@ -1170,8 +1180,34 @@ fn checked_program_with_exports(program: &Program, exports: &[&str]) -> Checker 
     checker.collect(program, &mut env);
     checker.check(program, &mut env);
     checker.resolve_deferred_arithmetic();
+    loop {
+        let instances = effect_instances(&mut checker);
+        let errors = crate::effect_rows::check(program, &instances, exports);
+        if !refine_handler_arguments(&mut checker, &instances) {
+            checker.errors.extend(errors);
+            break;
+        }
+    }
     checker.validate_builtin_uses();
     checker.validate_discards();
+    checker.errors.extend(crate::init_order::check(program));
+    checker
+}
+
+/// Publish the current inference solution for the closed-program effect proof.
+fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Instances {
+    let concrete_arguments = checker
+        .perform_tys
+        .clone()
+        .into_iter()
+        .map(|(_, _, args)| {
+            args.iter()
+                .map(|arg| checker.ctx.apply(arg))
+                .collect::<Vec<_>>()
+        })
+        .filter(|args| args.iter().all(type_is_resolved))
+        .map(|args| args.iter().map(ToString::to_string).collect())
+        .collect();
     let perform_tys = checker.perform_tys.clone();
     let perform_actual_tys = checker.perform_actual_tys.clone();
     let handler_tys = checker.handler_tys.clone();
@@ -1213,7 +1249,7 @@ fn checked_program_with_exports(program: &Program, exports: &[&str]) -> Checker 
             let _ = performs.insert(key, candidates);
         }
     }
-    let instances = crate::effect_rows::Instances {
+    crate::effect_rows::Instances {
         performs,
         handlers: dedupe_sites(handler_tys.into_iter().map(|(position, arguments, _)| {
             (
@@ -1224,12 +1260,47 @@ fn checked_program_with_exports(program: &Program, exports: &[&str]) -> Checker 
                     .collect(),
             )
         })),
-    };
-    checker
-        .errors
-        .extend(crate::effect_rows::check(program, &instances, exports));
-    checker.errors.extend(crate::init_order::check(program));
-    checker
+
+        concrete_arguments,
+        ..Default::default()
+    }
+}
+
+/// A handler whose arms leave its binder open learns that binder from the
+/// operations its body requires, including requirements behind function calls.
+/// Only one concrete candidate may refine it; incompatible instantiations stay
+/// distinct and the ordinary discharge proof rejects the remaining operation.
+fn refine_handler_arguments(
+    checker: &mut Checker,
+    instances: &crate::effect_rows::Instances,
+) -> bool {
+    let before = checker.ctx.bound_count();
+    let candidates = instances.handler_inference.borrow();
+    for (position, arguments, _) in checker.handler_tys.clone() {
+        if arguments
+            .iter()
+            .all(|ty| type_is_resolved(&checker.ctx.apply(ty)))
+        {
+            continue;
+        }
+        let Some(choices) = candidates.get(&(position.line, position.column)) else {
+            continue;
+        };
+        if choices.len() != 1 {
+            continue;
+        }
+        let Some(choice) = choices.first() else {
+            continue;
+        };
+        if arguments.len() != choice.len() {
+            continue;
+        }
+        for (argument, concrete) in arguments.iter().zip(choice) {
+            let ty = type_name_to_type(concrete, &HashMap::new());
+            checker.push_unify(argument, &ty);
+        }
+    }
+    checker.ctx.bound_count() != before
 }
 
 /// The code generator's erased view assigns every declared generic parameter

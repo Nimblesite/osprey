@@ -1183,7 +1183,11 @@ impl Parser<'_> {
             if !self.starts_atom() && !self.at_negative_literal_arg() {
                 self.error("type arguments require a call argument");
             }
-            func = MlExpr::TypeApply { func: Box::new(func), args, pos };
+            func = MlExpr::TypeApply {
+                func: Box::new(func),
+                args,
+                pos,
+            };
         }
         // `f ()` is a zero-argument application, not application to unit.
         if matches!(self.peek(), TokKind::LParen) && matches!(self.peek_at(1), TokKind::RParen) {

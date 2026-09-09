@@ -58,14 +58,23 @@ pub fn unify(ctx: &mut InferCtx, a: &Type, b: &Type) -> Result<(), TypeError> {
             Ok(())
         }
 
-        (Type::Con { name, args }, Type::Record { name: actual, fields })
-        | (Type::Record { name: actual, fields }, Type::Con { name, args })
-            if name == actual => {
-                match ctx.record_fields(name, args) {
-                    Some(declared) => unify_record(ctx, &declared, fields, &a, &b),
-                    None => Err(TypeError::mismatch(&a, &b)),
-                }
-            }
+        (
+            Type::Con { name, args },
+            Type::Record {
+                name: actual,
+                fields,
+            },
+        )
+        | (
+            Type::Record {
+                name: actual,
+                fields,
+            },
+            Type::Con { name, args },
+        ) if name == actual => match ctx.record_fields(name, args) {
+            Some(declared) => unify_record(ctx, &declared, fields, &a, &b),
+            None => Err(TypeError::mismatch(&a, &b)),
+        },
 
         (
             Type::Union {

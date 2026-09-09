@@ -13,7 +13,10 @@ use osprey_ast::{
     Expr, FieldAssignment, HandlerArm, InterpolatedPart, ModuleItem, NamedArgument, Pattern,
     Position, Program, Stmt,
 };
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+
+type HandlerCandidates = HashMap<(u32, u32), BTreeSet<Vec<String>>>;
 
 #[derive(Default)]
 pub(crate) struct Instances {
@@ -22,6 +25,11 @@ pub(crate) struct Instances {
     /// final fragment overwrite the others.
     pub(crate) performs: HashMap<(u32, u32), Vec<Vec<String>>>,
     pub(crate) handlers: HashMap<(u32, u32), Vec<String>>,
+    /// Fully resolved operation arguments available to refine a handler.
+    pub(crate) concrete_arguments: HashSet<Vec<String>>,
+    /// Candidate instantiations required by each handler's body after calls
+    /// and callbacks have propagated through the closed-program summary.
+    pub(crate) handler_inference: RefCell<HandlerCandidates>,
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -646,7 +654,16 @@ impl Analyzer<'_> {
                     &self.instances.handlers,
                     "handler",
                 );
-                let mut out = self.expression(body, scope, env).without_operations(
+                let body_summary = self.expression(body, scope, env);
+                if let Some(position) = position {
+                    let candidates = body_summary.required.iter().filter(|requirement| {
+                        requirement.effect == *effect && handled.contains(&requirement.operation)
+                            && self.instances.concrete_arguments.contains(&requirement.arguments)
+                    }).map(|requirement| requirement.arguments.clone());
+                    self.instances.handler_inference.borrow_mut()
+                        .entry((position.line, position.column)).or_default().extend(candidates);
+                }
+                let mut out = body_summary.without_operations(
                     effect,
                     &effect_arguments,
                     &handled,
@@ -2584,7 +2601,10 @@ fn walk_children<'a>(expression: &'a Expr, mut visit: impl FnMut(&'a Expr)) {
             visit(left);
             visit(right);
         }
-        Expr::TypeApply { function: operand, .. } | Expr::Unary { operand, .. }
+        Expr::TypeApply {
+            function: operand, ..
+        }
+        | Expr::Unary { operand, .. }
         | Expr::FieldAccess {
             target: operand, ..
         }

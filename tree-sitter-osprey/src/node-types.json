@@ -2965,7 +2965,22 @@
   {
     "type": "type_list",
     "named": true,
-    "fields": {},
+    "fields": {
+      "variance": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "in",
+            "named": false
+          },
+          {
+            "type": "out",
+            "named": false
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": true,
       "required": true,
@@ -3309,6 +3324,10 @@
   },
   {
     "type": "await",
+    "named": false
+  },
+  {
+    "type": "do",
     "named": false
   },
   {

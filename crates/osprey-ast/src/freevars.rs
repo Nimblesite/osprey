@@ -58,7 +58,10 @@ fn walk(e: &Expr, bound: &mut Vec<String>, out: &mut BTreeSet<String>) {
             walk(left, bound, out);
             walk(right, bound, out);
         }
-        Expr::TypeApply { function: operand, .. } | Expr::Unary { operand, .. } => walk(operand, bound, out),
+        Expr::TypeApply {
+            function: operand, ..
+        }
+        | Expr::Unary { operand, .. } => walk(operand, bound, out),
         e2 => walk_rest(e2, bound, out),
     }
 }

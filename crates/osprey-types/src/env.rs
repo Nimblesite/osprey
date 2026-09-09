@@ -67,14 +67,21 @@ impl TypeEnv {
     }
 
     /// Instantiate the signature and its declared binders with one substitution.
-    pub(crate) fn applied(&self, ctx: &mut InferCtx, name: &str)
-        -> Option<AppliedSignature> {
+    pub(crate) fn applied(&self, ctx: &mut InferCtx, name: &str) -> Option<AppliedSignature> {
         let scheme = self.get(name)?;
         let map = scheme.vars.iter().map(|v| (*v, ctx.fresh())).collect();
-        let params = self.type_params.get(name).into_iter().flatten()
-            .map(|ty| subst_vars(&ctx.apply(ty), &map)).collect();
-        let obligations = scheme.obligations.iter()
-            .map(|(name, ty)| (name.clone(), subst_vars(ty, &map))).collect();
+        let params = self
+            .type_params
+            .get(name)
+            .into_iter()
+            .flatten()
+            .map(|ty| subst_vars(&ctx.apply(ty), &map))
+            .collect();
+        let obligations = scheme
+            .obligations
+            .iter()
+            .map(|(name, ty)| (name.clone(), subst_vars(ty, &map)))
+            .collect();
         Some((subst_vars(&scheme.ty, &map), obligations, params))
     }
 

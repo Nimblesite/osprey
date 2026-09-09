@@ -232,9 +232,15 @@ fn offset_expr(expr: &mut Expr, offset: u32) {
             offset_expr(left, offset);
             offset_expr(right, offset);
         }
-        Expr::TypeApply { function, type_args, position } => {
+        Expr::TypeApply {
+            function,
+            type_args,
+            position,
+        } => {
             shift(position, offset);
-            for argument in type_args { offset_type(argument, offset); }
+            for argument in type_args {
+                offset_type(argument, offset);
+            }
             offset_expr(function, offset);
         }
         Expr::Unary { operand, .. }

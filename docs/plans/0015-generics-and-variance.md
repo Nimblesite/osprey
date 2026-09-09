@@ -229,6 +229,15 @@ executable assertions. Each is recorded with the evidence that settles it.
    angles are legal on a ROW (`!Stash<int>`), and the written mention belongs
    to `static effect`, whose identity IS the instantiation.
 
+   **Replacement diagnostic** (same rule, true reason — the fixture golden is
+   updated in the same commit that emits it):
+
+   > ``perform Signal<Count>`` names an instantiation of dynamic effect
+   > ``Signal``; a written instantiation is the identity of a ``static effect``,
+   > while a dynamic effect takes its instantiation from inference
+   > (docs/plans/0024-staged-effects.md). Declare ``static effect Signal``, or
+   > write ``perform Signal`` and let inference instantiate it
+
 4. **Spec 0017 writes `handle … do`; the language accepts `in`.** Intended:
    the Default flavor is moving to `do` ([plan 0027](0027-arithmetic-effects.md)
    phase 0). `the_spec_writes_a_handled_body_after_do` is a deliberate red pin

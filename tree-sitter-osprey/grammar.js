@@ -439,7 +439,7 @@ module.exports = grammar({
     // and `Signal<Cursor>` are different effects to a row, so they are different
     // effects to a handler. Implements [STAGE-SIGNALS-EXACT].
     handler_expression: ($) =>
-      prec.right(seq('handle', optional(field('stage', $.static_stage)), field('effect', choice($.qualified_path, $.identifier)), optional(field('instantiation', $.type_arguments)), repeat1($.handler_arm), 'in', field('body', $.expression))),
+      prec.right(seq('handle', optional(field('stage', $.static_stage)), field('effect', choice($.qualified_path, $.identifier)), optional(field('instantiation', $.type_arguments)), repeat1($.handler_arm), choice('in', 'do'), field('body', $.expression))),
     handler_arm: ($) =>
       seq(field('operation', $.identifier), optional($.handler_params), '=>', field('body', $.expression)),
     handler_params: ($) => repeat1($.identifier),
@@ -587,7 +587,9 @@ module.exports = grammar({
     type_constructor: ($) =>
       prec.dynamic(1, seq(field('name', choice($.qualified_path, $.identifier)), optional($.type_arguments), '{', $.field_assignments, '}')),
     type_arguments: ($) => seq(token.immediate('<'), $.type_list, '>'),
-    _call_type_arguments: ($) => seq(token.immediate('<'), $.type_list, '>'),
+    _call_type_arguments: ($) => seq(token.immediate('<'), alias($._call_type_list, $.type_list), '>'),
+    // Keep misplaced declaration markers visible for a precise diagnostic.
+    _call_type_list: ($) => sep1(',', seq(optional(field('variance', choice('in', 'out'))), $._type)),
 
     update_expression: ($) =>
       prec.dynamic(0, seq(field('record', $.identifier), '{', $.field_assignments, '}')),

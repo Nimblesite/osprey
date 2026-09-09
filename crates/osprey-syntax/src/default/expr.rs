@@ -224,8 +224,11 @@ impl Lowerer<'_> {
             }
             callee = Expr::TypeApply {
                 function: Box::new(callee),
-                type_args: self.named_of_kind(args, "type_list").into_iter()
-                    .flat_map(|list| self.lower_type_list(list)).collect(),
+                type_args: self
+                    .named_of_kind(args, "type_list")
+                    .into_iter()
+                    .flat_map(|list| self.lower_type_list(list))
+                    .collect(),
                 position: Some(self.pos(node)),
             };
         }

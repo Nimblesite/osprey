@@ -49,7 +49,8 @@ impl Checker {
                     if let InterpolatedPart::Expr(inner) = p {
                         // Interpolation preserves a Result as its complete
                         // Success/Error rendering; it never extracts a payload.
-                        let _ = self.infer_expr(inner, env);
+                        let ty = self.infer_expr(inner, env);
+                        self.builtin_uses.push(("interpolation".to_owned(), ty));
                     }
                 }
                 Type::string()
@@ -86,7 +87,14 @@ impl Checker {
                     self.infer_negation(&t)
                 }
             }
-            Expr::TypeApply { function, type_args, position } => self.infer_type_application(function, type_args, *position, env).1,
+            Expr::TypeApply {
+                function,
+                type_args,
+                position,
+            } => {
+                self.infer_type_application(function, type_args, *position, env)
+                    .1
+            }
             Expr::Call {
                 function,
                 arguments,
@@ -196,7 +204,11 @@ impl Checker {
                     }
                 }
                 if let Type::Con { name, args } = other {
-                    if let Some(ty) = self.ctx.record_fields(name, args).and_then(|fields| fields.get(field).cloned()) {
+                    if let Some(ty) = self
+                        .ctx
+                        .record_fields(name, args)
+                        .and_then(|fields| fields.get(field).cloned())
+                    {
                         return ty;
                     }
                 }
@@ -555,7 +567,11 @@ impl Checker {
 
     fn infer_callee(&mut self, function: &Expr, env: &TypeEnv) -> (Option<String>, Type) {
         match function {
-            Expr::TypeApply { function, type_args, position } => self.infer_type_application(function, type_args, *position, env),
+            Expr::TypeApply {
+                function,
+                type_args,
+                position,
+            } => self.infer_type_application(function, type_args, *position, env),
             Expr::Identifier(name) => (Some(name.clone()), self.lookup_ident(name, env)),
             Expr::Path(path) => {
                 let name = path.to_string();
@@ -567,13 +583,19 @@ impl Checker {
     }
 
     /// Pin declared binders in this call's fresh instantiation [TYPE-GENERICS-APPLY].
-    fn infer_type_application(&mut self, function: &Expr, type_args: &[osprey_ast::TypeExpr], position: Option<osprey_ast::Position>, env: &TypeEnv)
-        -> (Option<String>, Type) {
+    fn infer_type_application(
+        &mut self,
+        function: &Expr,
+        type_args: &[osprey_ast::TypeExpr],
+        position: Option<osprey_ast::Position>,
+        env: &TypeEnv,
+    ) -> (Option<String>, Type) {
         let name = match function {
             Expr::Identifier(name) => name.clone(),
             Expr::Path(path) => path.to_string(),
             _ => {
-                self.errors.push(TypeError::new("type arguments require a named function"));
+                self.errors
+                    .push(TypeError::new("type arguments require a named function"));
                 return (None, self.infer_expr(function, env));
             }
         };
@@ -585,12 +607,60 @@ impl Checker {
             let binder = self.current_fn_typarams.clone();
             for (param, arg) in params.iter().zip(type_args) {
                 let written = crate::convert::type_expr_to_type(arg, &binder);
+                self.validate_type_argument(&written, position);
                 self.push_unify(param, &written);
             }
         } else {
-            self.errors.push(TypeError::new(format!("function `{name}` takes {} type argument(s), got {}", params.len(), type_args.len())).with_pos(position));
+            self.errors.push(
+                TypeError::new(format!(
+                    "function `{name}` takes {} type argument(s), got {}",
+                    params.len(),
+                    type_args.len()
+                ))
+                .with_pos(position),
+            );
         }
         (Some(name), ty)
+    }
+
+    /// Written arguments name declared types or an enclosing binder, never a
+    /// new nominal type inferred from a misspelled name [TYPE-GENERICS-APPLY].
+    fn validate_type_argument(&mut self, ty: &Type, position: Option<osprey_ast::Position>) {
+        match ty {
+            Type::Con { name, args } => {
+                let primitive = matches!(
+                    name.as_str(),
+                    names::INT
+                        | names::FLOAT
+                        | names::BOOL
+                        | names::STRING
+                        | names::UNIT
+                        | names::ANY
+                        | names::PTR
+                        | names::MATH_ERROR
+                        | names::CHANNEL
+                        | names::ITERATOR
+                        | names::GPU_BUFFER
+                );
+                if !primitive
+                    && self.ctx.variance_of(name).is_none()
+                    && !self.ctors.values().any(|ctor| ctor.owner == *name)
+                {
+                    self.errors
+                        .push(TypeError::new(format!("unknown type `{name}`")).with_pos(position));
+                }
+                for arg in args {
+                    self.validate_type_argument(arg, position);
+                }
+            }
+            Type::Fun { params, ret } => {
+                for param in params {
+                    self.validate_type_argument(param, position);
+                }
+                self.validate_type_argument(ret, position);
+            }
+            _ => {}
+        }
     }
 
     fn infer_method_call(
