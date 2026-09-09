@@ -1,0 +1,9 @@
+// Variance is declaration-site on types and effects only. A call site pins an
+// instantiation; it does not declare one, so a marker there has no meaning.
+// Implements [TYPE-GENERICS-APPLY], [TYPE-VARIANCE-DECL]
+fn identity<T>(x: T) -> T = x
+
+fn main() -> Unit = {
+    let pinned = identity<out int>(5)
+    print("${pinned}")
+}

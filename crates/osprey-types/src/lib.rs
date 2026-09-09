@@ -29,6 +29,16 @@ mod effect_rows_tests;
 mod env;
 mod error;
 mod expr;
+#[cfg(test)]
+mod generic_effects_tests;
+#[cfg(test)]
+mod generics_apply_ml_tests;
+#[cfg(test)]
+mod generics_apply_tests;
+#[cfg(test)]
+mod generics_decl_tests;
+#[cfg(test)]
+mod generics_variance_tests;
 mod info;
 mod init_order;
 mod multiplicity;

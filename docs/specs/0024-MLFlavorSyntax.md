@@ -272,6 +272,9 @@ Generic declarations lower to the same variance-carrying `TypeParam` and
 - Effect rows apply arguments with angles: `! Stash<int>` or
   `! [Read<T>, Write<T>]`.
 - Construction-site type arguments use `Box<int>(item = 7)`.
+- Call-site type arguments attach to the callee name and precede the juxtaposed
+  argument: `identity<int> 5`, `pick<int, string> (1, "two")`
+  ([TYPE-GENERICS-APPLY](0004-TypeSystem.md#generics-and-variance)).
 
 Function binders do not accept variance. A binding without a signature cannot
 declare function type parameters.

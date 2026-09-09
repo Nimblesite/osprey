@@ -1417,3 +1417,86 @@ fn error_result_assertions_render_the_error() {
     );
     assert!(o.stdout.contains("not ok 1 - div"), "{}", o.stdout);
 }
+
+/// The whole call-site type-application pipeline — parse, check, lower, emit,
+/// link, run — for the shape that has no other spelling: a binder appearing in
+/// no parameter position. [TYPE-GENERICS-APPLY]
+#[test]
+fn a_written_type_argument_pins_an_instantiation_end_to_end() {
+    let prog = temp_osp(
+        "turbofish_run",
+        "fn identity<T>(x: T) -> T = x\n\
+         fn emptyOf<T>() -> List<T> = []\n\
+         fn pickOf<T, U>(first: T, second: U) -> T = first\n\
+         let n = identity<int>(5)\n\
+         let s = identity<string>(\"os\")\n\
+         let nested = length(identity<List<int>>([1, 2]))\n\
+         let empty = length(emptyOf<int>())\n\
+         let kept = pickOf<int, string>(7, \"seven\")\n\
+         print(\"n=${n} s=${s} nested=${nested} empty=${empty} kept=${kept}\")\n",
+    );
+    let o = run_file(&prog, &["--run"]);
+    assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
+    assert_eq!(o.stdout, "n=5 s=os nested=2 empty=0 kept=7\n");
+}
+
+/// The ML twin of the same program prints the same bytes ([FLAVOR-IR-EQUIV]).
+#[test]
+fn the_ml_written_type_argument_prints_the_same_bytes() {
+    let path = std::env::temp_dir().join("osprey_cli_e2e_turbofish_run_ml.ospml");
+    let _ = std::fs::write(
+        &path,
+        "identity<T> : T -> T\n\
+         identity x = x\n\
+         emptyOf<T> : Unit -> List<T>\n\
+         emptyOf () = []\n\
+         pickOf<T, U> : (T, U) -> T\n\
+         pickOf (first, second) = first\n\
+         n = identity<int> 5\n\
+         s = identity<string> \"os\"\n\
+         nested = length (identity<List<int>> [1, 2])\n\
+         empty = length (emptyOf<int> ())\n\
+         kept = pickOf<int, string> (7, \"seven\")\n\
+         print \"n=${n} s=${s} nested=${nested} empty=${empty} kept=${kept}\"\n",
+    );
+    let o = run_file(&path, &["--run"]);
+    assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
+    assert_eq!(o.stdout, "n=5 s=os nested=2 empty=0 kept=7\n");
+}
+
+/// A written list that misses the declared binder count is rejected before
+/// anything is emitted, naming both counts. [TYPE-GENERICS-APPLY]
+#[test]
+fn a_written_type_argument_count_mismatch_is_rejected_by_the_cli() {
+    let prog = temp_osp(
+        "turbofish_arity",
+        "fn identity<T>(x: T) -> T = x\n\
+         print(\"${identity<int, string>(5)}\")\n",
+    );
+    let o = run_file(&prog, &["--check"]);
+    assert_ne!(o.code, Some(0), "stdout={}", o.stdout);
+    assert!(
+        o.stderr
+            .contains("function `identity` takes 1 type argument(s), got 2"),
+        "stderr={}",
+        o.stderr
+    );
+}
+
+/// A written argument contradicting the value argument is a type error, not a
+/// silently ignored annotation. [TYPE-GENERICS-APPLY]
+#[test]
+fn a_contradicting_written_type_argument_is_rejected_by_the_cli() {
+    let prog = temp_osp(
+        "turbofish_contradiction",
+        "fn identity<T>(x: T) -> T = x\n\
+         print(\"${identity<int>(\\\"text\\\")}\")\n",
+    );
+    let o = run_file(&prog, &["--check"]);
+    assert_ne!(o.code, Some(0), "stdout={}", o.stdout);
+    assert!(
+        o.stderr.contains("cannot unify int with string"),
+        "stderr={}",
+        o.stderr
+    );
+}

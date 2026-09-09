@@ -112,6 +112,23 @@ fn mkGate() -> Gate<(int) -> Result<int, MathError>> = Gate { admit: |f| => true
 print("fn-payload feed accepted: ${label(mkFeed())}")
 print("fn-payload gate accepted: ${describe(mkGate())}")
 
+/// --- Call-site type application: pinning an instantiation in the source ---
+/// A written type-argument list pins the callee's declared binders left to
+/// right and is checked against what the value arguments infer. `emptyOf`'s
+/// binder appears in NO parameter position, so nothing but the written
+/// argument can pin it, and `identityOf<List<int>>` closes two argument lists
+/// with one `>>`. Implements [TYPE-GENERICS-APPLY]
+fn identityOf<T>(x: T) -> T = x
+fn emptyOf<T>() -> List<T> = []
+fn pickOf<T, U>(first: T, second: U) -> T = first
+
+let appliedInt = identityOf<int>(5)
+let appliedText = identityOf<string>("os")
+let appliedNested = length(identityOf<List<int>>([1, 2]))
+let appliedEmpty = length(emptyOf<int>())
+let appliedPair = pickOf<int, string>(7, "seven")
+print("applied int=${appliedInt} text=${appliedText} nested=${appliedNested} empty=${appliedEmpty} pair=${appliedPair}")
+
 print("=== TYPE EQUALITY COMPLETE ===")
 
 /// Verifies generic records, function shapes, union tags, and variant payload types.
@@ -138,7 +155,12 @@ fn typeEqualityCase() = {
         !(sameColor(a: Red, b: Blue)),
         colorName(Green) == "green",
         label(mkFeed()) == "supplied",
-        describe(mkGate()) == "guarded"
+        describe(mkGate()) == "guarded",
+        identityOf<int>(5) == 5,
+        identityOf<string>("os") == "os",
+        length(identityOf<List<int>>([1, 2])) == 2,
+        length(emptyOf<int>()) == 0,
+        pickOf<int, string>(7, "seven") == 7
     ])
 }
 test("equivalent type shapes compose while union tags remain distinct", typeEqualityCase)

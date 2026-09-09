@@ -1,0 +1,9 @@
+(** The ML surface applies call-site type arguments with the same angles and is
+    held to the same count contract — one shared core, two spellings.
+    Implements [TYPE-GENERICS-APPLY], [FLAVOR-ML-GENERICS] *)
+identity<T> : T -> T
+identity x = x
+
+main () =
+    pinned = identity<int, string> 5
+    print "${pinned}"

@@ -1,0 +1,8 @@
+(** A binding without a signature cannot declare type parameters, so it cannot
+    be applied at a call site either.
+    Implements [TYPE-GENERICS-APPLY], [FLAVOR-ML-GENERICS] *)
+plain x = x
+
+main () =
+    pinned = plain<int> 5
+    print "${pinned}"

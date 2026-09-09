@@ -195,6 +195,47 @@ s = pick ("left", "right")
 In the ML flavor the binder lives on the signature line (`pick<T> : …`); a
 binding without a signature cannot declare type parameters.
 
+`[TYPE-GENERICS-APPLY]` **A call site may apply type arguments explicitly.**
+`identity<int>(5)` pins the callee's declared binders positionally, left to
+right, and the written arguments unify with the instantiation the value
+arguments and the expected type would otherwise infer. This is the direct
+spelling of what an annotated binding (`let x: int = identity(5)`) can only say
+indirectly, and the only spelling that can pin a binder appearing in no
+parameter position.
+
+```osprey
+fn identity<T>(x: T) -> T = x
+fn pick<T, U>(first: T, second: U) -> T = first
+print("${identity<int>(5)} ${pick<int, string>(1, "two")}")
+```
+
+```osprey-ml
+identity<T> : T -> T
+identity x = x
+print "${identity<int> 5}"
+```
+
+The form is recognised when the `<` immediately follows the callee name and the
+matching `>` immediately precedes the call's argument list — `(` in the Default
+flavor, the juxtaposed argument in ML. Everywhere else `<` is the comparison
+operator, so `a < b` and `f(a) < g(b)` are unaffected; a relational chain that
+would otherwise read as type application must parenthesise.
+
+Applying type arguments is a contract with the declaration, checked the same way
+[GENERICS-CTOR-ARITY] checks a construction site:
+
+- The count must equal the callee's declared binder count. `identity<int, string>(5)`
+  against `fn identity<T>` is rejected with
+  `function \`identity\` takes 1 type argument(s), got 2`.
+- A callee that declares no binders — an unannotated function, a lambda, a
+  parameter holding a function value — takes no type arguments, and is rejected
+  with the same diagnostic at count 0.
+- A written argument that contradicts the value arguments or the expected type is
+  a type error, not a silently ignored annotation: `identity<int>("text")`
+  reports `cannot unify int with string`.
+- Variance markers are not permitted, exactly as on the binder itself
+  ([TYPE-VARIANCE-DECL]): `identity<out int>(5)` is rejected.
+
 A generic function used as a VALUE is specialised wherever its ABI can be
 fixed: by a consuming slot, by a call alias, or — when a generic function
 returns a lambda — at each call site of the binding, which is inlined and

@@ -211,7 +211,14 @@ Remaining:
 
 - [ ] **Call-site type application** `identity<int>(5)` — grammar +
       `Expr::Call.type_args` + both-flavor lowering + checker unification
-      (§What-is-left 1).
+      (§What-is-left 1). **Specified and pinned red first**: the contract is
+      [spec 0004](../specs/0004-TypeSystem.md) `[TYPE-GENERICS-APPLY]` and
+      [spec 0024](../specs/0024-MLFlavorSyntax.md) `[FLAVOR-ML-GENERICS]`; the
+      failing assertions are `crates/osprey-types/src/generics_apply_tests.rs`
+      (Default), `generics_apply_ml_tests.rs` (ML), four CST cases in
+      `tree-sitter-osprey/test/corpus/osprey.txt`, and the corpus twins
+      `tests/regressions/basics/types/type_equality_comprehensive.test.osp{,ml}`
+      with the golden line `applied int=5 text=os nested=2 empty=0 pair=7`.
 - [x] **Generic functions as values** — landed via plan 0002, now retired; the
       shipped contract is [spec 0004](../specs/0004-TypeSystem.md) `[TYPE-GENERICS-FN]`:
       slot-driven specialization + let-alias + inline fn-typed arg
@@ -222,5 +229,16 @@ Remaining:
       instantiation mismatch a compile error; explicit rows are contracts, and
       the runtime null guard is only a backstop (§What-is-left 3 and
       [plan 0016](0016-algebraic-effects-and-handlers.md)).
-- [ ] failscompilation case for turbofish once it lands (arity/instantiation
-      mismatch at the call site).
+- [ ] failscompilation cases for turbofish once it lands — already written and
+      red: `turbofish_type_arg_arity`, `turbofish_type_arg_too_few`,
+      `turbofish_no_declared_binder`, `turbofish_argument_contradiction`,
+      `turbofish_variance_marker`, `ml_turbofish_type_arg_arity` and
+      `ml_turbofish_no_declared_binder` in `examples/failscompilation/`.
+- [ ] The adjacent spec surface is pinned by the same sweep and may expose
+      defects of its own: `generics_decl_tests.rs`
+      ([TYPE-GENERICS-DECL], [GENERICS-CTOR-ARITY], [TYPE-GENERICS-FN]),
+      `generics_variance_tests.rs` ([TYPE-VARIANCE-*], including the built-in
+      variance table checked through position composition) and
+      `generic_effects_tests.rs` ([EFFECTS-GENERIC-*], plus the
+      `handle … do` spelling spec 0017 writes and the language does not accept —
+      [plan 0027](0027-arithmetic-effects.md) phase 0 owns that rename).

@@ -235,6 +235,28 @@ let zero = fn() => 0
 The pipe-delimited form requires at least one parameter because `||` is the
 logical-OR token.
 
+### Call-site type arguments [TYPE-GENERICS-APPLY]
+
+A call may carry an explicit type-argument list between the callee and its
+arguments. The list is recognised only when the `<` immediately follows the
+callee name and the matching `>` immediately precedes the argument list, which
+is what keeps `<` the comparison operator everywhere else.
+
+```ebnf
+call          ::= callee typeArguments? "(" arguments? ")"
+typeArguments ::= "<" typeList ">"
+```
+
+```osprey
+fn identity<T>(x: T) -> T = x
+print("${identity<int>(5)}")
+```
+
+The meaning — positional binding against the declaration's binders, the arity
+contract, and the rejection of variance markers — is
+[TYPE-GENERICS-APPLY](0004-TypeSystem.md#generics-and-variance). The ML spelling
+is [FLAVOR-ML-GENERICS](0024-MLFlavorSyntax.md#generics-flavor-ml-generics).
+
 ## Indexing
 
 Postfix indexing is available on lists, maps, and strings. It returns

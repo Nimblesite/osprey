@@ -5,6 +5,15 @@ uncurried grouping lower to the same node shapes as described in
 [FLAVOR-CURRY](0023-LanguageFlavors.md#currying-canonicalisation) and
 [FLAVOR-ML-CALL](0024-MLFlavorSyntax.md).
 
+## Type arguments [TYPE-GENERICS-APPLY]
+
+A call to a function that declares type parameters may pin them at the call
+site: `identity<int>(5)`, ML `identity<int> 5`. The written list is positional,
+must match the declared binder count, and is checked against the instantiation
+the value arguments infer — the full contract is
+[TYPE-GENERICS-APPLY](0004-TypeSystem.md#generics-and-variance), the grammar is
+[0003 §Call-site type arguments](0003-Syntax.md#call-site-type-arguments--type-generics-apply).
+
 ## Argument forms [CALL-ARGUMENTS]
 
 Default accepts positional calls at every arity:
