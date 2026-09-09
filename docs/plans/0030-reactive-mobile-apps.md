@@ -53,7 +53,8 @@ The mobile C ABI is now held to the whole corpus rather than a hand-picked subse
 - [x] Display actual GitHub responses and verify native interaction and persistence.
 - [x] Install, launch, and run the full smoke on a signed physical iPhone build.
 - [x] Pass shared domain tests, compiler checks, native renderer regression, lint, Clippy, and formatting.
-- [ ] Run the updated Markdown smoke on the physical iPhone after it is unlocked. Attempted again: the iPhone 16 is paired with Developer Mode enabled but its tunnel is disconnected over the local network, so `run.sh ios-device` stops before signing. Unlock the phone and connect it, then rerun.
+- [ ] Re-run the smoke on the physical iPhone now that Markdown rendering has landed. This is a re-verification, not first contact: the signed application was already installed, launched and passed its full smoke on an iPhone 16 (above). Attempted again and blocked on the phone: it is paired with Developer Mode enabled but its tunnel is disconnected over the local network, so `run.sh ios-device` stops before signing. Unlock the phone and connect it, then rerun.
+  Hosted CI cannot close this item and never will — a signed build on real hardware is outside what a runner can do. What CI does cover on `macos-15` every PR is the whole corpus through the `ios-sim` C ABI and both application smokes on an iPhone 16 Pro simulator, ending in `OSPREY_IOS_SMOKE_OK` and `OSPREY_INBOX_SMOKE_OK`; the device archive is built and its C host linked there too, just not executed. Since the runner is ARM64, the simulator runs the same instruction set as the phone, so what a device adds is signing, provisioning and device-only OS behaviour rather than different code generation.
 - [x] Fix Unicode boundary regressions and verify all 32 shared cases natively and on Android ARM64.
 - [x] Fix Gradle version selection and add a build-tool regression test.
 - [x] Add both mobile workflows to existing required CI jobs.
