@@ -46,6 +46,7 @@ fn spine(expr: &Expr) -> Option<(&str, Vec<ArgGroup<'_>>)> {
     let mut node = expr;
     loop {
         match node {
+            Expr::TypeApply { function, .. } => node = function,
             Expr::Call {
                 function,
                 arguments,

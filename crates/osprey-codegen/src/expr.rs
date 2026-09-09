@@ -48,6 +48,7 @@ pub(crate) fn gen_expr(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
                 None => Err(CodegenError::unknown(name)),
             },
         },
+        Expr::TypeApply { function, .. } => gen_expr(cg, function),
         Expr::Binary { op, left, right } => gen_binary(cg, op, left, right),
         Expr::Unary { op, operand } => gen_unary(cg, op, operand),
         Expr::Call {
@@ -806,6 +807,9 @@ fn gen_call(
     arguments: &[Expr],
     named: &[NamedArgument],
 ) -> Result<Value> {
+    if let Expr::TypeApply { function, .. } = function {
+        return gen_call(cg, function, arguments, named);
+    }
     // A directly-applied lambda (`x |> fn(y) => …`, `(fn(y) => …)(x)`) is
     // beta-reduced inline.
     if let Expr::Lambda {

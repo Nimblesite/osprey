@@ -293,12 +293,29 @@ arguments, annotated bindings, return positions), a variance-declared
 constructor's arguments are matched directionally: covariant (`out`)
 arguments recurse expected-accepts-actual, contravariant (`in`) arguments
 recurse with the roles flipped, invariant arguments unify exactly. The
-recursion continues only through variance-declared constructors and bottoms
-out in **exact unification**. There is no `Result<T, E>`-to-`T` coercion at any
-depth or direct value site: it would erase a failure and accept a value with
-the wrong representation. Function returns also match exactly, so a
-`Feed<(int) -> Result<int, Error>>` does not match a
-`Feed<(int) -> int>` slot.
+recursion continues only through **same-name** variance-declared constructors
+and bottoms out in **exact unification**.
+
+`[TYPE-VARIANCE-COERCION]` **The language's one coercion applies at direct
+value sites only, never inside a constructor argument.** A bare `T` satisfies a
+`Result<T, E>` slot (an implicit `Success`); the inverse never holds anywhere.
+That coercion changes the value's REPRESENTATION, and nothing rebuilds a
+container's contents, so it cannot reach through an argument position:
+`Feed<int>` does **not** satisfy a `Feed<Result<int, MathError>>` slot, under
+`out T`, under `in T`, or unannotated. Function payloads match exactly for the
+same reason, so a `Feed<(int) -> Result<int, Error>>` does not match a
+`Feed<(int) -> int>` slot — while a *directly* assigned function value still
+matches assignably, its parameters flipped and its return coerced
+(`(Result<int, E>) -> bool` satisfies an `(int) -> bool` slot).
+
+**Consequence, stated so no one has to re-derive it:** because that coercion is
+the only subtyping the language has, and it is barred from argument positions,
+`out T`, `in T` and an unannotated parameter accept and refuse **exactly the
+same programs** at assignment sites today. A variance marker's observable effect
+is [TYPE-VARIANCE-POSITIONS] — where the parameter may be written — not which
+assignments type-check. The directional recursion above is nonetheless
+normative: it is what a future representation-PRESERVING subtype relation would
+travel through, and the day one exists the three markers stop agreeing.
 
 Built-in constructors' declared variance: `Result<out T, out E>`,
 `List<out T>`, `Fiber<out T>`, `Map<K, out V>` (keys invariant); `Channel<T>`

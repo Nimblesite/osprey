@@ -1,25 +1,23 @@
-//! Spec-driven assertions for the **directional** half of
-//! [TYPE-VARIANCE-ASSIGN] (docs/specs/0004-TypeSystem.md).
+//! Spec-driven assertions for assignment sites under declared variance
+//! ([TYPE-VARIANCE-ASSIGN], [TYPE-VARIANCE-COERCION],
+//! docs/specs/0004-TypeSystem.md).
 //!
-//! "At *assignment sites* (call arguments, annotated bindings, return
-//! positions), a variance-declared constructor's arguments are matched
-//! directionally: covariant (`out`) arguments recurse expected-accepts-actual,
-//! contravariant (`in`) arguments recurse with the roles flipped, invariant
-//! arguments unify exactly."
+//! `generics_variance_tests.rs` states where a marker may be WRITTEN. This
+//! module states what writing it does to ASSIGNMENT — and the answer the spec
+//! now gives explicitly is: nothing, today. The language's only coercion
+//! (`T -> Result<T, E>`, an implicit `Success`) changes the value's
+//! representation, and nothing rebuilds a container's contents, so it is barred
+//! from argument positions. With no other subtyping in the language, `out T`,
+//! `in T` and an unannotated parameter accept and refuse exactly the same
+//! programs.
 //!
-//! `generics_variance_tests.rs` states where a marker may be WRITTEN; this
-//! module states what writing it BUYS. The distinction matters because the two
+//! That is a claim worth pinning precisely because it is invisible: the two
 //! shipped fixtures (`variance_covariant_result_payload.ospo` and
-//! `variance_invariant_arg_mismatch.ospo`) assert the same rejection under
-//! `out T` and under an unannotated parameter — so nothing in the tree today
-//! separates a covariant container from an invariant one, and a checker that
-//! ignored every marker at assignment sites would pass both.
-//!
-//! The relation being recursed is the one-way promotion `T -> Result<T, E>`
-//! that the direct value site already models (`the_direct_site_promotion_is_the
-//! _relation_being_recursed` below is its control). Every claim here is made at
-//! ALL THREE sites the spec names, because a relation implemented at one site
-//! is not the relation the spec describes.
+//! `variance_invariant_arg_mismatch.ospo`) assert the one direction all three
+//! markers already agree on, so nothing in the tree separated them, and nothing
+//! would have noticed a checker that quietly started coercing through argument
+//! positions and silently misread a payload. Every claim is made at ALL THREE
+//! sites the spec names, because a rule enforced at one site is not the rule.
 
 use crate::testutil::{accepts, rejects};
 use osprey_syntax::Flavor;
@@ -48,6 +46,11 @@ pub(crate) fn blocked(decls: &str, expected: &str, actual: &str) {
     }
 }
 
+/// True when the checker accepts the program outright.
+pub(crate) fn accepted(src: &str) -> bool {
+    crate::testutil::typecheck(Flavor::Default, src).is_empty()
+}
+
 /// A covariant container, plus producers at both instantiations.
 const FEED: &str = "type Feed<out T> = Feed { supply: T } | Dry\n\
     fn feedInt() -> Feed<int> = Feed { supply: 1 }\n\
@@ -60,12 +63,13 @@ const GATE: &str = "type Gate<in T> = Gate { admit: (T) -> bool } | Open\n\
     fn gateRes() -> Gate<Result<int, MathError>> = Gate { admit: |x| => true }\n\
     fn gateText() -> Gate<string> = Gate { admit: |x| => true }\n";
 
-/// An invariant container.
+/// An invariant container — the control the other two are measured against.
 const CELL: &str = "type Cell<T> = Cell { slot: T }\n\
     fn cellInt() -> Cell<int> = Cell { slot: 1 }\n\
-    fn cellRes() -> Cell<Result<int, MathError>> = Cell { slot: 20 * 5 }\n";
+    fn cellRes() -> Cell<Result<int, MathError>> = Cell { slot: 20 * 5 }\n\
+    fn cellText() -> Cell<string> = Cell { slot: \"s\" }\n";
 
-/// The three containers nested one level inside each other.
+/// The containers nested one level inside each other.
 const NESTED: &str = "type Feed<out T> = Feed { supply: T } | Dry\n\
     type Gate<in T> = Gate { admit: (T) -> bool } | Open\n\
     type Cell<T> = Cell { slot: T }\n\
@@ -77,8 +81,7 @@ const NESTED: &str = "type Feed<out T> = Feed { supply: T } | Dry\n\
     fn gateFeedRes() -> Gate<Feed<Result<int, MathError>>> = Gate { admit: |x| => true }\n\
     fn gateGateInt() -> Gate<Gate<int>> = Gate { admit: |x| => true }\n";
 
-/// A covariant container over FUNCTION payloads, where the structural rule
-/// (contravariant parameters, covariant returns) is the thing recursed into.
+/// A covariant container over FUNCTION payloads.
 const FNPAYLOAD: &str = "type Feed<out T> = Feed { supply: T } | Dry\n\
     fn feedTakesInt() -> Feed<(int) -> bool> = Feed { supply: |x| => true }\n\
     fn feedTakesRes() -> Feed<(Result<int, MathError>) -> bool> = \
@@ -87,186 +90,205 @@ const FNPAYLOAD: &str = "type Feed<out T> = Feed { supply: T } | Dry\n\
     fn feedGivesRes() -> Feed<(int) -> Result<int, MathError>> = Feed { supply: |x| => x * 2 }\n";
 
 // ---------------------------------------------------------------------------
-// The control: the relation exists at depth 0
+// [TYPE-VARIANCE-COERCION] — the coercion exists, at depth 0 only
 // ---------------------------------------------------------------------------
 
-/// The one-way promotion `T -> Result<T, E>` holds at a direct value site. Every
-/// rejection below that should have been an acceptance is therefore a failure to
-/// RECURSE the relation, not a missing relation.
+/// "A bare `T` satisfies a `Result<T, E>` slot (an implicit `Success`)."
 #[test]
-fn the_direct_site_promotion_is_the_relation_being_recursed() {
+fn the_coercion_holds_at_a_direct_value_site() {
     flows("", "Result<int, MathError>", "5");
 }
 
-/// Its inverse never holds, at depth 0 or anywhere else.
+/// "the inverse never holds anywhere."
 #[test]
-fn the_inverse_promotion_never_holds_at_the_direct_site() {
-    blocked("fn half() -> Result<int, MathError> = 10 / 2\n", "int", "half()");
+fn the_inverse_coercion_never_holds() {
+    blocked(
+        "fn half() -> Result<int, MathError> = 10 / 2\n",
+        "int",
+        "half()",
+    );
 }
 
 // ---------------------------------------------------------------------------
-// Covariance: `out` arguments recurse expected-accepts-actual
+// [TYPE-VARIANCE-COERCION] — and never inside an argument position
 // ---------------------------------------------------------------------------
 
-/// A `Feed<int>` flows into a `Feed<Result<int, MathError>>` slot: the covariant
-/// argument recurses the promotion. This is the ENTIRE payoff of writing `out`,
-/// and nothing in the tree asserted it before.
+/// "`Feed<int>` does **not** satisfy a `Feed<Result<int, MathError>>` slot,
+/// under `out T`" — the coercion would have to rebuild the container.
 #[test]
-fn covariance_carries_the_promotion_into_the_argument() {
-    flows(FEED, "Feed<Result<int, MathError>>", "feedInt()");
+fn a_covariant_argument_does_not_carry_the_coercion() {
+    blocked(FEED, "Feed<Result<int, MathError>>", "feedInt()");
 }
 
-/// The unwrapping direction stays refused — "no `Result<T, E>`-to-`T` coercion
-/// at any depth".
+/// "…under `in T`" — the flipped recursion does not smuggle it in either.
 #[test]
-fn covariance_never_unwraps_a_result_payload() {
-    blocked(FEED, "Feed<int>", "feedRes()");
+fn a_contravariant_argument_does_not_carry_the_coercion() {
+    blocked(GATE, "Gate<int>", "gateRes()");
 }
 
-/// The identical instantiation is the baseline both directions are measured
-/// against.
+/// "…or unannotated."
 #[test]
-fn covariance_accepts_the_identical_instantiation() {
-    flows(FEED, "Feed<int>", "feedInt()");
-}
-
-/// Covariance is not "anything goes": an unrelated payload is still refused.
-#[test]
-fn covariance_rejects_an_unrelated_payload() {
-    blocked(FEED, "Feed<int>", "feedText()");
-    blocked(FEED, "Feed<string>", "feedInt()");
-}
-
-// ---------------------------------------------------------------------------
-// Contravariance: `in` arguments recurse with the roles flipped
-// ---------------------------------------------------------------------------
-
-/// A `Gate<Result<int, MathError>>` flows into a `Gate<int>` slot — the flipped
-/// recursion, and the entire payoff of writing `in`.
-#[test]
-fn contravariance_carries_the_promotion_with_the_roles_flipped() {
-    flows(GATE, "Gate<int>", "gateRes()");
-}
-
-/// The unflipped direction is refused: a gate admitting only `int` cannot stand
-/// where one admitting a `Result` is expected.
-#[test]
-fn contravariance_rejects_the_covariant_direction() {
-    blocked(GATE, "Gate<Result<int, MathError>>", "gateInt()");
-}
-
-/// The baseline.
-#[test]
-fn contravariance_accepts_the_identical_instantiation() {
-    flows(GATE, "Gate<int>", "gateInt()");
-}
-
-/// And it is not "anything goes" either.
-#[test]
-fn contravariance_rejects_an_unrelated_payload() {
-    blocked(GATE, "Gate<int>", "gateText()");
-}
-
-// ---------------------------------------------------------------------------
-// Invariance: arguments unify exactly, in BOTH directions
-// ---------------------------------------------------------------------------
-
-/// An unannotated parameter refuses the promotion the covariant one carries.
-/// This test and `covariance_carries_the_promotion_into_the_argument` are the
-/// pair that separates a covariant container from an invariant one; the shipped
-/// fixtures assert only the half both share.
-#[test]
-fn invariance_refuses_the_promotion_in_both_directions() {
+fn an_invariant_argument_does_not_carry_the_coercion() {
     blocked(CELL, "Cell<Result<int, MathError>>", "cellInt()");
+}
+
+/// The unwrapping direction is refused under every marker too — the half the
+/// shipped fixtures already cover, kept here so both directions sit together.
+#[test]
+fn no_marker_unwraps_a_result_payload() {
+    blocked(FEED, "Feed<int>", "feedRes()");
+    blocked(GATE, "Gate<Result<int, MathError>>", "gateInt()");
     blocked(CELL, "Cell<int>", "cellRes()");
 }
 
-/// The baseline.
+/// The identical instantiation is what all three markers DO accept.
 #[test]
-fn invariance_accepts_the_identical_instantiation() {
+fn every_marker_accepts_the_identical_instantiation() {
+    flows(FEED, "Feed<int>", "feedInt()");
+    flows(GATE, "Gate<int>", "gateInt()");
     flows(CELL, "Cell<int>", "cellInt()");
 }
 
-// ---------------------------------------------------------------------------
-// Composition: "a nested constructor's argument composes the position"
-// ---------------------------------------------------------------------------
-
-/// `out` inside `out` stays covariant, so the promotion reaches two levels down.
+/// And an unrelated payload is refused under every marker.
 #[test]
-fn covariance_composes_with_covariance() {
-    flows(NESTED, "Feed<Feed<Result<int, MathError>>>", "feedFeedInt()");
-}
-
-/// `in` inside `out` flips once: the inner argument recurses backwards.
-#[test]
-fn contravariance_inside_covariance_flips_once() {
-    flows(NESTED, "Feed<Gate<int>>", "feedGateRes()");
-}
-
-/// …and the unflipped direction stays refused at that depth.
-#[test]
-fn contravariance_inside_covariance_rejects_the_unflipped_direction() {
-    blocked(NESTED, "Feed<Gate<Result<int, MathError>>>", "feedGateInt()");
-}
-
-/// `out` inside `in` flips the outer relation, so the value travels the other
-/// way.
-#[test]
-fn covariance_inside_contravariance_flips_once() {
-    flows(NESTED, "Gate<Feed<int>>", "gateFeedRes()");
-}
-
-/// Two flips compose back to covariance.
-#[test]
-fn contravariance_inside_contravariance_composes_back_to_covariance() {
-    flows(NESTED, "Gate<Gate<Result<int, MathError>>>", "gateGateInt()");
-}
-
-/// An invariant argument stops the recursion whatever encloses it.
-#[test]
-fn an_invariant_argument_stops_the_recursion() {
-    blocked(NESTED, "Feed<Cell<Result<int, MathError>>>", "feedCellInt()");
+fn every_marker_rejects_an_unrelated_payload() {
+    blocked(FEED, "Feed<int>", "feedText()");
+    blocked(GATE, "Gate<int>", "gateText()");
+    blocked(CELL, "Cell<int>", "cellText()");
 }
 
 // ---------------------------------------------------------------------------
-// Function payloads: contravariant parameters, covariant returns
+// Composition — depth does not unlock the coercion
 // ---------------------------------------------------------------------------
 
-/// "Function types are structurally contravariant in parameters": a function
-/// accepting a `Result` stands where one accepting an `int` is expected.
+/// `out` inside `out` recurses, and still bottoms out exact.
 #[test]
-fn a_function_payload_is_contravariant_in_its_parameter() {
-    flows(FNPAYLOAD, "Feed<(int) -> bool>", "feedTakesRes()");
+fn covariance_inside_covariance_still_bottoms_out_exact() {
+    blocked(NESTED, "Feed<Feed<Result<int, MathError>>>", "feedFeedInt()");
+    flows(NESTED, "Feed<Feed<int>>", "feedFeedInt()");
 }
 
-/// The opposite direction is refused.
+/// `in` inside `out` flips the recursion — and changes no outcome.
 #[test]
-fn a_function_payload_rejects_a_widened_parameter() {
-    blocked(FNPAYLOAD, "Feed<(Result<int, MathError>) -> bool>", "feedTakesInt()");
+fn contravariance_inside_covariance_still_bottoms_out_exact() {
+    blocked(NESTED, "Feed<Gate<int>>", "feedGateRes()");
+    blocked(
+        NESTED,
+        "Feed<Gate<Result<int, MathError>>>",
+        "feedGateInt()",
+    );
 }
 
-/// "…and covariant in returns": a function returning `int` stands where one
-/// returning `Result<int, E>` is expected.
+/// `out` inside `in`, the other flip.
 #[test]
-fn a_function_payload_is_covariant_in_its_return() {
-    flows(FNPAYLOAD, "Feed<(int) -> Result<int, MathError>>", "feedGivesInt()");
+fn covariance_inside_contravariance_still_bottoms_out_exact() {
+    blocked(NESTED, "Gate<Feed<int>>", "gateFeedRes()");
 }
 
-/// The spec's own counterexample: "a `Feed<(int) -> Result<int, Error>>` does
-/// not match a `Feed<(int) -> int>` slot".
+/// Two flips compose back to covariance, which is still exact.
 #[test]
-fn the_spec_counterexample_stays_refused() {
+fn contravariance_inside_contravariance_still_bottoms_out_exact() {
+    blocked(
+        NESTED,
+        "Gate<Gate<Result<int, MathError>>>",
+        "gateGateInt()",
+    );
+    flows(NESTED, "Gate<Gate<int>>", "gateGateInt()");
+}
+
+/// An invariant argument under a covariant one.
+#[test]
+fn an_invariant_argument_under_a_covariant_one_is_exact() {
+    blocked(
+        NESTED,
+        "Feed<Cell<Result<int, MathError>>>",
+        "feedCellInt()",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Function payloads: exact under a container, assignable when assigned direct
+// ---------------------------------------------------------------------------
+
+/// "Function payloads match exactly for the same reason" — the parameter
+/// position does not flip inside a container.
+#[test]
+fn a_function_payload_matches_exactly_inside_a_container() {
+    blocked(FNPAYLOAD, "Feed<(int) -> bool>", "feedTakesRes()");
+    blocked(
+        FNPAYLOAD,
+        "Feed<(Result<int, MathError>) -> bool>",
+        "feedTakesInt()",
+    );
+}
+
+/// The spec's own counterexample, and its mirror: neither return direction
+/// matches under a container.
+#[test]
+fn a_function_payloads_return_matches_exactly_inside_a_container() {
     blocked(FNPAYLOAD, "Feed<(int) -> int>", "feedGivesRes()");
+    blocked(
+        FNPAYLOAD,
+        "Feed<(int) -> Result<int, MathError>>",
+        "feedGivesInt()",
+    );
+}
+
+/// The identical function payload flows, so the refusals above are about the
+/// shape and not about function payloads being rejected wholesale.
+#[test]
+fn an_identical_function_payload_flows() {
+    flows(FNPAYLOAD, "Feed<(int) -> bool>", "feedTakesInt()");
 }
 
 // ---------------------------------------------------------------------------
-// The same relation through the ML surface ([FLAVOR-BOUNDARY])
+// The agreement test: the consequence, pinned
 // ---------------------------------------------------------------------------
 
-/// The ML twin of the covariant payoff.
+/// "`out T`, `in T` and an unannotated parameter accept and refuse **exactly
+/// the same programs** at assignment sites today."
+///
+/// This test is the tripwire for that sentence. It goes red the day someone
+/// implements a directional relation that actually bites — at which point the
+/// spec's consequence paragraph is stale and must be rewritten with it, rather
+/// than the language quietly gaining a coercion that reads a payload at the
+/// wrong representation.
 #[test]
-fn ml_covariance_carries_the_promotion_into_the_argument() {
-    accepts(
+fn the_three_markers_agree_on_every_assignment_outcome() {
+    let outcomes: Vec<(&str, bool, bool)> = vec![
+        (
+            "covariant",
+            accepted(&sites(FEED, "Feed<Result<int, MathError>>", "feedInt()")[0]),
+            accepted(&sites(FEED, "Feed<int>", "feedRes()")[0]),
+        ),
+        (
+            "contravariant",
+            accepted(&sites(GATE, "Gate<Result<int, MathError>>", "gateInt()")[0]),
+            accepted(&sites(GATE, "Gate<int>", "gateRes()")[0]),
+        ),
+        (
+            "invariant",
+            accepted(&sites(CELL, "Cell<Result<int, MathError>>", "cellInt()")[0]),
+            accepted(&sites(CELL, "Cell<int>", "cellRes()")[0]),
+        ),
+    ];
+    for (marker, forward, backward) in &outcomes {
+        assert!(
+            !forward && !backward,
+            "{marker}: expected both directions refused ([TYPE-VARIANCE-COERCION]), \
+             got forward={forward} backward={backward}"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The same rules through the ML surface ([FLAVOR-BOUNDARY])
+// ---------------------------------------------------------------------------
+
+/// The ML twin: a covariant ML container refuses the coercion too.
+#[test]
+fn ml_a_covariant_argument_does_not_carry_the_coercion() {
+    rejects(
         Flavor::Ml,
         "type Feed out T =\n    supply : T\n\
          feedInt : Unit -> Feed<int>\n\
@@ -278,88 +300,30 @@ fn ml_covariance_carries_the_promotion_into_the_argument() {
     );
 }
 
-/// The ML twin of the contravariant payoff.
+/// The ML twin of the identical-instantiation acceptance, so the refusal above
+/// is not an ML parsing accident.
 #[test]
-fn ml_contravariance_carries_the_promotion_with_the_roles_flipped() {
+fn ml_an_identical_instantiation_flows() {
     accepts(
         Flavor::Ml,
-        "type Gate in T =\n    admit : T -> bool\n\
-         gateRes : Unit -> Gate<Result<int, MathError>>\n\
-         gateRes () = Gate(admit = \\x => true)\n\
-         takes : Gate<int> -> int\n\
+        "type Feed out T =\n    supply : T\n\
+         feedInt : Unit -> Feed<int>\n\
+         feedInt () = Feed(supply = 1)\n\
+         takes : Feed<int> -> int\n\
          takes v = 0\n\
-         held = takes (gateRes ())\n\
+         held = takes (feedInt ())\n\
          print \"${held}\"\n",
     );
 }
 
-/// The ML twin of the invariant refusal.
+/// The ML twin of the direct-site coercion.
 #[test]
-fn ml_invariance_refuses_the_promotion() {
-    rejects(
+fn ml_the_coercion_holds_at_a_direct_value_site() {
+    accepts(
         Flavor::Ml,
-        "type Cell T =\n    slot : T\n\
-         cellInt : Unit -> Cell<int>\n\
-         cellInt () = Cell(slot = 1)\n\
-         takes : Cell<Result<int, MathError>> -> int\n\
+        "takes : Result<int, MathError> -> int\n\
          takes v = 0\n\
-         held = takes (cellInt ())\n\
+         held = takes 5\n\
          print \"${held}\"\n",
-    );
-}
-
-// ---------------------------------------------------------------------------
-// The collapse detector
-// ---------------------------------------------------------------------------
-
-/// True when the checker accepts the program outright.
-fn accepted(src: &str) -> bool {
-    crate::testutil::typecheck(Flavor::Default, src).is_empty()
-}
-
-/// [TYPE-VARIANCE-ASSIGN] opens by saying variance DIRECTS assignability, then
-/// closes by saying the recursion "bottoms out in exact unification". Read
-/// strictly, the second sentence empties the first: if every leaf must match
-/// exactly, `out T`, `in T` and an unannotated parameter accept and refuse
-/// exactly the same programs, and the marker's only teeth are
-/// [TYPE-VARIANCE-POSITIONS].
-///
-/// This test does not take a side. It asserts only that the two readings are
-/// distinguishable in the tree — that SOMETHING about assignment changes when
-/// the marker changes. If it fails, the first sentence of [TYPE-VARIANCE-ASSIGN]
-/// describes nothing the compiler does and the spec is the stale source; the
-/// two shipped fixtures cannot see this, because both assert the one direction
-/// all three markers agree on.
-#[test]
-fn the_marker_must_change_at_least_one_assignment_outcome() {
-    let covariant = accepted(&sites(FEED, "Feed<Result<int, MathError>>", "feedInt()")[0]);
-    let contravariant = accepted(&sites(GATE, "Gate<int>", "gateRes()")[0]);
-    let invariant_forward = accepted(&sites(CELL, "Cell<Result<int, MathError>>", "cellInt()")[0]);
-    let invariant_flipped = accepted(&sites(CELL, "Cell<int>", "cellRes()")[0]);
-
-    assert!(
-        covariant != invariant_forward || contravariant != invariant_flipped,
-        "variance is inert at assignment sites: out={covariant}, in={contravariant}, \
-         invariant={invariant_forward}/{invariant_flipped} — all three markers accept and \
-         refuse the same programs, so [TYPE-VARIANCE-ASSIGN]'s directional rule has no \
-         observable content and only [TYPE-VARIANCE-POSITIONS] is load-bearing"
-    );
-}
-
-/// The other half of the same question, asked of the built-in table: `List` is
-/// declared `out` and `Channel` invariant, so at least one program must
-/// separate them.
-#[test]
-fn a_builtin_marker_must_change_at_least_one_assignment_outcome() {
-    const BUILTINS: &str = "fn listInt() -> List<int> = [1]\n\
-        fn chanInt() -> Channel<int> = Channel(2)\n";
-    let covariant = accepted(&sites(BUILTINS, "List<Result<int, MathError>>", "listInt()")[0]);
-    let invariant = accepted(&sites(BUILTINS, "Channel<Result<int, MathError>>", "chanInt()")[0]);
-
-    assert!(
-        covariant != invariant,
-        "`List<out T>` and `Channel<T>` are indistinguishable at assignment sites \
-         (both {covariant}), so the built-in variance table in [TYPE-VARIANCE-ASSIGN] \
-         records nothing the compiler consults"
     );
 }

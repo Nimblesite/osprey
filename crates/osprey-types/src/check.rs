@@ -418,11 +418,14 @@ impl Checker {
         }
         let param_names: Vec<String> = type_params.iter().map(|p| p.name.clone()).collect();
         for v in variants {
-            let fields = v
+            let fields: Vec<(String, String)> = v
                 .fields
                 .iter()
                 .map(|f| (f.name.clone(), f.ty.clone()))
                 .collect();
+            if is_record {
+                self.ctx.set_record(name.to_owned(), param_names.clone(), fields.clone());
+            }
             let _ = self.ctors.insert(
                 v.name.clone(),
                 CtorInfo {

@@ -15,6 +15,8 @@ pub struct InferCtx {
     /// assignability so `Source<out T>` matches covariantly. Implements
     /// [TYPE-VARIANCE-ASSIGN].
     variances: HashMap<String, Vec<Variance>>,
+    /// Nominal record layouts, before instantiating their declaration binders.
+    records: HashMap<String, (Vec<String>, Vec<(String, String)>)>,
 }
 
 impl InferCtx {
@@ -32,6 +34,19 @@ impl InferCtx {
     #[must_use]
     pub fn variance_of(&self, name: &str) -> Option<&[Variance]> {
         self.variances.get(name).map(Vec::as_slice)
+    }
+
+    /// Register a record's generic field template [TYPE-GENERICS-DECL].
+    pub(crate) fn set_record(&mut self, name: String, params: Vec<String>, fields: Vec<(String, String)>) {
+        let _ = self.records.insert(name, (params, fields));
+    }
+
+    /// Resolve a nominal record application to its instantiated fields.
+    pub(crate) fn record_fields(&self, name: &str, args: &[Type]) -> Option<std::collections::BTreeMap<String, Type>> {
+        let (params, fields) = self.records.get(name)?;
+        if params.len() != args.len() { return None; }
+        let binder = params.iter().cloned().zip(args.iter().cloned()).collect();
+        Some(fields.iter().map(|(field, ty)| (field.clone(), crate::convert::type_name_to_type(ty, &binder))).collect())
     }
 
     /// Allocate a fresh, unbound type variable.

@@ -42,46 +42,37 @@ module Json : JsonApi
 
     // Escape original slashes first; later JSON escapes must remain single.
     // Runtime strings cannot contain NUL, so representable controls start at 1.
-    escape : string -> string
     escape s =
         bslash = "\\"
         quote = "\""
         step = replace s bslash (bslash + bslash) ?: ""
         escapeControls (replace step quote (bslash + quote) ?: "") 1
 
-    quote : string -> string
     quote s =
         quote = "\""
         quote + escape s + quote
 
     // `"key":"escaped value"` — a string-valued object member.
-    strField : string -> string -> string
     strField key value = quote key + ":" + quote value
 
     // `"key":123` — a number-valued object member (integers need no escaping).
-    numField : string -> int -> string
     numField key value = quote key + ":" + toString value
 
     // An already-encoded JSON value. Kept explicit so callers cannot confuse
     // protocol trees with ordinary escaped application strings.
-    rawField : string -> string -> string
     rawField key value = quote key + ":" + value
 
     // Wrap a comma-joined member list into an object / array. Callers join the
     // members with `,`; these only add the braces so nesting stays composable.
-    obj : string -> string
     obj members = "{" + members + "}"
 
-    arr : string -> string
     arr elements = "[" + elements + "]"
 
     // The one canonical error body shape, so every 4xx path is identical.
-    error : string -> string
     error why = obj (strField "error" why)
 
     // Scalar-only projection used by the browser model boundary. Documents
     // are always freed here, so consumers cannot accidentally retain handles.
-    getOr : string -> string -> string -> string
     getOr source path fallback =
         doc = jsonParse source ?: 0
         value = jsonGet doc path ?: fallback

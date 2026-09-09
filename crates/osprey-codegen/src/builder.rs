@@ -702,6 +702,7 @@ impl Codegen {
     /// [TYPE-FN-HIGHER-ORDER].
     pub(crate) fn callee_fn_type(&self, expr: &Expr) -> Option<Type> {
         match expr {
+            Expr::TypeApply { function, .. } => self.callee_fn_type(function),
             Expr::Identifier(name) => self.identifier_fn_type(name),
             // A call evaluates to its callee's return type — recurse so a chain
             // peels one arrow per application.

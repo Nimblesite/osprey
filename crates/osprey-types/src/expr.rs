@@ -195,6 +195,11 @@ impl Checker {
                         self.record_field_access_on_fieldless(field, name);
                     }
                 }
+                if let Type::Con { name, args } = other {
+                    if let Some(ty) = self.ctx.record_fields(name, args).and_then(|fields| fields.get(field).cloned()) {
+                        return ty;
+                    }
+                }
                 self.ctx.fresh()
             }
         }

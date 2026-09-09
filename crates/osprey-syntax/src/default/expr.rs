@@ -200,13 +200,6 @@ impl Lowerer<'_> {
 
     fn lower_call(&self, node: Node<'_>) -> Expr {
         let mut callee = self.lower_expr_field(node, "callee");
-        if let Some(args) = node.child_by_field_name("type_arguments") {
-            callee = Expr::TypeApply {
-                function: Box::new(callee),
-                type_args: self.named_of_kind(args, "type_list").into_iter()
-                    .flat_map(|list| self.lower_type_list(list)).collect(),
-            };
-        }
         if let Some(member) = node.child_by_field_name("member") {
             return Expr::FieldAccess {
                 target: Box::new(callee),
@@ -224,6 +217,17 @@ impl Lowerer<'_> {
         // field-access callee lowers to an ordinary call with the receiver as the
         // first positional argument — keeping method calls invisible downstream.
         let (mut arguments, named_arguments) = self.lower_arg_list(node);
+        if let Some(args) = node.child_by_field_name("type_arguments") {
+            if let Expr::FieldAccess { target, field } = callee {
+                arguments.insert(0, *target);
+                callee = Expr::Identifier(field);
+            }
+            callee = Expr::TypeApply {
+                function: Box::new(callee),
+                type_args: self.named_of_kind(args, "type_list").into_iter()
+                    .flat_map(|list| self.lower_type_list(list)).collect(),
+            };
+        }
         match callee {
             Expr::FieldAccess { target, field } => {
                 arguments.insert(0, *target);
@@ -461,6 +465,9 @@ fn fragment_prefix() -> u32 {
 
 fn parse_fragment(frag: &str) -> Expr {
     let parsed = crate::parse_program(&format!("{FRAGMENT_BINDING}{frag}\n"));
+    if !parsed.errors.is_empty() {
+        return Expr::Identifier(frag.trim().to_owned());
+    }
     match parsed.program.statements.into_iter().next() {
         Some(Stmt::Let { value, .. }) => value,
         _ => Expr::Identifier(frag.trim().to_string()),
