@@ -35,7 +35,7 @@ echo "==> iOS device C host linked; simulator scalar imports/exports and global 
 # The seven hand-picked goldens that used to run here are gone, and nothing is
 # lost: `OSPREY_TARGET=ios-sim crates/run_test_corpus.sh` now runs the WHOLE
 # corpus on the simulator against the same byte-exact goldens, with its
-# rejections pinned in tests/IOS_UNPORTABLE.txt. Running fourteen of those
+# rejections pinned in tests/MOBILE_UNPORTABLE.txt. Running fourteen of those
 # programs a second time here would double the slowest stage to observe a
 # strict subset of what the harness already observed.
 
