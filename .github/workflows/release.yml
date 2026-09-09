@@ -89,10 +89,12 @@ jobs:
     # binary at the new tag version). A website-only tag skips it.
     if: ${{ needs.scope.outputs.build_matrix == 'true' }}
     runs-on: ${{ matrix.os }}
-    # Windows is the newest, least-proven target — keep a win32 hiccup from
-    # blocking the mac/linux binaries + VSIX publish. A win32 failure shows as a
-    # failed leg (warning) but doesn't fail the build job.
-    continue-on-error: ${{ matrix.platform == 'win32-x64' }}
+    # Every platform is blocking. win32 was `continue-on-error`, so a Windows
+    # hiccup could not hold up the mac/linux publish — which meant a release
+    # whose Windows binary never built still reported green, and the operator
+    # heard about it from Scoop users. `fail-fast: false` stays: a failing leg
+    # must not cancel its siblings, because the point is to see every platform's
+    # result in one run. It just has to end red.
     strategy:
       fail-fast: false
       matrix:
@@ -162,7 +164,25 @@ jobs:
           staging="osprey-$v-$plat"
           mkdir -p "dist/$staging"
           cp "target/release/osprey${exe}" "dist/$staging/"
-          cp compiler/lib/lib*.a "dist/$staging/" 2>/dev/null || cp compiler/bin/lib*.a "dist/$staging/" 2>/dev/null || true
+          # The runtime archives used to be copied with `|| true`, so a build
+          # that produced none still packaged, published and reached Homebrew —
+          # a compiler that can link nothing, shipped green. Find the directory
+          # that has them and fail when neither does.
+          libdir=""
+          for candidate in compiler/lib compiler/bin; do
+            if ls "$candidate"/lib*.a >/dev/null 2>&1; then libdir="$candidate"; break; fi
+          done
+          [ -n "$libdir" ] || { echo "::error::no runtime archives in compiler/lib or compiler/bin"; exit 1; }
+          cp "$libdir"/lib*.a "dist/$staging/"
+          # Every memory backend must be in the tarball. A missing one is
+          # otherwise found by the user whose --memory=gc build fails to link.
+          for archive in fiber_runtime fiber_runtime_arc fiber_runtime_gc \
+                         http_runtime http_runtime_arc http_runtime_gc; do
+            [ -f "dist/$staging/lib${archive}.a" ] || {
+              echo "::error::lib${archive}.a missing from $staging (staged from $libdir: $(echo "$libdir"/lib*.a))"
+              exit 1
+            }
+          done
           tar -czf "dist/$staging.tar.gz" -C dist "$staging"
           # macOS ships shasum (Perl) but not sha256sum; Windows Git Bash ships
           # sha256sum but not shasum; Linux has both. Identical output format
@@ -196,28 +216,35 @@ jobs:
           fail_on_unmatched_files: true
 
   # --------------------------------------------------------------------------
-  # Token preflight — brew/scoop (BREW_SCOOP_PAT) and Open VSX (OPEN_VSX_PAT) use
-  # standing tokens that can't be minted from OIDC. Probe them once so those jobs
-  # SKIP cleanly when the token isn't configured (the Marketplace OIDC publish +
-  # binaries + GitHub Release + site still ship). Secrets aren't readable in a
-  # job-level `if:`, so we surface their presence as booleans here. Add the
-  # secrets later and re-run the skipped jobs — no re-tag needed.
+  # Credential preflight — brew/scoop (BREW_SCOOP_PAT) and Open VSX
+  # (OPEN_VSX_PAT) use standing tokens that cannot be minted from OIDC. This
+  # used to emit a *warning* and let those jobs skip, so a release that reached
+  # neither Homebrew, Scoop nor Open VSX still reported success while `brew
+  # install` kept serving the previous version. A channel we mean to publish to
+  # and cannot is a broken release, so a missing credential now fails here —
+  # before anything is built, and with the command that fixes it.
   preflight:
-    name: Probe optional publish tokens
+    name: Verify publish credentials
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    outputs:
-      has_brew: ${{ steps.probe.outputs.has_brew }}
-      has_ovsx: ${{ steps.probe.outputs.has_ovsx }}
     steps:
-      - id: probe
+      - name: Require every publish credential
         env:
           BREW_SCOOP_PAT: ${{ secrets.BREW_SCOOP_PAT }}
           OPEN_VSX_PAT: ${{ secrets.OPEN_VSX_PAT }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         run: |
           set -euo pipefail
-          if [ -n "${BREW_SCOOP_PAT:-}" ]; then echo "has_brew=true" >> "$GITHUB_OUTPUT"; else echo "has_brew=false" >> "$GITHUB_OUTPUT"; echo "::warning::BREW_SCOOP_PAT not set — Homebrew + Scoop publish will be skipped"; fi
-          if [ -n "${OPEN_VSX_PAT:-}" ];   then echo "has_ovsx=true" >> "$GITHUB_OUTPUT"; else echo "has_ovsx=false" >> "$GITHUB_OUTPUT"; echo "::warning::OPEN_VSX_PAT not set — Open VSX publish will be skipped"; fi
+          missing=""
+          for name in BREW_SCOOP_PAT OPEN_VSX_PAT AZURE_CLIENT_ID AZURE_TENANT_ID; do
+            [ -n "${!name:-}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error title=Missing publish credentials::Not set:${missing}. Set each with 'gh secret set <NAME>'. Every release channel is required; none of them is optional."
+            exit 1
+          fi
+          echo "All publish credentials present."
 
   # --------------------------------------------------------------------------
   # Homebrew tap — shape from templates/gh-actions/publish-brew-tap.yml, adapted
@@ -225,7 +252,6 @@ jobs:
   brew:
     name: Publish Homebrew formula
     needs: [version, github-release, preflight]
-    if: ${{ needs.preflight.outputs.has_brew == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -283,7 +309,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/osprey.rb
-          git commit -m "osprey ${{ needs.version.outputs.version }}" || exit 0
+          # `git commit || exit 0` swallowed real failures along with the
+          # nothing-to-commit case, and skipped the push with them. Ask
+          # directly whether anything is staged.
+          if git diff --cached --quiet; then
+            echo "formula already at ${{ needs.version.outputs.version }} — nothing to commit"
+            exit 0
+          fi
+          git commit -m "osprey ${{ needs.version.outputs.version }}"
           git push
 
   # --------------------------------------------------------------------------
@@ -293,7 +326,6 @@ jobs:
   scoop:
     name: Publish Scoop manifest
     needs: [version, github-release, preflight]
-    if: ${{ needs.preflight.outputs.has_brew == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -344,7 +376,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add bucket/osprey.json
-          git commit -m "osprey ${{ needs.version.outputs.version }}" || exit 0
+          # `git commit || exit 0` swallowed real failures along with the
+          # nothing-to-commit case, and skipped the push with them. Ask
+          # directly whether anything is staged.
+          if git diff --cached --quiet; then
+            echo "manifest already at ${{ needs.version.outputs.version }} — nothing to commit"
+            exit 0
+          fi
+          git commit -m "osprey ${{ needs.version.outputs.version }}"
           git push
 
   # --------------------------------------------------------------------------
@@ -360,9 +399,8 @@ jobs:
     # rebuilt at the new tag version.
     if: ${{ needs.scope.outputs.vsix == 'true' }}
     runs-on: ${{ matrix.os }}
-    # Match the build job: a win32 VSIX hiccup must not block the mac/linux
-    # VSIXes from reaching the Marketplace.
-    continue-on-error: ${{ matrix.target == 'win32-x64' }}
+    # Matches the build job: every target is blocking, and a failing leg still
+    # lets its siblings finish so one run shows every platform's result.
     strategy:
       fail-fast: false
       matrix:
@@ -494,7 +532,6 @@ jobs:
   publish-openvsx:
     name: Publish VSIX to Open VSX
     needs: [version, vsix, preflight]
-    if: ${{ needs.preflight.outputs.has_ovsx == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: release
@@ -554,9 +591,88 @@ jobs:
   deploy-webcompiler:
     name: Deploy web compiler
     needs: [github-release]
-    # Non-blocking: the browser compiler on Fly.io is an optional add-on, not a
-    # release artifact. The deploy step itself is `continue-on-error` inside
-    # deploy-webcompiler.yml (continue-on-error is not valid on a `uses:` job),
-    # so a Fly outage or invalid/banned FLY_API_TOKEN can't fail the release.
+    # Blocking, like every other channel. This deploy used to be non-fatal, and
+    # the live playground consequently served a stale build for weeks behind a
+    # green release. Nothing depends on this job, so failing it stops nothing —
+    # it only makes the run red.
     uses: ./.github/workflows/deploy-webcompiler.yml
     secrets: inherit
+
+  # --------------------------------------------------------------------------
+  # THE BACKSTOP. Every job above can fail the run by failing. None of them can
+  # fail it by not running — GitHub scores a skipped job as green, so a wrong
+  # `if:`, an unset scope output or a cancelled dependency silently produces a
+  # release that published nothing and reported success. This job is the one
+  # place that states what a release is *required* to have done.
+  #
+  # It cancels nothing: `if: always()` waits for every job to reach a conclusion
+  # first, so a failing leg still lets its siblings finish and report.
+  #
+  # scripts/verify-release-gates.mjs asserts on every PR that this `needs:` list
+  # names every other job in this file — add a publish channel without wiring it
+  # in here and CI fails before a release can quietly skip it.
+  release-complete:
+    name: Release complete
+    needs:
+      - scope
+      - version
+      - build
+      - github-release
+      - preflight
+      - brew
+      - scoop
+      - vsix
+      - publish-marketplace
+      - publish-openvsx
+      - deploy-site
+      - deploy-webcompiler
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Assert the release actually happened
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+          # The scope job is the single source of truth for which surfaces this
+          # tag must publish. The assertion is driven by the same four outputs
+          # the jobs' own `if:` conditions use, so "ran" and "should have run"
+          # cannot drift apart silently.
+          WANT_FULL: ${{ needs.scope.outputs.full }}
+          WANT_BUILD: ${{ needs.scope.outputs.build_matrix }}
+          WANT_VSIX: ${{ needs.scope.outputs.vsix }}
+          WANT_SITE: ${{ needs.scope.outputs.website }}
+          # A SemVer prerelease tag (v1.2.3-rc.1) deliberately leaves the live
+          # site alone. That is the only reason deploy-site may skip.
+          IS_PRERELEASE: ${{ contains(github.ref_name, '-') }}
+        run: |
+          set -euo pipefail
+          echo "## Release job results" >> "$GITHUB_STEP_SUMMARY"
+          jq -r 'to_entries[] | "- \(.key): \(.value.result)"' <<< "$RESULTS" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+          broken=$(jq -r 'to_entries[]
+            | select(.value.result == "failure" or .value.result == "cancelled")
+            | "\(.key)(\(.value.result))"' <<< "$RESULTS" | tr '\n' ' ')
+
+          # These have no `if:` at all, so a skip means the run itself is broken.
+          required="scope version preflight"
+          [ "$WANT_BUILD" != "true" ] || required="$required build"
+          [ "$WANT_VSIX" != "true" ] || required="$required vsix publish-marketplace publish-openvsx"
+          [ "$WANT_FULL" != "true" ] || required="$required github-release brew scoop deploy-webcompiler"
+          if [ "$WANT_SITE" = "true" ] && [ "$IS_PRERELEASE" != "true" ]; then
+            required="$required deploy-site"
+          fi
+
+          # Anything merely skipped here is a channel that silently did not ship.
+          absent=""
+          for job in $required; do
+            result=$(jq -r --arg j "$job" '.[$j].result' <<< "$RESULTS")
+            [ "$result" = "success" ] || absent="$absent $job($result)"
+          done
+
+          if [ -n "$broken" ] || [ -n "$absent" ]; then
+            [ -z "$broken" ] || echo "::error title=Release job failed::${broken}"
+            [ -z "$absent" ] || echo "::error title=Release channel did not publish::This tag requires these to succeed and they did not:${absent}"
+            exit 1
+          fi
+          echo "Every channel this tag requires published: ${required}"
