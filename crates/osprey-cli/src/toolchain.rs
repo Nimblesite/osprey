@@ -26,6 +26,17 @@ pub(crate) fn fail(msg: &str) -> ExitCode {
     ExitCode::FAILURE
 }
 
+/// An app-library target publishes a static archive plus a matching C header,
+/// so `-o` must name the archive. `platform` opens the diagnostic.
+pub(crate) fn validate_archive_output(out: &Path, platform: &str) -> Result<(), String> {
+    if out.extension().and_then(|e| e.to_str()) != Some("a") {
+        return Err(format!(
+            "{platform} output must end in .a; a matching .h is generated beside it"
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn write(path: &Path, contents: &str) -> Result<(), ExitCode> {
     std::fs::write(path, contents)
         .map_err(|e| fail(&format!("cannot write {}: {e}", path.display())))

@@ -1,2 +1,1 @@
 type mismatch: cannot unify int with Result<int, MathError>
-unknown identifier `add`

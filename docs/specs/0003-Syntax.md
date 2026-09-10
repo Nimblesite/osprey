@@ -295,6 +295,4 @@ pattern ([PATTERN-STRUCTURAL](0007-PatternMatching.md#structural-patterns--patte
 
 ## Evaluation order
 
-Statements and positional call arguments evaluate left to right. `&&` and `||`
-short-circuit. A named call is reordered to parameter declaration order before
-its argument expressions are lowered.
+Statements and positional call arguments evaluate left to right. `&&` and `||` short-circuit. A named call to a function or extern declaration reorders its arguments to that declaration's parameter order before evaluating them. A call through a function value evaluates and binds its arguments in written order, including when they carry labels. A selected callable record field uses the function-value rule; UFCS fallback uses the selected free declaration's order after its receiver. The call-site distinction is defined in [CALL-ARGUMENTS](0005-FunctionCalls.md#argument-forms--call-arguments).

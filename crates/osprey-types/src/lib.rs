@@ -29,6 +29,8 @@ mod effect_rows_exports_tests;
 mod effect_rows_expr_tests;
 #[cfg(test)]
 mod effect_rows_tests;
+#[cfg(test)]
+mod effect_rows_transport_tests;
 mod env;
 mod error;
 mod expr;
@@ -58,6 +60,9 @@ mod redundant;
 mod redundant_sites;
 #[cfg(test)]
 mod redundant_tests;
+#[cfg(test)]
+#[path = "../../testkit.rs"]
+mod testkit;
 #[cfg(test)]
 mod testutil;
 mod ty;

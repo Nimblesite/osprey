@@ -49,8 +49,7 @@ pub(crate) fn coerce_to(cg: &mut Codegen, v: Value, want: LType) -> Result<Value
                 ));
             }
             if v.ty == LType::I64 && matches!(want, LType::Str | LType::Ptr) {
-                let reg = cg.fresh_reg();
-                cg.emit(format!("{reg} = inttoptr i64 {} to i8*", v.operand));
+                let reg = cg.emit_reg(format!("inttoptr i64 {} to i8*", v.operand));
                 Value::new(reg, want)
             } else {
                 Value::new(v.operand, want)

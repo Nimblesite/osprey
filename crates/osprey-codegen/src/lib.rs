@@ -50,6 +50,9 @@ mod runtime;
 mod stmt;
 mod strings;
 mod testing;
+#[cfg(test)]
+#[path = "../../testkit.rs"]
+mod testkit;
 mod types;
 
 pub use error::{CodegenError, Result};
@@ -98,6 +101,7 @@ fn stmt_idents(s: &osprey_ast::Stmt, out: &mut std::collections::BTreeSet<String
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testkit::shows;
     use osprey_syntax::{parse_program, parse_program_with_flavor, Flavor};
 
     fn module(src: &str) -> String {
@@ -162,10 +166,15 @@ mod tests {
     #[test]
     fn emits_main_and_puts_for_hello() {
         let ir = module("print(\"hello\")\n");
-        assert!(ir.contains("define i32 @main() #0"));
-        assert!(ir.contains("declare i32 @puts(i8*)"));
-        assert!(ir.contains("call i32 @puts"));
-        assert!(ir.contains("hello\\00"));
+        shows(
+            &ir,
+            &[
+                "define i32 @main() #0",
+                "declare i32 @puts(i8*)",
+                "call i32 @puts",
+                "hello\\00",
+            ],
+        );
         // Every function keeps frame pointers so the sampling profiler's
         // FP-chain walk is valid from any pc [PROF-CODEGEN-FP].
         assert!(ir.contains("attributes #0 = { \"frame-pointer\"=\"all\" }"));
@@ -196,11 +205,16 @@ mod tests {
     #[test]
     fn testing_builtins_lower_to_tap_runtime_calls() {
         let ir = module("test(\"adds\", fn() => expect(1 + 1, 2))\n");
-        assert!(ir.contains("call i32 @osp_test_begin(i8*"));
-        assert!(ir.contains("call void @osp_test_end(i8*"));
-        assert!(ir.contains("call void @osp_test_assert(i8* null, i32"));
-        assert!(ir.contains("call i32 @osp_test_finalize()"));
-        assert!(ir.contains("call i32 @strcmp(i8*"));
+        shows(
+            &ir,
+            &[
+                "call i32 @osp_test_begin(i8*",
+                "call void @osp_test_end(i8*",
+                "call void @osp_test_assert(i8* null, i32",
+                "call i32 @osp_test_finalize()",
+                "call i32 @strcmp(i8*",
+            ],
+        );
     }
 
     #[test]
@@ -269,8 +283,10 @@ mod tests {
         // [TESTING-EQUALITY] a Result operand branches on its discriminant:
         // Success renders bare, Error renders as Error(<message>).
         let ir = module("expect(intDiv(1, 0), 2)\n");
-        assert!(ir.contains("call void @osp_test_assert(i8* null, i32"));
-        assert!(ir.contains("Error(%s)"));
+        shows(
+            &ir,
+            &["call void @osp_test_assert(i8* null, i32", "Error(%s)"],
+        );
         // A list/map/record operand has no canonical rendering — loud error.
         assert!(compile_err("expect([1, 2], [1, 3])\n")
             .to_string()
@@ -308,23 +324,33 @@ mod tests {
         );
         let expected_dwarf_version = if cfg!(target_os = "macos") { 4 } else { 5 };
 
-        assert!(ir.contains("source_filename = \"/tmp/debug.osp\""));
-        assert!(ir.contains("!llvm.dbg.cu = !{!"));
-        assert!(ir.contains("!llvm.module.flags = !{!"));
-        assert!(ir.contains("!DICompileUnit("));
-        assert!(ir.contains("!DIFile(filename: \"debug.osp\", directory: \"/tmp\")"));
-        assert!(ir.contains(&format!("!\"Dwarf Version\", i32 {expected_dwarf_version}")));
-        assert!(ir.contains("!DISubprogram(name: \"add\""));
-        assert!(ir.contains("!DISubprogram(name: \"main\""));
-        assert!(ir.contains("!DILocalVariable(name: \"x\""));
+        shows(
+            &ir,
+            &[
+                "source_filename = \"/tmp/debug.osp\"",
+                "!llvm.dbg.cu = !{!",
+                "!llvm.module.flags = !{!",
+                "!DICompileUnit(",
+                "!DIFile(filename: \"debug.osp\", directory: \"/tmp\")",
+                &format!("!\"Dwarf Version\", i32 {expected_dwarf_version}"),
+                "!DISubprogram(name: \"add\"",
+                "!DISubprogram(name: \"main\"",
+                "!DILocalVariable(name: \"x\"",
+            ],
+        );
         // Parameters (a, b) use dbg.value — SSA args live for the whole
         // function. `let` locals (x) use dbg.declare over a stack slot, the
         // robust -O0 representation that keeps the line table free of stray
         // line-0 rows. [DEBUGGER-DBG-DECLARE]
-        assert!(ir.contains("@llvm.dbg.value"));
-        assert!(ir.contains("call void @llvm.dbg.declare(metadata"));
-        assert!(ir.contains("!DILocation(line: 2, column: 1"));
-        assert!(ir.contains(", !dbg !"));
+        shows(
+            &ir,
+            &[
+                "@llvm.dbg.value",
+                "call void @llvm.dbg.declare(metadata",
+                "!DILocation(line: 2, column: 1",
+                ", !dbg !",
+            ],
+        );
     }
 
     #[test]
@@ -466,9 +492,14 @@ mod tests {
              let r = apply(value: 10, f: fn(x: int) => (x + 1) ?: x)\n\
              print(\"r=${r}\")\n",
         );
-        assert!(ir.contains("define i64 @__closure_fn_0(i8* %__env, i64 %$p0)"));
-        assert!(ir.contains("@__closure_cell_0 = private unnamed_addr constant { i8* }"));
-        assert!(ir.contains("call i64 %"));
+        shows(
+            &ir,
+            &[
+                "define i64 @__closure_fn_0(i8* %__env, i64 %$p0)",
+                "@__closure_cell_0 = private unnamed_addr constant { i8* }",
+                "call i64 %",
+            ],
+        );
     }
 
     #[test]
@@ -484,16 +515,20 @@ mod tests {
                print(\"r=${add5(3)}\")\n\
              }\n",
         );
-        assert!(ir.contains("define i8* @makeAdder(i64 %$p0)"));
-        assert!(ir.contains("bitcast i8* %__env to { i8*, i64 }*"));
-        assert!(ir.contains("call i8* @osp_alloc"));
+        shows(
+            &ir,
+            &[
+                "define i8* @makeAdder(i64 %$p0)",
+                "bitcast i8* %__env to { i8*, i64 }*",
+                "call i8* @osp_alloc",
+            ],
+        );
     }
 
     #[test]
     fn interpolation_uses_sprintf() {
         let ir = module("let x = 7\nprint(\"x=${x}\")\n");
-        assert!(ir.contains("@sprintf"));
-        assert!(ir.contains("@osp_alloc"));
+        shows(&ir, &["@sprintf", "@osp_alloc"]);
     }
 
     /// An erasure builds a shape-carrying box, and ownership crosses it in
@@ -613,9 +648,7 @@ mod tests {
     #[test]
     fn match_lowers_to_phi() {
         let ir = module("fn pick(a: int, b: int) -> int = match a < b { true => a false => b }\n");
-        assert!(ir.contains("icmp"));
-        assert!(ir.contains("br i1"));
-        assert!(ir.contains("phi i64"));
+        shows(&ir, &["icmp", "br i1", "phi i64"]);
     }
 
     #[test]
@@ -625,6 +658,15 @@ mod tests {
         // return type is `{ i64, i8 }*`; what matters here is the argument order.
         let ir = module("fn sub(a, b) = a - b\nlet r = sub(b: 1, a: 9)\n");
         assert!(ir.contains("@sub(i64 9, i64 1)"));
+        let external = module(
+            "extern fn takeFirst(first: int, second: int) -> int\n\
+             fn namedWitness() -> int = takeFirst(second: 22, first: 11)\n",
+        );
+        assert!(
+            function_body(&external, "define i64 @namedWitness()")
+                .contains("@takeFirst(i64 11, i64 22)"),
+            "extern calls must preserve declaration order and the C ABI:\n{external}"
+        );
     }
 
     #[test]
@@ -687,9 +729,7 @@ mod tests {
                print(\"sum=${s}\")\n\
              }\n",
         );
-        assert!(ir.contains("@osp_alloc"));
-        assert!(ir.contains("icmp ne i64"));
-        assert!(ir.contains("alloca i64"));
+        shows(&ir, &["@osp_alloc", "icmp ne i64", "alloca i64"]);
     }
 
     #[test]
@@ -710,9 +750,14 @@ mod tests {
                print(\"len=${listLength(m)} f=${listLength(f)} t=${t}\")\n\
              }\n",
         );
-        assert!(ir.contains("osprey_list_builder_new"));
-        assert!(ir.contains("osprey_list_builder_push"));
-        assert!(ir.contains("osprey_list_builder_seal"));
+        shows(
+            &ir,
+            &[
+                "osprey_list_builder_new",
+                "osprey_list_builder_push",
+                "osprey_list_builder_seal",
+            ],
+        );
     }
 
     #[test]
@@ -756,8 +801,7 @@ mod tests {
                print(\"r=${g()}\")\n\
              }\n",
         );
-        assert!(ir.contains("call i8* @osp_alloc"));
-        assert!(ir.contains("bitcast i8* %__env"));
+        shows(&ir, &["call i8* @osp_alloc", "bitcast i8* %__env"]);
     }
 
     #[test]
@@ -813,8 +857,7 @@ mod tests {
              }\n\
              fn main() -> Unit = print(\"a=${area(Circle { r: 3 })}\")\n",
         );
-        assert!(ir.contains("load i64, i64*"));
-        assert!(ir.contains("icmp eq i64"));
+        shows(&ir, &["load i64, i64*", "icmp eq i64"]);
         assert_eq!(
             ir.matches("call { i64, i1 } @llvm.smul.with.overflow.i64")
                 .count(),
@@ -921,8 +964,7 @@ mod tests {
              print(\"r=${first(V { a: 10, b: 20 })}\")\n",
         );
         // The field bind loads slot 1 of the block, reached via the tag compare.
-        assert!(ir.contains("load i64, i64*"));
-        assert!(ir.contains("icmp eq i64"));
+        shows(&ir, &["load i64, i64*", "icmp eq i64"]);
     }
 
     #[test]
@@ -942,10 +984,15 @@ mod tests {
                print(classify(xs))\n\
              }\n",
         );
-        assert!(ir.contains("osprey_list_length"));
-        assert!(ir.contains("osprey_list_get"));
-        assert!(ir.contains("osprey_list_drop"));
-        assert!(ir.contains("icmp sge i64"));
+        shows(
+            &ir,
+            &[
+                "osprey_list_length",
+                "osprey_list_get",
+                "osprey_list_drop",
+                "icmp sge i64",
+            ],
+        );
     }
 
     #[test]
@@ -1012,9 +1059,14 @@ mod tests {
              let wrapped = choose(7)\n\
              print(\"${failed}:${wrapped}\")\n",
         );
-        assert!(closure.contains("define i64 @__closure_fn_"));
-        assert!(closure.contains("i8* %__env, i8* %$p0"));
-        assert!(closure.contains("bitcast i8* %$p0 to { i64, i8, i8* }*"));
+        shows(
+            &closure,
+            &[
+                "define i64 @__closure_fn_",
+                "i8* %__env, i8* %$p0",
+                "bitcast i8* %$p0 to { i64, i8, i8* }*",
+            ],
+        );
     }
 
     /// Matching a bare scalar against `Success`/`Error` arms takes the Success
@@ -1106,11 +1158,16 @@ mod tests {
                print(\"${join(ws, \"-\")} ${listLength(ls)}\")\n\
              }\n",
         );
-        assert!(ir.contains("@osp_strlen"));
-        assert!(ir.contains("osp_string_to_upper"));
-        assert!(ir.contains("osp_parse_int_strict"));
-        assert!(ir.contains("osp_string_codepoint_at"));
-        assert!(ir.contains("osp_string_join"));
+        shows(
+            &ir,
+            &[
+                "@osp_strlen",
+                "osp_string_to_upper",
+                "osp_parse_int_strict",
+                "osp_string_codepoint_at",
+                "osp_string_join",
+            ],
+        );
     }
 
     // ---- collections: map literals, map operations ----
@@ -1131,10 +1188,15 @@ mod tests {
                match m[\"a\"] { Success { value } => print(\"i=${value}\") Error { message } => print(\"no\") }\n\
              }\n",
         );
-        assert!(ir.contains("osprey_map_builder_new"));
-        assert!(ir.contains("osprey_map_set"));
-        assert!(ir.contains("osprey_map_remove"));
-        assert!(ir.contains("osprey_map_iter_new"));
+        shows(
+            &ir,
+            &[
+                "osprey_map_builder_new",
+                "osprey_map_set",
+                "osprey_map_remove",
+                "osprey_map_iter_new",
+            ],
+        );
     }
 
     #[test]
@@ -1250,8 +1312,7 @@ mod tests {
                match listGet(xs, 0) { Success { value } => print(\"v=${value}\") Error { message } => print(\"no\") }\n\
              }\n",
         );
-        assert!(ir.contains("osprey_list_in_bounds"));
-        assert!(ir.contains("@strcmp"));
+        shows(&ir, &["osprey_list_in_bounds", "@strcmp"]);
     }
 
     // ---- algebraic effects: handler-owned state (effects.rs) ----
@@ -1392,8 +1453,13 @@ mod tests {
              fn main() -> int { mut c = 0\n  let r = handle State get => c set v => { c = v } in bump()\n  print(\"r=${toString(r)} c=${toString(c)}\")\n  0 }\n",
         );
         // env-carrying handler ABI (push takes a 4th i8* env; perform resolves it)
-        assert!(ir.contains("declare i32 @__osprey_handler_push(i8*, i8*, i8*, i8*)"));
-        assert!(ir.contains("@__osprey_handler_lookup_env"));
+        shows(
+            &ir,
+            &[
+                "declare i32 @__osprey_handler_push(i8*, i8*, i8*, i8*)",
+                "@__osprey_handler_lookup_env",
+            ],
+        );
         // the captured `mut` became a heap cell (malloc'd, stored, loaded)
         assert!(ir.contains("@osp_alloc"));
         // each arm is emitted with the hidden leading env parameter
@@ -1437,8 +1503,7 @@ mod tests {
             "fn greet(n: string) -> string = \"hi ${n}\"\n\
              fn main() -> Unit = print(await(spawn greet(\"x\")))\n",
         );
-        assert!(ir.contains("fiber_await"));
-        assert!(ir.contains("inttoptr i64"));
+        shows(&ir, &["fiber_await", "inttoptr i64"]);
         assert!(
             ir.lines()
                 .any(|line| line.contains("@fiber_spawn_env_owned") && line.ends_with(", i64 1)")),
@@ -1507,10 +1572,7 @@ mod tests {
                print(\"${mixed} ${q} ${neg} ${negi} ${lt} ${m}\")\n\
              }\n",
         );
-        assert!(ir.contains("sitofp i64"));
-        assert!(ir.contains("fdiv double"));
-        assert!(ir.contains("fneg double"));
-        assert!(ir.contains("fcmp"));
+        shows(&ir, &["sitofp i64", "fdiv double", "fneg double", "fcmp"]);
     }
 
     #[test]
@@ -1526,9 +1588,7 @@ mod tests {
                print(\"${c} ${d} ${e}\")\n\
              }\n",
         );
-        assert!(ir.contains("and i1"));
-        assert!(ir.contains("or i1"));
-        assert!(ir.contains("xor i1"));
+        shows(&ir, &["and i1", "or i1", "xor i1"]);
     }
 
     // ---- records / aggregate (aggregate.rs) ----
@@ -1545,8 +1605,7 @@ mod tests {
                print(\"${p.x} ${p.y} ${p2.x}\")\n\
              }\n",
         );
-        assert!(ir.contains("getelementptr"));
-        assert!(ir.contains("store i64"));
+        shows(&ir, &["getelementptr", "store i64"]);
     }
 
     #[test]
@@ -1584,10 +1643,15 @@ card doc index selected =
                print(\"${got} ${y} ${z} ${await(f)} ${fiberDone(f)}\")\n\
              }\n",
         );
-        assert!(ir.contains("channel_create"));
-        assert!(ir.contains("channel_send"));
-        assert!(ir.contains("channel_recv"));
-        assert!(ir.contains("fiber_done"));
+        shows(
+            &ir,
+            &[
+                "channel_create",
+                "channel_send",
+                "channel_recv",
+                "fiber_done",
+            ],
+        );
     }
 
     #[test]
@@ -1639,6 +1703,16 @@ card doc index selected =
         // from the type table and dispatch through the closure cell.
         let ir = module(
             "type Cfg = { keep: (int) -> bool }\n\
+             type Dispatch = Dispatch { m: () -> string }\n\
+             fn methodField() -> string = \"field\"\n\
+             fn m<T>(receiver: T) -> int = 31\n\
+             fn dispatch<T>(receiver: T) = receiver.m()\n\
+             fn echo<T>(receiver: T) -> T = receiver\n\
+             fn deferEcho<T>(receiver: T) = receiver.echo<T>()\n\
+             fn explicitWitness() -> int = 5.echo<int>()\n\
+             fn deferredWitness() -> int = deferEcho(7)\n\
+             fn fallbackWitness() -> int = dispatch(9)\n\
+             fn fieldWitness() -> string = dispatch(Dispatch { m: methodField })\n\
              fn add3(a: int) -> (int) -> (int) -> int =\n\
                fn(b: int) => fn(c: int) => (a + b + c) ?: a\n\
              fn makeAdder(n: int) -> (int) -> int = fn(x: int) => (x + n) ?: x\n\
@@ -1647,11 +1721,86 @@ card doc index selected =
                let chain = add3(1)(2)(3)\n\
                let computed = fold(map(range(1, 4), makeAdder(10)), 0, fn(a: int, b: int) => (a + b) ?: a)\n\
                let fieldcb = fold(filter(range(1, 5), cfg.keep), 0, fn(a: int, b: int) => (a + b) ?: a)\n\
-               print(\"${chain} ${computed} ${fieldcb}\")\n\
+               print(\"${chain} ${computed} ${fieldcb} ${explicitWitness()} ${deferredWitness()} ${fallbackWitness()} ${fieldWitness()}\")\n\
              }\n",
         );
         // Each higher-order callee loads a function pointer from a closure cell.
         assert!(ir.contains("to { i8* }*"), "expected a closure cell-call");
+        for (name, value) in [
+            ("explicitWitness", 5),
+            ("deferredWitness", 7),
+            ("fallbackWitness", 31),
+        ] {
+            assert!(
+                function_body(&ir, &format!("define i64 @{name}()"))
+                    .contains(&format!("ret i64 {value}")),
+                "{name} must return its selected generic function's value:\n{ir}"
+            );
+        }
+        assert!(
+            function_body(&ir, "define i8* @fieldWitness()").contains("call i8* %"),
+            "the callable record field must retain its string-returning ABI:\n{ir}"
+        );
+
+        // A field callback returns another callable through two generic helpers.
+        // The second record also proves named field arguments keep written slots.
+        let returned = module(
+            "effect Probe { value: fn() -> int }\n\
+             fn fetch() -> int !Probe = perform Probe.value()\n\
+             fn pure() -> int = 22\n\
+             type Factory = Factory { m: () -> () -> int }\n\
+             type NamedFactory = NamedFactory { m: (() -> int, () -> int) -> () -> int }\n\
+             fn pureFactory() -> () -> int = pure\n\
+             fn effectFactory() -> () -> int = fetch\n\
+             fn firstCallback(callback: () -> int, ignored: () -> int) -> () -> int = callback\n\
+             fn secondCallback(callback: () -> int, ignored: () -> int) -> () -> int = ignored\n\
+             fn m<T>(x: T) -> () -> int = pure\n\
+             fn dispatch<T>(x: T) = x.m()\n\
+             fn dispatchNamed<T>(x: T) = x.m(ignored: pure, callback: fetch)\n\
+             fn forward<T>(dummy: T, cb: () -> () -> int) = dispatch(Factory { m: cb })()\n\
+             fn forwardNamed<T>(dummy: T, cb: (() -> int, () -> int) -> () -> int) = dispatchNamed(NamedFactory { m: cb })()\n\
+             fn firstSlot(first: int, second: int) -> int = first\n\
+             fn throughSlot<T>(dummy: T, callback: (int, int) -> int) = callback(second: 22, first: 11)\n\
+             fn genericSlotWitness() -> int = throughSlot(0, firstSlot)\n\
+             fn declaredSlotWitness() -> int = firstSlot(second: 22, first: 11)\n\
+             fn directLambdaWitness() -> int = (fn(first: int, second: int) => first)(second: 22, first: 11)\n\
+             fn throughLambda<T>(unused: T) = (fn(first: int, second: int) => first)(second: 22, first: 11)\n\
+             fn genericLambdaWitness() -> int = throughLambda(0)\n\
+             fn pureWitness() -> int = forward(0, pureFactory)\n\
+             fn namedPureWitness() -> int = forwardNamed(0, firstCallback)\n\
+             fn handledWitness() -> int = handle Probe value => 33 in forward(0, effectFactory)\n\
+             fn namedHandledWitness() -> int = handle Probe value => 33 in forwardNamed(0, secondCallback)\n\
+             print(\"${pureWitness()} ${namedPureWitness()} ${handledWitness()} ${namedHandledWitness()} ${genericSlotWitness()} ${declaredSlotWitness()} ${directLambdaWitness()} ${genericLambdaWitness()}\")\n",
+        );
+        for witness in ["pureWitness", "namedPureWitness"] {
+            let body = function_body(&returned, &format!("define i64 @{witness}()"));
+            assert!(
+                body.contains("call i8* %") && body.contains("call i64 %"),
+                "{witness} must call the factory and then its returned int callback:\n{returned}"
+            );
+        }
+        assert!(
+            returned.contains("@__osprey_handler_push")
+                && returned.contains("@__osprey_handler_lookup_env"),
+            "returned effectful callbacks must retain their dynamic handler:\n{returned}"
+        );
+        for (witness, arguments) in [
+            ("genericSlotWitness", "i64 22, i64 11"),
+            ("declaredSlotWitness", "i64 11, i64 22"),
+        ] {
+            assert!(
+                function_body(&returned, &format!("define i64 @{witness}()"))
+                    .contains(&format!("@firstSlot({arguments})")),
+                "{witness} must preserve its source call site's argument slots:\n{returned}"
+            );
+        }
+        for witness in ["directLambdaWitness", "genericLambdaWitness"] {
+            assert!(
+                function_body(&returned, &format!("define i64 @{witness}()"))
+                    .contains("ret i64 22"),
+                "{witness} must bind named values in written slots:\n{returned}"
+            );
+        }
     }
 
     #[test]
@@ -1784,8 +1933,7 @@ card doc index selected =
                print(\"${listLength(fs)} ${listLength(bs)}\")\n\
              }\n",
         );
-        assert!(ir.contains("bitcast double"));
-        assert!(ir.contains("zext i1"));
+        shows(&ir, &["bitcast double", "zext i1"]);
     }
 
     #[test]
@@ -1799,8 +1947,7 @@ card doc index selected =
                print(\"${a == b}\")\n\
              }\n",
         );
-        assert!(ir.contains("zext i1"));
-        assert!(ir.contains("icmp eq i64"));
+        shows(&ir, &["zext i1", "icmp eq i64"]);
     }
 
     #[test]
@@ -1814,8 +1961,7 @@ card doc index selected =
                print(\"${gt}\")\n\
              }\n",
         );
-        assert!(ir.contains("sitofp i64"));
-        assert!(ir.contains("fcmp"));
+        shows(&ir, &["sitofp i64", "fcmp"]);
     }
 
     #[test]
@@ -1856,8 +2002,8 @@ card doc index selected =
     fn codegen_constructors_are_callable_directly() {
         // builder.rs Codegen::new + Default (not used by compile_program, which
         // takes inferred types) — exercised directly for the public surface.
-        let _a = crate::builder::Codegen::new();
-        let _b = crate::builder::Codegen::default();
+        let _a = builder::Codegen::new();
+        let _b = builder::Codegen::default();
     }
 
     // ---- GPU kernel extraction [GPU-KERNEL-EXTRACT] ----
@@ -1904,8 +2050,13 @@ card doc index selected =
              print(f())\n",
         );
         assert_eq!(ir.matches(KERNEL_PREFIX).count(), 4, "{ir}");
-        assert!(ir.contains("define double @__gpu_kernel_0(double %$p0)"));
-        assert!(ir.contains("define double @__gpu_kernel_1(double %$p0)"));
+        shows(
+            &ir,
+            &[
+                "define double @__gpu_kernel_0(double %$p0)",
+                "define double @__gpu_kernel_1(double %$p0)",
+            ],
+        );
     }
 
     #[test]
@@ -1925,8 +2076,7 @@ card doc index selected =
         let header = "define double @__gpu_kernel_0(double %$p0, double %$p1, double %$p2)";
         assert!(ir.contains(header), "{ir}");
         let kernel = function_body(&ir, header);
-        assert!(kernel.contains("fmul double %$p1, %$p2"), "{kernel}");
-        assert!(kernel.contains("fadd double"), "{kernel}");
+        shows(&kernel, &["fmul double %$p1, %$p2", "fadd double"]);
         assert!(!kernel.contains("__env"), "{kernel}");
         let host = function_body(&ir, "define i64 @f()");
         assert!(
@@ -1963,8 +2113,7 @@ card doc index selected =
         let header = "define double @__gpu_kernel_0(double %$p0, double %$p1, double %$p2)";
         assert!(ir.contains(header), "{ir}");
         let kernel = function_body(&ir, header);
-        assert!(kernel.contains("fmul double %$p0, %$p2"), "{kernel}");
-        assert!(kernel.contains("fadd double %$p1,"), "{kernel}");
+        shows(&kernel, &["fmul double %$p0, %$p2", "fadd double %$p1,"]);
     }
 
     /// A handler with one RESUMING arm and one SUBSTITUTING arm continues by

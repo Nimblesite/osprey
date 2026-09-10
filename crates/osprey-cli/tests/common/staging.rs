@@ -9,7 +9,7 @@ use osprey_syntax::{parse_program_with_flavor, Flavor};
 
 /// Parse — which discharges static handlers at the flavor boundary
 /// ([STAGE-LOWER-ORDER-PHASE]) — and emit LLVM IR.
-pub fn compile_staged(source: &str) -> String {
+pub(crate) fn compile_staged(source: &str) -> String {
     let parsed = parse_program_with_flavor(source, Flavor::Default);
     assert!(
         parsed.errors.is_empty(),
@@ -22,7 +22,7 @@ pub fn compile_staged(source: &str) -> String {
 }
 
 /// Every diagnostic the frontend produces for `source`, joined for matching.
-pub fn diagnostics(source: &str, flavor: Flavor) -> String {
+pub(crate) fn diagnostics(source: &str, flavor: Flavor) -> String {
     let parsed = parse_program_with_flavor(source, flavor);
     if !parsed.errors.is_empty() {
         return parsed
@@ -42,7 +42,7 @@ pub fn diagnostics(source: &str, flavor: Flavor) -> String {
 /// Compile `source` for `target` through the real CLI, returning stderr and
 /// whether it succeeded — the only path that runs the per-target capability
 /// gate [MULTI-WASM] and [STAGE-WASM] are checked by.
-pub fn compile_for_target(source: &str, target: &str) -> (bool, String) {
+pub(crate) fn compile_for_target(source: &str, target: &str) -> (bool, String) {
     let dir = std::env::temp_dir().join(format!(
         "osprey_staged_{}_{:?}",
         std::process::id(),

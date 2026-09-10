@@ -6,5 +6,5 @@
 extern fn registerCallback(cb: fn(int) -> int) -> int
 
 let base = 10
-let r = registerCallback(fn(x) => x + base)
+let r = registerCallback(fn(x) => (x + base) ?: 0)
 print("${r}")

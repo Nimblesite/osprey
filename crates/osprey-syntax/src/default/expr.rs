@@ -616,18 +616,17 @@ mod tests {
             Expr::Call { arguments, .. } => assert_eq!(arguments.len(), 2),
             other => panic!("expected call, got {other:?}"),
         }
-        // UFCS field-access call `o.m(1)` -> Call(m, [o, 1]).
-        match let_value("let r = o.m(1)\n") {
-            Expr::Call {
-                function,
-                arguments,
-                ..
-            } => {
-                assert!(matches!(*function, Expr::Identifier(ref n) if n == "m"));
-                assert_eq!(arguments.len(), 2);
+        // [BUILTIN-STRING-UFCS] Preserve the receiver until type checking can
+        // select its callable field or the free-function fallback.
+        assert_eq!(
+            let_value("let r = o.m(1)\n"),
+            Expr::MethodCall {
+                target: Box::new(Expr::Identifier("o".into())),
+                method: "m".into(),
+                arguments: vec![Expr::Integer(1)],
+                named_arguments: vec![],
             }
-            other => panic!("expected call, got {other:?}"),
-        }
+        );
         // Plain field access and indexing.
         assert!(matches!(
             let_value("let r = o.field\n"),

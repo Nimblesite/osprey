@@ -145,8 +145,7 @@ pub(crate) fn gen_size(cg: &mut Codegen, name: &str, recv: Value) -> Result<Valu
         ));
     }
     let raw = cg.call("i64", "osp_string_is_empty", "i8*", &[&s.operand]);
-    let r = cg.fresh_reg();
-    cg.emit(format!("{r} = icmp ne i64 {raw}, 0"));
+    let r = cg.emit_reg(format!("icmp ne i64 {raw}, 0"));
     Ok(Value::new(r, LType::I1))
 }
 
@@ -232,8 +231,7 @@ fn bool_from_i64(
     let (ops, params) = typed_args(cg, sig, args)?;
     let op_refs: Vec<&str> = ops.iter().map(String::as_str).collect();
     let raw = cg.call("i64", cname, &params, &op_refs);
-    let r = cg.fresh_reg();
-    cg.emit(format!("{r} = icmp ne i64 {raw}, 0"));
+    let r = cg.emit_reg(format!("icmp ne i64 {raw}, 0"));
     Ok(Value::new(r, LType::I1))
 }
 
@@ -242,8 +240,7 @@ fn contains(cg: &mut Codegen, args: &[Expr], _named: &[NamedArgument]) -> Result
     let s = arg(cg, args, 0, LType::Str)?;
     let needle = arg(cg, args, 1, LType::Str)?;
     let hit = cg.call("i8*", "strstr", "i8*, i8*", &[&s.operand, &needle.operand]);
-    let r = cg.fresh_reg();
-    cg.emit(format!("{r} = icmp ne i8* {hit}, null"));
+    let r = cg.emit_reg(format!("icmp ne i8* {hit}, null"));
     Ok(Value::new(r, LType::I1))
 }
 
@@ -257,10 +254,8 @@ fn index_of(cg: &mut Codegen, args: &[Expr], _named: &[NamedArgument]) -> Result
         "i8*, i8*",
         &[&s.operand, &needle.operand],
     );
-    let iserr = cg.fresh_reg();
-    cg.emit(format!("{iserr} = icmp slt i64 {idx}, 0"));
-    let val = cg.fresh_reg();
-    cg.emit(format!("{val} = select i1 {iserr}, i64 0, i64 {idx}"));
+    let iserr = cg.emit_reg(format!("icmp slt i64 {idx}, 0"));
+    let val = cg.emit_reg(format!("select i1 {iserr}, i64 0, i64 {idx}"));
     make_result_if_err(
         cg,
         Value::new(val, LType::I64),
@@ -315,8 +310,7 @@ fn parse_strict(
     _named: &[NamedArgument],
 ) -> Result<Value> {
     let s = arg(cg, args, 0, LType::Str)?;
-    let slot = cg.fresh_reg();
-    cg.emit(format!("{slot} = alloca {inner}"));
+    let slot = cg.emit_reg(format!("alloca {inner}"));
     let zero = crate::llty::zero_literal(inner);
     cg.emit(format!("store {inner} {zero}, {inner}* {slot}"));
     let rc = cg.call(
@@ -325,10 +319,8 @@ fn parse_strict(
         &format!("i8*, {inner}*"),
         &[&s.operand, &slot],
     );
-    let parsed = cg.fresh_reg();
-    cg.emit(format!("{parsed} = load {inner}, {inner}* {slot}"));
-    let iserr = cg.fresh_reg();
-    cg.emit(format!("{iserr} = icmp ne i64 {rc}, 0"));
+    let parsed = cg.emit_reg(format!("load {inner}, {inner}* {slot}"));
+    let iserr = cg.emit_reg(format!("icmp ne i64 {rc}, 0"));
     make_result_if_err(cg, Value::new(parsed, inner), inner, &iserr, Some(errmsg))
 }
 
@@ -354,8 +346,7 @@ fn split(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
         &[&s.operand, &sep.operand],
     );
     crate::arc::own(cg, &Value::new(&ptr, LType::Ptr));
-    let iserr = cg.fresh_reg();
-    cg.emit(format!("{iserr} = icmp eq i8* {ptr}, null"));
+    let iserr = cg.emit_reg(format!("icmp eq i8* {ptr}, null"));
     make_result_if_err(
         cg,
         Value::handle(ptr, crate::listlit::STRING_LIST_OWNER),
@@ -371,19 +362,15 @@ fn split(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 /// errmsg slot. `argtys` lists the leading argument types before the out-slot.
 fn cursor_int(cg: &mut Codegen, cname: &str, argtys: &[LType], args: &[Expr]) -> Result<Value> {
     let (mut ops, params) = typed_args_for_types(cg, argtys, args)?;
-    let slot = cg.fresh_reg();
-    cg.emit(format!("{slot} = alloca i64"));
+    let slot = cg.emit_reg("alloca i64");
     cg.emit(format!("store i64 0, i64* {slot}"));
     ops.push(slot.clone());
     let full_params = format!("{params}, i64*");
     let op_refs: Vec<&str> = ops.iter().map(String::as_str).collect();
     let emsg = cg.call("i8*", cname, &full_params, &op_refs);
-    let parsed = cg.fresh_reg();
-    cg.emit(format!("{parsed} = load i64, i64* {slot}"));
-    let is_err = cg.fresh_reg();
-    cg.emit(format!("{is_err} = icmp ne i8* {emsg}, null"));
-    let disc = cg.fresh_reg();
-    cg.emit(format!("{disc} = select i1 {is_err}, i8 1, i8 0"));
+    let parsed = cg.emit_reg(format!("load i64, i64* {slot}"));
+    let is_err = cg.emit_reg(format!("icmp ne i8* {emsg}, null"));
+    let disc = cg.emit_reg(format!("select i1 {is_err}, i8 1, i8 0"));
     make_result(cg, Value::new(parsed, LType::I64), LType::I64, &disc, &emsg)
 }
 

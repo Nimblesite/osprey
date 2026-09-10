@@ -11,7 +11,7 @@
 #[path = "common/staging.rs"]
 mod staging;
 
-use osprey_syntax::{dependency_sets, Flavor};
+use osprey_syntax::{dependency_report, Flavor};
 use staging::{compile_for_target, compile_staged, diagnostics};
 
 /// The C runtime symbols a dynamic handler region registers and looks up.
@@ -75,7 +75,7 @@ fn greeting() = "hello ${perform NameSignal.read()}"
 fn statusBar() = "${greeting()} | ${counterLabel()}"
 fn footer() = "osprey"
 "#;
-    let deps = dependency_sets(source, Flavor::Default);
+    let deps = dependency_report(source, Flavor::Default).0;
     let of = |name: &str| deps.get(name).cloned().unwrap_or_default();
     assert_eq!(of("doubled"), vec!["CountSignal.read"]);
     // Transitive through a call, and only what is actually read.
@@ -101,7 +101,7 @@ fn root() = handle static CountSignal
     read => 7
 in label()
 "#;
-    let deps = dependency_sets(source, Flavor::Default);
+    let deps = dependency_report(source, Flavor::Default).0;
     assert_eq!(
         deps.get("label").cloned().unwrap_or_default(),
         vec!["CountSignal.read"]
@@ -258,7 +258,7 @@ static effect Signal<T> { read: fn() -> T }
 fn counterLabel() = "count: ${(perform Signal<Count>.read()).value}"
 fn cursorLabel() = "at: ${(perform Signal<Cursor>.read()).at}"
 "#;
-    let deps = dependency_sets(source, Flavor::Default);
+    let deps = dependency_report(source, Flavor::Default).0;
     let of = |name: &str| deps.get(name).cloned().unwrap_or_default();
     assert_eq!(
         of("counterLabel"),

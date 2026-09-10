@@ -196,7 +196,7 @@ impl fmt::Display for LType {
 /// (`null` when Success or when the producer set no message). The single source
 /// of truth for the Result ABI layout — every builder/reader spells it via here.
 #[must_use]
-pub fn result_struct_ty(inner: LType) -> String {
+pub(crate) fn result_struct_ty(inner: LType) -> String {
     format!("{{ {inner}, i8, i8* }}")
 }
 

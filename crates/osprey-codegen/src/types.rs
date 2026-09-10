@@ -24,7 +24,7 @@ pub(crate) fn elem_tag(prog: &ProgramTypes, elem: Option<&Type>) -> Option<Strin
 }
 
 /// Map an inferred type to the LLVM type a runtime value of it travels as.
-pub fn ltype_of(ty: &Type) -> LType {
+pub(crate) fn ltype_of(ty: &Type) -> LType {
     match ty {
         Type::Con { name, args } => ltype_of_con(name, args),
         // A function reference is a code pointer; values never hold one directly
@@ -95,7 +95,7 @@ pub(crate) fn result_payload_owner(prog: &ProgramTypes, ty: &Type) -> Option<Str
 /// tag `Gpu#<spelling>` ([`crate::gpu::GPU_TAG`]), the same convention flat
 /// list literals use (`[]double`), so combinator lowering recovers the
 /// element's `LType` through parameters and returns [GPU-BUFFER-ELEM].
-pub fn owner_name(prog: &ProgramTypes, ty: &Type) -> Option<String> {
+pub(crate) fn owner_name(prog: &ProgramTypes, ty: &Type) -> Option<String> {
     match ty {
         Type::Record { name, fields }
             if prog
@@ -194,7 +194,7 @@ fn substituted(ty: &Type, args: &[Type]) -> Type {
 /// "every value of this type is a constructor-built ARC body or NULL" true.
 /// A `Result<T, E>` is its own discriminated block and therefore does not prove
 /// that the outer value is a heap value of `T`.
-pub fn proven_heap_name(ty: &Type) -> Option<&str> {
+pub(crate) fn proven_heap_name(ty: &Type) -> Option<&str> {
     match ty {
         Type::Con { name, .. } if name == names::RESULT => None,
         // A declared union or any other named constructor: the name IS the proof.
@@ -205,7 +205,7 @@ pub fn proven_heap_name(ty: &Type) -> Option<&str> {
 
 /// When `ty` is `Result<T, E>`, the inner success type `T` as an [`LType`].
 /// Used to carry the `{ T, i8 }*` Result block across call/return boundaries.
-pub fn result_inner(ty: &Type) -> Option<LType> {
+pub(crate) fn result_inner(ty: &Type) -> Option<LType> {
     match ty {
         Type::Con { name, args } if name == names::RESULT => args.first().map(ltype_of),
         _ => None,
@@ -214,7 +214,7 @@ pub fn result_inner(ty: &Type) -> Option<LType> {
 
 /// Whether a function type yields a concrete closure ABI: every parameter and
 /// return are variable-free. Result returns keep their wrapper in the ABI.
-pub fn fn_value_concrete(ty: &Type) -> bool {
+pub(crate) fn fn_value_concrete(ty: &Type) -> bool {
     match ty {
         Type::Fun { params, ret } => {
             !params.iter().any(osprey_types::has_type_var) && !osprey_types::has_type_var(ret)

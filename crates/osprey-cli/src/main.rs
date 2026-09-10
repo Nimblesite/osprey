@@ -29,6 +29,9 @@ mod target_capabilities;
 mod test_cmd;
 mod test_coverage;
 mod test_skips;
+#[cfg(test)]
+#[path = "../../testkit.rs"]
+mod testkit;
 mod toolchain;
 mod warnings;
 mod wasm;
@@ -382,7 +385,7 @@ pub(crate) fn load_input(cli: &Cli) -> Result<CompilationInput, ExitCode> {
             eprintln!("error: --flavor applies to single files; projects select flavor per source");
             return Err(ExitCode::from(2));
         }
-        return project::CompilationInput::load_project(path).map_err(|errors| {
+        return CompilationInput::load_project(path).map_err(|errors| {
             print_project_errors(&errors, path);
             ExitCode::FAILURE
         });
@@ -500,34 +503,37 @@ fn target_error(cli: &Cli, input: &CompilationInput) -> Option<ExitCode> {
         return Some(ExitCode::FAILURE);
     }
     if cli.target == "wasm32" {
-        if let Some(code) = reject_debug_cross_target(cli) {
+        if let Err(code) = reject_cross_target_options(cli, "wasm32", None) {
             return Some(code);
-        }
-        if cli.memory != "default" {
-            return Some(toolchain::fail(
-                "wasm32 supports --memory=default; other runtime archives are not available",
-            ));
         }
     }
     if let Some(target) = android::Target::parse(&cli.target) {
-        if let Err(code) = android::validate(cli) {
-            return Some(code);
-        }
-        if cli.mode == "--check" {
-            return android::source(input.program(), input.debug_path(), target)
-                .err()
-                .map(|error| toolchain::fail(&error));
-        }
+        return app_target_error(&cli.mode, android::validate(cli), || {
+            android::source(input.program(), input.debug_path(), target)
+        });
     }
     if let Some(target) = ios::Target::parse(&cli.target) {
-        if let Err(code) = ios::validate(cli) {
-            return Some(code);
-        }
-        if cli.mode == "--check" {
-            return ios::source(input.program(), input.debug_path(), target)
-                .err()
-                .map(|error| toolchain::fail(&error));
-        }
+        return app_target_error(&cli.mode, ios::validate(cli), || {
+            ios::source(input.program(), input.debug_path(), target)
+        });
+    }
+    None
+}
+
+/// The app-library targets (iOS, Android) share one order: reject the
+/// unsupported options, then — for `--check` alone — generate the C ABI and
+/// report its failure as a diagnostic. `source` stays lazy so no other mode
+/// pays for ABI generation, and so option errors always win the race.
+fn app_target_error(
+    mode: &str,
+    validation: Result<(), ExitCode>,
+    source: impl FnOnce() -> Result<(String, String), String>,
+) -> Option<ExitCode> {
+    if let Err(code) = validation {
+        return Some(code);
+    }
+    if mode == "--check" {
+        return source().err().map(|error| toolchain::fail(&error));
     }
     None
 }
@@ -557,17 +563,43 @@ fn reject_debug_cross_target(cli: &Cli) -> Option<ExitCode> {
     None
 }
 
+/// Every cross target refuses the native-only build flags and the non-default
+/// runtime archives. A target that produces a LIBRARY rather than a runnable
+/// image also refuses `--run`, and names the host that calls it in `host_hint`;
+/// `None` marks a target with a `--run` form of its own.
+/// Implements [IOS-TARGET-OPTIONS] and [ANDROID-TARGET-OPTIONS].
+fn reject_cross_target_options(
+    cli: &Cli,
+    platform: &str,
+    host_hint: Option<&str>,
+) -> Result<(), ExitCode> {
+    if let Some(code) = reject_debug_cross_target(cli) {
+        return Err(code);
+    }
+    if cli.memory != "default" {
+        return Err(toolchain::fail(&format!(
+            "{platform} supports --memory=default; other runtime archives are not available"
+        )));
+    }
+    match host_hint {
+        Some(hint) if cli.mode == "--run" => Err(toolchain::fail(&format!(
+            "{platform} produces an app-logic library; use --compile and call it from {hint}"
+        ))),
+        _ => Ok(()),
+    }
+}
+
 /// The native build kind this invocation asked for (`--debug` and `--profile`
 /// are mutually exclusive; `parse_args` enforces that).
 fn build_kind(cli: &Cli) -> osprey_debug::BuildKind {
     if cli.debug {
-        osprey_debug::BuildKind::Debug
+        osprey_debug::DebugBuild::ON.kind()
     } else if cli.profile {
         osprey_debug::BuildKind::Profile
     } else if std::env::var_os(TEST_COVERAGE_BUILD_ENV).is_some() {
         osprey_debug::BuildKind::Coverage
     } else {
-        osprey_debug::BuildKind::Release
+        osprey_debug::DebugBuild::OFF.kind()
     }
 }
 

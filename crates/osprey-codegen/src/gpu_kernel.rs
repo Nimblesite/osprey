@@ -388,7 +388,7 @@ mod tests {
 
     /// The parsed mode, or the rendered error — assertable without requiring
     /// `PartialEq` on the codegen error type.
-    fn parsed(value: Option<&str>) -> std::result::Result<GpuKernelMode, String> {
+    fn parsed(value: Option<&str>) -> Result<GpuKernelMode, String> {
         mode_of(value).map_err(|e| e.to_string())
     }
 

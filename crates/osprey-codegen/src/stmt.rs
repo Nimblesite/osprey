@@ -408,7 +408,7 @@ fn captures_callee_params(cg: &Codegen, value: &Expr) -> bool {
     let Some((callee_params, _, body, _)) = generic_returned_lambda(cg, value) else {
         return false;
     };
-    let mut free = std::collections::BTreeSet::new();
+    let mut free = BTreeSet::new();
     osprey_ast::freevars::free_idents(&body, &mut free);
     callee_params.iter().any(|p| free.contains(&p.name))
 }

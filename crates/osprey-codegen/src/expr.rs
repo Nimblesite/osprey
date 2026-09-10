@@ -947,7 +947,8 @@ fn gen_call(
         ..
     } = function
     {
-        return apply_lambda(cg, parameters, body, *position, arguments);
+        let slots = arg_exprs(arguments, named);
+        return apply_lambda(cg, parameters, body, *position, &slots);
     }
     // `applyCurried g 3 4` — the callee is an application spine headed by a
     // GENERIC user function, whose intermediate lambdas exist only inside an
@@ -959,19 +960,8 @@ fn gen_call(
     }
     // `makeAdder(5)(3)` — the callee is itself a call producing a function
     // value: evaluate it to a closure handle and call through the cell.
-    if let Expr::Call {
-        function: inner, ..
-    } = function
-    {
-        if let Expr::Identifier(f) = &**inner {
-            let sig = cg
-                .call_result_fn_type(f)
-                .as_ref()
-                .and_then(|t| Codegen::fn_value_sig(&cg.prog, t));
-            if let Some(sig) = sig {
-                return call_fn_value(cg, function, Some(&sig), arguments, named);
-            }
-        }
+    if let Some(sig) = call_result_sig(cg, function) {
+        return call_fn_value(cg, function, Some(&sig), arguments, named);
     }
     let Expr::Identifier(ident) = function else {
         // A higher-order callee that is an arbitrary expression — a chained
@@ -986,6 +976,13 @@ fn gen_call(
     };
     // A function-valued parameter (bound while inlining a generic function)
     // redirects to its real callee, so `f(x)` becomes `toString(x)` / `addOne(x)`.
+    // The source call still targets a value: preserve its written slots before
+    // the known declaration's named-argument path can reorder them.
+    // Implements [CALL-ARGUMENTS].
+    let aliased_arguments = alias_slot_arguments(cg, ident, arguments, named);
+    let (arguments, named) = aliased_arguments
+        .as_deref()
+        .map_or((arguments, named), |arguments| (arguments, &[]));
     let name: String = cg
         .call_aliases
         .get(ident)
@@ -1001,7 +998,8 @@ fn gen_call(
     }
     // A let-bound lambda with no materialized cell is inlined at its call site.
     if let Some((params, body, position)) = cg.lambda_def(name).cloned() {
-        return apply_bound_lambda(cg, name, &params, &body, position, arguments);
+        let slots = arg_exprs(arguments, named);
+        return apply_bound_lambda(cg, name, &params, &body, position, &slots);
     }
     match name {
         "print" => {
@@ -1031,8 +1029,8 @@ fn gen_call(
             let arg = first_arg(arguments, named)
                 .ok_or_else(|| CodegenError::invalid("toFloat needs one argument"))?;
             let v = gen_expr(cg, arg)?;
-            let n = crate::conv::as_i64(cg, v)?;
-            crate::conv::as_double(cg, n)
+            let n = as_i64(cg, v)?;
+            as_double(cg, n)
         }
         // Compatibility names for the same checked integer operations used by
         // the natural operators.
@@ -1057,6 +1055,38 @@ fn gen_call(
             gen_user_call(cg, name, arguments, named)
         }
     }
+}
+
+/// Normalize a value call before an inlining alias exposes a declaration's
+/// formal parameter names. The implicit UFCS receiver stays before its values.
+fn alias_slot_arguments(
+    cg: &Codegen,
+    name: &str,
+    arguments: &[Expr],
+    named: &[NamedArgument],
+) -> Option<Vec<Expr>> {
+    (!named.is_empty() && cg.call_aliases.contains_key(name)).then(|| {
+        arguments
+            .iter()
+            .chain(named.iter().map(|argument| &argument.value))
+            .cloned()
+            .collect()
+    })
+}
+
+fn call_result_sig(cg: &Codegen, function: &Expr) -> Option<FnSig> {
+    let Expr::Call {
+        function: inner, ..
+    } = function
+    else {
+        return None;
+    };
+    let Expr::Identifier(name) = &**inner else {
+        return None;
+    };
+    cg.call_result_fn_type(name)
+        .as_ref()
+        .and_then(|ty| Codegen::fn_value_sig(&cg.prog, ty))
 }
 
 /// Call through an evaluated function value: lower the callee expression to a
@@ -1115,8 +1145,8 @@ fn apply_bound_lambda(
     name: &str,
     params: &[Parameter],
     body: &Expr,
-    position: Option<osprey_ast::Position>,
-    arguments: &[Expr],
+    position: Option<Position>,
+    arguments: &[&Expr],
 ) -> Result<Value> {
     let Some((prefix_params, prefix_values)) = cg.lambda_prefix.get(name).cloned() else {
         return apply_lambda(cg, params, body, position, arguments);
@@ -1135,8 +1165,8 @@ fn apply_lambda(
     cg: &mut Codegen,
     parameters: &[Parameter],
     body: &Expr,
-    position: Option<osprey_ast::Position>,
-    arguments: &[Expr],
+    position: Option<Position>,
+    arguments: &[&Expr],
 ) -> Result<Value> {
     let mut values = Vec::with_capacity(arguments.len());
     for a in arguments {
@@ -1161,7 +1191,7 @@ fn apply_lambda(
 /// int slot, and the second call printed a pointer as a number. A generic
 /// lambda is specialised by its ARGUMENTS at each call site instead, exactly as
 /// a generic function is ([`crate::genfn`], [TYPE-GENERICS-FN]).
-pub(crate) fn inline_sig(cg: &Codegen, position: Option<osprey_ast::Position>) -> Option<FnSig> {
+pub(crate) fn inline_sig(cg: &Codegen, position: Option<Position>) -> Option<FnSig> {
     cg.prog
         .lambda_type(position)
         .filter(|t| crate::types::fn_value_concrete(t))
@@ -1176,7 +1206,7 @@ pub(crate) fn apply_lambda_values(
     body: &Expr,
     values: Vec<Value>,
     sig: Option<&FnSig>,
-    position: Option<osprey_ast::Position>,
+    position: Option<Position>,
 ) -> Result<Value> {
     reduce_lambda(cg, parameters, body, values, sig, &[], position)
 }
@@ -1192,7 +1222,7 @@ pub(crate) fn reduce_lambda(
     values: Vec<Value>,
     sig: Option<&FnSig>,
     rest: &[crate::curry::ArgGroup<'_>],
-    position: Option<osprey_ast::Position>,
+    position: Option<Position>,
 ) -> Result<Value> {
     cg.push_scope();
     // `fn_ptr_locals` is per-FUNCTION, not per-scope ([`Codegen::begin_function`]),
@@ -1220,7 +1250,7 @@ fn bind_lambda_params(
     parameters: &[Parameter],
     values: Vec<Value>,
     sig: Option<&FnSig>,
-    position: Option<osprey_ast::Position>,
+    position: Option<Position>,
 ) -> Result<()> {
     let declared = cg.prog.lambda_type(position).cloned();
     for (index, (p, v)) in parameters.iter().zip(values).enumerate() {
@@ -1308,7 +1338,7 @@ fn call_builtin_with_values(cg: &mut Codegen, name: &str, args: &[Value]) -> Opt
         "toString" => to_string_value(cg, arg()),
         // [BUILTIN-TOFLOAT] [GPU-CONVERT] the canonical float-pipeline seed
         // `gpuIota(n) |> gpuMap(toFloat)` lowers through this arm.
-        "toFloat" => as_i64(cg, arg()).and_then(|n| crate::conv::as_double(cg, n)),
+        "toFloat" => as_i64(cg, arg()).and_then(|n| as_double(cg, n)),
         "abs" => gen_unary_propagating(cg, arg(), gen_abs_value),
         _ => return None,
     })
@@ -1403,7 +1433,12 @@ fn ordered_args(
         .unwrap_or_default();
     let ffi = !cg.fn_params.contains_key(name) && cg.prog.functions.contains_key(name);
     if !named.is_empty() {
-        if let Some(pnames) = cg.fn_params.get(name).cloned() {
+        if let Some(pnames) = cg
+            .fn_params
+            .get(name)
+            .or_else(|| cg.extern_params.get(name))
+            .cloned()
+        {
             let mut out = Vec::new();
             for (i, pn) in pnames.iter().enumerate() {
                 if let Some(argument) = arguments

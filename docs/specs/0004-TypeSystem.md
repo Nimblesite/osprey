@@ -204,8 +204,10 @@ binding without a signature cannot declare type parameters.
 right, and the written arguments unify with the instantiation the value
 arguments and the expected type would otherwise infer. This is the direct
 spelling of what an annotated binding (`let x: int = identity(5)`) can only say
-indirectly, and the only spelling that can pin a binder appearing in no
-parameter position.
+indirectly. An expected result type can also pin a binder absent from the
+parameters: `let xs: List<int> = empty()` fixes `T` for
+`fn empty<T>() -> List<T> = []`. Explicit type arguments are the only spelling
+that can pin a phantom binder absent from both parameter and result types.
 
 ```osprey
 fn identity<T>(x: T) -> T = x
@@ -419,6 +421,8 @@ Closures and named functions are interchangeable wherever their complete
 function types match, including iterator callbacks and record fields. A
 `Result<T, E>` returned through a function-value call remains a `Result<T, E>`
 and must be handled explicitly ([Result Preservation](#result-preservation)).
+
+A function type contains its ordered parameter types and return type. Parameter names are not part of its identity and do not travel with a value assigned to that type. Calls through function values therefore use the argument-slot rule in [CALL-ARGUMENTS](0005-FunctionCalls.md#argument-forms--call-arguments), including calls through record fields.
 
 ### Higher-order calls — [TYPE-FN-HIGHER-ORDER]
 

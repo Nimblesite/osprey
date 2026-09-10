@@ -53,3 +53,33 @@ fn only(mut statements: Vec<Stmt>) -> Stmt {
     // repository-forbidden `unwrap()`.
     statements.remove(0)
 }
+
+/// The doc comment lowered onto a statement, or `None`. Both flavors' tests
+/// ask this same question of the same `Stmt`, so it is answered once.
+pub(crate) fn stmt_doc(stmt: &Stmt) -> Option<&osprey_ast::DocComment> {
+    match stmt {
+        Stmt::Expr { doc, .. } | Stmt::Let { doc, .. } | Stmt::Function { doc, .. } => doc.as_ref(),
+        _ => None,
+    }
+}
+
+/// Assert the doc summary lowered onto `stmt` — `None` demanding that no doc
+/// was invented for it. Every doc-lowering case asks exactly this.
+pub(crate) fn assert_summary(stmt: &Stmt, expected: Option<&str>) {
+    assert_eq!(stmt_doc(stmt).map(|d| d.summary.as_str()), expected);
+}
+
+/// Assert a documented expression statement is followed by a documented
+/// declaration that kept its OWN doc — the shape both flavors pin, differing
+/// only in how each spells the source.
+pub(crate) fn assert_doc_pair(all: &[Stmt], first: &str, second: &str) {
+    let [statement, declaration] = all else {
+        panic!(
+            "expected exactly two statements, got {}: {all:?}",
+            all.len()
+        );
+    };
+    assert_summary(statement, Some(first));
+    assert!(matches!(declaration, Stmt::Function { .. }));
+    assert_summary(declaration, Some(second));
+}

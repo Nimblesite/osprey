@@ -1,1 +1,1 @@
-type mismatch: cannot unify int with Result<int, MathError>
+type mismatch: cannot unify Result<int, MathError> with int

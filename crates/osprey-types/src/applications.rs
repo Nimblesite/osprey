@@ -141,35 +141,22 @@ fn elaborate_expr(expression: &mut Expr, index: &mut usize, types: &mut ProgramT
     let Ok(column) = u32::try_from(current) else {
         return;
     };
-    if matches!(expression, Expr::Identifier(_) | Expr::Path(_)) {
-        let _ = types.applications.insert((0, column), bindings);
-        *expression = Expr::TypeApply {
-            function: Box::new(expression.clone()),
-            type_args: Vec::new(),
-            position: Some(Position { line: 0, column }),
-        };
-        return;
-    }
-    if matches!(
-        types.methods.get(&current),
-        Some(crate::methods::Target::Deferred(_))
-    ) {
-        let _ = types.applications.insert((0, column), bindings);
-        *expression = Expr::TypeApply {
-            function: Box::new(expression.clone()),
-            type_args: Vec::new(),
-            position: Some(Position { line: 0, column }),
-        };
-        return;
-    }
-    let function = match expression {
-        Expr::Call { function, .. } => function,
-        Expr::Pipe { right, .. } => right,
-        _ => return,
+    let function = if matches!(expression, Expr::Identifier(_) | Expr::Path(_))
+        || matches!(
+            types.methods.get(&current),
+            Some(crate::methods::Target::Deferred(_))
+        ) {
+        expression
+    } else {
+        match expression {
+            Expr::Call { function, .. } => function.as_mut(),
+            Expr::Pipe { right, .. } => right.as_mut(),
+            _ => return,
+        }
     };
     let _ = types.applications.insert((0, column), bindings);
-    **function = Expr::TypeApply {
-        function: function.clone(),
+    *function = Expr::TypeApply {
+        function: Box::new(function.clone()),
         type_args: Vec::new(),
         position: Some(Position { line: 0, column }),
     };

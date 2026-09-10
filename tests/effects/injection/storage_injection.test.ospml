@@ -19,7 +19,7 @@ entryCount body =
 
 (** Appends one entry to `book` and answers the entry count after the write.
     This is the logic under test: it performs Storage and picks no handler. *)
-appendNote book line =
+appendNote (book, line) =
     updated = "${perform Storage.load book}${line}\n"
     _ = perform Storage.save book updated
     entryCount updated
@@ -32,7 +32,7 @@ countNotes book =
 
 (** Copies `book` into `archive` and answers the bytes the copy reported.
     A book that does not exist is not copied and answers 0 bytes. *)
-archiveNotes book archive =
+archiveNotes (book, archive) =
     match perform Storage.exists book
         true => perform Storage.save archive (perform Storage.load book)
         false => 0
@@ -88,20 +88,20 @@ withReadOnlyStorage action =
         exists key => true
     in action ()
 
-(** The path each flavor owns, so the Default and ML twins never share a file. *)
-diskBook = "osprey_storage_injection_ml.txt"
-diskArchive = "osprey_storage_injection_ml_archive.txt"
+(** A fresh 126-bit random suffix isolates concurrent executions of either flavor. *)
+diskBook = "osprey_storage_injection_${random ()}_${random ()}.txt"
+diskArchive = "${diskBook}.archive.txt"
 
 (** This case runs the logic against the real file system and verifies the
     bytes with `readFile` from outside the handler. *)
 diskStorageCase () =
-    // Truncate both paths so a rerun starts from the same file system state.
+    (** Truncate both paths so a rerun starts from the same file system state. *)
     clearedBook = writeFile diskBook "" ?: (0 - 1 ?: 0)
     clearedArchive = writeFile diskArchive "" ?: (0 - 1 ?: 0)
-    first = withDiskStorage (\() => appendNote diskBook "buy milk")
-    second = withDiskStorage (\() => appendNote diskBook "call dentist")
+    first = withDiskStorage (\() => appendNote (diskBook, "buy milk"))
+    second = withDiskStorage (\() => appendNote (diskBook, "call dentist"))
     counted = withDiskStorage (\() => countNotes diskBook)
-    archived = withDiskStorage (\() => archiveNotes diskBook diskArchive)
+    archived = withDiskStorage (\() => archiveNotes (diskBook, diskArchive))
     onDisk = readFile diskBook ?: ""
     archivedOnDisk = readFile diskArchive ?: ""
     missing = withDiskStorage (\() => countNotes "osprey_storage_injection_absent.txt")
@@ -132,10 +132,10 @@ test "injected disk handler persists the notebook to real files" diskStorageCase
 (** This case runs the identical logic against the in-memory double and
     verifies both the answers and the calls the logic made. *)
 mockStorageCase () =
-    first = withMockStorage (\() => appendNote "notes.txt" "buy milk")
-    second = withMockStorage (\() => appendNote "notes.txt" "call dentist")
+    first = withMockStorage (\() => appendNote ("notes.txt", "buy milk"))
+    second = withMockStorage (\() => appendNote ("notes.txt", "call dentist"))
     counted = withMockStorage (\() => countNotes "notes.txt")
-    archived = withMockStorage (\() => archiveNotes "notes.txt" "archive.txt")
+    archived = withMockStorage (\() => archiveNotes ("notes.txt", "archive.txt"))
     missing = withMockStorage (\() => countNotes "never-written.txt")
     fixture = withMockStorage (\() => countNotes "fixture.txt")
     stored = mapGet mockFiles "notes.txt" ?: ""
@@ -165,7 +165,7 @@ mockStorageCase () =
         endsWith mockLog "load(fixture.txt);"
     ]
 
-    // The double touched no file system: nothing named by the test exists.
+    (** The double touched no file system: nothing named by the test exists. *)
     notesAbsent =
         match readFile "notes.txt"
             Success value => false
@@ -184,9 +184,9 @@ test "injected mock handler replaces the file system and records every call" moc
 (** This case swaps in a third policy to show the logic is unchanged by it. *)
 readOnlyStorageCase () =
     savesBefore = mockSaves
-    appended = withReadOnlyStorage (\() => appendNote "notes.txt" "buy milk")
+    appended = withReadOnlyStorage (\() => appendNote ("notes.txt", "buy milk"))
     counted = withReadOnlyStorage (\() => countNotes "notes.txt")
-    archived = withReadOnlyStorage (\() => archiveNotes "notes.txt" "archive.txt")
+    archived = withReadOnlyStorage (\() => archiveNotes ("notes.txt", "archive.txt"))
 
     // A refused write still answers the operation's declared type, so the
     // logic keeps running and reports what the policy actually stored.

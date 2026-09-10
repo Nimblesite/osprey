@@ -284,6 +284,7 @@ fn run_host(wasm: &Path) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testkit::shows;
 
     /// Serializes tests that read/write process-global toolchain env vars
     /// (`OSPREY_WASM_*`, `*_SYSROOT`) so they neither race each other nor the
@@ -336,9 +337,14 @@ mod tests {
     fn entry_thunk_wraps_main_for_the_wasi_start_path() {
         // [WASM-ENTRY]
         let out = with_entry_thunk("define i32 @main() {\n  ret i32 0\n}\n");
-        assert!(out.contains("define i32 @main()"), "original main kept");
-        assert!(out.contains("define i32 @__main_void()"), "thunk added");
-        assert!(out.contains("call i32 @main()"), "thunk calls main");
+        shows(
+            &out,
+            &[
+                "define i32 @main()",
+                "define i32 @__main_void()",
+                "call i32 @main()",
+            ],
+        );
     }
 
     #[test]
@@ -346,9 +352,14 @@ mod tests {
         // [WASM-WEB-ABI]
         let mangled = format!("__osp_3x617070{WEB_DISPATCH_MANGLED_SUFFIX}");
         let out = with_web_dispatch_thunk("; module", Some(&mangled));
-        assert!(out.contains("define i64 @osprey_web_dispatch(i8* %message)"));
-        assert!(out.contains(&format!("call i64 @{mangled}(i8* %message)")));
-        assert!(out.contains("ret i64 %r"));
+        shows(
+            &out,
+            &[
+                "define i64 @osprey_web_dispatch(i8* %message)",
+                &format!("call i64 @{mangled}(i8* %message)"),
+                "ret i64 %r",
+            ],
+        );
 
         let unchanged = with_web_dispatch_thunk("; module", Some(WEB_DISPATCH));
         assert_eq!(unchanged, "; module", "source spelling needs no thunk");

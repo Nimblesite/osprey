@@ -15,7 +15,7 @@ use crate::expr::gen_expr;
 use crate::llty::{LType, Value};
 use crate::types::{ltype_of, result_inner};
 use osprey_ast::freevars::free_idents;
-use osprey_ast::{contains_resume, Expr, HandlerArm, MatchArm, Stmt};
+use osprey_ast::{contains_resume, AstNode, Expr, HandlerArm, Stmt};
 use osprey_types::ProgramTypes;
 use std::collections::{BTreeSet, HashSet};
 
@@ -237,8 +237,7 @@ fn emit_unhandled_guard(cg: &mut Codegen, raw: &str, lookup_key: &str, operation
         "br i1 {is_null}, label %{abort_lbl}, label %{ok_lbl}"
     ));
     cg.start_block(&abort_lbl);
-    let p = cg.fresh_reg();
-    cg.emit(format!("{p} = call i32 @puts(i8* {})", msg.operand));
+    let _ = cg.emit_reg(format!("call i32 @puts(i8* {})", msg.operand));
     cg.emit("call void @exit(i32 1)");
     cg.emit("unreachable");
     cg.start_block(&ok_lbl);
@@ -281,133 +280,21 @@ pub(crate) fn captured_mut_vars_in_stmts(stmts: &[&Stmt]) -> HashSet<String> {
     muts.intersection(&captured).cloned().collect()
 }
 
-// A purpose-built AST walk (parallel in *shape* to `freevars::walk`, but
-// collecting two different sets: every mutable binding and the names handler
-// arms reference freely). The handler-arm free idents themselves come from
-// `free_idents` so that one definition of "what does this close over" stays in
-// `freevars`; only the find-the-handlers/muts traversal lives here.
+// Capture rules stay local; structural child enumeration is shared with the
+// other AST passes so new expression variants have one traversal table.
 fn scan_expr(e: &Expr, muts: &mut BTreeSet<String>, captured: &mut BTreeSet<String>) {
-    match e {
-        Expr::Handler { arms, body, .. } => {
-            for arm in arms {
-                captured.extend(arm_free_idents(arm));
-                scan_expr(&arm.body, muts, captured);
-            }
-            scan_expr(body, muts, captured);
+    if let Expr::Handler { arms, .. } = e {
+        for arm in arms {
+            captured.extend(arm_free_idents(arm));
         }
-        Expr::Block { statements, value } => {
-            for s in statements {
-                scan_stmt(s, muts, captured);
-            }
-            if let Some(v) = value {
-                scan_expr(v, muts, captured);
-            }
-        }
-        Expr::Match { value, arms } => {
-            scan_expr(value, muts, captured);
-            scan_arms(arms, muts, captured);
-        }
-        Expr::Select { arms } => scan_arms(arms, muts, captured),
-        _ => scan_children(e, muts, captured),
     }
-}
-
-fn scan_arms(arms: &[MatchArm], muts: &mut BTreeSet<String>, captured: &mut BTreeSet<String>) {
-    scan_slice(arms, muts, captured, |arm| &arm.body);
-}
-
-/// Recurse into every child expression of `e` (the variants that are not
-/// special-cased in [`scan_expr`]), so a handler/mut nested anywhere is found.
-fn scan_children(e: &Expr, muts: &mut BTreeSet<String>, captured: &mut BTreeSet<String>) {
-    match e {
-        Expr::InterpolatedStr(parts) => {
-            for p in parts {
-                if let osprey_ast::InterpolatedPart::Expr(x) = p {
-                    scan_expr(x, muts, captured);
-                }
-            }
-        }
-        Expr::List(xs, _) => scan_slice(xs, muts, captured, |x| x),
-        Expr::Map(es) => {
-            for en in es {
-                scan_expr(&en.key, muts, captured);
-                scan_expr(&en.value, muts, captured);
-            }
-        }
-        Expr::Object(fs)
-        | Expr::TypeConstructor { fields: fs, .. }
-        | Expr::Update { fields: fs, .. } => {
-            scan_slice(fs, muts, captured, |f| &f.value);
-        }
-        Expr::Binary { left, right, .. } | Expr::Pipe { left, right } => {
-            scan_expr(left, muts, captured);
-            scan_expr(right, muts, captured);
-        }
-        Expr::Unary { operand, .. } => scan_expr(operand, muts, captured),
-        Expr::Call {
-            function,
-            arguments,
-            named_arguments,
-        } => {
-            scan_expr(function, muts, captured);
-            scan_args(arguments, named_arguments, muts, captured);
-        }
-        Expr::MethodCall {
-            target,
-            arguments,
-            named_arguments,
-            ..
-        } => {
-            scan_expr(target, muts, captured);
-            scan_args(arguments, named_arguments, muts, captured);
-        }
-        Expr::FieldAccess { target, .. } => scan_expr(target, muts, captured),
-        Expr::Index { target, index } => {
-            scan_expr(target, muts, captured);
-            scan_expr(index, muts, captured);
-        }
-        Expr::Lambda { body, .. } | Expr::Spawn(body) | Expr::Await(body) | Expr::Recv(body) => {
-            scan_expr(body, muts, captured);
-        }
-        Expr::Yield(Some(x)) => scan_expr(x, muts, captured),
-        Expr::Send { channel, value } => {
-            scan_expr(channel, muts, captured);
-            scan_expr(value, muts, captured);
-        }
-        Expr::Perform {
-            arguments,
-            named_arguments,
-            ..
-        } => scan_args(arguments, named_arguments, muts, captured),
-        Expr::Resume(Some(value)) => scan_expr(value, muts, captured),
-        _ => {}
+    // Preserve this collector's existing exclusion of specialized operands.
+    if matches!(e, Expr::TypeApply { .. }) {
+        return;
     }
-}
-
-/// Scan a callee-style argument list: positional arguments then the named
-/// ones, in source order. Shared by every call-shaped node (call, method call,
-/// `perform`) so none of them can forget a half.
-fn scan_args(
-    arguments: &[Expr],
-    named_arguments: &[osprey_ast::NamedArgument],
-    muts: &mut BTreeSet<String>,
-    captured: &mut BTreeSet<String>,
-) {
-    scan_slice(arguments, muts, captured, |x| x);
-    scan_slice(named_arguments, muts, captured, |n| &n.value);
-}
-
-/// Recurse into each element of `items`, projecting it to its sub-expression
-/// with `pick`. The one place the effect scanner fans out over a collection
-/// node, threading `muts`/`captured` through [`osprey_ast::walk_each`].
-fn scan_slice<T>(
-    items: &[T],
-    muts: &mut BTreeSet<String>,
-    captured: &mut BTreeSet<String>,
-    pick: impl Fn(&T) -> &Expr,
-) {
-    osprey_ast::walk_each(items, &mut (muts, captured), pick, |e, (m, c)| {
-        scan_expr(e, m, c);
+    AstNode::Expression(e).for_each_child(|child| match child {
+        AstNode::Statement(statement) => scan_stmt(statement, muts, captured),
+        AstNode::Expression(expression) => scan_expr(expression, muts, captured),
     });
 }
 
@@ -465,14 +352,9 @@ pub(crate) fn gen_handler(
         emit_handler_fn(cg, &fn_name, arm, &sig, resolved, &caps, &env_ty)?;
         let eff_s = cg.string_constant(&key);
         let op_s = cg.string_constant(&arm.operation);
-        let fp = cg.fresh_reg();
-        cg.emit(format!(
-            "{fp} = bitcast {} @{fn_name} to i8*",
-            sig.fn_ptr_ty()
-        ));
-        let r = cg.fresh_reg();
-        cg.emit(format!(
-            "{r} = call i32 @__osprey_handler_push(i8* {}, i8* {}, i8* {fp}, i8* {env})",
+        let fp = cg.emit_reg(format!("bitcast {} @{fn_name} to i8*", sig.fn_ptr_ty()));
+        let _ = cg.emit_reg(format!(
+            "call i32 @__osprey_handler_push(i8* {}, i8* {}, i8* {fp}, i8* {env})",
             eff_s.operand, op_s.operand
         ));
     }
@@ -480,8 +362,7 @@ pub(crate) fn gen_handler(
     let result = gen_expr(cg, body)?;
 
     for _ in arms {
-        let r = cg.fresh_reg();
-        cg.emit(format!("{r} = call i32 @__osprey_handler_pop()"));
+        let _ = cg.emit_reg("call i32 @__osprey_handler_pop()");
     }
     // The popped region's env reached its structural end: drop it (its mask
     // releases the captured values) [GC-ARC-PERCEUS].
@@ -708,11 +589,19 @@ fn coerce_to_op_result(
     result_inner: Option<LType>,
 ) -> Result<Value> {
     match result_inner {
-        Some(inner) if value.result_inner.is_some() => {
-            crate::result::repack_to_inner(cg, value, inner)
-        }
-        Some(inner) => crate::result::make_ok(cg, value, inner),
+        Some(inner) => promote_to_result(cg, value, inner),
         None => coerce_to(cg, value, ret_ty),
+    }
+}
+
+/// Carry `value` into a `Result<inner, _>` answer slot: repack one that is
+/// already a Result, else apply the language's safe `T -> Success(T)`
+/// promotion. Never erases a discriminant.
+fn promote_to_result(cg: &mut Codegen, value: Value, inner: LType) -> Result<Value> {
+    if value.result_inner.is_some() {
+        crate::result::repack_to_inner(cg, value, inner)
+    } else {
+        crate::result::make_ok(cg, value, inner)
     }
 }
 
@@ -721,10 +610,7 @@ fn coerce_to_op_result(
 /// `T -> Success(T)` promotion when the handled expression itself is Result.
 fn coerce_to_answer(cg: &mut Codegen, value: Value, answer: &AnswerShape) -> Result<Value> {
     match answer.result_inner {
-        Some(inner) if value.result_inner.is_some() => {
-            crate::result::repack_to_inner(cg, value, inner)
-        }
-        Some(inner) => crate::result::make_ok(cg, value, inner),
+        Some(inner) => promote_to_result(cg, value, inner),
         // An arm that does not `resume` abandons the continuation, so ITS value
         // becomes the whole `handle` block's result. Whether it CAN be that
         // result is settled in inference, where the semantic types still exist
@@ -918,9 +804,7 @@ fn emit_resuming_arm_fn(cg: &mut Codegen, arm: &HandlerArm, spec: &ArmFnSpec<'_>
         (LType::Ptr, String::from("__coro")),
     ];
     bind_arm_params(cg, arm, spec.sig, spec.resolved, &mut params);
-    let op_ret_ty = spec
-        .resolved
-        .map_or(spec.sig.ret, |r| crate::types::ltype_of(&r.ret));
+    let op_ret_ty = spec.resolved.map_or(spec.sig.ret, |r| ltype_of(&r.ret));
     let op_ret_result_inner = spec
         .resolved
         .and_then(|r| result_inner(&r.ret))
@@ -1110,12 +994,7 @@ pub(crate) fn gen_resume(cg: &mut Codegen, value: Option<&Expr>) -> Result<Value
     );
     let done = cg.call("i64", "__osprey_coro_done", "i8*", &[&ctx.coro]);
     let done_cond = cg.emit_reg(format!("icmp ne i64 {done}, 0"));
-    let done_lbl = cg.fresh_label();
-    let more_lbl = cg.fresh_label();
-    let end_lbl = cg.fresh_label();
-    cg.emit(format!(
-        "br i1 {done_cond}, label %{done_lbl}, label %{more_lbl}"
-    ));
+    let (done_lbl, more_lbl, end_lbl) = cg.diamond(&done_cond);
 
     cg.start_block(&done_lbl);
     let done_pred = cg.snapshot_to(&end_lbl);
@@ -1209,22 +1088,19 @@ pub(crate) fn gen_perform(
 
     let eff_s = cg.string_constant(&lookup_key);
     let op_s = cg.string_constant(operation);
-    let raw = cg.fresh_reg();
-    cg.emit(format!(
-        "{raw} = call i8* @__osprey_handler_lookup(i8* {}, i8* {})",
+    let raw = cg.emit_reg(format!(
+        "call i8* @__osprey_handler_lookup(i8* {}, i8* {})",
         eff_s.operand, op_s.operand
     ));
     // A missed lookup returns null — abort with a message instead of calling
     // a null pointer (an instantiation mismatch on a generic effect misses by
     // design, [EFFECTS-GENERIC-RUNTIME]).
     emit_unhandled_guard(cg, &raw, &lookup_key, operation);
-    let env = cg.fresh_reg();
-    cg.emit(format!(
-        "{env} = call i8* @__osprey_handler_lookup_env(i8* {}, i8* {})",
+    let env = cg.emit_reg(format!(
+        "call i8* @__osprey_handler_lookup_env(i8* {}, i8* {})",
         eff_s.operand, op_s.operand
     ));
-    let fp = cg.fresh_reg();
-    cg.emit(format!("{fp} = bitcast i8* {raw} to {}", sig.fn_ptr_ty()));
+    let fp = cg.emit_reg(format!("bitcast i8* {raw} to {}", sig.fn_ptr_ty()));
     let ret_ty = sig.ret_ty();
     let r = cg.fresh_reg();
     let mut call_args = vec![format!("i8* {env}")];

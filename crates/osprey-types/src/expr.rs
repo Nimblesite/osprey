@@ -218,21 +218,31 @@ impl Checker {
             &Type::con(names::CHANNEL, vec![element_ty.clone()]),
         );
         self.push_assign(&element_ty, &value_ty);
-        if self.ctx.prune(&value_ty).is_named(names::RESULT) {
-            self.errors.push(TypeError::new(
-                "Result-valued channels are not supported by this backend; handle the Result before sending",
-            ));
-        }
+        self.reject_result_channel(&value_ty, "handle the Result before sending");
         Type::unit()
+    }
+
+    /// Reject a `Result`-valued channel element. The wire word carries no
+    /// discriminant, so a `Result` crossing a channel would be erased rather
+    /// than delivered — both ends refuse it, differing only in which half of
+    /// the transfer the advice names.
+    fn reject_result_channel(&mut self, ty: &Type, detail: &str) {
+        if self.ctx.prune(ty).is_named(names::RESULT) {
+            self.errors.push(TypeError::new(format!(
+                "Result-valued channels are not supported by this backend; {detail}"
+            )));
+        }
+    }
+
+    /// Record how the dotted call at `site` resolved, keyed by the expression's
+    /// address — the one place the method-target table is written.
+    fn record_method_target(&mut self, site: &Expr, target: crate::methods::Target) {
+        let _ = self.methods.insert(std::ptr::from_ref(site).addr(), target);
     }
 
     fn infer_recv(&mut self, channel: &Expr, env: &TypeEnv) -> Type {
         let elem = self.infer_unwrap_con(channel, names::CHANNEL, env);
-        if self.ctx.prune(&elem).is_named(names::RESULT) {
-            self.errors.push(TypeError::new(
-                "Result-valued channels are not supported by this backend; receiving must never erase the Result wrapper",
-            ));
-        }
+        self.reject_result_channel(&elem, "receiving must never erase the Result wrapper");
         elem
     }
 
@@ -449,9 +459,9 @@ impl Checker {
             // [EFFECTS-GENERIC-INSTANTIATION].
             if osprey_ast::contains_resume(&arm.body) {
                 answering.push((arm.operation.clone(), arm_ty));
-            } else if !self.ctx.prune(&op_ret).is_named(crate::ty::names::UNIT) {
+            } else if !self.ctx.prune(&op_ret).is_named(names::UNIT) {
                 self.push_assign(&op_ret, &arm_ty);
-            } else if self.ctx.prune(&arm_ty).is_named(crate::ty::names::RESULT) {
+            } else if self.ctx.prune(&arm_ty).is_named(names::RESULT) {
                 self.errors.push(TypeError::new(
                     "an unhandled `Result` cannot be discarded by a Unit effect operation arm; use `match` or `?:`",
                 ));
@@ -576,7 +586,7 @@ impl Checker {
     fn infer_type_application(
         &mut self,
         function: &Expr,
-        type_args: &[osprey_ast::TypeExpr],
+        type_args: &[TypeExpr],
         position: Option<osprey_ast::Position>,
         env: &TypeEnv,
     ) -> (Option<String>, Type) {
@@ -628,7 +638,7 @@ impl Checker {
     /// application of an enclosing binder [TYPE-GENERICS-APPLY].
     pub(crate) fn written_type_argument(
         &mut self,
-        argument: &osprey_ast::TypeExpr,
+        argument: &TypeExpr,
         binder: &HashMap<String, Type>,
         position: Option<osprey_ast::Position>,
     ) -> Type {
@@ -641,7 +651,7 @@ impl Checker {
     /// that conversion would otherwise silently drop [TYPE-GENERICS-FN].
     pub(crate) fn annotation_type(
         &mut self,
-        argument: &osprey_ast::TypeExpr,
+        argument: &TypeExpr,
         binder: &HashMap<String, Type>,
         position: Option<osprey_ast::Position>,
     ) -> Type {
@@ -730,10 +740,7 @@ impl Checker {
         let receiver = self.infer_expr(parts.target, env);
         let field = crate::methods::field_name(parts.method);
         if matches!(self.ctx.prune(&receiver), Type::Var(_)) && env.get(parts.method).is_some() {
-            let _ = self.methods.insert(
-                std::ptr::from_ref(site).addr(),
-                crate::methods::Target::Deferred(field.clone()),
-            );
+            self.record_method_target(site, crate::methods::Target::Deferred(field.clone()));
             return self.infer_deferred_method(site, receiver, &field, &parts, env);
         }
         let known_field = match self.ctx.prune(&receiver) {
@@ -746,17 +753,11 @@ impl Checker {
             _ => false,
         };
         if known_field {
-            let _ = self.methods.insert(
-                std::ptr::from_ref(site).addr(),
-                crate::methods::Target::Field(field.clone()),
-            );
+            self.record_method_target(site, crate::methods::Target::Field(field.clone()));
             return self.infer_field_call(&receiver, &field, &parts, env);
         }
         if env.get(parts.method).is_some() {
-            let _ = self.methods.insert(
-                std::ptr::from_ref(site).addr(),
-                crate::methods::Target::Function,
-            );
+            self.record_method_target(site, crate::methods::Target::Function);
         }
         self.infer_ufcs_call(site, &receiver, &parts, env)
     }
@@ -1255,7 +1256,7 @@ impl Checker {
     fn infer_constructor(
         &mut self,
         name: &str,
-        type_args: &[osprey_ast::TypeExpr],
+        type_args: &[TypeExpr],
         fields: &[FieldAssignment],
         env: &TypeEnv,
     ) -> Type {
@@ -1658,7 +1659,7 @@ fn classify(op: &str) -> OpKind {
 #[cfg(test)]
 mod tests {
     use crate::check::check_program;
-    use crate::testutil::{bad, check, ok};
+    use crate::testutil::{bad, bad_with, ok};
     use crate::{infer_program, Type};
     use osprey_ast::Stmt;
     use osprey_syntax::parse_program;
@@ -1730,23 +1731,23 @@ mod tests {
 
     #[test]
     fn select_is_rejected_until_channel_selection_has_runtime_semantics() {
-        let errs = bad("fn pick() -> int = select {\n\
+        bad_with(
+            "fn pick() -> int = select {\n\
               x => x\n\
               _ => 0\n\
-            }\n");
-        assert!(errs
-            .iter()
-            .any(|e| e.message.contains("`select` is not supported")));
+            }\n",
+            "`select` is not supported",
+        );
     }
 
     #[test]
     fn yield_forwards_its_value_type_and_send_checks_the_channel_element() {
         // Implements [CONCURRENCY-YIELD] and [CONCURRENCY-CHANNEL].
         ok("fn hand_off(value: int) -> int = yield value\n");
-        let errs = bad("fn wrong(ch: Channel<int>) -> Unit = send(ch, \"wrong\")\n");
-        assert!(errs
-            .iter()
-            .any(|e| e.message.contains("cannot unify int with string")));
+        bad_with(
+            "fn wrong(ch: Channel<int>) -> Unit = send(ch, \"wrong\")\n",
+            "cannot unify int with string",
+        );
         let result_channel = bad(
             "fn sendFailed(ch: Channel<Result<int, MathError>>, value: Result<int, MathError>) -> Unit = send(ch, value)\n",
         );
@@ -1842,14 +1843,14 @@ mod tests {
         // A `Unit` operation discards its arm's value, so a `Result` produced
         // there would lose its failure with nothing left to observe it.
         // Implements [EFFECTS-RESUME].
-        let errs = bad("effect Sink { drop: fn(int) -> Unit }\n\
+        bad_with(
+            "effect Sink { drop: fn(int) -> Unit }\n\
                         fn risky(n: int) -> Result<int, MathError> = n + 1\n\
                         fn go() -> int = handle Sink\n\
                           drop v => risky(v)\n\
-                        in 0\n");
-        assert!(errs
-            .iter()
-            .any(|e| e.message.contains("Unit effect operation arm")));
+                        in 0\n",
+            "Unit effect operation arm",
+        );
         ok("effect Sink { drop: fn(int) -> Unit }\n\
             fn risky(n: int) -> Result<int, MathError> = n + 1\n\
             fn go() -> int = handle Sink\n\
@@ -1862,20 +1863,20 @@ mod tests {
         // The handler's own operations are unknown, so the arms cannot be
         // typed against a signature — but checking must continue rather than
         // abandon the body, or one typo would hide every later diagnostic.
-        let errs = bad("fn go() -> int = handle Nowhere\n\
+        bad_with(
+            "fn go() -> int = handle Nowhere\n\
                           chime => 0\n\
-                        in 1\n");
-        assert!(errs
-            .iter()
-            .any(|e| e.message.contains("unknown effect `Nowhere`")));
+                        in 1\n",
+            "unknown effect `Nowhere`",
+        );
     }
 
     #[test]
     fn perform_of_an_undeclared_effect_names_the_effect_it_could_not_find() {
-        let errs = bad("fn ring() -> int = perform Nowhere.chime()\n");
-        assert!(errs
-            .iter()
-            .any(|e| e.message.contains("unknown effect `Nowhere`")));
+        bad_with(
+            "fn ring() -> int = perform Nowhere.chime()\n",
+            "unknown effect `Nowhere`",
+        );
     }
 
     #[test]
@@ -1885,11 +1886,11 @@ mod tests {
         // a silently ignored annotation.
         ok("type Box<T> = { v: T }\n\
             let good = Box<int> { v: 1 }\n");
-        let errs = bad("type Box<T> = { v: T }\n\
-                        let wrong = Box<int, string> { v: 1 }\n");
-        assert!(errs
-            .iter()
-            .any(|e| e.message.contains("takes 1 type argument(s), got 2")));
+        bad_with(
+            "type Box<T> = { v: T }\n\
+                        let wrong = Box<int, string> { v: 1 }\n",
+            "takes 1 type argument(s), got 2",
+        );
     }
 
     #[test]
@@ -1899,12 +1900,12 @@ mod tests {
         // graph to bind the qualified name, so the diagnostic must name the
         // full path — naming only `twice` would send the reader to the wrong
         // declaration.
-        let errs = bad("namespace tools;\n\
+        bad_with(
+            "namespace tools;\n\
                         fn twice(n: int) -> int = (n * 2) ?: 0\n\
-                        let doubled = tools::twice(21)\n");
-        assert!(errs
-            .iter()
-            .any(|e| e.message.contains("unknown identifier `tools::twice`")));
+                        let doubled = tools::twice(21)\n",
+            "unknown identifier `tools::twice`",
+        );
     }
 
     #[test]
@@ -2302,11 +2303,11 @@ mod tests {
         // Codegen has no named-operation argument mapping; reject this source
         // form instead of silently dropping its value.
         // [EFFECTS-OP-TYPING]
-        let errs = bad("effect Logger { log: fn(string) -> Unit }\n\
-             fn run() -> Unit !Logger = perform Logger.log(msg: \"hi\")\n");
-        assert!(errs
-            .iter()
-            .any(|e| e.message.contains("does not support named arguments")));
+        bad_with(
+            "effect Logger { log: fn(string) -> Unit }\n\
+             fn run() -> Unit !Logger = perform Logger.log(msg: \"hi\")\n",
+            "does not support named arguments",
+        );
     }
 
     #[test]
@@ -2354,10 +2355,10 @@ mod tests {
 
     #[test]
     fn unknown_constructor_with_fields_is_an_error() {
-        let errs = check("let r = Nonexistent { field: 1 }\n");
-        assert!(errs
-            .iter()
-            .any(|e| e.message.contains("unknown constructor `Nonexistent`")));
+        bad_with(
+            "let r = Nonexistent { field: 1 }\n",
+            "unknown constructor `Nonexistent`",
+        );
     }
 
     #[test]
@@ -2377,8 +2378,7 @@ mod tests {
         // bare identifier, so `infer_call` takes the `other` branch.
         ok("let r = (fn(x) => x + 1)(41)\n");
         // Calling a non-function value is an error (`apply_fn` non-function arm).
-        let errs = check("let x = 5\nlet r = x(1)\n");
-        assert!(errs.iter().any(|e| e.message.contains("cannot call")));
+        bad_with("let x = 5\nlet r = x(1)\n", "cannot call");
     }
 
     #[test]

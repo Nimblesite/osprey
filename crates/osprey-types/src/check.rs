@@ -113,7 +113,7 @@ pub(crate) fn annotation_name(name: &str) -> String {
 }
 
 /// All cross-cutting declaration tables, plus the inference context.
-pub struct Checker {
+pub(crate) struct Checker {
     pub(crate) ctx: InferCtx,
     pub(crate) errors: Vec<TypeError>,
     pub(crate) ctors: HashMap<String, CtorInfo>,
@@ -1623,7 +1623,7 @@ mod tests {
     use super::infer_program;
     use crate::check::check_program;
     use crate::error::TypeError;
-    use crate::testutil::{check, ok};
+    use crate::testutil::{bad_with, check, ok};
     use osprey_ast::{Expr, Stmt};
     use osprey_syntax::parse_program;
 
@@ -1704,28 +1704,26 @@ mod tests {
         assert!(errs.iter().any(|e| e.message.contains("type mismatch")));
         // Module functions must run both declaration collection and body
         // checking; historically only module lets reached inference.
-        let errs = check(
+        bad_with(
             "module BadFn {\n\
                fn broken() -> int = \"not an int\"\n\
              }\n",
+            "type mismatch",
         );
-        assert!(errs.iter().any(|e| e.message.contains("type mismatch")));
     }
 
     #[test]
     fn a_discarded_result_statement_is_rejected() {
         // A bare statement whose value is a `Result` throws the failure away —
         // the one place the wrapper can vanish without anyone naming it.
-        let errs = check(
+        bad_with(
             "fn risky(n: int) -> Result<int, MathError> = n + 1\n\
              fn go() -> int = {\n\
                risky(1)\n\
                0\n\
              }\n",
+            "cannot be discarded",
         );
-        assert!(errs
-            .iter()
-            .any(|e| e.message.contains("cannot be discarded")));
         ok("fn risky(n: int) -> Result<int, MathError> = n + 1\n\
             fn go() -> int = {\n\
               let handled = risky(1) ?: 0\n\
@@ -2040,10 +2038,7 @@ mod tests {
              let r = check(expect(test(1)))\n",
         );
         assert!(errs.is_empty(), "unexpected type errors: {errs:?}");
-        let errs = check("fn range(t: int) -> int = t\n");
-        assert!(errs
-            .iter()
-            .any(|e| e.message.contains("cannot redefine built-in")));
+        bad_with("fn range(t: int) -> int = t\n", "cannot redefine built-in");
     }
 
     #[test]

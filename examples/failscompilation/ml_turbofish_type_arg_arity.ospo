@@ -1,3 +1,4 @@
+// osprey: flavor=ml
 (** The ML surface applies call-site type arguments with the same angles and is
     held to the same count contract — one shared core, two spellings.
     Implements [TYPE-GENERICS-APPLY], [FLAVOR-ML-GENERICS] *)

@@ -19,7 +19,7 @@
 //! positions and silently misread a payload. Every claim is made at ALL THREE
 //! sites the spec names, because a rule enforced at one site is not the rule.
 
-use crate::testutil::{accepts, rejects};
+use crate::testutil::{accepts, plain_cases, rejects, spec_cases};
 use osprey_syntax::Flavor;
 
 /// The three assignment sites [TYPE-VARIANCE-ASSIGN] names, for a value of the
@@ -93,67 +93,43 @@ const FNPAYLOAD: &str = "type Feed<out T> = Feed { supply: T } | Dry\n\
 // [TYPE-VARIANCE-COERCION] — the coercion exists, at depth 0 only
 // ---------------------------------------------------------------------------
 
-/// "A bare `T` satisfies a `Result<T, E>` slot (an implicit `Success`)."
-#[test]
-fn the_coercion_holds_at_a_direct_value_site() {
-    flows("", "Result<int, MathError>", "5");
-}
+plain_cases! {
+    /// "A bare `T` satisfies a `Result<T, E>` slot (an implicit `Success`)."
+    the_coercion_holds_at_a_direct_value_site: flows("", "Result<int, MathError>", "5");
 
-/// "the inverse never holds anywhere."
-#[test]
-fn the_inverse_coercion_never_holds() {
-    blocked(
-        "fn half() -> Result<int, MathError> = 20 * 5\n",
-        "int",
-        "half()",
-    );
+    /// "the inverse never holds anywhere."
+    the_inverse_coercion_never_holds: blocked( "fn half() -> Result<int, MathError> = 20 * 5\n", "int", "half()", );
 }
 
 // ---------------------------------------------------------------------------
 // [TYPE-VARIANCE-COERCION] — and never inside an argument position
 // ---------------------------------------------------------------------------
 
-/// "`Feed<int>` does **not** satisfy a `Feed<Result<int, MathError>>` slot,
-/// under `out T`" — the coercion would have to rebuild the container.
-#[test]
-fn a_covariant_argument_does_not_carry_the_coercion() {
-    blocked(FEED, "Feed<Result<int, MathError>>", "feedInt()");
-}
+plain_cases! {
+    /// "`Feed<int>` does **not** satisfy a `Feed<Result<int, MathError>>` slot,
+    /// under `out T`" — the coercion would have to rebuild the container.
+    a_covariant_argument_does_not_carry_the_coercion: blocked(FEED, "Feed<Result<int, MathError>>", "feedInt()");
 
-/// "…under `in T`" — the flipped recursion does not smuggle it in either.
-#[test]
-fn a_contravariant_argument_does_not_carry_the_coercion() {
-    blocked(GATE, "Gate<int>", "gateRes()");
-}
+    /// "…under `in T`" — the flipped recursion does not smuggle it in either.
+    a_contravariant_argument_does_not_carry_the_coercion: blocked(GATE, "Gate<int>", "gateRes()");
 
-/// "…or unannotated."
-#[test]
-fn an_invariant_argument_does_not_carry_the_coercion() {
-    blocked(CELL, "Cell<Result<int, MathError>>", "cellInt()");
-}
+    /// "…or unannotated."
+    an_invariant_argument_does_not_carry_the_coercion: blocked(CELL, "Cell<Result<int, MathError>>", "cellInt()");
 
-/// The unwrapping direction is refused under every marker too — the half the
-/// shipped fixtures already cover, kept here so both directions sit together.
-#[test]
-fn no_marker_unwraps_a_result_payload() {
-    blocked(FEED, "Feed<int>", "feedRes()");
-    blocked(GATE, "Gate<Result<int, MathError>>", "gateInt()");
+    /// The unwrapping direction is refused under every marker too — the half the
+    /// shipped fixtures already cover, kept here so both directions sit together.
+    no_marker_unwraps_a_result_payload: blocked(FEED, "Feed<int>", "feedRes()"),
+    blocked(GATE, "Gate<Result<int, MathError>>", "gateInt()"),
     blocked(CELL, "Cell<int>", "cellRes()");
-}
 
-/// The identical instantiation is what all three markers DO accept.
-#[test]
-fn every_marker_accepts_the_identical_instantiation() {
-    flows(FEED, "Feed<int>", "feedInt()");
-    flows(GATE, "Gate<int>", "gateInt()");
+    /// The identical instantiation is what all three markers DO accept.
+    every_marker_accepts_the_identical_instantiation: flows(FEED, "Feed<int>", "feedInt()"),
+    flows(GATE, "Gate<int>", "gateInt()"),
     flows(CELL, "Cell<int>", "cellInt()");
-}
 
-/// And an unrelated payload is refused under every marker.
-#[test]
-fn every_marker_rejects_an_unrelated_payload() {
-    blocked(FEED, "Feed<int>", "feedText()");
-    blocked(GATE, "Gate<int>", "gateText()");
+    /// And an unrelated payload is refused under every marker.
+    every_marker_rejects_an_unrelated_payload: blocked(FEED, "Feed<int>", "feedText()"),
+    blocked(GATE, "Gate<int>", "gateText()"),
     blocked(CELL, "Cell<int>", "cellText()");
 }
 
@@ -161,88 +137,44 @@ fn every_marker_rejects_an_unrelated_payload() {
 // Composition — depth does not unlock the coercion
 // ---------------------------------------------------------------------------
 
-/// `out` inside `out` recurses, and still bottoms out exact.
-#[test]
-fn covariance_inside_covariance_still_bottoms_out_exact() {
-    blocked(
-        NESTED,
-        "Feed<Feed<Result<int, MathError>>>",
-        "feedFeedInt()",
-    );
+plain_cases! {
+    /// `out` inside `out` recurses, and still bottoms out exact.
+    covariance_inside_covariance_still_bottoms_out_exact: blocked( NESTED, "Feed<Feed<Result<int, MathError>>>", "feedFeedInt()", ),
     flows(NESTED, "Feed<Feed<int>>", "feedFeedInt()");
-}
 
-/// `in` inside `out` flips the recursion — and changes no outcome.
-#[test]
-fn contravariance_inside_covariance_still_bottoms_out_exact() {
-    blocked(NESTED, "Feed<Gate<int>>", "feedGateRes()");
-    blocked(
-        NESTED,
-        "Feed<Gate<Result<int, MathError>>>",
-        "feedGateInt()",
-    );
-}
+    /// `in` inside `out` flips the recursion — and changes no outcome.
+    contravariance_inside_covariance_still_bottoms_out_exact: blocked(NESTED, "Feed<Gate<int>>", "feedGateRes()"),
+    blocked( NESTED, "Feed<Gate<Result<int, MathError>>>", "feedGateInt()", );
 
-/// `out` inside `in`, the other flip.
-#[test]
-fn covariance_inside_contravariance_still_bottoms_out_exact() {
-    blocked(NESTED, "Gate<Feed<int>>", "gateFeedRes()");
-}
+    /// `out` inside `in`, the other flip.
+    covariance_inside_contravariance_still_bottoms_out_exact: blocked(NESTED, "Gate<Feed<int>>", "gateFeedRes()");
 
-/// Two flips compose back to covariance, which is still exact.
-#[test]
-fn contravariance_inside_contravariance_still_bottoms_out_exact() {
-    blocked(
-        NESTED,
-        "Gate<Gate<Result<int, MathError>>>",
-        "gateGateInt()",
-    );
+    /// Two flips compose back to covariance, which is still exact.
+    contravariance_inside_contravariance_still_bottoms_out_exact: blocked( NESTED, "Gate<Gate<Result<int, MathError>>>", "gateGateInt()", ),
     flows(NESTED, "Gate<Gate<int>>", "gateGateInt()");
-}
 
-/// An invariant argument under a covariant one.
-#[test]
-fn an_invariant_argument_under_a_covariant_one_is_exact() {
-    blocked(
-        NESTED,
-        "Feed<Cell<Result<int, MathError>>>",
-        "feedCellInt()",
-    );
+    /// An invariant argument under a covariant one.
+    an_invariant_argument_under_a_covariant_one_is_exact: blocked( NESTED, "Feed<Cell<Result<int, MathError>>>", "feedCellInt()", );
 }
 
 // ---------------------------------------------------------------------------
 // Function payloads: exact under a container, assignable when assigned direct
 // ---------------------------------------------------------------------------
 
-/// "Function payloads match exactly for the same reason" — the parameter
-/// position does not flip inside a container.
-#[test]
-fn a_function_payload_matches_exactly_inside_a_container() {
-    blocked(FNPAYLOAD, "Feed<(int) -> bool>", "feedTakesRes()");
-    blocked(
-        FNPAYLOAD,
-        "Feed<(Result<int, MathError>) -> bool>",
-        "feedTakesInt()",
-    );
-}
+plain_cases! {
+    /// "Function payloads match exactly for the same reason" — the parameter
+    /// position does not flip inside a container.
+    a_function_payload_matches_exactly_inside_a_container: blocked(FNPAYLOAD, "Feed<(int) -> bool>", "feedTakesRes()"),
+    blocked( FNPAYLOAD, "Feed<(Result<int, MathError>) -> bool>", "feedTakesInt()", );
 
-/// The spec's own counterexample, and its mirror: neither return direction
-/// matches under a container.
-#[test]
-fn a_function_payloads_return_matches_exactly_inside_a_container() {
-    blocked(FNPAYLOAD, "Feed<(int) -> int>", "feedGivesRes()");
-    blocked(
-        FNPAYLOAD,
-        "Feed<(int) -> Result<int, MathError>>",
-        "feedGivesInt()",
-    );
-}
+    /// The spec's own counterexample, and its mirror: neither return direction
+    /// matches under a container.
+    a_function_payloads_return_matches_exactly_inside_a_container: blocked(FNPAYLOAD, "Feed<(int) -> int>", "feedGivesRes()"),
+    blocked( FNPAYLOAD, "Feed<(int) -> Result<int, MathError>>", "feedGivesInt()", );
 
-/// The identical function payload flows, so the refusals above are about the
-/// shape and not about function payloads being rejected wholesale.
-#[test]
-fn an_identical_function_payload_flows() {
-    flows(FNPAYLOAD, "Feed<(int) -> bool>", "feedTakesInt()");
+    /// The identical function payload flows, so the refusals above are about the
+    /// shape and not about function payloads being rejected wholesale.
+    an_identical_function_payload_flows: flows(FNPAYLOAD, "Feed<(int) -> bool>", "feedTakesInt()");
 }
 
 // ---------------------------------------------------------------------------
@@ -289,45 +221,29 @@ fn the_three_markers_agree_on_every_assignment_outcome() {
 // The same rules through the ML surface ([FLAVOR-BOUNDARY])
 // ---------------------------------------------------------------------------
 
-/// The ML twin: a covariant ML container refuses the coercion too.
-#[test]
-fn ml_a_covariant_argument_does_not_carry_the_coercion() {
-    rejects(
-        Flavor::Ml,
-        "type Feed out T =\n    supply : T\n\
+spec_cases! {
+    /// The ML twin: a covariant ML container refuses the coercion too.
+    ml_a_covariant_argument_does_not_carry_the_coercion: rejects(Ml, "type Feed out T =\n    supply : T\n\
          feedInt : Unit -> Feed<int>\n\
          feedInt () = Feed(supply = 1)\n\
          takes : Feed<Result<int, MathError>> -> int\n\
          takes v = 0\n\
          held = takes (feedInt ())\n\
-         print \"${held}\"\n",
-    );
-}
+         print \"${held}\"\n");
 
-/// The ML twin of the identical-instantiation acceptance, so the refusal above
-/// is not an ML parsing accident.
-#[test]
-fn ml_an_identical_instantiation_flows() {
-    accepts(
-        Flavor::Ml,
-        "type Feed out T =\n    supply : T\n\
+    /// The ML twin of the identical-instantiation acceptance, so the refusal above
+    /// is not an ML parsing accident.
+    ml_an_identical_instantiation_flows: accepts(Ml, "type Feed out T =\n    supply : T\n\
          feedInt : Unit -> Feed<int>\n\
          feedInt () = Feed(supply = 1)\n\
          takes : Feed<int> -> int\n\
          takes v = 0\n\
          held = takes (feedInt ())\n\
-         print \"${held}\"\n",
-    );
-}
+         print \"${held}\"\n");
 
-/// The ML twin of the direct-site coercion.
-#[test]
-fn ml_the_coercion_holds_at_a_direct_value_site() {
-    accepts(
-        Flavor::Ml,
-        "takes : Result<int, MathError> -> int\n\
+    /// The ML twin of the direct-site coercion.
+    ml_the_coercion_holds_at_a_direct_value_site: accepts(Ml, "takes : Result<int, MathError> -> int\n\
          takes v = 0\n\
          held = takes 5\n\
-         print \"${held}\"\n",
-    );
+         print \"${held}\"\n");
 }

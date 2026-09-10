@@ -116,23 +116,15 @@ pub fn parse_program_with_flavor(source: &str, flavor: Flavor) -> Parsed {
     discharge_static_handlers(parsed)
 }
 
-/// Every function's dependency set: the static-effect operations it requires,
-/// transitively, minus what it answers itself. Implements
-/// [STAGE-SIGNALS-DIRTY] (docs/specs/0035-StagedEffects.md).
+/// Every function's dependency set — the static-effect operations it requires,
+/// transitively, minus what it answers itself — paired with the syntax errors
+/// found deriving them. Implements [STAGE-SIGNALS-DIRTY]
+/// (docs/specs/0035-StagedEffects.md).
 ///
 /// Computed on the program **before** static discharge, because discharge is
 /// what makes those reads free and this is what makes them visible. Every
 /// other entry point returns a discharged program, in which the dependency set
 /// no longer exists to be read.
-#[must_use]
-pub fn dependency_sets(
-    source: &str,
-    flavor: Flavor,
-) -> std::collections::BTreeMap<String, Vec<String>> {
-    dependency_report(source, flavor).0
-}
-
-/// The same dependency sets, paired with the syntax errors found deriving them.
 ///
 /// Parsing is best-effort, so a source that did not parse still yields a tree —
 /// and the dependency sets read off it are silently short. "This view reads no
@@ -317,7 +309,7 @@ fn frame() = kernel\n    Tile size => 8\nin shade(2)\n";
 fn counter(n) = (perform Signal<Count>.read()) ?: n\n";
         let ml = "static effect Signal T\n    read : Unit => T\n\ncounter n = perform Signal<Count>.read () ?: n\n";
         for (flavor, source) in [(Flavor::Default, default), (Flavor::Ml, ml)] {
-            let deps = dependency_sets(source, flavor);
+            let deps = dependency_report(source, flavor).0;
             assert_eq!(
                 deps.get("counter").cloned().unwrap_or_default(),
                 vec!["Signal<Count>.read"],

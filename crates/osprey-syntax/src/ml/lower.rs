@@ -496,7 +496,7 @@ impl ItemLower {
 fn lower_namespace_name(name: MlNamespaceName) -> NamespaceName {
     match name {
         MlNamespaceName::Ident(label) => NamespaceName::Identifier(label),
-        MlNamespaceName::Quoted(label) => NamespaceName::Quoted(crate::strings::unquote(&label)),
+        MlNamespaceName::Quoted(label) => NamespaceName::Quoted(unquote(&label)),
     }
 }
 
@@ -1514,20 +1514,10 @@ fn parse_fragment(frag: &str) -> Expr {
 )]
 mod tests {
     use super::super::parse_ml;
-    use crate::test_support::{ml_one_stmt, ml_stmts};
+    use crate::test_support::{assert_doc_pair, assert_summary, ml_one_stmt, ml_stmts, stmt_doc};
     use osprey_ast::{Expr, InterpolatedPart, Pattern, Stmt, Variance};
 
     // ---------- [TESTING-DOC] expression-statement documentation ----------
-
-    /// The doc comment lowered onto a statement, or `None`.
-    fn stmt_doc(stmt: &Stmt) -> Option<&osprey_ast::DocComment> {
-        match stmt {
-            Stmt::Expr { doc, .. } | Stmt::Let { doc, .. } | Stmt::Function { doc, .. } => {
-                doc.as_ref()
-            }
-            _ => None,
-        }
-    }
 
     #[test]
     fn an_ml_block_doc_lowers_onto_the_expression_statement_it_precedes() {
@@ -1536,10 +1526,7 @@ mod tests {
         // ([TESTING-DOC], [DOC-SIGIL-ML]).
         let s = ml_one_stmt("(** Documents the call. *)\nprintLine \"hi\"\n");
         assert!(matches!(s, Stmt::Expr { .. }), "still an expr stmt: {s:?}");
-        assert_eq!(
-            stmt_doc(&s).map(|d| d.summary.as_str()),
-            Some("Documents the call.")
-        );
+        assert_summary(&s, Some("Documents the call."));
     }
 
     #[test]
@@ -1552,10 +1539,7 @@ mod tests {
     fn an_ml_doc_is_consumed_by_the_first_statement_and_not_the_next() {
         let all = ml_stmts("(** First. *)\nprintLine \"a\"\nprintLine \"b\"\n");
         assert_eq!(all.len(), 2);
-        assert_eq!(
-            stmt_doc(&all[0]).map(|d| d.summary.as_str()),
-            Some("First.")
-        );
+        assert_summary(&all[0], Some("First."));
         assert_eq!(
             stmt_doc(&all[1]).map(|d| d.summary.as_str()),
             None,
@@ -1566,13 +1550,7 @@ mod tests {
     #[test]
     fn an_ml_binding_after_a_documented_statement_keeps_its_own_doc() {
         let all = ml_stmts("(** Runs it. *)\nprintLine \"hi\"\n(** Adds. *)\nadd a b = a + b\n");
-        assert_eq!(all.len(), 2);
-        assert_eq!(
-            stmt_doc(&all[0]).map(|d| d.summary.as_str()),
-            Some("Runs it.")
-        );
-        assert!(matches!(all[1], Stmt::Function { .. }));
-        assert_eq!(stmt_doc(&all[1]).map(|d| d.summary.as_str()), Some("Adds."));
+        assert_doc_pair(&all, "Runs it.", "Adds.");
     }
 
     #[test]

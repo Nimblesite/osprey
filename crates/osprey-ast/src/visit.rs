@@ -18,9 +18,24 @@ pub trait AstVisitor {
     fn expression(&mut self, _expression: &Expr) {}
 }
 
-enum Node<'a> {
+/// A borrowed syntax node whose immediate children can be visited in source order.
+#[derive(Debug, Clone, Copy)]
+pub enum AstNode<'a> {
+    /// A declaration or executable statement.
     Statement(&'a Stmt),
+    /// An expression, including any statements in a block.
     Expression(&'a Expr),
+}
+
+impl AstNode<'_> {
+    /// Visit immediate children only. Callers retain control of recursion,
+    /// lexical scopes, and branch-specific combination rules.
+    pub fn for_each_child(self, mut visit: impl FnMut(Self)) {
+        match self {
+            Self::Statement(statement) => statement_children(statement, &mut visit),
+            Self::Expression(expression) => expression_children(expression, &mut visit),
+        }
+    }
 }
 
 /// Walk every statement and expression in source order without recursive
@@ -31,73 +46,70 @@ pub fn walk_program(program: &Program, visitor: &mut impl AstVisitor) {
         .statements
         .iter()
         .rev()
-        .map(Node::Statement)
+        .map(AstNode::Statement)
         .collect();
     while let Some(node) = pending.pop() {
         match node {
-            Node::Statement(statement) => {
-                visitor.statement(statement);
-                push_statement_children(statement, &mut pending);
-            }
-            Node::Expression(expression) => {
-                visitor.expression(expression);
-                push_expression_children(expression, &mut pending);
-            }
+            AstNode::Statement(statement) => visitor.statement(statement),
+            AstNode::Expression(expression) => visitor.expression(expression),
+        }
+        let start = pending.len();
+        node.for_each_child(|child| pending.push(child));
+        if let Some(children) = pending.get_mut(start..) {
+            children.reverse();
         }
     }
 }
 
-fn push_statement_children<'a>(statement: &'a Stmt, pending: &mut Vec<Node<'a>>) {
+fn statement_children<'a>(statement: &'a Stmt, visit: &mut impl FnMut(AstNode<'a>)) {
     match statement {
         Stmt::Namespace { body, .. } => {
-            pending.extend(body.iter().rev().map(Node::Statement));
+            for statement in body {
+                visit(AstNode::Statement(statement));
+            }
         }
-        Stmt::Module { body, .. } => pending.extend(
-            body.iter()
-                .rev()
-                .map(|item| Node::Statement(item.declaration.as_ref())),
-        ),
+        Stmt::Module { body, .. } => {
+            for item in body {
+                visit(AstNode::Statement(&item.declaration));
+            }
+        }
         Stmt::Let { value, .. }
         | Stmt::Assignment { value, .. }
         | Stmt::Expr { value, .. }
-        | Stmt::Function { body: value, .. } => pending.push(Node::Expression(value)),
-        Stmt::Type { variants, .. } => push_constraints(variants, pending),
+        | Stmt::Function { body: value, .. } => visit(AstNode::Expression(value)),
+        Stmt::Type { variants, .. } => {
+            for field in variants.iter().flat_map(|variant| &variant.fields) {
+                if let Some(constraint) = &field.constraint {
+                    visit(AstNode::Expression(constraint));
+                }
+            }
+        }
         Stmt::Import(_) | Stmt::Extern { .. } | Stmt::Effect { .. } | Stmt::Signature { .. } => {}
     }
 }
 
-fn push_constraints<'a>(variants: &'a [crate::TypeVariant], pending: &mut Vec<Node<'a>>) {
-    for variant in variants.iter().rev() {
-        for field in variant.fields.iter().rev() {
-            if let Some(constraint) = &field.constraint {
-                pending.push(Node::Expression(constraint));
-            }
-        }
-    }
-}
-
-fn push_expression_children<'a>(expression: &'a Expr, pending: &mut Vec<Node<'a>>) {
+fn expression_children<'a>(expression: &'a Expr, visit: &mut impl FnMut(AstNode<'a>)) {
     match expression {
         Expr::InterpolatedStr(parts) => {
-            for part in parts.iter().rev() {
+            for part in parts {
                 if let InterpolatedPart::Expr(value) = part {
-                    pending.push(Node::Expression(value));
+                    visit(AstNode::Expression(value));
                 }
             }
         }
-        Expr::List(values, _) => push_each(values, pending, |value| value),
+        Expr::List(values, _) => visit_each(values, visit, |value| value),
         Expr::Map(entries) => {
-            for entry in entries.iter().rev() {
-                pending.push(Node::Expression(&entry.value));
-                pending.push(Node::Expression(&entry.key));
+            for entry in entries {
+                visit(AstNode::Expression(&entry.key));
+                visit(AstNode::Expression(&entry.value));
             }
         }
         Expr::Object(fields)
         | Expr::TypeConstructor { fields, .. }
-        | Expr::Update { fields, .. } => push_each(fields, pending, |field| &field.value),
+        | Expr::Update { fields, .. } => visit_each(fields, visit, |field| &field.value),
         Expr::Binary { left, right, .. } | Expr::Pipe { left, right } => {
-            pending.push(Node::Expression(right));
-            pending.push(Node::Expression(left));
+            visit(AstNode::Expression(left));
+            visit(AstNode::Expression(right));
         }
         Expr::TypeApply {
             function: operand, ..
@@ -105,63 +117,63 @@ fn push_expression_children<'a>(expression: &'a Expr, pending: &mut Vec<Node<'a>
         | Expr::Unary { operand, .. }
         | Expr::Spawn(operand)
         | Expr::Await(operand)
-        | Expr::Recv(operand) => pending.push(Node::Expression(operand)),
+        | Expr::Recv(operand)
+        | Expr::FieldAccess {
+            target: operand, ..
+        }
+        | Expr::Lambda { body: operand, .. } => visit(AstNode::Expression(operand)),
         Expr::Call {
-            function,
+            function: target,
             arguments,
             named_arguments,
-        } => {
-            push_each(named_arguments, pending, |argument| &argument.value);
-            push_each(arguments, pending, |argument| argument);
-            pending.push(Node::Expression(function));
         }
-        Expr::MethodCall {
+        | Expr::MethodCall {
             target,
             arguments,
             named_arguments,
             ..
         } => {
-            push_each(named_arguments, pending, |argument| &argument.value);
-            push_each(arguments, pending, |argument| argument);
-            pending.push(Node::Expression(target));
+            visit(AstNode::Expression(target));
+            visit_each(arguments, visit, |argument| argument);
+            visit_each(named_arguments, visit, |argument| &argument.value);
         }
-        Expr::FieldAccess { target, .. } => pending.push(Node::Expression(target)),
         Expr::Index { target, index } => {
-            pending.push(Node::Expression(index));
-            pending.push(Node::Expression(target));
+            visit(AstNode::Expression(target));
+            visit(AstNode::Expression(index));
         }
-        Expr::Lambda { body, .. } => pending.push(Node::Expression(body)),
         Expr::Match { value, arms } => {
-            push_each(arms, pending, |arm| &arm.body);
-            pending.push(Node::Expression(value));
+            visit(AstNode::Expression(value));
+            visit_each(arms, visit, |arm| &arm.body);
         }
         Expr::Block { statements, value } => {
-            if let Some(value) = value {
-                pending.push(Node::Expression(value));
+            for statement in statements {
+                visit(AstNode::Statement(statement));
             }
-            pending.extend(statements.iter().rev().map(Node::Statement));
+            if let Some(value) = value {
+                visit(AstNode::Expression(value));
+            }
         }
         Expr::Yield(value) | Expr::Resume(value) => {
             if let Some(value) = value {
-                pending.push(Node::Expression(value));
+                visit(AstNode::Expression(value));
             }
         }
         Expr::Send { channel, value } => {
-            pending.push(Node::Expression(value));
-            pending.push(Node::Expression(channel));
+            visit(AstNode::Expression(channel));
+            visit(AstNode::Expression(value));
         }
-        Expr::Select { arms } => push_each(arms, pending, |arm| &arm.body),
+        Expr::Select { arms } => visit_each(arms, visit, |arm| &arm.body),
         Expr::Perform {
             arguments,
             named_arguments,
             ..
         } => {
-            push_each(named_arguments, pending, |argument| &argument.value);
-            push_each(arguments, pending, |argument| argument);
+            visit_each(arguments, visit, |argument| argument);
+            visit_each(named_arguments, visit, |argument| &argument.value);
         }
         Expr::Handler { arms, body, .. } => {
-            pending.push(Node::Expression(body));
-            push_each(arms, pending, |arm| &arm.body);
+            visit_each(arms, visit, |arm| &arm.body);
+            visit(AstNode::Expression(body));
         }
         Expr::Integer(_)
         | Expr::Float(_)
@@ -172,17 +184,14 @@ fn push_expression_children<'a>(expression: &'a Expr, pending: &mut Vec<Node<'a>
     }
 }
 
-fn push_each<'a, T>(
+fn visit_each<'a, T>(
     items: &'a [T],
-    pending: &mut Vec<Node<'a>>,
+    visit: &mut impl FnMut(AstNode<'a>),
     expression: impl Fn(&'a T) -> &'a Expr,
 ) {
-    pending.extend(
-        items
-            .iter()
-            .rev()
-            .map(|item| Node::Expression(expression(item))),
-    );
+    for item in items {
+        visit(AstNode::Expression(expression(item)));
+    }
 }
 
 /// Recurse into every element of `items`, projecting each to its

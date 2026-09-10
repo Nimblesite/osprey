@@ -15,19 +15,19 @@ pub(crate) struct ImportScope {
 }
 
 impl ImportScope {
-    pub fn alias(&self, name: &str) -> Option<&SymbolKey> {
+    pub(crate) fn alias(&self, name: &str) -> Option<&SymbolKey> {
         self.aliases.get(name)
     }
 
-    pub fn member(&self, name: &str) -> Option<&SymbolKey> {
+    pub(crate) fn member(&self, name: &str) -> Option<&SymbolKey> {
         self.members.get(name)
     }
 
-    pub fn is_ambiguous(&self, name: &str) -> bool {
+    pub(crate) fn is_ambiguous(&self, name: &str) -> bool {
         self.ambiguous.contains(name)
     }
 
-    pub fn aliases_for(&self, target: &SymbolKey) -> Vec<String> {
+    pub(crate) fn aliases_for(&self, target: &SymbolKey) -> Vec<String> {
         self.aliases
             .iter()
             .filter(|(_, candidate)| *candidate == target)

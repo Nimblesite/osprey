@@ -6,7 +6,7 @@
 //! parameters, `let`s in blocks, `match`/`select`/handler pattern bindings)
 //! are subtracted; everything else referenced is free.
 
-use crate::{Expr, InterpolatedPart, MatchArm, Pattern, Stmt};
+use crate::{AstNode, Expr, MatchArm, Pattern, Stmt};
 use std::collections::BTreeSet;
 
 /// Collect the free identifiers of `e` into `out` (sorted, deduplicated).
@@ -36,63 +36,8 @@ fn scoped(
 
 fn walk(e: &Expr, bound: &mut Vec<String>, out: &mut BTreeSet<String>) {
     match e {
-        Expr::Integer(_) | Expr::Float(_) | Expr::Str(_) | Expr::Bool(_) => {}
-        Expr::Identifier(n) => note(n, bound, out),
+        Expr::Identifier(name) => note(name, bound, out),
         Expr::Path(path) => note(&path.to_string(), bound, out),
-        Expr::InterpolatedStr(parts) => {
-            for p in parts {
-                if let InterpolatedPart::Expr(inner) = p {
-                    walk(inner, bound, out);
-                }
-            }
-        }
-        Expr::List(xs, _) => walk_slice(xs, bound, out, |x| x),
-        Expr::Map(entries) => {
-            for en in entries {
-                walk(&en.key, bound, out);
-                walk(&en.value, bound, out);
-            }
-        }
-        Expr::Object(fields) => walk_slice(fields, bound, out, |f| &f.value),
-        Expr::Binary { left, right, .. } | Expr::Pipe { left, right } => {
-            walk(left, bound, out);
-            walk(right, bound, out);
-        }
-        Expr::TypeApply {
-            function: operand, ..
-        }
-        | Expr::Unary { operand, .. } => walk(operand, bound, out),
-        e2 => walk_rest(e2, bound, out),
-    }
-}
-
-/// Continuation of [`walk`] (kept in thirds so each stays small).
-fn walk_rest(e: &Expr, bound: &mut Vec<String>, out: &mut BTreeSet<String>) {
-    match e {
-        Expr::Call {
-            function,
-            arguments,
-            named_arguments,
-        } => {
-            walk(function, bound, out);
-            walk_slice(arguments, bound, out, |x| x);
-            walk_slice(named_arguments, bound, out, |n| &n.value);
-        }
-        Expr::MethodCall {
-            target,
-            arguments,
-            named_arguments,
-            ..
-        } => {
-            walk(target, bound, out);
-            walk_slice(arguments, bound, out, |x| x);
-            walk_slice(named_arguments, bound, out, |n| &n.value);
-        }
-        Expr::FieldAccess { target, .. } => walk(target, bound, out),
-        Expr::Index { target, index } => {
-            walk(target, bound, out);
-            walk(index, bound, out);
-        }
         Expr::Lambda {
             parameters, body, ..
         } => {
@@ -103,52 +48,29 @@ fn walk_rest(e: &Expr, bound: &mut Vec<String>, out: &mut BTreeSet<String>) {
             walk(value, bound, out);
             walk_arms(arms, bound, out);
         }
-        Expr::Block { statements, value } => walk_block(statements, value.as_deref(), bound, out),
-        // `name { … }` where `name` is a bound local is a record UPDATE that
-        // reads `name` (`aggregate::gen_constructor` redirects; the parser
-        // cannot tell the forms apart). Noting a real type name is harmless:
-        // consumers filter against actual locals (captures via `cg.lookup`,
-        // liveness against `let`-bound ledger names).
-        Expr::TypeConstructor { name, fields, .. } => {
-            note(name, bound, out);
-            walk_slice(fields, bound, out, |f| &f.value);
-        }
-        Expr::Update { record, fields } => {
-            note(record, bound, out);
-            walk_slice(fields, bound, out, |f| &f.value);
-        }
-        e2 => walk_fiber(e2, bound, out),
-    }
-}
-
-/// Final third of the walker: fiber/effect forms (and the leaf-handled rest).
-fn walk_fiber(e: &Expr, bound: &mut Vec<String>, out: &mut BTreeSet<String>) {
-    match e {
-        Expr::Spawn(inner) | Expr::Await(inner) | Expr::Recv(inner) | Expr::Yield(Some(inner)) => {
-            walk(inner, bound, out);
-        }
-        Expr::Send { channel, value } => {
-            walk(channel, bound, out);
-            walk(value, bound, out);
-        }
         Expr::Select { arms } => walk_arms(arms, bound, out),
-        Expr::Perform {
-            arguments,
-            named_arguments,
-            ..
+        Expr::Block { statements, value } => walk_block(statements, value.as_deref(), bound, out),
+        // A constructor spelling can name a local record update. Consumers
+        // filter actual type names against locals; an update's base is a read.
+        Expr::TypeConstructor { name, fields, .. }
+        | Expr::Update {
+            record: name,
+            fields,
         } => {
-            walk_slice(arguments, bound, out, |x| x);
-            walk_slice(named_arguments, bound, out, |n| &n.value);
+            note(name, bound, out);
+            walk_slice(fields, bound, out, |field| &field.value);
         }
-        Expr::Resume(Some(value)) => walk(value, bound, out),
         Expr::Handler { arms, body, .. } => {
             for arm in arms {
                 scoped(bound, arm.params.clone(), out, |b, o| walk(&arm.body, b, o));
             }
             walk(body, bound, out);
         }
-        // Every other variant is fully handled by the first two thirds.
-        _ => {}
+        _ => AstNode::Expression(e).for_each_child(|child| {
+            if let AstNode::Expression(expression) = child {
+                walk(expression, bound, out);
+            }
+        }),
     }
 }
 

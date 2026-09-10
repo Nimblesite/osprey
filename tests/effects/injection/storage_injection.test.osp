@@ -90,14 +90,14 @@ fn withReadOnlyStorage(action) = handle Storage
     exists key => true
 in action()
 
-/// The path each flavor owns, so the Default and ML twins never share a file.
-let diskBook = "osprey_storage_injection_default.txt"
-let diskArchive = "osprey_storage_injection_default_archive.txt"
+/// A fresh 126-bit random suffix isolates concurrent executions of either flavor.
+let diskBook = "osprey_storage_injection_${random()}_${random()}.txt"
+let diskArchive = "${diskBook}.archive.txt"
 
 /// This case runs the logic against the real file system and verifies the
 /// bytes with `readFile` from outside the handler.
 fn diskStorageCase() = {
-    // Truncate both paths so a rerun starts from the same file system state.
+    /// Truncate both paths so a rerun starts from the same file system state.
     let clearedBook = writeFile(diskBook, "") ?: (0 - 1 ?: 0)
     let clearedArchive = writeFile(diskArchive, "") ?: (0 - 1 ?: 0)
     let first = withDiskStorage(|| => appendNote(diskBook, "buy milk"))
@@ -169,7 +169,7 @@ fn mockStorageCase() = {
         endsWith(mockLog, "load(fixture.txt);")
     ])
 
-    // The double touched no file system: nothing named by the test exists.
+    /// The double touched no file system: nothing named by the test exists.
     let notesAbsent = match readFile("notes.txt") {
         Success { value } => false
         Error { message } => contains(message, "No such file or directory")

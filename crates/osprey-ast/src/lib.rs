@@ -26,7 +26,7 @@ pub use generics::{EffectRef, TypeParam, Variance};
 pub use multiplicity::{Multiplicity, OperationTable, REPLAYABLE_KEYWORD};
 pub use resume::{contains_resume, resumes_on_one_path};
 pub use stage::{Stage, STATIC_STAGE_KEYWORD};
-pub use visit::{walk_each, walk_program, AstVisitor};
+pub use visit::{walk_each, walk_program, AstNode, AstVisitor};
 
 /// The one wording for an entry conflict [MODULES-ENTRYPOINT]. Two phases can
 /// reach it — the type checker for a plain source, the project assembler for a

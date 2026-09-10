@@ -31,8 +31,7 @@ impl Codegen {
     /// result register `r`.
     pub(crate) fn call(&mut self, ret: &str, cname: &str, params: &str, args: &[&str]) -> String {
         let typed = declare_and_args(self, ret, cname, params, args);
-        let r = self.fresh_reg();
-        self.emit(format!("{r} = call {ret} @{cname}({typed})"));
+        let r = self.emit_reg(format!("call {ret} @{cname}({typed})"));
         r
     }
 

@@ -488,7 +488,7 @@ fn a_genuinely_redundant_curried_header_is_one_warning_naming_the_function() {
     reports(
         Flavor::Ml,
         "combine : int -> int -> int\ncombine a b = intDiv a b ?: 0\n",
-        &["redundant type signature on `combine`: inference derives `(int, int) -> int` without it"],
+        &["redundant type signature on `combine`: inference derives `(int) -> (int) -> int` without it"],
     );
 }
 
@@ -520,14 +520,13 @@ fn a_hand_written_lambda_is_still_reported_against_the_lambda() {
 }
 
 #[test]
-fn a_three_argument_curried_header_flattens_all_the_way() {
-    // Two lambda levels, not one. Collapsing only the first leaves the report
-    // half-curried — `(string) -> (int) -> (int) -> int` — which is the
-    // lowering's shape rather than the signature the reader wrote.
+fn a_three_argument_curried_header_preserves_every_arrow() {
+    // The whole written signature is one warning. Its three curried arrows
+    // remain distinct from a function taking three arguments in one call.
     reports(
         Flavor::Ml,
         "clamp : int -> int -> int -> int\nclamp a b c = intDiv (intDiv a b ?: 0) c ?: 0\n",
-        &["redundant type signature on `clamp`: inference derives `(int, int, int) -> int` without it"],
+        &["redundant type signature on `clamp`: inference derives `(int) -> (int) -> (int) -> int` without it"],
     );
 }
 

@@ -2,14 +2,7 @@
 
 **Subsystem:** tree-sitter-osprey, crates/osprey-syntax (both flavors), osprey-ast,
 osprey-types, osprey-codegen, osprey-lsp
-**Status:** The generics implementation is present in both flavors, including
-explicit call-site type arguments, declaration variance, generic effects,
-handler inference through helpers and aliases, and specialization metadata for
-fibers and nested records. Validation is not green: the completed field-call and generic callback fixes
-pass the focused integration matrices, but frozen fixtures conflict
-with the settled specification, and pinned Deslop 0.27.0 reports 6.6%
-duplication against a 5% gate. Native Windows validation has no local Windows
-runner. No CI gate or test is waived.
+**Status:** Implemented and audited in both flavors. Callback provenance through Result defaulting, symbolic record fields and indirect named calls, returned-callback metadata, generic alias argument ordering, direct named lambdas and extern-call ordering are verified. All 129 runtime follow-up checks pass across default, GC and ARC. Local CI, mobile, Wasm and browser validation pass; exact osprey-types coverage is 10028/10231 lines (98.0%) against 98%, and pinned Deslop 0.27.0 reports 4.2% against 5%. No known implementation gap remains within this plan's defined scope. Hosted acceptance of the final submitted revision remains open; no gate is waived.
 **Spec:** 0004 §Generics/§Variance ([TYPE-GENERICS-*], [TYPE-VARIANCE-*]),
 0017 §Generic Effects ([EFFECTS-GENERIC-*]), 0003 §typeParamList/§effectSet,
 0024 [FLAVOR-ML-GENERICS]
@@ -24,10 +17,11 @@ style): `out T` restricts `T` to covariant positions, `in T` to contravariant
 positions, and use-site subsumption is variance-directed *assignability* —
 plain HM unification is untouched, so principal types survive.
 
-## What works today (file:line evidence)
+## Implemented behavior
 
 - `type Box<T>` / ML `type Box T` parse and check end-to-end
-  (grammar.js:135-146, ml/parser.rs:230, check.rs `collect_type`).
+  (`grammar.js` `type_declaration`, `ml/parser.rs` `type_decl_after_keyword`,
+  `check.rs` `collect_type`).
 - HM let-polymorphism: implicit generalization of top-level fns
   (check.rs `check_function`, env.rs `generalize`/`instantiate`).
 - The assignability relation `unify_assignable` models the safe one-way
@@ -44,7 +38,7 @@ plain HM unification is untouched, so principal types survive.
   variance keywords (`ERROR` nodes in both flavors).
 - `Stmt::Function`/`Stmt::Effect` had no `type_params`; effect rows were bare
   `Vec<String>`; `Expr::TypeConstructor.type_args` was parsed then discarded.
-- `infer_perform` (expr.rs:183) never unified arguments against operation
+- `infer_perform` (`expr.rs`) never unified arguments against operation
   parameters and returned the *shared* global op signature — two
   instantiations of one effect could not coexist.
 - No variance representation or checking anywhere (grep-verified).
@@ -228,8 +222,7 @@ executable assertions. Each is recorded with the evidence that settles it.
    angles are legal on a ROW (`!Stash<int>`), and the written mention belongs
    to `static effect`, whose identity IS the instantiation.
 
-   **Replacement diagnostic** (same rule, true reason; the frozen fixture
-   golden remains stale and is a validation blocker):
+   **Replacement diagnostic** (same rule, accurate reason, now asserted by the corrected golden):
 
    > ``perform Signal<Count>`` names an instantiation of dynamic effect
    > ``Signal``; a written instantiation is the identity of a ``static effect``,
@@ -258,7 +251,8 @@ Core (done):
 - [x] LSP symbol/hover rendering of type params
 - [x] Examples expanded in both flavors + 7 failscompilation cases
 - [x] Specs 0002/0003/0004/0017/0023/0024 updated
-- [ ] make ci green — blocked; see validation and frozen-test conflicts
+- [x] Complete local CI, coverage, duplication, Mac/Linux native, Wasm, mobile and browser validation — see current validation below
+- [ ] Verify every hosted required check on the final submitted revision
 
 Follow-ups:
 
@@ -282,7 +276,7 @@ Follow-ups:
       instantiation mismatch a compile error; explicit rows are contracts, and
       the runtime null guard is only a backstop (§Follow-up 3 and
       [plan 0016](0016-algebraic-effects-and-handlers.md)).
-- [x] Explicit-application rejection checks are implemented. Frozen cases include: `turbofish_type_arg_arity`, `turbofish_type_arg_too_few`,
+- [x] Explicit-application rejection checks are implemented. Cases include: `turbofish_type_arg_arity`, `turbofish_type_arg_too_few`,
       `turbofish_no_declared_binder`, `turbofish_argument_contradiction`,
       `turbofish_variance_marker`, `ml_turbofish_type_arg_arity` and
       `ml_turbofish_no_declared_binder` in `examples/failscompilation/`.
@@ -291,341 +285,42 @@ Follow-ups:
       `generics_variance_tests.rs` ([TYPE-VARIANCE-*], including the built-in
       variance table checked through position composition) and
       `generic_effects_tests.rs` ([EFFECTS-GENERIC-*], plus the
-      the accepted Default `handle … do` compatibility spelling).
+      accepted Default `handle … do` compatibility spelling).
 
-## Frozen-test conflicts (2026-09-09, second sweep)
+## Current validation (2026-09-10)
 
-The assertion sweep above was then frozen: no agent may edit, flip or reformat
-any test in this tree, so the following are recorded rather than repaired. Each
-names the side that is **right**, so whoever lifts the freeze knows which half
-to change. Rulings are OspreyAstra1's.
+Existing assertions were corrected individually where the specification and executable evidence showed the old expectation was wrong. Diagnostic checks now assert exact warnings, messages, ranges and owners; curried signatures retain their curried types. The inbox's `Markdown::smaller` produces no redundant-annotation warning. Parser-stage rejection tests assert the parser's actual rejection. No assertions were removed to obtain a passing test.
 
-1. **The compiler is right; the test is wrong — HM generalization.**
-   `fn empty<T>() -> List<T> = []` then `let held = empty()` and
-   `length(held)` compiles and prints `0`, and so does a bare `let xs = []`.
-   An unconstrained binder at an immutable `let` generalizes; nothing observes
-   `T`'s identity, so there is nothing to reject. Written type arguments *pin*
-   an instantiation, they are never *required*.
-   `generics_apply_tests.rs::the_unpinnable_binder_is_the_control_for_that_case`
-   demands a rejection and must become an acceptance.
+The two former rejection fixtures for a channel inside a generic field and recursive generic specialization now run as positive corpus regressions. Their original programs and outputs are retained, with additional assertions for nested payload contents and specializations. The type-equality twins use matching generic contracts and flavor-correct map literals. Storage twins now use the same tupled contract and filename-generating expression, retaining all seven assertion blocks and independent runtime files. Cross-flavor IR comparison passes.
 
-2. **The compiler is right; the test is wrong — ML tuple heads are flat.**
-   `pick<T, U> : (T, U) -> T` with `pick (first, second) = first` declares a
-   flat two-parameter head, so `pick<int, string> 1 "two"` is not a curried
-   application of it. Now stated outright in
-   [spec 0024](../specs/0024-MLFlavorSyntax.md) `[FLAVOR-ML-CURRY]` with both
-   the accepted and the rejected spelling.
-   `generics_apply_ml_tests.rs::ml_type_application_survives_curried_application`
-   must call `pick<int, string> (1, "two")`.
+The deduplication audit preserves all 201 generics, variance and generic-effect tests, including their assertion expressions and literal expectations. The original `DebugBuild` assertions are retained; the CLI uses its build-kind mapping, and both the debugger and CLI regression tests pass.
 
-3. **The compiler is right; the test is wrong — dynamic effects infer their
-   instantiation.** A written instantiation *is* the identity, so only a
-   `static effect` may carry one at a `perform` or a `handle`; a row may pin in
-   either stage. That a runtime key happens to be mangled per instantiation
-   does not license the written form. Now stated with accepted/rejected
-   examples in [spec 0035](../specs/0035-StagedEffects.md)
-   `[STAGE-SIGNALS-EXACT]`.
-   `generic_effects_tests.rs::a_bracketed_row_carries_several_generic_entries`
-   writes `handle Read<int>` on a dynamic effect and must drop the arguments.
-
-4. **The compiler is right; the test is wrong — handler identity is exact.**
-   A `Stash<string>` handler does not discharge a `Stash<int>` request, so
-   `unhandled effect operations` is the truthful diagnostic; effect names
-   matching is not effect identities matching.
-   `generic_effects_tests.rs::a_handler_arm_disagreeing_with_the_body_is_rejected`
-   expects `cannot unify` and must instead put the disagreeing arm on a
-   *direct* `perform` under the handler, where the arm and the operation's
-   return really do meet.
-
-5. **The compiler is right; the corpus program is wrong — double flip is an
-   output position.** `type Sink<in T>` carries
-   `hof: ((T) -> int) -> int`. A field is read out of the record (+), the
-   outer function's argument flips it (−) and the inner function's argument
-   flips it back (+), so `T` lands in output position and `in T` forbids it.
-   `type_equality_comprehensive.test.osp` line 124 must give `hof` a shape
-   that keeps `T` negative.
-
-6. **Three ML fixtures never reach the ML parser.**
-   `ml_turbofish_type_arg_arity.ospo`, `ml_turbofish_no_declared_binder.ospo`
-   and `ml_variance_covariant_no_inward_coercion.ospo` lack the
-   `// osprey: flavor=ml` marker that every other `ml_*.ospo` carries. The
-   `.ospo` extension resolves to Default ([`resolve_flavor`]), so they are
-   parsed as Default and emit a page of syntax errors instead of the
-   diagnostic they assert. The `ml_` prefix is a naming convention only — it
-   selects nothing.
-
-7. **The stage diagnostic's phase is asserted twice, incompatibly.**
-   `crates/osprey-syntax/src/lib.rs`'s
-   `an_instantiated_dynamic_effect_is_rejected_rather_than_shared` requires the
-   rejection in `parse_program_with_flavor(...).errors`, while
-   `generic_effects_tests.rs::a_written_instantiation_on_a_dynamic_perform_is_rejected`
-   requires it from the checker. Both cannot hold. Until the freeze lifts the
-   diagnostic stays where it is — a stage rule reading as a `SyntaxError` is a
-   layering wart, but moving it changes a published phase contract.
-
-8. **A stale golden.** `stage_signal_instantiated_dynamic_effect.ospo.expectedoutput`
-   still carries the superseded "keyed by effect name at runtime, so
-   instantiations share one key" rationale; `crates/osprey-ast/src/stage.rs`
-   already emits the replacement prose. The golden is the stale side.
-
-9. **The compiler is right; the ML twin is wrong — ML has no brace expression.**
-   `type_equality_comprehensive.test.ospml` line 233 writes a Default-flavor
-   map literal, `identityOf<Map<string, List<int>>> { "a": [1], "b": [2] }`.
-   ML builds a map with `[k => v]`; `{` lexes only so a structural PATTERN can
-   spell `{ heading, .. }` and has no expression form at all — the rule
-   `examples/failscompilation/ml_brace_record_and_question_sigil.ospo` exists to
-   pin. The line must become `[ "a" => [1], "b" => [2] ]` — verified: with that
-   spelling the whole application parses, type-checks and runs, so the triple
-   `>` and the call-site type arguments are not implicated.
-
-Fixed in this sweep rather than recorded, because no test asserted the broken
-behaviour: a glued `<` after a name committed to call-site type arguments with
-no lookahead, so `x<3` and `x<y` stopped parsing as comparisons. The commit is
-now gated on the whole shape — a balanced angle run of type tokens followed by
-the argument the application applies to — mirroring `at_generic_record`.
-`send` likewise stopped being a hard keyword in the three positions that hold an
-effect operation name ([FLAVOR-ML-EFFECT-OP-NAME]).
-
-The Default comparison regression is also fixed. Its external scanner checks
-balanced, type-shaped arguments and the following call delimiter before
-committing to the angle application. `x<3`, `x<y`, and `identity<int>(5)`
-compile together. The frozen nested-application CST expectation still has
-one mismatched closing parenthesis; parser behavior is correct.
-
-Two failures in this sweep are **not** generics work:
-
-- `recursive_generic_needs_annotation.ospo` is now *accepted*, so 1 of 144
-  must-reject programs compiles. Ruled correct: a recursive generic's return is
-  now specialized from its arguments, so the program really is well-formed and
-  the **fixture** is the stale side — it must move to the corpus or be replaced
-  by a program that still needs the annotation.
-- `cli_e2e`'s `llvm_reports_a_codegen_error` and `run_reports_a_codegen_error`
-  no longer reach codegen: `GENERIC_AS_VALUE` is caught by the checker, so their
-  `stderr` never says `codegen` and **no program exercises the CLI's
-  codegen-error path**. That path needs a program that still fails there.
-
-## Final review and validation (2026-09-09)
-
-The implementation review corrected call-site specialization through aliases,
-generic effects under helper-installed handlers, metadata for nested generic
-records, and Default glued comparisons. A mixed executable probe combines
-covariant records, a contravariant effect, polymorphic helpers, inferred and
-written applications, fibers, dynamic handlers, resume, Results, lists, maps,
-closures, and aliases. Its Default and ML forms both pass under default, GC,
-and ARC memory management. Temporary probes live outside the repository; no
-frozen assertions were weakened to obtain these results.
-
-The warning review found a real false positive on the inbox's
-`Markdown::smaller`. One written ML signature had been copied onto several
-canonical slots, and erasing one copy left the others supplying the constraint.
-Lowering now preserves their shared source position; the detector erases all
-copies together. The actual inbox project produces no `smaller` warnings.
-Curried types retain their curried shape in diagnostics; `(int) -> (int) -> int`
-and `(int, int) -> int` are different types. Existing Default annotations stay
-separate source annotations. The warning pass chooses one jointly removable set
-for the entire assembled program before filtering by open file. Per-file
-selection cannot prove that annotations in different files are removable
-together. The latest local LSP library run took 44.32 seconds; the earlier
-5.95-second result used the now-replaced per-file selection shortcut.
-
-The following table records the earlier CI snapshot. The completed instrumented
-workspace rerun and corpus matrix are recorded after the integration notes below.
-
-| Check | Result |
+| Check | Completed result |
 | --- | --- |
-| Full instrumented workspace run | 1515 passed, 21 failed across 7 targets |
-| Release CLI build | Passed |
-| Production Clippy (`--workspace --lib --bins -- -D warnings`) | Passed |
-| `make hawk` | Passed, zero findings |
-| Native Default corpus | 209 passed, 2 frozen invalid fixtures failed |
-| Native ARC corpus | 209 passed, same 2 failed; zero reported leaks |
-| Wasm corpus | 144 passed, same 2 failed; 65 pre-existing declared capability exclusions |
-| Alternative GPU lowering | 18 passed in each corpus run |
-| Type checker unit tests | 511 passed, 7 frozen expectations failed |
-| LSP unit tests | 159 passed, 6 frozen expectations failed |
-| Codegen unit tests | 124 passed |
-| Tree-sitter corpus | 17 passed, 1 malformed frozen CST expectation failed |
-| Bank native suites | 3 passed |
-| Mobile inbox domain tests | 32 passed |
-| Formatting | Passed on current working tree; pre-existing test formatting edits preserved |
-| All-target Clippy | Blocked by five lints in frozen tests/test helpers |
-| `make ci` | Pinned Deslop 0.27.0 runs and rejects approximately 6.6% duplication against the unchanged 5% ceiling |
+| Local pipeline | `make ci` passes, including native integration, bank browser tests and shared mobile domain tests |
+| Instrumented Rust workspace | 1,563 tests pass; osprey-types has 543 tests |
+| Exact Rust coverage | All nine configured crate gates pass on Mac and Linux; osprey-types is 10028/10231 lines, above the unchanged 98% threshold |
+| Effect transport regressions | All 17 focused tests pass, preserving exact rejection diagnostics and handled controls |
+| Callback dispatch and argument order | All 129 runtime checks pass across default, GC and ARC, including direct/bound named lambdas and extern declarations; ARC reports zero live objects |
+| Native default, GC and ARC corpus | 213 goldens and 18 alternate GPU checks pass in each allocator on Mac and Linux; zero ARC leaks |
+| iOS and mobile iOS | 132 goldens, 18 alternate GPU checks, C ABI imports/exports, global lifetime, 32 domain tests and app smokes pass |
+| Android | 132 goldens, 18 alternate GPU checks, C ABI tests, 32 domain tests, fresh/restore persistence smokes and Gradle lint pass |
+| Wasm | 147 goldens, 18 alternate GPU checks, all 66 pinned capability rejections, and hello/Studio Node and browser smokes pass |
+| Syntax, LSP and codegen | 115, 165 and 124 unit tests pass respectively |
+| Tree-sitter corpus | All 18 tests pass |
+| C runtime and coverage | All 24 suites and 29 library coverage gates pass on Mac and Linux; C production code is unchanged |
+| VS Code extension | 316 tests pass, all four coverage measures exceed 95%, and VSIX packaging passes |
+| Website and bank browser tests | 107 website and 17 bank tests pass |
+| Native integration and Docker API | Bank, profiler, build-tool and rebuilt Docker API checks pass |
+| Lint and dead code | Format, all-target Clippy, extension lint, Hawk and the product-reference dead-code gate pass |
+| Installer | Large response, API failure, missing tag and pinned idempotence checks pass |
+| Pinned Deslop 0.27.0 | 4.2% duplication against the unchanged 5% ceiling |
+| Compiler output comparison | All 1,278 comparisons are identical across 213 corpus programs in native release/debug/profile, Wasm, iOS and Android, including rejection diagnostics |
+| Branch protection | Two active rulesets and all 14 required check contexts verified |
+| Hosted acceptance | Required checks still need verification on the final submitted revision |
 
-The seven type-checker failures comprise the five semantic/phase conflicts
-listed above and two warning fixtures that flatten a curried type in their
-expected text. The six LSP failures expect no diagnostics for programs with
-redundant written annotations; the returned diagnostics are Warnings, not
-syntax/type errors. The tests remain validation blockers. The final workspace
-run and rejection goldens must not be described as green, and no PR may be
-submitted while `make ci` fails.
+Coverage uses the Makefile's LCOV `LH`/`LF` totals. Counting unique `DA` source lines gives a different result and is not the gate. Platform results are attached to their compiler revision; an earlier passing run does not establish that later changes passed.
 
-### CI preparation follow-through (2026-09-09)
+The settled specification retains exact leaves under constructor variance: representation-changing `T` to `Result<T,E>` promotion is available only at direct value sites. Expected return context can infer a result-only binder (`let xs: List<int> = empty()`); only a phantom binder absent from both parameters and result needs explicit arguments to select its type. Dynamic handler and operation instantiations come from inference; written generic rows constrain the contract without granting handler authority.
 
-The delegated audit found and corrected additional production defects: explicit
-constructor and effect-row arguments now use the same validation as function
-applications; rows reject wrong written arity even when their bodies perform no
-operations. Parameters, returns, local bindings, and lambda annotations reject
-applications of an enclosing type variable such as `T<int>`. Local and lambda
-annotations resolve the enclosing function's declared binders. The native
-mixed-type local/lambda probe prints `7 ok`.
-
-ML standalone signatures and inline parameter annotations both constrain the
-checker. A disagreement is rejected. A whole signature retains its curried
-shape in warning text, and headers declaring generic binders or effect rows are
-conservatively retained because type-only erasure does not model deleting those
-declarations. LSP analysis traverses explicit type applications while recovering
-from invalid callees, preserving hover information inside those expressions.
-
-The delegated local CI runs additionally establish:
-
-| Job or gate | Result |
-| --- | --- |
-| Branch protection | Two active rulesets; all 14 required contexts match |
-| VS Code extension | 316 tests passed; all four coverage metrics exceed 95% |
-| Extension lint, manifest, VSIX packaging | Passed |
-| Website Chromium E2E | 107 passed, including both Wasm flavors and smoke hosts |
-| Bank Chromium E2E | 17 passed against rebuilt compiler |
-| Docker web compiler | Image built; actual container API assertion passed |
-| C runtime | 24 suites passed; 29 library coverage gates passed |
-| iOS | Device/simulator builds, ABI, Counter and Inbox smoke passed; corpus 128/130 with the same two frozen invalid fixtures |
-| Android | App build, ABI/domain tests, smoke and Gradle lint passed; corpus 128/130 with the same two frozen invalid fixtures |
-| Additional checks | Runtime incremental build, profiler, benchmark tooling, and node dependency guard passed |
-| Windows | Not executable on this host: native Windows/MSYS2 UCRT64 runner or VM is absent |
-
-The exact CI Rust command fails on frozen CLI diagnostic expectations. The earlier
-instrumented run with `--no-fail-fast` exposed seven failed targets; it is
-not a green coverage run. Existing Rust coverage report thresholds passing is
-not evidence that this failed run completed successfully.
-
-The independent pinned duplication audit classifies 3,357 counted lines as
-frozen tests and 2,510 as production. This corrects an earlier classification
-that missed attributes between `#[cfg(test)]` and test modules. Even the
-unachievable optimistic case of removing all 919 strong production clone lines
-from the numerator alone leaves 5.574%. The reviewed production consolidation
-families do not establish safe sufficient savings. The gate remains unchanged;
-no tests, exclusions, or thresholds were modified to obtain a pass. Exact spans,
-overlap accounting, candidate remedies, and validation are recorded in
-`/tmp/osprey-final-deslop-findings.md`.
-
-### Final field, callback, and fiber integration
-
-Generic field constraints now retain the relationship between a receiver and
-its field through HM generalization, aliases, and call-site instantiation.
-Hidden callback variables travel with that relation. The checker rejects
-wrong callback result types and nonrecord receivers before code generation.
-
-Dotted calls preserve field precedence until the receiver is resolved. A
-single generic helper can select a record field at one call and a free
-function at another, including distinct result types. Explicit type arguments
-apply only to the selected callable's declared binders. Named UFCS arguments
-retain the implicit receiver. Effect summaries defer the same choice and
-preserve callback effects, returned callables, handler exclusions, and exact
-generic effect identity. Unknown provenance is not proof that a field is
-absent. The warning oracle compares generalized constraints and dispatch
-choices as well as the previously published types.
-
-Closure parameters, captured callbacks, and returned function values carry
-full semantic types across their ABI slots. This fixes a float getter that
-printed integer bits, an invoked callback emitted as an unresolved free
-function, and generic effectful functions stored in fields. Inlined list
-literals are materialized before crossing a fiber result boundary, fixing a
-segfault when awaiting a boxed generic fiber returning nested lists.
-
-The final focused evidence includes 47 dispatch/corpus cases, 58 check/LLVM
-outcomes across 29 effect/dispatch probes, 39 additional runtime checks and
-five rejection probes, and the 36-case fiber matrix. These are overlapping
-validation sets, not a count of distinct regression tests. The stable release
-SHA256 is `2807bb3a92e19423737d7a5313e1330261f2ed568ef98a15134a545823e8f46e`.
-Existing codegen tests pass 124/124 and effect tests pass 93/93. No repository
-tests were changed by this delegation.
-
-Both large type-equality twins pass all 33 assertions and match their existing
-golden after the malformed inputs are repaired only in temporary copies.
-Their helper contracts also differ: Default annotates `keepSource` and
-`keepSink` concretely, while ML generalizes them. Removing those two Default
-annotations in the temporary copy preserves generic coverage and yields
-byte-identical IR. This is a further frozen fixture correction, recorded in
-`/tmp/osprey-ci-frozen-corrections.md`; the repository copies remain unchanged.
-
-The user requested deleting this plan **once done**. Its CI acceptance condition
-is still unmet, so the plan remains until the frozen-test conflicts, duplication
-gate, and Windows validation are resolved. No PR has been opened.
-
-### Completed verification after backend integration
-
-The full instrumented Rust workspace run reports **1,514 passed and 22 failed
-across eight targets** (`/tmp/osprey-ci-final-rust.log`). The additional failure
-is the frozen Default AST expectation that rewrites `o.m(1)` before receiver
-typing; the implementation now correctly preserves `MethodCall`. This failed
-run is not a green coverage result.
-
-The sequential corpus matrix completed with compiler SHA256
-`73137670037536be5137972efa68916ebf6b234b6c29f8ebf8c4d221184af0f7`:
-
-| Target | Result |
-| --- | --- |
-| Native assertions and stdout goldens | 209 passed, the same two frozen invalid twins failed |
-| GC stdout goldens | 209 passed, the same two failed |
-| ARC stdout goldens | 209 passed, the same two failed; zero reported leaks |
-| Wasm stdout goldens | 144 passed, the same two failed; 65 existing declared capability exclusions |
-| Alternative GPU lowering | 18 passed in each golden matrix |
-
-Exact commands, logs, and the stable compiler hash are recorded in
-`/tmp/osprey-ci-final-corpora.json`. These runs precede the final checker review
-of builtin shadowing and callback-return effect provenance; they are evidence
-for the integrated backend, not a claim that every subsequent checker revision
-has passed a complete CI run.
-
-The proposed frozen-fixture correction set is concrete and unapplied at
-`/tmp/osprey-frozen-corrections.patch`. Its applicability check passes, and all
-769 protected file hashes match the test-freeze baseline. Applying it still
-requires an explicit exception to the user's test freeze. Production formatting
-and Clippy pass; all-target Clippy still reports five frozen test/helper lints.
-
-### Final effect-provenance review
-
-The review additionally fixed three ways effect information could be lost:
-builtin result shapes applied to shadowing user bindings; a callback application
-was represented by its callee rather than its returned value; and a failed field
-projection retained a callee parameter index that could later resolve through an
-unrelated caller argument. Supplied opaque values now stay unknown; only truly
-absent arguments retain symbolic binders. Generic field calls cannot use an
-unrelated pure callback to discharge an effectful field.
-
-Callback return projections and higher-order invocations retain positional and
-named argument values. Scope shifting, substitution, fixed-point widening, and
-handler exclusion traverse that retained provenance. Named and curried calls
-therefore preserve the effects of callbacks actually invoked by the callee.
-Active handler return values are keyed by operation and complete generic effect
-instantiation. Closures capture values without capturing handler bindings, so
-escaping a handler does not erase a returned callable's remaining requirements.
-
-On frozen release SHA256
-`8ef9a57c7d23af2e7a472861d7110ecf6e235e47364e1e5d7e17037cd03a2dc6`,
-the existing effect suite passes **93/93**, the final checker/LLVM matrix passes
-**142/142** decisions, and ten accepted cases pass **30/30** native runs across
-default, GC and ARC with exact expected output. Cases include `Factory<T>`
-returning a record, exact and wrong `Probe<T>` handlers, escaped captured
-records, lexical shadowing, ignored/invoked callbacks, and named/curried calls.
-The matrix overlaps earlier focused checks; it is not a count of new repository
-tests. Evidence is in `/tmp/osprey-failed-projection-report.md`.
-
-The final full instrumented workspace run against this source completed with
-**1,514 passed and the same 22 failed across eight targets**
-(`/tmp/osprey-ci-verified-rust.log`). Totals exclude a nested one-test subprocess
-already counted by its parent suite; earlier totals that included it were one
-too high. Codegen passes 124/124, LSP reports 159 passed and six frozen failures,
-and types reports 511 passed and seven frozen failures. The run is not a green
-coverage result.
-
-Final formatting, production workspace Clippy, and the Hawk dead-code gate pass.
-The assembled inbox checks successfully with 175 statements and no
-`Markdown::smaller` warnings; its one remaining warning names the whole curried
-`Text::boundary` signature. The pinned `make ci` run still fails at **6.6%
-duplication (5,867 / 88,916 LOC)** against the unchanged 5% ceiling. The logs are
-`/tmp/osprey-ci-verified-{format,production-clippy,hawk,inbox,gate}.log`.
-
-The correction patch still passes `git apply --check`, all 769 protected files
-remain unchanged, and the user has not authorized an exception to the test
-freeze. No native Windows runner is available. These blockers keep the CI
-checkbox open; the plan is retained and no PR has been created.
+The local implementation and regression audit is complete. Retire this plan only after every hosted required check passes on the final submitted revision; the local results do not substitute for that acceptance.

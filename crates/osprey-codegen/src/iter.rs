@@ -186,8 +186,7 @@ fn branch_on_predicate(cg: &mut Codegen, cb: &Callback, elem: Value) -> Result<(
     let pred = invoke(cg, cb, vec![elem])?;
     let pred = crate::cast::coerce_to(cg, pred, LType::I1)?;
     let pb = as_i64(cg, pred)?;
-    let nz = cg.fresh_reg();
-    cg.emit(format!("{nz} = icmp ne i64 {}, 0", pb.operand));
+    let nz = cg.emit_reg(format!("icmp ne i64 {}, 0", pb.operand));
     let taken = cg.fresh_label();
     let rejected = cg.fresh_label();
     cg.emit(format!("br i1 {nz}, label %{taken}, label %{rejected}"));
@@ -258,8 +257,7 @@ pub(crate) fn acc_init(cg: &mut Codegen, args: &[Expr]) -> Result<(String, Value
     crate::arc::escape_retain(cg, &initial);
     let tmpl = initial.clone();
     let boxed = box_to_i64(cg, initial);
-    let acc = cg.fresh_reg();
-    cg.emit(format!("{acc} = alloca i64"));
+    let acc = cg.emit_reg("alloca i64");
     cg.emit(format!("store i64 {}, i64* {acc}", boxed.operand));
     Ok((acc, tmpl))
 }
@@ -409,7 +407,7 @@ fn list_builder(cg: &mut Codegen, args: &[Expr], filter: bool) -> Result<Value> 
         }
         let mapped = invoke(cg, &f, vec![elem])?;
         if mapped.result_inner.is_some() {
-            return Err(crate::error::CodegenError::unsupported(
+            return Err(CodegenError::unsupported(
                 "mapList cannot store an unhandled Result element; handle it in the callback",
             ));
         }

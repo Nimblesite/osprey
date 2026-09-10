@@ -38,15 +38,28 @@ A call may instead name every supplied argument:
 let c = add(y: 20, x: 10)
 ```
 
-For a known function or extern, named values are reordered to the declaration's
-parameter order. The grammar does not permit positional and named arguments in
-one argument list. Unknown and duplicate argument names are not rejected
-consistently; a named call must use each declared name exactly once.
+A declaration call is a call whose callee resolves at that source site to a function or extern declaration. Its named values are reordered to the declaration's parameter order before evaluation. The grammar does not permit positional and named arguments in one argument list. Unknown and duplicate names on declaration calls are not rejected consistently; a named declaration call must use each declared name exactly once.
 
 In a UFCS call such as `receiver.f(second: value)`, the receiver supplies the
 first declared parameter. Written names supply the remaining parameters in
 declaration order. The implicit receiver is preserved even though the written
 argument list is named.
+
+A function-value call has ordered parameter types but no parameter-name contract. A callable record field, function parameter, local function value, or returned or computed function is called by slot: positional values fill slots in written order, and labels on a fully named argument list do not change that order. For example, a field of type `(int, int) -> int` called as `record.f(second: 20, first: 10)` receives `20` in its first slot and `10` in its second slot. The actual callback's formal parameter names do not change these slots. A selected record field uses this rule even when a same-named free function exists; UFCS fallback uses the declaration rule above. Type checking, effect analysis, and code generation must use the same selected slot order.
+
+The distinction belongs to the source call site. Learning a function value's runtime target during optimization does not grant that value a declaration's parameter-name contract. This is a semantic requirement for specializations and inlining, not an additional form of name-based dispatch.
+
+These two callbacks have the same function type despite their different formal names. The field calls both pass `20` in the first slot and `10` in the second:
+
+```osprey
+type Picker = { choose: (int, int) -> int }
+fn first(first: int, second: int) = first
+fn last(second: int, first: int) = first
+let left = Picker { choose: first }
+let right = Picker { choose: last }
+print("${left.choose(second: 20, first: 10)} ${right.choose(second: 20, first: 10)}")
+// 20 10
+```
 
 The ML equivalent of the flat two-parameter function is uncurried application:
 

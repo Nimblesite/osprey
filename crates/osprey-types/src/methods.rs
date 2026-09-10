@@ -22,6 +22,20 @@ pub(crate) struct Parts<'a> {
     pub application: Option<(&'a [TypeExpr], Option<Position>)>,
 }
 
+/// `function` wrapped in the call site's explicit type application, or left
+/// alone when the site wrote no turbofish — the one rule both the deferred
+/// method-call rewrite and the ordinary call rewrite apply.
+fn applied(function: Expr, application: Option<(&[TypeExpr], Option<Position>)>) -> Expr {
+    match application {
+        Some((type_args, position)) => Expr::TypeApply {
+            function: Box::new(function),
+            type_args: type_args.to_vec(),
+            position,
+        },
+        None => function,
+    }
+}
+
 pub(crate) fn parts(expression: &Expr) -> Option<Parts<'_>> {
     match expression {
         Expr::MethodCall {
@@ -104,14 +118,7 @@ pub(crate) fn lower(expression: &mut Expr, target: &Target) {
             arguments: parts.arguments.to_vec(),
             named_arguments: parts.named.to_vec(),
         };
-        *expression = match parts.application {
-            Some((args, position)) => Expr::TypeApply {
-                function: Box::new(call),
-                type_args: args.to_vec(),
-                position,
-            },
-            None => call,
-        };
+        *expression = applied(call, parts.application);
         return;
     }
     let mut arguments = parts.arguments.to_vec();
@@ -124,14 +131,7 @@ pub(crate) fn lower(expression: &mut Expr, target: &Target) {
         arguments.insert(0, parts.target.clone());
         Expr::Identifier(parts.method.to_owned())
     };
-    let function = match parts.application {
-        Some((type_args, position)) => Expr::TypeApply {
-            function: Box::new(function),
-            type_args: type_args.to_vec(),
-            position,
-        },
-        None => function,
-    };
+    let function = applied(function, parts.application);
     *expression = Expr::Call {
         function: Box::new(function),
         arguments,
@@ -283,4 +283,132 @@ fn unpack_obligations(obligations: &Type) -> Vec<(String, Type)> {
             _ => None,
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::testutil::{accepts, rejects_with};
+    use osprey_syntax::Flavor;
+
+    #[test]
+    fn a_generic_receiver_selects_its_field_before_a_same_named_function() {
+        accepts(
+            Flavor::Default,
+            r#"type Action = Action { m: () -> int }
+fn field() -> int = 11
+fn m<T>(x: T) -> string = "free"
+fn invoke<T>(x: T) = x.m()
+fn recordResult() -> int = invoke(Action { m: field })
+fn scalarResult() -> string = invoke(3)
+print("${recordResult()} ${scalarResult()}")"#,
+        );
+    }
+
+    #[test]
+    fn deferred_named_arguments_follow_the_selected_free_functions_parameter_order() {
+        for application in ["choose", "choose<T>"] {
+            accepts(
+                Flavor::Default,
+                format!(
+                    r#"fn choose<T>(receiver: T, text: string, count: int) = "${{text}} ${{count}}"
+fn invoke<T>(receiver: T) = receiver.{application}(count: 7, text: "generic")
+fn result() -> string = invoke(4)
+print(result())"#
+                ),
+            );
+        }
+    }
+
+    #[test]
+    fn field_dispatch_keeps_only_the_selected_callees_constraints() {
+        accepts(
+            Flavor::Default,
+            r#"type Action = Action { m: () -> bool }
+fn field() -> bool = true
+fn m<T>(x: T) = length(x)
+fn invoke<T>(x: T) = x.m()
+fn recordResult() -> bool = invoke(Action { m: field })
+fn stringResult() -> int = invoke("abc")
+fn listResult() -> int = invoke([1, 2])
+print("${recordResult()} ${stringResult()} ${listResult()}")"#,
+        );
+    }
+
+    #[test]
+    fn a_generic_callback_field_keeps_its_argument_and_return_contract() {
+        let declarations = r"type Sink<in T> = Sink { hof: ((int) -> T) -> int }
+fn callbackResult(f) = 7
+fn invoke(g) = g.hof(|n| => 3)
+";
+        accepts(
+            Flavor::Default,
+            format!(
+                "{declarations}fn result() -> int = invoke(Sink<int> {{ hof: callbackResult }})\n"
+            ),
+        );
+        rejects_with(
+            Flavor::Default,
+            format!("{declarations}fn result() -> int = invoke(Sink<string> {{ hof: callbackResult }})\n"),
+            "cannot unify",
+        );
+    }
+
+    #[test]
+    fn a_field_cannot_borrow_a_same_named_functions_explicit_binders() {
+        for invocation in [
+            "fn result() = Action { m: field }.m<int>()",
+            "fn invoke<T>(x: T) = x.m<int>()\nfn result() = invoke(Action { m: field })",
+        ] {
+            rejects_with(
+                Flavor::Default,
+                format!(
+                    "type Action = Action {{ m: () -> int }}\nfn field() = 11\nfn m<T>(x: T) = 22\n{invocation}\n"
+                ),
+                "function `m` takes 0 type argument(s), got 1",
+            );
+        }
+    }
+
+    #[test]
+    fn a_deferred_free_function_checks_written_binder_arity_and_value_types() {
+        for (application, message) in [
+            (
+                "m<int, string>",
+                "function `m` takes 1 type argument(s), got 2",
+            ),
+            ("m<string>", "cannot unify"),
+        ] {
+            rejects_with(
+                Flavor::Default,
+                format!("fn m<T>(x: T) = x\nfn invoke<T>(x: T) = x.{application}()\nfn result() = invoke(3)\n"),
+                message,
+            );
+        }
+    }
+
+    #[test]
+    fn explicit_arguments_validate_nested_types_and_enclosing_binders() {
+        for (argument, message) in [
+            ("T<int>", "type parameter `T` cannot take type arguments"),
+            (
+                "List<T<int>>",
+                "type parameter `T` cannot take type arguments",
+            ),
+            ("int<string>", "type `int` takes 0 type argument(s), got 1"),
+            (
+                "List<int, string>",
+                "type `List` takes 1 type argument(s), got 2",
+            ),
+            ("(Unknown) -> int", "unknown type `Unknown`"),
+            ("(int) -> Unknown", "unknown type `Unknown`"),
+        ] {
+            rejects_with(
+                Flavor::Default,
+                format!(
+                    "fn empty<A>() -> List<A> = []\nfn invoke<T>(x: T) = empty<{argument}>()\n"
+                ),
+                message,
+            );
+        }
+    }
 }

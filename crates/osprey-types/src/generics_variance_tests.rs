@@ -11,7 +11,9 @@
 //! it — a wrong entry in that table shows up as a position that should have
 //! been rejected and was not.
 
-use crate::testutil::{accepts, rejected_somehow, rejects_with, variance_position_message};
+use crate::testutil::{
+    accepts, rejected_somehow, rejects_with, spec_cases, variance_position_message,
+};
 use osprey_syntax::Flavor;
 
 /// The position diagnostic for a type declaration's FIELD.
@@ -34,168 +36,91 @@ pub(crate) fn decl(params: &str, field: &str, ty: &str) -> String {
 // [TYPE-VARIANCE-POSITIONS] — output positions
 // ---------------------------------------------------------------------------
 
-/// A field is an OUTPUT position, so `out T` belongs there.
-#[test]
-fn out_is_legal_in_a_field() {
-    accepts(Flavor::Default, &decl("<out T>", "supply", "T"));
-}
+spec_cases! {
+    /// A field is an OUTPUT position, so `out T` belongs there.
+    out_is_legal_in_a_field: accepts(Default, decl("<out T>", "supply", "T"));
 
-/// A function RESULT is an output position, so `out T` belongs there too.
-#[test]
-fn out_is_legal_in_a_function_result() {
-    accepts(Flavor::Default, &decl("<out T>", "make", "(int) -> T"));
-}
+    /// A function RESULT is an output position, so `out T` belongs there too.
+    out_is_legal_in_a_function_result: accepts(Default, decl("<out T>", "make", "(int) -> T"));
 
-/// A function PARAMETER flips the polarity to input: `out T` is rejected.
-#[test]
-fn out_in_a_function_parameter_is_rejected() {
-    rejects_with(
-        Flavor::Default,
-        &decl("<out T>", "consume", "(T) -> int"),
-        &position_message("T", "out", "input", "consume", "Holder"),
-    );
-}
+    /// A function PARAMETER flips the polarity to input: `out T` is rejected.
+    out_in_a_function_parameter_is_rejected: rejects_with(Default, decl("<out T>", "consume", "(T) -> int"), position_message("T", "out", "input", "consume", "Holder"));
 
-/// Two flips compose back to an output position, so `out T` is legal again.
-#[test]
-fn out_under_two_parameter_flips_is_legal() {
-    accepts(
-        Flavor::Default,
-        &decl("<out T>", "hof", "((T) -> int) -> int"),
-    );
-}
+    /// Two flips compose back to an output position, so `out T` is legal again.
+    out_under_two_parameter_flips_is_legal: accepts(Default, decl("<out T>", "hof", "((T) -> int) -> int"));
 
-/// An `in` parameter belongs in an input position.
-#[test]
-fn in_is_legal_in_a_function_parameter() {
-    accepts(Flavor::Default, &decl("<in T>", "admit", "(T) -> bool"));
-}
+    /// An `in` parameter belongs in an input position.
+    in_is_legal_in_a_function_parameter: accepts(Default, decl("<in T>", "admit", "(T) -> bool"));
 
-/// A field is an output position, so `in T` is rejected there.
-#[test]
-fn in_in_a_field_is_rejected() {
-    rejects_with(
-        Flavor::Default,
-        &decl("<in T>", "held", "T"),
-        &position_message("T", "in", "output", "held", "Holder"),
-    );
-}
+    /// A field is an output position, so `in T` is rejected there.
+    in_in_a_field_is_rejected: rejects_with(Default, decl("<in T>", "held", "T"), position_message("T", "in", "output", "held", "Holder"));
 
-/// A function result is an output position, so `in T` is rejected there.
-#[test]
-fn in_in_a_function_result_is_rejected() {
-    rejects_with(
-        Flavor::Default,
-        &decl("<in T>", "make", "(int) -> T"),
-        &position_message("T", "in", "output", "make", "Holder"),
-    );
-}
+    /// A function result is an output position, so `in T` is rejected there.
+    in_in_a_function_result_is_rejected: rejects_with(Default, decl("<in T>", "make", "(int) -> T"), position_message("T", "in", "output", "make", "Holder"));
 
-/// Two flips compose back to output, so `in T` is rejected under them.
-#[test]
-fn in_under_two_parameter_flips_is_rejected() {
-    rejects_with(
-        Flavor::Default,
-        &decl("<in T>", "hof", "((T) -> int) -> int"),
-        &position_message("T", "in", "output", "hof", "Holder"),
-    );
+    /// Two flips compose back to output, so `in T` is rejected under them.
+    in_under_two_parameter_flips_is_rejected: rejects_with(Default, decl("<in T>", "hof", "((T) -> int) -> int"), position_message("T", "in", "output", "hof", "Holder"));
 }
 
 /// An unannotated parameter is invariant and sits in EITHER position.
 #[test]
 fn an_invariant_parameter_is_legal_in_both_positions() {
-    accepts(Flavor::Default, &decl("<T>", "held", "T"));
-    accepts(Flavor::Default, &decl("<T>", "consume", "(T) -> int"));
+    accepts(Flavor::Default, decl("<T>", "held", "T"));
+    accepts(Flavor::Default, decl("<T>", "consume", "(T) -> int"));
 }
 
 // ---------------------------------------------------------------------------
 // [TYPE-VARIANCE-POSITIONS] — composition through a nested constructor
 // ---------------------------------------------------------------------------
 
-/// A covariant argument of a covariant constructor keeps the position.
-#[test]
-fn out_inside_a_covariant_constructor_argument_is_legal() {
-    accepts(
-        Flavor::Default,
-        &format!(
+spec_cases! {
+    /// A covariant argument of a covariant constructor keeps the position.
+    out_inside_a_covariant_constructor_argument_is_legal: accepts(Default, format!(
             "type Feed<out A> = {{ supply: A }}\n{}",
             decl("<out T>", "nested", "Feed<T>")
-        ),
-    );
-}
+        ));
 
-/// A covariant argument of a CONTRAVARIANT constructor flips the position.
-#[test]
-fn out_inside_a_contravariant_constructor_argument_is_rejected() {
-    rejects_with(
-        Flavor::Default,
-        &format!(
+    /// A covariant argument of a CONTRAVARIANT constructor flips the position.
+    out_inside_a_contravariant_constructor_argument_is_rejected: rejects_with(Default, format!(
             "type Gate<in A> = {{ admit: (A) -> bool }}\n{}",
             decl("<out T>", "nested", "Gate<T>")
-        ),
-        &position_message("T", "out", "input", "nested", "Holder"),
-    );
-}
+        ), position_message("T", "out", "input", "nested", "Holder"));
 
-/// The mirror composes the other way and is LEGAL: a field is an output
-/// position, the contravariant argument flips it to input, and an input
-/// position is exactly where `in T` belongs (output x contravariant = input).
-#[test]
-fn in_inside_a_contravariant_constructor_argument_is_legal() {
-    accepts(
-        Flavor::Default,
-        &format!(
+    /// The mirror composes the other way and is LEGAL: a field is an output
+    /// position, the contravariant argument flips it to input, and an input
+    /// position is exactly where `in T` belongs (output x contravariant = input).
+    in_inside_a_contravariant_constructor_argument_is_legal: accepts(Default, format!(
             "type Gate<in A> = {{ admit: (A) -> bool }}\n{}",
             decl("<in T>", "nested", "Gate<T>")
-        ),
-    );
-}
+        ));
 
-/// "an invariant argument position demands both directions, so only invariant
-/// parameters may sit there" — a covariant parameter may not.
-#[test]
-fn out_inside_an_invariant_constructor_argument_is_rejected() {
-    rejected_somehow(
-        Flavor::Default,
-        &format!(
+    /// "an invariant argument position demands both directions, so only invariant
+    /// parameters may sit there" — a covariant parameter may not.
+    out_inside_an_invariant_constructor_argument_is_rejected: rejected_somehow(Default, format!(
             "type Cell<A> = {{ slot: A }}\n{}",
             decl("<out T>", "nested", "Cell<T>")
-        ),
-    );
-}
+        ));
 
-/// …nor may a contravariant one.
-#[test]
-fn in_inside_an_invariant_constructor_argument_is_rejected() {
-    rejected_somehow(
-        Flavor::Default,
-        &format!(
+    /// …nor may a contravariant one.
+    in_inside_an_invariant_constructor_argument_is_rejected: rejected_somehow(Default, format!(
             "type Cell<A> = {{ slot: A }}\n{}",
             decl("<in T>", "nested", "Cell<T>")
-        ),
-    );
-}
+        ));
 
-/// An invariant parameter is exactly what an invariant argument accepts.
-#[test]
-fn an_invariant_parameter_inside_an_invariant_argument_is_legal() {
-    accepts(
-        Flavor::Default,
-        &format!(
+    /// An invariant parameter is exactly what an invariant argument accepts.
+    an_invariant_parameter_inside_an_invariant_argument_is_legal: accepts(Default, format!(
             "type Cell<A> = {{ slot: A }}\n{}",
             decl("<T>", "nested", "Cell<T>")
-        ),
-    );
+        ));
 }
 
 // ---------------------------------------------------------------------------
 // [TYPE-VARIANCE-ASSIGN] — the built-in variance table, checked by position
 // ---------------------------------------------------------------------------
 
-/// `List<out T>`: a covariant parameter may sit in its argument.
-#[test]
-fn list_is_covariant_in_its_element() {
-    accepts(Flavor::Default, &decl("<out T>", "items", "List<T>"));
+spec_cases! {
+    /// `List<out T>`: a covariant parameter may sit in its argument.
+    list_is_covariant_in_its_element: accepts(Default, decl("<out T>", "items", "List<T>"));
 }
 
 /// `Result<out T, out E>`: both arguments are covariant.
@@ -203,50 +128,35 @@ fn list_is_covariant_in_its_element() {
 fn result_is_covariant_in_both_arguments() {
     accepts(
         Flavor::Default,
-        &decl("<out T>", "value", "Result<T, string>"),
+        decl("<out T>", "value", "Result<T, string>"),
     );
     accepts(
         Flavor::Default,
-        &decl("<out T>", "failure", "Result<int, T>"),
+        decl("<out T>", "failure", "Result<int, T>"),
     );
 }
 
-/// `Fiber<out T>`: covariant in its answer.
-#[test]
-fn fiber_is_covariant_in_its_answer() {
-    accepts(Flavor::Default, &decl("<out T>", "worker", "Fiber<T>"));
-}
+spec_cases! {
+    /// `Fiber<out T>`: covariant in its answer.
+    fiber_is_covariant_in_its_answer: accepts(Default, decl("<out T>", "worker", "Fiber<T>"));
 
-/// `Map<K, out V>`: the VALUE is covariant.
-#[test]
-fn map_is_covariant_in_its_value() {
-    accepts(
-        Flavor::Default,
-        &decl("<out T>", "byName", "Map<string, T>"),
-    );
-}
+    /// `Map<K, out V>`: the VALUE is covariant.
+    map_is_covariant_in_its_value: accepts(Default, decl("<out T>", "byName", "Map<string, T>"));
 
-/// `Map<K, out V>`: the KEY is invariant, so a covariant parameter is rejected.
-#[test]
-fn map_keys_are_invariant() {
-    rejected_somehow(Flavor::Default, &decl("<out T>", "byKey", "Map<T, int>"));
+    /// `Map<K, out V>`: the KEY is invariant, so a covariant parameter is rejected.
+    map_keys_are_invariant: rejected_somehow(Default, decl("<out T>", "byKey", "Map<T, int>"));
 }
 
 /// `Channel<T>` is invariant in both directions.
 #[test]
 fn channel_is_invariant() {
-    rejected_somehow(Flavor::Default, &decl("<out T>", "wire", "Channel<T>"));
-    rejected_somehow(Flavor::Default, &decl("<in T>", "wire", "Channel<T>"));
+    rejected_somehow(Flavor::Default, decl("<out T>", "wire", "Channel<T>"));
+    rejected_somehow(Flavor::Default, decl("<in T>", "wire", "Channel<T>"));
 }
 
-/// A `List` of a contravariant parameter is an output position.
-#[test]
-fn in_inside_a_list_is_rejected() {
-    rejects_with(
-        Flavor::Default,
-        &decl("<in T>", "items", "List<T>"),
-        &position_message("T", "in", "output", "items", "Holder"),
-    );
+spec_cases! {
+    /// A `List` of a contravariant parameter is an output position.
+    in_inside_a_list_is_rejected: rejects_with(Default, decl("<in T>", "items", "List<T>"), position_message("T", "in", "output", "items", "Holder"));
 }
 
 // ---------------------------------------------------------------------------
@@ -267,66 +177,41 @@ print("${{firstItem(mkFeed())}}")"#
     )
 }
 
-/// Under `out T`.
-#[test]
-fn a_result_payload_does_not_collapse_under_a_covariant_container() {
-    rejects_with(
-        Flavor::Default,
-        &feed_payload_program("out "),
-        "cannot unify",
-    );
-}
+spec_cases! {
+    /// Under `out T`.
+    a_result_payload_does_not_collapse_under_a_covariant_container: rejects_with(Default, feed_payload_program("out "), "cannot unify");
 
-/// Under an invariant parameter.
-#[test]
-fn a_result_payload_does_not_collapse_under_an_invariant_container() {
-    rejects_with(Flavor::Default, &feed_payload_program(""), "cannot unify");
-}
+    /// Under an invariant parameter.
+    a_result_payload_does_not_collapse_under_an_invariant_container: rejects_with(Default, feed_payload_program(""), "cannot unify");
 
-/// "Function returns also match exactly, so a `Feed<(int) -> Result<int, Error>>`
-/// does not match a `Feed<(int) -> int>` slot" — the spec's own example.
-#[test]
-fn a_function_payloads_return_channel_matches_exactly() {
-    rejects_with(
-        Flavor::Default,
-        r#"type Feed<out T> = Feed { supply: T } | Dry
+    /// "Function returns also match exactly, so a `Feed<(int) -> Result<int, Error>>`
+    /// does not match a `Feed<(int) -> int>` slot" — the spec's own example.
+    a_function_payloads_return_channel_matches_exactly: rejects_with(Default, r#"type Feed<out T> = Feed { supply: T } | Dry
 fn label(f: Feed<(int) -> int>) = match f {
     Feed { supply } => "supplied"
     Dry => "dry"
 }
 fn mkFeed() -> Feed<(int) -> Result<int, MathError>> = Feed { supply: |n| => n * 2 }
-print(label(mkFeed()))"#,
-        "cannot unify",
-    );
-}
+print(label(mkFeed()))"#, "cannot unify");
 
-/// The direct value site keeps the one safe promotion `T -> Result<T, E>`,
-/// which is what makes the container rejections above a real restriction rather
-/// than a blanket ban.
-#[test]
-fn the_direct_site_promotion_still_holds() {
-    accepts(
-        Flavor::Default,
-        r#"fn keep(n: Result<int, MathError>) = n ?: 0
-print("${keep(5)}")"#,
-    );
+    /// The direct value site keeps the one safe promotion `T -> Result<T, E>`,
+    /// which is what makes the container rejections above a real restriction rather
+    /// than a blanket ban.
+    the_direct_site_promotion_still_holds: accepts(Default, r#"fn keep(n: Result<int, MathError>) = n ?: 0
+print("${keep(5)}")"#);
 }
 
 // ---------------------------------------------------------------------------
 // [TYPE-VARIANCE-DECL] — where the markers may be written at all
 // ---------------------------------------------------------------------------
 
-/// "`out` and `in` are contextual keywords, reserved only inside
-/// type-parameter lists" — they stay usable as ordinary names.
-#[test]
-fn out_and_in_stay_legal_identifiers_outside_a_parameter_list() {
-    accepts(
-        Flavor::Default,
-        r#"let out = 1
+spec_cases! {
+    /// "`out` and `in` are contextual keywords, reserved only inside
+    /// type-parameter lists" — they stay usable as ordinary names.
+    out_and_in_stay_legal_identifiers_outside_a_parameter_list: accepts(Default, r#"let out = 1
 let inn = 2
 fn keep(out) = out
-print("${keep(out)} ${inn}")"#,
-    );
+print("${keep(out)} ${inn}")"#);
 }
 
 /// Variance is declaration-site on TYPES and EFFECTS only — never on a
@@ -362,7 +247,7 @@ fn ml_variance_binders_check_the_same_positions() {
     rejects_with(
         Flavor::Ml,
         "type Bad out T =\n    consume : T -> int\nprint \"declared\"\n",
-        &position_message("T", "out", "input", "consume", "Bad"),
+        position_message("T", "out", "input", "consume", "Bad"),
     );
 }
 
@@ -376,16 +261,11 @@ fn ml_contravariant_binders_check_the_same_positions() {
     rejects_with(
         Flavor::Ml,
         "type Bad in T =\n    held : T\nprint \"declared\"\n",
-        &position_message("T", "in", "output", "held", "Bad"),
+        position_message("T", "in", "output", "held", "Bad"),
     );
 }
 
-/// ML function binders reject variance exactly as Default's do.
-#[test]
-fn ml_a_variance_marker_on_a_function_binder_is_rejected() {
-    rejects_with(
-        Flavor::Ml,
-        "pick<out T> : (T, T) -> T\npick (first, second) = first\nkept = pick (1, 2)\nprint \"${kept}\"\n",
-        "variance annotations are only valid on type and effect declarations",
-    );
+spec_cases! {
+    /// ML function binders reject variance exactly as Default's do.
+    ml_a_variance_marker_on_a_function_binder_is_rejected: rejects_with(Ml, "pick<out T> : (T, T) -> T\npick (first, second) = first\nkept = pick (1, 2)\nprint \"${kept}\"\n", "variance annotations are only valid on type and effect declarations");
 }

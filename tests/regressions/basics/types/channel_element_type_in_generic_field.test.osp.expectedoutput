@@ -1,0 +1,4 @@
+3
+ok 1 - generic record fields preserve nested channel elements
+1..1
+# tests=1 passed=1 failed=0 skipped=0

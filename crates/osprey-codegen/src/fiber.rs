@@ -122,7 +122,7 @@ pub(crate) fn gen_send(cg: &mut Codegen, channel: &Expr, value: &Expr) -> Result
     let id = as_i64(cg, ch)?;
     let v = gen_expr(cg, value)?;
     if v.result_inner.is_some() {
-        return Err(crate::error::CodegenError::unsupported(
+        return Err(CodegenError::unsupported(
             "Result-valued channels are not yet represented losslessly; handle the Result before sending",
         ));
     }
@@ -241,9 +241,7 @@ pub(crate) fn gen_builtin(cg: &mut Codegen, name: &str, args: &[Expr]) -> Result
         // [CONCURRENCY-YIELD].
         "fiberDone" => {
             let Some(a) = args.first() else {
-                return Err(crate::error::CodegenError::invalid(
-                    "fiberDone needs a fiber argument",
-                ));
+                return Err(CodegenError::invalid("fiberDone needs a fiber argument"));
             };
             let v = gen_expr(cg, a)?;
             let id = as_i64(cg, v)?;

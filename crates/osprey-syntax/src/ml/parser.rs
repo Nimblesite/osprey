@@ -99,6 +99,14 @@ pub(super) struct Parser<'t> {
 }
 
 impl Parser<'_> {
+    /// Consume the separator between elements of a comma-separated list,
+    /// answering whether another element follows. A trailing comma before
+    /// `close` ends the list rather than demanding an element after it, so
+    /// `[1, 2,]` reads as two elements.
+    fn more_in_list(&mut self, close: &TokKind) -> bool {
+        self.eat(&TokKind::Comma) && self.peek() != close
+    }
+
     pub(super) fn peek(&self) -> &TokKind {
         self.toks.get(self.i).map_or(&TokKind::Eof, |t| &t.kind)
     }
@@ -1004,11 +1012,8 @@ impl Parser<'_> {
         if !matches!(self.peek(), TokKind::RParen) {
             loop {
                 out.push(self.one_param());
-                if !self.eat(&TokKind::Comma) {
+                if !self.more_in_list(&TokKind::RParen) {
                     break;
-                }
-                if matches!(self.peek(), TokKind::RParen) {
-                    break; // tolerate a trailing comma
                 }
             }
         }
@@ -1264,11 +1269,8 @@ impl Parser<'_> {
         if !matches!(self.peek(), TokKind::RParen) {
             loop {
                 args.push(self.expr(0));
-                if !self.eat(&TokKind::Comma) {
+                if !self.more_in_list(&TokKind::RParen) {
                     break;
-                }
-                if matches!(self.peek(), TokKind::RParen) {
-                    break; // tolerate a trailing comma
                 }
             }
         }
@@ -1485,11 +1487,8 @@ impl Parser<'_> {
         if !matches!(self.peek(), TokKind::RBracket) {
             loop {
                 entries.push(self.map_entry());
-                if !self.eat(&TokKind::Comma) {
+                if !self.more_in_list(&TokKind::RBracket) {
                     break;
-                }
-                if matches!(self.peek(), TokKind::RBracket) {
-                    break; // tolerate a trailing comma
                 }
             }
         }
@@ -1915,11 +1914,8 @@ impl Parser<'_> {
                     break; // `...rest` is always the final element
                 }
                 elements.push(self.pattern());
-                if !self.eat(&TokKind::Comma) {
+                if !self.more_in_list(&TokKind::RBracket) {
                     break;
-                }
-                if matches!(self.peek(), TokKind::RBracket) {
-                    break; // tolerate a trailing comma
                 }
             }
         }
@@ -1999,11 +1995,8 @@ impl Parser<'_> {
                     Some(field) => fields.push(field),
                     None => self.recover(),
                 }
-                if !self.eat(&TokKind::Comma) {
+                if !self.more_in_list(&TokKind::RParen) {
                     break;
-                }
-                if matches!(self.peek(), TokKind::RParen) {
-                    break; // tolerate a trailing comma
                 }
             }
         }

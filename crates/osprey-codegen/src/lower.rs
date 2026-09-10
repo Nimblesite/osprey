@@ -236,9 +236,20 @@ fn record_declarations(cg: &mut Codegen, program: &Program) {
             // A union an extern claims to return loses its MASK_DIRECT proof
             // (builder.rs `field_meta`); record those before any layout lands.
             Stmt::Extern {
-                return_type: Some(t),
+                name,
+                parameters,
+                return_type,
                 ..
-            } => cg.poison_extern_ret(t),
+            } => {
+                // Implements [CALL-ARGUMENTS] without changing foreign ABI identity.
+                let _ = cg.extern_params.insert(
+                    name.clone(),
+                    parameters.iter().map(|p| p.name.clone()).collect(),
+                );
+                if let Some(t) = return_type {
+                    cg.poison_extern_ret(t);
+                }
+            }
             _ => {}
         }
     }

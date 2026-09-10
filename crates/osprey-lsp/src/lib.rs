@@ -22,7 +22,12 @@ pub(crate) mod mlrender;
 pub mod model;
 pub(crate) mod reference_docs;
 pub mod server;
+#[cfg(test)]
+mod test_support;
 pub mod testing;
+#[cfg(test)]
+#[path = "../../testkit.rs"]
+mod testkit;
 pub mod text;
 pub(crate) mod wire;
 pub mod workspace;

@@ -690,7 +690,7 @@ fn main() = identity<List<int>>([1])
                     (expression
                       (primary_expression
                         (literal
-                          (integer)))))))))))))
+                          (integer))))))))))))))
 
 ================================================================================
 A spaced comparison is not type application [TYPE-GENERICS-APPLY]

@@ -137,8 +137,8 @@ print "fn-payload feed accepted: ${label (mkFeed ())}"
 print "fn-payload gate accepted: ${describe (mkGate ())}"
 
 (** --- Variance positions: every legal shape, exercised end to end ---
-    `out T` sits in a field, a function RESULT, a covariant built-in and under
-    two parameter flips; `in T` sits in a function parameter; an unannotated
+    `out T` sits in a field, a function RESULT and a covariant built-in;
+    `in T` sits in function parameters, including a callback result; an unannotated
     parameter sits in both at once. Each value is then USED, so a position that
     merely compiled but lowered wrongly is caught as well as one that was
     wrongly rejected. Assignment keeps the leaves exact under every marker.
@@ -150,7 +150,7 @@ type Source out T =
     items : List<T>
 type Sink in T =
     admit : (T) -> bool
-    hof : ((T) -> int) -> int
+    hof : ((int) -> T) -> int
 type Both T =
     slot : T
     consume : (T) -> int
@@ -230,7 +230,7 @@ typeEqualityCase () =
         !(identityOf<bool> false),
         identityOf<float> 2.5 == 2.5,
         length (identityOf<List<string>> ["a", "b"]) == 2,
-        mapLength (identityOf<Map<string, List<int>>> { "a": [1], "b": [2] }) == 2,
+        mapLength (identityOf<Map<string, List<int>>> ["a" => [1], "b" => [2]]) == 2,
         (identityOf<Container<int>> (Container(value = 9))).value == 9,
         (identityOf<Container<string>> (Container(value = "c"))).value == "c",
         isEmpty (emptyOf<string> ()),

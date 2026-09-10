@@ -16,6 +16,7 @@
 //! the day that changes, and the function rules are checked as live behaviour.
 
 use crate::generics_variance_assign_tests::{accepted, blocked, flows, sites};
+use crate::testutil::plain_cases;
 
 /// Producers for every built-in shape under test, at both instantiations.
 const BUILTINS: &str = "fn listInt() -> List<int> = [1]\n\
@@ -36,83 +37,47 @@ const BUILTINS: &str = "fn listInt() -> List<int> = [1]\n\
 // The constructor entries: identical instantiations flow, coercions do not
 // ---------------------------------------------------------------------------
 
-/// `List<out T>` accepts its own element type…
-#[test]
-fn list_accepts_the_identical_element() {
-    flows(BUILTINS, "List<int>", "listInt()");
-}
+plain_cases! {
+    /// `List<out T>` accepts its own element type…
+    list_accepts_the_identical_element: flows(BUILTINS, "List<int>", "listInt()");
 
-/// …refuses the coercion in both directions…
-#[test]
-fn list_refuses_the_coercion_in_both_directions() {
-    blocked(BUILTINS, "List<Result<int, MathError>>", "listInt()");
+    /// …refuses the coercion in both directions…
+    list_refuses_the_coercion_in_both_directions: blocked(BUILTINS, "List<Result<int, MathError>>", "listInt()"),
     blocked(BUILTINS, "List<int>", "listRes()");
-}
 
-/// …and refuses an unrelated element.
-#[test]
-fn list_rejects_an_unrelated_element() {
-    blocked(BUILTINS, "List<string>", "listInt()");
-}
+    /// …and refuses an unrelated element.
+    list_rejects_an_unrelated_element: blocked(BUILTINS, "List<string>", "listInt()");
 
-/// `Result<out T, out E>`: neither channel carries the coercion inward.
-#[test]
-fn result_refuses_the_coercion_in_either_channel() {
-    blocked(
-        BUILTINS,
-        "Result<Result<int, MathError>, MathError>",
-        "resInt()",
-    );
-    blocked(
-        BUILTINS,
-        "Result<int, Result<MathError, MathError>>",
-        "resInt()",
-    );
-}
+    /// `Result<out T, out E>`: neither channel carries the coercion inward.
+    result_refuses_the_coercion_in_either_channel: blocked( BUILTINS, "Result<Result<int, MathError>, MathError>", "resInt()", ),
+    blocked( BUILTINS, "Result<int, Result<MathError, MathError>>", "resInt()", );
 
-/// The identical `Result` instantiation flows.
-#[test]
-fn result_accepts_the_identical_instantiation() {
-    flows(BUILTINS, "Result<int, MathError>", "resInt()");
-}
+    /// The identical `Result` instantiation flows.
+    result_accepts_the_identical_instantiation: flows(BUILTINS, "Result<int, MathError>", "resInt()");
 
-/// `Fiber<out T>`: same story for a fiber's answer.
-#[test]
-fn fiber_refuses_the_coercion_and_accepts_its_own_answer() {
-    blocked(BUILTINS, "Fiber<Result<int, MathError>>", "fiberInt()");
-    blocked(BUILTINS, "Fiber<string>", "fiberInt()");
+    /// `Fiber<out T>`: same story for a fiber's answer.
+    fiber_refuses_the_coercion_and_accepts_its_own_answer: blocked(BUILTINS, "Fiber<Result<int, MathError>>", "fiberInt()"),
+    blocked(BUILTINS, "Fiber<string>", "fiberInt()"),
     flows(BUILTINS, "Fiber<int>", "fiberInt()");
-}
 
-/// `Map<K, out V>`: the value channel refuses the coercion…
-#[test]
-fn map_refuses_the_coercion_in_its_value() {
-    blocked(BUILTINS, "Map<string, Result<int, MathError>>", "mapInt()");
+    /// `Map<K, out V>`: the value channel refuses the coercion…
+    map_refuses_the_coercion_in_its_value: blocked(BUILTINS, "Map<string, Result<int, MathError>>", "mapInt()"),
     blocked(BUILTINS, "Map<string, int>", "mapRes()");
-}
 
-/// The key channel cannot be exercised for variance at all: the shipped map
-/// surface fixes keys to `string` ([BUILTIN-MAP-GET], spec 0012), so
-/// `Map<int, int>` has no producer and `Map<K, out V>`'s "(keys invariant)"
-/// describes a parameter no program can instantiate. Recorded as a spec/
-/// implementation conflict in plan 0015 rather than asserted as behaviour; what
-/// IS assertable is that a non-string key is refused.
-#[test]
-fn a_non_string_map_key_is_refused() {
-    blocked(BUILTINS, "Map<int, int>", "mapInt()");
-}
+    /// The key channel cannot be exercised for variance at all: the shipped map
+    /// surface fixes keys to `string` ([BUILTIN-MAP-GET], spec 0012), so
+    /// `Map<int, int>` has no producer and `Map<K, out V>`'s "(keys invariant)"
+    /// describes a parameter no program can instantiate. Recorded as a spec/
+    /// implementation conflict in plan 0015 rather than asserted as behaviour; what
+    /// IS assertable is that a non-string key is refused.
+    a_non_string_map_key_is_refused: blocked(BUILTINS, "Map<int, int>", "mapInt()");
 
-/// The identical map instantiation flows.
-#[test]
-fn map_accepts_the_identical_instantiation() {
-    flows(BUILTINS, "Map<string, int>", "mapInt()");
-}
+    /// The identical map instantiation flows.
+    map_accepts_the_identical_instantiation: flows(BUILTINS, "Map<string, int>", "mapInt()");
 
-/// `Channel<T>` is invariant, and behaves exactly as the covariant entries do.
-#[test]
-fn channel_refuses_the_coercion_in_both_directions() {
-    blocked(BUILTINS, "Channel<Result<int, MathError>>", "chanInt()");
-    blocked(BUILTINS, "Channel<int>", "chanRes()");
+    /// `Channel<T>` is invariant, and behaves exactly as the covariant entries do.
+    channel_refuses_the_coercion_in_both_directions: blocked(BUILTINS, "Channel<Result<int, MathError>>", "chanInt()"),
+    blocked(BUILTINS, "Channel<int>", "chanRes()"),
     flows(BUILTINS, "Channel<int>", "chanInt()");
 }
 
@@ -135,43 +100,27 @@ fn the_covariant_and_invariant_builtins_agree() {
 // Function types — the half of the table that DOES bite
 // ---------------------------------------------------------------------------
 
-/// "structurally contravariant in parameters": a function accepting a `Result`
-/// stands where one accepting an `int` is expected, because the parameter
-/// recursion applies the coercion at a direct site.
-#[test]
-fn a_function_slot_is_contravariant_in_its_parameter() {
-    flows(BUILTINS, "(int) -> bool", "takesRes");
-}
+plain_cases! {
+    /// "structurally contravariant in parameters": a function accepting a `Result`
+    /// stands where one accepting an `int` is expected, because the parameter
+    /// recursion applies the coercion at a direct site.
+    a_function_slot_is_contravariant_in_its_parameter: flows(BUILTINS, "(int) -> bool", "takesRes");
 
-/// The widened direction is refused.
-#[test]
-fn a_function_slot_rejects_a_widened_parameter() {
-    blocked(BUILTINS, "(Result<int, MathError>) -> bool", "takesInt");
-}
+    /// The widened direction is refused.
+    a_function_slot_rejects_a_widened_parameter: blocked(BUILTINS, "(Result<int, MathError>) -> bool", "takesInt");
 
-/// "and covariant in returns": a function returning `int` stands where one
-/// returning `Result<int, E>` is expected.
-#[test]
-fn a_function_slot_is_covariant_in_its_return() {
-    flows(BUILTINS, "(int) -> Result<int, MathError>", "givesInt");
-}
+    /// "and covariant in returns": a function returning `int` stands where one
+    /// returning `Result<int, E>` is expected.
+    a_function_slot_is_covariant_in_its_return: flows(BUILTINS, "(int) -> Result<int, MathError>", "givesInt");
 
-/// The unwrapping direction is refused.
-#[test]
-fn a_function_slot_never_unwraps_its_return() {
-    blocked(BUILTINS, "(int) -> int", "givesRes");
-}
+    /// The unwrapping direction is refused.
+    a_function_slot_never_unwraps_its_return: blocked(BUILTINS, "(int) -> int", "givesRes");
 
-/// The identical shape flows.
-#[test]
-fn a_function_slot_accepts_the_identical_shape() {
-    flows(BUILTINS, "(int) -> bool", "takesInt");
-}
+    /// The identical shape flows.
+    a_function_slot_accepts_the_identical_shape: flows(BUILTINS, "(int) -> bool", "takesInt");
 
-/// Arity is checked before any of this.
-#[test]
-fn a_function_slot_rejects_an_arity_mismatch() {
-    blocked(BUILTINS, "(int, int) -> bool", "takesInt");
+    /// Arity is checked before any of this.
+    a_function_slot_rejects_an_arity_mismatch: blocked(BUILTINS, "(int, int) -> bool", "takesInt");
 }
 
 /// The function rules and the constructor rules are the SAME relation applied

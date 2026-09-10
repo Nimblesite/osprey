@@ -113,22 +113,22 @@ print("fn-payload feed accepted: ${label(mkFeed())}")
 print("fn-payload gate accepted: ${describe(mkGate())}")
 
 /// --- Variance positions: every legal shape, exercised end to end ---
-/// `out T` sits in a field, a function RESULT, a covariant built-in and under
-/// two parameter flips; `in T` sits in a function parameter; an unannotated
+/// `out T` sits in a field, a function RESULT and a covariant built-in;
+/// `in T` sits in function parameters, including a callback result; an unannotated
 /// parameter sits in both at once. Each value is then USED, so a position that
 /// merely compiled but lowered wrongly is caught as well as one that was
 /// wrongly rejected. Assignment keeps the leaves exact under every marker —
 /// the refusals are in examples/failscompilation/variance_*.ospo.
 /// Implements [TYPE-VARIANCE-POSITIONS], [TYPE-VARIANCE-COERCION]
 type Source<out T> = Source { produce: T, make: (int) -> T, items: List<T> }
-type Sink<in T> = Sink { admit: (T) -> bool, hof: ((T) -> int) -> int }
+type Sink<in T> = Sink { admit: (T) -> bool, hof: ((int) -> T) -> int }
 type Both<T> = Both { slot: T, consume: (T) -> int }
 
 fn srcInt() -> Source<int> = Source { produce: 4, make: |n| => n, items: [1, 2] }
 fn sinkInt() -> Sink<int> = Sink { admit: |x| => true, hof: |f| => 7 }
 fn bothInt() -> Both<int> = Both { slot: 5, consume: |x| => 6 }
-fn keepSource(s: Source<int>) = s.produce
-fn keepSink(g: Sink<int>) = g.hof(|n| => 3)
+fn keepSource(s) = s.produce
+fn keepSink(g) = g.hof(|n| => 3)
 
 print("variance produce=${srcInt().produce} make=${srcInt().make(9)} items=${length(srcInt().items)} admit=${toString(sinkInt().admit(1))} slot=${bothInt().slot} kept=${keepSource(srcInt())}/${keepSink(sinkInt())}")
 

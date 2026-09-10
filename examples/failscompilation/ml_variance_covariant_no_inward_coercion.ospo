@@ -1,3 +1,4 @@
+// osprey: flavor=ml
 (** The ML surface lowers to the same canonical nodes, so the coercion stops at
     the same boundary. Implements [TYPE-VARIANCE-COERCION], [FLAVOR-ML-GENERICS] *)
 type Feed out T =

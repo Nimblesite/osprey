@@ -6,7 +6,7 @@ use crate::resolve::{Context, Resolver};
 use osprey_ast::Position;
 
 impl Resolver<'_> {
-    pub fn resolve_bare(
+    pub(crate) fn resolve_bare(
         &mut self,
         name: &str,
         context: &Context,
@@ -32,7 +32,7 @@ impl Resolver<'_> {
         scope.and_then(|scope| scope.member(name)).cloned()
     }
 
-    pub fn resolve_path(
+    pub(crate) fn resolve_path(
         &mut self,
         segments: &[String],
         context: &Context,
@@ -72,7 +72,12 @@ impl Resolver<'_> {
         None
     }
 
-    pub fn rewrite_value_name(&mut self, name: &mut String, context: &Context, required: bool) {
+    pub(crate) fn rewrite_value_name(
+        &mut self,
+        name: &mut String,
+        context: &Context,
+        required: bool,
+    ) {
         let key = if name.contains("::") {
             let segments = name.split("::").map(str::to_string).collect::<Vec<_>>();
             self.resolve_path(&segments, context, None)
