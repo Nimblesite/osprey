@@ -6,7 +6,7 @@ use crate::collect_support::primary_name;
 use crate::contribution::Contribution;
 use crate::model::{ConstantInfo, DeclInfo, DeclKind, ModuleInfo, ProjectGraph, SymbolKey};
 use crate::{ProjectError, SourceMetadata};
-use osprey_ast::{ModuleItem, ModuleKind, Position, SignatureItem, Stmt, Visibility};
+use osprey_ast::{DocComment, ModuleItem, ModuleKind, Position, SignatureItem, Stmt, Visibility};
 use std::collections::BTreeSet;
 
 pub(crate) fn collect(
@@ -37,6 +37,20 @@ pub(crate) fn collect(
     (collector.graph, collector.errors)
 }
 
+/// A module's own documentation, carried from the source AST node to the
+/// implementation node the graph stores. Collecting used to synthesize that
+/// node with `doc: None`, which silently erased every module's documentation
+/// the moment a project (rather than a single file) was loaded — the docs
+/// parsed, then vanished before anything could export them.
+/// Implements [DOC-ATTACH], [DOC-SIGIL-INNER].
+#[derive(Debug, Default)]
+pub(crate) struct ModuleDocs {
+    /// The `///` / `(** *)` written above the module.
+    pub outer: Option<DocComment>,
+    /// The `//!` written as the first item inside the module body.
+    pub inner: Option<DocComment>,
+}
+
 pub(crate) struct Collector<'a> {
     pub(crate) graph: ProjectGraph,
     pub(crate) errors: Vec<ProjectError>,
@@ -65,8 +79,9 @@ impl Collector<'_> {
                 kind,
                 signature,
                 body,
+                doc,
+                inner_doc,
                 position,
-                ..
             } => self.module(
                 namespace,
                 owner,
@@ -74,6 +89,10 @@ impl Collector<'_> {
                 *kind,
                 signature.clone(),
                 body,
+                ModuleDocs {
+                    outer: doc.clone(),
+                    inner: inner_doc.clone(),
+                },
                 visibility,
                 source,
                 contribution,
@@ -237,6 +256,7 @@ impl Collector<'_> {
         kind: ModuleKind,
         signature: Option<osprey_ast::SignatureAscription>,
         body: &[ModuleItem],
+        docs: ModuleDocs,
         visibility: Visibility,
         source: usize,
         contribution: usize,
@@ -275,7 +295,8 @@ impl Collector<'_> {
                 kind,
                 signature: signature.clone(),
                 body: body.to_vec(),
-                doc: None,
+                doc: docs.outer,
+                inner_doc: docs.inner,
                 position,
             });
         let explicit_exports = body
@@ -408,4 +429,57 @@ fn key(namespace: &str, owner: &[String], name: &str) -> SymbolKey {
     let mut path = owner.to_vec();
     path.push(name.to_string());
     SymbolKey::new(namespace, path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::collect;
+    use crate::contribution::Contribution;
+    use osprey_ast::NamespaceName;
+    use osprey_syntax::parse_program;
+
+    /// Collect a single-file project and return its graph.
+    fn graph_of(source: &str) -> crate::model::ProjectGraph {
+        let statements = parse_program(source).program.statements;
+        let contributions = vec![Contribution {
+            source: 0,
+            namespace: NamespaceName::Identifier("app".to_owned()),
+            imports: Vec::new(),
+            statements,
+        }];
+        collect(&contributions, &[]).0
+    }
+
+    #[test]
+    fn a_modules_own_documentation_survives_project_collection() {
+        // Collecting synthesizes the implementation node the graph stores. It
+        // used to build that node with `doc: None`, so every module's
+        // documentation was erased the moment the file was loaded as part of a
+        // PROJECT rather than on its own — the docs parsed, then vanished with
+        // nothing to report it. Both scopes' docs must survive.
+        // Implements [DOC-ATTACH], [DOC-SIGIL-INNER].
+        let graph = graph_of(
+            "/// Outer module doc.\n\
+             module Storage {\n\
+               //! Inner module doc.\n\
+               export let value = 1\n\
+             }\n",
+        );
+        let implementation = graph
+            .implementations
+            .values()
+            .find(|stmt| matches!(stmt, osprey_ast::Stmt::Module { .. }))
+            .expect("the module implementation is recorded");
+        let osprey_ast::Stmt::Module { doc, inner_doc, .. } = implementation else {
+            panic!("expected a module implementation, got {implementation:?}");
+        };
+        assert_eq!(
+            doc.as_ref().map(|d| d.summary.as_str()),
+            Some("Outer module doc.")
+        );
+        assert_eq!(
+            inner_doc.as_ref().map(|d| d.summary.as_str()),
+            Some("Inner module doc.")
+        );
+    }
 }

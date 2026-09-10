@@ -37,10 +37,30 @@ pub(crate) fn assemble(
             entry_source,
             sources: metadata,
             source_name_by_mangled: resolution.source_names,
+            public_api: public_api(&graph),
         })
     } else {
         Err(errors)
     }
+}
+
+fn public_api(graph: &crate::model::ProjectGraph) -> std::collections::BTreeMap<String, bool> {
+    graph
+        .declarations
+        .iter()
+        .filter(|(key, info)| {
+            info.visibility == osprey_ast::Visibility::Exported
+                && (1..key.path.len()).all(|length| {
+                    let parent =
+                        crate::model::SymbolKey::new(&key.namespace, key.path.iter().take(length).cloned().collect());
+                    graph
+                        .declarations
+                        .get(&parent)
+                        .is_none_or(|owner| owner.visibility == osprey_ast::Visibility::Exported)
+                })
+        })
+        .map(|(key, info)| (key.source_name(), info.opaque))
+        .collect()
 }
 
 fn rebase(sources: &[SourceFile]) -> (Vec<SourceFile>, Vec<SourceMetadata>, Vec<ProjectError>) {

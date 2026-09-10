@@ -166,6 +166,48 @@ mod tests {
     }
 
     #[test]
+    fn inner_doc_comments_survive_formatting_in_both_flavors() {
+        // The formatter's guarantee is meaning-preservation, and since `//!`
+        // lowers to `Program::doc` / `Stmt::Namespace::inner_doc` /
+        // `Stmt::Module::inner_doc`, the reparse-and-compare check now guards
+        // inner documentation the same way it guards code: a formatter that
+        // dropped or reattached a `//!` would change the AST and be rejected.
+        // Implements [DOC-SIGIL-INNER].
+        let default_src = concat!(
+            "//! The whole file.\n",
+            "//! Second line.\n",
+            "\n",
+            "/// Outer.\n",
+            "module M {\n",
+            "    //! From inside.\n",
+            "    export let x = 1\n",
+            "}\n",
+        );
+        let out = format_source(default_src, Flavor::Default).expect("formats");
+        assert_eq!(out, default_src, "Default `//!` must survive verbatim");
+        assert_eq!(
+            format_source(&out, Flavor::Default).expect("re-formats"),
+            out,
+            "and formatting must stay idempotent"
+        );
+
+        let ml_src = concat!(
+            "//! The whole file.\n",
+            "\n",
+            "(** Outer. *)\n",
+            "module M\n",
+            "    //! From inside.\n",
+            "    export x = 1\n",
+        );
+        let ml_out = format_source(ml_src, Flavor::Ml).expect("formats");
+        assert_eq!(ml_out, ml_src, "ML `//!` must survive verbatim");
+        assert_eq!(
+            format_source(&ml_out, Flavor::Ml).expect("re-formats"),
+            ml_out
+        );
+    }
+
+    #[test]
     fn ml_flavor_regrids_layout() {
         let src = "main () =\n  print 1\n";
         let out = format_source(src, Flavor::Ml).expect("formats");

@@ -1,6 +1,23 @@
 /// Adds two integers with its safe fallback inferred from the body.
+/// # Examples
+/// ```osprey
+/// print("${add(2, 3)}")
+/// ```
+/// ```output
+/// 5
+/// ```
+/// ```osprey
+/// let total = add(1, 2)
+/// ```
 fn add(a, b) = a + b ?: 0
 /// Doubles an integer for reusable pipeline stages.
+/// # Examples
+/// ```osprey
+/// print("${double(3)}")
+/// ```
+/// ```output
+/// 6
+/// ```
 fn double(x) = x * 2 ?: 0
 /// Classifies an integer through modulo Result unwrapping and boolean matching.
 fn parity(n) = match (n % 2 ?: 1) == 0 {

@@ -33,6 +33,7 @@ pub(crate) fn parse(source: &str) -> Parsed {
         return Parsed {
             program: Program {
                 statements: Vec::new(),
+                doc: None,
             },
             errors: vec![SyntaxError {
                 message: "failed to initialize Osprey grammar".to_owned(),

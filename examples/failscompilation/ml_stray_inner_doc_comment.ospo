@@ -1,0 +1,14 @@
+// osprey: flavor=ml
+// ML-flavor must-reject. Pins [DOC-SIGIL-INNER] (docs/specs/0026) and the
+// cross-flavor half of [FLAVOR-LOWER-CONTRACT] (docs/specs/0023).
+//
+// The inner sigil is spelled `//!` in BOTH flavors — only the outer sigil
+// differs (`///` versus `(** … *)`). The ML frontend therefore rejects a `//!`
+// that opens no scope exactly as the Default frontend does, and says so in
+// words rather than dropping the documentation on the floor.
+
+answer = 42
+
+//! This documents nothing: no scope opens here.
+
+print "${answer}"

@@ -2167,6 +2167,7 @@ mod tests {
                 call_pipe,
                 update,
             ],
+            doc: None,
         };
         // Only the deliberate pipe arity mismatch is expected.
         let errs = check_program(&prog);
@@ -2213,12 +2214,16 @@ mod tests {
                 doc: None,
                 position: None,
             }],
+            doc: None,
         };
         // The function's signature pass registers `combine`; the MethodCall is a
         // top-level binding whose initializer drives `infer_method_call`.
         let mut stmts = prog.statements;
         stmts.push(bind("called", body));
-        let errs = check_program(&Program { statements: stmts });
+        let errs = check_program(&Program {
+            statements: stmts,
+            doc: None,
+        });
         assert!(errs.is_empty(), "unexpected type errors: {errs:?}");
     }
 

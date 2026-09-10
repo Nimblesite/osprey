@@ -88,8 +88,11 @@ pub(crate) fn lower(items: Vec<MlItem>) -> (Program, Vec<crate::SyntaxError>) {
     collect_positional_ctors(&items, &mut ctors);
     let _positional = crate::positional::install(ctors.into_iter());
     let file_scope = scope_of(&items);
+    let mut items = items;
+    let file_doc = take_inner_doc(&mut items);
     let program = Program {
         statements: in_scope(file_scope, move || lower_items(items)),
+        doc: file_doc,
     };
     (
         program,
@@ -213,6 +216,27 @@ fn collect_param_names(params: &[MlParam], out: &mut HashSet<String>) {
     }
 }
 
+/// Split a scope's `//!` block off the items it encloses. An inner doc
+/// documents the scope that CONTAINS it, so it never reaches the item lowerer:
+/// the file, namespace or module constructor takes it instead. Removing it here
+/// is also what makes a stray `//!` — one in a scope that cannot hold one —
+/// reach [`ItemLower::lower_item`] and be reported. Implements
+/// [DOC-SIGIL-INNER].
+fn take_inner_doc(items: &mut Vec<MlItem>) -> Option<DocComment> {
+    // Only a `//!` that OPENS the scope documents it. Searching the whole run
+    // instead would silently hoist a stray one from the middle or the end of a
+    // body into the scope's documentation, which is precisely the kind of
+    // quietly-wrong lowering the negative tests below exist to forbid — the
+    // Default flavor's grammar pins the same position rule.
+    if !matches!(items.first(), Some(MlItem::InnerDoc { .. })) {
+        return None;
+    }
+    let MlItem::InnerDoc { text, .. } = items.remove(0) else {
+        return None;
+    };
+    Some(crate::docparse::parse_doc(&text, DocScope::Inner))
+}
+
 /// Lower a run of items, pairing each type signature with the binding of the
 /// same name that immediately follows it. An orphaned signature (no matching
 /// binding next) is dropped. Used at top level and inside layout blocks so
@@ -248,6 +272,8 @@ fn lower_file_namespace(mut items: Vec<MlItem>, index: usize) -> Vec<Stmt> {
         name: lower_namespace_name(name),
         body: lower_items(owned),
         file_scoped: true,
+        doc: None,
+        inner_doc: None,
         position: Some(pos),
     });
     out.extend(lower_items(rest));
@@ -288,6 +314,17 @@ impl ItemLower {
             MlItem::Doc(text) => {
                 self.pending_doc = Some(crate::docparse::parse_doc(&text, DocScope::Outer));
             }
+            // Every scope that can hold an inner doc removed its own with
+            // `take_inner_doc` before lowering, so one arriving here sits where
+            // nothing encloses it. Reporting beats dropping it: a silently
+            // discarded doc reads exactly like one that was never written.
+            MlItem::InnerDoc { pos, .. } => lower_error(
+                "`//!` documents the enclosing file, namespace or module; \
+                 write it as the first item of one, or use `(** … *)` to \
+                 document the declaration that follows"
+                    .to_owned(),
+                pos,
+            ),
             item @ MlItem::ValueSignature { .. } => self.lower_signature(item),
             item @ MlItem::Binding { .. } => self.lower_binding_item(item),
             item @ (MlItem::Assign { .. }
@@ -434,13 +471,16 @@ impl ItemLower {
         match item {
             MlItem::Namespace {
                 name,
-                body: Some(body),
+                body: Some(mut body),
                 pos,
             } => {
+                let inner_doc = take_inner_doc(&mut body);
                 self.out.push(Stmt::Namespace {
                     name: lower_namespace_name(name),
                     body: lower_items(body),
                     file_scoped: false,
+                    doc: self.pending_doc.take(),
+                    inner_doc,
                     position: Some(pos),
                 });
             }
@@ -453,6 +493,8 @@ impl ItemLower {
                     name: lower_namespace_name(name),
                     body: Vec::new(),
                     file_scoped: true,
+                    doc: self.pending_doc.take(),
+                    inner_doc: None,
                     position: Some(pos),
                 });
             }
@@ -460,9 +502,10 @@ impl ItemLower {
                 path,
                 kind,
                 signature,
-                body,
+                mut body,
                 pos,
             } => {
+                let inner_doc = take_inner_doc(&mut body);
                 self.out.push(Stmt::Module {
                     path: lower_symbol_path(path),
                     kind: lower_module_kind(kind),
@@ -472,6 +515,7 @@ impl ItemLower {
                     }),
                     body: lower_module_items(body),
                     doc: self.pending_doc.take(),
+                    inner_doc,
                     position: Some(pos),
                 });
             }
@@ -1514,7 +1558,9 @@ fn parse_fragment(frag: &str) -> Expr {
 )]
 mod tests {
     use super::super::parse_ml;
-    use crate::test_support::{assert_doc_pair, assert_summary, ml_one_stmt, ml_stmts, stmt_doc};
+    use crate::test_support::{
+        assert_doc_pair, assert_summary, ml_one_stmt, ml_program, ml_stmts, stmt_doc,
+    };
     use osprey_ast::{Expr, InterpolatedPart, Pattern, Stmt, Variance};
 
     // ---------- [TESTING-DOC] expression-statement documentation ----------
@@ -1545,6 +1591,61 @@ mod tests {
             None,
             "the doc does not leak forward"
         );
+    }
+
+    #[test]
+    fn a_stray_ml_inner_doc_is_reported_not_silently_swallowed() {
+        // A `//!` documents the scope it OPENS. One written anywhere else has
+        // no scope to document, and dropping it quietly would read exactly
+        // like a doc that was never written ([DOC-SIGIL-INNER]).
+        let trailing = parse_ml("x = 1\n//! nothing encloses me.\n");
+        assert!(
+            trailing
+                .errors
+                .iter()
+                .any(|e| e.message.contains("`//!` documents the enclosing")),
+            "a trailing //! must be reported, got {:?}",
+            trailing.errors
+        );
+        // ...and it must not have been hoisted into the file's own doc.
+        assert!(
+            trailing.program.doc.is_none(),
+            "a stray //! must never become the file doc"
+        );
+    }
+
+    #[test]
+    fn ml_inner_docs_attach_to_file_namespace_and_module() {
+        // [FLAVOR-LOWER-CONTRACT]: an inner `//!` doc must lower to the same
+        // place in the canonical AST under BOTH flavors. The ML flavor already
+        // lexes `//` line comments, so `//!` is its inner sigil too — the outer
+        // sigils differ (`///` vs `(** *)`), the inner one does not.
+        // Implements [DOC-SIGIL-INNER].
+        let file = ml_program("//! The whole file.\nx = 1\n");
+        assert_eq!(
+            file.doc.as_ref().map(|d| d.summary.as_str()),
+            Some("The whole file."),
+            "ML file-level //! must reach Program.doc"
+        );
+        assert_eq!(
+            file.doc.as_ref().map(osprey_ast::DocComment::scope),
+            Some(osprey_ast::DocScope::Inner)
+        );
+        // The binding after it keeps its own (empty) doc slot.
+        assert_summary(&file.statements[0], None);
+
+        match ml_one_stmt(
+            "(** From outside. *)\nmodule M\n    //! From inside.\n    export x = 1\n",
+        ) {
+            Stmt::Module { doc, inner_doc, .. } => {
+                assert_eq!(doc.map(|d| d.summary), Some("From outside.".to_owned()));
+                assert_eq!(
+                    inner_doc.map(|d| d.summary),
+                    Some("From inside.".to_owned())
+                );
+            }
+            s => panic!("expected module, got {s:?}"),
+        }
     }
 
     #[test]

@@ -42,7 +42,10 @@ pub(crate) fn ast(path: &str, statements: Vec<Stmt>) -> SourceFile {
         path: PathBuf::from(path),
         flavor: Flavor::Default,
         source: "\n".repeat(statements.len().max(1)),
-        program: Program { statements },
+        program: Program {
+            statements,
+            doc: None,
+        },
     }
 }
 
@@ -105,6 +108,7 @@ pub(crate) fn state_module(
         body,
         doc: None,
         position: None,
+        inner_doc: None,
     }
 }
 

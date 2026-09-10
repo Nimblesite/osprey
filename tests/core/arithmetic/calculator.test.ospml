@@ -1,6 +1,25 @@
-(** Add two integers with its safe fallback inferred from the body. *)
+(** Add two integers with its safe fallback inferred from the body.
+# Examples
+```osprey
+print "${add (2, 3)}"
+```
+```output
+5
+```
+```osprey
+total = add (1, 2)
+```
+*)
 add (a, b) = a + b ?: 0
-(** Double an integer for pipeline stages. *)
+(** Double an integer for pipeline stages.
+# Examples
+```osprey
+print "${double 3}"
+```
+```output
+6
+```
+*)
 double x = x * 2 ?: 0
 (** Classify an integer through checked modulo and boolean matching. *)
 parity n =

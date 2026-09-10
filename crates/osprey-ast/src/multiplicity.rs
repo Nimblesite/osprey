@@ -186,6 +186,7 @@ mod tests {
                 ),
                 effect("Tile", Stage::Static, vec![operation("size", None, false)]),
             ],
+            doc: None,
         };
         let table = OperationTable::collect(&program);
         assert_eq!(table.multiplicity_of("Choice", "pick"), Multiplicity::Many);

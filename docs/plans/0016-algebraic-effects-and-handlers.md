@@ -16,7 +16,7 @@ first-class open-row representation in Hindley–Milner function types. This pla
 supersedes retired plan 0008 and absorbs the handler-value work sketched in
 [plan 0013](0013-ml-flavor-frontend.md) Phase 0
 and the effect-row-polymorphism gap flagged in
-[plan 0015](0015-generics-and-variance.md). Remaining open critical correctness
+[the completed generics work](../specs/0004-TypeSystem.md#generics-and-variance). Remaining open critical correctness
 defect: effect loss through one curried ML lowering path
 ([#184](https://github.com/Nimblesite/osprey/issues/184)).
 

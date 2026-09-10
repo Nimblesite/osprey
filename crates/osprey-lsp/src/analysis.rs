@@ -7,7 +7,9 @@
 
 #[cfg(test)]
 use osprey_ast::InterpolatedPart;
-use osprey_ast::{AstNode, Expr, ExternParameter, Parameter, Position, Program, Stmt, TypeExpr};
+use osprey_ast::{
+    AstNode, DocComment, Expr, ExternParameter, Parameter, Position, Program, Stmt, TypeExpr,
+};
 use std::fmt::Write as _;
 
 /// What kind of declaration a [`SymbolInfo`] describes.
@@ -129,6 +131,7 @@ fn container_sym(
     source_name: &str,
     kind: SymbolKind,
     position: Option<Position>,
+    docs: (Option<&DocComment>, Option<&DocComment>),
 ) -> SymbolInfo {
     SymbolInfo {
         name: qualified(prefix, source_name),
@@ -140,7 +143,26 @@ fn container_sym(
         binder: String::new(),
         parameters: Vec::new(),
         return_type: None,
-        doc: None,
+        doc: render_scope_docs(docs),
+    }
+}
+
+/// Render a scope's outer `///` and inner `//!` comments into one hover block.
+/// A namespace or module can carry both — they describe the same scope from
+/// opposite sides ([DOC-SIGIL-INNER]) — so the hover shows the outer text a
+/// caller wrote first, then the inner text a maintainer wrote, separated by a
+/// blank line. Either may be absent; both absent means no hover doc at all.
+fn render_scope_docs(docs: (Option<&DocComment>, Option<&DocComment>)) -> Option<String> {
+    let rendered: Vec<String> = [docs.0, docs.1]
+        .into_iter()
+        .flatten()
+        .map(DocComment::render_markdown)
+        .filter(|text| !text.is_empty())
+        .collect();
+    if rendered.is_empty() {
+        None
+    } else {
+        Some(rendered.join("\n\n"))
     }
 }
 
@@ -163,6 +185,8 @@ fn walk_stmts(stmts: &[Stmt], prefix: &[String], bodies: Bodies, out: &mut Vec<S
             Stmt::Namespace {
                 name,
                 body,
+                doc,
+                inner_doc,
                 position,
                 ..
             } => {
@@ -172,12 +196,15 @@ fn walk_stmts(stmts: &[Stmt], prefix: &[String], bodies: Bodies, out: &mut Vec<S
                     &label,
                     SymbolKind::Namespace,
                     *position,
+                    (doc.as_ref(), inner_doc.as_ref()),
                 ));
                 walk_stmts(body, &extended(prefix, &[label]), bodies, out);
             }
             Stmt::Module {
                 path,
                 body,
+                doc,
+                inner_doc,
                 position,
                 ..
             } => {
@@ -186,6 +213,7 @@ fn walk_stmts(stmts: &[Stmt], prefix: &[String], bodies: Bodies, out: &mut Vec<S
                     &path.to_string(),
                     SymbolKind::Module,
                     *position,
+                    (doc.as_ref(), inner_doc.as_ref()),
                 ));
                 let child_prefix = extended(prefix, &path.segments);
                 for item in body {
@@ -197,11 +225,19 @@ fn walk_stmts(stmts: &[Stmt], prefix: &[String], bodies: Bodies, out: &mut Vec<S
                     );
                 }
             }
-            Stmt::Signature { name, position, .. } => out.push(container_sym(
+            // A signature is a documented declaration form too ([DOC-ATTACH]);
+            // it has no body, so it carries only an outer doc.
+            Stmt::Signature {
+                name,
+                doc,
+                position,
+                ..
+            } => out.push(container_sym(
                 prefix,
                 name,
                 SymbolKind::Signature,
                 *position,
+                (doc.as_ref(), None),
             )),
             other => {
                 if let Some(mut symbol) = sym_of(other) {
@@ -322,8 +358,8 @@ fn sym_of(stmt: &Stmt) -> Option<SymbolInfo> {
 
 /// Render a declaration's structured doc comment to the Markdown a hover shows,
 /// or `None` when it has none ([DOC-EXPORT], hover half).
-fn render_doc(doc: Option<&osprey_ast::DocComment>) -> Option<String> {
-    doc.map(osprey_ast::DocComment::render_markdown)
+fn render_doc(doc: Option<&DocComment>) -> Option<String> {
+    doc.map(DocComment::render_markdown)
 }
 
 /// A type/effect declaration symbol whose signature shows the binder
@@ -347,7 +383,8 @@ fn generic_decl_sym(
 
 /// Render a declaration's type-parameter binder (`<T, out U>`), empty when it
 /// has none. Implements [TYPE-GENERICS-DECL].
-fn render_type_params(params: &[osprey_ast::TypeParam]) -> String {
+#[must_use]
+pub fn render_type_params(params: &[osprey_ast::TypeParam]) -> String {
     if params.is_empty() {
         return String::new();
     }
@@ -535,7 +572,7 @@ fn extern_pairs(params: &[ExternParameter]) -> Vec<(String, String)> {
 
 /// Render a written type expression back to source-ish text.
 #[must_use]
-pub(crate) fn render_type(t: &TypeExpr) -> String {
+pub fn render_type(t: &TypeExpr) -> String {
     if t.is_function {
         let ps: Vec<String> = t.parameter_types.iter().map(render_type).collect();
         let ret = t
@@ -645,6 +682,33 @@ mod tests {
             doc.is_some_and(|d| d.contains(needle)),
             "no doc mentioning {needle:?} on {name}"
         );
+    }
+
+    #[test]
+    fn module_and_namespace_hovers_carry_both_doc_scopes() {
+        // `container_sym` hardcoded `doc: None`, so hovering a module or a
+        // namespace showed no documentation at all — not even the `///` a
+        // caller wrote above it, which [DOC-ATTACH] lists as a documented
+        // declaration form and [LSP-HOVER-DOCS] requires hovers to render.
+        // The inner `//!` belongs there too: it is what a maintainer reading
+        // the body wrote about that same scope ([DOC-SIGIL-INNER]).
+        let parsed = osprey_syntax::parse_program(
+            "/// What callers need to know.\n\
+             namespace billing {\n\
+               //! What a maintainer needs to know.\n\
+               /// The module from outside.\n\
+               module Tax {\n\
+                 //! The module from inside.\n\
+                 export let rate = 10\n\
+               }\n\
+             }\n",
+        );
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let syms = collect_all_symbols(&parsed.program);
+        assert_doc(&syms, "billing", "What callers need to know.");
+        assert_doc(&syms, "billing", "What a maintainer needs to know.");
+        assert_doc(&syms, "billing::Tax", "The module from outside.");
+        assert_doc(&syms, "billing::Tax", "The module from inside.");
     }
 
     #[test]
@@ -1143,6 +1207,7 @@ print(describeAny(42) + "!")
                     position: None,
                 })
                 .collect(),
+            doc: None,
         };
         let found: Vec<String> = collect_all_symbols(&program)
             .into_iter()

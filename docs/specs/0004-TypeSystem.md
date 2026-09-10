@@ -154,6 +154,8 @@ Inference produces polymorphic variables (`<T>`, `<A>`, …), not `any`. The `an
 
 ## Generics and Variance
 
+**Implementation status:** Declared generics, declaration-site variance, generic effects, generic function values and explicit call-site type arguments are implemented in both flavors. Plan 0015 is retired. [PR #237](https://github.com/Nimblesite/osprey/pull/237) merged on 2026-09-10 after all 14 required checks passed on `38098b7f73f3bd744454d15952475424489632ab`, including native default/GC/ARC corpora, Windows, WebAssembly, Rust/C/editor coverage and integration tests. The contract is pinned by `generics_apply_tests.rs`, `generics_decl_tests.rs`, `generics_variance_tests.rs`, `generic_effects_tests.rs`, the paired generics runtime corpus and explicit-application rejection fixtures. A fresh check during retirement passed all 37 call-site type-application checker tests.
+
 > **Flavor layer — shared core.** Both surfaces lower to the same
 > variance-carrying `TypeParam` nodes ([FLAVOR-BOUNDARY]); the ML spellings are
 > specified in [ML Flavor Syntax](0024-MLFlavorSyntax.md#generics-flavor-ml-generics).

@@ -1,3 +1,7 @@
+//! Module-boundary corpus, Default flavor. This `//!` documents the FILE, not
+//! the namespace declared below it, and it coexists with the `///` that
+//! documents that namespace from outside ([DOC-SIGIL-INNER], spec 0026).
+
 /// Default surface for [MODULES-MODULE] and [MODULES-EXPORTS]: a closed,
 /// stateless declaration boundary whose items are private until exported, with
 /// nested plain modules and module-owned constants.
@@ -5,6 +9,9 @@
 namespace billing;
 
 module Tax {
+    //! Documents the module body from the inside, alongside the `///` a caller
+    //! reads from the outside. Both survive to the AST.
+
     /// Unascribed module items are private unless marked `export`.
     let rate = 10
 

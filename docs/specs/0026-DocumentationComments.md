@@ -43,6 +43,40 @@ ML block comments nest. `(**` starts documentation only when content follows
 the opener; `(**)` and all-star banners such as `(*****)` remain ordinary
 comments. An unterminated documentation comment is a syntax error.
 
+## Inner sigil `[DOC-SIGIL-INNER]`
+
+`//!` documents the scope that encloses it rather than the declaration that
+follows. It is spelled the same in both flavors: only the outer sigil differs.
+Consecutive `//!` lines form one comment, and the marker plus one optional
+following space is removed from each.
+
+A `//!` block is legal as the first item of a file, of a `namespace` brace body,
+or of a `module` body, and it lowers to that scope's own documentation. A
+file-scoped `namespace name;` header opens no body, so the file's `//!` documents
+the file.
+
+```osprey
+//! Payment primitives shared by the billing modules.
+
+/// Converts cents to a display string.
+fn format(cents) = "${cents}"
+```
+
+An outer and an inner comment describe the same scope from opposite sides, so a
+scope may carry both at once and neither replaces the other.
+
+```osprey
+/// What callers need to know about the module.
+module Ledger {
+    //! What a maintainer reading the body needs to know.
+    export let entries = []
+}
+```
+
+`//!` written anywhere else documents nothing and is rejected. It is never
+treated as an ordinary `//` comment: a discarded documentation comment is
+indistinguishable from one that was never written.
+
 ## Body markup `[DOC-BODY-MARKDOWN]`
 
 The stripped body is Markdown in both flavors and passes through one parser.
@@ -80,15 +114,43 @@ Unrecognized Markdown remains text in its current region.
 Inside a recognized examples section, each fenced block labeled `osprey`
 becomes a `DocExample`. An immediately following fence labeled `output` supplies
 `expected_output` and sets `run` to `true`; without one, `expected_output` is
-absent and `run` is `false`. This contract covers extraction into the model,
-not execution by the example harness.
+absent and `run` is `false`.
+
+`osprey <file-or-project> --doctests` validates the original sources, then checks
+each example independently using the owning file's resolved flavor. A project
+may contain both flavors and does not need an application entry for documentation.
+The example has access to the documented declaration's lexical scope, including
+private module helpers. Application entry statements and `main` are not run.
+Bindings from one example never become visible to another.
+
+Every example is type-checked, including declarations it does not call. An
+example without an output fence is compile-only. A runnable example compiles
+through the ordinary native or `wasm32` backend, must exit successfully, and
+must produce the exact bytes in the output fence plus its final newline. An
+empty output fence expects no stdout bytes. Spaces and blank lines are
+significant. A failure names the source, declaration, and example ordinal;
+the command exits unsuccessfully if any example fails.
+
+Native examples support `--memory=default|gc|arc`; ARC execution additionally
+requires exactly one zero-live-object exit sentinel. `wasm32` uses the default
+allocator and `OSPREY_WASM_RUN` (default `wasmtime`) as its executable host.
+Each runnable example has a 30-second execution limit, configurable through a
+positive `OSPREY_DOCTEST_TIMEOUT_MS`. Compilation is outside this execution limit.
+
+The existing corpus harness runs documentation examples in its native allocator
+passes and its WASM pass. It rejects malformed result summaries and output
+drift, and requires at least six successful examples across the two source flavors.
 
 ## Declaration attachment `[DOC-ATTACH]`
 
-A documentation comment attaches to the following declaration. Both flavors
-attach docs to functions, `let`/`mut` bindings, types, effects, externs,
+An outer documentation comment attaches to the following declaration. Both
+flavors attach docs to functions, `let`/`mut` bindings, types, effects, externs,
 modules, and signatures, including declarations inside modules. Only these
 declaration forms receive a documentation field.
+
+An inner comment attaches instead to the scope containing it — the file, a
+namespace, or a module ([DOC-SIGIL-INNER]) — and is recorded separately from
+that scope's outer comment.
 
 Docs do not attach separately to variants, fields, or parameters.
 
@@ -111,5 +173,64 @@ defeat position-based hover resolution.
 
 `DocComment::render_markdown` emits the summary, body, and populated structured
 sections in model order. LSP declaration hovers append this rendering beneath
-the declaration signature or type ([LSP-HOVER-DOCS]). The `--docs` command
-exports built-in documentation only; it does not export user declarations.
+the declaration signature or type ([LSP-HOVER-DOCS]). Authorship is rendered
+after the version section when present.
+
+`osprey --docs --docs-dir <directory>` exports the built-in reference. Supply
+`--source <file-or-project>` or a positional source to include user APIs. The
+exporter validates syntax, module contracts, and types before writing pages.
+Files inherit the same flavor selection as compilation; projects select the
+flavor per source. Library projects do not need an application entry.
+
+User pages include file and namespace documentation, module documentation,
+public functions and values, types, effects and their operations, externs, and
+module signatures. Public declarations appear even without comments. Module
+visibility is the compiler's finalized surface, including signature ascription;
+private members and opaque type representations are excluded. Public type pages
+show their representation, fields and variants. Function signatures come from
+the editor's inferred type model and retain generic binders. ML source signatures
+and example fences are presented in the ML flavor.
+
+Markdown is the default format. Built-ins live under `functions/`, user APIs
+under `api/`, and additional pages under `guides/`. Names are made safe and unique
+on case-insensitive filesystems; `api/index.md` is reserved for the API listing.
+Multiple contributions to a namespace share its page. File documentation keeps
+the source's relative path identity. Regeneration removes obsolete pages recorded
+in the format's manifest, while the historical built-in `functions/*.md` tree
+remains wholly generated. Unrelated files outside that tree are preserved.
+Duplicate output paths, malformed manifests, and symlinks inside the destination
+are rejected before writing the output set.
+
+### HTML sites `[DOC-EXPORT-HTML]`
+
+`--docs-format html` produces a complete static site with a root `index.html`,
+API and built-in pages, navigation, search, and local styles. It needs no website
+framework, build step, CDN, or network connection. Navigation and search work
+when opened directly from the filesystem or served from a static server, including
+under a URL prefix. Layout adapts to mobile screens and keyboard navigation.
+
+The renderer supports CommonMark plus tables, footnotes, task lists and
+strikethrough. Raw HTML in Markdown is displayed as text; it cannot inject scripts
+or markup into generated pages. Source code stays escaped. Internal Markdown
+links point to generated HTML pages, and resolvable documentation symbol links
+point to the matching API declaration.
+
+### Additional pages `[DOC-EXPORT-PAGES]`
+
+Repeat `--docs-page <file.md-or-directory>` to include authored Markdown. A
+directory is scanned recursively for Markdown pages, preserving its relative
+structure under `guides/`. A page's first level-one heading supplies its title.
+Additional pages appear in navigation and search alongside generated APIs.
+Missing inputs and conflicting page paths are errors.
+
+### Themes and custom CSS `[DOC-EXPORT-CSS]`
+
+HTML supports `--docs-theme osprey|midnight|paper`: a warm light theme, a dark
+theme, and a minimal light theme. The themes share layout and CSS custom
+properties so customization does not require replacing the renderer.
+
+Repeat `--docs-css <file.css>` to copy custom stylesheets into the output site.
+They are linked after the selected theme, in argument order. Stylesheets may
+override theme properties and ordinary selectors. CSS and nondefault themes
+require HTML output. Unknown themes, formats and options, and missing argument
+values fail with a usage error instead of silently generating a different result.

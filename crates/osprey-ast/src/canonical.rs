@@ -104,6 +104,7 @@ mod tests {
     fn the_same_program_at_different_coordinates_renders_identically() {
         let here = Program {
             statements: vec![let_at("x", Some(Position { line: 1, column: 0 }))],
+            doc: None,
         };
         let there = Program {
             statements: vec![let_at(
@@ -113,6 +114,7 @@ mod tests {
                     column: 12,
                 }),
             )],
+            doc: None,
         };
         assert_ne!(here, there, "the derived equality does compare positions");
         assert_eq!(without_positions(&here), without_positions(&there));
@@ -122,9 +124,11 @@ mod tests {
     fn a_difference_that_is_not_a_coordinate_survives() {
         let one = Program {
             statements: vec![let_at("x", None)],
+            doc: None,
         };
         let other = Program {
             statements: vec![let_at("y", None)],
+            doc: None,
         };
         assert_ne!(without_positions(&one), without_positions(&other));
     }
@@ -137,9 +141,11 @@ mod tests {
         let literal = "line: 42,\ncolumn: 7,";
         let program = Program {
             statements: vec![let_at(literal, None)],
+            doc: None,
         };
         let other = Program {
             statements: vec![let_at("column: 7,\nline: 42,", None)],
+            doc: None,
         };
         assert!(without_positions(&program).contains("line: 42"));
         assert_ne!(without_positions(&program), without_positions(&other));
@@ -151,9 +157,11 @@ mod tests {
     fn a_recorded_position_and_an_absent_one_render_alike() {
         let recorded = Program {
             statements: vec![let_at("x", Some(Position { line: 3, column: 1 }))],
+            doc: None,
         };
         let absent = Program {
             statements: vec![let_at("x", None)],
+            doc: None,
         };
         assert_eq!(without_positions(&recorded), without_positions(&absent));
         assert!(

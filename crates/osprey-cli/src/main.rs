@@ -20,6 +20,9 @@
 
 mod android;
 mod docs;
+mod doctests;
+mod document_entries;
+mod document_source;
 mod fmt;
 mod ios;
 mod ios_abi;
@@ -44,7 +47,7 @@ use std::process::{Command, ExitCode};
 
 pub(crate) const USAGE: &str =
     "usage: osprey <file-or-project> [--check | --ast | --llvm | --compile | --run | \
---symbols | --list-tests | --deps] [--quiet] [--debug] [--profile] [--flavor default|ml] \
+--symbols | --list-tests | --doctests | --deps] [--quiet] [--debug] [--profile] [--flavor default|ml] \
 [--memory=default|gc|arc] [--target=native|wasm32|ios|ios-sim|android-arm64|android-x64] [-o <out>] \
 [--sandbox | --no-http | --no-websocket | --no-fs | --no-ffi]\n\
        osprey build [project] [--quiet] [--debug] [--memory=default|gc|arc] \
@@ -53,7 +56,9 @@ pub(crate) const USAGE: &str =
 [--coverage-json <path>] [--memory=default|gc|arc]\n\
        osprey fmt [--check | --stdout] [--flavor default|ml] <path...>\n\
        osprey --hover <name>\n\
-       osprey --docs --docs-dir <dir>\n\
+       osprey --docs [<file-or-project> | --source <file-or-project>] --docs-dir <dir> \
+[--docs-format markdown|html] [--docs-theme osprey|midnight|paper] \
+[--docs-page <markdown-file-or-directory>]... [--docs-css <stylesheet>]...\n\
        osprey lsp";
 
 /// Internal child-process switch used by the parallel test runner.
@@ -237,7 +242,7 @@ fn parse_args(args: &[String]) -> Result<Cli, String> {
     while let Some(a) = it.next() {
         match a.as_str() {
             "--ast" | "--check" | "--llvm" | "--compile" | "--run" | "--symbols"
-            | "--list-tests" | "--hover" | "--deps"
+            | "--list-tests" | "--hover" | "--deps" | "--doctests"
                 if project_build =>
             {
                 return Err(format!(
@@ -245,7 +250,7 @@ fn parse_args(args: &[String]) -> Result<Cli, String> {
                 ));
             }
             "--ast" | "--check" | "--llvm" | "--compile" | "--run" | "--symbols"
-            | "--list-tests" | "--hover" | "--deps" => {
+            | "--list-tests" | "--hover" | "--deps" | "--doctests" => {
                 mode.clone_from(a);
                 mode_explicit = true;
             }
@@ -364,6 +369,9 @@ fn parse_flavor(value: &str) -> Result<Flavor, String> {
 
 /// Parse, gate (syntax → sandbox → types), and dispatch the selected mode.
 fn run(cli: &Cli) -> ExitCode {
+    if cli.mode == "--doctests" {
+        return doctests::run(cli);
+    }
     let input = match load_input(cli) {
         Ok(input) => input,
         Err(code) => return code,

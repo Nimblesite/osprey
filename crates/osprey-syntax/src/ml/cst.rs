@@ -290,6 +290,17 @@ pub(crate) enum MlItem {
     /// with the declaration that follows it ([DOC-SIGIL-ML]) — the same
     /// pairing pattern as [`MlItem::ValueSignature`].
     Doc(String),
+    /// A `//!` documentation comment's raw text. Unlike [`MlItem::Doc`] it
+    /// pairs with nothing that follows: the lowerer hands it to whichever
+    /// scope contains it — the file, a namespace or a module
+    /// ([DOC-SIGIL-INNER]). The position blames a `//!` written where no scope
+    /// can take it.
+    InnerDoc {
+        /// Raw doc text, sigil stripped.
+        text: String,
+        /// Source position of the `//!`.
+        pos: Position,
+    },
 }
 
 /// Declaration-site variance of a type parameter, exactly as written

@@ -686,6 +686,7 @@ mod tests {
                 doc: None,
                 position: None,
             }],
+            doc: None,
         };
         let err = compile_program(&program).unwrap_err();
         assert!(matches!(err, CodegenError::Unsupported(_)));

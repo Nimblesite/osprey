@@ -272,7 +272,7 @@ per limitation, each currently mis-reported, reporting correctly.
 
 Key rewrite rules by resolved instantiation, not effect name, reusing the seam
 that already distinguishes `Stash<string>` from `Stash<int>`
-(`crates/osprey-types/src/effect_rows.rs`, [plan 0015](0015-generics-and-variance.md)).
+(`crates/osprey-types/src/effect_rows.rs`, [generic effect contracts](../specs/0017-AlgebraicEffects.md)).
 Gate: `Signal<Count>` and `Signal<Cursor>` are distinct dependencies in
 `--deps` and distinct rewrite targets.
 

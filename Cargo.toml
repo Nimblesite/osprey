@@ -38,6 +38,11 @@ osprey-lsp = { path = "crates/osprey-lsp" }
 osprey-profiler = { path = "crates/osprey-profiler" }
 tree-sitter-osprey = { path = "tree-sitter-osprey" }
 
+# CommonMark -> HTML for the `--docs-format html` exporter. Default features are
+# off: only the `html` renderer is used, and the exporter never accepts the
+# crate's getopts/serde extras.
+pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }
+
 # Language-server building blocks, reused from the published lspkit crates
 # (crates.io). [LSP-REUSE-LSPKIT] The LSP is wired to the compiler in-process,
 # so only the transport/VFS/engine layers are pulled in (no tree-sitter dup).

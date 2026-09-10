@@ -128,19 +128,30 @@ And `docs.rs` `prune` deletes every unrecognised `*.md` in its output tree, so
 user pages need their own subdirectory (`<docs-dir>/api/`) and prune set or
 they will delete website content.
 
-**3c — `//!` attachment.** Three dependencies:
+**3c — `//!` attachment.** Resolved. What it needed, and what each turned out
+to cost:
 
-- **Missing AST attachment.** `Program` has no `doc` field and neither does
-  `Stmt::Namespace`, so the AST must change before the grammar rule.
-  (`Stmt::Namespace` also *silently drops* the `optional($.doc_comment)` the
-  grammar already accepts — fixing that is the same edit.)
-- **It is a source-compatibility break.** `//!` is parsed as a `line_comment`
-  today; adding it as `token(prec(1, …))` makes every `//!` outside an accepted
-  attachment point a hard syntax error (a stray `///` already errors this way).
+- **Missing AST attachment.** `Program` had no `doc` field and neither did
+  `Stmt::Namespace`, so the AST changed before the grammar rule.
+  (`Stmt::Namespace` also *silently dropped* the `optional($.doc_comment)` the
+  grammar already accepted — fixed by the same edit.)
+- **It is a source-compatibility break**, and a wider one than expected. Adding
+  `token(prec(1, …))` was not enough on its own: tree-sitter's lexer only
+  considers tokens valid in the current parse state, so where
+  `inner_doc_comment` was not expected it quietly fell back to `line_comment`
+  and the documentation disappeared with no diagnostic. `line_comment` had to
+  stop matching a `//!` prefix for the rejection to happen at all. No `.osp` or
+  `.ospml` in the tree used `//!`, so nothing had to change to keep compiling.
 - **`tree-sitter-osprey/src/parser.c` is committed and regenerated only by a
   manual `npm run generate`** — the Makefile never invokes tree-sitter, so a
   grammar edit is inert until the generated parser is regenerated and
   committed.
+- **The ML flavor needed its own path.** `//!` is spelled identically in both
+  flavors, but the ML frontend is hand-written: the lexer had to stop treating
+  it as trivia (`TokKind::InnerDoc`), the parser had to carry it
+  (`MlItem::InnerDoc`), and the lowerer takes it off the front of the scope it
+  opens. Only a leading `//!` is a scope's doc; searching a whole item run
+  instead would silently hoist a stray one into the scope's documentation.
 
 ## Testing
 
@@ -187,12 +198,19 @@ Phase 3 remains, ordered by cost. Each item requires new surface (see
       `<docs-dir>/api/` output tree so `prune` cannot delete website content.
       Reference `[DOC-EXPORT]` from `docs.rs` — that id has no code reference
       today.
-- [ ] Phase 3c: `//!` inner/module-scope grammar attachment. Needs, in order:
-      `doc` fields on `Program` and `Stmt::Namespace`; the
-      `inner_doc_comment` rule in `tree-sitter-osprey/grammar.js`; a **manual
-      `npm run generate`** plus committed `src/parser.c`/`grammar.json`; an
-      `inner_doc` reader in the Default lowerer. This covers the
-      `DocScope::Inner` arm, which is unreachable today.
+- [x] Phase 3c: `//!` inner/module-scope grammar attachment, **both flavors**.
+      `Program.doc`, `Stmt::Namespace.doc` (which the grammar accepted and
+      lowering silently dropped) and `.inner_doc`, `Stmt::Module.inner_doc`;
+      the `inner_doc_comment` rule plus a regenerated `src/parser.c`; an
+      `inner_doc` reader in the Default lowerer and a `TokKind::InnerDoc` /
+      `MlItem::InnerDoc` path in the ML frontend. `DocScope::Inner` is now
+      reachable. `line_comment` no longer matches a `//!` prefix — that
+      fallback let a stray `//!` lex as an ordinary comment and vanish; both
+      flavors now reject one that opens no scope
+      (`failscompilation/{,ml_}stray_inner_doc_comment.ospo`). Module docs also
+      survive project collection, which built the graph's implementation node
+      with `doc: None` and erased every module's documentation as soon as a
+      file was loaded as part of a project.
 - [ ] Phase 3a: doctest **execution**. Needs a doctest extraction mode on the
       CLI (`docparse::parse_doc` is `pub(crate)`), a `target/doctests/` output
       root (never `tests/regressions/`, which is registry-asserted), a

@@ -19,7 +19,7 @@ use osprey_syntax::Flavor;
 /// (`source.osprey-ml`), so ML hover text fenced as `osprey` is highlighted by
 /// brace-flavor rules that do not apply to it.
 #[must_use]
-pub(crate) const fn fence(flavor: Flavor) -> &'static str {
+pub const fn fence(flavor: Flavor) -> &'static str {
     match flavor {
         Flavor::Default => "osprey",
         Flavor::Ml => "osprey-ml",
@@ -29,7 +29,7 @@ pub(crate) const fn fence(flavor: Flavor) -> &'static str {
 /// Re-spell one rendered Default signature for `flavor`. Default documents get
 /// their input back untouched — Default *is* the canonical rendering.
 #[must_use]
-pub(crate) fn signature(flavor: Flavor, sig: &str) -> String {
+pub fn signature(flavor: Flavor, sig: &str) -> String {
     match flavor {
         Flavor::Default => sig.to_owned(),
         Flavor::Ml => ml_signature(sig),

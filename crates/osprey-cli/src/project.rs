@@ -28,6 +28,16 @@ enum OutputDefault {
 }
 
 impl CompilationInput {
+    /// Documentation resolves every module without requiring an application entry.
+    /// The selected source supplies assembly context; no application code is run.
+    pub(crate) fn documentation_project(path: &str, config: &ProjectConfig, sources: &[SourceFile]) -> Result<Self, Vec<ProjectError>> {
+        let mut config = config.clone();
+        if config.entry.is_none() { config.entry = sources.first().map(|source| source.path.clone()); }
+        let assembled = osprey_project::assemble(&config, sources)?;
+        let source = aggregate_sources(&assembled);
+        Ok(Self::assembled(assembled, source, path.to_string(), OutputDefault::Source(path.to_string())))
+    }
+
     /// Preserve the historical single-file path for an ordinary script.
     pub(crate) fn script(path: &str, source: String, program: Program) -> Self {
         Self {
@@ -155,6 +165,14 @@ impl CompilationInput {
             return json;
         };
         project_symbols_json(json, project)
+    }
+
+    /// The finalized module API, including signature exports and opaque types.
+    pub(crate) fn public_api(&self) -> Option<&std::collections::BTreeMap<String, bool>> {
+        match &self.unit {
+            CompilationUnit::Project(project) => Some(&project.public_api),
+            CompilationUnit::Script(_) => None,
+        }
     }
 
     /// Honor `-o`; otherwise put project artifacts beside the manifest and
@@ -390,11 +408,13 @@ mod tests {
         let project = AssembledProject {
             program: Program {
                 statements: Vec::new(),
+                doc: None,
             },
             entry_prologue: Vec::new(),
             entry_source: 0,
             sources,
             source_name_by_mangled: std::collections::BTreeMap::new(),
+            public_api: std::collections::BTreeMap::new(),
         };
         let aggregated = aggregate_sources(&project);
         assert!(aggregated.contains("// @link: sqlite3"));
@@ -439,6 +459,7 @@ mod tests {
             entry_source: 0,
             sources: vec![source],
             source_name_by_mangled: source_names,
+            public_api: std::collections::BTreeMap::new(),
         };
         let json = project_symbols_json(osprey_lsp::symbols_json(&project.program), &project);
         assert!(json.contains("\"name\":\"app::main\""));
@@ -453,11 +474,13 @@ mod tests {
         AssembledProject {
             program: Program {
                 statements: Vec::new(),
+                doc: None,
             },
             entry_prologue: Vec::new(),
             entry_source: 0,
             sources: Vec::new(),
             source_name_by_mangled,
+            public_api: std::collections::BTreeMap::new(),
         }
     }
 

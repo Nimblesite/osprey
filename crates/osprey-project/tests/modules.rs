@@ -132,6 +132,7 @@ fn relative_module_path_precedes_import_alias() {
         )],
         doc: None,
         position: None,
+        inner_doc: None,
     };
     let entry = ast(
         "main.osp",
@@ -164,10 +165,12 @@ fn private_intermediate_module_cannot_be_traversed() {
                 )],
                 doc: None,
                 position: None,
+                inner_doc: None,
             },
         )],
         doc: None,
         position: None,
+        inner_doc: None,
     };
     let outer = Stmt::Module {
         path: SymbolPath::single("Outer"),
@@ -176,6 +179,7 @@ fn private_intermediate_module_cannot_be_traversed() {
         body: vec![item(Visibility::Private, hidden)],
         doc: None,
         position: None,
+        inner_doc: None,
     };
     let entry = ast(
         "main.osp",
@@ -284,6 +288,8 @@ fn unknown_and_quoted_unaliased_imports_are_rejected() {
             body: vec![function("ok", Expr::Bool(true))],
             file_scoped: false,
             position: None,
+            doc: None,
+            inner_doc: None,
         }],
     );
     let entry = ast(
@@ -392,5 +398,6 @@ fn ascribed_module(signature: &str, body: Vec<ModuleItem>) -> Stmt {
         body,
         doc: None,
         position: None,
+        inner_doc: None,
     }
 }

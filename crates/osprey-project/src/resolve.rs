@@ -122,6 +122,9 @@ impl Resolver<'_> {
         Resolution {
             program: Program {
                 statements: self.program,
+                // An assembled project is many files merged into one program;
+                // no single file's `//!` documents the whole of it.
+                doc: None,
             },
             entry_prologue: self.entry_prologue,
             source_names: self.source_names,

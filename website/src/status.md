@@ -32,6 +32,8 @@ The release list was unavailable when this page was built. See
   AST before semantic analysis
 - Hindley–Milner type inference, algebraic data types and exhaustive pattern
   matching for supported patterns
+- User-defined generics, declaration-site variance, generic effects and explicit
+  call-site type arguments in both flavors
 - Typed effect operations, lexical handlers, compile-time rejection of missing handlers, and single-shot `resume` for `--target=native`
 - Immutable persistent lists and maps
 - Lightweight native fibers and channels
@@ -64,7 +66,7 @@ The compiler rejects unsupported target operations during `--check`, `--llvm`, a
 - Resumable effects are supported by `--target=native`. Mobile C ABI targets and WebAssembly reject them at compile time; supported handlers that return immediately remain usable.
 - The effect checker follows operations through the closed program, including exported mobile functions. It does not yet provide general polymorphic effect-row variables in public higher-order signatures.
 - Tail-call optimisation is not implemented.
-- User-defined generics and the package manager remain roadmap work. Working project/module examples do not imply every module-system feature is complete.
+- The package manager remains roadmap work. Working project/module examples do not imply every module-system feature is complete.
 - The strict static-memory mode described in the memory specification is not a current CLI option. Native builds accept `default`, `gc`, and `arc`; mobile and WebAssembly accept `default` only.
 - The initial mobile runtime retains general allocations for process lifetime and has no public library teardown or returned-string release API.
 - The mobile sample reads one public GitHub issue page. Authentication, pagination, background refresh, and posting changes to GitHub are not implemented.

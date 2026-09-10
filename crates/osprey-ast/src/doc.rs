@@ -83,6 +83,15 @@ impl DocComment {
         }
     }
 
+    /// Which scope this doc documents. The field stays crate-private so only
+    /// the flavor lowerers set it, but every consumer — the lowerers' own
+    /// tests, the LSP, the exporter — must be able to tell an inner `//!`
+    /// block from an outer `///` one. Implements [DOC-ATTACH].
+    #[must_use]
+    pub fn scope(&self) -> DocScope {
+        self.scope
+    }
+
     /// Render the whole doc comment as the Markdown block a hover shows: the
     /// summary, the body, then each populated section as a heading. `[Symbol]`
     /// links are preserved verbatim so the LSP client renders them as links.
@@ -106,6 +115,9 @@ impl DocComment {
         }
         if let Some(s) = &self.since {
             push_section(&mut out, "Since", s);
+        }
+        if let Some(author) = &self.author {
+            push_section(&mut out, "Author", author);
         }
         out.trim_end().to_string()
     }

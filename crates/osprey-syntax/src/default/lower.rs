@@ -71,18 +71,26 @@ impl<'a> Lowerer<'a> {
         self.pos(node.child_by_field_name(field).unwrap_or(node))
     }
 
-    /// The leading `///`/`//!` documentation of a declaration, stripped of its
+    /// The leading `///` documentation of a declaration, stripped of its
     /// markers and lowered into a structured [`DocComment`] by the shared
     /// flavor-neutral parser; `None` when the declaration carries no doc
     /// comment. Implements [DOC-SIGIL-DEFAULT], [DOC-MODEL].
     pub(crate) fn doc_text(&self, node: Node<'_>) -> Option<DocComment> {
-        let doc = self.first_child_of_kind(node, "doc_comment")?;
-        let text = self.text(doc);
-        let scope = if text.trim_start().starts_with("//!") {
-            DocScope::Inner
-        } else {
-            DocScope::Outer
-        };
+        self.doc_of_kind(node, "doc_comment", DocScope::Outer)
+    }
+
+    /// The `//!` documentation written INSIDE `node` — the file, namespace body
+    /// or module body that `node` opens. The grammar keeps the two sigils in
+    /// separate rules, so a scope carrying both an outer `///` and an inner
+    /// `//!` lowers both. Implements [DOC-SIGIL-INNER].
+    pub(crate) fn inner_doc_text(&self, node: Node<'_>) -> Option<DocComment> {
+        self.doc_of_kind(node, "inner_doc_comment", DocScope::Inner)
+    }
+
+    /// Lower the first `kind` child of `node` into a [`DocComment`] at `scope`.
+    /// Both sigils differ only in which node kind carries them.
+    fn doc_of_kind(&self, node: Node<'_>, kind: &str, scope: DocScope) -> Option<DocComment> {
+        let text = self.text(self.first_child_of_kind(node, kind)?);
         let body: Vec<&str> = text.lines().map(strip_doc_line).collect();
         Some(crate::docparse::parse_doc(&body.join("\n"), scope))
     }
@@ -153,6 +161,11 @@ impl<'a> Lowerer<'a> {
                     name: self.lower_namespace_name(node.child_by_field_name("name")),
                     body,
                     file_scoped: true,
+                    doc: self.doc_text(node),
+                    // A `namespace x;` header opens no brace body, so it has no
+                    // inside for a `//!` to sit in; the file's own inner doc
+                    // belongs to `Program` instead.
+                    inner_doc: None,
                     position: Some(self.field_pos(node, "keyword")),
                 });
                 index = end;
@@ -163,7 +176,10 @@ impl<'a> Lowerer<'a> {
             }
             index += 1;
         }
-        Program { statements }
+        Program {
+            statements,
+            doc: self.inner_doc_text(root),
+        }
     }
 
     /// A `namespace x;` header with no `{ … }` body — it scopes the rest of the
@@ -187,18 +203,28 @@ impl<'a> Lowerer<'a> {
             .map_or(statements.len(), |(at, _)| at)
     }
 
+    /// Lower a `namespace` declaration in either spelling. The brace form owns
+    /// a body, and only that body can hold the `//!` documenting the namespace
+    /// from inside ([DOC-SIGIL-INNER]); the `///` above the keyword documents it
+    /// from outside and the two coexist.
+    fn lower_namespace(&self, node: Node<'_>) -> Stmt {
+        let body = node.child_by_field_name("body");
+        Stmt::Namespace {
+            name: self.lower_namespace_name(node.child_by_field_name("name")),
+            body: body
+                .map(|b| self.lower_statement_children(b))
+                .unwrap_or_default(),
+            file_scoped: body.is_none(),
+            doc: self.doc_text(node),
+            inner_doc: body.and_then(|b| self.inner_doc_text(b)),
+            position: Some(self.field_pos(node, "keyword")),
+        }
+    }
+
     pub(crate) fn lower_stmt(&self, node: Node<'_>) -> Option<Stmt> {
         Some(match node.kind() {
             "import_statement" => Stmt::Import(self.lower_import(node)),
-            "namespace_declaration" => Stmt::Namespace {
-                name: self.lower_namespace_name(node.child_by_field_name("name")),
-                body: node
-                    .child_by_field_name("body")
-                    .map(|body| self.lower_statement_children(body))
-                    .unwrap_or_default(),
-                file_scoped: node.child_by_field_name("body").is_none(),
-                position: Some(self.field_pos(node, "keyword")),
-            },
+            "namespace_declaration" => self.lower_namespace(node),
             "let_declaration" => Stmt::Let {
                 name: self.field_text(node, "name"),
                 mutable: node
@@ -245,6 +271,7 @@ impl<'a> Lowerer<'a> {
                 position: Some(self.pos(node)),
             },
             "module_declaration" => Stmt::Module {
+                inner_doc: self.inner_doc_text(node),
                 path: node
                     .child_by_field_name("path")
                     .map_or_else(SymbolPath::default, |p| self.lower_symbol_path(p)),
@@ -763,8 +790,10 @@ fn negate_literal(e: Expr) -> Expr {
     reason = "test assertions: an out-of-bounds index is a test failure, not a production panic"
 )]
 mod tests {
-    use crate::parse_tree;
-    use crate::test_support::{assert_doc_pair, assert_summary, one_stmt, stmt_doc, stmts};
+    use crate::test_support::{
+        assert_doc_pair, assert_summary, one_stmt, program, stmt_doc, stmts,
+    };
+    use crate::{parse_program, parse_tree};
     use osprey_ast::{Expr, Pattern, Stmt};
     use tree_sitter::Node;
 
@@ -974,6 +1003,124 @@ mod tests {
             }
             s => panic!("expected effect, got {s:?}"),
         }
+    }
+
+    /// The summary a `DocComment` carries, or `None` — every inner-doc
+    /// assertion below asks exactly this of a different scope.
+    fn summary_of(doc: Option<&osprey_ast::DocComment>) -> Option<&str> {
+        doc.map(|d| d.summary.as_str())
+    }
+
+    #[test]
+    fn inner_docs_attach_to_file_namespace_and_module() {
+        // Implements [DOC-SIGIL-INNER]. `//!` documents the scope that ENCLOSES
+        // it, so it lands on the file, the namespace or the module body rather
+        // than on the declaration that happens to follow it. An outer `///` and
+        // an inner `//!` describe the same scope from opposite sides and must
+        // therefore coexist, never overwrite one another.
+        let file = program("//! The whole file.\nlet x = 1\n");
+        assert_eq!(summary_of(file.doc.as_ref()), Some("The whole file."));
+        // The declaration after the inner doc keeps its own doc slot empty —
+        // an inner doc must never be mistaken for the next declaration's.
+        assert_summary(&file.statements[0], None);
+
+        match one_stmt(
+            "/// From outside.\n\
+             namespace app {\n\
+               //! From inside.\n\
+               let x = 1\n\
+             }\n",
+        ) {
+            Stmt::Namespace {
+                doc,
+                inner_doc,
+                body,
+                ..
+            } => {
+                assert_eq!(summary_of(doc.as_ref()), Some("From outside."));
+                assert_eq!(summary_of(inner_doc.as_ref()), Some("From inside."));
+                assert_summary(&body[0], None);
+            }
+            s => panic!("expected namespace, got {s:?}"),
+        }
+
+        match one_stmt(
+            "/// From outside.\n\
+             module M {\n\
+               //! From inside.\n\
+               export let x = 1\n\
+             }\n",
+        ) {
+            Stmt::Module { doc, inner_doc, .. } => {
+                assert_eq!(summary_of(doc.as_ref()), Some("From outside."));
+                assert_eq!(summary_of(inner_doc.as_ref()), Some("From inside."));
+            }
+            s => panic!("expected module, got {s:?}"),
+        }
+    }
+
+    #[test]
+    fn inner_doc_records_inner_scope_and_leaves_outer_alone() {
+        // The `DocScope::Inner` arm exists in the model but was unreachable
+        // before `//!` had a grammar rule; these pin which arm each sigil takes.
+        let file = program("//! Scoped inward.\nlet x = 1\n");
+        assert_eq!(
+            file.doc.as_ref().map(osprey_ast::DocComment::scope),
+            Some(osprey_ast::DocScope::Inner)
+        );
+        assert_eq!(
+            stmt_doc(&one_stmt("/// Scoped outward.\nlet x = 1\n"))
+                .map(osprey_ast::DocComment::scope),
+            Some(osprey_ast::DocScope::Outer)
+        );
+        // A file with no `//!` invents none.
+        assert!(program("let x = 1\n").doc.is_none());
+    }
+
+    #[test]
+    fn namespace_keeps_the_outer_doc_the_grammar_already_accepted() {
+        // `namespace_declaration` accepted `optional($.doc_comment)` and threw
+        // it away at lowering: the doc parsed, then vanished. Both namespace
+        // spellings must keep it.
+        match one_stmt("/// File-scoped namespace.\nnamespace billing;\nlet x = 1\n") {
+            Stmt::Namespace {
+                doc, file_scoped, ..
+            } => {
+                assert!(file_scoped);
+                assert_eq!(summary_of(doc.as_ref()), Some("File-scoped namespace."));
+            }
+            s => panic!("expected namespace, got {s:?}"),
+        }
+        match one_stmt("/// Braced namespace.\nnamespace billing { let x = 1 }\n") {
+            Stmt::Namespace {
+                doc, file_scoped, ..
+            } => {
+                assert!(!file_scoped);
+                assert_eq!(summary_of(doc.as_ref()), Some("Braced namespace."));
+            }
+            s => panic!("expected namespace, got {s:?}"),
+        }
+    }
+
+    #[test]
+    fn a_stray_default_inner_doc_is_a_syntax_error() {
+        // `//!` is a real token, not trivia, so one written where no scope can
+        // take it is rejected rather than silently lexed as a `//` comment.
+        // The same rule the ML lowerer reports at lowering, the Default grammar
+        // enforces at parse time ([DOC-SIGIL-INNER]).
+        let trailing = parse_program("let x = 1\n//! nothing encloses me.\n");
+        assert!(
+            !trailing.errors.is_empty(),
+            "a trailing //! must be rejected"
+        );
+        assert!(
+            trailing.program.doc.is_none(),
+            "a stray //! must never become the file doc"
+        );
+        // An ordinary `//` comment in the same position stays trivia.
+        assert!(parse_program("let x = 1\n// just a comment\n")
+            .errors
+            .is_empty());
     }
 
     #[test]

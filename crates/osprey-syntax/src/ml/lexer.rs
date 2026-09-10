@@ -107,7 +107,13 @@ impl Scanner {
                 ' ' | '\t' | '\r' | '\n' => {
                     let _ = self.bump();
                 }
+                // `//!` is an inner doc comment, not trivia — it breaks out so
+                // `scan_token` emits it ([DOC-SIGIL-INNER]). A plain `// …`
+                // line comment is still skipped.
                 '/' if self.peek(1) == Some('/') => {
+                    if self.at_inner_doc_comment() {
+                        break;
+                    }
                     while !matches!(self.peek(0), Some('\n') | None) {
                         let _ = self.bump();
                     }
@@ -135,6 +141,54 @@ impl Scanner {
             && self.peek(1) == Some('*')
             && self.peek(2) == Some('*')
             && !matches!(self.peek(3), Some('*' | ')') | None)
+    }
+
+    /// True when the cursor is at a `//!` inner doc comment. Its Default-flavor
+    /// twin is the `_inner_doc_comment_line` grammar token ([DOC-SIGIL-INNER]).
+    fn at_inner_doc_comment(&self) -> bool {
+        self.peek(0) == Some('/') && self.peek(1) == Some('/') && self.peek(2) == Some('!')
+    }
+
+    /// Scan one or more consecutive `//!` lines (cursor at the first opener)
+    /// into their joined text, each line stripped of its sigil and one optional
+    /// following space — the same shape the Default lowerer produces, so both
+    /// flavors hand the shared body parser identical input ([DOC-SIGIL-INNER]).
+    fn scan_inner_doc_comment(&mut self) -> TokKind {
+        let mut lines: Vec<String> = Vec::new();
+        while self.at_inner_doc_comment() {
+            let _ = self.bump(); // /
+            let _ = self.bump(); // /
+            let _ = self.bump(); // !
+            let mut line = String::new();
+            while !matches!(self.peek(0), Some('\n') | None) {
+                if let Some(c) = self.bump() {
+                    line.push(c);
+                }
+            }
+            lines.push(
+                line.strip_prefix(' ')
+                    .unwrap_or(&line)
+                    .trim_end()
+                    .to_owned(),
+            );
+            self.skip_to_next_inner_doc_line();
+        }
+        TokKind::InnerDoc(lines.join("\n").trim().to_owned())
+    }
+
+    /// Consume the newline and indentation between two `//!` lines, leaving the
+    /// cursor untouched when what follows is not another one.
+    fn skip_to_next_inner_doc_line(&mut self) {
+        let mark = self.i;
+        let (line, col) = (self.line, self.col);
+        while matches!(self.peek(0), Some(' ' | '\t' | '\r' | '\n')) {
+            let _ = self.bump();
+        }
+        if !self.at_inner_doc_comment() {
+            self.i = mark;
+            self.line = line;
+            self.col = col;
+        }
     }
 
     /// Scan a `(** … *)` doc comment (cursor at the opener) into its raw inner
@@ -230,6 +284,9 @@ impl Scanner {
     fn scan_token(&mut self, pos: Position) -> Option<TokKind> {
         if self.at_doc_comment() {
             return Some(self.scan_doc_comment());
+        }
+        if self.at_inner_doc_comment() {
+            return Some(self.scan_inner_doc_comment());
         }
         let c = self.peek(0)?;
         match c {

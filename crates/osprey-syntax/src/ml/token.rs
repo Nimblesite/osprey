@@ -38,6 +38,10 @@ pub(crate) enum TokKind {
     /// A `(** … *)` documentation comment's raw inner text (sigil stripped).
     /// Attaches to the declaration that follows ([DOC-SIGIL-ML]).
     Doc(String),
+    /// A `//!` documentation comment's raw text (sigil stripped), documenting
+    /// the scope that ENCLOSES it rather than the declaration that follows.
+    /// The inner sigil is spelled the same in both flavors ([DOC-SIGIL-INNER]).
+    InnerDoc(String),
     /// `mut`.
     KwMut,
     /// `true`.

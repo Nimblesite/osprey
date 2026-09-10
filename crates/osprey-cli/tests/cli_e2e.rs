@@ -52,6 +52,12 @@ fn read_text(path: &Path) -> String {
 
 const HELLO: &str = "let g = \"hi\"\nprint(\"v=${g}\")\n";
 
+#[path = "cases/doctests.rs"]
+mod doctests;
+
+#[path = "cases/api_docs.rs"]
+mod api_docs;
+
 /// The captured result of one invocation.
 struct Out {
     code: Option<i32>,

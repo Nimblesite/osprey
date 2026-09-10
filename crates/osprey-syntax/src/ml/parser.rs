@@ -197,6 +197,12 @@ impl Parser<'_> {
                 self.advance();
                 Some(MlItem::Doc(text))
             }
+            TokKind::InnerDoc(text) => {
+                let text = text.clone();
+                let pos = self.pos();
+                self.advance();
+                Some(MlItem::InnerDoc { text, pos })
+            }
             TokKind::KwMut => self.mut_binding(),
             TokKind::KwType => self.type_decl(),
             TokKind::KwExtern => self.extern_decl(),
