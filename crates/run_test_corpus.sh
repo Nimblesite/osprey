@@ -68,18 +68,18 @@ esac
 # Silence is not success — if coverage ever drops below this floor the harness
 # FAILS rather than quietly checking less than it used to.
 #
-# Natively all 209 programs are covered by golden files, most shared by a
+# Natively all 213 programs are covered by golden files, most shared by a
 # Default/ML flavor pair. On wasm32 the programs blocked on a capability WASI
 # does not have are skipped — each named in tests/WASM_UNPORTABLE.txt, and a
 # resumable one named by the OPERATION it cannot suspend [MULTI-WASM] — leaving
-# 144. On the mobile C ABI targets the same accounting leaves 130: the rest are
+# 147. On the mobile C ABI targets the same accounting leaves 132: the rest are
 # rejected for a missing capability or for a boundary the scalar C ABI cannot
 # express, each pinned in tests/MOBILE_UNPORTABLE.txt.
 # Ratchet UP as goldens are added; never lower it to turn a red build green.
 case $TARGET in
-  wasm32)            GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-144} ;;
-  ios-sim|android*) GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-130} ;;
-  *)                 GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-209} ;;
+  wasm32)            GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-147} ;;
+  ios-sim|android*) GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-132} ;;
+  *)                 GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-213} ;;
 esac
 
 # [GPU-KERNEL-EXTRACT] differential. The extracted-kernel lowering and the

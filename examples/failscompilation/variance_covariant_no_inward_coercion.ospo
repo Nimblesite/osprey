@@ -1,0 +1,15 @@
+// The bare-to-Success coercion is representation-changing, so it applies at a
+// DIRECT value site and never inside a constructor argument: a Feed<int> holds
+// a raw int where a Feed<Result<int, MathError>> holds a Result, and nothing
+// rebuilds the container. `out T` does not change that — the shipped fixture
+// variance_covariant_result_payload.ospo covers the unwrapping direction; this
+// is the widening one. Implements [TYPE-VARIANCE-COERCION]
+type Feed<out T> = Feed { supply: T } | Dry
+
+fn feedInt() -> Feed<int> = Feed { supply: 1 }
+fn total(f: Feed<Result<int, MathError>>) = match f {
+    Feed { supply } => supply ?: 0
+    Dry => 0
+}
+
+fn main() -> Unit = print("${total(feedInt())}")

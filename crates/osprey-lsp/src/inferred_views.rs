@@ -15,6 +15,7 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::symbols as symbols_of;
     use lspkit_vfs::PositionEncoding;
 
     const U16: PositionEncoding = PositionEncoding::Utf16;
@@ -131,9 +132,7 @@ mod tests {
         // exercises both hazards at once: the artefact `t5` and the `Unit`
         // fallback that replaced it.
         let src = "fn classify(xs) = match xs {\n  [] => 0\n  [head, ...tail] => listLength(xs)\n}\nlet e = classify([1])\n";
-        let parsed = osprey_syntax::parse_program(src);
-        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-        let symbols = crate::analysis::symbols_json(&parsed.program);
+        let symbols = symbols_of(src);
         let decl = crate::hover::hover(src, "file:///c.osp", 0, 4, U16).expect("hover decl");
         // `xs` USED in the body, four lines from where it is bound: the two
         // views of one parameter that disagreed (`List<_>` vs `List<t6>`).
@@ -201,9 +200,7 @@ mod tests {
         // prints it asserts something the compiler rejects. Saying nothing is
         // the only honest answer once there is nothing to say.
         let src = "fn id(x) = x\nlet a = id(1)\n";
-        let parsed = osprey_syntax::parse_program(src);
-        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-        let symbols = crate::analysis::symbols_json(&parsed.program);
+        let symbols = symbols_of(src);
         assert!(
             symbols.contains("\"signature\":\"fn id(x)\""),
             "an unprovable return drops the arrow entirely: {symbols}"
@@ -230,13 +227,11 @@ mod tests {
         // A hole must not carry a number, or two renderings of one type would
         // disagree and an edit elsewhere would churn the tooltip.
         let src = "fn pair(a, b) = [a, b]\nlet p = pair(1, 2)\n";
-        let parsed = osprey_syntax::parse_program(src);
-        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-        let symbols = crate::analysis::symbols_json(&parsed.program);
+        let symbols = symbols_of(src);
         assert!(!regex_like_type_var(&symbols), "{symbols}");
         // Rendering the same program twice is byte-identical: nothing in the
         // spelling depends on inference-run state.
-        assert_eq!(symbols, crate::analysis::symbols_json(&parsed.program));
+        assert_eq!(symbols, symbols_of(src));
     }
 
     /// Whether `s` mentions an inference name (`t5`, `t42`): a `t` that starts

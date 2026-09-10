@@ -229,7 +229,12 @@ impl<'a> Inspector<'a> {
                 self.expr(left, in_owner_arm, position);
                 self.expr(right, in_owner_arm, position);
             }
-            Expr::Unary { operand, .. } | Expr::Await(operand) | Expr::Recv(operand) => {
+            Expr::TypeApply {
+                function: operand, ..
+            }
+            | Expr::Unary { operand, .. }
+            | Expr::Await(operand)
+            | Expr::Recv(operand) => {
                 self.expr(operand, in_owner_arm, position);
             }
             Expr::Spawn(operand) => self.escaping(operand, position),

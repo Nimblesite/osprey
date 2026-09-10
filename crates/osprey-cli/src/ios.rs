@@ -60,18 +60,7 @@ impl Target {
 /// Refuse native-only settings before invoking the cross compiler.
 /// Implements [IOS-TARGET-OPTIONS].
 pub(crate) fn validate(cli: &Cli) -> Result<(), ExitCode> {
-    if let Some(code) = crate::reject_debug_cross_target(cli) {
-        return Err(code);
-    }
-    if cli.memory != "default" {
-        return Err(fail(
-            "iOS supports --memory=default; other runtime archives are not available",
-        ));
-    }
-    if cli.mode == "--run" {
-        return Err(fail("iOS produces an app-logic library; use --compile and call it from a Swift host (see examples/ios/)"));
-    }
-    Ok(())
+    crate::reject_cross_target_options(cli, "iOS", Some("a Swift host (see examples/ios/)"))
 }
 
 /// Emit the app's C ABI and LLVM implementation before any toolchain work.
@@ -116,10 +105,7 @@ pub(crate) fn build(
 }
 
 fn validate_output(out: &Path) -> Result<(), String> {
-    if out.extension().and_then(|e| e.to_str()) != Some("a") {
-        return Err("iOS output must end in .a; a matching .h is generated beside it".to_string());
-    }
-    Ok(())
+    crate::toolchain::validate_archive_output(out, "iOS")
 }
 
 fn sdk_path(target: Target) -> Result<PathBuf, ExitCode> {

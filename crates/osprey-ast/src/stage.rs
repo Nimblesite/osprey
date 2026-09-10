@@ -297,7 +297,7 @@ fn instantiation_errors(
     if declared.stage == Stage::Dynamic {
         return vec![StageError::new(
             format!(
-                "`{site} {effect}` names an instantiation of dynamic effect `{base}`; a dynamic handler is keyed by effect name at runtime, so instantiations share one key and cannot be told apart (docs/plans/0024-staged-effects.md). Declare `static effect {base}`, or write `{site} {base}` and let inference instantiate it"
+                "`{site} {effect}` names an instantiation of dynamic effect `{base}`; a written instantiation is the identity of a `static effect`, while a dynamic effect takes its instantiation from inference (docs/plans/0024-staged-effects.md). Declare `static effect {base}`, or write `{site} {base}` and let inference instantiate it"
             ),
             position,
         )];

@@ -110,13 +110,29 @@ fn type_diagnostics(
     program: &Program,
     encoding: PositionEncoding,
 ) -> Vec<Diagnostic> {
-    osprey_types::check_program(program)
+    let mut diagnostics: Vec<_> = osprey_types::check_program(program)
         .iter()
         .map(|e| {
             let pos = e.position.unwrap_or(Position { line: 1, column: 0 });
             diagnostic(source, pos, &e.message, "type-error", encoding)
         })
-        .collect()
+        .collect();
+    if diagnostics.is_empty() {
+        diagnostics.extend(
+            osprey_types::redundant_annotations(program)
+                .into_iter()
+                .map(|raised| {
+                    warning(
+                        source,
+                        raised.position.unwrap_or(Position { line: 1, column: 0 }),
+                        &raised.message,
+                        raised.rule,
+                        encoding,
+                    )
+                }),
+        );
+    }
+    diagnostics
 }
 
 /// Single-source assembly for a module-bearing file that no project claims —
@@ -194,7 +210,8 @@ fn assembled_type_errors(
     project: &AssembledProject,
     encoding: PositionEncoding,
 ) -> Vec<Diagnostic> {
-    osprey_types::check_program(&project.program)
+    let errors = osprey_types::check_program(&project.program);
+    let mut diagnostics: Vec<_> = errors
         .iter()
         .filter_map(|error| {
             let position = if let Some(global) = error.position {
@@ -217,7 +234,34 @@ fn assembled_type_errors(
                 encoding,
             ))
         })
-        .collect()
+        .collect();
+    if errors.is_empty() {
+        diagnostics.extend(
+            osprey_types::redundant_annotations_where(&project.program, |position| {
+                position
+                    .and_then(|p| project.source_at_line(p.line))
+                    .is_some_and(|(owner, _)| same_path(&owner.path, file))
+            })
+            .into_iter()
+            .filter_map(|raised| {
+                let global = raised.position?;
+                let (owner, line) = project.source_at_line(global.line)?;
+                same_path(&owner.path, file).then(|| {
+                    warning(
+                        source,
+                        Position {
+                            line,
+                            column: global.column,
+                        },
+                        &raised.message,
+                        raised.rule,
+                        encoding,
+                    )
+                })
+            }),
+        );
+    }
+    diagnostics
 }
 
 fn project_errors(
@@ -311,6 +355,21 @@ fn byte_col_to_encoding(line: Option<&str>, byte_col: u32, encoding: PositionEnc
 }
 
 #[cfg(test)]
+pub(crate) fn assert_redundant_annotations(
+    actual: &[Diagnostic],
+    expected: &[(&str, crate::model::Span)],
+) {
+    assert_eq!(actual.len(), expected.len(), "{actual:?}");
+    for (diagnostic, (message, range)) in actual.iter().zip(expected) {
+        assert_eq!(diagnostic.severity, Severity::Warning, "{diagnostic:?}");
+        assert_eq!(diagnostic.code.as_deref(), Some("redundant-annotation"));
+        assert_eq!(diagnostic.source.as_deref(), Some("osprey"));
+        assert_eq!(diagnostic.message, *message);
+        assert_eq!(diagnostic.range, *range, "{diagnostic:?}");
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     const U16: PositionEncoding = PositionEncoding::Utf16;
@@ -318,9 +377,16 @@ mod tests {
     const OSP: &str = "file:///a.osp";
 
     #[test]
-    fn clean_program_has_no_diagnostics() {
+    fn inferred_program_is_clean_and_redundant_return_is_a_warning() {
+        assert!(compute("fn main() = print(\"hi\")\n", OSP, U16).is_empty());
         let diags = compute("fn main() -> Unit = print(\"hi\")\n", OSP, U16);
-        assert!(diags.is_empty(), "{diags:?}");
+        assert_redundant_annotations(
+            &diags,
+            &[(
+                "redundant return type annotation on `main`: inference derives `Unit` without it",
+                (0, 3, 0, 31),
+            )],
+        );
     }
 
     #[test]
@@ -330,10 +396,13 @@ mod tests {
         // cleanly under the ML frontend rather than be flagged as broken Default
         // syntax. Selecting the flavor by the document path is what fixes it.
         let ml = "inc : int -> int\ninc x = (x + 1) ?: 0\nmain () =\n    print \"v=${toString (inc 41)}\"\n    0\n";
-        let clean = compute(ml, "file:///tour.ospml", U16);
-        assert!(
-            clean.is_empty(),
-            "ML file should not syntax-error: {clean:?}"
+        let diagnostics = compute(ml, "file:///tour.ospml", U16);
+        assert_redundant_annotations(
+            &diagnostics,
+            &[(
+                "redundant type signature on `inc`: inference derives `(int) -> int` without it",
+                (0, 0, 0, 16),
+            )],
         );
         // The same source under a `.osp` path is genuinely not Default syntax, so
         // the Default frontend still reports errors — proving the path drives the
@@ -342,6 +411,13 @@ mod tests {
         assert!(
             !as_default.is_empty(),
             "ML source is not valid Default syntax"
+        );
+        assert!(
+            as_default.iter().all(|diagnostic| {
+                diagnostic.severity == Severity::Error
+                    && diagnostic.code.as_deref() == Some("syntax-error")
+            }),
+            "{as_default:?}"
         );
     }
 
@@ -522,15 +598,36 @@ mod tests {
     #[test]
     fn module_files_use_the_assembled_project_graph() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        for relative in [
-            "examples/projects/modules/src/main.ospml",
-            "examples/projects/modules/src/web/pages.ospml",
+        let main_warnings = [
+            (
+                "redundant type signature on `bank::fetch`: inference derives `(int) -> (string) -> string` without it",
+                (20, 0, 20, 31),
+            ),
+            (
+                "redundant type signature on `bank::drive`: inference derives `(int) -> Unit` without it",
+                (32, 0, 32, 19),
+            ),
+            (
+                "redundant return type annotation on `bank::hold`: inference derives `int` without it",
+                (55, 0, 55, 9),
+            ),
+            (
+                "redundant type signature on `bank::handleRequest`: inference derives `(string, string, string, string) -> HttpResponse` without it",
+                (113, 0, 113, 68),
+            ),
+        ];
+        for (relative, expected) in [
+            (
+                "examples/projects/modules/src/main.ospml",
+                main_warnings.as_slice(),
+            ),
+            ("examples/projects/modules/src/web/pages.ospml", &[]),
         ] {
             let path = root.join(relative);
             let source = std::fs::read_to_string(&path).expect("read module example");
             let uri = format!("file://{}", path.display());
             let diagnostics = compute(&source, &uri, U16);
-            assert!(diagnostics.is_empty(), "{relative}: {diagnostics:?}");
+            assert_redundant_annotations(&diagnostics, expected);
         }
     }
 
@@ -547,7 +644,55 @@ mod tests {
         let source = std::fs::read_to_string(&path).expect("read module test suite");
         let uri = format!("file://{}", path.display());
         let diagnostics = compute(&source, &uri, U16);
-        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+        assert_redundant_annotations(
+            &diagnostics,
+            &[
+                (
+                    "redundant type signature on `test::Money::pennies`: inference derives `(int) -> string` without it",
+                    (8, 4, 8, 27),
+                ),
+                (
+                    "redundant type signature on `test::Money::triple`: inference derives `(int) -> string` without it",
+                    (15, 4, 15, 26),
+                ),
+                (
+                    "redundant type signature on `test::Money::group`: inference derives `(int) -> string` without it",
+                    (22, 4, 22, 25),
+                ),
+                (
+                    "redundant type signature on `test::Money::show`: inference derives `(int) -> string` without it",
+                    (30, 11, 30, 31),
+                ),
+                (
+                    "redundant type signature on `test::Money::positive`: inference derives `(int) -> bool` without it",
+                    (33, 11, 33, 33),
+                ),
+                (
+                    "redundant type signature on `test::Json::escape`: inference derives `(string) -> string` without it",
+                    (37, 4, 37, 29),
+                ),
+                (
+                    "redundant type signature on `test::Json::quoted`: inference derives `(string) -> string` without it",
+                    (44, 4, 44, 29),
+                ),
+                (
+                    "redundant type signature on `test::Json::strField`: inference derives `(string) -> (string) -> string` without it",
+                    (49, 11, 49, 48),
+                ),
+                (
+                    "redundant type signature on `test::Json::obj`: inference derives `(string) -> string` without it",
+                    (55, 11, 55, 33),
+                ),
+                (
+                    "redundant type signature on `test::Accounts::movable`: inference derives `(int) -> bool` without it",
+                    (73, 11, 73, 32),
+                ),
+                (
+                    "redundant type signature on `test::settle`: inference derives `(test::Outcome) -> string` without it",
+                    (89, 0, 89, 26),
+                ),
+            ],
+        );
     }
 
     #[cfg(unix)]

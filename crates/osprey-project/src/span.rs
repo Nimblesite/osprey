@@ -181,7 +181,9 @@ fn optional_type(ty: &mut Option<TypeExpr>, offset: u32) {
 }
 
 fn offset_type(ty: &mut TypeExpr, offset: u32) {
-    shift(&mut ty.position, offset);
+    if !ty.is_from_contract() {
+        shift(&mut ty.position, offset);
+    }
     for parameter in &mut ty.generic_params {
         offset_type(parameter, offset);
     }
@@ -231,6 +233,17 @@ fn offset_expr(expr: &mut Expr, offset: u32) {
         Expr::Binary { left, right, .. } | Expr::Pipe { left, right } => {
             offset_expr(left, offset);
             offset_expr(right, offset);
+        }
+        Expr::TypeApply {
+            function,
+            type_args,
+            position,
+        } => {
+            shift(position, offset);
+            for argument in type_args {
+                offset_type(argument, offset);
+            }
+            offset_expr(function, offset);
         }
         Expr::Unary { operand, .. }
         | Expr::Spawn(operand)

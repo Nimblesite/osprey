@@ -279,6 +279,7 @@ lint: _deslop _lint
 _lint: $(EXT_NODE_DEPS)
 	@echo "==> Linting..."
 	node scripts/verify-node-deps-guard.mjs
+	node scripts/verify-no-dead-code.mjs
 	cargo fmt --all --check
 	cargo clippy --workspace --all-targets -- -D warnings
 	cd $(EXT_DIR) && npm run lint
@@ -288,6 +289,12 @@ _lint: $(EXT_NODE_DEPS)
 # threshold live in that committed config — the single source of truth. When
 # the `deslop` binary is absent this target FAILS: a gate that cannot run must
 # not report success. CI enforces the same ceiling through the official action.
+# Version of the deslop CLI `make setup` installs. MUST equal the `version:` the
+# Deslop action pins in .github/workflows/ci.yml — deslop measures source text,
+# so a different build can report a different percentage for the SAME tree, and
+# a local gate that disagrees with the merge gate is worse than no local gate.
+DESLOP_VERSION ?= 0.27.0
+
 _deslop:
 	@echo "==> Duplication gate (deslop)..."
 	@if ! command -v deslop >/dev/null 2>&1; then \
@@ -301,7 +308,14 @@ _deslop:
 	deslop . --nohtml --nojson --output $(CURDIR)/target/deslop-report --log-to-console --log-level error --no-color
 
 ## hawk: Dead-code gate (astral-sh/hawk). Fails the build when any `pub`
-## declaration is unreachable from the osprey binary (hawk::dead_public). Scoped
+## declaration is unreachable from the osprey binary (hawk::dead_public).
+##
+## hawk counts the workspace's TEST binaries as reachability roots, so an item
+## whose only callers are its own `#[cfg(test)]` module passes this gate — that
+## is how `osprey_debug::DebugBuild` and `osprey_syntax::dependency_sets` lived
+## in the tree. `scripts/verify-no-dead-code.mjs` (run by `_lint`) answers the
+## narrower question "does PRODUCT code name this?" and catches that class.
+## Neither gate subsumes the other; both run. Scoped
 ## to dead_public ONLY — unnecessary_public / restricted-visibility findings are
 ## over-exposure, not dead code, and several are irreducibly public for the
 ## integration tests under this workspace's `dead_code = "deny"` policy, so they
@@ -407,6 +421,7 @@ setup: $(EXT_NODE_DEPS) $(WEBCOMPILER_NODE_DEPS) $(WEBSITE_NODE_DEPS)
 	@echo "==> Setting up development environment..."
 	rustup component add rustfmt clippy llvm-tools-preview
 	command -v cargo-llvm-cov >/dev/null 2>&1 || cargo install cargo-llvm-cov
+	command -v deslop >/dev/null 2>&1 || DESLOP_VERSION=$(DESLOP_VERSION) bash scripts/install-deslop.sh
 	@echo "==> Setup complete. Run 'make ci' to validate."
 
 # ---------------------------------------------------------------------------

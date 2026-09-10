@@ -310,7 +310,7 @@ impl ItemLower {
             type_params,
             ty,
             effects,
-            ..
+            pos,
         } = item
         {
             self.pending = Some(MlSig {
@@ -318,6 +318,7 @@ impl ItemLower {
                 type_params,
                 ty,
                 effects,
+                position: pos,
             });
         }
     }
@@ -495,7 +496,7 @@ impl ItemLower {
 fn lower_namespace_name(name: MlNamespaceName) -> NamespaceName {
     match name {
         MlNamespaceName::Ident(label) => NamespaceName::Identifier(label),
-        MlNamespaceName::Quoted(label) => NamespaceName::Quoted(crate::strings::unquote(&label)),
+        MlNamespaceName::Quoted(label) => NamespaceName::Quoted(unquote(&label)),
     }
 }
 
@@ -645,9 +646,9 @@ pub(super) fn lower_binding(
     let body = in_scope(params_scope(&params), move || lower_expr(body));
     // Split the paired signature into its type params, declared type and
     // effect row.
-    let (type_params, ty, effects) = match sig {
-        Some(s) => (s.type_params, Some(s.ty), s.effects),
-        None => (Vec::new(), None, Vec::new()),
+    let (type_params, ty, effects, signature_position) = match sig {
+        Some(s) => (s.type_params, Some(s.ty), s.effects, Some(s.position)),
+        None => (Vec::new(), None, Vec::new(), None),
     };
     let ty = ty.as_ref();
     if let Some(message) = ty.and_then(|t| signature_mismatch(&name, &params, uncurried, t)) {
@@ -668,9 +669,9 @@ pub(super) fn lower_binding(
         };
     }
     let (parameters, body, return_type) = if uncurried {
-        build_function_flat(params, body, ty)
+        build_function_flat(params, body, ty, pos, signature_position)
     } else {
-        build_function(params, body, ty, pos)
+        build_function(params, body, ty, pos, signature_position)
     };
     Stmt::Function {
         name,
@@ -681,6 +682,33 @@ pub(super) fn lower_binding(
         body,
         doc: None,
         position: Some(pos),
+    }
+}
+
+/// A header and an inline parameter annotation are independent constraints.
+/// Check the inline type immediately inside that parameter's binder, before a
+/// later curry parameter can shadow its name.
+fn inline_param_constraint(
+    param: Option<&MlParam>,
+    index: usize,
+    pos: Position,
+    signed: bool,
+    body: Expr,
+) -> Expr {
+    let (true, Some(MlParam::Typed(name, ty))) = (signed, param) else {
+        return body;
+    };
+    let name = parameter_name(name.clone(), index);
+    Expr::Block {
+        statements: vec![Stmt::Let {
+            value: Expr::Identifier(name.clone()),
+            name,
+            mutable: false,
+            ty: type_expr(ty),
+            doc: None,
+            position: Some(pos),
+        }],
+        value: Some(Box::new(body)),
     }
 }
 
@@ -747,6 +775,7 @@ pub(super) struct MlSig {
     type_params: Vec<MlTypeParam>,
     ty: MlType,
     effects: Vec<MlEffectRef>,
+    position: Position,
 }
 
 impl MlSig {
@@ -755,12 +784,14 @@ impl MlSig {
         type_params: Vec<MlTypeParam>,
         ty: MlType,
         effects: Vec<MlEffectRef>,
+        position: Position,
     ) -> Self {
         Self {
             name,
             type_params,
             ty,
             effects,
+            position,
         }
     }
 }
@@ -802,18 +833,26 @@ fn build_function_flat(
     params: Vec<MlParam>,
     body: Expr,
     sig: Option<&MlType>,
+    pos: Position,
+    signature_position: Option<Position>,
 ) -> (Vec<Parameter>, Expr, Option<TypeExpr>) {
     let spine = expand_tuple_head(sig.map(arrow_spine).unwrap_or_default(), params.len());
     let consumed = params.len();
+    let body = params.iter().enumerate().rev().fold(body, |body, (i, p)| {
+        inline_param_constraint(Some(p), i, curry_position(pos, i), sig.is_some(), body)
+    });
     let parameters = params
         .into_iter()
         .enumerate()
-        .filter_map(|(i, p)| lower_param(p, i, spine.get(i)))
+        .filter_map(|(i, p)| lower_param(p, i, spine.get(i), signature_position))
         .collect();
     (
         parameters,
         body,
-        arrow_of(spine.get(consumed..).unwrap_or(&[])),
+        signature_annotation(
+            arrow_of(spine.get(consumed..).unwrap_or(&[])),
+            signature_position,
+        ),
     )
 }
 
@@ -891,18 +930,31 @@ fn build_function(
     body: Expr,
     sig: Option<&MlType>,
     pos: Position,
+    signature_position: Option<Position>,
 ) -> (Vec<Parameter>, Expr, Option<TypeExpr>) {
     let spine = sig.map(arrow_spine).unwrap_or_default();
     let mut rest = params.into_iter();
     let first = rest.next();
     // `()` (unit marker) or no parameter binds nothing.
     let parameters = first
-        .and_then(|p| lower_param(p, 0, spine.first()))
+        .clone()
+        .and_then(|p| lower_param(p, 0, spine.first(), signature_position))
         .into_iter()
         .collect();
     let tail_spine = spine.get(1..).unwrap_or(&[]);
-    let body = curry_params(rest.collect(), body, tail_spine, pos);
-    (parameters, body, arrow_of(tail_spine))
+    let body = curry_params(rest.collect(), body, tail_spine, pos, signature_position);
+    let body = inline_param_constraint(
+        first.as_ref(),
+        0,
+        curry_position(pos, 0),
+        sig.is_some(),
+        body,
+    );
+    (
+        parameters,
+        body,
+        signature_annotation(arrow_of(tail_spine), signature_position),
+    )
 }
 
 /// Fold a surface parameter list into a right-nested chain of one-parameter
@@ -911,21 +963,44 @@ fn build_function(
 /// positionally; the lambda for the i-th parameter returns the function-typed
 /// tail `arrow_of(spine[i+1..])`. An empty parameter list returns `body`
 /// unchanged (the curried tail of a single-parameter function is just its body).
-fn curry_params(params: Vec<MlParam>, body: Expr, spine: &[MlType], pos: Position) -> Expr {
+fn curry_params(
+    params: Vec<MlParam>,
+    body: Expr,
+    spine: &[MlType],
+    pos: Position,
+    signature_position: Option<Position>,
+) -> Expr {
     let mut acc = body;
     for (i, param) in params.into_iter().enumerate().rev() {
+        let body = inline_param_constraint(
+            Some(&param),
+            i,
+            curry_position(pos, i.saturating_add(1)),
+            signature_position.is_some(),
+            acc,
+        );
         acc = Expr::Lambda {
-            parameters: curry_parameter(param, i, spine.get(i)),
-            return_type: arrow_of(spine.get(i + 1..).unwrap_or(&[])),
-            body: Box::new(acc),
+            parameters: lower_param(param, i, spine.get(i), signature_position)
+                .into_iter()
+                .collect(),
+            return_type: signature_annotation(
+                arrow_of(spine.get(i + 1..).unwrap_or(&[])),
+                signature_position,
+            ),
+            body: Box::new(body),
             position: Some(curry_position(pos, i)),
         };
     }
     acc
 }
 
-fn curry_parameter(param: MlParam, index: usize, inferred: Option<&MlType>) -> Vec<Parameter> {
-    lower_param(param, index, inferred).into_iter().collect()
+/// Every lowered fragment of one written signature keeps the same source
+/// identity, so diagnostics erase that annotation as one unit.
+fn signature_annotation(ty: Option<TypeExpr>, position: Option<Position>) -> Option<TypeExpr> {
+    ty.map(|mut ty| {
+        ty.position = position;
+        ty
+    })
 }
 
 /// The surface spelling of an ignored parameter ([PARAM-WILDCARD]).
@@ -936,22 +1011,40 @@ const WILDCARD: &str = "_";
 /// name for its slot ([PARAM-WILDCARD]) so repeated `_`s in one head cannot
 /// collide and none of them is referenceable from the body. This is the single
 /// definition of the mapping; every head form routes through it.
-fn lower_param(param: MlParam, index: usize, inferred: Option<&MlType>) -> Option<Parameter> {
+fn lower_param(
+    param: MlParam,
+    index: usize,
+    inferred: Option<&MlType>,
+    signature_position: Option<Position>,
+) -> Option<Parameter> {
     let (name, ty) = match param {
-        MlParam::Named(name) => (name, inferred.and_then(type_expr)),
-        MlParam::Typed(name, ty) => (name, type_expr(&ty)),
+        MlParam::Named(name) => (
+            name,
+            signature_annotation(inferred.and_then(type_expr), signature_position),
+        ),
+        MlParam::Typed(name, ty) => (
+            name,
+            inferred.map_or_else(
+                || type_expr(&ty),
+                |written| signature_annotation(type_expr(written), signature_position),
+            ),
+        ),
         MlParam::Unit => return None,
         // [`super::clauses::merge`] rewrites every clause set before lowering,
         // so a surviving head pattern is one the merge already diagnosed;
         // bind it to an unreferenceable name and let that error stand.
         MlParam::Pattern(_) => (osprey_ast::clause_param_name(index), None),
     };
-    let name = if name == WILDCARD {
+    let name = parameter_name(name, index);
+    Some(Parameter { name, ty })
+}
+
+fn parameter_name(name: String, index: usize) -> String {
+    if name == WILDCARD {
         osprey_ast::wildcard_param_name(index)
     } else {
         name
-    };
-    Some(Parameter { name, ty })
+    }
 }
 
 /// Give every synthesized curry lambda its own `ProgramTypes::lambdas` key;
@@ -975,7 +1068,7 @@ fn flat_params(params: Vec<MlParam>) -> Vec<Parameter> {
     params
         .into_iter()
         .enumerate()
-        .filter_map(|(i, p)| lower_param(p, i, None))
+        .filter_map(|(i, p)| lower_param(p, i, None, None))
         .collect()
 }
 
@@ -988,7 +1081,7 @@ fn lower_lambda(params: Vec<MlParam>, body: Expr, pos: Position) -> Expr {
             position: Some(pos),
         };
     }
-    curry_params(params, body, &[], pos)
+    curry_params(params, body, &[], pos, None)
 }
 
 /// Flatten the top-level arrow spine of a type: `a -> b -> c` ⇒ `[a, b, c]`,
@@ -1079,6 +1172,11 @@ fn lower_expr(expr: MlExpr) -> Expr {
             segments: path.segments,
         }),
         MlExpr::Paren(inner) => lower_expr(*inner),
+        MlExpr::TypeApply { func, args, pos } => Expr::TypeApply {
+            function: Box::new(lower_expr(*func)),
+            type_args: args.iter().filter_map(type_expr).collect(),
+            position: Some(pos),
+        },
         // `-literal` folds to the literal so both flavors agree that `-1` is an
         // `int`, not a fallible `Result` ([ARITH-NEG-LITERAL], [FLAVOR-IR-EQUIV]).
         MlExpr::Unary { op, operand } if op == "-" => Expr::negated(lower_expr(*operand)),
@@ -1409,7 +1507,6 @@ fn parse_fragment(frag: &str) -> Expr {
         _ => Expr::Identifier(frag.trim().to_owned()),
     }
 }
-
 #[cfg(test)]
 #[expect(
     clippy::indexing_slicing,
@@ -1417,20 +1514,10 @@ fn parse_fragment(frag: &str) -> Expr {
 )]
 mod tests {
     use super::super::parse_ml;
-    use crate::test_support::{ml_one_stmt, ml_stmts};
+    use crate::test_support::{assert_doc_pair, assert_summary, ml_one_stmt, ml_stmts, stmt_doc};
     use osprey_ast::{Expr, InterpolatedPart, Pattern, Stmt, Variance};
 
     // ---------- [TESTING-DOC] expression-statement documentation ----------
-
-    /// The doc comment lowered onto a statement, or `None`.
-    fn stmt_doc(stmt: &Stmt) -> Option<&osprey_ast::DocComment> {
-        match stmt {
-            Stmt::Expr { doc, .. } | Stmt::Let { doc, .. } | Stmt::Function { doc, .. } => {
-                doc.as_ref()
-            }
-            _ => None,
-        }
-    }
 
     #[test]
     fn an_ml_block_doc_lowers_onto_the_expression_statement_it_precedes() {
@@ -1439,10 +1526,7 @@ mod tests {
         // ([TESTING-DOC], [DOC-SIGIL-ML]).
         let s = ml_one_stmt("(** Documents the call. *)\nprintLine \"hi\"\n");
         assert!(matches!(s, Stmt::Expr { .. }), "still an expr stmt: {s:?}");
-        assert_eq!(
-            stmt_doc(&s).map(|d| d.summary.as_str()),
-            Some("Documents the call.")
-        );
+        assert_summary(&s, Some("Documents the call."));
     }
 
     #[test]
@@ -1455,10 +1539,7 @@ mod tests {
     fn an_ml_doc_is_consumed_by_the_first_statement_and_not_the_next() {
         let all = ml_stmts("(** First. *)\nprintLine \"a\"\nprintLine \"b\"\n");
         assert_eq!(all.len(), 2);
-        assert_eq!(
-            stmt_doc(&all[0]).map(|d| d.summary.as_str()),
-            Some("First.")
-        );
+        assert_summary(&all[0], Some("First."));
         assert_eq!(
             stmt_doc(&all[1]).map(|d| d.summary.as_str()),
             None,
@@ -1469,13 +1550,7 @@ mod tests {
     #[test]
     fn an_ml_binding_after_a_documented_statement_keeps_its_own_doc() {
         let all = ml_stmts("(** Runs it. *)\nprintLine \"hi\"\n(** Adds. *)\nadd a b = a + b\n");
-        assert_eq!(all.len(), 2);
-        assert_eq!(
-            stmt_doc(&all[0]).map(|d| d.summary.as_str()),
-            Some("Runs it.")
-        );
-        assert!(matches!(all[1], Stmt::Function { .. }));
-        assert_eq!(stmt_doc(&all[1]).map(|d| d.summary.as_str()), Some("Adds."));
+        assert_doc_pair(&all, "Runs it.", "Adds.");
     }
 
     #[test]

@@ -40,6 +40,7 @@ tests/regressions/basics/processes/async_process_management.test.osp process spa
 tests/regressions/basics/processes/async_process_management.test.ospml process spawning builtin `spawnProcess`
 tests/regressions/basics/processes/callback_stdout_demo.test.osp process spawning builtin `spawnProcess`
 tests/regressions/basics/processes/callback_stdout_demo.test.ospml process spawning builtin `spawnProcess`
+tests/regressions/basics/types/channel_element_type_in_generic_field.test.osp fiber concurrency builtin `Channel`
 tests/regressions/basics/website/website_examples.test.osp fiber concurrency
 tests/regressions/basics/website/website_examples.test.ospml fiber concurrency
 tests/regressions/db/database_effect.test.osp foreign C import `sqlite3_open`

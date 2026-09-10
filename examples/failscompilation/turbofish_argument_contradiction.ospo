@@ -1,0 +1,9 @@
+// A written type argument is checked, not decorative: it unifies with the
+// instantiation the value arguments infer, so a contradiction is a type error.
+// Implements [TYPE-GENERICS-APPLY]
+fn identity<T>(x: T) -> T = x
+
+fn main() -> Unit = {
+    let pinned = identity<int>("text")
+    print("${pinned}")
+}

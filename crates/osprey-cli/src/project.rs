@@ -128,24 +128,24 @@ impl CompilationInput {
         &self.debug_path
     }
 
+    /// Resolve a flattened checker position to the physical file it was
+    /// written in, with that file's own line number.
+    pub(crate) fn location(&self, position: Position) -> (String, u32, u32) {
+        if let CompilationUnit::Project(project) = &self.unit {
+            if let Some((source, line)) = project.source_at_line(position.line) {
+                return (source.path.display().to_string(), line, position.column);
+            }
+        }
+        (self.display_path.clone(), position.line, position.column)
+    }
+
     /// Format a flattened checker location using its physical source file.
     pub(crate) fn diagnostic(&self, position: Option<Position>, message: &str) -> String {
         let Some(position) = position else {
             return format!("{}: {message}", self.display_path);
         };
-        if let CompilationUnit::Project(project) = &self.unit {
-            if let Some((source, line)) = project.source_at_line(position.line) {
-                return format!(
-                    "{}:{line}:{}: {message}",
-                    source.path.display(),
-                    position.column
-                );
-            }
-        }
-        format!(
-            "{}:{}:{}: {message}",
-            self.display_path, position.line, position.column
-        )
+        let (path, line, column) = self.location(position);
+        format!("{path}:{line}:{column}: {message}")
     }
 
     /// Render symbols with source-level qualified names where assembly mangled them.

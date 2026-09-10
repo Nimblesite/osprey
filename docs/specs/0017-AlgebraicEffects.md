@@ -85,6 +85,13 @@ key.
 
 ## Effectful Function Types
 
+`[EFFECTS-GENERIC-ROWS]` A written effect-row argument list must contain exactly
+the effect's declared number of type arguments. Omitting the entire list leaves
+the instance to inference. An explicit list cannot omit some arguments or add
+extra ones, even when the function body performs no operations. Each argument
+must name a known type or an enclosing type parameter; nested constructors must
+have their declared arity, and a type parameter cannot itself take arguments.
+
 An effect row follows the return type. It contains one effect reference or a
 bracketed list; generic references may include type arguments.
 
@@ -125,6 +132,23 @@ not discharge `Stash<int>.put`. Complementary nested partial handlers may each
 discharge the operation they cover. Constructing a lambda is pure, but invoking
 it contributes its latent requirements; constructing one inside a handler does
 not give it authority after it escapes that handler's lexical region.
+
+Passing a callback without invoking it contributes no latent requirements.
+Invoking a function parameter substitutes both the actual callee and its
+supplied arguments: forwarding an effectful callback through another function
+preserves the effects of each invocation, including named and curried calls.
+When a callback returns a record or another callable, subsequent field reads
+and calls retain the returned value's effect requirements. This applies equally
+when the callback is a named function, a local binding, or a function parameter;
+transport through a generic helper cannot make an effectful field pure.
+The same rule applies to operation results supplied by an active handler.
+Returning a record or closure from a handler does not discharge effects that
+are performed only when that value is called after the handler exits.
+
+Builtin callback and iterator behavior belongs to the resolved builtin binding.
+A user function, local binding, or parameter that shadows a builtin name uses
+its own body and return value for effect analysis. Its spelling cannot cause
+builtin callback invocation or prove that its result has no callable fields.
 
 The current compiler realizes these rules with a closed-program operation
 summary and fixed-point call analysis. Explicit open effect-row variables are

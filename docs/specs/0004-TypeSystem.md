@@ -11,6 +11,7 @@
 - [Built-in Error Types](#built-in-error-types)
 - [The `any` Type](#the-any-type--type-any)
 - [Type Annotations](#type-annotations--type-annotation-check)
+- [Redundant Annotations](#redundant-annotations--type-annotation-redundant)
 
 ## Hindley-Milner Inference
 
@@ -46,7 +47,10 @@ compose (f, g)   = \x => f (g x)             // <A,B,C>((B)->C,(A)->B) -> (A)->C
 `add` follows [ARITH-CHECKED](0013-ErrorHandling.md#arithmetic--arith-checked): integer `+ - *` return `int`. With a `float` operand, the integer is promoted and the IEEE-754 operation returns plain `float`.
 
 Record fields and foreign declarations include types as part of their syntax;
-annotations on bindings and functions constrain the inferred type.
+annotations on bindings and functions constrain the inferred type. An
+annotation that constrains nothing — one inference would have derived anyway —
+is a defect the compiler reports
+([TYPE-ANNOTATION-REDUNDANT](#redundant-annotations--type-annotation-redundant)).
 
 A polymorphic function is monomorphised independently at each call site:
 
@@ -195,6 +199,49 @@ s = pick ("left", "right")
 In the ML flavor the binder lives on the signature line (`pick<T> : …`); a
 binding without a signature cannot declare type parameters.
 
+`[TYPE-GENERICS-APPLY]` **A call site may apply type arguments explicitly.**
+`identity<int>(5)` pins the callee's declared binders positionally, left to
+right, and the written arguments unify with the instantiation the value
+arguments and the expected type would otherwise infer. This is the direct
+spelling of what an annotated binding (`let x: int = identity(5)`) can only say
+indirectly. An expected result type can also pin a binder absent from the
+parameters: `let xs: List<int> = empty()` fixes `T` for
+`fn empty<T>() -> List<T> = []`. Explicit type arguments are the only spelling
+that can pin a phantom binder absent from both parameter and result types.
+
+```osprey
+fn identity<T>(x: T) -> T = x
+fn pick<T, U>(first: T, second: U) -> T = first
+print("${identity<int>(5)} ${pick<int, string>(1, "two")}")
+```
+
+```osprey-ml
+identity<T> : T -> T
+identity x = x
+print "${identity<int> 5}"
+```
+
+The form is recognised when the `<` immediately follows the callee name and the
+matching `>` immediately precedes the call's argument list — `(` in the Default
+flavor, the juxtaposed argument in ML. Everywhere else `<` is the comparison
+operator, so `a < b` and `f(a) < g(b)` are unaffected; a relational chain that
+would otherwise read as type application must parenthesise.
+
+Applying type arguments is a contract with the declaration, checked the same way
+[GENERICS-CTOR-ARITY] checks a construction site:
+
+- The count must equal the callee's declared binder count. `identity<int, string>(5)`
+  against `fn identity<T>` is rejected with
+  `function \`identity\` takes 1 type argument(s), got 2`.
+- A callee that declares no binders — an unannotated function, a lambda, a
+  parameter holding a function value — takes no type arguments, and is rejected
+  with the same diagnostic at count 0.
+- A written argument that contradicts the value arguments or the expected type is
+  a type error, not a silently ignored annotation: `identity<int>("text")`
+  reports `cannot unify int with string`.
+- Variance markers are not permitted, exactly as on the binder itself
+  ([TYPE-VARIANCE-DECL]): `identity<out int>(5)` is rejected.
+
 A generic function used as a VALUE is specialised wherever its ABI can be
 fixed: by a consuming slot, by a call alias, or — when a generic function
 returns a lambda — at each call site of the binding, which is inlined and
@@ -252,12 +299,29 @@ arguments, annotated bindings, return positions), a variance-declared
 constructor's arguments are matched directionally: covariant (`out`)
 arguments recurse expected-accepts-actual, contravariant (`in`) arguments
 recurse with the roles flipped, invariant arguments unify exactly. The
-recursion continues only through variance-declared constructors and bottoms
-out in **exact unification**. There is no `Result<T, E>`-to-`T` coercion at any
-depth or direct value site: it would erase a failure and accept a value with
-the wrong representation. Function returns also match exactly, so a
-`Feed<(int) -> Result<int, Error>>` does not match a
-`Feed<(int) -> int>` slot.
+recursion continues only through **same-name** variance-declared constructors
+and bottoms out in **exact unification**.
+
+`[TYPE-VARIANCE-COERCION]` **The language's one coercion applies at direct
+value sites only, never inside a constructor argument.** A bare `T` satisfies a
+`Result<T, E>` slot (an implicit `Success`); the inverse never holds anywhere.
+That coercion changes the value's REPRESENTATION, and nothing rebuilds a
+container's contents, so it cannot reach through an argument position:
+`Feed<int>` does **not** satisfy a `Feed<Result<int, MathError>>` slot, under
+`out T`, under `in T`, or unannotated. Function payloads match exactly for the
+same reason, so a `Feed<(int) -> Result<int, Error>>` does not match a
+`Feed<(int) -> int>` slot — while a *directly* assigned function value still
+matches assignably, its parameters flipped and its return coerced
+(`(Result<int, E>) -> bool` satisfies an `(int) -> bool` slot).
+
+**Consequence, stated so no one has to re-derive it:** because that coercion is
+the only subtyping the language has, and it is barred from argument positions,
+`out T`, `in T` and an unannotated parameter accept and refuse **exactly the
+same programs** at assignment sites today. A variance marker's observable effect
+is [TYPE-VARIANCE-POSITIONS] — where the parameter may be written — not which
+assignments type-check. The directional recursion above is nonetheless
+normative: it is what a future representation-PRESERVING subtype relation would
+travel through, and the day one exists the three markers stop agreeing.
 
 Built-in constructors' declared variance: `Result<out T, out E>`,
 `List<out T>`, `Fiber<out T>`, `Map<K, out V>` (keys invariant); `Channel<T>`
@@ -319,7 +383,8 @@ createAdder : int -> int -> int
 createAdder n = \x => x + n
 ```
 
-Multi-argument call syntax (named arguments are required for two or more parameters) is in [Function Calls](0005-FunctionCalls.md).
+Multi-argument calls accept positional arguments or a fully named argument
+list, as specified in [Function Calls](0005-FunctionCalls.md).
 
 ### Closures — [TYPE-FN-CLOSURE]
 
@@ -356,6 +421,8 @@ Closures and named functions are interchangeable wherever their complete
 function types match, including iterator callbacks and record fields. A
 `Result<T, E>` returned through a function-value call remains a `Result<T, E>`
 and must be handled explicitly ([Result Preservation](#result-preservation)).
+
+A function type contains its ordered parameter types and return type. Parameter names are not part of its identity and do not travel with a value assigned to that type. Calls through function values therefore use the argument-slot rule in [CALL-ARGUMENTS](0005-FunctionCalls.md#argument-forms--call-arguments), including calls through record fields.
 
 ### Higher-order calls — [TYPE-FN-HIGHER-ORDER]
 
@@ -813,3 +880,146 @@ fn half(n: int) -> Result<int, Error> = intDiv(n, 2)
 
 Writing `-> int` for `half` would be a type error; a return annotation cannot
 erase the body's `Result` ([Result Preservation](#result-preservation)).
+
+## Redundant Annotations — [TYPE-ANNOTATION-REDUNDANT]
+
+An annotation the inferrer would have derived on its own carries no
+information. It cannot change what the program means — by construction the
+solver reaches the same type without it — so it can only go stale, disagree
+with the body a later edit produces, and cost a reader a second reading to
+confirm it says nothing. Osprey reports every one of them.
+
+**The rule.** A written type is *redundant* when erasing it leaves the solved
+type unchanged. Redundancy is not a syntactic property and cannot be decided by
+reading the annotation: `string -> int -> string` is redundant on one function
+and load-bearing on the next. It is decided by inference, and only by
+inference.
+
+**The decision procedure.** Replace the annotations under test with fresh type
+variables, solve, and generalise. Compare every type the solver publishes to
+the types it published for the untouched program, up to renaming of bound type
+variables. Equal ⇒ redundant. Different, or no solution ⇒ the annotations were
+constraining something and are kept.
+
+The comparison includes local, lambda, and list types, declared binders,
+operation and handler instantiations, and generalized field or callable
+constraints. It also preserves each dotted call's selected field, free
+function, or deferred selection rule ([BUILTIN-STRING-UFCS]). Matching only
+the enclosing function's parameter and return types is insufficient: removing
+an annotation must not change a callback's requirements or the implementation
+selected by a call with the same result type.
+
+**Redundancy is a property of a set, not of one annotation.** Annotations pin
+each other. In `fn pick(a: int, b: int) -> int = match a <= b { ... }` the body
+only compares, so nothing forces `int` except the annotations themselves — and
+each one alone is removable, because the other two still hold the type down.
+Judged one at a time, all three report; delete all three and `pick` generalises,
+which is a different program. A reader acts on the whole list, so the whole list
+is what gets solved for: the rule reports a set it has verified can be deleted
+together, growing it in source order and dropping any annotation that stops
+being removable alongside the ones already reported. What it reports is
+therefore always true of the report as a whole — delete every warning it gives
+you and the program's types are unchanged.
+
+The same coupling is why a lowered signature is judged whole. ML writes a
+signature as one arrow type, and lowering splits it across a parameter, a
+curried function-typed return and a nested lambda holding the rest. Those
+fragments hold each other up, so judging them apart reports a header that
+cannot be deleted at all — four warnings for one line, one of them blaming a
+`<lambda>` for a parameter the reader named. Fragments of one written type are
+one unit: judged together, erased together, and reported once.
+
+An ML header that also declares generic binders or an effect row is retained.
+The current erasure pass removes type constraints, not those declarations, so
+it cannot prove that deleting such a header preserves the complete contract.
+An inline parameter annotation alongside a standalone header remains a separate
+constraint: both are checked, disagreement is rejected, and removing either
+annotation leaves the other present.
+
+```mermaid
+flowchart LR
+  A["written annotations"] --> B["erase the whole set → fresh vars"]
+  B --> C["infer + generalise"]
+  C --> D{"solved types, constraints<br/>and dispatch vs baseline"}
+  D -- "equivalent" --> E["the set is redundant — report it"]
+  D -- "differs, or no solution" --> F["drop the last one and retry"]
+  F --> B
+```
+
+**Where it applies.** Function parameter annotations, function return
+annotations, lambda parameter annotations, and binding annotations, in both
+surfaces ([FLAVOR-BOUNDARY]). Both use the same type-equivalence rule. An ML
+`f : string -> int` header is one source annotation; a Default
+`fn f(x: string) -> int` contains two independently removable annotations.
+Their diagnostic counts therefore need not match.
+
+```osprey-ml
+(** Both slots are inferred as string from concatenation. *)
+decorate : string -> string
+decorate text = text + "!"
+
+(** Kept: the empty literal constrains nothing on its own. *)
+seen : List<int>
+seen = []
+```
+
+**What is never redundant.** Four constructs carry types as part of their
+declaration rather than as a constraint on an inferred one, and no annotation
+in them is ever reported:
+
+- a `signature` block's members ([MODULES-SIGNATURE](0025-ModulesAndNamespaces.md#signatures-modules-signature)) — a signature *is* the module's public contract. Elaboration copies a signature's types onto the members that left them off, and it marks every type it supplies, so a member that wrote nothing is never blamed for the copy. A member that *writes* the same type again is judged like any other function: that duplicate is a real line, and deleting it changes nothing;
+- record field declarations and union variant payloads, whose types are their definition;
+- `extern` and foreign declarations ([Foreign Function Interface](0019-ForeignFunctionInterface.md)), which have no body to infer from;
+- an annotation whose erasure changes a type variable's constraints or its relationship to a declared binder.
+
+Types inserted by module-signature elaboration are compiler-generated constraints and never receive a redundancy warning. A written annotation in a module body is checked normally, even if its spelling equals the module's signature. The compiler records this provenance when it inserts a constraint; matching member names or type spellings is not evidence that an annotation was generated.
+
+An annotation that would erase a `Result` is not redundant either — it is a
+type error ([Result Preservation](#result-preservation)), reported as one.
+
+**An ill-typed program reports none.** The types inferred for a program that
+does not typecheck are the checker's best effort at code it has already
+rejected, and no comparison drawn from them would be trustworthy. Type errors
+come first; the redundancy pass runs on programs that pass.
+
+**Severity.** The diagnostic is a **Warning**. It changes no exit code and no
+generated code: a program whose only diagnostics are redundant annotations
+compiles and runs exactly as it did. Severity is fixed today and becomes
+configurable per rule; the rule identifier is `redundant-annotation`, and it is
+that identifier a future configuration names.
+
+**The message** identifies the written annotation and prints the type inference
+derives without it. There is one line per written annotation the rule judges:
+
+```
+redundant type annotation on parameter `key` of `numField`: inference derives `string` without it
+redundant return type annotation on `numField`: inference derives `string` without it
+redundant type annotation on `seen`: inference derives `List<int>` without it
+redundant type signature on `decorate`: inference derives `(string) -> string` without it
+redundant type signature on `combine`: inference derives `(int) -> (int) -> int` without it
+```
+
+The last shape is one whole curried signature. Its nested arrows are preserved:
+`int -> int -> int` takes one argument and returns another function, whereas
+`(int, int) -> int` takes two arguments in one call. These types have different
+call conventions and diagnostics must not flatten one into the other.
+ML spells a signature as a single arrow
+type on its own line, and lowering splits it across a parameter, a curried
+function-typed return and a nested lambda holding the rest. Those fragments are
+one written line: they are judged together, erased together, and reported once,
+naming the function. Judging them apart is not merely noisier, it is wrong —
+each fragment looks derivable while the others still hold the type down, so a
+header that cannot be deleted gets reported anyway.
+
+An annotation written on an anonymous function names `<lambda>` as its owner;
+an implicit curry lambda is not a written anonymous function. A name that
+assembly mangled is reported in its source spelling
+([MODULES-ABI](0025-ModulesAndNamespaces.md#name-mangling-and-abi-modules-abi)),
+so `bank::Api::json` is never shown as its encoded symbol.
+
+Every front end reports it: `osprey build` and `osprey FILE --check` on stderr,
+grouped by source file under an aligned `line:column` gutter and closed by a
+count and the rules that raised it; and the language server as a Warning
+diagnostic anchored at the containing declaration and spanning the rest of that source line
+([LSP-DIAGNOSTICS](0020-LanguageServerAndEditors.md#diagnostics-lsp-diagnostics)),
+The message names the written signature, parameter, return, or binding annotation. An ML signature range starts at its header. Other ranges identify the containing declaration. A range is not a deletion edit. The compiler does not offer an automatic deletion action. For an assembled project, the safe set is chosen for the entire program before filtering diagnostics to an open file, so opening a different file cannot change which annotations are reported as removable.

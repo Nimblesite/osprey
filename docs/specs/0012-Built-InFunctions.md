@@ -72,19 +72,22 @@ editor integration are specified in [Testing Framework](0027-TestingFramework.md
 
 ## Numeric Functions
 
-The numeric builtins are inside the arithmetic totality guarantee: none may trap, panic, wrap silently, or return an unspecified value ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). `abs` and `intDiv` follow the operators — plain `int`, with faults dispatched to the `Arith` handler. `checkedAdd`/`checkedSub`/`checkedMul` return a `Result` and are the explicit value-level form for code that wants overflow as data.
+The numeric builtins are inside the arithmetic totality guarantee: none may trap, panic, wrap silently, or return an unspecified value ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). `abs` and `intDiv` follow the operators, so whatever the operators return, they return. `checkedAdd`/`checkedSub`/`checkedMul` are the explicit value-level form for code that wants overflow as data, and keep the runtime's generic `Error` channel.
 
-### `abs(n: int) -> int` — [BUILTIN-ABS] Returns the absolute value. Because `2^63` is not representable, the minimum signed 64-bit input performs `Arith.overflow`; it never wraps or panics.
+**What ships today is the checked-`Result` form.** `abs` and `intDiv` return `Result<int, MathError>` — the same `MathError` channel the arithmetic operators use, because a division fault is a math fault and not a runtime fault — and a caller discharges it with `match` or `?:`. [Plan 0027](../plans/0027-arithmetic-effects.md) retires that shape in favour of a plain `int` whose faults dispatch to a compiler-declared `Arith` handler, which is what [spec 0037](0037-ArithmeticEffects.md) specifies as the normative target; **no part of it is implemented yet**. The signatures below are written in the shipped form, and the `Arith.*` faults name what each one performs once that plan lands.
 
-### `intDiv(a: int, b: int) -> int` — [BUILTIN-INTDIV]
-Truncates toward zero. A zero divisor performs `Arith.remainderByZero`; `intDiv(-9223372036854775808, -1)` performs `Arith.overflow`; every other input yields the quotient. The `/` operator instead returns `float`.
+### `abs(n: int) -> Result<int, MathError>` — [BUILTIN-ABS]
+Returns the absolute value. Because `2^63` is not representable, the minimum signed 64-bit input is the `Error` case (`Arith.overflow` under plan 0027); it never wraps or panics.
+
+### `intDiv(a: int, b: int) -> Result<int, MathError>` — [BUILTIN-INTDIV]
+Truncates toward zero. A zero divisor is the `Error` case (`Arith.remainderByZero`), as is `intDiv(-9223372036854775808, -1)` (`Arith.overflow`); every other input yields the quotient. The `/` operator instead returns `float`.
 
 ```osprey
-intDiv(7, 2)        // 3
-intDiv(255643, 10)  // 25564
-intDiv(5, 0)        // performs Arith.remainderByZero
-intDiv(-9223372036854775808, -1) // performs Arith.overflow
-fn half(n) = intDiv(n, 2)
+intDiv(7, 2) ?: 0        // 3
+intDiv(255643, 10) ?: 0  // 25564
+intDiv(5, 0)             // Error — division by zero
+intDiv(-9223372036854775808, -1) // Error — integer overflow
+fn half(n) = intDiv(n, 2) ?: 0
 ```
 
 ### `toFloat(n: int) -> float` — [BUILTIN-TOFLOAT]
@@ -231,6 +234,29 @@ All three desugar to the same call. Rules:
 - **Pipe (`x |> f`)** rewrites to `f(x)`. With extra args, `x |> f(a, b)` becomes `f(x, a, b)`. A bare identifier on the right (`x |> f`) is auto-promoted to a call — no parens needed for single-arg functions. See [Iterators](0010-LoopConstructsAndFunctionalIterators.md#pipe-operator--builtin-iter-pipe).
 - **UFCS (`x.f(args)`)** rewrites to `f(x, args)`. **Parens are required** to disambiguate from field access — `x.f` always means field access, never a method call. If a record has a field named `f`, field access wins; UFCS is the fallback.
 - **Direct call** is ordinary function application.
+
+For dotted calls, the receiver's resolved type determines the choice. A
+declared field named `f` is selected even when a free function with that name
+is in scope. The field value must be callable; a non-callable field is an
+error and does not enable fallback. Calling the field passes only the written
+arguments. UFCS passes the receiver first, followed by the written arguments,
+and is considered only when the receiver has no such field.
+
+This rule also applies inside generic functions. If the receiver is still a
+type variable when the body is checked, selection remains deferred and is
+resolved for each instantiation. For example, `dispatch<T>(x:T) = x.m()` may
+select a record's `m` field for one call and a free `m(x)` for a scalar call.
+The receiver, argument, result, and callback type constraints remain linked
+through generalization and instantiation. An annotation cannot be required
+solely to compensate for losing those links.
+
+Written type arguments apply to the selected callable's declaration binders.
+A function-valued field has no declaration binders, so `record.f<int>()` is
+rejected even if an in-scope free `f` declares a type parameter. The selected
+callable also determines the call's effect requirements: an ignored free
+function contributes none, and selecting a field cannot discard its effects.
+Evaluation of the receiver and written argument expressions still contributes
+their own effects exactly once.
 
 Multi-argument functions in this spec are documented subject-first (e.g. `split(s: string, separator: string)`) so all three forms work uniformly.
 

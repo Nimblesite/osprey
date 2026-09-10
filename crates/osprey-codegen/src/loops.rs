@@ -21,8 +21,7 @@ pub(crate) struct Counter {
 }
 
 fn open_counter(cg: &mut Codegen, start: &str, bound: &str) -> Counter {
-    let slot = cg.fresh_reg();
-    cg.emit(format!("{slot} = alloca i64"));
+    let slot = cg.emit_reg("alloca i64");
     cg.emit(format!("store i64 {start}, i64* {slot}"));
     let cond = cg.fresh_label();
     let body = cg.fresh_label();
@@ -31,10 +30,8 @@ fn open_counter(cg: &mut Codegen, start: &str, bound: &str) -> Counter {
     cg.emit(format!("br label %{cond}"));
 
     cg.start_block(&cond);
-    let i = cg.fresh_reg();
-    cg.emit(format!("{i} = load i64, i64* {slot}"));
-    let more = cg.fresh_reg();
-    cg.emit(format!("{more} = icmp slt i64 {i}, {bound}"));
+    let i = cg.emit_reg(format!("load i64, i64* {slot}"));
+    let more = cg.emit_reg(format!("icmp slt i64 {i}, {bound}"));
     cg.emit(format!("br i1 {more}, label %{body}, label %{endl}"));
 
     cg.start_block(&body);

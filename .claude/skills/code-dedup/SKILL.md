@@ -1,109 +1,70 @@
 ---
 name: code-dedup
-description: Searches for duplicate code, duplicate tests, and dead code, then safely merges or removes them. Use when the user says "deduplicate", "find duplicates", "remove dead code", "DRY up", or "code dedup". Requires test coverage — refuses to touch untested code.
+description: Finds duplicated code and dead code with deslop, then merges or removes the worst of it. Use when the user says "deduplicate", "find duplicates", "remove dead code", "DRY up", or "code dedup".
 ---
 <!-- agent-pmo:74cf183 -->
 
 # Code Dedup
 
-Carefully search for duplicate code, duplicate tests, and dead code across the repo. Merge duplicates and delete dead code — but only when test coverage proves the change is safe.
+Find duplication with **deslop**, then use judgement to merge only what is worth merging.
 
-## Prerequisites — hard gate
+## Judgement first
 
-Before touching ANY code, verify these conditions. If any fail, stop and report why.
+Deslop measures structural repetition. It cannot tell whether collapsing two blocks makes the code better or worse. **You decide.** A report with 476 clusters does not mean 476 edits — it means the five or ten that matter. `merge-plan` returns verdict `ai_or_human` for anything non-mechanical: that is the tool handing you the call.
 
-1. Run `make test` — all tests must pass. If tests fail, stop. Do not dedup a broken codebase.
-2. Run `make test` — tests are fail-fast AND enforce the coverage threshold from `coverage-thresholds.json`. If anything fails, stop and fix it before deduping.
-3. Verify the project uses **static typing**:
-   - Rust (crates/, tree-sitter-osprey/): typed by default — proceed
-   - TypeScript (vscode-extension/, webcompiler/, website/): check `tsconfig.json` has `"strict": true` — proceed if yes
-   - C (compiler/runtime/): typed by default — proceed
+**Merge** real copy-pasted logic — a block differing only in a symbol or a literal, 3+ near-identical call sites, one algorithm restated in two modules.
 
-## Steps
+**Leave** anything else, especially:
 
-Copy this checklist and track progress:
+- **Data, not logic** — constant tables, per-platform SDK/triple/runtime arms, doc rows. Merging buries the values the reader came for.
+- **Structural coincidence** — `structural_only` CST walks and `match` shapes: same skeleton, different meaning.
+- **Already factored** — only thin wrappers remain over a real helper.
+- **Merges needing a new bool/enum parameter** to make one function do two jobs.
 
+A wrong merge is worse than a duplicate.
+
+## Tools
+
+Prefer the MCP — live index, no rescan cost:
+
+| Tool | Use |
+|---|---|
+| `mcp__deslop__duplicates` | **Start here.** Clusters worst-first by `mass`. `{detail:"summary", limit:20}`; `include_per_file:true` for a per-file table, `path_contains` to scope. |
+| `mcp__deslop__cluster-by-id` | Every occurrence path + byte range for one `id`. |
+| `mcp__deslop__compare-pair` | The **only** pair evidence: two `{path,start_byte,end_byte}` in, `text_identity` and `structural` out. |
+| `mcp__deslop__merge-plan` | Mechanical plan for a cluster. `ai_or_human` → hand-edit. |
+| `mcp__deslop__find-similar` | Call **before writing new code** (CLAUDE.md mandates it). |
+| `mcp__deslop__rescan` | Refresh after edits. |
+
+A cluster's `kind` is the *weakest* pair against the canonical — **never assume two members match each other**. `compare-pair` the exact ranges you intend to merge.
+
+No MCP? Use the installed CLI — what `make _deslop` runs:
+
+```bash
+deslop . --nohtml --nojson --output "$PWD/target/deslop-report" --log-to-console --log-level error --no-color
 ```
-Dedup Progress:
-- [ ] Step 1: Prerequisites passed (tests green, coverage met, typed)
-- [ ] Step 2: Dead code scan complete
-- [ ] Step 3: Duplicate code scan complete
-- [ ] Step 4: Duplicate test scan complete
-- [ ] Step 5: Changes applied
-- [ ] Step 6: Verification passed (tests green, coverage stable)
-```
 
-### Step 1 — Inventory test coverage
+Exit `3` means over the ceiling in `.deslop.toml`. Check `deslop --version`; install from <https://deslop.live/docs/for-ai/> only if the binary is missing, matching the version pinned in `.github/workflows/ci.yml`. Never upgrade to move a number — the MCP server (`tool_version: 0.0.0-dev`) and the pinned CLI disagree, so **find** with the MCP and **measure** with `make _deslop`.
 
-Before deciding what to touch, understand what is tested.
+## The ratchet
 
-1. Run `make test` to confirm green baseline. `make test` is fail-fast AND enforces the coverage threshold from `coverage-thresholds.json` (REPO-STANDARDS-SPEC [TEST-RULES], [COVERAGE-THRESHOLDS-JSON]). It exits non-zero on any test failure OR coverage shortfall.
-2. Note the current coverage percentage — this is the floor. It must not drop.
-3. Identify which files/modules have coverage and which do not. Only files WITH coverage are candidates for dedup.
+**CI must never allow duplication to increase.** `max_duplication_percent` is a ratchet, not a budget.
 
-### Step 2 — Scan for dead code
+- **Never raise it.** Over the ceiling means you added duplication — remove it. The number is not the thing to edit.
+- **Lower it after every round** to the fresh `make _deslop` measurement. Slack above the measurement lets the next clone land free.
+- **A branch may not measure above `main`** — compare with the *same* CLI version, or the version gap alone will convict or exonerate falsely.
+- `.deslop.toml`'s comment block records the ratchet history. Extend it when you lower the ceiling; if that history and the live value disagree, someone raised it — **report a gate violation**.
 
-Search for code that is never called, never imported, never referenced.
+## Process
 
-1. Look for unused exports, unused functions, unused variables
-2. Use language-appropriate tools:
-   - Rust: `dead_code`/`unused_*` are denied workspace-wide, so `cargo clippy --all-targets` reports unused code as errors
-   - TypeScript: check for `noUnusedLocals`/`noUnusedParameters` in tsconfig, look for unexported functions with zero references
-   - C: compiler warnings for unused functions/variables (already caught by `-Wall -Wextra`)
-3. For each candidate: **grep the entire codebase** for references (including tests, scripts, configs). Only mark as dead if truly zero references.
-4. List all dead code found with file paths and line numbers. Do NOT delete yet.
-
-### Step 3 — Scan for duplicate code
-
-Search for code blocks that do the same thing in multiple places.
-
-1. Look for functions/methods with identical or near-identical logic
-2. Look for copy-pasted blocks (same structure, maybe different variable names)
-3. Look for multiple implementations of the same algorithm or pattern
-4. Check across module boundaries — duplicates often hide in different packages
-5. For each duplicate pair: note both locations, what they do, and how they differ (if at all)
-6. List all duplicates found. Do NOT merge yet.
-
-### Step 4 — Scan for duplicate tests
-
-Search for tests that verify the same behavior.
-
-1. Look for test functions with identical assertions against the same code paths
-2. Look for test fixtures/helpers that are duplicated across test files
-3. Look for integration tests that fully cover what a unit test also covers
-4. List all duplicate tests found. Do NOT delete yet.
-
-### Step 5 — Apply changes (one at a time)
-
-For each change, follow this cycle: **change → test → verify coverage → continue or revert**.
-
-#### 5a. Remove dead code
-- Delete dead code identified in Step 2
-- After each deletion: run `make test` (fail-fast + coverage + threshold all in one)
-- If `make test` exits non-zero (test failure OR coverage drop): **revert immediately** and investigate
-
-#### 5b. Merge duplicate code
-- For each duplicate pair: extract the shared logic into a single function/module
-- Update all call sites to use the shared version
-- After each merge: run `make test`
-- If tests fail: **revert immediately**
-
-#### 5c. Remove duplicate tests
-- Delete the redundant test (keep the more thorough one)
-- After each deletion: run `make test`
-- If coverage drops below threshold, `make test` exits non-zero — **revert immediately**
-
-### Step 6 — Final verification
-
-1. Run `make lint` — all linters must pass
-2. Run `make test` — tests must pass AND coverage must remain ≥ the baseline from Step 1
-3. Report: what was removed, what was merged, final coverage vs baseline
+- **Baseline.** `make _deslop` — record the percentage you start from.
+- **Gather.** `mcp__deslop__duplicates`, worst first. `cargo clippy --all-targets --all-features` is the whole dead-code scan (`dead_code`/`unused_*` are denied workspace-wide); grep the repo before deleting anything it flags.
+- **Triage.** Apply the judgement above. Record each keeper's two locations and intended helper, and each rejection's reason so nobody re-litigates it. `.deslop.toml` scopes the gate *by path*, so inline `#[cfg(test)]` and `#[path = "…"]` modules still inflate the number — an artifact, not a task.
+- **Apply.** One merge at a time, smallest diff that removes the duplication. Keep public and `pub(crate)` signatures intact so no caller has to change.
+- **Verify.** `make lint`, then `make _deslop`. Report what merged, what you left and why, and duplication vs baseline.
 
 ## Rules
 
-- **No test coverage = do not touch.** If a file has no tests covering it, leave it alone entirely.
-- **Coverage must not drop.** The coverage floor from Step 1 is sacred.
-- **One change at a time.** Make one dedup change, run tests, verify coverage.
-- **When in doubt, leave it.** If two code blocks look similar but you're not 100% sure they're functionally identical, leave both.
-- **Preserve public API surface.** Do not change function signatures or exported names.
-- **Three similar lines is fine.** Only dedup when the shared logic is substantial (>10 lines) or when there are 3+ copies.
+- **Three similar lines is fine** — merge at >10 shared lines or 3+ copies.
+- **Edit in place.** Never leave a parallel version of anything behind.
+- **When in doubt, leave it.**

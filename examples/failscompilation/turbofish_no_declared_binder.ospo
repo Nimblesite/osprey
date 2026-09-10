@@ -1,0 +1,10 @@
+// An unannotated function is implicitly polymorphic, which is NOT a declared
+// binder: there is nothing for a written type argument to pin, so the call is
+// rejected rather than silently ignoring the annotation.
+// Implements [TYPE-GENERICS-APPLY], [TYPE-GENERICS-FN]
+fn plain(x) = x
+
+fn main() -> Unit = {
+    let pinned = plain<int>(5)
+    print("${pinned}")
+}

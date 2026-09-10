@@ -1,0 +1,24 @@
+/// An inferred recursive function specializes at each call's element type.
+/// The self-call must resolve to the matching emitted specialization.
+fn walk(xs, n) = match n {
+    0 => xs
+    _ => walk(listReverse(xs), (n - 1) ?: 0)
+}
+
+print("${listLength(walk([5, 6, 7], 2))} ${listLength(walk(["a", "b"], 1))}")
+
+/// Verifies recursive integer and string specializations retain their contents.
+fn recursiveGenericCase() = {
+    let ints = walk([5, 6, 7], 2)
+    let strings = walk(["a", "b"], 1)
+    checkAll("recursive generic calls specialize without annotations", [
+        listLength(ints) == 3,
+        (listGet(ints, 0) ?: 0) == 5,
+        (listGet(ints, 1) ?: 0) == 6,
+        (listGet(ints, 2) ?: 0) == 7,
+        listLength(strings) == 2,
+        (listGet(strings, 0) ?: "") == "b",
+        (listGet(strings, 1) ?: "") == "a"
+    ])
+}
+test("recursive generic functions specialize for integers and strings", recursiveGenericCase)

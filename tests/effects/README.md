@@ -36,6 +36,24 @@ Returning `42` here does **not** stop `load`. It supplies a value and lets
 that rule across nested policies, repeated failures, handler-owned state,
 multiple result types, recursion and outer effects.
 
+Because `handle … in` is an expression, the policy does not have to be written
+where the logic is. A function that returns one is an implementation the caller
+passes in:
+
+```osprey
+fn withDiskStorage(action) = handle Storage
+    save key contents => writeFile(key, contents) ?: 0
+    load key => readFile(key) ?: ""
+in action()
+```
+
+The same logic then runs against the real file system, against an in-memory
+test double that records every call, or against a policy that refuses to write
+— chosen at the call site, with no change to the code performing the
+operations. The paired [injection suites](injection/README.md) hold that
+pattern end to end, including the mock verification a file system cannot
+offer.
+
 ### Explicit resume and early exit
 
 If any arm in a handler region contains `resume`, Osprey runs the handled code

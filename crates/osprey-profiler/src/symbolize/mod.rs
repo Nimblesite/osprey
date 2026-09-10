@@ -226,6 +226,20 @@ fn lookup_chain(profile: &Profile, cache: &ChainCache, index: usize, pc: u64) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// An image loaded at `base` (after `slide`) whose executable range spans
+    /// `text .. text + text_size`. Every case here varies only these five
+    /// fields, so the zeroed remainder is written once instead of per literal.
+    fn image(path: &str, base: u64, slide: u64, text: u64, text_size: u64) -> Image {
+        Image {
+            path: path.to_owned(),
+            base,
+            slide,
+            text,
+            text_size,
+            arch: String::new(),
+        }
+    }
+
     use crate::raw::{Sample, Thread};
     use std::cell::RefCell;
 
@@ -281,24 +295,7 @@ mod tests {
 
     #[test]
     fn pcs_fall_back_to_greatest_base_when_no_image_reports_a_text_range() {
-        let images = vec![
-            Image {
-                path: "/a".to_owned(),
-                base: 100,
-                slide: 0,
-                text: 0,
-                text_size: 0,
-                arch: String::new(),
-            },
-            Image {
-                path: "/b".to_owned(),
-                base: 500,
-                slide: 0,
-                text: 0,
-                text_size: 0,
-                arch: String::new(),
-            },
-        ];
+        let images = vec![image("/a", 100, 0, 0, 0), image("/b", 500, 0, 0, 0)];
         assert_eq!(image_index_for(&images, 499), Some(0));
         assert_eq!(image_index_for(&images, 500), Some(1));
         assert_eq!(image_index_for(&images, 99), None);
@@ -316,22 +313,20 @@ mod tests {
     #[test]
     fn a_shared_cache_pc_is_owned_by_the_image_whose_text_contains_it() {
         let images = vec![
-            Image {
-                path: "/usr/lib/system/libsystem_malloc.dylib".to_owned(),
-                base: 0x1_8000_0000,
-                slide: 0,
-                text: 0x1_8030_0000,
-                text_size: 0x2_0000,
-                arch: String::new(),
-            },
-            Image {
-                path: "/usr/lib/system/libsystem_kernel.dylib".to_owned(),
-                base: 0x1_8010_0000,
-                slide: 0,
-                text: 0x1_8040_0000,
-                text_size: 0x2_0000,
-                arch: String::new(),
-            },
+            image(
+                "/usr/lib/system/libsystem_malloc.dylib",
+                0x1_8000_0000,
+                0,
+                0x1_8030_0000,
+                0x2_0000,
+            ),
+            image(
+                "/usr/lib/system/libsystem_kernel.dylib",
+                0x1_8010_0000,
+                0,
+                0x1_8040_0000,
+                0x2_0000,
+            ),
         ];
         // The observed leaf: inside libsystem_malloc's __TEXT, but BELOW the
         // kernel image's header, which is what the old rule keyed on.
@@ -346,14 +341,7 @@ mod tests {
     /// the end is not.
     #[test]
     fn a_reported_text_range_is_half_open() {
-        let image = Image {
-            path: "/bin/app".to_owned(),
-            base: 0,
-            slide: 0,
-            text: 0x4000,
-            text_size: 0x1000,
-            arch: String::new(),
-        };
+        let image = image("/bin/app", 0, 0, 0x4000, 0x1000);
         assert!(image.text_contains(0x4000));
         assert!(image.text_contains(0x4FFF));
         assert!(!image.text_contains(0x5000));
@@ -381,22 +369,8 @@ mod tests {
             rate_hz: 997,
             dropped: 0,
             images: vec![
-                Image {
-                    path: "/bin/app".to_owned(),
-                    base: 1000,
-                    slide: 100,
-                    text: 0,
-                    text_size: 0,
-                    arch: String::new(),
-                },
-                Image {
-                    path: "/usr/lib/sys".to_owned(),
-                    base: 9000,
-                    slide: 0,
-                    text: 0,
-                    text_size: 0,
-                    arch: String::new(),
-                },
+                image("/bin/app", 1000, 100, 0, 0),
+                image("/usr/lib/sys", 9000, 0, 0, 0),
             ],
             threads: vec![Thread {
                 fiber: 0,

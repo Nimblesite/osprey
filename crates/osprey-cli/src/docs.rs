@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 /// Entry point for the `--docs` mode. Reads `--docs-dir <dir>` from `args`.
-pub fn run(args: &[String]) -> ExitCode {
+pub(crate) fn run(args: &[String]) -> ExitCode {
     let dir = if let Some(dir) = docs_dir(args) {
         PathBuf::from(dir)
     } else {

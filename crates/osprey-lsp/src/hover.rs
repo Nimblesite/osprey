@@ -254,6 +254,8 @@ fn inferred_parameter(program: &Program, function: &str, index: usize) -> Option
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::col_of;
+    use crate::testkit::shows;
     const U16: PositionEncoding = PositionEncoding::Utf16;
     const SRC: &str = "fn add(a: int, b: int) -> int = (a + b) ?: 0\nlet total = add(1, 2)\n";
 
@@ -335,15 +337,13 @@ mod tests {
         // does not highlight. Re-apply the flavor at the presentation edge.
         let ml = "inc : int -> int\ninc x = (x + 1) ?: 0\n";
         let hov = hover(ml, "file:///tour.ospml", 1, 0, U16).expect("hover");
-        assert!(hov.contains("```osprey-ml"), "{hov}");
-        assert!(hov.contains("inc : int -> int"), "{hov}");
+        shows(&hov, &["```osprey-ml", "inc : int -> int"]);
         assert!(!hov.contains("fn inc("), "{hov}");
         // The identical program under a `.osp` path keeps the Default spelling,
         // proving the flavor — not the content — drives the rendering.
         let default_src = "fn inc(x: int) -> int = (x + 1) ?: 0\n";
         let plain = hover(default_src, "file:///a.osp", 0, 3, U16).expect("hover");
-        assert!(plain.contains("```osprey\n"), "{plain}");
-        assert!(plain.contains("fn inc(x: int) -> int"), "{plain}");
+        shows(&plain, &["```osprey\n", "fn inc(x: int) -> int"]);
     }
 
     #[test]
@@ -362,8 +362,7 @@ mod tests {
         // Implements [LSP-HOVER-VARIABLES], [LSP-HOVER-DOCS]
         let src = "fn main() -> int = {\n/// The greeting text.\nlet greeting = \"hi\"\n0\n}\n";
         let md = hover(src, "file:///a.osp", 2, 6, U16).expect("hover over the `greeting` binding");
-        assert!(md.contains("greeting: string"), "inferred type: {md}");
-        assert!(md.contains("The greeting text."), "docs: {md}");
+        shows(&md, &["greeting: string", "The greeting text."]);
     }
 
     #[test]
@@ -372,8 +371,7 @@ mod tests {
         // Implements [LSP-HOVER-DOCS]
         let src = "/// Doubles `x`.\nfn dbl(x: int) -> int = (x * 2) ?: 0\n";
         let md = hover(src, "file:///a.osp", 1, 4, U16).expect("hover over `dbl`");
-        assert!(md.contains("fn dbl(x: int) -> int"), "signature: {md}");
-        assert!(md.contains("Doubles `x`."), "docs: {md}");
+        shows(&md, &["fn dbl(x: int) -> int", "Doubles `x`."]);
 
         let src =
             include_str!("../../../tests/effects/resume/resume_outer_handler_bridge.test.osp");
@@ -423,8 +421,10 @@ mod tests {
             let row = u32::try_from(line).expect("line fits");
             let site = hover(src, "file:///trace.ospml", row, col, U16)
                 .unwrap_or_else(|| panic!("hover over effect-operation site on line {line}"));
-            assert!(site.contains("Trace.mark : string => Unit"), "{site}");
-            assert!(site.contains("Records trace markers."), "{site}");
+            shows(
+                &site,
+                &["Trace.mark : string => Unit", "Records trace markers."],
+            );
         }
     }
 
@@ -582,8 +582,7 @@ mod tests {
         // Hovering the `int` in an annotation used to return nothing, because
         // no source file declares it. Implements [LSP-HOVER-WRITTEN].
         let md = hover(SRC, "file:///a.osp", 0, 11, U16).expect("hover over `int`");
-        assert!(md.contains("int"), "{md}");
-        assert!(md.contains("64-bit integer"), "{md}");
+        shows(&md, &["int", "64-bit integer"]);
         // A declared type still resolves to its declaration, not to this table.
         let declared = "type Shade = Light | Dark\nfn pick(s: Shade) = s\n";
         let hovered = hover(declared, "file:///a.osp", 1, 12, U16).expect("hover over `Shade`");
@@ -630,11 +629,16 @@ test(\"identity\", fn() => expect(add(5, 0), 5))
 ";
         let first = hover(src, "file:///suite.test.osp", 9, 1, U16).expect("hover over `test`");
         assert!(first.starts_with("**Test:** commutes"), "{first}");
-        assert!(first.contains("Addition is commutative."), "{first}");
-        assert!(first.contains("**Parameters**"), "{first}");
-        assert!(first.contains("- `left` — the first addend"), "{first}");
-        assert!(first.contains("**Since**"), "{first}");
-        assert!(first.contains("0.3"), "{first}");
+        shows(
+            &first,
+            &[
+                "Addition is commutative.",
+                "**Parameters**",
+                "- `left` — the first addend",
+                "**Since**",
+                "0.3",
+            ],
+        );
         // The SECOND case's hover shows the second case's docs, not the first's.
         let second = hover(src, "file:///suite.test.osp", 12, 1, U16).expect("hover over `test`");
         assert!(second.starts_with("**Test:** identity"), "{second}");
@@ -676,8 +680,7 @@ test(\"identity\", fn() => expect(add(5, 0), 5))
         // user-declared `test` binding keeps hovering as itself.
         let src = "/// A local shadow.\nlet test = 1\nprint(\"${test}\")\n";
         let md = hover(src, "file:///a.osp", 1, 5, U16).expect("hover over the binding");
-        assert!(md.contains("test: int"), "{md}");
-        assert!(md.contains("A local shadow."), "{md}");
+        shows(&md, &["test: int", "A local shadow."]);
         assert!(!md.contains("**Test:**"), "not a test case: {md}");
     }
 
@@ -694,13 +697,5 @@ test(\"identity\", fn() => expect(add(5, 0), 5))
         let at = text.find(needle).expect("needle on found line");
         let line = u32::try_from(index).expect("line fits");
         (line, u32::try_from(at).expect("column fits") + 1)
-    }
-
-    /// The 0-based column just inside the first occurrence of `needle` on
-    /// 0-based `line` of `src` — a cursor position over that word.
-    fn col_of(src: &str, line: usize, needle: &str) -> u32 {
-        let text = src.lines().nth(line).expect("line exists");
-        let at = text.find(needle).expect("needle on line");
-        u32::try_from(at).expect("column fits") + 1
     }
 }

@@ -548,7 +548,7 @@ export function activate(context: ExtensionContext) {
   // Register debug configuration provider
   context.subscriptions.push(
     debug.registerDebugConfigurationProvider("osprey", {
-      async resolveDebugConfiguration(folder: any, config: any, token: any) {
+      async resolveDebugConfiguration(_folder: any, config: any, _token: any) {
         // If no config is provided, synthesize one from the active osprey editor.
         config = applyDefaultOspreyDebugConfig(config, window.activeTextEditor);
 

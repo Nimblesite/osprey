@@ -45,7 +45,10 @@ pub fn children_mut(expression: &mut Expr, visit: &mut impl FnMut(&mut Expr)) {
             visit(left);
             visit(right);
         }
-        Expr::Unary { operand, .. }
+        Expr::TypeApply {
+            function: operand, ..
+        }
+        | Expr::Unary { operand, .. }
         | Expr::Spawn(operand)
         | Expr::Await(operand)
         | Expr::Recv(operand)

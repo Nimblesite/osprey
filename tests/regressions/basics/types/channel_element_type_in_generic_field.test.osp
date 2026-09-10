@@ -1,0 +1,22 @@
+/// A channel stored in a generic record field retains its nested element type.
+/// This previously misread the received row and printed 0 instead of 3.
+/// [CONCURRENCY-CHANNEL]
+type Box<t> = Box { slot: t }
+
+let boxed = Box { slot: Channel(2) }
+send(boxed.slot, [[1, 2, 3]])
+let m = recv(boxed.slot)
+print(toString(listLength(listGet(m, 0) ?: [99])))
+
+/// Verifies both list levels survive the generic field and channel transfer.
+fn channelElementCase() = {
+    let row = listGet(m, 0) ?: [99]
+    checkAll("channel element metadata survives a generic record field", [
+        listLength(m) == 1,
+        listLength(row) == 3,
+        (listGet(row, 0) ?: 99) == 1,
+        (listGet(row, 1) ?: 99) == 2,
+        (listGet(row, 2) ?: 99) == 3
+    ])
+}
+test("generic record fields preserve nested channel elements", channelElementCase)

@@ -35,7 +35,7 @@ struct Tally {
 }
 
 /// Entry point for `osprey fmt`; `args` excludes the `fmt` subcommand word.
-pub fn run(args: &[String]) -> ExitCode {
+pub(crate) fn run(args: &[String]) -> ExitCode {
     let parsed = match parse(args) {
         Ok(parsed) => parsed,
         Err(message) => {

@@ -1,4 +1,5 @@
 use super::*;
+use crate::testkit::shows;
 use std::path::{Path, PathBuf};
 
 const SOURCE: &str = "extern fn host_log(message: string) -> int\n\
@@ -67,13 +68,23 @@ fn thunks_rename_the_entry_and_forward_with_the_c_bool_convention() {
     let out = with_host_abi(&ir, &abi).expect("thunked");
     assert!(out.contains("define i32 @osprey_main() "), "entry renamed");
     assert!(!out.contains("@main("), "no `main` symbol survives");
-    assert!(out.contains("define zeroext i1 @osprey_flag(i1 zeroext %p0) {"));
-    assert!(out.contains("  %r = call i1 @flag(i1 %p0)\n  ret i1 %r"));
+    shows(
+        &out,
+        &[
+            "define zeroext i1 @osprey_flag(i1 zeroext %p0) {",
+            "  %r = call i1 @flag(i1 %p0)\n  ret i1 %r",
+        ],
+    );
     assert!(out
         .contains("define void @osprey_shout(i8* %p0) {\n  call i64 @shout(i8* %p0)\n  ret void"));
-    assert!(out.contains("define i8* @osprey_greet(i8* %p0) {"));
-    assert!(out.contains("define double @osprey_scaled(i64 %p0) {"));
-    assert!(out.contains("define i64 @osprey_total(i64 %p0, i64 %p1) {"));
+    shows(
+        &out,
+        &[
+            "define i8* @osprey_greet(i8* %p0) {",
+            "define double @osprey_scaled(i64 %p0) {",
+            "define i64 @osprey_total(i64 %p0, i64 %p1) {",
+        ],
+    );
     assert!(with_host_abi("; no entry here", &abi).is_err());
 }
 
@@ -277,8 +288,10 @@ fn unsupported_extern_signatures_report_the_c_boundary_restriction() {
 fn renaming_imports_preserves_strings_and_similarly_prefixed_symbols() {
     let (abi, ir) = abi_of("extern fn host_flag(b: bool) -> bool\nfn host_flag_more(b) = host_flag(b)\nfn text() = \"@host_flag( @main(\"\n");
     let out = with_host_abi(&ir, &abi).expect("adapted");
-    assert!(out.contains("c\"@host_flag( @main(\\00\""), "{out}");
-    assert!(out.contains("define i1 @host_flag_more("), "{out}");
+    shows(
+        &out,
+        &["c\"@host_flag( @main(\\00\"", "define i1 @host_flag_more("],
+    );
 }
 
 #[test]

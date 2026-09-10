@@ -43,18 +43,11 @@ impl Target {
 
 /// Unsupported options fail even when only checking a program. [ANDROID-TARGET-OPTIONS]
 pub(crate) fn validate(cli: &Cli) -> Result<(), ExitCode> {
-    if let Some(code) = crate::reject_debug_cross_target(cli) {
-        return Err(code);
-    }
-    if cli.memory != "default" {
-        return Err(fail(
-            "Android supports --memory=default; other runtime archives are not available",
-        ));
-    }
-    if cli.mode == "--run" {
-        return Err(fail("Android produces an app-logic library; use --compile and call it from an Android host (see examples/mobile/android/)"));
-    }
-    Ok(())
+    crate::reject_cross_target_options(
+        cli,
+        "Android",
+        Some("an Android host (see examples/mobile/android/)"),
+    )
 }
 
 pub(crate) fn source(
@@ -73,11 +66,7 @@ pub(crate) fn build(
     out: &Path,
     target: Target,
 ) -> Result<(), ExitCode> {
-    if out.extension().and_then(|e| e.to_str()) != Some("a") {
-        return Err(fail(
-            "Android output must end in .a; a matching .h is generated beside it",
-        ));
-    }
+    crate::toolchain::validate_archive_output(out, "Android").map_err(|e| fail(&e))?;
     let (ir, header) = source(program, path, target).map_err(|e| fail(&e))?;
     let bin = ndk_bin().map_err(|e| fail(&e))?;
     let runtime = find_runtime_lib(target.runtime()).ok_or_else(|| {

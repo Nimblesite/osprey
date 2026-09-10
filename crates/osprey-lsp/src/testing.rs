@@ -338,6 +338,7 @@ pub(crate) fn test_case_hover(program: &Program, line: u32) -> Option<String> {
 )]
 mod tests {
     use super::*;
+    use crate::testkit::shows;
     use osprey_syntax::{parse_program, parse_program_with_flavor, Flavor};
 
     fn program(src: &str) -> Program {
@@ -722,8 +723,7 @@ test(\"undocumented\", fn() => expect(add(1, 1), 2))
         let program = program(DOCUMENTED);
         let hov = test_case_hover(&program, 22).expect("hover on the `test(` line");
         assert!(hov.starts_with("**Test:** commutes"), "{hov}");
-        assert!(hov.contains("Addition is commutative."), "{hov}");
-        assert!(hov.contains("**Parameters**"), "full doc, not just summary");
+        shows(&hov, &["Addition is commutative.", "**Parameters**"]);
         // A line with no test case declared on it has no test hover at all.
         assert_eq!(test_case_hover(&program, 1), None);
         assert_eq!(test_case_hover(&program, 999), None);

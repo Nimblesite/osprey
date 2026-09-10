@@ -420,6 +420,32 @@ under-approximating:
 - A row variable that is not yet instantiated has no dependency set. The
   dependency set of a stage-polymorphic function is known at each call site,
   not at its definition.
+- **Where an instantiation may be written.** A written instantiation *is* the
+  identity, so only a `static effect` may carry one at a request or a handler:
+  `perform Signal<Count>.read()` and `handle Signal<Count>` name a static
+  effect. A **dynamic** effect takes its instantiation from inference and both
+  its mention forms omit the arguments — `perform Signal.read()` and
+  `handle Signal` — because a runtime handler is installed under a key the
+  source did not write. A **row** is the exception in the other direction: it
+  states a type, not a mention, so `!Signal<int>` and `![Read<T>, Write<T>]`
+  pin their arguments in either stage.
+
+  ```osprey
+  effect Stash<T> { take: fn() -> T }
+
+  // Accepted — the row pins, the mentions infer.
+  fn held() !Stash<int> = perform Stash.take()
+  fn main() = print("${handle Stash take => 9 do held()}")
+
+  // Rejected — `Stash` is dynamic, so neither mention may write `<int>`:
+  //   perform Stash<int>.take()
+  //   handle Stash<int> take => 9 do ...
+  ```
+
+  That a runtime handler key happens to be mangled per instantiation does not
+  license the written form: the key is an implementation of the identity, not a
+  second way to spell it. Declare `static effect Stash` when the program needs
+  to name one instantiation apart from another.
 
 `[STAGE-SIGNALS-REBUILD]` A UI framework consuming this uses the dependency set
 as its dirty set directly: when a signal changes, the subtrees to rebuild are

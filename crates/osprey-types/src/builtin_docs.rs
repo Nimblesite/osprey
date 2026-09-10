@@ -172,6 +172,7 @@ fn append_example(out: &mut String, example: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testkit::shows;
     use std::collections::BTreeSet;
 
     #[test]
@@ -204,11 +205,16 @@ mod tests {
         // `sleep`'s doc historically claimed `-> int`; the scheme says `-> Unit`,
         // and the rendered hover must follow the scheme, not the stale prose.
         let md = builtin_hover_markdown("sleep").expect("sleep is documented");
-        assert!(md.contains("sleep(milliseconds: int) -> Unit"), "{md}");
-        assert!(md.contains("Pauses execution"), "{md}");
-        assert!(md.contains("**Parameters**"), "{md}");
-        assert!(md.contains("**Returns** `Unit`"), "{md}");
-        assert!(md.contains("**Example**"), "{md}");
+        shows(
+            &md,
+            &[
+                "sleep(milliseconds: int) -> Unit",
+                "Pauses execution",
+                "**Parameters**",
+                "**Returns** `Unit`",
+                "**Example**",
+            ],
+        );
         assert!(builtin_hover_markdown("notARealBuiltin").is_none());
     }
 

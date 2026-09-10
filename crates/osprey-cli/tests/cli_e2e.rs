@@ -134,16 +134,27 @@ fn run_file_cc(path: &Path, mode: &str, cc: &str) -> Out {
     finish(cmd)
 }
 
-/// Type-clean but codegen-rejected: a still-generic lambda used as a bare
-/// VALUE has no ABI to fix and no call site to specialise against
-/// ([TYPE-GENERICS-FN]). It passes the type gate, so every compiling mode
-/// reaches codegen and fails there — exercising the `Err` arms
-/// `compile_program` feeds.
+/// Type-clean but codegen-rejected: an FFI callback slot is a raw C code
+/// pointer, so a capturing lambda has nowhere to carry its environment
+/// ([FFI-CALLBACKS]). It passes the type gate, so every compiling mode reaches
+/// codegen and fails there — exercising the `Err` arms `compile_program` feeds.
 ///
-/// This used to bind the value first (`let f = mk(1)` then `f(0)`). That shape
-/// now COMPILES: the returned lambda is inlined at each call site of the
-/// binding, so it no longer reaches a codegen error and could not exercise
-/// these arms.
+/// `(x + base) ?: 0` discharges the arithmetic `Result`; without it the lambda
+/// is `(int) -> Result<int, MathError>` and the type gate rejects the call
+/// before codegen sees the capture.
+const CODEGEN_REJECTED: &str = concat!(
+    "extern fn registerCallback(cb: fn(int) -> int) -> int\n",
+    "let base = 10\n",
+    "let r = registerCallback(fn(x) => (x + base) ?: 0)\n",
+    "print(\"${r}\")\n",
+);
+
+/// A still-generic lambda used as a bare VALUE: no ABI to fix and no call site
+/// to specialise against ([TYPE-GENERICS-FN]).
+///
+/// This drove the two codegen-error tests until the checker learned to reject
+/// it, which is a strictly better place to catch it. It stays here to pin
+/// WHERE it is rejected, so the move cannot happen again unnoticed.
 const GENERIC_AS_VALUE: &str = "fn mk<T>(x: T) = |y| => x\nprint(\"${mk(1)}\")\n";
 
 /// Explicit effect resume must run the rest of the handled computation and then
@@ -727,7 +738,7 @@ fn quiet_suppresses_the_ok_line() {
 
 #[test]
 fn llvm_reports_a_codegen_error() {
-    let prog = temp_osp("cgllvm", GENERIC_AS_VALUE);
+    let prog = temp_osp("cgllvm", CODEGEN_REJECTED);
     let o = run_file(&prog, &["--llvm"]);
     assert_ne!(o.code, Some(0));
     assert!(o.stderr.contains("codegen"), "{}", o.stderr);
@@ -735,10 +746,28 @@ fn llvm_reports_a_codegen_error() {
 
 #[test]
 fn run_reports_a_codegen_error() {
-    let prog = temp_osp("cgrun", GENERIC_AS_VALUE);
+    let prog = temp_osp("cgrun", CODEGEN_REJECTED);
     let o = run_file(&prog, &["--run"]);
     assert_ne!(o.code, Some(0));
     assert!(o.stderr.contains("codegen"), "{}", o.stderr);
+}
+
+#[test]
+fn a_generic_closure_value_is_rejected_by_the_type_gate() {
+    // The two tests above assert a CODEGEN failure, so they go quiet the moment
+    // their input starts being rejected earlier — which is exactly what happened
+    // to this program. Pinning the checker's message here means a future move of
+    // the gate fails a test that names the gate, instead of silently draining
+    // the codegen arms of coverage.
+    let prog = temp_osp("genval", GENERIC_AS_VALUE);
+    let o = run_file(&prog, &["--llvm"]);
+    assert_ne!(o.code, Some(0));
+    assert!(
+        o.stderr
+            .contains("a closure value with a still-generic type cannot be interpolated"),
+        "{}",
+        o.stderr
+    );
 }
 
 #[test]
@@ -1416,4 +1445,87 @@ fn error_result_assertions_render_the_error() {
         o.stdout
     );
     assert!(o.stdout.contains("not ok 1 - div"), "{}", o.stdout);
+}
+
+/// The whole call-site type-application pipeline — parse, check, lower, emit,
+/// link, run — for the shape that has no other spelling: a binder appearing in
+/// no parameter position. [TYPE-GENERICS-APPLY]
+#[test]
+fn a_written_type_argument_pins_an_instantiation_end_to_end() {
+    let prog = temp_osp(
+        "turbofish_run",
+        "fn identity<T>(x: T) -> T = x\n\
+         fn emptyOf<T>() -> List<T> = []\n\
+         fn pickOf<T, U>(first: T, second: U) -> T = first\n\
+         let n = identity<int>(5)\n\
+         let s = identity<string>(\"os\")\n\
+         let nested = length(identity<List<int>>([1, 2]))\n\
+         let empty = length(emptyOf<int>())\n\
+         let kept = pickOf<int, string>(7, \"seven\")\n\
+         print(\"n=${n} s=${s} nested=${nested} empty=${empty} kept=${kept}\")\n",
+    );
+    let o = run_file(&prog, &["--run"]);
+    assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
+    assert_eq!(o.stdout, "n=5 s=os nested=2 empty=0 kept=7\n");
+}
+
+/// The ML twin of the same program prints the same bytes ([FLAVOR-IR-EQUIV]).
+#[test]
+fn the_ml_written_type_argument_prints_the_same_bytes() {
+    let path = std::env::temp_dir().join("osprey_cli_e2e_turbofish_run_ml.ospml");
+    let _ = std::fs::write(
+        &path,
+        "identity<T> : T -> T\n\
+         identity x = x\n\
+         emptyOf<T> : Unit -> List<T>\n\
+         emptyOf () = []\n\
+         pickOf<T, U> : (T, U) -> T\n\
+         pickOf (first, second) = first\n\
+         n = identity<int> 5\n\
+         s = identity<string> \"os\"\n\
+         nested = length (identity<List<int>> [1, 2])\n\
+         empty = length (emptyOf<int> ())\n\
+         kept = pickOf<int, string> (7, \"seven\")\n\
+         print \"n=${n} s=${s} nested=${nested} empty=${empty} kept=${kept}\"\n",
+    );
+    let o = run_file(&path, &["--run"]);
+    assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
+    assert_eq!(o.stdout, "n=5 s=os nested=2 empty=0 kept=7\n");
+}
+
+/// A written list that misses the declared binder count is rejected before
+/// anything is emitted, naming both counts. [TYPE-GENERICS-APPLY]
+#[test]
+fn a_written_type_argument_count_mismatch_is_rejected_by_the_cli() {
+    let prog = temp_osp(
+        "turbofish_arity",
+        "fn identity<T>(x: T) -> T = x\n\
+         print(\"${identity<int, string>(5)}\")\n",
+    );
+    let o = run_file(&prog, &["--check"]);
+    assert_ne!(o.code, Some(0), "stdout={}", o.stdout);
+    assert!(
+        o.stderr
+            .contains("function `identity` takes 1 type argument(s), got 2"),
+        "stderr={}",
+        o.stderr
+    );
+}
+
+/// A written argument contradicting the value argument is a type error, not a
+/// silently ignored annotation. [TYPE-GENERICS-APPLY]
+#[test]
+fn a_contradicting_written_type_argument_is_rejected_by_the_cli() {
+    let prog = temp_osp(
+        "turbofish_contradiction",
+        "fn identity<T>(x: T) -> T = x\n\
+         print(\"${identity<int>(\\\"text\\\")}\")\n",
+    );
+    let o = run_file(&prog, &["--check"]);
+    assert_ne!(o.code, Some(0), "stdout={}", o.stdout);
+    assert!(
+        o.stderr.contains("cannot unify int with string"),
+        "stderr={}",
+        o.stderr
+    );
 }

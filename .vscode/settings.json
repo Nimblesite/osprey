@@ -30,7 +30,7 @@
     "rust-analyzer.check.allTargets": true,
     "basilisk.enabled": true,
     "basilisk.uv.enabled": true,
-    "deslop.topOffenders.groupBy": "type",
+    "deslop.topOffenders.groupBy": "kind",
     "deslop.embedding.provider": "ollama",
     "deslop.embedding.model": "nomic-embed-text",
     "deslop.embedding.mode": "auto"

@@ -178,17 +178,13 @@ mod tests {
             statements: vec![
                 effect(
                     "Choice",
-                    crate::Stage::Dynamic,
+                    Stage::Dynamic,
                     vec![
                         operation("pick", Some(Multiplicity::Many), false),
                         operation("seed", None, true),
                     ],
                 ),
-                effect(
-                    "Tile",
-                    crate::Stage::Static,
-                    vec![operation("size", None, false)],
-                ),
+                effect("Tile", Stage::Static, vec![operation("size", None, false)]),
             ],
         };
         let table = OperationTable::collect(&program);

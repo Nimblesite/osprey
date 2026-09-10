@@ -25,7 +25,7 @@ no consumer can forget to run the pass. That ordering is the whole design: four
 features that would each need their own machinery instead fall out of one pass.
 
 The one thing that must *not* run after it is the dependency query, since
-discharge is what erases the dependencies. `osprey_syntax::dependency_sets`
+discharge is what erases the dependencies. `osprey_syntax::dependency_report`
 parses without discharging and is the only supported way to read a row's
 dependency set.
 
@@ -75,7 +75,7 @@ arm is reported against the substituted code, not the arm as written.
   and each region specializes the helpers it reaches — so two regions may
   answer the same effect differently in one program, which
   `staged_effects.test.osp` pins.
-- `osprey --deps` and `osprey_syntax::dependency_sets`, reporting each
+- `osprey --deps` and `osprey_syntax::dependency_report`, reporting each
   function's dependency set from the pre-discharge AST.
 - `crates/osprey-ast/src/mutate.rs`, the by-unique-reference twin of `visit`,
   which any future rewriting pass reuses.
@@ -318,7 +318,7 @@ replaced it.
 - `[STAGE-SIGNALS-EXACT]` — signal identity is the generic instantiation, so
   `Signal<Count>` and `Signal<Cursor>` are distinct dependencies. **Delivered.**
   The instantiation is written at the `perform` and `handle` sites, travels in
-  the effect mention itself, and `dependency_sets` reports `Signal<Count>.read`
+  the effect mention itself, and `dependency_report` reports `Signal<Count>.read`
   and `Signal<Cursor>.read` as two entries. Identity is representable only at
   the static stage: a dynamic handler is keyed by effect name at runtime, so an
   instantiated mention of a dynamic effect is REJECTED naming that reason rather
@@ -338,7 +338,7 @@ replaced it.
 - [x] Region-stack rewrite with per-region helper specialization
 - [x] `tests/effects/staged/staged_effects.test.osp` + golden
 - [x] Five must-reject fixtures with `.expectedoutput`
-- [x] `osprey --deps` + `osprey_syntax::dependency_sets`
+- [x] `osprey --deps` + `osprey_syntax::dependency_report`
 - [x] Falsification gate run and recorded
 - [x] `crates/osprey-cli/tests/staged_effects.rs`: residue asserted against the
       emitted IR, with the dynamic control case that proves it can fail

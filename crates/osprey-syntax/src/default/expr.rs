@@ -199,7 +199,7 @@ impl Lowerer<'_> {
     }
 
     fn lower_call(&self, node: Node<'_>) -> Expr {
-        let callee = self.lower_expr_field(node, "callee");
+        let mut callee = self.lower_expr_field(node, "callee");
         if let Some(member) = node.child_by_field_name("member") {
             return Expr::FieldAccess {
                 target: Box::new(callee),
@@ -212,20 +212,28 @@ impl Lowerer<'_> {
                 index: Box::new(self.lower_expr(index)),
             };
         }
-        // function/method call. UFCS [BUILTIN-STRING-UFCS]: `x.f(a, …)` is
-        // sugar for `f(x, a, …)`, so a
-        // field-access callee lowers to an ordinary call with the receiver as the
-        // first positional argument — keeping method calls invisible downstream.
-        let (mut arguments, named_arguments) = self.lower_arg_list(node);
+        // Keep an ordinary dotted call until inference can distinguish a
+        // callable record field from receiver-first sugar [BUILTIN-STRING-UFCS].
+        // Written type arguments apply a named function's declared binders.
+        let (arguments, named_arguments) = self.lower_arg_list(node);
+        if let Some(args) = node.child_by_field_name("type_arguments") {
+            callee = Expr::TypeApply {
+                function: Box::new(callee),
+                type_args: self
+                    .named_of_kind(args, "type_list")
+                    .into_iter()
+                    .flat_map(|list| self.lower_type_list(list))
+                    .collect(),
+                position: Some(self.pos(node)),
+            };
+        }
         match callee {
-            Expr::FieldAccess { target, field } => {
-                arguments.insert(0, *target);
-                Expr::Call {
-                    function: Box::new(Expr::Identifier(field)),
-                    arguments,
-                    named_arguments,
-                }
-            }
+            Expr::FieldAccess { target, field } => Expr::MethodCall {
+                target,
+                method: field,
+                arguments,
+                named_arguments,
+            },
             // A saturated call of a positionally-declared constructor is a
             // construction, not a call ([TYPE-UNION-POSITIONAL]) — the one
             // call-shaped expression exempt from the named-argument rule,
@@ -453,7 +461,10 @@ fn fragment_prefix() -> u32 {
 }
 
 fn parse_fragment(frag: &str) -> Expr {
-    let parsed = crate::parse_program(&format!("{FRAGMENT_BINDING}{frag}\n"));
+    let parsed = super::parse(&format!("{FRAGMENT_BINDING}{frag}\n"));
+    if !parsed.errors.is_empty() {
+        return Expr::Identifier(frag.trim().to_owned());
+    }
     match parsed.program.statements.into_iter().next() {
         Some(Stmt::Let { value, .. }) => value,
         _ => Expr::Identifier(frag.trim().to_string()),
@@ -605,18 +616,17 @@ mod tests {
             Expr::Call { arguments, .. } => assert_eq!(arguments.len(), 2),
             other => panic!("expected call, got {other:?}"),
         }
-        // UFCS field-access call `o.m(1)` -> Call(m, [o, 1]).
-        match let_value("let r = o.m(1)\n") {
-            Expr::Call {
-                function,
-                arguments,
-                ..
-            } => {
-                assert!(matches!(*function, Expr::Identifier(ref n) if n == "m"));
-                assert_eq!(arguments.len(), 2);
+        // [BUILTIN-STRING-UFCS] Preserve the receiver until type checking can
+        // select its callable field or the free-function fallback.
+        assert_eq!(
+            let_value("let r = o.m(1)\n"),
+            Expr::MethodCall {
+                target: Box::new(Expr::Identifier("o".into())),
+                method: "m".into(),
+                arguments: vec![Expr::Integer(1)],
+                named_arguments: vec![],
             }
-            other => panic!("expected call, got {other:?}"),
-        }
+        );
         // Plain field access and indexing.
         assert!(matches!(
             let_value("let r = o.field\n"),

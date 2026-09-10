@@ -9,7 +9,7 @@
 //! which is the affine rule multiplicity enforces.
 //! Implements [EFFECTS-RESUME], [MULTI-HANDLE-ONCE].
 
-use crate::{Expr, InterpolatedPart, Stmt};
+use crate::{AstNode, Expr, Stmt};
 
 /// True when `e` contains a `resume` belonging to the ENCLOSING handler arm —
 /// a nested handler's body owns its own `resume`s, so they don't count.
@@ -17,66 +17,19 @@ use crate::{Expr, InterpolatedPart, Stmt};
 pub fn contains_resume(e: &Expr) -> bool {
     match e {
         Expr::Resume(_) => true,
-        Expr::InterpolatedStr(parts) => parts
-            .iter()
-            .any(|p| matches!(p, crate::InterpolatedPart::Expr(inner) if contains_resume(inner))),
-        Expr::List(xs, _) => xs.iter().any(contains_resume),
-        Expr::Map(entries) => entries
-            .iter()
-            .any(|entry| contains_resume(&entry.key) || contains_resume(&entry.value)),
-        Expr::Object(fields)
-        | Expr::TypeConstructor { fields, .. }
-        | Expr::Update { fields, .. } => fields.iter().any(|f| contains_resume(&f.value)),
-        Expr::Binary { left, right, .. } | Expr::Pipe { left, right } => {
-            contains_resume(left) || contains_resume(right)
-        }
-        Expr::Unary { operand, .. } => contains_resume(operand),
-        Expr::Call {
-            function,
-            arguments,
-            named_arguments,
-        } => {
-            contains_resume(function)
-                || arguments.iter().any(contains_resume)
-                || named_arguments.iter().any(|n| contains_resume(&n.value))
-        }
-        Expr::MethodCall {
-            target,
-            arguments,
-            named_arguments,
-            ..
-        } => {
-            contains_resume(target)
-                || arguments.iter().any(contains_resume)
-                || named_arguments.iter().any(|n| contains_resume(&n.value))
-        }
-        Expr::FieldAccess { target, .. } => contains_resume(target),
-        Expr::Index { target, index } => contains_resume(target) || contains_resume(index),
-        Expr::Lambda { body, .. } | Expr::Spawn(body) | Expr::Await(body) | Expr::Recv(body) => {
-            contains_resume(body)
-        }
-        Expr::Yield(Some(value)) => contains_resume(value),
-        Expr::Send { channel, value } => contains_resume(channel) || contains_resume(value),
-        Expr::Match { value, arms } => {
-            contains_resume(value) || arms.iter().any(|arm| contains_resume(&arm.body))
-        }
-        Expr::Block { statements, value } => {
-            statements.iter().any(stmt_contains_resume)
-                || value.as_deref().is_some_and(contains_resume)
-        }
-        Expr::Select { arms } => arms.iter().any(|arm| contains_resume(&arm.body)),
-        Expr::Perform {
-            arguments,
-            named_arguments,
-            ..
-        } => {
-            arguments.iter().any(contains_resume)
-                || named_arguments.iter().any(|n| contains_resume(&n.value))
-        }
-        // A nested handler owns its own `resume`; do not mark the outer handler
-        // as a resuming region because of it.
+        // Only the handled body belongs to the enclosing arm.
         Expr::Handler { body, .. } => contains_resume(body),
-        _ => false,
+        _ => {
+            let mut found = false;
+            AstNode::Expression(e).for_each_child(|child| {
+                found = found
+                    || match child {
+                        AstNode::Statement(statement) => stmt_contains_resume(statement),
+                        AstNode::Expression(expression) => contains_resume(expression),
+                    };
+            });
+            found
+        }
     }
 }
 
@@ -133,74 +86,14 @@ pub fn resumes_on_one_path(body: &Expr) -> u32 {
 
 /// Sum the path length of every child evaluated on the way through `body`.
 fn sequential_children(body: &Expr) -> u32 {
-    let each = |xs: &[Expr]| xs.iter().map(resumes_on_one_path).sum();
-    match body {
-        Expr::InterpolatedStr(parts) => parts
-            .iter()
-            .map(|part| match part {
-                InterpolatedPart::Expr(inner) => resumes_on_one_path(inner),
-                InterpolatedPart::Text(_) => 0,
-            })
-            .sum(),
-        Expr::List(values, _) => each(values),
-        Expr::Map(entries) => entries
-            .iter()
-            .map(|entry| resumes_on_one_path(&entry.key) + resumes_on_one_path(&entry.value))
-            .sum(),
-        Expr::Object(fields)
-        | Expr::TypeConstructor { fields, .. }
-        | Expr::Update { fields, .. } => fields.iter().map(|f| resumes_on_one_path(&f.value)).sum(),
-        Expr::Binary { left, right, .. } | Expr::Pipe { left, right } => {
-            resumes_on_one_path(left) + resumes_on_one_path(right)
-        }
-        Expr::Unary { operand, .. } => resumes_on_one_path(operand),
-        Expr::Call {
-            function,
-            arguments,
-            named_arguments,
-        } => {
-            resumes_on_one_path(function)
-                + each(arguments)
-                + named_arguments
-                    .iter()
-                    .map(|n| resumes_on_one_path(&n.value))
-                    .sum::<u32>()
-        }
-        Expr::MethodCall {
-            target,
-            arguments,
-            named_arguments,
-            ..
-        } => {
-            resumes_on_one_path(target)
-                + each(arguments)
-                + named_arguments
-                    .iter()
-                    .map(|n| resumes_on_one_path(&n.value))
-                    .sum::<u32>()
-        }
-        Expr::FieldAccess { target, .. } => resumes_on_one_path(target),
-        Expr::Index { target, index } => resumes_on_one_path(target) + resumes_on_one_path(index),
-        Expr::Spawn(inner) | Expr::Await(inner) | Expr::Recv(inner) => resumes_on_one_path(inner),
-        Expr::Yield(value) => value.as_deref().map_or(0, resumes_on_one_path),
-        Expr::Send { channel, value } => resumes_on_one_path(channel) + resumes_on_one_path(value),
-        Expr::Block { statements, value } => {
-            statements.iter().map(statement_resumes).sum::<u32>()
-                + value.as_deref().map_or(0, resumes_on_one_path)
-        }
-        Expr::Perform {
-            arguments,
-            named_arguments,
-            ..
-        } => {
-            each(arguments)
-                + named_arguments
-                    .iter()
-                    .map(|n| resumes_on_one_path(&n.value))
-                    .sum::<u32>()
-        }
-        _ => 0,
-    }
+    let mut total = 0;
+    AstNode::Expression(body).for_each_child(|child| {
+        total += match child {
+            AstNode::Statement(statement) => statement_resumes(statement),
+            AstNode::Expression(expression) => resumes_on_one_path(expression),
+        };
+    });
+    total
 }
 
 fn statement_resumes(stmt: &Stmt) -> u32 {

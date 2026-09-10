@@ -80,7 +80,9 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
 
 fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> Result<String> {
     let options = with_kernel_mode(options)?;
-    let prog = osprey_types::infer_program(program);
+    let mut prog = osprey_types::infer_program(program);
+    let elaborated = prog.elaborate_calls(program);
+    let program = &elaborated;
     let mut cg = Codegen::with_options(prog, options);
     // Seed the coverage denominator from the source, not from what lowering
     // happens to reach [TESTING-COVERAGE-CODEGEN].
@@ -234,9 +236,20 @@ fn record_declarations(cg: &mut Codegen, program: &Program) {
             // A union an extern claims to return loses its MASK_DIRECT proof
             // (builder.rs `field_meta`); record those before any layout lands.
             Stmt::Extern {
-                return_type: Some(t),
+                name,
+                parameters,
+                return_type,
                 ..
-            } => cg.poison_extern_ret(t),
+            } => {
+                // Implements [CALL-ARGUMENTS] without changing foreign ABI identity.
+                let _ = cg.extern_params.insert(
+                    name.clone(),
+                    parameters.iter().map(|p| p.name.clone()).collect(),
+                );
+                if let Some(t) = return_type {
+                    cg.poison_extern_ret(t);
+                }
+            }
             _ => {}
         }
     }
@@ -277,6 +290,7 @@ fn gen_function(
                     ty: LType::I64,
                     result_inner: None,
                     fiber: None,
+                    inferred_type: None,
                 },
                 None,
             );
@@ -305,7 +319,12 @@ fn gen_function(
     let mut params = Vec::new();
     for (i, (p, (pty, owner))) in parameters.iter().zip(param_sig.iter()).enumerate() {
         let reg = crate::llty::param_register(i);
-        let v = crate::cast::incoming_param(cg, format!("%{reg}"), pty.clone(), owner.clone());
+        let mut v = crate::cast::incoming_param(cg, format!("%{reg}"), pty.clone(), owner.clone());
+        v.inferred_type = cg
+            .prog
+            .param_types(name)
+            .and_then(|types| types.get(i))
+            .cloned();
         cg.emit_debug_param(&p.name, &v);
         cg.bind(p.name.clone(), v);
         params.push((pty.ty, reg));

@@ -39,8 +39,8 @@ impl ModuleLower {
                 type_params,
                 ty,
                 effects,
-                ..
-            } => self.pending = Some((MlSig::new(name, type_params, ty, effects), visibility)),
+                pos,
+            } => self.pending = Some((MlSig::new(name, type_params, ty, effects, pos), visibility)),
             MlItem::Binding {
                 mutable,
                 name,

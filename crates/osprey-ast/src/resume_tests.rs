@@ -33,18 +33,18 @@ fn field(value: Expr) -> crate::FieldAssignment {
         value,
     }
 }
-fn assert_all_contain(cases: &[Expr]) {
-    for e in cases {
-        assert!(contains_resume(e), "resume not found in {e:?}");
-    }
-}
-
-#[test]
-fn walks_literal_and_data_container_forms() {
-    assert_all_contain(&[
-        Expr::InterpolatedStr(vec![crate::InterpolatedPart::Expr(r())]),
+/// Every expression form that holds a sub-expression in a **container**
+/// position, each built around exactly one `resume()`. The containment walk and
+/// the one-path count must both cross all of them, so the list is stated once
+/// here instead of once per test, where the two copies could drift apart.
+fn container_forms() -> Vec<Expr> {
+    vec![
+        Expr::InterpolatedStr(vec![
+            InterpolatedPart::Text("t".into()),
+            InterpolatedPart::Expr(r()),
+        ]),
         Expr::List(vec![r()], None),
-        Expr::Map(vec![crate::MapEntry {
+        Expr::Map(vec![MapEntry {
             key: r(),
             value: Expr::Integer(0),
         }]),
@@ -71,16 +71,23 @@ fn walks_literal_and_data_container_forms() {
             op: "-".into(),
             operand: b(r()),
         },
-    ]);
+    ]
 }
 
-#[test]
-fn walks_call_control_and_concurrency_forms() {
-    assert_all_contain(&[
+/// The call, field and concurrency forms — still one sequential path each, so
+/// they too are crossed exactly once. Positional and named argument lists are
+/// both listed, because they are separate positions in the walk.
+fn call_forms() -> Vec<Expr> {
+    vec![
+        Expr::Call {
+            function: b(Expr::Identifier("f".into())),
+            arguments: vec![r()],
+            named_arguments: Vec::new(),
+        },
         Expr::Call {
             function: b(Expr::Identifier("f".into())),
             arguments: Vec::new(),
-            named_arguments: vec![crate::NamedArgument {
+            named_arguments: vec![NamedArgument {
                 name: "a".into(),
                 value: r(),
             }],
@@ -99,12 +106,6 @@ fn walks_call_control_and_concurrency_forms() {
             target: b(Expr::Identifier("xs".into())),
             index: b(r()),
         },
-        Expr::Lambda {
-            parameters: Vec::new(),
-            return_type: None,
-            body: b(r()),
-            position: None,
-        },
         Expr::Spawn(b(r())),
         Expr::Await(b(r())),
         Expr::Recv(b(r())),
@@ -113,16 +114,6 @@ fn walks_call_control_and_concurrency_forms() {
             channel: b(Expr::Integer(0)),
             value: b(r()),
         },
-        Expr::Match {
-            value: b(r()),
-            arms: Vec::new(),
-        },
-        Expr::Select {
-            arms: vec![crate::MatchArm {
-                pattern: crate::Pattern::Wildcard,
-                body: r(),
-            }],
-        },
         Expr::Perform {
             effect: "E".into(),
             operation: "o".into(),
@@ -130,7 +121,45 @@ fn walks_call_control_and_concurrency_forms() {
             named_arguments: Vec::new(),
             position: None,
         },
-    ]);
+    ]
+}
+
+/// The forms whose sub-expression is NOT on one sequential path: a lambda body
+/// runs later, and `match`/`select` arms are alternatives. The walk still finds
+/// a `resume` inside them — the one-path count deliberately does not cross them.
+fn branching_forms() -> Vec<Expr> {
+    vec![
+        Expr::Lambda {
+            parameters: Vec::new(),
+            return_type: None,
+            body: b(r()),
+            position: None,
+        },
+        Expr::Match {
+            value: b(r()),
+            arms: Vec::new(),
+        },
+        Expr::Select {
+            arms: vec![arm(r())],
+        },
+    ]
+}
+
+fn assert_all_contain(cases: &[Expr]) {
+    for e in cases {
+        assert!(contains_resume(e), "resume not found in {e:?}");
+    }
+}
+
+#[test]
+fn walks_literal_and_data_container_forms() {
+    assert_all_contain(&container_forms());
+}
+
+#[test]
+fn walks_call_control_and_concurrency_forms() {
+    assert_all_contain(&call_forms());
+    assert_all_contain(&branching_forms());
 }
 
 #[test]
@@ -139,7 +168,7 @@ fn negatives_and_statement_walks() {
     assert!(!contains_resume(&Expr::Integer(1)));
     assert!(!contains_resume(&Expr::Yield(None)));
     let import_only = Expr::Block {
-        statements: vec![crate::Stmt::Import(crate::ImportDecl {
+        statements: vec![Stmt::Import(crate::ImportDecl {
             target: crate::ImportTarget {
                 namespace: crate::NamespaceName::Identifier("m".into()),
                 path: crate::SymbolPath::default(),
@@ -153,7 +182,7 @@ fn negatives_and_statement_walks() {
     assert!(!contains_resume(&import_only));
     // Assignment statements inside blocks are walked.
     let assign = Expr::Block {
-        statements: vec![crate::Stmt::Assignment {
+        statements: vec![Stmt::Assignment {
             name: "x".into(),
             value: r(),
             position: None,
@@ -180,7 +209,7 @@ fn finds_resume_through_blocks_but_not_nested_handlers() {
     let nested = Expr::Handler {
         stage: crate::Stage::Dynamic,
         effect: "E".into(),
-        arms: vec![crate::HandlerArm {
+        arms: vec![HandlerArm {
             operation: "op".into(),
             params: Vec::new(),
             body: Expr::Resume(None),
@@ -250,87 +279,10 @@ fn select_branches_and_lambdas_and_nested_handlers() {
 
 #[test]
 fn every_sequential_position_is_crossed() {
-    let cases = [
-        Expr::InterpolatedStr(vec![
-            InterpolatedPart::Text("t".into()),
-            InterpolatedPart::Expr(r()),
-        ]),
-        Expr::List(vec![r()], None),
-        Expr::Map(vec![MapEntry {
-            key: r(),
-            value: Expr::Integer(0),
-        }]),
-        Expr::Object(vec![field(r())]),
-        Expr::TypeConstructor {
-            name: "C".into(),
-            type_args: Vec::new(),
-            fields: vec![field(r())],
-        },
-        Expr::Update {
-            record: "r".into(),
-            fields: vec![field(r())],
-        },
-        Expr::Binary {
-            op: "+".into(),
-            left: b(Expr::Integer(1)),
-            right: b(r()),
-        },
-        Expr::Pipe {
-            left: b(r()),
-            right: b(Expr::Identifier("f".into())),
-        },
-        Expr::Unary {
-            op: "-".into(),
-            operand: b(r()),
-        },
-        Expr::Call {
-            function: b(Expr::Identifier("f".into())),
-            arguments: vec![r()],
-            named_arguments: Vec::new(),
-        },
-        Expr::MethodCall {
-            target: b(r()),
-            method: "m".into(),
-            arguments: Vec::new(),
-            named_arguments: Vec::new(),
-        },
-        Expr::FieldAccess {
-            target: b(r()),
-            field: "x".into(),
-        },
-        Expr::Index {
-            target: b(Expr::Identifier("xs".into())),
-            index: b(r()),
-        },
-        Expr::Spawn(b(r())),
-        Expr::Await(b(r())),
-        Expr::Recv(b(r())),
-        Expr::Yield(Some(b(r()))),
-        Expr::Send {
-            channel: b(Expr::Integer(0)),
-            value: b(r()),
-        },
-        Expr::Perform {
-            effect: "E".into(),
-            operation: "op".into(),
-            arguments: vec![r()],
-            named_arguments: Vec::new(),
-            position: None,
-        },
-    ];
-    for case in &cases {
+    for case in container_forms().iter().chain(&call_forms()) {
         assert_eq!(resumes_on_one_path(case), 1, "not crossed: {case:?}");
     }
-    // Named arguments are crossed too, and a value-less `yield` crosses nothing.
-    let named = Expr::Call {
-        function: b(Expr::Identifier("f".into())),
-        arguments: Vec::new(),
-        named_arguments: vec![NamedArgument {
-            name: "a".into(),
-            value: r(),
-        }],
-    };
-    assert_eq!(resumes_on_one_path(&named), 1);
+    // A value-less `yield` and a bare identifier cross nothing.
     assert_eq!(resumes_on_one_path(&Expr::Yield(None)), 0);
     assert_eq!(resumes_on_one_path(&Expr::Identifier("x".into())), 0);
 }

@@ -54,7 +54,10 @@ pub(crate) fn lambda_value(
     }
     let sig = Codegen::fn_value_sig(&cg.prog, ty)
         .ok_or_else(|| CodegenError::invalid("lambda has no inferred function type"))?;
-    emit_closure(cg, parameters, body, &sig)
+    let ty = ty.clone();
+    let mut value = emit_closure(cg, parameters, body, &sig)?;
+    value.inferred_type = Some(ty);
+    Ok(value)
 }
 
 /// Emit a lambda as a closure value with the given signature (the consuming
@@ -130,10 +133,7 @@ pub(crate) fn specialisation_key(target: &str, sig: &FnSig) -> String {
     let semantic_params = sig
         .0
         .iter()
-        .map(|param| match param.result_inner {
-            Some(inner) => format!("Result<{inner}>"),
-            None => param.ty.to_string(),
-        })
+        .map(|param| format!("{param:?}"))
         .collect::<Vec<_>>()
         .join(",");
     format!(
@@ -214,6 +214,9 @@ pub(crate) fn bind_params_from(
     for (i, (p, pty)) in parameters.iter().zip(param_tys).enumerate() {
         let reg = crate::llty::param_register(first + i);
         let value = crate::cast::incoming_param(cg, format!("%{reg}"), pty.clone(), None);
+        if let Some(ty) = &value.inferred_type {
+            cg.bind_fn_local(&p.name, ty.clone());
+        }
         cg.bind(p.name.clone(), value);
         out.push((pty.ty, reg));
     }
@@ -236,6 +239,9 @@ pub(crate) fn reload_captures(cg: &mut Codegen, cell_ty: &str, caps: &[Capture])
         let r = cg.emit_reg(format!("load {lty}, {lty}* {p}"));
         let mut v = c.val.clone();
         v.operand = r;
+        if let Some(ty) = &v.inferred_type {
+            cg.bind_fn_local(&c.name, ty.clone());
+        }
         cg.bind(c.name.clone(), v);
     }
 }
@@ -373,7 +379,17 @@ pub(crate) fn cell_call_exprs(
     for e in exprs {
         vals.push(gen_expr(cg, e)?);
     }
-    let typed = coerce_closure_args(cg, sig, vals)?;
+    cell_call_values(cg, handle, sig, vals)
+}
+
+/// Call using values already lowered against their semantic parameter types.
+pub(crate) fn cell_call_values(
+    cg: &mut Codegen,
+    handle: &str,
+    sig: &FnSig,
+    values: Vec<Value>,
+) -> Result<Value> {
+    let typed = coerce_closure_args(cg, sig, values)?;
     Ok(cell_call(cg, handle, sig, &typed))
 }
 
@@ -421,17 +437,37 @@ pub(crate) fn returned(reg: String, sig: &FnSig) -> Value {
 /// module) a forwarder that drops the env argument and tail-calls the real
 /// function, plus a constant cell pointing at it.
 pub(crate) fn named_fn_cell(cg: &mut Codegen, name: &str) -> Result<Value> {
-    if cg.fn_defs.contains_key(name) {
-        return Err(CodegenError::unsupported(
-            "a generic function as a function value",
-        ));
+    if let Some((parameters, body)) = cg.fn_defs.get(name).cloned() {
+        return specialized_named_cell(cg, name, &parameters, &body);
     }
     let cell = match cg.fnval_cells.get(name) {
         Some(g) => g.clone(),
         None => emit_forwarder(cg, name)?,
     };
     let reg = cg.emit_reg(format!("bitcast {{ i8* }}* {cell} to i8*"));
-    Ok(Value::new(reg, LType::Ptr))
+    let mut value = Value::new(reg, LType::Ptr);
+    value.inferred_type = cg.callee_fn_type(&Expr::Identifier(name.to_owned()));
+    Ok(value)
+}
+
+fn specialized_named_cell(
+    cg: &mut Codegen,
+    name: &str,
+    parameters: &[Parameter],
+    body: &Expr,
+) -> Result<Value> {
+    let ty = cg.callee_fn_type(&Expr::Identifier(name.to_owned()));
+    let Some(ty) = ty.filter(crate::types::fn_value_concrete) else {
+        return Err(CodegenError::unsupported(
+            "a generic function as a function value",
+        ));
+    };
+    let sig = Codegen::fn_value_sig(&cg.prog, &ty)
+        .ok_or_else(|| CodegenError::invalid("function value has no signature"))?;
+    let key = format!("{}|{ty:?}", specialisation_key(name, &sig));
+    let mut value = emit_closure_keyed(cg, parameters, body, &sig, Some(key))?;
+    value.inferred_type = Some(ty);
+    Ok(value)
 }
 
 /// Emit `@__fnval_{name}` (env-dropping forwarder) and its constant cell;

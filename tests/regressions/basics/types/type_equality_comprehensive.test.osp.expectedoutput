@@ -25,6 +25,8 @@ sameRR=true
 sameRB=false
 fn-payload feed accepted: supplied
 fn-payload gate accepted: guarded
+variance produce=4 make=9 items=2 admit=true slot=5 kept=4/7
+applied int=5 text=os nested=2 empty=0 pair=7
 === TYPE EQUALITY COMPLETE ===
 ok 1 - equivalent type shapes compose while union tags remain distinct
 1..1

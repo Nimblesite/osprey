@@ -597,3 +597,118 @@ in perform Signal<Count>.read()
                     (type_identifier
                       (identifier))))
                 operation: (identifier)))))))))
+
+================================================================================
+Call-site type application [TYPE-GENERICS-APPLY]
+================================================================================
+
+fn main() = identity<int>(5)
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (statement
+    (function_declaration
+      name: (identifier)
+      body: (expression
+        (call_expression
+          callee: (expression
+            (primary_expression
+              (identifier)))
+          type_arguments: (type_arguments
+            (type_list
+              (type_identifier
+                (identifier))))
+          (argument_list
+            (expression
+              (primary_expression
+                (literal
+                  (integer))))))))))
+
+================================================================================
+Call-site type application with two arguments [TYPE-GENERICS-APPLY]
+================================================================================
+
+fn main() = pick<int, string>(1, "two")
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (statement
+    (function_declaration
+      name: (identifier)
+      body: (expression
+        (call_expression
+          callee: (expression
+            (primary_expression
+              (identifier)))
+          type_arguments: (type_arguments
+            (type_list
+              (type_identifier
+                (identifier))
+              (type_identifier
+                (identifier))))
+          (argument_list
+            (expression
+              (primary_expression
+                (literal
+                  (integer))))
+            (expression
+              (primary_expression
+                (literal
+                  (string))))))))))
+
+================================================================================
+A nested type argument closes two lists with one angle pair [TYPE-GENERICS-APPLY]
+================================================================================
+
+fn main() = identity<List<int>>([1])
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (statement
+    (function_declaration
+      name: (identifier)
+      body: (expression
+        (call_expression
+          callee: (expression
+            (primary_expression
+              (identifier)))
+          type_arguments: (type_arguments
+            (type_list
+              (generic_type
+                name: (identifier)
+                (type_list
+                  (type_identifier
+                    (identifier))))))
+          (argument_list
+            (expression
+              (primary_expression
+                (literal
+                  (list_literal
+                    (expression
+                      (primary_expression
+                        (literal
+                          (integer))))))))))))))
+
+================================================================================
+A spaced comparison is not type application [TYPE-GENERICS-APPLY]
+================================================================================
+
+fn main() = a < b
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (statement
+    (function_declaration
+      name: (identifier)
+      body: (expression
+        (binary_expression
+          left: (expression
+            (primary_expression
+              (identifier)))
+          right: (expression
+            (primary_expression
+              (identifier))))))))

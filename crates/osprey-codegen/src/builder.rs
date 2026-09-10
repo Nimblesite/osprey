@@ -14,7 +14,7 @@ use std::fmt::Write as _;
 /// Code generation switches that alter the emitted module without changing
 /// Osprey semantics.
 #[derive(Debug, Clone, Default)]
-pub struct CodegenOptions {
+pub(crate) struct CodegenOptions {
     /// Source file identity used for LLVM/DWARF debug metadata.
     pub debug_source: Option<DebugSource>,
     /// Instrument coverable lines with hit counters [TESTING-COVERAGE-CODEGEN].
@@ -26,11 +26,7 @@ pub struct CodegenOptions {
 
 /// A lambda kept for inline application at its direct call sites: its
 /// parameters, its body, and the position inference keyed its type by.
-pub(crate) type LambdaDef = (
-    Vec<osprey_ast::Parameter>,
-    osprey_ast::Expr,
-    Option<osprey_ast::Position>,
-);
+pub(crate) type LambdaDef = (Vec<osprey_ast::Parameter>, Expr, Option<Position>);
 
 /// What the program turned out to CONTAIN — decided while lowering, read once
 /// by `main`'s epilogue. These belong together because they are answered the
@@ -52,7 +48,7 @@ pub(crate) struct Lowered {
 }
 
 /// Accumulates a whole module while lowering one function at a time.
-pub struct Codegen {
+pub(crate) struct Codegen {
     /// `declare` lines, de-duplicated and stably ordered.
     externs: BTreeSet<String>,
     /// Global constant definitions (string literals).
@@ -74,6 +70,9 @@ pub struct Codegen {
 
     /// Declared parameter names per function, for named-argument ordering.
     pub(crate) fn_params: HashMap<String, Vec<String>>,
+    /// Extern parameter names. Kept separate because `fn_params` also identifies
+    /// Osprey functions whose callbacks use closure cells rather than C pointers.
+    pub(crate) extern_params: HashMap<String, Vec<String>>,
     /// Type names an `extern fn` claims to return (every name in the declared
     /// return type expression, conservatively). A foreign pointer typed as a
     /// union would break the `KIND_MASK_DIRECT` all-children-are-ARC-bodies
@@ -145,7 +144,7 @@ pub struct Codegen {
     /// function at each call site so its type variables monomorphize to the
     /// concrete argument types there (specialisation by inlining rather than by
     /// emitting a name-mangled copy per instantiation).
-    pub(crate) fn_defs: HashMap<String, (Vec<osprey_ast::Parameter>, osprey_ast::Expr)>,
+    pub(crate) fn_defs: HashMap<String, (Vec<osprey_ast::Parameter>, Expr)>,
     /// Generic functions currently being inlined — a re-entry guard so a
     /// (mutually) recursive generic call falls back to a direct call instead of
     /// inlining forever.
@@ -300,11 +299,12 @@ impl FiberSig {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ParamSig {
     pub(crate) ty: LType,
     pub(crate) result_inner: Option<LType>,
     pub(crate) fiber: Option<FiberSig>,
+    pub(crate) inferred_type: Option<Type>,
 }
 
 impl ParamSig {
@@ -315,11 +315,13 @@ impl ParamSig {
                 ty: LType::Ptr,
                 result_inner: Some(inner),
                 fiber,
+                inferred_type: Some(ty.clone()),
             },
             None => Self {
                 ty: ltype_of(ty),
                 result_inner: None,
                 fiber,
+                inferred_type: Some(ty.clone()),
             },
         }
     }
@@ -605,18 +607,18 @@ impl DebugState {
 }
 
 impl Codegen {
-    pub fn new() -> Codegen {
+    pub(crate) fn new() -> Codegen {
         Codegen::with_types(ProgramTypes::default())
     }
 
     /// Build with the inferred program types that drive parameter/return/value
     /// typing.
-    pub fn with_types(prog: ProgramTypes) -> Codegen {
+    pub(crate) fn with_types(prog: ProgramTypes) -> Codegen {
         Codegen::with_options(prog, CodegenOptions::default())
     }
 
     /// Build with inferred program types and explicit code generation options.
-    pub fn with_options(prog: ProgramTypes, options: CodegenOptions) -> Codegen {
+    pub(crate) fn with_options(prog: ProgramTypes, options: CodegenOptions) -> Codegen {
         Codegen {
             externs: BTreeSet::new(),
             globals: Vec::new(),
@@ -631,6 +633,7 @@ impl Codegen {
             scope_ids: Vec::new(),
             next_scope_id: 0,
             fn_params: HashMap::new(),
+            extern_params: HashMap::new(),
             extern_ret_types: BTreeSet::new(),
             nullary_singletons: HashMap::new(),
             prog,
@@ -702,6 +705,11 @@ impl Codegen {
     /// [TYPE-FN-HIGHER-ORDER].
     pub(crate) fn callee_fn_type(&self, expr: &Expr) -> Option<Type> {
         match expr {
+            Expr::TypeApply {
+                function, position, ..
+            } => self
+                .callee_fn_type(function)
+                .map(|ty| self.prog.application_type(*position, &ty)),
             Expr::Identifier(name) => self.identifier_fn_type(name),
             // A call evaluates to its callee's return type — recurse so a chain
             // peels one arrow per application.
@@ -747,13 +755,7 @@ impl Codegen {
     /// unique field-name match across known layouts.
     fn field_fn_type(&self, target: &Expr, field: &str) -> Option<Type> {
         let owner = self.callee_field_owner(target, field)?;
-        self.prog
-            .ctors
-            .get(&owner)?
-            .fields
-            .iter()
-            .find(|(f, _)| f == field)
-            .map(|(_, t)| t.clone())
+        self.ctor_field_ty(&owner, field).cloned()
     }
 
     /// Resolve the owner type of `target.field`: prefer a bound identifier's
@@ -770,12 +772,21 @@ impl Codegen {
         self.find_field_owner(field)
     }
 
-    /// Whether `owner`'s layout declares `field`.
-    fn declares_field(&self, owner: &str, field: &str) -> bool {
+    /// The declared type of `field` on constructor `owner` — the single field
+    /// lookup behind [`Self::declares_field`] and every `ctor_field_*` accessor.
+    fn ctor_field_ty(&self, owner: &str, field: &str) -> Option<&Type> {
         self.prog
             .ctors
-            .get(owner)
-            .is_some_and(|c| c.fields.iter().any(|(f, _)| f == field))
+            .get(owner)?
+            .fields
+            .iter()
+            .find(|(f, _)| f == field)
+            .map(|(_, t)| t)
+    }
+
+    /// Whether `owner`'s layout declares `field`.
+    fn declares_field(&self, owner: &str, field: &str) -> bool {
+        self.ctor_field_ty(owner, field).is_some()
     }
 
     /// Whether `name` is a user function whose inferred signature still contains
@@ -979,7 +990,7 @@ impl Codegen {
     pub(crate) fn fn_ret_is_unit(&self, name: &str) -> bool {
         self.prog
             .return_type(name)
-            .is_some_and(|t| *t == osprey_types::Type::unit())
+            .is_some_and(|t| *t == Type::unit())
     }
 
     /// The LLVM parameter types of a user function, from inference.
@@ -1076,7 +1087,7 @@ impl Codegen {
     /// smuggle in a foreign pointer and break the proof. Everything else
     /// (strings can be rodata, records can cross the C ABI, `Ptr` is FFI)
     /// keeps the probe-tolerant `LType` mapping. [GC-ARC-PERCEUS]
-    fn field_meta(&self, t: &osprey_types::Type) -> crate::meta::MetaField {
+    fn field_meta(&self, t: &Type) -> crate::meta::MetaField {
         let proven = crate::types::proven_heap_name(t).is_some_and(|n| {
             self.prog.unions.contains_key(n) && !self.extern_ret_types.contains(n)
         });
@@ -1164,14 +1175,7 @@ impl Codegen {
                 .find(|(f, _, _)| f == field)
                 .and_then(|(_, _, tag)| tag.clone());
         }
-        let ty = self
-            .prog
-            .ctors
-            .get(owner)?
-            .fields
-            .iter()
-            .find(|(f, _)| f == field)
-            .map(|(_, t)| t.clone())?;
+        let ty = self.ctor_field_ty(owner, field)?.clone();
         let head = crate::types::owner_name(&self.prog, &ty)?;
         let known = self.prog.ctors.contains_key(&head)
             || self.prog.unions.contains_key(&head)
@@ -1190,30 +1194,16 @@ impl Codegen {
     /// read the wire word raw and the element came back untyped.
     /// Implements [CONCURRENCY-CHANNEL].
     pub(crate) fn ctor_field_handle(&self, owner: &str, field: &str) -> Option<FiberSig> {
-        let ty = self
-            .prog
-            .ctors
-            .get(owner)?
-            .fields
-            .iter()
-            .find(|(name, _)| name == field)
-            .map(|(_, ty)| ty)?;
-        FiberSig::of(&self.prog, ty)
+        FiberSig::of(&self.prog, self.ctor_field_ty(owner, field)?)
     }
 
     pub(crate) fn ctor_field_result_inner(&self, owner: &str, field: &str) -> Option<LType> {
-        self.prog
-            .ctors
-            .get(owner)?
-            .fields
-            .iter()
-            .find(|(name, _)| name == field)
-            .and_then(|(_, ty)| crate::types::result_inner(ty))
+        crate::types::result_inner(self.ctor_field_ty(owner, field)?)
     }
 
     /// The variant constructor names of a union owner, in tag order.
     pub(crate) fn union_variants(&self, owner: &str) -> Option<&[String]> {
-        self.prog.unions.get(owner).map(std::vec::Vec::as_slice)
+        self.prog.unions.get(owner).map(Vec::as_slice)
     }
 
     // ---- SSA + block naming (function-local) ----
@@ -1246,6 +1236,17 @@ impl Codegen {
 
     /// Emit `r = {rhs}` to a fresh SSA register and return `r` — the ubiquitous
     /// "name the result of one instruction" step (`zext …`, `icmp …`, `fneg …`).
+    /// Open a diamond on `cond`: mint the two arm labels plus the join they
+    /// both reach, and emit the branch between them. Answers
+    /// `(true_arm, false_arm, join)`; the caller starts whichever arm it means
+    /// to fill first. Minting labels apart from the `br` that names them is how
+    /// a block ends up unterminated, so the two steps are one call.
+    pub(crate) fn diamond(&mut self, cond: &str) -> (String, String, String) {
+        let (taken, other, join) = (self.fresh_label(), self.fresh_label(), self.fresh_label());
+        self.emit(format!("br i1 {cond}, label %{taken}, label %{other}"));
+        (taken, other, join)
+    }
+
     pub(crate) fn emit_reg(&mut self, rhs: impl std::fmt::Display) -> String {
         let r = self.fresh_reg();
         self.emit(format!("{r} = {rhs}"));
@@ -1297,8 +1298,7 @@ impl Codegen {
         };
         self.add_extern("declare void @llvm.dbg.declare(metadata, metadata, metadata)");
         let ty = value.ty.as_str();
-        let slot = self.fresh_reg();
-        self.emit(format!("{slot} = alloca {ty}"));
+        let slot = self.emit_reg(format!("alloca {ty}"));
         self.emit(format!("store {ty} {}, {ty}* {slot}", value.operand));
         self.emit(format!(
             "call void @llvm.dbg.declare(metadata {ty}* {slot}, metadata !{var_id}, metadata !DIExpression())"
@@ -1369,9 +1369,8 @@ impl Codegen {
         self.globals.push(format!(
             "{name} = private unnamed_addr constant [{len} x i8] c\"{escaped}\""
         ));
-        let reg = self.fresh_reg();
-        self.emit(format!(
-            "{reg} = getelementptr [{len} x i8], [{len} x i8]* {name}, i64 0, i64 0"
+        let reg = self.emit_reg(format!(
+            "getelementptr [{len} x i8], [{len} x i8]* {name}, i64 0, i64 0"
         ));
         let _ = self.rodata_regs.insert(reg.clone());
         Value::new(reg, LType::Str)
@@ -1610,19 +1609,16 @@ impl Codegen {
     }
 
     fn malloc_struct_with(&mut self, struct_ty: &str, meta: i64, noinit: bool) -> String {
-        let szp = self.fresh_reg();
-        self.emit(format!(
-            "{szp} = getelementptr {struct_ty}, {struct_ty}* null, i64 1"
+        let szp = self.emit_reg(format!(
+            "getelementptr {struct_ty}, {struct_ty}* null, i64 1"
         ));
-        let sz = self.fresh_reg();
-        self.emit(format!("{sz} = ptrtoint {struct_ty}* {szp} to i64"));
+        let sz = self.emit_reg(format!("ptrtoint {struct_ty}* {szp} to i64"));
         let raw = if noinit {
             self.heap_alloc_tagged_noinit(&sz, meta)
         } else {
             self.heap_alloc_tagged(&sz, meta)
         };
-        let obj = self.fresh_reg();
-        self.emit(format!("{obj} = bitcast i8* {raw} to {struct_ty}*"));
+        let obj = self.emit_reg(format!("bitcast i8* {raw} to {struct_ty}*"));
         obj
     }
 

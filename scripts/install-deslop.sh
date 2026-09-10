@@ -3,10 +3,9 @@
 #
 # Local / devcontainer installer for the gate binary. Tracks the newest release
 # by default so a fresh checkout always runs the current deslop; export
-# DESLOP_VERSION=X.Y.Z to pin a specific release (e.g. to dodge a bad one). CI
-# installs the same gate independently via the Homebrew tap
-# (`brew install nimblesite/tap/deslop`), which is likewise unpinned — so local
-# and CI stay on the same current version. Downloads the release tarball,
+# DESLOP_VERSION=X.Y.Z to pin a specific release. CI uses the Deslop action
+# pinned to 0.27.0; use DESLOP_VERSION=0.27.0 to reproduce that gate locally.
+# Downloads the release tarball,
 # verifies its SHA-256, and installs the `deslop` binary onto PATH.
 #
 # Usage:
@@ -28,8 +27,15 @@ fail() { echo -e "${RED}✗ $*${RESET}" >&2; exit 1; }
 DESLOP_VERSION="${DESLOP_VERSION:-}"
 if [[ -z "$DESLOP_VERSION" ]]; then
     say "Resolving latest deslop release"
-    DESLOP_VERSION="$(curl -sSfL https://api.github.com/repos/Nimblesite/Deslop/releases/latest \
-        | grep -m1 '"tag_name"' | sed -E 's/.*"v?([^"]+)".*/\1/')"
+    # No pipeline here, on purpose. `curl | grep -m1` failed the installer:
+    # grep exits on the first match, curl dies of SIGPIPE, and `pipefail`
+    # failed the whole script even though the version had been resolved.
+    # Piping a captured body into an early-exiting matcher has the same hazard,
+    # so the body is captured first and matched from a here-string.
+    latest="$(curl -sSfL https://api.github.com/repos/Nimblesite/Deslop/releases/latest)" \
+        || fail "could not reach the GitHub API to resolve the latest deslop release"
+    DESLOP_VERSION="$(awk -F'"' '/"tag_name"/ { v = $4; sub(/^v/, "", v); print v; exit }' \
+        <<<"$latest")"
     [[ -n "$DESLOP_VERSION" ]] || fail "could not resolve latest deslop release from the GitHub API"
 fi
 BASE_URL="https://github.com/Nimblesite/Deslop/releases/download/v${DESLOP_VERSION}"

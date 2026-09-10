@@ -83,13 +83,6 @@ impl DocComment {
         }
     }
 
-    /// A summary-only outer doc — the common case, and the shape a bare doc
-    /// comment with no recognised sections lowers to.
-    #[must_use]
-    pub fn summary_only(summary: impl Into<String>) -> DocComment {
-        Self::new(summary, String::new(), DocScope::Outer)
-    }
-
     /// Render the whole doc comment as the Markdown block a hover shows: the
     /// summary, the body, then each populated section as a heading. `[Symbol]`
     /// links are preserved verbatim so the LSP client renders them as links.
@@ -170,7 +163,7 @@ mod tests {
     #[test]
     fn summary_only_leaves_every_section_empty() {
         // [DOC-MODEL] a summary-only comment has the canonical empty-field shape.
-        let doc = DocComment::summary_only("Adds two ints.");
+        let doc = DocComment::new("Adds two ints.", String::new(), DocScope::Outer);
         assert_eq!(doc.summary, "Adds two ints.");
         assert!(doc.body.is_empty());
         assert!(doc.params.is_empty() && doc.returns.is_none());

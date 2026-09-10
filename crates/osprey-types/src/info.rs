@@ -3,7 +3,7 @@
 //! union tags are then frozen into the plain, substitution-free tables below
 //! so the backend can drive codegen off real types instead of guessing `i64`.
 
-use crate::ty::{names, Type};
+use crate::ty::{names, Type, VarId};
 use std::collections::HashMap;
 
 /// The declared shape of a record/variant constructor: ordered `(field, type)`
@@ -71,6 +71,14 @@ pub struct ProgramTypes {
     /// handler-arm view of the same instantiation data). Implements
     /// [EFFECTS-GENERIC-INSTANTIATION].
     pub handler_ops: HashMap<(u32, u32), HandlerSite>,
+    /// Explicit call substitutions, applied while specializing generic bodies.
+    pub applications: HashMap<(u32, u32), HashMap<VarId, Type>>,
+    /// Binder identity is part of the contract even when its spelling is omitted.
+    pub(crate) declared_params: HashMap<String, HashMap<String, Type>>,
+    pub(crate) call_bindings: HashMap<usize, HashMap<VarId, Type>>,
+    pub(crate) methods: crate::methods::Targets,
+    /// Generalized source-binding constraints compared by annotation diagnostics.
+    pub(crate) obligations: HashMap<String, Vec<(String, Type)>>,
 }
 
 /// One `perform` site's resolved instantiation.
@@ -92,6 +100,76 @@ pub struct HandlerSite {
 }
 
 impl ProgramTypes {
+    /// Instantiate a record field against the actual generic type arguments.
+    #[must_use]
+    pub fn field_type(&self, record: &Type, field: &str) -> Option<Type> {
+        match record {
+            Type::Record { fields, .. } => fields.get(field).cloned(),
+            Type::Con { name, args } => {
+                let layout = self.ctors.get(name)?;
+                let (_, ty) = layout.fields.iter().find(|(name, _)| name == field)?;
+                let bindings = args
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, ty)| u32::try_from(i).ok().map(|i| (i, ty.clone())))
+                    .collect();
+                Some(crate::env::subst_vars(ty, &bindings))
+            }
+            _ => None,
+        }
+    }
+
+    /// Resolve a named callee's signature against this application's binders.
+    #[must_use]
+    pub fn application_type(&self, position: Option<osprey_ast::Position>, ty: &Type) -> Type {
+        position
+            .and_then(|p| self.applications.get(&(p.line, p.column)))
+            .map_or_else(
+                || ty.clone(),
+                |bindings| crate::env::subst_vars(ty, bindings),
+            )
+    }
+
+    /// Attach inferred applications to a backend copy of the source program.
+    /// The source AST and its diagnostic positions remain unchanged.
+    pub fn elaborate_calls(&mut self, program: &osprey_ast::Program) -> osprey_ast::Program {
+        crate::applications::elaborate(program, self)
+    }
+
+    /// Specialize inferred body metadata with one call's type substitution.
+    /// Constructor and effect declarations retain their shared erased ABI.
+    #[must_use]
+    pub fn specialized(&self, bindings: &HashMap<VarId, Type>) -> Self {
+        let mut result = self.clone();
+        let substitute = |ty: &mut Type| *ty = crate::env::subst_vars(ty, bindings);
+        for (params, ret) in result.functions.values_mut() {
+            params.iter_mut().for_each(&substitute);
+            substitute(ret);
+        }
+        for table in [&mut result.lambdas, &mut result.lets, &mut result.lists] {
+            table.values_mut().for_each(&substitute);
+        }
+        for site in result.performs.values_mut() {
+            site.effect_args.iter_mut().for_each(&substitute);
+            site.op.params.iter_mut().for_each(&substitute);
+            substitute(&mut site.op.ret);
+        }
+        for site in result.handler_ops.values_mut() {
+            site.effect_args.iter_mut().for_each(&substitute);
+            for op in site.ops.values_mut() {
+                op.params.iter_mut().for_each(&substitute);
+                substitute(&mut op.ret);
+            }
+        }
+        for args in result.applications.values_mut() {
+            args.values_mut().for_each(&substitute);
+        }
+        for args in result.declared_params.values_mut() {
+            args.values_mut().for_each(&substitute);
+        }
+        result
+    }
+
     /// The resolved return type of a named function, if known.
     #[must_use]
     pub fn return_type(&self, name: &str) -> Option<&Type> {

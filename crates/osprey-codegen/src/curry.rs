@@ -12,10 +12,16 @@ use crate::builder::Codegen;
 use crate::error::Result;
 use crate::expr::gen_expr;
 use crate::llty::Value;
-use osprey_ast::{Expr, NamedArgument};
+use osprey_ast::{Expr, NamedArgument, Position};
 
 /// One application group of a spine: `f(a, b)(c)` has groups `[a, b]`, `[c]`.
 pub(crate) type ArgGroup<'a> = (&'a [Expr], &'a [NamedArgument]);
+
+struct Spine<'a> {
+    head: &'a str,
+    application: Option<Position>,
+    groups: Vec<ArgGroup<'a>>,
+}
 
 /// Lower `function(arguments)` when `function` is itself an application spine
 /// headed by a generic user function — `None` when it is anything else, so the
@@ -26,7 +32,12 @@ pub(crate) fn try_spine(
     arguments: &[Expr],
     named: &[NamedArgument],
 ) -> Result<Option<Value>> {
-    let Some((head, mut groups)) = spine(function) else {
+    let Some(Spine {
+        head,
+        application,
+        mut groups,
+    }) = spine(function)
+    else {
         return Ok(None);
     };
     if !cg.fn_defs.contains_key(head) {
@@ -36,16 +47,25 @@ pub(crate) fn try_spine(
     let Some((first, rest)) = groups.split_first() else {
         return Ok(None);
     };
-    crate::genfn::try_inline(cg, head, first.0, first.1, rest)
+    crate::expr::with_application(cg, application, |cg| {
+        crate::genfn::try_inline(cg, head, first.0, first.1, rest)
+    })
 }
 
 /// Flatten an application spine into its head identifier and argument groups,
 /// outermost group last. `None` when the head is not a bare name.
-fn spine(expr: &Expr) -> Option<(&str, Vec<ArgGroup<'_>>)> {
+fn spine(expr: &Expr) -> Option<Spine<'_>> {
     let mut groups = Vec::new();
     let mut node = expr;
+    let mut application = None;
     loop {
         match node {
+            Expr::TypeApply {
+                function, position, ..
+            } => {
+                application = *position;
+                node = function;
+            }
             Expr::Call {
                 function,
                 arguments,
@@ -56,7 +76,11 @@ fn spine(expr: &Expr) -> Option<(&str, Vec<ArgGroup<'_>>)> {
             }
             Expr::Identifier(name) => {
                 groups.reverse();
-                return Some((name.as_str(), groups));
+                return Some(Spine {
+                    head: name,
+                    application,
+                    groups,
+                });
             }
             _ => return None,
         }

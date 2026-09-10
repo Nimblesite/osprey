@@ -67,6 +67,10 @@ pub fn parse_tree(source: &str) -> Option<Tree> {
 }
 
 fn collect_errors(node: Node<'_>, src: &[u8], out: &mut Vec<SyntaxError>) {
+    if let Some(error) = call_variance_error(node, src) {
+        out.push(error);
+        return;
+    }
     if node.is_error() || node.is_missing() {
         let p = node.start_position();
         out.push(SyntaxError {
@@ -111,6 +115,22 @@ fn collect_errors(node: Node<'_>, src: &[u8], out: &mut Vec<SyntaxError>) {
     for child in node.children(&mut cursor) {
         collect_errors(child, src, out);
     }
+}
+
+/// Variance declares a binder; it cannot decorate a call's type argument.
+fn call_variance_error(node: Node<'_>, src: &[u8]) -> Option<SyntaxError> {
+    if node.kind() != "call_expression" {
+        return None;
+    }
+    let args = node.child_by_field_name("type_arguments")?;
+    let list = args.named_child(0)?;
+    let marker = list.child_by_field_name("variance")?;
+    let argument = marker.next_named_sibling()?.utf8_text(src).ok()?;
+    let callee = node.child_by_field_name("callee")?.utf8_text(src).ok()?;
+    Some(SyntaxError {
+        message: format!("variance annotations are only valid on type and effect declarations; remove the marker from `{argument}` at the call to `{callee}`"),
+        position: position_from_point(node.start_position()),
+    })
 }
 
 fn is_negative_numeric(node: Node<'_>, src: &[u8]) -> bool {

@@ -210,37 +210,28 @@ async fn publish(engine: &OspreyEngine, bus: &lspkit_server::DiagnosticsBus, doc
 /// Implements [LSP-CAPABILITIES].
 fn build_dispatcher(engine: &OspreyEngine) -> Dispatcher {
     let dispatcher = Dispatcher::new();
-    register(
+    positional(
         &dispatcher,
         engine,
         "textDocument/hover",
-        |e, p, c| async move {
-            Some(result(hover_value(
-                answer(&e, Query::Hover(at(&p)?), c).await,
-            )))
-        },
+        Query::Hover,
+        hover_value,
     );
-    register(
+    positional(
         &dispatcher,
         engine,
         "textDocument/definition",
-        |e, p, c| async move {
-            Some(result(locations_value(
-                answer(&e, Query::Definition(at(&p)?), c).await,
-            )))
-        },
+        Query::Definition,
+        locations_value,
     );
     // Standard implementation-provider routing makes VS Code expose its native
     // context-menu action. [LSP-IMPLEMENTATIONS-EFFECT-HANDLERS]
-    register(
+    positional(
         &dispatcher,
         engine,
         "textDocument/implementation",
-        |e, p, c| async move {
-            Some(result(locations_value(
-                answer(&e, Query::Implementation(at(&p)?), c).await,
-            )))
-        },
+        Query::Implementation,
+        locations_value,
     );
     register(
         &dispatcher,
@@ -254,15 +245,12 @@ fn build_dispatcher(engine: &OspreyEngine) -> Dispatcher {
             Some(result(locations_value(answer(&e, query, c).await)))
         },
     );
-    register(
+    positional(
         &dispatcher,
         engine,
         "textDocument/signatureHelp",
-        |e, p, c| async move {
-            Some(result(signature_value(
-                answer(&e, Query::SignatureHelp(at(&p)?), c).await,
-            )))
-        },
+        Query::SignatureHelp,
+        signature_value,
     );
     register(
         &dispatcher,
@@ -277,15 +265,12 @@ fn build_dispatcher(engine: &OspreyEngine) -> Dispatcher {
             )))
         },
     );
-    register(
+    positional(
         &dispatcher,
         engine,
         "textDocument/completion",
-        |e, p, c| async move {
-            Some(result(completion_value(
-                answer(&e, Query::Completion(at(&p)?), c).await,
-            )))
-        },
+        Query::Completion,
+        completion_value,
     );
     register(
         &dispatcher,
@@ -299,6 +284,21 @@ fn build_dispatcher(engine: &OspreyEngine) -> Dispatcher {
         },
     );
     dispatcher
+}
+
+/// Register a request whose whole handling is "read a position, ask the engine
+/// one query, render the answer" — the shape every purely positional method
+/// shares. The three things that differ are its arguments.
+fn positional(
+    dispatcher: &Dispatcher,
+    engine: &OspreyEngine,
+    method: &str,
+    query: fn(At) -> Query,
+    render: fn(Option<Report>) -> Value,
+) {
+    register(dispatcher, engine, method, move |e, p, c| async move {
+        Some(result(render(answer(&e, query(at(&p)?), c).await)))
+    });
 }
 
 /// Register one handler. The closure receives a cloned engine, the params, and
@@ -607,21 +607,38 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn did_open_publishes_clean_diagnostics_then_errors_on_change() {
+    async fn did_open_publishes_warnings_then_errors_on_change() {
         // Document synchronization drives compiler diagnostics.
         // [LSP-LIFECYCLE], [LSP-DIAGNOSTICS]
         let mut h = Harness::start();
-        let clean = h.open(SRC).await;
+        let opened = h.open(SRC).await;
         assert_eq!(
-            clean.method.as_deref(),
+            opened.method.as_deref(),
             Some("textDocument/publishDiagnostics")
         );
-        let params = clean.params.expect("diagnostics params");
+        let params = opened.params.expect("diagnostics params");
         assert_at(&params, "/uri", URI);
+        let expected: Vec<_> = [
+            "redundant type annotation on parameter `a` of `add`: inference derives `int` without it",
+            "redundant type annotation on parameter `b` of `add`: inference derives `int` without it",
+            "redundant return type annotation on `add`: inference derives `int` without it",
+        ]
+        .into_iter()
+        .map(|message| json!({
+            "code": "redundant-annotation",
+            "message": message,
+            "range": {
+                "start": { "line": 0, "character": 3 },
+                "end": { "line": 0, "character": 44 }
+            },
+            "severity": 2,
+            "source": "osprey"
+        }))
+        .collect();
         assert_eq!(
             params.pointer("/diagnostics").and_then(Value::as_array),
-            Some(&Vec::new()),
-            "clean program has no diagnostics"
+            Some(&expected),
+            "redundant annotations publish precise warnings"
         );
         // The engine now has the open document text.
         assert_eq!(

@@ -18,7 +18,7 @@ fn locals_with_type_parameters(type_params: &[TypeParam]) -> Locals {
 impl Resolver<'_> {
     /// Resolves a constant initializer and rejects active-path recursion.
     /// Implements the constant half of [MODULES-CYCLES].
-    pub fn constant_value(&mut self, key: &SymbolKey) -> Option<Expr> {
+    pub(crate) fn constant_value(&mut self, key: &SymbolKey) -> Option<Expr> {
         if let Some(value) = self.constant_cache.get(key) {
             return Some(value.clone());
         }
@@ -72,7 +72,7 @@ impl Resolver<'_> {
         clippy::too_many_lines,
         reason = "declaration rewriting is an exhaustive canonical AST match"
     )]
-    pub fn rewrite_declaration(
+    pub(crate) fn rewrite_declaration(
         &mut self,
         statement: &mut Stmt,
         context: &Context,
@@ -202,7 +202,7 @@ impl Resolver<'_> {
         }
     }
 
-    pub fn rewrite_local_statement(
+    pub(crate) fn rewrite_local_statement(
         &mut self,
         statement: &mut Stmt,
         context: &Context,
@@ -243,7 +243,12 @@ impl Resolver<'_> {
         clippy::too_many_lines,
         reason = "expression rewriting is an exhaustive canonical AST walk"
     )]
-    pub fn rewrite_expr(&mut self, expression: &mut Expr, context: &Context, locals: &mut Locals) {
+    pub(crate) fn rewrite_expr(
+        &mut self,
+        expression: &mut Expr,
+        context: &Context,
+        locals: &mut Locals,
+    ) {
         if let Expr::Identifier(name) = expression {
             let name = name.clone();
             let mut rewritten = Expr::Identifier(name.clone());
@@ -287,6 +292,19 @@ impl Resolver<'_> {
             Expr::Binary { left, right, .. } | Expr::Pipe { left, right } => {
                 self.rewrite_expr(left, context, locals);
                 self.rewrite_expr(right, context, locals);
+            }
+            Expr::TypeApply {
+                function,
+                type_args,
+                ..
+            } => {
+                self.rewrite_expr(function, context, locals);
+                if let Expr::FieldAccess { field, .. } = function.as_mut() {
+                    self.rewrite_value_name(field, context, false);
+                }
+                for argument in type_args {
+                    self.rewrite_type(argument, context, locals);
+                }
             }
             Expr::Unary { operand, .. }
             | Expr::Spawn(operand)

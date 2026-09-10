@@ -13,15 +13,26 @@ use osprey_ast::{
     Expr, FieldAssignment, HandlerArm, InterpolatedPart, ModuleItem, NamedArgument, Pattern,
     Position, Program, Stmt,
 };
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+
+type HandlerCandidates = HashMap<(u32, u32), BTreeSet<Vec<String>>>;
 
 #[derive(Default)]
 pub(crate) struct Instances {
+    pub(crate) methods: crate::methods::Targets,
     /// A source position can identify more than one interpolation fragment.
     /// Preserve every independently inferred candidate instead of letting the
     /// final fragment overwrite the others.
     pub(crate) performs: HashMap<(u32, u32), Vec<Vec<String>>>,
     pub(crate) handlers: HashMap<(u32, u32), Vec<String>>,
+    /// Substituted operation arguments available to refine a handler.
+    pub(crate) argument_types: HashMap<Vec<String>, Vec<crate::ty::Type>>,
+    /// Candidate instantiations required by each handler's body after calls
+    /// and callbacks have propagated through the closed-program summary.
+    pub(crate) handler_inference: RefCell<HandlerCandidates>,
+    pub(crate) instantiations: HashMap<usize, HashMap<String, String>>,
+    pub(crate) binders: HashMap<String, HashMap<String, String>>,
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -50,6 +61,7 @@ struct ParameterUse {
     level: usize,
     index: usize,
     projection: Vec<Projection>,
+    arguments: CallArguments,
     excluded: Requirements,
 }
 
@@ -59,12 +71,44 @@ struct ParameterUse {
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum Projection {
     Field(String),
+    Method(Box<MethodProjection>),
+    Returned(Box<CallArguments>),
     Element,
     SuccessValue,
     FiberValue,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+/// A method on a symbolic receiver cannot select its UFCS fallback until the
+/// receiver is substituted. The fallback is a zero-argument closure so its
+/// effects and returned value keep the same lexical scope as the field call.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct MethodProjection {
+    field: String,
+    arguments: Vec<Option<Value>>,
+    named: Vec<(String, Option<Value>)>,
+    fallback: Value,
+}
+
+/// Arguments belong to the caller until a symbolic callee is substituted.
+/// Keep their provenance so a callback returning an argument or captured value
+/// resolves to that value, rather than to the callback itself.
+#[derive(Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
+struct CallArguments {
+    positional: Vec<Option<Value>>,
+    named: Vec<(String, Option<Value>)>,
+}
+
+impl CallArguments {
+    /// Function-value slots have no parameter names. Do this at the call site,
+    /// before substitution reveals a callback's declaration and its names.
+    fn in_written_order(mut self) -> Self {
+        self.positional
+            .extend(self.named.drain(..).map(|(_, value)| value));
+        self
+    }
+}
+
+#[derive(Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 struct Summary {
     required: Requirements,
     parameter_uses: BTreeSet<ParameterUse>,
@@ -127,13 +171,33 @@ impl Summary {
     }
 
     fn widen(&mut self) {
+        self.widen_at(0);
+    }
+
+    fn widen_at(&mut self, depth: usize) {
         let before = self.parameter_uses.len();
         self.parameter_uses.retain(|use_| {
-            use_.level < MAX_PROVENANCE_DEPTH && use_.projection.len() < MAX_PROVENANCE_DEPTH
+            use_.level < MAX_PROVENANCE_DEPTH
+                && use_.projection.len() < MAX_PROVENANCE_DEPTH
+                && (depth < MAX_PROVENANCE_DEPTH
+                    || (use_.arguments.positional.is_empty()
+                        && use_.arguments.named.is_empty()
+                        && !use_.projection.iter().any(|part| {
+                            matches!(part, Projection::Method(_) | Projection::Returned(_))
+                        })))
         });
         if self.parameter_uses.len() != before {
             self.unresolved_dynamic_call = true;
         }
+        self.parameter_uses = std::mem::take(&mut self.parameter_uses)
+            .into_iter()
+            .map(|mut use_| {
+                map_parameter_use_values(&mut use_, |value| {
+                    *value = widen_value(value.clone(), depth + 1);
+                });
+                use_
+            })
+            .collect();
     }
 }
 
@@ -146,19 +210,19 @@ struct DeclaredEffect {
 }
 
 #[derive(Clone)]
-struct Function {
+struct Function<'a> {
     name: String,
     qualified: String,
     scope: Vec<String>,
     parameters: Vec<String>,
     declared_effects: Vec<DeclaredEffect>,
-    body: Expr,
+    body: &'a Expr,
     position: Option<Position>,
 }
 
 #[derive(Default)]
-struct Index {
-    functions: Vec<Function>,
+struct Index<'a> {
+    functions: Vec<Function<'a>>,
     qualified: HashMap<String, usize>,
     bare: HashMap<String, Vec<usize>>,
     effects: HashMap<String, usize>,
@@ -168,14 +232,14 @@ struct Index {
     externs: HashSet<String>,
 }
 
-impl Index {
-    fn collect(program: &Program) -> Self {
+impl<'a> Index<'a> {
+    fn collect(program: &'a Program) -> Self {
         let mut index = Self::default();
         index.collect_stmts(&program.statements, &[]);
         index
     }
 
-    fn collect_stmts(&mut self, statements: &[Stmt], scope: &[String]) {
+    fn collect_stmts(&mut self, statements: &'a [Stmt], scope: &[String]) {
         for statement in statements {
             match statement {
                 Stmt::Extern { name, .. } => {
@@ -215,7 +279,7 @@ impl Index {
                                 }),
                             })
                             .collect(),
-                        body: body.clone(),
+                        body,
                         position: *position,
                     });
                     let _ = self.qualified.insert(qualified, id);
@@ -253,7 +317,7 @@ impl Index {
         }
     }
 
-    fn collect_module_items(&mut self, items: &[ModuleItem], scope: &[String]) {
+    fn collect_module_items(&mut self, items: &'a [ModuleItem], scope: &[String]) {
         for item in items {
             self.collect_stmts(std::slice::from_ref(item.declaration.as_ref()), scope);
         }
@@ -286,14 +350,14 @@ fn qualify(scope: &[String], name: &str) -> String {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct KnownCallable {
     parameters: Vec<String>,
     summary: Summary,
     returned: Option<Box<Value>>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum Callable {
     Known(Box<KnownCallable>),
     Unknown,
@@ -308,9 +372,12 @@ enum Callable {
 /// lattice instead of an enum: a control-flow join may produce a callable in
 /// one arm and a record/list in another, and discarding either provenance
 /// would make an effect escape possible.
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 struct Value {
     callable: Option<Callable>,
+    /// `Some` proves which fields exist, even when their values have no
+    /// callable provenance. `None` must never justify choosing a free function.
+    field_names: Option<BTreeSet<String>>,
     fields: BTreeMap<String, Value>,
     element: Option<Box<Value>>,
     result_payload: Option<Box<Value>>,
@@ -322,6 +389,7 @@ struct Value {
 impl Value {
     fn from_callable(callable: Callable) -> Self {
         Self {
+            field_names: matches!(callable, Callable::Known(_)).then(BTreeSet::new),
             callable: Some(callable),
             ..Self::default()
         }
@@ -346,16 +414,24 @@ impl Value {
     fn channel(site: usize) -> Self {
         Self {
             channel_sites: [site].into_iter().collect(),
+            field_names: Some(BTreeSet::new()),
             ..Self::default()
         }
     }
 
     fn union(&mut self, other: Self) {
+        if self.field_names != other.field_names {
+            self.field_names = None;
+        }
         if let Some(callable) = other.callable {
             merge_callable(&mut self.callable, callable);
         }
         for (name, value) in other.fields {
-            merge_value(self.fields.entry(name).or_default(), value);
+            let _ = self
+                .fields
+                .entry(name)
+                .and_modify(|slot| slot.union(value.clone()))
+                .or_insert(value);
         }
         if let Some(element) = other.element {
             merge_boxed_value(&mut self.element, *element);
@@ -376,6 +452,9 @@ struct CallableEnv {
     values: HashMap<String, Value>,
     shadowed: HashSet<String>,
     channel_payloads: BTreeMap<usize, Value>,
+    /// Results supplied by handlers active while this expression evaluates.
+    /// These are dynamic bindings, never captures of a newly created closure.
+    handler_returns: BTreeMap<Requirement, Value>,
 }
 
 impl CallableEnv {
@@ -392,6 +471,7 @@ impl CallableEnv {
 
     fn enter_lambda(&self, parameters: &[String]) -> Self {
         let mut env = self.clone();
+        env.handler_returns.clear();
         for value in env.values.values_mut() {
             shift_value_levels(value, 1, 0);
         }
@@ -404,7 +484,7 @@ impl CallableEnv {
 }
 
 struct Analyzer<'a> {
-    index: &'a Index,
+    index: &'a Index<'a>,
     rows: &'a [Summary],
     returns: &'a [Option<Value>],
     instances: &'a Instances,
@@ -470,17 +550,17 @@ impl Analyzer<'_> {
         env
     }
 
-    fn function_body(&self, function: &Function) -> Summary {
+    fn function_body(&self, function: &Function<'_>) -> Summary {
         self.expression(
-            &function.body,
+            function.body,
             &function.scope,
             &self.scoped_env(&function.parameters),
         )
     }
 
-    fn function_return(&self, function: &Function) -> Option<Value> {
+    fn function_return(&self, function: &Function<'_>) -> Option<Value> {
         let mut env = self.scoped_env(&function.parameters);
-        self.returned_value(&function.body, &function.scope, &mut env)
+        self.returned_value(function.body, &function.scope, &mut env)
     }
 
     fn returned_value(
@@ -537,11 +617,7 @@ impl Analyzer<'_> {
             Expr::Object(fields)
             | Expr::TypeConstructor { fields, .. }
             | Expr::Update { fields, .. } => {
-                let mut out = Summary::default();
-                for field in fields {
-                    out.union(self.expression(&field.value, scope, env));
-                }
-                out
+                self.union_over(fields.iter().map(|field| &field.value), scope, env)
             }
             Expr::Binary { left, right, .. } => {
                 let mut out = self.expression(left, scope, env);
@@ -549,7 +625,7 @@ impl Analyzer<'_> {
                 out
             }
             Expr::Pipe { left, right } => self.pipe_call(left, right, scope, env),
-            Expr::Unary { operand, .. }
+            Expr::TypeApply { function: operand, .. } | Expr::Unary { operand, .. }
             | Expr::FieldAccess {
                 target: operand, ..
             }
@@ -572,16 +648,24 @@ impl Analyzer<'_> {
                 function,
                 arguments,
                 named_arguments,
-            } => self.call(function, arguments, named_arguments, scope, env),
+            } => match crate::methods::parts(expression) {
+                Some(parts) => self.method_call(expression, &parts, scope, env),
+                None => self.call(function, arguments, named_arguments, scope, env),
+            },
             Expr::MethodCall {
                 target,
                 method,
                 arguments,
                 named_arguments,
-            } => self.call(
-                &Expr::Identifier(method.clone()),
-                &receiver_first(target, arguments),
-                named_arguments,
+            } => self.method_call(
+                expression,
+                &crate::methods::Parts {
+                    target,
+                    method,
+                    arguments,
+                    named: named_arguments,
+                    application: None,
+                },
                 scope,
                 env,
             ),
@@ -596,11 +680,7 @@ impl Analyzer<'_> {
                 out
             }
             Expr::Select { arms } => {
-                let mut out = Summary::default();
-                for arm in arms {
-                    out.union(self.expression(&arm.body, scope, env));
-                }
-                out
+                self.union_over(arms.iter().map(|arm| &arm.body), scope, env)
             }
             Expr::Block { statements, value } => {
                 let mut local = env.clone();
@@ -646,7 +726,17 @@ impl Analyzer<'_> {
                     &self.instances.handlers,
                     "handler",
                 );
-                let mut out = self.expression(body, scope, env).without_operations(
+                let local = self.handler_body_env(effect, arms, body, *position, scope, env);
+                let body_summary = self.expression(body, scope, &local);
+                if let Some(position) = position {
+                    let candidates = body_summary.required.iter().filter(|requirement| {
+                        requirement.effect == *effect && handled.contains(&requirement.operation)
+                            && self.instances.argument_types.contains_key(&requirement.arguments)
+                    }).map(|requirement| requirement.arguments.clone());
+                    self.instances.handler_inference.borrow_mut()
+                        .entry((position.line, position.column)).or_default().extend(candidates);
+                }
+                let mut out = body_summary.without_operations(
                     effect,
                     &effect_arguments,
                     &handled,
@@ -671,16 +761,30 @@ impl Analyzer<'_> {
         let mut out = self.expression(function, scope, env);
         out.union(self.expressions(arguments, scope, env));
         out.union(self.named_expressions(named_arguments, scope, env));
+        out.union(self.call_effects(function, arguments, named_arguments, scope, env));
+        out
+    }
 
+    fn call_effects(
+        &self,
+        function: &Expr,
+        arguments: &[Expr],
+        named_arguments: &[NamedArgument],
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> Summary {
+        let mut out = Summary::default();
         if let Some(callee) = self.callable(function, scope, env) {
-            out.union(self.invoke(callee, arguments, named_arguments, scope, env));
+            let arguments =
+                self.callsite_arguments(function, arguments, named_arguments, scope, env);
+            out.union(self.invoke_with_arguments(callee, arguments));
         } else if !statically_named_callee(function, env, self.index) {
             // A computed value that successfully type-checks as a function must
             // carry effect provenance. If an unsupported transport erased that
             // provenance, fail closed instead of assuming the call is pure.
             out.unresolved_dynamic_call = true;
         }
-        if let Some(name) = expression_name(function) {
+        if let Some(name) = self.builtin_callee(function, scope, env) {
             if iterator_consumer(name) {
                 if let Some(iterator) = arguments
                     .first()
@@ -692,7 +796,7 @@ impl Analyzer<'_> {
             for index in eager_callback_slots(name) {
                 if let Some(argument) = arguments.get(*index) {
                     if let Some(callback) = self.callable(argument, scope, env) {
-                        out.union(self.invoke(callback, &[], &[], scope, env));
+                        out.union(self.invoke_with_values(callback, &[]));
                     }
                 }
             }
@@ -700,26 +804,220 @@ impl Analyzer<'_> {
         out
     }
 
-    fn invoke(
+    fn method_call(
         &self,
-        callee: Callable,
-        arguments: &[Expr],
-        named_arguments: &[NamedArgument],
+        expression: &Expr,
+        parts: &crate::methods::Parts<'_>,
         scope: &[String],
         env: &CallableEnv,
     ) -> Summary {
-        let parameters: &[String] = match &callee {
-            Callable::Known(known) => &known.parameters,
-            Callable::Parameter { .. } | Callable::Unknown => &[],
+        let site = std::ptr::from_ref(expression).addr();
+        let mut out = match self.instances.methods.get(&site) {
+            Some(crate::methods::Target::Field(field)) => {
+                let mut out = self.expression(parts.target, scope, env);
+                out.union(self.expressions(parts.arguments, scope, env));
+                out.union(self.named_expressions(parts.named, scope, env));
+                let callee = self
+                    .value(parts.target, scope, env)
+                    .and_then(|value| project_field(value, field))
+                    .and_then(|value| value.callable);
+                if let Some(callee) = callee {
+                    let arguments = self
+                        .call_arguments(parts.arguments, parts.named, scope, env)
+                        .in_written_order();
+                    out.union(self.invoke_with_arguments(callee, arguments));
+                } else {
+                    out.unresolved_dynamic_call = true;
+                }
+                out
+            }
+            Some(crate::methods::Target::Deferred(field)) => {
+                let mut out = self.expression(parts.target, scope, env);
+                out.union(self.expressions(parts.arguments, scope, env));
+                out.union(self.named_expressions(parts.named, scope, env));
+                let callee = self
+                    .deferred_method(parts, field, scope, env)
+                    .and_then(|value| value.callable);
+                if let Some(callee) = callee {
+                    out.union(self.invoke_with_values(callee, &[]));
+                } else {
+                    out.unresolved_dynamic_call = true;
+                }
+                out
+            }
+            Some(crate::methods::Target::Function) | None => self.call(
+                &Expr::Identifier(parts.method.to_owned()),
+                &receiver_first(parts.target, parts.arguments),
+                parts.named,
+                scope,
+                env,
+            ),
         };
-        let values = self.argument_values(parameters, arguments, named_arguments, scope, env);
-        self.invoke_with_values(callee, &values)
+        if let Some(bindings) = self.instances.instantiations.get(&site) {
+            specialize_summary(&mut out, bindings);
+        }
+        out
+    }
+
+    fn deferred_method(
+        &self,
+        parts: &crate::methods::Parts<'_>,
+        field: &str,
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> Option<Value> {
+        let function = Expr::Identifier(parts.method.to_owned());
+        let arguments = receiver_first(parts.target, parts.arguments);
+        let fallback = method_thunk(
+            self.call_effects(&function, &arguments, parts.named, scope, env),
+            self.call_value(&function, &arguments, parts.named, scope, env),
+        );
+        let method = MethodProjection {
+            field: field.to_owned(),
+            arguments: parts
+                .arguments
+                .iter()
+                .map(|argument| self.value(argument, scope, env))
+                .collect(),
+            named: parts
+                .named
+                .iter()
+                .map(|argument| {
+                    (
+                        argument.name.clone(),
+                        self.value(&argument.value, scope, env),
+                    )
+                })
+                .collect(),
+            fallback,
+        };
+        self.value(parts.target, scope, env)
+            .and_then(|value| self.project_method(value, method))
+    }
+
+    fn project_method(&self, mut receiver: Value, method: MethodProjection) -> Option<Value> {
+        let mut projected = if let Some(value) = receiver.fields.remove(&method.field) {
+            value.callable.map(|callee| {
+                let arguments = CallArguments {
+                    positional: method.arguments.clone(),
+                    named: method.named.clone(),
+                }
+                .in_written_order();
+                // A field can hold a caller's symbolic callback. Retain its
+                // returned-value projection until that callback is supplied.
+                method_thunk(
+                    self.invoke_with_arguments(callee.clone(), arguments.clone()),
+                    self.project_call_return(Value::from_callable(callee), arguments),
+                )
+            })
+        } else if receiver
+            .field_names
+            .as_ref()
+            .is_some_and(|fields| !fields.contains(&method.field))
+        {
+            Some(method.fallback.clone())
+        } else {
+            None
+        };
+        if receiver.field_names.is_none() {
+            project_callable(
+                receiver.callable,
+                Projection::Method(Box::new(method)),
+                &mut projected,
+            );
+        }
+        projected
+    }
+
+    fn method_value(
+        &self,
+        expression: &Expr,
+        parts: &crate::methods::Parts<'_>,
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> Option<Value> {
+        match self
+            .instances
+            .methods
+            .get(&std::ptr::from_ref(expression).addr())
+        {
+            Some(crate::methods::Target::Field(field)) => {
+                let callee = self
+                    .value(parts.target, scope, env)
+                    .and_then(|value| project_field(value, field))
+                    .and_then(|value| value.callable);
+                let arguments = self
+                    .call_arguments(parts.arguments, parts.named, scope, env)
+                    .in_written_order();
+                self.called_value(callee, arguments)
+            }
+            Some(crate::methods::Target::Deferred(field)) => self
+                .deferred_method(parts, field, scope, env)
+                .and_then(|value| self.project_returned(value)),
+            Some(crate::methods::Target::Function) | None => self.call_value(
+                &Expr::Identifier(parts.method.to_owned()),
+                &receiver_first(parts.target, parts.arguments),
+                parts.named,
+                scope,
+                env,
+            ),
+        }
+    }
+
+    fn project_path(&self, mut value: Value, path: &[Projection]) -> Option<Value> {
+        for projection in path {
+            value = match projection {
+                Projection::Field(field) => project_field(value, field),
+                Projection::Method(method) => self.project_method(value, *method.clone()),
+                Projection::Returned(arguments) => {
+                    self.project_call_return(value, *arguments.clone())
+                }
+                Projection::Element => project_element(value),
+                Projection::SuccessValue => project_success_value(value),
+                Projection::FiberValue => project_fiber_value(value),
+            }?;
+        }
+        Some(value)
+    }
+
+    fn project_returned(&self, value: Value) -> Option<Value> {
+        self.project_call_return(value, CallArguments::default())
+    }
+
+    fn project_call_return(&self, mut value: Value, arguments: CallArguments) -> Option<Value> {
+        if let Some(Callable::Known(known)) = &mut value.callable {
+            let values = ordered_values(&known.parameters, &arguments.positional, &arguments.named);
+            return known
+                .returned
+                .take()
+                .map(|returned| self.substitute_value_at(*returned, 0, &values))
+                .or_else(|| Some(Value::default()));
+        }
+        let mut projected = None;
+        project_callable(
+            value.callable,
+            Projection::Returned(Box::new(arguments)),
+            &mut projected,
+        );
+        projected
     }
 
     fn invoke_with_values(&self, callee: Callable, arguments: &[Option<Value>]) -> Summary {
+        self.invoke_with_arguments(
+            callee,
+            CallArguments {
+                positional: arguments.to_vec(),
+                named: Vec::new(),
+            },
+        )
+    }
+
+    fn invoke_with_arguments(&self, callee: Callable, arguments: CallArguments) -> Summary {
         match callee {
             Callable::Known(known) => {
-                self.substitute_summary_at(known.summary.clone(), 0, arguments)
+                let values =
+                    ordered_values(&known.parameters, &arguments.positional, &arguments.named);
+                self.substitute_summary_at(known.summary.clone(), 0, &values)
             }
             Callable::Unknown => Summary {
                 unresolved_dynamic_call: true,
@@ -735,6 +1033,7 @@ impl Analyzer<'_> {
                     level,
                     index,
                     projection,
+                    arguments,
                     excluded: Requirements::new(),
                 }]
                 .into_iter()
@@ -742,30 +1041,6 @@ impl Analyzer<'_> {
                 unresolved_dynamic_call: false,
             },
         }
-    }
-
-    fn argument_values(
-        &self,
-        parameters: &[String],
-        arguments: &[Expr],
-        named_arguments: &[NamedArgument],
-        scope: &[String],
-        env: &CallableEnv,
-    ) -> Vec<Option<Value>> {
-        let mut values = vec![None; parameters.len().max(arguments.len())];
-        for (index, argument) in arguments.iter().enumerate() {
-            if let Some(slot) = values.get_mut(index) {
-                *slot = self.value(argument, scope, env);
-            }
-        }
-        for argument in named_arguments {
-            if let Some(index) = parameters.iter().position(|name| name == &argument.name) {
-                if let Some(slot) = values.get_mut(index) {
-                    *slot = self.value(&argument.value, scope, env);
-                }
-            }
-        }
-        values
     }
 
     fn call_value(
@@ -776,22 +1051,35 @@ impl Analyzer<'_> {
         scope: &[String],
         env: &CallableEnv,
     ) -> Option<Value> {
-        if let Some(name) = expression_name(function) {
+        if let Some(name) = self.builtin_callee(function, scope, env) {
             if let Some(value) = self.builtin_call_value(name, arguments, scope, env) {
                 return Some(value);
             }
         }
-        // A PARTIAL application of a parameter is still that parameter being
-        // invoked: `f a b` curries to `Call(Call(f, [a]), [b])`
-        // ([FLAVOR-ML-CURRY]), and the effect requirement belongs to `f`
-        // whichever spelling reaches here. Dropping the callable at the inner
-        // call left the outer one with a `Call` head, which no rule can name,
-        // so the whole entry was reported unprovable.
+        // Preserve each application in a curried spine: its result can be a
+        // returned closure or aggregate with different effects from its maker.
         let resolved = self.callable(function, scope, env);
-        if let Some(parameter @ Callable::Parameter { .. }) = resolved {
-            return Some(Value::from_callable(parameter));
-        }
-        let Some(Callable::Known(known)) = resolved else {
+        let arguments = self.callsite_arguments(function, arguments, named_arguments, scope, env);
+        self.called_value(resolved, arguments)
+    }
+
+    /// Builtin behavior belongs to the resolved binding, not its spelling.
+    /// Local values and user functions may shadow callable builtin names.
+    fn builtin_callee<'b>(
+        &self,
+        function: &'b Expr,
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> Option<&'b str> {
+        let name = expression_name(function)?;
+        (!env.shadowed.contains(name)
+            && !env.values.contains_key(name)
+            && self.index.resolve(scope, name).is_none())
+        .then_some(name)
+    }
+
+    fn called_value(&self, resolved: Option<Callable>, arguments: CallArguments) -> Option<Value> {
+        let Some(callee @ (Callable::Known(_) | Callable::Parameter { .. })) = resolved else {
             // The RESULT of a call we cannot resolve is not thereby a callable.
             // This branch catches every builtin without a modelled value
             // (`print`, `listAppend`, …), whose result is plain data; calling
@@ -801,22 +1089,47 @@ impl Analyzer<'_> {
             // `statically_named_callee` and is reported at that call.
             return Some(Value::default());
         };
-        let arguments =
-            self.argument_values(&known.parameters, arguments, named_arguments, scope, env);
-        known
-            .returned
-            .as_deref()
-            .cloned()
-            .map(|returned| self.substitute_value_at(returned, 0, &arguments))
-            // A known callee with no recorded return provenance says nothing
-            // about whether its RESULT is callable — most such results are
-            // ordinary data, and `returned` is also what the depth cutoff drops
-            // first. Yielding a provenance-free value keeps that distinction:
-            // it stays fail-closed, because invoking a value with no callable
-            // still fails `statically_named_callee` at the call and is reported
-            // there, while an `int` that is merely returned no longer poisons
-            // every merge it flows into with an unresolved-callable verdict.
-            .or_else(|| Some(Value::default()))
+        self.project_call_return(Value::from_callable(callee), arguments)
+    }
+
+    fn callsite_arguments(
+        &self,
+        function: &Expr,
+        arguments: &[Expr],
+        named: &[NamedArgument],
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> CallArguments {
+        let arguments = self.call_arguments(arguments, named, scope, env);
+        if source_named_callee(function, scope, env, self.index) {
+            arguments
+        } else {
+            arguments.in_written_order()
+        }
+    }
+
+    fn call_arguments(
+        &self,
+        arguments: &[Expr],
+        named: &[NamedArgument],
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> CallArguments {
+        CallArguments {
+            positional: arguments
+                .iter()
+                .map(|argument| self.value(argument, scope, env))
+                .collect(),
+            named: named
+                .iter()
+                .map(|argument| {
+                    (
+                        argument.name.clone(),
+                        self.value(&argument.value, scope, env),
+                    )
+                })
+                .collect(),
+        }
     }
 
     fn builtin_call_value(
@@ -834,10 +1147,14 @@ impl Analyzer<'_> {
         };
         let aggregate = |element: Option<Value>| Value {
             element: element.map(Box::new),
+            field_names: Some(BTreeSet::new()),
             ..Value::default()
         };
         Some(match name {
-            "range" | "List" | "Map" => Value::default(),
+            "range" | "List" | "Map" => Value {
+                field_names: Some(BTreeSet::new()),
+                ..Value::default()
+            },
             "map" | "filter" => self.lazy_iterator_value(name, arguments, scope, env),
             "mapList" | "filterList" => {
                 let mut value = self.lazy_iterator_value(name, arguments, scope, env);
@@ -880,7 +1197,7 @@ impl Analyzer<'_> {
                 aggregate(merged)
             }
             "mapValues" => aggregate(element(0)),
-            _ => return None,
+            _ => return builtin_return_shape(name),
         })
     }
 
@@ -919,6 +1236,7 @@ impl Analyzer<'_> {
         Value {
             element: element.map(Box::new),
             deferred,
+            field_names: Some(BTreeSet::new()),
             ..Value::default()
         }
     }
@@ -978,12 +1296,33 @@ impl Analyzer<'_> {
         payload
     }
 
+    fn value(&self, expression: &Expr, scope: &[String], env: &CallableEnv) -> Option<Value> {
+        let mut value = self.raw_value(expression, scope, env)?;
+        if let Some(bindings) = self
+            .instances
+            .instantiations
+            .get(&std::ptr::from_ref(expression).addr())
+        {
+            specialize_value(&mut value, bindings);
+        }
+        Some(value)
+    }
+
     #[expect(
         clippy::too_many_lines,
         reason = "value provenance mirrors the exhaustive expression fold"
     )]
-    fn value(&self, expression: &Expr, scope: &[String], env: &CallableEnv) -> Option<Value> {
+    fn raw_value(&self, expression: &Expr, scope: &[String], env: &CallableEnv) -> Option<Value> {
         match expression {
+            Expr::Integer(_)
+            | Expr::Float(_)
+            | Expr::Str(_)
+            | Expr::Bool(_)
+            | Expr::InterpolatedStr(_) => Some(Value {
+                field_names: Some(BTreeSet::new()),
+                ..Value::default()
+            }),
+            Expr::TypeApply { function, .. } => self.value(function, scope, env),
             Expr::Identifier(name) => {
                 if let Some(value) = env.values.get(name) {
                     return Some(value.clone());
@@ -1024,8 +1363,9 @@ impl Analyzer<'_> {
                         merge_optional_value(&mut element, value);
                     }
                 }
-                element.map(|element| Value {
-                    element: Some(Box::new(element)),
+                Some(Value {
+                    element: element.map(Box::new),
+                    field_names: Some(BTreeSet::new()),
                     ..Value::default()
                 })
             }
@@ -1036,8 +1376,9 @@ impl Analyzer<'_> {
                         merge_optional_value(&mut element, value);
                     }
                 }
-                element.map(|element| Value {
-                    element: Some(Box::new(element)),
+                Some(Value {
+                    element: element.map(Box::new),
+                    field_names: Some(BTreeSet::new()),
                     ..Value::default()
                 })
             }
@@ -1059,7 +1400,7 @@ impl Analyzer<'_> {
             // Ordered after the shadowed-constructor guard above: a shadowed
             // name is a record update, not a fresh record.
             Expr::Object(fields) | Expr::TypeConstructor { fields, .. } => {
-                self.record_value(fields, scope, env)
+                Some(self.record_value(fields, scope, env))
             }
             Expr::Update { record, fields } => {
                 let mut updated = self
@@ -1083,6 +1424,7 @@ impl Analyzer<'_> {
                 ..Value::default()
             }),
             Expr::Spawn(value) => Some(Value {
+                field_names: Some(BTreeSet::new()),
                 fiber_payload: Some(Box::new(
                     self.value(value, scope, env)
                         .unwrap_or_else(Value::unknown_callable),
@@ -1112,20 +1454,51 @@ impl Analyzer<'_> {
                 function,
                 arguments,
                 named_arguments,
-            } => self.call_value(function, arguments, named_arguments, scope, env),
+            } => match crate::methods::parts(expression) {
+                Some(parts) => self.method_value(expression, &parts, scope, env),
+                None => self.call_value(function, arguments, named_arguments, scope, env),
+            },
             Expr::MethodCall {
                 target,
                 method,
                 arguments,
                 named_arguments,
-            } => self.call_value(
-                &Expr::Identifier(method.clone()),
-                &receiver_first(target, arguments),
-                named_arguments,
+            } => self.method_value(
+                expression,
+                &crate::methods::Parts {
+                    target,
+                    method,
+                    arguments,
+                    named: named_arguments,
+                    application: None,
+                },
                 scope,
                 env,
             ),
             Expr::Pipe { left, right } => self.pipe_value(left, right, scope, env),
+            Expr::Perform {
+                effect,
+                operation,
+                position,
+                ..
+            } => {
+                let mut merged = None;
+                for arguments in self.perform_instance_arguments(effect, *position) {
+                    let requirement = Requirement {
+                        effect: effect.clone(),
+                        operation: operation.clone(),
+                        arguments,
+                    };
+                    if let Some(value) = env.handler_returns.get(&requirement) {
+                        merge_optional_value(&mut merged, value.clone());
+                    } else {
+                        // A missing candidate cannot be supplied by a different
+                        // generic instance of this operation.
+                        merge_optional_value(&mut merged, Value::unknown_callable());
+                    }
+                }
+                merged
+            }
             Expr::Match { value, arms } => {
                 let matched = self.value(value, scope, env);
                 let mut merged = None;
@@ -1141,9 +1514,14 @@ impl Analyzer<'_> {
             // A handler governs evaluation of its body, not later use of a
             // value produced by that body or one of its operation arms.
             Expr::Handler {
-                effect, arms, body, ..
+                effect,
+                arms,
+                body,
+                position,
+                ..
             } => {
-                let mut merged = self.value(body, scope, env);
+                let local = self.handler_body_env(effect, arms, body, *position, scope, env);
+                let mut merged = self.value(body, scope, &local);
                 for arm in arms {
                     let local = self.handler_arm_env(effect, arm, body, scope, env);
                     if let Some(value) = self.value(&arm.body, scope, &local) {
@@ -1173,16 +1551,15 @@ impl Analyzer<'_> {
         }
     }
 
-    /// Record-shaped literals — an object literal and a type constructor —
-    /// carry the same value information: only the fields whose value is itself
-    /// inferable. A record with nothing inferable tells the pass nothing, so it
-    /// yields `None` rather than an empty record that would mask a callable.
+    /// Keep the complete field set independently of callable provenance: an
+    /// opaque field is not evidence that a same-named free function should run.
     fn record_value(
         &self,
         fields: &[FieldAssignment],
         scope: &[String],
         env: &CallableEnv,
-    ) -> Option<Value> {
+    ) -> Value {
+        let field_names = Some(fields.iter().map(|field| field.name.clone()).collect());
         let fields: BTreeMap<_, _> = fields
             .iter()
             .filter_map(|field| {
@@ -1190,10 +1567,11 @@ impl Analyzer<'_> {
                     .map(|value| (field.name.clone(), value))
             })
             .collect();
-        (!fields.is_empty()).then_some(Value {
+        Value {
+            field_names,
             fields,
             ..Value::default()
-        })
+        }
     }
 
     fn function_value(&self, id: usize) -> Value {
@@ -1286,16 +1664,19 @@ impl Analyzer<'_> {
     ) -> Summary {
         let uses = std::mem::take(&mut summary.parameter_uses);
         for mut use_ in uses {
+            map_parameter_use_values(&mut use_, |value| {
+                *value = self.substitute_value_at(value.clone(), target_level, arguments);
+            });
             if use_.level == target_level {
                 let callback = arguments
                     .get(use_.index)
                     .and_then(Option::as_ref)
                     .cloned()
-                    .and_then(|value| project_path(value, &use_.projection))
+                    .and_then(|value| self.project_path(value, &use_.projection))
                     .and_then(|value| value.callable);
                 if let Some(callback) = callback {
                     let mut invoked = self
-                        .invoke_with_values(callback, &[])
+                        .invoke_with_arguments(callback, use_.arguments)
                         .excluding(&use_.excluded);
                     shift_summary_levels(&mut invoked, target_level);
                     summary.union(invoked);
@@ -1334,10 +1715,26 @@ impl Analyzer<'_> {
         target_level: usize,
         arguments: &[Option<Value>],
     ) -> Value {
+        // Substitute the callee's children before inserting caller provenance.
+        // A replacement already belongs to the caller: walking it again can
+        // replace its parameter with itself indefinitely for nested records,
+        // and can also attribute a callback to the wrong lexical binder.
+        for nested in value.fields.values_mut() {
+            *nested = self.substitute_value_at(nested.clone(), target_level, arguments);
+        }
+        self.substitute_payload_at(&mut value.element, target_level, arguments);
+        self.substitute_payload_at(&mut value.result_payload, target_level, arguments);
+        self.substitute_payload_at(&mut value.fiber_payload, target_level, arguments);
+        value.deferred = self.substitute_summary_at(value.deferred, target_level, arguments);
+        if let Some(Callable::Parameter { projection, .. }) = &mut value.callable {
+            map_projection_values(projection, |value| {
+                *value = self.substitute_value_at(value.clone(), target_level, arguments);
+            });
+        }
         if let Some(callable) = value.callable.take() {
             match callable {
                 Callable::Parameter {
-                    mut level,
+                    level,
                     index,
                     projection,
                 } if level == target_level => {
@@ -1345,17 +1742,22 @@ impl Analyzer<'_> {
                         .get(index)
                         .and_then(Option::as_ref)
                         .cloned()
-                        .and_then(|argument| project_path(argument, &projection))
+                        .and_then(|argument| self.project_path(argument, &projection))
                     {
                         shift_value_levels(&mut replacement, target_level, 0);
+                        value.field_names.clone_from(&replacement.field_names);
                         value.union(replacement);
-                    } else {
-                        level = target_level.saturating_sub(1);
+                    } else if index >= arguments.len() {
+                        // Only an absent argument keeps the original binder.
+                        // A supplied opaque value or failed projection must
+                        // never be resolved through an unrelated caller slot.
                         value.callable = Some(Callable::Parameter {
                             level,
                             index,
                             projection,
                         });
+                    } else {
+                        value.callable = Some(Callable::Unknown);
                     }
                 }
                 Callable::Parameter {
@@ -1383,13 +1785,6 @@ impl Analyzer<'_> {
                 Callable::Unknown => value.callable = Some(Callable::Unknown),
             }
         }
-        for nested in value.fields.values_mut() {
-            *nested = self.substitute_value_at(nested.clone(), target_level, arguments);
-        }
-        self.substitute_payload_at(&mut value.element, target_level, arguments);
-        self.substitute_payload_at(&mut value.result_payload, target_level, arguments);
-        self.substitute_payload_at(&mut value.fiber_payload, target_level, arguments);
-        value.deferred = self.substitute_summary_at(value.deferred, target_level, arguments);
         value
     }
 
@@ -1437,6 +1832,37 @@ impl Analyzer<'_> {
             } else {
                 let _ = local.values.remove(parameter);
             }
+        }
+        local
+    }
+
+    fn handler_body_env(
+        &self,
+        effect: &str,
+        arms: &[HandlerArm],
+        body: &Expr,
+        position: Option<Position>,
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> CallableEnv {
+        let arguments =
+            self.instance_arguments(effect, position, &self.instances.handlers, "handler");
+        let mut local = env.clone();
+        for arm in arms {
+            // Arms execute outside this handler, so resolve their returned
+            // values using only the outer handler environment.
+            let mut arm_env = self.handler_arm_env(effect, arm, body, scope, env);
+            let value = self
+                .returned_value(&arm.body, scope, &mut arm_env)
+                .unwrap_or_else(Value::unknown_callable);
+            let _ = local.handler_returns.insert(
+                Requirement {
+                    effect: effect.to_owned(),
+                    operation: arm.operation.clone(),
+                    arguments: arguments.clone(),
+                },
+                value,
+            );
         }
         local
     }
@@ -1490,42 +1916,58 @@ impl Analyzer<'_> {
     fn statements(&self, statements: &[Stmt], scope: &[String], env: &mut CallableEnv) -> Summary {
         let mut out = Summary::default();
         for statement in statements {
-            match statement {
-                Stmt::Let { name, value, .. } => {
-                    out.union(self.expression(value, scope, env));
-                    self.flow_callable_assignments(value, scope, env);
-                    let _ = env.shadowed.insert(name.clone());
-                    if let Some(provenance) = self.value(value, scope, env) {
-                        let _ = env.values.insert(name.clone(), provenance);
-                    } else {
-                        let _ = env.values.remove(name);
-                    }
+            // `let`, assignment and a bare expression all analyse their value
+            // and flow its callable assignments; only the two binding forms go
+            // on to re-point the name. The shadow mark lands AFTER the value is
+            // analysed, so `let x = f(x)` still sees the outer `x`.
+            let (name, value) = match statement {
+                Stmt::Let { name, value, .. } | Stmt::Assignment { name, value, .. } => {
+                    (Some(name), value)
                 }
-                Stmt::Assignment { name, value, .. } => {
-                    out.union(self.expression(value, scope, env));
-                    self.flow_callable_assignments(value, scope, env);
-                    if let Some(provenance) = self.value(value, scope, env) {
-                        let _ = env.values.insert(name.clone(), provenance);
-                    } else {
-                        let _ = env.values.remove(name);
-                    }
-                }
-                Stmt::Expr { value, .. } => {
-                    out.union(self.expression(value, scope, env));
-                    self.flow_callable_assignments(value, scope, env);
-                }
-                _ => {}
+                Stmt::Expr { value, .. } => (None, value),
+                _ => continue,
+            };
+            out.union(self.expression(value, scope, env));
+            self.flow_callable_assignments(value, scope, env);
+            if let Stmt::Let { name, .. } = statement {
+                let _ = env.shadowed.insert(name.clone());
+            }
+            if let Some(name) = name {
+                self.rebind_value(name, value, scope, env);
             }
         }
         out
     }
 
-    fn expressions(&self, expressions: &[Expr], scope: &[String], env: &CallableEnv) -> Summary {
+    /// Re-point `name` at the provenance of its new `value`, forgetting the old
+    /// binding when the value carries none — the rebind `let` and assignment
+    /// share.
+    fn rebind_value(&self, name: &str, value: &Expr, scope: &[String], env: &mut CallableEnv) {
+        if let Some(provenance) = self.value(value, scope, env) {
+            let _ = env.values.insert(name.to_owned(), provenance);
+        } else {
+            let _ = env.values.remove(name);
+        }
+    }
+
+    /// The union of the rows every expression in `exprs` contributes. Every
+    /// aggregate form performs this same fold — they differ only in what they
+    /// hold their expressions in, so each passes its own projection.
+    fn union_over<'e>(
+        &self,
+        exprs: impl IntoIterator<Item = &'e Expr>,
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> Summary {
         let mut out = Summary::default();
-        for expression in expressions {
-            out.union(self.expression(expression, scope, env));
+        for expr in exprs {
+            out.union(self.expression(expr, scope, env));
         }
         out
+    }
+
+    fn expressions(&self, expressions: &[Expr], scope: &[String], env: &CallableEnv) -> Summary {
+        self.union_over(expressions, scope, env)
     }
 
     fn named_expressions(
@@ -1534,11 +1976,7 @@ impl Analyzer<'_> {
         scope: &[String],
         env: &CallableEnv,
     ) -> Summary {
-        let mut out = Summary::default();
-        for argument in arguments {
-            out.union(self.expression(&argument.value, scope, env));
-        }
-        out
+        self.union_over(arguments.iter().map(|argument| &argument.value), scope, env)
     }
 }
 
@@ -1553,9 +1991,30 @@ fn receiver_first(receiver: &Expr, arguments: &[Expr]) -> Vec<Expr> {
 
 fn expression_name(expression: &Expr) -> Option<&str> {
     match expression {
+        Expr::TypeApply { function, .. } => expression_name(function),
         Expr::Identifier(name) => Some(name),
         Expr::Path(path) => path.last(),
         _ => None,
+    }
+}
+
+/// Only a declaration resolved at this call site supplies parameter names.
+/// A tracked callback can be known while still being called through a slot.
+fn source_named_callee(
+    expression: &Expr,
+    scope: &[String],
+    env: &CallableEnv,
+    index: &Index<'_>,
+) -> bool {
+    match expression {
+        Expr::TypeApply { function, .. } => source_named_callee(function, scope, env, index),
+        Expr::Identifier(name) => {
+            !env.shadowed.contains(name)
+                && !env.values.contains_key(name)
+                && index.resolve(scope, name).is_some()
+        }
+        Expr::Path(path) => index.resolve(scope, &path.to_string()).is_some(),
+        _ => false,
     }
 }
 
@@ -1569,8 +2028,9 @@ fn expression_name(expression: &Expr) -> Option<&str> {
 /// Trusting every unshadowed name let `let siren = ring` / `fn relay() =
 /// siren()` type-check with `Alarm.ring` never handled, because the call
 /// contributed nothing at all, not even a provenance failure.
-fn statically_named_callee(expression: &Expr, env: &CallableEnv, index: &Index) -> bool {
+fn statically_named_callee(expression: &Expr, env: &CallableEnv, index: &Index<'_>) -> bool {
     match expression {
+        Expr::TypeApply { function, .. } => statically_named_callee(function, env, index),
         Expr::Identifier(name) => {
             !env.shadowed.contains(name)
                 && (crate::builtins::builtin_signature(name).is_some()
@@ -1671,16 +2131,112 @@ fn project_callable(callable: Option<Callable>, next: Projection, projected: &mu
     merge_optional_value(projected, Value::from_callable(callable));
 }
 
-fn project_path(mut value: Value, path: &[Projection]) -> Option<Value> {
-    for projection in path {
-        value = match projection {
-            Projection::Field(field) => project_field(value, field),
-            Projection::Element => project_element(value),
-            Projection::SuccessValue => project_success_value(value),
-            Projection::FiberValue => project_fiber_value(value),
-        }?;
+fn method_thunk(mut summary: Summary, mut returned: Option<Value>) -> Value {
+    shift_summary_levels(&mut summary, 1);
+    if let Some(returned) = &mut returned {
+        shift_value_levels(returned, 1, 0);
     }
-    Some(value)
+    Value::from_callable(Callable::Known(Box::new(KnownCallable {
+        parameters: Vec::new(),
+        summary,
+        returned: returned.map(Box::new),
+    })))
+}
+
+/// Built-in signatures can prove a primitive result has no fields without
+/// inventing callable provenance for an otherwise opaque result.
+fn builtin_return_shape(name: &str) -> Option<Value> {
+    // Effect summaries revisit calls during fixed-point inference and warning
+    // comparisons. Their immutable builtin signatures need one shared table.
+    static BUILTINS: std::sync::LazyLock<crate::env::TypeEnv> =
+        std::sync::LazyLock::new(crate::builtins::base_env);
+    let crate::ty::Type::Fun { ret, .. } = &BUILTINS.get(name)?.ty else {
+        return None;
+    };
+    value_shape(ret)
+}
+
+fn value_shape(ty: &crate::ty::Type) -> Option<Value> {
+    use crate::ty::{names, Type};
+    match ty {
+        Type::Con { name, args } if name == names::RESULT => Some(Value {
+            result_payload: args.first().and_then(value_shape).map(Box::new),
+            ..Value::default()
+        }),
+        Type::Con { name, .. }
+            if matches!(
+                name.as_str(),
+                names::INT
+                    | names::FLOAT
+                    | names::STRING
+                    | names::BOOL
+                    | names::UNIT
+                    | names::LIST
+                    | names::MAP
+                    | names::ITERATOR
+                    | names::FIBER
+                    | names::CHANNEL
+                    | names::PTR
+                    | names::GPU_BUFFER
+            ) =>
+        {
+            Some(Value {
+                field_names: Some(BTreeSet::new()),
+                ..Value::default()
+            })
+        }
+        _ => None,
+    }
+}
+
+fn map_projection_values(projection: &mut [Projection], mut visit: impl FnMut(&mut Value)) {
+    for part in projection {
+        let (positional, named) = match part {
+            Projection::Method(method) => {
+                visit(&mut method.fallback);
+                (&mut method.arguments, &mut method.named)
+            }
+            Projection::Returned(arguments) => (&mut arguments.positional, &mut arguments.named),
+            _ => continue,
+        };
+        for value in positional
+            .iter_mut()
+            .chain(named.iter_mut().map(|(_, value)| value))
+            .flatten()
+        {
+            visit(value);
+        }
+    }
+}
+
+fn map_parameter_use_values(use_: &mut ParameterUse, mut visit: impl FnMut(&mut Value)) {
+    map_projection_values(&mut use_.projection, &mut visit);
+    for value in use_
+        .arguments
+        .positional
+        .iter_mut()
+        .chain(use_.arguments.named.iter_mut().map(|(_, value)| value))
+        .flatten()
+    {
+        visit(value);
+    }
+}
+
+fn ordered_values(
+    parameters: &[String],
+    positional: &[Option<Value>],
+    named: &[(String, Option<Value>)],
+) -> Vec<Option<Value>> {
+    let mut values = positional.to_vec();
+    values.resize(values.len().max(parameters.len()), None);
+    for (name, value) in named {
+        if let Some(index) = parameters.iter().position(|parameter| parameter == name) {
+            if let Some(slot) = values.get_mut(index) {
+                slot.clone_from(value);
+            }
+        }
+    }
+    values
 }
 
 fn merge_value(slot: &mut Value, incoming: Value) {
@@ -1720,12 +2276,20 @@ fn widen_value(mut value: Value, depth: usize) -> Value {
         // unresolvable dynamic call, and discarding `deferred.required` would
         // silently discharge an operation that still needs a handler.
         let mut deferred = value.deferred;
-        deferred.widen();
+        deferred.widen_at(depth);
         let callable = match value.callable {
             Some(Callable::Known(mut known)) => {
                 known.returned = None;
-                known.summary.widen();
+                known.summary.widen_at(depth);
                 Some(Callable::Known(known))
+            }
+            Some(Callable::Parameter { ref projection, .. })
+                if projection.iter().any(|part| {
+                    matches!(part, Projection::Method(_) | Projection::Returned(_))
+                }) =>
+            {
+                deferred.unresolved_dynamic_call = true;
+                Some(Callable::Unknown)
             }
             // A value that was never callable must not BECOME one here.
             // Promoting `None` to `Unknown` would turn "this is an int" into
@@ -1741,11 +2305,11 @@ fn widen_value(mut value: Value, depth: usize) -> Value {
         };
     }
 
-    value.deferred.widen();
+    value.deferred.widen_at(depth);
     if let Some(callable) = value.callable.take() {
         value.callable = Some(match callable {
             Callable::Known(mut known) => {
-                known.summary.widen();
+                known.summary.widen_at(depth);
                 known.returned = known
                     .returned
                     .map(|returned| Box::new(widen_value(*returned, depth + 1)));
@@ -1754,8 +2318,11 @@ fn widen_value(mut value: Value, depth: usize) -> Value {
             Callable::Parameter {
                 level,
                 index,
-                projection,
+                mut projection,
             } if level < MAX_PROVENANCE_DEPTH && projection.len() < MAX_PROVENANCE_DEPTH => {
+                map_projection_values(&mut projection, |value| {
+                    *value = widen_value(value.clone(), depth + 1);
+                });
                 Callable::Parameter {
                     level,
                     index,
@@ -1794,6 +2361,9 @@ fn shift_summary_from(summary: &mut Summary, amount: usize, minimum_level: usize
             if use_.level >= minimum_level {
                 use_.level = use_.level.saturating_add(amount);
             }
+            map_parameter_use_values(&mut use_, |value| {
+                shift_value_levels(value, amount, minimum_level);
+            });
             use_
         })
         .collect();
@@ -1806,10 +2376,15 @@ fn shift_summary_levels(summary: &mut Summary, amount: usize) {
 fn shift_value_levels(value: &mut Value, amount: usize, minimum_level: usize) {
     if let Some(callable) = &mut value.callable {
         match callable {
-            Callable::Parameter { level, .. } => {
+            Callable::Parameter {
+                level, projection, ..
+            } => {
                 if *level >= minimum_level {
                     *level = level.saturating_add(amount);
                 }
+                map_projection_values(projection, |value| {
+                    shift_value_levels(value, amount, minimum_level);
+                });
             }
             Callable::Known(known) => {
                 shift_summary_from(&mut known.summary, amount, minimum_level + 1);
@@ -1852,6 +2427,7 @@ fn callable_summary(callable: &Callable) -> Summary {
                 level: *level,
                 index: *index,
                 projection: projection.clone(),
+                arguments: CallArguments::default(),
                 excluded: Requirements::new(),
             }]
             .into_iter()
@@ -1891,7 +2467,12 @@ fn merge_callable(slot: &mut Option<Callable>, incoming: Callable) {
     })));
 }
 
-fn bind_pattern(pattern: &Pattern, value: Option<&Value>, index: &Index, env: &mut CallableEnv) {
+fn bind_pattern(
+    pattern: &Pattern,
+    value: Option<&Value>,
+    index: &Index<'_>,
+    env: &mut CallableEnv,
+) {
     match pattern {
         Pattern::Binding(name) | Pattern::TypeAnnotated { name, .. } => {
             let _ = env.shadowed.insert(name.clone());
@@ -1909,7 +2490,12 @@ fn bind_pattern(pattern: &Pattern, value: Option<&Value>, index: &Index, env: &m
             for field in fields {
                 let _ = env.shadowed.insert(field.clone());
                 let projected = value.and_then(|value| {
-                    if name == "Success" && field == "value" {
+                    // Elvis binds the same success payload under a reserved
+                    // name; losing it would discard the successful arm's
+                    // callable effects at the fallback join. [PATTERN-RESULT-DEFAULT]
+                    if name == "Success"
+                        && (field == "value" || field == osprey_ast::RESULT_DEFAULT_PAYLOAD)
+                    {
                         project_success_value(value.clone())
                     } else {
                         value.fields.get(field).cloned()
@@ -1963,7 +2549,7 @@ fn bind_pattern(pattern: &Pattern, value: Option<&Value>, index: &Index, env: &m
 fn advance_function(
     analyzer: &Analyzer<'_>,
     id: usize,
-    function: &Function,
+    function: &Function<'_>,
     rows: &mut [Summary],
     returns: &mut [Option<Value>],
 ) -> bool {
@@ -2004,7 +2590,7 @@ fn advance_function(
 /// that has not been walked yet, so one pass is a complete answer for the rows
 /// it was given. The enclosing fixed point re-derives it as those rows sharpen.
 fn file_scope_env(
-    index: &Index,
+    index: &Index<'_>,
     instances: &Instances,
     statements: &[Stmt],
     rows: &[Summary],
@@ -2025,7 +2611,7 @@ fn file_scope_env(
 /// Least fixed point over every function's row and return provenance:
 /// recursive and forward calls only add requirements.
 fn converge(
-    index: &Index,
+    index: &Index<'_>,
     instances: &Instances,
     statements: &[Stmt],
     rows: &mut Vec<Summary>,
@@ -2063,23 +2649,37 @@ fn converge(
 /// the next sweep can re-derive each verdict from converged provenance.
 fn clear_verdicts(rows: &mut [Summary], returns: &mut [Option<Value>]) {
     for row in rows.iter_mut() {
-        row.unresolved_dynamic_call = false;
+        clear_summary_verdicts(row);
     }
     for returned in returns.iter_mut().flatten() {
         clear_value_verdicts(returned);
     }
 }
 
+fn clear_summary_verdicts(summary: &mut Summary) {
+    summary.unresolved_dynamic_call = false;
+    summary.parameter_uses = std::mem::take(&mut summary.parameter_uses)
+        .into_iter()
+        .map(|mut use_| {
+            map_parameter_use_values(&mut use_, clear_value_verdicts);
+            use_
+        })
+        .collect();
+}
+
 fn clear_value_verdicts(value: &mut Value) {
-    value.deferred.unresolved_dynamic_call = false;
+    clear_summary_verdicts(&mut value.deferred);
     // `Callable::Unknown` is deliberately left in place: it is the SHAPE that
     // makes an invocation unresolvable, so the next sweep raises the verdict
     // again wherever the callable is actually called.
     if let Some(Callable::Known(known)) = &mut value.callable {
-        known.summary.unresolved_dynamic_call = false;
+        clear_summary_verdicts(&mut known.summary);
         if let Some(returned) = &mut known.returned {
             clear_value_verdicts(returned);
         }
+    }
+    if let Some(Callable::Parameter { projection, .. }) = &mut value.callable {
+        map_projection_values(projection, clear_value_verdicts);
     }
     for nested in value.fields.values_mut() {
         clear_value_verdicts(nested);
@@ -2093,6 +2693,78 @@ fn clear_value_verdicts(value: &mut Value) {
     .flatten()
     {
         clear_value_verdicts(nested);
+    }
+}
+
+/// Substitute complete type-name tokens, so `t3` never rewrites `t30`.
+fn specialize_argument(argument: &str, bindings: &HashMap<String, String>) -> String {
+    let mut result = String::new();
+    let mut token = String::new();
+    for character in argument.chars().chain(std::iter::once('\0')) {
+        if character.is_alphanumeric() || character == '_' {
+            token.push(character);
+        } else {
+            result.push_str(bindings.get(&token).unwrap_or(&token));
+            token.clear();
+            if character != '\0' {
+                result.push(character);
+            }
+        }
+    }
+    result
+}
+
+fn specialize_requirements(requirements: &mut Requirements, bindings: &HashMap<String, String>) {
+    *requirements = std::mem::take(requirements)
+        .into_iter()
+        .map(|mut requirement| {
+            requirement.arguments = requirement
+                .arguments
+                .iter()
+                .map(|arg| specialize_argument(arg, bindings))
+                .collect();
+            requirement
+        })
+        .collect();
+}
+
+fn specialize_summary(summary: &mut Summary, bindings: &HashMap<String, String>) {
+    specialize_requirements(&mut summary.required, bindings);
+    summary.parameter_uses = std::mem::take(&mut summary.parameter_uses)
+        .into_iter()
+        .map(|mut use_| {
+            specialize_requirements(&mut use_.excluded, bindings);
+            map_parameter_use_values(&mut use_, |value| {
+                specialize_value(value, bindings);
+            });
+            use_
+        })
+        .collect();
+}
+
+fn specialize_value(value: &mut Value, bindings: &HashMap<String, String>) {
+    specialize_summary(&mut value.deferred, bindings);
+    if let Some(Callable::Parameter { projection, .. }) = &mut value.callable {
+        map_projection_values(projection, |value| specialize_value(value, bindings));
+    }
+    if let Some(Callable::Known(known)) = &mut value.callable {
+        specialize_summary(&mut known.summary, bindings);
+        if let Some(returned) = &mut known.returned {
+            specialize_value(returned, bindings);
+        }
+    }
+    for nested in value.fields.values_mut() {
+        specialize_value(nested, bindings);
+    }
+    for nested in [
+        value.element.as_mut(),
+        value.result_payload.as_mut(),
+        value.fiber_payload.as_mut(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        specialize_value(nested, bindings);
     }
 }
 
@@ -2191,10 +2863,18 @@ pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) 
                 .filter(|requirement| {
                     !function.declared_effects.iter().any(|declared| {
                         declared.name == requirement.effect
-                            && declared
-                                .arguments
-                                .as_ref()
-                                .is_none_or(|arguments| arguments == &requirement.arguments)
+                            && declared.arguments.as_ref().is_none_or(|arguments| {
+                                let bindings = instances.binders.get(&function.name);
+                                arguments
+                                    .iter()
+                                    .map(|arg| {
+                                        bindings.map_or_else(
+                                            || arg.clone(),
+                                            |b| specialize_argument(arg, b),
+                                        )
+                                    })
+                                    .eq(requirement.arguments.iter().cloned())
+                            })
                     })
                 })
                 .map(requirement_name)
@@ -2213,7 +2893,7 @@ pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) 
         validate_handler_arms(
             &analyzer,
             &axis,
-            &function.body,
+            function.body,
             &function.scope,
             &analyzer.scoped_env(&function.parameters),
             &mut errors,
@@ -2376,7 +3056,7 @@ fn gpu_kernel_verdict(
             "cannot prove GPU kernel pure; pass a named function or an inline lambda",
         ));
     };
-    let row = analyzer.invoke(callee, &[], &[], scope, env);
+    let row = analyzer.invoke_with_values(callee, &[]);
     if !row.required.is_empty() {
         let performed: Vec<String> = row.required.iter().map(requirement_name).collect();
         return Some(format!(
@@ -2503,7 +3183,7 @@ fn fibered_operation(
 /// happens. Over-reaching costs a rejection the plan already fails closed on;
 /// under-reaching would miss the fiber boundary this rule exists to find.
 fn reachable_bodies<'a>(
-    index: &'a Index,
+    index: &'a Index<'_>,
     body: &'a Expr,
     scope: &'a [String],
 ) -> Vec<(&'a Expr, &'a [String])> {
@@ -2520,7 +3200,7 @@ fn reachable_bodies<'a>(
         {
             if visited.insert(id) {
                 if let Some(function) = index.functions.get(id) {
-                    regions.push((&function.body, &function.scope));
+                    regions.push((function.body, &function.scope));
                 }
             }
         }
@@ -2577,7 +3257,10 @@ fn walk_children<'a>(expression: &'a Expr, mut visit: impl FnMut(&'a Expr)) {
             visit(left);
             visit(right);
         }
-        Expr::Unary { operand, .. }
+        Expr::TypeApply {
+            function: operand, ..
+        }
+        | Expr::Unary { operand, .. }
         | Expr::FieldAccess {
             target: operand, ..
         }

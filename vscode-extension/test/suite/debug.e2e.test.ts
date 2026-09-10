@@ -6,11 +6,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { defaultDebugOutputPath } from "../../client/src/extension";
-import {
-  extensionRoot,
-  resolveBuiltOsprey,
-  resolveRequiredLldbDap,
-} from "./osprey-test-env";
+import { resolveBuiltOsprey, resolveRequiredLldbDap } from "./osprey-test-env";
 import {
   assertCurrentLine,
   assertLocalVariable,

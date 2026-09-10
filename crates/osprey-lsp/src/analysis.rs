@@ -5,10 +5,9 @@
 //! into editor symbols — both the language server and the `osprey --symbols` /
 //! `osprey --hover` CLI modes render from here.
 
-use osprey_ast::{
-    walk_each, Expr, ExternParameter, InterpolatedPart, NamedArgument, Parameter, Position,
-    Program, Stmt, TypeExpr,
-};
+#[cfg(test)]
+use osprey_ast::InterpolatedPart;
+use osprey_ast::{AstNode, Expr, ExternParameter, Parameter, Position, Program, Stmt, TypeExpr};
 use std::fmt::Write as _;
 
 /// What kind of declaration a [`SymbolInfo`] describes.
@@ -227,139 +226,22 @@ fn walk_stmt_body(stmt: &Stmt, prefix: &[String], out: &mut Vec<SymbolInfo>) {
     }
 }
 
-/// Descend an expression collecting nested `let` bindings (first third).
+/// Descend expressions while preserving block-local symbol collection.
 fn walk_expr(e: &Expr, prefix: &[String], out: &mut Vec<SymbolInfo>) {
     match e {
-        Expr::InterpolatedStr(parts) => parts.iter().for_each(|p| {
-            if let InterpolatedPart::Expr(x) = p {
-                walk_expr(x, prefix, out);
-            }
-        }),
-        Expr::List(xs, _) => walk_each(xs, out, |x| x, |x, out| walk_expr(x, prefix, out)),
-        Expr::Map(entries) => entries.iter().for_each(|en| {
-            walk_expr(&en.key, prefix, out);
-            walk_expr(&en.value, prefix, out);
-        }),
-        Expr::Object(fields) => walk_each(
-            fields,
-            out,
-            |f| &f.value,
-            |x, out| {
-                walk_expr(x, prefix, out);
-            },
-        ),
-        Expr::Binary { left, right, .. } | Expr::Pipe { left, right } => {
-            walk_expr(left, prefix, out);
-            walk_expr(right, prefix, out);
-        }
-        Expr::Unary { operand, .. } => walk_expr(operand, prefix, out),
-        other => walk_expr_rest(other, prefix, out),
-    }
-}
-
-/// Continuation of [`walk_expr`] — call/navigation/block forms (second third).
-fn walk_expr_rest(e: &Expr, prefix: &[String], out: &mut Vec<SymbolInfo>) {
-    match e {
-        Expr::Call {
-            function,
-            arguments,
-            named_arguments,
-        } => {
-            walk_expr(function, prefix, out);
-            walk_arguments(arguments, named_arguments, prefix, out);
-        }
-        Expr::MethodCall {
-            target,
-            arguments,
-            named_arguments,
-            ..
-        } => {
-            walk_expr(target, prefix, out);
-            walk_arguments(arguments, named_arguments, prefix, out);
-        }
-        Expr::FieldAccess { target, .. } => walk_expr(target, prefix, out),
-        Expr::Index { target, index } => {
-            walk_expr(target, prefix, out);
-            walk_expr(index, prefix, out);
-        }
-        Expr::Lambda { body, .. } => walk_expr(body, prefix, out),
-        Expr::Match { value, arms } => {
-            walk_expr(value, prefix, out);
-            walk_each(
-                arms,
-                out,
-                |arm| &arm.body,
-                |x, out| {
-                    walk_expr(x, prefix, out);
-                },
-            );
-        }
         Expr::Block { statements, value } => {
             walk_stmts(statements, prefix, Bodies::Descend, out);
-            if let Some(v) = value {
-                walk_expr(v, prefix, out);
+            if let Some(value) = value {
+                walk_expr(value, prefix, out);
             }
         }
-        Expr::TypeConstructor { fields, .. } | Expr::Update { fields, .. } => {
-            walk_each(
-                fields,
-                out,
-                |f| &f.value,
-                |x, out| {
-                    walk_expr(x, prefix, out);
-                },
-            );
-        }
-        other => walk_expr_fiber(other, prefix, out),
-    }
-}
-
-/// Final third of [`walk_expr`]: fiber/effect forms; leaves fall through.
-fn walk_expr_fiber(e: &Expr, prefix: &[String], out: &mut Vec<SymbolInfo>) {
-    match e {
-        Expr::Spawn(i) | Expr::Await(i) | Expr::Recv(i) | Expr::Yield(Some(i)) => {
-            walk_expr(i, prefix, out);
-        }
-        Expr::Send { channel, value } => {
-            walk_expr(channel, prefix, out);
-            walk_expr(value, prefix, out);
-        }
-        Expr::Select { arms } => walk_each(
-            arms,
-            out,
-            |arm| &arm.body,
-            |x, out| {
-                walk_expr(x, prefix, out);
-            },
-        ),
-        Expr::Perform {
-            arguments,
-            named_arguments,
-            ..
-        } => {
-            walk_arguments(arguments, named_arguments, prefix, out);
-        }
-        Expr::Handler { arms, body, .. } => {
-            for arm in arms {
-                walk_expr(&arm.body, prefix, out);
+        // Resume operands were not part of this symbol collector's traversal.
+        Expr::Resume(_) => {}
+        _ => AstNode::Expression(e).for_each_child(|child| {
+            if let AstNode::Expression(expression) = child {
+                walk_expr(expression, prefix, out);
             }
-            walk_expr(body, prefix, out);
-        }
-        _ => {}
-    }
-}
-
-fn walk_arguments(
-    arguments: &[Expr],
-    named_arguments: &[NamedArgument],
-    prefix: &[String],
-    out: &mut Vec<SymbolInfo>,
-) {
-    for argument in arguments {
-        walk_expr(argument, prefix, out);
-    }
-    for argument in named_arguments {
-        walk_expr(&argument.value, prefix, out);
+        }),
     }
 }
 
@@ -752,6 +634,18 @@ pub(crate) fn json_str(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// Assert the symbol named `name` carries a doc comment mentioning `needle`
+    /// — the find-then-unwrap chain these cases otherwise repeat per symbol.
+    fn assert_doc(syms: &[SymbolInfo], name: &str, needle: &str) {
+        let doc = syms
+            .iter()
+            .find(|s| s.name == name)
+            .and_then(|s| s.doc.clone());
+        assert!(
+            doc.is_some_and(|d| d.contains(needle)),
+            "no doc mentioning {needle:?} on {name}"
+        );
+    }
 
     #[test]
     fn outline_covers_every_declaration_form() {
@@ -1005,22 +899,8 @@ print(describeAny(42) + "!")
         let parsed = osprey_syntax::parse_program_with_flavor(src, osprey_syntax::Flavor::Ml);
         assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
         let syms = collect_all_symbols(&parsed.program);
-        let doc = syms
-            .iter()
-            .find(|s| s.name == "double")
-            .and_then(|s| s.doc.clone());
-        assert!(
-            doc.is_some_and(|d| d.contains("Doubles the input.")),
-            "ml fn doc"
-        );
-        let tdoc = syms
-            .iter()
-            .find(|s| s.name == "Tier")
-            .and_then(|s| s.doc.clone());
-        assert!(
-            tdoc.is_some_and(|d| d.contains("A performance tier.")),
-            "ml type doc"
-        );
+        assert_doc(&syms, "double", "Doubles the input.");
+        assert_doc(&syms, "Tier", "A performance tier.");
     }
 
     #[test]
@@ -1129,7 +1009,7 @@ print(describeAny(42) + "!")
         clippy::too_many_lines,
         reason = "exhaustive fixture: one arm per AST container variant is the point"
     )]
-    fn every_container_with_a_nested_let() -> Vec<osprey_ast::Expr> {
+    fn every_container_with_a_nested_let() -> Vec<Expr> {
         use osprey_ast::{
             Expr, FieldAssignment, HandlerArm, MapEntry, MatchArm, NamedArgument, Pattern,
         };

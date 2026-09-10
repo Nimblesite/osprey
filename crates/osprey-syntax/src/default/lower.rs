@@ -26,7 +26,7 @@ fn strip_doc_line(line: &str) -> &str {
 
 /// Holds the source bytes so node text can be sliced during lowering.
 #[derive(Debug)]
-pub struct Lowerer<'a> {
+pub(crate) struct Lowerer<'a> {
     src: &'a [u8],
 }
 
@@ -764,7 +764,7 @@ fn negate_literal(e: Expr) -> Expr {
 )]
 mod tests {
     use crate::parse_tree;
-    use crate::test_support::{one_stmt, stmts};
+    use crate::test_support::{assert_doc_pair, assert_summary, one_stmt, stmt_doc, stmts};
     use osprey_ast::{Expr, Pattern, Stmt};
     use tree_sitter::Node;
 
@@ -779,16 +779,6 @@ mod tests {
     }
 
     // ---------- [TESTING-DOC] expression-statement documentation ----------
-
-    /// The doc comment lowered onto a statement, or `None`.
-    fn stmt_doc(stmt: &Stmt) -> Option<&osprey_ast::DocComment> {
-        match stmt {
-            Stmt::Expr { doc, .. } | Stmt::Let { doc, .. } | Stmt::Function { doc, .. } => {
-                doc.as_ref()
-            }
-            _ => None,
-        }
-    }
 
     #[test]
     fn a_doc_comment_lowers_onto_the_expression_statement_it_precedes() {
@@ -836,15 +826,9 @@ mod tests {
     fn each_documented_statement_owns_only_its_own_doc() {
         let all = stmts("/// First.\ntest(\"a\", 1)\ntest(\"b\", 2)\n/// Third.\ntest(\"c\", 3)\n");
         assert_eq!(all.len(), 3);
-        assert_eq!(
-            stmt_doc(&all[0]).map(|d| d.summary.as_str()),
-            Some("First.")
-        );
-        assert_eq!(stmt_doc(&all[1]).map(|d| d.summary.as_str()), None);
-        assert_eq!(
-            stmt_doc(&all[2]).map(|d| d.summary.as_str()),
-            Some("Third.")
-        );
+        assert_summary(&all[0], Some("First."));
+        assert_summary(&all[1], None);
+        assert_summary(&all[2], Some("Third."));
     }
 
     #[test]
@@ -852,13 +836,7 @@ mod tests {
         // Adding the expression-statement slot must not steal a following
         // declaration's doc comment.
         let all = stmts("/// Runs it.\nprint(\"hi\")\n/// Adds.\nfn add(a, b) = a + b\n");
-        assert_eq!(all.len(), 2);
-        assert_eq!(
-            stmt_doc(&all[0]).map(|d| d.summary.as_str()),
-            Some("Runs it.")
-        );
-        assert!(matches!(all[1], Stmt::Function { .. }));
-        assert_eq!(stmt_doc(&all[1]).map(|d| d.summary.as_str()), Some("Adds."));
+        assert_doc_pair(&all, "Runs it.", "Adds.");
     }
 
     #[test]
@@ -870,10 +848,7 @@ mod tests {
         let Expr::Block { statements, .. } = body else {
             panic!("expected a block body, got {body:?}");
         };
-        assert_eq!(
-            stmt_doc(&statements[0]).map(|d| d.summary.as_str()),
-            Some("Inner case.")
-        );
+        assert_summary(&statements[0], Some("Inner case."));
     }
 
     #[test]

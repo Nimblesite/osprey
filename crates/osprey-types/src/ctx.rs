@@ -7,35 +7,73 @@ use crate::ty::{Type, VarId};
 use osprey_ast::Variance;
 use std::collections::{BTreeSet, HashMap};
 
+type RecordTemplate = (Vec<String>, Vec<(String, String)>);
+
 /// Holds every type variable's binding. Variable ids are indices into `subst`.
 #[derive(Debug, Default)]
-pub struct InferCtx {
+pub(crate) struct InferCtx {
     subst: Vec<Option<Type>>,
     /// Type-constructor name → declared per-parameter variance, consulted by
     /// assignability so `Source<out T>` matches covariantly. Implements
     /// [TYPE-VARIANCE-ASSIGN].
     variances: HashMap<String, Vec<Variance>>,
+    /// Nominal record layouts, before instantiating their declaration binders.
+    records: HashMap<String, RecordTemplate>,
 }
 
 impl InferCtx {
     /// Create an empty context with no allocated type variables.
-    pub fn new() -> InferCtx {
+    pub(crate) fn new() -> InferCtx {
         InferCtx::default()
     }
 
     /// Register a type constructor's declared per-parameter variance.
-    pub fn set_variance(&mut self, name: impl Into<String>, variances: Vec<Variance>) {
+    pub(crate) fn set_variance(&mut self, name: impl Into<String>, variances: Vec<Variance>) {
         let _ = self.variances.insert(name.into(), variances);
     }
 
     /// The declared per-parameter variance of a type constructor, if any.
     #[must_use]
-    pub fn variance_of(&self, name: &str) -> Option<&[Variance]> {
+    pub(crate) fn variance_of(&self, name: &str) -> Option<&[Variance]> {
         self.variances.get(name).map(Vec::as_slice)
     }
 
+    /// Register a record's generic field template [TYPE-GENERICS-DECL].
+    pub(crate) fn set_record(
+        &mut self,
+        name: String,
+        params: Vec<String>,
+        fields: Vec<(String, String)>,
+    ) {
+        let _ = self.records.insert(name, (params, fields));
+    }
+
+    /// Resolve a nominal record application to its instantiated fields.
+    pub(crate) fn record_fields(
+        &self,
+        name: &str,
+        args: &[Type],
+    ) -> Option<std::collections::BTreeMap<String, Type>> {
+        let (params, fields) = self.records.get(name)?;
+        if params.len() != args.len() {
+            return None;
+        }
+        let binder = params.iter().cloned().zip(args.iter().cloned()).collect();
+        Some(
+            fields
+                .iter()
+                .map(|(field, ty)| {
+                    (
+                        field.clone(),
+                        crate::convert::type_name_to_type(ty, &binder),
+                    )
+                })
+                .collect(),
+        )
+    }
+
     /// Allocate a fresh, unbound type variable.
-    pub fn fresh(&mut self) -> Type {
+    pub(crate) fn fresh(&mut self) -> Type {
         let id = VarId::try_from(self.subst.len()).unwrap_or(VarId::MAX);
         self.subst.push(None);
         Type::Var(id)
@@ -44,7 +82,7 @@ impl InferCtx {
     /// Follow a variable to its representative, compressing the path. Only the
     /// outermost variable is resolved — nested types are left intact (use
     /// [`InferCtx::apply`] for a deep walk).
-    pub fn prune(&mut self, t: &Type) -> Type {
+    pub(crate) fn prune(&mut self, t: &Type) -> Type {
         if let Type::Var(id) = t {
             let idx = usize::try_from(*id).unwrap_or(usize::MAX);
             if let Some(bound) = self.subst.get(idx).and_then(Option::clone) {
@@ -63,12 +101,12 @@ impl InferCtx {
     /// to learn" without diffing the whole substitution
     /// ([`crate::check::Checker::resolve_deferred_arithmetic`]).
     #[must_use]
-    pub fn bound_count(&self) -> usize {
+    pub(crate) fn bound_count(&self) -> usize {
         self.subst.iter().filter(|slot| slot.is_some()).count()
     }
 
     /// Bind a variable to a type. The caller guarantees the occurs-check passed.
-    pub fn bind(&mut self, id: VarId, t: Type) {
+    pub(crate) fn bind(&mut self, id: VarId, t: Type) {
         let idx = usize::try_from(id).unwrap_or(usize::MAX);
         if let Some(slot) = self.subst.get_mut(idx) {
             *slot = Some(t);
@@ -77,7 +115,7 @@ impl InferCtx {
 
     /// The occurs check: does variable `id` appear anywhere in `t`? Prevents
     /// the construction of infinite types like `t0 ~ List<t0>`.
-    pub fn occurs(&mut self, id: VarId, t: &Type) -> bool {
+    pub(crate) fn occurs(&mut self, id: VarId, t: &Type) -> bool {
         let t = self.prune(t);
         match &t {
             Type::Var(v) => *v == id,
@@ -92,7 +130,7 @@ impl InferCtx {
 
     /// Fully resolve `t` against the current substitution. The occurs-check
     /// keeps the substitution acyclic, so this terminates.
-    pub fn apply(&mut self, t: &Type) -> Type {
+    pub(crate) fn apply(&mut self, t: &Type) -> Type {
         let t = self.prune(t);
         match &t {
             Type::Var(_) => t,
@@ -119,7 +157,7 @@ impl InferCtx {
     }
 
     /// Collect the free (unbound) variables of `t` into `out`.
-    pub fn free_vars(&mut self, t: &Type, out: &mut BTreeSet<VarId>) {
+    pub(crate) fn free_vars(&mut self, t: &Type, out: &mut BTreeSet<VarId>) {
         let t = self.prune(t);
         match &t {
             Type::Var(v) => {

@@ -5,19 +5,7 @@
 //! lambdas, match) do real unification.
 
 use crate::check::Checker;
-use crate::convert::type_expr_to_type;
 
-/// Builtin types that carry no fields, so `x.field` on one can never resolve.
-/// Deliberately excludes `any` (which unifies with everything, including
-/// records) and every collection/generic whose element MIGHT be a record.
-/// Implements [TYPE-FIELD-ACCESS-NON-RECORD].
-const FIELDLESS_TYPES: &[&str] = &[
-    names::INT,
-    names::FLOAT,
-    names::STRING,
-    names::BOOL,
-    names::UNIT,
-];
 use crate::env::TypeEnv;
 use crate::error::TypeError;
 use crate::ty::{names, Type};
@@ -37,6 +25,23 @@ fn generic_err() -> Type {
     Type::prim("Error")
 }
 
+/// A bound type variable is a type, not a higher-kinded constructor. Check
+/// the written form before conversion resolves that name to its variable.
+fn applied_type_parameter<'a>(
+    ty: &'a TypeExpr,
+    binders: &HashMap<String, Type>,
+) -> Option<&'a str> {
+    if binders.contains_key(&ty.name) && !ty.generic_params.is_empty() {
+        return Some(&ty.name);
+    }
+    ty.generic_params
+        .iter()
+        .chain(&ty.parameter_types)
+        .chain(ty.array_element.as_deref())
+        .chain(ty.return_type.as_deref())
+        .find_map(|child| applied_type_parameter(child, binders))
+}
+
 impl Checker {
     pub(crate) fn infer_expr(&mut self, e: &Expr, env: &TypeEnv) -> Type {
         match e {
@@ -49,13 +54,14 @@ impl Checker {
                     if let InterpolatedPart::Expr(inner) = p {
                         // Interpolation preserves a Result as its complete
                         // Success/Error rendering; it never extracts a payload.
-                        let _ = self.infer_expr(inner, env);
+                        let ty = self.infer_expr(inner, env);
+                        self.builtin_uses.push(("interpolation".to_owned(), ty));
                     }
                 }
                 Type::string()
             }
-            Expr::Identifier(name) => self.lookup_ident(name, env),
-            Expr::Path(path) => self.lookup_ident(&path.to_string(), env),
+            Expr::Identifier(name) => self.lookup_ident_at(name, env, Some(e)),
+            Expr::Path(path) => self.lookup_ident_at(&path.to_string(), env, Some(e)),
             Expr::List(items, position) => {
                 let elem = self.ctx.fresh();
                 for it in items {
@@ -86,19 +92,25 @@ impl Checker {
                     self.infer_negation(&t)
                 }
             }
+            Expr::TypeApply {
+                function,
+                type_args,
+                position,
+            } => {
+                self.infer_type_application(function, type_args, *position, env)
+                    .1
+            }
             Expr::Call {
                 function,
                 arguments,
                 named_arguments,
-            } => self.infer_call(function, arguments, named_arguments, env),
+            } => self.infer_call(e, function, arguments, named_arguments, env),
             Expr::Pipe { left, right } => self.infer_pipe(left, right, env),
             Expr::FieldAccess { target, field } => self.infer_field_access(target, field, env),
-            Expr::MethodCall {
-                target,
-                method,
-                arguments,
-                named_arguments,
-            } => self.infer_method_call(target, method, arguments, named_arguments, env),
+            Expr::MethodCall { .. } => match crate::methods::parts(e) {
+                Some(parts) => self.infer_method_call(e, parts, env),
+                None => self.ctx.fresh(),
+            },
             Expr::Index { target, index } => self.infer_index(target, index, env),
             Expr::Lambda {
                 parameters,
@@ -172,46 +184,27 @@ impl Checker {
         }
     }
 
-    /// Field access yields the record field's declared type, or a fresh var when
-    /// the target is not a known record (split out of [`Self::infer_expr`]).
+    /// Field access retains a relation between the receiver and its field even
+    /// when the receiver is a parameter whose record is fixed at a later call.
     fn infer_field_access(&mut self, target: &Expr, field: &str, env: &TypeEnv) -> Type {
         let tt = self.infer_expr(target, env);
+        self.infer_record_field_type(&tt, field)
+    }
+
+    pub(crate) fn infer_record_field_type(&mut self, receiver: &Type, field: &str) -> Type {
         // Reading a field assumes a record layout the erased word cannot
         // prove it has — the address-as-integer bug reached through `.field`
         // ([TYPE-FIELD-ACCESS-NON-RECORD], [TYPE-ANY]).
-        if self.reject_erased_operand(&format!("access field `{field}` on"), &tt) {
+        if self.reject_erased_operand(&format!("access field `{field}` on"), receiver) {
             return self.ctx.fresh();
         }
-        let pruned = self.ctx.prune(&tt);
-        match &pruned {
-            Type::Record { fields, .. } => fields
-                .get(field)
-                .cloned()
-                .unwrap_or_else(|| self.ctx.fresh()),
-            other => {
-                if let Type::Con { name, .. } = other {
-                    if FIELDLESS_TYPES.contains(&name.as_str()) {
-                        self.record_field_access_on_fieldless(field, name);
-                    }
-                }
-                self.ctx.fresh()
-            }
-        }
-    }
-
-    /// Reject `x.field` where `x` is a builtin that has no fields at all.
-    ///
-    /// This arm used to fall through to a fresh variable, so the program passed
-    /// the checker and CODEGEN emitted invalid LLVM (`bitcast i8* 42 to
-    /// { i64, i64 }*`) — the "error" then surfaced from clang, naming a
-    /// temporary `.ll` file rather than the offending source line. Only names
-    /// that can NEVER be a user record are listed, and an unresolved type
-    /// variable is deliberately left alone: inference may still resolve it to a
-    /// record. Implements [TYPE-FIELD-ACCESS-NON-RECORD].
-    fn record_field_access_on_fieldless(&mut self, field: &str, ty: &str) {
-        self.errors.push(TypeError::new(format!(
-            "cannot access field '{field}' on non-struct type {ty}"
-        )));
+        let result = self.ctx.fresh();
+        self.builtin_uses.push((
+            crate::fields::obligation_name(field),
+            Type::fun(vec![receiver.clone()], result.clone()),
+        ));
+        self.resolve_field_uses();
+        result
     }
 
     /// A channel and its sent value share one element type; the send is `Unit`.
@@ -225,21 +218,31 @@ impl Checker {
             &Type::con(names::CHANNEL, vec![element_ty.clone()]),
         );
         self.push_assign(&element_ty, &value_ty);
-        if self.ctx.prune(&value_ty).is_named(names::RESULT) {
-            self.errors.push(TypeError::new(
-                "Result-valued channels are not supported by this backend; handle the Result before sending",
-            ));
-        }
+        self.reject_result_channel(&value_ty, "handle the Result before sending");
         Type::unit()
+    }
+
+    /// Reject a `Result`-valued channel element. The wire word carries no
+    /// discriminant, so a `Result` crossing a channel would be erased rather
+    /// than delivered — both ends refuse it, differing only in which half of
+    /// the transfer the advice names.
+    fn reject_result_channel(&mut self, ty: &Type, detail: &str) {
+        if self.ctx.prune(ty).is_named(names::RESULT) {
+            self.errors.push(TypeError::new(format!(
+                "Result-valued channels are not supported by this backend; {detail}"
+            )));
+        }
+    }
+
+    /// Record how the dotted call at `site` resolved, keyed by the expression's
+    /// address — the one place the method-target table is written.
+    fn record_method_target(&mut self, site: &Expr, target: crate::methods::Target) {
+        let _ = self.methods.insert(std::ptr::from_ref(site).addr(), target);
     }
 
     fn infer_recv(&mut self, channel: &Expr, env: &TypeEnv) -> Type {
         let elem = self.infer_unwrap_con(channel, names::CHANNEL, env);
-        if self.ctx.prune(&elem).is_named(names::RESULT) {
-            self.errors.push(TypeError::new(
-                "Result-valued channels are not supported by this backend; receiving must never erase the Result wrapper",
-            ));
-        }
+        self.reject_result_channel(&elem, "receiving must never erase the Result wrapper");
         elem
     }
 
@@ -456,9 +459,9 @@ impl Checker {
             // [EFFECTS-GENERIC-INSTANTIATION].
             if osprey_ast::contains_resume(&arm.body) {
                 answering.push((arm.operation.clone(), arm_ty));
-            } else if !self.ctx.prune(&op_ret).is_named(crate::ty::names::UNIT) {
+            } else if !self.ctx.prune(&op_ret).is_named(names::UNIT) {
                 self.push_assign(&op_ret, &arm_ty);
-            } else if self.ctx.prune(&arm_ty).is_named(crate::ty::names::RESULT) {
+            } else if self.ctx.prune(&arm_ty).is_named(names::RESULT) {
                 self.errors.push(TypeError::new(
                     "an unhandled `Result` cannot be discarded by a Unit effect operation arm; use `match` or `?:`",
                 ));
@@ -508,6 +511,10 @@ impl Checker {
     }
 
     fn lookup_ident(&mut self, name: &str, env: &TypeEnv) -> Type {
+        self.lookup_ident_at(name, env, None)
+    }
+
+    fn lookup_ident_at(&mut self, name: &str, env: &TypeEnv, site: Option<&Expr>) -> Type {
         // A bare nullary constructor (`Red`, `Empty`) is a value of its owner type.
         if self.ctors.get(name).is_some_and(|i| i.fields.is_empty()) {
             if let Some((args, _f, owner, is_record)) = self.ctor_instance(name) {
@@ -521,14 +528,18 @@ impl Checker {
                 };
             }
         }
-        if let Some(scheme) = env.get(name).cloned() {
+        if let Some(applied) = env.applied(&mut self.ctx, name) {
             // Re-state the scheme's built-in obligations against this site's
             // fresh variables, so a generalized wrapper's constraint is checked
             // against the types this call actually supplies
             // ([`crate::ty::Scheme::obligations`]).
-            let (ty, obligations) = crate::env::instantiated(&mut self.ctx, &scheme);
-            self.builtin_uses.extend(obligations);
-            return ty;
+            self.builtin_uses.extend(applied.obligations);
+            if let Some(site) = site {
+                let _ = self
+                    .instantiations
+                    .insert(std::ptr::from_ref(site).addr(), applied.bindings);
+            }
+            return applied.ty;
         }
         self.errors
             .push(TypeError::new(format!("unknown identifier `{name}`")));
@@ -537,11 +548,15 @@ impl Checker {
 
     fn infer_call(
         &mut self,
+        site: &Expr,
         function: &Expr,
         arguments: &[Expr],
         named: &[NamedArgument],
         env: &TypeEnv,
     ) -> Type {
+        if let Some(parts) = crate::methods::parts(site) {
+            return self.infer_method_call(site, parts, env);
+        }
         let (fname, ft) = self.infer_callee(function, env);
         let args = self.ordered_arg_types(fname.as_deref(), &ft, arguments, named, env);
         self.apply_named_fn(fname.as_deref(), &ft, args)
@@ -549,34 +564,334 @@ impl Checker {
 
     fn infer_callee(&mut self, function: &Expr, env: &TypeEnv) -> (Option<String>, Type) {
         match function {
-            Expr::Identifier(name) => (Some(name.clone()), self.lookup_ident(name, env)),
+            Expr::TypeApply {
+                function,
+                type_args,
+                position,
+            } => self.infer_type_application(function, type_args, *position, env),
+            Expr::Identifier(name) => (
+                Some(name.clone()),
+                self.lookup_ident_at(name, env, Some(function)),
+            ),
             Expr::Path(path) => {
                 let name = path.to_string();
-                let ty = self.lookup_ident(&name, env);
+                let ty = self.lookup_ident_at(&name, env, Some(function));
                 (Some(name), ty)
             }
             other => (None, self.infer_expr(other, env)),
         }
     }
 
+    /// Pin declared binders in this call's fresh instantiation [TYPE-GENERICS-APPLY].
+    fn infer_type_application(
+        &mut self,
+        function: &Expr,
+        type_args: &[TypeExpr],
+        position: Option<osprey_ast::Position>,
+        env: &TypeEnv,
+    ) -> (Option<String>, Type) {
+        let name = match function {
+            Expr::Identifier(name) => name.clone(),
+            Expr::Path(path) => path.to_string(),
+            _ => {
+                self.errors
+                    .push(TypeError::new("type arguments require a named function"));
+                return (None, self.infer_expr(function, env));
+            }
+        };
+        let Some(applied) = env.applied(&mut self.ctx, &name) else {
+            return (Some(name.clone()), self.lookup_ident(&name, env));
+        };
+        let crate::env::AppliedSignature {
+            ty,
+            obligations,
+            params,
+            bindings,
+        } = applied;
+        self.builtin_uses.extend(obligations);
+        if let Some(position) = position {
+            self.application_tys.push((position, bindings.clone()));
+        }
+        let _ = self
+            .instantiations
+            .insert(std::ptr::from_ref(function).addr(), bindings);
+        if params.len() == type_args.len() {
+            let binder = self.current_fn_typarams.clone();
+            for (param, arg) in params.iter().zip(type_args) {
+                let written = self.written_type_argument(arg, &binder, position);
+                self.push_unify(param, &written);
+            }
+        } else {
+            self.errors.push(
+                TypeError::new(format!(
+                    "function `{name}` takes {} type argument(s), got {}",
+                    params.len(),
+                    type_args.len()
+                ))
+                .with_pos(position),
+            );
+        }
+        (Some(name), ty)
+    }
+
+    /// Validate written arguments before conversion can discard an invalid
+    /// application of an enclosing binder [TYPE-GENERICS-APPLY].
+    pub(crate) fn written_type_argument(
+        &mut self,
+        argument: &TypeExpr,
+        binder: &HashMap<String, Type>,
+        position: Option<osprey_ast::Position>,
+    ) -> Type {
+        let written = self.annotation_type(argument, binder, position);
+        self.validate_type_argument(&written, position);
+        written
+    }
+
+    /// Preserve lexical binders in annotations without accepting applications
+    /// that conversion would otherwise silently drop [TYPE-GENERICS-FN].
+    pub(crate) fn annotation_type(
+        &mut self,
+        argument: &TypeExpr,
+        binder: &HashMap<String, Type>,
+        position: Option<osprey_ast::Position>,
+    ) -> Type {
+        if let Some(name) = applied_type_parameter(argument, binder) {
+            self.errors.push(
+                TypeError::new(format!(
+                    "type parameter `{name}` cannot take type arguments"
+                ))
+                .with_pos(position),
+            );
+        }
+        crate::convert::type_expr_to_type(argument, binder)
+    }
+
+    /// Written arguments name declared types or an enclosing binder, never a
+    /// new nominal type inferred from a misspelled name [TYPE-GENERICS-APPLY].
+    fn validate_type_argument(&mut self, ty: &Type, position: Option<osprey_ast::Position>) {
+        match ty {
+            Type::Con { name, args } => {
+                let primitive = matches!(
+                    name.as_str(),
+                    names::INT
+                        | names::FLOAT
+                        | names::BOOL
+                        | names::STRING
+                        | names::UNIT
+                        | names::ANY
+                        | names::PTR
+                        | names::MATH_ERROR
+                        | names::CHANNEL
+                        | names::ITERATOR
+                        | names::GPU_BUFFER
+                );
+                if !primitive
+                    && self.ctx.variance_of(name).is_none()
+                    && !self.ctors.values().any(|ctor| ctor.owner == *name)
+                {
+                    self.errors
+                        .push(TypeError::new(format!("unknown type `{name}`")).with_pos(position));
+                }
+                let arity = self
+                    .ctx
+                    .variance_of(name)
+                    .map(<[_]>::len)
+                    .or_else(|| {
+                        self.ctors
+                            .values()
+                            .find(|ctor| ctor.owner == *name)
+                            .map(|ctor| ctor.type_params.len())
+                    })
+                    .or_else(|| {
+                        primitive.then_some(usize::from(matches!(
+                            name.as_str(),
+                            names::CHANNEL | names::ITERATOR | names::GPU_BUFFER
+                        )))
+                    });
+                if let Some(expected) = arity.filter(|expected| *expected != args.len()) {
+                    self.errors.push(
+                        TypeError::new(format!(
+                            "type `{name}` takes {expected} type argument(s), got {}",
+                            args.len()
+                        ))
+                        .with_pos(position),
+                    );
+                }
+                for arg in args {
+                    self.validate_type_argument(arg, position);
+                }
+            }
+            Type::Fun { params, ret } => {
+                for param in params {
+                    self.validate_type_argument(param, position);
+                }
+                self.validate_type_argument(ret, position);
+            }
+            _ => {}
+        }
+    }
+
     fn infer_method_call(
         &mut self,
-        target: &Expr,
-        method: &str,
-        arguments: &[Expr],
-        named: &[NamedArgument],
+        site: &Expr,
+        parts: crate::methods::Parts<'_>,
         env: &TypeEnv,
     ) -> Type {
-        // UFCS: `t.m(a)` is `m(t, a)`.
-        let ft = self.lookup_ident(method, env);
-        let mut args = vec![self.infer_expr(target, env)];
-        for a in arguments {
-            args.push(self.infer_expr(a, env));
+        let receiver = self.infer_expr(parts.target, env);
+        let field = crate::methods::field_name(parts.method);
+        if matches!(self.ctx.prune(&receiver), Type::Var(_)) && env.get(parts.method).is_some() {
+            self.record_method_target(site, crate::methods::Target::Deferred(field.clone()));
+            return self.infer_deferred_method(site, receiver, &field, &parts, env);
+        }
+        let known_field = match self.ctx.prune(&receiver) {
+            Type::Record { fields, .. } => fields.contains_key(&field),
+            Type::Con { name, args } => self
+                .ctx
+                .record_fields(&name, &args)
+                .is_some_and(|fields| fields.contains_key(&field)),
+            Type::Var(_) => env.get(parts.method).is_none(),
+            _ => false,
+        };
+        if known_field {
+            self.record_method_target(site, crate::methods::Target::Field(field.clone()));
+            return self.infer_field_call(&receiver, &field, &parts, env);
+        }
+        if env.get(parts.method).is_some() {
+            self.record_method_target(site, crate::methods::Target::Function);
+        }
+        self.infer_ufcs_call(site, &receiver, &parts, env)
+    }
+
+    fn infer_deferred_method(
+        &mut self,
+        site: &Expr,
+        receiver: Type,
+        field: &str,
+        parts: &crate::methods::Parts<'_>,
+        env: &TypeEnv,
+    ) -> Type {
+        let Some(fallback) = env.applied(&mut self.ctx, parts.method) else {
+            return self.ctx.fresh();
+        };
+        let _ = self
+            .instantiations
+            .insert(std::ptr::from_ref(site).addr(), fallback.bindings.clone());
+        let (count, position, written) = match parts.application {
+            Some((args, position)) => {
+                if let Some(position) = position {
+                    self.application_tys.push((position, fallback.bindings));
+                }
+                let binder = self.current_fn_typarams.clone();
+                let written = args
+                    .iter()
+                    .map(|arg| self.written_type_argument(arg, &binder, position))
+                    .collect();
+                (args.len().to_string(), position, written)
+            }
+            None => ("-".to_owned(), None, Vec::new()),
+        };
+        let arguments = parts
+            .arguments
+            .iter()
+            .map(|arg| self.infer_expr(arg, env))
+            .collect();
+        let named = parts
+            .named
+            .iter()
+            .map(|arg| Type::con(arg.name.clone(), vec![self.infer_expr(&arg.value, env)]))
+            .collect();
+        let result = self.ctx.fresh();
+        let relation = Type::con(
+            "$method-relation",
+            vec![
+                receiver,
+                fallback.ty,
+                Type::fun(arguments, result.clone()),
+                Type::con(
+                    "$obligations",
+                    fallback
+                        .obligations
+                        .into_iter()
+                        .map(|(name, ty)| Type::con(name, vec![ty]))
+                        .collect(),
+                ),
+                Type::con("$binders", fallback.params),
+                Type::con("$written", written),
+                Type::con("$named", named),
+            ],
+        );
+        let line = position.map_or(0, |position| position.line);
+        let column = position.map_or(0, |position| position.column);
+        self.builtin_uses.push((
+            format!(
+                "{}{count}:{line}:{column}:{field}:{}",
+                crate::methods::OBLIGATION,
+                parts.method
+            ),
+            relation,
+        ));
+        self.resolve_field_uses();
+        result
+    }
+
+    fn infer_field_call(
+        &mut self,
+        receiver: &Type,
+        field: &str,
+        parts: &crate::methods::Parts<'_>,
+        env: &TypeEnv,
+    ) -> Type {
+        if let Some((args, position)) = parts.application {
+            self.errors.push(
+                TypeError::new(format!(
+                    "function `{field}` takes 0 type argument(s), got {}",
+                    args.len()
+                ))
+                .with_pos(position),
+            );
+        }
+        let ft = self.infer_record_field_type(receiver, field);
+        let args = self.ordered_arg_types(None, &ft, parts.arguments, parts.named, env);
+        self.apply_named_fn(None, &ft, args)
+    }
+
+    fn infer_ufcs_call(
+        &mut self,
+        site: &Expr,
+        receiver: &Type,
+        parts: &crate::methods::Parts<'_>,
+        env: &TypeEnv,
+    ) -> Type {
+        let ft = match parts.application {
+            Some((arguments, position)) => {
+                let callee = Expr::Identifier(parts.method.to_owned());
+                let (_, ty) = self.infer_type_application(&callee, arguments, position, env);
+                if let Some(bindings) = self
+                    .instantiations
+                    .remove(&std::ptr::from_ref(&callee).addr())
+                {
+                    let _ = self
+                        .instantiations
+                        .insert(std::ptr::from_ref(site).addr(), bindings);
+                }
+                ty
+            }
+            None => self.lookup_ident_at(parts.method, env, Some(site)),
+        };
+        let tail = match self.ctx.prune(&ft) {
+            Type::Fun { params, ret } => Type::fun(params.into_iter().skip(1).collect(), *ret),
+            other => other,
+        };
+        let mut args = vec![receiver.clone()];
+        args.extend(self.positional_arg_types(&tail, parts.arguments, env));
+        let mut named: Vec<_> = parts.named.iter().collect();
+        if let Some(parameters) = self.fn_params.get(parts.method) {
+            named.sort_by_key(|arg| parameters.iter().position(|name| name == &arg.name));
         }
         for na in named {
             args.push(self.infer_expr(&na.value, env));
         }
-        self.apply_named_fn(Some(method), &ft, args)
+        self.apply_named_fn(Some(parts.method), &ft, args)
     }
 
     /// Resolve call arguments to types, reordering named arguments to the
@@ -739,7 +1054,12 @@ impl Checker {
         param.is_named(names::ANY) && (deferred || matches!(self.ctx.prune(argument), Type::Var(_)))
     }
 
-    fn apply_named_fn(&mut self, name: Option<&str>, ft: &Type, args: Vec<Type>) -> Type {
+    pub(crate) fn apply_named_fn(
+        &mut self,
+        name: Option<&str>,
+        ft: &Type,
+        args: Vec<Type>,
+    ) -> Type {
         let constrained_builtin = name.is_some_and(|name| {
             matches!(name, "length" | "isEmpty" | "print" | "toString" | "toGpu")
                 || crate::builtin_constraints::is_gpu_buffer_builtin(name)
@@ -865,13 +1185,13 @@ impl Checker {
         env: &TypeEnv,
         expected: Option<&Type>,
     ) -> Type {
-        let empty = HashMap::new();
+        let binder = self.current_fn_typarams.clone();
         let mut local = env.child();
         let mut ptys = Vec::new();
         let wanted = expected_params(expected, parameters.len());
         for (i, p) in parameters.iter().enumerate() {
             let ty = match &p.ty {
-                Some(te) => type_expr_to_type(te, &empty),
+                Some(te) => self.annotation_type(te, &binder, te.position.or(position)),
                 None => wanted.get(i).cloned().unwrap_or_else(|| self.ctx.fresh()),
             };
             local.insert(p.name.clone(), crate::ty::Scheme::mono(ty.clone()));
@@ -907,7 +1227,7 @@ impl Checker {
         self.resume_ctx = saved_resume_ctx;
         let ret = match return_type {
             Some(te) => {
-                let r = type_expr_to_type(te, &empty);
+                let r = self.annotation_type(te, &binder, te.position.or(position));
                 self.push_assign(&r, &body_ty);
                 r
             }
@@ -936,7 +1256,7 @@ impl Checker {
     fn infer_constructor(
         &mut self,
         name: &str,
-        type_args: &[osprey_ast::TypeExpr],
+        type_args: &[TypeExpr],
         fields: &[FieldAssignment],
         env: &TypeEnv,
     ) -> Type {
@@ -949,7 +1269,7 @@ impl Checker {
                 if type_args.len() == args.len() {
                     let binder = self.current_fn_typarams.clone();
                     for (a, te) in args.iter().zip(type_args) {
-                        let written = crate::convert::type_expr_to_type(te, &binder);
+                        let written = self.written_type_argument(te, &binder, te.position);
                         self.push_unify(a, &written);
                     }
                 } else {
@@ -1336,11 +1656,10 @@ fn classify(op: &str) -> OpKind {
         _ => OpKind::Arith,
     }
 }
-
 #[cfg(test)]
 mod tests {
     use crate::check::check_program;
-    use crate::testutil::{bad, check, ok};
+    use crate::testutil::{bad, bad_with, ok};
     use crate::{infer_program, Type};
     use osprey_ast::Stmt;
     use osprey_syntax::parse_program;
@@ -1412,23 +1731,23 @@ mod tests {
 
     #[test]
     fn select_is_rejected_until_channel_selection_has_runtime_semantics() {
-        let errs = bad("fn pick() -> int = select {\n\
+        bad_with(
+            "fn pick() -> int = select {\n\
               x => x\n\
               _ => 0\n\
-            }\n");
-        assert!(errs
-            .iter()
-            .any(|e| e.message.contains("`select` is not supported")));
+            }\n",
+            "`select` is not supported",
+        );
     }
 
     #[test]
     fn yield_forwards_its_value_type_and_send_checks_the_channel_element() {
         // Implements [CONCURRENCY-YIELD] and [CONCURRENCY-CHANNEL].
         ok("fn hand_off(value: int) -> int = yield value\n");
-        let errs = bad("fn wrong(ch: Channel<int>) -> Unit = send(ch, \"wrong\")\n");
-        assert!(errs
-            .iter()
-            .any(|e| e.message.contains("cannot unify int with string")));
+        bad_with(
+            "fn wrong(ch: Channel<int>) -> Unit = send(ch, \"wrong\")\n",
+            "cannot unify int with string",
+        );
         let result_channel = bad(
             "fn sendFailed(ch: Channel<Result<int, MathError>>, value: Result<int, MathError>) -> Unit = send(ch, value)\n",
         );
@@ -1524,14 +1843,14 @@ mod tests {
         // A `Unit` operation discards its arm's value, so a `Result` produced
         // there would lose its failure with nothing left to observe it.
         // Implements [EFFECTS-RESUME].
-        let errs = bad("effect Sink { drop: fn(int) -> Unit }\n\
+        bad_with(
+            "effect Sink { drop: fn(int) -> Unit }\n\
                         fn risky(n: int) -> Result<int, MathError> = n + 1\n\
                         fn go() -> int = handle Sink\n\
                           drop v => risky(v)\n\
-                        in 0\n");
-        assert!(errs
-            .iter()
-            .any(|e| e.message.contains("Unit effect operation arm")));
+                        in 0\n",
+            "Unit effect operation arm",
+        );
         ok("effect Sink { drop: fn(int) -> Unit }\n\
             fn risky(n: int) -> Result<int, MathError> = n + 1\n\
             fn go() -> int = handle Sink\n\
@@ -1544,20 +1863,20 @@ mod tests {
         // The handler's own operations are unknown, so the arms cannot be
         // typed against a signature — but checking must continue rather than
         // abandon the body, or one typo would hide every later diagnostic.
-        let errs = bad("fn go() -> int = handle Nowhere\n\
+        bad_with(
+            "fn go() -> int = handle Nowhere\n\
                           chime => 0\n\
-                        in 1\n");
-        assert!(errs
-            .iter()
-            .any(|e| e.message.contains("unknown effect `Nowhere`")));
+                        in 1\n",
+            "unknown effect `Nowhere`",
+        );
     }
 
     #[test]
     fn perform_of_an_undeclared_effect_names_the_effect_it_could_not_find() {
-        let errs = bad("fn ring() -> int = perform Nowhere.chime()\n");
-        assert!(errs
-            .iter()
-            .any(|e| e.message.contains("unknown effect `Nowhere`")));
+        bad_with(
+            "fn ring() -> int = perform Nowhere.chime()\n",
+            "unknown effect `Nowhere`",
+        );
     }
 
     #[test]
@@ -1567,11 +1886,11 @@ mod tests {
         // a silently ignored annotation.
         ok("type Box<T> = { v: T }\n\
             let good = Box<int> { v: 1 }\n");
-        let errs = bad("type Box<T> = { v: T }\n\
-                        let wrong = Box<int, string> { v: 1 }\n");
-        assert!(errs
-            .iter()
-            .any(|e| e.message.contains("takes 1 type argument(s), got 2")));
+        bad_with(
+            "type Box<T> = { v: T }\n\
+                        let wrong = Box<int, string> { v: 1 }\n",
+            "takes 1 type argument(s), got 2",
+        );
     }
 
     #[test]
@@ -1581,12 +1900,12 @@ mod tests {
         // graph to bind the qualified name, so the diagnostic must name the
         // full path — naming only `twice` would send the reader to the wrong
         // declaration.
-        let errs = bad("namespace tools;\n\
+        bad_with(
+            "namespace tools;\n\
                         fn twice(n: int) -> int = (n * 2) ?: 0\n\
-                        let doubled = tools::twice(21)\n");
-        assert!(errs
-            .iter()
-            .any(|e| e.message.contains("unknown identifier `tools::twice`")));
+                        let doubled = tools::twice(21)\n",
+            "unknown identifier `tools::twice`",
+        );
     }
 
     #[test]
@@ -1984,11 +2303,11 @@ mod tests {
         // Codegen has no named-operation argument mapping; reject this source
         // form instead of silently dropping its value.
         // [EFFECTS-OP-TYPING]
-        let errs = bad("effect Logger { log: fn(string) -> Unit }\n\
-             fn run() -> Unit !Logger = perform Logger.log(msg: \"hi\")\n");
-        assert!(errs
-            .iter()
-            .any(|e| e.message.contains("does not support named arguments")));
+        bad_with(
+            "effect Logger { log: fn(string) -> Unit }\n\
+             fn run() -> Unit !Logger = perform Logger.log(msg: \"hi\")\n",
+            "does not support named arguments",
+        );
     }
 
     #[test]
@@ -2036,10 +2355,10 @@ mod tests {
 
     #[test]
     fn unknown_constructor_with_fields_is_an_error() {
-        let errs = check("let r = Nonexistent { field: 1 }\n");
-        assert!(errs
-            .iter()
-            .any(|e| e.message.contains("unknown constructor `Nonexistent`")));
+        bad_with(
+            "let r = Nonexistent { field: 1 }\n",
+            "unknown constructor `Nonexistent`",
+        );
     }
 
     #[test]
@@ -2059,8 +2378,7 @@ mod tests {
         // bare identifier, so `infer_call` takes the `other` branch.
         ok("let r = (fn(x) => x + 1)(41)\n");
         // Calling a non-function value is an error (`apply_fn` non-function arm).
-        let errs = check("let x = 5\nlet r = x(1)\n");
-        assert!(errs.iter().any(|e| e.message.contains("cannot call")));
+        bad_with("let x = 5\nlet r = x(1)\n", "cannot call");
     }
 
     #[test]
