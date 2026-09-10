@@ -1,6 +1,7 @@
 //! Execute documentation examples independently in their source flavor.
 //! Implements [DOC-DOCTEST-HARNESS].
 
+mod entry;
 mod execute;
 mod process;
 mod synthesize;

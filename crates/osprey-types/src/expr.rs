@@ -1486,6 +1486,10 @@ impl Checker {
         }
         let lu = unwrap_result(&l);
         let ru = unwrap_result(&r);
+        let string_concat = op == "+" && (lu.is_named(names::STRING) || ru.is_named(names::STRING));
+        if !string_concat && (op == "/" || lu.is_named(names::FLOAT) || ru.is_named(names::FLOAT)) {
+            self.constrain_numeric_operands(op, &lu, &ru);
+        }
         match op {
             "%" if lu.is_named(names::FLOAT) || ru.is_named(names::FLOAT) => {
                 res_math(Type::float())
@@ -1543,6 +1547,18 @@ impl Checker {
                 } else {
                     self.int_arithmetic_result(&lu, &ru)
                 }
+            }
+        }
+    }
+
+    /// [FLOAT-OPERANDS] Keep the numeric requirement on each scheme variable;
+    /// unifying with float here would wrongly reject valid integer callers.
+    fn constrain_numeric_operands(&mut self, op: &str, left: &Type, right: &Type) {
+        use crate::builtin_constraints::{is_numeric_scalar, NUMERIC_OPERAND_PREFIX};
+        for ty in [left, right] {
+            if !is_numeric_scalar(ty) {
+                self.builtin_uses
+                    .push((format!("{NUMERIC_OPERAND_PREFIX}{op}"), ty.clone()));
             }
         }
     }

@@ -682,6 +682,14 @@ jobs:
         run: npx playwright test
         working-directory: ./examples/projects/modules/e2e
 
+      # The HTML documentation export is a shipped artifact with navigation,
+      # search, themes and a mobile layout. Its unit tests assert what the
+      # exporter writes; only a browser asserts what a reader gets — and every
+      # defect this step has caught passed those unit tests first. It reuses the
+      # Chromium and node_modules the bank e2e step above already installed.
+      - name: Documentation HTML browser acceptance
+        run: node scripts/verify-docs-html.mjs target/release/osprey
+
       - name: Upload bank e2e results on failure
         uses: actions/upload-artifact@v4
         if: failure()

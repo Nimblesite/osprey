@@ -1,16 +1,9 @@
-//! `osprey --docs --docs-dir <dir>`: regenerate the built-in function reference
-//! under `<dir>/functions/` straight from the compiler's single source of truth
-//! ([`osprey_types::builtin_doc_view`]). Every page's signature, parameter
-//! types, and return type come from the real type scheme, so the website docs
-//! and the editor hover are guaranteed to show the same thing.
-//!
-//! The directory is treated as generated output: a page is written for every
-//! built-in, an index lists them all, and any stale `*.md` left over from a
-//! built-in that no longer exists is pruned.
+//! Compiler-backed documentation export for built-ins, source files, and projects.
+//! Both renderers consume the same inferred API pages and preserve user-authored
+//! guides. The Markdown output integrates with existing sites; HTML is a complete
+//! static site with navigation, search, themes, and custom stylesheets.
+//! Implements [DOC-EXPORT], [DOC-EXPORT-HTML], [DOC-EXPORT-PAGES], [DOC-EXPORT-CSS].
 
-// Implements [DOC-EXPORT]: with `--source <file>` the exporter also renders user
-// declarations (`DocComment` on the canonical AST) into `<docs-dir>/api/`, a
-// tree the built-in prune never touches.
 mod assets;
 mod declarations;
 mod html;

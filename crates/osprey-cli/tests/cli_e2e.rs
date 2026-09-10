@@ -10,6 +10,10 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+#[cfg(unix)]
+#[path = "cases/doctest_harness.rs"]
+mod doctest_harness;
+
 /// Repo root: `crates/osprey-cli` -> `../..`. The C runtime archives `osprey`
 /// links at `--run`/`--compile` time live under `compiler/bin/` there, and
 /// `find_runtime_lib` resolves them relative to the process cwd — so every
@@ -57,6 +61,9 @@ mod doctests;
 
 #[path = "cases/api_docs.rs"]
 mod api_docs;
+
+#[path = "cases/api_docs_extra.rs"]
+mod api_docs_extra;
 
 /// The captured result of one invocation.
 struct Out {

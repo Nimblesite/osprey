@@ -4,7 +4,7 @@
 
 **Spec:** [0038-iOSTarget.md](../specs/0038-iOSTarget.md), with shared target restrictions in [0022-WebAssemblyTarget.md](../specs/0022-WebAssemblyTarget.md).
 
-**Status:** Reviewed against `407e0c3d0a69cf3cc39583b09a5670bd8732fd0e`; confirmed regressions are fixed with tests. The Xcode component and debugger blockers are now resolved and their checks pass. Two truthfulness defects found while building the mobile golden differential are fixed with tests. What remains is a physical-iPhone smoke that needs the phone unlocked, and the hosted PR checks. Completed and pending gates are recorded below.
+**Status:** Reviewed against `407e0c3d0a69cf3cc39583b09a5670bd8732fd0e`; confirmed regressions are fixed with tests. The Xcode component and debugger blockers are now resolved and their checks pass. Two truthfulness defects found while building the mobile golden differential are fixed with tests. Hosted PR checks are green. The remaining acceptance item is the updated Markdown smoke on a physical iPhone, which needs the phone unlocked and connected. Completed and pending gates are recorded below.
 
 ## Scope and architecture
 
@@ -135,7 +135,7 @@ The checked items record implementation and earlier validation. The open items a
 - [x] Verify the reviewed compiler/native/WASM checks and record fresh results separately from the earlier validation.
 - [x] Verify Android ARM64 execution, both architecture builds, shared tests, deterministic/live app workflows, and lint.
 - [x] Verify the final iOS application builds and simulator execution after Xcode component installation. `make ios-test` and `make mobile-ios-test` both pass, ending in `OSPREY_IOS_SMOKE_OK` and `OSPREY_INBOX_SMOKE_OK`.
-- [ ] Complete the updated Markdown smoke on the physical iPhone, as tracked in [plan 0030](0030-reactive-mobile-apps.md). A re-verification of a device build that already passed its full smoke, not an unverified platform. Blocked on the phone itself: it is paired with Developer Mode enabled, but reports `tunnelState=disconnected` over the local network, so the device build refuses before signing. Unlock it and connect it to this Mac, then rerun. No hosted runner can close this item; the simulator equivalent runs on `macos-15` on every PR.
+- [ ] Complete the updated Markdown smoke on the physical iPhone, as tracked in [plan 0030](0030-reactive-mobile-apps.md). The 2026-09-10 retry reconnected the phone and compiled the current iOS C ABI archive. Xcode then timed out waiting for its developer disk image to mount and requested an unlocked phone. No fresh device smoke result was produced; this hardware acceptance remains open.
 - [x] Resolve the duplication gate discrepancy using CI's pinned Deslop version; preserve the 5% ceiling.
 - [x] Run the extension suite and its coverage gate, previously blocked by macOS Developer Tools authorization: 316 tests pass and coverage is 98.3% lines, 98.3% statements, 95.9% branches, 96.5% functions, all above the 95% threshold.
 - [x] Pass both hosted PR workflows, including the newly enforced mobile checks, before merging. All fourteen checks pass, including the macOS job that builds the iOS device and simulator archives and runs the mobile goldens, and the emulator job that executes the corpus on Android x86-64.

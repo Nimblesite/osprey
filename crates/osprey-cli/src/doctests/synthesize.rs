@@ -18,10 +18,13 @@ pub(super) fn program(
         .get_mut(source_index)
         .ok_or("documentation source is missing")?;
     let call = inject(&mut source.program.statements, scope, snippet)?;
+    super::entry::qualify(&mut sources, config);
     for source in &mut sources {
-        discard_entry(&mut source.program.statements);
+        super::entry::discard(&mut source.program.statements);
     }
-    sources.get_mut(source_index).ok_or("documentation source is missing")?
+    sources
+        .get_mut(source_index)
+        .ok_or("documentation source is missing")?
         .program
         .statements
         .push(expression(call));
@@ -60,7 +63,9 @@ fn assemble(
     config: Option<&ProjectConfig>,
     index: usize,
 ) -> Result<Program, String> {
-    let source = sources.get(index).ok_or("documentation source is missing")?;
+    let source = sources
+        .get(index)
+        .ok_or("documentation source is missing")?;
     if config.is_none() && !osprey_project::needs_assembly(&source.program) {
         return Ok(source.program.clone());
     }
@@ -140,25 +145,24 @@ fn inject_module(
     Ok(())
 }
 
-fn discard_entry(statements: &mut Vec<Stmt>) {
-    statements.retain(|statement| {
-        !matches!(statement, Stmt::Expr { .. } | Stmt::Assignment { .. })
-            && !matches!(statement, Stmt::Function { name, .. } if name == "main")
-    });
-    for statement in statements {
-        if let Stmt::Namespace { body, .. } = statement {
-            discard_entry(body);
-        }
-    }
-}
-
 fn install_snippet(statements: &mut Vec<Stmt>, snippet: Program) {
+    let locals = snippet
+        .statements
+        .iter()
+        .filter_map(|statement| {
+            if let Stmt::Let { name, .. } = statement {
+                Some(name.clone())
+            } else {
+                None
+            }
+        })
+        .collect::<std::collections::BTreeSet<_>>();
     let mut executable = Vec::new();
     let mut main = None;
     for statement in snippet.statements {
-        match statement {
+        match capture_helper(statement, &locals) {
             Stmt::Function { name, body, .. } if name == "main" => main = Some(body),
-            Stmt::Expr { .. } | Stmt::Let { .. } | Stmt::Assignment { .. } => {
+            statement @ (Stmt::Expr { .. } | Stmt::Let { .. } | Stmt::Assignment { .. }) => {
                 executable.push(statement);
             }
             declaration => statements.push(declaration),
@@ -168,6 +172,55 @@ fn install_snippet(statements: &mut Vec<Stmt>, snippet: Program) {
         statements: executable,
         value: main.map(Box::new),
     }));
+}
+
+fn capture_helper(statement: Stmt, locals: &std::collections::BTreeSet<String>) -> Stmt {
+    let Stmt::Function {
+        ref name,
+        ref type_params,
+        ref parameters,
+        ref body,
+        ..
+    } = statement
+    else {
+        return statement;
+    };
+    if name == "main" {
+        return statement;
+    }
+    let mut free = std::collections::BTreeSet::new();
+    osprey_ast::freevars::free_idents(body, &mut free);
+    for parameter in parameters {
+        let _ = free.remove(&parameter.name);
+    }
+    if !type_params.is_empty() || free.is_disjoint(locals) {
+        return statement;
+    }
+    let Stmt::Function {
+        name,
+        parameters,
+        return_type,
+        body,
+        doc,
+        position,
+        ..
+    } = statement
+    else {
+        return statement;
+    };
+    Stmt::Let {
+        name,
+        mutable: false,
+        ty: None,
+        value: Expr::Lambda {
+            parameters,
+            return_type,
+            body: Box::new(body),
+            position,
+        },
+        doc,
+        position,
+    }
 }
 
 fn runner() -> String {

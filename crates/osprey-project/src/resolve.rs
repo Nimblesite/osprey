@@ -13,6 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 pub(crate) struct Resolution {
     pub program: Program,
     pub entry_prologue: Vec<Stmt>,
+    pub documentation_bindings: Vec<Stmt>,
     pub source_names: BTreeMap<String, String>,
     pub errors: Vec<ProjectError>,
 }
@@ -107,6 +108,7 @@ pub(crate) fn flatten(
 
 impl Resolver<'_> {
     fn finish(mut self) -> Resolution {
+        let documentation_bindings = self.documentation_bindings();
         if self.entry_main_count == 0 {
             self.program.extend(self.entry_prologue.clone());
         } else if self.entry_main_count == 1 {
@@ -127,9 +129,35 @@ impl Resolver<'_> {
                 doc: None,
             },
             entry_prologue: self.entry_prologue,
+            documentation_bindings,
             source_names: self.source_names,
             errors: self.errors,
         }
+    }
+
+    fn documentation_bindings(&mut self) -> Vec<Stmt> {
+        let constants: Vec<_> = self
+            .constant_cache
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect();
+        constants
+            .into_iter()
+            .filter_map(|(key, resolved)| {
+                let mut binding = self.graph.implementations.get(&key)?.clone();
+                if let Stmt::Let {
+                    name, value, ty, ..
+                } = &mut binding
+                {
+                    *name = self.link_name(&key, false);
+                    *value = resolved;
+                    *ty = None;
+                    Some(binding)
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     fn classify_constants(&mut self) {

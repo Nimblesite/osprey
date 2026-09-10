@@ -88,12 +88,66 @@ pub use ty::{has_type_var, names, render_with_holes, Scheme, Type, VarId, HOLE};
 )]
 mod tests {
     use crate::check_program;
-    use crate::testutil::{bad, ok};
+    use crate::testutil::{accepts, bad, ok, rejects_with};
     use osprey_syntax::{parse_program_with_flavor, Flavor};
 
     #[test]
     fn checks_arithmetic_and_let() {
         ok("fn inc(x: int) -> Result<int, MathError> = x + 1\nlet y = inc(41)\n");
+    }
+
+    /// [FLOAT-OPERANDS] Numeric obligations survive generalization in both flavors.
+    #[test]
+    fn float_helpers_reject_non_numeric_arguments_before_codegen() {
+        for flavor in [Flavor::Default, Flavor::Ml] {
+            for op in ["+", "-", "*", "/", "%"] {
+                for body in [format!("x {op} 1.5"), format!("1.5 {op} x")] {
+                    for value in ["\"text\"", "true", "[1]"] {
+                        let source = numeric_helper_source(flavor, &body, value);
+                        rejects_with(
+                            flavor,
+                            source,
+                            format!("operator `{op}` requires int or float"),
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    fn numeric_helper_source(flavor: Flavor, body: &str, value: &str) -> String {
+        match flavor {
+            Flavor::Default => format!("fn scale(x) = {body}\nlet result = scale({value})\n"),
+            Flavor::Ml => format!("scale x = {body}\nresult = scale ({value})\n"),
+        }
+    }
+
+    /// [FLOAT-OPERANDS] The same helper must retain int/float polymorphism.
+    #[test]
+    fn float_helpers_accept_both_numeric_types_without_changing_result_propagation() {
+        for op in ["+", "-", "*", "/", "%"] {
+            accepts(
+                Flavor::Default,
+                format!("fn scale(x) = x {op} 1.5\nlet a = scale(3)\nlet b = scale(2.5)\n"),
+            );
+            accepts(
+                Flavor::Ml,
+                format!("scale x = x {op} 1.5\na = scale 3\nb = scale 2.5\n"),
+            );
+        }
+        ok("fn divide(a, b) = a / b\nlet a = divide(3, 1.5)\nlet b = divide(2.5, 3)\n");
+        ok("let value = ((4.0 / 2.0) * 1.5) ?: 0.0\n");
+    }
+
+    /// [FLOAT-OPERANDS] Aliasing and higher-order calls cannot shed the obligation.
+    #[test]
+    fn float_operand_constraints_follow_aliases_and_higher_order_calls() {
+        rejects_with(Flavor::Default, "fn scale(x) = x * 1.5\nfn apply(f, x) = f(x)\nlet alias = scale\nlet bad = apply(alias, \"text\")\n", "operator `*` requires int or float");
+        rejects_with(
+            Flavor::Ml,
+            "scale x = x * 1.5\napply f x = f x\nalias = scale\nbad = apply alias \"text\"\n",
+            "operator `*` requires int or float",
+        );
     }
 
     #[test]

@@ -2,7 +2,11 @@
 
 use super::{finish, osprey, read_text, temp_dir};
 
-fn export(source: &str, extension: &str, name: &str) -> (super::Out, std::path::PathBuf) {
+pub(super) fn export(
+    source: &str,
+    extension: &str,
+    name: &str,
+) -> (super::Out, std::path::PathBuf) {
     let root = temp_dir(name);
     let path = root.join(format!("source.{extension}"));
     let written = std::fs::write(&path, source);
@@ -64,6 +68,13 @@ fn api_docs_include_children_of_undocumented_modules_and_public_undocumented_api
     assert!(read_text(&output.join("api/math-identity.md")).contains("Public identity."));
     assert!(read_text(&output.join("api/math-label.md")).contains("string"));
     assert!(!output.join("api/math-secret.md").exists());
+    let module = read_text(&output.join("api/math.md"));
+    assert!(
+        module.contains("[identity](math-identity.md)")
+            && module.contains("[label](math-label.md)"),
+        "{module}"
+    );
+    assert!(!module.contains("secret"), "{module}");
 }
 
 #[test]
@@ -110,6 +121,7 @@ fn api_docs_include_type_shapes_operation_signatures_and_authorship() {
         "{point}"
     );
     let outcome = read_text(&output.join("api/outcome.md"));
+    assert!(outcome.contains("type Outcome<T>"), "{outcome}");
     assert!(
         outcome.contains("Found") && outcome.contains("value: T") && outcome.contains("Missing"),
         "{outcome}"
@@ -156,15 +168,47 @@ fn api_docs_merge_project_namespaces_and_keep_both_file_docs() {
 fn api_docs_export_library_projects_without_an_application_entry() {
     let root = temp_dir("docs_library_project");
     std::fs::write(root.join("osprey.toml"), "[project]\nname = \"library\"\n").expect("manifest");
-    std::fs::write(root.join("numbers.osp"), "module Numbers { export fn value() = 42 }\n").expect("numbers");
-    std::fs::write(root.join("words.osp"), "module Words { export fn value() = \"word\" }\n").expect("words");
+    std::fs::write(
+        root.join("numbers.osp"),
+        "module Numbers { export fn value() = 42 }\n",
+    )
+    .expect("numbers");
+    std::fs::write(
+        root.join("words.osp"),
+        "module Words { export fn value() = \"word\" }\n",
+    )
+    .expect("words");
     let output = root.join("docs");
     let mut command = osprey();
-    let _ = command.arg("--docs").arg(&root).arg("--docs-dir").arg(&output);
+    let _ = command
+        .arg("--docs")
+        .arg(&root)
+        .arg("--docs-dir")
+        .arg(&output);
     let result = finish(command);
     assert_eq!(result.code, Some(0), "{}", result.stderr);
     assert!(output.join("api/numbers-value.md").is_file());
     assert!(output.join("api/words-value.md").is_file());
+}
+
+#[test]
+fn api_docs_keep_inlined_constants_and_runtime_binding_types() {
+    let source = "namespace sample {\nmodule Units { export let each = 1\nexport let label = \"unit\" }\nfn identity(value) = value\nlet runtime = identity(\"runtime\")\n}\n";
+    let (result, output) = export(source, "osp", "docs_constant_types");
+    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    assert!(read_text(&output.join("api/sample-units-each.md")).contains(": int"));
+    assert!(read_text(&output.join("api/sample-units-label.md")).contains(": string"));
+    assert!(read_text(&output.join("api/sample-runtime.md")).contains(": string"));
+}
+
+#[test]
+fn api_docs_resolve_visibility_by_namespace_identity_not_name_suffix() {
+    let source = "module A { fn secret() = \"private\"\nexport fn exposed() = 1 }\nnamespace other { module A { export fn secret() = 42 } }\n";
+    let (result, output) = export(source, "osp", "docs_visibility_identity");
+    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    assert!(!output.join("api/a-secret.md").exists());
+    assert!(output.join("api/a-exposed.md").is_file());
+    assert!(read_text(&output.join("api/other-a-secret.md")).contains("int"));
 }
 
 #[test]
@@ -192,6 +236,179 @@ fn api_docs_reject_duplicate_guide_paths_before_any_output() {
     let result = finish(command);
     assert_eq!(result.code, Some(1), "{}", result.stderr);
     assert!(!output.exists());
+}
+
+#[test]
+fn api_docs_reject_an_explicit_non_markdown_page() {
+    let root = temp_dir("docs_non_markdown_page");
+    let guide = root.join("intro.txt");
+    std::fs::write(&guide, "# Introduction\n").expect("guide");
+    let output = root.join("docs");
+    let mut command = osprey();
+    let _ = command
+        .args(["--docs", "--docs-dir"])
+        .arg(&output)
+        .arg("--docs-page")
+        .arg(&guide);
+    let result = finish(command);
+    assert_eq!(result.code, Some(1), "{}", result.stderr);
+    assert!(result.stderr.contains("Markdown"), "{}", result.stderr);
+    assert!(!output.exists());
+}
+
+#[test]
+fn api_docs_html_integrates_authored_pages_themes_and_ordered_css() {
+    for theme in ["osprey", "midnight", "paper"] {
+        let root = temp_dir(&format!("docs_site_{theme}"));
+        let guides = root.join("guides/deep");
+        std::fs::create_dir_all(&guides).expect("guides");
+        std::fs::write(
+            guides.join("My Guide.md"),
+            "# Learning Osprey\n\nA **guide**.\n",
+        )
+        .expect("guide");
+        std::fs::write(guides.join("untitled.md"), "No heading here.\n").expect("untitled guide");
+        std::fs::write(guides.join("ignored.txt"), "not a Markdown page").expect("other input");
+        let first = root.join("brand.css");
+        let second = root.join("override.css");
+        std::fs::write(&first, ":root { --accent: red; }").expect("brand CSS");
+        std::fs::write(&second, ":root { --accent: blue; }").expect("override CSS");
+        let output = root.join("site");
+        let mut command = osprey();
+        let _ = command
+            .args([
+                "--docs",
+                "--docs-format",
+                "html",
+                "--docs-theme",
+                theme,
+                "--docs-dir",
+            ])
+            .arg(&output)
+            .arg("--docs-page")
+            .arg(root.join("guides"))
+            .arg("--docs-css")
+            .arg(&first)
+            .arg("--docs-css")
+            .arg(&second);
+        let result = finish(command);
+        assert_eq!(result.code, Some(0), "{}", result.stderr);
+        let page = read_text(&output.join("guides/deep/my-guide.html"));
+        assert!(
+            page.contains("Learning Osprey") && page.contains("<strong>guide</strong>"),
+            "{page}"
+        );
+        assert!(
+            page.find("theme.css").expect("theme")
+                < page.find("custom-0-brand.css").expect("brand")
+        );
+        assert!(
+            page.find("custom-0-brand.css").expect("brand")
+                < page.find("custom-1-override.css").expect("override")
+        );
+        assert_eq!(
+            read_text(&output.join("assets/custom-1-override.css")),
+            ":root { --accent: blue; }"
+        );
+        assert!(output.join("guides/deep/untitled.html").is_file());
+        assert!(!output.join("guides/deep/ignored.html").exists());
+        assert!(output.join("index.html").is_file());
+    }
+}
+
+#[test]
+fn api_docs_reject_incompatible_and_unknown_option_values() {
+    for arguments in [
+        vec!["--docs-format", "pdf"],
+        vec!["--docs-theme", "missing"],
+        vec!["--flavor", "unknown"],
+        vec!["--docs-css", "brand.css"],
+        vec!["--docs-theme", "midnight"],
+        vec!["--source", "a.osp", "--source", "b.osp"],
+    ] {
+        let output = temp_dir("docs_invalid_values").join("unwritten");
+        let mut command = osprey();
+        let _ = command
+            .args(["--docs", "--docs-dir"])
+            .arg(&output)
+            .args(&arguments);
+        let result = finish(command);
+        assert_eq!(result.code, Some(2), "{arguments:?}: {}", result.stderr);
+        assert!(!output.exists(), "{arguments:?}");
+    }
+}
+
+#[test]
+fn api_docs_export_every_module_corpus_source_in_both_flavors() {
+    let root = temp_dir("docs_module_corpus");
+    let mut count = 0;
+    for entry in std::fs::read_dir(super::repo_root().join("tests/modules")).expect("module corpus")
+    {
+        let path = entry.expect("module source").path();
+        if !path
+            .extension()
+            .is_some_and(|extension| extension == "osp" || extension == "ospml")
+        {
+            continue;
+        }
+        let output = root.join(path.file_name().expect("filename"));
+        let mut command = osprey();
+        let _ = command
+            .arg("--docs")
+            .arg(&path)
+            .arg("--docs-dir")
+            .arg(&output);
+        let result = finish(command);
+        assert_eq!(
+            result.code,
+            Some(0),
+            "{}: {}",
+            path.display(),
+            result.stderr
+        );
+        assert!(output.join("api/index.md").is_file(), "{}", path.display());
+        count += 1;
+    }
+    assert!(
+        count >= 24,
+        "expected both flavors of the complete module corpus, found {count}"
+    );
+}
+
+#[test]
+fn api_docs_honor_file_flavor_overrides_and_reject_project_overrides() {
+    let root = temp_dir("docs_flavor_override");
+    let source = root.join("source.osp");
+    std::fs::write(&source, "label () = \"ML\"\n").expect("ML in a default extension");
+    let output = root.join("docs");
+    let mut command = osprey();
+    let _ = command
+        .args(["--docs", "--flavor", "ml"])
+        .arg(&source)
+        .arg("--docs-dir")
+        .arg(&output);
+    let result = finish(command);
+    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    assert!(read_text(&output.join("api/label.md")).contains("label : Unit -> string"));
+    std::fs::write(
+        root.join("osprey.toml"),
+        "[project]\nname = \"flavor\"\nflavor = \"ml\"\n",
+    )
+    .expect("manifest");
+    let mut command = osprey();
+    let _ = command
+        .args(["--docs", "--flavor", "ml"])
+        .arg(&root)
+        .arg("--docs-dir")
+        .arg(root.join("unwritten"));
+    let result = finish(command);
+    assert_eq!(result.code, Some(1), "{}", result.stderr);
+    assert!(
+        result.stderr.contains("--flavor applies to single files"),
+        "{}",
+        result.stderr
+    );
+    assert!(!root.join("unwritten").exists());
 }
 
 #[test]

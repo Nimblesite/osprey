@@ -164,6 +164,9 @@ pub struct AssembledProject {
     /// The value is true for an opaque type whose representation must stay hidden.
     /// Documentation consumes the same finalized surface as module resolution.
     pub public_api: BTreeMap<String, bool>,
+    /// Resolved bindings removed by constant inlining, retained for API type inference.
+    /// These declarations are metadata and must never be emitted as runtime initializers.
+    pub documentation_bindings: Vec<osprey_ast::Stmt>,
 }
 
 impl AssembledProject {

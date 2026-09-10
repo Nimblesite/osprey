@@ -8,6 +8,12 @@ use std::path::{Path, PathBuf};
 pub(super) fn pages(inputs: &[PathBuf]) -> io::Result<Vec<Page>> {
     let mut pages = Vec::new();
     for input in inputs {
+        if input.is_file() && input.extension().is_none_or(|extension| extension != "md") {
+            return Err(io::Error::other(format!(
+                "documentation pages must be Markdown (.md): {}",
+                input.display()
+            )));
+        }
         let mut files = Vec::new();
         discover(input, &mut files)?;
         files.sort();

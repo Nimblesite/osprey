@@ -1,5 +1,6 @@
 ---
 layout: page.njk
+mlTwins: false
 title: Documenting your modules
 description: Generate HTML API documentation, add Markdown guides and custom CSS, and run executable examples.
 ---
@@ -12,7 +13,7 @@ inferred types. Both Default and ML sources support documentation comments.
 In Default source, put `///` above a declaration. Use `//!` at the beginning of
 a file, namespace, or module to document that scope.
 
-````osprey
+~~~~osprey
 //! Greetings for command-line applications.
 
 /// Greets a reader by name.
@@ -29,7 +30,27 @@ a file, namespace, or module to document that scope.
 /// Hello Osprey!
 /// ```
 fn greet(name) = "Hello " + name + "!"
-````
+~~~~
+
+~~~~osprey-ml
+//! Greetings for command-line applications.
+
+(** Greets a reader by name.
+
+# Parameters
+- name: the reader's display name
+# Returns
+The greeting text.
+# Examples
+```osprey
+print (greet "Osprey")
+```
+```output
+Hello Osprey!
+```
+*)
+greet name = "Hello " + name + "!"
+~~~~
 
 ML uses `(** ... *)` above declarations and the same `//!` inner comments.
 Example code is interpreted in the source file's flavor. The structured sections
@@ -46,6 +67,7 @@ Open `site/index.html` or publish the directory with any static file server.
 The site includes public APIs, module descriptions, inferred signatures, examples,
 search, and the built-in reference. Single `.osp` and `.ospml` files work too.
 Library projects can generate documentation without an application entry point.
+Module pages link directly to their public members.
 
 Choose a built-in theme:
 
@@ -100,7 +122,7 @@ Every example is type-checked. An immediately following `output` fence makes
 it executable and asserts its stdout exactly, including spaces. An example
 without an output fence is checked without running. Each example has its own
 bindings and can use the documented declaration's module scope. Application
-entry code is not run.
+entry code is not run automatically; examples may call `main` explicitly.
 
 A failed example produces a diagnostic and a failing exit status. Runnable
 examples have a 30-second execution limit; set `OSPREY_DOCTEST_TIMEOUT_MS` to

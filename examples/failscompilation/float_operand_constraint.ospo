@@ -1,0 +1,6 @@
+// osprey: flavor=default
+// [FLOAT-OPERANDS] Invalid calls must fail before code generation.
+fn scale(x) = x * 1.5
+fn divide(left, right) = left / right
+let badScale = scale("text")
+let badDivision = divide(true, "text")

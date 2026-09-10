@@ -120,7 +120,8 @@ absent and `run` is `false`.
 each example independently using the owning file's resolved flavor. A project
 may contain both flavors and does not need an application entry for documentation.
 The example has access to the documented declaration's lexical scope, including
-private module helpers. Application entry statements and `main` are not run.
+private module helpers. Application entry statements and `main` are not run
+automatically; an example may call a documented `main` explicitly.
 Bindings from one example never become visible to another.
 
 Every example is type-checked, including declarations it does not call. An
@@ -191,6 +192,10 @@ show their representation, fields and variants. Function signatures come from
 the editor's inferred type model and retain generic binders. ML source signatures
 and example fences are presented in the ML flavor.
 
+Namespace, module and effect pages list their immediate public members with
+links, declaration kinds and documentation summaries. State modules retain the
+`state` qualifier, and static effects retain `static` in their signatures.
+
 Markdown is the default format. Built-ins live under `functions/`, user APIs
 under `api/`, and additional pages under `guides/`. Names are made safe and unique
 on case-insensitive filesystems; `api/index.md` is reserved for the API listing.
@@ -207,13 +212,50 @@ are rejected before writing the output set.
 API and built-in pages, navigation, search, and local styles. It needs no website
 framework, build step, CDN, or network connection. Navigation and search work
 when opened directly from the filesystem or served from a static server, including
-under a URL prefix. Layout adapts to mobile screens and keyboard navigation.
+under a URL prefix: every generated reference is relative.
+
+Layout adapts to mobile screens and keyboard navigation. Navigation precedes the
+article in source order, which is what a screen reader needs and what would
+otherwise push a phone reader past the whole reference before the page they
+opened. It is therefore a disclosure: expanded on a wide screen, collapsed on a
+narrow one, operable from the keyboard, and expanded in the markup itself so the
+links remain present when scripting is off.
 
 The renderer supports CommonMark plus tables, footnotes, task lists and
 strikethrough. Raw HTML in Markdown is displayed as text; it cannot inject scripts
-or markup into generated pages. Source code stays escaped. Internal Markdown
-links point to generated HTML pages, and resolvable documentation symbol links
-point to the matching API declaration.
+or markup into generated pages. Source code stays escaped. A link or image
+destination in a scheme that executes in the reader's browser — `javascript:`,
+`data:`, `vbscript:`, however spelled — is replaced with an inert one; the link
+text is still shown.
+
+Headings receive unique anchors, including repeated headings and names that
+already contain numeric suffixes. Generated anchors cannot collide with page
+landmarks, explicit heading IDs or footnotes. Heading attributes retain IDs and
+classes for navigation and styling; executable attributes are discarded.
+
+Internal Markdown links point to generated HTML pages. A destination is put
+through the same slugging the exporter used when it wrote the target, so a link
+naming the author's own filenames resolves whether it was written with spaces,
+percent-encoded, relative to a parent directory, or with an anchor. A
+destination carrying any other extension is an asset and is left as written.
+
+A resolvable documentation symbol link points to the matching declaration. A
+declaration answers to its qualified name and to every suffix of it, in the
+`::` and the dotted spelling, so `[Money.format]` and `[format]` both reach
+`shop::Money::format`.
+
+Resolution starts in the scope the comment was written in and widens outwards,
+the way name resolution does in the language: `[helper]` inside `shop::A::read`
+is `shop::A::helper` where that exists, even when an unrelated `shop::B::helper`
+also does. Only where no enclosing scope owns the name does a match anywhere in
+the export apply, and then only if exactly one declaration answers to it. A name
+two unrelated declarations both answer to resolves to neither and stays the text
+the author wrote: sending a reader to the wrong declaration is worse than not
+linking.
+
+Search does not fetch. The index is loaded as a script, because a page opened
+directly from the filesystem has an opaque origin where fetching a sibling file
+fails as a cross-origin request — with nothing on the page to say why.
 
 ### Additional pages `[DOC-EXPORT-PAGES]`
 
@@ -234,3 +276,34 @@ They are linked after the selected theme, in argument order. Stylesheets may
 override theme properties and ordinary selectors. CSS and nondefault themes
 require HTML output. Unknown themes, formats and options, and missing argument
 values fail with a usage error instead of silently generating a different result.
+
+## Implementation and verification
+
+Plan 0018 was completed and retired after local acceptance on 2026-09-10.
+The implementation is shared by the compiler, editor, CLI exporter and doctest
+runner. [The usage guide](../../website/src/docs/documentation.md) includes
+Default and ML examples that are extracted from the rendered page and executed
+by the browser acceptance suite.
+
+The final `make ci` passed formatting, strict lint, duplication checks, all
+workspace tests and coverage thresholds, native runtime checks, 316 editor
+tests, 17 bank browser tests, 78 HTML browser assertions and 32 mobile domain
+cases. CLI line coverage was 95.3%, above the unchanged 95% requirement.
+
+- The 104 CLI integration tests include 30 API export contracts, 18 doctest
+  execution contracts and two corpus-gate contracts. All 24 module fixtures
+  are exported through the public CLI in their source flavor.
+- The complete website suite passed 118 browser tests. Generated sites are
+  exercised over both `file://` and HTTP under a URL prefix; all three themes,
+  CSS ordering, keyboard/mobile behavior, link targets and inert Markdown
+  are asserted. The standalone gate is `make docs-html-test`.
+- The native corpus passed 213 assertion suites and byte-exact goldens under
+  each of the default, GC and ARC allocators; ARC reported no leaked objects.
+  Each pass also verified 18 alternative GPU-lowering runs and six doctests.
+- The WASM corpus passed all 147 portable goldens, 18 GPU-lowering checks and
+  six doctests, with the existing named capability exclusions unchanged.
+
+Regression coverage lives in the CLI's `tests/cases/api_docs*.rs` and
+`tests/cases/doctests*.rs`, `src/docs/html/tests*`,
+[`website/tests/api-docs.spec.js`](../../website/tests/api-docs.spec.js), and
+[`scripts/verify-docs-html.mjs`](../../scripts/verify-docs-html.mjs).

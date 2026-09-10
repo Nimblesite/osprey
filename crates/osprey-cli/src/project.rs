@@ -30,12 +30,23 @@ enum OutputDefault {
 impl CompilationInput {
     /// Documentation resolves every module without requiring an application entry.
     /// The selected source supplies assembly context; no application code is run.
-    pub(crate) fn documentation_project(path: &str, config: &ProjectConfig, sources: &[SourceFile]) -> Result<Self, Vec<ProjectError>> {
+    pub(crate) fn documentation_project(
+        path: &str,
+        config: &ProjectConfig,
+        sources: &[SourceFile],
+    ) -> Result<Self, Vec<ProjectError>> {
         let mut config = config.clone();
-        if config.entry.is_none() { config.entry = sources.first().map(|source| source.path.clone()); }
+        if config.entry.is_none() {
+            config.entry = sources.first().map(|source| source.path.clone());
+        }
         let assembled = osprey_project::assemble(&config, sources)?;
         let source = aggregate_sources(&assembled);
-        Ok(Self::assembled(assembled, source, path.to_string(), OutputDefault::Source(path.to_string())))
+        Ok(Self::assembled(
+            assembled,
+            source,
+            path.to_string(),
+            OutputDefault::Source(path.to_string()),
+        ))
     }
 
     /// Preserve the historical single-file path for an ordinary script.
@@ -165,6 +176,19 @@ impl CompilationInput {
             return json;
         };
         project_symbols_json(json, project)
+    }
+
+    /// Include constants removed by assembly when presenting documentation types.
+    pub(crate) fn documentation_symbols_json(&self) -> String {
+        let CompilationUnit::Project(project) = &self.unit else {
+            return self.symbols_json();
+        };
+        let mut documented = project.clone();
+        documented
+            .program
+            .statements
+            .extend(project.documentation_bindings.clone());
+        project_symbols_json(osprey_lsp::symbols_json(&documented.program), &documented)
     }
 
     /// The finalized module API, including signature exports and opaque types.
@@ -415,6 +439,7 @@ mod tests {
             sources,
             source_name_by_mangled: std::collections::BTreeMap::new(),
             public_api: std::collections::BTreeMap::new(),
+            documentation_bindings: Vec::new(),
         };
         let aggregated = aggregate_sources(&project);
         assert!(aggregated.contains("// @link: sqlite3"));
@@ -460,6 +485,7 @@ mod tests {
             sources: vec![source],
             source_name_by_mangled: source_names,
             public_api: std::collections::BTreeMap::new(),
+            documentation_bindings: Vec::new(),
         };
         let json = project_symbols_json(osprey_lsp::symbols_json(&project.program), &project);
         assert!(json.contains("\"name\":\"app::main\""));
@@ -481,6 +507,7 @@ mod tests {
             sources: Vec::new(),
             source_name_by_mangled,
             public_api: std::collections::BTreeMap::new(),
+            documentation_bindings: Vec::new(),
         }
     }
 

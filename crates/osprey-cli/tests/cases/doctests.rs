@@ -214,17 +214,75 @@ fn doctests_stop_examples_that_exceed_the_execution_deadline() {
     let source = "/// Slow example.\n/// # Examples\n/// ```osprey\n/// sleep(1000)\n/// ```\n/// ```output\n/// ```\nfn documented() = 42\n";
     let path = temp_osp("documentation_timeout", source);
     let mut command = super::osprey();
-    let _ = command.arg(path).arg("--doctests").env("OSPREY_DOCTEST_TIMEOUT_MS", "50");
+    let _ = command
+        .arg(path)
+        .arg("--doctests")
+        .env("OSPREY_DOCTEST_TIMEOUT_MS", "50");
     let result = super::finish(command);
     assert_eq!(result.code, Some(1), "{}", result.stderr);
-    assert!(result.stderr.contains("execution timed out"), "{}", result.stderr);
+    assert!(
+        result.stderr.contains("execution timed out"),
+        "{}",
+        result.stderr
+    );
     assert_eq!(result.stdout, "doctests: 0 passed, 1 failed\n");
 }
 
 #[test]
 fn doctests_keep_example_type_positions_separate_from_source_positions() {
     let source = "let value = fn() => 42\n/// Separate lambda types.\n/// # Examples\n/// ```osprey\n/// let value = fn() => \"documentation\"\n/// print(value())\n/// ```\n/// ```output\n/// documentation\n/// ```\nfn documented() = value()\n";
-    let result = run_file(&temp_osp("documentation_positions", source), &["--doctests"]);
+    let result = run_file(
+        &temp_osp("documentation_positions", source),
+        &["--doctests"],
+    );
     assert_eq!(result.code, Some(0), "{}", result.stderr);
     assert_eq!(result.stdout, "doctests: 1 passed, 0 failed\n");
+}
+
+#[test]
+fn doctests_can_explicitly_call_the_documented_application_main() {
+    let source = "/// Entry point.\n/// # Examples\n/// ```osprey\n/// main()\n/// ```\n/// ```output\n/// called explicitly\n/// ```\nfn main() = print(\"called explicitly\")\n";
+    for (prefix, name) in [("", "main"), ("namespace app;\n", "namespace_main")] {
+        let result = run_file(
+            &temp_osp(
+                &format!("documentation_{name}"),
+                &format!("{prefix}{source}"),
+            ),
+            &["--doctests"],
+        );
+        assert_eq!(result.code, Some(0), "{}", result.stderr);
+        assert_eq!(result.stdout, "doctests: 1 passed, 0 failed\n");
+    }
+}
+
+#[test]
+fn doctests_allow_example_helpers_to_capture_example_bindings() {
+    let source = "/// Local helper.\n/// # Examples\n/// ```osprey\n/// let prefix = \"local\"\n/// fn helper() = prefix\n/// print(helper())\n/// ```\n/// ```output\n/// local\n/// ```\nfn documented() = 1\n";
+    let result = run_file(
+        &temp_osp("documentation_helper_capture", source),
+        &["--doctests"],
+    );
+    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    assert_eq!(result.stdout, "doctests: 1 passed, 0 failed\n");
+}
+
+#[test]
+fn doctests_allow_qualified_calls_to_documented_main() {
+    let source = "namespace app;\n/// Entry.\n/// # Examples\n/// ```osprey\n/// app::main()\n/// ```\n/// ```output\n/// explicit\n/// ```\nfn main() = print(\"explicit\")\n";
+    let result = run_file(
+        &temp_osp("documentation_qualified_main", source),
+        &["--doctests"],
+    );
+    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    assert_eq!(result.stdout, "doctests: 1 passed, 0 failed\n");
+}
+
+#[test]
+fn doctests_run_with_each_native_memory_backend() {
+    let path = temp_osp("documentation_allocators", DOCUMENTED);
+    for memory in ["default", "gc", "arc"] {
+        let result = run_file(&path, &["--doctests", &format!("--memory={memory}")]);
+        assert_eq!(result.code, Some(0), "{memory}: {}", result.stderr);
+        assert_eq!(result.stdout, "doctests: 2 passed, 0 failed\n");
+    }
 }

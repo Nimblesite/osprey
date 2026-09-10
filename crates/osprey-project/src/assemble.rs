@@ -38,6 +38,7 @@ pub(crate) fn assemble(
             sources: metadata,
             source_name_by_mangled: resolution.source_names,
             public_api: public_api(&graph),
+            documentation_bindings: resolution.documentation_bindings,
         })
     } else {
         Err(errors)
@@ -51,8 +52,10 @@ fn public_api(graph: &crate::model::ProjectGraph) -> std::collections::BTreeMap<
         .filter(|(key, info)| {
             info.visibility == osprey_ast::Visibility::Exported
                 && (1..key.path.len()).all(|length| {
-                    let parent =
-                        crate::model::SymbolKey::new(&key.namespace, key.path.iter().take(length).cloned().collect());
+                    let parent = crate::model::SymbolKey::new(
+                        &key.namespace,
+                        key.path.iter().take(length).cloned().collect(),
+                    );
                     graph
                         .declarations
                         .get(&parent)

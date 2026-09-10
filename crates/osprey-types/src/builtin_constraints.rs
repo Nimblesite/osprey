@@ -7,6 +7,13 @@
 
 use crate::ty::{names, Type};
 
+/// [FLOAT-OPERANDS] Cannot collide with a source identifier or built-in name.
+pub(crate) const NUMERIC_OPERAND_PREFIX: &str = "numeric ";
+
+pub(crate) fn is_numeric_scalar(ty: &Type) -> bool {
+    ty.is_named(names::INT) || ty.is_named(names::FLOAT)
+}
+
 const SIZED_DISPLAY: &str = "string | List<T> | Map<string, V>";
 const PRINTABLE_DISPLAY: &str =
     "int | float | bool | string | Unit | any | Result<printable, printable>";
@@ -30,6 +37,12 @@ pub(crate) fn display_param_type(name: &str, index: usize) -> Option<&'static st
 
 /// Validate the receiver/value of a representation-sensitive built-in.
 pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
+    // [FLOAT-OPERANDS] Schemes carry this obligation into each instantiation,
+    // preserving numeric polymorphism while refusing concrete nonnumeric uses.
+    if let Some(op) = name.strip_prefix(NUMERIC_OPERAND_PREFIX) {
+        return (!is_numeric_scalar(ty) && !matches!(ty, Type::Var(_)))
+            .then(|| format!("operator `{op}` requires int or float; got {ty}"));
+    }
     match name {
         "interpolation" if matches!(ty, Type::Fun { .. }) && crate::ty::has_type_var(ty) => Some(
             "a closure value with a still-generic type cannot be interpolated; apply it or give it a concrete function type".to_owned()

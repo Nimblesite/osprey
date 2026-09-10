@@ -15,14 +15,19 @@ struct Palette {
     vars: &'static str,
 }
 
+/// The default palette. Named separately from [`PALETTES`] so the fallback in
+/// [`css`] is a reference to a known value rather than an index that could
+/// panic if the table were ever emptied.
+const OSPREY: Palette = Palette {
+    name: "osprey",
+    scheme: "light",
+    vars: "--bg:#fbfaf7;--surface:#fff;--text:#1f2421;--muted:#5a635c;\
+           --accent:#2f6b45;--accent-soft:#e7f0e9;--border:#dcd9d0;\
+           --code-bg:#f4f2ec;--mark:#fdf0c8;",
+};
+
 const PALETTES: &[Palette] = &[
-    Palette {
-        name: "osprey",
-        scheme: "light",
-        vars: "--bg:#fbfaf7;--surface:#fff;--text:#1f2421;--muted:#5a635c;\
-               --accent:#2f6b45;--accent-soft:#e7f0e9;--border:#dcd9d0;\
-               --code-bg:#f4f2ec;--mark:#fdf0c8;",
-    },
+    OSPREY,
     Palette {
         name: "midnight",
         scheme: "dark",
@@ -46,7 +51,7 @@ pub(super) fn css(name: &str) -> String {
     let palette = PALETTES
         .iter()
         .find(|palette| palette.name == name)
-        .unwrap_or_else(|| &PALETTES[0]);
+        .unwrap_or(&OSPREY);
     format!(
         ":root{{color-scheme:{};{}}}\n{LAYOUT}",
         palette.scheme, palette.vars
@@ -68,6 +73,7 @@ max-width:1180px;margin:0 auto;padding:24px 20px}\
 .brand{font-weight:700;font-size:18px;text-decoration:none;color:var(--text);display:block;margin-bottom:14px}\
 .search{width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:8px;\
 background:var(--surface);color:var(--text);font:inherit;font-size:14px}\
+#menu>summary{display:none}\
 .group{margin:18px 0 6px;font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}\
 .nav{list-style:none;margin:0;padding:0}\
 .nav a{display:block;padding:5px 9px;border-radius:6px;text-decoration:none;font-size:14px}\
@@ -100,10 +106,17 @@ mark{background:var(--mark);color:inherit}\
 .side{position:static;max-height:none}\
 /* The sidebar precedes the content in source order, which is right for a \
    screen reader but would otherwise make a phone reader scroll past every \
-   page in the reference before reaching the one they opened. Bounding the \
-   tree keeps search at the top and the article within the first screen. */\
-#tree{max-height:34vh;overflow:auto;border:1px solid var(--border);\
-border-radius:8px;padding:4px 6px}\
+   page in the reference before reaching the one they opened. Here the tree \
+   collapses behind its own summary, so the article starts within the first \
+   screen; bounding it keeps that true once a reader opens it. */\
+#menu>summary{display:block;margin:10px 0 0;padding:9px 11px;font-size:14px;\
+font-weight:600;cursor:pointer;list-style:none;background:var(--surface);\
+border:1px solid var(--border);border-radius:8px}\
+#menu>summary::-webkit-details-marker{display:none}\
+#menu>summary::after{content:'\\25be';float:right;color:var(--muted)}\
+#menu[open]>summary::after{content:'\\25b4'}\
+#tree{max-height:52vh;overflow:auto;margin-top:6px;\
+border:1px solid var(--border);border-radius:8px;padding:4px 6px}\
 main{padding:20px 18px;border-radius:10px}\
 h1{font-size:25px}}\
 @media(prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}\

@@ -7,28 +7,48 @@ use std::time::{Duration, Instant};
 
 pub(super) fn capture(command: &mut Command) -> Result<Output, String> {
     let deadline = timeout()?;
-    let mut child = command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped())
-        .spawn().map_err(|error| error.to_string())?;
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| error.to_string())?;
     let stdout = drain(child.stdout.take());
     let stderr = drain(child.stderr.take());
     let status = wait(&mut child, deadline);
-    let stdout = stdout.join().map_err(|_panic| "example stdout reader failed")??;
-    let stderr = stderr.join().map_err(|_panic| "example stderr reader failed")??;
-    Ok(Output { status: status?, stdout, stderr })
+    let stdout = stdout
+        .join()
+        .map_err(|_panic| "example stdout reader failed")??;
+    let stderr = stderr
+        .join()
+        .map_err(|_panic| "example stderr reader failed")??;
+    Ok(Output {
+        status: status?,
+        stdout,
+        stderr,
+    })
 }
 
-fn drain(pipe: Option<impl Read + Send + 'static>) -> std::thread::JoinHandle<Result<Vec<u8>, String>> {
+fn drain(
+    pipe: Option<impl Read + Send + 'static>,
+) -> std::thread::JoinHandle<Result<Vec<u8>, String>> {
     std::thread::spawn(move || {
         let mut output = Vec::new();
         let mut pipe = pipe.ok_or("example output pipe was not created")?;
-        let _ = pipe.read_to_end(&mut output).map_err(|error| error.to_string())?;
+        let _ = pipe
+            .read_to_end(&mut output)
+            .map_err(|error| error.to_string())?;
         Ok(output)
     })
 }
 
 fn timeout() -> Result<Duration, String> {
     match std::env::var("OSPREY_DOCTEST_TIMEOUT_MS") {
-        Ok(value) => value.parse::<u64>().ok().filter(|value| *value > 0).map(Duration::from_millis)
+        Ok(value) => value
+            .parse::<u64>()
+            .ok()
+            .filter(|value| *value > 0)
+            .map(Duration::from_millis)
             .ok_or_else(|| "OSPREY_DOCTEST_TIMEOUT_MS must be a positive integer".into()),
         Err(std::env::VarError::NotPresent) => Ok(Duration::from_secs(30)),
         Err(error) => Err(error.to_string()),
@@ -44,7 +64,10 @@ fn wait(child: &mut Child, timeout: Duration) -> Result<ExitStatus, String> {
             result => {
                 let _ = child.kill();
                 let _ = child.wait();
-                return Err(result.err().map_or_else(|| format!("execution timed out after {} ms", timeout.as_millis()), |error| error.to_string()));
+                return Err(result.err().map_or_else(
+                    || format!("execution timed out after {} ms", timeout.as_millis()),
+                    |error| error.to_string(),
+                ));
             }
         }
     }

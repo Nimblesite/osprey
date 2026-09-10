@@ -349,6 +349,50 @@ Primitive spellings are case-sensitive.
 
 Mixed numeric arithmetic promotes `int` to `float`. Integer `+`, `-`, `*`, `%`, and unary `-` have type `int`; `/` has type `float`; floating-point `+`, `-`, `*`, and unary `-` have type `float`. Arithmetic is total: no trap, no panic, no silent wrap, no unspecified value, and no undischarged fault ([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic--arith-checked), [ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)).
 
+### Numeric operand constraints — [FLOAT-OPERANDS]
+
+The float-producing branches of `+`, `-`, `*`, `/` and `%` require numeric
+operands. A known operand must be `int` or `float`; an inferred parameter
+carries that requirement through function generalization and each call-site
+instantiation. The same `fn scale(x) = x * 1.5` can therefore serve integer
+and float callers, while `scale("text")`, `scale(true)` and `scale([1])`
+fail type checking before code generation. Aliases and higher-order calls
+preserve the requirement. Division constrains both operands even when neither
+is already known to be float.
+
+This constraint leaves the existing propagation of known `Result` operands
+unchanged: the arithmetic checker first verifies their `MathError` channel,
+then checks the unwrapped numeric type and retains the required result wrapper.
+It does not make a `Result` an ordinary numeric argument to a generic helper.
+
+### Floating-point comparison — [FLOAT-COMPARE]
+
+When either operand is NaN, the comparison operators have these results:
+
+| Operator | Result |
+| --- | --- |
+| `==` | `false` |
+| `!=` | `true` |
+| `<`, `<=`, `>`, `>=` | `false` |
+
+Consequently `(a != b) == !(a == b)` holds for every float pair. Finite values
+and infinities retain numeric ordering; positive and negative zero compare
+equal. The backend uses LLVM's unordered-or-not-equal predicate for `!=` and
+ordered predicates for the other five operators. Both-flavor truth tables in
+`tests/regressions/basics/operators/boolean_consolidated.test.*` pin NaN in
+either operand, equality complements, finite controls, infinities and signed zero.
+
+### Internal numeric narrowing — [FLOAT-CONVERT]
+
+The type checker rejects implicit float-to-integer narrowing. The backend's
+internal coercion also has defined behavior if a future caller supplies a
+double: finite values truncate toward zero, out-of-range values clamp to the
+signed 64-bit bounds, and NaN becomes zero. It emits
+`llvm.fptosi.sat.i64.f64`, never poison-producing bare `fptosi`.
+The codegen conversion tests assert this path for signed NaNs, infinities,
+both range boundaries, signed zeros and fractional values. These semantics
+follow the [LLVM conversion contract](https://llvm.org/docs/LangRef.html#llvm-fptosi-sat-intrinsic).
+
 ## Result Preservation
 
 A fallible expression has type `Result<T, E>`, and the compiler never implicitly erases that wrapper ([FAILURE-EXPLICIT](0001-Introduction.md#failure-safety--failure-explicit)). Every consuming position — arguments, bindings, plain-`T` returns, comparisons, function-value calls — preserves the `Result` or is rejected; interpolation displays the complete `Success` or `Error` value. Callers obtain the payload only through an exhaustive `match` or an explicit `?:` fallback. This rule has no exceptions. Arithmetic is not one: it carries no `Result` wrapper at all, and its faults are discharged by an `Arith` handler rather than by erasing a wrapper ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)).

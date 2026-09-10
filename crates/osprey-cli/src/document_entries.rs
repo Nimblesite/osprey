@@ -6,6 +6,7 @@ use osprey_ast::{DocComment, DocExample, DocScope, Program, Stmt, Visibility};
 #[derive(Clone)]
 pub(crate) struct DocEntry {
     pub(crate) qualified_name: String,
+    pub(crate) symbol_name: String,
     pub(crate) kind: &'static str,
     pub(crate) doc: DocComment,
     pub(crate) inner_doc: Option<DocComment>,
@@ -13,6 +14,7 @@ pub(crate) struct DocEntry {
     pub(crate) public: bool,
     pub(crate) declaration: Option<Stmt>,
     pub(crate) operation_type: Option<String>,
+    pub(crate) module_kind: Option<osprey_ast::ModuleKind>,
 }
 
 impl DocEntry {
@@ -119,6 +121,7 @@ fn container(
         }
         Stmt::Module {
             path,
+            kind,
             doc,
             inner_doc,
             body,
@@ -134,6 +137,9 @@ fn container(
                 public,
                 entries,
             );
+            if let Some(entry) = entries.last_mut() {
+                entry.module_kind = Some(*kind);
+            }
             collect_module(body, &name, &nested, public, entries);
         }
         _ => return false,
@@ -195,6 +201,7 @@ fn entry(
     public: bool,
 ) -> DocEntry {
     DocEntry {
+        symbol_name: qualified_name.clone(),
         qualified_name,
         kind,
         scope: scope.to_vec(),
@@ -205,6 +212,7 @@ fn entry(
         inner_doc: None,
         declaration: None,
         operation_type: None,
+        module_kind: None,
     }
 }
 

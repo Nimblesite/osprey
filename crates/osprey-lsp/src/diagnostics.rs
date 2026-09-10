@@ -737,6 +737,7 @@ mod tests {
             }],
             source_name_by_mangled: std::collections::BTreeMap::new(),
             public_api: std::collections::BTreeMap::new(),
+            documentation_bindings: Vec::new(),
         };
         let diagnostics = assembled_type_errors(
             source,

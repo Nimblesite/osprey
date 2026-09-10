@@ -270,6 +270,17 @@ bank-e2e: bank-web $(BANK_E2E_NODE_DEPS)
 	@echo "==> Bank e2e (Playwright)..."
 	cd examples/projects/modules/e2e && npx playwright install chromium && npx playwright test
 
+## docs-html-test: Browser acceptance for the HTML documentation export. Real
+##                 Chromium over file:// — the strictest case, and the one a
+##                 reader hits first — covering every theme, custom stylesheet
+##                 ordering, user guides, search with no server behind it, the
+##                 mobile disclosure and keyboard navigation. Reuses the bank
+##                 e2e project's Playwright install rather than adding another.
+docs-html-test: build $(BANK_E2E_NODE_DEPS)
+	@echo "==> Documentation HTML browser acceptance..."
+	cd examples/projects/modules/e2e && npx playwright install chromium
+	node scripts/verify-docs-html.mjs $(BIN)
+
 ## lint: Run all linters/analyzers (read-only). Checks formatting but does
 ## NOT rewrite it — `make fmt` does that. The fmt check lives HERE because
 ## `lint` is what the required CI job runs; a format gate only in an optional
@@ -352,7 +363,7 @@ clean:
 	cd $(EXT_DIR) && $(RM) out dist coverage test.log
 
 ## ci: lint + hawk + test + bank-test + bank-e2e + build (full CI simulation)
-ci: lint hawk test bank-test bank-e2e mobile-domain-test build
+ci: lint hawk test bank-test bank-e2e docs-html-test mobile-domain-test build
 
 ## wasm: Build everything for the WebAssembly target, ready to go — the wasm
 ## runtime archive (compiler/bin/libosprey_runtime_wasm.a), the hello example,

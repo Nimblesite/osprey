@@ -32,11 +32,7 @@ pub(super) fn check(
     if let Some(path) = temporary {
         let _ = std::fs::remove_file(path);
     }
-    compare(
-        &output?,
-        example,
-        &cli.memory,
-    )
+    compare(&output?, example, &cli.memory)
 }
 
 fn validate(cli: &Cli, input: &CompilationInput) -> Result<(), String> {
@@ -127,4 +123,48 @@ fn check_arc(stderr: &[u8], memory: &str) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{check_arc, expected_bytes};
+    use osprey_ast::DocExample;
+
+    #[test]
+    fn arc_requires_one_zero_object_exit_record() {
+        assert!(check_arc(b"[osp-arc] exit: 0 live objects\n", "arc").is_ok());
+        for stderr in [
+            "",
+            "ordinary output\n",
+            "[osp-arc] exit: 1 live objects\n",
+            "[osp-arc] exit: 0 live objects\n[osp-arc] exit: 0 live objects\n",
+            "[osp-arc] exit: unknown live objects\n",
+        ] {
+            assert!(check_arc(stderr.as_bytes(), "arc").is_err(), "{stderr}");
+        }
+        assert!(check_arc(b"", "default").is_ok());
+        assert!(check_arc(b"", "gc").is_ok());
+    }
+
+    #[test]
+    fn expected_output_preserves_empty_and_unicode_whitespace() {
+        for (output, bytes) in [
+            ("", b"".as_slice()),
+            ("hello \t", b"hello \t\n"),
+            ("naïve\nsecond", "naïve\nsecond\n".as_bytes()),
+        ] {
+            let example = DocExample {
+                code: String::new(),
+                expected_output: Some(output.into()),
+                run: true,
+            };
+            assert_eq!(expected_bytes(&example).as_deref(), Ok(bytes));
+        }
+        let example = DocExample {
+            code: String::new(),
+            expected_output: None,
+            run: true,
+        };
+        assert!(expected_bytes(&example).is_err());
+    }
 }

@@ -481,6 +481,11 @@ fn shown(ty: &osprey_types::Type) -> Option<String> {
 /// — so both hover and `--symbols` answer from inference through here.
 /// Implements [LSP-HOVER-INFERRED-SIGNATURE].
 pub(crate) fn fill_inferred(sym: &mut SymbolInfo, types: &osprey_types::ProgramTypes) {
+    if sym.kind == SymbolKind::Variable && sym.ty.is_empty() {
+        if let Some(inferred) = types.let_type(sym.position).and_then(shown) {
+            sym.ty = inferred;
+        }
+    }
     if sym.kind != SymbolKind::Function
         || (sym.return_type.is_some() && sym.parameters.iter().all(|(_, t)| !t.is_empty()))
     {

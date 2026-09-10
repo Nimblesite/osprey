@@ -8,6 +8,8 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::io;
 
+type Documented<'a> = (DocEntry, &'a osprey_project::SourceFile, bool);
+
 pub(super) fn pages(options: &Options) -> io::Result<Vec<Page>> {
     let Some(path) = &options.source else {
         return Ok(Vec::new());
@@ -19,24 +21,34 @@ pub(super) fn pages(options: &Options) -> io::Result<Vec<Page>> {
         return Err(invalid("documentation source has type errors"));
     }
     let symbols: Vec<Value> =
-        serde_json::from_str(&input.symbols_json()).map_err(io::Error::other)?;
+        serde_json::from_str(&input.documentation_symbols_json()).map_err(io::Error::other)?;
+    let root = source_root(path)?;
+    let documented = public_entries(&sources, &input, &root)?;
+    render_pages(documented, &symbols)
+}
+
+fn source_root(path: &str) -> io::Result<std::path::PathBuf> {
     let selected = std::fs::canonicalize(path)?;
-    let root = if selected.is_dir() {
-        selected.as_path()
-    } else {
-        selected
-            .parent()
-            .unwrap_or_else(|| std::path::Path::new("."))
-    };
+    if selected.is_dir() {
+        return Ok(selected);
+    }
+    Ok(selected
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .to_path_buf())
+}
+
+fn public_entries<'a>(
+    sources: &'a crate::document_source::SourceSet,
+    input: &crate::project::CompilationInput,
+    root: &std::path::Path,
+) -> io::Result<Vec<Documented<'a>>> {
     let mut documented = Vec::new();
     for source in &sources.sources {
         for mut entry in collect(&source.program) {
+            entry.symbol_name = resolved_name(&entry, source, sources.config.as_ref());
             if entry.kind == "File" {
-                let canonical = std::fs::canonicalize(&source.path)?;
-                let relative = canonical.strip_prefix(root).ok().unwrap_or_else(|| {
-                    std::path::Path::new(source.path.file_name().unwrap_or_default())
-                });
-                entry.qualified_name = format!("File {}", relative.display());
+                entry.qualified_name = file_name(source, root)?;
             }
             let (public, opaque) = visibility(&entry, input.public_api());
             if public {
@@ -44,6 +56,19 @@ pub(super) fn pages(options: &Options) -> io::Result<Vec<Page>> {
             }
         }
     }
+    Ok(documented)
+}
+
+fn file_name(source: &osprey_project::SourceFile, root: &std::path::Path) -> io::Result<String> {
+    let canonical = std::fs::canonicalize(&source.path)?;
+    let relative = canonical
+        .strip_prefix(root)
+        .ok()
+        .unwrap_or_else(|| std::path::Path::new(source.path.file_name().unwrap_or_default()));
+    Ok(format!("File {}", relative.display()))
+}
+
+fn render_pages(documented: Vec<Documented<'_>>, symbols: &[Value]) -> io::Result<Vec<Page>> {
     let entries: Vec<_> = documented
         .iter()
         .map(|(entry, _, _)| entry.clone())
@@ -51,25 +76,64 @@ pub(super) fn pages(options: &Options) -> io::Result<Vec<Page>> {
     let slugs = super::user_slug_map(&entries);
     let mut pages = Vec::new();
     for (entry, source, opaque) in documented {
-        let canonical = std::fs::canonicalize(&source.path)?;
-        let local_symbols: Vec<_> = symbols
-            .iter()
-            .filter(|symbol| {
-                symbol
-                    .get("path")
-                    .and_then(Value::as_str)
-                    .is_none_or(|path| {
-                        std::fs::canonicalize(path).is_ok_and(|path| path == canonical)
-                    })
-            })
-            .cloned()
-            .collect();
+        let local = local_symbols(symbols, &source.path)?;
         merge_page(
             &mut pages,
-            page(&entry, &local_symbols, &slugs, source.flavor, opaque)?,
+            page(&entry, &local, &slugs, source.flavor, opaque)?,
         );
     }
+    add_members(&mut pages);
     Ok(pages)
+}
+
+fn local_symbols(symbols: &[Value], source: &std::path::Path) -> io::Result<Vec<Value>> {
+    let canonical = std::fs::canonicalize(source)?;
+    Ok(symbols
+        .iter()
+        .filter(|symbol| {
+            symbol
+                .get("path")
+                .and_then(Value::as_str)
+                .is_none_or(|path| std::fs::canonicalize(path).is_ok_and(|path| path == canonical))
+        })
+        .cloned()
+        .collect())
+}
+
+fn add_members(pages: &mut [Page]) {
+    let indexes: Vec<_> = pages.iter().map(|page| member_table(page, pages)).collect();
+    for (page, members) in pages.iter_mut().zip(indexes) {
+        page.markdown.push_str(&members);
+    }
+}
+
+fn member_table(owner: &Page, pages: &[Page]) -> String {
+    if !matches!(owner.group.as_str(), "Module" | "Namespace" | "Effect") {
+        return String::new();
+    }
+    let prefix = format!("{}::", owner.title);
+    let rows = pages
+        .iter()
+        .filter_map(|page| {
+            let name = page.title.strip_prefix(&prefix)?;
+            if name.contains("::") {
+                return None;
+            }
+            let slug = page.slug.strip_prefix("api/")?;
+            let summary = page.summary.replace('|', "\\|").replace('\n', " ");
+            Some(format!(
+                "| [{name}]({slug}.md) | {} | {summary} |",
+                page.group
+            ))
+        })
+        .collect::<Vec<_>>();
+    if rows.is_empty() {
+        return String::new();
+    }
+    format!(
+        "\n## Members\n\n| Name | Kind | Description |\n| --- | --- | --- |\n{}\n",
+        rows.join("\n")
+    )
 }
 
 fn visibility(
@@ -84,21 +148,39 @@ fn visibility(
     }
     let name = if entry.kind == "Operation" {
         entry
-            .qualified_name
+            .symbol_name
             .rsplit_once("::")
-            .map_or(entry.qualified_name.as_str(), |pair| pair.0)
+            .map_or(entry.symbol_name.as_str(), |pair| pair.0)
     } else {
-        &entry.qualified_name
+        &entry.symbol_name
     };
     if let Some(opaque) = api.get(name) {
         return (true, *opaque);
     }
-    let suffix = format!("::{name}");
-    let mut found = api.iter().filter(|(key, _)| key.ends_with(&suffix));
-    match (found.next(), found.next()) {
-        (Some((_, opaque)), None) => (true, *opaque),
-        _ => (false, false),
+    (false, false)
+}
+
+fn resolved_name(
+    entry: &DocEntry,
+    source: &osprey_project::SourceFile,
+    config: Option<&osprey_project::ProjectConfig>,
+) -> String {
+    let explicit = entry
+        .scope
+        .first()
+        .and_then(|index| source.program.statements.get(*index))
+        .is_some_and(|statement| matches!(statement, osprey_ast::Stmt::Namespace { .. }));
+    if explicit || (config.is_none() && !osprey_project::needs_assembly(&source.program)) {
+        return entry.qualified_name.clone();
     }
+    let root = source
+        .path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    let default = osprey_project::ProjectConfig::for_root(root);
+    let config = config.unwrap_or(&default);
+    let namespace = config.default_namespace.as_ref().unwrap_or(&config.name);
+    format!("{namespace}::{}", entry.qualified_name)
 }
 
 fn merge_page(pages: &mut Vec<Page>, page: Page) {
@@ -161,24 +243,61 @@ fn page(
 }
 
 fn signature(entry: &DocEntry, symbols: &[Value]) -> io::Result<String> {
+    if entry.module_kind == Some(osprey_ast::ModuleKind::State) {
+        return Ok(format!("state module {}", entry.qualified_name));
+    }
+    if let Some(osprey_ast::Stmt::Effect {
+        stage, type_params, ..
+    }) = &entry.declaration
+    {
+        let stage = if stage.is_compile_time() {
+            "static "
+        } else {
+            ""
+        };
+        let binder = osprey_lsp::analysis::render_type_params(type_params);
+        return Ok(format!("{stage}effect {}{binder}", entry.qualified_name));
+    }
     if let Some(ty) = &entry.operation_type {
         return Ok(format!("{}: {ty}", entry.qualified_name.replace("::", ".")));
     }
-    let name = entry.qualified_name.as_str();
+    let name = entry.symbol_name.as_str();
     let exact = symbols
         .iter()
         .find(|symbol| symbol.get("name").and_then(Value::as_str) == Some(name));
     let symbol = match exact {
         Some(symbol) => Some(symbol),
-        None => unique_suffix(symbols, name)?,
+        None => match unique_suffix(symbols, name)? {
+            Some(symbol) => Some(symbol),
+            None => local_binding(entry, symbols),
+        },
     };
     match symbol {
-        Some(symbol) => Ok(render_symbol(symbol, name)),
+        Some(symbol) => Ok(render_symbol(symbol, &entry.qualified_name)),
         None if matches!(entry.kind, "Function" | "Extern" | "Value") => {
             Err(invalid(format!("no inferred signature for {name}")))
         }
-        None => Ok(format!("{} {name}", entry.kind.to_lowercase())),
+        None => Ok(format!(
+            "{} {}",
+            entry.kind.to_lowercase(),
+            entry.qualified_name
+        )),
     }
+}
+
+fn local_binding<'a>(entry: &DocEntry, symbols: &'a [Value]) -> Option<&'a Value> {
+    let osprey_ast::Stmt::Let {
+        name,
+        position: Some(position),
+        ..
+    } = entry.declaration.as_ref()?
+    else {
+        return None;
+    };
+    symbols.iter().find(|symbol| {
+        symbol.get("name").and_then(Value::as_str) == Some(name)
+            && symbol.get("line").and_then(Value::as_u64) == Some(u64::from(position.line))
+    })
 }
 
 fn unique_suffix<'a>(symbols: &'a [Value], name: &str) -> io::Result<Option<&'a Value>> {

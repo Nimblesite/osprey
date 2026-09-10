@@ -104,6 +104,7 @@ fn collect_errors(node: Node<'_>, src: &[u8], out: &mut Vec<SyntaxError>) {
             });
         }
     } else if node.kind() == "float" {
+        // [FLOAT-LITERAL-RANGE] Match the ML lexer's finite-literal contract.
         let text = node.utf8_text(src).unwrap_or_default();
         if !text.parse::<f64>().is_ok_and(f64::is_finite) {
             out.push(SyntaxError {

@@ -14,9 +14,18 @@ pub(crate) struct SourceSet {
 impl SourceSet {
     pub(crate) fn input(&self, cli: &Cli) -> Result<project::CompilationInput, String> {
         match &self.config {
-            Some(config) => project::CompilationInput::documentation_project(&cli.path, config, &self.sources)
-                .map_err(|errors| errors.iter().map(|error| project::format_project_error(error, &cli.path)).collect::<Vec<_>>().join("\n")),
-            None => crate::load_input(cli).map_err(|_exit_code| "documentation source could not be loaded".into()),
+            Some(config) => {
+                project::CompilationInput::documentation_project(&cli.path, config, &self.sources)
+                    .map_err(|errors| {
+                        errors
+                            .iter()
+                            .map(|error| project::format_project_error(error, &cli.path))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    })
+            }
+            None => crate::load_input(cli)
+                .map_err(|_exit_code| "documentation source could not be loaded".into()),
         }
     }
 }

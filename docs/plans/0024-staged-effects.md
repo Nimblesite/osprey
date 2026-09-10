@@ -3,10 +3,13 @@
 **Subsystem:** `crates/osprey-ast` (the rewrite) + `tree-sitter-osprey` +
 `crates/osprey-syntax` (surface and pipeline order) + `crates/osprey-cli`
 (`--deps`)
-**Status:** **Prototype landed and road-tested in the Default flavor.** Stage 1
+**Status:** **Prototype implemented in both flavors.** Stage 1
 (surface, obligations, rewrite, zero residue) and the falsification gate are
-done and covered by tests. Stages 2–6 — the ML surface, generic instantiation
-identity, the reactive layer, and everything device-side — are unstarted. The
+covered by tests. The ML surface, kernel regions, explicit instantiated signal
+identities, and multiplicity declaration markers are implemented. Remaining
+work includes the complete staged-suite ML twin, rewrite soundness,
+resolved-row dependencies, instantiation-keyed rewriting, the reactive layer,
+and device dialects. The checklist below records those boundaries. The
 spec's second axis, resumption multiplicity (`[MULTI-*]`), is delivered by
 [plan 0028](0028-resumption-multiplicity.md); stage 2's ML work on the effect
 declaration is shared with it.
@@ -385,6 +388,6 @@ replaced it.
       stage 4's checkpoint against the adoption criteria above; record the
       outcome here either way
 - [ ] Static handler state: decide and test, or reject it explicitly
-- [ ] Stage 2's ML effect-declaration surface covers the multiplicity keywords
+- [x] Stage 2's ML effect-declaration surface covers the multiplicity keywords
       of [plan 0028](0028-resumption-multiplicity.md) as well as `static` —
       one lowerer change, not two

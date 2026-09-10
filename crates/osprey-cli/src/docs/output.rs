@@ -115,3 +115,62 @@ fn write(directory: &Path, file: &str, bytes: &[u8]) -> io::Result<()> {
     }
     std::fs::write(path, bytes)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::publish;
+
+    fn directory(tag: &str) -> std::path::PathBuf {
+        let path =
+            std::env::temp_dir().join(format!("osprey_publish_{}_{}", std::process::id(), tag));
+        std::fs::create_dir_all(&path).expect("output fixture");
+        path
+    }
+
+    #[test]
+    fn invalid_previous_manifests_leave_existing_pages_untouched() {
+        for (index, manifest) in [
+            "invalid json",
+            "[\"../outside\"]",
+            "[\"/absolute\"]",
+            "[\"other/file\"]",
+            "[\"api\\\\escape\"]",
+        ]
+        .iter()
+        .enumerate()
+        {
+            let path = directory(&format!("manifest_{index}"));
+            std::fs::write(path.join(".manifest.json"), manifest).expect("manifest");
+            std::fs::write(path.join("index.html"), "existing").expect("existing page");
+            assert!(publish(
+                &path,
+                &[("index.html".into(), b"replacement".to_vec())],
+                ".manifest.json"
+            )
+            .is_err());
+            assert_eq!(
+                std::fs::read_to_string(path.join("index.html")).expect("retained"),
+                "existing"
+            );
+        }
+    }
+
+    #[test]
+    fn incompatible_destination_types_fail_before_any_write() {
+        for (index, manifest_directory) in [true, false].iter().enumerate() {
+            let path = directory(&format!("types_{index}"));
+            let blocker = if *manifest_directory {
+                ".manifest.json"
+            } else {
+                "api/page.html"
+            };
+            std::fs::create_dir_all(path.join(blocker)).expect("blocked destination");
+            let files = [
+                ("index.html".into(), b"new".to_vec()),
+                ("api/page.html".into(), b"page".to_vec()),
+            ];
+            assert!(publish(&path, &files, ".manifest.json").is_err());
+            assert!(!path.join("index.html").exists());
+        }
+    }
+}

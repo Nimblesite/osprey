@@ -316,13 +316,17 @@ impl Scanner {
             .iter()
             .collect();
         if is_float {
-            text.parse::<f64>().map_or_else(
-                |_| {
-                    self.error(pos, format!("invalid float literal '{text}'"));
+            // [FLOAT-LITERAL-RANGE] A successful f64 parse can still be infinity.
+            match text.parse::<f64>() {
+                Ok(number) if number.is_finite() => TokKind::Float(number),
+                _ => {
+                    self.error(
+                        pos,
+                        format!("float literal `{text}` is outside the finite 64-bit range"),
+                    );
                     TokKind::Float(0.0)
-                },
-                TokKind::Float,
-            )
+                }
+            }
         } else {
             text.parse::<i64>().map_or_else(
                 |_| {

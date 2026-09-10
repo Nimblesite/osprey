@@ -1,0 +1,6 @@
+// osprey: flavor=ml
+// [FLOAT-OPERANDS] Invalid calls must fail before code generation.
+scale x = x * 1.5
+divide left right = left / right
+badScale = scale "text"
+badDivision = divide true "text"

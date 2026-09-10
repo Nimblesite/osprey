@@ -43,6 +43,9 @@ The release list was unavailable when this page was built. See
 - A shared modular mobile application with reactive native UI, SQLite cache, live GitHub requests, and local notes and priorities
 - Compiler-backed formatting, documentation generation, testing, profiling and
   language-server commands
+- [HTML API documentation](/docs/documentation/) for public modules in both
+  flavors, with executable examples, Markdown guides, custom CSS, three themes,
+  offline search and responsive navigation
 
 The runnable programs in
 [`tests/regressions/`](https://github.com/Nimblesite/osprey/tree/main/tests/regressions)

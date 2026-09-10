@@ -5,15 +5,11 @@
 `crates/osprey-cli`, `crates/osprey-lsp`
 **Status:** Core shipped and tested — Default + ML project compilation, the
 resolver/flattener, project-aware CLI and LSP diagnostics, state-ownership
-enforcement, and cross-file LSP resolution. **Fourteen items remain, not the
-three this plan's Summary and its README row used to name.** Beyond the three
-architectural ones (opaque manifest aliases, separate per-unit checking of
-importers against signatures, an incremental LSP project graph — `osprey_project::load`
-runs per request, deliberately uncached) the open set also includes: source-level
-names in debug info (`DISubprogram` still emits the mangled `__osp_*` name),
-cross-flavor module IR equivalence, the docs generator, and state-boundary LSP
-warnings / quick fixes. One defect beyond the checklist is recorded in
-[§Opaque types leak their representation](#opaque-types-leak-their-representation-defect).
+enforcement, cross-file LSP resolution, and public namespace/module documentation.
+Fourteen checklist items remain, including opaque manifest aliases, separate
+checking of importers against signatures, an incremental LSP project graph,
+source names in debug info, cross-flavor module IR equivalence, and state-boundary
+warnings. The record-payload opacity defect remains documented below.
 **Spec:** [0025 - Modules and Namespaces](../specs/0025-ModulesAndNamespaces.md)
 (`[MODULES-*]`)
 
@@ -234,8 +230,9 @@ TODO:
       `::` paths.
 - [x] Formatter: preserve file-scoped namespace and format module/signature
       blocks in both flavors.
-- [ ] Docs generator: create namespace/module reference pages from exported
-      signatures.
+- [x] Docs generator: create namespace/module reference pages from exported
+      signatures. Markdown and HTML use the finalized public surface, with
+      both-flavor and all-module-fixture tests ([spec 0026](../specs/0026-DocumentationComments.md)).
 
 ## Phase 8 - Tests And Examples
 
@@ -258,7 +255,7 @@ TODO:
 - [x] Add LSP regressions proving the runnable mixed-flavor project has no false
       cross-file diagnostics and real project/type errors map to the open file.
 - [ ] Add LSP integration tests for cross-file completion/hover/definition.
-- [ ] `make ci` green.
+- [x] `make ci` green (local acceptance, 2026-09-10).
 
 ## Rollout Order
 
