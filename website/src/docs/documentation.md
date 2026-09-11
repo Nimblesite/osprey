@@ -73,13 +73,29 @@ Choose a built-in theme:
 
 | Theme | Appearance |
 | --- | --- |
-| `osprey` | Warm light background and green accents |
-| `midnight` | Dark surfaces and blue accents |
-| `paper` | Minimal white pages suitable for printing |
+| `osprey` | Blue reference layout with module cards and an article outline |
+| `midnight` | Dark console layout with compact spacing and monospaced details |
+| `paper` | Editorial layout with serif headings and ruled lists |
 
 ```sh
 osprey --docs ./my-project --docs-dir ./site --docs-format html --docs-theme midnight
 ```
+
+Each template has its own typography and layout. The landing page starts with
+your modules and guides. Expand navigation groups to browse the reference, or
+press `/` to search. Article outlines link to sections, and code examples retain
+their exact text when copied.
+
+From the Osprey repository, generate all three designs and a comparison gallery:
+
+```sh
+node scripts/preview-docs.mjs ./my-project
+```
+
+Open `target/api-docs-previews/index.html` to compare complete sites and desktop
+and phone screenshots. The optional second argument chooses another output
+directory. The preview script uses the built compiler and the website's
+Playwright installation.
 
 Omit the source to export the built-in reference alone. Omit `--docs-format html`
 to generate Markdown with front matter for use in an existing documentation site.
@@ -104,7 +120,7 @@ accent while retaining the responsive layout:
   --accent-soft: #f0e9fa;
 }
 
-article { max-width: 76ch; }
+.article { max-width: 76ch; }
 ```
 
 Pass multiple `--docs-css` options to layer styles in order. The generated

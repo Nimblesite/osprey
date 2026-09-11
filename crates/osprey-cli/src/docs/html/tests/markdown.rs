@@ -6,6 +6,31 @@ use super::md;
 use crate::docs::html::render;
 
 #[test]
+fn summaries_ignore_code_fences_and_read_the_entire_first_paragraph() {
+    for fence in ["```", "~~~~"] {
+        let markdown = format!("# Money\n\n{fence}osprey-ml\nmodule Money\n# Not prose\n{fence}\n\nThe **money** API\nuses `int` amounts.\n\nAnother paragraph.\n");
+        assert_eq!(
+            render::first_paragraph(&markdown),
+            "The money API uses int amounts."
+        );
+        assert_eq!(
+            render::first_paragraph(&format!(
+                "# Money\n\n{fence}osprey-ml\nmodule Money\n{fence}\n"
+            )),
+            ""
+        );
+    }
+}
+
+#[test]
+fn summaries_do_not_promote_member_tables_or_front_matter_to_prose() {
+    let source = "---\ntitle: Library\n---\n# Library\n\n| Name | Kind |\n| --- | --- |\n| read | Function |\n";
+    for markdown in [source.to_owned(), source.replace('\n', "\r\n")] {
+        assert_eq!(render::first_paragraph(&markdown), "");
+    }
+}
+
+#[test]
 fn each_escaping_context_neutralises_its_own_terminator() {
     // Element text, attribute values and JSON each end at a different
     // character, so one escaper cannot serve all three.

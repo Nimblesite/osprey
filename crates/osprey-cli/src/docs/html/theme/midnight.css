@@ -1,0 +1,58 @@
+/* midnight — a dark console. Monospace chrome, a dense bordered grid, shell
+   prompts in the breadcrumb and headings, and a terminal window for the
+   landing hero. The palette follows the Osprey site's midnight slate and cyan. */
+:root{
+  color-scheme:dark;
+  --bg:#070d1f;--surface:#0d1836;--text:#dce1fb;--muted:#9aa7c7;
+  --accent:#77d7f4;--accent-soft:#132a4a;--border:#1f2c4a;
+  --code-bg:#09122a;--mark:#3d3413;
+  --tok-keyword:#c3a6ff;--tok-string:#9ee6a0;--tok-number:#ffbe65;--tok-comment:#8b97b5;--tok-operator:#77d7f4;
+  --tok-type:#7ee0d0;--tok-function:#8ab4ff;--tok-punctuation:#9aa7c7;
+  --font-mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --font-body:'Geist',system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  --font-ui:var(--font-mono);--font-head:var(--font-body);
+  --size-body:15px;--size-h1:30px;--size-h2:20px;--size-display:38px;
+  --side-w:260px;--toc-w:200px;--page-w:1480px;--gap:24px;--pad-x:18px;--pad-y:18px;
+  --radius-sm:4px;--card-min:260px;--card-gap:0px;
+}
+
+body{background:radial-gradient(1200px 600px at 70% -10%,rgba(119,215,244,.08),transparent 60%),var(--bg)}
+.side{padding-right:18px;border-right:1px solid var(--border)}
+.brand-mark{color:var(--bg);background:var(--accent);border-radius:4px;font-family:var(--font-mono)}
+.brand-name{font-family:var(--font-mono);letter-spacing:.02em}
+.brand-name::after{content:'';display:inline-block;width:7px;height:14px;margin-left:4px;vertical-align:-2px;background:var(--accent);animation:osprey-caret 1.1s steps(1) 4}
+@keyframes osprey-caret{50%{opacity:0}}
+.search{background:var(--code-bg);font-family:var(--font-mono);font-size:13px}
+.search:focus{box-shadow:0 0 0 1px var(--accent),0 0 16px rgba(119,215,244,.22)}
+.overview-link,.nav a{font-size:13px}
+.nav a[aria-current=page],.overview-link[aria-current=page]{border-left:2px solid var(--accent);border-radius:0 4px 4px 0}
+
+.crumb::before{content:'$' / '';color:var(--accent);font-weight:700}
+.article{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:26px 30px}
+.article h2::before{content:'## ' / '';color:var(--muted);font-family:var(--font-mono);font-weight:400}
+.article h3::before{content:'### ' / '';color:var(--muted);font-family:var(--font-mono);font-weight:400}
+.article .section-head::before{content:none}
+code{color:var(--accent)}
+.signature{border-left:2px solid var(--accent)}
+th{font-family:var(--font-mono);font-size:12px;letter-spacing:.05em;text-transform:uppercase}
+
+.hero{position:relative;padding:48px 26px 24px;background:var(--code-bg);border:1px solid var(--border);border-radius:6px}
+.hero::before{content:'';position:absolute;top:15px;left:16px;width:10px;height:10px;border-radius:50%;background:#ff6b6b;box-shadow:16px 0 0 #ffbe65,32px 0 0 #9ee6a0}
+.hero::after{content:'osprey --docs' / '';position:absolute;top:10px;left:0;right:0;text-align:center;font:12px/20px var(--font-mono);color:var(--muted)}
+.hero h1{font-family:var(--font-mono);letter-spacing:-.01em}
+.hero h1::before{content:'> ' / '';color:var(--accent)}
+.stats{font-family:var(--font-mono)}
+.stats strong{color:var(--accent)}
+.article .section-head{font-family:var(--font-mono);font-size:13px;letter-spacing:.06em;text-transform:uppercase}
+/* Cells draw their own right and bottom dividers. A painted catalog behind a
+   gapped grid showed through every unfilled cell of the last row. */
+.catalog{border-top:1px solid var(--border);border-left:1px solid var(--border)}
+.page-card{background:var(--surface);padding:14px 16px 16px;box-shadow:inset -1px 0 0 var(--border),inset 0 -1px 0 var(--border)}
+.page-card:hover{background:var(--accent-soft)}
+.page-card:hover .card-title{color:var(--accent)}
+.card-kind,.card-arrow{font-family:var(--font-mono)}
+
+@media (max-width:860px){
+  .side{padding:0 0 12px;border-right:0;border-bottom:1px solid var(--border)}
+  .article{padding:18px 16px}
+}

@@ -62,18 +62,12 @@ fn page(path: &Path, root: &Path) -> io::Result<Page> {
         .map(|component| super::safe_slug(&component.as_os_str().to_string_lossy()))
         .collect::<Vec<_>>()
         .join("/");
-    let title = markdown
-        .lines()
-        .find_map(|line| line.strip_prefix("# "))
-        .map_or_else(
-            || {
-                path.file_stem()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .into_owned()
-            },
-            str::to_string,
-        );
+    let title = super::prose::title(&markdown).unwrap_or_else(|| {
+        path.file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned()
+    });
     Ok(Page {
         slug: format!("guides/{slug}"),
         title,
@@ -96,4 +90,28 @@ pub(super) fn stylesheets(paths: &[PathBuf]) -> io::Result<Vec<Stylesheet>> {
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::page;
+
+    #[test]
+    fn guide_titles_come_from_markdown_headings_outside_examples() {
+        let root = std::env::temp_dir().join("osprey_docs_guide_titles");
+        std::fs::create_dir_all(&root).expect("fixture directory");
+        let path = root.join("Guide.md");
+        for fence in ["```", "~~~~"] {
+            let code = format!("{fence}osp\n# Parameters\n{fence}\n\n");
+            for (heading, title) in [
+                ("", "Guide"),
+                ("# **Real** `title`\n", "Real title"),
+                ("Real title\n==========\n", "Real title"),
+            ] {
+                std::fs::write(&path, format!("{code}{heading}")).expect("guide");
+                assert_eq!(page(&path, &root).expect("loaded guide").title, title);
+            }
+        }
+        std::fs::remove_dir_all(root).expect("cleanup");
+    }
 }

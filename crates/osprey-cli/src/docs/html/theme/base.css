@@ -1,0 +1,138 @@
+/* Structure, accessibility and responsive behaviour shared by every theme.
+   Implements [DOC-EXPORT-HTML] and [DOC-EXPORT-CSS]. This file names no
+   colour: each theme supplies the custom properties it reads, and is loaded
+   after it so a theme's own rules win. */
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:var(--size-body)/1.65 var(--font-body)}
+img,svg{max-width:100%;height:auto}
+a{color:var(--accent)}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.skip{position:absolute;left:-9999px;top:0}
+.skip:focus{left:12px;top:12px;z-index:20;padding:8px 12px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:var(--radius-sm)}
+
+.shell{display:grid;grid-template-columns:var(--side-w) minmax(0,1fr);gap:var(--gap);max-width:var(--page-w);margin:0 auto;padding:var(--pad-y) var(--pad-x)}
+.side{position:sticky;top:var(--pad-y);align-self:start;max-height:calc(100vh - 2 * var(--pad-y));overflow:auto;font-family:var(--font-ui);font-size:14px}
+
+.brand{display:flex;align-items:center;gap:10px;color:var(--text);text-decoration:none;margin-bottom:16px}
+.brand-mark{display:grid;place-items:center;flex:none;width:34px;height:34px;font-weight:800;font-size:16px}
+.brand-name{display:block;font-weight:700;font-size:16px;line-height:1.2}
+.brand-caption{display:block;font-size:12px;line-height:1.3;color:var(--muted)}
+
+.search-wrap{position:relative}
+.search{width:100%;padding:9px 38px 9px 12px;font:inherit;font-size:14px;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm)}
+.search::placeholder{color:var(--muted);opacity:1}
+.search:focus{border-color:var(--accent)}
+.search-wrap kbd{position:absolute;right:8px;top:50%;transform:translateY(-50%);padding:1px 7px;font:12px/1.5 var(--font-mono);color:var(--muted);background:var(--code-bg);border:1px solid var(--border);border-radius:4px}
+
+#results:empty{display:none}
+.hits{list-style:none;margin:12px 0 0;padding:0}
+.hits li{margin:0 0 10px}
+.hits a{font-weight:600;text-decoration:none}
+.hits p{margin:2px 0 0;color:var(--muted);font-size:13px}
+.note{margin:10px 0;color:var(--muted);font-size:13px}
+
+#menu{margin-top:14px}
+#menu>summary{display:none}
+#tree{display:flex;flex-direction:column;gap:2px}
+.overview-link{display:block;padding:6px 10px;font-weight:600;color:var(--text);text-decoration:none;border-radius:var(--radius-sm)}
+.nav-group>summary{display:flex;align-items:center;gap:6px;padding:7px 10px;cursor:pointer;list-style:none;color:var(--muted);font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;border-radius:var(--radius-sm)}
+.nav-group>summary::-webkit-details-marker{display:none}
+.nav-group>summary::before{content:'\25b8';transition:transform .15s}
+.nav-group[open]>summary::before{transform:rotate(90deg)}
+.nav-count{margin-left:auto;padding:0 7px;font:600 11px/1.6 var(--font-mono);letter-spacing:0;text-transform:none;color:var(--muted);border:1px solid var(--border);border-radius:999px}
+.nav{list-style:none;margin:2px 0 8px;padding:0}
+.nav a{display:block;padding:5px 10px 5px 24px;color:var(--text);text-decoration:none;border-radius:var(--radius-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nav a:hover,.overview-link:hover{background:var(--accent-soft)}
+.nav a[aria-current=page],.overview-link[aria-current=page]{color:var(--accent);background:var(--accent-soft);font-weight:600}
+.side-footer{margin-top:18px;padding-top:12px;border-top:1px solid var(--border);color:var(--muted);font-size:12px}
+.side-footer span{display:block}
+
+main{min-width:0}
+.reference{display:flex;align-items:flex-start;gap:var(--gap)}
+.article{flex:1;min-width:0}
+.toc{position:sticky;top:var(--pad-y);flex:0 0 var(--toc-w);max-height:calc(100vh - 2 * var(--pad-y));overflow:auto;font-family:var(--font-ui);font-size:13px}
+.toc[hidden]{display:none}
+.on-page{margin:0 0 8px;color:var(--muted);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.toc a{display:block;padding:3px 0 3px 10px;color:var(--muted);text-decoration:none;border-left:2px solid var(--border)}
+.toc a:hover{color:var(--accent);border-left-color:var(--accent)}
+.toc a.toc-nested{padding-left:22px}
+
+.crumb{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 12px;color:var(--muted);font-family:var(--font-ui);font-size:13px}
+.crumb a{text-decoration:none}
+.kind{font-weight:600}
+.summary{margin:-.3em 0 1.2em;color:var(--muted);font-size:1.08em}
+.signature{padding:12px 14px;background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius-sm)}
+
+.article h1{margin:0 0 .4em;font-family:var(--font-head);font-size:var(--size-h1);line-height:1.15;letter-spacing:-.01em;overflow-wrap:anywhere}
+.article h2{margin:2em 0 .6em;font-family:var(--font-head);font-size:var(--size-h2);line-height:1.25}
+.article h3{margin:1.6em 0 .5em;font-family:var(--font-head);font-size:1.15em}
+.article h2,.article h3,.article h4{scroll-margin-top:24px}
+.article p,.article li{overflow-wrap:break-word}
+.article .section-head{margin:0 0 12px;padding:0;border:0;font-size:15px}
+code,kbd,pre{font-family:var(--font-mono)}
+code{font-size:.88em;padding:.12em .36em;background:var(--code-bg);border-radius:4px;overflow-wrap:anywhere}
+pre{margin:1.2em 0;padding:14px 16px;overflow-x:auto;background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius-sm);line-height:1.55}
+pre code{padding:0;background:none;font-size:13.5px;color:var(--text);white-space:pre;overflow-wrap:normal}
+blockquote{margin:1.2em 0;padding:.3em 1em;border-left:3px solid var(--accent);color:var(--muted)}
+table{display:block;overflow-x:auto;border-collapse:collapse;margin:1.2em 0;font-size:14px}
+th,td{padding:8px 12px;text-align:left;border:1px solid var(--border)}
+th{background:var(--accent-soft)}
+hr{margin:2em 0;border:0;border-top:1px solid var(--border)}
+mark{background:var(--mark);color:inherit}
+.token.keyword{color:var(--tok-keyword)}
+.token.string{color:var(--tok-string)}
+.token.number{color:var(--tok-number)}
+.token.comment{color:var(--tok-comment);font-style:italic}
+.token.operator{color:var(--tok-operator)}
+.token.type{color:var(--tok-type)}
+.token.function{color:var(--tok-function)}
+.token.punctuation{color:var(--tok-punctuation)}
+
+.hero{margin:0 0 32px}
+.eyebrow{margin:0 0 8px;color:var(--accent);font-family:var(--font-ui);font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.hero h1{margin:0 0 12px;font-family:var(--font-head);font-size:var(--size-display);line-height:1.08;letter-spacing:-.02em;overflow-wrap:anywhere}
+.hero-description{max-width:60ch;margin:0 0 20px;color:var(--muted);font-size:1.1em}
+.stats{display:flex;flex-wrap:wrap;gap:10px 24px;color:var(--muted);font-family:var(--font-ui);font-size:14px}
+.stats strong{margin-right:4px;color:var(--text);font-size:1.25em}
+.catalog-section,.reference-group{margin:0 0 28px}
+.section-head{display:flex;align-items:center;gap:10px;font-family:var(--font-ui);font-weight:700}
+.reference-group>summary{cursor:pointer;list-style:none}
+.reference-group>summary h2{display:flex;align-items:center;gap:10px;flex:1;margin:0;padding:0;border:0;font:inherit}
+.reference-group>summary::-webkit-details-marker{display:none}
+.reference-group>summary::before{content:'\25b8';color:var(--muted)}
+.reference-group[open]>summary::before{content:'\25be'}
+.catalog{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,var(--card-min)),1fr));gap:var(--card-gap)}
+.page-card{position:relative;display:flex;flex-direction:column;gap:4px;min-width:0;padding:14px 16px;color:var(--text);text-decoration:none}
+.card-kind{color:var(--accent);font-family:var(--font-ui);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.card-title{font-weight:650;overflow-wrap:anywhere}
+.card-summary{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;color:var(--muted);font-size:14px}
+.card-arrow{position:absolute;top:12px;right:14px;color:var(--muted)}
+
+/* The outline needs a margin to sit in; below this width it would squeeze the
+   article instead, so the article keeps the full measure. */
+@media (max-width:1180px){.toc{display:none}}
+
+/* Navigation precedes the article in source order, which a screen reader
+   needs and which would otherwise push a phone reader past the whole
+   reference first. Here the tree collapses behind its own summary so the
+   article starts on the first screen; bounding it keeps that true once open. */
+@media (max-width:860px){
+  .shell{grid-template-columns:1fr;gap:16px;padding:12px 14px}
+  .side{position:static;max-height:none;overflow:visible}
+  .brand{margin-bottom:10px}
+  #menu{margin-top:10px}
+  #menu>summary{display:block;padding:9px 12px;font-weight:600;cursor:pointer;list-style:none;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm)}
+  #menu>summary::-webkit-details-marker{display:none}
+  #menu>summary::after{content:'\25be';float:right;color:var(--muted)}
+  #menu[open]>summary::after{content:'\25b4'}
+  #tree{max-height:52vh;overflow:auto;margin-top:6px;padding:6px;border:1px solid var(--border);border-radius:var(--radius-sm)}
+  .side-footer{display:none}
+  .reference{display:block}
+  .hero h1{font-size:34px}
+  .article h1{font-size:28px}
+}
+
+@media (pointer:coarse){.search-wrap kbd{display:none}.search{padding-right:12px}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
+@media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}

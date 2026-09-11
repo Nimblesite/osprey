@@ -267,9 +267,19 @@ Missing inputs and conflicting page paths are errors.
 
 ### Themes and custom CSS `[DOC-EXPORT-CSS]`
 
-HTML supports `--docs-theme osprey|midnight|paper`: a warm light theme, a dark
-theme, and a minimal light theme. The themes share layout and CSS custom
-properties so customization does not require replacing the renderer.
+HTML supports three templates through `--docs-theme osprey|midnight|paper`.
+`osprey` uses a blue reference layout with module cards and an article outline;
+`midnight` uses dark surfaces, compact spacing and monospaced details; `paper`
+uses editorial serif headings and ruled lists. Typography and component layouts
+vary between templates. They share semantic markup, responsive navigation and
+CSS custom properties, so customization does not require replacing the renderer.
+
+The landing page promotes project modules and authored guides before the full
+reference. Navigation groups are keyboard-operable disclosures. JavaScript folds
+inactive groups, adds links to article headings, highlights Osprey code without
+changing its text, and provides the `/` search shortcut. Without JavaScript every
+navigation group remains open and all content stays readable. Highlighting reuses
+the website's language grammar and loads no network assets.
 
 Repeat `--docs-css <file.css>` to copy custom stylesheets into the output site.
 They are linked after the selected theme, in argument order. Stylesheets may
@@ -307,3 +317,5 @@ Regression coverage lives in the CLI's `tests/cases/api_docs*.rs` and
 `tests/cases/doctests*.rs`, `src/docs/html/tests*`,
 [`website/tests/api-docs.spec.js`](../../website/tests/api-docs.spec.js), and
 [`scripts/verify-docs-html.mjs`](../../scripts/verify-docs-html.mjs).
+
+The 2026-09-11 template redesign passed a fresh complete `make ci`, 125 website browser tests (including 18 API documentation tests), and 81 standalone HTML browser assertions. CLI coverage increased to 95.4%; thresholds and corpus floors were unchanged. The templates are checked at 1440, 390 and 320 pixels, with assertions for distinct typography and geometry, public member counts, active navigation, code-text preservation, working outlines and no-JavaScript access. Regression tests also prevent fenced examples and member tables from supplying page titles or summaries. `node scripts/preview-docs.mjs` generates all three complete sites and a comparison gallery with desktop and phone screenshots.

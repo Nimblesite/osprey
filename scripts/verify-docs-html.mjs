@@ -231,6 +231,11 @@ check('user stylesheets follow in argument order',
   styles.sheets[1].includes('brand') && styles.sheets[2].includes('override'), styles.sheets.join(' '));
 check('user CSS wins on a theme custom property', styles.accent === 'rgb(255, 0, 128)', styles.accent);
 check('user CSS wins on an ordinary theme selector', styles.background === 'rgb(1, 2, 3)', styles.background);
+check('highlighting preserves every code character',
+  await page.locator('main pre code').first().textContent() === 'fn double(x) = x * 2\n');
+check('Osprey examples highlight keywords and numbers',
+  await page.locator('main pre code .token.keyword').first().textContent().catch(() => '') === 'fn' &&
+  await page.locator('main pre code .token.number').count() === 1);
 
 // user markdown, in full
 const guide = await page.evaluate(() => ({

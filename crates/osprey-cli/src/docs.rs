@@ -10,6 +10,7 @@ mod html;
 mod model;
 mod options;
 mod output;
+mod prose;
 mod user;
 mod write;
 

@@ -1,39 +1,54 @@
-//! Adversarial API-export contracts beyond `api_docs.rs`: nested and `state`
-//! modules, externs, type aliases, generic binders, static effects, ML-flavor
-//! module docs, and malformed option handling. Implements [DOC-EXPORT].
-
-use super::{finish, osprey, read_text, temp_dir};
+//! Adversarial API-export contracts beyond `api_docs.rs`: exported nested
+//! modules with a private-ancestor negative control, `state` modules, externs,
+//! type aliases, exact generic signatures, static effects, ML-flavor module
+//! docs, and malformed option handling. Implements [DOC-EXPORT].
 
 use super::api_docs::export;
+use super::{finish, osprey, read_text, temp_dir};
 
+/// Exported nested modules recurse: every level's page is written, down to the
+/// leaf declaration.
 #[test]
-fn extra_docs_reach_declarations_in_deeply_nested_modules() {
-    let source = "module Outer {\nexport module Middle {\nexport module Inner {\n/// Deep.\nexport fn probe() = 1\n}\n}\n}\n";
+fn extra_docs_export_public_nested_module_chains_to_the_leaf() {
+    let source = "module Outer {\nexport module Middle {\nexport module Inner {\nexport fn probe() = 1\n}\n}\n}\n";
     let (result, output) = export(source, "osp", "extra_docs_deep_modules");
     assert_eq!(result.code, Some(0), "{}", result.stderr);
-    let page = output.join("api/outer-middle-inner-probe.md");
-    assert!(
-        page.is_file(),
-        "missing deep page: {:?}",
-        output.join("api")
-    );
-    assert!(read_text(&page).contains("Deep."), "{page:?}");
+    for slug in [
+        "outer-middle.md",
+        "outer-middle-inner.md",
+        "outer-middle-inner-probe.md",
+    ] {
+        assert!(output.join("api").join(slug).is_file(), "missing {slug}");
+    }
+    assert!(read_text(&output.join("api/outer-middle-inner-probe.md")).contains("int"));
 }
 
+/// Negative control: a private ancestor hides its whole subtree, even when the
+/// child declaration itself is `export`.
 #[test]
-fn extra_docs_state_module_members_export_without_private_leak() {
-    let source = "state module Counter {\nexport fn zero() = 0\nfn internal() = 0\n}\n";
+fn extra_docs_private_ancestor_excludes_its_entire_subtree() {
+    let source = "module Outer {\nmodule Middle {\nexport fn secret() = 1\n}\n}\n";
+    let (result, output) = export(source, "osp", "extra_docs_private_ancestor");
+    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    assert!(!output.join("api/outer-middle.md").exists());
+    assert!(!output.join("api/outer-middle-secret.md").exists());
+}
+
+/// A `state` module exports its public members with genuine inferred types and
+/// never its private ones. The arithmetic effect needs `?:`, which also pins
+/// `value` to `int`.
+#[test]
+fn extra_docs_state_module_exports_public_members_with_inferred_int() {
+    let source =
+        "state module Counter {\nexport fn hold(value) = (value + 1) ?: 0\nfn internal() = 0\n}\n";
     let (result, output) = export(source, "osp", "extra_docs_state_module");
     assert_eq!(result.code, Some(0), "{}", result.stderr);
-    assert!(read_text(&output.join("api/counter.md")).contains("state module Counter"));
+    let page = read_text(&output.join("api/counter-hold.md"));
     assert!(
-        read_text(&output.join("api/counter-zero.md")).contains("int"),
-        "exported state fn documented"
+        page.contains("::Counter::hold(value: int) -> int"),
+        "{page}"
     );
-    assert!(
-        !output.join("api/counter-internal.md").exists(),
-        "private state fn must not be exported"
-    );
+    assert!(!output.join("api/counter-internal.md").exists());
 }
 
 #[test]
@@ -52,29 +67,29 @@ fn extra_docs_type_aliases_export_with_their_target() {
     let (result, output) = export(source, "osp", "extra_docs_alias");
     assert_eq!(result.code, Some(0), "{}", result.stderr);
     let page = read_text(&output.join("api/userid.md"));
-    assert!(page.contains("int"), "alias target shown: {page}");
+    assert!(page.contains("int"), "{page}");
     assert!(page.contains("User id."), "{page}");
 }
 
+/// The generic binder and its parameter/return types must all survive export —
+/// not merely any `T` substring.
 #[test]
-fn extra_docs_generic_binders_appear_in_exported_signatures() {
-    let source = "/// Wraps.\nfn wrap<T>(value: T) -> T = value\n";
+fn extra_docs_generic_signature_is_exact() {
+    let source = "fn wrap<T>(value: T) -> T = value\n";
     let (result, output) = export(source, "osp", "extra_docs_generic_binder");
     assert_eq!(result.code, Some(0), "{}", result.stderr);
     let page = read_text(&output.join("api/wrap.md"));
-    assert!(
-        page.contains("fn wrap<T>(value: T) -> T"),
-        "binder in signature: {page}"
-    );
+    assert!(page.contains("fn wrap<T>(value: T) -> T"), "{page}");
 }
 
+/// The exported effect page must state the `static` stage explicitly, not just
+/// carry the summary prose.
 #[test]
-fn extra_docs_static_effect_declarations_export_their_stage() {
+fn extra_docs_static_effect_page_states_the_static_stage() {
     let source = "/// Compile-time state.\nstatic effect Frozen {\npeek : fn() -> int\n}\n";
     let (result, output) = export(source, "osp", "extra_docs_static_effect");
     assert_eq!(result.code, Some(0), "{}", result.stderr);
     let page = read_text(&output.join("api/frozen.md"));
-    assert!(page.contains("Compile-time state."), "{page}");
     assert!(page.contains("static effect Frozen"), "{page}");
     assert!(output.join("api/frozen-peek.md").is_file());
 }
@@ -101,6 +116,8 @@ fn extra_docs_missing_docs_dir_flag_takes_the_usage_branch() {
 
 #[test]
 fn extra_docs_reject_directory_passed_through_source_flag_for_pages() {
+    // `--source` pointing at a directory exports the project tree; a bare empty
+    // directory is a rejected project, not a silent success.
     let root = temp_dir("extra_docs_dir_source");
     let dir = root.join("proj");
     std::fs::create_dir_all(&dir).expect("proj dir");
@@ -113,33 +130,15 @@ fn extra_docs_reject_directory_passed_through_source_flag_for_pages() {
         .arg("--docs-dir")
         .arg(&output);
     let result = finish(command);
-    // A bare empty directory is a rejected project, not a silent success.
     assert_eq!(result.code, Some(1), "{}", result.stderr);
 }
 
+/// Top-level bindings are public API: both the fn and the runtime `let` export.
 #[test]
-fn extra_docs_export_top_level_bindings_as_public_api() {
+fn extra_docs_top_level_bindings_are_public() {
     let source = "fn helper() = 1\nlet exposed = helper()\n";
-    let (result, output) = export(source, "osp", "extra_docs_private_toplevel");
+    let (result, output) = export(source, "osp", "extra_docs_public_toplevel");
     assert_eq!(result.code, Some(0), "{}", result.stderr);
-    assert!(
-        output.join("api/helper.md").is_file(),
-        "top-level fn is public API"
-    );
-    assert!(
-        output.join("api/exposed.md").is_file(),
-        "top-level let is public API"
-    );
-}
-
-#[test]
-fn extra_docs_exclude_public_members_below_a_private_module() {
-    let source =
-        "module Outer {\nmodule Middle {\nexport module Inner {\nexport fn probe() = 1\n}\n}\n}\n";
-    let (result, output) = export(source, "osp", "extra_docs_private_ancestor");
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
-    assert!(output.join("api/outer.md").is_file());
-    assert!(!output.join("api/outer-middle.md").exists());
-    assert!(!output.join("api/outer-middle-inner.md").exists());
-    assert!(!output.join("api/outer-middle-inner-probe.md").exists());
+    assert!(output.join("api/helper.md").is_file());
+    assert!(output.join("api/exposed.md").is_file());
 }

@@ -6,7 +6,7 @@ const { fileURLToPath } = require("node:url");
 const { execFileSync } = require("node:child_process");
 const os = require("node:os");
 const path = require("node:path");
-const { fixture, THEMES } = require("./docs-fixture.cjs");
+const { fixture, THEMES, CODE_SAMPLES } = require("./docs-fixture.cjs");
 
 const test = base.extend({
   docs: [async ({}, use) => {
@@ -60,6 +60,7 @@ for (const [theme, [background, accent]] of Object.entries(THEMES)) {
 
 test("API docs: authored pages, actual anchors, and inert raw HTML", async ({ page, docs }) => {
   await page.goto(docs.file("osprey", "guides/introduction.html"));
+  await expect(page).toHaveTitle("Introduction — Osprey documentation");
   await page.locator("main").getByRole("link", { name: "Examples", exact: true }).click();
   await expect(page).toHaveURL(/deep\/get-started\.html#examples$/);
   await expect(page.locator("h2#examples")).toHaveText("Examples");
@@ -82,6 +83,16 @@ test("API docs: custom styles load in order and affect the browser", async ({ pa
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim())).toBe("rgb(255, 0, 128)");
 });
 
+test("API docs: highlighting keeps both flavors byte exact and HTML inert", async ({ page, docs }) => {
+  await page.goto(docs.file("osprey", "guides/deep/get-started.html"));
+  for (const [language, source] of Object.entries(CODE_SAMPLES)) {
+    const code = page.locator(`main code.language-${language}`);
+    expect(await code.textContent()).toBe(source);
+    expect(await code.locator(".token.string").count()).toBe(1);
+    expect(await code.locator("img, script, b").count()).toBe(0);
+  }
+});
+
 test("API docs: mobile navigation opens by keyboard and search stays usable", async ({ page, docs }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(docs.file("midnight", "api/a-read.html"));
@@ -91,12 +102,82 @@ test("API docs: mobile navigation opens by keyboard and search stays usable", as
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
   await page.keyboard.press("Tab");
   await expect(page.getByRole("link", { name: "Skip to content" })).toBeFocused();
-  await page.locator("#menu summary").focus();
+  await page.locator("#menu > summary").focus();
   await page.keyboard.press("Enter");
   await expect(page.locator("#tree")).toBeVisible();
   await page.getByRole("searchbox").fill("A::helper");
   await page.locator("#results").getByRole("link", { name: "A::helper", exact: true }).click();
   await expect(page.locator("main h1")).toHaveText("A::helper");
+});
+
+for (const theme of Object.keys(THEMES)) {
+  test(`API docs: ${theme} layout stays readable at desktop and phone widths`, async ({ page, docs }) => {
+    for (const width of [1440, 390, 320]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(docs.file(theme, "index.html"));
+      await expect(page.locator(".hero h1")).toHaveText("Osprey documentation");
+      await expect(page.locator(".catalog .page-card").first()).toBeVisible();
+      await expect(page.locator(".catalog .page-card").first()).toContainText("A");
+      await expect(page.locator(".catalog .page-card").first()).toContainText("2 public members");
+      await expect(page.locator(".catalog .page-card").nth(1)).toContainText("1 public member");
+      await expect(page.locator(".stats")).toContainText("2 modules");
+      const layout = await page.evaluate(() => ({
+        overflow: document.documentElement.scrollWidth - innerWidth,
+        fontSize: parseFloat(getComputedStyle(document.querySelector('.hero-description')).fontSize),
+        cardWidth: document.querySelector('.page-card').getBoundingClientRect().width,
+        top: document.querySelector('main').getBoundingClientRect().top,
+      }));
+      expect(layout.overflow).toBeLessThanOrEqual(1);
+      expect(layout.fontSize).toBeGreaterThanOrEqual(15);
+      expect(layout.cardWidth).toBeGreaterThan(200);
+      expect(layout.top).toBeLessThan(260);
+      await page.goto(docs.file(theme, "api/a-read.html"));
+      await expect(page.locator("#tree [aria-current='page']")).toHaveText("A::read");
+      expect(await page.locator(".nav-group[open]").count()).toBe(1);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+      if (width === 1440) await expect(page.locator("#tree [aria-current='page']")).toBeVisible();
+      else await expect(page.locator("#tree")).toBeHidden();
+    }
+  });
+}
+
+test("API docs: templates differ in typography and geometry, beyond their palettes", async ({ page, docs }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const identities = [];
+  for (const theme of Object.keys(THEMES)) {
+    await page.goto(docs.file(theme, "index.html"));
+    identities.push(await page.evaluate(() => {
+      const heading = getComputedStyle(document.querySelector('.hero h1'));
+      const card = getComputedStyle(document.querySelector('.page-card'));
+      return [heading.fontFamily, heading.fontSize, card.borderRadius, card.display].join('|');
+    }));
+  }
+  expect(new Set(identities).size).toBe(3);
+});
+
+test("API docs: outline links reach real headings and slash focuses search", async ({ page, docs }) => {
+  await page.goto(docs.file("osprey", "guides/deep/get-started.html"));
+  await expect(page.locator(".toc")).toBeVisible();
+  const headings = await page.locator(".article h2[id], .article h3[id]").count();
+  await expect(page.locator(".toc a")).toHaveCount(headings);
+  await page.locator(".toc a").first().click();
+  await expect(page).toHaveURL(/#examples$/);
+  await page.keyboard.press("/");
+  await expect(page.getByRole("searchbox")).toBeFocused();
+  await page.getByRole("searchbox").fill("A::helper");
+  await expect(page.locator("#results a").first()).toHaveText("A::helper");
+});
+
+test("API docs: without JavaScript every navigation group stays reachable", async ({ browser, docs }) => {
+  const context = await browser.newContext({ javaScriptEnabled: false });
+  try {
+    const page = await context.newPage();
+    await page.goto(docs.file("osprey", "api/a-read.html"));
+    await expect(page.locator("#tree")).toBeVisible();
+    expect(await page.locator(".nav-group[open]").count()).toBe(await page.locator(".nav-group").count());
+    await expect(page.locator("#tree [aria-current='page']")).toBeVisible();
+    await expect(page.locator("main h1")).toHaveText("A::read");
+  } finally { await context.close(); }
 });
 
 test("API docs: every generated internal link and local asset exists", async ({ page, docs }) => {

@@ -7,9 +7,9 @@ const { execFileSync } = require("node:child_process");
 const REPO = path.resolve(__dirname, "../..");
 const SITE = path.resolve(__dirname, "../_site");
 const THEMES = {
-  osprey: ["rgb(251, 250, 247)", "#2f6b45"],
-  midnight: ["rgb(18, 21, 26)", "#7fb5ff"],
-  paper: ["rgb(255, 255, 255)", "#1a4fd6"],
+  osprey: ["rgb(245, 248, 252)", "#0a58ca"],
+  midnight: ["rgb(7, 13, 31)", "#77d7f4"],
+  paper: ["rgb(251, 248, 241)", "#9a3412"],
 };
 const SOURCE = `//! Example library.
 module A {
@@ -24,6 +24,10 @@ module B {
     export fn helper() = "other"
 }
 `;
+const CODE_SAMPLES = {
+  osprey: 'fn label() = "</script><img src=x onerror=alert(1)>"\n// Keep Ω, &, < and > exactly.\n',
+  'osprey-ml': 'label = "<b>plain text</b>"\n(** Keep spacing and Unicode: λ *)\n',
+};
 const GUIDE = `# Getting started
 
 | Feature | Status |
@@ -73,8 +77,9 @@ function fixture() {
   fs.mkdirSync(SITE, { recursive: true });
   const root = fs.mkdtempSync(path.join(SITE, "docs-contract-"));
   write(path.join(root, "source.osp"), SOURCE);
-  write(path.join(root, "guides/Introduction.md"), "# Introduction\n\n[Examples](deep/Get%20Started.md#examples)\n");
-  write(path.join(root, "guides/deep/Get Started.md"), GUIDE);
+  write(path.join(root, "guides/Introduction.md"), "~~~~osprey\n# Not the guide title\n~~~~\n\n# Introduction\n\n[Examples](deep/Get%20Started.md#examples)\n");
+  const samples = Object.entries(CODE_SAMPLES).map(([language, source]) => `\n\`\`\`${language}\n${source}\`\`\`\n`).join("");
+  write(path.join(root, "guides/deep/Get Started.md"), GUIDE + samples);
   write(path.join(root, "brand.css"), ":root { --accent: rgb(255, 0, 128); }");
   write(path.join(root, "override.css"), "body { background: rgb(1, 2, 3); }");
   for (const theme of Object.keys(THEMES)) generate(root, theme, theme);
@@ -82,4 +87,4 @@ function fixture() {
   return { root, prefix: `/${path.basename(root)}`, file: (site, page) => pathToFileURL(path.join(root, site, page)).href };
 }
 
-module.exports = { fixture, THEMES };
+module.exports = { fixture, THEMES, CODE_SAMPLES };

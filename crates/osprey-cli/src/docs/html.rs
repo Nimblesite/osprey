@@ -13,6 +13,9 @@
 //! output directory survives.
 
 mod anchors;
+mod landing;
+mod layout;
+mod navigation;
 mod render;
 #[cfg(test)]
 mod tests;
@@ -80,7 +83,7 @@ pub(super) fn generate(
     css: &[Stylesheet],
 ) -> io::Result<()> {
     let site = Site {
-        nav: navigation(pages),
+        nav: navigation::groups(pages),
         links: stylesheet_links(css),
         symbols: symbol_targets(pages),
     };
@@ -95,7 +98,10 @@ fn files(pages: &[Page], theme: &str, css: &[Stylesheet], site: &Site) -> Vec<(S
     let mut files = vec![
         (THEME_CSS.to_owned(), theme::css(theme).into_bytes()),
         (SEARCH_INDEX.to_owned(), search_index(pages).into_bytes()),
-        (LANDING.to_owned(), landing(pages, site).into_bytes()),
+        (
+            LANDING.to_owned(),
+            landing::render(pages, site).into_bytes(),
+        ),
     ];
     for sheet in css {
         files.push((
@@ -196,6 +202,7 @@ fn groups(pages: &[Page]) -> Vec<&str> {
             groups.push(&page.group);
         }
     }
+    groups.sort_by_key(|group| group_rank(group));
     groups
 }
 
@@ -208,27 +215,6 @@ fn items(pages: &[Page], group: &str, item: impl Fn(&mut String, &Page)) -> Stri
             item(&mut out, page);
             out
         })
-}
-
-/// The sidebar, grouped in the order groups first appear.
-fn navigation(pages: &[Page]) -> String {
-    groups(pages).iter().fold(String::new(), |mut out, group| {
-        let entries = items(pages, group, |out, page| {
-            let _ = write!(
-                out,
-                "<li><a href=\"{{root}}{}.html\" data-slug=\"{}\">{}</a></li>",
-                render::attr(&page.slug),
-                render::attr(&page.slug),
-                render::text(&page.title)
-            );
-        });
-        let _ = write!(
-            out,
-            "<p class=\"group\">{}</p><ul class=\"nav\">{entries}</ul>",
-            render::text(group)
-        );
-        out
-    })
 }
 
 /// The search index: one record per page, with the body flattened to text.
@@ -291,7 +277,7 @@ fn document(page: &Page, site: &Site) -> String {
             .map(|slug| format!("{root}{slug}.html"))
     };
     let body = render::markdown(render::without_front_matter(&page.markdown), &resolve);
-    document_with_body(page, site, &body)
+    layout::document(page, site, &body)
 }
 
 /// The scopes enclosing a declaration, outermost first: `shop::Money::parse`
@@ -302,171 +288,40 @@ fn owner_of(qualified: &str) -> Vec<&str> {
     segments
 }
 
-/// The page shell around an already-rendered `body`. One shell serves the
-/// Markdown pages and the landing page, so the two can never drift apart.
-fn document_with_body(page: &Page, site: &Site, body: &str) -> String {
-    let root = root_prefix(&page.slug);
-    format!(
-        "<!doctype html>\n<html lang=\"en\">\n{head}\n<body>\n\
-<a class=\"skip\" href=\"#content\">Skip to content</a>\n\
-<div class=\"shell\">\n{sidebar}\n\
-<main id=\"content\">\n<p class=\"crumb\">{group}</p>\n{heading}{summary}\n{body}\n</main>\n\
-</div>\n\
-<script src=\"{root}{SEARCH_INDEX}\"></script>\n\
-<script>{script}</script>\n\
-</body>\n</html>\n",
-        head = head(page, site, &root),
-        sidebar = sidebar(site, &page.slug, &root),
-        heading = heading(page, body),
-        summary = summary(page),
-        group = render::text(&page.group),
-        script = search_script(&root),
-    )
-}
-
-/// The document head: title, description, the theme, then the user stylesheets
-/// in the order they were given so the later ones win.
-fn head(page: &Page, site: &Site, root: &str) -> String {
-    format!(
-        "<head>\n\
-<meta charset=\"utf-8\">\n\
-<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n\
-<title>{title}</title>\n\
-<meta name=\"description\" content=\"{description}\">\n\
-<link rel=\"stylesheet\" href=\"{root}{THEME_CSS}\">\n{links}\n\
-</head>",
-        title = render::text(&document_title(page)),
-        description = render::attr(&describe(page)),
-        links = site.links.replace("{root}", root),
-    )
-}
-
-/// The sidebar: brand, search, and the page tree.
-///
-/// The tree is a disclosure. It precedes the article in source order, which is
-/// what a screen reader needs and what would otherwise make a phone reader
-/// scroll past the entire reference to reach the page they opened. `open` is in
-/// the markup, so with no script the links are all still there.
-fn sidebar(site: &Site, slug: &str, root: &str) -> String {
-    format!(
-        "<aside class=\"side\">\n\
-<a class=\"brand\" href=\"{root}index.html\">Osprey documentation</a>\n\
-<label class=\"skip\" for=\"q\">Search documentation</label>\n\
-<input id=\"q\" class=\"search\" type=\"search\" placeholder=\"Search…\" autocomplete=\"off\">\n\
-<div id=\"results\" role=\"region\" aria-live=\"polite\"></div>\n\
-<details id=\"menu\" open>\n\
-<summary>Browse documentation</summary>\n\
-<div id=\"tree\">{nav}</div>\n\
-</details>\n\
-</aside>",
-        nav = mark_current(&site.nav, slug).replace("{root}", root),
-    )
-}
-
-/// The page's summary line, in the plain text the contexts around it can show.
-fn summary(page: &Page) -> String {
-    if page.summary.is_empty() || page.markdown.contains(&page.summary) {
-        return String::new();
-    }
-    format!(
-        "<p class=\"summary\">{}</p>",
-        render::text(&render::plain(&page.summary))
-    )
-}
-
-/// The browser-tab title. The site name is appended only when the page is not
-/// already named after it, so the landing page does not read "Osprey
-/// documentation — Osprey documentation".
-fn document_title(page: &Page) -> String {
-    const SITE: &str = "Osprey documentation";
-    if page.title == SITE {
-        SITE.to_owned()
-    } else {
-        format!("{} — {SITE}", page.title)
-    }
-}
-
-/// The page's `<h1>`, supplied only when the rendered body has none.
-///
-/// The built-in reference pages carry their name in front matter and open
-/// straight into `**Signature:**`, so rendering them alone produced a page with
-/// no top-level heading at all: bad document structure, and a screen-reader
-/// user landing in `main` with nothing telling them where they are.
-fn heading(page: &Page, body: &str) -> String {
-    if body.contains("<h1") {
-        return String::new();
-    }
-    format!("<h1>{}</h1>\n", render::text(&page.title))
-}
-
 /// A page's description: its own summary, else its opening line. An empty
 /// `<meta name="description">` is worse than none — it tells a search engine
 /// the page has no description rather than letting it read the text.
 fn describe(page: &Page) -> String {
-    if page.summary.is_empty() {
+    let description = if page.summary.is_empty() {
         render::first_paragraph(&page.markdown)
     } else {
         render::plain(&page.summary)
+    };
+    if description.is_empty() {
+        format!("{} ({})", page.title, page.group.to_lowercase())
+    } else {
+        description
     }
 }
 
-/// The landing page: every group, and every page within it.
-fn landing(pages: &[Page], site: &Site) -> String {
-    let body = groups(pages).iter().fold(String::new(), |mut out, group| {
-        let entries = items(pages, group, |out, page| {
-            let _ = write!(
-                out,
-                "<li><a href=\"{}.html\">{}</a> {}</li>",
-                render::attr(&page.slug),
-                render::text(&page.title),
-                render::text(&describe(page))
-            );
-        });
-        let _ = write!(out, "<h2>{}</h2><ul>{entries}</ul>", render::text(group));
-        out
-    });
-    let overview = Page {
-        slug: LANDING.trim_end_matches(".html").into(),
-        title: "Osprey documentation".into(),
-        group: "Overview".into(),
-        summary: "Every module, declaration and guide in this export.".into(),
-        markdown: String::new(),
-    };
-    document_with_body(&overview, site, &body)
+/// Category labels name a collection rather than one declaration.
+fn group_label(group: &str) -> String {
+    match group {
+        "Extern" => "External functions".into(),
+        "Overview" => "Reference".into(),
+        plural if plural.ends_with('s') => plural.into(),
+        singular => format!("{singular}s"),
+    }
 }
 
-/// Flag the sidebar entry for the page being rendered.
-fn mark_current(nav: &str, slug: &str) -> String {
-    let needle = format!("data-slug=\"{}\"", render::attr(slug));
-    let marked = format!("{needle} aria-current=\"page\"");
-    nav.replace(&needle, &marked)
-}
-
-/// The search behaviour. Kept small and dependency-free: it fetches the index
-/// once, filters on every keystroke, and says so plainly when nothing matches
-/// rather than leaving an empty box.
-fn search_script(root: &str) -> String {
-    format!(
-        "(function(){{\
-var q=document.getElementById('q'),out=document.getElementById('results'),\
-menu=document.getElementById('menu'),narrow=window.matchMedia('(max-width:860px)'),\
-data=window.OSPREY_SEARCH;\
-function esc(s){{return String(s).replace(/[&<>\"]/g,function(c){{\
-return {{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}}[c];}});}}\
-function show(items,term){{\
-if(!term){{out.innerHTML='';menu.hidden=false;return;}}\
-menu.hidden=true;\
-if(!items.length){{out.innerHTML='<p class=\"note\">No page matches '+esc(term)+'.</p>';return;}}\
-out.innerHTML='<ul class=\"hits\">'+items.slice(0,25).map(function(p){{\
-return '<li><a href=\"{root}'+esc(p.slug)+'.html\">'+esc(p.title)+'</a><p>'+esc(p.summary||p.group)+'</p></li>';}}).join('')+'</ul>';}}\
-function run(){{var term=q.value.trim(),low=term.toLowerCase();\
-show(data.filter(function(p){{return (p.title+' '+p.group+' '+p.summary+' '+p.body).toLowerCase().indexOf(low)>=0;}}),term);}}\
-if(!data){{out.innerHTML='<p class=\"note\">Search index unavailable.</p>';return;}}\
-function fit(){{menu.open=!narrow.matches;}}\
-fit();narrow.addEventListener('change',fit);\
-q.addEventListener('input',run);\
-q.addEventListener('keydown',function(e){{if(e.key==='Escape'){{q.value='';run();}}}});\
-run();\
-}})();"
-    )
+/// Put the reader's own modules and guides ahead of individual declarations.
+fn group_rank(group: &str) -> u8 {
+    match group {
+        "Module" | "Modules" => 0,
+        "Guides" => 1,
+        "Namespace" => 2,
+        "Overview" => 3,
+        "Built-in functions" => 5,
+        _ => 4,
+    }
 }

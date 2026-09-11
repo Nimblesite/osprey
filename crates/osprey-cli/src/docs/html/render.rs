@@ -12,6 +12,8 @@ use pulldown_cmark::{html, BrokenLink, CowStr, Event, Options, Parser, Tag};
 use std::fmt::Write as _;
 use std::path::Path;
 
+pub(super) use crate::docs::prose::{body as without_front_matter, summary as first_paragraph};
+
 /// Schemes that run code in the reader's browser. A documentation comment is
 /// untrusted text, so a destination in one of these is replaced rather than
 /// written into the page: escaping the surrounding markup does not help when
@@ -266,17 +268,6 @@ fn hex_byte(high: u8, low: u8) -> Option<u8> {
     u8::try_from(value).ok()
 }
 
-/// The body of a Markdown page with any leading YAML front matter removed. The
-/// Markdown writer adds front matter for the 11ty site; the HTML export renders
-/// standalone pages, where that block is not metadata but visible garbage.
-pub(super) fn without_front_matter(markdown: &str) -> &str {
-    let Some(rest) = markdown.strip_prefix("---\n") else {
-        return markdown;
-    };
-    rest.find("\n---\n")
-        .map_or(markdown, |end| &rest[end.saturating_add(5)..])
-}
-
 /// Reduce a Markdown fragment to the words it renders as.
 ///
 /// Summaries are reused in three places that cannot render Markdown — the
@@ -295,19 +286,4 @@ pub(super) fn plain(raw: &str) -> String {
         }
     }
     out.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-/// The first heading of a Markdown body, used when a page has no summary.
-pub(super) fn first_paragraph(markdown: &str) -> String {
-    plain(&raw_first_paragraph(markdown))
-}
-
-fn raw_first_paragraph(markdown: &str) -> String {
-    without_front_matter(markdown)
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty() && !line.starts_with('#') && !line.starts_with("---"))
-        .map(str::to_owned)
-        .next()
-        .unwrap_or_default()
 }
