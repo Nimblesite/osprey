@@ -1,6 +1,8 @@
 //! Shared semantic shell for every documentation template. Implements [DOC-EXPORT-HTML].
 
-use super::{describe, navigation, render, root_prefix, Page, Site, SEARCH_INDEX, THEME_CSS};
+use super::{
+    describe, navigation, owner_of, render, root_prefix, Page, Site, SEARCH_INDEX, THEME_CSS,
+};
 
 /// The page shell around an already-rendered `body`. One shell serves the
 /// Markdown pages and the landing page, so the two can never drift apart.
@@ -10,7 +12,7 @@ pub(super) fn document(page: &Page, site: &Site, body: &str) -> String {
         "<!doctype html>\n<html lang=\"en\">\n{head}\n<body>\n\
 <a class=\"skip\" href=\"#content\">Skip to content</a>\n\
 <div class=\"shell\">\n{sidebar}\n\
-<main id=\"content\" class=\"{class}\">\n<div class=\"article\">\n<p class=\"crumb\"><a href=\"{root}index.html\">Documentation</a><span aria-hidden=\"true\">/</span><span class=\"kind\">{group}</span></p>\n{heading}{summary}\n{body}\n</div>\n<nav class=\"toc\" aria-label=\"On this page\" hidden></nav>\n</main>\n\
+<main id=\"content\" class=\"{class}\">\n<div class=\"article\">\n<p class=\"crumb\">{crumb}</p>\n{heading}{summary}\n{body}\n</div>\n<nav class=\"toc\" aria-label=\"On this page\" hidden></nav>\n</main>\n\
 </div>\n\
 <script src=\"{root}{SEARCH_INDEX}\"></script>\n\
 <script>{script}</script>\n\
@@ -19,10 +21,42 @@ pub(super) fn document(page: &Page, site: &Site, body: &str) -> String {
         sidebar = navigation::sidebar(site, &page.slug, &root),
         heading = if page.slug == "index" { String::new() } else { heading(page, body) },
         summary = summary(page),
-        group = render::text(&page.group),
+        crumb = crumb(page, site, &root),
         script = scripts(&root),
         class = if page.slug == "index" { "overview" } else { "reference" },
     )
+}
+
+/// The trail from the site root to this page: every enclosing scope this
+/// export documents, then the kind of thing the page describes.
+///
+/// A reader who arrives at `bank::Api::accountsJson` from search or a link had
+/// no other way back to the module that owns it — the name said so and nothing
+/// on the page did.
+fn crumb(page: &Page, site: &Site, root: &str) -> String {
+    let mut trail = vec![format!("<a href=\"{root}index.html\">Documentation</a>")];
+    trail.extend(ancestors(page, site, root));
+    trail.push(format!(
+        "<span class=\"kind\">{}</span>",
+        render::text(&page.group)
+    ));
+    trail.join("<span aria-hidden=\"true\">/</span>")
+}
+
+/// Each enclosing scope that has a page of its own, outermost first. A scope
+/// this export does not document is skipped rather than linked into a 404.
+fn ancestors(page: &Page, site: &Site, root: &str) -> Vec<String> {
+    let scopes = owner_of(&page.title);
+    (1..=scopes.len())
+        .filter_map(|depth| scopes.get(..depth))
+        .filter_map(|prefix| {
+            let slug = site.symbols.exact.get(&prefix.join("::"))?;
+            Some(format!(
+                "<a href=\"{root}{slug}.html\">{}</a>",
+                render::text(prefix.last()?)
+            ))
+        })
+        .collect()
 }
 
 /// Reuse the website's language grammar; all highlighting still runs offline.

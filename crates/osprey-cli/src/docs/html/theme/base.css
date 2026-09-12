@@ -72,6 +72,17 @@ main{min-width:0}
 .summary{margin:-.3em 0 1.2em;color:var(--muted);font-size:1.08em}
 .signature{padding:12px 14px;background:var(--code-bg);border:1px solid var(--border);border-radius:var(--radius-sm)}
 
+/* The signature is a named panel, not a loose block of code: a page whose whole
+   body was one unlabelled fence never said what the reader was looking at. It
+   opens expanded — a reference that answers no question on arrival is not one —
+   and folds away once it has been read. */
+.signature-panel{margin:1.4em 0}
+.signature-panel>summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none;color:var(--muted);font-family:var(--font-ui);font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.signature-panel>summary::-webkit-details-marker{display:none}
+.signature-panel>summary::before{content:'\25be';transition:transform .15s}
+.signature-panel:not([open])>summary::before{transform:rotate(-90deg)}
+.signature-panel>pre{margin:10px 0 0}
+
 .article h1{margin:0 0 .4em;font-family:var(--font-head);font-size:var(--size-h1);line-height:1.15;letter-spacing:-.01em;overflow-wrap:anywhere}
 .article h2{margin:2em 0 .6em;font-family:var(--font-head);font-size:var(--size-h2);line-height:1.25}
 .article h3{margin:1.6em 0 .5em;font-family:var(--font-head);font-size:1.18em}

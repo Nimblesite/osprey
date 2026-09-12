@@ -36,6 +36,7 @@ a{text-decoration-thickness:1px;text-underline-offset:3px}
 .summary{font-style:italic;font-size:1.2em}
 .signature{padding:10px 0;background:transparent;border:0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);border-radius:0}
 pre{border:0;border-left:3px solid var(--border);border-radius:0}
+.signature-panel>summary{font-variant:small-caps;text-transform:none;letter-spacing:.1em;font-size:15px}
 blockquote{font-size:1.1em;font-style:italic;border-left-width:2px}
 table{font-family:var(--font-ui)}
 th{background:transparent;border:0;border-bottom:2px solid var(--text);font-variant:small-caps;letter-spacing:.05em}

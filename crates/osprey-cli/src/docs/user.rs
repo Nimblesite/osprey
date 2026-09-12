@@ -97,15 +97,19 @@ fn render_pages(
     let mut pages = Vec::new();
     for (entry, source, opaque) in documented {
         let local = local_symbols(symbols, &source.path)?;
-        let origin = Origin {
-            flavor: source.flavor,
-            opaque,
-            location: relative_path(source, root)?,
-        };
+        let origin = origin(source, opaque, root)?;
         merge_page(&mut pages, page(&entry, &local, &slugs, &origin)?);
     }
     add_members(&mut pages);
     Ok(pages)
+}
+
+fn origin(source: &osprey_project::SourceFile, opaque: bool, root: &Path) -> io::Result<Origin> {
+    Ok(Origin {
+        flavor: source.flavor,
+        opaque,
+        location: relative_path(source, root)?,
+    })
 }
 
 fn local_symbols(symbols: &[Value], source: &Path) -> io::Result<Vec<Value>> {
@@ -145,7 +149,7 @@ fn member_table(owner: &Page, pages: &[Page]) -> String {
             Some(format!(
                 "| [{name}]({slug}.md) | {} | {} |",
                 page.group,
-                cell(page)
+                cell(page, name)
             ))
         })
         .collect::<Vec<_>>();
@@ -161,13 +165,51 @@ fn member_table(owner: &Page, pages: &[Page]) -> String {
 /// What a member listing says about one member: its summary where the author
 /// wrote one, and otherwise its signature. A column of blank cells tells a
 /// reader nothing, while the signature is the fact they came for.
-fn cell(page: &Page) -> String {
+fn cell(page: &Page, name: &str) -> String {
     let description = if page.summary.is_empty() {
-        format!("`{}`", page.signature)
+        format!("`{}`", unqualified(&page.signature, name))
     } else {
         page.summary.clone()
     };
     description.replace('|', "\\|").replace('\n', " ")
+}
+
+/// A member's signature with the qualification taken off its head.
+///
+/// The Name column already carries it, and a table repeating it in every row
+/// pushes the part a reader came for off the edge of a phone screen. The
+/// qualification a signature carries is the compiler's finalized one — an
+/// assembled project prefixes a namespace nobody wrote — so the head is found
+/// by the member's own name rather than by the name of the page. An effect
+/// operation is qualified with dots rather than `::`, so both are tried.
+fn unqualified(signature: &str, name: &str) -> String {
+    ["::", "."]
+        .into_iter()
+        .find_map(|separator| strip_head(signature, &format!("{separator}{name}"), name))
+        .unwrap_or_else(|| signature.to_owned())
+}
+
+/// `signature` with the qualified name ending in `tail` reduced to `name`, or
+/// `None` where it does not carry one.
+fn strip_head(signature: &str, tail: &str, name: &str) -> Option<String> {
+    let at = signature.find(tail)?;
+    let head = signature.get(..at)?;
+    let start = head
+        .char_indices()
+        .rev()
+        .find(|(_, character)| !qualifier(*character))
+        .map_or(0, |(at, character)| at.saturating_add(character.len_utf8()));
+    Some(format!(
+        "{}{name}{}",
+        head.get(..start)?,
+        signature.get(at.saturating_add(tail.len())..)?
+    ))
+}
+
+/// A character that can appear inside a qualified name, and so belongs to the
+/// head being removed rather than to the keyword or spacing in front of it.
+fn qualifier(character: char) -> bool {
+    character.is_alphanumeric() || matches!(character, '_' | ':' | '.')
 }
 
 fn visibility(
@@ -207,10 +249,7 @@ fn resolved_name(
     if explicit || (config.is_none() && !osprey_project::needs_assembly(&source.program)) {
         return entry.qualified_name.clone();
     }
-    let root = source
-        .path
-        .parent()
-        .unwrap_or_else(|| Path::new("."));
+    let root = source.path.parent().unwrap_or_else(|| Path::new("."));
     let default = osprey_project::ProjectConfig::for_root(root);
     let config = config.unwrap_or(&default);
     let namespace = config.default_namespace.as_ref().unwrap_or(&config.name);
@@ -253,17 +292,7 @@ fn page(
         .get(&entry.qualified_name)
         .ok_or_else(|| invalid("missing API page slug"))?;
     let signature = declared_signature(entry, symbols, origin)?;
-    let docs = entry.markdown().replace(
-        "```osprey\n",
-        &format!("```{}\n", osprey_lsp::source_fence(origin.flavor)),
-    );
-    let markdown = format!(
-        "# {}\n\n```{}\n{signature}\n```\n\n{docs}\n\n{}\n\n{}\n",
-        entry.qualified_name,
-        osprey_lsp::source_fence(origin.flavor),
-        super::declarations::details(entry.declaration.as_ref(), origin.opaque),
-        super::facts::sections(entry, &origin.location),
-    );
+    let markdown = article(entry, &signature, origin);
     Ok(Page {
         slug: format!("api/{slug}"),
         title: entry.qualified_name.clone(),
@@ -274,14 +303,37 @@ fn page(
     })
 }
 
+/// Everything the page says, in reading order: the name, the signature, what
+/// the author wrote, what the declaration's own shape adds.
+fn article(entry: &DocEntry, signature: &str, origin: &Origin) -> String {
+    let fence = osprey_lsp::source_fence(origin.flavor);
+    body(&[
+        format!("# {}", entry.qualified_name),
+        format!("```{fence}\n{signature}\n```"),
+        entry
+            .markdown()
+            .replace("```osprey\n", &format!("```{fence}\n")),
+        super::declarations::details(entry.declaration.as_ref(), origin.opaque),
+        super::facts::sections(entry, origin.flavor, &origin.location),
+    ])
+}
+
+/// The page's Markdown, with the parts a declaration has nothing to say about
+/// left out. A page is read, not just rendered: empty sections separated by
+/// blank runs are noise in the `.md` output and in the search index alike.
+fn body(parts: &[String]) -> String {
+    let written: Vec<&str> = parts
+        .iter()
+        .map(String::as_str)
+        .filter(|part| !part.trim().is_empty())
+        .collect();
+    format!("{}\n", written.join("\n\n"))
+}
+
 /// The signature line a page leads with: the editor's inferred type, respelled
 /// in the flavor the declaration was authored in, carrying the effect row the
 /// type model leaves off ([DOC-EXPORT]).
-fn declared_signature(
-    entry: &DocEntry,
-    symbols: &[Value],
-    origin: &Origin,
-) -> io::Result<String> {
+fn declared_signature(entry: &DocEntry, symbols: &[Value], origin: &Origin) -> io::Result<String> {
     let inferred = signature(entry, symbols)?;
     Ok(format!(
         "{}{}",

@@ -189,12 +189,26 @@ module signatures. Public declarations appear even without comments. Module
 visibility is the compiler's finalized surface, including signature ascription;
 private members and opaque type representations are excluded. Public type pages
 show their representation, fields and variants. Function signatures come from
-the editor's inferred type model and retain generic binders. ML source signatures
-and example fences are presented in the ML flavor.
+the editor's inferred type model and retain generic binders, and carry the
+declared effect row: the type model renders a function's value type alone, and a
+signature without the row reads as pure for a function the compiler rejects
+unless its caller discharges it. ML source signatures and example fences are
+presented in the ML flavor.
+
+A declaration with no comment still states facts about itself, and its page
+carries them: the effects it performs, each linked to the effect's own page; the
+result type where one was written; and the file and line it is declared on. An
+ML page also lists the parameter names, which a curried signature line does not
+carry — the names are read through the lambda chain currying lowers a clause
+head into, so a three-argument function lists three arguments. A Default
+signature line already names every parameter, so no list repeats it. A section
+the author wrote themselves is never duplicated by a derived one.
 
 Namespace, module and effect pages list their immediate public members with
-links, declaration kinds and documentation summaries. State modules retain the
-`state` qualifier, and static effects retain `static` in their signatures.
+links, declaration kinds and documentation summaries. A member with no summary
+is described by its own signature, unqualified by the owner the listing already
+names. State modules retain the `state` qualifier, and static effects retain
+`static` in their signatures.
 
 Markdown is the default format. Built-ins live under `functions/`, user APIs
 under `api/`, and additional pages under `guides/`. Names are made safe and unique
@@ -213,6 +227,12 @@ API and built-in pages, navigation, search, and local styles. It needs no websit
 framework, build step, CDN, or network connection. Navigation and search work
 when opened directly from the filesystem or served from a static server, including
 under a URL prefix: every generated reference is relative.
+
+A declaration page opens with its signature in a labelled disclosure rather than
+a bare block of code, expanded so the reference answers on arrival and
+collapsible once it has been read. Its breadcrumb names every enclosing scope
+this export documents and links each one, so a reader who arrived from search
+can reach the module that owns what they are reading.
 
 Layout adapts to mobile screens and keyboard navigation. Navigation precedes the
 article in source order, which is what a screen reader needs and what would

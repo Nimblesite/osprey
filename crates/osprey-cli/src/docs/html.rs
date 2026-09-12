@@ -16,6 +16,7 @@ mod anchors;
 mod landing;
 mod layout;
 mod navigation;
+mod panels;
 mod render;
 #[cfg(test)]
 mod tests;
@@ -277,7 +278,7 @@ fn document(page: &Page, site: &Site) -> String {
             .map(|slug| format!("{root}{slug}.html"))
     };
     let body = render::markdown(render::without_front_matter(&page.markdown), &resolve);
-    layout::document(page, site, &body)
+    layout::document(page, site, &panels::signature(&page.slug, &body))
 }
 
 /// The scopes enclosing a declaration, outermost first: `shop::Money::parse`

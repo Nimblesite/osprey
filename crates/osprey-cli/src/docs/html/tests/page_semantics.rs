@@ -74,3 +74,68 @@ fn navigation_groups_are_disclosures_and_every_page_remains_reachable() {
     assert!(html.contains("aria-label=\"Search results\""));
     assert!(html.contains("aria-keyshortcuts=\"/\""));
 }
+
+/// The signature is the one code block the exporter writes itself, and it is
+/// named rather than left as a bare fence. It opens expanded: a reference that
+/// answers no question on arrival is not one.
+#[test]
+fn a_declaration_page_names_its_signature_and_lets_the_reader_fold_it_away() {
+    let dir = fresh_dir("signature_panel");
+    let pages = vec![
+        page(
+            "api/pay",
+            "bank::Money::pay",
+            "Function",
+            "# bank::Money::pay\n\n```osprey\nfn pay(cents: int) -> int\n```\n\n\
+             ## Examples\n\n```osprey\npay(100)\n```\n",
+        ),
+        page(
+            "guides/start",
+            "Getting started",
+            "Guides",
+            "```osprey\nx\n```\n",
+        ),
+    ];
+    generate(&dir, &pages, "osprey", &[]).expect("site");
+    let body = article(&read(&dir, "api/pay.html"));
+    assert!(
+        body.contains("<details class=\"signature-panel\" open><summary>Signature</summary><pre>"),
+        "{body}"
+    );
+    // The example below the first heading is an author's code, not a signature.
+    assert_eq!(body.matches("signature-panel").count(), 1, "{body}");
+    let guide = article(&read(&dir, "guides/start.html"));
+    assert!(
+        !guide.contains("signature-panel"),
+        "a guide's first fence is not a signature: {guide}"
+    );
+}
+
+/// A reader who arrives at a declaration from search has no way back to the
+/// module that owns it unless the page says so.
+#[test]
+fn a_declaration_page_links_every_scope_that_encloses_it() {
+    let dir = fresh_dir("crumb_ancestors");
+    let pages = vec![
+        page("api/money", "bank::Money", "Module", "# bank::Money\n"),
+        page(
+            "api/pay",
+            "bank::Money::pay",
+            "Function",
+            "# bank::Money::pay\n",
+        ),
+    ];
+    generate(&dir, &pages, "osprey", &[]).expect("site");
+    let body = article(&read(&dir, "api/pay.html"));
+    assert!(
+        body.contains("<a href=\"../api/money.html\">Money</a>"),
+        "the owning module is not linked: {body}"
+    );
+    // `bank` has no page in this export, so it is skipped rather than linked
+    // into a 404.
+    assert!(!body.contains(">bank</a>"), "{body}");
+    assert!(
+        body.contains("<span class=\"kind\">Function</span>"),
+        "{body}"
+    );
+}

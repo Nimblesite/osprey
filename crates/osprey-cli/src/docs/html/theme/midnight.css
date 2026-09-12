@@ -35,6 +35,7 @@ body{background:radial-gradient(1200px 600px at 70% -10%,rgba(119,215,244,.08),t
 .article .section-head{padding-left:0;border-left:0}
 code{color:var(--accent)}
 .signature{border-left:2px solid var(--accent)}
+.signature-panel>summary{color:var(--accent)}
 th{font-family:var(--font-mono);font-size:13px;letter-spacing:.05em;text-transform:uppercase}
 
 .toc{padding:16px 0 0 18px}

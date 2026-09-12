@@ -23,6 +23,7 @@
 .article{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:40px 48px;box-shadow:0 1px 2px rgba(15,27,45,.04),0 8px 28px rgba(15,27,45,.06)}
 .article h2{padding-bottom:.35em;border-bottom:1px solid var(--border)}
 .signature{border-left:3px solid var(--accent)}
+.signature-panel>summary{color:var(--accent)}
 
 .toc{padding:20px 20px 14px;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:0 1px 2px rgba(15,27,45,.04)}
 .on-page{color:var(--accent)}

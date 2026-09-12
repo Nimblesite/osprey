@@ -13,11 +13,12 @@
 // case (opaque origin, no fetch, no base URL) and the one users hit first.
 //
 // Usage: node scripts/verify-docs-html.mjs [path-to-osprey-binary]
-import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { FIXTURES } from './verify-docs-html-fixtures.mjs';
 
 const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 
@@ -56,94 +57,11 @@ if (!fs.existsSync(BIN)) {
 }
 
 // ── fixtures ────────────────────────────────────────────────────────────────
-// Written here rather than committed: they exist to be documented, and a guide
-// tree with spaces in its names is easier to keep honest than to keep tidy.
-const write = (relative, body) => {
+for (const [relative, body] of Object.entries(FIXTURES)) {
   const file = path.join(WORK, relative);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, body);
-  return file;
-};
-
-write('guides/Getting Started.md', `# Getting Started
-
-Read the [deep guide](<Deep Dive/Advanced Topics.md>).
-
-| Platform | Command |
-|---|---|
-| macOS | \`brew install osprey\` |
-
-- [x] download
-- [ ] ~~configure by hand~~
-
-> Blockquotes render.
-
-\`\`\`osprey
-fn double(x) = x * 2
-\`\`\`
-
-Raw HTML is shown, never run: <script>window.__PWNED__=1</script>
-`);
-write('guides/Deep Dive/Advanced Topics.md', `# Advanced Topics
-
-Back to [the start](../Getting%20Started.md#install) and across to
-[the notes](<Release Notes.md>).
-
-This must not execute: [click me](javascript:window.__PWNED__=1).
-`);
-write('guides/Deep Dive/Release Notes.md', '# Release Notes\n\nNotes about websocket support.\n');
-write('brand.css', ':root { --accent: rgb(255, 0, 128); }\n');
-write('override.css', 'body { background: rgb(1, 2, 3); }\n');
-
-// A project whose modules deliberately share a member name, so scope-sensitive
-// symbol resolution has something to get wrong.
-write('symbols/osprey.toml', '[project]\nname = "symbols"\nsource_roots = ["src"]\ndefault_namespace = "shop"\n');
-write('symbols/src/lib.ospml', `(** Prices and the ledger that records them. *)
-namespace shop
-
-(** Money helpers. *)
-module Money
-    (** Convert cents. Uses [helper], names [Ledger.post] and [toString].
-    \`total\` is defined here and in [Ledger], so [total] means this one.
-    \`summarize\` is defined only in two unrelated modules, so [summarize]
-    names nothing here and stays text. *)
-    export parse : int -> int
-    parse cents = cents
-
-    (** Shared by this module only. *)
-    export helper : int -> int
-    helper x = x
-
-    (** The running total. *)
-    export total : int -> int
-    total x = x
-
-(** Reporting. *)
-module Reports
-    (** Summarise. *)
-    export summarize : int -> int
-    summarize x = x
-
-(** Auditing. *)
-module Audit
-    (** Summarise. *)
-    export summarize : int -> int
-    summarize x = x
-
-(** The ledger. *)
-module Ledger
-    (** Records an amount. Uses [helper]. *)
-    export post : int -> int
-    post amount = amount
-
-    (** Shared by this module only. *)
-    export helper : int -> int
-    helper x = x
-
-    (** The running total. *)
-    export total : int -> int
-    total x = x
-`);
+}
 
 const generate = (out, args) =>
   execFileSync(BIN, ['--docs', '--docs-dir', path.join(WORK, out), '--docs-format', 'html', ...args], {
@@ -268,7 +186,9 @@ check('following a guide link arrives', page.url().endsWith('guides/getting-star
 // symbol links, resolved in their own scope first
 await page.goto(url('site-symbols', 'api/shop-money-parse.html'));
 const symbols = await page.evaluate(() => ({
-  links: Object.fromEntries([...document.querySelectorAll('main p a')].map((a) => [a.textContent, a.getAttribute('href')])),
+  // The breadcrumb is a paragraph of links too, and it is asserted on its own
+  // page below; here only the links a doc comment wrote are the subject.
+  links: Object.fromEntries([...document.querySelectorAll('main p:not(.crumb) a')].map((a) => [a.textContent, a.getAttribute('href')])),
   text: document.querySelector('main').innerText,
 }));
 check('[helper] resolves inside its own module',
@@ -292,6 +212,72 @@ for (const [label, href] of Object.entries(symbols.links)) {
 await page.goto(url('site-symbols', 'api/shop-ledger-post.html'));
 check('the same spelling resolves to the sibling module there',
   (await article()).includes('href="../api/shop-ledger-helper.html"'), 'shop::Ledger::post');
+
+// ── what an undocumented declaration page says for itself ───────────────────
+// The bank project's API carries no `(** *)` comments at all. Every page below
+// was reported as empty by a reader: a name and a bare type, and nothing else.
+await page.goto(url('plain-osprey', 'api/bank-api-route.html'));
+const declaration = await page.evaluate(() => {
+  const section = (heading) => [...document.querySelectorAll('.article h2')]
+    .find((h) => h.textContent.trim() === heading)?.nextElementSibling;
+  const items = (heading) => {
+    let node = section(heading);
+    while (node && node.tagName !== 'UL') node = node.nextElementSibling;
+    return [...(node?.children ?? [])].map((li) => li.textContent.trim());
+  };
+  const panel = document.querySelector('.signature-panel');
+  return {
+    open: !!panel?.open,
+    signature: panel?.querySelector('pre')?.textContent.trim(),
+    crumb: [...document.querySelectorAll('.crumb a')].map((a) => a.getAttribute('href')),
+    parameters: items('Parameters').map((text) => text.split('—')[0].trim()),
+    effects: [...document.querySelectorAll('.article a')]
+      .map((a) => a.getAttribute('href')).filter((href) => href?.includes('store') || href?.includes('audit')),
+    provenance: document.querySelector('.article > p:last-child')?.textContent.trim(),
+    headings: document.querySelectorAll('.article h2').length,
+  };
+});
+// The effect row is the fact a caller cannot compile without and the one the
+// type model leaves off: a signature without it reads as pure.
+check('the signature carries the declared effect row',
+  (declaration.signature ?? '').includes('! [Ledger::Store, Audit]'), declaration.signature);
+check('the signature is a panel that opens expanded', declaration.open);
+// ML lowers a clause head into a chain of one-parameter lambdas, so a page
+// built from the declaration node alone names `method` and stops.
+check('every parameter of a curried function is named',
+  JSON.stringify(declaration.parameters) === JSON.stringify(['method', 'path', 'body']),
+  JSON.stringify(declaration.parameters));
+check('each effect links to the page documenting it',
+  declaration.effects.length === 2 && declaration.effects.every((href) => fs.existsSync(
+    path.resolve(WORK, 'plain-osprey/api', href))), JSON.stringify(declaration.effects));
+check('the page says which file and line declares it',
+  /Defined in src\/api\/routes\.ospml\s*, line \d+\./.test(declaration.provenance ?? ''),
+  declaration.provenance);
+check('the breadcrumb links the module that owns the declaration',
+  declaration.crumb.includes('../api/bank-api.html'), JSON.stringify(declaration.crumb));
+check('an undocumented declaration still fills a page',
+  declaration.headings >= 3, `${declaration.headings} sections`);
+
+// The disclosure is a real one: the code is shown on arrival and goes away when
+// the control is used. A closed <details> keeps a box for its children, so the
+// question is answered by checkVisibility rather than by measuring one.
+const disclosure = await page.evaluate(() => {
+  const summary = document.querySelector('.signature-panel > summary');
+  const code = document.querySelector('.signature-panel pre');
+  if (!summary || !code) return null;
+  const shown = code.checkVisibility({ contentVisibilityAuto: true });
+  summary.click();
+  return { shown, hidden: !code.checkVisibility({ contentVisibilityAuto: true }) };
+});
+check('the signature is shown on arrival and folds away from its control',
+  !!disclosure && disclosure.shown && disclosure.hidden, JSON.stringify(disclosure));
+
+// A Description column that is blank on every row tells a reader nothing.
+await page.goto(url('plain-osprey', 'api/bank-api.html'));
+const described = await page.evaluate(() => [...document.querySelectorAll('.article tbody tr')]
+  .map((row) => row.cells[2]?.textContent.trim() ?? ''));
+check('every member of a listing is described',
+  described.length > 0 && described.every((cell) => cell.length > 0), JSON.stringify(described));
 
 // themes
 const themed = {};

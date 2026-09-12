@@ -142,3 +142,73 @@ fn extra_docs_top_level_bindings_are_public() {
     assert!(output.join("api/helper.md").is_file());
     assert!(output.join("api/exposed.md").is_file());
 }
+
+/// An ML source whose declarations carry no comment at all. The page still has
+/// to state what the declaration itself states, or a reader learns nothing from
+/// opening it.
+///
+/// The parameter names are the load-bearing assertion: ML lowers a clause head
+/// into a chain of one-parameter lambdas, so a page built from the declaration
+/// node alone names `id` and stops — telling a reader a three-argument function
+/// takes one argument.
+#[test]
+fn extra_docs_undocumented_declarations_state_their_own_facts() {
+    let source = "effect Store\n    read : int => string\n\n\
+        fetch : int -> string -> string -> string ! Store\n\
+        fetch id prefix suffix = \"${prefix}${perform Store.read id}${suffix}\"\n";
+    let (result, output) = export(source, "ospml", "extra_docs_derived_facts");
+    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    let page = read_text(&output.join("api/fetch.md"));
+    assert!(
+        page.contains("fetch : int -> (string -> (string -> string)) ! Store"),
+        "the effect row belongs on the signature: {page}"
+    );
+    for parameter in ["- `id` — `int`", "- `prefix` — `string`", "- `suffix`"] {
+        assert!(page.contains(parameter), "missing {parameter}: {page}");
+    }
+    assert!(page.contains("## Returns\n\n`string`"), "{page}");
+    assert!(
+        page.contains("## Effects") && page.contains("- [Store]"),
+        "{page}"
+    );
+    assert!(
+        page.contains("*Defined in `source.ospml`, line 5.*"),
+        "{page}"
+    );
+}
+
+/// A Default signature line already names every parameter, so a derived list
+/// under it would restate the line above with less in it. The effect row is
+/// still the fact the type model leaves out, and it still appears.
+#[test]
+fn extra_docs_default_pages_state_effects_without_restating_parameters() {
+    let source = "effect Store {\n  read: fn(int) -> string\n}\n\
+        fn fetch(id) ![Store] = perform Store.read(id)\n";
+    let (result, output) = export(source, "osp", "extra_docs_default_facts");
+    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    let page = read_text(&output.join("api/fetch.md"));
+    assert!(
+        page.contains("![Store]"),
+        "the effect row is missing: {page}"
+    );
+    assert!(page.contains("## Effects"), "{page}");
+    assert!(
+        !page.contains("## Parameters"),
+        "a Default signature already names its parameters: {page}"
+    );
+}
+
+/// A member listing whose Description column is blank on every row tells a
+/// reader nothing. An undocumented member is described by its own signature,
+/// stripped of the qualification the Name column already carries.
+#[test]
+fn extra_docs_member_listings_fall_back_to_the_member_signature() {
+    let source = "module Store {\nexport fn count() = 1\n}\n";
+    let (result, output) = export(source, "osp", "extra_docs_member_signature");
+    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    let module = read_text(&output.join("api/store.md"));
+    assert!(
+        module.contains("| [count](store-count.md) | Function | `fn count() -> int` |"),
+        "{module}"
+    );
+}
