@@ -6,6 +6,7 @@
 
 mod assets;
 mod declarations;
+mod facts;
 mod html;
 mod model;
 mod options;
@@ -90,6 +91,7 @@ fn add_api_index(pages: &mut Vec<Page>) {
         title: "API Reference".into(),
         group: "Overview".into(),
         summary: "Modules and declarations in this project.".into(),
+        signature: String::new(),
         markdown: format!("# API Reference\n\n{links}\n"),
     });
 }
@@ -109,6 +111,7 @@ fn builtin_pages() -> Vec<Page> {
                 title: view.name.clone(),
                 group: "Built-in functions".into(),
                 summary: String::new(),
+                signature: view.signature.clone(),
                 markdown: page(view),
             })
         })
@@ -118,6 +121,7 @@ fn builtin_pages() -> Vec<Page> {
         title: "Built-in Functions".into(),
         group: "Overview".into(),
         summary: "The Osprey standard library.".into(),
+        signature: String::new(),
         markdown: index(&views, &slugs),
     });
     pages

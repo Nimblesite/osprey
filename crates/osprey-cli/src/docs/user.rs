@@ -7,8 +7,18 @@ use osprey_syntax::Flavor;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::io;
+use std::path::Path;
 
 type Documented<'a> = (DocEntry, &'a osprey_project::SourceFile, bool);
+
+/// Where a page's declaration came from, as the page needs to present it: the
+/// flavor it was authored in, whether its representation stays hidden, and the
+/// project-relative file it is written in.
+struct Origin {
+    flavor: Flavor,
+    opaque: bool,
+    location: String,
+}
 
 pub(super) fn pages(options: &Options) -> io::Result<Vec<Page>> {
     let Some(path) = &options.source else {
@@ -24,7 +34,7 @@ pub(super) fn pages(options: &Options) -> io::Result<Vec<Page>> {
         serde_json::from_str(&input.documentation_symbols_json()).map_err(io::Error::other)?;
     let root = source_root(path)?;
     let documented = public_entries(&sources, &input, &root)?;
-    render_pages(documented, &symbols)
+    render_pages(documented, &symbols, &root)
 }
 
 fn source_root(path: &str) -> io::Result<std::path::PathBuf> {
@@ -34,14 +44,14 @@ fn source_root(path: &str) -> io::Result<std::path::PathBuf> {
     }
     Ok(selected
         .parent()
-        .unwrap_or_else(|| std::path::Path::new("."))
+        .unwrap_or_else(|| Path::new("."))
         .to_path_buf())
 }
 
 fn public_entries<'a>(
     sources: &'a crate::document_source::SourceSet,
     input: &crate::project::CompilationInput,
-    root: &std::path::Path,
+    root: &Path,
 ) -> io::Result<Vec<Documented<'a>>> {
     let mut documented = Vec::new();
     for source in &sources.sources {
@@ -59,16 +69,26 @@ fn public_entries<'a>(
     Ok(documented)
 }
 
-fn file_name(source: &osprey_project::SourceFile, root: &std::path::Path) -> io::Result<String> {
+fn file_name(source: &osprey_project::SourceFile, root: &Path) -> io::Result<String> {
+    Ok(format!("File {}", relative_path(source, root)?))
+}
+
+/// A source file as the reader would name it in their own checkout: relative to
+/// the documented root, or bare where it sits outside one.
+fn relative_path(source: &osprey_project::SourceFile, root: &Path) -> io::Result<String> {
     let canonical = std::fs::canonicalize(&source.path)?;
     let relative = canonical
         .strip_prefix(root)
         .ok()
-        .unwrap_or_else(|| std::path::Path::new(source.path.file_name().unwrap_or_default()));
-    Ok(format!("File {}", relative.display()))
+        .unwrap_or_else(|| Path::new(source.path.file_name().unwrap_or_default()));
+    Ok(relative.display().to_string())
 }
 
-fn render_pages(documented: Vec<Documented<'_>>, symbols: &[Value]) -> io::Result<Vec<Page>> {
+fn render_pages(
+    documented: Vec<Documented<'_>>,
+    symbols: &[Value],
+    root: &Path,
+) -> io::Result<Vec<Page>> {
     let entries: Vec<_> = documented
         .iter()
         .map(|(entry, _, _)| entry.clone())
@@ -77,16 +97,18 @@ fn render_pages(documented: Vec<Documented<'_>>, symbols: &[Value]) -> io::Resul
     let mut pages = Vec::new();
     for (entry, source, opaque) in documented {
         let local = local_symbols(symbols, &source.path)?;
-        merge_page(
-            &mut pages,
-            page(&entry, &local, &slugs, source.flavor, opaque)?,
-        );
+        let origin = Origin {
+            flavor: source.flavor,
+            opaque,
+            location: relative_path(source, root)?,
+        };
+        merge_page(&mut pages, page(&entry, &local, &slugs, &origin)?);
     }
     add_members(&mut pages);
     Ok(pages)
 }
 
-fn local_symbols(symbols: &[Value], source: &std::path::Path) -> io::Result<Vec<Value>> {
+fn local_symbols(symbols: &[Value], source: &Path) -> io::Result<Vec<Value>> {
     let canonical = std::fs::canonicalize(source)?;
     Ok(symbols
         .iter()
@@ -120,10 +142,10 @@ fn member_table(owner: &Page, pages: &[Page]) -> String {
                 return None;
             }
             let slug = page.slug.strip_prefix("api/")?;
-            let summary = page.summary.replace('|', "\\|").replace('\n', " ");
             Some(format!(
-                "| [{name}]({slug}.md) | {} | {summary} |",
-                page.group
+                "| [{name}]({slug}.md) | {} | {} |",
+                page.group,
+                cell(page)
             ))
         })
         .collect::<Vec<_>>();
@@ -134,6 +156,18 @@ fn member_table(owner: &Page, pages: &[Page]) -> String {
         "\n## Members\n\n| Name | Kind | Description |\n| --- | --- | --- |\n{}\n",
         rows.join("\n")
     )
+}
+
+/// What a member listing says about one member: its summary where the author
+/// wrote one, and otherwise its signature. A column of blank cells tells a
+/// reader nothing, while the signature is the fact they came for.
+fn cell(page: &Page) -> String {
+    let description = if page.summary.is_empty() {
+        format!("`{}`", page.signature)
+    } else {
+        page.summary.clone()
+    };
+    description.replace('|', "\\|").replace('\n', " ")
 }
 
 fn visibility(
@@ -176,7 +210,7 @@ fn resolved_name(
     let root = source
         .path
         .parent()
-        .unwrap_or_else(|| std::path::Path::new("."));
+        .unwrap_or_else(|| Path::new("."));
     let default = osprey_project::ProjectConfig::for_root(root);
     let config = config.unwrap_or(&default);
     let namespace = config.default_namespace.as_ref().unwrap_or(&config.name);
@@ -213,33 +247,47 @@ fn page(
     entry: &DocEntry,
     symbols: &[Value],
     slugs: &HashMap<String, String>,
-    flavor: Flavor,
-    opaque: bool,
+    origin: &Origin,
 ) -> io::Result<Page> {
     let slug = slugs
         .get(&entry.qualified_name)
         .ok_or_else(|| invalid("missing API page slug"))?;
-    let signature = signature(entry, symbols)?;
-    let signature = osprey_lsp::source_signature(flavor, &signature);
+    let signature = declared_signature(entry, symbols, origin)?;
     let docs = entry.markdown().replace(
         "```osprey\n",
-        &format!("```{}\n", osprey_lsp::source_fence(flavor)),
+        &format!("```{}\n", osprey_lsp::source_fence(origin.flavor)),
     );
     let markdown = format!(
-        "# {}\n\n```{}\n{}\n```\n\n{}\n\n{}\n",
+        "# {}\n\n```{}\n{signature}\n```\n\n{docs}\n\n{}\n\n{}\n",
         entry.qualified_name,
-        osprey_lsp::source_fence(flavor),
-        signature,
-        docs,
-        super::declarations::details(entry.declaration.as_ref(), opaque)
+        osprey_lsp::source_fence(origin.flavor),
+        super::declarations::details(entry.declaration.as_ref(), origin.opaque),
+        super::facts::sections(entry, &origin.location),
     );
     Ok(Page {
         slug: format!("api/{slug}"),
         title: entry.qualified_name.clone(),
         group: entry.kind.into(),
         summary: entry.doc.summary.clone(),
+        signature,
         markdown,
     })
+}
+
+/// The signature line a page leads with: the editor's inferred type, respelled
+/// in the flavor the declaration was authored in, carrying the effect row the
+/// type model leaves off ([DOC-EXPORT]).
+fn declared_signature(
+    entry: &DocEntry,
+    symbols: &[Value],
+    origin: &Origin,
+) -> io::Result<String> {
+    let inferred = signature(entry, symbols)?;
+    Ok(format!(
+        "{}{}",
+        osprey_lsp::source_signature(origin.flavor, &inferred),
+        super::facts::effect_row(entry, origin.flavor)
+    ))
 }
 
 fn signature(entry: &DocEntry, symbols: &[Value]) -> io::Result<String> {

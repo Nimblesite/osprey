@@ -73,6 +73,7 @@ fn page(path: &Path, root: &Path) -> io::Result<Page> {
         title,
         group: "Guides".into(),
         summary: String::new(),
+        signature: String::new(),
         markdown,
     })
 }

@@ -37,6 +37,7 @@ fn page(slug: &str, title: &str, group: &str, markdown: &str) -> Page {
         title: title.into(),
         group: group.into(),
         summary: String::new(),
+        signature: String::new(),
         markdown: markdown.into(),
     }
 }
@@ -194,6 +195,7 @@ fn hostile_documentation_text_cannot_break_out_of_any_context() {
         title: "Title \"><script>alert(1)</script>".into(),
         group: "Group & <b>bold</b>".into(),
         summary: "Summary \"quoted\" & </script>".into(),
+        signature: String::new(),
         markdown: "# Heading\n\n<script>alert(2)</script>\n".into(),
     };
     generate(&dir, std::slice::from_ref(&hostile), "osprey", &[]).expect("generates");

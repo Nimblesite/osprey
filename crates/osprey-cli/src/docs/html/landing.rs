@@ -13,6 +13,7 @@ pub(super) fn render(pages: &[Page], site: &Site) -> String {
         title: "Osprey documentation".into(),
         group: "Overview".into(),
         summary: String::new(),
+        signature: String::new(),
         markdown: String::new(),
     };
     layout::document(&overview, site, &body)
