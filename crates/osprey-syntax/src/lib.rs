@@ -18,9 +18,14 @@ use osprey_ast::{Position, Program};
 /// domain ([ARITH-NEG-LITERAL], [FLAVOR-EQUIVALENCE]).
 pub(crate) const I64_MIN_MAGNITUDE: &str = "9223372036854775808";
 
+mod annotation_edits;
+#[cfg(test)]
+mod annotation_edits_tests;
+mod binding_ranges;
 mod default;
 mod desugar;
 mod docparse;
+mod fragment_ranges;
 mod kernel;
 mod ml;
 mod positional;
@@ -28,6 +33,8 @@ mod strings;
 #[cfg(test)]
 mod test_support;
 
+pub use annotation_edits::{annotation_edits, AnnotationEdit, AnnotationTarget, SourceEdit};
+pub use binding_ranges::{binding_ranges, BindingKind, BindingRange};
 pub use default::parse_tree;
 pub use docparse::doc_links;
 

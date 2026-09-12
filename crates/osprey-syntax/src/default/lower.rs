@@ -462,6 +462,7 @@ impl<'a> Lowerer<'a> {
                     name => name,
                 },
                 ty: p.child_by_field_name("type").map(|n| self.lower_type(n)),
+                inline_constraint: false,
             })
             .collect()
     }
@@ -589,7 +590,7 @@ impl<'a> Lowerer<'a> {
         found.map(|c| self.lower_type(c))
     }
 
-    fn is_type_kind(kind: &str) -> bool {
+    pub(crate) fn is_type_kind(kind: &str) -> bool {
         matches!(
             kind,
             "type_identifier" | "generic_type" | "array_type" | "function_type"

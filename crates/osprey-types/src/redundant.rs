@@ -33,6 +33,35 @@ pub struct TypeWarning {
     pub rule: &'static str,
 }
 
+/// The source construct whose redundant annotation can be removed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RedundantTarget {
+    /// One standalone written type signature.
+    Signature,
+    /// An inline parameter annotation.
+    Parameter {
+        /// Source spelling of the parameter.
+        name: String,
+        /// Zero-based slot in the canonical parameter list.
+        index: usize,
+    },
+    /// An inline return type annotation.
+    Return,
+    /// A value binding annotation.
+    Binding,
+}
+
+/// A warning together with source identity for precise editor edits.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RedundantAnnotation {
+    /// The existing public diagnostic, unchanged by source edit support.
+    pub warning: TypeWarning,
+    /// Original annotation position, when the frontend recorded it.
+    pub annotation_position: Option<Position>,
+    /// The annotation's slot when only a declaration position is available.
+    pub target: RedundantTarget,
+}
+
 /// Every type the inferrer publishes, under a stable label.
 ///
 /// Function signatures are keyed by name; bindings, lambdas and list literals
@@ -65,6 +94,24 @@ pub fn redundant_annotations_where(
     program: &Program,
     include: impl Fn(Option<Position>) -> bool,
 ) -> Vec<TypeWarning> {
+    redundant_annotation_sites_where(program, include)
+        .into_iter()
+        .map(|site| site.warning)
+        .collect()
+}
+
+/// Source identities for the same jointly removable set as the warning API.
+#[must_use]
+pub fn redundant_annotation_sites(program: &Program) -> Vec<RedundantAnnotation> {
+    redundant_annotation_sites_where(program, |_| true)
+}
+
+/// Select source identities without changing the redundancy oracle or its set.
+#[must_use]
+pub fn redundant_annotation_sites_where(
+    program: &Program,
+    include: impl Fn(Option<Position>) -> bool,
+) -> Vec<RedundantAnnotation> {
     let written = sites(program);
     if !written.iter().any(|site| include(site.position)) {
         return Vec::new();
@@ -82,8 +129,27 @@ pub fn redundant_annotations_where(
         .iter()
         .filter_map(|index| written.get(*index))
         .filter(|site| include(site.position))
-        .map(warn)
+        .map(annotation)
         .collect()
+}
+
+fn annotation(site: &Site) -> RedundantAnnotation {
+    let target = match &site.slot {
+        Slot::Signature { .. } => RedundantTarget::Signature,
+        Slot::Param {
+            parameter, index, ..
+        } => RedundantTarget::Parameter {
+            name: parameter.clone(),
+            index: *index,
+        },
+        Slot::Return { .. } => RedundantTarget::Return,
+        Slot::Binding { .. } => RedundantTarget::Binding,
+    };
+    RedundantAnnotation {
+        warning: warn(site),
+        annotation_position: site.source,
+        target,
+    }
 }
 
 /// Grow the reported set one annotation at a time, in source order, keeping

@@ -11,6 +11,8 @@ pub(crate) struct Token {
     pub kind: TokKind,
     /// 1-based line / 0-based column where the token starts.
     pub pos: Position,
+    /// Exact source bytes; synthetic layout tokens have an empty range.
+    pub range: std::ops::Range<usize>,
     /// Whether this token immediately follows the previous content token with
     /// no intervening whitespace/comment. Disambiguates `xs[0]` (a *glued*
     /// postfix index) from `f [0]` (whitespace application to a list literal) —

@@ -274,6 +274,13 @@ uses editorial serif headings and ruled lists. Typography and component layouts
 vary between templates. They share semantic markup, responsive navigation and
 CSS custom properties, so customization does not require replacing the renderer.
 
+Every template holds the article to a readable measure rather than stretching
+prose across a wide monitor, sets body text no smaller than the 16px browser
+default, and draws the heading outline as a bounded panel in the right margin —
+a rule, a border or a surface of its own — so it reads as a list of links
+beside the article rather than a second column of prose. The outline is hidden
+below 1180px, where there is no margin for it to sit in.
+
 The landing page promotes project modules and authored guides before the full
 reference. Navigation groups are keyboard-operable disclosures. JavaScript folds
 inactive groups, adds links to article headings, highlights Osprey code without

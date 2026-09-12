@@ -1,0 +1,31 @@
+type Learner = {
+    name: string,
+    goal: string,
+    isActive: bool,
+    sessionCount: int,
+    minutesPerSession: int
+}
+
+fn heading(name) = "Flight Log: " + name
+
+fn makeLearner(name, goal, isActive, sessionCount, minutesPerSession) =
+    Learner {
+        name: name,
+        goal: goal,
+        isActive: isActive,
+        sessionCount: sessionCount,
+        minutesPerSession: minutesPerSession
+    }
+
+fn summary(learner) =
+    "${heading(learner.name)} | goal: ${learner.goal}" +
+    " | active: ${learner.isActive}" +
+    " | sessions: ${learner.sessionCount}" +
+    " | minutes each: ${learner.minutesPerSession}"
+
+fn main() = {
+    let learner = makeLearner(
+        "Mika", "Build a small Osprey CLI", true, 3, 25
+    )
+    summary(learner) |> print
+}

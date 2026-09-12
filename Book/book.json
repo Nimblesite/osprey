@@ -1,12 +1,14 @@
 {
   "schemaVersion": 1,
   "title": "The Osprey Book",
-  "status": "structural-scaffold-chapters-1-2-complete",
+  "status": "structural-scaffold-chapters-1-3-complete",
   "editionModel": "living-release-aligned",
   "ospreyRelease": "0.0.0-dev",
   "releasePinStatus": "pin-before-publication",
   "teachingFlavor": "default",
-  "alternativeFlavors": ["ml"],
+  "alternativeFlavors": [
+    "ml"
+  ],
   "flavorCountPolicy": "open-ended",
   "terminologyAuthority": "GLOSSARY.md",
   "targets": {
@@ -53,7 +55,7 @@
       "number": 3,
       "title": "Let the compiler work out the types",
       "file": "manuscript/03-let-the-compiler-work-out-the-types.md",
-      "status": "editorial-scaffold",
+      "status": "complete",
       "targetWords": 2600,
       "targetPages": 9,
       "targetFigures": 3

@@ -14,6 +14,7 @@ use crate::{Flavor, Parsed, SyntaxError};
 use osprey_ast::{Position, Program};
 use tree_sitter::{Node, Parser, Point, Tree};
 
+pub(crate) mod binding_ranges;
 mod expr;
 mod kernel;
 mod lower;
@@ -26,6 +27,10 @@ fn is_i64_min_magnitude_text(text: &str) -> bool {
 }
 
 pub(crate) use lower::Lowerer;
+
+pub(crate) fn binding_ranges(source: &str) -> Vec<crate::BindingRange> {
+    binding_ranges::collect(source)
+}
 
 /// The Default (brace) frontend: tree-sitter CST + [`Lowerer`] → [`Program`].
 pub(crate) fn parse(source: &str) -> Parsed {
@@ -178,6 +183,10 @@ pub(crate) fn position_from_point(point: Point) -> Position {
             .saturating_add(1),
         column: u32::try_from(point.column).unwrap_or(u32::MAX),
     }
+}
+
+pub(crate) fn string_literals(source: &str) -> Vec<crate::fragment_ranges::Literal> {
+    binding_ranges::literals(source)
 }
 
 #[cfg(test)]

@@ -1,244 +1,68 @@
-# Testing Guide for Osprey VS Code Extension
+# Testing the Osprey VS Code extension
 
-This document explains how to run and develop tests for the Osprey VS Code extension.
+The extension has two complementary suites. Every assertion is enforced: failures are neither caught as expected outcomes nor skipped when the compiler is missing.
 
-## Test Environment
+Run the complete extension gate from the repository root:
 
-The extension uses the VS Code Extension Testing framework which runs tests inside a special VS Code instance called the **Extension Development Host**. This provides full access to the VS Code API.
-
-## Quick Start
-
-```bash
-# Run all tests
-npm test
-
-# Compile and run tests
-npm run compile && npm test
-
-# Use the test launcher for more options
-npm run test:launcher help
+```sh
+make build
+make _test_vscode_extension _coverage_check_vscode_extension
 ```
 
-## Test Structure
+This builds the extension, runs the existing development-host suite with V8 coverage, packages a VSIX, installs it into an isolated VS Code profile, and runs the installed-package editor tests. All four coverage metrics remain subject to `coverage-thresholds.json`.
 
-```
-test/
-├── runTest.ts              # Test runner entry point
-├── suite/
-│   ├── index.ts           # Test suite loader
-│   └── extension.test.ts  # All tests (integration + language features)
-└── mocha.opts            # Mocha configuration
-```
+## Development-host tests
 
-## Test Categories
+`test/suite/**/*.test.ts` tests language features, activation, debugging, profiling, test discovery and documentation. `.vscode-test.js` loads these tests inside VS Code and measures only `out/client/src/**/*.js`; test helpers are excluded from product coverage.
 
-### Integration Tests
-
-- Tests that require VS Code API and extension functionality
-- Located in `test/suite/extension.test.ts`
-- Test extension activation, commands, language features, etc.
-- Includes two test suites:
-  - **Osprey Extension Integration Tests**: Core extension functionality (working)
-  - **Osprey Language Features Tests**: Advanced LSP features (some expected to fail until LSP issues are resolved)
-
-## Running Tests
-
-### Method 1: VS Code Test CLI (Recommended)
-
-```bash
-# Install dependencies first
-npm install
-
-# Run all tests
-npm test
-
-# The tests will:
-# 1. Download VS Code if not present
-# 2. Launch VS Code Extension Host
-# 3. Load the extension
-# 4. Run tests with full VS Code API access
-```
-
-### Method 2: Test Launcher Script
-
-```bash
-# Show all available commands
-npm run test:launcher help
-
-# Run tests
-npm run test:launcher test
-
-# Compile TypeScript
-npm run test:launcher compile
-
-# Clean output
-npm run test:launcher clean
-```
-
-### Method 3: VS Code Debugger
-
-1. Open the extension in VS Code
-2. Go to Run and Debug (Ctrl+Shift+D)
-3. Select "Extension Tests" configuration
-4. Press F5 to run tests with debugging
-
-## Test Configuration
-
-### VS Code Test CLI Configuration (.vscode-test.js)
-
-```javascript
-const { defineConfig } = require("@vscode/test-cli");
-
-module.exports = defineConfig({
-  files: "out/test/suite/**/*.test.js",
-  version: "stable",
-  mocha: {
-    ui: "tdd",
-    timeout: 10000,
-    color: true,
-  },
-  launchArgs: ["--disable-extensions", "--disable-workspace-trust"],
-});
-```
-
-### Debug Configuration (.vscode/launch.json)
-
-Two configurations are available:
-
-- **Run Extension**: Launch extension for manual testing
-- **Extension Tests**: Run tests with debugging support
-
-## Writing Tests
-
-### Basic Test Structure
-
-```typescript
-import * as assert from "assert";
-import * as vscode from "vscode";
-
-suite("My Test Suite", () => {
-  test("My test", async () => {
-    // Test code here
-    assert.strictEqual(1 + 1, 2);
-  });
-});
-```
-
-### Testing Extension Functionality
-
-```typescript
-test("Extension should activate", async () => {
-  const extension = vscode.extensions.getExtension(
-    "christianfindlay.osprey-language-support",
-  );
-  assert.ok(extension);
-  assert.ok(extension.isActive);
-});
-```
-
-### Testing with Files
-
-```typescript
-test("Language detection", async () => {
-  const tempFile = path.join(os.tmpdir(), "test.osp");
-  fs.writeFileSync(tempFile, "fn test() = 42");
-
-  const document = await vscode.workspace.openTextDocument(tempFile);
-  assert.strictEqual(document.languageId, "osprey");
-
-  // Cleanup
-  fs.unlinkSync(tempFile);
-});
-```
-
-### Testing Language Features (Expected Failures)
-
-Some language feature tests are expected to fail until LSP integration issues are resolved:
-
-```typescript
-test("Go to Definition - Function (Expected to fail until LSP fixed)", async () => {
-  // Test implementation with try/catch to handle expected failures
-  try {
-    // Test go to definition functionality
-  } catch (error) {
-    console.log("Go to Definition failed as expected:", error);
-  }
-});
-```
-
-## Test Status
-
-### ✅ Working Tests
-
-- Extension activation
-- Language detection for `.osp` files
-- Command availability
-- Syntax highlighting
-- Configuration access
-- File operations
-- Multiple file handling
-- Basic diagnostics
-
-### ⚠️ Expected Failures (LSP Issues)
-
-- Go to Definition
-- Find All References
-- Advanced hover information
-- Document symbols
-- Some signature help features
-
-## Common Issues
-
-### "Cannot find module 'vscode'" Error
-
-This means tests are running in regular Node.js instead of VS Code Extension Host.
-
-- ✅ **Fixed**: Use `vscode-test` CLI or proper test runner
-- ❌ **Wrong**: Running tests with regular `mocha` command
-
-### Tests Timing Out
-
-- Increase timeout in `.vscode-test.js` or test files
-- Use `await` for async operations
-- Add delays for VS Code operations: `await new Promise(resolve => setTimeout(resolve, 1000))`
-
-### Extension Not Activating
-
-- Check that test files have `.osp` extension
-- Ensure extension is properly configured in `package.json`
-- Use `--disable-extensions` flag to avoid conflicts
-
-## Test Output
-
-Successful test run should show:
-
-```
-✔ Validated version: 1.100.2
-✔ Found existing install in .vscode-test/vscode-darwin-arm64-1.100.2
-Loading development extension at /path/to/extension
-✔ Extension should activate when opening .osp file
-✔ Language should be set to osprey for .osp files
-...
-Integration Tests: 10 passing
-Language Feature Tests: 3 passing, 3 expected failures
-```
-
-## Continuous Integration
-
-For CI/CD pipelines, use:
-
-```bash
-# Install dependencies
+```sh
+cd vscode-extension
 npm ci
-
-# Run tests in headless mode
 npm test
 ```
 
-The VS Code Test CLI automatically handles downloading and running VS Code in CI environments.
+For a focused development run, set `OSPREY_TEST_GREP` to a Mocha grep expression. Do not use this filter for the complete gate.
 
-## References
+```sh
+OSPREY_TEST_GREP='Debugger E2E Workflows' npm test
+```
 
-- [VS Code Extension Testing Guide](https://code.visualstudio.com/api/working-with-extensions/testing-extension)
-- [@vscode/test-cli Documentation](https://www.npmjs.com/package/@vscode/test-cli)
-- [@vscode/test-electron Documentation](https://www.npmjs.com/package/@vscode/test-electron)
+The debugger suites require the real compiler and `lldb-dap`. The development suites prefer the compiler under `target/release`; the Makefile restages that binary into the extension bundle before running them.
+
+## Installed VSIX tests
+
+`test/installed/` runs against an installed package, not the development extension. `scripts/test-installed-vsix.mjs` creates temporary workspace, user-data and extension directories, installs the actual VSIX using VS Code's CLI, and launches an external Mocha runner. VS Code requires a development path to run tests; that path points to an inert test-driver extension containing no Osprey code. The Osprey extension itself is loaded only from the installed VSIX.
+
+The suite proves that the installed extension lives in the isolated extension directory, contains no shipped test files, and bundles a compiler whose SHA-256 matches `target/release/osprey`. The installed activation and warning-fix JavaScript must also match the compiled sources. Compiler-path settings stay empty. A failing `osprey` executable at the front of PATH detects any accidental fallback to a different compiler; Shipwright's deliberate `--version` candidate probes are allowed, but any other invocation fails the test. The temporary profile never changes the user's installed extensions or settings.
+
+To run only this suite after a compiler build:
+
+```sh
+make _vsix_bundle _vsix_package
+cd vscode-extension
+npm run test:vsix
+```
+
+An explicit package can also be supplied:
+
+```sh
+npm run test:vsix -- /absolute/path/to/osprey-0.0.0-dev.vsix
+```
+
+The installed tests open real Default and ML documents, wait for published compiler diagnostics, request code actions, invoke the editor's Quick Fix and fix-all commands, and exercise edits, saves, undo and redo. Assertions pin diagnostic count, code, severity, message, source, range and unused-symbol tags, together with exact resulting source. They verify comments, Unicode, line endings, required signatures and changing documents. The compiler and language server are not mocked.
+
+Cached actions are tested after edits to the target document, an unsaved project sibling, an unopened sibling on disk, and the manifest's source roots. The VSIX checks document versions and contents again when the action runs because the language-client conversion discards the protocol edit's version. It also requests a fresh compiler proof and rechecks the editor snapshots after that request finishes. Required signatures stay intact when project changes alter what inference can prove.
+
+The separate installed suite does not replace or narrow development-host coverage. `make _test_vscode_extension` requires both suites to pass.
+
+## Adding assertions
+
+Extend an existing suite where its fixture naturally fits. Use the real VS Code API for editor behavior and exact expected values for diagnostics and edits. Tests must fail if a provider, compiler, diagnostic or action is missing. Do not catch failures as expected behavior, use permissive count assertions, or add sleeps that conceal missing synchronization.
+
+Compile TypeScript before running a focused test:
+
+```sh
+npm run test-compile
+```
+
+VS Code APIs are available only inside the test host; running these suites with plain Node/Mocha will fail to resolve `vscode`.

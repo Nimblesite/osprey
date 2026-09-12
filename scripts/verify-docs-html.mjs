@@ -357,6 +357,64 @@ for (const theme of THEMES) {
   }
 }
 
+// ── legibility ──────────────────────────────────────────────────────────────
+// Type set too small, and an outline that read as a second column of loose
+// prose, were both reported by a reader against a suite that was all green.
+// Measure them.
+await page.setViewportSize({ width: 1800, height: 1000 });
+for (const theme of THEMES) {
+  await page.goto(url(`plain-${theme}`, 'functions/abs.html'));
+  const layout = await page.evaluate(() => {
+    const px = (el, property) => parseFloat(getComputedStyle(el)[property]);
+    const toc = document.querySelector('.toc');
+    const label = document.querySelector('.on-page');
+    const ruled = (el) => ['Top', 'Right', 'Bottom', 'Left']
+      .some((side) => parseFloat(getComputedStyle(el)[`border${side}Width`]) > 0);
+    const painted = (el) => {
+      const bg = getComputedStyle(el).backgroundColor;
+      return bg !== 'rgba(0, 0, 0, 0)' && bg !== getComputedStyle(document.body).backgroundColor;
+    };
+    return {
+      body: px(document.querySelector('main p:not(.crumb):not(.summary)'), 'fontSize'),
+      nav: px(document.querySelector('#tree a'), 'fontSize'),
+      code: px(document.querySelector('main pre code'), 'fontSize'),
+      outline: toc ? px(toc, 'fontSize') : null,
+      bounded: !!toc && (ruled(toc) || painted(toc) || (!!label && ruled(label))),
+      entries: document.querySelectorAll('.toc a').length,
+      headings: document.querySelectorAll('.article h2[id], .article h3[id]').length,
+      article: document.querySelector('.article').getBoundingClientRect().width,
+      main: document.querySelector('main').getBoundingClientRect().width,
+    };
+  });
+  // 16px is the browser default. Documentation set smaller than every other
+  // page on the web is documentation people squint at.
+  check(`${theme}: body text is at least 16px`, layout.body >= 16, `${layout.body}px`);
+  check(`${theme}: navigation text is at least 14px`, layout.nav >= 14, `${layout.nav}px`);
+  check(`${theme}: code text is at least 14px`, layout.code >= 14, `${layout.code}px`);
+  check(`${theme}: the outline is at least 14px`, layout.outline >= 14, `${layout.outline}px`);
+  // A boundary is what separates a list of links from the article beside it.
+  check(`${theme}: the outline is a bounded panel`, layout.bounded);
+  check(`${theme}: the outline lists every heading`,
+    layout.entries === layout.headings && layout.entries > 0, `${layout.entries}/${layout.headings}`);
+  // Prose run to the full width of a wide monitor is unreadable at any size.
+  // The outline is taken out of the row first: while it sits there it absorbs
+  // the slack, so an article compared against its own container measures the
+  // same whether or not anything caps it.
+  const measure = await page.evaluate(() => {
+    document.querySelector('.toc').remove();
+    const article = document.querySelector('.article');
+    const style = getComputedStyle(article);
+    const ruler = document.createElement('span');
+    ruler.style.cssText = 'position:absolute;visibility:hidden;white-space:pre';
+    ruler.textContent = '0'.repeat(100);
+    article.append(ruler);
+    const em = ruler.getBoundingClientRect().width / 100;
+    ruler.remove();
+    return (article.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)) / em;
+  });
+  check(`${theme}: the article holds a readable measure`, measure <= 90, `${Math.round(measure)} characters`);
+}
+
 // keyboard and document semantics
 await page.goto(url('site-osprey', 'api/index.html'));
 await page.keyboard.press('Tab');

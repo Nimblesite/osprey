@@ -2,7 +2,7 @@
 
 *The Osprey Book* is a practical introduction to programming with Osprey for beginner-to-intermediate developers. It starts with a program you can run in minutes, then builds toward typed data, explicit failure, effects, concurrency, and native or WebAssembly delivery.
 
-The current edition is a **structural scaffold with Chapters 1 and 2 complete**. It establishes the learning journey, teaching contract, source policy, production metadata, visual language, runnable examples for both completed chapters, and a working EPUB/HTML pipeline. Later chapters are mapped as editorial scaffolds rather than presented as finished prose.
+The current edition is a **structural scaffold with Chapters 1–3 complete**. It establishes the learning journey, teaching contract, source policy, production metadata, visual language, runnable examples for all three completed chapters, and a working EPUB/HTML pipeline. Later chapters are mapped as editorial scaffolds rather than presented as finished prose.
 
 ## Reader promise
 
@@ -27,26 +27,20 @@ ML flavor appears later as an **optional alternative**, not a decision the reade
 
 ## Project map
 
-```text
-Book/
-├── book.json                 # canonical reading order and production targets
-├── metadata.yaml             # publication metadata
-├── OUTLINE.md                # detailed chapter architecture
-├── EDITORIAL-BRIEF.md        # audience, voice, teaching pattern, and scope
-├── SOURCE-POLICY.md          # authority, evidence, and accuracy rules
-├── VISUAL-DESIGN-SYSTEM.md   # First Flight adaptation of Midnight Synthetic
-├── GLOSSARY.md               # beginner-facing vocabulary authority
-├── sources.json              # approved source ledger
-├── evidence.json             # chapter claim-readiness ledger
-├── figures.json              # planned and completed visual ledger
-├── manuscript/               # front matter, chapters, and appendices
-├── examples/chapter-*/       # runnable examples from completed chapters
-├── assets/                   # cover, diagrams, illustration, and future captures
-├── styles/                   # EPUB and standalone HTML styling
-└── dist/                     # generated output; never hand-edited
-```
+| Location | Purpose |
+|---|---|
+| `book.json`, `metadata.yaml` | Reading order, chapter status and publication metadata |
+| `OUTLINE.md`, `EDITORIAL-BRIEF.md` | Learning journey, audience and teaching pattern |
+| `SOURCE-POLICY.md`, `sources.json`, `evidence.json` | Authorities and verified chapter claims |
+| `VISUAL-DESIGN-SYSTEM.md`, `figures.json` | Visual rules and asset provenance |
+| `manuscript/`, `GLOSSARY.md` | Chapter prose and shared vocabulary |
+| `examples/chapter-*/` | Runnable examples and recorded output |
+| `assets/`, `styles/` | Figures, illustrations and reading styles |
+| `dist/` | Generated HTML and EPUB; never hand-edited |
 
 ## Production commands
+
+The build uses Pandoc, EPUBCheck, librsvg, ImageMagick, jq and Mermaid CLI. Mermaid CLI needs a compatible Chrome installation; when using an existing browser, set `PUPPETEER_EXECUTABLE_PATH` to its executable. Run these commands from `Book`:
 
 ```sh
 make check          # validate manifests and parse every manuscript file

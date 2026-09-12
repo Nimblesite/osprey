@@ -1,0 +1,6 @@
+flowchart TD
+    accTitle: Read the mismatch through the call
+    accDescr: Open the file named by the diagnostic. Find heading(true), then follow the boolean into a parameter required to be a string by concatenation.
+    A["REPORTED FILE<br/>type-mismatch.osp"] -->|open| B["REPORTED CONFLICT<br/>string and bool"]
+    B -->|inspect the source| C["CALL<br/>heading(true)"]
+    C -->|follow the argument| D["REQUIREMENT<br/>String concatenation needs text"]

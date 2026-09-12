@@ -238,6 +238,7 @@ suite("profile-run command flow", function () {
   suiteTeardown(async () => {
     context.subscriptions.forEach((disposable) => disposable.dispose());
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+    await vscode.commands.executeCommand("workbench.action.closePanel");
   });
 
   test("the real commands refuse politely without an osprey editor", async () => {

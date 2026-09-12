@@ -2135,6 +2135,7 @@ mod tests {
             parameters: vec![Parameter {
                 name: "n".into(),
                 ty: Some(TypeExpr::named("int")),
+                inline_constraint: false,
             }],
             return_type: Some(TypeExpr::named("int")),
             body: Expr::Identifier("n".into()),
@@ -2209,6 +2210,7 @@ mod tests {
         let int_param = |name: &str| Parameter {
             name: name.into(),
             ty: Some(TypeExpr::named("int")),
+            inline_constraint: false,
         };
         let body = Expr::MethodCall {
             target: Box::new(Expr::Integer(1)),

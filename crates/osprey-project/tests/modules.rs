@@ -217,6 +217,7 @@ fn explicit_function_types_must_conform_to_signature() {
         parameters: vec![Parameter {
             name: "value".to_string(),
             ty: Some(TypeExpr::named("string")),
+            inline_constraint: false,
         }],
         return_type: Some(TypeExpr::named("int")),
         effects: Vec::new(),

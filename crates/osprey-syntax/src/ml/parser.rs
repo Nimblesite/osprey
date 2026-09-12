@@ -37,7 +37,7 @@
 //!   concrete authoritative spec of layout-driven token insertion.
 
 use super::cst::{
-    MlArm, MlEffectOp, MlEffectRef, MlExpr, MlExternParam, MlField, MlHandleArm, MlItem,
+    MlArm, MlBinder, MlEffectOp, MlEffectRef, MlExpr, MlExternParam, MlField, MlHandleArm, MlItem,
     MlModuleKind, MlParam, MlPattern, MlSymbolPath, MlType, MlTypeField, MlTypeParam, MlVariance,
     MlVariant,
 };
@@ -49,17 +49,27 @@ use osprey_ast::{Multiplicity, Position, Stage, REPLAYABLE_KEYWORD, STATIC_STAGE
 /// Parse ML-flavor `source` into the ML CST plus any syntax errors. Best-effort:
 /// errors never abort the parse ([FLAVOR-LOWER-CONTRACT]).
 pub(crate) fn parse(source: &str) -> (Vec<MlItem>, Vec<SyntaxError>) {
+    let (items, errors, _) = parse_annotations(source);
+    (items, errors)
+}
+
+pub(super) fn parse_annotations(
+    source: &str,
+) -> (Vec<MlItem>, Vec<SyntaxError>, Vec<crate::AnnotationEdit>) {
     let (tokens, mut errors) = lex(source);
+    let mut annotations = Vec::new();
     let items = {
         let mut parser = Parser {
             toks: &tokens,
             i: 0,
             errors: &mut errors,
+            annotations: &mut annotations,
+            source,
         };
         parser.program()
     };
     super::modules::validate(&items, &mut errors);
-    (items, errors)
+    (items, errors, annotations)
 }
 
 /// The `-` operator lexeme — used as both a binary subtraction operator and the
@@ -96,6 +106,8 @@ pub(super) struct Parser<'t> {
     toks: &'t [Token],
     i: usize,
     errors: &'t mut Vec<SyntaxError>,
+    annotations: &'t mut Vec<crate::AnnotationEdit>,
+    source: &'t str,
 }
 
 impl Parser<'_> {
@@ -776,6 +788,7 @@ impl Parser<'_> {
     /// that follows, with an optional trailing effect row `! Ref(, Ref)*` or
     /// `! [Ref, …]` ([FLAVOR-ML-EFFECT], [FLAVOR-ML-GENERICS]).
     fn signature(&mut self) -> Option<MlItem> {
+        let start = self.i;
         let pos = self.pos();
         let name = self.ident()?;
         let type_params = self.signature_type_params();
@@ -785,6 +798,15 @@ impl Parser<'_> {
         let _ = self.eat(&TokKind::Colon);
         let ty = self.ty();
         let effects = self.effect_row();
+        if type_params.is_empty() && effects.is_empty() {
+            super::annotation_edits::signature(
+                self.source,
+                self.toks,
+                start,
+                self.i,
+                self.annotations,
+            );
+        }
         Some(MlItem::ValueSignature {
             name,
             type_params,
@@ -980,7 +1002,10 @@ impl Parser<'_> {
                 TokKind::Ident(name) => {
                     let name = name.clone();
                     self.advance();
-                    out.push(MlParam::Named(name));
+                    out.push(MlParam::Named(MlBinder {
+                        name,
+                        pos: self.toks.get(self.i.saturating_sub(1)).map(|t| t.pos),
+                    }));
                 }
                 TokKind::LParen if self.at_pattern_param() => {
                     out.push(MlParam::Pattern(self.pattern()));
@@ -1045,12 +1070,34 @@ impl Parser<'_> {
     fn one_param(&mut self) -> MlParam {
         match self.peek() {
             TokKind::Ident(name) => {
+                let binder_pos = self.pos();
                 let name = name.clone();
                 self.advance();
+                let start = self.i;
                 if self.eat(&TokKind::Colon) {
-                    MlParam::Typed(name, self.ty())
+                    let pos = self.pos();
+                    let ty = self.ty();
+                    super::annotation_edits::parameter(
+                        self.source,
+                        self.toks,
+                        start,
+                        self.i,
+                        &name,
+                        self.annotations,
+                    );
+                    MlParam::Typed(
+                        MlBinder {
+                            name,
+                            pos: Some(binder_pos),
+                        },
+                        ty,
+                        pos,
+                    )
                 } else {
-                    MlParam::Named(name)
+                    MlParam::Named(MlBinder {
+                        name,
+                        pos: Some(binder_pos),
+                    })
                 }
             }
             _ => MlParam::Unit,
@@ -1663,7 +1710,10 @@ impl Parser<'_> {
         let operation = self.operation_ident().unwrap_or_default();
         let mut params = Vec::new();
         while let TokKind::Ident(name) = self.peek() {
-            params.push(name.clone());
+            params.push(MlBinder {
+                name: name.clone(),
+                pos: Some(self.pos()),
+            });
             self.advance();
         }
         if !self.eat(&TokKind::FatArrow) {
@@ -1837,8 +1887,12 @@ impl Parser<'_> {
             }
             match self.peek().clone() {
                 TokKind::Ident(name) => {
+                    let pos = self.pos();
                     self.advance();
-                    fields.push(name);
+                    fields.push(MlBinder {
+                        name,
+                        pos: Some(pos),
+                    });
                 }
                 _ => break,
             }
@@ -1892,8 +1946,9 @@ impl Parser<'_> {
                 MlPattern::Bool(false)
             }
             TokKind::Ident(name) => {
+                let pos = self.pos();
                 self.advance();
-                self.ident_pattern(name)
+                self.ident_pattern(name, pos)
             }
             TokKind::LBracket => self.list_pattern(),
             TokKind::LParen => self.group_pattern(),
@@ -1933,7 +1988,7 @@ impl Parser<'_> {
 
     /// A `...name` rest-binder (three `.` tokens then an identifier), consumed
     /// only when it is actually present. Returns the bound name, or `None`.
-    fn rest_binder(&mut self) -> Option<String> {
+    fn rest_binder(&mut self) -> Option<MlBinder> {
         let is_spread = matches!(self.peek(), TokKind::Dot)
             && matches!(self.peek_at(1), TokKind::Dot)
             && matches!(self.peek_at(2), TokKind::Dot);
@@ -1943,12 +1998,16 @@ impl Parser<'_> {
         self.advance();
         self.advance();
         self.advance();
-        self.ident()
+        let pos = self.pos();
+        self.ident().map(|name| MlBinder {
+            name,
+            pos: Some(pos),
+        })
     }
 
     /// `_` → wildcard; `Ctor a b` → constructor binding payload fields; a bare
     /// lowercase name → a binding ([FLAVOR-ML-MATCH]).
-    fn ident_pattern(&mut self, name: String) -> MlPattern {
+    fn ident_pattern(&mut self, name: String, pos: Position) -> MlPattern {
         let name = self.qualified_name_tail(name);
         if name == "_" {
             return MlPattern::Wildcard;
@@ -1956,7 +2015,10 @@ impl Parser<'_> {
         if is_constructor(&name) {
             let mut fields = Vec::new();
             while let TokKind::Ident(field) = self.peek() {
-                fields.push(field.clone());
+                fields.push(MlBinder {
+                    name: field.clone(),
+                    pos: Some(self.pos()),
+                });
                 self.advance();
             }
             if matches!(self.peek(), TokKind::LParen) {
@@ -1967,7 +2029,10 @@ impl Parser<'_> {
             }
             return MlPattern::Ctor { name, fields };
         }
-        MlPattern::Bind(name)
+        MlPattern::Bind(MlBinder {
+            name,
+            pos: Some(pos),
+        })
     }
 
     /// The indented `field = value` lines of a layout record literal.

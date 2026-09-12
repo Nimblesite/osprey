@@ -67,6 +67,9 @@ mod testkit;
 mod testutil;
 mod ty;
 mod unify;
+mod unused;
+#[cfg(test)]
+mod unused_tests;
 mod variance;
 
 pub use builtin_docs::{
@@ -77,9 +80,12 @@ pub use check::{check_program, check_program_exports, erased_var, infer_program}
 pub use error::TypeError;
 pub use info::{CtorLayout, HandlerSite, OpType, PerformSite, ProgramTypes};
 pub use redundant::{
-    redundant_annotations, redundant_annotations_where, TypeWarning, REDUNDANT_ANNOTATION,
+    redundant_annotation_sites, redundant_annotation_sites_where, redundant_annotations,
+    redundant_annotations_where, RedundantAnnotation, RedundantTarget, TypeWarning,
+    REDUNDANT_ANNOTATION,
 };
 pub use ty::{has_type_var, names, render_with_holes, Scheme, Type, VarId, HOLE};
+pub use unused::{unused_symbols, UnusedKind, UnusedSymbol};
 
 #[cfg(test)]
 #[expect(

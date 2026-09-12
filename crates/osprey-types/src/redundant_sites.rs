@@ -50,7 +50,7 @@ pub(crate) struct Site {
     /// Slots derived from this one written annotation.
     pub(crate) members: Vec<usize>,
     /// Source identity shared by fragments of a written signature.
-    source: Option<Position>,
+    pub(crate) source: Option<Position>,
     /// What the annotation is attached to.
     pub(crate) slot: Slot,
     /// The written type, rendered. Redundancy means inference derives exactly

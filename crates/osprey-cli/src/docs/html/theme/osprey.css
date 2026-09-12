@@ -1,5 +1,5 @@
 /* osprey — clean blue. An airy three-column reading layout: navigation, the
-   article on a raised sheet, and a sticky outline in the right margin. */
+   article on a raised sheet, and the outline as a panel in the right margin. */
 :root{
   color-scheme:light;
   --bg:#f5f8fc;--surface:#ffffff;--text:#0f1b2d;--muted:#475569;
@@ -10,26 +10,31 @@
   --font-body:system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
   --font-ui:var(--font-body);--font-head:var(--font-body);
   --font-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  --size-body:16px;--size-h1:36px;--size-h2:23px;--size-display:46px;
-  --side-w:272px;--toc-w:210px;--page-w:1400px;--gap:36px;--pad-x:24px;--pad-y:28px;
-  --radius-sm:8px;--card-min:240px;--card-gap:14px;
+  --size-body:17px;--size-h1:38px;--size-h2:25px;--size-display:50px;
+  --size-ui:15px;--size-toc:14.5px;--size-code:14.5px;
+  --side-w:288px;--toc-w:252px;--measure:880px;--page-w:1560px;--gap:40px;--pad-x:28px;--pad-y:32px;
+  --radius-sm:8px;--card-min:250px;--card-gap:16px;
 }
 
-.brand-mark{color:#fff;background:linear-gradient(135deg,#0a58ca,#1a62d6);border-radius:10px;box-shadow:0 4px 12px rgba(10,88,202,.28)}
+.brand-mark{color:#fff;background:linear-gradient(135deg,#0a58ca,#1a62d6);border-radius:11px;box-shadow:0 4px 12px rgba(10,88,202,.28)}
 .search{border-radius:10px;box-shadow:0 1px 2px rgba(15,27,45,.04)}
 .nav-group>summary:hover{background:var(--accent-soft)}
 
-.article{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:36px 44px;box-shadow:0 1px 2px rgba(15,27,45,.04),0 8px 28px rgba(15,27,45,.06)}
+.article{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:40px 48px;box-shadow:0 1px 2px rgba(15,27,45,.04),0 8px 28px rgba(15,27,45,.06)}
 .article h2{padding-bottom:.35em;border-bottom:1px solid var(--border)}
 .signature{border-left:3px solid var(--accent)}
 
-.hero{margin:0 -44px 32px;padding:32px 44px;background:linear-gradient(160deg,#e8f1fc 0%,#f5f8fc 60%,#ffffff 100%);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.toc{padding:20px 20px 14px;background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:0 1px 2px rgba(15,27,45,.04)}
+.on-page{color:var(--accent)}
+.toc a:hover{color:var(--accent);background:var(--accent-soft);box-shadow:-8px 0 0 var(--accent-soft),8px 0 0 var(--accent-soft)}
+
+.hero{margin:0 -48px 32px;padding:36px 48px;background:linear-gradient(160deg,#e8f1fc 0%,#f5f8fc 60%,#ffffff 100%);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
 .stats span{padding:6px 12px;background:var(--surface);border:1px solid var(--border);border-radius:999px}
-.article .section-head{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.article .section-head{font-size:14px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .page-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;transition:border-color .15s,box-shadow .15s,transform .15s}
 .page-card:hover{border-color:var(--accent);box-shadow:0 6px 20px rgba(10,88,202,.12);transform:translateY(-1px)}
 
 @media (max-width:860px){
-  .article{padding:22px 18px;border-radius:12px}
-  .hero{margin:0 -18px 24px;padding:24px 18px}
+  .article{padding:24px 20px;border-radius:12px}
+  .hero{margin:0 -20px 24px;padding:26px 20px}
 }

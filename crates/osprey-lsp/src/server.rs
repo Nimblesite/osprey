@@ -136,7 +136,9 @@ async fn notify(
         "textDocument/didChange" => did_change(engine, bus, &params).await,
         "textDocument/didClose" => {
             if let Some(uri) = wire::doc_uri(&params) {
-                engine.vfs().close(&DocumentUri::new(uri));
+                let doc = DocumentUri::new(uri);
+                engine.vfs().close(&doc);
+                publish_siblings(engine, bus, &doc).await;
             }
         }
         "$/cancelRequest" => {
@@ -158,7 +160,8 @@ async fn did_open(engine: &OspreyEngine, bus: &lspkit_server::DiagnosticsBus, pa
         &text,
         DocumentVersion::new(wire::version(params)),
     );
-    publish(engine, bus, doc).await;
+    publish(engine, bus, doc.clone()).await;
+    publish_siblings(engine, bus, &doc).await;
 }
 
 async fn did_change(engine: &OspreyEngine, bus: &lspkit_server::DiagnosticsBus, params: &Value) {
@@ -167,7 +170,33 @@ async fn did_change(engine: &OspreyEngine, bus: &lspkit_server::DiagnosticsBus, 
     };
     let doc = DocumentUri::new(uri);
     apply_changes(engine.vfs(), &doc, params);
-    publish(engine, bus, doc).await;
+    publish(engine, bus, doc.clone()).await;
+    publish_siblings(engine, bus, &doc).await;
+}
+
+/// Live sibling changes can make a formerly redundant annotation necessary.
+/// Refresh other open project files on open/change/close, so their diagnostics
+/// agree with the current-program proof used by actions.
+/// Implements [LSP-CODE-ACTIONS-ANNOTATIONS].
+async fn publish_siblings(
+    engine: &OspreyEngine,
+    bus: &lspkit_server::DiagnosticsBus,
+    changed: &DocumentUri,
+) {
+    let root = crate::workspace::file_path(changed.as_str())
+        .and_then(|path| crate::workspace::project_root(&path));
+    let Some((_, sources)) = root.and_then(|root| osprey_project::load(&root).ok()) else {
+        return;
+    };
+    for source in sources {
+        let Ok(uri) = lspkit_server::uri::path_to_uri(&source.path) else {
+            continue;
+        };
+        let doc = DocumentUri::new(uri);
+        if doc != *changed && engine.vfs().version(&doc).is_some() {
+            publish(engine, bus, doc).await;
+        }
+    }
 }
 
 /// Apply a `didChange`. A conformant client sends either a single full-document
@@ -210,6 +239,23 @@ async fn publish(engine: &OspreyEngine, bus: &lspkit_server::DiagnosticsBus, doc
 /// Implements [LSP-CAPABILITIES].
 fn build_dispatcher(engine: &OspreyEngine) -> Dispatcher {
     let dispatcher = Dispatcher::new();
+    register(
+        &dispatcher,
+        engine,
+        "textDocument/codeAction",
+        |e, p, c| async move {
+            let query = Query::CodeActions {
+                uri: DocumentUri::new(wire::doc_uri(&p)?),
+                range: wire::action_range(&p)?,
+                only: wire::action_kinds(&p),
+            };
+            let actions = match answer(&e, query, c).await {
+                Some(Report::CodeActions(actions)) => actions,
+                _ => Vec::new(),
+            };
+            Some(result(wire::code_actions_result(&actions)))
+        },
+    );
     positional(
         &dispatcher,
         engine,
@@ -531,6 +577,116 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn sibling_open_change_and_close_refresh_signature_warnings() {
+        let root =
+            std::env::temp_dir().join(format!("osprey live diagnostics {}", std::process::id()));
+        std::fs::create_dir_all(root.join("src")).expect("fixture directory");
+        std::fs::write(root.join("osprey.toml"), "[project]\nname = \"warnings\"\nsource_roots = [\"src\"]\ndefault_namespace = \"review\"\nentry = \"src/main.ospml\"\n").expect("manifest");
+        let main =
+            "decorate : string -> string\ndecorate text = suffix text\nprint (decorate \"x\")\n";
+        let helper = "suffix text = text + \"!\"\n";
+        std::fs::write(root.join("src/main.ospml"), main).expect("entry");
+        std::fs::write(root.join("src/helper.ospml"), helper).expect("helper");
+        let uri = lspkit_server::uri::path_to_uri(&root.join("src/main.ospml")).expect("URI");
+        let sibling = lspkit_server::uri::path_to_uri(&root.join("src/helper.ospml")).expect("URI");
+        let mut h = Harness::start();
+        let initial = h
+            .open_at(&uri, main)
+            .await
+            .params
+            .expect("initial diagnostics");
+        let expected = initial.get("diagnostics").expect("warning").clone();
+        assert_eq!(expected.as_array().expect("warnings").len(), 1);
+        assert_at(&initial, "/diagnostics/0/code", "redundant-annotation");
+        let opened = h
+            .open_at(&sibling, "suffix text = text\n")
+            .await
+            .params
+            .expect("sibling diagnostics");
+        assert_at(&opened, "/uri", sibling.clone());
+        assert_eq!(opened.get("diagnostics"), Some(&json!([])));
+        assert_refreshed(&mut h, &uri, &json!([])).await;
+        h.notify(
+            "textDocument/didChange",
+            json!({"textDocument":{"uri":sibling,"version":2},"contentChanges":[{"text":helper}]}),
+        )
+        .await;
+        let changed = h.read_message().await.params.expect("sibling diagnostics");
+        assert_at(&changed, "/uri", sibling.clone());
+        assert_refreshed(&mut h, &uri, &expected).await;
+        h.notify("textDocument/didChange", json!({"textDocument":{"uri":sibling,"version":3},"contentChanges":[{"text":"suffix text = text\n"}]})).await;
+        let changed = h.read_message().await.params.expect("sibling diagnostics");
+        assert_at(&changed, "/uri", sibling.clone());
+        assert_eq!(changed.get("diagnostics"), Some(&json!([])));
+        assert_refreshed(&mut h, &uri, &json!([])).await;
+        h.notify("textDocument/didClose", text_doc(&sibling)).await;
+        assert_refreshed(&mut h, &uri, &expected).await;
+        h.shutdown_and_exit().await;
+        std::fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    async fn assert_refreshed(h: &mut Harness, uri: &str, expected: &Value) {
+        let notification =
+            tokio::time::timeout(std::time::Duration::from_secs(3), h.read_message())
+                .await
+                .expect("dependent diagnostics must be republished");
+        let params = notification.params.expect("diagnostics notification");
+        assert_eq!(
+            notification.method.as_deref(),
+            Some("textDocument/publishDiagnostics")
+        );
+        assert_at(&params, "/uri", uri);
+        assert_eq!(params.get("diagnostics"), Some(expected));
+    }
+
+    #[tokio::test]
+    async fn signature_quick_fix_is_versioned_and_removes_only_the_header() {
+        let mut h = Harness::start();
+        let source =
+            "decorate : string -> string\ndecorate text = text + \"!\"\nprint (decorate \"a\")\n";
+        let published = h.open_at(ML_URI, source).await;
+        let params = published.params.expect("diagnostic notification");
+        let diagnostics = params
+            .get("diagnostics")
+            .and_then(Value::as_array)
+            .expect("diagnostics");
+        assert_eq!(diagnostics.len(), 1, "one whole signature: {params}");
+        assert_eq!(
+            diagnostics.first().expect("one warning")["code"],
+            "redundant-annotation"
+        );
+        let response = h
+            .request(
+                80,
+                "textDocument/codeAction",
+                json!({
+                    "textDocument": { "uri": ML_URI },
+                    "range": {"start":{"line":0,"character":4},"end":{"line":0,"character":4}},
+                    "context": {"diagnostics":diagnostics,"only":["quickfix"]}
+                }),
+            )
+            .await;
+        assert!(response.error.is_none(), "quickfix route: {response:?}");
+        let actions = array_result(&response, "signature quickfix");
+        assert_eq!(actions.len(), 1, "one deletion action: {actions:?}");
+        let action = actions.first().expect("one action");
+        assert_at(action, "/title", "Remove redundant type signature");
+        assert_at(action, "/kind", "quickfix");
+        assert_at(action, "/isPreferred", true);
+        assert_at(action, "/edit/documentChanges/0/textDocument/version", 1);
+        assert_at(action, "/edit/documentChanges/0/textDocument/uri", ML_URI);
+        assert_at(action, "/edit/documentChanges/0/edits/0/newText", "");
+        assert_at(
+            action,
+            "/edit/documentChanges/0/edits/0/range/start/line",
+            0,
+        );
+        assert_at(action, "/edit/documentChanges/0/edits/0/range/end/line", 1);
+        assert_eq!(action.get("diagnostics"), params.get("diagnostics"));
+        h.shutdown_and_exit().await;
+    }
+
     fn text_doc(uri: &str) -> Value {
         json!({ "textDocument": { "uri": uri } })
     }
@@ -624,12 +780,13 @@ mod tests {
             "redundant return type annotation on `add`: inference derives `int` without it",
         ]
         .into_iter()
-        .map(|message| json!({
+        .zip([(8, 13), (16, 21), (23, 29)])
+        .map(|(message, (start, end))| json!({
             "code": "redundant-annotation",
             "message": message,
             "range": {
-                "start": { "line": 0, "character": 3 },
-                "end": { "line": 0, "character": 44 }
+                "start": { "line": 0, "character": start },
+                "end": { "line": 0, "character": end }
             },
             "severity": 2,
             "source": "osprey"

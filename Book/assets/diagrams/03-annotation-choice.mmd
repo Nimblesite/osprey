@@ -1,0 +1,6 @@
+flowchart TD
+    accTitle: Ask what the written type contributes
+    accDescr: Keep field types that define Learner. Omit heading parameter and result annotations when inference already proves the same types.
+    A["LEARNER FIELDS<br/>Define the data contract"] -->|declare| B["KEEP THE TYPES<br/>name: string<br/>sessionCount: int"]
+    B ~~~ C["HEADING BODY<br/>Already requires string input"]
+    C -->|infer| D["OMIT REPETITION<br/>Parameter and result types"]

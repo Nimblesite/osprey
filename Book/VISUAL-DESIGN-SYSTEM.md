@@ -111,10 +111,13 @@ Arrows always name what moves. A box labelled only “magic,” “compiler,” 
 |---|---|---|
 | Cover | 1600 × 2560 SVG | 1600 × 2560 PNG |
 | Concept diagram | 1600 × 1000 SVG | 1600 × 1000 PNG |
+| Portrait explanation | Content-sized Mermaid/SVG | PNG at 2× natural dimensions; preserve aspect ratio |
 | Editorial opener | 16:9 raster | 1600 × 900 PNG/WebP |
 | Product capture | Native high-DPI capture | 1600 px-wide crop where practical |
 
 Keep at least 72 px safe margin around deterministic diagram content and 8% around raster focal elements. Publication assets are opaque.
+
+Use portrait explanations for a short sequence that would make labels too small at 320 px width in a landscape frame. Render their SVG and PNG from the same Mermaid source; never stretch a tall diagram into the landscape canvas. The Mermaid configuration supplies 40 logical pixels of outer padding, doubled in the publication PNG.
 
 ## Cover direction
 
@@ -153,4 +156,3 @@ Every ready visual must have:
 - no personal paths, secrets, or private repository names;
 - no fictional product output; and
 - a matching entry in `figures.json`.
-

@@ -114,6 +114,18 @@
       "kind": "executable-evidence",
       "path": "examples/chapter-02/",
       "use": "checked and run Default Flight Log example used by Chapter 2"
+    },
+    {
+      "id": "spec-interpolation",
+      "kind": "repository-specification",
+      "path": "../docs/specs/0006-StringInterpolation.md",
+      "use": "Distinguish formatting values in interpolation from string concatenation requirements"
+    },
+    {
+      "id": "chapter-three-examples",
+      "kind": "executable-evidence",
+      "path": "examples/chapter-03/",
+      "use": "Inferred string heading, independently typed identity calls, Learner fields, and an exact compiler-rejection diagnostic"
     }
   ]
 }

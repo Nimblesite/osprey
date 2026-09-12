@@ -208,8 +208,8 @@ fn positional_construction(head: &MlExpr, args: &[MlExpr]) -> Option<Expr> {
 fn collect_param_names(params: &[MlParam], out: &mut HashSet<String>) {
     for param in params {
         match param {
-            MlParam::Named(name) | MlParam::Typed(name, _) => {
-                let _ = out.insert(name.clone());
+            MlParam::Named(name) | MlParam::Typed(name, _, _) => {
+                let _ = out.insert(name.name.clone());
             }
             MlParam::Unit | MlParam::Pattern(_) => {}
         }
@@ -395,7 +395,7 @@ impl ItemLower {
             MlItem::Expr { value, pos } => {
                 self.pending = None;
                 self.out.push(Stmt::Expr {
-                    value: lower_expr(value),
+                    value: super::binding_ranges::with_expression_owner(pos, || lower_expr(value)),
                     doc: self.pending_doc.take(),
                     position: Some(pos),
                 });
@@ -687,7 +687,17 @@ pub(super) fn lower_binding(
     pos: Position,
     sig: Option<MlSig>,
 ) -> Stmt {
-    let body = in_scope(params_scope(&params), move || lower_expr(body));
+    if params.is_empty() {
+        super::binding_ranges::variable(&name, pos);
+    }
+    let owner = if uncurried || params.len() <= 1 {
+        pos
+    } else {
+        curry_position(pos, params.len().saturating_sub(2))
+    };
+    let body = super::binding_ranges::with_owner(owner, || {
+        in_scope(params_scope(&params), move || lower_expr(body))
+    });
     // Split the paired signature into its type params, declared type and
     // effect row.
     let (type_params, ty, effects, signature_position) = match sig {
@@ -706,7 +716,7 @@ pub(super) fn lower_binding(
         return Stmt::Let {
             name,
             mutable,
-            ty: ty.and_then(type_expr),
+            ty: signature_annotation(ty.and_then(type_expr), signature_position),
             value: body,
             doc: None,
             position: Some(pos),
@@ -739,16 +749,16 @@ fn inline_param_constraint(
     signed: bool,
     body: Expr,
 ) -> Expr {
-    let (true, Some(MlParam::Typed(name, ty))) = (signed, param) else {
+    let (true, Some(MlParam::Typed(name, ty, annotation_pos))) = (signed, param) else {
         return body;
     };
-    let name = parameter_name(name.clone(), index);
+    let name = parameter_name(name.name.clone(), index);
     Expr::Block {
         statements: vec![Stmt::Let {
             value: Expr::Identifier(name.clone()),
             name,
             mutable: false,
-            ty: type_expr(ty),
+            ty: signature_annotation(type_expr(ty), Some(*annotation_pos)),
             doc: None,
             position: Some(pos),
         }],
@@ -888,7 +898,7 @@ fn build_function_flat(
     let parameters = params
         .into_iter()
         .enumerate()
-        .filter_map(|(i, p)| lower_param(p, i, spine.get(i), signature_position))
+        .filter_map(|(i, p)| lower_param(p, i, spine.get(i), signature_position, pos))
         .collect();
     (
         parameters,
@@ -982,7 +992,7 @@ fn build_function(
     // `()` (unit marker) or no parameter binds nothing.
     let parameters = first
         .clone()
-        .and_then(|p| lower_param(p, 0, spine.first(), signature_position))
+        .and_then(|p| lower_param(p, 0, spine.first(), signature_position, pos))
         .into_iter()
         .collect();
     let tail_spine = spine.get(1..).unwrap_or(&[]);
@@ -1024,9 +1034,15 @@ fn curry_params(
             acc,
         );
         acc = Expr::Lambda {
-            parameters: lower_param(param, i, spine.get(i), signature_position)
-                .into_iter()
-                .collect(),
+            parameters: lower_param(
+                param,
+                i,
+                spine.get(i),
+                signature_position,
+                curry_position(pos, i),
+            )
+            .into_iter()
+            .collect(),
             return_type: signature_annotation(
                 arrow_of(spine.get(i + 1..).unwrap_or(&[])),
                 signature_position,
@@ -1060,16 +1076,18 @@ fn lower_param(
     index: usize,
     inferred: Option<&MlType>,
     signature_position: Option<Position>,
+    owner: Position,
 ) -> Option<Parameter> {
+    let inline_constraint = signature_position.is_some() && matches!(&param, MlParam::Typed(..));
     let (name, ty) = match param {
         MlParam::Named(name) => (
-            name,
+            super::binding_ranges::parameter(name, owner),
             signature_annotation(inferred.and_then(type_expr), signature_position),
         ),
-        MlParam::Typed(name, ty) => (
-            name,
+        MlParam::Typed(name, ty, annotation_pos) => (
+            super::binding_ranges::parameter(name, owner),
             inferred.map_or_else(
-                || type_expr(&ty),
+                || signature_annotation(type_expr(&ty), Some(annotation_pos)),
                 |written| signature_annotation(type_expr(written), signature_position),
             ),
         ),
@@ -1080,7 +1098,11 @@ fn lower_param(
         MlParam::Pattern(_) => (osprey_ast::clause_param_name(index), None),
     };
     let name = parameter_name(name, index);
-    Some(Parameter { name, ty })
+    Some(Parameter {
+        name,
+        ty,
+        inline_constraint,
+    })
 }
 
 fn parameter_name(name: String, index: usize) -> String {
@@ -1108,11 +1130,11 @@ fn curry_position(pos: Position, index: usize) -> Position {
 /// Convert a surface parameter list to canonical parameters for a FLAT lambda
 /// (the uncurried `\(x, y) =>` head): named/typed params become real parameters,
 /// the unit marker `()` contributes none.
-fn flat_params(params: Vec<MlParam>) -> Vec<Parameter> {
+fn flat_params(params: Vec<MlParam>, pos: Position) -> Vec<Parameter> {
     params
         .into_iter()
         .enumerate()
-        .filter_map(|(i, p)| lower_param(p, i, None, None))
+        .filter_map(|(i, p)| lower_param(p, i, None, None, pos))
         .collect()
 }
 
@@ -1338,12 +1360,19 @@ fn lower_record(name: String, type_args: &[MlType], fields: Vec<MlField>) -> Exp
 }
 
 fn lower_lambda_node(params: Vec<MlParam>, uncurried: bool, body: MlExpr, pos: Position) -> Expr {
-    let body = in_scope(params_scope(&params), move || lower_expr(body));
+    let owner = if uncurried || params.iter().all(|p| matches!(p, MlParam::Unit)) {
+        pos
+    } else {
+        curry_position(pos, params.len().saturating_sub(1))
+    };
+    let body = super::binding_ranges::with_owner(owner, || {
+        in_scope(params_scope(&params), move || lower_expr(body))
+    });
     if !uncurried {
         return lower_lambda(params, body, pos);
     }
     Expr::Lambda {
-        parameters: flat_params(params),
+        parameters: flat_params(params, pos),
         return_type: None,
         body: Box::new(body),
         position: Some(pos),
@@ -1355,8 +1384,12 @@ fn lower_lambda_node(params: Vec<MlParam>, uncurried: bool, body: MlExpr, pos: P
 fn lower_handle_arm(arm: MlHandleArm) -> HandlerArm {
     HandlerArm {
         operation: arm.operation,
-        params: arm.params,
-        body: lower_expr(arm.body),
+        params: arm
+            .params
+            .into_iter()
+            .map(|binder| super::binding_ranges::handler(binder, arm.pos))
+            .collect(),
+        body: super::binding_ranges::with_owner(arm.pos, || lower_expr(arm.body)),
         position: Some(arm.pos),
     }
 }
@@ -1411,9 +1444,13 @@ fn lower_pattern(pattern: MlPattern) -> Pattern {
         MlPattern::Int(n) => Pattern::Literal(Box::new(Expr::Integer(n))),
         MlPattern::Str(raw) => Pattern::Literal(Box::new(lower_string(&raw, None))),
         MlPattern::Bool(b) => Pattern::Literal(Box::new(Expr::Bool(b))),
-        MlPattern::Bind(name) => Pattern::Binding(name),
+        MlPattern::Bind(name) => Pattern::Binding(super::binding_ranges::pattern(name)),
         MlPattern::Structural { fields, open } => Pattern::Structural {
-            fields: fields.into_iter().map(|f| (f.clone(), f)).collect(),
+            fields: fields
+                .into_iter()
+                .map(super::binding_ranges::pattern)
+                .map(|f| (f.clone(), f))
+                .collect(),
             open,
         },
         // The parser guarantees every slot is a binder or `_`; `_` binds
@@ -1422,15 +1459,21 @@ fn lower_pattern(pattern: MlPattern) -> Pattern {
             elements
                 .into_iter()
                 .map(|p| match p {
-                    MlPattern::Bind(name) => name,
+                    MlPattern::Bind(name) => super::binding_ranges::pattern(name),
                     _ => String::new(),
                 })
                 .collect(),
         ),
-        MlPattern::Ctor { name, fields } => crate::desugar::ctor_pattern(name, fields),
+        MlPattern::Ctor { name, fields } => crate::desugar::ctor_pattern(
+            name,
+            fields
+                .into_iter()
+                .map(super::binding_ranges::pattern)
+                .collect(),
+        ),
         MlPattern::List { elements, rest } => Pattern::List {
             elements: elements.into_iter().map(lower_pattern).collect(),
-            rest,
+            rest: rest.map(super::binding_ranges::pattern),
         },
     }
 }
@@ -1520,11 +1563,12 @@ fn lower_application(func: MlExpr, arg: MlExpr) -> Expr {
 /// reusing the Default frontend's escape/`${…}` handling with an ML fragment
 /// parser ([FLAVOR-FRONTEND]).
 fn lower_string(raw: &str, pos: Option<Position>) -> Expr {
+    super::binding_ranges::literal(pos);
     if raw.contains("${") {
         Expr::InterpolatedStr(lower_interpolation(
-            raw,
+            &format!("\"{raw}\""),
             pos,
-            fragment_prefix(),
+            crate::Flavor::Ml,
             parse_fragment,
         ))
     } else {
@@ -1532,22 +1576,15 @@ fn lower_string(raw: &str, pos: Option<Position>) -> Expr {
     }
 }
 
-/// The binding `parse_fragment` wraps a `${…}` fragment in. Its length is what
-/// [`lower_interpolation`] subtracts to map the mini-program's line-1 columns
-/// back onto the real source, so the two must come from this one string.
-const FRAGMENT_BINDING: &str = "__frag__ = ";
-
-/// [`FRAGMENT_BINDING`]'s width, as the column offset a rebase needs.
-fn fragment_prefix() -> u32 {
-    u32::try_from(FRAGMENT_BINDING.len()).unwrap_or(0)
-}
-
 /// Parse a `${…}` fragment as an ML expression (`${toString id}` is ML
 /// application), threading the flavor through interpolation re-entry.
 fn parse_fragment(frag: &str) -> Expr {
-    let (items, _) = super::parser::parse(&format!("{FRAGMENT_BINDING}{frag}\n"));
+    let (items, _) = super::parser::parse(&format!(
+        "{}{frag}\n",
+        crate::strings::fragment_binding(crate::Flavor::Ml)
+    ));
     match items.into_iter().next() {
-        Some(MlItem::Binding { body, .. }) => lower_expr(body),
+        Some(MlItem::Binding { body, .. }) => super::binding_ranges::isolated(|| lower_expr(body)),
         _ => Expr::Identifier(frag.trim().to_owned()),
     }
 }

@@ -1,0 +1,1 @@
+examples/chapter-03/failscompilation/type-mismatch.osp: type mismatch: cannot unify string with bool

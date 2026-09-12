@@ -51,6 +51,7 @@ pub(crate) fn lex(source: &str) -> (Vec<Token>, Vec<SyntaxError>) {
 struct Scanner {
     chars: Vec<char>,
     i: usize,
+    byte_offset: usize,
     line: u32,
     col: u32,
     errors: Vec<SyntaxError>,
@@ -61,6 +62,7 @@ impl Scanner {
         Scanner {
             chars: source.chars().collect(),
             i: 0,
+            byte_offset: 0,
             line: 1,
             col: 0,
             errors: Vec::new(),
@@ -81,6 +83,7 @@ impl Scanner {
     fn bump(&mut self) -> Option<char> {
         let c = self.chars.get(self.i).copied()?;
         self.i += 1;
+        self.byte_offset += c.len_utf8();
         if c == '\n' {
             self.line += 1;
             self.col = 0;
@@ -180,12 +183,14 @@ impl Scanner {
     /// cursor untouched when what follows is not another one.
     fn skip_to_next_inner_doc_line(&mut self) {
         let mark = self.i;
+        let byte_mark = self.byte_offset;
         let (line, col) = (self.line, self.col);
         while matches!(self.peek(0), Some(' ' | '\t' | '\r' | '\n')) {
             let _ = self.bump();
         }
         if !self.at_inner_doc_comment() {
             self.i = mark;
+            self.byte_offset = byte_mark;
             self.line = line;
             self.col = col;
         }
@@ -274,8 +279,14 @@ impl Scanner {
             // one. Meaningless for the very first token (nothing precedes it).
             let glued = self.i == before && !out.is_empty();
             let pos = self.pos();
+            let start = self.byte_offset;
             if let Some(kind) = self.scan_token(pos) {
-                out.push(Token { kind, pos, glued });
+                out.push(Token {
+                    kind,
+                    pos,
+                    glued,
+                    range: start..self.byte_offset,
+                });
             }
         }
         (out, std::mem::take(&mut self.errors))
@@ -634,6 +645,7 @@ fn layout_tok(kind: TokKind, pos: Position) -> Token {
         kind,
         pos,
         glued: false,
+        range: 0..0,
     }
 }
 

@@ -557,3 +557,143 @@ fn the_reported_set_is_deletable_as_a_whole_not_only_one_at_a_time() {
         "the set must be one the reader can delete whole"
     );
 }
+
+#[test]
+fn source_metadata_matches_exact_annotations_without_message_parsing() {
+    use crate::{redundant_annotation_sites, RedundantTarget};
+    use osprey_syntax::{annotation_edits, AnnotationTarget};
+    for (flavor, source, count) in [
+        (
+            Flavor::Default,
+            "fn greet(name: string) -> string = \"hi \" + name\n",
+            2,
+        ),
+        (
+            Flavor::Ml,
+            "greet : string -> string\ngreet (name : string) = \"hi \" + name\n",
+            2,
+        ),
+        (Flavor::Ml, "greeting : string\ngreeting = \"hi\"\n", 1),
+        (Flavor::Ml, "make : Unit -> string\nmake () = \"hi\"\n", 1),
+    ] {
+        let parsed = parse_program_with_flavor(source, flavor);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let sites = redundant_annotation_sites(&parsed.program);
+        assert_eq!(sites.len(), count, "{source}");
+        assert_eq!(
+            sites.iter().map(|s| s.warning.clone()).collect::<Vec<_>>(),
+            redundant_annotations(&parsed.program)
+        );
+        let ranges = annotation_edits(source, flavor);
+        let mut edits = Vec::new();
+        for site in sites {
+            let found: Vec<_> = ranges
+                .iter()
+                .filter(|range| {
+                    if let Some(position) = site.annotation_position {
+                        return position == range.position;
+                    }
+                    site.warning.position == Some(range.owner_position)
+                        && match (&site.target, &range.target) {
+                            (
+                                RedundantTarget::Parameter {
+                                    name: left,
+                                    index: a,
+                                },
+                                AnnotationTarget::Parameter {
+                                    name: right,
+                                    index: b,
+                                },
+                            ) => left == right && a == b,
+                            (RedundantTarget::Return, AnnotationTarget::Return)
+                            | (RedundantTarget::Binding, AnnotationTarget::Binding) => true,
+                            _ => false,
+                        }
+                })
+                .collect();
+            assert_eq!(found.len(), 1, "ambiguous source site {site:?} in {source}");
+            if let Some(found) = found.first() {
+                edits.extend(found.edits.clone());
+            }
+        }
+        edits.sort_by_key(|edit| std::cmp::Reverse(edit.range.start));
+        let mut erased = source.to_owned();
+        for edit in edits {
+            erased.replace_range(edit.range, &edit.new_text);
+        }
+        let candidate = parse_program_with_flavor(&erased, flavor);
+        assert!(
+            candidate.errors.is_empty(),
+            "{erased}\n{:?}",
+            candidate.errors
+        );
+        assert!(
+            crate::check_program(&candidate.program).is_empty(),
+            "{erased}"
+        );
+        assert!(
+            redundant_annotations(&candidate.program).is_empty(),
+            "{erased}"
+        );
+    }
+}
+
+#[test]
+fn interpolated_annotation_provenance_cannot_select_an_outer_type() {
+    use crate::{redundant_annotation_sites, RedundantTarget};
+    use osprey_syntax::annotation_edits;
+    let fragment = "(fn(inner: (int) -> int) => inner(1) == 1)(fn(x) => x)";
+    let Some(type_offset) = fragment.find("(int)") else {
+        panic!("fixture type missing");
+    };
+    let collision_column = "let __frag__ = ".len() + type_offset;
+    let outer = format!(
+        "let outer:{}(int) -> int = fn(x) => x\n",
+        " ".repeat(collision_column - "let outer:".len())
+    );
+    let source = format!("{outer}let rendered = \"\\n🦅 ${{{fragment}}}\"\n");
+    let parsed = parse_program_with_flavor(&source, Flavor::Default);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    assert!(crate::check_program(&parsed.program).is_empty());
+    let sites: Vec<_> = redundant_annotation_sites(&parsed.program).into_iter().filter(|site| {
+        matches!(&site.target, RedundantTarget::Parameter { name, .. } if name == "inner")
+    }).collect();
+    let [site] = sites.as_slice() else {
+        panic!("expected inner redundancy: {sites:?}");
+    };
+    let Some(position) = site.annotation_position else {
+        panic!("missing fragment provenance");
+    };
+    assert_eq!(
+        position.line, 2,
+        "fragment-local line 1 must not collide with outer annotation"
+    );
+    let candidates: Vec<_> = annotation_edits(&source, Flavor::Default)
+        .into_iter()
+        .filter(|candidate| candidate.position == position)
+        .collect();
+    let [candidate] = candidates.as_slice() else {
+        panic!("ambiguous source edit: {candidates:?}");
+    };
+    assert_eq!(
+        source.get(candidate.highlight.clone()),
+        Some(": (int) -> int")
+    );
+    assert!(candidate.highlight.start >= outer.len());
+    let mut edits = candidate.edits.clone();
+    edits.sort_by_key(|edit| std::cmp::Reverse(edit.range.start));
+    let mut erased = source;
+    for edit in edits {
+        erased.replace_range(edit.range, &edit.new_text);
+    }
+    assert!(
+        erased.starts_with(&outer),
+        "unrelated outer annotation was changed"
+    );
+    let after = parse_program_with_flavor(&erased, Flavor::Default);
+    assert!(after.errors.is_empty(), "{erased}\n{:?}", after.errors);
+    assert!(crate::check_program(&after.program).is_empty(), "{erased}");
+    assert!(redundant_annotation_sites(&after.program).iter().all(
+        |site| !matches!(&site.target, RedundantTarget::Parameter { name, .. } if name == "inner")
+    ));
+}

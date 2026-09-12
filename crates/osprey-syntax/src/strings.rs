@@ -1,218 +1,254 @@
-//! Flavor-neutral string handling shared by every frontend: `${…}`
-//! interpolation splitting and backslash-escape resolution. These belong to no
-//! single flavor — both the Default (brace) and ML (layout) frontends call them
-//! with their own fragment parser, so the scanning and escape rules live here in
-//! exactly one place rather than being reached out of either flavor's folder
-//! ([FLAVOR-FRONTEND], [STRING-INTERPOLATION]).
+//! Shared string decoding, interpolation splitting, and exact source mapping.
+//! Implements [STRING-INTERPOLATION] and [TYPE-WARNINGS-UNUSED].
 
-use osprey_ast::{mutate::children_mut, Expr, InterpolatedPart, Position, Stmt};
+use crate::Flavor;
+use osprey_ast::{Expr, InterpolatedPart, Position};
+use std::ops::Range;
 
-/// Split a `"text ${expr} more"` literal into [`InterpolatedPart`]s, parsing
-/// each embedded expression with `parse_frag` (the active flavor's fragment
-/// parser). Shared by the Default and ML frontends so the `${…}`-scanning and
-/// escape handling exist in exactly one place. [STRING-INTERPOLATION]
-///
-/// `base` is where the literal's own first character sits in the enclosing
-/// file, and `prefix` how many characters `parse_frag` prepends on the
-/// fragment's first line; together they let each parsed fragment be rebased off
-/// the synthetic mini-program it was parsed in and onto the real source. Pass
-/// `base: None` where no position is known — the fragment then keeps its
-/// mini-program positions, which is the pre-rebase behaviour.
+#[path = "strings_positions.rs"]
+mod positions;
+
+/// The synthetic binding used by each flavor's interpolation parser.
+pub(crate) const fn fragment_binding(flavor: Flavor) -> &'static str {
+    match flavor {
+        Flavor::Default => "let __frag__ = ",
+        Flavor::Ml => "__frag__ = ",
+    }
+}
+
+struct Decoded {
+    text: String,
+    /// Each decoded byte boundary maps to a byte boundary in the raw literal.
+    offsets: Vec<usize>,
+}
+
+/// One decoded expression and its exact spelling inside the enclosing token.
+pub(crate) struct FragmentMap<'a> {
+    pub(crate) text: String,
+    raw: &'a str,
+    offsets: Vec<usize>,
+    base: Position,
+}
+
+impl FragmentMap<'_> {
+    /// Map a span in the synthetic prefixed program to raw-token byte offsets.
+    pub(crate) fn map_range(&self, range: Range<usize>, prefix: usize) -> Option<Range<usize>> {
+        let start = range.start.checked_sub(prefix)?;
+        let end = range.end.checked_sub(prefix)?;
+        Some(*self.offsets.get(start)?..*self.offsets.get(end)?)
+    }
+
+    /// Map frontend coordinates, including their flavor's column convention.
+    pub(crate) fn map_position(
+        &self,
+        inner: Position,
+        prefix: usize,
+        flavor: Flavor,
+    ) -> Option<Position> {
+        let column = usize::try_from(inner.column)
+            .ok()?
+            .checked_sub(if inner.line == 1 { prefix } else { 0 })?;
+        let line = usize::try_from(inner.line.checked_sub(1)?).ok()?;
+        let start = line_start(&self.text, line)?;
+        let text = self.text.get(start..)?.split('\n').next()?;
+        let offset = start + column_byte(text, column, flavor)?;
+        let raw = self.raw.get(..*self.offsets.get(offset)?)?;
+        Some(advance_position(self.base, raw, flavor))
+    }
+}
+
+fn line_start(text: &str, line: usize) -> Option<usize> {
+    if line == 0 {
+        return Some(0);
+    }
+    text.match_indices('\n')
+        .nth(line - 1)
+        .map(|(offset, _)| offset + 1)
+}
+
+fn column_byte(text: &str, column: usize, flavor: Flavor) -> Option<usize> {
+    match flavor {
+        Flavor::Default => text.is_char_boundary(column).then_some(column),
+        Flavor::Ml => text
+            .char_indices()
+            .map(|(offset, _)| offset)
+            .chain(std::iter::once(text.len()))
+            .nth(column),
+    }
+}
+
+fn advance_position(base: Position, text: &str, flavor: Flavor) -> Position {
+    let lines = text.bytes().filter(|byte| *byte == b'\n').count();
+    let tail = text.rsplit('\n').next().unwrap_or_default();
+    let width = match flavor {
+        Flavor::Default => tail.len(),
+        Flavor::Ml => tail.chars().count(),
+    };
+    Position {
+        line: base
+            .line
+            .saturating_add(u32::try_from(lines).unwrap_or(u32::MAX)),
+        column: if lines == 0 { base.column } else { 0 }
+            .saturating_add(u32::try_from(width).unwrap_or(u32::MAX)),
+    }
+}
+
+/// Actual interpolation fragments, with one shared decoded/raw mapping used
+/// by compiler positions, warning highlights, and source edits.
+pub(crate) fn fragments(raw: &str, base: Position) -> Vec<FragmentMap<'_>> {
+    let decoded = decode(raw);
+    interpolation_ranges(&decoded.text)
+        .into_iter()
+        .filter_map(|range| fragment_map(raw, &decoded, range, base))
+        .collect()
+}
+
+fn fragment_map<'a>(
+    raw: &'a str,
+    decoded: &Decoded,
+    range: Range<usize>,
+    base: Position,
+) -> Option<FragmentMap<'a>> {
+    Some(FragmentMap {
+        text: decoded.text.get(range.clone())?.to_owned(),
+        raw,
+        offsets: decoded.offsets.get(range.start..=range.end)?.to_vec(),
+        base,
+    })
+}
+
+/// Split text and expressions without losing source bytes to escape decoding.
+/// Both frontends pass the complete literal, including its surrounding quotes.
 pub(crate) fn lower_interpolation(
     raw: &str,
     base: Option<Position>,
-    prefix: u32,
+    flavor: Flavor,
     parse_frag: impl Fn(&str) -> Expr,
 ) -> Vec<InterpolatedPart> {
-    let inner = unquote(raw);
-    // `unquote` drops a matched `"…"` pair, so a Default token's contents start
-    // one character into the literal; an ML raw arrives already unquoted.
-    let quote = u32::from(inner.len() < raw.len() && raw.starts_with('"'));
-    let bytes = inner.as_bytes();
+    let decoded = decode(raw);
     let mut parts = Vec::new();
-    let mut text_start = 0usize;
-    let mut i = 0usize;
+    let mut start = 0;
+    for range in interpolation_ranges(&decoded.text) {
+        text_part(
+            &decoded.text,
+            start..range.start.saturating_sub(2),
+            &mut parts,
+        );
+        if let Some(fragment) = fragment_map(raw, &decoded, range.clone(), base.unwrap_or_default())
+        {
+            let mut expression = parse_frag(&fragment.text);
+            if base.is_some() {
+                positions::rebase_expr(&mut expression, &fragment, flavor);
+            }
+            parts.push(InterpolatedPart::Expr(expression));
+        }
+        start = range.end.saturating_add(1);
+    }
+    text_part(&decoded.text, start..decoded.text.len(), &mut parts);
+    parts
+}
+
+fn text_part(text: &str, range: Range<usize>, parts: &mut Vec<InterpolatedPart>) {
+    if let Some(text) = text.get(range).filter(|text| !text.is_empty()) {
+        parts.push(InterpolatedPart::Text(text.to_owned()));
+    }
+}
+
+fn interpolation_ranges(text: &str) -> Vec<Range<usize>> {
+    let bytes = text.as_bytes();
+    let mut ranges = Vec::new();
+    let mut i = 0;
     while i < bytes.len() {
         if bytes.get(i) == Some(&b'$') && bytes.get(i + 1) == Some(&b'{') {
-            if i > text_start {
-                if let Some(text) = inner.get(text_start..i) {
-                    parts.push(InterpolatedPart::Text(text.to_string()));
-                }
-            }
-            // Find the `}` that closes this `${`, honouring nested braces so
-            // `${match x { a => 1 b => 2 }}` captures the whole match.
-            let mut depth = 1i32;
-            let mut j = i + 2;
-            while let Some(byte) = bytes.get(j) {
-                match byte {
-                    b'{' => depth += 1,
-                    b'}' => {
-                        depth -= 1;
-                        if depth == 0 {
-                            break;
-                        }
-                    }
-                    _ => {}
-                }
-                j += 1;
-            }
-            if let Some(frag) = inner.get(i + 2..j) {
-                let mut expr = parse_frag(frag);
-                if let Some(base) = base {
-                    rebase_expr(&mut expr, Rebase::at(base, quote, i, prefix));
-                }
-                parts.push(InterpolatedPart::Expr(expr));
-            }
-            i = j + 1;
-            text_start = i;
+            let end = fragment_end(bytes, i + 2);
+            ranges.push(i + 2..end);
+            i = end.saturating_add(1);
         } else {
             i += 1;
         }
     }
-    if let Some(text) = inner.get(text_start..) {
-        if !text.is_empty() {
-            parts.push(InterpolatedPart::Text(text.to_string()));
-        }
-    }
-    parts
+    ranges
 }
 
-/// How to map a position inside the synthetic single-binding program a fragment
-/// parser builds back onto the enclosing file.
-///
-/// A `${…}` fragment is re-parsed as its own mini-program (`let __frag__ = …` /
-/// `__frag__ = …`), so every position inside it is relative to THAT text: line
-/// 1, column shifted by the binding prefix. Left unmapped, two fragments whose
-/// lambdas sit at the same fragment column land on the SAME key in the
-/// position-indexed tables inference publishes (`lambdas`, `lets`, `lists`,
-/// `performs`, `handler_ops`) and the later one silently replaces the earlier.
-/// That is how `"${feeding(9, fn() => "done")}"` beside
-/// `"${feeding(3, fn() => perform Feed.next())}"` made the STRING call render
-/// its pointer through `%lld`: both lambdas resolved to the `int` type, exit
-/// code zero, a different number every run. [STRING-INTERPOLATION]
-#[derive(Clone, Copy)]
-struct Rebase {
-    /// Where the fragment's first character sits in the real source.
-    base: Position,
-    /// Characters the fragment parser prepends before it on line 1.
-    prefix: u32,
-}
-
-impl Rebase {
-    /// The mapping for the fragment whose `${` opened at byte `offset` of the
-    /// unquoted literal text.
-    fn at(literal: Position, quote: u32, offset: usize, prefix: u32) -> Self {
-        // `+ 2` steps past the `${` itself. A `\n`-style escape earlier in the
-        // literal shortens the unquoted text, so a fragment behind one lands a
-        // column or two early — still unique per fragment, which is what the
-        // published tables key on.
-        let column = literal.column + quote + u32::try_from(offset).unwrap_or(0) + 2;
-        Self {
-            base: Position {
-                line: literal.line,
-                column,
-            },
-            prefix,
-        }
-    }
-
-    /// Where `inner`, a position in the mini-program, really sits.
-    fn map(self, inner: Position) -> Position {
-        if inner.line <= 1 {
-            return Position {
-                line: self.base.line,
-                column: self.base.column + inner.column.saturating_sub(self.prefix),
-            };
-        }
-        // A fragment spanning lines carries its own columns past the first: the
-        // prefix only displaces line 1.
-        Position {
-            line: self.base.line + inner.line - 1,
-            column: inner.column,
-        }
-    }
-}
-
-fn rebase_slot(slot: &mut Option<Position>, rebase: Rebase) {
-    if let Some(inner) = *slot {
-        *slot = Some(rebase.map(inner));
-    }
-}
-
-/// Rebase every published position in a freshly parsed fragment, then recurse.
-fn rebase_expr(expr: &mut Expr, rebase: Rebase) {
-    match expr {
-        Expr::List(_, position)
-        | Expr::TypeApply { position, .. }
-        | Expr::Lambda { position, .. }
-        | Expr::Perform { position, .. }
-        | Expr::Handler { position, .. } => rebase_slot(position, rebase),
-        Expr::Block { statements, .. } => {
-            for statement in statements.iter_mut() {
-                rebase_stmt(statement, rebase);
+fn fragment_end(bytes: &[u8], start: usize) -> usize {
+    let mut depth = 1usize;
+    let mut index = start;
+    while let Some(byte) = bytes.get(index) {
+        match byte {
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    break;
+                }
             }
+            _ => {}
         }
-        _ => {}
+        index += 1;
     }
-    children_mut(expr, &mut |child| rebase_expr(child, rebase));
+    index
 }
 
-fn rebase_stmt(statement: &mut Stmt, rebase: Rebase) {
-    match statement {
-        Stmt::Namespace { position, .. }
-        | Stmt::Let { position, .. }
-        | Stmt::Assignment { position, .. }
-        | Stmt::Function { position, .. }
-        | Stmt::Extern { position, .. }
-        | Stmt::Type { position, .. }
-        | Stmt::Effect { position, .. }
-        | Stmt::Module { position, .. }
-        | Stmt::Signature { position, .. }
-        | Stmt::Expr { position, .. } => rebase_slot(position, rebase),
-        Stmt::Import(_) => {}
-    }
-}
-
-/// Strip surrounding quotes and resolve backslash escapes in one pass (so a
-/// literal `\\` can never be re-interpreted): `\n` `\r` `\t` newline/CR/tab,
-/// `\e` the ANSI ESC (0x1B, used by the terminal-color helpers), `\0` NUL,
-/// `\"` and `\\` the literals. An unrecognised escape is kept verbatim.
-pub(crate) fn unquote(s: &str) -> String {
-    // Strip only a MATCHED surrounding `"…"` pair, atomically. The Default
-    // tree-sitter token carries both quotes; the ML lexer already drops them, so
-    // its raw never starts with `"`. Stripping the delimiters *independently*
-    // would eat the closing `"` of a string whose content ends in an escaped
-    // quote (`"he said \"hi\""` → ML raw `he said \"hi\"` ends in `"`), diverging
-    // the ML IR from the Default twin — the regression Osprey2 hit on
-    // validation_pipeline. Requiring the pair leaves an unmatched lone quote in
-    // place, which is correct for both a quote-less ML raw and a salvaged token.
-    let trimmed = s
+/// Strip a matched quote pair and resolve escapes once. Unrecognized escapes
+/// remain verbatim; every output boundary retains its original byte offset.
+fn decode(raw: &str) -> Decoded {
+    let (text, start) = raw
         .strip_prefix('"')
-        .and_then(|x| x.strip_suffix('"'))
-        .unwrap_or(s);
-    let mut out = String::with_capacity(trimmed.len());
-    let mut chars = trimmed.chars();
-    while let Some(c) = chars.next() {
-        if c != '\\' {
-            out.push(c);
-            continue;
-        }
-        match chars.next() {
-            Some('n') => out.push('\n'),
-            Some('r') => out.push('\r'),
-            Some('t') => out.push('\t'),
-            Some('e') => out.push('\u{1b}'),
-            Some('0') => out.push('\0'),
-            Some('"') => out.push('"'),
-            // An escaped backslash, or a trailing lone backslash at end of input.
-            Some('\\') | None => out.push('\\'),
-            Some(other) => {
-                out.push('\\');
-                out.push(other);
+        .and_then(|text| text.strip_suffix('"'))
+        .map_or((raw, 0), |text| (text, 1));
+    let mut decoded = Decoded {
+        text: String::new(),
+        offsets: vec![start],
+    };
+    let mut chars = text.char_indices();
+    while let Some((index, character)) = chars.next() {
+        if character == '\\' {
+            if let Some((next, escaped)) = chars.next() {
+                append_escape(&mut decoded, text, start, index, next, escaped);
+                continue;
             }
         }
+        decoded.text.push(character);
+        decoded
+            .offsets
+            .extend((1..=character.len_utf8()).map(|byte| start + index + byte));
     }
-    out
+    decoded
+}
+
+fn append_escape(
+    decoded: &mut Decoded,
+    text: &str,
+    start: usize,
+    index: usize,
+    next: usize,
+    escaped: char,
+) {
+    let character = match escaped {
+        'n' => Some('\n'),
+        'r' => Some('\r'),
+        't' => Some('\t'),
+        'e' => Some('\u{1b}'),
+        '0' => Some('\0'),
+        '"' => Some('"'),
+        '\\' => Some('\\'),
+        _ => None,
+    };
+    let end = next + escaped.len_utf8();
+    if let Some(character) = character {
+        decoded.text.push(character);
+        decoded.offsets.push(start + end);
+    } else if let Some(raw) = text.get(index..end) {
+        decoded.text.push_str(raw);
+        decoded
+            .offsets
+            .extend((index + 1..=end).map(|byte| start + byte));
+    }
+}
+
+/// Decode plain strings with the same semantics as interpolation.
+pub(crate) fn unquote(raw: &str) -> String {
+    decode(raw).text
 }
 
 #[cfg(test)]
@@ -256,7 +292,7 @@ mod tests {
 
     #[test]
     fn interpolation_splits_text_expr_text_and_handles_nested_braces() {
-        let parts = lower_interpolation("\"v ${1 + 2} end\"", None, 0, frag);
+        let parts = lower_interpolation("\"v ${1 + 2} end\"", None, Flavor::Default, frag);
         assert_eq!(parts.len(), 3);
         assert!(matches!(parts[0], InterpolatedPart::Text(ref t) if t == "v "));
         assert!(
@@ -265,8 +301,69 @@ mod tests {
         assert!(matches!(parts[2], InterpolatedPart::Text(ref t) if t == " end"));
         // Nested braces inside `${…}` are captured whole, and an interpolation
         // ending exactly at `}` leaves no trailing text part.
-        let nested = lower_interpolation("\"${match x { a => 1 }}\"", None, 0, frag);
+        let nested = lower_interpolation("\"${match x { a => 1 }}\"", None, Flavor::Default, frag);
         assert_eq!(nested.len(), 1);
         assert!(matches!(nested[0], InterpolatedPart::Expr(_)));
+    }
+
+    #[test]
+    fn fragment_coordinates_follow_raw_escapes_and_each_flavors_column_unit() {
+        let raw = "\"🦅\\n${alpha\\t+ beta}\"";
+        for flavor in [Flavor::Default, Flavor::Ml] {
+            let prefix = fragment_binding(flavor).len();
+            let maps = fragments(raw, Position { line: 7, column: 4 });
+            assert_eq!(maps.len(), 1);
+            let map = &maps[0];
+            assert_eq!(map.text, "alpha\t+ beta");
+            let beta = map.text.find("beta").unwrap_or_default();
+            let range = map.map_range(prefix + beta..prefix + beta + 4, prefix);
+            assert_eq!(range, raw.find("beta").map(|start| start..start + 4));
+            assert_eq!(range.and_then(|range| raw.get(range)), Some("beta"));
+            let before = raw.split("beta").next().unwrap_or_default();
+            let width = match flavor {
+                Flavor::Default => before.len(),
+                Flavor::Ml => before.chars().count(),
+            };
+            assert_eq!(
+                map.map_position(
+                    Position {
+                        line: 1,
+                        column: u32::try_from(prefix + beta)
+                            .unwrap_or_else(|error| panic!("{error}"))
+                    },
+                    prefix,
+                    flavor
+                ),
+                Some(Position {
+                    line: 7,
+                    column: 4 + u32::try_from(width).unwrap_or_else(|error| panic!("{error}"))
+                })
+            );
+            assert_eq!(
+                map.map_position(Position { line: 1, column: 0 }, prefix, flavor),
+                None
+            );
+            assert_eq!(map.map_range(0..1, prefix), None);
+        }
+    }
+
+    #[test]
+    fn a_decoded_newline_inside_a_fragment_does_not_invent_a_source_line() {
+        let raw = "\"${first\\nsecond}\"";
+        let maps = fragments(raw, Position { line: 2, column: 3 });
+        let map = &maps[0];
+        assert_eq!(map.text, "first\nsecond");
+        assert_eq!(
+            map.map_position(Position { line: 2, column: 0 }, 14, Flavor::Default),
+            Some(Position {
+                line: 2,
+                column: 13
+            })
+        );
+        let multiline = fragments("\"${first\nsecond}\"", Position { line: 2, column: 3 });
+        assert_eq!(
+            multiline[0].map_position(Position { line: 2, column: 0 }, 14, Flavor::Default),
+            Some(Position { line: 3, column: 0 })
+        );
     }
 }

@@ -1,6 +1,6 @@
-/* paper — editorial. A serif page on warm stock: a 68-character measure,
-   hairline and double rules instead of boxes, small capitals for labels, and
-   the outline set as a margin note. Nothing here is a card. */
+/* paper — editorial. A serif page on warm stock: a measured column, hairline
+   and double rules instead of boxes, small capitals for labels, and the
+   outline set as a ruled margin note. Nothing here is a card. */
 :root{
   color-scheme:light;
   --bg:#fbf8f1;--surface:#fbf8f1;--text:#1c1917;--muted:#57534e;
@@ -12,8 +12,9 @@
   --font-head:var(--font-body);
   --font-ui:'Avenir Next',Avenir,'Segoe UI',system-ui,-apple-system,Helvetica,Arial,sans-serif;
   --font-mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
-  --size-body:18px;--size-h1:44px;--size-h2:28px;--size-display:60px;
-  --side-w:240px;--toc-w:200px;--page-w:1320px;--gap:56px;--pad-x:32px;--pad-y:40px;
+  --size-body:19px;--size-h1:46px;--size-h2:29px;--size-display:62px;
+  --size-ui:15px;--size-toc:15px;--size-code:15px;
+  --side-w:256px;--toc-w:240px;--measure:70ch;--page-w:1400px;--gap:56px;--pad-x:36px;--pad-y:44px;
   --radius-sm:2px;--card-min:260px;--card-gap:0 32px;
 }
 
@@ -21,14 +22,13 @@ body{line-height:1.75;font-feature-settings:'kern','liga','onum'}
 a{text-decoration-thickness:1px;text-underline-offset:3px}
 .side{padding-right:28px;border-right:1px solid var(--border)}
 .brand-mark{color:var(--text);border:1.5px solid var(--text);border-radius:50%;font-family:var(--font-body);font-style:italic;font-weight:600}
-.brand-name{font-family:var(--font-body);font-size:20px;font-weight:600;letter-spacing:.01em}
+.brand-name{font-family:var(--font-body);font-size:22px;font-weight:600;letter-spacing:.01em}
 .brand-caption{font-variant:small-caps;letter-spacing:.08em}
 .search{background:transparent;border:0;border-bottom:1px solid var(--text);border-radius:0;padding-left:0}
-.nav-group>summary{font-variant:small-caps;text-transform:none;letter-spacing:.08em;font-size:13px}
-.nav a{font-family:var(--font-body);font-size:15px;border-radius:0}
+.nav-group>summary{font-variant:small-caps;text-transform:none;letter-spacing:.08em;font-size:14px}
+.nav a{font-family:var(--font-body);font-size:16px;border-radius:0}
 .nav a[aria-current=page],.overview-link[aria-current=page]{background:transparent;box-shadow:inset 2px 0 0 var(--accent)}
 
-.reference .article{max-width:68ch;margin:0 auto}
 .crumb{font-variant:small-caps;letter-spacing:.06em;text-transform:lowercase}
 .article h1{font-weight:600;letter-spacing:-.015em;line-height:1.1}
 .article h1::after{content:'';display:block;width:56px;height:3px;margin-top:18px;background:var(--accent)}
@@ -40,23 +40,27 @@ blockquote{font-size:1.1em;font-style:italic;border-left-width:2px}
 table{font-family:var(--font-ui)}
 th{background:transparent;border:0;border-bottom:2px solid var(--text);font-variant:small-caps;letter-spacing:.05em}
 td{border:0;border-bottom:1px solid var(--border)}
-.on-page{font-variant:small-caps;text-transform:none;letter-spacing:.1em;font-size:13px}
-.toc a{padding-left:0;border-left:0}
-.toc a.toc-nested{padding-left:12px}
+
+/* The margin note keeps the page's rules rather than a box: a heavy rule over
+   the label, hairlines between entries, and no vertical rail. */
+.toc{padding-left:0;border-left:0;font-family:var(--font-body)}
+.on-page{padding-bottom:10px;border-top:2px solid var(--text);border-bottom:0;padding-top:8px;font-family:var(--font-ui);font-variant:small-caps;text-transform:none;letter-spacing:.1em;font-size:14px}
+.toc a{padding:10px 0}
+.toc a.toc-nested{padding-left:14px;font-style:italic}
 
 .hero{margin:0 0 36px;padding:0 0 28px;border-bottom:3px double var(--text)}
-.eyebrow{font-variant:small-caps;text-transform:lowercase;letter-spacing:.14em;font-size:14px}
+.eyebrow{font-variant:small-caps;text-transform:lowercase;letter-spacing:.14em;font-size:15px}
 .hero h1{font-weight:500;letter-spacing:-.025em;line-height:1.02}
 .hero-description{max-width:48ch;font-style:italic;font-size:1.25em}
 .stats{font-family:var(--font-body);font-style:italic}
 .stats strong{font-style:normal}
-.article .section-head{font-family:var(--font-body);font-size:24px;font-weight:600;letter-spacing:-.01em}
+.article .section-head{font-family:var(--font-body);font-size:26px;font-weight:600;letter-spacing:-.01em;text-transform:none}
 .catalog{border-top:1px solid var(--text)}
-.page-card{padding:14px 0 16px;border-bottom:1px solid var(--border)}
+.page-card{padding:16px 0 18px;border-bottom:1px solid var(--border)}
 .page-card:hover .card-title{color:var(--accent);text-decoration:underline;text-underline-offset:3px}
 .card-kind{color:var(--muted);font-variant:small-caps;text-transform:lowercase;letter-spacing:.1em}
-.card-title{font-family:var(--font-body);font-size:19px;font-weight:600}
-.card-summary{font-size:15px}
+.card-title{font-family:var(--font-body);font-size:20px;font-weight:600}
+.card-summary{font-size:16px}
 .card-arrow{display:none}
 
 @media (max-width:860px){

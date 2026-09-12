@@ -258,6 +258,10 @@ pub struct Parameter {
     pub name: String,
     /// Declared type, if annotated (otherwise inferred).
     pub ty: Option<TypeExpr>,
+    /// Lowering inserted a leading self-alias to check an additional written
+    /// inline type against a standalone signature. That alias is part of this
+    /// source parameter, not a separately written local binding.
+    pub inline_constraint: bool,
 }
 
 /// An `extern fn` parameter — type annotation required.

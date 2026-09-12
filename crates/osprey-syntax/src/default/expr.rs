@@ -415,7 +415,7 @@ impl Lowerer<'_> {
                     Expr::InterpolatedStr(lower_interpolation(
                         &raw,
                         Some(self.pos(inner)),
-                        fragment_prefix(),
+                        crate::Flavor::Default,
                         parse_fragment,
                     ))
                 } else {
@@ -425,7 +425,7 @@ impl Lowerer<'_> {
             "interpolated_string" => Expr::InterpolatedStr(lower_interpolation(
                 &self.text(inner),
                 Some(self.pos(inner)),
-                fragment_prefix(),
+                crate::Flavor::Default,
                 parse_fragment,
             )),
             "list_literal" => Expr::List(
@@ -450,18 +450,9 @@ impl Lowerer<'_> {
 }
 
 /// Parse an interpolation fragment (`${ ... }` contents) into a single [`Expr`].
-/// The binding `parse_fragment` wraps a `${…}` fragment in. Its length is what
-/// [`lower_interpolation`] subtracts to map the mini-program's line-1 columns
-/// back onto the real source, so the two must come from this one string.
-const FRAGMENT_BINDING: &str = "let __frag__ = ";
-
-/// [`FRAGMENT_BINDING`]'s width, as the column offset a rebase needs.
-fn fragment_prefix() -> u32 {
-    u32::try_from(FRAGMENT_BINDING.len()).unwrap_or(0)
-}
-
 fn parse_fragment(frag: &str) -> Expr {
-    let parsed = super::parse(&format!("{FRAGMENT_BINDING}{frag}\n"));
+    let binding = crate::strings::fragment_binding(crate::Flavor::Default);
+    let parsed = super::parse(&format!("{binding}{frag}\n"));
     if !parsed.errors.is_empty() {
         return Expr::Identifier(frag.trim().to_owned());
     }

@@ -17,6 +17,8 @@ use std::path::{Path, PathBuf};
 // editor's idea of which files form a program must be the compiler's.
 use crate::workspace::{file_path, project_root, same_path};
 
+use crate::warning_actions::Analysis;
+
 const SOURCE: &str = "osprey";
 
 /// Compute diagnostics for `source`. The document `path` selects the flavor
@@ -24,8 +26,23 @@ const SOURCE: &str = "osprey";
 /// instead of misreported as broken Default syntax. Syntax errors are reported
 /// alone (an unparsable file is not type-checked, matching the CLI gate); a clean
 /// parse is then type-checked.
+#[cfg(test)]
 #[must_use]
 pub(crate) fn compute(source: &str, path: &str, encoding: PositionEncoding) -> Vec<Diagnostic> {
+    analyze(source, path, encoding).diagnostics
+}
+
+#[cfg(test)]
+pub(crate) fn analyze(source: &str, path: &str, encoding: PositionEncoding) -> Analysis {
+    analyze_live(source, path, encoding, None)
+}
+
+pub(crate) fn analyze_live(
+    source: &str,
+    path: &str,
+    encoding: PositionEncoding,
+    vfs: Option<&lspkit_vfs::Vfs>,
+) -> Analysis {
     // [FLAVOR-SELECT] makes a marker/extension disagreement a hard error, and
     // the CLI refuses to build such a file. Resolve FIRST and report the
     // conflict as the document's only finding: guessing a flavor would parse
@@ -41,6 +58,7 @@ pub(crate) fn compute(source: &str, path: &str, encoding: PositionEncoding) -> V
                 "flavor-error",
                 encoding,
             )]
+            .into()
         }
     };
     let parsed = osprey_syntax::parse_program_with_flavor(source, flavor);
@@ -49,13 +67,16 @@ pub(crate) fn compute(source: &str, path: &str, encoding: PositionEncoding) -> V
             .errors
             .iter()
             .map(|e| diagnostic(source, e.position, &e.message, "syntax-error", encoding))
-            .collect();
+            .collect::<Vec<_>>()
+            .into();
     }
-    let mut diagnostics = project_diagnostics(source, path, &parsed.program, encoding)
+    let mut analysis = project_diagnostics(source, path, &parsed.program, encoding, vfs)
         .or_else(|| standalone_diagnostics(source, path, flavor, &parsed.program, encoding))
-        .unwrap_or_else(|| type_diagnostics(source, &parsed.program, encoding));
-    diagnostics.extend(skip_diagnostics(source, &parsed.program, encoding));
-    diagnostics
+        .unwrap_or_else(|| type_diagnostics(source, &parsed.program, flavor, encoding));
+    analysis
+        .diagnostics
+        .extend(skip_diagnostics(source, &parsed.program, encoding));
+    analysis
 }
 
 /// One diagnostic per statically-skipped test case, on the `test` call's own
@@ -108,31 +129,26 @@ fn marker_position(source: &str) -> Position {
 fn type_diagnostics(
     source: &str,
     program: &Program,
+    flavor: osprey_syntax::Flavor,
     encoding: PositionEncoding,
-) -> Vec<Diagnostic> {
-    let mut diagnostics: Vec<_> = osprey_types::check_program(program)
+) -> Analysis {
+    let diagnostics: Vec<_> = osprey_types::check_program(program)
         .iter()
         .map(|e| {
-            let pos = e.position.unwrap_or(Position { line: 1, column: 0 });
-            diagnostic(source, pos, &e.message, "type-error", encoding)
+            diagnostic(
+                source,
+                e.position.unwrap_or_default(),
+                &e.message,
+                "type-error",
+                encoding,
+            )
         })
         .collect();
-    if diagnostics.is_empty() {
-        diagnostics.extend(
-            osprey_types::redundant_annotations(program)
-                .into_iter()
-                .map(|raised| {
-                    warning(
-                        source,
-                        raised.position.unwrap_or(Position { line: 1, column: 0 }),
-                        &raised.message,
-                        raised.rule,
-                        encoding,
-                    )
-                }),
-        );
+    let mut analysis = Analysis::from(diagnostics);
+    if analysis.diagnostics.is_empty() {
+        analysis.add_warnings(source, program, flavor, encoding, &Some);
     }
-    diagnostics
+    analysis
 }
 
 /// Single-source assembly for a module-bearing file that no project claims —
@@ -146,7 +162,7 @@ fn standalone_diagnostics(
     flavor: osprey_syntax::Flavor,
     program: &Program,
     encoding: PositionEncoding,
-) -> Option<Vec<Diagnostic>> {
+) -> Option<Analysis> {
     if !osprey_project::needs_assembly(program) {
         return None;
     }
@@ -172,10 +188,10 @@ fn assembly_diagnostics(
     source: &str,
     file: &Path,
     encoding: PositionEncoding,
-) -> Vec<Diagnostic> {
+) -> Analysis {
     match assembled {
         Ok(project) => assembled_type_errors(source, file, &project, encoding),
-        Err(errors) => project_errors(source, file, &errors, encoding),
+        Err(errors) => project_errors(source, file, &errors, encoding).into(),
     }
 }
 
@@ -184,13 +200,27 @@ fn project_diagnostics(
     uri: &str,
     program: &Program,
     encoding: PositionEncoding,
-) -> Option<Vec<Diagnostic>> {
+    vfs: Option<&lspkit_vfs::Vfs>,
+) -> Option<Analysis> {
     let file = file_path(uri)?;
     let root = project_root(&file)?;
     let (config, mut sources) = match osprey_project::load(&root) {
         Ok(loaded) => loaded,
-        Err(errors) => return Some(project_errors(source, &file, &errors, encoding)),
+        Err(errors) => return Some(project_errors(source, &file, &errors, encoding).into()),
     };
+    for candidate in &mut sources {
+        let uri = lspkit_server::uri::path_to_uri(&candidate.path).ok()?;
+        let live = vfs.and_then(|vfs| vfs.text(&lspkit_vfs::DocumentUri::new(uri)));
+        if let Some(live) = live {
+            let parsed =
+                osprey_syntax::parse_program_for_path(&candidate.path.to_string_lossy(), &live);
+            if !parsed.errors.is_empty() {
+                return Some(Analysis::default());
+            }
+            candidate.source = live;
+            candidate.program = parsed.program;
+        }
+    }
     let source_file = sources
         .iter_mut()
         .find(|candidate| same_path(&candidate.path, &file))?;
@@ -209,9 +239,9 @@ fn assembled_type_errors(
     file: &Path,
     project: &AssembledProject,
     encoding: PositionEncoding,
-) -> Vec<Diagnostic> {
+) -> Analysis {
     let errors = osprey_types::check_program(&project.program);
-    let mut diagnostics: Vec<_> = errors
+    let diagnostics: Vec<_> = errors
         .iter()
         .filter_map(|error| {
             let position = if let Some(global) = error.position {
@@ -235,33 +265,19 @@ fn assembled_type_errors(
             ))
         })
         .collect();
+    let mut analysis = Analysis::from(diagnostics);
     if errors.is_empty() {
-        diagnostics.extend(
-            osprey_types::redundant_annotations_where(&project.program, |position| {
-                position
-                    .and_then(|p| project.source_at_line(p.line))
-                    .is_some_and(|(owner, _)| same_path(&owner.path, file))
+        let flavor = osprey_syntax::resolve_flavor(None, &file.to_string_lossy(), source)
+            .unwrap_or_default();
+        analysis.add_warnings(source, &project.program, flavor, encoding, &|global| {
+            let (owner, line) = project.source_at_line(global.line)?;
+            same_path(&owner.path, file).then_some(Position {
+                line,
+                column: global.column,
             })
-            .into_iter()
-            .filter_map(|raised| {
-                let global = raised.position?;
-                let (owner, line) = project.source_at_line(global.line)?;
-                same_path(&owner.path, file).then(|| {
-                    warning(
-                        source,
-                        Position {
-                            line,
-                            column: global.column,
-                        },
-                        &raised.message,
-                        raised.rule,
-                        encoding,
-                    )
-                })
-            }),
-        );
+        });
     }
-    diagnostics
+    analysis
 }
 
 fn project_errors(
@@ -306,7 +322,7 @@ fn diagnostic(
 }
 
 /// Build one warning diagnostic spanning the offending line from `pos` onward.
-fn warning(
+pub(crate) fn warning(
     source: &str,
     pos: Position,
     message: &str,
@@ -359,10 +375,19 @@ pub(crate) fn assert_redundant_annotations(
     actual: &[Diagnostic],
     expected: &[(&str, crate::model::Span)],
 ) {
+    let expected: Vec<_> = expected
+        .iter()
+        .map(|(message, range)| ("redundant-annotation", *message, *range))
+        .collect();
+    assert_warnings(actual, &expected);
+}
+
+#[cfg(test)]
+fn assert_warnings(actual: &[Diagnostic], expected: &[(&str, &str, crate::model::Span)]) {
     assert_eq!(actual.len(), expected.len(), "{actual:?}");
-    for (diagnostic, (message, range)) in actual.iter().zip(expected) {
+    for (diagnostic, (rule, message, range)) in actual.iter().zip(expected) {
         assert_eq!(diagnostic.severity, Severity::Warning, "{diagnostic:?}");
-        assert_eq!(diagnostic.code.as_deref(), Some("redundant-annotation"));
+        assert_eq!(diagnostic.code.as_deref(), Some(*rule));
         assert_eq!(diagnostic.source.as_deref(), Some("osprey"));
         assert_eq!(diagnostic.message, *message);
         assert_eq!(diagnostic.range, *range, "{diagnostic:?}");
@@ -384,7 +409,7 @@ mod tests {
             &diags,
             &[(
                 "redundant return type annotation on `main`: inference derives `Unit` without it",
-                (0, 3, 0, 31),
+                (0, 10, 0, 17),
             )],
         );
     }
@@ -609,13 +634,76 @@ mod tests {
             ),
             (
                 "redundant return type annotation on `bank::hold`: inference derives `int` without it",
-                (55, 0, 55, 9),
+                (54, 0, 54, 18),
             ),
             (
                 "redundant type signature on `bank::handleRequest`: inference derives `(string, string, string, string) -> HttpResponse` without it",
                 (113, 0, 113, 68),
             ),
         ];
+        let mut main_warnings: Vec<_> = main_warnings
+            .into_iter()
+            .map(|(message, range)| ("redundant-annotation", message, range))
+            .collect();
+        main_warnings.extend([
+            (
+                "unused-pattern-binding",
+                "unused pattern binding `message`",
+                (27, 22, 27, 29),
+            ),
+            (
+                "unused-variable",
+                "unused variable `freed`",
+                (28, 12, 28, 17),
+            ),
+            (
+                "unused-pattern-binding",
+                "unused pattern binding `message`",
+                (30, 14, 30, 21),
+            ),
+            (
+                "unused-pattern-binding",
+                "unused pattern binding `message`",
+                (58, 14, 58, 21),
+            ),
+            (
+                "unused-pattern-binding",
+                "unused pattern binding `value`",
+                (59, 16, 59, 21),
+            ),
+            (
+                "unused-variable",
+                "unused variable `slept`",
+                (60, 12, 60, 17),
+            ),
+            (
+                "unused-variable",
+                "unused variable `listening`",
+                (80, 4, 80, 13),
+            ),
+            ("unused-variable", "unused variable `held`", (86, 4, 86, 8)),
+            (
+                "unused-variable",
+                "unused variable `stopped`",
+                (87, 4, 87, 11),
+            ),
+            (
+                "unused-variable",
+                "unused variable `closed`",
+                (88, 4, 88, 10),
+            ),
+            ("unused-variable", "unused variable `made`", (96, 4, 96, 8)),
+            (
+                "unused-parameter",
+                "unused parameter `headers`",
+                (114, 29, 114, 36),
+            ),
+            (
+                "unused-variable",
+                "unused variable `seen`",
+                (115, 4, 115, 8),
+            ),
+        ]);
         for (relative, expected) in [
             (
                 "examples/projects/modules/src/main.ospml",
@@ -627,7 +715,7 @@ mod tests {
             let source = std::fs::read_to_string(&path).expect("read module example");
             let uri = format!("file://{}", path.display());
             let diagnostics = compute(&source, &uri, U16);
-            assert_redundant_annotations(&diagnostics, expected);
+            assert_warnings(&diagnostics, expected);
         }
     }
 
@@ -644,9 +732,7 @@ mod tests {
         let source = std::fs::read_to_string(&path).expect("read module test suite");
         let uri = format!("file://{}", path.display());
         let diagnostics = compute(&source, &uri, U16);
-        assert_redundant_annotations(
-            &diagnostics,
-            &[
+        let annotations = [
                 (
                     "redundant type signature on `test::Money::pennies`: inference derives `(int) -> string` without it",
                     (8, 4, 8, 27),
@@ -691,8 +777,54 @@ mod tests {
                     "redundant type signature on `test::settle`: inference derives `(test::Outcome) -> string` without it",
                     (89, 0, 89, 26),
                 ),
-            ],
-        );
+        ];
+        let mut expected: Vec<_> = annotations
+            .into_iter()
+            .map(|(message, range)| ("redundant-annotation", message, range))
+            .collect();
+        expected.extend([
+            (
+                "unused-handler-parameter",
+                "unused handler parameter `id` of `test::Vault.balance`",
+                (160, 12, 160, 14),
+            ),
+            (
+                "unused-handler-parameter",
+                "unused handler parameter `id` of `test::Vault.debit`",
+                (161, 10, 161, 12),
+            ),
+            (
+                "unused-handler-parameter",
+                "unused handler parameter `id` of `test::Vault.balance`",
+                (166, 12, 166, 14),
+            ),
+            (
+                "unused-handler-parameter",
+                "unused handler parameter `id` of `test::Vault.debit`",
+                (167, 10, 167, 12),
+            ),
+            (
+                "unused-handler-parameter",
+                "unused handler parameter `cents` of `test::Vault.debit`",
+                (167, 13, 167, 18),
+            ),
+            (
+                "unused-handler-parameter",
+                "unused handler parameter `id` of `test::Vault.balance`",
+                (175, 12, 175, 14),
+            ),
+            (
+                "unused-handler-parameter",
+                "unused handler parameter `id` of `test::Vault.debit`",
+                (176, 10, 176, 12),
+            ),
+            (
+                "unused-handler-parameter",
+                "unused handler parameter `cents` of `test::Vault.debit`",
+                (176, 13, 176, 18),
+            ),
+        ]);
+        assert_warnings(&diagnostics, &expected);
     }
 
     #[cfg(unix)]
@@ -745,13 +877,14 @@ mod tests {
             &project,
             PositionEncoding::Utf16,
         );
-        assert!(!diagnostics.is_empty(), "{diagnostics:?}");
+        assert!(!diagnostics.diagnostics.is_empty(), "{diagnostics:?}");
         assert!(assembled_type_errors(
             source,
             Path::new("other.osp"),
             &project,
             PositionEncoding::Utf16,
         )
+        .diagnostics
         .is_empty());
     }
 

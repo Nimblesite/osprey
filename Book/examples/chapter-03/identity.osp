@@ -1,0 +1,8 @@
+fn identity(value) = value
+
+fn main() = {
+    let owner = identity("Mika")
+    let sessionCount = identity(3)
+    let isActive = identity(true)
+    print("${owner} | ${sessionCount} | ${isActive}")
+}

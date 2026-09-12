@@ -8,6 +8,7 @@
 //! from the real AST, not by shelling out. [LSP-REUSE-LSPKIT]
 
 pub mod analysis;
+pub(crate) mod code_actions;
 pub(crate) mod complete;
 pub mod context;
 pub(crate) mod diagnostics;
@@ -29,6 +30,7 @@ pub mod testing;
 #[path = "../../testkit.rs"]
 mod testkit;
 pub mod text;
+pub(crate) mod warning_actions;
 pub(crate) mod wire;
 pub mod workspace;
 

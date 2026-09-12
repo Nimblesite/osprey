@@ -19,6 +19,22 @@ use crate::project::CompilationInput;
 /// One file's warnings: the `line:column` gutter and the message, in order.
 type Listing = Vec<(String, String)>;
 
+/// Compiler warnings share one terminal listing and never affect exit status.
+pub(crate) fn collect(program: &osprey_ast::Program) -> Vec<TypeWarning> {
+    let mut warnings = osprey_types::redundant_annotations(program);
+    warnings.extend(
+        osprey_types::unused_symbols(program)
+            .into_iter()
+            .map(|symbol| symbol.warning),
+    );
+    warnings.sort_by_key(|warning| {
+        warning
+            .position
+            .map(|position| (position.line, position.column))
+    });
+    warnings
+}
+
 /// Print `warnings` to stderr. A clean build prints nothing.
 pub(crate) fn report(input: &CompilationInput, warnings: &[TypeWarning]) {
     if let Some(text) = render(input, warnings) {
@@ -171,5 +187,107 @@ mod tests {
             text.ends_with("\n3 warnings (redundant-annotation, some-other-rule)"),
             "{text}"
         );
+    }
+
+    #[test]
+    fn compiler_collects_redundancy_and_unused_advice_without_losing_either_rule() {
+        let source = "fn choose(value, ignored) = {\n let spare: int = 1\n value\n}\nlet result = choose(2, 3)\n";
+        let parsed = osprey_syntax::parse_program(source);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        assert!(osprey_types::check_program(&parsed.program).is_empty());
+        let warnings = super::collect(&parsed.program);
+        let input = CompilationInput::script("mixed.osp", source.to_owned(), parsed.program);
+        assert_eq!(render(&input, &warnings), Some(
+            "\nmixed.osp\n  1:3  warning: unused parameter `ignored`\n  2:1  warning: redundant type annotation on `spare`: inference derives `int` without it\n  2:1  warning: unused variable `spare`\n\n3 warnings (redundant-annotation, unused-parameter, unused-variable)".to_owned()
+        ));
+    }
+
+    #[test]
+    fn signed_inline_unused_parameters_never_report_compiler_generated_locals() {
+        let parsed = osprey_syntax::parse_program_with_flavor(
+            "choose : int -> int -> int\nchoose (unused : int) (used : int) = used\nresult = choose 1 2\n",
+            osprey_syntax::Flavor::Ml,
+        );
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let warnings = super::collect(&parsed.program);
+        assert_eq!(
+            warnings
+                .iter()
+                .filter(|warning| warning.rule.starts_with("unused-"))
+                .map(|warning| (warning.rule, warning.message.as_str()))
+                .collect::<Vec<_>>(),
+            [("unused-parameter", "unused parameter `unused`")]
+        );
+        assert_eq!(
+            crate::report_type_errors(&CompilationInput::script(
+                "signed.ospml",
+                String::new(),
+                parsed.program
+            )),
+            0
+        );
+    }
+
+    #[test]
+    fn an_invalid_program_retains_errors_and_has_no_speculative_advice() {
+        let parsed = osprey_syntax::parse_program("fn broken(unused) = missing\n");
+        assert!(parsed.errors.is_empty());
+        assert!(super::collect(&parsed.program).is_empty());
+        assert_eq!(
+            crate::report_type_errors(&CompilationInput::script(
+                "broken.osp",
+                String::new(),
+                parsed.program
+            )),
+            1
+        );
+    }
+
+    #[test]
+    fn assembled_handler_messages_use_the_source_effect_name() {
+        let source = "namespace test;\neffect Vault { balance: fn(int) -> int }\nfn total() = handle Vault\n balance id => 0\nin perform Vault.balance(1)\nlet result = total()\n";
+        let parsed = osprey_syntax::parse_program(source);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let input = CompilationInput::one_source(
+            "warning.osp",
+            osprey_syntax::Flavor::Default,
+            source.to_owned(),
+            parsed.program,
+        )
+        .unwrap_or_else(|errors| panic!("{errors:?}"));
+        let warnings = super::collect(input.program());
+        assert_eq!(
+            warnings
+                .iter()
+                .filter(|warning| warning.rule.starts_with("unused-"))
+                .map(|warning| (warning.rule, warning.message.as_str()))
+                .collect::<Vec<_>>(),
+            [(
+                "unused-handler-parameter",
+                "unused handler parameter `id` of `test::Vault.balance`"
+            )]
+        );
+        assert_eq!(crate::report_type_errors(&input), 0);
+    }
+
+    #[test]
+    fn top_level_pattern_warnings_have_source_locations_in_both_flavors() {
+        for (flavor, source) in [
+            (
+                osprey_syntax::Flavor::Default,
+                "match 1 { unused => print(\"ok\") }\n",
+            ),
+            (
+                osprey_syntax::Flavor::Ml,
+                "match 1\n    unused => print \"ok\"\n",
+            ),
+        ] {
+            let parsed = osprey_syntax::parse_program_with_flavor(source, flavor);
+            assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+            assert!(osprey_types::check_program(&parsed.program).is_empty());
+            let warnings = super::collect(&parsed.program);
+            let input = CompilationInput::script("top-level", source.to_owned(), parsed.program);
+            assert_eq!(render(&input, &warnings), Some("\ntop-level\n  1:0  warning: unused pattern binding `unused`\n\n1 warning (unused-pattern-binding)".to_owned()));
+        }
     }
 }

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "editionStatus": "structural-scaffold-chapters-1-2-complete",
+  "editionStatus": "structural-scaffold-chapters-1-3-complete",
   "releasePinned": false,
   "compilerVersion": "0.0.0-dev",
   "chapters": [
@@ -20,16 +20,79 @@
       "examples": "run-with-pinned-dev-binary",
       "capture": "concept-diagrams-ready"
     },
-    { "number": 3, "spec": "mapped", "examples": "planned", "capture": "planned" },
-    { "number": 4, "spec": "mapped", "examples": "planned", "capture": "planned" },
-    { "number": 5, "spec": "mapped", "examples": "planned", "capture": "planned" },
-    { "number": 6, "spec": "mapped", "examples": "planned", "capture": "planned" },
-    { "number": 7, "spec": "mapped", "examples": "planned", "capture": "planned" },
-    { "number": 8, "spec": "mapped", "examples": "planned", "capture": "planned" },
-    { "number": 9, "spec": "mapped", "examples": "planned", "capture": "planned" },
-    { "number": 10, "spec": "mapped", "examples": "planned", "capture": "planned" },
-    { "number": 11, "spec": "mapped", "examples": "planned", "capture": "planned" },
-    { "number": 12, "spec": "mapped", "examples": "planned", "capture": "planned" },
+    {
+      "number": 3,
+      "spec": "mapped",
+      "examples": "run-with-recorded-dev-binary",
+      "capture": "concept-diagrams-ready",
+      "editorial": "complete",
+      "implementation": "compiler-checked",
+      "verifiedOn": "2026-09-12",
+      "compilerSha256": "6c3ab5c12924b639327a9f6a2730ed338dacda5420de64c44ed9c1fb5778daaa",
+      "platform": "darwin-arm64",
+      "checks": [
+        "make check-examples: exact output and exact compiler-rejection message",
+        "Manuscript code matches all chapter3 source examples",
+        "String-concatenation rejection versus interpolation acceptance",
+        "Record rejects a string in the integer sessionCount field",
+        "make release: all book examples, HTML and EPUB; EPUBCheck0 errors/warnings",
+        "Rendered chapter checked at1280px and320px; all3 diagrams readable and loaded"
+      ]
+    },
+    {
+      "number": 4,
+      "spec": "mapped",
+      "examples": "planned",
+      "capture": "planned"
+    },
+    {
+      "number": 5,
+      "spec": "mapped",
+      "examples": "planned",
+      "capture": "planned"
+    },
+    {
+      "number": 6,
+      "spec": "mapped",
+      "examples": "planned",
+      "capture": "planned"
+    },
+    {
+      "number": 7,
+      "spec": "mapped",
+      "examples": "planned",
+      "capture": "planned"
+    },
+    {
+      "number": 8,
+      "spec": "mapped",
+      "examples": "planned",
+      "capture": "planned"
+    },
+    {
+      "number": 9,
+      "spec": "mapped",
+      "examples": "planned",
+      "capture": "planned"
+    },
+    {
+      "number": 10,
+      "spec": "mapped",
+      "examples": "planned",
+      "capture": "planned"
+    },
+    {
+      "number": 11,
+      "spec": "mapped",
+      "examples": "planned",
+      "capture": "planned"
+    },
+    {
+      "number": 12,
+      "spec": "mapped",
+      "examples": "planned",
+      "capture": "planned"
+    },
     {
       "number": 13,
       "spec": "mapped",
@@ -37,6 +100,25 @@
       "examples": "planned",
       "capture": "planned"
     },
-    { "number": 14, "spec": "mapped", "examples": "planned", "capture": "planned" }
+    {
+      "number": 14,
+      "spec": "mapped",
+      "examples": "planned",
+      "capture": "planned"
+    }
+  ],
+  "editionAuditNotes": [
+    {
+      "chapter": 2,
+      "status": "reconcile-before-publication",
+      "topic": "Integer arithmetic contract differs between the recorded development binary and current specifications",
+      "observed": "The checked chapter2 golden prints Success(75) for 3 * 25.",
+      "specifications": [
+        "../docs/specs/0004-TypeSystem.md",
+        "../docs/specs/0013-ErrorHandling.md"
+      ],
+      "specified": "Current specifications give plain integer multiplication type int; checkedMul explicitly returns Result.",
+      "chapter3Scope": "Chapter3 displays the integer input fields separately and makes no arithmetic-result claim."
+    }
   ]
 }

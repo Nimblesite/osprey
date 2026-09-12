@@ -843,6 +843,9 @@ _test_vscode_extension: _vsix_bundle $(EXT_NODE_DEPS)
 	  PATH="$(CURDIR)/target/path-bin:$$PATH" \
 	  ./node_modules/.bin/vscode-test --coverage --coverage-output coverage \
 	    --coverage-reporter text-summary --coverage-reporter json-summary --coverage-reporter html 2>&1 | tee -a test.log
+	@echo "==> [vscode-extension] testing the installed VSIX and its bundled compiler..."
+	$(MAKE) _vsix_package
+	cd $(EXT_DIR) && set -o pipefail && npm run test:vsix 2>&1 | tee -a test.log
 
 # Gates EVERY metric the summary reports, not lines alone. Lines-only was the
 # dishonest half of this gate: branches and functions were measured, printed by

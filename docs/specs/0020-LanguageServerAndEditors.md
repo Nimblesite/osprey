@@ -95,6 +95,7 @@ The server exposes:
 | Signature help   | `textDocument/signatureHelp`      | Active-parameter tracking; ignores `,`/`(`/`)` inside strings and `//` comments. Triggers on the **callee name** as well as inside its parentheses. `[LSP-WORKSPACE]`                       |
 | Completion       | `textDocument/completion`         | Position-filtered keywords/snippets + project declarations. `[LSP-COMPLETION-CONTEXT]`, `[LSP-WORKSPACE]`                                                                                    |
 | Formatting       | `textDocument/formatting`         | Returns one whole-document edit when formatting changes the buffer, otherwise no edits.                                                                                                    |
+| Quick fixes | `textDocument/codeAction` | Proven annotation erasure; `quickfix` and `source.fixAll.osprey`. `[LSP-CODE-ACTIONS-ANNOTATIONS]` |
 
 ## Diagnostics `[LSP-DIAGNOSTICS]`
 
@@ -113,6 +114,16 @@ in [0027-TestingFramework.md](0027-TestingFramework.md) is the authority on
 which bodies qualify and what the messages read. Skip diagnostics ride alongside
 whatever type errors the file already has, and are suppressed only when the
 file does not parse, since an unparsable buffer reports its syntax error alone.
+
+## Annotation quick fixes `[LSP-CODE-ACTIONS-ANNOTATIONS]`
+
+`textDocument/codeAction` uses the same current-program redundancy proof as diagnostics. The request range selects overlapping annotations for `quickfix`; a cursor selects an annotation when it lies inside or at either boundary of its highlight. `context.only` follows hierarchical action-kind matching. `source.fixAll.osprey` removes the jointly removable set in the current document. A caller-supplied diagnostic does not authorize an edit: the server recomputes the findings from current source. Parse, type or project errors prevent speculative deletion actions. Opening, editing or closing a project file refreshes diagnostics in its other open source files, so a signature warning disappears when a live helper makes the signature necessary and returns when inference again proves it redundant.
+
+Each action carries its exact diagnostic, a preferred-action marker and a versioned `TextDocumentEdit`. Its source ranges come from the parser, in the negotiated UTF-16 encoding, including multiline signatures. Edits preserve comments, definition bodies and public visibility. The diagnostic highlights the annotation; the edit can additionally consume the whitespace-only header line. Inline fixes retain parentheses, commas, function names and parameter names. The full erasure contract is [TYPE-ANNOTATION-REDUNDANT](0004-TypeSystem.md#redundant-annotations--type-annotation-redundant).
+
+The VS Code language client converts protocol edits to a `WorkspaceEdit` without retaining its version. The Osprey extension therefore guards the final apply command with the captured document version and source, together with the set, versions and sources of all open Osprey documents. If the target or an open sibling has changed, or that set has changed, the command returns without editing and asks the reader to request the action again. Before applying, the extension also requests a fresh compiler proof and requires the exact original edits and document version to remain available. This catches changes to closed project sources and the manifest. It checks the open-document snapshots again after that request; a failed request or any mismatch leaves the source untouched. Applying a valid action is one editor edit: it supports save, undo and redo, and normal document synchronization republishes diagnostics for the resulting source.
+
+Unused-symbol diagnostics use the four rules in [TYPE-WARNINGS-UNUSED](0004-TypeSystem.md#unused-symbols-type-warnings-unused). They have Warning severity, source `osprey`, an identifier range and the LSP `Unnecessary` tag. They have no removal action.
 
 ## Hover `[LSP-HOVER]`
 

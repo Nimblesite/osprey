@@ -4,14 +4,14 @@ subtitle: "A practical first flight through modern programming."
 author:
   - "Christian Findlay"
 publisher: "NIMBLESITE PTY LTD"
-date: "2026-08-13"
+date: "2026-09-12"
 language: "en-AU"
 rights: "Copyright © 2026 Christian Findlay"
 description: >-
   A beginner-friendly guide to Osprey that teaches programming through the
   Default flavor, then builds toward inferred types, pattern matching,
   explicit failure, effects, fibers, deployment, and optional source flavors.
-edition: "Structural scaffold — Chapters 1–2 complete"
+edition: "Structural scaffold — Chapters 1–3 complete"
 osprey-version: "0.0.0-dev"
 website: "https://www.ospreylang.dev/"
 ...

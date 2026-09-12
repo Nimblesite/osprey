@@ -103,6 +103,20 @@ pre {
   page-break-inside: avoid;
 }
 
+pre > code {
+  font-size: inherit;
+}
+
+/* Preserve wrapping when Pandoc adds syntax-highlighting spans. */
+pre > code.sourceCode {
+  white-space: pre-wrap;
+}
+
+pre > code.sourceCode > span {
+  display: inline;
+  overflow-wrap: anywhere;
+}
+
 blockquote {
   margin: 1.5rem 0;
   padding: 1rem 1.25rem;
@@ -225,4 +239,3 @@ nav#TOC ul {
     background: #f1f4f7;
   }
 }
-

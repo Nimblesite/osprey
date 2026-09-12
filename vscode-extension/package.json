@@ -389,6 +389,7 @@
     "test": "vscode-test",
     "test-compile": "tsc -p ./",
     "test:shipwright": "node scripts/verify-shipwright.mjs manifest",
+    "test:vsix": "node scripts/test-installed-vsix.mjs",
     "pretest": "npm run test-compile && npm run compile",
     "test:watch": "npm run watch",
     "test:debug": "node scripts/test-launcher.js test:debug",

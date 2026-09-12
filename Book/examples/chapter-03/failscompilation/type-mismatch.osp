@@ -1,0 +1,3 @@
+fn heading(name) = "Flight Log: " + name
+
+fn main() = heading(true) |> print
