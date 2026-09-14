@@ -133,7 +133,6 @@ Error   { message } => print("mapKey: ${message}\n")
   print("toString ok string  = ${toString(fromCodePoint(65))}\n")
 
   print("=== Error Catalogue Complete ===\n")
-  0
 
 /// Every failing Result must carry a usable diagnostic payload.
 fn hasDiagnostic(result) = match result {

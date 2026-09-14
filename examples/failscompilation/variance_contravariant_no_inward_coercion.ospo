@@ -1,0 +1,12 @@
+// The flipped recursion of `in T` does not smuggle the coercion in either: the
+// leaves still match exactly, so a Gate<Result<int, MathError>> is not a
+// Gate<int>. Implements [TYPE-VARIANCE-COERCION]
+type Gate<in T> = Gate { admit: (T) -> bool } | Open
+
+fn gateRes() -> Gate<Result<int, MathError>> = Gate { admit: |x| => true }
+fn describe(g: Gate<int>) = match g {
+    Gate { admit } => "guarded"
+    Open => "open"
+}
+
+fn main() -> Unit = print(describe(gateRes()))

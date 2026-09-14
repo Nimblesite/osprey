@@ -37,7 +37,7 @@ fn processTask2() = processTask(taskId: "task-2", dataSize: 200, priority: Mediu
 fn processTask3() = processTask(taskId: "task-3", dataSize: 75, priority: Urgent)
 fn totalProcessed(first: int, second: int, third: int) = first + second + third ?: 0
 
-fiber_set_deterministic_mode(enabled: true)
+let _ = fiber_set_deterministic_mode(enabled: true)
 handle Metrics
     recordSuccess taskId processed => print("✅ " + taskId + " succeeded: " + toString(processed) + " units")
 in handle Logger

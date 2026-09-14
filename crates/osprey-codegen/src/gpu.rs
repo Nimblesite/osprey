@@ -186,8 +186,7 @@ fn buffer_literal(
 /// buffer sized at the *source* length, because the kept count is not known
 /// until the loop has run.
 fn kept_counter(cg: &mut Codegen) -> String {
-    let kept = cg.fresh_reg();
-    cg.emit(format!("{kept} = alloca i64"));
+    let kept = cg.emit_reg("alloca i64");
     cg.emit(format!("store i64 0, i64* {kept}"));
     kept
 }

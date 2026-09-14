@@ -31,6 +31,9 @@ pub(crate) fn display_param_type(name: &str, index: usize) -> Option<&'static st
 /// Validate the receiver/value of a representation-sensitive built-in.
 pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
     match name {
+        "interpolation" if matches!(ty, Type::Fun { .. }) && crate::ty::has_type_var(ty) => Some(
+            "a closure value with a still-generic type cannot be interpolated; apply it or give it a concrete function type".to_owned()
+        ),
         "length" | "isEmpty" if !is_sized(ty) => Some(format!(
             "`{name}` supports only string, List<T>, or Map<string, V>; got {ty}"
         )),

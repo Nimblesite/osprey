@@ -29,7 +29,7 @@ fn validate(name, age, score, email) !Invalid = {
 fn audit(name, age, score, email) = {
     mut count = 0
     mut errs = ""
-    handle Invalid
+    let _ = handle Invalid
     report m => {
         count = count + 1 ?: count
         errs = errs + "\n    #${toString(count)} ${m}"

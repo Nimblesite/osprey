@@ -52,6 +52,17 @@ runs:
       # memory-backend harness. lldb-dap backs the VS Code debugger end-to-end
       # tests (osprey --debug -> lldb-dap).
       #
+      # libc6-dbg is a PROFILER gate dependency, not a debugger one. The
+      # shipped libc.so.6 is stripped of local symbols, so glibc's allocator
+      # internals -- `_int_free` and friends, where an Osprey program built on
+      # `?:` spends most of its time -- have no entry in .dynsym and come back
+      # as raw hex. scripts/test_profiler.sh asserts that NO frame is hex while
+      # a symbolizer is installed [PROF-SYMBOLIZE-OFFLINE], and that assertion
+      # is satisfiable: with libc6-dbg present llvm-symbolizer finds the
+      # build-id debug file and names those same addresses `_int_free`. Fixing
+      # the runner keeps the gate at full strength; weakening the assertion
+      # would have hidden the next real misattribution.
+      #
       # The distro lldb on ubuntu-latest is lldb 18,
       # whose lldb-dap *DAP server* (NOT the DWARF reader — liblldb reads the
       # osprey-emitted debug info correctly) is buggy on x86_64: it reports a
@@ -76,7 +87,7 @@ runs:
       run: |
         set -euo pipefail
         sudo apt-get update
-        sudo apt-get install -y clang llvm libssl-dev libsqlite3-dev pkg-config zsh wget gnupg
+        sudo apt-get install -y clang llvm libssl-dev libsqlite3-dev pkg-config zsh wget gnupg libc6-dbg
         clang --version
         LLVM_VER=21
         . /etc/os-release

@@ -54,12 +54,24 @@
     "keywords": {
       "patterns": [
         {
+          "name": "meta.effect.multiplicity.osprey",
+          "match": "^\\s*(once|many|replayable)\\s+([a-z_][a-zA-Z0-9_]*)\\s*(?=:)",
+          "captures": {
+            "1": { "name": "storage.modifier.multiplicity.osprey" },
+            "2": { "name": "entity.name.function.effect.osprey" }
+          }
+        },
+        {
+          "name": "storage.modifier.static.osprey",
+          "match": "\\b(static)\\b(?=\\s+(?:effect\\b|[A-Z]))"
+        },
+        {
           "name": "keyword.control.osprey",
-          "match": "\\b(match|if|else|loop|select)\\b"
+          "match": "\\b(match|if|else|loop|select|handle|in|perform|resume|do)\\b"
         },
         {
           "name": "keyword.declaration.osprey",
-          "match": "\\b(fn|let|mut|type|import|extern|namespace|module|signature|export|opaque|state|as|extra)\\b"
+          "match": "\\b(fn|let|mut|effect|handler|type|import|extern|namespace|module|signature|export|opaque|state|as|extra)\\b"
         },
         {
           "name": "keyword.fiber.osprey",

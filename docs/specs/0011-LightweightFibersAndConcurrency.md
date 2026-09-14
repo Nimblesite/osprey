@@ -25,25 +25,21 @@ that computation finishes and returns its `T` value. `Fiber<T>` has no public
 record constructor; `spawn` is the construction operation.
 
 ```osprey
-fn work(value: int) -> Result<int, MathError> = value + 1
+fn work(value: int) -> int = value + 1
 
 let task = spawn work(41)
 let answer = await(task) ?: 0
 ```
 
 ```osprey-ml
-work : int -> Result<int, MathError>
+work : int -> int
 work value = value + 1
 
 task = spawn (work 41)
 answer = (await task) ?: 0
 ```
 
-Under [ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked),
-`task` is a `Fiber<Result<int, MathError>>`: `await` returns that complete source
-type and `?: 0` explicitly selects the example's overflow policy. It never
-erases a `Result` channel. Each spawn site allocates a distinct capture cell.
-Pointer and floating-point values likewise return with their source type.
+`await` returns the fiber's complete source type and never erases a `Result` channel. A fiber is inside the arithmetic totality guarantee: arithmetic in a spawned body cannot trap or wrap silently, and a fault reaches the enclosing `Arith` handler through the serialized `[EFFECTS-FIBER-PERFORM]` round trip, or the program is rejected ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). Each spawn site allocates a distinct capture cell. Pointer and floating-point values likewise return with their source type.
 
 A `Fiber<T>` handle is reusable: awaiting the same completed fiber more than
 once MUST return the same `T` value on every call. For a managed `T`, every
@@ -79,15 +75,15 @@ the element type erased, and a collection crosses the wire in the runtime
 representation a receiver can read — a backend may not put a construction-time
 layout on a channel that only its own scope knows how to interpret.
 
-One route does NOT carry `T`, and it is REJECTED rather than guessed at: a
-handle stored in a field whose DECLARED type is a type variable — `type Box<t> =
-Box { slot: t }` — reaches `recv` with nothing to unbox by, because the
-declaration is all the field read has. `recv` and `await` refuse such a program
-and name the field. They used to fall back to the uniform wire word, which is a
-plausible WRONG VALUE and not an error: a `Channel<List<List<int>>>` read out of
-such a field answered its outer shape as an integer, so reading a row out of it
-produced `0` where the answer was `3` — exit status 0, no diagnostic, nothing to
-notice. The same rule and the same refusal apply to `Fiber<T>`.
+A handle stored in a generic field also preserves its resolved type. For
+`type Box<t> = Box { slot: t }`, a field containing
+`Channel<List<List<int>>>` carries the instantiated channel element type into
+`recv`; a field containing `Fiber<T>` carries the instantiated result type into
+`await`. Field access uses the solved instance, including through aliases and
+nested records. It must never guess from the erased machine word. A backend
+that cannot recover this metadata must reject the program with a diagnostic.
+The former metadata-loss reproduction sends `[[1, 2, 3]]` through a boxed
+channel and now correctly reports row length `3` rather than `0`.
 
 A managed `T` handed to `send` is OWNED by the channel until a `recv` takes it.
 A send the runtime rejects owns nothing and releases the value again; a value

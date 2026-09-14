@@ -35,6 +35,13 @@
 // that fired.
 #define OSP_DEATH_STALLED (-2)
 
+// Added to a normally-exited child's status by `osp_death_exit`, so an
+// `exit(N)` guard is distinguishable from the signal numbers `osp_death_signal`
+// reports AND from a body that ran to completion. A guard that calls `exit`
+// rather than `abort` is still a guard, and one whose only path is invalid
+// compiler output can be proven no other way.
+#define OSP_DEATH_EXITED 1000
+
 // The code under test.
 typedef void (*OspDeathBody)(void);
 
@@ -63,12 +70,15 @@ static void osp_death_dump_and_reraise(int sig) {
 // in-child `alarm` would be defeated by exactly the states worth defending
 // against -- a body that blocks or resets SIGALRM, and a SIGABRT handler wedged
 // inside libgcov, which is where this harness's own risk lives.
-static inline int osp_death_reap(pid_t pid, unsigned budget) {
+static inline int osp_death_reap_status(pid_t pid, unsigned budget, int *status_out) {
   unsigned long limit = (unsigned long)budget * (1000000UL / OSP_DEATH_POLL_US);
   int status = 0;
   for (unsigned long waited = 0;; waited += 1) {
     pid_t seen = waitpid(pid, &status, WNOHANG);
     if (seen == pid) {
+      if (status_out != NULL) {
+        *status_out = status;
+      }
       return WIFSIGNALED(status) ? WTERMSIG(status) : 0;
     }
     if (seen < 0) {
@@ -81,6 +91,11 @@ static inline int osp_death_reap(pid_t pid, unsigned budget) {
     }
     (void)usleep(OSP_DEATH_POLL_US);
   }
+}
+
+// The signal that killed `pid`, discarding its exit status.
+static inline int osp_death_reap(pid_t pid, unsigned budget) {
+  return osp_death_reap_status(pid, budget, NULL);
 }
 
 // Run `body` in a forked child with `budget` seconds to die or return, and
@@ -102,6 +117,29 @@ static inline int osp_death_signal_within(OspDeathBody body, unsigned budget) {
 // The same, under the default budget.
 static inline int osp_death_signal(OspDeathBody body) {
   return osp_death_signal_within(body, OSP_DEATH_BUDGET_SECONDS);
+}
+
+// Run `body` in a forked child and report how it ended: the signal number when
+// one killed it, otherwise `OSP_DEATH_EXITED + status`. A body that returns
+// reports `OSP_DEATH_EXITED`, so "the guard let the call through" stays
+// distinct from "the guard exited 0", which no guard does.
+static inline int osp_death_exit(OspDeathBody body) {
+  pid_t pid = fork();
+  if (pid < 0) {
+    return OSP_DEATH_UNOBSERVED;
+  }
+  if (pid == 0) {
+    (void)signal(SIGABRT, osp_death_dump_and_reraise);
+    body();
+    OSP_GCOV_DUMP();
+    _exit(0); // reached only when the guard let the call through
+  }
+  int status = 0;
+  int signalled = osp_death_reap_status(pid, OSP_DEATH_BUDGET_SECONDS, &status);
+  if (signalled != 0) {
+    return signalled;
+  }
+  return OSP_DEATH_EXITED + (WIFEXITED(status) ? WEXITSTATUS(status) : 0);
 }
 
 #endif // OSPREY_TEST_DEATH_H

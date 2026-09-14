@@ -12,13 +12,13 @@ use std::path::{Path, PathBuf};
 ///
 /// Left un-canonicalized on purpose: there is no fallible call to unwrap, and
 /// the `..` components resolve the same way for every consumer here.
-pub fn repo_root() -> PathBuf {
+pub(crate) fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
 }
 
 /// Every file with extension `ext` under `dir`, recursively, sorted so a
 /// failure names the same program on every machine.
-pub fn sources(dir: &Path, ext: &str) -> Vec<PathBuf> {
+pub(crate) fn sources(dir: &Path, ext: &str) -> Vec<PathBuf> {
     let mut out = Vec::new();
     collect(dir, ext, &mut out);
     out.sort();
@@ -47,7 +47,7 @@ fn collect(dir: &Path, ext: &str, out: &mut Vec<PathBuf>) {
 /// an instantiation that was never emitted collapsed onto one that was and the
 /// gate reported a clean module — the exact dangling reference it exists to
 /// catch ([`crate::monofn::specialize_callback`]).
-pub fn symbol_at(rest: &str) -> Option<String> {
+pub(crate) fn symbol_at(rest: &str) -> Option<String> {
     let name: String = rest
         .chars()
         .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '.' || *c == '$')
@@ -57,7 +57,7 @@ pub fn symbol_at(rest: &str) -> Option<String> {
 }
 
 /// Every `@symbol` the module BINDS — defined, declared or a global.
-pub fn bound_symbols(ir: &str) -> BTreeSet<String> {
+pub(crate) fn bound_symbols(ir: &str) -> BTreeSet<String> {
     let mut bound = BTreeSet::new();
     for line in ir.lines() {
         let trimmed = line.trim_start();
@@ -83,7 +83,7 @@ pub fn bound_symbols(ir: &str) -> BTreeSet<String> {
 /// global initializer is a use like any other (`@table = global i8* @missing`),
 /// and skipping the whole line let exactly that reference through: the one form
 /// where a dangling symbol is written on the same line as a definition.
-pub fn undefined_symbols(ir: &str) -> BTreeSet<String> {
+pub(crate) fn undefined_symbols(ir: &str) -> BTreeSet<String> {
     let bound = bound_symbols(ir);
     let mut missing = BTreeSet::new();
     for line in ir.lines() {

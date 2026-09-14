@@ -1,1 +1,1 @@
-type mismatch: cannot unify int with Result<int, MathError>
+codegen: unsupported construct: a capturing lambda as an FFI callback (captures cannot cross the C boundary; use a named function)

@@ -1,0 +1,1 @@
+7:17: variance annotations are only valid on type and effect declarations; remove the marker from `int` at the call to `identity`

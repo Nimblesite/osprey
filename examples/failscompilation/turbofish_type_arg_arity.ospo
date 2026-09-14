@@ -1,0 +1,9 @@
+// A call site's type arguments are a contract with the declaration: the count
+// must equal the declared binder count, exactly as a construction site's does.
+// Implements [TYPE-GENERICS-APPLY], [GENERICS-CTOR-ARITY]
+fn identity<T>(x: T) -> T = x
+
+fn main() -> Unit = {
+    let pinned = identity<int, string>(5)
+    print("${pinned}")
+}

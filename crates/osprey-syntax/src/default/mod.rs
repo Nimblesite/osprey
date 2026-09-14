@@ -15,6 +15,7 @@ use osprey_ast::{Position, Program};
 use tree_sitter::{Node, Parser, Point, Tree};
 
 mod expr;
+mod kernel;
 mod lower;
 mod modules;
 
@@ -66,6 +67,10 @@ pub fn parse_tree(source: &str) -> Option<Tree> {
 }
 
 fn collect_errors(node: Node<'_>, src: &[u8], out: &mut Vec<SyntaxError>) {
+    if let Some(error) = call_variance_error(node, src) {
+        out.push(error);
+        return;
+    }
     if node.is_error() || node.is_missing() {
         let p = node.start_position();
         out.push(SyntaxError {
@@ -110,6 +115,22 @@ fn collect_errors(node: Node<'_>, src: &[u8], out: &mut Vec<SyntaxError>) {
     for child in node.children(&mut cursor) {
         collect_errors(child, src, out);
     }
+}
+
+/// Variance declares a binder; it cannot decorate a call's type argument.
+fn call_variance_error(node: Node<'_>, src: &[u8]) -> Option<SyntaxError> {
+    if node.kind() != "call_expression" {
+        return None;
+    }
+    let args = node.child_by_field_name("type_arguments")?;
+    let list = args.named_child(0)?;
+    let marker = list.child_by_field_name("variance")?;
+    let argument = marker.next_named_sibling()?.utf8_text(src).ok()?;
+    let callee = node.child_by_field_name("callee")?.utf8_text(src).ok()?;
+    Some(SyntaxError {
+        message: format!("variance annotations are only valid on type and effect declarations; remove the marker from `{argument}` at the call to `{callee}`"),
+        position: position_from_point(node.start_position()),
+    })
 }
 
 fn is_negative_numeric(node: Node<'_>, src: &[u8]) -> bool {
@@ -310,9 +331,9 @@ mod tests {
 
     #[test]
     fn reports_missing_node_error() {
-        // `type T =` with no variant name forces tree-sitter to insert a MISSING
+        // An arm with no body forces tree-sitter to insert a MISSING
         // identifier; collect_errors reports it via the is_missing format branch.
-        let parsed = parse_program("type T =\n");
+        let parsed = parse_program("fn f() = match v { 1 => }\n");
         assert!(
             parsed
                 .errors
@@ -342,5 +363,115 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    /// SECOND ROOT. A block is `'{' repeat(statement) optional(expression) '}'`
+    /// (`tree-sitter-osprey/grammar.js`), and that trailing `optional`
+    /// expression will ABSORB an orphan left behind when a juxtaposed
+    /// application is split.
+    ///
+    /// `let r = double 5` inside a block does not parse as a call — Default has
+    /// no application production — so it becomes `let r = double` with the
+    /// block's TAIL set to `5`. The block's value is therefore the ARGUMENT the
+    /// author wrote, and `go()` returns 5 where the source says 10.
+    ///
+    /// This is a distinct root from the discard guard in
+    /// `osprey-types::check::infer_block_stmt`, and it is why fixing that guard
+    /// alone is not enough: here NOTHING is discarded. Exactly one statement
+    /// survives (`let r = double`), the tail is well-typed, the return type
+    /// matches, and the program type-checks with zero errors. No discard rule,
+    /// however general, can reach a value that is being RETURNED.
+    ///
+    /// Each source below is a whole program that must be REJECTED.
+    const BLOCK_TAIL_ABSORBS_JUXTAPOSED_ARGUMENT: &[(&str, &str)] = &[
+        (
+            "integer argument",
+            "fn double(x) = x * 2\n\
+             fn go() -> int = {\n\
+               let r = double 5\n\
+             }\n",
+        ),
+        (
+            "string argument",
+            "fn greet(s) = s\n\
+             fn go() -> string = {\n\
+               let r = greet \"hi\"\n\
+             }\n",
+        ),
+        (
+            "identifier argument",
+            "fn double(x) = x * 2\n\
+             fn go(n) -> int = {\n\
+               let r = double n\n\
+             }\n",
+        ),
+        (
+            "two arguments, the last absorbed",
+            "fn add(a, b) = a + b\n\
+             fn go() -> int = {\n\
+               let r = add 2 3\n\
+             }\n",
+        ),
+        (
+            "nested block tail",
+            "fn double(x) = x * 2\n\
+             fn go() -> int = {\n\
+               let inner = {\n\
+                 let r = double 5\n\
+               }\n\
+               inner\n\
+             }\n",
+        ),
+        (
+            "lambda body block tail",
+            "fn double(x) = x * 2\n\
+             fn go() -> int = {\n\
+               let f = |n| => {\n\
+                 let r = double n\n\
+               }\n\
+               f(1)\n\
+             }\n",
+        ),
+    ];
+
+    #[test]
+    fn a_block_tail_does_not_absorb_a_juxtaposed_argument() {
+        for (label, src) in BLOCK_TAIL_ABSORBS_JUXTAPOSED_ARGUMENT {
+            let parsed = parse_program(src);
+            assert!(
+                !parsed.errors.is_empty(),
+                "a block tail absorbing a juxtaposed {label} must be rejected; \
+                 parsed clean into {:?} for:\n{src}",
+                parsed.program.statements
+            );
+        }
+    }
+
+    #[test]
+    fn a_juxtaposed_argument_never_becomes_the_blocks_value() {
+        // The shape assertion, stated positively so it cannot be satisfied by
+        // an unrelated parse error: whatever `let r = double 5` means, the
+        // block's VALUE must never be the literal `5` the author wrote as the
+        // argument. Today it is exactly that, which is how `go()` returns 5.
+        let parsed = parse_program(
+            "fn double(x) = x * 2\n\
+             fn go() -> int = {\n\
+               let r = double 5\n\
+             }\n",
+        );
+        let Some(Stmt::Function { body, .. }) = parsed.program.statements.get(1) else {
+            panic!(
+                "expected a second function statement, got {:?}",
+                parsed.program.statements
+            );
+        };
+        if let Expr::Block { value, .. } = body {
+            assert_ne!(
+                value.as_deref(),
+                Some(&Expr::Integer(5)),
+                "the block's value is the argument `5`, so `go()` returns the \
+                 ARGUMENT instead of applying `double` to it"
+            );
+        }
     }
 }

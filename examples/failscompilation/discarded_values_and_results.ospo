@@ -1,0 +1,14 @@
+// Implements [BLOCK-DISCARD] and [ERROR-RESULT-DISCARD] negative test.
+//
+// A statement is evaluated for its effects and its value is thrown away, so
+// only `Unit` may stand in statement position. `let _ =` declares the discard
+// deliberate and answers the first rule — but it cannot answer the second:
+// `_` has no way to consent to losing a `Result`'s error channel, so an
+// unhandled `Result` must still be discharged with `match` or `?:`.
+
+fn twice(n) = n * 2 ?: 0
+fn risky(a, b) = a + b
+
+twice(21)
+risky(1, 2)
+let _ = risky(3, 4)

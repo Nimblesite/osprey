@@ -1,0 +1,164 @@
+// Implements [MOBILE-REACTIVE-HOST]: every accepted event yields immutable state.
+namespace mobile
+
+import bank::Json
+import mobile::Model
+import mobile::Github
+import mobile::Storage
+import mobile::View
+import mobile::Annotations
+import mobile::Text
+
+type InboxUpdate =
+    model : InboxModel
+    commands : string
+
+module Update
+    result model commands = InboxUpdate(model = model, commands = commands)
+
+    unchanged model = result model "[]"
+
+    failure model message = unchanged (Model::set model "error" message)
+
+    nextSequence model = parseInt model.seq ?: 0
+
+    export initial () = result (Model::initial ()) (Storage::schema ())
+
+    fetch model = match nextSequence model + 1
+        Error why => failure model "Request counter exhausted. Close and reopen the app."
+        Success sequence =>
+            prepared = Model::set (Model::set (Model::set model "seq" (toString sequence)) "loading" "true") "error" ""
+            pending = Model::set (Model::set prepared "pending" "fetch:${sequence}:${model.repo}") "status" "Refreshing ${model.repo}…"
+            result pending (Storage::http pending)
+
+    persist model = match model.dbReady == "true"
+        false => unchanged (Model::set model "storageError" "SQLite is unavailable; these changes are only in memory.")
+        true => match nextSequence model + 1
+            Error why => unchanged (Model::set model "storageError" "Request counter exhausted; changes were not saved. Close and reopen the app.")
+            Success sequence =>
+                pending = Model::set (Model::set model "seq" (toString sequence)) "write" "save:${sequence}"
+                result pending (Storage::save pending)
+
+    ready model = Model::set (Model::set model "stage" "ready") "loading" "false"
+
+    storageError model event = Model::set model "storageError" ("SQLite failed: " + Json::getOr event "error" "unknown database error")
+
+    storageFailure model event = unchanged (storageError (ready model) event)
+
+    schema model event = match Json::getOr event "ok" "false" == "true"
+        false => storageFailure model event
+        true => result (Model::set (Model::set (Model::set model "stage" "load") "dbReady" "true") "status" "Reading the SQLite cache…") (Storage::load ())
+
+    restore model source =
+        cached = Storage::restore (ready model) source
+        match cached.valid
+            false => failure (Model::set (ready model) "status" "Cache needs a refresh") cached.error
+            true => unchanged (Model::set cached.model "status" "Loaded from SQLite · refresh when ready")
+
+    loaded model event = match Json::getOr event "ok" "false" == "true"
+        false => storageFailure model event
+        true =>
+            doc = jsonParse event ?: 0
+            count = jsonLength doc "rows"
+            freed = jsonFree doc ?: 0
+            match count
+                0 => fetch (ready model)
+                1 => restore model (Json::getOr event "rows[0].value" "")
+                _ => failure (ready model) "SQLite returned an invalid cache result. Refresh to replace it."
+
+    savedResult model event = match Json::getOr event "ok" "false" == "true"
+        false => unchanged (storageError (Model::set model "write" "") event)
+        true => unchanged (Model::set (Model::set model "write" "") "storageError" "")
+
+    sql model event =
+        id = Json::getOr event "id" ""
+        match id == "schema" && model.stage == "schema"
+            true => schema model event
+            false => match id == "load" && model.stage == "load"
+                true => loaded model event
+                false => match length model.write > 0 && id == model.write
+                    true => savedResult model event
+                    false => unchanged model
+
+    validSelection model = match length model.selected == 0 || View::exists model model.selected
+        true => model
+        false => Model::set model "selected" ""
+
+    httpSuccess model event = match Github::parse (Json::getOr event "body" "")
+        Error why => failure (Model::set model "status" "Refresh failed · cached issues retained") why
+        Success items => persist (validSelection (Model::set (Model::set (Model::set model "items" items) "error" "") "status" "Open issues · synced with GitHub"))
+
+    http model event = match length model.pending > 0 && Json::getOr event "id" "" == model.pending
+        false => unchanged model
+        true =>
+            cleared = Model::set (Model::set model "pending" "") "loading" "false"
+            status = parseInt (Json::getOr event "status" "0") ?: 0
+            match status >= 200 && status < 300 && Json::getOr event "error" "" == ""
+                true => httpSuccess cleared event
+                false => failure (Model::set cleared "status" "Refresh failed · cached issues retained") (Github::responseError event)
+
+    repository model raw =
+        repo = trim raw
+        match Github::validRepository repo
+            false => failure model "Use owner/repository with letters, numbers, hyphens, underscores or dots."
+            true => match repo == model.repo
+                true => fetch model
+                false => fetch (Model::set (Model::set (Model::set (Model::set model "repo" repo) "items" "[]") "pending" "") "selected" "")
+
+    bookmark model id = match View::exists model id
+        false => failure model "That issue is no longer in the current inbox. Refresh and try again."
+        true =>
+            marks = match View::saved model id
+                true => replace model.saved ("|" + id + "|") "|" ?: model.saved
+                false => model.saved + id + "|"
+            persist (Model::set model "saved" marks)
+
+    filter model value = match value == "all" || value == "saved"
+        true => unchanged (Model::set model "filter" value)
+        false => failure model "Unknown inbox filter. Choose All or Saved."
+
+    annotate model id note priority = match View::exists model id && Annotations::capacity model.annotations id
+        false => failure model "Cannot annotate this issue: it is missing or the 200-issue local note limit is reached."
+        true => persist (Model::set model "annotations" (Annotations::set model.annotations id note priority))
+
+    note model event =
+        id = Json::getOr event "id" ""
+        value = Json::getOr event "value" ""
+        current = Annotations::get model.annotations id
+        match !Text::within value 2000
+            true => failure model "Keep local notes within 2000 characters."
+            false => annotate model id value current.priority
+
+    priority model event =
+        id = Json::getOr event "id" ""
+        value = Json::getOr event "value" ""
+        current = Annotations::get model.annotations id
+        match value == "normal" || value == "high"
+            true => annotate model id current.note value
+            false => failure model "Choose Normal or High priority."
+
+    openIssue model id = match View::exists model id
+        true => unchanged (Model::set model "selected" id)
+        false => failure model "This issue is no longer in the inbox. Refresh to find current issues."
+
+    detailEvent model event = match Json::getOr event "type" ""
+        "open" => openIssue model (Json::getOr event "id" "")
+        "back" => unchanged (Model::set model "selected" "")
+        "note" => note model event
+        "priority" => priority model event
+        _ => failure model "The host sent an unsupported inbox event."
+
+    interaction model event = match Json::getOr event "type" ""
+        "refresh" => fetch model
+        "repository" => repository model (Json::getOr event "value" "")
+        "search" => unchanged (Model::set model "search" (Text::prefix (Json::getOr event "value" "") 256))
+        "filter" => filter model (Json::getOr event "value" "all")
+        "bookmark" => bookmark model (Json::getOr event "id" "")
+        _ => detailEvent model event
+
+    export dispatch model event = match Json::getOr event "type" ""
+        "sql" => sql model event
+        "http" => http model event
+        _ => match model.stage == "ready"
+            true => interaction model event
+            false => unchanged model

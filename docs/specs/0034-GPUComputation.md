@@ -132,12 +132,12 @@ construction and the combinator is parallelizable without analysis. `U`
 must satisfy [GPU-BUFFER-ELEM].
 
 ```osprey
-fn square(x) = (x * x) ?: 0
+fn square(x) = x * x
 let squares = toGpu([1, 2, 3, 4]) |> gpuMap(square)
 ```
 
 ```osprey-ml
-square x = (x * x) ?: 0
+square x = x * x
 let squares = toGpu [1, 2, 3, 4] |> gpuMap square
 ```
 
@@ -154,12 +154,12 @@ run it in the host's order. A non-associative combine therefore means the
 same thing on every backend — it is slower to offload, never different.
 
 ```osprey
-fn add(a, b) = (a + b) ?: a
+fn add(a, b) = a + b
 let total = toGpu([1, 2, 3, 4]) |> gpuFold(0, add)
 ```
 
 ```osprey-ml
-add (a, b) = (a + b) ?: a
+add (a, b) = a + b
 total = toGpu [1, 2, 3, 4] |> gpuFold 0 add
 ```
 
@@ -213,12 +213,12 @@ expresses matrix rows and stencils.
 
 ```osprey
 fn at(m, i) = gpuGet(m, i) ?: 0.0
-fn rowSum(m, r) = at(m, (r * 3) ?: 0) + at(m, ((r * 3) ?: 1) + 1 ?: 1)
+fn rowSum(m, r) = at(m, r * 3) + at(m, r * 3 + 1)
 ```
 
 ```osprey-ml
 at (m, i) = gpuGet (m, i) ?: 0.0
-rowSum (m, r) = at (m, (r * 3) ?: 0) + at (m, ((r * 3) ?: 1) + 1 ?: 1)
+rowSum (m, r) = at (m, r * 3) + at (m, r * 3 + 1)
 ```
 
 ### `gpuScan(buffer: GpuBuffer<T>, initial: T, combine: fn(T, T) -> T) -> GpuBuffer<T>` — [GPU-SCAN]
@@ -276,13 +276,20 @@ site, or a closure whose provenance analysis widens out) is rejected with a
 `cannot prove GPU kernel pure` error. Passing a named function or an inline
 lambda always gives the checker what it needs.
 
+When the checker *can* see the kernel's provenance and the answer is no, it
+says so instead: the rejection names the dynamic operations the body still
+requires, because that is evidence of a dynamic row rather than an absence of
+evidence. That wording is normative in
+[STAGE-GPU-DIAG](0035-StagedEffects.md#gpu-legality--stage-gpu-legal), which
+generalizes this section's empty-row rule to stage legality.
+
 ```osprey
 effect Log { write: fn(string) -> Unit }
 fn loud(x) = {
     perform Log.write("saw it")   // kernel performs Log.write
     x
 }
-// COMPILE ERROR: GPU kernel must be pure; it performs: Log.write
+// COMPILE ERROR: kernel body is not stage-legal; it requires dynamic effects: Log.write
 // let bad = toGpu([1]) |> gpuMap(loud)
 ```
 
@@ -293,7 +300,7 @@ effect Log
 loud x =
     perform Log.write "saw it"   (* kernel performs Log.write *)
     x
-(* COMPILE ERROR: GPU kernel must be pure; it performs: Log.write *)
+(* COMPILE ERROR: kernel body is not stage-legal; it requires dynamic effects: Log.write *)
 (* bad = toGpu [1] |> gpuMap loud *)
 ```
 
@@ -345,13 +352,7 @@ types at `float` in either operand order
 (`crates/osprey-types/src/expr.rs::positional_arg_types`). No annotation is
 required, and the associativity of the arithmetic no longer decides.
 
-A **named** context-free function gets it too. `fn plus(a, b) = a + b`
-leaves its overload OPEN rather than defaulting at its own definition, and
-the choice is made once, after all unification, from whatever the operands
-finally became (`crates/osprey-types/src/expr.rs::deferred_arith`). Folded
-over a float buffer it is a float addition; used only on integers it is
-still the checked integer one, `Result<int, MathError>` and all. No
-annotation, no float literal, no rewrite of the call site.
+A **named** context-free function gets it too. `fn plus(a, b) = a + b` leaves its overload OPEN rather than defaulting at its own definition, and the choice is made once, after all unification, from whatever the operands finally became (`crates/osprey-types/src/expr.rs::deferred_arith`). Folded over a float buffer it is a float addition; used only on integers it is still the integer one. No annotation, no float literal, no rewrite of the call site. Kernels are inside the arithmetic totality guarantee like any other code ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)).
 
 The operand does **not** generalize, because there is no numeric class to
 quantify over: one definition gets one overload. A helper used at BOTH
@@ -425,6 +426,8 @@ program links, by the same scalar discipline that already guards the
 combinators: `gpuMap`/`gpuZipWith` reject the stored element, `gpuFold` and
 `gpuScan` reject the accumulator update, and `gpuFilter` rejects the verdict.
 Handle failure inside the kernel with `?:` or `match`.
+
+This rejection is the arithmetic totality guarantee applied at the kernel boundary: a kernel may not carry an undischarged arithmetic fault, and no target may answer one by trapping or wrapping ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). On the host backend a kernel body dispatches to the enclosing `Arith` handler like any lambda. Device backends ([plan 0023](../plans/0023-gpu-computation.md)) have no handler stack and MUST fix the policy at compile time — a staged `handle static Arith` ([Staged Effects](0035-StagedEffects.md)) — rather than weaken any clause of the guarantee.
 
 ### Which kernels are extracted
 

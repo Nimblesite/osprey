@@ -1,0 +1,71 @@
+namespace inboxtests
+
+import bank::Json
+import mobile::Model
+import mobile::Storage
+import mobile::Update
+import mobile::View
+import mobile::Annotations
+import inboxtests::Support
+import inboxtests::TriageSupport
+
+controlRoundTrip code = match code >= 32
+    true => true
+    false =>
+        character = fromCodePoint code ?: ""
+        source = "é🦉" + character + "\"\\"
+        encoded = Json::obj (Json::strField "value" source)
+        source == Json::getOr encoded "value" "INVALID" && controlRoundTrip ((code + 1) ?: 32)
+
+allControlCase () = check "all representable JSON controls and Unicode round trip" true (controlRoundTrip 1)
+
+schemaFailureCase () =
+    initial = Update::initial ()
+    failed = Update::dispatch initial.model (Support::sql "schema" false "[]" "permission denied")
+    refreshed = Update::dispatch failed.model (Support::event "refresh")
+    response = Update::dispatch refreshed.model (Support::http refreshed.model.pending 200 (Support::fixture ()) "")
+    check "schema failure visible" true (contains (View::render failed.model) "permission denied")
+    check "network remains usable" "2" (Support::projected (View::render response.model) "total")
+    check "no write to broken database" "[]" response.commands
+    check "memory only storage warning truthful" true (contains response.model.storageError "only in memory")
+
+staleSaveCase () =
+    loaded = Support::loaded ()
+    saved = Update::dispatch loaded.model (Support::bookmark "101")
+    stale = Update::dispatch saved.model (Support::sql loaded.model.write false "[]" "old write failed")
+    check "older save cannot replace latest status" (Model::encode saved.model) (Model::encode stale.model)
+    check "older save emits nothing" "[]" stale.commands
+
+invalidCacheCase () =
+    model = Model::initial ()
+    invalid = Storage::restore model "{\"version\":99,\"repo\":\"owner/repo\",\"items\":\"[]\"}"
+    malformed = Storage::restore model "{\"version\":1,\"repo\":\"owner/repo\",\"items\":\"[{\\\"id\\\":7}]\"}"
+    check "new schema cannot be misread" false invalid.valid
+    check "malformed cached issues rejected" false malformed.valid
+    check "invalid cache does not change state" (Model::encode model) (Model::encode malformed.model)
+
+rateLimitCase () =
+    awaiting = Support::awaiting ()
+    response = Update::dispatch awaiting.model (Support::http awaiting.model.pending 403 "{\"message\":\"API rate limit exceeded\"}" "")
+    check "HTTP status visible" true (contains response.model.error "403")
+    check "GitHub failure detail visible" true (contains response.model.error "rate limit")
+
+clearAnnotationCase () =
+    notes = Annotations::set "[]" "101" "Remember" "high"
+    cleared = Annotations::set notes "101" "" "normal"
+    check "clearing annotation releases local capacity" "[]" cleared
+    check "normal default survives removal" "normal" (Annotations::get cleared "101").priority
+
+saveDuringRefreshCase () =
+    loaded = Support::loaded ()
+    refreshing = Update::dispatch loaded.model (Support::event "refresh")
+    failed = Update::dispatch refreshing.model (Support::sql loaded.model.write false "[]" "disk full")
+    check "save failure cannot end an independent HTTP request" "true" failed.model.loading
+    check "pending HTTP correlation remains intact" refreshing.model.pending failed.model.pending
+
+removedSelectionCase () =
+    selected = TriageSupport::selected ()
+    refreshing = Update::dispatch selected.model (Support::event "refresh")
+    empty = Update::dispatch refreshing.model (Support::http refreshing.model.pending 200 "[]" "")
+    check "removed issue closes its detail" "" empty.model.selected
+    check "valid empty issue page replaces cache" "[]" empty.model.items

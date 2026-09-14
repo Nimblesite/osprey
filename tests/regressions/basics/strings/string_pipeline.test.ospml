@@ -124,7 +124,6 @@ print "${route ("GET", "/random")}\n"
 print "${route ("DELETE", "/anything")}\n"
 
 print "=== Pipeline Complete ===\n"
-0
 
 (** Replay the transformation pipeline, fallible operations, and routing branches. *)
 stringPipelineCase () =

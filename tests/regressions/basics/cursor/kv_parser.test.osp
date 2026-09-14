@@ -83,7 +83,6 @@ print("findEq('port=8080') = ${findEq("port=8080", 0)}")
 print("findEq('bad_entry_no_equals') = ${findEq("bad_entry_no_equals", 0)}")
 
 print("=== parser complete ===")
-0
 
 /// Confirms a successful pair carries the complete key/value rendering.
 fn pairMatches(seg, expected) = match parsePair(seg) {

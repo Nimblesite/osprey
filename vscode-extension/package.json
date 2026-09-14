@@ -350,7 +350,7 @@
         "osprey.profiler.inlineHeat": {
           "type": "boolean",
           "default": true,
-          "description": "After profiling, show inline per-line heat annotations (NN.N% \u00b7 M samples) and overview-ruler marks in the profiled source files."
+          "description": "After profiling, show inline per-line heat annotations (NN.N% · M samples) and overview-ruler marks in the profiled source files."
         }
       }
     }
@@ -373,7 +373,9 @@
     "mocha": "^11.5.0",
     "sinon": "^20.0.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vscode-oniguruma": "^2.0.1",
+    "vscode-textmate": "^9.3.2"
   },
   "scripts": {
     "sync-icon": "node scripts/sync-icon.mjs",

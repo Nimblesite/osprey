@@ -1,0 +1,12 @@
+namespace mobile
+
+import bank::Json
+import mobile::Model
+import mobile::Update
+import mobile::View
+import mobile::Ui
+
+module App
+    export envelope update =
+        view = View::render update.model
+        Json::obj (Json::strField "model" (Model::encode update.model) + "," + Json::rawField "view" view + "," + Json::rawField "commands" update.commands + "," + Json::rawField "ui" (Ui::render view))

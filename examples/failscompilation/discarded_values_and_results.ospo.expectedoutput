@@ -1,0 +1,3 @@
+12:0: a `int` value cannot be discarded; bind it with `let _ =` if that is deliberate, or remove the statement
+13:0: an unhandled `Result` cannot be discarded; use `match` or `?:`
+14:0: an unhandled `Result` cannot be discarded; use `match` or `?:`

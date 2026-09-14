@@ -14,17 +14,48 @@ const STATE_ON_CPU: u64 = 0;
 /// Sample `state` value for a thread that was blocked/waiting.
 const STATE_WAITING: u64 = 1;
 
-/// One loaded binary image: raw pcs are mapped to the image with the greatest
-/// `base <= pc`, then unslid by `slide` [PROF-SYMBOLIZE-OFFLINE].
+/// One loaded binary image. A raw pc is mapped to the image whose executable
+/// range CONTAINS it, then unslid by `slide` [PROF-SYMBOLIZE-OFFLINE].
+///
+/// `base` alone cannot decide ownership. `base` is the mach-header address, and
+/// in the dyld shared cache every system dylib's header sits in one region while
+/// its `__TEXT` lives in another, so header order is not text order: picking the
+/// greatest `base <= pc` hands a `libsystem_malloc` pc to whichever unrelated
+/// image happens to have the nearest lower header. That is how `_xzm_free`
+/// symbolized as `task_get_special_port`. `text`/`text_size` carry the real
+/// executable range so ownership is decided by containment.
 #[derive(Debug, Deserialize)]
 pub(crate) struct Image {
     /// Filesystem path of the image (executable or dylib).
     pub path: String,
-    /// Load address of the image in the profiled process.
+    /// Load address of the image in the profiled process (mach header / ELF base).
     pub base: u64,
     /// ASLR slide: `pc - slide` is the address in the on-disk image.
     #[serde(default)]
     pub slide: u64,
+    /// Start of the image's executable range, already slid. 0 when the producer
+    /// did not report one, which falls back to `base` ordering.
+    #[serde(default)]
+    pub text: u64,
+    /// Size of the executable range in bytes. 0 means "not reported".
+    #[serde(default)]
+    pub text_size: u64,
+    /// The mach-o slice this image was MAPPED as (`arm64e`, `arm64`, `x86_64`),
+    /// as recorded by the runtime that ran it. Empty when the producer did not
+    /// report one. `atos` must be told: the host default slice of a universal
+    /// system dylib lays `__TEXT` out differently from the arm64e slice the
+    /// kernel actually maps, and naming an address against the wrong slice
+    /// yields a wrong-but-plausible neighbour [PROF-SYMBOLIZE-OFFLINE].
+    #[serde(default)]
+    pub arch: String,
+}
+
+impl Image {
+    /// Whether this image's reported executable range contains `pc`. False when
+    /// the producer reported no range, so callers can fall back.
+    pub(crate) fn text_contains(&self, pc: u64) -> bool {
+        self.text_size != 0 && pc >= self.text && pc - self.text < self.text_size
+    }
 }
 
 /// One registered thread [PROF-COLLECT-REGISTRY]. Osprey fibers are 1:1

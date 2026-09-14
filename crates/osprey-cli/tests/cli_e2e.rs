@@ -134,16 +134,27 @@ fn run_file_cc(path: &Path, mode: &str, cc: &str) -> Out {
     finish(cmd)
 }
 
-/// Type-clean but codegen-rejected: a still-generic lambda used as a bare
-/// VALUE has no ABI to fix and no call site to specialise against
-/// ([TYPE-GENERICS-FN]). It passes the type gate, so every compiling mode
-/// reaches codegen and fails there — exercising the `Err` arms
-/// `compile_program` feeds.
+/// Type-clean but codegen-rejected: an FFI callback slot is a raw C code
+/// pointer, so a capturing lambda has nowhere to carry its environment
+/// ([FFI-CALLBACKS]). It passes the type gate, so every compiling mode reaches
+/// codegen and fails there — exercising the `Err` arms `compile_program` feeds.
 ///
-/// This used to bind the value first (`let f = mk(1)` then `f(0)`). That shape
-/// now COMPILES: the returned lambda is inlined at each call site of the
-/// binding, so it no longer reaches a codegen error and could not exercise
-/// these arms.
+/// `(x + base) ?: 0` discharges the arithmetic `Result`; without it the lambda
+/// is `(int) -> Result<int, MathError>` and the type gate rejects the call
+/// before codegen sees the capture.
+const CODEGEN_REJECTED: &str = concat!(
+    "extern fn registerCallback(cb: fn(int) -> int) -> int\n",
+    "let base = 10\n",
+    "let r = registerCallback(fn(x) => (x + base) ?: 0)\n",
+    "print(\"${r}\")\n",
+);
+
+/// A still-generic lambda used as a bare VALUE: no ABI to fix and no call site
+/// to specialise against ([TYPE-GENERICS-FN]).
+///
+/// This drove the two codegen-error tests until the checker learned to reject
+/// it, which is a strictly better place to catch it. It stays here to pin
+/// WHERE it is rejected, so the move cannot happen again unnoticed.
 const GENERIC_AS_VALUE: &str = "fn mk<T>(x: T) = |y| => x\nprint(\"${mk(1)}\")\n";
 
 /// Explicit effect resume must run the rest of the handled computation and then
@@ -179,16 +190,17 @@ fn main() = {
 }
 "#;
 
-/// A handler arm that resumes its continuation TWICE. Single-shot is the shipped
-/// contract ([EFFECTS-RESUME]); the second `resume` aborts at run time.
+/// A handler arm that resumes its continuation TWICE on ONE control path.
+/// `Choose.pick` carries no multiplicity keyword, so it is `once`, and the arm
+/// is rejected before it can run ([MULTI-HANDLE-ONCE], [MULTI-COMPAT]).
 ///
 /// This lived as `examples/failscompilation/multishot_resume_rejected.ospo`,
-/// which was a category error: the program is well formed, so a must-reject
-/// fixture could never observe the abort. It "passed" only because `x + 1` and
-/// `a + b` lacked the `?:` that `[ARITH-CHECKED]` requires, and the corpus
-/// recorded that unrelated type error as the expected rejection — leaving the
-/// multi-shot guard with zero coverage while three documents cited the fixture
-/// as its proof.
+/// which was a category error while the rejection was a RUNTIME one: the
+/// program was well formed, so a must-reject fixture could never observe the
+/// abort. It "passed" only because `x + 1` and `a + b` lacked the `?:` that
+/// `[ARITH-CHECKED]` requires, and the corpus recorded that unrelated type
+/// error as the expected rejection. Multiplicity moves the verdict back to
+/// compile time, where the arm has always been visible.
 const MULTISHOT_RESUME: &str = r#"
 effect Choose {
     pick: fn() -> int
@@ -205,6 +217,30 @@ fn main() = {
             let a = resume(10)
             let b = resume(20)
             a + b ?: 0
+        }
+    in both()
+    print("total=" + toString(total))
+}
+"#;
+
+/// The same effect answered by an arm with one `resume` per `match` branch.
+/// Two `resume` SITES, at most one per control path — the shape
+/// [MULTI-HANDLE-ONCE] must keep accepting.
+const BRANCHWISE_RESUME: &str = r#"
+effect Choose {
+    pick: fn() -> int
+}
+
+fn both() -> int !Choose = {
+    let x = perform Choose.pick()
+    x + 1 ?: 0
+}
+
+fn main() = {
+    let total = handle Choose
+        pick => match true {
+            true => resume(29)
+            false => resume(0)
         }
     in both()
     print("total=" + toString(total))
@@ -246,6 +282,52 @@ fn hover_prints_known_builtin_and_is_silent_for_unknown() {
     let unknown = run_args(&["--hover", "__definitely_not_a_builtin__"]);
     assert_eq!(unknown.code, Some(0));
     assert!(unknown.stdout.trim().is_empty(), "{}", unknown.stdout);
+}
+
+#[test]
+fn deps_refuses_a_file_that_did_not_parse() {
+    // [STAGE-SIGNALS-EXACT] A dependency set is only exact if it is derived
+    // from a program that exists. Parsing is best-effort, so a broken file
+    // still yields a partial tree, and reading dependencies off it prints
+    // FEWER than the source asks for — with no way to tell that apart from a
+    // view that genuinely reads nothing. A wrongly empty dirty set is a
+    // subtree that never rebuilds, which is the one bug [STAGE-SIGNALS-DIRTY]
+    // exists to remove, so `--deps` must refuse rather than under-report.
+    let broken = temp_osp(
+        "deps_unparsed",
+        "static effect Signal<T> { read: fn( -> T }\n",
+    );
+    let out = run_file(&broken, &["--deps"]);
+    assert_eq!(
+        out.code,
+        Some(1),
+        "a file that did not parse must not report a dependency set; stdout={} stderr={}",
+        out.stdout,
+        out.stderr
+    );
+    assert!(
+        out.stderr.contains("syntax error"),
+        "the refusal must name the syntax error; stderr={}",
+        out.stderr
+    );
+    assert!(
+        out.stdout.trim().is_empty(),
+        "no dependency line may be printed from a partial tree; stdout={}",
+        out.stdout
+    );
+
+    // The positive control: the same shape, parsing, still reports and exits 0.
+    let good = temp_osp(
+        "deps_parsed",
+        "type Count = { value: int }\nstatic effect Signal<T> { read: fn() -> T }\n         fn counterLabel() = \"count: ${(perform Signal<Count>.read()).value}\"\n",
+    );
+    let ok = run_file(&good, &["--deps"]);
+    assert_eq!(ok.code, Some(0), "stderr={}", ok.stderr);
+    assert!(
+        ok.stdout.contains("counterLabel: Signal<Count>.read"),
+        "stdout={}",
+        ok.stdout
+    );
 }
 
 #[test]
@@ -495,31 +577,69 @@ fn explicit_resume_runs_the_performer_continuation() {
 }
 
 #[test]
-fn a_second_resume_aborts_the_program_at_runtime() {
-    // [EFFECTS-RESUME] A continuation is single-shot. The program COMPILES — this
-    // is a runtime contract, not a static one — and the second `resume` aborts
-    // with a named diagnostic rather than resuming a spent continuation.
+fn a_second_resume_on_one_path_is_rejected_at_compile_time() {
+    // [MULTI-HANDLE-ONCE] An arm for a `once` operation may use `resume` at most
+    // once on every control path, and `Choose.pick` is `once` because it carries
+    // no multiplicity keyword ([MULTI-COMPAT]). The arm is visible at compile
+    // time, so the rejection is too: this program aborted at run time with
+    // `fatal: continuation already resumed` before multiplicity existed, and
+    // [MULTI-COMPAT] narrows exactly that program to a compile-time error — the
+    // same program rejected earlier, not a program that stops working.
+    //
+    // The runtime guard in `compiler/runtime/effects_coro.c` stays as a
+    // defensive backstop for invalid compiler output, in the same sense as the
+    // generic handler-key null lookup ([EFFECTS-GENERIC-RUNTIME]). It is no
+    // longer reachable from a source program, which is why this test asserts
+    // the diagnostic instead of the abort.
     let prog = temp_osp("multishot_resume", MULTISHOT_RESUME);
+    let check = run_file(&prog, &["--check"]);
+    assert_ne!(
+        check.code,
+        Some(0),
+        "two `resume` sites on one path must not type-check; stdout={} stderr={}",
+        check.stdout,
+        check.stderr
+    );
+    let diagnostic = format!("{}{}", check.stdout, check.stderr);
+    for fragment in ["Choose.pick", "may resume more than once", "once"] {
+        assert!(
+            diagnostic.contains(fragment),
+            "expected the [MULTI-HANDLE-ONCE] diagnostic to name {fragment:?}; got {diagnostic}"
+        );
+    }
+    // Rejected at the checker, so nothing is emitted and nothing runs.
+    let run = run_file(&prog, &["--run"]);
+    assert_ne!(run.code, Some(0), "stdout={}", run.stdout);
+    assert!(
+        !run.stdout.contains("total="),
+        "the program must not reach its print; stdout={}",
+        run.stdout
+    );
+}
+
+#[test]
+fn two_resume_sites_on_different_branches_stay_legal() {
+    // [MULTI-HANDLE-ONCE] is affine per PATH, not per arm: only one branch of a
+    // `match` runs, so an arm with a `resume` in each branch resumes at most
+    // once. Osprey has no loop construct ([BUILTIN-ITER]), so branch and
+    // sequence are the only two shapes, and this is the positive control that
+    // keeps the check from degenerating into `contains_resume`. The corpus
+    // program `tests/regressions/effects/abort_vs_resume.test.osp` is the same
+    // shape end to end; this pins the CLI verdict beside its negative.
+    let prog = temp_osp("branchwise_resume", BRANCHWISE_RESUME);
     let check = run_file(&prog, &["--check"]);
     assert_eq!(
         check.code,
         Some(0),
-        "multi-shot resume must be well typed, so the abort is what gets observed; stderr={}",
+        "one `resume` per branch is at most one per path; stderr={}",
         check.stderr
     );
-    let o = run_file(&prog, &["--run"]);
-    let out = format!("{}{}", o.stdout, o.stderr);
+    let run = run_file(&prog, &["--run"]);
+    assert_eq!(run.code, Some(0), "stderr={}", run.stderr);
     assert!(
-        out.contains("continuation already resumed"),
-        "expected the single-shot abort, got code={:?} stdout={} stderr={}",
-        o.code,
-        o.stdout,
-        o.stderr
-    );
-    assert!(
-        !o.stdout.contains("total="),
-        "the program must not reach its print; stdout={}",
-        o.stdout
+        run.stdout.contains("total=30"),
+        "expected the resumed answer; stdout={}",
+        run.stdout
     );
 }
 
@@ -618,7 +738,7 @@ fn quiet_suppresses_the_ok_line() {
 
 #[test]
 fn llvm_reports_a_codegen_error() {
-    let prog = temp_osp("cgllvm", GENERIC_AS_VALUE);
+    let prog = temp_osp("cgllvm", CODEGEN_REJECTED);
     let o = run_file(&prog, &["--llvm"]);
     assert_ne!(o.code, Some(0));
     assert!(o.stderr.contains("codegen"), "{}", o.stderr);
@@ -626,10 +746,28 @@ fn llvm_reports_a_codegen_error() {
 
 #[test]
 fn run_reports_a_codegen_error() {
-    let prog = temp_osp("cgrun", GENERIC_AS_VALUE);
+    let prog = temp_osp("cgrun", CODEGEN_REJECTED);
     let o = run_file(&prog, &["--run"]);
     assert_ne!(o.code, Some(0));
     assert!(o.stderr.contains("codegen"), "{}", o.stderr);
+}
+
+#[test]
+fn a_generic_closure_value_is_rejected_by_the_type_gate() {
+    // The two tests above assert a CODEGEN failure, so they go quiet the moment
+    // their input starts being rejected earlier — which is exactly what happened
+    // to this program. Pinning the checker's message here means a future move of
+    // the gate fails a test that names the gate, instead of silently draining
+    // the codegen arms of coverage.
+    let prog = temp_osp("genval", GENERIC_AS_VALUE);
+    let o = run_file(&prog, &["--llvm"]);
+    assert_ne!(o.code, Some(0));
+    assert!(
+        o.stderr
+            .contains("a closure value with a still-generic type cannot be interpolated"),
+        "{}",
+        o.stderr
+    );
 }
 
 #[test]
@@ -1307,4 +1445,87 @@ fn error_result_assertions_render_the_error() {
         o.stdout
     );
     assert!(o.stdout.contains("not ok 1 - div"), "{}", o.stdout);
+}
+
+/// The whole call-site type-application pipeline — parse, check, lower, emit,
+/// link, run — for the shape that has no other spelling: a binder appearing in
+/// no parameter position. [TYPE-GENERICS-APPLY]
+#[test]
+fn a_written_type_argument_pins_an_instantiation_end_to_end() {
+    let prog = temp_osp(
+        "turbofish_run",
+        "fn identity<T>(x: T) -> T = x\n\
+         fn emptyOf<T>() -> List<T> = []\n\
+         fn pickOf<T, U>(first: T, second: U) -> T = first\n\
+         let n = identity<int>(5)\n\
+         let s = identity<string>(\"os\")\n\
+         let nested = length(identity<List<int>>([1, 2]))\n\
+         let empty = length(emptyOf<int>())\n\
+         let kept = pickOf<int, string>(7, \"seven\")\n\
+         print(\"n=${n} s=${s} nested=${nested} empty=${empty} kept=${kept}\")\n",
+    );
+    let o = run_file(&prog, &["--run"]);
+    assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
+    assert_eq!(o.stdout, "n=5 s=os nested=2 empty=0 kept=7\n");
+}
+
+/// The ML twin of the same program prints the same bytes ([FLAVOR-IR-EQUIV]).
+#[test]
+fn the_ml_written_type_argument_prints_the_same_bytes() {
+    let path = std::env::temp_dir().join("osprey_cli_e2e_turbofish_run_ml.ospml");
+    let _ = std::fs::write(
+        &path,
+        "identity<T> : T -> T\n\
+         identity x = x\n\
+         emptyOf<T> : Unit -> List<T>\n\
+         emptyOf () = []\n\
+         pickOf<T, U> : (T, U) -> T\n\
+         pickOf (first, second) = first\n\
+         n = identity<int> 5\n\
+         s = identity<string> \"os\"\n\
+         nested = length (identity<List<int>> [1, 2])\n\
+         empty = length (emptyOf<int> ())\n\
+         kept = pickOf<int, string> (7, \"seven\")\n\
+         print \"n=${n} s=${s} nested=${nested} empty=${empty} kept=${kept}\"\n",
+    );
+    let o = run_file(&path, &["--run"]);
+    assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
+    assert_eq!(o.stdout, "n=5 s=os nested=2 empty=0 kept=7\n");
+}
+
+/// A written list that misses the declared binder count is rejected before
+/// anything is emitted, naming both counts. [TYPE-GENERICS-APPLY]
+#[test]
+fn a_written_type_argument_count_mismatch_is_rejected_by_the_cli() {
+    let prog = temp_osp(
+        "turbofish_arity",
+        "fn identity<T>(x: T) -> T = x\n\
+         print(\"${identity<int, string>(5)}\")\n",
+    );
+    let o = run_file(&prog, &["--check"]);
+    assert_ne!(o.code, Some(0), "stdout={}", o.stdout);
+    assert!(
+        o.stderr
+            .contains("function `identity` takes 1 type argument(s), got 2"),
+        "stderr={}",
+        o.stderr
+    );
+}
+
+/// A written argument contradicting the value argument is a type error, not a
+/// silently ignored annotation. [TYPE-GENERICS-APPLY]
+#[test]
+fn a_contradicting_written_type_argument_is_rejected_by_the_cli() {
+    let prog = temp_osp(
+        "turbofish_contradiction",
+        "fn identity<T>(x: T) -> T = x\n\
+         print(\"${identity<int>(\\\"text\\\")}\")\n",
+    );
+    let o = run_file(&prog, &["--check"]);
+    assert_ne!(o.code, Some(0), "stdout={}", o.stdout);
+    assert!(
+        o.stderr.contains("cannot unify int with string"),
+        "stderr={}",
+        o.stderr
+    );
 }

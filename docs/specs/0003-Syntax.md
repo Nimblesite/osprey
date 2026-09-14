@@ -44,7 +44,10 @@ let name = "Alice"
 // and this arm interprets it — the sanctioned form of mutation.
 mut count = 0
 let total = handle Counter
-    tick => { count = (count + 1) ?: count  count }
+    tick => {
+        count = count + 1 ?: count
+        count
+    }
 in run()
 ```
 
@@ -55,7 +58,9 @@ name = "Alice"
 
 mut count = 0
 total = handle Counter
-    tick => count := (count + 1) ?: count
+    tick =>
+        count := count + 1 ?: count
+        count
 in run ()
 ```
 
@@ -96,7 +101,7 @@ distinct unspellable internal name, so repeated ignored parameters do not
 collide.
 
 ```osprey
-let count = range(0, 10) |> fold(0, |acc, _| => (acc + 1) ?: acc)
+let count = range(0, 10) |> fold(0, |acc, _| => acc + 1)
 ```
 
 A named function can use `_` only where its caller supplies arguments
@@ -149,7 +154,7 @@ A positional payload is declared, constructed, and matched in slot order:
 type Tree = Leaf | Node(Tree, Tree)
 let tree = Node(Node(Leaf, Leaf), Leaf)
 
-fn size(tree) -> Result<int, MathError> = match tree {
+fn size(tree) -> int = match tree {
     Leaf          => Success { value: 1 }
     Node(left, _) => 1 + size(left)
 }
@@ -217,6 +222,8 @@ something else, binding `xs` and lowering `[0]` as a separate statement.
 8. Logical OR `||`
 9. Ternary `? :` and Result default `?:`, both right-associative
 
+`?:` supplies a fallback for a `Result` — an index, a lookup, a parse, a fallible call. Arithmetic is not a `Result` and never appears on its left ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)).
+
 `x |> f(a)` lowers to `f(x, a)`. The two Default lambda spellings lower to
 `Expr::Lambda`:
 
@@ -227,6 +234,28 @@ let zero = fn() => 0
 
 The pipe-delimited form requires at least one parameter because `||` is the
 logical-OR token.
+
+### Call-site type arguments [TYPE-GENERICS-APPLY]
+
+A call may carry an explicit type-argument list between the callee and its
+arguments. The list is recognised only when the `<` immediately follows the
+callee name and the matching `>` immediately precedes the argument list, which
+is what keeps `<` the comparison operator everywhere else.
+
+```ebnf
+call          ::= callee typeArguments? "(" arguments? ")"
+typeArguments ::= "<" typeList ">"
+```
+
+```osprey
+fn identity<T>(x: T) -> T = x
+print("${identity<int>(5)}")
+```
+
+The meaning — positional binding against the declaration's binders, the arity
+contract, and the rejection of variance markers — is
+[TYPE-GENERICS-APPLY](0004-TypeSystem.md#generics-and-variance). The ML spelling
+is [FLAVOR-ML-GENERICS](0024-MLFlavorSyntax.md#generics-flavor-ml-generics).
 
 ## Indexing
 
@@ -266,6 +295,4 @@ pattern ([PATTERN-STRUCTURAL](0007-PatternMatching.md#structural-patterns--patte
 
 ## Evaluation order
 
-Statements and positional call arguments evaluate left to right. `&&` and `||`
-short-circuit. A named call is reordered to parameter declaration order before
-its argument expressions are lowered.
+Statements and positional call arguments evaluate left to right. `&&` and `||` short-circuit. A named call to a function or extern declaration reorders its arguments to that declaration's parameter order before evaluating them. A call through a function value evaluates and binds its arguments in written order, including when they carry labels. A selected callable record field uses the function-value rule; UFCS fallback uses the selected free declaration's order after its receiver. The call-site distinction is defined in [CALL-ARGUMENTS](0005-FunctionCalls.md#argument-forms--call-arguments).

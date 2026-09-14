@@ -1,0 +1,6 @@
+/ios/build/
+/android/build/
+/android/.gradle/
+/android/local.properties
+**/xcuserdata/
+*.xcuserstate

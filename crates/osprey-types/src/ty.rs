@@ -125,7 +125,7 @@ macro_rules! applied_types {
 
 impl Type {
     /// A constructor application, e.g. `Type::con("List", vec![Type::int()])`.
-    pub(crate) fn con(name: impl Into<String>, args: Vec<Type>) -> Type {
+    pub fn con(name: impl Into<String>, args: Vec<Type>) -> Type {
         Type::Con {
             name: name.into(),
             args,

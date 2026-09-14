@@ -23,49 +23,56 @@ signature JsonApi
     getOr : string -> string -> string -> string
 
 module Json : JsonApi
-    // JSON string escaping: backslash first (so we never double-escape the
-    // escapes we just added), then the double-quote. `replace` is fallible;
-    // `?:` supplies the empty string on the impossible failure path.
-    escape : string -> string
+    controlEscape code =
+        digits = "0123456789abcdef"
+        high = match code >= 16
+            true => 1
+            false => 0
+        low = (code % 16) ?: 0
+        "\\u00" + take (drop digits high) 1 + take (drop digits low) 1
+
+    escapeControls source code = match code >= 32
+        true => source
+        false =>
+            character = fromCodePoint code ?: ""
+            escaped = match contains source character
+                true => replace source character (controlEscape code) ?: source
+                false => source
+            escapeControls escaped ((code + 1) ?: 32)
+
+    // Escape original slashes first; later JSON escapes must remain single.
+    // Runtime strings cannot contain NUL, so representable controls start at 1.
     escape s =
         bslash = "\\"
         quote = "\""
         step = replace s bslash (bslash + bslash) ?: ""
-        replace step quote (bslash + quote) ?: ""
+        escapeControls (replace step quote (bslash + quote) ?: "") 1
 
-    quote : string -> string
     quote s =
         quote = "\""
         quote + escape s + quote
 
     // `"key":"escaped value"` — a string-valued object member.
-    strField : string -> string -> string
     strField key value = quote key + ":" + quote value
 
     // `"key":123` — a number-valued object member (integers need no escaping).
-    numField : string -> int -> string
     numField key value = quote key + ":" + toString value
 
     // An already-encoded JSON value. Kept explicit so callers cannot confuse
     // protocol trees with ordinary escaped application strings.
-    rawField : string -> string -> string
     rawField key value = quote key + ":" + value
 
     // Wrap a comma-joined member list into an object / array. Callers join the
     // members with `,`; these only add the braces so nesting stays composable.
-    obj : string -> string
     obj members = "{" + members + "}"
 
-    arr : string -> string
     arr elements = "[" + elements + "]"
 
     // The one canonical error body shape, so every 4xx path is identical.
-    error : string -> string
     error why = obj (strField "error" why)
 
     // Scalar-only projection used by the browser model boundary. Documents
     // are always freed here, so consumers cannot accidentally retain handles.
-    getOr : string -> string -> string -> string
     getOr source path fallback =
         doc = jsonParse source ?: 0
         value = jsonGet doc path ?: fallback

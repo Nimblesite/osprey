@@ -42,9 +42,9 @@ use super::cst::{
     MlVariant,
 };
 use super::lexer::lex;
-use super::token::{TokKind, Token};
+use super::token::{keyword_spelling, TokKind, Token};
 use crate::SyntaxError;
-use osprey_ast::Position;
+use osprey_ast::{Multiplicity, Position, Stage, REPLAYABLE_KEYWORD, STATIC_STAGE_KEYWORD};
 
 /// Parse ML-flavor `source` into the ML CST plus any syntax errors. Best-effort:
 /// errors never abort the parse ([FLAVOR-LOWER-CONTRACT]).
@@ -99,11 +99,19 @@ pub(super) struct Parser<'t> {
 }
 
 impl Parser<'_> {
+    /// Consume the separator between elements of a comma-separated list,
+    /// answering whether another element follows. A trailing comma before
+    /// `close` ends the list rather than demanding an element after it, so
+    /// `[1, 2,]` reads as two elements.
+    fn more_in_list(&mut self, close: &TokKind) -> bool {
+        self.eat(&TokKind::Comma) && self.peek() != close
+    }
+
     pub(super) fn peek(&self) -> &TokKind {
         self.toks.get(self.i).map_or(&TokKind::Eof, |t| &t.kind)
     }
 
-    fn peek_at(&self, ahead: usize) -> &TokKind {
+    pub(super) fn peek_at(&self, ahead: usize) -> &TokKind {
         self.toks
             .get(self.i + ahead)
             .map_or(&TokKind::Eof, |t| &t.kind)
@@ -192,7 +200,7 @@ impl Parser<'_> {
             TokKind::KwMut => self.mut_binding(),
             TokKind::KwType => self.type_decl(),
             TokKind::KwExtern => self.extern_decl(),
-            TokKind::KwEffect => self.effect_decl(),
+            TokKind::KwEffect => self.effect_decl(Stage::Dynamic),
             TokKind::KwImport => self.import_decl(),
             TokKind::KwNamespace => self.namespace_decl(),
             TokKind::KwModule => self.module_decl(MlModuleKind::Plain),
@@ -204,6 +212,17 @@ impl Parser<'_> {
                 let word = word.clone();
                 self.error(format!("ML construct '{word}' is not yet supported"));
                 None
+            }
+            // `static effect E` — `static` is CONTEXTUAL, marking a stage only
+            // directly in front of `effect`, so it stays an ordinary identifier
+            // everywhere else. Without this the marker was silently dropped and
+            // the effect lowered DYNAMIC, which is a wrong answer rather than a
+            // diagnostic. Implements [STAGE-DECL], [FLAVOR-ML-EFFECT].
+            TokKind::Ident(word)
+                if word == STATIC_STAGE_KEYWORD && *self.peek_at(1) == TokKind::KwEffect =>
+            {
+                self.advance();
+                self.effect_decl(Stage::Static)
             }
             TokKind::Ident(_) => self.ident_item(),
             _ => Some(self.expr_item()),
@@ -552,7 +571,7 @@ impl Parser<'_> {
     /// `effect Name` + an indented block of `op : P => R` operation lines — an
     /// algebraic effect declaration ([FLAVOR-ML-EFFECT]). Mirrors [`Self::type_decl`]'s
     /// layout-block parsing.
-    fn effect_decl(&mut self) -> Option<MlItem> {
+    fn effect_decl(&mut self, stage: Stage) -> Option<MlItem> {
         let pos = self.pos();
         self.advance(); // `effect`
         let name = self.ident()?;
@@ -561,6 +580,7 @@ impl Parser<'_> {
         let type_params = self.type_params();
         let operations = self.effect_operations();
         Some(MlItem::Effect {
+            stage,
             name,
             type_params,
             operations,
@@ -597,7 +617,7 @@ impl Parser<'_> {
     fn effect_op(&mut self) -> Option<MlEffectOp> {
         let doc = self.effect_op_doc();
         let pos = self.pos();
-        let name = self.ident()?;
+        let (multiplicity, replayable, name) = self.operation_markers()?;
         if !self.eat(&TokKind::Colon) {
             self.error("expected ':' in effect operation");
         }
@@ -608,11 +628,59 @@ impl Parser<'_> {
         let result = self.ty();
         Some(MlEffectOp {
             name,
+            multiplicity,
+            replayable,
             payload,
             result,
             doc,
             pos,
         })
+    }
+
+    /// The optional `abort` / `once` / `many` and `replayable` markers an
+    /// operation line may carry before its name, and the name itself.
+    ///
+    /// A marker is only a marker when ANOTHER identifier follows it: ML has no
+    /// keyword for any of these words, so `abort : string => Unit` still
+    /// declares an operation *called* `abort`. That is the same contextual rule
+    /// the Default flavor's grammar resolves with GLR. Implements [MULTI-DECL],
+    /// [FLAVOR-ML-EFFECT-ANNOTATIONS].
+    fn operation_markers(&mut self) -> Option<(Option<Multiplicity>, bool, String)> {
+        let mut multiplicity = None;
+        let mut replayable = false;
+        let mut word = self.operation_ident()?;
+        if let Some(declared) = Multiplicity::from_keyword(&word) {
+            if self.at_operation_name() {
+                multiplicity = Some(declared);
+                word = self.operation_ident()?;
+            }
+        }
+        if word == REPLAYABLE_KEYWORD && self.at_operation_name() {
+            replayable = true;
+            word = self.operation_ident()?;
+        }
+        Some((multiplicity, replayable, word))
+    }
+
+    /// Whether the cursor sits on an operation name — the token that proves the
+    /// word just read was a marker rather than the operation's own name.
+    fn at_operation_name(&self) -> bool {
+        matches!(self.peek(), TokKind::Ident(_)) || keyword_spelling(self.peek()).is_some()
+    }
+
+    /// An effect operation's name. Operation names are their own namespace, so
+    /// a word this flavor reserves elsewhere still names an operation here:
+    /// `send : T => Unit` declares an operation called `send`, exactly as
+    /// `abort : string => Unit` declares one called `abort`. The position is
+    /// unambiguous — an `effect` block's indented lines, the name after
+    /// `perform Effect.`, and a handler arm's head admit nothing but a name.
+    /// Implements [FLAVOR-ML-EFFECT-OP-NAME].
+    fn operation_ident(&mut self) -> Option<String> {
+        if let Some(spelling) = keyword_spelling(self.peek()) {
+            self.advance();
+            return Some(spelling.to_owned());
+        }
+        self.ident()
     }
 
     /// Consume a `(** … *)` doc token sitting in front of an operation line.
@@ -944,11 +1012,8 @@ impl Parser<'_> {
         if !matches!(self.peek(), TokKind::RParen) {
             loop {
                 out.push(self.one_param());
-                if !self.eat(&TokKind::Comma) {
+                if !self.more_in_list(&TokKind::RParen) {
                     break;
-                }
-                if matches!(self.peek(), TokKind::RParen) {
-                    break; // tolerate a trailing comma
                 }
             }
         }
@@ -1108,6 +1173,7 @@ impl Parser<'_> {
     /// Whitespace application `f a b`, left-associative, recorded as nested
     /// single-argument [`MlExpr::App`] ([FLAVOR-ML-CALL]).
     fn application(&mut self) -> MlExpr {
+        let pos = self.pos();
         let mut func = self.postfix();
         // `Head(field = v, …)` is an inline record literal, not application: any
         // identifier immediately followed by `(ident = …`. An UPPERCASE head is
@@ -1128,6 +1194,17 @@ impl Parser<'_> {
                 };
                 func = self.inline_record(name, type_args);
             }
+        }
+        if record_head(&func).is_some() && self.glued() && self.at_type_application() {
+            let args = match self.ty_generic_args(String::new()) {
+                MlType::App { args, .. } => args,
+                _ => Vec::new(),
+            };
+            func = MlExpr::TypeApply {
+                func: Box::new(func),
+                args,
+                pos,
+            };
         }
         // `f ()` is a zero-argument application, not application to unit.
         if matches!(self.peek(), TokKind::LParen) && matches!(self.peek_at(1), TokKind::RParen) {
@@ -1192,11 +1269,8 @@ impl Parser<'_> {
         if !matches!(self.peek(), TokKind::RParen) {
             loop {
                 args.push(self.expr(0));
-                if !self.eat(&TokKind::Comma) {
+                if !self.more_in_list(&TokKind::RParen) {
                     break;
-                }
-                if matches!(self.peek(), TokKind::RParen) {
-                    break; // tolerate a trailing comma
                 }
             }
         }
@@ -1252,8 +1326,14 @@ impl Parser<'_> {
 
     /// Whether the next token can begin an argument atom.
     fn starts_atom(&self) -> bool {
+        self.starts_atom_at(0)
+    }
+
+    /// Whether the token `j` ahead of the cursor could begin an atom. Lookahead
+    /// needs this to decide a shape before committing to it.
+    fn starts_atom_at(&self, j: usize) -> bool {
         matches!(
-            self.peek(),
+            self.peek_at(j),
             TokKind::Int(_)
                 | TokKind::Float(_)
                 | TokKind::Str(_)
@@ -1311,6 +1391,9 @@ impl Parser<'_> {
             TokKind::Backslash => self.lambda(),
             TokKind::LParen => self.paren(),
             TokKind::LBracket => self.list(),
+            // `kernel` opens a region only where an indented arm block follows;
+            // everywhere else it is an ordinary name. Implements [STAGE-GPU-KERNEL].
+            TokKind::Ident(_) if self.at_kernel_region() => self.kernel_expr(),
             TokKind::Ident(name) => {
                 self.advance();
                 self.ident_atom(name)
@@ -1404,11 +1487,8 @@ impl Parser<'_> {
         if !matches!(self.peek(), TokKind::RBracket) {
             loop {
                 entries.push(self.map_entry());
-                if !self.eat(&TokKind::Comma) {
+                if !self.more_in_list(&TokKind::RBracket) {
                     break;
-                }
-                if matches!(self.peek(), TokKind::RBracket) {
-                    break; // tolerate a trailing comma
                 }
             }
         }
@@ -1478,11 +1558,11 @@ impl Parser<'_> {
         let pos = self.pos();
         self.advance(); // `perform`
         let first = self.ident().unwrap_or_default();
-        let effect = self.qualified_name_tail(first);
+        let effect = self.instantiated_effect(first);
         if !self.eat(&TokKind::Dot) {
             self.error("expected '.' between effect and operation in perform");
         }
-        let operation = self.ident().unwrap_or_default();
+        let operation = self.operation_ident().unwrap_or_default();
         // `op ()` is a zero-argument performance, not application to unit.
         if matches!(self.peek(), TokKind::LParen) && matches!(self.peek_at(1), TokKind::RParen) {
             self.advance();
@@ -1511,8 +1591,18 @@ impl Parser<'_> {
     fn handle_expr(&mut self) -> MlExpr {
         let pos = self.pos();
         self.advance(); // `handle`
+                        // `handle static E` — the discharge half of [STAGE-DECL]. Contextual on
+                        // the same terms as the declaration marker: only a following effect
+                        // name makes `static` a stage rather than the handled effect's name.
+        let stage = match (self.peek(), self.peek_at(1)) {
+            (TokKind::Ident(word), TokKind::Ident(_)) if word == STATIC_STAGE_KEYWORD => {
+                self.advance();
+                Stage::Static
+            }
+            _ => Stage::Dynamic,
+        };
         let first = self.ident().unwrap_or_default();
-        let effect = self.qualified_name_tail(first);
+        let effect = self.instantiated_effect(first);
         let mut arms = Vec::new();
         if self.eat(&TokKind::Indent) {
             while !self.at_block_end() {
@@ -1534,6 +1624,7 @@ impl Parser<'_> {
         }
         let body = self.body_after_eq();
         MlExpr::Handle {
+            stage,
             effect,
             arms,
             body: Box::new(body),
@@ -1541,10 +1632,29 @@ impl Parser<'_> {
         }
     }
 
+    /// The effect a request or region names, INCLUDING the instantiation when
+    /// it wrote one. `Signal<Count>` and `Signal<Cursor>` are different effects
+    /// to a row, so they are different effects to a handler, and both flavors
+    /// spell the mention the same way. Implements [STAGE-SIGNALS-EXACT].
+    fn instantiated_effect(&mut self, first: String) -> String {
+        let name = self.qualified_name_tail(first);
+        if !self.at_angle_open() {
+            return name;
+        }
+        let applied = self.ty_generic_args(name);
+        super::lower::render_type(&applied)
+    }
+
+    /// The parser's own cursor, so a sibling module can tell whether an arm
+    /// consumed anything and recover when it did not.
+    pub(super) fn position_index(&self) -> usize {
+        self.i
+    }
+
     /// One `op param* => body` arm of a `handle` expression.
-    fn handle_arm(&mut self) -> MlHandleArm {
+    pub(super) fn handle_arm(&mut self) -> MlHandleArm {
         let pos = self.pos();
-        let operation = self.ident().unwrap_or_default();
+        let operation = self.operation_ident().unwrap_or_default();
         let mut params = Vec::new();
         while let TokKind::Ident(name) = self.peek() {
             params.push(name.clone());
@@ -1804,11 +1914,8 @@ impl Parser<'_> {
                     break; // `...rest` is always the final element
                 }
                 elements.push(self.pattern());
-                if !self.eat(&TokKind::Comma) {
+                if !self.more_in_list(&TokKind::RBracket) {
                     break;
-                }
-                if matches!(self.peek(), TokKind::RBracket) {
-                    break; // tolerate a trailing comma
                 }
             }
         }
@@ -1888,11 +1995,8 @@ impl Parser<'_> {
                     Some(field) => fields.push(field),
                     None => self.recover(),
                 }
-                if !self.eat(&TokKind::Comma) {
+                if !self.more_in_list(&TokKind::RParen) {
                     break;
-                }
-                if matches!(self.peek(), TokKind::RParen) {
-                    break; // tolerate a trailing comma
                 }
             }
         }
@@ -1928,9 +2032,29 @@ impl Parser<'_> {
     /// followed by an inline record (`Ctor<int>(field = v)`): scan a balanced
     /// `<…>` of type-shaped tokens, then require the `( Ident =` record
     /// opener — so a `Ctor < x` comparison never misparses.
-    fn at_generic_record(&self) -> bool {
-        if !matches!(self.peek(), TokKind::Op(op) if op == "<") {
-            return false;
+    /// Whether a glued `<` opens **call-site type arguments** rather than a
+    /// comparison. `<` alone cannot decide: `x<3` and `x<y` are ordinary
+    /// comparisons, so committing on the bracket swallows them. The whole shape
+    /// must be present first — a balanced angle run holding only tokens a type
+    /// can hold, then the argument the application applies to, which is what
+    /// makes `identity<int> 5` an application and `x<y` a comparison.
+    /// Implements [TYPE-GENERICS-APPLY], [FLAVOR-ML-GENERICS].
+    fn at_type_application(&self) -> bool {
+        match self.past_angle_run() {
+            Some(j) => self.starts_atom_at(j),
+            None => false,
+        }
+    }
+
+    /// Scan a `<…>` run that holds only tokens a TYPE can hold, and answer with
+    /// the offset just past its closing `>`. `None` means the cursor is not on
+    /// a `<`, or the run holds something no type can (`x<3`), or it never
+    /// closes — in every one of those the `<` was an operator, and the caller
+    /// must not commit to a generic form. Nested runs close with `>>`, which
+    /// this flavor lexes as two `>` tokens, so counting depth is enough.
+    fn past_angle_run(&self) -> Option<usize> {
+        if !self.at_angle_open() {
+            return None;
         }
         let mut depth = 0usize;
         let mut j = 0usize;
@@ -1940,9 +2064,7 @@ impl Parser<'_> {
                 TokKind::Op(op) if op == ">" => {
                     depth = depth.saturating_sub(1);
                     if depth == 0 {
-                        return matches!(self.peek_at(j + 1), TokKind::LParen)
-                            && matches!(self.peek_at(j + 2), TokKind::Ident(_))
-                            && matches!(self.peek_at(j + 3), TokKind::Eq);
+                        return Some(j + 1);
                     }
                 }
                 TokKind::Ident(_)
@@ -1950,17 +2072,26 @@ impl Parser<'_> {
                 | TokKind::Arrow
                 | TokKind::LParen
                 | TokKind::RParen => {}
-                _ => return false,
+                _ => return None,
             }
             j += 1;
         }
+    }
+
+    fn at_generic_record(&self) -> bool {
+        let Some(j) = self.past_angle_run() else {
+            return false;
+        };
+        matches!(self.peek_at(j), TokKind::LParen)
+            && matches!(self.peek_at(j + 1), TokKind::Ident(_))
+            && matches!(self.peek_at(j + 2), TokKind::Eq)
     }
 
     // --- bodies and helpers ----------------------------------------------
 
     /// The body after `=`/`=>`: an inline expression, or an indented layout
     /// block whose trailing expression is its value ([FLAVOR-ML-BLOCK]).
-    fn body_after_eq(&mut self) -> MlExpr {
+    pub(super) fn body_after_eq(&mut self) -> MlExpr {
         if !matches!(self.peek(), TokKind::Indent) {
             return self.inline_body();
         }

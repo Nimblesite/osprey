@@ -282,9 +282,25 @@ mod tests {
             }
             other => panic!("expected completion, got {other:?}"),
         }
-        // Diagnostics on a clean program are empty.
+        // [TYPE-ANNOTATION-REDUNDANT] Each written Default annotation warns.
         match report(Query::Diagnostics(uri.clone())).await {
-            Report::Diagnostics(diags) => assert!(diags.is_empty(), "{diags:?}"),
+            Report::Diagnostics(diags) => diagnostics::assert_redundant_annotations(
+                &diags,
+                &[
+                    (
+                        "redundant type annotation on parameter `a` of `add`: inference derives `int` without it",
+                        (0, 3, 0, 44),
+                    ),
+                    (
+                        "redundant type annotation on parameter `b` of `add`: inference derives `int` without it",
+                        (0, 3, 0, 44),
+                    ),
+                    (
+                        "redundant return type annotation on `add`: inference derives `int` without it",
+                        (0, 3, 0, 44),
+                    ),
+                ],
+            ),
             other => panic!("expected diagnostics, got {other:?}"),
         }
         // The vfs getter exposes the shared store.

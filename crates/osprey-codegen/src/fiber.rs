@@ -57,6 +57,9 @@ pub(crate) fn gen_spawn(cg: &mut Codegen, e: &Expr) -> Result<Value> {
 /// can tag the handle for `await` to unbox.
 fn thunk_body(cg: &mut Codegen, e: &Expr) -> Result<Value> {
     let v = gen_expr(cg, e)?;
+    // Await restores the runtime list ABI, so materialize an inlined generic
+    // call's literal result before its pointer crosses the fiber boundary.
+    let v = crate::listlit::escaping(cg, v);
     let elem = v.clone();
     // The result escapes boxed across the fiber boundary: dup it before the
     // thunk's owners drop, so the runtime's completed-result slot holds +1
@@ -119,7 +122,7 @@ pub(crate) fn gen_send(cg: &mut Codegen, channel: &Expr, value: &Expr) -> Result
     let id = as_i64(cg, ch)?;
     let v = gen_expr(cg, value)?;
     if v.result_inner.is_some() {
-        return Err(crate::error::CodegenError::unsupported(
+        return Err(CodegenError::unsupported(
             "Result-valued channels are not yet represented losslessly; handle the Result before sending",
         ));
     }
@@ -238,9 +241,7 @@ pub(crate) fn gen_builtin(cg: &mut Codegen, name: &str, args: &[Expr]) -> Result
         // [CONCURRENCY-YIELD].
         "fiberDone" => {
             let Some(a) = args.first() else {
-                return Err(crate::error::CodegenError::invalid(
-                    "fiberDone needs a fiber argument",
-                ));
+                return Err(CodegenError::invalid("fiberDone needs a fiber argument"));
             };
             let v = gen_expr(cg, a)?;
             let id = as_i64(cg, v)?;

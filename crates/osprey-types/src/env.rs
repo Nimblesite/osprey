@@ -7,64 +7,105 @@ use crate::ctx::InferCtx;
 use crate::ty::{Scheme, Type, VarId};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
+/// One call's signature, deferred obligations, and ordered declared binders.
+pub(crate) struct AppliedSignature {
+    pub ty: Type,
+    pub obligations: Vec<(String, Type)>,
+    pub params: Vec<Type>,
+    pub bindings: HashMap<VarId, Type>,
+}
+
 /// Maps names to their type schemes. Cloned to form child scopes (lambda
 /// bodies, match arms) — value semantics, so child bindings never leak out.
 #[derive(Debug, Clone, Default)]
-pub struct TypeEnv {
+pub(crate) struct TypeEnv {
     vars: HashMap<String, Scheme>,
+    /// Ordered declaration binders, cleared whenever a value shadows a name.
+    type_params: HashMap<String, Vec<Type>>,
     /// Names declared `mut` — the only bindings handler-arm assignment may target.
     mutables: HashSet<String>,
 }
 
 impl TypeEnv {
-    pub fn new() -> TypeEnv {
+    pub(crate) fn new() -> TypeEnv {
         TypeEnv::default()
     }
 
-    pub fn get(&self, name: &str) -> Option<&Scheme> {
+    pub(crate) fn get(&self, name: &str) -> Option<&Scheme> {
         self.vars.get(name)
     }
 
-    pub fn insert(&mut self, name: impl Into<String>, scheme: Scheme) {
+    pub(crate) fn insert(&mut self, name: impl Into<String>, scheme: Scheme) {
         let name = name.into();
         // A fresh binding shadows any outer `mut` of the same name.
         let _ = self.mutables.remove(&name);
+        let _ = self.type_params.remove(&name);
         let _ = self.vars.insert(name, scheme);
     }
 
     /// Bind a `mut` declaration — the one binding form handler arms may assign.
-    pub fn insert_mutable(&mut self, name: impl Into<String>, scheme: Scheme) {
+    pub(crate) fn insert_mutable(&mut self, name: impl Into<String>, scheme: Scheme) {
         let name = name.into();
+        let _ = self.type_params.remove(&name);
         let _ = self.vars.insert(name.clone(), scheme);
         let _ = self.mutables.insert(name);
     }
 
-    pub fn is_mutable(&self, name: &str) -> bool {
+    pub(crate) fn is_mutable(&self, name: &str) -> bool {
         self.mutables.contains(name)
     }
 
     /// The currently bound names. Snapshotted on the freshly built builtin
     /// environment to detect redefinition of built-in functions.
-    pub fn bound_names(&self) -> HashSet<String> {
+    pub(crate) fn bound_names(&self) -> HashSet<String> {
         self.vars.keys().cloned().collect()
     }
 
-    pub fn remove(&mut self, name: &str) {
+    pub(crate) fn remove(&mut self, name: &str) {
         let _ = self.vars.remove(name);
+        let _ = self.type_params.remove(name);
+    }
+
+    /// Attach declaration-site binders to this exact lexical binding.
+    pub(crate) fn declare_type_params(&mut self, name: &str, params: Vec<Type>) {
+        let _ = self.type_params.insert(name.to_owned(), params);
+    }
+
+    /// Instantiate the signature and its declared binders with one substitution.
+    pub(crate) fn applied(&self, ctx: &mut InferCtx, name: &str) -> Option<AppliedSignature> {
+        let scheme = self.get(name)?;
+        let map = scheme.vars.iter().map(|v| (*v, ctx.fresh())).collect();
+        let params = self
+            .type_params
+            .get(name)
+            .into_iter()
+            .flatten()
+            .map(|ty| subst_vars(&ctx.apply(ty), &map))
+            .collect();
+        let obligations = subst_obligations(&scheme.obligations, &map);
+        Some(AppliedSignature {
+            ty: subst_vars(&scheme.ty, &map),
+            obligations,
+            params,
+            bindings: map,
+        })
     }
 
     /// A fresh child scope (a clone — bindings added to the child don't leak).
-    pub fn child(&self) -> TypeEnv {
+    pub(crate) fn child(&self) -> TypeEnv {
         self.clone()
     }
 
     /// The free variables of the whole environment — the vars `generalize` must
     /// *not* quantify, because an outer scope may still constrain them.
-    pub fn free_vars(&self, ctx: &mut InferCtx) -> BTreeSet<VarId> {
+    pub(crate) fn free_vars(&self, ctx: &mut InferCtx) -> BTreeSet<VarId> {
         let mut out = BTreeSet::new();
         for scheme in self.vars.values() {
             let mut fv = BTreeSet::new();
             ctx.free_vars(&scheme.ty, &mut fv);
+            for (_, obligation) in &scheme.obligations {
+                ctx.free_vars(obligation, &mut fv);
+            }
             for q in &scheme.vars {
                 let _ = fv.remove(q);
             }
@@ -74,8 +115,20 @@ impl TypeEnv {
     }
 }
 
+/// A scheme's built-in obligations restated against the substitution `map` —
+/// the same rewrite every instantiation site performs on its fresh variables.
+fn subst_obligations(
+    obligations: &[(String, Type)],
+    map: &HashMap<VarId, Type>,
+) -> Vec<(String, Type)> {
+    obligations
+        .iter()
+        .map(|(name, ty)| (name.clone(), subst_vars(ty, map)))
+        .collect()
+}
+
 /// Instantiate a scheme: replace each quantified variable with a fresh one.
-pub fn instantiate(ctx: &mut InferCtx, scheme: &Scheme) -> Type {
+pub(crate) fn instantiate(ctx: &mut InferCtx, scheme: &Scheme) -> Type {
     instantiated(ctx, scheme).0
 }
 
@@ -84,21 +137,17 @@ pub fn instantiate(ctx: &mut InferCtx, scheme: &Scheme) -> Type {
 /// against the concrete types it supplies — a generalized wrapper cannot
 /// launder an ineligible element type past a constrained built-in
 /// ([`Scheme::obligations`]).
-pub fn instantiated(ctx: &mut InferCtx, scheme: &Scheme) -> (Type, Vec<(String, Type)>) {
+pub(crate) fn instantiated(ctx: &mut InferCtx, scheme: &Scheme) -> (Type, Vec<(String, Type)>) {
     if scheme.vars.is_empty() {
         return (scheme.ty.clone(), scheme.obligations.clone());
     }
     let map: HashMap<VarId, Type> = scheme.vars.iter().map(|v| (*v, ctx.fresh())).collect();
-    let obligations = scheme
-        .obligations
-        .iter()
-        .map(|(name, ty)| (name.clone(), subst_vars(ty, &map)))
-        .collect();
+    let obligations = subst_obligations(&scheme.obligations, &map);
     (subst_vars(&scheme.ty, &map), obligations)
 }
 
 /// Generalize a type over the variables free in it but not in the environment.
-pub fn generalize(ctx: &mut InferCtx, env: &TypeEnv, ty: &Type) -> Scheme {
+pub(crate) fn generalize(ctx: &mut InferCtx, env: &TypeEnv, ty: &Type) -> Scheme {
     let ty = ctx.apply(ty);
     let env_fv = env.free_vars(ctx);
     let mut ty_fv = BTreeSet::new();
@@ -111,7 +160,7 @@ pub fn generalize(ctx: &mut InferCtx, env: &TypeEnv, ty: &Type) -> Scheme {
     }
 }
 
-fn subst_vars(t: &Type, map: &HashMap<VarId, Type>) -> Type {
+pub(crate) fn subst_vars(t: &Type, map: &HashMap<VarId, Type>) -> Type {
     match t {
         Type::Var(v) => map.get(v).cloned().unwrap_or_else(|| t.clone()),
         Type::Con { name, args } => Type::Con {
@@ -135,7 +184,6 @@ fn subst_vars(t: &Type, map: &HashMap<VarId, Type>) -> Type {
         },
     }
 }
-
 #[cfg(test)]
 #[expect(
     clippy::indexing_slicing,

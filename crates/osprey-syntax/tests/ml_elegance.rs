@@ -428,9 +428,9 @@ fn structural_patterns_parse_closed_and_open() {
 /// The first match expression's arms anywhere in the program — the shared
 /// digging for the pattern-shape assertions above.
 fn find_match_arms(program: &osprey_ast::Program) -> Vec<osprey_ast::MatchArm> {
-    fn from_expr(e: &osprey_ast::Expr) -> Option<Vec<osprey_ast::MatchArm>> {
+    fn from_expr(e: &Expr) -> Option<Vec<osprey_ast::MatchArm>> {
         match e {
-            osprey_ast::Expr::Match { arms, .. } => Some(arms.clone()),
+            Expr::Match { arms, .. } => Some(arms.clone()),
             _ => None,
         }
     }

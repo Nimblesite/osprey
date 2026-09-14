@@ -1,12 +1,12 @@
 {
   "title": "Osprey Programming Language",
   "name": "Osprey",
-  "description": "One core, two flavors: write Osprey in C-style braces or ML-style layout with curry-by-default. Both lower to one canonical AST with typed algebraic effects, fibers, persistent collections, Hindley-Milner inference, and LLVM code generation.",
+  "description": "Osprey is a practical functional language with strong inferred types, explicit errors, effects, and two source flavors. Build native programs, WebAssembly, and shared application logic for iOS and Android.",
   "url": "https://www.ospreylang.dev",
   "author": "Christian Findlay",
   "stylesheet": "/assets/css/styles.css",
   "themeColor": "#0c1325",
-  "keywords": "osprey, functional programming, language flavors, ML syntax, curry by default, algebraic effects, fibers, LLVM, type inference, pattern matching",
+  "keywords": "osprey, functional programming, language flavors, ML syntax, curry by default, algebraic effects, fibers, LLVM, type inference, pattern matching, WebAssembly, iOS, Android, C ABI, reactive applications",
   "ogImage": "/assets/images/og-image.png",
   "ogImageWidth": "1200",
   "ogImageHeight": "630",
@@ -15,6 +15,8 @@
   "organization": {
     "name": "Osprey Programming Language",
     "logo": "/assets/images/logo.png",
-    "sameAs": ["https://github.com/Nimblesite/osprey"]
+    "sameAs": [
+      "https://github.com/Nimblesite/osprey"
+    ]
   }
 }

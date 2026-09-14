@@ -1,0 +1,47 @@
+// [MODULES-ABI]: Result payloads retain their record layout across module calls.
+namespace sample
+
+type InboxModel =
+    value : string
+
+type Reply =
+    model : InboxModel
+    commands : string
+
+module Model
+    choose (changed, target, value, old) = match changed == target
+        true => value
+        false => old
+    export set (model, key, value) = InboxModel(value = choose (key, "value", value, model.value))
+
+module Storage
+    export restoreInferred (model, source) = match source == "valid"
+        false => Error(message = "invalid")
+        true => Success(value = Model::set (model, "value", "cached"))
+    export restore : (InboxModel, string) -> Result<InboxModel, string>
+    restore (model, source) = restoreInferred (model, source)
+    export restoreCurried : InboxModel -> string -> Result<InboxModel, string>
+    restoreCurried model source = restore (model, source)
+
+module Update
+    ready model = Model::set (model, "value", "ready")
+    unchanged model = Reply(model = model, commands = "[]")
+    failure (model, message) = unchanged (Model::set (model, "value", message))
+    export restore (model, source) = match Storage::restore (ready model, source)
+        Error message => failure (Model::set (ready model, "value", "bad"), message)
+        Success value => unchanged (Model::set (value, "value", "good"))
+    export restoreCurried model source = match Storage::restoreCurried (ready model) source
+        Error message => failure (Model::set (ready model, "value", "bad"), message)
+        Success value => unchanged (Model::set (value, "value", "good"))
+    export restoreInferred (model, source) = match Storage::restoreInferred (ready model, source)
+        Error message => failure (Model::set (ready model, "value", "bad"), message)
+        Success value => unchanged (Model::set (value, "value", "good"))
+
+ok = Update::restore (InboxModel(value = "cached"), "valid")
+bad = Update::restore (InboxModel(value = "cached"), "invalid")
+curried = Update::restoreCurried (InboxModel(value = "cached"))
+closureOk = curried "valid"
+closureBad = curried "invalid"
+inferredOk = Update::restoreInferred (InboxModel(value = "cached"), "valid")
+inferredBad = Update::restoreInferred (InboxModel(value = "cached"), "invalid")
+print "${ok.model.value} ${bad.model.value}\n${closureOk.model.value} ${closureBad.model.value}\n${inferredOk.model.value} ${inferredBad.model.value}"

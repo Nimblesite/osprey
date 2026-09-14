@@ -356,7 +356,7 @@ impl Resolver<'_> {
         self.entry_locals = locals;
     }
 
-    pub fn link_name(&mut self, key: &SymbolKey, entry_main: bool) -> String {
+    pub(crate) fn link_name(&mut self, key: &SymbolKey, entry_main: bool) -> String {
         let name = if entry_main {
             "main".to_string()
         } else if self
@@ -373,7 +373,12 @@ impl Resolver<'_> {
         name
     }
 
-    pub fn error(&mut self, source: usize, position: Option<Position>, message: impl Into<String>) {
+    pub(crate) fn error(
+        &mut self,
+        source: usize,
+        position: Option<Position>,
+        message: impl Into<String>,
+    ) {
         self.errors
             .push(source_error(self.sources, source, position, message));
     }

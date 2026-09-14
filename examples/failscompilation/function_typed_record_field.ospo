@@ -1,8 +1,6 @@
-// Function-typed record fields ARE a runnable feature (closure cells), but
-// calling one as `a.add(10)` still goes through the UFCS rewrite
-// (`add(a, 10)`) and is rejected — the spec'd field-access-wins
-// disambiguation (0012-Built-InFunctions) is not implemented yet. The working
-// spelling is `let f = a.add` then `f(10)`. Must reject cleanly, never panic.
+// Field-call syntax resolves `a.add(10)` to the record's callable field.
+// The initializer must still match that field's declared return type:
+// checked addition returns Result<int, MathError>, not int.
 type Adder = {
     add: (int) -> int
 }

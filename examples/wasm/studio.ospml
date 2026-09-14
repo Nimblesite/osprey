@@ -80,13 +80,13 @@ mkSale (id, product, region, qty, price) =
 // ── the books ── one ledger entry per sale, replayed through the handler ────
 books : Unit -> int ! Db
 books () =
-    perform Db.record (mkSale (1, "Espresso", North, 4, 18))
-    perform Db.record (mkSale (2, "Latte", South, 6, 12))
-    perform Db.record (mkSale (3, "ColdBrew", East, 3, 15))
-    perform Db.record (mkSale (4, "Espresso", West, 5, 18))
-    perform Db.record (mkSale (5, "Drip", North, 8, 7))
-    perform Db.record (mkSale (6, "Latte", East, 4, 12))
-    perform Db.record (mkSale (7, "ColdBrew", South, 2, 15))
+    _ = perform Db.record (mkSale (1, "Espresso", North, 4, 18))
+    _ = perform Db.record (mkSale (2, "Latte", South, 6, 12))
+    _ = perform Db.record (mkSale (3, "ColdBrew", East, 3, 15))
+    _ = perform Db.record (mkSale (4, "Espresso", West, 5, 18))
+    _ = perform Db.record (mkSale (5, "Drip", North, 8, 7))
+    _ = perform Db.record (mkSale (6, "Latte", East, 4, 12))
+    _ = perform Db.record (mkSale (7, "ColdBrew", South, 2, 15))
     perform Db.record (mkSale (8, "Drip", West, 10, 7))
 
 // ── algebraic effect ── the handler is the SQLite writer AND the accountant ──
@@ -94,7 +94,7 @@ books () =
 // into running totals. The same pass produces the DML the page feeds SQLite and
 // the gold-standard numbers it checks SQLite's answers against.
 effect Db
-    (** Record one `Sale` and return its assigned id. *)
+    (** Record one `Sale` and return the running revenue including it. *)
     record : Sale => int
 
 ddl () =

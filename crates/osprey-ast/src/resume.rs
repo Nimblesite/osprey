@@ -2,9 +2,14 @@
 //! splits handler-arm semantics: a resuming arm's value is the handler's
 //! ANSWER, a non-resuming arm's value substitutes for the operation's RESULT.
 //! Shared by the type checker (arm typing) and codegen (arm emission).
-//! Implements [EFFECTS-RESUME].
+//!
+//! Two questions about the same sites live here because they read the same
+//! tree and must not drift: whether an arm resumes AT ALL, which decides its
+//! mode, and how many times the worst single control path through it does,
+//! which is the affine rule multiplicity enforces.
+//! Implements [EFFECTS-RESUME], [MULTI-HANDLE-ONCE].
 
-use crate::{Expr, Stmt};
+use crate::{AstNode, Expr, Stmt};
 
 /// True when `e` contains a `resume` belonging to the ENCLOSING handler arm —
 /// a nested handler's body owns its own `resume`s, so they don't count.
@@ -12,66 +17,19 @@ use crate::{Expr, Stmt};
 pub fn contains_resume(e: &Expr) -> bool {
     match e {
         Expr::Resume(_) => true,
-        Expr::InterpolatedStr(parts) => parts
-            .iter()
-            .any(|p| matches!(p, crate::InterpolatedPart::Expr(inner) if contains_resume(inner))),
-        Expr::List(xs, _) => xs.iter().any(contains_resume),
-        Expr::Map(entries) => entries
-            .iter()
-            .any(|entry| contains_resume(&entry.key) || contains_resume(&entry.value)),
-        Expr::Object(fields)
-        | Expr::TypeConstructor { fields, .. }
-        | Expr::Update { fields, .. } => fields.iter().any(|f| contains_resume(&f.value)),
-        Expr::Binary { left, right, .. } | Expr::Pipe { left, right } => {
-            contains_resume(left) || contains_resume(right)
-        }
-        Expr::Unary { operand, .. } => contains_resume(operand),
-        Expr::Call {
-            function,
-            arguments,
-            named_arguments,
-        } => {
-            contains_resume(function)
-                || arguments.iter().any(contains_resume)
-                || named_arguments.iter().any(|n| contains_resume(&n.value))
-        }
-        Expr::MethodCall {
-            target,
-            arguments,
-            named_arguments,
-            ..
-        } => {
-            contains_resume(target)
-                || arguments.iter().any(contains_resume)
-                || named_arguments.iter().any(|n| contains_resume(&n.value))
-        }
-        Expr::FieldAccess { target, .. } => contains_resume(target),
-        Expr::Index { target, index } => contains_resume(target) || contains_resume(index),
-        Expr::Lambda { body, .. } | Expr::Spawn(body) | Expr::Await(body) | Expr::Recv(body) => {
-            contains_resume(body)
-        }
-        Expr::Yield(Some(value)) => contains_resume(value),
-        Expr::Send { channel, value } => contains_resume(channel) || contains_resume(value),
-        Expr::Match { value, arms } => {
-            contains_resume(value) || arms.iter().any(|arm| contains_resume(&arm.body))
-        }
-        Expr::Block { statements, value } => {
-            statements.iter().any(stmt_contains_resume)
-                || value.as_deref().is_some_and(contains_resume)
-        }
-        Expr::Select { arms } => arms.iter().any(|arm| contains_resume(&arm.body)),
-        Expr::Perform {
-            arguments,
-            named_arguments,
-            ..
-        } => {
-            arguments.iter().any(contains_resume)
-                || named_arguments.iter().any(|n| contains_resume(&n.value))
-        }
-        // A nested handler owns its own `resume`; do not mark the outer handler
-        // as a resuming region because of it.
+        // Only the handled body belongs to the enclosing arm.
         Expr::Handler { body, .. } => contains_resume(body),
-        _ => false,
+        _ => {
+            let mut found = false;
+            AstNode::Expression(e).for_each_child(|child| {
+                found = found
+                    || match child {
+                        AstNode::Statement(statement) => stmt_contains_resume(statement),
+                        AstNode::Expression(expression) => contains_resume(expression),
+                    };
+            });
+            found
+        }
     }
 }
 
@@ -84,178 +42,65 @@ fn stmt_contains_resume(stmt: &Stmt) -> bool {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn r() -> Expr {
-        Expr::Resume(None)
-    }
-    fn b(e: Expr) -> Box<Expr> {
-        Box::new(e)
-    }
-    fn field(value: Expr) -> crate::FieldAssignment {
-        crate::FieldAssignment {
-            name: "f".into(),
-            value,
+/// How many `resume` sites the longest single control path through `body`
+/// crosses, counting only those belonging to the ENCLOSING handler arm.
+///
+/// This is deliberately not [`contains_resume`](crate::contains_resume), which
+/// asks a branch-blind "any" question to decide an arm's *mode*. The affine
+/// rule is a branch-AWARE question about one path: two `resume`s in sequence
+/// are a violation, two on different `match` branches are not, and reading them
+/// the same way would reject `tests/regressions/effects/abort_vs_resume.test.osp`.
+/// Osprey has no loop construct ([BUILTIN-ITER]), so sequence and branch are the
+/// only two shapes this fold needs. Implements [MULTI-HANDLE-ONCE].
+#[must_use]
+pub fn resumes_on_one_path(body: &Expr) -> u32 {
+    match body {
+        // A `resume` whose own argument resumes is two on one path.
+        Expr::Resume(value) => 1 + value.as_deref().map_or(0, resumes_on_one_path),
+        // Branch positions: only one arm runs, so the worst path is the worst arm.
+        Expr::Match { value, arms } => {
+            resumes_on_one_path(value)
+                + arms
+                    .iter()
+                    .map(|a| resumes_on_one_path(&a.body))
+                    .max()
+                    .unwrap_or(0)
         }
+        Expr::Select { arms } => arms
+            .iter()
+            .map(|arm| resumes_on_one_path(&arm.body))
+            .max()
+            .unwrap_or(0),
+        // A lambda body is not on the arm's own control path. `resume` there is
+        // rejected by [EFFECTS-RESUME] with a message about the dead
+        // continuation, which is the accurate complaint; counting it here would
+        // report the same defect twice under a rule it does not violate.
+        Expr::Lambda { .. } => 0,
+        // A nested handler's arms own their own `resume`s; only its handled
+        // body sits on this arm's path.
+        Expr::Handler { body, .. } => resumes_on_one_path(body),
+        // Everything else composes sequentially: every child is crossed.
+        _ => sequential_children(body),
     }
-    fn assert_all_contain(cases: &[Expr]) {
-        for e in cases {
-            assert!(contains_resume(e), "resume not found in {e:?}");
+}
+
+/// Sum the path length of every child evaluated on the way through `body`.
+fn sequential_children(body: &Expr) -> u32 {
+    let mut total = 0;
+    AstNode::Expression(body).for_each_child(|child| {
+        total += match child {
+            AstNode::Statement(statement) => statement_resumes(statement),
+            AstNode::Expression(expression) => resumes_on_one_path(expression),
+        };
+    });
+    total
+}
+
+fn statement_resumes(stmt: &Stmt) -> u32 {
+    match stmt {
+        Stmt::Let { value, .. } | Stmt::Assignment { value, .. } | Stmt::Expr { value, .. } => {
+            resumes_on_one_path(value)
         }
-    }
-
-    #[test]
-    fn walks_literal_and_data_container_forms() {
-        assert_all_contain(&[
-            Expr::InterpolatedStr(vec![crate::InterpolatedPart::Expr(r())]),
-            Expr::List(vec![r()], None),
-            Expr::Map(vec![crate::MapEntry {
-                key: r(),
-                value: Expr::Integer(0),
-            }]),
-            Expr::Object(vec![field(r())]),
-            Expr::TypeConstructor {
-                name: "C".into(),
-                type_args: Vec::new(),
-                fields: vec![field(r())],
-            },
-            Expr::Update {
-                record: "rec".into(),
-                fields: vec![field(r())],
-            },
-            Expr::Binary {
-                op: "+".into(),
-                left: b(Expr::Integer(1)),
-                right: b(r()),
-            },
-            Expr::Pipe {
-                left: b(r()),
-                right: b(Expr::Identifier("f".into())),
-            },
-            Expr::Unary {
-                op: "-".into(),
-                operand: b(r()),
-            },
-        ]);
-    }
-
-    #[test]
-    fn walks_call_control_and_concurrency_forms() {
-        assert_all_contain(&[
-            Expr::Call {
-                function: b(Expr::Identifier("f".into())),
-                arguments: Vec::new(),
-                named_arguments: vec![crate::NamedArgument {
-                    name: "a".into(),
-                    value: r(),
-                }],
-            },
-            Expr::MethodCall {
-                target: b(r()),
-                method: "m".into(),
-                arguments: Vec::new(),
-                named_arguments: Vec::new(),
-            },
-            Expr::FieldAccess {
-                target: b(r()),
-                field: "x".into(),
-            },
-            Expr::Index {
-                target: b(Expr::Identifier("xs".into())),
-                index: b(r()),
-            },
-            Expr::Lambda {
-                parameters: Vec::new(),
-                return_type: None,
-                body: b(r()),
-                position: None,
-            },
-            Expr::Spawn(b(r())),
-            Expr::Await(b(r())),
-            Expr::Recv(b(r())),
-            Expr::Yield(Some(b(r()))),
-            Expr::Send {
-                channel: b(Expr::Integer(0)),
-                value: b(r()),
-            },
-            Expr::Match {
-                value: b(r()),
-                arms: Vec::new(),
-            },
-            Expr::Select {
-                arms: vec![crate::MatchArm {
-                    pattern: crate::Pattern::Wildcard,
-                    body: r(),
-                }],
-            },
-            Expr::Perform {
-                effect: "E".into(),
-                operation: "o".into(),
-                arguments: vec![r()],
-                named_arguments: Vec::new(),
-                position: None,
-            },
-        ]);
-    }
-
-    #[test]
-    fn negatives_and_statement_walks() {
-        // Negative cases: leaves without resume, and non-binding statements.
-        assert!(!contains_resume(&Expr::Integer(1)));
-        assert!(!contains_resume(&Expr::Yield(None)));
-        let import_only = Expr::Block {
-            statements: vec![crate::Stmt::Import(crate::ImportDecl {
-                target: crate::ImportTarget {
-                    namespace: crate::NamespaceName::Identifier("m".into()),
-                    path: crate::SymbolPath::default(),
-                },
-                alias: None,
-                selection: crate::ImportSelection::Whole,
-                position: None,
-            })],
-            value: None,
-        };
-        assert!(!contains_resume(&import_only));
-        // Assignment statements inside blocks are walked.
-        let assign = Expr::Block {
-            statements: vec![crate::Stmt::Assignment {
-                name: "x".into(),
-                value: r(),
-                position: None,
-            }],
-            value: None,
-        };
-        assert!(contains_resume(&assign));
-    }
-
-    #[test]
-    fn finds_resume_through_blocks_but_not_nested_handlers() {
-        let resume = Expr::Resume(None);
-        assert!(contains_resume(&resume));
-        let block = Expr::Block {
-            statements: vec![Stmt::Expr {
-                value: Expr::Resume(None),
-                doc: None,
-                position: None,
-            }],
-            value: None,
-        };
-        assert!(contains_resume(&block));
-        // A nested handler's resume belongs to the nested handler.
-        let nested = Expr::Handler {
-            stage: crate::Stage::Dynamic,
-            effect: "E".into(),
-            arms: vec![crate::HandlerArm {
-                operation: "op".into(),
-                params: Vec::new(),
-                body: Expr::Resume(None),
-                position: None,
-            }],
-            body: Box::new(Expr::Integer(1)),
-            position: None,
-        };
-        assert!(!contains_resume(&nested));
+        _ => 0,
     }
 }

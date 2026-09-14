@@ -23,6 +23,7 @@
 
 #include <errno.h>
 #include <stdatomic.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 
@@ -156,6 +157,27 @@ typedef struct MachRegs {
   bool ok;
 } MachRegs;
 
+// [PROF-COLLECT-UNWIND] thread_suspend + thread_get_state IS the capture, and
+// it is accurate. A probe suspended a thread spinning in pure integer
+// arithmetic 40 times and every read landed inside that function;
+// thread_abort_safely changed nothing, so the suspend is synchronous enough to
+// sample against.
+//
+// This was once believed broken. Profiling benchmarks/cases/fib produced folded
+// stacks whose leaf was a system routine rather than `sub` or `add`, and that
+// was read as a corrupt pc. It is not: dladdr on 160 consecutive captured
+// leaves resolved 128 inside libsystem_malloc (_xzm_free, xzm_malloc,
+// _xzm_xzone_malloc_tiny) and only 8 inside the program. fib really does spend
+// ~80% of its time in the allocator, because `fn add(a, b) = a + b ?: 0`
+// allocates a Result for every arithmetic operation and fib(30) performs
+// millions of them. The profiler reported the `?:` allocation tax faithfully;
+// the number was surprising, not wrong.
+//
+// What WAS wrong is offline symbolization: an address in a dyld-shared-cache
+// dylib was resolved against the wrong object and came back named
+// `task_get_special_port` where dladdr said `mach_absolute_time`. A wrong name
+// on a right address made a correct capture look like a corrupt one. That
+// defect lives in crates/osprey-profiler/src/symbolize/tools.rs, not here.
 static MachRegs read_regs(uint32_t port) {
   MachRegs r = {0, 0, 0, false};
 #if defined(__aarch64__)
@@ -196,7 +218,14 @@ static int capture_suspended(OspProfSlot *slot, uint64_t *frames) {
   }
   MachRegs regs = read_regs(slot->mach_port);
   int n = 0;
-  if (regs.ok) {
+  // [PROF-SYMBOLIZE-OFFLINE] frame 0 must be the precise interrupted pc. When
+  // the captured pc is not a code address osp_prof_walk floors it out, so
+  // frame 0 would become a RETURN address that the symbolizer -- which decides
+  // the -1 adjustment positionally -- would attribute to the line AFTER the
+  // call. A capture whose leaf cannot be trusted is dropped, never reshaped:
+  // an untrustworthy sample must stay visibly absent, not become a plausible
+  // wrong function.
+  if (regs.ok && osp_prof_pc_is_code(regs.pc)) {
     n = osp_prof_walk(regs.pc, regs.fp, regs.lr, slot->stack_lo, slot->stack_hi,
                       frames, OSP_PROF_MAX_FRAMES);
   }
@@ -272,12 +301,21 @@ static void sigprof_handler(int sig, siginfo_t *si, void *uctx) {
       uint64_t fp = (uint64_t)uc->uc_mcontext.gregs[REG_RBP];
       uint64_t lr = 0;
 #endif
-      e->t_ns = osp_prof_mono_ns();
-      e->row = slot->index;
-      int n = osp_prof_walk(pc, fp, lr, slot->stack_lo, slot->stack_hi, e->pcs,
-                            OSP_PROF_MAX_FRAMES);
-      e->n = n > 0 ? (uint32_t)n : 0;
-      atomic_store_explicit(&ring->head, head + 1, memory_order_release);
+      // Same leaf rule as the macOS arm above [PROF-SYMBOLIZE-OFFLINE]: a pc
+      // that is not a code address would be floored out of frame 0, leaving a
+      // return address the symbolizer positionally trusts as a precise pc.
+      // Count it through the ring's existing drop channel so the loss reaches
+      // `dropped` ([PROF-RAW-FORMAT]) instead of disappearing.
+      if (!osp_prof_pc_is_code(pc)) {
+        atomic_fetch_add_explicit(&ring->drops, 1, memory_order_relaxed);
+      } else {
+        e->t_ns = osp_prof_mono_ns();
+        e->row = slot->index;
+        int n = osp_prof_walk(pc, fp, lr, slot->stack_lo, slot->stack_hi,
+                              e->pcs, OSP_PROF_MAX_FRAMES);
+        e->n = n > 0 ? (uint32_t)n : 0;
+        atomic_store_explicit(&ring->head, head + 1, memory_order_release);
+      }
     } else {
       atomic_fetch_add_explicit(&ring->drops, 1, memory_order_relaxed);
     }

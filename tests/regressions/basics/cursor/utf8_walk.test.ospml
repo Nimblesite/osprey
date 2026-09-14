@@ -50,7 +50,6 @@ mid =
         Error message => "mid-sequence rejected: ${message}"
 print mid
 print "=== walk complete ==="
-0
 
 (** Check a decoded scalar at a known byte boundary. *)
 codepointIs (s, index, expected) =

@@ -200,8 +200,7 @@ fn own_struct_handle(
     obj: &str,
     owner: impl Into<String>,
 ) -> Value {
-    let handle = cg.fresh_reg();
-    cg.emit(format!("{handle} = bitcast {struct_ty}* {obj} to i8*"));
+    let handle = cg.emit_reg(format!("bitcast {struct_ty}* {obj} to i8*"));
     let v = Value::handle(handle, owner);
     crate::arc::own(cg, &v);
     v
@@ -249,9 +248,8 @@ fn gen_http_response(cg: &mut Codegen, fields: &[FieldAssignment]) -> Result<Val
             _ => crate::cast::coerce_to(cg, v, LType::Str)?.operand,
         };
         crate::arc::dup_store(cg, llty, &operand);
-        let p = cg.fresh_reg();
-        cg.emit(format!(
-            "{p} = getelementptr {HTTP_RESPONSE_STRUCT}, {HTTP_RESPONSE_STRUCT}* {obj}, i32 0, i32 {i}"
+        let p = cg.emit_reg(format!(
+            "getelementptr {HTTP_RESPONSE_STRUCT}, {HTTP_RESPONSE_STRUCT}* {obj}, i32 0, i32 {i}"
         ));
         cg.emit(format!("store {llty} {operand}, {llty}* {p}"));
     }
@@ -316,11 +314,7 @@ pub(crate) fn gen_update(
         .ctor_struct_ty(&owner)
         .ok_or_else(|| CodegenError::unknown(&owner))?;
 
-    let src = cg.fresh_reg();
-    cg.emit(format!(
-        "{src} = bitcast i8* {} to {struct_ty}*",
-        base.operand
-    ));
+    let src = cg.emit_reg(format!("bitcast i8* {} to {struct_ty}*", base.operand));
     // view.meta comes from the Osprey field types (builder.rs `field_meta`),
     // which prove more than the erased LTypes visible here: an all-union field
     // set upgrades to the probe-free KIND_MASK_DIRECT. noinit: the tag and every
@@ -347,6 +341,10 @@ pub(crate) fn gen_update(
 /// load the field.
 pub(crate) fn gen_field_access(cg: &mut Codegen, target: &Expr, field: &str) -> Result<Value> {
     let tv = gen_expr(cg, target)?;
+    let inferred = tv
+        .inferred_type
+        .as_ref()
+        .and_then(|ty| cg.prog.field_type(ty, field));
     // Use the statically-known owner (a named record or an anonymous object
     // literal) when it actually declares `field`; otherwise (a generic accessor
     // whose parameter infers to a type variable) resolve the field by name across
@@ -358,6 +356,14 @@ pub(crate) fn gen_field_access(cg: &mut Codegen, target: &Expr, field: &str) -> 
     let owner = known
         .or_else(|| cg.find_field_owner(field))
         .ok_or_else(|| CodegenError::invalid(format!("field `{field}` on a non-record")))?;
+    // Ordinary records can cross an inlined generic call with only their owner
+    // tag. Keep a concrete field's complete type, including every returned
+    // function arrow, so chained calls retain their ABI. [TYPE-FN-HIGHER-ORDER]
+    let inferred = inferred.or_else(|| {
+        cg.prog
+            .field_type(&osprey_types::Type::con(&owner, Vec::new()), field)
+            .filter(|ty| !osprey_types::has_type_var(ty))
+    });
     if cg.ctor_field_result_inner(&owner, field).is_some() {
         return Err(result_field_unsupported());
     }
@@ -370,24 +376,32 @@ pub(crate) fn gen_field_access(cg: &mut Codegen, target: &Expr, field: &str) -> 
         .find_map(|(i, (f, t))| (f == field).then_some((i, *t)))
         .ok_or_else(|| CodegenError::invalid(format!("`{owner}` has no field `{field}`")))?;
 
+    let fty = inferred.as_ref().map_or(fty, crate::types::ltype_of);
     // A record that crossed a generic boundary — a list element, an inlined
     // parameter whose type is still a variable — travels in the uniform machine
     // word, so restore the handle before reading a slot out of it.
     let tv = crate::cast::coerce_to(cg, tv, LType::Ptr)?;
-    let src = cg.fresh_reg();
-    cg.emit(format!(
-        "{src} = bitcast i8* {} to {struct_ty}*",
-        tv.operand
-    ));
+    let src = cg.emit_reg(format!("bitcast i8* {} to {struct_ty}*", tv.operand));
     let loaded = load_field(cg, &struct_ty, src.as_str(), idx + 1, fty);
     // A handle field carries its ELEMENT's ABI, not an owner of its own: the
     // slot holds a runtime id, and `recv`/`await` on it needs the element type
     // to unbox with ([CONCURRENCY-CHANNEL]).
-    if let Some(handle) = cg.ctor_field_handle(&owner, field) {
-        return Ok(handle.restore(Value::new(loaded, fty)));
+    if let Some(handle) = inferred
+        .as_ref()
+        .and_then(|ty| crate::builder::FiberSig::of(&cg.prog, ty))
+        .or_else(|| cg.ctor_field_handle(&owner, field))
+    {
+        let mut value = handle.restore(Value::new(loaded, fty));
+        value.inferred_type = inferred;
+        return Ok(value);
     }
-    let owner = cg.ctor_field_owner(&owner, field);
-    Ok(Value::new(loaded, fty).with_owner(owner))
+    let owner = inferred.as_ref().map_or_else(
+        || cg.ctor_field_owner(&owner, field),
+        |ty| crate::types::owner_name(&cg.prog, ty),
+    );
+    let mut value = Value::new(loaded, fty).with_owner(owner);
+    value.inferred_type = inferred;
+    Ok(value)
 }
 
 /// Aggregate layouts do not yet carry the shape metadata needed to preserve a
@@ -418,9 +432,8 @@ pub(crate) fn store_field(
     if !moved {
         crate::arc::dup_store(cg, fty.as_str(), val);
     }
-    let p = cg.fresh_reg();
-    cg.emit(format!(
-        "{p} = getelementptr {struct_ty}, {struct_ty}* {obj}, i32 0, i32 {idx}"
+    let p = cg.emit_reg(format!(
+        "getelementptr {struct_ty}, {struct_ty}* {obj}, i32 0, i32 {idx}"
     ));
     cg.emit(format!("store {fty} {val}, {fty}* {p}"));
 }
@@ -440,11 +453,9 @@ pub(crate) fn load_field(
     idx: usize,
     fty: LType,
 ) -> String {
-    let p = cg.fresh_reg();
-    cg.emit(format!(
-        "{p} = getelementptr {struct_ty}, {struct_ty}* {obj}, i32 0, i32 {idx}"
+    let p = cg.emit_reg(format!(
+        "getelementptr {struct_ty}, {struct_ty}* {obj}, i32 0, i32 {idx}"
     ));
-    let r = cg.fresh_reg();
-    cg.emit(format!("{r} = load {fty}, {fty}* {p}"));
+    let r = cg.emit_reg(format!("load {fty}, {fty}* {p}"));
     r
 }

@@ -70,6 +70,16 @@ Silently-wrong output is worse than a crash: a panic is found in seconds; a sile
   - If removing an annotation still compiles with identical output, it was redundant — remove it. Applies to every `.osp` you touch: `tests/regressions/`, `benchmarks/`, docs and website snippets.
 - **No consecutive print calls** — consolidate into one interpolated string.
 
+```ospml
+    // This is wrong because the signature can be inferred. You must omit this!
+    escape : string -> string
+    escape s =
+        bslash = "\\"
+        quote = "\""
+        step = replace s bslash (bslash + bslash) ?: ""
+        escapeControls (replace step quote (bslash + quote) ?: "") 1
+```
+
 ## Rust
 
 - **Panics are illegal** outside the broken-code quarantine. Return `Result<T, E>`.

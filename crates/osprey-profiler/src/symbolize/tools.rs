@@ -8,6 +8,7 @@ use super::{SymFrame, Symbolize};
 use crate::raw::Image;
 use crate::ProfileError;
 use std::collections::BTreeMap;
+use std::ffi::OsString;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -21,9 +22,10 @@ pub(crate) struct LlvmSymbolizer {
     /// The executable handed to the CLI — the fallback object when an image
     /// path recorded in the profile no longer exists.
     binary: PathBuf,
-    /// image path → `(base, slide)`, needed to rebuild SLID addresses for
-    /// the `atos -l <base>` fallback.
-    images: BTreeMap<PathBuf, (u64, u64)>,
+    /// image path → `(base, slide, arch)`, needed to rebuild SLID addresses for
+    /// the `atos -l <base>` fallback and to pin `atos -arch` to the slice the
+    /// runtime actually mapped.
+    images: BTreeMap<PathBuf, (u64, u64, String)>,
 }
 
 impl LlvmSymbolizer {
@@ -31,7 +33,7 @@ impl LlvmSymbolizer {
     pub(crate) fn new(binary: &Path, images: &[Image]) -> Self {
         let images = images
             .iter()
-            .map(|i| (PathBuf::from(&i.path), (i.base, i.slide)))
+            .map(|i| (PathBuf::from(&i.path), (i.base, i.slide, i.arch.clone())))
             .collect();
         Self {
             binary: binary.to_path_buf(),
@@ -44,23 +46,24 @@ impl LlvmSymbolizer {
     /// output line becomes a single-frame chain (`atos -i` is not used).
     fn try_atos(&self, image: &Path, unslid_addrs: &[u64]) -> Option<Vec<Vec<SymFrame>>> {
         let tool = find_tool("atos")?;
-        let (base, slide) = self.images.get(image).copied().unwrap_or((0, 0));
-        let object = if image.exists() {
-            image
-        } else {
+        let (base, slide, arch) = self
+            .images
+            .get(image)
+            .cloned()
+            .unwrap_or((0, 0, String::new()));
+        // `atos` resolves a dyld-shared-cache image from the LIVE cache, so the
+        // recorded path is handed over even when no such file exists on disk —
+        // /usr/lib/system/libsystem_malloc.dylib is cache-only on current macOS
+        // and atos still names `_xzm_free` correctly from it. Only the main
+        // image may fall back to the CLI binary, and only because that one is
+        // genuinely the same object under a moved path.
+        let object = if !image.exists() && is_main_image(image, &self.binary) {
             self.binary.as_path()
+        } else {
+            image
         };
         let mut command = Command::new(tool);
-        let _ = command
-            .arg("-o")
-            .arg(object)
-            .arg("-l")
-            .arg(format!("{base:#x}"));
-        let _ = command.args(
-            unslid_addrs
-                .iter()
-                .map(|a| format!("{:#x}", a.saturating_add(slide))),
-        );
+        let _ = command.args(atos_args(&arch, object, base, slide, unslid_addrs));
         let out = run_capture(&mut command)?;
         let lines = out.lines().chain(std::iter::repeat(""));
         Some(
@@ -79,19 +82,82 @@ impl Symbolize for LlvmSymbolizer {
         image: &Path,
         unslid_addrs: &[u64],
     ) -> Result<Vec<Vec<SymFrame>>, ProfileError> {
-        let object = resolve_object(image, &self.binary);
-        Ok(try_llvm(&object, unslid_addrs)
+        Ok(resolve_object(image, &self.binary)
+            .and_then(|object| try_llvm(&object, unslid_addrs))
             .or_else(|| self.try_atos(image, unslid_addrs))
             .unwrap_or_else(|| hex_chains(unslid_addrs)))
     }
 }
 
-/// Prefer the dSYM DWARF companion when dsymutil produced one, else the
-/// image itself (falling back to the CLI-provided binary if the recorded
-/// image path is gone).
-fn resolve_object(image: &Path, fallback: &Path) -> PathBuf {
-    let primary = if image.exists() { image } else { fallback };
-    dsym_object(primary).unwrap_or_else(|| primary.to_path_buf())
+/// Prefer the dSYM DWARF companion when dsymutil produced one, else the image
+/// itself. `None` when this image has no object on disk that describes IT.
+///
+/// The CLI binary substitutes only for the main image under a moved path.
+/// Substituting it for any other image is what invented symbol names: every
+/// dyld-shared-cache dylib is absent from disk, so their addresses were
+/// resolved against the profiled program's own symbol table and came back as
+/// whatever symbol happened to precede that offset — `mach_absolute_time`
+/// reported as `task_get_special_port`. A wrong name is worse than no name,
+/// because only the wrong name looks like data [PROF-SYMBOLIZE-OFFLINE].
+fn resolve_object(image: &Path, fallback: &Path) -> Option<PathBuf> {
+    let primary = match (image.exists(), is_main_image(image, fallback)) {
+        (true, _) => image,
+        (false, true) => fallback,
+        (false, false) => return None,
+    };
+    Some(dsym_object(primary).unwrap_or_else(|| primary.to_path_buf()))
+}
+
+/// `atos` argv for one image: the slice, the object, its load address, and the
+/// addresses re-slid (atos undoes the slide itself).
+///
+/// `-arch` is not decoration. Every system dylib is universal, and `atos` left
+/// on its host default reads the `arm64` slice of an image the kernel mapped
+/// as `arm64e`: one address is `task_get_special_port + 40` under the first
+/// slice and `mach_absolute_time + 108` under the second, and only the second
+/// agrees with `dladdr` and `/usr/bin/sample` [PROF-SYMBOLIZE-OFFLINE].
+fn atos_args(
+    arch: &str,
+    object: &Path,
+    base: u64,
+    slide: u64,
+    unslid_addrs: &[u64],
+) -> Vec<OsString> {
+    // `unwrap_or_default()` here would emit TWO EMPTY arguments, which atos
+    // takes as addresses and fails on; the Option must be flattened away.
+    let arch_flag = (!arch.is_empty()).then(|| [OsString::from("-arch"), OsString::from(arch)]);
+    arch_flag
+        .into_iter()
+        .flatten()
+        .chain([
+            OsString::from("-o"),
+            object.into(),
+            OsString::from("-l"),
+            OsString::from(format!("{base:#x}")),
+        ])
+        .chain(
+            unslid_addrs
+                .iter()
+                .map(|a| OsString::from(format!("{:#x}", a.saturating_add(slide)))),
+        )
+        .collect()
+}
+
+/// Whether `image` names the same binary as the CLI's `fallback`, so the
+/// fallback may stand in for it.
+///
+/// Compared by file name because the recorded path is where the program ran,
+/// which need not be where it now sits. An EMPTY path also qualifies: on Linux
+/// `dl_iterate_phdr` reports the main executable with `dlpi_name == ""`, and
+/// treating that as a foreign image would leave every Osprey frame unnamed.
+fn is_main_image(image: &Path, fallback: &Path) -> bool {
+    if image.as_os_str().is_empty() {
+        return true;
+    }
+    match (image.file_name(), fallback.file_name()) {
+        (Some(a), Some(b)) => a == b,
+        _ => false,
+    }
 }
 
 /// dsymutil layout: `<bin>.dSYM/Contents/Resources/DWARF/<basename>`.
@@ -322,12 +388,93 @@ mod tests {
         std::fs::create_dir_all(&dwarf_dir).unwrap();
         let dwarf = dwarf_dir.join("app");
         std::fs::write(&dwarf, b"dwarf").unwrap();
-        assert_eq!(resolve_object(&binary, Path::new("/fallback")), dwarf);
-        // Missing image -> the CLI-provided binary stands in.
-        assert_eq!(resolve_object(&dir.join("gone"), &binary), dwarf);
+        assert_eq!(
+            resolve_object(&binary, Path::new("/fallback")),
+            Some(dwarf.clone())
+        );
+        // The MAIN image under a moved path still stands in: same file name,
+        // so it is the same object.
+        assert_eq!(resolve_object(&dir.join("moved/app"), &binary), Some(dwarf));
         std::fs::remove_dir_all(dir.join("app.dSYM")).unwrap();
-        assert_eq!(resolve_object(&binary, Path::new("/fallback")), binary);
+        assert_eq!(
+            resolve_object(&binary, Path::new("/fallback")),
+            Some(binary.clone())
+        );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A foreign image with no file on disk resolves to NO object. Standing the
+    /// profiled binary in for it is what named `mach_absolute_time` as
+    /// `task_get_special_port`: every dyld-shared-cache dylib is absent from
+    /// disk, so their addresses were read against Osprey's own symbol table
+    /// [PROF-SYMBOLIZE-OFFLINE].
+    /// Linux reports the main executable with an empty `dlpi_name`. It must
+    /// still resolve to the CLI binary, or every Osprey frame goes unnamed on
+    /// the platform CI actually runs.
+    #[test]
+    fn resolve_object_treats_an_empty_image_path_as_the_main_binary() {
+        let dir = testutil::temp_dir("emptypath");
+        let binary = dir.join("app");
+        std::fs::write(&binary, b"bin").unwrap();
+        assert_eq!(resolve_object(Path::new(""), &binary), Some(binary.clone()));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resolve_object_refuses_to_stand_a_foreign_image_in() {
+        let dir = testutil::temp_dir("foreign");
+        let binary = dir.join("app");
+        std::fs::write(&binary, b"bin").unwrap();
+        let cache_only = Path::new("/usr/lib/system/libsystem_malloc.dylib");
+        assert!(!cache_only.exists(), "fixture assumes a cache-only dylib");
+        assert_eq!(resolve_object(cache_only, &binary), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// [PROF-SYMBOLIZE-OFFLINE] The slice must be pinned on the command line.
+    /// Drop `-arch` and `atos` reads a universal dylib on its host default,
+    /// which for an `arm64e` process is the wrong slice: the same address is
+    /// `task_get_special_port + 40` under `arm64` and `mach_absolute_time +
+    /// 108` under `arm64e`. Nothing downstream can tell those apart, because a
+    /// wrong name looks exactly like a right one. The addresses are re-slid
+    /// here too, since `atos` undoes the slide itself.
+    #[test]
+    fn atos_argv_pins_the_slice_the_image_was_mapped_as() {
+        let args = atos_args(
+            "arm64e",
+            Path::new("/usr/lib/system/libsystem_kernel.dylib"),
+            0x1_8DE9_1000,
+            0x0D9E_4000,
+            &[0x1_804A_E10C],
+        );
+        let flat: Vec<String> = args
+            .iter()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            flat,
+            [
+                "-arch",
+                "arm64e",
+                "-o",
+                "/usr/lib/system/libsystem_kernel.dylib",
+                "-l",
+                "0x18de91000",
+                "0x18de9210c",
+            ]
+        );
+    }
+
+    /// An image that recorded no slice must not grow an empty `-arch`, which
+    /// `atos` rejects outright — that would turn every frame of that image hex.
+    #[test]
+    fn atos_argv_omits_the_slice_when_none_was_recorded() {
+        let args = atos_args("", Path::new("/bin/app"), 0, 0, &[0x20]);
+        let flat: Vec<String> = args
+            .iter()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(flat, ["-o", "/bin/app", "-l", "0x0", "0x20"]);
     }
 
     #[test]
@@ -411,6 +558,9 @@ mod tests {
             path: bin.to_string_lossy().into_owned(),
             base,
             slide: 0,
+            text: 0,
+            text_size: 0,
+            arch: String::new(),
         };
         let sym = LlvmSymbolizer::new(&bin, &[image]);
         let Some(chains) = sym.try_atos(&bin, &[addr]) else {

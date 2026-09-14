@@ -126,14 +126,31 @@ fn adjusted_unslid(pc: u64, frame_index: usize, slide: u64) -> u64 {
         .saturating_sub(slide)
 }
 
-/// The image owning `pc`: the one with the greatest `base <= pc`.
+/// The image owning `pc`: the one whose executable range contains it, else the
+/// greatest `base <= pc` [PROF-SYMBOLIZE-OFFLINE].
+///
+/// Containment first, because `base` ordering is WRONG for the dyld shared
+/// cache. `base` is the mach-header address; the cache stores every system
+/// dylib's header in one region and its `__TEXT` in another, so the image with
+/// the nearest lower header is not the image the pc is executing in. A
+/// `libsystem_malloc` leaf was being handed to a neighbouring image and
+/// symbolizing as a function it never entered.
+///
+/// The `base` arm stays for producers that report no executable range (older
+/// captures, and any platform whose dumper cannot supply one): a worse answer
+/// beats no answer, and the fixtures that predate the range still resolve.
 fn image_index_for(images: &[Image], pc: u64) -> Option<usize> {
     images
         .iter()
-        .enumerate()
-        .filter(|(_, image)| image.base <= pc)
-        .max_by_key(|(_, image)| image.base)
-        .map(|(index, _)| index)
+        .position(|image| image.text_contains(pc))
+        .or_else(|| {
+            images
+                .iter()
+                .enumerate()
+                .filter(|(_, image)| image.base <= pc)
+                .max_by_key(|(_, image)| image.base)
+                .map(|(index, _)| index)
+        })
 }
 
 /// Cache: (image index, adjusted unslid address) → innermost-first chain.
@@ -209,6 +226,20 @@ fn lookup_chain(profile: &Profile, cache: &ChainCache, index: usize, pc: u64) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// An image loaded at `base` (after `slide`) whose executable range spans
+    /// `text .. text + text_size`. Every case here varies only these five
+    /// fields, so the zeroed remainder is written once instead of per literal.
+    fn image(path: &str, base: u64, slide: u64, text: u64, text_size: u64) -> Image {
+        Image {
+            path: path.to_owned(),
+            base,
+            slide,
+            text,
+            text_size,
+            arch: String::new(),
+        }
+    }
+
     use crate::raw::{Sample, Thread};
     use std::cell::RefCell;
 
@@ -263,22 +294,58 @@ mod tests {
     }
 
     #[test]
-    fn pcs_map_to_the_image_with_greatest_base_at_or_below() {
-        let images = vec![
-            Image {
-                path: "/a".to_owned(),
-                base: 100,
-                slide: 0,
-            },
-            Image {
-                path: "/b".to_owned(),
-                base: 500,
-                slide: 0,
-            },
-        ];
+    fn pcs_fall_back_to_greatest_base_when_no_image_reports_a_text_range() {
+        let images = vec![image("/a", 100, 0, 0, 0), image("/b", 500, 0, 0, 0)];
         assert_eq!(image_index_for(&images, 499), Some(0));
         assert_eq!(image_index_for(&images, 500), Some(1));
         assert_eq!(image_index_for(&images, 99), None);
+    }
+
+    /// [PROF-SYMBOLIZE-OFFLINE] Ownership is decided by the executable range,
+    /// NOT by mach-header order.
+    ///
+    /// This is the dyld shared cache's real layout: every system dylib's header
+    /// lives in one region and its `__TEXT` in another, so header order and text
+    /// order disagree. Here `/usr/lib/system/libsystem_kernel` has the greater
+    /// header base, while the pc is inside `libsystem_malloc`'s text. Greatest
+    /// `base <= pc` answers "kernel" — which is exactly how a `_xzm_free` leaf
+    /// was reported as `task_get_special_port`.
+    #[test]
+    fn a_shared_cache_pc_is_owned_by_the_image_whose_text_contains_it() {
+        let images = vec![
+            image(
+                "/usr/lib/system/libsystem_malloc.dylib",
+                0x1_8000_0000,
+                0,
+                0x1_8030_0000,
+                0x2_0000,
+            ),
+            image(
+                "/usr/lib/system/libsystem_kernel.dylib",
+                0x1_8010_0000,
+                0,
+                0x1_8040_0000,
+                0x2_0000,
+            ),
+        ];
+        // The observed leaf: inside libsystem_malloc's __TEXT, but BELOW the
+        // kernel image's header, which is what the old rule keyed on.
+        assert_eq!(image_index_for(&images, 0x1_8030_F483), Some(0));
+        assert_eq!(image_index_for(&images, 0x1_8040_1000), Some(1));
+        // Between the two text ranges: owned by neither, so the fallback picks
+        // the greatest header at or below rather than inventing containment.
+        assert_eq!(image_index_for(&images, 0x1_8035_0000), Some(1));
+    }
+
+    /// A reported range is half-open: its last byte is inside, the byte after
+    /// the end is not.
+    #[test]
+    fn a_reported_text_range_is_half_open() {
+        let image = image("/bin/app", 0, 0, 0x4000, 0x1000);
+        assert!(image.text_contains(0x4000));
+        assert!(image.text_contains(0x4FFF));
+        assert!(!image.text_contains(0x5000));
+        assert!(!image.text_contains(0x3FFF));
     }
 
     /// Records every address batch it is asked to resolve.
@@ -302,16 +369,8 @@ mod tests {
             rate_hz: 997,
             dropped: 0,
             images: vec![
-                Image {
-                    path: "/bin/app".to_owned(),
-                    base: 1000,
-                    slide: 100,
-                },
-                Image {
-                    path: "/usr/lib/sys".to_owned(),
-                    base: 9000,
-                    slide: 0,
-                },
+                image("/bin/app", 1000, 100, 0, 0),
+                image("/usr/lib/sys", 9000, 0, 0, 0),
             ],
             threads: vec![Thread {
                 fiber: 0,

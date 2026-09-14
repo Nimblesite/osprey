@@ -1,0 +1,38 @@
+{
+  "screenshots": [
+    {
+      "src": "/assets/images/mobile/issue-inbox-ios.png",
+      "width": 1206,
+      "height": 2622,
+      "platform": "iOS \u00b7 SwiftUI",
+      "caption": "iPhone 17 Pro simulator \u00b7 live GitHub issues",
+      "alt": "Issue Inbox running in the iPhone simulator, showing Swift repository issues, search, saved issues, and native SwiftUI controls."
+    },
+    {
+      "src": "/assets/images/mobile/issue-inbox-android.png",
+      "width": 1080,
+      "height": 2400,
+      "platform": "Android \u00b7 native widgets",
+      "caption": "Pixel 7 emulator \u00b7 the inbox restored from SQLite",
+      "alt": "The same Osprey Issue Inbox running in the Android emulator, with cached GitHub issues, search, saved filters, and native Android controls."
+    }
+  ],
+  "details": [
+    {
+      "src": "/assets/images/mobile/issue-inbox-ios-detail.png",
+      "width": 1206,
+      "height": 2622,
+      "platform": "iOS \u00b7 description and local triage",
+      "caption": "iOS simulator \u00b7 native light appearance and rendered Markdown",
+      "alt": "iOS Issue Inbox detail screen with local notes and priority controls, followed by the GitHub description rendered with headings and italic text."
+    },
+    {
+      "src": "/assets/images/mobile/issue-inbox-android-detail.png",
+      "width": 1080,
+      "height": 2400,
+      "platform": "Android \u00b7 description and local triage",
+      "caption": "Pixel 7 emulator \u00b7 description, labels, priority, and notes",
+      "alt": "Android Issue Inbox detail screen with GitHub issue labels, a Normal or High priority choice, a local note field, and the issue description."
+    }
+  ]
+}

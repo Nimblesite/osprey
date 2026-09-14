@@ -934,7 +934,7 @@ fn nestedRetryRegionsCase() = {
                 false => 0
             }
             outerTrail = "${outerTrail}o${toString(tag)}=${toString(n)}:${toString(candidate)}|"
-            perform Budget.charge(10)
+            let _ = perform Budget.charge(10)
             let answer = resume(candidate)
             outerSettled = "${outerSettled}o${toString(tag)}:${toString(answer)}|"
             answer
@@ -950,7 +950,7 @@ fn nestedRetryRegionsCase() = {
                     false => 0
                 }
                 innerTrail = "${innerTrail}i${toString(tag)}=${toString(n)}:${toString(candidate)}|"
-                perform Budget.charge(1)
+                let _ = perform Budget.charge(1)
                 let answer = resume(candidate)
                 innerSettled = "${innerSettled}i${toString(tag)}:${toString(answer)}|"
                 answer

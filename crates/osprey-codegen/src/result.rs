@@ -39,14 +39,12 @@ pub(crate) fn make_result(
     ]);
     let obj = cg.malloc_struct(&struct_ty, meta);
     crate::aggregate::store_field(cg, &struct_ty, obj.as_str(), 0, inner, &v.operand);
-    let dp = cg.fresh_reg();
-    cg.emit(format!(
-        "{dp} = getelementptr {struct_ty}, {struct_ty}* {obj}, i32 0, i32 1"
+    let dp = cg.emit_reg(format!(
+        "getelementptr {struct_ty}, {struct_ty}* {obj}, i32 0, i32 1"
     ));
     cg.emit(format!("store i8 {disc}, i8* {dp}"));
-    let mp = cg.fresh_reg();
-    cg.emit(format!(
-        "{mp} = getelementptr {struct_ty}, {struct_ty}* {obj}, i32 0, i32 2"
+    let mp = cg.emit_reg(format!(
+        "getelementptr {struct_ty}, {struct_ty}* {obj}, i32 0, i32 2"
     ));
     // The block's drop mask releases the errmsg word too [GC-ARC-PERCEUS].
     crate::arc::dup_store(cg, "i8*", errmsg);
@@ -100,8 +98,7 @@ pub(crate) fn make_result_if_err_because(
     msg: Option<&str>,
     reason: Option<&str>,
 ) -> Result<Value> {
-    let disc = cg.fresh_reg();
-    cg.emit(format!("{disc} = select i1 {is_err}, i8 1, i8 0"));
+    let disc = cg.emit_reg(format!("select i1 {is_err}, i8 1, i8 0"));
     let fallback = match msg {
         Some(m) => cg.string_constant(m).operand,
         None => NO_MSG.to_string(),
@@ -173,10 +170,7 @@ pub(crate) fn result_from_nullable(
 pub(crate) fn open_result_branch(cg: &mut Codegen, v: &Value) -> (String, String, String) {
     let d = load_disc(cg, v);
     let is_succ = cg.emit_reg(format!("icmp eq i8 {d}, 0"));
-    let sl = cg.fresh_label();
-    let el = cg.fresh_label();
-    let end = cg.fresh_label();
-    cg.emit(format!("br i1 {is_succ}, label %{sl}, label %{el}"));
+    let (sl, el, end) = cg.diamond(&is_succ);
     cg.start_block(&sl);
     (sl, el, end)
 }
@@ -188,13 +182,11 @@ pub(crate) fn load_disc(cg: &mut Codegen, v: &Value) -> String {
     let Some(struct_ty) = v.result_struct_ty() else {
         return "1".to_string();
     };
-    let dp = cg.fresh_reg();
-    cg.emit(format!(
-        "{dp} = getelementptr {struct_ty}, {struct_ty}* {}, i32 0, i32 1",
+    let dp = cg.emit_reg(format!(
+        "getelementptr {struct_ty}, {struct_ty}* {}, i32 0, i32 1",
         v.operand
     ));
-    let d = cg.fresh_reg();
-    cg.emit(format!("{d} = load i8, i8* {dp}"));
+    let d = cg.emit_reg(format!("load i8, i8* {dp}"));
     d
 }
 
@@ -217,13 +209,11 @@ pub(crate) fn load_errmsg(cg: &mut Codegen, v: &Value) -> Value {
         return Value::new(NO_MSG, LType::Str);
     };
     let struct_ty = result_struct_ty(inner);
-    let mp = cg.fresh_reg();
-    cg.emit(format!(
-        "{mp} = getelementptr {struct_ty}, {struct_ty}* {}, i32 0, i32 2",
+    let mp = cg.emit_reg(format!(
+        "getelementptr {struct_ty}, {struct_ty}* {}, i32 0, i32 2",
         v.operand
     ));
-    let raw = cg.fresh_reg();
-    cg.emit(format!("{raw} = load i8*, i8** {mp}"));
+    let raw = cg.emit_reg(format!("load i8*, i8** {mp}"));
     Value::new(raw, LType::Str)
 }
 
@@ -256,12 +246,7 @@ pub(crate) fn repack_to_inner(cg: &mut Codegen, v: Value, inner: LType) -> Resul
     let disc = load_disc(cg, &v);
     let errmsg = load_errmsg(cg, &v);
     let is_success = cg.emit_reg(format!("icmp eq i8 {disc}, 0"));
-    let success = cg.fresh_label();
-    let error = cg.fresh_label();
-    let end = cg.fresh_label();
-    cg.emit(format!(
-        "br i1 {is_success}, label %{success}, label %{error}"
-    ));
+    let (success, error, end) = cg.diamond(&is_success);
 
     cg.start_block(&success);
     let loaded = load_value(cg, &v);

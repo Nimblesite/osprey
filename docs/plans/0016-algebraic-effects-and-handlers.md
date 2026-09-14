@@ -86,7 +86,11 @@ work on WebAssembly).
    ```osprey
    effect Choose { pick: fn() -> bool }
    handle Choose
-       pick => { let a = resume(true)  let b = resume(false)  a + b }
+       pick => {
+           let a = resume(true)
+           let b = resume(false)
+           a + b
+       }
    in both()
    ```
    The thread-as-continuation runtime cannot resume a consumed pthread. This

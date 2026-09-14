@@ -11,5 +11,8 @@ effect Log {
 fn main() = handle Log
     write message => print(message)
 in print("${handle static Tile
-    size => { perform Log.write("measuring") 8 }
+    size => {
+        perform Log.write("measuring")
+        8
+    }
 in perform Tile.size()}")

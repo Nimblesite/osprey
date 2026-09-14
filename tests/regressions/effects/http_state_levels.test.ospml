@@ -79,7 +79,7 @@ mut requests = 0
 mut tasks = ""
 mut taskCount = 0
 
-handle Persist
+_ = handle Persist
     flush snap =>
         (** A relative path resolves against the PROCESS's working directory, not
             the program's, so this lands wherever the corpus was invoked from —

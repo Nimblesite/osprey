@@ -17,7 +17,7 @@ use osprey_ast::Variance;
 /// Unify two types, recording the solution in `ctx`. Errors are structural; a
 /// failing call may have applied partial bindings, so callers that want to
 /// "try" a unification should pre-check shapes rather than relying on rollback.
-pub fn unify(ctx: &mut InferCtx, a: &Type, b: &Type) -> Result<(), TypeError> {
+pub(crate) fn unify(ctx: &mut InferCtx, a: &Type, b: &Type) -> Result<(), TypeError> {
     let a = ctx.prune(a);
     let b = ctx.prune(b);
     match (&a, &b) {
@@ -59,6 +59,24 @@ pub fn unify(ctx: &mut InferCtx, a: &Type, b: &Type) -> Result<(), TypeError> {
         }
 
         (
+            Type::Con { name, args },
+            Type::Record {
+                name: actual,
+                fields,
+            },
+        )
+        | (
+            Type::Record {
+                name: actual,
+                fields,
+            },
+            Type::Con { name, args },
+        ) if name == actual => match ctx.record_fields(name, args) {
+            Some(declared) => unify_record(ctx, &declared, fields, &a, &b),
+            None => Err(TypeError::mismatch(&a, &b)),
+        },
+
+        (
             Type::Union {
                 name: n1,
                 variants: v1,
@@ -81,7 +99,7 @@ pub fn unify(ctx: &mut InferCtx, a: &Type, b: &Type) -> Result<(), TypeError> {
 /// Directional assignment-site unification: `actual` must be usable where
 /// `expected` is demanded. Plain [`unify`] stays symmetric — this is the only
 /// place a one-way rule may live.
-pub fn unify_assignable(
+pub(crate) fn unify_assignable(
     ctx: &mut InferCtx,
     expected: &Type,
     actual: &Type,

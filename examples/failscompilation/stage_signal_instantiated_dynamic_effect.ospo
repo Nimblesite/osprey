@@ -1,0 +1,13 @@
+// [STAGE-SIGNALS-EXACT]: identity is the instantiation, and only the static
+// stage can represent it. A dynamic handler is keyed by effect name at runtime,
+// so `Signal<Count>` and `Signal<Cursor>` would share one key and the second
+// would silently answer the first.
+type Count = { value: int }
+
+effect Signal<T> {
+    read: fn() -> T
+}
+
+fn counterValue() = (perform Signal<Count>.read()).value
+
+fn main() = print("${counterValue()}")

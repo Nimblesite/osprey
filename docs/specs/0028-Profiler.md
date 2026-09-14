@@ -56,7 +56,7 @@ symbol names, files, and lines are resolved offline):
 ```json
 {"version":1, "pid":0, "exe":"/path/bin", "rate_hz":997, "platform":"macos-arm64",
  "start_unix_ns":0, "end_unix_ns":0,
- "images":[{"path":"/path/bin","base":0,"slide":0}],
+ "images":[{"path":"/path/bin","base":0,"slide":0,"text":0,"text_size":0,"arch":""}],
  "threads":[{"fiber":0,"label":"main"}],
  "stacks":[[4301231,4301100]],
  "samples":[[12345,0,0,0]],
@@ -68,14 +68,46 @@ symbol names, files, and lines are resolved offline):
 `1` = waiting. A single top-level `dropped` counter reports samples the runtime
 could not retain (sampler-ring overflow or allocation/interning failure).
 
+An `images` entry records both where the image was *mapped* and where its
+*code* lives: `base` is the mach-header (ELF: load-base) address and `slide`
+the relocation applied to it, while `text`/`text_size` are the start and byte
+length of the image's executable range — `__TEXT` on Mach-O, the span of the
+`PT_LOAD` segments carrying `PF_X` on ELF. The two are not interchangeable.
+Inside the dyld shared cache every system dylib's mach header sits in one
+region and its `__TEXT` in another, so header order is not text order, and a
+`text_size` of `0` means the producer could not determine the range.
+
+An entry also records `arch`: the mach-o slice the image was *mapped* as
+(`arm64e`, `arm64`, `x86_64`), empty when the producer does not report one. It
+is not cosmetic. A universal system dylib lays `__TEXT` out differently in each
+slice, and on Apple Silicon the kernel maps the `arm64e` image out of the shared
+cache even into a plain-`arm64` process, so a symbolizer left on its host
+default reads the wrong layout and names every address after whichever function
+occupies that offset in the other slice. Only the process that ran the image can
+read its header, so only the producer can record this.
+
+The loader itself is an image. `_dyld_image_count()` reports what dyld loaded,
+not dyld, so `/usr/lib/dyld` is recorded separately; without it every frame of
+process startup belongs to no image and can only be printed as a raw address.
+
 ## [PROF-SYMBOLIZE-OFFLINE] Symbolization
 
-The `osprey-profiler` crate maps each pc to its image, computes the unslid
-address, and batch-symbolizes via `llvm-symbolizer` (file/line plus inline
-expansion), falling back to `atos` on macOS and raw hex names when no
-symbolizer is present. Return addresses (every frame except the leaf) are
-adjusted by −1 so samples attribute to the call line, not the next line.
-Osprey symbols are unmangled, so names map 1:1 to source functions.
+The `osprey-profiler` crate maps each pc to the image whose executable range
+`[text, text + text_size)` contains it, falling back to the greatest `base`
+at or below the pc only for images that reported no range. It computes the
+unslid address, and batch-symbolizes via `llvm-symbolizer` (file/line plus
+inline expansion), falling back to `atos` on macOS and raw hex names when no
+symbolizer is present. An address is only ever resolved against an object that
+describes its own image: the CLI's binary substitutes for the main image under
+a moved path and for nothing else, because a dyld-shared-cache dylib has no
+file on disk and resolving its addresses against the profiled program's symbol
+table yields a confidently wrong name. `atos` reads those images from the live
+cache, so the recorded path is handed to it unchanged, and it is pinned to the
+image's recorded `arch` rather than the host default; where no object can
+describe the image, the raw hex address stands. Return addresses (every frame
+except the leaf) are adjusted by −1 so samples attribute to the call line, not
+the next line. Osprey symbols are unmangled, so names map 1:1 to source
+functions.
 
 ## [PROF-BUILD-MODE] `--profile` builds
 

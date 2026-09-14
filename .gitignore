@@ -141,6 +141,11 @@ benchmarks/cases/**/*.o
 /tests/regressions/basics/files/test_output.txt
 /tests/regressions/basics/files/test_stale_reason.txt
 /tests/regressions/effects/osprey_http_state_levels.db
+# The injected disk handler in storage_injection.test.{osp,ospml} writes the
+# notebook and its archive. Each flavor owns its own names so the twins cannot
+# race when the corpus runs them concurrently from the same directory.
+/osprey_storage_injection_*.txt
+/tests/effects/injection/osprey_storage_injection_*.txt
 
 # Core dumps from a crashed C test binary (a container run leaves them here).
 core

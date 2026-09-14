@@ -398,12 +398,12 @@ fn finish(clientId: int, resp: int) = match resp > 0 {
 /// Release the response handle, then hand back the body already read from it.
 /// The release is best-effort — a failed free must not mask the body's result.
 fn freeAfter(value: int, result: Result<string, Error>) = {
-    httpResponseFree(value) ?: 0
+    let _ = httpResponseFree(value) ?: 0
     result
 }
 
 fn closeAfter(clientId: int, result: Result<string, Error>) = {
-    httpCloseClient(clientId)
+    let _ = httpCloseClient(clientId)
     result
 }
 

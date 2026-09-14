@@ -1,0 +1,15 @@
+// [STAGE-GPU-LEGAL]: a kernel's arms are static handlers for device dialects.
+// An arm naming a dynamic effect would need the handler stack at the device
+// boundary, which is the one place it cannot be reached.
+effect Tile {
+    size: fn() -> int
+}
+
+fn shade(px) = (px * perform Tile.size()) ?: 0
+
+fn main() = {
+    let frame = kernel
+        Tile size => 8
+    in shade(2)
+    print("${frame}")
+}

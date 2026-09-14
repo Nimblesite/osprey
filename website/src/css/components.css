@@ -126,7 +126,7 @@
   max-width: 38ch;
   margin: 0;
 }
-.hero-actions { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+.hero-actions, .mobile-actions { display: flex; flex-wrap: wrap; gap: var(--space-4); }
 .hero-code { min-width: 0; display: flex; flex-direction: column; gap: var(--space-4); }
 .hero-code-caption {
   font-size: var(--fs-code);
@@ -1168,8 +1168,8 @@ table.data td.num {
 @media (max-width: 640px) {
   /* Mobile hero: centred text, full-width stacked actions (per mobile design). */
   .hero-content { text-align: center; align-items: center; }
-  .hero-actions { width: 100%; flex-direction: column; }
-  .hero-actions .btn { width: 100%; }
+  .hero-actions, .mobile-actions { width: 100%; flex-direction: column; }
+  .hero-actions .btn, .mobile-actions .btn { width: 100%; }
   .wasm-hero h1 { max-width: none; }
   /* Three tabs stay in one row on phones: compact labels, no sub-caption. */
   .wasm-tab { padding: var(--space-3); align-items: center; text-align: center; }

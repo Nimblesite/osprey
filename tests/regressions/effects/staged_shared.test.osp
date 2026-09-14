@@ -1,0 +1,53 @@
+// [STAGE-POLY] [STAGE-POLY-ERASURE] [STAGE-COMPAT] One unannotated
+// higher-order function serving BOTH stages in one program — the falsification
+// gate of [STAGE-FALSIFY] item 3, and the file
+// `docs/specs/0035-StagedEffects.md` names as its measured result.
+//
+// Stage needs no new mechanism because it is determined by the effect in the
+// row, so a function polymorphic in its row is automatically polymorphic in
+// stage. Because the static rewrite runs BEFORE inference, the checker never
+// sees `twice` at two stages: it sees the static instantiation with an empty
+// row and the dynamic one with its ordinary row. No stage variable is inferred
+// because no stage survives to be inferred.
+
+static effect Scale {
+    /// Compile-time scale factor. Rewritten away; never reaches the runtime.
+    by: fn() -> int
+}
+
+effect Audit {
+    /// Runtime note, dispatched through the handler stack as it always has been.
+    note: fn(string) -> Unit
+}
+
+/// The shared definition. No annotation names a stage, a row or a type.
+fn twice(f, x) = f(f(x))
+
+fn scaled(n) = (n * perform Scale.by()) ?: 0
+
+fn counted(n) = {
+    perform Audit.note("n=${n}")
+    (n + 1) ?: 0
+}
+
+/// Static instantiation: the row is empty after discharge, so this call is
+/// GPU-legal and leaves no handler registration behind ([STAGE-RESIDUE]).
+let staticTotal = handle static Scale
+    by => 3
+in twice(scaled, 2)
+
+mut trail = ""
+
+/// Dynamic instantiation of the SAME `twice`, in the same program.
+let dynamicTotal = handle Audit
+    note message => {
+        trail = "${trail}[${message}]"
+        resume()
+    }
+in twice(counted, 0)
+
+test("one unannotated function serves both stages in one program", fn() => checkAll("stage polymorphism", [
+    staticTotal == 18,
+    dynamicTotal == 2,
+    trail == "[n=0][n=1]"
+]))

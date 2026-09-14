@@ -276,7 +276,7 @@ at matched uniforms — the same A/B bar the grade refactor cleared.
   under that target.
 - **A shader error is otherwise invisible** — the bridge compiles the library
   at run time, so a typo surfaces as a window that refuses to open.
-  `make graphics-shader` exists to turn that into a build failure, and it
+  `make _graphics-shader` exists to turn that into a build failure, and it
   *skips quietly* when the toolchain is absent. A silent skip is not a pass.
 - **Four independent declarations of one uniform layout** (two bridges, two
   shader libraries) and no compiler checks any of them against another. Change

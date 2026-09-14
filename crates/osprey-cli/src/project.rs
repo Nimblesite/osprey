@@ -128,24 +128,24 @@ impl CompilationInput {
         &self.debug_path
     }
 
+    /// Resolve a flattened checker position to the physical file it was
+    /// written in, with that file's own line number.
+    pub(crate) fn location(&self, position: Position) -> (String, u32, u32) {
+        if let CompilationUnit::Project(project) = &self.unit {
+            if let Some((source, line)) = project.source_at_line(position.line) {
+                return (source.path.display().to_string(), line, position.column);
+            }
+        }
+        (self.display_path.clone(), position.line, position.column)
+    }
+
     /// Format a flattened checker location using its physical source file.
     pub(crate) fn diagnostic(&self, position: Option<Position>, message: &str) -> String {
         let Some(position) = position else {
             return format!("{}: {message}", self.display_path);
         };
-        if let CompilationUnit::Project(project) = &self.unit {
-            if let Some((source, line)) = project.source_at_line(position.line) {
-                return format!(
-                    "{}:{line}:{}: {message}",
-                    source.path.display(),
-                    position.column
-                );
-            }
-        }
-        format!(
-            "{}:{}:{}: {message}",
-            self.display_path, position.line, position.column
-        )
+        let (path, line, column) = self.location(position);
+        format!("{path}:{line}:{column}: {message}")
     }
 
     /// Render symbols with source-level qualified names where assembly mangled them.
@@ -298,12 +298,14 @@ fn artifact(base: &Path, target: &str, keep_parent: bool) -> PathBuf {
                 .unwrap_or("osprey_out"),
         )
     };
-    if target == "wasm32" {
-        let mut wasm = output.into_os_string();
-        wasm.push(".wasm");
-        return PathBuf::from(wasm);
-    }
-    output
+    let extension = match target {
+        "wasm32" => ".wasm",
+        "ios" | "ios-sim" | "android-arm64" | "android-x64" => ".a",
+        _ => "",
+    };
+    let mut artifact = output.into_os_string();
+    artifact.push(extension);
+    PathBuf::from(artifact)
 }
 
 #[cfg(test)]
@@ -355,6 +357,8 @@ mod tests {
         let program = osprey_syntax::parse_program("let answer = 42\n").program;
         let input = CompilationInput::script("nested/main.osp", String::new(), program);
         assert_eq!(input.output_path(None, "native"), PathBuf::from("main"));
+        assert_eq!(input.output_path(None, "ios"), PathBuf::from("main.a"));
+        assert_eq!(input.output_path(None, "ios-sim"), PathBuf::from("main.a"));
         assert_eq!(
             input.output_path(None, "wasm32"),
             PathBuf::from("main.wasm")

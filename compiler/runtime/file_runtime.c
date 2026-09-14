@@ -57,7 +57,8 @@ static void describe_errno(int err, char *out, size_t out_size) {
   }
 #elif defined(__wasm__)
   (void)snprintf(out, out_size, "%s", strerror(err));
-#elif defined(__GLIBC__) && defined(_GNU_SOURCE)
+#elif defined(_GNU_SOURCE) && (defined(__GLIBC__) || \
+    (defined(__ANDROID_API__) && __ANDROID_API__ >= 23))
   // The GNU form returns the message, which may or may not be `out`.
   const char *message = strerror_r(err, out, out_size);
   if (message != out) {

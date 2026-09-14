@@ -97,7 +97,7 @@ fn processAlphaBatch() -> int ![Logger, Metrics] = {
     batchTotal
 }
 
-fiber_set_deterministic_mode(enabled: true)
+let _ = fiber_set_deterministic_mode(enabled: true)
 handle Metrics
     recordSuccess taskId processed => print("✅ " + taskId + " succeeded: " + toString(processed) + " units")
 in handle Logger

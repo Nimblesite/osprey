@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 /// Convert a parsed `TypeExpr` into an inference type. `params` maps generic
 /// parameter names already bound to fresh variables for the enclosing decl.
-pub fn type_expr_to_type(te: &TypeExpr, params: &HashMap<String, Type>) -> Type {
+pub(crate) fn type_expr_to_type(te: &TypeExpr, params: &HashMap<String, Type>) -> Type {
     if te.is_function {
         let ps = te
             .parameter_types
@@ -50,7 +50,7 @@ pub fn type_expr_to_type(te: &TypeExpr, params: &HashMap<String, Type>) -> Type 
 /// `"Result<string, Error>"`, `"(int) -> bool"`) into a type. The shallow
 /// `Name<...>`, `[elem]` and function-arrow forms are recognised; that covers
 /// every field type used by the examples.
-pub fn type_name_to_type(s: &str, params: &HashMap<String, Type>) -> Type {
+pub(crate) fn type_name_to_type(s: &str, params: &HashMap<String, Type>) -> Type {
     let s = s.trim();
     if let Some(var) = params.get(s) {
         return var.clone();
@@ -94,7 +94,7 @@ fn normalize_named(name: &str) -> Type {
 
 /// Parse an effect-operation / lambda type string `fn(p0, p1) -> ret` into
 /// inference types. Tolerant: a malformed string yields `() -> Unit`.
-pub fn parse_fn_sig(s: &str, params: &HashMap<String, Type>) -> (Vec<Type>, Type) {
+pub(crate) fn parse_fn_sig(s: &str, params: &HashMap<String, Type>) -> (Vec<Type>, Type) {
     let s = s.trim();
     let s = s.strip_prefix("fn").map_or(s, str::trim_start).trim();
     let Some(open) = s.find('(') else {
@@ -145,6 +145,8 @@ fn split_generic_args(s: &str) -> Vec<String> {
     for (i, ch) in s.char_indices() {
         match ch {
             '<' | '(' | '[' => depth += 1,
+            // The `>` in a function arrow does not close a generic argument.
+            '>' if s[..i].ends_with('-') => {}
             '>' | ')' | ']' => depth -= 1,
             ',' if depth == 0 => {
                 out.push(s[start..i].trim().to_string());

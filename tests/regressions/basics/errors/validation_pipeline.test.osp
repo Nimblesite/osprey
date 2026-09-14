@@ -54,7 +54,7 @@ fn runAll(i, n) = match i < n {
 }
 
 print("=== Validation Pipeline ===")
-runAll(0, 4)
+let _ = runAll(0, 4)
 
 // Direct proof: each user-constructed Error message reaches the Error arm
 // and is re-interpolated into another string ([ERR-PAYLOAD]). A nested
@@ -67,7 +67,6 @@ match parseAge("abc") {
     }
 }
 print("=== Validation Pipeline Complete ===")
-0
 
 /// Checks the accepted payload of a validated age.
 fn accepts(s, expected) = match parseAge(s) {

@@ -115,7 +115,6 @@ print "toString ok float   = ${toString (7 / 2)}\n"
 print "toString ok string  = ${toString (fromCodePoint 65)}\n"
 
 print "=== Error Catalogue Complete ===\n"
-0
 
 (** Every failing Result must carry a usable diagnostic payload. *)
 hasDiagnostic result =

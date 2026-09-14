@@ -41,7 +41,7 @@ non-empty list literal, evaluate every condition, and continue after failures.
 Run the complete corpus with:
 
 ```sh
-make language-test
+make _language-test
 # or, after building the compiler:
 target/release/osprey test tests
 ```

@@ -143,16 +143,14 @@ pub(crate) fn gen_list(
     let elem_owner = first.osp_ty.clone();
     let n = elements.len();
     let data = cg.heap_alloc(&(n * 8).to_string());
-    let arr = cg.fresh_reg();
-    cg.emit(format!("{arr} = bitcast i8* {data} to {}*", elem.as_str()));
+    let arr = cg.emit_reg(format!("bitcast i8* {data} to {}*", elem.as_str()));
     for (i, v) in vals.into_iter().enumerate() {
         let v = coerce_to(cg, v, elem)?;
         // The header's drop releases pointer elements, so each store is a new
         // reference [GC-ARC-PERCEUS].
         crate::arc::dup_store(cg, elem.as_str(), &v.operand);
-        let slot = cg.fresh_reg();
-        cg.emit(format!(
-            "{slot} = getelementptr {}, {}* {arr}, i64 {i}",
+        let slot = cg.emit_reg(format!(
+            "getelementptr {}, {}* {arr}, i64 {i}",
             elem.as_str(),
             elem.as_str()
         ));
@@ -259,7 +257,7 @@ pub(crate) fn gen_index(cg: &mut Codegen, target: &Expr, index: &Expr) -> Result
         .as_deref()
         .is_some_and(crate::collections::is_map_owner)
     {
-        let key = crate::cast::coerce_to(cg, iv, LType::Str)?;
+        let key = coerce_to(cg, iv, LType::Str)?;
         let k = crate::conv::box_to_i64(cg, key);
         return crate::collections::runtime_map_get(cg, &tv, &k);
     }
@@ -285,36 +283,23 @@ pub(crate) fn gen_index(cg: &mut Codegen, target: &Expr, index: &Expr) -> Result
     let data = crate::aggregate::load_field(cg, LIST_STRUCT, &tv.operand, 1, LType::Str);
 
     // bounds: 0 <= idx < length
-    let ge0 = cg.fresh_reg();
-    cg.emit(format!("{ge0} = icmp sge i64 {}, 0", idx.operand));
-    let lt = cg.fresh_reg();
-    cg.emit(format!("{lt} = icmp slt i64 {}, {len}", idx.operand));
-    let ok = cg.fresh_reg();
-    cg.emit(format!("{ok} = and i1 {ge0}, {lt}"));
+    let ge0 = cg.emit_reg(format!("icmp sge i64 {}, 0", idx.operand));
+    let lt = cg.emit_reg(format!("icmp slt i64 {}, {len}", idx.operand));
+    let ok = cg.emit_reg(format!("and i1 {ge0}, {lt}"));
 
     // Load only on the in-bounds path — the OOB / empty (`data == null`) path
     // must not dereference.
-    let load_bb = cg.fresh_label();
-    let oob_bb = cg.fresh_label();
-    let cont = cg.fresh_label();
-    cg.emit(format!("br i1 {ok}, label %{load_bb}, label %{oob_bb}"));
+    let (load_bb, oob_bb, cont) = cg.diamond(&ok);
 
     cg.start_block(&load_bb);
-    let arr = cg.fresh_reg();
-    cg.emit(format!("{arr} = bitcast i8* {data} to {}*", elem.as_str()));
-    let slot = cg.fresh_reg();
-    cg.emit(format!(
-        "{slot} = getelementptr {}, {}* {arr}, i64 {}",
+    let arr = cg.emit_reg(format!("bitcast i8* {data} to {}*", elem.as_str()));
+    let slot = cg.emit_reg(format!(
+        "getelementptr {}, {}* {arr}, i64 {}",
         elem.as_str(),
         elem.as_str(),
         idx.operand
     ));
-    let val = cg.fresh_reg();
-    cg.emit(format!(
-        "{val} = load {}, {}* {slot}",
-        elem.as_str(),
-        elem.as_str()
-    ));
+    let val = cg.emit_reg(format!("load {}, {}* {slot}", elem.as_str(), elem.as_str()));
     cg.emit(format!("br label %{cont}"));
 
     cg.start_block(&oob_bb);
@@ -322,13 +307,11 @@ pub(crate) fn gen_index(cg: &mut Codegen, target: &Expr, index: &Expr) -> Result
 
     cg.start_block(&cont);
     let zero = crate::llty::zero_literal(elem);
-    let phi = cg.fresh_reg();
-    cg.emit(format!(
-        "{phi} = phi {} [ {val}, %{load_bb} ], [ {zero}, %{oob_bb} ]",
+    let phi = cg.emit_reg(format!(
+        "phi {} [ {val}, %{load_bb} ], [ {zero}, %{oob_bb} ]",
         elem.as_str()
     ));
-    let disc = cg.fresh_reg();
-    cg.emit(format!("{disc} = select i1 {ok}, i8 0, i8 1"));
+    let disc = cg.emit_reg(format!("select i1 {ok}, i8 0, i8 1"));
     // `ok` is the in-bounds flag, so the message is selected on the failing path.
     let oob = cg.string_constant(crate::collections::INDEX_OOB);
     let errmsg = cg.emit_reg(format!("select i1 {ok}, i8* null, i8* {}", oob.operand));

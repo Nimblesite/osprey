@@ -1,0 +1,1 @@
+11:16: kernel arm names dynamic effect `Tile`; a kernel supplies the STATIC handlers for the device dialects its body uses, so declare `static effect Tile`

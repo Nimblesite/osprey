@@ -196,7 +196,7 @@ impl fmt::Display for LType {
 /// (`null` when Success or when the producer set no message). The single source
 /// of truth for the Result ABI layout — every builder/reader spells it via here.
 #[must_use]
-pub fn result_struct_ty(inner: LType) -> String {
+pub(crate) fn result_struct_ty(inner: LType) -> String {
     format!("{{ {inner}, i8, i8* }}")
 }
 
@@ -227,6 +227,8 @@ pub struct Value {
     /// (`Point`, `Shape`, `Result`, …) so field access and `match` can recover
     /// the heap layout. `None` for scalars and untyped handles.
     pub(crate) osp_ty: Option<String>,
+    /// The semantic type survives equal-layout generic record instantiations.
+    pub(crate) inferred_type: Option<osprey_types::Type>,
     /// When `Some(inner)`, this value is a `Result<inner, _>` carried as a
     /// pointer to a heap block `{ inner, i8 disc }` (disc 0 = Success). Match,
     /// `?:`, failure-preserving arithmetic, and Result rendering read this to
@@ -264,6 +266,7 @@ impl Value {
             operand: operand.into(),
             ty,
             osp_ty: None,
+            inferred_type: None,
             result_inner: None,
             result_inner_is_placeholder: false,
             payload_owner: None,
@@ -280,6 +283,7 @@ impl Value {
             operand: operand.into(),
             ty: LType::Ptr,
             osp_ty: Some(owner.into()),
+            inferred_type: None,
             result_inner: None,
             result_inner_is_placeholder: false,
             payload_owner: None,
@@ -297,6 +301,7 @@ impl Value {
             operand: operand.into(),
             ty: LType::Ptr,
             osp_ty: Some("Result".to_string()),
+            inferred_type: None,
             result_inner: Some(inner),
             result_inner_is_placeholder: false,
             payload_owner: None,

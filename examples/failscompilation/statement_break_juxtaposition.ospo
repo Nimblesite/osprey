@@ -1,0 +1,23 @@
+// Implements [LEX-STATEMENT-BREAK] negative test.
+//
+// Default has no juxtaposition application and no statement terminator, so a
+// statement ends where its line ends. Without that rule this exact program
+// compiled and RAN: `let r = add 2 3` parsed as `let r = add` plus the orphan
+// expression-statements `2` and `3`, so `r` bound the function itself and
+// `r=[...]` printed a live code pointer to stdout — a different number on
+// every run, between a truthful "start" and a truthful "end".
+//
+// Inside a block the orphan was absorbed by the trailing block value instead,
+// so `{ let r = double 5 }` evaluated to the ARGUMENT 5 rather than applying
+// `double`. Both are well-formed trees for source that means a call, which is
+// why the boundary had to become a lexical decision rather than an accident of
+// precedence.
+
+fn add(a, b) = a + b
+
+fn main() = {
+    print("start")
+    let r = add 2 3
+    print("r=[${r}]")
+    print("end")
+}

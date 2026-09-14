@@ -1,0 +1,12 @@
+// [STAGE-SIGNALS-EXACT]: a mention must instantiate the declaration it names at
+// the arity that declaration has, or the dependency it records is a name no
+// handler can ever match.
+type Count = { value: int }
+
+static effect Signal<T> {
+    read: fn() -> T
+}
+
+fn counterValue() = (perform Signal<Count, Count>.read()).value
+
+fn main() = print("${counterValue()}")

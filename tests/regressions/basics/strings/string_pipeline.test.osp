@@ -111,7 +111,6 @@ print("${route(method: "GET",    path: "/random")}\n")
 print("${route(method: "DELETE", path: "/anything")}\n")
 
 print("=== Pipeline Complete ===\n")
-0
 
 /// Replays the transformation pipeline, fallible operations, and routing branches.
 fn stringPipelineCase() = {

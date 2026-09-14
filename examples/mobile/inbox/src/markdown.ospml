@@ -1,0 +1,215 @@
+// Implements [MOBILE-MARKDOWN]: a GitHub issue body becomes generic UI nodes.
+// Osprey decides the structure (headings, paragraphs, lists, quotes, code,
+// rules, inline emphasis and links); the native hosts only draw the nodes.
+namespace mobile
+
+import bank::Json
+import mobile::View
+
+type Cut =
+    head : string
+    tail : string
+
+type Doc =
+    nodes : string
+    paragraph : string
+    code : string
+    mode : string
+
+module Markdown
+    field key content = Json::strField key content
+    node kind style extra = Json::obj (field "kind" kind + "," + field "style" style + extra)
+    children nodes = "," + Json::rawField "children" (Json::arr nodes)
+    textNode style content = node "text" style ("," + field "text" content)
+    richNode style content = node "rich" style ("," + Json::rawField "spans" (Json::arr (spans content)))
+    itemNode bullet content = node "row" "item" (children (textNode "bullet" bullet + "," + richNode "body" content))
+    quoteNode content = node "column" "quote" (children (richNode "body" content))
+    rule () = node "divider" "rule" ""
+
+    smaller : int -> int -> int
+    smaller a b = match a <= b
+        true => a
+        false => b
+
+    // The byte index of `needle`, or the end of `s` when it is absent.
+    position s needle = indexOf s needle ?: length s
+
+    span style content url = Json::obj (field "text" content + "," + field "style" style + "," + field "url" url)
+
+    plain content = match length content == 0
+        true => ""
+        false => span "plain" content ""
+
+    // Inline spans: `**bold**`, `*italic*`, `_italic_`, `` `code` `` and
+    // `[text](https://…)`. An unmatched marker stays literal text, so the
+    // parser is total.
+    export spans text = match length text == 0
+        true => ""
+        false =>
+            first = smaller (smaller (position text "**") (position text "*")) (smaller (smaller (position text "`") (position text "[")) (underscore text 0))
+            match first >= length text
+                true => plain text
+                false => View::append (plain (take text first)) (marker (drop text first))
+
+    marker rest = match startsWith rest "**"
+        true => wrapped rest "**" "bold" false
+        false => match startsWith rest "*"
+            true => wrapped rest "*" "italic" false
+            false => match startsWith rest "`"
+                true => wrapped rest "`" "code" false
+                false => match startsWith rest "_"
+                    true => wrapped rest "_" "italic" true
+                    false => linked rest
+
+    isWordByte code = (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code == 95
+    isBreak code = code == 32 || code == 10 || code == 9 || code == 40
+
+    // The first `_` that opens a word, or the end: GitHub's `_No Description_`
+    // placeholder is emphasis, while `snake_case` identifiers stay literal.
+    underscore text offset =
+        found = (offset + position (drop text offset) "_") ?: length text
+        match found >= length text
+            true => length text
+            false => match found == 0 || isBreak (byteAt text ((found - 1) ?: 0) ?: 0)
+                true => found
+                false => underscore text ((found + 1) ?: length text)
+
+    // `rest` begins with `mark`; a later closing mark yields one styled span.
+    // A word-boundary mark must also close at a word boundary.
+    wrapped rest mark style wordBoundary =
+        inner = drop rest (length mark)
+        close = position inner mark
+        after = byteAt inner ((close + 1) ?: 0) ?: 32
+        match close >= length inner || close == 0 || (wordBoundary && isWordByte after)
+            true => View::append (plain mark) (spans inner)
+            false => View::append (span style (take inner close) "") (spans (drop inner ((close + length mark) ?: length inner)))
+
+    // `rest` begins with `[`; only `[text](https://…)` becomes a link.
+    linked rest =
+        inner = drop rest 1
+        close = position inner "]("
+        after = drop inner ((close + 2) ?: length inner)
+        end = position after ")"
+        url = take after end
+        match close >= length inner || end >= length after || close == 0
+            true => View::append (plain "[") (spans inner)
+            false => match startsWith url "https://"
+                true => View::append (span "link" (take inner close) url) (spans (drop after ((end + 1) ?: length after)))
+                false => View::append (plain "[") (spans inner)
+
+    line s = match indexOf s "\n"
+        Success i => Cut(head = take s i, tail = drop s ((i + 1) ?: length s))
+        Error message => Cut(head = s, tail = "")
+
+    flushParagraph doc = match length doc.paragraph == 0
+        true => doc
+        false => Doc(nodes = View::append doc.nodes (richNode "body" doc.paragraph), paragraph = "", code = doc.code, mode = doc.mode)
+
+    // Code lines are kept with their newline so a blank first line survives.
+    flushCode doc =
+        content = take doc.code ((length doc.code - 1) ?: 0)
+        nodes = match length doc.code == 0
+            true => doc.nodes
+            false => View::append doc.nodes (textNode "code" content)
+        Doc(nodes = nodes, paragraph = doc.paragraph, code = "", mode = "text")
+
+    withNode doc content =
+        flushed = flushParagraph doc
+        Doc(nodes = View::append flushed.nodes content, paragraph = "", code = flushed.code, mode = flushed.mode)
+
+    // GitHub renders a single newline inside an issue paragraph as a line break.
+    withParagraph doc text =
+        joined = match length doc.paragraph == 0
+            true => text
+            false => doc.paragraph + "\n" + text
+        Doc(nodes = doc.nodes, paragraph = joined, code = doc.code, mode = doc.mode)
+
+    codeMode doc text = match startsWith (trimStart text) "```"
+        true => flushCode doc
+        false => Doc(nodes = doc.nodes, paragraph = doc.paragraph, code = doc.code + text + "\n", mode = "code")
+
+    openFence doc =
+        flushed = flushParagraph doc
+        Doc(nodes = flushed.nodes, paragraph = "", code = "", mode = "code")
+
+    onlyOf text symbol = length text >= 3 && length (replace text symbol "" ?: text) == 0
+    isRule text = onlyOf text "-" || onlyOf text "*" || onlyOf text "_"
+
+    hashes text count = match startsWith (drop text count) "#"
+        true => hashes text ((count + 1) ?: count)
+        false => count
+
+    // `#`…`######` followed by a space (or nothing) is a heading; `#tag` is text.
+    headingLevel body =
+        level = hashes body 0
+        rest = drop body level
+        match level >= 1 && level <= 6 && (length rest == 0 || startsWith rest " ")
+            true => level
+            false => 0
+
+    headingNode body level = match level <= 2
+        true => richNode "heading" (trim (drop body level))
+        false => richNode "subheading" (trim (drop body level))
+
+    isDigit code = code >= 48 && code <= 57
+    digits text count = match isDigit (byteAt text count ?: 0)
+        true => digits text ((count + 1) ?: count)
+        false => count
+
+    // `1. item` keeps its own number; `- item`, `* item`, `+ item` get a bullet.
+    orderedWidth body =
+        width = digits body 0
+        match width > 0 && startsWith (drop body width) ". "
+            true => width
+            false => 0
+
+    isBullet body = startsWith body "- " || startsWith body "* " || startsWith body "+ "
+
+    listItem doc body =
+        width = orderedWidth body
+        match startsWith body "- [ ] "
+            true => withNode doc (itemNode "☐" (drop body 6))
+            false => match startsWith body "- [x] " || startsWith body "- [X] "
+                true => withNode doc (itemNode "☑" (drop body 6))
+                false => match width > 0
+                    true => withNode doc (itemNode (take body width + ".") (drop body ((width + 2) ?: length body)))
+                    false => withNode doc (itemNode "•" (drop body 2))
+
+    isItem body = isBullet body || orderedWidth body > 0
+
+    textMode doc text =
+        body = trimStart text
+        level = headingLevel body
+        match startsWith body "```"
+            true => openFence doc
+            false => match length (trim body) == 0
+                true => flushParagraph doc
+                false => match isRule (trim body)
+                    true => withNode doc (rule ())
+                    false => match level > 0
+                        true => withNode doc (headingNode body level)
+                        false => match startsWith body "> " || body == ">"
+                            true => withNode doc (quoteNode (drop body 2))
+                            false => match isItem body
+                                true => listItem doc body
+                                false => withParagraph doc (trim body)
+
+    step doc text = match doc.mode == "code"
+        true => codeMode doc text
+        false => textMode doc text
+
+    walk doc source = match length source == 0
+        true => doc
+        false =>
+            cut = line source
+            walk (step doc cut.head) cut.tail
+
+    // An unclosed fence still renders as code rather than vanishing.
+    finish doc = match doc.mode == "code"
+        true => flushCode doc
+        false => flushParagraph doc
+
+    // Comma-joined UI nodes for `source`; empty when nothing renders.
+    export render source =
+        finished = finish (walk (Doc(nodes = "", paragraph = "", code = "", mode = "text")) source)
+        finished.nodes

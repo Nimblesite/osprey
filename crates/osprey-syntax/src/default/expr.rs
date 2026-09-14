@@ -57,15 +57,16 @@ impl Lowerer<'_> {
             },
             "handler_expression" => Expr::Handler {
                 stage: self.stage(node),
-                effect: self.field_text(node, "effect"),
+                effect: self.mentioned_effect(node),
                 arms: self.lower_handler_arms(node),
                 body: Box::new(self.lower_expr_field(node, "body")),
                 position: Some(self.pos(node)),
             },
+            "kernel_expression" => self.lower_kernel(node),
             "perform_expression" => {
                 let (arguments, named_arguments) = self.lower_arg_list(node);
                 Expr::Perform {
-                    effect: self.field_text(node, "effect"),
+                    effect: self.mentioned_effect(node),
                     operation: self.field_text(node, "operation"),
                     arguments,
                     named_arguments,
@@ -198,7 +199,7 @@ impl Lowerer<'_> {
     }
 
     fn lower_call(&self, node: Node<'_>) -> Expr {
-        let callee = self.lower_expr_field(node, "callee");
+        let mut callee = self.lower_expr_field(node, "callee");
         if let Some(member) = node.child_by_field_name("member") {
             return Expr::FieldAccess {
                 target: Box::new(callee),
@@ -211,20 +212,28 @@ impl Lowerer<'_> {
                 index: Box::new(self.lower_expr(index)),
             };
         }
-        // function/method call. UFCS [BUILTIN-STRING-UFCS]: `x.f(a, …)` is
-        // sugar for `f(x, a, …)`, so a
-        // field-access callee lowers to an ordinary call with the receiver as the
-        // first positional argument — keeping method calls invisible downstream.
-        let (mut arguments, named_arguments) = self.lower_arg_list(node);
+        // Keep an ordinary dotted call until inference can distinguish a
+        // callable record field from receiver-first sugar [BUILTIN-STRING-UFCS].
+        // Written type arguments apply a named function's declared binders.
+        let (arguments, named_arguments) = self.lower_arg_list(node);
+        if let Some(args) = node.child_by_field_name("type_arguments") {
+            callee = Expr::TypeApply {
+                function: Box::new(callee),
+                type_args: self
+                    .named_of_kind(args, "type_list")
+                    .into_iter()
+                    .flat_map(|list| self.lower_type_list(list))
+                    .collect(),
+                position: Some(self.pos(node)),
+            };
+        }
         match callee {
-            Expr::FieldAccess { target, field } => {
-                arguments.insert(0, *target);
-                Expr::Call {
-                    function: Box::new(Expr::Identifier(field)),
-                    arguments,
-                    named_arguments,
-                }
-            }
+            Expr::FieldAccess { target, field } => Expr::MethodCall {
+                target,
+                method: field,
+                arguments,
+                named_arguments,
+            },
             // A saturated call of a positionally-declared constructor is a
             // construction, not a call ([TYPE-UNION-POSITIONAL]) — the one
             // call-shaped expression exempt from the named-argument rule,
@@ -280,18 +289,38 @@ impl Lowerer<'_> {
             .collect()
     }
 
+    /// The effect a `perform` or `handle` site names, INCLUDING the
+    /// instantiation when it wrote one: `Signal<Count>` and `Signal<Cursor>` are
+    /// different effects to a row, so they are different effects to the name a
+    /// row carries. Implements [STAGE-SIGNALS-EXACT].
+    fn mentioned_effect(&self, node: Node<'_>) -> String {
+        let base = self.field_text(node, "effect");
+        let arguments = node
+            .child_by_field_name("instantiation")
+            .and_then(|ta| self.first_child_of_kind(ta, "type_list"))
+            .map(|list| self.lower_type_list(list))
+            .unwrap_or_default();
+        osprey_ast::effect_name::instantiated(&base, &arguments)
+    }
+
+    /// The operation, parameters and body shared by a handler arm and a kernel
+    /// arm — the two differ only in whether the effect is written per arm.
+    pub(crate) fn lower_arm(&self, arm: Node<'_>) -> HandlerArm {
+        HandlerArm {
+            operation: self.field_text(arm, "operation"),
+            params: self
+                .first_child_of_kind(arm, "handler_params")
+                .map(|hp| self.texts_of_kind(hp, "identifier"))
+                .unwrap_or_default(),
+            body: self.lower_expr_field(arm, "body"),
+            position: Some(self.pos(arm)),
+        }
+    }
+
     fn lower_handler_arms(&self, node: Node<'_>) -> Vec<HandlerArm> {
         self.named_of_kind(node, "handler_arm")
             .iter()
-            .map(|arm| HandlerArm {
-                operation: self.field_text(*arm, "operation"),
-                params: self
-                    .first_child_of_kind(*arm, "handler_params")
-                    .map(|hp| self.texts_of_kind(hp, "identifier"))
-                    .unwrap_or_default(),
-                body: self.lower_expr_field(*arm, "body"),
-                position: Some(self.pos(*arm)),
-            })
+            .map(|arm| self.lower_arm(*arm))
             .collect()
     }
 
@@ -432,7 +461,10 @@ fn fragment_prefix() -> u32 {
 }
 
 fn parse_fragment(frag: &str) -> Expr {
-    let parsed = crate::parse_program(&format!("{FRAGMENT_BINDING}{frag}\n"));
+    let parsed = super::parse(&format!("{FRAGMENT_BINDING}{frag}\n"));
+    if !parsed.errors.is_empty() {
+        return Expr::Identifier(frag.trim().to_owned());
+    }
     match parsed.program.statements.into_iter().next() {
         Some(Stmt::Let { value, .. }) => value,
         _ => Expr::Identifier(frag.trim().to_string()),
@@ -584,18 +616,17 @@ mod tests {
             Expr::Call { arguments, .. } => assert_eq!(arguments.len(), 2),
             other => panic!("expected call, got {other:?}"),
         }
-        // UFCS field-access call `o.m(1)` -> Call(m, [o, 1]).
-        match let_value("let r = o.m(1)\n") {
-            Expr::Call {
-                function,
-                arguments,
-                ..
-            } => {
-                assert!(matches!(*function, Expr::Identifier(ref n) if n == "m"));
-                assert_eq!(arguments.len(), 2);
+        // [BUILTIN-STRING-UFCS] Preserve the receiver until type checking can
+        // select its callable field or the free-function fallback.
+        assert_eq!(
+            let_value("let r = o.m(1)\n"),
+            Expr::MethodCall {
+                target: Box::new(Expr::Identifier("o".into())),
+                method: "m".into(),
+                arguments: vec![Expr::Integer(1)],
+                named_arguments: vec![],
             }
-            other => panic!("expected call, got {other:?}"),
-        }
+        );
         // Plain field access and indexing.
         assert!(matches!(
             let_value("let r = o.field\n"),
@@ -769,6 +800,7 @@ mod tests {
     /// [TYPE-LIST-PATTERNS]
     #[test]
     fn an_index_bracket_must_touch_its_target_unlike_a_call() {
+        const SPACED: &str = "let r = xs [0]\n";
         match let_value("let r = xs[0]\n") {
             Expr::Index { target, index } => {
                 assert!(matches!(*target, Expr::Identifier(ref n) if n == "xs"));
@@ -776,10 +808,24 @@ mod tests {
             }
             other => panic!("expected an index, got {other:?}"),
         }
-        // Spaced: NOT an index — the `let` takes `xs` alone.
+        // Spaced: NOT an index. The `[0]` can no longer become a silently
+        // discarded statement either, so the line is rejected outright
+        // [LEX-STATEMENT-BREAK]. BOTH halves are asserted: rejection alone
+        // would still hold if the `[` had wrongly bound as an index and some
+        // later rule complained, which is the very confusion under test.
         assert!(
-            matches!(let_value("let r = xs [0]\n"), Expr::Identifier(ref n) if n == "xs"),
-            "a spaced `[` must not bind as an index"
+            !crate::parse_program(SPACED).errors.is_empty(),
+            "a spaced `[` must not split the statement"
+        );
+        let Some(tree) = parse_tree(SPACED) else {
+            panic!("tree-sitter produced no tree for {SPACED:?}");
+        };
+        // An index binds inside `call_expression` (the postfix chain), so its
+        // absence is what proves the `[` did not attach to `xs`.
+        assert!(
+            find_kind(tree.root_node(), "call_expression").is_none(),
+            "a spaced `[` must not bind as an index; tree was {}",
+            tree.root_node().to_sexp()
         );
         // The single-line list-arm match the strict rule exists to protect.
         match let_value("let r = match xs { [] => 0  [head, ...tail] => head }\n") {

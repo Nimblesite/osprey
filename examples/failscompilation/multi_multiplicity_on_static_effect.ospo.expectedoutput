@@ -1,0 +1,1 @@
+6:9: multiplicity on static effect `Parallel.forEach`; static operations are always tail-resumptive

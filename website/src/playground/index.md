@@ -597,7 +597,10 @@ fn realWorld() = {
     handle Console
         emit line => print("  💸 \${line}")
     in handle Ledger
-        post amount => { balance = balance + amount ?: balance  balance }
+        post amount => {
+            balance = balance + amount ?: balance
+            balance
+        }
     in account()
 }
 

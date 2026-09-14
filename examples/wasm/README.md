@@ -106,6 +106,8 @@ osprey.state                         // parsed manifest, metrics, db handle
 
 The target is `wasm32-wasip1`; libc (malloc, `sprintf`, `printf`/`puts` → WASI
 `fd_write`) comes from wasi-libc, so the portable runtime subset — allocator,
-strings, lists, maps, JSON, effects — runs unchanged. **Not** supported on wasm
-yet: fibers/`spawn` (pthreads), HTTP/WebSocket (sockets/OpenSSL), and FFI
-(`dlopen`). A program using those fails at link with an undefined-symbol error.
+strings, lists, maps, JSON, substituting effects — runs unchanged. Fibers/`spawn`,
+explicit effect resumption, HTTP/WebSocket, process APIs, terminal APIs, and
+general FFI are rejected by the compiler before LLVM emission. The supplied
+browser bridge remains available. File and input access depends on the WASI
+host's capabilities.

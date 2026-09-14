@@ -391,6 +391,7 @@ fn step_call(c: char, names: &mut Vec<String>, commas: &mut Vec<u32>, last: &mut
 mod tests {
     use super::*;
     use crate::hover::hover;
+    use crate::test_support::col_of;
     const U16: PositionEncoding = PositionEncoding::Utf16;
     const SRC: &str = "fn add(a: int, b: int) -> int = (a + b) ?: 0\nlet total = add(1, 2)\n";
 
@@ -472,14 +473,6 @@ mod tests {
         let references = references(src, "file:///modules.osp", 6, column, U16, true);
         assert_eq!(references.len(), 2, "use plus declaration: {references:?}");
         assert!(!references.iter().any(|location| location.span.0 == 4));
-    }
-
-    /// The 0-based column just inside the first occurrence of `needle` on
-    /// 0-based `line` of `src` — a cursor position over that word.
-    fn col_of(src: &str, line: usize, needle: &str) -> u32 {
-        let text = src.lines().nth(line).expect("line exists");
-        let at = text.find(needle).expect("needle on line");
-        u32::try_from(at).expect("column fits") + 1
     }
 
     #[test]

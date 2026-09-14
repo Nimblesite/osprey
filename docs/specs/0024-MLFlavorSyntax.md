@@ -46,7 +46,7 @@ answer = 42
 
 mut requests = 0
 total = handle Counter
-    tick => requests := (requests + 1) ?: requests
+    tick => requests := requests + 1
 in run ()
 ```
 
@@ -58,16 +58,13 @@ effect handler arm; the handled `in` body remains ordinary client code.
 
 ## Functions and Currying
 
-`[FLAVOR-ML-FN]` A signature precedes its binding. Function arrows associate to
-the right. Checked integer arithmetic keeps its `Result` return in both written
-and inferred signatures
-([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked)).
+`[FLAVOR-ML-FN]` A signature precedes its binding. Function arrows associate to the right. Arithmetic is total in both flavors — a property of the shared core, not of a surface — so integer arithmetic returns `int` in written and inferred signatures alike ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). ML's handle binder is `in`; Default's is `do` ([EFFECTS-HANDLE-DO](0037-ArithmeticEffects.md#the-default-handle-binder--effects-handle-do)).
 
 ```osprey-ml
-inc : int -> Result<int, MathError>
+inc : int -> int
 inc x = x + 1
 
-add : int -> int -> Result<int, MathError>
+add : int -> int -> int
 add x y = x + y
 ```
 
@@ -86,7 +83,7 @@ parameters.
 Parenthesised comma-separated parameters are explicitly flat:
 
 ```osprey-ml
-add : (int, int) -> Result<int, MathError>
+add : (int, int) -> int
 add (x, y) = x + y
 
 sum = add (10, 20)
@@ -94,11 +91,33 @@ sum = add (10, 20)
 
 The flat binding lowers to one two-parameter `Stmt::Function`; the call lowers
 to one two-argument `Expr::Call`. `sum` retains the complete
-`Result<int, MathError>` return; neither flat nor curried application unwraps
+`int` return; neither flat nor curried application unwraps
 it. The parenthesised list is a tuple
 ([FLAVOR-ML-TUPLE](#match)), and a tuple applied to a
 known head is exactly this flat call — which is why the ML and Default twins
 share IR.
+
+Currying is a property of the **declaration**, never of the call site. A head
+declared flat stays flat everywhere it is applied, so juxtaposing its arguments
+one at a time is not a partial application of it — there is nothing to bind one
+argument to — and the program is rejected. `add 10 20` above is not another
+spelling of `add (10, 20)`: the head takes one two-element tuple, so that line
+reads as applying `int` to `20` and is refused.
+
+Written type arguments do not change which of the two a callee is
+([TYPE-GENERICS-APPLY](0004-TypeSystem.md#generics-and-variance)). They pin the
+callee's binders and leave its parameter shape exactly as declared:
+
+```osprey-ml
+pick<T, U> : (T, U) -> T
+pick (first, second) = first
+
+kept = pick<int, string> (1, "two")
+// pick<int, string> 1 "two" is rejected for the same reason `add 10 20` is.
+```
+
+Reach for whitespace parameters when partial application is wanted, and for a
+parenthesised list when it is not.
 
 Lambdas follow the same split: `\x y => body` is curried and
 `\(x, y) => body` is flat. `name () = body` is a zero-parameter function;
@@ -110,7 +129,7 @@ form one function by cases:
 ```osprey-ml
 make 0 = Leaf
 make depth =
-    next = (depth - 1) ?: 0
+    next = depth - 1
     Node (make next) (make next)
 ```
 
@@ -168,7 +187,7 @@ namespace, module, state-module, signature, and import bodies.
 namespace billing
 
 signature TaxApi
-    addTax : int -> Result<int, MathError>
+    addTax : int -> int
 
 module Tax : TaxApi
     addTax cents = cents + 1
@@ -183,7 +202,7 @@ A namespace without an indented body is file-scoped. An ascribed module exports
 exactly its signature; explicit `export` inside it is rejected. An unascribed
 module marks public declarations with `export`. `state Name` is the ML spelling
 of a state module. `::` qualifies logical symbols; `.` accesses a value field.
-Here `gross` is `Result<int, MathError>`; module ascription and import boundaries
+Here `gross` is `int`; module ascription and import boundaries
 preserve the exported failure channel.
 
 Imports support whole targets, `as` aliases, indented member selection with
@@ -220,6 +239,55 @@ An effect declaration lowers to `Stmt::Effect`; a performance lowers to
 `Expr::Perform`. `resume` and `resume value` lower to `Expr::Resume` inside a
 handler arm.
 
+`[FLAVOR-ML-EFFECT-OP-NAME]` Operation names are their own namespace. Exactly
+three positions hold one, and each admits nothing else, so a word this flavor
+reserves elsewhere still names an operation in all three:
+
+1. the name on an operation line of an `effect` block,
+2. the name after the dot in `perform Effect.name`,
+3. the head of a handler arm.
+
+```osprey-ml
+effect Chan T
+    send : T => Unit
+    select : Unit => T
+
+relay x =
+    handle Chan
+        send v => print "sent ${v}"
+        select => x
+    in perform Chan.send x
+```
+
+This is the rule `abort` / `once` / `many` / `replayable` already follow under
+[FLAVOR-ML-EFFECT-ANNOTATIONS](#effects): a marker is a marker only when another
+name follows it, so `abort : string => Unit` declares an operation *called*
+`abort`. Every other position keeps its ordinary meaning — `send`, `recv` and
+`select` remain the channel forms wherever an expression is expected, and
+`handler` and `do` stay reserved and name nothing.
+
+`[FLAVOR-ML-EFFECT-ANNOTATIONS]` An effect declaration carries two axes beyond
+its operations, and ML spells both as prefix keywords: `static` before `effect`
+fixes the stage
+([STAGE-DECL](0035-StagedEffects.md#declaring-a-stage--stage-decl)), and a
+multiplicity keyword with an optional `replayable` before an operation name
+fixes how many times that operation may be answered
+([MULTI-DECL](0035-StagedEffects.md#declaring-multiplicity--multi-decl)).
+Neither disturbs layout or the `=>` payload arrow.
+
+```osprey-ml
+static effect Parallel
+    forEach : (int, int => Unit) => Unit
+
+effect Choice T
+    many pick : List<T> => T
+```
+
+Both are fields on the shared `Stmt::Effect` node and its operation list rather
+than nodes of their own, so the two flavors are the same declaration written
+twice and parity here is surface work, not semantic work
+([FLAVOR-BOUNDARY](0023-LanguageFlavors.md#canonical-ast-boundary)).
+
 ## Handlers
 
 `[FLAVOR-ML-HANDLER]` A handler is lexical: it names an effect,
@@ -253,6 +321,9 @@ Generic declarations lower to the same variance-carrying `TypeParam` and
 - Effect rows apply arguments with angles: `! Stash<int>` or
   `! [Read<T>, Write<T>]`.
 - Construction-site type arguments use `Box<int>(item = 7)`.
+- Call-site type arguments attach to the callee name and precede the juxtaposed
+  argument: `identity<int> 5`, `pick<int, string> (1, "two")`
+  ([TYPE-GENERICS-APPLY](0004-TypeSystem.md#generics-and-variance)).
 
 Function binders do not accept variance. A binding without a signature cannot
 declare function type parameters.
@@ -308,7 +379,7 @@ the exception, binding by role.
 disappear during parsing. They allow a constructor pattern in a clause head:
 
 ```osprey-ml
-size : Tree -> Result<int, MathError>
+size : Tree -> int
 size Leaf = Success(value = 0)
 size (Node left right) = 1 + size left + size right
 ```
@@ -386,7 +457,7 @@ and matched by juxtaposition:
 
 ```osprey-ml
 tree = Node Leaf Leaf
-depth : Tree -> Result<int, MathError>
+depth : Tree -> int
 depth Leaf = Success(value = 0)
 depth (Node left right) = 1 + depth left + depth right
 ```

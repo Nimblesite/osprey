@@ -9,6 +9,8 @@ Each flavor has its own declaration spelling; both lower to `Stmt::Extern`.
 ABI mapping, link directives, and linking are shared after that boundary
 ([FLAVOR-BOUNDARY]).
 
+For an iOS application, the compiler also exposes Osprey functions to a C/Swift host: `--target=ios` and `--target=ios-sim` emit a static library with a generated scalar C header. Swift owns the platform APIs and supplies `extern fn` implementations. The narrower supported signatures, string ownership, initialization, and compile-time rejection of unsupported target features are specified by the [iOS application target](0038-iOSTarget.md), with a runnable [SwiftUI example](../../examples/ios/). General native FFI features below must not be assumed available across that target's host boundary.
+
 ## Link Directives [FFI-LINK-DIRECTIVES]
 
 A source comment directive links a system library at compile time:

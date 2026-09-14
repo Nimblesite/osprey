@@ -50,7 +50,7 @@ result4 = spawnProcess "echo Testing toString" processEventHandler
 print "ProcessHandle Result toString: ${toString result4}"
 match result4
     Success value =>
-        awaitProcess value
+        _ = awaitProcess value
         cleanupProcess value
     Error message => print "Process 4 failed"
 

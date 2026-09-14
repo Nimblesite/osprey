@@ -240,10 +240,10 @@ fn swapped() = {
 }
 
 /// Built, boxed, never read: the erasure alone must not disturb ownership —
-/// the ARC live-object oracle observes the drop. A statement discards it; a
-/// `-> Unit` annotation could not, since even a discard of `any` counts as
-/// recovery at an annotation.
-forward("dis" + "carded")
+/// the ARC live-object oracle observes the drop. `let _ =` discards it
+/// [BLOCK-DISCARD]; a `-> Unit` annotation could not, since even a discard of
+/// `any` counts as recovery at an annotation.
+let _ = forward("dis" + "carded")
 print("narrowed: ${describeAny(Boxed { held: "print" + "ed", tag: 0 })}")
 print("rendered: ${erasedPoint()}")
 

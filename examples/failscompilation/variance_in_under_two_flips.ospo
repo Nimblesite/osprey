@@ -1,0 +1,10 @@
+// Two parameter flips cancel. In `((T) -> int) -> int` the inner arrow puts `T`
+// in an input position and the outer arrow flips that position again, so `T`
+// ends up in OUTPUT position — which an `in T` may not occupy, exactly as if it
+// had been written as a bare field. A variance check that only looked one arrow
+// deep would accept this; type_equality_comprehensive.test.osp shipped it on a
+// `Sink<in T>` for that reason, and the double flip belongs on `out T`.
+// Implements [TYPE-VARIANCE-POSITIONS]
+type Sink<in T> = Sink { admit: (T) -> bool, hof: ((T) -> int) -> int }
+
+fn main() -> Unit = print("must not compile")

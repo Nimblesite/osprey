@@ -1,0 +1,3 @@
+ok 1 - one unannotated function serves both stages in one program
+1..1
+# tests=1 passed=1 failed=0 skipped=0

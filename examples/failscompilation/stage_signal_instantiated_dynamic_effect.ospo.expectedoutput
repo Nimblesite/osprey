@@ -1,0 +1,1 @@
+11:21: `perform Signal<Count>` names an instantiation of dynamic effect `Signal`; a written instantiation is the identity of a `static effect`, while a dynamic effect takes its instantiation from inference (docs/plans/0024-staged-effects.md). Declare `static effect Signal`, or write `perform Signal` and let inference instantiate it

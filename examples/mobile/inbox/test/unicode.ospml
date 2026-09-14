@@ -1,0 +1,36 @@
+namespace inboxtests
+
+import bank::Json
+import mobile::App
+import mobile::Model
+import mobile::Storage
+import mobile::Update
+import inboxtests::Support
+import inboxtests::TriageSupport
+
+unicodeBodyCase () =
+    waiting = Support::awaiting ()
+    expected = (repeat "a" 1999 ?: "") + "🦉"
+    body = Json::arr (Json::obj ("\"id\":101,\"number\":42,\"title\":\"Unicode\",\"user\":{\"login\":\"alice\"},\"comments\":0," + Json::strField "body" (expected + "extra")))
+    loaded = Update::dispatch waiting.model (Support::http waiting.model.pending 200 body "")
+    envelope = App::envelope loaded
+    check "description keeps 2000 complete Unicode scalars" expected (Support::projected envelope "view.items[0].body")
+    check "description envelope remains valid JSON" (Model::encode loaded.model) (Support::projected envelope "model")
+
+unicodeSearchCase () =
+    loaded = Support::loaded ()
+    expected = (repeat "a" 255 ?: "") + "é"
+    searched = Update::dispatch loaded.model (Support::value "search" (expected + "extra"))
+    check "search keeps 256 complete Unicode scalars" expected (Support::projected (App::envelope searched) "view.search")
+
+unicodeNoteCase () =
+    selected = TriageSupport::selected ()
+    expected = repeat "界" 2000 ?: ""
+    edited = Update::dispatch selected.model (TriageSupport::edit "note" "101" expected)
+    restored = Storage::restore (Model::initial ()) (Model::snapshot edited.model)
+    rejected = Update::dispatch edited.model (TriageSupport::edit "note" "101" (expected + "x"))
+    check "2000 Unicode scalars fit the note limit" "" edited.model.error
+    check "Unicode note reaches the host intact" expected (Support::projected (App::envelope edited) "view.detail.note")
+    check "Unicode notes survive cache validation" true restored.valid
+    check "overlong notes are rejected without losing the saved note" edited.model.annotations rejected.model.annotations
+    check "overlong note reports its limit" true (contains rejected.model.error "2000")

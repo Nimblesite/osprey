@@ -168,8 +168,7 @@ pub(crate) fn gen_receiver_directed(
         },
     };
     Ok(Some(if name == "isEmpty" {
-        let r = cg.fresh_reg();
-        cg.emit(format!("{r} = icmp eq i64 {}, 0", count.operand));
+        let r = cg.emit_reg(format!("icmp eq i64 {}, 0", count.operand));
         Value::new(r, LType::I1)
     } else {
         count
@@ -379,15 +378,13 @@ fn list_contains(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let is_str = needle.ty == LType::Str;
     let boxed = box_to_i64(cg, needle.clone());
 
-    let res = cg.fresh_reg();
-    cg.emit(format!("{res} = alloca i1"));
+    let res = cg.emit_reg("alloca i1");
     cg.emit(format!("store i1 0, i1* {res}"));
 
     let lp = open_list_loop(cg, &l.operand);
     let eq = cg.fresh_reg();
     if is_str {
-        let ep = cg.fresh_reg();
-        cg.emit(format!("{ep} = inttoptr i64 {} to i8*", lp.elem));
+        let ep = cg.emit_reg(format!("inttoptr i64 {} to i8*", lp.elem));
         let c = cg.call("i32", "strcmp", "i8*, i8*", &[&ep, &needle.operand]);
         cg.emit(format!("{eq} = icmp eq i32 {c}, 0"));
     } else {
@@ -402,8 +399,7 @@ fn list_contains(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     cg.start_block(&cont);
     close_list_loop(cg, &lp);
 
-    let out = cg.fresh_reg();
-    cg.emit(format!("{out} = load i1, i1* {res}"));
+    let out = cg.emit_reg(format!("load i1, i1* {res}"));
     Ok(Value::new(out, LType::I1))
 }
 
@@ -453,8 +449,7 @@ fn map_contains(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
         "i8*, i64",
         &[&m.operand, &k.operand],
     );
-    let r = cg.fresh_reg();
-    cg.emit(format!("{r} = icmp ne i32 {raw}, 0"));
+    let r = cg.emit_reg(format!("icmp ne i32 {raw}, 0"));
     Ok(Value::new(r, LType::I1))
 }
 
@@ -536,10 +531,8 @@ fn map_to_list(cg: &mut Codegen, args: &[Expr], take_key: bool) -> Result<Value>
     let managed = cg.call("i32", kind, "i8*", &[&m.operand]);
     let bld = list_builder_new_of(cg, &managed);
     let iter = cg.call("i8*", "osprey_map_iter_new", "i8*", &[&m.operand]);
-    let kp = cg.fresh_reg();
-    cg.emit(format!("{kp} = alloca i64"));
-    let vp = cg.fresh_reg();
-    cg.emit(format!("{vp} = alloca i64"));
+    let kp = cg.emit_reg("alloca i64");
+    let vp = cg.emit_reg("alloca i64");
 
     let cond = cg.fresh_label();
     let body = cg.fresh_label();
@@ -553,14 +546,12 @@ fn map_to_list(cg: &mut Codegen, args: &[Expr], take_key: bool) -> Result<Value>
         "i8*, i64*, i64*",
         &[&iter, &kp, &vp],
     );
-    let more = cg.fresh_reg();
-    cg.emit(format!("{more} = icmp ne i32 {has}, 0"));
+    let more = cg.emit_reg(format!("icmp ne i32 {has}, 0"));
     cg.emit(format!("br i1 {more}, label %{body}, label %{endl}"));
 
     cg.start_block(&body);
     let slot = if take_key { &kp } else { &vp };
-    let elem = cg.fresh_reg();
-    cg.emit(format!("{elem} = load i64, i64* {slot}"));
+    let elem = cg.emit_reg(format!("load i64, i64* {slot}"));
     list_builder_push_borrowed(cg, &bld, &elem);
     cg.emit(format!("br label %{cond}"));
 

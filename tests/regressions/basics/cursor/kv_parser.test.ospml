@@ -99,7 +99,6 @@ badEq = findEq ("bad_entry_no_equals", 0)
 print "findEq('bad_entry_no_equals') = ${badEq}"
 
 print "=== parser complete ==="
-0
 
 (** Confirm a successful pair carries the complete key/value rendering. *)
 pairMatches (seg, expected) =

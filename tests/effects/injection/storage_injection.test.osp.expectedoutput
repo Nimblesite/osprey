@@ -1,0 +1,5 @@
+ok 1 - injected disk handler persists the notebook to real files
+ok 2 - injected mock handler replaces the file system and records every call
+ok 3 - swapping the injected handler swaps the policy, not the logic
+1..3
+# tests=3 passed=3 failed=0 skipped=0

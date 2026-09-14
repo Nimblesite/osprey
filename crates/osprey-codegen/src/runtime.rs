@@ -61,10 +61,7 @@ fn result_string(cg: &mut Codegen, v: &Value, wrap_success: bool) -> Result<Valu
     // reason prints `Error(<reason>)`.
     let msg = crate::result::load_errmsg(cg, v);
     let isnull = cg.emit_reg(format!("icmp eq i8* {}, null", msg.operand));
-    let fl = cg.fresh_label();
-    let nl = cg.fresh_label();
-    let jl = cg.fresh_label();
-    cg.emit(format!("br i1 {isnull}, label %{nl}, label %{fl}"));
+    let (nl, fl, jl) = cg.diamond(&isnull);
     cg.start_block(&fl);
     let with = sprintf_wrap(cg, "Error(%s)", &msg.operand);
     let fb = cg.cur_block().to_string();
@@ -73,18 +70,14 @@ fn result_string(cg: &mut Codegen, v: &Value, wrap_success: bool) -> Result<Valu
     let bare = cg.string_constant("Error");
     cg.emit(format!("br label %{jl}"));
     cg.start_block(&jl);
-    let err = cg.fresh_reg();
-    cg.emit(format!(
-        "{err} = phi i8* [ {with}, %{fb} ], [ {}, %{nl} ]",
+    let err = cg.emit_reg(format!(
+        "phi i8* [ {with}, %{fb} ], [ {}, %{nl} ]",
         bare.operand
     ));
     let eb = cg.snapshot_to(&end);
 
     cg.start_block(&end);
-    let phi = cg.fresh_reg();
-    cg.emit(format!(
-        "{phi} = phi i8* [ {succ}, %{sb} ], [ {err}, %{eb} ]"
-    ));
+    let phi = cg.emit_reg(format!("phi i8* [ {succ}, %{sb} ], [ {err}, %{eb} ]"));
     Ok(Value::new(phi, LType::Str))
 }
 
@@ -138,8 +131,7 @@ pub(crate) fn format_sized(cg: &mut Codegen, fmt: &str, args: &[String]) -> Valu
 pub(crate) fn gen_print(cg: &mut Codegen, v: Value) -> Result<Value> {
     let s = to_string_value(cg, v)?;
     cg.add_extern("declare i32 @puts(i8*)");
-    let reg = cg.fresh_reg();
-    cg.emit(format!("{reg} = call i32 @puts(i8* {})", s.operand));
+    let _ = cg.emit_reg(format!("call i32 @puts(i8* {})", s.operand));
     Ok(Value::unit())
 }
 
@@ -157,9 +149,8 @@ fn int_to_string(cg: &mut Codegen, v: Value) -> Result<Value> {
     // full i64 on every target; on LP64 (native) it is identical to `%ld`.
     let fmt = cg.string_constant("%lld");
     let buf = cg.heap_alloc(INT_STRING_BYTES);
-    let tmp = cg.fresh_reg();
-    cg.emit(format!(
-        "{tmp} = call i32 (i8*, i8*, ...) @sprintf(i8* {buf}, i8* {}, i64 {})",
+    let _ = cg.emit_reg(format!(
+        "call i32 (i8*, i8*, ...) @sprintf(i8* {buf}, i8* {}, i64 {})",
         fmt.operand, i.operand
     ));
     let v = Value::new(buf, LType::Str);
@@ -171,9 +162,8 @@ fn int_to_string(cg: &mut Codegen, v: Value) -> Result<Value> {
 /// that (and NaN/inf) — see `runtime/string_runtime.c`.
 fn float_to_string(cg: &mut Codegen, v: &Value) -> Value {
     cg.add_extern("declare i8* @osp_float_to_string(double)");
-    let reg = cg.fresh_reg();
-    cg.emit(format!(
-        "{reg} = call i8* @osp_float_to_string(double {})",
+    let reg = cg.emit_reg(format!(
+        "call i8* @osp_float_to_string(double {})",
         v.operand
     ));
     let out = Value::new(reg, LType::Str);
@@ -184,9 +174,8 @@ fn float_to_string(cg: &mut Codegen, v: &Value) -> Value {
 fn bool_to_string(cg: &mut Codegen, v: &Value) -> Value {
     let t = cg.string_constant("true");
     let f = cg.string_constant("false");
-    let reg = cg.fresh_reg();
-    cg.emit(format!(
-        "{reg} = select i1 {}, i8* {}, i8* {}",
+    let reg = cg.emit_reg(format!(
+        "select i1 {}, i8* {}, i8* {}",
         v.operand, t.operand, f.operand
     ));
     Value::new(reg, LType::Str)

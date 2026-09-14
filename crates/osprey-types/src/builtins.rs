@@ -7,7 +7,11 @@
 //! runtime's supported alternatives (`print`, `toString`, `length`,
 //! `isEmpty`); `builtin_constraints` checks their concrete call-site types.
 //! Result-returning runtime builtins return `Result<T, Error>` — the shape the C
-//! runtime actually returns — while arithmetic operators use `MathError`.
+//! runtime actually returns — while arithmetic uses `MathError`. The split is
+//! by what can fail, not by who implements it: `abs` and `intDiv` are
+//! arithmetic and carry `MathError` even though the runtime provides them.
+//! `checkedAdd`/`checkedSub`/`checkedMul` keep the generic `Error` channel for
+//! compatibility.
 
 use crate::env::TypeEnv;
 use crate::ty::{names, Scheme, Type};
@@ -42,7 +46,7 @@ fn res(ok: Type) -> Type {
 /// free-in-env and silently blocking let-generalization — e.g.
 /// `fn identity<T>(x) -> T = x` losing its polymorphism depending on which
 /// direction a var-var unification happened to bind. [TYPE-GENERICS-FN]
-pub const RESERVED_SCHEME_VARS: u32 = 3;
+pub(crate) const RESERVED_SCHEME_VARS: u32 = 3;
 
 fn mono(env: &mut TypeEnv, name: &str, params: Vec<Type>, ret: Type) {
     env.insert(name, Scheme::mono(Type::fun(params, ret)));
@@ -55,7 +59,7 @@ fn poly(env: &mut TypeEnv, name: &str, vars: Vec<u32>, params: Vec<Type>, ret: T
 /// Built-ins a user function may redefine: the testing names are common
 /// identifiers, so a same-named user function shadows the built-in instead of
 /// erroring. Implements [TESTING-SHADOWING] (docs/specs/0027-TestingFramework.md).
-pub const SHADOWABLE_BUILTINS: &[&str] = &[
+pub(crate) const SHADOWABLE_BUILTINS: &[&str] = &[
     "test",
     "expect",
     "expectAll",
@@ -68,7 +72,7 @@ pub const SHADOWABLE_BUILTINS: &[&str] = &[
 ];
 
 /// Install every built-in into a base environment.
-pub fn base_env() -> TypeEnv {
+pub(crate) fn base_env() -> TypeEnv {
     let mut e = TypeEnv::new();
     core(&mut e);
     testing(&mut e);
@@ -167,10 +171,17 @@ fn core(e: &mut TypeEnv) {
         vec![i()],
         Type::result(i(), Type::prim(names::MATH_ERROR)),
     );
-    // Truncating integer division, divide-by-zero-checked → Result<int, Error>.
-    // The `/` operator is float-only (Osprey spec); this is its integer sibling.
-    // Implements [BUILTIN-INTDIV].
-    mono(e, "intDiv", vec![i(), i()], res(i()));
+    // Truncating integer division, divide-by-zero-checked. The `/` operator is
+    // float-only (Osprey spec); this is its integer sibling, so its faults are
+    // MATH faults and it carries the same `MathError` channel as `abs` and as
+    // the operators — not the runtime's generic `Error`. Implements
+    // [BUILTIN-INTDIV].
+    mono(
+        e,
+        "intDiv",
+        vec![i(), i()],
+        Type::result(i(), Type::prim(names::MATH_ERROR)),
+    );
     // Widening int → float. Total, so it is bare `float` rather than a Result:
     // every i64 has a nearest double. Implements [BUILTIN-TOFLOAT] and the GPU
     // surface's explicit element conversion [GPU-CONVERT].

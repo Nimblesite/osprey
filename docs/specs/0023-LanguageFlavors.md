@@ -17,6 +17,12 @@ Type inference, effect checking, project resolution, and code generation must
 not branch on `Flavor`. `Parsed.flavor` is retained for frontend and editor
 presentation only.
 
+Dotted calls that may use UFCS retain that choice in the canonical AST until
+shared type resolution selects a field or free function. A generic receiver
+defers selection to each instantiation. ML field application denotes field
+access directly. When both select the same field, the shared lowering uses
+the same call semantics and ABI; no backend branch inspects the source flavor.
+
 ## Supported Flavors
 
 | Flavor | Blocks | Calls | Function default | Extension |
@@ -170,3 +176,9 @@ equal flat twins, and the expected unequal curried/flat pair.
 paired `.osp` and `.ospml` examples and requires byte-identical LLVM IR. Each ML
 example has a Default twin and shares its expected-output file, except for the
 explicit ML-only allowlist in that test.
+
+Twins must express the same typing contract. A helper explicitly constrained
+to `Source<int>` is not the twin of an unannotated helper that generalizes
+over records with the required field. The paired sources must agree on that
+constraint or both retain the generic helper. Equal output for the particular
+values in one run does not establish that their inferred contracts agree.

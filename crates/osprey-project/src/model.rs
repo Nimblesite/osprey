@@ -13,26 +13,26 @@ pub(crate) struct SymbolKey {
 }
 
 impl SymbolKey {
-    pub fn new(namespace: impl Into<String>, path: Vec<String>) -> Self {
+    pub(crate) fn new(namespace: impl Into<String>, path: Vec<String>) -> Self {
         Self {
             namespace: namespace.into(),
             path,
         }
     }
 
-    pub fn child(&self, name: impl Into<String>) -> Self {
+    pub(crate) fn child(&self, name: impl Into<String>) -> Self {
         let mut path = self.path.clone();
         path.push(name.into());
         Self::new(self.namespace.clone(), path)
     }
 
-    pub fn parent_path(&self) -> &[String] {
+    pub(crate) fn parent_path(&self) -> &[String] {
         self.path
             .get(..self.path.len().saturating_sub(1))
             .unwrap_or_default()
     }
 
-    pub fn source_name(&self) -> String {
+    pub(crate) fn source_name(&self) -> String {
         std::iter::once(self.namespace.as_str())
             .chain(self.path.iter().map(String::as_str))
             .filter(|segment| !segment.is_empty())
@@ -40,7 +40,7 @@ impl SymbolKey {
             .join("::")
     }
 
-    pub fn mangled(&self) -> String {
+    pub(crate) fn mangled(&self) -> String {
         osprey_ast::symbol::mangle(
             std::iter::once(self.namespace.as_str()).chain(self.path.iter().map(String::as_str)),
         )
@@ -70,7 +70,7 @@ pub(crate) struct DeclInfo {
 }
 
 impl DeclInfo {
-    pub fn visible_from(&self, same_namespace: bool, module: &[String]) -> bool {
+    pub(crate) fn visible_from(&self, same_namespace: bool, module: &[String]) -> bool {
         self.visibility == Visibility::Exported
             || (same_namespace && module.starts_with(&self.owner))
     }

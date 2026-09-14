@@ -1,0 +1,9 @@
+// The count contract binds in both directions: two declared binders demand two
+// written arguments, since a partially written list has no meaning.
+// Implements [TYPE-GENERICS-APPLY]
+fn pick<T, U>(first: T, second: U) -> T = first
+
+fn main() -> Unit = {
+    let kept = pick<int>(1, "two")
+    print("${kept}")
+}

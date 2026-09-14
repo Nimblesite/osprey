@@ -1,0 +1,8 @@
+// `List<out T>` is a covariant built-in and still matches its element exactly:
+// a List<int> stores raw ints, and reading them as Results would misread every
+// element. Implements [TYPE-VARIANCE-COERCION]
+fn listInt() -> List<int> = [1, 2]
+
+fn total(items: List<Result<int, MathError>>) = length(items)
+
+fn main() -> Unit = print("${total(listInt())}")

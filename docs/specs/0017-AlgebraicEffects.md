@@ -43,6 +43,13 @@ effect State
     set : int => Unit
 ```
 
+An operation also carries a **multiplicity** — `abort`, `once` or `many`, plus
+`replayable` for one whose effects are safe to re-perform — fixing how many
+times a handler arm may resume it. The declaration form and its rules are
+[MULTI-DECL](0035-StagedEffects.md#declaring-multiplicity--multi-decl). An
+undecorated operation is `once`, which is the behaviour this document
+describes.
+
 ## Generic Effects
 
 `[EFFECTS-GENERIC-DECL]` An effect may declare type parameters, including
@@ -64,7 +71,7 @@ agree on that instantiation. This handler instantiates `Stash<string>`:
 let word = handle Stash
     put value => print(value)
     take => "ready"
-in perform Stash.take()
+do perform Stash.take()
 ```
 
 `[EFFECTS-GENERIC-RUNTIME]` Generic operation payloads use an erased machine-word
@@ -77,6 +84,13 @@ path for a checked program. Monomorphic effects use their declared name as the
 key.
 
 ## Effectful Function Types
+
+`[EFFECTS-GENERIC-ROWS]` A written effect-row argument list must contain exactly
+the effect's declared number of type arguments. Omitting the entire list leaves
+the instance to inference. An explicit list cannot omit some arguments or add
+extra ones, even when the function body performs no operations. Each argument
+must name a known type or an enclosing type parameter; nested constructors must
+have their declared arity, and a type parameter cannot itself take arguments.
 
 An effect row follows the return type. It contains one effect reference or a
 bracketed list; generic references may include type arguments.
@@ -119,6 +133,23 @@ discharge the operation they cover. Constructing a lambda is pure, but invoking
 it contributes its latent requirements; constructing one inside a handler does
 not give it authority after it escapes that handler's lexical region.
 
+Passing a callback without invoking it contributes no latent requirements.
+Invoking a function parameter substitutes both the actual callee and its
+supplied arguments: forwarding an effectful callback through another function
+preserves the effects of each invocation, including named and curried calls.
+When a callback returns a record or another callable, subsequent field reads
+and calls retain the returned value's effect requirements. This applies equally
+when the callback is a named function, a local binding, or a function parameter;
+transport through a generic helper cannot make an effectful field pure.
+The same rule applies to operation results supplied by an active handler.
+Returning a record or closure from a handler does not discharge effects that
+are performed only when that value is called after the handler exits.
+
+Builtin callback and iterator behavior belongs to the resolved builtin binding.
+A user function, local binding, or parameter that shadows a builtin name uses
+its own body and return value for effect analysis. Its spelling cannot cause
+builtin callback invocation or prove that its result has no callable fields.
+
 The current compiler realizes these rules with a closed-program operation
 summary and fixed-point call analysis. Explicit open effect-row variables are
 not surface syntax and effect rows are not yet exposed as independently
@@ -133,7 +164,7 @@ performExpr ::= "perform" IDENT "." IDENT "(" args? ")"
 ```osprey
 fn increment() -> int !State = {
     let current = perform State.get()
-    perform State.set((current + 1) ?: current)
+    perform State.set(current + 1)
     perform State.get()
 }
 ```
@@ -156,7 +187,7 @@ returns the operation result and execution continues after `perform`.
 let result = handle State
     get => 41
     set value => print("set ${value}")
-in increment()
+do increment()
 ```
 
 Lookup is per effect and operation. Nested handlers may override selected
@@ -166,9 +197,9 @@ for operations not handled by the inner region.
 ```osprey
 handle Logger
     log message => print("outer: ${message}")
-in handle Logger
+do handle Logger
     log message => print("inner: ${message}")
-in perform Logger.log("test")
+do perform Logger.log("test")
 ```
 
 A handler arm is not permission to perform its own active operation
@@ -194,9 +225,15 @@ mut cell = 0
 let result = handle State
     get => cell
     set value => { cell = value }
-in increment()
+do increment()
 print("result=${result} cell=${cell}")
 ```
+
+A `many` arm may own no state: one shared cell would let a second resumption
+observe the first one's writes, so
+[MULTI-REPLAY-STATE](0035-StagedEffects.md#replayability--multi-replay) rejects
+the capture and multi-shot arms combine their resumptions through the value
+`resume` returns instead.
 
 Handler state is also preserved when a perform crosses a spawned-fiber or HTTP
 callback boundary. The native conformance cases are
@@ -223,7 +260,7 @@ let answer = handle Ask
         print("completed=${completed}")
         completed
     }
-in perform Ask.value() * 2
+do perform Ask.value() * 2
 ```
 
 Resuming handlers have these rules:
@@ -232,6 +269,13 @@ Resuming handlers have these rules:
   runs.
 - They are single-shot. A second resume of one continuation aborts with
   `fatal: continuation already resumed (multi-shot resume is not supported)`.
+  This is the runtime form of
+  [MULTI-HANDLE-ONCE](0035-StagedEffects.md#handler-obligations--multi-handle),
+  which rejects the same arm in the checker; the guard remains as a backstop.
+  A `many` operation, the one shape that lifts the restriction, needs a
+  continuation the compiler cannot build today — the native continuation is a
+  suspended pthread stack and a live pthread stack cannot be cloned
+  ([plan 0016](../plans/0016-algebraic-effects-and-handlers.md)).
 - Handler mode is selected per arm, not per region. An arm containing no
   `resume` supplies its operation result directly and the caller continues,
   whatever its siblings do. In an arm that does contain `resume`, returning
@@ -245,6 +289,13 @@ Resuming handlers have these rules:
   [issue #177](https://github.com/Nimblesite/osprey/issues/177).
 - `resume` is lexical to the arm. It is rejected at top level and inside a
   lambda declared in an arm, because that lambda has no live arm continuation.
+  [MULTI-HANDLE-MANY-LEXICAL](0035-StagedEffects.md#handler-obligations--multi-handle)
+  narrows the second half to exactly the ground it stands on: in an arm for a
+  `many` operation, a lambda invoked before the arm returns DOES have a live
+  continuation and may resume, while one that escapes the arm stays rejected.
+  Osprey has no loop construct
+  ([BUILTIN-ITER](0010-LoopConstructsAndFunctionalIterators.md#core-iterator-functions--builtin-iter)),
+  so that narrowing is what gives repeated resumption any spelling at all.
 - Explicit resume is native-only. WebAssembly supports direct value-substitution
   handlers but not the pthread-backed continuation runtime.
 
@@ -267,18 +318,18 @@ let total = handle Alpha
         settled = "${settled}a:${label}|"
         answer
     }
-in handle Beta
+do handle Beta
     beta label => {
         let answer = resume(100)
         settled = "${settled}b:${label}|"
         answer
     }
-in {
+do {
     let p = perform Alpha.alpha("a1")
     let q = perform Beta.beta("b1")
     let r = perform Alpha.alpha("a2")
     let s = perform Beta.beta("b2")
-    (p + q ?: 0) + (r + s ?: 0) ?: 0
+    (p + q) + (r + s)
 }
 print("${settled}")
 ```
@@ -327,9 +378,17 @@ types, not representation.
 ### Known limits of abandoning a region
 
 Abandoning a region ends the suspended computation with `pthread_exit`, and a
-killed thread runs no epilogue. Two consequences are unresolved. Both predate
-the operation mailbox and neither is reachable with scalar operands, which is
-why `tests/regressions/effects/abort_vs_resume.test.osp` passes the ARC leak
+killed thread runs no epilogue. Any arm that resumes can reach this path: a
+branch returning without resuming abandons the region, which is the sanctioned
+early exit above and the shape
+[CANCEL-DELIVERY](0036-StructuredConcurrency.md#delivery-decline-to-resume--cancel-delivery)
+delivers cancellation with. These limits are therefore a property of the
+language surface as it exists, not of an exotic corner
+([MULTI-COST-ABORT](0035-StagedEffects.md#cost-model--multi-cost)).
+
+Two consequences are unresolved. Both predate the operation mailbox and neither
+is reachable with scalar operands, which is why
+`tests/regressions/effects/abort_vs_resume.test.osp` passes the ARC leak
 oracle: its operands are integers.
 
 **Heap operands owned by the killed frames are not reclaimed.** The mailbox's
@@ -349,7 +408,7 @@ let answer = handle Label
         true  => "stopped at ${subject}"
         false => resume("saw ${subject}")
     }
-in ask("al" + "pha")
+do ask("al" + "pha")
 ```
 
 Reclaiming them needs generated cleanup along the abort path — unwinding — not a

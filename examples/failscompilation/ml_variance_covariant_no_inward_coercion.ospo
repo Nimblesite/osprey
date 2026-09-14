@@ -1,0 +1,13 @@
+// osprey: flavor=ml
+(** The ML surface lowers to the same canonical nodes, so the coercion stops at
+    the same boundary. Implements [TYPE-VARIANCE-COERCION], [FLAVOR-ML-GENERICS] *)
+type Feed out T =
+    supply : T
+
+feedInt : Unit -> Feed<int>
+feedInt () = Feed(supply = 1)
+
+total : Feed<Result<int, MathError>> -> int
+total f = f.supply ?: 0
+
+main () = print "${total (feedInt ())}"

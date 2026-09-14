@@ -6,7 +6,12 @@ use osprey_ast::{EffectRef, TypeExpr};
 use std::collections::BTreeMap;
 
 impl Resolver<'_> {
-    pub fn rewrite_type(&mut self, ty: &mut TypeExpr, context: &Context, locals: &mut Locals) {
+    pub(crate) fn rewrite_type(
+        &mut self,
+        ty: &mut TypeExpr,
+        context: &Context,
+        locals: &mut Locals,
+    ) {
         for parameter in &mut ty.generic_params {
             self.rewrite_type(parameter, context, locals);
         }
@@ -47,7 +52,7 @@ impl Resolver<'_> {
         ty.name = self.link_name(&key, false);
     }
 
-    pub fn rewrite_effect_refs(
+    pub(crate) fn rewrite_effect_refs(
         &mut self,
         effects: &mut [EffectRef],
         context: &Context,
@@ -83,7 +88,7 @@ impl Resolver<'_> {
         }
     }
 
-    pub fn rewrite_type_text(
+    pub(crate) fn rewrite_type_text(
         &mut self,
         text: &str,
         context: &Context,

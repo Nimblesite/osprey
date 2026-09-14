@@ -1,0 +1,1 @@
+19:16: kernel body is not stage-legal; it requires dynamic effects: Log.write

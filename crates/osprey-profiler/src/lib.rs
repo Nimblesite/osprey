@@ -17,6 +17,9 @@ mod symbolize;
 #[cfg(test)]
 mod e2e;
 #[cfg(test)]
+#[path = "../../testkit.rs"]
+mod testkit;
+#[cfg(test)]
 pub(crate) mod testutil;
 
 use std::fmt;

@@ -13,7 +13,7 @@
 
 use crate::mutate::{children_mut, statement_children_mut};
 use crate::stage::{dependencies, StageError, REWRITE_BOUND, REWRITE_DEPTH_BOUND};
-use crate::{Expr, HandlerArm, Position, Program, Stage, Stmt};
+use crate::{Expr, HandlerArm, Position, Program, Stmt};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// One `handle static` region on the enclosing stack.
@@ -94,10 +94,12 @@ impl Lowering {
     /// Rewrite one expression under the regions enclosing it.
     fn rewrite(&mut self, expression: &mut Expr, regions: &mut Vec<Region>) {
         match expression {
-            Expr::Handler {
-                stage: Stage::Static,
-                ..
-            } => self.enter_region(expression, regions),
+            // A `kernel` is a static handler region carrying one extra
+            // obligation, already discharged by `kernel::legality`; the rewrite
+            // that answers it is the same one. Implements [STAGE-GPU-KERNEL].
+            Expr::Handler { stage, .. } if stage.is_compile_time() => {
+                self.enter_region(expression, regions);
+            }
             Expr::Perform { effect, .. } if answered(regions, effect) => {
                 self.substitute(expression, regions);
             }

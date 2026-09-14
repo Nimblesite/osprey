@@ -1,0 +1,1 @@
+10:21: effect `Signal` takes 1 type parameter; `Signal<Count, Count>` supplies 2

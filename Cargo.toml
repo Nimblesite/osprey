@@ -67,6 +67,13 @@ unused_variables = "deny"
 unused_mut = "deny"
 unused_assignments = "deny"
 unused_results = "deny"
+# A `pub` item not reachable from the crate root is invisible outside the crate,
+# so `dead_code` never evaluates it and it can rot forever. Forcing `pub(crate)`
+# puts every such item back under the dead-code lint. [LINTS-DEADCODE-REACH]
+unreachable_pub = "deny"
+unused_lifetimes = "deny"
+unused_macro_rules = "deny"
+unused_qualifications = "deny"
 trivial_casts = "deny"
 trivial_numeric_casts = "deny"
 elided_lifetimes_in_paths = "deny"

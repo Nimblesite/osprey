@@ -141,12 +141,7 @@ impl Checker {
         // row and an erased one: a repeated field name makes the two halves of
         // the compiler disagree about the same pattern.
         if self.reject_duplicate_fields(fields) {
-            for (_, binder) in fields {
-                if !binder.is_empty() {
-                    let fv = self.ctx.fresh();
-                    local.insert(binder.clone(), Scheme::mono(fv));
-                }
-            }
+            self.bind_fresh(fields, local);
             return;
         }
         let dp = self.ctx.prune(disc);
@@ -168,12 +163,7 @@ impl Checker {
             self.errors.push(TypeError::new(format!(
                 "a structural pattern needs a record or `any` scrutinee{found}"
             )));
-            for (_, binder) in fields {
-                if !binder.is_empty() {
-                    let fv = self.ctx.fresh();
-                    local.insert(binder.clone(), Scheme::mono(fv));
-                }
-            }
+            self.bind_fresh(fields, local);
             return;
         };
         self.check_row_selects(fields, open, &dp, &row);
@@ -227,6 +217,18 @@ impl Checker {
     /// its source rather than teaching both sides the same wrong rule.
     ///
     /// Returns whether an error was reported.
+    /// Bind every named binder in `fields` to a fresh variable — the recovery
+    /// taken whenever the scrutinee cannot supply field types, so the arm body
+    /// still type-checks against the names it wrote instead of cascading.
+    fn bind_fresh(&mut self, fields: &[(String, String)], local: &mut TypeEnv) {
+        for (_, binder) in fields {
+            if !binder.is_empty() {
+                let fv = self.ctx.fresh();
+                local.insert(binder.clone(), Scheme::mono(fv));
+            }
+        }
+    }
+
     fn reject_duplicate_fields(&mut self, fields: &[(String, String)]) -> bool {
         let mut seen: BTreeSet<&str> = BTreeSet::new();
         let dup = fields
@@ -713,7 +715,7 @@ fn nullary_owner_ty(owner: String, args: Vec<Type>, is_record: bool) -> Type {
 
 #[cfg(test)]
 mod tests {
-    use crate::testutil::{check, ok};
+    use crate::testutil::{bad_with, check, ok};
 
     #[test]
     fn structural_pattern_binds_record_fields() {
@@ -756,11 +758,7 @@ mod tests {
                 "needs a record or `any` scrutinee",
             ),
         ] {
-            let errs = check(src);
-            assert!(
-                errs.iter().any(|e| e.message.contains(want)),
-                "expected {want:?} for {src:?}, got {errs:?}"
-            );
+            bad_with(src, want);
         }
     }
 
@@ -865,15 +863,12 @@ mod tests {
               { x, .. } => x\n\
             }\n");
         // Naming a field the row lacks can never select.
-        let errs = check(
+        bad_with(
             "type Point = { x: int, y: int }\n\
              fn f(p: Point) -> int = match p {\n\
                { z, .. } => z\n\
              }\n",
-        );
-        assert!(
-            errs.iter().any(|e| e.message.contains("has no such field")),
-            "{errs:?}"
+            "has no such field",
         );
     }
 
@@ -1018,15 +1013,13 @@ mod tests {
 
     #[test]
     fn unknown_constructor_pattern_is_an_error_but_binds_fields() {
-        let errs = check(
+        bad_with(
             "fn f(v) = match v {\n\
                Bogus { a, b } => a\n\
                _ => 0\n\
              }\n",
+            "unknown constructor `Bogus`",
         );
-        assert!(errs
-            .iter()
-            .any(|e| e.message.contains("unknown constructor `Bogus`")));
     }
 
     #[test]
@@ -1085,21 +1078,20 @@ mod tests {
             .iter()
             .any(|e| e.message.contains("Result") && e.message.contains("bool")));
 
-        let errs = check("let x = match true { true => 1 }\n");
-        assert!(errs.iter().any(|e| e.message.contains("non-exhaustive")));
+        bad_with("let x = match true { true => 1 }\n", "non-exhaustive");
     }
 
     #[test]
     fn bare_result_annotation_uses_the_no_args_unwrap_fallback() {
         // A bare `Result` annotation (no type args) is still a Result; matching a
         // A literal cannot directly match a Result wrapper.
-        let errs = check(
+        bad_with(
             "fn f(r: Result) -> int = match r {\n\
                0 => 0\n\
                _ => 1\n\
              }\n",
+            "Result",
         );
-        assert!(errs.iter().any(|e| e.message.contains("Result")));
     }
 
     #[test]
@@ -1117,32 +1109,26 @@ mod tests {
     fn misspelled_uppercase_variant_is_not_a_catch_all() {
         // `Bleu` is not a `Color` variant: it must be reported rather than
         // silently absorbing the missing variants as a catch-all.
-        let errs = check(
+        bad_with(
             "type Color = Red | Green | Blue\n\
              fn name(c: Color) -> string = match c {\n\
                Red => \"r\"\n\
                Bleu => \"?\"\n\
              }\n",
-        );
-        assert!(
-            errs.iter().any(|e| e.message.contains("Bleu")),
-            "expected an error naming the unknown variant `Bleu`: {errs:?}"
+            "Bleu",
         );
     }
 
     #[test]
     fn arm_after_a_catch_all_is_unreachable() {
-        let errs = check(
+        bad_with(
             "type Color = Red | Green | Blue\n\
              fn name(c: Color) -> string = match c {\n\
                Red => \"r\"\n\
                _ => \"?\"\n\
                Green => \"g\"\n\
              }\n",
-        );
-        assert!(
-            errs.iter().any(|e| e.message.contains("unreachable")),
-            "expected an unreachable-arm error: {errs:?}"
+            "unreachable",
         );
     }
 

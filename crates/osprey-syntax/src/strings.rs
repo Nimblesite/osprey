@@ -143,6 +143,7 @@ fn rebase_slot(slot: &mut Option<Position>, rebase: Rebase) {
 fn rebase_expr(expr: &mut Expr, rebase: Rebase) {
     match expr {
         Expr::List(_, position)
+        | Expr::TypeApply { position, .. }
         | Expr::Lambda { position, .. }
         | Expr::Perform { position, .. }
         | Expr::Handler { position, .. } => rebase_slot(position, rebase),

@@ -77,6 +77,29 @@ The `osprey-debug` crate owns source identity and native build policy without
 depending on compiler or editor crates. The VS Code extension owns launch
 normalization, `lldb-dap` discovery, and native pre-launch compilation.
 
+## Effect Trace `[DEBUGGER-EFFECT-TRACE]`
+
+A native stack answers "how did control get here" only while control got here
+by calling. A resumed continuation did not: the frames below a `resume` belong
+to the handled body, the frames above belong to the arm, and the line joining
+them is the `perform` the arm is answering. The physical stack cannot express
+that edge, so a debug build MUST carry the effect trace of
+[MULTI-TRACE](0035-StagedEffects.md#effect-trace--multi-trace) beside it.
+
+A paused session presents the trace as its own view: performed at *site*,
+handled at *region*, resumed *n* times, innermost first. Each entry resolves to
+a source position through `[DEBUGGER-SOURCE-MAP]`, so selecting one navigates
+to the `perform` or the arm that answered it. Sites belonging to a
+`static effect` MUST NOT appear — the rewrite removed them from the program
+before code generation, and a trace naming them would describe code the binary
+does not contain
+([STAGE-RESIDUE](0035-StagedEffects.md#zero-residue--stage-residue)).
+
+For a continuation resumed at most once the trace is a straight line and adds
+context to the physical stack. For a multi-shot continuation it is the only
+stack that corresponds to the source, because the physical stack after a second
+resume describes a control path no source line expresses.
+
 ## Variables `[DEBUGGER-DBG-DECLARE]`
 
 Primitive function parameters use `llvm.dbg.value`. Primitive `let` bindings

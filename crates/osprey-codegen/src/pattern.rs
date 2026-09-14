@@ -380,8 +380,7 @@ fn gen_result_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Result
     // (cond, success-binding, error-binding) by Result shape.
     let (cond, succ_val, err_val) = if disc.result_inner.is_some() {
         let d = crate::result::load_disc(cg, disc);
-        let c = cg.fresh_reg();
-        cg.emit(format!("{c} = icmp eq i8 {d}, 0"));
+        let c = cg.emit_reg(format!("icmp eq i8 {d}, 0"));
         // Success binds the value slot; Error binds the errmsg slot (the real
         // reason), so `Error { message }` sees the message regardless of the
         // success payload type. Implements [ERR-PAYLOAD].
@@ -420,10 +419,7 @@ fn gen_result_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Result
         ("true".to_string(), disc.clone(), empty)
     };
 
-    let sl = cg.fresh_label();
-    let el = cg.fresh_label();
-    let end = cg.fresh_label();
-    cg.emit(format!("br i1 {cond}, label %{sl}, label %{el}"));
+    let (sl, el, end) = cg.diamond(&cond);
 
     let mark = crate::arc::frame_mark(cg);
     let mut phi_in: Vec<(Value, String)> = Vec::new();
@@ -467,10 +463,8 @@ fn gen_union_match(
     owner: &str,
 ) -> Result<Value> {
     // Load the discriminant tag (every variant block starts with `{ i64 tag, … }`).
-    let tagp = cg.fresh_reg();
-    cg.emit(format!("{tagp} = bitcast i8* {} to i64*", disc.operand));
-    let tag = cg.fresh_reg();
-    cg.emit(format!("{tag} = load i64, i64* {tagp}"));
+    let tagp = cg.emit_reg(format!("bitcast i8* {} to i64*", disc.operand));
+    let tag = cg.emit_reg(format!("load i64, i64* {tagp}"));
 
     let end = cg.fresh_label();
     let mark = crate::arc::frame_mark(cg);
@@ -482,8 +476,7 @@ fn gen_union_match(
             let name = name.to_string();
             let vpos = variants.iter().position(|v| *v == name).unwrap_or(0);
             let vtag = i64::try_from(vpos).unwrap_or(0);
-            let cond = cg.fresh_reg();
-            cg.emit(format!("{cond} = icmp eq i64 {tag}, {vtag}"));
+            let cond = cg.emit_reg(format!("icmp eq i64 {tag}, {vtag}"));
             let next_lbl = open_guarded_arm(cg, &cond);
             bind_variant_fields(cg, disc, &name, &fields, mode);
             emit_arm_body(cg, arm, &mut phi_in)?;
@@ -555,11 +548,7 @@ fn bind_variant_fields(
     let Some((view, struct_ty)) = bindable_layout(cg, variant, pat_fields) else {
         return;
     };
-    let src = cg.fresh_reg();
-    cg.emit(format!(
-        "{src} = bitcast i8* {} to {struct_ty}*",
-        disc.operand
-    ));
+    let src = cg.emit_reg(format!("bitcast i8* {} to {struct_ty}*", disc.operand));
     for (column, bind_name) in pat_fields.iter().enumerate() {
         if bind_name.is_empty() {
             continue; // an ignored slot binds nothing
@@ -709,8 +698,7 @@ fn finish_phi(
         .map(|(v, blk)| format!("[ {}, %{blk} ]", v.operand))
         .collect::<Vec<_>>()
         .join(", ");
-    let reg = cg.fresh_reg();
-    cg.emit(format!("{reg} = phi {llvm_ty} {incoming}"));
+    let reg = cg.emit_reg(format!("phi {llvm_ty} {incoming}"));
     let common = |sel: fn(&Value) -> Option<String>| {
         let first = sel(first_val);
         incoming_values
@@ -737,7 +725,11 @@ fn finish_phi(
         && incoming_values
             .iter()
             .all(|(v, _)| v.result_inner_is_placeholder);
-    out.payload_owner = common(|v| v.payload_owner.clone());
+    out.payload_owner = if result_inner.is_some() {
+        result_join_owner(phi_in)
+    } else {
+        common(|v| v.payload_owner.clone())
+    };
     // Perceus join transfer: if every arm produced a fresh owner AFTER `mark`
     // (i.e. inside its own arm — never the scrutinee, which predates the mark
     // and lives on every path), the phi owns the merged value directly — the
@@ -774,6 +766,20 @@ fn result_join_inner(phi_in: &[(Value, String)]) -> Result<Option<LType>> {
         }
     }
     Ok(target)
+}
+
+/// [MODULES-ABI]: Error has no Success payload whose owner can disagree with
+/// a record-producing arm. Use the original arms before placeholder repacking.
+fn result_join_owner(phi_in: &[(Value, String)]) -> Option<String> {
+    let mut owners = phi_in
+        .iter()
+        .filter(|(value, _)| !value.result_inner_is_placeholder)
+        .map(|(value, _)| value.payload_owner.clone());
+    let first = owners.next()?;
+    owners
+        .all(|owner| owner == first)
+        .then_some(first)
+        .flatten()
 }
 
 /// Take a catch-all arm: bind the scrutinee under the arm's name and evaluate

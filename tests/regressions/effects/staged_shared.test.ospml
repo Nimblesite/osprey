@@ -1,0 +1,51 @@
+// [STAGE-POLY] [STAGE-POLY-ERASURE] [STAGE-COMPAT] One unannotated
+// higher-order function serving BOTH stages in one program — the falsification
+// gate of [STAGE-FALSIFY] item 3, and the file
+// `docs/specs/0035-StagedEffects.md` names as its measured result.
+//
+// The ML twin of `staged_shared.test.osp`, sharing its golden. [STAGE-DECL]
+// gives the ML surface the same stage axis — `static effect` declares one and
+// `handle static` discharges it — because the rewrite runs at the flavor
+// boundary, on the one canonical AST both surfaces lower to
+// ([STAGE-LOWER-ORDER-PHASE]). A stage that only one surface can spell would
+// put half the declaration surface out of reach of half the language.
+
+static effect Scale
+    (** Compile-time scale factor. Rewritten away; never reaches the runtime. *)
+    by : Unit => int
+
+effect Audit
+    (** Runtime note, dispatched through the handler stack as it always has been. *)
+    note : string => Unit
+
+(** The shared definition. No annotation names a stage, a row or a type. *)
+twice f x = f (f x)
+
+scaled n = n * perform Scale.by () ?: 0
+
+counted n =
+    perform Audit.note "n=${n}"
+    n + 1 ?: 0
+
+(** Static instantiation: the row is empty after discharge, so this call is
+    GPU-legal and leaves no handler registration behind ([STAGE-RESIDUE]). *)
+staticTotal =
+    handle static Scale
+        by => 3
+    in twice scaled 2
+
+mut trail = ""
+
+(** Dynamic instantiation of the SAME `twice`, in the same program. *)
+dynamicTotal =
+    handle Audit
+        note message =>
+            trail := "${trail}[${message}]"
+            resume ()
+    in twice counted 0
+
+test "one unannotated function serves both stages in one program" (\() => checkAll "stage polymorphism" [
+    staticTotal == 18,
+    dynamicTotal == 2,
+    trail == "[n=0][n=1]"
+])

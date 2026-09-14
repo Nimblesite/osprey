@@ -184,6 +184,7 @@ mod tests {
     use crate::model::build_model;
     use crate::raw::Profile;
     use crate::symbolize::SymFrame;
+    use crate::testkit::shows;
     use crate::testutil::{model_of, osp_frame, profile, sample, thread};
 
     /// 200 on-CPU samples on main (no low-sample note): 100 leaf on parse
@@ -278,8 +279,7 @@ mod tests {
             report.contains("\x1b[33m"),
             "warm row must be yellow: {report}"
         );
-        assert!(report.contains("\x1b[2m"), "cold row must be dim: {report}");
-        assert!(report.contains(RESET));
+        shows(&report, &["\x1b[2m", RESET]);
     }
 
     #[test]
@@ -300,17 +300,19 @@ mod tests {
     #[test]
     fn zero_oncpu_samples_report_full_uncertainty() {
         let report = render_report("fib.osp", "fib", &tiny_model(0), false);
-        assert!(report.contains("±100.0%"), "{report}");
-        assert!(report.contains("0 samples @ 1000Hz · 1 fiber"), "{report}");
+        shows(&report, &["±100.0%", "0 samples @ 1000Hz · 1 fiber"]);
     }
 
     #[test]
     fn footer_names_the_exports_and_viewers() {
         let report = render(false);
-        assert!(report.contains("profile: fib.speedscope.json · fib.cpuprofile · fib.folded"));
-        assert!(report.contains(
-            "view: https://speedscope.app (drag the file) or open fib.cpuprofile in VS Code"
-        ));
+        shows(
+            &report,
+            &[
+                "profile: fib.speedscope.json · fib.cpuprofile · fib.folded",
+                "view: https://speedscope.app (drag the file) or open fib.cpuprofile in VS Code",
+            ],
+        );
     }
 
     #[test]

@@ -1,0 +1,31 @@
+// [MULTI-HANDLE-MANY-LEXICAL] `many` relaxes the lexical `resume` rule of
+// [EFFECTS-RESUME] exactly as far as its ground extends: a lambda CONSUMED
+// before the arm returns may resume, because its continuation is still live
+// (that accepted shape is `tests/regressions/effects/staged_multiplicity`).
+// A lambda that ESCAPES the arm keeps the existing rejection — here it is
+// handed to a spawned fiber, so it runs after the arm has already returned and
+// its continuation is dead.
+//
+// TODAY the program is rejected twice: by the blanket [EFFECTS-RESUME] rule,
+// and because `many` has no re-entrant continuation to offer any arm. The
+// arm-naming wording [MULTI-HANDLE-MANY-LEXICAL] specifies arrives with phase 5
+// of docs/plans/0028-resumption-multiplicity.md, which needs the multi-shot
+// runtime of plan 0016; until then the blanket rule is not misleading, because
+// no `many` arm compiles at all. This golden records what the compiler says,
+// so the wording cannot change silently when that phase lands.
+effect Choice {
+    many pick: fn(int) -> int
+}
+
+fn search(seed) = perform Choice.pick(seed)
+
+fn main() = {
+    let picked = handle Choice
+        pick option => {
+            let escaping = |n| => resume((option + n) ?: option)
+            let later = spawn escaping(1)
+            option
+        }
+    in search(1)
+    print("picked=${picked}")
+}

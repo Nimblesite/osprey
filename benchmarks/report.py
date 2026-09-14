@@ -9,7 +9,7 @@ exports in <out>/hf/<case>.json (per case/lang: timing), then renders:
   <out>/results.json  — same data, structured, for tracking over time
   website/src/_includes/benchmarks-tables.html — the same tables as a fragment,
       "baked" into the website so the /benchmarks page renders without the
-      (gitignored) results present.
+      per-case hyperfine exports present.
   benchmarks/README.md — measured binarytrees figures between generated markers.
 
 The tables (CPU time, peak memory) use the website's own `.comparison-table`
@@ -189,7 +189,7 @@ def measured_peak(cell: Cell) -> str:
     return f"{mb / 1000:.3g} GB" if mb >= 1000 else f"{mb:.3g} MB"
 
 
-def update_readme(data: Data) -> Path:
+def update_readme(data: Data) -> Optional[Path]:
     """Refresh measured prose without making the whole hand-written README generated."""
     path = REPO / "benchmarks" / "README.md"
     start = "> <!-- binarytrees-results:start -->"
@@ -198,7 +198,9 @@ def update_readme(data: Data) -> Path:
     _, found, after = after.partition(end)
     if not marked or not found:
         raise ValueError("benchmarks README is missing binarytrees result markers")
-    cells = data["binarytrees"]
+    cells = data.get("binarytrees", {})
+    if not {"osprey", "osprey-arc", "osprey-gc"} <= cells.keys():
+        return None  # filtered run: nothing measured for the prose figures
     default = measured_peak(cells["osprey"])
     arc = measured_peak(cells["osprey-arc"])
     gc = measured_peak(cells["osprey-gc"])
@@ -222,7 +224,7 @@ def render(out: Path) -> None:
     baked = bake_website_fragment(fragment)
     readme = update_readme(data)
     print(f"wrote {out / 'results.html'}" + (f" and baked {baked}" if baked else "")
-          + f" and refreshed {readme}")
+          + (f" and refreshed {readme}" if readme else " (README figures unchanged)"))
 
 
 STANDALONE = """<!doctype html>

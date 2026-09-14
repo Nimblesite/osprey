@@ -236,9 +236,10 @@ The corrections below have been applied to
 `docs/specs/0034-GPUComputation.md`; they are kept as the record of why.
 
 - **`[GPU-KERNEL-FORM]`'s first implementation gap was stale.** A block-bodied
-  lambda with an internal `let` works as a kernel and always did —
-  `gpuMap(fn(x) => { let y = t * x  y + t })` over `[1.0, 2.0, 3.0]` prints
-  the correct `sum=18.0 g0=4.0`. The bullet is deleted; the ML twin
+  lambda with an internal `let` works as a kernel and always did — a `gpuMap`
+  lambda whose block binds `let y = t * x` and returns `y + t`, over
+  `[1.0, 2.0, 3.0]`, prints the correct `sum=18.0 g0=4.0`. The bullet is
+  deleted; the ML twin
   limitation replaces it.
 - **`[GPU-KERNEL-FORM]`'s second gap is now implemented, not scoped.** A
   recursive unannotated helper is monomorphised per instantiation
@@ -490,8 +491,10 @@ Landmines previous sessions hit:
 - A builtin passed by name as a callback needs a value form in
   `expr.rs::call_builtin_with_values`, or it emits `call @name` to a symbol
   that is never defined and fails at *link* time with no source location.
-- A statement followed by a line starting with `(` parses as a **call**:
-  `let d = 5` then `(d + 1) ?: d` becomes `5(d + 1)`. Write `d + 1 ?: d`.
+- A line opening with `(` starts a NEW statement, so `let d = 5` followed by
+  `(d + 1) ?: d` no longer misparses as `5(d + 1)`
+  ([LEX-STATEMENT-BREAK](../specs/0002-LexicalStructure.md#the-rule-lex-statement-break)).
+  A callee and its argument list must still share one line.
 - Debug builds emit **no `DISubprogram`** for a lifted kernel, matching
   `closure::emit_closure_fn`. Stepping into a kernel under lldb will not work
   until [plan 0012](0012-osprey-debugger.md) closes the lambda-debug-info gap.
@@ -543,8 +546,9 @@ Landmines previous sessions hit:
       `toFloat` and `abs` to value forms at the callback site.
 - [ ] Kernel-form gaps (plan 0002). Re-measured; the two halves differ:
       - Block-bodied lambda kernels **already work in Default** —
-        `gpuMap(fn(x) => { let d = x * 2 ?: 0  d + 1 ?: d })` and `|x| => { … }`
-        both run. Only the brace-only `fn(x) { … }` (no `=>`) is rejected.
+        a `gpuMap` lambda whose block binds `let d = x * 2 ?: 0` and returns
+        `d + 1 ?: d`, and `|x| => { … }`, both run. Only the brace-only
+        `fn(x) { … }` (no `=>`) is rejected.
         The blocker is the ML parser, which has no multi-statement lambda body,
         so the construct cannot enter the corpus without drifting
         `cross_flavor_ir_equiv`. Next step is ML-parser support, not Default
