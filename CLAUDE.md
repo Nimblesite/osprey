@@ -46,6 +46,7 @@ Silently-wrong output is worse than a crash: a panic is found in seconds; a sile
 ## Hard rules
 
 - ⚠️ **Never ask the user questions.** Use your judgement, record assumptions, act autonomously.
+- ⚠️ **Answer punctually, not at length.** A few sentences or a short list; no essays, no recaps, no restating the question. Mark the one point the user must not miss with an emoji — nothing else gets one. ⚠️
 - ⚠️ **Zero duplicate code.** Edit in place, never create parallel versions. Use deslop: `find-similar` before writing code, `top-offenders` after modifying it.
 - ⚠️ **No git** — and never stamp yourself as co-author — unless explicitly requested.
 - ⚠️ **Token economics.** Check file size before reading, Grep over Read, smallest diff that solves the problem. Delete dead code, unused imports, stale comments.
