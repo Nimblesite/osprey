@@ -57,6 +57,16 @@ fn recognised_heading(line: &str) -> Option<String> {
     }
 }
 
+/// What either flavor reports for a `//!` that sits where no scope can hold it.
+/// `outer` is that flavor's own spelling of a declaration doc — `///` or
+/// `(** … *)` — which is what the author most likely meant ([DOC-SIGIL-INNER]).
+pub(crate) fn misplaced_inner_doc(outer: &str) -> String {
+    format!(
+        "`//!` documents the enclosing file, namespace or module; write it as the \
+         first item of one, or use `{outer}` to document the declaration that follows"
+    )
+}
+
 /// Lower one recognised section's content into the matching field.
 fn apply_section(doc: &mut DocComment, heading: &str, content: &str) {
     let trimmed = content.trim();
@@ -64,7 +74,11 @@ fn apply_section(doc: &mut DocComment, heading: &str, content: &str) {
         "parameters" => doc.params.extend(parse_bullets(content)),
         "returns" => doc.returns = non_empty(trimmed),
         "raises" => doc.raises.extend(parse_bullets(content)),
-        "examples" => doc.examples.extend(parse_examples(content)),
+        "examples" => {
+            let (examples, problems) = parse_examples(content);
+            doc.examples.extend(examples);
+            doc.example_problems.extend(problems);
+        }
         "see also" => doc.see_also.extend(parse_see_also(trimmed)),
         "since" => doc.since = non_empty(trimmed),
         "deprecated" => doc.deprecated = non_empty(trimmed).or(Some(String::new())),
@@ -86,38 +100,74 @@ fn parse_bullets(content: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-/// Extract ```osprey``` fenced blocks, each optionally followed by an
-/// ```output``` fence, into [`DocExample`]s. Implements [DOC-DOCTEST-HARNESS].
-fn parse_examples(content: &str) -> Vec<DocExample> {
-    let mut out = Vec::new();
+/// The labels an example fence may carry. The spec spells an ML snippet
+/// ```` ```osprey-ml ````, and ML authors copy that, or the `ospml` extension.
+/// The label never selects the flavor: an example compiles in the flavor of the
+/// file that documents it.
+const EXAMPLE_LABELS: [&str; 3] = ["osprey", "osprey-ml", "ospml"];
+
+/// What an `output` fence with no example before it is reported as.
+const ORPHANED_OUTPUT: &str = "an `output` fence follows no example, so its expected output \
+    is never compared; put it directly after the ```osprey fence it belongs to";
+
+/// Extract the example fences, each optionally followed by an ```output```
+/// fence, into [`DocExample`]s. Implements [DOC-DOCTEST-HARNESS].
+///
+/// Every fence's body is consumed whole, whatever its label, so a line inside
+/// one is never mistaken for the opener of another. An `output` fence reached
+/// on its own belongs to no example: it is returned as a problem rather than
+/// dropped, because dropping it is how a wrong expectation used to pass.
+fn parse_examples(content: &str) -> (Vec<DocExample>, Vec<String>) {
+    let mut examples = Vec::new();
+    let mut problems = Vec::new();
     let mut lines = content.lines().peekable();
     while let Some(line) = lines.next() {
-        if !is_fence(line, "osprey") {
-            continue;
+        match fence_label(line) {
+            Some(label) if EXAMPLE_LABELS.contains(&label) => examples.push(example(&mut lines)),
+            Some(label) => {
+                let _ = collect_fence(&mut lines);
+                if label == "output" {
+                    problems.push(ORPHANED_OUTPUT.to_owned());
+                }
+            }
+            None => {}
         }
-        let code = collect_fence(&mut lines);
-        let expected_output = if lines.peek().is_some_and(|l| is_fence(l, "output")) {
-            let _ = lines.next();
-            Some(collect_fence(&mut lines))
-        } else {
-            None
-        };
-        let run = expected_output.is_some();
-        out.push(DocExample {
-            code,
-            expected_output,
-            run,
-        });
     }
-    out
+    (examples, problems)
 }
 
-/// True when `line` opens a fenced block with the given info string (```osprey
-/// / ```output), tolerant of leading indentation.
-fn is_fence(line: &str, info: &str) -> bool {
-    let t = line.trim_start();
-    t.strip_prefix("```")
-        .is_some_and(|rest| rest.trim() == info)
+/// One example whose opening fence was just read, with the output fence that
+/// belongs to it.
+fn example<'a, I: Iterator<Item = &'a str>>(lines: &mut std::iter::Peekable<I>) -> DocExample {
+    let code = collect_fence(lines);
+    let expected_output = output_after(lines);
+    DocExample {
+        run: expected_output.is_some(),
+        code,
+        expected_output,
+    }
+}
+
+/// The `output` fence directly after an example. Blank lines may separate the
+/// two — that is ordinary Markdown — but nothing else may: prose in between
+/// leaves the example compile-only and the fence an orphan the caller reports.
+fn output_after<'a, I: Iterator<Item = &'a str>>(
+    lines: &mut std::iter::Peekable<I>,
+) -> Option<String> {
+    while lines.peek().is_some_and(|line| line.trim().is_empty()) {
+        let _ = lines.next();
+    }
+    if lines.peek().and_then(|line| fence_label(line)) != Some("output") {
+        return None;
+    }
+    let _ = lines.next();
+    Some(collect_fence(lines))
+}
+
+/// The info string of a line that opens a fenced block, tolerant of leading
+/// indentation; `None` for any other line.
+fn fence_label(line: &str) -> Option<&str> {
+    line.trim_start().strip_prefix("```").map(str::trim)
 }
 
 /// Collect fenced-block lines until the closing fence; the iterator is left
@@ -332,6 +382,54 @@ mod tests {
         assert_eq!(d.examples[0].code, "print(double(21))");
         assert_eq!(d.examples[0].expected_output.as_deref(), Some("42"));
         assert!(d.examples[0].run);
+    }
+
+    #[test]
+    fn ml_labelled_fences_are_examples_like_osprey_ones() {
+        // [DOC-DOCTEST-HARNESS] the spec spells an ML snippet ```osprey-ml, so
+        // that label and the `ospml` extension both open an example.
+        for label in ["osprey-ml", "ospml"] {
+            let raw = format!(
+                "Doubles.\n\n# Examples\n```{label}\nprint (double 2)\n```\n```output\n4\n```"
+            );
+            let d = parse_doc(&raw, DocScope::Outer);
+            assert_eq!(d.examples.len(), 1, "{label}");
+            assert_eq!(
+                d.examples[0].expected_output.as_deref(),
+                Some("4"),
+                "{label}"
+            );
+            assert!(d.examples[0].run, "{label}");
+            assert!(d.example_problems.is_empty(), "{label}");
+        }
+    }
+
+    #[test]
+    fn blank_lines_may_separate_an_example_from_its_output() {
+        // [DOC-DOCTEST-HARNESS] a blank line before ```output is ordinary
+        // Markdown; it must not quietly make the example compile-only.
+        let raw = "Adds.\n\n# Examples\n```osprey\nprint(add(1, 2))\n```\n\n\n```output\n3\n```";
+        let d = parse_doc(raw, DocScope::Outer);
+        assert_eq!(d.examples.len(), 1);
+        assert_eq!(d.examples[0].expected_output.as_deref(), Some("3"));
+        assert!(d.examples[0].run);
+        assert!(d.example_problems.is_empty());
+    }
+
+    #[test]
+    fn an_output_fence_no_example_precedes_is_reported_not_dropped() {
+        // [DOC-DOCTEST-HARNESS] an unlabelled fence, or prose, before
+        // ```output leaves that output belonging to nothing. Dropping it is how
+        // a wrong expectation passed the gate.
+        for raw in [
+            "Adds.\n\n# Examples\n```\nprint(add(1, 2))\n```\n```output\n3\n```",
+            "Adds.\n\n# Examples\n```osprey\nprint(add(1, 2))\n```\nIt prints:\n```output\n3\n```",
+        ] {
+            let d = parse_doc(raw, DocScope::Outer);
+            assert_eq!(d.example_problems.len(), 1, "{raw}");
+            assert!(d.example_problems[0].contains("`output` fence"), "{raw}");
+            assert!(d.examples.iter().all(|example| !example.run), "{raw}");
+        }
     }
 
     #[test]

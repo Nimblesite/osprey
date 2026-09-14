@@ -32,6 +32,9 @@ jobs:
           filters: |
             code:
               - '!website/**'
+              # Embedded into the `osprey` binary by the HTML docs exporter;
+              # see the matching filter in ci.yml.
+              - 'website/src/js/osprey-grammar.mjs'
 
   windows-core:
     # IMPORTANT: this name is a required status check on `main` (ruleset 6154907).

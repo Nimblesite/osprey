@@ -75,7 +75,12 @@ module Ledger {
 
 `//!` written anywhere else documents nothing and is rejected. It is never
 treated as an ordinary `//` comment: a discarded documentation comment is
-indistinguishable from one that was never written.
+indistinguishable from one that was never written. Nor is any of it read as
+code — the text after the marker is comment text wherever the marker sits. Both
+flavors reject it with the same error at the position of the `//!`, naming the
+flavor's own outer sigil as the alternative: `` `//!` documents the enclosing
+file, namespace or module; write it as the first item of one, or use `///` to
+document the declaration that follows `` (`(** … *)` in ML).
 
 ## Body markup `[DOC-BODY-MARKDOWN]`
 
@@ -111,10 +116,17 @@ Unrecognized Markdown remains text in its current region.
 
 ## Example extraction `[DOC-DOCTEST-HARNESS]`
 
-Inside a recognized examples section, each fenced block labeled `osprey`
-becomes a `DocExample`. An immediately following fence labeled `output` supplies
-`expected_output` and sets `run` to `true`; without one, `expected_output` is
-absent and `run` is `false`.
+Inside a recognized examples section, each fenced block labeled `osprey`,
+`osprey-ml` or `ospml` becomes a `DocExample`. The label never selects the
+flavor: an example compiles in the flavor of the file that documents it. The next
+fence labeled `output`, separated from the example by nothing but blank lines,
+supplies `expected_output` and sets `run` to `true`; without one,
+`expected_output` is absent and `run` is `false`.
+
+An `output` fence that no example precedes — one after an unlabelled fence, or
+after prose — compares nothing. It is recorded as a problem with the
+documentation rather than dropped, and `--doctests` fails on it, naming the
+declaration: an expected output that is never checked must not read as a pass.
 
 `osprey <file-or-project> --doctests` validates the original sources, then checks
 each example independently using the owning file's resolved flavor. A project
@@ -130,7 +142,8 @@ through the ordinary native or `wasm32` backend, must exit successfully, and
 must produce the exact bytes in the output fence plus its final newline. An
 empty output fence expects no stdout bytes. Spaces and blank lines are
 significant. A failure names the source, declaration, and example ordinal;
-the command exits unsuccessfully if any example fails.
+the command exits unsuccessfully if any example fails or any examples section
+holds an orphaned `output` fence.
 
 Native examples support `--memory=default|gc|arc`; ARC execution additionally
 requires exactly one zero-live-object exit sentinel. `wasm32` uses the default
@@ -139,7 +152,8 @@ Each runnable example has a 30-second execution limit, configurable through a
 positive `OSPREY_DOCTEST_TIMEOUT_MS`. Compilation is outside this execution limit.
 
 The existing corpus harness runs documentation examples in its native allocator
-passes and its WASM pass. It rejects malformed result summaries and output
+passes and its WASM pass. It visits every file holding an example fence under any
+accepted label or an `output` fence, rejects malformed result summaries and output
 drift, and requires at least six successful examples across the two source flavors.
 
 ## Declaration attachment `[DOC-ATTACH]`
@@ -272,6 +286,14 @@ the export apply, and then only if exactly one declaration answers to it. A name
 two unrelated declarations both answer to resolves to neither and stays the text
 the author wrote: sending a reader to the wrong declaration is worse than not
 linking.
+
+Highlighting reuses the website's own grammar module rather than a copy that
+would drift. A page's JavaScript is one classic script, where a module keyword is
+a syntax error that would take search and navigation down with highlighting, so
+the export checks that module's shape and fails, naming the file, when it holds
+anything but the single expected `export const ospreyGrammar`. Because that file
+is compiled into the binary, continuous integration classifies it as compiler
+code, not website content.
 
 Search does not fetch. The index is loaded as a script, because a page opened
 directly from the filesystem has an opaque origin where fetching a sibling file

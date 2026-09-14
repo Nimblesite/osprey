@@ -27,6 +27,9 @@ repository = "https://github.com/Nimblesite/osprey"
 [workspace.dependencies]
 tree-sitter = "0.24"
 tree-sitter-language = "0.1"
+# Drives tree-sitter query matches in tests; already in the lockfile as a
+# dependency of `tree-sitter` itself.
+streaming-iterator = "0.1"
 osprey-ast = { path = "crates/osprey-ast" }
 osprey-syntax = { path = "crates/osprey-syntax" }
 osprey-project = { path = "crates/osprey-project" }

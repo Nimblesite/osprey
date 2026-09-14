@@ -286,3 +286,71 @@ fn doctests_run_with_each_native_memory_backend() {
         assert_eq!(result.stdout, "doctests: 2 passed, 0 failed\n");
     }
 }
+
+/// The spec labels ML snippets ```` ```osprey-ml ````, so an ML author copies
+/// that label. The harness used to recognise only ```` ```osprey ````, dropped
+/// the example unseen and reported `0 passed, 0 failed` with exit 0 — a wrong
+/// expectation (`5` for `double 2`) that was never executed passed the gate.
+#[test]
+fn doctests_run_examples_labelled_in_the_ml_spelling() {
+    let root = temp_dir("documentation_ml_label");
+    for label in ["osprey-ml", "ospml"] {
+        let path = root.join(format!("{}.ospml", label.replace('-', "_")));
+        let source = format!(
+            "(** Doubles its argument.\n\n# Examples\n\n```{label}\nprint \"${{double 2}}\"\n```\n```output\n5\n```\n*)\ndouble x = x * 2 ?: 0\n"
+        );
+        std::fs::write(&path, source).expect("write ML-labelled doc fixture");
+        let result = run_file(&path, &["--doctests"]);
+        assert_eq!(
+            result.code,
+            Some(1),
+            "a ```{label} example with the wrong output must fail: {} {}",
+            result.stdout,
+            result.stderr
+        );
+        assert_eq!(result.stdout, "doctests: 0 passed, 1 failed\n", "{label}");
+    }
+}
+
+/// A blank line between the example and its output fence is ordinary Markdown.
+/// It used to turn the example into compile-only without a word, so the
+/// expected `9` for `add(1, 2)` was never compared and the gate said `1 passed`.
+#[test]
+fn doctests_compare_output_separated_from_its_example_by_blank_lines() {
+    let source = "/// Adds.\n/// # Examples\n/// ```osprey\n/// print(\"${add(1, 2)}\")\n/// ```\n///\n/// ```output\n/// 9\n/// ```\nfn add(a, b) = a + b ?: 0\n";
+    let result = run_file(
+        &temp_osp("documentation_blank_before_output", source),
+        &["--doctests"],
+    );
+    assert_eq!(result.code, Some(1), "{} {}", result.stdout, result.stderr);
+    assert!(
+        result.stderr.contains("stdout mismatch"),
+        "{}",
+        result.stderr
+    );
+    assert_eq!(result.stdout, "doctests: 0 passed, 1 failed\n");
+}
+
+/// An `output` fence that no example precedes checks nothing. Whatever the
+/// author meant — a missing label, prose between the two — it must stop the
+/// gate and name the declaration, never pass by saying nothing.
+#[test]
+fn doctests_reject_an_output_fence_with_no_example_before_it() {
+    let source = "/// Adds.\n/// # Examples\n/// ```\n/// print(\"${add(1, 2)}\")\n/// ```\n/// ```output\n/// 3\n/// ```\nfn add(a, b) = a + b ?: 0\n";
+    let result = run_file(
+        &temp_osp("documentation_orphan_output", source),
+        &["--doctests"],
+    );
+    assert_eq!(result.code, Some(1), "{} {}", result.stdout, result.stderr);
+    assert!(
+        result.stderr.contains("add"),
+        "must name the declaration: {}",
+        result.stderr
+    );
+    assert!(
+        result.stderr.contains("`output` fence"),
+        "must say what is wrong: {}",
+        result.stderr
+    );
+    assert_eq!(result.stdout, "doctests: 0 passed, 1 failed\n");
+}

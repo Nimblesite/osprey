@@ -19,6 +19,7 @@ tree-sitter-language = { workspace = true }
 
 [dev-dependencies]
 tree-sitter = { workspace = true }
+streaming-iterator = { workspace = true }
 
 [build-dependencies]
 cc = "1"

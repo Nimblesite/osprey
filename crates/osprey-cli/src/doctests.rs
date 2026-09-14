@@ -29,25 +29,12 @@ pub(crate) fn run(cli: &Cli) -> ExitCode {
 }
 
 fn run_sources(cli: &Cli, sources: &SourceSet) -> ExitCode {
-    let mut passed = 0;
-    let mut failed = 0;
+    let (mut passed, mut failed) = (0, 0);
     for (source_index, source) in sources.sources.iter().enumerate() {
         for entry in collect(&source.program) {
-            for (index, example) in entry.examples().enumerate() {
-                let name = format!(
-                    "{}: {} example {}",
-                    source.path.display(),
-                    entry.qualified_name,
-                    index + 1
-                );
-                match run_example(cli, sources, source_index, &entry, example, &name) {
-                    Ok(()) => passed += 1,
-                    Err(error) => {
-                        eprintln!("{name}: {error}");
-                        failed += 1;
-                    }
-                }
-            }
+            let (ok, bad) = check_entry(cli, sources, source_index, &entry);
+            passed += ok;
+            failed += bad;
         }
     }
     println!("doctests: {passed} passed, {failed} failed");
@@ -56,6 +43,38 @@ fn run_sources(cli: &Cli, sources: &SourceSet) -> ExitCode {
     } else {
         ExitCode::FAILURE
     }
+}
+
+/// Run one declaration's examples, and count as a failure everything in its
+/// `# Examples` section that would otherwise check nothing: an expectation
+/// nobody compares must never read as a pass. Returns `(passed, failed)`.
+fn check_entry(
+    cli: &Cli,
+    sources: &SourceSet,
+    source_index: usize,
+    entry: &DocEntry,
+) -> (usize, usize) {
+    let path = sources
+        .sources
+        .get(source_index)
+        .map_or_else(String::new, |source| source.path.display().to_string());
+    let mut failed = 0;
+    for problem in entry.example_problems() {
+        eprintln!("{path}: {}: {problem}", entry.qualified_name);
+        failed += 1;
+    }
+    let mut passed = 0;
+    for (index, example) in entry.examples().enumerate() {
+        let name = format!("{path}: {} example {}", entry.qualified_name, index + 1);
+        match run_example(cli, sources, source_index, entry, example, &name) {
+            Ok(()) => passed += 1,
+            Err(error) => {
+                eprintln!("{name}: {error}");
+                failed += 1;
+            }
+        }
+    }
+    (passed, failed)
 }
 
 fn run_example(

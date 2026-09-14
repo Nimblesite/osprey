@@ -318,13 +318,9 @@ impl ItemLower {
             // `take_inner_doc` before lowering, so one arriving here sits where
             // nothing encloses it. Reporting beats dropping it: a silently
             // discarded doc reads exactly like one that was never written.
-            MlItem::InnerDoc { pos, .. } => lower_error(
-                "`//!` documents the enclosing file, namespace or module; \
-                 write it as the first item of one, or use `(** … *)` to \
-                 document the declaration that follows"
-                    .to_owned(),
-                pos,
-            ),
+            MlItem::InnerDoc { pos, .. } => {
+                lower_error(crate::docparse::misplaced_inner_doc("(** … *)"), pos);
+            }
             item @ MlItem::ValueSignature { .. } => self.lower_signature(item),
             item @ MlItem::Binding { .. } => self.lower_binding_item(item),
             item @ (MlItem::Assign { .. }

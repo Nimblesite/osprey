@@ -10,7 +10,9 @@ run_corpus_doctests() {
     prepare_doctest_wasi_host || return 1
   fi
   for file in "${FILES[@]}"; do
-    grep -Fq '```osprey' "$file" || continue
+    # Every accepted example label, and `output` on its own: a file whose only
+    # fence is an orphaned output must still reach --doctests to be rejected.
+    grep -Eq '```(osprey|ospml|output)' "$file" || continue
     if summary=$("$BIN" "$file" --doctests "--memory=$MEMORY" "--target=$TARGET"); then
       if [[ $summary =~ '^doctests: ([0-9]+) passed, 0 failed$' ]]; then
         count=$((count + match[1]))

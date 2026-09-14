@@ -22,7 +22,7 @@ pub(super) fn document(page: &Page, site: &Site, body: &str) -> String {
         heading = if page.slug == "index" { String::new() } else { heading(page, body) },
         summary = summary(page),
         crumb = crumb(page, site, &root),
-        script = scripts(&root),
+        script = scripts(&site.grammar, &root),
         class = if page.slug == "index" { "overview" } else { "reference" },
     )
 }
@@ -59,13 +59,10 @@ fn ancestors(page: &Page, site: &Site, root: &str) -> Vec<String> {
         .collect()
 }
 
-/// Reuse the website's language grammar; all highlighting still runs offline.
-fn scripts(root: &str) -> String {
-    let grammar = include_str!("../../../../../website/src/js/osprey-grammar.mjs").replacen(
-        "export const",
-        "const",
-        1,
-    );
+/// The page's one inline script: the website's grammar, already checked and
+/// made classic ([`super::grammar`]), then highlighting and behaviour. All of it
+/// runs offline.
+fn scripts(grammar: &str, root: &str) -> String {
     format!(
         "{grammar}\n{}\n{}",
         include_str!("highlight.js"),

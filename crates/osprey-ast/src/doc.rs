@@ -51,6 +51,10 @@ pub struct DocComment {
     pub raises: Vec<(String, String)>,
     /// `# Examples` — extracted ```osprey``` fences with optional output.
     pub examples: Vec<DocExample>,
+    /// What the `# Examples` section holds that checks nothing: an `output`
+    /// fence with no example before it. The doctest harness fails on each one,
+    /// because an expectation that is never compared must not read as a pass.
+    pub example_problems: Vec<String>,
     /// `# See also` / `@see` — `[Symbol]` references and external links.
     pub see_also: Vec<String>,
     /// `# Since` / `@since` — version introduced.
@@ -75,6 +79,7 @@ impl DocComment {
             returns: None,
             raises: Vec::new(),
             examples: Vec::new(),
+            example_problems: Vec::new(),
             see_also: Vec::new(),
             since: None,
             deprecated: None,

@@ -13,6 +13,7 @@
 //! output directory survives.
 
 mod anchors;
+mod grammar;
 mod landing;
 mod layout;
 mod navigation;
@@ -39,6 +40,8 @@ struct Site {
     nav: String,
     links: String,
     symbols: Symbols,
+    /// The syntax grammar as a classic script, checked once per export.
+    grammar: String,
 }
 
 /// Where documentation symbol links point ([DOC-LINK]).
@@ -87,6 +90,7 @@ pub(super) fn generate(
         nav: navigation::groups(pages),
         links: stylesheet_links(css),
         symbols: symbol_targets(pages),
+        grammar: grammar::script().map_err(io::Error::other)?,
     };
     super::output::publish(directory, &files(pages, theme, css, &site), MANIFEST)
 }

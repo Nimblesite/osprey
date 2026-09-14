@@ -19,10 +19,23 @@ pub(crate) struct DocEntry {
 
 impl DocEntry {
     pub(crate) fn examples(&self) -> impl Iterator<Item = &DocExample> {
-        self.doc
-            .examples
+        self.both_docs(|doc| &doc.examples)
+    }
+
+    /// Everything in either doc's `# Examples` section that checks nothing.
+    pub(crate) fn example_problems(&self) -> impl Iterator<Item = &String> {
+        self.both_docs(|doc| &doc.example_problems)
+    }
+
+    /// One list read from the declaration's doc and then from its inner doc: a
+    /// scope may be documented from outside and from inside at once.
+    fn both_docs<'a, T: 'a>(
+        &'a self,
+        field: impl Fn(&'a DocComment) -> &'a Vec<T> + Copy,
+    ) -> impl Iterator<Item = &'a T> {
+        field(&self.doc)
             .iter()
-            .chain(self.inner_doc.iter().flat_map(|doc| &doc.examples))
+            .chain(self.inner_doc.iter().flat_map(field))
     }
 
     pub(crate) fn markdown(&self) -> String {

@@ -1,0 +1,14 @@
+// Default-flavor must-reject. Pins [DOC-SIGIL-INNER] (docs/specs/0026).
+//
+// A `//!` where no scope can hold it used to lex as an empty `//` comment, a
+// `!` operator, and the rest of the line as CODE. At the end of a block that
+// code became the block's value: `check(true)` below printed `false` and the
+// program exited 0, its result silently changed by a comment. It must be
+// rejected, with the error that names the `//!` rather than the words after it.
+
+fn check(ready) = {
+    print("checking")
+    //! ready
+}
+
+print("${check(true)}")

@@ -80,6 +80,11 @@ jobs:
               - 'website/**'
             code:
               - '!website/**'
+              # The compiler embeds this one website file into the `osprey`
+              # binary (the HTML docs exporter's syntax highlighter). A change
+              # to it changes shipped bytes, so it is code, and every compiler
+              # job must run for it.
+              - 'website/src/js/osprey-grammar.mjs'
 
       # Branch protection lives in GitHub's settings, not in this tree, so it
       # drifts silently — both rulesets were once found `enforcement: disabled`
