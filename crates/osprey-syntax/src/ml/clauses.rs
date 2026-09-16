@@ -16,7 +16,7 @@ use osprey_ast::Position;
 
 use crate::SyntaxError;
 
-use super::cst::{MlArm, MlExpr, MlItem, MlParam, MlPattern};
+use super::cst::{MlArm, MlBinder, MlExpr, MlItem, MlParam, MlPattern};
 
 /// The surface spelling of an ignored head column ([PARAM-WILDCARD]).
 const WILDCARD: &str = "_";
@@ -232,6 +232,22 @@ fn merge_run(clauses: Vec<Clause>, column: usize) -> Option<MlItem> {
         .first()
         .map(|c| (c.name.clone(), c.pos, c.uncurried, c.params.len()))?;
     let names: Vec<String> = (0..arity).map(|c| column_name(&clauses, c)).collect();
+    let params = names
+        .iter()
+        .enumerate()
+        .map(|(index, name)| {
+            let pos = clauses
+                .iter()
+                .find_map(|clause| match clause.params.get(index) {
+                    Some(MlParam::Named(binder)) if &binder.name == name => binder.pos,
+                    _ => None,
+                });
+            MlParam::Named(MlBinder {
+                name: name.clone(),
+                pos,
+            })
+        })
+        .collect();
     let scrutinee = column_name(&clauses, column);
     let arms = clauses
         .into_iter()
@@ -240,7 +256,7 @@ fn merge_run(clauses: Vec<Clause>, column: usize) -> Option<MlItem> {
     Some(MlItem::Binding {
         mutable: false,
         name,
-        params: names.into_iter().map(MlParam::Named).collect(),
+        params,
         uncurried,
         body: MlExpr::Match {
             scrutinee: Box::new(MlExpr::Ident(scrutinee)),
@@ -258,7 +274,7 @@ fn column_name(clauses: &[Clause], column: usize) -> String {
     clauses
         .iter()
         .find_map(|c| match c.params.get(column) {
-            Some(MlParam::Named(name)) if name != WILDCARD => Some(name.clone()),
+            Some(MlParam::Named(name)) if name.name != WILDCARD => Some(name.name.clone()),
             _ => None,
         })
         .unwrap_or_else(|| osprey_ast::clause_param_name(column))
@@ -278,7 +294,7 @@ fn clause_arm(clause: Clause, column: usize, names: &[String]) -> MlArm {
         .collect();
     let pattern = match clause.params.into_iter().nth(column) {
         Some(MlParam::Pattern(pattern)) => pattern,
-        Some(MlParam::Named(name)) if name != WILDCARD => MlPattern::Bind(name),
+        Some(MlParam::Named(name)) if name.name != WILDCARD => MlPattern::Bind(name),
         _ => MlPattern::Wildcard,
     };
     MlArm {
@@ -300,16 +316,16 @@ fn rename(
         return None;
     };
     let merged = names.get(c)?;
-    if c == column || name == WILDCARD || name == merged {
+    if c == column || name.name == WILDCARD || &name.name == merged {
         return None;
     }
     Some(MlItem::Binding {
         mutable: false,
-        name: name.clone(),
+        name: name.name.clone(),
         params: Vec::new(),
         uncurried: false,
         body: MlExpr::Ident(merged.clone()),
-        pos,
+        pos: name.pos.unwrap_or(pos),
     })
 }
 

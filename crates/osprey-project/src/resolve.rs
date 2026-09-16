@@ -13,6 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 pub(crate) struct Resolution {
     pub program: Program,
     pub entry_prologue: Vec<Stmt>,
+    pub documentation_bindings: Vec<Stmt>,
     pub source_names: BTreeMap<String, String>,
     pub errors: Vec<ProjectError>,
 }
@@ -69,7 +70,7 @@ pub(crate) fn flatten(
     entry_source: usize,
     sources: &[SourceMetadata],
 ) -> Resolution {
-    let aliases = collect_aliases(contributions, graph);
+    let aliases = crate::type_rewrite::collect_aliases(contributions, graph);
     let mut resolver = Resolver {
         graph,
         scopes,
@@ -107,6 +108,7 @@ pub(crate) fn flatten(
 
 impl Resolver<'_> {
     fn finish(mut self) -> Resolution {
+        let documentation_bindings = self.documentation_bindings();
         if self.entry_main_count == 0 {
             self.program.extend(self.entry_prologue.clone());
         } else if self.entry_main_count == 1 {
@@ -122,11 +124,40 @@ impl Resolver<'_> {
         Resolution {
             program: Program {
                 statements: self.program,
+                // An assembled project is many files merged into one program;
+                // no single file's `//!` documents the whole of it.
+                doc: None,
             },
             entry_prologue: self.entry_prologue,
+            documentation_bindings,
             source_names: self.source_names,
             errors: self.errors,
         }
+    }
+
+    fn documentation_bindings(&mut self) -> Vec<Stmt> {
+        let constants: Vec<_> = self
+            .constant_cache
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect();
+        constants
+            .into_iter()
+            .filter_map(|(key, resolved)| {
+                let mut binding = self.graph.implementations.get(&key)?.clone();
+                if let Stmt::Let {
+                    name, value, ty, ..
+                } = &mut binding
+                {
+                    *name = self.link_name(&key, false);
+                    *value = resolved;
+                    *ty = None;
+                    Some(binding)
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     fn classify_constants(&mut self) {
@@ -384,88 +415,8 @@ impl Resolver<'_> {
     }
 }
 
-fn collect_aliases(
-    contributions: &[Contribution],
-    graph: &ProjectGraph,
-) -> BTreeMap<SymbolKey, AliasInfo> {
-    let mut aliases = BTreeMap::new();
-    for (index, contribution) in contributions.iter().enumerate() {
-        collect_alias_statements(
-            &contribution.statements,
-            contribution.namespace.label(),
-            &[],
-            contribution.source,
-            index,
-            graph,
-            &mut aliases,
-        );
-    }
-    aliases
-}
-
 pub(crate) fn symbol_key(context: &Context, name: &str) -> SymbolKey {
     let mut path = context.module.clone();
     path.push(name.to_string());
     SymbolKey::new(context.namespace.clone(), path)
-}
-
-fn collect_alias_statements(
-    statements: &[Stmt],
-    namespace: &str,
-    module: &[String],
-    source: usize,
-    contribution: usize,
-    graph: &ProjectGraph,
-    aliases: &mut BTreeMap<SymbolKey, AliasInfo>,
-) {
-    for statement in statements {
-        match statement {
-            Stmt::Type {
-                name,
-                type_params,
-                alias: Some(value),
-                ..
-            } => {
-                let mut path = module.to_vec();
-                path.push(name.clone());
-                let key = SymbolKey::new(namespace, path);
-                let opaque = graph
-                    .declarations
-                    .get(&key)
-                    .is_some_and(|declaration| declaration.opaque);
-                let _ = aliases.insert(
-                    key,
-                    AliasInfo {
-                        type_params: type_params
-                            .iter()
-                            .map(|parameter| parameter.name.clone())
-                            .collect(),
-                        value: value.clone(),
-                        opaque,
-                        owner: module.to_vec(),
-                        source,
-                        contribution,
-                    },
-                );
-            }
-            Stmt::Module { path, body, .. } => {
-                let mut nested = module.to_vec();
-                nested.extend_from_slice(&path.segments);
-                let declarations = body
-                    .iter()
-                    .map(|item| item.declaration.as_ref().clone())
-                    .collect::<Vec<_>>();
-                collect_alias_statements(
-                    &declarations,
-                    namespace,
-                    &nested,
-                    source,
-                    contribution,
-                    graph,
-                    aliases,
-                );
-            }
-            _ => {}
-        }
-    }
 }

@@ -160,6 +160,13 @@ pub struct AssembledProject {
     pub sources: Vec<SourceMetadata>,
     /// Source-level qualified name for each deterministic internal linkage name.
     pub source_name_by_mangled: BTreeMap<String, String>,
+    /// Public source names after signature ascription and ancestor visibility.
+    /// The value is true for an opaque type whose representation must stay hidden.
+    /// Documentation consumes the same finalized surface as module resolution.
+    pub public_api: BTreeMap<String, bool>,
+    /// Resolved bindings removed by constant inlining, retained for API type inference.
+    /// These declarations are metadata and must never be emitted as runtime initializers.
+    pub documentation_bindings: Vec<osprey_ast::Stmt>,
 }
 
 impl AssembledProject {

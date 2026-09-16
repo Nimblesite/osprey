@@ -32,7 +32,7 @@ print "heavyEnergy=${heavyTotal}"
 
 (** 3. Non-destructive update in the hot path — a record-typed fold accumulator is
        born COUNT-1 times and all but the last die at once. *)
-bump (p, step) = p(mass = add (p.mass, 1))
+bump (p, _step) = p(mass = add (p.mass, 1))
 bumped = range 1 COUNT |> fold (forge 1) bump
 print "bumpedMass=${bumped.mass}"
 

@@ -59,6 +59,7 @@ fn container_forms() -> Vec<Expr> {
             fields: vec![field(r())],
         },
         Expr::Binary {
+            position: None,
             op: "+".into(),
             left: b(Expr::Integer(1)),
             right: b(r()),

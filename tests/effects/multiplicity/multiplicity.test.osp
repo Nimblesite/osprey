@@ -144,7 +144,7 @@ fn sharedAcrossMultiplicitiesCase() = {
         next => resume(3)
     in applyTwice(jitter, 10)
     let doubled = handle Email
-        deliver body => { audits = audits + 1 ?: audits }
+        deliver _body => { audits = audits + 1 ?: audits }
     in applyTwice(audited, 5)
     checkAll("one function serves both multiplicities", [
         noisy == 16,

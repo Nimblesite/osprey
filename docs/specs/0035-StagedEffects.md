@@ -3,10 +3,12 @@
 **Status: prototype landed, surface not final.** A working prototype
 implements [STAGE-DECL], [STAGE-HANDLE-STATIC], the four static-handler
 obligations, [STAGE-LOWER], [STAGE-RESIDUE] and [STAGE-SIGNALS-DIRTY] in the
-Default flavor (`crates/osprey-ast/src/stage.rs` and `lower_static.rs`), and the
+Default and ML flavors (`crates/osprey-ast/src/stage.rs` and `lower_static.rs`), and the
 [falsification gate](#falsification-gates--stage-falsify) has been run and
-passed. What remains — the ML surface, per-region rules, generic instantiation
-identity and everything device-side — is staged in
+passed. Both flavors also implement kernel regions and explicit instantiated
+signal identities. Remaining work includes the full staged-suite ML twin,
+rewrite hygiene and validation, dependencies derived from resolved rows,
+instantiation-keyed rewriting, and device dialects, tracked in
 [plan 0024](../plans/0024-staged-effects.md). This spec extends
 [0017-AlgebraicEffects.md](0017-AlgebraicEffects.md); it does not replace it,
 and every program that compiles today keeps its meaning
@@ -17,6 +19,10 @@ here rather than in a document of its own because
 [MULTI-STAGE](#relation-to-stage--multi-stage) makes the two axes one
 declaration answering two questions, and splitting them would put half of an
 effect's declaration surface in each of two files.
+
+Multiplicity declarations and static checks ship in both flavors. The runtime
+still rejects `abort` and `many` handlers; safe abandonment, reusable
+continuations, and tracing remain tracked in [plan 0028](../plans/0028-resumption-multiplicity.md).
 
 The key words `MUST`, `MUST NOT`, `SHOULD`, and `MAY` are to be interpreted as
 described by BCP 14 (RFC 2119 and RFC 8174) when they appear in capitals.

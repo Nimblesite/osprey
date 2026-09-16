@@ -36,7 +36,7 @@ effect Counter
 
 doubleValue x = match x * 2
     Success value => value
-    Error message => 0
+    Error _message => 0
 
 concatenateStrings (a, b) = a + b
 
@@ -58,7 +58,7 @@ processItems count = match count
             perform Counter.increment ()
             nextCount = match count - 1
                 Success value => value
-                Error message => 0
+                Error _message => 0
             processItems nextCount
 
 asyncProcessing taskId =
@@ -77,14 +77,14 @@ asyncProcessing taskId =
     perform Logger.log "Tasks completed: ${toString result1}, ${toString result2}"
     match result1 + result2
         Success value => value
-        Error message => 0
+        Error _message => 0
 
 calculation x =
     perform Logger.log "Starting calculation for: ${toString x}"
     current = perform State.get ()
     result = match x * 2 + current
         Success value => value
-        Error message => 0
+        Error _message => 0
     perform State.set result
     perform Logger.log "Calculation complete: ${toString x} -> ${toString result}"
     result
@@ -105,12 +105,12 @@ errorProne value = match value
                 perform Logger.log "Processing valid value: ${toString value}"
                 match value * 2
                     Success value => value
-                    Error message => 0
+                    Error _message => 0
 
 writeConfigFile (configName, data) =
     filename = match "config_" + configName + ".txt"
         Success value => value
-        Error message => "config.txt"
+        Error _message => "config.txt"
     perform Logger.log "Writing config file: ${filename}"
     perform FileIO.writeFile filename data
     perform Logger.log "Config file written successfully"
@@ -121,26 +121,26 @@ readAndProcessLogFile logFile =
     perform Logger.log "Processing log content, length: ${toString (length content)}"
     processedContent = match "PROCESSED: " + content + " [END]"
         Success value => value
-        Error message => content
+        Error _message => content
     processedContent
 
 generateReport (reportId, data) =
     reportFile = match "report_" + toString reportId + ".txt"
         Success value => value
-        Error message => "report.txt"
+        Error _message => "report.txt"
     currentState = perform State.get ()
     timestamp = match reportId * 1000
         Success value => value
-        Error message => 0
+        Error _message => 0
     reportContent = match "=== REPORT ${toString reportId} ===\n" + "State: ${toString currentState}\n" + "Data: ${data}\n" + "Timestamp: ${toString timestamp}\n" + "=== END REPORT ===\n"
         Success value => value
-        Error message => ""
+        Error _message => ""
 
     perform Logger.log "Generating report: ${reportFile}"
     perform FileIO.writeFile reportFile reportContent
     newState = match currentState + 1
         Success value => value
-        Error message => currentState
+        Error _message => currentState
     perform State.set newState
     perform Logger.log "Report generated and state updated"
 
@@ -169,8 +169,8 @@ in handle Logger
     log msg => print ("📝 LOG: " + msg)
     error msg => print ("❌ ERROR: " + msg)
 in handle FileIO
-    writeFile filename content => print ("💾 Writing file: " + filename)
-    readFile filename => "mock file content"
+    writeFile filename _content => print ("💾 Writing file: " + filename)
+    readFile _filename => "mock file content"
     deleteFile filename => print ("🗑️ Deleting file: " + filename)
 in handle IO
     read => "mock read data"

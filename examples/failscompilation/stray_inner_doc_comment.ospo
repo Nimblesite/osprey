@@ -1,0 +1,14 @@
+// Default-flavor must-reject. Pins [DOC-SIGIL-INNER] (docs/specs/0026).
+//
+// `//!` documents the scope that ENCLOSES it — a file, a namespace body or a
+// module body — so it is only legal as the first thing in one. Written after a
+// declaration it encloses nothing, and it must be REJECTED rather than lexed as
+// an ordinary `//` comment: a silently-discarded doc comment reads exactly like
+// documentation that was never written. An ordinary `//` line comment in the
+// same position stays trivia; only the `//!` spelling is reserved.
+
+let answer = 42
+
+//! This documents nothing: no scope opens here.
+
+print("${answer}")

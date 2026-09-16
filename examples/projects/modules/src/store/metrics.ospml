@@ -31,7 +31,7 @@ state Metrics : MetricsApi
     // allowed to read and write `served`.
     track body =
         handle MetricsFx
-            hit path =>
+            hit _path =>
                 served := (served + 1) ?: served
                 served
             total => served

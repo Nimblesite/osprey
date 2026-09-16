@@ -90,7 +90,9 @@ fn gen_expr_raw(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
         Expr::TypeApply {
             function, position, ..
         } => with_application(cg, *position, |cg| gen_expr(cg, function)),
-        Expr::Binary { op, left, right } => gen_binary(cg, op, left, right),
+        Expr::Binary {
+            op, left, right, ..
+        } => gen_binary(cg, op, left, right),
         Expr::Unary { op, operand } => gen_unary(cg, op, operand),
         Expr::Call {
             function,
@@ -718,9 +720,9 @@ fn gen_str_concat(cg: &mut Codegen, l: Value, r: Value) -> Result<Value> {
     Ok(v)
 }
 
-/// The LLVM condition code for a comparison `op`. `float` picks the ordered
-/// `fcmp` codes (`oeq`, `olt`, …); otherwise the signed-integer / `icmp` codes
-/// (`eq`, `slt`, …) — also used on a `strcmp` result.
+/// [FLOAT-COMPARE] Float inequality includes unordered (NaN) operands so it
+/// remains the complement of equality. The other float predicates stay ordered;
+/// integer and string comparisons use signed `icmp` codes.
 fn cmp_code(op: &str, float: bool) -> &'static str {
     match (op, float) {
         ("==", false) => "eq",
@@ -730,7 +732,7 @@ fn cmp_code(op: &str, float: bool) -> &'static str {
         (">", false) => "sgt",
         (_, false) => "sge",
         ("==", true) => "oeq",
-        ("!=", true) => "one",
+        ("!=", true) => "une",
         ("<", true) => "olt",
         ("<=", true) => "ole",
         (">", true) => "ogt",

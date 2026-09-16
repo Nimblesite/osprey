@@ -30,7 +30,7 @@ fn checkAgeRange(n) = match n < minAge() {
 /// range-check it. parseInt's failure becomes our own "not a number" reason.
 fn parseAge(s) = match parseInt(s) {
     Success { value }   => checkAgeRange(value)
-    Error   { message } => rejectNonNumber()
+    Error => rejectNonNumber()
 }
 
 /// Validate one input: print either the accepted value or the threaded reason.
@@ -42,7 +42,7 @@ fn validate(s) = match parseAge(s) {
 /// The inputs to drive the validator over, indexed by position.
 fn inputAt(i) = match ["30", "-4", "999", "abc"][i] {
     Success { value }   => value
-    Error   { message } => ""
+    Error => ""
 }
 
 /// No loop construct: walk the inputs by index via tail recursion.
@@ -60,9 +60,9 @@ let _ = runAll(0, 4)
 // and is re-interpolated into another string ([ERR-PAYLOAD]). A nested
 // match distinguishes the two distinct rejection reasons.
 match parseAge("abc") {
-    Success { value }   => print("unexpected success")
+    Success   => print("unexpected success")
     Error   { message } => match parseAge("999") {
-        Success { value2 }  => print("unexpected success")
+        Success  => print("unexpected success")
         Error   { reason2 } => print("threaded reasons = \"${message}\" / \"${reason2}\"")
     }
 }
@@ -71,12 +71,12 @@ print("=== Validation Pipeline Complete ===")
 /// Checks the accepted payload of a validated age.
 fn accepts(s, expected) = match parseAge(s) {
     Success { value } => value == expected
-    Error { message } => false
+    Error => false
 }
 
 /// Checks the exact rejection reason threaded through the pipeline.
 fn rejects(s, expected) = match parseAge(s) {
-    Success { value } => false
+    Success => false
     Error { message } => message == expected
 }
 

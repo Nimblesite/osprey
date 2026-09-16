@@ -1,1 +1,3 @@
 cannot access field 'name' on non-struct type int
+cannot convert value for interpolation: List<int>
+cannot convert value for interpolation: Map<string, int>

@@ -8,6 +8,7 @@
 //! from the real AST, not by shelling out. [LSP-REUSE-LSPKIT]
 
 pub mod analysis;
+pub(crate) mod code_actions;
 pub(crate) mod complete;
 pub mod context;
 pub(crate) mod diagnostics;
@@ -20,6 +21,7 @@ mod inferred_views;
 pub(crate) mod keywords;
 pub(crate) mod mlrender;
 pub mod model;
+mod project_cache;
 pub(crate) mod reference_docs;
 pub mod server;
 #[cfg(test)]
@@ -29,10 +31,12 @@ pub mod testing;
 #[path = "../../testkit.rs"]
 mod testkit;
 pub mod text;
+pub(crate) mod warning_actions;
 pub(crate) mod wire;
 pub mod workspace;
 
 pub use crate::analysis::{builtin_hover, symbols_json};
 pub use crate::engine::OspreyEngine;
+pub use crate::mlrender::{fence as source_fence, signature as source_signature};
 pub use crate::server::run_stdio;
 pub use crate::testing::{test_case_names, tests_json};

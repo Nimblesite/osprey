@@ -1187,6 +1187,11 @@
     }
   },
   {
+    "type": "inner_doc_comment",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "kernel_arm",
     "named": true,
     "fields": {
@@ -1614,6 +1619,10 @@
           "named": true
         },
         {
+          "type": "inner_doc_comment",
+          "named": true
+        },
+        {
           "type": "module_item",
           "named": true
         }
@@ -1717,6 +1726,10 @@
       "multiple": true,
       "required": false,
       "types": [
+        {
+          "type": "inner_doc_comment",
+          "named": true
+        },
         {
           "type": "statement",
           "named": true
@@ -2632,6 +2645,10 @@
       "multiple": true,
       "required": false,
       "types": [
+        {
+          "type": "inner_doc_comment",
+          "named": true
+        },
         {
           "type": "statement",
           "named": true

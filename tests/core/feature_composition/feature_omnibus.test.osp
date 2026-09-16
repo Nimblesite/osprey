@@ -24,7 +24,7 @@ fn parseOr(text: string) -> (int) -> int = fn(fallback) => parseInt(text) ?: fal
 /// Converts both Result branches into user-facing status text.
 fn parseStatus(text) = match parseInt(text) {
     Success { value } => "parsed ${value}"
-    Error { message } => "parseInt rejected ${text}"
+    Error => "parseInt rejected ${text}"
 }
 
 /// Counter models a handled state-changing capability with an integer payload.

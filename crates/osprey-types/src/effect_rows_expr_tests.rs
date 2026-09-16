@@ -250,7 +250,10 @@ fn check_with_synthetic(extra: Vec<Stmt>) -> Vec<TypeError> {
     );
     let mut statements = parsed.program.statements;
     statements.extend(extra);
-    check_program(&Program { statements })
+    check_program(&Program {
+        statements,
+        doc: None,
+    })
 }
 
 fn binding(name: &str, value: Expr) -> Stmt {

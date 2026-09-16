@@ -1,0 +1,6 @@
+fn heading(name) = "Flight Log: " + name
+
+fn main() = {
+    let owner = "Mika"
+    heading(owner) |> print
+}

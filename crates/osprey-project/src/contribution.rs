@@ -96,7 +96,10 @@ mod tests {
                     body: Vec::new(),
                     file_scoped: true,
                     position: None,
+                    doc: None,
+                    inner_doc: None,
                 }],
+                doc: None,
             },
         };
         let found = extract(&ProjectConfig::for_root(Path::new("app")), &[source]);

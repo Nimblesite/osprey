@@ -29,6 +29,15 @@ pub struct At {
 pub enum Query {
     /// Diagnostics for a document.
     Diagnostics(DocumentUri),
+    /// Safe edits for current diagnostics in a document.
+    CodeActions {
+        /// The open document to analyze.
+        uri: DocumentUri,
+        /// The editor selection, in the negotiated encoding.
+        range: Span,
+        /// Requested action-kind prefixes; empty means all kinds.
+        only: Vec<String>,
+    },
     /// Document outline.
     Symbols(DocumentUri),
     /// Hover markdown at a position.
@@ -105,6 +114,8 @@ pub struct CompletionItem {
 pub enum Report {
     /// Result of [`Query::Diagnostics`].
     Diagnostics(Vec<Diagnostic>),
+    /// Versioned source edits for current diagnostics.
+    CodeActions(Vec<CodeAction>),
     /// Result of [`Query::Symbols`].
     Symbols(Vec<SymbolInfo>),
     /// Result of [`Query::Hover`] — markdown, or `None`.
@@ -124,4 +135,22 @@ pub enum EngineError {
     /// The engine has been shut down and refuses further work.
     #[error("engine has shut down")]
     ShuttingDown,
+}
+
+/// One precise source edit in the selected position encoding.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextChange {
+    pub(crate) range: Span,
+    pub(crate) new_text: String,
+}
+
+/// A source action tied to the exact open-document version it was checked on.
+#[derive(Debug, Clone)]
+pub struct CodeAction {
+    pub(crate) title: &'static str,
+    pub(crate) kind: &'static str,
+    pub(crate) uri: String,
+    pub(crate) version: i32,
+    pub(crate) diagnostics: Vec<Diagnostic>,
+    pub(crate) edits: Vec<TextChange>,
 }

@@ -26,7 +26,7 @@ fn outerOp() !Logger = {
 fn testNested() !Logger = {
     perform Logger.log("before inner handler")
 
-    let innerResult = handle Logger
+    let _innerResult = handle Logger
         log msg   => print("[INNER-LOG] " + msg)
         debug msg => print("[INNER-DEBUG] " + msg)
     in {
@@ -145,8 +145,8 @@ in auditWork()
 
 /// Runs the forward-referenced chain under a quiet handler.
 fn forwardResultForTest() = handle Logger
-    log msg => 0
-    debug msg => 0
+    log _msg => 0
+    debug _msg => 0
 in nestedCall()
 
 // Re-enters the forward call chain and checks nested handler restoration.

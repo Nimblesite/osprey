@@ -355,3 +355,32 @@ fn flattened_type_errors_map_back_to_physical_local_lines() {
     assert!(output.stderr.contains(&expected), "{}", output.stderr);
     let _ = std::fs::remove_dir_all(project);
 }
+
+#[test]
+fn numeric_operator_errors_map_back_to_the_declaring_module() {
+    let project = copy_fixture("numeric_positions");
+    for (extension, source, column) in [
+        (
+            "osp",
+            "\nfn scale(x) = x * 1.0\nfn probe() = scale(\"bad\")\n",
+            16,
+        ),
+        (
+            "ospml",
+            "\nscale x = x * 1.0\nprobe () = scale \"bad\"\n",
+            12,
+        ),
+    ] {
+        let file = project.join(format!("src/numeric.{extension}"));
+        std::fs::write(&file, source).expect("write numeric source");
+        let output = run(&[arg(&project), "--check".to_string(), "--quiet".to_string()]);
+        assert_eq!(output.code, Some(1), "{}", output.stderr);
+        let expected = format!(
+            "{}:2:{column}: operator `*` requires int or float; got string",
+            file.display()
+        );
+        assert!(output.stderr.contains(&expected), "{}", output.stderr);
+        std::fs::remove_file(file).expect("remove numeric source");
+    }
+    std::fs::remove_dir_all(project).expect("remove project fixture");
+}

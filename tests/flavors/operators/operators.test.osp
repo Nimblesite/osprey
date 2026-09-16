@@ -62,3 +62,27 @@ fn booleanOperatorsCase() = {
 test("operator precedence retains every arithmetic golden", arithmeticOperatorsCase)
 // Register the boolean documentation scenario.
 test("boolean composition retains every logical golden", booleanOperatorsCase)
+
+/// [FLOAT-OPERANDS] One constrained helper accepts int and float callers.
+fn numericScale(x) = x * 1.5
+/// Division accepts either numeric type independently in each operand.
+fn numericQuotient(left, right) = left / right
+/// Passes a numeric helper through a higher-order argument.
+fn runNumeric(f, x) = f(x)
+/// Pins numeric obligations at calls, aliases and higher-order slots.
+fn numericPolymorphismCase() = {
+    let alias = numericScale
+    checkAll("numeric helper polymorphism", [
+        numericScale(2) == 3.0,
+        numericScale(2.5) == 3.75,
+        alias(4) == 6.0,
+        alias(4.5) == 6.75,
+        runNumeric(numericScale, 5) == 7.5,
+        runNumeric(numericScale, 5.5) == 8.25,
+        (numericQuotient(3, 1.5) ?: 0.0) == 2.0,
+        (numericQuotient(2.5, 2) ?: 0.0) == 1.25,
+        (((4.0 / 2.0) * 1.5) ?: 0.0) == 3.0,
+        (((4.0 / 0.0) * 1.5) ?: -1.0) == -1.0
+    ])
+}
+test("numeric constraints retain mixed arithmetic and error propagation", numericPolymorphismCase)

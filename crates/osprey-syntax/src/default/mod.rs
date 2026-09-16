@@ -14,7 +14,9 @@ use crate::{Flavor, Parsed, SyntaxError};
 use osprey_ast::{Position, Program};
 use tree_sitter::{Node, Parser, Point, Tree};
 
+pub(crate) mod binding_ranges;
 mod expr;
+mod inner_doc;
 mod kernel;
 mod lower;
 mod modules;
@@ -27,12 +29,17 @@ fn is_i64_min_magnitude_text(text: &str) -> bool {
 
 pub(crate) use lower::Lowerer;
 
+pub(crate) fn binding_ranges(source: &str) -> Vec<crate::BindingRange> {
+    binding_ranges::collect(source)
+}
+
 /// The Default (brace) frontend: tree-sitter CST + [`Lowerer`] → [`Program`].
 pub(crate) fn parse(source: &str) -> Parsed {
     let Some(tree) = parse_tree(source) else {
         return Parsed {
             program: Program {
                 statements: Vec::new(),
+                doc: None,
             },
             errors: vec![SyntaxError {
                 message: "failed to initialize Osprey grammar".to_owned(),
@@ -46,6 +53,7 @@ pub(crate) fn parse(source: &str) -> Parsed {
     let program = lowerer.lower_program(root);
     let mut errors = Vec::new();
     collect_errors(root, source.as_bytes(), &mut errors);
+    inner_doc::reclassify(root, source.as_bytes(), &mut errors);
     Parsed {
         program,
         errors,
@@ -103,6 +111,7 @@ fn collect_errors(node: Node<'_>, src: &[u8], out: &mut Vec<SyntaxError>) {
             });
         }
     } else if node.kind() == "float" {
+        // [FLOAT-LITERAL-RANGE] Match the ML lexer's finite-literal contract.
         let text = node.utf8_text(src).unwrap_or_default();
         if !text.parse::<f64>().is_ok_and(f64::is_finite) {
             out.push(SyntaxError {
@@ -176,6 +185,10 @@ pub(crate) fn position_from_point(point: Point) -> Position {
             .saturating_add(1),
         column: u32::try_from(point.column).unwrap_or(u32::MAX),
     }
+}
+
+pub(crate) fn string_literals(source: &str) -> Vec<crate::fragment_ranges::Literal> {
+    binding_ranges::literals(source)
 }
 
 #[cfg(test)]

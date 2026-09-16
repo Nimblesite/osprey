@@ -256,6 +256,7 @@ mod tests {
                 body,
                 file_scoped,
                 position,
+                ..
             } => {
                 assert_eq!(name, &NamespaceName::Identifier("billing".into()));
                 assert!(*file_scoped);

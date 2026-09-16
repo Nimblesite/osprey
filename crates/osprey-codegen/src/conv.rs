@@ -13,7 +13,7 @@ pub(crate) fn as_i64(cg: &mut Codegen, v: Value) -> Result<Value> {
         LType::I64 => return Ok(v),
         LType::I1 => cg.emit_reg(format!("zext i1 {} to i64", v.operand)),
         LType::I32 => cg.emit_reg(format!("sext i32 {} to i64", v.operand)),
-        LType::Double => cg.emit_reg(format!("fptosi double {} to i64", v.operand)),
+        LType::Double => saturated_i64(cg, &v.operand),
         LType::Str | LType::Ptr => {
             return Err(CodegenError::invalid(
                 "expected an integer, found a string/handle",
@@ -22,6 +22,15 @@ pub(crate) fn as_i64(cg: &mut Codegen, v: Value) -> Result<Value> {
         LType::Any => return Err(read_through_erasure()),
     };
     Ok(Value::new(reg, LType::I64))
+}
+
+/// [FLOAT-CONVERT] The checker rejects implicit float narrowing. Protect this
+/// internal coercion too: NaN becomes zero, extremes clamp, finite values truncate.
+fn saturated_i64(cg: &mut Codegen, operand: &str) -> String {
+    cg.add_extern("declare i64 @llvm.fptosi.sat.i64.f64(double)");
+    cg.emit_reg(format!(
+        "call i64 @llvm.fptosi.sat.i64.f64(double {operand})"
+    ))
 }
 
 /// The backend refusal for numerically consuming an erased box. The checker
@@ -121,7 +130,7 @@ mod tests {
     const EXPECTED_IR: [&str; 8] = [
         "zext i1 true to i64",
         "sext i32 -7 to i64",
-        "fptosi double 2.5 to i64",
+        "call i64 @llvm.fptosi.sat.i64.f64(double 2.5)",
         "icmp ne i32 -1, 0",
         "trunc i64 1 to i1",
         "trunc i64 9 to i32",
@@ -151,6 +160,61 @@ mod tests {
         for instruction in EXPECTED_IR {
             assert!(ir.contains(instruction), "missing `{instruction}`:\n{ir}");
         }
+    }
+
+    const SATURATION_OPERANDS: &[&str] = &[
+        "0x7FF8000000000001",
+        "0xFFF8000000000001", // signed NaNs
+        "0x7FF0000000000000",
+        "0xFFF0000000000000", // infinities
+        "0x43E0000000000000",
+        "0xC3E0000000000001", // outside i64
+        "0x43DFFFFFFFFFFFFF",
+        "0xC3E0000000000000", // inside i64
+        "0.0",
+        "-0.0",
+        "2.5",
+        "-2.5",
+    ];
+
+    /// [FLOAT-CONVERT] Even a future checker bypass must never emit poison.
+    #[test]
+    fn float_coercions_use_defined_saturation_for_extreme_inputs() {
+        let ir = saturation_ir(SATURATION_OPERANDS);
+        assert_eq!(
+            ir.matches("declare i64 @llvm.fptosi.sat.i64.f64(double)")
+                .count(),
+            1
+        );
+        assert!(
+            !ir.contains(" = fptosi double"),
+            "poison-producing conversion: {ir}"
+        );
+        for operand in SATURATION_OPERANDS {
+            assert_saturation_call(&ir, operand);
+        }
+    }
+
+    fn assert_saturation_call(ir: &str, operand: &str) {
+        assert!(
+            ir.contains(&format!(
+                "call i64 @llvm.fptosi.sat.i64.f64(double {operand})"
+            )),
+            "unprotected {operand}: {ir}"
+        );
+    }
+
+    fn saturation_ir(operands: &[&str]) -> String {
+        let mut cg = Codegen::new();
+        cg.begin_function("saturation", None);
+        for operand in operands {
+            let value =
+                as_i64(&mut cg, Value::new(*operand, LType::Double)).expect("numeric conversion");
+            assert_eq!(value.ty, LType::I64);
+        }
+        cg.emit("ret i64 0");
+        cg.finish_function("i64", "saturation", &[]);
+        cg.render()
     }
 
     #[test]

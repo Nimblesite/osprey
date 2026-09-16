@@ -42,114 +42,114 @@ fn failWith(reason) -> Result<int, string> = Error { message: reason }
   // ---- substring boundaries ----
   match substring("hi", 0, 0) {
 Success { value }   => print("sub-empty=\"${value}\"\n")
-Error   { message } => print("sub-empty FAILED\n")
+Error => print("sub-empty FAILED\n")
   }
   match substring("hi", 0, 2) {
 Success { value }   => print("sub-full=\"${value}\"\n")
-Error   { message } => print("sub-full FAILED\n")
+Error => print("sub-full FAILED\n")
   }
   match substring("hi", (0 - 1) ?: 0, 2) {
-Success { value }   => print("sub-neg unexpected\n")
-Error   { message } => print("sub-neg rejected\n")
+Success   => print("sub-neg unexpected\n")
+Error => print("sub-neg rejected\n")
   }
   match substring("hi", 0, 99) {
-Success { value }   => print("sub-over unexpected\n")
-Error   { message } => print("sub-over rejected\n")
+Success   => print("sub-over unexpected\n")
+Error => print("sub-over rejected\n")
   }
   match substring("hi", 2, 0) {
-Success { value }   => print("sub-inverted unexpected\n")
-Error   { message } => print("sub-inverted rejected\n")
+Success   => print("sub-inverted unexpected\n")
+Error => print("sub-inverted rejected\n")
   }
 
   // ---- indexOf empty needle and not-found ----
   match indexOf("hello", "") {
 Success { value }   => print("idx-empty=${value}\n")
-Error   { message } => print("idx-empty FAILED\n")
+Error => print("idx-empty FAILED\n")
   }
   match indexOf("hello", "xyz") {
-Success { value }   => print("idx-missing unexpected\n")
-Error   { message } => print("idx-missing rejected\n")
+Success   => print("idx-missing unexpected\n")
+Error => print("idx-missing rejected\n")
   }
 
   // ---- replace empty needle rejected ----
   match replace("hello", "", "x") {
-Success { value }   => print("rep-empty unexpected\n")
-Error   { message } => print("rep-empty rejected\n")
+Success   => print("rep-empty unexpected\n")
+Error => print("rep-empty rejected\n")
   }
   // replace shrinking
   match replace("hello", "l", "") {
 Success { value }   => print("rep-shrink=\"${value}\"\n")
-Error   { message } => print("rep-shrink FAILED\n")
+Error => print("rep-shrink FAILED\n")
   }
 
   // ---- repeat n=0 and n<0 ----
   match repeat("ab", 0) {
 Success { value }   => print("rep0=\"${value}\"\n")
-Error   { message } => print("rep0 FAILED\n")
+Error => print("rep0 FAILED\n")
   }
   match repeat("ab", (0 - 1) ?: 0) {
-Success { value }   => print("rep-neg unexpected\n")
-Error   { message } => print("rep-neg rejected\n")
+Success   => print("rep-neg unexpected\n")
+Error => print("rep-neg rejected\n")
   }
 
   // ---- padStart / padEnd empty fill rejected ----
   match padStart("hi", 5, "") {
-Success { value }   => print("padS-empty unexpected\n")
-Error   { message } => print("padS-empty rejected\n")
+Success   => print("padS-empty unexpected\n")
+Error => print("padS-empty rejected\n")
   }
   match padEnd("hi", 5, "") {
-Success { value }   => print("padE-empty unexpected\n")
-Error   { message } => print("padE-empty rejected\n")
+Success   => print("padE-empty unexpected\n")
+Error => print("padE-empty rejected\n")
   }
   // target <= len → no padding
   match padStart("hi", 1, "x") {
 Success { value }   => print("padS-noop=\"${value}\"\n")
-Error   { message } => print("padS-noop FAILED\n")
+Error => print("padS-noop FAILED\n")
   }
   // multi-char fill cycles
   match padStart("42", 5, "ab") {
 Success { value }   => print("padS-multi=\"${value}\"\n")
-Error   { message } => print("padS-multi FAILED\n")
+Error => print("padS-multi FAILED\n")
   }
 
   // ---- parseFloat rejects junk ----
   match parseFloat("") {
-Success { value }   => print("pf-empty unexpected\n")
-Error   { message } => print("pf-empty rejected\n")
+Success   => print("pf-empty unexpected\n")
+Error => print("pf-empty rejected\n")
   }
   match parseFloat("3.14x") {
-Success { value }   => print("pf-trailing unexpected\n")
-Error   { message } => print("pf-trailing rejected\n")
+Success   => print("pf-trailing unexpected\n")
+Error => print("pf-trailing rejected\n")
   }
   match parseFloat(" 3.14") {
-Success { value }   => print("pf-space unexpected\n")
-Error   { message } => print("pf-space rejected\n")
+Success   => print("pf-space unexpected\n")
+Error => print("pf-space rejected\n")
   }
   match parseFloat("nan") {
-Success { value }   => print("pf-nan unexpected\n")
-Error   { message } => print("pf-nan rejected\n")
+Success   => print("pf-nan unexpected\n")
+Error => print("pf-nan rejected\n")
   }
   match parseFloat("0x1p2") {
-Success { value }   => print("pf-hex unexpected\n")
-Error   { message } => print("pf-hex rejected\n")
+Success   => print("pf-hex unexpected\n")
+Error => print("pf-hex rejected\n")
   }
   match parseFloat("1e9999") {
-Success { value }   => print("pf-infinite unexpected\n")
-Error   { message } => print("pf-infinite rejected\n")
+Success   => print("pf-infinite unexpected\n")
+Error => print("pf-infinite rejected\n")
   }
 
   // ---- parseInt overflow ----
   match parseInt("99999999999999999999") {
-Success { value }   => print("pi-overflow unexpected\n")
-Error   { message } => print("pi-overflow rejected\n")
+Success   => print("pi-overflow unexpected\n")
+Error => print("pi-overflow rejected\n")
   }
   match parseInt("-9223372036854775808") {
 Success { value }   => print("pi-min=${value}\n")
-Error   { message } => print("pi-min FAILED\n")
+Error => print("pi-min FAILED\n")
   }
   match parseInt(" 42") {
-Success { value }   => print("pi-leading-space unexpected\n")
-Error   { message } => print("pi-leading-space rejected\n")
+Success   => print("pi-leading-space unexpected\n")
+Error => print("pi-leading-space rejected\n")
   }
 
   // ---- O(1) byte / codepoint cursor [BUILTIN-STRING-CURSOR] ----
@@ -160,7 +160,7 @@ Success { value }   => print("byteAt1=${value}\n")
 Error   { message } => print("byteAt1 FAILED: ${message}\n")
   }
   match byteAt("héllo", 99) {
-Success { value }   => print("byteAt-oob unexpected\n")
+Success   => print("byteAt-oob unexpected\n")
 Error   { message } => print("byteAt-oob=${message}\n")
   }
   match codePointAt("héllo", 1) {
@@ -168,7 +168,7 @@ Success { value }   => print("cpAt1=${value}\n")
 Error   { message } => print("cpAt1 FAILED: ${message}\n")
   }
   match codePointAt("héllo", 2) {
-Success { value }   => print("cpAt-mid unexpected\n")
+Success   => print("cpAt-mid unexpected\n")
 Error   { message } => print("cpAt-mid=${message}\n")
   }
   match codePointWidth(128512) {
@@ -176,7 +176,7 @@ Success { value }   => print("cpWidth=${value}\n")
 Error   { message } => print("cpWidth FAILED: ${message}\n")
   }
   match codePointWidth(55296) {
-Success { value }   => print("cpWidth-surrogate unexpected\n")
+Success   => print("cpWidth-surrogate unexpected\n")
 Error   { message } => print("cpWidth-surrogate=${message}\n")
   }
   match fromCodePoint(128512) {
@@ -184,13 +184,13 @@ Success { value }   => print("fromCp=${value}\n")
 Error   { message } => print("fromCp FAILED: ${message}\n")
   }
   match fromCodePoint(2000000) {
-Success { value }   => print("fromCp-bad unexpected\n")
+Success   => print("fromCp-bad unexpected\n")
 Error   { message } => print("fromCp-bad=${message}\n")
   }
   // U+0000 is a scalar, but cannot inhabit the runtime's NUL-terminated
   // [BUILTIN-STRING-FROMCODEPOINT] representation.
   match fromCodePoint(0) {
-Success { value }   => print("fromCp-nul unexpected\n")
+Success   => print("fromCp-nul unexpected\n")
 Error   { message } => print("fromCp-nul=${message}\n")
   }
   // Round-trip: encode U+00E9 then decode byte 0 back to the same scalar.
@@ -204,15 +204,15 @@ Error   { message } => print("roundtrip FAILED: ${message}\n")
 
   // ---- real error payloads reach the Error arm ([ERR-PAYLOAD]) ----
   match parseInt("oops") {
-Success { value }   => print("pi-msg unexpected\n")
+Success   => print("pi-msg unexpected\n")
 Error   { message } => print("pi-msg=${message}\n")
   }
   match 10 / 0 {
-Success { value }   => print("div-msg unexpected\n")
+Success   => print("div-msg unexpected\n")
 Error   { message } => print("div-msg=${message}\n")
   }
   match failWith("custom boom") {
-Success { value }   => print("user-msg unexpected\n")
+Success   => print("user-msg unexpected\n")
 Error   { message } => print("user-msg=${message}\n")
   }
 
@@ -222,99 +222,99 @@ Error   { message } => print("user-msg=${message}\n")
 fn stringEdgeCase() = {
     let negativeOne = (0 - 1) ?: 0
     let substringNegative = match substring("hi", negativeOne, 2) {
-        Success { value } => false
+        Success => false
         Error { message } => message != ""
     }
     let substringOverrun = match substring("hi", 0, 99) {
-        Success { value } => false
+        Success => false
         Error { message } => message != ""
     }
     let substringInverted = match substring("hi", 2, 0) {
-        Success { value } => false
+        Success => false
         Error { message } => message != ""
     }
     let indexMissing = match indexOf("hello", "xyz") {
-        Success { value } => false
+        Success => false
         Error { message } => message != ""
     }
     let replaceEmpty = match replace("hello", "", "x") {
-        Success { value } => false
+        Success => false
         Error { message } => message != ""
     }
     let repeatNegative = match repeat("ab", negativeOne) {
-        Success { value } => false
+        Success => false
         Error { message } => message != ""
     }
     let padStartEmpty = match padStart("hi", 5, "") {
-        Success { value } => false
+        Success => false
         Error { message } => message != ""
     }
     let padEndEmpty = match padEnd("hi", 5, "") {
-        Success { value } => false
+        Success => false
         Error { message } => message != ""
     }
     let emptyFloat = match parseFloat("") {
-        Success { value } => false
+        Success => false
         Error { message } => message != ""
     }
     let trailingFloat = match parseFloat("3.14x") {
-        Success { value } => false
+        Success => false
         Error { message } => message != ""
     }
     let spacedFloat = match parseFloat(" 3.14") {
-        Success { value } => false
+        Success => false
         Error { message } => message != ""
     }
     let nanFloat = match parseFloat("nan") {
-        Success { value } => false
+        Success => false
         Error { message } => message != ""
     }
     let hexFloat = match parseFloat("0x1p2") {
-        Success { value } => false
+        Success => false
         Error { message } => message != ""
     }
     let infiniteFloat = match parseFloat("1e9999") {
-        Success { value } => false
+        Success => false
         Error { message } => message != ""
     }
     let integerOverflow = match parseInt("99999999999999999999") {
-        Success { value } => false
+        Success => false
         Error { message } => message != ""
     }
     let integerLeadingSpace = match parseInt(" 42") {
-        Success { value } => false
+        Success => false
         Error { message } => message != ""
     }
     let byteOutOfBounds = match byteAt("héllo", 99) {
-        Success { value } => false
+        Success => false
         Error { message } => message != ""
     }
     let codePointMidSequence = match codePointAt("héllo", 2) {
-        Success { value } => false
+        Success => false
         Error { message } => message != ""
     }
     let surrogateRejected = match codePointWidth(55296) {
-        Success { value } => false
+        Success => false
         Error { message } => message != ""
     }
     let invalidCodePoint = match fromCodePoint(2000000) {
-        Success { value } => false
+        Success => false
         Error { message } => message != ""
     }
     let nulCodePoint = match fromCodePoint(0) {
-        Success { value } => false
+        Success => false
         Error { message } => message != ""
     }
     let roundTrip = match fromCodePoint(233) {
         Success { value } => (codePointAt(value, 0) ?: 0) == 233
-        Error { message } => false
+        Error => false
     }
     let customPayload = match failWith("custom boom") {
-        Success { value } => false
+        Success => false
         Error { message } => message == "custom boom"
     }
     let divisionRejected = match 10 / 0 {
-        Success { value } => false
+        Success => false
         Error { message } => message != ""
     }
 
@@ -551,7 +551,7 @@ fn interpolationResultCase() = {
 fn escapeSequenceCase() = {
     let tabSplitCount = match split("a\tb", "\t") {
         Success { value } => listLength(value)
-        Error { message } => (0 - 1) ?: 0
+        Error => (0 - 1) ?: 0
     }
 
     // ASCII: LF 10, CR 13, TAB 9, ESC 27, '"' 34, '\' 92, 'a' 97, 'b' 98.
@@ -647,11 +647,11 @@ fn substringPositionCase() = {
     let subject = "banana"
     let missing = (0 - 1) ?: 0
     let indexAbsent = match indexOf(subject, "xyz") {
-        Success { value } => false
+        Success => false
         Error { message } => message == "indexOf: substring not found"
     }
     let indexEmptySubject = match indexOf("", "a") {
-        Success { value } => false
+        Success => false
         Error { message } => message != ""
     }
 
@@ -925,7 +925,7 @@ fn interpolationCompositionCase() = {
     let step4 = "${step3}${listGet(xs, 9) ?: "?"}|"
     let segmentCount = match split(step3, "|") {
         Success { value } => listLength(value)
-        Error { message } => (0 - 1) ?: 0
+        Error => (0 - 1) ?: 0
     }
 
     checkAll("a hole may hold a call, a pipe, an operator or an index", [

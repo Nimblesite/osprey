@@ -13,7 +13,7 @@ for CI and is not the marketplace action. Zero code or test references any
 (`[GHA-*]`)
 
 > Renumbered from `0015` on 2026-07-30: that number was already
-> [plan 0015 — Generics and Variance](0015-generics-and-variance.md).
+> plan 0015 — Generics and Variance (now retired; [shipped contract](../specs/0004-TypeSystem.md#generics-and-variance)).
 
 ## Summary
 

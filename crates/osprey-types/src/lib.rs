@@ -67,6 +67,9 @@ mod testkit;
 mod testutil;
 mod ty;
 mod unify;
+mod unused;
+#[cfg(test)]
+mod unused_tests;
 mod variance;
 
 pub use builtin_docs::{
@@ -77,9 +80,12 @@ pub use check::{check_program, check_program_exports, erased_var, infer_program}
 pub use error::TypeError;
 pub use info::{CtorLayout, HandlerSite, OpType, PerformSite, ProgramTypes};
 pub use redundant::{
-    redundant_annotations, redundant_annotations_where, TypeWarning, REDUNDANT_ANNOTATION,
+    redundant_annotation_sites, redundant_annotation_sites_where, redundant_annotations,
+    redundant_annotations_where, RedundantAnnotation, RedundantTarget, TypeWarning,
+    REDUNDANT_ANNOTATION,
 };
 pub use ty::{has_type_var, names, render_with_holes, Scheme, Type, VarId, HOLE};
+pub use unused::{unused_symbols, UnusedKind, UnusedSymbol};
 
 #[cfg(test)]
 #[expect(
@@ -88,12 +94,120 @@ pub use ty::{has_type_var, names, render_with_holes, Scheme, Type, VarId, HOLE};
 )]
 mod tests {
     use crate::check_program;
-    use crate::testutil::{bad, ok};
+    use crate::testutil::{accepts, bad, ok, rejects_with};
     use osprey_syntax::{parse_program_with_flavor, Flavor};
 
     #[test]
     fn checks_arithmetic_and_let() {
         ok("fn inc(x: int) -> Result<int, MathError> = x + 1\nlet y = inc(41)\n");
+    }
+
+    #[test]
+    fn interpolation_rejects_unprintable_aggregates() {
+        for (flavor, source) in [
+            (Flavor::Default, "let xs = [1, 2]\nprint(\"[${xs}]\")\n"),
+            (Flavor::Ml, "xs = [1, 2]\nprint \"[${xs}]\"\n"),
+            (
+                Flavor::Default,
+                "fn render(x) = \"[${x}]\"\nprint(render([1, 2]))\n",
+            ),
+            (Flavor::Ml, "render x = \"[${x}]\"\nprint (render [1, 2])\n"),
+        ] {
+            let parsed = parse_program_with_flavor(source, flavor);
+            assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+            let errors = check_program(&parsed.program);
+            assert!(
+                errors
+                    .iter()
+                    .any(|e| e.message == "cannot convert value for interpolation: List<int>"),
+                "{flavor}: {errors:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn numeric_operand_errors_retain_the_operator_position() {
+        for (flavor, source, column) in [
+            (
+                Flavor::Default,
+                "\nfn scale(x) = x * 1.0\nprint(scale(\"bad\"))\n",
+                16,
+            ),
+            (
+                Flavor::Ml,
+                "\nscale x = x * 1.0\nprint (scale \"bad\")\n",
+                12,
+            ),
+            (Flavor::Default, "\nprint(\"\\t${true * 1.0}\")\n", 16),
+            (Flavor::Ml, "\nprint \"\\t${true * 1.0}\"\n", 16),
+        ] {
+            let parsed = parse_program_with_flavor(source, flavor);
+            assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+            let errors = check_program(&parsed.program);
+            let error = errors
+                .iter()
+                .find(|e| e.message.contains("requires int or float"));
+            assert!(error.is_some(), "{errors:?}");
+            assert_eq!(
+                error.and_then(|e| e.position),
+                Some(osprey_ast::Position { line: 2, column }),
+                "{flavor}: {errors:?}"
+            );
+        }
+    }
+
+    /// [FLOAT-OPERANDS] Numeric obligations survive generalization in both flavors.
+    #[test]
+    fn float_helpers_reject_non_numeric_arguments_before_codegen() {
+        for flavor in [Flavor::Default, Flavor::Ml] {
+            for op in ["+", "-", "*", "/", "%"] {
+                for body in [format!("x {op} 1.5"), format!("1.5 {op} x")] {
+                    for value in ["\"text\"", "true", "[1]"] {
+                        let source = numeric_helper_source(flavor, &body, value);
+                        rejects_with(
+                            flavor,
+                            source,
+                            format!("operator `{op}` requires int or float"),
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    fn numeric_helper_source(flavor: Flavor, body: &str, value: &str) -> String {
+        match flavor {
+            Flavor::Default => format!("fn scale(x) = {body}\nlet result = scale({value})\n"),
+            Flavor::Ml => format!("scale x = {body}\nresult = scale ({value})\n"),
+        }
+    }
+
+    /// [FLOAT-OPERANDS] The same helper must retain int/float polymorphism.
+    #[test]
+    fn float_helpers_accept_both_numeric_types_without_changing_result_propagation() {
+        for op in ["+", "-", "*", "/", "%"] {
+            accepts(
+                Flavor::Default,
+                format!("fn scale(x) = x {op} 1.5\nlet a = scale(3)\nlet b = scale(2.5)\n"),
+            );
+            accepts(
+                Flavor::Ml,
+                format!("scale x = x {op} 1.5\na = scale 3\nb = scale 2.5\n"),
+            );
+        }
+        ok("fn divide(a, b) = a / b\nlet a = divide(3, 1.5)\nlet b = divide(2.5, 3)\n");
+        ok("let value = ((4.0 / 2.0) * 1.5) ?: 0.0\n");
+    }
+
+    /// [FLOAT-OPERANDS] Aliasing and higher-order calls cannot shed the obligation.
+    #[test]
+    fn float_operand_constraints_follow_aliases_and_higher_order_calls() {
+        rejects_with(Flavor::Default, "fn scale(x) = x * 1.5\nfn apply(f, x) = f(x)\nlet alias = scale\nlet bad = apply(alias, \"text\")\n", "operator `*` requires int or float");
+        rejects_with(
+            Flavor::Ml,
+            "scale x = x * 1.5\napply f x = f x\nalias = scale\nbad = apply alias \"text\"\n",
+            "operator `*` requires int or float",
+        );
     }
 
     #[test]

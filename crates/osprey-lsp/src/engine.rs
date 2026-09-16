@@ -29,6 +29,7 @@ pub struct OspreyEngine {
     vfs: Vfs,
     session: Session,
     shutdown: Arc<AtomicBool>,
+    pub(crate) project_cache: Arc<crate::project_cache::ProjectCache>,
 }
 
 impl OspreyEngine {
@@ -39,6 +40,7 @@ impl OspreyEngine {
             vfs,
             session: Session::new(),
             shutdown: Arc::new(AtomicBool::new(false)),
+            project_cache: Arc::default(),
         }
     }
 
@@ -60,8 +62,18 @@ impl OspreyEngine {
     fn answer(&self, query: Query) -> Report {
         let enc = self.encoding();
         match query {
-            Query::Diagnostics(uri) => {
-                Report::Diagnostics(diagnostics::compute(&self.text(&uri), uri.as_str(), enc))
+            Query::Diagnostics(uri) => Report::Diagnostics(
+                diagnostics::analyze_cached(
+                    &self.text(&uri),
+                    uri.as_str(),
+                    enc,
+                    Some(&self.vfs),
+                    &self.project_cache,
+                )
+                .diagnostics,
+            ),
+            Query::CodeActions { uri, range, only } => {
+                Report::CodeActions(crate::code_actions::actions(&self.vfs, &uri, range, &only))
             }
             Query::Symbols(uri) => {
                 let parsed = osprey_syntax::parse_program_for_path(uri.as_str(), &self.text(&uri));
@@ -289,15 +301,15 @@ mod tests {
                 &[
                     (
                         "redundant type annotation on parameter `a` of `add`: inference derives `int` without it",
-                        (0, 3, 0, 44),
+                        (0, 8, 0, 13),
                     ),
                     (
                         "redundant type annotation on parameter `b` of `add`: inference derives `int` without it",
-                        (0, 3, 0, 44),
+                        (0, 16, 0, 21),
                     ),
                     (
                         "redundant return type annotation on `add`: inference derives `int` without it",
-                        (0, 3, 0, 44),
+                        (0, 23, 0, 29),
                     ),
                 ],
             ),

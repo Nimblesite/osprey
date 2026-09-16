@@ -178,7 +178,7 @@ fn functionValueCollectionCase() = {
 /// `countedSeed` performs an effect, so `runs` counts that evaluation for
 /// real. Implements [TYPE-GENERICS-FN].
 fn pick() = |x| => x
-fn constly(v) = |x| => v
+fn constly(v) = |_x| => v
 
 /// Bound at FILE SCOPE and read from inside a function below. That crosses
 /// function boundaries, so the lambda must be seeded before any body is

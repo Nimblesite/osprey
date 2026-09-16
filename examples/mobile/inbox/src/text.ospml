@@ -7,7 +7,7 @@ module Text
     boundary source remaining offset = match remaining <= 0 || offset >= byteLength source
         true => offset
         false => match codePointAt source offset
-            Error why => offset
+            Error _why => offset
             Success scalar =>
                 width = codePointWidth scalar ?: 1
                 boundary source ((remaining - 1) ?: 0) ((offset + width) ?: byteLength source)

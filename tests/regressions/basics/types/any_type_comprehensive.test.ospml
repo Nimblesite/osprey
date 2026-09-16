@@ -46,7 +46,7 @@ argResult = testArgs (5, "value", true)
 print "testArgs result: ${argResult}"
 
 (** Test type inference edge cases with any *)
-processAny (x : any) = "Processed any"
+processAny (_x : any) = "Processed any"
 
 anyProcessed1 = processAny 42
 anyProcessed2 = processAny "hello"
@@ -78,7 +78,7 @@ print "123"
 print "false"
 
 (** Test type comparison workaround since any comparison is complex *)
-compareTypes (a : any, b : any) = "Type comparison tested"
+compareTypes (_a : any, _b : any) = "Type comparison tested"
 
 comp1 = compareTypes (42, 42)
 comp2 = compareTypes (42, "42")
@@ -228,7 +228,7 @@ erasedInRuntimeList () =
     tests/regressions/fiber/fiber_showcase, which spawns and so cannot link on
     wasm32 — keeping it here would cost this file its wasm goldens. *)
 foldAny () =
-    describeAny (range (0, 3) |> fold (forward ("se" + "ed")) (\(acc, x) => forward acc))
+    describeAny (range (0, 3) |> fold (forward ("se" + "ed")) (\(acc, _x) => forward acc))
 
 (** An erased operand crosses an effect mailbox as the box it is, and replacing
     a captured `mut any` must RELEASE the box it displaces. The rebind released

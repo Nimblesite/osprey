@@ -1,41 +1,134 @@
-//! `osprey --docs --docs-dir <dir>`: regenerate the built-in function reference
-//! under `<dir>/functions/` straight from the compiler's single source of truth
-//! ([`osprey_types::builtin_doc_view`]). Every page's signature, parameter
-//! types, and return type come from the real type scheme, so the website docs
-//! and the editor hover are guaranteed to show the same thing.
-//!
-//! The directory is treated as generated output: a page is written for every
-//! built-in, an index lists them all, and any stale `*.md` left over from a
-//! built-in that no longer exists is pruned.
+//! Compiler-backed documentation export for built-ins, source files, and projects.
+//! Both renderers consume the same inferred API pages and preserve user-authored
+//! guides. The Markdown output integrates with existing sites; HTML is a complete
+//! static site with navigation, search, themes, and custom stylesheets.
+//! Implements [DOC-EXPORT], [DOC-EXPORT-HTML], [DOC-EXPORT-PAGES], [DOC-EXPORT-CSS].
 
+mod assets;
+mod declarations;
+mod facts;
+mod html;
+mod model;
+mod options;
+mod output;
+mod prose;
+mod user;
+mod write;
+
+use crate::document_entries::DocEntry;
+use model::Page;
+use options::{Format, Options};
 use osprey_types::{builtin_doc_view, builtin_names, BuiltinDocView};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::ExitCode;
 
-/// Entry point for the `--docs` mode. Reads `--docs-dir <dir>` from `args`.
+/// Export a validated API reference in the requested output format.
 pub(crate) fn run(args: &[String]) -> ExitCode {
-    let dir = if let Some(dir) = docs_dir(args) {
-        PathBuf::from(dir)
-    } else {
-        eprintln!("usage: osprey --docs --docs-dir <dir>");
-        return ExitCode::from(2);
+    let options = match Options::parse(args) {
+        Ok(options) => options,
+        Err(error) => {
+            eprintln!("osprey --docs: {error}");
+            return ExitCode::from(2);
+        }
     };
-    match generate(&dir) {
+    match export(&options) {
         Ok(count) => {
-            println!("generated {count} function docs in {}", dir.display());
+            println!(
+                "generated {count} documentation pages in {}",
+                options.directory.display()
+            );
             ExitCode::SUCCESS
         }
-        Err(e) => {
-            eprintln!("osprey --docs: {e}");
+        Err(error) => {
+            eprintln!("osprey --docs: {error}");
             ExitCode::FAILURE
         }
     }
 }
 
+fn export(options: &Options) -> std::io::Result<usize> {
+    let mut pages = user::pages(options)?;
+    pages.extend(assets::pages(&options.pages)?);
+    let styles = assets::stylesheets(&options.css)?;
+    add_api_index(&mut pages);
+    pages.extend(builtin_pages());
+    match options.format {
+        Format::Markdown => {
+            let _ = generate(&options.directory, &pages)?;
+            Ok(pages.len())
+        }
+        Format::Html => {
+            html::generate(&options.directory, &pages, &options.theme, &styles)?;
+            Ok(pages.len())
+        }
+    }
+}
+
+fn add_api_index(pages: &mut Vec<Page>) {
+    let api: Vec<_> = pages
+        .iter()
+        .filter(|page| page.slug.starts_with("api/"))
+        .collect();
+    if api.is_empty() {
+        return;
+    }
+    let links = api
+        .iter()
+        .map(|page| {
+            format!(
+                "- [{}]({}.md)",
+                page.title,
+                page.slug.strip_prefix("api/").unwrap_or(&page.slug)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    pages.push(Page {
+        slug: "api/index".into(),
+        title: "API Reference".into(),
+        group: "Overview".into(),
+        summary: "Modules and declarations in this project.".into(),
+        signature: String::new(),
+        markdown: format!("# API Reference\n\n{links}\n"),
+    });
+}
+
+fn builtin_pages() -> Vec<Page> {
+    let names = builtin_names();
+    let slugs = slug_map(&names);
+    let views: Vec<_> = names
+        .iter()
+        .filter_map(|name| builtin_doc_view(name))
+        .collect();
+    let mut pages: Vec<_> = views
+        .iter()
+        .filter_map(|view| {
+            slugs.get(&view.name).map(|slug| Page {
+                slug: format!("functions/{slug}"),
+                title: view.name.clone(),
+                group: "Built-in functions".into(),
+                summary: String::new(),
+                signature: view.signature.clone(),
+                markdown: page(view),
+            })
+        })
+        .collect();
+    pages.push(Page {
+        slug: "functions/index".into(),
+        title: "Built-in Functions".into(),
+        group: "Overview".into(),
+        summary: "The Osprey standard library.".into(),
+        signature: String::new(),
+        markdown: index(&views, &slugs),
+    });
+    pages
+}
+
 /// The value following `--docs-dir`, if present.
+#[cfg(test)]
 fn docs_dir(args: &[String]) -> Option<&str> {
     args.iter()
         .position(|a| a == "--docs-dir")
@@ -45,20 +138,11 @@ fn docs_dir(args: &[String]) -> Option<&str> {
 
 /// Write a page per built-in plus the index, then prune stale pages. Returns the
 /// number of function pages written.
-fn generate(docs_dir: &Path) -> std::io::Result<usize> {
-    let functions = docs_dir.join("functions");
-    fs::create_dir_all(&functions)?;
+fn generate(docs_dir: &Path, pages: &[Page]) -> std::io::Result<usize> {
+    write::markdown(docs_dir, pages)?;
     let names = builtin_names();
-    let slugs = slug_map(&names);
-    let views: Vec<BuiltinDocView> = names.iter().filter_map(|n| builtin_doc_view(n)).collect();
-    for view in &views {
-        if let Some(slug) = slugs.get(&view.name) {
-            fs::write(functions.join(format!("{slug}.md")), page(view))?;
-        }
-    }
-    fs::write(functions.join("index.md"), index(&views, &slugs))?;
-    prune(&functions, &slugs)?;
-    Ok(views.len())
+    prune(&docs_dir.join("functions"), &slug_map(&names))?;
+    Ok(names.len())
 }
 
 /// Assign each built-in a unique, filesystem-safe page stem. Names normally
@@ -163,6 +247,44 @@ fn index(views: &[BuiltinDocView], slugs: &HashMap<String, String>) -> String {
     out
 }
 
+/// Filesystem-safe unique page stems for qualified user names (`::` → `-`).
+fn user_slug_map(entries: &[DocEntry]) -> HashMap<String, String> {
+    let mut used: HashSet<String> = HashSet::from(["index".to_string()]);
+    let mut slugs = HashMap::new();
+    for name in entries
+        .iter()
+        .map(|e| &e.qualified_name)
+        .collect::<std::collections::BTreeSet<_>>()
+    {
+        let base = safe_slug(name);
+        let mut slug = base.clone();
+        let mut k = 2;
+        while !used.insert(slug.clone()) {
+            slug = format!("{base}-{k}");
+            k += 1;
+        }
+        let _ = slugs.insert(name.clone(), slug);
+    }
+    slugs
+}
+
+fn safe_slug(name: &str) -> String {
+    let mut slug = String::new();
+    for byte in name.bytes() {
+        if byte.is_ascii_alphanumeric() || byte == b'_' {
+            slug.push(char::from(byte.to_ascii_lowercase()));
+        } else if !slug.ends_with('-') {
+            slug.push('-');
+        }
+    }
+    let slug = slug.trim_matches('-');
+    if slug.is_empty() {
+        "page".into()
+    } else {
+        slug.into()
+    }
+}
+
 /// Escape a string for a YAML double-quoted scalar (front-matter `description`).
 fn yaml(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
@@ -175,6 +297,7 @@ fn yaml(s: &str) -> String {
 )]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn page_uses_scheme_types_and_omits_empty_sections() {
@@ -248,7 +371,7 @@ mod tests {
     #[test]
     fn generate_writes_a_page_per_builtin_plus_an_index() {
         let dir = fresh_dir("generate");
-        let count = generate(&dir).expect("generation succeeds");
+        let count = generate(&dir, &builtin_pages()).expect("generation succeeds");
         let functions = dir.join("functions");
         assert!(count > 0, "wrote at least one page");
         assert!(
@@ -296,7 +419,7 @@ mod tests {
         fs::write(&file, "i am a file").expect("seed blocking file");
         let blocked = file.join("under_a_file");
         assert!(
-            generate(&blocked).is_err(),
+            generate(&blocked, &builtin_pages()).is_err(),
             "creating a dir beneath a file must fail"
         );
         let code = run(&[

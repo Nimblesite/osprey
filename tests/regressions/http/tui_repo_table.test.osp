@@ -1,7 +1,7 @@
 // HTTP response-handle and JSON document integration. Each handle operation
 // uses its own helper. Implements [HTTP-RESPONSE-HANDLE] and [BUILTIN-JSON].
 
-fn handleRequest(method: string, path: string, headers: string, body: string) = HttpResponse {
+fn handleRequest(_method: string, _path: string, _headers: string, _body: string) = HttpResponse {
     status: 200,
     headers: "Content-Type: application/json",
     contentType: "application/json",
@@ -21,7 +21,7 @@ fn pad(s, n) = {
     let r = padEnd(s, n, " ")
     match r {
         Success { value } => value
-        Error { message } => s
+        Error => s
     }
 }
 
@@ -29,7 +29,7 @@ fn field(doc, path) = {
     let r = jsonGet(doc, path)
     match r {
         Success { value } => value
-        Error { message } => "?"
+        Error => "?"
     }
 }
 
@@ -59,7 +59,7 @@ fn renderTable(doc) = {
 
 fn renderDoc(d) = {
     renderTable(d)
-    let fr = jsonFree(d)
+    let _fr = jsonFree(d)
     print(dim("  rendered"))
 }
 
@@ -67,7 +67,7 @@ fn renderBody(bodyText) = {
     let doc = jsonParse(bodyText)
     match doc {
         Success { value } => renderDoc(value)
-        Error { message } => print("jsonfail")
+        Error => print("jsonfail")
     }
 }
 
@@ -78,7 +78,7 @@ fn renderResponse(h) = {
             renderBody(value)
             value
         }
-        Error { message } => {
+        Error => {
             print("bodyfail")
             ""
         }
@@ -87,13 +87,13 @@ fn renderResponse(h) = {
 
 fn run() = {
     let serverId = httpCreateServer(18099, "127.0.0.1")
-    let listenResult = httpListen(serverId, handleRequest)
+    let _listenResult = httpListen(serverId, handleRequest)
     let clientId = httpCreateClient("http://127.0.0.1:18099", 5000)
     let resp = httpGetResponse(clientId, "/repos", "")
     let bodyText = match resp {
         Success { value } => {
             let rendered = renderResponse(value)
-            let freed = httpResponseFree(value)
+            let _freed = httpResponseFree(value)
             rendered
         }
         Error { message } => {
@@ -101,8 +101,8 @@ fn run() = {
             ""
         }
     }
-    let closeResult = httpCloseClient(clientId)
-    let stopResult = httpStopServer(serverId)
+    let _closeResult = httpCloseClient(clientId)
+    let _stopResult = httpStopServer(serverId)
     bodyText
 }
 

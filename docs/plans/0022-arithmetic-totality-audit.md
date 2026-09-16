@@ -1,17 +1,47 @@
 # Arithmetic Totality Audit — where the checked-arithmetic promise leaks
 
-**Status:** audit only. No code changed. Findings are ranked by severity.
+**Status:** Phase 0 complete and locally validated on 2026-09-10. F1, F5, F7 and F9 are fixed; F10 was already implemented. The remaining float fault-policy decision, implementation and migration keep this plan open.
 **Audited invariant:** *every operation whose exact mathematical result can fall
 outside its result type must surface that as a typed failure, discharged once at
 the end of an expression — never silently, never as a trap.*
-**Audited against:** `crates/osprey-types/src/expr.rs`,
+**Original audit scope:** `crates/osprey-types/src/expr.rs`,
 `crates/osprey-codegen/src/{expr,conv,cast,gpu}.rs`, `docs/specs/0002`, `0004`,
 `0012`, `0013`, `0034`, and the 222-file `.osp`/`.ospml` corpus.
 
-Every claim below was verified by compiling and running a probe against
-`target/release/osprey`, not by reading alone. Observed output is quoted.
+The original findings and quoted probes below describe the pre-fix behavior.
+The completion record and checklist state the current implementation status.
 
 ---
+
+## Phase 0 completion — 10 September 2026
+
+- **F1:** `cmp_code` emits `fcmp une` for float inequality. The Default and ML
+  boolean corpus tests cover all six predicates, NaN in either operand,
+  equality complements, finite controls, infinities and signed zero.
+- **F5:** Numeric operand requirements travel through the existing generic
+  scheme obligations. Sixty invalid-call cases cover both flavors, five
+  operators, both operand positions, and strings, bools and lists. Aliases and
+  higher-order calls retain the constraint; runtime goldens prove one helper
+  still accepts both integer and float callers and preserves known error channels.
+  Both-flavor `float_operand_constraint.ospo` fixtures pin exact checker errors.
+- **F7:** Internal float narrowing emits `llvm.fptosi.sat.i64.f64`. Existing
+  conversion assertions remain, and twelve boundary inputs pin the safe emission.
+  Additional native and WASM execution probes passed all twelve boundary results.
+- **F9:** Both frontends reject overflowing float literals at the source token.
+  Default already had the range guard; ML now matches it. Tests preserve the
+  largest finite float, negative values and signed zero, and both-flavor
+  `float_literal_overflow.ospo` fixtures pin the exact diagnostics.
+
+The final `make ci` passed with every coverage and duplication threshold
+unchanged. All 213 assertion suites and byte-exact goldens passed under each
+native allocator, with zero ARC leaks. The WASM corpus passed 147 goldens;
+each native/WASM pass also verified 18 alternative GPU-lowering runs and six
+doctests. The complete website suite passed 118 browser tests. The compiler,
+editor, documentation and application gates remained enabled throughout.
+
+Current contracts are [FLOAT-OPERANDS], [FLOAT-COMPARE] and [FLOAT-CONVERT] in
+[spec 0004](../specs/0004-TypeSystem.md), and [FLOAT-LITERAL-RANGE] in
+[spec 0002](../specs/0002-LexicalStructure.md).
 
 ## 1. Verdict
 
@@ -21,19 +51,20 @@ opt-out was never justified in the spec, never bounded, and leaks into three
 places where it stops being a defensible IEEE-754 decision and becomes a plain
 defect.
 
-There is also one **outright bug** unrelated to the opt-out debate: float `!=`
-is compiled to the wrong LLVM predicate, so `NaN != NaN` is `false`.
+The independent float comparison, operand-checking, narrowing and literal
+defects are now fixed. The stronger float fault policy remains a separate decision.
 
 | # | Finding | Severity | Kind |
 |---|---------|----------|------|
-| F1 | Float `!=` uses `fcmp one`; `NaN != NaN` is `false` | **Critical** | Defect |
+| F1 | Float inequality includes NaN (`fcmp une`) | **Critical** | Resolved |
 | F2 | Float `+ - *` produce `inf`/`NaN` silently, untyped | **High** | Design opt-out |
 | F3 | Float `/` and `%` return `Result` but detect only a zero divisor | **High** | False assurance |
 | F4 | `?:` on a plain float is a hard error — no forward-compatible spelling | **High** | Migration blocker |
-| F5 | Float branch of `infer_arith` never constrains its operands | Medium | Defect |
+| F5 | Numeric constraints survive generic calls and aliases | Medium | Resolved |
 | F6 | GPU kernels structurally reject `Result` accumulators | Medium | Blocks the fix |
-| F7 | `fptosi double → i64` is latent UB, guarded only by the checker | Low | Latent |
-| F8 | Spec states the rule, never the consequence; no `[FLOAT-*]` ID | **High** | Spec gap |
+| F7 | Internal float-to-integer narrowing saturates safely | Low | Resolved |
+| F8 | Comparison, operand, literal and narrowing contracts are recorded; stronger float fault policy remains open | **High** | Policy/spec work remains |
+| F9 | Overflowing float literals are rejected in both flavors | Medium | Resolved |
 
 ---
 
@@ -71,7 +102,7 @@ unary `-` are all guarded, including the `INT64_MIN ÷ -1` poison pair
 
 ## 3. Findings
 
-### F1 — Float `!=` is compiled to the wrong predicate. `NaN != NaN` is `false`. **Critical**
+### F1 — Wrong float inequality predicate — resolved
 
 `crates/osprey-codegen/src/expr.rs:643-658`, `cmp_code`:
 
@@ -185,7 +216,7 @@ language rejects the attempt. This has two consequences:
 The blast radius is bounded: **20 of 222** corpus files use float arithmetic.
 That is the entire migration cost, and it will only grow.
 
-### F5 — The float branch never constrains its operands. **Medium**
+### F5 — Missing numeric operand constraints — resolved
 
 `crates/osprey-types/src/expr.rs:943-948` returns `Type::float()` without a
 `push_unify` on either operand. So in `fn scale(x) = x * 1.5`, `x` stays a free
@@ -229,7 +260,7 @@ not an argument against it — the int kernels prove the shape already works. Bu
 it does mean "check only at the last step" has a hard boundary at the kernel
 edge, and the spec must say so.
 
-### F7 — `fptosi double → i64` is latent UB. **Low (currently unreachable)**
+### F7 — Poison-producing internal float narrowing — resolved
 
 `crates/osprey-codegen/src/conv.rs:16`:
 
@@ -268,7 +299,9 @@ what the opt-out costs.
 | [0004:47-49](../specs/0004-TypeSystem.md) | "the IEEE-754 operation returns plain `float`" | no mention of `inf`/`NaN` |
 | [0013:41-62](../specs/0013-ErrorHandling.md) `[ARITH-CHECKED]` | full operator table, correct | never says the float row can produce non-finite values, never says `/`'s `Result` does not cover overflow, never states a NaN-comparison rule |
 
-Concretely absent from every spec file:
+The original audit identified these documentation gaps. Comparison semantics
+are now specified by [FLOAT-COMPARE], and spec 0037 explicitly describes
+IEEE-754 infinity and NaN. The stronger float fault-policy contract is still open:
 
 1. That `inf` and `NaN` are constructible by ordinary arithmetic. Only
    [0012:401](../specs/0012-Built-InFunctions.md) mentions them, and only to say
@@ -336,24 +369,19 @@ design decision.
 
 Sequenced for **Option A (full totality)** — the position that a value which can
 be non-finite must carry a `Result`, discharged once at the end of the chain.
-Phase 0 is required under every option. Nothing here is done yet.
+Phase 0 is complete under every option. The remaining checklist records the
+original Result-based proposal; the chosen float policy must also reconcile with
+[spec 0037](../specs/0037-ArithmeticEffects.md), which reserves the non-finite
+float decision for this plan while moving integer faults to `Arith`.
 
 ### Phase 0 — Design-independent defects
 
-- [ ] **F1** `crates/osprey-codegen/src/expr.rs:643-658` — change `("!=", true)`
-      from `"one"` to `"une"` so `NaN != NaN` is `true`.
-- [ ] **F1** Add a corpus case asserting `x != x` detects `NaN` and that
-      `(a != b) == !(a == b)` holds for every float pair, incl. `NaN`.
-- [ ] **F5** `crates/osprey-types/src/expr.rs:895-953` — the float arm must
-      `push_unify` both operands against `float`, like every other arm.
-- [ ] **F5** Add a `examples/failscompilation/` case for a mixed
-      `float`/non-numeric operand that currently slips through.
-- [ ] **F7** `crates/osprey-codegen/src/conv.rs:16` — replace bare `fptosi` with
-      a saturating conversion (`llvm.fptosi.sat.i64.f64`) so no input is UB.
-- [ ] **F9** Non-finite float **literals**: a 400-digit literal parses to `inf`
-      silently (`lit=inf`, exit 0). Locate the literal→`f64` site and reject
-      overflow at parse time, or the "every float is finite" invariant is
-      unreachable no matter what arithmetic does.
+- [x] **F1** Float `!=` uses `fcmp une`; the other five comparison predicates remain ordered.
+- [x] **F1** Both-flavor corpus truth tables cover NaN detection and equality complements, with finite, infinity and signed-zero controls.
+- [x] **F5** Numeric operands are checked through generic scheme obligations. Integer and float callers remain valid; direct float unification would have broken that requirement.
+- [x] **F5** Both-flavor must-reject fixtures pin invalid numeric-call diagnostics before code generation.
+- [x] **F7** Bare `fptosi` is replaced by `llvm.fptosi.sat.i64.f64`, with boundary and existing coercion assertions.
+- [x] **F9** Both frontends reject non-finite float literals, preserving finite extremes and signed zero.
 - [x] **F10** Context-free arithmetic **int-defaulted before the consuming slot
       could constrain it**: `fn plus(a, b) = a + b` could never serve a float
       fold — anywhere in the language — because the operands defaulted to `int`
@@ -383,7 +411,7 @@ Phase 0 is required under every option. Nothing here is done yet.
       `[ARITH-CHECKED]`: float `+ - * / %` and unary `-` yield
       `Result<float, MathError>` when the result is non-finite and every operand
       was finite.
-- [ ] Add `[FLOAT-COMPARE]`: the six comparison operators under `NaN`, as a
+- [x] Add `[FLOAT-COMPARE]`: the six comparison operators under `NaN`, as a
       table, stating `!=` is unordered and the other five are ordered.
 - [ ] State the flattening rule explicitly — a chain yields exactly **one**
       outer `Result`; one `?:` discharges it. This is the "only the last step"
@@ -442,7 +470,7 @@ Phase 0 is required under every option. Nothing here is done yet.
 
 ### Phase 7 — Corpus migration
 
-- [ ] Enumerate the 20 of 222 `.osp`/`.ospml` files using float arithmetic;
+- [ ] Enumerate the current `.osp`/`.ospml` files using float arithmetic;
       list them in this document before touching any of them.
 - [ ] Add `?:` at the last step of each chain — **not** at every operation. Any
       diff that adds more than one `?:` per expression means the flattening is

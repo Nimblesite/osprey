@@ -114,6 +114,47 @@ fn range_of(range: &Value) -> Option<Range> {
     ))
 }
 
+pub(crate) fn action_range(params: &Value) -> Option<Span> {
+    let range = params.get("range")?;
+    let start = range.get("start")?;
+    let end = range.get("end")?;
+    let number = |value: &Value, name| u32::try_from(value.get(name)?.as_u64()?).ok();
+    let result = (
+        number(start, "line")?,
+        number(start, "character")?,
+        number(end, "line")?,
+        number(end, "character")?,
+    );
+    ((result.0, result.1) <= (result.2, result.3)).then_some(result)
+}
+
+pub(crate) fn action_kinds(params: &Value) -> Vec<String> {
+    nested(params, "context", "only")
+        .and_then(Value::as_array)
+        .map(|kinds| {
+            kinds
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+pub(crate) fn code_actions_result(actions: &[crate::model::CodeAction]) -> Value {
+    Value::Array(actions.iter().map(|action| json!({
+        "title": action.title, "kind": action.kind, "isPreferred": true,
+        "data": { "uri": action.uri, "version": action.version },
+        "diagnostics": action.diagnostics.iter().map(diagnostic_json).collect::<Vec<_>>(),
+        "edit": { "documentChanges": [{
+            "textDocument": { "uri": action.uri, "version": action.version },
+            "edits": action.edits.iter().map(|edit| json!({
+                "range": range_json(edit.range), "newText": edit.new_text
+            })).collect::<Vec<_>>()
+        }] }
+    })).collect())
+}
+
 /// The `initialize` result advertising the server's capabilities.
 /// Implements [LSP-CAPABILITIES] and [LSP-ENCODING].
 #[must_use]
@@ -128,6 +169,7 @@ pub(crate) fn initialize_result(encoding: &str) -> Value {
             "referencesProvider": true,
             "documentSymbolProvider": true,
             "documentFormattingProvider": true,
+            "codeActionProvider": { "codeActionKinds": ["quickfix", crate::code_actions::FIX_ALL] },
             "completionProvider": {
                 "resolveProvider": false,
                 "triggerCharacters": [".", ":", "$", "(", "|"]
@@ -312,6 +354,12 @@ fn diagnostic_json(d: &Diagnostic) -> Value {
         "severity": severity,
         "message": d.message
     });
+    if d.code
+        .as_deref()
+        .is_some_and(|code| code.starts_with("unused-"))
+    {
+        insert_opt(&mut obj, "tags", Some(json!([1])));
+    }
     insert_opt(&mut obj, "source", d.source.as_deref().map(Value::from));
     insert_opt(&mut obj, "code", d.code.as_deref().map(Value::from));
     obj
@@ -566,11 +614,35 @@ mod tests {
     }
 
     #[test]
+    fn action_ranges_reject_missing_negative_overflow_and_reversed_positions() {
+        let valid = json!({"range":{"start":{"line":2,"character":3},"end":{"line":2,"character":5}},"context":{"only":["quickfix",7,"source.fixAll"]}});
+        assert_eq!(action_range(&valid), Some((2, 3, 2, 5)));
+        assert_eq!(action_kinds(&valid), ["quickfix", "source.fixAll"]);
+        assert!(action_kinds(&json!({})).is_empty());
+        assert_eq!(action_range(&json!({})), None);
+        for (path, replacement) in [
+            ("/range/start/line", Value::Null),
+            ("/range/start/character", json!(-1)),
+            ("/range/end/line", json!(u64::from(u32::MAX) + 1)),
+            ("/range/end/line", json!(1)),
+            ("/range/end/character", json!(2)),
+        ] {
+            let mut invalid = valid.clone();
+            *invalid.pointer_mut(path).expect("fixture field") = replacement;
+            assert_eq!(action_range(&invalid), None, "{invalid}");
+        }
+    }
+
+    #[test]
     fn initialize_result_advertises_the_full_capability_set() {
         // [LSP-CAPABILITIES], [LSP-ENCODING]
         let value = initialize_result("utf-16");
         assert_at(&value, "/capabilities/positionEncoding", "utf-16");
         assert_at(&value, "/capabilities/textDocumentSync", 2);
+        assert_eq!(
+            value.pointer("/capabilities/codeActionProvider/codeActionKinds"),
+            Some(&json!(["quickfix", "source.fixAll.osprey"]))
+        );
         assert_at(&value, "/capabilities/referencesProvider", true);
         assert_at(&value, "/capabilities/implementationProvider", true);
         assert_at(&value, "/capabilities/documentSymbolProvider", true);

@@ -20,6 +20,8 @@ COPY scripts /workspace/scripts
 COPY crates /workspace/crates
 COPY tree-sitter-osprey /workspace/tree-sitter-osprey
 COPY compiler/runtime /workspace/compiler/runtime
+# The compiler embeds this shared grammar in generated HTML documentation.
+COPY website/src/js/osprey-grammar.mjs /workspace/website/src/js/osprey-grammar.mjs
 WORKDIR /workspace
 
 # Build the C runtime archives (compiler/lib/lib*_runtime.a)

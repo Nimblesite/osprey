@@ -27,22 +27,22 @@ requestBoolGroups () = perform MapDepot.fetch "bools"
 
 effectIntGroups () =
     handle MapDepot
-        fetch key => intGroups ()
+        fetch _key => intGroups ()
     in requestIntGroups ()
 
 effectStringGroups () =
     handle MapDepot
-        fetch key => stringGroups ()
+        fetch _key => stringGroups ()
     in requestStringGroups ()
 
 effectFloatGroups () =
     handle MapDepot
-        fetch key => floatGroups ()
+        fetch _key => floatGroups ()
     in requestFloatGroups ()
 
 effectBoolGroups () =
     handle MapDepot
-        fetch key => boolGroups ()
+        fetch _key => boolGroups ()
     in requestBoolGroups ()
 
 mapListShape<T> : Map string (List T) -> string

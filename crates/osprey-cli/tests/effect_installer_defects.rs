@@ -212,8 +212,13 @@ fn a_handler_arm_reads_a_mut_cell_into_an_inferred_result_helper() {
     );
     let (code, transcript) = run_source("arm_mut_cell_into_result_helper", "osp", source);
     assert_eq!(code, Some(0), "run did not complete: {transcript}");
+    let path =
+        std::env::temp_dir().join("osprey_installer_defect_arm_mut_cell_into_result_helper.osp");
     assert_eq!(
-        transcript, "0\n",
+        transcript, format!(
+            "0\n\n{}\n  10:4  warning: unused handler parameter `amount` of `Charge.charge`\n  10:4  warning: unused pattern binding `message`\n\n2 warnings (unused-handler-parameter, unused-pattern-binding)\n",
+            path.display()
+        ),
         "the arm did not read the promoted mutable cell"
     );
 }

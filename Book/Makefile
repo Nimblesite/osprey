@@ -3,6 +3,8 @@ EPUBCHECK ?= epubcheck
 RSVG_CONVERT ?= rsvg-convert
 MAGICK ?= magick
 JQ ?= jq
+MMDC ?= mmdc
+MERMAID_FLAGS := --quiet --configFile styles/mermaid.json --backgroundColor 'rgb(7,13,31)'
 OSPREY ?= ../target/release/osprey
 
 BOOK_JSON := book.json
@@ -14,7 +16,10 @@ DIAGRAM_PNGS := \
 	assets/diagrams/01-program-anatomy.png \
 	assets/diagrams/01-source-to-output.png \
 	assets/diagrams/02-value-graph.png \
-	assets/diagrams/02-expression-flow.png
+	assets/diagrams/02-expression-flow.png \
+	assets/diagrams/03-inference-trail.png \
+	assets/diagrams/03-annotation-choice.png \
+	assets/diagrams/03-mismatch-locator.png
 
 .PHONY: check check-examples render-assets epub html release clean
 
@@ -27,19 +32,20 @@ check:
 
 check-examples:
 	@test -x "$(OSPREY)" || { echo "Missing compiler: $(OSPREY). Run make build at the repository root."; exit 1; }
-	@book_tmp=$$(mktemp -d); trap 'rm -r "$$book_tmp"' EXIT; \
-		$(OSPREY) examples/chapter-01/hello.osp --check >/dev/null; \
-		$(OSPREY) examples/chapter-01/first-flight.osp --check >/dev/null; \
-		$(OSPREY) examples/chapter-01/first-flight.ospml --check >/dev/null; \
-		$(OSPREY) examples/chapter-02/flight-log.osp --check >/dev/null; \
-		$(OSPREY) examples/chapter-01/hello.osp --run > "$$book_tmp/hello.out"; \
-		$(OSPREY) examples/chapter-01/first-flight.osp --run > "$$book_tmp/first-flight.out"; \
-		$(OSPREY) examples/chapter-01/first-flight.ospml --run > "$$book_tmp/first-flight-ml.out"; \
-		$(OSPREY) examples/chapter-02/flight-log.osp --run > "$$book_tmp/flight-log.out"; \
-		diff -u examples/chapter-01/hello.expectedoutput "$$book_tmp/hello.out"; \
-		diff -u examples/chapter-01/first-flight.expectedoutput "$$book_tmp/first-flight.out"; \
-		diff -u examples/chapter-01/first-flight.expectedoutput "$$book_tmp/first-flight-ml.out"; \
-		diff -u examples/chapter-02/flight-log.expectedoutput "$$book_tmp/flight-log.out"
+	@set -eu; book_tmp=$$(mktemp -d); trap 'rm -r "$$book_tmp"' EXIT; \
+		for source in examples/chapter-*/*.osp examples/chapter-*/*.ospml; do \
+			test -f "$$source" || continue; \
+			$(OSPREY) "$$source" --check >/dev/null; \
+			$(OSPREY) "$$source" --run > "$$book_tmp/output"; \
+			diff -u "$${source%.*}.expectedoutput" "$$book_tmp/output"; \
+		done; \
+		for source in examples/chapter-*/failscompilation/*.osp; do \
+			test -f "$$source" || continue; \
+			if $(OSPREY) "$$source" --check > "$$book_tmp/error" 2>&1; then \
+				echo "Expected compiler rejection: $$source"; exit 1; \
+			fi; \
+			diff -u "$${source%.*}.expectederror" "$$book_tmp/error"; \
+		done
 
 render-assets: assets/cover/cover.png $(DIAGRAM_PNGS)
 
@@ -50,6 +56,13 @@ assets/cover/cover.png: assets/cover/cover.svg
 
 assets/diagrams/%.png: assets/diagrams/%.svg
 	@$(RSVG_CONVERT) --width 1600 --height 1000 --output $@ $<
+
+$(filter assets/diagrams/03-%,$(DIAGRAM_PNGS)): assets/diagrams/03-%.png: assets/diagrams/03-%.svg Makefile
+	@$(MMDC) $(MERMAID_FLAGS) --input $(@:.png=.mmd) --output $@ --scale 2
+
+.PRECIOUS: assets/diagrams/%.svg
+assets/diagrams/%.svg: assets/diagrams/%.mmd styles/mermaid.json
+	@$(MMDC) $(MERMAID_FLAGS) --input $< --output $@
 
 epub: check check-examples render-assets
 	@mkdir -p dist

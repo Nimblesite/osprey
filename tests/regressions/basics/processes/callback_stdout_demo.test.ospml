@@ -23,7 +23,7 @@ match result1
         print "✓ Process finished with exit code: ${toString exitCode}"
         cleanupProcess value
         print "✓ Process cleaned up"
-    Error message => print "✗ Failed to spawn process"
+    Error _message => print "✗ Failed to spawn process"
 
 // ONE `printf` rather than three chained `echo`s on purpose. Three echoes are
 // three separate writes to the pipe, so the runtime's reader can wake between
@@ -37,10 +37,10 @@ result2 = spawnProcess "printf 'Line 1\\nLine 2\\nLine 3\\n'" processEventHandle
 match result2
     Success value =>
         print "✓ Multi-line process spawned with ID: ${toString value}"
-        exitCode = awaitProcess value
+        _exitCode = awaitProcess value
         print "✓ Multi-line process finished"
         cleanupProcess value
-    Error message => print "✗ Failed to spawn multi-line process"
+    Error _message => print "✗ Failed to spawn multi-line process"
 
 print "--- Test 3: Error Process Callback ---"
 result3 = spawnProcess "echo Expected failure 1>&2 && exit 1" processEventHandler
@@ -50,7 +50,7 @@ match result3
         exitCode = awaitProcess value
         print "✓ Error process finished with exit code: ${toString exitCode}"
         cleanupProcess value
-    Error message => print "✗ Failed to spawn error process"
+    Error _message => print "✗ Failed to spawn error process"
 
 print "=== CALLBACK DEMO COMPLETE ==="
 print "The [CALLBACK] lines above show C runtime calling into Osprey!"
@@ -63,13 +63,13 @@ callbackLifecycleCase () =
             exitCode = awaitProcess value
             cleanupProcess value
             exitCode == 0
-        Error message => false
+        Error _message => false
     errorProbe = spawnProcess "echo asserted callback error 1>&2 && exit 1" processEventHandler
     errorCompleted = match errorProbe
         Success value =>
             exitCode = awaitProcess value
             cleanupProcess value
             exitCode == 1
-        Error message => false
+        Error _message => false
     checkAll "callback process lifecycle state" [outputCompleted, errorCompleted]
 test "callbacks accompany successful and failing process exits" callbackLifecycleCase

@@ -8,7 +8,7 @@
 //! flavor covers the crate.
 
 use crate::Parsed;
-use osprey_ast::Stmt;
+use osprey_ast::{Program, Stmt};
 
 /// The statements of a clean **Default**-flavor parse.
 pub(crate) fn stmts(src: &str) -> Vec<Stmt> {
@@ -30,16 +30,33 @@ pub(crate) fn ml_one_stmt(src: &str) -> Stmt {
     only(ml_stmts(src))
 }
 
+/// The whole **Default**-flavor [`Program`] of a clean parse. Inner docs
+/// (`//!`) attach to the program itself, so those tests need the program and
+/// not just its statements ([DOC-SIGIL-INNER]).
+pub(crate) fn program(src: &str) -> Program {
+    clean_program(crate::parse_program(src))
+}
+
+/// The whole **ML**-flavor [`Program`] of a clean parse. Twin of [`program`].
+pub(crate) fn ml_program(src: &str) -> Program {
+    clean_program(crate::ml::parse_ml(src))
+}
+
 /// Statements of a parse that must be error-free. The flavor names itself in the
 /// failure so the message says which frontend rejected the source.
 fn clean_statements(parsed: Parsed) -> Vec<Stmt> {
+    clean_program(parsed).statements
+}
+
+/// The program of a parse that must be error-free, named by flavor on failure.
+fn clean_program(parsed: Parsed) -> Program {
     assert!(
         parsed.errors.is_empty(),
         "{} errors: {:?}",
         parsed.flavor,
         parsed.errors
     );
-    parsed.program.statements
+    parsed.program
 }
 
 /// The one statement a single-declaration source must lower to.

@@ -18,9 +18,14 @@ use osprey_ast::{Position, Program};
 /// domain ([ARITH-NEG-LITERAL], [FLAVOR-EQUIVALENCE]).
 pub(crate) const I64_MIN_MAGNITUDE: &str = "9223372036854775808";
 
+mod annotation_edits;
+#[cfg(test)]
+mod annotation_edits_tests;
+mod binding_ranges;
 mod default;
 mod desugar;
 mod docparse;
+mod fragment_ranges;
 mod kernel;
 mod ml;
 mod positional;
@@ -28,6 +33,8 @@ mod strings;
 #[cfg(test)]
 mod test_support;
 
+pub use annotation_edits::{annotation_edits, AnnotationEdit, AnnotationTarget, SourceEdit};
+pub use binding_ranges::{binding_ranges, BindingKind, BindingRange};
 pub use default::parse_tree;
 pub use docparse::doc_links;
 
@@ -242,6 +249,68 @@ pub fn parse_program_for_path(path: &str, source: &str) -> Parsed {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use osprey_ast::{Expr, Stmt};
+
+    const NUMERIC_PREFIXES: [(Flavor, &str); 2] =
+        [(Flavor::Default, "let value = "), (Flavor::Ml, "value = ")];
+
+    /// [FLOAT-LITERAL-RANGE] Both flavors reject overflow at the source token.
+    #[test]
+    fn both_flavors_reject_overflowing_float_literals_with_positions() {
+        let literal = format!("{}.0", "9".repeat(400));
+        for (flavor, prefix) in NUMERIC_PREFIXES {
+            for sign in ["", "-"] {
+                let parsed =
+                    parse_program_with_flavor(&format!("{prefix}{sign}{literal}\n"), flavor);
+                assert_float_range_error(&parsed, &literal, prefix.len() + sign.len());
+            }
+        }
+    }
+
+    fn assert_float_range_error(parsed: &Parsed, literal: &str, column: usize) {
+        assert_eq!(parsed.errors.len(), 1, "{:?}", parsed.errors);
+        let error = parsed.errors.first().expect("one range diagnostic");
+        assert_eq!(
+            error.message,
+            format!("float literal `{literal}` is outside the finite 64-bit range")
+        );
+        assert_eq!(error.position.line, 1);
+        assert_eq!(
+            usize::try_from(error.position.column).expect("source column"),
+            column
+        );
+    }
+
+    /// [FLOAT-LITERAL-RANGE] Rejecting infinity must retain finite boundaries.
+    #[test]
+    fn both_flavors_accept_finite_float_boundaries_and_signed_zero() {
+        for literal in [
+            "0.0".to_owned(),
+            "2.5".to_owned(),
+            format!("{}.0", f64::MAX),
+        ] {
+            for (flavor, prefix) in NUMERIC_PREFIXES {
+                for sign in ["", "-"] {
+                    let parsed =
+                        parse_program_with_flavor(&format!("{prefix}{sign}{literal}\n"), flavor);
+                    assert_finite_float(&parsed, sign == "-");
+                }
+            }
+        }
+    }
+
+    fn assert_finite_float(parsed: &Parsed, negative: bool) {
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let Some(Stmt::Let {
+            value: Expr::Float(value),
+            ..
+        }) = parsed.program.statements.first()
+        else {
+            panic!("expected a float binding: {:?}", parsed.program);
+        };
+        assert!(value.is_finite());
+        assert_eq!(value.is_sign_negative(), negative);
+    }
 
     #[test]
     fn resolve_flavor_follows_flag_marker_extension_precedence() {

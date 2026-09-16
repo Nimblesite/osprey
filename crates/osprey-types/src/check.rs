@@ -1042,7 +1042,10 @@ impl Checker {
         for (name, ty) in uses {
             let resolved = self.ctx.apply(&ty);
             if let Some(message) = crate::builtin_constraints::invalid_use(&name, &resolved) {
-                self.errors.push(TypeError::new(message));
+                self.errors.push(
+                    TypeError::new(message)
+                        .with_pos(crate::builtin_constraints::source_position(&name)),
+                );
             }
         }
     }

@@ -223,17 +223,18 @@ These constraints materially affect how the language must be described:
 - An effect can now say **when** it is answered. An effect declared `static` is
   worked out by the compiler before the program runs and leaves nothing behind;
   an ordinary effect is answered while the program runs, exactly as before. This
-  is a prototype in the brace flavor only (docs/specs/0035-StagedEffects.md):
-  the ML flavor has no `static` surface yet, and the effect-derived reactive runtime and device features proposed by that spec are not built. Describe what it does today —
+  is a prototype in both flavors (docs/specs/0035-StagedEffects.md):
+  `static effect`, `handle static`, and kernel regions share the compiler rewrite. The effect-derived reactive runtime and device features proposed by that spec are not built. Describe what it does today —
   compile-time answers with no runtime cost, and a compiler-derived list of
   which data a function reads — not the roadmap it opens.
 - The [reactive mobile application](../examples/mobile/README.md) is implemented using ordinary Osprey modules and explicit event/state/command transitions. Osprey defines its screen tree, state, GitHub request and decoding logic, SQLite schema and statements, offline cache, search, bookmarks, notes, and priorities. Native hosts render the tree and execute platform services. This working application does not imply that the staged-effects reactive runtime is implemented.
 - The same spec sets a second target: an effect says **how many times** it may
   be answered, so the compiler refuses to re-run work that must not happen
-  twice. None of it is built — no syntax, no checks — and today an effect
-  answered twice stops the program when it runs rather than when it is written.
-  Describe it only as specified behaviour, on the same footing as the other
-  normative targets, and never as something a developer can use now.
+  twice. Both flavors implement the `abort`, `once`, `many`, and `replayable`
+  declaration markers, with checks for single-use continuations and unsafe replay.
+  Runtime handlers for `abort` and `many` are still rejected: safe unwinding and
+  reusable continuations remain work in plans 0026 and 0016. Describe the
+  implemented checks separately from those pending runtime behaviors.
 - Integer arithmetic returns a `Result`, not a plain `int`. `+`, `-`, `*`, `abs`
   and `intDiv` all carry a `MathError` channel that the caller must discharge,
   usually with `?:`. That is a real cost to describe honestly: a `?: 0` on an

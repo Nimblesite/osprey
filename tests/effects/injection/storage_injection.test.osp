@@ -46,7 +46,7 @@ fn withDiskStorage(action) = handle Storage
     load key => readFile(key) ?: ""
     exists key => match readFile(key) {
         Success { value } => !isEmpty(value)
-        Error { message } => false
+        Error => false
     }
 in action()
 
@@ -85,9 +85,9 @@ in action()
 /// A third implementation: a read-only policy that accepts no write and serves
 /// one fixed entry. The logic is not recompiled, edited or told about it.
 fn withReadOnlyStorage(action) = handle Storage
-    save key contents => 0
-    load key => "locked entry\n"
-    exists key => true
+    save _key _contents => 0
+    load _key => "locked entry\n"
+    exists _key => true
 in action()
 
 /// A fresh 126-bit random suffix isolates concurrent executions of either flavor.
@@ -171,11 +171,11 @@ fn mockStorageCase() = {
 
     /// The double touched no file system: nothing named by the test exists.
     let notesAbsent = match readFile("notes.txt") {
-        Success { value } => false
+        Success => false
         Error { message } => contains(message, "No such file or directory")
     }
     let archiveAbsent = match readFile("archive.txt") {
-        Success { value } => false
+        Success => false
         Error { message } => contains(message, "readFile")
     }
     checkAll("mock touched no file system", [

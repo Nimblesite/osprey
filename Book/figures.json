@@ -80,6 +80,45 @@
       "status": "planned",
       "chapter": 13,
       "alt": "Default, ML, and a future flavor converge on the same checked language core before code generation."
+    },
+    {
+      "id": "inference-trail",
+      "kind": "concept-diagram",
+      "status": "ready",
+      "chapter": 3,
+      "source": "assets/diagrams/03-inference-trail.mmd",
+      "master": "assets/diagrams/03-inference-trail.svg",
+      "publication": "assets/diagrams/03-inference-trail.png",
+      "width": 838,
+      "height": 1332,
+      "alt": "String concatenation requires a string parameter; heading receives a string and returns a string.",
+      "provenance": "Deterministic Mermaid source, rendered by Mermaid CLI with styles/mermaid.json; explanatory diagram, not a product capture."
+    },
+    {
+      "id": "annotation-choice",
+      "kind": "concept-diagram",
+      "status": "ready",
+      "chapter": 3,
+      "source": "assets/diagrams/03-annotation-choice.mmd",
+      "master": "assets/diagrams/03-annotation-choice.svg",
+      "publication": "assets/diagrams/03-annotation-choice.png",
+      "width": 814,
+      "height": 1374,
+      "alt": "Keep the field types defining Learner; omit heading annotations when inference already proves the same types.",
+      "provenance": "Deterministic Mermaid source, rendered by Mermaid CLI with styles/mermaid.json; explanatory diagram, not a product capture."
+    },
+    {
+      "id": "mismatch-locator",
+      "kind": "concept-diagram",
+      "status": "ready",
+      "chapter": 3,
+      "source": "assets/diagrams/03-mismatch-locator.mmd",
+      "master": "assets/diagrams/03-mismatch-locator.svg",
+      "publication": "assets/diagrams/03-mismatch-locator.png",
+      "width": 824,
+      "height": 1384,
+      "alt": "Read the reported file and string/bool disagreement, then follow heading(true) into the string operation.",
+      "provenance": "Deterministic Mermaid source, rendered by Mermaid CLI with styles/mermaid.json; explanatory diagram, not a product capture."
     }
   ]
 }

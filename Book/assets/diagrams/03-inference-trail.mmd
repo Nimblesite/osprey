@@ -1,0 +1,6 @@
+flowchart TD
+    accTitle: Follow the requirement in heading
+    accDescr: String concatenation requires name to be a string and produces a string. A caller must supply a string.
+    A["BODY<br/>Text prefix + name"] -->|requires| B["PARAMETER<br/>name is a string"]
+    B -->|checks the argument| C["CALL<br/>heading receives a string"]
+    C -->|returns| D["RESULT<br/>A new string"]

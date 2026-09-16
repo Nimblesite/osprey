@@ -53,7 +53,7 @@ happyBatch = listAppend (listAppend (listAppend (listAppend (List ()) 3) 5) 2) 4
 print "=== HAPPY PATH: SKIP handler, no over-draws ==="
 happyFinal =
     handle Recover
-        overdraw requested available =>
+        overdraw _requested _available =>
             happyCount := happyCount + 1 ?: happyCount
             0
     in fulfill happyBatch start

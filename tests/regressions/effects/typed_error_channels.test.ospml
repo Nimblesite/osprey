@@ -59,7 +59,7 @@ combined =
                 (** The inner Range handler overrides the outer handler for one call. *)
                 strict =
                     handle Range
-                        clamp v hi =>
+                        clamp v _hi =>
                             print "[Range*]   STRICT override: force ${toString v} -> 1"
                             1
                     in loadRetries 500 10
@@ -75,18 +75,18 @@ print "final combined result = ${toString combined}"
 (** Apply the strict inner Range policy in isolation. *)
 strictRangeForTest () =
     handle Range
-        clamp v hi => 1
+        clamp _v _hi => 1
     in loadRetries 500 10
 
 (** Apply the ordinary clamping Range policy in isolation. *)
 relaxedRangeForTest () =
     handle Range
-        clamp v hi => hi
+        clamp _v hi => hi
     in loadRetries 500 10
 
 parseUnder (raw, replacement) =
     handle Parse
-        bad text => replacement
+        bad _text => replacement
     in perform Parse.bad raw
 
 missingUnder key =
@@ -105,7 +105,7 @@ clampUnder (raw, high) =
 
 forceUnder (raw, high, replacement) =
     handle Range
-        clamp value limit => replacement
+        clamp _value _limit => replacement
     in loadRetries raw high
 
 rangePolicyTrace (raw, high) =
@@ -117,7 +117,7 @@ rangePolicyTrace (raw, high) =
         before = loadRetries raw high
         strict =
             handle Range
-                clamp value limit => 1
+                clamp _value _limit => 1
             in loadRetries raw high
         after = loadRetries raw high
         [before, strict, after]

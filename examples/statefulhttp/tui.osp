@@ -71,7 +71,7 @@ fn shift(a: int, b: int) = (a + b) ?: a
 // ---- list helpers (the cached text is split into rows for rendering) --------
 fn rows(text: string) = match split(text, "\n") {
     Success { value } => value
-    Error { message } => List()
+    Error => List()
 }
 
 // The server's list ends with a trailing newline, so the final split piece is
@@ -85,7 +85,7 @@ fn rowCount(text: string) = match length(text) {
 // tasks from 1). Pure string rewriting — no list indexing.
 fn highlight(text: string, sel: int) = match replace(text, "#${toString(inc(sel))} ", invert(" #${toString(inc(sel))} ")) {
     Success { value } => value
-    Error { message } => text
+    Error => text
 }
 
 fn cursorLine(text: string, sel: int) = match rowCount(text) {
@@ -135,7 +135,7 @@ fn loop() -> Unit ![Out, Term, Net, Model] = {
     draw()
     match perform Term.readKey() {
         Success { value } => dispatch(value)
-        Error { message }  => endApp()
+        Error  => endApp()
     }
 }
 
@@ -158,7 +158,7 @@ fn step(delta: int) -> Unit ![Out, Term, Net, Model] = {
 
 // Run an effectful action, then re-enter the loop (sequences a Unit action
 // before the recursive call without a statement-level side effect in `match`).
-fn continueAfter(done: Unit) -> Unit ![Out, Term, Net, Model] = loop()
+fn continueAfter(_done: Unit) -> Unit ![Out, Term, Net, Model] = loop()
 
 // ---- INTERPRETATION: the only place real I/O and client state live ---------
 fn diagFile() = "/tmp/osprey_tui.log"
@@ -166,12 +166,12 @@ fn baseUrl() = "http://127.0.0.1:8080"
 
 fn bodyOf(h: int) = match httpResponseBody(h) {
     Success { value } => value
-    Error { message } => "(no body)\n"
+    Error => "(no body)\n"
 }
 
 fn readFree(h: int) = {
     let b = bodyOf(h)
-    let freed = httpResponseFree(h)
+    let _freed = httpResponseFree(h)
     b
 }
 
@@ -191,14 +191,14 @@ fn httpFetch() = {
             "(GET failed — see ${diagFile()})\n"
         }
     }
-    let closed = httpCloseClient(c)
+    let _closed = httpCloseClient(c)
     out
 }
 
 fn httpPush(text: string) = {
     let c = httpCreateClient(baseUrl(), 5000)
     let code = toString(httpPost(c, "/tasks", text, ""))
-    let closed = httpCloseClient(c)
+    let _closed = httpCloseClient(c)
     perform Diag.log("POST /tasks   ${code}  \"${text}\"")
 }
 
@@ -212,7 +212,7 @@ fn main() = {
     handle Diag
         log line => {
             logBuf = "${logBuf}${line}\n"
-            let w = writeFile(diagFile(), logBuf)
+            let _w = writeFile(diagFile(), logBuf)
         }
     in handle Model
         items       => cache

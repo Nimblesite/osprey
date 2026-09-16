@@ -35,7 +35,7 @@ onGet path = match path
     _        => textResp (200, perform Db.list ())
 
 handleReq : string -> string -> string -> string -> HttpResponse
-handleReq (method, path, headers, body) =
+handleReq (method, path, _headers, body) =
     perform Metrics.hit path
     match method
         "POST" => onPost body
@@ -43,16 +43,16 @@ handleReq (method, path, headers, body) =
 
 bodyOf h = match httpResponseBody h
     Success value => value
-    Error message => "(no body)"
+    Error _message => "(no body)"
 
 readAndFree h =
     b = bodyOf h
-    freed = httpResponseFree h
+    _freed = httpResponseFree h
     b
 
 fetch (clientId, path) = match httpGetResponse clientId path ""
     Success value => readAndFree value
-    Error message => "GET failed"
+    Error _message => "GET failed"
 
 postTask (clientId, text) =
     perform Log.info "POST /tasks <- ${text}"
@@ -62,7 +62,7 @@ seedTask text = perform Db.add text
 
 runDemo () =
     serverId = httpCreateServer 18280 "127.0.0.1"
-    listening = httpListen serverId handleReq
+    _listening = httpListen serverId handleReq
     clientId = httpCreateClient "http://127.0.0.1:18280" 5000
     print "server up on :18280"
     seeded = await (spawn (seedTask "welcome to osprey"))
@@ -72,7 +72,7 @@ runDemo () =
     listing = fetch (clientId, "/tasks")
     print "--- GET /tasks ---\n${listing}--- end ---"
     print "GET /stats -> ${fetch (clientId, "/stats")}"
-    stopped = httpStopServer serverId
+    _stopped = httpStopServer serverId
     print "STATE @ shutdown — db: ${toString (perform Db.count ())} tasks | server: ${toString (perform Metrics.served ())} requests | disk: ${toString (perform Persist.bytes ())} bytes"
 mut diskBytes = 0
 mut requests = 0
@@ -89,7 +89,7 @@ _ = handle Persist
             is why .gitignore names it. [BUILTIN-FILE-ERRMSG] *)
         saved = writeFile "osprey_http_state_levels.db" snap
         diskBytes := match saved
-            Success value => length snap
+            Success _value => length snap
             // Say WHY [BUILTIN-FILE-ERRMSG]. Storing a bare -1 here is how a
             // failed persist reached the assertions as "expected true, got
             // false", with the operating system's own explanation discarded.
@@ -99,7 +99,7 @@ _ = handle Persist
         diskBytes
     bytes => diskBytes
 in handle Metrics
-    hit p      =>
+    hit _p      =>
         requests := requests + 1 ?: requests
     served     => requests
 in handle Db

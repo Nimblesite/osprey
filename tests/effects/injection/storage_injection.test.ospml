@@ -46,7 +46,7 @@ withDiskStorage action =
         exists key =>
             match readFile key
                 Success value => !(isEmpty value)
-                Error message => false
+                Error _message => false
     in action ()
 
 (** The test double's disk: a map that never reaches a file system, seeded
@@ -83,9 +83,9 @@ withMockStorage action =
     one fixed entry. The logic is not recompiled, edited or told about it. *)
 withReadOnlyStorage action =
     handle Storage
-        save key contents => 0
-        load key => "locked entry\n"
-        exists key => true
+        save _key _contents => 0
+        load _key => "locked entry\n"
+        exists _key => true
     in action ()
 
 (** A fresh 126-bit random suffix isolates concurrent executions of either flavor. *)
@@ -168,11 +168,11 @@ mockStorageCase () =
     (** The double touched no file system: nothing named by the test exists. *)
     notesAbsent =
         match readFile "notes.txt"
-            Success value => false
+            Success _value => false
             Error message => contains message "No such file or directory"
     archiveAbsent =
         match readFile "archive.txt"
-            Success value => false
+            Success _value => false
             Error message => contains message "readFile"
     checkAll "mock touched no file system" [
         notesAbsent,

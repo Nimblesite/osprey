@@ -14,7 +14,10 @@ use osprey_ast::{Expr, MatchArm, Pattern};
 
 pub(crate) fn gen_match(cg: &mut Codegen, value: &Expr, arms: &[MatchArm]) -> Result<Value> {
     let disc = gen_expr(cg, value)?;
-    if arms.iter().any(|a| is_result_arm(&a.pattern)) {
+    if arms.iter().any(|a| is_result_arm(&a.pattern))
+        && (disc.result_inner.is_some()
+            || union_owner(cg, arms).is_none_or(|owner| owner == "Result"))
+    {
         return gen_result_match(cg, &disc, arms);
     }
     if arms
@@ -292,7 +295,18 @@ fn push_arm(cg: &mut Codegen, body: &Expr, phi_in: &mut Vec<(Value, String)>) ->
 }
 
 fn is_result_arm(p: &Pattern) -> bool {
-    matches!(p, Pattern::Constructor { name, .. } if name == "Success" || name == "Error")
+    result_variant(p).is_some()
+}
+
+fn result_variant(pattern: &Pattern) -> Option<&str> {
+    match pattern {
+        Pattern::Constructor { name, .. } | Pattern::Binding(name)
+            if name == "Success" || name == "Error" =>
+        {
+            Some(name)
+        }
+        _ => None,
+    }
 }
 
 /// How a constructor arm's binders map onto the variant's payload slots. The
@@ -368,14 +382,8 @@ fn union_owner(cg: &Codegen, arms: &[MatchArm]) -> Option<String> {
 /// the loaded payload; a bare scalar discriminant falls back to `disc >= 0`
 /// (always Success), preserving the scalar's own type for the binding.
 fn gen_result_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Result<Value> {
-    let success = arms.iter().find(|a| {
-        matches!(&a.pattern,
-        Pattern::Constructor { name, .. } if name == "Success")
-    });
-    let error = arms.iter().find(|a| {
-        matches!(&a.pattern,
-        Pattern::Constructor { name, .. } if name == "Error")
-    });
+    let success = result_arm(arms, "Success");
+    let error = result_arm(arms, "Error");
 
     // (cond, success-binding, error-binding) by Result shape.
     let (cond, succ_val, err_val) = if disc.result_inner.is_some() {
@@ -395,7 +403,9 @@ fn gen_result_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Result
         // what allows a self-call in an arm to stay in tail position.
         // `consume_fresh` only fires for a pure-scalar block, whose errmsg is
         // rodata and so outlives the release. [GC-ARC-PERCEUS]
-        crate::arc::consume_fresh(cg, disc);
+        if arms.iter().all(|arm| is_result_arm(&arm.pattern)) {
+            crate::arc::consume_fresh(cg, disc);
+        }
         bound
     } else if matches!(disc.ty, LType::Str | LType::Ptr) {
         // A handle discriminant (e.g. a WHERE-constrained constructor that
@@ -423,21 +433,29 @@ fn gen_result_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Result
 
     let mark = crate::arc::frame_mark(cg);
     let mut phi_in: Vec<(Value, String)> = Vec::new();
-    emit_result_arm(cg, &sl, success, succ_val, &end, &mut phi_in)?;
-    emit_result_arm(cg, &el, error, err_val, &end, &mut phi_in)?;
+    emit_result_arm(cg, &sl, success, succ_val, disc, &mut phi_in)?;
+    emit_result_arm(cg, &el, error, err_val, disc, &mut phi_in)?;
 
     finish_phi(cg, &phi_in, &end, mark)
 }
 
-/// Emit one Result arm: open `label`, bind the constructor's payload field (if
-/// the arm destructures one) to `bound`, evaluate the body into `phi_in`, then
-/// branch to `end`. A `None` arm just falls through to `end`.
+/// Select the first matching variant or catch-all, preserving source order.
+fn result_arm<'a>(arms: &'a [MatchArm], variant: &str) -> Option<&'a MatchArm> {
+    arms.iter().find(|arm| match result_variant(&arm.pattern) {
+        Some(name) => name == variant,
+        None => matches!(arm.pattern, Pattern::Wildcard | Pattern::Binding(_)),
+    })
+}
+
+/// Bind a variant's payload or a catch-all's complete discriminant and emit
+/// its value. A missing arm is unreachable for a checked exhaustive Result;
+/// it cannot contribute an empty predecessor to the result phi.
 fn emit_result_arm(
     cg: &mut Codegen,
     label: &str,
     arm: Option<&MatchArm>,
     bound: Value,
-    end: &str,
+    disc: &Value,
     phi_in: &mut Vec<(Value, String)>,
 ) -> Result<()> {
     cg.start_block(label);
@@ -446,10 +464,12 @@ fn emit_result_arm(
             if let Some(f) = fields.first() {
                 cg.bind(f.clone(), bound);
             }
+        } else if !is_result_arm(&arm.pattern) {
+            bind_catch_all(cg, &arm.pattern, disc);
         }
         push_arm(cg, &arm.body, phi_in)?;
     } else {
-        cg.emit(format!("br label %{end}"));
+        cg.emit("unreachable");
     }
     Ok(())
 }

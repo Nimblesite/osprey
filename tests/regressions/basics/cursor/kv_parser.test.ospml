@@ -21,7 +21,7 @@ notFound () = (0 - 1) ?: 0    // findEq sentinel: no '=' in the entry
 findEq (seg, i) =
     match byteAt seg i
         Success value => stepEq (seg, i, value)
-        Error message => notFound ()
+        Error _message => notFound ()
 stepEq (seg, i, b) =
     match b == eqByte ()
         true  => i
@@ -64,13 +64,13 @@ emit line =
 processAll rest =
     match indexOf rest (semi ())
         Success value => peel (rest, value)
-        Error message => report rest
+        Error _message => report rest
 peel (rest, sep) =
     match substring rest 0 sep
         Success value => advance (value, rest, sep)
         Error message => emit "  ERROR: ${message}"
 advance (seg, rest, sep) =
-    done = report seg
+    _done = report seg
     processAll (drop rest ((sep + 1) ?: sep))
 
 print "=== key=value config parser ==="
@@ -104,12 +104,12 @@ print "=== parser complete ==="
 pairMatches (seg, expected) =
     match parsePair seg
         Success value => value == expected
-        Error message => false
+        Error _message => false
 
 (** Confirm malformed input carries the entry-specific rejection reason. *)
 pairIsRejected seg =
     match parsePair seg
-        Success value => false
+        Success _value => false
         Error message => message == "no '=' in entry '${seg}'"
 
 (** Exercise cursor discovery, both Result arms, and recursive reporting. *)

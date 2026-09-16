@@ -193,6 +193,10 @@ pub struct SignatureAscription {
 pub struct Program {
     /// Top-level statements in source order.
     pub statements: Vec<Stmt>,
+    /// The file's own `//!` documentation, when written. Inner scope: it
+    /// documents the file that contains it, not the first declaration in it
+    /// ([DOC-SIGIL-INNER]).
+    pub doc: Option<DocComment>,
 }
 
 /// A type expression — `Result<Int, Error>`, `[String]`, `fn(Int) -> Bool`.
@@ -254,6 +258,10 @@ pub struct Parameter {
     pub name: String,
     /// Declared type, if annotated (otherwise inferred).
     pub ty: Option<TypeExpr>,
+    /// Lowering inserted a leading self-alias to check an additional written
+    /// inline type against a standalone signature. That alias is part of this
+    /// source parameter, not a separately written local binding.
+    pub inline_constraint: bool,
 }
 
 /// An `extern fn` parameter — type annotation required.
@@ -496,6 +504,12 @@ pub enum Stmt {
         body: Vec<Stmt>,
         /// `true` for `namespace name;`, `false` for a brace block.
         file_scoped: bool,
+        /// The `///` documenting the namespace from outside ([DOC-MODEL]).
+        doc: Option<DocComment>,
+        /// The `//!` documenting the namespace from inside its own body. A
+        /// namespace can carry both at once — they describe the same scope
+        /// from opposite sides ([DOC-SIGIL-INNER]).
+        inner_doc: Option<DocComment>,
         /// Source position of the `namespace` keyword.
         position: Option<Position>,
     },
@@ -605,6 +619,9 @@ pub enum Stmt {
         body: Vec<ModuleItem>,
         /// Structured documentation comment, when written ([DOC-MODEL]).
         doc: Option<DocComment>,
+        /// The `//!` documenting the module from inside its own body, which
+        /// coexists with the outer `doc` above ([DOC-SIGIL-INNER]).
+        inner_doc: Option<DocComment>,
         /// Source position of the `module` keyword (or leading `state`).
         position: Option<Position>,
     },
@@ -763,6 +780,8 @@ pub enum Expr {
         left: Box<Expr>,
         /// Right operand.
         right: Box<Expr>,
+        /// Source location of the operator token.
+        position: Option<Position>,
     },
     /// A unary operation.
     Unary {
@@ -992,6 +1011,7 @@ mod tests {
                 doc: None,
                 position: None,
             }],
+            doc: None,
         };
         assert_eq!(p.statements.len(), 1);
         match &p.statements[0] {

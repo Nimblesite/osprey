@@ -27,6 +27,9 @@ repository = "https://github.com/Nimblesite/osprey"
 [workspace.dependencies]
 tree-sitter = "0.24"
 tree-sitter-language = "0.1"
+# Drives tree-sitter query matches in tests; already in the lockfile as a
+# dependency of `tree-sitter` itself.
+streaming-iterator = "0.1"
 osprey-ast = { path = "crates/osprey-ast" }
 osprey-syntax = { path = "crates/osprey-syntax" }
 osprey-project = { path = "crates/osprey-project" }
@@ -37,6 +40,11 @@ osprey-fmt = { path = "crates/osprey-fmt" }
 osprey-lsp = { path = "crates/osprey-lsp" }
 osprey-profiler = { path = "crates/osprey-profiler" }
 tree-sitter-osprey = { path = "tree-sitter-osprey" }
+
+# CommonMark -> HTML for the `--docs-format html` exporter. Default features are
+# off: only the `html` renderer is used, and the exporter never accepts the
+# crate's getopts/serde extras.
+pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }
 
 # Language-server building blocks, reused from the published lspkit crates
 # (crates.io). [LSP-REUSE-LSPKIT] The LSP is wired to the compiler in-process,

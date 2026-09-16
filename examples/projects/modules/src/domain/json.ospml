@@ -76,5 +76,5 @@ module Json : JsonApi
     getOr source path fallback =
         doc = jsonParse source ?: 0
         value = jsonGet doc path ?: fallback
-        freed = jsonFree doc ?: 0
+        _freed = jsonFree doc ?: 0
         value

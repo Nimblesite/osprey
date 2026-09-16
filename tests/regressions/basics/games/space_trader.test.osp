@@ -71,7 +71,7 @@ fn getReputationTitle(rep) = match rep {
 /// Ship and crew management
 fn calculateCargoValue(amount, price) = match amount * price {
     Success { value } => value
-    Error { message } => 0
+    Error => 0
 }
 
 fn getShipStatus(fuel) = match fuel {
@@ -110,16 +110,16 @@ let purchaseAmount1 = 10
 let totalCost1 = calculateCargoValue(amount: purchaseAmount1, price: resource1Price)
 let newCredits1 = match credits - totalCost1 {
     Success { value } => value
-    Error { message } => credits
+    Error => credits
 }
 let newCargoUsed1 = match cargoUsed + purchaseAmount1 {
     Success { value } => value
-    Error { message } => cargoUsed
+    Error => cargoUsed
 }
 let travelCost1 = calculateTravelCost(2)
 let newFuel1 = match shipFuel - travelCost1 {
     Success { value } => value
-    Error { message } => shipFuel
+    Error => shipFuel
 }
 
 print("Purchasing ${purchaseAmount1} units of ${resource1Name}")
@@ -147,16 +147,16 @@ print("Market price: ${resource2Price} credits per unit")
 /// Sell previous cargo at premium
 let sellPrice1 = match resource1Price + 25 {
     Success { value } => value
-    Error { message } => resource1Price
+    Error => resource1Price
 }  // 50% markup
 let revenue1 = calculateCargoValue(amount: purchaseAmount1, price: sellPrice1)
 let newCredits2 = match newCredits1 + revenue1 {
     Success { value } => value
-    Error { message } => newCredits1
+    Error => newCredits1
 }
 let newCargoUsed2 = match newCargoUsed1 - purchaseAmount1 {
     Success { value } => value
-    Error { message } => newCargoUsed1
+    Error => newCargoUsed1
 }
 
 print("Selling ${purchaseAmount1} units of ${resource1Name}")
@@ -171,11 +171,11 @@ let purchaseAmount2 = 15
 let totalCost2 = calculateCargoValue(amount: purchaseAmount2, price: resource2Price)
 let newCredits3 = match newCredits2 - totalCost2 {
     Success { value } => value
-    Error { message } => newCredits2
+    Error => newCredits2
 }
 let newCargoUsed3 = match newCargoUsed2 + purchaseAmount2 {
     Success { value } => value
-    Error { message } => newCargoUsed2
+    Error => newCargoUsed2
 }
 
 print("Purchasing ${purchaseAmount2} units of ${resource2Name}")
@@ -189,7 +189,7 @@ let planet3Name = getPlanetName(planet3)
 let travelCost2 = calculateTravelCost(3)
 let newFuel2 = match newFuel1 - travelCost2 {
     Success { value } => value
-    Error { message } => newFuel1
+    Error => newFuel1
 }
 
 print("🚀 Long-range jump to ${planet3Name}")
@@ -203,16 +203,16 @@ print("This is the galaxy's premier trading hub!")
 /// Major trade at hub
 let sellPrice2 = match resource2Price + 30 {
     Success { value } => value
-    Error { message } => resource2Price
+    Error => resource2Price
 }  // Premium for rare goods
 let revenue2 = calculateCargoValue(amount: purchaseAmount2, price: sellPrice2)
 let newCredits4 = match newCredits3 + revenue2 {
     Success { value } => value
-    Error { message } => newCredits3
+    Error => newCredits3
 }
 let newCargoUsed4 = match newCargoUsed3 - purchaseAmount2 {
     Success { value } => value
-    Error { message } => newCargoUsed3
+    Error => newCargoUsed3
 }
 
 print("Selling ${purchaseAmount2} units of ${resource2Name}")
@@ -224,15 +224,15 @@ print("")
 /// Calculate profit and reputation
 let totalProfit = match newCredits4 - credits {
     Success { value } => value
-    Error { message } => 0
+    Error => 0
 }
 let newReputation = match reputation + 1 {
     Success { value } => value
-    Error { message } => reputation
+    Error => reputation
 }
 let newPlanetsVisited = match planetsVisited + 3 {
     Success { value } => value
-    Error { message } => planetsVisited
+    Error => planetsVisited
 }
 let newReputationTitle = getReputationTitle(newReputation)
 
@@ -257,7 +257,7 @@ let fuelEfficiency = newFuel2 / newPlanetsVisited
 let profitPerPlanet = totalProfit / newPlanetsVisited
 let projectedWealth = match newCredits4 * 2 {
     Success { value } => value
-    Error { message } => newCredits4
+    Error => newCredits4
 }
 
 print("📊 ADVANCED ANALYTICS 📊")

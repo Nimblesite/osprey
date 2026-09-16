@@ -56,7 +56,7 @@ openReal path =
     cell = osprey_ffi_cell ()
     rc = sqlite3_open path cell
     db = osprey_ffi_deref cell
-    freed = osprey_ffi_free cell
+    _freed = osprey_ffi_free cell
     match rc
         0 => Success(value = db)
         _ => Error(message = "open failed")
@@ -66,18 +66,18 @@ execReal (db, sql) =
 
 prepareReal (db, sql) =
     cell = osprey_ffi_cell ()
-    rc = sqlite3_prepare_v2 db sql ((0 - 1) ?: 0) cell (osprey_ffi_null ())
+    _rc = sqlite3_prepare_v2 db sql ((0 - 1) ?: 0) cell (osprey_ffi_null ())
     stmt = osprey_ffi_deref cell
-    freed = osprey_ffi_free cell
+    _freed = osprey_ffi_free cell
     stmt
 
 (** --- application logic: effect-typed, knows nothing about SQLite or FFI --- *)
 seedUser (db, uid, uname) =
     stmt = perform Database.prepare db "INSERT INTO users(id, name) VALUES (?, ?)"
-    b1 = perform Database.bindInt stmt 1 uid
-    b2 = perform Database.bindText stmt 2 uname
+    _b1 = perform Database.bindInt stmt 1 uid
+    _b2 = perform Database.bindText stmt 2 uname
     rc = perform Database.step stmt
-    fin = perform Database.finalize stmt
+    _fin = perform Database.finalize stmt
     rc
 
 showUser stmt =
@@ -94,9 +94,9 @@ runApp db =
     i2 = seedUser (db, 2, "Linus")
     print "inserted ${i1} ${i2}"
     q = perform Database.prepare db "SELECT id, name FROM users ORDER BY id"
-    r1 = showUser q
-    r2 = showUser q
-    qfin = perform Database.finalize q
+    _r1 = showUser q
+    _r2 = showUser q
+    _qfin = perform Database.finalize q
     closed = perform Database.close db
     match closed
         0 => print "closed ok"
@@ -170,8 +170,8 @@ runDatabaseProbe () =
 (** Report whether the real handler produced an observation instead of an error. *)
 databaseOpened result =
     match result
-        Success value => true
-        Error message => false
+        Success _value => true
+        Error _message => false
 
 (** Verify the Database capability performs a complete typed SQLite round trip. *)
 databaseEffectCase () =

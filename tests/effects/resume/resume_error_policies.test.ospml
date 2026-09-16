@@ -19,7 +19,7 @@ resumeRecoveryContinuesCase () =
     mut completed = 0
     result =
         handle ResumeFallback
-            recover message fallback =>
+            recover _message fallback =>
                 calls := calls + 1 ?: calls
                 answer = resume fallback
                 completed := answer
@@ -128,14 +128,14 @@ nestedRecoveryChannelsCase () =
     mut settled = ""
     score =
         handle ParseRecovery
-            parse raw =>
+            parse _raw =>
                 entered := "${entered}parse|"
                 answer = resume 8080
                 settled := "${settled}parse|"
                 answer
         in
             handle LookupRecovery
-                missing key =>
+                missing _key =>
                     entered := "${entered}lookup|"
                     answer = resume "localhost"
                     settled := "${settled}lookup|"
@@ -313,16 +313,16 @@ heterogeneousResumeCase () =
     mut calls = 0
     result =
         handle TypedRecovery
-            number key =>
+            number _key =>
                 calls := calls + 1 ?: calls
                 resume 3
-            text key =>
+            text _key =>
                 calls := calls + 1 ?: calls
                 resume "osprey.local"
-            allow key =>
+            allow _key =>
                 calls := calls + 1 ?: calls
                 resume true
-            note message =>
+            note _message =>
                 calls := calls + 1 ?: calls
                 resume
         in typedRecoveryBody ()

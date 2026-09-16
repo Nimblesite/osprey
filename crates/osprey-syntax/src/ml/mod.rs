@@ -25,6 +25,8 @@
 
 use crate::{Flavor, Parsed};
 
+mod annotation_edits;
+mod binding_ranges;
 mod clauses;
 mod cst;
 mod kernel;
@@ -43,11 +45,23 @@ pub(crate) fn parse_ml(source: &str) -> Parsed {
     // Clause sets collapse to `match` before lowering, so the shared core only
     // ever sees the plain definition form ([FLAVOR-ML-CLAUSES]).
     let items = clauses::merge(items, &mut errors);
-    let (program, lower_errors) = lower::lower(items);
+    let (program, lower_errors) = binding_ranges::isolated(|| lower::lower(items));
     errors.extend(lower_errors);
     Parsed {
         program,
         errors,
         flavor: Flavor::Ml,
     }
+}
+
+pub(crate) fn annotation_edits(source: &str) -> Vec<crate::AnnotationEdit> {
+    annotation_edits::resolve_owners(source, parser::parse_annotations(source).2)
+}
+
+pub(crate) fn binding_ranges(source: &str) -> Vec<crate::BindingRange> {
+    binding_ranges::collect(source)
+}
+
+pub(crate) fn string_literals(source: &str) -> Vec<crate::fragment_ranges::Literal> {
+    binding_ranges::literals(source)
 }

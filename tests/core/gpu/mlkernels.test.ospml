@@ -272,7 +272,7 @@ captureDegenerateCase () =
         sumOf (xs |> gpuMap (\x => zero * x)) == 0.0,
         sumOf (xs |> gpuMap (\x => one * x)) == 6.0,
         sumOf (xs |> gpuMap (\x => zero + x)) == 6.0,
-        sumOf (xs |> gpuMap (\x => one)) == 3.0,
+        sumOf (xs |> gpuMap (\_x => one)) == 3.0,
         gpuLength (toGpu [] |> gpuFilter (\x => x > zero)) == 0,
         (toGpu [] |> gpuFold one (\(a, x) => a + zero * x)) == 1.0,
         sumOf (toGpu [5.0] |> gpuMap (\x => one * x)) == 5.0,

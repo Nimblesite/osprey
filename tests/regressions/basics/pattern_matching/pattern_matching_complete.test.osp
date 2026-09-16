@@ -45,8 +45,8 @@ fn describe(s) = match s {
 }
 
 fn shapeKind(s) = match s {
-    Circle { radius } => "dyn circle"
-    Square { x, y }   => "dyn square"
+    Circle(_radius) => "dyn circle"
+    Square(_x, _y)   => "dyn square"
 }
 
 // --- Literal matching ---
@@ -78,7 +78,7 @@ let alice = PersonData { name: "Alice", age: 30 }
 let bob   = PersonData { name: "Bob",   age: 25 }
 print(match alice { PersonData { name, age } => "Person: ${name} is ${toString(age)}" })
 print(match bob   { PersonData { age, name } => "Reordered: ${name}/${toString(age)}" })
-print(match alice { p: PersonData => "Got PersonData type" _ => "Other" })
+print(match alice { _p: PersonData => "Got PersonData type" _ => "Other" })
 
 /// --- Multi-variant + dynamic via function return ---
 let c = Circle { radius: 5 }
@@ -124,7 +124,7 @@ fn patternMatchingCase() = {
     let structuralValue = { value: "It worked" }
     let extracted = structuralValue { value } ? value : "fallback"
     let divisionFailed = match divide(a: 10, b: 0) {
-        Success { value } => false
+        Success => false
         Error { message } => message != ""
     }
     checkAll("literal, union, structural, and Result patterns", [

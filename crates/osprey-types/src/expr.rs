@@ -49,17 +49,7 @@ impl Checker {
             Expr::Float(_) => Type::float(),
             Expr::Str(_) => Type::string(),
             Expr::Bool(_) => Type::bool(),
-            Expr::InterpolatedStr(parts) => {
-                for p in parts {
-                    if let InterpolatedPart::Expr(inner) = p {
-                        // Interpolation preserves a Result as its complete
-                        // Success/Error rendering; it never extracts a payload.
-                        let ty = self.infer_expr(inner, env);
-                        self.builtin_uses.push(("interpolation".to_owned(), ty));
-                    }
-                }
-                Type::string()
-            }
+            Expr::InterpolatedStr(parts) => self.infer_interpolation(parts, env),
             Expr::Identifier(name) => self.lookup_ident_at(name, env, Some(e)),
             Expr::Path(path) => self.lookup_ident_at(&path.to_string(), env, Some(e)),
             Expr::List(items, position) => {
@@ -80,7 +70,12 @@ impl Checker {
             }
             Expr::Map(entries) => self.infer_map(entries, env),
             Expr::Object(fields) => self.infer_object(fields, env),
-            Expr::Binary { op, left, right } => self.infer_binary(op, left, right, env),
+            Expr::Binary {
+                op,
+                left,
+                right,
+                position,
+            } => self.infer_binary(op, left, right, *position, env),
             Expr::Unary { op, operand } => {
                 let t = self.infer_expr(operand, env);
                 if self.reject_erased_operand(&format!("apply unary `{op}` to"), &t) {
@@ -153,6 +148,17 @@ impl Checker {
             Expr::Perform { .. } | Expr::Handler { .. } => self.infer_effect_expr(e, env),
             Expr::Resume(value) => self.infer_resume(value.as_deref(), env),
         }
+    }
+
+    fn infer_interpolation(&mut self, parts: &[InterpolatedPart], env: &TypeEnv) -> Type {
+        for part in parts {
+            if let InterpolatedPart::Expr(inner) = part {
+                // Preserve complete Results and validate the runtime representation.
+                let ty = self.infer_expr(inner, env);
+                self.builtin_uses.push(("interpolation".to_owned(), ty));
+            }
+        }
+        Type::string()
     }
 
     /// Dispatch the two effect expression forms (split out of [`Self::infer_expr`]
@@ -1379,7 +1385,7 @@ fn deferred_arith_name(op: &str) -> String {
 /// The operator a deferred-arithmetic obligation name carries; `None` for a
 /// built-in's obligation.
 fn parse_deferred_arith(name: &str) -> Option<&str> {
-    name.strip_prefix(DEFERRED_ARITH)
+    crate::builtin_constraints::operation_name(name).strip_prefix(DEFERRED_ARITH)
 }
 
 /// Whether an obligation marks a pending arithmetic overload rather than a
@@ -1438,7 +1444,14 @@ impl Checker {
         erased
     }
 
-    fn infer_binary(&mut self, op: &str, left: &Expr, right: &Expr, env: &TypeEnv) -> Type {
+    fn infer_binary(
+        &mut self,
+        op: &str,
+        left: &Expr,
+        right: &Expr,
+        position: Option<osprey_ast::Position>,
+        env: &TypeEnv,
+    ) -> Type {
         let lt = self.infer_expr(left, env);
         let rt = self.infer_expr(right, env);
         let what = format!("apply `{op}` to");
@@ -1466,11 +1479,17 @@ impl Checker {
                 }
                 Type::bool()
             }
-            OpKind::Arith => self.infer_arith(op, &lt, &rt),
+            OpKind::Arith => self.infer_arith(op, &lt, &rt, position),
         }
     }
 
-    fn infer_arith(&mut self, op: &str, lt: &Type, rt: &Type) -> Type {
+    fn infer_arith(
+        &mut self,
+        op: &str,
+        lt: &Type,
+        rt: &Type,
+        position: Option<osprey_ast::Position>,
+    ) -> Type {
         let l = self.ctx.prune(lt);
         let r = self.ctx.prune(rt);
         // Arithmetic is the sole failure-preserving Result flattening context:
@@ -1486,11 +1505,15 @@ impl Checker {
         }
         let lu = unwrap_result(&l);
         let ru = unwrap_result(&r);
+        let string_concat = op == "+" && (lu.is_named(names::STRING) || ru.is_named(names::STRING));
+        if !string_concat && (op == "/" || lu.is_named(names::FLOAT) || ru.is_named(names::FLOAT)) {
+            self.constrain_numeric_operands(op, &lu, &ru, position);
+        }
         match op {
             "%" if lu.is_named(names::FLOAT) || ru.is_named(names::FLOAT) => {
                 res_math(Type::float())
             }
-            "%" if self.defers(&lu, &ru) => self.deferred_arith(op, &l, &r, &lu, &ru),
+            "%" if self.defers(&lu, &ru) => self.deferred_arith(op, &l, &r, &lu, &ru, position),
             "%" => {
                 self.push_unify(&Type::int(), &lu);
                 self.push_unify(&Type::int(), &ru);
@@ -1518,7 +1541,7 @@ impl Checker {
                         ru
                     }
                 } else if self.defers(&lu, &ru) {
-                    return self.deferred_arith(op, &l, &r, &lu, &ru);
+                    return self.deferred_arith(op, &l, &r, &lu, &ru, position);
                 } else {
                     return self.int_arithmetic_result(&lu, &ru);
                 };
@@ -1533,7 +1556,7 @@ impl Checker {
             // case ([`Checker::resolve_deferred_arith`]).
             _ => {
                 if self.defers(&lu, &ru) {
-                    self.deferred_arith(op, &l, &r, &lu, &ru)
+                    self.deferred_arith(op, &l, &r, &lu, &ru, position)
                 } else if lu.is_named(names::FLOAT) || ru.is_named(names::FLOAT) {
                     if propagates_error {
                         res_math(Type::float())
@@ -1543,6 +1566,29 @@ impl Checker {
                 } else {
                     self.int_arithmetic_result(&lu, &ru)
                 }
+            }
+        }
+    }
+
+    /// [FLOAT-OPERANDS] Keep the numeric requirement on each scheme variable;
+    /// unifying with float here would wrongly reject valid integer callers.
+    fn constrain_numeric_operands(
+        &mut self,
+        op: &str,
+        left: &Type,
+        right: &Type,
+        position: Option<osprey_ast::Position>,
+    ) {
+        use crate::builtin_constraints::{is_numeric_scalar, NUMERIC_OPERAND_PREFIX};
+        for ty in [left, right] {
+            if !is_numeric_scalar(ty) {
+                self.builtin_uses.push((
+                    crate::builtin_constraints::located_name(
+                        &format!("{NUMERIC_OPERAND_PREFIX}{op}"),
+                        position,
+                    ),
+                    ty.clone(),
+                ));
             }
         }
     }
@@ -1582,11 +1628,19 @@ impl Checker {
     /// buffer is a float addition; the same helper used only on integers is
     /// still the checked integer one; using it at both in a single program is a
     /// type error rather than a silent reinterpretation.
-    fn deferred_arith(&mut self, op: &str, l: &Type, r: &Type, lu: &Type, ru: &Type) -> Type {
+    fn deferred_arith(
+        &mut self,
+        op: &str,
+        l: &Type,
+        r: &Type,
+        lu: &Type,
+        ru: &Type,
+        position: Option<osprey_ast::Position>,
+    ) -> Type {
         self.push_unify(lu, ru);
         let result = self.ctx.fresh();
         self.builtin_uses.push((
-            deferred_arith_name(op),
+            crate::builtin_constraints::located_name(&deferred_arith_name(op), position),
             Type::fun(vec![l.clone(), r.clone()], result.clone()),
         ));
         result
@@ -1608,7 +1662,12 @@ impl Checker {
         let [left, right] = params.as_slice() else {
             return;
         };
-        let answer = self.infer_arith(op, left, right);
+        let answer = self.infer_arith(
+            op,
+            left,
+            right,
+            crate::builtin_constraints::source_position(name),
+        );
         self.push_unify(&answer, &ret);
     }
 
@@ -2119,6 +2178,7 @@ mod tests {
             parameters: vec![Parameter {
                 name: "n".into(),
                 ty: Some(TypeExpr::named("int")),
+                inline_constraint: false,
             }],
             return_type: Some(TypeExpr::named("int")),
             body: Expr::Identifier("n".into()),
@@ -2167,6 +2227,7 @@ mod tests {
                 call_pipe,
                 update,
             ],
+            doc: None,
         };
         // Only the deliberate pipe arity mismatch is expected.
         let errs = check_program(&prog);
@@ -2192,6 +2253,7 @@ mod tests {
         let int_param = |name: &str| Parameter {
             name: name.into(),
             ty: Some(TypeExpr::named("int")),
+            inline_constraint: false,
         };
         let body = Expr::MethodCall {
             target: Box::new(Expr::Integer(1)),
@@ -2213,12 +2275,16 @@ mod tests {
                 doc: None,
                 position: None,
             }],
+            doc: None,
         };
         // The function's signature pass registers `combine`; the MethodCall is a
         // top-level binding whose initializer drives `infer_method_call`.
         let mut stmts = prog.statements;
         stmts.push(bind("called", body));
-        let errs = check_program(&Program { statements: stmts });
+        let errs = check_program(&Program {
+            statements: stmts,
+            doc: None,
+        });
         assert!(errs.is_empty(), "unexpected type errors: {errs:?}");
     }
 

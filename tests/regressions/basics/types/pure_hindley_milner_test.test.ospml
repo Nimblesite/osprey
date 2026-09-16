@@ -161,7 +161,7 @@ type StringWrapper =
     content : string
 
 (** Add a method-like function that takes self *)
-getLength self = 42
+getLength _self = 42
 
 uppercase self = self.content + "_UPPER"
 
@@ -229,7 +229,7 @@ print "Test 12: Declared type parameters"
 // The binder is load-bearing: without <T>, the two `T` annotations would name
 // a nominal type instead of pinning both parameters to ONE inferred type.
 pick<T> : (T, T) -> T
-pick (first, second) = first
+pick (first, _second) = first
 
 picked = pick (10, 20)
 pickedStr = pick ("left", "right")

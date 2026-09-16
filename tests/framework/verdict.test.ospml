@@ -752,7 +752,7 @@ shape [head, ...tail] = "many(${head}+${listLength tail})"
 readAt xs i =
     match listGet xs i
         Success value => "at ${i} = ${value}"
-        Error message => "miss ${i}"
+        Error _message => "miss ${i}"
 
 (** ML's selection forms all lower to `Expr::Match` — indented match arms,
     adjacent equational clauses, and list patterns alike [FLAVOR-ML-MATCH],

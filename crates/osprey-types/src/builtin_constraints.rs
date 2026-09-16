@@ -7,6 +7,36 @@
 
 use crate::ty::{names, Type};
 
+/// [FLOAT-OPERANDS] Cannot collide with a source identifier or built-in name.
+pub(crate) const NUMERIC_OPERAND_PREFIX: &str = "numeric ";
+
+/// Arithmetic obligation keys retain their origin across scheme instantiation,
+/// including obligations transported inside deferred method relations.
+pub(crate) fn located_name(name: &str, position: Option<osprey_ast::Position>) -> String {
+    position.map_or_else(
+        || name.to_owned(),
+        |p| format!("{name} @{}:{}", p.line, p.column),
+    )
+}
+
+pub(crate) fn source_position(name: &str) -> Option<osprey_ast::Position> {
+    let (_, location) = name.rsplit_once(" @")?;
+    let (line, column) = location.split_once(':')?;
+    Some(osprey_ast::Position {
+        line: line.parse().ok()?,
+        column: column.parse().ok()?,
+    })
+}
+
+pub(crate) fn operation_name(name: &str) -> &str {
+    name.split_once(" @")
+        .map_or(name, |(operation, _)| operation)
+}
+
+pub(crate) fn is_numeric_scalar(ty: &Type) -> bool {
+    ty.is_named(names::INT) || ty.is_named(names::FLOAT)
+}
+
 const SIZED_DISPLAY: &str = "string | List<T> | Map<string, V>";
 const PRINTABLE_DISPLAY: &str =
     "int | float | bool | string | Unit | any | Result<printable, printable>";
@@ -30,10 +60,19 @@ pub(crate) fn display_param_type(name: &str, index: usize) -> Option<&'static st
 
 /// Validate the receiver/value of a representation-sensitive built-in.
 pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
+    // [FLOAT-OPERANDS] Schemes carry this obligation into each instantiation,
+    // preserving numeric polymorphism while refusing concrete nonnumeric uses.
+    if let Some(op) = operation_name(name).strip_prefix(NUMERIC_OPERAND_PREFIX) {
+        return (!is_numeric_scalar(ty) && !matches!(ty, Type::Var(_)))
+            .then(|| format!("operator `{op}` requires int or float; got {ty}"));
+    }
     match name {
         "interpolation" if matches!(ty, Type::Fun { .. }) && crate::ty::has_type_var(ty) => Some(
             "a closure value with a still-generic type cannot be interpolated; apply it or give it a concrete function type".to_owned()
         ),
+        "interpolation" if !is_interpolatable(ty) && !matches!(ty, Type::Fun { .. }) => {
+            Some(format!("cannot convert value for interpolation: {ty}"))
+        }
         "length" | "isEmpty" if !is_sized(ty) => Some(format!(
             "`{name}` supports only string, List<T>, or Map<string, V>; got {ty}"
         )),
@@ -142,6 +181,14 @@ fn is_printable(ty: &Type) -> bool {
     }
 }
 
+/// What interpolation can render. That is everything `print` renders, plus a
+/// fiber handle, which interpolates as its id — `tests/regressions/fiber`
+/// prints `ids 1 2 3 4` from four of them. `print` has never taken a fiber on
+/// its own and still does not.
+fn is_interpolatable(ty: &Type) -> bool {
+    is_printable(ty) || ty.is_named(names::FIBER)
+}
+
 fn is_printable_error(ty: &Type) -> bool {
     is_printable(ty)
         || matches!(
@@ -155,6 +202,19 @@ fn is_printable_error(ty: &Type) -> bool {
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
+
+    /// A fiber renders as its id — `print("ids ${f1} ${f2}")` in
+    /// `tests/regressions/fiber/fiber_showcase.test.osp` prints `ids 1 2`. The
+    /// aggregate guard must not take that away. `print` has never accepted a
+    /// fiber handle on its own, and this pins that difference as deliberate.
+    #[test]
+    fn interpolation_renders_a_fiber_where_print_does_not() {
+        let fiber = Type::con(names::FIBER, vec![Type::int()]);
+        assert_eq!(invalid_use("interpolation", &fiber), None);
+        assert!(invalid_use("print", &fiber).is_some());
+        assert!(invalid_use("interpolation", &Type::list(Type::int())).is_some());
+        assert!(invalid_use("interpolation", &Type::string()).is_none());
+    }
 
     #[test]
     fn size_constraint_accepts_only_runtime_size_receivers() {

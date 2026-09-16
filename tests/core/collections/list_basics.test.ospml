@@ -31,7 +31,7 @@ sumList [head, ...tail] = head + sumList tail ?: 0
 
 (** restLen exercises a wildcard prefix followed by a captured list tail. *)
 restLen : List int -> int
-restLen [_, second, ...rest] = listLength rest
+restLen [_, _second, ...rest] = listLength rest
 restLen _ = 0
 
 (** encodeIteration folds callback order into a base-100 integer through a handled
@@ -261,10 +261,10 @@ indexingPatternsAndDispatchCase () =
     dispatchThirty = listConcat dispatchTwenty dispatchTen
     dispatchThirtyFive = listConcat dispatchThirty dispatchFive
     commandOob = match commands[5]
-        Success value => false
+        Success _value => false
         Error message => message == "index out of bounds"
     emptyOob = match empty[0]
-        Success value => false
+        Success _value => false
         Error message => message == "index out of bounds"
 
     // Successful and failing index paths retain all four legacy observations and exact failure reasons.
@@ -498,27 +498,27 @@ effect TranscriptProbe
     binder (`...name`)" and "the rest binder receives the remaining `List<T>`". *)
 shapeOf xs = match xs
     [] => "none"
-    [only] => "single"
-    [first, second] => "pair"
-    [head, ...tail] => "long+${listLength tail}"
+    [_only] => "single"
+    [_first, _second] => "pair"
+    [_head, ...tail] => "long+${listLength tail}"
 
 (** headOr binds the first element through a rest-binder pattern, or answers the
     caller's fallback for the empty list [TYPE-LIST-PATTERNS]. *)
 headOr (xs, fallback) = match xs
     [] => fallback
-    [head, ...tail] => head
+    [head, ..._tail] => head
 
 (** secondOr binds a two-element prefix before the rest binder, the only place
     the spec permits a rest binder — last, and once. *)
 secondOr (xs, fallback) = match xs
-    [first, second, ...rest] => second
+    [_first, second, ..._rest] => second
     _ => fallback
 
 (** tailLength reports the rest binder's own length, distinguishing the empty
     list (-1) from a singleton whose tail is empty (0). *)
 tailLength xs = match xs
     [] => ((0 - 1) ?: 0)
-    [head, ...tail] => listLength tail
+    [_head, ...tail] => listLength tail
 
 (** joinWords walks a string list through the rest binder, so a dropped,
     duplicated or reordered element changes the transcript. The annotation is
@@ -534,7 +534,7 @@ joinWords xs = match xs
 lastWord xs = match xs
     [] => "none"
     [only] => only
-    [head, ...rest] => lastWord rest
+    [_head, ...rest] => lastWord rest
 
 (** boolWeight turns a bool element into its counted weight through a match, so
     both flavors spell the same lowering (ML has no boolean ternary). *)
@@ -575,7 +575,7 @@ totalWeight xs = match xs
     legitimate row. *)
 rowAt (rows, index) = match listGet rows index
     Success value => value
-    Error message => [777]
+    Error _message => [777]
 
 (** sumInner sums every element of every inner list, exercising a `List<T>` whose
     `T` is itself a `List<int>` ([TYPE-LIST]). *)
@@ -1226,13 +1226,13 @@ boundaryIndexCase () =
     farNegIndex = (0 - 1000) ?: 0
     lastIndex = (listLength forty - 1) ?: 0
     negError = match listGet words negIndex
-        Success value => false
+        Success _value => false
         Error message => message == "index out of bounds"
     farError = match listGet forty 1000
-        Success value => false
+        Success _value => false
         Error message => message == "index out of bounds"
     emptyError = match listGet noWords 0
-        Success value => false
+        Success _value => false
         Error message => message == "index out of bounds"
 
     // `forty` repeats "s0".."s4", so the element at index i is "s${i % 5}":

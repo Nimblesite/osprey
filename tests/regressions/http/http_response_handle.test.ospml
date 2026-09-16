@@ -6,7 +6,7 @@
 // `HttpResponse(status = 200, …)`. Multi-line blocks become indented layout blocks.
 
 handleRequest : string -> string -> string -> string -> HttpResponse
-handleRequest (method, path, headers, body) = HttpResponse(
+handleRequest (_method, _path, _headers, _body) = HttpResponse(
     status = 200,
     headers = "X-Demo: hi\r\n",
     contentType = "text/plain",
@@ -19,23 +19,23 @@ bodyLine h =
     r = httpResponseBody h
     match r
         Success value => "body=${value}"
-        Error message => "nobody"
+        Error _message => "nobody"
 
 headerLine (h, name) =
     r = httpResponseHeader h name
     match r
         Success value => "hdr=${value}"
-        Error message => "missing-ok"
+        Error _message => "missing-ok"
 
 freeLine h =
     r = httpResponseFree h
     match r
-        Success value => "free-ok"
-        Error message => "free-err-double"
+        Success _value => "free-ok"
+        Error _message => "free-err-double"
 
 run () =
     serverId = httpCreateServer 18095 "127.0.0.1"
-    listenResult = httpListen serverId handleRequest
+    _listenResult = httpListen serverId handleRequest
     clientId = httpCreateClient "http://127.0.0.1:18095" 5000
     resp = httpGetResponse clientId "/" ""
     summary = match resp
@@ -48,8 +48,8 @@ run () =
             doubleFreed = freeLine value
             "${status}|${body}|${header}|${missing}|${freed}|${doubleFreed}"
         Error message => "request-error:${message}"
-    closeResult = httpCloseClient clientId
-    stopResult = httpStopServer serverId
+    _closeResult = httpCloseClient clientId
+    _stopResult = httpStopServer serverId
     summary
 
 (** Run the complete response-handle lifecycle and verify every transition. *)

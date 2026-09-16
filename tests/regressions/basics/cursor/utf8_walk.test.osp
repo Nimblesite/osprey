@@ -24,10 +24,10 @@ fn walk(s, byteIndex, count) = match byteIndex >= byteLength(s) {
                     print("cp[${count}] @byte ${byteIndex} = ${cp} (${width} bytes)")
                     walk(s, (byteIndex + width) ?: byteIndex, (count + 1) ?: count)
                 }
-                Error { message } => (0 - 1) ?: 0
+                Error => (0 - 1) ?: 0
             }
         }
-        Error { message } => (0 - 1) ?: 0
+        Error => (0 - 1) ?: 0
     }
 }
 
@@ -68,12 +68,12 @@ print("=== walk complete ===")
 /// Checks a decoded scalar at a known byte boundary.
 fn codepointIs(s, index, expected) = match codePointAt(s, index) {
     Success { value } => value == expected
-    Error { message } => false
+    Error => false
 }
 
 /// A byte inside a multi-byte sequence must carry a real diagnostic.
 fn codepointIsRejected(s, index) = match codePointAt(s, index) {
-    Success { value } => false
+    Success => false
     Error { message } => length(message) > 0
 }
 

@@ -231,6 +231,7 @@ fn nested_module_handler_cannot_qualify_as_outer_installer() {
         )],
         doc: None,
         position: None,
+        inner_doc: None,
     };
     let state = state_module(
         "Counter",
@@ -312,6 +313,7 @@ fn module_mutation_boundaries_preserve_ordinary_local_mut() {
         body: vec![item(Visibility::Private, mutable("cell"))],
         doc: None,
         position: None,
+        inner_doc: None,
     };
     let plain_messages = error_messages(&config("plain.osp"), &[ast("plain.osp", vec![plain])]);
     assert!(
@@ -363,5 +365,6 @@ fn empty_state(name: &str) -> Stmt {
         body: Vec::new(),
         doc: None,
         position: None,
+        inner_doc: None,
     }
 }

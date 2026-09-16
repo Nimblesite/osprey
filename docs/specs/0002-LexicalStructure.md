@@ -46,6 +46,14 @@ Negative values apply unary `-`; the sign is not part of the token. Integer
 literals infer as `int` and decimal literals as `float`. Exponent notation,
 numeric separators, and non-decimal bases are not accepted.
 
+#### Finite float literals — [FLOAT-LITERAL-RANGE]
+
+A decimal float literal must round to a finite 64-bit floating-point value.
+Both flavors reject overflow at the literal's source position, including the
+magnitude of a negative literal. Finite values up to the largest representable
+float and signed zero remain accepted. This is a literal rule; it does not
+change the current runtime behavior of float arithmetic.
+
 ### Booleans and strings
 
 Boolean literals are `true` and `false`. Strings are double-quoted. Shared

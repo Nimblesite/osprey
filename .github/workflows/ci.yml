@@ -80,6 +80,11 @@ jobs:
               - 'website/**'
             code:
               - '!website/**'
+              # The compiler embeds this one website file into the `osprey`
+              # binary (the HTML docs exporter's syntax highlighter). A change
+              # to it changes shipped bytes, so it is code, and every compiler
+              # job must run for it.
+              - 'website/src/js/osprey-grammar.mjs'
 
       # Branch protection lives in GitHub's settings, not in this tree, so it
       # drifts silently — both rulesets were once found `enforcement: disabled`
@@ -149,6 +154,15 @@ jobs:
       # the ruleset stay in agreement.
       - name: Make node dependency guard intact
         run: node scripts/verify-node-deps-guard.mjs
+
+      # The release pipeline runs only on a tag, so nothing on a PR exercises
+      # it. Every way it had of publishing nothing and reporting success was
+      # therefore invisible until a release went out. This asserts those ways
+      # stay closed, on the PR that would reopen one.
+      - name: Release failure gates intact
+        run: |
+          node scripts/verify-release-gates.mjs
+          python3 scripts/test-release-gate.py
 
       - name: Format check
         run: cargo fmt --all --check
@@ -273,7 +287,10 @@ jobs:
         run: make _runtime_wasm
 
       - name: Install cargo-llvm-cov
-        run: cargo install cargo-llvm-cov --locked || true
+        # `|| true` here hid a failed install behind a confusing `make
+        # _test_rust` error several steps later. `cargo install` is already a
+        # no-op when the binary is present, so it needs no help succeeding.
+        run: cargo install cargo-llvm-cov --locked
 
       - name: Tests with coverage
         run: make _test_rust
@@ -564,11 +581,12 @@ jobs:
           key: ${{ runner.os }}-cargo-website-wasm-${{ hashFiles('Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-website-wasm-
 
-      - name: Install the wasm toolchain
+      # Website tests execute native documentation examples as well as WASM.
+      - name: Install native and wasm toolchains
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y clang llvm lld wabt zsh
+          sudo apt-get install -y clang llvm lld wabt zsh libssl-dev pkg-config
           curl -fsSL -o /tmp/wasi-sysroot.tar.gz \
             "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sysroot-${WASI_SDK_VERSION}.0.tar.gz"
           sudo mkdir -p /opt/wasi-sdk/share/wasi-sysroot
@@ -653,8 +671,10 @@ jobs:
         run: |
           set -euo pipefail
           sdk_root=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}
-          sdkmanager=$(ls -d "$sdk_root"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort -V | tail -1 || true)
-          [ -x "$sdkmanager" ] || { echo "no sdkmanager under $sdk_root/cmdline-tools"; exit 1; }
+          sdk_tools="$sdk_root/cmdline-tools"
+          [ -d "$sdk_tools" ] || { echo "::error::no cmdline-tools directory under $sdk_root"; exit 1; }
+          sdkmanager=$(find "$sdk_tools" -maxdepth 3 -path '*/bin/sdkmanager' -type f | sort -V | tail -1)
+          [ -x "$sdkmanager" ] || { echo "::error::no sdkmanager under $sdk_tools"; exit 1; }
           "$sdkmanager" "ndk;28.2.13676358" "platforms;android-34" "build-tools;34.0.0"
           echo "ANDROID_HOME=$sdk_root" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$sdk_root/ndk/28.2.13676358" >> "$GITHUB_ENV"
@@ -681,6 +701,14 @@ jobs:
       - name: Bank e2e (Playwright)
         run: npx playwright test
         working-directory: ./examples/projects/modules/e2e
+
+      # The HTML documentation export is a shipped artifact with navigation,
+      # search, themes and a mobile layout. Its unit tests assert what the
+      # exporter writes; only a browser asserts what a reader gets — and every
+      # defect this step has caught passed those unit tests first. It reuses the
+      # Chromium and node_modules the bank e2e step above already installed.
+      - name: Documentation HTML browser acceptance
+        run: node scripts/verify-docs-html.mjs target/release/osprey
 
       - name: Upload bank e2e results on failure
         uses: actions/upload-artifact@v4

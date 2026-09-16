@@ -120,3 +120,37 @@ fn booleanBehaviorCase() = {
     ])
 }
 test("boolean operators preserve values and short-circuiting", booleanBehaviorCase)
+
+/// Produces infinity at runtime for the [FLOAT-COMPARE] truth tables.
+fn growFloat(x, count) = match count {
+    0 => x
+    _ => growFloat(x * x, (count - 1) ?: 0)
+}
+fn comparisonRow(left, right) = "${left == right},${left != right},${left < right},${left <= right},${left > right},${left >= right}"
+fn checkFloatPair(label, left, right, expected) = checkAll(label, [
+    comparisonRow(left, right) == expected,
+    (left != right) == !(left == right)
+])
+fn nanComparisonsCase() = {
+    let huge = growFloat(2.0, 10)
+    let nan = huge - huge
+    checkFloatPair("NaN/NaN", nan, nan, "false,true,false,false,false,false")
+    checkFloatPair("NaN/float", nan, 1.0, "false,true,false,false,false,false")
+    checkFloatPair("float/NaN", 1.0, nan, "false,true,false,false,false,false")
+    checkFloatPair("NaN/zero", nan, 0.0, "false,true,false,false,false,false")
+    checkFloatPair("zero/NaN", 0.0, nan, "false,true,false,false,false,false")
+}
+fn orderedFloatComparisonsCase() = {
+    let huge = growFloat(2.0, 10)
+    checkFloatPair("less", 1.0, 2.0, "false,true,true,true,false,false")
+    checkFloatPair("greater", 2.0, 1.0, "false,true,false,false,true,true")
+    checkFloatPair("equal", 2.0, 2.0, "true,false,false,true,false,true")
+    checkFloatPair("positive infinity", huge, huge, "true,false,false,true,false,true")
+    checkFloatPair("negative infinity", -huge, -huge, "true,false,false,true,false,true")
+    checkFloatPair("opposite infinities", -huge, huge, "false,true,true,true,false,false")
+    checkFloatPair("infinity/finite", huge, 1.0, "false,true,false,false,true,true")
+    checkFloatPair("negative infinity/finite", -huge, 1.0, "false,true,true,true,false,false")
+    checkFloatPair("signed zeros", -0.0, 0.0, "true,false,false,true,false,true")
+}
+test("NaN comparison truth table", nanComparisonsCase)
+test("ordered float comparison controls", orderedFloatComparisonsCase)

@@ -154,6 +154,8 @@ Inference produces polymorphic variables (`<T>`, `<A>`, …), not `any`. The `an
 
 ## Generics and Variance
 
+**Implementation status:** Declared generics, declaration-site variance, generic effects, generic function values and explicit call-site type arguments are implemented in both flavors. Plan 0015 is retired. [PR #237](https://github.com/Nimblesite/osprey/pull/237) merged on 2026-09-10 after all 14 required checks passed on `38098b7f73f3bd744454d15952475424489632ab`, including native default/GC/ARC corpora, Windows, WebAssembly, Rust/C/editor coverage and integration tests. The contract is pinned by `generics_apply_tests.rs`, `generics_decl_tests.rs`, `generics_variance_tests.rs`, `generic_effects_tests.rs`, the paired generics runtime corpus and explicit-application rejection fixtures. A fresh check during retirement passed all 37 call-site type-application checker tests.
+
 > **Flavor layer — shared core.** Both surfaces lower to the same
 > variance-carrying `TypeParam` nodes ([FLAVOR-BOUNDARY]); the ML spellings are
 > specified in [ML Flavor Syntax](0024-MLFlavorSyntax.md#generics-flavor-ml-generics).
@@ -346,6 +348,50 @@ Primitive spellings are case-sensitive.
 | `Iterator<T>`    | Opaque range pipeline (see [Iterators](0010-LoopConstructsAndFunctionalIterators.md)) |
 
 Mixed numeric arithmetic promotes `int` to `float`. Integer `+`, `-`, `*`, `%`, and unary `-` have type `int`; `/` has type `float`; floating-point `+`, `-`, `*`, and unary `-` have type `float`. Arithmetic is total: no trap, no panic, no silent wrap, no unspecified value, and no undischarged fault ([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic--arith-checked), [ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)).
+
+### Numeric operand constraints — [FLOAT-OPERANDS]
+
+The float-producing branches of `+`, `-`, `*`, `/` and `%` require numeric
+operands. A known operand must be `int` or `float`; an inferred parameter
+carries that requirement through function generalization and each call-site
+instantiation. The same `fn scale(x) = x * 1.5` can therefore serve integer
+and float callers, while `scale("text")`, `scale(true)` and `scale([1])`
+fail type checking before code generation. Aliases and higher-order calls
+preserve the requirement. Division constrains both operands even when neither
+is already known to be float.
+
+This constraint leaves the existing propagation of known `Result` operands
+unchanged: the arithmetic checker first verifies their `MathError` channel,
+then checks the unwrapped numeric type and retains the required result wrapper.
+It does not make a `Result` an ordinary numeric argument to a generic helper.
+
+### Floating-point comparison — [FLOAT-COMPARE]
+
+When either operand is NaN, the comparison operators have these results:
+
+| Operator | Result |
+| --- | --- |
+| `==` | `false` |
+| `!=` | `true` |
+| `<`, `<=`, `>`, `>=` | `false` |
+
+Consequently `(a != b) == !(a == b)` holds for every float pair. Finite values
+and infinities retain numeric ordering; positive and negative zero compare
+equal. The backend uses LLVM's unordered-or-not-equal predicate for `!=` and
+ordered predicates for the other five operators. Both-flavor truth tables in
+`tests/regressions/basics/operators/boolean_consolidated.test.*` pin NaN in
+either operand, equality complements, finite controls, infinities and signed zero.
+
+### Internal numeric narrowing — [FLOAT-CONVERT]
+
+The type checker rejects implicit float-to-integer narrowing. The backend's
+internal coercion also has defined behavior if a future caller supplies a
+double: finite values truncate toward zero, out-of-range values clamp to the
+signed 64-bit bounds, and NaN becomes zero. It emits
+`llvm.fptosi.sat.i64.f64`, never poison-producing bare `fptosi`.
+The codegen conversion tests assert this path for signed NaNs, infinities,
+both range boundaries, signed zeros and fractional values. These semantics
+follow the [LLVM conversion contract](https://llvm.org/docs/LangRef.html#llvm-fptosi-sat-intrinsic).
 
 ## Result Preservation
 
@@ -1020,6 +1066,26 @@ so `bank::Api::json` is never shown as its encoded symbol.
 Every front end reports it: `osprey build` and `osprey FILE --check` on stderr,
 grouped by source file under an aligned `line:column` gutter and closed by a
 count and the rules that raised it; and the language server as a Warning
-diagnostic anchored at the containing declaration and spanning the rest of that source line
-([LSP-DIAGNOSTICS](0020-LanguageServerAndEditors.md#diagnostics-lsp-diagnostics)),
-The message names the written signature, parameter, return, or binding annotation. An ML signature range starts at its header. Other ranges identify the containing declaration. A range is not a deletion edit. The compiler does not offer an automatic deletion action. For an assembled project, the safe set is chosen for the entire program before filtering diagnostics to an open file, so opening a different file cannot change which annotations are reported as removable.
+diagnostic spanning the written annotation ([LSP-DIAGNOSTICS](0020-LanguageServerAndEditors.md#diagnostics-lsp-diagnostics)). An ML signature range starts at the signed name and ends after its final type token, excluding the newline. An inline annotation range includes its `:` or `->` and its type. The source parser records these ranges; diagnostic wording is never parsed to recover an edit.
+
+The editor offers **Remove redundant type signature** for a standalone ML header and **Remove redundant type annotation** for an inline constraint. The edit removes only that proven redundant annotation. It preserves function bodies, parameter names, separators, comments and exports. A comment-free ML header line is removed completely; comments within or beside a header remain. An `export` on a removed header is transferred to the definition so visibility is unchanged. **Remove all redundant type annotations** applies the already-proven jointly removable set in the current document. Necessary annotations, generic/effect declarations and foreign contracts have no deletion action.
+
+For an assembled project, the safe set is chosen for the entire program before filtering diagnostics to an open file. The editor checks current open source buffers when deciding the set. Each action is checked again when requested and carries the document version it was computed from; the VS Code extension rejects a cached action after the checked source changes. See [LSP-CODE-ACTIONS-ANNOTATIONS](0020-LanguageServerAndEditors.md#annotation-quick-fixes-lsp-code-actions-annotations).
+
+
+## Unused symbols `[TYPE-WARNINGS-UNUSED]`
+
+A program that passes type checking reports a Warning for each unread lexical binding below. These warnings do not change compilation, evaluation, generated code or exit status. The CLI includes them in the same source-grouped listing as redundant annotations; the editor reports the same rule and message on the written identifier and marks it unnecessary.
+
+| Rule | Binding | Message |
+| --- | --- | --- |
+| `unused-variable` | A local `let` or `mut` whose value is never read | `unused variable ` + the name in backticks |
+| `unused-parameter` | A function or lambda parameter never read by its body | `unused parameter ` + the name in backticks |
+| `unused-pattern-binding` | An unread match or select pattern binder | `unused pattern binding ` + the name in backticks |
+| `unused-handler-parameter` | An unread effect operation argument in a handler arm | `unused handler parameter ` + the name in backticks + ` of ` + the qualified operation in backticks |
+
+Usage is resolved by lexical binding identity. A shadowing declaration cannot count as a read of the outer binding. The initializer of `let x = x` reads the previous `x`, before introducing the new one. Captures in nested functions, handlers and spawned fibers count as reads. Assignment to a mutable local alone does not read it. Pattern names belong to their own arm; a name used in another arm cannot discharge its warning. Reading an actual callable field does not read a same-named free function.
+
+Names beginning with `_` explicitly opt out. Module and top-level declaration names are excluded because they can be used through exports or native entry points. Parameters in their function bodies are still checked. Pattern binders inside a top-level expression remain local to that expression and are checked normally. Foreign declarations, effect operation declarations and signature members have no body to analyze and do not receive unused-parameter warnings. Compiler-generated curry or annotation-checking bindings are not user declarations and must not be reported as unused variables. An invalid program receives no speculative unused-symbol warnings.
+
+Unused warnings offer no automatic deletion: an unread binding can still evaluate an effectful initializer, and a parameter can be part of a call contract. Removing either would require a separate proof.

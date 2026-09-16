@@ -57,7 +57,7 @@ dryRun () =
     handle Console
         emit line => print "  🧪 [dry-run] ${line}"
     in handle Ledger
-        post amount => 0
+        post _amount => 0
     in account ()
 
 (** [true] when [x] is even. *)

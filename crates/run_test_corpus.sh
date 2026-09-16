@@ -470,6 +470,10 @@ if [[ $gpu_mode_pairs -lt $GPU_MODE_MIN ]]; then
   echo "Both kernel lowerings must stay exercised; do not lower the floor." >&2
 fi
 
+source "${0:A:h}/corpus_doctests.sh"
+doctests_ok=1
+run_corpus_doctests || doctests_ok=0
+
 [[ $fail -eq 0 && $leaky -eq 0 && $golden_fail -eq 0 && $golden_missing -eq 0 \
    && $golden_floor_ok -eq 1 && $skips_ok -eq 1 \
-   && $gpu_mode_fail -eq 0 && $gpu_mode_floor_ok -eq 1 ]]
+   && $gpu_mode_fail -eq 0 && $gpu_mode_floor_ok -eq 1 && $doctests_ok -eq 1 ]]

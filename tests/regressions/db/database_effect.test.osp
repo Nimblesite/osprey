@@ -57,7 +57,7 @@ fn openReal(path) = {
     let cell = osprey_ffi_cell()
     let rc = sqlite3_open(filename: path, ppDb: cell)
     let db = osprey_ffi_deref(cell: cell)
-    let freed = osprey_ffi_free(cell: cell)
+    let _freed = osprey_ffi_free(cell: cell)
     match rc {
         0 => Success { value: db }
         _ => Error { message: "open failed" }
@@ -69,19 +69,19 @@ fn execReal(db, sql) =
 
 fn prepareReal(db, sql) = {
     let cell = osprey_ffi_cell()
-    let rc = sqlite3_prepare_v2(db: db, sql: sql, nByte: (0 - 1) ?: 0, ppStmt: cell, tail: osprey_ffi_null())
+    let _rc = sqlite3_prepare_v2(db: db, sql: sql, nByte: (0 - 1) ?: 0, ppStmt: cell, tail: osprey_ffi_null())
     let stmt = osprey_ffi_deref(cell: cell)
-    let freed = osprey_ffi_free(cell: cell)
+    let _freed = osprey_ffi_free(cell: cell)
     stmt
 }
 
 /// --- application logic: effect-typed, knows nothing about SQLite or FFI ---
 fn seedUser(db, uid, uname) !Database = {
     let stmt = perform Database.prepare(db, "INSERT INTO users(id, name) VALUES (?, ?)")
-    let b1 = perform Database.bindInt(stmt, 1, uid)
-    let b2 = perform Database.bindText(stmt, 2, uname)
+    let _b1 = perform Database.bindInt(stmt, 1, uid)
+    let _b2 = perform Database.bindText(stmt, 2, uname)
     let rc = perform Database.step(stmt)
-    let fin = perform Database.finalize(stmt)
+    let _fin = perform Database.finalize(stmt)
     rc
 }
 
@@ -101,9 +101,9 @@ fn runApp(db) !Database = {
     let i2 = seedUser(db: db, uid: 2, uname: "Linus")
     print("inserted ${i1} ${i2}")
     let q = perform Database.prepare(db, "SELECT id, name FROM users ORDER BY id")
-    let r1 = showUser(q)
-    let r2 = showUser(q)
-    let qfin = perform Database.finalize(q)
+    let _r1 = showUser(q)
+    let _r2 = showUser(q)
+    let _qfin = perform Database.finalize(q)
     let closed = perform Database.close(db)
     match closed {
         0 => print("closed ok")
@@ -182,8 +182,8 @@ fn runDatabaseProbe() =
 
 /// Reports whether the real handler produced an observation instead of an error.
 fn databaseOpened(result) = match result {
-    Success { value } => true
-    Error { message } => false
+    Success => true
+    Error => false
 }
 
 /// Verifies the Database capability performs a complete typed SQLite round trip.

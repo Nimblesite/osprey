@@ -5,7 +5,10 @@
 `compiler/runtime` (the `abort` and `many` continuation shapes)
 **Status:** design fixed by
 [spec 0035](../specs/0035-StagedEffects.md#multiplicity--multi-axis)
-(`[MULTI-AXIS]` through `[MULTI-STAGE-TURN]`); implementation has not started.
+(`[MULTI-AXIS]` through `[MULTI-STAGE-TURN]`). Phases 0–3 and 6 are implemented:
+both-flavor declarations, static checks, replay restrictions and named WASM
+capability diagnostics. Runtime `abort` and `many` handlers remain rejected;
+phases 4, 5 and 7 require safe unwinding, reusable continuations and tracing.
 **Depends on:** [plan 0026](0026-structured-concurrency.md) for `[CANCEL-FINALLY]`
 unwinding (phase 4 only), [plan 0016](0016-algebraic-effects-and-handlers.md)
 for a multi-shot-capable continuation (phase 5 only),

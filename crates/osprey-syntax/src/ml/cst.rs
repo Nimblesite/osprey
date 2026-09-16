@@ -290,6 +290,17 @@ pub(crate) enum MlItem {
     /// with the declaration that follows it ([DOC-SIGIL-ML]) — the same
     /// pairing pattern as [`MlItem::ValueSignature`].
     Doc(String),
+    /// A `//!` documentation comment's raw text. Unlike [`MlItem::Doc`] it
+    /// pairs with nothing that follows: the lowerer hands it to whichever
+    /// scope contains it — the file, a namespace or a module
+    /// ([DOC-SIGIL-INNER]). The position blames a `//!` written where no scope
+    /// can take it.
+    InnerDoc {
+        /// Raw doc text, sigil stripped.
+        text: String,
+        /// Source position of the `//!`.
+        pos: Position,
+    },
 }
 
 /// Declaration-site variance of a type parameter, exactly as written
@@ -401,14 +412,22 @@ pub(crate) enum MlType {
     Tuple(Vec<MlType>),
 }
 
+/// A binder's written name and its exact token position. Generated clause
+/// parameters carry no source position; they must never borrow a user's token.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct MlBinder {
+    pub name: String,
+    pub pos: Option<Position>,
+}
+
 /// A surface parameter pattern in a binding or lambda head.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum MlParam {
     /// A named parameter, type left to inference / the signature.
-    Named(String),
+    Named(MlBinder),
     /// A parenthesised type-annotated parameter `(name : type)` — the inline
     /// form a lambda uses for a load-bearing parameter type ([FLAVOR-ML-FN]).
-    Typed(String, MlType),
+    Typed(MlBinder, MlType, Position),
     /// The unit marker `()` — a zero-argument function boundary, not a value.
     Unit,
     /// A refutable head pattern: the column of an equational clause that
@@ -455,6 +474,8 @@ pub(crate) enum MlExpr {
         left: Box<MlExpr>,
         /// Right operand.
         right: Box<MlExpr>,
+        /// Source location of the operator token.
+        pos: Position,
     },
     /// Single-argument application `func arg` (the surface curried form). A
     /// whitespace spine `f a b` nests these (`App(App(f, a), b)`) and lowers to
@@ -613,7 +634,7 @@ pub(crate) struct MlHandleArm {
     /// The handled operation name.
     pub operation: String,
     /// The operation parameter names bound in the body.
-    pub params: Vec<String>,
+    pub params: Vec<MlBinder>,
     /// The arm body.
     pub body: MlExpr,
     /// Source position of the operation name.
@@ -645,15 +666,15 @@ pub(crate) enum MlPattern {
         /// Constructor name.
         name: String,
         /// Bound field names.
-        fields: Vec<String>,
+        fields: Vec<MlBinder>,
     },
     /// A bare lowercase binding.
-    Bind(String),
+    Bind(MlBinder),
     /// `{ a, b }` / `{ a, .. }` — a structural row pattern binding each named
     /// field; `..` opens the row ([PATTERN-STRUCTURAL]).
     Structural {
         /// Bound field names in written order.
-        fields: Vec<String>,
+        fields: Vec<MlBinder>,
         /// Whether a trailing `..` opens the row.
         open: bool,
     },
@@ -667,7 +688,7 @@ pub(crate) enum MlPattern {
         /// Patterns for the fixed-prefix element positions.
         elements: Vec<MlPattern>,
         /// The trailing `...name` rest-binder, or `None` for a fixed length.
-        rest: Option<String>,
+        rest: Option<MlBinder>,
     },
 }
 

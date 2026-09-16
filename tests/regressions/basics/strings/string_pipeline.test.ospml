@@ -67,24 +67,24 @@ print "chain=\"${take (toLowerCase (trim raw)) 5}\"\n"
 // ----- Substring & search (fallible — Result<T,E>) -----
 match indexOf raw "?"
     Success value   => print "query starts at ${value}\n"
-    Error   message => print "no query string\n"
+    Error   _message => print "no query string\n"
 match substring "hello world" 6 11
     Success value   => print "substring=\"${value}\"\n"
-    Error   message => print "substring err\n"
+    Error   _message => print "substring err\n"
 
 // ----- Transformation (fallible) -----
 match replace "a-b-c-d" "-" "/"
     Success value => print "replace=\"${value}\"\n"
-    Error message => print "replace err\n"
+    Error _message => print "replace err\n"
 match repeat "ab" 4
     Success value => print "repeat=\"${value}\"\n"
-    Error message => print "repeat err\n"
+    Error _message => print "repeat err\n"
 match padStart "42" 5 "0"
     Success value => print "padS=\"${value}\"\n"
-    Error message => print "padS err\n"
+    Error _message => print "padS err\n"
 match padEnd "42" 5 "0"
     Success value => print "padE=\"${value}\"\n"
-    Error message => print "padE err\n"
+    Error _message => print "padE err\n"
 
 (** ----- take/drop/reverse (UFCS form) ----- *)
 hello = "hello"
@@ -95,13 +95,13 @@ print "reverse=\"${reverse "abc"}\"\n"
 // ----- Parsing -----
 match parseInt "123"
     Success value => print "parseInt=${value}\n"
-    Error message => print "pi err\n"
+    Error _message => print "pi err\n"
 match parseInt "oops"
     Success value => print "oops=${value}\n"
-    Error message => print "parseInt strict: rejects 'oops'\n"
+    Error _message => print "parseInt strict: rejects 'oops'\n"
 match parseFloat "3.14"
     Success value => print "parseFloat=${value}\n"
-    Error message => print "pf err\n"
+    Error _message => print "pf err\n"
 
 (** ----- Split/lines/words → List<string> ----- *)
 multi  = "a\nb\nc"
@@ -110,10 +110,10 @@ print "lines count=${listLength (lines multi)}\n"
 print "words count=${listLength (words spaced)}\n"
 match split "a,b,c" ","
     Success value => print "split count=${listLength value}\n"
-    Error message => print "split err\n"
+    Error _message => print "split err\n"
 match split "anything" ""
-    Success value => print "split empty unexpected\n"
-    Error message => print "split empty rejected\n"
+    Success _value => print "split empty unexpected\n"
+    Error _message => print "split empty rejected\n"
 
 // ----- HTTP-routing via startsWith + pattern matching -----
 print "${route ("GET", "/health")}\n"
@@ -131,15 +131,15 @@ stringPipelineCase () =
     cleaned = source |> trim |> toLowerCase
     splitCount = match split "a,b,c" ","
         Success value => listLength value
-        Error message => (0 - 1) ?: 0
+        Error _message => (0 - 1) ?: 0
     splitEmptyRejected = match split "anything" ""
-        Success value => false
+        Success _value => false
         Error message => message != ""
     invalidIntegerRejected = match parseInt "oops"
-        Success value => false
+        Success _value => false
         Error message => message != ""
     missingIndexRejected = match indexOf "hello" "xyz"
-        Success value => false
+        Success _value => false
         Error message => message != ""
     checkAll "string inspection and transformations" [
         length source == 36,

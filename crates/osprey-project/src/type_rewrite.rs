@@ -1,8 +1,9 @@
 //! Type/effect-name rewriting and alias expansion.
 
-use crate::model::{DeclKind, SymbolKey};
-use crate::resolve::{Context, Locals, Resolver};
-use osprey_ast::{EffectRef, TypeExpr};
+use crate::contribution::Contribution;
+use crate::model::{DeclKind, ProjectGraph, SymbolKey};
+use crate::resolve::{AliasInfo, Context, Locals, Resolver};
+use osprey_ast::{EffectRef, Stmt, TypeExpr};
 use std::collections::BTreeMap;
 
 impl Resolver<'_> {
@@ -150,7 +151,7 @@ impl Resolver<'_> {
         &mut self,
         target: &mut TypeExpr,
         key: &SymbolKey,
-        alias: &crate::resolve::AliasInfo,
+        alias: &AliasInfo,
         use_context: &Context,
     ) {
         if !self.alias_active.insert(key.clone()) {
@@ -244,5 +245,85 @@ fn render_type(ty: &TypeExpr) -> String {
     } else {
         let parameters = render_joined(&ty.generic_params);
         format!("{}<{parameters}>", ty.name)
+    }
+}
+
+pub(crate) fn collect_aliases(
+    contributions: &[Contribution],
+    graph: &ProjectGraph,
+) -> BTreeMap<SymbolKey, AliasInfo> {
+    let mut aliases = BTreeMap::new();
+    for (index, contribution) in contributions.iter().enumerate() {
+        collect_alias_statements(
+            &contribution.statements,
+            contribution.namespace.label(),
+            &[],
+            contribution.source,
+            index,
+            graph,
+            &mut aliases,
+        );
+    }
+    aliases
+}
+
+fn collect_alias_statements(
+    statements: &[Stmt],
+    namespace: &str,
+    module: &[String],
+    source: usize,
+    contribution: usize,
+    graph: &ProjectGraph,
+    aliases: &mut BTreeMap<SymbolKey, AliasInfo>,
+) {
+    for statement in statements {
+        match statement {
+            Stmt::Type {
+                name,
+                type_params,
+                alias: Some(value),
+                ..
+            } => {
+                let mut path = module.to_vec();
+                path.push(name.clone());
+                let key = SymbolKey::new(namespace, path);
+                let opaque = graph
+                    .declarations
+                    .get(&key)
+                    .is_some_and(|declaration| declaration.opaque);
+                let _ = aliases.insert(
+                    key,
+                    AliasInfo {
+                        type_params: type_params
+                            .iter()
+                            .map(|parameter| parameter.name.clone())
+                            .collect(),
+                        value: value.clone(),
+                        opaque,
+                        owner: module.to_vec(),
+                        source,
+                        contribution,
+                    },
+                );
+            }
+            Stmt::Module { path, body, .. } => {
+                let mut nested = module.to_vec();
+                nested.extend_from_slice(&path.segments);
+                let declarations = body
+                    .iter()
+                    .map(|item| item.declaration.as_ref().clone())
+                    .collect::<Vec<_>>();
+                collect_alias_statements(
+                    &declarations,
+                    namespace,
+                    &nested,
+                    source,
+                    contribution,
+                    graph,
+                    aliases,
+                );
+            }
+            _ => {}
+        }
     }
 }

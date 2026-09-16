@@ -1,0 +1,3 @@
+3:12: operator `*` requires int or float; got string
+4:25: operator `/` requires int or float; got bool
+4:25: operator `/` requires int or float; got string

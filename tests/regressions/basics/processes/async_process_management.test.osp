@@ -20,12 +20,12 @@ let result1 = spawnProcess("echo Hello from async process!", processEventHandler
 match result1 {
     Success { value } => {
         print("✓ Process spawned successfully")
-        let exitCode = awaitProcess(value)
+        let _exitCode = awaitProcess(value)
         print("✓ Process completed successfully")
         cleanupProcess(value)
         print("✓ Process resources cleaned up")
     }
-    Error { message } => print("✗ Process spawn failed")
+    Error => print("✗ Process spawn failed")
 }
 
 // Test 2: Process with different output
@@ -34,11 +34,11 @@ let result2 = spawnProcess("echo Process 2 output", processEventHandler)
 match result2 {
     Success { value } => {
         print("Process 2 spawned successfully")
-        let exitCode2 = awaitProcess(value)
+        let _exitCode2 = awaitProcess(value)
         print("Process 2 finished")
         cleanupProcess(value)
     }
-    Error { message } => print("Process 2 failed")
+    Error => print("Process 2 failed")
 }
 
 // Test 3: Error handling
@@ -46,11 +46,11 @@ print("--- Test 3: Error Handling ---")
 let result3 = spawnProcess("exit 1", processEventHandler)  // Command that returns exit code 1
 match result3 {
     Success { value } => {
-        let exitCode3 = awaitProcess(value)
+        let _exitCode3 = awaitProcess(value)
         print("Error process returned non-zero exit code")
         cleanupProcess(value)
     }
-    Error { message } => print("✗ Process spawn unexpectedly failed")
+    Error => print("✗ Process spawn unexpectedly failed")
 }
 
 // Test 4: Result<ProcessHandle> toString conversion
@@ -62,7 +62,7 @@ match result4 {
         let _ = awaitProcess(value)
         cleanupProcess(value)
     }
-    Error { message } => print("Process 4 failed")
+    Error => print("Process 4 failed")
 }
 
 print("=== Async Process Management Demo Complete ===")
@@ -77,7 +77,7 @@ fn asyncProcessLifecycleCase() = {
             cleanupProcess(value)
             exitCode == 0
         }
-        Error { message } => false
+        Error => false
     }
     let failureProbe = spawnProcess("exit 1", processEventHandler)
     let failureExit = match failureProbe {
@@ -86,7 +86,7 @@ fn asyncProcessLifecycleCase() = {
             cleanupProcess(value)
             exitCode != 0
         }
-        Error { message } => false
+        Error => false
     }
     checkAll("process wait and cleanup state", [successExit, failureExit])
 }

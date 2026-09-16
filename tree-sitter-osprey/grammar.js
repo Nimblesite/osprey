@@ -112,7 +112,9 @@ module.exports = grammar({
 
   rules: {
     // ---------- TOP LEVEL ----------
-    source_file: ($) => repeat($.statement),
+    // A leading `//!` block documents the FILE, not the first declaration in
+    // it, so it is consumed here rather than by `statement` [DOC-SIGIL-INNER].
+    source_file: ($) => seq(optional($.inner_doc_comment), repeat($.statement)),
 
     // Every statement ends at its line's end: the trailing `_statement_break`
     // (zero-width, scanner.c) demands a newline, `//` comment, `}`, or EOF
@@ -183,7 +185,8 @@ module.exports = grammar({
         choice(';', field('body', $.namespace_body)),
       ),
 
-    namespace_body: ($) => seq('{', repeat($.statement), '}'),
+    namespace_body: ($) =>
+      seq('{', optional($.inner_doc_comment), repeat($.statement), '}'),
 
     // ---------- DECLARATIONS ----------
     let_declaration: ($) =>
@@ -678,6 +681,7 @@ module.exports = grammar({
         field('path', $.symbol_path),
         optional(field('signature', $.signature_ascription)),
         '{',
+        optional($.inner_doc_comment),
         repeat($.module_item),
         '}',
       ),
@@ -793,7 +797,21 @@ module.exports = grammar({
     // `///` doc comment must out-prioritise `//` line comment on the shared
     // prefix; both must out-prioritise `/` (division) by maximal munch.
     _doc_comment_line: ($) => token(prec(1, seq('///', /[^\r\n]*/))),
-    line_comment: ($) => token(seq('//', /[^\r\n]*/)),
+    // `//!` documents the scope that ENCLOSES it — the file, a namespace body
+    // or a module body. It takes the same `prec(1)` trick as `///` so the
+    // shared `//` prefix does not lex it as an ordinary line comment. Because
+    // it is not an extra, a `//!` written anywhere else is a syntax error
+    // rather than silent trivia [DOC-SIGIL-INNER].
+    inner_doc_comment: ($) => repeat1($._inner_doc_comment_line),
+    _inner_doc_comment_line: ($) => token(prec(1, seq('//!', /[^\r\n]*/))),
+    // A line comment may not begin `//!`: that spelling belongs to
+    // `_inner_doc_comment_line`, and leaving it matchable here gave the lexer a
+    // silent fallback — a `//!` written where no scope can hold one lexed as an
+    // ordinary comment and the documentation vanished without a word. Excluding
+    // it makes that position a syntax error, exactly as a stray `///` already
+    // is [DOC-SIGIL-INNER].
+    line_comment: ($) =>
+      token(seq('//', optional(seq(/[^!\r\n]/, /[^\r\n]*/)))),
   },
 });
 

@@ -676,9 +676,18 @@ fn shadowing_row(seen: &[(BTreeSet<&str>, bool)], names: &BTreeSet<&str>) -> Opt
 
 /// Every name a pattern would bind — the cascade-avoidance binding set for a
 /// rejected arm over an erased scrutinee.
-fn pattern_binder_names(pattern: &Pattern) -> Vec<String> {
+pub(crate) fn pattern_binder_names(pattern: &Pattern) -> Vec<String> {
+    pattern_binders_where(pattern, &|_| true)
+}
+
+/// Bare constructor spellings select a variant rather than binding a value.
+pub(crate) fn pattern_binders_where(
+    pattern: &Pattern,
+    binding: &impl Fn(&str) -> bool,
+) -> Vec<String> {
     match pattern {
-        Pattern::TypeAnnotated { name, .. } | Pattern::Binding(name) => vec![name.clone()],
+        Pattern::TypeAnnotated { name, .. } => vec![name.clone()],
+        Pattern::Binding(name) => binding(name).then(|| name.clone()).into_iter().collect(),
         Pattern::Constructor {
             fields,
             sub_patterns,
@@ -686,11 +695,15 @@ fn pattern_binder_names(pattern: &Pattern) -> Vec<String> {
         } => fields
             .iter()
             .cloned()
-            .chain(sub_patterns.iter().flat_map(pattern_binder_names))
+            .chain(
+                sub_patterns
+                    .iter()
+                    .flat_map(|pattern| pattern_binders_where(pattern, binding)),
+            )
             .collect(),
         Pattern::List { elements, rest } => elements
             .iter()
-            .flat_map(pattern_binder_names)
+            .flat_map(|pattern| pattern_binders_where(pattern, binding))
             .chain(rest.iter().cloned())
             .collect(),
         Pattern::Structural { fields, .. } => fields

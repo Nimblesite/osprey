@@ -4,7 +4,7 @@
 // the handle is never reused across a nested match. [BUILTIN-HTTP]
 // [HTTP-RESPONSE-HANDLE]
 
-fn handleRequest(method: string, path: string, headers: string, body: string) = HttpResponse {
+fn handleRequest(_method: string, _path: string, _headers: string, _body: string) = HttpResponse {
     status: 200,
     headers: "X-Demo: hi\r\n",
     contentType: "text/plain",
@@ -17,7 +17,7 @@ fn bodyLine(h) = {
     let r = httpResponseBody(h)
     match r {
         Success { value } => "body=${value}"
-        Error { message } => "nobody"
+        Error => "nobody"
     }
 }
 
@@ -25,21 +25,21 @@ fn headerLine(h, name) = {
     let r = httpResponseHeader(h, name)
     match r {
         Success { value } => "hdr=${value}"
-        Error { message } => "missing-ok"
+        Error => "missing-ok"
     }
 }
 
 fn freeLine(h) = {
     let r = httpResponseFree(h)
     match r {
-        Success { value } => "free-ok"
-        Error { message } => "free-err-double"
+        Success => "free-ok"
+        Error => "free-err-double"
     }
 }
 
 fn run() = {
     let serverId = httpCreateServer(18095, "127.0.0.1")
-    let listenResult = httpListen(serverId, handleRequest)
+    let _listenResult = httpListen(serverId, handleRequest)
     let clientId = httpCreateClient("http://127.0.0.1:18095", 5000)
     let resp = httpGetResponse(clientId, "/", "")
     let summary = match resp {
@@ -54,8 +54,8 @@ fn run() = {
         }
         Error { message } => "request-error:${message}"
     }
-    let closeResult = httpCloseClient(clientId)
-    let stopResult = httpStopServer(serverId)
+    let _closeResult = httpCloseClient(clientId)
+    let _stopResult = httpStopServer(serverId)
     summary
 }
 

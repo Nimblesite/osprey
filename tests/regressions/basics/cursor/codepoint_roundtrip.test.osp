@@ -7,7 +7,7 @@
 /// codePointWidth(cp) must equal the real encoded byte count of its char.
 fn widthMatches(cp, ch) = match codePointWidth(cp) {
     Success { value } => value == byteLength(ch)
-    Error   { message } => false
+    Error => false
 }
 
 /// Decode byte 0 of an encoded char and assert it equals the original scalar.
@@ -76,16 +76,16 @@ let _s3 = rejectInvalid((0 - 1) ?: 0)
 
 // Direct codePointWidth band classification, one assertion per width band.
 print("=== codePointWidth band boundaries ===\n")
-match codePointWidth(127)     { Success { value } => print("width(0x7F)=${value}\n")     Error { message } => print("w err\n") }
-match codePointWidth(2047)    { Success { value } => print("width(0x7FF)=${value}\n")    Error { message } => print("w err\n") }
-match codePointWidth(65535)   { Success { value } => print("width(0xFFFF)=${value}\n")   Error { message } => print("w err\n") }
-match codePointWidth(1114111) { Success { value } => print("width(0x10FFFF)=${value}\n") Error { message } => print("w err\n") }
+match codePointWidth(127)     { Success { value } => print("width(0x7F)=${value}\n")     Error => print("w err\n") }
+match codePointWidth(2047)    { Success { value } => print("width(0x7FF)=${value}\n")    Error => print("w err\n") }
+match codePointWidth(65535)   { Success { value } => print("width(0xFFFF)=${value}\n")   Error => print("w err\n") }
+match codePointWidth(1114111) { Success { value } => print("width(0x10FFFF)=${value}\n") Error => print("w err\n") }
 
 // byteAt indexes RAW BYTES (not codepoints): byte 1 of "é" (0xC3 0xA9) is
 // the continuation byte 0xA9 = 169, proving byte-level access past offset 0.
 print("=== byteAt raw-byte semantics ===\n")
-match byteAt("é", 0) { Success { value } => print("byteAt(é,0)=${value}\n") Error { message } => print("b err\n") }
-match byteAt("é", 1) { Success { value } => print("byteAt(é,1)=${value}\n") Error { message } => print("b err\n") }
+match byteAt("é", 0) { Success { value } => print("byteAt(é,0)=${value}\n") Error => print("b err\n") }
+match byteAt("é", 1) { Success { value } => print("byteAt(é,1)=${value}\n") Error => print("b err\n") }
 
 print("=== codepoint roundtrip complete ===\n")
 
@@ -93,27 +93,27 @@ print("=== codepoint roundtrip complete ===\n")
 fn scalarRoundTrips(cp) = match fromCodePoint(cp) {
     Success { value } => match codePointAt(value, 0) {
         Success { decoded } => decoded == cp && widthMatches(cp, value)
-        Error { message } => false
+        Error => false
     }
-    Error { message } => false
+    Error => false
 }
 
 /// Checks one width band without defaulting an unexpected Error.
 fn widthIs(cp, expected) = match codePointWidth(cp) {
     Success { value } => value == expected
-    Error { message } => false
+    Error => false
 }
 
 /// Invalid scalars must return a non-empty diagnostic.
 fn scalarIsRejected(cp) = match fromCodePoint(cp) {
-    Success { value } => false
+    Success => false
     Error { message } => length(message) > 0
 }
 
 /// Raw-byte access must expose the exact encoded byte.
 fn byteIs(s, index, expected) = match byteAt(s, index) {
     Success { value } => value == expected
-    Error { message } => false
+    Error => false
 }
 
 /// Verifies all UTF-8 widths, invalid scalar handling, and raw byte access.

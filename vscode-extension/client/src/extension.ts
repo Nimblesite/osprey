@@ -15,6 +15,7 @@ import { execFile, execFileSync } from "child_process";
 import * as fs from "fs";
 import {
   CloseAction,
+  CodeActionRequest,
   ErrorAction,
   Executable,
   LanguageClient,
@@ -28,6 +29,7 @@ import { registerProfilerCommands } from "./profiler/profile-run";
 import { registerTestDocsCommand } from "./test-docs-panel";
 import { registerOspreyTestExplorer } from "./test-explorer";
 import { registerTestProfileProfile } from "./test-profile";
+import { registerWarningFixes, warningFixMiddleware } from "./warning-fixes";
 
 // @nimblesite/shipwright-vscode is ESM-only; this extension is CommonJS, so it
 // is loaded via dynamic import() (never a static require) inside activate().
@@ -369,7 +371,6 @@ export function activate(context: ExtensionContext) {
   // Create output channel for diagnostics
   const outputChannel = window.createOutputChannel("Osprey Debug");
   outputChannel.appendLine("=== Osprey Extension Activation ===");
-  outputChannel.show();
 
   // CPU profiler ([PROF-VSCODE-FLAME]): the Profile Current File command, the
   // interactive flame-graph webview, and inline heat decorations. Registered
@@ -395,6 +396,7 @@ export function activate(context: ExtensionContext) {
     () => heat,
   );
   registerTestDocsCommand(context);
+  registerWarningFixes(context, (params) => client.sendRequest(CodeActionRequest.type, params));
 
   // Check if Osprey server is enabled
   const config = workspace.getConfiguration("osprey");
@@ -469,6 +471,7 @@ export function activate(context: ExtensionContext) {
   // Client options. The server analyzes document text (not the filesystem), so
   // unsaved `untitled:` buffers are supported alongside on-disk files.
   const clientOptions: LanguageClientOptions = {
+    middleware: warningFixMiddleware,
     documentSelector: [
       { scheme: "file", language: "osprey" },
       { scheme: "untitled", language: "osprey" },

@@ -19,11 +19,11 @@ type JsonValue =
 
 fn describe(j) = match j {
     JNull             => "null"
-    JBool { v }       => "bool"
-    JNum  { v }       => "num"
-    JStr  { v }       => "str"
-    JArr  { items }   => "arr"
-    JObj  { entries } => "obj"
+    JBool(_v)       => "bool"
+    JNum(_v)       => "num"
+    JStr(_v)       => "str"
+    JArr(_items)   => "arr"
+    JObj(_entries) => "obj"
 }
 
 fn announce(j) = print(describe(j))
@@ -89,27 +89,27 @@ type Tree = Leaf | Node { value: int, left: Tree, right: Tree }
 
 fn label(t) = match t {
     Leaf                        => "leaf"
-    Node { value, left, right } => "node"
+    Node(_value, _left, _right) => "node"
 }
 fn rootVal(t) = match t {
     Leaf                        => 0
-    Node { value, left, right } => value
+    Node(value, _left, _right) => value
 }
 fn leftLabel(t) = match t {
     Leaf                        => "leaf"
-    Node { value, left, right } => label(left)
+    Node(_value, left, _right) => label(left)
 }
 fn rightRootVal(t) = match t {
     Leaf                        => 0
-    Node { value, left, right } => rootVal(right)
+    Node(_value, _left, right) => rootVal(right)
 }
 fn rightRightVal(t) = match t {
     Leaf                        => 0
-    Node { value, left, right } => rightRootVal(right)
+    Node(_value, _left, right) => rightRootVal(right)
 }
 fn leftRightVal(t) = match t {
     Leaf                        => 0
-    Node { value, left, right } => rightRootVal(left)
+    Node(_value, left, _right) => rightRootVal(left)
 }
 
 ///             4
@@ -145,18 +145,18 @@ type Stmt =
     | SRet   { value: Expr }
 
 fn descExpr(e) = match e {
-    ENum { v }    => "num"
-    EAdd { args } => "add"
-    EBlk { body } => "blk"
+    ENum(_v)    => "num"
+    EAdd(_args) => "add"
+    EBlk(_body) => "blk"
 }
 fn descStmt(s) = match s {
-    SLet { name, value } => "let"
-    SRet { value }       => "ret"
+    SLet(_name, _value) => "let"
+    SRet(_value)        => "ret"
 }
 fn numValue(e) = match e {
-    ENum { v }    => v
-    EAdd { args } => 999
-    EBlk { body } => 999
+    ENum { v } => v
+    EAdd(_args) => 999
+    EBlk(_body) => 999
 }
 fn announceExpr(e) = print(descExpr(e))
 fn announceNum(e)  = print(toString(numValue(e)))

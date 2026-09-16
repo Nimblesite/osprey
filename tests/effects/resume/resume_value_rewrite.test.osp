@@ -169,7 +169,7 @@ fn resumeSubstitutesSuppliedValueCase() = {
 
     mut steadyReads = 0
     let steady = handle Script
-        read slot => {
+        read _slot => {
             steadyReads = steadyReads + 1 ?: steadyReads
             resume(1)
         }
@@ -177,7 +177,7 @@ fn resumeSubstitutesSuppliedValueCase() = {
 
     mut zeroReads = 0
     let zeroed = handle Script
-        read slot => {
+        read _slot => {
             zeroReads = zeroReads + 1 ?: zeroReads
             resume(0)
         }
@@ -400,7 +400,7 @@ fn resumeScalarPayloadsCase() = {
 
     mut loneCalls = 0
     let lone = handle Scalar
-        ratio step => {
+        ratio _step => {
             loneCalls = loneCalls + 1 ?: loneCalls
             resume(2.5)
         }
@@ -684,7 +684,7 @@ fn resumeManagedPayloadsCase() = {
 
     mut weightCalls = 0
     let doubledWeight = handle Managed
-        slot n => {
+        slot _n => {
             weightCalls = weightCalls + 1 ?: weightCalls
             resume(Slot { label: "seven", weight: 21, ready: true })
         }
