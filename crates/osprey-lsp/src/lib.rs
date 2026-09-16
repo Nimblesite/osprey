@@ -21,6 +21,7 @@ mod inferred_views;
 pub(crate) mod keywords;
 pub(crate) mod mlrender;
 pub mod model;
+mod project_cache;
 pub(crate) mod reference_docs;
 pub mod server;
 #[cfg(test)]

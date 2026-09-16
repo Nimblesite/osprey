@@ -43,6 +43,22 @@ pub(crate) fn analyze_live(
     encoding: PositionEncoding,
     vfs: Option<&lspkit_vfs::Vfs>,
 ) -> Analysis {
+    analyze_cached(
+        source,
+        path,
+        encoding,
+        vfs,
+        &crate::project_cache::ProjectCache::default(),
+    )
+}
+
+pub(crate) fn analyze_cached(
+    source: &str,
+    path: &str,
+    encoding: PositionEncoding,
+    vfs: Option<&lspkit_vfs::Vfs>,
+    cache: &crate::project_cache::ProjectCache,
+) -> Analysis {
     // [FLAVOR-SELECT] makes a marker/extension disagreement a hard error, and
     // the CLI refuses to build such a file. Resolve FIRST and report the
     // conflict as the document's only finding: guessing a flavor would parse
@@ -70,7 +86,7 @@ pub(crate) fn analyze_live(
             .collect::<Vec<_>>()
             .into();
     }
-    let mut analysis = project_diagnostics(source, path, &parsed.program, encoding, vfs)
+    let mut analysis = project_diagnostics(source, path, &parsed.program, encoding, vfs, cache)
         .or_else(|| standalone_diagnostics(source, path, flavor, &parsed.program, encoding))
         .unwrap_or_else(|| type_diagnostics(source, &parsed.program, flavor, encoding));
     analysis
@@ -190,7 +206,15 @@ fn assembly_diagnostics(
     encoding: PositionEncoding,
 ) -> Analysis {
     match assembled {
-        Ok(project) => assembled_type_errors(source, file, &project, encoding),
+        Ok(project) => {
+            let errors = osprey_types::check_program(&project.program);
+            let warnings = if errors.is_empty() {
+                crate::warning_actions::Warnings::of(&project.program)
+            } else {
+                crate::warning_actions::Warnings::none()
+            };
+            assembled_type_errors(source, file, &project, &errors, &warnings, encoding)
+        }
         Err(errors) => project_errors(source, file, &errors, encoding).into(),
     }
 }
@@ -201,6 +225,7 @@ fn project_diagnostics(
     program: &Program,
     encoding: PositionEncoding,
     vfs: Option<&lspkit_vfs::Vfs>,
+    cache: &crate::project_cache::ProjectCache,
 ) -> Option<Analysis> {
     let file = file_path(uri)?;
     let root = project_root(&file)?;
@@ -232,12 +257,18 @@ fn project_diagnostics(
         .find(|candidate| same_path(&candidate.path, &file))?;
     source_file.source = source.to_string();
     source_file.program = program.clone();
-    let mut analysis = assembly_diagnostics(
-        osprey_project::assemble(&config, &sources),
-        source,
-        &file,
-        encoding,
-    );
+    let shared = cache.checked(&config, &sources);
+    let mut analysis = match &shared.assembled {
+        Ok(project) => assembled_type_errors(
+            source,
+            &file,
+            project,
+            &shared.errors,
+            &shared.warnings,
+            encoding,
+        ),
+        Err(errors) => project_errors(source, &file, errors, encoding).into(),
+    };
     if incomplete {
         // Disk fallback proves errors, but cannot justify edits to live code.
         analysis.fixes.clear();
@@ -252,9 +283,10 @@ fn assembled_type_errors(
     source: &str,
     file: &Path,
     project: &AssembledProject,
+    errors: &[osprey_types::TypeError],
+    warnings: &crate::warning_actions::Warnings,
     encoding: PositionEncoding,
 ) -> Analysis {
-    let errors = osprey_types::check_program(&project.program);
     let diagnostics: Vec<_> = errors
         .iter()
         .filter_map(|error| {
@@ -283,7 +315,7 @@ fn assembled_type_errors(
     if errors.is_empty() {
         let flavor = osprey_syntax::resolve_flavor(None, &file.to_string_lossy(), source)
             .unwrap_or_default();
-        analysis.add_warnings(source, &project.program, flavor, encoding, &|global| {
+        analysis.add_project_warnings(source, warnings, flavor, encoding, &|global| {
             let (owner, line) = project.source_at_line(global.line)?;
             same_path(&owner.path, file).then_some(Position {
                 line,
@@ -885,10 +917,14 @@ mod tests {
             public_api: std::collections::BTreeMap::new(),
             documentation_bindings: Vec::new(),
         };
+        let errors = osprey_types::check_program(&project.program);
+        let warnings = crate::warning_actions::Warnings::none();
         let diagnostics = assembled_type_errors(
             source,
             Path::new("entry.osp"),
             &project,
+            &errors,
+            &warnings,
             PositionEncoding::Utf16,
         );
         assert!(!diagnostics.diagnostics.is_empty(), "{diagnostics:?}");
@@ -896,6 +932,8 @@ mod tests {
             source,
             Path::new("other.osp"),
             &project,
+            &errors,
+            &warnings,
             PositionEncoding::Utf16,
         )
         .diagnostics

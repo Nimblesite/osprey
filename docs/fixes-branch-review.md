@@ -1,6 +1,8 @@
 # Branch review: `fixes` compared with `main`
 
-## Verdict: **DO NOT MERGE — three regressions and two silent-failure holes**
+The findings below record the original review. The [resolution](#resolution--ospreyastra2-and-ospreyopus1) records the fixes and regression tests; [repair verification](#repair-verification) records the completed local gates. Hosted PR checks remain the merge gate.
+
+## Original verdict: **DO NOT MERGE — three regressions and two silent-failure holes**
 
 The compiler core holds up. A program-by-program differential across the whole repo found **no stdout or exit-code regression** in any program that compiled on `main`. The float, NaN and interpolation-position fixes are real and correctly pinned.
 
@@ -185,10 +187,13 @@ Both of these are silent failures or crashes on programs the type checker accept
 
 **Do not merge until blockers 1–3 have failing tests in the tree and fixes behind them.** Findings 4–5 should land in the same pass, because they concern whether a rejection is truthful. Findings 6–9 can follow, but they need an issue each and cannot be waved through as footnotes.
 
-## Resolution — findings owned by OspreyOpus1
+## Resolution — OspreyAstra2 and OspreyOpus1
 
-Each entry names the test that fails if the fix is reverted. Findings 1, 4, 7, 8
-and 9, and the `Result` arm defect, are tracked by OspreyAstra1.
+OspreyAstra2 took over OspreyAstra1's fixes and verification. The original review above records the defects before this repair pass. The entries below describe the resulting behavior and regression coverage.
+
+### Blocker 1 — sibling syntax errors erased real diagnostics
+
+When an open sibling is temporarily unparsable, project diagnostics use its last on-disk source to preserve real errors in the other files. Speculative warnings and annotation edits are suppressed until the live project is valid. `sibling_syntax_errors_preserve_existing_type_errors` exercises the server transport and keeps the original unknown-identifier error visible while a sibling is mid-edit.
 
 ### Blocker 2 — the doctest harness skipped examples and reported green
 
@@ -249,15 +254,56 @@ Fixed by OspreyAstra1 in `builtin_constraints.rs`. Pinned end to end here:
 `examples/failscompilation/debug_interpolation.ospo` (list and map, Default) and
 `ml_interpolation_unprintable.ospo` (ML).
 
-### Finding 9, examples half
+### Finding 9 — unused-binding noise
 
-`crates/osprey-cli/tests/example_warning_hygiene.rs` walks every example under
-`examples/` rather than a hand-kept list of ten, with a floor so a broken walk
-cannot pass silently. All 59 are clean.
+`crates/osprey-cli/tests/example_warning_hygiene.rs` now walks every source under `examples/` and `tests/`, with separate floors of 59 examples and 213 test programs. All are free of unused-binding warnings.
 
-The 41 remaining unused-binding warnings live in six Default test programs
-(`recursive_unions`, `json_document_query`, `pattern_matching_complete`,
-`user_defined_unions`, `type_equality_comprehensive`). They stay: each is an arm
-that binds every field of a record on purpose, which is the only place that
-destructuring is exercised — the ML twins already ignore those fields with `_`.
-Narrowing them to `_` would delete the coverage, not clean it.
+OspreyAstra2 resolved the final 41 warnings in five Default test programs using positional constructor patterns with explicit `_name` binders. These preserve payload loads and match the existing ML twins. All five programs retain byte-identical golden output, and the four that have ML twins retain byte-identical LLVM IR. Existing named-field and reordered-field tests remain intact. No assertions, goldens, or lint rules were removed.
+
+### Findings 4 and 7 — numeric source locations and annotation warnings
+
+Numeric obligations retain the operator position through inference and generalization. Tests cover both flavors, escaped interpolation strings, and physical module locations in assembled projects. The rejection goldens now include the operator's line and column. The redundant-annotation oracle ignores satisfied numeric obligations; the three cases reported above are pinned by `satisfied_numeric_obligations_do_not_hide_redundant_annotations`.
+
+### Pre-existing defect 2 — bare Result arms
+
+The backend recognizes bare `Success` and `Error` arms, preserves catch-all bindings and source order, and keeps user-defined unions with those names on the union path. CLI tests pass for both flavors and all three native memory backends. The existing `result_and_effects` corpus twins also assert bare arms and a nested catch-all, without changing their expected output.
+
+### Finding 8 — `publish_siblings` cost one whole project analysis per open file
+
+Measured first, with `scripts/benchmark-lsp.py`. It was worse than "a risk":
+
+| Project | 1 open | 5 open | 10 open |
+|---|---|---|---|
+| synthetic, 10 files, before | 5.3 ms | 33.5 ms | 70.7 ms |
+| synthetic, 10 files, after | 7.8 ms | 9.9 ms | 12.9 ms |
+| `examples/projects/modules`, before | 5874 ms | not measured | did not finish |
+| `examples/projects/modules`, after | 6043 ms | 6043 ms | — |
+
+Every open file republishes on every keystroke. The language-server engine now owns a memo of the assembled project, type errors, and warnings. It compares the complete project configuration and each source's path, flavor, and text exactly. Open siblings share the resulting analysis. A changed manifest invalidates it on the next diagnostics request, even if the buffer text is unchanged. Independent server instances cannot evict each other's analysis.
+
+`manifest_changes_refresh_unchanged_buffer_diagnostics` and `sibling_open_change_and_close_refresh_signature_warnings` exercise the real server transport. The latter asserts that five document events, including all sibling refreshes, require at most five project analyses. Both guards were mutation-tested: ignoring configuration fails the former; disabling memo reuse fails the latter. The same manifest-change reproduction also passes against the release compiler over stdio.
+
+The approximately six-second single-analysis cost on `examples/projects/modules` predates this branch and remains. These changes remove repeated whole-project analysis for each additional open file; they do not eliminate that initial cost.
+
+### Finding 9 — resolver size
+
+Type rewriting was extracted into `crates/osprey-project/src/type_rewrite.rs`; `resolve.rs` is now 422 lines. The workspace tests and project end-to-end tests pass.
+
+## Repair verification
+
+Completed locally on the repaired branch:
+
+| Gate | Result |
+|---|---|
+| Rust workspace tests with coverage | Pass; every crate meets its unchanged threshold, including LSP 98.6% and types 98.2% |
+| Native corpus: default, GC, ARC | Each passes 213 programs, 213 goldens, 18 GPU-mode pairs and 6 doctests; ARC reports zero leaks |
+| WebAssembly corpus | 147 programs and goldens pass, with 66 existing unsupported skips, 18 GPU-mode pairs and 6 doctests |
+| VS Code extension and installed VSIX | Pass, including all 32 installed-extension cases; lines, statements, branches and functions each exceed 95% coverage |
+| C runtime tests and per-library coverage | Pass |
+| HTML documentation browser acceptance | Pass, including desktop, mobile, search, accessibility and JavaScript errors |
+| Bank unit suites and browser integration | Pass; browser suite 17/17 |
+| Profiler, incremental runtime, mobile domain and benchmark-tool tests | Pass |
+| Formatting, clippy, extension lint and hawk | Pass; hawk reports zero findings |
+| Deslop duplication gate | Pass, approximately 4.1% against the 5% cap |
+
+The final checks ran as the component Make targets after earlier `make ci` runs exposed the Fiber interpolation compatibility issue and fixture IR differences, both now fixed. This is not a claim that a final monolithic `make ci` invocation ran. Hosted CI still verifies Linux, Windows and the iOS platform gate on the submitted commit. No coverage threshold, assertion, expected-output file or required check was weakened to obtain these results.

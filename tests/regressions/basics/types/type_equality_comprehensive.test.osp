@@ -98,13 +98,13 @@ type Feed<out T> = Feed { supply: T } | Dry
 type Gate<in T> = Gate { admit: (T) -> bool } | Open
 
 fn label(f) = match f {
-    Feed { supply } => "supplied"
+    Feed(_supply) => "supplied"
     Dry => "dry"
 }
 fn mkFeed() = Feed { supply: |x| => x * 2 }
 
 fn describe(g) = match g {
-    Gate { admit } => "guarded"
+    Gate(_admit) => "guarded"
     Open => "open"
 }
 fn mkGate() -> Gate<(int) -> Result<int, MathError>> = Gate { admit: |_f| => true }

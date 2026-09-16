@@ -70,7 +70,7 @@ pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
         "interpolation" if matches!(ty, Type::Fun { .. }) && crate::ty::has_type_var(ty) => Some(
             "a closure value with a still-generic type cannot be interpolated; apply it or give it a concrete function type".to_owned()
         ),
-        "interpolation" if !is_printable(ty) && !matches!(ty, Type::Fun { .. }) => {
+        "interpolation" if !is_interpolatable(ty) && !matches!(ty, Type::Fun { .. }) => {
             Some(format!("cannot convert value for interpolation: {ty}"))
         }
         "length" | "isEmpty" if !is_sized(ty) => Some(format!(
@@ -181,6 +181,14 @@ fn is_printable(ty: &Type) -> bool {
     }
 }
 
+/// What interpolation can render. That is everything `print` renders, plus a
+/// fiber handle, which interpolates as its id — `tests/regressions/fiber`
+/// prints `ids 1 2 3 4` from four of them. `print` has never taken a fiber on
+/// its own and still does not.
+fn is_interpolatable(ty: &Type) -> bool {
+    is_printable(ty) || ty.is_named(names::FIBER)
+}
+
 fn is_printable_error(ty: &Type) -> bool {
     is_printable(ty)
         || matches!(
@@ -194,6 +202,19 @@ fn is_printable_error(ty: &Type) -> bool {
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
+
+    /// A fiber renders as its id — `print("ids ${f1} ${f2}")` in
+    /// `tests/regressions/fiber/fiber_showcase.test.osp` prints `ids 1 2`. The
+    /// aggregate guard must not take that away. `print` has never accepted a
+    /// fiber handle on its own, and this pins that difference as deliberate.
+    #[test]
+    fn interpolation_renders_a_fiber_where_print_does_not() {
+        let fiber = Type::con(names::FIBER, vec![Type::int()]);
+        assert_eq!(invalid_use("interpolation", &fiber), None);
+        assert!(invalid_use("print", &fiber).is_some());
+        assert!(invalid_use("interpolation", &Type::list(Type::int())).is_some());
+        assert!(invalid_use("interpolation", &Type::string()).is_none());
+    }
 
     #[test]
     fn size_constraint_accepts_only_runtime_size_receivers() {

@@ -254,8 +254,11 @@ fn callable_field_does_not_read_a_same_named_local_but_ufcs_does() {
 
 #[test]
 fn collection_values_named_arguments_and_interpolation_read_locals() {
+    // The callback interpolates each collection's length: a list or map has no
+    // printable rendering, so interpolating one is rejected, and the read this
+    // asserts has to come from a legal program.
     reports(Flavor::Default,
-        "fn choose(value) = {\n let values = [value]\n let lookup = { \"a\": value }\n let callback = fn(first, second) => \"${first} ${second}\"\n callback(second: lookup, first: values)\n}\nlet result = choose(2)\n", &[]);
+        "fn choose(value) = {\n let values = [value]\n let lookup = { \"a\": value }\n let callback = fn(first, second) => \"${length(first)} ${length(second)}\"\n callback(second: lookup, first: values)\n}\nlet result = choose(2)\n", &[]);
 }
 
 #[test]

@@ -31,6 +31,32 @@ impl From<Vec<Diagnostic>> for Analysis {
     }
 }
 
+/// A project's warnings, proved once for the whole program. Every open file
+/// then selects the ones that land in it, rather than re-proving the project.
+/// Implements [LSP-PROJECT-BATCH].
+#[derive(Debug)]
+pub(crate) struct Warnings {
+    pub(crate) redundant: Vec<RedundantAnnotation>,
+    pub(crate) unused: Vec<osprey_types::UnusedSymbol>,
+}
+
+impl Warnings {
+    /// No warnings at all, for a program whose type errors mean none are read.
+    pub(crate) fn none() -> Self {
+        Self {
+            redundant: Vec::new(),
+            unused: Vec::new(),
+        }
+    }
+
+    pub(crate) fn of(program: &Program) -> Self {
+        Self {
+            redundant: osprey_types::redundant_annotation_sites(program),
+            unused: osprey_types::unused_symbols(program),
+        }
+    }
+}
+
 impl Analysis {
     pub(crate) fn add_warnings(
         &mut self,
@@ -40,27 +66,43 @@ impl Analysis {
         encoding: PositionEncoding,
         locate: &impl Fn(Position) -> Option<Position>,
     ) {
+        self.add_project_warnings(source, &Warnings::of(program), flavor, encoding, locate);
+    }
+
+    /// The same warnings from an analysis someone else already paid for.
+    /// A site is reported here only when its position lands in this file, which
+    /// is what the per-file oracle call used to decide.
+    pub(crate) fn add_project_warnings(
+        &mut self,
+        source: &str,
+        warnings: &Warnings,
+        flavor: osprey_syntax::Flavor,
+        encoding: PositionEncoding,
+        locate: &impl Fn(Position) -> Option<Position>,
+    ) {
         let edits = osprey_syntax::annotation_edits(source, flavor);
-        for mut site in osprey_types::redundant_annotation_sites_where(program, |position| {
-            position.and_then(locate).is_some()
-        }) {
+        for site in &warnings.redundant {
+            if site.warning.position.and_then(locate).is_none() {
+                continue;
+            }
+            let mut site = site.clone();
             site.warning.position = site.warning.position.and_then(locate);
             site.annotation_position = site.annotation_position.and_then(locate);
             self.add_annotation(source, &site, &edits, encoding);
         }
-        self.add_unused(source, program, flavor, encoding, locate);
+        self.add_unused(source, &warnings.unused, flavor, encoding, locate);
     }
 
     fn add_unused(
         &mut self,
         source: &str,
-        program: &Program,
+        unused: &[osprey_types::UnusedSymbol],
         flavor: osprey_syntax::Flavor,
         encoding: PositionEncoding,
         locate: &impl Fn(Position) -> Option<Position>,
     ) {
         let ranges = osprey_syntax::binding_ranges(source, flavor);
-        for symbol in osprey_types::unused_symbols(program) {
+        for symbol in unused {
             let Some(position) = symbol.owner_position.and_then(locate) else {
                 continue;
             };

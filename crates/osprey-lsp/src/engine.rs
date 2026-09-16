@@ -29,6 +29,7 @@ pub struct OspreyEngine {
     vfs: Vfs,
     session: Session,
     shutdown: Arc<AtomicBool>,
+    pub(crate) project_cache: Arc<crate::project_cache::ProjectCache>,
 }
 
 impl OspreyEngine {
@@ -39,6 +40,7 @@ impl OspreyEngine {
             vfs,
             session: Session::new(),
             shutdown: Arc::new(AtomicBool::new(false)),
+            project_cache: Arc::default(),
         }
     }
 
@@ -61,8 +63,14 @@ impl OspreyEngine {
         let enc = self.encoding();
         match query {
             Query::Diagnostics(uri) => Report::Diagnostics(
-                diagnostics::analyze_live(&self.text(&uri), uri.as_str(), enc, Some(&self.vfs))
-                    .diagnostics,
+                diagnostics::analyze_cached(
+                    &self.text(&uri),
+                    uri.as_str(),
+                    enc,
+                    Some(&self.vfs),
+                    &self.project_cache,
+                )
+                .diagnostics,
             ),
             Query::CodeActions { uri, range, only } => {
                 Report::CodeActions(crate::code_actions::actions(&self.vfs, &uri, range, &only))

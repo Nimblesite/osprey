@@ -12,11 +12,11 @@ type JsonValue =
 
 fn describe(value: JsonValue) = match value {
     JsonNull => "null"
-    JsonBoolean { value } => "boolean"
-    JsonNumber { value } => "number"
-    JsonString { value } => "string"
-    JsonArray { values } => "array"
-    JsonObject { fields } => "object"
+    JsonBoolean(_value) => "boolean"
+    JsonNumber(_value) => "number"
+    JsonString(_value) => "string"
+    JsonArray(_values) => "array"
+    JsonObject(_fields) => "object"
 }
 
 /// This is a recursive JSON walk: match the object/array container, then pass
@@ -27,8 +27,8 @@ fn reportDeepString(value: JsonValue) = match value {
     JsonArray { values } => forEachList(values, reportDeepString)
     JsonString { value } => print("deeply nested string = ${value}")
     JsonNull => print("unexpected null")
-    JsonBoolean { value } => print("unexpected boolean")
-    JsonNumber { value } => print("unexpected number")
+    JsonBoolean(_value) => print("unexpected boolean")
+    JsonNumber(_value) => print("unexpected number")
 }
 
 let deepestValue = JsonString { value: "devon@osprey.dev" }

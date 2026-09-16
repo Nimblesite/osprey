@@ -1,29 +1,16 @@
-//! Keep every shipped example free of unused-binding noise. Examples are what
-//! readers copy, so a warning in one teaches the habit that produced it.
+//! Keep shipped examples and the language corpus free of unused-binding noise.
 
 use std::{fs, path::Path, path::PathBuf};
 
-/// Examples that carry warnings on purpose, each with the reason it stays.
-const EXPECTED_NOISE: &[(&str, &str)] = &[];
-
 /// A walk that finds nothing would pass silently, so the corpus has a floor.
-const EXAMPLE_FLOOR: usize = 55;
+const SOURCE_FLOORS: [(&str, usize); 2] = [("examples", 59), ("tests", 213)];
 
 #[test]
-fn shipped_examples_have_no_unused_bindings() {
+fn shipped_sources_have_no_unused_bindings() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let mut warnings = Vec::new();
-    let sources = example_sources(&root.join("examples"));
-    assert!(
-        sources.len() >= EXAMPLE_FLOOR,
-        "found only {} example(s); the walk is broken",
-        sources.len()
-    );
-    for path in sources {
+    for path in shipped_sources(&root) {
         let name = display_name(&root, &path);
-        if EXPECTED_NOISE.iter().any(|(file, _)| *file == name) {
-            continue;
-        }
         let source = fs::read_to_string(&path).expect("read example");
         let parsed = osprey_syntax::parse_program_for_path(&name, &source);
         assert!(parsed.errors.is_empty(), "{name}: {:?}", parsed.errors);
@@ -35,10 +22,25 @@ fn shipped_examples_have_no_unused_bindings() {
     }
     assert!(
         warnings.is_empty(),
-        "{} unused-binding warning(s) in shipped examples:\n{}",
+        "{} unused-binding warning(s) in shipped examples and tests:\n{}",
         warnings.len(),
         warnings.join("\n")
     );
+}
+
+fn shipped_sources(root: &Path) -> Vec<PathBuf> {
+    SOURCE_FLOORS
+        .into_iter()
+        .flat_map(|(directory, minimum)| {
+            let sources = example_sources(&root.join(directory));
+            assert!(
+                sources.len() >= minimum,
+                "{directory}: found {} source(s), expected at least {minimum}",
+                sources.len()
+            );
+            sources
+        })
+        .collect()
 }
 
 fn display_name(root: &Path, path: &Path) -> String {

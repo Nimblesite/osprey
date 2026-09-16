@@ -115,6 +115,22 @@ which bodies qualify and what the messages read. Skip diagnostics ride alongside
 whatever type errors the file already has, and are suppressed only when the
 file does not parse, since an unparsable buffer reports its syntax error alone.
 
+### One analysis per edit `[LSP-PROJECT-BATCH]`
+
+Editing one file of a project republishes every open file of that project, and
+each of those answers needs the project assembled, type-checked and its warnings
+proved. That work is done **once per edit** and shared by the files answering
+it, rather than once per open file: on `examples/projects/modules` a single
+answer takes about six seconds, so repeating it per open buffer made the editor
+unusable with more than one file open.
+
+Each language-server engine owns the latest project analysis. Its key includes the complete project configuration and each source's path, syntax flavor and text, compared exactly. Siblings answering the same edit share that result, and later requests with identical inputs may reuse it. Separate server instances cannot evict each other's analysis.
+
+A source or manifest change invalidates the analysis on the next diagnostics request, even when the buffer text is unchanged. Saving `osprey.toml` alone does not trigger diagnostics; this cache does not add a manifest file watcher.
+
+A file's own diagnostics are then selected from that shared result by position:
+an error or warning is reported in the file its position lands in.
+
 ## Annotation quick fixes `[LSP-CODE-ACTIONS-ANNOTATIONS]`
 
 `textDocument/codeAction` uses the same current-program redundancy proof as diagnostics. The request range selects overlapping annotations for `quickfix`; a cursor selects an annotation when it lies inside or at either boundary of its highlight. `context.only` follows hierarchical action-kind matching. `source.fixAll.osprey` removes the jointly removable set in the current document. A caller-supplied diagnostic does not authorize an edit: the server recomputes the findings from current source. Parse, type or project errors prevent speculative deletion actions. Opening, editing or closing a project file refreshes diagnostics in its other open source files, so a signature warning disappears when a live helper makes the signature necessary and returns when inference again proves it redundant.
