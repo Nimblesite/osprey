@@ -581,11 +581,12 @@ jobs:
           key: ${{ runner.os }}-cargo-website-wasm-${{ hashFiles('Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-website-wasm-
 
-      - name: Install the wasm toolchain
+      # Website tests execute native documentation examples as well as WASM.
+      - name: Install native and wasm toolchains
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y clang llvm lld wabt zsh
+          sudo apt-get install -y clang llvm lld wabt zsh libssl-dev pkg-config
           curl -fsSL -o /tmp/wasi-sysroot.tar.gz \
             "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sysroot-${WASI_SDK_VERSION}.0.tar.gz"
           sudo mkdir -p /opt/wasi-sdk/share/wasi-sysroot

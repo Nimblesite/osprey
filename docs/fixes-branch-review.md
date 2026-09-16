@@ -307,3 +307,5 @@ Completed locally on the repaired branch:
 | Deslop duplication gate | Pass, approximately 4.1% against the 5% cap |
 
 The final checks ran as the component Make targets after earlier `make ci` runs exposed the Fiber interpolation compatibility issue and fixture IR differences, both now fixed. This is not a claim that a final monolithic `make ci` invocation ran. Hosted CI still verifies Linux, Windows and the iOS platform gate on the submitted commit. No coverage threshold, assertion, expected-output file or required check was weakened to obtain these results.
+
+The first hosted website run exposed a separate clean-checkout prerequisite: the documentation guide test executes native doctests, but the website test command built only the WASM runtime. Its unchanged assertion failed with unresolved native runtime symbols. Website `pretest` now builds both runtimes, and all test entry points share it. The isolated website CI job installs the native OpenSSL build dependencies explicitly. All 125 website browser tests pass locally with `CI=1 npm test` after this correction.

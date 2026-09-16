@@ -15,9 +15,10 @@
     "update-playground": "node scripts/update-playground.js",
     "build:wasm": "cd .. && make wasm-site",
     "clean": "rm -rf _site",
-    "test": "npm run build:wasm && playwright test",
-    "test:e2e": "npm run build:wasm && playwright test",
-    "test:headed": "playwright test --headed",
+    "pretest": "make -C .. _runtime wasm-site",
+    "test": "playwright test",
+    "test:e2e": "npm test --",
+    "test:headed": "npm test -- --headed",
     "test:report": "playwright show-report"
   },
   "keywords": [
