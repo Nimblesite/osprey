@@ -24,8 +24,8 @@ walk (s, byteIndex, count) =
                             width = value
                             print "cp[${toString count}] @byte ${toString byteIndex} = ${toString cp} (${toString width} bytes)"
                             walk (s, (byteIndex + width) ?: byteIndex, (count + 1) ?: count)
-                        Error message => (0 - 1) ?: 0
-                Error message => (0 - 1) ?: 0
+                        Error _message => (0 - 1) ?: 0
+                Error _message => (0 - 1) ?: 0
 
 s = sample ()
 bytes = byteLength s
@@ -55,12 +55,12 @@ print "=== walk complete ==="
 codepointIs (s, index, expected) =
     match codePointAt s index
         Success value => value == expected
-        Error message => false
+        Error _message => false
 
 (** A byte inside a multi-byte sequence must carry a real diagnostic. *)
 codepointIsRejected (s, index) =
     match codePointAt s index
-        Success value => false
+        Success _value => false
         Error message => length message > 0
 
 (** Walk the real sample and verify byte/codepoint boundaries and errors. *)

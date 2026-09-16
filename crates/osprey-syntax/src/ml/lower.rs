@@ -1246,19 +1246,17 @@ fn lower_expr(expr: MlExpr) -> Expr {
             op,
             operand: Box::new(lower_expr(*operand)),
         },
-        MlExpr::Binary { op, left, right } => lower_binary(&op, *left, *right),
+        MlExpr::Binary {
+            op,
+            left,
+            right,
+            pos,
+        } => lower_binary(&op, *left, *right, pos),
         MlExpr::App { func, arg } => lower_application(*func, *arg),
         // `func (a, b, …)` — the uncurried saturated call lowers to one flat
         // multi-argument `Call`, byte-identical to the Default `func(a, b, …)`
         // ([FLAVOR-ML-CALL]).
-        MlExpr::AppMulti { func, args } => {
-            positional_construction(&func, &args).unwrap_or_else(|| {
-                call(
-                    lower_expr(*func),
-                    args.into_iter().map(lower_expr).collect(),
-                )
-            })
-        }
+        MlExpr::AppMulti { func, args } => lower_multi_application(*func, args),
         MlExpr::UnitApp { func } => call(lower_expr(*func), Vec::new()),
         MlExpr::List(items, pos) => {
             Expr::List(items.into_iter().map(lower_expr).collect(), Some(pos))
@@ -1333,6 +1331,11 @@ fn lower_expr(expr: MlExpr) -> Expr {
     }
 }
 
+fn lower_multi_application(func: MlExpr, args: Vec<MlExpr>) -> Expr {
+    positional_construction(&func, &args)
+        .unwrap_or_else(|| call(lower_expr(func), args.into_iter().map(lower_expr).collect()))
+}
+
 /// Uppercase heads construct a type; lowercase heads update a bound record.
 /// This mirrors the Default flavor's distinct `TypeConstructor`/`Update` nodes.
 fn lower_record(name: String, type_args: &[MlType], fields: Vec<MlField>) -> Expr {
@@ -1392,7 +1395,7 @@ fn lower_handle_arm(arm: MlHandleArm) -> HandlerArm {
 
 /// `|>` desugars to a call (the pipe is invisible downstream); every other
 /// operator is a canonical [`Expr::Binary`].
-fn lower_binary(op: &str, left: MlExpr, right: MlExpr) -> Expr {
+fn lower_binary(op: &str, left: MlExpr, right: MlExpr, pos: Position) -> Expr {
     let left = lower_expr(left);
     let right = lower_expr(right);
     if op == "|>" {
@@ -1402,6 +1405,7 @@ fn lower_binary(op: &str, left: MlExpr, right: MlExpr) -> Expr {
         return result_default(left, right);
     }
     Expr::Binary {
+        position: Some(pos),
         op: op.to_owned(),
         left: Box::new(left),
         right: Box::new(right),
@@ -1839,7 +1843,9 @@ mod tests {
             "expected comparison, got {s:?}"
         );
         if let Stmt::Let {
-            value: Expr::Binary { op, left, right },
+            value: Expr::Binary {
+                op, left, right, ..
+            },
             ..
         } = s
         {

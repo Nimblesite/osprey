@@ -90,7 +90,9 @@ fn gen_expr_raw(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
         Expr::TypeApply {
             function, position, ..
         } => with_application(cg, *position, |cg| gen_expr(cg, function)),
-        Expr::Binary { op, left, right } => gen_binary(cg, op, left, right),
+        Expr::Binary {
+            op, left, right, ..
+        } => gen_binary(cg, op, left, right),
         Expr::Unary { op, operand } => gen_unary(cg, op, operand),
         Expr::Call {
             function,

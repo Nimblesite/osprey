@@ -57,7 +57,7 @@ minI (a, b) = match a < b
 prodSat (a, x) = match a == overflowMark ()
     true => overflowMark ()
     false => (a * x) ?: overflowMark ()
-doubleUp (a, x) = match a == overflowMark ()
+doubleUp (a, _x) = match a == overflowMark ()
     true => overflowMark ()
     false => (a * 2) ?: overflowMark ()
 addOr (a, x) = (a + x) ?: overflowMark ()
@@ -73,7 +73,7 @@ addF (a, x) = a + x
 half x = x * 0.5
 negF x = 0.0 - x
 recip x = (1.0 / x) ?: 0.0
-tenthOf x = 0.1
+tenthOf _x = 0.1
 isPositiveF x = x > 0.0
 stir x = (x * 1.0001 + 0.5) * 0.9999
 headBig x = match x == 0.0
@@ -345,7 +345,7 @@ alternatingCase () =
 zeroDegenerateCase () =
     empty = gpuIota 0
     inverted = gpuIota (-1000000)
-    zeros = gpuIota 50000 |> gpuMap (\x => 0)
+    zeros = gpuIota 50000 |> gpuMap (\_x => 0)
     checkAll "zero and empty at every combinator" [
         gpuLength empty == 0,
         gpuLength inverted == 0,

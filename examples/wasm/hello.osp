@@ -51,7 +51,7 @@ fn dryRun() =
     handle Console
         emit line => print("    test  [dry-run] ${line}")
     in handle Ledger
-        post amount => 0
+        post _amount => 0
     in account()
 
 // ── union type + exhaustive pattern matching (drop an arm: compile error) ──

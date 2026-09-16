@@ -121,7 +121,7 @@ fn run() = {
             revenue
         }
     in {
-        let total = books()
+        let _total = books()
         print("::OSPREY-STUDIO|1
 ::DDL
 ${ddl()}

@@ -1,0 +1,6 @@
+// osprey: flavor=ml
+// An aggregate has no printable rendering. Interpolating one silently produced
+// an empty string, so the ML path is pinned alongside the Default twin in
+// debug_interpolation.ospo.
+xs = [1, 2]
+listLine = "[${xs}]"

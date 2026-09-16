@@ -29,7 +29,7 @@ parseAge : string -> Result int string
 parseAge s =
     match parseInt s
         Success value => checkAgeRange value
-        Error message => rejectNonNumber ()
+        Error _message => rejectNonNumber ()
 
 validate s =
     match parseAge s
@@ -39,7 +39,7 @@ validate s =
 inputAt i =
     match ["30", "-4", "999", "abc"][i]
         Success value => value
-        Error message => ""
+        Error _message => ""
 
 runAll (i, n) =
     match i < n
@@ -51,10 +51,10 @@ runAll (i, n) =
 print "=== Validation Pipeline ==="
 _ = runAll (0, 4)
 match parseAge "abc"
-    Success value => print "unexpected success"
+    Success _value => print "unexpected success"
     Error message =>
         match parseAge "999"
-            Success value2 => print "unexpected success"
+            Success _value2 => print "unexpected success"
             Error reason2 => print "threaded reasons = \"${message}\" / \"${reason2}\""
 print "=== Validation Pipeline Complete ==="
 
@@ -62,12 +62,12 @@ print "=== Validation Pipeline Complete ==="
 accepts (s, expected) =
     match parseAge s
         Success value => value == expected
-        Error message => false
+        Error _message => false
 
 (** Check the exact rejection reason threaded through the pipeline. *)
 rejects (s, expected) =
     match parseAge s
-        Success value => false
+        Success _value => false
         Error message => message == expected
 
 (** Exercise parsing, both range branches, boundaries, and recursive driving. *)

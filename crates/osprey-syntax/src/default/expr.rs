@@ -31,6 +31,9 @@ impl Lowerer<'_> {
         }
         match node.kind() {
             "binary_expression" => Expr::Binary {
+                position: node
+                    .child_by_field_name("operator")
+                    .map(|op| super::position_from_point(op.start_position())),
                 op: self.field_text(node, "operator"),
                 left: Box::new(self.lower_expr_field(node, "left")),
                 right: Box::new(self.lower_expr_field(node, "right")),

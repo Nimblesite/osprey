@@ -1187,11 +1187,13 @@ impl Parser<'_> {
             if bp < min_bp {
                 break;
             }
+            let pos = self.pos();
             self.advance();
             // `?:` is right-associative — recurse at its own binding power so
             // `f x ?: 0 ?: 1` groups as `f x ?: (0 ?: 1)`.
             let right = self.expr(if op == ELVIS_OP { bp } else { bp + 1 });
             left = MlExpr::Binary {
+                pos,
                 op,
                 left: Box::new(left),
                 right: Box::new(right),

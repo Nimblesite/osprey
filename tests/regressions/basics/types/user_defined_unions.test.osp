@@ -97,7 +97,7 @@ let seedValue = 9
 let topMap = mapSet(mapSet(Map(), "a", seedValue), "b", 16)
 let topProbe = match topMap["a"] {
     Success { value } => "a=${value}"
-    Error { message } => "miss"
+    Error => "miss"
 }
 
 print("${describe(Ok { value: "loaded" })}\n${describe(Err { message: "missing" })}\n${label(Active)}\n${label(Inactive)}\n${render(classify(27))}\n${render(classify(0))}\n${topProbe}\nlen ${mapLength(topMap)}")
@@ -196,7 +196,7 @@ fn builtMapIndexCase() = {
     let stringBuckets = { "short": ["a", "bb"], "long": ["three", "seven"] }
     let nestedMaps = [buckets, bucketGrowth]
     let absent = match built["missing"] {
-        Success { value } => false
+        Success => false
         Error { message } => message != ""
     }
 

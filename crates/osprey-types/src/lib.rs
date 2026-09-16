@@ -102,6 +102,60 @@ mod tests {
         ok("fn inc(x: int) -> Result<int, MathError> = x + 1\nlet y = inc(41)\n");
     }
 
+    #[test]
+    fn interpolation_rejects_unprintable_aggregates() {
+        for (flavor, source) in [
+            (Flavor::Default, "let xs = [1, 2]\nprint(\"[${xs}]\")\n"),
+            (Flavor::Ml, "xs = [1, 2]\nprint \"[${xs}]\"\n"),
+            (
+                Flavor::Default,
+                "fn render(x) = \"[${x}]\"\nprint(render([1, 2]))\n",
+            ),
+            (Flavor::Ml, "render x = \"[${x}]\"\nprint (render [1, 2])\n"),
+        ] {
+            let parsed = parse_program_with_flavor(source, flavor);
+            assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+            let errors = check_program(&parsed.program);
+            assert!(
+                errors
+                    .iter()
+                    .any(|e| e.message == "cannot convert value for interpolation: List<int>"),
+                "{flavor}: {errors:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn numeric_operand_errors_retain_the_operator_position() {
+        for (flavor, source, column) in [
+            (
+                Flavor::Default,
+                "\nfn scale(x) = x * 1.0\nprint(scale(\"bad\"))\n",
+                16,
+            ),
+            (
+                Flavor::Ml,
+                "\nscale x = x * 1.0\nprint (scale \"bad\")\n",
+                12,
+            ),
+            (Flavor::Default, "\nprint(\"\\t${true * 1.0}\")\n", 16),
+            (Flavor::Ml, "\nprint \"\\t${true * 1.0}\"\n", 16),
+        ] {
+            let parsed = parse_program_with_flavor(source, flavor);
+            assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+            let errors = check_program(&parsed.program);
+            let error = errors
+                .iter()
+                .find(|e| e.message.contains("requires int or float"));
+            assert!(error.is_some(), "{errors:?}");
+            assert_eq!(
+                error.and_then(|e| e.position),
+                Some(osprey_ast::Position { line: 2, column }),
+                "{flavor}: {errors:?}"
+            );
+        }
+    }
+
     /// [FLOAT-OPERANDS] Numeric obligations survive generalization in both flavors.
     #[test]
     fn float_helpers_reject_non_numeric_arguments_before_codegen() {

@@ -19,7 +19,7 @@ fn resumeRecoveryContinuesCase() = {
     mut calls = 0
     mut completed = 0
     let result = handle ResumeFallback
-        recover message fallback => {
+        recover _message fallback => {
             calls = calls + 1 ?: calls
             let answer = resume(fallback)
             completed = answer
@@ -133,14 +133,14 @@ fn nestedRecoveryChannelsCase() = {
     mut entered = ""
     mut settled = ""
     let score = handle ParseRecovery
-        parse raw => {
+        parse _raw => {
             entered = "${entered}parse|"
             let answer = resume(8080)
             settled = "${settled}parse|"
             answer
         }
     in handle LookupRecovery
-        missing key => {
+        missing _key => {
             entered = "${entered}lookup|"
             let answer = resume("localhost")
             settled = "${settled}lookup|"
@@ -330,19 +330,19 @@ fn typedRecoveryBody() !TypedRecovery = {
 fn heterogeneousResumeCase() = {
     mut calls = 0
     let result = handle TypedRecovery
-        number key => {
+        number _key => {
             calls = calls + 1 ?: calls
             resume(3)
         }
-        text key => {
+        text _key => {
             calls = calls + 1 ?: calls
             resume("osprey.local")
         }
-        allow key => {
+        allow _key => {
             calls = calls + 1 ?: calls
             resume(true)
         }
-        note message => {
+        note _message => {
             calls = calls + 1 ?: calls
             resume()
         }

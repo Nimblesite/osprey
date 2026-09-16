@@ -64,6 +64,20 @@ The compiler rejects unsupported target operations during `--check`, `--llvm`, a
 
 [Issue Inbox](/docs/mobile-apps/) demonstrates the same Osprey project on iOS and Android, including ML modules and a small Default-flavor C entry point. Its screenshots come from actual simulator/emulator runs. The iOS app has also been installed and verified on a physical iPhone. Both Android ABIs execute the shared test corpus through the C ABI.
 
+## Source compatibility
+
+One change in the current development build rejects source that older builds
+accepted:
+
+- `//!` documents whatever encloses it — a file, a namespace or a module — so it
+  has to be the first item of one. Written anywhere else it is now a compile
+  error in both flavors, naming the `//!` itself. Earlier builds accepted some of
+  those placements, and a Default-flavor file could even read the comment as
+  code: `//! ready` at the end of a function body parsed as the expression
+  `!ready`, so the function returned the opposite answer and the program still
+  exited successfully. Move the comment to the top of the file, namespace or
+  module it describes, or write it as an ordinary `//` comment.
+
 ## Current limits
 
 - Resumable effects are supported by `--target=native`. Mobile C ABI targets and WebAssembly reject them at compile time; supported handlers that return immediately remain usable.

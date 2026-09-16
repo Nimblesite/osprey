@@ -55,7 +55,7 @@ reportIf : bool -> string -> Unit ! RecoveryError
 reportIf true message = perform RecoveryError.report message
 reportIf false _ =
     (** A binding-only clause evaluates to Unit. *)
-    unchanged = false
+    _unchanged = false
 
 (** Run every validation rule and return only after all reports have been handled. *)
 validateRecord : string -> int -> string -> string ! RecoveryError
@@ -114,7 +114,7 @@ happyPathBypassCase () =
     mut recoveries = 0
     value =
         handle RecoveryError
-            missingInt reason =>
+            missingInt _reason =>
                 recoveries := recoveries + 1 ?: recoveries
                 99
         in requirePositive 7
@@ -130,7 +130,7 @@ happyPathBypassCase () =
 fallbackContinuationCase () =
     value =
         handle RecoveryError
-            missingInt reason => 40
+            missingInt _reason => 40
         in continuedValue 0
 
     // Arithmetic after perform sees the handler's replacement.
@@ -183,9 +183,9 @@ collectAllReportsCase () =
 multipleResultTypesCase () =
     rendered =
         handle RecoveryError
-            missingInt reason => 7
-            missingText reason => "fallback"
-            denied reason => true
+            missingInt _reason => 7
+            missingText _reason => "fallback"
+            denied _reason => true
         in mixedRecovery ()
 
     // Integer, string, and boolean replacements retain their declared types.
@@ -199,11 +199,11 @@ multipleResultTypesCase () =
 twoPoliciesCase () =
     skipped =
         handle StockError
-            shortage requested available => 0
+            shortage _requested _available => 0
         in shipmentTotal ()
     capped =
         handle StockError
-            shortage requested available => available
+            shortage _requested available => available
         in shipmentTotal ()
 
     // Skip and cap policies change only the handled shortage decision.
@@ -218,13 +218,13 @@ twoPoliciesCase () =
 nestedOverrideCase () =
     rendered =
         handle PolicyError
-            score key => 10
-            label key => "outer"
+            score _key => 10
+            label _key => "outer"
         in
             before = perform PolicyError.score "before"
             inside =
                 handle PolicyError
-                    score key => 99
+                    score _key => 99
                 in
                     innerScore = perform PolicyError.score "inside"
                     inheritedLabel = perform PolicyError.label "inside"
@@ -268,7 +268,7 @@ deepRecursionCase () =
     mut recoveries = 0
     value =
         handle RecoveryError
-            missingInt reason =>
+            missingInt _reason =>
                 recoveries := recoveries + 1 ?: recoveries
                 8
         in descend 4
@@ -466,43 +466,43 @@ everyResultTypeCase () =
         in everyValue ()
     intValue =
         handle ValueError
-            asInt field => 0
+            asInt _field => 0
         in perform ValueError.asInt "zero"
     negativeValue =
         handle ValueError
-            asInt field => -41
+            asInt _field => -41
         in perform ValueError.asInt "negative"
     floatValue =
         handle ValueError
-            asFloat field => 2.5
+            asFloat _field => 2.5
         in perform ValueError.asFloat "ratio"
     boolValue =
         handle ValueError
-            asBool field => false
+            asBool _field => false
         in perform ValueError.asBool "blocked"
     textValue =
         handle ValueError
-            asText field => ""
+            asText _field => ""
         in perform ValueError.asText "empty"
     spareValue =
         handle ValueError
-            asSpare field => Spare(tag = "left", weight = 1.5, ready = true)
+            asSpare _field => Spare(tag = "left", weight = 1.5, ready = true)
         in perform ValueError.asSpare "spare"
     grantedValue =
         handle ValueError
-            asGrade field => Granted(score = 7)
+            asGrade _field => Granted(score = 7)
         in perform ValueError.asGrade "good"
     refusedValue =
         handle ValueError
-            asGrade field => Refused(reason = "denied")
+            asGrade _field => Refused(reason = "denied")
         in perform ValueError.asGrade "bad"
     okValue =
         handle ValueError
-            asResult field => Success(value = 5)
+            asResult _field => Success(value = 5)
         in perform ValueError.asResult "hit"
     badValue =
         handle ValueError
-            asResult field => Error(message = "absent")
+            asResult _field => Error(message = "absent")
         in perform ValueError.asResult "miss"
     grantedScore = gradeScore grantedValue
     refusedScore = gradeScore refusedValue
@@ -638,16 +638,16 @@ partialOverrideLatticeCase () =
             "${first}/${second}"
     overridden =
         handle TierError
-            base label =>
+            base _label =>
                 outerBaseCalls := outerBaseCalls + 1 ?: outerBaseCalls
                 100
-            bonus label => 5
-            tier label => "gold"
+            bonus _label => 5
+            tier _label => "gold"
         in
             outside = tierQuote "out"
             inside =
                 handle TierError
-                    base label =>
+                    base _label =>
                         innerBaseCalls := innerBaseCalls + 1 ?: innerBaseCalls
                         200
                 in tierQuote "in"
@@ -655,40 +655,40 @@ partialOverrideLatticeCase () =
             "${outside}|${inside}|${afterwards}"
     split =
         handle TierError
-            base label => 10
+            base _label => 10
         in handle TierError
-            bonus label => 3
+            bonus _label => 3
         in handle TierError
-            tier label => "silver"
+            tier _label => "silver"
         in tierQuote "c"
     reordered =
         handle TierError
-            tier label => "silver"
+            tier _label => "silver"
         in handle TierError
-            base label => 10
+            base _label => 10
         in handle TierError
-            bonus label => 3
+            bonus _label => 3
         in tierQuote "d"
     deepest =
         handle TierError
-            base label => 1
-            bonus label => 0
-            tier label => "bronze"
+            base _label => 1
+            bonus _label => 0
+            tier _label => "bronze"
         in handle TierError
-            base label => 2
+            base _label => 2
         in handle TierError
-            base label => 3
+            base _label => 3
         in tierQuote "e"
     restored =
         handle TierError
-            base label => 7
-            bonus label => 1
-            tier label => "outer"
+            base _label => 7
+            bonus _label => 1
+            tier _label => "outer"
         in
             before = perform TierError.base "before"
             inner =
                 handle TierError
-                    base label => 70
+                    base _label => 70
                 in
                     insideBase = perform TierError.base "inside"
                     insideTier = perform TierError.tier "inside"
@@ -916,7 +916,7 @@ recursiveAccumulationCase () =
         in descendSum 8
     zeroTotal =
         handle StepError
-            contribute depth =>
+            contribute _depth =>
                 zeroVisits := zeroVisits + 1 ?: zeroVisits
                 99
         in descendSum 0
@@ -1048,27 +1048,27 @@ multiEffectRegionCase () =
         in crossEffectBody ()
     reordered =
         handle PolicyError
-            score key => 25
-            label key => "priority"
+            score _key => 25
+            label _key => "priority"
         in handle StockError
-            shortage requested available => available
+            shortage _requested available => available
         in handle RecoveryError
-            missingInt reason => 6
+            missingInt _reason => 6
         in handle AuditError
             note message =>
                 auditTrail := "${auditTrail}${message}|"
         in crossEffectBody ()
     generous =
         handle AuditError
-            note message =>
+            note _message =>
                 generousAudits := generousAudits + 1 ?: generousAudits
         in handle RecoveryError
-            missingInt reason => 2
+            missingInt _reason => 2
         in handle StockError
             shortage requested available => requested + available ?: 0
         in handle PolicyError
-            score key => 0
-            label key => "basic"
+            score _key => 0
+            label _key => "basic"
         in crossEffectBody ()
 
     // The body draws 6 from RecoveryError, 4 from StockError, "priority" and
@@ -1167,39 +1167,39 @@ boundaryValueRecoveryCase () =
         in fillAll ()
     blank =
         handle TextError
-            fill field => ""
+            fill _field => ""
         in perform TextError.fill "blank"
     single =
         handle TextError
-            fill field => "z"
+            fill _field => "z"
         in perform TextError.fill "single"
     digits =
         handle TextError
-            fill field => "007"
+            fill _field => "007"
         in perform TextError.fill "digits"
     mixedCase =
         handle TextError
-            fill field => "OsPrey"
+            fill _field => "OsPrey"
         in perform TextError.fill "case"
     punctuated =
         handle TextError
-            fill field => "a-b_c.d,e"
+            fill _field => "a-b_c.d,e"
         in perform TextError.fill "punct"
     repeated =
         handle TextError
-            fill field => "abab abab"
+            fill _field => "abab abab"
         in perform TextError.fill "repeat"
     zero =
         handle TextError
-            number field => 0
+            number _field => 0
         in perform TextError.number "zero"
     big =
         handle TextError
-            number field => 2147483647
+            number _field => 2147483647
         in perform TextError.number "big"
     negative =
         handle TextError
-            number field => -2147483647
+            number _field => -2147483647
         in perform TextError.number "negative"
 
     // Three performs, two of them under the duplicate field name "a", get the

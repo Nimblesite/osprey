@@ -49,11 +49,11 @@ print("=== JSON value union complete ===")
 fn deepString(value: JsonValue) = match value {
     JsonObject { fields } => match mapGet(fields, "workspace") {
         Success { value } => deepString(value)
-        Error { message } => ""
+        Error => ""
     }
     JsonArray { values } => match listGet(values, 0) {
         Success { value } => deepString(value)
-        Error { message } => ""
+        Error => ""
     }
     JsonString { value } => value
     _ => ""

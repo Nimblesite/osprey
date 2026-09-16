@@ -780,6 +780,8 @@ pub enum Expr {
         left: Box<Expr>,
         /// Right operand.
         right: Box<Expr>,
+        /// Source location of the operator token.
+        position: Option<Position>,
     },
     /// A unary operation.
     Unary {

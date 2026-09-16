@@ -124,7 +124,7 @@ fn patternMatchingCase() = {
     let structuralValue = { value: "It worked" }
     let extracted = structuralValue { value } ? value : "fallback"
     let divisionFailed = match divide(a: 10, b: 0) {
-        Success { value } => false
+        Success => false
         Error { message } => message != ""
     }
     checkAll("literal, union, structural, and Result patterns", [

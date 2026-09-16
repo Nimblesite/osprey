@@ -65,7 +65,7 @@ getReputationTitle rep = match rep
 (** Ship and crew management *)
 calculateCargoValue (amount, price) = match amount * price
     Success value => value
-    Error message => 0
+    Error _message => 0
 
 getShipStatus fuel = match fuel
     100 => "Excellent"
@@ -102,14 +102,14 @@ purchaseAmount1 = 10
 totalCost1 = calculateCargoValue (purchaseAmount1, resource1Price)
 newCredits1 = match credits - totalCost1
     Success value => value
-    Error message => credits
+    Error _message => credits
 newCargoUsed1 = match cargoUsed + purchaseAmount1
     Success value => value
-    Error message => cargoUsed
+    Error _message => cargoUsed
 travelCost1 = calculateTravelCost 2
 newFuel1 = match shipFuel - travelCost1
     Success value => value
-    Error message => shipFuel
+    Error _message => shipFuel
 
 print "Purchasing ${purchaseAmount1} units of ${resource1Name}"
 print "Total cost: ${totalCost1} credits"
@@ -136,15 +136,15 @@ print "Market price: ${resource2Price} credits per unit"
 (** Sell previous cargo at premium *)
 sellPrice1 = match resource1Price + 25
     Success value => value
-    Error message => resource1Price
+    Error _message => resource1Price
   // 50% markup
 revenue1 = calculateCargoValue (purchaseAmount1, sellPrice1)
 newCredits2 = match newCredits1 + revenue1
     Success value => value
-    Error message => newCredits1
+    Error _message => newCredits1
 newCargoUsed2 = match newCargoUsed1 - purchaseAmount1
     Success value => value
-    Error message => newCargoUsed1
+    Error _message => newCargoUsed1
 
 print "Selling ${purchaseAmount1} units of ${resource1Name}"
 print "Sale price: ${sellPrice1} credits per unit"
@@ -158,10 +158,10 @@ purchaseAmount2 = 15
 totalCost2 = calculateCargoValue (purchaseAmount2, resource2Price)
 newCredits3 = match newCredits2 - totalCost2
     Success value => value
-    Error message => newCredits2
+    Error _message => newCredits2
 newCargoUsed3 = match newCargoUsed2 + purchaseAmount2
     Success value => value
-    Error message => newCargoUsed2
+    Error _message => newCargoUsed2
 
 print "Purchasing ${purchaseAmount2} units of ${resource2Name}"
 print "Cost: ${totalCost2} credits"
@@ -174,7 +174,7 @@ planet3Name = getPlanetName planet3
 travelCost2 = calculateTravelCost 3
 newFuel2 = match newFuel1 - travelCost2
     Success value => value
-    Error message => newFuel1
+    Error _message => newFuel1
 
 print "🚀 Long-range jump to ${planet3Name}"
 print "Fuel consumed: ${travelCost2}%"
@@ -187,15 +187,15 @@ print "This is the galaxy's premier trading hub!"
 (** Major trade at hub *)
 sellPrice2 = match resource2Price + 30
     Success value => value
-    Error message => resource2Price
+    Error _message => resource2Price
   // Premium for rare goods
 revenue2 = calculateCargoValue (purchaseAmount2, sellPrice2)
 newCredits4 = match newCredits3 + revenue2
     Success value => value
-    Error message => newCredits3
+    Error _message => newCredits3
 newCargoUsed4 = match newCargoUsed3 - purchaseAmount2
     Success value => value
-    Error message => newCargoUsed3
+    Error _message => newCargoUsed3
 
 print "Selling ${purchaseAmount2} units of ${resource2Name}"
 print "Hub premium price: ${sellPrice2} credits per unit"
@@ -206,13 +206,13 @@ print ""
 (** Calculate profit and reputation *)
 totalProfit = match newCredits4 - credits
     Success value => value
-    Error message => 0
+    Error _message => 0
 newReputation = match reputation + 1
     Success value => value
-    Error message => reputation
+    Error _message => reputation
 newPlanetsVisited = match planetsVisited + 3
     Success value => value
-    Error message => planetsVisited
+    Error _message => planetsVisited
 newReputationTitle = getReputationTitle newReputation
 
 print "📈 TRADING RESULTS 📈"
@@ -236,7 +236,7 @@ fuelEfficiency = newFuel2 / newPlanetsVisited
 profitPerPlanet = totalProfit / newPlanetsVisited
 projectedWealth = match newCredits4 * 2
     Success value => value
-    Error message => newCredits4
+    Error _message => newCredits4
 
 print "📊 ADVANCED ANALYTICS 📊"
 print "Fuel efficiency: ${fuelEfficiency}% per planet"

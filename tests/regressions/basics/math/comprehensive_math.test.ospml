@@ -124,27 +124,27 @@ rBounded =
             match (value >= 0) && (value < 100)
                 true => "in-range"
                 false => "OOB"
-        Error message => "err"
+        Error _message => "err"
 rGuard =
     match randomBelow 0
-        Success value => "no-error"
-        Error message => "rejected"
+        Success _value => "no-error"
+        Error _message => "rejected"
 print "random>=0 ${rNonNeg}, randomBelow(100) ${rBounded}, randomBelow(0) ${rGuard}, stdin=[${input ()}]"
 print "=== Math Showcase Complete ==="
 
 (** Recompute the showcase branches and validate checked-arithmetic boundaries. *)
 comprehensiveMathCase () =
     overflowRejected = match checkedAdd (9223372036854775807, 1)
-        Success value => false
+        Success _value => false
         Error message => message != ""
     zeroDivisionRejected = match intDiv 5 0
-        Success value => false
+        Success _value => false
         Error message => message != ""
     boundedRandom = match randomBelow 100
         Success value => (value >= 0) && (value < 100)
-        Error message => false
+        Error _message => false
     invalidRandomBound = match randomBelow 0
-        Success value => false
+        Success _value => false
         Error message => message != ""
     checkAll "math values, branches, and checked errors" [
         (power (2, 0) ?: 0) == 1,

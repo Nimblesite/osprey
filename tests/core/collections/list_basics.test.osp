@@ -32,7 +32,7 @@ fn sumList(xs: List<int>) = match xs {
 
 /// restLen exercises a wildcard prefix followed by a captured list tail.
 fn restLen(xs: List<int>) = match xs {
-    [_, second, ...rest] => listLength(rest)
+    [_, _second, ...rest] => listLength(rest)
     _ => 0
 }
 
@@ -265,11 +265,11 @@ fn indexingPatternsAndDispatchCase() = {
     let dispatchThirty = listConcat(dispatchTwenty, dispatchTen)
     let dispatchThirtyFive = listConcat(dispatchThirty, dispatchFive)
     let commandOob = match commands[5] {
-        Success { value } => false
+        Success => false
         Error { message } => message == "index out of bounds"
     }
     let emptyOob = match empty[0] {
-        Success { value } => false
+        Success => false
         Error { message } => message == "index out of bounds"
     }
 
@@ -510,22 +510,22 @@ effect TranscriptProbe {
 /// binder (`...name`)" and "the rest binder receives the remaining `List<T>`".
 fn shapeOf(xs) = match xs {
     [] => "none"
-    [only] => "single"
-    [first, second] => "pair"
-    [head, ...tail] => "long+${listLength(tail)}"
+    [_only] => "single"
+    [_first, _second] => "pair"
+    [_head, ...tail] => "long+${listLength(tail)}"
 }
 
 /// headOr binds the first element through a rest-binder pattern, or answers the
 /// caller's fallback for the empty list [TYPE-LIST-PATTERNS].
 fn headOr(xs, fallback) = match xs {
     [] => fallback
-    [head, ...tail] => head
+    [head, ..._tail] => head
 }
 
 /// secondOr binds a two-element prefix before the rest binder, the only place
 /// the spec permits a rest binder — last, and once.
 fn secondOr(xs, fallback) = match xs {
-    [first, second, ...rest] => second
+    [_first, second, ..._rest] => second
     _ => fallback
 }
 
@@ -533,7 +533,7 @@ fn secondOr(xs, fallback) = match xs {
 /// list (-1) from a singleton whose tail is empty (0).
 fn tailLength(xs) = match xs {
     [] => ((0 - 1) ?: 0)
-    [head, ...tail] => listLength(tail)
+    [_head, ...tail] => listLength(tail)
 }
 
 /// joinWords walks a string list through the rest binder, so a dropped,
@@ -550,7 +550,7 @@ fn joinWords(xs: List<string>) = match xs {
 fn lastWord(xs) = match xs {
     [] => "none"
     [only] => only
-    [head, ...rest] => lastWord(rest)
+    [_head, ...rest] => lastWord(rest)
 }
 
 /// boolWeight turns a bool element into its counted weight through a match, so
@@ -598,7 +598,7 @@ fn totalWeight(xs) = match xs {
 /// legitimate row.
 fn rowAt(rows, index) = match listGet(rows, index) {
     Success { value } => value
-    Error { message } => [777]
+    Error => [777]
 }
 
 /// sumInner sums every element of every inner list, exercising a `List<T>` whose
@@ -1259,15 +1259,15 @@ fn boundaryIndexCase() = {
     let farNegIndex = (0 - 1000) ?: 0
     let lastIndex = (listLength(forty) - 1) ?: 0
     let negError = match listGet(words, negIndex) {
-        Success { value } => false
+        Success => false
         Error { message } => message == "index out of bounds"
     }
     let farError = match listGet(forty, 1000) {
-        Success { value } => false
+        Success => false
         Error { message } => message == "index out of bounds"
     }
     let emptyError = match listGet(noWords, 0) {
-        Success { value } => false
+        Success => false
         Error { message } => message == "index out of bounds"
     }
 

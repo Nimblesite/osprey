@@ -10,6 +10,29 @@ use crate::ty::{names, Type};
 /// [FLOAT-OPERANDS] Cannot collide with a source identifier or built-in name.
 pub(crate) const NUMERIC_OPERAND_PREFIX: &str = "numeric ";
 
+/// Arithmetic obligation keys retain their origin across scheme instantiation,
+/// including obligations transported inside deferred method relations.
+pub(crate) fn located_name(name: &str, position: Option<osprey_ast::Position>) -> String {
+    position.map_or_else(
+        || name.to_owned(),
+        |p| format!("{name} @{}:{}", p.line, p.column),
+    )
+}
+
+pub(crate) fn source_position(name: &str) -> Option<osprey_ast::Position> {
+    let (_, location) = name.rsplit_once(" @")?;
+    let (line, column) = location.split_once(':')?;
+    Some(osprey_ast::Position {
+        line: line.parse().ok()?,
+        column: column.parse().ok()?,
+    })
+}
+
+pub(crate) fn operation_name(name: &str) -> &str {
+    name.split_once(" @")
+        .map_or(name, |(operation, _)| operation)
+}
+
 pub(crate) fn is_numeric_scalar(ty: &Type) -> bool {
     ty.is_named(names::INT) || ty.is_named(names::FLOAT)
 }
@@ -39,7 +62,7 @@ pub(crate) fn display_param_type(name: &str, index: usize) -> Option<&'static st
 pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
     // [FLOAT-OPERANDS] Schemes carry this obligation into each instantiation,
     // preserving numeric polymorphism while refusing concrete nonnumeric uses.
-    if let Some(op) = name.strip_prefix(NUMERIC_OPERAND_PREFIX) {
+    if let Some(op) = operation_name(name).strip_prefix(NUMERIC_OPERAND_PREFIX) {
         return (!is_numeric_scalar(ty) && !matches!(ty, Type::Var(_)))
             .then(|| format!("operator `{op}` requires int or float; got {ty}"));
     }
@@ -47,6 +70,9 @@ pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
         "interpolation" if matches!(ty, Type::Fun { .. }) && crate::ty::has_type_var(ty) => Some(
             "a closure value with a still-generic type cannot be interpolated; apply it or give it a concrete function type".to_owned()
         ),
+        "interpolation" if !is_printable(ty) && !matches!(ty, Type::Fun { .. }) => {
+            Some(format!("cannot convert value for interpolation: {ty}"))
+        }
         "length" | "isEmpty" if !is_sized(ty) => Some(format!(
             "`{name}` supports only string, List<T>, or Map<string, V>; got {ty}"
         )),

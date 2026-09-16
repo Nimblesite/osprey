@@ -11,7 +11,7 @@ fn constructionAndOverwriteCase() = {
     let m3 = mapSet(m2, "charlie", 35)
     let m4 = mapSet(m3, "alice", 99)
     let m4Missing = match mapGet(m4, "dave") {
-        Success { value } => false
+        Success => false
         Error { message } => message == "mapGet: key not found"
     }
 
@@ -125,7 +125,7 @@ fn removalAndMergeCase() = {
     let mergedBA = mapMerge(b, a)
     let mergedPlus = a + b
     let removedMissing = match mapGet(removed, "k3") {
-        Success { value } => false
+        Success => false
         Error { message } => message == "mapGet: key not found"
     }
 
@@ -243,7 +243,7 @@ fn literalsAndDispatchCase() = {
     let prices = { "apple": 2, "banana": 3, "cherry": 5 }
     let duplicate = { "key": 1, "key": 2 }
     let priceMissing = match mapGet(prices, "mango") {
-        Success { value } => false
+        Success => false
         Error { message } => message == "mapGet: key not found"
     }
 
@@ -430,7 +430,7 @@ fn keyShapeCase() = {
     let shapedLong = mapSet(shaped, longKey, 12)
     let gap = " "
     let emptyKeyMissing = match mapGet(mapRemove(shaped, ""), "") {
-        Success { value } => false
+        Success => false
         Error { message } => message == "mapGet: key not found"
     }
 
@@ -811,7 +811,7 @@ fn removalSweepCase() = {
     let drained = mapRemove(mapRemove(mapRemove(mapRemove(mapRemove(base, "a"), "b"), "c"), "d"), "e")
     let widened = mapMerge(base, extra)
     let drainedMissing = match mapGet(drained, "a") {
-        Success { value } => false
+        Success => false
         Error { message } => message == "mapGet: key not found"
     }
 

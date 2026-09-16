@@ -19,7 +19,7 @@ readPositive label =
 mut attempt = 0
 accepted =
     handle Prompt
-        ask label =>
+        ask _label =>
             attempt := attempt + 1 ?: attempt
             value = match attempt
                 1 => (0 - 3) ?: 0
@@ -34,7 +34,7 @@ print "SCENARIO 1 accepted=${toString accepted} after ${toString attempt} attemp
 mut tries = 0
 outcome =
     handle Prompt
-        ask label =>
+        ask _label =>
             tries := tries + 1 ?: tries
             match tries > 3
                 true =>
@@ -464,7 +464,7 @@ takeRatio n =
 (** Result channel: the CALLER, not the handler, treats `Error` as "ask again". *)
 takeChecked n = match perform Payload.checked n
     Success value => value
-    Error message => takeChecked ((n + 1) ?: n)
+    Error _message => takeChecked ((n + 1) ?: n)
 
 (** Three-argument channel: the retry arithmetic lives in the handler. *)
 takeScaled (n, base, step) =
@@ -696,7 +696,7 @@ retryScriptedCandidateMatrixCase () =
     mut scriptCalls = 0
     fromList =
         handle Retry
-            supply n =>
+            supply _n =>
                 scriptCalls := scriptCalls + 1 ?: scriptCalls
                 cursor := cursor + 1 ?: cursor
                 candidate = listGet (script, (cursor - 1) ?: 0) ?: 0

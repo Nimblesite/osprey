@@ -230,7 +230,17 @@ fn offset_expr(expr: &mut Expr, offset: u32) {
             }
             offset_fields(fields, offset);
         }
-        Expr::Binary { left, right, .. } | Expr::Pipe { left, right } => {
+        Expr::Binary {
+            left,
+            right,
+            position,
+            ..
+        } => {
+            shift(position, offset);
+            offset_expr(left, offset);
+            offset_expr(right, offset);
+        }
+        Expr::Pipe { left, right } => {
             offset_expr(left, offset);
             offset_expr(right, offset);
         }

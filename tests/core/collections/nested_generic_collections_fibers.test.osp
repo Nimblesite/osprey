@@ -33,8 +33,8 @@ fn drainGroups(channel: Channel<Map<string, List<float>>>) = recv(channel)
 
 fn requestIntMatrix() -> List<List<int>> = perform FiberDepot.fetch("ints")
 fn requestBoolGroups() -> Map<string, List<bool>> = perform FiberDepot.fetch("bools")
-fn fiberEffectIntMatrix() = handle FiberDepot fetch key => intMatrix() in await(spawn requestIntMatrix())
-fn fiberEffectBoolGroups() = handle FiberDepot fetch key => boolGroups() in await(spawn requestBoolGroups())
+fn fiberEffectIntMatrix() = handle FiberDepot fetch _key => intMatrix() in await(spawn requestIntMatrix())
+fn fiberEffectBoolGroups() = handle FiberDepot fetch _key => boolGroups() in await(spawn requestBoolGroups())
 
 /// Crosses nested construction, fiber-result erasure, out-of-order await,
 /// channel erasure, Result extraction, and persistence. Implements

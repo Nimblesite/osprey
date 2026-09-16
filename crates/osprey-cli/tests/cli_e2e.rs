@@ -1542,3 +1542,25 @@ fn a_contradicting_written_type_argument_is_rejected_by_the_cli() {
         o.stderr
     );
 }
+
+#[test]
+fn bare_result_variants_compile_and_select_the_correct_arm() {
+    for (index, source) in [
+        "let a = match 10 % 3 { Success { value } => value Error => 0 }\nlet b = match 10 % 0 { Success => 7 Error => 9 }\nprint(\"${a},${b}\")\n",
+        "type Outcome = Success | Error\nlet a = match Success { Success => 1 Error => 0 }\nlet b = match Error { Success => 7 Error => 9 }\nprint(\"${a},${b}\")\n",
+        "let a = match 1 { Success { value } => value Error => 0 }\nlet b = match 9 { Success { value } => value Error => 0 }\nprint(\"${a},${b}\")\n",
+        "let a = match 10 % 3 { Error => 0 whole => match whole { Success { value } => value Error => 0 } }\nlet b = match 10 % 0 { Success => 7 _ => 9 }\nprint(\"${a},${b}\")\n",
+        "// osprey: flavor=ml\na = match 10 % 3\n    Success value => value\n    Error => 0\nb = match 10 % 0\n    Success => 7\n    Error => 9\nprint \"${a},${b}\"\n",
+    ].iter().enumerate() {
+        let source = temp_osp(&format!("bare_result_variants_{index}"), source);
+        for memory in ["default", "gc", "arc"] {
+            let flavor = if index == 4 { "ml" } else { "default" };
+            let output = run_file(&source, &[
+                "--run", "--quiet", &format!("--memory={memory}"),
+                &format!("--flavor={flavor}"),
+            ]);
+            assert_eq!(output.code, Some(0), "{}", output.stderr);
+            assert_eq!(output.stdout, "1,9\n");
+        }
+    }
+}

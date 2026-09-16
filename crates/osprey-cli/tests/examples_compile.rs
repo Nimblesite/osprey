@@ -492,3 +492,14 @@ fn failscompilation_corpus_matches_its_expected_diagnostics() {
         drift.join("\n")
     );
 }
+
+#[test]
+fn wasm_hello_example_has_no_unused_bindings() {
+    let path = repo_root().join("examples/wasm/hello.osp");
+    let source = fs::read_to_string(&path).expect("hello example");
+    let parsed = osprey_syntax::parse_program_for_path(&path.to_string_lossy(), &source);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    assert!(osprey_types::check_program(&parsed.program).is_empty());
+    let warnings = osprey_types::unused_symbols(&parsed.program);
+    assert!(warnings.is_empty(), "{warnings:?}");
+}

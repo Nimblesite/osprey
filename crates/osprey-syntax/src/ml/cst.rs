@@ -474,6 +474,8 @@ pub(crate) enum MlExpr {
         left: Box<MlExpr>,
         /// Right operand.
         right: Box<MlExpr>,
+        /// Source location of the operator token.
+        pos: Position,
     },
     /// Single-argument application `func arg` (the surface curried form). A
     /// whitespace spine `f a b` nests these (`App(App(f, a), b)`) and lowers to

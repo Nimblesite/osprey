@@ -31,7 +31,7 @@ match parseFloat "x"
 
 // ---- string operations ----
 match split "a" ""
-    Success value => print "split: unexpected\n"
+    Success _value => print "split: unexpected\n"
     Error message => print "split: ${message}\n"
 match indexOf "abc" "z"
     Success value => print "indexOf: unexpected ${value}\n"
@@ -119,13 +119,13 @@ print "=== Error Catalogue Complete ===\n"
 (** Every failing Result must carry a usable diagnostic payload. *)
 hasDiagnostic result =
     match result
-        Success value => false
+        Success _value => false
         Error message => length (toString message) > 0
 
 (** Verify parsing, arithmetic, and user-created Result failures. *)
 numericErrorCase () =
     userFailure = match boom ()
-        Success value => false
+        Success _value => false
         Error message => message == "user boom"
     checkAll "numeric Result diagnostics" [
         hasDiagnostic (parseInt "nope"),
@@ -165,7 +165,7 @@ collectionAndSuccessCase () =
     prices = ["apple" => 2, "banana" => 3]
     divisionWorks = match 7 / 2
         Success value => value == 3.5
-        Error message => false
+        Error _message => false
     checkAll "collection errors and successful Results" [
         hasDiagnostic xs[9],
         hasDiagnostic prices["mango"],

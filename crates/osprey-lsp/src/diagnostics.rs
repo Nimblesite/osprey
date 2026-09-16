@@ -208,14 +208,20 @@ fn project_diagnostics(
         Ok(loaded) => loaded,
         Err(errors) => return Some(project_errors(source, &file, &errors, encoding).into()),
     };
+    let mut incomplete = false;
     for candidate in &mut sources {
-        let uri = lspkit_server::uri::path_to_uri(&candidate.path).ok()?;
+        let Ok(uri) = lspkit_server::uri::path_to_uri(&candidate.path) else {
+            continue;
+        };
         let live = vfs.and_then(|vfs| vfs.text(&lspkit_vfs::DocumentUri::new(uri)));
         if let Some(live) = live {
             let parsed =
                 osprey_syntax::parse_program_for_path(&candidate.path.to_string_lossy(), &live);
             if !parsed.errors.is_empty() {
-                return Some(Analysis::default());
+                // Keep the disk version while a sibling is mid-edit. An
+                // incomplete buffer must not erase this file's real errors.
+                incomplete = true;
+                continue;
             }
             candidate.source = live;
             candidate.program = parsed.program;
@@ -226,12 +232,20 @@ fn project_diagnostics(
         .find(|candidate| same_path(&candidate.path, &file))?;
     source_file.source = source.to_string();
     source_file.program = program.clone();
-    Some(assembly_diagnostics(
+    let mut analysis = assembly_diagnostics(
         osprey_project::assemble(&config, &sources),
         source,
         &file,
         encoding,
-    ))
+    );
+    if incomplete {
+        // Disk fallback proves errors, but cannot justify edits to live code.
+        analysis.fixes.clear();
+        analysis
+            .diagnostics
+            .retain(|diagnostic| diagnostic.severity == Severity::Error);
+    }
+    Some(analysis)
 }
 
 fn assembled_type_errors(

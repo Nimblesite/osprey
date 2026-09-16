@@ -166,7 +166,7 @@ resumeSubstitutesSuppliedValueCase () =
     mut steadyReads = 0
     steady =
         handle Script
-            read slot =>
+            read _slot =>
                 steadyReads := steadyReads + 1 ?: steadyReads
                 resume 1
         in weightedReads ()
@@ -174,7 +174,7 @@ resumeSubstitutesSuppliedValueCase () =
     mut zeroReads = 0
     zeroed =
         handle Script
-            read slot =>
+            read _slot =>
                 zeroReads := zeroReads + 1 ?: zeroReads
                 resume 0
         in weightedReads ()
@@ -389,7 +389,7 @@ resumeScalarPayloadsCase () =
     mut loneCalls = 0
     lone =
         handle Scalar
-            ratio step =>
+            ratio _step =>
                 loneCalls := loneCalls + 1 ?: loneCalls
                 resume 2.5
         in loneRatio ()
@@ -657,7 +657,7 @@ resumeManagedPayloadsCase () =
     mut weightCalls = 0
     doubledWeight =
         handle Managed
-            slot n =>
+            slot _n =>
                 weightCalls := weightCalls + 1 ?: weightCalls
                 resume (Slot(label = "seven", weight = 21, ready = true))
         in weightBody ()

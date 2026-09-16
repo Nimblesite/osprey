@@ -122,7 +122,7 @@ sharedAcrossMultiplicitiesCase () =
         in applyTwice (jitter, 10)
     doubled =
         handle Email
-            deliver body => audits := audits + 1 ?: audits
+            deliver _body => audits := audits + 1 ?: audits
         in applyTwice (audited, 5)
     checkAll "one function serves both multiplicities" [
         noisy == 16, doubled == 20, audits == 2

@@ -111,9 +111,9 @@ in {
 
 /// Repeats the complete batch under quiet handlers for an asserted result.
 fn alphaBatchForTest() = handle Metrics
-    recordSuccess taskId processed => 0
+    recordSuccess _taskId _processed => 0
 in handle Logger
-    info msg => 0
+    info _msg => 0
 in processAlphaBatch()
 
 // Verifies preprocessing, classification, and the awaited batch total.

@@ -9,7 +9,7 @@ fn listHeadBlock() = {
     let nums = [42, 84, 126]
     match nums[0] {
         Success { value } => value
-        Error { message } => 0
+        Error => 0
     }
 }
 let r1 = listHeadBlock()
@@ -18,12 +18,12 @@ print("1 list head: ${r1}")
 /// --- 2. Block with map access + multiplication ---
 fn mapProductBlock() = {
     let config = { "factor": 2, "base": 10 }
-    let x = match config["base"] { Success { value } => value Error { message } => 0 }
-    let factor = match config["factor"] { Success { value } => value Error { message } => 1 }
+    let x = match config["base"] { Success { value } => value Error => 0 }
+    let factor = match config["factor"] { Success { value } => value Error => 1 }
     let m = x * factor
     match m {
         Success { value } => value
-        Error { message } => 0
+        Error => 0
     }
 }
 let r2 = mapProductBlock()
@@ -35,24 +35,24 @@ fn shadowedBlock() = {
     let config = { "multiplier": 2, "offset": 25 }
     let outer = match config["offset"] {
         Success { value } => value
-        Error { message } => 50
+        Error => 50
     }
     let inner = {
         let listData = [10, 20, 30]
         let outer = match listData[2] {
             Success { value } => value
-            Error { message } => 25
+            Error => 25
         }
         let m = outer * 2
         match m {
             Success { value } => value
-            Error { message } => 0
+            Error => 0
         }
     }
     let s = outer + inner
     match s {
         Success { value } => value
-        Error { message } => 0
+        Error => 0
     }
 }
 let r3 = shadowedBlock()
@@ -63,13 +63,13 @@ fn compute() = {
     let numbers = [5, 10, 15]
     let base = match numbers[1] {
         Success { value } => value
-        Error { message } => 10
+        Error => 10
     }
     let multiplier = 3
     let r = base * multiplier
     match r {
         Success { value } => value
-        Error { message } => 0
+        Error => 0
     }
 }
 print("4 fn block: ${compute()}")
@@ -79,17 +79,17 @@ fn matrixBlock() = {
     let matrix = [[1, 2], [3, 4]]
     let firstRow = match matrix[0] {
         Success { value } => value
-        Error { message } => [0]
+        Error => [0]
     }
     match firstRow[1] {
         Success { value } => {
             let m = value * 10
             match m {
                 Success { result } => result
-                Error { message } => 0
+                Error => 0
             }
         }
-        Error { message } => 0
+        Error => 0
     }
 }
 let r5 = matrixBlock()
@@ -107,14 +107,14 @@ fn conditionalBlock(value) = {
                     let added = sValue + 10
                     match added {
                         Success { value } => value
-                        Error { message } => 0
+                        Error => 0
                     }
                 }
-                Error { message } => 0
+                Error => 0
             }
             _ => 0
         }
-        Error { message } => 0
+        Error => 0
     }
 }
 let r6 = conditionalBlock(value)

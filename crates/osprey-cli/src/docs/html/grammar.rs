@@ -28,23 +28,47 @@ pub(super) fn script() -> Result<String, String> {
 /// `module` with its single expected `export` keyword removed, and nothing else
 /// touched — a comment that mentions `export const` stays as written.
 fn classic(module: &str) -> Result<String, String> {
-    let statements: Vec<&str> = module
-        .lines()
-        .map(str::trim_start)
-        .filter(|line| is_module_statement(line))
-        .collect();
-    match statements.as_slice() {
-        [only] if only.starts_with(EXPORT) => Ok(module
-            .lines()
-            .map(strip_export)
-            .collect::<Vec<_>>()
-            .join("\n")),
-        found => Err(format!(
-            "{MODULE_PATH} can no longer be inlined into the documentation's classic \
-             script: it must hold exactly one module statement, `{EXPORT} …`, and holds \
-             {found:?}"
-        )),
+    match statements(module).as_slice() {
+        [only] if only.starts_with(EXPORT) => inlined(module),
+        found => Err(refusal(found)),
     }
+}
+
+/// The classic script, refused unless the strip reached every module statement.
+/// A keyword it could not reach — one opening a line after a `;`, say — would
+/// otherwise ship a script the browser refuses to parse, silently.
+fn inlined(module: &str) -> Result<String, String> {
+    let script = module
+        .lines()
+        .map(strip_export)
+        .collect::<Vec<_>>()
+        .join("\n");
+    let left: Vec<String> = statements(&script).into_iter().map(str::to_owned).collect();
+    if left.is_empty() {
+        return Ok(script);
+    }
+    Err(refusal(&left))
+}
+
+/// Why `found` cannot be inlined, naming the file and the shape required.
+fn refusal<T: std::fmt::Debug>(found: &[T]) -> String {
+    format!(
+        "{MODULE_PATH} can no longer be inlined into the documentation's classic \
+         script: it must hold exactly one module statement, `{EXPORT} …`, and holds \
+         {found:?}"
+    )
+}
+
+/// Every module statement in `module`. JavaScript ends a statement at `;`, not
+/// at a newline, so a second `export` can share a line with the first; reading
+/// one keyword per line never sees it.
+fn statements(module: &str) -> Vec<&str> {
+    module
+        .lines()
+        .flat_map(|line| line.split(';'))
+        .map(str::trim_start)
+        .filter(|segment| is_module_statement(segment))
+        .collect()
 }
 
 /// The line with a leading `export` keyword removed, where it has one.
@@ -92,6 +116,13 @@ mod tests {
     fn a_module_the_classic_script_cannot_hold_is_refused() {
         for module in [
             "export const ospreyGrammar = {};\nexport const extra = 1;\n",
+            // A second statement on the SAME line still ends the classic
+            // script, and a line-leading scan never sees it.
+            "export const ospreyGrammar = {}; export const bad = 1;\n",
+            "export const ospreyGrammar = {}; import './tokens.mjs';\n",
+            // The one statement the strip cannot reach: it opens after a `;`,
+            // so no line begins with the keyword.
+            "; export const ospreyGrammar = {};\n",
             "import { tokens } from './tokens.mjs';\nexport const ospreyGrammar = tokens;\n",
             "export const renamedGrammar = {};\n",
             "export default {};\n",

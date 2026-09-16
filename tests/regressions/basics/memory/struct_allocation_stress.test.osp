@@ -36,7 +36,7 @@ print("heavyEnergy=${heavyTotal}")
 /// 3. Non-destructive update in the hot path — every step COPIES a record, so a
 ///    record-typed fold accumulator is born COUNT-1 times and all but the last
 ///    die immediately. Exercises the pointer-accumulator fold path end to end.
-fn bump(p, step) = p { mass: add(p.mass, 1) }
+fn bump(p, _step) = p { mass: add(p.mass, 1) }
 let bumped = range(1, COUNT) |> fold(forge(1), bump)
 print("bumpedMass=${bumped.mass}")
 

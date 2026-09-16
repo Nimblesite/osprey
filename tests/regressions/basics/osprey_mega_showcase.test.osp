@@ -39,7 +39,7 @@ fn dryRun() =
     handle Console
         emit line => print("  🧪 [dry-run] ${line}")
     in handle Ledger
-        post amount => 0
+        post _amount => 0
     in account()
 
 /// Pure pipeline: Σ of squares of the evens in [1, n) — no loops, no mutation.

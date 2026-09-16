@@ -75,18 +75,18 @@ fn gap(a, b) = match a < b { true => b - a ?: 0 false => a - b ?: 0 }
 // and falls back to zero if that invariant is broken.
 fn modv(a: int, b: int) = match a % b {
     Success { value } => value
-    Error { message } => 0
+    Error => 0
 }
 
 // ---- Result-unwrapping helpers (one expression each) ------------------------
 fn pad(s: string, n: int) = match padEnd(s, n, " ") {
     Success { value } => value
-    Error { message } => s
+    Error => s
 }
 
 fn field(doc: int, path: string) = match jsonGet(doc, path) {
     Success { value } => value
-    Error { message } => "?"
+    Error => "?"
 }
 
 // ============================================================================
@@ -256,19 +256,19 @@ fn openRepo(doc: int, sel: int, n: int) -> Unit ![Console, Terminal, Http] = {
 fn browseDir(repo: string, path: string) -> Unit ![Console, Terminal, Http] =
     match perform Http.fetch(contentsPath(repo: repo, path: path)) {
         Success { text } => openTree(repo: repo, path: path, body: text)
-        Error { message } => waitMessage(msg: "Could not open /" + path)
+        Error => waitMessage(msg: "Could not open /" + path)
     }
 
 fn openTree(repo: string, path: string, body: string) -> Unit ![Console, Terminal, Http] = match jsonParse(body) {
     Success { tree } => browseLoop(repo: repo, path: path, tree: tree, sel: 0, n: jsonLength(tree, ""))
-    Error { message } => waitMessage(msg: "Could not read /" + path)
+    Error => waitMessage(msg: "Could not read /" + path)
 }
 
 fn browseLoop(repo: string, path: string, tree: int, sel: int, n: int) -> Unit ![Console, Terminal, Http] = {
     perform Console.print(treeScreen(repo: repo, path: path, tree: tree, sel: sel, n: n))
     match perform Terminal.readKey() {
         Success { value } => browseKey(repo: repo, path: path, tree: tree, sel: sel, n: n, key: value)
-        Error { message } => perform Console.print("")
+        Error => perform Console.print("")
     }
 }
 
@@ -303,7 +303,7 @@ fn openFile(repo: string, path: string, tree: int, sel: int, n: int) -> Unit ![C
 fn viewFile(repo: string, file: string) -> Unit ![Console, Terminal, Http] =
     match perform Http.fetchRaw(contentsPath(repo: repo, path: file)) {
         Success { text } => showCode(file: file, code: text)
-        Error { message } => waitMessage(msg: "Could not read " + file)
+        Error => waitMessage(msg: "Could not read " + file)
     }
 
 fn showCode(file: string, code: string) -> Unit ![Console, Terminal] = {
@@ -321,7 +321,7 @@ fn uiLoop(doc: int, sel: int, n: int) -> Unit ![Console, Terminal, Http] = {
     drawScreen(doc: doc, sel: sel, n: n)
     match perform Terminal.readKey() {
         Success { value } => handleKey(doc: doc, sel: sel, n: n, key: value)
-        Error { message }  => endApp()
+        Error  => endApp()
     }
 }
 
@@ -343,7 +343,7 @@ fn startUi(bodyText: string) -> Unit ![Console, Terminal, Http] = match jsonPars
         perform Terminal.raw(1)
         uiLoop(doc: value, sel: 0, n: jsonLength(value, ""))
     }
-    Error { message } => perform Console.print("JSON parse failed")
+    Error => perform Console.print("JSON parse failed")
 }
 
 // The whole program in one effectful expression: fetch, then browse the result.
@@ -365,7 +365,7 @@ fn rawHeaders() = "User-Agent: osprey-tui\r\nAccept: application/vnd.github.raw\
 // Runs on a fiber. Returns the response handle (> 0), or 0 to signal failure.
 fn rawGet(clientId: int, path: string, headers: string) = match httpGetResponse(clientId, path, headers) {
     Success { value } => value
-    Error { message } => 0
+    Error => 0
 }
 
 // Foreground animation loop: paint a frame, nap, re-probe - exit the instant

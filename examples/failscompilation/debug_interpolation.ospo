@@ -1,2 +1,10 @@
 let user = 42
-print("${user.name}") 
+print("${user.name}")
+
+// An aggregate has no printable rendering, so interpolating one must be
+// rejected exactly as `print(xs)` is — not silently rendered as nothing.
+let xs = [1, 2]
+print("[${xs}]")
+
+let scores = {"a": 1}
+print("{${scores}}")

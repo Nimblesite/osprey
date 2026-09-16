@@ -1,6 +1,8 @@
 # CLAUDE.md
 <!-- agent-pmo:74cf183 -->
 
+Subagents = ⛔️ ILLEGAL
+
 Guidance for agents working in this repository.
 
 **Osprey is in stabilization mode.** One measure outranks everything else — not new features, not new syntax, not more examples:

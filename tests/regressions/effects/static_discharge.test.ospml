@@ -69,7 +69,7 @@ storeText () = perform Stash.put "fresh"
 
 genericValue =
     handle Stash
-        put value => print ""
+        put _value => print ""
         take => "cached"
     in
         storeText ()

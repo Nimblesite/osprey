@@ -45,7 +45,7 @@ effect Counter {
 /// Pure functions work fine
 fn doubleValue(x) = match x * 2 {
     Success { value } => value
-    Error { message } => 0
+    Error => 0
 }
 
 fn concatenateStrings(a, b) = a + b
@@ -73,7 +73,7 @@ fn processItems(count) ![Logger, Counter] = match count {
             perform Counter.increment()
             let nextCount = match count - 1 {
                 Success { value } => value
-                Error { message } => 0
+                Error => 0
             }
             processItems(nextCount)
         }
@@ -99,7 +99,7 @@ fn asyncProcessing(taskId) ![Logger, Counter] = {
     perform Logger.log("Tasks completed: ${toString(result1)}, ${toString(result2)}")
     match result1 + result2 {
         Success { value } => value
-        Error { message } => 0
+        Error => 0
     }
 }
 
@@ -109,7 +109,7 @@ fn calculation(x) ![Logger, State] = {
     let current = perform State.get()
     let result = match x * 2 + current {
         Success { value } => value
-        Error { message } => 0
+        Error => 0
     }
     perform State.set(result)
     perform Logger.log("Calculation complete: ${toString(x)} -> ${toString(result)}")
@@ -136,7 +136,7 @@ fn errorProne(value) !Logger = match value {
                 perform Logger.log("Processing valid value: ${toString(value)}")
                 match value * 2 {
                     Success { value } => value
-                    Error { message } => 0
+                    Error => 0
                 }
             }
         }
@@ -147,7 +147,7 @@ fn errorProne(value) !Logger = match value {
 fn writeConfigFile(configName, data) ![FileIO, Logger] = {
     let filename = match "config_" + configName + ".txt" {
         Success { value } => value
-        Error { message } => "config.txt"
+        Error => "config.txt"
     }
     perform Logger.log("Writing config file: ${filename}")
     perform FileIO.writeFile(filename, data)
@@ -160,7 +160,7 @@ fn readAndProcessLogFile(logFile) ![FileIO, Logger] = {
     perform Logger.log("Processing log content, length: ${toString(length(content))}")
     let processedContent = match "PROCESSED: " + content + " [END]" {
         Success { value } => value
-        Error { message } => content
+        Error => content
     }
     processedContent
 }
@@ -168,12 +168,12 @@ fn readAndProcessLogFile(logFile) ![FileIO, Logger] = {
 fn generateReport(reportId, data) ![FileIO, Logger, State] = {
     let reportFile = match "report_" + toString(reportId) + ".txt" {
         Success { value } => value
-        Error { message } => "report.txt"
+        Error => "report.txt"
     }
     let currentState = perform State.get()
     let timestamp = match reportId * 1000 {
         Success { value } => value
-        Error { message } => 0
+        Error => 0
     }
     let reportContent = match "=== REPORT ${toString(reportId)} ===\n" +
                        "State: ${toString(currentState)}\n" +
@@ -181,14 +181,14 @@ fn generateReport(reportId, data) ![FileIO, Logger, State] = {
                        "Timestamp: ${toString(timestamp)}\n" +
                        "=== END REPORT ===\n" {
         Success { value } => value
-        Error { message } => ""
+        Error => ""
     }
 
     perform Logger.log("Generating report: ${reportFile}")
     perform FileIO.writeFile(reportFile, reportContent)
     let newState = match currentState + 1 {
         Success { value } => value
-        Error { message } => currentState
+        Error => currentState
     }
     perform State.set(newState)
     perform Logger.log("Report generated and state updated")
@@ -224,8 +224,8 @@ in handle Logger
     log msg => print("📝 LOG: " + msg)
     error msg => print("❌ ERROR: " + msg)  
 in handle FileIO
-    writeFile filename content => print("💾 Writing file: " + filename)
-    readFile filename => "mock file content"
+    writeFile filename _content => print("💾 Writing file: " + filename)
+    readFile _filename => "mock file content"
     deleteFile filename => print("🗑️ Deleting file: " + filename)
 in handle IO
     read => "mock read data"

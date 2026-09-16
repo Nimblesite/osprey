@@ -107,7 +107,7 @@ fn describe(g) = match g {
     Gate { admit } => "guarded"
     Open => "open"
 }
-fn mkGate() -> Gate<(int) -> Result<int, MathError>> = Gate { admit: |f| => true }
+fn mkGate() -> Gate<(int) -> Result<int, MathError>> = Gate { admit: |_f| => true }
 
 print("fn-payload feed accepted: ${label(mkFeed())}")
 print("fn-payload gate accepted: ${describe(mkGate())}")
@@ -125,10 +125,10 @@ type Sink<in T> = Sink { admit: (T) -> bool, hof: ((int) -> T) -> int }
 type Both<T> = Both { slot: T, consume: (T) -> int }
 
 fn srcInt() -> Source<int> = Source { produce: 4, make: |n| => n, items: [1, 2] }
-fn sinkInt() -> Sink<int> = Sink { admit: |x| => true, hof: |f| => 7 }
-fn bothInt() -> Both<int> = Both { slot: 5, consume: |x| => 6 }
+fn sinkInt() -> Sink<int> = Sink { admit: |_x| => true, hof: |_f| => 7 }
+fn bothInt() -> Both<int> = Both { slot: 5, consume: |_x| => 6 }
 fn keepSource(s) = s.produce
-fn keepSink(g) = g.hof(|n| => 3)
+fn keepSink(g) = g.hof(|_n| => 3)
 
 print("variance produce=${srcInt().produce} make=${srcInt().make(9)} items=${length(srcInt().items)} admit=${toString(sinkInt().admit(1))} slot=${bothInt().slot} kept=${keepSource(srcInt())}/${keepSink(sinkInt())}")
 
@@ -140,7 +140,7 @@ print("variance produce=${srcInt().produce} make=${srcInt().make(9)} items=${len
 /// with one `>>`. Implements [TYPE-GENERICS-APPLY]
 fn identityOf<T>(x: T) -> T = x
 fn emptyOf<T>() -> List<T> = []
-fn pickOf<T, U>(first: T, second: U) -> T = first
+fn pickOf<T, U>(first: T, _second: U) -> T = first
 fn alsoOf<T>(x: T, f: (T) -> T) -> T = f(x)
 fn headOr<T>(items: List<T>, fallback: T) -> T = items.listGet(0) ?: fallback
 fn repeatOf<T>(value: T, times: int) -> T = match times {
@@ -212,7 +212,7 @@ fn typeEqualityCase() = {
         length(srcInt().items) == 2,
         (srcInt().items.listGet(1) ?: 0) == 2,
         sinkInt().admit(1),
-        sinkInt().hof(|n| => 3) == 7,
+        sinkInt().hof(|_n| => 3) == 7,
         bothInt().slot == 5,
         bothInt().consume(1) == 6,
         keepSource(srcInt()) == 4,

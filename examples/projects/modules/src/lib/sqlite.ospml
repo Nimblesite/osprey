@@ -37,27 +37,27 @@ module Sqlite
     prepare : Ptr -> string -> Ptr
     prepare db sql =
         cell = osprey_ffi_cell ()
-        rc = sqlite3_prepare_v2 db sql ((0 - 1) ?: 0) cell (osprey_ffi_null ())
+        _rc = sqlite3_prepare_v2 db sql ((0 - 1) ?: 0) cell (osprey_ffi_null ())
         stmt = osprey_ffi_deref cell
-        freed = osprey_ffi_free cell
+        _freed = osprey_ffi_free cell
         stmt
 
     // bind positional (int, text) then run to completion — private plumbing.
     runBound : Ptr -> string -> int -> string -> int
     runBound db sql i t =
         stmt = prepare db sql
-        b1 = sqlite3_bind_int stmt 1 i
-        b2 = sqlite3_bind_text stmt 2 t ((0 - 1) ?: 0) (osprey_ffi_transient ())
+        _b1 = sqlite3_bind_int stmt 1 i
+        _b2 = sqlite3_bind_text stmt 2 t ((0 - 1) ?: 0) (osprey_ffi_transient ())
         rc = sqlite3_step stmt
-        fin = sqlite3_finalize stmt
+        _fin = sqlite3_finalize stmt
         rc
 
     export openAt : string -> Ptr
     openAt path =
         cell = osprey_ffi_cell ()
-        rc = sqlite3_open path cell
+        _rc = sqlite3_open path cell
         db = osprey_ffi_deref cell
-        freed = osprey_ffi_free cell
+        _freed = osprey_ffi_free cell
         db
 
     // Run one statement with no result rows (DDL, DELETE, BEGIN/COMMIT).
@@ -67,27 +67,27 @@ module Sqlite
     // INSERT with one bound int and one bound text; returns the new rowid.
     export insertIntText : Ptr -> string -> int -> string -> int
     insertIntText db sql i t =
-        rc = runBound db sql i t
+        _rc = runBound db sql i t
         sqlite3_last_insert_rowid db
 
     // UPDATE with two bound ints; returns the step result code.
     export updateIntInt : Ptr -> string -> int -> int -> int
     updateIntInt db sql a b =
         stmt = prepare db sql
-        b1 = sqlite3_bind_int stmt 1 a
-        b2 = sqlite3_bind_int stmt 2 b
+        _b1 = sqlite3_bind_int stmt 1 a
+        _b2 = sqlite3_bind_int stmt 2 b
         rc = sqlite3_step stmt
-        fin = sqlite3_finalize stmt
+        _fin = sqlite3_finalize stmt
         rc
 
     // SELECT one int scalar with one bound int (first row, first column).
     export queryInt : Ptr -> string -> int -> int
     queryInt db sql key =
         stmt = prepare db sql
-        b1 = sqlite3_bind_int stmt 1 key
-        rc = sqlite3_step stmt
+        _b1 = sqlite3_bind_int stmt 1 key
+        _rc = sqlite3_step stmt
         v = sqlite3_column_int stmt 0
-        fin = sqlite3_finalize stmt
+        _fin = sqlite3_finalize stmt
         v
 
     // SELECT one text scalar with one bound int. The column pointer is only
@@ -96,19 +96,19 @@ module Sqlite
     export queryText : Ptr -> string -> int -> string
     queryText db sql key =
         stmt = prepare db sql
-        b1 = sqlite3_bind_int stmt 1 key
-        rc = sqlite3_step stmt
+        _b1 = sqlite3_bind_int stmt 1 key
+        _rc = sqlite3_step stmt
         v = "${sqlite3_column_text stmt 0}"
-        fin = sqlite3_finalize stmt
+        _fin = sqlite3_finalize stmt
         v
 
     // SELECT one int scalar with no bound parameters (e.g. COUNT(*)).
     export queryScalar : Ptr -> string -> int
     queryScalar db sql =
         stmt = prepare db sql
-        rc = sqlite3_step stmt
+        _rc = sqlite3_step stmt
         v = sqlite3_column_int stmt 0
-        fin = sqlite3_finalize stmt
+        _fin = sqlite3_finalize stmt
         v
 
     // --- cursor API: multi-row reads without exposing pointer plumbing ---

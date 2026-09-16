@@ -13,7 +13,7 @@ flag (broken, msg) = match broken
     true => perform Invalid.report msg
     false =>
         (** A binding-only layout block evaluates to Unit in ML flavor. *)
-        unchanged = broken
+        _unchanged = broken
 
 (** All six checks run on every call. *)
 validate (name, age, score, email) =

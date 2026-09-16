@@ -68,7 +68,7 @@ fn onGet(path) = match path {
     _        => textResp(200, perform Db.list())
 }
 
-fn handleReq(method: string, path: string, headers: string, body: string) = {
+fn handleReq(method: string, path: string, _headers: string, body: string) = {
     perform Metrics.hit(path)
     match method {
         "POST" => onPost(body)
@@ -79,18 +79,18 @@ fn handleReq(method: string, path: string, headers: string, body: string) = {
 /// ---- client side: read a response body and release the handle --------------
 fn bodyOf(h) = match httpResponseBody(h) {
     Success { value } => value
-    Error { message } => "(no body)"
+    Error => "(no body)"
 }
 
 fn readAndFree(h) = {
     let b = bodyOf(h)
-    let freed = httpResponseFree(h)
+    let _freed = httpResponseFree(h)
     b
 }
 
 fn fetch(clientId, path) = match httpGetResponse(clientId, path, "") {
     Success { value } => readAndFree(value)
-    Error { message } => "GET failed"
+    Error => "GET failed"
 }
 
 /// Post a task over HTTP. The reply reports the server's status code; the `Log`
@@ -108,7 +108,7 @@ fn seedTask(text) = perform Db.add(text)
 /// ---- the demo driver: a tiny scripted client over the live server ----------
 fn runDemo() = {
     let serverId = httpCreateServer(18280, "127.0.0.1")
-    let listening = httpListen(serverId, handleReq)
+    let _listening = httpListen(serverId, handleReq)
     let clientId = httpCreateClient("http://127.0.0.1:18280", 5000)
     print("server up on :18280")
     let seeded = await(spawn seedTask("welcome to osprey"))
@@ -118,7 +118,7 @@ fn runDemo() = {
     let listing = fetch(clientId: clientId, path: "/tasks")
     print("--- GET /tasks ---\n${listing}--- end ---")
     print("GET /stats -> ${fetch(clientId: clientId, path: "/stats")}")
-    let stopped = httpStopServer(serverId)
+    let _stopped = httpStopServer(serverId)
     print("STATE @ shutdown — db: ${toString(perform Db.count())} tasks | server: ${toString(perform Metrics.served())} requests | disk: ${toString(perform Persist.bytes())} bytes")
 }
 
@@ -140,7 +140,7 @@ let _ = handle Persist
         /// is why .gitignore names it. [BUILTIN-FILE-ERRMSG]
         let saved = writeFile("osprey_http_state_levels.db", snap)
         diskBytes = match saved {
-            Success { value } => length(snap)
+            Success => length(snap)
             // Say WHY [BUILTIN-FILE-ERRMSG]. Storing a bare -1 here is how a
             // failed persist reached the assertions as "expected true, got
             // false", with the operating system's own explanation discarded.
@@ -153,7 +153,7 @@ let _ = handle Persist
     }
     bytes => diskBytes
 in handle Metrics
-    hit p      => { requests = requests + 1 ?: requests }
+    hit _p      => { requests = requests + 1 ?: requests }
     served     => requests
 in handle Db
     add t => {

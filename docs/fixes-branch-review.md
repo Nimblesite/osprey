@@ -184,3 +184,80 @@ Both of these are silent failures or crashes on programs the type checker accept
 ## Final disposition
 
 **Do not merge until blockers 1–3 have failing tests in the tree and fixes behind them.** Findings 4–5 should land in the same pass, because they concern whether a rejection is truthful. Findings 6–9 can follow, but they need an issue each and cannot be waved through as footnotes.
+
+## Resolution — findings owned by OspreyOpus1
+
+Each entry names the test that fails if the fix is reverted. Findings 1, 4, 7, 8
+and 9, and the `Result` arm defect, are tracked by OspreyAstra1.
+
+### Blocker 2 — the doctest harness skipped examples and reported green
+
+- `osprey-ml` and `ospml` now run as examples: `EXAMPLE_LABELS` in
+  `crates/osprey-syntax/src/docparse.rs`.
+- A blank line between an example and its `output` fence no longer drops the
+  expectation; `output_after` skips blank lines only.
+- An `output` fence that follows no example is a hard error naming the
+  declaration (`ORPHANED_OUTPUT`), reported through
+  `crates/osprey-cli/src/doctests.rs` as a failure.
+- `crates/corpus_doctests.sh` now visits files carrying any of the three fences,
+  so an ML-labelled example adds coverage instead of leaving the floor untouched.
+- Tests: three unit tests in `docparse.rs`, each verified by mutation.
+
+### Blocker 3 — the compiler embedded a `website/` file CI treated as website-only
+
+- `website/src/js/osprey-grammar.mjs` is in the `code` filter of both
+  `.github/workflows/ci.yml` and `ci-windows.yml`, so touching it runs the
+  compiler jobs. The gate widened; no job's `if:` changed.
+- `replacen` is gone. `crates/osprey-cli/src/docs/html/grammar.rs` checks the
+  module's shape and fails the export, naming the file, when it no longer holds
+  exactly one `export const ospreyGrammar =` statement.
+- The scan splits on `;`, not on newlines: JavaScript ends a statement at `;`, so
+  `export const ospreyGrammar = {}; export const bad = 1;` is a second statement
+  on the same line and is refused. The inlined script is then re-scanned, so a
+  keyword the strip could not reach (one opening after a `;`) fails rather than
+  shipping a page whose script the browser refuses to parse.
+- Tests: three unit tests in `grammar.rs`, including the shipped grammar itself.
+
+### Finding 5 — a stray `//!` and the misleading Default error
+
+- Both flavors now give the same diagnostic, positioned on the `//!`:
+  `crates/osprey-syntax/src/default/inner_doc.rs`.
+- While fixing it: a misplaced `//!` in a Default file was being **compiled as
+  code**. `//! ready` as the last line of a block lexed as `//`, `!`, `ready`,
+  so the block's value became `!ready` — `check(true)` printed `false` and the
+  program exited 0. Pinned by
+  `examples/failscompilation/inner_doc_comment_misread_as_code.ospo`.
+- `stray_inner_doc_comment.ospo.expectedoutput` recorded the misleading message
+  and now records the truthful one.
+- The breaking change is stated in `website/src/status.md`.
+- Judgement call: the Broken Code Process asks for a panic in place of
+  silently-wrong code. This is the parse path the language server runs on every
+  keystroke and nothing in the tree catches panics, so a panic here would crash
+  the editor whenever anyone typed `//!` in the wrong place. It is a rejection
+  with a truthful, positioned error instead.
+
+### Finding 6 — tree-sitter highlighting lost `//!`
+
+- `(inner_doc_comment) @comment.documentation` is back in
+  `tree-sitter-osprey/queries/highlights.scm`, with
+  `every_comment_kind_has_a_highlight_capture` in the Rust binding failing if any
+  comment node loses its capture.
+
+### Pre-existing defect 1 — interpolating a list printed nothing
+
+Fixed by OspreyAstra1 in `builtin_constraints.rs`. Pinned end to end here:
+`examples/failscompilation/debug_interpolation.ospo` (list and map, Default) and
+`ml_interpolation_unprintable.ospo` (ML).
+
+### Finding 9, examples half
+
+`crates/osprey-cli/tests/example_warning_hygiene.rs` walks every example under
+`examples/` rather than a hand-kept list of ten, with a floor so a broken walk
+cannot pass silently. All 59 are clean.
+
+The 41 remaining unused-binding warnings live in six Default test programs
+(`recursive_unions`, `json_document_query`, `pattern_matching_complete`,
+`user_defined_unions`, `type_equality_comprehensive`). They stay: each is an arm
+that binds every field of a record on purpose, which is the only place that
+destructuring is exercised — the ML twins already ignore those fields with `_`.
+Narrowing them to `_` would delete the coverage, not clean it.

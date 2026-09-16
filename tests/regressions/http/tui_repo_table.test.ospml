@@ -2,7 +2,7 @@
 // [BUILTIN-JSON] with positional ML calls and layout blocks.
 
 handleRequest : string -> string -> string -> string -> HttpResponse
-handleRequest (method, path, headers, body) = HttpResponse(
+handleRequest (_method, _path, _headers, _body) = HttpResponse(
     status = 200,
     headers = "Content-Type: application/json",
     contentType = "application/json",
@@ -21,13 +21,13 @@ pad (s, n) =
     r = padEnd s n " "
     match r
         Success value => value
-        Error message => s
+        Error _message => s
 
 field (doc, path) =
     r = jsonGet doc path
     match r
         Success value => value
-        Error message => "?"
+        Error _message => "?"
 
 renderRow (doc, i, n) =
     match i < n
@@ -51,14 +51,14 @@ renderTable doc =
 
 renderDoc d =
     renderTable d
-    fr = jsonFree d
+    _fr = jsonFree d
     print (dim "  rendered")
 
 renderBody bodyText =
     doc = jsonParse bodyText
     match doc
         Success value => renderDoc value
-        Error message => print "jsonfail"
+        Error _message => print "jsonfail"
 
 renderResponse h =
     body = httpResponseBody h
@@ -66,25 +66,25 @@ renderResponse h =
         Success value =>
             renderBody value
             value
-        Error message =>
+        Error _message =>
             print "bodyfail"
             ""
 
 run () =
     serverId = httpCreateServer 18099 "127.0.0.1"
-    listenResult = httpListen serverId handleRequest
+    _listenResult = httpListen serverId handleRequest
     clientId = httpCreateClient "http://127.0.0.1:18099" 5000
     resp = httpGetResponse clientId "/repos" ""
     bodyText = match resp
         Success value =>
             rendered = renderResponse value
-            freed = httpResponseFree value
+            _freed = httpResponseFree value
             rendered
         Error message =>
             print "reqfail ${message}"
             ""
-    closeResult = httpCloseClient clientId
-    stopResult = httpStopServer serverId
+    _closeResult = httpCloseClient clientId
+    _stopResult = httpStopServer serverId
     bodyText
 
 (** Fetch, render, and validate the repository document over loopback HTTP. *)

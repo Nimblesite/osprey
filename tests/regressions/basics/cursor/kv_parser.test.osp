@@ -14,7 +14,7 @@ fn notFound() = (0 - 1) ?: 0    // findEq sentinel: no '=' in the entry
 ///     total, no allocation.
 fn findEq(seg, i) = match byteAt(seg, i) {
     Success { value } => stepEq(seg, i, value)
-    Error   { message } => notFound()
+    Error => notFound()
 }
 fn stepEq(seg, i, b) = match b == eqByte() {
     true  => i
@@ -51,14 +51,14 @@ fn emit(line) = {
 ///     indexOf to locate the next separator and drop to advance the cursor.
 fn processAll(rest) = match indexOf(rest, semi()) {
     Success { value } => peel(rest, value)
-    Error   { message } => report(rest)
+    Error => report(rest)
 }
 fn peel(rest, sep) = match substring(rest, 0, sep) {
     Success { value } => advance(value, rest, sep)
     Error   { message } => emit("  ERROR: ${message}")
 }
 fn advance(seg, rest, sep) = {
-    let done = report(seg)
+    let _done = report(seg)
     processAll(drop(rest, (sep + 1) ?: sep))
 }
 
@@ -87,12 +87,12 @@ print("=== parser complete ===")
 /// Confirms a successful pair carries the complete key/value rendering.
 fn pairMatches(seg, expected) = match parsePair(seg) {
     Success { value } => value == expected
-    Error { message } => false
+    Error => false
 }
 
 /// Confirms malformed input carries the entry-specific rejection reason.
 fn pairIsRejected(seg) = match parsePair(seg) {
-    Success { value } => false
+    Success => false
     Error { message } => message == "no '=' in entry '${seg}'"
 }
 

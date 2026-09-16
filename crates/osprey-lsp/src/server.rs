@@ -578,6 +578,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sibling_syntax_errors_preserve_existing_type_errors() {
+        let root =
+            std::env::temp_dir().join(format!("osprey sibling error {}", std::process::id()));
+        std::fs::create_dir_all(root.join("src")).expect("fixture directory");
+        std::fs::write(root.join("osprey.toml"), "[project]\nname = \"errors\"\nsource_roots = [\"src\"]\ndefault_namespace = \"review\"\nentry = \"src/main.ospml\"\n").expect("manifest");
+        let main = "print missingName\n";
+        let helper = "suffix text = text + \"!\"\n";
+        std::fs::write(root.join("src/main.ospml"), main).expect("entry");
+        std::fs::write(root.join("src/helper.ospml"), helper).expect("helper");
+        let uri = lspkit_server::uri::path_to_uri(&root.join("src/main.ospml")).expect("URI");
+        let sibling = lspkit_server::uri::path_to_uri(&root.join("src/helper.ospml")).expect("URI");
+        let mut h = Harness::start();
+        let initial = h
+            .open_at(&uri, main)
+            .await
+            .params
+            .expect("initial diagnostics");
+        assert_at(&initial, "/diagnostics/0/code", "type-error");
+        let expected = initial.get("diagnostics").expect("type error").clone();
+        let _ = h.open_at(&sibling, helper).await;
+        assert_refreshed(&mut h, &uri, &expected).await;
+        h.notify("textDocument/didChange", json!({"textDocument":{"uri":sibling,"version":2},"contentChanges":[{"text":"suffix text = ("}]})).await;
+        let changed = h.read_message().await.params.expect("sibling diagnostics");
+        assert_at(&changed, "/diagnostics/0/code", "syntax-error");
+        assert_refreshed(&mut h, &uri, &expected).await;
+        h.shutdown_and_exit().await;
+        std::fs::remove_dir_all(root).expect("remove fixture");
+    }
+
+    #[tokio::test]
     async fn sibling_open_change_and_close_refresh_signature_warnings() {
         let root =
             std::env::temp_dir().join(format!("osprey live diagnostics {}", std::process::id()));

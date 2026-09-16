@@ -697,3 +697,15 @@ fn interpolated_annotation_provenance_cannot_select_an_outer_type() {
         |site| !matches!(&site.target, RedundantTarget::Parameter { name, .. } if name == "inner")
     ));
 }
+
+#[test]
+fn satisfied_numeric_obligations_do_not_hide_redundant_annotations() {
+    for (flavor, source) in [
+        (Flavor::Default, "fn softWeight(d: float) = (1.0 / (1.0 + d + d * d)) ?: 0.0\nprint(softWeight(2.0))\n"),
+        (Flavor::Ml, "softWeight : float -> float\nsoftWeight d = (1.0 / (1.0 + d + d * d)) ?: 0.0\nprint (softWeight 2.0)\n"),
+        (Flavor::Ml, "lerpQuarter : (float, float) -> float\nlerpQuarter (a, b) = a + (b - a) * 0.25\nprint (lerpQuarter (1.0, 2.0))\n"),
+    ] {
+        let raised = warnings(flavor, source);
+        assert_eq!(raised.len(), 1, "{flavor}: {raised:?}\n{source}");
+    }
+}

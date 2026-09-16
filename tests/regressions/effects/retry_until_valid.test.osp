@@ -21,7 +21,7 @@ fn readPositive(label: string) -> int !Prompt = {
 /// Resume with -3, 0, then 7.
 mut attempt = 0
 let accepted = handle Prompt
-    ask label => {
+    ask _label => {
         attempt = attempt + 1 ?: attempt
         let value = match attempt {
             1 => (0 - 3) ?: 0
@@ -37,7 +37,7 @@ print("SCENARIO 1 accepted=${toString(accepted)} after ${toString(attempt)} atte
 /// After three invalid values, return a sentinel without resuming.
 mut tries = 0
 let outcome = handle Prompt
-    ask label => {
+    ask _label => {
         tries = tries + 1 ?: tries
         match tries > 3 {
             true => {
@@ -500,7 +500,7 @@ fn takeRatio(n) !Payload = {
 /// Result channel: the CALLER, not the handler, treats `Error` as "ask again".
 fn takeChecked(n) !Payload = match perform Payload.checked(n) {
     Success { value } => value
-    Error { message } => takeChecked((n + 1) ?: n)
+    Error => takeChecked((n + 1) ?: n)
 }
 
 /// Three-argument channel: the retry arithmetic lives in the handler.
@@ -747,7 +747,7 @@ fn retryScriptedCandidateMatrixCase() = {
     mut drawn = ""
     mut scriptCalls = 0
     let fromList = handle Retry
-        supply n => {
+        supply _n => {
             scriptCalls = scriptCalls + 1 ?: scriptCalls
             cursor = cursor + 1 ?: cursor
             let candidate = listGet(script, (cursor - 1) ?: 0) ?: 0

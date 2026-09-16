@@ -27,7 +27,7 @@ addRescue (a, b) = match checkedAdd a b
 
 recoveredValues fallback =
     handle Rescue
-        onErr message => fallback
+        onErr _message => fallback
     in [
         divRescue (10, 0),
         divRescue (20, 4),
@@ -85,8 +85,22 @@ resultAndEffectsCase () =
     policyMatrix = [hundreds, sevens, negatives]
     policyMap = ["hundred" => hundreds, "seven" => sevens, "negative" => negatives]
     grownMap = policyMap |> mapSet "zero" (recoveredValues 0)
+    bareSuccess = match 10 % 3
+        Success value => value
+        Error => 0
+    bareError = match 10 % 0
+        Success => 7
+        Error => 9
+    boundResult = match 10 % 3
+        Error => 0
+        whole => match whole
+            Success value => value
+            Error => 0
 
     checkAll "Result and effect pipeline state" [
+        bareSuccess == 1,
+        bareError == 9,
+        boundResult == 1,
         rescues == 3,
         total == 430,
         localOk == 1,

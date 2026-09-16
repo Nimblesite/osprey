@@ -53,7 +53,7 @@ fn prodSat(a, x) = match a == overflowMark() {
     true => overflowMark()
     false => (a * x) ?: overflowMark()
 }
-fn doubleUp(a, x) = match a == overflowMark() {
+fn doubleUp(a, _x) = match a == overflowMark() {
     true => overflowMark()
     false => (a * 2) ?: overflowMark()
 }
@@ -70,7 +70,7 @@ fn addF(a: float, x: float) = a + x
 fn half(x) = x * 0.5
 fn negF(x) = 0.0 - x
 fn recip(x) = (1.0 / x) ?: 0.0
-fn tenthOf(x) = 0.1
+fn tenthOf(_x) = 0.1
 fn isPositiveF(x) = x > 0.0
 fn stir(x) = (x * 1.0001 + 0.5) * 0.9999
 fn headBig(x) = match x == 0.0 { true => hugeFloat() false => 1.0 }
@@ -350,7 +350,7 @@ fn alternatingCase() = {
 fn zeroDegenerateCase() = {
     let empty = gpuIota(0)
     let inverted = gpuIota(-1000000)
-    let zeros = gpuIota(50000) |> gpuMap(fn(x) => 0)
+    let zeros = gpuIota(50000) |> gpuMap(fn(_x) => 0)
     checkAll("zero and empty at every combinator", [
         gpuLength(empty) == 0,
         gpuLength(inverted) == 0,

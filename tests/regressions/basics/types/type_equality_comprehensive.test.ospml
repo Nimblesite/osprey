@@ -123,15 +123,15 @@ type Gate in T =
     Open
 
 label f = match f
-    Feed supply => "supplied"
+    Feed _supply => "supplied"
     Dry => "dry"
 mkFeed () = Feed(supply = \x => x * 2)
 
 describe g = match g
-    Gate admit => "guarded"
+    Gate _admit => "guarded"
     Open => "open"
 mkGate : Unit -> Gate<(int) -> Result<int, MathError>>
-mkGate () = Gate(admit = \f => true)
+mkGate () = Gate(admit = \_f => true)
 
 print "fn-payload feed accepted: ${label (mkFeed ())}"
 print "fn-payload gate accepted: ${describe (mkGate ())}"
@@ -158,11 +158,11 @@ type Both T =
 srcInt : Unit -> Source<int>
 srcInt () = Source(produce = 4, make = \n => n, items = [1, 2])
 sinkInt : Unit -> Sink<int>
-sinkInt () = Sink(admit = \x => true, hof = \f => 7)
+sinkInt () = Sink(admit = \_x => true, hof = \_f => 7)
 bothInt : Unit -> Both<int>
-bothInt () = Both(slot = 5, consume = \x => 6)
+bothInt () = Both(slot = 5, consume = \_x => 6)
 keepSource s = s.produce
-keepSink g = g.hof (\n => 3)
+keepSink g = g.hof (\_n => 3)
 
 print "variance produce=${(srcInt ()).produce} make=${(srcInt ()).make 9} items=${length (srcInt ()).items} admit=${toString ((sinkInt ()).admit 1)} slot=${(bothInt ()).slot} kept=${keepSource (srcInt ())}/${keepSink (sinkInt ())}"
 
@@ -177,7 +177,7 @@ identityOf x = x
 emptyOf<T> : Unit -> List<T>
 emptyOf () = []
 pickOf<T, U> : (T, U) -> T
-pickOf (first, second) = first
+pickOf (first, _second) = first
 alsoOf<T> : (T, (T) -> T) -> T
 alsoOf (x, f) = f x
 headOr<T> : (List<T>, T) -> T
@@ -251,7 +251,7 @@ typeEqualityCase () =
         length (srcInt ()).items == 2,
         (listGet (srcInt ()).items 1 ?: 0) == 2,
         (sinkInt ()).admit 1,
-        (sinkInt ()).hof (\n => 3) == 7,
+        (sinkInt ()).hof (\_n => 3) == 7,
         (bothInt ()).slot == 5,
         (bothInt ()).consume 1 == 6,
         keepSource (srcInt ()) == 4,

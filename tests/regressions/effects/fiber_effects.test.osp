@@ -98,7 +98,7 @@ in {
     10
 }
 let silentR = handle Logger
-    log msg => 0
+    log _msg => 0
 in {
     perform Logger.log("silenced")
     0
@@ -128,7 +128,7 @@ print("race-free sum " + toString(raceSum))
 print("=== done ===")
 
 /// Runs one logged job under a silent handler for assertion use.
-fn highScoreForTest() = handle Logger log msg => 0 in await(spawn runJob(priWeight(High)))
+fn highScoreForTest() = handle Logger log _msg => 0 in await(spawn runJob(priWeight(High)))
 
 /// Repeats the two-fiber resuming interaction for assertion use.
 fn pairedScoreForTest() = handle Gift get tag => resume((tag * 10) ?: 0) in pairSum(1, 2)

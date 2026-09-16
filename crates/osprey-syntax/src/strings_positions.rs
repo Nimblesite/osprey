@@ -5,7 +5,9 @@ use osprey_ast::{mutate::children_mut, Expr, Parameter, Pattern, Position, Stmt,
 
 pub(super) fn rebase_expr(expression: &mut Expr, map: &FragmentMap<'_>, flavor: Flavor) {
     match expression {
-        Expr::List(_, position) | Expr::Perform { position, .. } => slot(position, map, flavor),
+        Expr::List(_, position)
+        | Expr::Perform { position, .. }
+        | Expr::Binary { position, .. } => slot(position, map, flavor),
         Expr::TypeApply {
             position,
             type_args,

@@ -210,7 +210,14 @@ fn published(program: &Program) -> Option<Snapshot> {
         }
     }
     for (owner, obligations) in &types.obligations {
-        for (index, (name, ty)) in obligations.iter().enumerate() {
+        for (index, (name, ty)) in obligations
+            .iter()
+            .filter(|(name, ty)| {
+                !name.starts_with(crate::builtin_constraints::NUMERIC_OPERAND_PREFIX)
+                    || !crate::builtin_constraints::is_numeric_scalar(ty)
+            })
+            .enumerate()
+        {
             let _ = published.insert(format!("constraint {owner} {index} {name}"), ty.clone());
         }
     }

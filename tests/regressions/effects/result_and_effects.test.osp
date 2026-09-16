@@ -28,7 +28,7 @@ fn addRescue(a, b) = match checkedAdd(a: a, b: b) {
 }
 
 fn recoveredValues(fallback) = handle Rescue
-onErr message => fallback
+onErr _message => fallback
 in [
     divRescue(10, 0),
     divRescue(20, 4),
@@ -87,8 +87,17 @@ fn resultAndEffectsCase() = {
     let policyMatrix = [hundreds, sevens, negatives]
     let policyMap = { "hundred": hundreds, "seven": sevens, "negative": negatives }
     let grownMap = mapSet(policyMap, "zero", recoveredValues(0))
+    let bareSuccess = match 10 % 3 { Success { value } => value Error => 0 }
+    let bareError = match 10 % 0 { Success => 7 Error => 9 }
+    let boundResult = match 10 % 3 {
+        Error => 0
+        whole => match whole { Success { value } => value Error => 0 }
+    }
 
     checkAll("Result and effect pipeline state", [
+            bareSuccess == 1,
+            bareError == 9,
+            boundResult == 1,
             rescues == 3,
             total == 430,
             localOk == 1,

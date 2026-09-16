@@ -21,7 +21,7 @@ fn nine() = 57
 /// Is the byte at index i an ASCII digit? End-of-input (Error) is "no".
 fn isDigitAt(s, i) = match byteAt(s, i) {
     Success { value } => value >= zero() && value <= nine()
-    Error   { message } => false
+    Error => false
 }
 
 /// Accumulate the digit run starting at i. acc carries the value built so far;
@@ -32,7 +32,7 @@ fn scanInt(s, i, acc) = match byteAt(s, i) {
         true  => scanInt(s, (i + 1) ?: i, (acc * 10 + value - zero()) ?: acc)
         false => acc
     }
-    Error { message } => acc
+    Error => acc
 }
 
 /// Index of the first byte at or after i that is NOT a digit (where the token
@@ -69,7 +69,7 @@ print("scan=${scanInt(mixed, 0, 0)}\n")        // 12345
 print("end=${scanEnd(mixed, 0)}\n")            // 5 (index of 'a')
 match byteAt(mixed, scanEnd(mixed, 0)) {        // proves we stopped at 'a'
     Success { value }   => print("stopByte=${value}\n")   // 97 == 'a'
-    Error   { message } => print("stopByte FAILED\n")
+    Error => print("stopByte FAILED\n")
 }
 
 // ---- digits-only token runs to end-of-input via the Error branch ----
@@ -95,7 +95,7 @@ print("=== Scan Complete ===\n")
 /// Checks a token value at an exact position without hiding index failures.
 fn tokenIs(tokens: List<int>, index: int, expected: int) = match listGet(tokens, index) {
     Success { value } => value == expected
-    Error { message } => false
+    Error => false
 }
 
 /// Verifies token boundaries, empty input, and a complete multi-token scan.

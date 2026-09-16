@@ -56,7 +56,7 @@ mut happyCount = 0
 let happyBatch = listAppend(listAppend(listAppend(listAppend(List(), 3), 5), 2), 4)
 print("=== HAPPY PATH: SKIP handler, no over-draws ===")
 let happyFinal = handle Recover
-    overdraw requested available => {
+    overdraw _requested _available => {
         happyCount = happyCount + 1 ?: happyCount
         0
     }

@@ -1114,6 +1114,7 @@ print(describeAny(42) + "!")
             }]),
             Expr::Object(vec![field("obj")]),
             Expr::Binary {
+                position: None,
                 op: "+".into(),
                 left: b("binl"),
                 right: b("binr"),

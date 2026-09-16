@@ -70,7 +70,7 @@ fn completionTrace() = {
             0
         }
     in handle Logger
-        info msg => 0
+        info _msg => 0
     in {
         let first = spawn processTask1()
         let second = spawn processTask2()

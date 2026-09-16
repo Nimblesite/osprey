@@ -30,7 +30,7 @@ parseOr text fallback = parseInt text ?: fallback
 (** Render both parse Result branches. *)
 parseStatus text = match parseInt text
     Success value => "parsed ${value}"
-    Error message => "parseInt rejected ${text}"
+    Error _message => "parseInt rejected ${text}"
 
 (** Add an integer through handled state. *)
 effect Counter

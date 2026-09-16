@@ -153,7 +153,7 @@ print("Test 9: Method call type inference")
 type StringWrapper = { content: string }
 
 /// Add a method-like function that takes self
-fn getLength(self) = 42
+fn getLength(_self) = 42
 
 fn uppercase(self) = self.content + "_UPPER"
 
@@ -217,7 +217,7 @@ print("Test 12: Declared type parameters")
 
 /// The binder is load-bearing: without <T>, the two `T` annotations would name
 /// a nominal type instead of pinning both parameters to ONE inferred type.
-fn pick<T>(first: T, second: T) = first
+fn pick<T>(first: T, _second: T) = first
 
 let picked = pick(10, 20)
 let pickedStr = pick("left", "right")

@@ -99,7 +99,7 @@ prodR =
         10
 silentR =
     handle Logger
-        log msg => 0
+        log _msg => 0
     in
         perform Logger.log "silenced"
         0
@@ -129,7 +129,7 @@ print "=== done ==="
 (** Runs one logged job under a silent handler for assertion use. *)
 highScoreForTest () =
     handle Logger
-        log msg => 0
+        log _msg => 0
     in await (spawn (runJob (priWeight High)))
 
 (** Repeats the two-fiber resuming interaction for assertion use. *)
