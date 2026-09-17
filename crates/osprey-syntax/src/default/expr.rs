@@ -58,7 +58,6 @@ impl Lowerer<'_> {
             "select_expression" => Expr::Select {
                 arms: self.lower_arms(node),
             },
-            "handler_expression" => self.lower_handler(node),
             // `handler E { arm… }` — the handler with no region attached, as a
             // value. Implements [EFFECTS-HANDLER-VALUE].
             "handler_value_expression" => osprey_ast::handler_value(
@@ -130,17 +129,6 @@ impl Lowerer<'_> {
             "identifier" => Expr::Identifier(self.text(node)),
             "ternary_expression" => self.lower_ternary(node),
             _ => Expr::Bool(false),
-        }
-    }
-
-    fn lower_handler(&self, node: Node<'_>) -> Expr {
-        Expr::Handler {
-            stage: self.stage(node),
-            effect: self.mentioned_effect(node),
-            arms: self.lower_handler_arms(node),
-            return_clause: self.lower_handler_return(node),
-            body: Box::new(self.lower_expr_field(node, "body")),
-            position: Some(self.pos(node)),
         }
     }
 
@@ -385,7 +373,7 @@ impl Lowerer<'_> {
     }
 
     /// Lower the items of one block. Taken as a slice rather than read from the
-    /// block node so a `handle` with no `in` can be given the items after it as
+    /// block node so a `handle` can be given the items after it as
     /// its body. Implements [EFFECTS-HANDLE-REST].
     fn lower_block_items(&self, children: &[Node<'_>]) -> Expr {
         let mut statements = Vec::new();
@@ -417,10 +405,8 @@ impl Lowerer<'_> {
         Expr::Block { statements, value }
     }
 
-    /// The `handle E arm…` this block item consists of, when it names no body.
-    /// Such a handler handles everything after it in its block, the way `with`
-    /// does in Koka: the reader says "from here on" without indenting the rest
-    /// of the function. Implements [EFFECTS-HANDLE-REST].
+    /// A `handle E { … }` block statement governs the remaining block items.
+    /// Implements [EFFECTS-HANDLE-REST].
     fn handler_over_rest<'t>(&self, item: Node<'t>) -> Option<Node<'t>> {
         if item.kind() != "statement" {
             return None;
@@ -433,12 +419,10 @@ impl Lowerer<'_> {
         while matches!(node.kind(), "expression" | "primary_expression") {
             node = self.first_named(node)?;
         }
-        let bodyless =
-            node.kind() == "handler_expression" && node.child_by_field_name("body").is_none();
-        bodyless.then_some(node)
+        (node.kind() == "handler_expression").then_some(node)
     }
 
-    /// `handler` with the block items after it as the region it handles.
+    /// Install the handler over the remaining block items.
     fn handling_rest(&self, handler: Node<'_>, rest: &[Node<'_>]) -> Expr {
         Expr::Handler {
             stage: self.stage(handler),

@@ -57,11 +57,7 @@ fn runReport() = {
 }
 ```
 
-`[EFFECTS-HANDLE-DO]` A bodyless `handle` governs the following statements and final expression in
-its containing block. ML uses indented arms. A final bodyless handler with no
-following expression is an error. Default `handle E { arms } do body` and ML
-`handle E … in body` select an explicit body instead. Default's legacy `in`
-is an alias for `do`. These are scoped applications of the same handler model.
+`handle` governs the following statements and final expression in its containing block. ML uses indented arms. A final handler with no following expression is an error. To select a computation explicitly, construct a callable handler and apply it. Handler forms with `in` or `do` are rejected in both flavors; there are no compatibility aliases.
 
 ## Effect declarations
 
@@ -128,7 +124,7 @@ handlerValue ::= "handler" [ "static" ] handlerTarget "{" clauses "}"
 maskExpr ::= "mask" handlerTarget "{" expr "}"
 ```
 
-Here `capabilityName` resolves to an ordinary bound instance value; effect names resolve to declarations. ML replaces braces with layout. `instance` accepts a declaration/instantiation, not an existing `@capability` row reference. Inline `handle` uses the same target and clauses as `handler`, with its explicit body or remainder-of-block scope.
+Here `capabilityName` resolves to an ordinary bound instance value; effect names resolve to declarations. ML replaces braces with layout. `instance` accepts a declaration/instantiation, not an existing `@capability` row reference. Block-scoped `handle` uses the same target and clauses as `handler`.
 
 `[EFFECTS-INSTANCE]` `let db = instance Store<T>` creates a fresh typed capability
 identity, without installing an implementation. `handler db { … }` / `handle db`

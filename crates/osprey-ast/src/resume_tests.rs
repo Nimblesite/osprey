@@ -1,11 +1,6 @@
-//! Resume-site analysis: whether an arm resumes at all, and how many times the
-//! worst single control path through it does.
-//!
-//! A sibling file rather than an inline `mod tests`, so `resume.rs` stays under
-//! the 500-line ceiling while the two questions it answers keep their coverage.
-//! Implements [EFFECTS-RESUME], [MULTI-HANDLE-ONCE].
+//! Local continuation-use path counts. Implements [MULTI-HANDLE-ONCE].
 
-use crate::resume::{contains_resume, resumes_on_one_path};
+use crate::resume::resumes_on_one_path;
 use crate::{Expr, HandlerArm, InterpolatedPart, MapEntry, NamedArgument, Stmt};
 
 fn r() -> Expr {
@@ -124,105 +119,6 @@ fn call_forms() -> Vec<Expr> {
         },
     ]
 }
-
-/// The forms whose sub-expression is NOT on one sequential path: a lambda body
-/// runs later, and `match`/`select` arms are alternatives. The walk still finds
-/// a `resume` inside them — the one-path count deliberately does not cross them.
-fn branching_forms() -> Vec<Expr> {
-    vec![
-        Expr::Lambda {
-            parameters: Vec::new(),
-            return_type: None,
-            body: b(r()),
-            position: None,
-        },
-        Expr::Match {
-            value: b(r()),
-            arms: Vec::new(),
-        },
-        Expr::Select {
-            arms: vec![arm(r())],
-        },
-    ]
-}
-
-fn assert_all_contain(cases: &[Expr]) {
-    for e in cases {
-        assert!(contains_resume(e), "resume not found in {e:?}");
-    }
-}
-
-#[test]
-fn walks_literal_and_data_container_forms() {
-    assert_all_contain(&container_forms());
-}
-
-#[test]
-fn walks_call_control_and_concurrency_forms() {
-    assert_all_contain(&call_forms());
-    assert_all_contain(&branching_forms());
-}
-
-#[test]
-fn negatives_and_statement_walks() {
-    // Negative cases: leaves without resume, and non-binding statements.
-    assert!(!contains_resume(&Expr::Integer(1)));
-    assert!(!contains_resume(&Expr::Yield(None)));
-    let import_only = Expr::Block {
-        statements: vec![Stmt::Import(crate::ImportDecl {
-            target: crate::ImportTarget {
-                namespace: crate::NamespaceName::Identifier("m".into()),
-                path: crate::SymbolPath::default(),
-            },
-            alias: None,
-            selection: crate::ImportSelection::Whole,
-            position: None,
-        })],
-        value: None,
-    };
-    assert!(!contains_resume(&import_only));
-    // Assignment statements inside blocks are walked.
-    let assign = Expr::Block {
-        statements: vec![Stmt::Assignment {
-            name: "x".into(),
-            value: r(),
-            position: None,
-        }],
-        value: None,
-    };
-    assert!(contains_resume(&assign));
-}
-
-#[test]
-fn finds_resume_through_blocks_but_not_nested_handlers() {
-    let resume = Expr::Resume(None);
-    assert!(contains_resume(&resume));
-    let block = Expr::Block {
-        statements: vec![Stmt::Expr {
-            value: Expr::Resume(None),
-            doc: None,
-            position: None,
-        }],
-        value: None,
-    };
-    assert!(contains_resume(&block));
-    // A nested handler's resume belongs to the nested handler.
-    let nested = Expr::Handler {
-        stage: crate::Stage::Dynamic,
-        effect: "E".into(),
-        arms: vec![HandlerArm {
-            operation: "op".into(),
-            params: Vec::new(),
-            body: Expr::Resume(None),
-            position: None,
-        }],
-        body: Box::new(Expr::Integer(1)),
-        return_clause: None,
-        position: None,
-    };
-    assert!(!contains_resume(&nested));
-}
-
 #[test]
 fn branches_take_the_worst_arm_while_sequences_add_up() {
     // Two `resume`s on DIFFERENT branches are one apiece on their own path —

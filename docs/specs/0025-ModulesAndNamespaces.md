@@ -290,12 +290,13 @@ holds no bound value or the wrong one:
 
 ```osprey
 mut hits = 0
-let total = handle Counter
+let counter = handler Counter {
     tick amount => {
         hits = hits + amount
         hits
     }
-in run()
+}
+let total = counter(run)
 
 // Reads the live cell and the finished total, from outside the entry.
 fn summary() = "${hits} hits, total ${total}"

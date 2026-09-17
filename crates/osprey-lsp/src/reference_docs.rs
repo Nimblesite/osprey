@@ -67,7 +67,7 @@ const BUILTIN_TYPE_DOCS: [(&str, &str); 8] = [
 /// same across flavors even though `fn`/`let`/`if`/`else` have no ML spelling,
 /// so a single table serves both — the fence language it renders in still
 /// follows the document.
-const KEYWORD_DOCS: [(&str, &str); 30] = [
+const KEYWORD_DOCS: [(&str, &str); 31] = [
     ("fn", "Declares a function: `fn name(params) = body`."),
     ("let", "Binds an immutable value: `let name = value`."),
     ("mut", "Binds a reassignable variable: `mut name = value`."),
@@ -91,15 +91,19 @@ const KEYWORD_DOCS: [(&str, &str); 30] = [
     ),
     (
         "handle",
-        "Installs a handler for an effect over a body: `handle E … in body`.",
+        "Installs an effect handler for the following statements in this block.",
+    ),
+    (
+        "handler",
+        "Constructs a callable effect handler; apply it to a zero-argument computation.",
     ),
     (
         "resume",
-        "From inside a handler, resumes the suspended `perform` with a value.",
+        "Uses a control operation's continuation to resume its suspended `perform`.",
     ),
     (
         "in",
-        "Separates a `handle` block's arms from the body they guard.",
+        "Marks a contravariant type parameter; handler application uses callable values.",
     ),
     (
         "spawn",

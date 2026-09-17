@@ -111,16 +111,15 @@ Wrapping — modular arithmetic by declared intent, C's `-fwrapv` scoped to a re
 ```osprey
 fn djb2(bytes) = bytes |> fold(5381, fn(h, b) => h * 33 + b)
 
-let digest = handle Arith
-    overflow _ _ _ wrapped => wrapped
-do djb2(payload)
+let wrapping = handler Arith { overflow _ _ _ wrapped => wrapped }
+let digest = wrapping(|| => djb2(payload))
 ```
 
 Fault-sticky — IEEE-754's sticky-flag discipline for integers; the value flows, the boundary decides:
 
 ```osprey
 mut faulted = false
-let total = handle Arith
+let recording = handler Arith {
     overflow _ l _ _ => {
         faulted = true
         l
@@ -129,7 +128,8 @@ let total = handle Arith
         faulted = true
         l
     }
-do settle(ledger)
+}
+let total = recording(|| => settle(ledger))
 
 print("${faulted ? "REJECTED: ledger overflow" : "settled ${total} cents"}")
 ```
@@ -137,29 +137,31 @@ print("${faulted ? "REJECTED: ledger overflow" : "settled ${total} cents"}")
 Saturating — a cap instead of a fault:
 
 ```osprey
-let delay = handle Arith
-    overflow _ _ _ _ => capMs
-do backoff(64)
+let capped = handler Arith { overflow _ _ _ _ => capMs }
+let delay = capped(|| => backoff(64))
 ```
 
 Nested and partial — the inner region wraps checksums; everything else faults to the outer policy, by the innermost-arm-wins and partial-handler rules of [Algebraic Effects](0017-AlgebraicEffects.md#handlers):
 
 ```osprey
-handle Arith
-    overflow _ l _ _ => {
-        faulted = true
-        l
+fn report() = {
+    handle Arith {
+        overflow _ l _ _ => {
+            faulted = true
+            l
+        }
     }
-do {
-    let checksum = handle Arith overflow _ _ _ wrapped => wrapped do djb2(payload)
+    let wrapping = handler Arith { overflow _ _ _ wrapped => wrapped }
+    let checksum = wrapping(|| => djb2(payload))
     let total = settle(postings)
     print("checksum ${checksum}, total ${total}")
 }
+report()
 ```
 
 ## Handler application
 
-[EFFECTS-HANDLE-DO](0017-AlgebraicEffects.md#handling-the-rest-of-a-block-effects-handle-rest)
+[EFFECTS-HANDLE-REST](0017-AlgebraicEffects.md#handling-the-rest-of-a-block-effects-handle-rest)
 owns Default/ML body syntax, callable handlers and bodyless installation.
 Arithmetic policies use those forms without a separate handler grammar.
 

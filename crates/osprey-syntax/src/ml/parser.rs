@@ -1455,7 +1455,6 @@ impl Parser<'_> {
             TokKind::KwMatch => self.match_expr(),
             TokKind::KwSpawn => self.spawn_expr(),
             TokKind::KwPerform => self.perform_expr(),
-            TokKind::KwHandle => self.handle_expr(),
             TokKind::KwHandler => self.handler_value_expr(),
             TokKind::KwResume => self.resume_expr(),
             TokKind::KwAwait => self.await_expr(),
@@ -1661,21 +1660,6 @@ impl Parser<'_> {
         }
     }
 
-    /// `handle Effect` + indented `op param* => body` arms + `in body` — install
-    /// an effect handler over the body expression ([FLAVOR-ML-EFFECT]). In
-    /// expression position the body has to be named; a `handle` written as a
-    /// line of a block may leave `in` off and handle the rest of that block
-    /// ([EFFECTS-HANDLE-REST], `handle_line`).
-    fn handle_expr(&mut self) -> MlExpr {
-        let head = self.handle_head();
-        self.skip_separators();
-        if !self.eat(&TokKind::KwIn) {
-            self.error("expected 'in' after handle arms");
-        }
-        let body = self.body_after_eq();
-        head.over(body)
-    }
-
     /// `handler Effect` + indented arms — the handler ITSELF, with no region
     /// attached: a value that can be bound, passed and called. Calling it with a
     /// zero-argument computation runs that computation under these arms.
@@ -1748,36 +1732,16 @@ impl Parser<'_> {
         }
     }
 
-    /// A `handle` written as a line of a block. With `in` it handles the body
-    /// it names and the block goes on; without `in` it handles everything after
-    /// it in that block, the way `with` does in Koka — the reader says "from
-    /// here on" instead of indenting the remainder of the function.
+    /// A `handle` governs the remainder of its containing block.
     /// Implements [EFFECTS-HANDLE-REST].
-    fn handle_line(&mut self, items: &mut Vec<MlItem>) -> Option<Box<MlExpr>> {
-        let pos = self.pos();
+    fn handle_line(&mut self) -> MlExpr {
         let head = self.handle_head();
         self.skip_separators();
-        let handled = if self.eat(&TokKind::KwIn) {
-            head.over(self.body_after_eq())
-        } else {
-            let (items, value) = self.block_items();
-            if items.is_empty() && value.is_none() {
-                // A region that silently handles nothing is the mistake here,
-                // not a legal empty region. Reported on the `handle` itself,
-                // which is what the reader has to move or fill.
-                // Implements [EFFECTS-HANDLE-REST].
-                self.error_at(head.pos, NOTHING_TO_HANDLE);
-            }
-            head.over(MlExpr::Block { items, value })
-        };
-        if self.at_block_end() {
-            return Some(Box::new(handled));
+        let (items, value) = self.block_items();
+        if items.is_empty() && value.is_none() {
+            self.error_at(head.pos, NOTHING_TO_HANDLE);
         }
-        items.push(MlItem::Expr {
-            value: handled,
-            pos,
-        });
-        None
+        head.over(MlExpr::Block { items, value })
     }
 
     /// The effect a request or region names, INCLUDING the instantiation when
@@ -2317,7 +2281,7 @@ impl Parser<'_> {
     /// the block value; anything else is appended as an item.
     fn block_line(&mut self, items: &mut Vec<MlItem>) -> Option<Box<MlExpr>> {
         if matches!(self.peek(), TokKind::KwHandle) {
-            return self.handle_line(items);
+            return Some(Box::new(self.handle_line()));
         }
         match self.item() {
             Some(MlItem::Expr { value, .. }) if self.at_block_end() => Some(Box::new(value)),
@@ -2399,14 +2363,11 @@ pub(super) fn is_constructor(name: &str) -> bool {
 }
 
 /// What a `handle` with no body and nothing after it reports.
-const NOTHING_TO_HANDLE: &str = "this `handle` names no body, so it handles the \
-                                 rest of its block — and nothing follows it. Put \
-                                 the statements it should handle after it, or \
-                                 name the region with `in`";
+const NOTHING_TO_HANDLE: &str =
+    "this `handle` has nothing to handle; put the handled statements after it";
 
 /// A parsed `handle Effect` and its arms, waiting for the region it handles.
-/// Written down once so the two spellings — `in body`, and the rest of the
-/// block — build the same node. Implements [EFFECTS-HANDLE-REST].
+/// The containing block supplies its remainder. Implements [EFFECTS-HANDLE-REST].
 struct HandleHead {
     stage: Stage,
     effect: String,

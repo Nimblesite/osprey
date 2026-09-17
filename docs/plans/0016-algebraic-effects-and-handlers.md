@@ -24,6 +24,12 @@ parity, completeness or superior performance is earned by syntax alone.
 
 ## Current evidence
 
+The replacement grammar accepts callable `handler` values and block-scoped
+`handle` statements only. Explicit `handle … in/do …` applications, inferred
+arm modes, runtime ABI aliases and missing-signature fallbacks are deleted.
+Old source examples remain historical evidence; they are not compatibility
+requirements. The compiler rejects absent or unresolved operation metadata.
+
 | Area | Observed state | Evidence |
 | --- | --- | --- |
 | Existing runtime | Value substitution, deep single-shot resume, generic operation identity, shared handler state and native fiber serialization exist. Native continuation storage uses pthreads. | `tests/effects/resume/`, `tests/effects/errors/`, `tests/regressions/effects/fiber_effects.test.osp` |
@@ -63,7 +69,8 @@ the transform inside the handled computation; the other examples use explicit
 normal-return clauses. This probe's transform is pure, so it does not establish
 equivalent effect scope for those two encodings.
 
-Two staging probes falsified the former implementation:
+Two retained staging probes, written in the removed `in` syntax, falsified the
+former implementation; current staging coverage uses the replacement grammar:
 
 - `staging-scope.osp`: static interpretation captured the caller's shadowing
   binding (`static=2 dynamic=1`), instead of both producing 1.

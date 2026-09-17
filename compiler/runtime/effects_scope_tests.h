@@ -8,13 +8,13 @@ static void t_scope_forwarding(void) {
   int base = __osprey_handler_depth();
   CHECK(__osprey_handler_push_scoped("State", "get", (void *)fn_b, NULL, base) == 0);
   CHECK(__osprey_handler_push_scoped("State", "put", (void *)fn_b, NULL, base) == 0);
-  CHECK(__osprey_handler_push("Log", "write", (void *)fn_b, &env_b) == 0);
+  CHECK(__osprey_handler_push_scoped("Log", "write", (void *)fn_b, &env_b, __osprey_handler_depth()) == 0);
   HandlerScope *inner = __osprey_handler_suspend_scope("State", "get");
   CHECK(__osprey_handler_depth() == 1);
   CHECK(__osprey_handler_lookup("State", "get") == (void *)fn_a);
   CHECK(__osprey_handler_lookup("State", "put") == NULL);
   CHECK(__osprey_handler_lookup("Log", "write") == NULL);
-  CHECK(__osprey_handler_push("Arm", "local", (void *)fn_a, &env_a) == 0);
+  CHECK(__osprey_handler_push_scoped("Arm", "local", (void *)fn_a, &env_a, __osprey_handler_depth()) == 0);
   CHECK(__osprey_handler_pop() == 0);
   __osprey_handler_restore_scope(inner);
   CHECK(__osprey_handler_depth() == 4);
@@ -25,8 +25,8 @@ static void t_scope_forwarding(void) {
 }
 
 static void t_scope_nested_forwarding(void) {
-  CHECK(__osprey_handler_push("State", "get", (void *)fn_a, NULL) == 0);
-  CHECK(__osprey_handler_push("State", "get", (void *)fn_b, NULL) == 0);
+  CHECK(__osprey_handler_push_scoped("State", "get", (void *)fn_a, NULL, __osprey_handler_depth()) == 0);
+  CHECK(__osprey_handler_push_scoped("State", "get", (void *)fn_b, NULL, __osprey_handler_depth()) == 0);
   HandlerScope *inner = __osprey_handler_suspend_scope("State", "get");
   HandlerScope *outer = __osprey_handler_suspend_scope("State", "get");
   CHECK(__osprey_handler_depth() == 0);
@@ -39,7 +39,7 @@ static void t_scope_nested_forwarding(void) {
 }
 
 static void t_scope_snapshot_preserves_activation(void) {
-  CHECK(__osprey_handler_push("State", "get", (void *)fn_a, NULL) == 0);
+  CHECK(__osprey_handler_push_scoped("State", "get", (void *)fn_a, NULL, __osprey_handler_depth()) == 0);
   int base = __osprey_handler_depth();
   CHECK(__osprey_handler_push_scoped("State", "get", (void *)fn_b, NULL, base) == 0);
   CHECK(__osprey_handler_push_scoped("State", "put", (void *)fn_b, NULL, base) == 0);
@@ -59,14 +59,14 @@ static void death_scope_missing_handler(void) {
 }
 
 static void death_scope_unbalanced_restore(void) {
-  (void)__osprey_handler_push("State", "get", (void *)fn_a, NULL);
+  (void)__osprey_handler_push_scoped("State", "get", (void *)fn_a, NULL, __osprey_handler_depth());
   HandlerScope *scope = __osprey_handler_suspend_scope("State", "get");
-  (void)__osprey_handler_push("Arm", "local", (void *)fn_b, NULL);
+  (void)__osprey_handler_push_scoped("Arm", "local", (void *)fn_b, NULL, __osprey_handler_depth());
   __osprey_handler_restore_scope(scope);
 }
 
 static int64_t body_suspending_scope(void *raw) {
-  (void)__osprey_handler_push("State", "get", (void *)fn_b, NULL);
+  (void)__osprey_handler_push_scoped("State", "get", (void *)fn_b, NULL, __osprey_handler_depth());
   HandlerScope *scope = __osprey_handler_suspend_scope("State", "get");
   int64_t value = __osprey_coro_suspend(raw, 31, NULL, NULL, 0);
   __osprey_handler_restore_scope(scope);

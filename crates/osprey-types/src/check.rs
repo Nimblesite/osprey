@@ -160,11 +160,11 @@ pub(crate) struct Checker {
     /// Rewritten static arms may now be closure bodies; their assignments still
     /// require mutable bindings and matching value types.
     source_contracts_validated: bool,
-    /// Stack of `(operation result type, handler answer type)` for the handler
-    /// arms currently being inferred, so a `resume` inside an arm types its
-    /// argument against the operation result and itself as the answer.
+    /// Declared continuation bindings for enclosing arms. A control arm binds
+    /// `(operation result, handler answer)`; a value arm binds `None`, hiding
+    /// any outer continuation. Presence also marks the arm's mutation scope.
     /// Implements [EFFECTS-RESUME].
-    pub(crate) resume_ctx: Vec<(Type, Type)>,
+    pub(crate) resume_ctx: Vec<Option<(Type, Type)>>,
     /// Stack of in-scope effect instantiations — one entry per enclosing
     /// `handle` body or declared effect-row entry — resolved innermost-first
     /// by `perform` sites, matching the runtime's innermost-wins handler

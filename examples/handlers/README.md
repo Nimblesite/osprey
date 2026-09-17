@@ -104,15 +104,6 @@ transform inside `try` would have a different scope. The compiler checks cover
 Osprey's outward forwarding, repeated deep resumption, managed answers and
 static handler captures under default, GC and ARC memory modes.
 
-## Staging checks
-
-```sh
-target/release/osprey examples/handlers/staging-scope.osp --run
-target/release/osprey examples/handlers/staging-type.osp --run
-```
-
-The scope case now prints `static=1 dynamic=1`; the original prototype printed `static=2 dynamic=1`. The type case now rejects the string arm for an int operation; the original prototype printed `10`. Both were rerun against the replacement implementation. Source contracts are checked before static operations and unused arms disappear.
-
 ## Reproducibility
 
 Verified locally with Koka 3.2.3, OCaml 5.4.1, Eff 5.1 (source commit `503da71b9cb927af04fc62e28511e63cd7199151`), and Effekt 0.80.0. Eff interpreter binding/type echoes are removed from the displayed comparison; its full transcript remains in `target/handler-demo/eff.log`. Compiler logs and executables stay under `target/handler-demo`, outside the source directory.

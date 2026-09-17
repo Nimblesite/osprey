@@ -72,8 +72,7 @@ This directory holds **all spec documents** for the project:
     (overflow, zero divisor) dispatches to a compiler-declared `Arith` effect
     through the shipped substituting-handler path — one region states the
     policy (wrapping, fault-sticky, saturating) instead of a fabricated `?:`
-    fallback at every call site. Includes the Default `handle … do` binder
-    rename. Motivated by
+    fallback at every call site. Motivated by
     [#230](https://github.com/Nimblesite/osprey/issues/230); delivery in
     [plan 0027](../plans/0027-arithmetic-effects.md).
   - [`0038-iOSTarget.md`](0038-iOSTarget.md) — iPhone and ARM64 simulator static

@@ -68,7 +68,7 @@ pub(crate) enum TokKind {
     KwHandler,
     /// `resume` — resumes a suspended continuation from a handler arm ([FLAVOR-ML-EFFECT]).
     KwResume,
-    /// `in` — separates a `handle` block from the handled body ([FLAVOR-ML-EFFECT]).
+    /// `in` — kernel body separator and contravariant type-parameter marker.
     KwIn,
     /// `await` — block on a spawned fiber's result ([FLAVOR-ML-CONCURRENCY]).
     KwAwait,

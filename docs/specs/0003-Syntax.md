@@ -43,12 +43,13 @@ let name = "Alice"
 // A `mut` cell owned by a handler: it changes only as the effect is performed
 // and this arm interprets it — the sanctioned form of mutation.
 mut count = 0
-let total = handle Counter
+let counter = handler Counter {
     tick => {
         count = count + 1 ?: count
         count
     }
-in run()
+}
+let total = counter(run)
 ```
 
 ML omits `let`; its reassignment operator is `:=` and follows the same rule.
@@ -57,16 +58,16 @@ ML omits `let`; its reassignment operator is `:=` and follows the same rule.
 name = "Alice"
 
 mut count = 0
-total = handle Counter
+counter = handler Counter
     tick =>
         count := count + 1 ?: count
         count
-in run ()
+total = counter run
 ```
 
 The mutable cell may be declared in an enclosing lexical scope so the handler
 can capture it, but every assignment must occur in an arm that interprets an
-effect operation. The handled `in` body is client code, not a handler arm, and
+effect operation. The handled computation is client code, not a handler arm, and
 does not gain mutation authority.
 
 A binding may include a type annotation after `:`. The annotation constrains

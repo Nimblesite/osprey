@@ -76,11 +76,6 @@ static void ensure_handler_stack_initialized(void) {
 // values shared by every arm of one `handle` region; NULL when nothing is
 // captured).
 // Returns 0 on success, -1 on stack overflow
-int __osprey_handler_push(const char *effect_name, const char *operation_name, void *handler_func_ptr, void *env) {
-    return __osprey_handler_push_scoped(effect_name, operation_name, handler_func_ptr,
-                                         env, __osprey_handler_depth());
-}
-
 int __osprey_handler_push_scoped(const char *effect_name, const char *operation_name,
                                 void *handler_func_ptr, void *env, int base) {
     ensure_handler_stack_initialized();
@@ -216,7 +211,7 @@ void __osprey_handler_restore_scope(HandlerScope *scope) {
     free(scope);
 }
 
-// Get current stack depth (for debugging)
+// Current activation boundary for scoped handler installation.
 int __osprey_handler_depth(void) {
     ensure_handler_stack_initialized();
 
@@ -225,10 +220,6 @@ int __osprey_handler_depth(void) {
     pthread_mutex_unlock(&g_handler_stack->lock);
 
     return depth;
-}
-
-int __osprey_handler_stack_depth(void) {
-    return __osprey_handler_depth();
 }
 
 // Cleanup handler stack (call at thread exit)

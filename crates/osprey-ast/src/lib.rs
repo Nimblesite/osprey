@@ -28,7 +28,7 @@ pub use handler_value::handler_value;
 pub use multiplicity::{
     Multiplicity, OperationMode, OperationTable, CONTROL_KEYWORD, REPLAYABLE_KEYWORD,
 };
-pub use resume::{contains_resume, resumes_on_one_path};
+pub use resume::resumes_on_one_path;
 pub use stage::{Stage, STATIC_STAGE_KEYWORD};
 pub use visit::{walk_each, walk_program, AstNode, AstVisitor};
 

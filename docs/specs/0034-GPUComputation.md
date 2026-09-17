@@ -532,8 +532,9 @@ testable, and capability-checked exactly like every other effect:
 // execution strategy for everything the region offloads. Kernels stay
 // pure; scheduling is the effectful part, so scheduling is what handlers
 // control.
-handle Gpu.select => "cuda:0" in {
-    let scores = embeddings |> gpuMap(normalize) |> gpuZipWith(query, dot)
+fn scores() = {
+    handle Gpu { select => "cuda:0" }
+    embeddings |> gpuMap(normalize) |> gpuZipWith(query, dot)
 }
 // A test handler pins "host" and the same program runs deterministically
 // in CI with no GPU attached.
@@ -541,10 +542,10 @@ handle Gpu.select => "cuda:0" in {
 
 ```osprey-ml
 (* Stage 5 surface (design, not yet implemented). *)
-handle Gpu
-    select => "cuda:0"
-in
-    scores = embeddings |> gpuMap normalize |> gpuZipWith (query, dot)
+scores () =
+    handle Gpu
+        select => "cuda:0"
+    embeddings |> gpuMap normalize |> gpuZipWith (query, dot)
 ```
 
 Until stage 5 lands, programs run on the host backend and `gpuDevice()`

@@ -945,16 +945,6 @@
     "type": "handler_expression",
     "named": true,
     "fields": {
-      "body": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "expression",
-            "named": true
-          }
-        ]
-      },
       "effect": {
         "multiple": false,
         "required": true,
@@ -3439,10 +3429,6 @@
   },
   {
     "type": "await",
-    "named": false
-  },
-  {
-    "type": "do",
     "named": false
   },
   {

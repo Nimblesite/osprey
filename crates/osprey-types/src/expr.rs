@@ -259,12 +259,12 @@ impl Checker {
     /// handler arm is a hard error. Implements [EFFECTS-RESUME].
     fn infer_resume(&mut self, value: Option<&Expr>, env: &TypeEnv) -> Type {
         let arg = value.map_or_else(Type::unit, |v| self.infer_expr(v, env));
-        if let Some((op_ret, answer)) = self.resume_ctx.last().cloned() {
+        if let Some((op_ret, answer)) = self.resume_ctx.last().cloned().flatten() {
             self.push_assign(&op_ret, &arg);
             answer
         } else {
             self.errors.push(TypeError::new(
-                "`resume` is only valid inside a handler arm".to_string(),
+                "`resume` requires the continuation of a control operation arm".to_string(),
             ));
             self.ctx.fresh()
         }
@@ -425,7 +425,8 @@ impl Checker {
             for (p, pty) in arm.params.iter().zip(params) {
                 local.insert(p.clone(), crate::ty::Scheme::mono(pty));
             }
-            self.resume_ctx.push((op_ret.clone(), answer.clone()));
+            self.resume_ctx
+                .push(mode.is_control().then(|| (op_ret.clone(), answer.clone())));
             let arm_ty = self.infer_expr(&arm.body, &local);
             let _ = self.resume_ctx.pop();
             // Mode comes from the OPERATION DECLARATION, never from searching
@@ -440,7 +441,7 @@ impl Checker {
             if mode.is_control() {
                 answering.push((arm.operation.clone(), arm_ty));
             } else {
-                self.check_value_arm(effect, arm, &op_ret, &arm_ty);
+                self.check_value_arm(&op_ret, &arm_ty);
             }
         }
         self.handler_scopes.push(crate::check::EffectScope {
@@ -512,22 +513,7 @@ impl Checker {
     /// assignable to that result type. A `Unit` operation discards the value,
     /// which is the one place anything goes — except an unhandled `Result`,
     /// whose failure would vanish silently. Implements [EFFECTS-HANDLER-ARMS].
-    fn check_value_arm(
-        &mut self,
-        effect: &str,
-        arm: &osprey_ast::HandlerArm,
-        op_ret: &Type,
-        arm_ty: &Type,
-    ) {
-        if osprey_ast::contains_resume(&arm.body) {
-            self.errors.push(TypeError::new(format!(
-                "handler arm `{effect}.{}` cannot `resume`: `{}` is a value operation, so its \
-                 arm supplies the operation's result and owns no continuation. Declare the \
-                 operation `control` to take the continuation",
-                arm.operation, arm.operation
-            )));
-            return;
-        }
+    fn check_value_arm(&mut self, op_ret: &Type, arm_ty: &Type) {
         if !self.ctx.prune(op_ret).is_named(names::UNIT) {
             self.push_assign(op_ret, arm_ty);
         } else if self.ctx.prune(arm_ty).is_named(names::RESULT) {

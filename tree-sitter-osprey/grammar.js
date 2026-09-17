@@ -448,21 +448,11 @@ module.exports = grammar({
         ),
       ),
 
-    // `handle static E ... in body` marks a region the compiler discharges by
-    // rewriting, leaving no runtime handler. Implements [STAGE-HANDLE-STATIC].
-    // The optional `<...>` names the INSTANTIATION being handled: `Signal<Count>`
-    // and `Signal<Cursor>` are different effects to a row, so they are different
-    // effects to a handler. Implements [STAGE-SIGNALS-EXACT].
-    //
-    // Two spellings. `handle E arm… in body` names the region it handles.
-    // `handle E { arm… }` names none and handles the REST OF THE BLOCK it sits
-    // in, the way `with` does in Koka: the reader says "from here on" without
-    // indenting the remainder of the function. The braces group the arms the
-    // way `match` does — Default ends a statement at its line's end, so a bare
-    // arm list with no `in` after it would close at the first arm.
-    // Implements [EFFECTS-HANDLE-REST].
+    // A block-scoped handler governs the following statements. Static selection
+    // discharges the same region during compilation. Explicit computations use
+    // callable handler values. Implements [EFFECTS-HANDLE-REST], [STAGE-HANDLE-STATIC].
     handler_expression: ($) =>
-      prec.right(seq('handle', optional(field('stage', $.static_stage)), field('effect', choice($.qualified_path, $.identifier)), optional(field('instantiation', $.type_arguments)), choice(seq($._handler_clauses, choice('in', 'do'), field('body', $.expression)), seq('{', $._handler_clauses, '}')))),
+      seq('handle', optional(field('stage', $.static_stage)), field('effect', choice($.qualified_path, $.identifier)), optional(field('instantiation', $.type_arguments)), '{', $._handler_clauses, '}'),
     // `handler E { arm… }` is the handler ITSELF, with no region attached: a
     // value that can be bound, passed and called. Calling it with a
     // zero-argument computation runs that computation under these arms, so one

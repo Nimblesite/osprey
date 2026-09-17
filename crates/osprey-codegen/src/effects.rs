@@ -1,4 +1,4 @@
-//! Algebraic effects: `effect` declarations, `handle … in …` and `perform`.
+//! Declared operations, scoped handler activation, and typed requests.
 //! Each `handle` arm becomes a top-level handler function; entering the
 //! `handle` pushes those functions onto the C runtime's handler stack
 //! (`__osprey_handler_push_scoped`, keyed by effect+operation name) and leaving pops
@@ -52,11 +52,16 @@ impl OpSig {
         }
     }
 
-    pub(crate) fn param(&self, index: usize) -> ParamSig {
-        self.params
-            .get(index)
-            .cloned()
-            .unwrap_or_else(Self::word_param)
+    pub(crate) fn param(&self, index: usize) -> Result<ParamSig> {
+        self.params.get(index).cloned().ok_or_else(|| {
+            CodegenError::invalid(format!("operation has no parameter at index {index}"))
+        })
+    }
+
+    pub(crate) fn param_is_erased(&self, index: usize) -> Result<bool> {
+        self.param_erased.get(index).copied().ok_or_else(|| {
+            CodegenError::invalid("operation parameter is missing its erasure metadata")
+        })
     }
 
     /// The handler function's LLVM return-type spelling (the Result block
@@ -92,7 +97,7 @@ fn ret_and_exit(
 }
 
 /// Bind each of an arm's operation parameters as an SSA value (`%name`, typed
-/// from `sig`, defaulting to `i64`) and append it to the emitted `params`
+/// from the checked `sig`) and append it to the emitted `params`
 /// list. An erased (generic) slot arrives as a boxed `i64` and is unboxed to
 /// the type inference resolved for this handle site. Implements
 /// [EFFECTS-GENERIC-RUNTIME].
@@ -100,32 +105,39 @@ fn bind_arm_params(
     cg: &mut Codegen,
     arm: &HandlerArm,
     sig: &OpSig,
-    resolved: Option<&osprey_types::OpType>,
+    resolved: &osprey_types::OpType,
     params: &mut Vec<(LType, String)>,
-) {
+) -> Result<()> {
+    if arm.params.len() != sig.params.len() || resolved.params.len() != sig.params.len() {
+        return Err(CodegenError::invalid(
+            "handler parameter arity differs from its checked operation",
+        ));
+    }
     for (i, pname) in arm.params.iter().enumerate() {
-        let param = sig.param(i);
-        let erased = sig.param_erased.get(i).copied().unwrap_or(false);
+        let param = sig.param(i)?;
+        let erased = sig.param_is_erased(i)?;
         // The REGISTER is positional and compiler-namespaced, never the
         // source binder: a binder spelled `entry` would collide with the
         // function's `entry:` block label and clang refused the module —
         // the same rule user-function parameters follow ([FLAVOR-IR-EQUIV],
         // [`crate::llty::param_register`]).
         let reg = format!("%__arm{i}");
-        let bound = match resolved.and_then(|r| r.params.get(i)).filter(|_| erased) {
+        let bound = match resolved.params.get(i).filter(|_| erased) {
             Some(rt) => crate::effect_generics::unbox_erased(cg, &reg, rt),
             None => crate::cast::incoming_param(
                 cg,
                 reg.clone(),
                 param.clone(),
                 resolved
-                    .and_then(|r| r.params.get(i))
+                    .params
+                    .get(i)
                     .and_then(|t| crate::types::owner_name(&cg.prog, t)),
             ),
         };
         cg.bind(pname.clone(), bound);
         params.push((param.ty, format!("__arm{i}")));
     }
+    Ok(())
 }
 
 /// The free identifiers an arm's body closes over, minus the arm's own
@@ -209,6 +221,18 @@ fn op_sig_for(cg: &Codegen, effect: &str, operation: &str) -> Result<OpSig> {
     let key = format!("{effect}.{operation}");
     cg.effect_op(&key)
         .ok_or_else(|| CodegenError::invalid(format!("missing checked effect operation `{key}`")))
+}
+
+fn checked_arm_op<'a>(
+    site: &'a osprey_types::HandlerSite,
+    arm: &HandlerArm,
+) -> Result<&'a osprey_types::OpType> {
+    site.ops.get(&arm.operation).ok_or_else(|| {
+        CodegenError::invalid(format!(
+            "handler arm `{}` has no checked operation",
+            arm.operation
+        ))
+    })
 }
 
 fn declare_stack(cg: &mut Codegen) {
@@ -326,7 +350,7 @@ fn scan_stmt(s: &Stmt, muts: &mut BTreeSet<String>, captured: &mut BTreeSet<Stri
     }
 }
 
-/// `handle Effect arm… in body` — capture the region's environment (the cells
+/// Install a handler activation: capture its environment (the cells
 /// and values its arms reference), emit a handler function per arm bound to that
 /// env, push them on the runtime stack for the duration of `body`, then pop.
 pub(crate) fn gen_handler(
@@ -339,7 +363,7 @@ pub(crate) fn gen_handler(
 ) -> Result<Value> {
     declare_stack(cg);
     let effect = osprey_ast::effect_name::base(effect);
-    let site_ops = crate::effect_generics::site_handler_ops(cg, position);
+    let site_ops = crate::effect_generics::site_handler_ops(cg, position)?;
     // The DECLARATION decides which lowering a region needs: any control
     // operation among its arms means a continuation may be captured.
     // Implements [EFFECTS-HANDLER-ARMS].
@@ -350,21 +374,18 @@ pub(crate) fn gen_handler(
         .iter()
         .any(|sig| sig.mode.is_control())
     {
-        return gen_resuming_handler(cg, effect, arms, body, return_clause, site_ops.as_ref());
+        return gen_resuming_handler(cg, effect, arms, body, return_clause, &site_ops);
     }
     // A generic effect's handler registers under its instantiation-mangled
     // key, so only same-instantiation performs resolve to it. Implements
     // [EFFECTS-GENERIC-RUNTIME].
-    let key = site_ops.as_ref().map_or_else(
-        || effect.to_string(),
-        |s| crate::effect_generics::runtime_effect_key(effect, &s.effect_args),
-    );
+    let key = crate::effect_generics::runtime_effect_key(effect, &site_ops.effect_args)?;
     let caps = capture_list(cg, arms);
     let (env, env_ty) = build_env(cg, &caps);
     let activation = cg.call("i32", "__osprey_handler_depth", "", &[]);
     for arm in arms {
         let sig = op_sig_for(cg, effect, &arm.operation)?;
-        let resolved = site_ops.as_ref().and_then(|m| m.ops.get(&arm.operation));
+        let resolved = checked_arm_op(&site_ops, arm)?;
         let id = cg.next_handler_id();
         let fn_name = format!("__handler_{effect}_{}_{id}", arm.operation);
         emit_handler_fn(cg, &fn_name, arm, &sig, resolved, &caps, &env_ty)?;
@@ -491,7 +512,7 @@ fn emit_handler_fn(
     name: &str,
     arm: &HandlerArm,
     sig: &OpSig,
-    resolved: Option<&osprey_types::OpType>,
+    resolved: &osprey_types::OpType,
     caps: &[ArmCap],
     env_ty: &str,
 ) -> Result<()> {
@@ -499,12 +520,12 @@ fn emit_handler_fn(
     cg.begin_nested_debug(name, arm.position);
     let mut params = vec![(LType::Ptr, String::from("__env"))];
     reload_env(cg, caps, env_ty);
-    bind_arm_params(cg, arm, sig, resolved, &mut params);
+    bind_arm_params(cg, arm, sig, resolved, &mut params)?;
     let body = gen_expr(cg, &arm.body)?;
     let ret = if sig.ret_erased {
         // Adapt before retaining: a plain body can become a freshly allocated
         // Success block, and that actual return value must survive the epilogue.
-        let adapted = crate::effect_generics::adapt_erased(cg, body, resolved.map(|r| &r.ret))?;
+        let adapted = crate::effect_generics::adapt_erased(cg, body, &resolved.ret)?;
         crate::arc::escape_retain(cg, &adapted);
         // The perform site unboxes it to its resolved type. Implements
         // [EFFECTS-GENERIC-RUNTIME] [GC-ARC-PERCEUS].
@@ -652,7 +673,7 @@ fn coerce_to_answer(cg: &mut Codegen, value: Value, answer: &AnswerShape) -> Res
     }
 }
 
-/// `handle` region whose arms contain explicit `resume`: the handled body runs
+/// A region implementing declared control operations: the handled body runs
 /// on a body thread and each `perform` suspends into this host-side dispatcher.
 fn gen_resuming_handler(
     cg: &mut Codegen,
@@ -660,16 +681,13 @@ fn gen_resuming_handler(
     arms: &[HandlerArm],
     body: &Expr,
     return_clause: Option<&Expr>,
-    site_ops: Option<&osprey_types::HandlerSite>,
+    site_ops: &osprey_types::HandlerSite,
 ) -> Result<Value> {
     declare_stack(cg);
     declare_coro(cg);
     // Same instantiation-mangled runtime key as the non-resuming path.
     // Implements [EFFECTS-GENERIC-RUNTIME].
-    let key = site_ops.map_or_else(
-        || effect.to_string(),
-        |s| crate::effect_generics::runtime_effect_key(effect, &s.effect_args),
-    );
+    let key = crate::effect_generics::runtime_effect_key(effect, &site_ops.effect_args)?;
 
     let caps = capture_list_resuming(cg, arms, body, return_clause);
     let (env, env_ty) = build_env(cg, &caps);
@@ -688,10 +706,10 @@ fn gen_resuming_handler(
     let mut drive_arms = Vec::new();
     for (op_id, arm) in arms.iter().enumerate() {
         let sig = op_sig_for(cg, effect, &arm.operation)?;
-        let resolved = site_ops.and_then(|m| m.ops.get(&arm.operation));
+        let resolved = checked_arm_op(site_ops, arm)?;
         let suspend_fn = format!("__resume_suspend_{effect}_{}_{id}_{op_id}", arm.operation);
         let arm_fn = format!("__resume_arm_{effect}_{}_{id}_{op_id}", arm.operation);
-        emit_suspend_fn(cg, &suspend_fn, op_id, &sig, resolved);
+        emit_suspend_fn(cg, &suspend_fn, op_id, &sig, resolved)?;
         emit_resuming_arm_fn(
             cg,
             arm,
@@ -783,8 +801,8 @@ fn emit_suspend_fn(
     name: &str,
     op_id: usize,
     sig: &OpSig,
-    resolved: Option<&osprey_types::OpType>,
-) {
+    resolved: &osprey_types::OpType,
+) -> Result<()> {
     let saved = cg.enter_nested_fn();
     let mut params = vec![(LType::Ptr, String::from("__coro"))];
     for (i, param) in sig.params.iter().cloned().enumerate() {
@@ -794,7 +812,7 @@ fn emit_suspend_fn(
     let (args_ptr, kinds_ptr) = if sig.params.is_empty() {
         (String::from("null"), String::from("null"))
     } else {
-        crate::effect_mailbox::emit_mailbox_arrays(cg, sig, resolved)
+        crate::effect_mailbox::emit_mailbox_arrays(cg, sig, resolved)?
     };
     let raw = cg.call(
         "i64",
@@ -814,6 +832,7 @@ fn emit_suspend_fn(
     // every resuming operation leaks it. [GC-ARC-PERCEUS].
     crate::arc::own(cg, &ret);
     ret_and_exit(cg, saved, sig, name, &params, &ret);
+    Ok(())
 }
 
 struct ArmFnSpec<'a> {
@@ -821,7 +840,7 @@ struct ArmFnSpec<'a> {
     drive_fn: &'a str,
     answer: &'a AnswerShape,
     sig: &'a OpSig,
-    resolved: Option<&'a osprey_types::OpType>,
+    resolved: &'a osprey_types::OpType,
     caps: &'a [ArmCap],
     env_ty: &'a str,
 }
@@ -834,12 +853,9 @@ fn emit_resuming_arm_fn(cg: &mut Codegen, arm: &HandlerArm, spec: &ArmFnSpec<'_>
         (LType::Ptr, String::from("__env")),
         (LType::Ptr, String::from("__coro")),
     ];
-    bind_arm_params(cg, arm, spec.sig, spec.resolved, &mut params);
-    let op_ret_ty = spec.resolved.map_or(spec.sig.ret, |r| ltype_of(&r.ret));
-    let op_ret_result_inner = spec
-        .resolved
-        .and_then(|r| result_inner(&r.ret))
-        .or(spec.sig.ret_result_inner);
+    bind_arm_params(cg, arm, spec.sig, spec.resolved, &mut params)?;
+    let op_ret_ty = ltype_of(&spec.resolved.ret);
+    let op_ret_result_inner = result_inner(&spec.resolved.ret);
     cg.resume_ctx = spec.sig.mode.is_control().then(|| ResumeCodegenContext {
         env: String::from("%__env"),
         coro: String::from("%__coro"),
@@ -1065,28 +1081,33 @@ pub(crate) fn gen_perform(
     declare_stack(cg);
     let effect = osprey_ast::effect_name::base(effect);
     let sig = op_sig_for(cg, effect, operation)?;
-    let site = crate::effect_generics::site_perform_op(cg, position);
+    let site = crate::effect_generics::site_perform_op(cg, position)?;
     // Look up the handler under the instantiation-mangled key, so a
     // mismatched instantiation misses (a loud unhandled-effect abort) rather
     // than reaching a handler of the wrong type. Implements
     // [EFFECTS-GENERIC-RUNTIME].
-    let lookup_key = site.as_ref().map_or_else(
-        || effect.to_string(),
-        |s| crate::effect_generics::runtime_effect_key(effect, &s.effect_args),
-    );
+    let lookup_key = crate::effect_generics::runtime_effect_key(effect, &site.effect_args)?;
+    if args.len() != sig.params.len() || site.op.params.len() != sig.params.len() {
+        return Err(CodegenError::invalid(
+            "perform argument arity differs from its checked operation",
+        ));
+    }
 
     // Evaluate + coerce arguments to the operation's parameter types.
     let mut typed = Vec::new();
     for (i, a) in args.iter().enumerate() {
         let v = gen_expr(cg, a)?;
-        let v = if sig.param_erased.get(i).copied().unwrap_or(false) {
+        let v = if sig.param_is_erased(i)? {
             crate::effect_generics::box_erased(
                 cg,
                 v,
-                site.as_ref().and_then(|s| s.op.params.get(i)),
+                site.op
+                    .params
+                    .get(i)
+                    .ok_or_else(|| CodegenError::invalid("missing checked operation parameter"))?,
             )?
         } else {
-            crate::cast::coerce_param(cg, v, &sig.param(i))?
+            crate::cast::coerce_param(cg, v, &sig.param(i)?)?
         };
         typed.push(v.typed());
     }
@@ -1126,15 +1147,9 @@ pub(crate) fn gen_perform(
         cg.call_void("__osprey_handler_restore_scope", "i8*", &[&scope]);
     }
     if sig.ret_erased {
-        return Ok(match site {
-            Some(s) => {
-                let v = crate::effect_generics::unbox_erased(cg, &r, &s.op.ret);
-                // The arm escape-retained before boxing: own the +1 here.
-                crate::arc::own(cg, &v);
-                v
-            }
-            None => Value::new(r, LType::I64),
-        });
+        let v = crate::effect_generics::unbox_erased(cg, &r, &site.op.ret);
+        crate::arc::own(cg, &v);
+        return Ok(v);
     }
     let out = match sig.ret_result_inner {
         Some(inner) => Value::result(r, inner),

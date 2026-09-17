@@ -45,16 +45,16 @@ The checker rejects every `:=` outside an effect handler arm.
 answer = 42
 
 mut requests = 0
-total = handle Counter
+counter = handler Counter
     tick => requests := requests + 1
-in run ()
+total = counter run
 ```
 
 These lower to `Stmt::Let { mutable: false }`,
 `Stmt::Let { mutable: true }`, and `Stmt::Assignment` respectively. Assignment
 to an immutable binding is a type error.
 Assignment to a mutable binding is also a type error unless it occurs in an
-effect handler arm; the handled `in` body remains ordinary client code.
+effect handler arm; the handled computation remains ordinary client code.
 
 ## Functions and Currying
 
@@ -254,7 +254,7 @@ relay x =
     handle Chan
         send v => print "sent ${v}"
         select => x
-    in perform Chan.send x
+    perform Chan.send x
 ```
 
 An operation modifier is a modifier only when an operation name follows it: `abort : string => Unit` names an operation `abort`. Elsewhere, words retain their grammatical role: `send`, `recv` and `select` introduce channel forms, and `handler` introduces a callable handler.

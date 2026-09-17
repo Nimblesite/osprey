@@ -169,7 +169,7 @@ Resolution order for the symbol under the cursor:
 Every binding is hoverable:
 
 - **Collection is deep.** `collect_all_symbols` walks _into_ every
-  expression that can contain a block — function bodies, `handle … in …`,
+  expression that can contain a block — function bodies, scoped handler blocks,
   `match`/`select` arms, lambdas, `spawn`/`await`, interpolations, call
   arguments, list/map/object literals — so a `let` nested anywhere (e.g. inside
   an HTTP handler's `in { … }` block) is found. A cursor-line/“nearest binding
