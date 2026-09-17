@@ -69,6 +69,41 @@ Both commands now run the same behavior in every language. Osprey declares `cont
 
 An ordinary operation supplies a value and continues once. A `control` operation receives the continuation and may resume or abandon it. Unreachable code does not change that mode. Koka makes the same distinction explicit with `fun` and `ctl`; Osprey records it on the operation's declaration. See `[EFFECTS-HANDLER-ARMS]` and [plan 0016](../../docs/plans/0016-algebraic-effects-and-handlers.md) for the remaining implementation work.
 
+## Transforming the answer
+
+```sh
+python3 examples/handlers/run.py all --demo returns --check
+```
+
+The work still returns an integer. Swap in a handler that returns a string:
+
+```osprey
+let around = handler ControlAsk {
+    value => "${resume(41)}!"
+    return n => "done=${n}"
+}
+print(around(controlWork))
+```
+
+The return clause transforms normal completion to `done=42`. Resumption
+receives that string, then the control arm adds `!`. A control arm returning
+`"stopped"` bypasses the return clause. Every language's `returns` example
+prints `done=42`, `done=42!`, then `stopped`.
+
+| Language | Normal-completion transformation |
+|---|---|
+| [Osprey](returns.osp) / [ML flavor](returns.ospml) | `return n => "done=${n}"` |
+| [Koka](returns.kk) | `return(n : int) label ++ n.show` |
+| [OCaml](returns.ml) | The handler record's `retc` function |
+| [Eff](returns.eff) | The handler's ordinary value-pattern clause |
+| [Effekt](returns.effekt) | Transform the computation's result inside `try` |
+
+Osprey's return clause runs outside its own handler, like its operation arms.
+The Effekt example reproduces this pure transformation's output; an effectful
+transform inside `try` would have a different scope. The compiler checks cover
+Osprey's outward forwarding, repeated deep resumption, managed answers and
+static handler captures under default, GC and ARC memory modes.
+
 ## Staging checks
 
 ```sh

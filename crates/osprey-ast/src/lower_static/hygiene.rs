@@ -119,7 +119,12 @@ impl Resolver {
             } => {
                 let _ = self.function(parameters, body, scope);
             }
-            Expr::Handler { arms, body, .. } => {
+            Expr::Handler {
+                arms,
+                body,
+                return_clause,
+                ..
+            } => {
                 for arm in arms {
                     let mut nested = scope.clone();
                     for name in &mut arm.params {
@@ -128,6 +133,9 @@ impl Resolver {
                     self.expression(&mut arm.body, &nested);
                 }
                 self.expression(body, scope);
+                if let Some(clause) = return_clause {
+                    self.expression(clause, scope);
+                }
             }
             Expr::Match { value, arms } => {
                 self.expression(value, scope);

@@ -143,9 +143,12 @@ fn gen_expr_raw(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
             stage: _,
             effect,
             arms,
+            return_clause,
             body,
             position,
-        } => crate::effects::gen_handler(cg, effect, arms, body, *position),
+        } => {
+            crate::effects::gen_handler(cg, effect, arms, body, return_clause.as_deref(), *position)
+        }
         Expr::Resume(value) => crate::effects::gen_resume(cg, value.as_deref()),
         // A lambda in plain value position (returned, block tail, stored in a
         // field) becomes a closure cell, typed by inference.
@@ -1263,6 +1266,7 @@ pub(crate) fn reduce_lambda(
     // so a function-typed lambda parameter registered below must be unwound by
     // hand — exactly as an inlined call does ([`crate::genfn`]).
     let saved_fn_ptrs = cg.fn_ptr_locals.clone();
+    let saved_fn_types = cg.fn_value_types.clone();
     let lowered = (|| {
         bind_lambda_params(cg, parameters, values, sig, position)?;
         let value = crate::curry::apply_groups(cg, body, rest)?;
@@ -1273,6 +1277,7 @@ pub(crate) fn reduce_lambda(
         }
     })();
     cg.fn_ptr_locals = saved_fn_ptrs;
+    cg.fn_value_types = saved_fn_types;
     cg.pop_scope();
     lowered
 }

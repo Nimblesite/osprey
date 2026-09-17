@@ -327,6 +327,7 @@ fn offset_expr(expr: &mut Expr, offset: u32) {
         Expr::Handler {
             arms,
             body,
+            return_clause,
             position,
             ..
         } => {
@@ -336,6 +337,9 @@ fn offset_expr(expr: &mut Expr, offset: u32) {
                 offset_expr(&mut arm.body, offset);
             }
             offset_expr(body, offset);
+            if let Some(clause) = return_clause {
+                offset_expr(clause, offset);
+            }
         }
         Expr::Integer(_)
         | Expr::Float(_)

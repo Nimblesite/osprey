@@ -1683,8 +1683,10 @@ impl Parser<'_> {
     fn handler_value_expr(&mut self) -> MlExpr {
         let head = self.handle_head();
         MlExpr::HandlerValue {
+            stage: head.stage,
             effect: head.effect,
             arms: head.arms,
+            return_clause: head.return_clause,
             pos: head.pos,
         }
     }
@@ -1706,6 +1708,7 @@ impl Parser<'_> {
         let first = self.ident().unwrap_or_default();
         let effect = self.instantiated_effect(first);
         let mut arms = Vec::new();
+        let mut return_clause = None;
         if self.eat(&TokKind::Indent) {
             while !self.at_block_end() {
                 self.skip_separators();
@@ -1713,7 +1716,23 @@ impl Parser<'_> {
                     break;
                 }
                 let before = self.i;
-                arms.push(self.handle_arm());
+                let arm = self.handle_arm();
+                if arm.operation == "return" {
+                    if return_clause.is_some() || arm.params.len() != 1 {
+                        self.error_at(
+                            arm.pos,
+                            "a handler permits one return clause with one parameter",
+                        );
+                    }
+                    return_clause = Some(Box::new(MlExpr::Lambda {
+                        params: arm.params.into_iter().map(MlParam::Named).collect(),
+                        uncurried: true,
+                        body: Box::new(arm.body),
+                        pos: arm.pos,
+                    }));
+                } else {
+                    arms.push(arm);
+                }
                 if self.i == before {
                     self.recover();
                 }
@@ -1724,6 +1743,7 @@ impl Parser<'_> {
             stage,
             effect,
             arms,
+            return_clause,
             pos,
         }
     }
@@ -2391,6 +2411,7 @@ struct HandleHead {
     stage: Stage,
     effect: String,
     arms: Vec<MlHandleArm>,
+    return_clause: Option<Box<MlExpr>>,
     pos: Position,
 }
 
@@ -2400,6 +2421,7 @@ impl HandleHead {
             stage: self.stage,
             effect: self.effect,
             arms: self.arms,
+            return_clause: self.return_clause,
             body: Box::new(body),
             pos: self.pos,
         }

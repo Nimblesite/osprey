@@ -217,6 +217,7 @@ fn finds_resume_through_blocks_but_not_nested_handlers() {
             position: None,
         }],
         body: Box::new(Expr::Integer(1)),
+        return_clause: None,
         position: None,
     };
     assert!(!contains_resume(&nested));
@@ -273,6 +274,7 @@ fn select_branches_and_lambdas_and_nested_handlers() {
             position: None,
         }],
         body: b(r()),
+        return_clause: None,
         position: None,
     };
     assert_eq!(resumes_on_one_path(&nested), 1);

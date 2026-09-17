@@ -1,0 +1,16 @@
+effect Ask : int;;
+let work () = perform Ask + 1;;
+let prefix = "done=";;
+let replace = handler
+  | n -> prefix ^ to_string n
+  | effect Ask k -> k 41;;
+let around = handler
+  | n -> prefix ^ to_string n
+  | effect Ask k -> k 41 ^ "!";;
+let stop = handler
+  | n -> prefix ^ to_string n
+  | effect Ask _k -> "stopped";;
+let replacement = with replace handle work ();;
+let resumed = with around handle work ();;
+let stopped = with stop handle work ();;
+print_string (replacement ^ "\n" ^ resumed ^ "\n" ^ stopped ^ "\n");;

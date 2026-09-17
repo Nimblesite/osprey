@@ -597,10 +597,14 @@ pub(crate) enum MlExpr {
     /// attached: a value that can be bound, passed and called
     /// ([EFFECTS-HANDLER-VALUE]).
     HandlerValue {
+        /// Selected interpretation stage.
+        stage: Stage,
         /// The handled effect name.
         effect: String,
         /// Per-operation handler arms.
         arms: Vec<MlHandleArm>,
+        /// Normal-completion transformation as a unary lambda.
+        return_clause: Option<Box<MlExpr>>,
         /// Source position of the `handler` keyword.
         pos: Position,
     },
@@ -614,6 +618,8 @@ pub(crate) enum MlExpr {
         effect: String,
         /// The per-operation handler arms.
         arms: Vec<MlHandleArm>,
+        /// Normal-completion transformation as a unary lambda.
+        return_clause: Option<Box<MlExpr>>,
         /// The handled body expression (after `in`).
         body: Box<MlExpr>,
         /// Source position of the `handle` keyword

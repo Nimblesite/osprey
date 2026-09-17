@@ -31,7 +31,8 @@ parity, completeness or superior performance is earned by syntax alone.
 | Callable handlers | Both flavors run reusable handlers, captured factory values and rest-of-block installation. This is a working-tree prototype using ordinary closures. | `examples/handlers/handlers.*`, `crates/osprey-cli/tests/handler_values.rs` |
 | Handler abstraction | The local higher-order fix passed 4 handler tests and 125 codegen tests before implementation paused. These are bounded checks, not a green branch-wide result. | `handler_values.rs`: generic/typed callbacks, independent Ada/Grace factories, both flavors and memory modes |
 | Effects checker | Closed-program operation propagation and partial generic discharge exist. Independently quantified open rows do not. | `crates/osprey-types/src/effect_rows.rs`, `generic_effects_tests.rs` |
-| Modes and continuations | Declared value/control modes replace arm-body classification. Arms run outside their activation; deep resume restores it. Owned escaping continuations, `many`, return clauses and masking remain unfinished. | `operation_modes.rs`: both flavors, default/GC/ARC; independent comparison below |
+| Modes and continuations | Declared value/control modes replace arm-body classification. Arms run outside their activation; deep resume restores it. Owned escaping continuations, `many`, finalizers and masking remain unfinished. | `operation_modes.rs`: both flavors, default/GC/ARC; independent comparison below |
+| Answer transformations | `return value => expression` transforms normal completion A to B outside its activation, preserving managed and callable values. Deep resume returns B; a control arm's answer bypasses the transform. Directly resolved static handler values and aliases specialize their computation before erasure. | `handler_returns.rs`: both flavors, default/GC/ARC; `returns.*` comparison |
 | Staging | Explicit static selection accepts ordinary all-value effects. Source validation tracks builtin I/O through aliases/callbacks and rejects runtime dispatch hidden inside a locally handled helper. Capture/cell identity and dynamically used originals are preserved. | `static_selection.rs` and `staged_hygiene.rs` |
 | Targets | Static discharge and dynamic value handlers have portable paths. Explicit dynamic resumption is unavailable in the current wasm backend and must be rejected before linking. Target limitations do not change language semantics. | [WebAssembly](../specs/0022-WebAssemblyTarget.md), target capability tests |
 
@@ -54,6 +55,13 @@ flavors and real Koka, OCaml, Eff and Effekt executables: all produce
 `42/142/1/0`. Returning without resuming abandons the computation; adding an
 unreachable resume no longer changes its meaning. The independent golden was
 preserved.
+
+The `--demo returns --check` comparison also passes in every listed language:
+`done=42`, `done=42!`, `stopped`. It distinguishes normal completion from code
+after resumption and an answer that abandons the computation. Effekt places
+the transform inside the handled computation; the other examples use explicit
+normal-return clauses. This probe's transform is pure, so it does not establish
+equivalent effect scope for those two encodings.
 
 Two staging probes falsified the former implementation:
 

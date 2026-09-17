@@ -241,8 +241,17 @@ impl Analysis {
             }
             Expr::Select { arms } => self.arms(arms, owner),
             Expr::Handler {
-                effect, arms, body, ..
-            } => self.handler(effect, arms, body, owner),
+                effect,
+                arms,
+                body,
+                return_clause,
+                ..
+            } => {
+                self.handler(effect, arms, body, owner);
+                if let Some(clause) = return_clause {
+                    self.expression(clause, owner);
+                }
+            }
             _ => self.children(expression, owner),
         }
     }

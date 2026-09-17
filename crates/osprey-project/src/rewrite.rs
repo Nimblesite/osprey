@@ -403,10 +403,17 @@ impl Resolver<'_> {
                 }
             }
             Expr::Handler {
-                effect, arms, body, ..
+                effect,
+                arms,
+                body,
+                return_clause,
+                ..
             } => {
                 self.rewrite_effect_name(effect, context, locals);
                 self.rewrite_expr(body, context, locals);
+                if let Some(clause) = return_clause {
+                    self.rewrite_expr(clause, context, locals);
+                }
                 for arm in arms {
                     let saved = locals.clone();
                     locals.values.extend(arm.params.iter().cloned());

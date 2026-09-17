@@ -59,7 +59,7 @@ def run(language, demo):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("language", nargs="?", default="all", choices=("all", *LANGUAGES))
-    parser.add_argument("--demo", default="handlers", choices=("handlers", "semantics"))
+    parser.add_argument("--demo", default="handlers", choices=("handlers", "semantics", "returns"))
     parser.add_argument("--check", action="store_true", help="assert the checked-in expected output")
     args = parser.parse_args()
     BUILD.mkdir(parents=True, exist_ok=True)

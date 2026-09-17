@@ -58,18 +58,14 @@ impl Lowerer<'_> {
             "select_expression" => Expr::Select {
                 arms: self.lower_arms(node),
             },
-            "handler_expression" => Expr::Handler {
-                stage: self.stage(node),
-                effect: self.mentioned_effect(node),
-                arms: self.lower_handler_arms(node),
-                body: Box::new(self.lower_expr_field(node, "body")),
-                position: Some(self.pos(node)),
-            },
+            "handler_expression" => self.lower_handler(node),
             // `handler E { arm… }` — the handler with no region attached, as a
             // value. Implements [EFFECTS-HANDLER-VALUE].
             "handler_value_expression" => osprey_ast::handler_value(
+                self.stage(node),
                 self.mentioned_effect(node),
                 self.lower_handler_arms(node),
+                self.lower_handler_return(node),
                 Some(self.pos(node)),
             ),
             "kernel_expression" => self.lower_kernel(node),
@@ -134,6 +130,17 @@ impl Lowerer<'_> {
             "identifier" => Expr::Identifier(self.text(node)),
             "ternary_expression" => self.lower_ternary(node),
             _ => Expr::Bool(false),
+        }
+    }
+
+    fn lower_handler(&self, node: Node<'_>) -> Expr {
+        Expr::Handler {
+            stage: self.stage(node),
+            effect: self.mentioned_effect(node),
+            arms: self.lower_handler_arms(node),
+            return_clause: self.lower_handler_return(node),
+            body: Box::new(self.lower_expr_field(node, "body")),
+            position: Some(self.pos(node)),
         }
     }
 
@@ -334,6 +341,23 @@ impl Lowerer<'_> {
             .collect()
     }
 
+    fn lower_handler_return(&self, node: Node<'_>) -> Option<Box<Expr>> {
+        self.named_of_kind(node, "handler_return")
+            .first()
+            .map(|clause| {
+                Box::new(Expr::Lambda {
+                    parameters: vec![osprey_ast::Parameter {
+                        name: self.field_text(*clause, "parameter"),
+                        ty: None,
+                        inline_constraint: false,
+                    }],
+                    return_type: None,
+                    body: Box::new(self.lower_expr_field(*clause, "body")),
+                    position: Some(self.pos(*clause)),
+                })
+            })
+    }
+
     fn lower_field_assignments(&self, node: Node<'_>) -> Vec<FieldAssignment> {
         let nodes = self.descendants_of_kind(node, "field_assignment");
         self.lower_name_value(&nodes, |name, value| FieldAssignment { name, value })
@@ -420,6 +444,7 @@ impl Lowerer<'_> {
             stage: self.stage(handler),
             effect: self.mentioned_effect(handler),
             arms: self.lower_handler_arms(handler),
+            return_clause: self.lower_handler_return(handler),
             body: Box::new(self.lower_block_items(rest)),
             position: Some(self.pos(handler)),
         }

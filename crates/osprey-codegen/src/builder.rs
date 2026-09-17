@@ -233,6 +233,7 @@ pub(crate) struct ResumeCodegenContext {
     pub answer_result_inner: Option<LType>,
     pub answer_owner: Option<String>,
     pub answer_payload_owner: Option<String>,
+    pub answer_inferred_type: Option<Type>,
     /// Concrete operation-result shape at this handler site. A plain resume
     /// value may be promoted to Success for a Result slot; the inverse is
     /// forbidden and rejected by codegen as well as by the checker.

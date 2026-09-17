@@ -115,6 +115,12 @@ fn has_regions(program: &Program) -> bool {
 impl Lowering {
     /// Rewrite one expression under the regions enclosing it.
     fn rewrite(&mut self, expression: &mut Expr, regions: &mut Vec<Region>) {
+        if self.apply_static_handler(expression) {
+            self.depth = self.depth.saturating_add(1);
+            self.rewrite(expression, regions);
+            self.depth = self.depth.saturating_sub(1);
+            return;
+        }
         match expression {
             // A `kernel` is a static handler region carrying one extra
             // obligation, already discharged by `kernel::legality`; the rewrite
@@ -123,12 +129,19 @@ impl Lowering {
                 self.enter_region(expression, regions);
             }
             Expr::Handler {
-                effect, arms, body, ..
+                effect,
+                arms,
+                body,
+                return_clause,
+                ..
             } => {
                 // Dynamic selection shadows the same effect's static selection.
                 // Arms execute outside this activation and retain outer scopes.
                 for arm in arms {
                     self.rewrite(&mut arm.body, regions);
+                }
+                if let Some(clause) = return_clause {
+                    self.rewrite(clause, regions);
                 }
                 let mut visible: Vec<Region> = regions
                     .iter()
@@ -154,7 +167,11 @@ impl Lowering {
     /// the handler node is replaced by that body. Implements [STAGE-RESIDUE].
     fn enter_region(&mut self, expression: &mut Expr, regions: &mut Vec<Region>) {
         let Expr::Handler {
-            effect, arms, body, ..
+            effect,
+            arms,
+            body,
+            return_clause,
+            ..
         } = expression
         else {
             return;
@@ -189,7 +206,16 @@ impl Lowering {
         regions.push(region);
         self.rewrite(&mut discharged, regions);
         let _ = regions.pop();
-        *expression = discharged;
+        *expression = if let Some(mut clause) = return_clause.take() {
+            self.rewrite(&mut clause, regions);
+            Expr::Call {
+                function: clause,
+                arguments: vec![discharged],
+                named_arguments: Vec::new(),
+            }
+        } else {
+            discharged
+        };
     }
 
     /// Replace one performed operation with the innermost answering arm.

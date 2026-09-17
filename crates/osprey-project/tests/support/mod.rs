@@ -115,6 +115,7 @@ pub(crate) fn state_module(
 
 pub(crate) fn handler(effect: &str, arm_body: Expr) -> Expr {
     Expr::Handler {
+        return_clause: None,
         stage: osprey_ast::Stage::Dynamic,
         effect: effect.to_string(),
         arms: vec![HandlerArm {

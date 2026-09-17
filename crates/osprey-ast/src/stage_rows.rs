@@ -180,6 +180,7 @@ fn scan_body(
             effect,
             arms,
             body,
+            return_clause,
             stage: selected,
             ..
         } => {
@@ -194,6 +195,9 @@ fn scan_body(
             scan_body(body, effects, stage, dispatch, handled, facts);
             if discharged {
                 let _ = handled.pop();
+            }
+            if let Some(clause) = return_clause {
+                scan_body(clause, effects, stage, dispatch, handled, facts);
             }
         }
         Expr::Perform {

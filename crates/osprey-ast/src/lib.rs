@@ -963,6 +963,9 @@ pub enum Expr {
         effect: String,
         /// Per-operation handler arms.
         arms: Vec<HandlerArm>,
+        /// Optional normal-completion transformation, represented as a unary
+        /// lambda. It executes outside this activation. [EFFECTS-HANDLER-ARMS]
+        return_clause: Option<Box<Expr>>,
         /// The handled body expression.
         body: Box<Expr>,
         /// Source position — the key under which inference publishes this

@@ -224,6 +224,7 @@ struct Function<'a> {
 
 #[derive(Default)]
 struct Index<'a> {
+    operations: osprey_ast::OperationTable,
     functions: Vec<Function<'a>>,
     qualified: HashMap<String, usize>,
     bare: HashMap<String, Vec<usize>>,
@@ -236,7 +237,10 @@ struct Index<'a> {
 
 impl<'a> Index<'a> {
     fn collect(program: &'a Program) -> Self {
-        let mut index = Self::default();
+        let mut index = Self {
+            operations: osprey_ast::OperationTable::collect(program),
+            ..Self::default()
+        };
         index.collect_stmts(&program.statements, &[]);
         index
     }
@@ -714,6 +718,7 @@ impl Analyzer<'_> {
                 effect,
                 arms,
                 body,
+                return_clause,
                 position,
                 ..
             } => {
@@ -746,6 +751,10 @@ impl Analyzer<'_> {
                 for arm in arms {
                     let local = self.handler_arm_env(effect, arm, body, scope, env);
                     out.union(self.expression(&arm.body, scope, &local));
+                }
+                if let Some(clause) = return_clause {
+                    let callee = self.callable(clause, scope, env).unwrap_or(Callable::Unknown);
+                    out.union(self.invoke_with_values(callee, &[self.value(body, scope, &local)]));
                 }
                 out
             }
@@ -1521,12 +1530,32 @@ impl Analyzer<'_> {
                 effect,
                 arms,
                 body,
+                return_clause,
                 position,
                 ..
             } => {
                 let local = self.handler_body_env(effect, arms, body, *position, scope, env);
-                let mut merged = self.value(body, scope, &local);
+                let normal = self.value(body, scope, &local);
+                let mut merged = if let Some(clause) = return_clause {
+                    self.called_value(
+                        self.callable(clause, scope, env),
+                        CallArguments {
+                            positional: vec![normal],
+                            named: vec![],
+                        },
+                    )
+                } else {
+                    normal
+                };
                 for arm in arms {
+                    if !self
+                        .index
+                        .operations
+                        .mode_of(osprey_ast::effect_name::base(effect), &arm.operation)
+                        .is_control()
+                    {
+                        continue;
+                    }
                     let local = self.handler_arm_env(effect, arm, body, scope, env);
                     if let Some(value) = self.value(&arm.body, scope, &local) {
                         merge_optional_value(&mut merged, value);
@@ -1622,11 +1651,21 @@ impl Analyzer<'_> {
                     self.flow_callable_assignments(value, scope, env);
                 }
             }
-            Expr::Handler { arms, body, .. } => {
+            Expr::Handler {
+                arms,
+                body,
+                return_clause,
+                ..
+            } => {
                 for arm in arms {
                     self.flow_callable_assignments(&arm.body, scope, env);
                 }
                 self.flow_callable_assignments(body, scope, env);
+                if let Some(clause) = return_clause {
+                    if let Expr::Lambda { body, .. } = clause.as_ref() {
+                        self.flow_callable_assignments(body, scope, env);
+                    }
+                }
             }
             Expr::Send { channel, value } => {
                 let sites = self
@@ -3129,6 +3168,7 @@ fn validate_handler_arms(
         effect,
         arms,
         body,
+        return_clause,
         stage,
         ..
     } = expression
@@ -3169,6 +3209,9 @@ fn validate_handler_arms(
             validate_handler_arms(analyzer, axis, &arm.body, scope, &local, errors);
         }
         validate_handler_arms(analyzer, axis, body, scope, env, errors);
+        if let Some(clause) = return_clause {
+            validate_handler_arms(analyzer, axis, clause, scope, env, errors);
+        }
         return;
     }
     walk_children(expression, |child| {
@@ -3378,11 +3421,19 @@ fn walk_children<'a>(expression: &'a Expr, mut visit: impl FnMut(&'a Expr)) {
                 visit(&argument.value);
             }
         }
-        Expr::Handler { arms, body, .. } => {
+        Expr::Handler {
+            arms,
+            body,
+            return_clause,
+            ..
+        } => {
             for arm in arms {
                 visit(&arm.body);
             }
             visit(body);
+            if let Some(clause) = return_clause {
+                visit(clause);
+            }
         }
         Expr::Integer(_)
         | Expr::Float(_)

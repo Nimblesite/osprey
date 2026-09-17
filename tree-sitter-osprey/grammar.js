@@ -462,13 +462,15 @@ module.exports = grammar({
     // arm list with no `in` after it would close at the first arm.
     // Implements [EFFECTS-HANDLE-REST].
     handler_expression: ($) =>
-      prec.right(seq('handle', optional(field('stage', $.static_stage)), field('effect', choice($.qualified_path, $.identifier)), optional(field('instantiation', $.type_arguments)), choice(seq(repeat1($.handler_arm), choice('in', 'do'), field('body', $.expression)), seq('{', repeat1($.handler_arm), '}')))),
+      prec.right(seq('handle', optional(field('stage', $.static_stage)), field('effect', choice($.qualified_path, $.identifier)), optional(field('instantiation', $.type_arguments)), choice(seq($._handler_clauses, choice('in', 'do'), field('body', $.expression)), seq('{', $._handler_clauses, '}')))),
     // `handler E { arm… }` is the handler ITSELF, with no region attached: a
     // value that can be bound, passed and called. Calling it with a
     // zero-argument computation runs that computation under these arms, so one
     // handler serves many regions. Implements [EFFECTS-HANDLER-VALUE].
     handler_value_expression: ($) =>
-      prec.right(seq('handler', field('effect', choice($.qualified_path, $.identifier)), optional(field('instantiation', $.type_arguments)), '{', repeat1($.handler_arm), '}')),
+      prec.right(seq('handler', optional(field('stage', $.static_stage)), field('effect', choice($.qualified_path, $.identifier)), optional(field('instantiation', $.type_arguments)), '{', $._handler_clauses, '}')),
+    _handler_clauses: ($) => choice(repeat1($.handler_arm), seq(repeat($.handler_arm), $.handler_return, repeat($.handler_arm))),
+    handler_return: ($) => seq('return', field('parameter', $.identifier), '=>', field('body', $.expression)),
     handler_arm: ($) =>
       seq(field('operation', $.identifier), optional($.handler_params), '=>', field('body', $.expression)),
     handler_params: ($) => repeat1($.identifier),

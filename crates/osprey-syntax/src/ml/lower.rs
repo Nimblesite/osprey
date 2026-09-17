@@ -1305,24 +1305,21 @@ fn lower_expr(expr: MlExpr) -> Expr {
             named_arguments: Vec::new(),
             position: Some(pos),
         },
-        MlExpr::HandlerValue { effect, arms, pos } => osprey_ast::handler_value(
+        MlExpr::HandlerValue {
+            stage,
             effect,
-            arms.into_iter().map(lower_handle_arm).collect(),
-            Some(pos),
-        ),
+            arms,
+            return_clause,
+            pos,
+        } => lower_handler(stage, effect, arms, return_clause, None, pos),
         MlExpr::Handle {
             stage,
             effect,
             arms,
+            return_clause,
             body,
             pos,
-        } => Expr::Handler {
-            stage,
-            effect,
-            arms: arms.into_iter().map(lower_handle_arm).collect(),
-            body: Box::new(lower_expr(*body)),
-            position: Some(pos),
-        },
+        } => lower_handler(stage, effect, arms, return_clause, Some(*body), pos),
         MlExpr::Resume(value) => Expr::Resume(value.map(|e| Box::new(lower_expr(*e)))),
         MlExpr::Await(inner) => Expr::Await(Box::new(lower_expr(*inner))),
         MlExpr::Yield(value) => Expr::Yield(value.map(|e| Box::new(lower_expr(*e)))),
@@ -1334,6 +1331,29 @@ fn lower_expr(expr: MlExpr) -> Expr {
         MlExpr::Select(arms) => Expr::Select {
             arms: arms.into_iter().map(lower_arm).collect(),
         },
+    }
+}
+
+fn lower_handler(
+    stage: osprey_ast::Stage,
+    effect: String,
+    arms: Vec<MlHandleArm>,
+    return_clause: Option<Box<MlExpr>>,
+    body: Option<MlExpr>,
+    pos: Position,
+) -> Expr {
+    let arms = arms.into_iter().map(lower_handle_arm).collect();
+    let return_clause = return_clause.map(|clause| Box::new(lower_expr(*clause)));
+    match body {
+        Some(body) => Expr::Handler {
+            stage,
+            effect,
+            arms,
+            return_clause,
+            body: Box::new(lower_expr(body)),
+            position: Some(pos),
+        },
+        None => osprey_ast::handler_value(stage, effect, arms, return_clause, Some(pos)),
     }
 }
 

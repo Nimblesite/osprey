@@ -8,11 +8,18 @@ const ACTION: &str = "$handler_action";
 /// Build a reusable handler taking a zero-argument computation.
 /// Implements [EFFECTS-HANDLER-VALUE] and [FLAVOR-HANDLER-VALUE].
 #[must_use]
-pub fn handler_value(effect: String, arms: Vec<HandlerArm>, position: Option<Position>) -> Expr {
+pub fn handler_value(
+    stage: Stage,
+    effect: String,
+    arms: Vec<HandlerArm>,
+    return_clause: Option<Box<Expr>>,
+    position: Option<Position>,
+) -> Expr {
     let body = Expr::Handler {
-        stage: Stage::Dynamic,
+        stage,
         effect,
         arms,
+        return_clause,
         body: Box::new(invoke_action()),
         position,
     };

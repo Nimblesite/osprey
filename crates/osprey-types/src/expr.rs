@@ -182,10 +182,11 @@ impl Checker {
             Expr::Handler {
                 effect,
                 arms,
+                return_clause,
                 body,
                 position,
                 ..
-            } => self.infer_handler(effect, arms, body, *position, env),
+            } => self.infer_handler(effect, arms, body, return_clause.as_deref(), *position, env),
             other => self.infer_expr(other, env),
         }
     }
@@ -395,8 +396,8 @@ impl Checker {
     /// pushed so any `resume` inside types correctly. The handled body infers
     /// under this instantiation (innermost-first, matching the runtime's
     /// handler stack), so its `perform` sites pin the same type arguments.
-    /// The handled body, the arms, and the whole expression all share one
-    /// answer type; a Result answer remains a Result unless explicitly handled.
+    /// A return clause maps the body's A to the handler's B. Control arms and
+    /// resumes answer B; value arms supply their operation's result R.
     /// Implements [EFFECTS-RESUME],
     /// [EFFECTS-GENERIC-INSTANTIATION], and [EFFECTS-OP-TYPING].
     fn infer_handler(
@@ -404,6 +405,7 @@ impl Checker {
         effect: &str,
         arms: &[osprey_ast::HandlerArm],
         body: &Expr,
+        return_clause: Option<&Expr>,
         position: Option<osprey_ast::Position>,
         env: &TypeEnv,
     ) -> Type {
@@ -451,7 +453,14 @@ impl Checker {
         if let Some(pos) = position {
             self.handler_tys.push((pos, eff_args, inst_ops));
         }
-        self.push_assign(&answer, &body_ty);
+        if let Some(clause) = return_clause {
+            let outer_resume = std::mem::take(&mut self.resume_ctx);
+            let transform = self.infer_expr(clause, env);
+            self.resume_ctx = outer_resume;
+            self.push_assign(&Type::fun(vec![body_ty], answer.clone()), &transform);
+        } else {
+            self.push_assign(&answer, &body_ty);
+        }
         // Checked only now: the handled expression is what pins the answer, so
         // blaming an arm before it is known would report the mismatch backwards
         // — the first resuming arm would simply BIND the still-free answer and

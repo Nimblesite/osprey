@@ -10,15 +10,15 @@ fn lower(source: &str, flavor: Flavor) -> Result<Program, Vec<osprey_types::Type
 }
 
 fn assert_discharged(source: &str, flavor: Flavor) {
-    let result = lower(source, flavor);
-    assert!(result.is_ok(), "{result:?}");
-    let Ok(program) = result else { return };
     struct Residue(bool);
     impl AstVisitor for Residue {
         fn expression(&mut self, expression: &Expr) {
             self.0 |= matches!(expression, Expr::Perform { .. } | Expr::Handler { .. });
         }
     }
+    let result = lower(source, flavor);
+    assert!(result.is_ok(), "{result:?}");
+    let Ok(program) = result else { return };
     let mut residue = Residue(false);
     walk_program(&program, &mut residue);
     assert!(

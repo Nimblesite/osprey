@@ -19,6 +19,8 @@ use osprey_ast::{AstNode, Expr, HandlerArm, Stmt};
 use osprey_types::ProgramTypes;
 use std::collections::{BTreeSet, HashSet};
 
+mod return_clause;
+
 /// A parsed effect-operation signature: parameter types, the result LLVM type,
 /// and (when the result is `Result<T, _>`) the success inner type. A generic
 /// effect's type-parameter slots are ERASED — they travel as boxed `i64` and
@@ -332,6 +334,7 @@ pub(crate) fn gen_handler(
     effect: &str,
     arms: &[HandlerArm],
     body: &Expr,
+    return_clause: Option<&Expr>,
     position: Option<osprey_ast::Position>,
 ) -> Result<Value> {
     declare_stack(cg);
@@ -347,7 +350,7 @@ pub(crate) fn gen_handler(
         .iter()
         .any(|sig| sig.mode.is_control())
     {
-        return gen_resuming_handler(cg, effect, arms, body, site_ops.as_ref());
+        return gen_resuming_handler(cg, effect, arms, body, return_clause, site_ops.as_ref());
     }
     // A generic effect's handler registers under its instantiation-mangled
     // key, so only same-instantiation performs resolve to it. Implements
@@ -384,7 +387,7 @@ pub(crate) fn gen_handler(
     if env != "null" {
         crate::arc::release_operand(cg, &env);
     }
-    Ok(result)
+    return_clause::apply(cg, return_clause, result)
 }
 
 /// The bindings every arm of this region captures, in stable (sorted) order: a
@@ -400,9 +403,17 @@ fn capture_list(cg: &Codegen, arms: &[HandlerArm]) -> Vec<ArmCap> {
     caps_from_names(cg, arms_free_idents(arms))
 }
 
-fn capture_list_resuming(cg: &Codegen, arms: &[HandlerArm], body: &Expr) -> Vec<ArmCap> {
+fn capture_list_resuming(
+    cg: &Codegen,
+    arms: &[HandlerArm],
+    body: &Expr,
+    return_clause: Option<&Expr>,
+) -> Vec<ArmCap> {
     let mut names = arms_free_idents(arms);
     free_idents(body, &mut names);
+    if let Some(clause) = return_clause {
+        free_idents(clause, &mut names);
+    }
     caps_from_names(cg, names)
 }
 
@@ -566,6 +577,7 @@ struct DriveArm {
 #[derive(Clone)]
 struct AnswerShape {
     ty: LType,
+    inferred_type: Option<osprey_types::Type>,
     owner: Option<String>,
     result_inner: Option<LType>,
     payload_owner: Option<String>,
@@ -575,6 +587,7 @@ impl AnswerShape {
     fn of(value: &Value) -> Self {
         Self {
             ty: value.ty,
+            inferred_type: value.inferred_type.clone(),
             owner: value.osp_ty.clone(),
             result_inner: value.result_inner,
             payload_owner: value.payload_owner.clone(),
@@ -585,6 +598,7 @@ impl AnswerShape {
         let mut value =
             unbox_coro_value(cg, raw, self.ty, self.result_inner).with_owner(self.owner.clone());
         value.payload_owner.clone_from(&self.payload_owner);
+        value.inferred_type.clone_from(&self.inferred_type);
         value
     }
 }
@@ -645,6 +659,7 @@ fn gen_resuming_handler(
     effect: &str,
     arms: &[HandlerArm],
     body: &Expr,
+    return_clause: Option<&Expr>,
     site_ops: Option<&osprey_types::HandlerSite>,
 ) -> Result<Value> {
     declare_stack(cg);
@@ -656,13 +671,20 @@ fn gen_resuming_handler(
         |s| crate::effect_generics::runtime_effect_key(effect, &s.effect_args),
     );
 
-    let caps = capture_list_resuming(cg, arms, body);
+    let caps = capture_list_resuming(cg, arms, body, return_clause);
     let (env, env_ty) = build_env(cg, &caps);
     let id = cg.next_handler_id();
     let body_fn = format!("__resume_body_{effect}_{id}");
     let drive_fn = format!("__resume_drive_{effect}_{id}");
 
-    let answer = emit_resuming_body_fn(cg, &body_fn, body, &caps, &env_ty)?;
+    let body_answer = emit_resuming_body_fn(cg, &body_fn, body, &caps, &env_ty)?;
+    let return_fn = return_clause.map(|_| format!("__handler_return_{effect}_{id}"));
+    let answer = match (return_clause, return_fn.as_deref()) {
+        (Some(clause), Some(name)) => {
+            return_clause::emit(cg, name, clause, &body_answer, &caps, &env_ty)?
+        }
+        _ => body_answer,
+    };
     let mut drive_arms = Vec::new();
     for (op_id, arm) in arms.iter().enumerate() {
         let sig = op_sig_for(cg, effect, &arm.operation)?;
@@ -690,7 +712,7 @@ fn gen_resuming_handler(
             arm_fn,
         });
     }
-    emit_drive_fn(cg, &drive_fn, &drive_arms)?;
+    emit_drive_fn(cg, &drive_fn, &drive_arms, return_fn.as_deref())?;
 
     let coro = cg.call("i8*", "__osprey_coro_new", "i8*", &[&env]);
     let activation = cg.call("i32", "__osprey_handler_depth", "", &[]);
@@ -826,6 +848,7 @@ fn emit_resuming_arm_fn(cg: &mut Codegen, arm: &HandlerArm, spec: &ArmFnSpec<'_>
         answer_result_inner: spec.answer.result_inner,
         answer_owner: spec.answer.owner.clone(),
         answer_payload_owner: spec.answer.payload_owner.clone(),
+        answer_inferred_type: spec.answer.inferred_type.clone(),
         op_ret_ty,
         op_ret_result_inner,
     });
@@ -844,7 +867,12 @@ fn emit_resuming_arm_fn(cg: &mut Codegen, arm: &HandlerArm, spec: &ArmFnSpec<'_>
     Ok(())
 }
 
-fn emit_drive_fn(cg: &mut Codegen, name: &str, arms: &[DriveArm]) -> Result<()> {
+fn emit_drive_fn(
+    cg: &mut Codegen,
+    name: &str,
+    arms: &[DriveArm],
+    return_fn: Option<&str>,
+) -> Result<()> {
     let saved = cg.enter_nested_fn();
     let params = vec![
         (LType::Ptr, String::from("__env")),
@@ -860,6 +888,10 @@ fn emit_drive_fn(cg: &mut Codegen, name: &str, arms: &[DriveArm]) -> Result<()> 
 
     cg.start_block(&done_lbl);
     let result = cg.call("i64", "__osprey_coro_result", "i8*", &["%__coro"]);
+    let result = match return_fn {
+        Some(function) => cg.emit_reg(format!("call i64 @{function}(i8* %__env, i64 {result})")),
+        None => result,
+    };
     cg.emit(format!("ret i64 {result}"));
 
     cg.start_block(&dispatch_lbl);
@@ -950,34 +982,18 @@ fn emit_abandon_or_answer(cg: &mut Codegen, arm_result: &str) {
 /// sibling arm's `resume` silently converted this arm into an early exit.
 /// Implements [EFFECTS-HANDLER-ARMS].
 fn emit_substitute_and_continue(cg: &mut Codegen, drive_fn: &str, arm_result: &str) {
-    let resumed = cg.call(
+    let _ = cg.call(
         "i64",
         "__osprey_coro_resume",
         "i8*, i64",
         &["%__coro", arm_result],
     );
-    let done = cg.call("i64", "__osprey_coro_done", "i8*", &["%__coro"]);
-    let cond = cg.emit_reg(format!("icmp ne i64 {done}, 0"));
-    let done_lbl = cg.fresh_label();
-    let more_lbl = cg.fresh_label();
-    cg.emit(format!(
-        "br i1 {cond}, label %{done_lbl}, label %{more_lbl}"
-    ));
-    cg.start_block(&done_lbl);
-    cg.emit(format!("ret i64 {resumed}"));
-    cg.start_block(&more_lbl);
-    // `musttail`, not a plain call: the dispatcher continues by re-entering
-    // itself with the SAME arguments, so a handler with one resuming arm and
-    // one substituting arm grew a native frame per operation the substituting
-    // arm answered. Release builds happened to fold it away; debug builds
-    // compile at `-O0` ([`osprey_debug`]) where nothing does, and a loop of
-    // otherwise constant-space performs exhausted the host stack. `musttail`
-    // makes the reuse a VERIFIED property of the module rather than a hope
-    // about the optimizer. Implements [EFFECTS-HANDLER-ARMS].
-    let nested = cg.emit_reg(format!(
+    // One completion path applies the return clause; musttail keeps repeated
+    // value requests in a mixed handler constant-space.
+    let answer = cg.emit_reg(format!(
         "musttail call i64 @{drive_fn}(i8* %__env, i8* %__coro)"
     ));
-    cg.emit(format!("ret i64 {nested}"));
+    cg.emit(format!("ret i64 {answer}"));
 }
 
 pub(crate) fn gen_resume(cg: &mut Codegen, value: Option<&Expr>) -> Result<Value> {
@@ -991,35 +1007,21 @@ pub(crate) fn gen_resume(cg: &mut Codegen, value: Option<&Expr>) -> Result<Value
     };
     let raw_value = coerce_to_op_result(cg, raw_value, ctx.op_ret_ty, ctx.op_ret_result_inner)?;
     let boxed_value = box_codegen_value(cg, raw_value);
-    let resumed = cg.call(
+    let _ = cg.call(
         "i64",
         "__osprey_coro_resume",
         "i8*, i64",
         &[&ctx.coro, &boxed_value.operand],
     );
-    let done = cg.call("i64", "__osprey_coro_done", "i8*", &[&ctx.coro]);
-    let done_cond = cg.emit_reg(format!("icmp ne i64 {done}, 0"));
-    let (done_lbl, more_lbl, end_lbl) = cg.diamond(&done_cond);
-
-    cg.start_block(&done_lbl);
-    let done_pred = cg.snapshot_to(&end_lbl);
-
-    cg.start_block(&more_lbl);
-    let nested = cg.emit_reg(format!(
+    let raw = cg.emit_reg(format!(
         "call i64 @{}(i8* {}, i8* {})",
         ctx.drive_fn, ctx.env, ctx.coro
     ));
-    let more_pred = cg.snapshot_to(&end_lbl);
-
-    cg.start_block(&end_lbl);
-    let phi = cg.emit_reg(format!(
-        "phi i64 [ {resumed}, %{done_pred} ], [ {nested}, %{more_pred} ]"
-    ));
-    let mut answer = unbox_coro_value(cg, &phi, ctx.answer_ty, ctx.answer_result_inner)
+    let mut answer = unbox_coro_value(cg, &raw, ctx.answer_ty, ctx.answer_result_inner)
         .with_owner(ctx.answer_owner);
     answer.payload_owner = ctx.answer_payload_owner;
-    // Both phi edges carry +1: the body fn escape-retained the answer it boxed,
-    // and a nested dispatch returns an arm's escape-retained answer. Registering
+    answer.inferred_type = ctx.answer_inferred_type;
+    // Dispatch returns an escape-retained transformed or control answer. Registering
     // it is what balances the retain the enclosing arm adds when it boxes this
     // value as its own return — without it every managed continuation answer
     // survived to exit. [GC-ARC-PERCEUS]

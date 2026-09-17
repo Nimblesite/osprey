@@ -92,11 +92,19 @@ fn collect_expr(expr: &Expr, lines: &mut BTreeSet<u32>) {
                 collect_expr(&arm.body, lines);
             }
         }
-        Expr::Handler { arms, body, .. } => {
+        Expr::Handler {
+            arms,
+            body,
+            return_clause,
+            ..
+        } => {
             for arm in arms {
                 collect_expr(&arm.body, lines);
             }
             collect_expr(body, lines);
+            if let Some(clause) = return_clause {
+                collect_expr(clause, lines);
+            }
         }
         Expr::Call {
             function,

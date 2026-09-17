@@ -28,6 +28,7 @@ impl Lowerer<'_> {
         let mut region = self.lower_expr_field(node, "body");
         for (index, (effect, arms)) in self.kernel_arms(node).into_iter().enumerate().rev() {
             region = Expr::Handler {
+                return_clause: None,
                 stage: region_stage(index),
                 effect,
                 arms,

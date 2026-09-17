@@ -1,0 +1,18 @@
+effect ValueAsk { value: fn() -> int }
+effect ControlAsk { control value: fn() -> int }
+fn valueWork() = (perform ValueAsk.value() + 1) ?: 0
+fn controlWork() = (perform ControlAsk.value() + 1) ?: 0
+let prefix = "done="
+let replace = handler ValueAsk {
+    value => 41
+    return n => "${prefix}${n}"
+}
+let around = handler ControlAsk {
+    value => "${resume(41)}!"
+    return n => "${prefix}${n}"
+}
+let stop = handler ControlAsk {
+    value => "stopped"
+    return n => "${prefix}${n}"
+}
+print("${replace(valueWork)}\n${around(controlWork)}\n${stop(controlWork)}")

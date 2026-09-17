@@ -39,12 +39,13 @@ fn project(entry: &str, library: &str) -> osprey_ast::Program {
         &[source("main.osp", entry), source("library.osp", library)],
     );
     assert!(result.is_ok(), "{result:?}");
-    result
-        .map(|project| project.program)
-        .unwrap_or(osprey_ast::Program {
+    result.map_or(
+        osprey_ast::Program {
             statements: Vec::new(),
             doc: None,
-        })
+        },
+        |project| project.program,
+    )
 }
 
 #[test]

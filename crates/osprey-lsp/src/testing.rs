@@ -230,6 +230,7 @@ fn walk_value(
         Expr::Handler {
             arms,
             body,
+            return_clause,
             position,
             ..
         } => {
@@ -238,6 +239,9 @@ fn walk_value(
                 walk_value(&arm.body, pos, None, out);
             }
             walk_value(body, pos, None, out);
+            if let Some(clause) = return_clause {
+                walk_value(clause, pos, None, out);
+            }
         }
         Expr::Match { arms, .. } => {
             for arm in arms {
