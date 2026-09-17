@@ -10,6 +10,7 @@ mod doc;
 pub mod effect_name;
 pub mod freevars;
 mod generics;
+mod handler_value;
 mod kernel;
 mod lower_static;
 pub mod multiplicity;
@@ -23,7 +24,10 @@ pub mod symbol;
 mod visit;
 pub use doc::{DocComment, DocExample, DocScope};
 pub use generics::{EffectRef, TypeParam, Variance};
-pub use multiplicity::{Multiplicity, OperationTable, REPLAYABLE_KEYWORD};
+pub use handler_value::handler_value;
+pub use multiplicity::{
+    Multiplicity, OperationMode, OperationTable, CONTROL_KEYWORD, REPLAYABLE_KEYWORD,
+};
 pub use resume::{contains_resume, resumes_on_one_path};
 pub use stage::{Stage, STATIC_STAGE_KEYWORD};
 pub use visit::{walk_each, walk_program, AstNode, AstVisitor};
@@ -367,6 +371,11 @@ pub struct TypeField {
 pub struct EffectOperation {
     /// Operation name.
     pub name: String,
+    /// Whether the operation was declared `control`. This — not a search of an
+    /// arm's body for `resume` — decides whether an arm supplies the
+    /// operation's result or the handler's answer. Implements
+    /// [EFFECTS-HANDLER-ARMS].
+    pub mode: OperationMode,
     /// The multiplicity keyword as WRITTEN, absent when the operation is
     /// undecorated. Kept as an option rather than defaulted at lowering because
     /// [MULTI-AXIS-STATIC] rejects a multiplicity *written* on a static
@@ -403,6 +412,31 @@ impl EffectOperation {
     #[must_use]
     pub fn multiplicity(&self) -> Multiplicity {
         self.declared_multiplicity.unwrap_or_default()
+    }
+
+    /// The defect in this operation's written modifiers under `stage`, if any.
+    ///
+    /// Multiplicity counts resumptions of a captured continuation, so it says
+    /// nothing about a value operation — whose normal return supplies the one
+    /// answer. And a static interpretation computes its answer at compile time,
+    /// where there is no continuation to hand over, so `control` and `static`
+    /// are a contradiction rather than a narrowing.
+    /// Implements [MULTI-DECL], [MULTI-AXIS-STATIC].
+    #[must_use]
+    pub fn modifier_error(&self, stage: Stage) -> Option<String> {
+        let name = &self.name;
+        if self.mode.is_control() && stage.is_compile_time() {
+            return Some(format!(
+                "`{CONTROL_KEYWORD}` on operation `{name}` of a `{STATIC_STAGE_KEYWORD} effect`; a static interpretation answers at compile time and has no continuation to give away"
+            ));
+        }
+        let declared = self
+            .declared_multiplicity
+            .filter(|_| !self.mode.is_control())?;
+        Some(format!(
+            "`{}` on value operation `{name}`; multiplicity counts resumptions, so it is legal only on a `{CONTROL_KEYWORD}` operation",
+            declared.as_str()
+        ))
     }
 }
 

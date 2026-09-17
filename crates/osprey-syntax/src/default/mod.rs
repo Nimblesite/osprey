@@ -16,6 +16,7 @@ use tree_sitter::{Node, Parser, Point, Tree};
 
 pub(crate) mod binding_ranges;
 mod expr;
+mod handle_rest;
 mod inner_doc;
 mod kernel;
 mod lower;
@@ -54,6 +55,7 @@ pub(crate) fn parse(source: &str) -> Parsed {
     let mut errors = Vec::new();
     collect_errors(root, source.as_bytes(), &mut errors);
     inner_doc::reclassify(root, source.as_bytes(), &mut errors);
+    handle_rest::check(root, &mut errors);
     Parsed {
         program,
         errors,

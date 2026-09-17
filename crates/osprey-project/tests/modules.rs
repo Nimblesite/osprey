@@ -42,6 +42,39 @@ fn mixed_flavors_resolve_by_namespace_not_file_path() {
 }
 
 #[test]
+fn imported_static_effects_are_validated_after_cross_flavor_assembly() {
+    let library = parsed(
+        "lib.ospml",
+        Flavor::Ml,
+        "namespace readings\nmodule Source\n    export static effect Read\n        value : Unit => int\n    export fetch () = perform Read.value ()\n",
+    );
+    for (answer, valid) in [("42", true), ("\"wrong\"", false)] {
+        let entry = parsed(
+            "main.osp",
+            Flavor::Default,
+            &format!(
+                "namespace app;\nimport readings::Source::{{Read, fetch}}\nfn main() = {{\nlet value = handle static Read value => {answer} in fetch()\nprint(value)\n}}\n"
+            ),
+        );
+        let project = assemble(&config("main.osp"), &[entry, library.clone()]);
+        assert!(project.is_ok(), "{project:?}");
+        if let Ok(project) = project {
+            let errors = osprey_types::check_program(&project.program);
+            if valid {
+                assert!(errors.is_empty(), "{errors:?}");
+            } else {
+                assert!(
+                    errors
+                        .iter()
+                        .any(|error| error.message.contains("cannot unify int with string")),
+                    "{errors:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn private_member_import_is_rejected() {
     // Implements [MODULES-EXPORTS], [MODULES-IMPORT].
     let library = parsed(

@@ -173,7 +173,7 @@ fn a_static_effect_inside_a_kernel_body_is_stage_legal() {
     // [STAGE-GPU-LEGAL] generalizes [GPU-KERNEL-PURE] from "empty row" to
     // "empty *dynamic* row". A kernel that answers its requests before it runs
     // is legal, and it is legal through the existing purity gate rather than a
-    // second one, because discharge happens before the checker sees the body.
+    // second one: discharge follows data typing but precedes residual purity.
     let source = r#"
 static effect Tile { size: fn() -> int }
 fn shade(px) = (px * perform Tile.size()) ?: 0
@@ -271,14 +271,64 @@ fn cursorLabel() = "at: ${(perform Signal<Cursor>.read()).at}"
 #[test]
 fn the_ml_surface_carries_the_stage_axis_too() {
     // [STAGE-DECL] The spec gives `static effect` and `handle static` an ML
-    // spelling, and [STAGE-LOWER-ORDER-PHASE] puts the rewrite at the flavor
-    // boundary precisely so one mechanism serves both surfaces. ML lowering
-    // hardcodes `Stage::Dynamic`, so `static` lexes as an ordinary identifier
-    // and half the declaration surface is unreachable from half the language.
+    // spelling. Both lower to the same staged AST and pass through source
+    // validation before discharge ([STAGE-LOWER-ORDER-PHASE]).
     let source = "static effect Tile\n    size : Unit => int\n\nscaled n = n * perform Tile.size () ?: 0\n\nanswer =\n    handle static Tile\n        size => 8\n    in scaled 2\n";
     let errors = diagnostics(source, Flavor::Ml);
     assert!(
         errors.is_empty(),
         "the ML surface must declare and discharge a static effect: {errors}"
+    );
+}
+
+/// Static substitution must preserve the declaration's data contract, including
+/// arms whose operations are never requested. [STAGE-LOWER-ORDER-PHASE]
+#[test]
+fn static_contracts_are_checked_before_erasure_in_both_flavors() {
+    let cases = [
+        (
+            "static effect Read { value: fn() -> int }\nlet answer = handle static Read value => \"wrong\" in length(perform Read.value())\nprint(answer)",
+            "static effect Read\n    value : Unit => int\n\nanswer =\n    handle static Read\n        value => \"wrong\"\n    in length (perform Read.value ())\nprint answer\n",
+            "cannot unify int with string",
+        ),
+        (
+            "static effect Read { value: fn() -> int }\nlet answer = handle static Read value => \"wrong\" in 42\nprint(answer)",
+            "static effect Read\n    value : Unit => int\n\nanswer =\n    handle static Read\n        value => \"wrong\"\n    in 42\nprint answer\n",
+            "cannot unify int with string",
+        ),
+        (
+            "static effect Echo { value: fn(int) -> int }\nlet answer = handle static Echo value input => length(input) in perform Echo.value(\"bad\")\nprint(answer)",
+            "static effect Echo\n    value : int => int\n\nanswer =\n    handle static Echo\n        value input => length input\n    in perform Echo.value \"bad\"\nprint answer\n",
+            "cannot unify",
+        ),
+        (
+            "static effect Echo { value: fn(int) -> int }\nlet answer = handle static Echo value => 7 in 42\nprint(answer)",
+            "static effect Echo\n    value : int => int\n\nanswer =\n    handle static Echo\n        value => 7\n    in 42\nprint answer\n",
+            "expects 1 parameter(s), got 0",
+        ),
+        (
+            "static effect Echo<T> { value: fn() -> T }\nlet answer = handle static Echo<int> value => \"bad\" in length(perform Echo<int>.value())\nprint(answer)",
+            "static effect Echo T\n    value : Unit => T\n\nanswer =\n    handle static Echo<int>\n        value => \"bad\"\n    in length (perform Echo<int>.value ())\nprint answer\n",
+            "cannot unify int with string",
+        ),
+    ];
+    for (default, ml, expected) in cases {
+        for (flavor, source) in [(Flavor::Default, default), (Flavor::Ml, ml)] {
+            let errors = diagnostics(source, flavor);
+            assert!(
+                errors.contains(expected),
+                "{flavor:?}: expected {expected}, got {errors}"
+            );
+        }
+    }
+}
+
+#[test]
+fn staging_does_not_authorize_source_mutation_outside_handler_arms() {
+    let source = "static effect Read { value: fn() -> int }\nfn main() = {\nmut count = 0\ncount = 1\nlet answer = handle static Read value => count in perform Read.value()\nprint(answer)\n}";
+    let errors = diagnostics(source, Flavor::Default);
+    assert!(
+        errors.contains("state mutation is only allowed inside an effect handler arm"),
+        "{errors}"
     );
 }

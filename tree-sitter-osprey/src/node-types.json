@@ -465,6 +465,10 @@
           "named": true
         },
         {
+          "type": "handler_value_expression",
+          "named": true
+        },
+        {
           "type": "if_expression",
           "named": true
         },
@@ -943,7 +947,7 @@
     "fields": {
       "body": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "expression",
@@ -1007,6 +1011,46 @@
       "types": [
         {
           "type": "identifier",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "handler_value_expression",
+    "named": true,
+    "fields": {
+      "effect": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "qualified_path",
+            "named": true
+          }
+        ]
+      },
+      "instantiation": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type_arguments",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "handler_arm",
           "named": true
         }
       ]
@@ -1821,6 +1865,16 @@
     "type": "operation_declaration",
     "named": true,
     "fields": {
+      "mode": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "operation_mode",
+            "named": true
+          }
+        ]
+      },
       "multiplicity": {
         "multiple": false,
         "required": false,
@@ -3384,6 +3438,10 @@
     "named": false
   },
   {
+    "type": "handler",
+    "named": false
+  },
+  {
     "type": "if",
     "named": false
   },
@@ -3442,6 +3500,10 @@
   {
     "type": "opaque",
     "named": false
+  },
+  {
+    "type": "operation_mode",
+    "named": true
   },
   {
     "type": "out",

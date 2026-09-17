@@ -18,7 +18,7 @@
 [
   "let" "mut" "fn" "extern" "type" "module" "import"
   "namespace" "signature" "export" "opaque" "state" "as" "extra"
-  "effect" "perform" "handle" "in"
+  "effect" "perform" "handle" "handler" "in"
   "match" "select" "where" "if" "else"
 ] @keyword
 
@@ -65,6 +65,7 @@
 (effect_ref name: (identifier) @type)
 (perform_expression effect: (identifier) @type operation: (identifier) @function.method)
 (handler_expression effect: (identifier) @type)
+(handler_value_expression effect: (identifier) @type)
 (handler_arm operation: (identifier) @function.method)
 
 ; --- Calls & fields ---

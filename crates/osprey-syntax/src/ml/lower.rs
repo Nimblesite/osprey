@@ -932,6 +932,7 @@ pub(super) fn lower_effect_op(op: MlEffectOp) -> EffectOperation {
             render_type(&op.result)
         ),
         name: op.name,
+        mode: op.mode,
         declared_multiplicity: op.multiplicity,
         replayable: op.replayable,
         parameters: Vec::new(),
@@ -1304,6 +1305,11 @@ fn lower_expr(expr: MlExpr) -> Expr {
             named_arguments: Vec::new(),
             position: Some(pos),
         },
+        MlExpr::HandlerValue { effect, arms, pos } => osprey_ast::handler_value(
+            effect,
+            arms.into_iter().map(lower_handle_arm).collect(),
+            Some(pos),
+        ),
         MlExpr::Handle {
             stage,
             effect,
@@ -2396,10 +2402,9 @@ mod tests {
     }
 
     #[test]
-    fn reserved_handler_word_reports_a_clear_error() {
-        // `handler`/`do` are not yet in the shared core, so the parser still
-        // reports a precise "not yet supported" diagnostic for them.
-        let parsed = parse_ml("handler Db\n    add : string => int\n");
+    fn reserved_do_word_reports_a_clear_error() {
+        // Callable handlers are supported; a standalone `do` remains reserved.
+        let parsed = parse_ml("do work ()\n");
         assert!(parsed
             .errors
             .iter()

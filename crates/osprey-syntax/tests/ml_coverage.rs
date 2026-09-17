@@ -473,10 +473,8 @@ fn expression_only_top_level_item_is_a_bare_expr_statement() {
 
 #[test]
 fn reserved_words_each_report_not_yet_supported() {
-    // First-class handler values must error loudly rather than misparse
-    // ([FLAVOR-HANDLER-VALUE]). `effect`/`handle`/`perform`/`resume` lower to the
-    // canonical effect AST ([FLAVOR-ML-EFFECT]).
-    for word in ["handler", "do"] {
+    // Callable `handler` values are supported; standalone `do` is reserved.
+    for word in ["do"] {
         for source in [format!("{word} Foo\n"), format!("value = {word} Foo\n")] {
             let parsed = ml_err(&source);
             assert!(

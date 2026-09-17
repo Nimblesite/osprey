@@ -2,7 +2,7 @@
 
 **Contract:** [Algebraic Effects](../specs/0017-AlgebraicEffects.md).
 **Try the prototype:** [runnable comparison](../../examples/handlers/README.md).
-**Status, 2026-09-17:** consolidated specification agreed with OspreyOpus1 on TMC; implementation paused for this specification pass. This plan
+**Status, 2026-09-17:** specification agreed with OspreyOpus1 on TMC and pushed as `053eae19`; breaking implementation underway. Legacy tests and examples are retained but do not constrain the new semantics. This plan
 owns delivery of handlers, effect rows, staging and continuations. It replaces
 plans 0008, 0024 and 0028 and the effects checklist formerly duplicated in 0013.
 Specifications define the required language; this plan records implementation
@@ -31,8 +31,8 @@ parity, completeness or superior performance is earned by syntax alone.
 | Callable handlers | Both flavors run reusable handlers, captured factory values and rest-of-block installation. This is a working-tree prototype using ordinary closures. | `examples/handlers/handlers.*`, `crates/osprey-cli/tests/handler_values.rs` |
 | Handler abstraction | The local higher-order fix passed 4 handler tests and 125 codegen tests before implementation paused. These are bounded checks, not a green branch-wide result. | `handler_values.rs`: generic/typed callbacks, independent Ada/Grace factories, both flavors and memory modes |
 | Effects checker | Closed-program operation propagation and partial generic discharge exist. Independently quantified open rows do not. | `crates/osprey-types/src/effect_rows.rs`, `generic_effects_tests.rs` |
-| Modes and continuations | Current behavior still depends on finding `resume` in an arm. `many` has no reusable runtime representation; owned escaping continuations, return clauses and masking need implementation. | Independent probes below; `crates/osprey-cli/tests/staged_multiplicity.rs` |
-| Staging | Both flavors have syntax and a rewrite. Correctness fixes are in progress; static mutable captures remain a measured failure. | `staged_effects.rs`, `staged_hygiene.rs`; probes below |
+| Modes and continuations | Declared value/control modes replace arm-body classification. Arms run outside their activation; deep resume restores it. Owned escaping continuations, `many`, return clauses and masking remain unfinished. | `operation_modes.rs`: both flavors, default/GC/ARC; independent comparison below |
+| Staging | Explicit static selection accepts ordinary all-value effects. Source validation tracks builtin I/O through aliases/callbacks and rejects runtime dispatch hidden inside a locally handled helper. Capture/cell identity and dynamically used originals are preserved. | `static_selection.rs` and `staged_hygiene.rs` |
 | Targets | Static discharge and dynamic value handlers have portable paths. Explicit dynamic resumption is unavailable in the current wasm backend and must be rejected before linking. Target limitations do not change language semantics. | [WebAssembly](../specs/0022-WebAssemblyTarget.md), target capability tests |
 
 The existing curried-ML effect-loss report
@@ -48,13 +48,12 @@ flavors, Koka 3.2.3, OCaml 5.4.1, Eff 5.1 (commit
 `503da71b9cb927af04fc62e28511e63cd7199151`) and Effekt 0.80.0. The common handler
 examples produced `42`, `42`, then greetings for Ada, Grace and Ada.
 
-The stronger `--demo semantics --check` comparison deliberately exposes a
-failure: explicit continuation handlers in Koka, OCaml, Eff and Effekt produce
-`42/142/0/0`; the Osprey prototype produces `42/142/1/0`. The third case returns
-without resuming; the fourth adds an unreachable resume. Changing unreachable
-code must not change the third answer. The declaration-based operation modes
-in the canonical spec resolve this design defect; changing the expected answer
-to preserve the bug is forbidden.
+The stronger `--demo semantics --check` comparison now passes in both Osprey
+flavors and real Koka, OCaml, Eff and Effekt executables: all produce
+`42/142/0/0`. Declared control operations fixed the former Osprey result
+`42/142/1/0`. Returning without resuming abandons the computation; adding an
+unreachable resume no longer changes its meaning. The independent golden was
+preserved.
 
 Two staging probes falsified the former implementation:
 
@@ -71,11 +70,11 @@ incorrect. The original higher-order staging gate passed; generic reactive
 rebuild and nested parallel-matrix gates did not yet demonstrate the full
 contract.
 
-At the pause, validation changes had passed 12 staged and 9 multiplicity tests
-and the type suite. The hygiene worker had 6 of 9 new cases passing, with
-mutable-cell sharing still wrong and two fixtures needing correction. The
-latest combined tree has not been validated; none of these partial results
-closes a milestone.
+The new mode and hygiene suites passed 54 native executions across both
+flavors and three memory backends, with zero live ARC objects. Scoped-runtime
+checks passed 2,194 assertions. Control-without-resume target rejection also
+passed. These focused checks establish the replacement behavior; they do not
+claim full implementation of the remaining contract or a green legacy corpus.
 
 ## Delivery order and gates
 
@@ -88,7 +87,7 @@ separate handler-object hierarchy when an ordinary closure is sufficient.
    ownership, replay, finalization and target rules together. Agreement recorded with OspreyOpus1 on TMC on 2026-09-17 after correcting its five findings; local link and spec-ID checks complete.
 2. **Make ordinary effect management trustworthy.** Implement value/control
    mode from the operation declaration, remove AST-search mode selection,
-   migrate valid programs with explicit intent, and pass the `42/142/0/0`
+   replace contradictory semantics directly, and pass the `42/142/0/0`
    comparison. Pin no-`in`/`do` handler values, independent factories,
    higher-order transport, same-operation forwarding to an outer handler,
    result preservation and curried-ML calls. Add real/test logging and storage

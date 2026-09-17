@@ -60,6 +60,7 @@ mod redundant;
 mod redundant_sites;
 #[cfg(test)]
 mod redundant_tests;
+mod staging;
 #[cfg(test)]
 #[path = "../../testkit.rs"]
 mod testkit;
@@ -84,6 +85,7 @@ pub use redundant::{
     redundant_annotations_where, RedundantAnnotation, RedundantTarget, TypeWarning,
     REDUNDANT_ANNOTATION,
 };
+pub use staging::lower_static_checked;
 pub use ty::{has_type_var, names, render_with_holes, Scheme, Type, VarId, HOLE};
 pub use unused::{unused_symbols, UnusedKind, UnusedSymbol};
 

@@ -30,6 +30,17 @@ fn rejects(source: &str, target: &str, feature: &str) -> std::io::Result<()> {
 }
 
 #[test]
+fn declared_control_requires_support_without_a_resume_expression() -> std::io::Result<()> {
+    let source = "effect Supply { value: fn() -> int control stop: fn() -> int }\n\
+                  let answer = handle Supply value => 41 stop => 0 in perform Supply.stop()\n\
+                  print(answer)\n";
+    for target in ["wasm32", "ios", "ios-sim", "android-arm64", "android-x64"] {
+        rejects(source, target, "a continuation for `Supply.stop`")?;
+    }
+    Ok(())
+}
+
+#[test]
 fn resumable_effects_reject_for_both_flavors_before_ir() -> std::io::Result<()> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     for extension in ["osp", "ospml"] {

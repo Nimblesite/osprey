@@ -118,12 +118,11 @@ fn main() -> Unit = {
     an_inferred_instantiation_is_accepted: accepts(Default, stash_program("9"));
 }
 
-/// A written instantiation on a DYNAMIC effect's `perform` is rejected outright
-/// — the spelling belongs to `static effect`, whose identity IS the
-/// instantiation ([STAGE-SIGNALS-EXACT], pinned end-to-end by
-/// `examples/failscompilation/stage_signal_instantiated_dynamic_effect.ospo`).
+/// A written instantiation identifies the same operation at either stage, so
+/// `perform Stash<int>.take()` under a dynamic handler pins the instantiation
+/// instead of being refused a spelling ([EFFECTS-GENERIC-INSTANTIATION]).
 #[test]
-fn a_written_instantiation_on_a_dynamic_perform_is_rejected() {
+fn a_written_instantiation_on_a_dynamic_perform_pins_its_type_arguments() {
     let parsed = parse_program_with_flavor(
         r#"effect Stash<T> {
     take: fn() -> T
@@ -136,19 +135,14 @@ fn main() -> Unit = {
 }"#,
         Flavor::Default,
     );
-    assert_eq!(parsed.errors.len(), 1, "{:?}", parsed.errors);
-    assert!(
-        parsed.errors.iter().any(|error| error
-            .message
-            .starts_with("`perform Stash<int>` names an instantiation of dynamic effect `Stash`")),
-        "{:?}",
-        parsed.errors
-    );
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let errors = crate::check_program(&parsed.program);
+    assert!(errors.is_empty(), "{errors:?}");
 }
 
 spec_cases! {
-    /// The same restriction at the `handle` site.
-    a_written_instantiation_on_a_dynamic_handle_is_rejected: rejected_somehow(Default, r#"effect Stash<T> {
+    /// The same spelling at the `handle` site, likewise accepted.
+    a_written_instantiation_on_a_dynamic_handle_pins_its_type_arguments: accepts(Default, r#"effect Stash<T> {
     take: fn() -> T
 }
 fn main() -> Unit = {

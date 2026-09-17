@@ -1,0 +1,19 @@
+effect Ask : int;;
+effect Name : string;;
+
+let answer = handler
+  | effect Ask k -> k 41;;
+
+let reading person = handler
+  | effect Name k -> k person;;
+
+let work () = perform Ask + 1;;
+let greet () = "Hello, " ^ perform Name ^ "!";;
+let ada = reading "Ada";;
+let grace = reading "Grace";;
+let first = with answer handle work ();;
+let second = with answer handle work ();;
+let hello_ada = with ada handle greet ();;
+let hello_grace = with grace handle greet ();;
+let hello_again = with ada handle greet ();;
+print_string (to_string first ^ "\n" ^ to_string second ^ "\n" ^ hello_ada ^ "\n" ^ hello_grace ^ "\n" ^ hello_again ^ "\n");;

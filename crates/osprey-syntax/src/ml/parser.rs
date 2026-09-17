@@ -44,7 +44,20 @@ use super::cst::{
 use super::lexer::lex;
 use super::token::{keyword_spelling, TokKind, Token};
 use crate::SyntaxError;
-use osprey_ast::{Multiplicity, Position, Stage, REPLAYABLE_KEYWORD, STATIC_STAGE_KEYWORD};
+use osprey_ast::{
+    Multiplicity, OperationMode, Position, Stage, CONTROL_KEYWORD, REPLAYABLE_KEYWORD,
+    STATIC_STAGE_KEYWORD,
+};
+
+/// The declaration markers read off one effect-operation line, before its name
+/// is known to be a name rather than another marker. Implements [MULTI-DECL].
+#[derive(Default)]
+struct OperationMarkers {
+    mode: OperationMode,
+    multiplicity: Option<Multiplicity>,
+    replayable: bool,
+    name: String,
+}
 
 /// Parse ML-flavor `source` into the ML CST plus any syntax errors. Best-effort:
 /// errors never abort the parse ([FLAVOR-LOWER-CONTRACT]).
@@ -635,7 +648,7 @@ impl Parser<'_> {
     fn effect_op(&mut self) -> Option<MlEffectOp> {
         let doc = self.effect_op_doc();
         let pos = self.pos();
-        let (multiplicity, replayable, name) = self.operation_markers()?;
+        let markers = self.operation_markers()?;
         if !self.eat(&TokKind::Colon) {
             self.error("expected ':' in effect operation");
         }
@@ -645,9 +658,10 @@ impl Parser<'_> {
         }
         let result = self.ty();
         Some(MlEffectOp {
-            name,
-            multiplicity,
-            replayable,
+            name: markers.name,
+            mode: markers.mode,
+            multiplicity: markers.multiplicity,
+            replayable: markers.replayable,
             payload,
             result,
             doc,
@@ -655,7 +669,7 @@ impl Parser<'_> {
         })
     }
 
-    /// The optional `abort` / `once` / `many` and `replayable` markers an
+    /// The optional `control [abort|once|many]` and `replayable` markers an
     /// operation line may carry before its name, and the name itself.
     ///
     /// A marker is only a marker when ANOTHER identifier follows it: ML has no
@@ -663,21 +677,26 @@ impl Parser<'_> {
     /// declares an operation *called* `abort`. That is the same contextual rule
     /// the Default flavor's grammar resolves with GLR. Implements [MULTI-DECL],
     /// [FLAVOR-ML-EFFECT-ANNOTATIONS].
-    fn operation_markers(&mut self) -> Option<(Option<Multiplicity>, bool, String)> {
-        let mut multiplicity = None;
-        let mut replayable = false;
-        let mut word = self.operation_ident()?;
-        if let Some(declared) = Multiplicity::from_keyword(&word) {
-            if self.at_operation_name() {
-                multiplicity = Some(declared);
-                word = self.operation_ident()?;
+    fn operation_markers(&mut self) -> Option<OperationMarkers> {
+        let mut markers = OperationMarkers {
+            name: self.operation_ident()?,
+            ..OperationMarkers::default()
+        };
+        if markers.name == CONTROL_KEYWORD && self.at_operation_name() {
+            markers.mode = OperationMode::Control;
+            markers.name = self.operation_ident()?;
+        }
+        if let Some(declared) = Multiplicity::from_keyword(&markers.name) {
+            if markers.mode.is_control() && self.at_operation_name() {
+                markers.multiplicity = Some(declared);
+                markers.name = self.operation_ident()?;
             }
         }
-        if word == REPLAYABLE_KEYWORD && self.at_operation_name() {
-            replayable = true;
-            word = self.operation_ident()?;
+        if markers.name == REPLAYABLE_KEYWORD && self.at_operation_name() {
+            markers.replayable = true;
+            markers.name = self.operation_ident()?;
         }
-        Some((multiplicity, replayable, word))
+        Some(markers)
     }
 
     /// Whether the cursor sits on an operation name — the token that proves the
@@ -1437,6 +1456,7 @@ impl Parser<'_> {
             TokKind::KwSpawn => self.spawn_expr(),
             TokKind::KwPerform => self.perform_expr(),
             TokKind::KwHandle => self.handle_expr(),
+            TokKind::KwHandler => self.handler_value_expr(),
             TokKind::KwResume => self.resume_expr(),
             TokKind::KwAwait => self.await_expr(),
             TokKind::KwYield => self.yield_expr(),
@@ -1642,8 +1662,35 @@ impl Parser<'_> {
     }
 
     /// `handle Effect` + indented `op param* => body` arms + `in body` — install
-    /// an effect handler over the body expression ([FLAVOR-ML-EFFECT]).
+    /// an effect handler over the body expression ([FLAVOR-ML-EFFECT]). In
+    /// expression position the body has to be named; a `handle` written as a
+    /// line of a block may leave `in` off and handle the rest of that block
+    /// ([EFFECTS-HANDLE-REST], `handle_line`).
     fn handle_expr(&mut self) -> MlExpr {
+        let head = self.handle_head();
+        self.skip_separators();
+        if !self.eat(&TokKind::KwIn) {
+            self.error("expected 'in' after handle arms");
+        }
+        let body = self.body_after_eq();
+        head.over(body)
+    }
+
+    /// `handler Effect` + indented arms — the handler ITSELF, with no region
+    /// attached: a value that can be bound, passed and called. Calling it with a
+    /// zero-argument computation runs that computation under these arms.
+    /// Implements [EFFECTS-HANDLER-VALUE].
+    fn handler_value_expr(&mut self) -> MlExpr {
+        let head = self.handle_head();
+        MlExpr::HandlerValue {
+            effect: head.effect,
+            arms: head.arms,
+            pos: head.pos,
+        }
+    }
+
+    /// `handle Effect` and its arms, up to but not including the body.
+    fn handle_head(&mut self) -> HandleHead {
         let pos = self.pos();
         self.advance(); // `handle`
                         // `handle static E` — the discharge half of [STAGE-DECL]. Contextual on
@@ -1673,18 +1720,44 @@ impl Parser<'_> {
             }
             let _ = self.eat(&TokKind::Dedent);
         }
-        self.skip_separators();
-        if !self.eat(&TokKind::KwIn) {
-            self.error("expected 'in' after handle arms");
-        }
-        let body = self.body_after_eq();
-        MlExpr::Handle {
+        HandleHead {
             stage,
             effect,
             arms,
-            body: Box::new(body),
             pos,
         }
+    }
+
+    /// A `handle` written as a line of a block. With `in` it handles the body
+    /// it names and the block goes on; without `in` it handles everything after
+    /// it in that block, the way `with` does in Koka — the reader says "from
+    /// here on" instead of indenting the remainder of the function.
+    /// Implements [EFFECTS-HANDLE-REST].
+    fn handle_line(&mut self, items: &mut Vec<MlItem>) -> Option<Box<MlExpr>> {
+        let pos = self.pos();
+        let head = self.handle_head();
+        self.skip_separators();
+        let handled = if self.eat(&TokKind::KwIn) {
+            head.over(self.body_after_eq())
+        } else {
+            let (items, value) = self.block_items();
+            if items.is_empty() && value.is_none() {
+                // A region that silently handles nothing is the mistake here,
+                // not a legal empty region. Reported on the `handle` itself,
+                // which is what the reader has to move or fill.
+                // Implements [EFFECTS-HANDLE-REST].
+                self.error_at(head.pos, NOTHING_TO_HANDLE);
+            }
+            head.over(MlExpr::Block { items, value })
+        };
+        if self.at_block_end() {
+            return Some(Box::new(handled));
+        }
+        items.push(MlItem::Expr {
+            value: handled,
+            pos,
+        });
+        None
     }
 
     /// The effect a request or region names, INCLUDING the instantiation when
@@ -1730,9 +1803,8 @@ impl Parser<'_> {
         }
     }
 
-    /// `resume`, `resume value`, or `resume` + an indented block — resume a
-    /// suspended continuation. A `resume` with no argument yields a unit resume,
-    /// like the Default `resume()` ([FLAVOR-ML-EFFECT]).
+    /// Explicit application invokes the continuation. Bare `resume` denotes
+    /// an owned value and must never silently invoke it with Unit.
     fn resume_expr(&mut self) -> MlExpr {
         self.advance(); // `resume`
                         // `resume ()` is a unit resume, like the Default `resume()`.
@@ -1741,11 +1813,13 @@ impl Parser<'_> {
             self.advance();
             return MlExpr::Resume(None);
         }
-        // An indented block, or an inline `match`/expression, is the resumed
-        // value; bare `resume` on its own line resumes with unit.
+        // An indented block or inline expression supplies the resumed value.
         if matches!(self.peek(), TokKind::Indent) || self.starts_resume_arg() {
             return MlExpr::Resume(Some(Box::new(self.body_after_eq())));
         }
+        self.error(
+            "owned continuation values are not implemented; use `resume ()` to invoke with Unit",
+        );
         MlExpr::Resume(None)
     }
 
@@ -2222,6 +2296,9 @@ impl Parser<'_> {
     /// Parse one block line. A trailing bare expression with nothing after it is
     /// the block value; anything else is appended as an item.
     fn block_line(&mut self, items: &mut Vec<MlItem>) -> Option<Box<MlExpr>> {
+        if matches!(self.peek(), TokKind::KwHandle) {
+            return self.handle_line(items);
+        }
         match self.item() {
             Some(MlItem::Expr { value, .. }) if self.at_block_end() => Some(Box::new(value)),
             Some(item) => {
@@ -2299,4 +2376,32 @@ pub(super) fn constructor_segment(name: &str) -> &str {
 
 pub(super) fn is_constructor(name: &str) -> bool {
     name.chars().next().is_some_and(char::is_uppercase)
+}
+
+/// What a `handle` with no body and nothing after it reports.
+const NOTHING_TO_HANDLE: &str = "this `handle` names no body, so it handles the \
+                                 rest of its block — and nothing follows it. Put \
+                                 the statements it should handle after it, or \
+                                 name the region with `in`";
+
+/// A parsed `handle Effect` and its arms, waiting for the region it handles.
+/// Written down once so the two spellings — `in body`, and the rest of the
+/// block — build the same node. Implements [EFFECTS-HANDLE-REST].
+struct HandleHead {
+    stage: Stage,
+    effect: String,
+    arms: Vec<MlHandleArm>,
+    pos: Position,
+}
+
+impl HandleHead {
+    fn over(self, body: MlExpr) -> MlExpr {
+        MlExpr::Handle {
+            stage: self.stage,
+            effect: self.effect,
+            arms: self.arms,
+            body: Box::new(body),
+            pos: self.pos,
+        }
+    }
 }

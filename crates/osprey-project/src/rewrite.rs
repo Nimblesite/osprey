@@ -396,7 +396,7 @@ impl Resolver<'_> {
                 named_arguments,
                 ..
             } => {
-                self.rewrite_effect_name(effect, context);
+                self.rewrite_effect_name(effect, context, locals);
                 self.rewrite_exprs(arguments, context, locals);
                 for argument in named_arguments {
                     self.rewrite_expr(&mut argument.value, context, locals);
@@ -405,7 +405,7 @@ impl Resolver<'_> {
             Expr::Handler {
                 effect, arms, body, ..
             } => {
-                self.rewrite_effect_name(effect, context);
+                self.rewrite_effect_name(effect, context, locals);
                 self.rewrite_expr(body, context, locals);
                 for arm in arms {
                     let saved = locals.clone();

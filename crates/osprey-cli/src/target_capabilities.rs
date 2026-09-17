@@ -1,6 +1,6 @@
 //! Reject target facilities before code generation or toolchain discovery.
 //! Implements [IOS-TARGET-CAPABILITIES], [ANDROID-TARGET-CAPABILITIES] and [WASM-TARGET-CAPABILITIES].
-use osprey_ast::{contains_resume, walk_program, AstVisitor, Expr, Position, Program, Stmt};
+use osprey_ast::{walk_program, AstVisitor, Expr, OperationTable, Position, Program, Stmt};
 use std::collections::BTreeSet;
 
 const FIBER_FNS: &[&str] = &[
@@ -37,6 +37,7 @@ pub(crate) fn validate(program: &Program, target: &str) -> Result<(), String> {
         position: None,
         error: None,
         required: required_builtins(program),
+        operations: OperationTable::collect(program),
     };
     walk_program(program, &mut visitor);
     visitor.error.map_or(Ok(()), Err)?;
@@ -51,6 +52,7 @@ struct Capabilities<'a> {
     position: Option<Position>,
     error: Option<String>,
     required: BTreeSet<String>,
+    operations: OperationTable,
 }
 
 impl Capabilities<'_> {
@@ -285,16 +287,17 @@ impl AstVisitor for Capabilities<'_> {
 
     fn expression(&mut self, expression: &Expr) {
         match expression {
-            // A resuming ARM is what needs a continuation, so the rejection
-            // names the operation whose request cannot be suspended rather than
-            // the `resume` keyword — a row that cannot say which effects will
-            // start working is a row that cannot be planned against. A static or
-            // substituting arm needs no continuation and compiles. The permanent
-            // wording `many` deserves waits until `many` runs on any target: the
-            // checker rejects it before this gate is reached (phase 5 of
-            // docs/plans/0028-resumption-multiplicity.md). Implements [MULTI-WASM].
+            // Declared control operations need continuation support even when
+            // an arm abandons without resuming. Implements [MULTI-WASM].
             Expr::Handler { effect, arms, .. } => {
-                for arm in arms.iter().filter(|arm| contains_resume(&arm.body)) {
+                for arm in arms {
+                    if !self
+                        .operations
+                        .mode_of(osprey_ast::effect_name::base(effect), &arm.operation)
+                        .is_control()
+                    {
+                        continue;
+                    }
                     // A module-scoped effect reaches here under its encoded
                     // symbol; the author wrote `Clocks::Clock`, so that is what
                     // the diagnostic must say.

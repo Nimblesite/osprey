@@ -65,6 +65,13 @@ impl Lowerer<'_> {
                 body: Box::new(self.lower_expr_field(node, "body")),
                 position: Some(self.pos(node)),
             },
+            // `handler E { arm… }` — the handler with no region attached, as a
+            // value. Implements [EFFECTS-HANDLER-VALUE].
+            "handler_value_expression" => osprey_ast::handler_value(
+                self.mentioned_effect(node),
+                self.lower_handler_arms(node),
+                Some(self.pos(node)),
+            ),
             "kernel_expression" => self.lower_kernel(node),
             "perform_expression" => {
                 let (arguments, named_arguments) = self.lower_arg_list(node);
@@ -348,17 +355,30 @@ impl Lowerer<'_> {
     }
 
     fn lower_block(&self, node: Node<'_>) -> Expr {
+        let mut cursor = node.walk();
+        let children: Vec<Node<'_>> = node.named_children(&mut cursor).collect();
+        self.lower_block_items(&children)
+    }
+
+    /// Lower the items of one block. Taken as a slice rather than read from the
+    /// block node so a `handle` with no `in` can be given the items after it as
+    /// its body. Implements [EFFECTS-HANDLE-REST].
+    fn lower_block_items(&self, children: &[Node<'_>]) -> Expr {
         let mut statements = Vec::new();
         let mut value = None;
-        let mut cursor = node.walk();
-        for child in node.named_children(&mut cursor) {
+        for (index, child) in children.iter().enumerate() {
+            if let Some(handler) = self.handler_over_rest(*child) {
+                let rest = children.get(index + 1..).unwrap_or_default();
+                value = Some(Box::new(self.handling_rest(handler, rest)));
+                return Expr::Block { statements, value };
+            }
             match child.kind() {
                 "statement" => {
-                    if let Some(s) = self.first_named(child).and_then(|n| self.lower_stmt(n)) {
+                    if let Some(s) = self.first_named(*child).and_then(|n| self.lower_stmt(n)) {
                         statements.push(s);
                     }
                 }
-                "expression" => value = Some(Box::new(self.lower_expr(child))),
+                "expression" => value = Some(Box::new(self.lower_expr(*child))),
                 _ => {}
             }
         }
@@ -371,6 +391,38 @@ impl Lowerer<'_> {
             }
         }
         Expr::Block { statements, value }
+    }
+
+    /// The `handle E arm…` this block item consists of, when it names no body.
+    /// Such a handler handles everything after it in its block, the way `with`
+    /// does in Koka: the reader says "from here on" without indenting the rest
+    /// of the function. Implements [EFFECTS-HANDLE-REST].
+    fn handler_over_rest<'t>(&self, item: Node<'t>) -> Option<Node<'t>> {
+        if item.kind() != "statement" {
+            return None;
+        }
+        let statement = self.first_named(item)?;
+        if statement.kind() != "expression_statement" {
+            return None;
+        }
+        let mut node = Self::last_named(statement)?;
+        while matches!(node.kind(), "expression" | "primary_expression") {
+            node = self.first_named(node)?;
+        }
+        let bodyless =
+            node.kind() == "handler_expression" && node.child_by_field_name("body").is_none();
+        bodyless.then_some(node)
+    }
+
+    /// `handler` with the block items after it as the region it handles.
+    fn handling_rest(&self, handler: Node<'_>, rest: &[Node<'_>]) -> Expr {
+        Expr::Handler {
+            stage: self.stage(handler),
+            effect: self.mentioned_effect(handler),
+            arms: self.lower_handler_arms(handler),
+            body: Box::new(self.lower_block_items(rest)),
+            position: Some(self.pos(handler)),
+        }
     }
 
     fn lower_literal(&self, node: Node<'_>) -> Expr {

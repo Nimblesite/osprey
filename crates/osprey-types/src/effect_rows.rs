@@ -111,6 +111,7 @@ impl CallArguments {
 #[derive(Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 struct Summary {
     required: Requirements,
+    runtime_builtins: BTreeSet<String>,
     parameter_uses: BTreeSet<ParameterUse>,
     unresolved_dynamic_call: bool,
 }
@@ -118,6 +119,7 @@ struct Summary {
 impl Summary {
     fn union(&mut self, other: Self) {
         self.required.extend(other.required);
+        self.runtime_builtins.extend(other.runtime_builtins);
         self.parameter_uses.extend(other.parameter_uses);
         self.unresolved_dynamic_call |= other.unresolved_dynamic_call;
     }
@@ -1029,6 +1031,7 @@ impl Analyzer<'_> {
                 projection,
             } => Summary {
                 required: Requirements::new(),
+                runtime_builtins: BTreeSet::new(),
                 parameter_uses: [ParameterUse {
                     level,
                     index,
@@ -1333,6 +1336,7 @@ impl Analyzer<'_> {
                 self.index
                     .resolve(scope, name)
                     .map(|id| self.function_value(id))
+                    .or_else(|| runtime_builtin_value(name))
             }
             Expr::Path(path) => self
                 .index
@@ -2148,12 +2152,38 @@ fn method_thunk(mut summary: Summary, mut returned: Option<Value>) -> Value {
 fn builtin_return_shape(name: &str) -> Option<Value> {
     // Effect summaries revisit calls during fixed-point inference and warning
     // comparisons. Their immutable builtin signatures need one shared table.
-    static BUILTINS: std::sync::LazyLock<crate::env::TypeEnv> =
-        std::sync::LazyLock::new(crate::builtins::base_env);
-    let crate::ty::Type::Fun { ret, .. } = &BUILTINS.get(name)?.ty else {
+    let crate::ty::Type::Fun { ret, .. } = &builtin_environment().get(name)?.ty else {
         return None;
     };
     value_shape(ret)
+}
+
+fn builtin_environment() -> &'static crate::env::TypeEnv {
+    static BUILTINS: std::sync::LazyLock<crate::env::TypeEnv> =
+        std::sync::LazyLock::new(crate::builtins::base_env);
+    &BUILTINS
+}
+
+fn runtime_builtin_value(name: &str) -> Option<Value> {
+    let env = builtin_environment();
+    if !env.is_runtime_builtin(name) {
+        return None;
+    }
+    let crate::ty::Type::Fun { params, ret } = &env.get(name)?.ty else {
+        return None;
+    };
+    Some(Value::from_callable(Callable::Known(Box::new(
+        KnownCallable {
+            parameters: (0..params.len())
+                .map(|index| format!("arg{index}"))
+                .collect(),
+            summary: Summary {
+                runtime_builtins: [name.to_owned()].into_iter().collect(),
+                ..Summary::default()
+            },
+            returned: value_shape(ret).map(Box::new),
+        },
+    ))))
 }
 
 fn value_shape(ty: &crate::ty::Type) -> Option<Value> {
@@ -2423,6 +2453,7 @@ fn callable_summary(callable: &Callable) -> Summary {
             projection,
         } => Summary {
             required: Requirements::new(),
+            runtime_builtins: BTreeSet::new(),
             parameter_uses: [ParameterUse {
                 level: *level,
                 index: *index,
@@ -3057,8 +3088,13 @@ fn gpu_kernel_verdict(
         ));
     };
     let row = analyzer.invoke_with_values(callee, &[]);
-    if !row.required.is_empty() {
-        let performed: Vec<String> = row.required.iter().map(requirement_name).collect();
+    if !row.required.is_empty() || !row.runtime_builtins.is_empty() {
+        let performed: Vec<String> = row
+            .required
+            .iter()
+            .map(requirement_name)
+            .chain(row.runtime_builtins)
+            .collect();
         return Some(format!(
             "kernel body is not stage-legal; it requires dynamic effects: {}",
             performed.join(", ")
@@ -3093,12 +3129,10 @@ fn validate_handler_arms(
         effect,
         arms,
         body,
-        position,
+        stage,
         ..
     } = expression
     {
-        let handler_arguments =
-            analyzer.instance_arguments(effect, *position, &analyzer.instances.handlers, "handler");
         // The row [MULTI-REPLAY-COARSE] reads: every operation the handled
         // expression requires, before this handler discharges any of them.
         let handled_row = operation_pairs(&analyzer.expression(body, scope, env));
@@ -3113,19 +3147,25 @@ fn validate_handler_arms(
             ));
             let local = analyzer.handler_arm_env(effect, arm, body, scope, env);
             let row = analyzer.expression(&arm.body, scope, &local);
-            if row.required.iter().any(|requirement| {
-                requirement.effect == *effect
-                    && requirement.operation == arm.operation
-                    && requirement.arguments == handler_arguments
-            }) {
+            if stage.is_compile_time() && !row.runtime_builtins.is_empty() {
                 errors.push(
                     TypeError::new(format!(
-                        "handler arm `{effect}.{}` performs `{effect}` while that handler is active; this would recursively re-enter the same handler",
-                        arm.operation
+                        "static handler arm `{effect}.{}` requires runtime builtins: {}",
+                        arm.operation,
+                        row.runtime_builtins
+                            .into_iter()
+                            .collect::<Vec<_>>()
+                            .join(", ")
                     ))
                     .with_pos(arm.position),
                 );
             }
+            // An arm performing its OWN operation forwards the request to the
+            // enclosing handler — the arm's requirements stay obligations of
+            // the region around this handler, which is exactly how a handler
+            // delegates part of an interface outward. With no outer handler the
+            // requirement survives to program entry and is reported there as an
+            // unhandled operation. Implements [EFFECTS-STATIC-DISCHARGE].
             validate_handler_arms(analyzer, axis, &arm.body, scope, &local, errors);
         }
         validate_handler_arms(analyzer, axis, body, scope, env, errors);

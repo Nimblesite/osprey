@@ -274,3 +274,25 @@ fn handlerStateThroughNestedCallsCase() = {
 
 // Register handler-owned state across nested performs and a file-scope region.
 test("handler-owned state is one cell across nested calls and file scope", handlerStateThroughNestedCallsCase)
+
+/// (4) `handle E { arm… }` names no body and handles the rest of the block it
+/// sits in ([EFFECTS-HANDLE-REST]). Nothing has to be indented to say "from
+/// here on", and the region still ends where its block does — `trail` below is
+/// read after the handled statements, inside the same region.
+fn restOfBlockCase() = {
+    mut trail = ""
+    handle Logger {
+        log msg   => { trail = trail + "[" + msg + "]" }
+        debug msg => { trail = trail + "(" + msg + ")" }
+    }
+    let value = innerOp()
+    perform Logger.log("tail")
+    checkAll("handle with no in", [
+        value == 42,
+        trail == "[inner exec](debug inner)[tail]",
+        trail != ""
+    ])
+}
+
+// A handler region that names no body still covers everything after it.
+test("a handle with no `in` handles the rest of its block", restOfBlockCase)

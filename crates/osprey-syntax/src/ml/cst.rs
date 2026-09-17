@@ -10,7 +10,7 @@
 //! *what was written*; the lowerer decides *what it means*. Nothing in this
 //! module references `osprey_ast`.
 
-use osprey_ast::{Multiplicity, Position, Stage};
+use osprey_ast::{Multiplicity, OperationMode, Position, Stage};
 
 /// A source-level namespace/module/member path. Segments are kept separate so
 /// qualification can never be confused with value-level `.` access
@@ -352,6 +352,8 @@ pub(crate) struct MlExternParam {
 pub(crate) struct MlEffectOp {
     /// The operation name.
     pub name: String,
+    /// Whether `control` was written ([EFFECTS-HANDLER-ARMS]).
+    pub mode: OperationMode,
     /// The multiplicity keyword as written, absent when undecorated
     /// ([MULTI-DECL]).
     pub multiplicity: Option<Multiplicity>,
@@ -589,6 +591,17 @@ pub(crate) enum MlExpr {
         args: Vec<MlExpr>,
         /// Source position of the `perform` keyword
         /// ([EFFECTS-GENERIC-INSTANTIATION]).
+        pos: Position,
+    },
+    /// `handler Effect` + indented arms — the handler ITSELF, with no region
+    /// attached: a value that can be bound, passed and called
+    /// ([EFFECTS-HANDLER-VALUE]).
+    HandlerValue {
+        /// The handled effect name.
+        effect: String,
+        /// Per-operation handler arms.
+        arms: Vec<MlHandleArm>,
+        /// Source position of the `handler` keyword.
         pos: Position,
     },
     /// `handle Effect` + indented arms + `in body` — install an effect handler

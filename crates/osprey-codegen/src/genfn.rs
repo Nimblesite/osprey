@@ -188,10 +188,13 @@ fn lower_inline_arg(
     } else {
         relaid_placeholder(cg, v, declared)?
     };
-    Ok(InlineArg::Value(
-        Box::new(v),
-        crate::stmt::fn_result_type(cg, a),
-    ))
+    let function_type = v
+        .inferred_type
+        .as_ref()
+        .filter(|ty| matches!(ty, osprey_types::Type::Fun { .. }))
+        .cloned()
+        .or_else(|| crate::stmt::fn_result_type(cg, a));
+    Ok(InlineArg::Value(Box::new(v), function_type))
 }
 
 /// Bind one already-lowered argument to its parameter inside the inlined body's
@@ -238,7 +241,9 @@ fn pair_args<'a>(
 fn alias_target(cg: &Codegen, arg: &Expr) -> Option<String> {
     match arg {
         Expr::Identifier(n)
-            if cg.lookup(n).is_none() && !cg.is_ctor(n) && !value_binding(cg, n) =>
+            if cg.lookup(n).is_none()
+                && !cg.is_ctor(n)
+                && (cg.lambda_def(n).is_some() || !value_binding(cg, n)) =>
         {
             Some(n.clone())
         }

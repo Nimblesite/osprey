@@ -31,7 +31,6 @@ void *__osprey_handler_lookup(const char *effect_name,
 void *__osprey_handler_lookup_env(const char *effect_name,
                                   const char *operation_name);
 int __osprey_handler_stack_depth(void);
-void __osprey_handler_stack_cleanup(void);
 void *__osprey_coro_new(void *env);
 void __osprey_coro_start(void *coro, int64_t (*body)(void *), void *body_env,
                          HandlerSnapshot *snapshot);
@@ -61,6 +60,8 @@ static long g_checks = 0;
 static void fn_a(void) {}
 static void fn_b(void) {}
 static int env_a, env_b;
+
+#include "effects_scope_tests.h"
 
 // Push/lookup/pop with exact depths; the INNERMOST matching handler wins and
 // its fnptr and env always come from the SAME entry.
@@ -536,6 +537,7 @@ int main(void) {
   (void)setenv("OSPREY_ARC_DEBUG", "1", 1);
   osp_mem_boot();
   t_stack_shadowing();
+  t_handler_scope();
   t_name_truncation();
   t_overflow_exact();
   t_snapshot_restore();

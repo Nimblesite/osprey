@@ -346,11 +346,7 @@ fn unsupported_select_is_rejected_before_codegen() {
 /// would still be "rejected", and only the message catches that.
 /// Implements [FLAVOR-ML-HANDLER], [FLAVOR-ML-LAYOUT], [FLAVOR-ML-COMMENTS],
 /// [FLAVOR-ML-MATCH], [FLAVOR-BOUNDARY].
-const ML_NEGATIVES: [(&str, &str); 5] = [
-    (
-        "ml_handler_value_not_supported.ospo",
-        "ML construct 'handler' is not yet supported",
-    ),
+const ML_NEGATIVES: [(&str, &str); 4] = [
     (
         "ml_layout_inconsistent_indent.ospo",
         "inconsistent indentation does not match any enclosing block",

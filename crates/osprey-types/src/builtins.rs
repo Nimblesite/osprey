@@ -79,14 +79,29 @@ pub(crate) fn base_env() -> TypeEnv {
     strings(&mut e);
     functional(&mut e);
     lists(&mut e);
-    files(&mut e);
-    http(&mut e);
+    runtime_group(&mut e, files);
+    runtime_group(&mut e, http);
     json(&mut e);
-    concurrency(&mut e);
-    websocket(&mut e);
-    terminal(&mut e);
+    runtime_group(&mut e, concurrency);
+    runtime_group(&mut e, websocket);
+    runtime_group(&mut e, terminal);
     gpu(&mut e);
     e
+}
+
+/// Record runtime behavior where builtin bindings are declared, so aliases and
+/// callbacks carry it and a shadowing source binding does not inherit it.
+fn runtime_group(env: &mut TypeEnv, declare: fn(&mut TypeEnv)) {
+    let before = env.bound_names();
+    declare(env);
+    for name in env.bound_names().difference(&before) {
+        env.mark_runtime_builtin(name);
+    }
+}
+
+fn runtime_mono(env: &mut TypeEnv, name: &str, params: Vec<Type>, ret: Type) {
+    mono(env, name, params, ret);
+    env.mark_runtime_builtin(name);
 }
 
 /// The GPU computation surface (docs/specs/0034-GPUComputation.md). Element
@@ -157,12 +172,12 @@ fn gpu(e: &mut TypeEnv) {
 }
 
 fn core(e: &mut TypeEnv) {
-    mono(e, "print", vec![any()], u());
-    mono(e, "input", vec![], s());
+    runtime_mono(e, "print", vec![any()], u());
+    runtime_mono(e, "input", vec![], s());
     mono(e, "toString", vec![any()], s());
     mono(e, "length", vec![any()], i());
     // [CONCURRENCY-SLEEP] The native status is not part of the Unit surface.
-    mono(e, "sleep", vec![i()], u());
+    runtime_mono(e, "sleep", vec![i()], u());
     // A range is a fused iterator handle, not a materialized List [BUILTIN-ITER].
     mono(e, "range", vec![i(), i()], Type::iterator(i()));
     mono(

@@ -192,7 +192,7 @@ fn a_file_scope_alias_reports_the_effect_it_performs() {
 #[test]
 fn a_handled_file_scope_alias_is_accepted() {
     assert_accepted(
-        "effect Alarm { ring: fn() -> int }\n\
+        "effect Alarm { control ring: fn() -> int }\n\
          fn ringer() = perform Alarm.ring()\n\
          let siren = ringer\n\
          fn relay() = siren()\n\
@@ -821,13 +821,32 @@ fn declared_generic_effect_contract_must_match_the_required_instantiation() {
 }
 
 #[test]
-fn handler_arm_cannot_recursively_perform_its_own_effect() {
+fn handler_arm_performing_its_own_operation_forwards_to_an_outer_handler() {
+    // An arm's own requirements belong to the region AROUND its handler, so
+    // performing the operation it answers delegates that request outward —
+    // the ordinary way a handler implements part of an interface in terms of
+    // an enclosing one. [EFFECTS-STATIC-DISCHARGE]
+    assert_accepted(
+        "effect Loop { again: fn() -> int }\n\
+         let answer = handle Loop\n\
+           again => 7\n\
+         in handle Loop\n\
+           again => perform Loop.again()\n\
+         in perform Loop.again()\n",
+    );
+}
+
+#[test]
+fn a_self_forwarding_arm_with_no_outer_handler_is_unhandled_at_entry() {
+    // The same forwarding with nothing to forward TO is not a special
+    // recursion rule: the requirement simply survives to program entry and is
+    // reported there, naming the operation that escaped. [EFFECTS-STATIC-DISCHARGE]
     assert_rejected_with(
         "effect Loop { again: fn() -> int }\n\
          let answer = handle Loop\n\
            again => perform Loop.again()\n\
          in perform Loop.again()\n",
-        &["handler arm `Loop.again`", "recursively re-enter"],
+        &["Loop.again"],
     );
 }
 

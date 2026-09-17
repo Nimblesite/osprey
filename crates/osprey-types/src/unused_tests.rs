@@ -141,7 +141,7 @@ fn nested_pattern_bindings_have_independent_arm_scopes() {
 #[test]
 fn handlers_and_fibers_preserve_outer_captures() {
     reports(Flavor::Default,
-        "effect Pick { choose: fn(int, int) -> int }\nfn work(seed) = handle Pick\n choose first second => resume(first)\nin await (spawn (perform Pick.choose(seed, 2)))\nlet result = work(7)\n",
+        "effect Pick { control choose: fn(int, int) -> int }\nfn work(seed) = handle Pick\n choose first second => resume(first)\nin await (spawn (perform Pick.choose(seed, 2)))\nlet result = work(7)\n",
         &[("unused-handler-parameter", "unused handler parameter `second` of `Pick.choose`")]);
 }
 

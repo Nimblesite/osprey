@@ -148,8 +148,8 @@ fn handled_opening(effect: &str, operation: &str) -> String {
     format!("handler for `{effect}.{operation}` may resume more than once, but the handled")
 }
 
-/// The first entry of the handled expression's row, other than `effect`'s own,
-/// that is not replayable. Implements [MULTI-REPLAY-CHECK], [MULTI-REPLAY-COARSE].
+/// Every operation in the coarse replay row owes the same replay promise,
+/// including operations of the handled effect. Implements [MULTI-REPLAY-CHECK].
 fn non_replayable_entry(
     axis: &OperationAxis,
     effect: &str,
@@ -159,9 +159,7 @@ fn non_replayable_entry(
     let opening = handled_opening(effect, operation);
     handled_row
         .iter()
-        .find(|(row_effect, row_op)| {
-            row_effect != effect && !axis.is_replayable(row_effect, row_op)
-        })
+        .find(|(row_effect, row_op)| !axis.is_replayable(row_effect, row_op))
         .map(|(offender_effect, offender_op)| {
             format!(
                 "{opening} expression requires non-replayable effect \
@@ -219,7 +217,6 @@ fn unimplemented_abort(effect: &str, operation: &str) -> String {
     format!(
         "`{effect}.{operation}` is declared `abort`, but abandoning a region does not yet unwind it: \
 the discarded frames' owned operands are not released \
-(docs/plans/0026-structured-concurrency.md). Remove `abort` and answer \
-`{effect}.{operation}` with an arm that does not resume"
+(docs/specs/0017-AlgebraicEffects.md, EFFECTS-FINALIZATION)"
     )
 }

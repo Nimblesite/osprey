@@ -1,0 +1,12 @@
+// osprey: flavor=ml
+// The ML twin of handle_with_nothing_to_handle.ospo: a handler that names no
+// body and has nothing after it in its block handles nothing
+// ([EFFECTS-HANDLE-REST]).
+
+effect Logger
+    log : string => Unit
+
+main () =
+    print "before"
+    handle Logger
+        log msg => print msg

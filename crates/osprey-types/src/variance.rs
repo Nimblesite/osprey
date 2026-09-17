@@ -296,6 +296,7 @@ mod tests {
         let ctx = InferCtx::new();
         let out_t = [tp("T", Variance::Covariant)];
         let op = |ty: &str| EffectOperation {
+            mode: osprey_ast::OperationMode::Value,
             name: "op".into(),
             declared_multiplicity: None,
             replayable: false,
