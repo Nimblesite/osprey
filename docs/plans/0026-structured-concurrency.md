@@ -68,9 +68,10 @@ round-trip serialization — rather than adding a parallel subsystem.
 - **Deterministic mode** is sequential; `cancel` before the victim's driving
   `await` must still dequeue it, and turn order must be spawn order, or
   goldens diverge between modes.
-- **Staged effects** ([0035](../specs/0035-StagedEffects.md)): a static
-  region has no runtime turns; the turn graph must be built after static
-  discharge so erased handlers never appear in it.
+- **Staged effects:** retain captured-state ownership and alias evidence through
+  discharge ([Algebraic Effects](../specs/0017-AlgebraicEffects.md)). Erased
+  dispatch is absent from the runtime turn graph; residual memory access still
+  requires the same synchronization or exclusivity proof.
 - **Memory backends:** the differential harness runs every corpus program
   under all three backends; dropped continuations are a new ARC leak surface.
 

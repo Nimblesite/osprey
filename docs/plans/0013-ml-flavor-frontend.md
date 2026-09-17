@@ -11,10 +11,9 @@ support (`osprey-ml` language, TextMate grammar, layout config,
 snippets); specs 0023/0024 mirror to the website; **15 ML must-reject
 fixtures** cover the frontend's rejection paths; and the **LSP now
 answers in the authoring flavor** (`[LSP-FLAVOR-RENDER]`, spec 0020) with one
-shared `[FLAVOR-SELECT]` precedence chain. **Two items remain:** first-class
-handler *values* (Phase 0 — `handler E {}` / `handle a b do body` still error
-as reserved words) and the optional `osprey convert` transliterator. See
-[§What is left](#what-is-left-detailed).
+shared `[FLAVOR-SELECT]` precedence chain. Effects delivery is owned by
+[plan 0016](0016-algebraic-effects-and-handlers.md), including the callable-handler
+prototype. The optional `osprey convert` transliterator remains in this plan.
 
 ## Summary
 
@@ -53,21 +52,8 @@ approach is retained as a documented fallback in Phase 2.
 **Current state.** Phases 1–5 (flavor seam, frontend, selection, and tests) are
 implemented; 78 `.ospml` twins pass under the differential harness and 15 ML
 must-reject fixtures cover rejection paths. Phase 6/7 tooling and docs are done
-except for the optional `osprey convert` transliterator. **Phase 0 — first-class
-handler *values* — remains the shared-core feature gap:** `perform` and
-`handle … in` work, but the `handler E { … }` value form and `handle a b do
-body` multi-install still produce a reserved-token error (`handler`/`do` are
-`Reserved` tokens, `crates/osprey-syntax/src/ml/token.rs:128`) because the
-shared-core `Expr::HandlerValue`/`Expr::Install` nodes do not exist yet. This is
-a flavor-neutral shared-core addition, not ML-specific parser work.
-
-> **Note.** The original plan sequenced Phase 0 *before* the ML frontend. In
-> practice the frontend shipped first using the existing fused
-> `Expr::Handler { effect, arms, body }` (which `handle … in`/`handle … do`
-> both lower to), so ML effects work today. Handler *values* are now a
-> follow-up, tracked jointly with the effects roadmap
-> ([plan 0016](0016-algebraic-effects-and-handlers.md)).
-
+except for the optional `osprey convert` transliterator. Handler values and other effects work are tracked only in
+[plan 0016](0016-algebraic-effects-and-handlers.md).
 ## Implementation scope
 
 The post-AST pipeline is already flavor-agnostic by construction:
@@ -87,14 +73,8 @@ The post-AST pipeline is already flavor-agnostic by construction:
   plan 0002 retired). The
   ML lowerer does the currying desugar; the checker and codegen are untouched.
 
-The new work consists of **(a)** a layout-sensitive parser — a
-hand-written Rust layout lexer + recursive-descent (Pratt /
-precedence-climbing) parser in `crates/osprey-syntax/src/ml/`, deriving layout
-from the offside rule via an explicit indentation stack — and **(b)** one
-shared-core feature — **first-class handler values + multi-install** — because
-`Expr::Handler { effect, arms, body }` (`crates/osprey-ast/src/lib.rs:451`) fuses
-construction and installation and cannot express `db = handler Db …; handle db
-log do body`. That feature is flavor-neutral and lands first.
+This plan owns the layout frontend and its shared-AST boundary. The effects
+plan owns changes to handler semantics and their implementation in both flavors.
 
 ## Architecture
 
@@ -108,45 +88,16 @@ log do body`. That feature is flavor-neutral and lands first.
 
 ## What is left (detailed)
 
-The frontend is done. Two items remain:
+The optional `osprey convert` transliterator remains (§Phase 6). All effects
+work, including ML handler values and their conformance tests, is consolidated
+in [plan 0016](0016-algebraic-effects-and-handlers.md).
 
-1. **First-class handler values (Phase 0).**
-   `handler Log { info m => … }` bound to a name, and multi-install
-   `handle a b do body`, both error today (`unexpected token
-   Reserved("handler")`). Needs the shared-core `Expr::HandlerValue` /
-   `Expr::Install` nodes (§Phase 0 TODO below), a `Handler E` type, and
-   Default + ML surfaces. Flavor-neutral; tracked jointly with
-   [plan 0016](0016-algebraic-effects-and-handlers.md).
-2. **`osprey convert` transliterator** — optional Default ⇄ ML source
-   conversion (§Phase 6 TODO); no other item depends on it.
+## Phase 0 — Effects work moved to plan 0016
 
-Everything else in the phase TODOs below is checked.
-
-## Phase 0 — Shared-core: first-class handler values — ⬜ DEFERRED
-
-Flavor-neutral. Originally sequenced first; in practice the ML frontend
-shipped without it (using the fused `Expr::Handler`), so this is now a
-follow-up. See
 [FLAVOR-HANDLER-VALUE](../specs/0023-LanguageFlavors.md#shared-core-additions)
-and [plan 0016](0016-algebraic-effects-and-handlers.md), which owns the effect
-runtime this builds on.
-
-**Owner: [plan 0016](0016-algebraic-effects-and-handlers.md) Phase B.** This
-block used to restate 0016 Phase B almost word for word — the same eight items,
-unchecked in both files, with 0016 stating that "B enables handler values and
-completes plan 0013 Phase 0". Two plans owning one work item means neither is the
-source of truth and both drift, so the checklist now lives in **0016 only**;
-0016 also owns the effect runtime the feature is built on. What this plan retains
-is the ML-surface obligation that falls out of it, tracked in
-[§Phase 3](#phase-3--ml-lexer--parser--cst--lowerer) with the rest of the ML
-lowering:
-
-- [ ] Once 0016 Phase B lands the shared-core `Expr::HandlerValue` /
-      `Expr::Install` nodes, lower the ML spellings onto them — `handler E` →
-      `HandlerValue`, `handle a b do body` → `Install` — and drop `handler` / `do`
-      from `TokKind::Reserved` (`crates/osprey-syntax/src/ml/token.rs`), replacing
-      `examples/failscompilation/ml_handler_value_not_supported.ospo` with a
-      working twin. No other item in this plan depends on it.
+links the shared contract. Callable handlers already have a both-flavor
+prototype; this frontend plan does not prescribe a separate `Handler` type or
+installation mechanism.
 
 ## Phase 1 — Flavor frontend seam
 
@@ -197,7 +148,7 @@ TODO:
 > parser mechanism a flavor-internal swap that leaves the AST and everything
 > above it untouched.
 
-## Phase 3 — ML lowerer (CST → canonical AST) — ✅ DONE (except handler values)
+## Phase 3 — ML lowerer (CST → canonical AST) — ✅ DONE
 
 Obeys the [lowering contract](../specs/0023-LanguageFlavors.md#the-lowering-contract).
 
@@ -210,16 +161,9 @@ TODO:
 - [x] **Currying desugar** ([FLAVOR-CURRY](../specs/0023-LanguageFlavors.md#currying-canonicalisation));
       equals Default explicit-curry AST, differs from Default multi-param
       (pinned by `cross_flavor_equiv.rs`).
-- [x] Effects: `op : P => R` → `EffectOperation`; `handle … in` →
-      `Expr::Handler`; `perform E.op a` → `Expr::Perform`. **`… do` is NOT part
-      of this item** — ML accepts only `in` today (`handle … do` reports
-      `expected 'in' after handle arms` plus `ML construct 'do' is not yet
-      supported`), and spec 0024 `[FLAVOR-ML-HANDLER]` normatively documents `in`
-      with `do` reserved. The `do` spelling is the multi-install form and belongs
-      to the unchecked handler-values item below.
-- [ ] **Handler values**: `handler E` → `HandlerValue`; `handle a b do body`
-      → `Install` (blocked on Phase 0's shared-core nodes — the one lowering
-      arm still missing; `handler`/`do` remain `Reserved` tokens).
+- [x] Effects: layout declarations, handlers and operations lower to the shared
+      AST. Advanced effects syntax and conformance are tracked only in
+      [plan 0016](0016-algebraic-effects-and-handlers.md).
 - [x] Match: layout arms → `Match`/`MatchArm`; `Success value` →
       `Constructor { fields:["value"] }`.
 - [x] Records: layout block → `TypeConstructor`; layout update → `Update`.
@@ -390,9 +334,10 @@ TODO:
       `.expectedoutput` byte-for-byte under `make test`. **Unmet, and the reason
       the plan cannot be retired:** the curried / `=>` / `handle … in` half is
       green across 78 twins, but `handler E { … }` and `handle a b do body` are
-      still `Reserved`-token errors, so the first-class-handler half is
-      unreachable. Pinned in its rejecting state by
-      `examples/failscompilation/ml_handler_value_not_supported.ospo`.
+      were originally reserved-token errors. **Prototype update:** callable
+      `handler` values now run in both flavors; the obsolete rejection fixture
+      was replaced by positive handler execution tests. Flat multi-install
+      remains deferred; see plan 0016 for the current scope.
 - [x] The equivalent-bucket golden tests prove Default explicit-curry ≡ ML curry
       at the canonical AST. (The `handle … in` ≡ ML `handle … do` half of this
       bullet was never achievable as written — ML spells it `in`; see the

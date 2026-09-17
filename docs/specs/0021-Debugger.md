@@ -84,7 +84,7 @@ by calling. A resumed continuation did not: the frames below a `resume` belong
 to the handled body, the frames above belong to the arm, and the line joining
 them is the `perform` the arm is answering. The physical stack cannot express
 that edge, so a debug build MUST carry the effect trace of
-[MULTI-TRACE](0035-StagedEffects.md#effect-trace--multi-trace) beside it.
+[MULTI-TRACE](0017-AlgebraicEffects.md#effect-trace--multi-trace) beside it.
 
 A paused session presents the trace as its own view: performed at *site*,
 handled at *region*, resumed *n* times, innermost first. Each entry resolves to
@@ -93,7 +93,7 @@ to the `perform` or the arm that answered it. Sites belonging to a
 `static effect` MUST NOT appear — the rewrite removed them from the program
 before code generation, and a trace naming them would describe code the binary
 does not contain
-([STAGE-RESIDUE](0035-StagedEffects.md#zero-residue--stage-residue)).
+([STAGE-RESIDUE](0017-AlgebraicEffects.md#zero-residue--stage-residue)).
 
 For a continuation resumed at most once the trace is a straight line and adds
 context to the physical stack. For a multi-shot continuation it is the only

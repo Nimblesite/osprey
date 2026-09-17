@@ -58,7 +58,7 @@ effect handler arm; the handled `in` body remains ordinary client code.
 
 ## Functions and Currying
 
-`[FLAVOR-ML-FN]` A signature precedes its binding. Function arrows associate to the right. Arithmetic is total in both flavors — a property of the shared core, not of a surface — so integer arithmetic returns `int` in written and inferred signatures alike ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). ML's handle binder is `in`; Default's is `do` ([EFFECTS-HANDLE-DO](0037-ArithmeticEffects.md#the-default-handle-binder--effects-handle-do)).
+`[FLAVOR-ML-FN]` A signature precedes its binding. Function arrows associate to the right. Arithmetic follows the shared [Arithmetic Effects](0037-ArithmeticEffects.md) contract; handler forms follow [Algebraic Effects](0017-AlgebraicEffects.md).
 
 ```osprey-ml
 inc : int -> int
@@ -235,9 +235,7 @@ created = perform Db.add "buy milk"
 total = perform Db.count ()
 ```
 
-An effect declaration lowers to `Stmt::Effect`; a performance lowers to
-`Expr::Perform`. `resume` and `resume value` lower to `Expr::Resume` inside a
-handler arm.
+An effect declaration lowers to `Stmt::Effect`; a performance lowers to `Expr::Perform`. `resume value` (or `resume ()` for `Unit`) invokes a continuation in a control arm. Bare `resume`, including in tail position, denotes the owned continuation value; it is never an implicit invocation. Both follow [EFFECTS-CONTINUATION-OWNERSHIP](0017-AlgebraicEffects.md).
 
 `[FLAVOR-ML-EFFECT-OP-NAME]` Operation names are their own namespace. Exactly
 three positions hold one, and each admits nothing else, so a word this flavor
@@ -259,55 +257,47 @@ relay x =
     in perform Chan.send x
 ```
 
-This is the rule `abort` / `once` / `many` / `replayable` already follow under
-[FLAVOR-ML-EFFECT-ANNOTATIONS](#effects): a marker is a marker only when another
-name follows it, so `abort : string => Unit` declares an operation *called*
-`abort`. Every other position keeps its ordinary meaning — `send`, `recv` and
-`select` remain the channel forms wherever an expression is expected, and
-`handler` and `do` stay reserved and name nothing.
+An operation modifier is a modifier only when an operation name follows it: `abort : string => Unit` names an operation `abort`. Elsewhere, words retain their grammatical role: `send`, `recv` and `select` introduce channel forms, and `handler` introduces a callable handler.
 
-`[FLAVOR-ML-EFFECT-ANNOTATIONS]` An effect declaration carries two axes beyond
-its operations, and ML spells both as prefix keywords: `static` before `effect`
-fixes the stage
-([STAGE-DECL](0035-StagedEffects.md#declaring-a-stage--stage-decl)), and a
-multiplicity keyword with an optional `replayable` before an operation name
-fixes how many times that operation may be answered
-([MULTI-DECL](0035-StagedEffects.md#declaring-multiplicity--multi-decl)).
-Neither disturbs layout or the `=>` payload arrow.
+`[FLAVOR-ML-EFFECT-ANNOTATIONS]` ML uses the shared operation modifiers from [Algebraic Effects](0017-AlgebraicEffects.md). `static` precedes `effect`; operation modifiers precede the operation name. Layout and the `=>` payload arrow are unchanged.
 
 ```osprey-ml
 static effect Parallel
     forEach : (int, int => Unit) => Unit
 
 effect Choice T
-    many pick : List<T> => T
+    control many pick : List<T> => T
 ```
 
-Both are fields on the shared `Stmt::Effect` node and its operation list rather
-than nodes of their own, so the two flavors are the same declaration written
-twice and parity here is surface work, not semantic work
-([FLAVOR-BOUNDARY](0023-LanguageFlavors.md#canonical-ast-boundary)).
+Both flavors preserve these contracts in the shared effect declaration ([FLAVOR-BOUNDARY](0023-LanguageFlavors.md#canonical-ast-boundary)).
 
 ## Handlers
 
-`[FLAVOR-ML-HANDLER]` A handler is lexical: it names an effect,
-declares its arms, and handles one body after `in`.
+`[FLAVOR-ML-HANDLER]` ML writes handler arms as an indented block. Handler selection, operation modes and scope follow [Algebraic Effects](0017-AlgebraicEffects.md).
 
 ```osprey-ml
-result =
-    handle Db
-        add task => resume 1
-        count => resume 0
-    in
-        perform Db.add "buy milk"
+effect Reader
+    name : Unit => string
+
+greet () = "Hello, " + perform Reader.name ()
+
+reading person = handler Reader
+    name => person
+
+ada = reading "Ada"
+greeting = ada greet
 ```
 
-This lowers directly to `Expr::Handler { effect, arms, body }`.
+`handler` defines a value; applying it runs the supplied computation. A bodyless `handle` applies to the rest of its containing block:
 
-`handler Effect` values, the `Handler Effect` type, and `handle values do body`
-do not exist in the canonical AST. `handler` and `do` are reserved and produce
-a `not yet supported` syntax error
-([FLAVOR-HANDLER-VALUE](0023-LanguageFlavors.md#shared-core-additions)).
+```osprey-ml
+greetAda () =
+    handle Reader
+        name => "Ada"
+    greet ()
+```
+
+An explicit `in expression` selects a smaller region. These forms require no flavor-specific semantics or separate handler type; see [FLAVOR-HANDLER-VALUE](0023-LanguageFlavors.md#shared-core-additions).
 
 ## Generics ([FLAVOR-ML-GENERICS])
 
@@ -502,5 +492,5 @@ lines are statements. It lowers to `Expr::Block { statements, value }`.
 | `type`, inline unions | `Stmt::Type` and `TypeVariant` |
 | `match` and equational clauses | `Expr::Match` |
 | uppercase record head / lowercase update head | `Expr::TypeConstructor` / `Expr::Update` |
-| `effect`, `perform`, lexical `handle`, `resume` | shared effect AST nodes |
+| `effect`, `perform`, `handler`, `handle`, `resume` | shared effect semantics and lowering |
 | `spawn`, `await`, `yield`, `send`, `recv` | shared concurrency AST nodes |

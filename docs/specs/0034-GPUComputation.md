@@ -247,7 +247,7 @@ contract with a scan-based compaction.
 The compiler rejects any GPU combinator call whose kernel performs an
 algebraic effect **that a handler must discharge at run time**, directly or
 through any chain of helpers and lambdas. An effect a *static* handler has
-already erased ([0035-StagedEffects.md](0035-StagedEffects.md)) is not
+already erased ([0017-AlgebraicEffects.md](0017-AlgebraicEffects.md)) is not
 present in the kernel by the time this gate runs, so it is not an effect the
 kernel performs — the rule is about what reaches the device, not about how
 the source was written. The
@@ -280,7 +280,7 @@ When the checker *can* see the kernel's provenance and the answer is no, it
 says so instead: the rejection names the dynamic operations the body still
 requires, because that is evidence of a dynamic row rather than an absence of
 evidence. That wording is normative in
-[STAGE-GPU-DIAG](0035-StagedEffects.md#gpu-legality--stage-gpu-legal), which
+[STAGE-GPU-DIAG](0017-AlgebraicEffects.md#gpu-legality--stage-gpu-legal), which
 generalizes this section's empty-row rule to stage legality.
 
 ```osprey
@@ -427,7 +427,7 @@ combinators: `gpuMap`/`gpuZipWith` reject the stored element, `gpuFold` and
 `gpuScan` reject the accumulator update, and `gpuFilter` rejects the verdict.
 Handle failure inside the kernel with `?:` or `match`.
 
-This rejection is the arithmetic totality guarantee applied at the kernel boundary: a kernel may not carry an undischarged arithmetic fault, and no target may answer one by trapping or wrapping ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). On the host backend a kernel body dispatches to the enclosing `Arith` handler like any lambda. Device backends ([plan 0023](../plans/0023-gpu-computation.md)) have no handler stack and MUST fix the policy at compile time — a staged `handle static Arith` ([Staged Effects](0035-StagedEffects.md)) — rather than weaken any clause of the guarantee.
+This rejection applies the arithmetic policy contract at the kernel boundary: a kernel may not retain an undischarged arithmetic effect, and the compiler may not silently replace its chosen policy with trapping or wrapping ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). Host and device kernels follow the same empty-residual-row rule. A fallible site requires an explicitly selected static `Arith` interpretation whose residual operations satisfy the target's restrictions ([STAGE-GPU-LEGAL](0017-AlgebraicEffects.md#gpu-legality--stage-gpu-legal)); an outer dynamic policy alone is insufficient.
 
 ### Which kernels are extracted
 

@@ -12,8 +12,8 @@ The key words `MUST`, `MUST NOT`, `SHOULD`, and `MAY` are to be interpreted as d
 - **No silent wraparound.** A two's-complement result reaches the program only where the program names it: the `wrapped` payload of `Arith.overflow` inside a handler some region installed, or the total helpers `wrapAdd`/`wrapSub`/`wrapMul` ([ARITH-EFFECT-TOTAL-HELPERS](#total-helpers--arith-effect-total-helpers)).
 - **No unspecified value.** No arithmetic result is undefined behavior, poison, or target-dependent.
 - **No unhandled fault.** Every arithmetic site is, statically, exactly one of three things: proven total ([ARITH-EFFECT-TOTAL-SITES](#provably-total-sites--arith-effect-total-sites), [ARITH-EFFECT-CONST](#constant-folding--arith-effect-const), float IEEE-754 closure); discharged by an `Arith` handler on every execution path, through helpers, lambdas, and fibers ([ARITH-EFFECT-DISCHARGE](#static-discharge--arith-effect-discharge)); or the program is rejected at compile time. There is no fourth case.
-- **No declined fault.** The installed handler cannot refuse to produce a value: an `Arith` arm's value *is* the operation's result and is typed by the operation signature ([ARITH-EFFECT-ARMS](#handlers-substitute-they-cannot-decline--arith-effect-arms)); `resume` is rejected in `Arith` arms, so abandoning the faulting computation is unrepresentable.
-- **No divergence through the policy.** An `Arith` arm cannot itself fault — checked arithmetic inside any arm of an `Arith` handler is rejected ([ARITH-EFFECT-ARMS-NO-REENTRY](#no-re-entry--arith-effect-arms-no-reentry)) — so dispatch terminates after exactly one substitution.
+- **Value recovery by default.** `Arith` uses value operations: normal arm completion supplies the operation result, and `resume` is rejected. Explicit effects performed by a policy remain visible obligations under [the effects contract](0017-AlgebraicEffects.md); value mode alone does not prove termination or forbid an explicitly requested outer control effect.
+- **No divergence through the policy.** An `Arith` arm cannot itself fault — checked arithmetic inside any arm of an `Arith` handler is rejected ([ARITH-EFFECT-ARMS-NO-REENTRY](#forwarding-recovery--arith-effect-arms-no-reentry)) — so dispatch terminates after exactly one substitution.
 - **No fabricated fallback.** A plain `int`/`float` is never a `?:` scrutinee (`` `?:` needs a Result on its left, found int ``), and there is no ambient or implicit default policy: a recovery value exists only inside a handler a region installed by name.
 
 Floating-point `+`, `-`, `*`, and unary `-` satisfy the same totality through IEEE-754 closure — `inf` and `NaN` are defined values of `float`, not failures. Whether they should *additionally* surface through `Arith` is [plan 0022](../plans/0022-arithmetic-totality-audit.md)'s open float decision, out of scope here.
@@ -82,19 +82,21 @@ Folding is what keeps file-scope bindings coherent: a file-scope initializer run
 
 ## Handlers substitute; they cannot decline — [ARITH-EFFECT-ARMS]
 
-`Arith` arms are ordinary substituting handler arms: the arm's value is the operation's result, typed by the operation signature, and execution continues after the faulting operation. Because every operation returns `int` or `float`, an arm MUST produce a value — halting the program is not expressible in the signature. `resume` in an `Arith` arm is rejected. This preserves both halves of Osprey's arithmetic promise: no panic, and no silent fabrication — the recovery value is chosen by a named, lexically scoped policy instead of a `?:` literal at every call site.
+`Arith` operations use the value mode defined in [Algebraic Effects](0017-AlgebraicEffects.md).
+Normal arm completion supplies the declared numeric result; `resume` is invalid.
+A policy's own effects remain requirements, including an explicit request to an
+outer control handler. The arithmetic operation itself never implicitly traps,
+aborts or fabricates a recovery value. Target availability follows the canonical
+capability rules.
 
-Substituting arms are the direct handler-call path on native and the supported handler form on wasm32 ([Effects on WebAssembly](0017-AlgebraicEffects.md)), so this design runs on every target.
+### Forwarding recovery — [ARITH-EFFECT-ARMS-NO-REENTRY]
 
-### No re-entry — [ARITH-EFFECT-ARMS-NO-REENTRY]
-
-Checked arithmetic inside any arm of an `Arith` handler is rejected at compile time. The rejection is whole-effect, not per-operation: sibling operations could otherwise recurse mutually — an `overflow` arm whose `%` faults into `remainderByZero`, whose `+` faults back into `overflow`.
-
-```text
-handler arm `Arith.overflow` contains checked arithmetic, which performs `Arith` while that handler is active; use wrapAdd/satAdd or the operation's `wrapped` payload
-```
-
-Arms compute with comparisons, literals, the operation payloads, and the total helpers below. Handler-owned `mut` state ([EFFECTS-HANDLER-STATE](0017-AlgebraicEffects.md#handler-owned-state)) is written with total-helper results — the sticky-flag policy needs no arithmetic at all.
+An arm executes outside its own installation. Fallible arithmetic inside a
+recovery arm therefore requires an outer `Arith` policy; it cannot recursively
+select that same active arm. With no outer policy it is rejected as an unhandled
+operation. Prefer the total helpers or the operation's `wrapped` payload when
+recovery should have no further arithmetic requirements. This follows the
+ordinary handler scoping rule; arithmetic has no separate re-entry mechanism.
 
 ### Total helpers — [ARITH-EFFECT-TOTAL-HELPERS]
 
@@ -155,17 +157,16 @@ do {
 }
 ```
 
-## The Default handle binder — [EFFECTS-HANDLE-DO]
+## Handler application
 
-In the Default flavor the handle body binder is `do`: `handle E arms... do body`. ML keeps `in`, which it inherits from `let ... in` and layout tradition. In every mainstream brace language `in` means iteration or membership (`for x in xs`, `foreach (x in xs)`, JavaScript's `in` operator), so `handle ... in run()` misreads as iterating `run()`; `do` reads as "execute this block" in C-family languages and is Haskell's block keyword, and it is already reserved in the ML lexer. Renaming also frees `in` for any future Default iteration surface. Divergent surface spellings over one AST are exactly what [FLAVOR-BOUNDARY](0023-LanguageFlavors.md) permits — Default and ML already differ on `let`, `:=`, and ternaries.
-
-```ebnf
-handlerExprDefault ::= "handle" IDENT handlerArm+ "do" expression
-handlerExprML      ::= "handle" IDENT handlerArm+ "in" expression
-```
-
-`in` is not a handle binder in Default; `in`/`out` remain the variance markers on type parameters.
+[EFFECTS-HANDLE-DO](0017-AlgebraicEffects.md#handling-the-rest-of-a-block-effects-handle-rest)
+owns Default/ML body syntax, callable handlers and bodyless installation.
+Arithmetic policies use those forms without a separate handler grammar.
 
 ## Scope
 
-Prelude-named policies (`handle Arith.saturating do ...`) require handler values ([plan 0016](../plans/0016-algebraic-effects-and-handlers.md) Phase B) and are outside the initial delivery. Compile-time-selected policies via `handle static Arith` ([Staged Effects](0035-StagedEffects.md)) are the intended answer for device backends, which have no runtime handler stack; that is a recorded direction, not a commitment.
+Named policies are ordinary callable handlers, such as `saturating(work)`.
+An explicit `handle static Arith` supplies a checked static interpretation for
+a device region under [STAGE-HANDLE-STATIC](0017-AlgebraicEffects.md#static-handlers--stage-handle-static).
+Arithmetic delivery remains in [plan 0027](../plans/0027-arithmetic-effects.md);
+shared handler and staging delivery belongs only to [plan 0016](../plans/0016-algebraic-effects-and-handlers.md).
