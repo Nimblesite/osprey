@@ -6,6 +6,12 @@
 
 #include <stdint.h>
 
+// Every (effect instantiation, operation) pair a program can perform is
+// interned by codegen (crates/osprey-codegen/src/effects.rs) to a dense id
+// below this bound; the runtime keeps one evidence slot per id. Codegen
+// refuses a program that needs more, so the two sides must change together.
+#define OSP_MAX_OPERATION_IDS 4096
+
 // A copy of one thread's handler stack, taken on the thread that installs the
 // handlers and restored on the thread that continues the computation. Opaque
 // here: only effects_runtime.c knows the layout, everything else moves it by
@@ -20,10 +26,8 @@ void __osprey_handler_restore(HandlerSnapshot *snap);
 // The returned scope owns a saved tail and must be restored in nesting order.
 typedef struct HandlerScope HandlerScope;
 int __osprey_handler_depth(void);
-int __osprey_handler_push_scoped(const char *effect_name, const char *operation_name,
-                                void *handler_func_ptr, void *env, int base);
-HandlerScope *__osprey_handler_suspend_scope(const char *effect_name,
-                                             const char *operation_name);
+int __osprey_handler_push_scoped(int operation_id, void *handler_func_ptr, void *env, int base);
+HandlerScope *__osprey_handler_suspend_scope(int operation_id);
 void __osprey_handler_restore_scope(HandlerScope *scope);
 void __osprey_handler_stack_cleanup(void);
 

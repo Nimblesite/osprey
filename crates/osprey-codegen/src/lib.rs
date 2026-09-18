@@ -1453,11 +1453,11 @@ mod tests {
              fn bump() -> int !State = { let a = perform State.get()  perform State.set((a + 1) ?: a)  perform State.get() }\n\
              fn main() -> int { mut c = 0\n  let r = handle State get => c set v => { c = v } in bump()\n  print(\"r=${toString(r)} c=${toString(c)}\")\n  0 }\n",
         );
-        // env-carrying handler ABI (push takes a 4th i8* env; perform resolves it)
+        // env-carrying handler ABI (push takes an i8* env; perform resolves it)
         shows(
             &ir,
             &[
-                "declare i32 @__osprey_handler_push(i8*, i8*, i8*, i8*)",
+                "declare i32 @__osprey_handler_push_scoped(i32, i8*, i8*, i32)",
                 "@__osprey_handler_lookup_env",
             ],
         );

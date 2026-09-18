@@ -3,6 +3,7 @@
 //! current basic block, lexical scopes). Low-level helpers here only *emit*
 //! text; the AST-walking lives in `lower.rs`.
 
+use crate::error::{CodegenError, Result};
 use crate::llty::{LType, Value};
 use crate::types::ltype_of;
 use osprey_ast::{Expr, Position};
@@ -125,6 +126,10 @@ pub(crate) struct Codegen {
     effect_ops: HashMap<String, crate::effects::OpSig>,
     /// Monotonic id giving each emitted handler function a unique name.
     handler_count: usize,
+    /// Dense operation ids, keyed by `(runtime effect key, operation)`: the
+    /// runtime keeps one evidence slot per id, so a `perform` indexes instead
+    /// of scanning. Shared by every push and perform of the module.
+    operation_ids: HashMap<(String, String), u32>,
     /// Monotonic id giving each lambda lifted to a top-level function (a lambda
     /// used as a value, e.g. passed to a function-typed parameter) a unique name.
     lambda_count: usize,
@@ -645,6 +650,7 @@ impl Codegen {
             fnval_cells: HashMap::new(),
             effect_ops: HashMap::new(),
             handler_count: 0,
+            operation_ids: HashMap::new(),
             lambda_count: 0,
             gpu_kernels: options.gpu_kernels,
             kernel_count: 0,
@@ -866,6 +872,24 @@ impl Codegen {
         let id = self.handler_count;
         self.handler_count += 1;
         id
+    }
+
+    /// The operation id `(effect_key, operation)` is interned to, allocating
+    /// the next dense id on first sight. Errors once the runtime's evidence
+    /// table (`OSP_MAX_OPERATION_IDS` in `effects_runtime.h`) would overflow.
+    pub(crate) fn operation_id(&mut self, effect_key: &str, operation: &str) -> Result<u32> {
+        let key = (effect_key.to_string(), operation.to_string());
+        if let Some(id) = self.operation_ids.get(&key) {
+            return Ok(*id);
+        }
+        let id = u32::try_from(self.operation_ids.len()).unwrap_or(u32::MAX);
+        if id >= MAX_OPERATION_IDS {
+            return Err(CodegenError::invalid(format!(
+                "program performs more than {MAX_OPERATION_IDS} distinct effect operations"
+            )));
+        }
+        let _ = self.operation_ids.insert(key, id);
+        Ok(id)
     }
 
     /// A fresh, module-unique id for a lifted lambda's function name.
@@ -1663,6 +1687,10 @@ impl Codegen {
 /// async frame-pointer chain walk is valid from any sample point. Implements
 /// [PROF-CODEGEN-FP], docs/specs/0028-Profiler.md; cost is ~1% (arm64 reserves
 /// x29 for the frame chain by ABI anyway).
+/// Mirrors `OSP_MAX_OPERATION_IDS` in `compiler/runtime/effects_runtime.h`: the
+/// size of the runtime's per-operation evidence table.
+const MAX_OPERATION_IDS: u32 = 4096;
+
 const FRAME_POINTER_ATTRS: &str = "attributes #0 = { \"frame-pointer\"=\"all\" }";
 
 /// The swappable allocation hook declaration. `noalias` + the allocator

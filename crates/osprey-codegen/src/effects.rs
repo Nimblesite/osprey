@@ -1,7 +1,7 @@
 //! Declared operations, scoped handler activation, and typed requests.
 //! Each `handle` arm becomes a top-level handler function; entering the
 //! `handle` pushes those functions onto the C runtime's handler stack
-//! (`__osprey_handler_push_scoped`, keyed by effect+operation name) and leaving pops
+//! (`__osprey_handler_push_scoped`, keyed by an interned operation id) and leaving pops
 //! them, so a `perform` in any (even forward-referenced) function resolves the
 //! innermost active handler dynamically via `__osprey_handler_lookup` and an
 //! indirect call. Operation declarations select value substitution or explicit
@@ -237,11 +237,11 @@ fn checked_arm_op<'a>(
 
 fn declare_stack(cg: &mut Codegen) {
     cg.add_extern("declare i32 @__osprey_handler_depth()");
-    cg.add_extern("declare i32 @__osprey_handler_push_scoped(i8*, i8*, i8*, i8*, i32)");
+    cg.add_extern("declare i32 @__osprey_handler_push_scoped(i32, i8*, i8*, i32)");
     cg.add_extern("declare i32 @__osprey_handler_pop()");
-    cg.add_extern("declare i8* @__osprey_handler_lookup(i8*, i8*)");
-    cg.add_extern("declare i8* @__osprey_handler_lookup_env(i8*, i8*)");
-    cg.add_extern("declare i8* @__osprey_handler_suspend_scope(i8*, i8*)");
+    cg.add_extern("declare i8* @__osprey_handler_lookup(i32)");
+    cg.add_extern("declare i8* @__osprey_handler_lookup_env(i32)");
+    cg.add_extern("declare i8* @__osprey_handler_suspend_scope(i32)");
     cg.add_extern("declare void @__osprey_handler_restore_scope(i8*)");
 }
 
@@ -389,12 +389,10 @@ pub(crate) fn gen_handler(
         let id = cg.next_handler_id();
         let fn_name = format!("__handler_{effect}_{}_{id}", arm.operation);
         emit_handler_fn(cg, &fn_name, arm, &sig, resolved, &caps, &env_ty)?;
-        let eff_s = cg.string_constant(&key);
-        let op_s = cg.string_constant(&arm.operation);
+        let op_id = cg.operation_id(&key, &arm.operation)?;
         let fp = cg.emit_reg(format!("bitcast {} @{fn_name} to i8*", sig.fn_ptr_ty()));
         let _ = cg.emit_reg(format!(
-            "call i32 @__osprey_handler_push_scoped(i8* {}, i8* {}, i8* {fp}, i8* {env}, i32 {activation})",
-            eff_s.operand, op_s.operand
+            "call i32 @__osprey_handler_push_scoped(i32 {op_id}, i8* {fp}, i8* {env}, i32 {activation})"
         ));
     }
 
@@ -739,8 +737,7 @@ fn gen_resuming_handler(
             "__resume_suspend_{effect}_{}_{id}_{}",
             arm.operation, arm.op_id
         );
-        let eff_s = cg.string_constant(&key);
-        let op_s = cg.string_constant(&arm.operation);
+        let op_id = cg.operation_id(&key, &arm.operation)?.to_string();
         let fp = cg.emit_reg(format!(
             "bitcast {} @{suspend_fn} to i8*",
             arm.sig.fn_ptr_ty()
@@ -748,8 +745,8 @@ fn gen_resuming_handler(
         let _ = cg.call(
             "i32",
             "__osprey_handler_push_scoped",
-            "i8*, i8*, i8*, i8*, i32",
-            &[&eff_s.operand, &op_s.operand, &fp, &coro, &activation],
+            "i32, i8*, i8*, i32",
+            &[&op_id, &fp, &coro, &activation],
         );
     }
 
@@ -1112,33 +1109,22 @@ pub(crate) fn gen_perform(
         typed.push(v.typed());
     }
 
-    let eff_s = cg.string_constant(&lookup_key);
-    let op_s = cg.string_constant(operation);
-    let raw = cg.emit_reg(format!(
-        "call i8* @__osprey_handler_lookup(i8* {}, i8* {})",
-        eff_s.operand, op_s.operand
-    ));
+    let op_id = cg.operation_id(&lookup_key, operation)?.to_string();
+    let raw = cg.emit_reg(format!("call i8* @__osprey_handler_lookup(i32 {op_id})"));
     // A missed lookup returns null — abort with a message instead of calling
     // a null pointer (an instantiation mismatch on a generic effect misses by
     // design, [EFFECTS-GENERIC-RUNTIME]).
     emit_unhandled_guard(cg, &raw, &lookup_key, operation);
     let env = cg.emit_reg(format!(
-        "call i8* @__osprey_handler_lookup_env(i8* {}, i8* {})",
-        eff_s.operand, op_s.operand
+        "call i8* @__osprey_handler_lookup_env(i32 {op_id})"
     ));
     let fp = cg.emit_reg(format!("bitcast i8* {raw} to {}", sig.fn_ptr_ty()));
     let ret_ty = sig.ret_ty();
     let r = cg.fresh_reg();
     let mut call_args = vec![format!("i8* {env}")];
     call_args.extend(typed);
-    let scope = (!sig.mode.is_control()).then(|| {
-        cg.call(
-            "i8*",
-            "__osprey_handler_suspend_scope",
-            "i8*, i8*",
-            &[&eff_s.operand, &op_s.operand],
-        )
-    });
+    let scope = (!sig.mode.is_control())
+        .then(|| cg.call("i8*", "__osprey_handler_suspend_scope", "i32", &[&op_id]));
     cg.emit(format!(
         "{r} = call {ret_ty} {fp}({})",
         call_args.join(", ")
