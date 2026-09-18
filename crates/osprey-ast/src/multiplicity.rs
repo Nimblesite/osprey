@@ -238,9 +238,10 @@ mod tests {
         assert_eq!(table.multiplicity_of("Absent", "gone"), Multiplicity::Once);
         assert!(table.is_replayable("Choice", "seed"));
         assert!(!table.is_replayable("Choice", "pick"));
-        // Static entries count as replayable: after discharge they are ordinary
-        // code, and re-running ordinary code is already assumed harmless.
-        assert!(table.is_replayable("Tile", "size"));
+        // Replayability is DECLARED. A static operation is not replayable by
+        // virtue of being static: its captured state has to earn that
+        // ([MULTI-REPLAY-STATE]).
+        assert!(!table.is_replayable("Tile", "size"));
         assert!(!table.is_replayable("Absent", "gone"));
     }
 }

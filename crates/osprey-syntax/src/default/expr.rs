@@ -726,7 +726,16 @@ mod tests {
             Expr::Select { .. }
         ));
         // handler with params + perform inside its body.
-        match let_value("let r = handle Log\n  info m => m\nin perform Log.info(x: 1)\n") {
+        // The handler over the rest of its block is the block's VALUE.
+        let block =
+            let_value("let r = {\n  handle Log { info m => m }\n  perform Log.info(x: 1)\n}\n");
+        let handled = match block {
+            Expr::Block {
+                value: Some(value), ..
+            } => *value,
+            other => panic!("expected a block, got {other:?}"),
+        };
+        match handled {
             Expr::Handler { effect, arms, .. } => {
                 assert_eq!(effect, "Log");
                 assert_eq!(arms[0].operation, "info");

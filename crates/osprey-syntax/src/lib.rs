@@ -386,12 +386,12 @@ fn frame() = kernel\n    Tile size => 8\nin shade(2)\n";
         );
     }
 
-    /// [STAGE-SIGNALS-EXACT]: only the static stage can represent instantiation
-    /// identity — a dynamic handler is keyed by effect name at runtime — so an
-    /// instantiated mention of a dynamic effect is rejected rather than
-    /// compiled to a key it shares with every other instantiation.
+    /// [EFFECTS-GENERIC-INSTANTIATION]: a written instantiation identifies the
+    /// same operation at either stage, so an instantiated mention of a dynamic
+    /// effect is a spelling of its identity, not a staging violation. Its
+    /// ARITY is still the declaration's.
     #[test]
-    fn an_instantiated_dynamic_effect_is_rejected_rather_than_shared() {
+    fn an_instantiated_dynamic_effect_names_the_same_operation() {
         let source = "effect Signal<T> { read: fn() -> T }\n\
 fn counter(n) = (perform Signal<Count>.read()) ?: n\n";
         let parsed = parse_program_with_flavor(source, Flavor::Default);
@@ -399,11 +399,18 @@ fn counter(n) = (perform Signal<Count>.read()) ?: n\n";
         let errors = osprey_ast::stage::discharge(&parsed.program)
             .err()
             .unwrap_or_default();
+        assert!(errors.is_empty(), "{errors:?}");
+        let wrong_arity = parse_program_with_flavor(
+            "effect Signal<T> { read: fn() -> T }\n\
+fn counter(n) = (perform Signal<Count, Extra>.read()) ?: n\n",
+            Flavor::Default,
+        );
+        let errors = osprey_ast::stage::discharge(&wrong_arity.program)
+            .err()
+            .unwrap_or_default();
         assert!(
-            errors.iter().any(|e| e
-                .message
-                .contains("names an instantiation of dynamic effect `Signal`")),
-            "expected the dynamic-instantiation rejection, got: {errors:?}"
+            !errors.is_empty(),
+            "a two-argument mention of a one-parameter effect must be rejected"
         );
     }
 

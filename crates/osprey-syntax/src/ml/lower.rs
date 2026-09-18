@@ -2589,11 +2589,11 @@ mod tests {
 
     #[test]
     fn handle_lowers_to_handler_expr() {
-        // `handle Trace` + a `mark label => …` arm + `in traced ()` lowers to the
-        // SAME `Expr::Handler` the Default `handle Trace mark label => … in traced()`
-        // emits ([FLAVOR-ML-EFFECT]).
+        // `handle Trace` + a `mark label => …` arm over the rest of its block
+        // lowers to the SAME `Expr::Handler` the Default braced form emits
+        // ([FLAVOR-ML-EFFECT], [EFFECTS-HANDLE-REST]).
         let src =
-            "r =\n    handle Trace\n        mark label =>\n            resume\n    in traced ()\n";
+            "r =\n    handle Trace\n        mark label =>\n            resume ()\n    traced ()\n";
         let s = ml_one_stmt(src);
         assert!(
             matches!(
@@ -2625,9 +2625,11 @@ mod tests {
 
     #[test]
     fn resume_lowers_with_and_without_argument() {
-        // `resume` (no arg) → `Resume(None)`; `resume seed` → `Resume(Some(seed))`,
-        // byte-identical to the Default `resume()` / `resume(seed)` ([FLAVOR-ML-EFFECT]).
-        let bare = ml_one_stmt("r = resume\n");
+        // `resume ()` → `Resume(None)`; `resume seed` → `Resume(Some(seed))`,
+        // byte-identical to the Default `resume()` / `resume(seed)`
+        // ([FLAVOR-ML-EFFECT]). Bare `resume` denotes the owned continuation
+        // VALUE and never silently invokes it ([EFFECTS-CONTINUATION-OWNERSHIP]).
+        let bare = ml_one_stmt("r = resume ()\n");
         assert!(
             matches!(
                 bare,

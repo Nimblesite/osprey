@@ -1797,20 +1797,22 @@ impl Parser<'_> {
             self.advance();
             return MlExpr::Resume(None);
         }
-        // An indented block or inline expression supplies the resumed value.
-        if matches!(self.peek(), TokKind::Indent) || self.starts_resume_arg() {
+        // An indented block, or a `match` whose arms are the resumed value,
+        // supplies the whole remaining body.
+        if matches!(self.peek(), TokKind::Indent | TokKind::KwMatch) {
             return MlExpr::Resume(Some(Box::new(self.body_after_eq())));
+        }
+        // Otherwise `resume` is an ordinary application and takes ONE argument.
+        // Reading the rest of the line instead made `resume cap + 1` mean
+        // `resume (cap + 1)`, a different program from its Default twin
+        // `resume(cap) + 1` ([FLAVOR-IR-EQUIV]).
+        if self.starts_atom() {
+            return MlExpr::Resume(Some(Box::new(self.postfix())));
         }
         self.error(
             "owned continuation values are not implemented; use `resume ()` to invoke with Unit",
         );
         MlExpr::Resume(None)
-    }
-
-    /// Whether the current token begins an inline `resume` argument: an ordinary
-    /// argument atom, or a `match` whose own arms supply the resumed value.
-    fn starts_resume_arg(&self) -> bool {
-        self.starts_atom() || matches!(self.peek(), TokKind::KwMatch)
     }
 
     /// `await fiber` — block on a spawned fiber. Takes one postfix atom (the

@@ -19,8 +19,11 @@ const EFFECT_DEFAULT: &str = "effect Log { info: fn(string) -> Unit }\n";
 const EFFECT_ML: &str = "effect Log\n    info : string => Unit\n";
 
 #[test]
-fn handling_the_rest_of_a_block_is_the_in_form_over_that_rest() {
-    let rest = concat!(
+fn a_handler_over_the_rest_of_a_block_is_accepted_in_both_flavors() {
+    // `handle E { arms }` governs the statements that follow it in its block.
+    // There is no second spelling: an explicit computation is written by
+    // applying a handler VALUE. [EFFECTS-HANDLE-REST]
+    let default = concat!(
         "fn run() = {\n",
         "    handle Log {\n",
         "        info m => print(m)\n",
@@ -29,48 +32,41 @@ fn handling_the_rest_of_a_block_is_the_in_form_over_that_rest() {
         "    perform Log.info(\"two\")\n",
         "}\n",
     );
-    let named = concat!(
-        "fn run() = {\n",
-        "    handle Log\n",
-        "        info m => print(m)\n",
-        "    in {\n",
-        "        perform Log.info(\"one\")\n",
-        "        perform Log.info(\"two\")\n",
-        "    }\n",
-        "}\n",
-    );
-    assert_eq!(
-        canonical(&format!("{EFFECT_DEFAULT}{rest}"), Flavor::Default),
-        canonical(&format!("{EFFECT_DEFAULT}{named}"), Flavor::Default)
-    );
-}
-
-#[test]
-fn ml_handling_the_rest_of_a_block_is_the_in_form_over_that_rest() {
-    // The ML twin of the contract above. Cross-flavor equality is not asserted
-    // on this shape: `fn run() = { … }` keeps its block in Default while ML
-    // collapses a single-value layout block, a difference that predates this
-    // syntax. The flavors are held to identical IR by the corpus twins in
-    // `tests/regressions/effects/handler_scoping.test.{osp,ospml}`.
-    let rest = concat!(
+    let ml = concat!(
         "run () =\n",
         "    handle Log\n",
         "        info m => print m\n",
         "    perform Log.info \"one\"\n",
         "    perform Log.info \"two\"\n",
     );
-    let named = concat!(
-        "run () =\n",
-        "    handle Log\n",
-        "        info m => print m\n",
-        "    in\n",
-        "        perform Log.info \"one\"\n",
-        "        perform Log.info \"two\"\n",
-    );
-    assert_eq!(
-        canonical(&format!("{EFFECT_ML}{rest}"), Flavor::Ml),
-        canonical(&format!("{EFFECT_ML}{named}"), Flavor::Ml)
-    );
+    let _ = canonical(&format!("{EFFECT_DEFAULT}{default}"), Flavor::Default);
+    let _ = canonical(&format!("{EFFECT_ML}{ml}"), Flavor::Ml);
+}
+
+#[test]
+fn in_and_do_handler_forms_are_rejected_in_both_flavors() {
+    // "Handler forms with `in` or `do` are rejected in both flavors; there are
+    // no compatibility aliases." [EFFECTS-HANDLE-REST]
+    for (flavor, source) in [
+        (
+            Flavor::Default,
+            format!("{EFFECT_DEFAULT}fn run() = handle Log {{\n info m => print(m)\n}} do perform Log.info(\"one\")\n"),
+        ),
+        (
+            Flavor::Default,
+            format!("{EFFECT_DEFAULT}fn run() = handle Log\n info m => print(m)\nin perform Log.info(\"one\")\n"),
+        ),
+        (
+            Flavor::Ml,
+            format!("{EFFECT_ML}run () =\n    handle Log\n        info m => print m\n    in\n        perform Log.info \"one\"\n"),
+        ),
+    ] {
+        let parsed = parse_program_with_flavor(&source, flavor);
+        assert!(
+            !parsed.errors.is_empty(),
+            "{flavor} still accepts an `in`/`do` handler form: {source}"
+        );
+    }
 }
 
 #[test]
@@ -107,9 +103,31 @@ fn a_handler_that_names_no_body_and_handles_nothing_is_rejected() {
             parsed
                 .errors
                 .iter()
-                .any(|error| error.message.contains("names no body")),
+                .any(|error| error.message.contains("nothing to handle")),
             "{flavor} accepted a handler with nothing to handle: {:?}",
             parsed.errors
         );
     }
+}
+
+#[test]
+fn ml_resume_takes_one_argument_not_the_rest_of_the_expression() {
+    // `resume cap + 1` is `(resume cap) + 1`: ML application binds tighter than
+    // any operator, and `resume` is an application like every other. Reading
+    // the rest of the line as the resumed value made the ML twin of
+    // `resume(cap) + 1` compute `resume(cap + 1)` — the same source, a
+    // different program, which [FLAVOR-IR-EQUIV] forbids.
+    let ml = concat!(
+        "effect Ctl\n",
+        "    control pick : Unit => int\n",
+        "bounded cap =\n",
+        "    handler Ctl\n",
+        "        pick => resume cap + 1 ?: 0\n",
+    );
+    let grouped = ml.replace("resume cap + 1", "(resume cap) + 1");
+    assert_eq!(
+        canonical(ml, Flavor::Ml),
+        canonical(&grouped, Flavor::Ml),
+        "`resume cap + 1` must group as `(resume cap) + 1`"
+    );
 }
