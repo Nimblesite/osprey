@@ -233,25 +233,17 @@ impl Lowering {
         };
         let (effect, operation) = (effect.clone(), operation.clone());
         let (arguments, position) = (arguments.clone(), *position);
-        let Some((region_index, arm)) = innermost_arm(regions, &effect, &operation) else {
-            self.errors.push(StageError::new(
-                format!(
-                    "static handler for `{effect}` does not cover operation `{effect}.{operation}`"
-                ),
-                position,
-            ));
+        // A region that answers nothing here, or an arm whose parameters do not
+        // match the request, is already rejected before the rewrite runs:
+        // `stage::validate` names the uncovered operation and the type checker
+        // names the arity ([STAGE-LOWER-ORDER-PHASE]). Repeating either
+        // diagnostic here would only give one defect two wordings, so an
+        // unrewritable request is left standing for the residual row to report.
+        let Some((region_index, arm)) = innermost_arm(regions, &effect, &operation)
+            .filter(|(_, arm)| arm.params.len() == arguments.len())
+        else {
             return;
         };
-        if arm.params.len() != arguments.len() {
-            self.errors.push(arity_error(
-                &effect,
-                &operation,
-                &arm,
-                arguments.len(),
-                position,
-            ));
-            return;
-        }
         if self.spend_fuel(&effect, &operation, position) {
             *expression = bind_parameters(&arm, &arguments);
             self.depth = self.depth.saturating_add(1);
@@ -439,22 +431,6 @@ fn call(name: &str, arguments: Vec<Expr>) -> Expr {
         arguments,
         named_arguments: Vec::new(),
     }
-}
-
-fn arity_error(
-    effect: &str,
-    operation: &str,
-    arm: &HandlerArm,
-    supplied: usize,
-    position: Option<Position>,
-) -> StageError {
-    StageError::new(
-        format!(
-            "static handler arm `{effect}.{operation}` binds {} parameters but the operation is performed with {supplied} arguments",
-            arm.params.len()
-        ),
-        position,
-    )
 }
 
 /// Whether any enclosing region answers `effect`.

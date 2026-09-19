@@ -39,15 +39,6 @@ impl OperationMode {
     pub const fn is_control(self) -> bool {
         matches!(self, Self::Control)
     }
-
-    /// How diagnostics name this mode.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Value => "value",
-            Self::Control => "control",
-        }
-    }
 }
 
 /// How many times a handler may answer one request. Implements [MULTI-AXIS].

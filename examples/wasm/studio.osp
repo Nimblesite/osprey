@@ -121,19 +121,19 @@ fn run() = {
             revenue
         }
     }
-            let _total = books()
-            print("::OSPREY-STUDIO|1
-    ::DDL
-    ${ddl()}
-    ::SEED
-    ${seed}::END-SEED
-    ${queries()}
-    ::METRIC|total_revenue|${revenue}
-    ::METRIC|total_units|${units}
-    ::METRIC|order_count|${count}
-    ::METRIC|premium_orders|${premium}
-    ::METRIC|revenue_tier|${tier(revenue)}
-    ::END")
+    let _total = books()
+    print("::OSPREY-STUDIO|1
+::DDL
+${ddl()}
+::SEED
+${seed}::END-SEED
+${queries()}
+::METRIC|total_revenue|${revenue}
+::METRIC|total_units|${units}
+::METRIC|order_count|${count}
+::METRIC|premium_orders|${premium}
+::METRIC|revenue_tier|${tier(revenue)}
+::END")
 }
 
 let studio = run()

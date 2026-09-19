@@ -220,3 +220,86 @@ print("${run(1)}:${run(2)}")
         "1:2\n",
     );
 }
+
+#[test]
+fn names_resolve_through_namespace_and_module_scopes() {
+    assert_output(
+        "namespaced",
+        r#"
+static effect Read { get: fn() -> int }
+namespace app {
+    module Math {
+        export fn double(n) = (n * 2) ?: 0
+    }
+}
+import app::Math
+fn value() = perform Read.get()
+let total = {
+    handle static Read {
+        get => 21
+    }
+    Math::double(value())
+}
+print("${total}")
+"#,
+        "42\n",
+    );
+}
+
+#[test]
+fn record_union_and_list_binders_survive_discharge() {
+    assert_output(
+        "binders",
+        r#"
+static effect Shape { pick: fn() -> int }
+type Point = { x: int, y: int }
+type Tier = Epic { rank: int, bonus: int } | Starter
+fn reading() = perform Shape.pick()
+let report = {
+    handle static Shape {
+        pick => 3
+    }
+    {
+        let base = Point { x: reading(), y: 1 }
+        let moved = base { y: 4 }
+        let ranked = match Epic { rank: reading(), bonus: 2 } {
+            Epic { rank } => rank
+            Starter => 0
+        }
+        let spread = match moved {
+            { x, y } => (x + y) ?: 0
+        }
+        let tail = match [moved.x, moved.y, ranked] {
+            [head, ...rest] => (head + length(rest)) ?: 0
+            [] => 0
+        }
+        "${base.x}:${moved.y}:${ranked}:${spread}:${tail}"
+    }
+}
+print(report)
+"#,
+        "3:4:3:7:5\n",
+    );
+}
+
+#[test]
+fn result_payload_binders_survive_discharge() {
+    assert_output(
+        "result_binders",
+        r#"
+static effect Parse { outcome: fn() -> Result<int, string> }
+fn decode() = perform Parse.outcome()
+let score = {
+    handle static Parse {
+        outcome => Success { value: 7 }
+    }
+    match decode() {
+        Success { value } => value
+        Error { message } => length(message)
+    }
+}
+print("${score}")
+"#,
+        "7\n",
+    );
+}

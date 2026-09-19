@@ -375,3 +375,47 @@ fn staging_does_not_authorize_source_mutation_outside_handler_arms() {
         "{errors}"
     );
 }
+
+#[test]
+fn a_static_region_missing_an_operation_names_the_operation_it_left_out() {
+    // [STAGE-STATIC-TOTAL] A static handler must answer every operation, and
+    // structural validation says so before the rewrite runs: it names the
+    // uncovered operation rather than leaving the request to surface later as
+    // an unhandled effect ([STAGE-LOWER-ORDER-PHASE]).
+    let source = r#"
+static effect Tensor {
+    stride: fn() -> int
+    rank: fn() -> int
+}
+fn main() = {
+    handle static Tensor {
+        stride => 3
+    }
+    print("${perform Tensor.stride()}")
+}
+"#;
+    let errors = diagnostics(source, Flavor::Default);
+    assert!(
+        errors.contains("static handler for `Tensor` does not cover operation `Tensor.rank`"),
+        "a partial static handler must name the uncovered operation: {errors}"
+    );
+}
+
+#[test]
+fn a_static_region_over_an_undeclared_effect_is_named_by_its_own_keyword() {
+    // The diagnostic spells the region the way the source does, so a reader
+    // is not told about `handle` when they wrote `handle static`.
+    let source = r#"
+fn main() = {
+    handle static Missing {
+        get => 1
+    }
+    print("unreachable")
+}
+"#;
+    let errors = diagnostics(source, Flavor::Default);
+    assert!(
+        errors.contains("handle static names unknown effect `Missing`"),
+        "an unknown static effect must be reported against `handle static`: {errors}"
+    );
+}
