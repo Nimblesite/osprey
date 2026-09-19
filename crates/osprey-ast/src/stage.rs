@@ -124,17 +124,18 @@ struct DeclaredOperation {
     position: Option<Position>,
 }
 
-/// Discharge every static handler in `program`, returning the rewritten
-/// program. Implements [STAGE-LOWER].
-///
-/// # Errors
-/// Returns every violated staging rule: a stage mismatch between an effect and
-/// its handler, a partial static handler ([STAGE-STATIC-TOTAL]), a continuation
-/// capture ([STAGE-STATIC-TAIL]), a runtime request from a compile-time answer
-/// ([STAGE-STATIC-MONOTONE]) or an unbounded rewrite ([STAGE-STATIC-FINITE]).
-pub fn discharge(program: &Program) -> Result<Program, Vec<StageError>> {
+/// Every violated staging rule in `program`, without rewriting it: a modifier
+/// a declaration cannot carry ([MULTI-DECL]), a stage mismatch between an
+/// effect and its handler, a partial static handler ([STAGE-STATIC-TOTAL]), a
+/// continuation capture ([STAGE-STATIC-TAIL]), a malformed instantiation
+/// ([EFFECTS-GENERIC-DECL]) or an offload boundary with a residual request
+/// ([STAGE-GPU-LEGAL]). These read declarations and syntax only, so they run
+/// before type inference and speak first: a residual row would otherwise
+/// report the same defect as a bare unhandled operation.
+#[must_use]
+pub fn validate(program: &Program) -> Vec<StageError> {
     let declarations = effect_declarations(program);
-    let mut errors = static_control_operations(&declarations);
+    let mut errors = modifier_errors(program);
     errors.extend(validate_handlers(program, &declarations));
     // The offload obligation reads the row a WELL-FORMED region leaves behind,
     // so a region that broke a rule above would cascade a second, derived
@@ -142,10 +143,30 @@ pub fn discharge(program: &Program) -> Result<Program, Vec<StageError>> {
     if errors.is_empty() {
         errors.extend(crate::kernel::legality(program));
     }
+    errors
+}
+
+/// Rewrite every static handler in a program [`validate`] accepted.
+/// Implements [STAGE-LOWER].
+///
+/// # Errors
+/// A runtime request from a compile-time answer ([STAGE-STATIC-MONOTONE]) or
+/// an unbounded rewrite ([STAGE-STATIC-FINITE]).
+pub fn lower(program: &Program) -> Result<Program, Vec<StageError>> {
+    crate::lower_static::run(program)
+}
+
+/// [`validate`] then [`lower`]: discharge every static handler in `program`,
+/// returning the rewritten program.
+///
+/// # Errors
+/// Every violated staging rule, from either phase.
+pub fn discharge(program: &Program) -> Result<Program, Vec<StageError>> {
+    let errors = validate(program);
     if !errors.is_empty() {
         return Err(errors);
     }
-    crate::lower_static::run(program)
+    lower(program)
 }
 
 /// Index every `effect` declaration, at any nesting depth, by name.
@@ -342,22 +363,31 @@ fn missing_arms(
 /// continuation to give away, so a `control` operation cannot be one:
 /// [STAGE-STATIC-TAIL] pins static arms at exactly-once-in-tail-position.
 /// Implements [MULTI-AXIS-STATIC], [STAGE-STATIC-TOTAL].
-fn static_control_operations(effects: &BTreeMap<String, EffectDecl>) -> Vec<StageError> {
-    effects
-        .iter()
-        .filter(|(_, declared)| declared.stage == Stage::Static)
-        .flat_map(|(effect, declared)| {
-            declared
-                .operations
-                .iter()
-                .filter(|operation| operation.mode.is_control())
-                .map(move |operation| {
-                    let name = &operation.name;
-                    StageError::new(
-                        format!("`control` on static effect `{effect}.{name}`; a static operation is answered at compile time and has no continuation"),
-                        operation.position.or(declared.position),
-                    )
-                })
-        })
-        .collect()
+/// The modifier defect of every declared operation, by the one rule the type
+/// checker applies too ([`crate::EffectOperation::modifier_error`]).
+fn modifier_errors(program: &Program) -> Vec<StageError> {
+    #[derive(Default)]
+    struct Modifiers(Vec<StageError>);
+    impl AstVisitor for Modifiers {
+        fn statement(&mut self, statement: &Stmt) {
+            let Stmt::Effect {
+                name,
+                stage,
+                operations,
+                position,
+                ..
+            } = statement
+            else {
+                return;
+            };
+            self.0.extend(operations.iter().filter_map(|operation| {
+                operation
+                    .modifier_error(name, *stage)
+                    .map(|message| StageError::new(message, operation.position.or(*position)))
+            }));
+        }
+    }
+    let mut modifiers = Modifiers::default();
+    walk_program(program, &mut modifiers);
+    modifiers.0
 }

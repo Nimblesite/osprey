@@ -19,7 +19,7 @@ addThroughPolicy (a, b) = match a + b
 preserveFailure (a, b) =
     handle ArithmeticFailure
         decide message => Error(message = message)
-    in addThroughPolicy (a, b)
+    addThroughPolicy (a, b)
 
 (** This handler deliberately recovers, but still receives the exact reason. *)
 recoverWith (a, b, fallback) =
@@ -27,7 +27,7 @@ recoverWith (a, b, fallback) =
         decide message => match message == "integer overflow"
             true => Success(value = fallback)
             false => Error(message = message)
-    in addThroughPolicy (a, b)
+    addThroughPolicy (a, b)
 
 test "success can be rendered without contextual coercion" (\() =>
     expect (toString (renderSum (1, 1))) "Success(2)")

@@ -32,18 +32,18 @@ fn assert_discharged(source: &str, flavor: Flavor) {
 #[test]
 fn ordinary_value_effects_discharge_directly_and_through_helpers_and_callbacks() {
     assert_discharged(
-        "effect Read { value: fn() -> int }\nfn fetch() = perform Read.value()\nfn invoke(f) = f()\nlet answer = handle static Read value => 42 in invoke(fetch)\nprint(answer)",
+        "effect Read { value: fn() -> int }\nfn fetch() = perform Read.value()\nfn invoke(f) = f()\nlet answer = {\n    handle static Read {\n        value => 42\n    }\n    invoke(fetch)\n}\nprint(answer)",
         Flavor::Default,
     );
     assert_discharged(
-        "effect Read\n    value : Unit => int\nfetch () = perform Read.value ()\ninvoke f = f ()\nanswer = handle static Read\n    value => 42\nin invoke fetch\nprint answer\n",
+        "effect Read\n    value : Unit => int\nfetch () = perform Read.value ()\ninvoke f = f ()\nanswer =\n    handle static Read\n        value => 42\n    invoke fetch\nprint answer\n",
         Flavor::Ml,
     );
 }
 
 #[test]
 fn a_helper_retains_its_dynamic_callers_after_static_specialization() {
-    let source = "effect Read { value: fn() -> int }\nfn fetch() = perform Read.value()\nlet a = handle static Read value => 42 in fetch()\nlet b = handle Read value => 7 in fetch()\nprint(\"${a}:${b}\")";
+    let source = "effect Read { value: fn() -> int }\nfn fetch() = perform Read.value()\nlet a = {\n    handle static Read {\n        value => 42\n    }\n    fetch()\n}\nlet b = {\n    handle Read {\n        value => 7\n    }\n    fetch()\n}\nprint(\"${a}:${b}\")";
     let result = lower(source, Flavor::Default);
     assert!(result.is_ok(), "{result:?}");
     if let Ok(program) = result {
@@ -58,7 +58,7 @@ fn a_helper_retains_its_dynamic_callers_after_static_specialization() {
 #[test]
 fn static_arm_forwarding_uses_the_outer_interpretation() {
     assert_discharged(
-        "effect Read { value: fn() -> int }\nlet answer = handle static Read value => 42 in handle static Read value => perform Read.value() in perform Read.value()\nprint(answer)",
+        "effect Read { value: fn() -> int }\nlet answer = {\n    handle static Read {\n        value => 42\n    }\n    handle static Read {\n        value => perform Read.value()\n    }\n    perform Read.value()\n}\nprint(answer)",
         Flavor::Default,
     );
 }
@@ -70,7 +70,7 @@ fn mixed_and_control_effects_cannot_be_selected_statically() {
         "value: fn() -> int\ncontrol stop: fn() -> int",
     ] {
         let source = format!(
-            "effect E {{ {operations} }}\nlet answer = handle static E value => 1 stop => 2 in 0"
+            "effect E {{ {operations} }}\nlet answer = {{\n    handle static E {{\n        value => 1 stop => 2\n    }}\n    0\n}}"
         );
         let parsed = parse_program_with_flavor(&source, Flavor::Default);
         assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
@@ -87,7 +87,7 @@ fn mixed_and_control_effects_cannot_be_selected_statically() {
 #[test]
 fn unused_static_arms_reject_transitive_dynamic_requests() {
     for body in ["perform Runtime.read()", "fetch()", "internal()"] {
-        let source = format!("effect Runtime {{ read: fn() -> int }}\nfn fetch() = perform Runtime.read()\nfn internal() = handle Runtime read => 2 in fetch()\neffect E {{ used: fn() -> int\nunused: fn() -> int }}\nlet answer = handle static E used => 1 unused => {body} in perform E.used()");
+        let source = format!("effect Runtime {{ read: fn() -> int }}\nfn fetch() = perform Runtime.read()\nfn internal() = {{\n    handle Runtime {{\n        read => 2\n    }}\n    fetch()\n}}\neffect E {{ used: fn() -> int\nunused: fn() -> int }}\nlet answer = {{\n    handle static E {{\n        used => 1 unused => {body}\n    }}\n    perform E.used()\n}}");
         let result = lower(&source, Flavor::Default);
         assert!(
             result.as_ref().is_err_and(|errors| errors
@@ -106,7 +106,7 @@ fn static_arms_retain_resolved_builtin_obligations() {
         "alias(\"bad\")",
         "invoke(print)",
     ] {
-        let source = format!("effect E {{ used: fn() -> int unused: fn() -> Unit }}\nfn emit() = print(\"bad\")\nfn invoke(f) = f(\"bad\")\nlet alias = print\nlet answer = handle static E used => 1 unused => {body} in perform E.used()");
+        let source = format!("effect E {{ used: fn() -> int unused: fn() -> Unit }}\nfn emit() = print(\"bad\")\nfn invoke(f) = f(\"bad\")\nlet alias = print\nlet answer = {{\n    handle static E {{\n        used => 1 unused => {body}\n    }}\n    perform E.used()\n}}");
         let result = lower(&source, Flavor::Default);
         assert!(
             result.as_ref().is_err_and(|errors| errors
@@ -115,13 +115,13 @@ fn static_arms_retain_resolved_builtin_obligations() {
             "{result:?}"
         );
     }
-    assert_discharged("effect E { value: fn() -> int }\nlet print = fn(x) => x\nlet answer = handle static E value => print(42) in perform E.value()", Flavor::Default);
+    assert_discharged("effect E { value: fn() -> int }\nlet print = fn(x) => x\nlet answer = {\n    handle static E {\n        value => print(42)\n    }\n    perform E.value()\n}", Flavor::Default);
 }
 
 #[test]
 fn generic_unmarked_effects_can_be_selected_statically() {
     assert_discharged(
-        "effect Echo<T> { echo: fn(T) -> T }\nlet answer = handle static Echo<int> echo value => value in perform Echo<int>.echo(42)\nprint(answer)",
+        "effect Echo<T> { echo: fn(T) -> T }\nlet answer = {\n    handle static Echo<int> {\n        echo value => value\n    }\n    perform Echo<int>.echo(42)\n}\nprint(answer)",
         Flavor::Default,
     );
 }
@@ -129,7 +129,7 @@ fn generic_unmarked_effects_can_be_selected_statically() {
 #[test]
 fn local_closures_and_alias_chains_keep_captures_when_specialized() {
     assert_discharged(
-        "effect Read { value: fn() -> int }\nfn invoke(f) = f()\nfn main() = {\nlet prefix = \"captured\"\nlet closure = fn() => \"${prefix}:${perform Read.value()}\"\nlet alias = closure\nlet answer = handle static Read value => 42 in invoke(alias)\nprint(answer)\n}",
+        "effect Read { value: fn() -> int }\nfn invoke(f) = f()\nfn main() = {\nlet prefix = \"captured\"\nlet closure = fn() => \"${prefix}:${perform Read.value()}\"\nlet alias = closure\nlet answer = {\n    handle static Read {\n        value => 42\n    }\n    invoke(alias)\n}\nprint(answer)\n}",
         Flavor::Default,
     );
 }
@@ -144,7 +144,7 @@ fn kernel_selection_accepts_an_ordinary_value_effect() {
 
 #[test]
 fn static_selection_and_dynamic_shadowing_execute_with_the_selected_answers() {
-    let source = "effect Read { value: fn() -> int }\nfn fetch() = perform Read.value()\nfn invoke(f) = f()\nfn main() = {\nlet prefix = \"captured\"\nlet closure = fn() => \"${prefix}:${perform Read.value()}\"\nlet alias = closure\nlet a = handle static Read value => 42 in invoke(alias)\nlet b = handle Read value => 7 in fetch()\nlet c = handle static Read value => 9 in handle Read value => 3 in fetch()\nprint(\"${a}|${b}|${c}\")\n}";
+    let source = "effect Read { value: fn() -> int }\nfn fetch() = perform Read.value()\nfn invoke(f) = f()\nfn main() = {\nlet prefix = \"captured\"\nlet closure = fn() => \"${prefix}:${perform Read.value()}\"\nlet alias = closure\nlet a = {\n    handle static Read {\n        value => 42\n    }\n    invoke(alias)\n}\nlet b = {\n    handle Read {\n        value => 7\n    }\n    fetch()\n}\nlet c = {\n    handle static Read {\n        value => 9\n    }\n    handle Read {\n        value => 3\n    }\n    fetch()\n}\nprint(\"${a}|${b}|${c}\")\n}";
     let path = std::env::temp_dir().join(format!(
         "osprey-static-selection-{}.osp",
         std::process::id()

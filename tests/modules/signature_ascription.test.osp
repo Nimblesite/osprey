@@ -13,7 +13,7 @@ signature CounterApi {
 
 signature ClockApi {
     effect Clock {
-        now : fn() -> int
+        control now : fn() -> int
     }
     fn reading() -> int
 }
@@ -42,7 +42,7 @@ module Counters : CounterApi {
 /// A signature may carry an effect declaration alongside its functions.
 module Clocks : ClockApi {
     effect Clock {
-        now : fn() -> int
+        control now : fn() -> int
     }
 
     fn reading() = perform Clock.now()
@@ -79,9 +79,12 @@ fn abstractTypeCase() = checkAll("abstract signature type round-trips", [
 ])
 
 /// Reads the module's clock through a caller-installed handler.
-fn readAs(stamp) = handle Clocks::Clock
-    now => resume(stamp)
-in Clocks::reading()
+fn readAs(stamp) = {
+    handle Clocks::Clock {
+        now => resume(stamp)
+    }
+    Clocks::reading()
+}
 
 /// A signature effect is declared by the module and handled by the caller.
 fn signatureEffectCase() = checkAll("signature effect stays performable", [

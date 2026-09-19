@@ -42,6 +42,19 @@ struct Requirement {
     arguments: Vec<String>,
 }
 
+impl Requirement {
+    /// A requirement keyed by effect identity: the base name plus the
+    /// resolved arguments, so the written spelling `Stash<int>` and `Stash`
+    /// name one effect. Implements [EFFECTS-GENERIC-INSTANTIATION].
+    fn new(effect: &str, operation: &str, arguments: Vec<String>) -> Self {
+        Self {
+            effect: osprey_ast::effect_name::base(effect).to_owned(),
+            operation: operation.to_owned(),
+            arguments,
+        }
+    }
+}
+
 type Requirements = BTreeSet<Requirement>;
 
 /// Provenance is an abstract value, not a runtime value tree. Recursive
@@ -140,21 +153,18 @@ impl Summary {
             .collect();
         self.required.retain(|r| !excluded.contains(r));
         if !operations.is_empty() {
-            self.parameter_uses = self
-                .parameter_uses
-                .into_iter()
-                .map(|mut use_| {
-                    // A callback requirement is not concrete until its call
-                    // site. Record every operation this handler can discharge.
-                    use_.excluded
-                        .extend(operations.iter().map(|operation| Requirement {
-                            effect: effect.to_string(),
-                            operation: operation.clone(),
-                            arguments: arguments.to_vec(),
+            self.parameter_uses =
+                self.parameter_uses
+                    .into_iter()
+                    .map(|mut use_| {
+                        // A callback requirement is not concrete until its call
+                        // site. Record every operation this handler can discharge.
+                        use_.excluded.extend(operations.iter().map(|operation| {
+                            Requirement::new(effect, operation, arguments.to_vec())
                         }));
-                    use_
-                })
-                .collect();
+                        use_
+                    })
+                    .collect();
         }
         self
     }
@@ -461,6 +471,27 @@ struct CallableEnv {
     /// Results supplied by handlers active while this expression evaluates.
     /// These are dynamic bindings, never captures of a newly created closure.
     handler_returns: BTreeMap<Requirement, Value>,
+    /// `(effect, operation)` pairs an enclosing compile-time handler answers.
+    /// Discharge rewrites those requests away before the residual program
+    /// exists, so they are never dynamic requirements of the code they sit in.
+    static_answers: HashSet<(String, String)>,
+}
+
+impl CallableEnv {
+    /// The environment of a handler's body: under a compile-time handler the
+    /// operations its arms answer are statically discharged there.
+    fn under_handler(&self, effect: &str, arms: &[HandlerArm], stage: osprey_ast::Stage) -> Self {
+        let mut body = self.clone();
+        if stage.is_compile_time() {
+            body.static_answers.extend(arms.iter().map(|arm| {
+                (
+                    osprey_ast::effect_name::base(effect).to_owned(),
+                    arm.operation.clone(),
+                )
+            }));
+        }
+        body
+    }
 }
 
 impl CallableEnv {
@@ -706,11 +737,9 @@ impl Analyzer<'_> {
                 let mut out = self.expressions(arguments, scope, env);
                 out.union(self.named_expressions(named_arguments, scope, env));
                 for instance in self.perform_instance_arguments(effect, *position) {
-                    let _ = out.required.insert(Requirement {
-                        effect: effect.clone(),
-                        operation: operation.clone(),
-                        arguments: instance,
-                    });
+                    let _ = out
+                        .required
+                        .insert(Requirement::new(effect, operation, instance));
                 }
                 out
             }
@@ -735,9 +764,10 @@ impl Analyzer<'_> {
                 );
                 let local = self.handler_body_env(effect, arms, body, *position, scope, env);
                 let body_summary = self.expression(body, scope, &local);
+                let effect = osprey_ast::effect_name::base(effect);
                 if let Some(position) = position {
                     let candidates = body_summary.required.iter().filter(|requirement| {
-                        requirement.effect == *effect && handled.contains(&requirement.operation)
+                        requirement.effect == effect && handled.contains(&requirement.operation)
                             && self.instances.argument_types.contains_key(&requirement.arguments)
                     }).map(|requirement| requirement.arguments.clone());
                     self.instances.handler_inference.borrow_mut()
@@ -1497,11 +1527,7 @@ impl Analyzer<'_> {
             } => {
                 let mut merged = None;
                 for arguments in self.perform_instance_arguments(effect, *position) {
-                    let requirement = Requirement {
-                        effect: effect.clone(),
-                        operation: operation.clone(),
-                        arguments,
-                    };
+                    let requirement = Requirement::new(effect, operation, arguments);
                     if let Some(value) = env.handler_returns.get(&requirement) {
                         merge_optional_value(&mut merged, value.clone());
                     } else {
@@ -1551,7 +1577,7 @@ impl Analyzer<'_> {
                     if !self
                         .index
                         .operations
-                        .mode_of(osprey_ast::effect_name::base(effect), &arm.operation)
+                        .mode_of(effect, &arm.operation)
                         .is_control()
                     {
                         continue;
@@ -1899,11 +1925,7 @@ impl Analyzer<'_> {
                 .returned_value(&arm.body, scope, &mut arm_env)
                 .unwrap_or_else(Value::unknown_callable);
             let _ = local.handler_returns.insert(
-                Requirement {
-                    effect: effect.to_owned(),
-                    operation: arm.operation.clone(),
-                    arguments: arguments.clone(),
-                },
+                Requirement::new(effect, &arm.operation, arguments.clone()),
                 value,
             );
         }
@@ -3127,10 +3149,21 @@ fn gpu_kernel_verdict(
         ));
     };
     let row = analyzer.invoke_with_values(callee, &[]);
-    if !row.required.is_empty() || !row.runtime_builtins.is_empty() {
-        let performed: Vec<String> = row
-            .required
-            .iter()
+    // Before discharge the kernel's row still names the static operations an
+    // enclosing `handle static` answers; those are rewritten away, so only the
+    // rest is dynamic. After discharge no static handler remains and an
+    // unanswered static request is exactly a residual requirement.
+    let dynamic: Vec<&Requirement> = row
+        .required
+        .iter()
+        .filter(|requirement| {
+            !env.static_answers
+                .contains(&(requirement.effect.clone(), requirement.operation.clone()))
+        })
+        .collect();
+    if !dynamic.is_empty() || !row.runtime_builtins.is_empty() {
+        let performed: Vec<String> = dynamic
+            .into_iter()
             .map(requirement_name)
             .chain(row.runtime_builtins)
             .collect();
@@ -3208,7 +3241,8 @@ fn validate_handler_arms(
             // unhandled operation. Implements [EFFECTS-STATIC-DISCHARGE].
             validate_handler_arms(analyzer, axis, &arm.body, scope, &local, errors);
         }
-        validate_handler_arms(analyzer, axis, body, scope, env, errors);
+        let body_env = env.under_handler(effect, arms, *stage);
+        validate_handler_arms(analyzer, axis, body, scope, &body_env, errors);
         if let Some(clause) = return_clause {
             validate_handler_arms(analyzer, axis, clause, scope, env, errors);
         }

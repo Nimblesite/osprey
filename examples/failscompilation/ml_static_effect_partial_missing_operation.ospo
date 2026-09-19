@@ -12,4 +12,4 @@ both () =
 answer =
     handle Pair
         first => 20
-    in both ()
+    both ()

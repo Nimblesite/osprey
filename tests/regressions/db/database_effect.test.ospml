@@ -102,20 +102,22 @@ runApp db =
         0 => print "closed ok"
         _ => print "closed err"
 
-handle Database
-    open path => openReal path
-    exec db sql => execReal (db, sql)
-    prepare db sql => prepareReal (db, sql)
-    bindInt stmt idx val => sqlite3_bind_int stmt idx val
-    bindText stmt idx val => sqlite3_bind_text stmt idx val ((0 - 1) ?: 0) (osprey_ffi_transient ())
-    step stmt => sqlite3_step stmt
-    columnInt stmt col => sqlite3_column_int stmt col
-    columnText stmt col => sqlite3_column_text stmt col
-    finalize stmt => sqlite3_finalize stmt
-    close db => sqlite3_close db
-in match perform Database.open ":memory:"
-    Success value => runApp value
-    Error message => print "open ${message}"
+databaseDemo () =
+    handle Database
+        open path => openReal path
+        exec db sql => execReal (db, sql)
+        prepare db sql => prepareReal (db, sql)
+        bindInt stmt idx val => sqlite3_bind_int stmt idx val
+        bindText stmt idx val => sqlite3_bind_text stmt idx val ((0 - 1) ?: 0) (osprey_ffi_transient ())
+        step stmt => sqlite3_step stmt
+        columnInt stmt col => sqlite3_column_int stmt col
+        columnText stmt col => sqlite3_column_text stmt col
+        finalize stmt => sqlite3_finalize stmt
+        close db => sqlite3_close db
+    match perform Database.open ":memory:"
+        Success value => runApp value
+        Error message => print "open ${message}"
+databaseDemo ()
 
 (** Capture every externally visible result of one handled database interaction. *)
 type DatabaseObservation =
@@ -163,7 +165,7 @@ runDatabaseProbe () =
         columnText stmt col => sqlite3_column_text stmt col
         finalize stmt => sqlite3_finalize stmt
         close db => sqlite3_close db
-    in match perform Database.open ":memory:"
+    match perform Database.open ":memory:"
         Success value => Success(value = observeDatabase value)
         Error message => Error(message = message)
 

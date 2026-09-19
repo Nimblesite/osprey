@@ -157,25 +157,28 @@ payRent account cents = match Accounts::movable cents && perform Vault.balance a
     false => Refused(why = "blocked by guard")
 
 (** Mock 1: a flush account — every debit lands on a fixed 9000-cent float. *)
-flushVault () = handle Vault
-    balance id => 9000
-    debit id cents => Landed(balance = (9000 - cents) ?: 0)
-in settle (payRent 1 2500)
+flushVault () =
+    handle Vault
+        balance id => 9000
+        debit id cents => Landed(balance = (9000 - cents) ?: 0)
+    settle (payRent 1 2500)
 
 (** Mock 2: a broke account — the guard refuses before storage is even asked. *)
-brokeVault () = handle Vault
-    balance id => 40
-    debit id cents => Landed(balance = 0)
-in settle (payRent 1 2500)
+brokeVault () =
+    handle Vault
+        balance id => 40
+        debit id cents => Landed(balance = 0)
+    settle (payRent 1 2500)
 
 (** Mock 3: interaction spy — proves the guard SHORT-CIRCUITS on a bad amount.
     The arms are poisoned to PASS the guard and land if ever consulted: a
     "landed"/"vault touched" result would unmask a zero-cent debit reaching
     storage, so "refused blocked by guard" proves domain-only refusal. *)
-spyVault () = handle Vault
-    balance id => 999999
-    debit id cents => Refused(why = "vault touched")
-in settle (payRent 1 0)
+spyVault () =
+    handle Vault
+        balance id => 999999
+        debit id cents => Refused(why = "vault touched")
+    settle (payRent 1 0)
 
 mockedVaultCase () =
     landed = check ("flush vault lands the rent", "landed 6500", flushVault ())

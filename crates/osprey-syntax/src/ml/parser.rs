@@ -57,6 +57,8 @@ struct OperationMarkers {
     multiplicity: Option<Multiplicity>,
     replayable: bool,
     name: String,
+    /// Where the name itself starts, after any markers.
+    pos: Position,
 }
 
 /// Parse ML-flavor `source` into the ML CST plus any syntax errors. Best-effort:
@@ -229,6 +231,14 @@ impl Parser<'_> {
                 Some(MlItem::InnerDoc { text, pos })
             }
             TokKind::KwMut => self.mut_binding(),
+            TokKind::KwHandle => {
+                // A file-scope `handle` has no block to govern; say so, then
+                // consume the region it would have governed so its arms do not
+                // cascade into unrelated errors. [EFFECTS-HANDLE-REST]
+                self.error(crate::HANDLE_NEEDS_A_BLOCK);
+                let _ = self.handle_line();
+                None
+            }
             TokKind::KwType => self.type_decl(),
             TokKind::KwExtern => self.extern_decl(),
             TokKind::KwEffect => self.effect_decl(Stage::Dynamic),
@@ -647,8 +657,10 @@ impl Parser<'_> {
     /// own `(** … *)` doc ([DOC-EFFECT-OP]).
     fn effect_op(&mut self) -> Option<MlEffectOp> {
         let doc = self.effect_op_doc();
-        let pos = self.pos();
         let markers = self.operation_markers()?;
+        // Anchor on the NAME, as Default does: `control`/`replayable` markers
+        // precede it, and hover and diagnostics resolve by the name's column.
+        let pos = markers.pos;
         if !self.eat(&TokKind::Colon) {
             self.error("expected ':' in effect operation");
         }
@@ -679,21 +691,25 @@ impl Parser<'_> {
     /// [FLAVOR-ML-EFFECT-ANNOTATIONS].
     fn operation_markers(&mut self) -> Option<OperationMarkers> {
         let mut markers = OperationMarkers {
+            pos: self.pos(),
             name: self.operation_ident()?,
             ..OperationMarkers::default()
         };
         if markers.name == CONTROL_KEYWORD && self.at_operation_name() {
             markers.mode = OperationMode::Control;
+            markers.pos = self.pos();
             markers.name = self.operation_ident()?;
         }
         if let Some(declared) = Multiplicity::from_keyword(&markers.name) {
             if markers.mode.is_control() && self.at_operation_name() {
                 markers.multiplicity = Some(declared);
+                markers.pos = self.pos();
                 markers.name = self.operation_ident()?;
             }
         }
         if markers.name == REPLAYABLE_KEYWORD && self.at_operation_name() {
             markers.replayable = true;
+            markers.pos = self.pos();
             markers.name = self.operation_ident()?;
         }
         Some(markers)
@@ -1739,7 +1755,7 @@ impl Parser<'_> {
         self.skip_separators();
         let (items, value) = self.block_items();
         if items.is_empty() && value.is_none() {
-            self.error_at(head.pos, NOTHING_TO_HANDLE);
+            self.error_at(head.pos, crate::NOTHING_TO_HANDLE);
         }
         head.over(MlExpr::Block { items, value })
     }
@@ -2363,10 +2379,6 @@ pub(super) fn constructor_segment(name: &str) -> &str {
 pub(super) fn is_constructor(name: &str) -> bool {
     name.chars().next().is_some_and(char::is_uppercase)
 }
-
-/// What a `handle` with no body and nothing after it reports.
-const NOTHING_TO_HANDLE: &str =
-    "this `handle` has nothing to handle; put the handled statements after it";
 
 /// A parsed `handle Effect` and its arms, waiting for the region it handles.
 /// The containing block supplies its remainder. Implements [EFFECTS-HANDLE-REST].

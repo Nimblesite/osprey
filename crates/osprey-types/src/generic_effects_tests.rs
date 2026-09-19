@@ -32,9 +32,12 @@ fn stash_program(answer: &str) -> String {
     take: fn() -> T
 }}
 fn main() -> Unit = {{
-    let held = handle Stash
-        take => {answer}
-    in perform Stash.take()
+    let held = {{
+        handle Stash {{
+            take => {answer}
+        }}
+        perform Stash.take()
+    }}
     print("${{held}}")
 }}"#
     )
@@ -108,9 +111,12 @@ spec_cases! {
 }
 fn doubled() -> int = (perform Stash.take()) * 2 ?: 0
 fn main() -> Unit = {
-    let held = handle Stash
-        take => "ready"
-    in doubled()
+    let held = {
+        handle Stash {
+            take => "ready"
+        }
+        doubled()
+    }
     print("${held}")
 }"#, "unhandled effect operations at program entry: Stash<int>.take");
 
@@ -128,9 +134,12 @@ fn a_written_instantiation_on_a_dynamic_perform_pins_its_type_arguments() {
     take: fn() -> T
 }
 fn main() -> Unit = {
-    let held = handle Stash
-        take => 9
-    in perform Stash<int>.take()
+    let held = {
+        handle Stash {
+            take => 9
+        }
+        perform Stash<int>.take()
+    }
     print("${held}")
 }"#,
         Flavor::Default,
@@ -146,9 +155,12 @@ spec_cases! {
     take: fn() -> T
 }
 fn main() -> Unit = {
-    let held = handle Stash<int>
-        take => 9
-    in perform Stash.take()
+    let held = {
+        handle Stash<int> {
+            take => 9
+        }
+        perform Stash.take()
+    }
     print("${held}")
 }"#);
 
@@ -159,9 +171,12 @@ fn main() -> Unit = {
 }
 fn store() = perform Stash.put("text")
 fn main() -> Unit = {
-    let done = handle Stash
-        put v => print("stored ${v + 1 ?: 0}")
-    in store()
+    let done = {
+        handle Stash {
+            put v => print("stored ${v + 1 ?: 0}")
+        }
+        store()
+    }
     print("${done}")
 }"#);
 
@@ -171,12 +186,18 @@ fn main() -> Unit = {
     take: fn() -> T
 }
 fn main() -> Unit = {
-    let n = handle Stash
-        take => 1
-    in perform Stash.take()
-    let s = handle Stash
-        take => "one"
-    in perform Stash.take()
+    let n = {
+        handle Stash {
+            take => 1
+        }
+        perform Stash.take()
+    }
+    let s = {
+        handle Stash {
+            take => "one"
+        }
+        perform Stash.take()
+    }
     print("${n}${s}")
 }"#);
 
@@ -187,9 +208,12 @@ fn main() -> Unit = {
 }
 fn store() -> Unit !Stash<int, string> = perform Stash.put(42)
 fn main() -> Unit = {
-    let done = handle Stash
-        put v => print("stored")
-    in store()
+    let done = {
+        handle Stash {
+            put v => print("stored")
+        }
+        store()
+    }
     print("${done}")
 }"#);
 }
@@ -206,9 +230,12 @@ spec_cases! {
 }
 fn store() -> Unit !Stash<int> = perform Stash.put(42)
 fn main() -> Unit = {
-    let done = handle Stash
-        put v => print("stored ${v}")
-    in store()
+    let done = {
+        handle Stash {
+            put v => print("stored ${v}")
+        }
+        store()
+    }
     print("${done}")
 }"#);
 
@@ -218,9 +245,12 @@ fn main() -> Unit = {
 }
 fn store() -> Unit !Stash<int> = perform Stash.put("text")
 fn main() -> Unit = {
-    let done = handle Stash
-        put v => print("stored")
-    in store()
+    let done = {
+        handle Stash {
+            put v => print("stored")
+        }
+        store()
+    }
     print("${done}")
 }"#, "outside its declared row");
 
@@ -230,9 +260,12 @@ fn main() -> Unit = {
 }
 fn store() -> Unit !Stash = perform Stash.put(42)
 fn main() -> Unit = {
-    let done = handle Stash
-        put v => print("stored ${v}")
-    in store()
+    let done = {
+        handle Stash {
+            put v => print("stored ${v}")
+        }
+        store()
+    }
     print("${done}")
 }"#);
 
@@ -246,11 +279,15 @@ effect Write<T> {
 }
 fn copy() -> Unit ![Read<int>, Write<string>] = perform Write.put("${perform Read.get()}")
 fn main() -> Unit = {
-    let done = handle Read
-        get => 7
-    in handle Write
-        put v => print("wrote ${v}")
-    in copy()
+    let done = {
+        handle Read {
+            get => 7
+        }
+        handle Write {
+            put v => print("wrote ${v}")
+        }
+        copy()
+    }
     print("${done}")
 }"#);
 }
@@ -284,9 +321,10 @@ spec_cases! {
          store : Unit -> Unit ! Stash<int>\n\
          store () = perform Stash.put 42\n\
          main () =\n\
-         \x20   done = handle Stash\n\
-         \x20       put v => print \"stored\"\n\
-         \x20   in store ()\n\
+         \x20   done =\n\
+         \x20       handle Stash\n\
+         \x20           put v => print \"stored\"\n\
+         \x20       store ()\n\
          \x20   print \"${done}\"\n");
 
     /// A bracketed ML row carries several generic entries: `! [Read<T>, Write<T>]`.
@@ -301,9 +339,10 @@ spec_cases! {
     /// The ML twin of the written-instantiation rules.
     ml_a_written_instantiation_is_accepted_on_handle_and_perform: accepts(Ml, "effect Stash T\n    take : Unit => T\n\
          main () =\n\
-         \x20   held = handle Stash\n\
-         \x20       take => 9\n\
-         \x20   in perform Stash.take ()\n\
+         \x20   held =\n\
+         \x20       handle Stash\n\
+         \x20           take => 9\n\
+         \x20       perform Stash.take ()\n\
          \x20   print \"${held}\"\n");
 }
 
@@ -312,16 +351,17 @@ spec_cases! {
 // ---------------------------------------------------------------------------
 
 spec_cases! {
-    /// [EFFECTS-GENERIC-INSTANTIATION]'s own example writes the handled body after
-    /// `do`, not `in`. The language accepts only `in` today; the rename is plan
-    /// 0027 phase 0. One of the two sources is stale, and this test says which.
-    the_spec_writes_a_handled_body_after_do: accepts(Default, r#"effect Stash<T> {
+    /// [EFFECTS-GENERIC-INSTANTIATION] writes explicit arguments on the handler
+    /// value and on the perform; the language accepts exactly that spelling,
+    /// so the spec and the compiler agree ([EFFECTS-HANDLER-VALUE]).
+    the_spec_instantiates_a_handler_value_explicitly: accepts(Default, r#"effect Stash<T> {
     put: fn(T) -> Unit
     take: fn() -> T
 }
-let word = handle Stash
+let ready = handler Stash<string> {
     put value => print(value)
     take => "ready"
-do perform Stash.take()
+}
+let word = ready(|| => perform Stash<string>.take())
 print(word)"#);
 }

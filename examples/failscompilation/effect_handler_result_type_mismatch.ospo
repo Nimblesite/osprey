@@ -3,6 +3,9 @@ effect ParseFailure {
     raise: fn(string) -> int
 }
 
-let recovered = handle ParseFailure
-    raise message => "not an integer"
-in perform ParseFailure.raise("invalid number")
+let recovered = {
+    handle ParseFailure {
+        raise message => "not an integer"
+    }
+    perform ParseFailure.raise("invalid number")
+}

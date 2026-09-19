@@ -67,12 +67,15 @@ fn returned_handler_closures_preserve_shared_and_isolated_state() {
 effect Count { next: fn() -> int }
 fn counter(initial) -> fn(fn() -> int) -> int = {
     mut count = initial
-    (|action| => handle Count
-        next => {
-            count = (count + 1) ?: count
-            count
+    (|action| => {
+        handle Count {
+            next => {
+                count = (count + 1) ?: count
+                count
+            }
         }
-    in action())
+        action()
+    })
 }
 let a = counter(0)
 let b = counter(10)

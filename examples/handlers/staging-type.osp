@@ -1,4 +1,9 @@
 // This must be rejected: the operation promises int, and supplies string.
 static effect StaticRead { value: fn() -> int }
-let answer = handle static StaticRead value => "wrong type" in length(perform StaticRead.value())
+let answer = {
+    handle static StaticRead {
+        value => "wrong type"
+    }
+    length(perform StaticRead.value())
+}
 print(answer)

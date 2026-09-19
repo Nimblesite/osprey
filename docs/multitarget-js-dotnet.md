@@ -286,9 +286,10 @@ effect typing.
 Tail-resume handlers are easy on both targets:
 
 ```text
-handle E
-  op x => expr
-in body
+{
+    handle E { op x => expr }
+    body
+}
 ```
 
 can lower to:

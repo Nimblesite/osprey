@@ -34,16 +34,19 @@ fn resuming_an_undeclared_operation_twice_is_a_compile_error() {
     // backstop, and a language that can see the arm has no excuse to use it as
     // the normal rejection path.
     let source = r#"
-effect Choose { pick: fn() -> int }
+effect Choose { control pick: fn() -> int }
 fn both() = (perform Choose.pick() + 1) ?: 0
 fn main() = {
-    let total = handle Choose
-        pick => {
-            let a = resume(10)
-            let b = resume(20)
-            a + b ?: 0
+    let total = {
+        handle Choose {
+            pick => {
+                let a = resume(10)
+                let b = resume(20)
+                a + b ?: 0
+            }
         }
-    in both()
+        both()
+    }
     print("total=${total}")
 }
 "#;
@@ -59,12 +62,15 @@ fn an_abort_arm_that_resumes_is_rejected() {
     // [MULTI-HANDLE-ABORT] An arm for an `abort` operation must not resume:
     // its value answers the whole region and the `perform` never returns.
     let source = r#"
-effect Fail { abort fail: fn(string) -> int }
+effect Fail { control abort fail: fn(string) -> int }
 fn risky() = (perform Fail.fail("nope") + 1) ?: 0
 fn main() = {
-    let outcome = handle Fail
-        fail reason => resume(0)
-    in risky()
+    let outcome = {
+        handle Fail {
+            fail reason => resume(0)
+        }
+        risky()
+    }
     print("outcome=${outcome}")
 }
 "#;
@@ -82,11 +88,14 @@ fn multiplicity_on_a_static_operation_is_rejected() {
     // point where a continuation need not exist. Accepting a multiplicity
     // there would imply a choice the stage has already made.
     let source = r#"
-static effect Parallel { once forEach: fn(int) -> int }
+static effect Parallel { control once forEach: fn(int) -> int }
 fn main() = {
-    let v = handle static Parallel
-        forEach n => n
-    in perform Parallel.forEach(4)
+    let v = {
+        handle static Parallel {
+            forEach n => n
+        }
+        perform Parallel.forEach(4)
+    }
     print("${v}")
 }
 "#;
@@ -112,8 +121,8 @@ fn suspend_sites(source: &str) -> usize {
 /// below can fail.
 const MIXED_ABORT: &str = r#"
 effect Job {
-    step: fn(int) -> int
-    abort quit: fn(string) -> int
+    control step: fn(int) -> int
+    control abort quit: fn(string) -> int
 }
 fn run() = {
     let a = perform Job.step(1)
@@ -121,17 +130,20 @@ fn run() = {
     a + b ?: 0
 }
 fn main() = {
-    let v = handle Job
-        step n => resume(n)
-        quit reason => 0
-    in run()
+    let v = {
+        handle Job {
+            step n => resume(n)
+            quit reason => 0
+        }
+        run()
+    }
     print("v=${v}")
 }
 "#;
 
 const MIXED_UNDECLARED: &str = r#"
 effect Job {
-    step: fn(int) -> int
+    control step: fn(int) -> int
     quit: fn(string) -> int
 }
 fn run() = {
@@ -140,10 +152,13 @@ fn run() = {
     a + b ?: 0
 }
 fn main() = {
-    let v = handle Job
-        step n => resume(n)
-        quit reason => 0
-    in run()
+    let v = {
+        handle Job {
+            step n => resume(n)
+            quit reason => 0
+        }
+        run()
+    }
     print("v=${v}")
 }
 "#;
@@ -203,15 +218,18 @@ fn a_many_arm_is_rejected_because_no_re_entrant_continuation_exists() {
     // the arm CONSUMES before returning does have a live continuation) is
     // phase 5, and lands with the runtime that makes the program runnable.
     let source = r#"
-effect Choice { many pick: fn(int) -> int }
+effect Choice { control many pick: fn(int) -> int }
 fn search(bound) = perform Choice.pick(bound)
 fn main() = {
-    let best = handle Choice
-        pick bound => range(0, bound) |> fold(0, |carried, option| => {
-            let answered = resume(option)
-            match answered > carried { true => answered false => carried }
-        })
-    in search(3)
+    let best = {
+        handle Choice {
+            pick bound => range(0, bound) |> fold(0, |carried, option| => {
+                let answered = resume(option)
+                match answered > carried { true => answered false => carried }
+            })
+        }
+        search(3)
+    }
     print("best=${best}")
 }
 "#;
@@ -230,19 +248,23 @@ fn a_many_handler_over_a_non_replayable_body_is_rejected_at_the_handle_site() {
     // nothing: `many` would silently send the email twice, which is the defect
     // no effect row reports today.
     let source = r#"
-effect Choice { many pick: fn(int) -> int }
-effect Email { send: fn(string) -> Unit }
+effect Choice { control many pick: fn(int) -> int }
+effect Email { control send: fn(string) -> Unit }
 fn placeOrder(id) = {
     let chosen = perform Choice.pick(id)
     perform Email.send("order ${chosen} confirmed")
     chosen
 }
 fn main() = {
-    let best = handle Email
-        send body => resume(print(body))
-    in handle Choice
-        pick option => resume(option)
-    in placeOrder(3)
+    let best = {
+        handle Email {
+            send body => resume(print(body))
+        }
+        handle Choice {
+            pick option => resume(option)
+        }
+        placeOrder(3)
+    }
     print("best=${best}")
 }
 "#;
@@ -254,23 +276,29 @@ fn main() = {
 }
 
 const ONCE_ON_WASM: &str = r#"
-effect Async { once await: fn(int) -> int }
+effect Async { control once await: fn(int) -> int }
 fn pipeline() = (perform Async.await(1) + 1) ?: 0
 fn main() = {
-    let v = handle Async
-        await t => resume(t)
-    in pipeline()
+    let v = {
+        handle Async {
+            await t => resume(t)
+        }
+        pipeline()
+    }
     print("v=${v}")
 }
 "#;
 
 const MANY_ON_WASM: &str = r#"
-effect Choice { many pick: fn(int) -> int }
+effect Choice { control many pick: fn(int) -> int }
 fn search(bound) = perform Choice.pick(bound)
 fn main() = {
-    let best = handle Choice
-        pick bound => resume(bound)
-    in search(3)
+    let best = {
+        handle Choice {
+            pick bound => resume(bound)
+        }
+        search(3)
+    }
     print("best=${best}")
 }
 "#;

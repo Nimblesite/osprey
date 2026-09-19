@@ -423,11 +423,11 @@ impl EffectOperation {
     /// are a contradiction rather than a narrowing.
     /// Implements [MULTI-DECL], [MULTI-AXIS-STATIC].
     #[must_use]
-    pub fn modifier_error(&self, stage: Stage) -> Option<String> {
+    pub fn modifier_error(&self, effect: &str, stage: Stage) -> Option<String> {
         let name = &self.name;
         if self.mode.is_control() && stage.is_compile_time() {
             return Some(format!(
-                "`{CONTROL_KEYWORD}` on operation `{name}` of a `{STATIC_STAGE_KEYWORD} effect`; a static interpretation answers at compile time and has no continuation to give away"
+                "`{CONTROL_KEYWORD}` on operation `{effect}.{name}` of a `{STATIC_STAGE_KEYWORD} effect`; a static interpretation answers at compile time and has no continuation to give away, so neither `{CONTROL_KEYWORD}` nor a multiplicity applies"
             ));
         }
         let declared = self

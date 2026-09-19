@@ -111,6 +111,40 @@ fn a_handler_that_names_no_body_and_handles_nothing_is_rejected() {
 }
 
 #[test]
+fn a_file_scope_handler_is_rejected_by_name_in_both_flavors() {
+    // `handle` governs the rest of its containing BLOCK; at file scope there
+    // is none, and both frontends say exactly that — once — instead of
+    // tripping over the arm that follows. [EFFECTS-HANDLE-REST]
+    for (flavor, source) in [
+        (
+            Flavor::Default,
+            format!(
+                "{EFFECT_DEFAULT}handle Log {{
+    info m => print(m)
+}}
+perform Log.info(\"top\")\n"
+            ),
+        ),
+        (
+            Flavor::Ml,
+            format!("{EFFECT_ML}handle Log\n    info m => print m\nperform Log.info \"top\"\n"),
+        ),
+    ] {
+        let parsed = parse_program_with_flavor(&source, flavor);
+        let messages: Vec<&str> = parsed
+            .errors
+            .iter()
+            .map(|error| error.message.as_str())
+            .collect();
+        assert_eq!(
+            messages,
+            ["`handle` must be a block statement; use `handler` to construct a callable handler"],
+            "{flavor} did not reject the file-scope handler by name"
+        );
+    }
+}
+
+#[test]
 fn ml_resume_takes_one_argument_not_the_rest_of_the_expression() {
     // `resume cap + 1` is `(resume cap) + 1`: ML application binds tighter than
     // any operator, and `resume` is an application like every other. Reading

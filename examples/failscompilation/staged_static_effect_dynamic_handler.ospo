@@ -4,6 +4,9 @@ static effect Tile {
     size: fn() -> int
 }
 
-fn main() = print("${handle Tile
-    size => 8
-in perform Tile.size()}")
+fn main() = {
+    handle Tile {
+        size => 8
+    }
+    print("${perform Tile.size()}")
+}

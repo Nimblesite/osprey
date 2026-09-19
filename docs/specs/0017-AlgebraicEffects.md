@@ -32,8 +32,7 @@ print(captured)
 
 `report` is unchanged. One handler prints; the other records the message for a
 test. An operation is a typed request, a handler is its implementation, and
-calling the handler runs the work within that implementation's scope. No
-continuation terminology or `in`/`do` is needed for this use.
+calling the handler runs the work within that implementation's scope.
 
 ### Callable handler values `[EFFECTS-HANDLER-VALUE]`
 
@@ -57,7 +56,7 @@ fn runReport() = {
 }
 ```
 
-`handle` governs the following statements and final expression in its containing block. ML uses indented arms. A final handler with no following expression is an error. To select a computation explicitly, construct a callable handler and apply it. Handler forms with `in` or `do` are rejected in both flavors; there are no compatibility aliases.
+`handle` governs the following statements and final expression in its containing block; ML uses indented arms. A `handle` with nothing after it is an error, and so is one at file scope. A smaller region is a callable handler applied to it. `in` and `do` forms are rejected in both flavors; there are no compatibility aliases.
 
 ## Effect declarations
 
@@ -441,7 +440,7 @@ A value arm returns the operation result and implicitly continues on normal retu
 
 `[MULTI-REPLAY]` `replayable` promises that repeated execution with the same arguments and handler context is acceptable. It is a semantic promise about the operation, not a conclusion from its name or body size.
 
-`[MULTI-REPLAY-CHECK]` A reusable continuation may be invoked more than once only when its replayed computation and reachable captures permit it. Non-replayable external actions such as charging a card or sending a message cannot be duplicated implicitly. A diagnostic names the responsible operation or captured resource. Operations of the handled effect are not exempt merely because they share an effect name.
+`[MULTI-REPLAY-CHECK]` A reusable continuation may be invoked more than once only when its replayed computation and reachable captures permit it. Non-replayable external actions such as charging a card or sending a message cannot be duplicated implicitly. A diagnostic names the responsible operation or captured resource. Sibling operations of the handled effect are not exempt merely because they share an effect name; only the arm's own operation is, since its perform is the choice point the continuation re-enters.
 
 `[MULTI-REPLAY-COARSE]` A compiler may use a conservative whole-region row when it cannot isolate the continuation suffix, and must explain that approximation. It MUST NOT accept an unsafe replay because an operation was erased or hidden behind a helper. Moving non-replayable work outside the captured region is a valid way to make the intended boundary explicit.
 

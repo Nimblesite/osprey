@@ -1,1 +1,1 @@
-8:21: static handler for `Tensor` does not cover operation `Tensor.rank`
+9:4: static handler for `Tensor` does not cover operation `Tensor.rank`

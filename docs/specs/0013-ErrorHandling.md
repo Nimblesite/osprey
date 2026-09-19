@@ -84,7 +84,7 @@ A region states its arithmetic policy once, in a handler, instead of at every op
 An unhandled arithmetic operation is a compile error naming the effect and operation, not a runtime surprise:
 
 ```text
-unhandled effect operations at program entry: Arith.overflow; add a matching handle
+unhandled effect operations at program entry: Arith.overflow; add a matching `handle`
 ```
 
 

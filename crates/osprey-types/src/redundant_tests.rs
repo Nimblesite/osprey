@@ -304,7 +304,7 @@ fn a_higher_order_parameter_annotation_is_judged_like_any_other() {
 fn a_mutable_binding_annotation_is_reported_like_an_immutable_one() {
     reports(
         Flavor::Default,
-        "effect State { set: fn(int) -> Unit }\nfn main() -> Unit = {\n  mut cell: int = 0\n  handle State\n    set value => { cell = value }\n  in { perform State.set(1) }\n}\n",
+        "effect State { set: fn(int) -> Unit }\nfn main() -> Unit = {\n  mut cell: int = 0\n  handle State {\n      set value => { cell = value }\n  }\n  perform State.set(1)\n}\n",
         &[
             "redundant return type annotation on `main`: inference derives `Unit` without it",
             "redundant type annotation on `cell`: inference derives `int` without it",
@@ -446,7 +446,12 @@ fn an_effect_operation_signature_is_never_reported() {
     silent(
         Flavor::Default,
         "effect Log { line: fn(string) -> Unit }\n\
-         fn main() = handle Log\n  line message => {}\nin { perform Log.line(\"hi\") }\n",
+         fn main() = {\n\
+             handle Log {\n\
+                 line message => {}\n\
+             }\n\
+             perform Log.line(\"hi\")\n\
+         }\n",
     );
 }
 

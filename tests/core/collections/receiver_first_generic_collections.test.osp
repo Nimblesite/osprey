@@ -12,8 +12,18 @@ fn stringGroups() = Map().mapSet("short", ["a", "bb"]).mapSet("long", ["three", 
 fn requestIntGroups() -> Map<string, List<int>> = perform CallSupply.groups()
 fn requestStringGroups() -> Map<string, List<string>> = perform CallSupply.groups()
 
-fn suppliedInts() = handle CallSupply groups => intGroups() in requestIntGroups()
-fn suppliedStrings() = handle CallSupply groups => stringGroups() in requestStringGroups()
+fn suppliedInts() = {
+    handle CallSupply {
+        groups => intGroups()
+    }
+    requestIntGroups()
+}
+fn suppliedStrings() = {
+    handle CallSupply {
+        groups => stringGroups()
+    }
+    requestStringGroups()
+}
 
 fn groupAt<T>(groups: Map<string, List<T>>, key: string, index: int, fallbackList: List<T>, fallback: T) =
 (groups.mapGet(key) ?: fallbackList).listGet(index) ?: fallback

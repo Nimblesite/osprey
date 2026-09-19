@@ -409,15 +409,17 @@ fn closeAfter(clientId: int, result: Result<string, Error>) = {
 
 // `main` installs the handlers that discharge each effect into real I/O, then
 // runs the pure effect logic underneath them.
-fn main() =
-    handle Console
+fn main() = {
+    handle Console {
         print line => print(line)
-    in handle Terminal
+    }
+    handle Terminal {
         readKey => termReadKey()
         raw on => termRawMode(on)
-    in handle Http
+    }
+    handle Http {
         fetch path => fetchBody(path)
         fetchRaw path => fetchRawBody(path)
-    in {
-        app()
     }
+    app()
+}

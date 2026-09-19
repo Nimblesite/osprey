@@ -124,14 +124,25 @@ impl OperationTable {
         table
     }
 
+    /// The declaration a mention names: `Choice<int>.pick` is declared by
+    /// `Choice`, so every lookup keys on the base name
+    /// [EFFECTS-GENERIC-INSTANTIATION].
+    fn declared(&self, effect: &str, operation: &str) -> Option<Declared> {
+        self.declared
+            .get(&(
+                crate::effect_name::base(effect).to_owned(),
+                operation.to_owned(),
+            ))
+            .copied()
+    }
+
     /// Whether `effect.operation` was declared `control`. An operation the
     /// program never declared reads as [`OperationMode::Value`]; the missing
     /// declaration is diagnosed by the checker that owns that error.
     /// Implements [EFFECTS-HANDLER-ARMS].
     #[must_use]
     pub fn mode_of(&self, effect: &str, operation: &str) -> OperationMode {
-        self.declared
-            .get(&(effect.to_string(), operation.to_string()))
+        self.declared(effect, operation)
             .map_or_else(OperationMode::default, |d| d.mode)
     }
 
@@ -141,8 +152,7 @@ impl OperationTable {
     /// rather than twice. Implements [MULTI-COMPAT].
     #[must_use]
     pub fn multiplicity_of(&self, effect: &str, operation: &str) -> Multiplicity {
-        self.declared
-            .get(&(effect.to_string(), operation.to_string()))
+        self.declared(effect, operation)
             .map_or_else(Multiplicity::default, |d| d.multiplicity)
     }
 
@@ -150,8 +160,7 @@ impl OperationTable {
     /// Implements [MULTI-REPLAY].
     #[must_use]
     pub fn is_replayable(&self, effect: &str, operation: &str) -> bool {
-        self.declared
-            .get(&(effect.to_string(), operation.to_string()))
+        self.declared(effect, operation)
             .is_some_and(|d| d.replayable)
     }
 }
@@ -238,6 +247,14 @@ mod tests {
         assert_eq!(table.multiplicity_of("Absent", "gone"), Multiplicity::Once);
         assert!(table.is_replayable("Choice", "seed"));
         assert!(!table.is_replayable("Choice", "pick"));
+        // A written instantiation names the same declaration
+        // [EFFECTS-GENERIC-INSTANTIATION]: `Choice<int>` is declared by `Choice`.
+        assert_eq!(
+            table.multiplicity_of("Choice<int>", "pick"),
+            Multiplicity::Many
+        );
+        assert_eq!(table.mode_of("Choice<int>", "pick"), OperationMode::Control);
+        assert!(table.is_replayable("Choice<List<int>>", "seed"));
         // Replayability is DECLARED. A static operation is not replayable by
         // virtue of being static: its captured state has to earn that
         // ([MULTI-REPLAY-STATE]).

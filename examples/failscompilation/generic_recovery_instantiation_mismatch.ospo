@@ -3,9 +3,10 @@ effect Recovery<T> {
     recover: fn(T) -> T
 }
 
-let recovered = handle Recovery
-    recover fallback => fallback
-in {
+let recovered = {
+    handle Recovery {
+        recover fallback => fallback
+    }
     let number = perform Recovery.recover(7)
     let text = perform Recovery.recover("seven")
     number

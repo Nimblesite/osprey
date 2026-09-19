@@ -22,7 +22,7 @@ auditEnvelopeMetadata envelopes =
     handle RecordAudit
         note value =>
             transcript := transcript + value + "/"
-    in forEachList envelopes (\envelope => perform RecordAudit.note envelope.metadata)
+    forEachList envelopes (\envelope => perform RecordAudit.note envelope.metadata)
     transcript
 
 (** The same two-parameter generic record crosses an effectful callback, list

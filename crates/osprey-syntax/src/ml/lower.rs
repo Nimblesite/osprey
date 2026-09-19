@@ -1438,17 +1438,12 @@ fn lower_binary(op: &str, left: MlExpr, right: MlExpr, pos: Position) -> Expr {
     }
 }
 
-/// A block lowers to [`Expr::Block`]; a block that is a single trailing value
-/// with no statements unwraps to that value, so it is structurally identical to
-/// the Default inline body.
+/// A block lowers to the flavor-neutral block shape ([`crate::desugar::block`]).
 fn lower_block(items: Vec<MlItem>, value: Option<Box<MlExpr>>) -> Expr {
     let (statements, value) = in_scope(scope_of(&items), move || {
         (lower_items(items), value.map(|v| Box::new(lower_expr(*v))))
     });
-    match (statements.is_empty(), value) {
-        (true, Some(value)) => *value,
-        (_, value) => Expr::Block { statements, value },
-    }
+    crate::desugar::block(statements, value)
 }
 
 /// `e ?: d` — the explicit Result default ([PATTERN-RESULT-DEFAULT]). Both

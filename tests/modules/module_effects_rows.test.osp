@@ -6,7 +6,7 @@ namespace pipeline;
 
 module Source {
     export effect Feed {
-        next : fn() -> int
+        control next : fn() -> int
     }
 
     /// A module function performing an unhandled operation propagates it.
@@ -40,16 +40,22 @@ module Stage {
 }
 
 /// Replays a fixed reading for every `Feed.next`.
-fn feeding(reading, body) = handle Source::Feed
-    next => resume(reading)
-in body()
+fn feeding(reading, body) = {
+    handle Source::Feed {
+        next => resume(reading)
+    }
+    body()
+}
 
 /// Collects the lines a body emits, appended after the body's own answer.
 fn collecting(body) = {
     mut seen = ""
-    let outcome = handle Sink::Report
-        line message => { seen = "${seen}${message}|" }
-    in body()
+    let outcome = {
+        handle Sink::Report {
+            line message => { seen = "${seen}${message}|" }
+        }
+        body()
+    }
     "${outcome}:${seen}"
 }
 

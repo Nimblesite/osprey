@@ -8,11 +8,15 @@ effect Log {
     write: fn(string) -> Unit
 }
 
-fn main() = handle Log
-    write message => print(message)
-in print("${handle static Tile
-    size => {
-        perform Log.write("measuring")
-        8
+fn main() = {
+    handle Log {
+        write message => print(message)
     }
-in perform Tile.size()}")
+    handle static Tile {
+        size => {
+            perform Log.write("measuring")
+            8
+        }
+    }
+    print("${perform Tile.size()}")
+}

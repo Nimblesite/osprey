@@ -256,9 +256,12 @@ announce("world")
 /// rides on the return type and the body alone may not pin it.
 const EFFECTFUL_UNIT: &str = r#"effect Console { emit: fn(string) -> Unit }
 fn shout(m: string) -> Unit !Console = perform Console.emit(m)
-handle Console
-    emit m => print(m)
-in shout("hey")
+let _ = {
+    handle Console {
+        emit m => print(m)
+    }
+    shout("hey")
+}
 "#;
 
 /// `-> any` is the ERASURE. Dropping it still compiles but infers `int`, which

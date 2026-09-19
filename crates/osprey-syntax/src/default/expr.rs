@@ -375,14 +375,32 @@ impl Lowerer<'_> {
     /// Lower the items of one block. Taken as a slice rather than read from the
     /// block node so a `handle` can be given the items after it as
     /// its body. Implements [EFFECTS-HANDLE-REST].
+    ///
+    /// Written braces stay a [`Expr::Block`] even around a lone value: the
+    /// braces are the user's construct, and a doc above `{ … }` documents the
+    /// block, not what is inside it ([TESTING-DOC]). A `handle` is the
+    /// exception: it governs the rest of its block, so the block IS the
+    /// handled region — the same node ML's layout form lowers to
+    /// ([FLAVOR-IR-EQUIV]).
     fn lower_block_items(&self, children: &[Node<'_>]) -> Expr {
+        let (statements, value) = self.block_items(children);
+        match value.as_deref() {
+            Some(Expr::Handler { .. }) => crate::desugar::block(statements, value),
+            _ => Expr::Block { statements, value },
+        }
+    }
+
+    /// The statements and trailing value of one block's items.
+    fn block_items(&self, children: &[Node<'_>]) -> (Vec<Stmt>, Option<Box<Expr>>) {
         let mut statements = Vec::new();
         let mut value = None;
         for (index, child) in children.iter().enumerate() {
             if let Some(handler) = self.handler_over_rest(*child) {
                 let rest = children.get(index + 1..).unwrap_or_default();
-                value = Some(Box::new(self.handling_rest(handler, rest)));
-                return Expr::Block { statements, value };
+                return (
+                    statements,
+                    Some(Box::new(self.handling_rest(handler, rest))),
+                );
             }
             match child.kind() {
                 "statement" => {
@@ -402,7 +420,7 @@ impl Lowerer<'_> {
                 value = Some(Box::new(e));
             }
         }
-        Expr::Block { statements, value }
+        (statements, value)
     }
 
     /// A `handle E { … }` block statement governs the remaining block items.
@@ -429,7 +447,12 @@ impl Lowerer<'_> {
             effect: self.mentioned_effect(handler),
             arms: self.lower_handler_arms(handler),
             return_clause: self.lower_handler_return(handler),
-            body: Box::new(self.lower_block_items(rest)),
+            // The rest of the block is the region, not braces the user wrote:
+            // a lone trailing value is the body itself, as in ML layout.
+            body: Box::new({
+                let (statements, value) = self.block_items(rest);
+                crate::desugar::block(statements, value)
+            }),
             position: Some(self.pos(handler)),
         }
     }
@@ -726,15 +749,11 @@ mod tests {
             Expr::Select { .. }
         ));
         // handler with params + perform inside its body.
-        // The handler over the rest of its block is the block's VALUE.
-        let block =
+        // The handler over the rest of its block is the block's VALUE, and a
+        // block with nothing before it IS that value — the same node ML's
+        // layout form lowers to ([FLAVOR-IR-EQUIV]).
+        let handled =
             let_value("let r = {\n  handle Log { info m => m }\n  perform Log.info(x: 1)\n}\n");
-        let handled = match block {
-            Expr::Block {
-                value: Some(value), ..
-            } => *value,
-            other => panic!("expected a block, got {other:?}"),
-        };
         match handled {
             Expr::Handler { effect, arms, .. } => {
                 assert_eq!(effect, "Log");

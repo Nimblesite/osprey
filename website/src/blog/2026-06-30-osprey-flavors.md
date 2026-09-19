@@ -45,10 +45,10 @@ Flavor selection works per file through `.osp` or `.ospml`, a leading source
 marker, or `--flavor` for a single-file build. Multi-file cross-flavor imports
 remain under development.
 
-Both flavors support lexical `effect`, `perform` and `handle … in` syntax.
-Effect inputs and outputs are checked, but complete effect-row propagation and
-missing-handler rejection are not implemented. Resuming handlers are
-native-only.
+Both flavors support lexical `effect`, `perform`, `handle` and `handler`
+syntax. Effect inputs and outputs are checked, and a program that performs an
+operation no handler discharges is rejected. Control operations — the ones
+whose handlers take a continuation — are native-only.
 
 See the [tested examples](https://github.com/Nimblesite/osprey/tree/main/tests/regressions)
 and [language-flavor specification](/spec/0023-languageflavors/).

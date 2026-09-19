@@ -31,7 +31,7 @@ skipFinal =
             skipCount := skipCount + 1 ?: skipCount
             skipReason := skipReason + "skipped ${requested} (only ${available} left); "
             0
-    in fulfill batch start
+    fulfill batch start
 skipFilled = start - skipFinal
 print "SKIP done: recovered ${skipCount} orders, fulfilled ${skipFilled} units, ${skipFinal} left in stock\nSKIP log: [${skipReason}]"
 
@@ -44,7 +44,7 @@ capFinal =
             capCount := capCount + 1 ?: capCount
             capReason := capReason + "capped ${requested} to ${available}; "
             available
-    in fulfill batch start
+    fulfill batch start
 capFilled = start - capFinal
 print "CAP done: recovered ${capCount} orders, fulfilled ${capFilled} units, ${capFinal} left in stock\nCAP log: [${capReason}]"
 
@@ -56,7 +56,7 @@ happyFinal =
         overdraw _requested _available =>
             happyCount := happyCount + 1 ?: happyCount
             0
-    in fulfill happyBatch start
+    fulfill happyBatch start
 happyFilled = start - happyFinal
 print "HAPPY done: recovered ${happyCount} orders, fulfilled ${happyFilled} units, ${happyFinal} left in stock\n=== all three batches completed ==="
 

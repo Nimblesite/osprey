@@ -60,8 +60,12 @@ fn state_module_shapes_are_equivalent_without_redundant_ml_module() {
         "state module Counter {\n",
         "  mut count = 0\n",
         "  export effect CounterFx { read: fn() -> int }\n",
-        "  export fn run(action) =\n",
-        "    handle CounterFx read => count in action()\n",
+        "  export fn run(action) = {\n",
+        "    handle CounterFx {\n",
+        "        read => count\n",
+        "    }\n",
+        "    action()\n",
+        "  }\n",
         "}\n",
     );
     let ml = concat!(
@@ -72,8 +76,7 @@ fn state_module_shapes_are_equivalent_without_redundant_ml_module() {
         "    export run action =\n",
         "        handle CounterFx\n",
         "            read => count\n",
-        "        in\n",
-        "            action ()\n",
+        "        action ()\n",
     );
     assert_equivalent(default, ml);
 }

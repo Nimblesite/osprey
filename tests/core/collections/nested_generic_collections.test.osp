@@ -27,17 +27,19 @@ fn matrixShape<T>(matrix: List<List<T>>) = match matrix {
 
 fn auditInts(rows) = {
     mut encoded = 0
-    handle LeafAudit
-    observe value => { encoded = encoded * 10 + value ?: encoded }
-    in forEachList(rows, fn(row) => forEachList(row, fn(value) => perform LeafAudit.observe(value)))
+    handle LeafAudit {
+        observe value => { encoded = encoded * 10 + value ?: encoded }
+    }
+    forEachList(rows, fn(row) => forEachList(row, fn(value) => perform LeafAudit.observe(value)))
     encoded
 }
 
 fn auditStrings(rows) = {
     mut encoded = ""
-    handle LeafAudit
-    observe value => { encoded = encoded + value + "/" }
-    in forEachList(rows, fn(row) => forEachList(row, fn(value) => perform LeafAudit.observe(value)))
+    handle LeafAudit {
+        observe value => { encoded = encoded + value + "/" }
+    }
+    forEachList(rows, fn(row) => forEachList(row, fn(value) => perform LeafAudit.observe(value)))
     encoded
 }
 

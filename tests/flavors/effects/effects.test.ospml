@@ -41,24 +41,23 @@ runBatchAssertions () =
     handle FlavorCounter
         tick amount =>
             total := total + amount ?: total
-    in
-        forEachList first (\amount => perform FlavorCounter.tick amount)
-        checkAll "effectful callback applies the first generic list" [
-            total == 15,
-            "first total=${total}" == "first total=15"
-        ]
-        perform FlavorCounter.tick ((0 - 4) ?: 0)
-        checkAll "negative handled transition remains checked" [
-            total == 11,
-            total < 15
-        ]
-        forEachList second (\amount => perform FlavorCounter.tick amount)
-        perform FlavorCounter.tick 0
-        checkAll "second list and identity transition compose" [
-            total == 25,
-            total > 11,
-            "second total=${total}" == "second total=25"
-        ]
+    forEachList first (\amount => perform FlavorCounter.tick amount)
+    checkAll "effectful callback applies the first generic list" [
+        total == 15,
+        "first total=${total}" == "first total=15"
+    ]
+    perform FlavorCounter.tick ((0 - 4) ?: 0)
+    checkAll "negative handled transition remains checked" [
+        total == 11,
+        total < 15
+    ]
+    forEachList second (\amount => perform FlavorCounter.tick amount)
+    perform FlavorCounter.tick 0
+    checkAll "second list and identity transition compose" [
+        total == 25,
+        total > 11,
+        "second total=${total}" == "second total=25"
+    ]
 
     checkAll "handler exit preserves state and persistent collection versions" [
         total == 25,
@@ -85,20 +84,19 @@ mutationCase () =
     handle FlavorCounter
         tick amount =>
             flavorCounter := flavorCounter + amount ?: flavorCounter
-    in
-        perform FlavorCounter.tick 1
+    perform FlavorCounter.tick 1
 
-        // The first operation is independently observable.
-        checkAll "counter first transition" [
-            flavorCounter == 1
-        ]
+    // The first operation is independently observable.
+    checkAll "counter first transition" [
+        flavorCounter == 1
+    ]
 
-        perform FlavorCounter.tick 41
+    perform FlavorCounter.tick 41
 
-        // The second operation reaches the expected total.
-        checkAll "counter second transition" [
-            flavorCounter == 42
-        ]
+    // The second operation reaches the expected total.
+    checkAll "counter second transition" [
+        flavorCounter == 42
+    ]
 
     // State and rendering survive handler exit.
     checkAll "counter legacy final state and rendering" [

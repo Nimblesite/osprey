@@ -53,7 +53,7 @@ fn imported_static_effects_are_validated_after_cross_flavor_assembly() {
             "main.osp",
             Flavor::Default,
             &format!(
-                "namespace app;\nimport readings::Source::{{Read, fetch}}\nfn main() = {{\nlet value = handle static Read value => {answer} in fetch()\nprint(value)\n}}\n"
+                "namespace app;\nimport readings::Source::{{Read, fetch}}\nfn main() = {{\nlet value = {{\n    handle static Read {{\n        value => {answer}\n    }}\n    fetch()\n}}\nprint(value)\n}}\n"
             ),
         );
         let project = assemble(&config("main.osp"), &[entry, library.clone()]);

@@ -99,12 +99,16 @@ fn value_and_control_arms_forward_to_the_outer_activation() {
         r#"
 effect ValueAsk { value: fn() -> int }
 effect ControlAsk { control value: fn() -> int }
-let value = handle ValueAsk value => 40 in
-    handle ValueAsk value => (perform ValueAsk.value() + 1) ?: 0 in
-        (perform ValueAsk.value() + 1) ?: 0
-let control = handle ControlAsk value => resume(40) in
-    handle ControlAsk value => resume((perform ControlAsk.value() + 1) ?: 0) in
-        (perform ControlAsk.value() + 1) ?: 0
+let value = {
+    handle ValueAsk { value => 40 }
+    handle ValueAsk { value => (perform ValueAsk.value() + 1) ?: 0 }
+    (perform ValueAsk.value() + 1) ?: 0
+}
+let control = {
+    handle ControlAsk { value => resume(40) }
+    handle ControlAsk { value => resume((perform ControlAsk.value() + 1) ?: 0) }
+    (perform ControlAsk.value() + 1) ?: 0
+}
 print("${value}:${control}")
 "#,
         r#"
@@ -115,17 +119,15 @@ effect ControlAsk
 value =
     handle ValueAsk
         value => 40
-    in
-        handle ValueAsk
-            value => (perform ValueAsk.value () + 1) ?: 0
-        in (perform ValueAsk.value () + 1) ?: 0
+    handle ValueAsk
+        value => (perform ValueAsk.value () + 1) ?: 0
+    (perform ValueAsk.value () + 1) ?: 0
 control =
     handle ControlAsk
         value => resume 40
-    in
-        handle ControlAsk
-            value => resume ((perform ControlAsk.value () + 1) ?: 0)
-        in (perform ControlAsk.value () + 1) ?: 0
+    handle ControlAsk
+        value => resume ((perform ControlAsk.value () + 1) ?: 0)
+    (perform ControlAsk.value () + 1) ?: 0
 print "${value}:${control}"
 "#,
         "42:42\n",

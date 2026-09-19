@@ -1,8 +1,11 @@
 // [EFFECTS-RESUME] A handler must resume with the operation's declared result type.
 effect ParseFailure {
-    raise: fn(string) -> int
+    control raise: fn(string) -> int
 }
 
-let recovered = handle ParseFailure
-    raise message => resume("not an integer")
-in perform ParseFailure.raise("invalid number")
+let recovered = {
+    handle ParseFailure {
+        raise message => resume("not an integer")
+    }
+    perform ParseFailure.raise("invalid number")
+}

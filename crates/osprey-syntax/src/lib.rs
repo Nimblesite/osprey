@@ -18,6 +18,15 @@ use osprey_ast::{Position, Program};
 /// domain ([ARITH-NEG-LITERAL], [FLAVOR-EQUIVALENCE]).
 pub(crate) const I64_MIN_MAGNITUDE: &str = "9223372036854775808";
 
+/// What a `handle` outside any block reports, in either flavor: it governs the
+/// rest of its containing block, so it needs one. Implements [EFFECTS-HANDLE-REST].
+pub(crate) const HANDLE_NEEDS_A_BLOCK: &str =
+    "`handle` must be a block statement; use `handler` to construct a callable handler";
+
+/// What a `handle` with no body and nothing after it reports, in either flavor.
+pub(crate) const NOTHING_TO_HANDLE: &str =
+    "this `handle` has nothing to handle; put the handled statements after it";
+
 mod annotation_edits;
 #[cfg(test)]
 mod annotation_edits_tests;

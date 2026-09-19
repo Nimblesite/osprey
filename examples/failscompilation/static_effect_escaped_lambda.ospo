@@ -5,8 +5,11 @@ effect Alarm {
 
 fn make() = fn() => perform Alarm.ring()
 
-let delayed = handle Alarm
-    ring => 41
-in make()
+let delayed = {
+    handle Alarm {
+        ring => 41
+    }
+    make()
+}
 
 let answer = delayed()

@@ -18,12 +18,12 @@ requestStringGroups () = perform CallSupply.groups ()
 suppliedInts () =
     handle CallSupply
         groups => intGroups ()
-    in requestIntGroups ()
+    requestIntGroups ()
 
 suppliedStrings () =
     handle CallSupply
         groups => stringGroups ()
-    in requestStringGroups ()
+    requestStringGroups ()
 
 groupAt<T> : (Map string (List T), string, int, List T, T) -> T
 groupAt (groups, key, index, fallbackList, fallback) =

@@ -21,25 +21,25 @@ testNested () =
         handle Logger
             log msg   => print ("[INNER-LOG] " + msg)
             debug msg => print ("[INNER-DEBUG] " + msg)
-        in
-            r = innerOp ()
-            perform Logger.log ("inner result: " + toString r)
-            r
+        r = innerOp ()
+        perform Logger.log ("inner result: " + toString r)
+        r
 
     perform Logger.log "after inner handler — back to outer"
     outerResult = outerOp ()
     perform Logger.log ("outer result: " + toString outerResult)
 
-handle Logger
-    log msg   => print ("[OUTER-LOG] " + msg)
-    debug msg => print ("[OUTER-DEBUG] " + msg)
-in
+scopingDemo () =
+    handle Logger
+        log msg   => print ("[OUTER-LOG] " + msg)
+        debug msg => print ("[OUTER-DEBUG] " + msg)
     print "=== handler scoping ==="
     r = nestedCall ()
     print ("forward chain result: " + toString r)
 
     testNested ()
     print "=== done ==="
+scopingDemo ()
 
 performComplex () =
     perform Logger.log "complex starting"
@@ -59,10 +59,10 @@ nestedCall () =
 
 effect Ask
     (** Request a replacement for `value` from the installed handler. *)
-    ask : int => int
+    control ask : int => int
 effect Tell
     (** Hand `value` to the handler and use whatever it returns. *)
-    tell : int => int
+    control tell : int => int
 
 askBoth n =
     a = perform Ask.ask n
@@ -71,20 +71,18 @@ askBoth n =
 nested =
     handle Ask
         ask v => resume ((v + 1) ?: v)
-    in
-        handle Tell
-            tell v => resume ((v * 2) ?: v)
-        in askBoth 4
+    handle Tell
+        tell v => resume ((v * 2) ?: v)
+    askBoth 4
 
 askOnce n = perform Ask.ask n
 
 shadowed =
     handle Ask
         ask v => resume ((v + 100) ?: v)
-    in
-        handle Ask
-            ask v => resume ((v + 1) ?: v)
-        in askOnce 1
+    handle Ask
+        ask v => resume ((v + 1) ?: v)
+    askOnce 1
 print ("nested resuming " + toString nested + " shadowed resume " + toString shadowed)
 print "=== resume scoping done ==="
 
@@ -104,7 +102,7 @@ type Boxed =
 
 effect Audit
     (** Narrow `item` and hand back the width of its rendering. *)
-    note : any => int
+    control note : any => int
 
 describeErased : any -> string
 describeErased v =
@@ -123,14 +121,14 @@ auditWork () =
 audited =
     handle Audit
         note item => resume (length (describeErased item))
-    in auditWork ()
+    auditWork ()
 
 (** Run the forward-referenced chain under a quiet handler. *)
 forwardResultForTest () =
     handle Logger
         log _msg => 0
         debug _msg => 0
-    in nestedCall ()
+    nestedCall ()
 
 // Re-enter the forward call chain and check nested handler restoration.
 test "nested handlers override locally and restore outer scope" (\() => checkAll "handler scope results" [
@@ -175,7 +173,7 @@ topSum =
             topCell := topCell + amount ?: topCell
             topCell
         snapshot offset => topCell + offset ?: topCell
-    in deeplyNested 2
+    deeplyNested 2
 
 (** [EFFECTS-HANDLER-STATE] promotes a captured `mut` to a shared heap cell so
     "every arm, the handled body, and code after the region observe the same
@@ -197,10 +195,9 @@ handlerStateThroughNestedCallsCase () =
             snapshot offset =>
                 snapshots := snapshots + 1 ?: snapshots
                 cell + offset ?: cell
-        in
-            nestedSum = deeplyNested 5
-            live = perform Counter.snapshot 0
-            (nestedSum + live) ?: 0
+        nestedSum = deeplyNested 5
+        live = perform Counter.snapshot 0
+        (nestedSum + live) ?: 0
     after =
         handle Counter
             bump amount =>
@@ -208,7 +205,7 @@ handlerStateThroughNestedCallsCase () =
                 cell := cell + amount ?: cell
                 cell
             snapshot offset => cell + offset ?: cell
-        in bumpVia 100
+        bumpVia 100
 
     // The arm's own answers accumulate on one cell across three call levels.
     checkAll "nested performs share the handler cell" [

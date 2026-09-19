@@ -29,11 +29,12 @@ validate (name, age, score, email) =
 audit (name, age, score, email) =
     mut count = 0
     mut errs = ""
-    _ = handle Invalid
-        report m =>
-            count := count + 1 ?: count
-            errs := errs + "\n    #${toString count} ${m}"
-    in validate (name, age, score, email)
+    _ =
+        handle Invalid
+            report m =>
+                count := count + 1 ?: count
+                errs := errs + "\n    #${toString count} ${m}"
+        validate (name, age, score, email)
     match count == 0
         true => " — clean\n    => ACCEPTED (0 errors)"
         false => "${errs}\n    => REJECTED (${toString count} errors collected in ONE pass)"

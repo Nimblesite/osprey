@@ -99,7 +99,7 @@ fn assemble_if_needed(
 fn unhandled_integer_overflow_in_mutation_is_rejected() {
     let source = r#"
 effect Audit
-    step : string => int
+    control step : string => int
 
 pipeline : Unit -> int ! Audit
 pipeline () = perform Audit.step "tick"
@@ -110,7 +110,7 @@ unhandledOverflow () =
         step label =>
             n := n + 1
             resume n
-    in pipeline ()
+    pipeline ()
 "#;
     let result = compile(Path::new("unhandled_integer_overflow.test.ospml"), source);
     assert!(
@@ -277,7 +277,9 @@ fn generics_and_variance_negative_cases_are_rejected() {
 #[test]
 fn static_effect_safety_negative_cases_are_rejected_in_both_flavors() {
     // [EFFECTS-STATIC-DISCHARGE] These paired fixtures pin the end-to-end
-    // parse -> inference -> entry-proof boundary, including ML lowering.
+    // parse -> inference -> entry-proof boundary, including ML lowering. An
+    // arm performing its own operation forwards OUTWARD, so with no outer
+    // handler the recursive fixtures surface as unhandled at program entry.
     let dir = repo_root().join("examples/failscompilation");
     let cases = [
         (
@@ -292,7 +294,7 @@ fn static_effect_safety_negative_cases_are_rejected_in_both_flavors() {
         ("static_effect_generic_mismatch.ospo", "Stash<int>.put"),
         (
             "static_effect_recursive_handler.ospo",
-            "recursively re-enter",
+            "unhandled effect operations at program entry: Loop.again",
         ),
         (
             "ml_static_effect_unhandled_inferred_transitive.ospo",
@@ -306,7 +308,7 @@ fn static_effect_safety_negative_cases_are_rejected_in_both_flavors() {
         ("ml_static_effect_generic_mismatch.ospo", "Stash<int>.put"),
         (
             "ml_static_effect_recursive_handler.ospo",
-            "recursively re-enter",
+            "unhandled effect operations at program entry: Loop.again",
         ),
     ];
 

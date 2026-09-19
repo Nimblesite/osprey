@@ -37,22 +37,27 @@ fn account() ![Console, Ledger] = {
 // World A owns real state in the handler; World B freezes the ledger to a mock.
 fn realWorld() = {
     mut balance = 0
-    handle Console
+    handle Console {
         emit line => print("    money ${line}")
-    in handle Ledger
+    }
+    handle Ledger {
         post amount => {
             balance = balance + amount ?: balance
             balance
         }
-    in account()
+    }
+    account()
 }
 
-fn dryRun() =
-    handle Console
+fn dryRun() = {
+    handle Console {
         emit line => print("    test  [dry-run] ${line}")
-    in handle Ledger
+    }
+    handle Ledger {
         post _amount => 0
-    in account()
+    }
+    account()
+}
 
 // ── union type + exhaustive pattern matching (drop an arm: compile error) ──
 type Tier = Epic | Solid | Starter

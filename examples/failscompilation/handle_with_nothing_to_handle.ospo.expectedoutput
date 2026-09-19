@@ -1,1 +1,1 @@
-12:4: this `handle` names no body, so it handles the rest of its block — and nothing follows it. Put the statements it should handle after it, or name the region with `in`
+12:4: this `handle` has nothing to handle; put the handled statements after it

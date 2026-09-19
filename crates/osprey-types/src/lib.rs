@@ -324,10 +324,11 @@ mod tests {
 
         ok("effect State { set: fn(int) -> Unit }\n\
             fn main() -> Unit = {\n\
-              mut cell = 0\n\
-              handle State\n\
+            mut cell = 0\n\
+            handle State {\n\
                 set value => { cell = value }\n\
-              in { perform State.set(1) }\n\
+            }\n\
+            perform State.set(1)\n\
             }\n");
     }
 
@@ -335,10 +336,11 @@ mod tests {
     fn handled_client_body_does_not_gain_mutation_authority() {
         let errs = bad("effect State { set: fn(int) -> Unit }\n\
             fn main() -> Unit = {\n\
-              mut cell = 0\n\
-              handle State\n\
+            mut cell = 0\n\
+            handle State {\n\
                 set value => { cell = value }\n\
-              in { cell = 1 }\n\
+            }\n\
+            cell = 1\n\
             }\n");
         assert!(errs.iter().any(|e| {
             e.message

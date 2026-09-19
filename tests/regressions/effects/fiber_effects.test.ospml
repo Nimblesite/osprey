@@ -50,9 +50,9 @@ show x = print ("  " + toString x)
 
 print "=== mixup: fibers + effects + records ==="
 
-handle Logger
-    log msg => print ("[LOG] " + msg)
-in
+mixupDemo () =
+    handle Logger
+        log msg => print ("[LOG] " + msg)
     (** priorities -> effectful fibers *)
     fHigh = spawn (runJob (priWeight High))
     sHigh = await fHigh
@@ -89,20 +89,19 @@ in
     print ("map len " + toString (mapLength m))
     print ("has high " + toString (mapContains m "high"))
     forEachList (mapValues m) show
+mixupDemo ()
 
 (** region-level isolation: same effect, different impl per region. *)
 prodR =
     handle Logger
         log msg => print ("[PROD] " + msg)
-    in
-        perform Logger.log "prod path"
-        10
+    perform Logger.log "prod path"
+    10
 silentR =
     handle Logger
         log _msg => 0
-    in
-        perform Logger.log "silenced"
-        0
+    perform Logger.log "silenced"
+    0
 print ("regions prod=" + toString prodR + " silent=" + toString silentR)
 
 (** (3) Two fibers perform concurrently into ONE resuming handler: each perform
@@ -110,7 +109,7 @@ print ("regions prod=" + toString prodR + " silent=" + toString silentR)
     locks the fiber-perform race fix ([EFFECTS-FIBER-PERFORM]). *)
 effect Gift
     (** Request the value awarded for `seed`. *)
-    get : int => int
+    control get : int => int
 
 ask tag = perform Gift.get tag
 
@@ -122,7 +121,7 @@ pairSum (a, b) =
 raceSum =
     handle Gift
         get tag => resume ((tag * 10) ?: 0)
-    in pairSum (1, 2)
+    pairSum (1, 2)
 print ("race-free sum " + toString raceSum)
 print "=== done ==="
 
@@ -130,13 +129,13 @@ print "=== done ==="
 highScoreForTest () =
     handle Logger
         log _msg => 0
-    in await (spawn (runJob (priWeight High)))
+    await (spawn (runJob (priWeight High)))
 
 (** Repeats the two-fiber resuming interaction for assertion use. *)
 pairedScoreForTest () =
     handle Gift
         get tag => resume ((tag * 10) ?: 0)
-    in pairSum (1, 2)
+    pairSum (1, 2)
 
 // Re-executes effectful fiber work and checks deterministic results on the main fiber.
 test "fiber results remain deterministic across effect handlers" (\() => checkAll "fiber and effect results" [
@@ -227,12 +226,11 @@ awaitReplaysOneEffectfulRunCase () =
                 total := total + amount ?: total
                 lastAmount := amount
                 total
-        in
-            f = spawn (tallyJob 7)
-            a1 = await f
-            a2 = await f
-            a3 = await f
-            a1 + a2 + a3 ?: 0
+        f = spawn (tallyJob 7)
+        a1 = await f
+        a2 = await f
+        a3 = await f
+        a1 + a2 + a3 ?: 0
 
     (** The identity amount: the run leaves the cell where it was, and both awaits
         still answer the total the single body produced. 7 -> 7. *)
@@ -243,9 +241,8 @@ awaitReplaysOneEffectfulRunCase () =
                 total := total + amount ?: total
                 lastAmount := amount
                 total
-        in
-            fz = spawn (tallyJob 0)
-            (await fz) + (await fz) ?: 0
+        fz = spawn (tallyJob 0)
+        (await fz) + (await fz) ?: 0
 
     (** A negative amount walks the shared cell back. 7 -> 2. *)
     negRun =
@@ -255,7 +252,7 @@ awaitReplaysOneEffectfulRunCase () =
                 total := total + amount ?: total
                 lastAmount := amount
                 total
-        in await (spawn (tallyJob (0 - 5 ?: 0)))
+        await (spawn (tallyJob (0 - 5 ?: 0)))
 
     (** Three spawn SITES, each awaited before the next is spawned, so arrival is
         program order. "Each spawn site allocates a distinct capture cell", so the
@@ -267,12 +264,11 @@ awaitReplaysOneEffectfulRunCase () =
                 total := total + amount ?: total
                 lastAmount := amount
                 total
-        in
-            base = 4
-            s1 = await (spawn (tallyJob base))
-            s2 = await (spawn (tallyJob (base + 1 ?: base)))
-            s3 = await (spawn (tallyJob (base + 2 ?: base)))
-            s1 * 10000 + s2 * 100 + s3 ?: 0
+        base = 4
+        s1 = await (spawn (tallyJob base))
+        s2 = await (spawn (tallyJob (base + 1 ?: base)))
+        s3 = await (spawn (tallyJob (base + 2 ?: base)))
+        s1 * 10000 + s2 * 100 + s3 ?: 0
 
     (** ONE fiber body performing twice, the second nested inside the first arm's
         round trip. 17 -> 18 -> 17, and the body answers 18 + 17. *)
@@ -283,7 +279,7 @@ awaitReplaysOneEffectfulRunCase () =
                 total := total + amount ?: total
                 lastAmount := amount
                 total
-        in await (spawn (tallyTwice (1, 0 - 1 ?: 0)))
+        await (spawn (tallyTwice (1, 0 - 1 ?: 0)))
 
     // Ten awaits asked for a result; eight fiber bodies produced one.
     checkAll "one body run answers every await" [
@@ -366,7 +362,7 @@ concurrentPerformsKeepTheirOwnAnswersCase () =
                 tagSum := tagSum + tag ?: tagSum
                 tagProduct := tagProduct * tag ?: tagProduct
                 resume ((tag * 10) ?: 0)
-        in quadWeighted (1, 2, 3, 4)
+        quadWeighted (1, 2, 3, 4)
 
     (** DUPLICATE tags: four performers ask the same question and each still gets
         its own round trip, so the turn count sees all four. *)
@@ -377,7 +373,7 @@ concurrentPerformsKeepTheirOwnAnswersCase () =
                 tagSum := tagSum + tag ?: tagSum
                 tagProduct := tagProduct * tag ?: tagProduct
                 resume ((tag * 10) ?: 0)
-        in quadWeighted (2, 2, 2, 2)
+        quadWeighted (2, 2, 2, 2)
 
     (** Zero and a negative operand: identity and sign cross the mailbox unchanged.
         0*1 + (-10)*100 + 50*10000 + 0*1000000 = 500000 - 1000 = 499000. *)
@@ -387,7 +383,7 @@ concurrentPerformsKeepTheirOwnAnswersCase () =
                 edgeTurns := edgeTurns + 1 ?: edgeTurns
                 edgeSum := edgeSum + tag ?: edgeSum
                 resume ((tag * 10) ?: 0)
-        in quadWeighted (0, 0 - 1 ?: 0, 5, 0)
+        quadWeighted (0, 0 - 1 ?: 0, 5, 0)
 
     (** Two performers, one of them the identity tag: 70 + 0. *)
     pairEdge =
@@ -396,7 +392,7 @@ concurrentPerformsKeepTheirOwnAnswersCase () =
                 edgeTurns := edgeTurns + 1 ?: edgeTurns
                 edgeSum := edgeSum + tag ?: edgeSum
                 resume ((tag * 10) ?: 0)
-        in pairSum (7, 0)
+        pairSum (7, 0)
 
     (** A fiber that spawns fibers: (30 + 40) from the inner pair, 70 from the
         side fiber whose tag is 3 + 4. *)
@@ -406,7 +402,7 @@ concurrentPerformsKeepTheirOwnAnswersCase () =
                 edgeTurns := edgeTurns + 1 ?: edgeTurns
                 edgeSum := edgeSum + tag ?: edgeSum
                 resume ((tag * 10) ?: 0)
-        in nestedFan (3, 4)
+        nestedFan (3, 4)
 
     // Each positional field holds the answer to that fiber's OWN tag. 40301020
     // is what a swap between the first two performers would print, 40302040 what
@@ -511,12 +507,11 @@ handlerCellCrossesTheFiberBoundaryCase () =
                 cell := cell + amount ?: cell
                 trail := "${trail}${amount}:${cell}|"
                 cell
-        in
-            m1 = tallyJob 3
-            f1 = await (spawn (tallyJob 4))
-            m2 = tallyJob 5
-            f2 = await (spawn (tallyJob 6))
-            m1 * 1000000 + f1 * 10000 + m2 * 100 + f2 ?: 0
+        m1 = tallyJob 3
+        f1 = await (spawn (tallyJob 4))
+        m2 = tallyJob 5
+        f2 = await (spawn (tallyJob 6))
+        m1 * 1000000 + f1 * 10000 + m2 * 100 + f2 ?: 0
 
     (** A SECOND region over the same captured binding: promotion is to one heap
         location, not one per region. 18 -> 22. *)
@@ -527,7 +522,7 @@ handlerCellCrossesTheFiberBoundaryCase () =
                 cell := cell + amount ?: cell
                 trail := "${trail}${amount}:${cell}|"
                 cell
-        in await (spawn (tallyJob 4))
+        await (spawn (tallyJob 4))
 
     (** Four fibers in flight into ONE resuming region: a turn is atomic end to
         end, so four increments of one cannot collapse into fewer. *)
@@ -537,7 +532,7 @@ handlerCellCrossesTheFiberBoundaryCase () =
                 turns := turns + 1 ?: turns
                 answered := answered + tag ?: answered
                 resume ((tag * 10) ?: 0)
-        in quadWeighted (2, 3, 5, 0)
+        quadWeighted (2, 3, 5, 0)
 
     (** A third region reads the cell back through the identity amount and never
         touches the trail: "code after the region observes the same location". *)
@@ -547,7 +542,7 @@ handlerCellCrossesTheFiberBoundaryCase () =
                 hops := hops + 1 ?: hops
                 cell := cell + amount ?: cell
                 cell
-        in await (spawn (tallyJob 0))
+        await (spawn (tallyJob 0))
 
     // 3 + 4 + 5 + 6 + 4 = 22, whether the perform came from the main fiber or a
     // spawned one.
@@ -643,19 +638,18 @@ channelHandoffKeepsFibersIsolatedCase () =
                 sent := sent + amount ?: sent
                 trail := "${trail}${amount},"
                 amount
-        in
-            ch = Channel 4
-            producer = spawn
-                send ch (tallyJob 11)
-                send ch (tallyJob 22)
-                send ch (tallyJob 33)
-                send ch (tallyJob 44)
-            await producer
-            r1 = recv ch
-            r2 = recv ch
-            r3 = recv ch
-            r4 = recv ch
-            r1 * 1000000 + r2 * 10000 + r3 * 100 + r4 ?: 0
+        ch = Channel 4
+        producer = spawn
+            send ch (tallyJob 11)
+            send ch (tallyJob 22)
+            send ch (tallyJob 33)
+            send ch (tallyJob 44)
+        await producer
+        r1 = recv ch
+        r2 = recv ch
+        r3 = recv ch
+        r4 = recv ch
+        r1 * 1000000 + r2 * 10000 + r3 * 100 + r4 ?: 0
 
     (** Two fibers, no shared memory: every digit the consumer answers arrived
         through the buffer. *)
@@ -760,12 +754,11 @@ nestedRegionsPickTheInnermostArmForFibersCase () =
             stamp tag =>
                 stampHits := stampHits + 1 ?: stampHits
                 "outer${tag}"
-        in
-            handle Relay
-                fetch tag =>
-                    innerHits := innerHits + 1 ?: innerHits
-                    tag * 100 ?: 0
-            in await (spawn (relayBoth 3))
+        handle Relay
+            fetch tag =>
+                innerHits := innerHits + 1 ?: innerHits
+                tag * 100 ?: 0
+        await (spawn (relayBoth 3))
 
     (** The SAME fiber under the enclosing region alone: tag 3 => "outer3" and 6. *)
     outerOnly =
@@ -776,7 +769,7 @@ nestedRegionsPickTheInnermostArmForFibersCase () =
             stamp tag =>
                 stampHits := stampHits + 1 ?: stampHits
                 "outer${tag}"
-        in await (spawn (relayBoth 3))
+        await (spawn (relayBoth 3))
 
     (** The inner region covers only the fiber spawned INSIDE it; the fiber
         spawned after it is back on the enclosing arm. 400 then 8. *)
@@ -788,15 +781,14 @@ nestedRegionsPickTheInnermostArmForFibersCase () =
             stamp tag =>
                 stampHits := stampHits + 1 ?: stampHits
                 "outer${tag}"
-        in
-            shadowed =
-                handle Relay
-                    fetch tag =>
-                        innerHits := innerHits + 1 ?: innerHits
-                        tag * 100 ?: 0
-                in await (spawn (relayBoth 4))
-            plain = await (spawn (relayBoth 4))
-            "${shadowed}/${plain}"
+        shadowed =
+            handle Relay
+                fetch tag =>
+                    innerHits := innerHits + 1 ?: innerHits
+                    tag * 100 ?: 0
+            await (spawn (relayBoth 4))
+        plain = await (spawn (relayBoth 4))
+        "${shadowed}/${plain}"
 
     (** Two fibers under one inner region, one carrying the identity tag and one a
         negative tag: 0 => 0 and -2 => -200. *)
@@ -808,15 +800,13 @@ nestedRegionsPickTheInnermostArmForFibersCase () =
             stamp tag =>
                 stampHits := stampHits + 1 ?: stampHits
                 "outer${tag}"
-        in
-            handle Relay
-                fetch tag =>
-                    innerHits := innerHits + 1 ?: innerHits
-                    tag * 100 ?: 0
-            in
-                a = await (spawn (relayBoth 0))
-                b = await (spawn (relayBoth (0 - 2 ?: 0)))
-                "${a}+${b}"
+        handle Relay
+            fetch tag =>
+                innerHits := innerHits + 1 ?: innerHits
+                tag * 100 ?: 0
+        a = await (spawn (relayBoth 0))
+        b = await (spawn (relayBoth (0 - 2 ?: 0)))
+        "${a}+${b}"
 
     // "outer3=6" is the answer the enclosing arm would have given the fiber that
     // was spawned inside the inner region.
@@ -918,12 +908,11 @@ fiberPipelineTranscriptIsDeterministicCase () =
                 running := running + amount ?: running
                 script := "${script}s${steps}=${running};"
                 running
-        in
-            a = await (spawn (tallyJob 1))
-            b = await (spawn (tallyJob (a + 1 ?: a)))
-            c = await (spawn (tallyJob (b + 1 ?: b)))
-            d = await (spawn (tallyJob (c + 1 ?: c)))
-            a * 1000000 + b * 10000 + c * 100 + d ?: 0
+        a = await (spawn (tallyJob 1))
+        b = await (spawn (tallyJob (a + 1 ?: a)))
+        c = await (spawn (tallyJob (b + 1 ?: b)))
+        d = await (spawn (tallyJob (c + 1 ?: c)))
+        a * 1000000 + b * 10000 + c * 100 + d ?: 0
 
     (** A yield BETWEEN two performs in one fiber body: the parked value is handed
         straight back, so the second perform adds 20 to the 20 the first answered. *)
@@ -934,7 +923,7 @@ fiberPipelineTranscriptIsDeterministicCase () =
                 running := running + amount ?: running
                 script := "${script}s${steps}=${running};"
                 running
-        in await (spawn (yieldedJob 5))
+        await (spawn (yieldedJob 5))
 
     (** 40 - 35 = 5, and the completion probe must read 1 once the await returned. *)
     probe =
@@ -944,10 +933,9 @@ fiberPipelineTranscriptIsDeterministicCase () =
                 running := running + amount ?: running
                 script := "${script}s${steps}=${running};"
                 running
-        in
-            f = spawn (tallyJob (0 - 35 ?: 0))
-            v = await f
-            v * 10 + fiberDone f ?: 0
+        f = spawn (tallyJob (0 - 35 ?: 0))
+        v = await f
+        v * 10 + fiberDone f ?: 0
 
     (** The same three amounts forwards: prefix sums 2, 6, 12 => 20. *)
     fwd =
@@ -955,11 +943,10 @@ fiberPipelineTranscriptIsDeterministicCase () =
             add amount =>
                 forwardTotal := forwardTotal + amount ?: forwardTotal
                 forwardTotal
-        in
-            x1 = await (spawn (tallyJob 2))
-            x2 = await (spawn (tallyJob 4))
-            x3 = await (spawn (tallyJob 6))
-            x1 + x2 + x3 ?: 0
+        x1 = await (spawn (tallyJob 2))
+        x2 = await (spawn (tallyJob 4))
+        x3 = await (spawn (tallyJob 6))
+        x1 + x2 + x3 ?: 0
 
     (** ...and backwards: prefix sums 6, 10, 12 => 28. The TOTAL is order-blind,
         the prefix sums are not, which is exactly why a sum alone proves nothing. *)
@@ -968,11 +955,10 @@ fiberPipelineTranscriptIsDeterministicCase () =
             add amount =>
                 reverseTotal := reverseTotal + amount ?: reverseTotal
                 reverseTotal
-        in
-            y1 = await (spawn (tallyJob 6))
-            y2 = await (spawn (tallyJob 4))
-            y3 = await (spawn (tallyJob 2))
-            y1 + y2 + y3 ?: 0
+        y1 = await (spawn (tallyJob 6))
+        y2 = await (spawn (tallyJob 4))
+        y3 = await (spawn (tallyJob 2))
+        y1 + y2 + y3 ?: 0
 
     checkAll "a data-dependent pipeline fixes a total order" [
         piped == 1030715,

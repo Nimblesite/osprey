@@ -2,11 +2,21 @@
 static effect StaticRead { value: fn() -> int }
 effect DynamicRead { value: fn() -> int }
 let outer = 1
-let stat = handle static StaticRead value => outer in {
+let stat = {
+    handle static StaticRead {
+        value => outer
+    }
+    {
+}
     let outer = 2
     match outer == 2 { true => perform StaticRead.value() false => 0 }
 }
-let dyn = handle DynamicRead value => outer in {
+let dyn = {
+    handle DynamicRead {
+        value => outer
+    }
+    {
+}
     let outer = 2
     match outer == 2 { true => perform DynamicRead.value() false => 0 }
 }

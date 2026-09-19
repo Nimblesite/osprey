@@ -259,14 +259,16 @@ impl Checker {
     /// handler arm is a hard error. Implements [EFFECTS-RESUME].
     fn infer_resume(&mut self, value: Option<&Expr>, env: &TypeEnv) -> Type {
         let arg = value.map_or_else(Type::unit, |v| self.infer_expr(v, env));
-        if let Some((op_ret, answer)) = self.resume_ctx.last().cloned().flatten() {
-            self.push_assign(&op_ret, &arg);
-            answer
-        } else {
-            self.errors.push(TypeError::new(
-                "`resume` requires the continuation of a control operation arm".to_string(),
-            ));
-            self.ctx.fresh()
+        match self.resume_ctx.last().cloned() {
+            Some(crate::check::ResumeSite::Control { op_ret, answer }) => {
+                self.push_assign(&op_ret, &arg);
+                answer
+            }
+            site => {
+                let refusal = crate::check::ResumeSite::refusal(site.as_ref());
+                self.errors.push(TypeError::new(refusal));
+                self.ctx.fresh()
+            }
         }
     }
 
@@ -334,11 +336,17 @@ impl Checker {
                 "perform `{effect}.{operation}` does not support named arguments"
             )));
         }
+        // A written instantiation is the request's identity; an unwritten one
+        // is the innermost enclosing handler's, else a fresh instance for
+        // inference. Identity is the base name: `Stash<int>` and `Stash`
+        // name one effect. Implements [EFFECTS-GENERIC-INSTANTIATION].
+        let base = osprey_ast::effect_name::base(effect);
         let scope = self
             .handler_scopes
             .iter()
             .rev()
-            .find(|s| s.name == effect)
+            .find(|s| s.name == base)
+            .filter(|_| osprey_ast::effect_name::instantiation(effect).is_none())
             .map(|s| (s.args.clone(), s.ops.clone()))
             .or_else(|| self.effect_instance_ops(effect));
         let Some((eff_args, ops)) = scope else {
@@ -425,8 +433,17 @@ impl Checker {
             for (p, pty) in arm.params.iter().zip(params) {
                 local.insert(p.clone(), crate::ty::Scheme::mono(pty));
             }
-            self.resume_ctx
-                .push(mode.is_control().then(|| (op_ret.clone(), answer.clone())));
+            self.resume_ctx.push(if mode.is_control() {
+                crate::check::ResumeSite::Control {
+                    op_ret: op_ret.clone(),
+                    answer: answer.clone(),
+                }
+            } else {
+                crate::check::ResumeSite::Value {
+                    effect: osprey_ast::effect_name::base(effect).to_owned(),
+                    operation: arm.operation.clone(),
+                }
+            });
             let arm_ty = self.infer_expr(&arm.body, &local);
             let _ = self.resume_ctx.pop();
             // Mode comes from the OPERATION DECLARATION, never from searching
@@ -445,7 +462,7 @@ impl Checker {
             }
         }
         self.handler_scopes.push(crate::check::EffectScope {
-            name: effect.to_string(),
+            name: osprey_ast::effect_name::base(effect).to_string(),
             args: eff_args.clone(),
             ops: inst_ops.clone(),
         });
@@ -1934,16 +1951,22 @@ mod tests {
         bad_with(
             "effect Sink { drop: fn(int) -> Unit }\n\
                         fn risky(n: int) -> Result<int, MathError> = n + 1\n\
-                        fn go() -> int = handle Sink\n\
-                          drop v => risky(v)\n\
-                        in 0\n",
+                        fn go() -> int = {\n\
+                            handle Sink {\n\
+                                drop v => risky(v)\n\
+                            }\n\
+                            0\n\
+                        }\n",
             "Unit effect operation arm",
         );
         ok("effect Sink { drop: fn(int) -> Unit }\n\
             fn risky(n: int) -> Result<int, MathError> = n + 1\n\
-            fn go() -> int = handle Sink\n\
-              drop v => { let handled = risky(v) ?: 0 }\n\
-            in 0\n");
+            fn go() -> int = {\n\
+                handle Sink {\n\
+                    drop v => { let handled = risky(v) ?: 0 }\n\
+                }\n\
+                0\n\
+            }\n");
     }
 
     #[test]
@@ -1952,9 +1975,12 @@ mod tests {
         // typed against a signature — but checking must continue rather than
         // abandon the body, or one typo would hide every later diagnostic.
         bad_with(
-            "fn go() -> int = handle Nowhere\n\
-                          chime => 0\n\
-                        in 1\n",
+            "fn go() -> int = {\n\
+                              handle Nowhere {\n\
+                                  chime => 0\n\
+                              }\n\
+                              1\n\
+                          }\n",
             "unknown effect `Nowhere`",
         );
     }
@@ -1999,20 +2025,24 @@ mod tests {
     #[test]
     fn handler_expressions_type_their_arms() {
         ok("effect Logger { log: fn(string) -> Unit }\n\
-            fn run() -> int = handle Logger\n\
-              log msg => 0\n\
-            in 42\n");
+            fn run() -> int = {\n\
+                handle Logger {\n\
+                    log msg => 0\n\
+                }\n\
+                42\n\
+            }\n");
         // Resume feeds the operation-result slot and the handled body feeds the
         // handler-answer slot. Guards the [EFFECTS-RESUME] fix.
         ok("effect Guard { control check: fn(int) -> int }\n\
-            fn guarded() -> int = handle Guard\n\
-              check v => match v < 100 {\n\
-                true => resume(v)\n\
-                false => 0\n\
-              }\n\
-            in {\n\
-              let a = perform Guard.check(5)\n\
-              a\n\
+            fn guarded() -> int = {\n\
+                handle Guard {\n\
+                    check v => match v < 100 {\n\
+                    true => resume(v)\n\
+                    false => 0\n\
+                    }\n\
+                }\n\
+                let a = perform Guard.check(5)\n\
+                a\n\
             }\n");
     }
 
@@ -2034,10 +2064,22 @@ mod tests {
         arm: &str,
     ) -> String {
         format!(
-            "effect Mixed {{ control a: fn(int) -> int\n control b: fn() -> {op_ret} }}\n\
-             fn body() -> {body_ret} !Mixed = {{\n let ignored = perform Mixed.b()\n {body_tail}\n }}\n\
-             let out = handle Mixed\n a x => resume(x)\n \
-             b => {{\n let settled = resume({supplied})\n {arm}\n }}\n in body()\n"
+            "effect Mixed {{ control a: fn(int) -> int\n\
+              control b: fn() -> {op_ret} }}\n\
+             fn body() -> {body_ret} !Mixed = {{\n\
+              let ignored = perform Mixed.b()\n\
+              {body_tail}\n\
+              }}\n\
+             let out = {{\n\
+                 handle Mixed {{\n\
+                     a x => resume(x)\n\
+                     b => {{\n\
+                     let settled = resume({supplied})\n\
+                     {arm}\n\
+                     }}\n\
+                 }}\n\
+                 body()\n\
+             }}\n"
         )
     }
 
@@ -2072,20 +2114,22 @@ mod tests {
         // `b` declares `int` but the branch below never resumes, so `b`'s
         // result is never produced — the `perform` waiting for it never
         // returns — and the branch answers `string` for the whole region.
-        ok(
-            "effect Mixed { control a: fn(int) -> int\n control b: fn() -> int }\n\
+        ok("effect Mixed { control a: fn(int) -> int\n\
+             control b: fn() -> int }\n\
             fn body() -> string !Mixed = {\n\
-              let ignored = perform Mixed.b()\n\
-              \"unreached\"\n\
+            let ignored = perform Mixed.b()\n\
+            \"unreached\"\n\
             }\n\
-            let out = handle Mixed\n\
-              a x => resume(x)\n\
-              b => match 1 > 0 {\n\
-                true => \"stopped\"\n\
-                false => resume(0)\n\
-              }\n\
-            in body()\n",
-        );
+            let out = {\n\
+                handle Mixed {\n\
+                    a x => resume(x)\n\
+                    b => match 1 > 0 {\n\
+                    true => \"stopped\"\n\
+                    false => resume(0)\n\
+                    }\n\
+                }\n\
+                body()\n\
+            }\n");
     }
 
     #[test]
@@ -2115,16 +2159,26 @@ mod tests {
         // control sibling `a` does — an `int` arm belongs in a `string` region
         // and a `string` one does not. Reading the mode region-wide was issue
         // #177; reading it from the arm's body was its successor.
-        ok(
-            "effect Mixed { control a: fn(int) -> int\n b: fn() -> int }\n\
+        ok("effect Mixed { control a: fn(int) -> int\n\
+             b: fn() -> int }\n\
             fn body() -> string !Mixed = \"v=${perform Mixed.b()}\"\n\
-            let out = handle Mixed\n a x => resume(x)\n b => 7\n in body()\n",
-        );
-        let errs = bad(
-            "effect Mixed { control a: fn(int) -> int\n b: fn() -> int }\n\
+            let out = {\n\
+                handle Mixed {\n\
+                    a x => resume(x)\n\
+                    b => 7\n\
+                }\n\
+                body()\n\
+            }\n");
+        let errs = bad("effect Mixed { control a: fn(int) -> int\n\
+              b: fn() -> int }\n\
              fn body() -> string !Mixed = \"v=${perform Mixed.b()}\"\n\
-             let out = handle Mixed\n a x => resume(x)\n b => \"seven\"\n in body()\n",
-        );
+             let out = {\n\
+                 handle Mixed {\n\
+                     a x => resume(x)\n\
+                     b => \"seven\"\n\
+                 }\n\
+                 body()\n\
+             }\n");
         assert!(
             !errs.is_empty(),
             "a `string` arm cannot supply an `int` result"
@@ -2138,7 +2192,12 @@ mod tests {
         // a defect rather than a reclassification. [EFFECTS-HANDLER-ARMS]
         let errs = bad("effect Mixed { b: fn() -> int }\n\
              fn body() -> string !Mixed = \"v=${perform Mixed.b()}\"\n\
-             let out = handle Mixed\n b => resume(7)\n in body()\n");
+             let out = {\n\
+                 handle Mixed {\n\
+                     b => resume(7)\n\
+                 }\n\
+                 body()\n\
+             }\n");
         assert!(
             errs.iter().any(|e| e.message.contains("cannot `resume`")),
             "a value arm must not resume; got {errs:?}"
@@ -2153,7 +2212,12 @@ mod tests {
         // instantiation. [EFFECTS-GENERIC-INSTANTIATION]
         let errs = bad("effect Mixed { b: fn() -> int }\n\
                         fn body() -> string !Mixed = \"v=${perform Mixed.b()}\"\n\
-                        let out = handle Mixed\n b => \"not an int\"\n in body()\n");
+                        let out = {\n\
+                            handle Mixed {\n\
+                                b => \"not an int\"\n\
+                            }\n\
+                            body()\n\
+                        }\n");
         assert!(
             !errs.is_empty(),
             "a `string` arm cannot supply an `int` result"
@@ -2190,9 +2254,12 @@ mod tests {
     #[test]
     fn handler_arm_operation_must_be_declared() {
         let bad_arm = bad("effect Logger { log: fn(string) -> Unit }\n\
-             let result = handle Logger\n\
-               missing msg => {}\n\
-             in {}\n");
+             let result = {\n\
+                 handle Logger {\n\
+                     missing msg => {}\n\
+                 }\n\
+                 0\n\
+             }\n");
         assert!(bad_arm
             .iter()
             .any(|e| e.message.contains("has no operation `missing`")));
@@ -2201,9 +2268,12 @@ mod tests {
     #[test]
     fn handler_arm_operation_must_match_declared_arity() {
         let errors = bad("effect Logger { log: fn(string) -> Unit }\n\
-             let result = handle Logger\n\
-               log => {}\n\
-             in {}\n");
+             let result = {\n\
+                 handle Logger {\n\
+                     log => {}\n\
+                 }\n\
+                 0\n\
+             }\n");
         assert!(errors
             .iter()
             .any(|e| e.message.contains("expects 1 parameter(s), got 0")));

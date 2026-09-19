@@ -366,10 +366,15 @@ mod tests {
             "effect State { get: fn() -> int }\n\
              fn bump() -> int !State = perform State.get()\n\
              fn main() -> int {\n\
-             let r = handle State get => {\n\
+             let r = {\n\
+             handle State {\n\
+             get => {\n\
              let inner = 41\n\
              inner\n\
-             } in bump()\n\
+             }\n\
+             }\n\
+             bump()\n\
+             }\n\
              print(\"r=${toString(r)}\")\n\
              0 }\n",
         );
@@ -378,28 +383,33 @@ mod tests {
             ir.contains("!DISubprogram(name: \"__handler_State_get_"),
             "the arm function needs its own subprogram to be a debuggable scope"
         );
-        // `let inner = 41` is line 5, inside the arm.
+        // `let inner = 41` is line 7, inside the arm.
         assert!(
-            ir.contains("!DILocation(line: 5,"),
+            ir.contains("!DILocation(line: 7,"),
             "the arm body's own statement lines must reach the line table"
         );
 
         // A `resume`-using arm is emitted down a separate path, and it is the
         // same construct to the author — so it must be just as debuggable.
         let resuming = debug_module(
-            "effect State { get: fn() -> int }\n\
+            "effect State { control get: fn() -> int }\n\
              fn bump() -> int !State = perform State.get()\n\
              fn main() -> int {\n\
-             let r = handle State get => {\n\
+             let r = {\n\
+             handle State {\n\
+             get => {\n\
              let inner = 41\n\
              resume(inner)\n\
-             } in bump()\n\
+             }\n\
+             }\n\
+             bump()\n\
+             }\n\
              print(\"r=${toString(r)}\")\n\
              0 }\n",
         );
 
         assert!(
-            resuming.contains("!DILocation(line: 5,"),
+            resuming.contains("!DILocation(line: 7,"),
             "a resuming arm's body lines must reach the line table too"
         );
     }
@@ -1331,28 +1341,34 @@ mod tests {
         let direct = try_module(
             "effect Inspect { inspect: fn(Result<int, MathError>, Fiber<Result<int, MathError>>) -> int }\n\
              fn ask() -> int !Inspect = perform Inspect.inspect(9223372036854775807 + 1, spawn(9223372036854775807 + 1))\n\
-             fn main() -> int = handle Inspect\n\
-               inspect immediate deferred => match immediate {\n\
-                 Success { value } => value\n\
-                 Error { message } => match await(deferred) {\n\
-                   Success { value } => value\n\
-                   Error { message } => 7\n\
+             fn main() -> int = {\n\
+                 handle Inspect {\n\
+                     inspect immediate deferred => match immediate {\n\
+                     Success { value } => value\n\
+                     Error { message } => match await(deferred) {\n\
+                     Success { value } => value\n\
+                     Error { message } => 7\n\
+                     }\n\
+                     }\n\
                  }\n\
-               }\n\
-             in ask()\n",
+                 ask()\n\
+             }\n",
         );
         let resuming = try_module(
-            "effect ResumeInspect { inspect: fn(Result<int, MathError>, Fiber<Result<int, MathError>>) -> int }\n\
+            "effect ResumeInspect { control inspect: fn(Result<int, MathError>, Fiber<Result<int, MathError>>) -> int }\n\
              fn ask() -> int !ResumeInspect = perform ResumeInspect.inspect(9223372036854775807 + 1, spawn(9223372036854775807 + 1))\n\
-             fn main() -> int = handle ResumeInspect\n\
-               inspect immediate deferred => match immediate {\n\
-                 Success { value } => resume(value)\n\
-                 Error { message } => match await(deferred) {\n\
-                   Success { value } => resume(value)\n\
-                   Error { message } => resume(7)\n\
+             fn main() -> int = {\n\
+                 handle ResumeInspect {\n\
+                     inspect immediate deferred => match immediate {\n\
+                     Success { value } => resume(value)\n\
+                     Error { message } => match await(deferred) {\n\
+                     Success { value } => resume(value)\n\
+                     Error { message } => resume(7)\n\
+                     }\n\
+                     }\n\
                  }\n\
-               }\n\
-             in ask()\n",
+                 ask()\n\
+             }\n",
         );
         assert!(
             direct.is_ok() && resuming.is_ok(),
@@ -1408,9 +1424,16 @@ mod tests {
         // fixed sixteen-word mailbox silently zeroed (#182); the `string` slot
         // is the one whose reference the mailbox owns (#185).
         let ir = module(
-            "effect Wide { op: fn(int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, string) -> int }\n\
+            "effect Wide { control op: fn(int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, string) -> int }\n\
              fn body() -> int !Wide = perform Wide.op(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, \"x\")\n\
-             fn main() -> int { let r = handle Wide op a b c d e f g h i j k l m n o p q => resume(p) in body()\n  print(\"r=${toString(r)}\")\n  0 }\n",
+             fn main() -> int { let r = {\n\
+                 handle Wide {\n\
+                     op a b c d e f g h i j k l m n o p q => resume(p)\n\
+                 }\n\
+                 body()\n\
+             }\n\
+               print(\"r=${toString(r)}\")\n\
+               0 }\n",
         );
         assert!(
             ir.contains("declare i64 @__osprey_coro_suspend(i8*, i64, i64*, i8*, i64)"),
@@ -1451,7 +1474,15 @@ mod tests {
         let ir = module(
             "effect State { get: fn() -> int  set: fn(int) -> Unit }\n\
              fn bump() -> int !State = { let a = perform State.get()  perform State.set((a + 1) ?: a)  perform State.get() }\n\
-             fn main() -> int { mut c = 0\n  let r = handle State get => c set v => { c = v } in bump()\n  print(\"r=${toString(r)} c=${toString(c)}\")\n  0 }\n",
+             fn main() -> int { mut c = 0\n\
+               let r = {\n\
+                   handle State {\n\
+                       get => c set v => { c = v }\n\
+                   }\n\
+                   bump()\n\
+               }\n\
+               print(\"r=${toString(r)} c=${toString(c)}\")\n\
+               0 }\n",
         );
         // env-carrying handler ABI (push takes an i8* env; perform resolves it)
         shows(
@@ -1473,12 +1504,13 @@ mod tests {
             "effect ClosureSlot { rebind: fn(int) -> Unit }\n\
              fn makeAdder(n: int) -> (int) -> int = fn(x) => (x + n) ?: x\n\
              fn main() -> int {\n\
-               mut rb = fn(x) => (x + 1) ?: x\n\
-               handle ClosureSlot\n\
+             mut rb = fn(x) => (x + 1) ?: x\n\
+             handle ClosureSlot {\n\
                  rebind offset => { rb = makeAdder(offset) }\n\
-               in perform ClosureSlot.rebind(40)\n\
-               print(toString(rb(2)))\n\
-               0\n\
+             }\n\
+             perform ClosureSlot.rebind(40)\n\
+             print(toString(rb(2)))\n\
+             0\n\
              }\n",
         );
 
@@ -1742,7 +1774,10 @@ card doc index selected =
             function_body(&ir, "define i8* @fieldWitness()").contains("call i8* %"),
             "the callable record field must retain its string-returning ABI:\n{ir}"
         );
+    }
 
+    #[test]
+    fn field_callbacks_return_callables_and_keep_named_slots() {
         // A field callback returns another callable through two generic helpers.
         // The second record also proves named field arguments keep written slots.
         let returned = module(
@@ -1769,8 +1804,18 @@ card doc index selected =
              fn genericLambdaWitness() -> int = throughLambda(0)\n\
              fn pureWitness() -> int = forward(0, pureFactory)\n\
              fn namedPureWitness() -> int = forwardNamed(0, firstCallback)\n\
-             fn handledWitness() -> int = handle Probe value => 33 in forward(0, effectFactory)\n\
-             fn namedHandledWitness() -> int = handle Probe value => 33 in forwardNamed(0, secondCallback)\n\
+             fn handledWitness() -> int = {\n\
+                 handle Probe {\n\
+                     value => 33\n\
+                 }\n\
+                 forward(0, effectFactory)\n\
+             }\n\
+             fn namedHandledWitness() -> int = {\n\
+                 handle Probe {\n\
+                     value => 33\n\
+                 }\n\
+                 forwardNamed(0, secondCallback)\n\
+             }\n\
              print(\"${pureWitness()} ${namedPureWitness()} ${handledWitness()} ${namedHandledWitness()} ${genericSlotWitness()} ${declaredSlotWitness()} ${directLambdaWitness()} ${genericLambdaWitness()}\")\n",
         );
         for witness in ["pureWitness", "namedPureWitness"] {
@@ -2129,14 +2174,17 @@ card doc index selected =
         let ir = module(
             "effect Log {\n\
                note: fn(int) -> Unit\n\
-               ask: fn(int) -> int\n\
-             }\n\
-             fn hammer(n) = range(0, n) |> forEach(fn(i) => perform Log.note(i))\n\
-             let done = handle Log\n\
-               note value => value\n\
-               ask value => resume(1)\n\
-               in hammer(3)\n\
-             print(\"done\")\n",
+               control ask: fn(int) -> int\n\
+               }\n\
+               fn hammer(n) = range(0, n) |> forEach(fn(i) => perform Log.note(i))\n\
+               let done = {\n\
+                   handle Log {\n\
+                       note value => value\n\
+                       ask value => resume(1)\n\
+                   }\n\
+                   hammer(3)\n\
+               }\n\
+               print(\"done\")\n",
         );
         let body = function_body(
             &ir,

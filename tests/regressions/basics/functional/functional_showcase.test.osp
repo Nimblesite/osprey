@@ -117,9 +117,10 @@ fn lambdaOverloadCase() = {
 fn closureHandlerCase() = {
     let digits = |keys| => {
         mut seen = 0
-        handle Tally
-        note value => { seen = seen * 10 + value ?: seen }
-        in forEachList(keys, fn(k) => perform Tally.note(k))
+        handle Tally {
+            note value => { seen = seen * 10 + value ?: seen }
+        }
+        forEachList(keys, fn(k) => perform Tally.note(k))
         seen
     }
     checkAll("a handler inside a closure keeps its captured state", [
@@ -206,9 +207,12 @@ fn genericReturnedLambdaCase() = {
     let alwaysText = constly("kept")
     let alwaysNumber = constly(41 + 1 ?: 0)
     mut runs = 0
-    let seedAgrees = handle Tally
-        note value => { runs = runs + value ?: runs }
-        in agreesFromSeed()
+    let seedAgrees = {
+        handle Tally {
+            note value => { runs = runs + value ?: runs }
+        }
+        agreesFromSeed()
+    }
 
     checkAll("a generic function's returned lambda specialises per call site", [
         identityValue(7) == 7,

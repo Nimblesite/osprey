@@ -9,13 +9,13 @@
 // and hands back a heap address as a successful `int`. And the check cannot
 // live in codegen, where `any` and `int` are the same erased machine word.
 effect Mixed {
-    a: fn(int) -> int
-    b: fn() -> int
+    control a: fn(int) -> int
+    control b: fn() -> int
 }
 
 effect Texts {
-    a: fn(int) -> int
-    b: fn() -> string
+    control a: fn(int) -> int
+    control b: fn() -> string
 }
 
 fn intArm() !Mixed = "v=${perform Mixed.b()}"
@@ -31,30 +31,39 @@ fn textArmToResult() -> Result<int, string> !Texts = {
 }
 
 // scalar arm value, string answer
-let scalarAnswer = handle Mixed
-    a x => resume(x)
-    b => {
-        let settled = resume(0)
-        7
+let scalarAnswer = {
+    handle Mixed {
+        a x => resume(x)
+        b => {
+            let settled = resume(0)
+            7
+        }
     }
-in intArm()
+    intArm()
+}
 
 // pointer arm value, int answer — the direction codegen used to box silently
-let pointerAnswer = handle Texts
-    a x => resume(x)
-    b => {
-        let settled = resume("supplied")
-        "dyn" + "amic"
+let pointerAnswer = {
+    handle Texts {
+        a x => resume(x)
+        b => {
+            let settled = resume("supplied")
+            "dyn" + "amic"
+        }
     }
-in textArm()
+    textArm()
+}
 
 // pointer arm value, Result answer — the path that bypassed the guard entirely
-let resultAnswer = handle Texts
-    a x => resume(x)
-    b => {
-        let settled = resume("supplied")
-        "dyn" + "amic"
+let resultAnswer = {
+    handle Texts {
+        a x => resume(x)
+        b => {
+            let settled = resume("supplied")
+            "dyn" + "amic"
+        }
     }
-in textArmToResult()
+    textArmToResult()
+}
 
 print("${scalarAnswer} ${pointerAnswer} ${toString(resultAnswer)}")

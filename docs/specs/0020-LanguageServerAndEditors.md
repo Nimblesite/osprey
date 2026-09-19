@@ -172,7 +172,7 @@ Every binding is hoverable:
   expression that can contain a block — function bodies, scoped handler blocks,
   `match`/`select` arms, lambdas, `spawn`/`await`, interpolations, call
   arguments, list/map/object literals — so a `let` nested anywhere (e.g. inside
-  an HTTP handler's `in { … }` block) is found. A cursor-line/“nearest binding
+  a handler arm's block) is found. A cursor-line/“nearest binding
   at or before the cursor” rule resolves shadowing.
 - **Type comes from inference when unannotated.** An annotated `let x: T = …`
   shows `x: T`. An unannotated `let x = f()` shows the **inferred** type: the

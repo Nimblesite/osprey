@@ -1,1 +1,1 @@
-`resume` is only valid inside a handler arm
+`resume` requires the continuation of a control operation arm, and none is live here: `resume` is only meaningful directly inside such an arm, not at top level or in a lambda body, which runs when called rather than where it is written

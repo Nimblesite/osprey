@@ -20,23 +20,23 @@ invoke callback = callback ()
 directValue =
     handle Supply
         direct seed => seed
-    in direct 7
+    direct 7
 
 transitiveValue =
     handle Supply
         transitive seed => seed
-    in relay 11
+    relay 11
 
 callbackValue =
     handle Supply
         callback => 13
-    in invoke (\() => perform Supply.callback ())
+    invoke (\() => perform Supply.callback ())
 
 delayed = \() => perform Supply.delayed ()
 delayedValue =
     handle Supply
         delayed => 17
-    in delayed ()
+    delayed ()
 
 effect Pair
     (** Read the first of the two supplied integers. *)
@@ -54,10 +54,9 @@ pairTotal () =
 partialValue =
     handle Pair
         second => 22
-    in
-        handle Pair
-            first => 20
-        in pairTotal ()
+    handle Pair
+        first => 20
+    pairTotal ()
 
 effect Stash T
     (** Store `value` in the stash for a later `take`. *)
@@ -71,9 +70,8 @@ genericValue =
     handle Stash
         put _value => print ""
         take => "cached"
-    in
-        storeText ()
-        19
+    storeText ()
+    19
 
 test "inferred effect rows discharge only under matching handlers" (\() => checkAll "static discharge values" [
     directValue == 7,

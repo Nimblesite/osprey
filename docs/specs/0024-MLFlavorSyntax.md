@@ -297,7 +297,7 @@ greetAda () =
     greet ()
 ```
 
-An explicit `in expression` selects a smaller region. These forms require no flavor-specific semantics or separate handler type; see [FLAVOR-HANDLER-VALUE](0023-LanguageFlavors.md#shared-core-additions).
+A smaller region is a callable `handler` applied to it. Neither form needs flavor-specific semantics or a separate handler type; see [FLAVOR-HANDLER-VALUE](0023-LanguageFlavors.md#shared-core-additions).
 
 ## Generics ([FLAVOR-ML-GENERICS])
 

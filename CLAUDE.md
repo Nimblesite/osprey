@@ -104,7 +104,7 @@ Silently-wrong output is worse than a crash: a panic is found in seconds; a sile
 
 Key invariants:
 
-- Effects are declared with `effect` and managed by callable `handler` values or rest-of-block `handle` statements. The compiler rejects a program that performs an effect no handler discharges — `unhandled effect operations at program entry: E.op; add a matching handle` — reaching through helpers, lambdas passed to HOFs, and fibers (`crates/osprey-types/src/effect_rows.rs`). The remaining limit is representational: closed-program operation summaries, not an effect-row variable in `Type::Fun`.
+- Effects are declared with `effect` and managed by callable `handler` values or rest-of-block `handle` statements. The compiler rejects a program that performs an effect no handler discharges — ``unhandled effect operations at program entry: E.op; add a matching `handle` `` — reaching through helpers, lambdas passed to HOFs, and fibers (`crates/osprey-types/src/effect_rows.rs`). The remaining limit is representational: closed-program operation summaries, not an effect-row variable in `Type::Fun`.
 - Pattern matching is mandatory for `any` types and union types.
 - All HTTP/WebSocket operations return `Result<T, String>`.
 - Fibers are isolated — message passing, no shared memory.

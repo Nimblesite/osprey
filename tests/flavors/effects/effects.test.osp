@@ -39,27 +39,26 @@ fn runBatchAssertions() = {
             !mapContains(removed, "second")
     ])
 
-    handle FlavorCounter
-    tick amount => { total = total + amount ?: total }
-    in {
-        forEachList(first, fn(amount) => perform FlavorCounter.tick(amount))
-        checkAll("effectful callback applies the first generic list", [
-                total == 15,
-                "first total=${total}" == "first total=15"
-        ])
-        perform FlavorCounter.tick((0 - 4) ?: 0)
-        checkAll("negative handled transition remains checked", [
-                total == 11,
-                total < 15
-        ])
-        forEachList(second, fn(amount) => perform FlavorCounter.tick(amount))
-        perform FlavorCounter.tick(0)
-        checkAll("second list and identity transition compose", [
-                total == 25,
-                total > 11,
-                "second total=${total}" == "second total=25"
-        ])
+    handle FlavorCounter {
+        tick amount => { total = total + amount ?: total }
     }
+    forEachList(first, fn(amount) => perform FlavorCounter.tick(amount))
+    checkAll("effectful callback applies the first generic list", [
+            total == 15,
+            "first total=${total}" == "first total=15"
+    ])
+    perform FlavorCounter.tick((0 - 4) ?: 0)
+    checkAll("negative handled transition remains checked", [
+            total == 11,
+            total < 15
+    ])
+    forEachList(second, fn(amount) => perform FlavorCounter.tick(amount))
+    perform FlavorCounter.tick(0)
+    checkAll("second list and identity transition compose", [
+            total == 25,
+            total > 11,
+            "second total=${total}" == "second total=25"
+    ])
 
     checkAll("handler exit preserves state and persistent collection versions", [
             total == 25,
@@ -85,25 +84,24 @@ fn mutationCase() = {
             flavorCounter == 0
     ])
 
-    handle FlavorCounter
-    tick amount => {
-        flavorCounter = flavorCounter + amount ?: flavorCounter
+    handle FlavorCounter {
+        tick amount => {
+            flavorCounter = flavorCounter + amount ?: flavorCounter
+        }
     }
-    in {
-        perform FlavorCounter.tick(1)
+    perform FlavorCounter.tick(1)
 
-        // The first effect is observable independently instead of only in the sum.
-        checkAll("counter first transition", [
-                flavorCounter == 1
-        ])
+    // The first effect is observable independently instead of only in the sum.
+    checkAll("counter first transition", [
+            flavorCounter == 1
+    ])
 
-        perform FlavorCounter.tick(41)
+    perform FlavorCounter.tick(41)
 
-        // The second effect reaches the legacy final value inside the handler.
-        checkAll("counter second transition", [
-                flavorCounter == 42
-        ])
-    }
+    // The second effect reaches the legacy final value inside the handler.
+    checkAll("counter second transition", [
+            flavorCounter == 42
+    ])
 
     // The final value and exact old output line both survive handler exit.
     checkAll("counter legacy final state and rendering", [

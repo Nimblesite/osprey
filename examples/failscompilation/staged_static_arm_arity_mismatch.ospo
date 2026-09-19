@@ -1,12 +1,15 @@
-// A static handler arm must bind exactly the parameters its operation is
-// performed with. Arity is checked during discharge, before the type checker
-// ever sees the rewritten program, so the arm below is rejected by the staging
-// pass rather than by unification ([STAGE-LOWER]).
+// A static handler arm must bind exactly the parameters its operation
+// declares. The source program is type-checked before discharge
+// ([STAGE-LOWER-ORDER-PHASE]), so the arm below is rejected against its
+// declaration before the rewrite ever runs.
 static effect Tile {
     /// Scale one extent; performed with a single argument below.
     size: fn(int) -> int
 }
 
-fn main() = print("${handle static Tile
-    size a b => (a + b) ?: 0
-in perform Tile.size(2)}")
+fn main() = {
+    handle static Tile {
+        size a b => (a + b) ?: 0
+    }
+    print("${perform Tile.size(2)}")
+}

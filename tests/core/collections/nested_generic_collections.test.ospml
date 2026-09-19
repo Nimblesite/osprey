@@ -30,7 +30,7 @@ auditInts rows =
     handle LeafAudit
         observe value =>
             encoded := encoded * 10 + value ?: encoded
-    in forEachList rows (\row => forEachList row (\value => perform LeafAudit.observe value))
+    forEachList rows (\row => forEachList row (\value => perform LeafAudit.observe value))
     encoded
 
 auditStrings rows =
@@ -38,7 +38,7 @@ auditStrings rows =
     handle LeafAudit
         observe value =>
             encoded := encoded + value + "/"
-    in forEachList rows (\row => forEachList row (\value => perform LeafAudit.observe value))
+    forEachList rows (\row => forEachList row (\value => perform LeafAudit.observe value))
     encoded
 
 (** One flow crosses generic instantiation, three list layers, `Result<T, Error>`

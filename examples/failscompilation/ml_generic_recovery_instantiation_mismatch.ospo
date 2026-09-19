@@ -6,7 +6,6 @@ effect Recovery T
 recovered =
     handle Recovery
         recover fallback => fallback
-    in
-        number = perform Recovery.recover 7
-        text = perform Recovery.recover "seven"
-        number
+    number = perform Recovery.recover 7
+    text = perform Recovery.recover "seven"
+    number

@@ -111,7 +111,7 @@ fn run() = {
     mut units   = 0
     mut count   = 0
     mut premium = 0
-    handle Db
+    handle Db {
         record sale => {
             seed    = seed + insertLine(sale) + "\n"
             revenue = revenue + (sale.qty * sale.price ?: 0) ?: revenue
@@ -120,21 +120,20 @@ fn run() = {
             premium = premium + isPremium(sale.price) ?: premium
             revenue
         }
-    in {
-        let _total = books()
-        print("::OSPREY-STUDIO|1
-::DDL
-${ddl()}
-::SEED
-${seed}::END-SEED
-${queries()}
-::METRIC|total_revenue|${revenue}
-::METRIC|total_units|${units}
-::METRIC|order_count|${count}
-::METRIC|premium_orders|${premium}
-::METRIC|revenue_tier|${tier(revenue)}
-::END")
     }
+            let _total = books()
+            print("::OSPREY-STUDIO|1
+    ::DDL
+    ${ddl()}
+    ::SEED
+    ${seed}::END-SEED
+    ${queries()}
+    ::METRIC|total_revenue|${revenue}
+    ::METRIC|total_units|${units}
+    ::METRIC|order_count|${count}
+    ::METRIC|premium_orders|${premium}
+    ::METRIC|revenue_tier|${tier(revenue)}
+    ::END")
 }
 
 let studio = run()

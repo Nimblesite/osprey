@@ -1,7 +1,7 @@
 /// Prompt suspends a form until its handler supplies a field value.
 effect Prompt {
     /// Request the value the caller should use for `label`; the handler decides what is supplied.
-    ask: fn(string) -> string
+    control ask: fn(string) -> string
 }
 
 /// Log proves the outer handler remains installed across a resumed body.
@@ -27,24 +27,28 @@ fn resumeOuterHandlerBridgeCase() = {
     mut promptSettled = 0
     mut settledAnswer = ""
 
-    let result = handle Log
-        line message => {
-            logCalls = logCalls + 1 ?: logCalls
-            logMessages = "${logMessages}${message}|"
-            transcript = "${transcript}[log] ${message}\n"
-        }
-    in {
-        let answer = handle Prompt
-            ask field => {
-                promptCalls = promptCalls + 1 ?: promptCalls
-                transcript = "${transcript}ask ${field}\n"
-                let resumedAnswer = resume("Ada")
-                promptSettled = promptSettled + 1 ?: promptSettled
-                settledAnswer = resumedAnswer
-                transcript = "${transcript}after ask: ${resumedAnswer}\n"
-                resumedAnswer
+    let result = {
+        handle Log {
+            line message => {
+                logCalls = logCalls + 1 ?: logCalls
+                logMessages = "${logMessages}${message}|"
+                transcript = "${transcript}[log] ${message}\n"
             }
-        in form()
+        }
+        let answer = {
+            handle Prompt {
+                ask field => {
+                    promptCalls = promptCalls + 1 ?: promptCalls
+                    transcript = "${transcript}ask ${field}\n"
+                    let resumedAnswer = resume("Ada")
+                    promptSettled = promptSettled + 1 ?: promptSettled
+                    settledAnswer = resumedAnswer
+                    transcript = "${transcript}after ask: ${resumedAnswer}\n"
+                    resumedAnswer
+                }
+            }
+            form()
+        }
         answer
     }
     let legacyTranscript = "${transcript}result=${result}\n"
@@ -102,24 +106,28 @@ fn partialHandlerDelegationCase() = {
     mut auditLog = ""
     mut lastNoted = 0
 
-    let total = handle Ledger
-        record amount => {
-            outerRecords = outerRecords + 1 ?: outerRecords
-            amount * 1000 ?: amount
+    let total = {
+        handle Ledger {
+            record amount => {
+                outerRecords = outerRecords + 1 ?: outerRecords
+                amount * 1000 ?: amount
+            }
+            audit label => {
+                outerAudits = outerAudits + 1 ?: outerAudits
+                auditLog = "${auditLog}${label}|"
+                length(label)
+            }
         }
-        audit label => {
-            outerAudits = outerAudits + 1 ?: outerAudits
-            auditLog = "${auditLog}${label}|"
-            length(label)
+        handle Ledger {
+            record amount => {
+                innerRecords = innerRecords + 1 ?: innerRecords
+                let noted = perform Ledger.audit("record:${amount}")
+                lastNoted = noted
+                (amount + noted) ?: 0
+            }
         }
-    in handle Ledger
-        record amount => {
-            innerRecords = innerRecords + 1 ?: innerRecords
-            let noted = perform Ledger.audit("record:${amount}")
-            lastNoted = noted
-            (amount + noted) ?: 0
-        }
-    in ledgerWork()
+        ledgerWork()
+    }
 
     // The arm's own operation stays with the inner region; the operation it
     // does not cover reaches the outer one, twice.

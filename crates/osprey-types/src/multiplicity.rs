@@ -149,7 +149,10 @@ fn handled_opening(effect: &str, operation: &str) -> String {
 }
 
 /// Every operation in the coarse replay row owes the same replay promise,
-/// including operations of the handled effect. Implements [MULTI-REPLAY-CHECK].
+/// including sibling operations of the handled effect. The one exception is
+/// the arm's OWN operation: its perform is the choice point whose
+/// continuation `many` reuses, so re-entering it is the declared semantics,
+/// not replayed external work. Implements [MULTI-REPLAY-CHECK].
 fn non_replayable_entry(
     axis: &OperationAxis,
     effect: &str,
@@ -159,6 +162,7 @@ fn non_replayable_entry(
     let opening = handled_opening(effect, operation);
     handled_row
         .iter()
+        .filter(|(row_effect, row_op)| row_effect != effect || row_op != operation)
         .find(|(row_effect, row_op)| !axis.is_replayable(row_effect, row_op))
         .map(|(offender_effect, offender_op)| {
             format!(

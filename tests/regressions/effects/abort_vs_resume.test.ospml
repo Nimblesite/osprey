@@ -3,7 +3,7 @@
 
 effect Step
     (** Run one pipeline stage over `value` under the active policy. *)
-    run : int => int
+    control run : int => int
 
 (** An aborted continuation omits observations after the poison step. *)
 pipeline : Unit -> int ! Step
@@ -29,7 +29,7 @@ recovered =
             v = resume ((x * 10) ?: 0)
             print ("audit[recover]: step " + toString stepNo + " (input " + toString x + ") settled, downstream=" + toString v)
             v
-    in pipeline ()
+    pipeline ()
 print ("recovered result=" + toString recovered)
 
 // Returning at step 2 aborts the suspended computation.
@@ -49,7 +49,7 @@ aborted =
                     v = resume ((x * 10) ?: 0)
                     print ("audit[abort-run]: step " + toString stepNo + " (input " + toString x + ") settled, downstream=" + toString v)
                     v
-    in pipeline ()
+    pipeline ()
 print ("aborted result=" + toString aborted)
 
 (** A BRANCH of a resuming arm that returns without resuming abandons the
@@ -68,8 +68,8 @@ print ("aborted result=" + toString aborted)
     per region (issue #177, `resume_abort_early_exit.test.ospml`).
     [EFFECTS-HANDLER-ARMS] *)
 effect Mixed
-    scale : int => int
-    stop : Unit => int
+    control scale : int => int
+    control stop : Unit => int
 
 mixedPipeline : Unit -> string ! Mixed
 mixedPipeline () =
@@ -83,7 +83,7 @@ stoppedAnswer =
         stop => match true
             true => "stopped"
             false => resume 0
-    in mixedPipeline ()
+    mixedPipeline ()
 
 print "mixed answer: ${stoppedAnswer}"
 

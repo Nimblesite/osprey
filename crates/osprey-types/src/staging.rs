@@ -11,18 +11,27 @@ use osprey_ast::{walk_program, AstVisitor, Expr, Program, Stmt};
 /// # Errors
 /// Returns source type errors or violations of the staging rules.
 pub fn lower_static_checked(program: &Program) -> Result<Program, Vec<TypeError>> {
+    // Declaration and syntax rules first: they name the exact defect, where
+    // the residual row after inference would only report an unhandled
+    // operation ([STAGE-GPU-DIAG], [EFFECTS-GENERIC-DECL]).
+    let structural = osprey_ast::stage::validate(program);
+    if !structural.is_empty() {
+        return Err(stage_errors(structural));
+    }
     if has_staging(program) {
         let errors = crate::check::check_data_contracts(program);
         if !errors.is_empty() {
             return Err(errors);
         }
     }
-    osprey_ast::stage::discharge(program).map_err(|errors| {
-        errors
-            .into_iter()
-            .map(|error| TypeError::new(error.message).with_pos(error.position))
-            .collect()
-    })
+    osprey_ast::stage::lower(program).map_err(stage_errors)
+}
+
+fn stage_errors(errors: Vec<osprey_ast::stage::StageError>) -> Vec<TypeError> {
+    errors
+        .into_iter()
+        .map(|error| TypeError::new(error.message).with_pos(error.position))
+        .collect()
 }
 
 pub(crate) fn has_staging(program: &Program) -> bool {

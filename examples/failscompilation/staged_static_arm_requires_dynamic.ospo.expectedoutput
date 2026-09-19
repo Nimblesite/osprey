@@ -1,1 +1,1 @@
-14:4: static handler arm `Tile.size` requires dynamic effect `Log.write`; static handler arms may require only static effects
+16:8: static handler arm `Tile.size` requires runtime effects: Log.write; arm operations must be statically discharged

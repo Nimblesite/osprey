@@ -160,11 +160,11 @@ pub(crate) struct Checker {
     /// Rewritten static arms may now be closure bodies; their assignments still
     /// require mutable bindings and matching value types.
     source_contracts_validated: bool,
-    /// Declared continuation bindings for enclosing arms. A control arm binds
-    /// `(operation result, handler answer)`; a value arm binds `None`, hiding
-    /// any outer continuation. Presence also marks the arm's mutation scope.
+    /// The enclosing handler arms, innermost last. A control arm binds the
+    /// continuation `resume` invokes; a value arm binds none and hides any
+    /// outer one. Presence also marks the arm's mutation scope.
     /// Implements [EFFECTS-RESUME].
-    pub(crate) resume_ctx: Vec<Option<(Type, Type)>>,
+    pub(crate) resume_ctx: Vec<ResumeSite>,
     /// Stack of in-scope effect instantiations — one entry per enclosing
     /// `handle` body or declared effect-row entry — resolved innermost-first
     /// by `perform` sites, matching the runtime's innermost-wins handler
@@ -500,7 +500,7 @@ impl Checker {
         }
         // Implements [MULTI-DECL].
         for operation in operations {
-            if let Some(message) = operation.modifier_error(stage) {
+            if let Some(message) = operation.modifier_error(name, stage) {
                 self.record_err(TypeError::new(message), operation.position.or(position));
             }
         }
@@ -1442,6 +1442,31 @@ fn resolved_effect_arguments(checker: &mut Checker) -> Vec<Vec<Type>> {
         .collect()
 }
 
+/// What `resume` finds in the innermost enclosing handler arm.
+#[derive(Clone)]
+pub(crate) enum ResumeSite {
+    /// A control arm: `resume` delivers the operation's result and the
+    /// expression evaluates to the handler's answer.
+    Control { op_ret: Type, answer: Type },
+    /// A value arm supplies the operation's result by returning it, so it
+    /// owns no continuation to invoke.
+    Value { effect: String, operation: String },
+}
+
+impl ResumeSite {
+    /// Why `resume` is refused at this site (`None` when the site is not
+    /// an arm at all). Implements [EFFECTS-RESUME].
+    pub(crate) fn refusal(site: Option<&Self>) -> String {
+        match site {
+            Some(Self::Value { effect, operation }) => format!(
+                "handler arm `{effect}.{operation}` cannot `resume`: `{operation}` is a value operation, so its arm supplies the operation's result and owns no continuation; `resume` requires the continuation of a control operation arm, so declare `{operation}` `control` to take it"
+            ),
+            _ => "`resume` requires the continuation of a control operation arm, and none is live here: `resume` is only meaningful directly inside such an arm, not at top level or in a lambda body, which runs when called rather than where it is written"
+                .to_owned(),
+        }
+    }
+}
+
 /// Publish the current inference solution for the closed-program effect proof.
 fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Instances {
     let substitutions = resolved_instantiations(checker);
@@ -1689,16 +1714,19 @@ mod tests {
         format!(
             "type Box<T> = {{ value: T }}\n\
              effect Stash<T> {{\n\
-               put: fn(T) -> Unit\n\
-               take: fn() -> T\n\
+             put: fn(T) -> Unit\n\
+             take: fn() -> T\n\
              }}\n\
              fn stash() = perform Stash.put(Box {{ value: 42 }})\n\
              fn main() -> Unit = {{\n\
-               let cached = handle Stash\n\
-                 put v => print(\"put\")\n\
-                 take => Box {{ value: {handler_payload} }}\n\
-               in stash()\n\
-               print(\"${{cached}}\")\n\
+             let cached = {{\n\
+                 handle Stash {{\n\
+                     put v => print(\"put\")\n\
+                     take => Box {{ value: {handler_payload} }}\n\
+                 }}\n\
+                 stash()\n\
+             }}\n\
+             print(\"${{cached}}\")\n\
              }}\n"
         )
     }
@@ -2205,19 +2233,21 @@ mod tests {
         // A lambda body runs when called, not where it is written, so the
         // arm's continuation is not live inside it ([EFFECTS-RESUME]).
         let errs = check(
-            "effect E { op: fn() -> int }\n\
+            "effect E { control op: fn() -> int }\n\
              fn go() -> int !E = perform E.op()\n\
-             let r = handle E\n\
-                 op => {\n\
-                     let f = |x| => resume(x)\n\
-                     f(9)\n\
+             let r = {\n\
+                 handle E {\n\
+                     op => {\n\
+                         let f = |x| => resume(x)\n\
+                         f(9)\n\
+                     }\n\
                  }\n\
-             in go()\n",
+                 go()\n\
+             }\n",
         );
         assert!(
-            errs.iter().any(|e| e
-                .message
-                .contains("`resume` is only valid inside a handler arm")),
+            errs.iter()
+                .any(|e| e.message.contains("not at top level or in a lambda body")),
             "expected the lambda-resume rejection, got: {errs:?}"
         );
     }

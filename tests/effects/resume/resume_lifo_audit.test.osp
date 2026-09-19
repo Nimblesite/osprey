@@ -1,7 +1,7 @@
 /// Audit supplies numbered values and observes continuation unwind order.
 effect Audit {
     /// Request the numbered value for `label`, recording the visit.
-    step: fn(string) -> int
+    control step: fn(string) -> int
 }
 
 /// This helper performs two ordered steps and combines their supplied values.
@@ -18,16 +18,19 @@ fn resumeLifoAuditCase() = {
     mut settled = ""
     mut transcript = ""
 
-    let total = handle Audit
-        step label => {
-            n = n + 1 ?: n
-            issued = "${issued}${label}:${toString(n)}|"
-            let answer = resume(n)
-            settled = "${settled}${label}:${toString(answer)}|"
-            transcript = "${transcript}after ${label}: answer=${toString(answer)}\n"
-            answer
+    let total = {
+        handle Audit {
+            step label => {
+                n = n + 1 ?: n
+                issued = "${issued}${label}:${toString(n)}|"
+                let answer = resume(n)
+                settled = "${settled}${label}:${toString(answer)}|"
+                transcript = "${transcript}after ${label}: answer=${toString(answer)}\n"
+                answer
+            }
         }
-    in pipeline()
+        pipeline()
+    }
     let legacyTranscript = "${transcript}total=${toString(total)}\n"
 
     // Preserve all three legacy lines and their exact unwind ordering.
@@ -52,25 +55,25 @@ test("post-resume code unwinds in reverse operation order", resumeLifoAuditCase)
 /// operation and the position at which it did so.
 effect Alpha {
     /// Supply Alpha's numbered value for `label`.
-    alpha: fn(string) -> int
+    control alpha: fn(string) -> int
 }
 
 /// Beta is the second channel; a nested region claims it on its own.
 effect Beta {
     /// Supply Beta's numbered value for `label`.
-    beta: fn(string) -> int
+    control beta: fn(string) -> int
 }
 
 /// Gamma is the third channel, and also serves as a never-performed spectator.
 effect Gamma {
     /// Supply Gamma's numbered value for `label`.
-    gamma: fn(string) -> int
+    control gamma: fn(string) -> int
 }
 
 /// Delta is the fourth channel, claimed by the innermost of four regions.
 effect Delta {
     /// Supply Delta's numbered value for `label`.
-    delta: fn(string) -> int
+    control delta: fn(string) -> int
 }
 
 /// Two regions, two effects, four operations performed a-b-a-b. Spec 0017
@@ -96,29 +99,31 @@ fn nestedInterleavedDepthTwoCase() = {
     mut supplies = ""
     mut answers = ""
 
-    let total = handle Alpha
-        alpha label => {
-            alphaCalls = alphaCalls + 1 ?: alphaCalls
-            let supplied = alphaCalls * 10 ?: 0
-            entered = "${entered}a:${label}|"
-            supplies = "${supplies}${label}=${toString(supplied)}|"
-            let answer = resume(supplied)
-            settled = "${settled}a:${label}|"
-            answers = "${answers}${label}:${toString(answer)}|"
-            answer + 1 ?: answer
+    let total = {
+        handle Alpha {
+            alpha label => {
+                alphaCalls = alphaCalls + 1 ?: alphaCalls
+                let supplied = alphaCalls * 10 ?: 0
+                entered = "${entered}a:${label}|"
+                supplies = "${supplies}${label}=${toString(supplied)}|"
+                let answer = resume(supplied)
+                settled = "${settled}a:${label}|"
+                answers = "${answers}${label}:${toString(answer)}|"
+                answer + 1 ?: answer
+            }
         }
-    in handle Beta
-        beta label => {
-            betaCalls = betaCalls + 1 ?: betaCalls
-            let supplied = betaCalls * 100 ?: 0
-            entered = "${entered}b:${label}|"
-            supplies = "${supplies}${label}=${toString(supplied)}|"
-            let answer = resume(supplied)
-            settled = "${settled}b:${label}|"
-            answers = "${answers}${label}:${toString(answer)}|"
-            answer * 2 ?: answer
+        handle Beta {
+            beta label => {
+                betaCalls = betaCalls + 1 ?: betaCalls
+                let supplied = betaCalls * 100 ?: 0
+                entered = "${entered}b:${label}|"
+                supplies = "${supplies}${label}=${toString(supplied)}|"
+                let answer = resume(supplied)
+                settled = "${settled}b:${label}|"
+                answers = "${answers}${label}:${toString(answer)}|"
+                answer * 2 ?: answer
+            }
         }
-    in {
         let p = perform Alpha.alpha("a1")
         let q = perform Beta.beta("b1")
         let r = perform Alpha.alpha("a2")
@@ -178,37 +183,40 @@ fn nestedDepthThreeRotationCase() = {
     mut settled = ""
     mut answers = ""
 
-    let total = handle Gamma
-        gamma label => {
-            gammaCalls = gammaCalls + 1 ?: gammaCalls
-            let supplied = gammaCalls * 1000 ?: 0
-            entered = "${entered}d1:${label}|"
-            let answer = resume(supplied)
-            settled = "${settled}d1:${label}|"
-            answers = "${answers}${label}:${toString(answer)}|"
-            answer * 2 ?: answer
+    let total = {
+        handle Gamma {
+            gamma label => {
+                gammaCalls = gammaCalls + 1 ?: gammaCalls
+                let supplied = gammaCalls * 1000 ?: 0
+                entered = "${entered}d1:${label}|"
+                let answer = resume(supplied)
+                settled = "${settled}d1:${label}|"
+                answers = "${answers}${label}:${toString(answer)}|"
+                answer * 2 ?: answer
+            }
         }
-    in handle Alpha
-        alpha label => {
-            alphaCalls = alphaCalls + 1 ?: alphaCalls
-            let supplied = alphaCalls * 10 ?: 0
-            entered = "${entered}d2:${label}|"
-            let answer = resume(supplied)
-            settled = "${settled}d2:${label}|"
-            answers = "${answers}${label}:${toString(answer)}|"
-            answer + 7 ?: answer
+        handle Alpha {
+            alpha label => {
+                alphaCalls = alphaCalls + 1 ?: alphaCalls
+                let supplied = alphaCalls * 10 ?: 0
+                entered = "${entered}d2:${label}|"
+                let answer = resume(supplied)
+                settled = "${settled}d2:${label}|"
+                answers = "${answers}${label}:${toString(answer)}|"
+                answer + 7 ?: answer
+            }
         }
-    in handle Beta
-        beta label => {
-            betaCalls = betaCalls + 1 ?: betaCalls
-            let supplied = betaCalls * 100 ?: 0
-            entered = "${entered}d3:${label}|"
-            let answer = resume(supplied)
-            settled = "${settled}d3:${label}|"
-            answers = "${answers}${label}:${toString(answer)}|"
-            answer * 3 ?: answer
+        handle Beta {
+            beta label => {
+                betaCalls = betaCalls + 1 ?: betaCalls
+                let supplied = betaCalls * 100 ?: 0
+                entered = "${entered}d3:${label}|"
+                let answer = resume(supplied)
+                settled = "${settled}d3:${label}|"
+                answers = "${answers}${label}:${toString(answer)}|"
+                answer * 3 ?: answer
+            }
         }
-    in {
         let g0 = perform Gamma.gamma("g0")
         let a1 = perform Alpha.alpha("a1")
         let b1 = perform Beta.beta("b1")
@@ -275,51 +283,55 @@ fn nestedDepthFourStaircaseCase() = {
     mut supplies = ""
     mut answers = ""
 
-    let total = handle Alpha
-        alpha label => {
-            alphaCalls = alphaCalls + 1 ?: alphaCalls
-            let supplied = alphaCalls
-            entered = "${entered}1:${label}|"
-            supplies = "${supplies}${label}=${toString(supplied)}|"
-            let answer = resume(supplied)
-            settled = "${settled}1:${label}|"
-            answers = "${answers}${label}:${toString(answer)}|"
-            answer + 1 ?: answer
+    let total = {
+        handle Alpha {
+            alpha label => {
+                alphaCalls = alphaCalls + 1 ?: alphaCalls
+                let supplied = alphaCalls
+                entered = "${entered}1:${label}|"
+                supplies = "${supplies}${label}=${toString(supplied)}|"
+                let answer = resume(supplied)
+                settled = "${settled}1:${label}|"
+                answers = "${answers}${label}:${toString(answer)}|"
+                answer + 1 ?: answer
+            }
         }
-    in handle Beta
-        beta label => {
-            betaCalls = betaCalls + 1 ?: betaCalls
-            let supplied = betaCalls * 10 ?: 0
-            entered = "${entered}2:${label}|"
-            supplies = "${supplies}${label}=${toString(supplied)}|"
-            let answer = resume(supplied)
-            settled = "${settled}2:${label}|"
-            answers = "${answers}${label}:${toString(answer)}|"
-            answer + 10 ?: answer
+        handle Beta {
+            beta label => {
+                betaCalls = betaCalls + 1 ?: betaCalls
+                let supplied = betaCalls * 10 ?: 0
+                entered = "${entered}2:${label}|"
+                supplies = "${supplies}${label}=${toString(supplied)}|"
+                let answer = resume(supplied)
+                settled = "${settled}2:${label}|"
+                answers = "${answers}${label}:${toString(answer)}|"
+                answer + 10 ?: answer
+            }
         }
-    in handle Gamma
-        gamma label => {
-            gammaCalls = gammaCalls + 1 ?: gammaCalls
-            let supplied = gammaCalls * 100 ?: 0
-            entered = "${entered}3:${label}|"
-            supplies = "${supplies}${label}=${toString(supplied)}|"
-            let answer = resume(supplied)
-            settled = "${settled}3:${label}|"
-            answers = "${answers}${label}:${toString(answer)}|"
-            answer + 100 ?: answer
+        handle Gamma {
+            gamma label => {
+                gammaCalls = gammaCalls + 1 ?: gammaCalls
+                let supplied = gammaCalls * 100 ?: 0
+                entered = "${entered}3:${label}|"
+                supplies = "${supplies}${label}=${toString(supplied)}|"
+                let answer = resume(supplied)
+                settled = "${settled}3:${label}|"
+                answers = "${answers}${label}:${toString(answer)}|"
+                answer + 100 ?: answer
+            }
         }
-    in handle Delta
-        delta label => {
-            deltaCalls = deltaCalls + 1 ?: deltaCalls
-            let supplied = deltaCalls * 1000 ?: 0
-            entered = "${entered}4:${label}|"
-            supplies = "${supplies}${label}=${toString(supplied)}|"
-            let answer = resume(supplied)
-            settled = "${settled}4:${label}|"
-            answers = "${answers}${label}:${toString(answer)}|"
-            answer + 1000 ?: answer
+        handle Delta {
+            delta label => {
+                deltaCalls = deltaCalls + 1 ?: deltaCalls
+                let supplied = deltaCalls * 1000 ?: 0
+                entered = "${entered}4:${label}|"
+                supplies = "${supplies}${label}=${toString(supplied)}|"
+                let answer = resume(supplied)
+                settled = "${settled}4:${label}|"
+                answers = "${answers}${label}:${toString(answer)}|"
+                answer + 1000 ?: answer
+            }
         }
-    in {
         let a1 = perform Alpha.alpha("a1")
         let b1 = perform Beta.beta("b1")
         let g1 = perform Gamma.gamma("g1")
@@ -376,9 +388,9 @@ test("four nested regions settle by live arm nesting, deepest arm first", nested
 /// Twin gives two nested regions something to divide between them.
 effect Twin {
     /// The inner region claims `near`; the outer arm for it must stay unused.
-    near: fn(int) -> int
+    control near: fn(int) -> int
     /// Only the outer region carries `far`, so it crosses the inner region.
-    far: fn(int) -> int
+    control far: fn(int) -> int
 }
 
 /// One effect, two depths, one partial inner region. Spec 0017's Handlers
@@ -401,39 +413,41 @@ fn nestedPartialInnerResumeCase() = {
     mut supplies = ""
     mut answers = ""
 
-    let total = handle Twin
-        near amount => {
-            outerNear = outerNear + 1 ?: outerNear
-            let supplied = amount * 1000000 ?: amount
-            entered = "${entered}OUTERnear:${toString(amount)}|"
-            supplies = "${supplies}N${toString(amount)}=${toString(supplied)}|"
-            let answer = resume(supplied)
-            settled = "${settled}OUTERnear:${toString(amount)}|"
-            answers = "${answers}OUTERnear:${toString(answer)}|"
-            answer
+    let total = {
+        handle Twin {
+            near amount => {
+                outerNear = outerNear + 1 ?: outerNear
+                let supplied = amount * 1000000 ?: amount
+                entered = "${entered}OUTERnear:${toString(amount)}|"
+                supplies = "${supplies}N${toString(amount)}=${toString(supplied)}|"
+                let answer = resume(supplied)
+                settled = "${settled}OUTERnear:${toString(amount)}|"
+                answers = "${answers}OUTERnear:${toString(answer)}|"
+                answer
+            }
+            far amount => {
+                outerFar = outerFar + 1 ?: outerFar
+                let supplied = amount * 1000 ?: amount
+                entered = "${entered}far:${toString(amount)}|"
+                supplies = "${supplies}f${toString(amount)}=${toString(supplied)}|"
+                let answer = resume(supplied)
+                settled = "${settled}far:${toString(amount)}|"
+                answers = "${answers}far:${toString(answer)}|"
+                answer * 2 ?: answer
+            }
         }
-        far amount => {
-            outerFar = outerFar + 1 ?: outerFar
-            let supplied = amount * 1000 ?: amount
-            entered = "${entered}far:${toString(amount)}|"
-            supplies = "${supplies}f${toString(amount)}=${toString(supplied)}|"
-            let answer = resume(supplied)
-            settled = "${settled}far:${toString(amount)}|"
-            answers = "${answers}far:${toString(answer)}|"
-            answer * 2 ?: answer
+        handle Twin {
+            near amount => {
+                innerNear = innerNear + 1 ?: innerNear
+                let supplied = amount * 10 ?: amount
+                entered = "${entered}near:${toString(amount)}|"
+                supplies = "${supplies}n${toString(amount)}=${toString(supplied)}|"
+                let answer = resume(supplied)
+                settled = "${settled}near:${toString(amount)}|"
+                answers = "${answers}near:${toString(answer)}|"
+                answer + 5 ?: answer
+            }
         }
-    in handle Twin
-        near amount => {
-            innerNear = innerNear + 1 ?: innerNear
-            let supplied = amount * 10 ?: amount
-            entered = "${entered}near:${toString(amount)}|"
-            supplies = "${supplies}n${toString(amount)}=${toString(supplied)}|"
-            let answer = resume(supplied)
-            settled = "${settled}near:${toString(amount)}|"
-            answers = "${answers}near:${toString(answer)}|"
-            answer + 5 ?: answer
-        }
-    in {
         let p = perform Twin.near(1)
         let q = perform Twin.far(2)
         let r = perform Twin.near(3)
@@ -477,7 +491,7 @@ test("a partial inner region resumes while its uncovered operation crosses outwa
 /// the outer body.
 effect Layer {
     /// Supply the value for `label`; the innermost matching arm answers.
-    pick: fn(string) -> int
+    control pick: fn(string) -> int
 }
 
 /// The inner region wraps only the middle of the outer body, so it must produce
@@ -497,31 +511,33 @@ fn sameEffectTwoDepthsCase() = {
     mut supplies = ""
     mut answers = ""
 
-    let total = handle Layer
-        pick label => {
-            outerCalls = outerCalls + 1 ?: outerCalls
-            let supplied = outerCalls * 1000 ?: 0
-            entered = "${entered}out:${label}|"
-            supplies = "${supplies}${label}=${toString(supplied)}|"
-            let answer = resume(supplied)
-            settled = "${settled}out:${label}|"
-            answers = "${answers}${label}:${toString(answer)}|"
-            answer * 2 ?: answer
-        }
-    in {
-        let before = perform Layer.pick("before")
-        let middle = handle Layer
+    let total = {
+        handle Layer {
             pick label => {
-                innerCalls = innerCalls + 1 ?: innerCalls
-                let supplied = innerCalls * 10 ?: 0
-                entered = "${entered}in:${label}|"
+                outerCalls = outerCalls + 1 ?: outerCalls
+                let supplied = outerCalls * 1000 ?: 0
+                entered = "${entered}out:${label}|"
                 supplies = "${supplies}${label}=${toString(supplied)}|"
                 let answer = resume(supplied)
-                settled = "${settled}in:${label}|"
+                settled = "${settled}out:${label}|"
                 answers = "${answers}${label}:${toString(answer)}|"
-                answer + 3 ?: answer
+                answer * 2 ?: answer
             }
-        in {
+        }
+        let before = perform Layer.pick("before")
+        let middle = {
+            handle Layer {
+                pick label => {
+                    innerCalls = innerCalls + 1 ?: innerCalls
+                    let supplied = innerCalls * 10 ?: 0
+                    entered = "${entered}in:${label}|"
+                    supplies = "${supplies}${label}=${toString(supplied)}|"
+                    let answer = resume(supplied)
+                    settled = "${settled}in:${label}|"
+                    answers = "${answers}${label}:${toString(answer)}|"
+                    answer + 3 ?: answer
+                }
+            }
             let m1 = perform Layer.pick("in1")
             let m2 = perform Layer.pick("in2")
             m1 + m2 ?: 0

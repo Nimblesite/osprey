@@ -29,7 +29,7 @@ fn probe_call(declarations: &str, expression: &str, required: bool) {
     let source = format!("{PROBE}{declarations}\nlet answer = {expression}\n");
     assert_errors(&source, if required { &[UNHANDLED] } else { &[] });
     assert_accepted(&format!(
-        "{PROBE}{declarations}\nlet answer = handle Probe\n    value => 33\nin {expression}\n"
+        "{PROBE}{declarations}\nlet answer = {{\n    handle Probe {{\n        value => 33\n    }}\n    {expression}\n}}\n"
     ));
 }
 
@@ -89,7 +89,12 @@ fn deferred_methods_preserve_captured_receivers_and_returned_callables() {
 fn a_handler_inside_a_generic_helper_discharges_only_its_invocation() {
     let declarations = format!(
         "{ACTION}fn m<T>(x:T) -> int = 22\n\
-         fn dispatch<T>(x:T) = handle Probe\n    value => 33\nin x.m()\n"
+         fn dispatch<T>(x:T) = {{\n\
+             handle Probe {{\n\
+                 value => 33\n\
+             }}\n\
+             x.m()\n\
+         }}\n"
     );
     probe_call(&declarations, "dispatch(Action{m:fetch})", false);
     probe_call(&declarations, "dispatch(5)", false);
@@ -228,18 +233,23 @@ fn generic_handler_results_cannot_be_rebound_to_an_unrelated_caller_argument() {
     ] {
         for unrelated in ["pure", "fetch"] {
             let declarations = format!(
-                "{GENERIC_FACTORY}fn get(dummy:Action) = handle Factory\n\
-                 make => Action{{m:fetch}}\nin {body}\nlet f=get(Action{{m:{unrelated}}})\n"
+                "{GENERIC_FACTORY}fn get(dummy:Action) = {{\n\
+                     handle Factory {{\n\
+                         make => Action{{m:fetch}}\n\
+                     }}\n\
+                     {body}\n\
+                 }}\n\
+                 let f=get(Action{{m:{unrelated}}})\n"
             );
             assert_errors(
                 &format!("{declarations}let answer=f()\n"),
                 &[GENERIC_UNHANDLED],
             );
             assert_accepted(&format!(
-                "{declarations}let answer=handle Probe\nvalue=>33\nin f()\n"
+                "{declarations}let answer= {{\n    handle Probe {{\n        value=>33\n    }}\n    f()\n}}\n"
             ));
             assert_errors(
-                &format!("{declarations}let answer=handle Probe\nvalue=>\"wrong\"\nin f()\n"),
+                &format!("{declarations}let answer= {{\n    handle Probe {{\n        value=>\"wrong\"\n    }}\n    f()\n}}\n"),
                 &[GENERIC_UNHANDLED],
             );
         }
@@ -250,9 +260,15 @@ fn generic_handler_results_cannot_be_rebound_to_an_unrelated_caller_argument() {
 fn handler_result_provenance_respects_local_shadowing_and_pure_results() {
     for (local, returned) in [("", "pure"), ("let fetch=fn() -> int => 22", "fetch")] {
         assert_accepted(&format!(
-            "{GENERIC_FACTORY}fn get(dummy:Action) = {{\n{local}\n\
-             handle Factory\nmake => Action{{m:{returned}}}\nin extract(perform Factory.make())\n\
-             }}\nlet f=get(Action{{m:fetch}})\nlet answer=f()\n"
+            "{GENERIC_FACTORY}fn get(dummy:Action) = {{\n\
+             {local}\n\
+             handle Factory {{\n\
+                 make => Action{{m:{returned}}}\n\
+             }}\n\
+             extract(perform Factory.make())\n\
+             }}\n\
+             let f=get(Action{{m:fetch}})\n\
+             let answer=f()\n"
         ));
     }
 }
@@ -262,8 +278,13 @@ fn escaped_closures_capture_values_but_never_active_handler_bindings() {
     assert_errors(
         &format!("{ACTION}{PROBE}effect Factory {{make: fn() -> Action}}\n\
             fn extract<T>(x:T) = x.m\n\
-            let f=handle Factory\nmake=>Action{{m:pure}}\n\
-            in fn()=>extract(perform Factory.make())()\nlet answer=f()\n"),
+            let f= {{\n\
+                handle Factory {{\n\
+                    make=>Action{{m:pure}}\n\
+                }}\n\
+                fn()=>extract(perform Factory.make())()\n\
+            }}\n\
+            let answer=f()\n"),
         &[
             "unhandled effect operations at program entry: Factory.make; add a matching `handle`",
             "program entry invokes a dynamic callable whose effect provenance cannot be proven; preserve the callable through a statically tracked value path",
@@ -412,22 +433,23 @@ fn rejected_named_performs_still_report_the_handlers_callback_effects() {
         ("pure", vec![unsupported]),
         ("fetch", vec![unsupported, UNHANDLED]),
     ] {
-        let invocation =
-            format!("handle Callback\n go cb => cb()\nin perform Callback.go(cb:{callback})");
+        let invocation = format!(
+            "{{\n    handle Callback {{\n        go cb => cb()\n    }}\n    perform Callback.go(cb:{callback})\n}}"
+        );
         assert_errors(
             &format!("{PROBE}{declarations}let answer={invocation}\n"),
             &expected,
         );
         assert_errors(
             &format!(
-                "{PROBE}{declarations}let answer=handle Probe\n value => 33\nin {invocation}\n"
+                "{PROBE}{declarations}let answer= {{\n    handle Probe {{\n        value => 33\n    }}\n    {invocation}\n}}\n"
             ),
             &[unsupported],
         );
     }
     probe_call(
         declarations,
-        "handle Callback\n go cb => cb()\nin perform Callback.go(fetch)",
+        "{\n    handle Callback {\n        go cb => cb()\n    }\n    perform Callback.go(fetch)\n}",
         true,
     );
 }

@@ -51,7 +51,7 @@ fn project(entry: &str, library: &str) -> osprey_ast::Program {
 #[test]
 fn imported_generic_effect_primitive_instance_reaches_static_validation() {
     let program = project(
-        "namespace app;\nimport source::Library::{Echo}\nfn main() = handle static Echo<int> echo value => value in perform Echo<int>.echo(42)",
+        "namespace app;\nimport source::Library::{Echo}\nfn main() = {\n    handle static Echo<int> {\n        echo value => value\n    }\n    perform Echo<int>.echo(42)\n}",
         "namespace source;\nmodule Library { export effect Echo<T> { echo: fn(T) -> T } }",
     );
     let errors = osprey_types::check_program(&program);
@@ -61,7 +61,7 @@ fn imported_generic_effect_primitive_instance_reaches_static_validation() {
 #[test]
 fn qualified_generic_effect_arguments_resolve_imported_types() {
     let program = project(
-        "namespace app;\nimport source::Library as L\nfn echo(value: L::Marker) = handle static L::Echo<L::Marker> echo item => item in perform L::Echo<L::Marker>.echo(value)\nfn main() = 0",
+        "namespace app;\nimport source::Library as L\nfn echo(value: L::Marker) = {\n    handle static L::Echo<L::Marker> {\n        echo item => item\n    }\n    perform L::Echo<L::Marker>.echo(value)\n}\nfn main() = 0",
         "namespace source;\nmodule Library { export type Marker = { value: int }\n export effect Echo<T> { echo: fn(T) -> T } }",
     );
     let effect = program

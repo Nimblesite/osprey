@@ -16,7 +16,7 @@ static effect Scale
 
 effect Audit
     (** Runtime note, dispatched through the handler stack as it always has been. *)
-    note : string => Unit
+    control note : string => Unit
 
 (** The shared definition. No annotation names a stage, a row or a type. *)
 twice f x = f (f x)
@@ -32,7 +32,7 @@ counted n =
 staticTotal =
     handle static Scale
         by => 3
-    in twice scaled 2
+    twice scaled 2
 
 mut trail = ""
 
@@ -42,7 +42,7 @@ dynamicTotal =
         note message =>
             trail := "${trail}[${message}]"
             resume ()
-    in twice counted 0
+    twice counted 0
 
 test "one unannotated function serves both stages in one program" (\() => checkAll "stage polymorphism" [
     staticTotal == 18,

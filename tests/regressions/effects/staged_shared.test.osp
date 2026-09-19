@@ -17,7 +17,7 @@ static effect Scale {
 
 effect Audit {
     /// Runtime note, dispatched through the handler stack as it always has been.
-    note: fn(string) -> Unit
+    control note: fn(string) -> Unit
 }
 
 /// The shared definition. No annotation names a stage, a row or a type.
@@ -32,19 +32,25 @@ fn counted(n) = {
 
 /// Static instantiation: the row is empty after discharge, so this call is
 /// GPU-legal and leaves no handler registration behind ([STAGE-RESIDUE]).
-let staticTotal = handle static Scale
-    by => 3
-in twice(scaled, 2)
+let staticTotal = {
+    handle static Scale {
+        by => 3
+    }
+    twice(scaled, 2)
+}
 
 mut trail = ""
 
 /// Dynamic instantiation of the SAME `twice`, in the same program.
-let dynamicTotal = handle Audit
-    note message => {
-        trail = "${trail}[${message}]"
-        resume()
+let dynamicTotal = {
+    handle Audit {
+        note message => {
+            trail = "${trail}[${message}]"
+            resume()
+        }
     }
-in twice(counted, 0)
+    twice(counted, 0)
+}
 
 test("one unannotated function serves both stages in one program", fn() => checkAll("stage polymorphism", [
     staticTotal == 18,

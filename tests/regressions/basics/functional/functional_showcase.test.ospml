@@ -128,7 +128,7 @@ closureHandlerCase () =
         handle Tally
             note value =>
                 seen := seen * 10 + value ?: seen
-        in forEachList keys (\k => perform Tally.note k)
+        forEachList keys (\k => perform Tally.note k)
         seen
     checkAll "a handler inside a closure keeps its captured state" [
         digits [1, 2, 3] == 123,
@@ -212,7 +212,7 @@ genericReturnedLambdaCase () =
         handle Tally
             note value =>
                 runs := runs + value ?: runs
-        in agreesFromSeed ()
+        agreesFromSeed ()
     checkAll "a generic function's returned lambda specialises per call site" [
         identityValue 7 == 7,
         identityValue "os" == "os",

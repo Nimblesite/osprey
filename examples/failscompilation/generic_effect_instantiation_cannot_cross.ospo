@@ -1,0 +1,19 @@
+// [EFFECTS-GENERIC-INSTANTIATION]: a written instantiation is the request's
+// identity at either stage, and `Signal<Cursor>` cannot answer `Signal<Count>`.
+// The handler below covers the wrong instantiation, so the request it does
+// not cover survives to program entry under its own instantiation.
+type Count = { value: int }
+type Cursor = { at: int }
+
+effect Signal<T> {
+    read: fn() -> T
+}
+
+fn counterValue() = (perform Signal<Count>.read()).value
+
+fn main() = {
+    handle Signal<Cursor> {
+        read => Cursor { at: 2 }
+    }
+    print("${counterValue()}")
+}

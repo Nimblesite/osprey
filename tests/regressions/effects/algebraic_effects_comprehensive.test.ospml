@@ -158,25 +158,25 @@ testMockedInput () =
         Error message => perform Logger.log "Mock input error: ${message}"
     perform Logger.log "Mock input toString: ${toString mockInput}"
 
-handle Counter
-    increment => print "⬆️ Counter incremented"
-    getValue => 42
-    reset => print "🔄 Counter reset to 0"
-in handle State
-    get => 10
-    set newVal => print ("📊 State updated to: " + toString newVal)
-in handle Logger
-    log msg => print ("📝 LOG: " + msg)
-    error msg => print ("❌ ERROR: " + msg)
-in handle FileIO
-    writeFile filename _content => print ("💾 Writing file: " + filename)
-    readFile _filename => "mock file content"
-    deleteFile filename => print ("🗑️ Deleting file: " + filename)
-in handle IO
-    read => "mock read data"
-    write msg => print ("📤 IO Write: " + msg)
-    input => Success(value = "mocked user input")
-in
+comprehensiveDemo () =
+    handle Counter
+        increment => print "⬆️ Counter incremented"
+        getValue => 42
+        reset => print "🔄 Counter reset to 0"
+    handle State
+        get => 10
+        set newVal => print ("📊 State updated to: " + toString newVal)
+    handle Logger
+        log msg => print ("📝 LOG: " + msg)
+        error msg => print ("❌ ERROR: " + msg)
+    handle FileIO
+        writeFile filename _content => print ("💾 Writing file: " + filename)
+        readFile _filename => "mock file content"
+        deleteFile filename => print ("🗑️ Deleting file: " + filename)
+    handle IO
+        read => "mock read data"
+        write msg => print ("📤 IO Write: " + msg)
+        input => Success(value = "mocked user input")
     print "🚀 Starting Comprehensive Effects Test"
 
     calcResult = calculation 21
@@ -192,6 +192,7 @@ in
     testMockedInput ()
 
     print ("🎯 Final Results: Calc=" + toString calcResult + ", Process=" + toString processResult + ", Errors=[" + toString errorResult1 + "," + toString errorResult2 + "," + toString errorResult3 + "], Async=" + toString asyncResult + " 🎉")
+comprehensiveDemo ()
 
 (** --- Generic effects: one declaration, many instantiations ---
     Implements [EFFECTS-GENERIC-DECL], [EFFECTS-GENERIC-INSTANTIATION],
@@ -217,12 +218,12 @@ words =
     handle Stash
         take => "stash-words"
         put v => print "📦 Stash<string> put: ${v}"
-    in relabel ()
+    relabel ()
 count =
     handle Stash
         take => 41
         put v => print "📦 Stash<int> put: ${v}"
-    in bumped ()
+    bumped ()
 print "Generic Stash: <string> gave ${words}, <int> gave ${count}"
 
 // Verify the values produced by every effect family and generic instance.

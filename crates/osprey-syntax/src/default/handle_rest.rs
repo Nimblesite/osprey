@@ -1,7 +1,7 @@
 //! Block-scoped handlers must govern actual following code.
 //! Implements [EFFECTS-HANDLE-REST].
 
-use crate::SyntaxError;
+use crate::{SyntaxError, HANDLE_NEEDS_A_BLOCK, NOTHING_TO_HANDLE};
 use tree_sitter::Node;
 
 pub(super) fn check(root: Node<'_>, errors: &mut Vec<SyntaxError>) {
@@ -22,13 +22,11 @@ pub(super) fn check(root: Node<'_>, errors: &mut Vec<SyntaxError>) {
 
 fn region_error(handler: Node<'_>) -> Option<&'static str> {
     let Some(item) = block_item(handler) else {
-        return Some(
-            "`handle` must be a block statement; use `handler` to construct a callable handler",
-        );
+        return Some(HANDLE_NEEDS_A_BLOCK);
     };
     let follows = std::iter::successors(item.next_named_sibling(), Node::next_named_sibling)
         .any(|node| matches!(node.kind(), "statement" | "expression"));
-    (!follows).then_some("this `handle` has nothing to handle; put the handled statements after it")
+    (!follows).then_some(NOTHING_TO_HANDLE)
 }
 
 fn block_item(handler: Node<'_>) -> Option<Node<'_>> {

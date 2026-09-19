@@ -30,9 +30,12 @@ fn mark(value) = {
     value
 }
 let x = 2
-let answer = handle static Pair
-    join x y => "${x}:${y}"
-in perform Pair.join(mark(1), mark(x))
+let answer = {
+    handle static Pair {
+        join x y => "${x}:${y}"
+    }
+    perform Pair.join(mark(1), mark(x))
+}
 print(answer)
 "#,
         "1\n2\n1:2\n",
@@ -46,8 +49,18 @@ fn a_shadowed_helper_is_not_specialized_as_the_global_function() {
         r#"
 static effect Read { get: fn() -> int }
 fn value() = perform Read.get()
-let first = handle static Read get => 1 in value()
-let second = handle static Read get => 2 in {
+let first = {
+    handle static Read {
+        get => 1
+    }
+    value()
+}
+let second = {
+    handle static Read {
+        get => 2
+    }
+    {
+}
     let value = || => 3
     value()
 }
@@ -64,7 +77,12 @@ fn a_specialized_helper_retains_the_handlers_lexical_capture() {
         r#"
 static effect Read { get: fn() -> int }
 fn value() = perform Read.get()
-fn run(outer) = handle static Read get => outer in value()
+fn run(outer) = {
+    handle static Read {
+        get => outer
+    }
+    value()
+}
 print("${run(1)}:${run(2)}")
 "#,
         "1:2\n",
@@ -80,10 +98,15 @@ static effect Counter { next: fn() -> int }
 fn twice() = "${perform Counter.next()}:${perform Counter.next()}"
 fn run(initial) = {
     mut count = initial
-    let result = handle static Counter next => {
-        count = (count + 1) ?: count
-        count
-    } in twice()
+    let result = {
+        handle static Counter {
+            next => {
+                count = (count + 1) ?: count
+                count
+            }
+        }
+        twice()
+    }
     "${result}:${count}"
 }
 print("${run(0)}|${run(10)}")
@@ -104,7 +127,7 @@ run initial =
             next =>
                 count := (count + 1) ?: count
                 count
-        in twice ()
+        twice ()
     "${result}:${count}"
 print "${run 0}|${run 10}"
 "#,
@@ -119,7 +142,12 @@ fn renamed_parameters_preserve_named_argument_calls() {
         r#"
 static effect Read { get: fn() -> int }
 fn add(first, second) = (first + second) ?: 0
-let value = handle static Read get => 2 in add(second: 3, first: perform Read.get())
+let value = {
+    handle static Read {
+        get => 2
+    }
+    add(second: 3, first: perform Read.get())
+}
 print("${value}")
 "#,
         "5\n",
@@ -134,7 +162,12 @@ fn pattern_and_lambda_binders_do_not_capture_handler_free_values() {
 static effect Read { get: fn() -> int }
 type Box = { outer: int }
 let outer = 1
-let value = handle static Read get => outer in {
+let value = {
+    handle static Read {
+        get => outer
+    }
+    {
+}
     let f = |outer| => match Box { outer: outer } {
         Box { outer } => (perform Read.get() + outer) ?: 0
     }
@@ -154,7 +187,12 @@ fn global_captures_remain_visible_after_specialization() {
 static effect Read { get: fn() -> int }
 let amount = 2
 fn work() = (perform Read.get() + amount) ?: 0
-let value = handle static Read get => 1 in work()
+let value = {
+    handle static Read {
+        get => 1
+    }
+    work()
+}
 print("${value}")
 "#,
         "3\n",
@@ -171,7 +209,12 @@ fn readAfterSteps(n) = match n == 0 {
     true => perform Read.get()
     false => readAfterSteps((n - 1) ?: 0)
 }
-fn run(outer) = handle static Read get => outer in readAfterSteps(3)
+fn run(outer) = {
+    handle static Read {
+        get => outer
+    }
+    readAfterSteps(3)
+}
 print("${run(1)}:${run(2)}")
 "#,
         "1:2\n",
