@@ -72,7 +72,24 @@ pub(crate) const SHADOWABLE_BUILTINS: &[&str] = &[
 ];
 
 /// Install every built-in into a base environment.
+///
+/// The environment is built ONCE. It is a pure function of the compiler binary
+/// — no source input, no fresh type variables, quantified binders spelled
+/// `Var(0)`..`Var(2)` — and the effect-row fixpoint asks it for a signature at
+/// every call node, so rebuilding it per lookup made checking one 1.3k-line
+/// program take seconds.
 pub(crate) fn base_env() -> TypeEnv {
+    builtins().clone()
+}
+
+/// The one built environment. Callers that only read a binding borrow this;
+/// [`base_env`] hands out the copy that callers extend with source bindings.
+fn builtins() -> &'static TypeEnv {
+    static BUILTINS: std::sync::OnceLock<TypeEnv> = std::sync::OnceLock::new();
+    BUILTINS.get_or_init(build_base_env)
+}
+
+fn build_base_env() -> TypeEnv {
     let mut e = TypeEnv::new();
     core(&mut e);
     testing(&mut e);
@@ -478,7 +495,7 @@ fn websocket(e: &mut TypeEnv) {
 /// the C runtime will call it with.
 #[must_use]
 pub fn builtin_callback_type(name: &str, index: usize) -> Option<(Vec<Type>, Type)> {
-    let scheme = base_env().get(name)?.clone();
+    let scheme = builtins().get(name)?.clone();
     let Type::Fun { params, .. } = &scheme.ty else {
         return None;
     };
@@ -492,7 +509,7 @@ pub fn builtin_callback_type(name: &str, index: usize) -> Option<(Vec<Type>, Typ
 /// `None` when `name` is not a built-in.
 #[must_use]
 pub fn builtin_signature(name: &str) -> Option<String> {
-    let scheme = base_env().get(name)?.clone();
+    let scheme = builtins().get(name)?.clone();
     if let (Some(display), Type::Fun { params, ret }) = (
         crate::builtin_constraints::display_param_type(name, 0),
         &scheme.ty,
