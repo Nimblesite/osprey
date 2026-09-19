@@ -163,7 +163,7 @@ Osprey splits the feature into three visible parts:
 
 - An `effect` names the operations that code may request and the types they use.
 - `perform` makes one of those requests.
-- `handle … in` says what to do when code inside that block makes the request.
+- `handler` says what to do when code makes the request; applying it to a computation runs that computation under it.
 
 ### Osprey vs OCaml 5, Koka, Eff and Unison
 
@@ -190,9 +190,8 @@ fn readPort(text) !InvalidPort = match parseInt(text) {
     Error   { message } => perform InvalidPort.recover(message)
 }
 
-let port = handle InvalidPort
-    recover message => 8080
-in readPort("not-a-port")
+let fallback = handler InvalidPort { recover _message => 8080 }
+let port = fallback(|| => readPort("not-a-port"))
 ```
 
 The handler returns `8080`, which becomes the result of `perform`, and `readPort` carries on. Another handler could read configuration, prompt the user, record a metric or supply a test value. `readPort` itself does not change.
@@ -203,20 +202,20 @@ The runnable [recoverable_errors.osp](https://github.com/Nimblesite/osprey/blob/
 
 ### Algebraic effect exception example: resume or abort
 
-An effect handler can also stop work early, just like an exception. In a handler region that contains `resume`, `resume(value)` returns to the point that called `perform`, using `value` as its result. If the selected branch returns without calling `resume`, the paused function does not continue. The branch's value becomes the result of the whole `handle … in` block. In a handler with no `resume` anywhere, returning from an arm has different behavior: it supplies the current operation result and the caller continues.
+An effect handler can also stop work early, just like an exception. An operation declared `control` hands its handler the continuation: `resume(value)` returns to the point that called `perform`, using `value` as its result. If the arm returns without calling `resume`, the paused function does not continue, and the arm's value becomes the result of the whole handled computation. An operation without `control` has no continuation to drop: its arm's value is simply the operation's result and the caller continues.
 
 ```osprey
 effect PortError {
-    parse: fn(string) -> int
+    control parse: fn(string) -> int
 }
 
-fn boot(text) -> int !PortError = {
+fn boot(text) !PortError = {
     let port = perform PortError.parse(text)
     print("starting server on ${port}")
     0
 }
 
-let exitCode = handle PortError
+let guarded = handler PortError {
     parse text => match parseInt(text) {
         Success { value } => resume(value)
         Error { message } => {
@@ -224,7 +223,8 @@ let exitCode = handle PortError
             1
         }
     }
-in boot("not-a-port")
+}
+let exitCode = guarded(|| => boot("not-a-port"))
 ```
 
 On success, `resume(value)` returns to `boot`, which prints the startup message and returns `0`. On failure, the handler prints the error and returns `1`; the rest of `boot` never runs. This has the early-exit behaviour of an exception, but the operation has a name and type, and its handler is visible around the code.
@@ -246,9 +246,8 @@ fn greeting(id) -> Result<string, string> !Accounts =
         name => Success { value: "Hello, ${name}" }
     }
 
-let lookup = handle Accounts
-    find id => ""
-in greeting(42)
+let missing = handler Accounts { find _id => "" }
+let lookup = missing(|| => greeting(42))
 
 match lookup {
     Success { value }   => print(value)

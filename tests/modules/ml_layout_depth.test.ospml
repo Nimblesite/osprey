@@ -25,7 +25,7 @@ namespace depth
 
             export module Bud
                 export effect Sap
-                    draw : int => int
+                    control draw : int => int
 
                 (** Four segments deep, and the row still reaches the caller. *)
                 export drink n = perform Sap.draw n
@@ -42,7 +42,7 @@ import depth::Trunk
 tapping (rate, body) =
     handle Bud::Sap
         draw amount => resume ((amount * rate) ?: 0)
-    in body ()
+    body ()
 
 (** Every nesting level stays addressable by its full path and by its import. *)
 nestingDepthCase () = checkAll ("layout nesting keeps every level addressable", [

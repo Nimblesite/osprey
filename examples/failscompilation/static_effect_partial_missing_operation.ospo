@@ -10,6 +10,9 @@ fn both() = {
     first + second ?: 0
 }
 
-let answer = handle Pair
-    first => 20
-in both()
+let answer = {
+    handle Pair {
+        first => 20
+    }
+    both()
+}

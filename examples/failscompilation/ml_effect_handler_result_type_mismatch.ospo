@@ -6,4 +6,4 @@ effect ParseFailure
 recovered =
     handle ParseFailure
         raise message => "not an integer"
-    in perform ParseFailure.raise "invalid number"
+    perform ParseFailure.raise "invalid number"

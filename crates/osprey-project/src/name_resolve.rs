@@ -2,7 +2,7 @@
 //! Implements [MODULES-RESOLUTION] and [MODULES-EXPORTS].
 
 use crate::model::SymbolKey;
-use crate::resolve::{Context, Resolver};
+use crate::resolve::{Context, Locals, Resolver};
 use osprey_ast::Position;
 
 impl Resolver<'_> {
@@ -95,9 +95,23 @@ impl Resolver<'_> {
         }
     }
 
-    pub(crate) fn rewrite_effect_name(&mut self, name: &mut String, context: &Context) {
-        let qualified = name.contains("::");
-        self.rewrite_value_name(name, context, qualified);
+    pub(crate) fn rewrite_effect_name(
+        &mut self,
+        name: &mut String,
+        context: &Context,
+        locals: &mut Locals,
+    ) {
+        let arguments = osprey_ast::effect_name::instantiation(name).map(str::to_owned);
+        let mut head = osprey_ast::effect_name::base(name).to_owned();
+        let qualified = head.contains("::");
+        self.rewrite_value_name(&mut head, context, qualified);
+        *name = match arguments {
+            Some(arguments) => {
+                let arguments = self.rewrite_type_text(&arguments, context, locals);
+                format!("{head}<{arguments}>")
+            }
+            None => head,
+        };
     }
 
     fn path_candidates(

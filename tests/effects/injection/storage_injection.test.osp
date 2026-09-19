@@ -41,14 +41,17 @@ fn archiveNotes(book, archive) !Storage = match perform Storage.exists(book) {
 
 /// The production implementation, passed in as a handler: every operation
 /// reaches the real file system through the file builtins.
-fn withDiskStorage(action) = handle Storage
-    save key contents => writeFile(key, contents) ?: 0
-    load key => readFile(key) ?: ""
-    exists key => match readFile(key) {
-        Success { value } => !isEmpty(value)
-        Error => false
+fn withDiskStorage(action) = {
+    handle Storage {
+        save key contents => writeFile(key, contents) ?: 0
+        load key => readFile(key) ?: ""
+        exists key => match readFile(key) {
+            Success { value } => !isEmpty(value)
+            Error => false
+        }
     }
-in action()
+    action()
+}
 
 /// The test double's disk: a map that never reaches a file system, seeded
 /// with one fixture entry no real file system holds.
@@ -63,32 +66,38 @@ mut mockLog = ""
 /// The test implementation, passed in exactly like the production one. Handler
 /// arms are the only place state may be mutated, so the double records every
 /// call it answers.
-fn withMockStorage(action) = handle Storage
-    save key contents => {
-        mockSaves = mockSaves + 1 ?: mockSaves
-        mockLog = "${mockLog}save(${key},${toString(byteLength(contents))});"
-        mockFiles = mapSet(mockFiles, key, contents)
-        byteLength(contents)
+fn withMockStorage(action) = {
+    handle Storage {
+        save key contents => {
+            mockSaves = mockSaves + 1 ?: mockSaves
+            mockLog = "${mockLog}save(${key},${toString(byteLength(contents))});"
+            mockFiles = mapSet(mockFiles, key, contents)
+            byteLength(contents)
+        }
+        load key => {
+            mockLoads = mockLoads + 1 ?: mockLoads
+            mockLog = "${mockLog}load(${key});"
+            mapGet(mockFiles, key) ?: ""
+        }
+        exists key => {
+            mockExistsCalls = mockExistsCalls + 1 ?: mockExistsCalls
+            mockLog = "${mockLog}exists(${key});"
+            mapContains(mockFiles, key)
+        }
     }
-    load key => {
-        mockLoads = mockLoads + 1 ?: mockLoads
-        mockLog = "${mockLog}load(${key});"
-        mapGet(mockFiles, key) ?: ""
-    }
-    exists key => {
-        mockExistsCalls = mockExistsCalls + 1 ?: mockExistsCalls
-        mockLog = "${mockLog}exists(${key});"
-        mapContains(mockFiles, key)
-    }
-in action()
+    action()
+}
 
 /// A third implementation: a read-only policy that accepts no write and serves
 /// one fixed entry. The logic is not recompiled, edited or told about it.
-fn withReadOnlyStorage(action) = handle Storage
-    save _key _contents => 0
-    load _key => "locked entry\n"
-    exists _key => true
-in action()
+fn withReadOnlyStorage(action) = {
+    handle Storage {
+        save _key _contents => 0
+        load _key => "locked entry\n"
+        exists _key => true
+    }
+    action()
+}
 
 /// A fresh 126-bit random suffix isolates concurrent executions of either flavor.
 let diskBook = "osprey_storage_injection_${random()}_${random()}.txt"

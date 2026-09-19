@@ -215,39 +215,27 @@ mod tests {
     }
 
     #[test]
-    fn ml_format_repairs_dedented_handle_in_clause() {
+    fn ml_format_keeps_nested_rest_of_block_handlers() {
+        // A handler governs the rest of its block, and a block may open
+        // another handler inside a binding: the formatter reproduces that
+        // nesting exactly, one indentation level per block, so a re-format is
+        // a fixed point. [EFFECTS-HANDLE-REST]
         let src = concat!(
             "bridge () =\n",
             "    result =\n",
             "        handle Log\n",
             "            line message =>\n",
             "                transcript := message\n",
-            "    in\n",
             "        answer =\n",
             "            handle Prompt\n",
             "                ask field =>\n",
             "                    answer := field\n",
-            "            in form ()\n",
+            "            form ()\n",
             "        answer\n",
-            "legacyTranscript = transcript\n",
-        );
-        let want = concat!(
-            "bridge () =\n",
-            "    result =\n",
-            "        handle Log\n",
-            "            line message =>\n",
-            "                transcript := message\n",
-            "        in\n",
-            "            answer =\n",
-            "                handle Prompt\n",
-            "                    ask field =>\n",
-            "                        answer := field\n",
-            "                in form ()\n",
-            "            answer\n",
             "    legacyTranscript = transcript\n",
         );
 
-        assert_eq!(format_source(src, Flavor::Ml), Ok(want.to_owned()));
+        assert_eq!(format_source(src, Flavor::Ml), Ok(src.to_owned()));
     }
 
     #[test]

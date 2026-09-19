@@ -34,6 +34,11 @@ pub struct OpType {
     pub params: Vec<Type>,
     /// The operation's return type.
     pub ret: Type,
+    /// The DECLARED mode. A value operation's arm returns `ret`; a `control`
+    /// operation's arm returns the handler's answer and owns the continuation.
+    /// Carried on the resolved signature so the checker and the backend read
+    /// one source of truth. Implements [EFFECTS-HANDLER-ARMS].
+    pub mode: osprey_ast::OperationMode,
 }
 
 /// Everything the code generator needs from inference: per-function signatures

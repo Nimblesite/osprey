@@ -1,0 +1,11 @@
+effect Ask : int;;
+let work () = perform Ask + 1;;
+let replace = handler | effect Ask k -> k 41;;
+let around = handler | effect Ask k -> k 41 + 100;;
+let no_resume = handler | effect Ask _k -> 0;;
+let dead_resume = handler | effect Ask k -> if false then k 0 else 0;;
+let replacement = with replace handle work ();;
+let resumed = with around handle work ();;
+let returned = with no_resume handle work ();;
+let dead_branch = with dead_resume handle work ();;
+print_string ("replace=" ^ to_string replacement ^ "\nresume=" ^ to_string resumed ^ "\nno-resume=" ^ to_string returned ^ "\ndead-resume=" ^ to_string dead_branch ^ "\n");;

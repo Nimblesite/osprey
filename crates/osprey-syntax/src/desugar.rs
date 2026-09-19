@@ -6,7 +6,7 @@
 //! Stating the shape once here is what makes that true by construction rather
 //! than by review.
 
-use osprey_ast::{Expr, MatchArm, Pattern};
+use osprey_ast::{Expr, MatchArm, Pattern, Stmt};
 
 /// The built-in `Result` constructors. Their payload binds by ROLE — `value`
 /// carries the success payload, `message` the error text — rather than by
@@ -83,5 +83,16 @@ fn bool_arm(matches: bool, body: Expr) -> MatchArm {
     MatchArm {
         pattern: Pattern::Literal(Box::new(Expr::Bool(matches))),
         body,
+    }
+}
+
+/// A layout block: its statements and trailing value. A block with no
+/// statements IS its value — an ML layout body and a Default `handle` region
+/// lower to one node ([FLAVOR-IR-EQUIV]). Braces the user wrote are not layout
+/// and keep their [`Expr::Block`] (see the Default block lowering).
+pub(crate) fn block(statements: Vec<Stmt>, value: Option<Box<Expr>>) -> Expr {
+    match (statements.is_empty(), value) {
+        (true, Some(value)) => *value,
+        (_, value) => Expr::Block { statements, value },
     }
 }

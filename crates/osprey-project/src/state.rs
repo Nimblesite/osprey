@@ -311,8 +311,14 @@ impl<'a> Inspector<'a> {
                 effect,
                 arms,
                 body,
+                return_clause,
                 position: handler_position,
-            } => self.handler(effect, arms, body, *handler_position),
+            } => {
+                self.handler(effect, arms, body, *handler_position);
+                if let Some(clause) = return_clause {
+                    self.expr(clause, false, *handler_position);
+                }
+            }
             Expr::Integer(_)
             | Expr::Float(_)
             | Expr::Str(_)

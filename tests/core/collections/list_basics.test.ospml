@@ -42,8 +42,7 @@ encodeIteration xs =
     handle IterationProbe
         observe value =>
             encoded := encoded * 100 + value ?: encoded
-    in
-        forEachList xs (\value => perform IterationProbe.observe value)
+    forEachList xs (\value => perform IterationProbe.observe value)
     encoded
 
 (** constructionAndIdentityCase preserves all legacy construction, identity, reverse, prepend, and contains observations. *)
@@ -1084,78 +1083,77 @@ typedIterationOrderCase () =
     handle TranscriptProbe
         note text =>
             log := "${log}${text}|"
-    in
-        forEachList noWords (\word => perform TranscriptProbe.note word)
+    forEachList noWords (\word => perform TranscriptProbe.note word)
 
-        // "Once per element" over zero elements is zero calls.
-        checkAll "forEachList over an empty list records nothing" [
-            log == "",
-            length log == 0,
-            isEmpty log,
-            isEmpty noWords,
-            listLength noWords == 0,
-            shapeOf noWords == "none",
-            tailLength noWords == ((0 - 1) ?: 0)
-        ]
+    // "Once per element" over zero elements is zero calls.
+    checkAll "forEachList over an empty list records nothing" [
+        log == "",
+        length log == 0,
+        isEmpty log,
+        isEmpty noWords,
+        listLength noWords == 0,
+        shapeOf noWords == "none",
+        tailLength noWords == ((0 - 1) ?: 0)
+    ]
 
-        forEachList words (\word => perform TranscriptProbe.note word)
+    forEachList words (\word => perform TranscriptProbe.note word)
 
-        // 5+1+4+1+5+1 = 17 bytes, and the reversed spelling must NOT appear.
-        checkAll "forEachList visits string elements in index order" [
-            log == "alpha|beta|gamma|",
-            length log == 17,
-            startsWith log "alpha|",
-            endsWith log "gamma|",
-            contains log "|beta|",
-            !(contains log "gamma|beta|"),
-            log == joinWords words
-        ]
+    // 5+1+4+1+5+1 = 17 bytes, and the reversed spelling must NOT appear.
+    checkAll "forEachList visits string elements in index order" [
+        log == "alpha|beta|gamma|",
+        length log == 17,
+        startsWith log "alpha|",
+        endsWith log "gamma|",
+        contains log "|beta|",
+        !(contains log "gamma|beta|"),
+        log == joinWords words
+    ]
 
-        forEachList flags (\flag => perform TranscriptProbe.note "${flag}")
+    forEachList flags (\flag => perform TranscriptProbe.note "${flag}")
 
-        // 17 + "true|" (5) + "false|" (6) = 28.
-        checkAll "forEachList visits bool elements in index order" [
-            log == "alpha|beta|gamma|true|false|",
-            length log == 28,
-            endsWith log "true|false|",
-            !(endsWith log "false|true|"),
-            contains log "gamma|true|"
-        ]
+    // 17 + "true|" (5) + "false|" (6) = 28.
+    checkAll "forEachList visits bool elements in index order" [
+        log == "alpha|beta|gamma|true|false|",
+        length log == 28,
+        endsWith log "true|false|",
+        !(endsWith log "false|true|"),
+        contains log "gamma|true|"
+    ]
 
-        forEachList counts (\count => perform TranscriptProbe.note "${count}")
+    forEachList counts (\count => perform TranscriptProbe.note "${count}")
 
-        // 28 + "7|8|9|" (6) = 34.
-        checkAll "forEachList visits int elements in index order" [
-            log == "alpha|beta|gamma|true|false|7|8|9|",
-            length log == 34,
-            endsWith log "7|8|9|",
-            !(contains log "9|8|7|"),
-            contains log "false|7|"
-        ]
+    // 28 + "7|8|9|" (6) = 34.
+    checkAll "forEachList visits int elements in index order" [
+        log == "alpha|beta|gamma|true|false|7|8|9|",
+        length log == 34,
+        endsWith log "7|8|9|",
+        !(contains log "9|8|7|"),
+        contains log "false|7|"
+    ]
 
-        forEachList slots (\slot => perform TranscriptProbe.note slot.label)
+    forEachList slots (\slot => perform TranscriptProbe.note slot.label)
 
-        // 34 + "left|" (5) + "right|" (6) = 45.
-        checkAll "forEachList visits record elements in index order" [
-            log == "alpha|beta|gamma|true|false|7|8|9|left|right|",
-            length log == 45,
-            endsWith log "left|right|",
-            !(endsWith log "right|left|"),
-            contains log "9|left|"
-        ]
+    // 34 + "left|" (5) + "right|" (6) = 45.
+    checkAll "forEachList visits record elements in index order" [
+        log == "alpha|beta|gamma|true|false|7|8|9|left|right|",
+        length log == 45,
+        endsWith log "left|right|",
+        !(endsWith log "right|left|"),
+        contains log "9|left|"
+    ]
 
-        forEachList (listReverse words) (\word => perform TranscriptProbe.note word)
+    forEachList (listReverse words) (\word => perform TranscriptProbe.note word)
 
-        // 45 + 17 = 62; the derived list is traversed, the source is not.
-        checkAll "forEachList follows the derived list, not its source" [
-            log == "alpha|beta|gamma|true|false|7|8|9|left|right|gamma|beta|alpha|",
-            length log == 62,
-            endsWith log "gamma|beta|alpha|",
-            startsWith log "alpha|beta|gamma|",
-            contains log "right|gamma|",
-            joinWords words == "alpha|beta|gamma|",
-            joinWords (listReverse words) == "gamma|beta|alpha|"
-        ]
+    // 45 + 17 = 62; the derived list is traversed, the source is not.
+    checkAll "forEachList follows the derived list, not its source" [
+        log == "alpha|beta|gamma|true|false|7|8|9|left|right|gamma|beta|alpha|",
+        length log == 62,
+        endsWith log "gamma|beta|alpha|",
+        startsWith log "alpha|beta|gamma|",
+        contains log "right|gamma|",
+        joinWords words == "alpha|beta|gamma|",
+        joinWords (listReverse words) == "gamma|beta|alpha|"
+    ]
 
     // A fold over `range(0, n)` reproduces index order independently of
     // forEachList, so the two mechanisms cross-check each other.

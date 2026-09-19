@@ -133,7 +133,7 @@ suite("Installed VSIX unused symbol diagnostics and editing", () => {
   });
 
   test("handler parameters carry their operation name while fiber captures remain used", async () => {
-    const source = "effect Pick { choose: fn(int, int) -> int }\nfn work(seed) = handle Pick\n choose first second => resume(first)\nin await (spawn (perform Pick.choose(seed, 2)))\nlet result = work(7)\n";
+    const source = "effect Pick { control choose: fn(int, int) -> int }\nfn work(seed) = { handle Pick { choose first second => resume(first) }\nawait (spawn (perform Pick.choose(seed, 2))) }\nlet result = work(7)\n";
     const editor = await openSource("unused-handler-fiber.osp", source);
     const warning = { ...unused("handler-parameter", "second", "handler parameter"),
       message: "unused handler parameter `second` of `Pick.choose`" };
@@ -144,7 +144,7 @@ suite("Installed VSIX unused symbol diagnostics and editing", () => {
   });
 
   test("writes to a mutable local do not count as reads and fixing its use leaves assignments intact", async () => {
-    const source = "effect Set { put: fn(int) -> Unit }\nfn work() = { mut scratch = 1\nhandle Set\n put value => { scratch = value }\nin { perform Set.put(2) }\n3 }\nlet result = work()\n";
+    const source = "effect Set { put: fn(int) -> Unit }\nfn work() = { mut scratch = 1\nhandle Set { put value => { scratch = value } }\nperform Set.put(2)\n3 }\nlet result = work()\n";
     const editor = await openSource("unused-mut.osp", source);
     await noRemoval(editor, [unused("variable", "scratch", "variable")]);
     await replace(editor, "\n3 }", "\nscratch }");

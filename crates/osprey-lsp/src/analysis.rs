@@ -1194,6 +1194,7 @@ print(describeAny(42) + "!")
                     position: None,
                 }],
                 body: b("handlerbody"),
+                return_clause: None,
                 position: None,
             },
         ]

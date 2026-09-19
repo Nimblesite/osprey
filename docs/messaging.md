@@ -157,18 +157,11 @@ This same idea works for logging, metrics, retries and other work that normally
 needs dependency injection, global state or wrapper libraries. These comparisons
 help explain effects; they do not mean every framework automatically disappears.
 
-Agents must keep this claim accurate. The compiler checks the data going into and
-coming out of an effect, **and it now also refuses to build a program that
-performs an effect nothing handles.** A missing handler is a compile error naming
-the effect and the operation — `unhandled effect operations at program entry:
-Log.write; add a matching handle` — not a runtime surprise, and it holds through
-helper calls, lambdas passed to higher-order functions, and fibers. Earlier
-revisions of this document said the opposite; that limitation is gone for the
-language surface as it exists today. What remains is narrower and worth stating
-precisely if it comes up: the checker reasons over a closed program's operation
-summaries rather than a general effect-row variable in a function type, so a
-future surface that quantifies rows independently in public higher-order
-signatures would need separate work.
+The contract and delivery evidence live in [the effects spec](specs/0017-AlgebraicEffects.md)
+and [plan 0016](plans/0016-algebraic-effects-and-handlers.md). Describe effect
+management first: what an application needs to do, which handler supplies it,
+and where that choice applies. Distinguish demonstrated compiler behavior from
+specified targets; do not infer correctness from old examples alone.
 
 ## How to write about the two flavors
 
@@ -214,27 +207,15 @@ project is dividing people rather than giving them a readable surface.
 
 These constraints materially affect how the language must be described:
 
-- The compiler checks the inputs and outputs of effects, **and** rejects a program
-  that performs an effect no handler discharges, naming the effect and operation
-  at compile time. The remaining scope limit is representational, not a hole in
-  the check: it reasons over closed-program operation summaries rather than an
-  effect-row variable in a function type.
-- Effects that pause work and later continue it are available on the host `native` target. WebAssembly and iOS/Android C ABI targets support substituting handlers and reject unsupported resumable effects, including explicit `resume`, before LLVM emission or linking. Do not call resumption simply "native-only" without distinguishing host-native programs from native mobile libraries.
-- An effect can now say **when** it is answered. An effect declared `static` is
-  worked out by the compiler before the program runs and leaves nothing behind;
-  an ordinary effect is answered while the program runs, exactly as before. This
-  is a prototype in both flavors (docs/specs/0035-StagedEffects.md):
-  `static effect`, `handle static`, and kernel regions share the compiler rewrite. The effect-derived reactive runtime and device features proposed by that spec are not built. Describe what it does today —
-  compile-time answers with no runtime cost, and a compiler-derived list of
-  which data a function reads — not the roadmap it opens.
+- [Plan 0016](plans/0016-algebraic-effects-and-handlers.md) owns current effects
+  support, known failures and target limitations. Do not maintain a second
+  capability checklist here or present an unfinished contract as shipped.
+- Static interpretation removes effect dispatch; the resulting computation can
+  still make ordinary calls, allocate and read runtime values. Say “no runtime
+  effect dispatch,” not “no runtime cost.” Dependency analysis is a sound set
+  of possible reads, not a promise to know precisely which branch will run.
 - The [reactive mobile application](../examples/mobile/README.md) is implemented using ordinary Osprey modules and explicit event/state/command transitions. Osprey defines its screen tree, state, GitHub request and decoding logic, SQLite schema and statements, offline cache, search, bookmarks, notes, and priorities. Native hosts render the tree and execute platform services. This working application does not imply that the staged-effects reactive runtime is implemented.
-- The same spec sets a second target: an effect says **how many times** it may
-  be answered, so the compiler refuses to re-run work that must not happen
-  twice. Both flavors implement the `abort`, `once`, `many`, and `replayable`
-  declaration markers, with checks for single-use continuations and unsafe replay.
-  Runtime handlers for `abort` and `many` are still rejected: safe unwinding and
-  reusable continuations remain work in plans 0026 and 0016. Describe the
-  implemented checks separately from those pending runtime behaviors.
+
 - Integer arithmetic returns a `Result`, not a plain `int`. `+`, `-`, `*`, `abs`
   and `intDiv` all carry a `MathError` channel that the caller must discharge,
   usually with `?:`. That is a real cost to describe honestly: a `?: 0` on an

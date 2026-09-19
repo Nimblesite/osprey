@@ -111,21 +111,25 @@ fn runApp(db) !Database = {
     }
 }
 
-handle Database
-    open path => openReal(path: path)
-    exec db sql => execReal(db: db, sql: sql)
-    prepare db sql => prepareReal(db: db, sql: sql)
-    bindInt stmt idx val => sqlite3_bind_int(stmt: stmt, idx: idx, val: val)
-    bindText stmt idx val => sqlite3_bind_text(stmt: stmt, idx: idx, val: val, nByte: (0 - 1) ?: 0, destructor: osprey_ffi_transient())
-    step stmt => sqlite3_step(stmt: stmt)
-    columnInt stmt col => sqlite3_column_int(stmt: stmt, col: col)
-    columnText stmt col => sqlite3_column_text(stmt: stmt, col: col)
-    finalize stmt => sqlite3_finalize(stmt: stmt)
-    close db => sqlite3_close(db: db)
-in match perform Database.open(":memory:") {
-    Success { value } => runApp(db: value)
-    Error { message } => print("open ${message}")
+fn databaseDemo() = {
+    handle Database {
+        open path => openReal(path: path)
+        exec db sql => execReal(db: db, sql: sql)
+        prepare db sql => prepareReal(db: db, sql: sql)
+        bindInt stmt idx val => sqlite3_bind_int(stmt: stmt, idx: idx, val: val)
+        bindText stmt idx val => sqlite3_bind_text(stmt: stmt, idx: idx, val: val, nByte: (0 - 1) ?: 0, destructor: osprey_ffi_transient())
+        step stmt => sqlite3_step(stmt: stmt)
+        columnInt stmt col => sqlite3_column_int(stmt: stmt, col: col)
+        columnText stmt col => sqlite3_column_text(stmt: stmt, col: col)
+        finalize stmt => sqlite3_finalize(stmt: stmt)
+        close db => sqlite3_close(db: db)
+    }
+    match perform Database.open(":memory:") {
+        Success { value } => runApp(db: value)
+        Error { message } => print("open ${message}")
+    }
 }
+databaseDemo()
 
 /// Captures every externally visible result of one handled database interaction.
 type DatabaseObservation = {
@@ -163,8 +167,8 @@ fn observeDatabase(db) !Database = {
 }
 
 /// Installs the real handler and preserves an open failure in the Result channel.
-fn runDatabaseProbe() =
-    handle Database
+fn runDatabaseProbe() = {
+    handle Database {
         open path => openReal(path: path)
         exec db sql => execReal(db: db, sql: sql)
         prepare db sql => prepareReal(db: db, sql: sql)
@@ -175,10 +179,12 @@ fn runDatabaseProbe() =
         columnText stmt col => sqlite3_column_text(stmt: stmt, col: col)
         finalize stmt => sqlite3_finalize(stmt: stmt)
         close db => sqlite3_close(db: db)
-    in match perform Database.open(":memory:") {
+    }
+    match perform Database.open(":memory:") {
         Success { value } => Success { value: observeDatabase(value) }
         Error { message } => Error { message: message }
     }
+}
 
 /// Reports whether the real handler produced an observation instead of an error.
 fn databaseOpened(result) = match result {

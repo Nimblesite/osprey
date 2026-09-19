@@ -12,4 +12,4 @@ scaled n = n * perform Tile.size () ?: 0
 answer =
     handle Tile
         size => 8
-    in scaled 2
+    scaled 2

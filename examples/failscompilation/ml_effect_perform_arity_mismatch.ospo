@@ -6,4 +6,4 @@ effect ParseFailure
 recovered =
     handle ParseFailure
         raise message => 0
-    in perform ParseFailure.raise ()
+    perform ParseFailure.raise ()

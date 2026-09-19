@@ -85,6 +85,7 @@ pub(crate) fn state_module(
                 name: "CounterFx".to_string(),
                 type_params: Vec::new(),
                 operations: vec![EffectOperation {
+                    mode: osprey_ast::OperationMode::Value,
                     name: "next".to_string(),
                     declared_multiplicity: None,
                     replayable: false,
@@ -114,6 +115,7 @@ pub(crate) fn state_module(
 
 pub(crate) fn handler(effect: &str, arm_body: Expr) -> Expr {
     Expr::Handler {
+        return_clause: None,
         stage: osprey_ast::Stage::Dynamic,
         effect: effect.to_string(),
         arms: vec![HandlerArm {

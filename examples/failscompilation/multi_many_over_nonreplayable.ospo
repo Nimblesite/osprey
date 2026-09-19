@@ -7,11 +7,11 @@
 // `Email.send` IS handled here, and the whole program is otherwise well formed:
 // the only thing wrong with it is the rule this fixture pins.
 effect Choice {
-    many pick: fn(int) -> int
+    control many pick: fn(int) -> int
 }
 
 effect Email {
-    send: fn(string) -> Unit
+    control send: fn(string) -> Unit
 }
 
 fn placeOrder(id) = {
@@ -21,10 +21,14 @@ fn placeOrder(id) = {
 }
 
 fn main() = {
-    let best = handle Email
-        send body => resume(print(body))
-    in handle Choice
-        pick option => resume(option)
-    in placeOrder(3)
+    let best = {
+        handle Email {
+            send body => resume(print(body))
+        }
+        handle Choice {
+            pick option => resume(option)
+        }
+        placeOrder(3)
+    }
     print("best=${best}")
 }

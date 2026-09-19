@@ -47,7 +47,7 @@ withDiskStorage action =
             match readFile key
                 Success value => !(isEmpty value)
                 Error _message => false
-    in action ()
+    action ()
 
 (** The test double's disk: a map that never reaches a file system, seeded
     with one fixture entry no real file system holds. *)
@@ -77,7 +77,7 @@ withMockStorage action =
             mockExistsCalls := mockExistsCalls + 1 ?: mockExistsCalls
             mockLog := "${mockLog}exists(${key});"
             mapContains mockFiles key
-    in action ()
+    action ()
 
 (** A third implementation: a read-only policy that accepts no write and serves
     one fixed entry. The logic is not recompiled, edited or told about it. *)
@@ -86,7 +86,7 @@ withReadOnlyStorage action =
         save _key _contents => 0
         load _key => "locked entry\n"
         exists _key => true
-    in action ()
+    action ()
 
 (** A fresh 126-bit random suffix isolates concurrent executions of either flavor. *)
 diskBook = "osprey_storage_injection_${random ()}_${random ()}.txt"

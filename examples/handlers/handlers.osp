@@ -1,0 +1,18 @@
+// Define handlers independently, then call them with the work to handle.
+effect Ask { value: fn() -> int }
+effect Reader { name: fn() -> string }
+
+let answer = handler Ask { value => 41 }
+fn work() = (perform Ask.value() + 1) ?: 0
+
+fn reading(person) = handler Reader { name => person }
+fn greet() = "Hello, " + perform Reader.name() + "!"
+
+let ada = reading("Ada")
+let grace = reading("Grace")
+let first = answer(work)
+let second = answer(work)
+let helloAda = ada(greet)
+let helloGrace = grace(greet)
+let helloAgain = ada(greet)
+print("${first}\n${second}\n${helloAda}\n${helloGrace}\n${helloAgain}")

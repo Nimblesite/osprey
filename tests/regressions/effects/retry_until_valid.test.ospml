@@ -3,7 +3,7 @@
 
 effect Prompt
     (** Request the value the caller should use for `label`; the handler decides what is supplied. *)
-    ask : string => int
+    control ask : string => int
 
 (** Each invalid value causes a fresh Prompt.ask operation. *)
 readPositive : string -> int ! Prompt
@@ -27,7 +27,7 @@ accepted =
                 _ => 7
             print "attempt ${toString attempt}: handler feeds ${toString value}"
             resume value
-    in readPositive "age"
+    readPositive "age"
 print "SCENARIO 1 accepted=${toString accepted} after ${toString attempt} attempts"
 
 (** After three invalid values, return a sentinel without resuming. *)
@@ -45,7 +45,7 @@ outcome =
                     value = (0 - tries) ?: 0
                     print "attempt ${toString tries}: handler feeds ${toString value}"
                     resume value
-    in readPositive "quota"
+    readPositive "quota"
 verdict = match outcome > 0
     true => "valid ${toString outcome}"
     false => "gave up (sentinel ${toString outcome}) after ${toString (tries - 1)} bad answers"
@@ -69,7 +69,7 @@ test "retry handlers resume until success or abort at their limit" (\() => check
 (** Retry drives the same silent validation loop under every handler policy below. *)
 effect Retry
     (** Supply the candidate for `attempt`; a non-positive answer asks again. *)
-    supply : int => int
+    control supply : int => int
 
 (** Silent twin of `readPositive`: each rejected candidate causes a fresh operation. *)
 acceptPositive attempt =
@@ -95,7 +95,7 @@ retryAttemptMatrixCase () =
                 answer = resume candidate
                 settledA := "${settledA}${toString n}:${toString answer}|"
                 answer
-        in acceptPositive 1
+        acceptPositive 1
 
     mut callsB = 0
     mut issuedB = ""
@@ -111,7 +111,7 @@ retryAttemptMatrixCase () =
                 answer = resume candidate
                 settledB := "${settledB}${toString n}:${toString answer}|"
                 answer
-        in acceptPositive 1
+        acceptPositive 1
 
     mut callsC = 0
     mut issuedC = ""
@@ -128,7 +128,7 @@ retryAttemptMatrixCase () =
                 answer = resume candidate
                 settledC := "${settledC}${toString n}:${toString answer}|"
                 answer
-        in acceptPositive 1
+        acceptPositive 1
 
     mut callsD = 0
     mut issuedD = ""
@@ -144,7 +144,7 @@ retryAttemptMatrixCase () =
                 answer = resume candidate
                 settledD := "${settledD}${toString n}:${toString answer}|"
                 answer
-        in acceptPositive 1
+        acceptPositive 1
 
     // Distinctive magnitudes: 100, 200, 300 and 900 cannot sum by coincidence.
     checkAll "each rejection count accepts its own magnitude" [
@@ -267,7 +267,7 @@ retryBudgetExhaustionCase () =
                         answer = resume ((0 - n) ?: 0)
                         settled1 := "${settled1}${toString n}:${toString answer}|"
                         answer
-        in acceptPositive 1
+        acceptPositive 1
 
     mut calls2 = 0
     mut trail2 = ""
@@ -285,7 +285,7 @@ retryBudgetExhaustionCase () =
                         answer = resume ((0 - n) ?: 0)
                         settled2 := "${settled2}${toString n}:${toString answer}|"
                         answer
-        in acceptPositive 1
+        acceptPositive 1
 
     mut calls3 = 0
     mut trail3 = ""
@@ -303,7 +303,7 @@ retryBudgetExhaustionCase () =
                         answer = resume ((0 - n) ?: 0)
                         settled3 := "${settled3}${toString n}:${toString answer}|"
                         answer
-        in acceptPositive 1
+        acceptPositive 1
 
     (** A generous budget the loop never reaches: success arrives on attempt 3. *)
     mut calls5 = 0
@@ -325,7 +325,7 @@ retryBudgetExhaustionCase () =
                         answer = resume candidate
                         settled5 := "${settled5}${toString n}:${toString answer}|"
                         answer
-        in acceptPositive 1
+        acceptPositive 1
 
     // Each exhausted budget answers with its own sentinel, never a shared one.
     checkAll "an exhausted budget answers with its own sentinel" [
@@ -428,17 +428,17 @@ test "an exhausted retry budget stops the loop without resuming" retryBudgetExha
     arm below resumes with exactly what its operation declares. *)
 effect Payload
     (** Supply the text candidate for `attempt`; fewer than four characters asks again. *)
-    text : int => string
+    control text : int => string
     (** Supply the verdict for `attempt`; `false` asks again. *)
-    flag : int => bool
+    control flag : int => bool
     (** Supply the ratio for `attempt`; anything at or below 1.0 asks again. *)
-    ratio : int => float
+    control ratio : int => float
     (** Supply the checked candidate for `attempt`; an `Error` asks again. *)
-    checked : int => Result<int, string>
+    control checked : int => Result<int, string>
     (** Record `attempt` on the Unit channel, supplying no value at all. *)
-    mark : int => Unit
+    control mark : int => Unit
     (** Supply the candidate scaled from `base` and `step` for `attempt`. *)
-    scaled : (int, int, int) => int
+    control scaled : (int, int, int) => int
 
 (** Text channel: the loop asks again until the candidate is long enough. *)
 takeText n =
@@ -509,7 +509,7 @@ retryPayloadChannelMatrixCase () =
                     _ => "ready"
                 textTrail := "${textTrail}${toString n}:${candidate}|"
                 resume candidate
-        in takeText 1
+        takeText 1
 
     mut flagCalls = 0
     mut flagTrail = ""
@@ -520,7 +520,7 @@ retryPayloadChannelMatrixCase () =
                 ok = n > 3
                 flagTrail := "${flagTrail}${toString n}:${toString ok}|"
                 resume ok
-        in takeFlag 1
+        takeFlag 1
 
     mut ratioCalls = 0
     mut ratioTrail = ""
@@ -534,7 +534,7 @@ retryPayloadChannelMatrixCase () =
                     _ => 2.5
                 ratioTrail := "${ratioTrail}${toString n}|"
                 resume candidate
-        in takeRatio 1
+        takeRatio 1
 
     mut checkedCalls = 0
     mut checkedTrail = ""
@@ -547,7 +547,7 @@ retryPayloadChannelMatrixCase () =
                     1 => resume (Error(message = "cold"))
                     2 => resume (Error(message = "warm"))
                     _ => resume (Success(value = 4200))
-        in takeChecked 1
+        takeChecked 1
 
     mut markCalls = 0
     mut markTrail = ""
@@ -556,8 +556,8 @@ retryPayloadChannelMatrixCase () =
             mark n =>
                 markCalls := markCalls + 1 ?: markCalls
                 markTrail := "${markTrail}${toString n}|"
-                resume
-        in markDown 4
+                resume ()
+        markDown 4
 
     mut comboCalls = 0
     mut comboTrail = ""
@@ -582,13 +582,13 @@ retryPayloadChannelMatrixCase () =
             mark n =>
                 comboCalls := comboCalls + 1 ?: comboCalls
                 comboTrail := "${comboTrail}m${toString n}|"
-                resume
+                resume ()
             scaled n base step =>
                 comboCalls := comboCalls + 1 ?: comboCalls
                 comboTrail := "${comboTrail}s${toString n}|"
                 candidate = (base + ((n * step) ?: 0) - 50) ?: 0
                 resume candidate
-        in comboBody ()
+        comboBody ()
 
     // Combo total: length("steady") 6 + firstTrue 2 + ratioFlag 1 + 60 + 4 = 73.
     checkAll "each payload type completes its own retry loop" [
@@ -702,7 +702,7 @@ retryScriptedCandidateMatrixCase () =
                 candidate = listGet (script, (cursor - 1) ?: 0) ?: 0
                 drawn := "${drawn}${toString candidate}|"
                 resume candidate
-        in acceptPositive 1
+        acceptPositive 1
 
     table = mapSet (mapSet (mapSet (Map (), "1", 0), "2", 0), "3", 8888)
     mut mapCalls = 0
@@ -714,7 +714,7 @@ retryScriptedCandidateMatrixCase () =
                 candidate = mapGet (table, toString n) ?: ((0 - 7) ?: 0)
                 mapTrail := "${mapTrail}${toString n}=>${toString candidate}|"
                 resume candidate
-        in acceptPositive 1
+        acceptPositive 1
 
     (** A sparse table: the three missing keys take the declared `Error` branch,
         whose message length is the negative candidate that asks again. *)
@@ -730,7 +730,7 @@ retryScriptedCandidateMatrixCase () =
                     Error message => (0 - length message) ?: 0
                 sparseTrail := "${sparseTrail}${toString n}:${toString candidate}|"
                 resume candidate
-        in acceptPositive 1
+        acceptPositive 1
 
     (** Boundary candidates: zero, minus one, then the smallest accepted value. *)
     mut boundaryCalls = 0
@@ -746,7 +746,7 @@ retryScriptedCandidateMatrixCase () =
                     _ => 0
                 boundaryTrail := "${boundaryTrail}${toString candidate}|"
                 resume candidate
-        in acceptPositive 1
+        acceptPositive 1
 
     // Each loop stops on the first valid candidate its source offers.
     checkAll "scripted loops accept the first valid candidate" [
@@ -869,37 +869,35 @@ nestedRetryRegionsCase () =
                 charged := charged + weight ?: charged
                 chargeTrail := "${chargeTrail}${toString weight}@${toString charged}|"
                 charged
-        in
+        handle Retry
+            supply n =>
+                outerCalls := outerCalls + 1 ?: outerCalls
+                tag = outerCalls
+                candidate = match n > 2
+                    true => 50
+                    false => 0
+                outerTrail := "${outerTrail}o${toString tag}=${toString n}:${toString candidate}|"
+                _ = perform Budget.charge 10
+                answer = resume candidate
+                outerSettled := "${outerSettled}o${toString tag}:${toString answer}|"
+                answer
+        before = acceptPositive 1
+        inside =
             handle Retry
                 supply n =>
-                    outerCalls := outerCalls + 1 ?: outerCalls
-                    tag = outerCalls
-                    candidate = match n > 2
-                        true => 50
+                    innerCalls := innerCalls + 1 ?: innerCalls
+                    tag = innerCalls
+                    candidate = match n > 1
+                        true => 700
                         false => 0
-                    outerTrail := "${outerTrail}o${toString tag}=${toString n}:${toString candidate}|"
-                    _ = perform Budget.charge 10
+                    innerTrail := "${innerTrail}i${toString tag}=${toString n}:${toString candidate}|"
+                    _ = perform Budget.charge 1
                     answer = resume candidate
-                    outerSettled := "${outerSettled}o${toString tag}:${toString answer}|"
+                    innerSettled := "${innerSettled}i${toString tag}:${toString answer}|"
                     answer
-            in
-                before = acceptPositive 1
-                inside =
-                    handle Retry
-                        supply n =>
-                            innerCalls := innerCalls + 1 ?: innerCalls
-                            tag = innerCalls
-                            candidate = match n > 1
-                                true => 700
-                                false => 0
-                            innerTrail := "${innerTrail}i${toString tag}=${toString n}:${toString candidate}|"
-                            _ = perform Budget.charge 1
-                            answer = resume candidate
-                            innerSettled := "${innerSettled}i${toString tag}:${toString answer}|"
-                            answer
-                    in acceptPositive 1
-                after = acceptPositive 1
-                before + inside + after ?: 0
+            acceptPositive 1
+        after = acceptPositive 1
+        before + inside + after ?: 0
 
     // 50 before the inner region, 700 inside it, 50 after it is torn down.
     checkAll "nested retry regions each accept their own value" [
@@ -999,17 +997,17 @@ test "nested retry regions override and restore around a shared budget" nestedRe
     requirement through named calls and through a callback handed to a HOF. *)
 effect Arity
     (** Supply the next candidate with no argument at all. *)
-    zero : Unit => int
+    control zero : Unit => int
     (** Supply the candidate for `a`. *)
-    one : int => int
+    control one : int => int
     (** Supply the candidate for `a` and `b`. *)
-    two : (int, int) => int
+    control two : (int, int) => int
     (** Supply the candidate for `a`, `b` and `c`. *)
-    three : (int, int, int) => int
+    control three : (int, int, int) => int
     (** Supply the candidate for `a`, `b`, `c` and `d`. *)
-    four : (int, int, int, int) => int
+    control four : (int, int, int, int) => int
     (** Record `v` on the Unit channel from inside a callback. *)
-    note : int => Unit
+    control note : int => Unit
 
 (** One call level from the handled body. *)
 siteOne a = perform Arity.one a
@@ -1095,8 +1093,8 @@ retryPerformSiteMatrixCase () =
                 noteCalls := noteCalls + 1 ?: noteCalls
                 noteTotal := noteTotal + v ?: noteTotal
                 trail := "${trail}n${toString v}|"
-                resume
-        in performSiteBody probe
+                resume ()
+        performSiteBody probe
 
     // 9 + 400 + 55 + 326 + 1234 = 2024, and nine operations produced it.
     checkAll "every perform site reaches the same region" [

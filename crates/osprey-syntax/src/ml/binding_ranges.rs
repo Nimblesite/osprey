@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn handler_parameters_and_clause_payloads_are_real_binders() {
-        let source = "effect Pick\n    choose : (int, int) => int\nrun seed =\n    handle Pick\n        choose first second => resume first\n    in seed\nextract (Box payload) ignored = payload\nextract other ignored = 0\n";
+        let source = "effect Pick\n    control choose : (int, int) => int\nrun seed =\n    handle Pick\n        choose first second => resume first\n    seed\nextract (Box payload) ignored = payload\nextract other ignored = 0\n";
         let ranges = ranges(source);
         let handlers: Vec<_> = ranges
             .iter()

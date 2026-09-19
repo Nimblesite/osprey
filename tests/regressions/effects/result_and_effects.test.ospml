@@ -28,7 +28,7 @@ addRescue (a, b) = match checkedAdd a b
 recoveredValues fallback =
     handle Rescue
         onErr _message => fallback
-    in [
+    [
         divRescue (10, 0),
         divRescue (20, 4),
         modRescue (7, 0),
@@ -64,7 +64,7 @@ total =
             rescues := rescues + 1 ?: rescues
             print "  RESCUE #${toString rescues}: original error \"${message}\" -> using ${toString RESCUED_DEFAULT}"
             RESCUED_DEFAULT
-    in pipeline ()
+    pipeline ()
 
 print "rescued ${toString rescues} failing step(s); healthy + rescued total = ${toString total}"
 

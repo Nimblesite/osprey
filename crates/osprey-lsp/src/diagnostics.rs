@@ -832,42 +832,42 @@ mod tests {
             (
                 "unused-handler-parameter",
                 "unused handler parameter `id` of `test::Vault.balance`",
-                (160, 12, 160, 14),
+                (161, 16, 161, 18),
             ),
             (
                 "unused-handler-parameter",
                 "unused handler parameter `id` of `test::Vault.debit`",
-                (161, 10, 161, 12),
+                (162, 14, 162, 16),
             ),
             (
                 "unused-handler-parameter",
                 "unused handler parameter `id` of `test::Vault.balance`",
-                (166, 12, 166, 14),
+                (168, 16, 168, 18),
             ),
             (
                 "unused-handler-parameter",
                 "unused handler parameter `id` of `test::Vault.debit`",
-                (167, 10, 167, 12),
+                (169, 14, 169, 16),
             ),
             (
                 "unused-handler-parameter",
                 "unused handler parameter `cents` of `test::Vault.debit`",
-                (167, 13, 167, 18),
+                (169, 17, 169, 22),
             ),
             (
                 "unused-handler-parameter",
                 "unused handler parameter `id` of `test::Vault.balance`",
-                (175, 12, 175, 14),
+                (178, 16, 178, 18),
             ),
             (
                 "unused-handler-parameter",
                 "unused handler parameter `id` of `test::Vault.debit`",
-                (176, 10, 176, 12),
+                (179, 14, 179, 16),
             ),
             (
                 "unused-handler-parameter",
                 "unused handler parameter `cents` of `test::Vault.debit`",
-                (176, 13, 176, 18),
+                (179, 17, 179, 22),
             ),
         ]);
         assert_warnings(&diagnostics, &expected);

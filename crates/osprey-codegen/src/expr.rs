@@ -79,6 +79,14 @@ fn gen_expr_raw(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
             // cell — the one function-value representation. (C-runtime callback
             // slots request a raw code pointer explicitly via `fn_pointer`.)
             None if cg.fn_params.contains_key(name) => crate::closure::named_fn_cell(cg, name),
+            None if cg.lambda_def(name).is_some() => {
+                let Some((parameters, body, position)) = cg.lambda_def(name).cloned() else {
+                    return Err(CodegenError::unknown(name));
+                };
+                with_lambda_captures(cg, name, |cg| {
+                    crate::closure::lambda_value(cg, &parameters, &body, position)
+                })
+            }
             // A call alias (`let g = identity`) used as a value resolves to its
             // target's cell; a still-generic target bails loudly in
             // `named_fn_cell` when no consuming slot fixes its ABI.
@@ -135,9 +143,12 @@ fn gen_expr_raw(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
             stage: _,
             effect,
             arms,
+            return_clause,
             body,
             position,
-        } => crate::effects::gen_handler(cg, effect, arms, body, *position),
+        } => {
+            crate::effects::gen_handler(cg, effect, arms, body, return_clause.as_deref(), *position)
+        }
         Expr::Resume(value) => crate::effects::gen_resume(cg, value.as_deref()),
         // A lambda in plain value position (returned, block tail, stored in a
         // field) becomes a closure cell, typed by inference.
@@ -1139,9 +1150,9 @@ fn call_fn_value(
 ///
 /// A lambda a GENERIC function returned also closes over that call's
 /// parameters, evaluated once at the binding
-/// ([`Codegen::lambda_prefix`], [`crate::stmt`]). Those values are prepended
-/// here so the inlined body reads the binding's evaluation rather than
-/// resolving the callee's parameter names in whatever scope it landed in.
+/// ([`Codegen::lambda_prefix`], [`crate::stmt`]). Captures are bindings, not
+/// lambda parameters: prepending them shifts callback slots away from the
+/// lambda's inferred signature and emits calls to nonexistent function names.
 fn apply_bound_lambda(
     cg: &mut Codegen,
     name: &str,
@@ -1150,17 +1161,41 @@ fn apply_bound_lambda(
     position: Option<Position>,
     arguments: &[&Expr],
 ) -> Result<Value> {
-    let Some((prefix_params, prefix_values)) = cg.lambda_prefix.get(name).cloned() else {
+    if !cg.lambda_prefix.contains_key(name) {
         return apply_lambda(cg, params, body, position, arguments);
-    };
-    let mut values = prefix_values;
+    }
+    let mut values = Vec::with_capacity(arguments.len());
     for a in arguments {
         values.push(gen_expr(cg, a)?);
     }
-    let mut all = prefix_params;
-    all.extend_from_slice(params);
-    let sig = inline_sig(cg, position);
-    apply_lambda_values(cg, &all, body, values, sig.as_ref(), position)
+    with_lambda_captures(cg, name, |cg| {
+        let sig = inline_sig(cg, position);
+        apply_lambda_values(cg, params, body, values, sig.as_ref(), position)
+    })
+}
+
+/// A generic factory's saved arguments are lexical captures for both direct
+/// calls and closure materialization at a higher-order argument boundary.
+fn with_lambda_captures<T>(
+    cg: &mut Codegen,
+    name: &str,
+    emit: impl FnOnce(&mut Codegen) -> Result<T>,
+) -> Result<T> {
+    let Some((prefix_params, prefix_values)) = cg.lambda_prefix.get(name).cloned() else {
+        return emit(cg);
+    };
+    cg.push_scope();
+    let saved_fn_ptrs = cg.fn_ptr_locals.clone();
+    for (parameter, value) in prefix_params.iter().zip(prefix_values) {
+        if let Some(ty @ osprey_types::Type::Fun { .. }) = &value.inferred_type {
+            cg.bind_fn_local(&parameter.name, ty.clone());
+        }
+        cg.bind(parameter.name.clone(), value);
+    }
+    let result = emit(cg);
+    cg.fn_ptr_locals = saved_fn_ptrs;
+    cg.pop_scope();
+    result
 }
 
 fn apply_lambda(
@@ -1231,6 +1266,7 @@ pub(crate) fn reduce_lambda(
     // so a function-typed lambda parameter registered below must be unwound by
     // hand — exactly as an inlined call does ([`crate::genfn`]).
     let saved_fn_ptrs = cg.fn_ptr_locals.clone();
+    let saved_fn_types = cg.fn_value_types.clone();
     let lowered = (|| {
         bind_lambda_params(cg, parameters, values, sig, position)?;
         let value = crate::curry::apply_groups(cg, body, rest)?;
@@ -1241,6 +1277,7 @@ pub(crate) fn reduce_lambda(
         }
     })();
     cg.fn_ptr_locals = saved_fn_ptrs;
+    cg.fn_value_types = saved_fn_types;
     cg.pop_scope();
     lowered
 }
@@ -1501,6 +1538,15 @@ fn eval_arg(cg: &mut Codegen, expr: &Expr, sig: Option<&FnSig>, ffi: bool) -> Re
         (Expr::Identifier(n), Some(sig)) if cg.lookup(n).is_none() => {
             // Resolve a call alias (`let g = identity`) to its real target.
             let target = cg.call_aliases.get(n).cloned().unwrap_or_else(|| n.clone());
+            if let Some((params, body, _)) = cg.lambda_def(&target).cloned() {
+                return with_lambda_captures(cg, &target, |cg| {
+                    if ffi {
+                        crate::closure::raw_callback_lambda(cg, &params, &body, sig)
+                    } else {
+                        crate::closure::emit_closure(cg, &params, &body, sig)
+                    }
+                });
+            }
             // A GENERIC named function flowing into a concrete function-typed
             // slot: specialise it to the slot's ABI — its (params, body) emit
             // exactly like a capture-free lambda. A monomorphic name keeps its

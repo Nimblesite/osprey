@@ -233,9 +233,10 @@ fn swapWork() = {
 
 fn swapped() = {
     mut slot = forward("ini" + "tial")
-    handle Swap
+    handle Swap {
         swap item => { slot = item }
-    in swapWork()
+    }
+    swapWork()
     describeAny(slot)
 }
 

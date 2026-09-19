@@ -21,23 +21,22 @@
     "description": "An effect declaration with an operation (ML flavor)",
     "body": [
       "effect ${1:State}",
-      "  ${2:get} : ${3:Unit} => ${4:Int}",
-      "  ${5:put} : ${6:Int} => ${7:Unit}"
+      "  ${2:get} : ${3:Unit} => ${4:int}",
+      "  ${5:put} : ${6:int} => ${7:Unit}"
     ]
   },
   "Handler value": {
     "prefix": "handler",
     "description": "A handler value for an effect (ML flavor)",
     "body": [
-      "${1:run} = handler",
-      "  ${2:get} ${3:k} => ${4:k state}",
-      "  ${5:put} ${6:v} ${3:k} => ${7:k Unit}"
+      "${1:run} = handler ${2:Effect}",
+      "    ${3:operation} ${4:argument} => ${0}"
     ]
   },
   "Main": {
     "prefix": "main",
     "description": "A main binding (ML flavor)",
-    "body": ["main = do", "  ${1:print \"Hello, Osprey!\"}"]
+    "body": ["main () =", "    ${1:print \"Hello, Osprey!\"}", "main ()"]
   },
   "File namespace": {
     "prefix": "namespace",

@@ -11,7 +11,7 @@ fn program(source: &str) -> osprey_ast::Program {
 
 #[test]
 fn every_export_requires_its_own_handlers() {
-    let p = program("effect Alarm { ring: fn() -> int }\nfn ring() = perform Alarm.ring()\nfn relay() = ring()\nfn safe() = handle Alarm\n ring => 7\nin relay()\n");
+    let p = program("effect Alarm { ring: fn() -> int }\nfn ring() = perform Alarm.ring()\nfn relay() = ring()\nfn safe() = {\n    handle Alarm {\n        ring => 7\n    }\n    relay()\n}\n");
     assert!(check_program_exports(&p, &["safe"]).is_empty());
     let errors = check_program_exports(&p, &["ring", "relay", "safe"]);
     assert_eq!(errors.len(), 2, "{errors:?}");

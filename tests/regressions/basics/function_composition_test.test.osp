@@ -81,13 +81,15 @@ effect CounterState {
 }
 
 mut counter = 0
-handle CounterState
-    increment => { counter = counter + 1 ?: counter }
-in {
+fn countedComposition() = {
+    handle CounterState {
+        increment => { counter = counter + 1 ?: counter }
+    }
     perform CounterState.increment()
     perform CounterState.increment()
     perform CounterState.increment()
 }
+countedComposition()
 print(toString(counter))
 
 /// Generic union variant payload was rendering as "<T>" because toString hit the
@@ -147,13 +149,15 @@ effect ClosureSlot {
     rebindAdder: fn(int) -> Unit
 }
 mut rb = fn(x) => x + 1 ?: 0
-handle ClosureSlot
-    rebindAdder offset => {
-        rb = makeAdder(offset)
+fn reboundComposition() = {
+    handle ClosureSlot {
+        rebindAdder offset => {
+            rb = makeAdder(offset)
+        }
     }
-in {
     perform ClosureSlot.rebindAdder(40)
 }
+reboundComposition()
 let dblAlias = double
 let unwrapped = fn(x) => mkR(x) ?: 0
 print("pins: ${rb(2)} ${applyFunction(value: 21, func: dblAlias)} ${applyFunction(value: 9, func: unwrapped)}")
@@ -259,17 +263,17 @@ fn iteratorCompositionCase() = {
 /// Verifies handler-owned mutation and closure rebinding inside the test body.
 fn effectCompositionCase() = {
     mut count = 0
-    handle CounterState
+    handle CounterState {
         increment => { count = count + 1 ?: count }
-    in {
-        perform CounterState.increment()
-        perform CounterState.increment()
-        perform CounterState.increment()
     }
+    perform CounterState.increment()
+    perform CounterState.increment()
+    perform CounterState.increment()
     mut rebound = fn(x) => x + 1 ?: 0
-    handle ClosureSlot
+    handle ClosureSlot {
         rebindAdder amount => { rebound = makeAdder(amount) }
-    in { perform ClosureSlot.rebindAdder(40) }
+    }
+    perform ClosureSlot.rebindAdder(40)
     checkAll("effect-managed function state", [count == 3, rebound(2) == 42])
 }
 

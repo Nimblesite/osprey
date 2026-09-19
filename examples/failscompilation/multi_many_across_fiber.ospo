@@ -7,15 +7,16 @@
 // The fiber plumbing is correct on purpose: the only thing wrong here is that
 // a `many` operation is answered across the boundary.
 effect Choice {
-    many pick: fn(int) -> int
+    control many pick: fn(int) -> int
 }
 
 fn worker(seed) = perform Choice.pick(seed)
 
 fn main() = {
-    let spread = handle Choice
-        pick option => resume(option)
-    in {
+    let spread = {
+        handle Choice {
+            pick option => resume(option)
+        }
         let f = spawn worker(5)
         await(f)
     }

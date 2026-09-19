@@ -83,7 +83,7 @@ auditOutcomes outcomes =
     handle OutcomeAudit
         observe rendered =>
             trace := trace + rendered + "|"
-    in forEachList outcomes (\outcome => perform OutcomeAudit.observe (describe outcome))
+    forEachList outcomes (\outcome => perform OutcomeAudit.observe (describe outcome))
     trace
 
 auditIntKeys (items, keys) =
@@ -91,7 +91,7 @@ auditIntKeys (items, keys) =
     handle MapLookupAudit
         observe value =>
             encoded := encoded * 100 + value ?: encoded
-    in forEachList keys (\key => perform MapLookupAudit.observe (valueOr (items, key, 0)))
+    forEachList keys (\key => perform MapLookupAudit.observe (valueOr (items, key, 0)))
     encoded
 
 auditStringKeys (items, keys) =
@@ -99,7 +99,7 @@ auditStringKeys (items, keys) =
     handle MapLookupAudit
         observe value =>
             encoded := encoded + value + "/"
-    in forEachList keys (\key => perform MapLookupAudit.observe (valueOr (items, key, "missing")))
+    forEachList keys (\key => perform MapLookupAudit.observe (valueOr (items, key, "missing")))
     encoded
 
 (** `topMap` is BUILT at runtime, so its handle is opaque. Indexing one used to

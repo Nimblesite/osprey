@@ -7,7 +7,7 @@ effect Charge
     (** Settle `amount`. The handler may retry internally before answering, but
         answers this request at most once — `once`, written out here to pin that
         the default and the keyword mean the same thing. *)
-    once charge : int => int
+    control once charge : int => int
 
 effect Email
     (** Deliver `body`. Not replayable: sending a receipt twice is a defect. *)
@@ -20,15 +20,15 @@ effect Audit
 effect Random
     (** A fresh draw; `replayable` asserts re-performing is acceptable
         ([MULTI-REPLAY]). *)
-    replayable next : Unit => int
+    control replayable next : Unit => int
 
 (** The modifier words stay ordinary identifiers everywhere else, including as
     operation names — the contextual-keyword rule of [MULTI-DECL]. *)
 effect Vocabulary
-    abort : Unit => int
-    once : Unit => int
-    many : Unit => int
-    replayable : Unit => int
+    control abort : Unit => int
+    control once : Unit => int
+    control many : Unit => int
+    control replayable : Unit => int
 
 (** The gateway declines the first settlement of an amount and accepts the next. *)
 settle (amount, attempt) = match attempt
@@ -52,11 +52,11 @@ retrySendsOneReceiptCase () =
     outcome =
         handle Audit
             line message => transcript := "${transcript}${message}\n"
-        in handle Email
+        handle Email
             deliver body =>
                 receipts := receipts + 1 ?: receipts
                 perform Audit.line "email: ${body}"
-        in handle Charge
+        handle Charge
             charge amount =>
                 attempts := attempts + 1 ?: attempts
                 match settle (amount, attempts)
@@ -67,7 +67,7 @@ retrySendsOneReceiptCase () =
                         match settle (amount, attempts)
                             Success value => resume value
                             Error message => "declined: ${message}"
-        in placeOrder 120
+        placeOrder 120
     checkAll "retry answers once and mails once" [
         outcome == "settled 120",
         attempts == 2,
@@ -84,17 +84,17 @@ declineSendsNoReceiptCase () =
     outcome =
         handle Audit
             line message => transcript := "${transcript}${message}\n"
-        in handle Email
+        handle Email
             deliver body =>
                 receipts := receipts + 1 ?: receipts
                 perform Audit.line "email: ${body}"
-        in handle Charge
+        handle Charge
             charge amount => match settle (amount, 1)
                 Success value => resume value
                 Error message =>
                     perform Audit.line "abandoned ${toString amount}: ${message}"
                     "declined: ${message}"
-        in placeOrder 75
+        placeOrder 75
     checkAll "abandoning the continuation mails nothing" [
         outcome == "declined: gateway timeout",
         receipts == 0,
@@ -119,11 +119,11 @@ sharedAcrossMultiplicitiesCase () =
     noisy =
         handle Random
             next => resume 3
-        in applyTwice (jitter, 10)
+        applyTwice (jitter, 10)
     doubled =
         handle Email
             deliver _body => audits := audits + 1 ?: audits
-        in applyTwice (audited, 5)
+        applyTwice (audited, 5)
     checkAll "one function serves both multiplicities" [
         noisy == 16, doubled == 20, audits == 2
     ]
@@ -137,10 +137,9 @@ contextualKeywordCase () =
             once => resume 2
             many => resume 4
             replayable => resume 8
-        in
-            low = (perform Vocabulary.abort () + perform Vocabulary.once ()) ?: 0
-            high = (perform Vocabulary.many () + perform Vocabulary.replayable ()) ?: 0
-            (low + high) ?: 0
+        low = (perform Vocabulary.abort () + perform Vocabulary.once ()) ?: 0
+        high = (perform Vocabulary.many () + perform Vocabulary.replayable ()) ?: 0
+        (low + high) ?: 0
     many = 100
     abort = (many + total) ?: total
     checkAll "modifier words stay ordinary identifiers" [

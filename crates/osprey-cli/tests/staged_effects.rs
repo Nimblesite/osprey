@@ -20,9 +20,12 @@ const HANDLER_RUNTIME_SYMBOLS: &[&str] = &["__osprey_handler_push", "__osprey_ha
 const STATIC_SOURCE: &str = r#"
 static effect Alloc { scratch: fn(int) -> int }
 fn main() = {
-    let used = handle static Alloc
-        scratch bytes => bytes * 4 ?: 0
-    in perform Alloc.scratch(16)
+    let used = {
+        handle static Alloc {
+            scratch bytes => bytes * 4 ?: 0
+        }
+        perform Alloc.scratch(16)
+    }
     print("scratch=${used}")
 }
 "#;
@@ -30,9 +33,12 @@ fn main() = {
 const DYNAMIC_SOURCE: &str = r#"
 effect Alloc { scratch: fn(int) -> int }
 fn main() = {
-    let used = handle Alloc
-        scratch bytes => bytes * 4 ?: 0
-    in perform Alloc.scratch(16)
+    let used = {
+        handle Alloc {
+            scratch bytes => bytes * 4 ?: 0
+        }
+        perform Alloc.scratch(16)
+    }
     print("scratch=${used}")
 }
 "#;
@@ -97,9 +103,12 @@ fn a_function_that_answers_a_signal_does_not_depend_on_it() {
     let source = r#"
 static effect CountSignal { read: fn() -> int }
 fn label() = "count: ${perform CountSignal.read()}"
-fn root() = handle static CountSignal
-    read => 7
-in label()
+fn root() = {
+    handle static CountSignal {
+        read => 7
+    }
+    label()
+}
 "#;
     let deps = dependency_report(source, Flavor::Default).0;
     assert_eq!(
@@ -118,12 +127,18 @@ fn nested_regions_answer_the_same_effect_differently() {
 static effect Tile { size: fn() -> int }
 fn scaled(n) = (n * perform Tile.size()) ?: 0
 fn main() = {
-    let a = handle static Tile
-        size => 8
-    in scaled(2)
-    let b = handle static Tile
-        size => 3
-    in scaled(2)
+    let a = {
+        handle static Tile {
+            size => 8
+        }
+        scaled(2)
+    }
+    let b = {
+        handle static Tile {
+            size => 3
+        }
+        scaled(2)
+    }
     print("${a}/${b}")
 }
 "#;
@@ -151,9 +166,12 @@ const STATIC_ROW_SOURCE: &str = r#"
 static effect Scale { by: fn() -> int }
 fn scaled(n) = (n * perform Scale.by()) ?: 0
 fn main() = {
-    let v = handle static Scale
-        by => 3
-    in scaled(2)
+    let v = {
+        handle static Scale {
+            by => 3
+        }
+        scaled(2)
+    }
     print("v=${v}")
 }
 "#;
@@ -173,14 +191,17 @@ fn a_static_effect_inside_a_kernel_body_is_stage_legal() {
     // [STAGE-GPU-LEGAL] generalizes [GPU-KERNEL-PURE] from "empty row" to
     // "empty *dynamic* row". A kernel that answers its requests before it runs
     // is legal, and it is legal through the existing purity gate rather than a
-    // second one, because discharge happens before the checker sees the body.
+    // second one: discharge follows data typing but precedes residual purity.
     let source = r#"
 static effect Tile { size: fn() -> int }
 fn shade(px) = (px * perform Tile.size()) ?: 0
 fn main() = {
-    let out = handle static Tile
-        size => 3
-    in fromGpu(toGpu([1, 2, 3]) |> gpuMap(shade))
+    let out = {
+        handle static Tile {
+            size => 3
+        }
+        fromGpu(toGpu([1, 2, 3]) |> gpuMap(shade))
+    }
     print("${listGet(out, 0) ?: 0}")
 }
 "#;
@@ -188,6 +209,25 @@ fn main() = {
     assert!(
         errors.is_empty(),
         "a kernel whose only requests are static must be accepted: {errors}"
+    );
+    // The region must ENCLOSE the kernel: a static handler installed after
+    // the offload answers nothing the device code asked for, so the request
+    // is residual and the kernel is rejected by name.
+    let outside = r#"
+static effect Tile { size: fn() -> int }
+fn shade(px) = (px * perform Tile.size()) ?: 0
+fn main() = {
+    let out = fromGpu(toGpu([1, 2, 3]) |> gpuMap(shade))
+    handle static Tile {
+        size => 3
+    }
+    print("${listGet(out, 0) ?: 0}")
+}
+"#;
+    let errors = diagnostics(outside, Flavor::Default);
+    assert!(
+        errors.contains("kernel body is not stage-legal; it requires dynamic effects: Tile.size"),
+        "a kernel outside the static region keeps its residual request: {errors}"
     );
 }
 
@@ -224,15 +264,18 @@ fn an_unstage_legal_kernel_says_so_instead_of_only_saying_impure() {
     // cannot; it is the wrong message here, because it describes an absence of
     // evidence rather than the evidence of a dynamic row.
     let source = r#"
-effect Log { write: fn(string) -> Unit }
+effect Log { control write: fn(string) -> Unit }
 fn noisy(px) = {
     perform Log.write("px")
     px
 }
 fn main() = {
-    let out = handle Log
-        write msg => resume(print(msg))
-    in fromGpu(toGpu([1, 2, 3]) |> gpuMap(noisy))
+    let out = {
+        handle Log {
+            write msg => resume(print(msg))
+        }
+        fromGpu(toGpu([1, 2, 3]) |> gpuMap(noisy))
+    }
     print("${listGet(out, 0) ?: 0}")
 }
 "#;
@@ -271,14 +314,108 @@ fn cursorLabel() = "at: ${(perform Signal<Cursor>.read()).at}"
 #[test]
 fn the_ml_surface_carries_the_stage_axis_too() {
     // [STAGE-DECL] The spec gives `static effect` and `handle static` an ML
-    // spelling, and [STAGE-LOWER-ORDER-PHASE] puts the rewrite at the flavor
-    // boundary precisely so one mechanism serves both surfaces. ML lowering
-    // hardcodes `Stage::Dynamic`, so `static` lexes as an ordinary identifier
-    // and half the declaration surface is unreachable from half the language.
-    let source = "static effect Tile\n    size : Unit => int\n\nscaled n = n * perform Tile.size () ?: 0\n\nanswer =\n    handle static Tile\n        size => 8\n    in scaled 2\n";
+    // spelling. Both lower to the same staged AST and pass through source
+    // validation before discharge ([STAGE-LOWER-ORDER-PHASE]).
+    let source = "static effect Tile\n    size : Unit => int\n\nscaled n = n * perform Tile.size () ?: 0\n\nanswer =\n    handle static Tile\n        size => 8\n    scaled 2\n";
     let errors = diagnostics(source, Flavor::Ml);
     assert!(
         errors.is_empty(),
         "the ML surface must declare and discharge a static effect: {errors}"
+    );
+}
+
+/// Static substitution must preserve the declaration's data contract, including
+/// arms whose operations are never requested. [STAGE-LOWER-ORDER-PHASE]
+#[test]
+fn static_contracts_are_checked_before_erasure_in_both_flavors() {
+    let cases = [
+        (
+            "static effect Read { value: fn() -> int }\nlet answer = {\n    handle static Read {\n        value => \"wrong\"\n    }\n    length(perform Read.value())\n}\nprint(answer)",
+            "static effect Read\n    value : Unit => int\n\nanswer =\n    handle static Read\n        value => \"wrong\"\n    length (perform Read.value ())\nprint answer\n",
+            "cannot unify int with string",
+        ),
+        (
+            "static effect Read { value: fn() -> int }\nlet answer = {\n    handle static Read {\n        value => \"wrong\"\n    }\n    42\n}\nprint(answer)",
+            "static effect Read\n    value : Unit => int\n\nanswer =\n    handle static Read\n        value => \"wrong\"\n    42\nprint answer\n",
+            "cannot unify int with string",
+        ),
+        (
+            "static effect Echo { value: fn(int) -> int }\nlet answer = {\n    handle static Echo {\n        value input => length(input)\n    }\n    perform Echo.value(\"bad\")\n}\nprint(answer)",
+            "static effect Echo\n    value : int => int\n\nanswer =\n    handle static Echo\n        value input => length input\n    perform Echo.value \"bad\"\nprint answer\n",
+            "cannot unify",
+        ),
+        (
+            "static effect Echo { value: fn(int) -> int }\nlet answer = {\n    handle static Echo {\n        value => 7\n    }\n    42\n}\nprint(answer)",
+            "static effect Echo\n    value : int => int\n\nanswer =\n    handle static Echo\n        value => 7\n    42\nprint answer\n",
+            "expects 1 parameter(s), got 0",
+        ),
+        (
+            "static effect Echo<T> { value: fn() -> T }\nlet answer = {\n    handle static Echo<int> {\n        value => \"bad\"\n    }\n    length(perform Echo<int>.value())\n}\nprint(answer)",
+            "static effect Echo T\n    value : Unit => T\n\nanswer =\n    handle static Echo<int>\n        value => \"bad\"\n    length (perform Echo<int>.value ())\nprint answer\n",
+            "cannot unify int with string",
+        ),
+    ];
+    for (default, ml, expected) in cases {
+        for (flavor, source) in [(Flavor::Default, default), (Flavor::Ml, ml)] {
+            let errors = diagnostics(source, flavor);
+            assert!(
+                errors.contains(expected),
+                "{flavor:?}: expected {expected}, got {errors}"
+            );
+        }
+    }
+}
+
+#[test]
+fn staging_does_not_authorize_source_mutation_outside_handler_arms() {
+    let source = "static effect Read { value: fn() -> int }\nfn main() = {\nmut count = 0\ncount = 1\nlet answer = {\n    handle static Read {\n        value => count\n    }\n    perform Read.value()\n}\nprint(answer)\n}";
+    let errors = diagnostics(source, Flavor::Default);
+    assert!(
+        errors.contains("state mutation is only allowed inside an effect handler arm"),
+        "{errors}"
+    );
+}
+
+#[test]
+fn a_static_region_missing_an_operation_names_the_operation_it_left_out() {
+    // [STAGE-STATIC-TOTAL] A static handler must answer every operation, and
+    // structural validation says so before the rewrite runs: it names the
+    // uncovered operation rather than leaving the request to surface later as
+    // an unhandled effect ([STAGE-LOWER-ORDER-PHASE]).
+    let source = r#"
+static effect Tensor {
+    stride: fn() -> int
+    rank: fn() -> int
+}
+fn main() = {
+    handle static Tensor {
+        stride => 3
+    }
+    print("${perform Tensor.stride()}")
+}
+"#;
+    let errors = diagnostics(source, Flavor::Default);
+    assert!(
+        errors.contains("static handler for `Tensor` does not cover operation `Tensor.rank`"),
+        "a partial static handler must name the uncovered operation: {errors}"
+    );
+}
+
+#[test]
+fn a_static_region_over_an_undeclared_effect_is_named_by_its_own_keyword() {
+    // The diagnostic spells the region the way the source does, so a reader
+    // is not told about `handle` when they wrote `handle static`.
+    let source = r#"
+fn main() = {
+    handle static Missing {
+        get => 1
+    }
+    print("unreachable")
+}
+"#;
+    let errors = diagnostics(source, Flavor::Default);
+    assert!(
+        errors.contains("handle static names unknown effect `Missing`"),
+        "an unknown static effect must be reported against `handle static`: {errors}"
     );
 }

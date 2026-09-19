@@ -96,10 +96,9 @@ effectsAndCollections () =
     handle Counter
         increment amount =>
             counter := counter + amount ?: counter
-    in
-        perform Counter.increment 1
-        perform Counter.increment 1
-        perform Counter.increment 1
+    perform Counter.increment 1
+    perform Counter.increment 1
+    perform Counter.increment 1
     xs = listAppend (listAppend (listAppend (List ()) 10) 20) 30
     ys = listAppend (List ()) 99
     combined = xs + ys

@@ -343,7 +343,7 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
   test("declared generic binders and effect contracts never receive signature deletion actions", async () => {
     const sources = [
       ["required-generics.ospml", "identity<T> : T -> T\nidentity x = x\nresult = identity<int> 7\n", "identity<T> : T -> T"],
-      ["required-effects.ospml", "effect Trace\n    read : Unit => int\ntraced : Unit -> int ! Trace\ntraced () = perform Trace.read ()\nmain () = handle Trace\n    read => 7\nin print (traced ())\n", "traced : Unit -> int ! Trace"],
+      ["required-effects.ospml", "effect Trace\n    read : Unit => int\ntraced : Unit -> int ! Trace\ntraced () = perform Trace.read ()\nmain () =\n    handle Trace\n        read => 7\n    print (traced ())\n", "traced : Unit -> int ! Trace"],
     ];
     for (const [name, source, header] of sources) {
       const editor = await openSource(name, source);

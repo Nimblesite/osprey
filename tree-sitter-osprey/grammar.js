@@ -49,7 +49,7 @@ module.exports = grammar({
   externals: ($) => [$._call_open_gap, $._statement_break, $._type_application_ahead],
 
   conflicts: ($) => [
-    // `abort` / `once` / `many` / `replayable` opening an operation line are
+    // `control` / `abort` / `once` / `many` / `replayable` opening an operation line are
     // either the modifier or the operation's own name; only the token after
     // them tells which. Implements [MULTI-DECL].
     [$.operation_declaration],
@@ -57,6 +57,7 @@ module.exports = grammar({
     // an object/map literal until the brace body is seen; GLR resolves it.
     [$.update_expression, $.type_constructor],
     [$.primary_expression, $.pattern],
+    [$.handler_value_expression, $.primary_expression],
     [$.call_expression, $.pattern],
     // `ID <` is ambiguous between a variable reference followed by `<` (comparison)
     // and the start of a generic type constructor `ID<T>{...}`; GLR resolves it.
@@ -316,6 +317,12 @@ module.exports = grammar({
         repeat($.operation_declaration),
         '}',
       ),
+    // `control` declares that answering this operation takes the performer's
+    // continuation: the arm returns the HANDLER's answer and may `resume`. An
+    // undecorated operation is a value operation whose arm returns the
+    // operation's result. Contextual, like the modifiers below.
+    // Implements [EFFECTS-HANDLER-ARMS].
+    operation_mode: ($) => 'control',
     // How many times an operation's request may be answered — `abort` (never),
     // `once` (the default, at most one) or `many` (any number). A bare keyword
     // node in `static_stage`'s shape, not a general modifier list. Both this
@@ -334,7 +341,10 @@ module.exports = grammar({
     operation_declaration: ($) =>
       seq(
         optional($.doc_comment),
-        optional(field('multiplicity', $.multiplicity)),
+        optional(seq(
+          field('mode', $.operation_mode),
+          optional(field('multiplicity', $.multiplicity)),
+        )),
         optional(field('replayable', $.replayable)),
         // The modifier words are also legal operation NAMES. The lexer emits
         // the keyword token wherever a modifier is acceptable, so recovering
@@ -345,6 +355,7 @@ module.exports = grammar({
           'name',
           choice(
             $.identifier,
+            alias($.operation_mode, $.identifier),
             alias($.multiplicity, $.identifier),
             alias($.replayable, $.identifier),
           ),
@@ -394,6 +405,7 @@ module.exports = grammar({
         $.match_expression,
         $.if_expression,
         $.handler_expression,
+        $.handler_value_expression,
         $.kernel_expression,
         $.select_expression,
         $.ternary_expression,
@@ -436,13 +448,19 @@ module.exports = grammar({
         ),
       ),
 
-    // `handle static E ... in body` marks a region the compiler discharges by
-    // rewriting, leaving no runtime handler. Implements [STAGE-HANDLE-STATIC].
-    // The optional `<...>` names the INSTANTIATION being handled: `Signal<Count>`
-    // and `Signal<Cursor>` are different effects to a row, so they are different
-    // effects to a handler. Implements [STAGE-SIGNALS-EXACT].
+    // A block-scoped handler governs the following statements. Static selection
+    // discharges the same region during compilation. Explicit computations use
+    // callable handler values. Implements [EFFECTS-HANDLE-REST], [STAGE-HANDLE-STATIC].
     handler_expression: ($) =>
-      prec.right(seq('handle', optional(field('stage', $.static_stage)), field('effect', choice($.qualified_path, $.identifier)), optional(field('instantiation', $.type_arguments)), repeat1($.handler_arm), choice('in', 'do'), field('body', $.expression))),
+      seq('handle', optional(field('stage', $.static_stage)), field('effect', choice($.qualified_path, $.identifier)), optional(field('instantiation', $.type_arguments)), '{', $._handler_clauses, '}'),
+    // `handler E { arm… }` is the handler ITSELF, with no region attached: a
+    // value that can be bound, passed and called. Calling it with a
+    // zero-argument computation runs that computation under these arms, so one
+    // handler serves many regions. Implements [EFFECTS-HANDLER-VALUE].
+    handler_value_expression: ($) =>
+      prec.right(seq('handler', optional(field('stage', $.static_stage)), field('effect', choice($.qualified_path, $.identifier)), optional(field('instantiation', $.type_arguments)), '{', $._handler_clauses, '}')),
+    _handler_clauses: ($) => choice(repeat1($.handler_arm), seq(repeat($.handler_arm), $.handler_return, repeat($.handler_arm))),
+    handler_return: ($) => seq('return', field('parameter', $.identifier), '=>', field('body', $.expression)),
     handler_arm: ($) =>
       seq(field('operation', $.identifier), optional($.handler_params), '=>', field('body', $.expression)),
     handler_params: ($) => repeat1($.identifier),
@@ -571,6 +589,9 @@ module.exports = grammar({
         $.lambda_expression,
         $.qualified_path,
         $.identifier,
+        // A handler value needs an effect name and arms. Existing callbacks
+        // named `handler` remain ordinary references/calls in other contexts.
+        alias('handler', $.identifier),
         seq('(', $.expression, ')'),
       ),
 

@@ -4,8 +4,8 @@
 use super::position_from_point;
 use osprey_ast::{
     DocComment, DocScope, EffectOperation, EffectRef, Expr, ExternParameter, ModuleKind,
-    Multiplicity, Parameter, Pattern, Position, Program, Stage, Stmt, SymbolPath, TypeExpr,
-    TypeField, TypeParam, TypeVariant, Variance,
+    Multiplicity, OperationMode, Parameter, Pattern, Position, Program, Stage, Stmt, SymbolPath,
+    TypeExpr, TypeField, TypeParam, TypeVariant, Variance,
 };
 use tree_sitter::Node;
 
@@ -104,6 +104,14 @@ impl<'a> Lowerer<'a> {
     pub(crate) fn first_named<'t>(&self, node: Node<'t>) -> Option<Node<'t>> {
         let mut cursor = node.walk();
         let found = node.named_children(&mut cursor).next();
+        found
+    }
+
+    /// The last named child — the expression of an `expression_statement`,
+    /// whose only other child is an optional doc comment.
+    pub(crate) fn last_named(node: Node<'_>) -> Option<Node<'_>> {
+        let mut cursor = node.walk();
+        let found = node.named_children(&mut cursor).last();
         found
     }
 
@@ -426,6 +434,12 @@ impl<'a> Lowerer<'a> {
             .iter()
             .map(|op| EffectOperation {
                 name: self.field_text(*op, "name"),
+                // `control` is what makes an arm own a continuation. Implements
+                // [EFFECTS-HANDLER-ARMS].
+                mode: match op.child_by_field_name("mode") {
+                    Some(_) => OperationMode::Control,
+                    None => OperationMode::Value,
+                },
                 // The keyword AS WRITTEN: absent means `once` everywhere it is
                 // read as a value, but [MULTI-AXIS-STATIC] needs to know it was
                 // never written. Implements [MULTI-DECL].

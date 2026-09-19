@@ -21,9 +21,12 @@ effect Stash<T> {
 fn stash() = perform Stash.put(Box { value: 42 })
 
 fn main() -> Unit = {
-    let cached = handle Stash
-        put v => print("put")
-        take => Box { value: "cached text" }
-    in stash()
+    let cached = {
+        handle Stash {
+            put v => print("put")
+            take => Box { value: "cached text" }
+        }
+        stash()
+    }
     print("${cached}")
 }

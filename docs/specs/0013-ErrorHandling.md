@@ -79,27 +79,12 @@ A negated numeric *literal* is folded at parse time into a literal of the opposi
 
 A region states its arithmetic policy once, in a handler, instead of at every operation. Wrapping consumes the operation's two's-complement payload; a fault-recording policy writes handler-owned state and lets the boundary decide.
 
-```osprey
-fn djb2(bytes) = bytes |> fold(5381, fn(h, b) => h * 33 + b)
-
-let digest = handle Arith
-    overflow _ _ _ wrapped => wrapped
-do djb2(payload)
-```
-
-```osprey-ml
-djb2 bytes = bytes |> fold 5381 (fn (h, b) => h * 33 + b)
-
-digest =
-    handle Arith
-        overflow _ _ _ wrapped => wrapped
-    in djb2 payload
-```
+[Arithmetic policies](0037-ArithmeticEffects.md#policies) gives the callable-handler forms.
 
 An unhandled arithmetic operation is a compile error naming the effect and operation, not a runtime surprise:
 
 ```text
-unhandled effect operations at program entry: Arith.overflow; add a matching handle
+unhandled effect operations at program entry: Arith.overflow; add a matching `handle`
 ```
 
 

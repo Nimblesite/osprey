@@ -18,12 +18,15 @@ let base = 100
 mut hits = 0
 
 /// The initializer runs here, in source order, before any entry statement.
-let total = handle Counter
-    tick amount => {
-        hits = (hits + amount) ?: hits
-        hits
+let total = {
+    handle Counter {
+        tick amount => {
+            hits = (hits + amount) ?: hits
+            hits
+        }
     }
-in run()
+    run()
+}
 
 /// Records the order in which the file-scope initializers completed.
 let trace = "base=${base},hits=${hits},total=${total}"

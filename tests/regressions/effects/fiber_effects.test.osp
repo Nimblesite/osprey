@@ -47,9 +47,10 @@ fn show(x) = print("  " + toString(x))
 
 print("=== mixup: fibers + effects + records ===")
 
-handle Logger
-    log msg => print("[LOG] " + msg)
-in {
+fn mixupDemo() = {
+    handle Logger {
+        log msg => print("[LOG] " + msg)
+    }
     /// priorities -> effectful fibers
     let fHigh = spawn runJob(priWeight(High))
     let sHigh = await(fHigh)
@@ -89,17 +90,20 @@ in {
     print("has high " + toString(mapContains(m, "high")))
     forEachList(mapValues(m), show)
 }
+mixupDemo()
 
 /// region-level isolation: same effect, different impl per region.
-let prodR = handle Logger
-    log msg => print("[PROD] " + msg)
-in {
+let prodR = {
+    handle Logger {
+        log msg => print("[PROD] " + msg)
+    }
     perform Logger.log("prod path")
     10
 }
-let silentR = handle Logger
-    log _msg => 0
-in {
+let silentR = {
+    handle Logger {
+        log _msg => 0
+    }
     perform Logger.log("silenced")
     0
 }
@@ -110,7 +114,7 @@ print("regions prod=" + toString(prodR) + " silent=" + toString(silentR))
 /// locks the fiber-perform race fix ([EFFECTS-FIBER-PERFORM]).
 effect Gift {
     /// Request the value awarded for `seed`.
-    get: fn(int) -> int
+    control get: fn(int) -> int
 }
 
 fn ask(tag) !Gift = perform Gift.get(tag)
@@ -121,17 +125,30 @@ fn pairSum(a, b) !Gift = {
     await(f1) + await(f2) ?: 0
 }
 
-let raceSum = handle Gift
-    get tag => resume((tag * 10) ?: 0)
-in pairSum(1, 2)
+let raceSum = {
+    handle Gift {
+        get tag => resume((tag * 10) ?: 0)
+    }
+    pairSum(1, 2)
+}
 print("race-free sum " + toString(raceSum))
 print("=== done ===")
 
 /// Runs one logged job under a silent handler for assertion use.
-fn highScoreForTest() = handle Logger log _msg => 0 in await(spawn runJob(priWeight(High)))
+fn highScoreForTest() = {
+    handle Logger {
+        log _msg => 0
+    }
+    await(spawn runJob(priWeight(High)))
+}
 
 /// Repeats the two-fiber resuming interaction for assertion use.
-fn pairedScoreForTest() = handle Gift get tag => resume((tag * 10) ?: 0) in pairSum(1, 2)
+fn pairedScoreForTest() = {
+    handle Gift {
+        get tag => resume((tag * 10) ?: 0)
+    }
+    pairSum(1, 2)
+}
 
 // Re-executes effectful fiber work and checks deterministic results on the main fiber.
 test("fiber results remain deterministic across effect handlers", fn() => checkAll("fiber and effect results", [
@@ -222,14 +239,15 @@ fn awaitReplaysOneEffectfulRunCase() = {
     mut lastAmount = 0
 
     /// One spawn, THREE awaits. The cell walks 0 -> 7 and stops there.
-    let replayed = handle Tally
-        add amount => {
-            performs = performs + 1 ?: performs
-            total = total + amount ?: total
-            lastAmount = amount
-            total
+    let replayed = {
+        handle Tally {
+            add amount => {
+                performs = performs + 1 ?: performs
+                total = total + amount ?: total
+                lastAmount = amount
+                total
+            }
         }
-    in {
         let f = spawn tallyJob(7)
         let a1 = await(f)
         let a2 = await(f)
@@ -239,39 +257,44 @@ fn awaitReplaysOneEffectfulRunCase() = {
 
     /// The identity amount: the run leaves the cell where it was, and both awaits
     /// still answer the total the single body produced. 7 -> 7.
-    let zeroRun = handle Tally
-        add amount => {
-            performs = performs + 1 ?: performs
-            total = total + amount ?: total
-            lastAmount = amount
-            total
+    let zeroRun = {
+        handle Tally {
+            add amount => {
+                performs = performs + 1 ?: performs
+                total = total + amount ?: total
+                lastAmount = amount
+                total
+            }
         }
-    in {
         let fz = spawn tallyJob(0)
         await(fz) + await(fz) ?: 0
     }
 
     /// A negative amount walks the shared cell back. 7 -> 2.
-    let negRun = handle Tally
-        add amount => {
-            performs = performs + 1 ?: performs
-            total = total + amount ?: total
-            lastAmount = amount
-            total
+    let negRun = {
+        handle Tally {
+            add amount => {
+                performs = performs + 1 ?: performs
+                total = total + amount ?: total
+                lastAmount = amount
+                total
+            }
         }
-    in await(spawn tallyJob(0 - 5 ?: 0))
+        await(spawn tallyJob(0 - 5 ?: 0))
+    }
 
     /// Three spawn SITES, each awaited before the next is spawned, so arrival is
     /// program order. "Each spawn site allocates a distinct capture cell", so the
     /// captured `base` cannot bleed between them. 2 -> 6 -> 11 -> 17.
-    let stepped = handle Tally
-        add amount => {
-            performs = performs + 1 ?: performs
-            total = total + amount ?: total
-            lastAmount = amount
-            total
+    let stepped = {
+        handle Tally {
+            add amount => {
+                performs = performs + 1 ?: performs
+                total = total + amount ?: total
+                lastAmount = amount
+                total
+            }
         }
-    in {
         let base = 4
         let s1 = await(spawn tallyJob(base))
         let s2 = await(spawn tallyJob(base + 1 ?: base))
@@ -281,14 +304,17 @@ fn awaitReplaysOneEffectfulRunCase() = {
 
     /// ONE fiber body performing twice, the second nested inside the first arm's
     /// round trip. 17 -> 18 -> 17, and the body answers 18 + 17.
-    let twice = handle Tally
-        add amount => {
-            performs = performs + 1 ?: performs
-            total = total + amount ?: total
-            lastAmount = amount
-            total
+    let twice = {
+        handle Tally {
+            add amount => {
+                performs = performs + 1 ?: performs
+                total = total + amount ?: total
+                lastAmount = amount
+                total
+            }
         }
-    in await(spawn tallyTwice(1, 0 - 1 ?: 0))
+        await(spawn tallyTwice(1, 0 - 1 ?: 0))
+    }
 
     // Ten awaits asked for a result; eight fiber bodies produced one.
     checkAll("one body run answers every await", [
@@ -365,54 +391,69 @@ fn concurrentPerformsKeepTheirOwnAnswersCase() = {
     mut edgeSum = 0
 
     /// Four DISTINCT tags in flight at once; answers 10, 20, 30, 40.
-    let weighted = handle Gift
-        get tag => {
-            turns = turns + 1 ?: turns
-            tagSum = tagSum + tag ?: tagSum
-            tagProduct = tagProduct * tag ?: tagProduct
-            resume((tag * 10) ?: 0)
+    let weighted = {
+        handle Gift {
+            get tag => {
+                turns = turns + 1 ?: turns
+                tagSum = tagSum + tag ?: tagSum
+                tagProduct = tagProduct * tag ?: tagProduct
+                resume((tag * 10) ?: 0)
+            }
         }
-    in quadWeighted(1, 2, 3, 4)
+        quadWeighted(1, 2, 3, 4)
+    }
 
     /// DUPLICATE tags: four performers ask the same question and each still gets
     /// its own round trip, so the turn count sees all four.
-    let duplicated = handle Gift
-        get tag => {
-            turns = turns + 1 ?: turns
-            tagSum = tagSum + tag ?: tagSum
-            tagProduct = tagProduct * tag ?: tagProduct
-            resume((tag * 10) ?: 0)
+    let duplicated = {
+        handle Gift {
+            get tag => {
+                turns = turns + 1 ?: turns
+                tagSum = tagSum + tag ?: tagSum
+                tagProduct = tagProduct * tag ?: tagProduct
+                resume((tag * 10) ?: 0)
+            }
         }
-    in quadWeighted(2, 2, 2, 2)
+        quadWeighted(2, 2, 2, 2)
+    }
 
     /// Zero and a negative operand: identity and sign cross the mailbox unchanged.
     /// 0*1 + (-10)*100 + 50*10000 + 0*1000000 = 500000 - 1000 = 499000.
-    let signed = handle Gift
-        get tag => {
-            edgeTurns = edgeTurns + 1 ?: edgeTurns
-            edgeSum = edgeSum + tag ?: edgeSum
-            resume((tag * 10) ?: 0)
+    let signed = {
+        handle Gift {
+            get tag => {
+                edgeTurns = edgeTurns + 1 ?: edgeTurns
+                edgeSum = edgeSum + tag ?: edgeSum
+                resume((tag * 10) ?: 0)
+            }
         }
-    in quadWeighted(0, 0 - 1 ?: 0, 5, 0)
+        quadWeighted(0, 0 - 1 ?: 0, 5, 0)
+    }
 
     /// Two performers, one of them the identity tag: 70 + 0.
-    let pairEdge = handle Gift
-        get tag => {
-            edgeTurns = edgeTurns + 1 ?: edgeTurns
-            edgeSum = edgeSum + tag ?: edgeSum
-            resume((tag * 10) ?: 0)
+    let pairEdge = {
+        handle Gift {
+            get tag => {
+                edgeTurns = edgeTurns + 1 ?: edgeTurns
+                edgeSum = edgeSum + tag ?: edgeSum
+                resume((tag * 10) ?: 0)
+            }
         }
-    in pairSum(7, 0)
+        pairSum(7, 0)
+    }
 
     /// A fiber that spawns fibers: (30 + 40) from the inner pair, 70 from the
     /// side fiber whose tag is 3 + 4.
-    let deepFan = handle Gift
-        get tag => {
-            edgeTurns = edgeTurns + 1 ?: edgeTurns
-            edgeSum = edgeSum + tag ?: edgeSum
-            resume((tag * 10) ?: 0)
+    let deepFan = {
+        handle Gift {
+            get tag => {
+                edgeTurns = edgeTurns + 1 ?: edgeTurns
+                edgeSum = edgeSum + tag ?: edgeSum
+                resume((tag * 10) ?: 0)
+            }
         }
-    in nestedFan(3, 4)
+        nestedFan(3, 4)
+    }
 
     // Each positional field holds the answer to that fiber's OWN tag. 40301020
     // is what a swap between the first two performers would print, 40302040 what
@@ -511,14 +552,15 @@ fn handlerCellCrossesTheFiberBoundaryCase() = {
 
     /// main 3, fiber 4, main 5, fiber 6. The cell walks 0 -> 3 -> 7 -> 12 -> 18,
     /// and each perform's own answer is kept in its own positional field.
-    let mixed = handle Tally
-        add amount => {
-            hops = hops + 1 ?: hops
-            cell = cell + amount ?: cell
-            trail = "${trail}${amount}:${cell}|"
-            cell
+    let mixed = {
+        handle Tally {
+            add amount => {
+                hops = hops + 1 ?: hops
+                cell = cell + amount ?: cell
+                trail = "${trail}${amount}:${cell}|"
+                cell
+            }
         }
-    in {
         let m1 = tallyJob(3)
         let f1 = await(spawn tallyJob(4))
         let m2 = tallyJob(5)
@@ -528,34 +570,43 @@ fn handlerCellCrossesTheFiberBoundaryCase() = {
 
     /// A SECOND region over the same captured binding: promotion is to one heap
     /// location, not one per region. 18 -> 22.
-    let carried = handle Tally
-        add amount => {
-            hops = hops + 1 ?: hops
-            cell = cell + amount ?: cell
-            trail = "${trail}${amount}:${cell}|"
-            cell
+    let carried = {
+        handle Tally {
+            add amount => {
+                hops = hops + 1 ?: hops
+                cell = cell + amount ?: cell
+                trail = "${trail}${amount}:${cell}|"
+                cell
+            }
         }
-    in await(spawn tallyJob(4))
+        await(spawn tallyJob(4))
+    }
 
     /// Four fibers in flight into ONE resuming region: a turn is atomic end to
     /// end, so four increments of one cannot collapse into fewer.
-    let raced = handle Gift
-        get tag => {
-            turns = turns + 1 ?: turns
-            answered = answered + tag ?: answered
-            resume((tag * 10) ?: 0)
+    let raced = {
+        handle Gift {
+            get tag => {
+                turns = turns + 1 ?: turns
+                answered = answered + tag ?: answered
+                resume((tag * 10) ?: 0)
+            }
         }
-    in quadWeighted(2, 3, 5, 0)
+        quadWeighted(2, 3, 5, 0)
+    }
 
     /// A third region reads the cell back through the identity amount and never
     /// touches the trail: "code after the region observes the same location".
-    let readBack = handle Tally
-        add amount => {
-            hops = hops + 1 ?: hops
-            cell = cell + amount ?: cell
-            cell
+    let readBack = {
+        handle Tally {
+            add amount => {
+                hops = hops + 1 ?: hops
+                cell = cell + amount ?: cell
+                cell
+            }
         }
-    in await(spawn tallyJob(0))
+        await(spawn tallyJob(0))
+    }
 
     // 3 + 4 + 5 + 6 + 4 = 22, whether the perform came from the main fiber or a
     // spawned one.
@@ -646,13 +697,14 @@ fn channelHandoffKeepsFibersIsolatedCase() = {
 
     /// The producer performs for every value it sends, so the identity arm hands
     /// back exactly what goes into the buffer: 11, 22, 33, 44 in that order.
-    let drained = handle Tally
-        add amount => {
-            sent = sent + amount ?: sent
-            trail = "${trail}${amount},"
-            amount
+    let drained = {
+        handle Tally {
+            add amount => {
+                sent = sent + amount ?: sent
+                trail = "${trail}${amount},"
+                amount
+            }
         }
-    in {
         let ch = Channel(4)
         let producer = spawn {
             send(ch, tallyJob(11))
@@ -766,73 +818,86 @@ fn nestedRegionsPickTheInnermostArmForFibersCase() = {
 
     /// Inner region supplies `fetch` (tag * 100); `stamp` falls through to the
     /// enclosing one. tag 3 => "outer3" and 300.
-    let inner = handle Relay
-        fetch tag => {
-            outerHits = outerHits + 1 ?: outerHits
-            tag * 2 ?: 0
+    let inner = {
+        handle Relay {
+            fetch tag => {
+                outerHits = outerHits + 1 ?: outerHits
+                tag * 2 ?: 0
+            }
+            stamp tag => {
+                stampHits = stampHits + 1 ?: stampHits
+                "outer${tag}"
+            }
         }
-        stamp tag => {
-            stampHits = stampHits + 1 ?: stampHits
-            "outer${tag}"
-        }
-    in handle Relay
-        fetch tag => {
-            innerHits = innerHits + 1 ?: innerHits
-            tag * 100 ?: 0
-        }
-    in await(spawn relayBoth(3))
-
-    /// The SAME fiber under the enclosing region alone: tag 3 => "outer3" and 6.
-    let outerOnly = handle Relay
-        fetch tag => {
-            outerHits = outerHits + 1 ?: outerHits
-            tag * 2 ?: 0
-        }
-        stamp tag => {
-            stampHits = stampHits + 1 ?: stampHits
-            "outer${tag}"
-        }
-    in await(spawn relayBoth(3))
-
-    /// The inner region covers only the fiber spawned INSIDE it; the fiber
-    /// spawned after it is back on the enclosing arm. 400 then 8.
-    let restored = handle Relay
-        fetch tag => {
-            outerHits = outerHits + 1 ?: outerHits
-            tag * 2 ?: 0
-        }
-        stamp tag => {
-            stampHits = stampHits + 1 ?: stampHits
-            "outer${tag}"
-        }
-    in {
-        let shadowed = handle Relay
+        handle Relay {
             fetch tag => {
                 innerHits = innerHits + 1 ?: innerHits
                 tag * 100 ?: 0
             }
-        in await(spawn relayBoth(4))
+        }
+        await(spawn relayBoth(3))
+    }
+
+    /// The SAME fiber under the enclosing region alone: tag 3 => "outer3" and 6.
+    let outerOnly = {
+        handle Relay {
+            fetch tag => {
+                outerHits = outerHits + 1 ?: outerHits
+                tag * 2 ?: 0
+            }
+            stamp tag => {
+                stampHits = stampHits + 1 ?: stampHits
+                "outer${tag}"
+            }
+        }
+        await(spawn relayBoth(3))
+    }
+
+    /// The inner region covers only the fiber spawned INSIDE it; the fiber
+    /// spawned after it is back on the enclosing arm. 400 then 8.
+    let restored = {
+        handle Relay {
+            fetch tag => {
+                outerHits = outerHits + 1 ?: outerHits
+                tag * 2 ?: 0
+            }
+            stamp tag => {
+                stampHits = stampHits + 1 ?: stampHits
+                "outer${tag}"
+            }
+        }
+        let shadowed = {
+            handle Relay {
+                fetch tag => {
+                    innerHits = innerHits + 1 ?: innerHits
+                    tag * 100 ?: 0
+                }
+            }
+            await(spawn relayBoth(4))
+        }
         let plain = await(spawn relayBoth(4))
         "${shadowed}/${plain}"
     }
 
     /// Two fibers under one inner region, one carrying the identity tag and one a
     /// negative tag: 0 => 0 and -2 => -200.
-    let paired = handle Relay
-        fetch tag => {
-            outerHits = outerHits + 1 ?: outerHits
-            tag * 2 ?: 0
+    let paired = {
+        handle Relay {
+            fetch tag => {
+                outerHits = outerHits + 1 ?: outerHits
+                tag * 2 ?: 0
+            }
+            stamp tag => {
+                stampHits = stampHits + 1 ?: stampHits
+                "outer${tag}"
+            }
         }
-        stamp tag => {
-            stampHits = stampHits + 1 ?: stampHits
-            "outer${tag}"
+        handle Relay {
+            fetch tag => {
+                innerHits = innerHits + 1 ?: innerHits
+                tag * 100 ?: 0
+            }
         }
-    in handle Relay
-        fetch tag => {
-            innerHits = innerHits + 1 ?: innerHits
-            tag * 100 ?: 0
-        }
-    in {
         let a = await(spawn relayBoth(0))
         let b = await(spawn relayBoth(0 - 2 ?: 0))
         "${a}+${b}"
@@ -932,14 +997,15 @@ fn fiberPipelineTranscriptIsDeterministicCase() = {
 
     /// Each stage's amount is the previous stage's answer plus one, so the cell
     /// walks 1, 3, 7, 15 — the 2^n - 1 sequence, and any reordering breaks it.
-    let piped = handle Tally
-        add amount => {
-            steps = steps + 1 ?: steps
-            running = running + amount ?: running
-            script = "${script}s${steps}=${running};"
-            running
+    let piped = {
+        handle Tally {
+            add amount => {
+                steps = steps + 1 ?: steps
+                running = running + amount ?: running
+                script = "${script}s${steps}=${running};"
+                running
+            }
         }
-    in {
         let a = await(spawn tallyJob(1))
         let b = await(spawn tallyJob(a + 1 ?: a))
         let c = await(spawn tallyJob(b + 1 ?: b))
@@ -949,36 +1015,41 @@ fn fiberPipelineTranscriptIsDeterministicCase() = {
 
     /// A yield BETWEEN two performs in one fiber body: the parked value is handed
     /// straight back, so the second perform adds 20 to the 20 the first answered.
-    let yielded = handle Tally
-        add amount => {
-            steps = steps + 1 ?: steps
-            running = running + amount ?: running
-            script = "${script}s${steps}=${running};"
-            running
+    let yielded = {
+        handle Tally {
+            add amount => {
+                steps = steps + 1 ?: steps
+                running = running + amount ?: running
+                script = "${script}s${steps}=${running};"
+                running
+            }
         }
-    in await(spawn yieldedJob(5))
+        await(spawn yieldedJob(5))
+    }
 
     /// 40 - 35 = 5, and the completion probe must read 1 once the await returned.
-    let probe = handle Tally
-        add amount => {
-            steps = steps + 1 ?: steps
-            running = running + amount ?: running
-            script = "${script}s${steps}=${running};"
-            running
+    let probe = {
+        handle Tally {
+            add amount => {
+                steps = steps + 1 ?: steps
+                running = running + amount ?: running
+                script = "${script}s${steps}=${running};"
+                running
+            }
         }
-    in {
         let f = spawn tallyJob(0 - 35 ?: 0)
         let v = await(f)
         v * 10 + fiberDone(f) ?: 0
     }
 
     /// The same three amounts forwards: prefix sums 2, 6, 12 => 20.
-    let fwd = handle Tally
-        add amount => {
-            forwardTotal = forwardTotal + amount ?: forwardTotal
-            forwardTotal
+    let fwd = {
+        handle Tally {
+            add amount => {
+                forwardTotal = forwardTotal + amount ?: forwardTotal
+                forwardTotal
+            }
         }
-    in {
         let x1 = await(spawn tallyJob(2))
         let x2 = await(spawn tallyJob(4))
         let x3 = await(spawn tallyJob(6))
@@ -987,12 +1058,13 @@ fn fiberPipelineTranscriptIsDeterministicCase() = {
 
     /// ...and backwards: prefix sums 6, 10, 12 => 28. The TOTAL is order-blind,
     /// the prefix sums are not, which is exactly why a sum alone proves nothing.
-    let rev = handle Tally
-        add amount => {
-            reverseTotal = reverseTotal + amount ?: reverseTotal
-            reverseTotal
+    let rev = {
+        handle Tally {
+            add amount => {
+                reverseTotal = reverseTotal + amount ?: reverseTotal
+                reverseTotal
+            }
         }
-    in {
         let y1 = await(spawn tallyJob(6))
         let y2 = await(spawn tallyJob(4))
         let y3 = await(spawn tallyJob(2))

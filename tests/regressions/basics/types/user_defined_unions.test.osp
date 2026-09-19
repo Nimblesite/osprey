@@ -68,25 +68,28 @@ fn outcomeShape(outcomes: List<Outcome>) = match outcomes {
 
 fn auditOutcomes(outcomes: List<Outcome>) = {
     mut trace = ""
-    handle OutcomeAudit
-    observe rendered => { trace = trace + rendered + "|" }
-    in forEachList(outcomes, fn(outcome) => perform OutcomeAudit.observe(describe(outcome)))
+    handle OutcomeAudit {
+        observe rendered => { trace = trace + rendered + "|" }
+    }
+    forEachList(outcomes, fn(outcome) => perform OutcomeAudit.observe(describe(outcome)))
     trace
 }
 
 fn auditIntKeys(items, keys) = {
     mut encoded = 0
-    handle MapLookupAudit
-    observe value => { encoded = encoded * 100 + value ?: encoded }
-    in forEachList(keys, fn(key) => perform MapLookupAudit.observe(valueOr(items, key, 0)))
+    handle MapLookupAudit {
+        observe value => { encoded = encoded * 100 + value ?: encoded }
+    }
+    forEachList(keys, fn(key) => perform MapLookupAudit.observe(valueOr(items, key, 0)))
     encoded
 }
 
 fn auditStringKeys(items, keys) = {
     mut encoded = ""
-    handle MapLookupAudit
-    observe value => { encoded = encoded + value + "/" }
-    in forEachList(keys, fn(key) => perform MapLookupAudit.observe(valueOr(items, key, "missing")))
+    handle MapLookupAudit {
+        observe value => { encoded = encoded + value + "/" }
+    }
+    forEachList(keys, fn(key) => perform MapLookupAudit.observe(valueOr(items, key, "missing")))
     encoded
 }
 

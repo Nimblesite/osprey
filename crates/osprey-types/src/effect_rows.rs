@@ -42,6 +42,19 @@ struct Requirement {
     arguments: Vec<String>,
 }
 
+impl Requirement {
+    /// A requirement keyed by effect identity: the base name plus the
+    /// resolved arguments, so the written spelling `Stash<int>` and `Stash`
+    /// name one effect. Implements [EFFECTS-GENERIC-INSTANTIATION].
+    fn new(effect: &str, operation: &str, arguments: Vec<String>) -> Self {
+        Self {
+            effect: osprey_ast::effect_name::base(effect).to_owned(),
+            operation: operation.to_owned(),
+            arguments,
+        }
+    }
+}
+
 type Requirements = BTreeSet<Requirement>;
 
 /// Provenance is an abstract value, not a runtime value tree. Recursive
@@ -111,6 +124,7 @@ impl CallArguments {
 #[derive(Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 struct Summary {
     required: Requirements,
+    runtime_builtins: BTreeSet<String>,
     parameter_uses: BTreeSet<ParameterUse>,
     unresolved_dynamic_call: bool,
 }
@@ -118,6 +132,7 @@ struct Summary {
 impl Summary {
     fn union(&mut self, other: Self) {
         self.required.extend(other.required);
+        self.runtime_builtins.extend(other.runtime_builtins);
         self.parameter_uses.extend(other.parameter_uses);
         self.unresolved_dynamic_call |= other.unresolved_dynamic_call;
     }
@@ -138,21 +153,18 @@ impl Summary {
             .collect();
         self.required.retain(|r| !excluded.contains(r));
         if !operations.is_empty() {
-            self.parameter_uses = self
-                .parameter_uses
-                .into_iter()
-                .map(|mut use_| {
-                    // A callback requirement is not concrete until its call
-                    // site. Record every operation this handler can discharge.
-                    use_.excluded
-                        .extend(operations.iter().map(|operation| Requirement {
-                            effect: effect.to_string(),
-                            operation: operation.clone(),
-                            arguments: arguments.to_vec(),
+            self.parameter_uses =
+                self.parameter_uses
+                    .into_iter()
+                    .map(|mut use_| {
+                        // A callback requirement is not concrete until its call
+                        // site. Record every operation this handler can discharge.
+                        use_.excluded.extend(operations.iter().map(|operation| {
+                            Requirement::new(effect, operation, arguments.to_vec())
                         }));
-                    use_
-                })
-                .collect();
+                        use_
+                    })
+                    .collect();
         }
         self
     }
@@ -222,6 +234,7 @@ struct Function<'a> {
 
 #[derive(Default)]
 struct Index<'a> {
+    operations: osprey_ast::OperationTable,
     functions: Vec<Function<'a>>,
     qualified: HashMap<String, usize>,
     bare: HashMap<String, Vec<usize>>,
@@ -234,7 +247,10 @@ struct Index<'a> {
 
 impl<'a> Index<'a> {
     fn collect(program: &'a Program) -> Self {
-        let mut index = Self::default();
+        let mut index = Self {
+            operations: osprey_ast::OperationTable::collect(program),
+            ..Self::default()
+        };
         index.collect_stmts(&program.statements, &[]);
         index
     }
@@ -455,6 +471,27 @@ struct CallableEnv {
     /// Results supplied by handlers active while this expression evaluates.
     /// These are dynamic bindings, never captures of a newly created closure.
     handler_returns: BTreeMap<Requirement, Value>,
+    /// `(effect, operation)` pairs an enclosing compile-time handler answers.
+    /// Discharge rewrites those requests away before the residual program
+    /// exists, so they are never dynamic requirements of the code they sit in.
+    static_answers: HashSet<(String, String)>,
+}
+
+impl CallableEnv {
+    /// The environment of a handler's body: under a compile-time handler the
+    /// operations its arms answer are statically discharged there.
+    fn under_handler(&self, effect: &str, arms: &[HandlerArm], stage: osprey_ast::Stage) -> Self {
+        let mut body = self.clone();
+        if stage.is_compile_time() {
+            body.static_answers.extend(arms.iter().map(|arm| {
+                (
+                    osprey_ast::effect_name::base(effect).to_owned(),
+                    arm.operation.clone(),
+                )
+            }));
+        }
+        body
+    }
 }
 
 impl CallableEnv {
@@ -700,11 +737,9 @@ impl Analyzer<'_> {
                 let mut out = self.expressions(arguments, scope, env);
                 out.union(self.named_expressions(named_arguments, scope, env));
                 for instance in self.perform_instance_arguments(effect, *position) {
-                    let _ = out.required.insert(Requirement {
-                        effect: effect.clone(),
-                        operation: operation.clone(),
-                        arguments: instance,
-                    });
+                    let _ = out
+                        .required
+                        .insert(Requirement::new(effect, operation, instance));
                 }
                 out
             }
@@ -712,6 +747,7 @@ impl Analyzer<'_> {
                 effect,
                 arms,
                 body,
+                return_clause,
                 position,
                 ..
             } => {
@@ -728,9 +764,10 @@ impl Analyzer<'_> {
                 );
                 let local = self.handler_body_env(effect, arms, body, *position, scope, env);
                 let body_summary = self.expression(body, scope, &local);
+                let effect = osprey_ast::effect_name::base(effect);
                 if let Some(position) = position {
                     let candidates = body_summary.required.iter().filter(|requirement| {
-                        requirement.effect == *effect && handled.contains(&requirement.operation)
+                        requirement.effect == effect && handled.contains(&requirement.operation)
                             && self.instances.argument_types.contains_key(&requirement.arguments)
                     }).map(|requirement| requirement.arguments.clone());
                     self.instances.handler_inference.borrow_mut()
@@ -744,6 +781,10 @@ impl Analyzer<'_> {
                 for arm in arms {
                     let local = self.handler_arm_env(effect, arm, body, scope, env);
                     out.union(self.expression(&arm.body, scope, &local));
+                }
+                if let Some(clause) = return_clause {
+                    let callee = self.callable(clause, scope, env).unwrap_or(Callable::Unknown);
+                    out.union(self.invoke_with_values(callee, &[self.value(body, scope, &local)]));
                 }
                 out
             }
@@ -1029,6 +1070,7 @@ impl Analyzer<'_> {
                 projection,
             } => Summary {
                 required: Requirements::new(),
+                runtime_builtins: BTreeSet::new(),
                 parameter_uses: [ParameterUse {
                     level,
                     index,
@@ -1333,6 +1375,7 @@ impl Analyzer<'_> {
                 self.index
                     .resolve(scope, name)
                     .map(|id| self.function_value(id))
+                    .or_else(|| runtime_builtin_value(name))
             }
             Expr::Path(path) => self
                 .index
@@ -1484,11 +1527,7 @@ impl Analyzer<'_> {
             } => {
                 let mut merged = None;
                 for arguments in self.perform_instance_arguments(effect, *position) {
-                    let requirement = Requirement {
-                        effect: effect.clone(),
-                        operation: operation.clone(),
-                        arguments,
-                    };
+                    let requirement = Requirement::new(effect, operation, arguments);
                     if let Some(value) = env.handler_returns.get(&requirement) {
                         merge_optional_value(&mut merged, value.clone());
                     } else {
@@ -1517,12 +1556,32 @@ impl Analyzer<'_> {
                 effect,
                 arms,
                 body,
+                return_clause,
                 position,
                 ..
             } => {
                 let local = self.handler_body_env(effect, arms, body, *position, scope, env);
-                let mut merged = self.value(body, scope, &local);
+                let normal = self.value(body, scope, &local);
+                let mut merged = if let Some(clause) = return_clause {
+                    self.called_value(
+                        self.callable(clause, scope, env),
+                        CallArguments {
+                            positional: vec![normal],
+                            named: vec![],
+                        },
+                    )
+                } else {
+                    normal
+                };
                 for arm in arms {
+                    if !self
+                        .index
+                        .operations
+                        .mode_of(effect, &arm.operation)
+                        .is_control()
+                    {
+                        continue;
+                    }
                     let local = self.handler_arm_env(effect, arm, body, scope, env);
                     if let Some(value) = self.value(&arm.body, scope, &local) {
                         merge_optional_value(&mut merged, value);
@@ -1618,11 +1677,21 @@ impl Analyzer<'_> {
                     self.flow_callable_assignments(value, scope, env);
                 }
             }
-            Expr::Handler { arms, body, .. } => {
+            Expr::Handler {
+                arms,
+                body,
+                return_clause,
+                ..
+            } => {
                 for arm in arms {
                     self.flow_callable_assignments(&arm.body, scope, env);
                 }
                 self.flow_callable_assignments(body, scope, env);
+                if let Some(clause) = return_clause {
+                    if let Expr::Lambda { body, .. } = clause.as_ref() {
+                        self.flow_callable_assignments(body, scope, env);
+                    }
+                }
             }
             Expr::Send { channel, value } => {
                 let sites = self
@@ -1856,11 +1925,7 @@ impl Analyzer<'_> {
                 .returned_value(&arm.body, scope, &mut arm_env)
                 .unwrap_or_else(Value::unknown_callable);
             let _ = local.handler_returns.insert(
-                Requirement {
-                    effect: effect.to_owned(),
-                    operation: arm.operation.clone(),
-                    arguments: arguments.clone(),
-                },
+                Requirement::new(effect, &arm.operation, arguments.clone()),
                 value,
             );
         }
@@ -2148,12 +2213,38 @@ fn method_thunk(mut summary: Summary, mut returned: Option<Value>) -> Value {
 fn builtin_return_shape(name: &str) -> Option<Value> {
     // Effect summaries revisit calls during fixed-point inference and warning
     // comparisons. Their immutable builtin signatures need one shared table.
-    static BUILTINS: std::sync::LazyLock<crate::env::TypeEnv> =
-        std::sync::LazyLock::new(crate::builtins::base_env);
-    let crate::ty::Type::Fun { ret, .. } = &BUILTINS.get(name)?.ty else {
+    let crate::ty::Type::Fun { ret, .. } = &builtin_environment().get(name)?.ty else {
         return None;
     };
     value_shape(ret)
+}
+
+fn builtin_environment() -> &'static crate::env::TypeEnv {
+    static BUILTINS: std::sync::LazyLock<crate::env::TypeEnv> =
+        std::sync::LazyLock::new(crate::builtins::base_env);
+    &BUILTINS
+}
+
+fn runtime_builtin_value(name: &str) -> Option<Value> {
+    let env = builtin_environment();
+    if !env.is_runtime_builtin(name) {
+        return None;
+    }
+    let crate::ty::Type::Fun { params, ret } = &env.get(name)?.ty else {
+        return None;
+    };
+    Some(Value::from_callable(Callable::Known(Box::new(
+        KnownCallable {
+            parameters: (0..params.len())
+                .map(|index| format!("arg{index}"))
+                .collect(),
+            summary: Summary {
+                runtime_builtins: [name.to_owned()].into_iter().collect(),
+                ..Summary::default()
+            },
+            returned: value_shape(ret).map(Box::new),
+        },
+    ))))
 }
 
 fn value_shape(ty: &crate::ty::Type) -> Option<Value> {
@@ -2423,6 +2514,7 @@ fn callable_summary(callable: &Callable) -> Summary {
             projection,
         } => Summary {
             required: Requirements::new(),
+            runtime_builtins: BTreeSet::new(),
             parameter_uses: [ParameterUse {
                 level: *level,
                 index: *index,
@@ -3057,8 +3149,24 @@ fn gpu_kernel_verdict(
         ));
     };
     let row = analyzer.invoke_with_values(callee, &[]);
-    if !row.required.is_empty() {
-        let performed: Vec<String> = row.required.iter().map(requirement_name).collect();
+    // Before discharge the kernel's row still names the static operations an
+    // enclosing `handle static` answers; those are rewritten away, so only the
+    // rest is dynamic. After discharge no static handler remains and an
+    // unanswered static request is exactly a residual requirement.
+    let dynamic: Vec<&Requirement> = row
+        .required
+        .iter()
+        .filter(|requirement| {
+            !env.static_answers
+                .contains(&(requirement.effect.clone(), requirement.operation.clone()))
+        })
+        .collect();
+    if !dynamic.is_empty() || !row.runtime_builtins.is_empty() {
+        let performed: Vec<String> = dynamic
+            .into_iter()
+            .map(requirement_name)
+            .chain(row.runtime_builtins)
+            .collect();
         return Some(format!(
             "kernel body is not stage-legal; it requires dynamic effects: {}",
             performed.join(", ")
@@ -3093,12 +3201,11 @@ fn validate_handler_arms(
         effect,
         arms,
         body,
-        position,
+        return_clause,
+        stage,
         ..
     } = expression
     {
-        let handler_arguments =
-            analyzer.instance_arguments(effect, *position, &analyzer.instances.handlers, "handler");
         // The row [MULTI-REPLAY-COARSE] reads: every operation the handled
         // expression requires, before this handler discharges any of them.
         let handled_row = operation_pairs(&analyzer.expression(body, scope, env));
@@ -3113,22 +3220,32 @@ fn validate_handler_arms(
             ));
             let local = analyzer.handler_arm_env(effect, arm, body, scope, env);
             let row = analyzer.expression(&arm.body, scope, &local);
-            if row.required.iter().any(|requirement| {
-                requirement.effect == *effect
-                    && requirement.operation == arm.operation
-                    && requirement.arguments == handler_arguments
-            }) {
+            if stage.is_compile_time() && !row.runtime_builtins.is_empty() {
                 errors.push(
                     TypeError::new(format!(
-                        "handler arm `{effect}.{}` performs `{effect}` while that handler is active; this would recursively re-enter the same handler",
-                        arm.operation
+                        "static handler arm `{effect}.{}` requires runtime builtins: {}",
+                        arm.operation,
+                        row.runtime_builtins
+                            .into_iter()
+                            .collect::<Vec<_>>()
+                            .join(", ")
                     ))
                     .with_pos(arm.position),
                 );
             }
+            // An arm performing its OWN operation forwards the request to the
+            // enclosing handler — the arm's requirements stay obligations of
+            // the region around this handler, which is exactly how a handler
+            // delegates part of an interface outward. With no outer handler the
+            // requirement survives to program entry and is reported there as an
+            // unhandled operation. Implements [EFFECTS-STATIC-DISCHARGE].
             validate_handler_arms(analyzer, axis, &arm.body, scope, &local, errors);
         }
-        validate_handler_arms(analyzer, axis, body, scope, env, errors);
+        let body_env = env.under_handler(effect, arms, *stage);
+        validate_handler_arms(analyzer, axis, body, scope, &body_env, errors);
+        if let Some(clause) = return_clause {
+            validate_handler_arms(analyzer, axis, clause, scope, env, errors);
+        }
         return;
     }
     walk_children(expression, |child| {
@@ -3338,11 +3455,19 @@ fn walk_children<'a>(expression: &'a Expr, mut visit: impl FnMut(&'a Expr)) {
                 visit(&argument.value);
             }
         }
-        Expr::Handler { arms, body, .. } => {
+        Expr::Handler {
+            arms,
+            body,
+            return_clause,
+            ..
+        } => {
             for arm in arms {
                 visit(&arm.body);
             }
             visit(body);
+            if let Some(clause) = return_clause {
+                visit(clause);
+            }
         }
         Expr::Integer(_)
         | Expr::Float(_)

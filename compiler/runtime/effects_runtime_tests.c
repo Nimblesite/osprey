@@ -23,15 +23,9 @@
 
 size_t osp_arc_live_objects(void);
 
-int __osprey_handler_push(const char *effect_name, const char *operation_name,
-                          void *handler_func_ptr, void *env);
 int __osprey_handler_pop(void);
-void *__osprey_handler_lookup(const char *effect_name,
-                              const char *operation_name);
-void *__osprey_handler_lookup_env(const char *effect_name,
-                                  const char *operation_name);
-int __osprey_handler_stack_depth(void);
-void __osprey_handler_stack_cleanup(void);
+void *__osprey_handler_lookup(int operation_id);
+void *__osprey_handler_lookup_env(int operation_id);
 void *__osprey_coro_new(void *env);
 void __osprey_coro_start(void *coro, int64_t (*body)(void *), void *body_env,
                          HandlerSnapshot *snapshot);
@@ -54,52 +48,85 @@ static long g_checks = 0;
     assert(c);                                                                 \
   } while (0)
 
-#define MAX_DEPTH 1024   // mirrors MAX_HANDLER_STACK_DEPTH
-#define NAME_MAX_LEN 128 // mirrors MAX_EFFECT_NAME_LENGTH (incl. NUL)
-#define LONG_NAME_LEN 200
+#define MAX_DEPTH 1024 // mirrors MAX_HANDLER_STACK_DEPTH
+
+// Operation ids as codegen would intern them: one per (effect, operation).
+enum {
+  OP_STATE_GET,
+  OP_STATE_PUT,
+  OP_LOG_WRITE,
+  OP_LOG_GET,
+  OP_ARM_LOCAL,
+  OP_MISSING,
+  OP_A,
+  OP_B,
+  OP_C,
+  OP_DEEP,
+  OP_RE,
+  OP_XFER,
+  OP_LAST_VALID = OSP_MAX_OPERATION_IDS - 1,
+  OP_OUT_OF_RANGE = OSP_MAX_OPERATION_IDS
+};
 
 static void fn_a(void) {}
 static void fn_b(void) {}
 static int env_a, env_b;
 
+#include "effects_scope_tests.h"
+
 // Push/lookup/pop with exact depths; the INNERMOST matching handler wins and
 // its fnptr and env always come from the SAME entry.
 static void t_stack_shadowing(void) {
-  CHECK(__osprey_handler_stack_depth() == 0);
-  CHECK(__osprey_handler_lookup("State", "get") == NULL);
-  CHECK(__osprey_handler_push("State", "get", (void *)fn_a, &env_a) == 0);
-  CHECK(__osprey_handler_stack_depth() == 1);
-  CHECK(__osprey_handler_lookup("State", "get") == (void *)fn_a);
-  CHECK(__osprey_handler_lookup_env("State", "get") == &env_a);
-  CHECK(__osprey_handler_lookup("State", "put") == NULL); // op must match too
-  CHECK(__osprey_handler_lookup("Log", "get") == NULL);
-  CHECK(__osprey_handler_push("State", "get", (void *)fn_b, &env_b) == 0);
-  CHECK(__osprey_handler_lookup("State", "get") == (void *)fn_b);
-  CHECK(__osprey_handler_lookup_env("State", "get") == &env_b);
-  CHECK(__osprey_handler_stack_depth() == 2);
+  CHECK(__osprey_handler_depth() == 0);
+  CHECK(__osprey_handler_lookup(OP_STATE_GET) == NULL);
+  CHECK(__osprey_handler_push_scoped(OP_STATE_GET, (void *)fn_a, &env_a, __osprey_handler_depth()) == 0);
+  CHECK(__osprey_handler_depth() == 1);
+  CHECK(__osprey_handler_lookup(OP_STATE_GET) == (void *)fn_a);
+  CHECK(__osprey_handler_lookup_env(OP_STATE_GET) == &env_a);
+  CHECK(__osprey_handler_lookup(OP_STATE_PUT) == NULL); // op must match too
+  CHECK(__osprey_handler_lookup(OP_LOG_GET) == NULL);
+  CHECK(__osprey_handler_push_scoped(OP_STATE_GET, (void *)fn_b, &env_b, __osprey_handler_depth()) == 0);
+  CHECK(__osprey_handler_lookup(OP_STATE_GET) == (void *)fn_b);
+  CHECK(__osprey_handler_lookup_env(OP_STATE_GET) == &env_b);
+  CHECK(__osprey_handler_depth() == 2);
   CHECK(__osprey_handler_pop() == 0);
-  CHECK(__osprey_handler_lookup("State", "get") == (void *)fn_a);
-  CHECK(__osprey_handler_lookup_env("State", "get") == &env_a);
+  CHECK(__osprey_handler_lookup(OP_STATE_GET) == (void *)fn_a);
+  CHECK(__osprey_handler_lookup_env(OP_STATE_GET) == &env_a);
   CHECK(__osprey_handler_pop() == 0);
-  CHECK(__osprey_handler_stack_depth() == 0);
+  CHECK(__osprey_handler_depth() == 0);
   CHECK(__osprey_handler_pop() == -1); // underflow is rejected, not UB
-  CHECK(__osprey_handler_stack_depth() == 0);
+  CHECK(__osprey_handler_depth() == 0);
 }
 
-// Names are stored truncated to the 127-char capacity: the truncated spelling
-// resolves, the full over-long spelling does not. Pins the name-length
-// contract instead of leaving it as silent behavior.
-static void t_name_truncation(void) {
-  char full[LONG_NAME_LEN + 1];
-  memset(full, 'E', LONG_NAME_LEN);
-  full[LONG_NAME_LEN] = '\0';
-  char truncated[NAME_MAX_LEN];
-  memcpy(truncated, full, NAME_MAX_LEN - 1);
-  truncated[NAME_MAX_LEN - 1] = '\0';
-  CHECK(__osprey_handler_push(full, "op", (void *)fn_a, NULL) == 0);
-  CHECK(__osprey_handler_lookup(truncated, "op") == (void *)fn_a);
-  CHECK(__osprey_handler_lookup(full, "op") == NULL);
-  CHECK(__osprey_handler_lookup_env(truncated, "op") == NULL); // no captures
+// Lookup is by operation id, not by stack position: an entry hides only the
+// entries of ITS operation, and popping it uncovers exactly the one it hid,
+// however the two operations interleave on the stack.
+static void t_evidence_shadows_by_operation(void) {
+  CHECK(__osprey_handler_push_scoped(OP_A, (void *)fn_a, &env_a, __osprey_handler_depth()) == 0);
+  CHECK(__osprey_handler_push_scoped(OP_B, (void *)fn_b, &env_b, __osprey_handler_depth()) == 0);
+  CHECK(__osprey_handler_push_scoped(OP_A, (void *)fn_b, NULL, __osprey_handler_depth()) == 0);
+  CHECK(__osprey_handler_lookup(OP_A) == (void *)fn_b);
+  CHECK(__osprey_handler_lookup_env(OP_A) == NULL);
+  CHECK(__osprey_handler_lookup(OP_B) == (void *)fn_b);
+  CHECK(__osprey_handler_pop() == 0);
+  CHECK(__osprey_handler_lookup(OP_A) == (void *)fn_a);
+  CHECK(__osprey_handler_lookup_env(OP_A) == &env_a);
+  CHECK(__osprey_handler_lookup(OP_B) == (void *)fn_b);
+  CHECK(__osprey_handler_pop() == 0 && __osprey_handler_pop() == 0);
+  CHECK(__osprey_handler_lookup(OP_A) == NULL && __osprey_handler_lookup(OP_B) == NULL);
+}
+
+// The id space is bounded: the last id in range works like any other, and an
+// id past the bound is rejected by push and misses on lookup instead of
+// indexing off the end of the evidence table.
+static void t_operation_id_bound(void) {
+  CHECK(__osprey_handler_push_scoped(OP_LAST_VALID, (void *)fn_a, NULL, __osprey_handler_depth()) == 0);
+  CHECK(__osprey_handler_lookup(OP_LAST_VALID) == (void *)fn_a);
+  CHECK(__osprey_handler_push_scoped(OP_OUT_OF_RANGE, (void *)fn_a, NULL, __osprey_handler_depth()) == -1);
+  CHECK(__osprey_handler_push_scoped(-1, (void *)fn_a, NULL, __osprey_handler_depth()) == -1);
+  CHECK(__osprey_handler_depth() == 1);
+  CHECK(__osprey_handler_lookup(OP_OUT_OF_RANGE) == NULL);
+  CHECK(__osprey_handler_lookup_env(-1) == NULL);
   CHECK(__osprey_handler_pop() == 0);
 }
 
@@ -107,31 +134,31 @@ static void t_name_truncation(void) {
 // leaves the depth unchanged, and every entry pops back off cleanly.
 static void t_overflow_exact(void) {
   for (int i = 0; i < MAX_DEPTH; i++) {
-    CHECK(__osprey_handler_push("Deep", "op", (void *)fn_a, NULL) == 0);
+    CHECK(__osprey_handler_push_scoped(OP_DEEP, (void *)fn_a, NULL, __osprey_handler_depth()) == 0);
   }
-  CHECK(__osprey_handler_stack_depth() == MAX_DEPTH);
-  CHECK(__osprey_handler_push("Deep", "op", (void *)fn_a, NULL) == -1);
-  CHECK(__osprey_handler_stack_depth() == MAX_DEPTH);
+  CHECK(__osprey_handler_depth() == MAX_DEPTH);
+  CHECK(__osprey_handler_push_scoped(OP_DEEP, (void *)fn_a, NULL, __osprey_handler_depth()) == -1);
+  CHECK(__osprey_handler_depth() == MAX_DEPTH);
   for (int i = 0; i < MAX_DEPTH; i++) {
     CHECK(__osprey_handler_pop() == 0);
   }
-  CHECK(__osprey_handler_stack_depth() == 0);
+  CHECK(__osprey_handler_depth() == 0);
 }
 
 // Snapshot freezes the stack; restore replaces the CURRENT stack with the
 // frozen one (entries pushed after the snapshot disappear).
 static void t_snapshot_restore(void) {
-  CHECK(__osprey_handler_push("A", "op", (void *)fn_a, &env_a) == 0);
-  CHECK(__osprey_handler_push("B", "op", (void *)fn_b, &env_b) == 0);
+  CHECK(__osprey_handler_push_scoped(OP_A, (void *)fn_a, &env_a, __osprey_handler_depth()) == 0);
+  CHECK(__osprey_handler_push_scoped(OP_B, (void *)fn_b, &env_b, __osprey_handler_depth()) == 0);
   void *snap = __osprey_handler_snapshot();
   CHECK(snap != NULL);
-  CHECK(__osprey_handler_push("C", "op", (void *)fn_a, NULL) == 0);
-  CHECK(__osprey_handler_stack_depth() == 3);
+  CHECK(__osprey_handler_push_scoped(OP_C, (void *)fn_a, NULL, __osprey_handler_depth()) == 0);
+  CHECK(__osprey_handler_depth() == 3);
   __osprey_handler_restore(snap); // frees snap
-  CHECK(__osprey_handler_stack_depth() == 2);
-  CHECK(__osprey_handler_lookup("C", "op") == NULL);
-  CHECK(__osprey_handler_lookup("B", "op") == (void *)fn_b);
-  CHECK(__osprey_handler_lookup_env("A", "op") == &env_a);
+  CHECK(__osprey_handler_depth() == 2);
+  CHECK(__osprey_handler_lookup(OP_C) == NULL);
+  CHECK(__osprey_handler_lookup(OP_B) == (void *)fn_b);
+  CHECK(__osprey_handler_lookup_env(OP_A) == &env_a);
   CHECK(__osprey_handler_pop() == 0 && __osprey_handler_pop() == 0);
   __osprey_handler_restore(NULL); // tolerated
 }
@@ -139,9 +166,9 @@ static void t_snapshot_restore(void) {
 // After cleanup the thread's stack re-initializes lazily and works again.
 static void t_cleanup_reinit(void) {
   __osprey_handler_stack_cleanup();
-  CHECK(__osprey_handler_stack_depth() == 0);
-  CHECK(__osprey_handler_push("Re", "op", (void *)fn_a, NULL) == 0);
-  CHECK(__osprey_handler_lookup("Re", "op") == (void *)fn_a);
+  CHECK(__osprey_handler_depth() == 0);
+  CHECK(__osprey_handler_push_scoped(OP_RE, (void *)fn_a, NULL, __osprey_handler_depth()) == 0);
+  CHECK(__osprey_handler_lookup(OP_RE) == (void *)fn_a);
   CHECK(__osprey_handler_pop() == 0);
 }
 
@@ -252,21 +279,21 @@ static void t_mailbox_owns_managed_slots(void) {
 // what makes `perform` inside a handled fiber resolve at all.
 static int64_t body_sees_handlers(void *raw) {
   (void)raw;
-  int see = __osprey_handler_lookup("Xfer", "op") == (void *)fn_b;
-  int depth_one = __osprey_handler_stack_depth() == 1;
+  int see = __osprey_handler_lookup(OP_XFER) == (void *)fn_b;
+  int depth_one = __osprey_handler_depth() == 1;
   __osprey_handler_stack_cleanup(); // this thread's copy dies with it
   return see && depth_one ? 1 : 0;
 }
 
 static void t_coro_snapshot_transfer(void) {
-  CHECK(__osprey_handler_push("Xfer", "op", (void *)fn_b, NULL) == 0);
+  CHECK(__osprey_handler_push_scoped(OP_XFER, (void *)fn_b, NULL, __osprey_handler_depth()) == 0);
   void *coro = __osprey_coro_new(NULL);
   __osprey_coro_start(coro, body_sees_handlers, NULL, __osprey_handler_snapshot());
   CHECK(__osprey_coro_done(coro) == 1);   // never performed: ran straight through
   CHECK(__osprey_coro_result(coro) == 1); // ...and saw the parent's handler
   __osprey_coro_free(coro);
   CHECK(__osprey_handler_pop() == 0); // parent stack untouched by the child
-  CHECK(__osprey_handler_stack_depth() == 0);
+  CHECK(__osprey_handler_depth() == 0);
 }
 
 static int64_t body_one_perform(void *raw) {
@@ -536,7 +563,9 @@ int main(void) {
   (void)setenv("OSPREY_ARC_DEBUG", "1", 1);
   osp_mem_boot();
   t_stack_shadowing();
-  t_name_truncation();
+  t_handler_scope();
+  t_evidence_shadows_by_operation();
+  t_operation_id_bound();
   t_overflow_exact();
   t_snapshot_restore();
   t_cleanup_reinit();

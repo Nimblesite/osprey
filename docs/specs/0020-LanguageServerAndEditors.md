@@ -169,10 +169,10 @@ Resolution order for the symbol under the cursor:
 Every binding is hoverable:
 
 - **Collection is deep.** `collect_all_symbols` walks _into_ every
-  expression that can contain a block — function bodies, `handle … in …`,
+  expression that can contain a block — function bodies, scoped handler blocks,
   `match`/`select` arms, lambdas, `spawn`/`await`, interpolations, call
   arguments, list/map/object literals — so a `let` nested anywhere (e.g. inside
-  an HTTP handler's `in { … }` block) is found. A cursor-line/“nearest binding
+  a handler arm's block) is found. A cursor-line/“nearest binding
   at or before the cursor” rule resolves shadowing.
 - **Type comes from inference when unannotated.** An annotated `let x: T = …`
   shows `x: T`. An unannotated `let x = f()` shows the **inferred** type: the
@@ -300,13 +300,13 @@ for `Other.mark`. The unsaved open buffer is searched first, followed by project
 siblings through `[LSP-WORKSPACE]`; a standalone file searches only itself.
 
 `[LSP-EFFECT-MULTIPLICITY]` Multiplicity
-([MULTI-AXIS](0035-StagedEffects.md#multiplicity--multi-axis)) adds two reports,
+([MULTI-AXIS](0017-AlgebraicEffects.md#multiplicity--multi-axis)) adds two reports,
 both this query read in the opposite direction.
 
 On a handler arm, `textDocument/implementation` returns every `perform` site the
 arm can answer. For an arm of a `many` operation that set IS the replay set the
 author is responsible for, so the server surfaces it before the arm is written
-([MULTI-TRACE](0035-StagedEffects.md#effect-trace--multi-trace)).
+([MULTI-TRACE](0017-AlgebraicEffects.md#effect-trace--multi-trace)).
 
 On a handler region whose arms are all tail-resumptive over operations declared
 `once`, the server publishes an informational diagnostic:
@@ -317,11 +317,11 @@ remove it from the runtime
 ```
 
 It is a hint and never a promotion:
-[STAGE-ROW-DISCHARGE](0035-StagedEffects.md#rows-and-discharge--stage-row)
+[STAGE-ROW-DISCHARGE](0017-AlgebraicEffects.md#rows-and-discharge--stage-row)
 forbids implicit promotion in either direction, and the server MUST NOT offer a
 code action that changes the stage of an effect used elsewhere in the project
 without the workspace-wide check of `[LSP-WORKSPACE]`
-([MULTI-STAGE](0035-StagedEffects.md#relation-to-stage--multi-stage)).
+([MULTI-STAGE](0017-AlgebraicEffects.md#relation-to-stage--multi-stage)).
 
 ## Answering in the authoring flavor `[LSP-FLAVOR-RENDER]`
 

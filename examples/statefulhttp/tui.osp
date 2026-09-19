@@ -209,12 +209,13 @@ fn main() = {
     mut status = "ready"  // Model: the flash line
     mut seq = 0           // Model: client-side add counter
 
-    handle Diag
+    handle Diag {
         log line => {
             logBuf = "${logBuf}${line}\n"
             let _w = writeFile(diagFile(), logBuf)
         }
-    in handle Model
+    }
+    handle Model {
         items       => cache
         setItems s  => { cache = s }
         sel         => cursor
@@ -225,18 +226,20 @@ fn main() = {
             seq = (seq + 1) ?: seq
             seq
         }
-    in handle Net
+    }
+    handle Net {
         fetch    => httpFetch()
         push t   => httpPush(t)
-    in handle Term
+    }
+    handle Term {
         readKey  => termReadKey()
         raw on   => termRawMode(on)
-    in handle Out
-        line s   => print(s)
-    in {
-        perform Diag.log("=== osprey tui session — server ${baseUrl()} ===")
-        perform Term.raw(1)
-        perform Model.setItems(perform Net.fetch())
-        loop()
     }
+    handle Out {
+        line s   => print(s)
+    }
+    perform Diag.log("=== osprey tui session — server ${baseUrl()} ===")
+    perform Term.raw(1)
+    perform Model.setItems(perform Net.fetch())
+    loop()
 }

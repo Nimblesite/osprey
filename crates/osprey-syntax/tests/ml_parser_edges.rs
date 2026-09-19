@@ -342,18 +342,24 @@ fn the_result_default_lowers_to_an_exhaustive_result_match() {
 
 // ─── effects ────────────────────────────────────────────────────────────────
 
-/// `resume ()` resumes with unit; a bare `resume` on its own line means the
-/// same thing, and an argument resumes with that value ([FLAVOR-ML-EFFECT]).
+/// `resume ()` resumes with unit and an argument resumes with that value
+/// ([FLAVOR-ML-EFFECT]). A bare `resume` names the continuation as a value,
+/// which the language does not offer, so it is rejected by name rather than
+/// silently read as a unit resumption.
 #[test]
 fn resume_spans_its_unit_and_valued_forms() {
     let handler = |arm: &str| {
-        format!("effect Ask\n    get : int => int\n\nmain =\n    handle Ask\n        get tag => {arm}\n    in perform Ask.get 1\n")
+        format!("effect Ask\n    control get : int => int\n\nmain =\n    handle Ask\n        get tag => {arm}\n    perform Ask.get 1\n")
     };
-    for arm in ["resume ()", "resume", "resume (tag * 10)"] {
+    for arm in ["resume ()", "resume (tag * 10)"] {
         assert_eq!(
             ml_ok(&handler(arm)).len(),
             2,
             "the effect and its handler must both parse for arm {arm:?}"
         );
     }
+    assert!(
+        ml_errors(&handler("resume")).contains("use `resume ()` to invoke with Unit"),
+        "a bare `resume` is an owned continuation, which does not exist"
+    );
 }

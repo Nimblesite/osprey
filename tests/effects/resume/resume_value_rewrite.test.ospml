@@ -1,7 +1,7 @@
 (** Supply lets a handler choose each integer observed by the performer. *)
 effect Supply
     (** Request the next scripted value for `label`. *)
-    next : string => int
+    control next : string => int
 
 (** This helper sums three values supplied through explicit resume calls. *)
 total : Unit -> int ! Supply
@@ -14,7 +14,7 @@ total () =
 (** Relay proves generic operation values unbox at two distinct instantiations. *)
 effect Relay T
     (** Request one value of the instantiated element type `T`. *)
-    ask : Unit => T
+    control ask : Unit => T
 
 (** This helper receives a string from Relay<string>. *)
 echoWord : Unit -> string ! Relay<string>
@@ -23,7 +23,7 @@ echoWord () = perform Relay.ask ()
 (** Checked proves resume supplies a whole Result rather than its payload. *)
 effect Checked
     (** Halve `value`, reporting an odd input as an `Error`. *)
-    half : int => Result<int, string>
+    control half : int => Result<int, string>
 
 (** This helper defaults the Result returned by a handled operation. *)
 runChecked : Unit -> int ! Checked
@@ -52,7 +52,7 @@ resumeValueRewriteCase () =
                 settled := "${settled}${label}:${toString answer}|"
                 supplyTranscript := "${supplyTranscript}seen after ${label}: ${toString answer}\n"
                 answer
-        in total ()
+        total ()
 
     mut wordRelayCalls = 0
     mut wordSettled = ""
@@ -65,7 +65,7 @@ resumeValueRewriteCase () =
                 wordSettled := answer
                 relayTranscript := "${relayTranscript}relay answered: ${answer}\n"
                 answer
-        in echoWord ()
+        echoWord ()
 
     mut checkedCalls = 0
     checked =
@@ -73,7 +73,7 @@ resumeValueRewriteCase () =
             half n =>
                 checkedCalls := checkedCalls + 1 ?: checkedCalls
                 resume (Success(value = n))
-        in runChecked ()
+        runChecked ()
 
     mut numRelayCalls = 0
     num =
@@ -81,7 +81,7 @@ resumeValueRewriteCase () =
             ask =>
                 numRelayCalls := numRelayCalls + 1 ?: numRelayCalls
                 resume 41
-        in echoNum ()
+        echoNum ()
     legacyTranscript = "${supplyTranscript}result=${toString result}\n${relayTranscript}word=${word}\nchecked=${toString checked} num=${toString num}\n"
 
     (* Preserve the complete ten-line golden transcript and every output phase. *)
@@ -123,7 +123,7 @@ test "resume rewrites values across scalar, Result, and generic effects" resumeV
 (** Script hands the performer one scripted integer per numbered slot. *)
 effect Script
     (** Supply the value the performer must observe for `slot`. *)
-    read : int => int
+    control read : int => int
 
 (** Four reads weighted 1000/100/10/1, so a value delivered to the wrong perform
     site cannot cancel out against another one. *)
@@ -161,7 +161,7 @@ resumeSubstitutesSuppliedValueCase () =
                 answer = resume value
                 seen := "${seen}${toString slot}:${toString answer}|"
                 answer
-        in weightedReads ()
+        weightedReads ()
 
     mut steadyReads = 0
     steady =
@@ -169,7 +169,7 @@ resumeSubstitutesSuppliedValueCase () =
             read _slot =>
                 steadyReads := steadyReads + 1 ?: steadyReads
                 resume 1
-        in weightedReads ()
+        weightedReads ()
 
     mut zeroReads = 0
     zeroed =
@@ -177,7 +177,7 @@ resumeSubstitutesSuppliedValueCase () =
             read _slot =>
                 zeroReads := zeroReads + 1 ?: zeroReads
                 resume 0
-        in weightedReads ()
+        weightedReads ()
 
     (* 660 is the weighted head (0 + 700 - 40); the unit slot adds the final 7.
         The rejected values are the answers a broken delivery would produce: 10 is
@@ -231,7 +231,7 @@ test "resume substitutes exactly the value each arm supplied" resumeSubstitutesS
 (** Layer lets each arm adjust the answer its resumed continuation produced. *)
 effect Layer
     (** Supply the value for `slot`; the arm then adjusts the completed answer. *)
-    fetch : int => int
+    control fetch : int => int
 
 (** Three fetches weighted 100/10/1, so the body's own answer is unambiguous. *)
 layered () =
@@ -265,7 +265,7 @@ resumeAnswerComposesLifoCase () =
                 adjusted = (answer + slot) ?: answer
                 returned := "${returned}${toString slot}:${toString adjusted}|"
                 adjusted
-        in layered ()
+        layered ()
 
     mut plainCalls = 0
     plain =
@@ -273,7 +273,7 @@ resumeAnswerComposesLifoCase () =
             fetch slot =>
                 plainCalls := plainCalls + 1 ?: plainCalls
                 resume slot
-        in layered ()
+        layered ()
 
     mut soloCalls = 0
     mut soloObserved = 0
@@ -284,7 +284,7 @@ resumeAnswerComposesLifoCase () =
                 answer = resume slot
                 soloObserved := answer
                 (answer * 3) ?: answer
-        in soloLayer ()
+        soloLayer ()
 
     (* 124 is the answer if every arm saw the raw body value instead of the
         next-inner arm's value; 126 is the answer if only the innermost
@@ -337,13 +337,13 @@ test "post-resume adjustments compose into the region answer" resumeAnswerCompos
 (** Scalar carries one operation per scalar payload kind a resume can supply. *)
 effect Scalar
     (** Supply the integer the caller must observe for `step`. *)
-    count : int => int
+    control count : int => int
     (** Supply the float the caller must observe for `step`. *)
-    ratio : int => float
+    control ratio : int => float
     (** Supply the boolean the caller must observe for `step`. *)
-    flag : int => bool
+    control flag : int => bool
     (** Acknowledge `step` with nothing at all. *)
-    beat : int => Unit
+    control beat : int => Unit
 
 (** Four integer supplies rendered in order: zero, negative, large, duplicate. *)
 countBody () =
@@ -384,7 +384,7 @@ resumeScalarPayloadsCase () =
                     _ => (0 - 9) ?: 0
                 countGave := "${countGave}${toString value}|"
                 resume value
-        in countBody ()
+        countBody ()
 
     mut loneCalls = 0
     lone =
@@ -392,7 +392,7 @@ resumeScalarPayloadsCase () =
             ratio _step =>
                 loneCalls := loneCalls + 1 ?: loneCalls
                 resume 2.5
-        in loneRatio ()
+        loneRatio ()
 
     mut ratioCalls = 0
     mut ratioSlots = ""
@@ -411,7 +411,7 @@ resumeScalarPayloadsCase () =
                 ratioSettled := "${ratioSettled}${toString step}|"
                 lastRatioAnswer := answer
                 answer
-        in ratioBody ()
+        ratioBody ()
 
     (* "0/-9/1000000/-9" is 15 bytes; "/0/" would appear only if the large
         supply had been dropped, and "|9|" only if a sign had been lost. *)
@@ -496,7 +496,7 @@ resumeBoolAndUnitPayloadsCase () =
                     false => "F"
                 flagGave := "${flagGave}${mark}|"
                 resume value
-        in flagBody ()
+        flagBody ()
 
     mut routeCalls = 0
     mut routeGave = ""
@@ -512,7 +512,7 @@ resumeBoolAndUnitPayloadsCase () =
                     false => "F"
                 routeGave := "${routeGave}${mark}|"
                 resume value
-        in routes ()
+        routes ()
 
     mut beats = 0
     mut beatOrder = ""
@@ -527,7 +527,7 @@ resumeBoolAndUnitPayloadsCase () =
                 beatAfter := "${beatAfter}${toString step}|"
                 beatSeen := "${beatSeen}${answer}|"
                 answer
-        in beatBody ()
+        beatBody ()
 
     (* "true|false|true" is 15 bytes and holds both renderings; a boolean that
         collapsed to an integer would print "1" or "0" instead. *)
@@ -585,11 +585,11 @@ type Slot =
 (** Managed carries the payload kinds that travel as managed mailbox words. *)
 effect Managed
     (** Supply the text the caller must observe for `key`. *)
-    text : string => string
+    control text : string => string
     (** Supply the whole record the caller must observe for `n`. *)
-    slot : int => Slot
+    control slot : int => Slot
     (** Supply the whole Result the caller must decide about for `key`. *)
-    parse : string => Result<int, string>
+    control parse : string => Result<int, string>
 
 (** Four text supplies bracketed in place: empty, one byte, punctuation and
     digits, and a repeated substring. *)
@@ -642,7 +642,7 @@ resumeManagedPayloadsCase () =
                     _ => "abab"
                 textGave := "${textGave}${key}=${value}|"
                 resume value
-        in textBody ()
+        textBody ()
 
     mut slotCalls = 0
     slotText =
@@ -652,7 +652,7 @@ resumeManagedPayloadsCase () =
                 match n
                     1 => resume (Slot(label = "left", weight = 3, ready = true))
                     _ => resume (Slot(label = "", weight = 0, ready = false))
-        in slotBody ()
+        slotBody ()
 
     mut weightCalls = 0
     doubledWeight =
@@ -660,7 +660,7 @@ resumeManagedPayloadsCase () =
             slot _n =>
                 weightCalls := weightCalls + 1 ?: weightCalls
                 resume (Slot(label = "seven", weight = 21, ready = true))
-        in weightBody ()
+        weightBody ()
 
     mut parseCalls = 0
     mut parseGave = ""
@@ -675,7 +675,7 @@ resumeManagedPayloadsCase () =
                     _ =>
                         parseGave := "${parseGave}bad=Error|"
                         resume (Error(message = "nope!"))
-        in parsedPair ()
+        parsedPair ()
 
     (* "[][x][a1, b2!][abab]" is 20 bytes: eight brackets around 0 + 1 + 7 + 4
         bytes of payload. The leading "[]" is the empty supply arriving as an
@@ -729,7 +729,7 @@ test "resume carries string record and Result payloads" resumeManagedPayloadsCas
 (** Depth exposes one operation performed only by the deepest frame. *)
 effect Depth
     (** Supply the value the deepest frame will observe for `tag`. *)
-    supply : string => int
+    control supply : string => int
 
 (** The deepest frame is the only one that performs. *)
 depth3 tag = perform Depth.supply tag
@@ -771,7 +771,7 @@ resumeFromNestedHelpersCase () =
                 depthSettled := "${depthSettled}${tag}|"
                 depthAnswers := "${depthAnswers}${toString answer}|"
                 answer
-        in depth0 ()
+        depth0 ()
 
     mut spanCalls = 0
     mut spanSeed = 0
@@ -788,7 +788,7 @@ resumeFromNestedHelpersCase () =
                 spanSettled := "${spanSettled}${tag}|"
                 spanSeen := "${spanSeen}${toString answer}|"
                 answer
-        in spanBody ()
+        spanBody ()
 
     (* 24 is the answer if the +5 had been folded in before the doubling, 14 if
         the outermost frame's constant were lost, 7 if the doubling were lost. *)
@@ -833,7 +833,7 @@ test "resume reaches a perform four frames deep" resumeFromNestedHelpersCase
 (** Ticker supplies one scripted value per index of a twelve-step walk. *)
 effect Ticker
     (** Supply the scripted value for index `i`. *)
-    tick : int => int
+    control tick : int => int
 
 (** The script, read by index inside the arm: zero, positive, negative, a
     duplicate, a large value, adjacent duplicates and a trailing zero. *)
@@ -866,7 +866,7 @@ manyPerformsOneRegionCase () =
                 tickOrder := "${tickOrder}${toString i}|"
                 seenSum := (seenSum + answer) ?: seenSum
                 answer
-        in drain 0
+        drain 0
 
     (* The script is exactly twelve entries long, so the sum below is exhaustive
         and every out-of-range read falls back instead of contributing. *)

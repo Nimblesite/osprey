@@ -255,7 +255,7 @@ swapped () =
     handle Swap
         swap item =>
             slot := item
-    in swapWork ()
+    swapWork ()
     describeAny slot
 
 (** Built, boxed, never read: the erasure alone must not disturb ownership —

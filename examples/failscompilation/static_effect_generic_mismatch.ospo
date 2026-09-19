@@ -6,7 +6,10 @@ effect Stash<T> {
 
 fn storeNumber() = perform Stash.put(42)
 
-let done = handle Stash
-    put value => print("")
-    take => "cached text"
-in storeNumber()
+let done = {
+    handle Stash {
+        put value => print("")
+        take => "cached text"
+    }
+    storeNumber()
+}

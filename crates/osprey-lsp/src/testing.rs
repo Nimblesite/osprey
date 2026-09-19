@@ -230,6 +230,7 @@ fn walk_value(
         Expr::Handler {
             arms,
             body,
+            return_clause,
             position,
             ..
         } => {
@@ -238,6 +239,9 @@ fn walk_value(
                 walk_value(&arm.body, pos, None, out);
             }
             walk_value(body, pos, None, out);
+            if let Some(clause) = return_clause {
+                walk_value(clause, pos, None, out);
+            }
         }
         Expr::Match { arms, .. } => {
             for arm in arms {
@@ -398,7 +402,7 @@ mod tests {
     #[test]
     fn finds_tests_under_match_and_handler_arms() {
         let cases = collect_tests(&program(
-            "effect Env {\n    mode: fn() -> string\n}\nfn suite() !Env = match perform Env.mode() {\n    \"fast\" => test(\"fast case\", fn() => expect(1, 1))\n    _ => test(\"slow case\", fn() => expect(2, 2))\n}\nhandle Env\n    mode => resume(\"fast\")\nin {\n    suite()\n}\n",
+            "effect Env {\n    control mode: fn() -> string\n}\nfn suite() !Env = match perform Env.mode() {\n    \"fast\" => test(\"fast case\", fn() => expect(1, 1))\n    _ => test(\"slow case\", fn() => expect(2, 2))\n}\nlet _ = {\n    handle Env {\n        mode => resume(\"fast\")\n    }\n    suite()\n}\n",
         ));
         let names: Vec<&str> = cases.iter().map(|c| c.name.as_str()).collect();
         assert_eq!(names, ["fast case", "slow case"]);

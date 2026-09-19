@@ -13,7 +13,7 @@ signature CounterApi
 
 signature ClockApi
     effect Clock
-        now : Unit => int
+        control now : Unit => int
     reading : Unit -> int
 
 signature LeafApi
@@ -42,7 +42,7 @@ module Counters : CounterApi
 (** A signature may carry an effect declaration alongside its functions. *)
 module Clocks : ClockApi
     effect Clock
-        now : Unit => int
+        control now : Unit => int
 
     reading () = perform Clock.now ()
 
@@ -79,7 +79,7 @@ abstractTypeCase () = checkAll ("abstract signature type round-trips", [
 readAs stamp =
     handle Clocks::Clock
         now => resume stamp
-    in Clocks::reading ()
+    Clocks::reading ()
 
 (** A signature effect is declared by the module and handled by the caller. *)
 signatureEffectCase () = checkAll ("signature effect stays performable", [

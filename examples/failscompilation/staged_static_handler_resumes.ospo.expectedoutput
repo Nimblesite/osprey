@@ -1,1 +1,2 @@
-8:4: static handler arm `Tile.size` resumes; static handlers cannot capture a continuation
+4:12: `control` on operation `Tile.size` of a `static effect`; a static interpretation answers at compile time and has no continuation to give away, so neither `control` nor a multiplicity applies
+8:4: static interpretation of `Tile` requires all value operations; `Tile.size` is a control operation

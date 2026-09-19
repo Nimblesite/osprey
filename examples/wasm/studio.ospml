@@ -122,8 +122,7 @@ run () =
             count := count + 1 ?: count
             premium := premium + isPremium sale.price ?: premium
             revenue
-    in
-        _total = books ()
-        print "::OSPREY-STUDIO|1\n::DDL\n${ddl ()}\n::SEED\n${seed}::END-SEED\n${queries ()}\n::METRIC|total_revenue|${revenue}\n::METRIC|total_units|${units}\n::METRIC|order_count|${count}\n::METRIC|premium_orders|${premium}\n::METRIC|revenue_tier|${tier revenue}\n::END"
+    _total = books ()
+    print "::OSPREY-STUDIO|1\n::DDL\n${ddl ()}\n::SEED\n${seed}::END-SEED\n${queries ()}\n::METRIC|total_revenue|${revenue}\n::METRIC|total_units|${units}\n::METRIC|order_count|${count}\n::METRIC|premium_orders|${premium}\n::METRIC|revenue_tier|${tier revenue}\n::END"
 
 studio = run ()

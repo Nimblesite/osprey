@@ -1,7 +1,7 @@
 /// A stopped continuation returns the handler arm value and omits later work.
 effect Stop {
     /// Check `value`; the handler may resume or stop the continuation.
-    check: fn(int) -> int
+    control check: fn(int) -> int
 }
 
 /// Observation records performer-side events without relying on stdout.
@@ -26,7 +26,7 @@ fn guarded() -> int ![Stop, Observation] = {
 /// Mixed models one handler whose two arms disagree about resuming.
 effect Mixed {
     /// Resumed arm: the handler supplies a value and the caller continues.
-    tally: fn(int) -> int
+    control tally: fn(int) -> int
     /// Non-resuming arm: its own value substitutes for the operation result.
     supply: fn(int) -> int
 }
@@ -50,27 +50,31 @@ fn resumeAbortEarlyExitCase() = {
     mut resumed = 0
     mut aborted = 0
 
-    let result = handle Observation
-        line message => { transcript = "${transcript}${message}\n" }
-    in handle Stop
-        check n => {
-            checks = checks + 1 ?: checks
-            match n {
-                0 => {
-                    aborted = aborted + 1 ?: aborted
-                    observe("stopping at zero")
-                    999
-                }
-                _ => {
-                    resumed = resumed + 1 ?: resumed
-                    let supplied = n * 10 ?: 0
-                    let answer = resume(supplied)
-                    observe("continued check " + toString(n) + ": answer=" + toString(answer))
-                    answer
+    let result = {
+        handle Observation {
+            line message => { transcript = "${transcript}${message}\n" }
+        }
+        handle Stop {
+            check n => {
+                checks = checks + 1 ?: checks
+                match n {
+                    0 => {
+                        aborted = aborted + 1 ?: aborted
+                        observe("stopping at zero")
+                        999
+                    }
+                    _ => {
+                        resumed = resumed + 1 ?: resumed
+                        let supplied = n * 10 ?: 0
+                        let answer = resume(supplied)
+                        observe("continued check " + toString(n) + ": answer=" + toString(answer))
+                        answer
+                    }
                 }
             }
         }
-    in guarded()
+        guarded()
+    }
     let legacyTranscript = "${transcript}result=${toString(result)}\n"
 
     // Preserve the complete five-line golden transcript and every visible line.
@@ -106,21 +110,25 @@ fn resumeSiblingArmIndependenceCase() = {
     mut lastSupplied = 0
     mut resumedAnswer = 0
 
-    let result = handle Observation
-        line message => { transcript = "${transcript}${message}\n" }
-    in handle Mixed
-        tally n => {
-            tallyCalls = tallyCalls + 1 ?: tallyCalls
-            let answer = resume(n * 10 ?: 0)
-            resumedAnswer = answer
-            answer
+    let result = {
+        handle Observation {
+            line message => { transcript = "${transcript}${message}\n" }
         }
-        supply n => {
-            supplyCalls = supplyCalls + 1 ?: supplyCalls
-            lastSupplied = n * 100 ?: 0
-            lastSupplied
+        handle Mixed {
+            tally n => {
+                tallyCalls = tallyCalls + 1 ?: tallyCalls
+                let answer = resume(n * 10 ?: 0)
+                resumedAnswer = answer
+                answer
+            }
+            supply n => {
+                supplyCalls = supplyCalls + 1 ?: supplyCalls
+                lastSupplied = n * 100 ?: 0
+                lastSupplied
+            }
         }
-    in mixedWork()
+        mixedWork()
+    }
     let legacyTranscript = "${transcript}result=${toString(result)}\n"
 
     // The non-resuming arm substitutes: every later line of the body still runs.

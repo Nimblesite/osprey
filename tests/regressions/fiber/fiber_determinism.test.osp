@@ -38,11 +38,13 @@ fn processTask3() = processTask(taskId: "task-3", dataSize: 75, priority: Urgent
 fn totalProcessed(first: int, second: int, third: int) = first + second + third ?: 0
 
 let _ = fiber_set_deterministic_mode(enabled: true)
-handle Metrics
-    recordSuccess taskId processed => print("✅ " + taskId + " succeeded: " + toString(processed) + " units")
-in handle Logger
-    info msg => print("ℹ️  " + msg)
-in {
+fn determinismDemo() = {
+    handle Metrics {
+        recordSuccess taskId processed => print("✅ " + taskId + " succeeded: " + toString(processed) + " units")
+    }
+    handle Logger {
+        info msg => print("ℹ️  " + msg)
+    }
     print("=== Fiber Determinism Test ===")
     print("This test executes tasks in spawn order 1, 2, 3")
     print("The deterministic run scheduler preserves that order")
@@ -59,19 +61,22 @@ in {
     print("Total processed: " + toString(totalProcessed(result1, result2, result3)) + " units")
     print("=== Test Complete ===")
 }
+determinismDemo()
 
 /// Repeats the batch under recording handlers, returning the completion trace
 /// the deterministic scheduler produced followed by the awaited total.
 fn completionTrace() = {
     mut completions = ""
-    let total = handle Metrics
-        recordSuccess taskId processed => {
-            completions = "${completions}${taskId}:${toString(processed)}|"
-            0
+    let total = {
+        handle Metrics {
+            recordSuccess taskId processed => {
+                completions = "${completions}${taskId}:${toString(processed)}|"
+                0
+            }
         }
-    in handle Logger
-        info _msg => 0
-    in {
+        handle Logger {
+            info _msg => 0
+        }
         let first = spawn processTask1()
         let second = spawn processTask2()
         let third = spawn processTask3()

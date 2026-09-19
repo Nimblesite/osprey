@@ -1,7 +1,7 @@
 (** Returning from an arm stops the suspended continuation. *)
 effect Stop
     (** Check `value`; the handler may resume or stop the continuation. *)
-    check : int => int
+    control check : int => int
 
 (** Observation records performer-side events without stdout. *)
 effect Observation
@@ -24,7 +24,7 @@ guarded () =
 (** Mixed models one handler whose two arms disagree about resuming. *)
 effect Mixed
     (** Resumed arm: the handler supplies a value and the caller continues. *)
-    tally : int => int
+    control tally : int => int
     (** Non-resuming arm: its own value substitutes for the operation result. *)
     supply : int => int
 
@@ -51,22 +51,21 @@ resumeAbortEarlyExitCase () =
         handle Observation
             line message =>
                 transcript := "${transcript}${message}\n"
-        in
-            handle Stop
-                check n =>
-                    checks := checks + 1 ?: checks
-                    match n
-                        0 =>
-                            aborted := aborted + 1 ?: aborted
-                            observe "stopping at zero"
-                            999
-                        _ =>
-                            resumed := resumed + 1 ?: resumed
-                            supplied = n * 10 ?: 0
-                            answer = resume supplied
-                            observe ("continued check " + toString n + ": answer=" + toString answer)
-                            answer
-            in guarded ()
+        handle Stop
+            check n =>
+                checks := checks + 1 ?: checks
+                match n
+                    0 =>
+                        aborted := aborted + 1 ?: aborted
+                        observe "stopping at zero"
+                        999
+                    _ =>
+                        resumed := resumed + 1 ?: resumed
+                        supplied = n * 10 ?: 0
+                        answer = resume supplied
+                        observe ("continued check " + toString n + ": answer=" + toString answer)
+                        answer
+        guarded ()
     legacyTranscript = "${transcript}result=${toString result}\n"
 
     // Preserve the full five-line transcript.
@@ -109,18 +108,17 @@ resumeSiblingArmIndependenceCase () =
         handle Observation
             line message =>
                 transcript := "${transcript}${message}\n"
-        in
-            handle Mixed
-                tally n =>
-                    tallyCalls := tallyCalls + 1 ?: tallyCalls
-                    answer = resume (n * 10 ?: 0)
-                    resumedAnswer := answer
-                    answer
-                supply n =>
-                    supplyCalls := supplyCalls + 1 ?: supplyCalls
-                    lastSupplied := n * 100 ?: 0
-                    lastSupplied
-            in mixedWork ()
+        handle Mixed
+            tally n =>
+                tallyCalls := tallyCalls + 1 ?: tallyCalls
+                answer = resume (n * 10 ?: 0)
+                resumedAnswer := answer
+                answer
+            supply n =>
+                supplyCalls := supplyCalls + 1 ?: supplyCalls
+                lastSupplied := n * 100 ?: 0
+                lastSupplied
+        mixedWork ()
     legacyTranscript = "${transcript}result=${toString result}\n"
 
     // The non-resuming arm substitutes: every later line of the body still runs.

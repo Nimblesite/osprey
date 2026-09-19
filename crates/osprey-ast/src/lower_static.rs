@@ -12,9 +12,16 @@
 //! effect. Implements [STAGE-LOWER], [STAGE-LOWER-ORDER].
 
 use crate::mutate::{children_mut, statement_children_mut};
-use crate::stage::{dependencies, StageError, REWRITE_BOUND, REWRITE_DEPTH_BOUND};
-use crate::{Expr, HandlerArm, Position, Program, Stmt};
+use crate::stage::{
+    effect_declarations, EffectDecl, StageError, REWRITE_BOUND, REWRITE_DEPTH_BOUND,
+};
+use crate::{Expr, HandlerArm, Parameter, Position, Program, Stmt};
 use std::collections::{BTreeMap, BTreeSet};
+
+mod bindings;
+mod hygiene;
+mod requirements;
+use requirements::{all_requirements, function_definitions, retain_referenced_originals};
 
 /// One `handle static` region on the enclosing stack.
 struct Region {
@@ -38,8 +45,11 @@ impl Region {
 struct Lowering {
     /// Every named function's definition, keyed by name.
     definitions: BTreeMap<String, Stmt>,
-    /// Each function's transitive static-operation requirements.
+    bindings: BTreeMap<String, Expr>,
+    effects: BTreeMap<String, EffectDecl>,
+    /// Each function's requirements, independent of its selected interpretation.
     requirements: BTreeMap<String, Vec<String>>,
+    dispatches: BTreeMap<String, Vec<String>>,
     /// Region-specialized definitions appended to the program.
     produced: Vec<Stmt>,
     /// Specialization cache, keyed by function name and enclosing region ids.
@@ -56,9 +66,16 @@ struct Lowering {
 
 /// Discharge every static handler in `program`.
 pub(crate) fn run(program: &Program) -> Result<Program, Vec<StageError>> {
+    if !has_regions(program) {
+        return Ok(program.clone());
+    }
+    let program = hygiene::resolve(program);
     let mut lowering = Lowering {
-        definitions: function_definitions(program),
-        requirements: dependencies(program),
+        definitions: function_definitions(&program),
+        bindings: bindings::collect(&program),
+        effects: effect_declarations(&program),
+        requirements: all_requirements(&program),
+        dispatches: crate::stage_rows::dispatch_requirements(&program),
         produced: Vec::new(),
         emitted: BTreeMap::new(),
         consumed: BTreeSet::new(),
@@ -67,16 +84,14 @@ pub(crate) fn run(program: &Program) -> Result<Program, Vec<StageError>> {
         fuel: REWRITE_BOUND,
         depth: 0,
     };
-    let mut rewritten = program.clone();
+    let mut rewritten = program;
     for statement in &mut rewritten.statements {
         statement_children_mut(statement, &mut |expression| {
             lowering.rewrite(expression, &mut Vec::new());
         });
     }
-    rewritten
-        .statements
-        .retain(|statement| !lowering.consumed_definition(statement));
     rewritten.statements.extend(lowering.produced);
+    retain_referenced_originals(&mut rewritten, &lowering.consumed);
     if lowering.errors.is_empty() {
         Ok(rewritten)
     } else {
@@ -84,15 +99,28 @@ pub(crate) fn run(program: &Program) -> Result<Program, Vec<StageError>> {
     }
 }
 
-impl Lowering {
-    /// A function whose only legal callers were inside the regions that
-    /// specialized it: those regions own it now.
-    fn consumed_definition(&self, statement: &Stmt) -> bool {
-        matches!(statement, Stmt::Function { name, .. } if self.consumed.contains(name))
+fn has_regions(program: &Program) -> bool {
+    #[derive(Default)]
+    struct Regions(bool);
+    impl crate::AstVisitor for Regions {
+        fn expression(&mut self, expression: &Expr) {
+            self.0 |= matches!(expression, Expr::Handler { stage, .. } if stage.is_compile_time());
+        }
     }
+    let mut regions = Regions::default();
+    crate::walk_program(program, &mut regions);
+    regions.0
+}
 
+impl Lowering {
     /// Rewrite one expression under the regions enclosing it.
     fn rewrite(&mut self, expression: &mut Expr, regions: &mut Vec<Region>) {
+        if self.apply_static_handler(expression) {
+            self.depth = self.depth.saturating_add(1);
+            self.rewrite(expression, regions);
+            self.depth = self.depth.saturating_sub(1);
+            return;
+        }
         match expression {
             // A `kernel` is a static handler region carrying one extra
             // obligation, already discharged by `kernel::legality`; the rewrite
@@ -100,13 +128,35 @@ impl Lowering {
             Expr::Handler { stage, .. } if stage.is_compile_time() => {
                 self.enter_region(expression, regions);
             }
+            Expr::Handler {
+                effect,
+                arms,
+                body,
+                return_clause,
+                ..
+            } => {
+                // Dynamic selection shadows the same effect's static selection.
+                // Arms execute outside this activation and retain outer scopes.
+                for arm in arms {
+                    self.rewrite(&mut arm.body, regions);
+                }
+                if let Some(clause) = return_clause {
+                    self.rewrite(clause, regions);
+                }
+                let mut visible: Vec<Region> = regions
+                    .iter()
+                    .filter(|region| region.effect != *effect)
+                    .map(Region::clone_region)
+                    .collect();
+                self.rewrite(body, &mut visible);
+            }
             Expr::Perform { effect, .. } if answered(regions, effect) => {
                 self.substitute(expression, regions);
             }
             Expr::Identifier(name) => {
                 let referenced = name.clone();
                 if let Some(specialized) = self.specialize(&referenced, regions) {
-                    name.clone_from(&specialized);
+                    *expression = specialized;
                 }
             }
             _ => children_mut(expression, &mut |child| self.rewrite(child, regions)),
@@ -117,22 +167,55 @@ impl Lowering {
     /// the handler node is replaced by that body. Implements [STAGE-RESIDUE].
     fn enter_region(&mut self, expression: &mut Expr, regions: &mut Vec<Region>) {
         let Expr::Handler {
-            effect, arms, body, ..
+            effect,
+            arms,
+            body,
+            return_clause,
+            ..
         } = expression
         else {
             return;
         };
         self.regions = self.regions.saturating_add(1);
+        let mut selected_arms = arms.clone();
+        for arm in &mut selected_arms {
+            // Validate unused arms too, and resolve their requests in the
+            // enclosing scope rather than recursively selecting themselves.
+            self.rewrite(&mut arm.body, regions);
+            let mut required = self.remaining_requirements(&arm.body);
+            required.extend(crate::stage_rows::body_dispatches(
+                &self.effects,
+                &arm.body,
+                &self.dispatches,
+            ));
+            required.sort();
+            required.dedup();
+            if !required.is_empty() {
+                self.errors.push(StageError::new(
+                    format!("static handler arm `{effect}.{}` requires runtime effects: {}; arm operations must be statically discharged", arm.operation, required.join(", ")),
+                    arm.position,
+                ));
+            }
+        }
         let region = Region {
             effect: effect.clone(),
-            arms: arms.clone(),
+            arms: selected_arms,
             id: self.regions,
         };
         let mut discharged = (**body).clone();
         regions.push(region);
         self.rewrite(&mut discharged, regions);
         let _ = regions.pop();
-        *expression = discharged;
+        *expression = if let Some(mut clause) = return_clause.take() {
+            self.rewrite(&mut clause, regions);
+            Expr::Call {
+                function: clause,
+                arguments: vec![discharged],
+                named_arguments: Vec::new(),
+            }
+        } else {
+            discharged
+        };
     }
 
     /// Replace one performed operation with the innermost answering arm.
@@ -150,29 +233,27 @@ impl Lowering {
         };
         let (effect, operation) = (effect.clone(), operation.clone());
         let (arguments, position) = (arguments.clone(), *position);
-        let Some(arm) = innermost_arm(regions, &effect, &operation) else {
-            self.errors.push(StageError::new(
-                format!(
-                    "static handler for `{effect}` does not cover operation `{effect}.{operation}`"
-                ),
-                position,
-            ));
+        // A region that answers nothing here, or an arm whose parameters do not
+        // match the request, is already rejected before the rewrite runs:
+        // `stage::validate` names the uncovered operation and the type checker
+        // names the arity ([STAGE-LOWER-ORDER-PHASE]). Repeating either
+        // diagnostic here would only give one defect two wordings, so an
+        // unrewritable request is left standing for the residual row to report.
+        let Some((region_index, arm)) = innermost_arm(regions, &effect, &operation)
+            .filter(|(_, arm)| arm.params.len() == arguments.len())
+        else {
             return;
         };
-        if arm.params.len() != arguments.len() {
-            self.errors.push(arity_error(
-                &effect,
-                &operation,
-                &arm,
-                arguments.len(),
-                position,
-            ));
-            return;
-        }
         if self.spend_fuel(&effect, &operation, position) {
             *expression = bind_parameters(&arm, &arguments);
             self.depth = self.depth.saturating_add(1);
-            self.rewrite(expression, regions);
+            let mut outer: Vec<Region> = regions
+                .get(..region_index)
+                .unwrap_or_default()
+                .iter()
+                .map(Region::clone_region)
+                .collect();
+            self.rewrite(expression, &mut outer);
             self.depth = self.depth.saturating_sub(1);
         }
     }
@@ -198,18 +279,21 @@ impl Lowering {
     /// The name a reference resolves to under `regions`: a region-owned copy
     /// when the referenced function requires an effect the regions answer, and
     /// nothing when it does not.
-    fn specialize(&mut self, name: &str, regions: &[Region]) -> Option<String> {
+    fn specialize(&mut self, name: &str, regions: &[Region]) -> Option<Expr> {
         if !self.reaches_answered_effect(name, regions) {
             return None;
         }
+        if let Some(value) = self.specialize_binding(name, regions) {
+            return Some(value);
+        }
         let key = specialization_key(name, regions);
         if let Some(existing) = self.emitted.get(&key) {
-            return Some(existing.clone());
+            return self.specialized_reference(name, existing, regions);
         }
         let specialized = format!("{name}__stage{}", self.emitted.len().saturating_add(1));
         let _ = self.emitted.insert(key, specialized.clone());
         self.produce(name, &specialized, regions);
-        Some(specialized)
+        self.specialized_reference(name, &specialized, regions)
     }
 
     /// Whether `name` is a function requiring an operation these regions answer.
@@ -225,7 +309,7 @@ impl Lowering {
     fn produce(&mut self, original: &str, specialized: &str, regions: &[Region]) {
         let Some(Stmt::Function {
             type_params,
-            parameters,
+            mut parameters,
             return_type,
             effects,
             body,
@@ -237,8 +321,28 @@ impl Lowering {
             return;
         };
         let mut owned: Vec<Region> = regions.iter().map(Region::clone_region).collect();
+        for region in &mut owned {
+            for arm in &mut region.arms {
+                if captures_lexical_values(arm) {
+                    let name = callback_name(region.id, &arm.operation);
+                    parameters.push(parameter(&name));
+                    arm.body = call(
+                        &name,
+                        arm.params
+                            .iter()
+                            .map(|name| Expr::Identifier(name.clone()))
+                            .collect(),
+                    );
+                }
+            }
+        }
         let mut specialized_body = body;
         self.rewrite(&mut specialized_body, &mut owned);
+        let required = self.remaining_requirements(&specialized_body);
+        let dispatches =
+            crate::stage_rows::body_dispatches(&self.effects, &specialized_body, &self.dispatches);
+        let _ = self.dispatches.insert(specialized.to_owned(), dispatches);
+        let _ = self.requirements.insert(specialized.to_owned(), required);
         let _ = self.consumed.insert(original.to_owned());
         self.produced.push(Stmt::Function {
             name: specialized.to_owned(),
@@ -249,29 +353,84 @@ impl Lowering {
             // declares them. Implements [STAGE-RESIDUE].
             effects: effects
                 .into_iter()
-                .filter(|declared| !regions.iter().any(|region| region.effect == declared.name))
+                .filter(|declared| {
+                    !regions.iter().any(|region| {
+                        region.effect
+                            == crate::effect_name::instantiated(&declared.name, &declared.type_args)
+                    })
+                })
                 .collect(),
             body: specialized_body,
             doc,
             position,
         });
     }
+
+    /// A specialization receives capturing arms as ordinary lexical closures.
+    /// Passing their values instead would sever captured mutable cells.
+    fn specialized_reference(
+        &self,
+        original: &str,
+        specialized: &str,
+        regions: &[Region],
+    ) -> Option<Expr> {
+        let Stmt::Function { parameters, .. } = self.definitions.get(original)? else {
+            return None;
+        };
+        let captures: Vec<Expr> = regions
+            .iter()
+            .flat_map(|region| region.arms.iter())
+            .filter(|arm| captures_lexical_values(arm))
+            .map(|arm| Expr::Lambda {
+                parameters: arm.params.iter().map(|name| parameter(name)).collect(),
+                return_type: None,
+                body: Box::new(arm.body.clone()),
+                position: arm.position,
+            })
+            .collect();
+        if captures.is_empty() {
+            return Some(Expr::Identifier(specialized.to_owned()));
+        }
+        let mut arguments: Vec<Expr> = parameters
+            .iter()
+            .map(|param| Expr::Identifier(param.name.clone()))
+            .collect();
+        arguments.extend(captures);
+        Some(Expr::Lambda {
+            parameters: parameters.clone(),
+            return_type: None,
+            body: Box::new(call(specialized, arguments)),
+            position: None,
+        })
+    }
 }
 
-fn arity_error(
-    effect: &str,
-    operation: &str,
-    arm: &HandlerArm,
-    supplied: usize,
-    position: Option<Position>,
-) -> StageError {
-    StageError::new(
-        format!(
-            "static handler arm `{effect}.{operation}` binds {} parameters but the operation is performed with {supplied} arguments",
-            arm.params.len()
-        ),
-        position,
-    )
+fn captures_lexical_values(arm: &HandlerArm) -> bool {
+    let mut names = BTreeSet::new();
+    crate::freevars::free_idents(&arm.body, &mut names);
+    names
+        .iter()
+        .any(|name| name.contains("$stage") && !arm.params.contains(name))
+}
+
+fn callback_name(region: u32, operation: &str) -> String {
+    format!("$stage_arm{region}_{operation}")
+}
+
+fn parameter(name: &str) -> Parameter {
+    Parameter {
+        name: name.to_owned(),
+        ty: None,
+        inline_constraint: false,
+    }
+}
+
+fn call(name: &str, arguments: Vec<Expr>) -> Expr {
+    Expr::Call {
+        function: Box::new(Expr::Identifier(name.to_owned())),
+        arguments,
+        named_arguments: Vec::new(),
+    }
 }
 
 /// Whether any enclosing region answers `effect`.
@@ -280,17 +439,18 @@ fn answered(regions: &[Region], effect: &str) -> bool {
 }
 
 /// The innermost arm answering one operation.
-fn innermost_arm(regions: &[Region], effect: &str, operation: &str) -> Option<HandlerArm> {
+fn innermost_arm(regions: &[Region], effect: &str, operation: &str) -> Option<(usize, HandlerArm)> {
     regions
         .iter()
+        .enumerate()
         .rev()
-        .filter(|region| region.effect == effect)
-        .find_map(|region| {
+        .filter(|(_, region)| region.effect == effect)
+        .find_map(|(index, region)| {
             region
                 .arms
                 .iter()
                 .find(|arm| arm.operation == operation)
-                .cloned()
+                .map(|arm| (index, arm.clone()))
         })
 }
 
@@ -329,20 +489,4 @@ fn bind_parameters(arm: &HandlerArm, arguments: &[Expr]) -> Expr {
             .collect(),
         value: Some(Box::new(arm.body.clone())),
     }
-}
-
-/// Every named function definition in the program, at any nesting depth.
-fn function_definitions(program: &Program) -> BTreeMap<String, Stmt> {
-    #[derive(Default)]
-    struct Collector(BTreeMap<String, Stmt>);
-    impl crate::AstVisitor for Collector {
-        fn statement(&mut self, statement: &Stmt) {
-            if let Stmt::Function { name, .. } = statement {
-                let _ = self.0.insert(name.clone(), statement.clone());
-            }
-        }
-    }
-    let mut collector = Collector::default();
-    crate::walk_program(program, &mut collector);
-    collector.0
 }

@@ -1,0 +1,20 @@
+effect ask(): Int
+effect name(): String
+
+def answer[A] { action: () => A / ask }: A =
+  try { action() } with ask { resume(41) }
+
+def reading[A](person: String) { action: () => A / name }: A =
+  try { action() } with name { resume(person) }
+
+def work(): Int / ask = do ask() + 1
+def greet(): String / name = "Hello, " ++ do name() ++ "!"
+
+def main() = {
+  val first = answer { work() }
+  val second = answer { work() }
+  val helloAda = reading("Ada") { greet() }
+  val helloGrace = reading("Grace") { greet() }
+  val helloAgain = reading("Ada") { greet() }
+  println(first.show ++ "\n" ++ second.show ++ "\n" ++ helloAda ++ "\n" ++ helloGrace ++ "\n" ++ helloAgain)
+}

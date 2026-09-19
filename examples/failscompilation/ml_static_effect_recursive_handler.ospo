@@ -1,9 +1,11 @@
 // osprey: flavor=ml
-// [EFFECTS-STATIC-DISCHARGE] An arm cannot re-enter its active handler.
+// [EFFECTS-STATIC-DISCHARGE] An arm executes outside its own activation, so
+// performing its own operation forwards outward; with no outer handler the
+// request is unhandled at program entry.
 effect Loop
     again : Unit => int
 
 answer =
     handle Loop
         again => perform Loop.again ()
-    in perform Loop.again ()
+    perform Loop.again ()

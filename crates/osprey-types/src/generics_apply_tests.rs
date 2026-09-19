@@ -141,9 +141,12 @@ print("${{chosen}}")"#
     take: fn() -> T
 }}
 {IDENTITY}fn main() -> Unit = {{
-    let held = handle Stash
-        take => identity<int>(9)
-    in perform Stash.take()
+    let held = {{
+        handle Stash {{
+            take => identity<int>(9)
+        }}
+        perform Stash.take()
+    }}
     print("${{held}}")
 }}"#
         ));

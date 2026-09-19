@@ -72,21 +72,53 @@ pub(crate) const SHADOWABLE_BUILTINS: &[&str] = &[
 ];
 
 /// Install every built-in into a base environment.
+///
+/// The environment is built ONCE. It is a pure function of the compiler binary
+/// — no source input, no fresh type variables, quantified binders spelled
+/// `Var(0)`..`Var(2)` — and the effect-row fixpoint asks it for a signature at
+/// every call node, so rebuilding it per lookup made checking one 1.3k-line
+/// program take seconds.
 pub(crate) fn base_env() -> TypeEnv {
+    builtins().clone()
+}
+
+/// The one built environment. Callers that only read a binding borrow this;
+/// [`base_env`] hands out the copy that callers extend with source bindings.
+fn builtins() -> &'static TypeEnv {
+    static BUILTINS: std::sync::OnceLock<TypeEnv> = std::sync::OnceLock::new();
+    BUILTINS.get_or_init(build_base_env)
+}
+
+fn build_base_env() -> TypeEnv {
     let mut e = TypeEnv::new();
     core(&mut e);
     testing(&mut e);
     strings(&mut e);
     functional(&mut e);
     lists(&mut e);
-    files(&mut e);
-    http(&mut e);
+    runtime_group(&mut e, files);
+    runtime_group(&mut e, http);
     json(&mut e);
-    concurrency(&mut e);
-    websocket(&mut e);
-    terminal(&mut e);
+    runtime_group(&mut e, concurrency);
+    runtime_group(&mut e, websocket);
+    runtime_group(&mut e, terminal);
     gpu(&mut e);
     e
+}
+
+/// Record runtime behavior where builtin bindings are declared, so aliases and
+/// callbacks carry it and a shadowing source binding does not inherit it.
+fn runtime_group(env: &mut TypeEnv, declare: fn(&mut TypeEnv)) {
+    let before = env.bound_names();
+    declare(env);
+    for name in env.bound_names().difference(&before) {
+        env.mark_runtime_builtin(name);
+    }
+}
+
+fn runtime_mono(env: &mut TypeEnv, name: &str, params: Vec<Type>, ret: Type) {
+    mono(env, name, params, ret);
+    env.mark_runtime_builtin(name);
 }
 
 /// The GPU computation surface (docs/specs/0034-GPUComputation.md). Element
@@ -157,12 +189,12 @@ fn gpu(e: &mut TypeEnv) {
 }
 
 fn core(e: &mut TypeEnv) {
-    mono(e, "print", vec![any()], u());
-    mono(e, "input", vec![], s());
+    runtime_mono(e, "print", vec![any()], u());
+    runtime_mono(e, "input", vec![], s());
     mono(e, "toString", vec![any()], s());
     mono(e, "length", vec![any()], i());
     // [CONCURRENCY-SLEEP] The native status is not part of the Unit surface.
-    mono(e, "sleep", vec![i()], u());
+    runtime_mono(e, "sleep", vec![i()], u());
     // A range is a fused iterator handle, not a materialized List [BUILTIN-ITER].
     mono(e, "range", vec![i(), i()], Type::iterator(i()));
     mono(
@@ -463,7 +495,7 @@ fn websocket(e: &mut TypeEnv) {
 /// the C runtime will call it with.
 #[must_use]
 pub fn builtin_callback_type(name: &str, index: usize) -> Option<(Vec<Type>, Type)> {
-    let scheme = base_env().get(name)?.clone();
+    let scheme = builtins().get(name)?.clone();
     let Type::Fun { params, .. } = &scheme.ty else {
         return None;
     };
@@ -477,7 +509,7 @@ pub fn builtin_callback_type(name: &str, index: usize) -> Option<(Vec<Type>, Typ
 /// `None` when `name` is not a built-in.
 #[must_use]
 pub fn builtin_signature(name: &str) -> Option<String> {
-    let scheme = base_env().get(name)?.clone();
+    let scheme = builtins().get(name)?.clone();
     if let (Some(display), Type::Fun { params, ret }) = (
         crate::builtin_constraints::display_param_type(name, 0),
         &scheme.ty,

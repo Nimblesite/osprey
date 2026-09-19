@@ -19,17 +19,23 @@ fn addThroughPolicy(a, b) = match a + b {
 }
 
 /// This handler preserves failure and its diagnostic verbatim.
-fn preserveFailure(a, b) = handle ArithmeticFailure
-    decide message => Error { message: message }
-in addThroughPolicy(a, b)
+fn preserveFailure(a, b) = {
+    handle ArithmeticFailure {
+        decide message => Error { message: message }
+    }
+    addThroughPolicy(a, b)
+}
 
 /// This handler deliberately recovers, but still receives the exact reason.
-fn recoverWith(a, b, fallback) = handle ArithmeticFailure
-    decide message => match message == "integer overflow" {
-        true => Success { value: fallback }
-        false => Error { message: message }
+fn recoverWith(a, b, fallback) = {
+    handle ArithmeticFailure {
+        decide message => match message == "integer overflow" {
+            true => Success { value: fallback }
+            false => Error { message: message }
+        }
     }
-in addThroughPolicy(a, b)
+    addThroughPolicy(a, b)
+}
 
 test("success can be rendered without contextual coercion", fn() =>
     expect(toString(renderSum(1, 1)), "Success(2)"))

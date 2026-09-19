@@ -1,0 +1,20 @@
+effect Ask
+    control value : Unit => int
+work () = (perform Ask.value () + 1) ?: 0
+
+replace = handler Ask
+    value => resume 41
+around = handler Ask
+    value => ((resume 41) + 100) ?: 0
+noResume = handler Ask
+    value => 0
+deadResume = handler Ask
+    value => match false
+        true => resume 0
+        false => 0
+
+replacement = replace work
+resumed = around work
+returned = noResume work
+deadBranch = deadResume work
+print "replace=${replacement}\nresume=${resumed}\nno-resume=${returned}\ndead-resume=${deadBranch}"

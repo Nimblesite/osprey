@@ -1,7 +1,7 @@
 (** Trace exposes a Unit-returning operation. *)
 effect Trace
     (** Record a named marker so unwind order is observable. *)
-    mark : string => Unit
+    control mark : string => Unit
 
 (** Perform two markers before returning the final value. *)
 traced : Unit -> int ! Trace
@@ -24,12 +24,12 @@ resumeUnitMarkersCase () =
                 markCount := markCount + 1 ?: markCount
                 beforeLabels := "${beforeLabels}${label}|"
                 transcript := "${transcript}before ${label}\n"
-                final = resume
+                final = resume ()
                 afterLabels := "${afterLabels}${label}|"
                 finalValues := "${finalValues}${toString final}|"
                 transcript := "${transcript}after ${label}: final=${toString final}\n"
                 final
-        in traced ()
+        traced ()
     legacyTranscript = "${transcript}result=${toString result}\n"
 
     (* Preserve the five-line LIFO transcript. *)

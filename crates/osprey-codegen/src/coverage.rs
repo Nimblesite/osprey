@@ -92,11 +92,19 @@ fn collect_expr(expr: &Expr, lines: &mut BTreeSet<u32>) {
                 collect_expr(&arm.body, lines);
             }
         }
-        Expr::Handler { arms, body, .. } => {
+        Expr::Handler {
+            arms,
+            body,
+            return_clause,
+            ..
+        } => {
             for arm in arms {
                 collect_expr(&arm.body, lines);
             }
             collect_expr(body, lines);
+            if let Some(clause) = return_clause {
+                collect_expr(clause, lines);
+            }
         }
         Expr::Call {
             function,
@@ -216,21 +224,30 @@ mod tests {
 
     const NESTED_SOURCE: &str = "namespace sample {\n\
       module Stats {\n\
-        fn choose(flag) = {\n\
-          let identity = fn(x) => x\n\
-          mut result = 0\n\
-          result = match flag {\n\
-            true => identity(1)\n\
-            false => identity(2)\n\
-          }\n\
-          result\n\
-        }\n\
+      fn choose(flag) = {\n\
+      let identity = fn(x) => x\n\
+      mut result = 0\n\
+      result = match flag {\n\
+      true => identity(1)\n\
+      false => identity(2)\n\
       }\n\
-    }\n\
-    effect Ask { value: fn() -> int }\n\
-    fn read() = perform Ask.value()\n\
-    let handled = handle Ask value => 42 in read()\n\
-    print(toString(handled))\n";
+      result\n\
+      }\n\
+      }\n\
+      }\n\
+      effect Ask { value: fn() -> int }\n\
+      fn read() = perform Ask.value()\n\
+      let handled = {\n\
+          handle Ask {\n\
+              value => {\n\
+              let answer = 42\n\
+              answer\n\
+              }\n\
+          }\n\
+          let got = read()\n\
+          got\n\
+      }\n\
+      print(toString(handled))\n";
 
     fn coverage_codegen() -> Codegen {
         Codegen::with_options(
@@ -280,7 +297,9 @@ mod tests {
     fn cov_seed_finds_lines_inside_every_nested_control_flow_shape() {
         let parsed = osprey_syntax::parse_program(NESTED_SOURCE);
         assert!(parsed.errors.is_empty(), "syntax: {:?}", parsed.errors);
-        let expected = std::collections::BTreeSet::from([3, 4, 5, 6, 15, 16, 17]);
+        // Namespace/module/function lines, then the handled region: the arm's
+        // own statement (line 19) and the statement the handler governs (23).
+        let expected = std::collections::BTreeSet::from([3, 4, 5, 6, 15, 16, 19, 23, 26]);
         assert_eq!(coverable_lines(&parsed.program), expected);
         let mut cg = coverage_codegen();
         cg.cov_seed(&parsed.program);
@@ -289,7 +308,7 @@ mod tests {
             let global = format!("@__osp_cov_hits.{line} = internal global i64 0");
             assert!(module.contains(&global), "missing line {line}:\n{module}");
         }
-        assert_eq!(module.matches("internal global i64 0").count(), 7);
+        assert_eq!(module.matches("internal global i64 0").count(), 9);
     }
 
     #[test]

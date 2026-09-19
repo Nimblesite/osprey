@@ -174,7 +174,7 @@ const GENERIC_AS_VALUE: &str = "fn mk<T>(x: T) = |y| => x\nprint(\"${mk(1)}\")\n
 /// return the handled computation's answer to the arm.
 const RESUME_EFFECT: &str = r#"
 effect Audit {
-    step: fn(string) -> int
+    control step: fn(string) -> int
 }
 
 fn pipeline() -> int !Audit = {
@@ -188,17 +188,20 @@ fn pipeline() -> int !Audit = {
 
 fn main() = {
     mut n = 0
-    let total = handle Audit
-        step label => {
-            n = match n + 1 {
-                Success { value } => value
-                Error { message } => n
+    let total = {
+        handle Audit {
+            step label => {
+                n = match n + 1 {
+                    Success { value } => value
+                    Error { message } => n
+                }
+                let answer = resume(n)
+                print("after " + label + ": answer=" + toString(answer))
+                answer
             }
-            let answer = resume(n)
-            print("after " + label + ": answer=" + toString(answer))
-            answer
         }
-    in pipeline()
+        pipeline()
+    }
     print("total=" + toString(total))
 }
 "#;
@@ -216,7 +219,7 @@ fn main() = {
 /// compile time, where the arm has always been visible.
 const MULTISHOT_RESUME: &str = r#"
 effect Choose {
-    pick: fn() -> int
+    control pick: fn() -> int
 }
 
 fn both() -> int !Choose = {
@@ -225,13 +228,16 @@ fn both() -> int !Choose = {
 }
 
 fn main() = {
-    let total = handle Choose
-        pick => {
-            let a = resume(10)
-            let b = resume(20)
-            a + b ?: 0
+    let total = {
+        handle Choose {
+            pick => {
+                let a = resume(10)
+                let b = resume(20)
+                a + b ?: 0
+            }
         }
-    in both()
+        both()
+    }
     print("total=" + toString(total))
 }
 "#;
@@ -241,7 +247,7 @@ fn main() = {
 /// [MULTI-HANDLE-ONCE] must keep accepting.
 const BRANCHWISE_RESUME: &str = r#"
 effect Choose {
-    pick: fn() -> int
+    control pick: fn() -> int
 }
 
 fn both() -> int !Choose = {
@@ -250,12 +256,15 @@ fn both() -> int !Choose = {
 }
 
 fn main() = {
-    let total = handle Choose
-        pick => match true {
-            true => resume(29)
-            false => resume(0)
+    let total = {
+        handle Choose {
+            pick => match true {
+                true => resume(29)
+                false => resume(0)
+            }
         }
-    in both()
+        both()
+    }
     print("total=" + toString(total))
 }
 "#;

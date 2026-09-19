@@ -80,6 +80,16 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
 
 fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> Result<String> {
     let options = with_kernel_mode(options)?;
+    let lowered = osprey_types::lower_static_checked(program).map_err(|errors| {
+        crate::error::CodegenError::invalid(
+            errors
+                .into_iter()
+                .map(|error| error.message)
+                .collect::<Vec<_>>()
+                .join("; "),
+        )
+    })?;
+    let program = &lowered;
     let mut prog = osprey_types::infer_program(program);
     let elaborated = prog.elaborate_calls(program);
     let program = &elaborated;

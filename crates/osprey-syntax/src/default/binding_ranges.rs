@@ -231,30 +231,30 @@ mod tests {
 
     #[test]
     fn patterns_handlers_lambdas_and_nested_owners_are_separate() {
-        let source = "effect Pair { choose: fn(int, int) -> int }\nfn run(value) = handle Pair\n choose used unused => match value { [head, ...tail] => used\n [] => 0 }\nin { let callback = fn(value) => value\n callback(1) }\n";
+        let source = "effect Pair { control choose: fn(int, int) -> int }\nfn run(value) = {\n handle Pair {\n choose used unused => match value { [head, ...tail] => used\n [] => 0 }\n }\n let callback = fn(value) => value\n callback(1)\n}\n";
         let found = ranges(source);
         for (name, kind, owner) in [
             (
                 "unused",
                 BindingKind::HandlerParameter,
-                Position { line: 3, column: 1 },
+                Position { line: 4, column: 1 },
             ),
             (
                 "tail",
                 BindingKind::PatternBinding,
-                Position { line: 3, column: 1 },
+                Position { line: 4, column: 1 },
             ),
             (
                 "callback",
                 BindingKind::Variable,
-                Position { line: 5, column: 5 },
+                Position { line: 7, column: 1 },
             ),
             (
                 "value",
                 BindingKind::Parameter,
                 Position {
-                    line: 5,
-                    column: 20,
+                    line: 7,
+                    column: 16,
                 },
             ),
         ] {

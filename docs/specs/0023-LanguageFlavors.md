@@ -35,11 +35,7 @@ projects may contain both extensions.
 
 ## Lowering Pipeline
 
-```text
-.osp   -> Default CST -> Default lowerer --+
-                                             -> osprey_ast::Program -> checker -> codegen
-.ospml -> ML CST      -> ML lowerer -------+
-```
+Both frontends preserve declarations, handler arms and operations in the canonical AST. Module assembly, source validation, static discharge and residual validation follow [STAGE-LOWER-ORDER-PHASE](0017-AlgebraicEffects.md). A flavor lowerer must not erase an effect contract before shared validation.
 
 ## Flavor Frontend
 
@@ -126,7 +122,8 @@ specified in [Currying Canonicalisation](#currying-canonicalisation).
 | index | `xs[i]` | `xs[i]` | `Expr::Index` |
 | external function | `extern fn f(x: T) -> U` | `extern f (x : T) -> U` | `Stmt::Extern` |
 | effect | braced operations | layout operations | `Stmt::Effect` |
-| lexical handler | `handle E ... in body` | layout `handle E ... in body` | `Expr::Handler` |
+| lexical handler | `handle E { ... }` for the rest of a block | layout `handle E` for the rest of a block | `Expr::Handler` |
+| callable handler | `handler E { ... }`, applied with `h(work)` | layout `handler E`, applied with `h work` | shared handler-value lowering |
 | fiber operations | `spawn`, `await`, `yield`, `send`, `recv` | same keywords with ML application | shared expression nodes |
 
 Positional union payloads use numeric internal field names that source cannot
@@ -150,11 +147,7 @@ flat twins are equal, and ML curried is not equal to Default flat.
 
 ## Shared-Core Additions
 
-`[FLAVOR-HANDLER-VALUE]` First-class handler values, a `Handler E` type, and
-multi-handler `do` installation are absent from the canonical AST and type
-system. The ML lexer reserves `handler` and `do`; the parser reports
-`not yet supported`. Both flavors use lexical
-`Expr::Handler { effect, arms, body }`.
+`[FLAVOR-HANDLER-VALUE]` Default `handler E { ... }` and ML `handler E` with indented arms define callable handlers. Apply them with `h(work)` or `h work`; neither needs `in` or `do`. Construction, application, capture, modes and staging follow [Algebraic Effects](0017-AlgebraicEffects.md). Implementation status belongs in [plan 0016](../plans/0016-algebraic-effects-and-handlers.md).
 
 ## Cross-Flavor Interop
 

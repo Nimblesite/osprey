@@ -169,9 +169,10 @@ print "${{chosen}}""#
             r#"effect Stash T
     take : Unit => T
 {ML_IDENTITY}main () =
-    held = handle Stash
-        take => identity<int> 9
-    in perform Stash.take ()
+    held =
+        handle Stash
+            take => identity<int> 9
+        perform Stash.take ()
     print "${{held}}""#
         ));
 }

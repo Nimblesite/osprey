@@ -30,6 +30,22 @@ fn rejects(source: &str, target: &str, feature: &str) -> std::io::Result<()> {
 }
 
 #[test]
+fn declared_control_requires_support_without_a_resume_expression() -> std::io::Result<()> {
+    let source = "effect Supply { value: fn() -> int control stop: fn() -> int }\n\
+                  let answer = {\n\
+                      handle Supply {\n\
+                          value => 41 stop => 0\n\
+                      }\n\
+                      perform Supply.stop()\n\
+                  }\n\
+                  print(answer)\n";
+    for target in ["wasm32", "ios", "ios-sim", "android-arm64", "android-x64"] {
+        rejects(source, target, "a continuation for `Supply.stop`")?;
+    }
+    Ok(())
+}
+
+#[test]
 fn resumable_effects_reject_for_both_flavors_before_ir() -> std::io::Result<()> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     for extension in ["osp", "ospml"] {
@@ -64,8 +80,13 @@ fn resumable_effects_reject_for_both_flavors_before_ir() -> std::io::Result<()> 
 /// does not use. [IOS-TARGET-CAPABILITIES] [WASM-TARGET-CAPABILITIES]
 #[test]
 fn a_continuation_rejection_explains_the_target_it_names() -> std::io::Result<()> {
-    let source = "effect Supply { next: fn() -> int }\n\
-                  fn ask() = handle Supply next => resume(1) in perform Supply.next()\n";
+    let source = "effect Supply { control next: fn() -> int }\n\
+                  fn ask() = {\n\
+                      handle Supply {\n\
+                          next => resume(1)\n\
+                      }\n\
+                      perform Supply.next()\n\
+                  }\n";
     for (target, expected, forbidden) in [
         ("wasm32", "stack-switching", "synchronous host call"),
         ("ios", "synchronous host call", "stack-switching"),
@@ -119,7 +140,12 @@ fn wasm_preserves_browser_imports_and_substituting_effects() -> std::io::Result<
     let source = "extern fn osprey_web_render(html: string) -> int\n\
                   extern fn osprey_web_command(payload: string) -> int\n\
                   effect Supply { ask: fn() -> int }\n\
-                  let answer = handle Supply ask => 41 in perform Supply.ask()\n\
+                  let answer = {\n\
+                      handle Supply {\n\
+                          ask => 41\n\
+                      }\n\
+                      perform Supply.ask()\n\
+                  }\n\
                   print(answer)\n";
     let output = compile(source, "wasm32")?;
     assert!(
@@ -190,8 +216,13 @@ fn browser_dispatcher_requires_its_own_effect_handlers() -> std::io::Result<()> 
     let source = "effect Supply { ask: fn() -> int }\n\
                   fn osprey_web_dispatch(message: string) = perform Supply.ask()\n\
                   fn main() = {\n\
-                    let result = handle Supply ask => 41 in osprey_web_dispatch(\"boot\")\n\
-                    print(result)\n\
+                  let result = {\n\
+                      handle Supply {\n\
+                          ask => 41\n\
+                      }\n\
+                      osprey_web_dispatch(\"boot\")\n\
+                  }\n\
+                  print(result)\n\
                   }\n";
     rejects(source, "wasm32", "Supply.ask")
 }

@@ -19,9 +19,8 @@
 //! [`Expr::Perform`](osprey_ast::Expr::Perform),
 //! [`Expr::Handler`](osprey_ast::Expr::Handler), and
 //! [`Expr::Resume`](osprey_ast::Expr::Resume) the Default flavor emits
-//! ([FLAVOR-ML-EFFECT]). First-class handler values (`handler`/`do`) are not yet
-//! in the shared core, so the parser reports a precise "not yet supported" error
-//! for those rather than misparsing them.
+//! ([FLAVOR-ML-EFFECT]). Callable `handler` values lower to closures around the
+//! same lexical handler. A standalone `do` remains reserved.
 
 use crate::{Flavor, Parsed};
 

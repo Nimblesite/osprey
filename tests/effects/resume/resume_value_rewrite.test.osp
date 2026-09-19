@@ -1,7 +1,7 @@
 /// Supply lets a handler choose each integer observed by the performer.
 effect Supply {
     /// Request the next scripted value for `label`.
-    next: fn(string) -> int
+    control next: fn(string) -> int
 }
 
 /// This helper sums three values supplied through explicit resume calls.
@@ -15,7 +15,7 @@ fn total() -> int !Supply = {
 /// Relay proves generic operation values unbox at two distinct instantiations.
 effect Relay<T> {
     /// Request one value of the instantiated element type `T`.
-    ask: fn() -> T
+    control ask: fn() -> T
 }
 
 /// This helper receives a string from Relay<string>.
@@ -24,7 +24,7 @@ fn echoWord() -> string !Relay<string> = perform Relay.ask()
 /// Checked proves resume supplies a whole Result rather than its payload.
 effect Checked {
     /// Halve `value`, reporting an odd input as an `Error`.
-    half: fn(int) -> Result<int, string>
+    control half: fn(int) -> Result<int, string>
 }
 
 /// This helper defaults the Result returned by a handled operation.
@@ -41,47 +41,59 @@ fn resumeValueRewriteCase() = {
     mut supplied = ""
     mut settled = ""
 
-    let result = handle Supply
-        next label => {
-            supplyCalls = supplyCalls + 1 ?: supplyCalls
-            seed = seed + 5 ?: seed
-            supplied = "${supplied}${label}:${toString(seed)}|"
-            supplyTranscript = "${supplyTranscript}supply ${label}=${toString(seed)}\n"
-            let answer = resume(seed)
-            settled = "${settled}${label}:${toString(answer)}|"
-            supplyTranscript = "${supplyTranscript}seen after ${label}: ${toString(answer)}\n"
-            answer
+    let result = {
+        handle Supply {
+            next label => {
+                supplyCalls = supplyCalls + 1 ?: supplyCalls
+                seed = seed + 5 ?: seed
+                supplied = "${supplied}${label}:${toString(seed)}|"
+                supplyTranscript = "${supplyTranscript}supply ${label}=${toString(seed)}\n"
+                let answer = resume(seed)
+                settled = "${settled}${label}:${toString(answer)}|"
+                supplyTranscript = "${supplyTranscript}seen after ${label}: ${toString(answer)}\n"
+                answer
+            }
         }
-    in total()
+        total()
+    }
 
     mut wordRelayCalls = 0
     mut wordSettled = ""
     mut relayTranscript = ""
-    let word = handle Relay
-        ask => {
-            wordRelayCalls = wordRelayCalls + 1 ?: wordRelayCalls
-            let answer = resume("carried")
-            wordSettled = answer
-            relayTranscript = "${relayTranscript}relay answered: ${answer}\n"
-            answer
+    let word = {
+        handle Relay {
+            ask => {
+                wordRelayCalls = wordRelayCalls + 1 ?: wordRelayCalls
+                let answer = resume("carried")
+                wordSettled = answer
+                relayTranscript = "${relayTranscript}relay answered: ${answer}\n"
+                answer
+            }
         }
-    in echoWord()
+        echoWord()
+    }
 
     mut checkedCalls = 0
-    let checked = handle Checked
-        half n => {
-            checkedCalls = checkedCalls + 1 ?: checkedCalls
-            resume(Success { value: n })
+    let checked = {
+        handle Checked {
+            half n => {
+                checkedCalls = checkedCalls + 1 ?: checkedCalls
+                resume(Success { value: n })
+            }
         }
-    in runChecked()
+        runChecked()
+    }
 
     mut numRelayCalls = 0
-    let num = handle Relay
-        ask => {
-            numRelayCalls = numRelayCalls + 1 ?: numRelayCalls
-            resume(41)
+    let num = {
+        handle Relay {
+            ask => {
+                numRelayCalls = numRelayCalls + 1 ?: numRelayCalls
+                resume(41)
+            }
         }
-    in echoNum()
+        echoNum()
+    }
     let legacyTranscript = "${supplyTranscript}result=${toString(result)}\n${relayTranscript}word=${word}\nchecked=${toString(checked)} num=${toString(num)}\n"
 
     // Preserve the complete ten-line golden transcript and every output phase.
@@ -124,7 +136,7 @@ test("resume rewrites values across scalar, Result, and generic effects", resume
 /// Script hands the performer one scripted integer per numbered slot.
 effect Script {
     /// Supply the value the performer must observe for `slot`.
-    read: fn(int) -> int
+    control read: fn(int) -> int
 }
 
 /// Four reads weighted 1000/100/10/1, so a value delivered to the wrong perform
@@ -150,38 +162,47 @@ fn resumeSubstitutesSuppliedValueCase() = {
     mut gave = ""
     mut seen = ""
 
-    let picked = handle Script
-        read slot => {
-            reads = reads + 1 ?: reads
-            let value = match slot {
-                1 => 0
-                2 => 7
-                3 => (0 - 4) ?: 0
-                _ => 7
+    let picked = {
+        handle Script {
+            read slot => {
+                reads = reads + 1 ?: reads
+                let value = match slot {
+                    1 => 0
+                    2 => 7
+                    3 => (0 - 4) ?: 0
+                    _ => 7
+                }
+                asked = "${asked}${toString(slot)}|"
+                gave = "${gave}${toString(value)}|"
+                let answer = resume(value)
+                seen = "${seen}${toString(slot)}:${toString(answer)}|"
+                answer
             }
-            asked = "${asked}${toString(slot)}|"
-            gave = "${gave}${toString(value)}|"
-            let answer = resume(value)
-            seen = "${seen}${toString(slot)}:${toString(answer)}|"
-            answer
         }
-    in weightedReads()
+        weightedReads()
+    }
 
     mut steadyReads = 0
-    let steady = handle Script
-        read _slot => {
-            steadyReads = steadyReads + 1 ?: steadyReads
-            resume(1)
+    let steady = {
+        handle Script {
+            read _slot => {
+                steadyReads = steadyReads + 1 ?: steadyReads
+                resume(1)
+            }
         }
-    in weightedReads()
+        weightedReads()
+    }
 
     mut zeroReads = 0
-    let zeroed = handle Script
-        read _slot => {
-            zeroReads = zeroReads + 1 ?: zeroReads
-            resume(0)
+    let zeroed = {
+        handle Script {
+            read _slot => {
+                zeroReads = zeroReads + 1 ?: zeroReads
+                resume(0)
+            }
         }
-    in weightedReads()
+        weightedReads()
+    }
 
     // 660 is the weighted head (0 + 700 - 40); the unit slot adds the final 7.
     // The rejected values are the answers a broken delivery would produce: 10 is
@@ -236,7 +257,7 @@ test("resume substitutes exactly the value each arm supplied", resumeSubstitutes
 /// Layer lets each arm adjust the answer its resumed continuation produced.
 effect Layer {
     /// Supply the value for `slot`; the arm then adjusts the completed answer.
-    fetch: fn(int) -> int
+    control fetch: fn(int) -> int
 }
 
 /// Three fetches weighted 100/10/1, so the body's own answer is unambiguous.
@@ -263,35 +284,44 @@ fn resumeAnswerComposesLifoCase() = {
     mut observed = ""
     mut returned = ""
 
-    let layeredResult = handle Layer
-        fetch slot => {
-            entered = "${entered}${toString(slot)}|"
-            let answer = resume(slot)
-            observed = "${observed}${toString(slot)}:${toString(answer)}|"
-            let adjusted = (answer + slot) ?: answer
-            returned = "${returned}${toString(slot)}:${toString(adjusted)}|"
-            adjusted
+    let layeredResult = {
+        handle Layer {
+            fetch slot => {
+                entered = "${entered}${toString(slot)}|"
+                let answer = resume(slot)
+                observed = "${observed}${toString(slot)}:${toString(answer)}|"
+                let adjusted = (answer + slot) ?: answer
+                returned = "${returned}${toString(slot)}:${toString(adjusted)}|"
+                adjusted
+            }
         }
-    in layered()
+        layered()
+    }
 
     mut plainCalls = 0
-    let plain = handle Layer
-        fetch slot => {
-            plainCalls = plainCalls + 1 ?: plainCalls
-            resume(slot)
+    let plain = {
+        handle Layer {
+            fetch slot => {
+                plainCalls = plainCalls + 1 ?: plainCalls
+                resume(slot)
+            }
         }
-    in layered()
+        layered()
+    }
 
     mut soloCalls = 0
     mut soloObserved = 0
-    let solo = handle Layer
-        fetch slot => {
-            soloCalls = soloCalls + 1 ?: soloCalls
-            let answer = resume(slot)
-            soloObserved = answer
-            (answer * 3) ?: answer
+    let solo = {
+        handle Layer {
+            fetch slot => {
+                soloCalls = soloCalls + 1 ?: soloCalls
+                let answer = resume(slot)
+                soloObserved = answer
+                (answer * 3) ?: answer
+            }
         }
-    in soloLayer()
+        soloLayer()
+    }
 
     // 124 is the answer if every arm saw the raw body value instead of the
     // next-inner arm's value; 126 is the answer if only the innermost
@@ -345,13 +375,13 @@ test("post-resume adjustments compose into the region answer", resumeAnswerCompo
 /// Scalar carries one operation per scalar payload kind a resume can supply.
 effect Scalar {
     /// Supply the integer the caller must observe for `step`.
-    count: fn(int) -> int
+    control count: fn(int) -> int
     /// Supply the float the caller must observe for `step`.
-    ratio: fn(int) -> float
+    control ratio: fn(int) -> float
     /// Supply the boolean the caller must observe for `step`.
-    flag: fn(int) -> bool
+    control flag: fn(int) -> bool
     /// Acknowledge `step` with nothing at all.
-    beat: fn(int) -> Unit
+    control beat: fn(int) -> Unit
 }
 
 /// Four integer supplies rendered in order: zero, negative, large, duplicate.
@@ -384,47 +414,56 @@ fn ratioBody() = {
 fn resumeScalarPayloadsCase() = {
     mut countCalls = 0
     mut countGave = ""
-    let countText = handle Scalar
-        count step => {
-            countCalls = countCalls + 1 ?: countCalls
-            let value = match step {
-                1 => 0
-                2 => (0 - 9) ?: 0
-                3 => 1000000
-                _ => (0 - 9) ?: 0
+    let countText = {
+        handle Scalar {
+            count step => {
+                countCalls = countCalls + 1 ?: countCalls
+                let value = match step {
+                    1 => 0
+                    2 => (0 - 9) ?: 0
+                    3 => 1000000
+                    _ => (0 - 9) ?: 0
+                }
+                countGave = "${countGave}${toString(value)}|"
+                resume(value)
             }
-            countGave = "${countGave}${toString(value)}|"
-            resume(value)
         }
-    in countBody()
+        countBody()
+    }
 
     mut loneCalls = 0
-    let lone = handle Scalar
-        ratio _step => {
-            loneCalls = loneCalls + 1 ?: loneCalls
-            resume(2.5)
+    let lone = {
+        handle Scalar {
+            ratio _step => {
+                loneCalls = loneCalls + 1 ?: loneCalls
+                resume(2.5)
+            }
         }
-    in loneRatio()
+        loneRatio()
+    }
 
     mut ratioCalls = 0
     mut ratioSlots = ""
     mut ratioSettled = ""
     mut lastRatioAnswer = 0.0
-    let ratioTotal = handle Scalar
-        ratio step => {
-            ratioCalls = ratioCalls + 1 ?: ratioCalls
-            ratioSlots = "${ratioSlots}${toString(step)}|"
-            let value = match step {
-                1 => 1.25
-                2 => 0.0
-                _ => (0.0 - 0.75)
+    let ratioTotal = {
+        handle Scalar {
+            ratio step => {
+                ratioCalls = ratioCalls + 1 ?: ratioCalls
+                ratioSlots = "${ratioSlots}${toString(step)}|"
+                let value = match step {
+                    1 => 1.25
+                    2 => 0.0
+                    _ => (0.0 - 0.75)
+                }
+                let answer = resume(value)
+                ratioSettled = "${ratioSettled}${toString(step)}|"
+                lastRatioAnswer = answer
+                answer
             }
-            let answer = resume(value)
-            ratioSettled = "${ratioSettled}${toString(step)}|"
-            lastRatioAnswer = answer
-            answer
         }
-    in ratioBody()
+        ratioBody()
+    }
 
     // "0/-9/1000000/-9" is 15 bytes; "/0/" would appear only if the large
     // supply had been dropped, and "|9|" only if a sign had been lost.
@@ -502,54 +541,63 @@ fn beatBody() = {
 fn resumeBoolAndUnitPayloadsCase() = {
     mut flagCalls = 0
     mut flagGave = ""
-    let flagText = handle Scalar
-        flag step => {
-            flagCalls = flagCalls + 1 ?: flagCalls
-            let value = match step {
-                2 => false
-                _ => true
+    let flagText = {
+        handle Scalar {
+            flag step => {
+                flagCalls = flagCalls + 1 ?: flagCalls
+                let value = match step {
+                    2 => false
+                    _ => true
+                }
+                let mark = match value {
+                    true => "T"
+                    false => "F"
+                }
+                flagGave = "${flagGave}${mark}|"
+                resume(value)
             }
-            let mark = match value {
-                true => "T"
-                false => "F"
-            }
-            flagGave = "${flagGave}${mark}|"
-            resume(value)
         }
-    in flagBody()
+        flagBody()
+    }
 
     mut routeCalls = 0
     mut routeGave = ""
-    let routeText = handle Scalar
-        flag step => {
-            routeCalls = routeCalls + 1 ?: routeCalls
-            let value = match step {
-                2 => false
-                _ => true
+    let routeText = {
+        handle Scalar {
+            flag step => {
+                routeCalls = routeCalls + 1 ?: routeCalls
+                let value = match step {
+                    2 => false
+                    _ => true
+                }
+                let mark = match value {
+                    true => "T"
+                    false => "F"
+                }
+                routeGave = "${routeGave}${mark}|"
+                resume(value)
             }
-            let mark = match value {
-                true => "T"
-                false => "F"
-            }
-            routeGave = "${routeGave}${mark}|"
-            resume(value)
         }
-    in routes()
+        routes()
+    }
 
     mut beats = 0
     mut beatOrder = ""
     mut beatAfter = ""
     mut beatSeen = ""
-    let beatText = handle Scalar
-        beat step => {
-            beats = beats + 1 ?: beats
-            beatOrder = "${beatOrder}${toString(step)}|"
-            let answer = resume()
-            beatAfter = "${beatAfter}${toString(step)}|"
-            beatSeen = "${beatSeen}${answer}|"
-            answer
+    let beatText = {
+        handle Scalar {
+            beat step => {
+                beats = beats + 1 ?: beats
+                beatOrder = "${beatOrder}${toString(step)}|"
+                let answer = resume()
+                beatAfter = "${beatAfter}${toString(step)}|"
+                beatSeen = "${beatSeen}${answer}|"
+                answer
+            }
         }
-    in beatBody()
+        beatBody()
+    }
 
     // "true|false|true" is 15 bytes and holds both renderings; a boolean that
     // collapsed to an integer would print "1" or "0" instead.
@@ -605,11 +653,11 @@ type Slot = { label: string, weight: int, ready: bool }
 /// Managed carries the payload kinds that travel as managed mailbox words.
 effect Managed {
     /// Supply the text the caller must observe for `key`.
-    text: fn(string) -> string
+    control text: fn(string) -> string
     /// Supply the whole record the caller must observe for `n`.
-    slot: fn(int) -> Slot
+    control slot: fn(int) -> Slot
     /// Supply the whole Result the caller must decide about for `key`.
-    parse: fn(string) -> Result<int, string>
+    control parse: fn(string) -> Result<int, string>
 }
 
 /// Four text supplies bracketed in place: empty, one byte, punctuation and
@@ -657,56 +705,68 @@ fn parsedPair() = {
 fn resumeManagedPayloadsCase() = {
     mut textCalls = 0
     mut textGave = ""
-    let textResult = handle Managed
-        text key => {
-            textCalls = textCalls + 1 ?: textCalls
-            let value = match key {
-                "empty" => ""
-                "one" => "x"
-                "mixed" => "a1, b2!"
-                _ => "abab"
+    let textResult = {
+        handle Managed {
+            text key => {
+                textCalls = textCalls + 1 ?: textCalls
+                let value = match key {
+                    "empty" => ""
+                    "one" => "x"
+                    "mixed" => "a1, b2!"
+                    _ => "abab"
+                }
+                textGave = "${textGave}${key}=${value}|"
+                resume(value)
             }
-            textGave = "${textGave}${key}=${value}|"
-            resume(value)
         }
-    in textBody()
+        textBody()
+    }
 
     mut slotCalls = 0
-    let slotText = handle Managed
-        slot n => {
-            slotCalls = slotCalls + 1 ?: slotCalls
-            match n {
-                1 => resume(Slot { label: "left", weight: 3, ready: true })
-                _ => resume(Slot { label: "", weight: 0, ready: false })
+    let slotText = {
+        handle Managed {
+            slot n => {
+                slotCalls = slotCalls + 1 ?: slotCalls
+                match n {
+                    1 => resume(Slot { label: "left", weight: 3, ready: true })
+                    _ => resume(Slot { label: "", weight: 0, ready: false })
+                }
             }
         }
-    in slotBody()
+        slotBody()
+    }
 
     mut weightCalls = 0
-    let doubledWeight = handle Managed
-        slot _n => {
-            weightCalls = weightCalls + 1 ?: weightCalls
-            resume(Slot { label: "seven", weight: 21, ready: true })
+    let doubledWeight = {
+        handle Managed {
+            slot _n => {
+                weightCalls = weightCalls + 1 ?: weightCalls
+                resume(Slot { label: "seven", weight: 21, ready: true })
+            }
         }
-    in weightBody()
+        weightBody()
+    }
 
     mut parseCalls = 0
     mut parseGave = ""
-    let parsedTotal = handle Managed
-        parse key => {
-            parseCalls = parseCalls + 1 ?: parseCalls
-            match key {
-                "ok" => {
-                    parseGave = "${parseGave}ok=Success|"
-                    resume(Success { value: 12 })
-                }
-                _ => {
-                    parseGave = "${parseGave}bad=Error|"
-                    resume(Error { message: "nope!" })
+    let parsedTotal = {
+        handle Managed {
+            parse key => {
+                parseCalls = parseCalls + 1 ?: parseCalls
+                match key {
+                    "ok" => {
+                        parseGave = "${parseGave}ok=Success|"
+                        resume(Success { value: 12 })
+                    }
+                    _ => {
+                        parseGave = "${parseGave}bad=Error|"
+                        resume(Error { message: "nope!" })
+                    }
                 }
             }
         }
-    in parsedPair()
+        parsedPair()
+    }
 
     // "[][x][a1, b2!][abab]" is 20 bytes: eight brackets around 0 + 1 + 7 + 4
     // bytes of payload. The leading "[]" is the empty supply arriving as an
@@ -761,7 +821,7 @@ test("resume carries string record and Result payloads", resumeManagedPayloadsCa
 /// Depth exposes one operation performed only by the deepest frame.
 effect Depth {
     /// Supply the value the deepest frame will observe for `tag`.
-    supply: fn(string) -> int
+    control supply: fn(string) -> int
 }
 
 /// The deepest frame is the only one that performs.
@@ -795,34 +855,40 @@ fn resumeFromNestedHelpersCase() = {
     mut depthTags = ""
     mut depthSettled = ""
     mut depthAnswers = ""
-    let deepResult = handle Depth
-        supply tag => {
-            depthCalls = depthCalls + 1 ?: depthCalls
-            depthSeed = (depthSeed + 1) ?: depthSeed
-            depthTags = "${depthTags}${tag}|"
-            let answer = resume((depthSeed + 2) ?: depthSeed)
-            depthSettled = "${depthSettled}${tag}|"
-            depthAnswers = "${depthAnswers}${toString(answer)}|"
-            answer
+    let deepResult = {
+        handle Depth {
+            supply tag => {
+                depthCalls = depthCalls + 1 ?: depthCalls
+                depthSeed = (depthSeed + 1) ?: depthSeed
+                depthTags = "${depthTags}${tag}|"
+                let answer = resume((depthSeed + 2) ?: depthSeed)
+                depthSettled = "${depthSettled}${tag}|"
+                depthAnswers = "${depthAnswers}${toString(answer)}|"
+                answer
+            }
         }
-    in depth0()
+        depth0()
+    }
 
     mut spanCalls = 0
     mut spanSeed = 0
     mut spanTags = ""
     mut spanSettled = ""
     mut spanSeen = ""
-    let spanResult = handle Depth
-        supply tag => {
-            spanCalls = spanCalls + 1 ?: spanCalls
-            spanSeed = (spanSeed + 1) ?: spanSeed
-            spanTags = "${spanTags}${tag}|"
-            let answer = resume(spanSeed)
-            spanSettled = "${spanSettled}${tag}|"
-            spanSeen = "${spanSeen}${toString(answer)}|"
-            answer
+    let spanResult = {
+        handle Depth {
+            supply tag => {
+                spanCalls = spanCalls + 1 ?: spanCalls
+                spanSeed = (spanSeed + 1) ?: spanSeed
+                spanTags = "${spanTags}${tag}|"
+                let answer = resume(spanSeed)
+                spanSettled = "${spanSettled}${tag}|"
+                spanSeen = "${spanSeen}${toString(answer)}|"
+                answer
+            }
         }
-    in spanBody()
+        spanBody()
+    }
 
     // 24 is the answer if the +5 had been folded in before the doubling, 14 if
     // the outermost frame's constant were lost, 7 if the doubling were lost.
@@ -868,7 +934,7 @@ test("resume reaches a perform four frames deep", resumeFromNestedHelpersCase)
 /// Ticker supplies one scripted value per index of a twelve-step walk.
 effect Ticker {
     /// Supply the scripted value for index `i`.
-    tick: fn(int) -> int
+    control tick: fn(int) -> int
 }
 
 /// The script, read by index inside the arm: zero, positive, negative, a
@@ -892,18 +958,21 @@ fn manyPerformsOneRegionCase() = {
     mut tickGave = ""
     mut tickOrder = ""
     mut seenSum = 0
-    let drained = handle Ticker
-        tick i => {
-            tickEntered = (tickEntered + 1) ?: tickEntered
-            let value = listGet(scriptValues(), i) ?: 0
-            tickGave = "${tickGave}${toString(value)}|"
-            let answer = resume(value)
-            tickSettled = (tickSettled + 1) ?: tickSettled
-            tickOrder = "${tickOrder}${toString(i)}|"
-            seenSum = (seenSum + answer) ?: seenSum
-            answer
+    let drained = {
+        handle Ticker {
+            tick i => {
+                tickEntered = (tickEntered + 1) ?: tickEntered
+                let value = listGet(scriptValues(), i) ?: 0
+                tickGave = "${tickGave}${toString(value)}|"
+                let answer = resume(value)
+                tickSettled = (tickSettled + 1) ?: tickSettled
+                tickOrder = "${tickOrder}${toString(i)}|"
+                seenSum = (seenSum + answer) ?: seenSum
+                answer
+            }
         }
-    in drain(0)
+        drain(0)
+    }
 
     // The script is exactly twelve entries long, so the sum below is exhaustive
     // and every out-of-range read falls back instead of contributing.
