@@ -39,9 +39,12 @@ fn a_handler_discharges_both_pipe_shapes() {
         "effect Alarm { ring: fn() -> int }\n\
          fn wake(n) = (n + perform Alarm.ring()) ?: n\n\
          fn twice(n, m) = (n + m) ?: perform Alarm.ring()\n\
-         let quiet = handle Alarm\n\
-           ring => 0\n\
-         in ((1 |> wake) |> twice(2))\n",
+         let quiet = {\n\
+             handle Alarm {\n\
+                 ring => 0\n\
+             }\n\
+             ((1 |> wake) |> twice(2))\n\
+         }\n",
     );
 }
 
@@ -60,9 +63,12 @@ fn a_piped_callback_keeps_its_provenance_through_the_pipe() {
         "effect Alarm { ring: fn() -> int }\n\
          fn apply(callback) = callback()\n\
          fn ring() = perform Alarm.ring()\n\
-         let answer = handle Alarm\n\
-           ring => 42\n\
-         in (ring |> apply)\n",
+         let answer = {\n\
+             handle Alarm {\n\
+                 ring => 42\n\
+             }\n\
+             (ring |> apply)\n\
+         }\n",
     );
 }
 
@@ -81,9 +87,12 @@ fn a_ufcs_method_call_carries_the_row_of_the_function_it_names() {
         "effect Alarm { ring: fn() -> int }\n\
          fn wake(n) = (n + perform Alarm.ring()) ?: n\n\
          let start = 1\n\
-         let quiet = handle Alarm\n\
-           ring => 0\n\
-         in start.wake()\n",
+         let quiet = {\n\
+             handle Alarm {\n\
+                 ring => 0\n\
+             }\n\
+             start.wake()\n\
+         }\n",
     );
 }
 
@@ -170,9 +179,12 @@ fn a_spawned_fiber_carries_its_bodys_row_and_its_awaited_provenance() {
     assert_accepted(
         "effect Alarm { ring: fn() -> int }\n\
          fn ring() = perform Alarm.ring()\n\
-         let answer = handle Alarm\n\
-           ring => 42\n\
-         in await (spawn ring())\n",
+         let answer = {\n\
+             handle Alarm {\n\
+                 ring => 42\n\
+             }\n\
+             await (spawn ring())\n\
+         }\n",
     );
 }
 

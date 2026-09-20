@@ -18,6 +18,15 @@ use osprey_ast::{Position, Program};
 /// domain ([ARITH-NEG-LITERAL], [FLAVOR-EQUIVALENCE]).
 pub(crate) const I64_MIN_MAGNITUDE: &str = "9223372036854775808";
 
+/// What a `handle` outside any block reports, in either flavor: it governs the
+/// rest of its containing block, so it needs one. Implements [EFFECTS-HANDLE-REST].
+pub(crate) const HANDLE_NEEDS_A_BLOCK: &str =
+    "`handle` must be a block statement; use `handler` to construct a callable handler";
+
+/// What a `handle` with no body and nothing after it reports, in either flavor.
+pub(crate) const NOTHING_TO_HANDLE: &str =
+    "this `handle` has nothing to handle; put the handled statements after it";
+
 mod annotation_edits;
 #[cfg(test)]
 mod annotation_edits_tests;
@@ -116,11 +125,10 @@ pub fn parse_program(source: &str) -> Parsed {
 /// Implements [FLAVOR-FRONTEND], [FLAVOR-BOUNDARY].
 #[must_use]
 pub fn parse_program_with_flavor(source: &str, flavor: Flavor) -> Parsed {
-    let parsed = match flavor {
+    match flavor {
         Flavor::Default => default::parse(source),
         Flavor::Ml => ml::parse_ml(source),
-    };
-    discharge_static_handlers(parsed)
+    }
 }
 
 /// Every function's dependency set — the static-effect operations it requires,
@@ -128,10 +136,8 @@ pub fn parse_program_with_flavor(source: &str, flavor: Flavor) -> Parsed {
 /// found deriving them. Implements [STAGE-SIGNALS-DIRTY]
 /// (docs/specs/0035-StagedEffects.md).
 ///
-/// Computed on the program **before** static discharge, because discharge is
-/// what makes those reads free and this is what makes them visible. Every
-/// other entry point returns a discharged program, in which the dependency set
-/// no longer exists to be read.
+/// Computed on the source program before semantic validation and static
+/// discharge, so all declared dependencies remain visible.
 ///
 /// Parsing is best-effort, so a source that did not parse still yields a tree —
 /// and the dependency sets read off it are silently short. "This view reads no
@@ -156,30 +162,6 @@ pub fn dependency_report(
         osprey_ast::stage::dependencies(&parsed.program),
         parsed.errors,
     )
-}
-
-/// Answer every `static` effect before the canonical program leaves the flavor
-/// boundary, so no later phase — the checker, the GPU purity gate, codegen, the
-/// language server — ever sees a compile-time effect. A static handler is a
-/// lowering pass, and this is where lowering belongs. Implements [STAGE-LOWER],
-/// [STAGE-LOWER-ORDER-PHASE] (docs/specs/0035-StagedEffects.md).
-///
-/// A program with no `static` effect is returned untouched ([STAGE-COMPAT]);
-/// when a staging rule is violated the *undischarged* program is kept so
-/// tolerant consumers (outline, test discovery) still see declarations, and the
-/// violations join the syntax errors.
-fn discharge_static_handlers(parsed: Parsed) -> Parsed {
-    match osprey_ast::stage::discharge(&parsed.program) {
-        Ok(program) => Parsed { program, ..parsed },
-        Err(violations) => {
-            let mut errors = parsed.errors;
-            errors.extend(violations.into_iter().map(|violation| SyntaxError {
-                message: violation.message,
-                position: violation.position.unwrap_or_default(),
-            }));
-            Parsed { errors, ..parsed }
-        }
-    }
 }
 
 /// The value of a leading `// osprey: flavor=<name>` marker, if the source has
@@ -358,7 +340,11 @@ fn frame() = kernel\n    Tile size => 8\nin shade(2)\n";
         for (flavor, source) in [(Flavor::Default, KERNEL_DEFAULT), (Flavor::Ml, KERNEL_ML)] {
             let parsed = parse_program_with_flavor(source, flavor);
             assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
-            let rendered = format!("{:?}", parsed.program);
+            let source_ast = format!("{:?}", parsed.program);
+            assert!(source_ast.contains("Handler") && source_ast.contains("Perform"));
+            let discharged = osprey_ast::stage::discharge(&parsed.program);
+            assert!(discharged.is_ok(), "{flavor:?}: {discharged:?}");
+            let rendered = format!("{discharged:?}");
             assert!(
                 !rendered.contains("Handler"),
                 "{flavor:?}: a discharged kernel must leave no handler"
@@ -396,7 +382,11 @@ fn counter(n) = (perform Signal<Count>.read()) ?: n\n";
 effect Log { write: fn(string) -> Unit }\n\
 fn shade(px) = {\n    perform Log.write(\"px\")\n    (px * perform Tile.size()) ?: 0\n}\n\
 fn frame() = kernel\n    Tile size => 8\nin shade(2)\n";
-        let errors = parse_program_with_flavor(source, Flavor::Default).errors;
+        let parsed = parse_program_with_flavor(source, Flavor::Default);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let errors = osprey_ast::stage::discharge(&parsed.program)
+            .err()
+            .unwrap_or_default();
         assert!(
             errors.iter().any(|e| e.message.contains(
                 "kernel body is not stage-legal; it requires dynamic effects: Log.write"
@@ -405,20 +395,31 @@ fn frame() = kernel\n    Tile size => 8\nin shade(2)\n";
         );
     }
 
-    /// [STAGE-SIGNALS-EXACT]: only the static stage can represent instantiation
-    /// identity — a dynamic handler is keyed by effect name at runtime — so an
-    /// instantiated mention of a dynamic effect is rejected rather than
-    /// compiled to a key it shares with every other instantiation.
+    /// [EFFECTS-GENERIC-INSTANTIATION]: a written instantiation identifies the
+    /// same operation at either stage, so an instantiated mention of a dynamic
+    /// effect is a spelling of its identity, not a staging violation. Its
+    /// ARITY is still the declaration's.
     #[test]
-    fn an_instantiated_dynamic_effect_is_rejected_rather_than_shared() {
+    fn an_instantiated_dynamic_effect_names_the_same_operation() {
         let source = "effect Signal<T> { read: fn() -> T }\n\
 fn counter(n) = (perform Signal<Count>.read()) ?: n\n";
-        let errors = parse_program_with_flavor(source, Flavor::Default).errors;
+        let parsed = parse_program_with_flavor(source, Flavor::Default);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let errors = osprey_ast::stage::discharge(&parsed.program)
+            .err()
+            .unwrap_or_default();
+        assert!(errors.is_empty(), "{errors:?}");
+        let wrong_arity = parse_program_with_flavor(
+            "effect Signal<T> { read: fn() -> T }\n\
+fn counter(n) = (perform Signal<Count, Extra>.read()) ?: n\n",
+            Flavor::Default,
+        );
+        let errors = osprey_ast::stage::discharge(&wrong_arity.program)
+            .err()
+            .unwrap_or_default();
         assert!(
-            errors.iter().any(|e| e
-                .message
-                .contains("names an instantiation of dynamic effect `Signal`")),
-            "expected the dynamic-instantiation rejection, got: {errors:?}"
+            !errors.is_empty(),
+            "a two-argument mention of a one-parameter effect must be rejected"
         );
     }
 

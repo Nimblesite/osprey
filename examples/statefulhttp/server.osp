@@ -141,7 +141,7 @@ fn main() -> int {
     mut tasks = ""        // Db layer       (application data)
     mut taskCount = 0     // Db layer
 
-    handle Persist
+    handle Persist {
         flush snap => {
             let saved = writeFile("/tmp/osprey_tasks.db", snap)
             diskBytes = match saved {
@@ -150,10 +150,12 @@ fn main() -> int {
             }
             diskBytes
         }
-    in handle Metrics
+    }
+    handle Metrics {
         hit _p  => { requests = inc(requests) }
         served => requests
-    in handle Db
+    }
+    handle Db {
         add t => {
             taskCount = inc(taskCount)
             tasks = "${tasks}#${toString(taskCount)} ${t}\n"
@@ -161,17 +163,17 @@ fn main() -> int {
         }
         list  => tasks
         count => taskCount
-    in handle Log
+    }
+    handle Log {
         info m => {
             logBuf = "${logBuf}${m}\n"
             let _w = writeFile("/tmp/osprey_server.log", logBuf)
             print("  ${m}")
         }
-    in {
-        let serverId = httpCreateServer(8080, "127.0.0.1")
-        let _listening = httpListen(serverId, handleReq)
-        print(banner())
-        serveForever()
-        0
     }
+    let serverId = httpCreateServer(8080, "127.0.0.1")
+    let _listening = httpListen(serverId, handleReq)
+    print(banner())
+    serveForever()
+    0
 }

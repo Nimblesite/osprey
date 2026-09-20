@@ -20,7 +20,7 @@ use osprey_syntax::Flavor;
 enum Scope {
     /// Declaration/statement position only (`fn`, `type`, `namespace`, …).
     Decl,
-    /// Also legal where a value is expected (`match`, `if`, `handle`).
+    /// Also legal where a value is expected (`match`, `if`, `handler`).
     Expr,
 }
 
@@ -30,7 +30,7 @@ type Spec = (&'static str, &'static str, &'static str, Scope);
 
 /// Core keyword/snippet completions, **Default** flavor (superset of the old TS
 /// server's six).
-const DEFAULT_CORE: [Spec; 7] = [
+const DEFAULT_CORE: [Spec; 8] = [
     (
         "if",
         "Conditional expression [GRAMMAR-IF-ELSE]",
@@ -73,6 +73,12 @@ const DEFAULT_CORE: [Spec; 7] = [
         "effect ${1:Name} {\n\t${2:op}: ${3:fn() -> Unit}\n}",
         Scope::Decl,
     ),
+    (
+        "handler",
+        "Callable effect handler",
+        "handler ${1:Effect} {\n\t${2:op} ${3:arg} => ${0}\n}",
+        Scope::Expr,
+    ),
 ];
 
 /// Core keyword/snippet completions, **ML** flavor.
@@ -112,9 +118,9 @@ const ML_CORE: [Spec; 5] = [
         Scope::Decl,
     ),
     (
-        "handle",
-        "Install a handler over a body [FLAVOR-ML-HANDLER]",
-        "handle ${1:Effect}\n\t${2:op} ${3:arg} => ${4:result}\nin\n\t${0}",
+        "handler",
+        "Callable effect handler [EFFECTS-HANDLER-VALUE]",
+        "handler ${1:Effect}\n\t${2:op} ${3:arg} => ${0}",
         Scope::Expr,
     ),
 ];

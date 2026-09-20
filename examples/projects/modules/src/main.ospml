@@ -105,9 +105,9 @@ boot () =
         owner id => Ledger::ownerSql db id
         count => Ledger::countSql db
         activity => Ledger::activitySql db
-    in handle Api::Audit
+    handle Api::Audit
         log line => print "[audit] ${line}"
-    in serve db
+    serve db
 
 // The router: every request is counted by the state module, then dispatched —
 // `/api/*` to the JSON API, everything else to the browser-app host.

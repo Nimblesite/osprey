@@ -10,4 +10,4 @@ done =
     handle Stash
         put value => print ""
         take => "cached text"
-    in storeNumber ()
+    storeNumber ()

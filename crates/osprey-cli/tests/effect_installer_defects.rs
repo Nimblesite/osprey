@@ -56,10 +56,15 @@ fn run_source(name: &str, extension: &str, body: &str) -> (Option<i32>, String) 
 #[test]
 fn a_generic_handler_installer_renders_both_instantiations() {
     let source = concat!(
-        "effect Feed { next : fn() -> int }\n\n",
-        "fn feeding(reading, body) = handle Feed\n",
-        "    next => resume(reading)\n",
-        "in body()\n\n",
+        "effect Feed { control next : fn() -> int }\n",
+        "\n",
+        "fn feeding(reading, body) = {\n",
+        "    handle Feed {\n",
+        "        next => resume(reading)\n",
+        "    }\n",
+        "    body()\n",
+        "}\n",
+        "\n",
         "print(\"${feeding(9, fn() => \"done\")}\")\n",
         "print(\"${feeding(3, fn() => perform Feed.next())}\")\n",
     );
@@ -80,10 +85,15 @@ fn a_generic_handler_installer_renders_both_instantiations() {
 #[test]
 fn a_generic_handler_installer_survives_either_statement_order() {
     let source = concat!(
-        "effect Feed { next : fn() -> int }\n\n",
-        "fn feeding(reading, body) = handle Feed\n",
-        "    next => resume(reading)\n",
-        "in body()\n\n",
+        "effect Feed { control next : fn() -> int }\n",
+        "\n",
+        "fn feeding(reading, body) = {\n",
+        "    handle Feed {\n",
+        "        next => resume(reading)\n",
+        "    }\n",
+        "    body()\n",
+        "}\n",
+        "\n",
         "print(\"${feeding(3, fn() => perform Feed.next())}\")\n",
         "print(\"${feeding(9, fn() => \"done\")}\")\n",
     );
@@ -107,11 +117,14 @@ fn a_generic_handler_installer_survives_either_statement_order() {
 #[test]
 fn a_curried_ml_installer_emits_a_linkable_resume_trampoline() {
     let source = concat!(
-        "effect Feed\n    next : Unit => int\n\n",
+        "effect Feed\n",
+        "    control next : Unit => int\n",
+        "\n",
         "feeding reading body =\n",
         "    handle Feed\n",
         "        next => resume reading\n",
-        "    in body ()\n\n",
+        "    body ()\n",
+        "\n",
         "print \"${feeding 3 (\\() => perform Feed.next ())}\"\n",
     );
     let (code, transcript) = run_source("curried_ml_installer", "ospml", source);
@@ -133,11 +146,15 @@ fn a_curried_ml_installer_emits_a_linkable_resume_trampoline() {
 #[test]
 fn a_single_line_ml_handler_arm_may_assign_to_its_cell() {
     let source = concat!(
-        "effect Counter\n    tick : Unit => Unit\n\n",
+        "effect Counter\n",
+        "    tick : Unit => Unit\n",
+        "\n",
         "mut requests = 0\n",
-        "total = handle Counter\n",
-        "    tick => requests := (requests + 1) ?: requests\n",
-        "in perform Counter.tick ()\n\n",
+        "total =\n",
+        "    handle Counter\n",
+        "        tick => requests := (requests + 1) ?: requests\n",
+        "    perform Counter.tick ()\n",
+        "\n",
         "print \"${requests}\"\n",
     );
     let (code, transcript) = run_source("ml_single_line_arm_assign", "ospml", source);
@@ -157,12 +174,22 @@ fn a_single_line_ml_handler_arm_may_assign_to_its_cell() {
 #[test]
 fn a_file_scope_handler_and_a_generic_binding_coexist() {
     let source = concat!(
-        "effect Counter { tick : fn(int) -> int }\n\n",
-        "fn run() = perform Counter.tick(3)\n\n",
-        "let total = handle Counter\n    tick amount => amount\nin run()\n\n",
+        "effect Counter { tick : fn(int) -> int }\n",
+        "\n",
+        "fn run() = perform Counter.tick(3)\n",
+        "\n",
+        "let total = {\n",
+        "    handle Counter {\n",
+        "        tick amount => amount\n",
+        "    }\n",
+        "    run()\n",
+        "}\n",
+        "\n",
         "fn identity(x) = x\n",
-        "let alias = identity\n\n",
-        "fn round(n) = alias(n)\n\n",
+        "let alias = identity\n",
+        "\n",
+        "fn round(n) = alias(n)\n",
+        "\n",
         "print(\"${total} ${round(1)}\")\n",
     );
     let (code, transcript) = run_source("handler_beside_generic_binding", "osp", source);
@@ -196,18 +223,24 @@ fn a_file_scope_handler_and_a_generic_binding_coexist() {
 #[test]
 fn a_handler_arm_reads_a_mut_cell_into_an_inferred_result_helper() {
     let source = concat!(
-        "effect Charge { charge : fn(int) -> int }\n\n",
+        "effect Charge { charge : fn(int) -> int }\n",
+        "\n",
         "fn settle(attempt) = match attempt {\n",
         "    1 => Error { message: \"declined\" }\n",
         "    _ => Success { value: 7 }\n",
-        "}\n\n",
+        "}\n",
+        "\n",
         "mut attempts = 1\n",
-        "let outcome = handle Charge\n",
-        "    charge amount => match settle(attempts) {\n",
-        "        Success { value } => value\n",
-        "        Error { message } => 0\n",
+        "let outcome = {\n",
+        "    handle Charge {\n",
+        "        charge amount => match settle(attempts) {\n",
+        "            Success { value } => value\n",
+        "            Error { message } => 0\n",
+        "        }\n",
         "    }\n",
-        "in perform Charge.charge(1)\n\n",
+        "    perform Charge.charge(1)\n",
+        "}\n",
+        "\n",
         "print(\"${outcome}\")\n",
     );
     let (code, transcript) = run_source("arm_mut_cell_into_result_helper", "osp", source);
@@ -216,7 +249,7 @@ fn a_handler_arm_reads_a_mut_cell_into_an_inferred_result_helper() {
         std::env::temp_dir().join("osprey_installer_defect_arm_mut_cell_into_result_helper.osp");
     assert_eq!(
         transcript, format!(
-            "0\n\n{}\n  10:4  warning: unused handler parameter `amount` of `Charge.charge`\n  10:4  warning: unused pattern binding `message`\n\n2 warnings (unused-handler-parameter, unused-pattern-binding)\n",
+            "0\n\n{}\n  11:8  warning: unused handler parameter `amount` of `Charge.charge`\n  11:8  warning: unused pattern binding `message`\n\n2 warnings (unused-handler-parameter, unused-pattern-binding)\n",
             path.display()
         ),
         "the arm did not read the promoted mutable cell"

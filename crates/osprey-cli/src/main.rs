@@ -416,9 +416,8 @@ pub(crate) fn load_input(cli: &Cli) -> Result<CompilationInput, ExitCode> {
     if report_syntax_errors(path, &parsed.errors) {
         return Err(ExitCode::FAILURE);
     }
-    // Static handlers were already discharged at the flavor boundary
-    // ([STAGE-LOWER-ORDER-PHASE]), and any staging violation arrived as a parse
-    // error above, so `parsed.program` is an ordinary program from here on.
+    // Preserve static operation contracts through module assembly. The type
+    // gate checks them before discharge ([STAGE-LOWER-ORDER-PHASE]).
     let program = parsed.program;
     if project::needs_assembly(&program) {
         return CompilationInput::one_source(path, flavor, source, program).map_err(|errors| {

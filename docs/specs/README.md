@@ -56,19 +56,6 @@ This directory holds **all spec documents** for the project:
     stdin-only input ferry (one JSON line via `input`), the `key=value` →
     `$GITHUB_OUTPUT` contract, Docker vs composite packaging, and why the native
     target is forced (wasm omits `input`) with the deferred wasm path.
-  - [`0035-StagedEffects.md`](0035-StagedEffects.md) — the two axes an effect
-    declaration carries beyond its operations. **Stage** (prototyped) says
-    *when* a request is answered: a `static effect` is answered by the compiler
-    and leaves no runtime trace, a dynamic one keeps today's handler stack. One
-    rewrite, run before type checking, that makes GPU legality a typing
-    question, removes WebAssembly's stack-switching dependency for static rows,
-    and turns an effect row into an exact reactive dependency set.
-    **Multiplicity** says *how many times*: `abort`, `once` or `many` per
-    operation, with `replayable` marking a request safe to re-perform, so the
-    compiler rejects a multi-shot handler over a body that sends an email
-    instead of sending it twice. Delivery in
-    [plan 0024](../plans/0024-staged-effects.md) for stage and
-    [plan 0028](../plans/0028-resumption-multiplicity.md) for multiplicity.
   - [`0036-StructuredConcurrency.md`](0036-StructuredConcurrency.md) —
     **normative target**: structured fiber scopes, cancellation as an
     effect-handler action (decline to resume, run `finally` finalizers,
@@ -85,8 +72,7 @@ This directory holds **all spec documents** for the project:
     (overflow, zero divisor) dispatches to a compiler-declared `Arith` effect
     through the shipped substituting-handler path — one region states the
     policy (wrapping, fault-sticky, saturating) instead of a fabricated `?:`
-    fallback at every call site. Includes the Default `handle … do` binder
-    rename. Motivated by
+    fallback at every call site. Motivated by
     [#230](https://github.com/Nimblesite/osprey/issues/230); delivery in
     [plan 0027](../plans/0027-arithmetic-effects.md).
   - [`0038-iOSTarget.md`](0038-iOSTarget.md) — iPhone and ARM64 simulator static
@@ -103,25 +89,16 @@ uppercase, hyphen-separated segments. Numbered suffixes are forbidden. See the
 project's [`CLAUDE.md`](../../CLAUDE.md) for the full convention.
 
 Code implementing a spec section MUST repeat that section's bracketed ID in a
-comment. The `spec-check` skill enforces this by grep. Specs whose header
-declares **Status: normative target** (0029–0033, 0036, 0037) are not implemented yet;
-the `[MULTI-*]` sections of [0035](0035-StagedEffects.md) are implemented and
-cited except for the seven that
-[plan 0028](../plans/0028-resumption-multiplicity.md) records as blocked on
-another plan, which stay exempt on the same terms:
-`[MULTI-HANDLE-ABORT-MODE]`, `[MULTI-DECL-ABORT-RESULT]` and
-`[MULTI-COST-ABORT]` wait on
-[plan 0026](../plans/0026-structured-concurrency.md)'s unwinding;
-`[MULTI-HANDLE-MANY-LEXICAL]`, `[MULTI-STAGE-TURN]` and the `many` row of
-`[MULTI-COST]` wait on
-[plan 0016](../plans/0016-algebraic-effects-and-handlers.md)'s multi-shot
-continuation; and `[MULTI-TRACE]` with `[MULTI-STAGE]`'s tail-resumptive hint,
-`[DEBUGGER-EFFECT-TRACE]` and `[LSP-EFFECT-MULTIPLICITY]` follow those. A
-declaration needing any of them is REJECTED with a diagnostic naming the
-blocking plan, never compiled to a wrong answer, so no exempt section is a
-silent gap;
-the arithmetic totality model of [ARITH-TOTAL](0037-ArithmeticEffects.md) is likewise
-specified ahead of the compiler and is cited from 0001–0004, 0007, 0010–0013, 0024,
-0025 and 0034, so those arithmetic sections are exempt on the same terms;
-their IDs are exempt from the code-citation requirement until their delivery
-plan lands, at which point every landed section must be cited as usual.
+comment. Normative targets may precede implementation; their delivery plans
+record unmet requirements. A missing capability must produce a diagnostic, not
+an incorrectly compiled program.
+
+## Managing effects
+
+[0017 — Algebraic Effects](0017-AlgebraicEffects.md) is the single effects
+contract: choosing and composing handlers, effect requirements, continuation
+control, replay and staging. [Plan 0016](../plans/0016-algebraic-effects-and-handlers.md)
+records delivery status and comparisons; [runnable examples](../../examples/handlers/README.md)
+are the practical starting point. The former 0035 document redirects to 0017.
+Flavor, target and concurrency documents specify only their own integration
+rules and refer to the canonical effects contract.

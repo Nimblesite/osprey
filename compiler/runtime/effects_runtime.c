@@ -1,6 +1,16 @@
 // effects_runtime.c - Runtime handler stack for algebraic effects
 // Implements dynamic handler resolution for nested effect handlers.
 //
+// Every operation the program can perform is interned by codegen to a small
+// integer, and the stack keeps one evidence slot per operation id holding the
+// stack index of its innermost live handler. A `perform` is therefore one
+// array index — the runtime-resident form of Koka's evidence vector — never a
+// scan and never a string compare. Implements [EFFECTS-HANDLE-REST].
+//
+// The stack is thread-local and every function here touches only the calling
+// thread's copy: a fiber or continuation thread receives its handlers as a
+// snapshot that it installs into its own stack, so no lock is needed.
+//
 // The `resume` half — thread-as-continuation, the operation mailbox and the
 // coroutine drive protocol — lives in effects_coro.c, which shares only the
 // handler snapshot declared in effects_runtime.h.
@@ -9,31 +19,19 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>  // int64_t — explicit so the wasm32-wasip1 sysroot resolves it
-#include <pthread.h>
 
 #include "effects_runtime.h"
-#ifdef __wasm__
-// wasm32-wasip1 is single-threaded: the effect handler stack needs no real
-// locking, so the mutex ops become no-ops. effects_coro.c is excluded from the
-// wasm archive wholesale — it needs pthread_create/cond/join/exit, which
-// wasi-libc cannot honour. With those symbols absent, resumable-effect programs
-// link-fail and are SKIPped by the wasm golden suite, exactly like the
-// fiber/HTTP runtimes. [WASM-TARGET-EFFECTS]
-#define pthread_mutex_init(m, a) ((void)(m), (void)(a), 0)
-#define pthread_mutex_lock(m) ((void)(m), 0)
-#define pthread_mutex_unlock(m) ((void)(m), 0)
-#define pthread_mutex_destroy(m) ((void)(m), 0)
-#endif
 
 // Maximum handler stack depth per fiber
 #define MAX_HANDLER_STACK_DEPTH 1024
-#define MAX_EFFECT_NAME_LENGTH 128
-#define MAX_OPERATION_NAME_LENGTH 128
+// No handler is live for an operation: the empty evidence slot.
+#define NO_HANDLER (-1)
 
 // HandlerEntry represents a single handler on the stack
 typedef struct {
-    char effect_name[MAX_EFFECT_NAME_LENGTH];
-    char operation_name[MAX_OPERATION_NAME_LENGTH];
+    int operation_id;
+    int activation_base;
+    int shadowed;            // Stack index this entry hides for its operation, or NO_HANDLER
     void *handler_func_ptr;  // Function pointer to handler
     void *env;               // Captured environment (cells + values), or NULL
 } HandlerEntry;
@@ -41,12 +39,26 @@ typedef struct {
 // HandlerStack per thread/fiber
 typedef struct {
     HandlerEntry stack[MAX_HANDLER_STACK_DEPTH];
+    int evidence[OSP_MAX_OPERATION_IDS];  // operation id -> innermost live entry
     int top;  // Index of top element (-1 means empty)
-    pthread_mutex_t lock;  // Thread safety
+    HandlerScope *suspended;
 } HandlerStack;
 
-// Global handler stack (thread-local storage would be better for production)
+struct HandlerScope {
+    HandlerScope *previous;
+    HandlerStack *owner;
+    int base;
+    int count;
+    HandlerEntry entries[];
+};
+
 static __thread HandlerStack *g_handler_stack = NULL;
+
+static void clear_evidence(HandlerStack *stack) {
+    for (int id = 0; id < OSP_MAX_OPERATION_IDS; id++) {
+        stack->evidence[id] = NO_HANDLER;
+    }
+}
 
 // Initialize handler stack for current thread
 static void ensure_handler_stack_initialized(void) {
@@ -57,38 +69,69 @@ static void ensure_handler_stack_initialized(void) {
             abort();
         }
         g_handler_stack->top = -1;
-        pthread_mutex_init(&g_handler_stack->lock, NULL);
+        g_handler_stack->suspended = NULL;
+        clear_evidence(g_handler_stack);
     }
+}
+
+// Make the entry at `index` the innermost handler of its operation, remembering
+// which entry it hides so unlinking restores it.
+static void link_evidence(HandlerStack *stack, int index) {
+    HandlerEntry *entry = &stack->stack[index];
+    entry->shadowed = stack->evidence[entry->operation_id];
+    stack->evidence[entry->operation_id] = index;
+}
+
+// Undo link_evidence for the entry at `index`; entries unlink in LIFO order.
+static void unlink_evidence(HandlerStack *stack, int index) {
+    HandlerEntry *entry = &stack->stack[index];
+    stack->evidence[entry->operation_id] = entry->shadowed;
+}
+
+static void link_range(HandlerStack *stack, int from, int to_exclusive) {
+    for (int i = from; i < to_exclusive; i++) {
+        link_evidence(stack, i);
+    }
+}
+
+static void unlink_range(HandlerStack *stack, int from, int to_exclusive) {
+    for (int i = to_exclusive - 1; i >= from; i--) {
+        unlink_evidence(stack, i);
+    }
+}
+
+static int push_rejected(int operation_id, int base) {
+    if (operation_id < 0 || operation_id >= OSP_MAX_OPERATION_IDS) {
+        fprintf(stderr, "FATAL: Invalid operation id %d\n", operation_id);
+        return 1;
+    }
+    if (base < 0 || base > g_handler_stack->top + 1) {
+        fprintf(stderr, "FATAL: Invalid handler activation depth %d\n", base);
+        return 1;
+    }
+    if (g_handler_stack->top >= MAX_HANDLER_STACK_DEPTH - 1) {
+        fprintf(stderr, "FATAL: Handler stack overflow (depth > %d)\n", MAX_HANDLER_STACK_DEPTH);
+        return 1;
+    }
+    return 0;
 }
 
 // Push a handler onto the stack, with its captured environment (cells +
 // values shared by every arm of one `handle` region; NULL when nothing is
 // captured).
-// Returns 0 on success, -1 on stack overflow
-int __osprey_handler_push(const char *effect_name, const char *operation_name, void *handler_func_ptr, void *env) {
+// Returns 0 on success, -1 on a bad id, a bad activation depth or overflow
+int __osprey_handler_push_scoped(int operation_id, void *handler_func_ptr, void *env, int base) {
     ensure_handler_stack_initialized();
-
-    pthread_mutex_lock(&g_handler_stack->lock);
-
-    if (g_handler_stack->top >= MAX_HANDLER_STACK_DEPTH - 1) {
-        pthread_mutex_unlock(&g_handler_stack->lock);
-        fprintf(stderr, "FATAL: Handler stack overflow (depth > %d)\n", MAX_HANDLER_STACK_DEPTH);
+    if (push_rejected(operation_id, base)) {
         return -1;
     }
-
     g_handler_stack->top++;
     HandlerEntry *entry = &g_handler_stack->stack[g_handler_stack->top];
-
-    strncpy(entry->effect_name, effect_name, MAX_EFFECT_NAME_LENGTH - 1);
-    entry->effect_name[MAX_EFFECT_NAME_LENGTH - 1] = '\0';
-
-    strncpy(entry->operation_name, operation_name, MAX_OPERATION_NAME_LENGTH - 1);
-    entry->operation_name[MAX_OPERATION_NAME_LENGTH - 1] = '\0';
-
+    entry->operation_id = operation_id;
     entry->handler_func_ptr = handler_func_ptr;
     entry->env = env;
-
-    pthread_mutex_unlock(&g_handler_stack->lock);
+    entry->activation_base = base;
+    link_evidence(g_handler_stack, g_handler_stack->top);
     return 0;
 }
 
@@ -96,81 +139,93 @@ int __osprey_handler_push(const char *effect_name, const char *operation_name, v
 // Returns 0 on success, -1 on stack underflow
 int __osprey_handler_pop(void) {
     ensure_handler_stack_initialized();
-
-    pthread_mutex_lock(&g_handler_stack->lock);
-
     if (g_handler_stack->top < 0) {
-        pthread_mutex_unlock(&g_handler_stack->lock);
         fprintf(stderr, "FATAL: Handler stack underflow\n");
         return -1;
     }
-
+    unlink_evidence(g_handler_stack, g_handler_stack->top);
     g_handler_stack->top--;
-
-    pthread_mutex_unlock(&g_handler_stack->lock);
     return 0;
 }
 
-// Look up handler from stack (searches from top to bottom)
-// Returns handler function pointer, or NULL if not found
-void *__osprey_handler_lookup(const char *effect_name, const char *operation_name) {
+static HandlerEntry *find_handler(int operation_id) {
     ensure_handler_stack_initialized();
-
-    pthread_mutex_lock(&g_handler_stack->lock);
-
-    // Search from top of stack (most recent handler) to bottom
-    for (int i = g_handler_stack->top; i >= 0; i--) {
-        HandlerEntry *entry = &g_handler_stack->stack[i];
-        if (strcmp(entry->effect_name, effect_name) == 0 &&
-            strcmp(entry->operation_name, operation_name) == 0) {
-            void *result = entry->handler_func_ptr;
-            pthread_mutex_unlock(&g_handler_stack->lock);
-            return result;
-        }
+    if (operation_id < 0 || operation_id >= OSP_MAX_OPERATION_IDS) {
+        return NULL;
     }
-
-    pthread_mutex_unlock(&g_handler_stack->lock);
-    return NULL;  // Handler not found
+    int index = g_handler_stack->evidence[operation_id];
+    return index == NO_HANDLER ? NULL : &g_handler_stack->stack[index];
 }
 
-// Look up the captured environment of the innermost matching handler — the
-// companion to __osprey_handler_lookup, resolved the same top-to-bottom way so
-// fnptr and env always come from the same handler entry.
-// Returns the env pointer, or NULL if not found / no captures.
-void *__osprey_handler_lookup_env(const char *effect_name, const char *operation_name) {
-    ensure_handler_stack_initialized();
-
-    pthread_mutex_lock(&g_handler_stack->lock);
-
-    for (int i = g_handler_stack->top; i >= 0; i--) {
-        HandlerEntry *entry = &g_handler_stack->stack[i];
-        if (strcmp(entry->effect_name, effect_name) == 0 &&
-            strcmp(entry->operation_name, operation_name) == 0) {
-            void *result = entry->env;
-            pthread_mutex_unlock(&g_handler_stack->lock);
-            return result;
-        }
-    }
-
-    pthread_mutex_unlock(&g_handler_stack->lock);
-    return NULL;  // Handler not found
+// Both lookups resolve the same active entry, including its captured environment.
+void *__osprey_handler_lookup(int operation_id) {
+    HandlerEntry *entry = find_handler(operation_id);
+    return entry == NULL ? NULL : entry->handler_func_ptr;
 }
 
-// Get current stack depth (for debugging)
-int __osprey_handler_stack_depth(void) {
+void *__osprey_handler_lookup_env(int operation_id) {
+    HandlerEntry *entry = find_handler(operation_id);
+    return entry == NULL ? NULL : entry->env;
+}
+
+static HandlerScope *save_scope_tail(int base) {
+    int count = g_handler_stack->top + 1 - base;
+    size_t bytes = (size_t)count * sizeof(HandlerEntry);
+    HandlerScope *scope = malloc(sizeof(HandlerScope) + bytes);
+    if (scope == NULL) {
+        fprintf(stderr, "FATAL: Failed to allocate suspended handler scope\n");
+        abort();
+    }
+    scope->previous = g_handler_stack->suspended;
+    scope->owner = g_handler_stack;
+    scope->base = base;
+    scope->count = count;
+    unlink_range(g_handler_stack, base, g_handler_stack->top + 1);
+    memcpy(scope->entries, &g_handler_stack->stack[base], bytes);
+    g_handler_stack->suspended = scope;
+    g_handler_stack->top = base - 1;
+    return scope;
+}
+
+HandlerScope *__osprey_handler_suspend_scope(int operation_id) {
+    HandlerEntry *entry = find_handler(operation_id);
+    if (entry == NULL) {
+        fprintf(stderr, "FATAL: Cannot suspend missing handler for operation %d\n",
+                operation_id);
+        abort();
+    }
+    return save_scope_tail(entry->activation_base);
+}
+
+void __osprey_handler_restore_scope(HandlerScope *scope) {
     ensure_handler_stack_initialized();
+    if (scope == NULL || scope != g_handler_stack->suspended ||
+        scope->owner != g_handler_stack || scope->base != g_handler_stack->top + 1) {
+        fprintf(stderr, "FATAL: Unbalanced handler scope restoration\n");
+        abort();
+    }
+    memcpy(&g_handler_stack->stack[scope->base], scope->entries,
+           (size_t)scope->count * sizeof(HandlerEntry));
+    g_handler_stack->top += scope->count;
+    link_range(g_handler_stack, scope->base, g_handler_stack->top + 1);
+    g_handler_stack->suspended = scope->previous;
+    free(scope);
+}
 
-    pthread_mutex_lock(&g_handler_stack->lock);
-    int depth = g_handler_stack->top + 1;
-    pthread_mutex_unlock(&g_handler_stack->lock);
-
-    return depth;
+// Current activation boundary for scoped handler installation.
+int __osprey_handler_depth(void) {
+    ensure_handler_stack_initialized();
+    return g_handler_stack->top + 1;
 }
 
 // Cleanup handler stack (call at thread exit)
 void __osprey_handler_stack_cleanup(void) {
     if (g_handler_stack != NULL) {
-        pthread_mutex_destroy(&g_handler_stack->lock);
+        while (g_handler_stack->suspended != NULL) {
+            HandlerScope *scope = g_handler_stack->suspended;
+            g_handler_stack->suspended = scope->previous;
+            free(scope);
+        }
         free(g_handler_stack);
         g_handler_stack = NULL;
     }
@@ -186,37 +241,27 @@ struct HandlerSnapshot {
 // Returns a heap-allocated snapshot that the caller must pass to __osprey_handler_restore
 HandlerSnapshot *__osprey_handler_snapshot(void) {
     ensure_handler_stack_initialized();
-
     HandlerSnapshot *snap = (HandlerSnapshot *)malloc(sizeof(HandlerSnapshot));
     if (snap == NULL) {
         fprintf(stderr, "FATAL: Failed to allocate handler snapshot\n");
         abort();
     }
-
-    pthread_mutex_lock(&g_handler_stack->lock);
     int depth = g_handler_stack->top + 1;
     snap->count = depth;
-    for (int i = 0; i < depth; i++) {
-        snap->entries[i] = g_handler_stack->stack[i];
-    }
-    pthread_mutex_unlock(&g_handler_stack->lock);
-
+    memcpy(snap->entries, g_handler_stack->stack, (size_t)depth * sizeof(HandlerEntry));
     return snap;
 }
 
 // Restore a snapshot into the current thread's handler stack (called at fiber thread start)
-// Frees the snapshot after restoring.
+// Frees the snapshot after restoring. The stack's evidence is rebuilt from the
+// restored entries, so their origin thread's slots never leak across.
 void __osprey_handler_restore(HandlerSnapshot *snap) {
     if (snap == NULL) return;
-
     ensure_handler_stack_initialized();
-
-    pthread_mutex_lock(&g_handler_stack->lock);
-    for (int i = 0; i < snap->count && i < MAX_HANDLER_STACK_DEPTH; i++) {
-        g_handler_stack->stack[i] = snap->entries[i];
-    }
-    g_handler_stack->top = snap->count - 1;
-    pthread_mutex_unlock(&g_handler_stack->lock);
-
+    int count = snap->count < MAX_HANDLER_STACK_DEPTH ? snap->count : MAX_HANDLER_STACK_DEPTH;
+    memcpy(g_handler_stack->stack, snap->entries, (size_t)count * sizeof(HandlerEntry));
+    g_handler_stack->top = count - 1;
+    clear_evidence(g_handler_stack);
+    link_range(g_handler_stack, 0, count);
     free(snap);
 }

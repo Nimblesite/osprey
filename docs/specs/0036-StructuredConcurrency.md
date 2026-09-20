@@ -1,9 +1,6 @@
 # Structured Concurrency: Cancellation and Turn Isolation
 
-**Status:** normative target; implementation has not started. Delivery is fixed
-by [plan 0026](../plans/0026-structured-concurrency.md). Today's shipped fiber
-behavior — no cancellation, fibers always run to completion — is specified in
-[Fibers and Concurrency](0011-LightweightFibersAndConcurrency.md).
+This specification defines scheduling, scopes and cancellation. [Algebraic Effects](0017-AlgebraicEffects.md) defines operation modes, continuation ownership, replay and finalization. Implementation status belongs in [plan 0026](../plans/0026-structured-concurrency.md); basic fiber operations are defined in [Fibers and Concurrency](0011-LightweightFibersAndConcurrency.md).
 
 The key words `MUST`, `MUST NOT`, `SHOULD`, and `MAY` are to be interpreted as
 described by BCP 14 (RFC 2119 and RFC 8174) when they appear in capitals. A
@@ -11,27 +8,7 @@ feature is not implemented merely because this document specifies it.
 
 ## One mechanism
 
-Most languages bolt concurrency control onto the side: a cancellation token
-threaded through every signature (.NET), a `Context` as the first parameter of
-every function (Go), an exception that can strike between any two instructions
-and a `mask` primitive to hold it off (Haskell), and a mutex around anything
-shared. Osprey already has the primitive the research literature builds all of
-this from: in an effect-handler runtime, a suspended fiber **is** a
-continuation held by a handler
-([Leijen, TyDe 2017](#references); [Dolan et al., TFP 2017](#references)).
-
-- **To cancel is to decline to resume** the continuation and run its
-  finalizers instead.
-- **To serialize is to resume one performer at a time** — which the shipped
-  runtime already does for every resuming handler
-  ([EFFECTS-FIBER-PERFORM](0017-AlgebraicEffects.md#resuming-handlers)).
-- **To compose is to make several operations one turn.**
-
-Concurrency control is therefore not a library beside the effect system. It is
-what the handler runtime already does, stated as law and checked by the same
-effect rows the compiler already infers. No token parameter, no context
-plumbing, no function coloring, and — because interruption can only land where
-an effect row says the code can pause — no `mask` primitive at all.
+Scopes own concurrent work. Cancellation abandons suspended work with cleanup. Turns serialize access to handler-owned state, and transactions compose several operations. These use the ownership and effect contracts in [Algebraic Effects](0017-AlgebraicEffects.md).
 
 ## Part 1 — Scopes and cancellation
 
@@ -67,8 +44,7 @@ a scope adds no wrapper.
   MUST cancel every child, then wait for their finalizers, then continue
   unwinding.
 - A `spawn` outside any explicit scope attaches to the **root scope** that
-  implicitly encloses program entry. Every existing program keeps its
-  meaning; today's teardown rule in
+  implicitly encloses program entry. The teardown rule in
   [CONCURRENCY-SPAWN-AWAIT](0011-LightweightFibersAndConcurrency.md#spawn-and-await-concurrency-spawn-await)
   becomes the root scope's normal exit.
 
@@ -110,35 +86,13 @@ boundary instead of letting the fiber escape.
 
 ### Where cancellation lands — [CANCEL-POINTS]
 
-A fiber observes cancellation **only at a suspension point**: `await`,
-`send`, `recv`, `sleep`, `yield`, and a `perform` answered by a resuming
-handler. These are exactly the operations the effect checker already tracks,
-so *where a function can be interrupted is readable from its effect row.*
+A fiber observes cancellation only at suspension points: `await`, `send`, `recv`, `sleep`, `yield`, and control operations that suspend. A value operation may reach suspension points through its arm; its transitive requirements remain visible under the canonical row rules.
 
-The consequences are the design's core guarantees:
-
-- **Pure code is uninterruptible by construction.** A critical section is any
-  expression whose row contains no suspending operation — a fact the checker
-  knows statically. Osprey needs no `mask`, `uninterruptibleMask`, or
-  shielding bracket, because there is nothing to mask: interruption cannot
-  strike between two pure instructions, only where the code already said it
-  could pause. Haskell needed `mask` precisely because its asynchronous
-  exceptions may land anywhere (Marlow et al., PLDI 2001); Osprey inverts the
-  default.
-- **A long pure loop is honestly uninterruptible.** The remedy is explicit
-  and already in the language: `yield` inside the loop reintroduces exactly
-  one poll point, visible in the row.
-- Compiler backends MUST NOT introduce hidden suspension points; a row with
-  no suspending operations is a binding promise of atomicity with respect to
-  cancellation.
+Code with no suspending operations cannot be interrupted. Long-running computation can use `yield` to permit cancellation. Backends MUST NOT introduce hidden suspension points. Cleanup shielding follows [CANCEL-FINALLY]; effect masking follows [Algebraic Effects](0017-AlgebraicEffects.md).
 
 ### Delivery: decline to resume — [CANCEL-DELIVERY]
 
-When a cancelled fiber reaches (or is already blocked at) a suspension point,
-the runtime MUST NOT deliver a value into it. The pending continuation is
-discarded; the fiber unwinds outward through its handler regions and scopes,
-running each region's `finally` arms ([CANCEL-FINALLY]) and each scope's
-child-cancellation ([CANCEL-SCOPE]); then the fiber completes as cancelled.
+When a cancelled fiber reaches or is blocked at a suspension point, the runtime MUST NOT deliver a value into it. It abandons the continuation with the cleanup required by [Algebraic Effects](0017-AlgebraicEffects.md) and cancels child scopes under [CANCEL-SCOPE]. Once cleanup completes, the fiber completes as cancelled.
 
 ```mermaid
 stateDiagram-v2
@@ -159,49 +113,13 @@ keep running; code can only finalize. This makes the Kotlin bug class of a
 swallowed `CancellationException` — a fiber that ignores its own cancellation
 — unrepresentable rather than discouraged.
 
-Declining to resume is the bottom of the resumption-multiplicity lattice
-([MULTI-AXIS](0035-StagedEffects.md#multiplicity--multi-axis)). Cancellation
-delivery is an `abort`, and an ordinary suspension point is a `once` whose
-affine half — the permission to drop rather than answer — is what makes this
-delivery legal without a second mechanism. The finalizers below are the same
-unwinding [MULTI-COST-ABORT](0035-StagedEffects.md#cost-model--multi-cost)
-requires of every dropped continuation, cancelled or not; the runtime satisfies
-it for neither today
-([known limits](0017-AlgebraicEffects.md#known-limits-of-abandoning-a-region)).
+Cancellation abandons the owned continuation under [MULTI-COST-ABORT](0017-AlgebraicEffects.md). It does not change the operation's declared mode or multiplicity. Reusable continuations retain the same ownership and cleanup obligations.
 
 ### Finalizers — [CANCEL-FINALLY]
 
-A handler region MAY declare one `finally` arm. It takes no parameters,
-evaluates to `Unit`, and runs exactly once when the region exits — after a
-normal answer, after a non-resuming arm's early exit, or during cancellation
-unwinding. Regions finalize innermost first.
+Finalizer syntax, lifetime, ordering and behavior under reusable continuations are defined in [Algebraic Effects](0017-AlgebraicEffects.md). Cancellation requests the same cleanup as other abandonment.
 
-```ebnf
-handlerExpr ::= "handle" IDENT handlerArm+ finallyArm? "in" expr
-finallyArm  ::= "finally" "=>" expr
-```
-
-```osprey
-handle Db
-    query sql => runQuery(pool, sql)
-    finally => releasePool(pool)
-do report()
-```
-
-```osprey-ml
-handle Db
-    query sql => runQuery pool sql
-    finally => releasePool pool
-in report ()
-```
-
-While finalizers run, the fiber is **shielded**: a further cancellation
-request MUST NOT interrupt them, and their own suspension points execute
-without observing the pending cancellation. Shielding is one-shot and
-bounded to the finalizers; it resumes unwinding when they return. A finalizer
-SHOULD NOT spawn and MUST NOT be a place where new long-running work hides —
-its scope still owes its parent a prompt exit. This is Koka's deep
-finalization (Leijen 2018) fused with Trio-style cleanup shielding.
+While cleanup runs, the fiber is shielded: further cancellation requests MUST NOT interrupt it, including at its suspension points. Shielding ends with cleanup; pending cancellation then continues unwinding. Finalizers SHOULD NOT spawn work and MUST NOT hide unbounded work from the enclosing scope.
 
 ### Observing completion — [CANCEL-JOIN]
 
@@ -268,8 +186,7 @@ Findler, PLDI 2004):
   discarded and the fiber then unwinds. A fiber cancelled while still queued
   for a turn is dequeued without the arm running. Handler state never
   witnesses a half-turn.
-- Under ARC and GC alike, dropping a continuation MUST release the values it
-  captured; a declined resume is a normal end of ownership, not a leak.
+- Captured resources are released according to the canonical [continuation ownership rules](0017-AlgebraicEffects.md), under every memory backend.
 
 ## Part 2 — Turn isolation: reentrancy and serialization
 
@@ -277,34 +194,21 @@ Findler, PLDI 2004):
 
 | Decision | Source |
 | --- | --- |
-| Shared state lives behind a handler; access is serialized turns | E-language vats and turns (Miller, Tribble & Shapiro 2005); actor one-message-at-a-time (Hewitt; Erlang; Orleans, Bykov et al. 2011); already shipped as [EFFECTS-FIBER-PERFORM](0017-AlgebraicEffects.md#resuming-handlers) |
-| Reentrancy is a static discipline, not a runtime timeout | Orleans deadlocks on grain call cycles at runtime; Osprey's closed-program effect summaries can reject the cycle at compile time |
+| Shared state lives behind a handler; access is serialized turns | E-language vats and turns (Miller, Tribble & Shapiro 2005); actor one-message-at-a-time (Hewitt; Erlang; Orleans, Bykov et al. 2011) |
+| Waiting cycles are rejected statically | Call-cycle deadlocks in actor/grain systems, including Orleans |
 | Reentrant operations are asynchronous self-sends only | Erlang's send-to-self; E's eventual sends |
 | Multi-operation composition is transactional, with `retry` | Composable memory transactions (Harris, Marlow, Peyton Jones & Herlihy, PPoPP 2005) |
 | Serialization implemented by combining, not mutual exclusion | Flat combining (Hendler, Incze, Shavit & Tzafrir, SPAA 2010); MCS queue locks (Mellor-Crummey & Scott 1991) as the fair fallback; Reagents (Turon, PLDI 2012) for lock-free composition |
 
 ### The handler is the monitor — [SERIAL-TURN]
 
-Osprey already forbids free shared mutation: handler-owned state is the
-sanctioned form ([EFFECTS-HANDLER-STATE](0017-AlgebraicEffects.md#handler-owned-state)),
-assignable only inside arms, and concurrent performs into one resuming
-handler already serialize for the full round trip
-([EFFECTS-FIBER-PERFORM](0017-AlgebraicEffects.md#resuming-handlers)). This
-section names that shipped behavior and makes it law.
+A **turn** is an operation's arm evaluation under one logical owner. State mutation follows [EFFECTS-HANDLER-STATE](0017-AlgebraicEffects.md). For each handler region:
 
-A **turn** is one perform's complete arm evaluation, from operation entry to
-its answer. For each handler region:
+- Turns from distinct owners MUST be ordered and must not interleave access to its state.
+- Deep resumption retains the logical owner and may re-enter its handler under [MULTI-STAGE-TURN](0017-AlgebraicEffects.md). It must not wait on its own non-reentrant physical lock.
+- State changes occur only within a turn. Cancellation of its performer follows [CANCEL-KILLSAFE].
 
-- Turns MUST be totally ordered; two turns of one region never interleave.
-- Handler state MUST change only inside a turn; between turns it is
-  quiescent.
-- A turn MUST run to completion regardless of its performer's cancellation
-  ([CANCEL-KILLSAFE]).
-
-Data races on handler state are therefore impossible *by construction*, not
-by locking discipline — the region is a monitor the programmer never
-declares, an E-style vat expressed as a handler. Channels remain the data
-plane; turns are the control plane.
+Serialization does not prove that captured resources can be duplicated. Reusable continuations also satisfy the canonical replay and ownership rules.
 
 ```mermaid
 sequenceDiagram
@@ -320,6 +224,8 @@ sequenceDiagram
     H-->>B: answer
     deactivate H
 ```
+
+Concurrent handler installations sharing a captured cell must share its logical state owner or be rejected under [EFFECTS-FIBER-PERFORM](0017-AlgebraicEffects.md). Per-region locking does not establish disjoint state.
 
 ### Widen the operation, not the lock — [SERIAL-WIDEN]
 
@@ -339,17 +245,9 @@ specification names so reviews can cite it.
 
 ### Static reentrancy discipline — [SERIAL-REENTRANCY]
 
-The shipped checker already rejects an arm performing its own active
-operation ([Handlers](0017-AlgebraicEffects.md#handlers)). This section
-extends that rule from one operation to the **turn graph**: nodes are handler
-regions with state or resuming arms; an edge runs from region `R` to region
-`S` when any arm of `R` can reach a perform answered by `S` (through helpers
-and lambdas, via the same closed-program fixed point that powers effect-row
-checking today).
+The **wait graph** records dependencies between distinct logical turn owners, including dependencies reached through helpers and callbacks. Canonical handler selection and masking determine which owner answers an operation.
 
-- A cycle in the turn graph is a compile error naming the cycle, because at
-  runtime it is a turn waiting for itself — the deadlock Orleans detects
-  with timeouts, rejected here before anything runs.
+- A waiting cycle between distinct owners is a compile error naming the cycle. Same-owner deep resumption is permitted and is not a wait edge.
 - The escape hatch is declared, not implicit. An operation marked
   `reentrant` MUST return `Unit`, and performing it inside an active turn of
   its own region enqueues a **new** turn instead of nesting — an
@@ -399,15 +297,11 @@ let receipt = atomic {
   Harris et al.'s composable blocking, so waiting-for-a-condition needs no
   condition variables. (`orElse` composition is a recorded extension, not
   part of this target.)
-- **The effect row is the isolation proof.** The block's row MUST contain
+- The block's row MUST contain
   only turn-safe operations: no `spawn`, `await`, `send`, `recv`, `sleep`,
   and no operation of a handler that performs outside work. A block that
-  logs inside `atomic` is a compile error, statically. This is the
-  precondition Haskell's STM needs a dedicated monad to enforce and
-  mainstream languages cannot enforce at all; Osprey's checker already
-  carries the information in the row it infers.
-- Since a retried block may run more than once, its body must be repeatable —
-  which the row restriction above already guarantees.
+  logs inside `atomic` is a compile error.
+- Every repeated attempt satisfies [MULTI-REPLAY](0017-AlgebraicEffects.md), including captured-state and resource obligations. A restricted row alone does not prove safe replay.
 
 ### Minimal contention — [SERIAL-CONTENTION]
 
@@ -440,18 +334,6 @@ tier, outside Osprey's safety guarantee like the rest of the FFI
 lock, so none of this specification's static guarantees — turn atomicity,
 cycle rejection, cancellation shielding — extend across one. Osprey code
 SHOULD express serialization as turns and `atomic`, not FFI locks.
-
-## What this replaces
-
-| Elsewhere | In Osprey |
-| --- | --- |
-| Go: `context.Context` threaded as the first parameter, checked by hand | No parameter; scope owns the fiber, cancellation lands only at row-visible suspension points |
-| .NET: `CancellationToken` plumbing plus `ThrowIfCancellationRequested` polls | Same — the token's job is done by the scope, the polls by suspension points |
-| Kotlin: cooperative cancellation via a catchable `CancellationException` | Not catchable, only finalizable; the swallowed-cancellation bug cannot be written |
-| Haskell: async exceptions land anywhere; correctness depends on `mask` brackets | Pure code is uninterruptible by construction; there is no mask to forget |
-| Java/Trio: structured task scopes as a library discipline | `scope` is the language's only way to spawn; the discipline is the grammar |
-| Orleans: non-reentrant grains, call-cycle deadlocks detected by runtime timeout | Turn-graph cycles are a compile error; `reentrant` self-sends are declared |
-| Locks and STM as libraries with by-convention purity rules | Turns are implicit monitors; `atomic`'s isolation precondition is the checked effect row |
 
 ## References
 

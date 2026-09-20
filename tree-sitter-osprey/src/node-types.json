@@ -465,6 +465,10 @@
           "named": true
         },
         {
+          "type": "handler_value_expression",
+          "named": true
+        },
+        {
           "type": "if_expression",
           "named": true
         },
@@ -941,16 +945,6 @@
     "type": "handler_expression",
     "named": true,
     "fields": {
-      "body": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "expression",
-            "named": true
-          }
-        ]
-      },
       "effect": {
         "multiple": false,
         "required": true,
@@ -993,6 +987,10 @@
         {
           "type": "handler_arm",
           "named": true
+        },
+        {
+          "type": "handler_return",
+          "named": true
         }
       ]
     }
@@ -1007,6 +1005,86 @@
       "types": [
         {
           "type": "identifier",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "handler_return",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      },
+      "parameter": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "handler_value_expression",
+    "named": true,
+    "fields": {
+      "effect": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "qualified_path",
+            "named": true
+          }
+        ]
+      },
+      "instantiation": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type_arguments",
+            "named": true
+          }
+        ]
+      },
+      "stage": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "static_stage",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "handler_arm",
+          "named": true
+        },
+        {
+          "type": "handler_return",
           "named": true
         }
       ]
@@ -1821,6 +1899,16 @@
     "type": "operation_declaration",
     "named": true,
     "fields": {
+      "mode": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "operation_mode",
+            "named": true
+          }
+        ]
+      },
       "multiplicity": {
         "multiple": false,
         "required": false,
@@ -3344,10 +3432,6 @@
     "named": false
   },
   {
-    "type": "do",
-    "named": false
-  },
-  {
     "type": "effect",
     "named": false
   },
@@ -3381,6 +3465,10 @@
   },
   {
     "type": "handle",
+    "named": false
+  },
+  {
+    "type": "handler",
     "named": false
   },
   {
@@ -3444,6 +3532,10 @@
     "named": false
   },
   {
+    "type": "operation_mode",
+    "named": true
+  },
+  {
     "type": "out",
     "named": false
   },
@@ -3461,6 +3553,10 @@
   },
   {
     "type": "resume",
+    "named": false
+  },
+  {
+    "type": "return",
     "named": false
   },
   {

@@ -125,11 +125,19 @@ fn effect_children_mut(expression: &mut Expr, visit: &mut impl FnMut(&mut Expr))
                 visit(&mut argument.value);
             }
         }
-        Expr::Handler { arms, body, .. } => {
+        Expr::Handler {
+            arms,
+            body,
+            return_clause,
+            ..
+        } => {
             for arm in &mut *arms {
                 visit(&mut arm.body);
             }
             visit(body);
+            if let Some(clause) = return_clause {
+                visit(clause);
+            }
         }
         // Leaves, and every form the first half already covered.
         _ => {}

@@ -280,7 +280,7 @@ mod tests {
 
     #[test]
     fn used_names_and_handler_captures_do_not_mask_unused_operation_parameters() {
-        let source = "effect Pick { choose: fn(int, int) -> int }\nfn run(seed) = handle Pick\n choose first second => resume(first)\nin await (spawn (perform Pick.choose(seed, 2)))\nlet result = run(7)\n";
+        let source = "effect Pick { control choose: fn(int, int) -> int }\nfn run(seed) = {\n    handle Pick {\n        choose first second => resume(first)\n    }\n    await (spawn (perform Pick.choose(seed, 2)))\n}\nlet result = run(7)\n";
         let analysis = crate::diagnostics::analyze(source, "unused.osp", PositionEncoding::Utf16);
         assert_eq!(analysis.diagnostics.len(), 1, "{analysis:?}");
         let diagnostic = analysis.diagnostics.first().expect("one warning");
@@ -289,7 +289,7 @@ mod tests {
             diagnostic.message,
             "unused handler parameter `second` of `Pick.choose`"
         );
-        assert_eq!(diagnostic.range, (2, 14, 2, 20));
+        assert_eq!(diagnostic.range, (3, 21, 3, 27));
         assert!(analysis.fixes.is_empty());
     }
 

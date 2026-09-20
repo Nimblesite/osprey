@@ -24,6 +24,8 @@ pub(crate) struct TypeEnv {
     type_params: HashMap<String, Vec<Type>>,
     /// Names declared `mut` — the only bindings handler-arm assignment may target.
     mutables: HashSet<String>,
+    /// Runtime obligations attached to the builtin binding, cleared by shadowing.
+    runtime_builtins: HashSet<String>,
 }
 
 impl TypeEnv {
@@ -40,6 +42,7 @@ impl TypeEnv {
         // A fresh binding shadows any outer `mut` of the same name.
         let _ = self.mutables.remove(&name);
         let _ = self.type_params.remove(&name);
+        let _ = self.runtime_builtins.remove(&name);
         let _ = self.vars.insert(name, scheme);
     }
 
@@ -47,12 +50,21 @@ impl TypeEnv {
     pub(crate) fn insert_mutable(&mut self, name: impl Into<String>, scheme: Scheme) {
         let name = name.into();
         let _ = self.type_params.remove(&name);
+        let _ = self.runtime_builtins.remove(&name);
         let _ = self.vars.insert(name.clone(), scheme);
         let _ = self.mutables.insert(name);
     }
 
     pub(crate) fn is_mutable(&self, name: &str) -> bool {
         self.mutables.contains(name)
+    }
+
+    pub(crate) fn mark_runtime_builtin(&mut self, name: &str) {
+        let _ = self.runtime_builtins.insert(name.to_owned());
+    }
+
+    pub(crate) fn is_runtime_builtin(&self, name: &str) -> bool {
+        self.runtime_builtins.contains(name)
     }
 
     /// The currently bound names. Snapshotted on the freshly built builtin
@@ -64,6 +76,7 @@ impl TypeEnv {
     pub(crate) fn remove(&mut self, name: &str) {
         let _ = self.vars.remove(name);
         let _ = self.type_params.remove(name);
+        let _ = self.runtime_builtins.remove(name);
     }
 
     /// Attach declaration-site binders to this exact lexical binding.

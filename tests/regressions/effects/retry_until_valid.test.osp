@@ -3,7 +3,7 @@
 
 effect Prompt {
     /// Request the value the caller should use for `label`; the handler decides what is supplied.
-    ask: fn(string) -> int
+    control ask: fn(string) -> int
 }
 
 /// Each invalid value causes a fresh Prompt.ask operation.
@@ -20,39 +20,45 @@ fn readPositive(label: string) -> int !Prompt = {
 
 /// Resume with -3, 0, then 7.
 mut attempt = 0
-let accepted = handle Prompt
-    ask _label => {
-        attempt = attempt + 1 ?: attempt
-        let value = match attempt {
-            1 => (0 - 3) ?: 0
-            2 => 0
-            _ => 7
+let accepted = {
+    handle Prompt {
+        ask _label => {
+            attempt = attempt + 1 ?: attempt
+            let value = match attempt {
+                1 => (0 - 3) ?: 0
+                2 => 0
+                _ => 7
+            }
+            print("attempt ${toString(attempt)}: handler feeds ${toString(value)}")
+            resume(value)
         }
-        print("attempt ${toString(attempt)}: handler feeds ${toString(value)}")
-        resume(value)
     }
-in readPositive("age")
+    readPositive("age")
+}
 print("SCENARIO 1 accepted=${toString(accepted)} after ${toString(attempt)} attempts")
 
 /// After three invalid values, return a sentinel without resuming.
 mut tries = 0
-let outcome = handle Prompt
-    ask _label => {
-        tries = tries + 1 ?: tries
-        match tries > 3 {
-            true => {
-                print("attempt ${toString(tries)}: handler GIVES UP, aborting with sentinel")
-                let sentinel = (0 - 999) ?: 0
-                sentinel
-            }
-            false => {
-                let value = (0 - tries) ?: 0
-                print("attempt ${toString(tries)}: handler feeds ${toString(value)}")
-                resume(value)
+let outcome = {
+    handle Prompt {
+        ask _label => {
+            tries = tries + 1 ?: tries
+            match tries > 3 {
+                true => {
+                    print("attempt ${toString(tries)}: handler GIVES UP, aborting with sentinel")
+                    let sentinel = (0 - 999) ?: 0
+                    sentinel
+                }
+                false => {
+                    let value = (0 - tries) ?: 0
+                    print("attempt ${toString(tries)}: handler feeds ${toString(value)}")
+                    resume(value)
+                }
             }
         }
     }
-in readPositive("quota")
+    readPositive("quota")
+}
 let verdict = match outcome > 0 {
     true => "valid ${toString(outcome)}"
     false => "gave up (sentinel ${toString(outcome)}) after ${toString(tries - 1)} bad answers"
@@ -77,7 +83,7 @@ test("retry handlers resume until success or abort at their limit", fn() => chec
 /// Retry drives the same silent validation loop under every handler policy below.
 effect Retry {
     /// Supply the candidate for `attempt`; a non-positive answer asks again.
-    supply: fn(int) -> int
+    control supply: fn(int) -> int
 }
 
 /// Silent twin of `readPositive`: each rejected candidate causes a fresh operation.
@@ -97,68 +103,80 @@ fn retryAttemptMatrixCase() = {
     mut callsA = 0
     mut issuedA = ""
     mut settledA = ""
-    let acceptedA = handle Retry
-        supply n => {
-            callsA = callsA + 1 ?: callsA
-            let candidate = (n * 100) ?: 0
-            issuedA = "${issuedA}${toString(n)}:${toString(candidate)}|"
-            let answer = resume(candidate)
-            settledA = "${settledA}${toString(n)}:${toString(answer)}|"
-            answer
+    let acceptedA = {
+        handle Retry {
+            supply n => {
+                callsA = callsA + 1 ?: callsA
+                let candidate = (n * 100) ?: 0
+                issuedA = "${issuedA}${toString(n)}:${toString(candidate)}|"
+                let answer = resume(candidate)
+                settledA = "${settledA}${toString(n)}:${toString(answer)}|"
+                answer
+            }
         }
-    in acceptPositive(1)
+        acceptPositive(1)
+    }
 
     mut callsB = 0
     mut issuedB = ""
     mut settledB = ""
-    let acceptedB = handle Retry
-        supply n => {
-            callsB = callsB + 1 ?: callsB
-            let candidate = match n {
-                1 => 0
-                _ => 200
+    let acceptedB = {
+        handle Retry {
+            supply n => {
+                callsB = callsB + 1 ?: callsB
+                let candidate = match n {
+                    1 => 0
+                    _ => 200
+                }
+                issuedB = "${issuedB}${toString(n)}:${toString(candidate)}|"
+                let answer = resume(candidate)
+                settledB = "${settledB}${toString(n)}:${toString(answer)}|"
+                answer
             }
-            issuedB = "${issuedB}${toString(n)}:${toString(candidate)}|"
-            let answer = resume(candidate)
-            settledB = "${settledB}${toString(n)}:${toString(answer)}|"
-            answer
         }
-    in acceptPositive(1)
+        acceptPositive(1)
+    }
 
     mut callsC = 0
     mut issuedC = ""
     mut settledC = ""
-    let acceptedC = handle Retry
-        supply n => {
-            callsC = callsC + 1 ?: callsC
-            let candidate = match n {
-                1 => 0
-                2 => (0 - 5) ?: 0
-                _ => 300
+    let acceptedC = {
+        handle Retry {
+            supply n => {
+                callsC = callsC + 1 ?: callsC
+                let candidate = match n {
+                    1 => 0
+                    2 => (0 - 5) ?: 0
+                    _ => 300
+                }
+                issuedC = "${issuedC}${toString(n)}:${toString(candidate)}|"
+                let answer = resume(candidate)
+                settledC = "${settledC}${toString(n)}:${toString(answer)}|"
+                answer
             }
-            issuedC = "${issuedC}${toString(n)}:${toString(candidate)}|"
-            let answer = resume(candidate)
-            settledC = "${settledC}${toString(n)}:${toString(answer)}|"
-            answer
         }
-    in acceptPositive(1)
+        acceptPositive(1)
+    }
 
     mut callsD = 0
     mut issuedD = ""
     mut settledD = ""
-    let acceptedD = handle Retry
-        supply n => {
-            callsD = callsD + 1 ?: callsD
-            let candidate = match n > 8 {
-                true => 900
-                false => (0 - n) ?: 0
+    let acceptedD = {
+        handle Retry {
+            supply n => {
+                callsD = callsD + 1 ?: callsD
+                let candidate = match n > 8 {
+                    true => 900
+                    false => (0 - n) ?: 0
+                }
+                issuedD = "${issuedD}${toString(n)}:${toString(candidate)}|"
+                let answer = resume(candidate)
+                settledD = "${settledD}${toString(n)}:${toString(answer)}|"
+                answer
             }
-            issuedD = "${issuedD}${toString(n)}:${toString(candidate)}|"
-            let answer = resume(candidate)
-            settledD = "${settledD}${toString(n)}:${toString(answer)}|"
-            answer
         }
-    in acceptPositive(1)
+        acceptPositive(1)
+    }
 
     // Distinctive magnitudes: 100, 200, 300 and 900 cannot sum by coincidence.
     checkAll("each rejection count accepts its own magnitude", [
@@ -269,91 +287,103 @@ fn retryBudgetExhaustionCase() = {
     mut calls1 = 0
     mut trail1 = ""
     mut settled1 = ""
-    let out1 = handle Retry
-        supply n => {
-            calls1 = calls1 + 1 ?: calls1
-            match n > 1 {
-                true => {
-                    trail1 = "${trail1}giveup:${toString(n)}|"
-                    (0 - 1000) ?: 0
-                }
-                false => {
-                    trail1 = "${trail1}try:${toString(n)}|"
-                    let answer = resume((0 - n) ?: 0)
-                    settled1 = "${settled1}${toString(n)}:${toString(answer)}|"
-                    answer
+    let out1 = {
+        handle Retry {
+            supply n => {
+                calls1 = calls1 + 1 ?: calls1
+                match n > 1 {
+                    true => {
+                        trail1 = "${trail1}giveup:${toString(n)}|"
+                        (0 - 1000) ?: 0
+                    }
+                    false => {
+                        trail1 = "${trail1}try:${toString(n)}|"
+                        let answer = resume((0 - n) ?: 0)
+                        settled1 = "${settled1}${toString(n)}:${toString(answer)}|"
+                        answer
+                    }
                 }
             }
         }
-    in acceptPositive(1)
+        acceptPositive(1)
+    }
 
     mut calls2 = 0
     mut trail2 = ""
     mut settled2 = ""
-    let out2 = handle Retry
-        supply n => {
-            calls2 = calls2 + 1 ?: calls2
-            match n > 2 {
-                true => {
-                    trail2 = "${trail2}giveup:${toString(n)}|"
-                    (0 - 2000) ?: 0
-                }
-                false => {
-                    trail2 = "${trail2}try:${toString(n)}|"
-                    let answer = resume((0 - n) ?: 0)
-                    settled2 = "${settled2}${toString(n)}:${toString(answer)}|"
-                    answer
+    let out2 = {
+        handle Retry {
+            supply n => {
+                calls2 = calls2 + 1 ?: calls2
+                match n > 2 {
+                    true => {
+                        trail2 = "${trail2}giveup:${toString(n)}|"
+                        (0 - 2000) ?: 0
+                    }
+                    false => {
+                        trail2 = "${trail2}try:${toString(n)}|"
+                        let answer = resume((0 - n) ?: 0)
+                        settled2 = "${settled2}${toString(n)}:${toString(answer)}|"
+                        answer
+                    }
                 }
             }
         }
-    in acceptPositive(1)
+        acceptPositive(1)
+    }
 
     mut calls3 = 0
     mut trail3 = ""
     mut settled3 = ""
-    let out3 = handle Retry
-        supply n => {
-            calls3 = calls3 + 1 ?: calls3
-            match n > 3 {
-                true => {
-                    trail3 = "${trail3}giveup:${toString(n)}|"
-                    (0 - 3000) ?: 0
-                }
-                false => {
-                    trail3 = "${trail3}try:${toString(n)}|"
-                    let answer = resume((0 - n) ?: 0)
-                    settled3 = "${settled3}${toString(n)}:${toString(answer)}|"
-                    answer
+    let out3 = {
+        handle Retry {
+            supply n => {
+                calls3 = calls3 + 1 ?: calls3
+                match n > 3 {
+                    true => {
+                        trail3 = "${trail3}giveup:${toString(n)}|"
+                        (0 - 3000) ?: 0
+                    }
+                    false => {
+                        trail3 = "${trail3}try:${toString(n)}|"
+                        let answer = resume((0 - n) ?: 0)
+                        settled3 = "${settled3}${toString(n)}:${toString(answer)}|"
+                        answer
+                    }
                 }
             }
         }
-    in acceptPositive(1)
+        acceptPositive(1)
+    }
 
     /// A generous budget the loop never reaches: success arrives on attempt 3.
     mut calls5 = 0
     mut trail5 = ""
     mut settled5 = ""
-    let out5 = handle Retry
-        supply n => {
-            calls5 = calls5 + 1 ?: calls5
-            match n > 5 {
-                true => {
-                    trail5 = "${trail5}giveup:${toString(n)}|"
-                    (0 - 5000) ?: 0
-                }
-                false => {
-                    let candidate = match n {
-                        3 => 777
-                        _ => (0 - n) ?: 0
+    let out5 = {
+        handle Retry {
+            supply n => {
+                calls5 = calls5 + 1 ?: calls5
+                match n > 5 {
+                    true => {
+                        trail5 = "${trail5}giveup:${toString(n)}|"
+                        (0 - 5000) ?: 0
                     }
-                    trail5 = "${trail5}try:${toString(n)}|"
-                    let answer = resume(candidate)
-                    settled5 = "${settled5}${toString(n)}:${toString(answer)}|"
-                    answer
+                    false => {
+                        let candidate = match n {
+                            3 => 777
+                            _ => (0 - n) ?: 0
+                        }
+                        trail5 = "${trail5}try:${toString(n)}|"
+                        let answer = resume(candidate)
+                        settled5 = "${settled5}${toString(n)}:${toString(answer)}|"
+                        answer
+                    }
                 }
             }
         }
-    in acceptPositive(1)
+        acceptPositive(1)
+    }
 
     // Each exhausted budget answers with its own sentinel, never a shared one.
     checkAll("an exhausted budget answers with its own sentinel", [
@@ -457,17 +487,17 @@ test("an exhausted retry budget stops the loop without resuming", retryBudgetExh
 /// arm below resumes with exactly what its operation declares.
 effect Payload {
     /// Supply the text candidate for `attempt`; fewer than four characters asks again.
-    text: fn(int) -> string
+    control text: fn(int) -> string
     /// Supply the verdict for `attempt`; `false` asks again.
-    flag: fn(int) -> bool
+    control flag: fn(int) -> bool
     /// Supply the ratio for `attempt`; anything at or below 1.0 asks again.
-    ratio: fn(int) -> float
+    control ratio: fn(int) -> float
     /// Supply the checked candidate for `attempt`; an `Error` asks again.
-    checked: fn(int) -> Result<int, string>
+    control checked: fn(int) -> Result<int, string>
     /// Record `attempt` on the Unit channel, supplying no value at all.
-    mark: fn(int) -> Unit
+    control mark: fn(int) -> Unit
     /// Supply the candidate scaled from `base` and `step` for `attempt`.
-    scaled: fn(int, int, int) -> int
+    control scaled: fn(int, int, int) -> int
 }
 
 /// Text channel: the loop asks again until the candidate is long enough.
@@ -542,104 +572,122 @@ fn comboBody() !Payload = {
 fn retryPayloadChannelMatrixCase() = {
     mut textCalls = 0
     mut textTrail = ""
-    let word = handle Payload
-        text n => {
-            textCalls = textCalls + 1 ?: textCalls
-            let candidate = match n {
-                1 => "no"
-                2 => "abc"
-                _ => "ready"
+    let word = {
+        handle Payload {
+            text n => {
+                textCalls = textCalls + 1 ?: textCalls
+                let candidate = match n {
+                    1 => "no"
+                    2 => "abc"
+                    _ => "ready"
+                }
+                textTrail = "${textTrail}${toString(n)}:${candidate}|"
+                resume(candidate)
             }
-            textTrail = "${textTrail}${toString(n)}:${candidate}|"
-            resume(candidate)
         }
-    in takeText(1)
+        takeText(1)
+    }
 
     mut flagCalls = 0
     mut flagTrail = ""
-    let firstTrue = handle Payload
-        flag n => {
-            flagCalls = flagCalls + 1 ?: flagCalls
-            let ok = n > 3
-            flagTrail = "${flagTrail}${toString(n)}:${toString(ok)}|"
-            resume(ok)
+    let firstTrue = {
+        handle Payload {
+            flag n => {
+                flagCalls = flagCalls + 1 ?: flagCalls
+                let ok = n > 3
+                flagTrail = "${flagTrail}${toString(n)}:${toString(ok)}|"
+                resume(ok)
+            }
         }
-    in takeFlag(1)
+        takeFlag(1)
+    }
 
     mut ratioCalls = 0
     mut ratioTrail = ""
-    let acceptedRatio = handle Payload
-        ratio n => {
-            ratioCalls = ratioCalls + 1 ?: ratioCalls
-            let candidate = match n {
-                1 => 0.25
-                2 => 1.0
-                _ => 2.5
+    let acceptedRatio = {
+        handle Payload {
+            ratio n => {
+                ratioCalls = ratioCalls + 1 ?: ratioCalls
+                let candidate = match n {
+                    1 => 0.25
+                    2 => 1.0
+                    _ => 2.5
+                }
+                ratioTrail = "${ratioTrail}${toString(n)}|"
+                resume(candidate)
             }
-            ratioTrail = "${ratioTrail}${toString(n)}|"
-            resume(candidate)
         }
-    in takeRatio(1)
+        takeRatio(1)
+    }
 
     mut checkedCalls = 0
     mut checkedTrail = ""
-    let checkedValue = handle Payload
-        checked n => {
-            checkedCalls = checkedCalls + 1 ?: checkedCalls
-            checkedTrail = "${checkedTrail}${toString(n)}|"
-            match n {
-                1 => resume(Error { message: "cold" })
-                2 => resume(Error { message: "warm" })
-                _ => resume(Success { value: 4200 })
+    let checkedValue = {
+        handle Payload {
+            checked n => {
+                checkedCalls = checkedCalls + 1 ?: checkedCalls
+                checkedTrail = "${checkedTrail}${toString(n)}|"
+                match n {
+                    1 => resume(Error { message: "cold" })
+                    2 => resume(Error { message: "warm" })
+                    _ => resume(Success { value: 4200 })
+                }
             }
         }
-    in takeChecked(1)
+        takeChecked(1)
+    }
 
     mut markCalls = 0
     mut markTrail = ""
-    let markTotal = handle Payload
-        mark n => {
-            markCalls = markCalls + 1 ?: markCalls
-            markTrail = "${markTrail}${toString(n)}|"
-            resume()
+    let markTotal = {
+        handle Payload {
+            mark n => {
+                markCalls = markCalls + 1 ?: markCalls
+                markTrail = "${markTrail}${toString(n)}|"
+                resume()
+            }
         }
-    in markDown(4)
+        markDown(4)
+    }
 
     mut comboCalls = 0
     mut comboTrail = ""
-    let combo = handle Payload
-        text n => {
-            comboCalls = comboCalls + 1 ?: comboCalls
-            comboTrail = "${comboTrail}t${toString(n)}|"
-            resume("steady")
+    let combo = {
+        handle Payload {
+            text n => {
+                comboCalls = comboCalls + 1 ?: comboCalls
+                comboTrail = "${comboTrail}t${toString(n)}|"
+                resume("steady")
+            }
+            flag n => {
+                comboCalls = comboCalls + 1 ?: comboCalls
+                comboTrail = "${comboTrail}f${toString(n)}|"
+                resume(n > 1)
+            }
+            ratio n => {
+                comboCalls = comboCalls + 1 ?: comboCalls
+                comboTrail = "${comboTrail}r${toString(n)}|"
+                resume(3.5)
+            }
+            checked n => {
+                comboCalls = comboCalls + 1 ?: comboCalls
+                comboTrail = "${comboTrail}c${toString(n)}|"
+                resume(Success { value: 60 })
+            }
+            mark n => {
+                comboCalls = comboCalls + 1 ?: comboCalls
+                comboTrail = "${comboTrail}m${toString(n)}|"
+                resume()
+            }
+            scaled n base step => {
+                comboCalls = comboCalls + 1 ?: comboCalls
+                comboTrail = "${comboTrail}s${toString(n)}|"
+                let candidate = (base + ((n * step) ?: 0) - 50) ?: 0
+                resume(candidate)
+            }
         }
-        flag n => {
-            comboCalls = comboCalls + 1 ?: comboCalls
-            comboTrail = "${comboTrail}f${toString(n)}|"
-            resume(n > 1)
-        }
-        ratio n => {
-            comboCalls = comboCalls + 1 ?: comboCalls
-            comboTrail = "${comboTrail}r${toString(n)}|"
-            resume(3.5)
-        }
-        checked n => {
-            comboCalls = comboCalls + 1 ?: comboCalls
-            comboTrail = "${comboTrail}c${toString(n)}|"
-            resume(Success { value: 60 })
-        }
-        mark n => {
-            comboCalls = comboCalls + 1 ?: comboCalls
-            comboTrail = "${comboTrail}m${toString(n)}|"
-            resume()
-        }
-        scaled n base step => {
-            comboCalls = comboCalls + 1 ?: comboCalls
-            comboTrail = "${comboTrail}s${toString(n)}|"
-            let candidate = (base + ((n * step) ?: 0) - 50) ?: 0
-            resume(candidate)
-        }
-    in comboBody()
+        comboBody()
+    }
 
     // Combo total: length("steady") 6 + firstTrue 2 + ratioFlag 1 + 60 + 4 = 73.
     checkAll("each payload type completes its own retry loop", [
@@ -746,61 +794,73 @@ fn retryScriptedCandidateMatrixCase() = {
     mut cursor = 0
     mut drawn = ""
     mut scriptCalls = 0
-    let fromList = handle Retry
-        supply _n => {
-            scriptCalls = scriptCalls + 1 ?: scriptCalls
-            cursor = cursor + 1 ?: cursor
-            let candidate = listGet(script, (cursor - 1) ?: 0) ?: 0
-            drawn = "${drawn}${toString(candidate)}|"
-            resume(candidate)
+    let fromList = {
+        handle Retry {
+            supply _n => {
+                scriptCalls = scriptCalls + 1 ?: scriptCalls
+                cursor = cursor + 1 ?: cursor
+                let candidate = listGet(script, (cursor - 1) ?: 0) ?: 0
+                drawn = "${drawn}${toString(candidate)}|"
+                resume(candidate)
+            }
         }
-    in acceptPositive(1)
+        acceptPositive(1)
+    }
 
     let table = mapSet(mapSet(mapSet(Map(), "1", 0), "2", 0), "3", 8888)
     mut mapCalls = 0
     mut mapTrail = ""
-    let fromMap = handle Retry
-        supply n => {
-            mapCalls = mapCalls + 1 ?: mapCalls
-            let candidate = mapGet(table, toString(n)) ?: ((0 - 7) ?: 0)
-            mapTrail = "${mapTrail}${toString(n)}=>${toString(candidate)}|"
-            resume(candidate)
+    let fromMap = {
+        handle Retry {
+            supply n => {
+                mapCalls = mapCalls + 1 ?: mapCalls
+                let candidate = mapGet(table, toString(n)) ?: ((0 - 7) ?: 0)
+                mapTrail = "${mapTrail}${toString(n)}=>${toString(candidate)}|"
+                resume(candidate)
+            }
         }
-    in acceptPositive(1)
+        acceptPositive(1)
+    }
 
     /// A sparse table: the three missing keys take the declared `Error` branch,
     /// whose message length is the negative candidate that asks again.
     let sparse = mapSet(Map(), "4", 5555)
     mut sparseCalls = 0
     mut sparseTrail = ""
-    let fromSparse = handle Retry
-        supply n => {
-            sparseCalls = sparseCalls + 1 ?: sparseCalls
-            let candidate = match mapGet(sparse, toString(n)) {
-                Success { value } => value
-                Error { message } => (0 - length(message)) ?: 0
+    let fromSparse = {
+        handle Retry {
+            supply n => {
+                sparseCalls = sparseCalls + 1 ?: sparseCalls
+                let candidate = match mapGet(sparse, toString(n)) {
+                    Success { value } => value
+                    Error { message } => (0 - length(message)) ?: 0
+                }
+                sparseTrail = "${sparseTrail}${toString(n)}:${toString(candidate)}|"
+                resume(candidate)
             }
-            sparseTrail = "${sparseTrail}${toString(n)}:${toString(candidate)}|"
-            resume(candidate)
         }
-    in acceptPositive(1)
+        acceptPositive(1)
+    }
 
     /// Boundary candidates: zero, minus one, then the smallest accepted value.
     mut boundaryCalls = 0
     mut boundaryTrail = ""
-    let fromBoundary = handle Retry
-        supply n => {
-            boundaryCalls = boundaryCalls + 1 ?: boundaryCalls
-            let candidate = match n {
-                1 => 0
-                2 => (0 - 1) ?: 0
-                3 => 1
-                _ => 0
+    let fromBoundary = {
+        handle Retry {
+            supply n => {
+                boundaryCalls = boundaryCalls + 1 ?: boundaryCalls
+                let candidate = match n {
+                    1 => 0
+                    2 => (0 - 1) ?: 0
+                    3 => 1
+                    _ => 0
+                }
+                boundaryTrail = "${boundaryTrail}${toString(candidate)}|"
+                resume(candidate)
             }
-            boundaryTrail = "${boundaryTrail}${toString(candidate)}|"
-            resume(candidate)
         }
-    in acceptPositive(1)
+        acceptPositive(1)
+    }
 
     // Each loop stops on the first valid candidate its source offers.
     checkAll("scripted loops accept the first valid candidate", [
@@ -918,44 +978,49 @@ fn nestedRetryRegionsCase() = {
     mut innerTrail = ""
     mut innerSettled = ""
 
-    let total = handle Budget
-        charge weight => {
-            chargeCalls = chargeCalls + 1 ?: chargeCalls
-            charged = charged + weight ?: charged
-            chargeTrail = "${chargeTrail}${toString(weight)}@${toString(charged)}|"
-            charged
-        }
-    in handle Retry
-        supply n => {
-            outerCalls = outerCalls + 1 ?: outerCalls
-            let tag = outerCalls
-            let candidate = match n > 2 {
-                true => 50
-                false => 0
+    let total = {
+        handle Budget {
+            charge weight => {
+                chargeCalls = chargeCalls + 1 ?: chargeCalls
+                charged = charged + weight ?: charged
+                chargeTrail = "${chargeTrail}${toString(weight)}@${toString(charged)}|"
+                charged
             }
-            outerTrail = "${outerTrail}o${toString(tag)}=${toString(n)}:${toString(candidate)}|"
-            let _ = perform Budget.charge(10)
-            let answer = resume(candidate)
-            outerSettled = "${outerSettled}o${toString(tag)}:${toString(answer)}|"
-            answer
         }
-    in {
-        let before = acceptPositive(1)
-        let inside = handle Retry
+        handle Retry {
             supply n => {
-                innerCalls = innerCalls + 1 ?: innerCalls
-                let tag = innerCalls
-                let candidate = match n > 1 {
-                    true => 700
+                outerCalls = outerCalls + 1 ?: outerCalls
+                let tag = outerCalls
+                let candidate = match n > 2 {
+                    true => 50
                     false => 0
                 }
-                innerTrail = "${innerTrail}i${toString(tag)}=${toString(n)}:${toString(candidate)}|"
-                let _ = perform Budget.charge(1)
+                outerTrail = "${outerTrail}o${toString(tag)}=${toString(n)}:${toString(candidate)}|"
+                let _ = perform Budget.charge(10)
                 let answer = resume(candidate)
-                innerSettled = "${innerSettled}i${toString(tag)}:${toString(answer)}|"
+                outerSettled = "${outerSettled}o${toString(tag)}:${toString(answer)}|"
                 answer
             }
-        in acceptPositive(1)
+        }
+        let before = acceptPositive(1)
+        let inside = {
+            handle Retry {
+                supply n => {
+                    innerCalls = innerCalls + 1 ?: innerCalls
+                    let tag = innerCalls
+                    let candidate = match n > 1 {
+                        true => 700
+                        false => 0
+                    }
+                    innerTrail = "${innerTrail}i${toString(tag)}=${toString(n)}:${toString(candidate)}|"
+                    let _ = perform Budget.charge(1)
+                    let answer = resume(candidate)
+                    innerSettled = "${innerSettled}i${toString(tag)}:${toString(answer)}|"
+                    answer
+                }
+            }
+            acceptPositive(1)
+        }
         let after = acceptPositive(1)
         before + inside + after ?: 0
     }
@@ -1059,17 +1124,17 @@ test("nested retry regions override and restore around a shared budget", nestedR
 /// requirement through named calls and through a callback handed to a HOF.
 effect Arity {
     /// Supply the next candidate with no argument at all.
-    zero: fn() -> int
+    control zero: fn() -> int
     /// Supply the candidate for `a`.
-    one: fn(int) -> int
+    control one: fn(int) -> int
     /// Supply the candidate for `a` and `b`.
-    two: fn(int, int) -> int
+    control two: fn(int, int) -> int
     /// Supply the candidate for `a`, `b` and `c`.
-    three: fn(int, int, int) -> int
+    control three: fn(int, int, int) -> int
     /// Supply the candidate for `a`, `b`, `c` and `d`.
-    four: fn(int, int, int, int) -> int
+    control four: fn(int, int, int, int) -> int
     /// Record `v` on the Unit channel from inside a callback.
-    note: fn(int) -> Unit
+    control note: fn(int) -> Unit
 }
 
 /// One call level from the handled body.
@@ -1127,47 +1192,50 @@ fn retryPerformSiteMatrixCase() = {
     mut suppliedFour = 0
     mut trail = ""
 
-    let sited = handle Arity
-        zero => {
-            zeroCalls = zeroCalls + 1 ?: zeroCalls
-            trail = "${trail}z${toString(zeroCalls)}|"
-            suppliedZero = match zeroCalls > 2 {
-                true => 9
-                false => 0
+    let sited = {
+        handle Arity {
+            zero => {
+                zeroCalls = zeroCalls + 1 ?: zeroCalls
+                trail = "${trail}z${toString(zeroCalls)}|"
+                suppliedZero = match zeroCalls > 2 {
+                    true => 9
+                    false => 0
+                }
+                resume(suppliedZero)
             }
-            resume(suppliedZero)
+            one a => {
+                oneCalls = oneCalls + 1 ?: oneCalls
+                trail = "${trail}o${toString(a)}|"
+                suppliedOne = (a * 100) ?: 0
+                resume(suppliedOne)
+            }
+            two a b => {
+                twoCalls = twoCalls + 1 ?: twoCalls
+                trail = "${trail}t${toString(a)}+${toString(b)}|"
+                suppliedTwo = (a + b) ?: 0
+                resume(suppliedTwo)
+            }
+            three a b c => {
+                threeCalls = threeCalls + 1 ?: threeCalls
+                trail = "${trail}h${toString(a)}+${toString(b)}+${toString(c)}|"
+                suppliedThree = (a + b + c) ?: 0
+                resume(suppliedThree)
+            }
+            four a b c d => {
+                fourCalls = fourCalls + 1 ?: fourCalls
+                trail = "${trail}f${toString(a)}${toString(b)}${toString(c)}${toString(d)}|"
+                suppliedFour = (a * 1000 + b * 100 + c * 10 + d) ?: 0
+                resume(suppliedFour)
+            }
+            note v => {
+                noteCalls = noteCalls + 1 ?: noteCalls
+                noteTotal = noteTotal + v ?: noteTotal
+                trail = "${trail}n${toString(v)}|"
+                resume()
+            }
         }
-        one a => {
-            oneCalls = oneCalls + 1 ?: oneCalls
-            trail = "${trail}o${toString(a)}|"
-            suppliedOne = (a * 100) ?: 0
-            resume(suppliedOne)
-        }
-        two a b => {
-            twoCalls = twoCalls + 1 ?: twoCalls
-            trail = "${trail}t${toString(a)}+${toString(b)}|"
-            suppliedTwo = (a + b) ?: 0
-            resume(suppliedTwo)
-        }
-        three a b c => {
-            threeCalls = threeCalls + 1 ?: threeCalls
-            trail = "${trail}h${toString(a)}+${toString(b)}+${toString(c)}|"
-            suppliedThree = (a + b + c) ?: 0
-            resume(suppliedThree)
-        }
-        four a b c d => {
-            fourCalls = fourCalls + 1 ?: fourCalls
-            trail = "${trail}f${toString(a)}${toString(b)}${toString(c)}${toString(d)}|"
-            suppliedFour = (a * 1000 + b * 100 + c * 10 + d) ?: 0
-            resume(suppliedFour)
-        }
-        note v => {
-            noteCalls = noteCalls + 1 ?: noteCalls
-            noteTotal = noteTotal + v ?: noteTotal
-            trail = "${trail}n${toString(v)}|"
-            resume()
-        }
-    in performSiteBody(probe)
+        performSiteBody(probe)
+    }
 
     // 9 + 400 + 55 + 326 + 1234 = 2024, and nine operations produced it.
     checkAll("every perform site reaches the same region", [

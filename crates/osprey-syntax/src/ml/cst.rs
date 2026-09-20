@@ -10,7 +10,7 @@
 //! *what was written*; the lowerer decides *what it means*. Nothing in this
 //! module references `osprey_ast`.
 
-use osprey_ast::{Multiplicity, Position, Stage};
+use osprey_ast::{Multiplicity, OperationMode, Position, Stage};
 
 /// A source-level namespace/module/member path. Segments are kept separate so
 /// qualification can never be confused with value-level `.` access
@@ -352,6 +352,8 @@ pub(crate) struct MlExternParam {
 pub(crate) struct MlEffectOp {
     /// The operation name.
     pub name: String,
+    /// Whether `control` was written ([EFFECTS-HANDLER-ARMS]).
+    pub mode: OperationMode,
     /// The multiplicity keyword as written, absent when undecorated
     /// ([MULTI-DECL]).
     pub multiplicity: Option<Multiplicity>,
@@ -591,6 +593,21 @@ pub(crate) enum MlExpr {
         /// ([EFFECTS-GENERIC-INSTANTIATION]).
         pos: Position,
     },
+    /// `handler Effect` + indented arms — the handler ITSELF, with no region
+    /// attached: a value that can be bound, passed and called
+    /// ([EFFECTS-HANDLER-VALUE]).
+    HandlerValue {
+        /// Selected interpretation stage.
+        stage: Stage,
+        /// The handled effect name.
+        effect: String,
+        /// Per-operation handler arms.
+        arms: Vec<MlHandleArm>,
+        /// Normal-completion transformation as a unary lambda.
+        return_clause: Option<Box<MlExpr>>,
+        /// Source position of the `handler` keyword.
+        pos: Position,
+    },
     /// `handle Effect` + indented arms + `in body` — install an effect handler
     /// over the `body` expression ([FLAVOR-ML-EFFECT]).
     Handle {
@@ -601,6 +618,8 @@ pub(crate) enum MlExpr {
         effect: String,
         /// The per-operation handler arms.
         arms: Vec<MlHandleArm>,
+        /// Normal-completion transformation as a unary lambda.
+        return_clause: Option<Box<MlExpr>>,
         /// The handled body expression (after `in`).
         body: Box<MlExpr>,
         /// Source position of the `handle` keyword

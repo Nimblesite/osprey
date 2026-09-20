@@ -58,13 +58,15 @@ impl Lowerer<'_> {
             "select_expression" => Expr::Select {
                 arms: self.lower_arms(node),
             },
-            "handler_expression" => Expr::Handler {
-                stage: self.stage(node),
-                effect: self.mentioned_effect(node),
-                arms: self.lower_handler_arms(node),
-                body: Box::new(self.lower_expr_field(node, "body")),
-                position: Some(self.pos(node)),
-            },
+            // `handler E { arm… }` — the handler with no region attached, as a
+            // value. Implements [EFFECTS-HANDLER-VALUE].
+            "handler_value_expression" => osprey_ast::handler_value(
+                self.stage(node),
+                self.mentioned_effect(node),
+                self.lower_handler_arms(node),
+                self.lower_handler_return(node),
+                Some(self.pos(node)),
+            ),
             "kernel_expression" => self.lower_kernel(node),
             "perform_expression" => {
                 let (arguments, named_arguments) = self.lower_arg_list(node);
@@ -327,6 +329,23 @@ impl Lowerer<'_> {
             .collect()
     }
 
+    fn lower_handler_return(&self, node: Node<'_>) -> Option<Box<Expr>> {
+        self.named_of_kind(node, "handler_return")
+            .first()
+            .map(|clause| {
+                Box::new(Expr::Lambda {
+                    parameters: vec![osprey_ast::Parameter {
+                        name: self.field_text(*clause, "parameter"),
+                        ty: None,
+                        inline_constraint: false,
+                    }],
+                    return_type: None,
+                    body: Box::new(self.lower_expr_field(*clause, "body")),
+                    position: Some(self.pos(*clause)),
+                })
+            })
+    }
+
     fn lower_field_assignments(&self, node: Node<'_>) -> Vec<FieldAssignment> {
         let nodes = self.descendants_of_kind(node, "field_assignment");
         self.lower_name_value(&nodes, |name, value| FieldAssignment { name, value })
@@ -348,17 +367,48 @@ impl Lowerer<'_> {
     }
 
     fn lower_block(&self, node: Node<'_>) -> Expr {
+        let mut cursor = node.walk();
+        let children: Vec<Node<'_>> = node.named_children(&mut cursor).collect();
+        self.lower_block_items(&children)
+    }
+
+    /// Lower the items of one block. Taken as a slice rather than read from the
+    /// block node so a `handle` can be given the items after it as
+    /// its body. Implements [EFFECTS-HANDLE-REST].
+    ///
+    /// Written braces stay a [`Expr::Block`] even around a lone value: the
+    /// braces are the user's construct, and a doc above `{ … }` documents the
+    /// block, not what is inside it ([TESTING-DOC]). A `handle` is the
+    /// exception: it governs the rest of its block, so the block IS the
+    /// handled region — the same node ML's layout form lowers to
+    /// ([FLAVOR-IR-EQUIV]).
+    fn lower_block_items(&self, children: &[Node<'_>]) -> Expr {
+        let (statements, value) = self.block_items(children);
+        match value.as_deref() {
+            Some(Expr::Handler { .. }) => crate::desugar::block(statements, value),
+            _ => Expr::Block { statements, value },
+        }
+    }
+
+    /// The statements and trailing value of one block's items.
+    fn block_items(&self, children: &[Node<'_>]) -> (Vec<Stmt>, Option<Box<Expr>>) {
         let mut statements = Vec::new();
         let mut value = None;
-        let mut cursor = node.walk();
-        for child in node.named_children(&mut cursor) {
+        for (index, child) in children.iter().enumerate() {
+            if let Some(handler) = self.handler_over_rest(*child) {
+                let rest = children.get(index + 1..).unwrap_or_default();
+                return (
+                    statements,
+                    Some(Box::new(self.handling_rest(handler, rest))),
+                );
+            }
             match child.kind() {
                 "statement" => {
-                    if let Some(s) = self.first_named(child).and_then(|n| self.lower_stmt(n)) {
+                    if let Some(s) = self.first_named(*child).and_then(|n| self.lower_stmt(n)) {
                         statements.push(s);
                     }
                 }
-                "expression" => value = Some(Box::new(self.lower_expr(child))),
+                "expression" => value = Some(Box::new(self.lower_expr(*child))),
                 _ => {}
             }
         }
@@ -370,7 +420,41 @@ impl Lowerer<'_> {
                 value = Some(Box::new(e));
             }
         }
-        Expr::Block { statements, value }
+        (statements, value)
+    }
+
+    /// A `handle E { … }` block statement governs the remaining block items.
+    /// Implements [EFFECTS-HANDLE-REST].
+    fn handler_over_rest<'t>(&self, item: Node<'t>) -> Option<Node<'t>> {
+        if item.kind() != "statement" {
+            return None;
+        }
+        let statement = self.first_named(item)?;
+        if statement.kind() != "expression_statement" {
+            return None;
+        }
+        let mut node = Self::last_named(statement)?;
+        while matches!(node.kind(), "expression" | "primary_expression") {
+            node = self.first_named(node)?;
+        }
+        (node.kind() == "handler_expression").then_some(node)
+    }
+
+    /// Install the handler over the remaining block items.
+    fn handling_rest(&self, handler: Node<'_>, rest: &[Node<'_>]) -> Expr {
+        Expr::Handler {
+            stage: self.stage(handler),
+            effect: self.mentioned_effect(handler),
+            arms: self.lower_handler_arms(handler),
+            return_clause: self.lower_handler_return(handler),
+            // The rest of the block is the region, not braces the user wrote:
+            // a lone trailing value is the body itself, as in ML layout.
+            body: Box::new({
+                let (statements, value) = self.block_items(rest);
+                crate::desugar::block(statements, value)
+            }),
+            position: Some(self.pos(handler)),
+        }
     }
 
     fn lower_literal(&self, node: Node<'_>) -> Expr {
@@ -665,7 +749,12 @@ mod tests {
             Expr::Select { .. }
         ));
         // handler with params + perform inside its body.
-        match let_value("let r = handle Log\n  info m => m\nin perform Log.info(x: 1)\n") {
+        // The handler over the rest of its block is the block's VALUE, and a
+        // block with nothing before it IS that value — the same node ML's
+        // layout form lowers to ([FLAVOR-IR-EQUIV]).
+        let handled =
+            let_value("let r = {\n  handle Log { info m => m }\n  perform Log.info(x: 1)\n}\n");
+        match handled {
             Expr::Handler { effect, arms, .. } => {
                 assert_eq!(effect, "Log");
                 assert_eq!(arms[0].operation, "info");

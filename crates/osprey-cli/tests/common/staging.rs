@@ -7,8 +7,8 @@
 use osprey_codegen::compile_program;
 use osprey_syntax::{parse_program_with_flavor, Flavor};
 
-/// Parse — which discharges static handlers at the flavor boundary
-/// ([STAGE-LOWER-ORDER-PHASE]) — and emit LLVM IR.
+/// Parse, validate static source contracts, discharge, and emit LLVM IR.
+/// Implements [STAGE-LOWER-ORDER-PHASE].
 pub(crate) fn compile_staged(source: &str) -> String {
     let parsed = parse_program_with_flavor(source, Flavor::Default);
     assert!(

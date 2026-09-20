@@ -71,9 +71,9 @@ pub(crate) struct EffectScope {
 pub(crate) struct EffectInfo {
     /// The effect's declared type parameter names, in order.
     pub type_params: Vec<String>,
-    /// Operation name → written signature (`fn(T) -> Unit`), in declaration
-    /// order.
-    pub ops: Vec<(String, String)>,
+    /// Operation name → written signature (`fn(T) -> Unit`) and declared mode,
+    /// in declaration order.
+    pub ops: Vec<(String, String, osprey_ast::OperationMode)>,
 }
 
 /// One value thrown away, banked until the substitution is final.
@@ -156,11 +156,15 @@ pub(crate) struct Checker {
     discards: Vec<Discard>,
     /// The built-in function names — user code may not redefine these.
     builtins: HashSet<String>,
-    /// Stack of `(operation result type, handler answer type)` for the handler
-    /// arms currently being inferred, so a `resume` inside an arm types its
-    /// argument against the operation result and itself as the answer.
+    /// Source mutation boundaries were already checked before static discharge.
+    /// Rewritten static arms may now be closure bodies; their assignments still
+    /// require mutable bindings and matching value types.
+    source_contracts_validated: bool,
+    /// The enclosing handler arms, innermost last. A control arm binds the
+    /// continuation `resume` invokes; a value arm binds none and hides any
+    /// outer one. Presence also marks the arm's mutation scope.
     /// Implements [EFFECTS-RESUME].
-    pub(crate) resume_ctx: Vec<(Type, Type)>,
+    pub(crate) resume_ctx: Vec<ResumeSite>,
     /// Stack of in-scope effect instantiations — one entry per enclosing
     /// `handle` body or declared effect-row entry — resolved innermost-first
     /// by `perform` sites, matching the runtime's innermost-wins handler
@@ -212,6 +216,7 @@ impl Checker {
             scheme_obligations: HashMap::new(),
             discards: Vec::new(),
             builtins: HashSet::new(),
+            source_contracts_validated: false,
             resume_ctx: Vec::new(),
             handler_scopes: Vec::new(),
             perform_tys: Vec::new(),
@@ -396,12 +401,13 @@ impl Checker {
                     self.collect_type(name, type_params, variants, *position);
                 }
                 Stmt::Effect {
+                    stage,
                     name,
                     type_params,
                     operations,
                     position,
                     ..
-                } => self.collect_effect(name, type_params, operations, *position),
+                } => self.collect_effect(*stage, name, type_params, operations, *position),
                 Stmt::Extern {
                     name,
                     parameters,
@@ -473,6 +479,7 @@ impl Checker {
 
     fn collect_effect(
         &mut self,
+        stage: osprey_ast::Stage,
         name: &str,
         type_params: &[TypeParam],
         operations: &[EffectOperation],
@@ -484,12 +491,18 @@ impl Checker {
                 type_params: type_params.iter().map(|p| p.name.clone()).collect(),
                 ops: operations
                     .iter()
-                    .map(|op| (op.name.clone(), op.ty.clone()))
+                    .map(|op| (op.name.clone(), op.ty.clone(), op.mode))
                     .collect(),
             },
         );
         for e in crate::variance::validate_effect_decl(&self.ctx, name, type_params, operations) {
             self.record_err(e, position);
+        }
+        // Implements [MULTI-DECL].
+        for operation in operations {
+            if let Some(message) = operation.modifier_error(name, stage) {
+                self.record_err(TypeError::new(message), operation.position.or(position));
+            }
         }
     }
 
@@ -500,11 +513,21 @@ impl Checker {
         &mut self,
         effect: &str,
     ) -> Option<(Vec<Type>, HashMap<String, crate::info::OpType>)> {
-        let info = self.effects.get(effect)?.clone();
+        let info = self
+            .effects
+            .get(osprey_ast::effect_name::base(effect))?
+            .clone();
         let mut pmap = HashMap::new();
         let mut args = Vec::new();
-        for p in &info.type_params {
-            let v = self.ctx.fresh();
+        let written = match type_name_to_type(effect, &HashMap::new()) {
+            Type::Con { args, .. } => args,
+            _ => Vec::new(),
+        };
+        for (index, p) in info.type_params.iter().enumerate() {
+            let v = written
+                .get(index)
+                .cloned()
+                .unwrap_or_else(|| self.ctx.fresh());
             args.push(v.clone());
             let _ = pmap.insert(p.clone(), v);
         }
@@ -559,9 +582,16 @@ impl Checker {
     ) -> HashMap<String, crate::info::OpType> {
         info.ops
             .iter()
-            .map(|(op_name, sig)| {
+            .map(|(op_name, sig, mode)| {
                 let (params, ret) = parse_fn_sig(sig, pmap);
-                (op_name.clone(), crate::info::OpType { params, ret })
+                (
+                    op_name.clone(),
+                    crate::info::OpType {
+                        params,
+                        ret,
+                        mode: *mode,
+                    },
+                )
             })
             .collect()
     }
@@ -1005,7 +1035,7 @@ impl Checker {
                         TypeError::new(format!("cannot assign to immutable variable `{name}`")),
                         pos,
                     );
-                } else if self.resume_ctx.is_empty() {
+                } else if self.resume_ctx.is_empty() && !self.source_contracts_validated {
                     // Handler arms are the language's mutation boundary. The
                     // resume context is present only while an arm body is
                     // being checked and is deliberately cleared across lambda
@@ -1139,14 +1169,20 @@ fn discard_error(ty: &Type, explicit: bool) -> Option<String> {
 /// Type-check a program. Returns every type error found (empty ⇒ well-typed).
 #[must_use]
 pub fn check_program(program: &Program) -> Vec<TypeError> {
-    checked_program(program).errors
+    check_program_exports(program, &[])
 }
 
 /// Check a program and require each named library export to discharge its own
 /// effects, independently of handlers installed by `main`. [IOS-HOST-ABI]
 #[must_use]
 pub fn check_program_exports(program: &Program, exports: &[&str]) -> Vec<TypeError> {
-    checked_program_with_exports(program, exports).errors
+    match crate::staging::lower_static_checked(program) {
+        Ok(lowered) => {
+            checked_program_with_exports(&lowered, exports, crate::staging::has_staging(program))
+                .errors
+        }
+        Err(errors) => errors,
+    }
 }
 
 /// Run inference and publish the resolved signatures, constructor layouts and
@@ -1168,6 +1204,21 @@ pub(crate) fn infer_checked(
     } else {
         Err(checker.errors)
     }
+}
+
+/// The erased view of every effect: each declared type parameter resolves to a
+/// type variable, which the backend lowers to its uniform boxed representation
+/// — one operation ABI per program regardless of how many instantiations
+/// exist. Implements [EFFECTS-GENERIC-RUNTIME].
+fn publish_effects(checker: &Checker) -> HashMap<String, HashMap<String, crate::info::OpType>> {
+    checker
+        .effects
+        .iter()
+        .map(|(name, info)| {
+            let pmap = erased_type_params(&info.type_params);
+            (name.clone(), Checker::instantiate_ops(info, &pmap))
+        })
+        .collect()
 }
 
 fn publish_program(
@@ -1193,26 +1244,7 @@ fn publish_program(
         .collect();
     let ctors = publish_ctors(&checker);
     let unions = checker.union_variants.clone();
-    // The erased view of every effect: each declared type parameter resolves
-    // to a type variable, which the backend lowers to its uniform boxed
-    // representation — one operation ABI per program regardless of how many
-    // instantiations exist. Implements [EFFECTS-GENERIC-RUNTIME].
-    let effects = checker
-        .effects
-        .iter()
-        .map(|(name, info)| {
-            let pmap = erased_type_params(&info.type_params);
-            let ops = info
-                .ops
-                .iter()
-                .map(|(op_name, sig)| {
-                    let (params, ret) = parse_fn_sig(sig, &pmap);
-                    (op_name.clone(), crate::info::OpType { params, ret })
-                })
-                .collect();
-            (name.clone(), ops)
-        })
-        .collect();
+    let effects = publish_effects(&checker);
     let lambda_tys = checker.lambda_tys.clone();
     let let_tys = checker.let_tys.clone();
     let list_tys = checker.list_tys.clone();
@@ -1326,15 +1358,15 @@ fn publish_ctors(checker: &Checker) -> HashMap<String, crate::info::CtorLayout> 
 /// Collect declarations and type-check a program before either caller consumes
 /// diagnostics or publishes inferred backend metadata.
 fn checked_program(program: &Program) -> Checker {
-    checked_program_with_exports(program, &[])
+    checked_program_with_exports(program, &[], false)
 }
 
-fn checked_program_with_exports(program: &Program, exports: &[&str]) -> Checker {
-    let mut checker = Checker::new();
-    let mut env = base_env();
-    checker.collect(program, &mut env);
-    checker.check(program, &mut env);
-    checker.resolve_deferred_arithmetic();
+fn checked_program_with_exports(
+    program: &Program,
+    exports: &[&str],
+    source_validated: bool,
+) -> Checker {
+    let mut checker = inferred_data_contracts(program, source_validated);
     loop {
         checker.resolve_field_uses();
         let instances = effect_instances(&mut checker);
@@ -1344,10 +1376,30 @@ fn checked_program_with_exports(program: &Program, exports: &[&str]) -> Checker 
             break;
         }
     }
+    finish_data_contracts(&mut checker, program);
+    checker
+}
+
+fn inferred_data_contracts(program: &Program, source_validated: bool) -> Checker {
+    let mut checker = Checker::new();
+    checker.source_contracts_validated = source_validated;
+    let mut env = base_env();
+    checker.collect(program, &mut env);
+    checker.check(program, &mut env);
+    checker.resolve_deferred_arithmetic();
+    checker
+}
+
+fn finish_data_contracts(checker: &mut Checker, program: &Program) {
     checker.validate_builtin_uses();
     checker.validate_discards();
     checker.errors.extend(crate::init_order::check(program));
-    checker
+}
+
+/// Data contracts precede static discharge; residual effect/purity obligations
+/// follow it. In particular, unused arms must still satisfy their operation.
+pub(crate) fn check_data_contracts(program: &Program) -> Vec<TypeError> {
+    checked_program(program).errors
 }
 
 /// Compose call substitutions through aliases before specializing effects.
@@ -1388,6 +1440,31 @@ fn resolved_effect_arguments(checker: &mut Checker) -> Vec<Vec<Type>> {
                 .collect::<Vec<_>>()
         })
         .collect()
+}
+
+/// What `resume` finds in the innermost enclosing handler arm.
+#[derive(Clone)]
+pub(crate) enum ResumeSite {
+    /// A control arm: `resume` delivers the operation's result and the
+    /// expression evaluates to the handler's answer.
+    Control { op_ret: Type, answer: Type },
+    /// A value arm supplies the operation's result by returning it, so it
+    /// owns no continuation to invoke.
+    Value { effect: String, operation: String },
+}
+
+impl ResumeSite {
+    /// Why `resume` is refused at this site (`None` when the site is not
+    /// an arm at all). Implements [EFFECTS-RESUME].
+    pub(crate) fn refusal(site: Option<&Self>) -> String {
+        match site {
+            Some(Self::Value { effect, operation }) => format!(
+                "handler arm `{effect}.{operation}` cannot `resume`: `{operation}` is a value operation, so its arm supplies the operation's result and owns no continuation; `resume` requires the continuation of a control operation arm, so declare `{operation}` `control` to take it"
+            ),
+            _ => "`resume` requires the continuation of a control operation arm, and none is live here: `resume` is only meaningful directly inside such an arm, not at top level or in a lambda body, which runs when called rather than where it is written"
+                .to_owned(),
+        }
+    }
 }
 
 /// Publish the current inference solution for the closed-program effect proof.
@@ -1554,6 +1631,7 @@ fn resolve_op(ctx: &mut InferCtx, op: &crate::info::OpType) -> crate::info::OpTy
     crate::info::OpType {
         params: op.params.iter().map(|t| ctx.apply(t)).collect(),
         ret: ctx.apply(&op.ret),
+        mode: op.mode,
     }
 }
 
@@ -1636,16 +1714,19 @@ mod tests {
         format!(
             "type Box<T> = {{ value: T }}\n\
              effect Stash<T> {{\n\
-               put: fn(T) -> Unit\n\
-               take: fn() -> T\n\
+             put: fn(T) -> Unit\n\
+             take: fn() -> T\n\
              }}\n\
              fn stash() = perform Stash.put(Box {{ value: 42 }})\n\
              fn main() -> Unit = {{\n\
-               let cached = handle Stash\n\
-                 put v => print(\"put\")\n\
-                 take => Box {{ value: {handler_payload} }}\n\
-               in stash()\n\
-               print(\"${{cached}}\")\n\
+             let cached = {{\n\
+                 handle Stash {{\n\
+                     put v => print(\"put\")\n\
+                     take => Box {{ value: {handler_payload} }}\n\
+                 }}\n\
+                 stash()\n\
+             }}\n\
+             print(\"${{cached}}\")\n\
              }}\n"
         )
     }
@@ -2152,19 +2233,21 @@ mod tests {
         // A lambda body runs when called, not where it is written, so the
         // arm's continuation is not live inside it ([EFFECTS-RESUME]).
         let errs = check(
-            "effect E { op: fn() -> int }\n\
+            "effect E { control op: fn() -> int }\n\
              fn go() -> int !E = perform E.op()\n\
-             let r = handle E\n\
-                 op => {\n\
-                     let f = |x| => resume(x)\n\
-                     f(9)\n\
+             let r = {\n\
+                 handle E {\n\
+                     op => {\n\
+                         let f = |x| => resume(x)\n\
+                         f(9)\n\
+                     }\n\
                  }\n\
-             in go()\n",
+                 go()\n\
+             }\n",
         );
         assert!(
-            errs.iter().any(|e| e
-                .message
-                .contains("`resume` is only valid inside a handler arm")),
+            errs.iter()
+                .any(|e| e.message.contains("not at top level or in a lambda body")),
             "expected the lambda-resume rejection, got: {errs:?}"
         );
     }
@@ -2238,6 +2321,7 @@ mod tests {
             op: crate::info::OpType {
                 params: Vec::new(),
                 ret: t.clone(),
+                mode: osprey_ast::OperationMode::default(),
             },
             effect_args: vec![t],
         };

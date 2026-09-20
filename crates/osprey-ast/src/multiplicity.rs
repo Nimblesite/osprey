@@ -1,5 +1,6 @@
-//! Resumption multiplicity — how many times an operation's request may be
-//! answered.
+//! The declaration axes of an effect operation: its MODE — whether answering
+//! it supplies a value or takes the continuation — and, for a control
+//! operation, its resumption multiplicity.
 //!
 //! Stage says *when* a request is answered ([`Stage`](crate::Stage));
 //! multiplicity says *how many times*. A handler that resumes twice re-runs the
@@ -8,8 +9,37 @@
 //! Those are different programs, they cost different amounts to represent, and
 //! they run on different targets. Implements [MULTI-AXIS].
 
-use crate::{Program, Stage, Stmt};
-use std::collections::{BTreeMap, BTreeSet};
+use crate::{Program, Stmt};
+use std::collections::BTreeMap;
+
+/// Whether an operation's arm supplies the operation's RESULT or receives the
+/// performer's continuation. Declared on the operation, never inferred from an
+/// arm's body: the mode is part of the operation's interface, so substituting
+/// one handler for another cannot change it, and unreachable code cannot
+/// silently reclassify an arm. Implements [EFFECTS-HANDLER-ARMS].
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum OperationMode {
+    /// Undecorated. The arm returns the operation's result `R`; the performer
+    /// continues exactly once from where it stood.
+    #[default]
+    Value,
+    /// Declared `control`. The arm receives the suspended remainder and returns
+    /// the handler's answer `B`; `resume` is legal only here.
+    Control,
+}
+
+/// The modifier that declares a control operation. Spelled once so both
+/// flavors' lowerers and every diagnostic agree. Implements [MULTI-DECL].
+pub const CONTROL_KEYWORD: &str = "control";
+
+impl OperationMode {
+    /// True for a `control` operation — the only mode whose arm owns a
+    /// continuation.
+    #[must_use]
+    pub const fn is_control(self) -> bool {
+        matches!(self, Self::Control)
+    }
+}
 
 /// How many times a handler may answer one request. Implements [MULTI-AXIS].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -17,8 +47,7 @@ pub enum Multiplicity {
     /// Never resumes — the arm's value answers the whole `handle` region and
     /// the `perform` never returns. Implements [MULTI-HANDLE-ABORT].
     Abort,
-    /// Resumes at most once. The default, what the runtime already enforces,
-    /// and the only shape WebAssembly will support. Affine, not linear:
+    /// Resumes at most once. The default. Affine, not linear:
     /// dropping a continuation is always the safe direction.
     /// Implements [MULTI-HANDLE-ONCE].
     #[default]
@@ -68,15 +97,11 @@ impl Multiplicity {
 #[derive(Debug, Default)]
 pub struct OperationTable {
     declared: BTreeMap<(String, String), Declared>,
-    /// Operations of a `static` effect. They are rewritten away before the
-    /// checker runs, so re-running them is re-running ordinary code — the gate
-    /// [GPU-KERNEL-PURE] already assumes is harmless. Implements
-    /// [MULTI-REPLAY-CHECK].
-    static_effects: BTreeSet<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
 struct Declared {
+    mode: OperationMode,
     multiplicity: Multiplicity,
     replayable: bool,
 }
@@ -90,14 +115,35 @@ impl OperationTable {
         table
     }
 
+    /// The declaration a mention names: `Choice<int>.pick` is declared by
+    /// `Choice`, so every lookup keys on the base name
+    /// [EFFECTS-GENERIC-INSTANTIATION].
+    fn declared(&self, effect: &str, operation: &str) -> Option<Declared> {
+        self.declared
+            .get(&(
+                crate::effect_name::base(effect).to_owned(),
+                operation.to_owned(),
+            ))
+            .copied()
+    }
+
+    /// Whether `effect.operation` was declared `control`. An operation the
+    /// program never declared reads as [`OperationMode::Value`]; the missing
+    /// declaration is diagnosed by the checker that owns that error.
+    /// Implements [EFFECTS-HANDLER-ARMS].
+    #[must_use]
+    pub fn mode_of(&self, effect: &str, operation: &str) -> OperationMode {
+        self.declared(effect, operation)
+            .map_or_else(OperationMode::default, |d| d.mode)
+    }
+
     /// How many times `effect.operation` may be answered. An operation the
     /// program never declared reads as the [`Multiplicity::Once`] default, so a
     /// missing declaration is diagnosed by the checker that owns that error
     /// rather than twice. Implements [MULTI-COMPAT].
     #[must_use]
     pub fn multiplicity_of(&self, effect: &str, operation: &str) -> Multiplicity {
-        self.declared
-            .get(&(effect.to_string(), operation.to_string()))
+        self.declared(effect, operation)
             .map_or_else(Multiplicity::default, |d| d.multiplicity)
     }
 
@@ -105,32 +151,24 @@ impl OperationTable {
     /// Implements [MULTI-REPLAY].
     #[must_use]
     pub fn is_replayable(&self, effect: &str, operation: &str) -> bool {
-        self.static_effects.contains(effect)
-            || self
-                .declared
-                .get(&(effect.to_string(), operation.to_string()))
-                .is_some_and(|d| d.replayable)
+        self.declared(effect, operation)
+            .is_some_and(|d| d.replayable)
     }
 }
 
 impl crate::AstVisitor for OperationTable {
     fn statement(&mut self, statement: &Stmt) {
         let Stmt::Effect {
-            stage,
-            name,
-            operations,
-            ..
+            name, operations, ..
         } = statement
         else {
             return;
         };
-        if *stage == Stage::Static {
-            let _ = self.static_effects.insert(name.clone());
-        }
         for operation in operations {
             let _ = self.declared.insert(
                 (name.clone(), operation.name.clone()),
                 Declared {
+                    mode: operation.mode,
                     multiplicity: operation.multiplicity(),
                     replayable: operation.replayable,
                 },
@@ -142,7 +180,7 @@ impl crate::AstVisitor for OperationTable {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::EffectOperation;
+    use crate::{EffectOperation, Stage};
 
     #[test]
     fn keywords_round_trip_and_default_is_once() {
@@ -156,16 +194,18 @@ mod tests {
 
     #[test]
     fn the_table_reads_declarations_and_defaults_the_rest() {
-        let operation = |name: &str, multiplicity, replayable| EffectOperation {
-            name: name.into(),
-            declared_multiplicity: multiplicity,
-            replayable,
-            ty: "fn() -> int".into(),
-            parameters: Vec::new(),
-            return_type: String::new(),
-            doc: None,
-            position: None,
-        };
+        let operation =
+            |name: &str, multiplicity: Option<Multiplicity>, replayable| EffectOperation {
+                name: name.into(),
+                mode: multiplicity.map_or(OperationMode::Value, |_| OperationMode::Control),
+                declared_multiplicity: multiplicity,
+                replayable,
+                ty: "fn() -> int".into(),
+                parameters: Vec::new(),
+                return_type: String::new(),
+                doc: None,
+                position: None,
+            };
         let effect = |name: &str, stage, operations| Stmt::Effect {
             stage,
             name: name.into(),
@@ -190,14 +230,26 @@ mod tests {
         };
         let table = OperationTable::collect(&program);
         assert_eq!(table.multiplicity_of("Choice", "pick"), Multiplicity::Many);
+        assert_eq!(table.mode_of("Choice", "pick"), OperationMode::Control);
+        assert_eq!(table.mode_of("Choice", "seed"), OperationMode::Value);
+        assert_eq!(table.mode_of("Absent", "gone"), OperationMode::Value);
         // Undecorated and undeclared alike read as the `once` default.
         assert_eq!(table.multiplicity_of("Choice", "seed"), Multiplicity::Once);
         assert_eq!(table.multiplicity_of("Absent", "gone"), Multiplicity::Once);
         assert!(table.is_replayable("Choice", "seed"));
         assert!(!table.is_replayable("Choice", "pick"));
-        // Static entries count as replayable: after discharge they are ordinary
-        // code, and re-running ordinary code is already assumed harmless.
-        assert!(table.is_replayable("Tile", "size"));
+        // A written instantiation names the same declaration
+        // [EFFECTS-GENERIC-INSTANTIATION]: `Choice<int>` is declared by `Choice`.
+        assert_eq!(
+            table.multiplicity_of("Choice<int>", "pick"),
+            Multiplicity::Many
+        );
+        assert_eq!(table.mode_of("Choice<int>", "pick"), OperationMode::Control);
+        assert!(table.is_replayable("Choice<List<int>>", "seed"));
+        // Replayability is DECLARED. A static operation is not replayable by
+        // virtue of being static: its captured state has to earn that
+        // ([MULTI-REPLAY-STATE]).
+        assert!(!table.is_replayable("Tile", "size"));
         assert!(!table.is_replayable("Absent", "gone"));
     }
 }

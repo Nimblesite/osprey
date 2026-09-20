@@ -1,7 +1,7 @@
 (** Prompt suspends a form until its handler supplies a value. *)
 effect Prompt
     (** Request the value the caller should use for `label`; the handler decides what is supplied. *)
-    ask : string => string
+    control ask : string => string
 
 (** Log observes both sides of the resumed prompt. *)
 effect Log
@@ -31,19 +31,18 @@ resumeOuterHandlerBridgeCase () =
                 logCalls := logCalls + 1 ?: logCalls
                 logMessages := "${logMessages}${message}|"
                 transcript := "${transcript}[log] ${message}\n"
-        in
-            answer =
-                handle Prompt
-                    ask field =>
-                        promptCalls := promptCalls + 1 ?: promptCalls
-                        transcript := "${transcript}ask ${field}\n"
-                        resumedAnswer = resume "Ada"
-                        promptSettled := promptSettled + 1 ?: promptSettled
-                        settledAnswer := resumedAnswer
-                        transcript := "${transcript}after ask: ${resumedAnswer}\n"
-                        resumedAnswer
-                in form ()
-            answer
+        answer =
+            handle Prompt
+                ask field =>
+                    promptCalls := promptCalls + 1 ?: promptCalls
+                    transcript := "${transcript}ask ${field}\n"
+                    resumedAnswer = resume "Ada"
+                    promptSettled := promptSettled + 1 ?: promptSettled
+                    settledAnswer := resumedAnswer
+                    transcript := "${transcript}after ask: ${resumedAnswer}\n"
+                    resumedAnswer
+            form ()
+        answer
     legacyTranscript = "${transcript}result=${result}\n"
 
     // Preserve the complete bridge transcript.
@@ -105,14 +104,13 @@ partialHandlerDelegationCase () =
                 outerAudits := outerAudits + 1 ?: outerAudits
                 auditLog := "${auditLog}${label}|"
                 length label
-        in
-            handle Ledger
-                record amount =>
-                    innerRecords := innerRecords + 1 ?: innerRecords
-                    noted = perform Ledger.audit "record:${amount}"
-                    lastNoted := noted
-                    (amount + noted) ?: 0
-            in ledgerWork ()
+        handle Ledger
+            record amount =>
+                innerRecords := innerRecords + 1 ?: innerRecords
+                noted = perform Ledger.audit "record:${amount}"
+                lastNoted := noted
+                (amount + noted) ?: 0
+        ledgerWork ()
 
     // The arm's own operation stays with the inner region; the operation it
     // does not cover reaches the outer one, twice.

@@ -30,7 +30,7 @@ state Tally
                 seen = total
                 total := 0
                 seen
-        in body ()
+        body ()
 
 (** Sums three additions inside one installed scope. *)
 threeAdds () =

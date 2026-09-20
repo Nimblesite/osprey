@@ -3,7 +3,7 @@
 /// ResumeFallback lets a policy replace one failed integer and continue the caller.
 effect ResumeFallback {
     /// Replace one failed value, resuming the caller with the substitute.
-    recover: fn(string, int) -> int
+    control recover: fn(string, int) -> int
 }
 
 /// This workflow proves that work on both sides of a recovered operation still runs.
@@ -18,14 +18,17 @@ fn recoveredSum() !ResumeFallback = {
 fn resumeRecoveryContinuesCase() = {
     mut calls = 0
     mut completed = 0
-    let result = handle ResumeFallback
-        recover _message fallback => {
-            calls = calls + 1 ?: calls
-            let answer = resume(fallback)
-            completed = answer
-            answer
+    let result = {
+        handle ResumeFallback {
+            recover _message fallback => {
+                calls = calls + 1 ?: calls
+                let answer = resume(fallback)
+                completed = answer
+                answer
+            }
         }
-    in recoveredSum()
+        recoveredSum()
+    }
     checkAll("resuming recovery continues", [
         result == 42, completed == 42, calls == 1
     ])
@@ -34,7 +37,7 @@ fn resumeRecoveryContinuesCase() = {
 /// FatalExit models one operation whose recoverable branch resumes and fatal branch stops.
 effect FatalExit {
     /// Abandon the computation with `reason`; the handler does not resume.
-    raise: fn(string) -> int
+    control raise: fn(string) -> int
 }
 
 /// ExitTrace records which parts of a deep call chain were reached.
@@ -61,17 +64,21 @@ fn middleFailure() ![FatalExit, ExitTrace] = {
 fn fatalExitStopsDeepCallCase() = {
     mut trace = ""
     mut failures = 0
-    let result = handle ExitTrace
-        mark label => { trace = "${trace}${label}|" }
-    in handle FatalExit
-        raise message => match message {
-            "fatal" => {
-                failures = failures + 1 ?: failures
-                503
-            }
-            _ => resume(0)
+    let result = {
+        handle ExitTrace {
+            mark label => { trace = "${trace}${label}|" }
         }
-    in middleFailure()
+        handle FatalExit {
+            raise message => match message {
+                "fatal" => {
+                    failures = failures + 1 ?: failures
+                    503
+                }
+                _ => resume(0)
+            }
+        }
+        middleFailure()
+    }
     checkAll("fatal exit stops deep call", [
         result == 503, failures == 1,
         trace == "middle-before|deepest|",
@@ -82,7 +89,7 @@ fn fatalExitStopsDeepCallCase() = {
 /// RetryInput supplies successive candidates to a validation loop.
 effect RetryInput {
     /// Request the candidate for `attempt`; invalid answers ask again.
-    next: fn(int) -> int
+    control next: fn(int) -> int
 }
 
 /// Invalid candidates recursively ask again under the same deep handler.
@@ -98,14 +105,17 @@ fn requirePositive(attempt) !RetryInput = {
 fn recursiveRetryCase() = {
     mut calls = 0
     mut supplied = ""
-    let accepted = handle RetryInput
-        next attempt => {
-            calls = calls + 1 ?: calls
-            let candidate = match attempt { 1 => (0 - 3) ?: 0 2 => 0 _ => 9 }
-            supplied = "${supplied}${toString(candidate)}|"
-            resume(candidate)
+    let accepted = {
+        handle RetryInput {
+            next attempt => {
+                calls = calls + 1 ?: calls
+                let candidate = match attempt { 1 => (0 - 3) ?: 0 2 => 0 _ => 9 }
+                supplied = "${supplied}${toString(candidate)}|"
+                resume(candidate)
+            }
         }
-    in requirePositive(1)
+        requirePositive(1)
+    }
     checkAll("recursive retry remains handled", [
         accepted == 9, calls == 3, supplied == "-3|0|9|"
     ])
@@ -114,11 +124,11 @@ fn recursiveRetryCase() = {
 /// ParseRecovery supplies an integer while LookupRecovery supplies a string.
 effect ParseRecovery {
     /// Supply the integer to use when `text` will not parse.
-    parse: fn(string) -> int
+    control parse: fn(string) -> int
 }
 effect LookupRecovery {
     /// Supply the text to use when `key` is absent.
-    missing: fn(string) -> string
+    control missing: fn(string) -> string
 }
 
 /// This configuration consumes two independently typed recovery channels.
@@ -132,21 +142,25 @@ fn recoveredConfig() ![ParseRecovery, LookupRecovery] = {
 fn nestedRecoveryChannelsCase() = {
     mut entered = ""
     mut settled = ""
-    let score = handle ParseRecovery
-        parse _raw => {
-            entered = "${entered}parse|"
-            let answer = resume(8080)
-            settled = "${settled}parse|"
-            answer
+    let score = {
+        handle ParseRecovery {
+            parse _raw => {
+                entered = "${entered}parse|"
+                let answer = resume(8080)
+                settled = "${settled}parse|"
+                answer
+            }
         }
-    in handle LookupRecovery
-        missing _key => {
-            entered = "${entered}lookup|"
-            let answer = resume("localhost")
-            settled = "${settled}lookup|"
-            answer
+        handle LookupRecovery {
+            missing _key => {
+                entered = "${entered}lookup|"
+                let answer = resume("localhost")
+                settled = "${settled}lookup|"
+                answer
+            }
         }
-    in recoveredConfig()
+        recoveredConfig()
+    }
     checkAll("nested typed recoveries compose", [
         score == 8089,
         entered == "parse|lookup|", settled == "lookup|parse|"
@@ -156,7 +170,7 @@ fn nestedRecoveryChannelsCase() = {
 /// ScopedRecovery demonstrates nearest-handler lookup for a resuming effect.
 effect ScopedRecovery {
     /// Supply a value for `seed`; the nearest enclosing handler wins.
-    value: fn(int) -> int
+    control value: fn(int) -> int
 }
 
 /// This helper keeps handler lookup visible across ordinary function calls.
@@ -166,19 +180,23 @@ fn scopedValue(seed) !ScopedRecovery = perform ScopedRecovery.value(seed)
 fn resumingHandlerShadowCase() = {
     mut outerCalls = 0
     mut innerCalls = 0
-    let total = handle ScopedRecovery
-        value seed => {
-            outerCalls = outerCalls + 1 ?: outerCalls
-            resume((seed + 100) ?: seed)
-        }
-    in {
-        let before = scopedValue(1)
-        let inside = handle ScopedRecovery
+    let total = {
+        handle ScopedRecovery {
             value seed => {
-                innerCalls = innerCalls + 1 ?: innerCalls
-                resume((seed + 10) ?: seed)
+                outerCalls = outerCalls + 1 ?: outerCalls
+                resume((seed + 100) ?: seed)
             }
-        in scopedValue(2)
+        }
+        let before = scopedValue(1)
+        let inside = {
+            handle ScopedRecovery {
+                value seed => {
+                    innerCalls = innerCalls + 1 ?: innerCalls
+                    resume((seed + 10) ?: seed)
+                }
+            }
+            scopedValue(2)
+        }
         let after = scopedValue(3)
         before + inside + after ?: 0
     }
@@ -190,7 +208,7 @@ fn resumingHandlerShadowCase() = {
 /// WrapAnswer exposes how post-resume code can transform the completed answer.
 effect WrapAnswer {
     /// Request the number the performer will transform before returning.
-    number: fn() -> int
+    control number: fn() -> int
 }
 
 /// The performer adds one to the value supplied by its handler.
@@ -199,13 +217,16 @@ fn wrappedBody() !WrapAnswer = perform WrapAnswer.number() + 1 ?: 0
 /// Code after resume sees the body's answer and may return a different handler answer.
 fn postResumeTransformsAnswerCase() = {
     mut bodyAnswer = 0
-    let result = handle WrapAnswer
-        number => {
-            let answer = resume(10)
-            bodyAnswer = answer
-            answer * 2 ?: 0
+    let result = {
+        handle WrapAnswer {
+            number => {
+                let answer = resume(10)
+                bodyAnswer = answer
+                answer * 2 ?: 0
+            }
         }
-    in wrappedBody()
+        wrappedBody()
+    }
     checkAll("post-resume code transforms answer", [
         bodyAnswer == 11, result == 22, result == (bodyAnswer * 2 ?: 0)
     ])
@@ -214,7 +235,7 @@ fn postResumeTransformsAnswerCase() = {
 /// ResultRecovery returns the complete Result value through a continuation.
 effect ResultRecovery {
     /// Fetch `key`, letting the CALLER — not the handler — turn the `Result` into a value.
-    fetch: fn(string) -> Result<int, string>
+    control fetch: fn(string) -> Result<int, string>
 }
 
 /// The caller, not the handler, decides how Success and Error become integers.
@@ -227,17 +248,20 @@ fn resultValue(key) !ResultRecovery = match perform ResultRecovery.fetch(key) {
 fn resumeWholeResultCase() = {
     mut calls = 0
     mut settled = 0
-    let total = handle ResultRecovery
-        fetch key => {
-            calls = calls + 1 ?: calls
-            let answer = match key {
-                "ready" => resume(Success { value: 7 })
-                _ => resume(Error { message: "missing" })
+    let total = {
+        handle ResultRecovery {
+            fetch key => {
+                calls = calls + 1 ?: calls
+                let answer = match key {
+                    "ready" => resume(Success { value: 7 })
+                    _ => resume(Error { message: "missing" })
+                }
+                settled = settled + 1 ?: settled
+                answer
             }
-            settled = settled + 1 ?: settled
-            answer
         }
-    in resultValue("ready") + resultValue("absent") ?: 0
+        resultValue("ready") + resultValue("absent") ?: 0
+    }
     checkAll("resume carries whole Result values", [
         total == 14, calls == 2, settled == 2, length("missing") == 7
     ])
@@ -249,7 +273,7 @@ type RecoveryChoice = Use { value: int } | Reject { code: int }
 /// ChoiceRecovery returns a tagged choice rather than an untyped sentinel.
 effect ChoiceRecovery {
     /// Choose whether `label` is recovered or rejected.
-    decide: fn(string) -> RecoveryChoice
+    control decide: fn(string) -> RecoveryChoice
 }
 
 /// Exhaustive matching makes both recovery choices visible to the caller.
@@ -261,15 +285,18 @@ fn choiceValue(label) !ChoiceRecovery = match perform ChoiceRecovery.decide(labe
 /// Resume transports tagged values without losing constructor or payload information.
 fn resumeTaggedChoiceCase() = {
     mut calls = 0
-    let total = handle ChoiceRecovery
-        decide label => {
-            calls = calls + 1 ?: calls
-            match label {
-                "cache" => resume(Use { value: 30 })
-                _ => resume(Reject { code: 12 })
+    let total = {
+        handle ChoiceRecovery {
+            decide label => {
+                calls = calls + 1 ?: calls
+                match label {
+                    "cache" => resume(Use { value: 30 })
+                    _ => resume(Reject { code: 12 })
+                }
             }
         }
-    in choiceValue("cache") + choiceValue("network") ?: 0
+        choiceValue("cache") + choiceValue("network") ?: 0
+    }
     checkAll("resume carries tagged recovery choices", [
         total == 18, calls == 2, total == (30 - 12 ?: 0)
     ])
@@ -278,7 +305,7 @@ fn resumeTaggedChoiceCase() = {
 /// DeepRecovery drives many sequential suspensions through one handler.
 effect DeepRecovery {
     /// Supply the value contributed at recursion `depth`.
-    checkpoint: fn(int) -> int
+    control checkpoint: fn(int) -> int
 }
 
 /// Each recursive level performs once before descending to the next level.
@@ -291,14 +318,17 @@ fn deepSum(depth) !DeepRecovery = match depth {
 fn deepResumeStressCase() = {
     mut entered = 0
     mut settled = 0
-    let total = handle DeepRecovery
-        checkpoint depth => {
-            entered = entered + 1 ?: entered
-            let answer = resume(depth)
-            settled = settled + 1 ?: settled
-            answer
+    let total = {
+        handle DeepRecovery {
+            checkpoint depth => {
+                entered = entered + 1 ?: entered
+                let answer = resume(depth)
+                settled = settled + 1 ?: settled
+                answer
+            }
         }
-    in deepSum(32)
+        deepSum(32)
+    }
     checkAll("deep resume stress", [
         total == 528, entered == 32, settled == 32, entered == settled
     ])
@@ -307,13 +337,13 @@ fn deepResumeStressCase() = {
 /// TypedRecovery combines integer, string, boolean, and Unit operations in one region.
 effect TypedRecovery {
     /// Supply the integer channel's replacement for `label`.
-    number: fn(string) -> int
+    control number: fn(string) -> int
     /// Supply the text channel's replacement for `label`.
-    text: fn(string) -> string
+    control text: fn(string) -> string
     /// Supply the boolean channel's decision for `label`.
-    allow: fn(string) -> bool
+    control allow: fn(string) -> bool
     /// Record a recovery on the `Unit` channel.
-    note: fn(string) -> Unit
+    control note: fn(string) -> Unit
 }
 
 /// The workflow consumes every operation result type after its continuation resumes.
@@ -329,24 +359,27 @@ fn typedRecoveryBody() !TypedRecovery = {
 /// Every arm resumes with the exact type declared by its operation.
 fn heterogeneousResumeCase() = {
     mut calls = 0
-    let result = handle TypedRecovery
-        number _key => {
-            calls = calls + 1 ?: calls
-            resume(3)
+    let result = {
+        handle TypedRecovery {
+            number _key => {
+                calls = calls + 1 ?: calls
+                resume(3)
+            }
+            text _key => {
+                calls = calls + 1 ?: calls
+                resume("osprey.local")
+            }
+            allow _key => {
+                calls = calls + 1 ?: calls
+                resume(true)
+            }
+            note _message => {
+                calls = calls + 1 ?: calls
+                resume()
+            }
         }
-        text _key => {
-            calls = calls + 1 ?: calls
-            resume("osprey.local")
-        }
-        allow _key => {
-            calls = calls + 1 ?: calls
-            resume(true)
-        }
-        note _message => {
-            calls = calls + 1 ?: calls
-            resume()
-        }
-    in typedRecoveryBody()
+        typedRecoveryBody()
+    }
     checkAll("heterogeneous operation resumes", [
         result == 16, calls == 4,
         length("osprey.local") == 12
@@ -356,7 +389,7 @@ fn heterogeneousResumeCase() = {
 /// StringAnswerRecovery carries a managed continuation answer out of a handler.
 effect StringAnswerRecovery {
     /// Request the replacement text the handler supplies.
-    get: fn() -> string
+    control get: fn() -> string
 }
 
 /// This exact shape returns a dynamic string after resuming with another string.
@@ -371,12 +404,15 @@ fn stringAnswerBody() -> string !StringAnswerRecovery = {
 /// retain and release are no-ops.
 fn stringAnswerCase() = {
     mut calls = 0
-    let answer = handle StringAnswerRecovery
-        get => {
-            calls = calls + 1 ?: calls
-            resume("rea" + "dy")
+    let answer = {
+        handle StringAnswerRecovery {
+            get => {
+                calls = calls + 1 ?: calls
+                resume("rea" + "dy")
+            }
         }
-    in stringAnswerBody()
+        stringAnswerBody()
+    }
 
     checkAll("managed continuation answer", [
         answer == "ready!", calls == 1,
@@ -387,7 +423,7 @@ fn stringAnswerCase() = {
 /// SixteenArgumentRecovery locks the largest operation payload the current runtime transports.
 effect SixteenArgumentRecovery {
     /// Recover across sixteen integer arguments — the last arity passed in registers.
-    recover: fn(int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int) -> int
+    control recover: fn(int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int) -> int
 }
 
 /// The operation sends sixteen distinct values so no mailbox position can hide behind equality.
@@ -398,13 +434,16 @@ fn sixteenArgumentBody() !SixteenArgumentRecovery =
 fn sixteenArgumentBoundaryCase() = {
     mut calls = 0
     mut observed = ""
-    let result = handle SixteenArgumentRecovery
-        recover a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 => {
-            calls = calls + 1 ?: calls
-            observed = "${a1}|${a2}|${a3}|${a4}|${a5}|${a6}|${a7}|${a8}|${a9}|${a10}|${a11}|${a12}|${a13}|${a14}|${a15}|${a16}"
-            resume(a16)
+    let result = {
+        handle SixteenArgumentRecovery {
+            recover a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 => {
+                calls = calls + 1 ?: calls
+                observed = "${a1}|${a2}|${a3}|${a4}|${a5}|${a6}|${a7}|${a8}|${a9}|${a10}|${a11}|${a12}|${a13}|${a14}|${a15}|${a16}"
+                resume(a16)
+            }
         }
-    in sixteenArgumentBody()
+        sixteenArgumentBody()
+    }
     checkAll("sixteen-argument resume boundary", [
         result == 116, calls == 1,
         observed == "1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16"
@@ -414,9 +453,9 @@ fn sixteenArgumentBoundaryCase() = {
 /// WideArgumentRecovery reaches past the sixteen slots the mailbox once held.
 effect WideArgumentRecovery {
     /// Recover across seventeen integer arguments — the first arity past that width.
-    recover: fn(int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int) -> int
+    control recover: fn(int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int) -> int
     /// Recover across nine managed and nine scalar slots interleaved past it.
-    describe: fn(string, int, string, int, string, int, string, int, string, int, string, int, string, int, string, int, string, int) -> string
+    control describe: fn(string, int, string, int, string, int, string, int, string, int, string, int, string, int, string, int, string, int) -> string
 }
 
 /// This is the exact operation shape tracked by critical issue #182.
@@ -434,12 +473,15 @@ fn wideManagedBody() !WideArgumentRecovery = perform WideArgumentRecovery.descri
 /// Argument seventeen arrives as sent instead of silently becoming zero.
 fn seventeenArgumentCase() = {
     mut observed = ""
-    let result = handle WideArgumentRecovery
-        recover a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 => {
-            observed = "${a1}|${a2}|${a3}|${a4}|${a5}|${a6}|${a7}|${a8}|${a9}|${a10}|${a11}|${a12}|${a13}|${a14}|${a15}|${a16}|${a17}"
-            resume(a17)
+    let result = {
+        handle WideArgumentRecovery {
+            recover a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 => {
+                observed = "${a1}|${a2}|${a3}|${a4}|${a5}|${a6}|${a7}|${a8}|${a9}|${a10}|${a11}|${a12}|${a13}|${a14}|${a15}|${a16}|${a17}"
+                resume(a17)
+            }
         }
-    in seventeenArgumentBody()
+        seventeenArgumentBody()
+    }
 
     checkAll("seventeen-argument resume boundary", [
         result == 17,
@@ -452,12 +494,15 @@ fn seventeenArgumentCase() = {
 /// the ARC exit audit exactly like a leaked answer would.
 fn wideManagedArgumentCase() = {
     mut calls = 0
-    let joined = handle WideArgumentRecovery
-        describe t1 n1 t2 n2 t3 n3 t4 n4 t5 n5 t6 n6 t7 n7 t8 n8 t9 n9 => {
-            calls = calls + 1 ?: calls
-            resume("${t1}${n1}${t2}${n2}${t3}${n3}${t4}${n4}${t5}${n5}${t6}${n6}${t7}${n7}${t8}${n8}${t9}${n9}")
+    let joined = {
+        handle WideArgumentRecovery {
+            describe t1 n1 t2 n2 t3 n3 t4 n4 t5 n5 t6 n6 t7 n7 t8 n8 t9 n9 => {
+                calls = calls + 1 ?: calls
+                resume("${t1}${n1}${t2}${n2}${t3}${n3}${t4}${n4}${t5}${n5}${t6}${n6}${t7}${n7}${t8}${n8}${t9}${n9}")
+            }
         }
-    in wideManagedBody()
+        wideManagedBody()
+    }
 
     checkAll("wide managed argument transport", [
         joined == "s11s22s33s44s55s66s77s88s99", calls == 1,

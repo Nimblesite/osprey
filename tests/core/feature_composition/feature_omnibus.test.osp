@@ -88,13 +88,12 @@ fn effectsAndCollections() = {
     mut counter = 0
     // Establishes the state precondition before any handled interaction occurs.
     checkAll("effect precondition", [counter == 0])
-    handle Counter
+    handle Counter {
         increment amount => { counter = counter + amount ?: counter }
-    in {
-        perform Counter.increment(1)
-        perform Counter.increment(1)
-        perform Counter.increment(1)
     }
+    perform Counter.increment(1)
+    perform Counter.increment(1)
+    perform Counter.increment(1)
     let xs = listAppend(listAppend(listAppend(List(), 10), 20), 30)
     let ys = listAppend(List(), 99)
     let combined = xs + ys

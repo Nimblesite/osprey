@@ -9,6 +9,7 @@
 
 use crate::builder::Codegen;
 use crate::effects::{box_codegen_value, OpSig};
+use crate::error::{CodegenError, Result};
 use crate::llty::{LType, Value};
 use crate::types::{ltype_of, result_inner};
 
@@ -24,14 +25,17 @@ const OP_ARG_MANAGED: &str = "1";
 /// declared slot is decided by its own LLVM type; an erased (generic) slot
 /// travels as a bare `i64` whose real shape only the site's resolved
 /// instantiation knows. Implements [EFFECTS-OPERATION-MAILBOX].
-fn slot_is_managed(sig: &OpSig, resolved: Option<&osprey_types::OpType>, i: usize) -> bool {
-    if sig.param_erased.get(i).copied().unwrap_or(false) {
-        return resolved.and_then(|r| r.params.get(i)).is_some_and(|t| {
-            result_inner(t).is_some() || matches!(ltype_of(t), LType::Ptr | LType::Str | LType::Any)
-        });
+fn slot_is_managed(sig: &OpSig, resolved: &osprey_types::OpType, i: usize) -> Result<bool> {
+    if sig.param_is_erased(i)? {
+        let ty = resolved
+            .params
+            .get(i)
+            .ok_or_else(|| CodegenError::invalid("mailbox slot has no checked parameter type"))?;
+        return Ok(result_inner(ty).is_some()
+            || matches!(ltype_of(ty), LType::Ptr | LType::Str | LType::Any));
     }
-    let param = sig.param(i);
-    param.result_inner.is_some() || matches!(param.ty, LType::Ptr | LType::Str | LType::Any)
+    let param = sig.param(i)?;
+    Ok(param.result_inner.is_some() || matches!(param.ty, LType::Ptr | LType::Str | LType::Any))
 }
 
 fn store_slot(cg: &mut Codegen, arr_ty: &str, arr: &str, i: usize, ty: &str, operand: &str) {
@@ -63,16 +67,16 @@ fn retain_boxed_word(cg: &mut Codegen, word: &str) {
 pub(crate) fn emit_mailbox_arrays(
     cg: &mut Codegen,
     sig: &OpSig,
-    resolved: Option<&osprey_types::OpType>,
-) -> (String, String) {
+    resolved: &osprey_types::OpType,
+) -> Result<(String, String)> {
     let arr_ty = format!("[{} x i64]", sig.params.len());
     let kinds_ty = format!("[{} x i8]", sig.params.len());
     let arr = cg.emit_reg(format!("alloca {arr_ty}"));
     let kinds = cg.emit_reg(format!("alloca {kinds_ty}"));
     for (i, param) in sig.params.iter().cloned().enumerate() {
-        let managed = slot_is_managed(sig, resolved, i);
+        let managed = slot_is_managed(sig, resolved, i)?;
         let value = crate::cast::incoming_param(cg, format!("%__arg{i}"), param, None);
-        let word = if sig.param_erased.get(i).copied().unwrap_or(false) {
+        let word = if sig.param_is_erased(i)? {
             if managed {
                 retain_boxed_word(cg, &value.operand);
             }
@@ -88,8 +92,8 @@ pub(crate) fn emit_mailbox_arrays(
         };
         store_slot(cg, &kinds_ty, &kinds, i, "i8", kind);
     }
-    (
+    Ok((
         first_slot(cg, &arr_ty, &arr),
         first_slot(cg, &kinds_ty, &kinds),
-    )
+    ))
 }

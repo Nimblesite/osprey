@@ -171,9 +171,16 @@ fn expression_children<'a>(expression: &'a Expr, visit: &mut impl FnMut(AstNode<
             visit_each(arguments, visit, |argument| argument);
             visit_each(named_arguments, visit, |argument| &argument.value);
         }
-        Expr::Handler { arms, body, .. } => {
+        Expr::Handler {
+            arms,
+            body,
+            return_clause,
+            ..
+        } => {
             visit_each(arms, visit, |arm| &arm.body);
-            visit(AstNode::Expression(body));
+            for child in std::iter::once(body.as_ref()).chain(return_clause.as_deref()) {
+                visit(AstNode::Expression(child));
+            }
         }
         Expr::Integer(_)
         | Expr::Float(_)

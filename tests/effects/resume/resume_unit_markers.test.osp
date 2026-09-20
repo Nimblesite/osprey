@@ -1,7 +1,7 @@
 /// Trace exposes a Unit-returning operation to an explicit-resume handler.
 effect Trace {
     /// Record a named marker so unwind order is observable.
-    mark: fn(string) -> Unit
+    control mark: fn(string) -> Unit
 }
 
 /// This helper performs two Unit markers before returning its final value.
@@ -19,18 +19,21 @@ fn resumeUnitMarkersCase() = {
     mut afterLabels = ""
     mut finalValues = ""
 
-    let result = handle Trace
-        mark label => {
-            markCount = markCount + 1 ?: markCount
-            beforeLabels = "${beforeLabels}${label}|"
-            transcript = "${transcript}before ${label}\n"
-            let final = resume()
-            afterLabels = "${afterLabels}${label}|"
-            finalValues = "${finalValues}${toString(final)}|"
-            transcript = "${transcript}after ${label}: final=${toString(final)}\n"
-            final
+    let result = {
+        handle Trace {
+            mark label => {
+                markCount = markCount + 1 ?: markCount
+                beforeLabels = "${beforeLabels}${label}|"
+                transcript = "${transcript}before ${label}\n"
+                let final = resume()
+                afterLabels = "${afterLabels}${label}|"
+                finalValues = "${finalValues}${toString(final)}|"
+                transcript = "${transcript}after ${label}: final=${toString(final)}\n"
+                final
+            }
         }
-    in traced()
+        traced()
+    }
     let legacyTranscript = "${transcript}result=${toString(result)}\n"
 
     // Preserve all five legacy lines including the reversed after-marker order.

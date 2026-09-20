@@ -8,14 +8,13 @@
 //! its captures from it, so a closure returned from its maker keeps working
 //! after the maker's frame is gone. A capture-free closure costs nothing at
 //! runtime: its cell is one private constant global. A capturing closure
-//! `malloc`s one cell per evaluation (captures are immutable, by value — the
-//! cell is never written after construction, so instances never alias state).
+//! `malloc`s one cell per evaluation. Ordinary captures are immutable values;
+//! handler-owned mutable bindings retain their existing shared heap cells.
 //!
 //! Callers extract the fnptr from the cell and pass the cell back as the env
 //! ([`cell_call`]). Top-level functions used as values get a once-per-module
-//! forwarder that drops the env ([`named_fn_cell`]). The effect-handler ABI in
-//! `effects.rs` keeps its own bare-pointer convention (handlers are not
-//! first-class values) and is intentionally untouched.
+//! forwarder that drops the env ([`named_fn_cell`]). Callable handlers use this
+//! representation and install their arms through the existing effect ABI.
 
 use crate::builder::{Codegen, FnSig, ParamSig};
 use crate::error::{CodegenError, Result};
@@ -30,6 +29,7 @@ use std::collections::BTreeSet;
 pub(crate) struct Capture {
     pub(crate) name: String,
     pub(crate) val: Value,
+    cell: Option<crate::builder::CellSlot>,
 }
 
 /// Lower a lambda in plain expression position (returned, block tail, stored)
@@ -88,7 +88,7 @@ pub(crate) fn emit_closure_keyed(
     sig: &FnSig,
     key: Option<String>,
 ) -> Result<Value> {
-    let caps = capture_list(cg, parameters, body);
+    let caps = closure_captures(cg, parameters, body);
     let key = key.filter(|_| caps.is_empty());
     let v = match key.as_deref().and_then(|k| cg.fnval_cells.get(k).cloned()) {
         Some(cell) => Value::new(
@@ -149,7 +149,37 @@ pub(crate) fn specialisation_key(target: &str, sig: &FnSig) -> String {
 pub(crate) fn capture_list(cg: &Codegen, parameters: &[Parameter], body: &Expr) -> Vec<Capture> {
     free_names(parameters, body)
         .into_iter()
-        .filter_map(|name| cg.lookup(&name).map(|val| Capture { name, val }))
+        .filter_map(|name| {
+            cg.lookup(&name).map(|val| Capture {
+                name,
+                val,
+                cell: None,
+            })
+        })
+        .collect()
+}
+
+/// Retain handler-owned state when its handler is bound, passed or returned.
+/// Implements [EFFECTS-HANDLER-VALUE-STATE].
+fn closure_captures(cg: &mut Codegen, parameters: &[Parameter], body: &Expr) -> Vec<Capture> {
+    free_names(parameters, body)
+        .into_iter()
+        .filter_map(|name| {
+            if let Some(cell) = cg.cell_slots.get(&name).cloned() {
+                let operand = cg.emit_reg(format!("bitcast {}* {} to i8*", cell.pointee, cell.ptr));
+                Some(Capture {
+                    name,
+                    val: Value::new(operand, LType::Ptr),
+                    cell: Some(cell),
+                })
+            } else {
+                cg.lookup(&name).map(|val| Capture {
+                    name,
+                    val,
+                    cell: None,
+                })
+            }
+        })
         .collect()
 }
 
@@ -237,6 +267,17 @@ pub(crate) fn reload_captures(cg: &mut Codegen, cell_ty: &str, caps: &[Capture])
         ));
         let lty = c.val.llvm_ty();
         let r = cg.emit_reg(format!("load {lty}, {lty}* {p}"));
+        if let Some(cell) = &c.cell {
+            let ptr = cg.emit_reg(format!("bitcast i8* {r} to {}*", cell.pointee));
+            let _ = cg.cell_slots.insert(
+                c.name.clone(),
+                crate::builder::CellSlot {
+                    ptr,
+                    ..cell.clone()
+                },
+            );
+            continue;
+        }
         let mut v = c.val.clone();
         v.operand = r;
         if let Some(ty) = &v.inferred_type {
@@ -304,7 +345,7 @@ pub(crate) fn raw_callback_lambda(
     body: &Expr,
     sig: &FnSig,
 ) -> Result<Value> {
-    if !capture_list(cg, parameters, body).is_empty() {
+    if !closure_captures(cg, parameters, body).is_empty() {
         return Err(CodegenError::unsupported(
             "a capturing lambda as an FFI callback (captures cannot cross the C boundary; use a named function)",
         ));

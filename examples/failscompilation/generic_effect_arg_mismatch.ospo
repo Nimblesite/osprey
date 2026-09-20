@@ -11,9 +11,12 @@ fn bad() -> int !Stash<int> = {
 }
 
 fn main() -> Unit = {
-    let n = handle Stash
-        take => 1
-        put v => print("put")
-    in bad()
+    let n = {
+        handle Stash {
+            take => 1
+            put v => print("put")
+        }
+        bad()
+    }
     print("${n}")
 }

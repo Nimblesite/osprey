@@ -594,23 +594,28 @@ fn account() ![Console, Ledger] = {
 /// World A: a real, stateful ledger — the handler owns a \`mut\` it threads through.
 fn realWorld() = {
     mut balance = 0
-    handle Console
+    handle Console {
         emit line => print("  💸 \${line}")
-    in handle Ledger
+    }
+    handle Ledger {
         post amount => {
             balance = balance + amount ?: balance
             balance
         }
-    in account()
+    }
+    account()
 }
 
 /// World B: same code, a frozen compliance mock — every post is a no-op.
-fn dryRun() =
-    handle Console
+fn dryRun() = {
+    handle Console {
         emit line => print("  🧪 [dry-run] \${line}")
-    in handle Ledger
-        post amount => 0
-    in account()
+    }
+    handle Ledger {
+        post _amount => 0
+    }
+    account()
+}
 
 /// Pure pipeline: Σ of squares of the evens in [1, n) — no loops, no mutation.
 fn even(x) = (x % 2 ?: 1) == 0
@@ -732,12 +737,12 @@ realWorld () =
     mut balance = 0
     handle Console
         emit line => print "  💸 \${line}"
-    in handle Ledger
+    handle Ledger
         (* the resuming arm updates state, then hands the balance back *)
         post amount =>
             balance := balance + amount ?: balance
             balance
-    in account ()
+    account ()
 
 (** The DRY-RUN interpretation of [account]: the console is tagged and the
     ledger is a no-op that always reports a zero balance. Same [account] body,
@@ -745,9 +750,9 @@ realWorld () =
 dryRun () =
     handle Console
         emit line => print "  🧪 [dry-run] \${line}"
-    in handle Ledger
-        post amount => 0
-    in account ()
+    handle Ledger
+        post _amount => 0
+    account ()
 
 (** [true] when [x] is even. *)
 even x = (x % 2 ?: 1) == 0

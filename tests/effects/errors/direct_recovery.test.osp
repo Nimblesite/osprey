@@ -111,12 +111,15 @@ fn combineLookups() !LookupError = lookupValue("known") * 10 + lookupValue("miss
 /// Verify that successful code never enters an installed recovery arm.
 fn happyPathBypassCase() = {
     mut recoveries = 0
-    let value = handle RecoveryError
-        missingInt _reason => {
-            recoveries = recoveries + 1 ?: recoveries
-            99
+    let value = {
+        handle RecoveryError {
+            missingInt _reason => {
+                recoveries = recoveries + 1 ?: recoveries
+                99
+            }
         }
-    in requirePositive(7)
+        requirePositive(7)
+    }
 
     // The original value survives and the handler remains untouched.
     checkAll("happy path bypass", [
@@ -128,9 +131,12 @@ fn happyPathBypassCase() = {
 
 /// Verify that a direct arm substitutes a value and the caller keeps running.
 fn fallbackContinuationCase() = {
-    let value = handle RecoveryError
-        missingInt _reason => 40
-    in continuedValue(0)
+    let value = {
+        handle RecoveryError {
+            missingInt _reason => 40
+        }
+        continuedValue(0)
+    }
 
     // Arithmetic after perform sees the handler's replacement.
     checkAll("fallback and continuation", [
@@ -144,13 +150,16 @@ fn fallbackContinuationCase() = {
 fn repeatedRecoveryStateCase() = {
     mut recoveries = 0
     mut reasons = ""
-    let total = handle RecoveryError
-        missingInt reason => {
-            recoveries = recoveries + 1 ?: recoveries
-            reasons = "${reasons}${reason}|"
-            recoveries * 10 ?: 0
+    let total = {
+        handle RecoveryError {
+            missingInt reason => {
+                recoveries = recoveries + 1 ?: recoveries
+                reasons = "${reasons}${reason}|"
+                recoveries * 10 ?: 0
+            }
         }
-    in recoverThree()
+        recoverThree()
+    }
 
     // Each call observes the updated handler-owned counter.
     checkAll("repeated recovery state", [
@@ -165,12 +174,15 @@ fn repeatedRecoveryStateCase() = {
 fn collectAllReportsCase() = {
     mut reports = 0
     mut fields = ""
-    let result = handle RecoveryError
-        report field => {
-            reports = reports + 1 ?: reports
-            fields = "${fields}${field}|"
+    let result = {
+        handle RecoveryError {
+            report field => {
+                reports = reports + 1 ?: reports
+                fields = "${fields}${field}|"
+            }
         }
-    in validateRecord("")((0 - 3) ?: 0)("")
+        validateRecord("")((0 - 3) ?: 0)("")
+    }
 
     // Validation reaches its final value after all four broken rules report.
     checkAll("collect all reports", [
@@ -183,11 +195,14 @@ fn collectAllReportsCase() = {
 
 /// Verify one direct handler supplies several declared operation result types.
 fn multipleResultTypesCase() = {
-    let rendered = handle RecoveryError
-        missingInt _reason => 7
-        missingText _reason => "fallback"
-        denied _reason => true
-    in mixedRecovery()
+    let rendered = {
+        handle RecoveryError {
+            missingInt _reason => 7
+            missingText _reason => "fallback"
+            denied _reason => true
+        }
+        mixedRecovery()
+    }
 
     // Integer, string, and boolean replacements retain their declared types.
     checkAll("multiple operation result types", [
@@ -199,12 +214,18 @@ fn multipleResultTypesCase() = {
 
 /// Verify the same effectful function can run under two local recovery policies.
 fn twoPoliciesCase() = {
-    let skipped = handle StockError
-        shortage _requested _available => 0
-    in shipmentTotal()
-    let capped = handle StockError
-        shortage _requested available => available
-    in shipmentTotal()
+    let skipped = {
+        handle StockError {
+            shortage _requested _available => 0
+        }
+        shipmentTotal()
+    }
+    let capped = {
+        handle StockError {
+            shortage _requested available => available
+        }
+        shipmentTotal()
+    }
 
     // Skip and cap policies change only the handled shortage decision.
     checkAll("two policies over one function", [
@@ -217,14 +238,16 @@ fn twoPoliciesCase() = {
 
 /// Verify an inner same-effect arm overrides one operation and then disappears.
 fn nestedOverrideCase() = {
-    let rendered = handle PolicyError
-        score _key => 10
-        label _key => "outer"
-    in {
+    let rendered = {
+        handle PolicyError {
+            score _key => 10
+            label _key => "outer"
+        }
         let before = perform PolicyError.score("before")
-        let inside = handle PolicyError
-            score _key => 99
-        in {
+        let inside = {
+            handle PolicyError {
+                score _key => 99
+            }
             let innerScore = perform PolicyError.score("inside")
             let inheritedLabel = perform PolicyError.label("inside")
             "${toString(innerScore)}:${inheritedLabel}"
@@ -245,17 +268,21 @@ fn nestedOverrideCase() = {
 fn outerEffectCompositionCase() = {
     mut notes = ""
     mut noteCount = 0
-    let result = handle AuditError
-        note message => {
-            noteCount = noteCount + 1 ?: noteCount
-            notes = "${notes}${message}|"
+    let result = {
+        handle AuditError {
+            note message => {
+                noteCount = noteCount + 1 ?: noteCount
+                notes = "${notes}${message}|"
+            }
         }
-    in handle RecoveryError
-        missingInt reason => {
-            perform AuditError.note("handler saw ${reason}")
-            41
+        handle RecoveryError {
+            missingInt reason => {
+                perform AuditError.note("handler saw ${reason}")
+                41
+            }
         }
-    in auditedRecovery()
+        auditedRecovery()
+    }
 
     // The outer audit observes the handler decision and the resumed caller work.
     checkAll("outer effect composition", [
@@ -269,12 +296,15 @@ fn outerEffectCompositionCase() = {
 /// Verify dynamic handling reaches through helpers and recursive calls.
 fn deepRecursionCase() = {
     mut recoveries = 0
-    let value = handle RecoveryError
-        missingInt _reason => {
-            recoveries = recoveries + 1 ?: recoveries
-            8
+    let value = {
+        handle RecoveryError {
+            missingInt _reason => {
+                recoveries = recoveries + 1 ?: recoveries
+                8
+            }
         }
-    in descend(4)
+        descend(4)
+    }
 
     // One bottom-level replacement returns through all four recursive frames.
     checkAll("deep helper recursion", [
@@ -287,15 +317,18 @@ fn deepRecursionCase() = {
 /// A direct arm returning a whole `Result` must deliver that exact value.
 fn wholeResultOperationCase() = {
     mut lookups = 0
-    let combined = handle LookupError
-        find key => {
-            lookups = lookups + 1 ?: lookups
-            match key {
-                "known" => Success { value: 4 }
-                _ => Error { message: "absent" }
+    let combined = {
+        handle LookupError {
+            find key => {
+                lookups = lookups + 1 ?: lookups
+                match key {
+                    "known" => Success { value: 4 }
+                    _ => Error { message: "absent" }
+                }
             }
         }
-    in combineLookups()
+        combineLookups()
+    }
 
     // Both arms travel as complete Result blocks: Success{4} scales to 40 and
     // Error{"absent"} matches to its 6-character length.
@@ -445,70 +478,103 @@ fn fillAll() !TextError = {
 fn everyResultTypeCase() = {
     mut marks = 0
     mut trail = ""
-    let rendered = handle ValueError
-        asInt field => {
-            trail = "${trail}i:${field}|"
-            12
+    let rendered = {
+        handle ValueError {
+            asInt field => {
+                trail = "${trail}i:${field}|"
+                12
+            }
+            asFloat field => {
+                trail = "${trail}f:${field}|"
+                2.5
+            }
+            asBool field => {
+                trail = "${trail}b:${field}|"
+                true
+            }
+            asText field => {
+                trail = "${trail}t:${field}|"
+                "fallback"
+            }
+            asSpare field => {
+                trail = "${trail}s:${field}|"
+                Spare { tag: "spare", weight: 1.5, ready: true }
+            }
+            asGrade field => {
+                trail = "${trail}g:${field}|"
+                Granted { score: 30 }
+            }
+            asResult field => {
+                trail = "${trail}r:${field}|"
+                Success { value: 9 }
+            }
+            mark field => {
+                marks = marks + 1 ?: marks
+                trail = "${trail}m:${field}|"
+            }
         }
-        asFloat field => {
-            trail = "${trail}f:${field}|"
-            2.5
+        everyValue()
+    }
+    let intValue = {
+        handle ValueError {
+            asInt _field => 0
         }
-        asBool field => {
-            trail = "${trail}b:${field}|"
-            true
+        perform ValueError.asInt("zero")
+    }
+    let negativeValue = {
+        handle ValueError {
+            asInt _field => -41
         }
-        asText field => {
-            trail = "${trail}t:${field}|"
-            "fallback"
+        perform ValueError.asInt("negative")
+    }
+    let floatValue = {
+        handle ValueError {
+            asFloat _field => 2.5
         }
-        asSpare field => {
-            trail = "${trail}s:${field}|"
-            Spare { tag: "spare", weight: 1.5, ready: true }
+        perform ValueError.asFloat("ratio")
+    }
+    let boolValue = {
+        handle ValueError {
+            asBool _field => false
         }
-        asGrade field => {
-            trail = "${trail}g:${field}|"
-            Granted { score: 30 }
+        perform ValueError.asBool("blocked")
+    }
+    let textValue = {
+        handle ValueError {
+            asText _field => ""
         }
-        asResult field => {
-            trail = "${trail}r:${field}|"
-            Success { value: 9 }
+        perform ValueError.asText("empty")
+    }
+    let spareValue = {
+        handle ValueError {
+            asSpare _field => Spare { tag: "left", weight: 1.5, ready: true }
         }
-        mark field => {
-            marks = marks + 1 ?: marks
-            trail = "${trail}m:${field}|"
+        perform ValueError.asSpare("spare")
+    }
+    let grantedValue = {
+        handle ValueError {
+            asGrade _field => Granted { score: 7 }
         }
-    in everyValue()
-    let intValue = handle ValueError
-        asInt _field => 0
-    in perform ValueError.asInt("zero")
-    let negativeValue = handle ValueError
-        asInt _field => -41
-    in perform ValueError.asInt("negative")
-    let floatValue = handle ValueError
-        asFloat _field => 2.5
-    in perform ValueError.asFloat("ratio")
-    let boolValue = handle ValueError
-        asBool _field => false
-    in perform ValueError.asBool("blocked")
-    let textValue = handle ValueError
-        asText _field => ""
-    in perform ValueError.asText("empty")
-    let spareValue = handle ValueError
-        asSpare _field => Spare { tag: "left", weight: 1.5, ready: true }
-    in perform ValueError.asSpare("spare")
-    let grantedValue = handle ValueError
-        asGrade _field => Granted { score: 7 }
-    in perform ValueError.asGrade("good")
-    let refusedValue = handle ValueError
-        asGrade _field => Refused { reason: "denied" }
-    in perform ValueError.asGrade("bad")
-    let okValue = handle ValueError
-        asResult _field => Success { value: 5 }
-    in perform ValueError.asResult("hit")
-    let badValue = handle ValueError
-        asResult _field => Error { message: "absent" }
-    in perform ValueError.asResult("miss")
+        perform ValueError.asGrade("good")
+    }
+    let refusedValue = {
+        handle ValueError {
+            asGrade _field => Refused { reason: "denied" }
+        }
+        perform ValueError.asGrade("bad")
+    }
+    let okValue = {
+        handle ValueError {
+            asResult _field => Success { value: 5 }
+        }
+        perform ValueError.asResult("hit")
+    }
+    let badValue = {
+        handle ValueError {
+            asResult _field => Error { message: "absent" }
+        }
+        perform ValueError.asResult("miss")
+    }
     let grantedScore = gradeScore(grantedValue)
     let refusedScore = gradeScore(refusedValue)
     let okScore = resultScore(okValue)
@@ -624,77 +690,99 @@ fn partialOverrideLatticeCase() = {
     mut flatTrail = ""
     mut outerBaseCalls = 0
     mut innerBaseCalls = 0
-    let flat = handle TierError
-        base label => {
-            flatCalls = flatCalls + 1 ?: flatCalls
-            flatTrail = "${flatTrail}base:${label}|"
-            100
+    let flat = {
+        handle TierError {
+            base label => {
+                flatCalls = flatCalls + 1 ?: flatCalls
+                flatTrail = "${flatTrail}base:${label}|"
+                100
+            }
+            bonus label => {
+                flatCalls = flatCalls + 1 ?: flatCalls
+                flatTrail = "${flatTrail}bonus:${label}|"
+                5
+            }
+            tier label => {
+                flatCalls = flatCalls + 1 ?: flatCalls
+                flatTrail = "${flatTrail}tier:${label}|"
+                "gold"
+            }
         }
-        bonus label => {
-            flatCalls = flatCalls + 1 ?: flatCalls
-            flatTrail = "${flatTrail}bonus:${label}|"
-            5
-        }
-        tier label => {
-            flatCalls = flatCalls + 1 ?: flatCalls
-            flatTrail = "${flatTrail}tier:${label}|"
-            "gold"
-        }
-    in {
         let first = tierQuote("a")
         let second = tierQuote("b")
         "${first}/${second}"
     }
-    let overridden = handle TierError
-        base _label => {
-            outerBaseCalls = outerBaseCalls + 1 ?: outerBaseCalls
-            100
-        }
-        bonus _label => 5
-        tier _label => "gold"
-    in {
-        let outside = tierQuote("out")
-        let inside = handle TierError
+    let overridden = {
+        handle TierError {
             base _label => {
-                innerBaseCalls = innerBaseCalls + 1 ?: innerBaseCalls
-                200
+                outerBaseCalls = outerBaseCalls + 1 ?: outerBaseCalls
+                100
             }
-        in tierQuote("in")
+            bonus _label => 5
+            tier _label => "gold"
+        }
+        let outside = tierQuote("out")
+        let inside = {
+            handle TierError {
+                base _label => {
+                    innerBaseCalls = innerBaseCalls + 1 ?: innerBaseCalls
+                    200
+                }
+            }
+            tierQuote("in")
+        }
         let afterwards = tierQuote("post")
         "${outside}|${inside}|${afterwards}"
     }
-    let split = handle TierError
-        base _label => 10
-    in handle TierError
-        bonus _label => 3
-    in handle TierError
-        tier _label => "silver"
-    in tierQuote("c")
-    let reordered = handle TierError
-        tier _label => "silver"
-    in handle TierError
-        base _label => 10
-    in handle TierError
-        bonus _label => 3
-    in tierQuote("d")
-    let deepest = handle TierError
-        base _label => 1
-        bonus _label => 0
-        tier _label => "bronze"
-    in handle TierError
-        base _label => 2
-    in handle TierError
-        base _label => 3
-    in tierQuote("e")
-    let restored = handle TierError
-        base _label => 7
-        bonus _label => 1
-        tier _label => "outer"
-    in {
+    let split = {
+        handle TierError {
+            base _label => 10
+        }
+        handle TierError {
+            bonus _label => 3
+        }
+        handle TierError {
+            tier _label => "silver"
+        }
+        tierQuote("c")
+    }
+    let reordered = {
+        handle TierError {
+            tier _label => "silver"
+        }
+        handle TierError {
+            base _label => 10
+        }
+        handle TierError {
+            bonus _label => 3
+        }
+        tierQuote("d")
+    }
+    let deepest = {
+        handle TierError {
+            base _label => 1
+            bonus _label => 0
+            tier _label => "bronze"
+        }
+        handle TierError {
+            base _label => 2
+        }
+        handle TierError {
+            base _label => 3
+        }
+        tierQuote("e")
+    }
+    let restored = {
+        handle TierError {
+            base _label => 7
+            bonus _label => 1
+            tier _label => "outer"
+        }
         let before = perform TierError.base("before")
-        let inner = handle TierError
-            base _label => 70
-        in {
+        let inner = {
+            handle TierError {
+                base _label => 70
+            }
             let insideBase = perform TierError.base("inside")
             let insideTier = perform TierError.tier("inside")
             "${insideTier}/${toString(insideBase)}"
@@ -800,17 +888,18 @@ fn higherOrderRecoveryCase() = {
     mut scaled = 0
     mut trail = ""
     mut negatives = 0
-    let finished = handle Tally
-        scale value => {
-            scaled = scaled + 1 ?: scaled
-            value * 2 ?: 0
+    let finished = {
+        handle Tally {
+            scale value => {
+                scaled = scaled + 1 ?: scaled
+                value * 2 ?: 0
+            }
+            add value => {
+                total = total + value ?: total
+                steps = steps + 1 ?: steps
+                trail = "${trail}${toString(value)}|"
+            }
         }
-        add value => {
-            total = total + value ?: total
-            steps = steps + 1 ?: steps
-            trail = "${trail}${toString(value)}|"
-        }
-    in {
         forEachList(none, fn(value) => tallyOne(value))
         forEachList(one, fn(value) => tallyOne(value))
         forEachList(dup, fn(value) => tallyOne(value))
@@ -818,12 +907,13 @@ fn higherOrderRecoveryCase() = {
         forEachList(nested, fn(inner) => forEachList(inner, fn(value) => tallyOne(value)))
         "finished"
     }
-    let negated = handle Tally
-        scale value => 0 - value ?: 0
-        add value => {
-            negatives = negatives + value ?: negatives
+    let negated = {
+        handle Tally {
+            scale value => 0 - value ?: 0
+            add value => {
+                negatives = negatives + value ?: negatives
+            }
         }
-    in {
         forEachList(mixed, fn(value) => tallyOne(value))
         "negated"
     }
@@ -918,35 +1008,50 @@ fn recursiveAccumulationCase() = {
     mut zeroVisits = 0
     mut oneVisits = 0
     mut deepVisits = 0
-    let total = handle StepError
-        contribute depth => {
-            visits = visits + 1 ?: visits
-            lastDepth = depth
-            trail = "${trail}${toString(depth)}:${toString(visits)}|"
-            visits * 10 ?: 0
+    let total = {
+        handle StepError {
+            contribute depth => {
+                visits = visits + 1 ?: visits
+                lastDepth = depth
+                trail = "${trail}${toString(depth)}:${toString(visits)}|"
+                visits * 10 ?: 0
+            }
         }
-    in descendSum(8)
-    let zeroTotal = handle StepError
-        contribute _depth => {
-            zeroVisits = zeroVisits + 1 ?: zeroVisits
-            99
+        descendSum(8)
+    }
+    let zeroTotal = {
+        handle StepError {
+            contribute _depth => {
+                zeroVisits = zeroVisits + 1 ?: zeroVisits
+                99
+            }
         }
-    in descendSum(0)
-    let oneTotal = handle StepError
-        contribute depth => {
-            oneVisits = oneVisits + 1 ?: oneVisits
-            depth * 3 ?: 0
+        descendSum(0)
+    }
+    let oneTotal = {
+        handle StepError {
+            contribute depth => {
+                oneVisits = oneVisits + 1 ?: oneVisits
+                depth * 3 ?: 0
+            }
         }
-    in descendSum(1)
-    let deepTotal = handle StepError
-        contribute depth => {
-            deepVisits = deepVisits + 1 ?: deepVisits
-            depth
+        descendSum(1)
+    }
+    let deepTotal = {
+        handle StepError {
+            contribute depth => {
+                deepVisits = deepVisits + 1 ?: deepVisits
+                depth
+            }
         }
-    in descendSum(33)
-    let doubled = handle StepError
-        contribute depth => depth * 2 ?: 0
-    in descendSum(33)
+        descendSum(33)
+    }
+    let doubled = {
+        handle StepError {
+            contribute depth => depth * 2 ?: 0
+        }
+        descendSum(33)
+    }
 
     // Eight levels answer 10, 20 ... 80 from the handler's own counter, so the
     // total is 360 and the transcript pairs each depth with its visit number.
@@ -1033,59 +1138,77 @@ fn multiEffectRegionCase() = {
     mut policies = 0
     mut auditTrail = ""
     mut generousAudits = 0
-    let rendered = handle AuditError
-        note message => {
-            notes = notes + 1 ?: notes
-            trail = "${trail}A(${message})|"
+    let rendered = {
+        handle AuditError {
+            note message => {
+                notes = notes + 1 ?: notes
+                trail = "${trail}A(${message})|"
+            }
         }
-    in handle RecoveryError
-        missingInt reason => {
-            recoveries = recoveries + 1 ?: recoveries
-            trail = "${trail}R(${reason})|"
-            6
+        handle RecoveryError {
+            missingInt reason => {
+                recoveries = recoveries + 1 ?: recoveries
+                trail = "${trail}R(${reason})|"
+                6
+            }
         }
-    in handle StockError
-        shortage requested available => {
-            shortages = shortages + 1 ?: shortages
-            trail = "${trail}S(${toString(requested)},${toString(available)})|"
-            available
+        handle StockError {
+            shortage requested available => {
+                shortages = shortages + 1 ?: shortages
+                trail = "${trail}S(${toString(requested)},${toString(available)})|"
+                available
+            }
         }
-    in handle PolicyError
-        score key => {
-            policies = policies + 1 ?: policies
-            trail = "${trail}P(${key})|"
-            25
+        handle PolicyError {
+            score key => {
+                policies = policies + 1 ?: policies
+                trail = "${trail}P(${key})|"
+                25
+            }
+            label key => {
+                policies = policies + 1 ?: policies
+                trail = "${trail}L(${key})|"
+                "priority"
+            }
         }
-        label key => {
-            policies = policies + 1 ?: policies
-            trail = "${trail}L(${key})|"
-            "priority"
+        crossEffectBody()
+    }
+    let reordered = {
+        handle PolicyError {
+            score _key => 25
+            label _key => "priority"
         }
-    in crossEffectBody()
-    let reordered = handle PolicyError
-        score _key => 25
-        label _key => "priority"
-    in handle StockError
-        shortage _requested available => available
-    in handle RecoveryError
-        missingInt _reason => 6
-    in handle AuditError
-        note message => {
-            auditTrail = "${auditTrail}${message}|"
+        handle StockError {
+            shortage _requested available => available
         }
-    in crossEffectBody()
-    let generous = handle AuditError
-        note _message => {
-            generousAudits = generousAudits + 1 ?: generousAudits
+        handle RecoveryError {
+            missingInt _reason => 6
         }
-    in handle RecoveryError
-        missingInt _reason => 2
-    in handle StockError
-        shortage requested available => requested + available ?: 0
-    in handle PolicyError
-        score _key => 0
-        label _key => "basic"
-    in crossEffectBody()
+        handle AuditError {
+            note message => {
+                auditTrail = "${auditTrail}${message}|"
+            }
+        }
+        crossEffectBody()
+    }
+    let generous = {
+        handle AuditError {
+            note _message => {
+                generousAudits = generousAudits + 1 ?: generousAudits
+            }
+        }
+        handle RecoveryError {
+            missingInt _reason => 2
+        }
+        handle StockError {
+            shortage requested available => requested + available ?: 0
+        }
+        handle PolicyError {
+            score _key => 0
+            label _key => "basic"
+        }
+        crossEffectBody()
+    }
 
     // The body draws 6 from RecoveryError, 4 from StockError, "priority" and
     // 25 from PolicyError and audits three times, so 3+1+1+2 == 7 arm entries.
@@ -1172,44 +1295,74 @@ fn multiEffectRegionCase() = {
 fn boundaryValueRecoveryCase() = {
     mut fills = 0
     mut seen = ""
-    let joined = handle TextError
-        fill field => {
-            fills = fills + 1 ?: fills
-            seen = "${seen}${field}${toString(fills)}|"
-            match fills {
-                1 => ""
-                2 => "x"
-                _ => "  spaced  "
+    let joined = {
+        handle TextError {
+            fill field => {
+                fills = fills + 1 ?: fills
+                seen = "${seen}${field}${toString(fills)}|"
+                match fills {
+                    1 => ""
+                    2 => "x"
+                    _ => "  spaced  "
+                }
             }
         }
-    in fillAll()
-    let blank = handle TextError
-        fill _field => ""
-    in perform TextError.fill("blank")
-    let single = handle TextError
-        fill _field => "z"
-    in perform TextError.fill("single")
-    let digits = handle TextError
-        fill _field => "007"
-    in perform TextError.fill("digits")
-    let mixedCase = handle TextError
-        fill _field => "OsPrey"
-    in perform TextError.fill("case")
-    let punctuated = handle TextError
-        fill _field => "a-b_c.d,e"
-    in perform TextError.fill("punct")
-    let repeated = handle TextError
-        fill _field => "abab abab"
-    in perform TextError.fill("repeat")
-    let zero = handle TextError
-        number _field => 0
-    in perform TextError.number("zero")
-    let big = handle TextError
-        number _field => 2147483647
-    in perform TextError.number("big")
-    let negative = handle TextError
-        number _field => -2147483647
-    in perform TextError.number("negative")
+        fillAll()
+    }
+    let blank = {
+        handle TextError {
+            fill _field => ""
+        }
+        perform TextError.fill("blank")
+    }
+    let single = {
+        handle TextError {
+            fill _field => "z"
+        }
+        perform TextError.fill("single")
+    }
+    let digits = {
+        handle TextError {
+            fill _field => "007"
+        }
+        perform TextError.fill("digits")
+    }
+    let mixedCase = {
+        handle TextError {
+            fill _field => "OsPrey"
+        }
+        perform TextError.fill("case")
+    }
+    let punctuated = {
+        handle TextError {
+            fill _field => "a-b_c.d,e"
+        }
+        perform TextError.fill("punct")
+    }
+    let repeated = {
+        handle TextError {
+            fill _field => "abab abab"
+        }
+        perform TextError.fill("repeat")
+    }
+    let zero = {
+        handle TextError {
+            number _field => 0
+        }
+        perform TextError.number("zero")
+    }
+    let big = {
+        handle TextError {
+            number _field => 2147483647
+        }
+        perform TextError.number("big")
+    }
+    let negative = {
+        handle TextError {
+            number _field => -2147483647
+        }
+        perform TextError.number("negative")
+    }
 
     // Three performs, two of them under the duplicate field name "a", get the
     // first, second and third answers: "" then "x" then "  spaced  ", joined

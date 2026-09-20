@@ -1,0 +1,19 @@
+effect ask(): Int
+def work(): Int / ask = do ask() + 1
+
+def replace { action: () => Int / ask }: Int =
+  try { action() } with ask { resume(41) }
+def around { action: () => Int / ask }: Int =
+  try { action() } with ask { resume(41) + 100 }
+def noResume { action: () => Int / ask }: Int =
+  try { action() } with ask { 0 }
+def deadResume { action: () => Int / ask }: Int =
+  try { action() } with ask { if (false) { resume(0) } else { 0 } }
+
+def main() = {
+  val replacement = replace { work() }
+  val resumed = around { work() }
+  val returned = noResume { work() }
+  val deadBranch = deadResume { work() }
+  println("replace=" ++ replacement.show ++ "\nresume=" ++ resumed.show ++ "\nno-resume=" ++ returned.show ++ "\ndead-resume=" ++ deadBranch.show)
+}

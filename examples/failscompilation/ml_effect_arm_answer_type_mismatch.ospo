@@ -4,12 +4,12 @@
 // region's result — checked in both directions and through a `Result` answer,
 // in both flavors.
 effect Mixed
-    a : int => int
-    b : Unit => int
+    control a : int => int
+    control b : Unit => int
 
 effect Texts
-    a : int => int
-    b : Unit => string
+    control a : int => int
+    control b : Unit => string
 
 intArm : Unit -> string ! Mixed
 intArm () = "v=${perform Mixed.b ()}"
@@ -31,7 +31,7 @@ scalarAnswer =
         b =>
             settled = resume 0
             7
-    in intArm ()
+    intArm ()
 
 // pointer arm value, int answer — the direction codegen used to box silently
 pointerAnswer =
@@ -40,7 +40,7 @@ pointerAnswer =
         b =>
             settled = resume "supplied"
             "dyn" + "amic"
-    in textArm ()
+    textArm ()
 
 // pointer arm value, Result answer — the path that bypassed the guard entirely
 resultAnswer =
@@ -49,6 +49,6 @@ resultAnswer =
         b =>
             settled = resume "supplied"
             "dyn" + "amic"
-    in textArmToResult ()
+    textArmToResult ()
 
 print "${scalarAnswer} ${pointerAnswer} ${toString resultAnswer}"

@@ -41,9 +41,12 @@ fn body() -> int !Boxed = {
     42
 }
 
-let out = handle Boxed
-    take x => resume()
-in body()
+let out = {
+    handle Boxed {
+        take x => resume()
+    }
+    body()
+}
 print(toString(out))
 ```
 

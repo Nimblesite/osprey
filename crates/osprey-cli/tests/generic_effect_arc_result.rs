@@ -17,9 +17,12 @@ effect Source<T> {
 
 fn checked() -> Result<int, MathError> !Source<int> = perform Source.take()
 
-let observed = handle Source
-    take => (40 + 2) ?: 0
-in checked()
+let observed = {
+    handle Source {
+        take => (40 + 2) ?: 0
+    }
+    checked()
+}
 
 print(toString(observed))
 ";

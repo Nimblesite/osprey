@@ -1,0 +1,22 @@
+// Same handlers and work in Osprey's ML flavor.
+effect Ask
+    value : Unit => int
+effect Reader
+    name : Unit => string
+
+answer = handler Ask
+    value => 41
+work () = (perform Ask.value () + 1) ?: 0
+
+reading person = handler Reader
+    name => person
+greet () = "Hello, " + perform Reader.name () + "!"
+
+ada = reading "Ada"
+grace = reading "Grace"
+first = answer work
+second = answer work
+helloAda = ada greet
+helloGrace = grace greet
+helloAgain = ada greet
+print "${first}\n${second}\n${helloAda}\n${helloGrace}\n${helloAgain}"

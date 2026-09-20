@@ -41,12 +41,12 @@ requestBoolGroups () = perform FiberDepot.fetch "bools"
 fiberEffectIntMatrix () =
     handle FiberDepot
         fetch _key => intMatrix ()
-    in await (spawn (requestIntMatrix ()))
+    await (spawn (requestIntMatrix ()))
 
 fiberEffectBoolGroups () =
     handle FiberDepot
         fetch _key => boolGroups ()
-    in await (spawn (requestBoolGroups ()))
+    await (spawn (requestBoolGroups ()))
 
 (** A value crosses constructor inference -> nested collection storage -> fiber
     result erasure -> out-of-order await -> channel element erasure -> `Result`

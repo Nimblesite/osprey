@@ -122,10 +122,10 @@ fn intentional_names_top_level_bindings_and_extern_contracts_are_silent() {
 #[test]
 fn assignments_do_not_make_an_unread_variable_used() {
     reports(Flavor::Default,
-        "effect Set { put: fn(int) -> Unit }\nfn work() = { mut scratch = 1\nhandle Set\n put value => { scratch = value }\nin { perform Set.put(2) }\n3 }\nlet result = work()\n",
+        "effect Set { put: fn(int) -> Unit }\nfn work() = { mut scratch = 1\nhandle Set {\n    put value => { scratch = value }\n}\nperform Set.put(2)\n3 }\nlet result = work()\n",
         &[("unused-variable", "unused variable `scratch`")]);
     reports(Flavor::Default,
-        "effect Set { put: fn(int) -> Unit }\nfn work() = { mut scratch = 1\nhandle Set\n put value => { scratch = value }\nin { perform Set.put(2) }\nscratch }\nlet result = work()\n", &[]);
+        "effect Set { put: fn(int) -> Unit }\nfn work() = { mut scratch = 1\nhandle Set {\n    put value => { scratch = value }\n}\nperform Set.put(2)\nscratch }\nlet result = work()\n", &[]);
 }
 
 #[test]
@@ -141,7 +141,7 @@ fn nested_pattern_bindings_have_independent_arm_scopes() {
 #[test]
 fn handlers_and_fibers_preserve_outer_captures() {
     reports(Flavor::Default,
-        "effect Pick { choose: fn(int, int) -> int }\nfn work(seed) = handle Pick\n choose first second => resume(first)\nin await (spawn (perform Pick.choose(seed, 2)))\nlet result = work(7)\n",
+        "effect Pick { control choose: fn(int, int) -> int }\nfn work(seed) = {\n    handle Pick {\n        choose first second => resume(first)\n    }\n    await (spawn (perform Pick.choose(seed, 2)))\n}\nlet result = work(7)\n",
         &[("unused-handler-parameter", "unused handler parameter `second` of `Pick.choose`")]);
 }
 

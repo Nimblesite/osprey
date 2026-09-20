@@ -15,9 +15,10 @@ listGet(mapGet(groups, key) ?: fallbackList, index) ?: fallback
 
 fn auditEnvelopeMetadata(envelopes) = {
     mut transcript = ""
-    handle RecordAudit
-    note value => { transcript = transcript + value + "/" }
-    in forEachList(envelopes, fn(envelope) => perform RecordAudit.note(envelope.metadata))
+    handle RecordAudit {
+        note value => { transcript = transcript + value + "/" }
+    }
+    forEachList(envelopes, fn(envelope) => perform RecordAudit.note(envelope.metadata))
     transcript
 }
 

@@ -25,7 +25,7 @@ namespace depth {
 
             export module Bud {
                 export effect Sap {
-                    draw : fn(int) -> int
+                    control draw : fn(int) -> int
                 }
 
                 /// Four segments deep, and the row still reaches the caller.
@@ -42,9 +42,12 @@ import depth::Trunk::Branch::Bud as Bud
 import depth::Trunk::{amplify, amplify as boost}
 
 /// Installs a doubling handler for the effect declared at the deepest level.
-fn tapping(rate, body) = handle Bud::Sap
-    draw amount => resume((amount * rate) ?: 0)
-in body()
+fn tapping(rate, body) = {
+    handle Bud::Sap {
+        draw amount => resume((amount * rate) ?: 0)
+    }
+    body()
+}
 
 /// Every nesting level stays addressable by its full path and by its import.
 fn nestingDepthCase() = checkAll("layout nesting keeps every level addressable", [

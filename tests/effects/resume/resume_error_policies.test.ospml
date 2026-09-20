@@ -3,7 +3,7 @@
 (** ResumeFallback lets a policy replace one failed integer and continue the caller. *)
 effect ResumeFallback
     (** Replace one failed value, resuming the caller with the substitute. *)
-    recover : (string, int) => int
+    control recover : (string, int) => int
 
 (** This workflow proves that work on both sides of a recovered operation still runs. *)
 recoveredSum : Unit -> int ! ResumeFallback
@@ -24,7 +24,7 @@ resumeRecoveryContinuesCase () =
                 answer = resume fallback
                 completed := answer
                 answer
-        in recoveredSum ()
+        recoveredSum ()
     checkAll "resuming recovery continues" [
         result == 42, completed == 42, calls == 1
     ]
@@ -32,7 +32,7 @@ resumeRecoveryContinuesCase () =
 (** FatalExit models one operation whose recoverable branch resumes and fatal branch stops. *)
 effect FatalExit
     (** Abandon the computation with `reason`; the handler does not resume. *)
-    raise : string => int
+    control raise : string => int
 
 (** ExitTrace records which parts of a deep call chain were reached. *)
 effect ExitTrace
@@ -61,14 +61,13 @@ fatalExitStopsDeepCallCase () =
         handle ExitTrace
             mark label =>
                 trace := "${trace}${label}|"
-        in
-            handle FatalExit
-                raise message => match message
-                    "fatal" =>
-                        failures := failures + 1 ?: failures
-                        503
-                    _ => resume 0
-            in middleFailure ()
+        handle FatalExit
+            raise message => match message
+                "fatal" =>
+                    failures := failures + 1 ?: failures
+                    503
+                _ => resume 0
+        middleFailure ()
     checkAll "fatal exit stops deep call" [
         result == 503, failures == 1,
         trace == "middle-before|deepest|",
@@ -78,7 +77,7 @@ fatalExitStopsDeepCallCase () =
 (** RetryInput supplies successive candidates to a validation loop. *)
 effect RetryInput
     (** Request the candidate for `attempt`; invalid answers ask again. *)
-    next : int => int
+    control next : int => int
 
 (** Invalid candidates recursively ask again under the same deep handler. *)
 requirePositive : int -> int ! RetryInput
@@ -102,7 +101,7 @@ recursiveRetryCase () =
                     _ => 9
                 supplied := "${supplied}${toString candidate}|"
                 resume candidate
-        in requirePositive 1
+        requirePositive 1
     checkAll "recursive retry remains handled" [
         accepted == 9, calls == 3, supplied == "-3|0|9|"
     ]
@@ -110,10 +109,10 @@ recursiveRetryCase () =
 (** ParseRecovery supplies an integer while LookupRecovery supplies a string. *)
 effect ParseRecovery
     (** Supply the integer to use when `text` will not parse. *)
-    parse : string => int
+    control parse : string => int
 effect LookupRecovery
     (** Supply the text to use when `key` is absent. *)
-    missing : string => string
+    control missing : string => string
 
 (** This configuration consumes two independently typed recovery channels. *)
 recoveredConfig : Unit -> int ! [ParseRecovery, LookupRecovery]
@@ -133,14 +132,13 @@ nestedRecoveryChannelsCase () =
                 answer = resume 8080
                 settled := "${settled}parse|"
                 answer
-        in
-            handle LookupRecovery
-                missing _key =>
-                    entered := "${entered}lookup|"
-                    answer = resume "localhost"
-                    settled := "${settled}lookup|"
-                    answer
-            in recoveredConfig ()
+        handle LookupRecovery
+            missing _key =>
+                entered := "${entered}lookup|"
+                answer = resume "localhost"
+                settled := "${settled}lookup|"
+                answer
+        recoveredConfig ()
     checkAll "nested typed recoveries compose" [
         score == 8089,
         entered == "parse|lookup|", settled == "lookup|parse|"
@@ -149,7 +147,7 @@ nestedRecoveryChannelsCase () =
 (** ScopedRecovery demonstrates nearest-handler lookup for a resuming effect. *)
 effect ScopedRecovery
     (** Supply a value for `seed`; the nearest enclosing handler wins. *)
-    value : int => int
+    control value : int => int
 
 (** This helper keeps handler lookup visible across ordinary function calls. *)
 scopedValue : int -> int ! ScopedRecovery
@@ -164,16 +162,15 @@ resumingHandlerShadowCase () =
             value seed =>
                 outerCalls := outerCalls + 1 ?: outerCalls
                 resume ((seed + 100) ?: seed)
-        in
-            before = scopedValue 1
-            inside =
-                handle ScopedRecovery
-                    value seed =>
-                        innerCalls := innerCalls + 1 ?: innerCalls
-                        resume ((seed + 10) ?: seed)
-                in scopedValue 2
-            after = scopedValue 3
-            before + inside + after ?: 0
+        before = scopedValue 1
+        inside =
+            handle ScopedRecovery
+                value seed =>
+                    innerCalls := innerCalls + 1 ?: innerCalls
+                    resume ((seed + 10) ?: seed)
+            scopedValue 2
+        after = scopedValue 3
+        before + inside + after ?: 0
     checkAll "resuming handler shadow and restore" [
         total == 216, outerCalls == 2, innerCalls == 1
     ]
@@ -181,7 +178,7 @@ resumingHandlerShadowCase () =
 (** WrapAnswer exposes how post-resume code can transform the completed answer. *)
 effect WrapAnswer
     (** Request the number the performer will transform before returning. *)
-    number : Unit => int
+    control number : Unit => int
 
 (** The performer adds one to the value supplied by its handler. *)
 wrappedBody : Unit -> int ! WrapAnswer
@@ -196,7 +193,7 @@ postResumeTransformsAnswerCase () =
                 answer = resume 10
                 bodyAnswer := answer
                 answer * 2 ?: 0
-        in wrappedBody ()
+        wrappedBody ()
     checkAll "post-resume code transforms answer" [
         bodyAnswer == 11, result == 22, result == (bodyAnswer * 2 ?: 0)
     ]
@@ -204,7 +201,7 @@ postResumeTransformsAnswerCase () =
 (** ResultRecovery returns the complete Result value through a continuation. *)
 effect ResultRecovery
     (** Fetch `key`, letting the CALLER — not the handler — turn the `Result` into a value. *)
-    fetch : string => Result<int, string>
+    control fetch : string => Result<int, string>
 
 (** The caller, not the handler, decides how Success and Error become integers. *)
 resultValue : string -> int ! ResultRecovery
@@ -225,7 +222,7 @@ resumeWholeResultCase () =
                     _ => resume (Error(message = "missing"))
                 settled := settled + 1 ?: settled
                 answer
-        in resultValue "ready" + resultValue "absent" ?: 0
+        resultValue "ready" + resultValue "absent" ?: 0
     checkAll "resume carries whole Result values" [
         total == 14, calls == 2, settled == 2, length "missing" == 7
     ]
@@ -236,7 +233,7 @@ type RecoveryChoice = Use int | Reject int
 (** ChoiceRecovery returns a tagged choice rather than an untyped sentinel. *)
 effect ChoiceRecovery
     (** Choose whether `label` is recovered or rejected. *)
-    decide : string => RecoveryChoice
+    control decide : string => RecoveryChoice
 
 (** Exhaustive matching makes both recovery choices visible to the caller. *)
 choiceValue : string -> int ! ChoiceRecovery
@@ -254,7 +251,7 @@ resumeTaggedChoiceCase () =
                 match label
                     "cache" => resume (Use 30)
                     _ => resume (Reject 12)
-        in choiceValue "cache" + choiceValue "network" ?: 0
+        choiceValue "cache" + choiceValue "network" ?: 0
     checkAll "resume carries tagged recovery choices" [
         total == 18, calls == 2, total == (30 - 12 ?: 0)
     ]
@@ -262,7 +259,7 @@ resumeTaggedChoiceCase () =
 (** DeepRecovery drives many sequential suspensions through one handler. *)
 effect DeepRecovery
     (** Supply the value contributed at recursion `depth`. *)
-    checkpoint : int => int
+    control checkpoint : int => int
 
 (** Each recursive level performs once before descending to the next level. *)
 deepSum : int -> int ! DeepRecovery
@@ -280,7 +277,7 @@ deepResumeStressCase () =
                 answer = resume depth
                 settled := settled + 1 ?: settled
                 answer
-        in deepSum 32
+        deepSum 32
     checkAll "deep resume stress" [
         total == 528, entered == 32, settled == 32, entered == settled
     ]
@@ -288,13 +285,13 @@ deepResumeStressCase () =
 (** TypedRecovery combines integer, string, boolean, and Unit operations in one region. *)
 effect TypedRecovery
     (** Supply the integer channel's replacement for `label`. *)
-    number : string => int
+    control number : string => int
     (** Supply the text channel's replacement for `label`. *)
-    text : string => string
+    control text : string => string
     (** Supply the boolean channel's decision for `label`. *)
-    allow : string => bool
+    control allow : string => bool
     (** Record a recovery on the `Unit` channel. *)
-    note : string => Unit
+    control note : string => Unit
 
 (** The workflow consumes every operation result type after its continuation resumes. *)
 typedRecoveryBody : Unit -> int ! TypedRecovery
@@ -324,8 +321,8 @@ heterogeneousResumeCase () =
                 resume true
             note _message =>
                 calls := calls + 1 ?: calls
-                resume
-        in typedRecoveryBody ()
+                resume ()
+        typedRecoveryBody ()
     checkAll "heterogeneous operation resumes" [
         result == 16, calls == 4,
         length "osprey.local" == 12
@@ -334,7 +331,7 @@ heterogeneousResumeCase () =
 (** StringAnswerRecovery carries a managed continuation answer out of a handler. *)
 effect StringAnswerRecovery
     (** Request the replacement text the handler supplies. *)
-    get : Unit => string
+    control get : Unit => string
 
 (** This exact shape returns a dynamic string after resuming with another string. *)
 stringAnswerBody : Unit -> string ! StringAnswerRecovery
@@ -353,7 +350,7 @@ stringAnswerCase () =
             get =>
                 calls := calls + 1 ?: calls
                 resume ("rea" + "dy")
-        in stringAnswerBody ()
+        stringAnswerBody ()
 
     checkAll "managed continuation answer" [
         answer == "ready!", calls == 1,
@@ -363,7 +360,7 @@ stringAnswerCase () =
 (** SixteenArgumentRecovery locks the largest operation payload the current runtime transports. *)
 effect SixteenArgumentRecovery
     (** Recover across sixteen integer arguments — the last arity passed in registers. *)
-    recover : (int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int) => int
+    control recover : (int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int) => int
 
 (** The operation sends sixteen distinct values so no mailbox position can hide behind equality. *)
 sixteenArgumentBody : Unit -> int ! SixteenArgumentRecovery
@@ -380,7 +377,7 @@ sixteenArgumentBoundaryCase () =
                 calls := calls + 1 ?: calls
                 observed := "${a1}|${a2}|${a3}|${a4}|${a5}|${a6}|${a7}|${a8}|${a9}|${a10}|${a11}|${a12}|${a13}|${a14}|${a15}|${a16}"
                 resume a16
-        in sixteenArgumentBody ()
+        sixteenArgumentBody ()
     checkAll "sixteen-argument resume boundary" [
         result == 116, calls == 1,
         observed == "1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16"
@@ -389,9 +386,9 @@ sixteenArgumentBoundaryCase () =
 (** WideArgumentRecovery reaches past the sixteen slots the mailbox once held. *)
 effect WideArgumentRecovery
     (** Recover across seventeen integer arguments — the first arity past that width. *)
-    recover : (int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int) => int
+    control recover : (int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int) => int
     (** Recover across nine managed and nine scalar slots interleaved past it. *)
-    describe : (string, int, string, int, string, int, string, int, string, int, string, int, string, int, string, int, string, int) => string
+    control describe : (string, int, string, int, string, int, string, int, string, int, string, int, string, int, string, int, string, int) => string
 
 (** This is the exact operation shape tracked by critical issue #182. *)
 seventeenArgumentBody : Unit -> int ! WideArgumentRecovery
@@ -414,7 +411,7 @@ seventeenArgumentCase () =
             recover a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 =>
                 observed := "${a1}|${a2}|${a3}|${a4}|${a5}|${a6}|${a7}|${a8}|${a9}|${a10}|${a11}|${a12}|${a13}|${a14}|${a15}|${a16}|${a17}"
                 resume a17
-        in seventeenArgumentBody ()
+        seventeenArgumentBody ()
 
     checkAll "seventeen-argument resume boundary" [
         result == 17,
@@ -431,7 +428,7 @@ wideManagedArgumentCase () =
             describe t1 n1 t2 n2 t3 n3 t4 n4 t5 n5 t6 n6 t7 n7 t8 n8 t9 n9 =>
                 calls := calls + 1 ?: calls
                 resume "${t1}${n1}${t2}${n2}${t3}${n3}${t4}${n4}${t5}${n5}${t6}${n6}${t7}${n7}${t8}${n8}${t9}${n9}"
-        in wideManagedBody ()
+        wideManagedBody ()
 
     checkAll "wide managed argument transport" [
         joined == "s11s22s33s44s55s66s77s88s99", calls == 1,

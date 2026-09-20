@@ -3,6 +3,9 @@ effect ParseFailure {
     raise: fn(string) -> int
 }
 
-let recovered = handle ParseFailure
-    raise message => 0
-in perform ParseFailure.raise()
+let recovered = {
+    handle ParseFailure {
+        raise message => 0
+    }
+    perform ParseFailure.raise()
+}

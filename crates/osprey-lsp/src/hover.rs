@@ -395,13 +395,13 @@ mod tests {
         let src = concat!(
             "(** Records trace markers. *)\n",
             "effect Trace\n",
-            "    mark : string => Unit\n",
+            "    control mark : string => Unit\n",
             "traced : Unit -> Unit ! Trace\n",
             "traced () = perform Trace.mark \"one\"\n",
             "handled () =\n",
             "    handle Trace\n",
-            "        mark label => resume\n",
-            "    in traced ()\n",
+            "        mark label => resume ()\n",
+            "    traced ()\n",
         );
         let col = col_of(src, 4, "mark");
         let md = hover(src, "file:///trace.ospml", 4, col, U16)

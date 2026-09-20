@@ -8,14 +8,17 @@
 // leaves the rule with zero coverage; `multishot_resume_rejected.ospo` was
 // deleted for exactly that (see crates/osprey-cli/tests/cli_e2e.rs).
 effect Fail {
-    abort fail: fn(string) -> int
+    control abort fail: fn(string) -> int
 }
 
 fn risky() = (perform Fail.fail("nope") + 1) ?: 0
 
 fn main() = {
-    let outcome = handle Fail
-        fail reason => resume(0)
-    in risky()
+    let outcome = {
+        handle Fail {
+            fail reason => resume(0)
+        }
+        risky()
+    }
     print("outcome=${outcome}")
 }

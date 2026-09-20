@@ -303,7 +303,13 @@ fn gen_bind(cg: &mut Codegen, name: &str, value: &Expr, position: Option<Positio
     let _ = cg.call_aliases.remove(name);
     // A function-valued binding (`let add5 = makeAdder(5)`) registers its
     // function type so `add5(3)` lowers as a closure call.
-    if let Some(ty) = fn_result_type(cg, value) {
+    if let Some(ty) = v
+        .inferred_type
+        .as_ref()
+        .filter(|ty| matches!(ty, osprey_types::Type::Fun { .. }))
+        .cloned()
+        .or_else(|| fn_result_type(cg, value))
+    {
         cg.bind_fn_local(name, ty);
     }
     cg.emit_debug_local(name, &v);

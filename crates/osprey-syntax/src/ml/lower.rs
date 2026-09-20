@@ -932,6 +932,7 @@ pub(super) fn lower_effect_op(op: MlEffectOp) -> EffectOperation {
             render_type(&op.result)
         ),
         name: op.name,
+        mode: op.mode,
         declared_multiplicity: op.multiplicity,
         replayable: op.replayable,
         parameters: Vec::new(),
@@ -1304,19 +1305,21 @@ fn lower_expr(expr: MlExpr) -> Expr {
             named_arguments: Vec::new(),
             position: Some(pos),
         },
+        MlExpr::HandlerValue {
+            stage,
+            effect,
+            arms,
+            return_clause,
+            pos,
+        } => lower_handler(stage, effect, arms, return_clause, None, pos),
         MlExpr::Handle {
             stage,
             effect,
             arms,
+            return_clause,
             body,
             pos,
-        } => Expr::Handler {
-            stage,
-            effect,
-            arms: arms.into_iter().map(lower_handle_arm).collect(),
-            body: Box::new(lower_expr(*body)),
-            position: Some(pos),
-        },
+        } => lower_handler(stage, effect, arms, return_clause, Some(*body), pos),
         MlExpr::Resume(value) => Expr::Resume(value.map(|e| Box::new(lower_expr(*e)))),
         MlExpr::Await(inner) => Expr::Await(Box::new(lower_expr(*inner))),
         MlExpr::Yield(value) => Expr::Yield(value.map(|e| Box::new(lower_expr(*e)))),
@@ -1328,6 +1331,29 @@ fn lower_expr(expr: MlExpr) -> Expr {
         MlExpr::Select(arms) => Expr::Select {
             arms: arms.into_iter().map(lower_arm).collect(),
         },
+    }
+}
+
+fn lower_handler(
+    stage: osprey_ast::Stage,
+    effect: String,
+    arms: Vec<MlHandleArm>,
+    return_clause: Option<Box<MlExpr>>,
+    body: Option<MlExpr>,
+    pos: Position,
+) -> Expr {
+    let arms = arms.into_iter().map(lower_handle_arm).collect();
+    let return_clause = return_clause.map(|clause| Box::new(lower_expr(*clause)));
+    match body {
+        Some(body) => Expr::Handler {
+            stage,
+            effect,
+            arms,
+            return_clause,
+            body: Box::new(lower_expr(body)),
+            position: Some(pos),
+        },
+        None => osprey_ast::handler_value(stage, effect, arms, return_clause, Some(pos)),
     }
 }
 
@@ -1412,17 +1438,12 @@ fn lower_binary(op: &str, left: MlExpr, right: MlExpr, pos: Position) -> Expr {
     }
 }
 
-/// A block lowers to [`Expr::Block`]; a block that is a single trailing value
-/// with no statements unwraps to that value, so it is structurally identical to
-/// the Default inline body.
+/// A block lowers to the flavor-neutral block shape ([`crate::desugar::block`]).
 fn lower_block(items: Vec<MlItem>, value: Option<Box<MlExpr>>) -> Expr {
     let (statements, value) = in_scope(scope_of(&items), move || {
         (lower_items(items), value.map(|v| Box::new(lower_expr(*v))))
     });
-    match (statements.is_empty(), value) {
-        (true, Some(value)) => *value,
-        (_, value) => Expr::Block { statements, value },
-    }
+    crate::desugar::block(statements, value)
 }
 
 /// `e ?: d` — the explicit Result default ([PATTERN-RESULT-DEFAULT]). Both
@@ -2396,10 +2417,9 @@ mod tests {
     }
 
     #[test]
-    fn reserved_handler_word_reports_a_clear_error() {
-        // `handler`/`do` are not yet in the shared core, so the parser still
-        // reports a precise "not yet supported" diagnostic for them.
-        let parsed = parse_ml("handler Db\n    add : string => int\n");
+    fn reserved_do_word_reports_a_clear_error() {
+        // Callable handlers are supported; a standalone `do` remains reserved.
+        let parsed = parse_ml("do work ()\n");
         assert!(parsed
             .errors
             .iter()
@@ -2564,11 +2584,11 @@ mod tests {
 
     #[test]
     fn handle_lowers_to_handler_expr() {
-        // `handle Trace` + a `mark label => …` arm + `in traced ()` lowers to the
-        // SAME `Expr::Handler` the Default `handle Trace mark label => … in traced()`
-        // emits ([FLAVOR-ML-EFFECT]).
+        // `handle Trace` + a `mark label => …` arm over the rest of its block
+        // lowers to the SAME `Expr::Handler` the Default braced form emits
+        // ([FLAVOR-ML-EFFECT], [EFFECTS-HANDLE-REST]).
         let src =
-            "r =\n    handle Trace\n        mark label =>\n            resume\n    in traced ()\n";
+            "r =\n    handle Trace\n        mark label =>\n            resume ()\n    traced ()\n";
         let s = ml_one_stmt(src);
         assert!(
             matches!(
@@ -2600,9 +2620,11 @@ mod tests {
 
     #[test]
     fn resume_lowers_with_and_without_argument() {
-        // `resume` (no arg) → `Resume(None)`; `resume seed` → `Resume(Some(seed))`,
-        // byte-identical to the Default `resume()` / `resume(seed)` ([FLAVOR-ML-EFFECT]).
-        let bare = ml_one_stmt("r = resume\n");
+        // `resume ()` → `Resume(None)`; `resume seed` → `Resume(Some(seed))`,
+        // byte-identical to the Default `resume()` / `resume(seed)`
+        // ([FLAVOR-ML-EFFECT]). Bare `resume` denotes the owned continuation
+        // VALUE and never silently invokes it ([EFFECTS-CONTINUATION-OWNERSHIP]).
+        let bare = ml_one_stmt("r = resume ()\n");
         assert!(
             matches!(
                 bare,

@@ -8,6 +8,6 @@ make () = \() => perform Alarm.ring ()
 delayed =
     handle Alarm
         ring => 41
-    in make ()
+    make ()
 
 answer = delayed ()

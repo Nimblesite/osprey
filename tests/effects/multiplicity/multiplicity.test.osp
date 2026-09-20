@@ -8,7 +8,7 @@ effect Charge {
     /// Settle `amount`. The handler may retry internally before answering, but
     /// answers this request at most once — `once`, written out here to pin that
     /// the default and the keyword mean the same thing.
-    once charge: fn(int) -> int
+    control once charge: fn(int) -> int
 }
 
 effect Email {
@@ -25,16 +25,16 @@ effect Audit {
 effect Random {
     /// A fresh draw. `replayable` asserts re-performing is acceptable to the
     /// program — declared, never inferred ([MULTI-REPLAY]).
-    replayable next: fn() -> int
+    control replayable next: fn() -> int
 }
 
 /// The modifier words stay ordinary identifiers everywhere else, including as
 /// operation names — the contextual-keyword rule of [MULTI-DECL].
 effect Vocabulary {
-    abort: fn() -> int
-    once: fn() -> int
-    many: fn() -> int
-    replayable: fn() -> int
+    control abort: fn() -> int
+    control once: fn() -> int
+    control many: fn() -> int
+    control replayable: fn() -> int
 }
 
 /// The gateway declines the first settlement of an amount and accepts the next.
@@ -59,29 +59,34 @@ fn retrySendsOneReceiptCase() = {
     mut transcript = ""
     mut attempts = 0
     mut receipts = 0
-    let outcome = handle Audit
-        line message => { transcript = "${transcript}${message}\n" }
-    in handle Email
-        deliver body => {
-            receipts = receipts + 1 ?: receipts
-            perform Audit.line("email: ${body}")
+    let outcome = {
+        handle Audit {
+            line message => { transcript = "${transcript}${message}\n" }
         }
-    in handle Charge
-        charge amount => {
-            attempts = attempts + 1 ?: attempts
-            match settle(amount, attempts) {
-                Success { value } => resume(value)
-                Error { message } => {
-                    perform Audit.line("declined: ${message}; retrying")
-                    attempts = attempts + 1 ?: attempts
-                    match settle(amount, attempts) {
-                        Success { value } => resume(value)
-                        Error { message } => "declined: ${message}"
+        handle Email {
+            deliver body => {
+                receipts = receipts + 1 ?: receipts
+                perform Audit.line("email: ${body}")
+            }
+        }
+        handle Charge {
+            charge amount => {
+                attempts = attempts + 1 ?: attempts
+                match settle(amount, attempts) {
+                    Success { value } => resume(value)
+                    Error { message } => {
+                        perform Audit.line("declined: ${message}; retrying")
+                        attempts = attempts + 1 ?: attempts
+                        match settle(amount, attempts) {
+                            Success { value } => resume(value)
+                            Error { message } => "declined: ${message}"
+                        }
                     }
                 }
             }
         }
-    in placeOrder(120)
+        placeOrder(120)
+    }
     checkAll("retry answers once and mails once", [
         outcome == "settled 120",
         attempts == 2,
@@ -97,22 +102,27 @@ fn retrySendsOneReceiptCase() = {
 fn declineSendsNoReceiptCase() = {
     mut transcript = ""
     mut receipts = 0
-    let outcome = handle Audit
-        line message => { transcript = "${transcript}${message}\n" }
-    in handle Email
-        deliver body => {
-            receipts = receipts + 1 ?: receipts
-            perform Audit.line("email: ${body}")
+    let outcome = {
+        handle Audit {
+            line message => { transcript = "${transcript}${message}\n" }
         }
-    in handle Charge
-        charge amount => match settle(amount, 1) {
-            Success { value } => resume(value)
-            Error { message } => {
-                perform Audit.line("abandoned ${toString(amount)}: ${message}")
-                "declined: ${message}"
+        handle Email {
+            deliver body => {
+                receipts = receipts + 1 ?: receipts
+                perform Audit.line("email: ${body}")
             }
         }
-    in placeOrder(75)
+        handle Charge {
+            charge amount => match settle(amount, 1) {
+                Success { value } => resume(value)
+                Error { message } => {
+                    perform Audit.line("abandoned ${toString(amount)}: ${message}")
+                    "declined: ${message}"
+                }
+            }
+        }
+        placeOrder(75)
+    }
     checkAll("abandoning the continuation mails nothing", [
         outcome == "declined: gateway timeout",
         receipts == 0,
@@ -140,12 +150,18 @@ fn audited(n) = {
 /// program, carrying no multiplicity annotation.
 fn sharedAcrossMultiplicitiesCase() = {
     mut audits = 0
-    let noisy = handle Random
-        next => resume(3)
-    in applyTwice(jitter, 10)
-    let doubled = handle Email
-        deliver _body => { audits = audits + 1 ?: audits }
-    in applyTwice(audited, 5)
+    let noisy = {
+        handle Random {
+            next => resume(3)
+        }
+        applyTwice(jitter, 10)
+    }
+    let doubled = {
+        handle Email {
+            deliver _body => { audits = audits + 1 ?: audits }
+        }
+        applyTwice(audited, 5)
+    }
     checkAll("one function serves both multiplicities", [
         noisy == 16,
         doubled == 20,
@@ -156,12 +172,13 @@ fn sharedAcrossMultiplicitiesCase() = {
 /// An operation NAMED with a modifier word declares, performs and handles like
 /// any other, and the same words bind as ordinary values.
 fn contextualKeywordCase() = {
-    let total = handle Vocabulary
-        abort => resume(1)
-        once => resume(2)
-        many => resume(4)
-        replayable => resume(8)
-    in {
+    let total = {
+        handle Vocabulary {
+            abort => resume(1)
+            once => resume(2)
+            many => resume(4)
+            replayable => resume(8)
+        }
         let low = (perform Vocabulary.abort() + perform Vocabulary.once()) ?: 0
         let high = (perform Vocabulary.many() + perform Vocabulary.replayable()) ?: 0
         (low + high) ?: 0

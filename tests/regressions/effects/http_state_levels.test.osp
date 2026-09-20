@@ -130,42 +130,46 @@ mut requests = 0      // Metrics layer  (server runtime)
 mut tasks = ""        // Db layer       (application data)
 mut taskCount = 0     // Db layer
 
-let _ = handle Persist
-    flush snap => {
-        /// A relative path resolves against the PROCESS's working directory, not
-        /// the program's, so this lands wherever the corpus was invoked from —
-        /// the repo root, for `make test`. `target/` would be no better: it only
-        /// exists when that cwd happens to be the root. What the assertions need
-        /// is a name no other case writes; where it lands is the caller's, which
-        /// is why .gitignore names it. [BUILTIN-FILE-ERRMSG]
-        let saved = writeFile("osprey_http_state_levels.db", snap)
-        diskBytes = match saved {
-            Success => length(snap)
-            // Say WHY [BUILTIN-FILE-ERRMSG]. Storing a bare -1 here is how a
-            // failed persist reached the assertions as "expected true, got
-            // false", with the operating system's own explanation discarded.
-            Error { message } => {
-                print("[persist] ${message}")
-                0 - 1 ?: 0
+let _ = {
+    handle Persist {
+        flush snap => {
+            /// A relative path resolves against the PROCESS's working directory, not
+            /// the program's, so this lands wherever the corpus was invoked from —
+            /// the repo root, for `make test`. `target/` would be no better: it only
+            /// exists when that cwd happens to be the root. What the assertions need
+            /// is a name no other case writes; where it lands is the caller's, which
+            /// is why .gitignore names it. [BUILTIN-FILE-ERRMSG]
+            let saved = writeFile("osprey_http_state_levels.db", snap)
+            diskBytes = match saved {
+                Success => length(snap)
+                // Say WHY [BUILTIN-FILE-ERRMSG]. Storing a bare -1 here is how a
+                // failed persist reached the assertions as "expected true, got
+                // false", with the operating system's own explanation discarded.
+                Error { message } => {
+                    print("[persist] ${message}")
+                    0 - 1 ?: 0
+                }
             }
+            diskBytes
         }
-        diskBytes
+        bytes => diskBytes
     }
-    bytes => diskBytes
-in handle Metrics
-    hit _p      => { requests = requests + 1 ?: requests }
-    served     => requests
-in handle Db
-    add t => {
-        taskCount = taskCount + 1 ?: taskCount
-        tasks = "${tasks}#${toString(taskCount)} ${t}\n"
-        taskCount
+    handle Metrics {
+        hit _p      => { requests = requests + 1 ?: requests }
+        served     => requests
     }
-    list  => tasks
-    count => taskCount
-in handle Log
-    info m => print("[client] ${m}")
-in {
+    handle Db {
+        add t => {
+            taskCount = taskCount + 1 ?: taskCount
+            tasks = "${tasks}#${toString(taskCount)} ${t}\n"
+            taskCount
+        }
+        list  => tasks
+        count => taskCount
+    }
+    handle Log {
+        info m => print("[client] ${m}")
+    }
     runDemo()
     0
 }

@@ -1,12 +1,12 @@
 # Arithmetic as an Effect — retiring `Result` arithmetic and the `?:` fabrication tax
 
-**Status:** design fixed by [spec 0037](../specs/0037-ArithmeticEffects.md) (normative target); implementation has not started. Driven by [#230](https://github.com/Nimblesite/osprey/issues/230). Interacts with [plan 0022](0022-arithmetic-totality-audit.md) (floats — stays there), [plan 0016](0016-algebraic-effects-and-handlers.md) (handler values gate prelude-named policies), and [plan 0024](0024-staged-effects.md) (`handle static Arith` as the eventual zero-cost policy form).
+**Status:** design fixed by [spec 0037](../specs/0037-ArithmeticEffects.md) (normative target); implementation has not started. Driven by [#230](https://github.com/Nimblesite/osprey/issues/230). Interacts with [plan 0022](0022-arithmetic-totality-audit.md) (floats — stays there), [plan 0016](0016-algebraic-effects-and-handlers.md) (handler values gate prelude-named policies), which also owns explicit static policy selection.
 
 > Evidence line numbers may drift as code moves. Use the cited function and diagnostic-message names as stable anchors.
 
 ## 1. Why
 
-Integer arithmetic returning `Result<int, MathError>` produced a corpus-wide idiom of discharging the wrapper with a fabricated literal. Measured on this tree: **6,408 `?:` sites across 231 `.osp`/`.ospml` files** (tests 6,204 in 177 files, examples 137 in 31, benchmarks 67 in 23); the dominant fallbacks are `?: 0` (3,233), `?: 0.0` (231), `?: 99` (156), `?: -1` (106). Exactly **7 files** ever inspect a `MathError`. A fabricated fallback is a silent wrong answer with exit code 0 — #230 demonstrates a hash whose accumulator resets to zero mid-string, a fold that discards its running total, and a ledger deposit that vanishes. The redesign moves the failure from a value every call site must discharge to an effect one region's policy handles: `+` returns `int`, overflow performs `Arith.overflow`, and the statically required handler substitutes the policy's value. No panic is introduced anywhere; halting is unrepresentable in the operation signatures.
+Integer arithmetic returning `Result<int, MathError>` produced a corpus-wide idiom of discharging the wrapper with a fabricated literal. Measured on this tree: **6,408 `?:` sites across 231 `.osp`/`.ospml` files** (tests 6,204 in 177 files, examples 137 in 31, benchmarks 67 in 23); the dominant fallbacks are `?: 0` (3,233), `?: 0.0` (231), `?: 99` (156), `?: -1` (106). Exactly **7 files** ever inspect a `MathError`. A fabricated fallback is a silent wrong answer with exit code 0 — #230 demonstrates a hash whose accumulator resets to zero mid-string, a fold that discards its running total, and a ledger deposit that vanishes. The redesign moves the failure from a value every call site must discharge to an effect one region's policy handles: `+` returns `int`, overflow performs `Arith.overflow`, and the statically required handler substitutes the policy's value. Arithmetic itself introduces no panic or implicit abort; effects explicitly requested by a recovery policy follow the canonical effects contract.
 
 This also aligns the Default flavor with the systems languages it is converging on — `h * 33 + b` is once again an `int` expression — without adopting their silent wraparound.
 
@@ -15,8 +15,8 @@ This also aligns the Default flavor with the systems languages it is converging 
 | Phase | Delivers | Depends on |
 |---|---|---|
 | 0 | Red tests pinning #230's silent wrong answers | — |
-| 1 | Default `handle ... in` → `handle ... do` | — |
-| 2 | Checker: plain arithmetic types, `Arith` seeding, whole-effect arm re-entry rule | 1 |
+| 1 | Reuse canonical handler forms from plan 0016 | — |
+| 2 | Checker: plain arithmetic types, `Arith` seeding, outer-policy forwarding | 1 |
 | 3 | Codegen: cold branch dispatches to the active `Arith` handler | 2 |
 | 4 | Total helpers (`wrapAdd`…`satMul`), constant folding, file-scope rule | 2 |
 | 5 | Corpus conversion (checklist at the bottom of this document) | 3, 4 |
@@ -24,20 +24,18 @@ This also aligns the Default flavor with the systems languages it is converging 
 
 The specs already describe this model as normative: [0037](../specs/0037-ArithmeticEffects.md) carries the guarantee and the operation signatures, and 0001, 0002, 0003, 0004, 0007, 0010, 0011, 0012, 0013, 0024, 0025 and 0034 were rewritten to it — no spec describes arithmetic as returning a `Result`. Phase 6 flips their status from specified to shipped; it does not author them.
 
-Phases 2–5 land as one PR: the type change breaks every arithmetic `?:` site by design, so the tree is not green between them. Phase 1 lands first and separately — small, mechanical, reversible — so every handler the conversion writes uses `do` from birth. Phase 0 lands before everything, red.
+Phases 2–5 land as one PR: the type change breaks every arithmetic `?:` site by design, so the tree is not green between them. Phase 1 checks integration with the canonical handler forms; it does not own a separate syntax change. Phase 0 lands before everything, red.
 
 ## 3. Phase 0 — red tests first
 
 Per CLAUDE.md, the failing tests outrank the fix. Expand `tests/core/arithmetic/effect_policies.test.osp{,ml}` (do not add files) with cases that are wrong today and must stay wrong-loudly until the redesign lands: the masked square (`x * x ?: 0` at `4e9`), the reset fold accumulator, the vanished ledger deposit. Under today's semantics these assert the *correct* mathematical answer and therefore fail. They go green only when Phase 5 rewrites them into `Arith` policies.
 
-## 4. Phase 1 — `in` → `do` in the Default handle form
+## 4. Phase 1 — shared handler integration
 
-- `tree-sitter-osprey/grammar.js` — the `handle` rule (`grammar.js:408`): `'in'` → `'do'`. Regenerate the parser.
-- `crates/osprey-syntax/src/default/` — the handle parse path and its error recovery text.
-- `do` becomes reserved in the Default lexer; no `.osp` in the tree uses it as an identifier (verified — all grep hits are comment prose). ML keeps `in`; its lexer already reserves `do` (`crates/osprey-syntax/src/ml/token.rs:174`).
-- Convert the **51 Default files** using `handle ... in` (`tests/regressions/effects` 11, `tests/effects/resume` 6, `tests/core/collections` 6, `tests/modules` 5, `tests/regressions/fiber` 4, remainder spread across http/basics/examples). Grammar-aware edit, not blind sed — `in` also appears as the variance marker and in comment prose.
-- Default snippets in `docs/specs/*.md` (27 files mention `handle`; only Default-flavor blocks change), `docs/messaging.md` if any snippet shows it, website markdown snippets, `vscode-extension/syntaxes/osprey.tmLanguage.json` keyword list, and any `examples/failscompilation` fixture whose source or expected message spells the binder.
-- Goldens are unaffected (surface-only change); the differential harness proves it byte-for-byte.
+Handler syntax and implementation are owned by [plan 0016](0016-algebraic-effects-and-handlers.md).
+Arithmetic examples use callable policies or bodyless handlers where useful;
+explicit Default bodies use `do` and ML uses `in`. Keep the canonical legacy
+alias behavior. This plan does not maintain another parser migration checklist.
 
 ## 5. Phase 2 — checker
 
@@ -48,7 +46,7 @@ All in `crates/osprey-types/`:
 - `[ARITH-EFFECT-TOTAL-SITES]`: a `/`/`%` whose divisor is a nonzero literal (post neg-literal fold) seeds nothing.
 - Declare `Arith` as a compiler-known effect visible in every scope (alongside the builtin signatures in `builtins.rs`; there is no existing compiler-declared effect — this is the one genuinely new mechanism). Reject user redeclaration.
 - `effect_rows.rs` — arithmetic nodes become a second requirement-seeding site beside `Expr::Perform` (`effect_rows.rs:613`). The propagation, fixed-point call analysis, partial-handler discharge and entry check need **no change** — that is the point of reusing the effect system.
-- Widen the arm re-entry rule (`effect_rows.rs:2396`) for `Arith` only: any checked arithmetic in any arm of an `Arith` handler is rejected (`[ARITH-EFFECT-ARMS-NO-REENTRY]`), with the diagnostic naming `wrapAdd`/`satAdd`/the `wrapped` payload. Reject `resume` in `Arith` arms.
+- Reuse canonical outer-handler forwarding for arithmetic inside recovery arms; missing outer policies are unhandled operations ([ARITH-EFFECT-ARMS-NO-REENTRY]). `Arith` operations have value mode, so reject `resume` in their arms.
 - File-scope initializers: constant expressions fold (`[ARITH-EFFECT-CONST]`, overflow = compile error); a non-constant fallible operation at file scope is rejected.
 
 ## 6. Phase 3 — codegen
@@ -76,7 +74,7 @@ All in `crates/osprey-codegen/`:
 ## 9. Risks and open decisions
 
 - **Recorded decision — float zero divisors keep detection.** `/` and float `%` seed `divideByZero` rather than going pure-IEEE (`inf`/`NaN`); revisiting that belongs to plan 0022's float-totality decision, not this plan.
-- **Recorded decision — no implicit default policy.** A program with fallible arithmetic and no handler is rejected. Ambient authority is what the capability model refuses; hello-world with arithmetic pays one `handle Arith ... do` line until handler values (plan 0016 Phase B) enable `handle Arith.saturating do`.
+- **Recorded decision — no implicit default policy.** A program with fallible arithmetic and no handler is rejected. Ambient authority is what the capability model refuses; an application chooses a scoped policy through the canonical callable or bodyless handler forms in plan 0016.
 - **Diagnostic noise.** `!Arith` will appear in inferred rows in LSP hover and error messages. Acceptable; a suppression heuristic ("elide `Arith` when it is the only row entry") is a possible follow-up, not scope.
 - **`result_chain_unary_stress` and `boundary_error_stress`** exist to exercise the flattening rule this plan deletes. They are rewritten to pin the new semantics (fault dispatch order, nested policies), not weakened — the behaviours they pin must have successors before the old assertions go.
 - **Cold-path cost.** Dispatch replaces Result construction on the fault path only; the hot path is byte-identical branch layout. Verified by the benchmark re-run.

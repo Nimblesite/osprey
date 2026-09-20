@@ -1,0 +1,16 @@
+effect ask(): Int
+def work(): Int / ask = do ask() + 1
+
+val prefix = "done="
+def replace { action: () => Int / ask }: String =
+  try { prefix ++ action().show } with ask { resume(41) }
+def around { action: () => Int / ask }: String =
+  try { prefix ++ action().show } with ask { resume(41) ++ "!" }
+def stop { action: () => Int / ask }: String =
+  try { prefix ++ action().show } with ask { "stopped" }
+
+def main() = {
+  println(replace { work() })
+  println(around { work() })
+  println(stop { work() })
+}

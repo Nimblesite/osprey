@@ -67,12 +67,11 @@ impl AstVisitor for Regions {
     fn expression(&mut self, expression: &Expr) {
         if let Expr::Handler {
             stage: Stage::Kernel,
-            body,
             position,
             ..
         } = expression
         {
-            self.0.push(((**body).clone(), *position));
+            self.0.push((expression.clone(), *position));
         }
     }
 }

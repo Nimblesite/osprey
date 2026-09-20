@@ -2,7 +2,7 @@
 // [MULTI-HANDLE-ABORT] [MULTI-DECL] The multiplicity keyword is part of the ML
 // operation declaration too. An arm for an `abort` operation MUST NOT resume.
 effect Fail
-    abort fail : string => Unit
+    control abort fail : string => Unit
 
 risky () =
     perform Fail.fail "nope"
@@ -11,4 +11,4 @@ risky () =
 outcome =
     handle Fail
         fail message => resume ()
-    in risky ()
+    risky ()

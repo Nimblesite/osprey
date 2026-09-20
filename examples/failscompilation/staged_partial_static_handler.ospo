@@ -5,6 +5,9 @@ static effect Tensor {
     rank: fn() -> int
 }
 
-fn main() = print("${handle static Tensor
-    stride => 3
-in perform Tensor.stride()}")
+fn main() = {
+    handle static Tensor {
+        stride => 3
+    }
+    print("${perform Tensor.stride()}")
+}

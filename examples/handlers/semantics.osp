@@ -1,0 +1,19 @@
+// Independent semantic probe: unreachable resume must not be overlooked.
+effect Ask { control value: fn() -> int }
+fn work() = (perform Ask.value() + 1) ?: 0
+
+let replace = handler Ask { value => resume(41) }
+let around = handler Ask { value => (resume(41) + 100) ?: 0 }
+let noResume = handler Ask { value => 0 }
+let deadResume = handler Ask {
+    value => match false {
+        true => resume(0)
+        false => 0
+    }
+}
+
+let replacement = replace(work)
+let resumed = around(work)
+let returned = noResume(work)
+let deadBranch = deadResume(work)
+print("replace=${replacement}\nresume=${resumed}\nno-resume=${returned}\ndead-resume=${deadBranch}")

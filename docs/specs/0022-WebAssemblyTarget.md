@@ -17,7 +17,7 @@ shrink — 142 on wasm32 and 203 natively (`crates/run_test_corpus.sh`,
 `OSPREY_GOLDEN_MIN`). The floor ratchets up as goldens are added and is never
 lowered to turn a red build green.
 
-The wasm runtime includes strings, persistent collections, JSON, file operations, random/input, test and coverage hooks, the effect-handler stack, profiler stubs, and the browser host bridge. It excludes fibers, sockets, HTTP/WebSocket, process APIs, terminal APIs, general FFI, and resumable effect continuations. The compiler rejects operations requiring unavailable runtime features before LLVM emission or linking, as specified by [WASM-TARGET-CAPABILITIES].
+The wasm runtime includes strings, persistent collections, JSON, file operations, random/input, test and coverage hooks, the effect-handler stack, profiler stubs, and the browser host bridge. It excludes fibers, sockets, HTTP/WebSocket, process APIs, terminal APIs, and general FFI. Effect semantics and capability requirements are defined in [Algebraic Effects](0017-AlgebraicEffects.md); shipped backend support is tracked in [plan 0016](../plans/0016-algebraic-effects-and-handlers.md). The compiler rejects unavailable capabilities before LLVM emission or linking.
 
 ## Target Triple [WASM-TARGET-TRIPLE]
 
@@ -105,21 +105,13 @@ Modules with a browser dispatcher retain their initialized globals after the WAS
 
 Before LLVM emission, the compiler checks the complete program for unsupported target constructs, including inside otherwise unused helper functions. `--check`, `--compile`, `--run`, and `--llvm` enforce the same rules. Diagnostics name `wasm32`, the offending operation or construct, and the unavailable capability. Native debugger and profiler flags are rejected for this target, including with `--check` and `--llvm`.
 
-Explicit `resume`, fibers/channels and their scheduling operations, process APIs, built-in HTTP/WebSocket operations, terminal APIs, and arbitrary host FFI are rejected at compile time. Runtime-provided browser bridge imports remain supported. File, random, and input operations use their existing portable runtime implementations; access still depends on the WASI host. Missing implementation must not be hidden by successfully emitting an artifact that only fails when another application links it. Adding support requires a working runtime implementation and target tests before removing a rejection.
+Fibers/channels and their scheduling operations, process APIs, built-in HTTP/WebSocket operations, terminal APIs, and arbitrary host FFI are rejected at compile time. Effect constructs require the capabilities specified by [MULTI-WASM](0017-AlgebraicEffects.md). Runtime-provided browser bridge imports remain supported. File, random, and input operations use their portable runtime implementations; access still depends on the WASI host. An unavailable capability must produce a compile error, never a link-time surprise. Removing a rejection requires a working runtime implementation and target tests.
 
 ## Effect Support [WASM-TARGET-EFFECTS]
 
-The handler-stack portion of `effects_runtime.c` is portable and is included in the wasm archive. Substituting handlers remain supported. Resumable continuations use pthreads and are compiled out under `__wasm__`; the compiler rejects explicit `resume` before LLVM emission, naming the unsupported target feature, rather than relying on undefined continuation symbols at link time.
+Effect meaning is target-independent. Validated static discharge, value dispatch and control continuations obey [STAGE-WASM and MULTI-WASM](0017-AlgebraicEffects.md). The compiler checks the residual program against available backend capabilities. An unsupported continuation reports the operation and missing capability before linking; it does not acquire a different meaning on wasm32.
 
-A `static effect` is rewritten away before code generation and needs no
-continuation on any target, so it compiles here exactly as it compiles natively
-([STAGE-WASM](0035-StagedEffects.md#webassembly--stage-wasm)). For a dynamic
-effect the WebAssembly stack-switching proposal specifies **one-shot**
-continuations only, so this target MUST reject an operation that resumes at
-compile time with the operation named — becoming accepted, with no change to
-user code, once stack switching is available — and MUST reject a multi-shot
-operation permanently
-([MULTI-WASM](0035-StagedEffects.md#multiplicity-on-wasm32--multi-wasm)).
+[Plan 0016](../plans/0016-algebraic-effects-and-handlers.md) records current continuation support and its conformance gates. A platform's one-shot stack primitive does not impose a permanent language ban on reusable continuations; another sound representation may implement them.
 
 ## Memory Backend [WASM-TARGET-MEMORY]
 

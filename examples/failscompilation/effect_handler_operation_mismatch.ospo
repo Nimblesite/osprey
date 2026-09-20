@@ -3,6 +3,9 @@ effect Logger {
     log: fn(string) -> Unit
 }
 
-let result = handle Logger
-    missing msg => print(msg)
-in {}
+let result = {
+    handle Logger {
+        missing msg => print(msg)
+    }
+    0
+}

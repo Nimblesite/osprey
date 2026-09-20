@@ -98,23 +98,30 @@ fn processAlphaBatch() -> int ![Logger, Metrics] = {
 }
 
 let _ = fiber_set_deterministic_mode(enabled: true)
-handle Metrics
-    recordSuccess taskId processed => print("✅ " + taskId + " succeeded: " + toString(processed) + " units")
-in handle Logger
-    info msg => print("ℹ️  " + msg)
-in {
+fn executionOrderDemo() = {
+    handle Metrics {
+        recordSuccess taskId processed => print("✅ " + taskId + " succeeded: " + toString(processed) + " units")
+    }
+    handle Logger {
+        info msg => print("ℹ️  " + msg)
+    }
     print("=== Fiber Execution Order Test ===")
     let results1 = processAlphaBatch()
     print("Total: " + toString(results1))
     print("=== Test Complete ===")
 }
+executionOrderDemo()
 
 /// Repeats the complete batch under quiet handlers for an asserted result.
-fn alphaBatchForTest() = handle Metrics
-    recordSuccess _taskId _processed => 0
-in handle Logger
-    info _msg => 0
-in processAlphaBatch()
+fn alphaBatchForTest() = {
+    handle Metrics {
+        recordSuccess _taskId _processed => 0
+    }
+    handle Logger {
+        info _msg => 0
+    }
+    processAlphaBatch()
+}
 
 // Verifies preprocessing, classification, and the awaited batch total.
 test("fiber batch preserves transformed results", fn() => checkAll("fiber batch results", [

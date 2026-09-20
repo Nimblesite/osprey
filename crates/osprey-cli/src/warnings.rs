@@ -245,7 +245,7 @@ mod tests {
 
     #[test]
     fn assembled_handler_messages_use_the_source_effect_name() {
-        let source = "namespace test;\neffect Vault { balance: fn(int) -> int }\nfn total() = handle Vault\n balance id => 0\nin perform Vault.balance(1)\nlet result = total()\n";
+        let source = "namespace test;\neffect Vault { balance: fn(int) -> int }\nfn total() = {\n    handle Vault {\n        balance id => 0\n    }\n    perform Vault.balance(1)\n}\nlet result = total()\n";
         let parsed = osprey_syntax::parse_program(source);
         assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
         let input = CompilationInput::one_source(

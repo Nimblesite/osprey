@@ -64,9 +64,11 @@ pub(crate) enum TokKind {
     KwPerform,
     /// `handle` — installs an effect handler ([FLAVOR-ML-EFFECT]).
     KwHandle,
+    /// `handler` — the handler itself, as a value ([EFFECTS-HANDLER-VALUE]).
+    KwHandler,
     /// `resume` — resumes a suspended continuation from a handler arm ([FLAVOR-ML-EFFECT]).
     KwResume,
-    /// `in` — separates a `handle` block from the handled body ([FLAVOR-ML-EFFECT]).
+    /// `in` — kernel body separator and contravariant type-parameter marker.
     KwIn,
     /// `await` — block on a spawned fiber's result ([FLAVOR-ML-CONCURRENCY]).
     KwAwait,
@@ -97,8 +99,7 @@ pub(crate) enum TokKind {
     KwState,
     /// `as` — introduces an import alias ([MODULES-IMPORT]).
     KwAs,
-    /// A keyword reserved for unsupported first-class handler syntax (`handler`,
-    /// `do`) ([FLAVOR-HANDLER-VALUE]). Carries its spelling for diagnostics.
+    /// A reserved keyword (`do`). Carries its spelling for diagnostics.
     Reserved(String),
     /// `=`.
     Eq,
@@ -162,6 +163,7 @@ const KEYWORDS: &[(&str, TokKind)] = &[
     ("effect", TokKind::KwEffect),
     ("perform", TokKind::KwPerform),
     ("handle", TokKind::KwHandle),
+    ("handler", TokKind::KwHandler),
     ("resume", TokKind::KwResume),
     ("in", TokKind::KwIn),
     ("await", TokKind::KwAwait),
@@ -181,7 +183,7 @@ const KEYWORDS: &[(&str, TokKind)] = &[
 
 /// Spellings held back for a future syntax. They lex to [`TokKind::Reserved`],
 /// which already carries its own text, so they stay out of [`KEYWORDS`].
-const RESERVED: &[&str] = &["handler", "do"];
+const RESERVED: &[&str] = &["do"];
 
 /// Map a bare identifier spelling to its keyword/reserved kind, or treat it as
 /// an ordinary identifier.

@@ -33,10 +33,24 @@ pub fn dependencies(program: &Program) -> BTreeMap<String, Vec<String>> {
 /// ([STAGE-SIGNALS-DIRTY]), [`Stage::Dynamic`] is the residual runtime row a
 /// `kernel` boundary must find empty ([STAGE-GPU-LEGAL]).
 pub(crate) fn requirements(program: &Program, stage: Stage) -> BTreeMap<String, Vec<String>> {
+    collect_requirements(program, stage, false)
+}
+
+/// Runtime dispatch remains runtime work even when a helper handles it locally.
+/// Static arm validation must inspect it separately from unhandled obligations.
+pub(crate) fn dispatch_requirements(program: &Program) -> BTreeMap<String, Vec<String>> {
+    collect_requirements(program, Stage::Dynamic, true)
+}
+
+fn collect_requirements(
+    program: &Program,
+    stage: Stage,
+    dispatch: bool,
+) -> BTreeMap<String, Vec<String>> {
     let effects = effect_declarations(program);
     let facts: BTreeMap<String, BodyFacts> = function_bodies(program)
         .iter()
-        .map(|(name, body)| (name.clone(), body_facts(body, &effects, stage)))
+        .map(|(name, body)| (name.clone(), body_facts(body, &effects, stage, dispatch)))
         .collect();
     let mut required: BTreeMap<String, Vec<String>> = facts
         .iter()
@@ -70,7 +84,15 @@ pub(crate) fn body_requirements(
     stage: Stage,
     required: &BTreeMap<String, Vec<String>>,
 ) -> Vec<String> {
-    resolve(&body_facts(body, effects, stage), required)
+    resolve(&body_facts(body, effects, stage, false), required)
+}
+
+pub(crate) fn body_dispatches(
+    effects: &BTreeMap<String, EffectDecl>,
+    body: &Expr,
+    required: &BTreeMap<String, Vec<String>>,
+) -> Vec<String> {
+    resolve(&body_facts(body, effects, Stage::Dynamic, true), required)
 }
 
 /// Every function's residual RUNTIME row: what a `kernel` boundary must find
@@ -121,7 +143,12 @@ fn sorted(mut operations: Vec<String>) -> Vec<String> {
 
 /// Walk one body, tracking which static effects an enclosing region already
 /// answers so a self-handled effect never counts as a dependency.
-fn body_facts(body: &Expr, effects: &BTreeMap<String, EffectDecl>, stage: Stage) -> BodyFacts {
+fn body_facts(
+    body: &Expr,
+    effects: &BTreeMap<String, EffectDecl>,
+    stage: Stage,
+    dispatch: bool,
+) -> BodyFacts {
     let mut facts = BodyFacts {
         direct: Vec::new(),
         references: Vec::new(),
@@ -130,6 +157,7 @@ fn body_facts(body: &Expr, effects: &BTreeMap<String, EffectDecl>, stage: Stage)
         &mut body.clone(),
         effects,
         stage,
+        dispatch,
         &mut Vec::new(),
         &mut facts,
     );
@@ -141,22 +169,36 @@ fn scan_body(
     expression: &mut Expr,
     effects: &BTreeMap<String, EffectDecl>,
     stage: Stage,
+    dispatch: bool,
     handled: &mut Vec<String>,
     facts: &mut BodyFacts,
 ) {
     match expression {
-        // A region answers its own effect for its body but not for its arms —
-        // whichever stage it is, since a handler's stage must match its effect's.
+        // Discharge obligations in either stage, but retain runtime requests
+        // when querying dispatch rather than unhandled requirements.
         Expr::Handler {
-            effect, arms, body, ..
+            effect,
+            arms,
+            body,
+            return_clause,
+            stage: selected,
+            ..
         } => {
             let effect = effect.clone();
             for arm in arms {
-                scan_body(&mut arm.body, effects, stage, handled, facts);
+                scan_body(&mut arm.body, effects, stage, dispatch, handled, facts);
             }
-            handled.push(effect);
-            scan_body(body, effects, stage, handled, facts);
-            let _ = handled.pop();
+            let discharged = !dispatch || selected.is_compile_time();
+            if discharged {
+                handled.push(effect);
+            }
+            scan_body(body, effects, stage, dispatch, handled, facts);
+            if discharged {
+                let _ = handled.pop();
+            }
+            if let Some(clause) = return_clause {
+                scan_body(clause, effects, stage, dispatch, handled, facts);
+            }
         }
         Expr::Perform {
             effect, operation, ..
@@ -166,12 +208,12 @@ fn scan_body(
                 facts.direct.push(format!("{effect}.{operation}"));
             }
             children_mut(expression, &mut |child| {
-                scan_body(child, effects, stage, handled, facts);
+                scan_body(child, effects, stage, dispatch, handled, facts);
             });
         }
         Expr::Identifier(name) => facts.references.push((name.clone(), handled.clone())),
         _ => children_mut(expression, &mut |child| {
-            scan_body(child, effects, stage, handled, facts);
+            scan_body(child, effects, stage, dispatch, handled, facts);
         }),
     }
 }
@@ -191,8 +233,25 @@ fn function_bodies(program: &Program) -> BTreeMap<String, Expr> {
     struct Collector(BTreeMap<String, Expr>);
     impl AstVisitor for Collector {
         fn statement(&mut self, statement: &Stmt) {
-            if let Stmt::Function { name, body, .. } = statement {
-                let _ = self.0.insert(name.clone(), body.clone());
+            match statement {
+                Stmt::Function { name, body, .. } => {
+                    let _ = self.0.insert(name.clone(), body.clone());
+                }
+                Stmt::Let {
+                    name,
+                    mutable: false,
+                    value,
+                    ..
+                } => match value {
+                    Expr::Lambda { body, .. } => {
+                        let _ = self.0.insert(name.clone(), (**body).clone());
+                    }
+                    Expr::Identifier(_) => {
+                        let _ = self.0.insert(name.clone(), value.clone());
+                    }
+                    _ => {}
+                },
+                _ => {}
             }
         }
     }

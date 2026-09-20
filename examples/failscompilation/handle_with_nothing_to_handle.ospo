@@ -1,0 +1,15 @@
+// A `handle` that names no body handles the rest of its block
+// ([EFFECTS-HANDLE-REST]). Written as the last item of a block there is no
+// rest, so it handles nothing — a region that silently does nothing is the
+// mistake this rejects, not a legal empty region.
+
+effect Logger {
+    log: fn(string) -> Unit
+}
+
+fn main() = {
+    print("before")
+    handle Logger {
+        log msg => print(msg)
+    }
+}

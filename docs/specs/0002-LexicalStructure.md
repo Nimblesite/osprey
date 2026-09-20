@@ -20,18 +20,17 @@ continuation positions, plus `_`; digits remain continuation-only.
 
 The Default grammar reserves the words used by its declarations and
 expressions, including `let`, `mut`, `fn`, `extern`, `type`, `where`, `effect`,
-`perform`, `handle`, `in`, `resume`, `spawn`, `await`, `yield`, `send`, `recv`,
+`perform`, `handle`, `handler`, `in`, `resume`, `spawn`, `await`, `yield`, `send`, `recv`,
 `select`, `match`, `if`, `else`, `import`, `namespace`, `module`, `signature`,
 `export`, `opaque`, `state`, `as`, `true`, and `false`.
 
 ML reserves the corresponding words its surface uses. It deliberately does not
-reserve Default-only `let`, `fn`, `if`, or `else`. `handler` and `do` are
-reserved in ML solely so the frontend can reject the unsupported first-class
-handler syntax with a specific diagnostic.
+reserve Default-only `let`, `fn`, `if`, or `else`. `handler` constructs a callable
+handler in both flavors; `do` remains reserved in ML.
 
 `in` and `out` are variance markers inside type-parameter declarations
 ([TYPE-VARIANCE-DECL](0004-TypeSystem.md#generics-and-variance)). Outside that
-position, `out` is an identifier; `in` also separates a handler from its body.
+position, `out` is an identifier; `in` also separates a kernel from its body.
 
 ## Literals
 

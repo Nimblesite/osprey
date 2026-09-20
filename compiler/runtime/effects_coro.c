@@ -150,9 +150,19 @@ void *__osprey_coro_new(void *env) {
     return coro;
 }
 
+static void coro_thread_cleanup(void *raw) {
+    __osprey_handler_stack_cleanup();
+    osp_prof_thread_unregister();
+    free(raw);
+}
+
 static void *__osprey_coro_thread(void *raw) {
     CoroStartArgs *args = (CoroStartArgs *)raw;
     OspreyCoro *coro = args->coro;
+    int64_t result;
+    // Abandonment exits from inside suspend, bypassing the normal body return.
+    // Release its saved handler tails and startup state on both exit paths.
+    pthread_cleanup_push(coro_thread_cleanup, args);
     // Effect continuations run on their own pthread; register so profiler
     // samples attribute to them distinctly [PROF-COLLECT-REGISTRY].
     osp_prof_thread_register(-1, "effect");
@@ -160,9 +170,8 @@ static void *__osprey_coro_thread(void *raw) {
         __osprey_handler_restore(args->snapshot);
         args->snapshot = NULL;
     }
-    int64_t result = args->body(args->body_env);
-    free(args);
-    osp_prof_thread_unregister();
+    result = args->body(args->body_env);
+    pthread_cleanup_pop(1);
 
     pthread_mutex_lock(&coro->lock);
     coro->result = result;

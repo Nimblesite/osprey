@@ -17,11 +17,12 @@ base = 100
 mut hits = 0
 
 (** The initializer runs here, in source order, before any entry statement. *)
-total = handle Counter
-    tick amount =>
-        hits := (hits + amount) ?: hits
-        hits
-in run ()
+total =
+    handle Counter
+        tick amount =>
+            hits := (hits + amount) ?: hits
+            hits
+    run ()
 
 (** Records the order in which the file-scope initializers completed. *)
 trace = "base=${base},hits=${hits},total=${total}"

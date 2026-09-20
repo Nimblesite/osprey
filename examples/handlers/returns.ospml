@@ -1,0 +1,17 @@
+effect ValueAsk
+    value : Unit => int
+effect ControlAsk
+    control value : Unit => int
+valueWork () = (perform ValueAsk.value () + 1) ?: 0
+controlWork () = (perform ControlAsk.value () + 1) ?: 0
+prefix = "done="
+replace = handler ValueAsk
+    value => 41
+    return n => "${prefix}${n}"
+around = handler ControlAsk
+    value => "${resume 41}!"
+    return n => "${prefix}${n}"
+stop = handler ControlAsk
+    value => "stopped"
+    return n => "${prefix}${n}"
+print "${replace valueWork}\n${around controlWork}\n${stop controlWork}"

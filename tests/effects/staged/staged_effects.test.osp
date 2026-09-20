@@ -62,14 +62,21 @@ fn twice(f, x) = f(f(x))
 
 /// Static handlers answer through helpers, nest, and compose with each other.
 fn staticDischargeCase() = {
-    let scaled = handle static Tile
-        size => 8
-    in tiled(2)
-    let both = handle static Alloc
-        scratch bytes => (bytes * 4) ?: 0
-    in handle static Tile
-        size => 3
-    in "${tiled(5)}/${perform Alloc.scratch(16)}"
+    let scaled = {
+        handle static Tile {
+            size => 8
+        }
+        tiled(2)
+    }
+    let both = {
+        handle static Alloc {
+            scratch bytes => (bytes * 4) ?: 0
+        }
+        handle static Tile {
+            size => 3
+        }
+        "${tiled(5)}/${perform Alloc.scratch(16)}"
+    }
     checkAll("static handlers answer at compile time", [
         scaled == 16,
         both == "15/64"
@@ -80,12 +87,18 @@ fn staticDischargeCase() = {
 /// one. Implements the [STAGE-FALSIFY] gate.
 fn sharedAcrossStagesCase() = {
     mut transcript = ""
-    let early = handle static Tile
-        size => 8
-    in twice(tiled, 2)
-    let late = handle Log
-        write message => { transcript = "${transcript}${message};" }
-    in twice(logged, 0)
+    let early = {
+        handle static Tile {
+            size => 8
+        }
+        twice(tiled, 2)
+    }
+    let late = {
+        handle Log {
+            write message => { transcript = "${transcript}${message};" }
+        }
+        twice(logged, 0)
+    }
     checkAll("one function serves both stages", [
         early == 128,
         late == 2,
@@ -97,9 +110,12 @@ fn sharedAcrossStagesCase() = {
 /// ([GPU-KERNEL-PURE]) sees an empty row because discharge ran first —
 /// [STAGE-GPU-LEGAL] needs no separate check.
 fn stagedKernelCase() = {
-    let scaled = handle static Tile
-        size => 3
-    in toGpu([1, 2, 3, 4]) |> gpuMap(tiled)
+    let scaled = {
+        handle static Tile {
+            size => 3
+        }
+        toGpu([1, 2, 3, 4]) |> gpuMap(tiled)
+    }
     checkAll("a static effect is legal inside a GPU kernel", [
         gpuFold(scaled, 0, fn(a, v) => (a + v) ?: a) == 30,
         gpuLength(scaled) == 4
@@ -123,11 +139,15 @@ fn kernelRegionCase() = {
 /// Two signals sharing one operation stay two dependencies, so a region
 /// answering one leaves the other untouched ([STAGE-SIGNALS-EXACT]).
 fn signalIdentityCase() = {
-    let labels = handle static Signal<Count>
-        read => Count { value: 7 }
-    in handle static Signal<Cursor>
-        read => Cursor { at: 2 }
-    in "${counterLabel()} ${cursorLabel()}"
+    let labels = {
+        handle static Signal<Count> {
+            read => Count { value: 7 }
+        }
+        handle static Signal<Cursor> {
+            read => Cursor { at: 2 }
+        }
+        "${counterLabel()} ${cursorLabel()}"
+    }
     checkAll("signal identity is the generic instantiation", [
         labels == "count: 7 at: 2"
     ])

@@ -91,13 +91,12 @@ curriedEffectsReachTheHandlerCase () =
                 steps := steps + 1 ?: steps
                 seen := "${seen}${label}|"
                 steps
-        in
-            r2 = traced2 "a" "b"
-            r3 = traced3 "c" "d" "e"
-            r4 = traced4 "f" "g" "h" "i"
-            r5 = traced5 "j" "k" "l" "m" "n"
-            rf = tracedFlat ("o", "p", "q", "r")
-            "${r2}/${r3}/${r4}/${r5}/${rf}"
+        r2 = traced2 "a" "b"
+        r3 = traced3 "c" "d" "e"
+        r4 = traced4 "f" "g" "h" "i"
+        r5 = traced5 "j" "k" "l" "m" "n"
+        rf = tracedFlat ("o", "p", "q", "r")
+        "${r2}/${r3}/${r4}/${r5}/${rf}"
 
     // Each arity consumes consecutive indices: 1-2, 3-5, 6-9, 10-14, 15-18.
     checkAll "curried arities consume every operation index" [

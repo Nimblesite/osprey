@@ -14,7 +14,7 @@
 
 effect Tuning {
     /// Establish the baseline cost the profiler measures against.
-    baseline: fn(int) -> int
+    control baseline: fn(int) -> int
 }
 
 fn add(a: int, b: int) = a + b ?: 0
@@ -46,19 +46,24 @@ fn tuned(n: int) -> int ![Tuning] = add(fib(n), perform Tuning.baseline(n))
 /// millions of retained objects and over 6 GB resident, enough to exhaust a CI
 /// runner; the shape of the profile (three fibers, fib self-time dominant) is
 /// identical at this size.
-handle Tuning
-    baseline n => resume(fib(sub(n, 2)))
-in {
+fn profiledRun() = {
+    handle Tuning {
+        baseline n => resume(fib(sub(n, 2)))
+    }
     let worker = spawn fib(28)
     let idler = spawn napper()
     let local = tuned(29)
     print("tuned(29) = ${local}, worker = ${await(worker)}, napped = ${await(idler)}ms")
 }
+profiledRun()
 
 /// Runs the tuned computation under the same resumable baseline policy.
-fn tunedForTest(n) = handle Tuning
-    baseline value => resume(fib(sub(value, 2)))
-in tuned(n)
+fn tunedForTest(n) = {
+    handle Tuning {
+        baseline value => resume(fib(sub(value, 2)))
+    }
+    tuned(n)
+}
 
 // Verifies recursion, arithmetic helpers, and effectful tuning with small inputs.
 test("profiling workload computes deterministic values", fn() => checkAll("profiling workload", [

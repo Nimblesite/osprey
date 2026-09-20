@@ -18,22 +18,34 @@ fn source(seed) = perform Supply.transitive(seed)
 fn relay(seed) = source(seed)
 fn invoke(callback) = callback()
 
-let directValue = handle Supply
-    direct seed => seed
-in direct(7)
+let directValue = {
+    handle Supply {
+        direct seed => seed
+    }
+    direct(7)
+}
 
-let transitiveValue = handle Supply
-    transitive seed => seed
-in relay(11)
+let transitiveValue = {
+    handle Supply {
+        transitive seed => seed
+    }
+    relay(11)
+}
 
-let callbackValue = handle Supply
-    callback => 13
-in invoke(fn() => perform Supply.callback())
+let callbackValue = {
+    handle Supply {
+        callback => 13
+    }
+    invoke(fn() => perform Supply.callback())
+}
 
 let delayed = fn() => perform Supply.delayed()
-let delayedValue = handle Supply
-    delayed => 17
-in delayed()
+let delayedValue = {
+    handle Supply {
+        delayed => 17
+    }
+    delayed()
+}
 
 effect Pair {
     /// Read the first of the two supplied integers.
@@ -50,11 +62,15 @@ fn pairTotal() = {
 
 /// The inner partial handler discharges only `first`; `second` reaches the
 /// complementary outer handler.
-let partialValue = handle Pair
-    second => 22
-in handle Pair
-    first => 20
-in pairTotal()
+let partialValue = {
+    handle Pair {
+        second => 22
+    }
+    handle Pair {
+        first => 20
+    }
+    pairTotal()
+}
 
 effect Stash<T> {
     /// Store `value` in the stash for a later `take`.
@@ -65,10 +81,11 @@ effect Stash<T> {
 
 fn storeText() = perform Stash.put("fresh")
 
-let genericValue = handle Stash
-    put _value => print("")
-    take => "cached"
-in {
+let genericValue = {
+    handle Stash {
+        put _value => print("")
+        take => "cached"
+    }
     storeText()
     19
 }

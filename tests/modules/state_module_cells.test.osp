@@ -18,19 +18,22 @@ state module Tally {
     }
 
     /// The one lexical handler that owns the cells [MODULES-STATE-MODULE].
-    export fn withTally(body) = handle Counter
-        add amount => {
-            total = (total + amount) ?: total
-            calls = (calls + 1) ?: calls
-            total
+    export fn withTally(body) = {
+        handle Counter {
+            add amount => {
+                total = (total + amount) ?: total
+                calls = (calls + 1) ?: calls
+                total
+            }
+            reads => calls
+            reset => {
+                let seen = total
+                total = 0
+                seen
+            }
         }
-        reads => calls
-        reset => {
-            let seen = total
-            total = 0
-            seen
-        }
-    in body()
+        body()
+    }
 }
 
 /// Sums three additions inside one installed scope.

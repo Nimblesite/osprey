@@ -3,7 +3,7 @@
 
 effect Step {
     /// Run one pipeline stage over `value` under the active policy.
-    run: fn(int) -> int
+    control run: fn(int) -> int
 }
 
 /// An aborted continuation omits observations after the poison step.
@@ -22,38 +22,44 @@ let sentinel = (0 - 99) ?: 0
 // Every arm resumes; audit lines run as continuations unwind.
 print("=== recovering handler: resume every step, drive to completion ===")
 mut counter = 0
-let recovered = handle Step
-    run x => {
-        let stepNo = counter + 1 ?: counter
-        counter = stepNo
-        let v = resume((x * 10) ?: 0)
-        print("audit[recover]: step " + toString(stepNo) + " (input " + toString(x) + ") settled, downstream=" + toString(v))
-        v
+let recovered = {
+    handle Step {
+        run x => {
+            let stepNo = counter + 1 ?: counter
+            counter = stepNo
+            let v = resume((x * 10) ?: 0)
+            print("audit[recover]: step " + toString(stepNo) + " (input " + toString(x) + ") settled, downstream=" + toString(v))
+            v
+        }
     }
-in pipeline()
+    pipeline()
+}
 print("recovered result=" + toString(recovered))
 
 // Returning at step 2 aborts the suspended computation.
 print("=== stopping handler: step 2 stops the pipeline, then step 1 handler finishes ===")
 mut counter2 = 0
-let aborted = handle Step
-    run x => {
-        let stepNo = counter2 + 1 ?: counter2
-        counter2 = stepNo
-        match x == 2 {
-            true => {
-                // No resume: discard the rest of the pipeline.
-                print("poison at step " + toString(stepNo) + " (input " + toString(x) + ") -> abort, discard the rest")
-                sentinel
-            }
-            false => {
-                let v = resume((x * 10) ?: 0)
-                print("audit[abort-run]: step " + toString(stepNo) + " (input " + toString(x) + ") settled, downstream=" + toString(v))
-                v
+let aborted = {
+    handle Step {
+        run x => {
+            let stepNo = counter2 + 1 ?: counter2
+            counter2 = stepNo
+            match x == 2 {
+                true => {
+                    // No resume: discard the rest of the pipeline.
+                    print("poison at step " + toString(stepNo) + " (input " + toString(x) + ") -> abort, discard the rest")
+                    sentinel
+                }
+                false => {
+                    let v = resume((x * 10) ?: 0)
+                    print("audit[abort-run]: step " + toString(stepNo) + " (input " + toString(x) + ") settled, downstream=" + toString(v))
+                    v
+                }
             }
         }
     }
-in pipeline()
+    pipeline()
+}
 print("aborted result=" + toString(aborted))
 
 /// A BRANCH of a resuming arm that returns without resuming abandons the
@@ -72,8 +78,8 @@ print("aborted result=" + toString(aborted))
 /// per region (issue #177, `resume_abort_early_exit.test.osp`).
 /// [EFFECTS-HANDLER-ARMS]
 effect Mixed {
-    scale: fn(int) -> int
-    stop: fn() -> int
+    control scale: fn(int) -> int
+    control stop: fn() -> int
 }
 
 fn mixedPipeline() -> string !Mixed = {
@@ -82,13 +88,16 @@ fn mixedPipeline() -> string !Mixed = {
     "unreached ${scaled} ${stopped}"
 }
 
-let stoppedAnswer = handle Mixed
-    scale x => resume((x * 2) ?: 0)
-    stop => match true {
-        true => "stopped"
-        false => resume(0)
+let stoppedAnswer = {
+    handle Mixed {
+        scale x => resume((x * 2) ?: 0)
+        stop => match true {
+            true => "stopped"
+            false => resume(0)
+        }
     }
-in mixedPipeline()
+    mixedPipeline()
+}
 
 print("mixed answer: ${stoppedAnswer}")
 

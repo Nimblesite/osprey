@@ -7,7 +7,7 @@ namespace pipeline
 
 module Source
     export effect Feed
-        next : Unit => int
+        control next : Unit => int
 
     (** A module function performing an unhandled operation propagates it. *)
     export pull () = perform Feed.next ()
@@ -38,15 +38,16 @@ module Stage
 feeding (reading, body) =
     handle Source::Feed
         next => resume reading
-    in body ()
+    body ()
 
 (** Collects the lines a body emits, appended after the body's own answer. *)
 collecting body =
     mut seen = ""
-    outcome = handle Sink::Report
-        line message =>
-            seen := "${seen}${message}|"
-    in body ()
+    outcome =
+        handle Sink::Report
+            line message =>
+                seen := "${seen}${message}|"
+        body ()
     "${outcome}:${seen}"
 
 (** An operation performed inside a module reaches the caller's handler. *)

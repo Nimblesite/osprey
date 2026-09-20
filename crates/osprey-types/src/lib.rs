@@ -60,6 +60,7 @@ mod redundant;
 mod redundant_sites;
 #[cfg(test)]
 mod redundant_tests;
+mod staging;
 #[cfg(test)]
 #[path = "../../testkit.rs"]
 mod testkit;
@@ -84,6 +85,7 @@ pub use redundant::{
     redundant_annotations_where, RedundantAnnotation, RedundantTarget, TypeWarning,
     REDUNDANT_ANNOTATION,
 };
+pub use staging::lower_static_checked;
 pub use ty::{has_type_var, names, render_with_holes, Scheme, Type, VarId, HOLE};
 pub use unused::{unused_symbols, UnusedKind, UnusedSymbol};
 
@@ -322,10 +324,11 @@ mod tests {
 
         ok("effect State { set: fn(int) -> Unit }\n\
             fn main() -> Unit = {\n\
-              mut cell = 0\n\
-              handle State\n\
+            mut cell = 0\n\
+            handle State {\n\
                 set value => { cell = value }\n\
-              in { perform State.set(1) }\n\
+            }\n\
+            perform State.set(1)\n\
             }\n");
     }
 
@@ -333,10 +336,11 @@ mod tests {
     fn handled_client_body_does_not_gain_mutation_authority() {
         let errs = bad("effect State { set: fn(int) -> Unit }\n\
             fn main() -> Unit = {\n\
-              mut cell = 0\n\
-              handle State\n\
+            mut cell = 0\n\
+            handle State {\n\
                 set value => { cell = value }\n\
-              in { cell = 1 }\n\
+            }\n\
+            cell = 1\n\
             }\n");
         assert!(errs.iter().any(|e| {
             e.message

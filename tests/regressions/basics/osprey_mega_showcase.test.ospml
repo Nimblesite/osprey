@@ -43,12 +43,12 @@ realWorld () =
     mut balance = 0
     handle Console
         emit line => print "  💸 ${line}"
-    in handle Ledger
+    handle Ledger
         (* the resuming arm updates state, then hands the balance back *)
         post amount =>
             balance := balance + amount ?: balance
             balance
-    in account ()
+    account ()
 
 (** The DRY-RUN interpretation of [account]: the console is tagged and the
     ledger is a no-op that always reports a zero balance. Same [account] body,
@@ -56,9 +56,9 @@ realWorld () =
 dryRun () =
     handle Console
         emit line => print "  🧪 [dry-run] ${line}"
-    in handle Ledger
+    handle Ledger
         post _amount => 0
-    in account ()
+    account ()
 
 (** [true] when [x] is even. *)
 even x = (x % 2 ?: 1) == 0
