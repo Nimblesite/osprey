@@ -1,7 +1,12 @@
 //! Explicit static selection preserves ordinary value-operation contracts.
 
+#[path = "common/effect_execution.rs"]
+mod effect_execution;
+
+use effect_execution::assert_flavored_output;
 use osprey_ast::{walk_program, AstVisitor, Expr, Program};
 use osprey_syntax::{parse_program_with_flavor, Flavor};
+use std::collections::BTreeSet;
 
 fn lower(source: &str, flavor: Flavor) -> Result<Program, Vec<osprey_types::TypeError>> {
     let parsed = parse_program_with_flavor(source, flavor);
@@ -164,5 +169,240 @@ fn static_selection_and_dynamic_shadowing_execute_with_the_selected_answers() {
             String::from_utf8_lossy(&result.stderr)
         );
         assert_eq!(String::from_utf8_lossy(&result.stdout), "captured:42|7|3\n");
+    }
+}
+
+/// Every `Effect.op` a program still requests.
+struct RequestedOperations(BTreeSet<String>);
+
+impl AstVisitor for RequestedOperations {
+    fn expression(&mut self, expression: &Expr) {
+        if let Expr::Perform {
+            effect, operation, ..
+        } = expression
+        {
+            let _ = self.0.insert(format!("{effect}.{operation}"));
+        }
+    }
+}
+
+/// The statically lowered program, which must still pass the checker.
+fn lowered(source: &str, flavor: Flavor) -> Option<Program> {
+    let result = lower(source, flavor);
+    assert!(result.is_ok(), "{result:?}");
+    let program = result.ok()?;
+    let errors = osprey_types::check_program(&program);
+    assert!(errors.is_empty(), "{errors:?}");
+    Some(program)
+}
+
+/// The requests left standing after static lowering.
+fn residual_operations(source: &str, flavor: Flavor) -> Vec<String> {
+    let mut requested = RequestedOperations(BTreeSet::new());
+    if let Some(program) = lowered(source, flavor) {
+        walk_program(&program, &mut requested);
+    }
+    requested.0.into_iter().collect()
+}
+
+/// The declared effect row of every specialization of `original`.
+fn specialized_rows(program: &Program, original: &str) -> Vec<Vec<String>> {
+    let prefix = format!("{original}__stage");
+    let mut rows: Vec<Vec<String>> = program
+        .statements
+        .iter()
+        .filter_map(|statement| match statement {
+            osprey_ast::Stmt::Function { name, effects, .. } if name.starts_with(&prefix) => {
+                Some(effects.iter().map(|effect| effect.name.clone()).collect())
+            }
+            _ => None,
+        })
+        .collect();
+    rows.sort();
+    rows
+}
+
+/// An inner runtime handler supplying only `first` shadows `first` alone;
+/// `second` still reaches the enclosing static interpretation directly, through
+/// a helper called under the runtime handler, and through a helper that installs
+/// the runtime handler itself ([STAGE-LOWER-ORDER]).
+const PARTIAL_SHADOWING_DEFAULT: &str = "effect Pair { first: fn() -> int second: fn() -> int }
+fn pairTotal() = {
+    let first = perform Pair.first()
+    let second = perform Pair.second()
+    first + second ?: 0
+}
+fn firstOnly() = {
+    handle Pair {
+        first => 2
+    }
+    pairTotal()
+}
+let answer = {
+    handle static Pair {
+        first => 1 second => 40
+    }
+    let direct = {
+        handle Pair {
+            first => 2
+        }
+        (perform Pair.first() + perform Pair.second()) ?: 0
+    }
+    let helper = {
+        handle Pair {
+            first => 2
+        }
+        pairTotal()
+    }
+    let installer = firstOnly()
+    \"${direct}|${helper}|${installer}\"
+}
+print(answer)
+";
+
+const PARTIAL_SHADOWING_ML: &str = "effect Pair
+    first : Unit => int
+    second : Unit => int
+
+pairTotal () =
+    first = perform Pair.first ()
+    second = perform Pair.second ()
+    first + second ?: 0
+
+firstOnly () =
+    handle Pair
+        first => 2
+    pairTotal ()
+
+answer =
+    handle static Pair
+        first => 1
+        second => 40
+    direct =
+        handle Pair
+            first => 2
+        (perform Pair.first () + perform Pair.second ()) ?: 0
+    helper =
+        handle Pair
+            first => 2
+        pairTotal ()
+    installer = firstOnly ()
+    \"${direct}|${helper}|${installer}\"
+
+print answer
+";
+
+#[test]
+fn a_partial_dynamic_handler_shadows_only_the_operations_it_supplies() {
+    for (extension, source, flavor) in [
+        ("osp", PARTIAL_SHADOWING_DEFAULT, Flavor::Default),
+        ("ospml", PARTIAL_SHADOWING_ML, Flavor::Ml),
+    ] {
+        assert_eq!(
+            residual_operations(source, flavor),
+            ["Pair.first"],
+            "{extension}"
+        );
+    }
+}
+
+#[test]
+fn partial_dynamic_shadowing_executes_with_the_outer_static_answers() {
+    assert_flavored_output(
+        "partial_static_shadowing",
+        "osp",
+        PARTIAL_SHADOWING_DEFAULT,
+        "42|42|42\n",
+    );
+    assert_flavored_output(
+        "partial_static_shadowing",
+        "ospml",
+        PARTIAL_SHADOWING_ML,
+        "42|42|42\n",
+    );
+}
+
+/// `total` declares its row. The copy reached under the whole static
+/// interpretation has nothing left to declare; the copy reached under the
+/// partial runtime handler still performs `Pair.first`, so it keeps `!Pair`
+/// ([STAGE-RESIDUE]).
+const DECLARED_ROW_SHADOWING: &str = "effect Pair { first: fn() -> int second: fn() -> int }
+fn total() !Pair = (perform Pair.first() + perform Pair.second()) ?: 0
+let answer = {
+    handle static Pair {
+        first => 1 second => 40
+    }
+    let shadowed = {
+        handle Pair {
+            first => 2
+        }
+        total()
+    }
+    \"${total()}|${shadowed}\"
+}
+print(answer)
+";
+
+#[test]
+fn a_specialization_keeps_its_declared_row_while_an_operation_stays_dynamic() {
+    let program = lowered(DECLARED_ROW_SHADOWING, Flavor::Default);
+    assert!(program.is_some());
+    let rows = program.map(|program| specialized_rows(&program, "total"));
+    assert_eq!(rows, Some(vec![Vec::new(), vec!["Pair".to_owned()]]));
+    assert_flavored_output(
+        "declared_row_shadowing",
+        "osp",
+        DECLARED_ROW_SHADOWING,
+        "41|42\n",
+    );
+}
+
+/// A runtime handler for ANOTHER effect shadows nothing of the static
+/// interpretation around it: its body, a helper it calls and its return clause
+/// all still receive the static answer ([STAGE-LOWER-DYNAMIC]).
+const UNRELATED_RUNTIME_HANDLER_DEFAULT: &str = "effect Read { value: fn() -> int }
+effect Tag { label: fn() -> string }
+fn fetch() = perform Read.value()
+let answer = {
+    handle static Read {
+        value => 42
+    }
+    handle Tag {
+        label => \"n\"
+        return text => \"${text}:${perform Read.value()}\"
+    }
+    \"${perform Tag.label()}=${fetch()}\"
+}
+print(answer)
+";
+
+const UNRELATED_RUNTIME_HANDLER_ML: &str = "effect Read
+    value : Unit => int
+effect Tag
+    label : Unit => string
+fetch () = perform Read.value ()
+answer =
+    handle static Read
+        value => 42
+    handle Tag
+        label => \"n\"
+        return text => \"${text}:${perform Read.value ()}\"
+    fetched = fetch ()
+    \"${perform Tag.label ()}=${fetched}\"
+print answer
+";
+
+#[test]
+fn a_runtime_handler_for_another_effect_keeps_the_static_interpretation() {
+    for (extension, source, flavor) in [
+        ("osp", UNRELATED_RUNTIME_HANDLER_DEFAULT, Flavor::Default),
+        ("ospml", UNRELATED_RUNTIME_HANDLER_ML, Flavor::Ml),
+    ] {
+        assert_eq!(
+            residual_operations(source, flavor),
+            ["Tag.label"],
+            "{extension}"
+        );
+        assert_flavored_output("unrelated_runtime_handler", extension, source, "n=42:42\n");
     }
 }

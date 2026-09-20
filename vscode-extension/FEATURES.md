@@ -105,12 +105,16 @@ Intelligent autocompletion for:
 
 - **Automatic discovery**: `*.test.osp` and `*.test.ospml` files and their
   individual `test(...)` cases appear in the Testing view
-- **Run profiles**: **Run**, **Coverage** (line coverage in the gutter), and
-  **Profile**
+- **Run profiles**: **Run**, **Coverage** (line coverage in the gutter),
+  **Profile**, and **Debug**
 - **Profile a test**: run any file or single case under the sampling CPU
   profiler — the flame graph opens and per-line heat annotations appear in the
   source, with each suite's artifacts (`.speedscope.json`, `.cpuprofile`,
   `.folded`, `.profile.json`) kept in a per-run directory named in the output
+- **Debug a test**: **Debug Test** on any file or single case launches it under
+  the Osprey debugger. A breakpoint inside the `test(...)` body stops with the
+  case's own bindings live, and the session still reports the same pass/fail
+  verdicts a plain run reports
 
 ### Skipped tests are never silent
 

@@ -41,7 +41,31 @@ function freshAction(document: vscode.TextDocument): ProtocolAction {
   }] }] } };
 }
 
+/** The dirty untitled documents still open in the host. */
+function dirtyUntitledDocuments(): string[] {
+  return vscode.workspace.textDocuments.filter((document) => document.isUntitled && document.isDirty)
+    .map((document) => document.uri.toString());
+}
+
+/** Discard every untitled document. Reverting first closes it with no save prompt. */
+async function discardUntitledDocuments(): Promise<void> {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const untitled = vscode.workspace.textDocuments.find((document) => document.isUntitled);
+    if (!untitled) return;
+    await vscode.window.showTextDocument(untitled);
+    await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
+  }
+}
+
 suite("Warning fix document-version guard", () => {
+  teardown(discardUntitledDocuments);
+
+  // A dirty untitled document outlives this suite. When a later suite starts a
+  // debug session, VS Code saves the active group's dirty editors first, and
+  // saving an untitled file raises a native Save As sheet that blocks the test
+  // host until a human dismisses it. This suite must leave none behind.
+  suiteTeardown(() => assert.deepStrictEqual(dirtyUntitledDocuments(), []));
+
   test("converted warning carries plain command payload with the original document snapshot", async () => {
     const document = await vscode.workspace.openTextDocument({ content: "abc body", language: "plaintext" });
     const action = annotated(document);

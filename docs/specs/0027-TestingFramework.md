@@ -557,6 +557,32 @@ profile summary plus its artifact directory to the run output. A suite that
 fails to compile writes no artifacts; the run still reports the compile
 failure. The sampling profiler is POSIX-only, matching `[PROF-CLI-RUN]`.
 
+**`[TESTING-DEBUG-VSCODE]`** A fourth run profile — **Debug**, the default one
+for the Testing view's debug action and its **Debug Test** context-menu entry —
+runs the same discovery, filtering, and TAP mapping as Run, but launches each
+suite under the Osprey debug adapter (`[DEBUGGER-EDITOR-LAUNCH]`,
+docs/specs/0021-Debugger.md) instead of spawning a compiler child process, so a
+breakpoint inside a `test(...)` body is live and the case's bindings are
+readable where it stops.
+
+The debugged program is the suite: `test(...)` lowers inline
+(`[TESTING-CODEGEN]`) and the runtime applies `OSPREY_TEST_FILTER` when the case
+begins (`[TESTING-FILTER]`), so `osprey <file> --debug --compile` produces a
+binary whose stdout is the very TAP stream `osprey <file> --run` writes. Rules:
+
+- the launch configuration names the suite as its `program`, the suite's own
+  directory as `cwd`, and carries `OSPREY_TEST_FILTER` in `env` — the case name
+  for a single-case run, and EMPTY for a whole-file run, never absent, so a
+  value inherited from the editor's environment cannot silently skip cases;
+- verdicts come from the session's own output: the adapter's `stdout` output
+  events are the TAP stream and its `exited` event the exit code, mapped onto
+  test items by the same rules a plain run uses, including the compile-failure
+  and out-of-case-failure paths (`[TESTING-EXIT]`). `console` output is the
+  adapter describing itself and is not part of the stream;
+- a request VS Code refuses to launch — a failed debug build, or no adapter —
+  errors the suite rather than leaving it reported as neither run nor skipped;
+  cancelling the run stops the session it was waiting on.
+
 ## Runtime
 
 **`[TESTING-RUNTIME]`** The runtime owns case state, filtering, TAP output, and

@@ -36,9 +36,11 @@ in-process — the same engine targeted at Neovim and Zed next.
   - `Osprey: Compile Osprey File` (`Ctrl/Cmd+Shift+B`)
   - `Osprey: Compile and Run Osprey File` (`F5`)
 - **Test Explorer** — `*.test.osp` / `*.test.ospml` files and their cases appear
-  in the Testing view, with three run profiles: **Run**, **Coverage**, and
+  in the Testing view, with four run profiles: **Run**, **Coverage**,
   **Profile** (runs the suite under the sampling CPU profiler and opens its
-  flame graph plus inline heat annotations).
+  flame graph plus inline heat annotations), and **Debug** (runs the suite
+  under the Osprey debugger, so a breakpoint inside a `test(...)` body stops
+  with the case's own bindings live).
 - **No test skips silently** — a skipped or ignored case raises a warning you
   cannot miss: a squiggle on the `test(...)` line and a row in the Problems
   panel. A case whose body simply returns `Skip` is flagged as you type, before

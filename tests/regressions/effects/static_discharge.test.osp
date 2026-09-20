@@ -1,5 +1,6 @@
 // Static effect rows are inferred through direct calls, call chains, callbacks,
-// closures, partial handlers, and generic effect instances. No function below
+// closures, partial handlers, partial runtime handlers nested inside a static
+// interpretation, and generic effect instances. No function below
 // needs a return-type or effect-row annotation.
 
 effect Supply {
@@ -72,6 +73,37 @@ let partialValue = {
     pairTotal()
 }
 
+fn firstOnly() = {
+    handle Pair {
+        first => 2
+    }
+    pairTotal()
+}
+
+/// A partial runtime handler shadows only `first`; `second` still reaches the
+/// enclosing static interpretation directly, through a helper called under the
+/// runtime handler, and through a helper installing that handler itself.
+let stagedValue = {
+    handle static Pair {
+        first => 1
+        second => 40
+    }
+    let direct = {
+        handle Pair {
+            first => 2
+        }
+        (perform Pair.first() + perform Pair.second()) ?: 0
+    }
+    let helper = {
+        handle Pair {
+            first => 2
+        }
+        pairTotal()
+    }
+    let installer = firstOnly()
+    "${direct}|${helper}|${installer}"
+}
+
 effect Stash<T> {
     /// Store `value` in the stash for a later `take`.
     put: fn(T) -> Unit
@@ -96,5 +128,6 @@ test("inferred effect rows discharge only under matching handlers", fn() => chec
     callbackValue == 13,
     delayedValue == 17,
     partialValue == 42,
+    stagedValue == "42|42|42",
     genericValue == 19
 ]))

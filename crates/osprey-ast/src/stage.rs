@@ -104,7 +104,7 @@ pub(crate) const REWRITE_DEPTH_BOUND: u32 = 256;
 /// The declared operations of one effect, with its stage.
 pub(crate) struct EffectDecl {
     pub(crate) stage: Stage,
-    operations: Vec<DeclaredOperation>,
+    pub(crate) operations: Vec<DeclaredOperation>,
     /// How many type parameters the declaration takes. An explicit mention
     /// must supply exactly this many, so `Signal<Count>` names an instantiation
     /// the declaration can actually have. Implements [STAGE-SIGNALS-EXACT].
@@ -116,8 +116,8 @@ pub(crate) struct EffectDecl {
 /// [MULTI-AXIS-STATIC] and [STAGE-STATIC-TOTAL] are decided by the pass that
 /// already knows each effect's stage, rather than by a second walk over the
 /// same declarations.
-struct DeclaredOperation {
-    name: String,
+pub(crate) struct DeclaredOperation {
+    pub(crate) name: String,
     /// Whether `control` was written. A control operation has a continuation,
     /// which is exactly what a static interpretation cannot provide.
     mode: OperationMode,

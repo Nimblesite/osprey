@@ -68,7 +68,7 @@ fn collect_requirements(
 
 /// What one function body contributes to its own dependency set: the static
 /// operations it performs outside any region that answers them, and the names
-/// it references together with the effects already answered at that point.
+/// it references together with the operations already answered at that point.
 struct BodyFacts {
     direct: Vec<String>,
     references: Vec<(String, Vec<String>)>,
@@ -102,7 +102,7 @@ pub(crate) fn runtime_requirements(program: &Program) -> BTreeMap<String, Vec<St
 }
 
 /// One fixed-point step: each function gains every requirement of what it
-/// references, except the effects a region already answered around it.
+/// references, except the operations a region already answered around it.
 fn propagate(
     facts: &BTreeMap<String, BodyFacts>,
     required: &BTreeMap<String, Vec<String>>,
@@ -123,16 +123,16 @@ fn resolve(fact: &BodyFacts, required: &BTreeMap<String, Vec<String>>) -> Vec<St
         let inherited = required.get(callee).into_iter().flatten();
         operations.extend(
             inherited
-                .filter(|operation| !handled.iter().any(|e| owns(e, operation)))
+                .filter(|operation| !handled.contains(*operation))
                 .cloned(),
         );
     }
     sorted(operations)
 }
 
-/// Whether `effect` declares `operation` (an `Effect.op` name).
-fn owns(effect: &str, operation: &str) -> bool {
-    operation.split('.').next() == Some(effect)
+/// The `Effect.op` name every requirement, dependency and dispatch is keyed by.
+pub(crate) fn operation_name(effect: &str, operation: &str) -> String {
+    format!("{effect}.{operation}")
 }
 
 fn sorted(mut operations: Vec<String>) -> Vec<String> {
@@ -141,8 +141,8 @@ fn sorted(mut operations: Vec<String>) -> Vec<String> {
     operations
 }
 
-/// Walk one body, tracking which static effects an enclosing region already
-/// answers so a self-handled effect never counts as a dependency.
+/// Walk one body, tracking which operations an enclosing region already
+/// answers so a self-handled operation never counts as a dependency.
 fn body_facts(
     body: &Expr,
     effects: &BTreeMap<String, EffectDecl>,
@@ -175,7 +175,9 @@ fn scan_body(
 ) {
     match expression {
         // Discharge obligations in either stage, but retain runtime requests
-        // when querying dispatch rather than unhandled requirements.
+        // when querying dispatch rather than unhandled requirements. A handler
+        // answers the operations its arms supply, not its whole effect: an
+        // uncovered operation still searches outward ([STAGE-LOWER-ORDER]).
         Expr::Handler {
             effect,
             arms,
@@ -185,17 +187,18 @@ fn scan_body(
             ..
         } => {
             let effect = effect.clone();
-            for arm in arms {
+            for arm in arms.iter_mut() {
                 scan_body(&mut arm.body, effects, stage, dispatch, handled, facts);
             }
-            let discharged = !dispatch || selected.is_compile_time();
-            if discharged {
-                handled.push(effect);
+            let depth = handled.len();
+            if !dispatch || selected.is_compile_time() {
+                handled.extend(
+                    arms.iter()
+                        .map(|arm| operation_name(&effect, &arm.operation)),
+                );
             }
             scan_body(body, effects, stage, dispatch, handled, facts);
-            if discharged {
-                let _ = handled.pop();
-            }
+            handled.truncate(depth);
             if let Some(clause) = return_clause {
                 scan_body(clause, effects, stage, dispatch, handled, facts);
             }
@@ -203,9 +206,9 @@ fn scan_body(
         Expr::Perform {
             effect, operation, ..
         } => {
-            let (effect, operation) = (effect.clone(), operation.clone());
-            if declared_at(effects, &effect, stage) && !handled.contains(&effect) {
-                facts.direct.push(format!("{effect}.{operation}"));
+            let requested = operation_name(effect, operation);
+            if declared_at(effects, effect, stage) && !handled.contains(&requested) {
+                facts.direct.push(requested);
             }
             children_mut(expression, &mut |child| {
                 scan_body(child, effects, stage, dispatch, handled, facts);
