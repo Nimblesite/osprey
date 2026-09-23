@@ -72,6 +72,31 @@ fn a_static_handler_leaves_no_runtime_residue() {
 }
 
 #[test]
+fn an_open_row_helper_discharged_statically_leaves_no_effect_dispatch() {
+    for (source, flavor) in [
+        (
+            "effect Read { value: fn() -> int }\nfn relay(callback) -> int !e = callback()\nfn work() !Read = perform Read.value()\nlet answer = {\n    handle static Read { value => 41 }\n    relay(work)\n}\nprint(answer)\n",
+            Flavor::Default,
+        ),
+        (
+            "effect Read\n    value : Unit => int\nrelay : (Unit -> int) -> int !e\nrelay callback = callback ()\nwork : Unit -> int !Read\nwork () = perform Read.value ()\nanswer =\n    handle static Read\n        value => 41\n    relay work\nprint answer\n",
+            Flavor::Ml,
+        ),
+    ] {
+        let parsed = parse_program_with_flavor(source, flavor);
+        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+        let ir = osprey_codegen::compile_program(&parsed.program).expect("static codegen");
+        for symbol in HANDLER_RUNTIME_SYMBOLS {
+            assert!(
+                !ir.contains(symbol),
+                "{flavor:?}: statically discharged open-row helper left `{symbol}` in IR"
+            );
+        }
+        assert!(!ir.contains("Read"), "{flavor:?}: {ir}");
+    }
+}
+
+#[test]
 fn the_dynamic_twin_still_uses_the_handler_runtime() {
     let ir = compile_staged(DYNAMIC_SOURCE);
     for symbol in HANDLER_RUNTIME_SYMBOLS {

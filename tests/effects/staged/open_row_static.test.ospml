@@ -1,0 +1,15 @@
+effect Read
+    value : Unit => int
+
+relay : (Unit -> int) -> int !e
+relay callback = callback ()
+
+work : Unit -> int !Read
+work () = perform Read.value ()
+
+answer =
+    handle static Read
+        value => 41
+    relay work
+
+print answer
