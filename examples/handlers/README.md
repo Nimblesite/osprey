@@ -122,6 +122,21 @@ carry independently quantified rows, so the
 [row-polymorphism acceptance gate](../../docs/plans/0016-algebraic-effects-and-handlers.md)
 remains unfinished.
 
+## Try the same helper at two stages
+
+```sh
+python3 examples/handlers/run.py all --demo staged-rows --check
+```
+
+The [Default](staged-rows.osp) and [ML](staged-rows.ospml) programs both print
+`41 42`. Each calls the same `relay` and `work` functions. The first call
+interprets `Read.value` with `handle static Read` during compilation; the
+second installs a callable `Read` handler at runtime. The test suite runs both
+programs under the default, GC and ARC backends. This demonstrates one
+closed-program staging path through an open callback row; it does not establish
+independently published row-polymorphic signatures or dynamic control support
+on wasm.
+
 ## Reproducibility
 
 Verified locally with Koka 3.2.3, OCaml 5.4.1, Eff 5.1 (source commit `503da71b9cb927af04fc62e28511e63cd7199151`), and Effekt 0.80.0. Eff interpreter binding/type echoes are removed from the displayed comparison; its full transcript remains in `target/handler-demo/eff.log`. Compiler logs and executables stay under `target/handler-demo`, outside the source directory.

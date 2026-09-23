@@ -13,6 +13,7 @@ BUILD = ROOT / "target" / "handler-demo"
 TOOLS = ROOT / "target" / "demo-tools"
 LANGUAGES = ("osprey", "osprey-ml", "koka", "ocaml", "eff", "effekt")
 OPEN_ROW_LANGUAGES = ("osprey", "osprey-ml", "koka")
+STAGED_ROW_LANGUAGES = ("osprey", "osprey-ml")
 
 
 def command(arguments, directory, log_name):
@@ -60,11 +61,12 @@ def run(language, demo):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("language", nargs="?", default="all", choices=("all", *LANGUAGES))
-    parser.add_argument("--demo", default="handlers", choices=("handlers", "semantics", "returns", "open-rows"))
+    parser.add_argument("--demo", default="handlers", choices=("handlers", "semantics", "returns", "open-rows", "staged-rows"))
     parser.add_argument("--check", action="store_true", help="assert the checked-in expected output")
     args = parser.parse_args()
     BUILD.mkdir(parents=True, exist_ok=True)
-    available = OPEN_ROW_LANGUAGES if args.demo == "open-rows" else LANGUAGES
+    available = {"open-rows": OPEN_ROW_LANGUAGES,
+                 "staged-rows": STAGED_ROW_LANGUAGES}.get(args.demo, LANGUAGES)
     if args.language != "all" and args.language not in available:
         parser.error(f"{args.demo} has no {args.language} comparison source")
     selected = available if args.language == "all" else (args.language,)

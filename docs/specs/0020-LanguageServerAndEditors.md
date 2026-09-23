@@ -150,6 +150,13 @@ AST for its declaration, and returns Markdown: a fenced signature or
 over [`analysis.rs`](../../crates/osprey-lsp/src/analysis.rs)
 (`collect_all_symbols`).
 
+For a function with a written effect row, hover, signature help, completion
+detail and `--symbols` preserve that row after type inference fills unwritten
+parameter and return types. `declaredEffectRow` in symbol JSON is the written
+upper bound (`![]`, `!e`, or a fixed/open row), not an assertion that every
+permitted operation actually occurs. Inferring and displaying a function's
+transitive required operations remains part of [plan 0016](../plans/0016-algebraic-effects-and-handlers.md).
+
 Resolution order for the symbol under the cursor:
 
 1. An effect-operation declaration, qualified `perform`, or handler arm →

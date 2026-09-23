@@ -73,6 +73,23 @@ fn open_row_callback_effects_reach_the_selected_handler_in_both_flavors() {
 }
 
 #[test]
+fn the_same_open_row_helper_runs_under_static_and_dynamic_handlers() {
+    let expected = include_str!("../../../examples/handlers/staged-rows.expectedoutput");
+    assert_output(
+        "staged_rows",
+        "osp",
+        include_str!("../../../examples/handlers/staged-rows.osp"),
+        expected,
+    );
+    assert_output(
+        "staged_rows",
+        "ospml",
+        include_str!("../../../examples/handlers/staged-rows.ospml"),
+        expected,
+    );
+}
+
+#[test]
 fn a_fixed_open_row_keeps_its_own_and_callback_operations_separate() {
     assert_output(
         "fixed_open_row",
