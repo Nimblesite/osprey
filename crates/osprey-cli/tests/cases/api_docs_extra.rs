@@ -160,7 +160,7 @@ fn extra_docs_undocumented_declarations_state_their_own_facts() {
     assert_eq!(result.code, Some(0), "{}", result.stderr);
     let page = read_text(&output.join("api/fetch.md"));
     assert!(
-        page.contains("fetch : int -> (string -> (string -> string)) ! Store"),
+        page.contains("fetch : int -> (string -> (string -> string)) ! Store\n```"),
         "the effect row belongs on the signature: {page}"
     );
     for parameter in ["- `id` — `int`", "- `prefix` — `string`", "- `suffix`"] {
@@ -178,8 +178,8 @@ fn extra_docs_undocumented_declarations_state_their_own_facts() {
 }
 
 /// A Default signature line already names every parameter, so a derived list
-/// under it would restate the line above with less in it. The effect row is
-/// still the fact the type model leaves out, and it still appears.
+/// under it would restate the line above with less in it. The editor's
+/// signature carries the declared effect row once, in canonical spelling.
 #[test]
 fn extra_docs_default_pages_state_effects_without_restating_parameters() {
     let source = "effect Store {\n  read: fn(int) -> string\n}\n\
@@ -188,7 +188,7 @@ fn extra_docs_default_pages_state_effects_without_restating_parameters() {
     assert_eq!(result.code, Some(0), "{}", result.stderr);
     let page = read_text(&output.join("api/fetch.md"));
     assert!(
-        page.contains("![Store]"),
+        page.contains("fn fetch(id: int) -> string !Store\n```"),
         "the effect row is missing: {page}"
     );
     assert!(page.contains("## Effects"), "{page}");

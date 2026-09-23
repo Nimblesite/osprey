@@ -151,8 +151,13 @@ fn ml_function(rest: &str) -> String {
         .map_or((tail.as_str(), ""), |(result, row)| (result, row));
     let row = if row.is_empty() {
         String::new()
-    } else {
+    } else if row.starts_with('[') || row.starts_with(char::is_lowercase) {
         format!(" !{row}")
+    } else {
+        // A closed singleton is spelled `! Store` in ML. The canonical
+        // signature uses `!Store`; open variables and bracketed rows already
+        // have the same spelling in both flavors.
+        format!(" ! {row}")
     };
     format!(
         "{} : {}{row}",
@@ -332,6 +337,10 @@ mod tests {
 
     #[test]
     fn ml_signatures_keep_rows_and_do_not_invent_a_return_type() {
+        assert_eq!(
+            signature(Flavor::Ml, "fn fetch(id: int) -> string !Store"),
+            "fetch : int -> string ! Store"
+        );
         assert_eq!(
             signature(Flavor::Ml, "fn relay(callback) -> int ![Log | e]"),
             "relay : _ -> int ![Log | e]"
