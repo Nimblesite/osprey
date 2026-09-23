@@ -6,6 +6,7 @@
 //! closure.
 
 use crate::{check_program, TypeError};
+use osprey_ast::Stmt;
 use osprey_syntax::{parse_program_with_flavor, Flavor};
 use std::{
     process::Command,
@@ -166,6 +167,113 @@ fn explicit_empty_rows_reject_unproven_callback_effects() {
                 error
                     .message
                     .contains("unproven effects outside its declared row")
+            }),
+            "{flavor:?}: {errors:?}"
+        );
+    }
+}
+
+#[test]
+fn open_rows_transport_callback_effects_to_the_handler_in_both_flavors() {
+    for (source, flavor) in [
+        (
+            "effect Log { write: fn(string) -> Unit }\nfn invoke(callback: fn() -> Unit) -> Unit !e = callback()\nfn report() -> Unit !Log = perform Log.write(\"sent\")\nlet h = handler Log { write message => print(message) }\nh(|| => invoke(report))\n",
+            Flavor::Default,
+        ),
+        (
+            "effect Log\n    write : string => Unit\ninvoke : (Unit -> Unit) -> Unit !e\ninvoke callback = callback ()\nreport : Unit -> Unit !Log\nreport () = perform Log.write \"sent\"\nh = handler Log\n    write message => print message\n_ = h (\\() => invoke report)\n",
+            Flavor::Ml,
+        ),
+    ] {
+        let parsed = parse_program_with_flavor(source, flavor);
+        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+        let invoke = parsed
+            .program
+            .statements
+            .iter()
+            .find_map(|statement| match statement {
+                Stmt::Function {
+                    name, effect_tail, ..
+                } if name == "invoke" => effect_tail.as_deref(),
+                _ => None,
+            });
+        assert_eq!(invoke, Some("e"), "{flavor:?}");
+        let errors = check_program(&parsed.program);
+        assert!(errors.is_empty(), "{flavor:?}: {errors:?}");
+    }
+}
+
+#[test]
+fn open_tail_does_not_hide_a_direct_operation_outside_its_fixed_labels() {
+    for (accepted, rejected, flavor) in [
+        (
+            "effect Log { write: fn(string) -> Unit }\nfn combine(callback: fn() -> Unit) -> Unit ![Log | e] = {\n    perform Log.write(\"fixed\")\n    callback()\n}\n",
+            "effect Log { write: fn(string) -> Unit }\nfn wrong() -> Unit !e = perform Log.write(\"missing\")\n",
+            Flavor::Default,
+        ),
+        (
+            "effect Log\n    write : string => Unit\ncombine : (Unit -> Unit) -> Unit ![Log | e]\ncombine callback =\n    perform Log.write \"fixed\"\n    callback ()\n",
+            "effect Log\n    write : string => Unit\nwrong : Unit -> Unit !e\nwrong () = perform Log.write \"missing\"\n",
+            Flavor::Ml,
+        ),
+    ] {
+        let parsed = parse_program_with_flavor(accepted, flavor);
+        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+        let errors = check_program(&parsed.program);
+        assert!(errors.is_empty(), "{flavor:?}: {errors:?}");
+
+        let parsed = parse_program_with_flavor(rejected, flavor);
+        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+        let errors = check_program(&parsed.program);
+        assert!(
+            errors.iter().any(|error| {
+                error.message.contains("outside its declared row: Log.write")
+            }),
+            "{flavor:?}: {errors:?}"
+        );
+    }
+}
+
+#[test]
+fn open_tail_cannot_hide_a_direct_host_operation() {
+    for (source, flavor) in [
+        ("fn wrong() -> Unit !e = print(\"sent\")\n", Flavor::Default),
+        (
+            "wrong : Unit -> Unit !e\nwrong () = print \"sent\"\n",
+            Flavor::Ml,
+        ),
+    ] {
+        let parsed = parse_program_with_flavor(source, flavor);
+        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+        let errors = check_program(&parsed.program);
+        assert!(
+            errors.iter().any(|error| {
+                error.message.contains("outside its declared row")
+                    && error.message.contains("print")
+            }),
+            "{flavor:?}: {errors:?}"
+        );
+    }
+}
+
+#[test]
+fn a_closed_caller_cannot_erase_an_open_callback_requirement() {
+    for (source, flavor) in [
+        (
+            "fn relay(callback) -> Unit !e = callback()\nfn closed(callback: fn() -> Unit) -> Unit ![] = relay(callback)\n",
+            Flavor::Default,
+        ),
+        (
+            "relay : (Unit -> Unit) -> Unit !e\nrelay callback = callback ()\nclosed : (Unit -> Unit) -> Unit ![]\nclosed callback = relay callback\n",
+            Flavor::Ml,
+        ),
+    ] {
+        let parsed = parse_program_with_flavor(source, flavor);
+        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+        let errors = check_program(&parsed.program);
+        assert!(
+            errors.iter().any(|error| {
+                error.message.contains("function `closed` calls a function with unproven effects")
             }),
             "{flavor:?}: {errors:?}"
         );

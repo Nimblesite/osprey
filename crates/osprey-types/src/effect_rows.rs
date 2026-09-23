@@ -317,6 +317,7 @@ struct Function<'a> {
     scope: Vec<String>,
     parameters: Vec<String>,
     declared_effects: Vec<DeclaredEffect>,
+    effect_tail: Option<String>,
     effect_row_present: bool,
     body: &'a Expr,
     position: Option<Position>,
@@ -355,6 +356,7 @@ impl<'a> Index<'a> {
                     name,
                     parameters,
                     effects,
+                    effect_tail,
                     effect_row_present,
                     body,
                     position,
@@ -386,6 +388,7 @@ impl<'a> Index<'a> {
                                 }),
                             })
                             .collect(),
+                        effect_tail: effect_tail.clone(),
                         effect_row_present: *effect_row_present,
                         body,
                         position: *position,
@@ -3074,6 +3077,19 @@ pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) 
         })
         .collect();
     for function in &index.functions {
+        if function
+            .effect_tail
+            .as_ref()
+            .is_some_and(|tail| !tail.chars().next().is_some_and(char::is_lowercase))
+        {
+            errors.push(
+                TypeError::new(format!(
+                    "function `{}` has an invalid effect row variable; use a lowercase name",
+                    function.qualified
+                ))
+                .with_pos(function.position),
+            );
+        }
         let unknown: BTreeSet<_> = function
             .declared_effects
             .iter()
@@ -3193,8 +3209,8 @@ pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) 
                     .with_pos(function.position),
                 );
             }
-            if function.declared_effects.is_empty()
-                && (!row.parameter_uses.is_empty() || row.unresolved_dynamic_call)
+            if (function.effect_tail.is_none() && !row.parameter_uses.is_empty())
+                || row.unresolved_dynamic_call
             {
                 errors.push(
                     TypeError::new(format!(

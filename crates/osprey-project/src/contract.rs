@@ -36,6 +36,7 @@ pub(crate) fn errors(implementation: &Stmt, contract: &SignatureItem) -> Vec<Str
                 parameters,
                 return_type,
                 effects,
+                effect_tail,
                 effect_row_present,
                 ..
             },
@@ -45,6 +46,7 @@ pub(crate) fn errors(implementation: &Stmt, contract: &SignatureItem) -> Vec<Str
                 parameters: expected_parameters,
                 return_type: expected_return,
                 effects: expected_effects,
+                effect_tail: expected_tail,
                 ..
             },
         ) => function_errors(
@@ -54,6 +56,7 @@ pub(crate) fn errors(implementation: &Stmt, contract: &SignatureItem) -> Vec<Str
                 parameters: parameters.iter().map(|parameter| parameter.ty.as_ref()),
                 return_type: return_type.as_ref(),
                 effects,
+                effect_tail: effect_tail.as_deref(),
                 effect_row_present: *effect_row_present,
             },
             &ExpectedFunction {
@@ -61,6 +64,7 @@ pub(crate) fn errors(implementation: &Stmt, contract: &SignatureItem) -> Vec<Str
                 parameters: expected_parameters,
                 return_type: expected_return,
                 effects: expected_effects,
+                effect_tail: expected_tail.as_deref(),
             },
         ),
         (
@@ -75,6 +79,7 @@ pub(crate) fn errors(implementation: &Stmt, contract: &SignatureItem) -> Vec<Str
                 parameters: expected_parameters,
                 return_type: expected_return,
                 effects: expected_effects,
+                effect_tail: expected_tail,
                 ..
             },
         ) => function_errors(
@@ -84,6 +89,7 @@ pub(crate) fn errors(implementation: &Stmt, contract: &SignatureItem) -> Vec<Str
                 parameters: parameters.iter().map(|parameter| Some(&parameter.ty)),
                 return_type: return_type.as_ref(),
                 effects: &[],
+                effect_tail: None,
                 effect_row_present: false,
             },
             &ExpectedFunction {
@@ -91,6 +97,7 @@ pub(crate) fn errors(implementation: &Stmt, contract: &SignatureItem) -> Vec<Str
                 parameters: expected_parameters,
                 return_type: expected_return,
                 effects: expected_effects,
+                effect_tail: expected_tail.as_deref(),
             },
         ),
         (
@@ -147,6 +154,7 @@ struct FunctionShape<'a, I> {
     parameters: I,
     return_type: Option<&'a TypeExpr>,
     effects: &'a [EffectRef],
+    effect_tail: Option<&'a str>,
     effect_row_present: bool,
 }
 
@@ -155,6 +163,7 @@ struct ExpectedFunction<'a> {
     parameters: &'a [TypeExpr],
     return_type: &'a TypeExpr,
     effects: &'a [EffectRef],
+    effect_tail: Option<&'a str>,
 }
 
 fn function_errors<'a>(
@@ -200,12 +209,13 @@ fn function_errors<'a>(
         ));
     }
     if actual.effect_row_present
-        && !same_effects(
-            actual.effects,
-            expected.effects,
-            actual.binders,
-            expected.binders,
-        )
+        && (actual.effect_tail.is_some() != expected.effect_tail.is_some()
+            || !same_effects(
+                actual.effects,
+                expected.effects,
+                actual.binders,
+                expected.binders,
+            ))
     {
         errors.push(format!(
             "function `{name}` effect row does not match its signature"

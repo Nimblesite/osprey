@@ -88,6 +88,8 @@ pub(crate) enum MlSignatureItem {
         ty: MlType,
         /// Required effect row.
         effects: Vec<MlEffectRef>,
+        /// Optional open remainder (`![Log | e]`).
+        effect_tail: Option<String>,
         /// Whether `!` was written, including `![]`.
         effect_row_present: bool,
         /// Source position of the name.
@@ -229,6 +231,8 @@ pub(crate) enum MlItem {
         /// The effect row from a trailing `! Ref(, Ref)*` (or `! [Ref, …]`),
         /// empty when the signature declares no effects ([FLAVOR-ML-EFFECT]).
         effects: Vec<MlEffectRef>,
+        /// Optional open remainder (`![Log | e]`).
+        effect_tail: Option<String>,
         /// Whether `!` was written, including `![]`.
         effect_row_present: bool,
         /// Source position of the signed name.

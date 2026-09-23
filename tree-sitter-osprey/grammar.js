@@ -369,8 +369,7 @@ module.exports = grammar({
     effect_set: ($) =>
       choice(
         seq('!', $.effect_ref),
-        seq('!', '[', $.effect_list, ']'),
-        seq('!', '[', ']'),
+        seq('!', '[', optional($.effect_list), optional(seq('|', field('tail', $.identifier))), ']'),
       ),
     effect_list: ($) => sep1(',', $.effect_ref),
     effect_ref: ($) => seq(field('name', choice($.qualified_path, $.identifier)), optional($.type_arguments)),

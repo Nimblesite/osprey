@@ -248,19 +248,24 @@ impl<'a> Lowerer<'a> {
                 value: self.lower_expr_field(node, "value"),
                 position: Some(self.pos(node)),
             },
-            "function_declaration" => Stmt::Function {
-                name: self.field_text(node, "name"),
-                type_params: self.lower_type_params(node),
-                parameters: self.lower_params(node.child_by_field_name("parameters")),
-                return_type: node
-                    .child_by_field_name("return_type")
-                    .map(|n| self.lower_type(n)),
-                effects: self.lower_effects(node.child_by_field_name("effects")),
-                effect_row_present: node.child_by_field_name("effects").is_some(),
-                body: self.lower_expr_field(node, "body"),
-                doc: self.doc_text(node),
-                position: Some(self.field_pos(node, "name")),
-            },
+            "function_declaration" => {
+                let (effects, effect_tail) =
+                    self.lower_effect_row(node.child_by_field_name("effects"));
+                Stmt::Function {
+                    name: self.field_text(node, "name"),
+                    type_params: self.lower_type_params(node),
+                    parameters: self.lower_params(node.child_by_field_name("parameters")),
+                    return_type: node
+                        .child_by_field_name("return_type")
+                        .map(|n| self.lower_type(n)),
+                    effects,
+                    effect_tail,
+                    effect_row_present: node.child_by_field_name("effects").is_some(),
+                    body: self.lower_expr_field(node, "body"),
+                    doc: self.doc_text(node),
+                    position: Some(self.field_pos(node, "name")),
+                }
+            }
             "extern_declaration" => Stmt::Extern {
                 name: self.field_text(node, "name"),
                 parameters: self.lower_extern_params(node.child_by_field_name("parameters")),
@@ -514,13 +519,33 @@ impl<'a> Lowerer<'a> {
             .collect()
     }
 
-    /// Lower an effect row into effect references with optional type
-    /// arguments (`!State<int>`). Implements [EFFECTS-GENERIC-ROWS].
-    pub(crate) fn lower_effects(&self, effects: Option<Node<'_>>) -> Vec<EffectRef> {
+    /// Lower a closed or open effect row, preserving a quantified tail.
+    /// Implements [EFFECTS-ROW-POLY] and [EFFECTS-GENERIC-ROWS].
+    pub(crate) fn lower_effect_row(
+        &self,
+        effects: Option<Node<'_>>,
+    ) -> (Vec<EffectRef>, Option<String>) {
         let Some(effects) = effects else {
-            return Vec::new();
+            return (Vec::new(), None);
         };
-        self.descendants_of_kind(effects, "effect_ref")
+        let tail = effects
+            .child_by_field_name("tail")
+            .map(|node| self.text(node));
+        let refs = self.descendants_of_kind(effects, "effect_ref");
+        if tail.is_none() && !self.text(effects).contains('[') {
+            if let [effect] = refs.as_slice() {
+                let name = self.field_text(*effect, "name");
+                if name.chars().next().is_some_and(char::is_lowercase)
+                    && !name.contains("::")
+                    && self
+                        .first_child_of_kind(*effect, "type_arguments")
+                        .is_none()
+                {
+                    return (Vec::new(), Some(name));
+                }
+            }
+        }
+        let labels = refs
             .iter()
             .map(|r| EffectRef {
                 name: self.field_text(*r, "name"),
@@ -531,7 +556,8 @@ impl<'a> Lowerer<'a> {
                     .unwrap_or_default(),
                 position: Some(self.pos(*r)),
             })
-            .collect()
+            .collect();
+        (labels, tail)
     }
 
     /// Lower a `_type` node (function/generic/array/identifier).

@@ -68,10 +68,25 @@ export async function diagnostics(document: vscode.TextDocument, expected: Expec
 
 export async function actions(document: vscode.TextDocument, range: vscode.Range,
   kind: vscode.CodeActionKind | string = vscode.CodeActionKind.QuickFix): Promise<vscode.CodeAction[]> {
-  const found = await vscode.commands.executeCommand<vscode.CodeAction[]>(
-    "vscode.executeCodeActionProvider", document.uri, range, typeof kind === "string" ? kind : kind.value);
-  assert.ok(Array.isArray(found), "Code action provider must answer the request");
-  return found;
+  const version = document.version;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const found = await vscode.commands.executeCommand<vscode.CodeAction[]>(
+        "vscode.executeCodeActionProvider", document.uri, range, typeof kind === "string" ? kind : kind.value);
+      assert.ok(Array.isArray(found), "Code action provider must answer the request");
+      return found;
+    } catch (error) {
+      // VS Code cancels an in-flight provider request when diagnostics are
+      // republished. Retry only that transient cancellation on the same
+      // document version; a changed source must still fail the test.
+      if (error instanceof Error && error.message === "Canceled" && document.version === version && attempt < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error("Code action provider did not answer after cancellation retries");
 }
 
 export function assertAction(action: vscode.CodeAction, title: string, diagnostic: vscode.Diagnostic): void {

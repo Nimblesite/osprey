@@ -182,6 +182,29 @@ mod tests {
     }
 
     #[test]
+    fn open_effect_rows_survive_formatting_in_both_flavors() {
+        for (source, flavor) in [
+            (
+                "fn invoke(callback: fn() -> Unit) -> Unit ![Log | e] = callback()\n",
+                Flavor::Default,
+            ),
+            (
+                "invoke : (Unit -> Unit) -> Unit ![Log | e]\ninvoke callback = callback ()\n",
+                Flavor::Ml,
+            ),
+        ] {
+            let formatted = format_source(source, flavor).expect("format open row");
+            assert!(formatted.contains("Log"), "{flavor:?}: {formatted}");
+            assert!(formatted.contains("| e"), "{flavor:?}: {formatted}");
+            assert_eq!(
+                format_source(&formatted, flavor).expect("reformat open row"),
+                formatted,
+                "{flavor:?}"
+            );
+        }
+    }
+
+    #[test]
     fn inner_doc_comments_survive_formatting_in_both_flavors() {
         // The formatter's guarantee is meaning-preservation, and since `//!`
         // lowers to `Program::doc` / `Stmt::Namespace::inner_doc` /

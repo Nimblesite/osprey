@@ -64,6 +64,7 @@ fn signature_item(item: &SignatureItem) -> String {
             parameters,
             return_type,
             effects,
+            effect_tail,
             effect_row_present,
             ..
         } => {
@@ -77,10 +78,11 @@ fn signature_item(item: &SignatureItem) -> String {
                 .map(effect_ref)
                 .collect::<Vec<_>>()
                 .join(", ");
-            let suffix = if *effect_row_present {
-                format!(" ![{row}]")
-            } else {
-                String::new()
+            let suffix = match (effect_row_present, effect_tail) {
+                (false, _) => String::new(),
+                (true, Some(tail)) if row.is_empty() => format!(" ![|{tail}]"),
+                (true, Some(tail)) => format!(" ![{row} | {tail}]"),
+                (true, None) => format!(" ![{row}]"),
             };
             format!(
                 "fn {name}{}({params}) -> {}{suffix}",

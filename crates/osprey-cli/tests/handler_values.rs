@@ -57,6 +57,38 @@ fn returned_handlers_keep_their_captures_and_callable_argument_types() {
 }
 
 #[test]
+fn open_row_callback_effects_reach_the_selected_handler_in_both_flavors() {
+    assert_output(
+        "open_row",
+        "osp",
+        "effect Log { write: fn(string) -> Unit }\nfn invoke(callback: fn() -> Unit) -> Unit !e = callback()\nfn report() -> Unit !Log = perform Log.write(\"sent\")\nlet h = handler Log { write message => print(message) }\nh(|| => invoke(report))\n",
+        "sent\n",
+    );
+    assert_output(
+        "open_row",
+        "ospml",
+        "effect Log\n    write : string => Unit\ninvoke : (Unit -> Unit) -> Unit !e\ninvoke callback = callback ()\nreport : Unit -> Unit !Log\nreport () = perform Log.write \"sent\"\nh = handler Log\n    write message => print message\n_ = h (\\() => invoke report)\n",
+        "sent\n",
+    );
+}
+
+#[test]
+fn a_fixed_open_row_keeps_its_own_and_callback_operations_separate() {
+    assert_output(
+        "fixed_open_row",
+        "osp",
+        "effect Log { write: fn(string) -> Unit }\neffect Audit { write: fn(string) -> Unit }\nfn combine(callback: fn() -> Unit) -> Unit ![Log | e] = {\n    perform Log.write(\"fixed\")\n    callback()\n}\nfn report() -> Unit !Audit = perform Audit.write(\"tail\")\nlet logging = handler Log { write message => print(message) }\nlet auditing = handler Audit { write message => print(message) }\nlogging(|| => auditing(|| => combine(report)))\n",
+        "fixed\ntail\n",
+    );
+    assert_output(
+        "fixed_open_row",
+        "ospml",
+        "effect Log\n    write : string => Unit\neffect Audit\n    write : string => Unit\ncombine : (Unit -> Unit) -> Unit ![Log | e]\ncombine callback =\n    perform Log.write \"fixed\"\n    callback ()\nreport : Unit -> Unit !Audit\nreport () = perform Audit.write \"tail\"\nlogging = handler Log\n    write message => print message\nauditing = handler Audit\n    write message => print message\n_ = logging (\\() => auditing (\\() => combine report))\n",
+        "fixed\ntail\n",
+    );
+}
+
+#[test]
 fn returned_handler_closures_preserve_shared_and_isolated_state() {
     // This existing-syntax equivalent isolates the runtime requirement from
     // the new parser: the promoted cell must survive its maker's return.

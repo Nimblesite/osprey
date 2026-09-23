@@ -13,6 +13,7 @@
 
 mod support;
 
+use osprey_ast::Stmt;
 use osprey_project::{assemble, SourceFile};
 use osprey_syntax::{parse_program_with_flavor, Flavor};
 use std::path::PathBuf;
@@ -106,6 +107,36 @@ fn a_signature_empty_row_rejects_an_effectful_implementation_in_both_flavors() {
             errors.iter().any(|error| error.message.contains("performs effects outside its declared row: app::E.ping")),
             "{flavor:?}: {errors:?}"
         );
+    }
+}
+
+#[test]
+fn a_signature_open_row_reaches_its_implementation_in_both_flavors() {
+    for (flavor, name, text) in [
+        (
+            Flavor::Default,
+            "main.osp",
+            "namespace app;\nsignature Api { fn invoke(callback: fn() -> Unit) -> Unit ![|e] }\nmodule M : Api { fn invoke(callback) = callback() }\n",
+        ),
+        (
+            Flavor::Ml,
+            "main.ospml",
+            "namespace app\nsignature Api\n    invoke : (Unit -> Unit) -> Unit ![|e]\nmodule M : Api\n    invoke callback = callback ()\n",
+        ),
+    ] {
+        let source = parsed(name, flavor, text);
+        let assembled = assemble(&config(name), &[source]).expect("module should assemble");
+        let invoke = assembled
+            .program
+            .statements
+            .iter()
+            .find_map(|statement| match statement {
+                Stmt::Function { effect_tail, .. } => effect_tail.as_deref(),
+                _ => None,
+            });
+        assert_eq!(invoke, Some("e"), "{flavor:?}: {:?}", assembled.program);
+        let errors = osprey_types::check_program(&assembled.program);
+        assert!(errors.is_empty(), "{flavor:?}: {errors:?}");
     }
 }
 

@@ -48,6 +48,49 @@ fn clean() -> int ![] = 42
       body: (expression
         (primary_expression
           (literal
+          (integer)))))))
+
+================================================================================
+Open effect rows retain fixed labels and the named tail [EFFECTS-ROW-POLY]
+================================================================================
+
+fn fixed() ![Log | e] = 42
+fn tail() !e = 42
+fn bracketed() ![|e] = 42
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (statement
+    (function_declaration
+      name: (identifier)
+      effects: (effect_set
+        (effect_list
+          (effect_ref
+            name: (identifier)))
+        tail: (identifier))
+      body: (expression
+        (primary_expression
+          (literal
+            (integer))))))
+  (statement
+    (function_declaration
+      name: (identifier)
+      effects: (effect_set
+        (effect_ref
+          name: (identifier)))
+      body: (expression
+        (primary_expression
+          (literal
+            (integer))))))
+  (statement
+    (function_declaration
+      name: (identifier)
+      effects: (effect_set
+        tail: (identifier))
+      body: (expression
+        (primary_expression
+          (literal
             (integer)))))))
 
 ================================================================================

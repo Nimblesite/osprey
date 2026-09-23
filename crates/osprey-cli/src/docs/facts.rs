@@ -12,6 +12,7 @@ use crate::document_entries::DocEntry;
 use osprey_ast::{EffectRef, Expr, ExternParameter, Parameter, Position, Stmt, TypeExpr};
 use osprey_lsp::analysis::render_type;
 use osprey_syntax::Flavor;
+use std::fmt::Write;
 
 /// The derived sections for one page, in reading order.
 ///
@@ -42,6 +43,7 @@ pub(super) fn sections(entry: &DocEntry, flavor: Flavor, location: &str) -> Stri
 pub(super) fn effect_row(entry: &DocEntry, flavor: Flavor) -> String {
     let Some(Stmt::Function {
         effects,
+        effect_tail,
         effect_row_present,
         ..
     }) = entry.declaration.as_ref()
@@ -55,6 +57,13 @@ pub(super) fn effect_row(entry: &DocEntry, flavor: Flavor) -> String {
         .iter()
         .map(|effect| format!("{}{}", effect.name, arguments(effect, flavor)))
         .collect();
+    if let Some(tail) = effect_tail {
+        return if row.is_empty() {
+            format!(" !{tail}")
+        } else {
+            format!(" ![{} | {tail}]", row.join(", "))
+        };
+    }
     match (flavor, row.as_slice()) {
         (_, []) => " ![]".to_owned(),
         (Flavor::Ml, [only]) => format!(" ! {only}"),
@@ -204,6 +213,7 @@ fn returns(entry: &DocEntry, result: Option<String>) -> String {
 fn effects(entry: &DocEntry, flavor: Flavor) -> String {
     let Some(Stmt::Function {
         effects,
+        effect_tail,
         effect_row_present,
         ..
     }) = entry.declaration.as_ref()
@@ -215,17 +225,29 @@ fn effects(entry: &DocEntry, flavor: Flavor) -> String {
         .map(|effect| performed(effect, flavor))
         .collect();
     if rows.is_empty() {
+        if let Some(tail) = effect_tail {
+            return format!(
+                "## Effects\n\nOpen effect remainder `{tail}` is supplied by the caller."
+            );
+        }
         return if *effect_row_present {
             "## Effects\n\nDeclared pure (`![]`).".to_owned()
         } else {
             String::new()
         };
     }
-    format!(
+    let mut rendered = format!(
         "## Effects\n\nCalling this asks for the work below. A caller runs it inside a matching \
          `handle`, which decides how that work is actually done.\n\n{}",
         rows.join("\n")
-    )
+    );
+    if let Some(tail) = effect_tail {
+        let _ = write!(
+            rendered,
+            "\n\nAdditional effects come from the open remainder `{tail}`."
+        );
+    }
+    rendered
 }
 
 /// One effect as a documentation symbol link, so it reaches the effect's own

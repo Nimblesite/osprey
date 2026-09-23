@@ -223,6 +223,29 @@ fn extra_docs_distinguish_an_explicit_empty_effect_row_from_an_omitted_row() {
     }
 }
 
+#[test]
+fn extra_docs_show_an_open_effect_remainder() {
+    for (flavor, source) in [
+        (
+            "osp",
+            "effect Log { write: fn(string) -> Unit }\nfn invoke(callback: fn() -> Unit) -> Unit ![Log | e] = {\n    perform Log.write(\"fixed\")\n    callback()\n}\n",
+        ),
+        (
+            "ospml",
+            "effect Log\n    write : string => Unit\ninvoke : (Unit -> Unit) -> Unit ![Log | e]\ninvoke callback =\n    perform Log.write \"fixed\"\n    callback ()\n",
+        ),
+    ] {
+        let (result, output) = export(source, flavor, &format!("extra_docs_open_row_{flavor}"));
+        assert_eq!(result.code, Some(0), "{}", result.stderr);
+        let invoke = read_text(&output.join("api/invoke.md"));
+        assert!(invoke.contains("Log | e"), "{flavor}: {invoke}");
+        assert!(
+            invoke.contains("Additional effects come from the open remainder `e`."),
+            "{flavor}: {invoke}"
+        );
+    }
+}
+
 /// A member listing whose Description column is blank on every row tells a
 /// reader nothing. An undocumented member is described by its own signature,
 /// stripped of the qualification the Name column already carries.

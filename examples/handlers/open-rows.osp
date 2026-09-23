@@ -1,0 +1,10 @@
+effect Log { write: fn(string) -> Unit }
+
+fn run(callback) -> Unit !e = callback()
+fn work() !Log = perform Log.write("job")
+
+let live = handler Log { write message => print("live:" + message) }
+let test = handler Log { write message => print("test:" + message) }
+
+live(|| => run(work))
+test(|| => run(work))

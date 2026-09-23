@@ -30,6 +30,7 @@ impl Resolver<'_> {
                     parameters,
                     return_type,
                     effects,
+                    effect_tail,
                     effect_row_present,
                     position,
                     ..
@@ -38,6 +39,7 @@ impl Resolver<'_> {
                     parameters: contracts,
                     return_type: contract_return,
                     effects: contract_effects,
+                    effect_tail: contract_tail,
                     effect_row_present: contract_row_present,
                     ..
                 },
@@ -59,6 +61,7 @@ impl Resolver<'_> {
                 }
                 if !*effect_row_present && *contract_row_present {
                     effects.clone_from(contract_effects);
+                    effect_tail.clone_from(contract_tail);
                     *effect_row_present = true;
                 }
             }

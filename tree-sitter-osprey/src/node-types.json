@@ -368,7 +368,18 @@
   {
     "type": "effect_set",
     "named": true,
-    "fields": {},
+    "fields": {
+      "tail": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": false,
       "required": false,

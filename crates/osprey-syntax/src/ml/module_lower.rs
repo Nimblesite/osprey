@@ -39,11 +39,20 @@ impl ModuleLower {
                 type_params,
                 ty,
                 effects,
+                effect_tail,
                 effect_row_present,
                 pos,
             } => {
                 self.pending = Some((
-                    MlSig::new(name, type_params, ty, effects, effect_row_present, pos),
+                    MlSig::new(
+                        name,
+                        type_params,
+                        ty,
+                        effects,
+                        effect_tail,
+                        effect_row_present,
+                        pos,
+                    ),
                     visibility,
                 ));
             }
@@ -138,9 +147,18 @@ pub(super) fn signature_item(item: MlSignatureItem) -> SignatureItem {
             type_params,
             ty,
             effects,
+            effect_tail,
             effect_row_present,
             pos,
-        } => signature_value(name, type_params, &ty, effects, effect_row_present, pos),
+        } => signature_value(
+            name,
+            type_params,
+            &ty,
+            effects,
+            effect_tail,
+            effect_row_present,
+            pos,
+        ),
         MlSignatureItem::Type {
             name,
             manifest,
@@ -197,6 +215,7 @@ fn signature_value(
     type_params: Vec<super::cst::MlTypeParam>,
     ty: &MlType,
     effects: Vec<super::cst::MlEffectRef>,
+    effect_tail: Option<String>,
     effect_row_present: bool,
     pos: osprey_ast::Position,
 ) -> SignatureItem {
@@ -215,6 +234,7 @@ fn signature_value(
         parameters,
         return_type,
         effects: effects.into_iter().map(lower_effect_ref).collect(),
+        effect_tail,
         effect_row_present,
         position: Some(pos),
     }
