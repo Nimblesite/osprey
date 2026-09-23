@@ -131,39 +131,6 @@ pub fn parse_program_with_flavor(source: &str, flavor: Flavor) -> Parsed {
     }
 }
 
-/// Every function's dependency set — the static-effect operations it requires,
-/// transitively, minus what it answers itself — paired with the syntax errors
-/// found deriving them. Implements [STAGE-SIGNALS-DIRTY]
-/// (docs/specs/0035-StagedEffects.md).
-///
-/// Computed on the source program before semantic validation and static
-/// discharge, so all declared dependencies remain visible.
-///
-/// Parsing is best-effort, so a source that did not parse still yields a tree —
-/// and the dependency sets read off it are silently short. "This view reads no
-/// signals" and "this file did not parse" print identically, and a dirty set
-/// that is wrongly empty is a subtree that never rebuilds: the exact class of
-/// bug [STAGE-SIGNALS-DIRTY] claims to remove. So any caller answering a human
-/// or a build MUST surface these errors rather than the sets alone, which is
-/// the nonzero exit [STAGE-SIGNALS-EXACT] requires of `--deps`.
-#[must_use]
-pub fn dependency_report(
-    source: &str,
-    flavor: Flavor,
-) -> (
-    std::collections::BTreeMap<String, Vec<String>>,
-    Vec<SyntaxError>,
-) {
-    let parsed = match flavor {
-        Flavor::Default => default::parse(source),
-        Flavor::Ml => ml::parse_ml(source),
-    };
-    (
-        osprey_ast::stage::dependencies(&parsed.program),
-        parsed.errors,
-    )
-}
-
 /// The value of a leading `// osprey: flavor=<name>` marker, if the source has
 /// one (the space-less `//osprey: flavor=` spelling is accepted too). The marker
 /// must appear before any code so flavor selection never depends on a deep scan.
@@ -364,7 +331,9 @@ fn frame() = kernel\n    Tile size => 8\nin shade(2)\n";
 fn counter(n) = (perform Signal<Count>.read()) ?: n\n";
         let ml = "static effect Signal T\n    read : Unit => T\n\ncounter n = perform Signal<Count>.read () ?: n\n";
         for (flavor, source) in [(Flavor::Default, default), (Flavor::Ml, ml)] {
-            let deps = dependency_report(source, flavor).0;
+            let parsed = parse_program_with_flavor(source, flavor);
+            assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+            let deps = osprey_ast::stage::dependencies(&parsed.program);
             assert_eq!(
                 deps.get("counter").cloned().unwrap_or_default(),
                 vec!["Signal<Count>.read"],

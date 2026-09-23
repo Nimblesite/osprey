@@ -34,7 +34,7 @@ requirements. The compiler rejects absent or unresolved operation metadata.
 | --- | --- | --- |
 | Existing runtime | Value substitution, deep single-shot resume, generic operation identity, shared handler state and native fiber serialization exist. Native continuation storage uses pthreads. | `tests/effects/resume/`, `tests/effects/errors/`, `tests/regressions/effects/fiber_effects.test.osp` |
 | Transport fixes | Operation arity is length-carrying; whole `Result` values and managed answers have regression coverage. | `resume_error_policies.test.{osp,ospml}`, `direct_recovery.test.{osp,ospml}`, `compiler/runtime/effects_runtime_tests.c`; issues #182, #183, #185 |
-| Callable handlers | Both flavors run reusable handlers, captured factory values and rest-of-block installation, through generic/typed callbacks, in every memory mode. | `examples/handlers/handlers.*`, `crates/osprey-cli/tests/handler_values.rs` |
+| Callable handlers | Both flavors run reusable handlers, captured factory values and rest-of-block installation, through generic/typed callbacks, in every memory mode. The same storage and logging work runs under real and test implementations. | `examples/handlers/handlers.*`, `crates/osprey-cli/tests/handler_values.rs`, `tests/effects/injection/` |
 | Runtime dispatch | Codegen interns each `(effect instance, operation)` to a dense id; the thread-local handler stack keeps an evidence slot per id, so a perform is one array read. Full evidence passing waits on effect rows in `Type::Fun`. | `compiler/runtime/effects_runtime.c`, `effects_runtime_tests.c`, `crates/osprey-codegen/src/effects.rs` |
 | Effects checker | Closed-program operation propagation and partial generic discharge exist. Independently quantified open rows do not. | `crates/osprey-types/src/effect_rows.rs`, `generic_effects_tests.rs` |
 | Modes and continuations | Declared value/control modes replace arm-body classification. Arms run outside their activation; deep resume restores it. Owned escaping continuations, `many`, finalizers and masking remain unfinished. | `operation_modes.rs`: both flavors, default/GC/ARC; independent comparison below |
@@ -42,11 +42,14 @@ requirements. The compiler rejects absent or unresolved operation metadata.
 | Staging | Explicit static selection accepts ordinary all-value effects. Source validation tracks builtin I/O through aliases/callbacks and rejects runtime dispatch hidden inside a locally handled helper. Capture/cell identity and dynamically used originals are preserved. A runtime handler nested inside a static interpretation shadows only the operations its arms supply; an uncovered operation still reaches the static answer, directly and through helpers. | `static_selection.rs`, `staged_hygiene.rs` and `static_discharge.test.osp` |
 | Targets | Static discharge and dynamic value handlers have portable paths. Explicit dynamic resumption is unavailable in the current wasm backend and must be rejected before linking. Target limitations do not change language semantics. | [WebAssembly](../specs/0022-WebAssemblyTarget.md), target capability tests |
 
-The existing curried-ML effect-loss report
-[#184](https://github.com/Nimblesite/osprey/issues/184) remains an acceptance
-item until its exact reproducer passes. Abandoning native continuation frames
-also requires a resource audit: cancelling a pthread is not proof of source
-finalization or release of every owned operand.
+The curried-ML effect-loss report
+[#184](https://github.com/Nimblesite/osprey/issues/184) now passes with the
+current block-handler syntax: its four validation reports produce a count of
+four. A stronger native regression executes full and partial calls at arities
+one through five through both value and resuming handlers under default, GC
+and ARC. Abandoning native continuation frames still requires a resource audit:
+cancelling a pthread is not proof of source finalization or release of every
+owned operand.
 
 ### Independent evidence
 

@@ -151,10 +151,12 @@ as successes or making unrelated CI unusable:
   may return a complete `Result`; `errors/direct_recovery.test.{osp,ospml}` case
   10 passes in both flavors under default, `--memory=gc` and `--memory=arc`.
   Explicit-resume transport keeps its separate coverage.
-- [#184](https://github.com/Nimblesite/osprey/issues/184): a four-argument
-  curried ML function can silently skip handled effects. The paired golden
-  examples use the verified tuple-parameter form while the issue retains the
-  failing and passing reproducers.
+- ~~[#184](https://github.com/Nimblesite/osprey/issues/184): a four-argument
+  curried ML function silently skipped handled effects.~~ **Fixed.** The
+  current block-handler version reports all four operations. The
+  `curried_effects` integration test also checks full and partial ML calls at
+  arities one through five through value and resuming handlers in default,
+  GC and ARC modes.
 - ~~[#185](https://github.com/Nimblesite/osprey/issues/185): a resuming handler
   whose completed continuation answer is a dynamic string leaks an ARC
   object.~~ **Fixed.** The managed-answer shape is now an assertion rather than
