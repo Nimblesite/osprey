@@ -235,7 +235,7 @@ created = perform Db.add "buy milk"
 total = perform Db.count ()
 ```
 
-An effect declaration lowers to `Stmt::Effect`; a performance lowers to `Expr::Perform`. `resume value` (or `resume ()` for `Unit`) invokes a continuation in a control arm. Bare `resume`, including in tail position, denotes the owned continuation value; it is never an implicit invocation. Both follow [EFFECTS-CONTINUATION-OWNERSHIP](0017-AlgebraicEffects.md).
+An effect declaration lowers to `Stmt::Effect`; a `perform` expression lowers to `Expr::Perform`. `resume value` (or `resume ()` for `Unit`) invokes a continuation in a control arm. Bare `resume`, including in tail position, denotes the owned continuation value; it is never an implicit invocation. Both follow [EFFECTS-CONTINUATION-OWNERSHIP](0017-AlgebraicEffects.md).
 
 `[FLAVOR-ML-EFFECT-OP-NAME]` Operation names are their own namespace. Exactly
 three positions hold one, and each admits nothing else, so a word this flavor
