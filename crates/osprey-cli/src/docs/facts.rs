@@ -33,6 +33,40 @@ pub(super) fn sections(entry: &DocEntry, flavor: Flavor, location: &str) -> Stri
     .join("\n\n")
 }
 
+/// The declared row in the author's source spelling. Editor symbols carry a
+/// resolved row, but API pages should show local effect names from the source.
+pub(super) fn effect_row(entry: &DocEntry, flavor: Flavor) -> String {
+    let Some(Stmt::Function {
+        effects,
+        effect_tail,
+        effect_row_present,
+        ..
+    }) = entry.declaration.as_ref()
+    else {
+        return String::new();
+    };
+    if !effect_row_present {
+        return String::new();
+    }
+    let row: Vec<String> = effects
+        .iter()
+        .map(|effect| format!("{}{}", effect.name, arguments(effect, flavor)))
+        .collect();
+    if let Some(tail) = effect_tail {
+        return if row.is_empty() {
+            format!(" !{tail}")
+        } else {
+            format!(" ![{} | {tail}]", row.join(", "))
+        };
+    }
+    match (flavor, row.as_slice()) {
+        (_, []) => " ![]".to_owned(),
+        (Flavor::Ml, [only]) => format!(" ! {only}"),
+        (Flavor::Ml, many) => format!(" ! [{}]", many.join(", ")),
+        (Flavor::Default, many) => format!(" ![{}]", many.join(", ")),
+    }
+}
+
 /// The parameters a caller passes and the result they get back.
 fn shape(entry: &DocEntry, flavor: Flavor) -> (Vec<String>, Option<String>) {
     match entry.declaration.as_ref() {

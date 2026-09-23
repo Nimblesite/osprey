@@ -204,8 +204,8 @@ visibility is the compiler's finalized surface, including signature ascription;
 private members and opaque type representations are excluded. Public type pages
 show their representation, fields and variants. Function signatures come from
 the editor's inferred signature and retain generic binders and the declared
-effect row. The documentation exporter uses that one signature instead of
-appending a second rendering of the row. ML source signatures and example fences are
+effect row. The exporter replaces the editor's resolved row with the author's
+source-local row once. ML source signatures and example fences are
 presented in the ML flavor.
 
 A declaration with no comment still states facts about itself, and its page
