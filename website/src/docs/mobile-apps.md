@@ -100,7 +100,7 @@ Each archive has a sibling `.h` file. iOS targets use ARM64 with a minimum of iO
 
 Mobile C ABI targets currently support `--memory=default`. GC, ARC, native debugger/profiler options, and `--run` are rejected. The host owns application launch and asynchronous platform work.
 
-The compiler also rejects `resume`, unavailable process operations, and built-in HTTP/WebSocket calls for mobile targets before LLVM or linking. Use native platform services through explicit C imports or an application command protocol, as Issue Inbox does. WebAssembly likewise rejects unsupported resumable effects. Supported handlers that return immediately remain available.
+The compiler also rejects dynamic control handlers, unavailable process operations, and built-in HTTP/WebSocket calls for mobile targets before LLVM or linking. Use native platform services through explicit C imports or an application command protocol, as Issue Inbox does. WebAssembly likewise rejects unsupported control continuations. Value-operation handlers remain available.
 
 C-callable functions use `int`, `float`, `bool`, `string`, and return-only `Unit`. Records, collections, closures, and unresolved generic helpers stay inside Osprey. Unsupported `extern fn` signatures, invalid or colliding C names, and exported functions with unhandled effects are compile errors.
 

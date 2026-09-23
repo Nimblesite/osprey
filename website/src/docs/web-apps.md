@@ -254,11 +254,11 @@ The module graph and the browser's limited import surface keep the UI away from 
 
 The parser lowers both Osprey flavors to the same effect AST. Type inference checks operation argument/result types and uses declared effect rows to resolve generic effect instantiations before target-specific code generation.
 
-A handler arm with no explicit `resume` compiles to an ordinary function. The handled region pushes effect/operation/function/environment entries onto the runtime handler stack; `perform` looks up the innermost matching entry and calls it. This stack is included in the Wasm runtime and its mutexes become no-ops in the current single-threaded Wasm build. The arm's returned value becomes the operation result and the performer continues.
+A handler arm for a declared value operation compiles to an ordinary function. The handled region pushes effect/operation/function/environment entries onto the runtime handler stack; `perform` looks up the innermost matching entry and calls it. This stack is included in the Wasm runtime and its mutexes become no-ops in the current single-threaded Wasm build. The arm's returned value becomes the operation result and the performer continues.
 
-An arm containing explicit `resume` takes a different path. Native Osprey runs the handled body on a pthread and uses condition variables to suspend and resume a single-shot continuation. Those `__osprey_coro_*` functions are not built for `wasm32-wasip1`, so a Wasm program using explicit `resume` currently fails at link time with an undefined symbol. A thread-free continuation or CPS backend is future work.
+An operation declared `control` takes a different path, whether or not its arm contains `resume`. Native Osprey runs the handled body on a pthread and uses condition variables to suspend and resume its single-shot continuation. The compiler rejects a dynamic control handler on `wasm32-wasip1` before LLVM or linking, naming the operation and missing continuation capability. A thread-free continuation or CPS backend is future work.
 
-> **Important current limitation:** effect annotations are not yet a complete static capability check. The current Rust checker accepts a missing `!Effect` row or a `perform` with no enclosing handler in cases covered by the must-reject ratchet. If runtime lookup finds no handler, generated code prints `unhandled effect: Effect.operation` and exits nonzero. Do not describe the present implementation as guaranteeing compile-time rejection of every unhandled effect. See the current status in the [algebraic-effects specification](/spec/0017-algebraiceffects/).
+> **Current boundary:** Omitting `!Effect` requests inference; it does not declare purity. The checker rejects a known `perform` that reaches program entry without a matching handler, and a written row bounds a function's inferred operations. Function types do not yet carry independently quantified, scoped effect rows, so this is not the complete static capability system specified for reusable interfaces. Runtime `unhandled effect` is a defensive guard. See the implementation status in [plan 0016](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0016-algebraic-effects-and-handlers.md).
 
 ## How an Osprey project becomes `.wasm`
 
@@ -386,7 +386,7 @@ When extending the framework:
 - Rendering sends the complete view document and serializes the model on every event; there is no incremental Wasm-side component protocol.
 - The renderer is client-only. It uses `createRoot`, not server rendering or `hydrateRoot`, so initial app content is not pre-rendered HTML.
 - Wasm Osprey cannot directly use the native fiber, socket HTTP/WebSocket, FFI, process, terminal, or file runtimes. Referencing unavailable runtime symbols fails at link time.
-- Explicit-resume algebraic-effect continuations are native-only; ordinary non-resuming handler arms work on Wasm.
+- Dynamic control handlers require native continuation support; value-operation handlers work on Wasm.
 - First-class handler values and multi-handler installation are not implemented.
 - Effect-row coverage is not yet fully enforced at compile time.
 - The current Wasm runtime uses the non-reclaiming allocator, so a long-lived app must watch linear-memory growth.
