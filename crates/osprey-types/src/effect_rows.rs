@@ -317,6 +317,7 @@ struct Function<'a> {
     scope: Vec<String>,
     parameters: Vec<String>,
     declared_effects: Vec<DeclaredEffect>,
+    effect_row_present: bool,
     body: &'a Expr,
     position: Option<Position>,
 }
@@ -354,6 +355,7 @@ impl<'a> Index<'a> {
                     name,
                     parameters,
                     effects,
+                    effect_row_present,
                     body,
                     position,
                     ..
@@ -384,6 +386,7 @@ impl<'a> Index<'a> {
                                 }),
                             })
                             .collect(),
+                        effect_row_present: *effect_row_present,
                         body,
                         position: *position,
                     });
@@ -3088,10 +3091,15 @@ pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) 
             );
         }
     }
-    // Programs with no declared algebraic effects cannot have a valid latent
-    // row. Returning here avoids a second deep recursive AST walk for huge pure
-    // expression stress suites; unknown performs are already value-type errors.
-    if index.effects.is_empty() {
+    // Without declarations or written row contracts, there is no algebraic
+    // row to solve. A written `![]` still needs analysis: runtime builtins and
+    // opaque callbacks cannot be certified pure by this fast path.
+    if index.effects.is_empty()
+        && index
+            .functions
+            .iter()
+            .all(|function| !function.effect_row_present)
+    {
         return errors;
     }
     let mut rows = vec![Summary::default(); index.functions.len()];
@@ -3133,12 +3141,11 @@ pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) 
     };
     // An annotation is a row contract/instantiation hint, never a handler.
     // Inferred operations outside its named effects are therefore an error.
-    for (id, function) in index.functions.iter().enumerate() {
-        if !function.declared_effects.is_empty() {
-            let undeclared: BTreeSet<_> = rows
-                .get(id)
-                .into_iter()
-                .flat_map(|row| &row.required)
+    for (function, row) in index.functions.iter().zip(&rows) {
+        if function.effect_row_present {
+            let undeclared: BTreeSet<_> = row
+                .required
+                .iter()
                 .filter(|requirement| {
                     !function.declared_effects.iter().any(|declared| {
                         declared.name == requirement.effect
@@ -3164,6 +3171,35 @@ pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) 
                         "function `{}` performs effects outside its declared row: {}",
                         function.qualified,
                         undeclared.into_iter().collect::<Vec<_>>().join(", ")
+                    ))
+                    .with_pos(function.position),
+                );
+            }
+            // Host operations are tracked separately from user-declared
+            // effects. An explicitly empty row cannot turn `print` (or an
+            // alias of it) into pure code merely because there was no
+            // `perform` expression in the body.
+            if function.declared_effects.is_empty() && !row.runtime_builtins.is_empty() {
+                errors.push(
+                    TypeError::new(format!(
+                        "function `{}` uses runtime builtins outside its declared row: {}",
+                        function.qualified,
+                        row.runtime_builtins
+                            .iter()
+                            .cloned()
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ))
+                    .with_pos(function.position),
+                );
+            }
+            if function.declared_effects.is_empty()
+                && (!row.parameter_uses.is_empty() || row.unresolved_dynamic_call)
+            {
+                errors.push(
+                    TypeError::new(format!(
+                        "function `{}` calls a function with unproven effects outside its declared row",
+                        function.qualified
                     ))
                     .with_pos(function.position),
                 );

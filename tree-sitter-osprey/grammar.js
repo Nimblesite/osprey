@@ -370,6 +370,7 @@ module.exports = grammar({
       choice(
         seq('!', $.effect_ref),
         seq('!', '[', $.effect_list, ']'),
+        seq('!', '[', ']'),
       ),
     effect_list: ($) => sep1(',', $.effect_ref),
     effect_ref: ($) => seq(field('name', choice($.qualified_path, $.identifier)), optional($.type_arguments)),

@@ -2312,6 +2312,7 @@ mod tests {
             return_type: Some(TypeExpr::named("int")),
             body: Expr::Identifier("n".into()),
             effects: Vec::new(),
+            effect_row_present: false,
             doc: None,
             position: None,
         };
@@ -2401,6 +2402,7 @@ mod tests {
                 return_type: Some(TypeExpr::named("int")),
                 body: Expr::Identifier("self".into()),
                 effects: Vec::new(),
+                effect_row_present: false,
                 doc: None,
                 position: None,
             }],

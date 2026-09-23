@@ -67,6 +67,112 @@ fn duplicate_handler_arms_are_rejected_in_both_flavors() {
 }
 
 #[test]
+fn explicitly_empty_rows_reject_effects_but_omitted_rows_still_infer_them() {
+    for (source, flavor) in [
+        (
+            "effect E { ping: fn() -> Unit }\nfn f() -> Unit ![] = perform E.ping()\nlet h = handler E { ping => print(\"called\") }\nlet result = h(f)\n",
+            Flavor::Default,
+        ),
+        (
+            "effect E\n    ping : Unit => Unit\nf : Unit -> Unit ![]\nf () = perform E.ping ()\nh = handler E\n    ping => print \"called\"\n_ = h f\n",
+            Flavor::Ml,
+        ),
+    ] {
+        let parsed = parse_program_with_flavor(source, flavor);
+        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+        let errors = check_program(&parsed.program);
+        assert!(
+            errors.iter().any(|error| error.message.contains("performs effects outside its declared row: E.ping")),
+            "{flavor:?}: {errors:?}"
+        );
+
+        let inferred = source.replace(" ![]", "");
+        let parsed = parse_program_with_flavor(&inferred, flavor);
+        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+        let errors = check_program(&parsed.program);
+        assert!(errors.is_empty(), "{flavor:?}: omitted row should infer: {errors:?}");
+    }
+    for (source, flavor) in [
+        (
+            "fn f() -> int ![] = 42\nlet answer = f()\n",
+            Flavor::Default,
+        ),
+        (
+            "f : Unit -> int ![]\nf () = 42\nanswer = f ()\n",
+            Flavor::Ml,
+        ),
+    ] {
+        let parsed = parse_program_with_flavor(source, flavor);
+        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+        let errors = check_program(&parsed.program);
+        assert!(errors.is_empty(), "{flavor:?}: pure empty row: {errors:?}");
+    }
+}
+
+#[test]
+fn explicit_empty_rows_cannot_hide_runtime_builtin_work() {
+    for (source, flavor) in [
+        (
+            "fn report() -> Unit ![] = print(\"sent\")\n",
+            Flavor::Default,
+        ),
+        (
+            "fn report() -> Unit ![] = {\n    let writer = print\n    writer(\"sent\")\n}\n",
+            Flavor::Default,
+        ),
+        (
+            "fn loud() -> Unit = print(\"sent\")\nfn report() -> Unit ![] = loud()\n",
+            Flavor::Default,
+        ),
+        (
+            "report : Unit -> Unit ![]\nreport () = print \"sent\"\n",
+            Flavor::Ml,
+        ),
+        (
+            "loud () = print \"sent\"\nreport : Unit -> Unit ![]\nreport () = loud ()\n",
+            Flavor::Ml,
+        ),
+    ] {
+        let parsed = parse_program_with_flavor(source, flavor);
+        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+        let errors = check_program(&parsed.program);
+        assert!(
+            errors.iter().any(|error| {
+                error.message.contains("outside its declared row")
+                    && error.message.contains("print")
+            }),
+            "{flavor:?}: {errors:?}"
+        );
+    }
+}
+
+#[test]
+fn explicit_empty_rows_reject_unproven_callback_effects() {
+    for (source, flavor) in [
+        (
+            "fn run(callback: fn() -> Unit) -> Unit ![] = callback()\n",
+            Flavor::Default,
+        ),
+        (
+            "run : (Unit -> Unit) -> Unit ![]\nrun callback = callback ()\n",
+            Flavor::Ml,
+        ),
+    ] {
+        let parsed = parse_program_with_flavor(source, flavor);
+        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+        let errors = check_program(&parsed.program);
+        assert!(
+            errors.iter().any(|error| {
+                error
+                    .message
+                    .contains("unproven effects outside its declared row")
+            }),
+            "{flavor:?}: {errors:?}"
+        );
+    }
+}
+
+#[test]
 fn nominal_record_row_entries_match_inferred_record_requests() {
     for (source, flavor) in [
         (

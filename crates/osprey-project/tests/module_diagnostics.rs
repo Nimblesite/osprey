@@ -13,10 +13,10 @@
 
 mod support;
 
-use osprey_project::SourceFile;
+use osprey_project::{assemble, SourceFile};
 use osprey_syntax::{parse_program_with_flavor, Flavor};
 use std::path::PathBuf;
-use support::{config, contains, error_messages};
+use support::{config, contains, error_messages, parsed};
 
 /// Every diagnostic one written source produces, the way the CLI collects them:
 /// parse errors first — some boundary rules (ML's exact ascription) are decided
@@ -83,6 +83,30 @@ fn plain_module_cannot_own_a_cell_on_either_surface() {
         "namespace app;\nmodule M {\n    mut counter = 0\n    export fn get() = counter\n}\n",
         "namespace app\n\nmodule M\n    mut counter = 0\n    export get () = counter\n",
     );
+}
+
+#[test]
+fn a_signature_empty_row_rejects_an_effectful_implementation_in_both_flavors() {
+    for (flavor, name, text) in [
+        (
+            Flavor::Default,
+            "main.osp",
+            "namespace app;\neffect E { ping: fn() -> Unit }\nsignature Api { fn f() -> Unit ![] }\nmodule M : Api { fn f() = perform E.ping() }\n",
+        ),
+        (
+            Flavor::Ml,
+            "main.ospml",
+            "namespace app\n\neffect E\n    ping : Unit => Unit\n\nsignature Api\n    f : Unit -> Unit ![]\n\nmodule M : Api\n    f () = perform E.ping ()\n",
+        ),
+    ] {
+        let source = parsed(name, flavor, text);
+        let assembled = assemble(&config(name), &[source]).expect("module should assemble");
+        let errors = osprey_types::check_program(&assembled.program);
+        assert!(
+            errors.iter().any(|error| error.message.contains("performs effects outside its declared row: app::E.ping")),
+            "{flavor:?}: {errors:?}"
+        );
+    }
 }
 
 #[test]

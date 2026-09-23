@@ -30,6 +30,7 @@ impl Resolver<'_> {
                     parameters,
                     return_type,
                     effects,
+                    effect_row_present,
                     position,
                     ..
                 },
@@ -37,6 +38,7 @@ impl Resolver<'_> {
                     parameters: contracts,
                     return_type: contract_return,
                     effects: contract_effects,
+                    effect_row_present: contract_row_present,
                     ..
                 },
             ) => {
@@ -55,8 +57,9 @@ impl Resolver<'_> {
                 if return_type.is_none() {
                     *return_type = Some(contract_return.as_contract_annotation());
                 }
-                if effects.is_empty() {
+                if !*effect_row_present && *contract_row_present {
                     effects.clone_from(contract_effects);
+                    *effect_row_present = true;
                 }
             }
             _ => {}

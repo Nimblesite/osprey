@@ -198,6 +198,31 @@ fn extra_docs_default_pages_state_effects_without_restating_parameters() {
     );
 }
 
+#[test]
+fn extra_docs_distinguish_an_explicit_empty_effect_row_from_an_omitted_row() {
+    for (flavor, source) in [
+        (
+            "osp",
+            "/// Declared pure.\nfn clean() -> int ![] = 42\nfn inferred() = 42\n",
+        ),
+        (
+            "ospml",
+            "(** Declared pure. *)\nclean : Unit -> int ![]\nclean () = 42\ninferred () = 42\n",
+        ),
+    ] {
+        let (result, output) = export(source, flavor, &format!("extra_docs_empty_row_{flavor}"));
+        assert_eq!(result.code, Some(0), "{}", result.stderr);
+        let clean = read_text(&output.join("api/clean.md"));
+        let inferred = read_text(&output.join("api/inferred.md"));
+        assert!(clean.contains("![]"), "{flavor}: {clean}");
+        assert!(
+            clean.contains("Declared pure (`![]`)."),
+            "{flavor}: {clean}"
+        );
+        assert!(!inferred.contains("![]"), "{flavor}: {inferred}");
+    }
+}
+
 /// A member listing whose Description column is blank on every row tells a
 /// reader nothing. An undocumented member is described by its own signature,
 /// stripped of the qualification the Name column already carries.

@@ -36,6 +36,7 @@ pub(crate) fn errors(implementation: &Stmt, contract: &SignatureItem) -> Vec<Str
                 parameters,
                 return_type,
                 effects,
+                effect_row_present,
                 ..
             },
             SignatureItem::Function {
@@ -53,6 +54,7 @@ pub(crate) fn errors(implementation: &Stmt, contract: &SignatureItem) -> Vec<Str
                 parameters: parameters.iter().map(|parameter| parameter.ty.as_ref()),
                 return_type: return_type.as_ref(),
                 effects,
+                effect_row_present: *effect_row_present,
             },
             &ExpectedFunction {
                 binders: expected_binders,
@@ -82,6 +84,7 @@ pub(crate) fn errors(implementation: &Stmt, contract: &SignatureItem) -> Vec<Str
                 parameters: parameters.iter().map(|parameter| Some(&parameter.ty)),
                 return_type: return_type.as_ref(),
                 effects: &[],
+                effect_row_present: false,
             },
             &ExpectedFunction {
                 binders: type_params,
@@ -144,6 +147,7 @@ struct FunctionShape<'a, I> {
     parameters: I,
     return_type: Option<&'a TypeExpr>,
     effects: &'a [EffectRef],
+    effect_row_present: bool,
 }
 
 struct ExpectedFunction<'a> {
@@ -195,7 +199,7 @@ fn function_errors<'a>(
             "function `{name}` return type does not match its signature"
         ));
     }
-    if !actual.effects.is_empty()
+    if actual.effect_row_present
         && !same_effects(
             actual.effects,
             expected.effects,

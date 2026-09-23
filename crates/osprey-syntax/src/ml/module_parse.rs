@@ -188,12 +188,13 @@ fn signature_value(parser: &mut Parser<'_>) -> Option<MlSignatureItem> {
         parser.error("expected ':' in signature value");
     }
     let ty = parser.ty();
-    let effects = parser.effect_row();
+    let (effects, effect_row_present) = parser.effect_row();
     Some(MlSignatureItem::Value {
         name,
         type_params,
         ty,
         effects,
+        effect_row_present,
         pos,
     })
 }

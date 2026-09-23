@@ -31,6 +31,26 @@ fn add(a: int, b: int) -> int = a + b
               (identifier))))))))
 
 ================================================================================
+An explicitly empty effect row is a real function contract [EFFECTS-ROW-POLY]
+================================================================================
+
+fn clean() -> int ![] = 42
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (statement
+    (function_declaration
+      name: (identifier)
+      return_type: (type_identifier
+        (identifier))
+      effects: (effect_set)
+      body: (expression
+        (primary_expression
+          (literal
+            (integer)))))))
+
+================================================================================
 Union type declaration
 ================================================================================
 
@@ -77,7 +97,7 @@ A modifier keyword naming the operation it modifies [MULTI-DECL]
 
 effect Random {
     /// Answered afresh on every replay.
-    once replayable: fn() -> int
+    control once replayable: fn() -> int
     replayable next: fn() -> int
 }
 
@@ -89,6 +109,7 @@ effect Random {
       name: (identifier)
       (operation_declaration
         (doc_comment)
+        mode: (operation_mode)
         multiplicity: (multiplicity)
         name: (identifier)
         type: (function_type
@@ -106,7 +127,7 @@ Multiplicity and replayable modifiers, and the same words as names [MULTI-DECL]
 ================================================================================
 
 effect Choice {
-    many replayable pick: fn(int) -> int
+    control many replayable pick: fn(int) -> int
     abort: fn() -> Unit
 }
 
@@ -117,6 +138,7 @@ effect Choice {
     (effect_declaration
       name: (identifier)
       (operation_declaration
+        mode: (operation_mode)
         multiplicity: (multiplicity)
         replayable: (replayable)
         name: (identifier)

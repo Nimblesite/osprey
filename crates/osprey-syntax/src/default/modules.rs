@@ -181,6 +181,7 @@ impl Lowerer<'_> {
                         .child_by_field_name("return_type")
                         .map_or_else(|| TypeExpr::named("Unit"), |ty| self.lower_type(ty)),
                     effects: self.lower_effects(item.child_by_field_name("effects")),
+                    effect_row_present: item.child_by_field_name("effects").is_some(),
                     position: Some(self.pos(item)),
                 }
             }

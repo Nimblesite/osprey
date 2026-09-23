@@ -166,6 +166,22 @@ mod tests {
     }
 
     #[test]
+    fn explicit_empty_effect_rows_survive_formatting_in_both_flavors() {
+        for (source, flavor) in [
+            ("fn f() -> int ![] = 42\n", Flavor::Default),
+            ("f : Unit -> int ![]\nf () = 42\n", Flavor::Ml),
+        ] {
+            let formatted = format_source(source, flavor).expect("format empty row");
+            assert!(formatted.contains("![]"), "{flavor:?}: {formatted}");
+            assert_eq!(
+                format_source(&formatted, flavor).expect("reformat empty row"),
+                formatted,
+                "{flavor:?}"
+            );
+        }
+    }
+
+    #[test]
     fn inner_doc_comments_survive_formatting_in_both_flavors() {
         // The formatter's guarantee is meaning-preservation, and since `//!`
         // lowers to `Program::doc` / `Stmt::Namespace::inner_doc` /

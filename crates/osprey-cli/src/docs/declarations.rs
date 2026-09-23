@@ -64,6 +64,7 @@ fn signature_item(item: &SignatureItem) -> String {
             parameters,
             return_type,
             effects,
+            effect_row_present,
             ..
         } => {
             let params = parameters
@@ -76,10 +77,10 @@ fn signature_item(item: &SignatureItem) -> String {
                 .map(effect_ref)
                 .collect::<Vec<_>>()
                 .join(", ");
-            let suffix = if row.is_empty() {
-                String::new()
-            } else {
+            let suffix = if *effect_row_present {
                 format!(" ![{row}]")
+            } else {
+                String::new()
             };
             format!(
                 "fn {name}{}({params}) -> {}{suffix}",

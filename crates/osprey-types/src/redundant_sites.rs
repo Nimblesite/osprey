@@ -169,7 +169,7 @@ fn render(annotation: &TypeExpr) -> String {
 fn retained_header(statement: &Stmt) -> Option<Position> {
     let Stmt::Function {
         type_params,
-        effects,
+        effect_row_present,
         return_type,
         position,
         ..
@@ -178,7 +178,7 @@ fn retained_header(statement: &Stmt) -> Option<Position> {
         return None;
     };
     let source = return_type.as_ref()?.position?;
-    ((!type_params.is_empty() || !effects.is_empty())
+    ((!type_params.is_empty() || *effect_row_present)
         && source.line > 0
         && source.line < position.as_ref()?.line)
         .then_some(source)

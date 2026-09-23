@@ -136,6 +136,7 @@ pub(crate) fn function(name: &str, body: Expr) -> Stmt {
         parameters: Vec::new(),
         return_type: None,
         effects: Vec::new(),
+        effect_row_present: false,
         body,
         doc: None,
         position: None,

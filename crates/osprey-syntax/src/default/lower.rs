@@ -256,6 +256,7 @@ impl<'a> Lowerer<'a> {
                     .child_by_field_name("return_type")
                     .map(|n| self.lower_type(n)),
                 effects: self.lower_effects(node.child_by_field_name("effects")),
+                effect_row_present: node.child_by_field_name("effects").is_some(),
                 body: self.lower_expr_field(node, "body"),
                 doc: self.doc_text(node),
                 position: Some(self.field_pos(node, "name")),

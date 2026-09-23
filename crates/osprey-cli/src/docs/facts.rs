@@ -40,15 +40,23 @@ pub(super) fn sections(entry: &DocEntry, flavor: Flavor, location: &str) -> Stri
 /// compiler will reject unless its caller discharges the row. The row is part
 /// of the signature, so it belongs on the signature.
 pub(super) fn effect_row(entry: &DocEntry, flavor: Flavor) -> String {
-    let Some(Stmt::Function { effects, .. }) = entry.declaration.as_ref() else {
+    let Some(Stmt::Function {
+        effects,
+        effect_row_present,
+        ..
+    }) = entry.declaration.as_ref()
+    else {
         return String::new();
     };
+    if !effect_row_present {
+        return String::new();
+    }
     let row: Vec<String> = effects
         .iter()
         .map(|effect| format!("{}{}", effect.name, arguments(effect, flavor)))
         .collect();
     match (flavor, row.as_slice()) {
-        (_, []) => String::new(),
+        (_, []) => " ![]".to_owned(),
         (Flavor::Ml, [only]) => format!(" ! {only}"),
         (Flavor::Ml, many) => format!(" ! [{}]", many.join(", ")),
         (Flavor::Default, many) => format!(" ![{}]", many.join(", ")),
@@ -194,7 +202,12 @@ fn returns(entry: &DocEntry, result: Option<String>) -> String {
 /// carries: the compiler rejects a program that performs an effect no handler
 /// discharges, so the row has to be known before the call is written.
 fn effects(entry: &DocEntry, flavor: Flavor) -> String {
-    let Some(Stmt::Function { effects, .. }) = entry.declaration.as_ref() else {
+    let Some(Stmt::Function {
+        effects,
+        effect_row_present,
+        ..
+    }) = entry.declaration.as_ref()
+    else {
         return String::new();
     };
     let rows: Vec<String> = effects
@@ -202,7 +215,11 @@ fn effects(entry: &DocEntry, flavor: Flavor) -> String {
         .map(|effect| performed(effect, flavor))
         .collect();
     if rows.is_empty() {
-        return String::new();
+        return if *effect_row_present {
+            "## Effects\n\nDeclared pure (`![]`).".to_owned()
+        } else {
+            String::new()
+        };
     }
     format!(
         "## Effects\n\nCalling this asks for the work below. A caller runs it inside a matching \
