@@ -99,6 +99,17 @@ fn footer() = "osprey"
 }
 
 #[test]
+fn dependency_report_keeps_unknown_callback_requirements_visible() {
+    let source = "static effect Signal { read: fn() -> int }\nfn invoke(callback) = callback()\nfn reading() = perform Signal.read()\nfn widget() = invoke(reading)\n";
+    let deps = dependency_report(source, Flavor::Default).0;
+    assert_eq!(deps.get("invoke"), Some(&vec!["<unknown>".to_owned()]));
+    assert_eq!(
+        deps.get("widget"),
+        Some(&vec!["<unknown>".to_owned(), "Signal.read".to_owned()]),
+    );
+}
+
+#[test]
 fn a_function_that_answers_a_signal_does_not_depend_on_it() {
     let source = r#"
 static effect CountSignal { read: fn() -> int }

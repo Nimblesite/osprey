@@ -118,6 +118,9 @@ pub(crate) struct Codegen {
     /// function being emitted, so the map is cleared whenever emission moves to
     /// another function body.
     pub(crate) lambda_prefix: HashMap<String, (Vec<osprey_ast::Parameter>, Vec<Value>)>,
+    /// A call-site-concrete ABI for the single returned lambda currently
+    /// produced by an inlined handler factory.
+    pub(crate) expected_lambda: Option<(Vec<Position>, Type)>,
     /// Top-level functions already wrapped as closure cells (name → the cell's
     /// constant global), so the forwarder is emitted once per module.
     pub(crate) fnval_cells: HashMap<String, String>,
@@ -368,6 +371,7 @@ pub(crate) struct SavedFn {
     /// Saved with the rest of the function frame: the prefix values are SSA
     /// registers of the SUSPENDED function, so a nested body must not read them.
     lambda_prefix: HashMap<String, (Vec<osprey_ast::Parameter>, Vec<Value>)>,
+    expected_lambda: Option<(Vec<Position>, Type)>,
     /// Stream-fusion stages are per-function: a stage recorded inside a nested
     /// function body must never replay in the suspended function's next loop.
     pending_iter_ops: Vec<crate::iter::IterOp>,
@@ -647,6 +651,7 @@ impl Codegen {
             lambdas: HashMap::new(),
             file_lambdas: HashMap::new(),
             lambda_prefix: HashMap::new(),
+            expected_lambda: None,
             fnval_cells: HashMap::new(),
             effect_ops: HashMap::new(),
             handler_count: 0,
@@ -934,6 +939,7 @@ impl Codegen {
             labels: self.label_count,
             scopes: std::mem::take(&mut self.scopes),
             lambda_prefix: std::mem::take(&mut self.lambda_prefix),
+            expected_lambda: self.expected_lambda.take(),
             scope_ids: std::mem::take(&mut self.scope_ids),
             pending_iter_ops: std::mem::take(&mut self.pending_iter_ops),
             cell_vars: std::mem::take(&mut self.cell_vars),
@@ -978,6 +984,7 @@ impl Codegen {
         self.scopes = saved.scopes;
         self.scope_ids = saved.scope_ids;
         self.lambda_prefix = saved.lambda_prefix;
+        self.expected_lambda = saved.expected_lambda;
         self.pending_iter_ops = saved.pending_iter_ops;
         self.cell_vars = saved.cell_vars;
         self.cell_slots = saved.cell_slots;

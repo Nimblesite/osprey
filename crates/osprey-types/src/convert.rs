@@ -61,6 +61,21 @@ pub(crate) fn type_name_to_type(s: &str, params: &HashMap<String, Type>) -> Type
         let (ps, ret) = parse_fn_sig(s, params);
         return Type::fun(ps, ret);
     }
+    if let Some(fields) = s.strip_prefix('{').and_then(|rest| rest.strip_suffix('}')) {
+        let fields: Option<_> = split_generic_args(fields)
+            .iter()
+            .map(|entry| {
+                let (name, field) = entry.split_once(':')?;
+                Some((name.trim().to_owned(), type_name_to_type(field, params)))
+            })
+            .collect();
+        if let Some(fields) = fields {
+            return Type::Record {
+                name: String::new(),
+                fields,
+            };
+        }
+    }
     if let Some(open) = s.find('<') {
         if s.ends_with('>') {
             let head = s[..open].trim();
@@ -137,17 +152,17 @@ fn matching_paren(s: &str, open: usize) -> Option<usize> {
 }
 
 /// Split `a, b<c, d>, (e) -> f` on top-level commas only, respecting `<>`,
-/// `()` and `[]` nesting.
+/// `()`, `[]` and `{}` nesting.
 fn split_generic_args(s: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut depth = 0i32;
     let mut start = 0usize;
     for (i, ch) in s.char_indices() {
         match ch {
-            '<' | '(' | '[' => depth += 1,
+            '<' | '(' | '[' | '{' => depth += 1,
             // The `>` in a function arrow does not close a generic argument.
             '>' if s[..i].ends_with('-') => {}
-            '>' | ')' | ']' => depth -= 1,
+            '>' | ')' | ']' | '}' => depth -= 1,
             ',' if depth == 0 => {
                 out.push(s[start..i].trim().to_string());
                 start = i + 1;

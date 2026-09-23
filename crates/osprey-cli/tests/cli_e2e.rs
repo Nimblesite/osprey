@@ -338,6 +338,23 @@ fn deps_refuses_a_file_that_did_not_parse() {
         out.stdout
     );
 
+    let unresolved = temp_osp(
+        "deps_unknown_effect",
+        "static effect Signal { read: fn() -> int }\nfn value() = perform Missing.read()\n",
+    );
+    let invalid = run_file(&unresolved, &["--deps"]);
+    assert_eq!(invalid.code, Some(1), "stderr={}", invalid.stderr);
+    assert!(
+        invalid.stderr.contains("unknown effect `Missing`"),
+        "stderr={}",
+        invalid.stderr
+    );
+    assert!(
+        invalid.stdout.trim().is_empty(),
+        "stdout={}",
+        invalid.stdout
+    );
+
     // The positive control: the same shape, parsing, still reports and exits 0.
     let good = temp_osp(
         "deps_parsed",
@@ -349,6 +366,23 @@ fn deps_refuses_a_file_that_did_not_parse() {
         ok.stdout.contains("counterLabel: Signal<Count>.read"),
         "stdout={}",
         ok.stdout
+    );
+
+    let polymorphic = temp_osp(
+        "deps_open_callback",
+        "static effect Signal { read: fn() -> int }\nfn invoke(callback) = callback()\nfn reading() = perform Signal.read()\nfn widget() = invoke(reading)\n",
+    );
+    let open = run_file(&polymorphic, &["--deps"]);
+    assert_eq!(open.code, Some(0), "stderr={}", open.stderr);
+    assert!(
+        open.stdout.contains("invoke: <unknown>"),
+        "stdout={}",
+        open.stdout
+    );
+    assert!(
+        open.stdout.contains("widget: <unknown>, Signal.read"),
+        "stdout={}",
+        open.stdout
     );
 }
 

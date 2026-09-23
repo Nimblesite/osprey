@@ -45,6 +45,79 @@ pub(crate) fn assert_rejected_with(source: &str, expected: &[&str]) {
 }
 
 #[test]
+fn duplicate_handler_arms_are_rejected_in_both_flavors() {
+    for (source, flavor) in [
+        (
+            "effect Read { value: fn() -> int }\nlet h = handler Read { value => 1 value => 2 }\nlet n = h(|| => perform Read.value())\n",
+            Flavor::Default,
+        ),
+        (
+            "effect Read\n    value : Unit => int\nh = handler Read\n    value => 1\n    value => 2\nn = h (\\() => perform Read.value ())\n",
+            Flavor::Ml,
+        ),
+    ] {
+        let parsed = parse_program_with_flavor(source, flavor);
+        assert!(parsed.errors.is_empty(), "syntax errors: {:?}", parsed.errors);
+        let errors = check_program(&parsed.program);
+        assert!(
+            errors.iter().any(|error| error.message.contains("duplicate handler arm `Read.value`")),
+            "{flavor:?}: expected a duplicate-arm error, got {errors:?}"
+        );
+    }
+}
+
+#[test]
+fn nominal_record_row_entries_match_inferred_record_requests() {
+    for (source, flavor) in [
+        (
+            "type Point = { x: int, y: int }\neffect Echo<T> { echo: fn(T) -> T }\nfn fetch() -> Point !Echo<Point> = perform Echo.echo(Point { x: 42, y: 1 })\nlet answer = {\n    handle Echo<Point> { echo value => value }\n    fetch()\n}\nprint(answer.x)\n",
+            Flavor::Default,
+        ),
+        (
+            "type Point =\n    x : int\n    y : int\neffect Echo T\n    echo : T => T\nfetch : Unit -> Point ! Echo<Point>\nfetch () = perform Echo.echo (Point(x = 42, y = 1))\nanswer =\n    handle Echo<Point>\n        echo value => value\n    fetch ()\nprint answer.x\n",
+            Flavor::Ml,
+        ),
+    ] {
+        let parsed = parse_program_with_flavor(source, flavor);
+        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+        let errors = check_program(&parsed.program);
+        assert!(errors.is_empty(), "{flavor:?}: {errors:?}");
+    }
+}
+
+#[test]
+fn callable_handler_preserves_a_returned_functions_effect_provenance() {
+    assert_accepted(
+        "effect Read { read: fn() -> fn(int) -> int }\n\
+         let h = handler Read { read => |n| => (n + 1) ?: 0 }\n\
+         let action = h(|| => perform Read.read())\n\
+         let answer = action(41)\n",
+    );
+}
+
+#[test]
+fn callable_handler_does_not_discharge_a_closure_invoked_after_it_returns() {
+    assert_rejected_with(
+        "effect Read { read: fn() -> int }\n\
+         let h = handler Read { read => 41 }\n\
+         let escaped = h(|| => || => perform Read.read())\n\
+         let answer = escaped()\n",
+        &["unhandled effect operations at program entry", "Read.read"],
+    );
+}
+
+#[test]
+fn callable_handler_does_not_supply_a_different_generic_instance() {
+    assert_rejected_with(
+        "effect Read<T> { read: fn() -> T }\n\
+         let h = handler Read<int> { read => 41 }\n\
+         let action = h(|| => perform Read<string>.read())\n\
+         let answer = action\n",
+        &["Read<string>.read"],
+    );
+}
+
+#[test]
 fn recursive_closure_provenance_reaches_a_bounded_fixed_point() {
     const CHILD: &str = "OSPREY_EFFECT_ROWS_RECURSIVE_CLOSURE_CHILD";
     const TEST: &str =

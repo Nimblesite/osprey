@@ -6,8 +6,8 @@
 // matching arm, and `resume` hands a value back and unblocks the body.
 //
 // wasm32-wasip1 has no usable pthreads, so this whole unit is excluded from the
-// wasm archive; resumable-effect programs link-fail there and are SKIPped by
-// the wasm golden suite, exactly like the fiber and HTTP runtimes.
+// wasm archive. The target capability check rejects dynamic resumption before
+// code generation rather than letting a program fail at link time.
 // [WASM-TARGET-EFFECTS]
 
 #include <stdio.h>

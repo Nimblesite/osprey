@@ -43,18 +43,27 @@ pub(crate) fn lambda_value(
     body: &Expr,
     position: Option<Position>,
 ) -> Result<Value> {
-    let ty = cg
+    let inferred = cg
         .prog
         .lambda_type(position)
-        .ok_or_else(|| CodegenError::invalid("lambda has no inferred function type"))?;
-    if !crate::types::fn_value_concrete(ty) {
-        return Err(CodegenError::unsupported(
+        .ok_or_else(|| CodegenError::invalid("lambda has no inferred function type"))?
+        .clone();
+    let ty = if crate::types::fn_value_concrete(&inferred) {
+        inferred
+    } else {
+        cg.expected_lambda
+            .as_ref()
+            .filter(|(sites, ty)| {
+                position.is_some_and(|position| sites.contains(&position))
+                    && crate::types::fn_value_concrete(ty)
+            })
+            .map(|(_, ty)| ty.clone())
+            .ok_or_else(|| CodegenError::unsupported(
             "a closure value with a still-generic type (wrap it in a function with concrete parameter/return types)",
-        ));
-    }
-    let sig = Codegen::fn_value_sig(&cg.prog, ty)
+        ))?
+    };
+    let sig = Codegen::fn_value_sig(&cg.prog, &ty)
         .ok_or_else(|| CodegenError::invalid("lambda has no inferred function type"))?;
-    let ty = ty.clone();
     let mut value = emit_closure(cg, parameters, body, &sig)?;
     value.inferred_type = Some(ty);
     Ok(value)

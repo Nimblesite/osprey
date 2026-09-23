@@ -5,14 +5,8 @@
 //! Discharge across instantiations is already exercised by
 //! `effect_rows_tests.rs`; this module states the parts of the generic-effect
 //! surface that module does not touch — the DECLARATION's variance positions,
-//! the instantiation surface (inferred at `handle`/`perform`, WRITTEN only on
-//! an effect row), rows with several generic entries, and the ML twins of each.
-//!
-//! One boundary is easy to get wrong and is pinned below: a written
-//! instantiation is legal on a ROW (`!Stash<int>`) and rejected on a dynamic
-//! effect's `handle`/`perform` ([STAGE-SIGNALS-EXACT], spec 0035) — that
-//! spelling is reserved for `static effect`, where the instantiation IS the
-//! identity.
+//! the instantiation surface (inferred or written at `handle`/`perform` and
+//! on effect rows), rows with several generic entries, and the ML twins.
 
 use crate::testutil::{spec_cases, variance_position_message};
 use osprey_syntax::{parse_program_with_flavor, Flavor};
@@ -22,10 +16,7 @@ fn op_position_message(param: &str, marker: &str, position: &str, op: &str, owne
     variance_position_message(param, marker, position, "operation", op, owner)
 }
 
-/// A generic effect whose instantiation is INFERRED from the handler arm — the
-/// only spelling a dynamic effect accepts, since a written instantiation is
-/// rejected by [STAGE-SIGNALS-EXACT] (see
-/// `a_written_instantiation_on_a_dynamic_effect_is_rejected`).
+/// A generic effect whose instantiation is inferred from its handler arm.
 fn stash_program(answer: &str) -> String {
     format!(
         r#"effect Stash<T> {{

@@ -277,7 +277,11 @@ fn gen_bind(cg: &mut Codegen, name: &str, value: &Expr, position: Option<Positio
         let _ = cg.call_aliases.insert(name.to_string(), target);
         return Ok(());
     }
-    let v = gen_expr(cg, value)?;
+    let expected = factory_lambda_abi(cg, value, position);
+    let prior = std::mem::replace(&mut cg.expected_lambda, expected);
+    let generated = gen_expr(cg, value);
+    cg.expected_lambda = prior;
+    let v = generated?;
     let v = match expected_result_inner {
         Some(inner) => crate::result::fit_to_inner(cg, v, inner)?,
         None => v,
@@ -400,6 +404,45 @@ fn generic_returned_lambda(cg: &Codegen, value: &Expr) -> Option<ReturnedLambda>
         (**lambda_body).clone(),
         *position,
     ))
+}
+
+fn factory_lambda_abi(
+    cg: &Codegen,
+    value: &Expr,
+    position: Option<Position>,
+) -> Option<(Vec<Position>, osprey_types::Type)> {
+    let Expr::Call { function, .. } = value else {
+        return None;
+    };
+    let Expr::Identifier(callee) = crate::expr::unapplied(function) else {
+        return None;
+    };
+    let (_, body) = cg.fn_defs.get(callee)?;
+    let mut lambdas = Vec::new();
+    returned_lambda_positions(body, &mut lambdas);
+    if lambdas.is_empty() {
+        return None;
+    }
+    let ty = cg.prog.let_type(position)?.clone();
+    crate::types::fn_value_concrete(&ty).then_some((lambdas, ty))
+}
+
+fn returned_lambda_positions(body: &Expr, positions: &mut Vec<Position>) {
+    match body {
+        Expr::Lambda {
+            position: Some(position),
+            ..
+        } => positions.push(*position),
+        Expr::Block {
+            value: Some(value), ..
+        } => returned_lambda_positions(value, positions),
+        Expr::Match { arms, .. } => {
+            for arm in arms {
+                returned_lambda_positions(&arm.body, positions);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Whether a generic returned lambda reads the producing call's parameters.

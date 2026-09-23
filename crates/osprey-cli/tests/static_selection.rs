@@ -129,6 +129,71 @@ fn generic_unmarked_effects_can_be_selected_statically() {
         "effect Echo<T> { echo: fn(T) -> T }\nlet answer = {\n    handle static Echo<int> {\n        echo value => value\n    }\n    perform Echo<int>.echo(42)\n}\nprint(answer)",
         Flavor::Default,
     );
+    assert_discharged(
+        "effect Echo<T> { echo: fn(T) -> T }\nlet answer = {\n    handle static Echo<int> {\n        echo value => value\n    }\n    perform Echo.echo(42)\n}\nprint(answer)",
+        Flavor::Default,
+    );
+    assert_discharged(
+        "effect Echo T\n    echo : T => T\nanswer =\n    handle static Echo<int>\n        echo value => value\n    perform Echo.echo 42\nprint answer\n",
+        Flavor::Ml,
+    );
+    assert_flavored_output(
+        "inferred_static_instance",
+        "osp",
+        "effect Echo<T> { echo: fn(T) -> T }\nlet answer = {\n    handle static Echo<int> {\n        echo value => value\n    }\n    perform Echo.echo(42)\n}\nprint(answer)",
+        "42\n",
+    );
+    assert_flavored_output(
+        "inferred_static_instance",
+        "ospml",
+        "effect Echo T\n    echo : T => T\nanswer =\n    handle static Echo<int>\n        echo value => value\n    perform Echo.echo 42\nprint answer\n",
+        "42\n",
+    );
+}
+
+#[test]
+fn inferred_record_effect_arguments_discharge_at_the_resolved_instantiation() {
+    assert_discharged(
+        "type Point = { x: int, y: int }\neffect Echo<T> { echo: fn(T) -> T }\nlet answer = {\n    handle static Echo<Point> {\n        echo value => value\n    }\n    perform Echo.echo(Point { x: 42, y: 1 })\n}\nprint(answer.x)",
+        Flavor::Default,
+    );
+    assert_discharged(
+        "type Point =\n    x : int\n    y : int\neffect Echo T\n    echo : T => T\nanswer =\n    handle static Echo<Point>\n        echo value => value\n    perform Echo.echo (Point(x = 42, y = 1))\nprint answer.x\n",
+        Flavor::Ml,
+    );
+    assert_flavored_output(
+        "inferred_static_record_instance",
+        "osp",
+        "type Point = { x: int, y: int }\neffect Echo<T> { echo: fn(T) -> T }\nlet answer = {\n    handle static Echo<Point> {\n        echo value => value\n    }\n    perform Echo.echo(Point { x: 42, y: 1 })\n}\nprint(answer.x)",
+        "42\n",
+    );
+    assert_flavored_output(
+        "inferred_static_record_instance",
+        "ospml",
+        "type Point =\n    x : int\n    y : int\neffect Echo T\n    echo : T => T\nanswer =\n    handle static Echo<Point>\n        echo value => value\n    perform Echo.echo (Point(x = 42, y = 1))\nprint answer.x\n",
+        "42\n",
+    );
+}
+
+#[test]
+fn staged_generic_records_keep_distinct_effect_identities() {
+    let header = "type Box<T> = { item: T }\neffect Echo<T> { echo: fn(T) -> T }\n";
+    let matching = format!("{header}let answer = {{\n    handle static Echo<Box<int>> {{ echo value => value }}\n    perform Echo.echo(Box {{ item: 42 }})\n}}\nprint(answer.item)");
+    assert_discharged(&matching, Flavor::Default);
+    let mismatched = format!("{header}fn fetchString() = perform Echo.echo(Box {{ item: \"wrong\" }})\nlet answer = {{\n    handle static Echo<Box<int>> {{ echo value => value }}\n    fetchString()\n}}\nprint(answer.item)");
+    let result = lower(&mismatched, Flavor::Default);
+    assert!(
+        result.as_ref().is_err_and(|errors| errors
+            .iter()
+            .any(|error| error.message.contains("Echo<{ item: string }>.echo"))),
+        "{result:?}"
+    );
+}
+
+#[test]
+fn inferred_union_effect_arguments_discharge_at_the_resolved_instantiation() {
+    let source = "type Choice<T> = Some { value: T } | None\neffect Echo<T> { echo: fn(T) -> T }\nlet answer = {\n    handle static Echo<Choice<int>> { echo value => value }\n    perform Echo.echo(Some { value: 42 })\n}\nprint(match answer { Some { value } => value None => 0 })";
+    assert_discharged(source, Flavor::Default);
 }
 
 #[test]
@@ -144,6 +209,38 @@ fn kernel_selection_accepts_an_ordinary_value_effect() {
     assert_discharged(
         "effect Read { value: fn() -> int }\nfn fetch() = perform Read.value()\nlet answer = kernel Read value => 42 in fetch()\nprint(answer)",
         Flavor::Default,
+    );
+}
+
+#[test]
+fn a_kernel_rejects_an_unresolved_callback_requirement() {
+    for body in [
+        "kernel Read value => 42 in callback()",
+        "{ let alias = callback\nkernel Read value => 42 in alias() }",
+        "kernel Read value => 42 in invoke(callback)",
+    ] {
+        let source = format!(
+            "effect Read {{ value: fn() -> int }}\nfn invoke(f) = f()\nfn run(callback) = {body}"
+        );
+        let parsed = parse_program_with_flavor(&source, Flavor::Default);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let errors = osprey_ast::stage::validate(&parsed.program);
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.message.contains("<unknown>")),
+            "a callback with no published effect row must not pass a kernel gate: {errors:?}"
+        );
+    }
+    let ml = "effect Read\n    value : Unit => int\n\ninvoke f = f ()\nrun callback =\n    kernel\n        Read value => 42\n    in invoke callback\n";
+    let parsed = parse_program_with_flavor(ml, Flavor::Ml);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let errors = osprey_ast::stage::validate(&parsed.program);
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.message.contains("<unknown>")),
+        "ML callbacks must obey the same kernel stage gate: {errors:?}"
     );
 }
 

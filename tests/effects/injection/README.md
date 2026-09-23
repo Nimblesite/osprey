@@ -1,9 +1,10 @@
 # Injected implementations
 
-A handler is not where the implementation has to be written. `handle … in` is
-an expression, so a function that returns one is a policy you pass around:
-the code under test performs an operation, and the caller decides which
-implementation answers it.
+A handler can be installed where the application chooses an implementation.
+Each `with…Storage` function installs a block-scoped `handle` for the rest of
+its block, then calls the supplied work. The code under test performs an
+operation; its caller decides which implementation answers it. A reusable
+`handler Storage { … }` value can instead be called directly as `h(work)`.
 
 `storage_injection.test.{osp,ospml}` is the whole pattern in one program.
 The logic is written once against a `Storage` effect, and three separate

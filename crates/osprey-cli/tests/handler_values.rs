@@ -77,6 +77,7 @@ fn counter(initial) -> fn(fn() -> int) -> int = {
         action()
     })
 }
+
 let a = counter(0)
 let b = counter(10)
 let first = a(|| => perform Count.next())
@@ -86,6 +87,180 @@ print("${first},${second},${separate}")
 "#,
         "1,2,11\n",
     );
+}
+
+#[test]
+fn inferred_stateful_handler_factories_keep_their_concrete_callers() {
+    let default = r#"
+effect Count { next: fn() -> int }
+fn counter(initial) = {
+    mut count = initial
+    handler Count {
+        next => {
+            count = (count + 1) ?: count
+            count
+        }
+    }
+}
+
+
+let a = counter(0)
+let b = counter(10)
+let c = counter(20)
+let first = a(|| => perform Count.next())
+let second = a(|| => perform Count.next())
+let separate = b(|| => perform Count.next())
+let text = c(|| => "ready")
+print("${first},${second},${separate},${text}")
+"#;
+    let ml = r#"
+effect Count
+    next : Unit => int
+counter initial =
+    mut count = initial
+    handler Count
+        next =>
+            count := (count + 1) ?: count
+            count
+a = counter 0
+b = counter 10
+c = counter 20
+first = a (\() => perform Count.next ())
+second = a (\() => perform Count.next ())
+separate = b (\() => perform Count.next ())
+text = c (\() => "ready")
+print "${first},${second},${separate},${text}"
+"#;
+    assert_output("inferred_factory", "osp", default, "1,2,11,ready\n");
+    assert_output("inferred_factory", "ospml", ml, "1,2,11,ready\n");
+    for (source, original, replacement, flavor) in [
+        (
+            default,
+            "let second = a(|| => perform Count.next())",
+            "let second = a(|| => \"wrong\")",
+            osprey_syntax::Flavor::Default,
+        ),
+        (
+            ml,
+            "second = a (\\() => perform Count.next ())",
+            "second = a (\\() => \"wrong\")",
+            osprey_syntax::Flavor::Ml,
+        ),
+    ] {
+        let mismatched = source.replace(original, replacement);
+        let parsed = osprey_syntax::parse_program_with_flavor(&mismatched, flavor);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let errors = osprey_types::check_program(&parsed.program);
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.message.contains("cannot unify")),
+            "one shared handler value must not change its callback ABI: {errors:?}"
+        );
+    }
+}
+
+#[test]
+fn branched_stateful_handler_factories_keep_one_callable_abi() {
+    let default = r#"
+effect Count { next: fn() -> int }
+fn counter(initial) = {
+    mut count = initial
+    if true {
+        handler Count { next => {
+            count = (count + 1) ?: count
+            count
+        } }
+    } else {
+        handler Count { next => {
+            count = (count + 1) ?: count
+            count
+        } }
+    }
+}
+let a = counter(0)
+let first = a(|| => perform Count.next())
+let second = a(|| => perform Count.next())
+print("${first}:${second}")
+"#;
+    let ml = r#"
+effect Count
+    next : Unit => int
+counter initial =
+    mut count = initial
+    match true
+        true => handler Count
+            next =>
+                count := (count + 1) ?: count
+                count
+        false => handler Count
+            next =>
+                count := (count + 1) ?: count
+                count
+a = counter 0
+first = a (\() => perform Count.next ())
+second = a (\() => perform Count.next ())
+print "${first}:${second}"
+"#;
+    for (source, original, replacement, flavor) in [
+        (
+            default,
+            "let second = a(|| => perform Count.next())",
+            "let second = a(|| => \"wrong\")",
+            osprey_syntax::Flavor::Default,
+        ),
+        (
+            ml,
+            "second = a (\\() => perform Count.next ())",
+            "second = a (\\() => \"wrong\")",
+            osprey_syntax::Flavor::Ml,
+        ),
+    ] {
+        let parsed = osprey_syntax::parse_program_with_flavor(
+            &source.replace(original, replacement),
+            flavor,
+        );
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let errors = osprey_types::check_program(&parsed.program);
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.message.contains("cannot unify")),
+            "one branched handler value must retain one callback ABI: {errors:?}"
+        );
+    }
+    assert_output("branched_factory", "osp", default, "1:2\n");
+    assert_output("branched_factory", "ospml", ml, "1:2\n");
+}
+
+#[test]
+fn pure_handler_factory_values_remain_polymorphic() {
+    let default = "effect Read { value: fn() -> int }\nfn make() = handler Read { value => 42 }\nlet h = make()\nlet n = h(|| => perform Read.value())\nlet text = h(|| => \"ready\")\nprint(\"${n}:${text}\")";
+    let ml = "effect Read\n    value : Unit => int\nmake () = handler Read\n    value => 42\nh = make ()\nn = h (\\() => perform Read.value ())\ntext = h (\\() => \"ready\")\nprint \"${n}:${text}\"\n";
+    assert_output("polymorphic_handler_factory", "osp", default, "42:ready\n");
+    assert_output("polymorphic_handler_factory", "ospml", ml, "42:ready\n");
+}
+
+#[test]
+fn function_valued_generic_operations_keep_their_instance_through_discharge() {
+    // The operation result is itself a callable. Its type must identify the
+    // same generic effect at the handler, perform and static rewrite sites.
+    for (stage, name) in [("", "dynamic"), ("static ", "static")] {
+        let default = format!(
+            "effect Carry<T> {{ fetch: fn() -> T }}\n\
+             let h = handler {stage}Carry<fn(int) -> int> {{ fetch => |x| => (x + 1) ?: 0 }}\n\
+             let f: fn(int) -> int = h(|| => perform Carry.fetch())\n\
+             print(f(41))\n"
+        );
+        let ml = format!(
+            "effect Carry T\n    fetch : Unit => T\n\
+             h = handler {stage}Carry<(int -> int)>\n    fetch => \\x => (x + 1) ?: 0\n\
+             f : int -> int\nf = h (\\() => perform Carry.fetch ())\n\
+             print (f 41)\n"
+        );
+        assert_output(&format!("generic_function_{name}"), "osp", &default, "42\n");
+        assert_output(&format!("generic_function_{name}"), "ospml", &ml, "42\n");
+    }
 }
 
 #[test]
@@ -110,6 +285,34 @@ print "${first}\n${second}"
 "#;
     assert_output("callable", "osp", default, "42\n42\n");
     assert_output("callable", "ospml", ml, "42\n42\n");
+}
+
+#[test]
+fn handler_values_can_return_functions_supplied_by_effect_arms() {
+    assert_output(
+        "returned_function",
+        "osp",
+        r"
+effect Read { read: fn() -> fn(int) -> int }
+let h = handler Read { read => |n| => (n + 1) ?: 0 }
+let action = h(|| => perform Read.read())
+print(action(41))
+",
+        "42\n",
+    );
+    assert_output(
+        "returned_function",
+        "ospml",
+        r"
+effect Read
+    read : Unit => (int -> int)
+h = handler Read
+    read => \n => (n + 1) ?: 0
+action = h (\() => perform Read.read ())
+print (action 41)
+",
+        "42\n",
+    );
 }
 
 #[test]

@@ -2,8 +2,8 @@
 //!
 //! One walk answers both questions the staging axis asks of a program. At
 //! [`Stage::Static`] it is the **dependency set** — the reactive reads a
-//! function makes, which is exact because a static operation cannot be reached
-//! except by performing it ([STAGE-SIGNALS-DIRTY]). At [`Stage::Dynamic`] it is
+//! function may make, including an explicit unknown remainder when a callback
+//! has no published effect row ([STAGE-SIGNALS-EXACT]). At [`Stage::Dynamic`] it is
 //! the **residual runtime row** — what a `kernel` boundary must find empty,
 //! because device code cannot leave the device to reach a handler
 //! ([STAGE-GPU-LEGAL]). They differ only in which declarations count, so they
@@ -11,20 +11,146 @@
 
 use crate::mutate::children_mut;
 use crate::stage::{effect_declarations, EffectDecl};
-use crate::{effect_name, walk_program, AstVisitor, Expr, Program, Stage, Stmt};
-use std::collections::BTreeMap;
+use crate::{effect_name, walk_program, AstNode, AstVisitor, Expr, Program, Stage, Stmt};
+use std::collections::{BTreeMap, BTreeSet};
+
+const UNKNOWN_DEPENDENCY: &str = "<unknown>";
 
 /// The static-effect operations each named function requires, transitively
 /// through the calls it makes, minus everything it discharges itself.
 /// Implements [STAGE-SIGNALS-DIRTY].
 ///
 /// This is the dependency set: a reactive read is a static operation, so the
-/// row a function already carries names exactly the data it touches. The query
-/// runs on the program **before** [`discharge`] erases those operations —
-/// erasure is what makes the read free, and this is what makes it exact.
+/// row a function already carries names what it may read. The query runs on
+/// the program **before** [`discharge`] erases those operations. An unknown
+/// callback row is reported as `<unknown>` instead of an empty dependency set.
 #[must_use]
 pub fn dependencies(program: &Program) -> BTreeMap<String, Vec<String>> {
-    requirements(program, Stage::Static)
+    let mut required = requirements(program, Stage::Static);
+    attach_unknown(program, &mut required);
+    required
+}
+
+fn attach_unknown(program: &Program, required: &mut BTreeMap<String, Vec<String>>) {
+    for name in unknown_dependency_functions(program) {
+        let operations = required.entry(name).or_default();
+        operations.push(UNKNOWN_DEPENDENCY.to_owned());
+        operations.sort();
+        operations.dedup();
+    }
+}
+
+/// A parameter invoked as a callable has an unresolved row. Propagate that
+/// remainder through named callers instead of publishing a complete-looking
+/// empty set that would miss reactive invalidation ([STAGE-SIGNALS-EXACT]).
+fn unknown_dependency_functions(program: &Program) -> BTreeSet<String> {
+    #[derive(Default)]
+    struct Parameters(BTreeMap<String, BTreeSet<String>>);
+    impl AstVisitor for Parameters {
+        fn statement(&mut self, statement: &Stmt) {
+            let callable = match statement {
+                Stmt::Function {
+                    name, parameters, ..
+                }
+                | Stmt::Let {
+                    name,
+                    value: Expr::Lambda { parameters, .. },
+                    ..
+                } => Some((name, parameters)),
+                _ => None,
+            };
+            if let Some((name, parameters)) = callable {
+                let _ = self.0.insert(
+                    name.clone(),
+                    parameters
+                        .iter()
+                        .map(|parameter| parameter.name.clone())
+                        .collect(),
+                );
+            }
+        }
+    }
+    let mut parameters = Parameters::default();
+    walk_program(program, &mut parameters);
+    let bodies = function_bodies(program);
+    let mut unknown: BTreeSet<String> = bodies
+        .iter()
+        .filter(|(name, body)| {
+            parameters
+                .0
+                .get(*name)
+                .is_some_and(|params| invokes_parameter(body, params))
+        })
+        .map(|(name, _)| name.clone())
+        .collect();
+    loop {
+        let previous = unknown.len();
+        let inherited: Vec<_> = bodies
+            .iter()
+            .filter(|(_, body)| references_any(body, &unknown))
+            .map(|(name, _)| name.clone())
+            .collect();
+        unknown.extend(inherited);
+        if unknown.len() == previous {
+            return unknown;
+        }
+    }
+}
+
+pub(crate) fn invokes_parameter(body: &Expr, parameters: &BTreeSet<String>) -> bool {
+    let parameters = parameter_aliases(body, parameters);
+    any_expression(body, |expression| {
+        let Expr::Call { function, .. } = expression else {
+            return false;
+        };
+        let mut names = BTreeSet::new();
+        crate::freevars::free_idents(function, &mut names);
+        !names.is_disjoint(&parameters)
+    })
+}
+
+/// A value derived from an unresolved callable still has an unresolved row
+/// when called through a local name. Widen conservatively for aliases and
+/// wrappers whose body captures that callable.
+pub(crate) fn parameter_aliases(body: &Expr, parameters: &BTreeSet<String>) -> BTreeSet<String> {
+    let mut aliases = parameters.clone();
+    loop {
+        let previous = aliases.len();
+        let mut pending = vec![AstNode::Expression(body)];
+        while let Some(node) = pending.pop() {
+            if let AstNode::Statement(Stmt::Let { name, value, .. }) = node {
+                let mut names = BTreeSet::new();
+                crate::freevars::free_idents(value, &mut names);
+                if !names.is_disjoint(&aliases) {
+                    let _ = aliases.insert(name.clone());
+                }
+            }
+            node.for_each_child(|child| pending.push(child));
+        }
+        if aliases.len() == previous {
+            return aliases;
+        }
+    }
+}
+
+fn references_any(body: &Expr, names: &BTreeSet<String>) -> bool {
+    any_expression(
+        body,
+        |expression| matches!(expression, Expr::Identifier(name) if names.contains(name)),
+    )
+}
+
+fn any_expression(body: &Expr, predicate: impl Fn(&Expr) -> bool) -> bool {
+    let mut pending = vec![AstNode::Expression(body)];
+    while let Some(node) = pending.pop() {
+        if let AstNode::Expression(expression) = node {
+            if predicate(expression) {
+                return true;
+            }
+        }
+        node.for_each_child(|child| pending.push(child));
+    }
+    false
 }
 
 /// Every function's transitive requirements at one stage, minus what it answers
@@ -33,7 +159,11 @@ pub fn dependencies(program: &Program) -> BTreeMap<String, Vec<String>> {
 /// ([STAGE-SIGNALS-DIRTY]), [`Stage::Dynamic`] is the residual runtime row a
 /// `kernel` boundary must find empty ([STAGE-GPU-LEGAL]).
 pub(crate) fn requirements(program: &Program, stage: Stage) -> BTreeMap<String, Vec<String>> {
-    collect_requirements(program, stage, false)
+    let mut required = collect_requirements(program, stage, false);
+    if stage == Stage::Dynamic {
+        attach_unknown(program, &mut required);
+    }
+    required
 }
 
 /// Runtime dispatch remains runtime work even when a helper handles it locally.

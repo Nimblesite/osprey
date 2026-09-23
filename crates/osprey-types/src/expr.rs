@@ -13,7 +13,7 @@ use crate::unify::unify;
 use osprey_ast::{
     Expr, FieldAssignment, InterpolatedPart, NamedArgument, Parameter, Stmt, TypeExpr,
 };
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 fn math_err() -> Type {
     Type::prim(names::MATH_ERROR)
@@ -427,7 +427,17 @@ impl Checker {
             };
         let answer = self.ctx.fresh();
         let mut answering: Vec<(String, Type)> = Vec::new();
+        let mut seen_arms = HashSet::new();
         for arm in arms {
+            if !seen_arms.insert(&arm.operation) {
+                self.errors.push(
+                    TypeError::new(format!(
+                        "duplicate handler arm `{effect}.{}`",
+                        arm.operation
+                    ))
+                    .with_pos(arm.position),
+                );
+            }
             let (params, op_ret, mode) = self.arm_signature(effect, arm, &inst_ops, effect_known);
             let mut local = env.child();
             for (p, pty) in arm.params.iter().zip(params) {

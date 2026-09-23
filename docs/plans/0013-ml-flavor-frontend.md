@@ -4,7 +4,7 @@
 recursive-descent parser, CST, and lowerer are complete
 (`crates/osprey-syntax/src/ml/`); flavor selection (flag > marker > extension)
 works; **78 `.ospml` tested twins** run byte-identically to their `.osp`
-counterparts (including effects, `handle … in`, and `resume`); cross-flavor
+counterparts (including effects, handlers, and `resume`); cross-flavor
 AST- and IR-equivalence tests pass
 (`crates/osprey-cli/tests/cross_flavor_{equiv,ir_equiv}.rs`); the VSIX ships ML
 support (`osprey-ml` language, TextMate grammar, layout config,
@@ -212,7 +212,7 @@ TODO:
 
 - [x] **78 `.ospml` tested twins** under `tests/regressions/**` with shared
       `.expectedoutput` goldens, covering currying/partial application, `=>`
-      effect operations, `handle … in`, `resume`, layout match/records,
+      effect operations, handlers, `resume`, layout match/records,
       bindings/mutation, and interpolation.
 - [x] **No regressions**: `.ospml` discovery is additive; every `.osp` fixture
       still passes byte-for-byte.
@@ -329,19 +329,12 @@ TODO:
 
 ## Acceptance
 
-- [ ] A `.ospml` program with curried functions, `=>` effect operations,
-      first-class handlers, and `handle … do` compiles, runs, and matches its
-      `.expectedoutput` byte-for-byte under `make test`. **Unmet, and the reason
-      the plan cannot be retired:** the curried / `=>` / `handle … in` half is
-      green across 78 twins, but `handler E { … }` and `handle a b do body` are
-      were originally reserved-token errors. **Prototype update:** callable
-      `handler` values now run in both flavors; the obsolete rejection fixture
-      was replaced by positive handler execution tests. Flat multi-install
-      remains deferred; see plan 0016 for the current scope.
+- [x] ML curried functions, `=>` effect operations, callable `handler E`
+      values and block-scoped `handle E` run against the same goldens as their
+      Default twins. The replacement syntax is owned by plan 0016; both flavors
+      reject the former `in`/`do` application forms.
 - [x] The equivalent-bucket golden tests prove Default explicit-curry ≡ ML curry
-      at the canonical AST. (The `handle … in` ≡ ML `handle … do` half of this
-      bullet was never achievable as written — ML spells it `in`; see the
-      lowering item above.)
+      at the canonical AST.
 - [x] The non-equivalent-bucket golden tests prove Default multi-param ≢ ML curry.
 - [x] `grep` finds no flavor inspection in `osprey-types` or `osprey-codegen` —
       only explanatory comments, no `Flavor` branching.
