@@ -207,6 +207,58 @@ export async function findVariable(
   return all.find((variable) => variable.name === name);
 }
 
+/** DAP requests that resume the debuggee. The adapter answers them before the
+ * debuggee stops again and sends no `continued` event for them, so the request
+ * itself is what marks the debuggee running. */
+const RESUME_REQUESTS = new Set([
+  "continue",
+  "next",
+  "stepIn",
+  "stepOut",
+  "stepBack",
+  "reverseContinue",
+  "goto",
+  "restartFrame",
+]);
+
+/** DAP events after which the debuggee is no longer stopped. */
+const RUNNING_EVENTS = new Set(["continued", "exited", "terminated"]);
+
+/** Per session id, the thread of the last `stopped` event, held until a resume
+ * request or a running event. A session absent from the map is not stopped. */
+const stops = new Map<string, { threadId?: number }>();
+
+function trackStops(session: vscode.DebugSession): vscode.DebugAdapterTracker {
+  return {
+    onWillReceiveMessage: (message: { command?: string }) => {
+      if (RESUME_REQUESTS.has(message.command ?? "")) {
+        stops.delete(session.id);
+      }
+    },
+    onDidSendMessage: (message: {
+      type?: string;
+      event?: string;
+      body?: { threadId?: number };
+    }) => {
+      if (message.type !== "event") {
+        return;
+      }
+      if (message.event === "stopped") {
+        stops.set(session.id, { threadId: message.body?.threadId });
+      } else if (RUNNING_EVENTS.has(message.event ?? "")) {
+        stops.delete(session.id);
+      }
+    },
+    onWillStopSession: () => stops.delete(session.id),
+  };
+}
+
+// Registered when the harness loads, before any test starts a session, so no
+// session's `stopped` event is missed.
+vscode.debug.registerDebugAdapterTrackerFactory("*", {
+  createDebugAdapterTracker: trackStops,
+});
+
 /** How long to keep polling for a *source-resolved* top frame before accepting
  * an unresolved one. lldb-dap can briefly report the top frame's source as `.`
  * and its line as 0 on the first `stackTrace` of a fresh session, before the
@@ -225,46 +277,71 @@ function topFrameResolved(stop: DapStop): boolean {
   return path !== undefined && path !== "" && path !== "." && top.line >= 1;
 }
 
-/** Poll until the debuggee is stopped with a stack frame; throws on timeout.
- * Prefers a source-resolved top frame (see {@link SOURCE_RESOLVE_GRACE_MS}) so
- * the cold-start `.`/line-0 transient does not race callers that assert on the
- * frame's source path or line. */
+async function stoppedThreadIds(
+  session: vscode.DebugSession,
+  threadId: number | undefined,
+): Promise<number[]> {
+  if (threadId !== undefined) {
+    return [threadId];
+  }
+  const response = (await session.customRequest("threads")) as {
+    threads?: { id: number }[];
+  };
+  return (response.threads ?? []).map((thread) => thread.id);
+}
+
+/** The stack of the thread the adapter last reported `stopped`, or undefined
+ * while the debuggee runs. Thread state is never read without that event:
+ * between `launch` and resuming, lldb-dap answers `stackTrace` with the loader
+ * entry (`ld-linux`'s `_start`, `_dyld_start`) and reports no stop, and right
+ * after a step request it still answers with the pre-step frame. */
+async function readStop(
+  session: vscode.DebugSession,
+): Promise<DapStop | undefined> {
+  const stopped = stops.get(session.id);
+  if (!stopped) {
+    return undefined;
+  }
+  for (const threadId of await stoppedThreadIds(session, stopped.threadId)) {
+    const stack = await getStackTrace(session, threadId);
+    if (stack.stackFrames.length > 0) {
+      return { threadId, stack };
+    }
+  }
+  return undefined;
+}
+
+/** Poll until the adapter has reported the debuggee stopped and a stack frame
+ * is readable; throws on timeout. Prefers a source-resolved top frame (see
+ * {@link SOURCE_RESOLVE_GRACE_MS}) so the cold-start `.`/line-0 transient does
+ * not race callers that assert on the frame's source path or line. */
 export async function waitForStop(
   session: vscode.DebugSession,
   timeoutMs = 30_000,
 ): Promise<DapStop> {
   const started = Date.now();
   let lastError = "";
-  let fallback: DapStop | undefined;
+  let unresolved: { stop: DapStop; since: number } | undefined;
   while (Date.now() - started < timeoutMs) {
     try {
-      const threadsResponse = (await session.customRequest("threads")) as {
-        threads?: { id: number }[];
-      };
-      for (const thread of threadsResponse.threads ?? []) {
-        try {
-          const stack = await getStackTrace(session, thread.id);
-          if (stack.stackFrames.length > 0) {
-            const stop = { threadId: thread.id, stack };
-            if (topFrameResolved(stop)) {
-              return stop;
-            }
-            fallback ??= stop;
-          }
-        } catch (error) {
-          lastError = error instanceof Error ? error.message : String(error);
-        }
+      const stop = await readStop(session);
+      if (stop && topFrameResolved(stop)) {
+        return stop;
       }
-      if (fallback && Date.now() - started >= SOURCE_RESOLVE_GRACE_MS) {
-        return fallback;
+      unresolved = stop && { stop, since: unresolved?.since ?? Date.now() };
+      if (
+        unresolved &&
+        Date.now() - unresolved.since >= SOURCE_RESOLVE_GRACE_MS
+      ) {
+        return unresolved.stop;
       }
     } catch (error) {
       lastError = error instanceof Error ? error.message : String(error);
     }
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
   }
-  if (fallback) {
-    return fallback;
+  if (unresolved) {
+    return unresolved.stop;
   }
   throw new Error(
     `Timed out waiting for the debuggee to stop after ${timeoutMs}ms (${lastError})`,
