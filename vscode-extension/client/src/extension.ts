@@ -28,6 +28,7 @@ import { registerOspreyDebugPanel } from "./debug-panel";
 import { registerProfilerCommands } from "./profiler/profile-run";
 import { registerTestDocsCommand } from "./test-docs-panel";
 import { registerOspreyTestExplorer } from "./test-explorer";
+import { registerTestDebugProfile } from "./test-debug";
 import { registerTestProfileProfile } from "./test-profile";
 import { registerWarningFixes, warningFixMiddleware } from "./warning-fixes";
 
@@ -394,6 +395,12 @@ export function activate(context: ExtensionContext) {
     controller,
     () => resolveServerCommand(context),
     () => heat,
+  );
+  // The Debug run profile runs a suite under the Osprey debug adapter, so
+  // breakpoints inside a `test(...)` body are live and the Testing view offers
+  // **Debug Test** ([TESTING-DEBUG-VSCODE]).
+  registerTestDebugProfile(context, controller, () =>
+    resolveServerCommand(context),
   );
   registerTestDocsCommand(context);
   registerWarningFixes(context, (params) => client.sendRequest(CodeActionRequest.type, params));

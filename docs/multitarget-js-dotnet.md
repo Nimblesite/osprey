@@ -51,19 +51,21 @@ They need new emitters and a non-C runtime surface.
 
 The relevant existing semantic status:
 
-- Effects: declarations, `perform`, `handle ... in`, source annotations, and
-  operation type checking work today. Missing handlers and undeclared rows are
-  not yet rejected in every case; runtime lookup guards a missing handler.
-  Handler arms without explicit `resume` are lowered as normal functions.
-- Explicit `resume`: native code generation implements single-shot, deep,
-  thread-as-continuation semantics. The Wasm runtime excludes that pthread path.
+- Effects: declarations, `perform`, callable `handler` values, block-scoped
+  `handle`, source annotations and operation type checking work today. The
+  closed-program checker rejects known unhandled operations at entry; full
+  independently quantified scoped rows remain unfinished. Declared value
+  operations lower through ordinary substitution regardless of arm text.
+- Declared control operations: native code generation implements single-shot,
+  deep, thread-as-continuation semantics. The Wasm target rejects this missing
+  continuation capability before linking, even when an arm does not resume.
 - Fibers: `spawn`, `await`, `yield`, and channels exist. The current runtime uses
   pthread-backed fibers in concurrent mode, with deterministic sequential
   execution in test mode. This is closer to "thread-backed task" than a green
   stack-copying fiber.
-- The wasm target deliberately excludes fibers, HTTP/WebSocket, FFI, random, and
-  some system calls because the current runtime uses pthreads, sockets, OpenSSL,
-  `dlopen`, and host syscalls.
+- The wasm target deliberately excludes fibers, HTTP/WebSocket, arbitrary FFI
+  and unavailable process/terminal operations. Random and input have portable
+  runtime implementations, subject to the WASI host.
 
 ## Research Baseline
 
@@ -99,7 +101,7 @@ Sources are listed at the end.
 
 ### Difficulty
 
-MVP without explicit `resume`: **medium-high**.
+MVP for value operations without control continuations: **medium-high**.
 
 Full direct-style effects/fibers: **high**.
 
@@ -191,7 +193,7 @@ single logical executions, not cloneable delimited stacks.
 
 ### Difficulty
 
-MVP without explicit `resume`: **high but lower semantic risk than JS**.
+MVP for value operations without control continuations: **high but lower semantic risk than JS**.
 
 Full direct-style effects/fibers: **high**.
 

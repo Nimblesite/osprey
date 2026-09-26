@@ -254,6 +254,8 @@ fn function(body: Expr) -> Stmt {
         parameters: Vec::new(),
         return_type: None,
         effects: Vec::new(),
+        effect_tail: None,
+        effect_row_present: false,
         body,
         doc: None,
         position: None,

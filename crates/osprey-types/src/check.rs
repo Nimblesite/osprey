@@ -112,6 +112,26 @@ pub(crate) fn annotation_name(name: &str) -> String {
     }
 }
 
+fn returns_expansive_handler_value(body: &Expr) -> bool {
+    match body {
+        Expr::Block {
+            value: Some(value), ..
+        } => returned_handler_branch(value),
+        _ => false,
+    }
+}
+
+fn returned_handler_branch(value: &Expr) -> bool {
+    match value {
+        Expr::Lambda { body, .. } => matches!(body.as_ref(), Expr::Handler { .. }),
+        Expr::Match { arms, .. } => arms.iter().any(|arm| returned_handler_branch(&arm.body)),
+        Expr::Block {
+            value: Some(value), ..
+        } => returned_handler_branch(value),
+        _ => false,
+    }
+}
+
 /// All cross-cutting declaration tables, plus the inference context.
 pub(crate) struct Checker {
     pub(crate) ctx: InferCtx,
@@ -126,6 +146,9 @@ pub(crate) struct Checker {
     /// Function name -> the exact (params, ret) types created in pass one, so
     /// body inference reuses the very same variables the signature exported.
     fn_sigs: HashMap<String, (Vec<Type>, Type)>,
+    /// Expansive calls returning a handler closure allocate one shared state.
+    /// Their result cannot quantify a fresh callable ABI at each use.
+    handler_factories: HashSet<String>,
     /// Every lambda's inferred function type, keyed by its source position —
     /// resolved and published to the backend by [`infer_program`].
     pub(crate) lambda_tys: Vec<(Position, Type)>,
@@ -185,6 +208,9 @@ pub(crate) struct Checker {
     /// Function name → its declared type parameters bound to fresh inference
     /// variables (empty for undeclared). Implements [TYPE-GENERICS-FN].
     fn_typarams: HashMap<String, HashMap<String, Type>>,
+    /// Explicit function-row arguments after record/alias resolution. The
+    /// effect checker compares these with inferred request identities.
+    declared_effect_rows: HashMap<(u32, u32), Vec<Option<Vec<Type>>>>,
     /// The type parameters of the function whose body is currently being
     /// inferred, so annotations inside the body (explicit construction-site
     /// type arguments) resolve the binder's variables, not nominal names.
@@ -206,6 +232,7 @@ impl Checker {
             union_variants: HashMap::new(),
             fn_params: HashMap::new(),
             fn_sigs: HashMap::new(),
+            handler_factories: HashSet::new(),
             lambda_tys: Vec::new(),
             let_tys: Vec::new(),
             list_tys: Vec::new(),
@@ -223,6 +250,7 @@ impl Checker {
             perform_actual_tys: Vec::new(),
             handler_tys: Vec::new(),
             fn_typarams: HashMap::new(),
+            declared_effect_rows: HashMap::new(),
             current_fn_typarams: HashMap::new(),
             defer_arith: true,
         };
@@ -420,9 +448,13 @@ impl Checker {
                     parameters,
                     return_type,
                     position,
+                    body,
                     ..
                 } => {
                     self.collect_function(name, type_params, parameters, return_type.as_ref(), env);
+                    if returns_expansive_handler_value(body) {
+                        let _ = self.handler_factories.insert(name.clone());
+                    }
                     for e in crate::variance::reject_fn_variance(name, type_params) {
                         self.record_err(e, *position);
                     }
@@ -528,10 +560,41 @@ impl Checker {
                 .get(index)
                 .cloned()
                 .unwrap_or_else(|| self.ctx.fresh());
+            let v = self.resolve_effect_argument(v);
             args.push(v.clone());
             let _ = pmap.insert(p.clone(), v);
         }
         Some((args, Self::instantiate_ops(&info, &pmap)))
+    }
+
+    /// A written `Echo<Point>` and an inferred `Echo` fed a `Point` value
+    /// identify the same operation. Resolve nominal record applications to
+    /// their instantiated structural shape before publishing effect-site
+    /// identities; otherwise a handler keyed by `Point` cannot discharge a
+    /// request keyed by `{ x: int, ... }`. Preserve the declaration name for
+    /// value layout and diagnostics, while the effect-row key uses its fields.
+    fn resolve_effect_argument(&mut self, ty: Type) -> Type {
+        match ty {
+            Type::Con { name, args } => {
+                let args: Vec<_> = args
+                    .into_iter()
+                    .map(|argument| self.resolve_effect_argument(argument))
+                    .collect();
+                if let Some(fields) = self.ctx.record_fields(&name, &args) {
+                    Type::Record { name, fields }
+                } else {
+                    Type::Con { name, args }
+                }
+            }
+            Type::Fun { params, ret } => Type::Fun {
+                params: params
+                    .into_iter()
+                    .map(|parameter| self.resolve_effect_argument(parameter))
+                    .collect(),
+                ret: Box::new(self.resolve_effect_argument(*ret)),
+            },
+            other => other,
+        }
     }
 
     /// Instantiate an effect at an effect-row entry's declared type arguments
@@ -564,6 +627,7 @@ impl Checker {
                 Some(te) => self.written_type_argument(te, fn_typarams, position),
                 None => self.ctx.fresh(),
             };
+            let t = self.resolve_effect_argument(t);
             args.push(t.clone());
             let _ = pmap.insert(p.clone(), t);
         }
@@ -766,10 +830,24 @@ impl Checker {
         // body's `perform` sites (`!State<int>` pins `T` to `int`).
         // Implements [EFFECTS-GENERIC-ROWS].
         let typarams = self.fn_typarams.get(name).cloned().unwrap_or_default();
-        let scopes: Vec<_> = effects
-            .iter()
-            .filter_map(|r| self.effect_row_scope(r, &typarams, pos))
-            .collect();
+        let mut scopes = Vec::new();
+        let mut declared_rows = Vec::new();
+        for effect in effects {
+            let scope = self.effect_row_scope(effect, &typarams, pos);
+            declared_rows.push(
+                (!effect.type_args.is_empty())
+                    .then(|| scope.as_ref().map(|resolved| resolved.args.clone()))
+                    .flatten(),
+            );
+            if let Some(scope) = scope {
+                scopes.push(scope);
+            }
+        }
+        if let Some(position) = pos {
+            let _ = self
+                .declared_effect_rows
+                .insert((position.line, position.column), declared_rows);
+        }
         let pushed = scopes.len();
         self.handler_scopes.extend(scopes);
         self.current_fn_typarams = typarams;
@@ -948,7 +1026,14 @@ impl Checker {
         // printed `Success(<pointer>)` instead of `ab`
         // ([`Checker::deferred_arith`]).
         let mut scheme = self.generalize_with_obligations(env, &binding_ty);
-        let pinned = self.stateful_handle_vars(&binding_ty);
+        let mut pinned = self.stateful_handle_vars(&binding_ty);
+        if let Expr::Call { function, .. } = value {
+            if let Expr::Identifier(callee) = function.as_ref() {
+                if self.handler_factories.contains(callee) {
+                    self.ctx.free_vars(&binding_ty, &mut pinned);
+                }
+            }
+        }
         scheme.vars.retain(|v| !pinned.contains(v));
         let _ = self
             .scheme_obligations
@@ -1396,12 +1481,6 @@ fn finish_data_contracts(checker: &mut Checker, program: &Program) {
     checker.errors.extend(crate::init_order::check(program));
 }
 
-/// Data contracts precede static discharge; residual effect/purity obligations
-/// follow it. In particular, unused arms must still satisfy their operation.
-pub(crate) fn check_data_contracts(program: &Program) -> Vec<TypeError> {
-    checked_program(program).errors
-}
-
 /// Compose call substitutions through aliases before specializing effects.
 fn resolved_instantiations(checker: &mut Checker) -> HashMap<usize, HashMap<VarId, Type>> {
     let substitutions: HashMap<_, HashMap<_, _>> = checker
@@ -1481,7 +1560,7 @@ fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Instances {
                     .collect()
             })
         }))
-        .map(|args| (args.iter().map(ToString::to_string).collect(), args))
+        .map(|args| (resolved_effect_keys(checker, &args), args))
         .collect();
     let perform_tys = checker.perform_tys.clone();
     let perform_actual_tys = checker.perform_actual_tys.clone();
@@ -1490,10 +1569,7 @@ fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Instances {
         collect_site_candidates(perform_tys.into_iter().map(|(position, _, arguments)| {
             (
                 (position.line, position.column),
-                arguments
-                    .iter()
-                    .map(|argument| checker.ctx.apply(argument).to_string())
-                    .collect(),
+                resolved_effect_keys(checker, &arguments),
             )
         }));
     let mut actual_performs = HashMap::new();
@@ -1508,7 +1584,7 @@ fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Instances {
             push_site_candidate(
                 &mut actual_performs,
                 key,
-                arguments.iter().map(ToString::to_string).collect(),
+                effect_keys(&checker.ctx, &arguments),
             );
         } else {
             let _ = unresolved_actual_sites.insert(key);
@@ -1524,19 +1600,18 @@ fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Instances {
             let _ = performs.insert(key, candidates);
         }
     }
+    let declared_rows = resolved_declared_rows(checker);
     crate::effect_rows::Instances {
         methods: checker.methods.clone(),
         performs,
         handlers: dedupe_sites(handler_tys.into_iter().map(|(position, arguments, _)| {
             (
                 (position.line, position.column),
-                arguments
-                    .iter()
-                    .map(|argument| checker.ctx.apply(argument).to_string())
-                    .collect(),
+                resolved_effect_keys(checker, &arguments),
             )
         })),
 
+        declared_rows,
         argument_types,
         instantiations: substitutions
             .into_iter()
@@ -1545,7 +1620,12 @@ fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Instances {
                     site,
                     bindings
                         .into_iter()
-                        .map(|(var, ty)| (Type::Var(var).to_string(), ty.to_string()))
+                        .map(|(var, ty)| {
+                            (
+                                Type::Var(var).to_string(),
+                                effect_type_key(&checker.ctx, &ty),
+                            )
+                        })
                         .collect(),
                 )
             })
@@ -1558,13 +1638,85 @@ fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Instances {
                     name.clone(),
                     binders
                         .iter()
-                        .map(|(name, ty)| (name.clone(), checker.ctx.apply(ty).to_string()))
+                        .map(|(name, ty)| {
+                            let resolved = checker.ctx.apply(ty);
+                            (name.clone(), effect_type_key(&checker.ctx, &resolved))
+                        })
                         .collect(),
                 )
             })
             .collect(),
         ..Default::default()
     }
+}
+
+fn resolved_effect_keys(checker: &mut Checker, arguments: &[Type]) -> Vec<String> {
+    let resolved: Vec<_> = arguments
+        .iter()
+        .map(|argument| checker.ctx.apply(argument))
+        .collect();
+    effect_keys(&checker.ctx, &resolved)
+}
+
+fn effect_keys(ctx: &InferCtx, arguments: &[Type]) -> Vec<String> {
+    arguments
+        .iter()
+        .map(|argument| effect_type_key(ctx, argument))
+        .collect()
+}
+
+/// A non-generic named record keeps its useful source identity. A generic
+/// record uses its instantiated fields so `Box<int>` and `Box<string>` cannot
+/// collapse into the same effect requirement ([EFFECTS-GENERIC-INSTANTIATION]).
+fn effect_type_key(ctx: &InferCtx, ty: &Type) -> String {
+    match ty {
+        Type::Record { name, .. } if !name.is_empty() && ctx.record_fields(name, &[]).is_some() => {
+            name.clone()
+        }
+        Type::Record { fields, .. } => format!(
+            "{{ {} }}",
+            fields
+                .iter()
+                .map(|(name, field)| format!("{name}: {}", effect_type_key(ctx, field)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        Type::Con { name, args } if !args.is_empty() => {
+            format!("{name}<{}>", effect_keys(ctx, args).join(", "))
+        }
+        Type::Fun { params, ret } => format!(
+            "({}) -> {}",
+            effect_keys(ctx, params).join(", "),
+            effect_type_key(ctx, ret)
+        ),
+        _ => ty.to_string(),
+    }
+}
+
+fn resolved_declared_rows(checker: &mut Checker) -> HashMap<(u32, u32), Vec<Option<Vec<String>>>> {
+    checker
+        .declared_effect_rows
+        .iter()
+        .map(|(position, entries)| {
+            (
+                *position,
+                entries
+                    .iter()
+                    .map(|entry| {
+                        entry.as_ref().map(|arguments| {
+                            arguments
+                                .iter()
+                                .map(|argument| {
+                                    let resolved = checker.ctx.apply(argument);
+                                    effect_type_key(&checker.ctx, &resolved)
+                                })
+                                .collect()
+                        })
+                    })
+                    .collect(),
+            )
+        })
+        .collect()
 }
 
 /// A handler whose arms leave its binder open learns that binder from the

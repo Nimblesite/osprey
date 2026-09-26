@@ -14,8 +14,8 @@ use crate::stage::{
     body_requirements, effect_declarations, runtime_requirements, EffectDecl, StageError,
     KERNEL_REGION_KEYWORD,
 };
-use crate::{walk_program, AstVisitor, Expr, Position, Program, Stage};
-use std::collections::BTreeMap;
+use crate::{AstNode, Expr, Position, Program, Stage, Stmt};
+use std::collections::{BTreeMap, BTreeSet};
 
 /// What one `kernel` boundary is decided against: the program's effect
 /// declarations and every function's residual runtime row. Both are
@@ -28,9 +28,8 @@ struct Facts {
 /// Every `kernel` region in `program` whose body still requires a dynamic
 /// operation, as one error apiece naming the operations that forced it.
 pub(crate) fn legality(program: &Program) -> Vec<StageError> {
-    let mut regions = Regions::default();
-    walk_program(program, &mut regions);
-    if regions.0.is_empty() {
+    let regions = regions(program);
+    if regions.is_empty() {
         return Vec::new();
     }
     let facts = Facts {
@@ -38,40 +37,87 @@ pub(crate) fn legality(program: &Program) -> Vec<StageError> {
         runtime: runtime_requirements(program),
     };
     regions
-        .0
         .iter()
-        .filter_map(|(body, position)| verdict(&facts, body, *position))
+        .filter_map(|region| verdict(&facts, region))
         .collect()
 }
 
 /// The rejection for one region, or `None` when its body is stage-legal.
-fn verdict(facts: &Facts, body: &Expr, position: Option<Position>) -> Option<StageError> {
-    let required = body_requirements(&facts.effects, body, Stage::Dynamic, &facts.runtime);
+fn verdict(facts: &Facts, region: &Region) -> Option<StageError> {
+    let mut required =
+        body_requirements(&facts.effects, &region.body, Stage::Dynamic, &facts.runtime);
+    if crate::stage_rows::invokes_parameter(&region.body, &region.unresolved) {
+        required.push("<unknown>".to_owned());
+    }
     if required.is_empty() {
         return None;
     }
+    required.sort();
+    required.dedup();
     Some(StageError::new(
         format!(
             "{KERNEL_REGION_KEYWORD} body is not stage-legal; it requires dynamic effects: {}",
             required.join(", ")
         ),
-        position,
+        region.position,
     ))
 }
 
-/// The body of every `kernel` region, with the region's position.
-#[derive(Default)]
-struct Regions(Vec<(Expr, Option<Position>)>);
+/// A kernel's body and the enclosing callable parameters whose effect rows
+/// have not been published yet.
+struct Region {
+    body: Expr,
+    position: Option<Position>,
+    unresolved: BTreeSet<String>,
+}
 
-impl AstVisitor for Regions {
-    fn expression(&mut self, expression: &Expr) {
-        if let Expr::Handler {
-            stage: Stage::Kernel,
-            position,
-            ..
-        } = expression
-        {
-            self.0.push((expression.clone(), *position));
+fn regions(program: &Program) -> Vec<Region> {
+    let mut found = Vec::new();
+    let mut pending: Vec<_> = program
+        .statements
+        .iter()
+        .map(|statement| (AstNode::Statement(statement), BTreeSet::new()))
+        .collect();
+    while let Some((node, mut unresolved)) = pending.pop() {
+        match node {
+            AstNode::Statement(Stmt::Function {
+                parameters, body, ..
+            }) => {
+                unresolved.extend(parameters.iter().map(|parameter| parameter.name.clone()));
+                unresolved = crate::stage_rows::parameter_aliases(body, &unresolved);
+            }
+            AstNode::Statement(Stmt::Let {
+                value: Expr::Lambda {
+                    parameters, body, ..
+                },
+                ..
+            }) => {
+                unresolved.extend(parameters.iter().map(|parameter| parameter.name.clone()));
+                unresolved = crate::stage_rows::parameter_aliases(body, &unresolved);
+            }
+            AstNode::Expression(Expr::Lambda {
+                parameters, body, ..
+            }) => {
+                unresolved.extend(parameters.iter().map(|parameter| parameter.name.clone()));
+                unresolved = crate::stage_rows::parameter_aliases(body, &unresolved);
+            }
+            _ => {}
         }
+        if let AstNode::Expression(
+            expression @ Expr::Handler {
+                stage: Stage::Kernel,
+                position,
+                ..
+            },
+        ) = node
+        {
+            found.push(Region {
+                body: expression.clone(),
+                position: *position,
+                unresolved: unresolved.clone(),
+            });
+        }
+        node.for_each_child(|child| pending.push((child, unresolved.clone())));
     }
+    found
 }

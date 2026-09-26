@@ -160,7 +160,7 @@ fn extra_docs_undocumented_declarations_state_their_own_facts() {
     assert_eq!(result.code, Some(0), "{}", result.stderr);
     let page = read_text(&output.join("api/fetch.md"));
     assert!(
-        page.contains("fetch : int -> (string -> (string -> string)) ! Store"),
+        page.contains("fetch : int -> (string -> (string -> string)) ! Store\n```"),
         "the effect row belongs on the signature: {page}"
     );
     for parameter in ["- `id` — `int`", "- `prefix` — `string`", "- `suffix`"] {
@@ -178,8 +178,8 @@ fn extra_docs_undocumented_declarations_state_their_own_facts() {
 }
 
 /// A Default signature line already names every parameter, so a derived list
-/// under it would restate the line above with less in it. The effect row is
-/// still the fact the type model leaves out, and it still appears.
+/// under it would restate the line above with less in it. The declared row
+/// appears once with source-local names.
 #[test]
 fn extra_docs_default_pages_state_effects_without_restating_parameters() {
     let source = "effect Store {\n  read: fn(int) -> string\n}\n\
@@ -188,7 +188,7 @@ fn extra_docs_default_pages_state_effects_without_restating_parameters() {
     assert_eq!(result.code, Some(0), "{}", result.stderr);
     let page = read_text(&output.join("api/fetch.md"));
     assert!(
-        page.contains("![Store]"),
+        page.contains("fn fetch(id: int) -> string ![Store]\n```"),
         "the effect row is missing: {page}"
     );
     assert!(page.contains("## Effects"), "{page}");
@@ -196,6 +196,54 @@ fn extra_docs_default_pages_state_effects_without_restating_parameters() {
         !page.contains("## Parameters"),
         "a Default signature already names its parameters: {page}"
     );
+}
+
+#[test]
+fn extra_docs_distinguish_an_explicit_empty_effect_row_from_an_omitted_row() {
+    for (flavor, source) in [
+        (
+            "osp",
+            "/// Declared pure.\nfn clean() -> int ![] = 42\nfn inferred() = 42\n",
+        ),
+        (
+            "ospml",
+            "(** Declared pure. *)\nclean : Unit -> int ![]\nclean () = 42\ninferred () = 42\n",
+        ),
+    ] {
+        let (result, output) = export(source, flavor, &format!("extra_docs_empty_row_{flavor}"));
+        assert_eq!(result.code, Some(0), "{}", result.stderr);
+        let clean = read_text(&output.join("api/clean.md"));
+        let inferred = read_text(&output.join("api/inferred.md"));
+        assert!(clean.contains("![]"), "{flavor}: {clean}");
+        assert!(
+            clean.contains("Declared pure (`![]`)."),
+            "{flavor}: {clean}"
+        );
+        assert!(!inferred.contains("![]"), "{flavor}: {inferred}");
+    }
+}
+
+#[test]
+fn extra_docs_show_an_open_effect_remainder() {
+    for (flavor, source) in [
+        (
+            "osp",
+            "effect Log { write: fn(string) -> Unit }\nfn invoke(callback: fn() -> Unit) -> Unit ![Log | e] = {\n    perform Log.write(\"fixed\")\n    callback()\n}\n",
+        ),
+        (
+            "ospml",
+            "effect Log\n    write : string => Unit\ninvoke : (Unit -> Unit) -> Unit ![Log | e]\ninvoke callback =\n    perform Log.write \"fixed\"\n    callback ()\n",
+        ),
+    ] {
+        let (result, output) = export(source, flavor, &format!("extra_docs_open_row_{flavor}"));
+        assert_eq!(result.code, Some(0), "{}", result.stderr);
+        let invoke = read_text(&output.join("api/invoke.md"));
+        assert!(invoke.contains("Log | e"), "{flavor}: {invoke}");
+        assert!(
+            invoke.contains("Additional effects come from the open remainder `e`."),
+            "{flavor}: {invoke}"
+        );
+    }
 }
 
 /// A member listing whose Description column is blank on every row tells a

@@ -34,19 +34,24 @@ requirements. The compiler rejects absent or unresolved operation metadata.
 | --- | --- | --- |
 | Existing runtime | Value substitution, deep single-shot resume, generic operation identity, shared handler state and native fiber serialization exist. Native continuation storage uses pthreads. | `tests/effects/resume/`, `tests/effects/errors/`, `tests/regressions/effects/fiber_effects.test.osp` |
 | Transport fixes | Operation arity is length-carrying; whole `Result` values and managed answers have regression coverage. | `resume_error_policies.test.{osp,ospml}`, `direct_recovery.test.{osp,ospml}`, `compiler/runtime/effects_runtime_tests.c`; issues #182, #183, #185 |
-| Callable handlers | Both flavors run reusable handlers, captured factory values and rest-of-block installation, through generic/typed callbacks, in every memory mode. | `examples/handlers/handlers.*`, `crates/osprey-cli/tests/handler_values.rs` |
+| Callable handlers | Both flavors run reusable handlers, captured factory values and rest-of-block installation, through generic/typed callbacks, in every memory mode. The same storage and logging work runs under real and test implementations. | `examples/handlers/handlers.*`, `crates/osprey-cli/tests/handler_values.rs`, `tests/effects/injection/` |
 | Runtime dispatch | Codegen interns each `(effect instance, operation)` to a dense id; the thread-local handler stack keeps an evidence slot per id, so a perform is one array read. Full evidence passing waits on effect rows in `Type::Fun`. | `compiler/runtime/effects_runtime.c`, `effects_runtime_tests.c`, `crates/osprey-codegen/src/effects.rs` |
-| Effects checker | Closed-program operation propagation and partial generic discharge exist. Independently quantified open rows do not. | `crates/osprey-types/src/effect_rows.rs`, `generic_effects_tests.rs` |
+| Effects checker | Closed-program operation propagation, partial generic discharge and explicit closed empty `![]` bounds exist in both flavors, including ascribed module signatures. A first open-row prototype parses and preserves `!e` and `![Log | e]`, permits unknown callback effects and keeps fixed labels checked. It does not put latent rows in function types or independently quantify, unify and discharge scoped row tails; the full row-polymorphism gate remains open. | `crates/osprey-types/src/effect_rows.rs`, `generic_effects_tests.rs`, `effect_rows_tests.rs`, `crates/osprey-project/tests/module_diagnostics.rs` |
 | Modes and continuations | Declared value/control modes replace arm-body classification. Arms run outside their activation; deep resume restores it. Owned escaping continuations, `many`, finalizers and masking remain unfinished. | `operation_modes.rs`: both flavors, default/GC/ARC; independent comparison below |
 | Answer transformations | `return value => expression` transforms normal completion A to B outside its activation, preserving managed and callable values. Deep resume returns B; a control arm's answer bypasses the transform. Directly resolved static handler values and aliases specialize their computation before erasure. | `handler_returns.rs`: both flavors, default/GC/ARC; `returns.*` comparison |
-| Staging | Explicit static selection accepts ordinary all-value effects. Source validation tracks builtin I/O through aliases/callbacks and rejects runtime dispatch hidden inside a locally handled helper. Capture/cell identity and dynamically used originals are preserved. | `static_selection.rs` and `staged_hygiene.rs` |
+| Staging | Explicit static selection accepts ordinary all-value effects. Source validation tracks builtin I/O through aliases/callbacks and rejects runtime dispatch hidden inside a locally handled helper. Capture/cell identity and dynamically used originals are preserved. A runtime handler nested inside a static interpretation shadows only the operations its arms supply; an uncovered operation still reaches the static answer, directly and through helpers. | `static_selection.rs`, `staged_hygiene.rs` and `static_discharge.test.osp` |
+| Shared staged callback | One `!e`-annotated helper runs the same `Read` callback under a statically discharged handler and a runtime-selected handler in both flavors and all three native memory backends. A static-only IR check finds no effect dispatch. The static case has byte-exact native, wasm32 and mobile goldens. This is a closed-program prototype, not independently quantified stage/row polymorphism. | `examples/handlers/staged-rows.*`, `handler_values.rs`, `staged_effects.rs`, `open_row_static.test.osp{,ml}` |
+| Editor and docs row display | Written function-row bounds survive inference in hover, signature help, completion detail, `--symbols` and API pages, in both flavors. API pages replace the editor's resolved row with source-local spelling once. Inferred transitive required-operation and handler-instance views remain open. | `crates/osprey-lsp/src/inferred_views.rs`, `crates/osprey-cli/tests/cases/api_docs_extra.rs`, `docs/specs/0020-LanguageServerAndEditors.md` |
 | Targets | Static discharge and dynamic value handlers have portable paths. Explicit dynamic resumption is unavailable in the current wasm backend and must be rejected before linking. Target limitations do not change language semantics. | [WebAssembly](../specs/0022-WebAssemblyTarget.md), target capability tests |
 
-The existing curried-ML effect-loss report
-[#184](https://github.com/Nimblesite/osprey/issues/184) remains an acceptance
-item until its exact reproducer passes. Abandoning native continuation frames
-also requires a resource audit: cancelling a pthread is not proof of source
-finalization or release of every owned operand.
+The curried-ML effect-loss report
+[#184](https://github.com/Nimblesite/osprey/issues/184) now passes with the
+current block-handler syntax: its four validation reports produce a count of
+four. A stronger native regression executes full and partial calls at arities
+one through five through both value and resuming handlers under default, GC
+and ARC. Abandoning native continuation frames still requires a resource audit:
+cancelling a pthread is not proof of source finalization or release of every
+owned operand.
 
 ### Independent evidence
 

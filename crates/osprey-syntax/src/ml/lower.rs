@@ -343,6 +343,8 @@ impl ItemLower {
             type_params,
             ty,
             effects,
+            effect_tail,
+            effect_row_present,
             pos,
         } = item
         {
@@ -351,6 +353,8 @@ impl ItemLower {
                 type_params,
                 ty,
                 effects,
+                effect_tail,
+                effect_row_present,
                 position: pos,
             });
         }
@@ -696,9 +700,17 @@ pub(super) fn lower_binding(
     });
     // Split the paired signature into its type params, declared type and
     // effect row.
-    let (type_params, ty, effects, signature_position) = match sig {
-        Some(s) => (s.type_params, Some(s.ty), s.effects, Some(s.position)),
-        None => (Vec::new(), None, Vec::new(), None),
+    let (type_params, ty, effects, effect_tail, effect_row_present, signature_position) = match sig
+    {
+        Some(s) => (
+            s.type_params,
+            Some(s.ty),
+            s.effects,
+            s.effect_tail,
+            s.effect_row_present,
+            Some(s.position),
+        ),
+        None => (Vec::new(), None, Vec::new(), None, false, None),
     };
     let ty = ty.as_ref();
     if let Some(message) = ty.and_then(|t| signature_mismatch(&name, &params, uncurried, t)) {
@@ -729,6 +741,8 @@ pub(super) fn lower_binding(
         parameters,
         return_type,
         effects: effects.into_iter().map(lower_effect_ref).collect(),
+        effect_tail,
+        effect_row_present,
         body,
         doc: None,
         position: Some(pos),
@@ -825,6 +839,8 @@ pub(super) struct MlSig {
     type_params: Vec<MlTypeParam>,
     ty: MlType,
     effects: Vec<MlEffectRef>,
+    effect_tail: Option<String>,
+    effect_row_present: bool,
     position: Position,
 }
 
@@ -834,6 +850,8 @@ impl MlSig {
         type_params: Vec<MlTypeParam>,
         ty: MlType,
         effects: Vec<MlEffectRef>,
+        effect_tail: Option<String>,
+        effect_row_present: bool,
         position: Position,
     ) -> Self {
         Self {
@@ -841,6 +859,8 @@ impl MlSig {
             type_params,
             ty,
             effects,
+            effect_tail,
+            effect_row_present,
             position,
         }
     }

@@ -15,30 +15,16 @@ use crate::mutate::{children_mut, statement_children_mut};
 use crate::stage::{
     effect_declarations, EffectDecl, StageError, REWRITE_BOUND, REWRITE_DEPTH_BOUND,
 };
-use crate::{Expr, HandlerArm, Parameter, Position, Program, Stmt};
+use crate::stage_rows::operation_name;
+use crate::{EffectRef, Expr, HandlerArm, Parameter, Position, Program, Stmt};
 use std::collections::{BTreeMap, BTreeSet};
 
 mod bindings;
 mod hygiene;
+mod region;
 mod requirements;
+use region::{answered, innermost_arm, shadowed_regions, specialization_key, Region};
 use requirements::{all_requirements, function_definitions, retain_referenced_originals};
-
-/// One `handle static` region on the enclosing stack.
-struct Region {
-    effect: String,
-    arms: Vec<HandlerArm>,
-    id: u32,
-}
-
-impl Region {
-    fn clone_region(&self) -> Self {
-        Self {
-            effect: self.effect.clone(),
-            arms: self.arms.clone(),
-            id: self.id,
-        }
-    }
-}
 
 /// The pass state: the program's function definitions plus what the rewrite has
 /// produced so far.
@@ -52,7 +38,8 @@ struct Lowering {
     dispatches: BTreeMap<String, Vec<String>>,
     /// Region-specialized definitions appended to the program.
     produced: Vec<Stmt>,
-    /// Specialization cache, keyed by function name and enclosing region ids.
+    /// Specialization cache, keyed by function name and the operations each
+    /// enclosing region still answers there.
     emitted: BTreeMap<String, String>,
     /// Names whose original definition the regions consumed.
     consumed: BTreeSet<String>,
@@ -128,28 +115,7 @@ impl Lowering {
             Expr::Handler { stage, .. } if stage.is_compile_time() => {
                 self.enter_region(expression, regions);
             }
-            Expr::Handler {
-                effect,
-                arms,
-                body,
-                return_clause,
-                ..
-            } => {
-                // Dynamic selection shadows the same effect's static selection.
-                // Arms execute outside this activation and retain outer scopes.
-                for arm in arms {
-                    self.rewrite(&mut arm.body, regions);
-                }
-                if let Some(clause) = return_clause {
-                    self.rewrite(clause, regions);
-                }
-                let mut visible: Vec<Region> = regions
-                    .iter()
-                    .filter(|region| region.effect != *effect)
-                    .map(Region::clone_region)
-                    .collect();
-                self.rewrite(body, &mut visible);
-            }
+            Expr::Handler { .. } => self.enter_runtime_handler(expression, regions),
             Expr::Perform { effect, .. } if answered(regions, effect) => {
                 self.substitute(expression, regions);
             }
@@ -161,6 +127,32 @@ impl Lowering {
             }
             _ => children_mut(expression, &mut |child| self.rewrite(child, regions)),
         }
+    }
+
+    /// Rewrite under a runtime handler. Its arms and return clause see the
+    /// enclosing regions unchanged, since they execute outside their own
+    /// activation. Its body sees the same effect's regions with only the
+    /// supplied operations shadowed: an uncovered operation still reaches the
+    /// enclosing static interpretation ([STAGE-LOWER-ORDER]).
+    fn enter_runtime_handler(&mut self, expression: &mut Expr, regions: &mut Vec<Region>) {
+        let Expr::Handler {
+            effect,
+            arms,
+            body,
+            return_clause,
+            ..
+        } = expression
+        else {
+            return;
+        };
+        for arm in arms.iter_mut() {
+            self.rewrite(&mut arm.body, regions);
+        }
+        if let Some(clause) = return_clause {
+            self.rewrite(clause, regions);
+        }
+        let mut visible = shadowed_regions(regions, effect, arms);
+        self.rewrite(body, &mut visible);
     }
 
     /// Discharge one region: its body is rewritten with the region pushed, and
@@ -280,7 +272,7 @@ impl Lowering {
     /// when the referenced function requires an effect the regions answer, and
     /// nothing when it does not.
     fn specialize(&mut self, name: &str, regions: &[Region]) -> Option<Expr> {
-        if !self.reaches_answered_effect(name, regions) {
+        if !self.reaches_answered_operation(name, regions) {
             return None;
         }
         if let Some(value) = self.specialize_binding(name, regions) {
@@ -297,12 +289,41 @@ impl Lowering {
     }
 
     /// Whether `name` is a function requiring an operation these regions answer.
-    fn reaches_answered_effect(&self, name: &str, regions: &[Region]) -> bool {
+    fn reaches_answered_operation(&self, name: &str, regions: &[Region]) -> bool {
         self.requirements.get(name).is_some_and(|operations| {
             operations
                 .iter()
-                .any(|operation| regions.iter().any(|region| owns(&region.effect, operation)))
+                .any(|operation| regions.iter().any(|region| region.answers(operation)))
         })
+    }
+
+    /// The declared effects a specialization still carries. Regions answering
+    /// every operation of an effect discharge its declaration; a shadowed
+    /// region answering only some leaves it in place. Implements [STAGE-RESIDUE].
+    fn residual_declarations(
+        &self,
+        declared: Vec<EffectRef>,
+        regions: &[Region],
+    ) -> Vec<EffectRef> {
+        declared
+            .into_iter()
+            .filter(|reference| {
+                let effect =
+                    crate::effect_name::instantiated(&reference.name, &reference.type_args);
+                !self.answers_every_operation(regions, &effect)
+            })
+            .collect()
+    }
+
+    fn answers_every_operation(&self, regions: &[Region], effect: &str) -> bool {
+        self.effects
+            .get(crate::effect_name::base(effect))
+            .is_some_and(|declared| {
+                declared.operations.iter().all(|operation| {
+                    let name = operation_name(effect, &operation.name);
+                    regions.iter().any(|region| region.answers(&name))
+                })
+            })
     }
 
     /// Emit one region-owned copy of a function, rewritten under the regions.
@@ -312,6 +333,8 @@ impl Lowering {
             mut parameters,
             return_type,
             effects,
+            effect_tail,
+            effect_row_present,
             body,
             doc,
             position,
@@ -338,6 +361,7 @@ impl Lowering {
         }
         let mut specialized_body = body;
         self.rewrite(&mut specialized_body, &mut owned);
+        let effects = self.residual_declarations(effects, regions);
         let required = self.remaining_requirements(&specialized_body);
         let dispatches =
             crate::stage_rows::body_dispatches(&self.effects, &specialized_body, &self.dispatches);
@@ -349,17 +373,9 @@ impl Lowering {
             type_params,
             parameters,
             return_type,
-            // The regions answered these effects, so the copy no longer
-            // declares them. Implements [STAGE-RESIDUE].
-            effects: effects
-                .into_iter()
-                .filter(|declared| {
-                    !regions.iter().any(|region| {
-                        region.effect
-                            == crate::effect_name::instantiated(&declared.name, &declared.type_args)
-                    })
-                })
-                .collect(),
+            effects,
+            effect_tail,
+            effect_row_present,
             body: specialized_body,
             doc,
             position,
@@ -431,39 +447,6 @@ fn call(name: &str, arguments: Vec<Expr>) -> Expr {
         arguments,
         named_arguments: Vec::new(),
     }
-}
-
-/// Whether any enclosing region answers `effect`.
-fn answered(regions: &[Region], effect: &str) -> bool {
-    regions.iter().any(|region| region.effect == effect)
-}
-
-/// The innermost arm answering one operation.
-fn innermost_arm(regions: &[Region], effect: &str, operation: &str) -> Option<(usize, HandlerArm)> {
-    regions
-        .iter()
-        .enumerate()
-        .rev()
-        .filter(|(_, region)| region.effect == effect)
-        .find_map(|(index, region)| {
-            region
-                .arms
-                .iter()
-                .find(|arm| arm.operation == operation)
-                .map(|arm| (index, arm.clone()))
-        })
-}
-
-/// A specialization is identified by the function and the exact region stack it
-/// was reached under.
-fn specialization_key(name: &str, regions: &[Region]) -> String {
-    let ids: Vec<String> = regions.iter().map(|region| region.id.to_string()).collect();
-    format!("{name}|{}", ids.join("."))
-}
-
-/// Whether `effect` declares `operation` (an `Effect.op` name).
-fn owns(effect: &str, operation: &str) -> bool {
-    operation.split('.').next() == Some(effect)
 }
 
 /// The arm body with the operation's arguments bound to the arm's parameters.

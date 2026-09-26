@@ -11,8 +11,21 @@
 #[path = "common/staging.rs"]
 mod staging;
 
-use osprey_syntax::{dependency_report, Flavor};
+use osprey_syntax::{parse_program_with_flavor, Flavor};
 use staging::{compile_for_target, compile_staged, diagnostics};
+
+fn dependency_report(
+    source: &str,
+    flavor: Flavor,
+) -> std::collections::BTreeMap<String, Vec<String>> {
+    let parsed = parse_program_with_flavor(source, flavor);
+    assert!(
+        parsed.errors.is_empty(),
+        "invalid dependency fixture: {:?}",
+        parsed.errors
+    );
+    osprey_ast::stage::dependencies(&parsed.program)
+}
 
 /// The C runtime symbols a dynamic handler region registers and looks up.
 const HANDLER_RUNTIME_SYMBOLS: &[&str] = &["__osprey_handler_push", "__osprey_handler_lookup"];
@@ -59,6 +72,31 @@ fn a_static_handler_leaves_no_runtime_residue() {
 }
 
 #[test]
+fn an_open_row_helper_discharged_statically_leaves_no_effect_dispatch() {
+    for (source, flavor) in [
+        (
+            "effect Read { value: fn() -> int }\nfn relay(callback) -> int !e = callback()\nfn work() !Read = perform Read.value()\nlet answer = {\n    handle static Read { value => 41 }\n    relay(work)\n}\nprint(answer)\n",
+            Flavor::Default,
+        ),
+        (
+            "effect Read\n    value : Unit => int\nrelay : (Unit -> int) -> int !e\nrelay callback = callback ()\nwork : Unit -> int !Read\nwork () = perform Read.value ()\nanswer =\n    handle static Read\n        value => 41\n    relay work\nprint answer\n",
+            Flavor::Ml,
+        ),
+    ] {
+        let parsed = parse_program_with_flavor(source, flavor);
+        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+        let ir = osprey_codegen::compile_program(&parsed.program).expect("static codegen");
+        for symbol in HANDLER_RUNTIME_SYMBOLS {
+            assert!(
+                !ir.contains(symbol),
+                "{flavor:?}: statically discharged open-row helper left `{symbol}` in IR"
+            );
+        }
+        assert!(!ir.contains("Read"), "{flavor:?}: {ir}");
+    }
+}
+
+#[test]
 fn the_dynamic_twin_still_uses_the_handler_runtime() {
     let ir = compile_staged(DYNAMIC_SOURCE);
     for symbol in HANDLER_RUNTIME_SYMBOLS {
@@ -81,7 +119,7 @@ fn greeting() = "hello ${perform NameSignal.read()}"
 fn statusBar() = "${greeting()} | ${counterLabel()}"
 fn footer() = "osprey"
 "#;
-    let deps = dependency_report(source, Flavor::Default).0;
+    let deps = dependency_report(source, Flavor::Default);
     let of = |name: &str| deps.get(name).cloned().unwrap_or_default();
     assert_eq!(of("doubled"), vec!["CountSignal.read"]);
     // Transitive through a call, and only what is actually read.
@@ -99,6 +137,17 @@ fn footer() = "osprey"
 }
 
 #[test]
+fn dependency_report_keeps_unknown_callback_requirements_visible() {
+    let source = "static effect Signal { read: fn() -> int }\nfn invoke(callback) = callback()\nfn reading() = perform Signal.read()\nfn widget() = invoke(reading)\n";
+    let deps = dependency_report(source, Flavor::Default);
+    assert_eq!(deps.get("invoke"), Some(&vec!["<unknown>".to_owned()]));
+    assert_eq!(
+        deps.get("widget"),
+        Some(&vec!["<unknown>".to_owned(), "Signal.read".to_owned()]),
+    );
+}
+
+#[test]
 fn a_function_that_answers_a_signal_does_not_depend_on_it() {
     let source = r#"
 static effect CountSignal { read: fn() -> int }
@@ -110,7 +159,7 @@ fn root() = {
     label()
 }
 "#;
-    let deps = dependency_report(source, Flavor::Default).0;
+    let deps = dependency_report(source, Flavor::Default);
     assert_eq!(
         deps.get("label").cloned().unwrap_or_default(),
         vec!["CountSignal.read"]
@@ -292,8 +341,7 @@ fn signal_identity_is_the_generic_instantiation() {
     // `Signal<Count>` and `Signal<Cursor>` are distinct dependencies." That is
     // the surface contract the whole reactive story rests on — a widget's
     // dirty set is its row — and the explicit instantiation it requires at the
-    // `perform` and `handle` sites does not parse today, so two signals are
-    // indistinguishable in a row.
+    // `perform` and `handle` sites must retain that identity.
     let source = r#"
 type Count = { value: int }
 type Cursor = { at: int }
@@ -301,7 +349,7 @@ static effect Signal<T> { read: fn() -> T }
 fn counterLabel() = "count: ${(perform Signal<Count>.read()).value}"
 fn cursorLabel() = "at: ${(perform Signal<Cursor>.read()).at}"
 "#;
-    let deps = dependency_report(source, Flavor::Default).0;
+    let deps = dependency_report(source, Flavor::Default);
     let of = |name: &str| deps.get(name).cloned().unwrap_or_default();
     assert_eq!(
         of("counterLabel"),

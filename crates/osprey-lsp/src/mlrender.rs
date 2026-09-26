@@ -143,17 +143,33 @@ fn ml_function(rest: &str) -> String {
     // type parameters on the signature line (`pick<T> : (T, T) -> T`) and only
     // *declarations* juxtapose (`type Box T`). Stripping them here would spell
     // `pick T : …`, which reads as a first parameter named `T`.
+    // The result and the declared effect row are independent. Feeding `!e`
+    // into the result-type renderer both drops the row and fabricates `Unit`
+    // when inference could not prove the return type.
+    let (result, row) = tail
+        .split_once(" !")
+        .map_or((tail.as_str(), ""), |(result, row)| (result, row));
+    let row = if row.is_empty() {
+        String::new()
+    } else if row.starts_with('[') || row.starts_with(char::is_lowercase) {
+        format!(" !{row}")
+    } else {
+        // A closed singleton is spelled `! Store` in ML. The canonical
+        // signature uses `!Store`; open variables and bracketed rows already
+        // have the same spelling in both flavors.
+        format!(" ! {row}")
+    };
     format!(
-        "{} : {}",
+        "{} : {}{row}",
         head.trim(),
-        arrow_chain(&params, &tail, param_type)
+        arrow_chain(&params, result, param_type)
     )
 }
 
 /// The `A -> B -> R` spine of a parameter list and its `-> R` tail. An empty
 /// list takes `Unit`, matching how the ML lowerer spells a niladic binding.
 fn arrow_chain(params: &str, tail: &str, param: impl Fn(&str) -> String) -> String {
-    let ret = tail.trim().strip_prefix("->").map_or("Unit", str::trim);
+    let ret = tail.trim().strip_prefix("->").map_or("_", str::trim);
     let mut arrows: Vec<String> = split_top(params).iter().map(|p| param(p)).collect();
     if arrows.is_empty() {
         arrows.push(String::from("Unit"));
@@ -317,6 +333,26 @@ mod tests {
         // Its Default rendering is the bare name; echoing that into an arrow
         // chain would read as a TYPE called `x`.
         assert_eq!(signature(Flavor::Ml, "fn id(x) -> int"), "id : _ -> int");
+    }
+
+    #[test]
+    fn ml_signatures_keep_rows_and_do_not_invent_a_return_type() {
+        assert_eq!(
+            signature(Flavor::Ml, "fn fetch(id: int) -> string !Store"),
+            "fetch : int -> string ! Store"
+        );
+        assert_eq!(
+            signature(Flavor::Ml, "fn relay(callback) -> int ![Log | e]"),
+            "relay : _ -> int ![Log | e]"
+        );
+        assert_eq!(
+            signature(Flavor::Ml, "fn unknown(callback) !e"),
+            "unknown : _ -> _ !e"
+        );
+        assert_eq!(
+            signature(Flavor::Ml, "fn closed() ![]"),
+            "closed : Unit -> _ ![]"
+        );
     }
 
     #[test]

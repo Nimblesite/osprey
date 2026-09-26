@@ -1,0 +1,26 @@
+/// Business logic names the logging it needs without choosing an implementation.
+effect Log { info: fn(string) -> Unit }
+
+fn serve(customer) = {
+    perform Log.info("accepted ${customer}")
+    perform Log.info("receipt ${customer}")
+    42
+}
+
+fn loggingInjectionCase() = {
+    mut recorded = ""
+    let live = handler Log { info message => print(message) }
+    let mock = handler Log {
+        info message => { recorded = "${recorded}${message}\n" }
+    }
+
+    let actual = live(|| => serve("Ada"))
+    let simulated = mock(|| => serve("Ada"))
+    checkAll("same work uses console or in-memory logging", [
+        actual == 42,
+        simulated == 42,
+        recorded == "accepted Ada\nreceipt Ada\n"
+    ])
+}
+
+test("logging handlers are swappable", loggingInjectionCase)

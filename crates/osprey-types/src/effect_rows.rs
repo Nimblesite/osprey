@@ -26,6 +26,9 @@ pub(crate) struct Instances {
     /// final fragment overwrite the others.
     pub(crate) performs: HashMap<(u32, u32), Vec<Vec<String>>>,
     pub(crate) handlers: HashMap<(u32, u32), Vec<String>>,
+    /// Explicit function-row arguments in source order, canonicalized by the
+    /// type checker so a nominal record and its inferred row share an identity.
+    pub(crate) declared_rows: HashMap<(u32, u32), Vec<Option<Vec<String>>>>,
     /// Substituted operation arguments available to refine a handler.
     pub(crate) argument_types: HashMap<Vec<String>, Vec<crate::ty::Type>>,
     /// Candidate instantiations required by each handler's body after calls
@@ -33,6 +36,83 @@ pub(crate) struct Instances {
     pub(crate) handler_inference: RefCell<HandlerCandidates>,
     pub(crate) instantiations: HashMap<usize, HashMap<String, String>>,
     pub(crate) binders: HashMap<String, HashMap<String, String>>,
+}
+
+#[cfg(test)]
+mod identity_and_provenance_tests {
+    use super::*;
+
+    #[test]
+    fn unresolved_generic_sites_do_not_share_an_effect_identity() {
+        let index = Index {
+            effects: HashMap::from([("Carry".to_owned(), 1)]),
+            ..Index::default()
+        };
+        let instances = Instances::default();
+        let rows = [];
+        let returns = [];
+        let analyzer = Analyzer {
+            index: &index,
+            rows: &rows,
+            returns: &returns,
+            instances: &instances,
+            file_scope: CallableEnv::default(),
+        };
+        let first = Some(Position { line: 2, column: 3 });
+        let second = Some(Position { line: 4, column: 5 });
+        let handlers = HashMap::new();
+        let handler = analyzer.instance_arguments("Carry", first, &handlers, "handler");
+        let perform = analyzer.perform_instance_arguments("Carry", first);
+        let another = analyzer.perform_instance_arguments("Carry", second);
+        assert_ne!(Some(&handler), perform.first());
+        assert_ne!(perform, another);
+        assert_ne!(perform, vec![Vec::<String>::new()]);
+    }
+
+    #[test]
+    fn unresolved_callback_provenance_survives_partial_application_and_widening() {
+        let index = Index::default();
+        let instances = Instances::default();
+        let rows = [];
+        let returns = [];
+        let analyzer = Analyzer {
+            index: &index,
+            rows: &rows,
+            returns: &returns,
+            instances: &instances,
+            file_scope: CallableEnv::default(),
+        };
+        let callback = Value {
+            callable: Some(Callable::Parameter {
+                level: 0,
+                index: 1,
+                projection: Vec::new(),
+            }),
+            ..Value::default()
+        };
+        let partial = analyzer.substitute_value_at(callback.clone(), 0, &[None]);
+        assert!(matches!(
+            partial.callable,
+            Some(Callable::Parameter { index: 1, .. })
+        ));
+        let supplied_but_opaque = analyzer.substitute_value_at(callback, 0, &[None, None]);
+        assert!(matches!(
+            supplied_but_opaque.callable,
+            Some(Callable::Unknown)
+        ));
+
+        let projected = Value {
+            callable: Some(Callable::Parameter {
+                level: 0,
+                index: 0,
+                projection: vec![Projection::Handled(BTreeMap::new())],
+            }),
+            ..Value::default()
+        };
+        let widened = widen_value(projected, MAX_PROVENANCE_DEPTH);
+        assert!(matches!(widened.callable, Some(Callable::Unknown)));
+        assert!(widened.deferred.unresolved_dynamic_call);
+    }
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -86,6 +166,10 @@ enum Projection {
     Field(String),
     Method(Box<MethodProjection>),
     Returned(Box<CallArguments>),
+    /// Resolve a callback's operation result after that callback is invoked
+    /// inside a handler. The callback was constructed outside this scope, so
+    /// its result cannot be resolved until its actual call is projected.
+    Handled(BTreeMap<Requirement, Value>),
     Element,
     SuccessValue,
     FiberValue,
@@ -195,7 +279,12 @@ impl Summary {
                     || (use_.arguments.positional.is_empty()
                         && use_.arguments.named.is_empty()
                         && !use_.projection.iter().any(|part| {
-                            matches!(part, Projection::Method(_) | Projection::Returned(_))
+                            matches!(
+                                part,
+                                Projection::Method(_)
+                                    | Projection::Returned(_)
+                                    | Projection::Handled(_)
+                            )
                         })))
         });
         if self.parameter_uses.len() != before {
@@ -228,6 +317,8 @@ struct Function<'a> {
     scope: Vec<String>,
     parameters: Vec<String>,
     declared_effects: Vec<DeclaredEffect>,
+    effect_tail: Option<String>,
+    effect_row_present: bool,
     body: &'a Expr,
     position: Option<Position>,
 }
@@ -265,6 +356,8 @@ impl<'a> Index<'a> {
                     name,
                     parameters,
                     effects,
+                    effect_tail,
+                    effect_row_present,
                     body,
                     position,
                     ..
@@ -295,6 +388,8 @@ impl<'a> Index<'a> {
                                 }),
                             })
                             .collect(),
+                        effect_tail: effect_tail.clone(),
+                        effect_row_present: *effect_row_present,
                         body,
                         position: *position,
                     });
@@ -391,6 +486,10 @@ enum Callable {
 #[derive(Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 struct Value {
     callable: Option<Callable>,
+    /// The result of a perform whose provider is selected only when its
+    /// enclosing callback runs. This is value provenance, not a requirement
+    /// discharge: the ordinary effect summary still tracks the operation.
+    performed: Requirements,
     /// `Some` proves which fields exist, even when their values have no
     /// callable provenance. `None` must never justify choosing a free function.
     field_names: Option<BTreeSet<String>>,
@@ -442,6 +541,7 @@ impl Value {
         if let Some(callable) = other.callable {
             merge_callable(&mut self.callable, callable);
         }
+        self.performed.extend(other.performed);
         for (name, value) in other.fields {
             let _ = self
                 .fields
@@ -1013,12 +1113,50 @@ impl Analyzer<'_> {
                 Projection::Returned(arguments) => {
                     self.project_call_return(value, *arguments.clone())
                 }
+                Projection::Handled(answers) => Some(Self::resolve_handled_value(value, answers)),
                 Projection::Element => project_element(value),
                 Projection::SuccessValue => project_success_value(value),
                 Projection::FiberValue => project_fiber_value(value),
             }?;
         }
         Some(value)
+    }
+
+    /// A handler runs the supplied computation before returning. Its dynamic
+    /// operation answers therefore determine the value produced by a perform
+    /// *inside that computation*, even when the callback was constructed in a
+    /// different lexical scope. Preserve the same transformation symbolically
+    /// on a parameter result until the actual callback value is substituted.
+    /// Do not descend into a returned callable: its latent body may run after
+    /// this handler has left scope.
+    fn resolve_handled_value(mut value: Value, answers: &BTreeMap<Requirement, Value>) -> Value {
+        if answers.is_empty() {
+            return value;
+        }
+        for nested in value.fields.values_mut() {
+            *nested = Self::resolve_handled_value(nested.clone(), answers);
+        }
+        for slot in [
+            &mut value.element,
+            &mut value.result_payload,
+            &mut value.fiber_payload,
+        ] {
+            if let Some(nested) = slot.take() {
+                *slot = Some(Box::new(Self::resolve_handled_value(*nested, answers)));
+            }
+        }
+        if let Some(Callable::Parameter { projection, .. }) = &mut value.callable {
+            projection.push(Projection::Handled(answers.clone()));
+        }
+        let requested = std::mem::take(&mut value.performed);
+        for requirement in requested {
+            if let Some(answer) = answers.get(&requirement) {
+                value.union(answer.clone());
+            } else {
+                let _ = value.performed.insert(requirement);
+            }
+        }
+        value
     }
 
     fn project_returned(&self, value: Value) -> Option<Value> {
@@ -1324,8 +1462,13 @@ impl Analyzer<'_> {
     }
 
     fn callable(&self, expression: &Expr, scope: &[String], env: &CallableEnv) -> Option<Callable> {
-        self.value(expression, scope, env)
-            .and_then(|value| value.callable)
+        self.value(expression, scope, env).and_then(|value| {
+            if value.performed.is_empty() {
+                value.callable
+            } else {
+                Some(Callable::Unknown)
+            }
+        })
     }
 
     fn channel_payload(channel: Value, env: &CallableEnv) -> Option<Value> {
@@ -1531,9 +1674,17 @@ impl Analyzer<'_> {
                     if let Some(value) = env.handler_returns.get(&requirement) {
                         merge_optional_value(&mut merged, value.clone());
                     } else {
-                        // A missing candidate cannot be supplied by a different
-                        // generic instance of this operation.
-                        merge_optional_value(&mut merged, Value::unknown_callable());
+                        // A callback created outside a handler may run inside
+                        // one later. Keep the exact requested operation until
+                        // that invocation is projected; an unrelated generic
+                        // instance cannot supply its result.
+                        merge_optional_value(
+                            &mut merged,
+                            Value {
+                                performed: [requirement].into_iter().collect(),
+                                ..Value::default()
+                            },
+                        );
                     }
                 }
                 merged
@@ -1561,7 +1712,9 @@ impl Analyzer<'_> {
                 ..
             } => {
                 let local = self.handler_body_env(effect, arms, body, *position, scope, env);
-                let normal = self.value(body, scope, &local);
+                let normal = self
+                    .value(body, scope, &local)
+                    .map(|value| Self::resolve_handled_value(value, &local.handler_returns));
                 let mut merged = if let Some(clause) = return_clause {
                     self.called_value(
                         self.callable(clause, scope, env),
@@ -2288,6 +2441,12 @@ fn map_projection_values(projection: &mut [Projection], mut visit: impl FnMut(&m
                 (&mut method.arguments, &mut method.named)
             }
             Projection::Returned(arguments) => (&mut arguments.positional, &mut arguments.named),
+            Projection::Handled(answers) => {
+                for answer in answers.values_mut() {
+                    visit(answer);
+                }
+                continue;
+            }
             _ => continue,
         };
         for value in positional
@@ -2376,7 +2535,10 @@ fn widen_value(mut value: Value, depth: usize) -> Value {
             }
             Some(Callable::Parameter { ref projection, .. })
                 if projection.iter().any(|part| {
-                    matches!(part, Projection::Method(_) | Projection::Returned(_))
+                    matches!(
+                        part,
+                        Projection::Method(_) | Projection::Returned(_) | Projection::Handled(_)
+                    )
                 }) =>
             {
                 deferred.unresolved_dynamic_call = true;
@@ -2391,6 +2553,7 @@ fn widen_value(mut value: Value, depth: usize) -> Value {
         };
         return Value {
             callable,
+            performed: value.performed,
             deferred,
             ..Value::default()
         };
@@ -2836,7 +2999,23 @@ fn specialize_summary(summary: &mut Summary, bindings: &HashMap<String, String>)
 
 fn specialize_value(value: &mut Value, bindings: &HashMap<String, String>) {
     specialize_summary(&mut value.deferred, bindings);
+    specialize_requirements(&mut value.performed, bindings);
     if let Some(Callable::Parameter { projection, .. }) = &mut value.callable {
+        for part in projection.iter_mut() {
+            if let Projection::Handled(answers) = part {
+                *answers = std::mem::take(answers)
+                    .into_iter()
+                    .map(|(mut requirement, answer)| {
+                        requirement.arguments = requirement
+                            .arguments
+                            .iter()
+                            .map(|argument| specialize_argument(argument, bindings))
+                            .collect();
+                        (requirement, answer)
+                    })
+                    .collect();
+            }
+        }
         map_projection_values(projection, |value| specialize_value(value, bindings));
     }
     if let Some(Callable::Known(known)) = &mut value.callable {
@@ -2867,7 +3046,21 @@ fn specialize_value(value: &mut Value, bindings: &HashMap<String, String>) {
     reason = "the fixed point, contract validation, and entry proof form one ordered checker pass"
 )]
 pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) -> Vec<TypeError> {
-    let index = Index::collect(program);
+    let mut index = Index::collect(program);
+    for function in &mut index.functions {
+        let entries = function.position.and_then(|position| {
+            instances
+                .declared_rows
+                .get(&(position.line, position.column))
+        });
+        if let Some(entries) = entries {
+            for (declared, arguments) in function.declared_effects.iter_mut().zip(entries) {
+                if let Some(arguments) = arguments {
+                    declared.arguments = Some(arguments.clone());
+                }
+            }
+        }
+    }
     let axis = crate::multiplicity::OperationAxis::collect(program);
     let mut errors = Vec::new();
     let exported: Vec<_> = exports
@@ -2884,6 +3077,19 @@ pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) 
         })
         .collect();
     for function in &index.functions {
+        if function
+            .effect_tail
+            .as_ref()
+            .is_some_and(|tail| !tail.chars().next().is_some_and(char::is_lowercase))
+        {
+            errors.push(
+                TypeError::new(format!(
+                    "function `{}` has an invalid effect row variable; use a lowercase name",
+                    function.qualified
+                ))
+                .with_pos(function.position),
+            );
+        }
         let unknown: BTreeSet<_> = function
             .declared_effects
             .iter()
@@ -2901,10 +3107,15 @@ pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) 
             );
         }
     }
-    // Programs with no declared algebraic effects cannot have a valid latent
-    // row. Returning here avoids a second deep recursive AST walk for huge pure
-    // expression stress suites; unknown performs are already value-type errors.
-    if index.effects.is_empty() {
+    // Without declarations or written row contracts, there is no algebraic
+    // row to solve. A written `![]` still needs analysis: runtime builtins and
+    // opaque callbacks cannot be certified pure by this fast path.
+    if index.effects.is_empty()
+        && index
+            .functions
+            .iter()
+            .all(|function| !function.effect_row_present)
+    {
         return errors;
     }
     let mut rows = vec![Summary::default(); index.functions.len()];
@@ -2946,12 +3157,11 @@ pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) 
     };
     // An annotation is a row contract/instantiation hint, never a handler.
     // Inferred operations outside its named effects are therefore an error.
-    for (id, function) in index.functions.iter().enumerate() {
-        if !function.declared_effects.is_empty() {
-            let undeclared: BTreeSet<_> = rows
-                .get(id)
-                .into_iter()
-                .flat_map(|row| &row.required)
+    for (function, row) in index.functions.iter().zip(&rows) {
+        if function.effect_row_present {
+            let undeclared: BTreeSet<_> = row
+                .required
+                .iter()
                 .filter(|requirement| {
                     !function.declared_effects.iter().any(|declared| {
                         declared.name == requirement.effect
@@ -2977,6 +3187,35 @@ pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) 
                         "function `{}` performs effects outside its declared row: {}",
                         function.qualified,
                         undeclared.into_iter().collect::<Vec<_>>().join(", ")
+                    ))
+                    .with_pos(function.position),
+                );
+            }
+            // Host operations are tracked separately from user-declared
+            // effects. An explicitly empty row cannot turn `print` (or an
+            // alias of it) into pure code merely because there was no
+            // `perform` expression in the body.
+            if function.declared_effects.is_empty() && !row.runtime_builtins.is_empty() {
+                errors.push(
+                    TypeError::new(format!(
+                        "function `{}` uses runtime builtins outside its declared row: {}",
+                        function.qualified,
+                        row.runtime_builtins
+                            .iter()
+                            .cloned()
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ))
+                    .with_pos(function.position),
+                );
+            }
+            if (function.effect_tail.is_none() && !row.parameter_uses.is_empty())
+                || row.unresolved_dynamic_call
+            {
+                errors.push(
+                    TypeError::new(format!(
+                        "function `{}` calls a function with unproven effects outside its declared row",
+                        function.qualified
                     ))
                     .with_pos(function.position),
                 );

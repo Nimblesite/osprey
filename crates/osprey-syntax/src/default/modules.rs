@@ -173,6 +173,8 @@ impl Lowerer<'_> {
                             .collect()
                     })
                     .unwrap_or_default();
+                let (effects, effect_tail) =
+                    self.lower_effect_row(item.child_by_field_name("effects"));
                 SignatureItem::Function {
                     name: self.field_text(item, "name"),
                     type_params: self.lower_type_params(item),
@@ -180,7 +182,9 @@ impl Lowerer<'_> {
                     return_type: item
                         .child_by_field_name("return_type")
                         .map_or_else(|| TypeExpr::named("Unit"), |ty| self.lower_type(ty)),
-                    effects: self.lower_effects(item.child_by_field_name("effects")),
+                    effects,
+                    effect_tail,
+                    effect_row_present: item.child_by_field_name("effects").is_some(),
                     position: Some(self.pos(item)),
                 }
             }

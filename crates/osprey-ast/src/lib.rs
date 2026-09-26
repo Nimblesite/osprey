@@ -473,6 +473,10 @@ pub enum SignatureItem {
         return_type: TypeExpr,
         /// Declared effect row.
         effects: Vec<EffectRef>,
+        /// Optional open remainder of the effect row (`![Log | e]`).
+        effect_tail: Option<String>,
+        /// Whether a row was written, including the closed empty row `![]`.
+        effect_row_present: bool,
         /// Source position of the item.
         position: Option<Position>,
     },
@@ -584,6 +588,10 @@ pub enum Stmt {
         return_type: Option<TypeExpr>,
         /// Declared effect row (`!Effect` / `![State<int>, Log]` annotations).
         effects: Vec<EffectRef>,
+        /// Optional open remainder of the effect row (`![Log | e]`).
+        effect_tail: Option<String>,
+        /// Whether a row was written, including the closed empty row `![]`.
+        effect_row_present: bool,
         /// Function body expression.
         body: Expr,
         /// Structured documentation comment, when written ([DOC-MODEL]).

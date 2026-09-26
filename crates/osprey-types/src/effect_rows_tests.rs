@@ -6,6 +6,7 @@
 //! closure.
 
 use crate::{check_program, TypeError};
+use osprey_ast::Stmt;
 use osprey_syntax::{parse_program_with_flavor, Flavor};
 use std::{
     process::Command,
@@ -42,6 +43,292 @@ pub(crate) fn assert_rejected_with(source: &str, expected: &[&str]) {
             "expected diagnostic containing {fragment:?}, got:\n{rendered}"
         );
     }
+}
+
+#[test]
+fn duplicate_handler_arms_are_rejected_in_both_flavors() {
+    for (source, flavor) in [
+        (
+            "effect Read { value: fn() -> int }\nlet h = handler Read { value => 1 value => 2 }\nlet n = h(|| => perform Read.value())\n",
+            Flavor::Default,
+        ),
+        (
+            "effect Read\n    value : Unit => int\nh = handler Read\n    value => 1\n    value => 2\nn = h (\\() => perform Read.value ())\n",
+            Flavor::Ml,
+        ),
+    ] {
+        let parsed = parse_program_with_flavor(source, flavor);
+        assert!(parsed.errors.is_empty(), "syntax errors: {:?}", parsed.errors);
+        let errors = check_program(&parsed.program);
+        assert!(
+            errors.iter().any(|error| error.message.contains("duplicate handler arm `Read.value`")),
+            "{flavor:?}: expected a duplicate-arm error, got {errors:?}"
+        );
+    }
+}
+
+#[test]
+fn explicitly_empty_rows_reject_effects_but_omitted_rows_still_infer_them() {
+    for (source, flavor) in [
+        (
+            "effect E { ping: fn() -> Unit }\nfn f() -> Unit ![] = perform E.ping()\nlet h = handler E { ping => print(\"called\") }\nlet result = h(f)\n",
+            Flavor::Default,
+        ),
+        (
+            "effect E\n    ping : Unit => Unit\nf : Unit -> Unit ![]\nf () = perform E.ping ()\nh = handler E\n    ping => print \"called\"\n_ = h f\n",
+            Flavor::Ml,
+        ),
+    ] {
+        let parsed = parse_program_with_flavor(source, flavor);
+        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+        let errors = check_program(&parsed.program);
+        assert!(
+            errors.iter().any(|error| error.message.contains("performs effects outside its declared row: E.ping")),
+            "{flavor:?}: {errors:?}"
+        );
+
+        let inferred = source.replace(" ![]", "");
+        let parsed = parse_program_with_flavor(&inferred, flavor);
+        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+        let errors = check_program(&parsed.program);
+        assert!(errors.is_empty(), "{flavor:?}: omitted row should infer: {errors:?}");
+    }
+    for (source, flavor) in [
+        (
+            "fn f() -> int ![] = 42\nlet answer = f()\n",
+            Flavor::Default,
+        ),
+        (
+            "f : Unit -> int ![]\nf () = 42\nanswer = f ()\n",
+            Flavor::Ml,
+        ),
+    ] {
+        let parsed = parse_program_with_flavor(source, flavor);
+        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+        let errors = check_program(&parsed.program);
+        assert!(errors.is_empty(), "{flavor:?}: pure empty row: {errors:?}");
+    }
+}
+
+#[test]
+fn explicit_empty_rows_cannot_hide_runtime_builtin_work() {
+    for (source, flavor) in [
+        (
+            "fn report() -> Unit ![] = print(\"sent\")\n",
+            Flavor::Default,
+        ),
+        (
+            "fn report() -> Unit ![] = {\n    let writer = print\n    writer(\"sent\")\n}\n",
+            Flavor::Default,
+        ),
+        (
+            "fn loud() -> Unit = print(\"sent\")\nfn report() -> Unit ![] = loud()\n",
+            Flavor::Default,
+        ),
+        (
+            "report : Unit -> Unit ![]\nreport () = print \"sent\"\n",
+            Flavor::Ml,
+        ),
+        (
+            "loud () = print \"sent\"\nreport : Unit -> Unit ![]\nreport () = loud ()\n",
+            Flavor::Ml,
+        ),
+    ] {
+        let parsed = parse_program_with_flavor(source, flavor);
+        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+        let errors = check_program(&parsed.program);
+        assert!(
+            errors.iter().any(|error| {
+                error.message.contains("outside its declared row")
+                    && error.message.contains("print")
+            }),
+            "{flavor:?}: {errors:?}"
+        );
+    }
+}
+
+#[test]
+fn explicit_empty_rows_reject_unproven_callback_effects() {
+    for (source, flavor) in [
+        (
+            "fn run(callback: fn() -> Unit) -> Unit ![] = callback()\n",
+            Flavor::Default,
+        ),
+        (
+            "run : (Unit -> Unit) -> Unit ![]\nrun callback = callback ()\n",
+            Flavor::Ml,
+        ),
+    ] {
+        let parsed = parse_program_with_flavor(source, flavor);
+        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+        let errors = check_program(&parsed.program);
+        assert!(
+            errors.iter().any(|error| {
+                error
+                    .message
+                    .contains("unproven effects outside its declared row")
+            }),
+            "{flavor:?}: {errors:?}"
+        );
+    }
+}
+
+#[test]
+fn open_rows_transport_callback_effects_to_the_handler_in_both_flavors() {
+    for (source, flavor) in [
+        (
+            "effect Log { write: fn(string) -> Unit }\nfn invoke(callback: fn() -> Unit) -> Unit !e = callback()\nfn report() -> Unit !Log = perform Log.write(\"sent\")\nlet h = handler Log { write message => print(message) }\nh(|| => invoke(report))\n",
+            Flavor::Default,
+        ),
+        (
+            "effect Log\n    write : string => Unit\ninvoke : (Unit -> Unit) -> Unit !e\ninvoke callback = callback ()\nreport : Unit -> Unit !Log\nreport () = perform Log.write \"sent\"\nh = handler Log\n    write message => print message\n_ = h (\\() => invoke report)\n",
+            Flavor::Ml,
+        ),
+    ] {
+        let parsed = parse_program_with_flavor(source, flavor);
+        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+        let invoke = parsed
+            .program
+            .statements
+            .iter()
+            .find_map(|statement| match statement {
+                Stmt::Function {
+                    name, effect_tail, ..
+                } if name == "invoke" => effect_tail.as_deref(),
+                _ => None,
+            });
+        assert_eq!(invoke, Some("e"), "{flavor:?}");
+        let errors = check_program(&parsed.program);
+        assert!(errors.is_empty(), "{flavor:?}: {errors:?}");
+    }
+}
+
+#[test]
+fn open_tail_does_not_hide_a_direct_operation_outside_its_fixed_labels() {
+    for (accepted, rejected, flavor) in [
+        (
+            "effect Log { write: fn(string) -> Unit }\nfn combine(callback: fn() -> Unit) -> Unit ![Log | e] = {\n    perform Log.write(\"fixed\")\n    callback()\n}\n",
+            "effect Log { write: fn(string) -> Unit }\nfn wrong() -> Unit !e = perform Log.write(\"missing\")\n",
+            Flavor::Default,
+        ),
+        (
+            "effect Log\n    write : string => Unit\ncombine : (Unit -> Unit) -> Unit ![Log | e]\ncombine callback =\n    perform Log.write \"fixed\"\n    callback ()\n",
+            "effect Log\n    write : string => Unit\nwrong : Unit -> Unit !e\nwrong () = perform Log.write \"missing\"\n",
+            Flavor::Ml,
+        ),
+    ] {
+        let parsed = parse_program_with_flavor(accepted, flavor);
+        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+        let errors = check_program(&parsed.program);
+        assert!(errors.is_empty(), "{flavor:?}: {errors:?}");
+
+        let parsed = parse_program_with_flavor(rejected, flavor);
+        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+        let errors = check_program(&parsed.program);
+        assert!(
+            errors.iter().any(|error| {
+                error.message.contains("outside its declared row: Log.write")
+            }),
+            "{flavor:?}: {errors:?}"
+        );
+    }
+}
+
+#[test]
+fn open_tail_cannot_hide_a_direct_host_operation() {
+    for (source, flavor) in [
+        ("fn wrong() -> Unit !e = print(\"sent\")\n", Flavor::Default),
+        (
+            "wrong : Unit -> Unit !e\nwrong () = print \"sent\"\n",
+            Flavor::Ml,
+        ),
+    ] {
+        let parsed = parse_program_with_flavor(source, flavor);
+        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+        let errors = check_program(&parsed.program);
+        assert!(
+            errors.iter().any(|error| {
+                error.message.contains("outside its declared row")
+                    && error.message.contains("print")
+            }),
+            "{flavor:?}: {errors:?}"
+        );
+    }
+}
+
+#[test]
+fn a_closed_caller_cannot_erase_an_open_callback_requirement() {
+    for (source, flavor) in [
+        (
+            "fn relay(callback) -> Unit !e = callback()\nfn closed(callback: fn() -> Unit) -> Unit ![] = relay(callback)\n",
+            Flavor::Default,
+        ),
+        (
+            "relay : (Unit -> Unit) -> Unit !e\nrelay callback = callback ()\nclosed : (Unit -> Unit) -> Unit ![]\nclosed callback = relay callback\n",
+            Flavor::Ml,
+        ),
+    ] {
+        let parsed = parse_program_with_flavor(source, flavor);
+        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+        let errors = check_program(&parsed.program);
+        assert!(
+            errors.iter().any(|error| {
+                error.message.contains("function `closed` calls a function with unproven effects")
+            }),
+            "{flavor:?}: {errors:?}"
+        );
+    }
+}
+
+#[test]
+fn nominal_record_row_entries_match_inferred_record_requests() {
+    for (source, flavor) in [
+        (
+            "type Point = { x: int, y: int }\neffect Echo<T> { echo: fn(T) -> T }\nfn fetch() -> Point !Echo<Point> = perform Echo.echo(Point { x: 42, y: 1 })\nlet answer = {\n    handle Echo<Point> { echo value => value }\n    fetch()\n}\nprint(answer.x)\n",
+            Flavor::Default,
+        ),
+        (
+            "type Point =\n    x : int\n    y : int\neffect Echo T\n    echo : T => T\nfetch : Unit -> Point ! Echo<Point>\nfetch () = perform Echo.echo (Point(x = 42, y = 1))\nanswer =\n    handle Echo<Point>\n        echo value => value\n    fetch ()\nprint answer.x\n",
+            Flavor::Ml,
+        ),
+    ] {
+        let parsed = parse_program_with_flavor(source, flavor);
+        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+        let errors = check_program(&parsed.program);
+        assert!(errors.is_empty(), "{flavor:?}: {errors:?}");
+    }
+}
+
+#[test]
+fn callable_handler_preserves_a_returned_functions_effect_provenance() {
+    assert_accepted(
+        "effect Read { read: fn() -> fn(int) -> int }\n\
+         let h = handler Read { read => |n| => (n + 1) ?: 0 }\n\
+         let action = h(|| => perform Read.read())\n\
+         let answer = action(41)\n",
+    );
+}
+
+#[test]
+fn callable_handler_does_not_discharge_a_closure_invoked_after_it_returns() {
+    assert_rejected_with(
+        "effect Read { read: fn() -> int }\n\
+         let h = handler Read { read => 41 }\n\
+         let escaped = h(|| => || => perform Read.read())\n\
+         let answer = escaped()\n",
+        &["unhandled effect operations at program entry", "Read.read"],
+    );
+}
+
+#[test]
+fn callable_handler_does_not_supply_a_different_generic_instance() {
+    assert_rejected_with(
+        "effect Read<T> { read: fn() -> T }\n\
+         let h = handler Read<int> { read => 41 }\n\
+         let action = h(|| => perform Read<string>.read())\n\
+         let answer = action\n",
+        &["Read<string>.read"],
+    );
 }
 
 #[test]

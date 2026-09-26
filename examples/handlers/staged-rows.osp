@@ -1,0 +1,12 @@
+effect Read { value: fn() -> int }
+
+fn relay(callback) -> int !e = callback()
+fn work() !Read = perform Read.value()
+
+let precomputed = {
+    handle static Read { value => 41 }
+    relay(work)
+}
+
+let runtime = handler Read { value => 42 }
+print("${precomputed} ${runtime(|| => relay(work))}")

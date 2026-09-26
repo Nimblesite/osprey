@@ -66,11 +66,27 @@ export async function diagnostics(document: vscode.TextDocument, expected: Expec
   return actual;
 }
 
-export async function actions(document: vscode.TextDocument, range: vscode.Range, kind = vscode.CodeActionKind.QuickFix): Promise<vscode.CodeAction[]> {
-  const found = await vscode.commands.executeCommand<vscode.CodeAction[]>(
-    "vscode.executeCodeActionProvider", document.uri, range, kind.value);
-  assert.ok(Array.isArray(found), "Code action provider must answer the request");
-  return found;
+export async function actions(document: vscode.TextDocument, range: vscode.Range,
+  kind: vscode.CodeActionKind | string = vscode.CodeActionKind.QuickFix): Promise<vscode.CodeAction[]> {
+  const version = document.version;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const found = await vscode.commands.executeCommand<vscode.CodeAction[]>(
+        "vscode.executeCodeActionProvider", document.uri, range, typeof kind === "string" ? kind : kind.value);
+      assert.ok(Array.isArray(found), "Code action provider must answer the request");
+      return found;
+    } catch (error) {
+      // VS Code cancels an in-flight provider request when diagnostics are
+      // republished. Retry only that transient cancellation on the same
+      // document version; a changed source must still fail the test.
+      if (error instanceof Error && error.message === "Canceled" && document.version === version && attempt < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error("Code action provider did not answer after cancellation retries");
 }
 
 export function assertAction(action: vscode.CodeAction, title: string, diagnostic: vscode.Diagnostic): void {
@@ -128,7 +144,19 @@ export async function invokeFix(editor: vscode.TextEditor, range: vscode.Range, 
   await waitFor(() => editor.selection.active, (position) => position.isEqual(range.start),
     "Native cursor returns to the exact annotation range");
   assert.ok(editor.selection.isEmpty);
-  await vscode.commands.executeCommand("editor.action.codeAction", { kind, apply: "first" });
+  // The generic editor picker may cancel or apply an unrelated provider's
+  // action while the language server republishes diagnostics. Execute the
+  // exact action the installed extension just offered and prove its guarded
+  // command accepted the fresh document. This still exercises the production
+  // provider, revalidation request and workspace edit end to end.
+  const offered = await actions(editor.document, range, kind);
+  assert.strictEqual(offered.length, 1, "The requested fix must remain available at invocation");
+  assertEdit(offered[0], editor.document, expected, true);
+  const command = offered[0].command;
+  assert.ok(command);
+  assert.strictEqual(command.command, "osprey.applyWarningFix");
+  assert.strictEqual(await vscode.commands.executeCommand<boolean>(command.command, ...(command.arguments ?? [])), true,
+    "The installed extension must apply its revalidated code action");
   await waitFor(() => editor.document.getText(), (text) => text === expected, "Editor applied exact quick fix");
   assert.strictEqual(editor.document.isDirty, true);
 }

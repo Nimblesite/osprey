@@ -186,6 +186,78 @@ mod tests {
     }
 
     #[test]
+    fn written_effect_rows_survive_signature_inference_in_both_flavors() {
+        for (source, uri, name, row, line) in [
+            (
+                "effect Log { write: fn() -> Unit }\nfn relay(callback) -> int ![Log | e] = callback()\n",
+                "file:///rows.osp",
+                "relay",
+                "![Log | e]",
+                1,
+            ),
+            (
+                "effect Log\n    write : Unit => Unit\nrelay : (Unit -> int) -> int ![Log | e]\nrelay callback = callback ()\n",
+                "file:///rows.ospml",
+                "relay",
+                "![Log | e]",
+                2,
+            ),
+            (
+                "fn closed() ![] = 1\n",
+                "file:///closed.osp",
+                "closed",
+                "![]",
+                0,
+            ),
+            (
+                "closed : Unit -> int ![]\nclosed () = 1\n",
+                "file:///closed.ospml",
+                "closed",
+                "![]",
+                0,
+            ),
+            (
+                "fn relay(callback) -> int !e = callback()\n",
+                "file:///tail.osp",
+                "relay",
+                "!e",
+                0,
+            ),
+            (
+                "relay : (Unit -> int) -> int !e\nrelay callback = callback ()\n",
+                "file:///tail.ospml",
+                "relay",
+                "!e",
+                0,
+            ),
+        ] {
+            let flavor = crate::features::flavor_of(uri, source);
+            let parsed = osprey_syntax::parse_program_with_flavor(source, flavor);
+            assert!(parsed.errors.is_empty(), "{uri}: {:?}", parsed.errors);
+            let symbols = crate::analysis::collect_inferred_symbols(&parsed.program);
+            let symbol = symbols.iter().find(|symbol| symbol.name == name).expect(name);
+            assert_eq!(symbol.declared_effect_row.as_deref(), Some(row), "{uri}");
+            assert!(symbol.signature.as_ref().is_some_and(|sig| sig.ends_with(row)), "{uri}: {symbol:?}");
+            let json = crate::analysis::symbols_json(&parsed.program);
+            assert!(json.contains(&format!("\"declaredEffectRow\":\"{row}\"")), "{uri}: {json}");
+            let hovered = crate::hover::hover(source, uri, line, 4, U16).expect("function hover");
+            assert!(hovered.contains(row), "{uri}: {hovered}");
+        }
+        let source = "fn relay(callback) -> int !e = callback()\nlet answer = relay(|| => 42)\n";
+        let uri = "file:///call.osp";
+        let signature = crate::features::signature_help(source, uri, 1, 19, U16)
+            .expect("signature help at the callback call");
+        assert!(signature.label.ends_with("!e"), "{signature:?}");
+        let completion = crate::complete::completion(source, uri, 1, 19, U16);
+        let detail = completion
+            .iter()
+            .find(|item| item.label == "relay")
+            .and_then(|item| item.detail.as_ref())
+            .expect("relay completion detail");
+        assert!(detail.ends_with("!e"), "{detail}");
+    }
+
+    #[test]
     fn a_return_the_checker_could_not_prove_gets_no_arrow_rather_than_unit() {
         // THE pin for the original defect. `id` is generic: its return is a
         // bare type variable, so there is genuinely nothing to report — and

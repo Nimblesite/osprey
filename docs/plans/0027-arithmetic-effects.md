@@ -33,9 +33,9 @@ Per CLAUDE.md, the failing tests outrank the fix. Expand `tests/core/arithmetic/
 ## 4. Phase 1 — shared handler integration
 
 Handler syntax and implementation are owned by [plan 0016](0016-algebraic-effects-and-handlers.md).
-Arithmetic examples use callable policies or bodyless handlers where useful;
-explicit Default bodies use `do` and ML uses `in`. Keep the canonical legacy
-alias behavior. This plan does not maintain another parser migration checklist.
+Arithmetic examples use callable policies or block-scoped `handle` statements.
+Both flavors reject `handle … in/do …`; this plan does not maintain a separate
+parser migration checklist.
 
 ## 5. Phase 2 — checker
 
@@ -88,13 +88,13 @@ Ground rules for every box below. **The compiler is the site classifier**: after
 ### R. Mechanical recipes (apply in this order at each site)
 
 - [ ] **R1 — dead fallback, total site.** `x % 2 ?: 1`, `x / 4 ?: 0.0` (literal nonzero divisor): delete the `?: fallback`. No handler needed (`[ARITH-EFFECT-TOTAL-SITES]`).
-- [ ] **R2 — fabricating fallback, fallible site.** `(a + b) ?: 0`, `x * x ?: 0`, fold lambdas `fn(a, b) => a + b ?: 0`: delete the `?: fallback`, then discharge at the nearest region that states the file's actual policy — one `handle Arith ... do` around the test body or `main`, not one per expression. Choose the policy the test *means*: wrapping for hash/checksum-shaped code, fault-sticky for everything asserting exact values.
+- [ ] **R2 — fabricating fallback, fallible site.** `(a + b) ?: 0`, `x * x ?: 0`, fold lambdas `fn(a, b) => a + b ?: 0`: delete the `?: fallback`, then discharge at the nearest region that states the file's actual policy — one block-scoped `handle Arith` in the test body or `main`, not one per expression. Choose the policy the test *means*: wrapping for hash/checksum-shaped code, fault-sticky for everything asserting exact values.
 - [ ] **R3 — self-fallback in handler-owned state.** `count = (count + 1) ?: count` inside non-`Arith` handler arms: delete the `?:`; the seeded requirement propagates out of the arm to an enclosing `handle Arith`. Inside `Arith` arms only, use `wrapAdd`/`satAdd` (R7).
 - [ ] **R4 — sites that inspect the error.** `match a + b { Success ... Error ... }` and the `?:`-with-diagnostic forms: rewrite as an `Arith` handler policy, or as `checkedAdd`/`checkedSub`/`checkedMul` where the test genuinely wants a value-level `Result`. Applies to the 7 `MathError`-inspecting files: `tests/regressions/basics/strings/string_edge_cases.test.osp{,ml}`, `tests/regressions/basics/types/type_equality_comprehensive.test.osp{,ml}`, `tests/regressions/effects/result_and_effects.test.osp{,ml}`, `examples/tui/api_browser.osp`.
 - [ ] **R5 — printed wrappers.** `print(toString(15 / 3))` printing `Success(5.0)`: the expression now prints `5.0`; update the assertion/golden deliberately (see G).
 - [ ] **R6 — annotations.** Delete every orphaned `-> Result<int, MathError>` / `Result<float, MathError>` annotation; per the inference rule, do not replace it with `-> int`.
 - [ ] **R7 — intentional wraparound.** Sites whose comment or name says wrap/checksum/hash: use `wrapAdd`/`wrapMul` or a wrapping region, whichever reads better; never leave a fault-policy region wrapping by accident.
-- [ ] **R8 — `handle ... in` → `handle ... do`** (Phase 1, already done before this checklist starts; re-verify no `in` binder survives in any file this pass touches).
+- [ ] **R8 — canonical handler form.** Use block-scoped `handle Arith` followed by the work, or a callable `handler Arith` value applied to it. Reject `in`/`do` forms in both flavors.
 
 ### C. Corpus passes (Default file and its ML twin together; counts are `?:` sites at audit time)
 
@@ -122,7 +122,7 @@ Ground rules for every box below. **The compiler is the site classifier**: after
 
 ### D. Docs, specs, website, tooling
 
-- [ ] Spec snippets: already rewritten to this model across 0001–0004, 0007, 0008, 0010–0013, 0017, 0024, 0025, 0034, 0035 and 0036, with every Default `handle` using `do`. Spot-compile each one against the landed compiler — snippets are code, and a snippet that fails to compile means the compiler disagrees with the spec.
+- [ ] Spec snippets: spot-compile the canonical block-scoped and callable handler examples against the landed compiler. A snippet that fails to compile means the compiler disagrees with the spec.
 - [ ] `docs/messaging.md` snippet accuracy pass (Phase 6 items).
 - [ ] Website: prose pages and playground samples that show arithmetic; regenerate `website/src/spec/*.md` via `npm run build`, never by hand (gitignored build output).
 - [ ] `vscode-extension/`: tmLanguage keyword lists (`do`), any bundled sample code, `npm test`.

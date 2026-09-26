@@ -12,6 +12,7 @@ use crate::document_entries::DocEntry;
 use osprey_ast::{EffectRef, Expr, ExternParameter, Parameter, Position, Stmt, TypeExpr};
 use osprey_lsp::analysis::render_type;
 use osprey_syntax::Flavor;
+use std::fmt::Write;
 
 /// The derived sections for one page, in reading order.
 ///
@@ -32,23 +33,34 @@ pub(super) fn sections(entry: &DocEntry, flavor: Flavor, location: &str) -> Stri
     .join("\n\n")
 }
 
-/// The declared effect row in `flavor`'s own spelling, empty where none was
-/// written.
-///
-/// The editor's type model renders a function's *value* type and stops there,
-/// so a signature line built from it alone reads as pure for a function the
-/// compiler will reject unless its caller discharges the row. The row is part
-/// of the signature, so it belongs on the signature.
+/// The declared row in the author's source spelling. Editor symbols carry a
+/// resolved row, but API pages should show local effect names from the source.
 pub(super) fn effect_row(entry: &DocEntry, flavor: Flavor) -> String {
-    let Some(Stmt::Function { effects, .. }) = entry.declaration.as_ref() else {
+    let Some(Stmt::Function {
+        effects,
+        effect_tail,
+        effect_row_present,
+        ..
+    }) = entry.declaration.as_ref()
+    else {
         return String::new();
     };
+    if !effect_row_present {
+        return String::new();
+    }
     let row: Vec<String> = effects
         .iter()
         .map(|effect| format!("{}{}", effect.name, arguments(effect, flavor)))
         .collect();
+    if let Some(tail) = effect_tail {
+        return if row.is_empty() {
+            format!(" !{tail}")
+        } else {
+            format!(" ![{} | {tail}]", row.join(", "))
+        };
+    }
     match (flavor, row.as_slice()) {
-        (_, []) => String::new(),
+        (_, []) => " ![]".to_owned(),
         (Flavor::Ml, [only]) => format!(" ! {only}"),
         (Flavor::Ml, many) => format!(" ! [{}]", many.join(", ")),
         (Flavor::Default, many) => format!(" ![{}]", many.join(", ")),
@@ -194,7 +206,13 @@ fn returns(entry: &DocEntry, result: Option<String>) -> String {
 /// carries: the compiler rejects a program that performs an effect no handler
 /// discharges, so the row has to be known before the call is written.
 fn effects(entry: &DocEntry, flavor: Flavor) -> String {
-    let Some(Stmt::Function { effects, .. }) = entry.declaration.as_ref() else {
+    let Some(Stmt::Function {
+        effects,
+        effect_tail,
+        effect_row_present,
+        ..
+    }) = entry.declaration.as_ref()
+    else {
         return String::new();
     };
     let rows: Vec<String> = effects
@@ -202,13 +220,29 @@ fn effects(entry: &DocEntry, flavor: Flavor) -> String {
         .map(|effect| performed(effect, flavor))
         .collect();
     if rows.is_empty() {
-        return String::new();
+        if let Some(tail) = effect_tail {
+            return format!(
+                "## Effects\n\nOpen effect remainder `{tail}` is supplied by the caller."
+            );
+        }
+        return if *effect_row_present {
+            "## Effects\n\nDeclared pure (`![]`).".to_owned()
+        } else {
+            String::new()
+        };
     }
-    format!(
+    let mut rendered = format!(
         "## Effects\n\nCalling this asks for the work below. A caller runs it inside a matching \
          `handle`, which decides how that work is actually done.\n\n{}",
         rows.join("\n")
-    )
+    );
+    if let Some(tail) = effect_tail {
+        let _ = write!(
+            rendered,
+            "\n\nAdditional effects come from the open remainder `{tail}`."
+        );
+    }
+    rendered
 }
 
 /// One effect as a documentation symbol link, so it reaches the effect's own

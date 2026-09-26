@@ -670,7 +670,14 @@ function reportCompileFailure(
   }
 }
 
-function reportLeaves(
+/**
+ * Map one finished execution onto its leaves: the process output into the
+ * run's terminal, each case's TAP line into its verdict, and a failure that
+ * belongs to no single case onto `errorTarget`. Shared by every profile —
+ * the debug session's own stdout is the same TAP stream a compiler child
+ * writes ([TESTING-DEBUG-VSCODE]).
+ */
+export function reportLeaves(
   errorTarget: vscode.TestItem,
   leaves: vscode.TestItem[],
   result: ExecResult,
@@ -693,29 +700,43 @@ function reportLeaves(
   }
 }
 
-async function runPlan(
+/**
+ * How one suite's share of a run is executed: `leaves` under `filter` (a case
+ * name, or undefined for the whole file), with a failure belonging to no
+ * single case reported against `errorTarget`. Run, Coverage and Profile spawn
+ * the compiler; Debug launches a debug session ([TESTING-DEBUG-VSCODE]).
+ * Everything above this — planning, exclusions, cancellation — is shared.
+ */
+export type LeafExecutor = (
+  errorTarget: vscode.TestItem,
+  leaves: vscode.TestItem[],
+  filter: string | undefined,
+) => Promise<void>;
+
+/**
+ * Split one file's plan into executor calls. One unfiltered call only when the
+ * whole file truly runs: a whole-file request with exclusions falls through to
+ * per-leaf filtered calls so the excluded cases never execute — not merely go
+ * unreported.
+ */
+export async function runPlanWith(
   plan: FilePlan<vscode.TestItem>,
   excluded: ReadonlySet<string>,
-  sink: TestRunSink,
   token: vscode.CancellationToken,
-  compiler: string,
-  mode: RunMode,
+  execute: LeafExecutor,
 ): Promise<void> {
   const leaves = plan.wholeFile
     ? includedChildren(plan.file, excluded)
     : plan.leaves;
-  // One unfiltered process only when the whole file truly runs. A whole-file
-  // request with exclusions falls through to per-leaf filtered runs so the
-  // excluded cases never execute — not merely go unreported.
   if (plan.wholeFile && leaves.length === plan.file.children.size) {
-    await runLeaves(plan.file, leaves, undefined, sink, token, compiler, mode);
+    await execute(plan.file, leaves, undefined);
     return;
   }
   for (const leaf of leaves) {
     if (token.isCancellationRequested) {
       return;
     }
-    await runLeaves(leaf, [leaf], leaf.label, sink, token, compiler, mode);
+    await execute(leaf, [leaf], leaf.label);
   }
 }
 
@@ -733,14 +754,18 @@ async function ensureFileResolved(
   }
 }
 
-/** Execute a run request against the sink, honoring cancellation throughout. */
-export async function executeRunRequest(
+/**
+ * Execute a run request through `executor`, honoring cancellation throughout.
+ * The profile supplies only how one suite runs; discovery, planning and the
+ * run's lifetime are identical whichever profile launched it.
+ */
+export async function executeRequestWith(
   controller: vscode.TestController,
   request: vscode.TestRunRequest,
   sink: TestRunSink,
   token: vscode.CancellationToken,
   resolveCompiler: () => string,
-  mode: RunMode = PLAIN_RUN,
+  executor: (compiler: string) => LeafExecutor,
 ): Promise<void> {
   const excluded = excludedIdSet(request.exclude);
   // end() MUST fire on every exit path — a thrown discovery/report error or a
@@ -760,11 +785,31 @@ export async function executeRunRequest(
       }
       const compiler = resolveCompiler();
       await ensureFileResolved(controller, plan, compiler, token);
-      await runPlan(plan, excluded, sink, token, compiler, mode);
+      await runPlanWith(plan, excluded, token, executor(compiler));
     }
   } finally {
     sink.end();
   }
+}
+
+/** Execute a run request as a compiler child process ([TESTING-VSCODE]). */
+export async function executeRunRequest(
+  controller: vscode.TestController,
+  request: vscode.TestRunRequest,
+  sink: TestRunSink,
+  token: vscode.CancellationToken,
+  resolveCompiler: () => string,
+  mode: RunMode = PLAIN_RUN,
+): Promise<void> {
+  await executeRequestWith(
+    controller,
+    request,
+    sink,
+    token,
+    resolveCompiler,
+    (compiler) => (errorTarget, leaves, filter) =>
+      runLeaves(errorTarget, leaves, filter, sink, token, compiler, mode),
+  );
 }
 
 /** The handler behind the default Run profile: one real TestRun per request. */

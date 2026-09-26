@@ -1,0 +1,114 @@
+(** Issue #184: a curried call must reach its handler at every arity. *)
+effect Direct
+    tick : int => Unit
+effect Susp
+    control tick : int => Unit
+
+value1 a1 = perform Direct.tick a1
+value2 a1 a2 =
+    _ = (a1 + 0) ?: 0
+    perform Direct.tick a2
+value3 a1 a2 a3 =
+    _ = (a1 + 0) ?: 0
+    _ = (a2 + 0) ?: 0
+    perform Direct.tick a3
+value4 a1 a2 a3 a4 =
+    _ = (a1 + 0) ?: 0
+    _ = (a2 + 0) ?: 0
+    _ = (a3 + 0) ?: 0
+    perform Direct.tick a4
+value5 a1 a2 a3 a4 a5 =
+    _ = (a1 + 0) ?: 0
+    _ = (a2 + 0) ?: 0
+    _ = (a3 + 0) ?: 0
+    _ = (a4 + 0) ?: 0
+    perform Direct.tick a5
+
+runValue () =
+    mut count = 0
+    handle Direct
+        tick n => count := (count + n) ?: count
+    _ = value1 1
+    partial1 = value1
+    _ = partial1 1
+    _ = value2 1 1
+    partial2 = value2 1
+    _ = partial2 1
+    _ = value3 1 1 1
+    partial3 = value3 1 1
+    _ = partial3 1
+    _ = value4 1 1 1 1
+    partial4 = value4 1 1 1
+    _ = partial4 1
+    _ = value5 1 1 1 1 1
+    partial5 = value5 1 1 1 1
+    _ = partial5 1
+    count
+
+control1 a1 = perform Susp.tick a1
+control2 a1 a2 =
+    _ = (a1 + 0) ?: 0
+    perform Susp.tick a2
+control3 a1 a2 a3 =
+    _ = (a1 + 0) ?: 0
+    _ = (a2 + 0) ?: 0
+    perform Susp.tick a3
+control4 a1 a2 a3 a4 =
+    _ = (a1 + 0) ?: 0
+    _ = (a2 + 0) ?: 0
+    _ = (a3 + 0) ?: 0
+    perform Susp.tick a4
+control5 a1 a2 a3 a4 a5 =
+    _ = (a1 + 0) ?: 0
+    _ = (a2 + 0) ?: 0
+    _ = (a3 + 0) ?: 0
+    _ = (a4 + 0) ?: 0
+    perform Susp.tick a5
+
+runControl () =
+    mut count = 0
+    handle Susp
+        tick n =>
+            count := (count + n) ?: count
+            resume ()
+    _ = control1 1
+    partial1 = control1
+    _ = partial1 1
+    _ = control2 1 1
+    partial2 = control2 1
+    _ = partial2 1
+    _ = control3 1 1 1
+    partial3 = control3 1 1
+    _ = partial3 1
+    _ = control4 1 1 1 1
+    partial4 = control4 1 1 1
+    _ = partial4 1
+    _ = control5 1 1 1 1 1
+    partial5 = control5 1 1 1 1
+    _ = partial5 1
+    count
+
+(** The issue's four-argument validation shape, using the new block handler. *)
+effect Invalid
+    report : string => Unit
+
+flag (broken, msg) = match broken
+    true => perform Invalid.report msg
+    false =>
+        _ = broken
+
+validate name age score email =
+    flag (name == "", "name is empty")
+    flag (age < 0, "age is negative")
+    flag (score > 100, "score is high")
+    flag (contains email "@" == false, "email is invalid")
+    "done"
+
+audit name age score email =
+    mut count = 0
+    handle Invalid
+        report _message => count := (count + 1) ?: count
+    _ = validate name age score email
+    count
+
+print "direct=${toString (runValue ())},control=${toString (runControl ())},audit=${toString (audit "" ((0 - 3) ?: 0) 250 "invalid")}"

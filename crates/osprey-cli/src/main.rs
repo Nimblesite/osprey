@@ -168,13 +168,28 @@ fn report_dependencies(path: &str, flavor: Option<Flavor>) -> ExitCode {
         eprintln!("error: cannot resolve the flavor of {path}");
         return ExitCode::from(2);
     };
-    let (sets, errors) = osprey_syntax::dependency_report(&source, flavor);
+    let parsed = osprey_syntax::parse_program_with_flavor(&source, flavor);
     // A partial tree yields short dependency sets, and a wrongly empty one is a
     // subtree that never rebuilds. Refuse to answer instead of answering wrong.
     // Implements [STAGE-SIGNALS-EXACT].
-    if report_syntax_errors(path, &errors) {
+    if report_syntax_errors(path, &parsed.errors) {
         return ExitCode::FAILURE;
     }
+    let errors = osprey_types::check_program(&parsed.program);
+    if !errors.is_empty() {
+        for error in errors {
+            if let Some(position) = error.position {
+                eprintln!(
+                    "{path}:{}:{}: {}",
+                    position.line, position.column, error.message
+                );
+            } else {
+                eprintln!("{path}: {}", error.message);
+            }
+        }
+        return ExitCode::FAILURE;
+    }
+    let sets = osprey_ast::stage::dependencies(&parsed.program);
     for (function, operations) in sets {
         if !operations.is_empty() {
             println!("{function}: {}", operations.join(", "));

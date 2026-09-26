@@ -1,0 +1,15 @@
+effect Log
+    write : string => Unit
+
+run : (Unit -> Unit) -> Unit !e
+run callback = callback ()
+work : Unit -> Unit !Log
+work () = perform Log.write "job"
+
+live = handler Log
+    write message => print ("live:" + message)
+test = handler Log
+    write message => print ("test:" + message)
+
+live (\() => run work)
+test (\() => run work)

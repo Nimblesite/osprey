@@ -330,15 +330,29 @@ fn body(parts: &[String]) -> String {
     format!("{}\n", written.join("\n\n"))
 }
 
-/// The signature line a page leads with: the editor's inferred type, respelled
-/// in the flavor the declaration was authored in, carrying the effect row the
-/// type model leaves off ([DOC-EXPORT]).
+/// The signature line a page leads with. The editor's inferred signature has
+/// resolved effect names; strip its row before appending the author's local
+/// source spelling exactly once ([DOC-EXPORT]).
 fn declared_signature(entry: &DocEntry, symbols: &[Value], origin: &Origin) -> io::Result<String> {
     let inferred = signature(entry, symbols)?;
+    let row = super::facts::effect_row(entry, origin.flavor);
+    let value = if row.is_empty() {
+        inferred.as_str()
+    } else {
+        inferred
+            .rsplit_once(" !")
+            .map(|(value, _)| value)
+            .ok_or_else(|| {
+                invalid(format!(
+                    "missing editor effect row for {}",
+                    entry.qualified_name
+                ))
+            })?
+    };
     Ok(format!(
         "{}{}",
-        osprey_lsp::source_signature(origin.flavor, &inferred),
-        super::facts::effect_row(entry, origin.flavor)
+        osprey_lsp::source_signature(origin.flavor, value),
+        row
     ))
 }
 

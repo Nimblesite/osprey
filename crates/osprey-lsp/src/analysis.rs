@@ -8,7 +8,8 @@
 #[cfg(test)]
 use osprey_ast::InterpolatedPart;
 use osprey_ast::{
-    AstNode, DocComment, Expr, ExternParameter, Parameter, Position, Program, Stmt, TypeExpr,
+    AstNode, DocComment, EffectRef, Expr, ExternParameter, Parameter, Position, Program, Stmt,
+    TypeExpr,
 };
 use std::fmt::Write as _;
 
@@ -68,6 +69,9 @@ pub struct SymbolInfo {
     pub(crate) parameters: Vec<(String, String)>,
     /// Rendered return type for functions.
     pub(crate) return_type: Option<String>,
+    /// Written upper bound, never an inferred set of required operations.
+    /// Kept separate so inference cannot drop it while rebuilding a signature.
+    pub(crate) declared_effect_row: Option<String>,
     /// The declaration's documentation rendered to hover Markdown, when it
     /// carries a doc comment (either flavor). Implements [LSP-HOVER-DOCS].
     pub(crate) doc: Option<String>,
@@ -143,6 +147,7 @@ fn container_sym(
         binder: String::new(),
         parameters: Vec::new(),
         return_type: None,
+        declared_effect_row: None,
         doc: render_scope_docs(docs),
     }
 }
@@ -288,6 +293,9 @@ fn sym_of(stmt: &Stmt) -> Option<SymbolInfo> {
             type_params,
             parameters,
             return_type,
+            effects,
+            effect_tail,
+            effect_row_present,
             doc,
             position,
             ..
@@ -296,6 +304,7 @@ fn sym_of(stmt: &Stmt) -> Option<SymbolInfo> {
             &render_type_params(type_params),
             param_pairs(parameters),
             return_type.as_ref(),
+            render_effect_row(effects, effect_tail.as_deref(), *effect_row_present),
             render_doc(doc.as_ref()),
             *position,
         )),
@@ -310,6 +319,7 @@ fn sym_of(stmt: &Stmt) -> Option<SymbolInfo> {
             "",
             extern_pairs(parameters),
             return_type.as_ref(),
+            None,
             render_doc(doc.as_ref()),
             *position,
         )),
@@ -404,6 +414,7 @@ fn fn_sym(
     binder: &str,
     parameters: Vec<(String, String)>,
     return_type: Option<&TypeExpr>,
+    declared_effect_row: Option<String>,
     doc: Option<String>,
     position: Option<Position>,
 ) -> SymbolInfo {
@@ -413,7 +424,13 @@ fn fn_sym(
     // (`None` when unwritten) so a reader is told "declared Unit" apart from
     // "not declared" and the latter is filled in from the checker by
     // [`fill_inferred`] ([LSP-HOVER-INFERRED-SIGNATURE]).
-    let signature = render_signature(name, binder, &parameters, written.as_deref());
+    let signature = render_signature(
+        name,
+        binder,
+        &parameters,
+        written.as_deref(),
+        declared_effect_row.as_deref(),
+    );
     SymbolInfo {
         name: name.into(),
         source_name: name.into(),
@@ -424,8 +441,43 @@ fn fn_sym(
         binder: binder.to_owned(),
         parameters,
         return_type: written,
+        declared_effect_row,
         doc,
     }
+}
+
+/// The function's written row is an admissible upper bound, not an inferred
+/// effect set. Preserve its source-level shape in every editor signature.
+fn render_effect_row(effects: &[EffectRef], tail: Option<&str>, present: bool) -> Option<String> {
+    if !present {
+        return None;
+    }
+    let labels: Vec<String> = effects
+        .iter()
+        .map(|effect| {
+            let args = if effect.type_args.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "<{}>",
+                    effect
+                        .type_args
+                        .iter()
+                        .map(render_type)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            };
+            format!("{}{args}", effect.name)
+        })
+        .collect();
+    Some(match (labels.as_slice(), tail) {
+        ([], Some(tail)) => format!("!{tail}"),
+        (labels, Some(tail)) => format!("![{} | {tail}]", labels.join(", ")),
+        ([], None) => "![]".to_owned(),
+        ([only], None) => format!("!{only}"),
+        (labels, None) => format!("![{}]", labels.join(", ")),
+    })
 }
 
 /// The one spelling of a function signature: `fn name<T>(a: int) -> string`.
@@ -440,13 +492,15 @@ fn render_signature(
     binder: &str,
     parameters: &[(String, String)],
     ret: Option<&str>,
+    effect_row: Option<&str>,
 ) -> String {
     let shown: Vec<String> = parameters.iter().map(render_param).collect();
     let head = format!("fn {name}{binder}({})", shown.join(", "));
-    match ret {
+    let signature = match ret {
         Some(ret) => format!("{head} -> {ret}"),
         None => head,
-    }
+    };
+    effect_row.map_or_else(|| signature.clone(), |row| format!("{signature} {row}"))
 }
 
 /// How a checker-supplied type is shown to a reader, or `None` when it carries
@@ -508,6 +562,7 @@ pub(crate) fn fill_inferred(sym: &mut SymbolInfo, types: &osprey_types::ProgramT
         &sym.binder,
         &sym.parameters,
         sym.return_type.as_deref(),
+        sym.declared_effect_row.as_deref(),
     );
     sym.ty.clone_from(&signature);
     sym.signature = Some(signature);
@@ -537,6 +592,7 @@ fn let_sym(
         binder: String::new(),
         parameters: Vec::new(),
         return_type: None,
+        declared_effect_row: None,
         doc,
     }
 }
@@ -552,6 +608,7 @@ fn decl_sym(name: &str, ty: &str, position: Option<Position>) -> SymbolInfo {
         binder: String::new(),
         parameters: Vec::new(),
         return_type: None,
+        declared_effect_row: None,
         doc: None,
     }
 }
@@ -640,6 +697,9 @@ fn sym_json(s: &SymbolInfo) -> String {
     }
     if let Some(ret) = &s.return_type {
         let _ = write!(o, ",\"returnType\":{}", json_str(ret));
+    }
+    if let Some(row) = &s.declared_effect_row {
+        let _ = write!(o, ",\"declaredEffectRow\":{}", json_str(row));
     }
     o.push('}');
     o

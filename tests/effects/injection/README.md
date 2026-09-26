@@ -1,9 +1,16 @@
 # Injected implementations
 
-A handler is not where the implementation has to be written. `handle … in` is
-an expression, so a function that returns one is a policy you pass around:
-the code under test performs an operation, and the caller decides which
-implementation answers it.
+A handler can be installed where the application chooses an implementation.
+Each `with…Storage` function installs a block-scoped `handle` for the rest of
+its block, then calls the supplied work. The code under test performs an
+operation; its caller decides which implementation answers it. A reusable
+`handler Storage { … }` value can instead be called directly as `h(work)`.
+
+`logging_injection.test.{osp,ospml}` shows that callable form. The unchanged
+`serve` function requests two `Log.info` operations. A console handler prints
+them; an in-memory handler records them for an assertion. Both return the same
+business answer. The paired golden pins the console output and TAP result in
+both flavors.
 
 `storage_injection.test.{osp,ospml}` is the whole pattern in one program.
 The logic is written once against a `Storage` effect, and three separate
@@ -51,11 +58,10 @@ made, their order, their arguments, and the count of each.
 ## Why the effect is the seam
 
 Nothing is threaded through the logic to make this work — no handle parameter,
-no interface record, no constructor. `appendNote` and `countNotes` name
-`Storage` in their effect row and the compiler refuses to let either reach
-program entry without a handler that discharges it, so the seam is checked
-rather than conventional. Swapping the implementation is swapping the caller's
-one word: `withDiskStorage` becomes `withMockStorage`.
+no interface record, no constructor. The compiler infers `Storage` requirements
+from `appendNote` and `countNotes` and refuses to let either reach program
+entry without a handler that discharges it. Swapping the implementation is
+swapping the caller's one word: `withDiskStorage` becomes `withMockStorage`.
 
 These handlers are direct-substitution handlers — no arm calls `resume` — so
 each arm's value simply becomes the operation's result and the caller carries

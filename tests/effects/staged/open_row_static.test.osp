@@ -1,0 +1,12 @@
+/// One open-row helper can be specialized through a static handler.
+/// Its result must be identical on native and wasm32.
+effect Read { value: fn() -> int }
+
+fn relay(callback) -> int !e = callback()
+fn work() !Read = perform Read.value()
+
+let answer = {
+    handle static Read { value => 41 }
+    relay(work)
+}
+print(answer)

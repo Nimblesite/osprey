@@ -1,8 +1,8 @@
 //! What an effect mention names: one declaration, many instantiations.
 //!
 //! `Signal<Count>` and `Signal<Cursor>` are DIFFERENT effects to a row and to a
-//! handler — that is exactly what makes a dependency set exact, and it is the
-//! surface contract the reactive story rests on ([STAGE-SIGNALS-EXACT]). They
+//! handler — this distinction is necessary for a sound may-read dependency
+//! set, and it is the reactive contract ([STAGE-SIGNALS-EXACT]). They
 //! are the SAME declaration, so a lookup of what an effect *declares* reads the
 //! base name while a lookup of what a row *requires* reads the whole mention.
 //! Both spellings live here so the two can never drift apart.
@@ -37,18 +37,19 @@ pub fn arity(effect: &str) -> usize {
     }
     let mut depth = 0_i32;
     arguments
-        .chars()
-        .filter(|c| separates(*c, &mut depth))
+        .char_indices()
+        .filter(|(index, c)| separates(*c, arguments[..*index].ends_with('-'), &mut depth))
         .count()
         + 1
 }
 
 /// Whether `c` separates two top-level arguments, advancing `depth` past any
 /// bracket it opens or closes.
-fn separates(c: char, depth: &mut i32) -> bool {
+fn separates(c: char, follows_dash: bool, depth: &mut i32) -> bool {
     match c {
-        '<' | '[' | '(' => *depth += 1,
-        '>' | ']' | ')' => *depth -= 1,
+        '<' | '[' | '(' | '{' => *depth += 1,
+        '>' if follows_dash => {}
+        '>' | ']' | ')' | '}' => *depth -= 1,
         _ => {}
     }
     c == ',' && *depth == 0
@@ -135,7 +136,9 @@ mod tests {
         // A nested generic is one argument, not two.
         assert_eq!(arity("Signal<Result<int, Error>>"), 1);
         assert_eq!(arity("Signal<fn(int, int) -> int>"), 1);
+        assert_eq!(arity("Pair<fn(int) -> int, bool>"), 2);
         assert_eq!(arity("Signal<[int]>"), 1);
+        assert_eq!(arity("Signal<{ x: int, y: int }>"), 1);
     }
 
     #[test]

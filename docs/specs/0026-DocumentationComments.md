@@ -203,10 +203,9 @@ module signatures. Public declarations appear even without comments. Module
 visibility is the compiler's finalized surface, including signature ascription;
 private members and opaque type representations are excluded. Public type pages
 show their representation, fields and variants. Function signatures come from
-the editor's inferred type model and retain generic binders, and carry the
-declared effect row: the type model renders a function's value type alone, and a
-signature without the row reads as pure for a function the compiler rejects
-unless its caller discharges it. ML source signatures and example fences are
+the editor's inferred signature and retain generic binders and the declared
+effect row. The exporter replaces the editor's resolved row with the author's
+source-local row once. ML source signatures and example fences are
 presented in the ML flavor.
 
 A declaration with no comment still states facts about itself, and its page

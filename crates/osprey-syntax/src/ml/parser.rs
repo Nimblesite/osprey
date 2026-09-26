@@ -832,8 +832,8 @@ impl Parser<'_> {
         // construction and needs no diagnostic of its own.
         let _ = self.eat(&TokKind::Colon);
         let ty = self.ty();
-        let effects = self.effect_row();
-        if type_params.is_empty() && effects.is_empty() {
+        let (effects, effect_tail, effect_row_present) = self.effect_row();
+        if type_params.is_empty() && !effect_row_present {
             super::annotation_edits::signature(
                 self.source,
                 self.toks,
@@ -847,6 +847,8 @@ impl Parser<'_> {
             type_params,
             ty,
             effects,
+            effect_tail,
+            effect_row_present,
             pos,
         })
     }
@@ -855,25 +857,48 @@ impl Parser<'_> {
     /// bracketed `! [Ref, …]`, each reference optionally applied to type
     /// arguments (`State<int>`). Empty when no `!` is present
     /// ([FLAVOR-ML-EFFECT], [EFFECTS-GENERIC-ROWS]).
-    pub(super) fn effect_row(&mut self) -> Vec<MlEffectRef> {
+    pub(super) fn effect_row(&mut self) -> (Vec<MlEffectRef>, Option<String>, bool) {
         if !matches!(self.peek(), TokKind::Op(op) if op == "!") {
-            return Vec::new();
+            return (Vec::new(), None, false);
         }
         self.advance(); // `!`
         let bracketed = self.eat(&TokKind::LBracket);
         let mut effects = Vec::new();
-        if let Some(r) = self.effect_ref() {
-            effects.push(r);
-            while self.eat(&TokKind::Comma) {
-                if let Some(r) = self.effect_ref() {
-                    effects.push(r);
+        if !bracketed || !matches!(self.peek(), TokKind::RBracket | TokKind::Pipe) {
+            if let Some(r) = self.effect_ref() {
+                effects.push(r);
+                while self.eat(&TokKind::Comma) {
+                    if let Some(r) = self.effect_ref() {
+                        effects.push(r);
+                    }
                 }
             }
         }
+        let mut tail = if bracketed && self.eat(&TokKind::Pipe) {
+            self.ident()
+        } else {
+            None
+        };
         if bracketed && !self.eat(&TokKind::RBracket) {
             self.error("expected ']' to close effect row");
         }
-        effects
+        let implicit_tail = !bracketed
+            && effects.first().is_some_and(|effect| {
+                effects.len() == 1
+                    && effect.args.is_empty()
+                    && !effect.name.contains("::")
+                    && effect.name.chars().next().is_some_and(char::is_lowercase)
+            });
+        if implicit_tail {
+            tail = effects.pop().map(|effect| effect.name);
+        }
+        if tail
+            .as_ref()
+            .is_some_and(|name| !name.chars().next().is_some_and(char::is_lowercase))
+        {
+            self.error("effect row variable must start with a lowercase letter");
+        }
+        (effects, tail, true)
     }
 
     /// One effect reference in an effect row: a name plus optional

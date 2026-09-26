@@ -478,6 +478,7 @@ mod tests {
             binder: String::new(),
             parameters: Vec::new(),
             return_type: None,
+            declared_effect_row: None,
             doc: None,
         };
         let value = symbols_result(&[sym], "let other = 1\n", PositionEncoding::Utf16);

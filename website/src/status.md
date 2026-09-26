@@ -80,7 +80,7 @@ accepted:
 
 ## Current limits
 
-- Resumable effects are supported by `--target=native`. Mobile C ABI targets and WebAssembly reject them at compile time; supported handlers that return immediately remain usable.
+- Dynamic control handlers are supported by `--target=native`. Mobile C ABI targets and WebAssembly reject their unavailable continuations at compile time; value-operation handlers remain usable.
 - The effect checker follows operations through the closed program, including exported mobile functions. It does not yet provide general polymorphic effect-row variables in public higher-order signatures.
 - Tail-call optimisation is not implemented.
 - The package manager remains roadmap work. Working project/module examples do not imply every module-system feature is complete.
