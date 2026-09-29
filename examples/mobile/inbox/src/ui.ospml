@@ -78,7 +78,7 @@ module Ui
     issues doc index count = match index >= count
         true => ""
         false =>
-            next = (index + 1) 
+            next = (satAdd index 1)
             rest = issues doc next count
             separator = match length rest == 0
                 true => ""

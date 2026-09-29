@@ -586,7 +586,7 @@ fn account() ![Console, Ledger] = {
     perform Console.emit("deposit 100  → balance \${afterDeposit}")
     let afterMore = perform Ledger.post(250)
     perform Console.emit("deposit 250  → balance \${afterMore}")
-    let afterDraw = perform Ledger.post((0 - 90) )
+    let afterDraw = perform Ledger.post(-90)
     perform Console.emit("withdraw 90  → balance \${afterDraw}")
     afterMore
 }
@@ -599,7 +599,7 @@ fn realWorld() = {
     }
     handle Ledger {
         post amount => {
-            balance = balance + amount 
+            balance = balance + amount
             balance
         }
     }
@@ -618,9 +618,9 @@ fn dryRun() = {
 }
 
 /// Pure pipeline: Σ of squares of the evens in [1, n) — no loops, no mutation.
-fn even(x) = (x % 2 ) == 0
-fn sq(x)   = x * x 
-fn crunch(n) = range(1, n) |> filter(even) |> map(sq) |> fold(0, fn(a, b) => a + b )
+fn even(x) = x % 2 == 0
+fn sq(x)   = x * x
+fn crunch(n) = range(1, n) |> filter(even) |> map(sq) |> fold(0, fn(a, b) => a + b)
 
 /// Exhaustive match over a union — drop a case and it won't compile.
 type Tier = Epic | Solid | Starter
@@ -635,6 +635,7 @@ fn badge(t) = match t {
     Starter => "🟢 STARTER"
 }
 
+/// ACT 1: the same account() body runs against a real ledger and a dry run.
 fn showWorlds() = {
     print("🦅 OSPREY FEATURE TOUR\\n══════════════════════════════════════\\nACT 1 · algebraic effects — same code, two worlds")
     let real = realWorld()
@@ -643,6 +644,7 @@ fn showWorlds() = {
     print("  ↳ dryRun()   returned \${mock}")
 }
 
+/// ACT 2: each crunch() runs in its own fiber; awaiting in order keeps the report deterministic.
 fn showFleet() = {
     print("══════════════════════════════════════\\nACT 2 · fibers compute functional pipelines in parallel")
     let fa = spawn crunch(10)
@@ -663,7 +665,7 @@ fn megaShowcaseCase() = {
     let scoreA = crunch(10)
     let scoreB = crunch(20)
     let scoreC = crunch(40)
-    let fleetScore = (scoreA + scoreB + scoreC) 
+    let fleetScore = scoreA + scoreB + scoreC
     checkAll("effect worlds and functional scoring state", [
         realResult == 350,
         mockResult == 0,
@@ -685,22 +687,22 @@ fn megaShowcaseCase() = {
         badge(Epic) == "🟣 EPIC"
     ])
 }
-// One fault-sticky policy covers ledger arms, helpers and spawned pipelines.
-fn main() = {
-    mut faulted = false
-    handle Arith {
-        overflow _ lhs _ _ => {
-            faulted = true
-            lhs
-        }
+
+mut faulted = false
+/// One fault-sticky policy covers ledger arms, helpers and spawned pipelines.
+let faultSticky = handler Arith {
+    overflow _ lhs _ _ => {
+        faulted = true
+        lhs
     }
-    showWorlds()
-    showFleet()
-    test("mega showcase preserves effect, fiber, and tier state", fn() => {
-        megaShowcaseCase()
-        expectFalse(faulted)
-    })
 }
+
+faultSticky(showWorlds)
+faultSticky(showFleet)
+test("mega showcase preserves effect, fiber, and tier state", fn() => {
+    faultSticky(megaShowcaseCase)
+    expectFalse(faulted)
+})
 `,
         // @generated:ospml — filled from tests/regressions/basics/osprey_mega_showcase.test.ospml by scripts/update-playground.js
         ospml: `(* ═══════════════════════════════════════════════════════════════════════
@@ -737,7 +739,7 @@ account () =
     perform Console.emit "deposit 100  → balance \${afterDeposit}"
     afterMore = perform Ledger.post 250
     perform Console.emit "deposit 250  → balance \${afterMore}"
-    afterDraw = perform Ledger.post ((0 - 90) )
+    afterDraw = perform Ledger.post (-90)
     perform Console.emit "withdraw 90  → balance \${afterDraw}"
     afterMore
 
@@ -751,7 +753,7 @@ realWorld () =
     handle Ledger
         (* the resuming arm updates state, then hands the balance back *)
         post amount =>
-            balance := balance + amount 
+            balance := balance + amount
             balance
     account ()
 
@@ -766,15 +768,15 @@ dryRun () =
     account ()
 
 (** [true] when [x] is even. *)
-even x = (x % 2 ) == 0
+even x = x % 2 == 0
 
 (** The square of [x]. *)
-sq x   = x * x 
+sq x   = x * x
 
 (** Σ of the squares of the even numbers in [1, n).
     A pure pipeline: no loops, no mutation — [range] feeds [filter], [map],
     then [fold]. *)
-crunch n = range 1 n |> filter even |> map sq |> fold 0 (\\(a, b) => a + b )
+crunch n = range 1 n |> filter even |> map sq |> fold 0 (\\(a, b) => a + b)
 
 (** A performance tier a score falls into. Exhaustive: dropping a variant is a
     compile error at every [match] over it. *)
@@ -796,6 +798,7 @@ badge t = match t
     Solid   => "🔵 SOLID"
     Starter => "🟢 STARTER"
 
+(** ACT 1: the same [account] body runs against a real ledger and a dry run. *)
 showWorlds () =
     print "🦅 OSPREY FEATURE TOUR\\n══════════════════════════════════════\\nACT 1 · algebraic effects — same code, two worlds"
     real = realWorld ()
@@ -803,6 +806,8 @@ showWorlds () =
     mock = dryRun ()
     print "  ↳ dryRun()   returned \${mock}"
 
+(** ACT 2: each [crunch] runs in its own fiber; awaiting in order keeps the
+    report deterministic. *)
 showFleet () =
     print "══════════════════════════════════════\\nACT 2 · fibers compute functional pipelines in parallel"
     fa = spawn crunch 10
@@ -813,6 +818,7 @@ showFleet () =
     rc = await fc
     print "  Σeven² <10  = \${ra}  \${badge (tier ra)}\\n  Σeven² <20  = \${rb}  \${badge (tier rb)}\\n  Σeven² <40  = \${rc}  \${badge (tier rc)}\\n══════════════════════════════════════\\ntotal \${ra + rb + rc}  ·  fleet \${badge (tier (ra + rb + rc))}"
 
+(** Replay both effect worlds and the fiber-backed scoring pipeline. *)
 megaShowcaseCase () =
     realResult = realWorld ()
     mockResult = dryRun ()
@@ -821,7 +827,7 @@ megaShowcaseCase () =
     scoreA = crunch 10
     scoreB = crunch 20
     scoreC = crunch 40
-    fleetScore = (scoreA + scoreB + scoreC) 
+    fleetScore = scoreA + scoreB + scoreC
     checkAll "effect worlds and functional scoring state" [
         realResult == 350,
         mockResult == 0,
@@ -842,18 +848,19 @@ megaShowcaseCase () =
         badge Solid == "🔵 SOLID",
         badge Epic == "🟣 EPIC"
     ]
-// One fault-sticky policy covers ledger arms, helpers and spawned pipelines.
-main () =
-    mut faulted = false
-    handle Arith
-        overflow _ lhs _ _ =>
-            faulted := true
-            lhs
-    showWorlds ()
-    showFleet ()
-    test "mega showcase preserves effect, fiber, and tier state" (\\() =>
-        megaShowcaseCase ()
-        expectFalse faulted)
+
+mut faulted = false
+(** One fault-sticky policy covers ledger arms, helpers and spawned pipelines. *)
+faultSticky = handler Arith
+    overflow _ lhs _ _ =>
+        faulted := true
+        lhs
+
+faultSticky showWorlds
+faultSticky showFleet
+test "mega showcase preserves effect, fiber, and tier state" (\\() =>
+    faultSticky megaShowcaseCase
+    expectFalse faulted)
 `,
     };
 

@@ -8,13 +8,13 @@ module Github
 
     componentFrom source index = match index >= byteLength source
         true => true
-        false => allowed (byteAt source index ?: 0) && componentFrom source ((index + 1) ?: byteLength source)
+        false => allowed (byteAt source index ?: 0) && componentFrom source (satAdd index 1)
 
     component source = length source > 0 && length source <= 100 && source != "." && source != ".." && componentFrom source 0
 
     export validRepository source = match indexOf source "/"
         Error why => false
-        Success slash => component (take source slash) && component (drop source ((slash + 1) ))
+        Success slash => component (take source slash) && component (drop source ((satAdd slash 1) ))
 
     export url repo = "https://api.github.com/repos/${repo}/issues?state=open&per_page=30"
 
@@ -33,7 +33,7 @@ module Github
         true => ""
         false =>
             name = scalar doc "${prefix}.labels[${index}].name"
-            rest = labels doc prefix ((index + 1) ) count
+            rest = labels doc prefix ((satAdd index 1) ) count
             match length rest > 0
                 true => name + " · " + rest
                 false => name
@@ -56,7 +56,7 @@ module Github
         true => Success(value = Json::arr output)
         false =>
             prefix = "[${index}]"
-            next = (index + 1) 
+            next = (satAdd index 1)
             match jsonLength doc (prefix + ".pull_request") >= 0
                 true => collect doc next count output
                 false => match issueValid doc prefix

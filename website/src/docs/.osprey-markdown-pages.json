@@ -96,6 +96,9 @@
   "functions/repeat.md",
   "functions/replace.md",
   "functions/reverse.md",
+  "functions/satadd.md",
+  "functions/satmul.md",
+  "functions/satsub.md",
   "functions/send.md",
   "functions/sleep.md",
   "functions/spawnprocess.md",
@@ -128,6 +131,9 @@
   "functions/websocketserverbroadcast.md",
   "functions/websocketserverlisten.md",
   "functions/words.md",
+  "functions/wrapadd.md",
+  "functions/wrapmul.md",
+  "functions/wrapsub.md",
   "functions/writefile.md",
   "functions/yield.md"
 ]

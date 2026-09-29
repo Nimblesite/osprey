@@ -37,7 +37,7 @@ module Storage
 
     validItems doc index count = match index >= count
         true => true
-        false => validItem doc index && validItems doc ((index + 1) ) count
+        false => validItem doc index && validItems doc ((satAdd index 1) ) count
 
     validArray source = match startsWith (trimStart source) "["
         false => false

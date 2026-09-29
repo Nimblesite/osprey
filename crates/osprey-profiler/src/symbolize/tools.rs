@@ -210,14 +210,14 @@ fn find_symbolizer() -> Option<PathBuf> {
             .filter_map(|dir| std::fs::read_dir(dir).ok())
             .flatten()
             .filter_map(Result::ok)
-            .filter_map(symbolizer_version)
+            .filter_map(|entry| symbolizer_version(&entry))
             .filter(|(_, path)| path.is_file())
             .max_by_key(|(version, _)| *version)
             .map(|(_, path)| path)
     })
 }
 
-fn symbolizer_version(entry: std::fs::DirEntry) -> Option<(u32, PathBuf)> {
+fn symbolizer_version(entry: &std::fs::DirEntry) -> Option<(u32, PathBuf)> {
     let name = entry.file_name();
     let version = name
         .to_str()?
