@@ -131,7 +131,7 @@ let recording = handler Arith {
 }
 let total = recording(|| => settle(ledger))
 
-print("${faulted ? "REJECTED: ledger overflow" : "settled ${total} cents"}")
+print(faulted ? "REJECTED: ledger overflow" : "settled ${total} cents")
 ```
 
 Saturating — a cap instead of a fault:
