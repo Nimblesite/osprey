@@ -94,23 +94,23 @@ exactArithmetic(fn() => match byteAt(mixed, scanEnd(mixed, 0)) {        // prove
 }
 )
 
-// ---- digits-only token runs to end-of-input via the Error branch ----
-exactArithmetic(fn() => print("pure=${scanInt("777", 0, 0)}\n")        // 777
-)
-exactArithmetic(fn() => print("pureEnd=${scanEnd("777", 0)}\n")        // 3 == byteLength
-)
+/// ---- digits-only token runs to end-of-input via the Error branch ----
+let pure = exactArithmetic(fn() => scanInt("777", 0, 0))
+print("pure=${pure}\n")
+let pureEnd = exactArithmetic(fn() => scanEnd("777", 0))
+print("pureEnd=${pureEnd}\n")
 
-// ---- leading non-digits: scan returns 0, nextDigit finds the run ----
-exactArithmetic(fn() => print("leadScan=${scanInt("ab42", 0, 0)}\n")   // 0 (starts on 'a')
-)
-exactArithmetic(fn() => print("leadNext=${nextDigit("ab42", 0)}\n")    // 2 (index of '4')
-)
-exactArithmetic(fn() => print("leadVal=${scanInt("ab42", nextDigit("ab42", 0), 0)}\n")  // 42
-)
+/// ---- leading non-digits: scan returns 0, nextDigit finds the run ----
+let leadScan = exactArithmetic(fn() => scanInt("ab42", 0, 0))
+print("leadScan=${leadScan}\n")
+let leadNext = exactArithmetic(fn() => nextDigit("ab42", 0))
+print("leadNext=${leadNext}\n")
+let leadVal = exactArithmetic(fn() => scanInt("ab42", nextDigit("ab42", 0), 0))
+print("leadVal=${leadVal}\n")
 
-// ---- empty input: nothing to scan ----
-exactArithmetic(fn() => print("emptyScan=${scanInt("", 0, 0)}\n")      // 0
-)
+/// ---- empty input: nothing to scan ----
+let emptyScan = exactArithmetic(fn() => scanInt("", 0, 0))
+print("emptyScan=${emptyScan}\n")
 
 /// ---- multi-token lexer over a delimited string ----
 let stream = "12,345-6789 0!42"

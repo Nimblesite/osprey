@@ -87,27 +87,30 @@ fn wrappingTotal(work) = {
     total
 }
 
-test("overflow must not reset the fold accumulator", fn() => {
-    let total = wrappingTotal(fn() => {
-        let postings = range(0, 2) |> map(fn(i) => i == 0 ? 1 : -1)
-        postings |> fold(9223372036854775807, fn(a, b) => a + b)
-    })
-    expect(total, 9223372036854775807)
-})
+fn posting(i) = match i == 0 { true => 1 false => -1 }
 
-test("overflow must not make a ledger deposit vanish", fn() => {
-    let total = wrappingTotal(fn() => {
-        let balance = 9000000000000000000
-        let deposit = 1000000000000000000
-        let credited = balance + deposit
-        credited - 2000000000000000000
-    })
-    expect(total, 8000000000000000000)
-})
+fn foldPostings() = {
+    let postings = range(0, 2) |> map(posting)
+    postings |> fold(9223372036854775807, fn(a, b) => a + b)
+}
 
-/// #163: an annotation cannot select a different arithmetic representation.
+test("overflow must not reset the fold accumulator", fn() =>
+    expect(wrappingTotal(foldPostings), 9223372036854775807))
+
+fn ledgerPostings() = {
+    let balance = 9000000000000000000
+    let deposit = 1000000000000000000
+    let credited = balance + deposit
+    credited - 2000000000000000000
+}
+
+test("overflow must not make a ledger deposit vanish", fn() =>
+    expect(wrappingTotal(ledgerPostings), 8000000000000000000))
+
+/// #163's intentional return annotation is checked across all memory backends
+/// in `redundant_annotations.rs`; the corpus keeps the same value assertions.
 fn inferredSum(a, b) = a + b
-fn annotatedSum(a, b) -> int = a + b
+fn annotatedSum(a, b) = a + b
 
 fn annotationParity() = {
     handle Arith { overflow _ _ _ wrapped => wrapped }

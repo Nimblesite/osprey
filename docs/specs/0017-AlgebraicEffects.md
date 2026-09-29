@@ -208,6 +208,16 @@ operations invoked after escape. Not calling a callback contributes none of its
 latent requirements. Builtin behavior belongs to the resolved binding; shadowing
 a builtin name cannot confer builtin effect behavior.
 
+`[EFFECTS-PROVENANCE]` Callable provenance follows values through constructor and
+record fields, list and map elements, collection `+`, Result payloads, and fibers.
+An operator that produces a primitive value does not carry the callable
+provenance of its operands into that result. Analysis of recursive aggregates
+must reach a finite fixed point. If a nested value must be widened, projections
+through it remain unknown rather than being treated as pure; invoking an
+unresolved callable is rejected. Widening never removes a known operation
+requirement or turns an unknown field into proof that a same-named free function
+was selected.
+
 ## Handler-owned state
 
 `[EFFECTS-HANDLER-STATE]` Arms may capture mutable cells. Each captured cell has

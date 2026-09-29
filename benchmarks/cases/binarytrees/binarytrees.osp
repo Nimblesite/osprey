@@ -19,5 +19,9 @@ fn main() = {
         }
     }
     let answer = range(0, 1200) |> fold(0, |acc, _| => acc + check(make(13)))
-    print(fault == "" ? "${answer}" : "arithmetic fault ${fault}")
+    let rendered = match fault == "" {
+        true => "${answer}"
+        false => "arithmetic fault ${fault}"
+    }
+    print(rendered)
 }

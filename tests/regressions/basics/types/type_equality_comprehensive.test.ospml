@@ -149,7 +149,7 @@ mkFeed () = Feed(supply = \x => x * 2)
 describe g = match g
     Gate _admit => "guarded"
     Open => "open"
-mkGate : Unit -> Gate<(int) -> Result<int, MathError>>
+mkGate : Unit -> Gate<(int) -> Result<int, string>>
 mkGate () = Gate(admit = \_f => true)
 
 print "fn-payload feed accepted: ${label (mkFeed ())}"
@@ -263,7 +263,7 @@ typeEqualityCase () =
         headOr<string> (["a"], "z") == "a",
         repeatOf<int> (7, 3) == 7,
         repeatOf<string> ("os", 2) == "os",
-        (identityOf<Result<int, MathError>> (20 * 5) ?: 0) == 100,
+        (identityOf<Result<int, string>> (20 * 5) ?: 0) == 100,
         identityOf<int> (identityOf<int> 6) == 6,
         (srcInt ()).produce == 4,
         (srcInt ()).make 9 == 9,

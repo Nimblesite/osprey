@@ -997,12 +997,12 @@ impl Expr {
     /// Build `-operand`, folding a negated numeric **literal** into the literal
     /// itself so it keeps the plain `int`/`float` type.
     ///
-    /// A runtime negation is fallible (`-i64::MIN` overflows) and correctly
-    /// yields `Result<int, MathError>` under [ARITH-CHECKED]. A *literal*
+    /// A runtime negation is fallible (`-i64::MIN` overflows) and performs
+    /// `Arith.overflow` under [ARITH-CHECKED]. A *literal*
     /// negation is a compile-time constant: the lexer already rejects every
     /// magnitude above `i64::MAX`, so the fold below cannot lose a value. Not
-    /// folding made `-1` a `Result` and therefore unusable anywhere an `int`
-    /// was required — `let x: int = -1` failed to typecheck.
+    /// folding used to make `-1` a `Result` and therefore unusable anywhere
+    /// an `int` was required — `let x: int = -1` failed to typecheck.
     ///
     /// `checked_neg` keeps the one genuinely-overflowing case (`-(i64::MIN)`,
     /// reachable only by double negation) as a checked `Unary`, so this is

@@ -7,7 +7,7 @@ use crate::builder::{Codegen, FnSig};
 use crate::error::{CodegenError, Result};
 use crate::expr::gen_expr;
 use crate::llty::{LType, Value};
-use osprey_ast::{Expr, Position, Program, Stmt};
+use osprey_ast::{Expr, Parameter, Position, Program, Stmt};
 use std::collections::BTreeSet;
 
 /// Lower a statement inside its own ARC region: temporaries the statement
@@ -255,7 +255,11 @@ fn gen_bind(cg: &mut Codegen, name: &str, value: &Expr, position: Option<Positio
                 prefix.push(gen_expr(cg, &argument.value)?);
             }
         }
-        if prefix.len() == callee_params.len() {
+        if let Some((_, slots)) = cg.file_lambda_prefix.get(name).cloned() {
+            for (slot, captured) in slots.iter().zip(prefix) {
+                crate::globals::publish(cg, slot, captured)?;
+            }
+        } else if prefix.len() == callee_params.len() {
             let _ = cg
                 .lambda_prefix
                 .insert(name.to_string(), (callee_params, prefix));
@@ -368,12 +372,7 @@ fn tag_handle_element(cg: &Codegen, position: Option<Position>, value: Value) ->
 ///    expression per call site would duplicate its effects. `fn constly(v) =
 ///    |x| => v` therefore evaluates `"hi"` at the binding and every `c(7)`
 ///    reuses that value.
-type ReturnedLambda = (
-    Vec<osprey_ast::Parameter>,
-    Vec<osprey_ast::Parameter>,
-    Expr,
-    Option<Position>,
-);
+type ReturnedLambda = (Vec<Parameter>, Vec<Parameter>, Expr, Option<Position>);
 
 fn generic_returned_lambda(cg: &Codegen, value: &Expr) -> Option<ReturnedLambda> {
     let Expr::Call { function, .. } = value else {
@@ -447,12 +446,9 @@ fn returned_lambda_positions(body: &Expr, positions: &mut Vec<Position>) {
 
 /// Whether a generic returned lambda reads the producing call's parameters.
 ///
-/// Those are carried as SSA registers of the function that evaluated the call
-/// ([`Codegen::lambda_prefix`]), so such a binding can only serve readers in
-/// that same function. A FILE-SCOPE one read from another function cannot be
-/// inlined there — the registers do not exist — so it keeps the ordinary path,
-/// which rejects it truthfully rather than emitting a call to a symbol no
-/// definition produces.
+/// Local bindings keep the values as SSA registers in [`Codegen::lambda_prefix`].
+/// A file-scope binding read from another function instead stores the captured
+/// arguments in module globals, evaluated once at the factory call.
 fn captures_callee_params(cg: &Codegen, value: &Expr) -> bool {
     let Some((callee_params, _, body, _)) = generic_returned_lambda(cg, value) else {
         return false;
@@ -493,7 +489,11 @@ fn alias_target(cg: &Codegen, value: &Expr) -> Option<String> {
 /// binding therefore found both tables empty and emitted a direct call to
 /// `@alias`, a symbol no definition ever produces, so the module failed to
 /// link ([TYPE-GENERICS-FN], [MODULES-FILE-SCOPE-BINDING]).
-pub(crate) fn seed_name_bindings(cg: &mut Codegen, program: &Program, read: &BTreeSet<String>) {
+pub(crate) fn seed_name_bindings(
+    cg: &mut Codegen,
+    program: &Program,
+    read: &BTreeSet<String>,
+) -> Result<()> {
     for statement in &program.statements {
         let Stmt::Let { name, value, .. } = statement else {
             continue;
@@ -513,18 +513,53 @@ pub(crate) fn seed_name_bindings(cg: &mut Codegen, program: &Program, read: &BTr
                 (parameters.clone(), (**body).clone(), *position),
             );
         } else if let Some(target) = alias_target(cg, value) {
-            let _ = cg.call_aliases.insert(name.clone(), target);
-        } else if let Some((_, parameters, body, position)) =
-            generic_returned_lambda(cg, value).filter(|_| !captures_callee_params(cg, value))
+            let _ = cg.call_aliases.insert(name.clone(), target.clone());
+            let _ = cg.file_aliases.insert(name.clone(), target);
+        } else if let Some((callee_params, parameters, body, position)) =
+            generic_returned_lambda(cg, value)
         {
-            // A generic function's returned lambda bound at FILE SCOPE and read
-            // by a function: seed it here, or that function emits `call @name`
-            // to a symbol no definition produces and the module fails to LINK —
-            // which neither the type gate nor codegen would have caught.
+            if captures_callee_params(cg, value) {
+                seed_file_prefix(cg, name, value, &callee_params)?;
+            }
             let _ = cg
                 .file_lambdas
                 .insert(name.clone(), (parameters, body, position));
         }
+    }
+    Ok(())
+}
+
+fn seed_file_prefix(
+    cg: &mut Codegen,
+    name: &str,
+    value: &Expr,
+    parameters: &[Parameter],
+) -> Result<()> {
+    let types = factory_capture_types(cg, value)?;
+    if parameters.len() != types.len() {
+        return Err(CodegenError::invalid("factory capture arity changed"));
+    }
+    let mut slots = Vec::with_capacity(parameters.len());
+    for (parameter, ty) in parameters.iter().zip(types) {
+        let slot = format!("$capture.{name}.{}", parameter.name);
+        crate::globals::seed_capture(cg, &slot, &ty)?;
+        slots.push(slot);
+    }
+    let _ = cg
+        .file_lambda_prefix
+        .insert(name.to_string(), (parameters.to_vec(), slots));
+    Ok(())
+}
+
+fn factory_capture_types(cg: &Codegen, value: &Expr) -> Result<Vec<osprey_types::Type>> {
+    let Expr::Call { function, .. } = value else {
+        return Err(CodegenError::invalid("factory capture is not a call"));
+    };
+    match cg.callee_fn_type(function) {
+        Some(osprey_types::Type::Fun { params, .. }) => Ok(params),
+        _ => Err(CodegenError::invalid(
+            "factory capture has no function type",
+        )),
     }
 }
 
@@ -542,11 +577,9 @@ pub(crate) fn binds_no_value(cg: &Codegen, value: &Expr) -> bool {
     match value {
         Expr::Lambda { position, .. } => lambda_cell(cg, *position).is_none(),
         Expr::Identifier(_) => alias_target(cg, value).is_some(),
-        // Capture-free only: a capturing one cannot be seeded for
-        // cross-function readers, so it must keep ordinary storage handling.
-        Expr::Call { .. } => {
-            generic_returned_lambda(cg, value).is_some() && !captures_callee_params(cg, value)
-        }
+        // Factory arguments captured by the returned lambda get their own
+        // module globals; the polymorphic callable itself has no cell ABI.
+        Expr::Call { .. } => generic_returned_lambda(cg, value).is_some(),
         _ => false,
     }
 }

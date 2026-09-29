@@ -158,11 +158,11 @@ fn a_result_returning_annotation_that_matches_inference_is_still_redundant() {
 
 #[test]
 fn a_return_annotation_naming_the_wrong_error_type_is_a_type_error_not_a_warning() {
-    // `checkedMul` yields `Result<int, Error>`. Naming `MathError` instead is a
+    // `checkedMul` yields `Result<int, Error>`. Naming `string` instead is a
     // mismatch the checker rejects, and a rejected program raises no warnings.
     silent(
         Flavor::Default,
-        "fn twice(n: int) -> Result<int, MathError> = checkedMul(n, 2)\n",
+        "fn twice(n: int) -> Result<int, string> = checkedMul(n, 2)\n",
     );
 }
 

@@ -35,12 +35,11 @@ fn extra_docs_private_ancestor_excludes_its_entire_subtree() {
 }
 
 /// A `state` module exports its public members with genuine inferred types and
-/// never its private ones. The arithmetic effect needs `?:`, which also pins
-/// `value` to `int`.
+/// never its private ones. Explicit wrapping also pins `value` to `int`.
 #[test]
 fn extra_docs_state_module_exports_public_members_with_inferred_int() {
     let source =
-        "state module Counter {\nexport fn hold(value) = (value + 1) ?: 0\nfn internal() = 0\n}\n";
+        "state module Counter {\nexport fn hold(value) = wrapAdd(value, 1)\nfn internal() = 0\n}\n";
     let (result, output) = export(source, "osp", "extra_docs_state_module");
     assert_eq!(result.code, Some(0), "{}", result.stderr);
     let page = read_text(&output.join("api/counter-hold.md"));

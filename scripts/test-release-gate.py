@@ -38,37 +38,33 @@ ALWAYS_RUN = ("scope", "version", "preflight")
 
 OK, SKIP, FAIL, CANCEL = "success", "skipped", "failure", "cancelled"
 
-# (label, expect_pass, per-job results, full, build_matrix, vsix, website, prerelease)
-TABLE = (
-    ("full release, every channel published", True,
-     (OK, OK, OK, OK, OK, OK, OK, OK, OK), "true", "true", "true", "true", "false"),
-    ("full release, Homebrew silently skipped", False,
-     (OK, OK, SKIP, OK, OK, OK, OK, OK, OK), "true", "true", "true", "true", "false"),
-    ("full release, a build leg failed", False,
-     (FAIL, SKIP, SKIP, SKIP, SKIP, SKIP, SKIP, OK, SKIP), "true", "true", "true", "true", "false"),
-    ("full release, web compiler deploy failed", False,
-     (OK, OK, OK, OK, OK, OK, OK, OK, FAIL), "true", "true", "true", "true", "false"),
-    ("full release, a job was cancelled", False,
-     (OK, OK, OK, CANCEL, OK, OK, OK, OK, OK), "true", "true", "true", "true", "false"),
-    ("website-only tag, site deployed", True,
-     (SKIP, SKIP, SKIP, SKIP, SKIP, SKIP, SKIP, OK, SKIP), "false", "false", "false", "true", "false"),
-    ("website-only tag, site silently skipped", False,
-     (SKIP,) * 9, "false", "false", "false", "true", "false"),
-    # A cancelled job this tag does not require is caught only by the
-    # failure/cancelled sweep, so this is the case that pins that sweep.
-    ("website-only tag, an unrequired job was cancelled", False,
-     (CANCEL, SKIP, SKIP, SKIP, SKIP, SKIP, SKIP, OK, SKIP), "false", "false", "false", "true", "false"),
-    ("prerelease leaves the live site alone", True,
-     (OK, OK, OK, OK, OK, OK, OK, SKIP, OK), "true", "true", "true", "true", "true"),
-    ("prerelease, Open VSX skipped", False,
-     (OK, OK, OK, OK, OK, OK, SKIP, SKIP, OK), "true", "true", "true", "true", "true"),
-    ("vsix-only tag, extension published", True,
-     (OK, SKIP, SKIP, SKIP, OK, OK, OK, SKIP, SKIP), "false", "true", "true", "false", "false"),
-    ("vsix-only tag, Marketplace skipped", False,
-     (OK, SKIP, SKIP, SKIP, OK, SKIP, OK, SKIP, SKIP), "false", "true", "true", "false", "false"),
-    ("a job that should always run did not", False,
-     (OK, OK, OK, OK, OK, OK, OK, OK, OK), "true", "true", "true", "true", "false"),
-)
+# Each row is label | expected verdict | nine job outcomes | five scope flags.
+# S/K/F/C mean success/skipped/failure/cancelled; 1/0 mean true/false.
+# A cancelled job outside a tag's required set still fails the global sweep.
+ROWS = """full release, every channel published|pass|SSSSSSSSS|11110
+full release, Homebrew silently skipped|fail|SSKSSSSSS|11110
+full release, a build leg failed|fail|FKKKKKKSK|11110
+full release, web compiler deploy failed|fail|SSSSSSSSF|11110
+full release, a job was cancelled|fail|SSSCSSSSS|11110
+website-only tag, site deployed|pass|KKKKKKKSK|00010
+website-only tag, site silently skipped|fail|KKKKKKKKK|00010
+website-only tag, an unrequired job was cancelled|fail|CKKKKKKSK|00010
+prerelease leaves the live site alone|pass|SSSSSSSKS|11111
+prerelease, Open VSX skipped|fail|SSSSSSKKS|11111
+vsix-only tag, extension published|pass|SKKKSSSKK|01100
+vsix-only tag, Marketplace skipped|fail|SKKKSKSKK|01100
+a job that should always run did not|fail|SSSSSSSSS|11110"""
+
+
+def case(row):
+    label, verdict, outcomes, flags = row.split("|")
+    assert len(outcomes) == len(JOBS) and len(flags) == 5, label
+    statuses = {"S": OK, "K": SKIP, "F": FAIL, "C": CANCEL}
+    return (label, verdict == "pass", tuple(statuses[code] for code in outcomes),
+            *("true" if flag == "1" else "false" for flag in flags))
+
+
+TABLE = tuple(case(row) for row in ROWS.splitlines())
 
 
 def gate_script(text):

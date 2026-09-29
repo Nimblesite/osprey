@@ -4,7 +4,7 @@ Osprey has no language-level exceptions. Every fallible language operation
 uses `Result` or a statically handled algebraic effect. A raw foreign status is
 ABI data and MUST be translated at the safe Osprey boundary.
 
-**Arithmetic is total.** An arithmetic expression always evaluates to a defined value of its static type: it can never trap, panic, wrap silently, or produce an unspecified value, and a fault that cannot be proven impossible MUST be discharged — or the program is rejected at compile time. The clauses and conformance obligations are [ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total).
+**Arithmetic cannot fail silently.** A total operation produces a defined value of its static type. A fallible operation transfers to a required `Arith` handler, whose value arm supplies the typed result on normal completion. The operation cannot trap, panic, wrap silently, or produce an unspecified value, and a fault that cannot be proven impossible MUST be discharged — or the program is rejected at compile time. The clauses and conformance obligations are [ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total).
 
 The two language flavors share these semantics. Examples show both surfaces
 where their syntax differs.
@@ -43,7 +43,7 @@ match result
 
 ## Arithmetic — [ARITH-CHECKED]
 
-Arithmetic is total. Every arithmetic expression evaluates to a defined value of its static type, and integer `+`, `-`, `*`, `%`, unary `-`, and `abs` have type `int`; `/` has type `float`. There is no `Result` in an arithmetic type.
+Integer `+`, `-`, `*`, `%`, unary `-`, and `abs` have type `int`; `/` has type `float`. There is no `Result` in an arithmetic type. A fallible operation requires an `Arith` handler, whose normal value-arm completion substitutes a defined value of that type.
 
 An operation whose mathematical result is unrepresentable — integer overflow, a zero divisor — performs an operation of the compiler-declared `Arith` effect, and the handler the region installed substitutes the value its policy chooses. The full guarantee, the operation signatures, and the policy forms are [Arithmetic Effects](0037-ArithmeticEffects.md).
 

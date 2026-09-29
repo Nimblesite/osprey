@@ -7,7 +7,7 @@ effect Pair
 both () =
     first = perform Pair.first ()
     second = perform Pair.second ()
-    first + second ?: 0
+    wrapAdd first second
 
 answer =
     handle Pair

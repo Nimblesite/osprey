@@ -187,18 +187,21 @@ mod tests {
         // A monomorphic (annotated) function is emitted as a real definition and
         // called directly; a generic one would instead inline at its call sites.
         let ir = module(
-            "fn add(a: int, b: int) -> Result<int, MathError> = a + b\n\
+            "fn add(a: int, b: int) -> int = {\n\
+               handle Arith { overflow _ _ _ wrapped => wrapped }\n\
+               a + b\n\
+             }\n\
              let r = add(2, 3)\n",
         );
         // Parameters are named positionally, not after their source
         // identifier, so an ML/Default twin pair stays byte-identical
         // ([FLAVOR-IR-EQUIV]).
-        assert!(ir.contains("define { i64, i8, i8* }* @add(i64 %$p0, i64 %$p1)"));
+        assert!(ir.contains("define i64 @add(i64 %$p0, i64 %$p1)"));
         assert!(
             ir.contains("call { i64, i1 } @llvm.sadd.with.overflow.i64(i64 %$p0, i64 %$p1)"),
             "integer addition must lower through LLVM's checked intrinsic:\n{ir}"
         );
-        assert!(ir.contains("call { i64, i8, i8* }* @add(i64 2, i64 3)"));
+        assert!(ir.contains("call i64 @add(i64 2, i64 3)"));
     }
 
     // Testing built-ins lower to the TAP runtime and re-route main's exit
@@ -666,9 +669,8 @@ mod tests {
     #[test]
     fn named_arguments_are_ordered_by_declaration() {
         // Call sites pass b before a; the emitted call must follow declared order.
-        // `sub`'s `a - b` body infers `Result<int, MathError>`, so the call's
-        // return type is `{ i64, i8 }*`; what matters here is the argument order.
-        let ir = module("fn sub(a, b) = a - b\nlet r = sub(b: 1, a: 9)\n");
+        // The total helper keeps this fixture focused on argument order.
+        let ir = module("fn sub(a, b) = wrapSub(a, b)\nlet r = sub(b: 1, a: 9)\n");
         assert!(ir.contains("@sub(i64 9, i64 1)"));
         let external = module(
             "extern fn takeFirst(first: int, second: int) -> int\n\
@@ -1339,7 +1341,9 @@ mod tests {
         let sealed = main.find("call i8* @osprey_list_builder_seal");
         let published = main.find("@osp.g.big");
         assert!(
-            sealed.zip(published).is_some_and(|(seal, store)| seal < store),
+            sealed
+                .zip(published)
+                .is_some_and(|(seal, store)| seal < store),
             "the literal must be sealed into a runtime list before it is published:\n{main}"
         );
     }

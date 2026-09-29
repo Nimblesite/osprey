@@ -227,7 +227,10 @@ fn an_indexed_element_of_an_unprovable_list_still_fails_closed() {
          fn ring() = perform Alarm.ring()\n\
          let hidden = [ring]\n\
          fn pick(list) = list[0]\n\
-         let answer = (pick(hidden))()\n",
+         let answer = match pick(hidden) {\n\
+             Ok(callback) => callback()\n\
+             Error(_) => 0\n\
+         }\n",
         &["effect provenance cannot be proven"],
     );
 }

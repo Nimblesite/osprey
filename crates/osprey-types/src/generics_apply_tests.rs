@@ -87,7 +87,7 @@ print("${{f(21)}}")"#
     /// `Result<T, E>` is a type argument like any other — and writing it does NOT
     /// unwrap the failure channel ([TYPE-VARIANCE-ASSIGN]).
     a_result_type_may_be_a_type_argument: accepts(Default, format!(
-            r#"{IDENTITY}let quotient = identity<Result<int, MathError>>(20 * 5)
+            r#"{IDENTITY}let quotient = identity<Result<int, string>>(20 * 5)
 print("${{quotient ?: 0}}")"#
         ));
 

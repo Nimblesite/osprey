@@ -3,6 +3,6 @@
 // element. Implements [TYPE-VARIANCE-COERCION]
 fn listInt() -> List<int> = [1, 2]
 
-fn total(items: List<Result<int, MathError>>) = length(items)
+fn total(items: List<Result<int, string>>) = length(items)
 
 fn main() -> Unit = print("${total(listInt())}")

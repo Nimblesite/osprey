@@ -8,7 +8,7 @@ const SOURCE: &str = "extern fn host_log(message: string) -> int\n\
     fn shout(s: string) = print(s)\n\
     fn scaled(n: int) -> float = toFloat(n) * 1.5\n\
     fn twice(x) = x\n\
-    fn total(a: int, b: int) -> int = a + b ?: 0\n\
+    fn total(a: int, b: int) -> int = {\n    handle Arith { overflow _ _ _ wrapped => wrapped }\n    a + b\n}\n\
     fn count(xs: List<int>) -> int = listLength(xs)\n\
     fn main() = print(\"${host_log(greet(\\\"x\\\"))}\")\n";
 
@@ -217,7 +217,7 @@ fn imports_use_c_bool_attributes_and_adapt_unit_returns() {
 fn original_symbols_and_imports_cannot_shadow_the_boundary() {
     for (source, symbol) in [
         (
-            "fn greet(n) = n + 1 ?: 0\nfn osprey_greet(n) = n + 2 ?: 0\n",
+            "fn greet(n) = wrapAdd(n, 1)\nfn osprey_greet(n) = wrapAdd(n, 2)\n",
             "osprey_greet",
         ),
         ("fn osprey_main() = 4\n", "osprey_main"),

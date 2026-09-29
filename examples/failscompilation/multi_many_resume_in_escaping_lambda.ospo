@@ -23,7 +23,7 @@ fn main() = {
     let picked = {
         handle Choice {
             pick option => {
-                let escaping = |n| => resume((option + n) ?: option)
+                let escaping = |n| => resume(wrapAdd(option, n))
                 let later = spawn escaping(1)
                 option
             }

@@ -9,7 +9,7 @@ static effect Tile {
 
 fn main() = {
     handle static Tile {
-        size a b => (a + b) ?: 0
+        size a b => wrapAdd(a, b)
     }
     print("${perform Tile.size(2)}")
 }

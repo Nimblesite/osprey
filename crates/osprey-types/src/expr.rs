@@ -749,7 +749,6 @@ impl Checker {
                         | names::UNIT
                         | names::ANY
                         | names::PTR
-                        | names::MATH_ERROR
                         | names::CHANNEL
                         | names::ITERATOR
                         | names::GPU_BUFFER
@@ -1116,8 +1115,8 @@ impl Checker {
     /// binds a variable before it reaches the `any` wildcard arm. That is how
     /// `expect(add(1, 1), 2)` erased the pending overload of
     /// `fn add(a, b) = a + b`: the site's open result became `any`, so
-    /// settling it later could no longer say `Result<int, MathError>` and the
-    /// backend read the call as a plain word. A constrained built-in defers the
+    /// settling it later could no longer select the integer overload and its
+    /// Arith obligation. A constrained built-in defers the
     /// same way for the same reason, by name.
     fn absorbed_by_any(&mut self, param: &Type, argument: &Type, deferred: bool) -> bool {
         param.is_named(names::ANY) && (deferred || matches!(self.ctx.prune(argument), Type::Var(_)))
@@ -1632,7 +1631,7 @@ impl Checker {
     ///
     /// Eagerly defaulting here is what made a named numeric helper unusable as
     /// a float kernel: `fn plus(a, x) = a + x` is checked before anything says
-    /// what `a` is, so it became `(int, int) -> Result<int, MathError>` and
+    /// what `a` is, so it became `(int, int) -> int` and
     /// `gpuFold(0.0, plus)` over a float buffer was rejected with `cannot unify
     /// int with float` ([GPU-KERNEL-ELEM-TYPING], [GPU-KERNEL-FORM]). A lambda
     /// in the same slot already works, because its parameters are pinned from
@@ -1673,8 +1672,8 @@ impl Checker {
     /// the operands' final types with deferral closed, and tie the site's open
     /// result to the answer. Re-running rather than restating the rules is what
     /// keeps `p.x * p.x + p.y * p.y` right — by the time the outer `+` resolves,
-    /// its operands have become `Result<int, MathError>`, and only the real
-    /// selection knows to unwrap them and keep one flattened error channel.
+    /// its operands have become `int`, and the ordinary selection seeds each
+    /// fallible operator's Arith requirement.
     pub(crate) fn resolve_deferred_arith(&mut self, name: &str, site: &Type) {
         let Some(op) = parse_deferred_arith(name) else {
             return;
@@ -1827,7 +1826,7 @@ mod tests {
             "cannot unify int with string",
         );
         let result_channel = bad(
-            "fn sendFailed(ch: Channel<Result<int, MathError>>, value: Result<int, MathError>) -> Unit = send(ch, value)\n",
+            "fn sendFailed(ch: Channel<Result<int, string>>, value: Result<int, string>) -> Unit = send(ch, value)\n",
         );
         assert!(result_channel
             .iter()
@@ -1835,7 +1834,7 @@ mod tests {
         // The receiving end is gated for the same reason: handing the Result
         // wrapper back out of `recv` would erase it silently.
         let result_recv = bad(
-            "fn recvFailed(ch: Channel<Result<int, MathError>>) -> Result<int, MathError> = recv(ch)\n",
+            "fn recvFailed(ch: Channel<Result<int, string>>) -> Result<int, string> = recv(ch)\n",
         );
         assert!(result_recv
             .iter()

@@ -94,7 +94,7 @@ async fn manifest_changes_refresh_unchanged_buffer_diagnostics() {
     let manifest = root.join("osprey.toml");
     let config = "[project]\nname = \"cache\"\nsource_roots = [\"src\"]\ndefault_namespace = \"before\"\nentry = \"src/main.ospml\"\n";
     std::fs::write(&manifest, config).expect("manifest");
-    let source = "identity : int -> int\nidentity x = x + 1 ?: 0\nprint (identity 1)\n";
+    let source = "identity : int -> int\nidentity x = wrapAdd x 1\nprint (identity 1)\n";
     let file = root.join("src/main.ospml");
     std::fs::write(&file, source).expect("entry");
     let uri = lspkit_server::uri::path_to_uri(&file).expect("URI");

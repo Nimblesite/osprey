@@ -404,7 +404,7 @@ mod tests {
     #[test]
     fn result_is_not_assignable_to_its_payload() {
         let mut c = InferCtx::new();
-        let r = Type::result(Type::int(), Type::prim("MathError"));
+        let r = Type::result(Type::int(), Type::prim("string"));
         assert!(unify_assignable(&mut c, &Type::int(), &r).is_err());
         assert!(unify(&mut c, &Type::int(), &r).is_err());
     }
@@ -470,7 +470,7 @@ mod tests {
         let slot = Type::fun(vec![Type::int()], Type::int());
         let lambda = Type::fun(
             vec![Type::int()],
-            Type::result(Type::int(), Type::prim("MathError")),
+            Type::result(Type::int(), Type::prim("string")),
         );
         assert!(unify_assignable(&mut c, &slot, &lambda).is_err());
     }
@@ -539,7 +539,7 @@ mod tests {
         let slot = Type::fun(vec![Type::int()], Type::int());
         let value = Type::fun(
             vec![Type::int()],
-            Type::result(Type::int(), Type::prim("MathError")),
+            Type::result(Type::int(), Type::prim("string")),
         );
         assert!(unify_assignable(&mut c, &slot, &value).is_err());
         // The safe direction remains: a bare return is implicitly Success.
@@ -554,7 +554,7 @@ mod tests {
     #[test]
     fn plain_unify_of_functions_keeps_result_returns_distinct() {
         let mut c = InferCtx::new();
-        let res = |ok: Type| Type::result(ok, Type::prim("MathError"));
+        let res = |ok: Type| Type::result(ok, Type::prim("string"));
         assert!(unify(
             &mut c,
             &Type::fun(vec![Type::int()], Type::int()),
@@ -612,7 +612,7 @@ mod tests {
         c.set_variance("Gate", vec![Variance::Contravariant]);
         let feed = |t: Type| Type::con("Feed", vec![t]);
         let gate = |t: Type| Type::con("Gate", vec![t]);
-        let res = Type::result(Type::int(), Type::prim("MathError"));
+        let res = Type::result(Type::int(), Type::prim("string"));
         assert!(unify_assignable(&mut c, &feed(Type::int()), &feed(res.clone())).is_err());
         assert!(unify_assignable(&mut c, &gate(res.clone()), &gate(Type::int())).is_err());
         // Function returns likewise remain exact beneath containers.

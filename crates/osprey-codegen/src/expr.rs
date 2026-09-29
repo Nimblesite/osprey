@@ -332,9 +332,8 @@ fn gen_arith(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
     if op == "+" && (l.ty == LType::Str || r.ty == LType::Str) {
         return gen_str_concat(cg, l, r);
     }
-    // `/` and `%` can be handed a divisor with no representable result, so they
-    // are typed `Result<…, MathError>` and build a Success/Error block. The
-    // Fallible operators preserve the wrapper until explicit handling.
+    // `/` and `%` dispatch zero divisors to the active Arith policy. Their
+    // value arms supply the numeric result without a Result wrapper.
     if op == "/" {
         return crate::arithmetic::division(cg, "/", l, r);
     }
@@ -934,9 +933,6 @@ fn apply_bound_lambda(
     position: Option<Position>,
     arguments: &[&Expr],
 ) -> Result<Value> {
-    if !cg.lambda_prefix.contains_key(name) {
-        return apply_lambda(cg, params, body, position, arguments);
-    }
     let mut values = Vec::with_capacity(arguments.len());
     for a in arguments {
         values.push(gen_expr(cg, a)?);
@@ -947,28 +943,99 @@ fn apply_bound_lambda(
     })
 }
 
-/// A generic factory's saved arguments are lexical captures for both direct
-/// calls and closure materialization at a higher-order argument boundary.
+/// Bind the file-scope names of an inlined lambda from their lexical scope.
+/// Its caller may have locals with the same names.
+fn file_lambda_globals(cg: &Codegen, name: &str) -> Vec<String> {
+    if !is_file_lambda_binding(cg, name) {
+        return Vec::new();
+    }
+    let Some((parameters, body, _)) = cg.file_lambdas.get(name) else {
+        return Vec::new();
+    };
+    let mut names = std::collections::BTreeSet::new();
+    osprey_ast::freevars::free_idents(body, &mut names);
+    for parameter in parameters {
+        let _ = names.remove(&parameter.name);
+    }
+    names
+        .into_iter()
+        .filter(|name| cg.module_globals.contains_key(name))
+        .collect()
+}
+
+fn is_file_lambda_binding(cg: &Codegen, name: &str) -> bool {
+    cg.file_lambdas
+        .get(name)
+        .is_some_and(|file| cg.lambdas.get(name).is_none_or(|local| local == file))
+}
+
+/// A file-scope lambda and a generic factory both carry lexical bindings.
 fn with_lambda_captures<T>(
     cg: &mut Codegen,
     name: &str,
     emit: impl FnOnce(&mut Codegen) -> Result<T>,
 ) -> Result<T> {
-    let Some((prefix_params, prefix_values)) = cg.lambda_prefix.get(name).cloned() else {
-        return emit(cg);
+    let globals = file_lambda_globals(cg, name);
+    let prefix = match cg.lambda_prefix.get(name).cloned() {
+        Some(prefix) => Some(prefix),
+        None => file_prefix_values(cg, name)?,
     };
+    if is_file_lambda_binding(cg, name) {
+        return cg.with_file_scope(|cg| bind_and_emit(cg, globals, prefix, emit));
+    }
+    bind_and_emit(cg, globals, prefix, emit)
+}
+
+fn bind_and_emit<T>(
+    cg: &mut Codegen,
+    globals: Vec<String>,
+    prefix: Option<(Vec<Parameter>, Vec<Value>)>,
+    emit: impl FnOnce(&mut Codegen) -> Result<T>,
+) -> Result<T> {
+    if globals.is_empty() && prefix.is_none() {
+        return emit(cg);
+    }
     cg.push_scope();
     let saved_fn_ptrs = cg.fn_ptr_locals.clone();
-    for (parameter, value) in prefix_params.iter().zip(prefix_values) {
+    for global in globals {
+        if let Some(value) = crate::globals::read(cg, &global) {
+            cg.bind(global, value);
+        }
+    }
+    bind_lambda_prefix(cg, prefix);
+    let result = emit(cg);
+    cg.fn_ptr_locals = saved_fn_ptrs;
+    cg.pop_scope();
+    result
+}
+
+fn file_prefix_values(
+    cg: &mut Codegen,
+    name: &str,
+) -> Result<Option<(Vec<Parameter>, Vec<Value>)>> {
+    if !is_file_lambda_binding(cg, name) {
+        return Ok(None);
+    }
+    let Some((parameters, slots)) = cg.file_lambda_prefix.get(name).cloned() else {
+        return Ok(None);
+    };
+    let values = slots
+        .iter()
+        .map(|slot| crate::globals::read(cg, slot).ok_or_else(|| CodegenError::unknown(slot)))
+        .collect::<Result<Vec<_>>>()?;
+    Ok(Some((parameters, values)))
+}
+
+fn bind_lambda_prefix(cg: &mut Codegen, prefix: Option<(Vec<Parameter>, Vec<Value>)>) {
+    let Some((parameters, values)) = prefix else {
+        return;
+    };
+    for (parameter, value) in parameters.iter().zip(values) {
         if let Some(ty @ osprey_types::Type::Fun { .. }) = &value.inferred_type {
             cg.bind_fn_local(&parameter.name, ty.clone());
         }
         cg.bind(parameter.name.clone(), value);
     }
-    let result = emit(cg);
-    cg.fn_ptr_locals = saved_fn_ptrs;
-    cg.pop_scope();
-    result
 }
 
 fn apply_lambda(

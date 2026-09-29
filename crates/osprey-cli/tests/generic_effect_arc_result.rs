@@ -12,7 +12,7 @@ fn repo_root() -> PathBuf {
 fn generic_effect_result_promotion_retains_adapted_wrapper_under_arc() -> io::Result<()> {
     let source = r"
 effect Source<T> {
-    take: fn() -> Result<T, MathError>
+    take: fn() -> Result<T, string>
 }
 
 fn checked() !Source<int> = perform Source.take()

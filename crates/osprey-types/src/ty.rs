@@ -36,8 +36,6 @@ pub mod names {
     pub(crate) const SUCCESS: &str = "Success";
     /// `Result`'s error-variant constructor (`Error { message }`).
     pub(crate) const ERROR: &str = "Error";
-    /// The error type produced by failing arithmetic operations.
-    pub(crate) const MATH_ERROR: &str = "MathError";
     /// The `List<elem>` collection type.
     pub const LIST: &str = "List";
     /// The `Map<key, value>` collection type.
@@ -358,8 +356,8 @@ mod tests {
         assert_eq!(Type::int().to_string(), "int");
         assert_eq!(Type::list(Type::string()).to_string(), "List<string>");
         assert_eq!(
-            Type::result(Type::int(), Type::prim("MathError")).to_string(),
-            "Result<int, MathError>"
+            Type::result(Type::int(), Type::prim("string")).to_string(),
+            "Result<int, string>"
         );
         assert_eq!(
             Type::fun(vec![Type::int(), Type::int()], Type::bool()).to_string(),

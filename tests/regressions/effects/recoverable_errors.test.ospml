@@ -19,12 +19,10 @@ effect Recover
     (** Decide what an order for more than the balance receives. *)
     overdraw : (int, int) => int
 
-drawOrder : int -> int -> int ! Recover
 drawOrder requested available = match requested > available
     true => perform Recover.overdraw requested available
     false => requested
 
-fulfill : List int -> int -> int ! Recover
 fulfill orders stock = match orders
     [] => stock
     [requested, ...rest] =>

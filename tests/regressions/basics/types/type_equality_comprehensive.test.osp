@@ -126,7 +126,7 @@ fn describe(g) = match g {
     Gate(_admit) => "guarded"
     Open => "open"
 }
-fn mkGate() -> Gate<(int) -> Result<int, MathError>> = Gate { admit: |_f| => true }
+fn mkGate() -> Gate<(int) -> Result<int, string>> = Gate { admit: |_f| => true }
 
 print("fn-payload feed accepted: ${label(mkFeed())}")
 print("fn-payload gate accepted: ${describe(mkGate())}")
@@ -224,7 +224,7 @@ fn typeEqualityCase() = {
         headOr<string>(["a"], "z") == "a",
         repeatOf<int>(7, 3) == 7,
         repeatOf<string>("os", 2) == "os",
-        (identityOf<Result<int, MathError>>(20 * 5) ?: 0) == 100,
+        (identityOf<Result<int, string>>(20 * 5) ?: 0) == 100,
         identityOf<int>(identityOf<int>(6)) == 6,
         srcInt().produce == 4,
         srcInt().make(9) == 9,

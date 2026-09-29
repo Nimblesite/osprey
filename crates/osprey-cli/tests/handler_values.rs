@@ -433,6 +433,7 @@ fn named(person) = {
     print("naming ${person}")
     person
 }
+
 let ada = reading(named("Ada"))
 fn report() = "${ada(greet)} ${ada(|| => 42)}"
 print(report())
@@ -453,4 +454,31 @@ print (report ())
     let expected = "naming Ada\nHello, Ada! 42\n";
     assert_output("capturing_factory", "osp", default, expected);
     assert_output("capturing_factory", "ospml", ml, expected);
+}
+
+#[test]
+fn a_generic_factory_captures_a_concrete_file_scope_argument() {
+    let default = r"
+effect Echo { value: fn() -> int }
+fn make<T>(stored: T) = handler Echo { value => {
+    print(toString(stored))
+    1
+} }
+let chosen = make<int>(41)
+fn report() = chosen(|| => perform Echo.value())
+print(report())
+";
+    let ml = r"
+effect Echo
+    value : Unit => int
+make stored = handler Echo
+    value =>
+        print (toString stored)
+        1
+chosen = make 41
+report () = chosen (\() => perform Echo.value ())
+print (report ())
+";
+    assert_output("generic_capture", "osp", default, "41\n1\n");
+    assert_output("generic_capture", "ospml", ml, "41\n1\n");
 }

@@ -96,10 +96,12 @@ exactArithmetic(fn() => match parsePair("bad_entry_no_equals") {
     Error   { message } => print("  rejected: ${message}")
 })
 
-// Cursor proof: findEq returns the byte index of '=' for a good entry,
-// and the sentinel for a malformed one.
-exactArithmetic(fn() => print("findEq('port=8080') = ${findEq("port=8080", 0)}"))
-exactArithmetic(fn() => print("findEq('bad_entry_no_equals') = ${findEq("bad_entry_no_equals", 0)}"))
+/// Cursor proof: findEq returns the byte index of '=' for a good entry,
+/// and the sentinel for a malformed one.
+let portEq = exactArithmetic(fn() => findEq("port=8080", 0))
+print("findEq('port=8080') = ${portEq}")
+let badEq = exactArithmetic(fn() => findEq("bad_entry_no_equals", 0))
+print("findEq('bad_entry_no_equals') = ${badEq}")
 
 print("=== parser complete ===")
 

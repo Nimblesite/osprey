@@ -172,7 +172,7 @@ fn firstItem(f: Feed<int>) = match f {{
     Feed {{ supply }} => supply
     Dry => 0
 }}
-fn mkFeed() -> Feed<Result<int, MathError>> = Feed {{ supply: 20 * 5 }}
+fn mkFeed() -> Feed<Result<int, string>> = Feed {{ supply: 20 * 5 }}
 print("${{firstItem(mkFeed())}}")"#
     )
 }
@@ -191,13 +191,13 @@ fn label(f: Feed<(int) -> int>) = match f {
     Feed { supply } => "supplied"
     Dry => "dry"
 }
-fn mkFeed() -> Feed<(int) -> Result<int, MathError>> = Feed { supply: |n| => n * 2 }
+fn mkFeed() -> Feed<(int) -> Result<int, string>> = Feed { supply: |n| => n * 2 }
 print(label(mkFeed()))"#, "cannot unify");
 
     /// The direct value site keeps the one safe promotion `T -> Result<T, E>`,
     /// which is what makes the container rejections above a real restriction rather
     /// than a blanket ban.
-    the_direct_site_promotion_still_holds: accepts(Default, r#"fn keep(n: Result<int, MathError>) = n ?: 0
+    the_direct_site_promotion_still_holds: accepts(Default, r#"fn keep(n: Result<int, string>) = n ?: 0
 print("${keep(5)}")"#);
 }
 

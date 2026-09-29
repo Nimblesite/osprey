@@ -107,6 +107,12 @@ pub(crate) struct Codegen {
     /// `idl(7)` emitted a direct call to `@idl`, a symbol no definition
     /// produces ([TYPE-GENERICS-FN], [MODULES-FILE-SCOPE-BINDING]).
     pub(crate) file_lambdas: HashMap<String, LambdaDef>,
+    /// Captured factory arguments of file-scope generic lambdas live in
+    /// module globals, so readers in other functions load the value once made.
+    pub(crate) file_lambda_prefix: HashMap<String, (Vec<osprey_ast::Parameter>, Vec<String>)>,
+    /// Generic aliases seeded at file scope, before local aliases can shadow
+    /// them while a file-scope lambda is inlined.
+    pub(crate) file_aliases: HashMap<String, String>,
     /// Values already lowered for the CALLEE parameters a generic returned
     /// lambda closes over, keyed by the binding name
     /// (`crate::stmt::generic_returned_lambda`).
@@ -390,6 +396,50 @@ pub(crate) struct SavedFn {
     debug_local_ids: Vec<usize>,
 }
 
+/// Caller bindings hidden while an inlined file-scope lambda executes.
+struct FileScopeState {
+    scopes: Vec<HashMap<String, Value>>,
+    scope_ids: Vec<usize>,
+    lambdas: HashMap<String, LambdaDef>,
+    lambda_prefix: HashMap<String, (Vec<osprey_ast::Parameter>, Vec<Value>)>,
+    call_aliases: HashMap<String, String>,
+    fn_ptr_locals: HashMap<String, FnSig>,
+    fn_value_types: HashMap<String, Type>,
+    cell_vars: HashSet<String>,
+    cell_slots: HashMap<String, CellSlot>,
+}
+
+impl FileScopeState {
+    fn enter(cg: &mut Codegen) -> Self {
+        let state = Self {
+            scopes: std::mem::take(&mut cg.scopes),
+            scope_ids: std::mem::take(&mut cg.scope_ids),
+            lambdas: std::mem::take(&mut cg.lambdas),
+            lambda_prefix: std::mem::take(&mut cg.lambda_prefix),
+            call_aliases: std::mem::replace(&mut cg.call_aliases, cg.file_aliases.clone()),
+            fn_ptr_locals: std::mem::take(&mut cg.fn_ptr_locals),
+            fn_value_types: std::mem::take(&mut cg.fn_value_types),
+            cell_vars: std::mem::take(&mut cg.cell_vars),
+            cell_slots: std::mem::take(&mut cg.cell_slots),
+        };
+        cg.push_scope();
+        state
+    }
+
+    fn restore(self, cg: &mut Codegen) {
+        cg.pop_scope();
+        cg.scopes = self.scopes;
+        cg.scope_ids = self.scope_ids;
+        cg.lambdas = self.lambdas;
+        cg.lambda_prefix = self.lambda_prefix;
+        cg.call_aliases = self.call_aliases;
+        cg.fn_ptr_locals = self.fn_ptr_locals;
+        cg.fn_value_types = self.fn_value_types;
+        cg.cell_vars = self.cell_vars;
+        cg.cell_slots = self.cell_slots;
+    }
+}
+
 #[derive(Debug, Clone)]
 struct DebugState {
     source: DebugSource,
@@ -649,6 +699,8 @@ impl Codegen {
             pending_iter_ops: Vec::new(),
             lambdas: HashMap::new(),
             file_lambdas: HashMap::new(),
+            file_lambda_prefix: HashMap::new(),
+            file_aliases: HashMap::new(),
             lambda_prefix: HashMap::new(),
             expected_lambda: None,
             fnval_cells: HashMap::new(),
@@ -1402,6 +1454,13 @@ impl Codegen {
         self.scopes.push(HashMap::new());
         self.scope_ids.push(self.next_scope_id);
         self.next_scope_id = self.next_scope_id.saturating_add(1);
+    }
+
+    pub(crate) fn with_file_scope<T>(&mut self, emit: impl FnOnce(&mut Self) -> T) -> T {
+        let saved = FileScopeState::enter(self);
+        let result = emit(self);
+        saved.restore(self);
+        result
     }
 
     pub(crate) fn pop_scope(&mut self) {

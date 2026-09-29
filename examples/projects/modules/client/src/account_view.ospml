@@ -5,7 +5,7 @@ import talon::BankData
 
 module AccountView
     increment : int -> int
-    increment number = number + 1 
+    increment number = wrapAdd number 1
 
     export card : int -> int -> string -> string
     card doc index selected =

@@ -80,12 +80,7 @@ pub(crate) fn seed(
             continue;
         }
         let slot = describe(cg, name, *position, *mutable && cells.contains(name))?;
-        cg.add_global(format!(
-            "@{} = internal global {} zeroinitializer",
-            slot.symbol,
-            slot.storage().as_str()
-        ));
-        let _ = cg.module_globals.insert(name.clone(), slot);
+        declare_slot(cg, name, slot);
     }
     Ok(())
 }
@@ -104,13 +99,38 @@ fn describe(
             "file-scope binding `{name}` is read by a function but inference recorded no type for it"
         ))
     })?;
-    Ok(GlobalSlot {
+    Ok(describe_type(cg, name, ty, cell))
+}
+
+fn describe_type(cg: &Codegen, name: &str, ty: &Type, cell: bool) -> GlobalSlot {
+    GlobalSlot {
         symbol: format!("osp.g.{name}"),
         sig: ParamSig::of(&cg.prog, ty),
         owner: crate::types::owner_name(&cg.prog, ty),
         cell,
         ty: ty.clone(),
-    })
+    }
+}
+
+fn declare_slot(cg: &mut Codegen, name: &str, slot: GlobalSlot) {
+    cg.add_global(format!(
+        "@{} = internal global {} zeroinitializer",
+        slot.symbol,
+        slot.storage().as_str()
+    ));
+    let _ = cg.module_globals.insert(name.to_string(), slot);
+}
+
+/// A factory capture needs a concrete global even though the returned
+/// polymorphic handler has no single closure ABI.
+pub(crate) fn seed_capture(cg: &mut Codegen, name: &str, ty: &Type) -> Result<()> {
+    if osprey_types::has_type_var(ty) {
+        return Err(CodegenError::unsupported(format!(
+            "file-scope factory capture `{name}` has no concrete type"
+        )));
+    }
+    declare_slot(cg, name, describe_type(cg, name, ty, false));
+    Ok(())
 }
 
 /// The file-scope `mut`s that must live in a heap cell: the ones a handler arm
@@ -226,7 +246,10 @@ pub(crate) fn publish(cg: &mut Codegen, name: &str, value: Value) -> Result<()> 
              address; storing the value here would leave every reader dereferencing it"
         )));
     }
-    let stored = crate::cast::coerce_param(cg, value, &slot.sig)?;
+    // The global erases a flat literal's codegen-only layout tag. Materialize
+    // it before any function can read the slot as a runtime List handle.
+    let escaped = crate::listlit::escaping(cg, value);
+    let stored = crate::cast::coerce_param(cg, escaped, &slot.sig)?;
     store(cg, &slot, &stored.operand);
     Ok(())
 }

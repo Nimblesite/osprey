@@ -71,8 +71,7 @@ fn inc(x) = satAdd(x, 1)
 fn dec(x) = satSub(x, 1)
 fn min(a, b) = match a < b { true => a false => b }
 fn gap(a, b) = match a < b { true => satSub(b, a) false => satSub(a, b) }
-// `%` returns `Result<int, MathError>`; the UI uses positive constant divisors
-// and falls back to zero if that invariant is broken.
+// `%` returns int; these positive constant divisors need no Arith policy.
 // A zero-sized animation cycle has a stationary first frame.
 fn modv(a, b) = {
     handle Arith { remainderByZero _ => 0 }

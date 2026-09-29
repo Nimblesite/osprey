@@ -309,7 +309,7 @@ value sites only, never inside a constructor argument.** A bare `T` satisfies a
 `Result<T, E>` slot (an implicit `Success`); the inverse never holds anywhere.
 That coercion changes the value's REPRESENTATION, and nothing rebuilds a
 container's contents, so it cannot reach through an argument position:
-`Feed<int>` does **not** satisfy a `Feed<Result<int, MathError>>` slot, under
+`Feed<int>` does **not** satisfy a `Feed<Result<int, Error>>` slot, under
 `out T`, under `in T`, or unannotated. Function payloads match exactly for the
 same reason, so a `Feed<(int) -> Result<int, Error>>` does not match a
 `Feed<(int) -> int>` slot — while a *directly* assigned function value still
@@ -360,10 +360,9 @@ fail type checking before code generation. Aliases and higher-order calls
 preserve the requirement. Division constrains both operands even when neither
 is already known to be float.
 
-This constraint leaves the existing propagation of known `Result` operands
-unchanged: the arithmetic checker first verifies their `MathError` channel,
-then checks the unwrapped numeric type and retains the required result wrapper.
-It does not make a `Result` an ordinary numeric argument to a generic helper.
+Arithmetic operands must be numeric values, not `Result` values. A caller must
+match a `Result` or use `?:` to obtain a number before applying an arithmetic
+operator. The operator's own fault is an `Arith` effect, never a `Result` wrapper.
 
 ### Floating-point comparison — [FLOAT-COMPARE]
 

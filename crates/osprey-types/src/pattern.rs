@@ -467,10 +467,8 @@ impl Checker {
         // yet. A `Success`/`Error` pattern is itself the evidence, so pin the
         // scrutinee to a Result with an open payload. Binding the whole
         // variable as the payload instead detached the two: once the scrutinee
-        // later became `Result<int, MathError>` — as a deferred arithmetic
-        // operand does ([`crate::expr::Checker::deferred_arith`]) — `value` was
-        // still the Result, and `Success { value: value }` failed with `cannot
-        // unify Result<int, MathError> with int`.
+        // later became `Result<int, Error>`, `value` was still the Result, and
+        // `Success { value: value }` failed to unify it with `int`.
         if matches!(self.ctx.prune(disc), Type::Var(_)) {
             let open = Type::result(self.ctx.fresh(), self.ctx.fresh());
             self.push_unify(&open, disc);

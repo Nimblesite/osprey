@@ -204,6 +204,14 @@ fn throughAlias(x) = idAlias(x)
 /// Read the generic lambda from inside a function body.
 fn throughLambda(x) = idLambda(x)
 
+/// A function must read a runtime list from file-scope storage, not the
+/// initializer's private flat-literal layout.
+let globalPair = [1, 2]
+fn globalHead() = match globalPair {
+    [] => 0
+    [head, ..._rest] => head
+}
+
 /// A generic call nested inside its OWN argument is not recursion: the
 /// re-entry guard was armed before the argument was lowered, so this was
 /// rejected as "`genericIdentity` is recursive but its signature is not fully
@@ -232,7 +240,8 @@ fn genericValueCase() = {
             throughLambda("ml") == "ml",
             nestedGeneric(21) == 21,
             nestedGeneric("x") == "x",
-            genericIdentity(genericIdentity(genericIdentity(5))) == 5
+            genericIdentity(genericIdentity(genericIdentity(5))) == 5,
+            globalHead() == 1
     ])
     checkAll("a parameter never changes calls outside its own scope", [
             shadowsBuiltin(3) == 3,

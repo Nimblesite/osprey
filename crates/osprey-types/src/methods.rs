@@ -401,6 +401,7 @@ fn invoke(g) = g.hof(|n| => 3)
             ),
             ("(Unknown) -> int", "unknown type `Unknown`"),
             ("(int) -> Unknown", "unknown type `Unknown`"),
+            ("MathError", "unknown type `MathError`"),
         ] {
             rejects_with(
                 Flavor::Default,

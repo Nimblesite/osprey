@@ -374,6 +374,32 @@ fn recursive_closure_provenance_reaches_a_bounded_fixed_point() {
     }
 }
 
+const BRANCHING_CALLBACK_TREE: &str = "effect Alarm { ring: fn() -> int }\n\
+    type Tree = Leaf(() -> int) | Node(Tree, Tree)\n\
+    fn grow(n) = match n {\n\
+      0 => Leaf(fn() => perform Alarm.ring())\n\
+      _ => Node(grow(wrapSub(n, 1)), grow(wrapSub(n, 1)))\n\
+    }\n\
+    let root = grow(8)\n";
+
+#[test]
+fn branching_recursive_callback_retains_its_effect() {
+    assert_rejected_with(
+        &format!(
+            "{BRANCHING_CALLBACK_TREE}let answer = match root {{ Leaf(callback) => callback() Node(_, _) => 0 }}\n"
+        ),
+        &["Alarm.ring"],
+    );
+}
+
+#[test]
+fn branching_recursive_callback_accepts_a_matching_handler() {
+    assert_accepted(&format!(
+        "{BRANCHING_CALLBACK_TREE}let h = handler Alarm {{ ring => 42 }}\n\
+         let answer = h(|| => match root {{ Leaf(callback) => callback() Node(_, _) => 0 }})\n"
+    ));
+}
+
 /// A recursive curried function is the shape an ML definition of arity > 1
 /// lowers to. Its first fixed-point iteration cannot resolve the self-call —
 /// its own return provenance does not exist yet — and that transient verdict
@@ -1004,6 +1030,31 @@ fn effectful_closure_cannot_escape_through_list_lookup() {
            Success { value } => value\n\
            Error { message } => fn() => 0\n\
          }\n\
+         let answer = delayed()\n",
+        &["Alarm.ring"],
+    );
+}
+
+#[test]
+fn list_concatenation_preserves_callable_element_provenance() {
+    assert_rejected_with(
+        "effect Alarm { ring: fn() -> int }\n\
+         let runners = [fn() => perform Alarm.ring()] + [fn() => 42]\n\
+         let delayed = match listGet(runners, 0) {\n\
+           Success { value } => value\n\
+           Error { message } => fn() => 0\n\
+         }\n\
+         let answer = delayed()\n",
+        &["Alarm.ring"],
+    );
+}
+
+#[test]
+fn map_merge_preserves_callable_value_provenance() {
+    assert_rejected_with(
+        "effect Alarm { ring: fn() -> int }\n\
+         let runners = {\"a\": fn() => perform Alarm.ring()} + {\"b\": fn() => 42}\n\
+         let delayed = mapGet(runners, \"a\") ?: fn() => 0\n\
          let answer = delayed()\n",
         &["Alarm.ring"],
     );

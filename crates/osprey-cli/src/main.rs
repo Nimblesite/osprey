@@ -1672,7 +1672,7 @@ mod tests {
     fn profile_run_writes_exports_where_output_points() {
         let path = temp_source(
             "prof_e2e",
-            "fn dec(n: int) -> int = (n - 1) ?: 0\n\
+            "fn dec(n: int) -> int = wrapSub(n, 1)\n\
              fn count(n: int) -> int = match n {\n    0 => 0\n    _ => count(dec(n))\n}\n\
              print(\"${count(500)}\")\n",
         );

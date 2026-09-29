@@ -1616,6 +1616,10 @@ fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Instances {
     crate::effect_rows::Instances {
         expression_types: resolved_expression_types(checker).into(),
         methods: checker.methods.clone(),
+        non_callable_call_error: checker
+            .errors
+            .iter()
+            .any(|error| error.message.starts_with("cannot call non-function")),
         performs,
         handlers: dedupe_sites(handler_tys.into_iter().map(|(position, arguments, _)| {
             (
@@ -1981,14 +1985,14 @@ mod tests {
         // A bare statement whose value is a `Result` throws the failure away —
         // the one place the wrapper can vanish without anyone naming it.
         bad_with(
-            "fn risky(n: int) -> Result<int, MathError> = n + 1\n\
+            "fn risky(n: int) = checkedAdd(n, 1)\n\
              fn go() -> int = {\n\
                risky(1)\n\
                0\n\
              }\n",
             "cannot be discarded",
         );
-        ok("fn risky(n: int) -> Result<int, MathError> = n + 1\n\
+        ok("fn risky(n: int) = checkedAdd(n, 1)\n\
             fn go() -> int = {\n\
               let handled = risky(1) ?: 0\n\
               handled\n\
@@ -2137,7 +2141,7 @@ mod tests {
         ),
         (
             "a Result consumed with ?:",
-            "fn risky(n: int) -> Result<int, MathError> = n + 1\n\
+            "fn risky(n: int) = checkedAdd(n, 1)\n\
              fn go() -> int = {\n\
                let handled = risky(1) ?: 0\n\
                handled\n\

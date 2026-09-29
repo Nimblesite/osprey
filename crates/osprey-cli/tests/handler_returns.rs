@@ -284,16 +284,34 @@ let tagged = handler Ask {
     value => 41
     return n => "${prefix}${n}"
 }
+fn label() = "file"
+let taggedCall = handler Ask {
+    value => 41
+    return n => "${label()}${n}"
+}
 fn viaParameter(prefix) = tagged(|| => perform Ask.value())
 fn viaLocal() = {
     let prefix = "local"
     tagged(|| => perform Ask.value())
 }
+fn viaShadow() = {
+    let prefix = "local"
+    let tagged = handler Ask {
+        value => 99
+        return n => "${prefix}${n}"
+    }
+    tagged(|| => perform Ask.value())
+}
+fn viaShadowedCall() = {
+    let label = || => "local"
+    let local = label()
+    "${taggedCall(|| => perform Ask.value())}${local}"
+}
 let inBlock = {
     let prefix = "block"
     tagged(|| => perform Ask.value())
 }
-print("${viaParameter("param")} ${viaLocal()} ${inBlock}")
+print("${viaParameter("param")} ${viaLocal()} ${inBlock} ${viaShadow()} ${viaShadowedCall()}")
 "#,
         r#"
 effect Ask
@@ -302,15 +320,29 @@ prefix = "file"
 tagged = handler Ask
     value => 41
     return n => "${prefix}${n}"
+label () = "file"
+taggedCall = handler Ask
+    value => 41
+    return n => "${label ()}${n}"
 viaParameter prefix = tagged (\() => perform Ask.value ())
 viaLocal () =
     prefix = "local"
     tagged (\() => perform Ask.value ())
+viaShadow () =
+    prefix = "local"
+    tagged = handler Ask
+        value => 99
+        return n => "${prefix}${n}"
+    tagged (\() => perform Ask.value ())
+viaShadowedCall () =
+    label = \() => "local"
+    local = label ()
+    "${taggedCall (\() => perform Ask.value ())}${local}"
 inBlock =
     prefix = "block"
     tagged (\() => perform Ask.value ())
-print "${viaParameter "param"} ${viaLocal ()} ${inBlock}"
+print "${viaParameter "param"} ${viaLocal ()} ${inBlock} ${viaShadow ()} ${viaShadowedCall ()}"
 "#,
-        "file41 file41 file41\n",
+        "file41 file41 file41 local99 file41local\n",
     );
 }

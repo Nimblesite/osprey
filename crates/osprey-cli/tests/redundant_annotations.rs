@@ -14,6 +14,8 @@
 //! for the same reason: the row is not always recoverable from the body alone.
 
 mod common;
+#[path = "common/effect_execution.rs"]
+mod effect_execution;
 
 use common::{repo_root, sources, undefined_symbols};
 use std::fs;
@@ -242,8 +244,37 @@ print(describe(1))
 /// A higher-order parameter carries its own arrow, so the LAST one before the
 /// body is the declaration's.
 const HOF_PARAMETER: &str = r#"fn apply(f: fn(int) -> int, n: int) -> int = f(n)
-print("${apply(f: |x| => (x * 2) ?: 0, n: 4)}")
+print("${apply(f: |x| => wrapMul(x, 2), n: 4)}")
 "#;
+
+/// #163: a return annotation cannot change arithmetic values. This fixture
+/// lives outside the corpus because its intentionally inferable annotation
+/// must not exempt ordinary corpus sources from the annotation gate.
+#[test]
+fn arithmetic_return_annotations_preserve_values_in_both_flavors() {
+    let default = r#"
+fn inferredSum(a, b) = a + b
+fn annotatedSum(a, b) -> int = a + b
+fn parity() = {
+    handle Arith { overflow _ _ _ wrapped => wrapped }
+    print("${inferredSum(20, 22)}:${inferredSum(9223372036854775807, 1)}:${annotatedSum(9223372036854775807, 1)}")
+}
+parity()
+"#;
+    let ml = r#"
+inferredSum (a, b) = a + b
+annotatedSum : (int, int) -> int
+annotatedSum (a, b) = a + b
+parity () =
+    handle Arith
+        overflow _ _ _ wrapped => wrapped
+    print "${inferredSum (20, 22)}:${inferredSum (9223372036854775807, 1)}:${annotatedSum (9223372036854775807, 1)}"
+parity ()
+"#;
+    let expected = "42:-9223372036854775808:-9223372036854775808\n";
+    effect_execution::assert_flavored_output("annotation_parity", "osp", default, expected);
+    effect_execution::assert_flavored_output("annotation_parity", "ospml", ml, expected);
+}
 
 /// A provable `-> Unit`. `print` returns `Unit`, so the checker reaches the
 /// same answer with the annotation deleted — and `Unit` was exempted outright

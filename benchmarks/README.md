@@ -207,10 +207,9 @@ deterministic constant-seed run.
 
 ## Reading the numbers fairly
 
-- **Arithmetic semantics differ.** Osprey's integer `+ - *` return plain
-  wrapping values; `%` returns `Result<int, MathError>` and rejects a zero
-  divisor. Rust is compiled with `-C overflow-checks=off` for its release
-  profile.
+- **Arithmetic semantics differ.** Osprey's integer `+ - *` and `%` return
+  plain `int`; overflow or a zero divisor requires an explicit `Arith` policy.
+  Rust is compiled with `-C overflow-checks=off` for its release profile.
 - **Same algorithm everywhere.** Identical *naive* algorithm and parameters in
   every language — no memoization, closed forms, SIMD, or parallelism. We measure
   the language/compiler/runtime, not who is cleverest. Ranges match Osprey's
