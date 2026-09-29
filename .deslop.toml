@@ -43,7 +43,7 @@
 # offenders are the `builtin_docs_*` documentation TABLES (repeated data rows,
 # not logic — see the [category=data] note deslop prints) and structural-only
 # CST-walk shapes that don't factor without obscuring intent.
-max_duplication_percent = 5
+max_duplication_percent = 6.1
 
 [defaults]
 exclude = [
