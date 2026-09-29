@@ -1,0 +1,6 @@
+// [ARITH-EFFECT-ARMS] Arith operations use value mode, so an arm may not `resume`.
+// osprey: flavor=ml
+main () =
+    handle Arith
+        overflow _ _ _ wrapped => resume wrapped
+    print 42

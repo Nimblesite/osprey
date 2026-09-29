@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 /// Staged effects: an effect declared `static` is answered by the compiler and
 /// leaves nothing behind ([STAGE-DECL], [STAGE-RESIDUE],
 /// docs/specs/0035-StagedEffects.md). This suite pins the four consequences —
@@ -41,7 +60,7 @@ effect Log {
 }
 
 /// A helper reached from a static region: discharge follows calls, not syntax.
-fn tiled(n) = (n * perform Tile.size()) ?: 0
+fn tiled(n) = (n * perform Tile.size()) 
 
 /// Two views, each reading exactly one signal. Neither declares a dependency
 /// array; the row it carries IS its dependency set ([STAGE-SIGNALS-DIRTY]).
@@ -51,7 +70,7 @@ fn cursorLabel() = "at: ${(perform Signal<Cursor>.read()).at}"
 
 /// A helper reached from a dynamic region, for the shared-callee case.
 fn logged(n) = {
-    let next = (n + 1) ?: n
+    let next = (n + 1) 
     perform Log.write("step ${n} -> ${next}")
     next
 }
@@ -70,7 +89,7 @@ fn staticDischargeCase() = {
     }
     let both = {
         handle static Alloc {
-            scratch bytes => (bytes * 4) ?: 0
+            scratch bytes => (bytes * 4) 
         }
         handle static Tile {
             size => 3
@@ -117,7 +136,7 @@ fn stagedKernelCase() = {
         toGpu([1, 2, 3, 4]) |> gpuMap(tiled)
     }
     checkAll("a static effect is legal inside a GPU kernel", [
-        gpuFold(scaled, 0, fn(a, v) => (a + v) ?: a) == 30,
+        gpuFold(scaled, 0, fn(a, v) => (a + v) ) == 30,
         gpuLength(scaled) == 4
     ])
 }
@@ -129,7 +148,7 @@ fn stagedKernelCase() = {
 fn kernelRegionCase() = {
     let frame = kernel
         Tile size => 8
-        Alloc scratch bytes => (bytes * 2) ?: 0
+        Alloc scratch bytes => (bytes * 2) 
     in "${tiled(3)}/${perform Alloc.scratch(16)}"
     checkAll("a kernel region answers several dialects at once", [
         frame == "24/32"
@@ -153,8 +172,9 @@ fn signalIdentityCase() = {
     ])
 }
 
-test("static handlers are discharged before the program runs", staticDischargeCase)
-test("one function serves the static and dynamic stages", sharedAcrossStagesCase)
-test("a GPU kernel may perform a static effect", stagedKernelCase)
-test("a kernel region supplies its own device dialects", kernelRegionCase)
-test("two signal instantiations are two dependencies", signalIdentityCase)
+
+test("static handlers are discharged before the program runs", fn() => exactArithmetic(staticDischargeCase))
+test("one function serves the static and dynamic stages", fn() => exactArithmetic(sharedAcrossStagesCase))
+test("a GPU kernel may perform a static effect", fn() => exactArithmetic(stagedKernelCase))
+test("a kernel region supplies its own device dialects", fn() => exactArithmetic(kernelRegionCase))
+test("two signal instantiations are two dependencies", fn() => exactArithmetic(signalIdentityCase))

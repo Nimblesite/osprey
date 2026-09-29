@@ -104,11 +104,11 @@ module BankData
             Error message => running
             Success value => match parseInt value
                 Error bad =>
-                    nextIndex = (index + 1) ?: index
+                    nextIndex = (index + 1) 
                     totalFrom doc nextIndex running
                 Success cents =>
-                    nextIndex = (index + 1) ?: index
-                    nextTotal = (running + cents) ?: running
+                    nextIndex = (index + 1) 
+                    nextTotal = (running + cents) 
                     totalFrom doc nextIndex nextTotal
 
     export total : string -> int
@@ -127,10 +127,10 @@ module BankData
                 Success id => match id == wanted
                     true => index
                     false =>
-                        nextIndex = (index + 1) ?: index
+                        nextIndex = (index + 1) 
                         findIndex doc nextIndex wanted
                 Error bad =>
-                    nextIndex = (index + 1) ?: index
+                    nextIndex = (index + 1) 
                     findIndex doc nextIndex wanted
 
     export accountIndex : int -> string -> int
@@ -146,7 +146,7 @@ module BankData
             Success name =>
                 id = value doc "[${index}].id" "0"
                 option = UI::option id "#${id} · ${name}"
-                nextIndex = (index + 1) ?: index
+                nextIndex = (index + 1) 
                 rest = accountOptions doc nextIndex
                 match length rest == 0
                     true => option

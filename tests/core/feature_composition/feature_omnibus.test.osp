@@ -17,10 +17,10 @@ fn colorName(c) = match c { Red => "red" Green => "green" Blue => "blue" }
 /// Exercises a call to a function declared later in the source file.
 fn callerOfLater(_) = calleeLater(10)
 /// Supplies the forward-referenced arithmetic implementation.
-fn calleeLater(n) = n * 4 ?: 0
+fn calleeLater(n) = n * 4 
 
 /// Unwraps a parsed integer or returns the caller's fallback through currying.
-fn parseOr(text: string) -> (int) -> int = fn(fallback) => parseInt(text) ?: fallback
+fn parseOr(text) = fn(fallback) => parseInt(text) ?: fallback
 /// Converts both Result branches into user-facing status text.
 fn parseStatus(text) = match parseInt(text) {
     Success { value } => "parsed ${value}"
@@ -53,7 +53,7 @@ fn unionsResultsAndScalars() = {
         "${colorName(Green)} wrapped ${wrappedValue}" == "green wrapped 42",
         bySlot == "ada/36",
         swapped == "36/ada",
-        "next ${25 + 1} half ${25 / 2}" == "next Success(26) half Success(12.5)",
+        "next ${25 + 1} half ${25 / 2}" == "next 26 half 12.5",
         1.5 == 1.5,
         parseStatus("oops") == "parseInt rejected oops",
         parseStatus("123") == "parsed 123",
@@ -66,8 +66,8 @@ fn unionsResultsAndScalars() = {
 
 /// Verifies forward calls, lambdas, pipelines, booleans, and union-derived data.
 fn functionsPipesAndBooleans() = {
-    let chained = 5 |> (fn(x) => x + 100 ?: 0) |> (fn(x) => x * 2 ?: 0)
-    let single = 7 |> fn(x) => x * 3 ?: 0
+    let chained = 5 |> (fn(x) => x + 100 ) |> (fn(x) => x * 2 )
+    let single = 7 |> fn(x) => x * 3 
     // The batch preserves each legacy result and asserts intermediate pipeline state.
     checkAll("function/pipe/boolean state", [
         5 == 5,
@@ -76,10 +76,10 @@ fn functionsPipesAndBooleans() = {
         "forward call -> ${callerOfLater(0)}" == "forward call -> 40",
         chained == 210,
         single == 21,
-        (5 |> fn(x) => x + 100 ?: 0) == 105,
-        callerOfLater(999) == callerOfLater((0 - 1) ?: 0),
+        (5 |> fn(x) => x + 100 ) == 105,
+        callerOfLater(999) == callerOfLater((0 - 1) ),
         chained > single,
-        (single + priWeight(Med) ?: 0) == 26
+        (single + priWeight(Med) ) == 26
     ])
 }
 
@@ -89,7 +89,7 @@ fn effectsAndCollections() = {
     // Establishes the state precondition before any handled interaction occurs.
     checkAll("effect precondition", [counter == 0])
     handle Counter {
-        increment amount => { counter = counter + amount ?: counter }
+        increment amount => { counter = counter + amount  }
     }
     perform Counter.increment(1)
     perform Counter.increment(1)
@@ -98,8 +98,8 @@ fn effectsAndCollections() = {
     let ys = listAppend(List(), 99)
     let combined = xs + ys
     let m = mapSet(mapSet(Map(), "a", 1), "b", 2)
-    let scoreAtOne = [85, 92, 78][1] ?: ((0 - 1) ?: 0)
-    let bananaPrice = { "apple": 2, "banana": 3 }["banana"] ?: ((0 - 1) ?: 0)
+    let scoreAtOne = [85, 92, 78][1] ?: ((0 - 1) )
+    let bananaPrice = { "apple": 2, "banana": 3 }["banana"] ?: ((0 - 1) )
     // Checks every post-handler and collection invariant without repetitive calls.
     checkAll("effect/collection state", [
         "counter ${counter}" == "counter 3",
@@ -118,8 +118,8 @@ fn effectsAndCollections() = {
         scoreAtOne == 92,
         "banana ${bananaPrice}" == "banana 3",
         bananaPrice == 3,
-        ([85, 92, 78][9] ?: ((0 - 1) ?: 0)) == ((0 - 1) ?: 0),
-        ({ "apple": 2 }["pear"] ?: ((0 - 1) ?: 0)) == ((0 - 1) ?: 0)
+        ([85, 92, 78][9] ?: ((0 - 1) )) == ((0 - 1) ),
+        ({ "apple": 2 }["pear"] ?: ((0 - 1) )) == ((0 - 1) )
     ])
 }
 
@@ -139,11 +139,30 @@ fn stringInteractions() = {
     ])
 }
 
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // Register the union, Result, and scalar interaction.
-test("unions, Results and scalar operations compose", unionsResultsAndScalars)
+test("unions, Results and scalar operations compose", fn() => exactArithmetic(unionsResultsAndScalars))
 // Register the function, boolean, and pipeline interaction.
-test("functions, forward calls, booleans and pipes compose", functionsPipesAndBooleans)
+test("functions, forward calls, booleans and pipes compose", fn() => exactArithmetic(functionsPipesAndBooleans))
 // Register the effect and persistent-collection interaction.
-test("effects mutate handled state beside persistent collections", effectsAndCollections)
+test("effects mutate handled state beside persistent collections", fn() => exactArithmetic(effectsAndCollections))
 // Register the cross-feature string interaction.
-test("string transformations consume values from other features", stringInteractions)
+test("string transformations consume values from other features", fn() => exactArithmetic(stringInteractions))

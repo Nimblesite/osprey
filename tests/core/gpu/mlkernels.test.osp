@@ -32,7 +32,12 @@ fn isActive(x) = x > 0.0
 /// division is what keeps an empty buffer total instead of partial.
 fn at(m, i) = gpuGet(m, i) ?: 0.0
 fn sumOf(xs) = xs |> gpuFold(0.0, addF)
-fn meanOf(xs) = (sumOf(xs) / toFloat(gpuLength(xs))) ?: 0.0
+/// Empty statistics and zero-spread normalisation choose an explicit boundary value.
+fn degenerate(value, work) = {
+    handle Arith { divideByZero _ _ => value }
+    work()
+}
+fn meanOf(xs) = degenerate(0.0, fn() => sumOf(xs) / toFloat(gpuLength(xs)))
 
 /// dot is BLAS level 1: fuse an elementwise product into a reduction, which is
 /// the shape varianceOf reuses twice — fold a mean, then capture it inside the
@@ -47,7 +52,7 @@ fn varianceOf(xs) = {
 fn saxpy(x: float, y: float) = 2.0 * x + y
 
 /// softWeight weights a score already shifted by the batch maximum, so d >= 0.
-fn softWeight(d: float) = (1.0 / (1.0 + d + d * d)) ?: 0.0
+fn softWeight(d: float) = (1.0 / (1.0 + d + d * d)) 
 
 /// softmax is four stages, two of them captures: fold the maximum, spend it in
 /// the shift, fold the partition function, spend that in the divide.
@@ -55,7 +60,7 @@ fn softmax(scores) = {
     let peak = scores |> gpuFold(gpuGet(scores, 0) ?: 0.0, maxF)
     let weights = scores |> gpuMap(fn(s) => softWeight(peak - s))
     let partition = sumOf(weights)
-    weights |> gpuMap(fn(w) => (w / partition) ?: 0.0)
+    weights |> gpuMap(fn(w) => (w / partition) )
 }
 
 /// rowDot walks one row of a flat row-major matrix against a vector. The
@@ -63,8 +68,8 @@ fn softmax(scores) = {
 /// definition, which recursion requires.
 fn rowDot(m, v, cols, r, c) = match c == cols {
     true => 0.0
-    false => at(m, (((r * cols) ?: 0) + c) ?: 0) * at(v, c)
-        + rowDot(m, v, cols, r, (c + 1) ?: 0)
+    false => at(m, (((r * cols) ) + c) ) * at(v, c)
+        + rowDot(m, v, cols, r, (c + 1) )
 }
 
 /// matVec gathers every row's dot product: one kernel invocation per row.
@@ -80,13 +85,13 @@ fn mse(w: float, xs: GpuBuffer<float>, ys: GpuBuffer<float>) =
 /// gradStep is one epoch of least-squares descent on y = w * x; the annotation
 /// types the captured w inside the kernel lambda.
 fn gradStep(w: float, xs: GpuBuffer<float>, ys: GpuBuffer<float>) = w - 0.05 * (((gpuZipWith(xs, ys,
-    fn(x, y) => 2.0 * (w * x - y) * x) |> gpuFold(0.0, addF)) / 3.0) ?: 0.0)
+    fn(x, y) => 2.0 * (w * x - y) * x) |> gpuFold(0.0, addF)) / 3.0) )
 
 /// train iterates gradStep n times, keeping the loop on buffers. Annotated for
 /// the same recursion-emission reason as rowDot.
 fn train(w, xs, ys, n) = match n {
     0 => w
-    _ => train(gradStep(w, xs, ys), xs, ys, (n - 1) ?: 0)
+    _ => train(gradStep(w, xs, ys), xs, ys, (n - 1) )
 }
 
 /// dotCase pins the fused product-and-reduce over orthogonal, negated, zeroed,
@@ -212,15 +217,15 @@ fn captureFoldedCase() = {
     checkAll("capture folded from another buffer", [
         total == 16.0,
         peak == 8.0,
-        sumOf(xs |> gpuMap(fn(x) => (x / total) ?: 0.0)) == 0.375,
-        (gpuGet(xs |> gpuMap(fn(x) => (x / total) ?: 0.0), 0) ?: 0.0) == 0.125,
+        sumOf(xs |> gpuMap(fn(x) => (x / total) )) == 0.375,
+        (gpuGet(xs |> gpuMap(fn(x) => (x / total) ), 0) ?: 0.0) == 0.125,
         sumOf(xs |> gpuMap(fn(x) => x - peak)) == 0.0 - 10.0,
         sumOf(xs |> gpuMap(fn(x) => peak * x)) == 48.0,
         (ws |> gpuFold(0.0, minF)) == 0.0,
         (ws |> gpuFold(gpuGet(ws, 0) ?: 0.0, minF)) == 1.0,
-        sumOf(ws |> gpuMap(fn(w) => (w / total) ?: 0.0)) == 1.0,
+        sumOf(ws |> gpuMap(fn(w) => (w / total) )) == 1.0,
         gpuLength(ws |> gpuFilter(fn(w) => w * 4.0 >= total)) == 2,
-        sumOf(gpuZipWith(xs, xs, mulF) |> gpuMap(fn(p) => (p / total) ?: 0.0)) == 1.25,
+        sumOf(gpuZipWith(xs, xs, mulF) |> gpuMap(fn(p) => (p / total) )) == 1.25,
         (toGpu([]) |> gpuFold(total, addF)) == 16.0
     ])
 }
@@ -256,7 +261,7 @@ fn captureDegenerateCase() = {
     let zero = 0.0
     let one = 1.0
     let xs = toGpu([1.0, 2.0, 3.0])
-    let guarded = xs |> gpuMap(fn(x) => (x / zero) ?: (0.0 - 1.0))
+    let guarded = degenerate(-1.0, fn() => xs |> gpuMap(fn(x) => x / zero))
     checkAll("degenerate captures", [
         sumOf(guarded) == 0.0 - 3.0,
         (gpuGet(guarded, 0) ?: 0.0) == 0.0 - 1.0,
@@ -279,11 +284,11 @@ fn weightedSumCase() = {
     let vals = toGpu([1.0, 2.0, 3.0, 4.0])
     let ws = toGpu([1.0, 2.0, 4.0, 1.0])
     let wtot = sumOf(ws)
-    let normw = ws |> gpuMap(fn(w) => (w / wtot) ?: 0.0)
+    let normw = ws |> gpuMap(fn(w) => (w / wtot) )
     checkAll("weighted sums", [
         wtot == 8.0,
         dot(vals, ws) == 21.0,
-        ((dot(vals, ws) / wtot) ?: 0.0) == 2.625,
+        ((dot(vals, ws) / wtot) ) == 2.625,
         sumOf(normw) == 1.0,
         (gpuGet(normw, 2) ?: 0.0) == 0.5,
         (gpuGet(normw, 0) ?: 0.0) == 0.125,
@@ -292,7 +297,7 @@ fn weightedSumCase() = {
         dot(vals, toGpu([0.0, 0.0, 0.0, 0.0])) == 0.0,
         dot(vals, toGpu([1.0, 1.0, 1.0, 1.0])) == sumOf(vals),
         sumOf(gpuZipWith(vals, ws, fn(v, w) => wtot * v * w)) == 168.0,
-        sumOf(vals |> gpuMap(fn(v) => (v / wtot) ?: 0.0)) == 1.25
+        sumOf(vals |> gpuMap(fn(v) => (v / wtot) )) == 1.25
     ])
 }
 
@@ -325,7 +330,7 @@ fn varianceCase() = {
     let xs = toGpu([2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0])
     let mean = meanOf(xs)
     let sd = 2.0
-    let z = xs |> gpuMap(fn(v) => ((v - mean) / sd) ?: 0.0)
+    let z = xs |> gpuMap(fn(v) => ((v - mean) / sd) )
     checkAll("variance and z-scores", [
         mean == 5.0,
         varianceOf(xs) == 4.0,
@@ -338,7 +343,7 @@ fn varianceCase() = {
         varianceOf(z) == 1.0,
         varianceOf(toGpu([3.0, 3.0, 3.0])) == 0.0,
         varianceOf(toGpu([])) == 0.0,
-        sumOf(toGpu([3.0, 3.0]) |> gpuMap(fn(v) => ((v - 3.0) / 0.0) ?: 0.0)) == 0.0
+        degenerate(0.0, fn() => sumOf(toGpu([3.0, 3.0]) |> gpuMap(fn(v) => (v - 3.0) / 0.0))) == 0.0
     ])
 }
 
@@ -348,7 +353,7 @@ fn normalizeCase() = {
     let xs = toGpu([1.0, 3.0, 5.0, 9.0])
     let lo = xs |> gpuFold(gpuGet(xs, 0) ?: 0.0, minF)
     let hi = xs |> gpuFold(gpuGet(xs, 0) ?: 0.0, maxF)
-    let scaled = xs |> gpuMap(fn(v) => ((v - lo) / (hi - lo)) ?: 0.0)
+    let scaled = xs |> gpuMap(fn(v) => ((v - lo) / (hi - lo)) )
     checkAll("normalisation", [
         lo == 1.0,
         hi == 9.0,
@@ -358,10 +363,10 @@ fn normalizeCase() = {
         (gpuGet(scaled, 3) ?: 0.0) == 1.0,
         sumOf(scaled) == 1.75,
         meanOf(scaled) == 0.4375,
-        sumOf(xs |> gpuMap(fn(v) => ((hi - v) / (hi - lo)) ?: 0.0)) == 2.25,
+        sumOf(xs |> gpuMap(fn(v) => ((hi - v) / (hi - lo)) )) == 2.25,
         (xs |> gpuFold(hi, minF)) == 1.0,
         gpuLength(xs |> gpuFilter(fn(v) => v > lo)) == 3,
-        sumOf(toGpu([4.0, 4.0]) |> gpuMap(fn(v) => ((v - 4.0) / 0.0) ?: 0.5)) == 1.0
+        degenerate(0.5, fn() => sumOf(toGpu([4.0, 4.0]) |> gpuMap(fn(v) => (v - 4.0) / 0.0))) == 1.0
     ])
 }
 
@@ -480,20 +485,40 @@ fn trainCase() = {
     ])
 }
 
-test("dot product fuses zip and fold", dotCase)
-test("saxpy runs elementwise over buffer pairs", saxpyCase)
-test("a kernel closes over one host scalar", captureScalarCase)
-test("one kernel closes over several distinct scalars", captureManyCase)
-test("one capture is spent by every combinator", captureSharedCase)
-test("a capture folded from one buffer drives a kernel over another", captureFoldedCase)
-test("captures survive gather, nesting, branching and shadowing", captureShapeCase)
-test("degenerate captures stay total on empty and ragged buffers", captureDegenerateCase)
-test("weighted sums normalise through a captured weight total", weightedSumCase)
-test("mean centering pipes a scalar back into a kernel", meanCase)
-test("variance and z-scores normalise a feature column", varianceCase)
-test("min-max rescaling captures both folded extremes", normalizeCase)
-test("relu clamps, leaks and counts active units", reluCase)
-test("a softmax-shaped pipeline is a shift-invariant distribution", softmaxCase)
-test("matrix-vector product gathers rows via iota", matVecCase)
-test("dense layers stack bias and activation over gathered rows", layerCase)
-test("gradient descent converges on the true weight", trainCase)
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
+
+test("dot product fuses zip and fold", fn() => exactArithmetic(dotCase))
+test("saxpy runs elementwise over buffer pairs", fn() => exactArithmetic(saxpyCase))
+test("a kernel closes over one host scalar", fn() => exactArithmetic(captureScalarCase))
+test("one kernel closes over several distinct scalars", fn() => exactArithmetic(captureManyCase))
+test("one capture is spent by every combinator", fn() => exactArithmetic(captureSharedCase))
+test("a capture folded from one buffer drives a kernel over another", fn() => exactArithmetic(captureFoldedCase))
+test("captures survive gather, nesting, branching and shadowing", fn() => exactArithmetic(captureShapeCase))
+test("degenerate captures stay total on empty and ragged buffers", fn() => exactArithmetic(captureDegenerateCase))
+test("weighted sums normalise through a captured weight total", fn() => exactArithmetic(weightedSumCase))
+test("mean centering pipes a scalar back into a kernel", fn() => exactArithmetic(meanCase))
+test("variance and z-scores normalise a feature column", fn() => exactArithmetic(varianceCase))
+test("min-max rescaling captures both folded extremes", fn() => exactArithmetic(normalizeCase))
+test("relu clamps, leaks and counts active units", fn() => exactArithmetic(reluCase))
+test("a softmax-shaped pipeline is a shift-invariant distribution", fn() => exactArithmetic(softmaxCase))
+test("matrix-vector product gathers rows via iota", fn() => exactArithmetic(matVecCase))
+test("dense layers stack bias and activation over gathered rows", fn() => exactArithmetic(layerCase))
+test("gradient descent converges on the true weight", fn() => exactArithmetic(trainCase))

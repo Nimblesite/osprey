@@ -48,7 +48,7 @@ bs = "\\"
 fieldCase () =
     check "string field" "${q}owner${q}:${q}Amelia${q}" (Json::strField "owner" "Amelia")
     check "number field" "${q}id${q}:7" (Json::numField "id" 7)
-    check "negative number field" "${q}delta${q}:-42" (Json::numField "delta" ((0 - 42) ?: 0))
+    check "negative number field" "${q}delta${q}:-42" (Json::numField "delta" (-42))
     check "zero number field" "${q}n${q}:0" (Json::numField "n" 0)
 
 (** --- the escaping contract: quotes and backslashes must be escaped ONCE --- *)

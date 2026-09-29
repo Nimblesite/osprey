@@ -5,7 +5,7 @@ import * as vscode from "vscode";
 import type { TestRunSink } from "../../client/src/test-explorer";
 
 /** Two passing cases ("addition works" line 3, "zero identity" line 7). */
-export const PASS_FIXTURE = `fn add(a, b) = a + b
+export const PASS_FIXTURE = `fn add(a, b) = wrapAdd(a, b)
 
 test("addition works", fn() => {
     expect(add(2, 3), 5)
@@ -17,7 +17,7 @@ test("zero identity", fn() => {
 `;
 
 /** "bad math" fails (expected 3, got 2), "good math" passes. */
-export const FAIL_FIXTURE = `fn add(a, b) = a + b
+export const FAIL_FIXTURE = `fn add(a, b) = wrapAdd(a, b)
 
 test("bad math", fn() => {
     expect(add(1, 1), 3)
@@ -29,7 +29,7 @@ test("good math", fn() => {
 `;
 
 /** One passing ML-flavor case, "ml addition". */
-export const ML_FIXTURE = `add (a, b) = a + b
+export const ML_FIXTURE = `add (a, b) = wrapAdd a b
 
 test "ml addition" (\\() =>
     check "sum" 5 (add (2, 3)))
@@ -135,7 +135,7 @@ export const BROKEN_FIXTURE = "fn broken( = nonsense !!\n";
  * One passing case plus a failing assertion OUTSIDE any test: TAP is all-ok
  * but the process exits 1 ([TESTING-EXIT]).
  */
-export const STRAY_FIXTURE = `fn add(a, b) = a + b
+export const STRAY_FIXTURE = `fn add(a, b) = wrapAdd(a, b)
 
 test("fine", fn() => {
     expect(add(1, 1), 2)
@@ -148,9 +148,9 @@ expect(add(1, 1), 5)
  * A covered `double` (line 1) and a never-called `unused` (line 3): a coverage
  * run must report line 3 with 0 hits ([TESTING-COVERAGE-VSCODE]).
  */
-export const COVERAGE_FIXTURE = `fn double(x) = x * 2
+export const COVERAGE_FIXTURE = `fn double(x) = wrapMul(x, 2)
 
-fn unused(x) = x * 99
+fn unused(x) = wrapMul(x, 99)
 
 test("doubles", fn() => {
     expect(double(5), 10)
@@ -164,7 +164,7 @@ test("doubles", fn() => {
  * declaration's doc must NOT leak onto the cases.
  */
 export const DOC_FIXTURE = `/// Adds two integers.
-fn add(a, b) = a + b
+fn add(a, b) = wrapAdd(a, b)
 
 /// Addition is commutative.
 ///
@@ -194,7 +194,7 @@ test("undocumented case", fn() => expect(add(1, 1), 2))
 `;
 
 /** A documented case that FAILS — proves docs reach the failure message. */
-export const DOC_FAIL_FIXTURE = `fn add(a, b) = a + b
+export const DOC_FAIL_FIXTURE = `fn add(a, b) = wrapAdd(a, b)
 
 /// Proves the broken invariant.
 ///
@@ -206,7 +206,7 @@ test("documented failure", fn() => {
 `;
 
 /** The ML twin of DOC_FIXTURE's first case, using \`(** … *)\` blocks. */
-export const ML_DOC_FIXTURE = `add a b = a + b
+export const ML_DOC_FIXTURE = `add a b = wrapAdd a b
 
 (** Addition is commutative.
 
@@ -219,23 +219,28 @@ test "ml bare" (\\() => check "bare" 1 1)
 /**
  * A busy suite the sampling profiler can collect frames from ([TESTING-PROFILE]).
  *
- * The iteration count is a sampling floor, not an arbitrary number. At 2,000,000
- * this yielded 19 on-CPU samples on a fast dev machine — few enough that the
- * profiler's own report appends "run longer for confidence" — and on a Linux CI
- * runner, whose sampler is a separate SIGPROF path, it yielded none at all, so
- * `presentProfile` refused the empty export with "speedscope file has no
- * profiles". Measured yield scales cleanly: 2M -> 19 samples, 20M -> 210,
- * 60M -> 623. 60,000,000 buys a ~30x margin over the failure point for about
- * half a second of CPU, so a slower or busier runner still lands far from zero.
+ * The iteration count is a sampling floor, not an arbitrary number. A run that
+ * yields ~20 on-CPU samples locally is few enough that the profiler's own report
+ * appends "run longer for confidence", and on a Linux CI runner, whose sampler is
+ * a separate SIGPROF path, it yielded none at all, so `presentProfile` refused
+ * the empty export with "speedscope file has no profiles".
+ *
+ * `spin` uses checked `+`/`-` under an `Arith` handler on purpose: with the
+ * total `wrapAdd`/`wrapSub` helpers the optimizer folds the sum into a closed
+ * form and the run ends before the first sample. Checked arithmetic costs about
+ * 0.4ns per iteration, so measured yield scales cleanly: 60M -> 24 samples,
+ * 600M -> 255, 1.2B -> 503. 1,500,000,000 buys a ~30x margin over the failure
+ * point for under a second of CPU, and its sum stays far below the int range.
  */
 export const PROFILE_FIXTURE = `fn spin(n, acc) = match n <= 0 {
     true => acc
-    false => spin((n - 1) ?: 0, (acc + n) ?: 0)
+    false => spin(n - 1, acc + n)
 }
 
 /// Burns enough CPU for the sampling profiler to collect frames.
 test("profiled work", fn() => {
-    expect(spin(60000000, 0) > 0, true)
+    handle Arith { overflow _ _ _ wrapped => wrapped }
+    expect(spin(1500000000, 0) > 0, true)
 })
 `;
 

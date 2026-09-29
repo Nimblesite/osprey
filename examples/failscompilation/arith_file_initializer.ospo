@@ -1,0 +1,4 @@
+// [ARITH-EFFECT-CONST] A file-scope initializer runs before any policy is installed, so it may not fault.
+fn add(a, b) = a + b
+let total = add(1, 2)
+print(total)

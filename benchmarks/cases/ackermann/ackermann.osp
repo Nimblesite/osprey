@@ -1,6 +1,6 @@
 // Ackermann–Péter function — deep, non-tail mutual self-recursion.
-fn add(a, b) = a + b ?: 0
-fn sub(a, b) = a - b ?: 0
+fn add(a, b) = a + b
+fn sub(a, b) = a - b
 
 fn ack(m, n) = match m {
     0 => add(n, 1)
@@ -10,4 +10,10 @@ fn ack(m, n) = match m {
     }
 }
 
-print("${ack(3, 10)}")
+fn main() = {
+    handle Arith { overflow _ _ _ wrapped => {
+            print("unexpected integer overflow")
+            wrapped
+        } }
+    print("${ack(3, 10)}")
+}

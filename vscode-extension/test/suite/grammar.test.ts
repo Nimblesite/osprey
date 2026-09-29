@@ -157,7 +157,7 @@ suite("TextMate grammars", () => {
       [
         "find doc id index count = match index >= count",
         '    true => LocalNote(note = "", priority = "normal")',
-        "    false => find doc id ((index + 1) ?: count) count",
+        "    false => find doc id (index + 1) count",
       ].join("\n"),
     );
     assertScoped(tokens, "true", "constant.language.boolean");

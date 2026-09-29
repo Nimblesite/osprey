@@ -1,3 +1,22 @@
+// Record faults for the entire report and reject it at the publication boundary.
+printExact work =
+    mut fault = ""
+    handle Arith
+        overflow op lhs _ _ =>
+            fault := "overflow in ${op}"
+            lhs
+        divideByZero op lhs =>
+            fault := "zero divisor in ${op}"
+            lhs
+        remainderByZero lhs =>
+            fault := "zero remainder divisor"
+            lhs
+    report = work ()
+    output = match fault
+        "" => report
+        _ => "REJECTED: ${fault}"
+    print output
+
 // Same handlers and work in Osprey's ML flavor.
 effect Ask
     value : Unit => int
@@ -6,7 +25,7 @@ effect Reader
 
 answer = handler Ask
     value => 41
-work () = (perform Ask.value () + 1) ?: 0
+work () = (perform Ask.value () + 1) 
 
 reading person = handler Reader
     name => person
@@ -14,9 +33,12 @@ greet () = "Hello, " + perform Reader.name () + "!"
 
 ada = reading "Ada"
 grace = reading "Grace"
-first = answer work
-second = answer work
-helloAda = ada greet
-helloGrace = grace greet
-helloAgain = ada greet
-print "${first}\n${second}\n${helloAda}\n${helloGrace}\n${helloAgain}"
+report () =
+    first = answer work
+    second = answer work
+    helloAda = ada greet
+    helloGrace = grace greet
+    helloAgain = ada greet
+    "${first}\n${second}\n${helloAda}\n${helloGrace}\n${helloAgain}"
+
+printExact report

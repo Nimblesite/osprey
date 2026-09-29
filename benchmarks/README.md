@@ -38,7 +38,7 @@ same way, for the same reason.
 > column on a machine with a few GB free, or skip it with `BENCH_FILTER`.
 >
 > <!-- binarytrees-results:start -->
-> Current measured peaks: default **1.9 GB**, `--memory=arc` **3.03 MB**, and `--memory=gc` **21.3 MB**.
+> Current measured peaks: default **631 MB**, `--memory=arc` **3.26 MB**, and `--memory=gc` **14.9 MB**.
 > <!-- binarytrees-results:end -->
 
 Results are written to `benchmarks/results/`. The measured outputs below are

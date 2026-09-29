@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 (** RecoveryError models expected failures whose handlers supply ordinary values. *)
 effect RecoveryError
     (** Supply the integer for the absent field `name`. *)
@@ -39,16 +53,16 @@ requirePositive value =
         false => perform RecoveryError.missingInt "positive value required"
 
 (** Continue ordinary arithmetic after a handler substitutes a missing integer. *)
-continuedValue : int -> int ! RecoveryError
-continuedValue value = requirePositive value + 2 ?: 0
+continuedValue : int -> int ![RecoveryError, Arith]
+continuedValue value = requirePositive value + 2 
 
 (** Request three replacements so handler state and substitution order are visible. *)
-recoverThree : Unit -> int ! RecoveryError
+recoverThree : Unit -> int ![RecoveryError, Arith]
 recoverThree () =
     first = perform RecoveryError.missingInt "first"
     second = perform RecoveryError.missingInt "second"
     third = perform RecoveryError.missingInt "third"
-    first + second + third ?: 0
+    first + second + third 
 
 (** Report one broken rule while returning Unit so later checks still execute. *)
 reportIf : bool -> string -> Unit ! RecoveryError
@@ -82,32 +96,32 @@ allocate requested available =
         false => requested
 
 (** Add fixed packaging work after the shared allocation function recovers. *)
-shipmentTotal : Unit -> int ! StockError
-shipmentTotal () = allocate 9 5 + 2 ?: 0
+shipmentTotal : Unit -> int ![StockError, Arith]
+shipmentTotal () = allocate 9 5 + 2 
 
 (** Recover an integer, audit both sides of the perform, and then keep computing. *)
-auditedRecovery : Unit -> int ! [RecoveryError, AuditError]
+auditedRecovery : Unit -> int ![RecoveryError, AuditError, Arith]
 auditedRecovery () =
     value = perform RecoveryError.missingInt "token"
     perform AuditError.note "body saw ${toString value}"
-    value + 1 ?: 0
+    value + 1 
 
 (** Perform the deeply nested failure at the bottom of the helper chain. *)
 bottomValue : Unit -> int ! RecoveryError
 bottomValue () = perform RecoveryError.missingInt "bottom"
 
 (** Carry one recovered value back through every recursive caller. *)
-descend : int -> int ! RecoveryError
+descend : int -> int ![RecoveryError, Arith]
 descend 0 = bottomValue ()
-descend depth = 1 + descend ((depth - 1) ?: 0) ?: 0
+descend depth = 1 + descend ((depth - 1) ) 
 
 (** Default the complete Result returned by the effect operation. *)
 lookupValue : string -> int ! LookupError
-lookupValue key = perform LookupError.find key ?: ((0 - 1) ?: 0)
+lookupValue key = perform LookupError.find key ?: ((0 - 1) )
 
 (** Combine both Result branches after one handler supplies their whole values. *)
-combineLookups : Unit -> int ! LookupError
-combineLookups () = lookupValue "known" * 10 + lookupValue "missing" ?: 0
+combineLookups : Unit -> int ![LookupError, Arith]
+combineLookups () = lookupValue "known" * 10 + lookupValue "missing" 
 
 (** Verify that successful code never enters an installed recovery arm. *)
 happyPathBypassCase () =
@@ -115,7 +129,7 @@ happyPathBypassCase () =
     value =
         handle RecoveryError
             missingInt _reason =>
-                recoveries := recoveries + 1 ?: recoveries
+                recoveries := recoveries + 1 
                 99
         requirePositive 7
 
@@ -147,9 +161,9 @@ repeatedRecoveryStateCase () =
     total =
         handle RecoveryError
             missingInt reason =>
-                recoveries := recoveries + 1 ?: recoveries
+                recoveries := recoveries + 1 
                 reasons := "${reasons}${reason}|"
-                recoveries * 10 ?: 0
+                recoveries * 10 
         recoverThree ()
 
     // Each call observes the updated handler-owned counter.
@@ -157,7 +171,7 @@ repeatedRecoveryStateCase () =
         total == 60,
         recoveries == 3,
         reasons == "first|second|third|",
-        total == (10 + 20 + 30 ?: 0)
+        total == (10 + 20 + 30 )
     ]
 
 (** Verify Unit-valued reports collect every error without stopping validation. *)
@@ -167,9 +181,9 @@ collectAllReportsCase () =
     result =
         handle RecoveryError
             report field =>
-                reports := reports + 1 ?: reports
+                reports := reports + 1 
                 fields := "${fields}${field}|"
-        validateRecord "" ((0 - 3) ?: 0) ""
+        validateRecord "" ((0 - 3) ) ""
 
     // Validation reaches its final value after all four broken rules report.
     checkAll "collect all reports" [
@@ -211,7 +225,7 @@ twoPoliciesCase () =
         skipped == 2,
         capped == 7,
         capped > skipped,
-        (capped - skipped ?: 0) == 5
+        (capped - skipped ) == 5
     ]
 
 (** Verify an inner same-effect arm overrides one operation and then disappears. *)
@@ -244,7 +258,7 @@ outerEffectCompositionCase () =
     result =
         handle AuditError
             note message =>
-                noteCount := noteCount + 1 ?: noteCount
+                noteCount := noteCount + 1 
                 notes := "${notes}${message}|"
         handle RecoveryError
             missingInt reason =>
@@ -266,7 +280,7 @@ deepRecursionCase () =
     value =
         handle RecoveryError
             missingInt _reason =>
-                recoveries := recoveries + 1 ?: recoveries
+                recoveries := recoveries + 1 
                 8
         descend 4
 
@@ -274,7 +288,7 @@ deepRecursionCase () =
     checkAll "deep helper recursion" [
         value == 12,
         recoveries == 1,
-        (value - 8 ?: 0) == 4
+        (value - 8 ) == 4
     ]
 
 (** A direct arm returning a whole `Result` must deliver that exact value. *)
@@ -283,7 +297,7 @@ wholeResultOperationCase () =
     combined =
         handle LookupError
             find key =>
-                lookups := lookups + 1 ?: lookups
+                lookups := lookups + 1 
                 match key
                     "known" => Success(value = 4)
                     _ => Error(message = "absent")
@@ -327,7 +341,7 @@ effect ValueError
 gradeScore grade =
     match grade
         Granted score => score
-        Refused reason => 0 - length reason ?: 0
+        Refused reason => 0 - length reason 
 
 (** Fold both Result constructors into one integer so the payload is observable. *)
 resultScore outcome =
@@ -336,7 +350,7 @@ resultScore outcome =
         Error message => length message
 
 (** Perform every declared ValueError operation once and render what came back. *)
-everyValue : Unit -> string ! ValueError
+everyValue : Unit -> string ![ValueError, Arith]
 everyValue () =
     n = perform ValueError.asInt "count"
     f = perform ValueError.asFloat "ratio"
@@ -361,12 +375,12 @@ effect TierError
     tier : string => string
 
 (** Draw all three TierError channels in a pinned order and render one quote. *)
-tierQuote : string -> string ! TierError
+tierQuote : string -> string ![TierError, Arith]
 tierQuote label =
     amount = perform TierError.base label
     extra = perform TierError.bonus label
     name = perform TierError.tier label
-    combined = amount + extra ?: 0
+    combined = amount + extra 
     "${name}:${toString combined}"
 
 (** Tally lets a callback ask for a scaled contribution and then record it. *)
@@ -388,13 +402,13 @@ effect StepError
     contribute : int => int
 
 (** Perform before descending so the visit order is the recursion order. *)
-descendSum : int -> int ! StepError
+descendSum : int -> int ![StepError, Arith]
 descendSum depth =
     match depth
         0 => 0
         _ =>
             here = perform StepError.contribute depth
-            here + descendSum ((depth - 1) ?: 0) ?: 0
+            here + descendSum ((depth - 1) ) 
 
 (** Cross four effects in one body so a stack of regions has to cooperate. *)
 crossEffectBody : Unit -> string ! [RecoveryError, AuditError, StockError, PolicyError]
@@ -458,7 +472,7 @@ everyResultTypeCase () =
                 trail := "${trail}r:${field}|"
                 Success(value = 9)
             mark field =>
-                marks := marks + 1 ?: marks
+                marks := marks + 1 
                 trail := "${trail}m:${field}|"
         everyValue ()
     intValue =
@@ -514,8 +528,8 @@ everyResultTypeCase () =
         intValue != 12,
         negativeValue == -41,
         negativeValue < 0,
-        (intValue - negativeValue ?: 0) == 41,
-        (negativeValue + 41 ?: 0) == 0,
+        (intValue - negativeValue ) == 41,
+        (negativeValue + 41 ) == 0,
         floatValue == 2.5,
         floatValue > 2.0,
         floatValue < 3.0,
@@ -550,8 +564,8 @@ everyResultTypeCase () =
         refusedScore < 0,
         length "denied" == 6,
         grantedScore != refusedScore,
-        (grantedScore + refusedScore ?: 0) == 1,
-        (grantedScore - refusedScore ?: 0) == 13,
+        (grantedScore + refusedScore ) == 1,
+        (grantedScore - refusedScore ) == 13,
         gradeScore (Granted(score = 0)) == 0,
         gradeScore (Refused(reason = "")) == 0,
         gradeScore (Granted(score = -3)) == -3,
@@ -564,7 +578,7 @@ everyResultTypeCase () =
         okScore == 5,
         badScore == 6,
         okScore != badScore,
-        (okScore + badScore ?: 0) == 11,
+        (okScore + badScore ) == 11,
         badScore == length "absent",
         resultScore (Success(value = 0)) == 0,
         resultScore (Error(message = "")) == 0,
@@ -575,7 +589,7 @@ everyResultTypeCase () =
         (badValue ?: 77) == 77,
         marks == 1,
         marks != 0,
-        (marks * 3 ?: 0) == 3,
+        (marks * 3 ) == 3,
         endsWith trail "m:rendered|"
     ]
 
@@ -618,15 +632,15 @@ partialOverrideLatticeCase () =
     flat =
         handle TierError
             base label =>
-                flatCalls := flatCalls + 1 ?: flatCalls
+                flatCalls := flatCalls + 1 
                 flatTrail := "${flatTrail}base:${label}|"
                 100
             bonus label =>
-                flatCalls := flatCalls + 1 ?: flatCalls
+                flatCalls := flatCalls + 1 
                 flatTrail := "${flatTrail}bonus:${label}|"
                 5
             tier label =>
-                flatCalls := flatCalls + 1 ?: flatCalls
+                flatCalls := flatCalls + 1 
                 flatTrail := "${flatTrail}tier:${label}|"
                 "gold"
         first = tierQuote "a"
@@ -635,7 +649,7 @@ partialOverrideLatticeCase () =
     overridden =
         handle TierError
             base _label =>
-                outerBaseCalls := outerBaseCalls + 1 ?: outerBaseCalls
+                outerBaseCalls := outerBaseCalls + 1 
                 100
             bonus _label => 5
             tier _label => "gold"
@@ -643,7 +657,7 @@ partialOverrideLatticeCase () =
         inside =
             handle TierError
                 base _label =>
-                    innerBaseCalls := innerBaseCalls + 1 ?: innerBaseCalls
+                    innerBaseCalls := innerBaseCalls + 1 
                     200
             tierQuote "in"
         afterwards = tierQuote "post"
@@ -699,7 +713,7 @@ partialOverrideLatticeCase () =
         contains flat "105/gold",
         flat != "gold:105",
         flatCalls == 6,
-        flatCalls == (2 * 3 ?: 0),
+        flatCalls == (2 * 3 ),
         flatTrail == "base:a|bonus:a|tier:a|base:b|bonus:b|tier:b|",
         length flatTrail == 44,
         startsWith flatTrail "base:a|",
@@ -716,7 +730,7 @@ partialOverrideLatticeCase () =
         outerBaseCalls == 2,
         innerBaseCalls == 1,
         outerBaseCalls > innerBaseCalls,
-        (outerBaseCalls + innerBaseCalls ?: 0) == 3,
+        (outerBaseCalls + innerBaseCalls ) == 3,
         contains overridden "gold:205",
         startsWith overridden "gold:105|",
         endsWith overridden "|gold:105",
@@ -724,7 +738,7 @@ partialOverrideLatticeCase () =
         !(startsWith overridden "gold:205"),
         contains overridden "|gold:205|",
         overridden != flat,
-        (200 + 5 ?: 0) == 205
+        (200 + 5 ) == 205
     ]
 
     // Three single-arm regions cover complementary operations; nesting them in
@@ -739,7 +753,7 @@ partialOverrideLatticeCase () =
         contains split "r:1",
         !(contains split "gold"),
         split != flat,
-        (10 + 3 ?: 0) == 13,
+        (10 + 3 ) == 13,
         !(startsWith reordered "13"),
         endsWith reordered "13"
     ]
@@ -788,11 +802,11 @@ higherOrderRecoveryCase () =
     finished =
         handle Tally
             scale value =>
-                scaled := scaled + 1 ?: scaled
-                value * 2 ?: 0
+                scaled := scaled + 1 
+                value * 2 
             add value =>
-                total := total + value ?: total
-                steps := steps + 1 ?: steps
+                total := total + value 
+                steps := steps + 1 
                 trail := "${trail}${toString value}|"
         forEachList none (\value => tallyOne value)
         forEachList one (\value => tallyOne value)
@@ -802,9 +816,9 @@ higherOrderRecoveryCase () =
         "finished"
     negated =
         handle Tally
-            scale value => 0 - value ?: 0
+            scale value => 0 - value 
             add value =>
-                negatives := negatives + value ?: negatives
+                negatives := negatives + value 
         forEachList mixed (\value => tallyOne value)
         "negated"
 
@@ -817,7 +831,7 @@ higherOrderRecoveryCase () =
         scaled == 12,
         scaled == steps,
         total == 182,
-        total == (14 + 18 + 30 + 120 ?: 0),
+        total == (14 + 18 + 30 + 120 ),
         total > 0,
         total != 91,
         trail == "14|6|6|6|2|4|6|8|10|20|40|60|",
@@ -838,7 +852,7 @@ higherOrderRecoveryCase () =
         listLength nested == 2,
         isEmpty none,
         !(isEmpty one),
-        steps == (listLength one + listLength dup + listLength mixed + 3 ?: 0),
+        steps == (listLength one + listLength dup + listLength mixed + 3 ),
         listContains dup 3,
         !(listContains dup 6),
         listContains mixed 5,
@@ -872,9 +886,9 @@ higherOrderRecoveryCase () =
         negated == "negated",
         negatives == -15,
         negatives < 0,
-        (negatives + 15 ?: 0) == 0,
-        (0 - negatives ?: 0) == 15,
-        (1 + 2 + 3 + 4 + 5 ?: 0) == 15,
+        (negatives + 15 ) == 0,
+        (0 - negatives ) == 15,
+        (1 + 2 + 3 + 4 + 5 ) == 15,
         total == 182,
         steps == 12,
         scaled == 12,
@@ -900,39 +914,39 @@ recursiveAccumulationCase () =
     total =
         handle StepError
             contribute depth =>
-                visits := visits + 1 ?: visits
+                visits := visits + 1 
                 lastDepth := depth
                 trail := "${trail}${toString depth}:${toString visits}|"
-                visits * 10 ?: 0
+                visits * 10 
         descendSum 8
     zeroTotal =
         handle StepError
             contribute _depth =>
-                zeroVisits := zeroVisits + 1 ?: zeroVisits
+                zeroVisits := zeroVisits + 1 
                 99
         descendSum 0
     oneTotal =
         handle StepError
             contribute depth =>
-                oneVisits := oneVisits + 1 ?: oneVisits
-                depth * 3 ?: 0
+                oneVisits := oneVisits + 1 
+                depth * 3 
         descendSum 1
     deepTotal =
         handle StepError
             contribute depth =>
-                deepVisits := deepVisits + 1 ?: deepVisits
+                deepVisits := deepVisits + 1 
                 depth
         descendSum 33
     doubled =
         handle StepError
-            contribute depth => depth * 2 ?: 0
+            contribute depth => depth * 2 
         descendSum 33
 
     // Eight levels answer 10, 20 ... 80 from the handler's own counter, so the
     // total is 360 and the transcript pairs each depth with its visit number.
     checkAll "each recursion level enters the handler exactly once" [
         total == 360,
-        total == (10 + 20 + 30 + 40 + 50 + 60 + 70 + 80 ?: 0),
+        total == (10 + 20 + 30 + 40 + 50 + 60 + 70 + 80 ),
         visits == 8,
         lastDepth == 1,
         trail == "8:1|7:2|6:3|5:4|4:5|3:6|2:7|1:8|",
@@ -942,7 +956,7 @@ recursiveAccumulationCase () =
         contains trail "|4:5|",
         !(contains trail "9:"),
         !(contains trail "0:"),
-        (visits * 10 ?: 0) == 80,
+        (visits * 10 ) == 80,
         total > 0,
         total != 36
     ]
@@ -957,10 +971,10 @@ recursiveAccumulationCase () =
         zeroVisits < oneVisits,
         zeroTotal != oneTotal,
         zeroTotal < oneTotal,
-        (oneTotal - zeroTotal ?: 0) == 3,
+        (oneTotal - zeroTotal ) == 3,
         oneTotal != 99,
         zeroTotal != 99,
-        (zeroVisits + oneVisits ?: 0) == 1,
+        (zeroVisits + oneVisits ) == 1,
         oneVisits != visits
     ]
 
@@ -970,23 +984,23 @@ recursiveAccumulationCase () =
         deepTotal == 561,
         // `/` is always float division [ARITH-CHECKED], so the integer
         // half-sum goes through `intDiv`.
-        deepTotal == (intDiv (33 * 34 ?: 0) 2 ?: 0),
+        deepTotal == (intDiv (33 * 34 ) 2 ),
         deepVisits == 33,
         deepVisits > 32,
         doubled == 1122,
-        doubled == (deepTotal * 2 ?: 0),
+        doubled == (deepTotal * 2 ),
         doubled != deepTotal,
-        (doubled - deepTotal ?: 0) == 561,
+        (doubled - deepTotal ) == 561,
         deepTotal > total,
         deepVisits > visits,
-        (deepVisits - visits ?: 0) == 25,
+        (deepVisits - visits ) == 25,
         deepTotal != 528
     ]
 
     // Across all four runs 8 + 0 + 1 + 33 == 42 arm entries happened, and each
     // run's own answer is still readable after the later regions have closed.
     checkAll "every level of every run entered its own handler" [
-        (visits + zeroVisits + oneVisits + deepVisits ?: 0) == 42,
+        (visits + zeroVisits + oneVisits + deepVisits ) == 42,
         visits == 8,
         deepVisits == 33,
         total == 360,
@@ -994,8 +1008,8 @@ recursiveAccumulationCase () =
         doubled == 1122,
         oneTotal == 3,
         zeroTotal == 0,
-        (total + oneTotal + zeroTotal ?: 0) == 363,
-        (deepTotal + doubled ?: 0) == 1683
+        (total + oneTotal + zeroTotal ) == 363,
+        (deepTotal + doubled ) == 1683
     ]
 
 (** Verify four effects compose in one stack of nested direct regions.
@@ -1015,25 +1029,25 @@ multiEffectRegionCase () =
     rendered =
         handle AuditError
             note message =>
-                notes := notes + 1 ?: notes
+                notes := notes + 1 
                 trail := "${trail}A(${message})|"
         handle RecoveryError
             missingInt reason =>
-                recoveries := recoveries + 1 ?: recoveries
+                recoveries := recoveries + 1 
                 trail := "${trail}R(${reason})|"
                 6
         handle StockError
             shortage requested available =>
-                shortages := shortages + 1 ?: shortages
+                shortages := shortages + 1 
                 trail := "${trail}S(${toString requested},${toString available})|"
                 available
         handle PolicyError
             score key =>
-                policies := policies + 1 ?: policies
+                policies := policies + 1 
                 trail := "${trail}P(${key})|"
                 25
             label key =>
-                policies := policies + 1 ?: policies
+                policies := policies + 1 
                 trail := "${trail}L(${key})|"
                 "priority"
         crossEffectBody ()
@@ -1052,11 +1066,11 @@ multiEffectRegionCase () =
     generous =
         handle AuditError
             note _message =>
-                generousAudits := generousAudits + 1 ?: generousAudits
+                generousAudits := generousAudits + 1 
         handle RecoveryError
             missingInt _reason => 2
         handle StockError
-            shortage requested available => requested + available ?: 0
+            shortage requested available => requested + available 
         handle PolicyError
             score _key => 0
             label _key => "basic"
@@ -1075,7 +1089,7 @@ multiEffectRegionCase () =
         recoveries == 1,
         shortages == 1,
         policies == 2,
-        (notes + recoveries + shortages + policies ?: 0) == 7,
+        (notes + recoveries + shortages + policies ) == 7,
         notes > recoveries,
         policies > shortages,
         recoveries == shortages
@@ -1149,7 +1163,7 @@ boundaryValueRecoveryCase () =
     joined =
         handle TextError
             fill field =>
-                fills := fills + 1 ?: fills
+                fills := fills + 1 
                 seen := "${seen}${field}${toString fills}|"
                 match fills
                     1 => ""
@@ -1270,71 +1284,72 @@ boundaryValueRecoveryCase () =
         negative == -2147483647,
         negative < zero,
         negative < 0,
-        (big + negative ?: 0) == 0,
-        (big - big ?: 0) == 0,
-        (zero - negative ?: 0) == big,
+        (big + negative ) == 0,
+        (big - big ) == 0,
+        (zero - negative ) == big,
         big != negative,
-        (abs negative ?: 0) == big
+        (abs negative ) == big
     ]
 
 (** A run that never fails must never enter a recovery arm.
 
     The handler is installed but its operations stay untouched, so the
     value reaching the caller is the ordinary computed one. *)
-test "successful paths bypass recovery handlers" happyPathBypassCase
+
+test "successful paths bypass recovery handlers" (\() => exactArithmetic (happyPathBypassCase))
 (** A handler-supplied value resumes ordinary arithmetic where the
     failure was performed, rather than unwinding to the handler. *)
-test "fallback values continue at the perform site" fallbackContinuationCase
+test "fallback values continue at the perform site" (\() => exactArithmetic (fallbackContinuationCase))
 (** Three substitutions in one handler scope observe the handler's own
     mutable state, proving each recovery resumes into the same handler
     instance instead of a fresh one. *)
-test "repeated recoveries share handler-owned state" repeatedRecoveryStateCase
+test "repeated recoveries share handler-owned state" (\() => exactArithmetic (repeatedRecoveryStateCase))
 (** A `Unit`-returning report operation records a broken rule and lets
     every later rule still run, so one validation pass collects all
     failures instead of stopping at the first. *)
-test "Unit error reports collect without early exit" collectAllReportsCase
+test "Unit error reports collect without early exit" (\() => exactArithmetic (collectAllReportsCase))
 (** One handler answers `int`, `string`, and `bool` operations of the
     same effect, proving each operation keeps its own result type. *)
-test "one handler supplies several result types" multipleResultTypesCase
+test "one handler supplies several result types" (\() => exactArithmetic (multipleResultTypesCase))
 (** The same effectful function runs under two different handlers and
     yields two different answers — the policy lives in the handler, not
     in the function. *)
-test "one effectful function supports two policies" twoPoliciesCase
+test "one effectful function supports two policies" (\() => exactArithmetic (twoPoliciesCase))
 (** An inner handler shadows ONE operation of an effect; the outer
     handler still answers the others, and its behavior returns once the
     inner scope ends. *)
-test "nested handlers override locally and restore outer behavior" nestedOverrideCase
+test "nested handlers override locally and restore outer behavior" (\() => exactArithmetic (nestedOverrideCase))
 (** A recovery arm performs a second, outer effect while recovering from
     the first — composition across effect boundaries. *)
-test "a recovery arm can use an outer effect" outerEffectCompositionCase
+test "a recovery arm can use an outer effect" (\() => exactArithmetic (outerEffectCompositionCase))
 (** A failure performed several helper calls and recursion levels deep
     still reaches the installed handler. *)
-test "recovery reaches through helpers and recursion" deepRecursionCase
+test "recovery reaches through helpers and recursion" (\() => exactArithmetic (deepRecursionCase))
 (** A handler may answer with a complete `Result`, choosing success or
     failure itself rather than only supplying a bare fallback.
 
     # Since
     0.3 *)
-test "handlers can return whole Result operation values" wholeResultOperationCase
+test "handlers can return whole Result operation values" (\() => exactArithmetic (wholeResultOperationCase))
 (** A direct arm may supply `int`, `float`, `bool`, `string`, a record, a
     tagged union, a whole `Result` or `Unit`, and each one reaches the
     perform site with its declared type and payload intact. *)
-test "every declared operation result type crosses a direct arm" everyResultTypeCase
+test "every declared operation result type crosses a direct arm" (\() => exactArithmetic (everyResultTypeCase))
 (** Discharge is per operation: partial regions cover complementary
     operations, an inner arm overrides one operation while its siblings fall
     through, and the outer policy answers again once the inner region ends. *)
-test "partial and nested handlers split one effect's operations" partialOverrideLatticeCase
+test "partial and nested handlers split one effect's operations" (\() => exactArithmetic (partialOverrideLatticeCase))
 (** A `perform` inside a lambda handed to `forEachList` reaches the installed
     handler once per element, in index order, for empty, singleton, duplicate
     and nested inputs alike. *)
-test "a callback passed to a higher-order function reaches the handler" higherOrderRecoveryCase
+test "a callback passed to a higher-order function reaches the handler" (\() => exactArithmetic (higherOrderRecoveryCase))
 (** Recursion in the handled body enters the handler exactly once per level,
     including at depth zero, depth one and past the thirty-two level mark. *)
-test "recursion in the handled body enters the handler once per level" recursiveAccumulationCase
+test "recursion in the handled body enters the handler once per level" (\() => exactArithmetic (recursiveAccumulationCase))
 (** Four effects performed by one body are discharged by four nested regions;
     nesting order does not change any value, and one shared transcript records
     the exact interleaving of the four channels. *)
-test "four effects compose in one nested region stack" multiEffectRegionCase
+test "four effects compose in one nested region stack" (\() => exactArithmetic (multiEffectRegionCase))
 (** Empty, single-character, punctuated, repeated and case-mixed text, and
     zero, maximum and negated numbers, all cross a direct arm unchanged. *)
-test "boundary values cross a direct arm unchanged" boundaryValueRecoveryCase
+test "boundary values cross a direct arm unchanged" (\() => exactArithmetic (boundaryValueRecoveryCase))

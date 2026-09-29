@@ -18,10 +18,10 @@ fn declared_modes_distinguish_value_return_control_return_and_resumption() {
         r#"
 effect ValueAsk { value: fn() -> int }
 effect ControlAsk { control value: fn() -> int }
-fn valueWork() = (perform ValueAsk.value() + 1) ?: 0
-fn controlWork() = (perform ControlAsk.value() + 1) ?: 0
+fn valueWork() = satAdd(perform ValueAsk.value(), 1)
+fn controlWork() = satAdd(perform ControlAsk.value(), 1)
 let replace = handler ValueAsk { value => 41 }
-let around = handler ControlAsk { value => (resume(41) + 100) ?: 0 }
+let around = handler ControlAsk { value => satAdd(resume(41), 100) }
 let noResume = handler ControlAsk { value => 0 }
 let deadResume = handler ControlAsk {
     value => match false { true => resume(0) false => 0 }
@@ -37,12 +37,12 @@ effect ValueAsk
     value : Unit => int
 effect ControlAsk
     control value : Unit => int
-valueWork () = (perform ValueAsk.value () + 1) ?: 0
-controlWork () = (perform ControlAsk.value () + 1) ?: 0
+valueWork () = satAdd (perform ValueAsk.value ()) 1
+controlWork () = satAdd (perform ControlAsk.value ()) 1
 replace = handler ValueAsk
     value => 41
 around = handler ControlAsk
-    value => ((resume 41) + 100) ?: 0
+    value => satAdd (resume 41) 100
 noResume = handler ControlAsk
     value => 0
 deadResume = handler ControlAsk
@@ -67,7 +67,7 @@ fn mixed_effect_operations_keep_their_own_modes() {
 effect Mixed { plain: fn() -> int control stop: fn() -> int }
 fn work() = {
     let first = perform Mixed.plain()
-    (first + perform Mixed.stop()) ?: 0
+    satAdd(first, perform Mixed.stop())
 }
 let stopping = handler Mixed { plain => 41 stop => 0 }
 let continuing = handler Mixed { plain => 41 stop => resume(1) }
@@ -79,7 +79,7 @@ effect Mixed
     control stop : Unit => int
 work () =
     first = perform Mixed.plain ()
-    (first + perform Mixed.stop ()) ?: 0
+    satAdd first (perform Mixed.stop ())
 stopping = handler Mixed
     plain => 41
     stop => 0
@@ -101,13 +101,13 @@ effect ValueAsk { value: fn() -> int }
 effect ControlAsk { control value: fn() -> int }
 let value = {
     handle ValueAsk { value => 40 }
-    handle ValueAsk { value => (perform ValueAsk.value() + 1) ?: 0 }
-    (perform ValueAsk.value() + 1) ?: 0
+    handle ValueAsk { value => satAdd(perform ValueAsk.value(), 1) }
+    satAdd(perform ValueAsk.value(), 1)
 }
 let control = {
     handle ControlAsk { value => resume(40) }
-    handle ControlAsk { value => resume((perform ControlAsk.value() + 1) ?: 0) }
-    (perform ControlAsk.value() + 1) ?: 0
+    handle ControlAsk { value => resume(satAdd(perform ControlAsk.value(), 1)) }
+    satAdd(perform ControlAsk.value(), 1)
 }
 print("${value}:${control}")
 "#,
@@ -120,14 +120,14 @@ value =
     handle ValueAsk
         value => 40
     handle ValueAsk
-        value => (perform ValueAsk.value () + 1) ?: 0
-    (perform ValueAsk.value () + 1) ?: 0
+        value => satAdd (perform ValueAsk.value ()) 1
+    satAdd (perform ValueAsk.value ()) 1
 control =
     handle ControlAsk
         value => resume 40
     handle ControlAsk
-        value => resume ((perform ControlAsk.value () + 1) ?: 0)
-    (perform ControlAsk.value () + 1) ?: 0
+        value => resume (satAdd (perform ControlAsk.value ()) 1)
+    satAdd (perform ControlAsk.value ()) 1
 print "${value}:${control}"
 "#,
         "42:42\n",
@@ -145,7 +145,7 @@ let names = handler Ask<string> { value => resume("Ada") }
 fn twice() = {
     let first = perform Ask<int>.value()
     let second = perform Ask<int>.value()
-    (first + second) ?: 0
+    satAdd(first, second)
 }
 let total = numbers(twice)
 let name = names(|| => perform Ask<string>.value())
@@ -161,7 +161,7 @@ names = handler Ask<string>
 twice () =
     first = perform Ask<int>.value ()
     second = perform Ask<int>.value ()
-    (first + second) ?: 0
+    satAdd first second
 total = numbers twice
 name = names (\() => perform Ask<string>.value ())
 print "${total}:${name}"

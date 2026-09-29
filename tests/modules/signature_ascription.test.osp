@@ -4,6 +4,27 @@
 
 namespace store;
 
+
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
+
 signature CounterApi {
     type Counter
     fn empty() -> Counter
@@ -32,7 +53,7 @@ module Counters : CounterApi {
     type Counter = { count: int }
 
     /// A private helper is not in the signature, so it stays module-private.
-    fn step(n) = (n + 1) ?: n
+    fn step(n) = (n + 1) 
 
     fn empty() = Counter { count: 0 }
     fn bump(c) = Counter { count: step(c.count) }
@@ -54,7 +75,7 @@ module Trees : TreeApi {
         fn value() = 21
     }
 
-    fn doubled() = (Leaf::value() * 2) ?: 0
+    fn doubled() = (Leaf::value() * 2) 
 }
 
 /// An unascribed module reaches the same surface through plain `export`.
@@ -64,7 +85,7 @@ module Trees : TreeApi {
 module Extended {
     type Counter = { count: int }
     export fn empty() = Counter { count: 5 }
-    export fn bump(c) = Counter { count: ((c.count + 2) ?: c.count) }
+    export fn bump(c) = Counter { count: ((c.count + 2)) }
     export fn size(c) = c.count
 
     export fn seeded() = size(empty())
@@ -91,7 +112,7 @@ fn signatureEffectCase() = checkAll("signature effect stays performable", [
     readAs(7) == 7,
     readAs(0) == 0,
     readAs(41) == 41,
-    ((readAs(41) + 1) ?: 0) == 42,
+    ((readAs(41) + 1) ) == 42,
     readAs(readAs(3)) == 3
 ])
 
@@ -104,7 +125,8 @@ fn nestedAndExtraCase() = checkAll("nested ascription and extra exports", [
     Extended::seeded() == 5
 ])
 
-print("${Counters::size(Counters::bump(Counters::empty()))} ${Trees::doubled()} ${Extended::seeded()}")
-test("abstract signature types stay abstract", abstractTypeCase)
-test("signature effects remain performable", signatureEffectCase)
-test("nested ascription and extra exports conform", nestedAndExtraCase)
+exactArithmetic(fn() => print("${Counters::size(Counters::bump(Counters::empty()))} ${Trees::doubled()} ${Extended::seeded()}"))
+
+test("abstract signature types stay abstract", fn() => exactArithmetic(abstractTypeCase))
+test("signature effects remain performable", fn() => exactArithmetic(signatureEffectCase))
+test("nested ascription and extra exports conform", fn() => exactArithmetic(nestedAndExtraCase))

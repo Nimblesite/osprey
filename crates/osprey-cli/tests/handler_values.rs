@@ -119,7 +119,7 @@ fn counter(initial) -> fn(fn() -> int) -> int = {
     (|action| => {
         handle Count {
             next => {
-                count = (count + 1) ?: count
+                count = satAdd(count, 1)
                 count
             }
         }
@@ -146,7 +146,7 @@ fn counter(initial) = {
     mut count = initial
     handler Count {
         next => {
-            count = (count + 1) ?: count
+            count = satAdd(count, 1)
             count
         }
     }
@@ -169,7 +169,7 @@ counter initial =
     mut count = initial
     handler Count
         next =>
-            count := (count + 1) ?: count
+            count := satAdd count 1
             count
 a = counter 0
 b = counter 10
@@ -217,12 +217,12 @@ fn counter(initial) = {
     mut count = initial
     if true {
         handler Count { next => {
-            count = (count + 1) ?: count
+            count = satAdd(count, 1)
             count
         } }
     } else {
         handler Count { next => {
-            count = (count + 1) ?: count
+            count = satAdd(count, 1)
             count
         } }
     }
@@ -240,11 +240,11 @@ counter initial =
     match true
         true => handler Count
             next =>
-                count := (count + 1) ?: count
+                count := satAdd count 1
                 count
         false => handler Count
             next =>
-                count := (count + 1) ?: count
+                count := satAdd count 1
                 count
 a = counter 0
 first = a (\() => perform Count.next ())
@@ -297,13 +297,13 @@ fn function_valued_generic_operations_keep_their_instance_through_discharge() {
     for (stage, name) in [("", "dynamic"), ("static ", "static")] {
         let default = format!(
             "effect Carry<T> {{ fetch: fn() -> T }}\n\
-             let h = handler {stage}Carry<fn(int) -> int> {{ fetch => |x| => (x + 1) ?: 0 }}\n\
+             let h = handler {stage}Carry<fn(int) -> int> {{ fetch => |x| => satAdd(x, 1) }}\n\
              let f: fn(int) -> int = h(|| => perform Carry.fetch())\n\
              print(f(41))\n"
         );
         let ml = format!(
             "effect Carry T\n    fetch : Unit => T\n\
-             h = handler {stage}Carry<(int -> int)>\n    fetch => \\x => (x + 1) ?: 0\n\
+             h = handler {stage}Carry<(int -> int)>\n    fetch => \\x => satAdd x 1\n\
              f : int -> int\nf = h (\\() => perform Carry.fetch ())\n\
              print (f 41)\n"
         );
@@ -317,7 +317,7 @@ fn handler_values_are_callable_in_both_flavors_without_in_or_do() {
     let default = r#"
 effect Ask { value: fn() -> int }
 let answer = handler Ask { value => 41 }
-fn work() = (perform Ask.value() + 1) ?: 0
+fn work() = satAdd(perform Ask.value(), 1)
 let first = answer(work)
 let second = answer(work)
 print("${first}\n${second}")
@@ -327,7 +327,7 @@ effect Ask
     value : Unit => int
 answer = handler Ask
     value => 41
-work () = (perform Ask.value () + 1) ?: 0
+work () = satAdd (perform Ask.value ()) 1
 first = answer work
 second = answer work
 print "${first}\n${second}"
@@ -343,7 +343,7 @@ fn handler_values_can_return_functions_supplied_by_effect_arms() {
         "osp",
         r"
 effect Read { read: fn() -> fn(int) -> int }
-let h = handler Read { read => |n| => (n + 1) ?: 0 }
+let h = handler Read { read => |n| => satAdd(n, 1) }
 let action = h(|| => perform Read.read())
 print(action(41))
 ",
@@ -356,7 +356,7 @@ print(action(41))
 effect Read
     read : Unit => (int -> int)
 h = handler Read
-    read => \n => (n + 1) ?: 0
+    read => \n => satAdd n 1
 action = h (\() => perform Read.read ())
 print (action 41)
 ",
@@ -367,8 +367,8 @@ print (action 41)
 #[test]
 fn handler_values_and_generic_lambdas_can_be_passed_to_functions() {
     let default = r#"
-fn apply(g) = g(|x| => (x + 1) ?: 0)
-fn exact(g) = (g(|x| => x) + 1) ?: 0
+fn apply(g) = g(|x| => satAdd(x, 1))
+fn exact(g) = satAdd(g(|x| => x), 1)
 fn text(g) = g(|x| => "v${x}") + "!"
 let call = |f| => f(1)
 effect Reader { name: fn() -> string }
@@ -385,8 +385,8 @@ let second = run(grace)
 print("${number}/${concrete}/${string}\n${first}\n${second}")
 "#;
     let ml = r#"
-apply g = g (\x => (x + 1) ?: 0)
-exact g = (g (\x => x) + 1) ?: 0
+apply g = g (\x => satAdd x 1)
+exact g = satAdd (g (\x => x)) 1
 text g = g (\x => "v${x}") + "!"
 call = \f => f 1
 effect Reader
@@ -416,4 +416,41 @@ print "${number}/${concrete}/${string}\n${first}\n${second}"
         ml,
         "2/2/v1!\nHello, Ada!\nHello, Grace!\n",
     );
+}
+
+/// A file-scope handler value from a factory that CAPTURES its argument, applied
+/// inside a function at two answer types. The factory call runs once, at the
+/// binding; the function must see that value. It was rejected with "a closure
+/// value with a still-generic type" because the captured argument lived only in
+/// the file scope's frame.
+#[test]
+fn a_capturing_handler_factory_value_applies_inside_functions() {
+    let default = r#"
+effect Reader { name: fn() -> string }
+fn reading(person) = handler Reader { name => person }
+fn greet() = "Hello, " + perform Reader.name() + "!"
+fn named(person) = {
+    print("naming ${person}")
+    person
+}
+let ada = reading(named("Ada"))
+fn report() = "${ada(greet)} ${ada(|| => 42)}"
+print(report())
+"#;
+    let ml = r#"
+effect Reader
+    name : Unit => string
+reading person = handler Reader
+    name => person
+greet () = "Hello, " + perform Reader.name () + "!"
+named person =
+    print "naming ${person}"
+    person
+ada = reading (named "Ada")
+report () = "${ada greet} ${ada (\() => 42)}"
+print (report ())
+"#;
+    let expected = "naming Ada\nHello, Ada! 42\n";
+    assert_output("capturing_factory", "osp", default, expected);
+    assert_output("capturing_factory", "ospml", ml, expected);
 }

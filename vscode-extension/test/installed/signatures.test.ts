@@ -125,7 +125,7 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
   });
 
   test("escaped interpolation prefixes retain precise annotation and unused-name ranges through a quick fix", async () => {
-    const source = 'fn greet() = "\\n🦅 ${(fn(value: int, ignored) => (value + 1) ?: 0)(7, 9)}"\nfn main() = print(greet())\n';
+    const source = 'fn greet() = "\\n🦅 ${(fn(value: int, ignored) => wrapAdd(value, 1))(7, 9)}"\nfn main() = print(greet())\n';
     const expected = source.replace(": int", "");
     const editor = await openSource("interpolated-warning.osp", source);
     const unused = { code: "unused-parameter", message: "unused parameter `ignored`", text: "ignored", unnecessary: true };

@@ -1,19 +1,19 @@
-// Checked arithmetic stays a Result all the way through these examples.
-// Effects centralize policy; they do not erase the original MathError.
+// Explicit checked builtins preserve Result data across direct value handlers.
+// Ordinary operators dispatch their faults to a region's Arith policy.
 
 effect ArithmeticFailure {
-    /// Decide what a failed calculation yields, preserving the original `MathError`.
-    decide: fn(string) -> Result<int, MathError>
+    /// Decide what a failed calculation yields, preserving the original `Error`.
+    decide: fn(string) -> Result<int, Error>
 }
 
 /// Convert a successful sum to text while preserving the exact error branch.
-fn renderSum(a, b) = match a + b {
+fn renderSum(a, b) = match checkedAdd(a, b) {
     Success { value } => Success { value: toString(value) }
     Error { message } => Error { message: message }
 }
 
 /// Raise only after checked addition has produced an explicit Error value.
-fn addThroughPolicy(a, b) = match a + b {
+fn addThroughPolicy(a, b) = match checkedAdd(a, b) {
     Success { value } => Success { value: value }
     Error { message } => perform ArithmeticFailure.decide(message)
 }
@@ -54,3 +54,130 @@ test("effect policy may deliberately recover from known overflow", fn() =>
 
 test("healthy arithmetic never invokes the recovery decision", fn() =>
     expect(toString(recoverWith(19, 23, 7)), "Success(42)"))
+
+/// #230: preserve the mathematical answer in a wider numeric representation.
+fn maskedSquare(x) = {
+    mut answer = 0.0
+    mut overflowed = false
+    handle Arith {
+        overflow op lhs rhs wrapped => {
+            checkAll("square overflow payload", [op == "*", lhs == 4000000000, rhs == 4000000000, wrapped == -2446744073709551616])
+            overflowed = true
+            answer = toFloat(lhs) * toFloat(rhs)
+            wrapped
+        }
+    }
+    let narrow = x * x
+    overflowed ? answer : toFloat(narrow)
+}
+
+test("masked square preserves the mathematical answer", fn() =>
+    expect(maskedSquare(4000000000), 16000000000000000000.0))
+
+fn wrappingTotal(work) = {
+    mut faults = 0
+    handle Arith {
+        overflow _ _ _ wrapped => {
+            faults = wrapAdd(faults, 1)
+            wrapped
+        }
+    }
+    let total = work()
+    expect(faults, 2)
+    total
+}
+
+test("overflow must not reset the fold accumulator", fn() => {
+    let total = wrappingTotal(fn() => {
+        let postings = range(0, 2) |> map(fn(i) => i == 0 ? 1 : -1)
+        postings |> fold(9223372036854775807, fn(a, b) => a + b)
+    })
+    expect(total, 9223372036854775807)
+})
+
+test("overflow must not make a ledger deposit vanish", fn() => {
+    let total = wrappingTotal(fn() => {
+        let balance = 9000000000000000000
+        let deposit = 1000000000000000000
+        let credited = balance + deposit
+        credited - 2000000000000000000
+    })
+    expect(total, 8000000000000000000)
+})
+
+/// #163: an annotation cannot select a different arithmetic representation.
+fn inferredSum(a, b) = a + b
+fn annotatedSum(a, b) -> int = a + b
+
+fn annotationParity() = {
+    handle Arith { overflow _ _ _ wrapped => wrapped }
+    checkAll("annotation preserves arithmetic values", [
+        inferredSum(20, 22) == annotatedSum(20, 22),
+        inferredSum(9223372036854775807, 1) == -9223372036854775808,
+        annotatedSum(9223372036854775807, 1) == -9223372036854775808
+    ])
+}
+
+test("arithmetic return annotation preserves output", annotationParity)
+
+fn applyPair(f, a, b) = f(a, b)
+
+test("total helpers choose modular or saturating arithmetic", fn() => checkAll("total arithmetic helpers", [
+    wrapAdd(9223372036854775807, 1) == -9223372036854775808,
+    wrapSub(-9223372036854775808, 1) == 9223372036854775807,
+    wrapMul(9223372036854775807, 2) == -2,
+    satAdd(9223372036854775807, 1) == 9223372036854775807,
+    satSub(-9223372036854775808, 1) == -9223372036854775808,
+    satMul(-9223372036854775808, -1) == 9223372036854775807,
+    satMul(-9223372036854775808, 2) == -9223372036854775808,
+    satMul(7, -6) == -42,
+    applyPair(wrapAdd, 9223372036854775807, 1) == -9223372036854775808,
+    applyPair(wrapSub, -9223372036854775808, 1) == 9223372036854775807,
+    applyPair(wrapMul, 9223372036854775807, 2) == -2,
+    applyPair(satAdd, 9223372036854775807, 1) == 9223372036854775807,
+    applyPair(satSub, -9223372036854775808, 1) == -9223372036854775808,
+    applyPair(satMul, -9223372036854775808, -1) == 9223372036854775807,
+    (range(0, 3) |> fold(9223372036854775807, wrapAdd)) == -9223372036854775806
+]))
+
+fn literalDivisors(x) = {
+    checkAll("nonzero literal divisors are total", [x % -1 == 0, x / 4 == -2305843009213693952.0])
+}
+
+test("nonzero literal divisors need no policy", fn() => literalDivisors(-9223372036854775808))
+
+fn outerRecovery() = {
+    mut outer = 0
+    handle Arith {
+        overflow _ _ _ wrapped => {
+            outer = wrapAdd(outer, 1)
+            wrapped
+        }
+    }
+    let inner = handler Arith { overflow _ lhs rhs _ => lhs + rhs - 1 }
+    let answer = inner(fn() => inferredSum(9223372036854775807, 1))
+    checkAll("recovery executes outside its own installation", [answer == 9223372036854775807, outer == 2])
+}
+
+test("recovery arithmetic forwards to the outer policy", outerRecovery)
+
+/// #183: direct calls preserve whole Result blocks, including float payloads.
+effect ResultRelay {
+    integer: fn(Result<int, Error>) -> Result<int, Error>
+    fraction: fn(Result<float, Error>) -> Result<float, Error>
+}
+
+fn resultRelay() = {
+    handle ResultRelay {
+        integer value => value
+        fraction value => value
+    }
+    checkAll("direct handler Result payloads", [
+        toString(perform ResultRelay.integer(Success { value: 42 })) == "Success(42)",
+        toString(perform ResultRelay.integer(Error { message: "kept" })) == "Error(kept)",
+        toString(perform ResultRelay.fraction(Success { value: 1.25 })) == "Success(1.25)",
+        toString(perform ResultRelay.fraction(Error { message: "fraction" })) == "Error(fraction)"
+    ])
+}
+
+test("direct handler calls preserve Result operation values", resultRelay)

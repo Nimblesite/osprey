@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // HINDLEY-MILNER TYPE INFERENCE TEST  
 // Tests what HM inference CAN do in the current implementation
 // Function types and return values inferred from usage context
@@ -13,7 +32,7 @@ print("=== HINDLEY-MILNER TEST ===")
 print("Test 1: Function type inference from usage")
 /// These functions have NO explicit types - all inferred!
 fn identity(x) = x              // HM infers type from usage context
-fn add(a, b) = a + b ?: 0       // HM infers checked int addition; Error is handled here
+fn add(a, b) = a + b        // HM infers checked int addition; Error is handled here
 fn concat(s1, s2) = join([s1, s2], "") // join constrains both inferred parameters to string
 fn negate(x) = !x              // HM infers (bool) -> bool
 
@@ -25,7 +44,7 @@ let boolId = identity(true)     // identity<bool>
 print("identity(42) = ${intId}, identity(\"test\") = ${stringId}, identity(true) = ${toString(boolId)}")
 
 /// Test arithmetic inference
-let addValue = add(a: 10, b: 20)
+let addValue = exactArithmetic(fn() => add(a: 10, b: 20))
 let concatResult = concat(s1: "hello", s2: "world")
 let negateResult = negate(false)
 
@@ -70,13 +89,14 @@ print("")
 
 // Test 5: Complex HM inference with field access
 print("Test 5: Complex field access inference")
-fn distance(p) = p.x * p.x + p.y * p.y ?: 0 // Checked arithmetic is explicitly handled
+fn distance(p) = p.x * p.x + p.y * p.y  // Checked arithmetic is explicitly handled
 fn combine(c) = join([c.value, c.label], "") // HM infers Container -> string
 
 let numPoint = Point { x: 3, y: 4 }
 let textContainer = Container { value: "hello", label: "world" }
 
-let dist = distance(numPoint)              // int inferred
+let dist = exactArithmetic(fn() => distance(numPoint)              // int inferred
+)
 let combined = combine(textContainer)      // string inferred
 
 print("distance({3, 4}) = ${dist}")
@@ -198,11 +218,11 @@ print("")
 print("Test 11: Type equality and String methods")
 
 /// This will exercise the String() and Equals() methods on various types
-fn typeTest1(x) = x * 2 ?: 0
+fn typeTest1(x) = x * 2 
 fn typeTest2(s) = join([s, s], "")
 fn typeTest3(b) = !b
 
-let typeResult1 = typeTest1(21)
+let typeResult1 = exactArithmetic(fn() => typeTest1(21))
 let typeResult2 = typeTest2("hi")
 let typeResult3 = typeTest3(false)
 
@@ -260,4 +280,5 @@ fn inferredBehaviorCase() = {
         pick("left", "right") == "left"
     ])
 }
-test("inference preserves polymorphism and derived values", inferredBehaviorCase)
+
+test("inference preserves polymorphism and derived values", fn() => exactArithmetic(inferredBehaviorCase))

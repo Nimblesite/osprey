@@ -39,7 +39,7 @@ module ActivityView
         _ => Money::show cents
 
     increment : int -> int
-    increment number = number + 1 ?: number
+    increment number = number + 1 
 
     export row : int -> int -> string
     row doc index =
@@ -67,7 +67,7 @@ module ActivityView
                     nextShown = match show
                         true => increment shown
                         false => shown
-                    nextIndex = (index + 1) ?: index
+                    nextIndex = (index + 1) 
                     rest = rowsFrom doc nextIndex limit filter search nextShown
                     match show
                         false => rest
@@ -91,7 +91,7 @@ module ActivityView
                 nextCount = match value == kind
                     true => increment running
                     false => running
-                nextIndex = (index + 1) ?: index
+                nextIndex = (index + 1) 
                 countFrom doc nextIndex kind nextCount
 
     export count : string -> string -> int

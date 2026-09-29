@@ -148,21 +148,21 @@ fn a_redundant_generic_signature_reports_only_what_can_go_together() {
 fn a_result_returning_annotation_that_matches_inference_is_still_redundant() {
     reports(
         Flavor::Default,
-        "fn half(n: int) -> Result<int, MathError> = intDiv(n, 2)\n",
+        "fn twice(n: int) -> Result<int, Error> = checkedMul(n, 2)\n",
         &[
-            "redundant type annotation on parameter `n` of `half`: inference derives `int` without it",
-            "redundant return type annotation on `half`: inference derives `Result<int, MathError>` without it",
+            "redundant type annotation on parameter `n` of `twice`: inference derives `int` without it",
+            "redundant return type annotation on `twice`: inference derives `Result<int, Error>` without it",
         ],
     );
 }
 
 #[test]
 fn a_return_annotation_naming_the_wrong_error_type_is_a_type_error_not_a_warning() {
-    // `intDiv` yields `Result<int, MathError>`. Naming `Error` instead is a
+    // `checkedMul` yields `Result<int, Error>`. Naming `MathError` instead is a
     // mismatch the checker rejects, and a rejected program raises no warnings.
     silent(
         Flavor::Default,
-        "fn half(n: int) -> Result<int, Error> = intDiv(n, 2)\n",
+        "fn twice(n: int) -> Result<int, MathError> = checkedMul(n, 2)\n",
     );
 }
 
@@ -289,7 +289,7 @@ fn a_union_typed_signature_is_reported_with_its_union_name() {
 fn a_higher_order_parameter_annotation_is_judged_like_any_other() {
     let raised = messages(
         Flavor::Default,
-        "fn twice(f: (int) -> int, x: int) -> int = f(f(x))\nfn inc(n: int) -> int = (n + 1) ?: 0\nlet r = twice(inc, 1)\n",
+        "fn twice(f: (int) -> int, x: int) -> int = f(f(x))\nfn inc(n: int) -> int = wrapAdd(n, 1)\nlet r = twice(inc, 1)\n",
     );
     assert!(
         raised.contains(
@@ -492,7 +492,7 @@ fn a_genuinely_redundant_curried_header_is_one_warning_naming_the_function() {
     // the source.
     reports(
         Flavor::Ml,
-        "combine : int -> int -> int\ncombine a b = intDiv a b ?: 0\n",
+        "combine : int -> int -> int\ncombine a b = intDiv a b\n",
         &["redundant type signature on `combine`: inference derives `(int) -> (int) -> int` without it"],
     );
 }
@@ -530,7 +530,7 @@ fn a_three_argument_curried_header_preserves_every_arrow() {
     // remain distinct from a function taking three arguments in one call.
     reports(
         Flavor::Ml,
-        "clamp : int -> int -> int -> int\nclamp a b c = intDiv (intDiv a b ?: 0) c ?: 0\n",
+        "clamp : int -> int -> int -> int\nclamp a b c = intDiv (intDiv a b) c\n",
         &["redundant type signature on `clamp`: inference derives `(int) -> (int) -> (int) -> int` without it"],
     );
 }
@@ -706,8 +706,8 @@ fn interpolated_annotation_provenance_cannot_select_an_outer_type() {
 #[test]
 fn satisfied_numeric_obligations_do_not_hide_redundant_annotations() {
     for (flavor, source) in [
-        (Flavor::Default, "fn softWeight(d: float) = (1.0 / (1.0 + d + d * d)) ?: 0.0\nprint(softWeight(2.0))\n"),
-        (Flavor::Ml, "softWeight : float -> float\nsoftWeight d = (1.0 / (1.0 + d + d * d)) ?: 0.0\nprint (softWeight 2.0)\n"),
+        (Flavor::Default, "fn softWeight(d: float) = 1.0 / (1.0 + d + d * d)\nfn report() = {\n    handle Arith { divideByZero _ l => l }\n    print(softWeight(2.0))\n}\nreport()\n"),
+        (Flavor::Ml, "softWeight : float -> float\nsoftWeight d = 1.0 / (1.0 + d + d * d)\nreport () =\n    handle Arith\n        divideByZero _ l => l\n    print (softWeight 2.0)\nreport ()\n"),
         (Flavor::Ml, "lerpQuarter : (float, float) -> float\nlerpQuarter (a, b) = a + (b - a) * 0.25\nprint (lerpQuarter (1.0, 2.0))\n"),
     ] {
         let raised = warnings(flavor, source);

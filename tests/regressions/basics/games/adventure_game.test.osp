@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // 🎮 Epic Text Adventure Game Engine (Fixed)
 // Showcasing Osprey's pattern matching, safe arithmetic, and storytelling capabilities
 
@@ -100,19 +119,13 @@ print("")
 // Explore multiple rooms
 print("🚪 Room 1: You enter ${exploreRoom(1)}")
 let room1Gold = getRoomTreasure(1)
-let newGold1 = match goldCoins + room1Gold {
-    Success { value } => value
-    Error => goldCoins
-}
+let newGold1 = exactArithmetic(fn() => goldCoins + room1Gold)
 print("You find ${room1Gold} gold coins! Total: ${newGold1} 💰")
 print("")
 
 print("📚 Room 2: You discover ${exploreRoom(2)}")
 let room2Gold = getRoomTreasure(2)
-let newGold2 = match newGold1 + room2Gold {
-    Success { value } => value
-    Error => newGold1
-}
+let newGold2 = exactArithmetic(fn() => newGold1 + room2Gold)
 let foundKey = hasRoomKey(2)
 print("You find ${room2Gold} gold coins and acquire a mysterious key! 🗝️")
 print("Total gold: ${newGold2} 💰")
@@ -148,7 +161,7 @@ print("")
 
 /// Battle calculation
 let totalDamageNeeded = enemyHealth
-let attacksNeeded = totalDamageNeeded / playerDamage
+let attacksNeeded = exactArithmetic(fn() => totalDamageNeeded / playerDamage)
 
 print("⚡ BATTLE COMMENCES! ⚡")
 print("You need ${attacksNeeded} successful attacks to defeat the ${enemyName}!")
@@ -156,18 +169,12 @@ print("")
 
 // Simulate battle rounds
 print("🥊 Round 1: You strike for ${playerDamage} damage!")
-let remainingHealth1 = match enemyHealth - playerDamage {
-    Success { value } => value
-    Error => enemyHealth
-}
+let remainingHealth1 = exactArithmetic(fn() => enemyHealth - playerDamage)
 print("Dragon health remaining: ${remainingHealth1}")
 print("")
 
 print("🥊 Round 2: Another powerful blow for ${playerDamage} damage!")
-let remainingHealth2 = match remainingHealth1 - playerDamage {
-    Success { value } => value
-    Error => remainingHealth1
-}
+let remainingHealth2 = exactArithmetic(fn() => remainingHealth1 - playerDamage)
 print("Dragon health remaining: ${remainingHealth2}")
 print("")
 
@@ -177,17 +184,11 @@ print("Critical hit for ${finalDamage} damage!")
 print("")
 
 /// Victory and level progression
-let newMonstersDefeated = match monstersDefeated + 1 {
-    Success { value } => value
-    Error => monstersDefeated
-}
+let newMonstersDefeated = exactArithmetic(fn() => monstersDefeated + 1)
 let newLevel = calculatePlayerLevel(newMonstersDefeated)
 let newTitle = getPlayerTitle(newLevel)
 let victoryGold = 200
-let finalGold = match newGold2 + victoryGold {
-    Success { value } => value
-    Error => newGold2
-}
+let finalGold = exactArithmetic(fn() => newGold2 + victoryGold)
 
 print("🎉 VICTORY! 🎉")
 print("The ${enemyName} has been defeated!")
@@ -203,10 +204,7 @@ print("")
 // Final treasure room
 print("🏆 Room 4: You enter ${exploreRoom(4)}")
 let treasureGold = getRoomTreasure(4)
-let ultimateGold = match finalGold + treasureGold {
-    Success { value } => value
-    Error => finalGold
-}
+let ultimateGold = exactArithmetic(fn() => finalGold + treasureGold)
 print("You discover the legendary treasure chest!")
 print("Inside: ${treasureGold} gold coins! 💎")
 print("Your final wealth: ${ultimateGold} 💰")
@@ -227,14 +225,14 @@ print("Thanks for playing the Osprey Adventure Game!")
 
 /// Replays the quest calculations and checks every helper's branch table.
 fn adventureGameCase() = {
-    let afterRoomOne = (50 + getRoomTreasure(1)) ?: 50
-    let afterRoomTwo = (afterRoomOne + getRoomTreasure(2)) ?: afterRoomOne
+    let afterRoomOne = (50 + getRoomTreasure(1)) 
+    let afterRoomTwo = (afterRoomOne + getRoomTreasure(2)) 
     let damage = calculateWeaponDamage(3)
-    let healthAfterOne = (getEnemyHealth(3) - damage) ?: getEnemyHealth(3)
-    let healthAfterTwo = (healthAfterOne - damage) ?: healthAfterOne
-    let defeated = (0 + 1) ?: 0
-    let rewardBalance = (afterRoomTwo + 200) ?: afterRoomTwo
-    let questBalance = (rewardBalance + getRoomTreasure(4)) ?: rewardBalance
+    let healthAfterOne = getEnemyHealth(3) - damage
+    let healthAfterTwo = (healthAfterOne - damage) 
+    let defeated = (0 + 1) 
+    let rewardBalance = (afterRoomTwo + 200) 
+    let questBalance = (rewardBalance + getRoomTreasure(4)) 
 
     checkAll("adventure branch tables", [
         calculatePlayerLevel(0) == 1,
@@ -284,7 +282,7 @@ fn adventureGameCase() = {
         afterRoomOne == 60,
         afterRoomTwo == 85,
         damage == 60,
-        (getEnemyHealth(3) / damage ?: 0.0) == 2.0,
+        (getEnemyHealth(3) / damage ) == 2.0,
         healthAfterOne == 60,
         healthAfterTwo == 0,
         defeated == 1,
@@ -294,4 +292,5 @@ fn adventureGameCase() = {
         questBalance == 385
     ])
 }
-test("adventure game preserves branch and progression state", adventureGameCase)
+
+test("adventure game preserves branch and progression state", fn() => exactArithmetic(adventureGameCase))

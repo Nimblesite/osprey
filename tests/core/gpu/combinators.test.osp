@@ -14,14 +14,14 @@ fn emptyInts() -> GpuBuffer<int> = toGpu([])
 fn emptyFloats() -> GpuBuffer<float> = toGpu([])
 
 /// sumI and mulI are the associative int combines fold and scan share.
-fn sumI(a: int, b: int) = (a + b) ?: a
-fn mulI(a: int, b: int) = (a * b) ?: 0
+fn sumI(a: int, b: int) = (a + b) 
+fn mulI(a: int, b: int) = (a * b) 
 
 /// subI and horner are deliberately non-commutative. Left-to-right is the
 /// only traversal that reproduces their results, so every assertion on them
 /// pins the order [GPU-BACKEND-HOST] rather than merely the element set.
-fn subI(a: int, b: int) = (a - b) ?: a
-fn horner(a: int, d: int) = (((a * 10) ?: 0) + d) ?: a
+fn subI(a: int, b: int) = (a - b) 
+fn horner(a: int, d: int) = (((a * 10) ) + d) 
 
 /// maxI makes a scan a running maximum; addF is the float reduction; orB is
 /// the boolean any-reduction that latches on the first accepted element.
@@ -31,13 +31,13 @@ fn orB(a: bool, b: bool) = a || b
 
 /// countTrue is the population count that turns a bool buffer into a scalar.
 fn countTrue(a: int, flag: bool) = match flag {
-    true => (a + 1) ?: a
+    true => (a + 1) 
     false => a
 }
 
 /// dbl, inc and half are the one-line stages the deep chains are built from.
-fn dbl(x) = (x * 2) ?: 0
-fn inc(x) = (x + 1) ?: x
+fn dbl(x) = (x * 2) 
+fn inc(x) = (x + 1) 
 fn half(x: float) = x * 0.5
 
 /// toBit widens a bool element back to an int one, closing the type cycle
@@ -46,7 +46,7 @@ fn toBit(b) = match b { true => 1 false => 0 }
 
 /// isEven and isOddP are each other's negation; isOddP is spelled with `!` so
 /// the predicate slot is fed by a boolean operator, not just a comparison.
-fn isEven(x) = (x % 2 ?: 1) == 0
+fn isEven(x) = (x % 2 ) == 0
 fn isOddP(x) = !isEven(x)
 
 /// keepEvery and keepNone are the degenerate predicates — total acceptance
@@ -334,7 +334,7 @@ fn deepChainCase() = {
 /// filter — where a wrong published length silently shortens everything after.
 fn mixedChainCase() = {
     let prefixes = gpuIota(30) |> gpuFilter(isEven) |> gpuScan(0, sumI) |> gpuFilter(bigEven)
-    let tripled = gpuIota(6) |> gpuMap(fn(x) => (x * 3) ?: 0)
+    let tripled = gpuIota(6) |> gpuMap(fn(x) => (x * 3) )
     let woven = gpuZipWith(gpuIota(6), tripled, mulI) |> gpuMap(inc) |> gpuFilter(isOddP)
     checkAll("mixed chains", [
         gpuLength(prefixes) == 13,
@@ -381,7 +381,7 @@ fn typeChangeCase() = {
 /// publishes the kept prefix exactly as gpuFilter does, an inverted or empty
 /// range yields an empty buffer, and a fused map may change the element type.
 fn fusionSourceCase() = {
-    let staged = range(0, 10) |> filter(isEven) |> map(fn(x) => (x * 2) ?: 0) |> toGpu()
+    let staged = range(0, 10) |> filter(isEven) |> map(fn(x) => (x * 2) ) |> toGpu()
     checkAll("fused sources", [
         (range(0, 4) |> map(toFloat) |> map(half) |> toGpu() |> gpuFold(0.0, addF)) == 3.0,
         (range(0, 4) |> map(dbl) |> map(inc) |> toGpu() |> gpuFold(0, sumI)) == 16,
@@ -404,7 +404,7 @@ fn fusionSourceCase() = {
 /// including both operand slots of a ragged zip, so a buffer built by the
 /// fusion path is indistinguishable from one copied out of a list.
 fn fusionStageCase() = {
-    let fused = range(0, 10) |> map(fn(x) => (x * 2) ?: 0) |> toGpu()
+    let fused = range(0, 10) |> map(fn(x) => (x * 2) ) |> toGpu()
     let kept = range(0, 10) |> filter(isEven) |> toGpu()
     checkAll("fused into combinators", [
         (fused |> gpuMap(inc) |> gpuFold(0, sumI)) == 100,
@@ -439,7 +439,7 @@ fn iotaCase() = {
         (gpuGet(gpuIota(1), 0) ?: 9) == 0,
         gpuLength(gpuIota(0)) == 0,
         (gpuIota(0) |> gpuFold(3, sumI)) == 3,
-        gpuLength(gpuIota((0 - 4) ?: 0)) == 0,
+        gpuLength(gpuIota((0 - 4) )) == 0,
         (gpuZipWith(idx, idx, mulI) |> gpuFold(0, sumI)) == 30,
         (idx |> gpuMap(toFloat) |> gpuFold(0.0, addF)) == 10.0,
         (gpuIota(3) |> gpuScan(0, horner) |> gpuFold(0, sumI)) == 13
@@ -452,7 +452,7 @@ fn iotaCase() = {
 fn getCase() = {
     let ints = toGpu([7, 8, 9])
     let floats = toGpu([1.5, 2.5])
-    let reversed = gpuIota(3) |> gpuMap(fn(i) => gpuGet(ints, (2 - i) ?: 0) ?: 0)
+    let reversed = gpuIota(3) |> gpuMap(fn(i) => gpuGet(ints, (2 - i) ) ?: 0)
     checkAll("get", [
         (gpuGet(ints, 0) ?: 0) == 7,
         (gpuGet(ints, 1) ?: 0) == 8,
@@ -460,7 +460,7 @@ fn getCase() = {
         (gpuGet(floats, 0) ?: 0.0) == 1.5,
         (gpuGet(floats, 1) ?: 0.0) == 2.5,
         (gpuGet(ints, 3) ?: 999) == 999,
-        (gpuGet(ints, (0 - 1) ?: 0) ?: 999) == 999,
+        (gpuGet(ints, (0 - 1) ) ?: 999) == 999,
         (gpuGet(floats, 2) ?: 9.5) == 9.5,
         oobMessage(ints, 0) == "value 7",
         oobMessage(ints, 3) == "gpuGet: index out of bounds",
@@ -477,21 +477,41 @@ fn deviceCase() = checkAll("device", [
     gpuDevice() != "cuda:0"
 ])
 
-test("every combinator over an empty buffer stays empty", emptyShapeCase)
-test("gpuFold over an empty buffer is the initial value", emptyFoldCase)
-test("every combinator handles a one-element buffer", singletonCase)
-test("gpuZipWith truncates to the shorter operand in both orders", raggedCase)
-test("gpuZipWith produces the kernel's element type", zipTypeCase)
-test("gpuFilter keeps all, none, or alternates in source order", filterKeepCase)
-test("gpuFilter predicates compose comparisons and boolean operators", filterPredicateCase)
-test("gpuScan is an inclusive prefix element by element", scanPrefixCase)
-test("gpuScan seeds element zero with the initial value", scanSeedCase)
-test("non-commutative combines pin the traversal order", orderCase)
-test("five-stage and longer chains stay exact", deepChainCase)
-test("shape-changing combinators compose", mixedChainCase)
-test("kernels move elements between all three scalar types", typeChangeCase)
-test("an iterator pipeline fuses into a buffer with no list", fusionSourceCase)
-test("a fused buffer feeds every combinator", fusionStageCase)
-test("gpuIota builds the index buffer", iotaCase)
-test("gpuGet reads typed elements and errors out of bounds", getCase)
-test("gpuDevice names the active backend", deviceCase)
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
+
+test("every combinator over an empty buffer stays empty", fn() => exactArithmetic(emptyShapeCase))
+test("gpuFold over an empty buffer is the initial value", fn() => exactArithmetic(emptyFoldCase))
+test("every combinator handles a one-element buffer", fn() => exactArithmetic(singletonCase))
+test("gpuZipWith truncates to the shorter operand in both orders", fn() => exactArithmetic(raggedCase))
+test("gpuZipWith produces the kernel's element type", fn() => exactArithmetic(zipTypeCase))
+test("gpuFilter keeps all, none, or alternates in source order", fn() => exactArithmetic(filterKeepCase))
+test("gpuFilter predicates compose comparisons and boolean operators", fn() => exactArithmetic(filterPredicateCase))
+test("gpuScan is an inclusive prefix element by element", fn() => exactArithmetic(scanPrefixCase))
+test("gpuScan seeds element zero with the initial value", fn() => exactArithmetic(scanSeedCase))
+test("non-commutative combines pin the traversal order", fn() => exactArithmetic(orderCase))
+test("five-stage and longer chains stay exact", fn() => exactArithmetic(deepChainCase))
+test("shape-changing combinators compose", fn() => exactArithmetic(mixedChainCase))
+test("kernels move elements between all three scalar types", fn() => exactArithmetic(typeChangeCase))
+test("an iterator pipeline fuses into a buffer with no list", fn() => exactArithmetic(fusionSourceCase))
+test("a fused buffer feeds every combinator", fn() => exactArithmetic(fusionStageCase))
+test("gpuIota builds the index buffer", fn() => exactArithmetic(iotaCase))
+test("gpuGet reads typed elements and errors out of bounds", fn() => exactArithmetic(getCase))
+test("gpuDevice names the active backend", fn() => exactArithmetic(deviceCase))

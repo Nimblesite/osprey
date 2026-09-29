@@ -17,17 +17,17 @@ emptyFloats () = toGpu []
 
 (** The associative int combines fold and scan share. *)
 sumI : (int, int) -> int
-sumI (a, b) = (a + b) ?: a
+sumI (a, b) = (a + b) 
 mulI : (int, int) -> int
-mulI (a, b) = (a * b) ?: 0
+mulI (a, b) = (a * b) 
 
 (** subI and horner are deliberately non-commutative. Left-to-right is the
     only traversal that reproduces their results, so every assertion on them
     pins the order [GPU-BACKEND-HOST] rather than merely the element set. *)
 subI : (int, int) -> int
-subI (a, b) = (a - b) ?: a
+subI (a, b) = (a - b) 
 horner : (int, int) -> int
-horner (a, d) = (((a * 10) ?: 0) + d) ?: a
+horner (a, d) = (((a * 10) ) + d) 
 
 (** maxI makes a scan a running maximum; addF is the float reduction; orB is
     the boolean any-reduction that latches on the first accepted element. *)
@@ -43,12 +43,12 @@ orB (a, b) = a || b
 (** The population count that turns a bool buffer into a scalar. *)
 countTrue : (int, bool) -> int
 countTrue (a, flag) = match flag
-    true => (a + 1) ?: a
+    true => (a + 1) 
     false => a
 
 (** dbl, inc and half are the one-line stages the deep chains are built from. *)
-dbl x = (x * 2) ?: 0
-inc x = (x + 1) ?: x
+dbl x = (x * 2) 
+inc x = (x + 1) 
 half : float -> float
 half x = x * 0.5
 
@@ -60,7 +60,7 @@ toBit b = match b
 
 (** isEven and isOddP are each other's negation; isOddP is spelled with `!` so
     the predicate slot is fed by a boolean operator, not just a comparison. *)
-isEven x = (x % 2 ?: 1) == 0
+isEven x = (x % 2 ) == 0
 isOddP x = !(isEven x)
 
 (** keepEvery and keepNone are the degenerate predicates — total acceptance
@@ -341,7 +341,7 @@ deepChainCase () =
     wrong published length silently shortens everything after. *)
 mixedChainCase () =
     prefixes = gpuIota 30 |> gpuFilter isEven |> gpuScan 0 sumI |> gpuFilter bigEven
-    tripled = gpuIota 6 |> gpuMap (\x => (x * 3) ?: 0)
+    tripled = gpuIota 6 |> gpuMap (\x => (x * 3) )
     woven = gpuZipWith (gpuIota 6, tripled, mulI) |> gpuMap inc |> gpuFilter isOddP
     checkAll "mixed chains" [
         gpuLength prefixes == 13,
@@ -386,7 +386,7 @@ typeChangeCase () =
     kept prefix exactly as gpuFilter does, an inverted or empty range yields
     an empty buffer, and a fused map may change the element type. *)
 fusionSourceCase () =
-    staged = range (0, 10) |> filter isEven |> map (\x => (x * 2) ?: 0) |> toGpu ()
+    staged = range (0, 10) |> filter isEven |> map (\x => (x * 2) ) |> toGpu ()
     checkAll "fused sources" [
         (range (0, 4) |> map toFloat |> map half |> toGpu () |> gpuFold 0.0 addF) == 3.0,
         (range (0, 4) |> map dbl |> map inc |> toGpu () |> gpuFold 0 sumI) == 16,
@@ -408,7 +408,7 @@ fusionSourceCase () =
     slots of a ragged zip, so a buffer built by the fusion path is
     indistinguishable from one copied out of a list. *)
 fusionStageCase () =
-    fused = range (0, 10) |> map (\x => (x * 2) ?: 0) |> toGpu ()
+    fused = range (0, 10) |> map (\x => (x * 2) ) |> toGpu ()
     kept = range (0, 10) |> filter isEven |> toGpu ()
     checkAll "fused into combinators" [
         (fused |> gpuMap inc |> gpuFold 0 sumI) == 100,
@@ -442,7 +442,7 @@ iotaCase () =
         (gpuGet (gpuIota 1, 0) ?: 9) == 0,
         gpuLength (gpuIota 0) == 0,
         (gpuIota 0 |> gpuFold 3 sumI) == 3,
-        gpuLength (gpuIota ((0 - 4) ?: 0)) == 0,
+        gpuLength (gpuIota ((0 - 4) )) == 0,
         (gpuZipWith (idx, idx, mulI) |> gpuFold 0 sumI) == 30,
         (idx |> gpuMap toFloat |> gpuFold 0.0 addF) == 10.0,
         (gpuIota 3 |> gpuScan 0 horner |> gpuFold 0 sumI) == 13
@@ -454,7 +454,7 @@ iotaCase () =
 getCase () =
     ints = toGpu [7, 8, 9]
     floats = toGpu [1.5, 2.5]
-    reversed = gpuIota 3 |> gpuMap (\i => gpuGet (ints, (2 - i) ?: 0) ?: 0)
+    reversed = gpuIota 3 |> gpuMap (\i => gpuGet (ints, (2 - i) ) ?: 0)
     checkAll "get" [
         (gpuGet (ints, 0) ?: 0) == 7,
         (gpuGet (ints, 1) ?: 0) == 8,
@@ -462,7 +462,7 @@ getCase () =
         (gpuGet (floats, 0) ?: 0.0) == 1.5,
         (gpuGet (floats, 1) ?: 0.0) == 2.5,
         (gpuGet (ints, 3) ?: 999) == 999,
-        (gpuGet (ints, (0 - 1) ?: 0) ?: 999) == 999,
+        (gpuGet (ints, (0 - 1) ) ?: 999) == 999,
         (gpuGet (floats, 2) ?: 9.5) == 9.5,
         oobMessage (ints, 0) == "value 7",
         oobMessage (ints, 3) == "gpuGet: index out of bounds",
@@ -478,21 +478,36 @@ deviceCase () = checkAll "device" [
     gpuDevice () != "cuda:0"
 ]
 
-test ("every combinator over an empty buffer stays empty", emptyShapeCase)
-test ("gpuFold over an empty buffer is the initial value", emptyFoldCase)
-test ("every combinator handles a one-element buffer", singletonCase)
-test ("gpuZipWith truncates to the shorter operand in both orders", raggedCase)
-test ("gpuZipWith produces the kernel's element type", zipTypeCase)
-test ("gpuFilter keeps all, none, or alternates in source order", filterKeepCase)
-test ("gpuFilter predicates compose comparisons and boolean operators", filterPredicateCase)
-test ("gpuScan is an inclusive prefix element by element", scanPrefixCase)
-test ("gpuScan seeds element zero with the initial value", scanSeedCase)
-test ("non-commutative combines pin the traversal order", orderCase)
-test ("five-stage and longer chains stay exact", deepChainCase)
-test ("shape-changing combinators compose", mixedChainCase)
-test ("kernels move elements between all three scalar types", typeChangeCase)
-test ("an iterator pipeline fuses into a buffer with no list", fusionSourceCase)
-test ("a fused buffer feeds every combinator", fusionStageCase)
-test ("gpuIota builds the index buffer", iotaCase)
-test ("gpuGet reads typed elements and errors out of bounds", getCase)
-test ("gpuDevice names the active backend", deviceCase)
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
+
+test ("every combinator over an empty buffer stays empty", \() => exactArithmetic (emptyShapeCase))
+test ("gpuFold over an empty buffer is the initial value", \() => exactArithmetic (emptyFoldCase))
+test ("every combinator handles a one-element buffer", \() => exactArithmetic (singletonCase))
+test ("gpuZipWith truncates to the shorter operand in both orders", \() => exactArithmetic (raggedCase))
+test ("gpuZipWith produces the kernel's element type", \() => exactArithmetic (zipTypeCase))
+test ("gpuFilter keeps all, none, or alternates in source order", \() => exactArithmetic (filterKeepCase))
+test ("gpuFilter predicates compose comparisons and boolean operators", \() => exactArithmetic (filterPredicateCase))
+test ("gpuScan is an inclusive prefix element by element", \() => exactArithmetic (scanPrefixCase))
+test ("gpuScan seeds element zero with the initial value", \() => exactArithmetic (scanSeedCase))
+test ("non-commutative combines pin the traversal order", \() => exactArithmetic (orderCase))
+test ("five-stage and longer chains stay exact", \() => exactArithmetic (deepChainCase))
+test ("shape-changing combinators compose", \() => exactArithmetic (mixedChainCase))
+test ("kernels move elements between all three scalar types", \() => exactArithmetic (typeChangeCase))
+test ("an iterator pipeline fuses into a buffer with no list", \() => exactArithmetic (fusionSourceCase))
+test ("a fused buffer feeds every combinator", \() => exactArithmetic (fusionStageCase))
+test ("gpuIota builds the index buffer", \() => exactArithmetic (iotaCase))
+test ("gpuGet reads typed elements and errors out of bounds", \() => exactArithmetic (getCase))
+test ("gpuDevice names the active backend", \() => exactArithmetic (deviceCase))

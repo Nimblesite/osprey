@@ -259,7 +259,7 @@ mod tests {
 
     #[test]
     fn a_call_cycle_does_not_stall_the_read_fixed_point() {
-        ok("let x = 7\nfn a() = b()\nfn b() = (a() + x) ?: x\nprint(\"${b()}\")\n");
+        ok("let x = 7\nfn a() = b()\nfn b() = wrapAdd(a(), x)\nprint(\"${b()}\")\n");
     }
 
     #[test]

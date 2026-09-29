@@ -15,7 +15,7 @@ controlRoundTrip code = match code >= 32
         character = fromCodePoint code ?: ""
         source = "é🦉" + character + "\"\\"
         encoded = Json::obj (Json::strField "value" source)
-        source == Json::getOr encoded "value" "INVALID" && controlRoundTrip ((code + 1) ?: 32)
+        source == Json::getOr encoded "value" "INVALID" && controlRoundTrip ((code + 1) )
 
 allControlCase () = check "all representable JSON controls and Unicode round trip" true (controlRoundTrip 1)
 

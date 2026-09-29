@@ -18,6 +18,7 @@ pub mod mutate;
 mod resume;
 #[cfg(test)]
 mod resume_tests;
+mod stack;
 pub mod stage;
 mod stage_rows;
 pub mod symbol;
@@ -29,6 +30,7 @@ pub use multiplicity::{
     Multiplicity, OperationMode, OperationTable, CONTROL_KEYWORD, REPLAYABLE_KEYWORD,
 };
 pub use resume::resumes_on_one_path;
+pub use stack::with_stack;
 pub use stage::{Stage, STATIC_STAGE_KEYWORD};
 pub use visit::{walk_each, walk_program, AstNode, AstVisitor};
 
@@ -330,6 +332,10 @@ pub fn tuple_pattern(binders: Vec<String>) -> Pattern {
 pub fn generated_name(role: &str, index: usize) -> String {
     format!("${role}{index}")
 }
+
+/// The compiler-declared arithmetic effect, in scope in every program and
+/// never redeclarable. Implements [ARITH-EFFECT-OPS].
+pub const ARITH_EFFECT: &str = "Arith";
 
 /// The generated payload binder of the `Success` arm that `result ?: fallback`
 /// desugars to ([PATTERN-RESULT-DEFAULT]). It is named here, rather than inside

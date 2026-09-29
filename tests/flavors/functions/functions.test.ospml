@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 // ML function twin covering currying, higher-order calls, and recursion.
 
 (** Capture an offset in a RETURNED lambda: one parameter whose body is a
@@ -8,7 +22,7 @@
     closure-returning binding through the front end, and after the ml/ example
     suite was deleted no file in tests/ did. Call sites keep the returned
     closure concrete. *)
-closureAdder n = \x => x + n ?: 0
+closureAdder n = \x => x + n 
 
 (** Verify independent closures and direct application. *)
 closuresCase () =
@@ -29,7 +43,7 @@ closuresCase () =
     ]
     // Exercise identity, cancellation, and capture independence.
     checkAll "closures capture edge cases" [
-        add10 ((0 - 10) ?: 0) == 0,
+        add10 ((0 - 10) ) == 0,
         add100 0 == 100,
         (closureAdder 0) 9 == 9,
         (add10 5 == add100 5) == false
@@ -38,7 +52,7 @@ closuresCase () =
 (** Return an explicitly curried addition closure, mirroring the Default twin's
     `fn partialAdd(a) = fn(b) => …`: `partialAdd 5` yields a function, not a
     number. *)
-partialAdd a = \b => a + b ?: 0
+partialAdd a = \b => a + b 
 
 (** Verify partially and fully applied addition. *)
 curryPartialCase () =
@@ -59,7 +73,7 @@ curryPartialCase () =
     ]
     // Exercise identity, cancellation, and equivalent sums.
     checkAll "partial application edge cases" [
-        add5 ((0 - 5) ?: 0) == 0,
+        add5 ((0 - 5) ) == 0,
         add100 0 == 100,
         (partialAdd 0) 9 == 9,
         (partialAdd 5) 5 == (partialAdd 8) 2
@@ -74,10 +88,10 @@ hofTwice : (int -> int) -> int -> int
 hofTwice f x = f (f x)
 
 (** Double an integer as a first-class function. *)
-hofDouble n = n + n ?: 0
+hofDouble n = n + n 
 
 (** Increment an integer as a first-class function. *)
-hofInc n = n + 1 ?: 0
+hofInc n = n + 1 
 
 (** Verify higher-order application and composition. *)
 higherOrderCase () =
@@ -102,13 +116,13 @@ higherOrderCase () =
     ]
 
 (** Increment values in nested call expressions. *)
-nestedInc x = x + 1 ?: 0
+nestedInc x = x + 1 
 
 (** Double values in nested call expressions. *)
-nestedDouble x = x + x ?: 0
+nestedDouble x = x + x 
 
 (** Negate values in nested call expressions. *)
-nestedNeg x = 0 - x ?: 0
+nestedNeg x = 0 - x 
 
 (** Verify evaluation through nested unary calls. *)
 nestedCallsCase () =
@@ -122,7 +136,7 @@ nestedCallsCase () =
     // Check each nested result independently.
     checkAll "nested calls legacy constituent values" [
         deep == 15,
-        nestedNeg (nestedInc (nestedDouble 5)) == ((0 - 11) ?: 0),
+        nestedNeg (nestedInc (nestedDouble 5)) == ((0 - 11) ),
         nestedDouble (nestedDouble 4) == 16
     ]
     // Exercise each helper and additional zero paths.
@@ -131,12 +145,12 @@ nestedCallsCase () =
         nestedDouble 0 == 0,
         nestedNeg 0 == 0,
         nestedInc (nestedDouble 2) == 5,
-        nestedNeg (nestedInc (nestedDouble 0)) == ((0 - 1) ?: 0)
+        nestedNeg (nestedInc (nestedDouble 0)) == ((0 - 1) )
     ]
 
 (** Sum positive integers with adjacent pattern clauses. *)
 recursiveSumTo 0 = 0
-recursiveSumTo n = n + recursiveSumTo ((n - 1) ?: 0) ?: 0
+recursiveSumTo n = n + recursiveSumTo ((n - 1) ) 
 
 (** Verify the base and recursive paths. *)
 recursionCase () =
@@ -156,14 +170,15 @@ recursionCase () =
         recursiveSumTo 0 == 0,
         recursiveSumTo 2 == 3,
         recursiveSumTo 6 == 21,
-        recursiveSumTo 6 == (recursiveSumTo 5 + 6 ?: 0)
+        recursiveSumTo 6 == (recursiveSumTo 5 + 6 )
     ]
 
-test "closures retain independent captured state" closuresCase
-test "partial application retains every curried golden" curryPartialCase
-test "higher-order functions retain every application golden" higherOrderCase
-test "nested calls retain evaluation structure" nestedCallsCase
-test "recursion retains base and recursive branches" recursionCase
+
+test "closures retain independent captured state" (\() => exactArithmetic (closuresCase))
+test "partial application retains every curried golden" (\() => exactArithmetic (curryPartialCase))
+test "higher-order functions retain every application golden" (\() => exactArithmetic (higherOrderCase))
+test "nested calls retain evaluation structure" (\() => exactArithmetic (nestedCallsCase))
+test "recursion retains base and recursive branches" (\() => exactArithmetic (recursionCase))
 
 (** Identity as a GENERIC definition — no single concrete ABI, so it exists
     only as a body its call sites specialise ([TYPE-GENERICS-FN]). *)
@@ -212,7 +227,7 @@ applyTwo (f, a, b) = f a b
 
 (** Pin file-scope generic function values and lexical callability. *)
 genericValueCase () =
-    curriedSum = \a => \b => a + b ?: 0
+    curriedSum = \a => \b => a + b 
     checkAll "file-scope generic function values resolve by name" [
         throughAlias 7 == 7,
         throughAlias "osp" == "osp",
@@ -231,4 +246,4 @@ genericValueCase () =
         applyTwo (curriedSum, 20, 22) == 42
     ]
 
-test "file-scope generic function values resolve by name" genericValueCase
+test "file-scope generic function values resolve by name" (\() => exactArithmetic (genericValueCase))

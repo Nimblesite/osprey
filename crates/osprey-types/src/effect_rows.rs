@@ -20,6 +20,7 @@ type HandlerCandidates = HashMap<(u32, u32), BTreeSet<Vec<String>>>;
 
 #[derive(Default)]
 pub(crate) struct Instances {
+    pub(crate) expression_types: RefCell<HashMap<usize, crate::ty::Type>>,
     pub(crate) methods: crate::methods::Targets,
     /// A source position can identify more than one interpolation fragment.
     /// Preserve every independently inferred candidate instead of letting the
@@ -340,6 +341,7 @@ impl<'a> Index<'a> {
     fn collect(program: &'a Program) -> Self {
         let mut index = Self {
             operations: osprey_ast::OperationTable::collect(program),
+            effects: HashMap::from([(osprey_ast::ARITH_EFFECT.to_owned(), 0)]),
             ..Self::default()
         };
         index.collect_stmts(&program.statements, &[]);
@@ -502,6 +504,17 @@ struct Value {
 }
 
 impl Value {
+    fn carries_provenance(&self) -> bool {
+        self.callable.is_some()
+            || !self.performed.is_empty()
+            || !self.fields.is_empty()
+            || self.element.is_some()
+            || self.result_payload.is_some()
+            || self.fiber_payload.is_some()
+            || !self.channel_sites.is_empty()
+            || self.deferred != Summary::default()
+    }
+
     fn from_callable(callable: Callable) -> Self {
         Self {
             field_names: matches!(callable, Callable::Known(_)).then(BTreeSet::new),
@@ -718,11 +731,34 @@ impl Analyzer<'_> {
         self.value(expression, scope, env)
     }
 
+    /// An expression's own requirements: its children's, plus the `Arith`
+    /// operation its operator may perform. Implements [ARITH-EFFECT-DISCHARGE].
+    fn expression(&self, expression: &Expr, scope: &[String], env: &CallableEnv) -> Summary {
+        osprey_ast::with_stack(|| {
+            let mut summary = self.expression_children(expression, scope, env);
+            let types = self.instances.expression_types.borrow();
+            let ty = types.get(&std::ptr::from_ref(expression).addr());
+            if let Some(operation) = crate::arithmetic::operation(expression, ty) {
+                let _ = summary.required.insert(Requirement::new(
+                    osprey_ast::ARITH_EFFECT,
+                    operation,
+                    Vec::new(),
+                ));
+            }
+            summary
+        })
+    }
+
     #[expect(
         clippy::too_many_lines,
         reason = "the exhaustive AST effect fold is clearest as one variant-complete match"
     )]
-    fn expression(&self, expression: &Expr, scope: &[String], env: &CallableEnv) -> Summary {
+    fn expression_children(
+        &self,
+        expression: &Expr,
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> Summary {
         match expression {
             Expr::Integer(_)
             | Expr::Float(_)
@@ -926,6 +962,13 @@ impl Analyzer<'_> {
             out.unresolved_dynamic_call = true;
         }
         if let Some(name) = self.builtin_callee(function, scope, env) {
+            for operation in crate::arithmetic::total_builtin_operations(name, arguments) {
+                let _ = out.required.remove(&Requirement::new(
+                    osprey_ast::ARITH_EFFECT,
+                    operation,
+                    Vec::new(),
+                ));
+            }
             if iterator_consumer(name) {
                 if let Some(iterator) = arguments
                     .first()
@@ -988,7 +1031,7 @@ impl Analyzer<'_> {
             }
             Some(crate::methods::Target::Function) | None => self.call(
                 &Expr::Identifier(parts.method.to_owned()),
-                &receiver_first(parts.target, parts.arguments),
+                &self.receiver_first(parts.target, parts.arguments),
                 parts.named,
                 scope,
                 env,
@@ -1008,7 +1051,7 @@ impl Analyzer<'_> {
         env: &CallableEnv,
     ) -> Option<Value> {
         let function = Expr::Identifier(parts.method.to_owned());
-        let arguments = receiver_first(parts.target, parts.arguments);
+        let arguments = self.receiver_first(parts.target, parts.arguments);
         let fallback = method_thunk(
             self.call_effects(&function, &arguments, parts.named, scope, env),
             self.call_value(&function, &arguments, parts.named, scope, env),
@@ -1097,7 +1140,7 @@ impl Analyzer<'_> {
                 .and_then(|value| self.project_returned(value)),
             Some(crate::methods::Target::Function) | None => self.call_value(
                 &Expr::Identifier(parts.method.to_owned()),
-                &receiver_first(parts.target, parts.arguments),
+                &self.receiver_first(parts.target, parts.arguments),
                 parts.named,
                 scope,
                 env,
@@ -1421,6 +1464,22 @@ impl Analyzer<'_> {
         }
     }
 
+    fn receiver_first(&self, receiver: &Expr, arguments: &[Expr]) -> Vec<Expr> {
+        let originals: Vec<_> = std::iter::once(receiver).chain(arguments).collect();
+        let copies: Vec<_> = originals
+            .iter()
+            .map(|expression| (*expression).clone())
+            .collect();
+        for (source, copy) in originals.into_iter().zip(&copies) {
+            crate::arithmetic::transfer(
+                source,
+                copy,
+                &mut self.instances.expression_types.borrow_mut(),
+            );
+        }
+        copies
+    }
+
     fn pipe_call(&self, left: &Expr, right: &Expr, scope: &[String], env: &CallableEnv) -> Summary {
         match right {
             Expr::Call {
@@ -1429,7 +1488,7 @@ impl Analyzer<'_> {
                 named_arguments,
             } => self.call(
                 function,
-                &receiver_first(left, arguments),
+                &self.receiver_first(left, arguments),
                 named_arguments,
                 scope,
                 env,
@@ -1452,7 +1511,7 @@ impl Analyzer<'_> {
                 named_arguments,
             } => self.call_value(
                 function,
-                &receiver_first(left, arguments),
+                &self.receiver_first(left, arguments),
                 named_arguments,
                 scope,
                 env,
@@ -1482,7 +1541,7 @@ impl Analyzer<'_> {
     }
 
     fn value(&self, expression: &Expr, scope: &[String], env: &CallableEnv) -> Option<Value> {
-        let mut value = self.raw_value(expression, scope, env)?;
+        let mut value = osprey_ast::with_stack(|| self.raw_value(expression, scope, env))?;
         if let Some(bindings) = self
             .instances
             .instantiations
@@ -1518,7 +1577,7 @@ impl Analyzer<'_> {
                 self.index
                     .resolve(scope, name)
                     .map(|id| self.function_value(id))
-                    .or_else(|| runtime_builtin_value(name))
+                    .or_else(|| builtin_callable_value(name))
             }
             Expr::Path(path) => self
                 .index
@@ -1752,13 +1811,12 @@ impl Analyzer<'_> {
             Expr::Resume(value) | Expr::Yield(value) => value
                 .as_deref()
                 .and_then(|value| self.value(value, scope, env)),
-            Expr::Binary { left, right, .. } => {
-                let mut merged = self.value(left, scope, env);
-                if let Some(value) = self.value(right, scope, env) {
-                    merge_optional_value(&mut merged, value);
-                }
-                merged
-            }
+            // Every binary operator returns a scalar. Its operands may carry
+            // callable provenance, but the operator's result cannot.
+            Expr::Binary { .. } => Some(Value {
+                field_names: Some(BTreeSet::new()),
+                ..Value::default()
+            }),
             _ => None,
         }
     }
@@ -1776,6 +1834,7 @@ impl Analyzer<'_> {
             .iter()
             .filter_map(|field| {
                 self.value(&field.value, scope, env)
+                    .filter(Value::carries_provenance)
                     .map(|value| (field.name.clone(), value))
             })
             .collect();
@@ -2200,13 +2259,6 @@ impl Analyzer<'_> {
 
 /// Method calls and piped calls are both plain calls whose receiver becomes the
 /// first argument; every desugaring site builds that argument list here.
-fn receiver_first(receiver: &Expr, arguments: &[Expr]) -> Vec<Expr> {
-    let mut all = Vec::with_capacity(arguments.len() + 1);
-    all.push(receiver.clone());
-    all.extend(arguments.iter().cloned());
-    all
-}
-
 fn expression_name(expression: &Expr) -> Option<&str> {
     match expression {
         Expr::TypeApply { function, .. } => expression_name(function),
@@ -2378,9 +2430,34 @@ fn builtin_environment() -> &'static crate::env::TypeEnv {
     &BUILTINS
 }
 
-fn runtime_builtin_value(name: &str) -> Option<Value> {
+fn arithmetic_builtin_operations(name: &str) -> &'static [&'static str] {
+    match name {
+        "abs" => &["overflow"],
+        "intDiv" => &["overflow", "remainderByZero"],
+        _ => &[],
+    }
+}
+
+fn builtin_callable_value(name: &str) -> Option<Value> {
     let env = builtin_environment();
-    if !env.is_runtime_builtin(name) {
+    if !env.is_runtime_builtin(name)
+        && !matches!(
+            name,
+            "abs"
+                | "intDiv"
+                | "toFloat"
+                | "toString"
+                | "checkedAdd"
+                | "checkedSub"
+                | "checkedMul"
+                | "wrapAdd"
+                | "wrapSub"
+                | "wrapMul"
+                | "satAdd"
+                | "satSub"
+                | "satMul"
+        )
+    {
         return None;
     }
     let crate::ty::Type::Fun { params, ret } = &env.get(name)?.ty else {
@@ -2392,7 +2469,15 @@ fn runtime_builtin_value(name: &str) -> Option<Value> {
                 .map(|index| format!("arg{index}"))
                 .collect(),
             summary: Summary {
-                runtime_builtins: [name.to_owned()].into_iter().collect(),
+                runtime_builtins: env
+                    .is_runtime_builtin(name)
+                    .then(|| name.to_owned())
+                    .into_iter()
+                    .collect(),
+                required: arithmetic_builtin_operations(name)
+                    .iter()
+                    .map(|op| Requirement::new(osprey_ast::ARITH_EFFECT, op, Vec::new()))
+                    .collect(),
                 ..Summary::default()
             },
             returned: value_shape(ret).map(Box::new),
@@ -2902,6 +2987,48 @@ fn converge(
 /// Erase the provenance verdicts a structural sweep recorded, leaving the
 /// requirements, parameter uses and callable shapes that carry them intact so
 /// the next sweep can re-derive each verdict from converged provenance.
+/// What a declared row governs: the function's own requirements plus, along a
+/// curried spine (a body that is a closure literal, as ML `f a b = …` lowers),
+/// each nested closure's latent requirements. The written row covers the full
+/// application ([FLAVOR-ML-CURRY]).
+fn full_application(body: &Expr, own: &Summary, returned: Option<&Value>) -> Summary {
+    let mut summary = own.clone();
+    let (mut body, mut returned) = (body, returned);
+    while let (Some(inner), Some(Callable::Known(closure))) = (
+        curried_body(body),
+        returned.and_then(|value| value.callable.as_ref()),
+    ) {
+        summary.union(closure.summary.clone());
+        body = inner;
+        returned = closure.returned.as_deref();
+    }
+    summary
+}
+
+/// The body of the closure literal a curried spine returns, looking through
+/// the parameter-annotation `let`s the ML lowering wraps around it.
+fn curried_body(body: &Expr) -> Option<&Expr> {
+    match body {
+        Expr::Lambda { body, .. } => Some(body),
+        Expr::Block {
+            statements,
+            value: Some(value),
+        } if statements.iter().all(is_parameter_annotation) => curried_body(value),
+        _ => None,
+    }
+}
+
+/// `let x: T = x` — an annotation on a parameter, not a computation.
+fn is_parameter_annotation(statement: &Stmt) -> bool {
+    matches!(statement, Stmt::Let {
+        name,
+        mutable: false,
+        ty: Some(_),
+        value: Expr::Identifier(bound),
+        ..
+    } if name == bound)
+}
+
 fn clear_verdicts(rows: &mut [Summary], returns: &mut [Option<Value>]) {
     for row in rows.iter_mut() {
         clear_summary_verdicts(row);
@@ -3157,8 +3284,9 @@ pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) 
     };
     // An annotation is a row contract/instantiation hint, never a handler.
     // Inferred operations outside its named effects are therefore an error.
-    for (function, row) in index.functions.iter().zip(&rows) {
+    for ((function, own), returned) in index.functions.iter().zip(&rows).zip(&returns) {
         if function.effect_row_present {
+            let row = &full_application(function.body, own, returned.as_ref());
             let undeclared: BTreeSet<_> = row
                 .required
                 .iter()
@@ -3240,6 +3368,8 @@ pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) 
         &mut errors,
     );
 
+    validate_arithmetic_initializers(&analyzer, &program.statements, &mut errors);
+
     // The entry is `main` when the program declares one, otherwise the
     // top-level let/assignment/expression sequence. Either way the file-scope
     // initializers run before it and are part of it: a `perform` in a top-level
@@ -3262,6 +3392,31 @@ pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) 
         }
     }
     errors
+}
+
+/// File initializers run before program entry installs its policies. [ARITH-EFFECT-CONST]
+fn validate_arithmetic_initializers(
+    analyzer: &Analyzer<'_>,
+    statements: &[Stmt],
+    errors: &mut Vec<TypeError>,
+) {
+    let mut env = CallableEnv::default();
+    for statement in statements {
+        if let Stmt::Let {
+            value, position, ..
+        } = statement
+        {
+            let summary = analyzer.expression(value, &[], &env);
+            if summary
+                .required
+                .iter()
+                .any(|request| request.effect == osprey_ast::ARITH_EFFECT)
+            {
+                errors.push(TypeError::new("fallible arithmetic in a file-scope initializer; move it into a handled region").with_pos(*position));
+            }
+        }
+        let _ = analyzer.statements(std::slice::from_ref(statement), &[], &mut env);
+    }
 }
 
 fn entry_errors(entry: &Summary, context: &str) -> Vec<TypeError> {
@@ -3396,8 +3551,11 @@ fn gpu_kernel_verdict(
         .required
         .iter()
         .filter(|requirement| {
-            !env.static_answers
-                .contains(&(requirement.effect.clone(), requirement.operation.clone()))
+            // Host kernels use the ordinary arithmetic policy. [ARITH-EFFECT-DISCHARGE]
+            requirement.effect != osprey_ast::ARITH_EFFECT
+                && !env
+                    .static_answers
+                    .contains(&(requirement.effect.clone(), requirement.operation.clone()))
         })
         .collect();
     if !dynamic.is_empty() || !row.runtime_builtins.is_empty() {
@@ -3436,6 +3594,14 @@ fn validate_handler_arms(
     errors: &mut Vec<TypeError>,
 ) {
     validate_gpu_kernel(analyzer, expression, scope, env, errors);
+    if let Expr::Block { statements, value } = expression {
+        let mut local = env.clone();
+        validate_statement_handlers(analyzer, axis, statements, scope, &mut local, errors);
+        if let Some(value) = value {
+            validate_handler_arms(analyzer, axis, value, scope, &local, errors);
+        }
+        return;
+    }
     if let Expr::Handler {
         effect,
         arms,

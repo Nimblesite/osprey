@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // Type equality coverage: GenericType.Equals, FunctionType.Equals,
 // UnionType.Equals. Same-shape generics unify; different-shape generics
 // don't. Functions with identical signatures unify when passed through
@@ -29,14 +48,14 @@ print("T<I,S,I>: ${tIBI.first}/${tIBI.second}/${tIBI.third}")
 print("")
 
 /// --- Function type equality via HOFs ---
-fn addOne(x)     = x + 1 ?: 0
-fn timesTwo(x)   = x * 2 ?: 0
-fn minusOne(x)   = x - 1 ?: 0
+fn addOne(x)     = x + 1 
+fn timesTwo(x)   = x * 2 
+fn minusOne(x)   = x - 1 
 fn excl(s)       = s + "!"
 fn ques(s)       = s + "?"
 fn intToString(x)   = toString(x)
-fn twoArgAdd(a, b) = a + b ?: 0
-fn threeArgAdd(a: int, b: int, c: int) = a + b + c ?: 0
+fn twoArgAdd(a, b) = a + b 
+fn threeArgAdd(a: int, b: int, c: int) = a + b + c 
 
 fn applyInt(f, x)    = f(x)
 fn applyStr(f, s) = f(s)
@@ -45,9 +64,9 @@ fn applyTwo(f, a, b) = f(a, b)
 fn applyThree(f, a, b, c) = f(a, b, c)
 
 print("=== Same (int)->int passed via HOF ===")
-print(toString(applyInt(f: addOne,   x: 10)))
-print(toString(applyInt(f: timesTwo, x: 10)))
-print(toString(applyInt(f: minusOne, x: 10)))
+exactArithmetic(fn() => print(toString(applyInt(f: addOne,   x: 10))))
+exactArithmetic(fn() => print(toString(applyInt(f: timesTwo, x: 10))))
+exactArithmetic(fn() => print(toString(applyInt(f: minusOne, x: 10))))
 
 print("=== Same (string)->string passed via HOF ===")
 print(applyStr(f: excl, s: "hi"))
@@ -55,8 +74,8 @@ print(applyStr(f: ques, s: "hi"))
 
 print("=== Different shapes ===")
 print(applyToStr(f: intToString, x: 42))
-print(toString(applyTwo(f: twoArgAdd, a: 5, b: 7)))
-print(toString(applyThree(f: threeArgAdd, a: 1, b: 2, c: 3)))
+exactArithmetic(fn() => print(toString(applyTwo(f: twoArgAdd, a: 5, b: 7))))
+exactArithmetic(fn() => print(toString(applyThree(f: threeArgAdd, a: 1, b: 2, c: 3))))
 print("")
 
 /// --- Generic monomorphization via identity-like functions ---
@@ -145,7 +164,7 @@ fn alsoOf<T>(x: T, f: (T) -> T) -> T = f(x)
 fn headOr<T>(items: List<T>, fallback: T) -> T = items.listGet(0) ?: fallback
 fn repeatOf<T>(value: T, times: int) -> T = match times {
     0 => value
-    _ => repeatOf<T>(value, times - 1 ?: 0)
+    _ => repeatOf<T>(value, times - 1 )
 }
 
 let appliedInt = identityOf<int>(5)
@@ -219,4 +238,5 @@ fn typeEqualityCase() = {
         keepSink(sinkInt()) == 7
     ])
 }
-test("equivalent type shapes compose while union tags remain distinct", typeEqualityCase)
+
+test("equivalent type shapes compose while union tags remain distinct", fn() => exactArithmetic(typeEqualityCase))

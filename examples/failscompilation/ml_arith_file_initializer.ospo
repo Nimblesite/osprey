@@ -1,0 +1,5 @@
+// [ARITH-EFFECT-CONST] A file-scope initializer runs before any policy is installed, so it may not fault.
+// osprey: flavor=ml
+add (a, b) = a + b
+total = add (1, 2)
+print total

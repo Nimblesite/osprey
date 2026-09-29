@@ -15,11 +15,11 @@ effect Source<T> {
     take: fn() -> Result<T, MathError>
 }
 
-fn checked() -> Result<int, MathError> !Source<int> = perform Source.take()
+fn checked() !Source<int> = perform Source.take()
 
 let observed = {
     handle Source {
-        take => (40 + 2) ?: 0
+        take => 40 + 2
     }
     checked()
 }

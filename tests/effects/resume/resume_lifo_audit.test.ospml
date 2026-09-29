@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 (** Audit supplies numbered values and observes continuation unwind order. *)
 effect Audit
     (** Request the numbered value for `label`, recording the visit. *)
@@ -7,7 +21,7 @@ effect Audit
 pipeline () =
     a = perform Audit.step "load"
     b = perform Audit.step "parse"
-    a + b ?: 0
+    a + b 
 
 (** This case proves operations enter FIFO and post-resume code exits LIFO. *)
 resumeLifoAuditCase () =
@@ -19,7 +33,7 @@ resumeLifoAuditCase () =
     total =
         handle Audit
             step label =>
-                n := n + 1 ?: n
+                n := n + 1 
                 issued := "${issued}${label}:${toString n}|"
                 answer = resume n
                 settled := "${settled}${label}:${toString answer}|"
@@ -42,7 +56,8 @@ resumeLifoAuditCase () =
     ]
 
 (* Register the post-resume LIFO regression. *)
-test "post-resume code unwinds in reverse operation order" resumeLifoAuditCase
+
+test "post-resume code unwinds in reverse operation order" (\() => exactArithmetic (resumeLifoAuditCase))
 
 (** Alpha, Beta, Gamma and Delta are single-operation channels, one per nesting
     depth, so every transcript entry names both the region that answered an
@@ -92,29 +107,29 @@ nestedInterleavedDepthTwoCase () =
     total =
         handle Alpha
             alpha label =>
-                alphaCalls := alphaCalls + 1 ?: alphaCalls
-                supplied = alphaCalls * 10 ?: 0
+                alphaCalls := alphaCalls + 1 
+                supplied = alphaCalls * 10 
                 entered := "${entered}a:${label}|"
                 supplies := "${supplies}${label}=${toString supplied}|"
                 answer = resume supplied
                 settled := "${settled}a:${label}|"
                 answers := "${answers}${label}:${toString answer}|"
-                answer + 1 ?: answer
+                answer + 1 
         handle Beta
             beta label =>
-                betaCalls := betaCalls + 1 ?: betaCalls
-                supplied = betaCalls * 100 ?: 0
+                betaCalls := betaCalls + 1 
+                supplied = betaCalls * 100 
                 entered := "${entered}b:${label}|"
                 supplies := "${supplies}${label}=${toString supplied}|"
                 answer = resume supplied
                 settled := "${settled}b:${label}|"
                 answers := "${answers}${label}:${toString answer}|"
-                answer * 2 ?: answer
+                answer * 2 
         p = perform Alpha.alpha "a1"
         q = perform Beta.beta "b1"
         r = perform Alpha.alpha "a2"
         s = perform Beta.beta "b2"
-        (p + q ?: 0) + (r + s ?: 0) ?: 0
+        (p + q ) + (r + s ) 
 
     (* Operations enter in the order the body performs them, whichever depth
        answers them: the outer region answers first and third. *)
@@ -147,7 +162,7 @@ nestedInterleavedDepthTwoCase () =
     ]
 
 (* Register the two-depth interleaved settlement audit. *)
-test "interleaved performs across two nested regions settle innermost first" nestedInterleavedDepthTwoCase
+test "interleaved performs across two nested regions settle innermost first" (\() => exactArithmetic (nestedInterleavedDepthTwoCase))
 
 (** Three regions, rotated: the OUTERMOST region handles Gamma, the middle one
     Alpha and the innermost one Beta, while the body performs them in a third
@@ -170,38 +185,38 @@ nestedDepthThreeRotationCase () =
     total =
         handle Gamma
             gamma label =>
-                gammaCalls := gammaCalls + 1 ?: gammaCalls
-                supplied = gammaCalls * 1000 ?: 0
+                gammaCalls := gammaCalls + 1 
+                supplied = gammaCalls * 1000 
                 entered := "${entered}d1:${label}|"
                 answer = resume supplied
                 settled := "${settled}d1:${label}|"
                 answers := "${answers}${label}:${toString answer}|"
-                answer * 2 ?: answer
+                answer * 2 
         handle Alpha
             alpha label =>
-                alphaCalls := alphaCalls + 1 ?: alphaCalls
-                supplied = alphaCalls * 10 ?: 0
+                alphaCalls := alphaCalls + 1 
+                supplied = alphaCalls * 10 
                 entered := "${entered}d2:${label}|"
                 answer = resume supplied
                 settled := "${settled}d2:${label}|"
                 answers := "${answers}${label}:${toString answer}|"
-                answer + 7 ?: answer
+                answer + 7 
         handle Beta
             beta label =>
-                betaCalls := betaCalls + 1 ?: betaCalls
-                supplied = betaCalls * 100 ?: 0
+                betaCalls := betaCalls + 1 
+                supplied = betaCalls * 100 
                 entered := "${entered}d3:${label}|"
                 answer = resume supplied
                 settled := "${settled}d3:${label}|"
                 answers := "${answers}${label}:${toString answer}|"
-                answer * 3 ?: answer
+                answer * 3 
         g0 = perform Gamma.gamma "g0"
         a1 = perform Alpha.alpha "a1"
         b1 = perform Beta.beta "b1"
         g1 = perform Gamma.gamma "g1"
         b2 = perform Beta.beta "b2"
         a2 = perform Alpha.alpha "a2"
-        (g0 + a1 ?: 0) + (b1 + g1 ?: 0) + (b2 + a2 ?: 0) ?: 0
+        (g0 + a1 ) + (b1 + g1 ) + (b2 + a2 ) 
 
     (* Six operations, three depths, entered in body order: d1 d2 d3 d1 d3 d2. *)
     checkAll "three rotated depths enter in perform order" [
@@ -233,7 +248,7 @@ nestedDepthThreeRotationCase () =
     ]
 
 (* Register the three-depth rotated settlement audit. *)
-test "three rotated regions settle by live arm nesting, not by perform order" nestedDepthThreeRotationCase
+test "three rotated regions settle by live arm nesting, not by perform order" (\() => exactArithmetic (nestedDepthThreeRotationCase))
 
 (** Four nested regions, one effect each, performed 1-2-3-4-4-3-2-1 so the depth
     pattern is a palindrome while the labels are not. Spec 0017 [EFFECTS-RESUME]
@@ -262,44 +277,44 @@ nestedDepthFourStaircaseCase () =
     total =
         handle Alpha
             alpha label =>
-                alphaCalls := alphaCalls + 1 ?: alphaCalls
+                alphaCalls := alphaCalls + 1 
                 supplied = alphaCalls
                 entered := "${entered}1:${label}|"
                 supplies := "${supplies}${label}=${toString supplied}|"
                 answer = resume supplied
                 settled := "${settled}1:${label}|"
                 answers := "${answers}${label}:${toString answer}|"
-                answer + 1 ?: answer
+                answer + 1 
         handle Beta
             beta label =>
-                betaCalls := betaCalls + 1 ?: betaCalls
-                supplied = betaCalls * 10 ?: 0
+                betaCalls := betaCalls + 1 
+                supplied = betaCalls * 10 
                 entered := "${entered}2:${label}|"
                 supplies := "${supplies}${label}=${toString supplied}|"
                 answer = resume supplied
                 settled := "${settled}2:${label}|"
                 answers := "${answers}${label}:${toString answer}|"
-                answer + 10 ?: answer
+                answer + 10 
         handle Gamma
             gamma label =>
-                gammaCalls := gammaCalls + 1 ?: gammaCalls
-                supplied = gammaCalls * 100 ?: 0
+                gammaCalls := gammaCalls + 1 
+                supplied = gammaCalls * 100 
                 entered := "${entered}3:${label}|"
                 supplies := "${supplies}${label}=${toString supplied}|"
                 answer = resume supplied
                 settled := "${settled}3:${label}|"
                 answers := "${answers}${label}:${toString answer}|"
-                answer + 100 ?: answer
+                answer + 100 
         handle Delta
             delta label =>
-                deltaCalls := deltaCalls + 1 ?: deltaCalls
-                supplied = deltaCalls * 1000 ?: 0
+                deltaCalls := deltaCalls + 1 
+                supplied = deltaCalls * 1000 
                 entered := "${entered}4:${label}|"
                 supplies := "${supplies}${label}=${toString supplied}|"
                 answer = resume supplied
                 settled := "${settled}4:${label}|"
                 answers := "${answers}${label}:${toString answer}|"
-                answer + 1000 ?: answer
+                answer + 1000 
         a1 = perform Alpha.alpha "a1"
         b1 = perform Beta.beta "b1"
         g1 = perform Gamma.gamma "g1"
@@ -308,9 +323,9 @@ nestedDepthFourStaircaseCase () =
         g2 = perform Gamma.gamma "g2"
         b2 = perform Beta.beta "b2"
         a2 = perform Alpha.alpha "a2"
-        firstHalf = (a1 + b1 ?: 0) + (g1 + x1 ?: 0) ?: 0
-        secondHalf = (x2 + g2 ?: 0) + (b2 + a2 ?: 0) ?: 0
-        firstHalf + secondHalf ?: 0
+        firstHalf = (a1 + b1 ) + (g1 + x1 ) 
+        secondHalf = (x2 + g2 ) + (b2 + a2 ) 
+        firstHalf + secondHalf 
 
     (* Eight operations descend the four depths and climb back out. *)
     checkAll "four nested depths enter in perform order" [
@@ -349,7 +364,7 @@ nestedDepthFourStaircaseCase () =
     ]
 
 (* Register the four-depth nested settlement audit. *)
-test "four nested regions settle by live arm nesting, deepest arm first" nestedDepthFourStaircaseCase
+test "four nested regions settle by live arm nesting, deepest arm first" (\() => exactArithmetic (nestedDepthFourStaircaseCase))
 
 (** Twin gives two nested regions something to divide between them. *)
 effect Twin
@@ -381,8 +396,8 @@ nestedPartialInnerResumeCase () =
     total =
         handle Twin
             near amount =>
-                outerNear := outerNear + 1 ?: outerNear
-                supplied = amount * 1000000 ?: amount
+                outerNear := outerNear + 1 
+                supplied = amount * 1000000 
                 entered := "${entered}OUTERnear:${toString amount}|"
                 supplies := "${supplies}N${toString amount}=${toString supplied}|"
                 answer = resume supplied
@@ -390,29 +405,29 @@ nestedPartialInnerResumeCase () =
                 answers := "${answers}OUTERnear:${toString answer}|"
                 answer
             far amount =>
-                outerFar := outerFar + 1 ?: outerFar
-                supplied = amount * 1000 ?: amount
+                outerFar := outerFar + 1 
+                supplied = amount * 1000 
                 entered := "${entered}far:${toString amount}|"
                 supplies := "${supplies}f${toString amount}=${toString supplied}|"
                 answer = resume supplied
                 settled := "${settled}far:${toString amount}|"
                 answers := "${answers}far:${toString answer}|"
-                answer * 2 ?: answer
+                answer * 2 
         handle Twin
             near amount =>
-                innerNear := innerNear + 1 ?: innerNear
-                supplied = amount * 10 ?: amount
+                innerNear := innerNear + 1 
+                supplied = amount * 10 
                 entered := "${entered}near:${toString amount}|"
                 supplies := "${supplies}n${toString amount}=${toString supplied}|"
                 answer = resume supplied
                 settled := "${settled}near:${toString amount}|"
                 answers := "${answers}near:${toString answer}|"
-                answer + 5 ?: answer
+                answer + 5 
         p = perform Twin.near 1
         q = perform Twin.far 2
         r = perform Twin.near 3
         s = perform Twin.far 4
-        (p + q ?: 0) + (r + s ?: 0) ?: 0
+        (p + q ) + (r + s ) 
 
     (* The inner region answered both `near` operations; the outer one answered
        both `far` operations and never saw a `near`. *)
@@ -443,7 +458,7 @@ nestedPartialInnerResumeCase () =
     ]
 
 (* Register the partial-inner-region settlement audit. *)
-test "a partial inner region resumes while its uncovered operation crosses outward" nestedPartialInnerResumeCase
+test "a partial inner region resumes while its uncovered operation crosses outward" (\() => exactArithmetic (nestedPartialInnerResumeCase))
 
 (** Layer is handled twice at two depths, the inner region covering only part of
     the outer body. *)
@@ -471,31 +486,31 @@ sameEffectTwoDepthsCase () =
     total =
         handle Layer
             pick label =>
-                outerCalls := outerCalls + 1 ?: outerCalls
-                supplied = outerCalls * 1000 ?: 0
+                outerCalls := outerCalls + 1 
+                supplied = outerCalls * 1000 
                 entered := "${entered}out:${label}|"
                 supplies := "${supplies}${label}=${toString supplied}|"
                 answer = resume supplied
                 settled := "${settled}out:${label}|"
                 answers := "${answers}${label}:${toString answer}|"
-                answer * 2 ?: answer
+                answer * 2 
         before = perform Layer.pick "before"
         middle =
             handle Layer
                 pick label =>
-                    innerCalls := innerCalls + 1 ?: innerCalls
-                    supplied = innerCalls * 10 ?: 0
+                    innerCalls := innerCalls + 1 
+                    supplied = innerCalls * 10 
                     entered := "${entered}in:${label}|"
                     supplies := "${supplies}${label}=${toString supplied}|"
                     answer = resume supplied
                     settled := "${settled}in:${label}|"
                     answers := "${answers}${label}:${toString answer}|"
-                    answer + 3 ?: answer
+                    answer + 3 
             m1 = perform Layer.pick "in1"
             m2 = perform Layer.pick "in2"
-            m1 + m2 ?: 0
+            m1 + m2 
         after = perform Layer.pick "after"
-        (before + middle ?: 0) + after ?: 0
+        (before + middle ) + after 
 
     (* Shadow and restore: the inner arm answered exactly the two operations
        inside its region, the outer arm the one before it and the one after it. *)
@@ -525,4 +540,4 @@ sameEffectTwoDepthsCase () =
     ]
 
 (* Register the same-effect two-depth settlement audit. *)
-test "an inner region settles fully before the outer region's later operation" sameEffectTwoDepthsCase
+test "an inner region settles fully before the outer region's later operation" (\() => exactArithmetic (sameEffectTwoDepthsCase))

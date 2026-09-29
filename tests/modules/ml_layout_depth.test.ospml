@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 (** ML layout is the one place the two surfaces genuinely differ: Default marks
     every boundary with braces, ML marks them only with indentation. This pair
     drives that difference hard — a namespace block holding an ascribed module
@@ -7,6 +21,8 @@
     behind a brace-delimited twin ([FLAVOR-ML-LAYOUT], [MODULES-FLAVOR-PROJECTION]). *)
 
 namespace depth
+
+
     signature LeafApi
         value : Unit -> int
         scaled : int -> int
@@ -18,7 +34,7 @@ namespace depth
         export module Branch
             export module Twig : LeafApi
                 value () = 7
-                scaled n = (n * 7) ?: 0
+                scaled n = (n * 7) 
 
             (** A branch reaches its own twig without qualification. *)
             export pick () = Twig::value ()
@@ -30,7 +46,7 @@ namespace depth
                 (** Four segments deep, and the row still reaches the caller. *)
                 export drink n = perform Sap.draw n
 
-        export amplify n = (n * factor) ?: 0
+        export amplify n = (n * factor) 
 
 import depth::Trunk::Branch::Twig
 import depth::Trunk::Branch::Bud as Bud
@@ -41,7 +57,7 @@ import depth::Trunk
 (** Installs a doubling handler for the effect declared at the deepest level. *)
 tapping (rate, body) =
     handle Bud::Sap
-        draw amount => resume ((amount * rate) ?: 0)
+        draw amount => resume ((amount * rate) )
     body ()
 
 (** Every nesting level stays addressable by its full path and by its import. *)
@@ -68,11 +84,13 @@ deepEffectCase () = checkAll ("an effect four segments deep still propagates", [
     tapping (2, \() => Bud::drink 5) == 10,
     tapping (1, \() => Bud::drink 5) == 5,
     tapping (0, \() => Bud::drink 5) == 0,
-    tapping (3, \() => (Bud::drink 2 + Bud::drink 4) ?: 0) == 18,
+    tapping (3, \() => (Bud::drink 2 + Bud::drink 4) ) == 18,
     tapping (2, \() => Bud::drink (Twig::value ())) == 14
 ])
 
-print "${Twig::scaled 3} ${boost 2} ${tapping (2, \() => Bud::drink 5)} ${depth::Trunk::Branch::pick ()}"
-test ("layout nesting keeps every level addressable", nestingDepthCase)
-test ("an indented import selection binds every member", layoutImportCase)
-test ("an effect declared four segments deep propagates", deepEffectCase)
+exactArithmetic (\() =>
+    print "${Twig::scaled 3} ${boost 2} ${tapping (2, \() => Bud::drink 5)} ${depth::Trunk::Branch::pick ()}")
+
+test ("layout nesting keeps every level addressable", \() => exactArithmetic (nestingDepthCase))
+test ("an indented import selection binds every member", \() => exactArithmetic (layoutImportCase))
+test ("an effect declared four segments deep propagates", \() => exactArithmetic (deepEffectCase))

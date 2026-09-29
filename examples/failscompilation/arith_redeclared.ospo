@@ -1,0 +1,2 @@
+// [ARITH-EFFECT-OPS] `Arith` is compiler-declared; user code may not redeclare it.
+effect Arith { overflow: fn(int) -> int }

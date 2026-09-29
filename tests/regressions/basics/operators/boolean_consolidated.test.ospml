@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 // ML-flavor twin of boolean_consolidated.osp: literals, comparisons (int/float/
 // string), equality, logical && / ||, short-circuit, de Morgan, bool from match,
 // bool from function, ternary-as-match, interpolation. Uncurried multi-param
@@ -118,12 +132,13 @@ booleanBehaviorCase () =
         localParity,
         localLabel == "yes"
     ]
-test "boolean operators preserve values and short-circuiting" booleanBehaviorCase
+
+test "boolean operators preserve values and short-circuiting" (\() => exactArithmetic (booleanBehaviorCase))
 
 (** Produces infinity at runtime for the [FLOAT-COMPARE] truth tables. *)
 growFloat (x, count) = match count
     0 => x
-    _ => growFloat (x * x, (count - 1) ?: 0)
+    _ => growFloat (x * x, (count - 1) )
 comparisonRow (left, right) = "${left == right},${left != right},${left < right},${left <= right},${left > right},${left >= right}"
 checkFloatPair (label, left, right, expected) = checkAll label [
     comparisonRow (left, right) == expected,
@@ -148,5 +163,5 @@ orderedFloatComparisonsCase () =
     checkFloatPair ("infinity/finite", huge, 1.0, "false,true,false,false,true,true")
     checkFloatPair ("negative infinity/finite", -huge, 1.0, "false,true,true,true,false,false")
     checkFloatPair ("signed zeros", -0.0, 0.0, "true,false,false,true,false,true")
-test "NaN comparison truth table" nanComparisonsCase
-test "ordered float comparison controls" orderedFloatComparisonsCase
+test "NaN comparison truth table" (\() => exactArithmetic (nanComparisonsCase))
+test "ordered float comparison controls" (\() => exactArithmetic (orderedFloatComparisonsCase))

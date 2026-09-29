@@ -181,7 +181,12 @@ must not discard the shared-tail constraint. Closed rows must match exactly
 under equality; cyclic row substitutions are rejected.
 
 The preceding equality rules solve inference constraints, not annotation admissibility. Annotation checking uses **inclusion**, not equality: inferred requirements
-must fit the declared bound; permitted unused operations are legal. Quantified
+must fit the declared bound; permitted unused operations are legal. When a
+function's body is a closure literal — which every curried ML binding
+`f a b = …` lowers to ([FLAVOR-ML-CURRY](0024-MLFlavorSyntax.md#functions-and-currying))
+— the declared bound covers the full application: the requirements it must
+admit are those of the innermost body, not only those of constructing the
+returned closure. Quantified
 annotation tails are rigid while checking, so extra requirements cannot be
 hidden by assigning them to the caller's variable. Free row variables generalize
 at function/let boundaries when absent from the environment, subject to the

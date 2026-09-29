@@ -12,9 +12,21 @@
     fallback fired. maxInt and minInt are the two's-complement edges these
     accumulations walk to; hugeFloat is where a double's ulp reaches 2.0.
     minInt counts down from -maxInt because this flavor rejects -2^63. *)
+marked work =
+    handle Arith
+        overflow _ _ _ _ => overflowMark ()
+    work ()
+preserving work =
+    handle Arith
+        overflow _ lhs _ _ => lhs
+    work ()
+zeroReciprocal work =
+    handle Arith
+        divideByZero _ _ => 0.0
+    work ()
 overflowMark () = -999
 maxInt () = 9223372036854775807
-minInt () = ((0 - maxInt ()) ?: 0) - 1 ?: 0
+minInt () = ((0 - maxInt ()) ) - 1 
 hugeFloat () = 10000000000000000.0
 
 (** The growth kernels and the shared associative reduction — on overflow
@@ -22,27 +34,27 @@ hugeFloat () = 10000000000000000.0
     wraps. bump and lower step an element up and down, so a long chain of them
     must cancel exactly, and negate, absI and altSign drive the signed
     buffers. *)
-square x = (x * x) ?: 0
-product (a, b) = (a * b) ?: 0
-tally (a, x) = (a + x) ?: a
-bump x = (x + 1) ?: x
-lower x = (x - 1) ?: x
-negate x = (0 - x) ?: 0
+square x = (x * x) 
+product (a, b) = (a * b) 
+tally (a, x) = preserving (\() => a + x)
+bump x = (x + 1) 
+lower x = (x - 1) 
+negate x = (0 - x) 
 absI x = match x < 0
-    true => (0 - x) ?: 0
+    true => (0 - x) 
     false => x
-altSign x = match (x % 2 ?: 0) == 0
+altSign x = match (x % 2 ) == 0
     true => x
-    false => (0 - x) ?: 0
+    false => (0 - x) 
 
 (** negSat, lowerSat and sqSat are the boundary-probing twins of negate, lower
     and square: the same arithmetic, but the fallback publishes the mark. Then
     the compaction predicates, and minI, a running minimum for gpuScan. *)
-negSat x = (0 - x) ?: overflowMark ()
-lowerSat x = (x - 1) ?: overflowMark ()
-sqSat x = (x * x) ?: overflowMark ()
-isEven x = (x % 2 ?: 1) == 0
-isQuad x = (x % 4 ?: 1) == 0
+negSat x = marked (\() => (0 - x))
+lowerSat x = marked (\() => (x - 1))
+sqSat x = marked (\() => (x * x))
+isEven x = (x % 2 ) == 0
+isQuad x = (x % 4 ) == 0
 isNeg x = x < 0
 isPos x = x > 0
 isMax x = x == maxInt ()
@@ -56,13 +68,13 @@ minI (a, b) = match a < b
     the int edge one at a time. *)
 prodSat (a, x) = match a == overflowMark ()
     true => overflowMark ()
-    false => (a * x) ?: overflowMark ()
+    false => marked (\() => (a * x))
 doubleUp (a, _x) = match a == overflowMark ()
     true => overflowMark ()
-    false => (a * 2) ?: overflowMark ()
-addOr (a, x) = (a + x) ?: overflowMark ()
-clampAdd (a, x) = (a + x) ?: maxInt ()
-hugeScale x = (x * 100000000000000000) ?: maxInt ()
+    false => marked (\() => (a * 2))
+addOr (a, x) = marked (\() => (a + x))
+clampAdd (a, x) = satAdd a x
+hugeScale x = satMul x 100000000000000000
 
 (** The float kernels. addF's signature is load-bearing: a context-free `a + x`
     int-defaults [GPU-KERNEL-ELEM-TYPING]. headBig and tailBig plant one
@@ -72,7 +84,7 @@ addF : (float, float) -> float
 addF (a, x) = a + x
 half x = x * 0.5
 negF x = 0.0 - x
-recip x = (1.0 / x) ?: 0.0
+recip x = zeroReciprocal (\() => 1.0 / x)
 tenthOf _x = 0.1
 isPositiveF x = x > 0.0
 stir x = (x * 1.0001 + 0.5) * 0.9999
@@ -90,17 +102,17 @@ tailBig x = match x == 1000.0
 simulate : (GpuBuffer<int>, int) -> GpuBuffer<int>
 simulate (buf, n) = match n
     0 => buf
-    _ => simulate (buf |> gpuMap bump, (n - 1) ?: 0)
+    _ => simulate (buf |> gpuMap bump, (n - 1) )
 
 mix : (GpuBuffer<float>, int) -> GpuBuffer<float>
 mix (buf, n) = match n
     0 => buf
-    _ => mix (buf |> gpuMap stir, (n - 1) ?: 0)
+    _ => mix (buf |> gpuMap stir, (n - 1) )
 
 rebuild : (GpuBuffer<int>, int) -> GpuBuffer<int>
 rebuild (buf, n) = match n
     0 => buf
-    _ => rebuild (toGpu (fromGpu (buf |> gpuMap bump)), (n - 1) ?: 0)
+    _ => rebuild (toGpu (fromGpu (buf |> gpuMap bump)), (n - 1) )
 
 (** Run a million elements through map, fold, filter and scan. *)
 megaPipelineCase () =
@@ -375,9 +387,9 @@ zeroDegenerateCase () =
     is a visible Error rather than a silent zero. *)
 gatherBoundaryCase () =
     src = gpuIota 100000
-    ahead = gpuIota 100000 |> gpuMap (\i => gpuGet (src, (i + 1) ?: 0) ?: -7)
-    behind = gpuIota 100000 |> gpuMap (\i => gpuGet (src, (i - 1) ?: 0) ?: -7)
-    mirror = gpuIota 100000 |> gpuMap (\i => gpuGet (src, (99999 - i) ?: 0) ?: -7)
+    ahead = gpuIota 100000 |> gpuMap (\i => gpuGet (src, (i + 1) ) ?: -7)
+    behind = gpuIota 100000 |> gpuMap (\i => gpuGet (src, (i - 1) ) ?: -7)
+    mirror = gpuIota 100000 |> gpuMap (\i => gpuGet (src, (99999 - i) ) ?: -7)
     checkAll "gathers at the buffer edges" [
         (gpuGet (ahead, 0) ?: 0) == 1,
         (gpuGet (ahead, 99998) ?: 0) == 99999,
@@ -432,6 +444,10 @@ floatScaleCase () =
     after it while the same terms reversed all survive — why the spec calls a
     non-associative combine backend-dependent. *)
 floatOrderCase () =
+    handle Arith
+        divideByZero op lhs =>
+            checkAll "zero divisor payload" [op == "/", lhs == 1.0]
+            -1.0
     xs = gpuIota 1001 |> gpuMap toFloat
     leading = xs |> gpuMap headBig
     trailing = xs |> gpuMap tailBig
@@ -452,7 +468,7 @@ floatOrderCase () =
         (gpuGet (leading |> gpuScan 0.0 addF, 1000) ?: 0.0) == hugeFloat (),
         tenths > 10000.0,
         tenths < 10000.001,
-        ((1.0 / 0.0) ?: -1.0) == -1.0
+        ((1.0 / 0.0) ) == -1.0
     ]
 
 (** Run 400 float passes over the canonical [GPU-CONVERT] seed. *)
@@ -470,19 +486,34 @@ floatChurnCase () =
         (mix (gpuIota 8 |> gpuMap toFloat, 0) |> gpuFold 0.0 addF) == 28.0
     ]
 
-test ("a million elements map, fold, filter and scan in one pipeline", megaPipelineCase)
-test ("a 100k prefix scan matches its closed form", scanScaleCase)
-test ("twenty-four dependent map passes stay exact", longChainCase)
-test ("a buffer rebuilt from its own output six times stays exact", rebuildCase)
-test ("half a million elements compact and compact again", compactionScaleCase)
-test ("quarter-million-element zips multiply, truncate and cancel", zipScaleCase)
-test ("five hundred simulation passes stay exact", simulationCase)
-test ("checked arithmetic marks the exact overflow boundary", overflowBoundaryCase)
-test ("a saturating accumulation freezes instead of wrapping", saturationCase)
-test ("negative buffers survive every combinator", negativeCase)
-test ("alternating signs telescope through fold, scan and filter", alternatingCase)
-test ("zero and empty buffers are defined everywhere", zeroDegenerateCase)
-test ("gathers report every out-of-range index as an error", gatherBoundaryCase)
-test ("float buffers keep their bits at scale", floatScaleCase)
-test ("float accumulation order changes the sum", floatOrderCase)
-test ("float churn keeps double words through 400 passes", floatChurnCase)
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
+
+test ("a million elements map, fold, filter and scan in one pipeline", \() => exactArithmetic (megaPipelineCase))
+test ("a 100k prefix scan matches its closed form", \() => exactArithmetic (scanScaleCase))
+test ("twenty-four dependent map passes stay exact", \() => exactArithmetic (longChainCase))
+test ("a buffer rebuilt from its own output six times stays exact", \() => exactArithmetic (rebuildCase))
+test ("half a million elements compact and compact again", \() => exactArithmetic (compactionScaleCase))
+test ("quarter-million-element zips multiply, truncate and cancel", \() => exactArithmetic (zipScaleCase))
+test ("five hundred simulation passes stay exact", \() => exactArithmetic (simulationCase))
+test ("checked arithmetic marks the exact overflow boundary", \() => exactArithmetic (overflowBoundaryCase))
+test ("a saturating accumulation freezes instead of wrapping", \() => exactArithmetic (saturationCase))
+test ("negative buffers survive every combinator", \() => exactArithmetic (negativeCase))
+test ("alternating signs telescope through fold, scan and filter", \() => exactArithmetic (alternatingCase))
+test ("zero and empty buffers are defined everywhere", \() => exactArithmetic (zeroDegenerateCase))
+test ("gathers report every out-of-range index as an error", \() => exactArithmetic (gatherBoundaryCase))
+test ("float buffers keep their bits at scale", \() => exactArithmetic (floatScaleCase))
+test ("float accumulation order changes the sum", \() => exactArithmetic (floatOrderCase))
+test ("float churn keeps double words through 400 passes", \() => exactArithmetic (floatChurnCase))

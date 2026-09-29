@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 // ML-flavor twin of type_equality_comprehensive.osp — byte-identical IR.
 // Generic records, function-type equality through HOFs, generic
 // monomorphization, and union variants compared by tag.
@@ -35,15 +49,15 @@ print ""
 (** --- Function type equality via HOFs ---
     Inference keeps the function values concrete; threeArgAdd alone needs its
     signature to pin the operand types its checked arithmetic cannot. *)
-addOne x = x + 1 ?: 0
-timesTwo x = x * 2 ?: 0
-minusOne x = x - 1 ?: 0
+addOne x = x + 1 
+timesTwo x = x * 2 
+minusOne x = x - 1 
 excl s = s + "!"
 ques s = s + "?"
 intToString x = toString x
-twoArgAdd (a, b) = a + b ?: 0
+twoArgAdd (a, b) = a + b 
 threeArgAdd : int -> int -> int -> int
-threeArgAdd (a, b, c) = a + b + c ?: 0
+threeArgAdd (a, b, c) = a + b + c 
 
 applyInt (f, x) = f x
 applyStr (f, s) = f s
@@ -52,9 +66,12 @@ applyTwo (f, a, b) = f (a, b)
 applyThree (f, a, b, c) = f (a, b, c)
 
 print "=== Same (int)->int passed via HOF ==="
-print (toString (applyInt (addOne, 10)))
-print (toString (applyInt (timesTwo, 10)))
-print (toString (applyInt (minusOne, 10)))
+exactArithmetic (\() =>
+    print (toString (applyInt (addOne, 10))))
+exactArithmetic (\() =>
+    print (toString (applyInt (timesTwo, 10))))
+exactArithmetic (\() =>
+    print (toString (applyInt (minusOne, 10))))
 
 print "=== Same (string)->string passed via HOF ==="
 print (applyStr (excl, "hi"))
@@ -62,8 +79,10 @@ print (applyStr (ques, "hi"))
 
 print "=== Different shapes ==="
 print (applyToStr (intToString, 42))
-print (toString (applyTwo (twoArgAdd, 5, 7)))
-print (toString (applyThree (threeArgAdd, 1, 2, 3)))
+exactArithmetic (\() =>
+    print (toString (applyTwo (twoArgAdd, 5, 7))))
+exactArithmetic (\() =>
+    print (toString (applyThree (threeArgAdd, 1, 2, 3))))
 print ""
 
 (** --- Generic monomorphization via identity-like functions --- *)
@@ -185,7 +204,7 @@ headOr (items, fallback) = listGet items 0 ?: fallback
 repeatOf<T> : (T, int) -> T
 repeatOf (value, times) = match times
     0 => value
-    _ => repeatOf<T> (value, times - 1 ?: 0)
+    _ => repeatOf<T> (value, times - 1 )
 
 appliedInt = identityOf<int> 5
 appliedText = identityOf<string> "os"
@@ -257,4 +276,5 @@ typeEqualityCase () =
         keepSource (srcInt ()) == 4,
         keepSink (sinkInt ()) == 7
     ]
-test "equivalent type shapes compose while union tags remain distinct" typeEqualityCase
+
+test "equivalent type shapes compose while union tags remain distinct" (\() => exactArithmetic (typeEqualityCase))

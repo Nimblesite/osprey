@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 // HINDLEY-MILNER TYPE INFERENCE TEST
 // ML-flavor twin: lowers to the same canonical AST as the Default flavor, so
 // the LLVM IR is byte-identical. No explicit type annotations — every type is
@@ -20,7 +34,7 @@ print "=== HINDLEY-MILNER TEST ==="
 print "Test 1: Function type inference from usage"
 (** These functions have NO explicit types - all inferred! *)
 identity x = x
-add (a, b) = a + b ?: 0
+add (a, b) = a + b 
 concat (s1, s2) = join [s1, s2] ""
 negate x = !x
 
@@ -32,7 +46,8 @@ boolId = identity true
 print "identity(42) = ${intId}, identity(\"test\") = ${stringId}, identity(true) = ${toString boolId}"
 
 (** Test arithmetic inference *)
-addValue = add (10, 20)
+addValue = exactArithmetic (\() =>
+    add (10, 20))
 concatResult = concat ("hello", "world")
 negateResult = negate false
 
@@ -77,13 +92,14 @@ print ""
 
 // Test 5: Complex HM inference with field access
 print "Test 5: Complex field access inference"
-distance p = p.x * p.x + p.y * p.y ?: 0
+distance p = p.x * p.x + p.y * p.y 
 combine c = join [c.value, c.label] ""
 
 numPoint = Point(x = 3, y = 4)
 textContainer = Container(value = "hello", label = "world")
 
-dist = distance numPoint
+dist = exactArithmetic (\() =>
+    distance numPoint)
 combined = combine textContainer
 
 print "distance({3, 4}) = ${dist}"
@@ -209,11 +225,12 @@ print ""
 print "Test 11: Type equality and String methods"
 
 (** This will exercise the String() and Equals() methods on various types *)
-typeTest1 x = x * 2 ?: 0
+typeTest1 x = x * 2 
 typeTest2 s = join [s, s] ""
 typeTest3 b = !b
 
-typeResult1 = typeTest1 21
+typeResult1 = exactArithmetic (\() =>
+    typeTest1 21)
 typeResult2 = typeTest2 "hi"
 typeResult3 = typeTest3 false
 
@@ -271,4 +288,5 @@ inferredBehaviorCase () =
         typeTest3 false,
         pick ("left", "right") == "left"
     ]
-test "inference preserves polymorphism and derived values" inferredBehaviorCase
+
+test "inference preserves polymorphism and derived values" (\() => exactArithmetic (inferredBehaviorCase))

@@ -168,7 +168,10 @@ Arithmetic policies use those forms without a separate handler grammar.
 ## Scope
 
 Named policies are ordinary callable handlers, such as `saturating(work)`.
-An explicit `handle static Arith` supplies a checked static interpretation for
-a device region under [STAGE-HANDLE-STATIC](0017-AlgebraicEffects.md#static-handlers--stage-handle-static).
+`Arith` has runtime policies only: `handle static Arith` is rejected, and a
+host-backend GPU kernel dispatches to the enclosing runtime policy. A checked
+static interpretation for device regions under
+[STAGE-HANDLE-STATIC](0017-AlgebraicEffects.md#static-handlers--stage-handle-static)
+belongs to the staging delivery.
 Arithmetic delivery remains in [plan 0027](../plans/0027-arithmetic-effects.md);
 shared handler and staging delivery belongs only to [plan 0016](../plans/0016-algebraic-effects-and-handlers.md).

@@ -1,8 +1,27 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // Assertion-driven move of the closure, partial application, higher-order,
 // nested-call, and recursion Default-flavor examples.
 
 /// Build a concrete closure that captures one integer offset.
-fn closureAdder(n: int) -> (int) -> int = fn(x) => x + n ?: 0
+fn closureAdder(n: int) -> (int) -> int = fn(x) => x + n 
 
 /// This case proves closure capture, independence, and direct invocation.
 fn closuresCase() = {
@@ -21,7 +40,7 @@ fn closuresCase() = {
     ])
     // Exercise zero, cancellation, identity, and independent captures.
     checkAll("closures capture edge cases", [
-            add10((0 - 10) ?: 0) == 0,
+            add10((0 - 10) ) == 0,
             add100(0) == 100,
             closureAdder(0)(9) == 9,
             (add10(5) == add100(5)) == false
@@ -29,7 +48,7 @@ fn closuresCase() = {
 }
 
 /// Return an explicitly curried addition closure for partial application.
-fn partialAdd(a: int) -> (int) -> int = fn(b) => a + b ?: 0
+fn partialAdd(a: int) -> (int) -> int = fn(b) => a + b 
 
 /// This case documents partial and fully applied addition paths.
 fn curryPartialCase() = {
@@ -50,7 +69,7 @@ fn curryPartialCase() = {
     ])
     // Extend partial application across zero, cancellation, and equivalence.
     checkAll("partial application edge cases", [
-            add5((0 - 5) ?: 0) == 0,
+            add5((0 - 5) ) == 0,
             add100(0) == 100,
             partialAdd(0)(9) == 9,
             partialAdd(5)(5) == partialAdd(8)(2)
@@ -62,9 +81,9 @@ fn hofApply(f: (int) -> int) -> (int) -> int = fn(x) => f(x)
 /// Apply a supplied unary integer function twice in sequence.
 fn hofTwice(f: (int) -> int) -> (int) -> int = fn(x) => f(f(x))
 /// Double an integer for use as a first-class function value.
-fn hofDouble(n: int) = n + n ?: 0
+fn hofDouble(n: int) = n + n 
 /// Increment an integer for use as a first-class function value.
-fn hofInc(n: int) = n + 1 ?: 0
+fn hofInc(n: int) = n + 1 
 
 /// This case documents function arguments, nested application, and composition.
 fn higherOrderCase() = {
@@ -90,11 +109,11 @@ fn higherOrderCase() = {
 }
 
 /// Increment a value used in deeply nested call expressions.
-fn nestedInc(x: int) = x + 1 ?: 0
+fn nestedInc(x: int) = x + 1 
 /// Double a value used in deeply nested call expressions.
-fn nestedDouble(x: int) = x + x ?: 0
+fn nestedDouble(x: int) = x + x 
 /// Negate a value without relying on a standalone unary helper.
-fn nestedNeg(x: int) = 0 - x ?: 0
+fn nestedNeg(x: int) = 0 - x 
 
 /// This case documents evaluation through multiple nested unary calls.
 fn nestedCallsCase() = {
@@ -108,7 +127,7 @@ fn nestedCallsCase() = {
     // Check each deeply derived integer independently.
     checkAll("nested calls legacy constituent values", [
             deep == 15,
-            nestedNeg(nestedInc(nestedDouble(5))) == ((0 - 11) ?: 0),
+            nestedNeg(nestedInc(nestedDouble(5))) == ((0 - 11) ),
             nestedDouble(nestedDouble(4)) == 16
     ])
     // Exercise each primitive and additional nested paths around zero.
@@ -117,14 +136,14 @@ fn nestedCallsCase() = {
             nestedDouble(0) == 0,
             nestedNeg(0) == 0,
             nestedInc(nestedDouble(2)) == 5,
-            nestedNeg(nestedInc(nestedDouble(0))) == ((0 - 1) ?: 0)
+            nestedNeg(nestedInc(nestedDouble(0))) == ((0 - 1) )
     ])
 }
 
 /// Sum positive integers recursively with an explicit zero base case.
 fn recursiveSumTo(n: int) = match n {
     0 => 0
-    _ => n + recursiveSumTo((n - 1) ?: 0) ?: 0
+    _ => n + recursiveSumTo((n - 1) ) 
 }
 
 /// This case documents both the recursive branch and its terminating base.
@@ -145,20 +164,21 @@ fn recursionCase() = {
             recursiveSumTo(0) == 0,
             recursiveSumTo(2) == 3,
             recursiveSumTo(6) == 21,
-            recursiveSumTo(6) == (recursiveSumTo(5) + 6 ?: 0)
+            recursiveSumTo(6) == (recursiveSumTo(5) + 6 )
     ])
 }
 
 // Register the closure capture scenario.
-test("closures retain independent captured state", closuresCase)
+
+test("closures retain independent captured state", fn() => exactArithmetic(closuresCase))
 // Register the partial-application scenario.
-test("partial application retains every curried golden", curryPartialCase)
+test("partial application retains every curried golden", fn() => exactArithmetic(curryPartialCase))
 // Register the higher-order function scenario.
-test("higher-order functions retain every application golden", higherOrderCase)
+test("higher-order functions retain every application golden", fn() => exactArithmetic(higherOrderCase))
 // Register the nested-call scenario.
-test("nested calls retain evaluation structure", nestedCallsCase)
+test("nested calls retain evaluation structure", fn() => exactArithmetic(nestedCallsCase))
 // Register the recursive-sum scenario.
-test("recursion retains base and recursive branches", recursionCase)
+test("recursion retains base and recursive branches", fn() => exactArithmetic(recursionCase))
 
 /// Identity as a GENERIC definition — no single concrete ABI, so it exists
 /// only as a body its call sites specialise ([TYPE-GENERICS-FN]).
@@ -204,7 +224,7 @@ fn applyTwo(f, a, b) = f(a)(b)
 
 /// This case pins file-scope generic function values and lexical callability.
 fn genericValueCase() = {
-    let curriedSum = |a| => |b| => a + b ?: 0
+    let curriedSum = |a| => |b| => a + b 
     checkAll("file-scope generic function values resolve by name", [
             throughAlias(7) == 7,
             throughAlias("osp") == "osp",
@@ -225,4 +245,4 @@ fn genericValueCase() = {
 }
 
 // Register the file-scope generic function value scenario.
-test("file-scope generic function values resolve by name", genericValueCase)
+test("file-scope generic function values resolve by name", fn() => exactArithmetic(genericValueCase))

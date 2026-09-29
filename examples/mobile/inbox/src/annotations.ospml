@@ -14,7 +14,7 @@ module Annotations
         true => LocalNote(note = "", priority = "normal")
         false => match field doc index "id" "" == id
             true => LocalNote(note = field doc index "note" "", priority = field doc index "priority" "normal")
-            false => find doc id ((index + 1) ?: count) count
+            false => find doc id ((index + 1) ) count
 
     export get source id =
         doc = jsonParse source ?: 0
@@ -27,7 +27,7 @@ module Annotations
     retain doc id index count = match index >= count
         true => ""
         false =>
-            rest = retain doc id ((index + 1) ?: count) count
+            rest = retain doc id ((index + 1) ) count
             current = field doc index "id" ""
             match current == id
                 true => rest
@@ -50,7 +50,7 @@ module Annotations
 
     validRows doc index count = match index >= count
         true => true
-        false => validRow doc index && validRows doc ((index + 1) ?: count) count
+        false => validRow doc index && validRows doc ((index + 1) ) count
 
     export valid source = match startsWith (trimStart source) "["
         false => false

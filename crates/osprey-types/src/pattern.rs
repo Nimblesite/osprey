@@ -734,7 +734,7 @@ mod tests {
     fn structural_pattern_binds_record_fields() {
         ok("type Point = { x: int, y: int }\n\
             fn getx(p: Point) -> int = match p {\n\
-              { x, y } => (x + y) ?: 0\n\
+              { x, y } => x + y\n\
             }\n");
         // An UNRESOLVED scrutinee refuses a structural arm: the old contract
         // bound its fields as fresh variables, which let the body read each
@@ -892,7 +892,7 @@ mod tests {
         // type ([PATTERN-TUPLE]).
         ok("type Pair = Pair(int, string)\n\
             fn f(p: Pair) -> int = match p {\n\
-              (n, s) => n + length(s) ?: 0\n\
+              (n, s) => n + length(s)\n\
             }\n");
     }
 
@@ -1051,7 +1051,7 @@ mod tests {
         // field's declared type.
         ok("type Point = { x: int, y: int }\n\
             fn sum() -> int = match Point { x: 1, y: 2 } {\n\
-              { x, y } => (x + y) ?: 0\n\
+              { x, y } => x + y\n\
             }\n");
     }
 

@@ -43,6 +43,8 @@ ML block comments nest. `(**` starts documentation only when content follows
 the opener; `(**)` and all-star banners such as `(*****)` remain ordinary
 comments. An unterminated documentation comment is a syntax error.
 
+Each prose line drops its leading whitespace and one optional `*` continuation marker. A line inside a fenced code block drops only the margin its opening fence carried, so an example keeps the indentation ML layout depends on.
+
 ## Inner sigil `[DOC-SIGIL-INNER]`
 
 `//!` documents the scope that encloses it rather than the declaration that

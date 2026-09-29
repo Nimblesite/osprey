@@ -122,7 +122,7 @@ fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> 
     // File-scope bindings the functions read need module storage, declared
     // before the first function is emitted so a forward call that inlines a
     // generic body still finds the slot [MODULES-FILE-SCOPE-BINDING].
-    let read_by_functions = crate::globals::read_by_functions(program);
+    let read_by_functions = crate::globals::read_by_functions(&cg, program);
     let top_level_cells = crate::globals::cell_names(&top_level, &read_by_functions);
     crate::globals::seed(&mut cg, program, &top_level_cells, &read_by_functions)?;
     // A binding with no runtime value resolves by name instead, so its tables
@@ -222,25 +222,6 @@ fn record_declarations(cg: &mut Codegen, program: &Program) {
                         .fn_defs
                         .insert(name.clone(), (parameters.clone(), body.clone()));
                     cg.cov_note_inline_fn(name, *position);
-                }
-            }
-            Stmt::Effect {
-                name, operations, ..
-            } => {
-                for op in operations {
-                    // The signature is read out before `register_effect_op`
-                    // takes `cg` mutably; `op_sig_of` needs the same
-                    // `ProgramTypes` to tag a handle operand's element.
-                    let sig = cg
-                        .prog
-                        .effects
-                        .get(name)
-                        .and_then(|m| m.get(&op.name))
-                        .cloned();
-                    if let Some(sig) = sig {
-                        let lowered = crate::effects::op_sig_of(&cg.prog, &sig);
-                        cg.register_effect_op(format!("{name}.{}", op.name), lowered);
-                    }
                 }
             }
             // A union an extern claims to return loses its MASK_DIRECT proof

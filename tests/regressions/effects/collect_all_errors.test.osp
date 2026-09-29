@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // Cross-contract oracle for [EFFECTS-OP-TYPING], [EFFECTS-HANDLER-STATE],
 // [TYPE-LIST], [TYPE-MAP], [TYPE-MAP-LOOKUP], [TYPE-MAP-OPS],
 // [BUILTIN-STRING-UFCS], [BUILTIN-STRING-CONTAINS], and
@@ -32,7 +51,7 @@ fn audit(name, age, score, email) = {
     let _ = {
         handle Invalid {
             report m => {
-                count = count + 1 ?: count
+                count = count + 1 
                 errs = errs + "\n    #${toString(count)} ${m}"
             }
         }
@@ -45,22 +64,22 @@ fn audit(name, age, score, email) = {
 }
 
 // (a) MULTIPLE simultaneous failures — every one reported, in field order.
-print("── signup: Nadia ──" + audit("", (0 - 3) ?: 0, 250, "nadia_at_example.com"))
+exactArithmetic(fn() => print("── signup: Nadia ──" + audit("", (0 - 3) , 250, "nadia_at_example.com")))
 
 // (b) The SAME handler shape over a fully-valid record — zero errors, happy path.
-print("── signup: Owen ──" + audit("Owen", 34, 88, "owen@example.com"))
+exactArithmetic(fn() => print("── signup: Owen ──" + audit("Owen", 34, 88, "owen@example.com")))
 
 // (c) A partial failure — proves the count is exact, not all-or-nothing.
-print("── signup: blank ──" + audit("", 40, 60, ""))
+exactArithmetic(fn() => print("── signup: blank ──" + audit("", 40, 60, "")))
 
 /// Verifies exact collection counts, order, and the zero-error branch.
 fn collectAllErrorsCase() = {
-    let nadia = audit("", (0 - 3) ?: 0, 250, "nadia_at_example.com")
+    let nadia = audit("", (0 - 3) , 250, "nadia_at_example.com")
     let owen = audit("Owen", 34, 88, "owen@example.com")
     let blank = audit("", 40, 60, "")
     let onlyName = audit("", 20, 50, "name@example.com")
-    let onlyAge = audit("Ari", (0 - 1) ?: 0, 50, "ari@example.com")
-    let onlyLowScore = audit("Ari", 20, (0 - 1) ?: 0, "ari@example.com")
+    let onlyAge = audit("Ari", (0 - 1) , 50, "ari@example.com")
+    let onlyLowScore = audit("Ari", 20, (0 - 1) , "ari@example.com")
     let onlyHighScore = audit("Ari", 20, 101, "ari@example.com")
     let onlyMissingAt = audit("Ari", 20, 50, "ari.example.com")
     let scoreZero = audit("Zero", 0, 0, "zero@example.com")
@@ -126,4 +145,5 @@ fn collectAllErrorsCase() = {
             !mapContains(byKind, "missing")
     ])
 }
-test("validation collects every error in field order", collectAllErrorsCase)
+
+test("validation collects every error in field order", fn() => exactArithmetic(collectAllErrorsCase))

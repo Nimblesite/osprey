@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 /// A stopped continuation returns the handler arm value and omits later work.
 effect Stop {
     /// Check `value`; the handler may resume or stop the continuation.
@@ -32,7 +51,7 @@ effect Mixed {
 }
 
 /// This helper performs both Mixed operations so each arm's mode is observable.
-fn mixedWork() -> int ![Mixed, Observation] = {
+fn mixedWork() -> int ![Mixed, Observation, Arith] = {
     observe("work start")
     let a = perform Mixed.tally(1)
     observe("after tally: " + toString(a))
@@ -40,7 +59,7 @@ fn mixedWork() -> int ![Mixed, Observation] = {
     observe("after supply: " + toString(b))
     let c = perform Mixed.supply(3)
     observe("after second supply: " + toString(c))
-    (a + b ?: 0) + c ?: 0
+    (a + b ) + c 
 }
 
 /// This case verifies resume, abort, unwind, and the discarded continuation.
@@ -56,16 +75,16 @@ fn resumeAbortEarlyExitCase() = {
         }
         handle Stop {
             check n => {
-                checks = checks + 1 ?: checks
+                checks = checks + 1 
                 match n {
                     0 => {
-                        aborted = aborted + 1 ?: aborted
+                        aborted = aborted + 1 
                         observe("stopping at zero")
                         999
                     }
                     _ => {
-                        resumed = resumed + 1 ?: resumed
-                        let supplied = n * 10 ?: 0
+                        resumed = resumed + 1 
+                        let supplied = n * 10 
                         let answer = resume(supplied)
                         observe("continued check " + toString(n) + ": answer=" + toString(answer))
                         answer
@@ -95,12 +114,13 @@ fn resumeAbortEarlyExitCase() = {
         checks == 2,
         resumed == 1,
         aborted == 1,
-        checks == (resumed + aborted ?: 0)
+        checks == (resumed + aborted )
     ])
 }
 
 // Register the explicit-resume early-exit regression.
-test("returning without resume aborts the suspended continuation", resumeAbortEarlyExitCase)
+
+test("returning without resume aborts the suspended continuation", fn() => exactArithmetic(resumeAbortEarlyExitCase))
 
 /// This case verifies an arm's mode is its own, not its siblings'.
 fn resumeSiblingArmIndependenceCase() = {
@@ -116,14 +136,14 @@ fn resumeSiblingArmIndependenceCase() = {
         }
         handle Mixed {
             tally n => {
-                tallyCalls = tallyCalls + 1 ?: tallyCalls
-                let answer = resume(n * 10 ?: 0)
+                tallyCalls = tallyCalls + 1 
+                let answer = resume(n * 10 )
                 resumedAnswer = answer
                 answer
             }
             supply n => {
-                supplyCalls = supplyCalls + 1 ?: supplyCalls
-                lastSupplied = n * 100 ?: 0
+                supplyCalls = supplyCalls + 1 
+                lastSupplied = n * 100 
                 lastSupplied
             }
         }
@@ -151,9 +171,9 @@ fn resumeSiblingArmIndependenceCase() = {
         lastSupplied == 300,
         resumedAnswer == 510,
         resumedAnswer == result,
-        (tallyCalls + supplyCalls ?: 0) == 3
+        (tallyCalls + supplyCalls ) == 3
     ])
 }
 
 // Register the sibling-arm independence regression for issue #177.
-test("a non-resuming arm is unaffected by a sibling arm's resume", resumeSiblingArmIndependenceCase)
+test("a non-resuming arm is unaffected by a sibling arm's resume", fn() => exactArithmetic(resumeSiblingArmIndependenceCase))

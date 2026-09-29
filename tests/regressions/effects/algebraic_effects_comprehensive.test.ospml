@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 effect IO
     (** Read one line from the input the handler represents. *)
     read : Unit => string
@@ -183,7 +197,7 @@ comprehensiveDemo () =
 
     processResult = processItems 3
 
-    errorResult1 = errorProne ((0 - 5) ?: 0)
+    errorResult1 = errorProne ((0 - 5) )
     errorResult2 = errorProne 150
     errorResult3 = errorProne 25
 
@@ -192,7 +206,8 @@ comprehensiveDemo () =
     testMockedInput ()
 
     print ("🎯 Final Results: Calc=" + toString calcResult + ", Process=" + toString processResult + ", Errors=[" + toString errorResult1 + "," + toString errorResult2 + "," + toString errorResult3 + "], Async=" + toString asyncResult + " 🎉")
-comprehensiveDemo ()
+exactArithmetic (\() =>
+    comprehensiveDemo ())
 
 (** --- Generic effects: one declaration, many instantiations ---
     Implements [EFFECTS-GENERIC-DECL], [EFFECTS-GENERIC-INSTANTIATION],
@@ -209,10 +224,10 @@ relabel () =
     perform Stash.put "kept"
     cur
 
-bumped : Unit -> int ! Stash<int>
+bumped : Unit -> int ![Stash<int>, Arith]
 bumped () =
     n = perform Stash.take ()
-    n + 1 ?: 0
+    n + 1 
 
 words =
     handle Stash
@@ -220,15 +235,17 @@ words =
         put v => print "📦 Stash<string> put: ${v}"
     relabel ()
 count =
-    handle Stash
-        take => 41
-        put v => print "📦 Stash<int> put: ${v}"
-    bumped ()
+    exactArithmetic (\() =>
+        handle Stash
+            take => 41
+            put v => print "📦 Stash<int> put: ${v}"
+        bumped ())
 print "Generic Stash: <string> gave ${words}, <int> gave ${count}"
 
 // Verify the values produced by every effect family and generic instance.
-test "effect handlers produce and preserve typed results" (\() => checkAll "comprehensive effect results" [
+
+test "effect handlers produce and preserve typed results" (\() => exactArithmetic ((\() => checkAll "comprehensive effect results" [
     words == "stash-words",
     count == 42,
     doubleValue 21 == 42
-])
+])))

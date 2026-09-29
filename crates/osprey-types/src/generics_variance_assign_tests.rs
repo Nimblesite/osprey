@@ -53,8 +53,9 @@ pub(crate) fn accepted(src: &str) -> bool {
 
 /// A covariant container, plus producers at both instantiations.
 const FEED: &str = "type Feed<out T> = Feed { supply: T } | Dry\n\
+    fn resInt() -> Result<int, MathError> = 100\n\
     fn feedInt() -> Feed<int> = Feed { supply: 1 }\n\
-    fn feedRes() -> Feed<Result<int, MathError>> = Feed { supply: 20 * 5 }\n\
+    fn feedRes() -> Feed<Result<int, MathError>> = Feed { supply: resInt() }\n\
     fn feedText() -> Feed<string> = Feed { supply: \"s\" }\n";
 
 /// A contravariant container, same shape.
@@ -65,8 +66,9 @@ const GATE: &str = "type Gate<in T> = Gate { admit: (T) -> bool } | Open\n\
 
 /// An invariant container — the control the other two are measured against.
 const CELL: &str = "type Cell<T> = Cell { slot: T }\n\
+    fn resInt() -> Result<int, MathError> = 100\n\
     fn cellInt() -> Cell<int> = Cell { slot: 1 }\n\
-    fn cellRes() -> Cell<Result<int, MathError>> = Cell { slot: 20 * 5 }\n\
+    fn cellRes() -> Cell<Result<int, MathError>> = Cell { slot: resInt() }\n\
     fn cellText() -> Cell<string> = Cell { slot: \"s\" }\n";
 
 /// The containers nested one level inside each other.
@@ -83,11 +85,12 @@ const NESTED: &str = "type Feed<out T> = Feed { supply: T } | Dry\n\
 
 /// A covariant container over FUNCTION payloads.
 const FNPAYLOAD: &str = "type Feed<out T> = Feed { supply: T } | Dry\n\
+    fn resOf(x: int) -> Result<int, MathError> = x\n\
     fn feedTakesInt() -> Feed<(int) -> bool> = Feed { supply: |x| => true }\n\
     fn feedTakesRes() -> Feed<(Result<int, MathError>) -> bool> = \
         Feed { supply: |x| => true }\n\
     fn feedGivesInt() -> Feed<(int) -> int> = Feed { supply: |x| => 1 }\n\
-    fn feedGivesRes() -> Feed<(int) -> Result<int, MathError>> = Feed { supply: |x| => x * 2 }\n";
+    fn feedGivesRes() -> Feed<(int) -> Result<int, MathError>> = Feed { supply: |x| => resOf(x) }\n";
 
 // ---------------------------------------------------------------------------
 // [TYPE-VARIANCE-COERCION] — the coercion exists, at depth 0 only

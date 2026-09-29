@@ -17,7 +17,7 @@
 use crate::builder::{CellSlot, Codegen, ParamSig};
 use crate::error::{CodegenError, Result};
 use crate::llty::{LType, Value};
-use osprey_ast::{Program, Stmt};
+use osprey_ast::{Expr, Program, Stmt};
 use osprey_types::Type;
 use std::collections::{BTreeSet, HashSet};
 
@@ -136,7 +136,7 @@ pub(crate) fn cell_names(top_level: &[&Stmt], read: &BTreeSet<String>) -> HashSe
 
 /// Names read from inside some top-level function body. A function's own
 /// parameters shadow the file scope, so they are subtracted first.
-pub(crate) fn read_by_functions(program: &Program) -> BTreeSet<String> {
+pub(crate) fn read_by_functions(cg: &Codegen, program: &Program) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     for statement in &program.statements {
         let Stmt::Function {
@@ -152,7 +152,36 @@ pub(crate) fn read_by_functions(program: &Program) -> BTreeSet<String> {
         }
         out.extend(free);
     }
+    read_through_inlined_lambdas(cg, program, &mut out);
     out
+}
+
+/// Close `read` over the file-scope lambdas that materialise no cell. Such a
+/// lambda — a callable handler value is one — is INLINED into every function
+/// that applies it ([`crate::stmt::seed_name_bindings`]), so each file-scope
+/// name its body reads is read from that function too. Without this, a
+/// handler value whose arm read a file-scope `let` failed with `unknown name`
+/// once it was applied inside a function ([MODULES-FILE-SCOPE-BINDING],
+/// [EFFECTS-HANDLER-VALUE]).
+fn read_through_inlined_lambdas(cg: &Codegen, program: &Program, read: &mut BTreeSet<String>) {
+    loop {
+        let before = read.len();
+        for statement in &program.statements {
+            if let Stmt::Let {
+                name,
+                value: lambda @ Expr::Lambda { .. },
+                ..
+            } = statement
+            {
+                if read.contains(name) && crate::stmt::binds_no_value(cg, lambda) {
+                    osprey_ast::freevars::free_idents(lambda, read);
+                }
+            }
+        }
+        if read.len() == before {
+            return;
+        }
+    }
 }
 
 /// The function type of a function-valued global, so a call through the name

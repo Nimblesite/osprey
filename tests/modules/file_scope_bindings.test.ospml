@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 (** ML surface for [MODULES-FILE-SCOPE-BINDING] and [MODULES-INIT]: a file-scope
     binding or `mut` cell is a declaration whose initializer runs where it is
     written, in source order, before the entry's statements. A function body
@@ -8,7 +22,7 @@ effect Counter
     tick : int => int
 
 (** Performs two operations the file-scope handler below discharges. *)
-run () = (perform Counter.tick 3 + perform Counter.tick 4) ?: 0
+run () = (perform Counter.tick 3 + perform Counter.tick 4) 
 
 (** A plain file-scope constant, readable from every function below it. *)
 base = 100
@@ -18,11 +32,12 @@ mut hits = 0
 
 (** The initializer runs here, in source order, before any entry statement. *)
 total =
-    handle Counter
-        tick amount =>
-            hits := (hits + amount) ?: hits
-            hits
-    run ()
+    exactArithmetic (\() =>
+        handle Counter
+            tick amount =>
+                hits := (hits + amount) 
+                hits
+        run ())
 
 (** Records the order in which the file-scope initializers completed. *)
 trace = "base=${base},hits=${hits},total=${total}"
@@ -31,14 +46,14 @@ trace = "base=${base},hits=${hits},total=${total}"
 summary () = "${hits} hits, total ${total}"
 
 (** A later function still reads the same module storage, not a copy. *)
-scaled () = (hits * base) ?: 0
+scaled () = (hits * base) 
 
 (** Both file-scope bindings are readable from ordinary function bodies. *)
 constantReadCase () = checkAll ("functions read file-scope bindings", [
     base == 100,
     total == 10,
     scaled () == 700,
-    ((base + total) ?: 0) == 110,
+    ((base + total) ) == 110,
     "${base}" == "100"
 ])
 
@@ -47,7 +62,7 @@ handlerOwnedCellCase () = checkAll ("handler-owned cell is one shared storage", 
     hits == 7,
     summary () == "7 hits, total 10",
     total == 10,
-    ((hits * 2) ?: 0) == 14,
+    ((hits * 2) ) == 14,
     summary () == "${hits} hits, total ${total}"
 ])
 
@@ -59,7 +74,9 @@ initializationOrderCase () = checkAll ("initializers run in source order", [
     hits == 7
 ])
 
-print "${summary ()} ${scaled ()} ${trace}"
-test ("file-scope constants are readable from functions", constantReadCase)
-test ("a handler-owned cell is one shared storage", handlerOwnedCellCase)
-test ("file-scope initializers run in source order", initializationOrderCase)
+exactArithmetic (\() =>
+    print "${summary ()} ${scaled ()} ${trace}")
+
+test ("file-scope constants are readable from functions", \() => exactArithmetic (constantReadCase))
+test ("a handler-owned cell is one shared storage", \() => exactArithmetic (handlerOwnedCellCase))
+test ("file-scope initializers run in source order", \() => exactArithmetic (initializationOrderCase))

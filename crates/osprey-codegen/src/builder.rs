@@ -126,7 +126,6 @@ pub(crate) struct Codegen {
     pub(crate) fnval_cells: HashMap<String, String>,
     /// Whether the fiber-result global table has been emitted yet.
     /// Parsed `effect` operation signatures, keyed `"Effect.operation"`.
-    effect_ops: HashMap<String, crate::effects::OpSig>,
     /// Monotonic id giving each emitted handler function a unique name.
     handler_count: usize,
     /// Dense operation ids, keyed by `(runtime effect key, operation)`: the
@@ -653,7 +652,6 @@ impl Codegen {
             lambda_prefix: HashMap::new(),
             expected_lambda: None,
             fnval_cells: HashMap::new(),
-            effect_ops: HashMap::new(),
             handler_count: 0,
             operation_ids: HashMap::new(),
             lambda_count: 0,
@@ -998,16 +996,6 @@ impl Codegen {
             debug.current_retained_nodes = saved.debug_retained_nodes;
             debug.current_local_ids = saved.debug_local_ids;
         }
-    }
-
-    /// Register an `effect` operation's parsed signature for `handle`/`perform`.
-    pub(crate) fn register_effect_op(&mut self, key: String, sig: crate::effects::OpSig) {
-        let _ = self.effect_ops.insert(key, sig);
-    }
-
-    /// The parsed signature of `Effect.operation`, if declared.
-    pub(crate) fn effect_op(&self, key: &str) -> Option<crate::effects::OpSig> {
-        self.effect_ops.get(key).cloned()
     }
 
     // ---- inferred typing ----

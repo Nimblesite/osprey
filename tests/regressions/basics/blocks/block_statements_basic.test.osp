@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // Cross-contract oracle for [BLOCK-SCOPE], [PATTERN-RESULT-DEFAULT],
 // [TYPE-LIST], [TYPE-MAP], [TYPE-MAP-LOOKUP], [ARITH-CHECKED], and
 // [BUILTIN-STRING-UFCS].
@@ -21,12 +40,9 @@ fn mapProductBlock() = {
     let x = match config["base"] { Success { value } => value Error => 0 }
     let factor = match config["factor"] { Success { value } => value Error => 1 }
     let m = x * factor
-    match m {
-        Success { value } => value
-        Error => 0
-    }
+    m
 }
-let r2 = mapProductBlock()
+let r2 = exactArithmetic(fn() => mapProductBlock())
 print("2 map factor*base: ${r2}")
 
 /// --- 3. Nested blocks with shadowing ---
@@ -44,18 +60,12 @@ fn shadowedBlock() = {
             Error => 25
         }
         let m = outer * 2
-        match m {
-            Success { value } => value
-            Error => 0
-        }
+        m
     }
     let s = outer + inner
-    match s {
-        Success { value } => value
-        Error => 0
-    }
+    s
 }
-let r3 = shadowedBlock()
+let r3 = exactArithmetic(fn() => shadowedBlock())
 print("3 shadowed inner+outer: ${r3}")
 
 /// --- 4. Block inside a function ---
@@ -67,12 +77,9 @@ fn compute() = {
     }
     let multiplier = 3
     let r = base * multiplier
-    match r {
-        Success { value } => value
-        Error => 0
-    }
+    r
 }
-print("4 fn block: ${compute()}")
+exactArithmetic(fn() => print("4 fn block: ${compute()}"))
 
 /// --- 5. 2D list inside a block ---
 fn matrixBlock() = {
@@ -92,7 +99,7 @@ fn matrixBlock() = {
         Error => 0
     }
 }
-let r5 = matrixBlock()
+let r5 = exactArithmetic(fn() => matrixBlock())
 print("5 2D matrix[0][1]*10: ${r5}")
 
 /// --- 6. Conditional logic via nested match producing a block result ---
@@ -117,7 +124,7 @@ fn conditionalBlock(value) = {
         Error => 0
     }
 }
-let r6 = conditionalBlock(value)
+let r6 = exactArithmetic(fn() => conditionalBlock(value))
 print("6 cond match block: ${r6}\n=== Done ===")
 
 /// Verifies every block result, including shadowing and the wildcard branch.
@@ -158,7 +165,7 @@ fn blockStatementsCase() = {
             conditionalBlock(0) == 0,
             conditionalBlock(41) == 0,
             conditionalBlock(43) == 0,
-            conditionalBlock((0 - 1) ?: 0) == 0
+            conditionalBlock((0 - 1) ) == 0
     ])
 
     checkAll("block results retain element types in nested lists", [
@@ -194,4 +201,5 @@ fn blockStatementsCase() = {
             "outer=${outer} inner=${shadowedBlock()}" == "outer=100 inner=85"
     ])
 }
-test("blocks preserve values and lexical scope", blockStatementsCase)
+
+test("blocks preserve values and lexical scope", fn() => exactArithmetic(blockStatementsCase))

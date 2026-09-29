@@ -14,7 +14,7 @@ module Github
 
     export validRepository source = match indexOf source "/"
         Error why => false
-        Success slash => component (take source slash) && component (drop source ((slash + 1) ?: 0))
+        Success slash => component (take source slash) && component (drop source ((slash + 1) ))
 
     export url repo = "https://api.github.com/repos/${repo}/issues?state=open&per_page=30"
 
@@ -22,7 +22,7 @@ module Github
 
     positive doc path = (parseInt (scalar doc path) ?: 0) > 0
 
-    issueValid doc prefix = positive doc (prefix + ".id") && positive doc (prefix + ".number") && length (scalar doc (prefix + ".title")) > 0 && length (scalar doc (prefix + ".user.login")) > 0 && (parseInt (scalar doc (prefix + ".comments")) ?: ((0 - 1) ?: 0)) >= 0
+    issueValid doc prefix = positive doc (prefix + ".id") && positive doc (prefix + ".number") && length (scalar doc (prefix + ".title")) > 0 && length (scalar doc (prefix + ".user.login")) > 0 && (parseInt (scalar doc (prefix + ".comments")) ?: ((0 - 1) )) >= 0
 
     optional doc path = match scalar doc path
         "null" => ""
@@ -33,7 +33,7 @@ module Github
         true => ""
         false =>
             name = scalar doc "${prefix}.labels[${index}].name"
-            rest = labels doc prefix ((index + 1) ?: count) count
+            rest = labels doc prefix ((index + 1) ) count
             match length rest > 0
                 true => name + " · " + rest
                 false => name
@@ -56,7 +56,7 @@ module Github
         true => Success(value = Json::arr output)
         false =>
             prefix = "[${index}]"
-            next = (index + 1) ?: count
+            next = (index + 1) 
             match jsonLength doc (prefix + ".pull_request") >= 0
                 true => collect doc next count output
                 false => match issueValid doc prefix

@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // 🚀 COMPREHENSIVE ALGEBRAIC EFFECTS - ALL SYNTAX FEATURES! 🔥
 
 /// Multiple effect declarations
@@ -57,7 +76,7 @@ fn loggedIncrement(message) ![Logger, Counter] = {
 }
 
 /// Pattern matching with effects
-fn processItems(count) ![Logger, Counter] = match count {
+fn processItems(count) ![Logger, Counter, Arith] = match count {
     0 => {
         perform Logger.log("Base case reached")
         perform Counter.getValue()
@@ -81,7 +100,7 @@ fn processItems(count) ![Logger, Counter] = match count {
 }
 
 /// Fiber integration with effects
-fn asyncProcessing(taskId) ![Logger, Counter] = {
+fn asyncProcessing(taskId) ![Logger, Counter, Arith] = {
     perform Logger.log("Starting async task ${toString(taskId)}")
     let fiber1 = spawn {
         perform Logger.log("Fiber1 executing")
@@ -104,7 +123,7 @@ fn asyncProcessing(taskId) ![Logger, Counter] = {
 }
 
 /// Complex calculation with multiple effects
-fn calculation(x) ![Logger, State] = {
+fn calculation(x) ![Logger, State, Arith] = {
     perform Logger.log("Starting calculation for: ${toString(x)}")
     let current = perform State.get()
     let result = match x * 2 + current {
@@ -117,7 +136,7 @@ fn calculation(x) ![Logger, State] = {
 }
 
 /// Error handling with pattern matching
-fn errorProne(value) !Logger = match value {
+fn errorProne(value) ![Logger, Arith] = match value {
     0 => {
         perform Logger.error("Zero value not allowed")
         1
@@ -165,7 +184,7 @@ fn readAndProcessLogFile(logFile) ![FileIO, Logger] = {
     processedContent
 }
 
-fn generateReport(reportId, data) ![FileIO, Logger, State] = {
+fn generateReport(reportId, data) ![FileIO, Logger, State, Arith] = {
     let reportFile = match "report_" + toString(reportId) + ".txt" {
         Success { value } => value
         Error => "report.txt"
@@ -246,7 +265,7 @@ fn comprehensiveDemo() = {
     let processResult = processItems(3)
 
     /// Test error handling patterns
-    let errorResult1 = errorProne((0 - 5) ?: 0)
+    let errorResult1 = errorProne((0 - 5) )
     let errorResult2 = errorProne(150)
     let errorResult3 = errorProne(25)
 
@@ -258,7 +277,7 @@ fn comprehensiveDemo() = {
 
     print("🎯 Final Results: Calc=" + toString(calcResult) + ", Process=" + toString(processResult) + ", Errors=[" + toString(errorResult1) + "," + toString(errorResult2) + "," + toString(errorResult3) + "], Async=" + toString(asyncResult) + " 🎉")
 }
-comprehensiveDemo()
+exactArithmetic(fn() => comprehensiveDemo())
 
 /// --- Generic effects: one declaration, many instantiations ---
 /// Implements [EFFECTS-GENERIC-DECL], [EFFECTS-GENERIC-INSTANTIATION],
@@ -276,9 +295,9 @@ fn relabel() -> string !Stash<string> = {
     cur
 }
 
-fn bumped() -> int !Stash<int> = {
+fn bumped() -> int ![Stash<int>, Arith] = {
     let n = perform Stash.take()
-    n + 1 ?: 0
+    n + 1 
 }
 
 let words = {
@@ -288,18 +307,19 @@ let words = {
     }
     relabel()
 }
-let count = {
+let count = exactArithmetic(fn() => {
     handle Stash {
         take => 41
         put v => print("📦 Stash<int> put: ${v}")
     }
     bumped()
-}
+})
 print("Generic Stash: <string> gave ${words}, <int> gave ${count}")
 
 // Verifies the values produced by every effect family and generic instance.
-test("effect handlers produce and preserve typed results", fn() => checkAll("comprehensive effect results", [
+
+test("effect handlers produce and preserve typed results", fn() => exactArithmetic(fn() => checkAll("comprehensive effect results", [
     words == "stash-words",
     count == 42,
     doubleValue(21) == 42
-]))
+])))

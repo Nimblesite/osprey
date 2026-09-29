@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 (** Cross-contract oracle for [EFFECTS-OP-TYPING], [EFFECTS-STATIC-DISCHARGE],
     [EFFECTS-HANDLER-STATE], [TYPE-LIST], [TYPE-LIST-PATTERNS], [TYPE-MAP],
     [TYPE-MAP-LOOKUP], [TYPE-MAP-OPS], [PATTERN-RESULT-DEFAULT],
@@ -16,13 +30,13 @@ effect Range
     clamp : (int, int) => int
 
 (** The row scopes these performs; rows are not yet propagated through calls. *)
-loadConfig : Unit -> int ! [Parse, Missing, Range]
+loadConfig : Unit -> int ![Parse, Missing, Range, Arith]
 loadConfig () =
     port = perform Parse.bad "=80=" // Parse channel: not a number
     timeout = perform Missing.fill "timeout" // Missing channel: key absent
     retries = perform Range.clamp 250 10 // Range channel: over the max
     print "assembled  -> port=${toString port} timeout=${toString timeout} retries=${toString retries}"
-    port + timeout + retries ?: 0
+    port + timeout + retries 
 
 (** This helper declares and performs only Range. *)
 loadRetries : int -> int -> int ! Range
@@ -30,43 +44,44 @@ loadRetries raw hi = perform Range.clamp raw hi
 
 (** No arm uses resume, so each arm value replaces its operation result. *)
 combined =
-    handle Parse
-        bad raw =>
-            print "[Parse]    cannot parse '${raw}' -> substitute 0"
-            0
-    handle Missing
-        fill key => match key
-            "timeout" =>
-                print "[Missing]  key '${key}' absent -> default 30"
-                30
-            _ =>
-                print "[Missing]  key '${key}' absent -> default 1"
-                1
-    handle Range
-        clamp v hi => match v > hi
-            true =>
-                print "[Range]    ${toString v} exceeds max ${toString hi} -> clamp to ${toString hi}"
-                hi
-            false =>
-                print "[Range]    ${toString v} within max ${toString hi} -> keep"
-                v
-    total = loadConfig ()
-    print "combined config total = ${toString total}"
-
-    (** The inner Range handler overrides the outer handler for one call. *)
-    strict =
+    exactArithmetic (\() =>
+        handle Parse
+            bad raw =>
+                print "[Parse]    cannot parse '${raw}' -> substitute 0"
+                0
+        handle Missing
+            fill key => match key
+                "timeout" =>
+                    print "[Missing]  key '${key}' absent -> default 30"
+                    30
+                _ =>
+                    print "[Missing]  key '${key}' absent -> default 1"
+                    1
         handle Range
-            clamp v _hi =>
-                print "[Range*]   STRICT override: force ${toString v} -> 1"
-                1
-        loadRetries 500 10
-    print "strict retries (inner handler)  = ${toString strict}"
-
-    (** Leaving the inner region restores the outer Range handler. *)
-    relaxed = loadRetries 500 10
-    print "relaxed retries (outer handler) = ${toString relaxed}"
-
-    total
+            clamp v hi => match v > hi
+                true =>
+                    print "[Range]    ${toString v} exceeds max ${toString hi} -> clamp to ${toString hi}"
+                    hi
+                false =>
+                    print "[Range]    ${toString v} within max ${toString hi} -> keep"
+                    v
+        total = loadConfig ()
+        print "combined config total = ${toString total}"
+        
+        (** The inner Range handler overrides the outer handler for one call. *)
+        strict =
+            handle Range
+                clamp v _hi =>
+                    print "[Range*]   STRICT override: force ${toString v} -> 1"
+                    1
+            loadRetries 500 10
+        print "strict retries (inner handler)  = ${toString strict}"
+        
+        (** Leaving the inner region restores the outer Range handler. *)
+        relaxed = loadRetries 500 10
+        print "relaxed retries (outer handler) = ${toString relaxed}"
+        
+        total)
 print "final combined result = ${toString combined}"
 
 (** Apply the strict inner Range policy in isolation. *)
@@ -191,4 +206,5 @@ typedErrorChannelCase () =
         listLength (mapKeys grown) == 3,
         listLength (mapValues grown) == 3
     ]
-test "typed error channels compose and restore shadowed handlers" typedErrorChannelCase
+
+test "typed error channels compose and restore shadowed handlers" (\() => exactArithmetic (typedErrorChannelCase))

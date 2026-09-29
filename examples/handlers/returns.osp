@@ -1,7 +1,22 @@
+// Record faults for the entire report and reject it at the publication boundary.
+fn printExact(work) = {
+    mut fault = ""
+    handle Arith {
+        overflow op lhs _ _ => { fault = "overflow in ${op}"
+            lhs }
+        divideByZero op lhs => { fault = "zero divisor in ${op}"
+            lhs }
+        remainderByZero lhs => { fault = "zero remainder divisor"
+            lhs }
+    }
+    let report = work()
+    print(match fault { "" => report _ => "REJECTED: ${fault}" })
+}
+
 effect ValueAsk { value: fn() -> int }
 effect ControlAsk { control value: fn() -> int }
-fn valueWork() = (perform ValueAsk.value() + 1) ?: 0
-fn controlWork() = (perform ControlAsk.value() + 1) ?: 0
+fn valueWork() = (perform ValueAsk.value() + 1) 
+fn controlWork() = (perform ControlAsk.value() + 1) 
 let prefix = "done="
 let replace = handler ValueAsk {
     value => 41
@@ -15,4 +30,7 @@ let stop = handler ControlAsk {
     value => "stopped"
     return n => "${prefix}${n}"
 }
-print("${replace(valueWork)}\n${around(controlWork)}\n${stop(controlWork)}")
+fn report() = {
+    "${replace(valueWork)}\n${around(controlWork)}\n${stop(controlWork)}"
+}
+printExact(report)

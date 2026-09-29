@@ -5,6 +5,7 @@
 //! test. A handler is lexical authority, not permission that may escape in a
 //! closure.
 
+use crate::testutil::{accepts, rejects_with};
 use crate::{check_program, TypeError};
 use osprey_ast::Stmt;
 use osprey_syntax::{parse_program_with_flavor, Flavor};
@@ -303,7 +304,7 @@ fn nominal_record_row_entries_match_inferred_record_requests() {
 fn callable_handler_preserves_a_returned_functions_effect_provenance() {
     assert_accepted(
         "effect Read { read: fn() -> fn(int) -> int }\n\
-         let h = handler Read { read => |n| => (n + 1) ?: 0 }\n\
+         let h = handler Read { read => |n| => wrapAdd(n, 1) }\n\
          let action = h(|| => perform Read.read())\n\
          let answer = action(41)\n",
     );
@@ -384,7 +385,7 @@ fn a_pure_recursive_curried_function_is_accepted() {
         "effect Alarm { ring: fn() -> int }\n\
          fn countDown(n) = fn(acc) => match n <= 0 {\n\
            true => acc\n\
-           false => countDown((n - 1) ?: 0)((acc + n) ?: acc)\n\
+           false => countDown(wrapSub(n, 1))(wrapAdd(acc, n))\n\
          }\n\
          let total = countDown(3)(0)\n",
     );
@@ -396,11 +397,11 @@ fn mutually_recursive_curried_functions_are_accepted() {
         "effect Alarm { ring: fn() -> int }\n\
          fn evens(n) = fn(acc) => match n <= 0 {\n\
            true => acc\n\
-           false => odds((n - 1) ?: 0)((acc + n) ?: acc)\n\
+           false => odds(wrapSub(n, 1))(wrapAdd(acc, n))\n\
          }\n\
          fn odds(n) = fn(acc) => match n <= 0 {\n\
            true => acc\n\
-           false => evens((n - 1) ?: 0)((acc + n) ?: acc)\n\
+           false => evens(wrapSub(n, 1))(wrapAdd(acc, n))\n\
          }\n\
          let total = evens(4)(0)\n",
     );
@@ -412,7 +413,7 @@ fn a_recursive_curried_function_still_carries_its_effect_to_the_call_site() {
         "effect Alarm { ring: fn() -> int }\n\
          fn countDown(n) = fn(acc) => match n <= 0 {\n\
            true => acc\n\
-           false => countDown((n - 1) ?: 0)((acc + perform Alarm.ring()) ?: acc)\n\
+           false => countDown(wrapSub(n, 1))(wrapAdd(acc, perform Alarm.ring()))\n\
          }\n\
          let total = countDown(3)(0)\n",
         &["unhandled effect operations at program entry", "Alarm.ring"],
@@ -425,7 +426,7 @@ fn a_handler_discharges_a_recursive_curried_function() {
         "effect Alarm { ring: fn() -> int }\n\
          fn countDown(n) = fn(acc) => match n <= 0 {\n\
          true => acc\n\
-         false => countDown((n - 1) ?: 0)((acc + perform Alarm.ring()) ?: acc)\n\
+         false => countDown(wrapSub(n, 1))(wrapAdd(acc, perform Alarm.ring()))\n\
          }\n\
          let total = {\n\
              handle Alarm {\n\
@@ -433,6 +434,43 @@ fn a_handler_discharges_a_recursive_curried_function() {
              }\n\
              countDown(3)(0)\n\
          }\n",
+    );
+}
+
+/// A curried binding's declared row bounds its full application. `pair a b`
+/// lowers to a function whose body is a closure literal, so what that closure
+/// performs is what the signature's row governs ([FLAVOR-ML-CURRY]); checking
+/// only the closure's construction accepted every curried row unconditionally.
+#[test]
+fn a_curried_declared_row_bounds_the_full_application() {
+    let effects = "effect E\n    op : int => int\neffect F\n    go : int => int\n";
+    for (signature, binding, undeclared) in [
+        (
+            "int -> int -> int",
+            "pair a b = perform F.go (satAdd a b)",
+            "F.go",
+        ),
+        ("int -> int -> int", "pair a b = a + b", "Arith.overflow"),
+        (
+            "int -> int -> int -> int",
+            "pair a b c = perform F.go c",
+            "F.go",
+        ),
+    ] {
+        rejects_with(
+            Flavor::Ml,
+            format!("{effects}pair : {signature} ! E\n{binding}\n"),
+            format!("function `pair` performs effects outside its declared row: {undeclared}"),
+        );
+    }
+    accepts(
+        Flavor::Ml,
+        format!("{effects}pair : int -> int -> int ! F\npair a b = perform F.go (satAdd a b)\n"),
+    );
+    rejects_with(
+        Flavor::Default,
+        "effect F { go: fn(int) -> int }\nfn pair(a) ![] = fn(b) => perform F.go(satAdd(a, b))\n",
+        "function `pair` performs effects outside its declared row: F.go",
     );
 }
 
@@ -1210,7 +1248,7 @@ fn handler_arm_may_perform_a_different_generic_instance_for_an_outer_handler() {
         "effect Relay<T> { fire: fn(T) -> int }\n\
          let answer = {\n\
              handle Relay {\n\
-                 fire value => value + 0 ?: 7\n\
+                 fire value => wrapAdd(value, 0)\n\
              }\n\
              handle Relay {\n\
                  fire text => perform Relay.fire(42)\n\
@@ -1329,7 +1367,7 @@ fn gpu_fold_combine_kernels_are_purity_checked_too() {
         "effect Log { write: fn(string) -> Unit }\n\
          fn noisyAdd(acc, x) = {\n\
          perform Log.write(\"step\")\n\
-         (acc + x) ?: acc\n\
+         wrapAdd(acc, x)\n\
          }\n\
          fn main() = {\n\
          let n = {\n\
@@ -1360,9 +1398,9 @@ fn unprovable_gpu_kernels_fail_closed() {
 fn pure_gpu_kernels_are_accepted_beside_declared_effects() {
     assert_accepted(
         "effect Log { write: fn(string) -> Unit }\n\
-         fn square(x) = (x * x) ?: 0\n\
+         fn square(x) = wrapMul(x, x)\n\
          fn main() = {\n\
-         let total = toGpu([1, 2]) |> gpuMap(square) |> gpuFold(0, |a, x| => (a + x) ?: a)\n\
+         let total = toGpu([1, 2]) |> gpuMap(square) |> gpuFold(0, |a, x| => wrapAdd(a, x))\n\
          handle Log {\n\
              write m => print(m)\n\
          }\n\

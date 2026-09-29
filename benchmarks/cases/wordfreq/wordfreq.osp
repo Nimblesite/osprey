@@ -8,9 +8,9 @@
 //                    same workload over an unpredictable token stream (timing).
 // The token generator is Park-Miller MINSTD, which stays within int64 (no
 // overflow trap) and is reproducible across every language port.
-fn add(a, b) = a + b ?: 0
-fn mul(a, b) = a * b ?: 0
-fn modp(a, b) = a % b ?: 0
+fn add(a, b) = a + b
+fn mul(a, b) = a * b
+fn modp(a, b) = a % b
 fn r1(x) = modp(mul(x, 16807), 2147483647)
 fn hashAt(seed, i) = r1(r1(add(seed, i)))
 fn randSeed() = match randomBelow(2147483646) { Success { value } => add(value, 1)  Error { message } => 1 }
@@ -20,6 +20,18 @@ fn word(k) = match k {
     4 => "jumps"  5 => "over"   6 => "lazy"   _ => "dog"
 }
 fn bump(m, w) = mapSet(m, w, add(mapGet(m, w) ?: 0, 1))
-let seed = seedOf(input())
-let counts = range(0, 200000) |> fold({ "the": 0 }, |m, i| => bump(m, word(modp(hashAt(seed, i), 8))))
-print("${range(0, 8) |> fold(0, |acc, k| => add(acc, mul(add(k, 1), mapGet(counts, word(k)) ?: 0)))}")
+fn main() = {
+    handle Arith {
+        overflow _ _ _ wrapped => {
+            print("unexpected integer overflow")
+            wrapped
+        }
+        remainderByZero _ => {
+            print("unexpected zero divisor")
+            0
+        }
+    }
+    let seed = seedOf(input())
+    let counts = range(0, 200000) |> fold({ "the": 0 }, |m, i| => bump(m, word(modp(hashAt(seed, i), 8))))
+    print("${range(0, 8) |> fold(0, |acc, k| => add(acc, mul(add(k, 1), mapGet(counts, word(k)) ?: 0)))}")
+}

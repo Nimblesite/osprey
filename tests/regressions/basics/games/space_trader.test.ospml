@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 // 🚀 Space Trading Simulation - Complex Game Example
 // An epic CLI adventure showcasing Osprey's pattern matching and safe arithmetic
 
@@ -63,9 +77,8 @@ getReputationTitle rep = match rep
     _ => "Galactic Legend"
 
 (** Ship and crew management *)
-calculateCargoValue (amount, price) = match amount * price
-    Success value => value
-    Error _message => 0
+// Cargo valuation has an explicit ceiling at the maximum representable credit value.
+calculateCargoValue (amount, price) = satMul (amount, price)
 
 getShipStatus fuel = match fuel
     100 => "Excellent"
@@ -99,17 +112,15 @@ print "This planet specializes in: ${resource1Name}"
 print "Market price: ${resource1Price} credits per unit"
 
 purchaseAmount1 = 10
-totalCost1 = calculateCargoValue (purchaseAmount1, resource1Price)
-newCredits1 = match credits - totalCost1
-    Success value => value
-    Error _message => credits
-newCargoUsed1 = match cargoUsed + purchaseAmount1
-    Success value => value
-    Error _message => cargoUsed
+totalCost1 = exactArithmetic (\() =>
+    calculateCargoValue (purchaseAmount1, resource1Price))
+newCredits1 = exactArithmetic (\() =>
+    credits - totalCost1)
+newCargoUsed1 = exactArithmetic (\() =>
+    cargoUsed + purchaseAmount1)
 travelCost1 = calculateTravelCost 2
-newFuel1 = match shipFuel - travelCost1
-    Success value => value
-    Error _message => shipFuel
+newFuel1 = exactArithmetic (\() =>
+    shipFuel - travelCost1)
 
 print "Purchasing ${purchaseAmount1} units of ${resource1Name}"
 print "Total cost: ${totalCost1} credits"
@@ -134,17 +145,15 @@ print "Local specialty: ${resource2Name}"
 print "Market price: ${resource2Price} credits per unit"
 
 (** Sell previous cargo at premium *)
-sellPrice1 = match resource1Price + 25
-    Success value => value
-    Error _message => resource1Price
+sellPrice1 = exactArithmetic (\() =>
+    resource1Price + 25)
   // 50% markup
-revenue1 = calculateCargoValue (purchaseAmount1, sellPrice1)
-newCredits2 = match newCredits1 + revenue1
-    Success value => value
-    Error _message => newCredits1
-newCargoUsed2 = match newCargoUsed1 - purchaseAmount1
-    Success value => value
-    Error _message => newCargoUsed1
+revenue1 = exactArithmetic (\() =>
+    calculateCargoValue (purchaseAmount1, sellPrice1))
+newCredits2 = exactArithmetic (\() =>
+    newCredits1 + revenue1)
+newCargoUsed2 = exactArithmetic (\() =>
+    newCargoUsed1 - purchaseAmount1)
 
 print "Selling ${purchaseAmount1} units of ${resource1Name}"
 print "Sale price: ${sellPrice1} credits per unit"
@@ -155,13 +164,12 @@ print ""
 
 (** Buy local specialty *)
 purchaseAmount2 = 15
-totalCost2 = calculateCargoValue (purchaseAmount2, resource2Price)
-newCredits3 = match newCredits2 - totalCost2
-    Success value => value
-    Error _message => newCredits2
-newCargoUsed3 = match newCargoUsed2 + purchaseAmount2
-    Success value => value
-    Error _message => newCargoUsed2
+totalCost2 = exactArithmetic (\() =>
+    calculateCargoValue (purchaseAmount2, resource2Price))
+newCredits3 = exactArithmetic (\() =>
+    newCredits2 - totalCost2)
+newCargoUsed3 = exactArithmetic (\() =>
+    newCargoUsed2 + purchaseAmount2)
 
 print "Purchasing ${purchaseAmount2} units of ${resource2Name}"
 print "Cost: ${totalCost2} credits"
@@ -172,9 +180,8 @@ print ""
 planet3 = 3
 planet3Name = getPlanetName planet3
 travelCost2 = calculateTravelCost 3
-newFuel2 = match newFuel1 - travelCost2
-    Success value => value
-    Error _message => newFuel1
+newFuel2 = exactArithmetic (\() =>
+    newFuel1 - travelCost2)
 
 print "🚀 Long-range jump to ${planet3Name}"
 print "Fuel consumed: ${travelCost2}%"
@@ -185,17 +192,15 @@ print "📍 Docking at ${planet3Name}"
 print "This is the galaxy's premier trading hub!"
 
 (** Major trade at hub *)
-sellPrice2 = match resource2Price + 30
-    Success value => value
-    Error _message => resource2Price
+sellPrice2 = exactArithmetic (\() =>
+    resource2Price + 30)
   // Premium for rare goods
-revenue2 = calculateCargoValue (purchaseAmount2, sellPrice2)
-newCredits4 = match newCredits3 + revenue2
-    Success value => value
-    Error _message => newCredits3
-newCargoUsed4 = match newCargoUsed3 - purchaseAmount2
-    Success value => value
-    Error _message => newCargoUsed3
+revenue2 = exactArithmetic (\() =>
+    calculateCargoValue (purchaseAmount2, sellPrice2))
+newCredits4 = exactArithmetic (\() =>
+    newCredits3 + revenue2)
+newCargoUsed4 = exactArithmetic (\() =>
+    newCargoUsed3 - purchaseAmount2)
 
 print "Selling ${purchaseAmount2} units of ${resource2Name}"
 print "Hub premium price: ${sellPrice2} credits per unit"
@@ -204,15 +209,12 @@ print "New balance: ${newCredits4} credits"
 print ""
 
 (** Calculate profit and reputation *)
-totalProfit = match newCredits4 - credits
-    Success value => value
-    Error _message => 0
-newReputation = match reputation + 1
-    Success value => value
-    Error _message => reputation
-newPlanetsVisited = match planetsVisited + 3
-    Success value => value
-    Error _message => planetsVisited
+totalProfit = exactArithmetic (\() =>
+    newCredits4 - credits)
+newReputation = exactArithmetic (\() =>
+    reputation + 1)
+newPlanetsVisited = exactArithmetic (\() =>
+    planetsVisited + 3)
 newReputationTitle = getReputationTitle newReputation
 
 print "📈 TRADING RESULTS 📈"
@@ -232,11 +234,12 @@ print "Ship condition: Operational"
 print ""
 
 (** Advanced calculations and projections *)
-fuelEfficiency = newFuel2 / newPlanetsVisited
-profitPerPlanet = totalProfit / newPlanetsVisited
-projectedWealth = match newCredits4 * 2
-    Success value => value
-    Error _message => newCredits4
+fuelEfficiency = exactArithmetic (\() =>
+    newFuel2 / newPlanetsVisited)
+profitPerPlanet = exactArithmetic (\() =>
+    totalProfit / newPlanetsVisited)
+projectedWealth = exactArithmetic (\() =>
+    newCredits4 * 2)
 
 print "📊 ADVANCED ANALYTICS 📊"
 print "Fuel efficiency: ${fuelEfficiency}% per planet"
@@ -262,23 +265,23 @@ print "Thank you for playing Osprey Space Trader!"
 (** Replay the trading ledger and validate every market and status branch. *)
 spaceTraderCase () =
     costOne = calculateCargoValue (10, getResourcePrice 1)
-    creditsOne = (1000 - costOne) ?: 1000
-    cargoOne = (0 + 10) ?: 0
-    fuelOne = (100 - calculateTravelCost 2) ?: 100
-    sellPriceOne = (getResourcePrice 1 + 25) ?: getResourcePrice 1
+    creditsOne = (1000 - costOne) 
+    cargoOne = (0 + 10) 
+    fuelOne = (100 - calculateTravelCost 2) 
+    sellPriceOne = getResourcePrice 1 + 25
     revenueOne = calculateCargoValue (10, sellPriceOne)
-    creditsTwo = (creditsOne + revenueOne) ?: creditsOne
-    cargoTwo = (cargoOne - 10) ?: cargoOne
+    creditsTwo = (creditsOne + revenueOne) 
+    cargoTwo = (cargoOne - 10) 
     costTwo = calculateCargoValue (15, getResourcePrice 2)
-    creditsThree = (creditsTwo - costTwo) ?: creditsTwo
-    cargoThree = (cargoTwo + 15) ?: cargoTwo
-    fuelTwo = (fuelOne - calculateTravelCost 3) ?: fuelOne
-    sellPriceTwo = (getResourcePrice 2 + 30) ?: getResourcePrice 2
+    creditsThree = (creditsTwo - costTwo) 
+    cargoThree = (cargoTwo + 15) 
+    fuelTwo = (fuelOne - calculateTravelCost 3) 
+    sellPriceTwo = getResourcePrice 2 + 30
     revenueTwo = calculateCargoValue (15, sellPriceTwo)
-    creditsFour = (creditsThree + revenueTwo) ?: creditsThree
-    cargoFour = (cargoThree - 15) ?: cargoThree
-    profit = (creditsFour - 1000) ?: 0
-    projected = (creditsFour * 2) ?: creditsFour
+    creditsFour = (creditsThree + revenueTwo) 
+    cargoFour = (cargoThree - 15) 
+    profit = (creditsFour - 1000) 
+    projected = (creditsFour * 2) 
 
     checkAll "space trader branch tables" [
         getResourcePrice 1 == 50,
@@ -324,7 +327,7 @@ spaceTraderCase () =
         getShipStatus 25 == "Low",
         getShipStatus 10 == "Critical",
         calculateCargoValue (10, 50) == 500,
-        calculateCargoValue (9223372036854775807, 2) == 0,
+        calculateCargoValue (9223372036854775807, 2) == 9223372036854775807,
         costOne == 500,
         creditsOne == 500,
         cargoOne == 10,
@@ -345,4 +348,5 @@ spaceTraderCase () =
         getShipStatus fuelTwo == "Fair",
         projected == 3400
     ]
-test "space trading preserves market, ledger, and ship state" spaceTraderCase
+
+test "space trading preserves market, ledger, and ship state" (\() => exactArithmetic (spaceTraderCase))

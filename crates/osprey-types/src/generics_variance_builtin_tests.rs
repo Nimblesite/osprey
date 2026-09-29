@@ -20,9 +20,9 @@ use crate::testutil::plain_cases;
 
 /// Producers for every built-in shape under test, at both instantiations.
 const BUILTINS: &str = "fn listInt() -> List<int> = [1]\n\
-    fn listRes() -> List<Result<int, MathError>> = [20 * 5]\n\
+    fn listRes() -> List<Result<int, MathError>> = [resInt()]\n\
     fn mapInt() -> Map<string, int> = { \"a\": 1 }\n\
-    fn mapRes() -> Map<string, Result<int, MathError>> = { \"a\": 20 * 5 }\n\
+    fn mapRes() -> Map<string, Result<int, MathError>> = { \"a\": resInt() }\n\
     fn resInt() -> Result<int, MathError> = 20 * 5\n\
     fn one() = 1\n\
     fn fiberInt() -> Fiber<int> = spawn one()\n\
@@ -31,7 +31,7 @@ const BUILTINS: &str = "fn listInt() -> List<int> = [1]\n\
     fn takesInt(v: int) = true\n\
     fn takesRes(v: Result<int, MathError>) = true\n\
     fn givesInt(v: int) = 1\n\
-    fn givesRes(v: int) = v * 2\n";
+    fn givesRes(v: int) -> Result<int, MathError> = v\n";
 
 // ---------------------------------------------------------------------------
 // The constructor entries: identical instantiations flow, coercions do not

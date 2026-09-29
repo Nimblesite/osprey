@@ -21,13 +21,13 @@ fn both_pipe_shapes_carry_the_callee_row_to_the_call_site() {
     // argument; a call on the right prepends it to the written arguments.
     assert_rejected_with(
         "effect Alarm { ring: fn() -> int }\n\
-         fn wake(n) = (n + perform Alarm.ring()) ?: n\n\
+         fn wake(n) = wrapAdd(n, perform Alarm.ring())\n\
          let woken = 1 |> wake\n",
         UNHANDLED_RING,
     );
     assert_rejected_with(
         "effect Alarm { ring: fn() -> int }\n\
-         fn wake(n, m) = (n + m) ?: perform Alarm.ring()\n\
+         fn wake(n, m) = wrapAdd(wrapAdd(n, m), perform Alarm.ring())\n\
          let woken = 1 |> wake(2)\n",
         UNHANDLED_RING,
     );
@@ -37,8 +37,8 @@ fn both_pipe_shapes_carry_the_callee_row_to_the_call_site() {
 fn a_handler_discharges_both_pipe_shapes() {
     assert_accepted(
         "effect Alarm { ring: fn() -> int }\n\
-         fn wake(n) = (n + perform Alarm.ring()) ?: n\n\
-         fn twice(n, m) = (n + m) ?: perform Alarm.ring()\n\
+         fn wake(n) = wrapAdd(n, perform Alarm.ring())\n\
+         fn twice(n, m) = wrapAdd(wrapAdd(n, m), perform Alarm.ring())\n\
          let quiet = {\n\
              handle Alarm {\n\
                  ring => 0\n\
@@ -78,14 +78,14 @@ fn a_ufcs_method_call_carries_the_row_of_the_function_it_names() {
     // method-call form exactly as through the call form.
     assert_rejected_with(
         "effect Alarm { ring: fn() -> int }\n\
-         fn wake(n) = (n + perform Alarm.ring()) ?: n\n\
+         fn wake(n) = wrapAdd(n, perform Alarm.ring())\n\
          let start = 1\n\
          let woken = start.wake()\n",
         UNHANDLED_RING,
     );
     assert_accepted(
         "effect Alarm { ring: fn() -> int }\n\
-         fn wake(n) = (n + perform Alarm.ring()) ?: n\n\
+         fn wake(n) = wrapAdd(n, perform Alarm.ring())\n\
          let start = 1\n\
          let quiet = {\n\
              handle Alarm {\n\
@@ -247,7 +247,7 @@ fn an_indexed_element_of_an_unprovable_list_still_fails_closed() {
 /// and whose `ring` is the performer itself.
 const SYNTHETIC_BASE: &str = "effect Alarm { ring: fn() -> int }\n\
                               fn ring() = perform Alarm.ring()\n\
-                              fn wake(n) = (n + perform Alarm.ring()) ?: n\n\
+                              fn wake(n) = wrapAdd(n, perform Alarm.ring())\n\
                               fn pick(n) = ring\n\
                               type Handlers = { onTick: fn() -> int }\n\
                               fn quiet() = 0\n\

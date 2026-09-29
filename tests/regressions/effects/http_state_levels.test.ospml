@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 effect Db
     (** Append a task and return its new id. *)
     add : string => int
@@ -22,7 +36,7 @@ effect Log
     (** Record an informational `message` about server activity. *)
     info : string => Unit
 
-textResp (status, bodyText) = HttpResponse(status = status, headers = "Content-Type: text/plain", contentType = "text/plain", streamFd = (0 - 1) ?: 0, isComplete = true, partialBody = bodyText)
+textResp (status, bodyText) = HttpResponse(status = status, headers = "Content-Type: text/plain", contentType = "text/plain", streamFd = (0 - 1) , isComplete = true, partialBody = bodyText)
 
 onPost body =
     id = perform Db.add body
@@ -80,46 +94,48 @@ mut tasks = ""
 mut taskCount = 0
 
 _ =
-    handle Persist
-        flush snap =>
-            (** A relative path resolves against the PROCESS's working directory, not
-                the program's, so this lands wherever the corpus was invoked from —
-                the repo root, for `make test`. `target/` would be no better: it only
-                exists when that cwd happens to be the root. What the assertions need
-                is a name no other case writes; where it lands is the caller's, which
-                is why .gitignore names it. [BUILTIN-FILE-ERRMSG] *)
-            saved = writeFile "osprey_http_state_levels.db" snap
-            diskBytes := match saved
-                Success _value => length snap
-                // Say WHY [BUILTIN-FILE-ERRMSG]. Storing a bare -1 here is how a
-                // failed persist reached the assertions as "expected true, got
-                // false", with the operating system's own explanation discarded.
-                Error message =>
-                    print "[persist] ${message}"
-                    0 - 1 ?: 0
-            diskBytes
-        bytes => diskBytes
-    handle Metrics
-        hit _p      =>
-            requests := requests + 1 ?: requests
-        served     => requests
-    handle Db
-        add t =>
-            taskCount := taskCount + 1 ?: taskCount
-            tasks := "${tasks}#${toString taskCount} ${t}\n"
-            taskCount
-        list  => tasks
-        count => taskCount
-    handle Log
-        info m => print "[client] ${m}"
-    runDemo ()
-    0
+    exactArithmetic (\() =>
+        handle Persist
+            flush snap =>
+                (** A relative path resolves against the PROCESS's working directory, not
+                    the program's, so this lands wherever the corpus was invoked from —
+                    the repo root, for `make test`. `target/` would be no better: it only
+                    exists when that cwd happens to be the root. What the assertions need
+                    is a name no other case writes; where it lands is the caller's, which
+                    is why .gitignore names it. [BUILTIN-FILE-ERRMSG] *)
+                saved = writeFile "osprey_http_state_levels.db" snap
+                diskBytes := match saved
+                    Success _value => length snap
+                    // Say WHY [BUILTIN-FILE-ERRMSG]. Storing a bare -1 here is how a
+                    // failed persist reached the assertions as "expected true, got
+                    // false", with the operating system's own explanation discarded.
+                    Error message =>
+                        print "[persist] ${message}"
+                        0 - 1 
+                diskBytes
+            bytes => diskBytes
+        handle Metrics
+            hit _p      =>
+                requests := requests + 1 
+            served     => requests
+        handle Db
+            add t =>
+                taskCount := taskCount + 1 
+                tasks := "${tasks}#${toString taskCount} ${t}\n"
+                taskCount
+            list  => tasks
+            count => taskCount
+        handle Log
+            info m => print "[client] ${m}"
+        runDemo ()
+        0)
 
 // Verify state mutated through the live server, client, and background fiber.
-test "HTTP requests update every handled state layer" (\() => checkAll "HTTP state levels" [
+
+test "HTTP requests update every handled state layer" (\() => exactArithmetic ((\() => checkAll "HTTP state levels" [
     taskCount == 3,
     requests == 4,
     diskBytes == 60,
     contains tasks "#1 welcome to osprey",
     contains tasks "#3 land the effects PR"
-])
+])))

@@ -29,7 +29,7 @@ auditInts rows =
     mut encoded = 0
     handle LeafAudit
         observe value =>
-            encoded := encoded * 10 + value ?: encoded
+            encoded := encoded * 10 + value 
     forEachList rows (\row => forEachList row (\value => perform LeafAudit.observe value))
     encoded
 
@@ -130,4 +130,19 @@ nestedListEffectPatternCase () =
         chooseByCollection (listGet floats 1 ?: [0.0], 6.5, 7.5) == 6.5
     ]
 
-test "nested generic lists mix effects patterns Results and persistence" nestedListEffectPatternCase
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
+
+test "nested generic lists mix effects patterns Results and persistence" (\() => exactArithmetic (nestedListEffectPatternCase))
