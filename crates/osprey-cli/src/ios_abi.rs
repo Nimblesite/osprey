@@ -140,17 +140,27 @@ pub(crate) struct HostAbi {
 /// Two functions whose C names coincide (`app::x_y` and `app_x::y`), or an
 /// export whose name an import already takes, would silently shadow one
 /// another at link time, so the ABI refuses to be generated.
+#[cfg(test)]
 pub(crate) fn host_abi(
     program: &Program,
     types: &ProgramTypes,
     ir: &str,
+) -> Result<HostAbi, String> {
+    host_abi_selected(program, types, ir, true)
+}
+
+fn host_abi_selected(
+    program: &Program,
+    types: &ProgramTypes,
+    ir: &str,
+    export_functions: bool,
 ) -> Result<HostAbi, String> {
     let mut abi = HostAbi::default();
     for statement in &program.statements {
         match statement {
             Stmt::Function {
                 name, parameters, ..
-            } if name != SOURCE_MAIN && defines(ir, name) => {
+            } if export_functions && name != SOURCE_MAIN && defines(ir, name) => {
                 let names = parameters.iter().map(|p| p.name.as_str());
                 if let Some((params, ret)) = c_signature(types, name, names) {
                     abi.exports.push(export(name, params, ret));
@@ -465,11 +475,17 @@ pub(crate) fn source(
     path: &str,
     target: &str,
     extend_bool: bool,
+    entry_only: bool,
 ) -> Result<(String, String), String> {
     crate::target_capabilities::validate(program, target)?;
     let ir = osprey_codegen::compile_library(program).map_err(|e| format!("{path}: {e}"))?;
-    let abi = host_abi(program, &osprey_types::infer_program(program), &ir)
-        .map_err(|error| format!("{path}: target `{target}` C ABI: {error}"))?;
+    let abi = host_abi_selected(
+        program,
+        &osprey_types::infer_program(program),
+        &ir,
+        !entry_only,
+    )
+    .map_err(|error| format!("{path}: target `{target}` C ABI: {error}"))?;
     let adapted = if extend_bool {
         with_host_abi(&ir, &abi)?
     } else {

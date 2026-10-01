@@ -48,7 +48,7 @@ use std::process::{Command, ExitCode};
 pub(crate) const USAGE: &str =
     "usage: osprey <file-or-project> [--check | --ast | --llvm | --compile | --run | \
 --symbols | --list-tests | --doctests | --deps] [--quiet] [--debug] [--profile] [--flavor default|ml] \
-[--memory=default|gc|arc] [--target=native|wasm32|ios|ios-sim|android-arm64|android-x64] [-o <out>] \
+[--memory=default|gc|arc] [--target=native|wasm32|ios|ios-sim|android-arm64|android-x64] [--entry-only] [-o <out>] \
 [--sandbox | --no-http | --no-websocket | --no-fs | --no-ffi]\n\
        osprey build [project] [--quiet] [--debug] [--memory=default|gc|arc] \
 [--target=native|wasm32|ios|ios-sim|android-arm64|android-x64] [-o <out>]\n\
@@ -80,6 +80,8 @@ pub(crate) struct Cli {
     /// Host executable, WebAssembly, or iPhone C ABI archive.
     /// [WASM-TARGET] [IOS-TARGET]
     target: String,
+    /// Mobile archive exposes only `osprey_main` to its host.
+    entry_only: bool,
     /// Explicit output artifact path (`-o`); defaults to the source stem.
     output: Option<String>,
     /// Emit source-level debug metadata and link a debugger-friendly binary.
@@ -248,6 +250,7 @@ fn parse_args(args: &[String]) -> Result<Cli, String> {
     let mut policy = Policy::allow_all();
     let mut memory = String::from("default");
     let mut target = String::from("native");
+    let mut entry_only = false;
     let mut output = None;
     let mut debug = false;
     let mut profile = false;
@@ -272,6 +275,7 @@ fn parse_args(args: &[String]) -> Result<Cli, String> {
             "--quiet" => quiet = true,
             "--debug" => debug = true,
             "--profile" => profile = true,
+            "--entry-only" => entry_only = true,
             "--sandbox" => policy = Policy::sandbox(),
             "--no-http" => policy.http = false,
             "--no-websocket" => policy.websocket = false,
@@ -313,6 +317,14 @@ fn parse_args(args: &[String]) -> Result<Cli, String> {
         None if project_build => ".".to_string(),
         None => return Err(USAGE.to_string()),
     };
+    if entry_only
+        && !matches!(
+            target.as_str(),
+            "ios" | "ios-sim" | "android-arm64" | "android-x64"
+        )
+    {
+        return Err("--entry-only requires a mobile C ABI target".to_string());
+    }
     let mut cli = Cli {
         path,
         mode,
@@ -320,6 +332,7 @@ fn parse_args(args: &[String]) -> Result<Cli, String> {
         policy,
         memory,
         target,
+        entry_only,
         output,
         debug,
         profile,
@@ -531,12 +544,12 @@ fn target_error(cli: &Cli, input: &CompilationInput) -> Option<ExitCode> {
     }
     if let Some(target) = android::Target::parse(&cli.target) {
         return app_target_error(&cli.mode, android::validate(cli), || {
-            android::source(input.program(), input.debug_path(), target)
+            android::source(input.program(), input.debug_path(), target, cli.entry_only)
         });
     }
     if let Some(target) = ios::Target::parse(&cli.target) {
         return app_target_error(&cli.mode, ios::validate(cli), || {
-            ios::source(input.program(), input.debug_path(), target)
+            ios::source(input.program(), input.debug_path(), target, cli.entry_only)
         });
     }
     None
@@ -562,10 +575,12 @@ fn app_target_error(
 
 fn target_ir(cli: &Cli, input: &CompilationInput) -> Result<String, String> {
     if let Some(target) = android::Target::parse(&cli.target) {
-        return android::source(input.program(), input.debug_path(), target).map(|(ir, _)| ir);
+        return android::source(input.program(), input.debug_path(), target, cli.entry_only)
+            .map(|(ir, _)| ir);
     }
     if let Some(target) = ios::Target::parse(&cli.target) {
-        return ios::source(input.program(), input.debug_path(), target).map(|(ir, _)| ir);
+        return ios::source(input.program(), input.debug_path(), target, cli.entry_only)
+            .map(|(ir, _)| ir);
     }
     if cli.target == "wasm32" {
         return wasm::program_ir(input.program()).map_err(|error| error.to_string());
@@ -634,12 +649,24 @@ fn compile_program_to_disk(cli: &Cli, input: &CompilationInput) -> ExitCode {
         }
         wasm::build(input.debug_path(), input.program(), &out)
     } else if let Some(target) = android::Target::parse(&cli.target) {
-        android::build(input.debug_path(), input.program(), &out, target)
+        android::build(
+            input.debug_path(),
+            input.program(),
+            &out,
+            target,
+            cli.entry_only,
+        )
     } else if let Some(target) = ios::Target::parse(&cli.target) {
         if let Err(code) = ios::validate(cli) {
             return code;
         }
-        ios::build(input.debug_path(), input.program(), &out, target)
+        ios::build(
+            input.debug_path(),
+            input.program(),
+            &out,
+            target,
+            cli.entry_only,
+        )
     } else {
         build_executable(
             input.debug_path(),
@@ -1381,6 +1408,17 @@ mod tests {
     }
 
     #[test]
+    fn entry_only_requires_a_mobile_archive() {
+        for target in ["ios", "ios-sim", "android-arm64", "android-x64"] {
+            let flag = format!("--target={target}");
+            let cli = parse_args(&args(&["f.osp", &flag, "--entry-only"])).expect("mobile target");
+            assert!(cli.entry_only);
+        }
+        let error = parse_args(&args(&["f.osp", "--entry-only"])).expect_err("native target");
+        assert!(error.contains("mobile C ABI target"), "{error}");
+    }
+
+    #[test]
     fn parse_target_accepts_known_and_rejects_unknown() {
         assert_eq!(parse_target("native").as_deref(), Ok("native"));
         assert_eq!(parse_target("wasm32").as_deref(), Ok("wasm32"));
@@ -1556,6 +1594,7 @@ mod tests {
             policy,
             memory: "default".to_string(),
             target: "native".to_string(),
+            entry_only: false,
             output: None,
             debug: false,
             profile: false,

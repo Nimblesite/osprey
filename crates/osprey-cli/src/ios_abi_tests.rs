@@ -331,6 +331,9 @@ fn exports_cannot_depend_on_a_handler_installed_only_by_main() {
         error.contains("export") && error.contains("ring") && error.contains("Alarm.ring"),
         "{error}"
     );
+    let entry = host_abi_selected(&program, &types, &ir, false).expect("entry-only archive");
+    assert!(entry.exports.is_empty());
+    assert!(with_host_abi(&ir, &entry).is_ok());
 }
 
 #[test]

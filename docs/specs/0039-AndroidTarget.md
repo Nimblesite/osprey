@@ -24,6 +24,8 @@ Compilation emits the requested `.a` and sibling `.h`; other output extensions f
 
 The shared mobile ABI exposes emitted functions with fully resolved scalar signatures as `osprey_<name>`, replacing namespace separators with underscores. The scalar mappings and synchronous borrowing contract are the same as [the iOS C boundary](0038-iOSTarget.md#c-function-boundary-ios-host-abi): `int64_t`, `double`, C `bool`, UTF-8 `const char *`, and return-only `void` for `Unit`. Boolean attributes follow the selected Android ABI. Invalid names, collisions, unsupported extern signatures, and independently unhandled exported-function effects are compile errors.
 
+`--entry-only` exposes only `osprey_main` for a host that does not call any other Osprey function. The corpus harness uses it; application archives still export and check their scalar functions by default.
+
 ## Entry and lifetime [ANDROID-TARGET-ENTRY]
 
 `osprey_main()` initializes the library once, retains its status, and preserves application globals for subsequent calls. The host serializes all Osprey calls and copies returned strings before the next call. It must not free those pointers. The initial default allocator retains general allocations for process lifetime and supplies no library teardown or returned-string release API.
@@ -44,7 +46,7 @@ The driver locates the Android NDK through `ANDROID_NDK_HOME` or `ANDROID_NDK_RO
 
 ## Verification [ANDROID-VERIFICATION]
 
-`make android-test` checks the shared C ABI fixture, the whole `tests/` corpus, and the actual application's deterministic reactive/SQLite smoke test. The fixture and the corpus are the same ones iOS runs: [`scripts/mobile-abi.osp`](../../scripts/mobile-abi.osp) states the boundary contract once, and `make _test_android_goldens` builds every accepted corpus program as a library, links it with the NDK, pushes it to the attached device and holds its stdout to the byte-exact native golden. Rejections are pinned in the shared [`MOBILE_UNPORTABLE.txt`](../../tests/MOBILE_UNPORTABLE.txt).
+`make android-test` checks the shared C ABI fixture, the whole `tests/` corpus, and the actual application's deterministic reactive/SQLite smoke test. The fixture and the corpus are the same ones iOS runs: [`scripts/mobile-abi.osp`](../../scripts/mobile-abi.osp) states the boundary contract once, and `make _test_android_goldens` builds every accepted corpus program as an entry-only library, links it with the NDK, pushes it to the attached device and holds its stdout to the byte-exact native golden. Rejections are pinned in the shared [`MOBILE_UNPORTABLE.txt`](../../tests/MOBILE_UNPORTABLE.txt).
 
 The slice follows the hardware: `OSPREY_TARGET=android` runs whichever ABI the attached device reports, so an ARM64 phone and an x86-64 emulator need the same command, and naming a slice that the device cannot run is an error rather than a per-program failure. The separate live smoke performs real GitHub requests. Execution is recorded per ABI; a packaged ABI is not evidence that it executed.
 
