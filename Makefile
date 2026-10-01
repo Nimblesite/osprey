@@ -194,6 +194,8 @@ WASM_SERVE_PORT ?= 8080
 # =============================================================================
 
 ## build: C runtime archives + Rust workspace (release) + VSCode extension
+export CARGO_BUILD_JOBS ?= 4
+
 build: _runtime $(EXT_NODE_DEPS)
 	@echo "==> Building..."
 	cargo build --release --workspace
@@ -551,7 +553,7 @@ _runtime_wasm:
 # that says nothing about the code that changed. Build what the gate measures.
 _test_rust: _runtime_wasm
 	@echo "==> [rust] running tests with coverage..."
-	set -o pipefail && cargo llvm-cov --workspace --profile ci --lcov --output-path lcov.info 2>&1 | tee test.log
+	set -o pipefail && RUST_TEST_THREADS=$${RUST_TEST_THREADS:-4} cargo llvm-cov --workspace --profile ci --lcov --output-path lcov.info 2>&1 | tee test.log
 
 # Per-crate enforcement: each rust crate NAMED IN $(COVERAGE_THRESHOLDS_FILE) is
 # gated independently against its own threshold (floor 95% + monotonic ratchet).

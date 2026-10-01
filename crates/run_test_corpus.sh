@@ -185,7 +185,9 @@ detected_jobs() {
   [[ "$jobs" == <-> && $jobs -gt 0 ]] || jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null)
   [[ "$jobs" == <-> && $jobs -gt 0 ]] || jobs=$(sysctl -n hw.logicalcpu 2>/dev/null)
   [[ "$jobs" == <-> && $jobs -gt 0 ]] || jobs=2
-  (( jobs = jobs < 2 ? 2 : jobs ))
+  # Each worker starts a compiler and linker; using every host CPU can leave
+  # an interactive machine saturated for the whole corpus run.
+  (( jobs = jobs < 2 ? 2 : jobs > 4 ? 4 : jobs ))
   print -r -- "$jobs"
 }
 

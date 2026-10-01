@@ -46,7 +46,7 @@ make _language-test
 target/release/osprey test tests
 ```
 
-Suites run concurrently by default, while their TAP output is replayed in
+Suites run with at most four workers by default, while their TAP output is replayed in
 sorted file order. Set `OSPREY_TEST_JOBS` to a positive worker limit, or use
 `OSPREY_TEST_JOBS=1` when a constrained or diagnostic run must be serial:
 
