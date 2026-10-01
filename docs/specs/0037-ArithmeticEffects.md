@@ -1,6 +1,6 @@
 # Arithmetic Effects
 
-**Status:** implementation in progress under [plan 0027](../plans/0027-arithmetic-effects.md); this is the normative contract.
+**Status:** shipped. [Plan 0027](../plans/0027-arithmetic-effects.md) records the implementation and verification.
 
 The key words `MUST`, `MUST NOT`, `SHOULD`, and `MAY` are to be interpreted as described by BCP 14 (RFC 2119 and RFC 8174) when they appear in capitals. A feature is not implemented merely because this document specifies it.
 
@@ -173,5 +173,5 @@ host-backend GPU kernel dispatches to the enclosing runtime policy. A checked
 static interpretation for device regions under
 [STAGE-HANDLE-STATIC](0017-AlgebraicEffects.md#static-handlers--stage-handle-static)
 belongs to the staging delivery.
-Arithmetic delivery remains in [plan 0027](../plans/0027-arithmetic-effects.md);
-shared handler and staging delivery belongs only to [plan 0016](../plans/0016-algebraic-effects-and-handlers.md).
+Arithmetic delivery is recorded in [plan 0027](../plans/0027-arithmetic-effects.md);
+shared handler and staging delivery belongs to [plan 0016](../plans/0016-algebraic-effects-and-handlers.md).
