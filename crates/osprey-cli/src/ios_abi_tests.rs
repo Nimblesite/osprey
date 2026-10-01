@@ -323,7 +323,7 @@ fn initialization_symbols_and_c_header_names_are_reserved() {
 }
 
 #[test]
-fn exports_cannot_depend_on_a_handler_installed_only_by_main() {
+fn exports_cannot_depend_on_a_handler_installed_only_by_main() -> Result<(), String> {
     let source = "effect Alarm { ring: fn() -> int }\nfn ring() = perform Alarm.ring()\nfn relay() = ring()\nfn main() = {\n    handle Alarm {\n        ring => 7\n    }\n    relay()\n}\n";
     let (program, types, ir) = checked(source);
     let error = host_abi(&program, &types, &ir).expect_err("export needs its own handler");
@@ -331,9 +331,10 @@ fn exports_cannot_depend_on_a_handler_installed_only_by_main() {
         error.contains("export") && error.contains("ring") && error.contains("Alarm.ring"),
         "{error}"
     );
-    let entry = host_abi_selected(&program, &types, &ir, false).expect("entry-only archive");
+    let entry = host_abi_selected(&program, &types, &ir, false)?;
     assert!(entry.exports.is_empty());
     assert!(with_host_abi(&ir, &entry).is_ok());
+    Ok(())
 }
 
 #[test]

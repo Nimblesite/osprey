@@ -66,6 +66,18 @@ pub(crate) const TEST_COVERAGE_BUILD_ENV: &str = "OSPREY_TEST_COVERAGE_BUILD";
 /// Internal content-addressed executable cache used by the test runner.
 pub(crate) const TEST_CACHE_DIR_ENV: &str = "OSPREY_TEST_CACHE_DIR";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MobileExports {
+    All,
+    EntryOnly,
+}
+
+impl MobileExports {
+    fn entry_only(self) -> bool {
+        self == Self::EntryOnly
+    }
+}
+
 /// The parsed invocation: source path, mode flag, and behaviour switches.
 #[derive(Debug)]
 pub(crate) struct Cli {
@@ -81,7 +93,7 @@ pub(crate) struct Cli {
     /// [WASM-TARGET] [IOS-TARGET]
     target: String,
     /// Mobile archive exposes only `osprey_main` to its host.
-    entry_only: bool,
+    exports: MobileExports,
     /// Explicit output artifact path (`-o`); defaults to the source stem.
     output: Option<String>,
     /// Emit source-level debug metadata and link a debugger-friendly binary.
@@ -317,14 +329,7 @@ fn parse_args(args: &[String]) -> Result<Cli, String> {
         None if project_build => ".".to_string(),
         None => return Err(USAGE.to_string()),
     };
-    if entry_only
-        && !matches!(
-            target.as_str(),
-            "ios" | "ios-sim" | "android-arm64" | "android-x64"
-        )
-    {
-        return Err("--entry-only requires a mobile C ABI target".to_string());
-    }
+    let exports = mobile_exports(entry_only, &target)?;
     let mut cli = Cli {
         path,
         mode,
@@ -332,7 +337,7 @@ fn parse_args(args: &[String]) -> Result<Cli, String> {
         policy,
         memory,
         target,
-        entry_only,
+        exports,
         output,
         debug,
         profile,
@@ -340,6 +345,16 @@ fn parse_args(args: &[String]) -> Result<Cli, String> {
     };
     apply_profile_rules(&mut cli, mode_explicit || project_build)?;
     Ok(cli)
+}
+
+fn mobile_exports(entry_only: bool, target: &str) -> Result<MobileExports, String> {
+    if !entry_only {
+        return Ok(MobileExports::All);
+    }
+    match target {
+        "ios" | "ios-sim" | "android-arm64" | "android-x64" => Ok(MobileExports::EntryOnly),
+        _ => Err("--entry-only requires a mobile C ABI target".to_string()),
+    }
 }
 
 /// Enforce the `--profile` interaction rules [PROF-CLI-RUN]: it conflicts with
@@ -544,12 +559,22 @@ fn target_error(cli: &Cli, input: &CompilationInput) -> Option<ExitCode> {
     }
     if let Some(target) = android::Target::parse(&cli.target) {
         return app_target_error(&cli.mode, android::validate(cli), || {
-            android::source(input.program(), input.debug_path(), target, cli.entry_only)
+            android::source(
+                input.program(),
+                input.debug_path(),
+                target,
+                cli.exports.entry_only(),
+            )
         });
     }
     if let Some(target) = ios::Target::parse(&cli.target) {
         return app_target_error(&cli.mode, ios::validate(cli), || {
-            ios::source(input.program(), input.debug_path(), target, cli.entry_only)
+            ios::source(
+                input.program(),
+                input.debug_path(),
+                target,
+                cli.exports.entry_only(),
+            )
         });
     }
     None
@@ -575,12 +600,22 @@ fn app_target_error(
 
 fn target_ir(cli: &Cli, input: &CompilationInput) -> Result<String, String> {
     if let Some(target) = android::Target::parse(&cli.target) {
-        return android::source(input.program(), input.debug_path(), target, cli.entry_only)
-            .map(|(ir, _)| ir);
+        return android::source(
+            input.program(),
+            input.debug_path(),
+            target,
+            cli.exports.entry_only(),
+        )
+        .map(|(ir, _)| ir);
     }
     if let Some(target) = ios::Target::parse(&cli.target) {
-        return ios::source(input.program(), input.debug_path(), target, cli.entry_only)
-            .map(|(ir, _)| ir);
+        return ios::source(
+            input.program(),
+            input.debug_path(),
+            target,
+            cli.exports.entry_only(),
+        )
+        .map(|(ir, _)| ir);
     }
     if cli.target == "wasm32" {
         return wasm::program_ir(input.program()).map_err(|error| error.to_string());
@@ -654,7 +689,7 @@ fn compile_program_to_disk(cli: &Cli, input: &CompilationInput) -> ExitCode {
             input.program(),
             &out,
             target,
-            cli.entry_only,
+            cli.exports.entry_only(),
         )
     } else if let Some(target) = ios::Target::parse(&cli.target) {
         if let Err(code) = ios::validate(cli) {
@@ -665,7 +700,7 @@ fn compile_program_to_disk(cli: &Cli, input: &CompilationInput) -> ExitCode {
             input.program(),
             &out,
             target,
-            cli.entry_only,
+            cli.exports.entry_only(),
         )
     } else {
         build_executable(
@@ -1408,14 +1443,17 @@ mod tests {
     }
 
     #[test]
-    fn entry_only_requires_a_mobile_archive() {
+    fn entry_only_requires_a_mobile_archive() -> Result<(), String> {
         for target in ["ios", "ios-sim", "android-arm64", "android-x64"] {
             let flag = format!("--target={target}");
-            let cli = parse_args(&args(&["f.osp", &flag, "--entry-only"])).expect("mobile target");
-            assert!(cli.entry_only);
+            let cli = parse_args(&args(&["f.osp", &flag, "--entry-only"]))?;
+            assert_eq!(cli.exports, MobileExports::EntryOnly);
         }
-        let error = parse_args(&args(&["f.osp", "--entry-only"])).expect_err("native target");
+        let Err(error) = parse_args(&args(&["f.osp", "--entry-only"])) else {
+            return Err("native target accepted --entry-only".to_string());
+        };
         assert!(error.contains("mobile C ABI target"), "{error}");
+        Ok(())
     }
 
     #[test]
@@ -1594,7 +1632,7 @@ mod tests {
             policy,
             memory: "default".to_string(),
             target: "native".to_string(),
-            entry_only: false,
+            exports: MobileExports::All,
             output: None,
             debug: false,
             profile: false,
