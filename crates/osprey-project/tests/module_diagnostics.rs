@@ -77,6 +77,38 @@ fn exported_mutable_cell_is_rejected_on_both_surfaces() {
 }
 
 #[test]
+fn signature_cannot_export_a_state_cell_on_either_surface() {
+    // Implements [MODULES-EXPORTS]: a signature's `let` entry names an
+    // immutable value, so an ascribed state module whose cell matches that
+    // entry would publish the cell. Both grammars accept the entry, so the
+    // assembler must be the one to refuse it — the `export mut` route of
+    // [MODULES-STATE-TOPLEVEL] never sees this spelling.
+    both_reject(
+        "state cell `total` cannot be exported by a signature",
+        concat!(
+            "namespace app;\n",
+            "signature Api {\n    let total: int\n",
+            "    effect Counter { reads : fn() -> int }\n",
+            "    fn withTally(body: fn() -> int) -> int\n}\n",
+            "state module Tally : Api {\n    mut total = 0\n",
+            "    effect Counter { reads : fn() -> int }\n",
+            "    fn withTally(body) = {\n        handle Counter { reads => total }\n",
+            "        body()\n    }\n}\n",
+        ),
+        concat!(
+            "namespace app\n\n",
+            "signature Api\n    total : int\n",
+            "    effect Counter\n        reads : Unit => int\n",
+            "    withTally : (Unit -> int) -> int\n\n",
+            "state Tally : Api\n    mut total = 0\n",
+            "    effect Counter\n        reads : Unit => int\n",
+            "    withTally body =\n        handle Counter\n            reads => total\n",
+            "        body ()\n",
+        ),
+    );
+}
+
+#[test]
 fn plain_module_cannot_own_a_cell_on_either_surface() {
     // Implements [MODULES-STATE-TOPLEVEL]: only a state module owns cells.
     both_reject(

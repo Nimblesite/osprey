@@ -1,0 +1,11 @@
+cannot update field `v` on an erased `any`: match its structure instead
+record type `Point` has no field `z`
+type mismatch: cannot unify string with int
+record type `Point` has no field `z`
+type mismatch: cannot unify int with string
+type mismatch: cannot unify int with string
+type mismatch: cannot unify int with string
+cannot access field 'x' on non-struct type int
+cannot access field 'r' on non-struct type Shape
+record update assigns field `x` more than once
+constructor `Point` assigns field `x` more than once

@@ -77,3 +77,135 @@ recordUpdateCase () =
         computedPoint.y == 10
     ]
 test "record updates preserve the source and untouched fields" recordUpdateCase
+
+(** Generic and nested record types for the cases below. *)
+type Box T =
+    held : T
+
+type Pair A B =
+    first : A
+    second : B
+
+type Tag =
+    x : string
+
+type Address =
+    city : string
+    zip : int
+
+type Company =
+    name : string
+    address : Address
+    active : bool
+
+type Cell =
+    v : any
+
+(** One update function serves every record that has the field: the write is
+    deferred to the call that fixes the record, exactly like a field read
+    ([TYPE-RECORD-UPDATE]). *)
+setX r v = r(x = v)
+rename p name = p(name = name)
+rebox b = b(held = 5)
+swap b v = b(held = v)
+second p s = p(second = s)
+erase c = c(v = 1)
+describe p = "${p.x},${p.y}"
+
+(** A handler arm rebinds a `mut` record to its own update, the one place
+    the language allows a rebinding. *)
+effect Steer
+    nudge : int => int
+
+steered () =
+    mut acc = Point(x = 0, y = 0)
+    handle Steer
+        nudge by =>
+            acc := acc(x = by, y = (acc.y + by) ?: 0)
+            acc.y
+    first = perform Steer.nudge 5
+    second = perform Steer.nudge 1
+    acc(x = (first + second) ?: 0)
+
+(** A recursive walk threads a record through its own updates. *)
+walk p steps = match steps
+    0 => p
+    _ => walk (p(x = (p.x + 1) ?: 0, y = (p.y + 2) ?: 0)) ((steps - 1) ?: 0)
+
+genericUpdateCase () =
+    point = Point(x = 1, y = 2)
+    person = Person(name = "Alice", age = 25)
+    movedPoint = setX point 7
+    retagged = setX (Tag(x = "a")) "b"
+    renamed = rename person "Bob"
+    boxed = Box(held = 1)
+    reboxed = rebox boxed
+    swapped = swap (Box(held = "a")) "b"
+    pair = Pair(first = 1, second = "one")
+    repaired = second pair "uno"
+    checkAll "updates through generic functions" [
+        movedPoint.x == 7,
+        movedPoint.y == 2,
+        point.x == 1,
+        retagged.x == "b",
+        renamed.name == "Bob",
+        renamed.age == 25,
+        boxed.held == 1,
+        reboxed.held == 5,
+        swapped.held == "b",
+        repaired.first == 1,
+        repaired.second == "uno",
+        pair.second == "one"
+    ]
+
+nestedUpdateCase () =
+    home = Address(city = "Perth", zip = 6000)
+    acme = Company(name = "Acme", address = home, active = true)
+    moved = acme(address = home(city = "Hobart"))
+    closed = moved(active = false, name = "Acme (closed)")
+    boxed = Box(held = 2)
+    doubled = boxed(held = (boxed.held * 2) ?: 0)
+    pair = Pair(first = "a", second = 1)
+    bumped = pair(second = (pair.second + 1) ?: 0, first = "b")
+    checkAll "nested and generic records update without touching their source" [
+        moved.address.city == "Hobart",
+        moved.address.zip == 6000,
+        acme.address.city == "Perth",
+        closed.active == false,
+        closed.name == "Acme (closed)",
+        closed.address.city == "Hobart",
+        doubled.held == 4,
+        boxed.held == 2,
+        bumped.first == "b",
+        bumped.second == 2,
+        pair.second == 1
+    ]
+
+flowUpdateCase () =
+    start = Point(x = 0, y = 0)
+    stepped = match start.x
+        0 => start(x = 1)
+        _ => start(y = 1)
+    shift = \p => p(y = (p.y + 10) ?: 0)
+    shifted = shift stepped
+    walked = walk start 3
+    steeredPoint = steered ()
+    checkAll "updates inside match arms, lambdas, recursion and handler arms" [
+        stepped.x == 1,
+        stepped.y == 0,
+        shifted.y == 10,
+        shifted.x == 1,
+        walked.x == 3,
+        walked.y == 6,
+        start.x == 0,
+        steeredPoint.x == 11,
+        steeredPoint.y == 6,
+        describe (start(y = 9, x = 8)) == "8,9"
+    ]
+
+erasedCell = erase (Cell(v = "s"))
+walkedTwice = walk (Point(x = 1, y = 1)) 2
+print "${erasedCell.v} ${describe walkedTwice}"
+test "record updates through generic functions" genericUpdateCase
+test "record updates of nested and generic records" nestedUpdateCase
+test "record updates in control flow" flowUpdateCase

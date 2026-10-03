@@ -80,3 +80,126 @@ fn recordUpdateCase() = {
     ])
 }
 test("record updates preserve the source and untouched fields", recordUpdateCase)
+
+/// Generic and nested record types for the cases below.
+type Box<T> = { held: T }
+type Pair<A, B> = { first: A, second: B }
+type Tag = { x: string }
+type Address = { city: string, zip: int }
+type Company = { name: string, address: Address, active: bool }
+type Cell = { v: any }
+
+/// One update function serves every record that has the field: the write is
+/// deferred to the call that fixes the record, exactly like a field read
+/// ([TYPE-RECORD-UPDATE]).
+fn setX(r, v) = r { x: v }
+fn rename(p, name) = p { name: name }
+fn rebox(b) = b { held: 5 }
+fn swap(b, v) = b { held: v }
+fn second(p, s) = p { second: s }
+fn erase(c) = c { v: 1 }
+fn describe(p) = "${p.x},${p.y}"
+
+/// A handler arm rebinds a `mut` record to its own update, the one place
+/// the language allows a rebinding.
+effect Steer { nudge : fn(int) -> int }
+fn steered() = {
+    mut acc = Point { x: 0, y: 0 }
+    handle Steer {
+        nudge by => {
+            acc = acc { x: by, y: (acc.y + by) ?: 0 }
+            acc.y
+        }
+    }
+    let first = perform Steer.nudge(5)
+    let second = perform Steer.nudge(1)
+    acc { x: (first + second) ?: 0 }
+}
+
+/// A recursive walk threads a record through its own updates.
+fn walk(p, steps) = match steps {
+    0 => p
+    _ => walk(p { x: (p.x + 1) ?: 0, y: (p.y + 2) ?: 0 }, (steps - 1) ?: 0)
+}
+
+fn genericUpdateCase() = {
+    let point = Point { x: 1, y: 2 }
+    let person = Person { name: "Alice", age: 25 }
+    let movedPoint = setX(point, 7)
+    let retagged = setX(Tag { x: "a" }, "b")
+    let renamed = rename(person, "Bob")
+    let boxed = Box { held: 1 }
+    let reboxed = rebox(boxed)
+    let swapped = swap(Box { held: "a" }, "b")
+    let pair = Pair { first: 1, second: "one" }
+    let repaired = second(pair, "uno")
+    checkAll("updates through generic functions", [
+        movedPoint.x == 7,
+        movedPoint.y == 2,
+        point.x == 1,
+        retagged.x == "b",
+        renamed.name == "Bob",
+        renamed.age == 25,
+        boxed.held == 1,
+        reboxed.held == 5,
+        swapped.held == "b",
+        repaired.first == 1,
+        repaired.second == "uno",
+        pair.second == "one"
+    ])
+}
+
+fn nestedUpdateCase() = {
+    let home = Address { city: "Perth", zip: 6000 }
+    let acme = Company { name: "Acme", address: home, active: true }
+    let moved = acme { address: home { city: "Hobart" } }
+    let closed = moved { active: false, name: "Acme (closed)" }
+    let boxed = Box { held: 2 }
+    let doubled = boxed { held: (boxed.held * 2) ?: 0 }
+    let pair = Pair { first: "a", second: 1 }
+    let bumped = pair { second: (pair.second + 1) ?: 0, first: "b" }
+    checkAll("nested and generic records update without touching their source", [
+        moved.address.city == "Hobart",
+        moved.address.zip == 6000,
+        acme.address.city == "Perth",
+        closed.active == false,
+        closed.name == "Acme (closed)",
+        closed.address.city == "Hobart",
+        doubled.held == 4,
+        boxed.held == 2,
+        bumped.first == "b",
+        bumped.second == 2,
+        pair.second == 1
+    ])
+}
+
+fn flowUpdateCase() = {
+    let start = Point { x: 0, y: 0 }
+    let stepped = match start.x {
+        0 => start { x: 1 }
+        _ => start { y: 1 }
+    }
+    let shift = fn(p) => p { y: (p.y + 10) ?: 0 }
+    let shifted = shift(stepped)
+    let walked = walk(start, 3)
+    let steeredPoint = steered()
+    checkAll("updates inside match arms, lambdas, recursion and handler arms", [
+        stepped.x == 1,
+        stepped.y == 0,
+        shifted.y == 10,
+        shifted.x == 1,
+        walked.x == 3,
+        walked.y == 6,
+        start.x == 0,
+        steeredPoint.x == 11,
+        steeredPoint.y == 6,
+        describe(start { y: 9, x: 8 }) == "8,9"
+    ])
+}
+
+let erasedCell = erase(Cell { v: "s" })
+let walkedTwice = walk(Point { x: 1, y: 1 }, 2)
+print("${erasedCell.v} ${describe(walkedTwice)}")
+test("record updates through generic functions", genericUpdateCase)
+test("record updates of nested and generic records", nestedUpdateCase)
+test("record updates in control flow", flowUpdateCase)

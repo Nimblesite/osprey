@@ -30,7 +30,7 @@ fn is_result_variant(name: &str) -> bool {
 /// An initial-uppercase identifier reads as a constructor/variant; a lower-case
 /// one reads as an ordinary variable binding.
 fn starts_uppercase(name: &str) -> bool {
-    name.chars().next().is_some_and(char::is_uppercase)
+    osprey_ast::is_constructor_name(name)
 }
 
 impl Checker {
@@ -130,6 +130,14 @@ impl Checker {
     /// every binder is itself `any`: the row is unknown until run time, so a
     /// fresh-variable binder would let the body read the field at any type it
     /// pleased — recovery by pattern, the hole [TYPE-ANY] deletes.
+    /// A structural pattern reads every field it names, so an opaque record
+    /// outside its module is rejected at the first one ([MODULES-OPAQUE-TYPES]).
+    fn hidden_row(&self, scrutinee: &Type, fields: &[(String, String)]) -> Option<TypeError> {
+        fields
+            .iter()
+            .find_map(|(field, _)| self.hidden_field(scrutinee, field, &self.site))
+    }
+
     fn bind_structural(
         &mut self,
         fields: &[(String, String)],
@@ -166,6 +174,11 @@ impl Checker {
             self.bind_fresh(fields, local);
             return;
         };
+        if let Some(hidden) = self.hidden_row(&dp, fields) {
+            self.errors.push(hidden);
+            self.bind_fresh(fields, local);
+            return;
+        }
         self.check_row_selects(fields, open, &dp, &row);
         for (fname, binder) in fields {
             if binder.is_empty() {

@@ -1,0 +1,25 @@
+// osprey: flavor=ml
+// [MODULES-OPAQUE-TYPES] The ML half of
+// `opaque_record_field_read_outside_module.ospo`: a direct read, a client's
+// own generic accessor, a structural pattern and an update are all rejected
+// outside the owning module.
+namespace opq
+
+module Ids
+    export opaque type Id =
+        value : int
+
+    export make n =
+        Id
+            value = n
+
+    export value id = id.value
+
+peek x = x.value
+
+main () =
+    id = Ids::make 3
+    viaPattern = match id
+        { value } => value
+    bumped = id(value = 9)
+    print "${id.value} ${peek id} ${viaPattern} ${Ids::value id} ${Ids::value bumped}"

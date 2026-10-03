@@ -112,8 +112,7 @@ mod tests {
     #[test]
     fn record_update_walks_record_and_field_values() {
         // walk_rest's Update arm: the updated record name + each field value.
-        // `ident { … }` always parses as a TypeConstructor (higher dynamic
-        // precedence), so the Update node is built directly here.
+        // Built directly so the walker is pinned independently of the lowerer.
         use osprey_ast::FieldAssignment;
         let e = Expr::Update {
             record: String::from("base"),

@@ -207,11 +207,25 @@ impl Checker {
         }
         let result = self.ctx.fresh();
         self.builtin_uses.push((
-            crate::fields::obligation_name(field),
+            crate::fields::obligation_name(&self.site, field),
             Type::fun(vec![receiver.clone()], result.clone()),
         ));
         self.resolve_field_uses();
         result
+    }
+
+    /// Writing `field` of `receiver` through an update: the read's deferral
+    /// with the relation's result being the value written, resolved as an
+    /// assignment into the field. Implements [TYPE-RECORD-UPDATE].
+    fn infer_record_field_write(&mut self, receiver: &Type, field: &str, value: &Type) {
+        if self.reject_erased_operand(&format!("update field `{field}` on"), receiver) {
+            return;
+        }
+        self.builtin_uses.push((
+            crate::fields::write_obligation_name(&self.site, field),
+            Type::fun(vec![receiver.clone()], value.clone()),
+        ));
+        self.resolve_field_uses();
     }
 
     /// A channel and its sent value share one element type; the send is `Unit`.
@@ -886,8 +900,9 @@ impl Checker {
         let column = position.map_or(0, |position| position.column);
         self.builtin_uses.push((
             format!(
-                "{}{count}:{line}:{column}:{field}:{}",
+                "{}{count}:{line}:{column}:{}:{field}:{}",
                 crate::methods::OBLIGATION,
+                self.site,
                 parts.method
             ),
             relation,
@@ -1359,12 +1374,6 @@ impl Checker {
                 Type::con(owner, args)
             }
         } else {
-            // The grammar lowers a record update `rec { f: v }` over a
-            // lower-cased binding as a constructor; recover it as an update
-            // when the name resolves to an in-scope record.
-            if env.get(name).is_some() {
-                return self.infer_update(name, fields, env);
-            }
             for fa in fields {
                 let _ = self.infer_expr(&fa.value, env);
             }
@@ -1382,6 +1391,11 @@ impl Checker {
         fields: &[FieldAssignment],
         dmap: &BTreeMap<String, Type>,
     ) {
+        if let Some(repeated) = repeated_assignment(fields) {
+            self.errors.push(TypeError::new(format!(
+                "constructor `{name}` assigns field `{repeated}` more than once"
+            )));
+        }
         for fa in fields {
             if !dmap.contains_key(&fa.name) {
                 self.errors.push(TypeError::new(format!(
@@ -1399,24 +1413,34 @@ impl Checker {
         }
     }
 
+    /// An update writes each named field once: the field must exist, the
+    /// value must be assignable to it, and a still-generic record defers both
+    /// to the call that fixes it — the same obligation a `.field` read leaves.
+    /// Implements [TYPE-RECORD-UPDATE].
     fn infer_update(&mut self, record: &str, fields: &[FieldAssignment], env: &TypeEnv) -> Type {
-        let base = self.lookup_ident(record, env);
-        let base_p = self.ctx.prune(&base);
-        if let Type::Record { fields: rf, .. } = &base_p {
-            let rf = rf.clone();
-            for fa in fields {
-                let vt = self.infer_expr(&fa.value, env);
-                if let Some(dt) = rf.get(&fa.name) {
-                    self.push_assign(&dt.clone(), &vt);
-                }
-            }
-        } else {
-            for fa in fields {
-                let _ = self.infer_expr(&fa.value, env);
-            }
+        if let Some(repeated) = repeated_assignment(fields) {
+            self.errors.push(TypeError::new(format!(
+                "record update assigns field `{repeated}` more than once"
+            )));
         }
-        base_p
+        let base = self.lookup_ident(record, env);
+        for fa in fields {
+            let vt = self.infer_expr(&fa.value, env);
+            self.infer_record_field_write(&base, &fa.name, &vt);
+        }
+        self.ctx.prune(&base)
     }
+}
+
+/// The first field a construction or update names twice. Of two assignments
+/// to one slot only one can land, and which one is an accident of lowering, so
+/// the list is rejected rather than resolved.
+fn repeated_assignment(fields: &[FieldAssignment]) -> Option<&str> {
+    let mut seen = HashSet::new();
+    fields
+        .iter()
+        .map(|fa| fa.name.as_str())
+        .find(|name| !seen.insert(*name))
 }
 
 fn res_math_like(ok: Type) -> Type {
@@ -2338,8 +2362,9 @@ mod tests {
                 }),
             },
         );
-        // `Expr::Update` over a non-record binding hits the else arm of
-        // `infer_update` (the field values are still inferred).
+        // `Expr::Update` over a non-record binding is a field write on an
+        // `int`, rejected like the read would be ([TYPE-RECORD-UPDATE]); it
+        // used to pass silently and reach codegen.
         let update = bind(
             "updated",
             Expr::Update {
@@ -2360,11 +2385,106 @@ mod tests {
             ],
             doc: None,
         };
-        // Only the deliberate pipe arity mismatch is expected.
+        // Only the deliberate pipe arity mismatch and the update are expected.
         let errs = check_program(&prog);
         assert!(
-            errs.iter().all(|e| e.message.contains("arity")),
+            errs.iter().all(|e| e.message.contains("arity")
+                || e.message.contains("field 'x' on non-struct type int")),
             "unexpected errors: {errs:?}"
+        );
+        assert!(
+            errs.iter()
+                .any(|e| e.message.contains("non-struct type int")),
+            "an update on an int must be rejected: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn record_update_is_checked_in_every_direction() {
+        // [TYPE-RECORD-UPDATE] The field must exist, the value must fit, the
+        // base must be a record, and a generic base defers all three to the
+        // call that fixes it — each used to pass silently.
+        const DECLS: &str = "type Point = { x: int, y: int }\n\
+                             type Label = { v: string }\n\
+                             type Box<T> = { held: T }\n\
+                             type Shape = Circle { r: int } | Square { s: int }\n\
+                             let p = Point { x: 1, y: 2 }\n";
+        bad_with(
+            &format!("{DECLS}let q = p {{ z: 5 }}\n"),
+            "record type `Point` has no field `z`",
+        );
+        bad_with(
+            &format!("{DECLS}let q = p {{ x: \"s\" }}\n"),
+            "cannot unify int with string",
+        );
+        bad_with(
+            &format!("{DECLS}fn bump(r) = r {{ v: 9 }}\nlet q = bump(Label {{ v: \"a\" }})\n"),
+            "cannot unify string with int",
+        );
+        bad_with(
+            &format!("{DECLS}fn setZ(r) = r {{ z: 1 }}\nlet q = setZ(p)\n"),
+            "record type `Point` has no field `z`",
+        );
+        bad_with(
+            &format!("{DECLS}let b = Box {{ held: 1 }}\nlet q = b {{ held: \"s\" }}\n"),
+            "cannot unify int with string",
+        );
+        bad_with(
+            &format!("{DECLS}let n = 2\nlet q = n {{ x: 1 }}\n"),
+            "cannot access field 'x' on non-struct type int",
+        );
+        bad_with(
+            &format!("{DECLS}let s = Circle {{ r: 1 }}\nlet q = s {{ r: 2 }}\n"),
+            "cannot access field 'r' on non-struct type Shape",
+        );
+        bad_with(
+            &format!("{DECLS}fn f(x: any) = x {{ v: 1 }}\n"),
+            "cannot update field `v` on an erased `any`",
+        );
+    }
+
+    #[test]
+    fn record_update_through_a_generic_function_keeps_assignment_rules() {
+        // [TYPE-RECORD-UPDATE] A deferred write is resolved as an ASSIGNMENT
+        // into the field, so the one-way rules survive the deferral: a bare
+        // value fills a `Result` slot (implicit `Success`), anything erases
+        // into `any`, and two unrelated records share one update function.
+        ok("type Outcome = { r: Result<int, string> }\n\
+            fn settle(o) = o { r: 1 }\n\
+            let settled = settle(Outcome { r: 2 })\n");
+        ok("type Cell = { v: any }\n\
+            fn erase(c) = c { v: 1 }\n\
+            let erased = erase(Cell { v: \"s\" })\n");
+        ok("type Point = { x: int, y: int }\n\
+            type Tag = { x: string }\n\
+            fn setX(r, v) = r { x: v }\n\
+            let moved = setX(Point { x: 1, y: 2 }, 7)\n\
+            let retagged = setX(Tag { x: \"a\" }, \"b\")\n\
+            let shown = \"${moved.x} ${retagged.x}\"\n");
+        bad_with(
+            "type Point = { x: int, y: int }\n\
+             fn setX(r, v) = r { x: v }\n\
+             let fine = setX(Point { x: 1, y: 2 }, 3)\n\
+             let wrong = setX(Point { x: 1, y: 2 }, \"s\")\n",
+            "cannot unify int with string",
+        );
+    }
+
+    #[test]
+    fn a_field_assigned_twice_is_rejected_in_updates_and_constructions() {
+        // [TYPE-RECORD-UPDATE] Of two assignments to one slot only one can
+        // land, and which one was an accident of lowering (the update kept the
+        // FIRST, so `p { x: 5, x: 6 }` printed 5).
+        bad_with(
+            "type Point = { x: int, y: int }\n\
+             let p = Point { x: 1, y: 2 }\n\
+             let q = p { x: 5, x: 6 }\n",
+            "record update assigns field `x` more than once",
+        );
+        bad_with(
+            "type Point = { x: int, y: int }\n\
+             let p = Point { x: 1, x: 2, y: 3 }\n",
+            "constructor `Point` assigns field `x` more than once",
         );
     }
 
@@ -2588,8 +2708,8 @@ mod tests {
 
     #[test]
     fn lowercase_record_update_via_constructor_syntax() {
-        // The grammar lowers `rec { f: v }` over an in-scope lower-cased binding
-        // as a constructor; `infer_constructor` recovers it as an update.
+        // Every brace head takes the grammar's `type_constructor` shape; the
+        // lowerer turns a lower-cased one into the `Expr::Update` checked here.
         ok("type Point = { x: int, y: int }\n\
             fn shift(p: Point) -> Point = p { x: 99 }\n");
     }

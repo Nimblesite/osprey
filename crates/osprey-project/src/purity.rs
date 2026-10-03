@@ -13,9 +13,12 @@ pub(crate) fn is_pure(expression: &Expr) -> bool {
         Expr::Map(entries) => entries
             .iter()
             .all(|entry| is_pure(&entry.key) && is_pure(&entry.value)),
-        Expr::Object(fields) | Expr::TypeConstructor { fields, .. } => {
-            fields.iter().all(|field| is_pure(&field.value))
-        }
+        // An update builds a fresh record from pure parts exactly as a
+        // construction does; its base is another binding, resolved like any
+        // name the initializer mentions.
+        Expr::Object(fields)
+        | Expr::TypeConstructor { fields, .. }
+        | Expr::Update { fields, .. } => fields.iter().all(|field| is_pure(&field.value)),
         Expr::Binary { left, right, .. } | Expr::Pipe { left, right } => {
             is_pure(left) && is_pure(right)
         }

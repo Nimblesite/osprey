@@ -564,6 +564,17 @@ mod tests {
             "{references:?}"
         );
         assert!(references.iter().any(|l| l.uri == uri), "{references:?}");
+
+        // Completion after the module prefix lists the sibling file's export.
+        let after_prefix = column.saturating_add(u32::try_from("Ledger::".len()).unwrap_or(0));
+        let labels: Vec<String> = crate::complete::completion(&text, &uri, line, after_prefix, U16)
+            .into_iter()
+            .map(|item| item.label)
+            .collect();
+        assert!(
+            labels.iter().any(|label| label == "bank::Ledger::openSql"),
+            "{labels:?}"
+        );
     }
 
     /// The 0-based `(line, column)` of the first occurrence of `needle`.

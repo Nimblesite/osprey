@@ -68,7 +68,7 @@ pub enum Flavor {
     #[default]
     Default,
     /// Layout (offside-rule) blocks, whitespace application, curry-by-default.
-    /// Surface specified in spec 0024; built by plan 0013 phases 2–3.
+    /// Surface specified in spec 0024.
     Ml,
 }
 

@@ -1,0 +1,22 @@
+// osprey: flavor=ml
+// [MODULES-OPAQUE-TYPES] The ML half of
+// `opaque_record_constructed_outside_module.ospo`: an inline construction and
+// a constructor pattern outside the owning module are both rejected.
+namespace opq
+
+module Ids
+    export opaque type Id =
+        value : int
+
+    export make n =
+        Id
+            value = n
+
+    export value id = match id
+        Id value => value
+
+main () =
+    direct = Ids::Id(value = 3)
+    taken = match (Ids::make 4)
+        Ids::Id value => value
+    print "${Ids::value direct} ${taken}"

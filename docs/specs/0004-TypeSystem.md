@@ -635,9 +635,9 @@ area =
 
 Codegen resolves a **named-field** payload by name, never by declaration order, so reordering fields in a `type` cannot silently rebind a pattern. A **positionally-declared** variant ([TYPE-UNION-POSITIONAL](0003-Syntax.md#type-declarations)) has no field names to resolve against and is the one case resolved by index — the binder in column *i* binds payload slot *i*.
 
-### Immutability and Non-Destructive Update
+### Immutability and Non-Destructive Update — [TYPE-RECORD-UPDATE]
 
-Records cannot be modified. To produce a record that differs in some fields from an existing one, use the update form:
+Records cannot be modified. To produce a record that differs in some fields from an existing one, use the update form. The base must be a bound record — a union, a scalar or an erased `any` is rejected (match it first). Each named field is checked as a field read plus an assignment: the field must exist on the record (``record type `Point` has no field `z` ``), the value must be assignable to it, and a field may be written at most once (``record update assigns field `x` more than once``; a construction is held to the same rule). An update through a still-generic parameter is deferred to the call that fixes the record, exactly as a `.field` read is, and keeps the assignment rules there: a bare value still fills a `Result` field, any value still erases into an `any` field. Generic records update like any other, including through a generic function. In both flavors the head's spelling decides the form: a capitalised, qualified or type-applied head constructs, a lowercase head updates the binding it names, and both frontends lower an update to the same `Expr::Update`.
 
 ```osprey
 let p2 = point  { x: 15 }                // y carried over

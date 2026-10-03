@@ -3,8 +3,7 @@
 //! frontend, after which the two are indistinguishable ([FLAVOR-BOUNDARY]).
 //!
 //! Surface reference: `docs/specs/0024-MLFlavorSyntax.md`. Boundary and
-//! lowering contract: `docs/specs/0023-LanguageFlavors.md`. Build sequence:
-//! `docs/plans/0013-ml-flavor-frontend.md`.
+//! lowering contract: `docs/specs/0023-LanguageFlavors.md`.
 //!
 //! Clean three-stage frontend with a parse/lower seam ([FLAVOR-FRONTEND]):
 //! 1. [`lexer`] turns source into a layout-resolved [`token`] stream (the

@@ -183,15 +183,18 @@ def measured_peak(cell: Cell) -> str:
 
     `:.3g` alone rendered a gigabyte-scale peak as `2.53e+03 MB` — technically
     right, unreadable in prose, and this string is baked into the README and the
-    published website page.
+    published website page. The unit is chosen AFTER rounding: 999,999,999
+    bytes rounds to 1000 MB, which `:.3g` renders as `1e+03 MB` again.
     """
     mb = float(cell["rss"]) / 1_000_000
-    return f"{mb / 1000:.3g} GB" if mb >= 1000 else f"{mb:.3g} MB"
+    return f"{mb / 1000:.3g} GB" if float(f"{mb:.3g}") >= 1000 else f"{mb:.3g} MB"
 
 
-def update_readme(data: Data) -> Optional[Path]:
+README = REPO / "benchmarks" / "README.md"
+
+
+def update_readme(data: Data, path: Path = README) -> Optional[Path]:
     """Refresh measured prose without making the whole hand-written README generated."""
-    path = REPO / "benchmarks" / "README.md"
     start = "> <!-- binarytrees-results:start -->"
     end = "> <!-- binarytrees-results:end -->"
     before, marked, after = path.read_text().partition(start)

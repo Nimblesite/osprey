@@ -141,8 +141,10 @@ impl Resolver<'_> {
                 variants,
                 alias,
                 validation_func,
+                opaque: hidden,
                 ..
             } => {
+                *hidden = opaque;
                 let source_name = name.clone();
                 let key = symbol_key(context, &source_name);
                 let type_link = self.link_name(&key, false);
@@ -283,7 +285,7 @@ impl Resolver<'_> {
                     name, type_args, ..
                 } = expression
                 {
-                    self.rewrite_value_name(name, context, true);
+                    self.rewrite_constructor_name(name, context, "constructed");
                     for argument in type_args {
                         self.rewrite_type(argument, context, locals);
                     }
@@ -480,7 +482,7 @@ impl Resolver<'_> {
                 fields,
                 sub_patterns,
             } => {
-                self.rewrite_value_name(name, context, true);
+                self.rewrite_constructor_name(name, context, "destructured");
                 locals.values.extend(fields.iter().cloned());
                 for nested in sub_patterns {
                     self.rewrite_pattern(nested, context, locals);

@@ -859,6 +859,12 @@ impl Codegen {
         name
     }
 
+    /// The registered slots of a synthetic owner — an object literal or a
+    /// generic-record instantiation — `None` for a declared constructor.
+    pub(crate) fn obj_layout(&self, owner: &str) -> Option<&[ObjField]> {
+        self.obj_layouts.get(owner).map(Vec::as_slice)
+    }
+
     /// The struct spelling and ordered fields of an owner — a real constructor or
     /// a synthetic object literal — for unified field access.
     pub(crate) fn record_layout(&self, owner: &str) -> Option<(String, Vec<(String, LType)>)> {

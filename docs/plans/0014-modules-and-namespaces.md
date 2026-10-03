@@ -6,10 +6,10 @@
 **Status:** Core shipped and tested — Default + ML project compilation, the
 resolver/flattener, project-aware CLI and LSP diagnostics, state-ownership
 enforcement, cross-file LSP resolution, and public namespace/module documentation.
-Fourteen checklist items remain, including opaque manifest aliases, separate
+Ten checklist items remain, including opaque manifest aliases, separate
 checking of importers against signatures, an incremental LSP project graph,
 source names in debug info, cross-flavor module IR equivalence, and state-boundary
-warnings. The record-payload opacity defect remains documented below.
+warnings. Record-payload opacity is enforced (2026-10-02).
 **Spec:** [0025 - Modules and Namespaces](../specs/0025-ModulesAndNamespaces.md)
 (`[MODULES-*]`)
 
@@ -149,9 +149,12 @@ TODO:
       `::` paths.
 - [x] Enforce module privacy, including private intermediate module boundaries.
 - [x] Check explicit exports and structural signature ascriptions.
-- [ ] Implement opaque exported types: representation available inside the owning
-      module, abstract outside. Opaque manifest aliases currently fail loudly
-      instead of leaking; transparent aliases are implemented.
+- [x] Implement opaque exported types: representation available inside the owning
+      module, abstract outside. Record payloads are enforced by the resolver
+      (construction, constructor patterns) and the checker (field reads,
+      structural patterns, updates, site-tagged field obligations). Opaque
+      manifest aliases still fail loudly instead of leaking; transparent
+      aliases are implemented.
 - [x] Check effect declarations and operation shapes through signatures.
 - [ ] Allow separate type checking of importers against signatures.
 - [x] Add tests for cross-file values, functions, effects, signatures, and
@@ -169,13 +172,12 @@ TODO:
 - [x] Reject exported `mut` cells — `export mut` in a state module reports
       ``` `export mut` is forbidden in a state module ``` (`osprey-project/src/collect.rs`),
       covered by `module_mutation_boundaries_preserve_ordinary_local_mut`.
-- [ ] The **signature-based** half of that item is untested, and it may not be
-      reachable: a signature item list accepts `fn` / `type` / `effect` / nested
-      module entries, but a bare value entry (`count: int`) is a syntax error, so
-      a signature has no way to name a `mut` cell in the first place. Decide which
-      it is — if the route is unreachable, say so in `[MODULES-SIGNATURE]` and drop
-      the clause; if a signature should be able to list values, the ascription
-      check needs the rejection *and* a fixture.
+- [x] The **signature-based** half is reachable: both grammars accept a value
+      entry (`let total: int` / `total : int`), and `signature_collect.rs`
+      rejects an ascribed state module whose cell matches it with
+      ``state cell `total` cannot be exported by a signature``. Pinned on both
+      surfaces by `signature_cannot_export_a_state_cell_on_either_surface`
+      (2026-10-02); `[MODULES-EXPORTS]` now says exactly this.
 - [ ] Reject state-cell escape through exported pointers/references once pointer
       escape analysis exists; until then, reject direct export of `Ptr` derived
       from a state cell.
@@ -254,7 +256,7 @@ TODO:
       duplicate/private boundaries, state scatter, and initializer failures.
 - [x] Add LSP regressions proving the runnable mixed-flavor project has no false
       cross-file diagnostics and real project/type errors map to the open file.
-- [ ] Add LSP integration tests for cross-file completion/hover/definition.
+- [x] Add LSP integration tests for cross-file completion/hover/definition (`features.rs::a_symbol_declared_in_a_sibling_file_resolves_across_the_project`).
 - [x] `make ci` green (local acceptance, 2026-09-10).
 
 ## Rollout Order
@@ -268,13 +270,13 @@ TODO:
 7. LSP and formatter integration.
 8. Parameterised modules after the basic module system is stable.
 
-## Opaque types leak their representation (defect)
+## Opaque types leaked their representation (fixed 2026-10-02)
 
 `[MODULES-OPAQUE-TYPES]` says "opaque union constructors are private" and that
-the compiler must not "expose `int` to clients". The manifest-*alias* half is
+the compiler must not "expose `int` to clients". The manifest-*alias* half was
 enforced (`export opaque type UserId = int` is rejected during flattening with
-`opaque alias … unsupported`). The **record-payload** half is not enforced at
-all — a client outside the owning module can both construct the type and read
+`opaque alias … unsupported`). The **record-payload** half was not enforced at
+all — a client outside the owning module could both construct the type and read
 through it:
 
 ```osprey
@@ -291,17 +293,17 @@ fn main() = {
 }
 ```
 
-`osprey build` accepts this and the binary prints `field=3`. So `opaque` is
-currently metadata the resolver carries but nothing enforces for the shape people
-actually reach for, which is the single-variant record wrapper — the newtype
-idiom the feature exists to serve. Abstraction is not a guarantee until a
-construction site and a field access outside the declaring module are both
-rejected.
+`osprey build` accepted this and the binary printed `field=3`: `opaque` was
+metadata the resolver carried but nothing enforced for the single-variant record
+wrapper — the newtype idiom the feature exists to serve.
 
-- [ ] Enforce opacity for record-payload opaque types: reject an out-of-module
-      constructor application and an out-of-module field access, with a
-      must-reject fixture for each and a positive fixture proving the owning
-      module still constructs and destructures freely.
+- [x] Enforce opacity for record-payload opaque types. The resolver rejects an
+      out-of-module construction and constructor pattern; the checker hides the
+      fields (direct read, a client's own generic accessor, structural pattern,
+      update) by tagging every field obligation with the declaration that wrote
+      it. Fixtures: `examples/failscompilation/opaque_record_*.ospo` and their
+      `ml_` twins; `tests/modules/module_data_types.test.{osp,ospml}` proves
+      the owning module still constructs, reads and rebuilds freely.
 
 ## Risks
 

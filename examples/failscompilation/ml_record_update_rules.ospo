@@ -1,0 +1,41 @@
+// osprey: flavor=ml
+// [TYPE-RECORD-UPDATE] The ML half of `record_update_rules.ospo`: a lowercase
+// inline head is an update, checked exactly like the Default form — unknown
+// field, mismatched value, non-record base, erased base, duplicate field, and
+// each of those again through a generic function. (The anonymous-record case
+// has no ML surface: the inline brace literal is not implemented.)
+type Point =
+    x : int
+    y : int
+
+type Label =
+    v : string
+
+type Box T =
+    held : T
+
+type Shape = Circle(r : int) | Square(s : int)
+
+bump r = r(v = 9)
+setZ r = r(z = 1)
+setX r v = r(x = v)
+
+erased : any -> any
+erased x = x(v = 1)
+
+p = Point(x = 1, y = 2)
+moved = p(z = 5)
+relabelled = bump (Label(v = "a"))
+extended = setZ p
+wrong = setX p "s"
+fine = setX p 3
+mistyped = p(x = "s")
+b = Box(held = 1)
+rewrapped = b(held = "s")
+n = 2
+numeric = n(x = 1)
+shape = Circle(r = 1)
+reshaped = shape(r = 2)
+twice = p(x = 5, x = 6)
+built = Point(x = 1, x = 2, y = 3)
+print "${moved.y} ${relabelled.v} ${extended.y} ${wrong.y} ${fine.x} ${mistyped.y} ${rewrapped.held} ${numeric} ${twice.x} ${built.y}"

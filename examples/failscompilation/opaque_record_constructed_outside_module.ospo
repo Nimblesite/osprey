@@ -1,0 +1,21 @@
+// [MODULES-OPAQUE-TYPES] An opaque record's constructor belongs to the module
+// that declares it: a client can neither build the representation nor take it
+// apart with a constructor pattern. The owning module keeps both freely, so
+// `make` and `value` below are fine and the two uses in `main` are not.
+namespace opq;
+
+module Ids {
+    export opaque type Id = Id { value: int }
+    export fn make(n) = Id { value: n }
+    export fn value(id) = match id {
+        Id { value } => value
+    }
+}
+
+fn main() = {
+    let direct = Ids::Id { value: 3 }
+    let taken = match Ids::make(4) {
+        Ids::Id { value } => value
+    }
+    print("${Ids::value(direct)} ${taken}")
+}

@@ -149,6 +149,10 @@ flat twins are equal, and ML curried is not equal to Default flat.
 
 `[FLAVOR-HANDLER-VALUE]` Default `handler E { ... }` and ML `handler E` with indented arms define callable handlers. Apply them with `h(work)` or `h work`; neither needs `in` or `do`. Construction, application, capture, modes and staging follow [Algebraic Effects](0017-AlgebraicEffects.md). Implementation status belongs in [plan 0016](../plans/0016-algebraic-effects-and-handlers.md).
 
+## Converting Between Flavors
+
+There is no flavor converter. `osprey fmt` formats a file within its own flavor and never changes it. Moving a source between flavors is a manual rewrite; the shared-golden twins below are what prove a rewrite preserved meaning.
+
 ## Cross-Flavor Interop
 
 `[FLAVOR-INTEROP]` Project assembly parses each source with its own flavor and

@@ -305,6 +305,15 @@ pub fn is_positional_field(name: &str) -> bool {
     !name.is_empty() && name.bytes().all(|b| b.is_ascii_digit())
 }
 
+/// Whether a brace or application head names a constructor: an initial
+/// uppercase identifier reads as a type or variant, a lowercase one as a
+/// binding. One rule for both frontends and the checker, so `Point { x: 1 }`
+/// constructs and `p { x: 1 }` updates in either flavor ([TYPE-RECORD-UPDATE]).
+#[must_use]
+pub fn is_constructor_name(name: &str) -> bool {
+    name.chars().next().is_some_and(char::is_uppercase)
+}
+
 /// The canonical [`Pattern::Structural`] a tuple pattern `(a, b)` lowers to:
 /// slot *i* is the decimal field [`positional_field_name`], its binder the
 /// written name (empty for `_`). One definition for both flavors, so ML
@@ -625,6 +634,12 @@ pub enum Stmt {
         alias: Option<TypeExpr>,
         /// An optional validation function name (`where`-constrained type).
         validation_func: Option<String>,
+        /// Whether the representation is hidden outside the declaring module
+        /// ([MODULES-OPAQUE-TYPES]). Project assembly sets it on the flattened
+        /// declaration from the item's `export opaque` marker or an ascribed
+        /// signature's abstract type; a parser leaves it false because the
+        /// marker lives on the [`ModuleItem`].
+        opaque: bool,
         /// Structured documentation comment, when written ([DOC-MODEL]).
         doc: Option<DocComment>,
         /// Source position, if recorded.

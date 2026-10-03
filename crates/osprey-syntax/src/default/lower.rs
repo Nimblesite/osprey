@@ -372,6 +372,7 @@ impl<'a> Lowerer<'a> {
                 .first_child_of_kind(node, "type_validation")
                 .and_then(|tv| self.first_named(tv))
                 .map(|n| self.text(n)),
+            opaque: false,
             doc: self.doc_text(node),
             position: Some(self.pos(node)),
         }

@@ -171,6 +171,15 @@ pub(crate) struct Checker {
     /// are validated after inference so a variable constrained later in the
     /// same body is checked at its final type.
     pub(crate) builtin_uses: Vec<(String, Type)>,
+    /// Declared types whose fields only their own module may read; keyed by
+    /// linkage name, so [`osprey_ast::symbol::encloses`] decides membership.
+    /// Implements [MODULES-OPAQUE-TYPES].
+    pub(crate) opaque_types: HashSet<String>,
+    /// Linkage name of the top-level function being checked — the lexical home
+    /// a field obligation records, so a generic accessor exported by a module
+    /// keeps its access rights when the obligation travels to a client's call.
+    /// Empty outside any function (the entry prologue).
+    pub(crate) site: String,
     /// Generalized constraints remain part of each source binding's contract.
     scheme_obligations: HashMap<String, Vec<(String, Type)>>,
     /// Every discarded value, where it was written, and whether the author said
@@ -240,6 +249,8 @@ impl Checker {
             methods: HashMap::new(),
             application_tys: Vec::new(),
             builtin_uses: Vec::new(),
+            opaque_types: HashSet::new(),
+            site: String::new(),
             scheme_obligations: HashMap::new(),
             discards: Vec::new(),
             builtins: HashSet::new(),
@@ -417,9 +428,13 @@ impl Checker {
                     type_params,
                     variants,
                     validation_func,
+                    opaque,
                     position,
                     ..
                 } => {
+                    if *opaque {
+                        let _ = self.opaque_types.insert(name.clone());
+                    }
                     if validation_func.is_some() {
                         self.record_err(
                             TypeError::new("validated record `where` is not supported".to_string()),
@@ -781,7 +796,11 @@ impl Checker {
                     body,
                     position,
                     ..
-                } => self.check_function(name, parameters, effects, body, env, *position),
+                } => {
+                    let outer = std::mem::replace(&mut self.site, name.clone());
+                    self.check_function(name, parameters, effects, body, env, *position);
+                    self.site = outer;
+                }
                 Stmt::Module { body, .. } => {
                     let mut inner = env.child();
                     // Module declarations live in their own lexical scope. Run

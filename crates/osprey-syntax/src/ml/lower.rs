@@ -428,6 +428,7 @@ impl ItemLower {
                     variants: variants.into_iter().map(lower_variant).collect(),
                     alias: alias.as_ref().map(required_type_expr),
                     validation_func: None,
+                    opaque: false,
                     doc: self.pending_doc.take(),
                     position: Some(pos),
                 });

@@ -30,13 +30,13 @@
   "author": "Christian Findlay",
   "license": "MIT",
   "devDependencies": {
-    "@11ty/eleventy": "^3.1.2",
-    "@11ty/eleventy-plugin-syntaxhighlight": "^5.0.1",
-    "@playwright/test": "^1.61.0",
-    "luxon": "^3.6.1",
-    "markdown-it": "^14.1.0",
-    "markdown-it-anchor": "^9.2.0",
-    "mermaid": "^11.16.0",
+    "@11ty/eleventy": "^3.1.6",
+    "@11ty/eleventy-plugin-syntaxhighlight": "^5.0.2",
+    "@playwright/test": "^1.63.0",
+    "luxon": "^3.7.2",
+    "markdown-it": "^14.3.2",
+    "markdown-it-anchor": "^9.2.1",
+    "mermaid": "^11.17.2",
     "typediagram-core": "^0.13.0"
   },
   "dependencies": {

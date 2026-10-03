@@ -2402,7 +2402,7 @@ pub(super) fn constructor_segment(name: &str) -> &str {
 }
 
 pub(super) fn is_constructor(name: &str) -> bool {
-    name.chars().next().is_some_and(char::is_uppercase)
+    osprey_ast::is_constructor_name(name)
 }
 
 /// A parsed `handle Effect` and its arms, waiting for the region it handles.

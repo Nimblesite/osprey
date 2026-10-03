@@ -153,7 +153,7 @@ impl Checker {
         let Some(descriptor) = name.strip_prefix(OBLIGATION) else {
             return false;
         };
-        let mut descriptor = descriptor.splitn(5, ':');
+        let mut descriptor = descriptor.splitn(6, ':');
         let explicit = descriptor.next().and_then(|n| n.parse::<usize>().ok());
         let line = descriptor
             .next()
@@ -163,10 +163,9 @@ impl Checker {
             .next()
             .and_then(|n| n.parse::<u32>().ok())
             .unwrap_or(0);
-        let Some(field) = descriptor.next() else {
-            return false;
-        };
-        let Some(method) = descriptor.next() else {
+        let (Some(site), Some(field), Some(method)) =
+            (descriptor.next(), descriptor.next(), descriptor.next())
+        else {
             return false;
         };
         let Type::Con { args: relation, .. } = relation else {
@@ -188,7 +187,7 @@ impl Checker {
             return false;
         };
         let position = (line != 0).then_some(Position { line, column });
-        let selected = self.resolved_record_field(&receiver, field).ok();
+        let selected = self.resolved_record_field(&receiver, field, site).ok();
         let mut arguments = ordered_arguments(
             arguments,
             named,

@@ -54,7 +54,13 @@ fn compile(path: &Path, source: &str) -> Result<usize, String> {
     if let Some(first) = parsed.errors.first() {
         return Err(format!("parse: {}", first.message));
     }
-    let program = assemble_if_needed(path, source, parsed.program)?;
+    let program = assemble_if_needed(path, source, parsed.program).map_err(|errors| {
+        let first = errors.first().map(|error| error.message.as_str());
+        format!(
+            "project: {}",
+            first.unwrap_or("assembly failed with no diagnostic")
+        )
+    })?;
     let type_errors = osprey_types::check_program(&program);
     if let Some(first) = type_errors.first() {
         return Err(format!("typecheck: {first:?}"));
@@ -76,7 +82,7 @@ fn assemble_if_needed(
     path: &Path,
     source: &str,
     program: osprey_ast::Program,
-) -> Result<osprey_ast::Program, String> {
+) -> Result<osprey_ast::Program, Vec<osprey_project::ProjectError>> {
     if !osprey_project::needs_assembly(&program) {
         return Ok(program);
     }
@@ -87,12 +93,7 @@ fn assemble_if_needed(
         source: source.to_string(),
         program,
     };
-    osprey_project::assemble_one(source_file)
-        .map(|assembled| assembled.program)
-        .map_err(|errors| match errors.first() {
-            Some(first) => format!("project: {}", first.message),
-            None => "project: assembly failed with no diagnostic".to_string(),
-        })
+    osprey_project::assemble_one(source_file).map(|assembled| assembled.program)
 }
 
 #[test]
@@ -419,37 +420,57 @@ fn failscompilation_corpus_drives_rejection_paths() {
 /// `main.rs` emits: `{path}:{line}:{col}: {msg}` for a located error and
 /// `{path}: {msg}` for one with no position.
 fn rejection_diagnostics(path: &Path, source: &str) -> String {
-    use std::fmt::Write as _;
-
-    let mut out = String::new();
     let parsed = osprey_syntax::parse_program_for_path(&path.to_string_lossy(), source);
     if !parsed.errors.is_empty() {
-        for e in &parsed.errors {
-            // A formatting failure into a String cannot happen; ignoring the
-            // Result keeps this panic-free without an unwrap.
-            let _ = writeln!(
-                out,
-                "{}:{}: {}",
-                e.position.line, e.position.column, e.message
-            );
-        }
-        return out;
+        return diagnostic_lines(
+            parsed
+                .errors
+                .iter()
+                .map(|e| located(Some(e.position.line), Some(e.position.column), &e.message)),
+        );
     }
-    for e in &osprey_types::check_program(&parsed.program) {
-        let _ = match e.position {
-            Some(p) => writeln!(out, "{}:{}: {}", p.line, p.column, e.message),
-            None => writeln!(out, "{}", e.message),
-        };
+    // A module-bearing fixture is rejected by the project layer before the
+    // checker ever sees it, exactly as the CLI's single-source path does.
+    let program = match assemble_if_needed(path, source, parsed.program) {
+        Ok(program) => program,
+        Err(errors) => {
+            return diagnostic_lines(errors.iter().map(|e| located(e.line, e.column, &e.message)));
+        }
+    };
+    let out = diagnostic_lines(osprey_types::check_program(&program).iter().map(|e| {
+        located(
+            e.position.map(|p| p.line),
+            e.position.map(|p| p.column),
+            &e.message,
+        )
+    }));
+    if !out.is_empty() {
+        return out;
     }
     // A program the frontend accepts can still be rejected at lowering (the
     // CLI prints these as `{path}: {msg}` too) — e.g. a recursive function
     // whose signature never became concrete enough to emit.
-    if out.is_empty() {
-        if let Err(e) = osprey_codegen::compile_program(&parsed.program) {
-            let _ = writeln!(out, "{e}");
-        }
+    osprey_codegen::compile_program(&program)
+        .err()
+        .map(|e| format!("{e}\n"))
+        .unwrap_or_default()
+}
+
+/// One golden line: `line:column: message`, or the bare message when the
+/// rejecting stage recorded no position.
+fn located(
+    line: Option<impl std::fmt::Display>,
+    column: Option<impl std::fmt::Display>,
+    message: &str,
+) -> String {
+    match (line, column) {
+        (Some(line), Some(column)) => format!("{line}:{column}: {message}"),
+        _ => message.to_string(),
     }
-    out
+}
+
+fn diagnostic_lines(lines: impl Iterator<Item = String>) -> String {
+    lines.map(|line| line + "\n").collect()
 }
 
 #[test]

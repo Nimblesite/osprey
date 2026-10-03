@@ -1,0 +1,2 @@
+opaque type `opq::Ids::Id` cannot be constructed outside module `opq::Ids`
+opaque type `opq::Ids::Id` cannot be destructured outside module `opq::Ids`

@@ -1642,6 +1642,57 @@ mod tests {
     }
 
     #[test]
+    fn generic_record_update_rebuilds_the_instantiation_layout() {
+        // [TYPE-RECORD-UPDATE] A generic record's handle names its
+        // INSTANTIATION (`Box#i64`), which `ctor_layout` has never heard of:
+        // every update of one — direct or through a generic function — died
+        // with `codegen: unknown name `Box#i64``. `gen_update` now resolves the
+        // registered layout, as field access always has.
+        let ir = module(
+            "type Box<T> = { held: T }\n\
+             fn rebox(b) = b { held: 5 }\n\
+             fn swap(b, v) = b { held: v }\n\
+             fn main() -> Unit = {\n\
+               let boxed = Box { held: 1 }\n\
+               let changed = boxed { held: 2 }\n\
+               let swapped = swap(Box { held: \"a\" }, \"b\")\n\
+               print(\"${changed.held} ${rebox(boxed).held} ${swapped.held}\")\n\
+             }\n",
+        );
+        shows(&ir, &["getelementptr", "store i64", "store i8*"]);
+    }
+
+    #[test]
+    fn record_update_of_a_handler_promoted_cell_reads_the_cell() {
+        // [TYPE-RECORD-UPDATE] [EFFECTS-HANDLER-STATE] A `mut` record a
+        // handler arm rebinds is promoted to a shared cell, which a scope
+        // lookup cannot see: `acc = acc { … }` inside the arm and `acc { … }`
+        // after the region both died with `codegen: unknown name `acc``, while
+        // `acc = Point { … }` beside them compiled. The update now reads its
+        // base exactly as the identifier `acc` is read.
+        let ir = module(
+            "type Point = { x: int, y: int }\n\
+             effect Steer { nudge : fn(int) -> int }\n\
+             fn steered() = {\n\
+               mut acc = Point { x: 0, y: 0 }\n\
+               handle Steer {\n\
+                 nudge by => {\n\
+                   acc = acc { x: by, y: (acc.y + by) ?: 0 }\n\
+                   acc.y\n\
+                 }\n\
+               }\n\
+               let first = perform Steer.nudge(5)\n\
+               acc { x: first }\n\
+             }\n\
+             fn main() -> Unit = {\n\
+               let s = steered()\n\
+               print(\"${s.x} ${s.y}\")\n\
+             }\n",
+        );
+        shows(&ir, &["getelementptr", "store i64"]);
+    }
+
+    #[test]
     fn ml_curried_string_result_compares_with_string_parameter() {
         let ir = ml_module(
             r#"value : int -> string -> string -> string

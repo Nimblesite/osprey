@@ -165,18 +165,31 @@ are private by default. An unascribed module uses `export`; an ascribed module's
 signature is its public surface.
 
 An import of a private member or traversal through a private nested module is an
-error. A signature cannot export a state cell. In Default, `: Signature + extra`
+error. A signature's `let` entry names an immutable value; an ascribed state
+module whose cell matches the entry is rejected with
+`state cell ... cannot be exported by a signature`. In Default, `: Signature + extra`
 permits additional explicitly exported items; otherwise extra exports are an
 error. ML ascription is exact and rejects redundant `export` markers.
 
 ### Opaque Types `[MODULES-OPAQUE-TYPES]`
 
-The syntax and graph retain opaque type metadata, and opaque union constructors
-are private. A manifest opaque alias such as
-`export opaque type UserId = int`, including an implementation of an abstract
-signature type by such an alias, is rejected during flattening with an
-`opaque alias ... unsupported` diagnostic. The compiler must reject this case
-rather than expose `int` to clients.
+`export opaque type` keeps a type's representation inside the module that
+declares it (an abstract `type T` in an ascribed signature has the same effect).
+Outside that module the type is a name only: constructing a value, destructuring
+one with a constructor or structural pattern, reading a field and updating a
+field are all rejected (``opaque type `M::T` cannot be constructed outside
+module `M` ``, ``... destructured ...``, ``field `f` of opaque type `M::T` is
+hidden outside module `M` ``) and an opaque union's constructors are private.
+The module's exported functions are the only way through, including a generic
+accessor it exports: a field obligation records the declaration it was written
+in, so it keeps its rights when it travels to a client's call. A module constant
+whose initializer reads an opaque field is inlined at each use and is therefore
+rejected in a client; export a function instead.
+
+A manifest opaque alias such as `export opaque type UserId = int`, including an
+implementation of an abstract signature type by such an alias, is rejected
+during flattening with `opaque alias ... unsupported`: the flat checker would
+expose `int` to clients, and rejecting is the truthful answer.
 
 ## Signatures `[MODULES-SIGNATURE]`
 
