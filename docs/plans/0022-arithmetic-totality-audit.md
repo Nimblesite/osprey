@@ -1,7 +1,7 @@
 # Arithmetic Totality Audit — where the checked-arithmetic promise leaks
 
-**Status:** Phase 0 complete and locally validated on 2026-09-10. F1, F5, F7 and F9 are fixed; F10 was already implemented. The remaining float fault-policy decision, implementation and migration keep this plan open.
-**Audited invariant:** *every operation whose exact mathematical result can fall
+**Status:** Phase 0 shipped and locally validated on 2026-09-10. Plan 0027 subsequently replaced arithmetic Results with explicit `Arith` policies. The only remaining design question is whether non-finite float results should also request an effect. The active checklist below follows the shipped plain-value arithmetic contract; the original Result proposal is historical evidence, not implementation direction.
+**Original audited invariant:** *every operation whose exact mathematical result can fall
 outside its result type must surface that as a typed failure, discharged once at
 the end of an expression — never silently, never as a trap.*
 **Original audit scope:** `crates/osprey-types/src/expr.rs`,
@@ -43,7 +43,7 @@ Current contracts are [FLOAT-OPERANDS], [FLOAT-COMPARE] and [FLOAT-CONVERT] in
 [spec 0004](../specs/0004-TypeSystem.md), and [FLOAT-LITERAL-RANGE] in
 [spec 0002](../specs/0002-LexicalStructure.md).
 
-## 1. Verdict
+## 1. Original audit verdict
 
 The integer model is correct and is exactly the model the invariant asks for.
 The float model is a deliberate, spec-documented **opt-out** of it, and that
@@ -68,7 +68,7 @@ defects are now fixed. The stronger float fault policy remains a separate decisi
 
 ---
 
-## 2. What is already right — the integer model
+## 2. Historical integer model — replaced by plan 0027
 
 This is the reference the float path should be measured against, and it already
 satisfies the "check only the last step" requirement.
@@ -100,7 +100,7 @@ unary `-` are all guarded, including the `INT64_MIN ÷ -1` poison pair
 
 ---
 
-## 3. Findings
+## 3. Original findings
 
 ### F1 — Wrong float inequality predicate — resolved
 
@@ -331,7 +331,7 @@ IEEE-754 infinity and NaN. The stronger float fault-policy contract is still ope
 
 ---
 
-## 5. Options, not recommendations
+## 5. Historical options — superseded by arithmetic effects
 
 Recorded so the decision is explicit rather than inherited.
 
@@ -353,7 +353,7 @@ Recorded so the decision is explicit rather than inherited.
 F1, F5 and F7 are defects under **all three** options and are not coupled to the
 design decision.
 
-## 6. Minimum spec text any option requires
+## 6. Historical specification proposal
 
 `[ARITH-CHECKED]` in `0013` must gain, and `0002`/`0004` must cross-reference:
 
@@ -365,136 +365,25 @@ design decision.
 
 ---
 
-## 7. TODO checklist
+## 7. Current delivery checklist
 
-Sequenced for **Option A (full totality)** — the position that a value which can
-be non-finite must carry a `Result`, discharged once at the end of the chain.
-Phase 0 is complete under every option. The remaining checklist records the
-original Result-based proposal; the chosen float policy must also reconcile with
-[spec 0037](../specs/0037-ArithmeticEffects.md), which reserves the non-finite
-float decision for this plan while moving integer faults to `Arith`.
+[Spec 0037](../specs/0037-ArithmeticEffects.md) is normative. Integer arithmetic returns plain values and requests `Arith` on faults. Float `+`, `-`, `*` and unary negation use IEEE-754 closure; `/` and float `%` retain explicit zero-divisor recovery. No item below authorizes restoring arithmetic `Result` flattening or treating `?:` on a plain value as a no-op.
 
-### Phase 0 — Design-independent defects
+### Delivered independently of the remaining float decision
 
-- [x] **F1** Float `!=` uses `fcmp une`; the other five comparison predicates remain ordered.
-- [x] **F1** Both-flavor corpus truth tables cover NaN detection and equality complements, with finite, infinity and signed-zero controls.
-- [x] **F5** Numeric operands are checked through generic scheme obligations. Integer and float callers remain valid; direct float unification would have broken that requirement.
-- [x] **F5** Both-flavor must-reject fixtures pin invalid numeric-call diagnostics before code generation.
-- [x] **F7** Bare `fptosi` is replaced by `llvm.fptosi.sat.i64.f64`, with boundary and existing coercion assertions.
-- [x] **F9** Both frontends reject non-finite float literals, preserving finite extremes and signed zero.
-- [x] **F10** Context-free arithmetic **int-defaulted before the consuming slot
-      could constrain it**: `fn plus(a, b) = a + b` could never serve a float
-      fold — anywhere in the language — because the operands defaulted to `int`
-      inside the definition instead of unifying with the slot's element type
-      (`GpuBuffer<float>`, `List<float>`, a `(float, float) -> float`
-      parameter). **Fixed.** An arithmetic site whose operands are both still
-      unconstrained records a pending overload instead of defaulting
-      (`crates/osprey-types/src/expr.rs::deferred_arith`); the choice is made
-      once, after all unification, by re-running the ordinary selection over
-      the operands' final types. `tests/core/gpu/kernel_frontier.test.{osp,ospml}`
-      is the corpus proof — an unannotated `plus` specialising at `float` from
-      `gpuFold`'s and `gpuScan`'s slots, alongside an unannotated recursive
-      helper — and it satisfies [GPU-KERNEL-ELEM-TYPING].
+- [x] F1: unordered float inequality, with all six NaN predicates pinned in the Default/ML boolean corpus.
+- [x] F5: numeric operand constraints survive aliases, generic calls and higher-order transport; both-flavor rejection fixtures retain the exact diagnostics.
+- [x] F7: internal float narrowing uses saturating LLVM conversion, with twelve boundary inputs checked natively and on WASM.
+- [x] F9: both frontends reject non-finite float literals at the source token and preserve finite boundaries and signed zero.
+- [x] F3's Result assurance is removed by plan 0027: float division and remainder return float, and zero divisors request `Arith.divideByZero`. They do not promise a finite answer.
+- [x] F4's migration decision is fixed by [ARITH-EFFECT]: `?:` accepts only a genuine Result. No compatibility no-op or arithmetic flattening survives.
+- [x] F6's arithmetic Result obstacle is removed: host GPU kernels carry scalar values and use the enclosing arithmetic policy. Device execution remains owned by plan 0023.
 
-      **Scope, deliberately:** the operand does NOT generalize, so one
-      definition gets ONE overload. A helper used at both `int` and `float` in a
-      single program is a type error, not a reinterpretation. Sharing one
-      definition across both would need a real numeric class — quantifying over
-      the overload, whose two arms differ in SHAPE (checked
-      `Result<int, MathError>` versus total `float`), not just element type.
-      That is a separate design decision and belongs with the float-totality
-      decision below, not with this defect.
+### Remaining non-finite-result decision and implementation
 
-### Phase 1 — Spec first (code comments must cite an ID)
-
-- [ ] Add `[FLOAT-TOTALITY]` to `docs/specs/0013-ErrorHandling.md` beside
-      `[ARITH-CHECKED]`: float `+ - * / %` and unary `-` yield
-      `Result<float, MathError>` when the result is non-finite and every operand
-      was finite.
-- [x] Add `[FLOAT-COMPARE]`: the six comparison operators under `NaN`, as a
-      table, stating `!=` is unordered and the other five are ordered.
-- [ ] State the flattening rule explicitly — a chain yields exactly **one**
-      outer `Result`; one `?:` discharges it. This is the "only the last step"
-      guarantee and it is currently written nowhere.
-- [ ] Cross-reference from `0002-LexicalStructure.md` (literals),
-      `0004-TypeSystem.md` (arithmetic typing) and
-      `0034-GPUComputation.md` (kernel purity + scalar ABI).
-- [ ] Delete or rewrite any spec sentence implying float arithmetic is total
-      and unchecked (**F8**).
-
-### Phase 2 — Type rules
-
-- [ ] `infer_arith` float arms return `res_math(Type::float())` for `+ - *`,
-      matching `int_arithmetic_result`.
-- [ ] `infer_negation` — unary `-` on float follows the same rule.
-- [ ] Confirm the existing flattening path treats float `Result` exactly like
-      int `Result` so nested chains do **not** produce `Result<Result<…>>`.
-- [ ] Unit tests in `osprey-types` for: single op, nested chain, mixed
-      int/float rejection, and the flattening arity.
-
-### Phase 3 — Codegen guard
-
-- [ ] Mirror `gen_checked_arith` for floats: compute, then test
-      `isfinite(result) || !isfinite(operand)` and build the `Success`/`Err`
-      payload triple. Cite `[FLOAT-TOTALITY]` in the comment.
-- [ ] Replace the "IEEE-754 arithmetic stays plain" comment at
-      `crates/osprey-codegen/src/expr.rs:295-307`.
-- [ ] Keep the emitted guard branch-free where possible; verify no regression in
-      the float benchmarks.
-
-### Phase 4 — Division and remainder truth (**F3**)
-
-- [ ] `gen_division` `:317-329` — extend the guard past `fcmp oeq …, 0.0` to the
-      non-finite-result condition, so `Success` genuinely means finite.
-- [ ] `gen_remainder` `:335-362` — same.
-- [ ] Corpus cases: `inf / 2.0`, `nan % 2.0`, `1.0 / 0.0`, `0.0 / 0.0` — each
-      must be `Err`, not `Success(inf)`.
-
-### Phase 5 — `?:` and migration ergonomics (**F4**)
-
-- [ ] Decide and record: does `?:` on a plain non-`Result` stay a hard error, or
-      become a no-op so a defensive spelling can land ahead of the break? A
-      no-op makes the migration two-step instead of a flag day.
-- [ ] If it stays an error, land Phases 2-4 and 6 in a single change — a partial
-      landing leaves the corpus unbuildable.
-
-### Phase 6 — GPU boundary (**F6**)
-
-- [ ] Confirm kernels still discharge internally: `gpuMap`/`gpuFold` element and
-      accumulator types stay bare scalars; `Result` never crosses the ABI.
-- [ ] Update `tests/core/gpu/buffers.test.osp` — `scale` and `addFloats` gain
-      `?:` exactly like `square` and `addInts` already have. This is the file
-      that triggered this audit; it should read symmetrically when done.
-- [ ] Update the `.ospml` twin and confirm both flavors match the single golden.
-- [ ] Verify the `gpu.rs:343` accumulator error message still reads correctly.
-
-### Phase 7 — Corpus migration
-
-- [ ] Enumerate the current `.osp`/`.ospml` files using float arithmetic;
-      list them in this document before touching any of them.
-- [ ] Add `?:` at the last step of each chain — **not** at every operation. Any
-      diff that adds more than one `?:` per expression means the flattening is
-      wrong, not the test.
-- [ ] Regenerate `.expectedoutput` goldens only where output legitimately
-      changes; a changed golden with unchanged intent is a bug signal.
-- [ ] Run the differential harness under every memory backend **and**
-      `OSPREY_TARGET=wasm32`.
-
-### Phase 8 — Error cases and docs
-
-- [ ] `examples/failscompilation/` — undischarged float arithmetic at a kernel
-      boundary, at `main`, and as a buffer element; each with an
-      `.expectedoutput`.
-- [ ] Update `builtin_docs.rs` / `builtin_docs_lang.rs` for any builtin whose
-      float signature changes; check `parseFloat`'s non-finite rejection is
-      still consistent with the new invariant.
-- [ ] Update `docs/messaging.md` if the totality claim is now stronger than what
-      is currently written there.
-
-### Phase 9 — Verification
-
-- [ ] `make ci` green.
-- [ ] Coverage thresholds in `coverage-thresholds.json` still met.
-- [ ] Every new code path cites `[FLOAT-TOTALITY]` or `[FLOAT-COMPARE]`.
-- [ ] Re-read this audit's findings F1-F9 and confirm each is closed or
-      explicitly deferred with a reason.
+- [ ] Decide whether IEEE-754 non-finite results remain ordinary float values or additionally request a new `Arith` operation. Update [ARITH-TOTAL] and the numeric builtin contract before implementing a different policy. Preserve the recorded zero-divisor behavior.
+- [ ] Define the complete operand/result matrix: finite overflow, infinities supplied as operands, NaN propagation, signed zero, division by zero and float remainder. State the behavior for operators, conversions and host GPU kernels together.
+- [ ] If the decision extends `Arith`, implement the typed operation, inference, scope/discharge, native/WASM dispatch and total IEEE escape policy as one change. Arithmetic still returns plain numeric values; propagation uses the same effect system as integers.
+- [ ] Pin the chosen matrix with both-flavor runtime assertions and byte-exact goldens, plus rejection fixtures for any new unhandled operation. Existing comparison, narrowing and literal tests must remain intact.
+- [ ] Verify Default, GC, ARC and WASM; retain ARC ownership checks and GPU lowering differentials. Run the applicable float benchmarks on this machine before changing published performance claims.
+- [ ] Make the specs, messaging and builtin documentation agree with the selected policy, pass `make ci` without weakening a gate, and retire this plan with named evidence.

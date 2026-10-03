@@ -26,5 +26,9 @@ Computed update: x=10, y=10
 10
 === RECORD UPDATE BASIC TESTS COMPLETE ===
 ok 1 - record updates preserve the source and untouched fields
-1..1
-# tests=1 passed=1 failed=0 skipped=0
+1 3,5
+ok 2 - record updates through generic functions
+ok 3 - record updates of nested and generic records
+ok 4 - record updates in control flow
+1..4
+# tests=4 passed=4 failed=0 skipped=0

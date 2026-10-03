@@ -316,7 +316,7 @@ fn gen_function(
             .param_types(name)
             .and_then(|types| types.get(i))
             .cloned();
-        cg.emit_debug_param(&p.name, &v);
+        cg.emit_debug_param(&p.name, &v, i);
         cg.bind(p.name.clone(), v);
         params.push((pty.ty, reg));
     }

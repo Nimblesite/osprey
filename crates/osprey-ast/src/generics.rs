@@ -69,7 +69,7 @@ mod tests {
         assert_eq!(TypeParam::invariant("T").variance, Variance::Invariant);
         assert_eq!(Variance::default(), Variance::Invariant);
         let e = EffectRef::named("Logger");
-        assert!(e.type_args.is_empty());
+        assert_eq!(e.type_args, Vec::<TypeExpr>::new());
         assert_eq!(e.name, "Logger");
     }
 }

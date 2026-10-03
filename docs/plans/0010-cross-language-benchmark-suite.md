@@ -6,13 +6,7 @@
 OCaml, Haskell — plus `osprey-wasm`/`rust-wasm` and the `osprey-arc`/`osprey-gc`
 backend columns); `intDiv` added; **native codegen optimized (`-O2`) and
 allocation routed through a swappable `@osp_alloc` backend, with two reclaiming
-backends shipped**. `binarytrees` remains memory-heavy under the **DEFAULT
-(non-reclaiming) backend** (**2.53 GB** peak RSS): with the opt-in
-`--memory=arc` it peaks at **2.98 MB** — **848×** less than the default, 1.35×
-Rust's 2.21 MB and 1.70× C's 1.75 MB — but it is **slower** than the default
-(1.30 s vs 1.08 s); `--memory=gc` peaks at 19.1 MB. Because both reclaiming
-backends are **opt-in flags, not the default**, the headline `osprey` column in
-the published tables still shows the 2.53 GB figure. Feature-blocked array and
+backends shipped**. On 2026-10-03, all 22 cases passed under all four Osprey backends on the Ryzen 3900X/WSL2 host. `binarytrees` peaked at **631 MB** with the default allocator, **3.26 MB** with ARC, and **14.9 MB** with GC. C/Rust were remeasured only on three cases; other language records are historical. Machine details, timing variance and comparison limits are in [the benchmark report](../../website/src/benchmarks.md). Feature-blocked array and
 floating-point cases remain pending, as does arbitrary-precision `pidigits`.
 quicksort and mergesort are **no longer blocked** — the list-literal layout
 defect that crashed them is fixed; only the cases themselves are unwritten.
@@ -95,31 +89,15 @@ passthrough never reclaims them. Measurements for all three backends are in
 [benchmarks/results/results.json](../../benchmarks/results/results.json) and can
 be reproduced with `./target/release/osprey benchmarks/cases/binarytrees/binarytrees.osp --run --memory=arc`:
 
-Every figure below is read out of that tracked `results.json` (decimal MB, as
-`report.py` renders it), so it can be re-derived rather than trusted:
+Measurements below are from the 2026-10-03 refresh (decimal MB; elapsed time is mean ± standard deviation). They replace the older figures previously quoted by this plan.
 
-| backend | peak RSS | mean wall | checksum |
-|---------|----------|-----------|----------|
-| default (`malloc`) | 2.53 GB | 1.08 s | 19659600 (correct) |
-| `--memory=arc` | **2.98 MB** (848× less) | 1.30 s (**slower** than default) | 19659600 (correct) |
-| `--memory=gc` | 19.1 MB | 4.81 s | 19659600 (correct) |
+| backend | peak RSS | elapsed time | checksum |
+| --- | --- | --- | --- |
+| default | 630.83 MB | 0.613 ± 0.014 s | 19659600 |
+| `--memory=arc` | 3.26 MB | 0.479 ± 0.019 s | 19659600 |
+| `--memory=gc` | 14.94 MB | 2.363 ± 0.352 s | 19659600 |
 
-The same run measured C at 1.75 MB, Rust at 2.21 MB, C# at 16.9 MB, Haskell at
-11.6 MB, OCaml at 5.37 MB, and Dart at 23.5 MB. `OSPREY_ARC_DEBUG=1` reports
-`[osp-arc] exit: 0 live objects, 0 KiB (+0 immortal)` — zero leaked language
-values. See [spec 0018 — Memory Management](../specs/0018-MemoryManagement.md).
-
-**Correction (2026-07-30).** An earlier revision of this plan reported 633 MB /
-2.97 MB / 18.5 MB, a 213× ratio, and ARC as *faster* than the default (0.216 s vs
-0.249 s). All five numbers were stale and the speed comparison has since
-**inverted**: ARC now costs about 20% more wall time than the non-reclaiming
-default on this case, which is the expected shape for refcount traffic on a
-tree-allocation benchmark. The memory win is far larger than previously claimed
-(848×, not 213×) and the time cost is real. Do not quote ARC as a free win.
-
-ARC and GC are **opt-in flags**, so the default `osprey` column of the published
-benchmark tables is still the 2.53 GB result. Making a reclaiming backend the
-default is a spec-0018 decision, not a benchmark-suite one.
+ARC and GC remain opt-in. The native conformance suite requires zero live ARC objects at exit; all 217 programs passed that gate during arithmetic-effects finalization. This shared host produced timing outliers. Do not compare these measurements with historical records from an unidentified machine or infer a general speedup from them.
 
 ## Blocked benchmark families
 
@@ -162,9 +140,8 @@ surface.
       archive swap (`libfiber_runtime{,_gc,_arc}.a`): `memory_gc.c` (conservative
       mark & sweep) and `memory_arc.c` (Perceus refcounting), per
       [spec 0018 — Memory Management](../specs/0018-MemoryManagement.md)
-      ([MEM-BACKENDS], [GC-ARC-PERCEUS]). `binarytrees` is fixed: 2.53 GB →
-      **2.98 MB** under `--memory=arc` (848× less, at ~20% more wall time —
-      1.30 s vs 1.08 s) and 19.1 MB under `--memory=gc`, checksum `19659600`
+      ([MEM-BACKENDS], [GC-ARC-PERCEUS]). `binarytrees` peaks at 631 MB by default,
+      **3.26 MB** under ARC and 14.9 MB under GC in the current run, with checksum `19659600`
       identical on all three. `OSPREY_ARC_DEBUG=1` reports **0 live objects** at
       exit. Unit-tested in `make test` via `_test_c_runtime`
       (`memory_arc_tests` + `memory_gc_tests`) and `parse_memory` flag tests.
@@ -200,15 +177,16 @@ surface.
       `benchmarks/report.py` regenerates the marked README measurement from
       `benchmarks/results/results.json` alongside the HTML report
       (`update_readme`, driven by `render`). Current tracked data: default
-      **2.53 GB**, ARC **2.98 MB**, GC **19.1 MB**. `measured_peak` replaced a
+      **631 MB**, ARC **3.26 MB**, GC **14.9 MB**. `measured_peak` replaced a
       bare `:.3g`, which rendered the gigabyte-scale default as `2.53e+03 MB` in
       published prose.
-- [ ] **`update_readme` has no test.** The generator is the thing keeping every
-      quoted figure honest, and nothing pins it: `benchmarks/test_merge_results.py`
-      covers only the merge path. A regression silently freezes the README and the
-      baked website tables at whatever they last said — exactly the failure this
-      plan has now hit twice. Add a case that feeds a known `results.json` and
-      asserts the emitted line, including the GB/MB threshold.
+- [x] **`update_readme` is pinned.** `UpdateReadmeTests` in
+      `benchmarks/test_merge_results.py` (run by `make test` via
+      `_test_bench_tools`) feeds known peaks into a temporary README and asserts
+      the emitted line byte-for-byte, the filtered-run no-op and the
+      missing-marker failure. Writing it exposed a boundary defect: 999,999,999
+      bytes rounded to 1000 MB and rendered as `1e+03 MB`, the very form
+      `measured_peak` exists to prevent; the unit is now chosen after rounding.
 - [ ] Write the **quicksort** and **mergesort** cases (all 7 languages + oracle).
       No longer blocked: the list-literal layout defect that segfaulted them is
       fixed, and a head/tail-recursive partition runs correctly under default, GC

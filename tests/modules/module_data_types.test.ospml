@@ -41,8 +41,8 @@ module Geo
             side = side
 
     export area shape = match shape
-        Circle radius => (radius * radius) 
-        Square side => (side * side) 
+        Circle radius => (radius * radius)
+        Square side => (side * side)
 
     export name shape = match shape
         Circle radius => "circle"
@@ -51,8 +51,8 @@ module Geo
     export extent shape = match shape
         Circle radius =>
             Extent
-                width = (radius * 2) 
-                height = (radius * 2) 
+                width = (radius * 2)
+                height = (radius * 2)
         Square side =>
             Extent
                 width = side
@@ -72,6 +72,23 @@ module Boxes
     export held box = box.held
 
     export rewrap box = wrap (held box)
+
+module Ids
+    (** The representation stays inside: a client builds an `Id` only through
+        `make` and reads it only through `value` ([MODULES-OPAQUE-TYPES]). *)
+    export opaque type Id =
+        value : int
+
+    export make n =
+        Id
+            value = n
+
+    export value id = id.value
+
+    export next id = match id
+        Id value =>
+            Id
+                value = value + 1
 
 (** Constructors reached through exported factories keep their payloads. *)
 unionPayloadCase () = checkAll ("module union payloads survive the boundary", [
@@ -101,9 +118,17 @@ genericModuleCase () = checkAll ("generic module functions specialise per site",
     Boxes::held (Boxes::wrap (Geo::area (Geo::square 3))) == 9
 ])
 
+(** An opaque record is built, read and rebuilt only by its own module. *)
+opaqueCase () = checkAll ("opaque records are reached through their module", [
+    Ids::value (Ids::make 7) == 7,
+    Ids::value (Ids::next (Ids::make 7)) == 8,
+    Ids::value (Ids::next (Ids::next (Ids::make 0))) == 2
+])
+
 exactArithmetic (\() =>
     print "${Geo::area (Geo::circle 3)} ${Geo::name (Geo::square 4)} ${Geo::perimeterOf (Geo::extent (Geo::square 5))} ${Boxes::held (Boxes::wrap "seven")}")
 
 test ("module unions keep their payloads", \() => exactArithmetic (unionPayloadCase))
 test ("module records keep their fields", \() => exactArithmetic (recordFieldCase))
 test ("module generics specialise per call site", \() => exactArithmetic (genericModuleCase))
+test ("module opaque records stay abstract", \() => exactArithmetic (opaqueCase))

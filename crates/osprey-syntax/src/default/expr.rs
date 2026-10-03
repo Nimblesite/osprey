@@ -105,15 +105,7 @@ impl Lowerer<'_> {
             },
             // Explicit construction-site type arguments (`Box<int> { ... }`)
             // are captured for the checker. Implements [TYPE-GENERICS-DECL].
-            "type_constructor" => Expr::TypeConstructor {
-                name: self.field_text(node, "name"),
-                type_args: self
-                    .first_child_of_kind(node, "type_arguments")
-                    .and_then(|ta| self.first_child_of_kind(ta, "type_list"))
-                    .map(|l| self.lower_type_list(l))
-                    .unwrap_or_default(),
-                fields: self.lower_field_assignments(node),
-            },
+            "type_constructor" => self.lower_brace_head(node),
             "update_expression" => Expr::Update {
                 record: self.field_text(node, "record"),
                 fields: self.lower_field_assignments(node),
@@ -344,6 +336,33 @@ impl Lowerer<'_> {
                     position: Some(self.pos(*clause)),
                 })
             })
+    }
+
+    /// `head { field: value, … }`. The grammar gives every brace head the
+    /// `type_constructor` shape (it wins the dynamic-precedence tie with
+    /// `update_expression`), so the lowerer decides what the author meant by
+    /// the same rule as ML: an uppercase or qualified head constructs, a
+    /// lowercase binding is updated ([TYPE-RECORD-UPDATE]). The checker and
+    /// the backend therefore never see an update dressed as a constructor.
+    fn lower_brace_head(&self, node: Node<'_>) -> Expr {
+        let name = self.field_text(node, "name");
+        let type_args = self
+            .first_child_of_kind(node, "type_arguments")
+            .and_then(|ta| self.first_child_of_kind(ta, "type_list"))
+            .map(|l| self.lower_type_list(l))
+            .unwrap_or_default();
+        let fields = self.lower_field_assignments(node);
+        if !osprey_ast::is_record_constructor(&name, !type_args.is_empty()) {
+            return Expr::Update {
+                record: name,
+                fields,
+            };
+        }
+        Expr::TypeConstructor {
+            name,
+            type_args,
+            fields,
+        }
     }
 
     fn lower_field_assignments(&self, node: Node<'_>) -> Vec<FieldAssignment> {
@@ -681,6 +700,27 @@ mod tests {
     }
 
     #[test]
+    fn a_brace_head_is_an_update_or_a_construction_by_its_spelling() {
+        // [TYPE-RECORD-UPDATE] Both flavors lower `p { x: 1 }` to the SAME
+        // `Expr::Update` ([FLAVOR-IR-EQUIV]); a capitalised, qualified or
+        // type-applied head constructs.
+        assert!(matches!(
+            let_value("let q = p { x: 1 }\n"),
+            Expr::Update { record, .. } if record == "p"
+        ));
+        for source in [
+            "let q = Point { x: 1 }\n",
+            "let q = Ids::id { x: 1 }\n",
+            "let q = Box<int> { held: 1 }\n",
+        ] {
+            assert!(
+                matches!(let_value(source), Expr::TypeConstructor { .. }),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
     fn spawn_and_yield_lower() {
         assert!(matches!(let_value("let f = spawn g()\n"), Expr::Spawn(_)));
         assert!(matches!(let_value("let y = yield\n"), Expr::Yield(None)));
@@ -821,12 +861,6 @@ mod tests {
             }
             other => panic!("expected a boolean match, got {other:?}"),
         }
-        // `name { … }` is a construction whatever the receiver's case — the
-        // grammar's dynamic precedence resolves the ambiguity that way.
-        assert!(matches!(
-            let_value("let r = p { x: 1 }\n"),
-            Expr::TypeConstructor { .. }
-        ));
     }
 
     /// Horizontal space between a callee and its argument list is legal, and

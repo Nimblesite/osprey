@@ -93,7 +93,10 @@ mod tests {
                 == 1,
             "exactly the unexplained skip fails the suite: {reported:?}"
         );
-        assert!(skip_diagnostics(b"ok 1 - clean\n1..1\n", &[]).is_empty());
+        assert_eq!(
+            skip_diagnostics(b"ok 1 - clean\n1..1\n", &[]),
+            Vec::<String>::new()
+        );
     }
 
     // [TESTING-TAP-AMBIGUITY] a PASSING case whose NAME contains `# SKIP`

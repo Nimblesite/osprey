@@ -213,8 +213,7 @@ fn sumL(xs) = match xs { [] => 0  [head, ...tail] => add(head, sumL(tail)) }
 
 — where a same-line `[` would read `0  [head` as an index. Tuple-pattern arms
 have no equivalent single-line usage, so `(` can afford the looser rule and `[`
-cannot. The `[` rule's cost is that `xs [0]` stays valid and silently means
-something else, binding `xs` and lowering `[0]` as a separate statement.
+cannot. `xs [0]` is rejected: [LEX-STATEMENT-BREAK](0002-LexicalStructure.md#the-rule-lex-statement-break) prevents the bracketed value from becoming a second statement on the same line. Write `xs[0]` to index. The parser test `an_index_bracket_must_touch_its_target_unlike_a_call` pins both this rejection and the valid single-line list-arm match.
 3. Unary `!`, `-`, `+`
 4. Multiplicative `*`, `/`, `%`
 5. Additive `+`, `-`

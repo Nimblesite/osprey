@@ -182,7 +182,7 @@ mod tests {
         // [DOC-MODEL] a summary-only comment has the canonical empty-field shape.
         let doc = DocComment::new("Adds two ints.", String::new(), DocScope::Outer);
         assert_eq!(doc.summary, "Adds two ints.");
-        assert!(doc.body.is_empty());
+        assert_eq!(doc.body, "");
         assert!(doc.params.is_empty() && doc.returns.is_none());
         assert_eq!(doc.scope, DocScope::Outer);
         // A summary-only doc renders as just its summary line.

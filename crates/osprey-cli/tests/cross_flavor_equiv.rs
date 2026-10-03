@@ -97,3 +97,22 @@ fn ml_multiparam_differs_from_default_multiparam() {
         "Default multi-param must NOT equal the curried ML multi-binding"
     );
 }
+
+/// [TYPE-RECORD-UPDATE] Qualification and type application construct even when
+/// the last segment is lowercase; `_` is a type name only in this context.
+#[test]
+fn record_heads_lower_identically_across_flavors() {
+    for (head, variant) in [
+        ("_", "TypeConstructor"),
+        ("Ids::id", "TypeConstructor"),
+        ("box<int>", "TypeConstructor"),
+        ("Point", "TypeConstructor"),
+        ("point", "Update"),
+        ("_point", "Update"),
+    ] {
+        let default = canonical(&format!("let value = {head} {{ x: 1 }}\n"), Flavor::Default);
+        let ml = canonical(&format!("value = {head}(x = 1)\n"), Flavor::Ml);
+        assert!(default.contains(variant), "{head}: {default}");
+        assert_eq!(default, ml, "record head {head}");
+    }
+}

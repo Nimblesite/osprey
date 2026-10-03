@@ -18,12 +18,9 @@ pub(crate) fn gen_constructor(
     name: &str,
     fields: &[FieldAssignment],
 ) -> Result<Value> {
-    // A `name { … }` where `name` is a bound variable is a record *update*, not
-    // a constructor (the parser cannot tell them apart).
+    // Both frontends lower a lowercase brace head to `Expr::Update`, so a
+    // constructor the program never declared is exactly that.
     if !cg.is_ctor(name) {
-        if cg.lookup(name).is_some() {
-            return gen_update(cg, name, fields);
-        }
         return Err(CodegenError::unknown(name));
     }
     // `Success { value: x }` / `Error { message: m }` build the Result ABI block
@@ -293,37 +290,34 @@ pub(crate) fn gen_update(
     record: &str,
     fields: &[FieldAssignment],
 ) -> Result<Value> {
-    let base = cg
-        .lookup(record)
-        .ok_or_else(|| CodegenError::unknown(record))?;
+    // The base is read exactly as the identifier `record` would be, so a
+    // scoped value, a file-scope global and a `mut` cell promoted into a
+    // handler arm all reach here; a bare scope lookup lost the cell and died
+    // with `unknown name` on the one rebinding the language allows.
+    let base = gen_expr(cg, &Expr::Identifier(record.to_owned()))?;
     let owner = base
         .osp_ty
         .clone()
         .ok_or_else(|| CodegenError::invalid(format!("`{record}` is not a record")))?;
-    let view = cg
-        .ctor_layout(&owner)
+    let block = record_block(cg, &owner, base.inferred_type.as_ref())
         .ok_or_else(|| CodegenError::unknown(&owner))?;
-    if view
+    if block
         .fields
         .iter()
         .any(|(field, _)| cg.ctor_field_result_inner(&owner, field).is_some())
     {
         return Err(result_field_unsupported());
     }
-    let struct_ty = cg
-        .ctor_struct_ty(&owner)
-        .ok_or_else(|| CodegenError::unknown(&owner))?;
+    let struct_ty = block.struct_ty;
 
     let src = cg.emit_reg(format!("bitcast i8* {} to {struct_ty}*", base.operand));
-    // view.meta comes from the Osprey field types (builder.rs `field_meta`),
-    // which prove more than the erased LTypes visible here: an all-union field
-    // set upgrades to the probe-free KIND_MASK_DIRECT. noinit: the tag and every
-    // field are stored below (new value or copied from the base) before the
-    // block escapes, so ARC skips its drop-safety pre-zero.
-    let obj = cg.malloc_struct_noinit(&struct_ty, view.meta);
-    store_tag(cg, &struct_ty, obj.as_str(), view.tag);
+    // noinit: the tag and every field are stored below (new value or copied
+    // from the base) before the block escapes, so ARC skips its drop-safety
+    // pre-zero.
+    let obj = cg.malloc_struct_noinit(&struct_ty, block.meta);
+    store_tag(cg, &struct_ty, obj.as_str(), block.tag);
 
-    for (i, (fname, fty)) in view.fields.iter().enumerate() {
+    for (i, (fname, fty)) in block.fields.iter().enumerate() {
         let val = match fields.iter().find(|f| &f.name == fname) {
             Some(fa) => {
                 let v = gen_expr(cg, &fa.value)?;
@@ -335,6 +329,75 @@ pub(crate) fn gen_update(
     }
 
     Ok(own_struct_handle(cg, &struct_ty, &obj, owner))
+}
+
+/// The heap block an update rebuilds: struct spelling, ordered slots, the
+/// discriminant and the allocation meta word.
+struct RecordBlock {
+    struct_ty: String,
+    fields: Vec<(String, LType)>,
+    tag: i64,
+    meta: i64,
+}
+
+/// A record owner's block — a declared constructor (its Osprey-typed
+/// `CtorView::meta` proves more than the erased slots), or a registered
+/// synthetic layout: an object literal or a generic-record instantiation such
+/// as `Box#i64`, which construction names after its concrete field types
+/// ([`gen_generic_record`]) and `ctor_layout` has never heard of. An
+/// instantiation nothing in this module has built yet is derived from the
+/// value's inferred record type and registered, exactly as construction would.
+/// Implements [TYPE-RECORD-UPDATE].
+fn record_block(
+    cg: &mut Codegen,
+    owner: &str,
+    inferred: Option<&osprey_types::Type>,
+) -> Option<RecordBlock> {
+    if let Some(view) = cg.ctor_layout(owner) {
+        return Some(RecordBlock {
+            struct_ty: cg.ctor_struct_ty(owner)?,
+            fields: view.fields,
+            tag: view.tag,
+            meta: view.meta,
+        });
+    }
+    if cg.obj_layout(owner).is_none() {
+        let slots = derived_slots(cg, inferred?)?;
+        let _ = cg.register_layout(owner.to_string(), slots);
+    }
+    let meta = tagged_fields_meta(cg.obj_layout(owner)?);
+    let (struct_ty, fields) = cg.record_layout(owner)?;
+    Some(RecordBlock {
+        struct_ty,
+        fields,
+        tag: 0,
+        meta,
+    })
+}
+
+/// The slots of a generic-record instantiation from its inferred record type,
+/// in declared field order — the layout `gen_generic_record` registers when it
+/// builds one, derived here from the types alone.
+fn derived_slots(
+    cg: &Codegen,
+    inferred: &osprey_types::Type,
+) -> Option<Vec<crate::builder::ObjField>> {
+    let osprey_types::Type::Record { name, fields } = inferred else {
+        return None;
+    };
+    let declared = cg.ctor_layout(name)?;
+    declared
+        .fields
+        .iter()
+        .map(|(field, _)| {
+            let ty = fields.get(field)?;
+            Some((
+                field.clone(),
+                crate::types::ltype_of(ty),
+                crate::types::owner_name(&cg.prog, ty),
+            ))
+        })
+        .collect()
 }
 
 /// `obj.field` — recover the record layout from the handle's owner type and

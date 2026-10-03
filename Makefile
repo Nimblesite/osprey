@@ -1003,10 +1003,11 @@ _website-dev: $(WEBSITE_NODE_DEPS)
 _website-build: $(WEBSITE_NODE_DEPS)
 	cd website && npm run build
 
-# _test_bench_tools: Unit-test the benchmark result merger. It is the component
-# that decides whether an Osprey-only re-run (`make bench-osprey`) is allowed to
-# overwrite published measurements, so it guards the whole recorded data set
-# against a failed partial run. The test existed but nothing ran it.
+# _test_bench_tools: Unit-test the benchmark result merger and the README figure
+# generator. The merger decides whether an Osprey-only re-run (`make
+# bench-osprey`) may overwrite published measurements, so it guards the recorded
+# data set against a failed partial run; `update_readme` is what keeps every
+# quoted binarytrees figure in step with that data.
 _test_bench_tools:
 	@echo "==> Bench tooling tests..."
 	python3 benchmarks/test_merge_results.py

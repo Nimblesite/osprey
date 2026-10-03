@@ -413,7 +413,7 @@ mod tests {
         assert_eq!(d.examples.len(), 1);
         assert_eq!(d.examples[0].expected_output.as_deref(), Some("3"));
         assert!(d.examples[0].run);
-        assert!(d.example_problems.is_empty());
+        assert_eq!(d.example_problems, Vec::<String>::new());
     }
 
     #[test]

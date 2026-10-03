@@ -165,18 +165,31 @@ are private by default. An unascribed module uses `export`; an ascribed module's
 signature is its public surface.
 
 An import of a private member or traversal through a private nested module is an
-error. A signature cannot export a state cell. In Default, `: Signature + extra`
+error. A signature's `let` entry names an immutable value; an ascribed state
+module whose cell matches the entry is rejected with
+`state cell ... cannot be exported by a signature`. In Default, `: Signature + extra`
 permits additional explicitly exported items; otherwise extra exports are an
 error. ML ascription is exact and rejects redundant `export` markers.
 
 ### Opaque Types `[MODULES-OPAQUE-TYPES]`
 
-The syntax and graph retain opaque type metadata, and opaque union constructors
-are private. A manifest opaque alias such as
-`export opaque type UserId = int`, including an implementation of an abstract
-signature type by such an alias, is rejected during flattening with an
-`opaque alias ... unsupported` diagnostic. The compiler must reject this case
-rather than expose `int` to clients.
+`export opaque type` keeps a type's representation inside the module that
+declares it (an abstract `type T` in an ascribed signature has the same effect).
+Outside that module the type is a name only: constructing a value, destructuring
+one with a constructor or structural pattern, reading a field and updating a
+field are all rejected (``opaque type `M::T` cannot be constructed outside
+module `M` ``, ``... destructured ...``, ``field `f` of opaque type `M::T` is
+hidden outside module `M` ``) and an opaque union's constructors are private.
+The module's exported functions are the only way through, including a generic
+accessor it exports: a field obligation records the declaration it was written
+in, so it keeps its rights when it travels to a client's call. A module constant
+whose initializer reads an opaque field is inlined at each use and is therefore
+rejected in a client; export a function instead.
+
+A manifest opaque alias such as `export opaque type UserId = int`, including an
+implementation of an abstract signature type by such an alias, is rejected
+during flattening with `opaque alias ... unsupported`: the flat checker would
+expose `int` to clients, and rejecting is the truthful answer.
 
 ## Signatures `[MODULES-SIGNATURE]`
 
@@ -377,7 +390,7 @@ and module path segment deterministically and collision-free. Extern declaration
 retain their external symbol name. The assembled project keeps a reverse map so
 symbol output and project diagnostics can restore source-level names.
 
-The selected entry function links as `main`.
+The selected entry function links as `main`. Native LLVM symbols retain that ABI while debug metadata emits the qualified source identity as the subprogram `name`, so debugger stack frames show names such as `billing::Tax::add`. The optional DWARF linkage name is omitted: LLDB otherwise prefers the encoded name even though it cannot demangle it. Generated handler names also restore embedded module identities. `module_debug_frames_keep_source_names_in_both_flavors` pins the distinction for both source flavors; the editor’s `module stack frames retain their source names` tests stop in real LLDB sessions and assert the frame name, source line and parameter value.
 
 ## Diagnostics `[MODULES-DIAG]`
 
@@ -385,7 +398,7 @@ Project diagnostics include the source path and local position when available.
 The implemented checks report unknown/private imports, ambiguous bindings,
 duplicate declarations, private path traversal, signature mismatches, opaque
 alias rejection, state ownership violations, entry conflicts, and initializer
-cycles.
+cycles. Unknown import targets and members include up to three visible candidates ranked by Unicode edit distance, then qualified source name for deterministic ties. Private declarations and declarations behind private intermediate modules are excluded. `misspelled_import_targets_offer_ranked_public_candidates`, `misspelled_import_members_only_suggest_exports`, and `import_suggestions_never_reveal_private_intermediate_modules` exercise both flavors.
 
 ## Tested Example
 
@@ -394,3 +407,5 @@ end-to-end project fixture. `crates/osprey-cli/tests/project_e2e.rs` checks
 directory/manifest inputs, AST flattening, LLVM output, source-name restoration,
 and byte-exact execution. `crates/osprey-project/tests/` covers graph,
 visibility, signature, state, entry, cycle, and opaque-boundary behavior.
+
+`mixed_flavor_project_graphs_emit_identical_ir` in `crates/osprey-cli/tests/cross_flavor_ir_equiv.rs` requires byte-identical IR for all eight flavor assignments to a three-file graph. It covers split namespace contributions, imported modules, abstract and manifest signature types, and caller-supplied effect and arithmetic handlers.

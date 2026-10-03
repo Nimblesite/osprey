@@ -307,6 +307,8 @@ pub fn is_positional_field(name: &str) -> bool {
     !name.is_empty() && name.bytes().all(|b| b.is_ascii_digit())
 }
 
+pub use symbol::{is_constructor_name, is_record_constructor};
+
 /// The canonical [`Pattern::Structural`] a tuple pattern `(a, b)` lowers to:
 /// slot *i* is the decimal field [`positional_field_name`], its binder the
 /// written name (empty for `_`). One definition for both flavors, so ML
@@ -631,6 +633,12 @@ pub enum Stmt {
         alias: Option<TypeExpr>,
         /// An optional validation function name (`where`-constrained type).
         validation_func: Option<String>,
+        /// Whether the representation is hidden outside the declaring module
+        /// ([MODULES-OPAQUE-TYPES]). Project assembly sets it on the flattened
+        /// declaration from the item's `export opaque` marker or an ascribed
+        /// signature's abstract type; a parser leaves it false because the
+        /// marker lives on the [`ModuleItem`].
+        opaque: bool,
         /// Structured documentation comment, when written ([DOC-MODEL]).
         doc: Option<DocComment>,
         /// Source position, if recorded.

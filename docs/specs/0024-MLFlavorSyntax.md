@@ -430,6 +430,7 @@ updated = point(x = 50)
 
 Uppercase heads lower to `Expr::TypeConstructor`. A lowercase inline head is a
 non-destructive record update and lowers to `Expr::Update`.
+The legal type name `_` also constructs: `_(x = 1)` is a record construction, while `_` in a pattern is still a wildcard.
 
 `[FLAVOR-ML-RECORD-ANON]` A headless brace literal is an anonymous record
 ([TYPE-RECORD-ANON](0004-TypeSystem.md#anonymous-records--type-record-anon)),

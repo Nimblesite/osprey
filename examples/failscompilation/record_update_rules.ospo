@@ -1,0 +1,37 @@
+// [TYPE-RECORD-UPDATE] A non-destructive update is checked like a field read
+// plus an assignment, in every direction a client can push it: the field must
+// exist on the record, the value must fit it, the base must be a record (not a
+// union, a scalar or an erased `any`), each field is written at most once, and
+// a still-generic base defers all of that to the call that fixes it. Every
+// case below used to pass the checker silently — the unknown field was
+// dropped at codegen, the mismatched value crashed the compiled program, and a
+// duplicate kept whichever assignment the lowering happened to read first.
+type Point = { x: int, y: int }
+type Label = { v: string }
+type Box<T> = { held: T }
+type Shape = Circle { r: int } | Square { s: int }
+
+/// Generic bases: the check lands at the call that fixes the record.
+fn bump(r) = r { v: 9 }
+fn setZ(r) = r { z: 1 }
+fn setX(r, v) = r { x: v }
+fn erased(x: any) = x { v: 1 }
+
+let p = Point { x: 1, y: 2 }
+let moved = p { z: 5 }
+let relabelled = bump(Label { v: "a" })
+let extended = setZ(p)
+let wrong = setX(p, "s")
+let fine = setX(p, 3)
+let mistyped = p { x: "s" }
+let b = Box { held: 1 }
+let rewrapped = b { held: "s" }
+let n = 2
+let numeric = n { x: 1 }
+let shape = Circle { r: 1 }
+let reshaped = shape { r: 2 }
+let twice = p { x: 5, x: 6 }
+let built = Point { x: 1, x: 2, y: 3 }
+let anon = { v: 1 }
+let anonMoved = anon { w: 2 }
+print("${moved.y} ${relabelled.v} ${extended.y} ${wrong.y} ${fine.x} ${mistyped.y} ${rewrapped.held} ${numeric} ${twice.x} ${built.y} ${anonMoved.v}")

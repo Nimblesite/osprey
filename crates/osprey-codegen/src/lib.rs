@@ -272,7 +272,7 @@ mod tests {
     #[test]
     fn user_functions_shadow_testing_builtins() {
         // [TESTING-SHADOWING] a user `check` compiles as an ordinary call.
-        let ir = module("fn check(t: int) -> int = (t + 1) ?: t\nlet r = check(4)\nprint(r)\n");
+        let ir = module("fn check(t: int) -> int = satAdd(t, 1)\nlet r = check(4)\nprint(r)\n");
         assert!(!ir.contains("osp_test_assert"));
         assert!(ir.contains("call i64 @check(i64 4)"));
         // …and so does an extern declaration of the same name.
@@ -325,7 +325,7 @@ mod tests {
     #[test]
     fn debug_compile_emits_source_level_metadata() {
         let ir = debug_module(
-            "fn add(a: int, b: int) -> int = (a + b) ?: a\nlet x = add(1, 2)\nprint(x)\n",
+            "fn add(a: int, b: int) -> int = satAdd(a, b)\nlet x = add(1, 2)\nprint(x)\n",
         );
         let expected_dwarf_version = if cfg!(target_os = "macos") { 4 } else { 5 };
 
@@ -340,6 +340,8 @@ mod tests {
                 &format!("!\"Dwarf Version\", i32 {expected_dwarf_version}"),
                 "!DISubprogram(name: \"add\"",
                 "!DISubprogram(name: \"main\"",
+                "!DILocalVariable(name: \"a\", arg: 1,",
+                "!DILocalVariable(name: \"b\", arg: 2,",
                 "!DILocalVariable(name: \"x\"",
             ],
         );
@@ -478,7 +480,7 @@ mod tests {
         // never alias captures) and goes to `fiber_spawn_env_owned`; `await`
         // maps to `fiber_await`. No module globals are involved.
         let ir = module(
-            "fn work(n: int) -> int = (n * 2) ?: n\n\
+            "fn work(n: int) -> int = satMul(n, 2)\n\
              fn main() -> Unit = {\n\
                let x = 21\n\
                let f = spawn work(x)\n\
@@ -504,7 +506,7 @@ mod tests {
         // fnptr from the cell and passes the cell back as the env.
         let ir = module(
             "fn apply(value: int, f: (int) -> int) -> int = f(value)\n\
-             let r = apply(value: 10, f: fn(x: int) => (x + 1) ?: x)\n\
+             let r = apply(value: 10, f: fn(x: int) => satAdd(x, 1))\n\
              print(\"r=${r}\")\n",
         );
         shows(
@@ -524,7 +526,7 @@ mod tests {
         // stored in a malloc'd cell and reloaded from `%__env` inside the
         // lifted function.
         let ir = module(
-            "fn makeAdder(n: int) -> (int) -> int = fn(x: int) => (x + n) ?: x\n\
+            "fn makeAdder(n: int) -> (int) -> int = fn(x: int) => satAdd(x, n)\n\
              fn main() -> Unit = {\n\
                let add5 = makeAdder(5)\n\
                print(\"r=${add5(3)}\")\n\
@@ -735,9 +737,9 @@ mod tests {
         // both stages, counted loop), plus a fold accumulator. Exercises iter.rs
         // callback_of (named + lambda), replay, for_each, fold, acc_*.
         let ir = module(
-            "fn dbl(x: int) -> int = (x * 2) ?: x\n\
+            "fn dbl(x: int) -> int = satMul(x, 2)\n\
              fn big(x: int) -> bool = x > 4\n\
-             fn add(a: int, b: int) -> int = (a + b) ?: a\n\
+             fn add(a: int, b: int) -> int = satAdd(a, b)\n\
              fn main() -> Unit = {\n\
                range(1, 6) |> map(dbl) |> filter(big) |> forEach(print)\n\
                let s = range(1, 6) |> fold(0, add)\n\
@@ -753,9 +755,9 @@ mod tests {
         // Exercises iter.rs list_builder (both branches), fold_list,
         // for_each_list and collections list-builder protocol.
         let ir = module(
-            "fn dbl(x: int) -> int = (x * 2) ?: x\n\
+            "fn dbl(x: int) -> int = satMul(x, 2)\n\
              fn keep(x: int) -> bool = x > 1\n\
-             fn add(a: int, b: int) -> int = (a + b) ?: a\n\
+             fn add(a: int, b: int) -> int = satAdd(a, b)\n\
              fn main() -> Unit = {\n\
                let xs = listAppend(listAppend(List(), 1), 2)\n\
                let m = mapList(xs, dbl)\n\
@@ -781,7 +783,7 @@ mod tests {
         // callbacks — iter.rs callback_of's Lambda arms + the lambdas cache.
         let ir = module(
             "fn main() -> Unit = {\n\
-               let f = fn(x: int) => (x + 1) ?: x\n\
+               let f = fn(x: int) => satAdd(x, 1)\n\
                range(0, 3) |> map(f) |> forEach(fn(x: int) => print(\"v=${x}\"))\n\
              }\n",
         );
@@ -844,7 +846,7 @@ mod tests {
         // forwarder cell (closure.rs named_fn_cell + emit_forwarder), then is
         // called through the cell.
         let ir = module(
-            "fn dbl(x: int) -> int = (x * 2) ?: x\n\
+            "fn dbl(x: int) -> int = satMul(x, 2)\n\
              fn apply(f: (int) -> int, v: int) -> int = f(v)\n\
              fn main() -> Unit = {\n\
                let r = apply(dbl, 21)\n\
@@ -1511,7 +1513,7 @@ mod tests {
         // loads it and `set` stores it, so `perform` threads real state.
         let ir = module(
             "effect State { get: fn() -> int  set: fn(int) -> Unit }\n\
-             fn bump() -> int !State = { let a = perform State.get()  perform State.set((a + 1) ?: a)  perform State.get() }\n\
+             fn bump() -> int !State = { let a = perform State.get()  perform State.set(satAdd(a, 1))  perform State.get() }\n\
              fn main() -> int { mut c = 0\n\
                let r = {\n\
                    handle State {\n\
@@ -1540,9 +1542,9 @@ mod tests {
     fn handler_rebound_function_cell_calls_latest_closure_indirectly() {
         let ir = module(
             "effect ClosureSlot { rebind: fn(int) -> Unit }\n\
-             fn makeAdder(n: int) -> (int) -> int = fn(x) => (x + n) ?: x\n\
+             fn makeAdder(n: int) -> (int) -> int = fn(x) => satAdd(x, n)\n\
              fn main() -> int {\n\
-             mut rb = fn(x) => (x + 1) ?: x\n\
+             mut rb = fn(x) => satAdd(x, 1)\n\
              handle ClosureSlot {\n\
                  rebind offset => { rb = makeAdder(offset) }\n\
              }\n\
@@ -1681,6 +1683,57 @@ mod tests {
     }
 
     #[test]
+    fn generic_record_update_rebuilds_the_instantiation_layout() {
+        // [TYPE-RECORD-UPDATE] A generic record's handle names its
+        // INSTANTIATION (`Box#i64`), which `ctor_layout` has never heard of:
+        // every update of one — direct or through a generic function — died
+        // with `codegen: unknown name `Box#i64``. `gen_update` now resolves the
+        // registered layout, as field access always has.
+        let ir = module(
+            "type Box<T> = { held: T }\n\
+             fn rebox(b) = b { held: 5 }\n\
+             fn swap(b, v) = b { held: v }\n\
+             fn main() -> Unit = {\n\
+               let boxed = Box { held: 1 }\n\
+               let changed = boxed { held: 2 }\n\
+               let swapped = swap(Box { held: \"a\" }, \"b\")\n\
+               print(\"${changed.held} ${rebox(boxed).held} ${swapped.held}\")\n\
+             }\n",
+        );
+        shows(&ir, &["getelementptr", "store i64", "store i8*"]);
+    }
+
+    #[test]
+    fn record_update_of_a_handler_promoted_cell_reads_the_cell() {
+        // [TYPE-RECORD-UPDATE] [EFFECTS-HANDLER-STATE] A `mut` record a
+        // handler arm rebinds is promoted to a shared cell, which a scope
+        // lookup cannot see: `acc = acc { … }` inside the arm and `acc { … }`
+        // after the region both died with `codegen: unknown name `acc``, while
+        // `acc = Point { … }` beside them compiled. The update now reads its
+        // base exactly as the identifier `acc` is read.
+        let ir = module(
+            "type Point = { x: int, y: int }\n\
+             effect Steer { nudge : fn(int) -> int }\n\
+             fn steered() = {\n\
+               mut acc = Point { x: 0, y: 0 }\n\
+               handle Steer {\n\
+                 nudge by => {\n\
+                   acc = acc { x: by, y: satAdd(acc.y, by) }\n\
+                   acc.y\n\
+                 }\n\
+               }\n\
+               let first = perform Steer.nudge(5)\n\
+               acc { x: first }\n\
+             }\n\
+             fn main() -> Unit = {\n\
+               let s = steered()\n\
+               print(\"${s.x} ${s.y}\")\n\
+             }\n",
+        );
+        shows(&ir, &["getelementptr", "store i64"]);
+    }
+
+    #[test]
     fn ml_curried_string_result_compares_with_string_parameter() {
         let ir = ml_module(
             r#"value : int -> string -> string -> string
@@ -1704,7 +1757,7 @@ card doc index selected =
         // spawn/await (covered elsewhere) plus Channel/send/recv, yield with and
         // without a value, fiber_yield and fiberDone.
         let ir = module(
-            "fn work(n: int) -> int = (n + 1) ?: n\n\
+            "fn work(n: int) -> int = satAdd(n, 1)\n\
              fn main() -> Unit = {\n\
                let ch = Channel(1)\n\
                send(ch, 42)\n\
@@ -1786,13 +1839,13 @@ card doc index selected =
              fn fallbackWitness() -> int = dispatch(9)\n\
              fn fieldWitness() -> string = dispatch(Dispatch { m: methodField })\n\
              fn add3(a: int) -> (int) -> (int) -> int =\n\
-               fn(b: int) => fn(c: int) => (a + b + c) ?: a\n\
-             fn makeAdder(n: int) -> (int) -> int = fn(x: int) => (x + n) ?: x\n\
+               fn(b: int) => fn(c: int) => satAdd(satAdd(a, b), c)\n\
+             fn makeAdder(n: int) -> (int) -> int = fn(x: int) => satAdd(x, n)\n\
              fn main() -> Unit = {\n\
                let cfg = Cfg { keep: fn(n: int) => n > 1 }\n\
                let chain = add3(1)(2)(3)\n\
-               let computed = fold(map(range(1, 4), makeAdder(10)), 0, fn(a: int, b: int) => (a + b) ?: a)\n\
-               let fieldcb = fold(filter(range(1, 5), cfg.keep), 0, fn(a: int, b: int) => (a + b) ?: a)\n\
+               let computed = fold(map(range(1, 4), makeAdder(10)), 0, fn(a: int, b: int) => satAdd(a, b))\n\
+               let fieldcb = fold(filter(range(1, 5), cfg.keep), 0, fn(a: int, b: int) => satAdd(a, b))\n\
                print(\"${chain} ${computed} ${fieldcb} ${explicitWitness()} ${deferredWitness()} ${fallbackWitness()} ${fieldWitness()}\")\n\
              }\n",
         );

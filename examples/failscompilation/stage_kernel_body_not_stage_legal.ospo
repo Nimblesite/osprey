@@ -12,7 +12,7 @@ effect Log {
 
 fn shade(px) = {
     perform Log.write("shading")
-    (px * perform Tile.size()) ?: 0
+    satMul(px, perform Tile.size())
 }
 
 fn main() = {

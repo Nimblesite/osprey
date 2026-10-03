@@ -16,6 +16,20 @@ const LENGTH_TERMINATOR: char = 'x';
 const HEX_PER_BYTE: usize = 2;
 const HEX_RADIX: u32 = 16;
 
+/// An uppercase identifier denotes a constructor in a pattern.
+#[must_use]
+pub fn is_constructor_name(name: &str) -> bool {
+    name.chars().next().is_some_and(char::is_uppercase)
+}
+
+/// Distinguish record construction from update [TYPE-RECORD-UPDATE].
+/// The legal type name `_` constructs in expression position; this does not
+/// change its meaning as a wildcard pattern or discarded parameter.
+#[must_use]
+pub fn is_record_constructor(name: &str, has_type_arguments: bool) -> bool {
+    has_type_arguments || name.contains("::") || name == "_" || is_constructor_name(name)
+}
+
 /// Encode namespace-and-path segments as one flat linkage name.
 #[must_use]
 pub fn mangle<'a>(segments: impl IntoIterator<Item = &'a str>) -> String {
@@ -33,6 +47,27 @@ fn push_segment(out: &mut String, segment: &str) {
     for byte in segment.as_bytes() {
         let _ = write!(out, "{byte:02x}");
     }
+}
+
+/// The encoded name of the module that declares `symbol`: every segment but
+/// the last. `None` for a name that was never encoded.
+///
+/// Hex digits never contain the segment separator, so the last `_` opens the
+/// last segment.
+#[must_use]
+pub fn parent(symbol: &str) -> Option<&str> {
+    let rest = symbol.strip_prefix(PREFIX)?;
+    let last = rest.rfind('_')?;
+    symbol.get(..PREFIX.len().saturating_add(last))
+}
+
+/// Whether the declaration encoded as `site` sits inside the module that
+/// declares `symbol`. Both are encoded names, so a plain prefix test is
+/// segment-exact: each segment carries its byte length, so one segment can
+/// never be the prefix of a longer one.
+#[must_use]
+pub fn encloses(symbol: &str, site: &str) -> bool {
+    parent(symbol).is_some_and(|owner| site.starts_with(owner))
 }
 
 /// Decode one whole linkage name back to its `a::b::c` source name.
@@ -144,6 +179,21 @@ mod tests {
     fn the_encoding_matches_the_names_project_assembly_emits() {
         assert_eq!(mangle(["bank", "serve"]), BANK_SERVE);
         assert_eq!(mangle(["bank", "Api", "Audit"]), BANK_AUDIT);
+    }
+
+    #[test]
+    fn a_declaration_is_enclosed_only_by_its_own_module() {
+        // `bank::Api::Audit` is reachable from `bank::Api::serve` and from a
+        // nested `bank::Api::Inner::f`, but not from `bank::serve`, from the
+        // entry `main`, or from a module whose name merely starts the same way.
+        assert_eq!(parent(BANK_AUDIT), Some("__osp_4x62616e6b_3x417069"));
+        assert_eq!(parent(BANK_SERVE), Some("__osp_4x62616e6b"));
+        assert_eq!(parent("main"), None);
+        assert!(encloses(BANK_AUDIT, &mangle(["bank", "Api", "serve"])));
+        assert!(encloses(BANK_AUDIT, &mangle(["bank", "Api", "Inner", "f"])));
+        assert!(!encloses(BANK_AUDIT, BANK_SERVE));
+        assert!(!encloses(BANK_AUDIT, "main"));
+        assert!(!encloses(BANK_AUDIT, &mangle(["bank", "Apix", "serve"])));
     }
 
     #[test]

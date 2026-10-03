@@ -181,7 +181,7 @@ mod tests {
             DebugBuild::ON.opt_flag("-O2".to_string(), Some("-Og".to_string())),
             "-Og"
         );
-        assert!(DebugBuild::OFF.native_driver_flags().is_empty());
+        assert_eq!(DebugBuild::OFF.native_driver_flags(), Vec::<String>::new());
         assert!(DebugBuild::ON
             .native_driver_flags()
             .iter()
@@ -216,7 +216,7 @@ mod tests {
             coverage.opt_flag("-O2".to_string(), Some("-O0".to_string())),
             "-O2"
         );
-        assert!(coverage.native_driver_flags().is_empty());
+        assert_eq!(coverage.native_driver_flags(), Vec::<String>::new());
         assert!(!coverage.wants_debug_info());
     }
 }

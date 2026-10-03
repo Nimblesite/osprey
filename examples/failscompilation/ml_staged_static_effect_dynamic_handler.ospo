@@ -7,7 +7,7 @@
 static effect Tile
     size : Unit => int
 
-scaled n = n * perform Tile.size () ?: 0
+scaled n = satMul n (perform Tile.size ())
 
 answer =
     handle Tile

@@ -335,7 +335,7 @@ fn every_message_names_a_type_and_never_leaks_a_type_variable() {
     // `t0`-style inference variables are internal. A warning that printed one
     // would be telling the reader to write a type they cannot spell.
     let raised = messages(Flavor::Default, GREET);
-    assert!(!raised.is_empty());
+    assert_ne!(raised, Vec::<String>::new());
     for message in &raised {
         assert!(
             message.starts_with("redundant "),
@@ -659,7 +659,10 @@ fn interpolated_annotation_provenance_cannot_select_an_outer_type() {
     let source = format!("{outer}let rendered = \"\\n🦅 ${{{fragment}}}\"\n");
     let parsed = parse_program_with_flavor(&source, Flavor::Default);
     assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-    assert!(crate::check_program(&parsed.program).is_empty());
+    assert_eq!(
+        crate::check_program(&parsed.program),
+        Vec::<crate::error::TypeError>::new()
+    );
     let sites: Vec<_> = redundant_annotation_sites(&parsed.program).into_iter().filter(|site| {
         matches!(&site.target, RedundantTarget::Parameter { name, .. } if name == "inner")
     }).collect();

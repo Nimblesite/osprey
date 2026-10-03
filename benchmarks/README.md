@@ -1,11 +1,10 @@
 # Osprey benchmarks
 
 A cross-language performance harness that measures where Osprey sits relative to
-**Rust, C, OCaml, and Haskell** on classic compute benchmarks — both **CPU time**
+**Rust, C, C#, Dart, OCaml, and Haskell** on classic compute benchmarks — both **elapsed time**
 and **peak memory**.
 
-Every benchmark is implemented identically in all five languages, compiled to a
-native binary, checked for correct output, then timed. **All source is in this
+Every benchmark uses the same workload and expected result across languages. Programs are compiled, checked for correct output, then timed; collection implementations and iteration mechanisms differ. **All source is in this
 folder** under `cases/<name>/` so you can read and compare every line:
 
 ```
@@ -30,9 +29,9 @@ build or mismatches its oracle, nothing is published at all. It needs one prior
 `make bench` for the baseline. Any run narrowed by `BENCH_FILTER` merges the
 same way, for the same reason.
 
-> **Heads-up on RAM.** With the optimized build (below) the non-allocating cases
-> peak at ~1.4 MB — on par with C. The allocating ones use substantially more
-> memory under the *default* backend, which never reclaims (see *Findings*).
+All WebAssembly columns run under Wasmtime with an explicit 4 MiB call-stack budget (`-W max-wasm-stack=4194304`). The `ackermann` workload exhausts Wasmtime's default budget; with the shared budget it prints the required `8189`. This changes host capacity, not the workload or correctness oracle.
+
+> **Heads-up on RAM.** Allocating cases use substantially more memory under the *default* backend, which never reclaims (see *Findings*).
 > The **`Osprey (ARC)`** and **`Osprey (GC)`** columns compile the same source
 > with `--memory=arc` / `--memory=gc` and reclaim unused values. Run the default
 > column on a machine with a few GB free, or skip it with `BENCH_FILTER`.
@@ -55,8 +54,7 @@ gitignored:
 `make bench` also **bakes** the tables into the website
 (`website/src/_includes/benchmarks-tables.html`, committed) so the
 [`/benchmarks`](../website/src/benchmarks.md) page renders them at site-build
-time. Both the standalone report and the website page are generated mechanically
-by [`report.py`](report.py) — never hand-edit them.
+time. The standalone report and website tables are generated mechanically by [`report.py`](report.py). The website prose must be updated to describe those measurements and their provenance.
 
 ## The benchmarks (22)
 
@@ -116,11 +114,7 @@ seeded token generator and runs in constant *or* randomized mode (below).
 | `listops`   | persistent `List<int>`            | bitmapped-vector-trie build + recursive traversal | build+traverse 4k-element lists ×8 |
 | `exprtree`  | recursive union + records         | constructor allocation + pattern-match dispatch + modular eval | build+evaluate depth-14 trees ×10 |
 
-`listops` is a second **memory** benchmark alongside `binarytrees`: persistent
-`listAppend` allocates a fresh spine on every push, and `[head, ...tail]`
-recursion walks it. It peaks at **~14 MB** under the default (non-reclaiming)
-backend, **~2.6 MB** under ARC and **~3.5 MB** under the GC. `wordfreq` shows the
-same effect on the HAMT (59 MB → 2.0 MB under ARC, 4.5 MB under the GC).
+`listops` and `wordfreq` exercise persistent list and map allocation. Compare the default, ARC and GC columns for the same source; the current measurements are in `results/results.json`.
 
 ## Methodology
 
@@ -132,7 +126,7 @@ same effect on the HAMT (59 MB → 2.0 MB under ARC, 4.5 MB under the GC).
    case's `expected.txt`. A mismatch or build failure is reported and excluded
    from timing — we never publish a number for a program that computed the wrong
    thing.
-3. **CPU.** `hyperfine -N --warmup 3 --min-runs 10` per case across all available
+3. **Elapsed time.** `hyperfine -N --warmup 3 --min-runs 10` per case across all available
    languages → statistical mean ± stddev.
 4. **Memory.** `/usr/bin/time` peak resident set size, max over a few runs
    (`-l` on macOS, `-v` on Linux).
@@ -171,13 +165,7 @@ VM. Notes and limits:
 - **`C (wasm)` needs a wasi-sdk** that ships the wasm `compiler-rt` builtins;
   stock `clang` + `wasi-libc` often lacks it, so the column auto-hides when a
   trivial probe fails to link (set `OSPREY_WASI_SYSROOT` to point at one).
-- **A case that uses a non-portable builtin is skipped for wasm, not failed.**
-  Osprey's wasm runtime is the portable subset (allocator, strings, lists, maps,
-  JSON, effects) — it excludes fibers, HTTP, the terminal, and `input`/`random`
-  ([0022](../docs/specs/0022-WebAssemblyTarget.md)). So the data-structure cases
-  that read a seed via `input()`/`randomBelow` (`wordfreq`, `textstats`,
-  `listops`, `exprtree`) have no `Osprey (wasm)` cell, while the pure-compute
-  cases (`fib`, `binarytrees`, …) do.
+- **Target capabilities still apply.** The WASM runtime supports file, input, random, collection and value-effect operations. It rejects unavailable capabilities such as fibers, sockets and general FFI before linking ([spec 0022](../docs/specs/0022-WebAssemblyTarget.md)). All 22 current Osprey benchmark cases built and passed their output oracle on WebAssembly in the 2026-10-03 refresh.
 
 ### Constant vs randomized input
 
@@ -219,50 +207,15 @@ deterministic constant-seed run.
   The work is identical; only the iteration mechanism differs.
 - **OCaml is built without flambda** (stock `ocamlopt`), so its numbers are
   conservative versus an flambda build.
-- **Single machine, wall clock.** Treat ratios as indicative; re-run locally.
+- **Partial reruns preserve older baselines.** The current machine and measured columns are identified on [the benchmark page](../website/src/benchmarks.md). Compare languages only when their measurements come from the same machine and configuration.
 
 ## Findings
 
-On the author's machine (Apple Silicon, macOS), geometric mean across the 18
-benchmarks (open `results/results.html` for the live, per-case numbers):
+The current compiler uses plain integer values and explicit arithmetic effects. Historical timings from the Result-arithmetic compiler do not describe this implementation. The [benchmark page](../website/src/benchmarks.md) reports fresh Osprey measurements and separates them from retained language baselines.
 
-```
-CPU:    Osprey ≈ 1.0× Rust, 1.1× C, 0.7× OCaml, 0.7× Haskell (geomean).
-        At parity with the fastest systems languages; faster than OCaml/Haskell.
-Memory: ≈ C on 17 of 18 cases (~1.4 MB). One outlier: binarytrees.
-```
+The default allocator retains general heap allocations for the process lifetime. ARC and GC reclaim them without changing the Osprey program or its expected output. The generated `binarytrees` figures above show the memory difference; the timing tables show its runtime cost. Persistent-map operations in `wordfreq` are also structurally different from the mutable hash tables used by several other language implementations, so that comparison measures the collection choice as well as the compiler.
 
-**Osprey is the fastest of all five languages outright on several cases**
-(varies run-to-run, since Osprey/Rust/C are now within measurement noise of each
-other) — e.g. `digitsum`, `pascal`, `tak`, `powmod`, `mutual`, `josephus`,
-`primes`, `gcdsum`. On the rest it ties C/Rust.
-
-**How it got here.** The first version of this suite measured Osprey 12–89×
-slower and using up to 2244× more memory. The cause was **not** the language: the
-compiler was handing its LLVM IR to clang with **no optimization flag (`-O0`)**,
-so every per-operation `Result` block stayed a live `malloc`. Compiling the IR at
-`-O2` lets LLVM prove those allocations non-escaping and delete them outright
-(heap → registers): `fib(35)` went from **0.52 s / 1.37 GB to 0.01 s / 1.4 MB**.
-See [plan 0010](../docs/plans/0010-cross-language-benchmark-suite.md).
-
-**The one remaining gap — and how reclamation closes it: `binarytrees`.** Its
-tree nodes genuinely *escape* — built, held, then checksummed — so the optimizer
-cannot statically free them. The default allocator
-(`compiler/runtime/memory_runtime.c`, a `malloc` passthrough) never reclaims.
-Allocation funnels through one swappable `@osp_alloc` hook
-([MEM-BACKENDS](../docs/specs/0018-MemoryManagement.md)), so a reclaiming backend
-drops in at LINK time with **no language change and byte-identical output**. The
-current measurements are generated above from the report data. The `Osprey
-(ARC)` column beats the GC on every allocating case in the table (on `exprtree`
-it beats C). Both are complete without a cycle collector because the value heap
-is acyclic [MEM-ACYCLIC].
-
-The cost is visible in the time column and is exactly what the remaining Perceus
-precision tiers address: ARC is **free** on the non-allocating cases (identical
-to the default backend, because dup/drop on rodata and on non-escaping values is
-elided at compile time) and 2–4.5× on the allocating ones, where every escaping
-value still pays a counted retain/release. Borrow inference and drop
-specialization remove those from the paths that provably do not need them.
+These results do not establish general performance parity with Rust or C. Use the per-case measurements and reproduce the relevant workload before drawing a comparison.
 
 ## Not yet benchmarked (and why)
 
@@ -270,7 +223,7 @@ Blocked on language features Osprey doesn't expose today (left out, not faked):
 
 | Benchmark | Blocked on |
 |-----------|-----------|
-| mandelbrot, n-body, spectral-norm | no `sqrt`/trig stdlib, no `int`↔`float` conversion, float-formatting differs across languages (no exact integer oracle) |
+| mandelbrot, n-body, spectral-norm | `sqrt`/trig support and a common numeric accuracy/output oracle; integer/float conversions already exist |
 | n-queens, fannkuch | no mutable arrays |
 | quicksort, mergesort | **unblocked — cases not written yet.** The recursive-`List` miscompile this row used to cite is fixed: a list *literal* is a different layout from an `OspreyList` handle, and passing one into a callee that list-pattern-matches segfaulted, so `quicksort([3, 1, 2, 5, 4])` crashed while the same call on a `listAppend` chain worked. Literal arguments are now rebuilt at the call boundary and both sorts run correctly under all three memory backends. Note `filter` itself still cannot express them — it returns `Iterator<T>` and nothing collects an iterator back into a `List<T>` — so the cases need explicit head/tail recursion, as `listops` already uses |
 | sieve of Eratosthenes, matrix-multiply, n-sieve | no mutable arrays |

@@ -368,6 +368,11 @@ Rendering lives in
 [`osprey-lsp/src/mlrender.rs`](../../crates/osprey-lsp/src/mlrender.rs) and is
 applied at the feature boundary.
 
+Two limits are deliberate and current. Signature help on a curried call labels
+the whole signature; it does not render the partially applied remainder. And
+completion has no handler-arm or `perform`-operand context: those positions get
+the declaration list of `[LSP-COMPLETION-CONTEXT]`.
+
 ## Position-filtered completion `[LSP-COMPLETION-CONTEXT]`
 
 Completion classifies the cursor before answering

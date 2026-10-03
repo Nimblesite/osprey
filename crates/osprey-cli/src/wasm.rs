@@ -328,7 +328,10 @@ mod tests {
     fn browser_dispatcher_keeps_its_globals_after_wasi_start_returns() {
         // [WASM-WEB-ABI] Browser events arrive after the command entry returns.
         let parsed = osprey_syntax::parse_program(GLOBAL_WEB_SOURCE);
-        assert!(osprey_types::check_program(&parsed.program).is_empty());
+        assert_eq!(
+            osprey_types::check_program(&parsed.program),
+            Vec::<osprey_types::TypeError>::new()
+        );
         let ir = program_ir(&parsed.program).expect("browser module");
         assert!(
             !ir.contains("store i8* null, i8** @"),

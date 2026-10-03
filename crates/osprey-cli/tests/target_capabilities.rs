@@ -68,7 +68,7 @@ fn resumable_effects_reject_for_both_flavors_before_ir() -> std::io::Result<()> 
                 error.contains("a continuation for `Supply.next`"),
                 "{error}"
             );
-            assert!(output.stdout.is_empty());
+            assert_eq!(output.stdout, Vec::<u8>::new());
         }
     }
     Ok(())
@@ -238,7 +238,7 @@ fn android_library_abi_rejects_unhandled_exports_and_aggregate_imports() -> std:
             let error = String::from_utf8_lossy(&output.stderr);
             assert!(!output.status.success());
             assert!(error.contains(feature), "{error}");
-            assert!(output.stdout.is_empty());
+            assert_eq!(output.stdout, Vec::<u8>::new());
         }
     }
     Ok(())

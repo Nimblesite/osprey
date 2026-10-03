@@ -40,8 +40,8 @@ module Geo {
     export fn square(side) = Square { side: side }
 
     export fn area(shape) = match shape {
-        Circle { radius } => (radius * radius) 
-        Square { side } => (side * side) 
+        Circle { radius } => (radius * radius)
+        Square { side } => (side * side)
     }
 
     export fn name(shape) = match shape {
@@ -66,6 +66,20 @@ module Boxes {
     export fn held(box) = box.held
 
     export fn rewrap(box) = wrap(held(box))
+}
+
+module Ids {
+    /// The representation stays inside: a client builds an `Id` only through
+    /// `make` and reads it only through `value` ([MODULES-OPAQUE-TYPES]).
+    export opaque type Id = Id { value: int }
+
+    export fn make(n) = Id { value: n }
+
+    export fn value(id) = id.value
+
+    export fn next(id) = match id {
+        Id { value } => Id { value: value + 1 }
+    }
 }
 
 /// Constructors reached through exported factories keep their payloads.
@@ -96,8 +110,16 @@ fn genericModuleCase() = checkAll("generic module functions specialise per site"
     Boxes::held(Boxes::wrap(Geo::area(Geo::square(3)))) == 9
 ])
 
+/// An opaque record is built, read and rebuilt only by its own module.
+fn opaqueCase() = checkAll("opaque records are reached through their module", [
+    Ids::value(Ids::make(7)) == 7,
+    Ids::value(Ids::next(Ids::make(7))) == 8,
+    Ids::value(Ids::next(Ids::next(Ids::make(0)))) == 2
+])
+
 exactArithmetic(fn() => print("${Geo::area(Geo::circle(3))} ${Geo::name(Geo::square(4))} ${Geo::perimeterOf(Geo::extent(Geo::square(5)))} ${Boxes::held(Boxes::wrap("seven"))}"))
 
 test("module unions keep their payloads", fn() => exactArithmetic(unionPayloadCase))
 test("module records keep their fields", fn() => exactArithmetic(recordFieldCase))
 test("module generics specialise per call site", fn() => exactArithmetic(genericModuleCase))
+test("module opaque records stay abstract", fn() => exactArithmetic(opaqueCase))

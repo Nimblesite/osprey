@@ -537,7 +537,9 @@ fn pipe_into_bare_callee_and_into_a_call() {
 fn zero_parameter_lambda_lowers_to_an_empty_lambda() {
     // `\=> body` (no params) lowers to a zero-parameter Lambda.
     match let_value("f = \\=> 1\n") {
-        Expr::Lambda { parameters, .. } => assert!(parameters.is_empty()),
+        Expr::Lambda { parameters, .. } => {
+            assert_eq!(parameters, Vec::<osprey_ast::Parameter>::new());
+        }
         other => panic!("expected a lambda, got {other:?}"),
     }
 }
@@ -593,7 +595,9 @@ fn interpolation_fragment_falls_back_to_identifier_for_unparseable() {
     // A `${...}` whose body is a lone reserved/keyword token does not parse to a
     // binding, so the fragment lowers to the trimmed identifier fallback.
     match let_value("r = \"v=${ match }\"\n") {
-        Expr::InterpolatedStr(parts) => assert!(!parts.is_empty()),
+        Expr::InterpolatedStr(parts) => {
+            assert_ne!(parts, Vec::<osprey_ast::InterpolatedPart>::new());
+        }
         other => panic!("expected an interpolated string, got {other:?}"),
     }
 }
@@ -756,14 +760,16 @@ fn tuple_type_and_effect_payload_rendering_are_canonical() {
 fn unit_tail_params_and_empty_type_bodies_parse() {
     match ml_one("ignore x () = x\n") {
         Stmt::Function { body, .. } => match body {
-            Expr::Lambda { parameters, .. } => assert!(parameters.is_empty()),
+            Expr::Lambda { parameters, .. } => {
+                assert_eq!(parameters, Vec::<osprey_ast::Parameter>::new());
+            }
             other => panic!("expected a unit lambda tail, got {other:?}"),
         },
         other => panic!("expected a function, got {other:?}"),
     }
 
     match ml_one("type Empty =\n") {
-        Stmt::Type { variants, .. } => assert!(variants.is_empty()),
+        Stmt::Type { variants, .. } => assert_eq!(variants, Vec::<osprey_ast::TypeVariant>::new()),
         other => panic!("expected an empty type declaration, got {other:?}"),
     }
 
@@ -881,7 +887,9 @@ fn empty_interpolation_fragment_falls_back_to_an_identifier() {
     // `${ }` does not parse to a binding body, so parse_fragment returns the
     // trimmed (empty) identifier fallback rather than misparsing.
     match let_value("r = \"x=${ }\"\n") {
-        Expr::InterpolatedStr(parts) => assert!(!parts.is_empty()),
+        Expr::InterpolatedStr(parts) => {
+            assert_ne!(parts, Vec::<osprey_ast::InterpolatedPart>::new());
+        }
         other => panic!("expected an interpolated string, got {other:?}"),
     }
 }
@@ -931,7 +939,7 @@ fn generic_signature_lookahead_never_swallows_comparisons() {
     assert_eq!(stmts.len(), 3);
     // `f<T> = 1` (no colon after the binder shape) is not a signature either.
     let parsed = parse_program_with_flavor("f<T> = 1\n", Flavor::Ml);
-    assert!(!parsed.program.statements.is_empty());
+    assert_ne!(parsed.program.statements, Vec::<Stmt>::new());
     // `f<1> : int` (non-identifier inside) falls back to expression parsing.
     let parsed = parse_program_with_flavor("f<1> : int\n", Flavor::Ml);
     assert!(parsed.program.statements.is_empty() || !parsed.errors.is_empty());
@@ -993,13 +1001,13 @@ fn generic_effects_and_rows_parse_in_ml() {
         Stmt::Function { effects, .. } => {
             assert_eq!(effects.len(), 2);
             assert_eq!(effects[0].type_args.len(), 1);
-            assert!(effects[1].type_args.is_empty());
+            assert_eq!(effects[1].type_args, Vec::<TypeExpr>::new());
         }
         s => panic!("expected function, got {s:?}"),
     }
     // An unclosed row argument list reports an error but recovers.
     let parsed = parse_program_with_flavor("h : Unit -> int ! Stash<int\nh () = 1\n", Flavor::Ml);
-    assert!(!parsed.errors.is_empty());
+    assert_ne!(parsed.errors, Vec::<osprey_syntax::SyntaxError>::new());
 }
 
 #[test]

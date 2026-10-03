@@ -6,6 +6,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from merge_results import merge
+from report import update_readme
 
 
 class MergeResultsTests(unittest.TestCase):
@@ -74,6 +75,48 @@ class MergeResultsTests(unittest.TestCase):
             means = {r["command"]: r["mean"]
                      for r in json.loads((destination / "hf" / "fib.json").read_text())["results"]}
             self.assertEqual(means, {"osprey": 0.9, "osprey-wasm": 9.0, "rust": 0.5})
+
+
+class UpdateReadmeTests(unittest.TestCase):
+    """`update_readme` keeps every quoted binarytrees figure honest; pin it."""
+
+    START = "> <!-- binarytrees-results:start -->"
+    END = "> <!-- binarytrees-results:end -->"
+
+    def readme(self, root: Path) -> Path:
+        path = root / "README.md"
+        path.write_text(f"intro\n{self.START}\n> stale\n{self.END}\noutro\n")
+        return path
+
+    def test_measured_peaks_replace_the_marked_line_with_gb_and_mb_units(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.readme(Path(directory))
+            data = {"binarytrees": {
+                "osprey": {"rss": 1_896_349_696},
+                "osprey-arc": {"rss": 3_031_040},
+                "osprey-gc": {"rss": 999_999_999},
+            }}
+            self.assertEqual(update_readme(data, path), path)
+            self.assertEqual(path.read_text(), (
+                f"intro\n{self.START}\n"
+                "> Current measured peaks: default **1.9 GB**, "
+                "`--memory=arc` **3.03 MB**, and `--memory=gc` **1 GB**.\n"
+                f"{self.END}\noutro\n"
+            ))
+
+    def test_filtered_run_leaves_the_readme_untouched(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.readme(Path(directory))
+            before = path.read_text()
+            self.assertIsNone(update_readme({"binarytrees": {"osprey": {"rss": 1}}}, path))
+            self.assertEqual(path.read_text(), before)
+
+    def test_missing_markers_fail_loudly(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "README.md"
+            path.write_text("no markers\n")
+            with self.assertRaisesRegex(ValueError, "missing binarytrees result markers"):
+                update_readme({}, path)
 
 
 if __name__ == "__main__":

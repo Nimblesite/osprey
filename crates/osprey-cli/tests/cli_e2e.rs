@@ -497,7 +497,7 @@ fn fmt_reports_usage_parse_and_read_errors() {
     let path = broken.to_string_lossy().into_owned();
     let parsed = run_args(&["fmt", &path]);
     assert_ne!(parsed.code, Some(0));
-    assert!(!parsed.stderr.is_empty());
+    assert_ne!(parsed.stderr, "");
 }
 
 #[cfg(unix)]
@@ -566,7 +566,7 @@ fn check_parse_error_is_reported() {
     let prog = temp_osp("parse", "fn = = =\n");
     let o = run_file(&prog, &["--check"]);
     assert_ne!(o.code, Some(0));
-    assert!(!o.stderr.is_empty());
+    assert_ne!(o.stderr, "");
 }
 
 #[test]
@@ -601,7 +601,7 @@ fn ast_and_symbols_modes() {
     let prog = temp_osp("astsym", HELLO);
     let ast = run_file(&prog, &["--ast"]);
     assert_eq!(ast.code, Some(0));
-    assert!(!ast.stdout.is_empty());
+    assert_ne!(ast.stdout, "");
     let sym = run_file(&prog, &["--symbols"]);
     assert_eq!(sym.code, Some(0));
     assert!(sym.stdout.contains("\"name\""), "{}", sym.stdout);

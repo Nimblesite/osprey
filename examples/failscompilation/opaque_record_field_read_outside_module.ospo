@@ -1,0 +1,24 @@
+// [MODULES-OPAQUE-TYPES] An opaque record's fields are hidden outside the
+// declaring module however they are reached: a direct read, a generic
+// accessor the client wrote itself (its obligation keeps the site it was
+// written at when it travels to the call), a structural pattern, and a
+// non-destructive update. The module's own exported accessor is the only way
+// through, so `Ids::value` is fine and the four client uses are not.
+namespace opq;
+
+module Ids {
+    export opaque type Id = Id { value: int }
+    export fn make(n) = Id { value: n }
+    export fn value(id) = id.value
+}
+
+fn peek(x) = x.value
+
+fn main() = {
+    let id = Ids::make(3)
+    let viaPattern = match id {
+        { value } => value
+    }
+    let bumped = id { value: 9 }
+    print("${id.value} ${peek(id)} ${viaPattern} ${Ids::value(id)} ${Ids::value(bumped)}")
+}

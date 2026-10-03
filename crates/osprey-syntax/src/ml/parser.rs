@@ -1299,7 +1299,7 @@ impl Parser<'_> {
         if let Some(name) = record_head(&func) {
             if self.at_inline_record() {
                 func = self.inline_record(name, Vec::new());
-            } else if is_constructor(constructor_segment(&name)) && self.at_generic_record() {
+            } else if self.at_generic_record() {
                 // `Box<int>(item = 7)` — explicit construction-site type
                 // arguments. Implements [TYPE-GENERICS-DECL],
                 // [FLAVOR-ML-GENERICS].
@@ -1543,7 +1543,8 @@ impl Parser<'_> {
             return MlExpr::Path(MlSymbolPath { segments });
         }
         let name = segments.pop().unwrap_or_default();
-        if is_constructor(&name) && matches!(self.peek(), TokKind::Indent) {
+        if osprey_ast::is_record_constructor(&name, false) && matches!(self.peek(), TokKind::Indent)
+        {
             let fields = self.record_fields();
             MlExpr::Record {
                 name,
@@ -2395,14 +2396,8 @@ fn record_head(head: &MlExpr) -> Option<String> {
     }
 }
 
-/// The segment that decides construction versus record update: the last one, so
-/// a qualified head is judged by the name it actually reaches.
-pub(super) fn constructor_segment(name: &str) -> &str {
-    name.rsplit("::").next().unwrap_or(name)
-}
-
 pub(super) fn is_constructor(name: &str) -> bool {
-    name.chars().next().is_some_and(char::is_uppercase)
+    osprey_ast::is_constructor_name(name)
 }
 
 /// A parsed `handle Effect` and its arms, waiting for the region it handles.

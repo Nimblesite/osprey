@@ -500,11 +500,13 @@ impl DebugState {
         let retained_id = self.alloc_id();
         let id = self.alloc_id();
         let line = position.map_or(1, |p| p.line.max(1));
-        let name = metadata_escape(name);
+        // [MODULES-ABI] LLDB prefers linkageName even when it cannot decode
+        // our encoding. Keep DWARF names readable; native LLVM symbols keep ABI.
+        let name = metadata_escape(&osprey_ast::symbol::demangle_message(name));
         self.dynamic.push((
             id,
             format!(
-                "!{id} = distinct !DISubprogram(name: \"{name}\", linkageName: \"{name}\", scope: !{}, file: !{}, line: {line}, type: !{}, scopeLine: {line}, spFlags: DISPFlagDefinition, unit: !{}, retainedNodes: !{})",
+                "!{id} = distinct !DISubprogram(name: \"{name}\", scope: !{}, file: !{}, line: {line}, type: !{}, scopeLine: {line}, spFlags: DISPFlagDefinition, unit: !{}, retainedNodes: !{})",
                 self.file_id,
                 self.file_id,
                 self.subroutine_type_id,
@@ -560,17 +562,23 @@ impl DebugState {
         Some(id)
     }
 
-    fn local_variable_id(&mut self, name: &str, ty: LType) -> Option<usize> {
+    fn local_variable_id(
+        &mut self,
+        name: &str,
+        ty: LType,
+        argument: Option<usize>,
+    ) -> Option<usize> {
         let scope = self.current_scope?;
         let position = self.current_position?;
         let id = self.alloc_id();
         let line = position.line.max(1);
         let type_id = self.debug_type_id(ty);
         let name = metadata_escape(name);
+        let argument = argument.map_or_else(String::new, |index| format!("arg: {index}, "));
         self.dynamic.push((
             id,
             format!(
-                "!{id} = !DILocalVariable(name: \"{name}\", scope: !{scope}, file: !{}, line: {line}, type: !{type_id})",
+                "!{id} = !DILocalVariable(name: \"{name}\", {argument}scope: !{scope}, file: !{}, line: {line}, type: !{type_id})",
                 self.file_id
             ),
         ));
@@ -907,6 +915,12 @@ impl Codegen {
     pub(crate) fn register_layout(&mut self, name: String, fields: Vec<ObjField>) -> String {
         let _ = self.obj_layouts.insert(name.clone(), fields);
         name
+    }
+
+    /// The registered slots of a synthetic owner — an object literal or a
+    /// generic-record instantiation — `None` for a declared constructor.
+    pub(crate) fn obj_layout(&self, owner: &str) -> Option<&[ObjField]> {
+        self.obj_layouts.get(owner).map(Vec::as_slice)
     }
 
     /// The struct spelling and ordered fields of an owner — a real constructor or
@@ -1327,22 +1341,21 @@ impl Codegen {
 
     /// The `DILocalVariable` metadata id for `name` of type `ty`, if a debug
     /// build is active. The single lookup both debug-recorders funnel through.
-    fn debug_var_id(&mut self, name: &str, ty: LType) -> Option<usize> {
+    fn debug_var_id(&mut self, name: &str, ty: LType, argument: Option<usize>) -> Option<usize> {
         self.debug
             .as_mut()
-            .and_then(|debug| debug.local_variable_id(name, ty))
+            .and_then(|debug| debug.local_variable_id(name, ty, argument))
     }
 
     /// Record a source-level **parameter** for native debuggers via
     /// `llvm.dbg.value`. [DEBUGGER-DBG-DECLARE]
     ///
-    /// A parameter is an SSA argument live for the whole function, so dbg.value
-    /// (no stack slot) is correct and immediately readable — including by a
-    /// conditional breakpoint on the function's first line. Emitted at function
-    /// entry inside the prologue, it never produces the inter-statement line-0
-    /// row that an inline `let` dbg.value would.
-    pub(crate) fn emit_debug_param(&mut self, name: &str, value: &Value) {
-        let Some(var_id) = self.debug_var_id(name, value.ty) else {
+    /// The one-based argument number makes this a formal parameter. Without
+    /// it LLVM can discard the location during instruction selection (for
+    /// example while expanding saturating arithmetic to wide integer ops).
+    /// Emitting at entry also avoids an inter-statement line-0 row.
+    pub(crate) fn emit_debug_param(&mut self, name: &str, value: &Value, index: usize) {
+        let Some(var_id) = self.debug_var_id(name, value.ty, Some(index.saturating_add(1))) else {
             return;
         };
         self.add_extern("declare void @llvm.dbg.value(metadata, metadata, metadata)");
@@ -1365,7 +1378,7 @@ impl Codegen {
     /// using `value.operand`, and Osprey `let` bindings are immutable, so the
     /// once-written slot stays correct.
     pub(crate) fn emit_debug_local(&mut self, name: &str, value: &Value) {
-        let Some(var_id) = self.debug_var_id(name, value.ty) else {
+        let Some(var_id) = self.debug_var_id(name, value.ty, None) else {
             return;
         };
         self.add_extern("declare void @llvm.dbg.declare(metadata, metadata, metadata)");

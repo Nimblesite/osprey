@@ -294,6 +294,7 @@ fn abstract_alias_is_rejected_instead_of_leaking_representation() {
         variants: Vec::new(),
         alias: Some(TypeExpr::named("int")),
         validation_func: None,
+        opaque: false,
         doc: None,
         position: None,
     };

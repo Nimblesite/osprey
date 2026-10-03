@@ -72,20 +72,34 @@ impl Resolver<'_> {
         None
     }
 
+    pub(crate) fn resolve_value_key(&mut self, name: &str, context: &Context) -> Option<SymbolKey> {
+        if name.contains("::") {
+            let segments = name.split("::").map(str::to_string).collect::<Vec<_>>();
+            self.resolve_path(&segments, context, None)
+        } else {
+            self.resolve_bare(name, context, None)
+        }
+    }
+
     pub(crate) fn rewrite_value_name(
         &mut self,
         name: &mut String,
         context: &Context,
         required: bool,
     ) {
-        let key = if name.contains("::") {
-            let segments = name.split("::").map(str::to_string).collect::<Vec<_>>();
-            self.resolve_path(&segments, context, None)
-        } else {
-            self.resolve_bare(name, context, None)
-        };
+        let key = self.resolve_value_key(name, context);
+        self.link_resolved(name, key.as_ref(), context, required);
+    }
+
+    pub(crate) fn link_resolved(
+        &mut self,
+        name: &mut String,
+        key: Option<&SymbolKey>,
+        context: &Context,
+        required: bool,
+    ) {
         if let Some(key) = key {
-            *name = self.link_name(&key, false);
+            *name = self.link_name(key, false);
         } else if required && name.contains("::") {
             self.error(
                 context.source,

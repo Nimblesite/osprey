@@ -377,7 +377,10 @@ mod tests {
         let names = labels(&at_end(src, "file:///a.osp"));
         assert_eq!(names, vec!["x", "y"], "{names:?}");
         // An unknown receiver stays silent rather than falling back to noise.
-        assert!(at_end("fn f() = mystery.", "file:///a.osp").is_empty());
+        assert_eq!(
+            at_end("fn f() = mystery.", "file:///a.osp"),
+            Vec::<CompletionItem>::new()
+        );
     }
 
     #[test]
@@ -395,8 +398,14 @@ mod tests {
 
     #[test]
     fn a_parameter_name_has_nothing_to_complete() {
-        assert!(at_end("fn add(", "file:///a.osp").is_empty());
-        assert!(at_end("fn add(a: int, ", "file:///a.osp").is_empty());
+        assert_eq!(
+            at_end("fn add(", "file:///a.osp"),
+            Vec::<CompletionItem>::new()
+        );
+        assert_eq!(
+            at_end("fn add(a: int, ", "file:///a.osp"),
+            Vec::<CompletionItem>::new()
+        );
     }
 
     #[test]

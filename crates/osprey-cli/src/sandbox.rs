@@ -148,7 +148,10 @@ mod tests {
     #[test]
     fn allow_all_permits_gated_builtins() {
         let src = "let f = readFile(\"a.txt\")\nlet p = spawnProcess(\"echo hi\", f)\n";
-        assert!(violations(&prog(src), Policy::allow_all()).is_empty());
+        assert_eq!(
+            violations(&prog(src), Policy::allow_all()),
+            Vec::<String>::new()
+        );
     }
 
     #[test]
@@ -164,7 +167,10 @@ mod tests {
         assert!(v.iter().any(|m| m.contains("readFile")));
         assert!(v.iter().any(|m| m.contains("writeFile")));
         // HTTP/process still allowed under --no-fs.
-        assert!(violations(&prog("let p = spawnProcess(\"echo\", f)\n"), policy).is_empty());
+        assert_eq!(
+            violations(&prog("let p = spawnProcess(\"echo\", f)\n"), policy),
+            Vec::<String>::new()
+        );
     }
 
     #[test]
@@ -179,7 +185,10 @@ mod tests {
             .iter()
             .any(|message| message == &format!("security: `{name}` is disabled by --no-http"))));
         // websocket builtin is NOT gated when only http is off.
-        assert!(violations(&prog("let c = websocketConnect(\"ws://x\")\n"), http_off).is_empty());
+        assert_eq!(
+            violations(&prog("let c = websocketConnect(\"ws://x\")\n"), http_off),
+            Vec::<String>::new()
+        );
 
         let mut ws_off = Policy::allow_all();
         ws_off.websocket = false;
@@ -216,7 +225,10 @@ mod tests {
         assert!(v.iter().any(|m| m.contains("log")));
         assert!(v.iter().any(|m| m.contains("exit")));
         // ffi allowed => the same externs compile.
-        assert!(violations(&prog(src), Policy::allow_all()).is_empty());
+        assert_eq!(
+            violations(&prog(src), Policy::allow_all()),
+            Vec::<String>::new()
+        );
         // Two externs each get their own message.
         let two = "extern fn a() -> int\nextern fn b() -> int\n";
         assert_eq!(violations(&prog(two), policy).len(), 2);

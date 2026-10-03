@@ -1576,7 +1576,7 @@ mod tests {
     fn openssl_and_compiler_helpers_are_well_formed() {
         let flags = openssl_flags();
         assert!(flags.iter().any(|f| f == "-lssl") && flags.iter().any(|f| f == "-lcrypto"));
-        assert!(!c_compiler().is_empty());
+        assert_ne!(c_compiler(), "");
         assert!(find_runtime_lib("definitely_not_a_real_lib_xyz.a").is_none());
     }
 
@@ -1733,7 +1733,7 @@ mod tests {
         assert!(compile_ir("p.osp", &program, BuildKind::Debug).is_ok());
         assert!(compile_ir("p.osp", &program, BuildKind::Profile).is_ok());
         assert_eq!(opt_flag(BuildKind::Debug), "-O0");
-        assert!(!opt_flag(BuildKind::Release).is_empty());
+        assert_ne!(opt_flag(BuildKind::Release), "");
         assert_eq!(
             opt_flag(BuildKind::Profile),
             opt_flag(BuildKind::Release),
