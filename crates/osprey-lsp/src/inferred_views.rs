@@ -45,12 +45,15 @@ mod tests {
         );
         // Cursor sits on `twice` in the declaration (line 0) and on the call
         // site (line 1) — the same function reached two different ways.
-        let hover_decl = crate::hover::hover(src, uri, 0, 4, U16).expect("hover over declaration");
-        let hover_body = crate::hover::hover(src, uri, 1, 9, U16).expect("hover over call site");
+        let hover_decl =
+            crate::test_support::hover(src, uri, 0, 4, U16).expect("hover over declaration");
+        let hover_body =
+            crate::test_support::hover(src, uri, 1, 9, U16).expect("hover over call site");
         // Column 14 is the argument slot inside `twice(2)` on `let y = twice(2)`
         // — signature help and completion both answer about the OPEN call.
-        let sig = crate::features::signature_help(src, uri, 1, 14, U16).expect("signature help");
-        let items = crate::complete::completion(src, uri, 1, 14, U16);
+        let sig =
+            crate::test_support::signature_help(src, uri, 1, 14, U16).expect("signature help");
+        let items = crate::test_support::completion(src, uri, 1, 14, U16);
         let completion_detail = items
             .iter()
             .find(|i| i.label == "twice")
@@ -128,17 +131,18 @@ mod tests {
         // fallback that replaced it.
         let src = "fn classify(xs) = match xs {\n  [] => 0\n  [head, ...tail] => listLength(xs)\n}\nlet e = classify([1])\n";
         let symbols = symbols_of(src);
-        let decl = crate::hover::hover(src, "file:///c.osp", 0, 4, U16).expect("hover decl");
+        let decl = crate::test_support::hover(src, "file:///c.osp", 0, 4, U16).expect("hover decl");
         // `xs` USED in the body, four lines from where it is bound: the two
         // views of one parameter that disagreed (`List<_>` vs `List<t6>`).
-        let body = crate::hover::hover(src, "file:///c.osp", 2, 32, U16).expect("hover body");
+        let body =
+            crate::test_support::hover(src, "file:///c.osp", 2, 32, U16).expect("hover body");
         // Signature help and completion are DISPLAY paths too, and a partial
         // type is exactly where they would leak — they answer from their own
         // collectors, so checking only hover and the outline would leave the
         // two newest paths untested against the hazard this test is named for.
-        let sig = crate::features::signature_help(src, "file:///c.osp", 4, 18, U16)
+        let sig = crate::test_support::signature_help(src, "file:///c.osp", 4, 18, U16)
             .expect("signature help over `classify(`");
-        let completion_detail = crate::complete::completion(src, "file:///c.osp", 4, 18, U16)
+        let completion_detail = crate::test_support::completion(src, "file:///c.osp", 4, 18, U16)
             .iter()
             .find(|i| i.label == "classify")
             .and_then(|i| i.detail.clone())
@@ -226,7 +230,7 @@ mod tests {
                 0,
             ),
         ] {
-            let flavor = crate::features::flavor_of(uri, source);
+            let flavor = crate::workspace::View::default().flavor(uri, source);
             let parsed = osprey_syntax::parse_program_with_flavor(source, flavor);
             assert!(parsed.errors.is_empty(), "{uri}: {:?}", parsed.errors);
             let symbols = crate::analysis::collect_inferred_symbols(&parsed.program);
@@ -235,15 +239,15 @@ mod tests {
             assert!(symbol.signature.as_ref().is_some_and(|sig| sig.ends_with(row)), "{uri}: {symbol:?}");
             let json = crate::analysis::symbols_json(&parsed.program);
             assert!(json.contains(&format!("\"declaredEffectRow\":\"{row}\"")), "{uri}: {json}");
-            let hovered = crate::hover::hover(source, uri, line, 4, U16).expect("function hover");
+            let hovered = crate::test_support::hover(source, uri, line, 4, U16).expect("function hover");
             assert!(hovered.contains(row), "{uri}: {hovered}");
         }
         let source = "fn relay(callback) -> int !e = callback()\nlet answer = relay(|| => 42)\n";
         let uri = "file:///call.osp";
-        let signature = crate::features::signature_help(source, uri, 1, 19, U16)
+        let signature = crate::test_support::signature_help(source, uri, 1, 19, U16)
             .expect("signature help at the callback call");
         assert!(signature.label.ends_with("!e"), "{signature:?}");
-        let completion = crate::complete::completion(source, uri, 1, 19, U16);
+        let completion = crate::test_support::completion(source, uri, 1, 19, U16);
         let detail = completion
             .iter()
             .find(|item| item.label == "relay")
@@ -281,7 +285,8 @@ mod tests {
             "an absent return type is absent, not empty-stringed: {symbols}"
         );
         // Hover must agree with the outline — same slot, same silence.
-        let decl = crate::hover::hover(src, "file:///id.osp", 0, 4, U16).expect("hover over `id`");
+        let decl =
+            crate::test_support::hover(src, "file:///id.osp", 0, 4, U16).expect("hover over `id`");
         assert!(
             !decl.contains("Unit"),
             "hover must not claim Unit either: {decl}"
@@ -390,16 +395,16 @@ mod tests {
         }
 
         // 2 and 3 — hover, on each declaration.
-        let hover_origin =
-            crate::hover::hover(RECORDS, "file:///r.osp", 2, 4, U16).expect("hover `origin`");
+        let hover_origin = crate::test_support::hover(RECORDS, "file:///r.osp", 2, 4, U16)
+            .expect("hover `origin`");
         let hover_boxed =
-            crate::hover::hover(RECORDS, "file:///r.osp", 3, 4, U16).expect("hover `boxed`");
+            crate::test_support::hover(RECORDS, "file:///r.osp", 3, 4, U16).expect("hover `boxed`");
         // Hover is a fenced block and nothing else, so it is compared whole.
         assert_eq!(hover_origin, format!("```osprey\n{ORIGIN}\n```"));
         assert_eq!(hover_boxed, format!("```osprey\n{BOXED}\n```"));
 
         // 4 — signature help at a call site.
-        let sig = crate::features::signature_help(RECORDS, "file:///r.osp", 4, 15, U16)
+        let sig = crate::test_support::signature_help(RECORDS, "file:///r.osp", 4, 15, U16)
             .expect("signature help for `origin(`");
         assert_eq!(sig.label, ORIGIN, "signature help agrees with the outline");
         // The rest of the response, not just its label: `origin` takes no
@@ -411,7 +416,7 @@ mod tests {
 
         // 5 — completion, compared as a WHOLE item. `CompletionItem` derives
         // `Eq`, so there is no reason to check one field and trust the rest.
-        let items = crate::complete::completion(RECORDS, "file:///r.osp", 4, 15, U16);
+        let items = crate::test_support::completion(RECORDS, "file:///r.osp", 4, 15, U16);
         let boxed = items
             .iter()
             .find(|i| i.label == "boxed")

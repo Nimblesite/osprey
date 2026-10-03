@@ -72,12 +72,14 @@ impl OspreyEngine {
                 )
                 .diagnostics,
             ),
-            Query::CodeActions { uri, range, only } => {
-                Report::CodeActions(crate::code_actions::actions(&self.vfs, &uri, range, &only))
-            }
+            Query::CodeActions { uri, range, only } => Report::CodeActions(
+                crate::code_actions::actions(&self.vfs, &uri, range, &only, &self.project_cache),
+            ),
             Query::Symbols(uri) => {
-                let parsed = osprey_syntax::parse_program_for_path(uri.as_str(), &self.text(&uri));
-                Report::Symbols(collect_inferred_symbols(&parsed.program))
+                let view = self.project_cache.view(uri.as_str(), &self.vfs);
+                Report::Symbols(collect_inferred_symbols(
+                    &view.program(uri.as_str(), &self.text(&uri)),
+                ))
             }
             Query::Hover(at) => Report::Hover(self.hover(&at)),
             Query::Definition(at) => Report::Locations(self.locate(&at, true, false)),
@@ -87,6 +89,7 @@ impl OspreyEngine {
                 at.line,
                 at.character,
                 enc,
+                &self.project_cache.view(at.uri.as_str(), &self.vfs),
             )),
             Query::References {
                 at,
@@ -99,6 +102,7 @@ impl OspreyEngine {
                 at.line,
                 at.character,
                 enc,
+                &self.project_cache.view(at.uri.as_str(), &self.vfs),
             )),
         }
     }
@@ -110,6 +114,7 @@ impl OspreyEngine {
             at.line,
             at.character,
             self.encoding(),
+            &self.project_cache.view(at.uri.as_str(), &self.vfs),
         )
     }
 
@@ -120,6 +125,7 @@ impl OspreyEngine {
             at.line,
             at.character,
             self.encoding(),
+            &self.project_cache.view(at.uri.as_str(), &self.vfs),
         )
     }
 
@@ -132,7 +138,14 @@ impl OspreyEngine {
         let text = self.text(&at.uri);
         let uri = at.uri.as_str();
         if definition {
-            features::definition(&text, uri, at.line, at.character, self.encoding())
+            features::definition(
+                &text,
+                uri,
+                at.line,
+                at.character,
+                self.encoding(),
+                &self.project_cache.view(uri, &self.vfs),
+            )
         } else {
             features::references(
                 &text,
@@ -141,6 +154,7 @@ impl OspreyEngine {
                 at.character,
                 self.encoding(),
                 include_declaration,
+                &self.project_cache.view(uri, &self.vfs),
             )
         }
     }

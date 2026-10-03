@@ -29,6 +29,12 @@ pub struct ProjectConfig {
 }
 
 impl ProjectConfig {
+    /// Whether a saved or unsaved path belongs to the configured source roots.
+    #[must_use]
+    pub fn contains_source(&self, root: &Path, path: &Path) -> bool {
+        crate::source::contains(root, self, path)
+    }
+
     /// Defaults for a manifest-free directory project.
     #[must_use]
     pub fn for_root(root: &Path) -> Self {

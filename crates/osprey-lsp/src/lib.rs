@@ -22,6 +22,7 @@ pub(crate) mod keywords;
 pub(crate) mod mlrender;
 pub mod model;
 mod project_cache;
+mod project_sources;
 pub(crate) mod reference_docs;
 pub mod server;
 #[cfg(test)]

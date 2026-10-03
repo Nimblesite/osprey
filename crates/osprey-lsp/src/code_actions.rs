@@ -13,12 +13,13 @@ pub(crate) fn actions(
     uri: &DocumentUri,
     range: Span,
     only: &[String],
+    cache: &crate::project_cache::ProjectCache,
 ) -> Vec<CodeAction> {
     let (Some(version), Some(source)) = (vfs.version(uri), vfs.text(uri)) else {
         return Vec::new();
     };
     let analysis =
-        crate::diagnostics::analyze_live(&source, uri.as_str(), vfs.encoding(), Some(vfs));
+        crate::diagnostics::analyze_cached(&source, uri.as_str(), vfs.encoding(), Some(vfs), cache);
     let mut actions = Vec::new();
     if includes(only, "quickfix") {
         actions.extend(
@@ -77,6 +78,15 @@ fn overlaps(selection: Span, diagnostic: Span) -> bool {
 
 #[cfg(test)]
 mod tests {
+    fn actions(vfs: &Vfs, uri: &DocumentUri, range: Span, only: &[String]) -> Vec<CodeAction> {
+        super::actions(
+            vfs,
+            uri,
+            range,
+            only,
+            &crate::project_cache::ProjectCache::default(),
+        )
+    }
     use super::*;
     use lspkit_vfs::{DocumentVersion, Position, PositionEncoding, Range, TextEdit};
 

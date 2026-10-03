@@ -37,6 +37,31 @@ fn is_source(path: &Path) -> bool {
         .is_some_and(|extension| extension == "osp" || extension == "ospml")
 }
 
+pub(crate) fn contains(root: &Path, config: &ProjectConfig, path: &Path) -> bool {
+    let path = normalize(path);
+    is_source(&path)
+        && config.source_roots.iter().any(|source_root| {
+            let source_root = normalize(&root.join(source_root));
+            path == source_root
+                || path.strip_prefix(&source_root).is_ok_and(|relative| {
+                    relative
+                        .components()
+                        .all(|part| !hidden(Path::new(part.as_os_str())))
+                })
+        })
+}
+
+fn normalize(path: &Path) -> PathBuf {
+    path.components().fold(PathBuf::new(), |mut result, part| {
+        if part == std::path::Component::ParentDir {
+            let _ = result.pop();
+        } else {
+            result.push(part);
+        }
+        result
+    })
+}
+
 fn hidden(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
@@ -46,6 +71,29 @@ fn hidden(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unsaved_source_membership_uses_the_discovery_rules() {
+        let root = Path::new("workspace");
+        let mut config = ProjectConfig::for_root(root);
+        config.source_roots = vec![PathBuf::from("src"), PathBuf::from("generated/only.osp")];
+        for (relative, expected) in [
+            ("src/new.osp", true),
+            ("src/new.ospml", true),
+            ("src/new.txt", false),
+            ("src/.hidden/new.osp", false),
+            ("src/target/new.osp", false),
+            ("src/../private/new.osp", false),
+            ("generated/only.osp", true),
+            ("generated/other.osp", false),
+        ] {
+            assert_eq!(
+                config.contains_source(root, &root.join(relative)),
+                expected,
+                "{relative}"
+            );
+        }
+    }
 
     #[test]
     fn source_paths_are_classified() {

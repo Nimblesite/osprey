@@ -199,6 +199,9 @@ configured_jobs() {
       echo "OSPREY_TEST_JOBS must be a positive integer" >&2
       return 2
     fi
+  elif [[ "$TARGET" == android* ]]; then
+    # All workers share one device; host CPU count is not its memory budget.
+    jobs=1
   else
     jobs=$(detected_jobs)
   fi
