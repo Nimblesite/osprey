@@ -341,7 +341,7 @@ mod tests {
     #[test]
     fn reports_syntax_error() {
         let parsed = parse_program("fn (= \n");
-        assert!(!parsed.errors.is_empty());
+        assert_ne!(parsed.errors, Vec::<crate::SyntaxError>::new());
     }
 
     #[test]

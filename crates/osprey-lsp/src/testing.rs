@@ -421,7 +421,7 @@ mod tests {
             "shadowed by a function"
         );
         assert_eq!(tests_json(&shadowed), "[]");
-        assert!(test_case_names(&shadowed).is_empty());
+        assert_eq!(test_case_names(&shadowed), Vec::<String>::new());
         assert_eq!(test_case_hover(&shadowed, 2), None);
 
         // An `extern` named `test` shadows it just the same.

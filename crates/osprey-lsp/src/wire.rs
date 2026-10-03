@@ -619,7 +619,7 @@ mod tests {
         let valid = json!({"range":{"start":{"line":2,"character":3},"end":{"line":2,"character":5}},"context":{"only":["quickfix",7,"source.fixAll"]}});
         assert_eq!(action_range(&valid), Some((2, 3, 2, 5)));
         assert_eq!(action_kinds(&valid), ["quickfix", "source.fixAll"]);
-        assert!(action_kinds(&json!({})).is_empty());
+        assert_eq!(action_kinds(&json!({})), Vec::<String>::new());
         assert_eq!(action_range(&json!({})), None);
         for (path, replacement) in [
             ("/range/start/line", Value::Null),

@@ -366,7 +366,7 @@ mod tests {
         assert_eq!(model.frames.len(), 3);
         assert_eq!(model.stacks.first().unwrap().as_slice(), &[0, 1, 2]);
         assert_eq!(model.root_first(0), vec![2, 1, 0]);
-        assert!(model.root_first(9).is_empty());
+        assert_eq!(model.root_first(9), Vec::<usize>::new());
     }
 
     #[test]

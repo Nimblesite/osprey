@@ -82,7 +82,10 @@ fn app_globals_remain_initialized_after_the_host_calls_entry() {
     let parsed = osprey_syntax::parse_program(
         "let greeting = \"hello\" + \" world\"\nfn greet() = greeting\n",
     );
-    assert!(osprey_types::check_program(&parsed.program).is_empty());
+    assert_eq!(
+        osprey_types::check_program(&parsed.program),
+        Vec::<osprey_types::TypeError>::new()
+    );
     let (ir, header) =
         source(&parsed.program, "globals.osp", Target::Device, false).expect("library source");
     assert!(header.contains("osprey_greet(void)"));

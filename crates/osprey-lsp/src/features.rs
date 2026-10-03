@@ -480,8 +480,14 @@ mod tests {
         // A two-space gap guarantees a column that is over neither word.
         let src = "let a  =  b\n";
         // Column 6 sits in the double space between `a` and `=`.
-        assert!(definition(src, "file:///a.osp", 0, 6, U16).is_empty());
-        assert!(references(src, "file:///a.osp", 0, 6, U16, true).is_empty());
+        assert_eq!(
+            definition(src, "file:///a.osp", 0, 6, U16),
+            Vec::<Location>::new()
+        );
+        assert_eq!(
+            references(src, "file:///a.osp", 0, 6, U16, true),
+            Vec::<Location>::new()
+        );
         // A line past the end of the file yields no word either.
         assert!(hover(src, "file:///a.osp", 99, 0, U16).is_none());
     }

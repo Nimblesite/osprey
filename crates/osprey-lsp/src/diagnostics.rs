@@ -646,7 +646,7 @@ mod tests {
             let (sl, sc, el, ec) = d.range;
             assert_eq!(sl, el, "single-line span: {d:?}");
             assert!(ec > sc, "non-empty span: {d:?}");
-            assert!(!d.message.is_empty());
+            assert_ne!(d.message, "");
         }
     }
 

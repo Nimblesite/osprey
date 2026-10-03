@@ -194,7 +194,10 @@ mod tests {
         let source = "fn choose(value, ignored) = {\n let spare: int = 1\n value\n}\nlet result = choose(2, 3)\n";
         let parsed = osprey_syntax::parse_program(source);
         assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-        assert!(osprey_types::check_program(&parsed.program).is_empty());
+        assert_eq!(
+            osprey_types::check_program(&parsed.program),
+            Vec::<osprey_types::TypeError>::new()
+        );
         let warnings = super::collect(&parsed.program);
         let input = CompilationInput::script("mixed.osp", source.to_owned(), parsed.program);
         assert_eq!(render(&input, &warnings), Some(
@@ -231,8 +234,8 @@ mod tests {
     #[test]
     fn an_invalid_program_retains_errors_and_has_no_speculative_advice() {
         let parsed = osprey_syntax::parse_program("fn broken(unused) = missing\n");
-        assert!(parsed.errors.is_empty());
-        assert!(super::collect(&parsed.program).is_empty());
+        assert_eq!(parsed.errors, Vec::<osprey_syntax::SyntaxError>::new());
+        assert_eq!(super::collect(&parsed.program), Vec::<TypeWarning>::new());
         assert_eq!(
             crate::report_type_errors(&CompilationInput::script(
                 "broken.osp",
@@ -284,7 +287,10 @@ mod tests {
         ] {
             let parsed = osprey_syntax::parse_program_with_flavor(source, flavor);
             assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-            assert!(osprey_types::check_program(&parsed.program).is_empty());
+            assert_eq!(
+                osprey_types::check_program(&parsed.program),
+                Vec::<osprey_types::TypeError>::new()
+            );
             let warnings = super::collect(&parsed.program);
             let input = CompilationInput::script("top-level", source.to_owned(), parsed.program);
             assert_eq!(render(&input, &warnings), Some("\ntop-level\n  1:0  warning: unused pattern binding `unused`\n\n1 warning (unused-pattern-binding)".to_owned()));

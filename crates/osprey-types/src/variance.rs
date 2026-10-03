@@ -307,13 +307,19 @@ mod tests {
             position: None,
         };
         // `out T` in result position: legal.
-        assert!(validate_effect_decl(&ctx, "Ask", &out_t, &[op("fn() -> T")]).is_empty());
+        assert_eq!(
+            validate_effect_decl(&ctx, "Ask", &out_t, &[op("fn() -> T")]),
+            Vec::<TypeError>::new()
+        );
         // `out T` in an operation parameter: rejected.
         let errs = validate_effect_decl(&ctx, "Bad", &out_t, &[op("fn(T) -> Unit")]);
         assert!(errs.iter().any(|e| e.message.contains("input position")));
         // `in T` flips: parameter legal, result rejected.
         let in_t = [tp("T", Variance::Contravariant)];
-        assert!(validate_effect_decl(&ctx, "Emit", &in_t, &[op("fn(T) -> Unit")]).is_empty());
+        assert_eq!(
+            validate_effect_decl(&ctx, "Emit", &in_t, &[op("fn(T) -> Unit")]),
+            Vec::<TypeError>::new()
+        );
         let errs = validate_effect_decl(&ctx, "Bad2", &in_t, &[op("fn() -> T")]);
         assert!(errs.iter().any(|e| e.message.contains("output position")));
     }
@@ -364,6 +370,9 @@ mod tests {
         assert!(errs
             .iter()
             .any(|e| e.message.contains("only valid on type")));
-        assert!(reject_fn_variance("map", &[tp("T", Variance::Invariant)]).is_empty());
+        assert_eq!(
+            reject_fn_variance("map", &[tp("T", Variance::Invariant)]),
+            Vec::<TypeError>::new()
+        );
     }
 }

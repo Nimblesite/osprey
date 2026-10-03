@@ -1829,7 +1829,7 @@ mod tests {
             "expected function, got {s:?}"
         );
         if let Stmt::Function { parameters, .. } = s {
-            assert!(parameters.is_empty());
+            assert_eq!(parameters, Vec::<osprey_ast::Parameter>::new());
         }
     }
 
@@ -1920,7 +1920,7 @@ mod tests {
             ..
         } = s
         {
-            assert!(arguments.is_empty());
+            assert_eq!(arguments, Vec::<Expr>::new());
             assert_eq!(*function, Expr::Identifier("make".to_owned()));
         }
     }
@@ -2368,7 +2368,7 @@ mod tests {
         } = s
         {
             assert_eq!(name, "Outcome");
-            assert!(type_params.is_empty());
+            assert_eq!(type_params, Vec::<osprey_ast::TypeParam>::new());
             assert!(validation_func.is_none());
             assert_eq!(variants.len(), 2);
             assert_eq!(variants[0].name, "Ok");
@@ -2388,9 +2388,9 @@ mod tests {
         if let Stmt::Type { variants, .. } = s {
             assert_eq!(variants.len(), 2);
             assert_eq!(variants[0].name, "Active");
-            assert!(variants[0].fields.is_empty());
+            assert_eq!(variants[0].fields, Vec::<osprey_ast::TypeField>::new());
             assert_eq!(variants[1].name, "Inactive");
-            assert!(variants[1].fields.is_empty());
+            assert_eq!(variants[1].fields, Vec::<osprey_ast::TypeField>::new());
         }
     }
 
@@ -2466,7 +2466,10 @@ mod tests {
             assert_eq!(operations.len(), 1);
             assert_eq!(operations[0].name, "mark");
             assert_eq!(operations[0].ty, "fn(string) -> Unit");
-            assert!(operations[0].parameters.is_empty());
+            assert_eq!(
+                operations[0].parameters,
+                Vec::<osprey_ast::Parameter>::new()
+            );
             assert_eq!(operations[0].return_type, "");
         }
     }
@@ -2500,7 +2503,7 @@ mod tests {
         if let Stmt::Function { effects, .. } = s {
             let names: Vec<&str> = effects.iter().map(|e| e.name.as_str()).collect();
             assert_eq!(names, vec!["Trace"]);
-            assert!(effects[0].type_args.is_empty());
+            assert_eq!(effects[0].type_args, Vec::<osprey_ast::TypeExpr>::new());
         }
     }
 
@@ -2599,7 +2602,7 @@ mod tests {
             assert_eq!(effect, "Trace");
             assert_eq!(operation, "mark");
             assert_eq!(arguments, vec![Expr::Str("one".to_owned())]);
-            assert!(named_arguments.is_empty());
+            assert_eq!(named_arguments, Vec::<osprey_ast::NamedArgument>::new());
         }
     }
 

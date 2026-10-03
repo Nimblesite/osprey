@@ -941,7 +941,7 @@ mod tests {
         match one_stmt("type Tree = Leaf | Node(Tree, Tree)\n") {
             Stmt::Type { variants, .. } => {
                 assert_eq!(variants.len(), 2);
-                assert!(variants[0].fields.is_empty());
+                assert_eq!(variants[0].fields, Vec::<osprey_ast::TypeField>::new());
                 let slots: Vec<&str> = variants[1].fields.iter().map(|f| f.name.as_str()).collect();
                 assert_eq!(slots, ["0", "1"]);
                 assert_eq!(variants[1].fields[0].ty, "Tree");
@@ -1161,9 +1161,10 @@ mod tests {
             "a stray //! must never become the file doc"
         );
         // An ordinary `//` comment in the same position stays trivia.
-        assert!(parse_program("let x = 1\n// just a comment\n")
-            .errors
-            .is_empty());
+        assert_eq!(
+            parse_program("let x = 1\n// just a comment\n").errors,
+            Vec::<crate::SyntaxError>::new()
+        );
     }
 
     #[test]
@@ -1193,7 +1194,7 @@ mod tests {
             Stmt::Function { effects, .. } => {
                 let names: Vec<&str> = effects.iter().map(|e| e.name.as_str()).collect();
                 assert_eq!(names, vec!["Log", "State"]);
-                assert!(effects[0].type_args.is_empty());
+                assert_eq!(effects[0].type_args, Vec::<osprey_ast::TypeExpr>::new());
                 assert_eq!(effects[1].type_args.len(), 1);
                 assert_eq!(effects[1].type_args[0].name, "int");
             }

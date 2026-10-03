@@ -79,7 +79,10 @@ fn annotation_edits_retain_generic_effect_and_contract_headers() {
         assert!(annotation_edits(source, Flavor::Ml).is_empty(), "{source}");
     }
     for flavor in [Flavor::Default, Flavor::Ml] {
-        assert!(annotation_edits("fn broken(: int", flavor).is_empty());
+        assert_eq!(
+            annotation_edits("fn broken(: int", flavor),
+            Vec::<annotation_edits::AnnotationEdit>::new()
+        );
     }
 }
 

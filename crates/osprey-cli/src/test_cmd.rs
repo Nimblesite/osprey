@@ -489,7 +489,10 @@ mod tests {
         );
 
         // An unreadable directory yields nothing rather than panicking.
-        assert!(discover(&root.join("does-not-exist")).is_empty());
+        assert_eq!(
+            discover(&root.join("does-not-exist")),
+            Vec::<PathBuf>::new()
+        );
 
         let _ = std::fs::remove_dir_all(&root);
     }

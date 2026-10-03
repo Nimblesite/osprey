@@ -2532,10 +2532,10 @@ mod tests {
     #[test]
     fn map_literals_and_public_operations_reject_non_string_keys() {
         let literal_errors = bad("let m = { 1: \"one\" }\n");
-        assert!(!literal_errors.is_empty());
+        assert_ne!(literal_errors, Vec::<crate::error::TypeError>::new());
 
         let operation_errors = bad("let m = mapSet(Map(), 1, \"one\")\n");
-        assert!(!operation_errors.is_empty());
+        assert_ne!(operation_errors, Vec::<crate::error::TypeError>::new());
     }
 
     #[test]
@@ -2617,8 +2617,14 @@ mod tests {
     fn map_index_yields_value_result() {
         ok("fn lookup(m: Map<string, int>) -> Result<int, Error> = m[\"k\"]\n");
         // A key or index that is itself a `Result` is never silently unwrapped.
-        assert!(!bad("fn bad(m: Map<string, int>) = m[checkedAdd(1, 1)]\n").is_empty());
-        assert!(!bad("fn bad(xs: List<int>) = xs[checkedAdd(1, 1)]\n").is_empty());
+        assert_ne!(
+            bad("fn bad(m: Map<string, int>) = m[checkedAdd(1, 1)]\n"),
+            Vec::<crate::error::TypeError>::new()
+        );
+        assert_ne!(
+            bad("fn bad(xs: List<int>) = xs[checkedAdd(1, 1)]\n"),
+            Vec::<crate::error::TypeError>::new()
+        );
     }
 
     #[test]

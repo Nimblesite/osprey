@@ -332,7 +332,7 @@ fn exports_cannot_depend_on_a_handler_installed_only_by_main() -> Result<(), Str
         "{error}"
     );
     let entry = host_abi_selected(&program, &types, &ir, false)?;
-    assert!(entry.exports.is_empty());
+    assert_eq!(entry.exports, Vec::<Export>::new());
     assert!(with_host_abi(&ir, &entry).is_ok());
     Ok(())
 }

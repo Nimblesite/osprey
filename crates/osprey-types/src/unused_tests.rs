@@ -160,9 +160,12 @@ fn curried_ml_parameters_and_locals_follow_the_lowered_scopes() {
 #[test]
 fn invalid_programs_never_raise_speculative_unused_warnings() {
     let parsed = parse_program_with_flavor("fn broken(unused) = missing\n", Flavor::Default);
-    assert!(parsed.errors.is_empty());
-    assert!(!crate::check_program(&parsed.program).is_empty());
-    assert!(unused_symbols(&parsed.program).is_empty());
+    assert_eq!(parsed.errors, Vec::<osprey_syntax::SyntaxError>::new());
+    assert_ne!(
+        crate::check_program(&parsed.program),
+        Vec::<crate::error::TypeError>::new()
+    );
+    assert_eq!(unused_symbols(&parsed.program), Vec::<UnusedSymbol>::new());
 }
 
 #[test]
