@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 # Install the `deslop` duplication-gate CLI at the LATEST published release.
 #
-# Local / devcontainer installer for the gate binary. Tracks the newest release
-# by default so a fresh checkout always runs the current deslop; export
-# DESLOP_VERSION=X.Y.Z to pin a specific release. CI uses the Deslop action
-# pinned to 0.27.0; use DESLOP_VERSION=0.27.0 to reproduce that gate locally.
+# Local / devcontainer installer for the gate binary. Always resolves the
+# newest release, matching the CI duplication gate.
 # Downloads the release tarball,
 # verifies its SHA-256, and installs the `deslop` binary onto PATH.
 #
@@ -21,26 +19,16 @@ say()  { echo -e "${CYAN}${BOLD}▶ $*${RESET}"; }
 ok()   { echo -e "${GREEN}✓ $*${RESET}"; }
 fail() { echo -e "${RED}✗ $*${RESET}" >&2; exit 1; }
 
-# Which release to install. Empty ⇒ resolve the latest published release from
-# the GitHub API so the gate never drifts stale; export DESLOP_VERSION=X.Y.Z to
-# pin a specific one instead.
-DESLOP_VERSION="${DESLOP_VERSION:-}"
-if [[ -z "$DESLOP_VERSION" ]]; then
-    say "Resolving latest deslop release"
-    # No pipeline here, on purpose. `curl | grep -m1` failed the installer:
-    # grep exits on the first match, curl dies of SIGPIPE, and `pipefail`
-    # failed the whole script even though the version had been resolved.
-    # Piping a captured body into an early-exiting matcher has the same hazard,
-    # so the body is captured first and matched from a here-string.
-    latest="$(curl -sSfL https://api.github.com/repos/Nimblesite/Deslop/releases/latest)" \
-        || fail "could not reach the GitHub API to resolve the latest deslop release"
-    DESLOP_VERSION="$(awk -F'"' '/"tag_name"/ { v = $4; sub(/^v/, "", v); print v; exit }' \
-        <<<"$latest")"
-    [[ -n "$DESLOP_VERSION" ]] || fail "could not resolve latest deslop release from the GitHub API"
-fi
+# Avoid `curl | grep -m1`: grep's early exit fails under pipefail.
+say "Resolving latest deslop release"
+latest="$(curl -sSfL https://api.github.com/repos/Nimblesite/Deslop/releases/latest)" \
+    || fail "could not reach the GitHub API to resolve the latest deslop release"
+DESLOP_VERSION="$(awk -F'"' '/"tag_name"/ { v = $4; sub(/^v/, "", v); print v; exit }' \
+    <<<"$latest")"
+[[ -n "$DESLOP_VERSION" ]] || fail "could not resolve latest deslop release from the GitHub API"
 BASE_URL="https://github.com/Nimblesite/Deslop/releases/download/v${DESLOP_VERSION}"
 
-# Already at the pinned version? Nothing to do (keeps `make setup` idempotent).
+# Already at the latest release? Nothing to do (keeps `make setup` idempotent).
 if command -v deslop &>/dev/null && deslop --version 2>/dev/null | grep -q "${DESLOP_VERSION}"; then
     ok "deslop ${DESLOP_VERSION} already installed ($(command -v deslop))"
     exit 0

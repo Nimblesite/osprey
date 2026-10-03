@@ -34,6 +34,12 @@ typedef struct OspreyMapNode {
   int64_t *coll_values;
 } OspreyMapNode;
 
+/* The ARC metadata reserves 56 bits for offsets after its 8-bit kind tag. */
+_Static_assert(sizeof(OspreyMapNode) +
+                       (OSPREY_LIST_MASK + 1) * sizeof(OspreyMapNode *) <=
+                   56 * sizeof(uint64_t),
+               "HAMT children exceed the ARC layout mask");
+
 struct OspreyMap {
   OspreyKeyType key_type;
   int64_t length;
@@ -80,17 +86,24 @@ static inline OspreyMapPolicy map_policy(OspreyKeyType kt, int value_managed) {
   return (OspreyMapPolicy)kt | (value_managed ? MAP_VALUE_MANAGED : 0);
 }
 
-/* Layout words. A HAMT node owns its out-of-line `children` / `coll_keys` /
- * `coll_values` arrays and the nodes it shares are refcounted, so a dead
- * persistent version reclaims exactly the spine it stopped sharing. The
+/* Layout words. A HAMT internal node owns inline child slots; collision nodes
+ * own out-of-line `coll_keys` / `coll_values` arrays. Shared nodes are
+ * refcounted, so a dead persistent version reclaims its unshared spine. The
  * `leaf_key` / `leaf_value` inline element slots are walked only when that
  * side of the entry is a managed pointer — releasing a type-blind scalar whose
  * bits collided with a live address would be a use-after-free. The `coll_*`
  * arrays carry the same decision as their own OSP_MEM_PTR_ARRAY / RAW stamp.
  * No-ops off ARC. */
-static inline int64_t map_node_layout(OspreyMapPolicy pol) {
-  uint64_t bits = OSP_MEM_WORD(offsetof(OspreyMapNode, children)) |
-                  OSP_MEM_WORD(offsetof(OspreyMapNode, coll_keys)) |
+static inline int64_t map_node_layout(OspreyMapPolicy pol,
+                                       OspreyMapNodeKind kind, uint32_t count) {
+  if (kind == NODE_INTERNAL) {
+    uint64_t bits = 0;
+    for (uint32_t i = 0; i < count; i++) {
+      bits |= OSP_MEM_WORD(sizeof(OspreyMapNode) + i * sizeof(OspreyMapNode *));
+    }
+    return OSP_MEM_LAYOUT(bits);
+  }
+  uint64_t bits = OSP_MEM_WORD(offsetof(OspreyMapNode, coll_keys)) |
                   OSP_MEM_WORD(offsetof(OspreyMapNode, coll_values));
   if (map_key_is_managed(pol)) {
     bits |= OSP_MEM_WORD(offsetof(OspreyMapNode, leaf_key));

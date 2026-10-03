@@ -480,10 +480,8 @@ impl Checker {
         // yet. A `Success`/`Error` pattern is itself the evidence, so pin the
         // scrutinee to a Result with an open payload. Binding the whole
         // variable as the payload instead detached the two: once the scrutinee
-        // later became `Result<int, MathError>` — as a deferred arithmetic
-        // operand does ([`crate::expr::Checker::deferred_arith`]) — `value` was
-        // still the Result, and `Success { value: value }` failed with `cannot
-        // unify Result<int, MathError> with int`.
+        // later became `Result<int, Error>`, `value` was still the Result, and
+        // `Success { value: value }` failed to unify it with `int`.
         if matches!(self.ctx.prune(disc), Type::Var(_)) {
             let open = Type::result(self.ctx.fresh(), self.ctx.fresh());
             self.push_unify(&open, disc);
@@ -747,7 +745,7 @@ mod tests {
     fn structural_pattern_binds_record_fields() {
         ok("type Point = { x: int, y: int }\n\
             fn getx(p: Point) -> int = match p {\n\
-              { x, y } => (x + y) ?: 0\n\
+              { x, y } => x + y\n\
             }\n");
         // An UNRESOLVED scrutinee refuses a structural arm: the old contract
         // bound its fields as fresh variables, which let the body read each
@@ -905,7 +903,7 @@ mod tests {
         // type ([PATTERN-TUPLE]).
         ok("type Pair = Pair(int, string)\n\
             fn f(p: Pair) -> int = match p {\n\
-              (n, s) => n + length(s) ?: 0\n\
+              (n, s) => n + length(s)\n\
             }\n");
     }
 
@@ -1064,7 +1062,7 @@ mod tests {
         // field's declared type.
         ok("type Point = { x: int, y: int }\n\
             fn sum() -> int = match Point { x: 1, y: 2 } {\n\
-              { x, y } => (x + y) ?: 0\n\
+              { x, y } => x + y\n\
             }\n");
     }
 

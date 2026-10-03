@@ -39,7 +39,9 @@ run_wasm() {
   "$NODE" "$SMOKE" "$module" >"$out" 2>"$err"
 }
 
-# The C host every mobile archive is linked into. It supplies the executable
+# The C host every mobile archive is linked into. It calls only `osprey_main`,
+# so corpus builds request `--entry-only`; app builds retain strict export checks.
+# It supplies the executable
 # entry the library deliberately does not have, and chdir's into the program's
 # own scratch directory so file-writing programs cannot collide when the corpus
 # runs in parallel. [IOS-TARGET-ENTRY]
@@ -57,7 +59,7 @@ int main(int argc, char **argv) {
 run_ios() {
   local file=$1 out=$2 err=$3 work=$4
   mkdir -p "$work" || return 1
-  if ! $BIN "$file" --target=ios-sim --compile -o "$work/golden.a" >"$err" 2>&1; then
+  if ! $BIN "$file" --target=ios-sim --entry-only --compile -o "$work/golden.a" >"$err" 2>&1; then
     [[ -n $(target_rejection "$err") ]] && return $SKIP_CODE
     return 1
   fi
@@ -76,7 +78,7 @@ run_android() {
   local file=$1 out=$2 err=$3 work=$4 index=$5
   local -a adb=("$ANDROID_ADB_BIN" -s "$ANDROID_SERIAL")
   mkdir -p "$work" || return 1
-  if ! $BIN "$file" --target=$TARGET --compile -o "$work/golden.a" >"$err" 2>&1; then
+  if ! $BIN "$file" --target=$TARGET --entry-only --compile -o "$work/golden.a" >"$err" 2>&1; then
     [[ -n $(target_rejection "$err") ]] && return $SKIP_CODE
     return 1
   fi

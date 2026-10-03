@@ -73,24 +73,22 @@ static uint32_t index_for(uint32_t bitmap, uint32_t bit) {
   return (uint32_t)__builtin_popcount(bitmap & (bit - 1u));
 }
 
-/* Every node and every out-of-line array below is stamped with its layout so a
- * release walks exactly what it owns — skeleton plus the element slots the
- * policy says are managed (map_node_layout in map_runtime_internal.h).
+/* Every node is stamped with its owned slots. Internal children live inline,
+ * so a path copy needs one allocation and ARC walks those slots directly.
  * [GC-ARC-PERCEUS] */
 static OspreyMapNode *alloc_node(OspreyMapNodeKind kind, uint32_t h,
-                                 OspreyMapPolicy pol) {
-  OspreyMapNode *n = (OspreyMapNode *)calloc(1, sizeof(OspreyMapNode));
-  osp_mem_set_layout(n, map_node_layout(pol));
+                                 uint32_t count, OspreyMapPolicy pol) {
+  size_t bytes = sizeof(OspreyMapNode) +
+                 (kind == NODE_INTERNAL ? (size_t)count * sizeof(OspreyMapNode *) : 0);
+  OspreyMapNode *n = (OspreyMapNode *)osp_alloc_tagged_noinit(
+      (int64_t)bytes, map_node_layout(pol, kind, count));
+  memset(n, 0, bytes);
   n->kind = kind;
   n->hash = h;
+  if (kind == NODE_INTERNAL) {
+    n->children = (OspreyMapNode **)(n + 1);
+  }
   return n;
-}
-
-static OspreyMapNode **alloc_kids(size_t slots) {
-  OspreyMapNode **k =
-      (OspreyMapNode **)calloc(slots, sizeof(OspreyMapNode *));
-  osp_mem_set_layout(k, OSP_MEM_PTR_ARRAY);
-  return k;
 }
 
 /* A managed element array is walked when its owning node dies; a scalar one is
@@ -122,25 +120,23 @@ static void release_slot(int64_t v, int managed) {
 /* TRANSFERS `key` and `value`. */
 static OspreyMapNode *make_leaf(uint32_t h, int64_t key, int64_t value,
                                 OspreyMapPolicy pol) {
-  OspreyMapNode *n = alloc_node(NODE_LEAF, h, pol);
+  OspreyMapNode *n = alloc_node(NODE_LEAF, h, 0, pol);
   n->leaf_key = key;
   n->leaf_value = value;
   return n;
 }
 
 static OspreyMapNode *make_internal(uint32_t bitmap, uint32_t count,
-                                    OspreyMapNode **children,
                                     OspreyMapPolicy pol) {
-  OspreyMapNode *n = alloc_node(NODE_INTERNAL, 0u, pol);
+  OspreyMapNode *n = alloc_node(NODE_INTERNAL, 0u, count, pol);
   n->bitmap = bitmap;
   n->count = count;
-  n->children = children;
   return n;
 }
 
 static OspreyMapNode *make_collision(uint32_t h, uint32_t count, int64_t *keys,
                                      int64_t *values, OspreyMapPolicy pol) {
-  OspreyMapNode *n = alloc_node(NODE_COLLISION, h, pol);
+  OspreyMapNode *n = alloc_node(NODE_COLLISION, h, 0, pol);
   n->count = count;
   n->coll_keys = keys;
   n->coll_values = values;
@@ -155,11 +151,15 @@ static void retain_kids(OspreyMapNode **src, uint32_t count) {
   }
 }
 
-static OspreyMapNode **clone_children(OspreyMapNode **src, uint32_t count) {
-  OspreyMapNode **out = alloc_kids((size_t)count + 1);
-  if (src != NULL) {
-    memcpy(out, src, (size_t)count * sizeof(OspreyMapNode *));
-    retain_kids(out, count);
+static OspreyMapNode *copy_internal_except(OspreyMapNode *src, uint32_t idx,
+                                            OspreyMapPolicy pol) {
+  OspreyMapNode *out = make_internal(src->bitmap, src->count, pol);
+  memcpy(out->children, src->children,
+         (size_t)src->count * sizeof(OspreyMapNode *));
+  for (uint32_t i = 0; i < src->count; i++) {
+    if (i != idx) {
+      osp_retain(out->children[i]);
+    }
   }
   return out;
 }
@@ -198,18 +198,18 @@ static OspreyMapNode *merge_leaves(OspreyMapNode *a, OspreyMapNode *b,
   uint32_t bit_a = bit_for(a->hash, shift);
   uint32_t bit_b = bit_for(b->hash, shift);
   if (bit_a == bit_b) {
-    OspreyMapNode **kids = alloc_kids(1);
-    kids[0] = merge_leaves(a, b, shift + OSPREY_MAP_BITS, pol);
-    return make_internal(bit_a, 1u, kids, pol);
+    OspreyMapNode *n = make_internal(bit_a, 1u, pol);
+    n->children[0] = merge_leaves(a, b, shift + OSPREY_MAP_BITS, pol);
+    return n;
   }
-  OspreyMapNode **kids = alloc_kids(2);
+  OspreyMapNode *n = make_internal(bit_a | bit_b, 2u, pol);
   uint32_t idx_a = index_for(bit_a | bit_b, bit_a);
   uint32_t idx_b = index_for(bit_a | bit_b, bit_b);
-  kids[idx_a] = a;
-  kids[idx_b] = b;
+  n->children[idx_a] = a;
+  n->children[idx_b] = b;
   osp_retain(a);
   osp_retain(b);
-  return make_internal(bit_a | bit_b, 2u, kids, pol);
+  return n;
 }
 
 /* Split borrowed `node` and a fresh leaf into a shared subtree. merge_leaves
@@ -285,19 +285,18 @@ OspreyMapNode *osprey_map_node_assoc(OspreyMapNode *node, int32_t shift,
     OspreyMapNode *child = node->children[idx];
     OspreyMapNode *new_child = osprey_map_node_assoc(
         child, shift + OSPREY_MAP_BITS, hash, key, value, pol, grew);
-    OspreyMapNode **new_kids = clone_children(node->children, node->count);
-    osp_release(new_kids[idx]); /* the clone's dup on the replaced child */
-    new_kids[idx] = new_child;  /* transfer the +1 from the recursive call */
-    return make_internal(node->bitmap, node->count, new_kids, pol);
+    OspreyMapNode *out = copy_internal_except(node, idx, pol);
+    out->children[idx] = new_child;
+    return out;
   }
   *grew = 1;
-  OspreyMapNode **new_kids = alloc_kids((size_t)node->count + 1u);
-  memcpy(new_kids, node->children, (size_t)idx * sizeof(OspreyMapNode *));
-  new_kids[idx] = make_leaf(hash, key, value, pol);
-  memcpy(new_kids + idx + 1, node->children + idx,
+  OspreyMapNode *out = make_internal(node->bitmap | bit, node->count + 1u, pol);
+  memcpy(out->children, node->children, (size_t)idx * sizeof(OspreyMapNode *));
+  out->children[idx] = make_leaf(hash, key, value, pol);
+  memcpy(out->children + idx + 1, node->children + idx,
          (size_t)(node->count - idx) * sizeof(OspreyMapNode *));
   retain_kids(node->children, node->count);
-  return make_internal(node->bitmap | bit, node->count + 1u, new_kids, pol);
+  return out;
 }
 
 int osprey_map_node_lookup(OspreyMapNode *node, int32_t shift, uint32_t hash,
@@ -413,15 +412,15 @@ OspreyMapNode *osprey_map_node_remove(OspreyMapNode *node, int32_t shift,
       return NULL;
     }
     uint32_t new_count = node->count - 1u;
-    OspreyMapNode **new_kids = alloc_kids((size_t)new_count);
-    memcpy(new_kids, node->children, (size_t)idx * sizeof(OspreyMapNode *));
-    memcpy(new_kids + idx, node->children + idx + 1,
+    OspreyMapNode *out = make_internal(node->bitmap & ~bit, new_count, pol);
+    memcpy(out->children, node->children,
+           (size_t)idx * sizeof(OspreyMapNode *));
+    memcpy(out->children + idx, node->children + idx + 1,
            (size_t)(node->count - idx - 1u) * sizeof(OspreyMapNode *));
-    retain_kids(new_kids, new_count);
-    return make_internal(node->bitmap & ~bit, new_count, new_kids, pol);
+    retain_kids(out->children, new_count);
+    return out;
   }
-  OspreyMapNode **new_kids = clone_children(node->children, node->count);
-  osp_release(new_kids[idx]); /* the clone's dup on the replaced child */
-  new_kids[idx] = new_child;  /* transfer the +1 from the recursive call */
-  return make_internal(node->bitmap, node->count, new_kids, pol);
+  OspreyMapNode *out = copy_internal_except(node, idx, pol);
+  out->children[idx] = new_child;
+  return out;
 }

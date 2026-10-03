@@ -137,7 +137,9 @@ fn a_curried_ml_installer_emits_a_linkable_resume_trampoline() {
 
 /// The example the ML flavor spec itself prints under [FLAVOR-ML-BIND]
 /// (docs/specs/0024-MLFlavorSyntax.md): a single-line handler arm that assigns
-/// to a handler-owned cell, `tick => requests := (requests + 1) ?: requests`.
+/// to a handler-owned cell, `tick => requests := requests + 1`. The arm's `+`
+/// may perform `Arith.overflow` ([ARITH-EFFECT-DISCHARGE]), so the region names
+/// a wrapping policy around it.
 ///
 /// DEFECT: the ML parser rejects `:=` in a single-line arm body; only the
 /// indented-block form parses. The spec's own example does not compile, so
@@ -151,8 +153,10 @@ fn a_single_line_ml_handler_arm_may_assign_to_its_cell() {
         "\n",
         "mut requests = 0\n",
         "total =\n",
+        "    handle Arith\n",
+        "        overflow _ _ _ wrapped => wrapped\n",
         "    handle Counter\n",
-        "        tick => requests := (requests + 1) ?: requests\n",
+        "        tick => requests := requests + 1\n",
         "    perform Counter.tick ()\n",
         "\n",
         "print \"${requests}\"\n",

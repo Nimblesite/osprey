@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 (** Portable cross-contract oracle for [FLAVOR-ML-BIND], [FLAVOR-ML-CALL],
     [FLAVOR-ML-GENERICS], [FLAVOR-ML-LIST], [FLAVOR-ML-MAP],
     [FLAVOR-ML-INDEX], [TYPE-GENERICS-FN], [TYPE-LIST], [TYPE-MAP],
@@ -30,12 +44,12 @@ helloSmokeCase () =
     // Preserve both complete rendered lines.
     checkAll "hello legacy rendered lines" [
         greeting == "Hello from the ML flavor",
-        "2 + 3 = ${2 + 3}" == "2 + 3 = Success(5)"
+        "2 + 3 = ${2 + 3}" == "2 + 3 = 5"
     ]
     // Check the dynamic values independently.
     checkAll "hello legacy constituent values" [
         greeting == "Hello from the ML flavor",
-        (2 + 3 ?: 0) == 5
+        (2 + 3 ) == 5
     ]
     // Exercise useful greeting boundaries.
     checkAll "hello greeting edge cases" [
@@ -84,9 +98,10 @@ helloSmokeCase () =
         bucketAt (numberBuckets, "large", 2, 99) == 34,
         bucketAt (numberBuckets, "missing", 0, 99) == 99,
         "${bucketAt (wordBuckets, "targets", 0, "missing")}/${bucketAt (wordBuckets, "targets", 1, "missing")}" == "IR/wasm",
-        "${bucketAt (numberBuckets, "small", 0, 99) + bucketAt (numberBuckets, "small", 1, 99) ?: 0}" == "5",
+        "${bucketAt (numberBuckets, "small", 0, 99) + bucketAt (numberBuckets, "small", 1, 99) }" == "5",
         listLength (mapKeys wordBuckets) == 2,
         listLength (mapValues numberBuckets) == 2
     ]
 
-test "top-level binding and interpolation retain both hello lines" helloSmokeCase
+
+test "top-level binding and interpolation retain both hello lines" (\() => exactArithmetic (helloSmokeCase))

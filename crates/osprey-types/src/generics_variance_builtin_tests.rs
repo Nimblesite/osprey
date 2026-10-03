@@ -20,18 +20,18 @@ use crate::testutil::plain_cases;
 
 /// Producers for every built-in shape under test, at both instantiations.
 const BUILTINS: &str = "fn listInt() -> List<int> = [1]\n\
-    fn listRes() -> List<Result<int, MathError>> = [20 * 5]\n\
+    fn listRes() -> List<Result<int, string>> = [resInt()]\n\
     fn mapInt() -> Map<string, int> = { \"a\": 1 }\n\
-    fn mapRes() -> Map<string, Result<int, MathError>> = { \"a\": 20 * 5 }\n\
-    fn resInt() -> Result<int, MathError> = 20 * 5\n\
+    fn mapRes() -> Map<string, Result<int, string>> = { \"a\": resInt() }\n\
+    fn resInt() -> Result<int, string> = 20 * 5\n\
     fn one() = 1\n\
     fn fiberInt() -> Fiber<int> = spawn one()\n\
     fn chanInt() -> Channel<int> = Channel(2)\n\
-    fn chanRes() -> Channel<Result<int, MathError>> = Channel(2)\n\
+    fn chanRes() -> Channel<Result<int, string>> = Channel(2)\n\
     fn takesInt(v: int) = true\n\
-    fn takesRes(v: Result<int, MathError>) = true\n\
+    fn takesRes(v: Result<int, string>) = true\n\
     fn givesInt(v: int) = 1\n\
-    fn givesRes(v: int) = v * 2\n";
+    fn givesRes(v: int) -> Result<int, string> = v\n";
 
 // ---------------------------------------------------------------------------
 // The constructor entries: identical instantiations flow, coercions do not
@@ -42,26 +42,26 @@ plain_cases! {
     list_accepts_the_identical_element: flows(BUILTINS, "List<int>", "listInt()");
 
     /// …refuses the coercion in both directions…
-    list_refuses_the_coercion_in_both_directions: blocked(BUILTINS, "List<Result<int, MathError>>", "listInt()"),
+    list_refuses_the_coercion_in_both_directions: blocked(BUILTINS, "List<Result<int, string>>", "listInt()"),
     blocked(BUILTINS, "List<int>", "listRes()");
 
     /// …and refuses an unrelated element.
     list_rejects_an_unrelated_element: blocked(BUILTINS, "List<string>", "listInt()");
 
     /// `Result<out T, out E>`: neither channel carries the coercion inward.
-    result_refuses_the_coercion_in_either_channel: blocked( BUILTINS, "Result<Result<int, MathError>, MathError>", "resInt()", ),
-    blocked( BUILTINS, "Result<int, Result<MathError, MathError>>", "resInt()", );
+    result_refuses_the_coercion_in_either_channel: blocked( BUILTINS, "Result<Result<int, string>, string>", "resInt()", ),
+    blocked( BUILTINS, "Result<int, Result<string, string>>", "resInt()", );
 
     /// The identical `Result` instantiation flows.
-    result_accepts_the_identical_instantiation: flows(BUILTINS, "Result<int, MathError>", "resInt()");
+    result_accepts_the_identical_instantiation: flows(BUILTINS, "Result<int, string>", "resInt()");
 
     /// `Fiber<out T>`: same story for a fiber's answer.
-    fiber_refuses_the_coercion_and_accepts_its_own_answer: blocked(BUILTINS, "Fiber<Result<int, MathError>>", "fiberInt()"),
+    fiber_refuses_the_coercion_and_accepts_its_own_answer: blocked(BUILTINS, "Fiber<Result<int, string>>", "fiberInt()"),
     blocked(BUILTINS, "Fiber<string>", "fiberInt()"),
     flows(BUILTINS, "Fiber<int>", "fiberInt()");
 
     /// `Map<K, out V>`: the value channel refuses the coercion…
-    map_refuses_the_coercion_in_its_value: blocked(BUILTINS, "Map<string, Result<int, MathError>>", "mapInt()"),
+    map_refuses_the_coercion_in_its_value: blocked(BUILTINS, "Map<string, Result<int, string>>", "mapInt()"),
     blocked(BUILTINS, "Map<string, int>", "mapRes()");
 
     /// The key channel cannot be exercised for variance at all: the shipped map
@@ -76,7 +76,7 @@ plain_cases! {
     map_accepts_the_identical_instantiation: flows(BUILTINS, "Map<string, int>", "mapInt()");
 
     /// `Channel<T>` is invariant, and behaves exactly as the covariant entries do.
-    channel_refuses_the_coercion_in_both_directions: blocked(BUILTINS, "Channel<Result<int, MathError>>", "chanInt()"),
+    channel_refuses_the_coercion_in_both_directions: blocked(BUILTINS, "Channel<Result<int, string>>", "chanInt()"),
     blocked(BUILTINS, "Channel<int>", "chanRes()"),
     flows(BUILTINS, "Channel<int>", "chanInt()");
 }
@@ -87,8 +87,8 @@ plain_cases! {
 /// for the same spec sentence.
 #[test]
 fn the_covariant_and_invariant_builtins_agree() {
-    let covariant = accepted(&sites(BUILTINS, "List<Result<int, MathError>>", "listInt()")[0]);
-    let invariant = accepted(&sites(BUILTINS, "Channel<Result<int, MathError>>", "chanInt()")[0]);
+    let covariant = accepted(&sites(BUILTINS, "List<Result<int, string>>", "listInt()")[0]);
+    let invariant = accepted(&sites(BUILTINS, "Channel<Result<int, string>>", "chanInt()")[0]);
     assert!(
         !covariant && !invariant,
         "[TYPE-VARIANCE-COERCION] says an argument position never coerces: \
@@ -107,11 +107,11 @@ plain_cases! {
     a_function_slot_is_contravariant_in_its_parameter: flows(BUILTINS, "(int) -> bool", "takesRes");
 
     /// The widened direction is refused.
-    a_function_slot_rejects_a_widened_parameter: blocked(BUILTINS, "(Result<int, MathError>) -> bool", "takesInt");
+    a_function_slot_rejects_a_widened_parameter: blocked(BUILTINS, "(Result<int, string>) -> bool", "takesInt");
 
     /// "and covariant in returns": a function returning `int` stands where one
     /// returning `Result<int, E>` is expected.
-    a_function_slot_is_covariant_in_its_return: flows(BUILTINS, "(int) -> Result<int, MathError>", "givesInt");
+    a_function_slot_is_covariant_in_its_return: flows(BUILTINS, "(int) -> Result<int, string>", "givesInt");
 
     /// The unwrapping direction is refused.
     a_function_slot_never_unwraps_its_return: blocked(BUILTINS, "(int) -> int", "givesRes");
@@ -131,7 +131,9 @@ fn the_function_rules_stop_at_an_argument_position() {
     let direct = accepted(&sites(BUILTINS, "(int) -> bool", "takesRes")[0]);
     let wrapped = accepted(
         &sites(
-            &format!("{BUILTINS}fn listTakesRes() -> List<(Result<int, MathError>) -> bool> = [takesRes]\n"),
+            &format!(
+                "{BUILTINS}fn listTakesRes() -> List<(Result<int, string>) -> bool> = [takesRes]\n"
+            ),
             "List<(int) -> bool>",
             "listTakesRes()",
         )[0],

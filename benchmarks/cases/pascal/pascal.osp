@@ -1,6 +1,6 @@
 // Binomial coefficient via naive (un-memoised) Pascal recursion C(n,k)=C(n-1,k-1)+C(n-1,k).
-fn add(a, b) = a + b ?: 0
-fn sub(a, b) = a - b ?: 0
+fn add(a, b) = a + b
+fn sub(a, b) = a - b
 fn binom(n, k) = match k {
     0 => 1
     _ => match (k == n) {
@@ -8,4 +8,10 @@ fn binom(n, k) = match k {
         false => add(binom(sub(n, 1), sub(k, 1)), binom(sub(n, 1), k))
     }
 }
-print("${binom(27, 13)}")
+fn main() = {
+    handle Arith { overflow _ _ _ wrapped => {
+            print("unexpected integer overflow")
+            wrapped
+        } }
+    print("${binom(27, 13)}")
+}

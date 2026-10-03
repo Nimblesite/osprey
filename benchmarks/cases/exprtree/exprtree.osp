@@ -7,10 +7,10 @@
 //
 // Modes via the first stdin line: "0"/empty -> fixed seed (deterministic,
 // oracle-checked); "1" -> cryptographically-secure random seed (randomBelow).
-fn add(a, b) = a + b ?: 0
-fn sub(a, b) = a - b ?: 0
-fn mul(a, b) = a * b ?: 0
-fn modp(a, b) = a % b ?: 0
+fn add(a, b) = a + b
+fn sub(a, b) = a - b
+fn mul(a, b) = a * b
+fn modp(a, b) = a % b
 fn r1(x) = modp(mul(x, 16807), 2147483647)
 fn hashAt(seed, i) = r1(r1(add(seed, i)))
 fn addM(a, b) = modp(add(a, b), 1000000007)
@@ -31,5 +31,20 @@ fn eval(e) = match e {
     Mul { l, r } => mulM(eval(l), eval(r))
 }
 fn runOne(seed, t) = eval(build(add(seed, mul(t, 7)), 1, 14))
-let seed = seedOf(input())
-print("${range(0, 10) |> fold(0, |acc, t| => addM(acc, runOne(seed, t)))}")
+
+fn main() = {
+    mut fault = ""
+    handle Arith {
+        overflow op _ _ wrapped => {
+            fault = op
+            wrapped
+        }
+        remainderByZero _ => {
+            fault = "%"
+            0
+        }
+    }
+    let seed = seedOf(input())
+    let answer = range(0, 10) |> fold(0, |acc, t| => addM(acc, runOne(seed, t)))
+    print(fault == "" ? "${answer}" : "arithmetic fault ${fault}")
+}

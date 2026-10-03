@@ -11,7 +11,7 @@ effect Fail {
     control abort fail: fn(string) -> int
 }
 
-fn risky() = (perform Fail.fail("nope") + 1) ?: 0
+fn risky() = wrapAdd(perform Fail.fail("nope"), 1)
 
 fn main() = {
     let outcome = {

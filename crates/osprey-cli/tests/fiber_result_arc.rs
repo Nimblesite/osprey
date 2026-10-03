@@ -126,7 +126,7 @@ fn run_arc(source: &str) -> io::Result<Output> {
 #[test]
 fn awaited_overflow_error_transfer_is_released_under_arc() -> io::Result<()> {
     let source = r"
-fn checked(value: int) -> Result<int, MathError> = value + 1
+fn checked(value) = checkedAdd(value, 1)
 
 let observed = await(spawn checked(9223372036854775807))
 print(toString(observed))
@@ -154,7 +154,7 @@ print(toString(observed))
 #[test]
 fn repeated_awaits_each_receive_a_live_result_under_arc() -> io::Result<()> {
     let source = r"
-fn checked(value: int) -> Result<int, MathError> = value + 1
+fn checked(value) = checkedAdd(value, 1)
 
 let task = spawn checked(41)
 let first = await(task)
@@ -218,12 +218,12 @@ fn scalar_return_releases_map_on_nonreading_match_arm_under_arc() -> io::Result<
     let source = r#"
 fn conditionalBlock(value) = {
     let scoreMap = { "test1": 84, "test2": 90 }
-    let doubled = value * 2
+    let doubled = checkedMul(value, 2)
     match doubled {
         Success { dValue } => match dValue {
             84 => match scoreMap["test1"] {
                 Success { sValue } => {
-                    let added = sValue + 10
+                    let added = checkedAdd(sValue, 10)
                     match added {
                         Success { value } => value
                         Error { message } => 0

@@ -112,10 +112,11 @@ unhandledOverflow () =
             n := n + 1
             resume n
     pipeline ()
+unhandledOverflow ()
 "#;
     let result = compile(Path::new("unhandled_integer_overflow.test.ospml"), source);
     assert!(
-        matches!(&result, Err(reason) if reason.starts_with("typecheck:")),
+        matches!(&result, Err(reason) if reason.contains("Arith.overflow")),
         "potentially overflowing `n := n + 1` must be rejected at type checking unless its failure is handled; got {result:?}"
     );
 }
@@ -130,10 +131,10 @@ fn inferred_effects_without_handlers_are_rejected_in_both_flavors() {
             "unhandled_inferred_effect.test.osp",
             r"
 effect ArithmeticFailure {
-    raise: fn(string) -> Result<int, MathError>
+    raise: fn(string) -> Result<int, Error>
 }
 
-fn addPreservingError(a, b) = match a + b {
+fn addPreservingError(a, b) = match checkedAdd(a, b) {
     Success { value } => Success { value: value }
     Error { message } => perform ArithmeticFailure.raise(message)
 }
@@ -145,9 +146,9 @@ print(toString(addPreservingError(9223372036854775807, 1)))
             "unhandled_inferred_effect.test.ospml",
             r"
 effect ArithmeticFailure
-    raise : string => Result<int, MathError>
+    raise : string => Result<int, Error>
 
-addPreservingError a b = match a + b
+addPreservingError a b = match checkedAdd a b
     Success value => Success(value = value)
     Error message => perform ArithmeticFailure.raise message
 

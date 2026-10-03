@@ -30,6 +30,7 @@ function hostFinding(
   return {
     env: { PATH: pathVar },
     existsSync: (filePath: string) => present.includes(filePath),
+    readDir: () => [],
     getSetting: () => undefined,
     platform,
     ...extras,
@@ -94,6 +95,14 @@ suite("Osprey lldb-dap Resolution Unit Tests", () => {
   test("the legacy lldb-vscode name is accepted from PATH", () => {
     const found = path.join("/tools", "lldb-vscode");
     const host = hostFinding("linux", "/tools", [found]);
+    assert.strictEqual(resolveLldbDapExecutable({}, host), found);
+  });
+
+  test("Linux finds the newest installed versioned lldb-dap", () => {
+    const found = path.join("/tools", "lldb-dap-21");
+    const host = hostFinding("linux", "/tools", [found, "/tools/lldb-dap-19"], {
+      readDir: () => ["lldb-dap-19", "lldb-dap-21", "lldb-dap-old"],
+    });
     assert.strictEqual(resolveLldbDapExecutable({}, host), found);
   });
 

@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // Fiber execution order remains deterministic when awaited in spawn order.
 // [CONCURRENCY-DETERMINISTIC]
 
@@ -21,12 +40,12 @@ fn calculateComplexity(priority) = match priority {
     Medium => 600
 }
 
-fn calculateTaskTime(complexity: int) = (intDiv(complexity, 10) ?: 0) + 2 ?: 0
+fn calculateTaskTime(complexity: int) = (intDiv(complexity, 10) ) + 2 
 
-fn processTask(taskId: string, dataSize: int, priority: TaskPriority) -> int ![Logger, Metrics] = {
+fn processTask(taskId: string, dataSize: int, priority: TaskPriority) -> int ![Logger, Metrics, Arith] = {
     perform Logger.info("Starting task: " + taskId + " with data size: " + toString(dataSize))
     let complexity = calculateComplexity(priority)
-    let processed = dataSize * 8 ?: 0
+    let processed = dataSize * 8 
     perform Metrics.recordSuccess(taskId, processed)
     perform Logger.info("Task " + taskId + " completed successfully in " + toString(calculateTaskTime(complexity)) + "ms")
     processed
@@ -35,7 +54,7 @@ fn processTask(taskId: string, dataSize: int, priority: TaskPriority) -> int ![L
 fn processTask1() = processTask(taskId: "task-1", dataSize: 150, priority: High)
 fn processTask2() = processTask(taskId: "task-2", dataSize: 200, priority: Medium)
 fn processTask3() = processTask(taskId: "task-3", dataSize: 75, priority: Urgent)
-fn totalProcessed(first: int, second: int, third: int) = first + second + third ?: 0
+fn totalProcessed(first: int, second: int, third: int) = first + second + third 
 
 let _ = fiber_set_deterministic_mode(enabled: true)
 fn determinismDemo() = {
@@ -61,7 +80,7 @@ fn determinismDemo() = {
     print("Total processed: " + toString(totalProcessed(result1, result2, result3)) + " units")
     print("=== Test Complete ===")
 }
-determinismDemo()
+exactArithmetic(fn() => determinismDemo())
 
 /// Repeats the batch under recording handlers, returning the completion trace
 /// the deterministic scheduler produced followed by the awaited total.
@@ -89,11 +108,12 @@ fn completionTrace() = {
 // runs the three fibers backwards, so asserting the total alone leaves the one
 // property this file exists to prove completely unguarded. The trace pins the
 // spawn order 1, 2, 3. Implements [CONCURRENCY-DETERMINISTIC].
-test("deterministic fibers complete in spawn order", fn() => checkAll("deterministic fiber ordering", [
+
+test("deterministic fibers complete in spawn order", fn() => exactArithmetic(fn() => checkAll("deterministic fiber ordering", [
     completionTrace() == "task-1:1200|task-2:1600|task-3:600|total:3400",
     startsWith(completionTrace(), "task-1:"),
     endsWith(completionTrace(), "total:3400"),
     calculateComplexity(Urgent) == 750,
     calculateComplexity(High) == 450,
     calculateTaskTime(600) == 62
-]))
+])))

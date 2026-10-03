@@ -451,6 +451,7 @@ impl DiagnosticsSink for LspSink {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::ADD_SRC as SRC;
     use crate::wire::assert_at;
     use lspkit_server::jsonrpc::read_message;
     use serde_json::json;
@@ -458,10 +459,6 @@ mod tests {
 
     const URI: &str = "file:///a.osp";
     const ML_URI: &str = "file:///a.ospml";
-
-    /// A full source program exercising functions, a `let`, a type, and calls.
-    const SRC: &str = "fn add(a: int, b: int) -> int = (a + b) ?: 0\n\
-                       let total = add(1, 2)\n";
 
     /// An in-process LSP client driving [`serve`] over two duplex pipes: one for
     /// requests (client -> server) and one for responses (server -> client).

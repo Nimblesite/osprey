@@ -53,20 +53,22 @@ pub(crate) fn accepted(src: &str) -> bool {
 
 /// A covariant container, plus producers at both instantiations.
 const FEED: &str = "type Feed<out T> = Feed { supply: T } | Dry\n\
+    fn resInt() -> Result<int, string> = 100\n\
     fn feedInt() -> Feed<int> = Feed { supply: 1 }\n\
-    fn feedRes() -> Feed<Result<int, MathError>> = Feed { supply: 20 * 5 }\n\
+    fn feedRes() -> Feed<Result<int, string>> = Feed { supply: resInt() }\n\
     fn feedText() -> Feed<string> = Feed { supply: \"s\" }\n";
 
 /// A contravariant container, same shape.
 const GATE: &str = "type Gate<in T> = Gate { admit: (T) -> bool } | Open\n\
     fn gateInt() -> Gate<int> = Gate { admit: |x| => true }\n\
-    fn gateRes() -> Gate<Result<int, MathError>> = Gate { admit: |x| => true }\n\
+    fn gateRes() -> Gate<Result<int, string>> = Gate { admit: |x| => true }\n\
     fn gateText() -> Gate<string> = Gate { admit: |x| => true }\n";
 
 /// An invariant container — the control the other two are measured against.
 const CELL: &str = "type Cell<T> = Cell { slot: T }\n\
+    fn resInt() -> Result<int, string> = 100\n\
     fn cellInt() -> Cell<int> = Cell { slot: 1 }\n\
-    fn cellRes() -> Cell<Result<int, MathError>> = Cell { slot: 20 * 5 }\n\
+    fn cellRes() -> Cell<Result<int, string>> = Cell { slot: resInt() }\n\
     fn cellText() -> Cell<string> = Cell { slot: \"s\" }\n";
 
 /// The containers nested one level inside each other.
@@ -75,19 +77,20 @@ const NESTED: &str = "type Feed<out T> = Feed { supply: T } | Dry\n\
     type Cell<T> = Cell { slot: T }\n\
     fn feedFeedInt() -> Feed<Feed<int>> = Feed { supply: Feed { supply: 1 } }\n\
     fn feedGateInt() -> Feed<Gate<int>> = Feed { supply: Gate { admit: |x| => true } }\n\
-    fn feedGateRes() -> Feed<Gate<Result<int, MathError>>> = \
+    fn feedGateRes() -> Feed<Gate<Result<int, string>>> = \
         Feed { supply: Gate { admit: |x| => true } }\n\
     fn feedCellInt() -> Feed<Cell<int>> = Feed { supply: Cell { slot: 1 } }\n\
-    fn gateFeedRes() -> Gate<Feed<Result<int, MathError>>> = Gate { admit: |x| => true }\n\
+    fn gateFeedRes() -> Gate<Feed<Result<int, string>>> = Gate { admit: |x| => true }\n\
     fn gateGateInt() -> Gate<Gate<int>> = Gate { admit: |x| => true }\n";
 
 /// A covariant container over FUNCTION payloads.
 const FNPAYLOAD: &str = "type Feed<out T> = Feed { supply: T } | Dry\n\
+    fn resOf(x: int) -> Result<int, string> = x\n\
     fn feedTakesInt() -> Feed<(int) -> bool> = Feed { supply: |x| => true }\n\
-    fn feedTakesRes() -> Feed<(Result<int, MathError>) -> bool> = \
+    fn feedTakesRes() -> Feed<(Result<int, string>) -> bool> = \
         Feed { supply: |x| => true }\n\
     fn feedGivesInt() -> Feed<(int) -> int> = Feed { supply: |x| => 1 }\n\
-    fn feedGivesRes() -> Feed<(int) -> Result<int, MathError>> = Feed { supply: |x| => x * 2 }\n";
+    fn feedGivesRes() -> Feed<(int) -> Result<int, string>> = Feed { supply: |x| => resOf(x) }\n";
 
 // ---------------------------------------------------------------------------
 // [TYPE-VARIANCE-COERCION] — the coercion exists, at depth 0 only
@@ -95,10 +98,10 @@ const FNPAYLOAD: &str = "type Feed<out T> = Feed { supply: T } | Dry\n\
 
 plain_cases! {
     /// "A bare `T` satisfies a `Result<T, E>` slot (an implicit `Success`)."
-    the_coercion_holds_at_a_direct_value_site: flows("", "Result<int, MathError>", "5");
+    the_coercion_holds_at_a_direct_value_site: flows("", "Result<int, string>", "5");
 
     /// "the inverse never holds anywhere."
-    the_inverse_coercion_never_holds: blocked( "fn half() -> Result<int, MathError> = 20 * 5\n", "int", "half()", );
+    the_inverse_coercion_never_holds: blocked( "fn half() -> Result<int, string> = 20 * 5\n", "int", "half()", );
 }
 
 // ---------------------------------------------------------------------------
@@ -106,20 +109,20 @@ plain_cases! {
 // ---------------------------------------------------------------------------
 
 plain_cases! {
-    /// "`Feed<int>` does **not** satisfy a `Feed<Result<int, MathError>>` slot,
+    /// "`Feed<int>` does **not** satisfy a `Feed<Result<int, string>>` slot,
     /// under `out T`" — the coercion would have to rebuild the container.
-    a_covariant_argument_does_not_carry_the_coercion: blocked(FEED, "Feed<Result<int, MathError>>", "feedInt()");
+    a_covariant_argument_does_not_carry_the_coercion: blocked(FEED, "Feed<Result<int, string>>", "feedInt()");
 
     /// "…under `in T`" — the flipped recursion does not smuggle it in either.
     a_contravariant_argument_does_not_carry_the_coercion: blocked(GATE, "Gate<int>", "gateRes()");
 
     /// "…or unannotated."
-    an_invariant_argument_does_not_carry_the_coercion: blocked(CELL, "Cell<Result<int, MathError>>", "cellInt()");
+    an_invariant_argument_does_not_carry_the_coercion: blocked(CELL, "Cell<Result<int, string>>", "cellInt()");
 
     /// The unwrapping direction is refused under every marker too — the half the
     /// shipped fixtures already cover, kept here so both directions sit together.
     no_marker_unwraps_a_result_payload: blocked(FEED, "Feed<int>", "feedRes()"),
-    blocked(GATE, "Gate<Result<int, MathError>>", "gateInt()"),
+    blocked(GATE, "Gate<Result<int, string>>", "gateInt()"),
     blocked(CELL, "Cell<int>", "cellRes()");
 
     /// The identical instantiation is what all three markers DO accept.
@@ -139,22 +142,22 @@ plain_cases! {
 
 plain_cases! {
     /// `out` inside `out` recurses, and still bottoms out exact.
-    covariance_inside_covariance_still_bottoms_out_exact: blocked( NESTED, "Feed<Feed<Result<int, MathError>>>", "feedFeedInt()", ),
+    covariance_inside_covariance_still_bottoms_out_exact: blocked( NESTED, "Feed<Feed<Result<int, string>>>", "feedFeedInt()", ),
     flows(NESTED, "Feed<Feed<int>>", "feedFeedInt()");
 
     /// `in` inside `out` flips the recursion — and changes no outcome.
     contravariance_inside_covariance_still_bottoms_out_exact: blocked(NESTED, "Feed<Gate<int>>", "feedGateRes()"),
-    blocked( NESTED, "Feed<Gate<Result<int, MathError>>>", "feedGateInt()", );
+    blocked( NESTED, "Feed<Gate<Result<int, string>>>", "feedGateInt()", );
 
     /// `out` inside `in`, the other flip.
     covariance_inside_contravariance_still_bottoms_out_exact: blocked(NESTED, "Gate<Feed<int>>", "gateFeedRes()");
 
     /// Two flips compose back to covariance, which is still exact.
-    contravariance_inside_contravariance_still_bottoms_out_exact: blocked( NESTED, "Gate<Gate<Result<int, MathError>>>", "gateGateInt()", ),
+    contravariance_inside_contravariance_still_bottoms_out_exact: blocked( NESTED, "Gate<Gate<Result<int, string>>>", "gateGateInt()", ),
     flows(NESTED, "Gate<Gate<int>>", "gateGateInt()");
 
     /// An invariant argument under a covariant one.
-    an_invariant_argument_under_a_covariant_one_is_exact: blocked( NESTED, "Feed<Cell<Result<int, MathError>>>", "feedCellInt()", );
+    an_invariant_argument_under_a_covariant_one_is_exact: blocked( NESTED, "Feed<Cell<Result<int, string>>>", "feedCellInt()", );
 }
 
 // ---------------------------------------------------------------------------
@@ -165,12 +168,12 @@ plain_cases! {
     /// "Function payloads match exactly for the same reason" — the parameter
     /// position does not flip inside a container.
     a_function_payload_matches_exactly_inside_a_container: blocked(FNPAYLOAD, "Feed<(int) -> bool>", "feedTakesRes()"),
-    blocked( FNPAYLOAD, "Feed<(Result<int, MathError>) -> bool>", "feedTakesInt()", );
+    blocked( FNPAYLOAD, "Feed<(Result<int, string>) -> bool>", "feedTakesInt()", );
 
     /// The spec's own counterexample, and its mirror: neither return direction
     /// matches under a container.
     a_function_payloads_return_matches_exactly_inside_a_container: blocked(FNPAYLOAD, "Feed<(int) -> int>", "feedGivesRes()"),
-    blocked( FNPAYLOAD, "Feed<(int) -> Result<int, MathError>>", "feedGivesInt()", );
+    blocked( FNPAYLOAD, "Feed<(int) -> Result<int, string>>", "feedGivesInt()", );
 
     /// The identical function payload flows, so the refusals above are about the
     /// shape and not about function payloads being rejected wholesale.
@@ -194,17 +197,17 @@ fn the_three_markers_agree_on_every_assignment_outcome() {
     let outcomes: Vec<(&str, bool, bool)> = vec![
         (
             "covariant",
-            accepted(&sites(FEED, "Feed<Result<int, MathError>>", "feedInt()")[0]),
+            accepted(&sites(FEED, "Feed<Result<int, string>>", "feedInt()")[0]),
             accepted(&sites(FEED, "Feed<int>", "feedRes()")[0]),
         ),
         (
             "contravariant",
-            accepted(&sites(GATE, "Gate<Result<int, MathError>>", "gateInt()")[0]),
+            accepted(&sites(GATE, "Gate<Result<int, string>>", "gateInt()")[0]),
             accepted(&sites(GATE, "Gate<int>", "gateRes()")[0]),
         ),
         (
             "invariant",
-            accepted(&sites(CELL, "Cell<Result<int, MathError>>", "cellInt()")[0]),
+            accepted(&sites(CELL, "Cell<Result<int, string>>", "cellInt()")[0]),
             accepted(&sites(CELL, "Cell<int>", "cellRes()")[0]),
         ),
     ];
@@ -226,7 +229,7 @@ spec_cases! {
     ml_a_covariant_argument_does_not_carry_the_coercion: rejects(Ml, "type Feed out T =\n    supply : T\n\
          feedInt : Unit -> Feed<int>\n\
          feedInt () = Feed(supply = 1)\n\
-         takes : Feed<Result<int, MathError>> -> int\n\
+         takes : Feed<Result<int, string>> -> int\n\
          takes v = 0\n\
          held = takes (feedInt ())\n\
          print \"${held}\"\n");
@@ -242,7 +245,7 @@ spec_cases! {
          print \"${held}\"\n");
 
     /// The ML twin of the direct-site coercion.
-    ml_the_coercion_holds_at_a_direct_value_site: accepts(Ml, "takes : Result<int, MathError> -> int\n\
+    ml_the_coercion_holds_at_a_direct_value_site: accepts(Ml, "takes : Result<int, string> -> int\n\
          takes v = 0\n\
          held = takes 5\n\
          print \"${held}\"\n");

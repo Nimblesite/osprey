@@ -1,9 +1,41 @@
-// Math: checked integer arithmetic, plain IEEE-754 float arithmetic,
-// [BUILTIN-CHECKED-ARITH], division/remainder Results, and recursion.
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
+/// Faults are recorded at a numeric API boundary; recovery values remain integers.
+type Measurement = { value: int, fault: string }
+fn observed(work) = {
+    mut fault = ""
+    handle Arith {
+        overflow _ _ _ wrapped => { fault = "integer overflow"
+            wrapped }
+        remainderByZero _ => { fault = "division by zero"
+            0 }
+    }
+    let value = work()
+    Measurement { value: value, fault: fault }
+}
+
+// Plain arithmetic with explicit observation policies and checked Result builtins.
 
 fn power(base, exp) = match exp {
-    0 => Success { value: 1 }
-    1 => Success { value: base }
+    0 => 1
+    1 => base
     2 => base * base
     3 => base * base * base
     _ => base * base * base * base
@@ -31,7 +63,7 @@ fn fibonacci(n) = match n {
 
 fn complex(a, b) = (a * 2) + (b * 3) - 1
 
-fn isEven(x) = (x % 2 ?: 1) == 0
+fn isEven(x) = (x % 2 ) == 0
 
 fn classify(n) = match n {
     0 => "Zero"
@@ -58,11 +90,11 @@ fn showDiv(a, b) = {
 
 print("=== Math Showcase ===")
 
-/// Result-preserving checked arithmetic in interpolation.
+/// Arithmetic values interpolate directly.
 let age = 25
-print("Next year: ${age + 1}")
-print("Last year: ${age - 1}")
-print("Double:    ${age * 2}")
+exactArithmetic(fn() => print("Next year: ${age + 1}"))
+exactArithmetic(fn() => print("Last year: ${age - 1}"))
+exactArithmetic(fn() => print("Double:    ${age * 2}"))
 print("Half:      ${age / 2}")
 
 // Modulo + isEven
@@ -71,43 +103,36 @@ print("isEven(8) = ${toString(isEven(8))}")
 print("isEven(7) = ${toString(isEven(7))}")
 
 // Integer division: intDiv truncates toward zero (contrast Half = 12.5 above);
-// divide-by-zero yields a Result Error, matched on Success/Error.
+// Zero division dispatches to the observation policy.
 // Truncation and zero-divisor behavior [BUILTIN-INTDIV].
 print("intDiv(25,2) = ${intDiv(25, 2)}, intDiv(100,7) = ${intDiv(100, 7)}")
-match intDiv(5, 0) {
-    Success { value } => print("intDiv(5,0) = ${value}")
-    Error { message } => print("intDiv(5,0): ${message}")
-}
+let zeroDivision = observed(fn() => intDiv(5, 0))
+print("intDiv(5,0): ${zeroDivision.fault}")
 
 print("checked add=${toString(checkedAdd(2, 3))}, sub=${toString(checkedSub(2, 3))}, mul=${toString(checkedMul(6, 7))}")
 print("checked overflow add=${toString(checkedAdd(9223372036854775807, 1))}")
-print("checked overflow sub=${toString(checkedSub((0 - 9223372036854775807) ?: 0, 2))}")
+print("checked overflow sub=${toString(checkedSub((0 - 9223372036854775807) , 2))}")
 print("checked overflow mul=${toString(checkedMul(4294967296, 4294967296))}")
 
 // [BUILTIN-ABS] uses the language's i64 ABI, including values outside libc `int`.
-// Its only unrepresentable magnitude returns Error instead of overflowing.
-print("abs(-5000000000) = ${abs((0 - 5000000000) ?: 0)}")
-print("abs(INT64_MIN) = ${abs(((0 - 9223372036854775807) - 1) ?: 0)}")
+// Its only unrepresentable magnitude dispatches overflow to the observation policy.
+print("abs(-5000000000) = ${abs((0 - 5000000000) )}")
+let minimumAbs = observed(fn() => abs(-9223372036854775808))
+print("abs(INT64_MIN) = ${minimumAbs.fault}")
 
-// [BUILTIN-INTDIV] rejects the one non-zero divisor pair whose signed
-// quotient cannot be represented, rather than emitting LLVM `sdiv` poison.
-match intDiv(((0 - 9223372036854775807) - 1) ?: 0, (0 - 1) ?: 0) {
-    Success { value } => print("intDiv(INT64_MIN,-1) unexpected ${value}")
-    Error { message } => print("intDiv(INT64_MIN,-1): ${message}")
-}
-match (((0 - 9223372036854775807) - 1) ?: 0) % ((0 - 1) ?: 0) {
-    Success { value } => print("INT64_MIN % -1 = ${value}")
-    Error { message } => print("INT64_MIN % -1 unexpected: ${message}")
-}
+/// [BUILTIN-INTDIV] rejects the one non-zero divisor pair whose signed
+/// quotient cannot be represented, rather than emitting LLVM `sdiv` poison.
+let minimumDivision = observed(fn() => intDiv(-9223372036854775808, -1))
+print("intDiv(INT64_MIN,-1): ${minimumDivision.fault}\nINT64_MIN % -1 = ${-9223372036854775808 % -1}")
 
 /// Power, factorial, fibonacci
 let n    = 5
 let m    = 3
-print("pow(5,2)   = ${power(base: n, exp: 2)}")
-print("pow(5,3)   = ${power(base: n, exp: 3)}")
+exactArithmetic(fn() => print("pow(5,2)   = ${power(base: n, exp: 2)}"))
+exactArithmetic(fn() => print("pow(5,3)   = ${power(base: n, exp: 3)}"))
 print("fact(5)    = ${factorial(n)}")
 print("fib(5)     = ${fibonacci(n)}")
-print("complex    = ${complex(a: n, b: m)}")
+exactArithmetic(fn() => print("complex    = ${complex(a: n, b: m)}"))
 
 // Division — both branches
 showDiv(a: 10, b: 2)
@@ -134,10 +159,8 @@ fn comprehensiveMathCase() = {
         Success => false
         Error { message } => message != ""
     }
-    let zeroDivisionRejected = match intDiv(5, 0) {
-        Success => false
-        Error { message } => message != ""
-    }
+    let zero = observed(fn() => intDiv(5, 0))
+    let zeroDivisionRejected = zero.fault == "division by zero" && zero.value == 0
     let boundedRandom = match randomBelow(100) {
         Success { value } => (value >= 0) && (value < 100)
         Error => false
@@ -147,18 +170,18 @@ fn comprehensiveMathCase() = {
         Error { message } => message != ""
     }
     checkAll("math values, branches, and checked errors", [
-        (power(base: 2, exp: 0) ?: 0) == 1,
-        (power(base: 2, exp: 1) ?: 0) == 2,
-        (power(base: 2, exp: 2) ?: 0) == 4,
-        (power(base: 2, exp: 3) ?: 0) == 8,
-        (power(base: 2, exp: 4) ?: 0) == 16,
+        (power(base: 2, exp: 0) ) == 1,
+        (power(base: 2, exp: 1) ) == 2,
+        (power(base: 2, exp: 2) ) == 4,
+        (power(base: 2, exp: 3) ) == 8,
+        (power(base: 2, exp: 4) ) == 16,
         factorial(0) == 1,
         factorial(5) == 120,
         factorial(9) == 720,
         fibonacci(0) == 0,
         fibonacci(5) == 5,
         fibonacci(9) == 8,
-        (complex(a: 5, b: 3) ?: 0) == 18,
+        (complex(a: 5, b: 3) ) == 18,
         isEven(8),
         !isEven(7),
         classify(0) == "Zero",
@@ -169,12 +192,14 @@ fn comprehensiveMathCase() = {
         safeDivide(a: 15, b: 3) == 0,
         safeDivide(a: 15, b: 0) == 999999,
         (checkedAdd(2, 3) ?: 0) == 5,
-        (checkedSub(2, 3) ?: 0) == ((0 - 1) ?: 0),
+        (checkedSub(2, 3) ?: 0) == ((0 - 1) ),
         (checkedMul(6, 7) ?: 0) == 42,
-        (intDiv(25, 2) ?: 0) == 12,
-        (abs((0 - 5000000000) ?: 0) ?: 0) == 5000000000,
+        (intDiv(25, 2) ) == 12,
+        (abs((0 - 5000000000) ) ) == 5000000000,
         overflowRejected,
         zeroDivisionRejected,
+        minimumAbs.fault == "integer overflow", minimumAbs.value == -9223372036854775808,
+        minimumDivision.fault == "integer overflow", minimumDivision.value == -9223372036854775808,
         boundedRandom,
         invalidRandomBound,
         random() >= 0,
@@ -186,4 +211,5 @@ fn comprehensiveMathCase() = {
         input() == ""
     ])
 }
-test("math showcase produces checked deterministic state", comprehensiveMathCase)
+
+test("math showcase produces checked deterministic state", fn() => exactArithmetic(comprehensiveMathCase))

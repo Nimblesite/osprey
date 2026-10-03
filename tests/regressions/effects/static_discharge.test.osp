@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // Static effect rows are inferred through direct calls, call chains, callbacks,
 // closures, partial handlers, partial runtime handlers nested inside a static
 // interpretation, and generic effect instances. No function below
@@ -58,12 +77,12 @@ effect Pair {
 fn pairTotal() = {
     let first = perform Pair.first()
     let second = perform Pair.second()
-    first + second ?: 0
+    first + second 
 }
 
 /// The inner partial handler discharges only `first`; `second` reaches the
 /// complementary outer handler.
-let partialValue = {
+let partialValue = exactArithmetic(fn() => {
     handle Pair {
         second => 22
     }
@@ -71,7 +90,7 @@ let partialValue = {
         first => 20
     }
     pairTotal()
-}
+})
 
 fn firstOnly() = {
     handle Pair {
@@ -83,7 +102,7 @@ fn firstOnly() = {
 /// A partial runtime handler shadows only `first`; `second` still reaches the
 /// enclosing static interpretation directly, through a helper called under the
 /// runtime handler, and through a helper installing that handler itself.
-let stagedValue = {
+let stagedValue = exactArithmetic(fn() => {
     handle static Pair {
         first => 1
         second => 40
@@ -92,7 +111,7 @@ let stagedValue = {
         handle Pair {
             first => 2
         }
-        (perform Pair.first() + perform Pair.second()) ?: 0
+        (perform Pair.first() + perform Pair.second()) 
     }
     let helper = {
         handle Pair {
@@ -102,7 +121,7 @@ let stagedValue = {
     }
     let installer = firstOnly()
     "${direct}|${helper}|${installer}"
-}
+})
 
 effect Stash<T> {
     /// Store `value` in the stash for a later `take`.
@@ -122,7 +141,8 @@ let genericValue = {
     19
 }
 
-test("inferred effect rows discharge only under matching handlers", fn() => checkAll("static discharge values", [
+
+test("inferred effect rows discharge only under matching handlers", fn() => exactArithmetic(fn() => checkAll("static discharge values", [
     directValue == 7,
     transitiveValue == 11,
     callbackValue == 13,
@@ -130,4 +150,4 @@ test("inferred effect rows discharge only under matching handlers", fn() => chec
     partialValue == 42,
     stagedValue == "42|42|42",
     genericValue == 19
-]))
+])))

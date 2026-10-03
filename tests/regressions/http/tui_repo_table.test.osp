@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // HTTP response-handle and JSON document integration. Each handle operation
 // uses its own helper. Implements [HTTP-RESPONSE-HANDLE] and [BUILTIN-JSON].
 
@@ -5,7 +24,7 @@ fn handleRequest(_method: string, _path: string, _headers: string, _body: string
     status: 200,
     headers: "Content-Type: application/json",
     contentType: "application/json",
-    streamFd: (0 - 1) ?: 0,
+    streamFd: (0 - 1) ,
     isComplete: true,
     partialBody: "[{\"name\":\"osprey\",\"stars\":1200,\"lang\":\"Go\"},{\"name\":\"llvm\",\"stars\":9001,\"lang\":\"C++\"},{\"name\":\"antlr\",\"stars\":4200,\"lang\":\"Java\"}]"
 }
@@ -44,7 +63,7 @@ fn renderRow(doc, i, n) = {
             let starsCol = yellow("* ${pad(s: stars, n: 5)}")
             let langCol = dim(lang)
             print("  ${bullet} ${nameCol} ${starsCol} ${langCol}")
-            renderRow(doc: doc, i: (i + 1) ?: i, n: n)
+            renderRow(doc: doc, i: (i + 1) , n: n)
         }
         false => print("")
     }
@@ -117,4 +136,5 @@ fn repoTableCase() = {
         startsWith(cyan("*"), "\e[36m")
     ])
 }
-test("repository JSON renders after an HTTP response round trip", repoTableCase)
+
+test("repository JSON renders after an HTTP response round trip", fn() => exactArithmetic(repoTableCase))

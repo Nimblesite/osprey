@@ -292,7 +292,7 @@ mod tests {
         names.iter().any(|name| name == label)
     }
 
-    const SRC: &str = "fn add(a: int, b: int) -> int = (a + b) ?: 0\nlet total = add(1, 2)\n";
+    const SRC: &str = "fn add(a: int, b: int) -> int = wrapAdd(a, b)\nlet total = add(1, 2)\n";
 
     #[test]
     fn a_completion_item_carries_the_type_the_checker_proved() {
@@ -301,17 +301,19 @@ mod tests {
         // requires deleting emptied the detail to `fn twice(n)`. Completion,
         // signature help, the outline and hover are four views of one type and
         // must agree ([`collect_inferred_symbols`]).
-        let items = at_end("fn twice(n) = n * 2\nlet y = twice(2)\n", "file:///t.osp");
+        let items = at_end(
+            "fn twice(n) = wrapMul(n, 2)\nlet y = twice(2)\n",
+            "file:///t.osp",
+        );
         let twice = items
             .iter()
             .find(|i| i.label == "twice")
             .expect("`twice` is completable");
-        // `*` is fallible, so the proven return is `Result<int, MathError>` —
-        // which is precisely the detail an author who deleted the annotation
-        // cannot see for themselves.
+        // The total helper returns int; the detail exposes that inferred type
+        // even though the author wrote no annotation.
         assert_eq!(
             twice.detail.as_deref(),
-            Some("fn twice(n: int) -> Result<int, MathError>"),
+            Some("fn twice(n: int) -> int"),
             "a completion detail must carry the inferred types"
         );
     }

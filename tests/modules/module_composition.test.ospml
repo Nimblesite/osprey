@@ -1,18 +1,34 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 (** ML surface for [MODULES-ABI] and [MODULES-PROJECT]: module-qualified
     declarations compose with the rest of the language — fibers, iterators,
     `Result` and interpolation — and identical simple names in different
     modules and namespaces keep distinct linkage identities. *)
 
 namespace compute
+
+
     module Adder
         (** Four declarations across this file share the simple name `apply`. *)
-        export apply n = (n + 1) ?: n
+        export apply n = (n + 1) 
 
     module Scaler
-        export apply n = (n * 3) ?: n
+        export apply n = (n * 3) 
 
         export module Inner
-            export apply n = (n * 10) ?: n
+            export apply n = (n * 10) 
 
     module Runner
         (** A module function spawns a fiber running another module's export. *)
@@ -21,10 +37,11 @@ namespace compute
             await job
 
         (** Iterator pipelines fold module functions without losing the boundary. *)
-        export folded limit = fold (range (0, limit), 0, \(acc, v) => (acc + Adder::apply v) ?: acc)
+        export folded limit = fold (range (0, limit), 0, \(acc, v) => (acc + Adder::apply v) )
 
-        (** The error channel survives the module boundary [MODULES-MODULE]. *)
+        (** Ordinary division stays an integer across the module boundary. *)
         export halve n = intDiv (n, 2)
+        export checkedSum (a, b) = checkedAdd (a, b)
 
 namespace report
     module Adder
@@ -57,14 +74,17 @@ concurrencyAndIterationCase () = checkAll ("modules compose with fibers and iter
 
 (** Module boundaries do not erase a `Result`'s error channel. *)
 resultChannelCase () = checkAll ("module Results keep both branches", [
-    rendered (compute::Runner::halve 10) == "ok 5",
-    rendered (compute::Runner::halve 0) == "ok 0",
-    rendered (compute::Runner::halve 9) == "ok 4",
-    (compute::Runner::halve 7 ?: 0) == 3,
-    (((compute::Runner::halve 7 ?: 0) + compute::Scaler::apply 1) ?: 0) == 6
+    rendered (compute::Runner::checkedSum (9223372036854775807, 1)) == "err integer overflow",
+    rendered (compute::Runner::checkedSum (compute::Runner::halve 10, 0)) == "ok 5",
+    rendered (compute::Runner::checkedSum (compute::Runner::halve 0, 0)) == "ok 0",
+    rendered (compute::Runner::checkedSum (compute::Runner::halve 9, 0)) == "ok 4",
+    (compute::Runner::halve 7 ) == 3,
+    (((compute::Runner::halve 7 ) + compute::Scaler::apply 1) ) == 6
 ])
 
-print "${compute::Adder::apply 1} ${compute::Scaler::Inner::apply 2} ${report::Adder::apply "x"} ${compute::Runner::spawned 4} ${rendered (compute::Runner::halve 10)}"
-test ("identical simple names keep distinct identities", linkageIdentityCase)
-test ("modules compose with fibers and iterators", concurrencyAndIterationCase)
-test ("module results keep their error channel", resultChannelCase)
+exactArithmetic (\() =>
+    print "${compute::Adder::apply 1} ${compute::Scaler::Inner::apply 2} ${report::Adder::apply "x"} ${compute::Runner::spawned 4} ${rendered (compute::Runner::checkedSum (compute::Runner::halve 10, 0))}")
+
+test ("identical simple names keep distinct identities", \() => exactArithmetic (linkageIdentityCase))
+test ("modules compose with fibers and iterators", \() => exactArithmetic (concurrencyAndIterationCase))
+test ("module results keep their error channel", \() => exactArithmetic (resultChannelCase))

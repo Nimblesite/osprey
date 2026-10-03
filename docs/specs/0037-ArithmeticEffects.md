@@ -1,19 +1,19 @@
 # Arithmetic Effects
 
-**Status:** normative target; implementation has not started. Delivery is fixed by [plan 0027](../plans/0027-arithmetic-effects.md).
+**Status:** shipped. [Plan 0027](../plans/0027-arithmetic-effects.md) records the implementation and verification.
 
 The key words `MUST`, `MUST NOT`, `SHOULD`, and `MAY` are to be interpreted as described by BCP 14 (RFC 2119 and RFC 8174) when they appear in capitals. A feature is not implemented merely because this document specifies it.
 
 ## The guarantee — [ARITH-TOTAL]
 
-**In an accepted Osprey program, arithmetic cannot fail.** Every arithmetic expression evaluates to a defined value of its static type, in every reachable runtime state, on every target. This is a compile-time-enforced totality guarantee, not a runtime aspiration: a conforming compiler MUST reject any program for which it cannot prove every clause below.
+**In an accepted Osprey program, arithmetic cannot fail silently or trap.** A total operation produces a defined value of its static type. A fallible operation transfers to an explicitly installed `Arith` handler; normal completion of its value arm supplies the typed result. An arm may diverge or request another explicit effect, as allowed by [the effects contract](0017-AlgebraicEffects.md). A conforming compiler MUST reject any program for which it cannot prove every clause below.
 
 - **No trap, panic, or abort.** No arithmetic operation may raise a hardware fault or terminate the program. The zero-divisor and minimum-value guards branch *before* any faulting instruction, overflow is detected by non-trapping intrinsics, and `-9223372036854775808 % -1` produces `0` without executing the faulting `srem` path.
 - **No silent wraparound.** A two's-complement result reaches the program only where the program names it: the `wrapped` payload of `Arith.overflow` inside a handler some region installed, or the total helpers `wrapAdd`/`wrapSub`/`wrapMul` ([ARITH-EFFECT-TOTAL-HELPERS](#total-helpers--arith-effect-total-helpers)).
 - **No unspecified value.** No arithmetic result is undefined behavior, poison, or target-dependent.
 - **No unhandled fault.** Every arithmetic site is, statically, exactly one of three things: proven total ([ARITH-EFFECT-TOTAL-SITES](#provably-total-sites--arith-effect-total-sites), [ARITH-EFFECT-CONST](#constant-folding--arith-effect-const), float IEEE-754 closure); discharged by an `Arith` handler on every execution path, through helpers, lambdas, and fibers ([ARITH-EFFECT-DISCHARGE](#static-discharge--arith-effect-discharge)); or the program is rejected at compile time. There is no fourth case.
-- **Value recovery by default.** `Arith` uses value operations: normal arm completion supplies the operation result, and `resume` is rejected. Explicit effects performed by a policy remain visible obligations under [the effects contract](0017-AlgebraicEffects.md); value mode alone does not prove termination or forbid an explicitly requested outer control effect.
-- **No divergence through the policy.** An `Arith` arm cannot itself fault — checked arithmetic inside any arm of an `Arith` handler is rejected ([ARITH-EFFECT-ARMS-NO-REENTRY](#forwarding-recovery--arith-effect-arms-no-reentry)) — so dispatch terminates after exactly one substitution.
+- **Value-mode recovery.** `Arith` uses value operations: normal arm completion supplies the operation result, and `resume` is rejected. Explicit effects performed by a policy remain visible obligations under [the effects contract](0017-AlgebraicEffects.md); value mode alone does not prove termination or forbid an explicitly requested outer control effect.
+- **No implicit self-reentry.** An arm executes outside its own installation. Fallible arithmetic in that arm requires a distinct enclosing `Arith` policy ([ARITH-EFFECT-ARMS-NO-REENTRY](#forwarding-recovery--arith-effect-arms-no-reentry)); without one, the program is rejected.
 - **No fabricated fallback.** A plain `int`/`float` is never a `?:` scrutinee (`` `?:` needs a Result on its left, found int ``), and there is no ambient or implicit default policy: a recovery value exists only inside a handler a region installed by name.
 
 Floating-point `+`, `-`, `*`, and unary `-` satisfy the same totality through IEEE-754 closure — `inf` and `NaN` are defined values of `float`, not failures. Whether they should *additionally* surface through `Arith` is [plan 0022](../plans/0022-arithmetic-totality-audit.md)'s open float decision, out of scope here.
@@ -131,7 +131,7 @@ let recording = handler Arith {
 }
 let total = recording(|| => settle(ledger))
 
-print("${faulted ? "REJECTED: ledger overflow" : "settled ${total} cents"}")
+print(faulted ? "REJECTED: ledger overflow" : "settled ${total} cents")
 ```
 
 Saturating — a cap instead of a fault:
@@ -168,7 +168,10 @@ Arithmetic policies use those forms without a separate handler grammar.
 ## Scope
 
 Named policies are ordinary callable handlers, such as `saturating(work)`.
-An explicit `handle static Arith` supplies a checked static interpretation for
-a device region under [STAGE-HANDLE-STATIC](0017-AlgebraicEffects.md#static-handlers--stage-handle-static).
-Arithmetic delivery remains in [plan 0027](../plans/0027-arithmetic-effects.md);
-shared handler and staging delivery belongs only to [plan 0016](../plans/0016-algebraic-effects-and-handlers.md).
+`Arith` has runtime policies only: `handle static Arith` is rejected, and a
+host-backend GPU kernel dispatches to the enclosing runtime policy. A checked
+static interpretation for device regions under
+[STAGE-HANDLE-STATIC](0017-AlgebraicEffects.md#static-handlers--stage-handle-static)
+belongs to the staging delivery.
+Arithmetic delivery is recorded in [plan 0027](../plans/0027-arithmetic-effects.md);
+shared handler and staging delivery belongs to [plan 0016](../plans/0016-algebraic-effects-and-handlers.md).

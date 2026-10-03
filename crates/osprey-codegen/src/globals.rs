@@ -17,7 +17,7 @@
 use crate::builder::{CellSlot, Codegen, ParamSig};
 use crate::error::{CodegenError, Result};
 use crate::llty::{LType, Value};
-use osprey_ast::{Program, Stmt};
+use osprey_ast::{Expr, Program, Stmt};
 use osprey_types::Type;
 use std::collections::{BTreeSet, HashSet};
 
@@ -80,12 +80,7 @@ pub(crate) fn seed(
             continue;
         }
         let slot = describe(cg, name, *position, *mutable && cells.contains(name))?;
-        cg.add_global(format!(
-            "@{} = internal global {} zeroinitializer",
-            slot.symbol,
-            slot.storage().as_str()
-        ));
-        let _ = cg.module_globals.insert(name.clone(), slot);
+        declare_slot(cg, name, slot);
     }
     Ok(())
 }
@@ -104,13 +99,38 @@ fn describe(
             "file-scope binding `{name}` is read by a function but inference recorded no type for it"
         ))
     })?;
-    Ok(GlobalSlot {
+    Ok(describe_type(cg, name, ty, cell))
+}
+
+fn describe_type(cg: &Codegen, name: &str, ty: &Type, cell: bool) -> GlobalSlot {
+    GlobalSlot {
         symbol: format!("osp.g.{name}"),
         sig: ParamSig::of(&cg.prog, ty),
         owner: crate::types::owner_name(&cg.prog, ty),
         cell,
         ty: ty.clone(),
-    })
+    }
+}
+
+fn declare_slot(cg: &mut Codegen, name: &str, slot: GlobalSlot) {
+    cg.add_global(format!(
+        "@{} = internal global {} zeroinitializer",
+        slot.symbol,
+        slot.storage().as_str()
+    ));
+    let _ = cg.module_globals.insert(name.to_string(), slot);
+}
+
+/// A factory capture needs a concrete global even though the returned
+/// polymorphic handler has no single closure ABI.
+pub(crate) fn seed_capture(cg: &mut Codegen, name: &str, ty: &Type) -> Result<()> {
+    if osprey_types::has_type_var(ty) {
+        return Err(CodegenError::unsupported(format!(
+            "file-scope factory capture `{name}` has no concrete type"
+        )));
+    }
+    declare_slot(cg, name, describe_type(cg, name, ty, false));
+    Ok(())
 }
 
 /// The file-scope `mut`s that must live in a heap cell: the ones a handler arm
@@ -136,7 +156,7 @@ pub(crate) fn cell_names(top_level: &[&Stmt], read: &BTreeSet<String>) -> HashSe
 
 /// Names read from inside some top-level function body. A function's own
 /// parameters shadow the file scope, so they are subtracted first.
-pub(crate) fn read_by_functions(program: &Program) -> BTreeSet<String> {
+pub(crate) fn read_by_functions(cg: &Codegen, program: &Program) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     for statement in &program.statements {
         let Stmt::Function {
@@ -152,7 +172,36 @@ pub(crate) fn read_by_functions(program: &Program) -> BTreeSet<String> {
         }
         out.extend(free);
     }
+    read_through_inlined_lambdas(cg, program, &mut out);
     out
+}
+
+/// Close `read` over the file-scope lambdas that materialise no cell. Such a
+/// lambda — a callable handler value is one — is INLINED into every function
+/// that applies it ([`crate::stmt::seed_name_bindings`]), so each file-scope
+/// name its body reads is read from that function too. Without this, a
+/// handler value whose arm read a file-scope `let` failed with `unknown name`
+/// once it was applied inside a function ([MODULES-FILE-SCOPE-BINDING],
+/// [EFFECTS-HANDLER-VALUE]).
+fn read_through_inlined_lambdas(cg: &Codegen, program: &Program, read: &mut BTreeSet<String>) {
+    loop {
+        let before = read.len();
+        for statement in &program.statements {
+            if let Stmt::Let {
+                name,
+                value: lambda @ Expr::Lambda { .. },
+                ..
+            } = statement
+            {
+                if read.contains(name) && crate::stmt::binds_no_value(cg, lambda) {
+                    osprey_ast::freevars::free_idents(lambda, read);
+                }
+            }
+        }
+        if read.len() == before {
+            return;
+        }
+    }
 }
 
 /// The function type of a function-valued global, so a call through the name
@@ -197,7 +246,10 @@ pub(crate) fn publish(cg: &mut Codegen, name: &str, value: Value) -> Result<()> 
              address; storing the value here would leave every reader dereferencing it"
         )));
     }
-    let stored = crate::cast::coerce_param(cg, value, &slot.sig)?;
+    // The global erases a flat literal's codegen-only layout tag. Materialize
+    // it before any function can read the slot as a runtime List handle.
+    let escaped = crate::listlit::escaping(cg, value);
+    let stored = crate::cast::coerce_param(cg, escaped, &slot.sig)?;
     store(cg, &slot, &stored.operand);
     Ok(())
 }

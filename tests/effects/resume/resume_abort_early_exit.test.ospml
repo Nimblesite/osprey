@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 (** Returning from an arm stops the suspended continuation. *)
 effect Stop
     (** Check `value`; the handler may resume or stop the continuation. *)
@@ -29,7 +43,7 @@ effect Mixed
     supply : int => int
 
 (** Perform both Mixed operations so each arm's mode is observable. *)
-mixedWork : Unit -> int ! [Mixed, Observation]
+mixedWork : Unit -> int ![Mixed, Observation, Arith]
 mixedWork () =
     observe "work start"
     a = perform Mixed.tally 1
@@ -38,7 +52,7 @@ mixedWork () =
     observe ("after supply: " + toString b)
     c = perform Mixed.supply 3
     observe ("after second supply: " + toString c)
-    (a + b ?: 0) + c ?: 0
+    (a + b ) + c 
 
 (** Verify resume, abort, unwind, and discarded work. *)
 resumeAbortEarlyExitCase () =
@@ -53,15 +67,15 @@ resumeAbortEarlyExitCase () =
                 transcript := "${transcript}${message}\n"
         handle Stop
             check n =>
-                checks := checks + 1 ?: checks
+                checks := checks + 1 
                 match n
                     0 =>
-                        aborted := aborted + 1 ?: aborted
+                        aborted := aborted + 1 
                         observe "stopping at zero"
                         999
                     _ =>
-                        resumed := resumed + 1 ?: resumed
-                        supplied = n * 10 ?: 0
+                        resumed := resumed + 1 
+                        supplied = n * 10 
                         answer = resume supplied
                         observe ("continued check " + toString n + ": answer=" + toString answer)
                         answer
@@ -86,10 +100,11 @@ resumeAbortEarlyExitCase () =
         checks == 2,
         resumed == 1,
         aborted == 1,
-        checks == (resumed + aborted ?: 0)
+        checks == (resumed + aborted )
     ]
 
-test "returning without resume aborts the suspended continuation" resumeAbortEarlyExitCase
+
+test "returning without resume aborts the suspended continuation" (\() => exactArithmetic (resumeAbortEarlyExitCase))
 
 (** [EFFECTS-HANDLER-ARMS] gives an arm's value one of two meanings: an arm that
     does not resume "substitutes for its operation's declared result", while an
@@ -110,13 +125,13 @@ resumeSiblingArmIndependenceCase () =
                 transcript := "${transcript}${message}\n"
         handle Mixed
             tally n =>
-                tallyCalls := tallyCalls + 1 ?: tallyCalls
-                answer = resume (n * 10 ?: 0)
+                tallyCalls := tallyCalls + 1 
+                answer = resume (n * 10 )
                 resumedAnswer := answer
                 answer
             supply n =>
-                supplyCalls := supplyCalls + 1 ?: supplyCalls
-                lastSupplied := n * 100 ?: 0
+                supplyCalls := supplyCalls + 1 
+                lastSupplied := n * 100 
                 lastSupplied
         mixedWork ()
     legacyTranscript = "${transcript}result=${toString result}\n"
@@ -141,7 +156,7 @@ resumeSiblingArmIndependenceCase () =
         lastSupplied == 300,
         resumedAnswer == 510,
         resumedAnswer == result,
-        (tallyCalls + supplyCalls ?: 0) == 3
+        (tallyCalls + supplyCalls ) == 3
     ]
 
-test "a non-resuming arm is unaffected by a sibling arm's resume" resumeSiblingArmIndependenceCase
+test "a non-resuming arm is unaffected by a sibling arm's resume" (\() => exactArithmetic (resumeSiblingArmIndependenceCase))

@@ -5,7 +5,7 @@ effect Async {
     control once await: fn(int) -> int
 }
 
-fn pipeline() = (perform Async.await(1) + 1) ?: 0
+fn pipeline() = wrapAdd(perform Async.await(1), 1)
 
 fn main() = {
     let total = {
@@ -13,7 +13,7 @@ fn main() = {
             await ticket => {
                 let a = resume(10)
                 let b = resume(20)
-                a + b ?: 0
+                wrapAdd(a, b)
             }
         }
         pipeline()

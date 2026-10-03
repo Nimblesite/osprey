@@ -308,7 +308,7 @@ suite("Osprey test documentation and profiling", () => {
       );
       fs.writeFileSync(
         uri.fsPath,
-        'fn add(a, b) = a + b\ntest("documented case", fn() => expect(add(1, 1), 2))\n',
+        'fn add(a, b) = wrapAdd(a, b)\ntest("documented case", fn() => expect(add(1, 1), 2))\n',
       );
       const after = await refreshTestFile(controller, uri, compiler);
       const stale = leaf(after, uri, "documented case");
@@ -763,7 +763,7 @@ suite("Osprey test documentation and profiling", () => {
         "two-profiled.test.osp",
         `fn spin(n, acc) = match n <= 0 {
     true => acc
-    false => spin((n - 1) ?: 0, (acc + n) ?: 0)
+    false => spin(wrapSub(n, 1), wrapAdd(acc, n))
 }
 
 test("first profiled", fn() => expect(spin(500000, 0) > 0, true))

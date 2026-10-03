@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 // Static effect rows are inferred through direct calls, call chains, callbacks,
 // closures, partial handlers, partial runtime handlers nested inside a static
 // interpretation, and generic effect instances. No function below
@@ -48,16 +62,17 @@ effect Pair
 pairTotal () =
     first = perform Pair.first ()
     second = perform Pair.second ()
-    first + second ?: 0
+    first + second 
 
 (** The inner partial handler discharges only `first`; `second` reaches the
     complementary outer handler. *)
 partialValue =
-    handle Pair
-        second => 22
-    handle Pair
-        first => 20
-    pairTotal ()
+    exactArithmetic (\() =>
+        handle Pair
+            second => 22
+        handle Pair
+            first => 20
+        pairTotal ())
 
 firstOnly () =
     handle Pair
@@ -68,19 +83,20 @@ firstOnly () =
     enclosing static interpretation directly, through a helper called under the
     runtime handler, and through a helper installing that handler itself. *)
 stagedValue =
-    handle static Pair
-        first => 1
-        second => 40
-    direct =
-        handle Pair
-            first => 2
-        (perform Pair.first () + perform Pair.second ()) ?: 0
-    helper =
-        handle Pair
-            first => 2
-        pairTotal ()
-    installer = firstOnly ()
-    "${direct}|${helper}|${installer}"
+    exactArithmetic (\() =>
+        handle static Pair
+            first => 1
+            second => 40
+        direct =
+            handle Pair
+                first => 2
+            (perform Pair.first () + perform Pair.second ()) 
+        helper =
+            handle Pair
+                first => 2
+            pairTotal ()
+        installer = firstOnly ()
+        "${direct}|${helper}|${installer}")
 
 effect Stash T
     (** Store `value` in the stash for a later `take`. *)
@@ -97,7 +113,8 @@ genericValue =
     storeText ()
     19
 
-test "inferred effect rows discharge only under matching handlers" (\() => checkAll "static discharge values" [
+
+test "inferred effect rows discharge only under matching handlers" (\() => exactArithmetic ((\() => checkAll "static discharge values" [
     directValue == 7,
     transitiveValue == 11,
     callbackValue == 13,
@@ -105,4 +122,4 @@ test "inferred effect rows discharge only under matching handlers" (\() => check
     partialValue == 42,
     stagedValue == "42|42|42",
     genericValue == 19
-])
+])))

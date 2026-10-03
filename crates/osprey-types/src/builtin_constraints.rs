@@ -194,7 +194,7 @@ fn is_printable_error(ty: &Type) -> bool {
         || matches!(
             ty,
             Type::Con { name, args }
-                if args.is_empty() && matches!(name.as_str(), names::ERROR | names::MATH_ERROR)
+                if args.is_empty() && name == names::ERROR
         )
 }
 

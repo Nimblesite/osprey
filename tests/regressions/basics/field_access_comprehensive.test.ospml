@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 // Comprehensive Field Access Test
 // This tests various aspects of field access with different scenarios
 
@@ -37,7 +51,8 @@ print "Test 3 - Field access in arithmetic:"
 rect = Rectangle(width = 10, height = 5)
 print "Rectangle width: ${rect.width}"
 print "Rectangle height: ${rect.height}"
-area = rect.width * rect.height
+area = exactArithmetic (\() =>
+    rect.width * rect.height)
 print "Area: ${area}"
 print ""
 
@@ -63,9 +78,12 @@ print ""
 // Test 6 - Complex expressions with field access
 print "Test 6 - Complex expressions with field access:"
 calculateArea r = r.width * r.height
-perimeter = 2 * (rect.width + rect.height)
-manhattanDistance = point.x + point.y
-calculatedArea = calculateArea rect
+perimeter = exactArithmetic (\() =>
+    2 * (rect.width + rect.height))
+manhattanDistance = exactArithmetic (\() =>
+    point.x + point.y)
+calculatedArea = exactArithmetic (\() =>
+    calculateArea rect)
 
 print "Rectangle perimeter: ${perimeter}"
 print "Manhattan distance from origin: ${manhattanDistance}"
@@ -93,13 +111,14 @@ fieldAccessCase () =
     checkAll "record field behavior" [
         point.x == 15, point.y == 25,
         user.id == 42, user.active, !inactive.active,
-        (calculateArea rect ?: 0) == 50,
-        (rect.width + rect.height ?: 0) == 15,
-        (point.x + point.y ?: 0) == 40,
+        (calculateArea rect) == 50,
+        (rect.width + rect.height ) == 15,
+        (point.x + point.y ) == 40,
         userStatus user == "Active User",
         userStatus inactive == "Inactive User",
         counter.count == 0, incremented.count == 0,
         moved.x == 100, moved.y == 200,
         point.x == 15, point.y == 25
     ]
-test "field access feeds expressions without mutating records" fieldAccessCase
+
+test "field access feeds expressions without mutating records" (\() => exactArithmetic (fieldAccessCase))

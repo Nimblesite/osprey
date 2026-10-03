@@ -7,7 +7,7 @@ type Feed out T =
 feedInt : Unit -> Feed<int>
 feedInt () = Feed(supply = 1)
 
-total : Feed<Result<int, MathError>> -> int
+total : Feed<Result<int, string>> -> int
 total f = f.supply ?: 0
 
 main () = print "${total (feedInt ())}"

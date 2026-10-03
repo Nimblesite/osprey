@@ -21,7 +21,7 @@ module View
 
     containsId doc index count wanted = match index >= count
         true => false
-        false => text doc "[${index}].id" == wanted || containsId doc ((index + 1) ?: count) count wanted
+        false => text doc "[${index}].id" == wanted || containsId doc ((satAdd index 1) ) count wanted
 
     visible model doc prefix bookmarked =
         title = text doc (prefix + ".title")
@@ -49,7 +49,7 @@ module View
             prefix = "[${index}]"
             match text doc (prefix + ".id") == model.selected
                 true => item model doc prefix (saved model model.selected)
-                false => detail model doc ((index + 1) ?: count) count
+                false => detail model doc ((satAdd index 1) ) count
 
     // Join two comma-separated JSON member lists, either of which may be empty.
     export append left right = match length left == 0
@@ -64,12 +64,12 @@ module View
             prefix = "[${index}]"
             bookmarked = saved model (text doc (prefix + ".id"))
             nextMarked = match bookmarked
-                true => (marked + 1) ?: marked
+                true => (satAdd marked 1)
                 false => marked
             nextOutput = match visible model doc prefix bookmarked
                 true => append output (item model doc prefix bookmarked)
                 false => output
-            rows model doc ((index + 1) ?: count) count nextOutput nextMarked
+            rows model doc ((satAdd index 1) ) count nextOutput nextMarked
 
     errors model = match length model.storageError > 0 && length model.error > 0
         true => "${model.error} ${model.storageError}"

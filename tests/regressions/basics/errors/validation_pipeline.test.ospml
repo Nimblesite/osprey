@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 // ML-flavor twin of validation_pipeline.osp. User-defined fallible functions
 // return `Result<int, string>` and construct `Error(message = "...")` inline;
 // these propagate through layout `match` arms binding the `Success value` /
@@ -46,10 +60,11 @@ runAll (i, n) =
         false => 0
         true =>
             match validate (inputAt i)
-                _ => runAll ((i + 1) ?: i, n)
+                _ => runAll ((i + 1) , n)
 
 print "=== Validation Pipeline ==="
-_ = runAll (0, 4)
+_ = exactArithmetic (\() =>
+    runAll (0, 4))
 match parseAge "abc"
     Success _value => print "unexpected success"
     Error message =>
@@ -80,4 +95,5 @@ validationPipelineCase () =
         inputAt 0 == "30", inputAt 3 == "abc", inputAt 9 == "",
         runAll (0, 4) == 0
     ]
-test "age validation preserves values and rejection reasons" validationPipelineCase
+
+test "age validation preserves values and rejection reasons" (\() => exactArithmetic (validationPipelineCase))

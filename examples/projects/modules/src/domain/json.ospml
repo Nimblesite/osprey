@@ -28,25 +28,23 @@ module Json : JsonApi
         high = match code >= 16
             true => 1
             false => 0
-        low = (code % 16) ?: 0
+        low = code % 16
         "\\u00" + take (drop digits high) 1 + take (drop digits low) 1
 
-    escapeControls source code = match code >= 32
-        true => source
-        false =>
-            character = fromCodePoint code ?: ""
-            escaped = match contains source character
-                true => replace source character (controlEscape code) ?: source
-                false => source
-            escapeControls escaped ((code + 1) ?: 32)
+    escapeControl (source, code) =
+        character = fromCodePoint code ?: ""
+        match contains source character
+            true => replace source character (controlEscape code) ?: source
+            false => source
 
     // Escape original slashes first; later JSON escapes must remain single.
     // Runtime strings cannot contain NUL, so representable controls start at 1.
+    // Folding over the control range needs no counter, so escaping is total.
     escape s =
         bslash = "\\"
         quote = "\""
         step = replace s bslash (bslash + bslash) ?: ""
-        escapeControls (replace step quote (bslash + quote) ?: "") 1
+        range (1, 32) |> fold (replace step quote (bslash + quote) ?: "") escapeControl
 
     quote s =
         quote = "\""

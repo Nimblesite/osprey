@@ -52,7 +52,7 @@ fn green(s: string) = esc("92", s)
 fn yellow(s: string) = esc("93", s)
 fn magenta(s: string) = esc("95", s)
 // Counters explicitly keep their previous value on arithmetic overflow.
-fn inc(x) = x + 1 ?: x
+fn inc(x) = satAdd(x, 1)
 fn mn(a, b) = match a < b { true => a  false => b }
 
 // A colored, fixed-width method badge (black text on a colored block).

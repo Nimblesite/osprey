@@ -152,13 +152,14 @@ fn run_file_cc(path: &Path, mode: &str, cc: &str) -> Out {
 /// ([FFI-CALLBACKS]). It passes the type gate, so every compiling mode reaches
 /// codegen and fails there — exercising the `Err` arms `compile_program` feeds.
 ///
-/// `(x + base) ?: 0` discharges the arithmetic `Result`; without it the lambda
-/// is `(int) -> Result<int, MathError>` and the type gate rejects the call
-/// before codegen sees the capture.
+/// `satAdd` is total ([ARITH-EFFECT-TOTAL-HELPERS]), so the callback performs
+/// nothing and the capture of `base` is the only defect. A plain `x + base`
+/// would perform `Arith.overflow` on the C side of the boundary, where no
+/// handler can discharge it, so the fixture must not depend on that verdict.
 const CODEGEN_REJECTED: &str = concat!(
     "extern fn registerCallback(cb: fn(int) -> int) -> int\n",
     "let base = 10\n",
-    "let r = registerCallback(fn(x) => (x + base) ?: 0)\n",
+    "let r = registerCallback(fn(x) => satAdd(x, base))\n",
     "print(\"${r}\")\n",
 );
 
@@ -180,10 +181,7 @@ effect Audit {
 fn pipeline() -> int !Audit = {
     let a = perform Audit.step("load")
     let b = perform Audit.step("parse")
-    match a + b {
-        Success { value } => value
-        Error { message } => 0
-    }
+    satAdd(a, b)
 }
 
 fn main() = {
@@ -191,10 +189,7 @@ fn main() = {
     let total = {
         handle Audit {
             step label => {
-                n = match n + 1 {
-                    Success { value } => value
-                    Error { message } => n
-                }
+                n = satAdd(n, 1)
                 let answer = resume(n)
                 print("after " + label + ": answer=" + toString(answer))
                 answer
@@ -213,10 +208,10 @@ fn main() = {
 /// This lived as `examples/failscompilation/multishot_resume_rejected.ospo`,
 /// which was a category error while the rejection was a RUNTIME one: the
 /// program was well formed, so a must-reject fixture could never observe the
-/// abort. It "passed" only because `x + 1` and `a + b` lacked the `?:` that
-/// `[ARITH-CHECKED]` requires, and the corpus recorded that unrelated type
-/// error as the expected rejection. Multiplicity moves the verdict back to
-/// compile time, where the arm has always been visible.
+/// abort. It "passed" only because of an unrelated arithmetic type error,
+/// which the corpus recorded as the expected rejection. Multiplicity moves the
+/// verdict back to compile time, where the arm has always been visible; the
+/// total `satAdd` keeps multiplicity the program's only defect.
 const MULTISHOT_RESUME: &str = r#"
 effect Choose {
     control pick: fn() -> int
@@ -224,7 +219,7 @@ effect Choose {
 
 fn both() -> int !Choose = {
     let x = perform Choose.pick()
-    x + 1 ?: 0
+    satAdd(x, 1)
 }
 
 fn main() = {
@@ -233,7 +228,7 @@ fn main() = {
             pick => {
                 let a = resume(10)
                 let b = resume(20)
-                a + b ?: 0
+                satAdd(a, b)
             }
         }
         both()
@@ -252,7 +247,7 @@ effect Choose {
 
 fn both() -> int !Choose = {
     let x = perform Choose.pick()
-    x + 1 ?: 0
+    satAdd(x, 1)
 }
 
 fn main() = {
@@ -1485,22 +1480,23 @@ fn nested_tests_fail_loudly_and_zero_case_runs_keep_the_plan() {
 }
 
 // [TESTING-EQUALITY] an Error operand is a visible mismatch, never a blind
-// payload read.
+// payload read. `checkedAdd` is the value-level overflow spelling; `intDiv`
+// returns a plain `int` under [ARITH-EFFECT], so it has no Error to render.
 #[test]
 fn error_result_assertions_render_the_error() {
     let prog = temp_osp(
         "tap_err_result",
-        "test(\"div\", fn() => expect(intDiv(1, 0), 2))\n",
+        "test(\"overflow\", fn() => expect(checkedAdd(9223372036854775807, 1), 2))\n",
     );
     let o = run_file(&prog, &["--run"]);
     assert_eq!(o.code, Some(1), "{}", o.stdout);
     assert!(
         o.stdout
-            .contains("# expect failed: expected 2, got Error(division by zero)"),
+            .contains("# expect failed: expected 2, got Error(integer overflow)"),
         "{}",
         o.stdout
     );
-    assert!(o.stdout.contains("not ok 1 - div"), "{}", o.stdout);
+    assert!(o.stdout.contains("not ok 1 - overflow"), "{}", o.stdout);
 }
 
 /// The whole call-site type-application pipeline — parse, check, lower, emit,
@@ -1589,11 +1585,11 @@ fn a_contradicting_written_type_argument_is_rejected_by_the_cli() {
 #[test]
 fn bare_result_variants_compile_and_select_the_correct_arm() {
     for (index, source) in [
-        "let a = match 10 % 3 { Success { value } => value Error => 0 }\nlet b = match 10 % 0 { Success => 7 Error => 9 }\nprint(\"${a},${b}\")\n",
+        "let a = match checkedAdd(0, 1) { Success { value } => value Error => 0 }\nlet b = match checkedAdd(9223372036854775807, 1) { Success => 7 Error => 9 }\nprint(\"${a},${b}\")\n",
         "type Outcome = Success | Error\nlet a = match Success { Success => 1 Error => 0 }\nlet b = match Error { Success => 7 Error => 9 }\nprint(\"${a},${b}\")\n",
         "let a = match 1 { Success { value } => value Error => 0 }\nlet b = match 9 { Success { value } => value Error => 0 }\nprint(\"${a},${b}\")\n",
-        "let a = match 10 % 3 { Error => 0 whole => match whole { Success { value } => value Error => 0 } }\nlet b = match 10 % 0 { Success => 7 _ => 9 }\nprint(\"${a},${b}\")\n",
-        "// osprey: flavor=ml\na = match 10 % 3\n    Success value => value\n    Error => 0\nb = match 10 % 0\n    Success => 7\n    Error => 9\nprint \"${a},${b}\"\n",
+        "let a = match checkedAdd(0, 1) { Error => 0 whole => match whole { Success { value } => value Error => 0 } }\nlet b = match checkedAdd(9223372036854775807, 1) { Success => 7 _ => 9 }\nprint(\"${a},${b}\")\n",
+        "// osprey: flavor=ml\na = match checkedAdd (0, 1)\n    Success value => value\n    Error => 0\nb = match checkedAdd (9223372036854775807, 1)\n    Success => 7\n    Error => 9\nprint \"${a},${b}\"\n",
     ].iter().enumerate() {
         let source = temp_osp(&format!("bare_result_variants_{index}"), source);
         for memory in ["default", "gc", "arc"] {

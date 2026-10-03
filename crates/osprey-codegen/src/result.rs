@@ -307,16 +307,3 @@ pub(crate) fn fit_to_inner(cg: &mut Codegen, v: Value, inner: LType) -> Result<V
         make_ok(cg, v, inner)
     }
 }
-
-/// Extract a Result's success payload after the caller has established that
-/// this is an explicit handling context (such as a `?:` success branch or
-/// failure-preserving arithmetic). A non-Result passes through.
-pub(crate) fn unwrap(cg: &mut Codegen, v: Value) -> Value {
-    if v.result_inner.is_some() {
-        let out = load_value(cg, &v);
-        crate::arc::consume_fresh(cg, &v);
-        out
-    } else {
-        v
-    }
-}

@@ -13,29 +13,10 @@
 //! grammar with an external INDENT/DEDENT/NEWLINE scanner.c — the boundary law
 //! makes the parser mechanism a flavor-internal swap (docs/specs/0023).
 
+use super::doc_text::strip_doc_lines;
 use super::token::{keyword_or_ident, TokKind, Token};
 use crate::SyntaxError;
 use osprey_ast::Position;
-
-/// Normalise a `(** … *)` doc comment's raw inner text: trim the outer blank
-/// margins and, per line, drop leading whitespace and one optional `*`
-/// continuation marker (the odoc convention), so an aligned doc block lowers to
-/// clean prose. The shared body parser handles Markdown structure from there.
-fn strip_doc_lines(raw: &str) -> String {
-    raw.trim()
-        .lines()
-        .map(|line| {
-            let t = line.trim_start();
-            let body = t
-                .strip_prefix('*')
-                .map_or(t, |r| r.strip_prefix(' ').unwrap_or(r));
-            body.trim_end()
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-        .trim()
-        .to_string()
-}
 
 /// Lex `source` into a layout-resolved token stream terminated by
 /// [`TokKind::Eof`], plus any lexical errors.
@@ -760,6 +741,26 @@ mod tests {
             _ => None,
         });
         assert_eq!(doc.as_deref(), Some("Doubles [x].\nMore."));
+    }
+
+    #[test]
+    fn doc_code_fences_keep_indentation_relative_to_the_fence() {
+        // ML layout is syntax, so a fenced example keeps every line's
+        // indentation beyond the fence's own column ([DOC-SIGIL-ML]).
+        let doc = |source: &str| {
+            lex(source).0.into_iter().find_map(|t| match t.kind {
+                TokKind::Doc(s) => Some(s),
+                _ => None,
+            })
+        };
+        let flush =
+            "(** Wraps.\n```osprey\nw = handler Arith\n    overflow _ _ _ v => v\n```\n*)\nx = 1\n";
+        let aligned = "(** Wraps.\n    ```osprey\n    w = handler Arith\n        overflow _ _ _ v => v\n    ```\n*)\nx = 1\n";
+        let starred = "(** Wraps.\n * ```osprey\n * w = handler Arith\n *     overflow _ _ _ v => v\n * ```\n *)\nx = 1\n";
+        let expected = "Wraps.\n```osprey\nw = handler Arith\n    overflow _ _ _ v => v\n```";
+        for source in [flush, aligned, starred] {
+            assert_eq!(doc(source).as_deref(), Some(expected), "{source}");
+        }
     }
 
     #[test]

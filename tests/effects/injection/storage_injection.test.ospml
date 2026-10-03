@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 (** Storage names the persistence the notebook logic needs and nothing more.
     No implementation appears here: `save`, `load` and `exists` are answered
     by whoever installs the handler, so the logic compiles once and runs unchanged
@@ -65,16 +79,16 @@ mut mockLog = ""
 withMockStorage action =
     handle Storage
         save key contents =>
-            mockSaves := mockSaves + 1 ?: mockSaves
+            mockSaves := mockSaves + 1 
             mockLog := "${mockLog}save(${key},${toString (byteLength contents)});"
             mockFiles := mapSet mockFiles key contents
             byteLength contents
         load key =>
-            mockLoads := mockLoads + 1 ?: mockLoads
+            mockLoads := mockLoads + 1 
             mockLog := "${mockLog}load(${key});"
             mapGet mockFiles key ?: ""
         exists key =>
-            mockExistsCalls := mockExistsCalls + 1 ?: mockExistsCalls
+            mockExistsCalls := mockExistsCalls + 1 
             mockLog := "${mockLog}exists(${key});"
             mapContains mockFiles key
     action ()
@@ -96,8 +110,8 @@ diskArchive = "${diskBook}.archive.txt"
     bytes with `readFile` from outside the handler. *)
 diskStorageCase () =
     (** Truncate both paths so a rerun starts from the same file system state. *)
-    clearedBook = writeFile diskBook "" ?: (0 - 1 ?: 0)
-    clearedArchive = writeFile diskArchive "" ?: (0 - 1 ?: 0)
+    clearedBook = writeFile diskBook "" ?: (0 - 1 )
+    clearedArchive = writeFile diskArchive "" ?: (0 - 1 )
     first = withDiskStorage (\() => appendNote (diskBook, "buy milk"))
     second = withDiskStorage (\() => appendNote (diskBook, "call dentist"))
     counted = withDiskStorage (\() => countNotes diskBook)
@@ -127,7 +141,8 @@ diskStorageCase () =
         entryCount onDisk == 2
     ]
 
-test "injected disk handler persists the notebook to real files" diskStorageCase
+
+test "injected disk handler persists the notebook to real files" (\() => exactArithmetic (diskStorageCase))
 
 (** This case runs the identical logic against the in-memory double and
     verifies both the answers and the calls the logic made. *)
@@ -179,7 +194,7 @@ mockStorageCase () =
         archiveAbsent
     ]
 
-test "injected mock handler replaces the file system and records every call" mockStorageCase
+test "injected mock handler replaces the file system and records every call" (\() => exactArithmetic (mockStorageCase))
 
 (** This case swaps in a third policy to show the logic is unchanged by it. *)
 readOnlyStorageCase () =
@@ -207,4 +222,4 @@ readOnlyStorageCase () =
         (readFile diskBook ?: "") == "buy milk\ncall dentist\n"
     ]
 
-test "swapping the injected handler swaps the policy, not the logic" readOnlyStorageCase
+test "swapping the injected handler swaps the policy, not the logic" (\() => exactArithmetic (readOnlyStorageCase))

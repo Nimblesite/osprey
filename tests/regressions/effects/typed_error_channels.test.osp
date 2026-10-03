@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // Cross-contract oracle for [EFFECTS-OP-TYPING], [EFFECTS-STATIC-DISCHARGE],
 // [EFFECTS-HANDLER-STATE], [TYPE-LIST], [TYPE-LIST-PATTERNS], [TYPE-MAP],
 // [TYPE-MAP-LOOKUP], [TYPE-MAP-OPS], and [PATTERN-RESULT-DEFAULT].
@@ -17,12 +36,12 @@ effect Range {
 }
 
 /// The row scopes these performs; rows are not yet propagated through calls.
-fn loadConfig() -> int ![Parse, Missing, Range] = {
+fn loadConfig() -> int ![Parse, Missing, Range, Arith] = {
     let port = perform Parse.bad("=80=") // Parse channel: not a number
     let timeout = perform Missing.fill("timeout") // Missing channel: key absent
     let retries = perform Range.clamp(250, 10) // Range channel: over the max
     print("assembled  -> port=${toString(port)} timeout=${toString(timeout)} retries=${toString(retries)}")
-    port + timeout + retries ?: 0
+    port + timeout + retries 
 }
 
 /// This helper declares and performs only Range.
@@ -30,7 +49,7 @@ fn loadRetries(raw: int) -> (int) -> int !Range =
 fn(hi) => perform Range.clamp(raw, hi)
 
 /// No arm uses resume, so each arm value replaces its operation result.
-let combined = {
+let combined = exactArithmetic(fn() => {
     handle Parse {
         bad raw => {
             print("[Parse]    cannot parse '${raw}' -> substitute 0")
@@ -82,6 +101,7 @@ let combined = {
 
     total
 }
+)
 print("final combined result = ${toString(combined)}")
 
 /// Applies the strict inner Range policy in isolation.
@@ -218,4 +238,5 @@ fn typedErrorChannelCase() = {
             listLength(mapValues(grown)) == 3
     ])
 }
-test("typed error channels compose and restore shadowed handlers", typedErrorChannelCase)
+
+test("typed error channels compose and restore shadowed handlers", fn() => exactArithmetic(typedErrorChannelCase))

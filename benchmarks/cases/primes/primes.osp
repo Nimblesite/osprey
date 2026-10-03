@@ -1,7 +1,7 @@
 // Count primes below a limit by trial division — integer % in a tight loop.
-fn add(a, b) = a + b ?: 0
-fn mul(a, b) = a * b ?: 0
-fn mod_(a, b) = a % b ?: 0
+fn add(a, b) = a + b
+fn mul(a, b) = a * b
+fn mod_(a, b) = a % b
 
 fn hasFactor(n, d) = match (mul(d, d) > n) {
     true  => false
@@ -13,4 +13,16 @@ fn isPrime(n) = match (n < 2) {
 }
 fn tally(acc, n) = match isPrime(n) { true => add(acc, 1)  false => acc }
 
-print("${range(2, 200000) |> fold(0, tally)}")
+fn main() = {
+    handle Arith {
+        overflow _ _ _ wrapped => {
+            print("unexpected integer overflow")
+            wrapped
+        }
+        remainderByZero _ => {
+            print("unexpected zero divisor")
+            0
+        }
+    }
+    print("${range(2, 200000) |> fold(0, tally)}")
+}

@@ -28,11 +28,12 @@ state Metrics : MetricsApi
         total : Unit => int
 
     // The handler installer: wraps a request-serving body in the one region
-    // allowed to read and write `served`.
+    // allowed to read and write `served`. The tally saturates with the total
+    // `satAdd`: a counter at the int ceiling stays there instead of wrapping.
     track body =
         handle MetricsFx
             hit _path =>
-                served := (served + 1) ?: served
+                served := satAdd served 1
                 served
             total => served
         body ()

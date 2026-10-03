@@ -181,18 +181,13 @@ jobs:
         run: npm run test:shipwright
         working-directory: ./vscode-extension
 
-      # Official duplication gate. deslop measures source text, so one
-      # platform's verdict is every platform's and a second copy elsewhere
-      # would only duplicate this. The committed .deslop.toml is the threshold
-      # source (deslop exits 3 when over); reports stay ephemeral rather than
-      # consuming Actions artifact storage. `version` is explicit because the
-      # action is pinned to the immutable commit for v0.27.0 rather than its
-      # mutable tag. Docs: https://deslop.live/docs/github-action/
+      # The local and hosted gates install the latest release and read the same
+      # committed threshold. A failed download or breached ceiling fails CI.
+      - name: Install latest Deslop
+        run: bash scripts/install-deslop.sh
+
       - name: Deslop duplication gate
-        uses: Nimblesite/Deslop@f1915e6328165f23a4bd1c6cd4262a64dd7d9033 # v0.27.0
-        with:
-          version: "0.27.0"
-          upload-artifact: "false"
+        run: deslop . --nohtml --nojson --output "$RUNNER_TEMP/deslop-report" --log-to-console --log-level error --no-color
 
       # Dead-code gate: fail if any `pub` declaration is unreachable from the
       # osprey binary (hawk::dead_public). cargo-hawk's prebuilt driver is

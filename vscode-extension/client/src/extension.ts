@@ -222,6 +222,7 @@ export function defaultDebugOutputPath(program: string): string {
 export interface LldbDapResolutionHost {
   env?: NodeJS.ProcessEnv;
   existsSync?: (filePath: string) => boolean;
+  readDir?: (directory: string) => string[];
   execFileSync?: (
     command: string,
     args: readonly string[],
@@ -246,6 +247,33 @@ function findExecutableOnPath(
     }
   }
   return undefined;
+}
+
+function versionedDap(
+  dir: string,
+  name: string,
+  existsSync: (filePath: string) => boolean,
+): [number, string] | undefined {
+  const version = /^lldb-dap-(\d+)$/.exec(name)?.[1];
+  const candidate = path.join(dir, name);
+  return version && existsSync(candidate) ? [Number(version), candidate] : undefined;
+}
+
+function findVersionedLldbDap(
+  env: NodeJS.ProcessEnv,
+  existsSync: (filePath: string) => boolean,
+  readDir: (directory: string) => string[],
+): string | undefined {
+  const candidates = (env.PATH ?? "").split(path.delimiter).filter(Boolean).flatMap((dir) => {
+    try {
+      return readDir(dir)
+        .map((name) => versionedDap(dir, name, existsSync))
+        .filter((item): item is [number, string] => item !== undefined);
+    } catch {
+      return [];
+    }
+  });
+  return candidates.sort((left, right) => right[0] - left[0])[0]?.[1];
 }
 
 export function resolveLldbDapCommand(
@@ -282,6 +310,12 @@ export function resolveLldbDapExecutable(
     findExecutableOnPath(legacyName, env, existsSync);
   if (onPath) {
     return onPath;
+  }
+  if (platform === "linux") {
+    const versioned = findVersionedLldbDap(env, existsSync, host.readDir ?? fs.readdirSync);
+    if (versioned) {
+      return versioned;
+    }
   }
 
   if (platform === "darwin") {

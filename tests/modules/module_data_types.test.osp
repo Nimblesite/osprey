@@ -9,6 +9,27 @@
 
 namespace shapes;
 
+
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
+
 module Geo {
     export type Shape = Circle { radius: int } | Square { side: int }
 
@@ -19,8 +40,8 @@ module Geo {
     export fn square(side) = Square { side: side }
 
     export fn area(shape) = match shape {
-        Circle { radius } => (radius * radius) ?: 0
-        Square { side } => (side * side) ?: 0
+        Circle { radius } => (radius * radius)
+        Square { side } => (side * side)
     }
 
     export fn name(shape) = match shape {
@@ -29,11 +50,11 @@ module Geo {
     }
 
     export fn extent(shape) = match shape {
-        Circle { radius } => Extent { width: ((radius * 2) ?: 0), height: ((radius * 2) ?: 0) }
+        Circle { radius } => Extent { width: ((radius * 2) ), height: ((radius * 2) ) }
         Square { side } => Extent { width: side, height: side }
     }
 
-    export fn perimeterOf(extent) = ((((extent.width + extent.height) ?: 0) * 2) ?: 0)
+    export fn perimeterOf(extent) = ((((extent.width + extent.height) ) * 2) )
 }
 
 module Boxes {
@@ -57,7 +78,7 @@ module Ids {
     export fn value(id) = id.value
 
     export fn next(id) = match id {
-        Id { value } => Id { value: (value + 1) ?: value }
+        Id { value } => Id { value: value + 1 }
     }
 }
 
@@ -96,8 +117,9 @@ fn opaqueCase() = checkAll("opaque records are reached through their module", [
     Ids::value(Ids::next(Ids::next(Ids::make(0)))) == 2
 ])
 
-print("${Geo::area(Geo::circle(3))} ${Geo::name(Geo::square(4))} ${Geo::perimeterOf(Geo::extent(Geo::square(5)))} ${Boxes::held(Boxes::wrap("seven"))}")
-test("module unions keep their payloads", unionPayloadCase)
-test("module records keep their fields", recordFieldCase)
-test("module generics specialise per call site", genericModuleCase)
-test("module opaque records stay abstract", opaqueCase)
+exactArithmetic(fn() => print("${Geo::area(Geo::circle(3))} ${Geo::name(Geo::square(4))} ${Geo::perimeterOf(Geo::extent(Geo::square(5)))} ${Boxes::held(Boxes::wrap("seven"))}"))
+
+test("module unions keep their payloads", fn() => exactArithmetic(unionPayloadCase))
+test("module records keep their fields", fn() => exactArithmetic(recordFieldCase))
+test("module generics specialise per call site", fn() => exactArithmetic(genericModuleCase))
+test("module opaque records stay abstract", fn() => exactArithmetic(opaqueCase))

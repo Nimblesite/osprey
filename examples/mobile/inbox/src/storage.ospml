@@ -32,12 +32,12 @@ module Storage
         number = parseInt (jsonGet doc (prefix + ".number") ?: "") ?: 0
         title = jsonGet doc (prefix + ".title") ?: ""
         author = jsonGet doc (prefix + ".author") ?: ""
-        comments = parseInt (jsonGet doc (prefix + ".comments") ?: "") ?: ((0 - 1) ?: 0)
+        comments = parseInt (jsonGet doc (prefix + ".comments") ?: "") ?: ((0 - 1) )
         (parseInt id ?: 0) > 0 && number > 0 && length title > 0 && length author > 0 && comments >= 0
 
     validItems doc index count = match index >= count
         true => true
-        false => validItem doc index && validItems doc ((index + 1) ?: count) count
+        false => validItem doc index && validItems doc ((satAdd index 1) ) count
 
     validArray source = match startsWith (trimStart source) "["
         false => false

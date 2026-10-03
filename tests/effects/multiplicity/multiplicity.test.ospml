@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 (** Resumption multiplicity — how many times an effect's request may be answered
     ([MULTI-AXIS], docs/specs/0035-StagedEffects.md). The ML twin of
     `multiplicity.test.osp`, sharing its golden.
@@ -54,16 +68,16 @@ retrySendsOneReceiptCase () =
             line message => transcript := "${transcript}${message}\n"
         handle Email
             deliver body =>
-                receipts := receipts + 1 ?: receipts
+                receipts := receipts + 1 
                 perform Audit.line "email: ${body}"
         handle Charge
             charge amount =>
-                attempts := attempts + 1 ?: attempts
+                attempts := attempts + 1 
                 match settle (amount, attempts)
                     Success value => resume value
                     Error message =>
                         perform Audit.line "declined: ${message}; retrying"
-                        attempts := attempts + 1 ?: attempts
+                        attempts := attempts + 1 
                         match settle (amount, attempts)
                             Success value => resume value
                             Error message => "declined: ${message}"
@@ -86,7 +100,7 @@ declineSendsNoReceiptCase () =
             line message => transcript := "${transcript}${message}\n"
         handle Email
             deliver body =>
-                receipts := receipts + 1 ?: receipts
+                receipts := receipts + 1 
                 perform Audit.line "email: ${body}"
         handle Charge
             charge amount => match settle (amount, 1)
@@ -106,12 +120,12 @@ declineSendsNoReceiptCase () =
 applyTwice (f, x) = f (f x)
 
 (** A callback over a `replayable` operation. *)
-jitter n = (n + perform Random.next ()) ?: n
+jitter n = (n + perform Random.next ()) 
 
 (** A callback over an ordinary, non-replayable `once` operation. *)
 audited n =
     perform Email.deliver "audit ${toString n}"
-    (n * 2) ?: n
+    (n * 2) 
 
 (** [MULTI-FALSIFY] 4, for the multiplicities the runtime can represent. *)
 sharedAcrossMultiplicitiesCase () =
@@ -122,7 +136,7 @@ sharedAcrossMultiplicitiesCase () =
         applyTwice (jitter, 10)
     doubled =
         handle Email
-            deliver _body => audits := audits + 1 ?: audits
+            deliver _body => audits := audits + 1 
         applyTwice (audited, 5)
     checkAll "one function serves both multiplicities" [
         noisy == 16, doubled == 20, audits == 2
@@ -137,16 +151,17 @@ contextualKeywordCase () =
             once => resume 2
             many => resume 4
             replayable => resume 8
-        low = (perform Vocabulary.abort () + perform Vocabulary.once ()) ?: 0
-        high = (perform Vocabulary.many () + perform Vocabulary.replayable ()) ?: 0
-        (low + high) ?: 0
+        low = (perform Vocabulary.abort () + perform Vocabulary.once ()) 
+        high = (perform Vocabulary.many () + perform Vocabulary.replayable ()) 
+        (low + high) 
     many = 100
-    abort = (many + total) ?: total
+    abort = (many + total) 
     checkAll "modifier words stay ordinary identifiers" [
         total == 15, abort == 115
     ]
 
-test "a once arm retrying internally sends exactly one receipt" retrySendsOneReceiptCase
-test "a once arm that declines to resume sends no receipt" declineSendsNoReceiptCase
-test "one unannotated function serves both multiplicities" sharedAcrossMultiplicitiesCase
-test "abort, once, many and replayable stay legal identifiers" contextualKeywordCase
+
+test "a once arm retrying internally sends exactly one receipt" (\() => exactArithmetic (retrySendsOneReceiptCase))
+test "a once arm that declines to resume sends no receipt" (\() => exactArithmetic (declineSendsNoReceiptCase))
+test "one unannotated function serves both multiplicities" (\() => exactArithmetic (sharedAcrossMultiplicitiesCase))
+test "abort, once, many and replayable stay legal identifiers" (\() => exactArithmetic (contextualKeywordCase))

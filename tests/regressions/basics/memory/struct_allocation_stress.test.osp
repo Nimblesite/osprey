@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // Struct-allocation stress across the swappable memory backends. A lazy range
 // drives creation of a LARGE number of transient records; the default backend,
 // the tracing GC (--memory=gc) and Perceus ARC (--memory=arc) must all print
@@ -15,29 +34,29 @@ type Particle = { id: int, mass: int, spin: int }
 
 let COUNT = 100000
 
-fn forge(i) = Particle { id: i, mass: (i * 3) ?: 0, spin: (i % 5) ?: 0 }
+fn forge(i) = Particle { id: i, mass: (i * 3) , spin: (i % 5)  }
 /// `add` stays a named function (not inlined into `energy`) because it is also
 /// passed by value to `fold`; the return type is inferred, so both flavors emit
 /// identical IR ([FLAVOR-IR-EQUIV]).
-fn add(a, b) = a + b ?: 0
+fn add(a, b) = a + b 
 fn energy(p) = add(p.mass, p.spin)
 fn heavy(p) = p.mass > 150000
 
 /// 1. Bulk allocation — build COUNT records, read each once, fold to a scalar.
 ///    Nothing survives the fold: every record is transient.
-let total = range(1, COUNT) |> map(forge) |> map(energy) |> fold(0, add)
+let total = exactArithmetic(fn() => range(1, COUNT) |> map(forge) |> map(energy) |> fold(0, add))
 print("particles=${COUNT} totalEnergy=${total}")
 
 /// 2. Filter drops most records mid-stream — allocate COUNT, keep the heavy
 ///    tail. ARC must free each record the filter rejects.
-let heavyTotal = range(1, COUNT) |> map(forge) |> filter(heavy) |> map(energy) |> fold(0, add)
+let heavyTotal = exactArithmetic(fn() => range(1, COUNT) |> map(forge) |> filter(heavy) |> map(energy) |> fold(0, add))
 print("heavyEnergy=${heavyTotal}")
 
 /// 3. Non-destructive update in the hot path — every step COPIES a record, so a
 ///    record-typed fold accumulator is born COUNT-1 times and all but the last
 ///    die immediately. Exercises the pointer-accumulator fold path end to end.
 fn bump(p, _step) = p { mass: add(p.mass, 1) }
-let bumped = range(1, COUNT) |> fold(forge(1), bump)
+let bumped = exactArithmetic(fn() => range(1, COUNT) |> fold(forge(1), bump))
 print("bumpedMass=${bumped.mass}")
 
 /// Verifies the aggregate outputs and record transformations used by the stress run.
@@ -59,4 +78,5 @@ fn structAllocationCase() = {
         heavy(forge(50001))
     ])
 }
-test("record allocation preserves aggregate values", structAllocationCase)
+
+test("record allocation preserves aggregate values", fn() => exactArithmetic(structAllocationCase))

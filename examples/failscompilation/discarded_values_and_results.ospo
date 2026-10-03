@@ -6,8 +6,8 @@
 // `_` has no way to consent to losing a `Result`'s error channel, so an
 // unhandled `Result` must still be discharged with `match` or `?:`.
 
-fn twice(n) = n * 2 ?: 0
-fn risky(a, b) = a + b
+fn twice(n) = wrapMul(n, 2)
+fn risky(a, b) = checkedAdd(a, b)
 
 twice(21)
 risky(1, 2)

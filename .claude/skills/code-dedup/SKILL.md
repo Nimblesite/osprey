@@ -44,7 +44,7 @@ No MCP? Use the installed CLI — what `make _deslop` runs:
 deslop . --nohtml --nojson --output "$PWD/target/deslop-report" --log-to-console --log-level error --no-color
 ```
 
-Exit `3` means over the ceiling in `.deslop.toml`. Check `deslop --version`; install from <https://deslop.live/docs/for-ai/> only if the binary is missing, matching the version pinned in `.github/workflows/ci.yml`. Never upgrade to move a number — the MCP server (`tool_version: 0.0.0-dev`) and the pinned CLI disagree, so **find** with the MCP and **measure** with `make _deslop`.
+Exit `3` means over the ceiling in `.deslop.toml`. Run `bash scripts/install-deslop.sh` before measuring: both local and hosted CI resolve the latest published release through this installer. Never change the version or threshold to move a number. The MCP index may use a different engine, so **find** with the MCP and **measure** with `make _deslop`.
 
 ## The ratchet
 

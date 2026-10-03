@@ -16,12 +16,12 @@ vscode.languages.onDidChangeDiagnostics((event) => {
   for (const uri of event.uris) published.add(uri.toString());
 });
 
-export async function waitFor<T>(read: () => T, accepts: (value: T) => boolean, description: string): Promise<T> {
+export async function waitFor<T>(read: () => T | Promise<T>, accepts: (value: T) => boolean, description: string): Promise<T> {
   const deadline = Date.now() + 20000;
-  let value = read();
+  let value = await read();
   while (!accepts(value) && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 50));
-    value = read();
+    value = await read();
   }
   assert.ok(accepts(value), `${description}: ${JSON.stringify(value)}`);
   return value;
@@ -129,7 +129,7 @@ export function assertEdit(action: vscode.CodeAction, document: vscode.TextDocum
   assert.strictEqual(changed, expected, "Exact edit must preserve body, comments and surrounding text");
 }
 
-export async function invokeFix(editor: vscode.TextEditor, range: vscode.Range, expected: string, kind = "quickfix"): Promise<void> {
+async function focusAt(editor: vscode.TextEditor, range: vscode.Range): Promise<void> {
   await vscode.window.showTextDocument(editor.document, { preserveFocus: false });
   await vscode.commands.executeCommand("workbench.action.focusActiveEditorGroup");
   assert.strictEqual(vscode.window.activeTextEditor?.document.uri.toString(), editor.document.uri.toString());
@@ -144,15 +144,30 @@ export async function invokeFix(editor: vscode.TextEditor, range: vscode.Range, 
   await waitFor(() => editor.selection.active, (position) => position.isEqual(range.start),
     "Native cursor returns to the exact annotation range");
   assert.ok(editor.selection.isEmpty);
+}
+
+async function focusedAction(editor: vscode.TextEditor, range: vscode.Range, kind: string): Promise<vscode.CodeAction> {
   // The generic editor picker may cancel or apply an unrelated provider's
   // action while the language server republishes diagnostics. Execute the
   // exact action the installed extension just offered and prove its guarded
   // command accepted the fresh document. This still exercises the production
   // provider, revalidation request and workspace edit end to end.
-  const offered = await actions(editor.document, range, kind);
+  const version = editor.document.version;
+  // VS Code can answer with no actions while the focused editor refreshes its
+  // provider. Wait for the same source version's action before invoking it.
+  const offered = await waitFor(async () => {
+    assert.strictEqual(editor.document.version, version, "The source changed before quick-fix invocation");
+    return actions(editor.document, range, kind);
+  }, (found) => found.length > 0, "Requested quick fix returns after editor focus");
   assert.strictEqual(offered.length, 1, "The requested fix must remain available at invocation");
-  assertEdit(offered[0], editor.document, expected, true);
-  const command = offered[0].command;
+  return offered[0];
+}
+
+export async function invokeFix(editor: vscode.TextEditor, range: vscode.Range, expected: string, kind = "quickfix"): Promise<void> {
+  await focusAt(editor, range);
+  const action = await focusedAction(editor, range, kind);
+  assertEdit(action, editor.document, expected, true);
+  const command = action.command;
   assert.ok(command);
   assert.strictEqual(command.command, "osprey.applyWarningFix");
   assert.strictEqual(await vscode.commands.executeCommand<boolean>(command.command, ...(command.arguments ?? [])), true,

@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 // Run one effectful pipeline under a handler that always resumes, then under a
 // handler that aborts by returning without resume. [EFFECTS-RESUME]
 
@@ -6,7 +20,7 @@ effect Step
     control run : int => int
 
 (** An aborted continuation omits observations after the poison step. *)
-pipeline : Unit -> int ! Step
+pipeline : Unit -> int ![Step, Arith]
 pipeline () =
     a = perform Step.run 1
     print ("pipeline saw step1 -> " + toString a)
@@ -14,42 +28,44 @@ pipeline () =
     print ("pipeline saw step2 -> " + toString b)
     c = perform Step.run 3
     print ("pipeline saw step3 -> " + toString c)
-    a + b + c ?: 0
+    a + b + c 
 
-sentinel = (0 - 99) ?: 0
+sentinel = (0 - 99) 
 
 // Every arm resumes; audit lines run as continuations unwind.
 print "=== recovering handler: resume every step, drive to completion ==="
 mut counter = 0
 recovered =
-    handle Step
-        run x =>
-            stepNo = counter + 1 ?: counter
-            counter := stepNo
-            v = resume ((x * 10) ?: 0)
-            print ("audit[recover]: step " + toString stepNo + " (input " + toString x + ") settled, downstream=" + toString v)
-            v
-    pipeline ()
+    exactArithmetic (\() =>
+        handle Step
+            run x =>
+                stepNo = counter + 1 
+                counter := stepNo
+                v = resume ((x * 10) )
+                print ("audit[recover]: step " + toString stepNo + " (input " + toString x + ") settled, downstream=" + toString v)
+                v
+        pipeline ())
 print ("recovered result=" + toString recovered)
 
 // Returning at step 2 aborts the suspended computation.
 print "=== stopping handler: step 2 stops the pipeline, then step 1 handler finishes ==="
 mut counter2 = 0
 aborted =
-    handle Step
-        run x =>
-            stepNo = counter2 + 1 ?: counter2
-            counter2 := stepNo
-            match x == 2
-                true =>
-                    // No resume: discard the rest of the pipeline.
-                    print ("poison at step " + toString stepNo + " (input " + toString x + ") -> abort, discard the rest")
-                    sentinel
-                false =>
-                    v = resume ((x * 10) ?: 0)
-                    print ("audit[abort-run]: step " + toString stepNo + " (input " + toString x + ") settled, downstream=" + toString v)
-                    v
-    pipeline ()
+    exactArithmetic (\() =>
+        handle Step
+            run x =>
+                stepNo = counter2 + 1 
+                counter2 := stepNo
+                match x == 2
+                    true =>
+                        // No resume: discard the rest of the pipeline.
+                        print ("poison at step " + toString stepNo + " (input " + toString x + ") -> abort, discard the rest")
+                        sentinel
+                    false =>
+                        v = resume ((x * 10) )
+                        print ("audit[abort-run]: step " + toString stepNo + " (input " + toString x + ") settled, downstream=" + toString v)
+                        v
+        pipeline ())
 print ("aborted result=" + toString aborted)
 
 (** A BRANCH of a resuming arm that returns without resuming abandons the
@@ -78,21 +94,23 @@ mixedPipeline () =
     "unreached ${scaled} ${stopped}"
 
 stoppedAnswer =
-    handle Mixed
-        scale x => resume ((x * 2) ?: 0)
-        stop => match true
-            true => "stopped"
-            false => resume 0
-    mixedPipeline ()
+    exactArithmetic (\() =>
+        handle Mixed
+            scale x => resume ((x * 2) )
+            stop => match true
+                true => "stopped"
+                false => resume 0
+        mixedPipeline ())
 
 print "mixed answer: ${stoppedAnswer}"
 
 // Verify both continuation policies and their exact operation counts.
-test "resuming completes while returning aborts the pipeline" (\() => checkAll "abort versus resume state" [
+
+test "resuming completes while returning aborts the pipeline" (\() => exactArithmetic ((\() => checkAll "abort versus resume state" [
     recovered == 60,
     counter == 3,
     aborted == sentinel,
     counter2 == 2,
     recovered != aborted,
     stoppedAnswer == "stopped"
-])
+])))

@@ -1,29 +1,35 @@
-(** Add two integers with its safe fallback inferred from the body.
+(** Add two integers; the caller's `Arith` policy answers an overflow.
 # Examples
 ```osprey
-print "${add (2, 3)}"
+wrapping = handler Arith
+    overflow _ _ _ wrapped => wrapped
+print "${wrapping (\() => add (2, 3))}"
 ```
 ```output
 5
 ```
 ```osprey
-total = add (1, 2)
+saturating = handler Arith
+    overflow _ _ _ _ => 9223372036854775807
+total = saturating (\() => add (1, 2))
 ```
 *)
-add (a, b) = a + b ?: 0
+add (a, b) = a + b
 (** Double an integer for pipeline stages.
 # Examples
 ```osprey
-print "${double 3}"
+wrapping = handler Arith
+    overflow _ _ _ wrapped => wrapped
+print "${wrapping (\() => double 3)}"
 ```
 ```output
 6
 ```
 *)
-double x = x * 2 ?: 0
-(** Classify an integer through checked modulo and boolean matching. *)
+double x = x * 2
+(** Classify an integer through total modulo and boolean matching. *)
 parity n =
-    match (n % 2 ?: 1) == 0
+    match n % 2 == 0
         true => "even"
         false => "odd"
 
@@ -33,12 +39,12 @@ additionCase () =
     // Check arithmetic values and ordering.
     checkAll "addition state" [
         add (2, 3) == 5,
-        add ((0 - 1) ?: 0, 1) == 0,
-        add (subtotal, (0 - 5) ?: 0) == 25,
+        add (-1, 1) == 0,
+        add (subtotal, -5) == 25,
         add (0, 0) == 0,
-        add (1000, (0 - 250) ?: 0) == 750,
+        add (1000, -250) == 750,
         add (4, 5) > add (2, 3),
-        !(add ((0 - 2) ?: 0, 1) > 0)
+        !(add (-2, 1) > 0)
     ]
 
 (** Exercise pipelines, lambdas, negatives, and derived predicates. *)
@@ -47,9 +53,9 @@ pipelineCase () =
     // Check every pipeline stage independently.
     checkAll "pipeline state" [
         (10 |> double |> double) == 40,
-        (5 |> \x => x + 100 ?: 0) == 105,
+        (5 |> \x => x + 100) == 105,
         (six |> \x => add (x, 4)) == 10,
-        (((0 - 2) ?: 0) |> double |> double) == ((0 - 8) ?: 0),
+        (-2 |> double |> double) == -8,
         (6 |> double |> \x => x == 12),
         (1 |> double |> double) > 0
     ]
@@ -66,6 +72,12 @@ patternCase () =
         parity 3 != parity 4
     ]
 
-test "arithmetic composes across calls" additionCase
-test "pipes and lambdas compose" pipelineCase
-test "matching, interpolation and calls interact" patternCase
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic = handler Arith
+    overflow op _ _ wrapped =>
+        check "unexpected arithmetic overflow" "none" op
+        wrapped
+
+test "arithmetic composes across calls" (\() => exactArithmetic additionCase)
+test "pipes and lambdas compose" (\() => exactArithmetic pipelineCase)
+test "matching, interpolation and calls interact" (\() => exactArithmetic patternCase)

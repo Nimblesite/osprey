@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // `readPositive` validates values supplied by Prompt. One handler keeps
 // resuming with scripted values; another returns without resume to stop.
 
@@ -20,12 +39,12 @@ fn readPositive(label: string) -> int !Prompt = {
 
 /// Resume with -3, 0, then 7.
 mut attempt = 0
-let accepted = {
+let accepted = exactArithmetic(fn() => {
     handle Prompt {
         ask _label => {
-            attempt = attempt + 1 ?: attempt
+            attempt = attempt + 1 
             let value = match attempt {
-                1 => (0 - 3) ?: 0
+                1 => (0 - 3) 
                 2 => 0
                 _ => 7
             }
@@ -34,23 +53,23 @@ let accepted = {
         }
     }
     readPositive("age")
-}
+})
 print("SCENARIO 1 accepted=${toString(accepted)} after ${toString(attempt)} attempts")
 
 /// After three invalid values, return a sentinel without resuming.
 mut tries = 0
-let outcome = {
+let outcome = exactArithmetic(fn() => {
     handle Prompt {
         ask _label => {
-            tries = tries + 1 ?: tries
+            tries = tries + 1 
             match tries > 3 {
                 true => {
                     print("attempt ${toString(tries)}: handler GIVES UP, aborting with sentinel")
-                    let sentinel = (0 - 999) ?: 0
+                    let sentinel = (0 - 999) 
                     sentinel
                 }
                 false => {
-                    let value = (0 - tries) ?: 0
+                    let value = (0 - tries) 
                     print("attempt ${toString(tries)}: handler feeds ${toString(value)}")
                     resume(value)
                 }
@@ -58,21 +77,22 @@ let outcome = {
         }
     }
     readPositive("quota")
-}
-let verdict = match outcome > 0 {
+})
+let verdict = exactArithmetic(fn() => match outcome > 0 {
     true => "valid ${toString(outcome)}"
     false => "gave up (sentinel ${toString(outcome)}) after ${toString(tries - 1)} bad answers"
-}
+})
 print("SCENARIO 2 outcome: ${verdict}")
 
 // Verifies successful retries and the non-resuming early-exit policy.
-test("retry handlers resume until success or abort at their limit", fn() => checkAll("retry outcomes", [
+
+test("retry handlers resume until success or abort at their limit", fn() => exactArithmetic(fn() => checkAll("retry outcomes", [
     accepted == 7,
     attempt == 3,
-    outcome == ((0 - 999) ?: 0),
+    outcome == ((0 - 999) ),
     tries == 4,
-    contains(verdict, "after Success(3) bad answers")
-]))
+    contains(verdict, "after 3 bad answers")
+])))
 
 // ---------------------------------------------------------------------------
 // Retry permutation matrices. Everything below is silent: a retry loop is
@@ -87,11 +107,11 @@ effect Retry {
 }
 
 /// Silent twin of `readPositive`: each rejected candidate causes a fresh operation.
-fn acceptPositive(attempt) !Retry = {
+fn acceptPositive(attempt) ![Retry, Arith] = {
     let candidate = perform Retry.supply(attempt)
     match candidate > 0 {
         true => candidate
-        false => acceptPositive((attempt + 1) ?: attempt)
+        false => acceptPositive((attempt + 1) )
     }
 }
 
@@ -106,8 +126,8 @@ fn retryAttemptMatrixCase() = {
     let acceptedA = {
         handle Retry {
             supply n => {
-                callsA = callsA + 1 ?: callsA
-                let candidate = (n * 100) ?: 0
+                callsA = callsA + 1 
+                let candidate = (n * 100) 
                 issuedA = "${issuedA}${toString(n)}:${toString(candidate)}|"
                 let answer = resume(candidate)
                 settledA = "${settledA}${toString(n)}:${toString(answer)}|"
@@ -123,7 +143,7 @@ fn retryAttemptMatrixCase() = {
     let acceptedB = {
         handle Retry {
             supply n => {
-                callsB = callsB + 1 ?: callsB
+                callsB = callsB + 1 
                 let candidate = match n {
                     1 => 0
                     _ => 200
@@ -143,10 +163,10 @@ fn retryAttemptMatrixCase() = {
     let acceptedC = {
         handle Retry {
             supply n => {
-                callsC = callsC + 1 ?: callsC
+                callsC = callsC + 1 
                 let candidate = match n {
                     1 => 0
-                    2 => (0 - 5) ?: 0
+                    2 => (0 - 5) 
                     _ => 300
                 }
                 issuedC = "${issuedC}${toString(n)}:${toString(candidate)}|"
@@ -164,10 +184,10 @@ fn retryAttemptMatrixCase() = {
     let acceptedD = {
         handle Retry {
             supply n => {
-                callsD = callsD + 1 ?: callsD
+                callsD = callsD + 1 
                 let candidate = match n > 8 {
                     true => 900
-                    false => (0 - n) ?: 0
+                    false => (0 - n) 
                 }
                 issuedD = "${issuedD}${toString(n)}:${toString(candidate)}|"
                 let answer = resume(candidate)
@@ -190,10 +210,10 @@ fn retryAttemptMatrixCase() = {
         acceptedA < acceptedB,
         acceptedB < acceptedC,
         acceptedC < acceptedD,
-        (acceptedA + acceptedB ?: 0) == 300,
-        (acceptedA + acceptedB + acceptedC + acceptedD ?: 0) == 1500,
-        acceptedD == (acceptedA * 9 ?: 0),
-        acceptedC == (acceptedA * 3 ?: 0)
+        (acceptedA + acceptedB ) == 300,
+        (acceptedA + acceptedB + acceptedC + acceptedD ) == 1500,
+        acceptedD == (acceptedA * 9 ),
+        acceptedC == (acceptedA * 3 )
     ])
 
     // Attempts are rejections plus one: 0+1, 1+1, 2+1 and 8+1.
@@ -202,18 +222,18 @@ fn retryAttemptMatrixCase() = {
         callsB == 2,
         callsC == 3,
         callsD == 9,
-        (callsA + callsB + callsC + callsD ?: 0) == 15,
-        (callsB - callsA ?: 0) == 1,
-        (callsC - callsB ?: 0) == 1,
-        (callsD - callsC ?: 0) == 6,
+        (callsA + callsB + callsC + callsD ) == 15,
+        (callsB - callsA ) == 1,
+        (callsC - callsB ) == 1,
+        (callsD - callsC ) == 6,
         callsA != callsB,
         callsB != callsD,
         callsA > 0,
         callsD > callsC,
         callsC > callsB,
         callsB > callsA,
-        (callsD - 1 ?: 0) == 8,
-        (callsC - 1 ?: 0) == 2
+        (callsD - 1 ) == 8,
+        (callsC - 1 ) == 2
     ])
 
     // The issue transcript names every candidate in the order it was supplied.
@@ -269,7 +289,7 @@ fn retryAttemptMatrixCase() = {
         !contains(settledD, "300"),
         contains(issuedD, "900"),
         acceptedD != acceptedC,
-        (acceptedD - acceptedC ?: 0) == 600,
+        (acceptedD - acceptedC ) == 600,
         length(settledB) == 12,
         length(settledC) == 18,
         length(settledD) == 54
@@ -277,7 +297,7 @@ fn retryAttemptMatrixCase() = {
 }
 
 // Crosses the retry-count axis 0/1/2/8 against issue and settlement order.
-test("retry loops accept after zero one two and eight rejections", retryAttemptMatrixCase)
+test("retry loops accept after zero one two and eight rejections", fn() => exactArithmetic(retryAttemptMatrixCase))
 
 /// [EFFECTS-RESUME] "returning from the selected branch without resuming stops
 /// the suspended computation and its value becomes the result of the whole
@@ -290,15 +310,15 @@ fn retryBudgetExhaustionCase() = {
     let out1 = {
         handle Retry {
             supply n => {
-                calls1 = calls1 + 1 ?: calls1
+                calls1 = calls1 + 1 
                 match n > 1 {
                     true => {
                         trail1 = "${trail1}giveup:${toString(n)}|"
-                        (0 - 1000) ?: 0
+                        (0 - 1000) 
                     }
                     false => {
                         trail1 = "${trail1}try:${toString(n)}|"
-                        let answer = resume((0 - n) ?: 0)
+                        let answer = resume((0 - n) )
                         settled1 = "${settled1}${toString(n)}:${toString(answer)}|"
                         answer
                     }
@@ -314,15 +334,15 @@ fn retryBudgetExhaustionCase() = {
     let out2 = {
         handle Retry {
             supply n => {
-                calls2 = calls2 + 1 ?: calls2
+                calls2 = calls2 + 1 
                 match n > 2 {
                     true => {
                         trail2 = "${trail2}giveup:${toString(n)}|"
-                        (0 - 2000) ?: 0
+                        (0 - 2000) 
                     }
                     false => {
                         trail2 = "${trail2}try:${toString(n)}|"
-                        let answer = resume((0 - n) ?: 0)
+                        let answer = resume((0 - n) )
                         settled2 = "${settled2}${toString(n)}:${toString(answer)}|"
                         answer
                     }
@@ -338,15 +358,15 @@ fn retryBudgetExhaustionCase() = {
     let out3 = {
         handle Retry {
             supply n => {
-                calls3 = calls3 + 1 ?: calls3
+                calls3 = calls3 + 1 
                 match n > 3 {
                     true => {
                         trail3 = "${trail3}giveup:${toString(n)}|"
-                        (0 - 3000) ?: 0
+                        (0 - 3000) 
                     }
                     false => {
                         trail3 = "${trail3}try:${toString(n)}|"
-                        let answer = resume((0 - n) ?: 0)
+                        let answer = resume((0 - n) )
                         settled3 = "${settled3}${toString(n)}:${toString(answer)}|"
                         answer
                     }
@@ -363,16 +383,16 @@ fn retryBudgetExhaustionCase() = {
     let out5 = {
         handle Retry {
             supply n => {
-                calls5 = calls5 + 1 ?: calls5
+                calls5 = calls5 + 1 
                 match n > 5 {
                     true => {
                         trail5 = "${trail5}giveup:${toString(n)}|"
-                        (0 - 5000) ?: 0
+                        (0 - 5000) 
                     }
                     false => {
                         let candidate = match n {
                             3 => 777
-                            _ => (0 - n) ?: 0
+                            _ => (0 - n) 
                         }
                         trail5 = "${trail5}try:${toString(n)}|"
                         let answer = resume(candidate)
@@ -387,9 +407,9 @@ fn retryBudgetExhaustionCase() = {
 
     // Each exhausted budget answers with its own sentinel, never a shared one.
     checkAll("an exhausted budget answers with its own sentinel", [
-        out1 == ((0 - 1000) ?: 0),
-        out2 == ((0 - 2000) ?: 0),
-        out3 == ((0 - 3000) ?: 0),
+        out1 == ((0 - 1000) ),
+        out2 == ((0 - 2000) ),
+        out3 == ((0 - 3000) ),
         out5 == 777,
         out1 < 0,
         out2 < 0,
@@ -398,9 +418,9 @@ fn retryBudgetExhaustionCase() = {
         out1 != out2,
         out2 != out3,
         out1 != out5,
-        (out1 + out2 + out3 ?: 0) == ((0 - 6000) ?: 0),
-        (out2 - out1 ?: 0) == ((0 - 1000) ?: 0),
-        out3 == (out1 * 3 ?: 0)
+        (out1 + out2 + out3 ) == ((0 - 6000) ),
+        (out2 - out1 ) == ((0 - 1000) ),
+        out3 == (out1 * 3 )
     ])
 
     // Budget B costs B resuming attempts plus the one refusal that ends it.
@@ -409,13 +429,13 @@ fn retryBudgetExhaustionCase() = {
         calls2 == 3,
         calls3 == 4,
         calls5 == 3,
-        (calls1 - 1 ?: 0) == 1,
-        (calls2 - 1 ?: 0) == 2,
-        (calls3 - 1 ?: 0) == 3,
+        (calls1 - 1 ) == 1,
+        (calls2 - 1 ) == 2,
+        (calls3 - 1 ) == 3,
         calls1 < calls2,
         calls2 < calls3,
         calls2 == calls5,
-        (calls1 + calls2 + calls3 ?: 0) == 9,
+        (calls1 + calls2 + calls3 ) == 9,
         calls1 != calls3,
         calls3 > calls5,
         calls1 > 0
@@ -471,7 +491,7 @@ fn retryBudgetExhaustionCase() = {
         !contains(settled3, "4:"),
         !contains(trail5, "giveup:"),
         contains(settled5, "3:777|"),
-        out1 == ((0 - 1000) ?: 0),
+        out1 == ((0 - 1000) ),
         out2 != out5,
         out5 != out3,
         trail1 != trail2,
@@ -480,7 +500,7 @@ fn retryBudgetExhaustionCase() = {
 }
 
 // Crosses the retry-budget axis 1/2/3/exhausted against 5/succeeded-early.
-test("an exhausted retry budget stops the loop without resuming", retryBudgetExhaustionCase)
+test("an exhausted retry budget stops the loop without resuming", fn() => exactArithmetic(retryBudgetExhaustionCase))
 
 /// [EFFECTS-OP-TYPING] Every operation named by a handler arm must match the
 /// declared payload type, so one effect can carry a retry loop per type. Each
@@ -501,58 +521,58 @@ effect Payload {
 }
 
 /// Text channel: the loop asks again until the candidate is long enough.
-fn takeText(n) !Payload = {
+fn takeText(n) ![Payload, Arith] = {
     let word = perform Payload.text(n)
     match length(word) > 3 {
         true => word
-        false => takeText((n + 1) ?: n)
+        false => takeText((n + 1) )
     }
 }
 
 /// Boolean channel: the accepted value is the attempt the handler approved.
-fn takeFlag(n) !Payload = {
+fn takeFlag(n) ![Payload, Arith] = {
     let ok = perform Payload.flag(n)
     match ok {
         true => n
-        false => takeFlag((n + 1) ?: n)
+        false => takeFlag((n + 1) )
     }
 }
 
 /// Float channel: a ratio at or below 1.0 asks again.
-fn takeRatio(n) !Payload = {
+fn takeRatio(n) ![Payload, Arith] = {
     let r = perform Payload.ratio(n)
     match r > 1.0 {
         true => r
-        false => takeRatio((n + 1) ?: n)
+        false => takeRatio((n + 1) )
     }
 }
 
 /// Result channel: the CALLER, not the handler, treats `Error` as "ask again".
-fn takeChecked(n) !Payload = match perform Payload.checked(n) {
+fn takeChecked(n) ![Payload, Arith] = match perform Payload.checked(n) {
     Success { value } => value
-    Error => takeChecked((n + 1) ?: n)
+    Error => takeChecked((n + 1) )
 }
 
 /// Three-argument channel: the retry arithmetic lives in the handler.
-fn takeScaled(n, base, step) !Payload = {
+fn takeScaled(n, base, step) ![Payload, Arith] = {
     let v = perform Payload.scaled(n, base, step)
     match v > 0 {
         true => v
-        false => takeScaled((n + 1) ?: n, base, step)
+        false => takeScaled((n + 1) , base, step)
     }
 }
 
 /// Unit channel: nothing to validate, so `left` alone bounds the loop.
-fn markDown(left) !Payload = match left {
+fn markDown(left) ![Payload, Arith] = match left {
     0 => 0
     _ => {
         perform Payload.mark(left)
-        (markDown((left - 1) ?: left) + 1) ?: 0
+        (markDown((left - 1) ) + 1) 
     }
 }
 
 /// One region with six arms drives every channel once, in body order.
-fn comboBody() !Payload = {
+fn comboBody() ![Payload, Arith] = {
     let word = takeText(1)
     let firstTrue = takeFlag(1)
     let r = takeRatio(1)
@@ -563,7 +583,7 @@ fn comboBody() !Payload = {
         true => 1
         false => 0
     }
-    length(word) + firstTrue + ratioFlag + value + scaledValue ?: 0
+    length(word) + firstTrue + ratioFlag + value + scaledValue 
 }
 
 /// [EFFECTS-RESUME] `resume(value)` supplies the current operation result, so
@@ -575,7 +595,7 @@ fn retryPayloadChannelMatrixCase() = {
     let word = {
         handle Payload {
             text n => {
-                textCalls = textCalls + 1 ?: textCalls
+                textCalls = textCalls + 1 
                 let candidate = match n {
                     1 => "no"
                     2 => "abc"
@@ -593,7 +613,7 @@ fn retryPayloadChannelMatrixCase() = {
     let firstTrue = {
         handle Payload {
             flag n => {
-                flagCalls = flagCalls + 1 ?: flagCalls
+                flagCalls = flagCalls + 1 
                 let ok = n > 3
                 flagTrail = "${flagTrail}${toString(n)}:${toString(ok)}|"
                 resume(ok)
@@ -607,7 +627,7 @@ fn retryPayloadChannelMatrixCase() = {
     let acceptedRatio = {
         handle Payload {
             ratio n => {
-                ratioCalls = ratioCalls + 1 ?: ratioCalls
+                ratioCalls = ratioCalls + 1 
                 let candidate = match n {
                     1 => 0.25
                     2 => 1.0
@@ -625,7 +645,7 @@ fn retryPayloadChannelMatrixCase() = {
     let checkedValue = {
         handle Payload {
             checked n => {
-                checkedCalls = checkedCalls + 1 ?: checkedCalls
+                checkedCalls = checkedCalls + 1 
                 checkedTrail = "${checkedTrail}${toString(n)}|"
                 match n {
                     1 => resume(Error { message: "cold" })
@@ -642,7 +662,7 @@ fn retryPayloadChannelMatrixCase() = {
     let markTotal = {
         handle Payload {
             mark n => {
-                markCalls = markCalls + 1 ?: markCalls
+                markCalls = markCalls + 1 
                 markTrail = "${markTrail}${toString(n)}|"
                 resume()
             }
@@ -655,34 +675,34 @@ fn retryPayloadChannelMatrixCase() = {
     let combo = {
         handle Payload {
             text n => {
-                comboCalls = comboCalls + 1 ?: comboCalls
+                comboCalls = comboCalls + 1 
                 comboTrail = "${comboTrail}t${toString(n)}|"
                 resume("steady")
             }
             flag n => {
-                comboCalls = comboCalls + 1 ?: comboCalls
+                comboCalls = comboCalls + 1 
                 comboTrail = "${comboTrail}f${toString(n)}|"
                 resume(n > 1)
             }
             ratio n => {
-                comboCalls = comboCalls + 1 ?: comboCalls
+                comboCalls = comboCalls + 1 
                 comboTrail = "${comboTrail}r${toString(n)}|"
                 resume(3.5)
             }
             checked n => {
-                comboCalls = comboCalls + 1 ?: comboCalls
+                comboCalls = comboCalls + 1 
                 comboTrail = "${comboTrail}c${toString(n)}|"
                 resume(Success { value: 60 })
             }
             mark n => {
-                comboCalls = comboCalls + 1 ?: comboCalls
+                comboCalls = comboCalls + 1 
                 comboTrail = "${comboTrail}m${toString(n)}|"
                 resume()
             }
             scaled n base step => {
-                comboCalls = comboCalls + 1 ?: comboCalls
+                comboCalls = comboCalls + 1 
                 comboTrail = "${comboTrail}s${toString(n)}|"
-                let candidate = (base + ((n * step) ?: 0) - 50) ?: 0
+                let candidate = (base + ((n * step) ) - 50) 
                 resume(candidate)
             }
         }
@@ -705,7 +725,7 @@ fn retryPayloadChannelMatrixCase() = {
         checkedValue != 0,
         markTotal != 0,
         combo < checkedValue,
-        (markTotal + firstTrue ?: 0) == 8
+        (markTotal + firstTrue ) == 8
     ])
 
     // Counts per channel: 3, 4, 3, 3, 4 and eight in the six-arm region.
@@ -720,9 +740,9 @@ fn retryPayloadChannelMatrixCase() = {
         ratioCalls == checkedCalls,
         flagCalls == markCalls,
         textCalls != flagCalls,
-        (textCalls + flagCalls + ratioCalls + checkedCalls + markCalls ?: 0) == 17,
+        (textCalls + flagCalls + ratioCalls + checkedCalls + markCalls ) == 17,
         comboCalls > textCalls,
-        (comboCalls - markCalls ?: 0) == 4,
+        (comboCalls - markCalls ) == 4,
         markCalls == markTotal
     ])
 
@@ -758,7 +778,7 @@ fn retryPayloadChannelMatrixCase() = {
         !contains(comboTrail, "s3|"),
         !contains(comboTrail, "f3|"),
         length(comboTrail) == 24,
-        combo == (6 + 2 + 1 + 60 + 4 ?: 0),
+        combo == (6 + 2 + 1 + 60 + 4 ),
         comboCalls == 8,
         comboTrail != textTrail,
         combo != checkedValue
@@ -784,22 +804,22 @@ fn retryPayloadChannelMatrixCase() = {
 }
 
 // Crosses the payload-type axis against partial one-arm and six-arm regions.
-test("retry channels carry text boolean float checked and Unit payloads", retryPayloadChannelMatrixCase)
+test("retry channels carry text boolean float checked and Unit payloads", fn() => exactArithmetic(retryPayloadChannelMatrixCase))
 
 /// [EFFECTS-HANDLER-STATE] The scripted candidates live outside the handler;
 /// only the handler's own cursor cell advances, so a lost, repeated or
 /// reordered operation changes which candidate the loop accepts.
 fn retryScriptedCandidateMatrixCase() = {
-    let script = [0, (0 - 1) ?: 0, 0, (0 - 100000) ?: 0, 0, 4321]
+    let script = [0, (0 - 1) , 0, (0 - 100000) , 0, 4321]
     mut cursor = 0
     mut drawn = ""
     mut scriptCalls = 0
     let fromList = {
         handle Retry {
             supply _n => {
-                scriptCalls = scriptCalls + 1 ?: scriptCalls
-                cursor = cursor + 1 ?: cursor
-                let candidate = listGet(script, (cursor - 1) ?: 0) ?: 0
+                scriptCalls = scriptCalls + 1 
+                cursor = cursor + 1 
+                let candidate = listGet(script, (cursor - 1) ) ?: 0
                 drawn = "${drawn}${toString(candidate)}|"
                 resume(candidate)
             }
@@ -813,8 +833,8 @@ fn retryScriptedCandidateMatrixCase() = {
     let fromMap = {
         handle Retry {
             supply n => {
-                mapCalls = mapCalls + 1 ?: mapCalls
-                let candidate = mapGet(table, toString(n)) ?: ((0 - 7) ?: 0)
+                mapCalls = mapCalls + 1 
+                let candidate = mapGet(table, toString(n)) ?: ((0 - 7) )
                 mapTrail = "${mapTrail}${toString(n)}=>${toString(candidate)}|"
                 resume(candidate)
             }
@@ -830,10 +850,10 @@ fn retryScriptedCandidateMatrixCase() = {
     let fromSparse = {
         handle Retry {
             supply n => {
-                sparseCalls = sparseCalls + 1 ?: sparseCalls
+                sparseCalls = sparseCalls + 1 
                 let candidate = match mapGet(sparse, toString(n)) {
                     Success { value } => value
-                    Error { message } => (0 - length(message)) ?: 0
+                    Error { message } => (0 - length(message)) 
                 }
                 sparseTrail = "${sparseTrail}${toString(n)}:${toString(candidate)}|"
                 resume(candidate)
@@ -848,10 +868,10 @@ fn retryScriptedCandidateMatrixCase() = {
     let fromBoundary = {
         handle Retry {
             supply n => {
-                boundaryCalls = boundaryCalls + 1 ?: boundaryCalls
+                boundaryCalls = boundaryCalls + 1 
                 let candidate = match n {
                     1 => 0
-                    2 => (0 - 1) ?: 0
+                    2 => (0 - 1) 
                     3 => 1
                     _ => 0
                 }
@@ -875,7 +895,7 @@ fn retryScriptedCandidateMatrixCase() = {
         fromMap > 0,
         fromSparse > 0,
         fromBoundary > 0,
-        (fromList + fromMap + fromSparse + fromBoundary ?: 0) == 18765,
+        (fromList + fromMap + fromSparse + fromBoundary ) == 18765,
         fromMap > fromSparse,
         fromSparse > fromList
     ])
@@ -890,11 +910,11 @@ fn retryScriptedCandidateMatrixCase() = {
         boundaryCalls == 3,
         cursor == listLength(script),
         listLength(script) == 6,
-        (scriptCalls - mapCalls ?: 0) == 3,
-        (sparseCalls - boundaryCalls ?: 0) == 1,
+        (scriptCalls - mapCalls ) == 3,
+        (sparseCalls - boundaryCalls ) == 1,
         mapCalls == boundaryCalls,
         scriptCalls > sparseCalls,
-        (scriptCalls + mapCalls + sparseCalls + boundaryCalls ?: 0) == 16,
+        (scriptCalls + mapCalls + sparseCalls + boundaryCalls ) == 16,
         cursor != 0
     ])
 
@@ -906,8 +926,8 @@ fn retryScriptedCandidateMatrixCase() = {
         contains(drawn, "-100000|"),
         !contains(drawn, "|4321|4321"),
         (listGet(script, 0) ?: 1) == 0,
-        (listGet(script, 1) ?: 0) == ((0 - 1) ?: 0),
-        (listGet(script, 3) ?: 0) == ((0 - 100000) ?: 0),
+        (listGet(script, 1) ?: 0) == ((0 - 1) ),
+        (listGet(script, 3) ?: 0) == ((0 - 100000) ),
         (listGet(script, 5) ?: 0) == 4321,
         listContains(script, 4321),
         !listContains(script, 8888),
@@ -955,7 +975,7 @@ fn retryScriptedCandidateMatrixCase() = {
 }
 
 // Crosses the candidate-source axis: list, map, missing key and boundaries.
-test("scripted list and map candidates drive one retry cursor", retryScriptedCandidateMatrixCase)
+test("scripted list and map candidates drive one retry cursor", fn() => exactArithmetic(retryScriptedCandidateMatrixCase))
 
 /// Budget is a DIFFERENT effect handled outside both retry regions, so a Retry
 /// arm may perform it — an arm may not perform its own active operation, but an
@@ -981,15 +1001,15 @@ fn nestedRetryRegionsCase() = {
     let total = {
         handle Budget {
             charge weight => {
-                chargeCalls = chargeCalls + 1 ?: chargeCalls
-                charged = charged + weight ?: charged
+                chargeCalls = chargeCalls + 1 
+                charged = charged + weight 
                 chargeTrail = "${chargeTrail}${toString(weight)}@${toString(charged)}|"
                 charged
             }
         }
         handle Retry {
             supply n => {
-                outerCalls = outerCalls + 1 ?: outerCalls
+                outerCalls = outerCalls + 1 
                 let tag = outerCalls
                 let candidate = match n > 2 {
                     true => 50
@@ -1006,7 +1026,7 @@ fn nestedRetryRegionsCase() = {
         let inside = {
             handle Retry {
                 supply n => {
-                    innerCalls = innerCalls + 1 ?: innerCalls
+                    innerCalls = innerCalls + 1 
                     let tag = innerCalls
                     let candidate = match n > 1 {
                         true => 700
@@ -1022,7 +1042,7 @@ fn nestedRetryRegionsCase() = {
             acceptPositive(1)
         }
         let after = acceptPositive(1)
-        before + inside + after ?: 0
+        before + inside + after 
     }
 
     // 50 before the inner region, 700 inside it, 50 after it is torn down.
@@ -1032,15 +1052,15 @@ fn nestedRetryRegionsCase() = {
         outerCalls == 6,
         innerCalls == 2,
         chargeCalls == 8,
-        chargeCalls == (outerCalls + innerCalls ?: 0),
-        total == (50 + 700 + 50 ?: 0),
+        chargeCalls == (outerCalls + innerCalls ),
+        total == (50 + 700 + 50 ),
         outerCalls > innerCalls,
         charged > outerCalls,
         charged != total,
         total > charged,
         innerCalls != outerCalls,
-        (outerCalls - innerCalls ?: 0) == 4,
-        charged == (30 + 2 + 30 ?: 0)
+        (outerCalls - innerCalls ) == 4,
+        charged == (30 + 2 + 30 )
     ])
 
     // The inner region owns only its own body; the outer one resumes after it.
@@ -1093,7 +1113,7 @@ fn nestedRetryRegionsCase() = {
         !contains(chargeTrail, "@63"),
         length(chargeTrail) == 46,
         charged > 0,
-        (charged - 2 ?: 0) == 60,
+        (charged - 2 ) == 60,
         chargeCalls != charged
     ])
 
@@ -1109,14 +1129,14 @@ fn nestedRetryRegionsCase() = {
         charged == 62,
         total == 800,
         innerCalls < outerCalls,
-        (innerCalls * 4 ?: 0) == 8,
-        chargeCalls == (outerCalls + innerCalls ?: 0),
+        (innerCalls * 4 ) == 8,
+        chargeCalls == (outerCalls + innerCalls ),
         innerSettled != outerSettled
     ])
 }
 
 // Crosses nesting depth against a shared outer effect and LIFO settlement.
-test("nested retry regions override and restore around a shared budget", nestedRetryRegionsCase)
+test("nested retry regions override and restore around a shared budget", fn() => exactArithmetic(nestedRetryRegionsCase))
 
 /// [EFFECTS-OPERATION-MAILBOX] The mailbox is sized by the operation's real
 /// arity, so zero-, one-, two-, three- and four-argument operations all deliver
@@ -1141,8 +1161,8 @@ effect Arity {
 fn siteOne(a) !Arity = perform Arity.one(a)
 
 /// Two call levels: the perform is one frame below the body's callee.
-fn sitePair(n) !Arity = perform Arity.two(n, (n * 10) ?: 0)
-fn sitePairCaller(n) !Arity = sitePair(n)
+fn sitePair(n) ![Arity, Arith] = perform Arity.two(n, (n * 10) )
+fn sitePairCaller(n) ![Arity, Arith] = sitePair(n)
 
 /// Three call levels from the handled body down to the perform.
 fn siteDeep(a) !Arity = perform Arity.three(a, 20, 300)
@@ -1150,17 +1170,17 @@ fn siteMid(a) !Arity = siteDeep(a)
 fn siteTop(a) !Arity = siteMid(a)
 
 /// Recursive perform site: the handler's own counter decides when to accept.
-fn retryZero(guard) !Arity = {
+fn retryZero(guard) ![Arity, Arith] = {
     let candidate = perform Arity.zero()
     match candidate > 0 {
         true => candidate
-        false => retryZero((guard + 1) ?: guard)
+        false => retryZero((guard + 1) )
     }
 }
 
 /// Every perform site in one body: recursion, one/two/three call levels, a
 /// lambda passed to a higher-order function, and a match arm.
-fn performSiteBody(xs) !Arity = {
+fn performSiteBody(xs) ![Arity, Arith] = {
     let fromLoop = retryZero(1)
     let fromHelper = siteOne(4)
     let fromTwoDeep = sitePairCaller(5)
@@ -1170,7 +1190,7 @@ fn performSiteBody(xs) !Arity = {
         true => perform Arity.four(1, 2, 3, 4)
         false => 0
     }
-    fromLoop + fromHelper + fromTwoDeep + fromThreeDeep + fromMatchArm ?: 0
+    fromLoop + fromHelper + fromTwoDeep + fromThreeDeep + fromMatchArm 
 }
 
 /// Crosses the perform-site axis against the operation-arity axis. Every
@@ -1195,7 +1215,7 @@ fn retryPerformSiteMatrixCase() = {
     let sited = {
         handle Arity {
             zero => {
-                zeroCalls = zeroCalls + 1 ?: zeroCalls
+                zeroCalls = zeroCalls + 1 
                 trail = "${trail}z${toString(zeroCalls)}|"
                 suppliedZero = match zeroCalls > 2 {
                     true => 9
@@ -1204,32 +1224,32 @@ fn retryPerformSiteMatrixCase() = {
                 resume(suppliedZero)
             }
             one a => {
-                oneCalls = oneCalls + 1 ?: oneCalls
+                oneCalls = oneCalls + 1 
                 trail = "${trail}o${toString(a)}|"
-                suppliedOne = (a * 100) ?: 0
+                suppliedOne = (a * 100) 
                 resume(suppliedOne)
             }
             two a b => {
-                twoCalls = twoCalls + 1 ?: twoCalls
+                twoCalls = twoCalls + 1 
                 trail = "${trail}t${toString(a)}+${toString(b)}|"
-                suppliedTwo = (a + b) ?: 0
+                suppliedTwo = (a + b) 
                 resume(suppliedTwo)
             }
             three a b c => {
-                threeCalls = threeCalls + 1 ?: threeCalls
+                threeCalls = threeCalls + 1 
                 trail = "${trail}h${toString(a)}+${toString(b)}+${toString(c)}|"
-                suppliedThree = (a + b + c) ?: 0
+                suppliedThree = (a + b + c) 
                 resume(suppliedThree)
             }
             four a b c d => {
-                fourCalls = fourCalls + 1 ?: fourCalls
+                fourCalls = fourCalls + 1 
                 trail = "${trail}f${toString(a)}${toString(b)}${toString(c)}${toString(d)}|"
-                suppliedFour = (a * 1000 + b * 100 + c * 10 + d) ?: 0
+                suppliedFour = (a * 1000 + b * 100 + c * 10 + d) 
                 resume(suppliedFour)
             }
             note v => {
-                noteCalls = noteCalls + 1 ?: noteCalls
-                noteTotal = noteTotal + v ?: noteTotal
+                noteCalls = noteCalls + 1 
+                noteTotal = noteTotal + v 
                 trail = "${trail}n${toString(v)}|"
                 resume()
             }
@@ -1246,8 +1266,8 @@ fn retryPerformSiteMatrixCase() = {
         threeCalls == 1,
         fourCalls == 1,
         noteCalls == 2,
-        (zeroCalls + oneCalls + twoCalls + threeCalls + fourCalls + noteCalls ?: 0) == 9,
-        sited == (9 + 400 + 55 + 326 + 1234 ?: 0),
+        (zeroCalls + oneCalls + twoCalls + threeCalls + fourCalls + noteCalls ) == 9,
+        sited == (9 + 400 + 55 + 326 + 1234 ),
         zeroCalls > noteCalls,
         noteCalls > oneCalls,
         oneCalls == fourCalls,
@@ -1281,7 +1301,7 @@ fn retryPerformSiteMatrixCase() = {
         suppliedTwo == 55,
         suppliedThree == 326,
         suppliedFour == 1234,
-        sited == (suppliedZero + suppliedOne + suppliedTwo + suppliedThree + suppliedFour ?: 0),
+        sited == (suppliedZero + suppliedOne + suppliedTwo + suppliedThree + suppliedFour ),
         suppliedOne != suppliedTwo,
         suppliedTwo != suppliedThree,
         suppliedThree != suppliedFour,
@@ -1321,11 +1341,11 @@ fn retryPerformSiteMatrixCase() = {
         endsWith(trail, "f1234|"),
         !contains(trail, "|f1234|f"),
         sited == 2024,
-        (zeroCalls - 1 ?: 0) == 2,
+        (zeroCalls - 1 ) == 2,
         suppliedFour != suppliedOne,
         trail != ""
     ])
 }
 
 // Crosses the perform-site axis against operation arities zero through four.
-test("every perform site reaches the same retry handler", retryPerformSiteMatrixCase)
+test("every perform site reaches the same retry handler", fn() => exactArithmetic(retryPerformSiteMatrixCase))

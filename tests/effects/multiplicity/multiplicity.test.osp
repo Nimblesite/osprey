@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 /// Resumption multiplicity — how many times an effect's request may be answered
 /// ([MULTI-AXIS], docs/specs/0035-StagedEffects.md). This suite is the runnable
 /// half of the [MULTI-FALSIFY] gate: the programs the axis must ACCEPT. The
@@ -65,18 +84,18 @@ fn retrySendsOneReceiptCase() = {
         }
         handle Email {
             deliver body => {
-                receipts = receipts + 1 ?: receipts
+                receipts = receipts + 1 
                 perform Audit.line("email: ${body}")
             }
         }
         handle Charge {
             charge amount => {
-                attempts = attempts + 1 ?: attempts
+                attempts = attempts + 1 
                 match settle(amount, attempts) {
                     Success { value } => resume(value)
                     Error { message } => {
                         perform Audit.line("declined: ${message}; retrying")
-                        attempts = attempts + 1 ?: attempts
+                        attempts = attempts + 1 
                         match settle(amount, attempts) {
                             Success { value } => resume(value)
                             Error { message } => "declined: ${message}"
@@ -108,7 +127,7 @@ fn declineSendsNoReceiptCase() = {
         }
         handle Email {
             deliver body => {
-                receipts = receipts + 1 ?: receipts
+                receipts = receipts + 1 
                 perform Audit.line("email: ${body}")
             }
         }
@@ -137,12 +156,12 @@ fn declineSendsNoReceiptCase() = {
 fn applyTwice(f, x) = f(f(x))
 
 /// A callback over a `replayable` operation.
-fn jitter(n) = (n + perform Random.next()) ?: n
+fn jitter(n) = (n + perform Random.next()) 
 
 /// A callback over an ordinary, non-replayable `once` operation.
 fn audited(n) = {
     perform Email.deliver("audit ${toString(n)}")
-    (n * 2) ?: n
+    (n * 2) 
 }
 
 /// [MULTI-FALSIFY] 4, for the multiplicities the runtime can represent: the
@@ -158,7 +177,7 @@ fn sharedAcrossMultiplicitiesCase() = {
     }
     let doubled = {
         handle Email {
-            deliver _body => { audits = audits + 1 ?: audits }
+            deliver _body => { audits = audits + 1  }
         }
         applyTwice(audited, 5)
     }
@@ -179,19 +198,20 @@ fn contextualKeywordCase() = {
             many => resume(4)
             replayable => resume(8)
         }
-        let low = (perform Vocabulary.abort() + perform Vocabulary.once()) ?: 0
-        let high = (perform Vocabulary.many() + perform Vocabulary.replayable()) ?: 0
-        (low + high) ?: 0
+        let low = (perform Vocabulary.abort() + perform Vocabulary.once()) 
+        let high = (perform Vocabulary.many() + perform Vocabulary.replayable()) 
+        (low + high) 
     }
     let many = 100
-    let abort = (many + total) ?: total
+    let abort = (many + total) 
     checkAll("modifier words stay ordinary identifiers", [
         total == 15,
         abort == 115
     ])
 }
 
-test("a once arm retrying internally sends exactly one receipt", retrySendsOneReceiptCase)
-test("a once arm that declines to resume sends no receipt", declineSendsNoReceiptCase)
-test("one unannotated function serves both multiplicities", sharedAcrossMultiplicitiesCase)
-test("abort, once, many and replayable stay legal identifiers", contextualKeywordCase)
+
+test("a once arm retrying internally sends exactly one receipt", fn() => exactArithmetic(retrySendsOneReceiptCase))
+test("a once arm that declines to resume sends no receipt", fn() => exactArithmetic(declineSendsNoReceiptCase))
+test("one unannotated function serves both multiplicities", fn() => exactArithmetic(sharedAcrossMultiplicitiesCase))
+test("abort, once, many and replayable stay legal identifiers", fn() => exactArithmetic(contextualKeywordCase))

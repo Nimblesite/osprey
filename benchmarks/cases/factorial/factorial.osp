@@ -1,5 +1,17 @@
 // Factorial-style product 1*2*...*N taken mod 1000000007 (real N! overflows i64).
-fn mul(a, b) = a * b ?: 0
-fn mod_(a, b) = a % b ?: 0
+fn mul(a, b) = a * b
+fn mod_(a, b) = a % b
 fn step(acc, i) = mod_(mul(acc, i), 1000000007)
-print("${range(1, 10000001) |> fold(1, step)}")
+fn main() = {
+    handle Arith {
+        overflow _ _ _ wrapped => {
+            print("unexpected integer overflow")
+            wrapped
+        }
+        remainderByZero _ => {
+            print("unexpected zero divisor")
+            0
+        }
+    }
+    print("${range(1, 10000001) |> fold(1, step)}")
+}

@@ -7,6 +7,22 @@
 
 namespace metrics
 
+
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
+
 state Tally
     (** The assembler removes these cells from module scope and injects a fresh
         pair into every call of the installer below. *)
@@ -22,8 +38,8 @@ state Tally
     export withTally body =
         handle Counter
             add amount =>
-                total := (total + amount) ?: total
-                calls := (calls + 1) ?: calls
+                total := (total + amount) 
+                calls := (calls + 1) 
                 total
             reads => calls
             reset =>
@@ -74,7 +90,9 @@ effectMediatedCase () = checkAll ("all access is effect-mediated", [
     Tally::withTally (\() => "${perform Tally::Counter.add 2}") == "2"
 ])
 
-print "${Tally::withTally threeAdds} ${Tally::withTally addThenCount} ${Tally::withTally addThenReset}"
-test ("owned cells accumulate inside one installer scope", accumulationCase)
-test ("installer calls do not share cells", freshCellsCase)
-test ("owned state is reachable only through the effect", effectMediatedCase)
+exactArithmetic (\() =>
+    print "${Tally::withTally threeAdds} ${Tally::withTally addThenCount} ${Tally::withTally addThenReset}")
+
+test ("owned cells accumulate inside one installer scope", \() => exactArithmetic (accumulationCase))
+test ("installer calls do not share cells", \() => exactArithmetic (freshCellsCase))
+test ("owned state is reachable only through the effect", \() => exactArithmetic (effectMediatedCase))

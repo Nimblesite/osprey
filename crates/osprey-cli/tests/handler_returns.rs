@@ -37,7 +37,7 @@ effect Ask { control value: fn() -> int }
 let outer = handler Read { value => 41 }
 let inner = handler Read {
     value => 1
-    return n => (n + perform Read.value()) ?: 0
+    return n => satAdd(n, perform Read.value())
 }
 let controlOuter = handler Ask { value => resume(41) }
 let controlInner = handler Ask {
@@ -56,7 +56,7 @@ outer = handler Read
     value => 41
 inner = handler Read
     value => 1
-    return n => (n + perform Read.value ()) ?: 0
+    return n => satAdd n (perform Read.value ())
 controlOuter = handler Ask
     value => resume 41
 controlInner = handler Ask
@@ -78,7 +78,7 @@ effect Mixed { plain: fn() -> int control ask: fn() -> int }
 fn work() = {
     let a = perform Mixed.ask()
     let b = perform Mixed.ask()
-    (((a + b) ?: 0) + perform Mixed.plain()) ?: 0
+    satAdd(satAdd(a, b), perform Mixed.plain())
 }
 let h = handler Mixed {
     plain => 1
@@ -95,7 +95,7 @@ effect Mixed
 work () =
     a = perform Mixed.ask ()
     b = perform Mixed.ask ()
-    (((a + b) ?: 0) + perform Mixed.plain ()) ?: 0
+    satAdd (satAdd a b) (perform Mixed.plain ())
 h = handler Mixed
     plain => 1
     ask => "${resume 20}!"
@@ -145,7 +145,7 @@ let h = handler static Read {
 let selected = h
 let result = selected(|| => {
     let n = 7
-    (perform Read.value() + n) ?: 0
+    satAdd(perform Read.value(), n)
 })
 print(result)
 "#,
@@ -158,7 +158,7 @@ h = handler static Read
     return answer => "${n}${answer}"
 work () =
     n = 7
-    (perform Read.value () + n) ?: 0
+    satAdd (perform Read.value ()) n
 selected = h
 result = selected work
 print result
@@ -222,5 +222,127 @@ work () =
 print "${result ()}\n${consume work}\n${f ()}"
 "#,
         "done=42\nused=42\n7\n",
+    );
+}
+
+/// A file-scope handler value whose arms and return clause read file-scope
+/// `let`s, applied inside a function, for a value and a control operation. It
+/// failed with "codegen: unknown name `base`": the handler is inlined into the
+/// function, and nothing gave the bindings its body reads module storage.
+#[test]
+fn file_scope_handler_values_read_file_scope_bindings_inside_functions() {
+    assert_both(
+        "file_scope_reads",
+        r#"
+effect Ask { value: fn() -> int }
+effect Pick { control value: fn() -> int }
+let base = 41
+let prefix = "done="
+let tagged = handler Ask {
+    value => base
+    return n => "${prefix}${n}"
+}
+let resumed = handler Pick {
+    value => resume(base)
+    return n => "${prefix}${n}!"
+}
+fn report() = "${tagged(|| => perform Ask.value())} ${resumed(|| => perform Pick.value())}"
+print(report())
+"#,
+        r#"
+effect Ask
+    value : Unit => int
+effect Pick
+    control value : Unit => int
+base = 41
+prefix = "done="
+tagged = handler Ask
+    value => base
+    return n => "${prefix}${n}"
+resumed = handler Pick
+    value => resume base
+    return n => "${prefix}${n}!"
+report () = "${tagged (\() => perform Ask.value ())} ${resumed (\() => perform Pick.value ())}"
+print (report ())
+"#,
+        "done=41 done=41!\n",
+    );
+}
+
+/// A handler value's clauses close over the bindings in scope where it is
+/// DEFINED. Applying it where a parameter, a local or a block binding shadows
+/// one of those names must not rebind it: the program exited zero printing
+/// `param41 local41 block41` — the caller's values, silently.
+#[test]
+fn file_scope_handler_values_ignore_a_callers_shadowing_bindings() {
+    assert_both(
+        "shadowed_reads",
+        r#"
+effect Ask { value: fn() -> int }
+let prefix = "file"
+let tagged = handler Ask {
+    value => 41
+    return n => "${prefix}${n}"
+}
+fn label() = "file"
+let taggedCall = handler Ask {
+    value => 41
+    return n => "${label()}${n}"
+}
+fn viaParameter(prefix) = tagged(|| => perform Ask.value())
+fn viaLocal() = {
+    let prefix = "local"
+    tagged(|| => perform Ask.value())
+}
+fn viaShadow() = {
+    let prefix = "local"
+    let tagged = handler Ask {
+        value => 99
+        return n => "${prefix}${n}"
+    }
+    tagged(|| => perform Ask.value())
+}
+fn viaShadowedCall() = {
+    let label = || => "local"
+    let local = label()
+    "${taggedCall(|| => perform Ask.value())}${local}"
+}
+let inBlock = {
+    let prefix = "block"
+    tagged(|| => perform Ask.value())
+}
+print("${viaParameter("param")} ${viaLocal()} ${inBlock} ${viaShadow()} ${viaShadowedCall()}")
+"#,
+        r#"
+effect Ask
+    value : Unit => int
+prefix = "file"
+tagged = handler Ask
+    value => 41
+    return n => "${prefix}${n}"
+label () = "file"
+taggedCall = handler Ask
+    value => 41
+    return n => "${label ()}${n}"
+viaParameter prefix = tagged (\() => perform Ask.value ())
+viaLocal () =
+    prefix = "local"
+    tagged (\() => perform Ask.value ())
+viaShadow () =
+    prefix = "local"
+    tagged = handler Ask
+        value => 99
+        return n => "${prefix}${n}"
+    tagged (\() => perform Ask.value ())
+viaShadowedCall () =
+    label = \() => "local"
+    local = label ()
+    "${taggedCall (\() => perform Ask.value ())}${local}"
+inBlock =
+    prefix = "block"
+    tagged (\() => perform Ask.value ())
+print "${viaParameter "param"} ${viaLocal ()} ${inBlock} ${viaShadow ()} ${viaShadowedCall ()}"
+"#,
+        "file41 file41 file41 local99 file41local\n",
     );
 }

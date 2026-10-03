@@ -69,9 +69,10 @@ pub(crate) fn source(
     program: &Program,
     path: &str,
     target: Target,
+    entry_only: bool,
 ) -> Result<(String, String), String> {
     // Apple ARM64 zero-extends a C bool in both slices.
-    ios_abi::source(program, path, target.name(), true)
+    ios_abi::source(program, path, target.name(), true, entry_only)
 }
 
 /// Compile an ARM64 static archive, bundling the matching C runtime, plus its
@@ -82,9 +83,10 @@ pub(crate) fn build(
     program: &Program,
     out: &Path,
     target: Target,
+    entry_only: bool,
 ) -> Result<(), ExitCode> {
     validate_output(out).map_err(|e| fail(&e))?;
-    let (ir, header) = source(program, path, target).map_err(|e| fail(&e))?;
+    let (ir, header) = source(program, path, target, entry_only).map_err(|e| fail(&e))?;
     let sdk = sdk_path(target)?;
     let runtime = find_runtime_lib(target.runtime()).ok_or_else(|| {
         fail(&format!(

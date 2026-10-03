@@ -7,6 +7,13 @@
 
 use osprey_ast::Program;
 
+/// The feature tests' shared document: one fully annotated function and one
+/// call. `satAdd` is total ([ARITH-EFFECT-TOTAL-HELPERS]), so the file-scope
+/// call needs no `Arith` policy and the program type-checks with exactly its
+/// three redundant-annotation warnings.
+pub(crate) const ADD_SRC: &str =
+    "fn add(a: int, b: int) -> int = satAdd(a, b)\nlet total = add(1, 2)\n";
+
 /// Parse `src`, asserting it is syntactically valid. A snippet the PARSER
 /// rejects must never be scored as a passing editor view.
 pub(crate) fn parsed(src: &str) -> Program {

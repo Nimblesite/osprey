@@ -7,14 +7,14 @@
 //! runtime's supported alternatives (`print`, `toString`, `length`,
 //! `isEmpty`); `builtin_constraints` checks their concrete call-site types.
 //! Result-returning runtime builtins return `Result<T, Error>` — the shape the C
-//! runtime actually returns — while arithmetic uses `MathError`. The split is
-//! by what can fail, not by who implements it: `abs` and `intDiv` are
-//! arithmetic and carry `MathError` even though the runtime provides them.
-//! `checkedAdd`/`checkedSub`/`checkedMul` keep the generic `Error` channel for
-//! compatibility.
+//! runtime actually returns. Arithmetic returns no `Result`: `abs` and `intDiv`
+//! follow the operators and return plain `int`, performing `Arith` operations
+//! on their faults ([ARITH-TOTAL]); `wrap*`/`sat*` are total. Only
+//! `checkedAdd`/`checkedSub`/`checkedMul` return overflow as data, through the
+//! generic `Error` channel.
 
 use crate::env::TypeEnv;
-use crate::ty::{names, Scheme, Type};
+use crate::ty::{Scheme, Type};
 
 fn s() -> Type {
     Type::string()
@@ -197,23 +197,13 @@ fn core(e: &mut TypeEnv) {
     runtime_mono(e, "sleep", vec![i()], u());
     // A range is a fused iterator handle, not a materialized List [BUILTIN-ITER].
     mono(e, "range", vec![i(), i()], Type::iterator(i()));
-    mono(
-        e,
-        "abs",
-        vec![i()],
-        Type::result(i(), Type::prim(names::MATH_ERROR)),
-    );
-    // Truncating integer division, divide-by-zero-checked. The `/` operator is
-    // float-only (Osprey spec); this is its integer sibling, so its faults are
-    // MATH faults and it carries the same `MathError` channel as `abs` and as
-    // the operators — not the runtime's generic `Error`. Implements
-    // [BUILTIN-INTDIV].
-    mono(
-        e,
-        "intDiv",
-        vec![i(), i()],
-        Type::result(i(), Type::prim(names::MATH_ERROR)),
-    );
+    mono(e, "abs", vec![i()], i());
+    mono(e, "intDiv", vec![i(), i()], i());
+    for name in [
+        "wrapAdd", "wrapSub", "wrapMul", "satAdd", "satSub", "satMul",
+    ] {
+        mono(e, name, vec![i(), i()], i());
+    }
     // Widening int → float. Total, so it is bare `float` rather than a Result:
     // every i64 has a nearest double. Implements [BUILTIN-TOFLOAT] and the GPU
     // surface's explicit element conversion [GPU-CONVERT].
@@ -542,6 +532,31 @@ fn terminal(e: &mut TypeEnv) {
     mono(e, "cleanupProcess", vec![i()], u());
 }
 
+/// The compiler's only built-in effect. Implements [ARITH-EFFECT-OPS].
+pub(crate) fn builtin_effects() -> std::collections::HashMap<String, crate::check::EffectInfo> {
+    let signatures = [
+        ("overflow", "fn(string, int, int, int) -> int"),
+        ("divideByZero", "fn(string, float) -> float"),
+        ("remainderByZero", "fn(int) -> int"),
+    ];
+    std::collections::HashMap::from([(
+        osprey_ast::ARITH_EFFECT.to_owned(),
+        crate::check::EffectInfo {
+            type_params: Vec::new(),
+            ops: signatures
+                .into_iter()
+                .map(|(name, ty)| {
+                    (
+                        name.to_owned(),
+                        ty.to_owned(),
+                        osprey_ast::OperationMode::Value,
+                    )
+                })
+                .collect(),
+        },
+    )])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -558,7 +573,15 @@ mod tests {
         );
         assert_eq!(
             builtin_signature("abs").as_deref(),
-            Some("abs : (int) -> Result<int, MathError>")
+            Some("abs : (int) -> int")
+        );
+        assert_eq!(
+            builtin_signature("intDiv").as_deref(),
+            Some("intDiv : (int, int) -> int")
+        );
+        assert_eq!(
+            builtin_signature("wrapAdd").as_deref(),
+            Some("wrapAdd : (int, int) -> int")
         );
     }
 

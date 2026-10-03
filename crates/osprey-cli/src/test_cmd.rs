@@ -25,6 +25,7 @@ use std::sync::Mutex;
 
 const TEST_JOBS_ENV: &str = "OSPREY_TEST_JOBS";
 const MIN_DEFAULT_JOBS: usize = 2;
+const MAX_DEFAULT_JOBS: usize = 4;
 const TEST_CACHE_DIR: &str = "osprey-test-cache-v1";
 
 struct Opts {
@@ -73,7 +74,7 @@ fn configured_jobs(suite_count: usize) -> Result<usize, String> {
             .ok_or_else(|| format!("{TEST_JOBS_ENV} must be a positive integer"))?,
         Err(std::env::VarError::NotPresent) => std::thread::available_parallelism()
             .map_or(MIN_DEFAULT_JOBS, usize::from)
-            .max(MIN_DEFAULT_JOBS),
+            .clamp(MIN_DEFAULT_JOBS, MAX_DEFAULT_JOBS),
         Err(std::env::VarError::NotUnicode(_)) => {
             return Err(format!("{TEST_JOBS_ENV} must be valid UTF-8"));
         }

@@ -43,15 +43,15 @@ Based on the Osprey tree-sitter grammar, provides rich syntax highlighting for:
 Real-time compilation error detection:
 
 - **Parse errors**: Syntax mistakes highlighted immediately
-- **Type errors**: Function call mismatches (e.g., missing named arguments)
-- **Semantic errors**: Undefined variables, incorrect patterns
+- **Type errors**: Function call mismatches (e.g., wrong argument count or type)
+- **Semantic errors**: Undefined variables, incorrect patterns, unhandled effects
 - **Line-precise**: Errors shown exactly where they occur
 
 ### Example Error Detection
 
 ```osprey
 fn add(x, y) = x + y
-let result = add(5, 10)  // ❌ Error: named arguments required
+print("${add(5, 10)}")  // ❌ unhandled effect operations at program entry: Arith.overflow; add a matching `handle`
 ```
 
 ## 💡 Code Completion

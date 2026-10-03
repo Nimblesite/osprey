@@ -558,7 +558,7 @@ suite("Osprey Language Features Tests", () => {
     // individual feature tests below.
     const warm = await openDoc(
       "warmup.osp",
-      "\nfn warm(x) = x * 2\n\nlet w = warm(2)\n",
+      "\nfn warm(x) = wrapMul(x, 2)\n\nlet w = warm(2)\n",
     );
     await pollFor<vscode.Hover[]>(
       () => hoverAt(warm.uri, 3, 9),
@@ -595,8 +595,8 @@ suite("Osprey Language Features Tests", () => {
   const RICH =
     [
       "type Shape = Circle | Square", // 0
-      "fn area(r) = r * r", // 1
-      "fn perimeter(r) = r + r + r + r", // 2
+      "fn area(r) = wrapMul(r, r)", // 1
+      "fn perimeter(r) = wrapAdd(wrapAdd(r, r), wrapAdd(r, r))", // 2
       "let radius = 5", // 3
       "let a = area(radius)", // 4
       "let b = area(10)", // 5
@@ -616,7 +616,7 @@ suite("Osprey Language Features Tests", () => {
       (h) => nonEmptyHover(h) && hoverText(h[0]).includes("area"),
     );
     const areaDeclMd = hoverText(areaDecl[0]);
-    // `fn area(r) = r * r` writes neither the parameter type nor the return
+    // `fn area(r) = wrapMul(r, r)` writes neither the parameter type nor the return
     // type, so both slots come from the checker ([LSP-HOVER-INFERRED-SIGNATURE]).
     // This used to assert a bare `fn area(r)` returning `Unit`; `Unit` was the
     // display fallback for "nothing written", never a claim about the function,
@@ -626,7 +626,7 @@ suite("Osprey Language Features Tests", () => {
       "area decl hover fills in the inferred parameter type",
     );
     assert.ok(
-      areaDeclMd.includes("-> Result<int, MathError>"),
+      areaDeclMd.includes("-> int"),
       "area decl hover shows the inferred return type, not the Unit fallback",
     );
 
@@ -943,7 +943,7 @@ suite("Osprey Language Features Tests", () => {
     await editor.edit((b) =>
       b.replace(
         new vscode.Range(0, 0, doc.lineCount, 0),
-        "fn ok(x) = x * 2\nlet y = ok(2)\n",
+        'fn ok(x) = x * 2\nfn main() = {\n    handle Arith { overflow _ _ _ w => w }\n    print("${ok(2)}")\n}\n',
       ),
     );
     const cleared = await pollFor(
@@ -1384,7 +1384,7 @@ suite("Osprey Language Features Tests", () => {
     // --- A file with no tests at all, and an empty file, warn about nothing.
     const noTests = await openDoc(
       "notests.osp",
-      "fn add(a, b) = a + b\nlet total = add(1, 2)\n",
+      "fn add(a, b) = wrapAdd(a, b)\nlet total = add(1, 2)\n",
     );
     await pollFor(
       () => symbolsOf(noTests.uri),
@@ -1674,8 +1674,8 @@ suite("Osprey Language Features Tests", () => {
     // blocks, `name = value` bindings (no `let`/`fn`). [LSP-FLAVOR-RENDER]
     const ML =
       [
-        "double x = x * 2", // 0  curried unary fn
-        "triple x = x + x + x", // 1  curried unary fn
+        "double x = wrapMul x 2", // 0  curried unary fn
+        "triple x = wrapAdd (wrapAdd x x) x", // 1  curried unary fn
         "base = 5", // 2  binding
         "d = double base", // 3  call site of double
         "t = triple base", // 4  call site of triple
@@ -1801,7 +1801,7 @@ suite("Osprey Language Features Tests", () => {
     await editor2.edit((b) =>
       b.replace(
         new vscode.Range(0, 0, doc.lineCount, 0),
-        'square x = x * x\nv = square 4\nprint "${v}"\n',
+        'square x = x * x\nwrapping = handler Arith\n    overflow _ _ _ w => w\nprint "${wrapping (\\() => square 4)}"\n',
       ),
     );
     const fixed = await pollFor(
@@ -1845,8 +1845,8 @@ suite("Osprey Language Features Tests", () => {
   //                            positive claim the checker itself refutes
   //                            ([TYPE-RENDER-HOLES]).
 
-  const ANNOTATED_AREA = "fn area(w: int, h: int) -> int = w * h ?: 0";
-  const INFERRED_AREA = "fn area(w, h) = w * h ?: 0";
+  const ANNOTATED_AREA = "fn area(w: int, h: int) -> int = wrapMul(w, h)";
+  const INFERRED_AREA = "fn area(w, h) = wrapMul(w, h)";
 
   // Proof-of-reprocessing marker, appended by the same edit that deletes the
   // annotation. See the comment at the edit for why a marker is required.
@@ -2936,14 +2936,14 @@ suite("Osprey VSIX Debugger E2E", () => {
     const debugOutput = defaultDebugOutputPath(source);
     // A function call on the breakpoint line lets the same test assert that F10
     // (Step Over) EXECUTES the call without descending into it — the regression
-    // guard for "step over behaved like step in". bump is monomorphic (annotated
-    // (its checked addition is handled to produce an int), so it is a real call
-    // frame the debugger could wrongly enter.
+    // guard for "step over behaved like step in". bump is monomorphic (its total
+    // `wrapAdd` produces an int), so it is a real call frame the debugger could
+    // wrongly enter.
     // [DEBUGGER-EDITOR-LAUNCH]
     fs.writeFileSync(
       source,
       [
-        "fn bump(v) = v + 1 ?: 0",
+        "fn bump(v) = wrapAdd(v, 1)",
         "let x = 1",
         "let y = bump(x)",
         'print("debugger reached ${x} and ${y}")',
@@ -3069,7 +3069,7 @@ suite("Osprey VSIX Debugger E2E", () => {
       // Replace the whole buffer WITHOUT saving: the editor is now dirty and the
       // in-memory program differs from disk.
       const edited = [
-        "fn tag(v) = v + 100 ?: 0",
+        "fn tag(v) = wrapAdd(v, 100)",
         "let base = 7",
         "let tagged = tag(base)",
         'print("dirty debug ${base} and ${tagged}")',

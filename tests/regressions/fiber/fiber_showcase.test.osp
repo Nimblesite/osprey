@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // Fiber + channel + yield + lambda coverage. [CONCURRENCY-SPAWN-AWAIT]
 // [CONCURRENCY-CHANNEL] [CONCURRENCY-YIELD]
 // Combines what fiber_concurrency_proof, fiber_isolation_test, fiber_test,
@@ -8,26 +27,26 @@
 // — fibers compose into a pipeline
 // — lambdas work inside the program
 
-fn simpleTask(value) = value * 100 ?: 0
+fn simpleTask(value) = value * 100 
 fn handleRequest(id) = id
-fn queryDatabase(userId) = userId * 1000 ?: 0
+fn queryDatabase(userId) = userId * 1000 
 
-fn mapPhase(d) = d * d ?: 0
-fn fetchUserData(id) = id * 1000 + 123 ?: 0
-fn fetchOrderData(id) = id * 100  + 45 ?: 0
+fn mapPhase(d) = d * d 
+fn fetchUserData(id) = id * 1000 + 123 
+fn fetchOrderData(id) = id * 100  + 45 
 
 fn authService(uid) = match uid {
     0 => 401
     _ => 200
 }
-fn inventoryService(pid) = pid * 50 ?: 0
-fn paymentService(amt) = amt + 25 ?: 0
-fn streamProcessor(b) = b * 8 ?: 0
+fn inventoryService(pid) = pid * 50 
+fn paymentService(amt) = amt + 25 
+fn streamProcessor(b) = b * 8 
 
-fn stage1(x) = x + 100 ?: 0
-fn stage2(x) = x * 2 ?: 0
-fn stage3(x) = x - 50 ?: 0
-fn combine(a, b) = a * 100 + b ?: 0
+fn stage1(x) = x + 100 
+fn stage2(x) = x * 2 
+fn stage3(x) = x - 50 
+fn combine(a, b) = a * 100 + b 
 
 /// A record argument crossing the fiber boundary. The spawned closure once
 /// referenced the PARENT function's SSA values for any non-constant capture, so
@@ -35,15 +54,15 @@ fn combine(a, b) = a * 100 + b ?: 0
 /// spilled to per-spawn globals and reloaded inside the closure.
 /// [CONCURRENCY-SPAWN-AWAIT] [TYPE-RECORD]
 type Job = { id: int, weight: int }
-fn runJob(j) = j.id * j.weight ?: 0
+fn runJob(j) = j.id * j.weight 
 
 print("=== Fiber Showcase ===")
 
 /// --- Out-of-order await proves fiber independence ---
-let f1 = spawn simpleTask(1)
-let f2 = spawn simpleTask(2)
-let f3 = spawn simpleTask(3)
-let f4 = spawn simpleTask(4)
+let f1 = exactArithmetic(fn() => spawn simpleTask(1))
+let f2 = exactArithmetic(fn() => spawn simpleTask(2))
+let f3 = exactArithmetic(fn() => spawn simpleTask(3))
+let f4 = exactArithmetic(fn() => spawn simpleTask(4))
 print("ids ${f1} ${f2} ${f3} ${f4}")
 print("await f3 = ${await(f3)}")
 print("await f1 = ${await(f1)}")
@@ -51,20 +70,20 @@ print("await f4 = ${await(f4)}")
 print("await f2 = ${await(f2)}")
 
 /// --- Map-Reduce ---
-let m1 = spawn mapPhase(10)
-let m2 = spawn mapPhase(20)
-let m3 = spawn mapPhase(30)
-let mappedTotal = await(m1) + await(m2) + await(m3) ?: 0
+let m1 = exactArithmetic(fn() => spawn mapPhase(10))
+let m2 = exactArithmetic(fn() => spawn mapPhase(20))
+let m3 = exactArithmetic(fn() => spawn mapPhase(30))
+let mappedTotal = exactArithmetic(fn() => await(m1) + await(m2) + await(m3)) 
 print("map-reduce total = ${mappedTotal}")
 
 /// --- Microservices fan-out ---
 let auth = spawn authService(123)
-let inv  = spawn inventoryService(456)
-let pay  = spawn paymentService(1000)
+let inv  = exactArithmetic(fn() => spawn inventoryService(456))
+let pay  = exactArithmetic(fn() => spawn paymentService(1000))
 print("auth=${await(auth)} inv=${await(inv)} pay=${await(pay)}")
 
 /// --- Pipeline (each stage = its own fiber) ---
-let p = await(spawn stage3(await(spawn stage2(await(spawn stage1(25))))))
+let p = exactArithmetic(fn() => await(spawn stage3(await(spawn stage2(await(spawn stage1(25)))))))
 print("pipeline = ${p}")
 
 /// --- Yield ---
@@ -84,39 +103,39 @@ send(ch2, 123)
 print("recv ch2 = ${recv(ch2)}")
 
 /// --- Lambdas inline ---
-let dbl   = fn(x) => x * 2 ?: 0
-let tri   = fn(x) => x * 3 ?: 0
-let addF  = fn(a, b) => a + b ?: 0
-print("lam dbl=${dbl(10)} tri=${tri(7)} add=${addF(5, 8)}")
+let dbl   = fn(x) => x * 2 
+let tri   = fn(x) => x * 3 
+let addF  = fn(a, b) => a + b 
+exactArithmetic(fn() => print("lam dbl=${dbl(10)} tri=${tri(7)} add=${addF(5, 8)}"))
 
 /// --- Stream processing via yield ---
-let b1 = yield streamProcessor(128)
-let b2 = yield streamProcessor(256)
-let b3 = yield streamProcessor(512)
+let b1 = exactArithmetic(fn() => yield streamProcessor(128))
+let b2 = exactArithmetic(fn() => yield streamProcessor(256))
+let b3 = exactArithmetic(fn() => yield streamProcessor(512))
 print("stream ${b1} ${b2} ${b3}")
 
 /// --- Simple request/db ---
 let req = spawn handleRequest(1)
-let db  = spawn queryDatabase(123)
+let db  = exactArithmetic(fn() => spawn queryDatabase(123))
 print("req=${req} db=${await(db)}")
 
 /// --- API parallel calls ---
-let u = spawn fetchUserData(5)
-let o = spawn fetchOrderData(5)
+let u = exactArithmetic(fn() => spawn fetchUserData(5))
+let o = exactArithmetic(fn() => spawn fetchOrderData(5))
 print("user=${await(u)} order=${await(o)}")
 
 /// --- Captured-variable spawn + non-blocking completion probe ---
 /// `capArg` is a local captured into the spawned closure through a NAMED
 /// argument; fiberDone reports completion without blocking.
 let capArg = 7
-let capF = spawn combine(a: capArg, b: 5)
+let capF = exactArithmetic(fn() => spawn combine(a: capArg, b: 5))
 print("captured spawn = ${await(capF)} done=${fiberDone(capF)}")
 
 /// --- Record captured into a spawned closure ---
 let jobHigh = Job { id: 3, weight: 9 }
 let jobWide = Job { id: 4, weight: 7 }
-let spawnedJob = await(spawn runJob(jobWide))
-print("record spawn direct=${runJob(jobHigh)} spawned=${spawnedJob}")
+let spawnedJob = exactArithmetic(fn() => await(spawn runJob(jobWide)))
+exactArithmetic(fn() => print("record spawn direct=${runJob(jobHigh)} spawned=${spawnedJob}"))
 
 print("=== Fiber Showcase Complete ===")
 
@@ -129,7 +148,8 @@ print("=== Fiber Showcase Complete ===")
 fn erasedFiberResult() -> any = "fib" + "er"
 
 // Verifies each composed fiber/yield/lambda result instead of merely printing it.
-test("fiber primitives compose into deterministic values", fn() => checkAll("fiber showcase results", [
+
+test("fiber primitives compose into deterministic values", fn() => exactArithmetic(fn() => checkAll("fiber showcase results", [
     "${await(spawn erasedFiberResult())}" == "fiber",
     mappedTotal == 1400,
     p == 200,
@@ -152,4 +172,4 @@ test("fiber primitives compose into deterministic values", fn() => checkAll("fib
     spawnedJob == 28,
     jobHigh.id == 3,
     jobHigh.weight == 9
-]))
+])))

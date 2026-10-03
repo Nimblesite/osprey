@@ -27,5 +27,6 @@ ok 4 - handler state is one promoted cell across the fiber boundary
 ok 5 - a channel hands values between fibers while the effect reaches outside
 ok 6 - nested regions pick the innermost arm for a spawned fiber
 ok 7 - a data-dependent fiber pipeline fixes the handler transcript order
-1..7
-# tests=7 passed=7 failed=0 skipped=0
+ok 8 - arithmetic faults serialize payloads and substitute fiber values
+1..8
+# tests=8 passed=8 failed=0 skipped=0

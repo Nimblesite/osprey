@@ -947,7 +947,7 @@ print(describeAny(42) + "!")
         // `int` — but the ERROR side stays free, because `Error { message }`
         // unifies with whichever error type a caller supplies. Annotating this
         // body `-> Result<int, string>`, `-> Result<int, Error>` and
-        // `-> Result<int, MathError>` all check, which is what "free" means.
+        // `-> Result<int, string>` all check, which is what "free" means.
         //
         // [`fill_inferred`] refuses a type holding a variable — correctly, `t6`
         // is a private name — but the fallback then claimed `-> Unit`, and the

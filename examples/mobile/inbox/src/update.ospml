@@ -24,7 +24,7 @@ module Update
 
     export initial () = result (Model::initial ()) (Storage::schema ())
 
-    fetch model = match nextSequence model + 1
+    fetch model = match checkedAdd (nextSequence model) 1
         Error why => failure model "Request counter exhausted. Close and reopen the app."
         Success sequence =>
             prepared = Model::set (Model::set (Model::set model "seq" (toString sequence)) "loading" "true") "error" ""
@@ -33,7 +33,7 @@ module Update
 
     persist model = match model.dbReady == "true"
         false => unchanged (Model::set model "storageError" "SQLite is unavailable; these changes are only in memory.")
-        true => match nextSequence model + 1
+        true => match checkedAdd (nextSequence model) 1
             Error why => unchanged (Model::set model "storageError" "Request counter exhausted; changes were not saved. Close and reopen the app.")
             Success sequence =>
                 pending = Model::set (Model::set model "seq" (toString sequence)) "write" "save:${sequence}"

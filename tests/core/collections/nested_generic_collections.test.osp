@@ -28,7 +28,7 @@ fn matrixShape<T>(matrix: List<List<T>>) = match matrix {
 fn auditInts(rows) = {
     mut encoded = 0
     handle LeafAudit {
-        observe value => { encoded = encoded * 10 + value ?: encoded }
+        observe value => { encoded = encoded * 10 + value  }
     }
     forEachList(rows, fn(row) => forEachList(row, fn(value) => perform LeafAudit.observe(value)))
     encoded
@@ -132,4 +132,24 @@ fn nestedListEffectPatternCase() = {
     ])
 }
 
-test("nested generic lists mix effects patterns Results and persistence", nestedListEffectPatternCase)
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
+
+test("nested generic lists mix effects patterns Results and persistence", fn() => exactArithmetic(nestedListEffectPatternCase))

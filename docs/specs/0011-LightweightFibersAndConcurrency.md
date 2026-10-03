@@ -25,18 +25,18 @@ that computation finishes and returns its `T` value. `Fiber<T>` has no public
 record constructor; `spawn` is the construction operation.
 
 ```osprey
-fn work(value: int) -> int = value + 1
+fn work(value: int) -> int = satAdd(value, 1)
 
 let task = spawn work(41)
-let answer = await(task) ?: 0
+let answer = await(task)
 ```
 
 ```osprey-ml
 work : int -> int
-work value = value + 1
+work value = satAdd value 1
 
 task = spawn (work 41)
-answer = (await task) ?: 0
+answer = await task
 ```
 
 `await` returns the fiber's complete source type and never erases a `Result` channel. A fiber is inside the arithmetic totality guarantee: arithmetic in a spawned body cannot trap or wrap silently, and a fault reaches the enclosing `Arith` handler through the serialized `[EFFECTS-FIBER-PERFORM]` round trip, or the program is rejected ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). Each spawn site allocates a distinct capture cell. Pointer and floating-point values likewise return with their source type.

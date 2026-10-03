@@ -356,8 +356,8 @@ default. Their captured stdout and stderr are replayed in sorted suite order,
 so parallel scheduling does not scramble TAP output. The positive-integer
 environment setting `OSPREY_TEST_JOBS` limits worker concurrency;
 `OSPREY_TEST_JOBS=1` is the serial escape hatch for constrained or diagnostic
-runs. An unset value uses the host's available parallelism, with at least two
-workers when the corpus contains multiple suites. Invalid or zero values fail
+runs. An unset value uses the host's available parallelism, capped at four
+workers and with at least two when the corpus contains multiple suites. Invalid or zero values fail
 argument validation with exit code `2`.
 
 **`[TESTING-NATIVE-CACHE]`** Native test runs reuse a content-addressed

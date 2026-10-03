@@ -147,7 +147,7 @@ WASM_LLVM_BIN ?= $(shell for d in /opt/homebrew/opt/llvm/bin /usr/local/opt/llvm
 WASM_LLD_BIN  ?= $(shell for d in /opt/homebrew/opt/lld/bin /usr/local/opt/lld/bin "$(WASM_LLVM_BIN)"; do [ -n "$$d" ] && [ -x "$$d/wasm-ld" ] && { echo "$$d"; break; }; done)
 WASM_PATH_PREFIX ?= $(shell for d in "$(WASM_LLVM_BIN)" "$(WASM_LLD_BIN)"; do [ -n "$$d" ] && printf "%s:" "$$d"; done)
 WASM_CC      ?= $(if $(WASM_LLVM_BIN),$(WASM_LLVM_BIN)/clang,clang)
-WASM_AR      ?= $(if $(WASM_LLVM_BIN),$(WASM_LLVM_BIN)/llvm-ar,llvm-ar)
+WASM_AR      ?= $(if $(WASM_LLVM_BIN),$(WASM_LLVM_BIN)/llvm-ar,$(shell command -v llvm-ar 2>/dev/null || ls /usr/bin/llvm-ar-* 2>/dev/null | sort -V | tail -n 1))
 WASM_TARGET  ?= wasm32-wasip1
 # WASI sysroot (libc + crt1). Override with WASI_SYSROOT=/path; else probe the
 # Homebrew (macOS), wasi-sdk and common Linux locations in turn.
@@ -155,7 +155,8 @@ WASI_SYSROOT ?= $(shell for d in "$$OSPREY_WASI_SYSROOT" \
   /opt/homebrew/opt/wasi-libc/share/wasi-sysroot \
   /usr/local/opt/wasi-libc/share/wasi-sysroot \
   /opt/wasi-sdk/share/wasi-sysroot "$$WASI_SDK_PATH/share/wasi-sysroot" \
-  /usr/share/wasi-sysroot; do [ -n "$$d" ] && [ -d "$$d" ] && { echo "$$d"; break; }; done)
+  /usr/share/wasi-sysroot; do [ -n "$$d" ] && [ -d "$$d" ] && { echo "$$d"; exit; }; done; \
+  [ -f /usr/lib/wasm32-wasip1/crt1-command.o ] && echo /usr)
 WASM_CFLAGS  ?= --target=$(WASM_TARGET) --sysroot=$(WASI_SYSROOT) -O2 -std=c11 -Wall -Wextra -Werror -c
 
 # wasm_validate: structural check of the modules named in $(1). wasm-validate
@@ -193,6 +194,8 @@ WASM_SERVE_PORT ?= 8080
 # =============================================================================
 
 ## build: C runtime archives + Rust workspace (release) + VSCode extension
+export CARGO_BUILD_JOBS ?= 4
+
 build: _runtime $(EXT_NODE_DEPS)
 	@echo "==> Building..."
 	cargo build --release --workspace
@@ -299,25 +302,12 @@ _lint: $(EXT_NODE_DEPS)
 
 # _deslop: Code-duplication gate. Fails the build when measured
 # duplication exceeds the ceiling in .deslop.toml (exit 3). Exclusions and the
-# threshold live in that committed config — the single source of truth. When
-# the `deslop` binary is absent this target FAILS: a gate that cannot run must
-# not report success. CI enforces the same ceiling through the official action.
-# Version of the deslop CLI `make setup` installs. MUST equal the `version:` the
-# Deslop action pins in .github/workflows/ci.yml — deslop measures source text,
-# so a different build can report a different percentage for the SAME tree, and
-# a local gate that disagrees with the merge gate is worse than no local gate.
-DESLOP_VERSION ?= 0.27.0
+# threshold live in that committed config — the single source of truth.
+# The installer resolves the latest release for both local and hosted CI.
 
 _deslop:
 	@echo "==> Duplication gate (deslop)..."
-	@if ! command -v deslop >/dev/null 2>&1; then \
-		echo "FAIL: deslop is not installed, so the duplication gate cannot run."; \
-		echo "      A gate that cannot run must not report success — this used to"; \
-		echo "      print a warning and exit 0, which made every local 'make ci'"; \
-		echo "      green with the ceiling in .deslop.toml unchecked."; \
-		echo "      Install: https://deslop.live   (CI uses the official action.)"; \
-		exit 1; \
-	fi
+	bash scripts/install-deslop.sh
 	deslop . --nohtml --nojson --output $(CURDIR)/target/deslop-report --log-to-console --log-level error --no-color
 
 ## hawk: Dead-code gate (astral-sh/hawk). Fails the build when any `pub`
@@ -434,7 +424,7 @@ setup: $(EXT_NODE_DEPS) $(WEBCOMPILER_NODE_DEPS) $(WEBSITE_NODE_DEPS)
 	@echo "==> Setting up development environment..."
 	rustup component add rustfmt clippy llvm-tools-preview
 	command -v cargo-llvm-cov >/dev/null 2>&1 || cargo install cargo-llvm-cov
-	command -v deslop >/dev/null 2>&1 || DESLOP_VERSION=$(DESLOP_VERSION) bash scripts/install-deslop.sh
+	bash scripts/install-deslop.sh
 	@echo "==> Setup complete. Run 'make ci' to validate."
 
 # ---------------------------------------------------------------------------
@@ -563,7 +553,7 @@ _runtime_wasm:
 # that says nothing about the code that changed. Build what the gate measures.
 _test_rust: _runtime_wasm
 	@echo "==> [rust] running tests with coverage..."
-	set -o pipefail && cargo llvm-cov --workspace --profile ci --lcov --output-path lcov.info 2>&1 | tee test.log
+	set -o pipefail && RUST_TEST_THREADS=$${RUST_TEST_THREADS:-4} cargo llvm-cov --workspace --profile ci --lcov --output-path lcov.info 2>&1 | tee test.log
 
 # Per-crate enforcement: each rust crate NAMED IN $(COVERAGE_THRESHOLDS_FILE) is
 # gated independently against its own threshold (floor 95% + monotonic ratchet).
@@ -845,9 +835,10 @@ _test_vscode_extension: _vsix_bundle $(EXT_NODE_DEPS)
 	  PATH="$(CURDIR)/target/path-bin:$$PATH" \
 	  ./node_modules/.bin/vscode-test --coverage --coverage-output coverage \
 	    --coverage-reporter text-summary --coverage-reporter json-summary --coverage-reporter html 2>&1 | tee -a test.log
+# The VS Code CLI otherwise waits for an interactive install prompt on WSL.
 	@echo "==> [vscode-extension] testing the installed VSIX and its bundled compiler..."
 	$(MAKE) _vsix_package
-	cd $(EXT_DIR) && set -o pipefail && npm run test:vsix 2>&1 | tee -a test.log
+	cd $(EXT_DIR) && set -o pipefail && DONT_PROMPT_WSL_INSTALL=1 npm run test:vsix 2>&1 | tee -a test.log
 
 # Gates EVERY metric the summary reports, not lines alone. Lines-only was the
 # dishonest half of this gate: branches and functions were measured, printed by

@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 /// Default surface for [MODULES-FILE-SCOPE-BINDING] and [MODULES-INIT]: a
 /// file-scope `let` or `mut` is a declaration whose initializer runs where it is
 /// written, in source order, before the entry's statements. A function body
@@ -9,7 +28,7 @@ effect Counter {
 }
 
 /// Performs two operations the file-scope handler below discharges.
-fn run() = (perform Counter.tick(3) + perform Counter.tick(4)) ?: 0
+fn run() = (perform Counter.tick(3) + perform Counter.tick(4)) 
 
 /// A plain file-scope constant, readable from every function below it.
 let base = 100
@@ -18,15 +37,15 @@ let base = 100
 mut hits = 0
 
 /// The initializer runs here, in source order, before any entry statement.
-let total = {
+let total = exactArithmetic(fn() => {
     handle Counter {
         tick amount => {
-            hits = (hits + amount) ?: hits
+            hits = (hits + amount) 
             hits
         }
     }
     run()
-}
+})
 
 /// Records the order in which the file-scope initializers completed.
 let trace = "base=${base},hits=${hits},total=${total}"
@@ -35,14 +54,14 @@ let trace = "base=${base},hits=${hits},total=${total}"
 fn summary() = "${hits} hits, total ${total}"
 
 /// A later function still reads the same module storage, not a copy.
-fn scaled() = (hits * base) ?: 0
+fn scaled() = (hits * base) 
 
 /// Both file-scope bindings are readable from ordinary function bodies.
 fn constantReadCase() = checkAll("functions read file-scope bindings", [
     base == 100,
     total == 10,
     scaled() == 700,
-    ((base + total) ?: 0) == 110,
+    ((base + total) ) == 110,
     "${base}" == "100"
 ])
 
@@ -51,7 +70,7 @@ fn handlerOwnedCellCase() = checkAll("handler-owned cell is one shared storage",
     hits == 7,
     summary() == "7 hits, total 10",
     total == 10,
-    ((hits * 2) ?: 0) == 14,
+    ((hits * 2) ) == 14,
     summary() == "${hits} hits, total ${total}"
 ])
 
@@ -63,7 +82,8 @@ fn initializationOrderCase() = checkAll("initializers run in source order", [
     hits == 7
 ])
 
-print("${summary()} ${scaled()} ${trace}")
-test("file-scope constants are readable from functions", constantReadCase)
-test("a handler-owned cell is one shared storage", handlerOwnedCellCase)
-test("file-scope initializers run in source order", initializationOrderCase)
+exactArithmetic(fn() => print("${summary()} ${scaled()} ${trace}"))
+
+test("file-scope constants are readable from functions", fn() => exactArithmetic(constantReadCase))
+test("a handler-owned cell is one shared storage", fn() => exactArithmetic(handlerOwnedCellCase))
+test("file-scope initializers run in source order", fn() => exactArithmetic(initializationOrderCase))

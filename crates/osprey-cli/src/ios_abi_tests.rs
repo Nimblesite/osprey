@@ -8,7 +8,7 @@ const SOURCE: &str = "extern fn host_log(message: string) -> int\n\
     fn shout(s: string) = print(s)\n\
     fn scaled(n: int) -> float = toFloat(n) * 1.5\n\
     fn twice(x) = x\n\
-    fn total(a: int, b: int) -> int = a + b ?: 0\n\
+    fn total(a: int, b: int) -> int = {\n    handle Arith { overflow _ _ _ wrapped => wrapped }\n    a + b\n}\n\
     fn count(xs: List<int>) -> int = listLength(xs)\n\
     fn main() = print(\"${host_log(greet(\\\"x\\\"))}\")\n";
 
@@ -217,7 +217,7 @@ fn imports_use_c_bool_attributes_and_adapt_unit_returns() {
 fn original_symbols_and_imports_cannot_shadow_the_boundary() {
     for (source, symbol) in [
         (
-            "fn greet(n) = n + 1 ?: 0\nfn osprey_greet(n) = n + 2 ?: 0\n",
+            "fn greet(n) = wrapAdd(n, 1)\nfn osprey_greet(n) = wrapAdd(n, 2)\n",
             "osprey_greet",
         ),
         ("fn osprey_main() = 4\n", "osprey_main"),
@@ -323,7 +323,7 @@ fn initialization_symbols_and_c_header_names_are_reserved() {
 }
 
 #[test]
-fn exports_cannot_depend_on_a_handler_installed_only_by_main() {
+fn exports_cannot_depend_on_a_handler_installed_only_by_main() -> Result<(), String> {
     let source = "effect Alarm { ring: fn() -> int }\nfn ring() = perform Alarm.ring()\nfn relay() = ring()\nfn main() = {\n    handle Alarm {\n        ring => 7\n    }\n    relay()\n}\n";
     let (program, types, ir) = checked(source);
     let error = host_abi(&program, &types, &ir).expect_err("export needs its own handler");
@@ -331,6 +331,10 @@ fn exports_cannot_depend_on_a_handler_installed_only_by_main() {
         error.contains("export") && error.contains("ring") && error.contains("Alarm.ring"),
         "{error}"
     );
+    let entry = host_abi_selected(&program, &types, &ir, false)?;
+    assert!(entry.exports.is_empty());
+    assert!(with_host_abi(&ir, &entry).is_ok());
+    Ok(())
 }
 
 #[test]

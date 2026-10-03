@@ -427,7 +427,7 @@ combinators: `gpuMap`/`gpuZipWith` reject the stored element, `gpuFold` and
 `gpuScan` reject the accumulator update, and `gpuFilter` rejects the verdict.
 Handle failure inside the kernel with `?:` or `match`.
 
-This rejection applies the arithmetic policy contract at the kernel boundary: a kernel may not retain an undischarged arithmetic effect, and the compiler may not silently replace its chosen policy with trapping or wrapping ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). Host and device kernels follow the same empty-residual-row rule. A fallible site requires an explicitly selected static `Arith` interpretation whose residual operations satisfy the target's restrictions ([STAGE-GPU-LEGAL](0017-AlgebraicEffects.md#gpu-legality--stage-gpu-legal)); an outer dynamic policy alone is insufficient.
+Arithmetic keeps its policy contract at the kernel boundary: the compiler never silently replaces a region's chosen policy with trapping or wrapping ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). On the host backend a kernel's `Arith` operations are exempt from the stage-legality row ([STAGE-GPU-LEGAL](0017-AlgebraicEffects.md#gpu-legality--stage-gpu-legal)) and dispatch to the enclosing policy exactly as any lambda's do, so a kernel with fallible arithmetic compiles only where a region installs a policy; with none, the program is rejected at its entry. A device backend cannot call back into a runtime handler, so it will need a static `Arith` interpretation. `handle static Arith` does not provide one yet and is rejected.
 
 ### Which kernels are extracted
 

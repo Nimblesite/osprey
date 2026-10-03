@@ -63,8 +63,9 @@ values, not an unrelated checklist.
 
 - **Errors are part of the result.** Code must deal with failure instead of
   hiding it behind null, exceptions or crashes.
-- **Arithmetic does not silently wrap.** Checked operations make failure
-  explicit rather than producing a plausible but incorrect value.
+- **Arithmetic does not silently wrap.** Fallible operations require an explicit
+  `Arith` policy for the surrounding region; the compiler rejects an unhandled
+  overflow or zero divisor rather than producing a plausible wrong value.
 - **Side effects are easy to see and replace.** Code says when it needs to log,
   load data or do other outside work. The application decides how that work is
   done.
@@ -216,15 +217,12 @@ These constraints materially affect how the language must be described:
   of possible reads, not a promise to know precisely which branch will run.
 - The [reactive mobile application](../examples/mobile/README.md) is implemented using ordinary Osprey modules and explicit event/state/command transitions. Osprey defines its screen tree, state, GitHub request and decoding logic, SQLite schema and statements, offline cache, search, bookmarks, notes, and priorities. Native hosts render the tree and execute platform services. This working application does not imply that the staged-effects reactive runtime is implemented.
 
-- Integer arithmetic returns a `Result`, not a plain `int`. `+`, `-`, `*`, `abs`
-  and `intDiv` all carry a `MathError` channel that the caller must discharge,
-  usually with `?:`. That is a real cost to describe honestly: a `?: 0` on an
-  overflowing expression fabricates a value and the program exits successfully
-  with a wrong answer ([#230](https://github.com/Nimblesite/osprey/issues/230)).
-  [Spec 0037](specs/0037-ArithmeticEffects.md) specifies the replacement — plain
-  `int` with faults dispatched to an `Arith` handler — as a normative target;
-  **none of it is implemented**. Describe today's arithmetic as checked and
-  explicit, and the effect form only as specified behaviour.
+- Integer arithmetic returns plain `int`. Fallible `+`, `-`, `*`, `abs` and
+  `intDiv` request the compiler-declared `Arith` effect, which a named policy
+  handles for a region. An unhandled operation is rejected. The total wrapping
+  and saturating helpers state those policies directly when that behavior is
+  intended; `checkedAdd`/`checkedSub`/`checkedMul` retain explicit `Result`
+  forms for value-level error handling. See [Spec 0037](specs/0037-ArithmeticEffects.md).
 - Tail-call optimisation is not implemented.
 - Multi-file project modules and cross-flavor imports are implemented. A package manager remains roadmap work; describe further module or generic features according to their individual implementation status.
 - GPU computation is a typed language surface with a host execution backend:

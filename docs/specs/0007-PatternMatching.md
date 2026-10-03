@@ -223,8 +223,8 @@ For a `Result`, `result ?: fallback` yields the `Success` payload or lazily
 evaluates `fallback` for `Error`.
 
 ```osprey
-let safe = intDiv(10, 2) ?: 0
-let failed = intDiv(10, 0) ?: 0
+let safe = checkedAdd(10, 2) ?: 0
+let failed = checkedAdd(9223372036854775807, 1) ?: 0
 ```
 
 `?:` is right-associative and binds below every other operator

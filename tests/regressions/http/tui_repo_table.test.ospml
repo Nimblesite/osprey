@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 // ML twin of tui_repo_table.osp. Exercises [HTTP-RESPONSE-HANDLE] and
 // [BUILTIN-JSON] with positional ML calls and layout blocks.
 
@@ -6,7 +20,7 @@ handleRequest (_method, _path, _headers, _body) = HttpResponse(
     status = 200,
     headers = "Content-Type: application/json",
     contentType = "application/json",
-    streamFd = (0 - 1) ?: 0,
+    streamFd = (0 - 1) ,
     isComplete = true,
     partialBody = "[{\"name\":\"osprey\",\"stars\":1200,\"lang\":\"Go\"},{\"name\":\"llvm\",\"stars\":9001,\"lang\":\"C++\"},{\"name\":\"antlr\",\"stars\":4200,\"lang\":\"Java\"}]"
 )
@@ -40,7 +54,7 @@ renderRow (doc, i, n) =
             starsCol = yellow "* ${pad (stars, 5)}"
             langCol = dim lang
             print "  ${bullet} ${nameCol} ${starsCol} ${langCol}"
-            renderRow (doc, (i + 1) ?: i, n)
+            renderRow (doc, (i + 1) , n)
         false => print ""
 
 renderTable doc =
@@ -97,4 +111,5 @@ repoTableCase () =
         pad ("Go", 4) == "Go  ",
         startsWith (cyan "*") "\e[36m"
     ]
-test "repository JSON renders after an HTTP response round trip" repoTableCase
+
+test "repository JSON renders after an HTTP response round trip" (\() => exactArithmetic (repoTableCase))

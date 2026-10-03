@@ -35,7 +35,7 @@ static effect Alloc { scratch: fn(int) -> int }
 fn main() = {
     let used = {
         handle static Alloc {
-            scratch bytes => bytes * 4 ?: 0
+            scratch bytes => satMul(bytes, 4)
         }
         perform Alloc.scratch(16)
     }
@@ -48,7 +48,7 @@ effect Alloc { scratch: fn(int) -> int }
 fn main() = {
     let used = {
         handle Alloc {
-            scratch bytes => bytes * 4 ?: 0
+            scratch bytes => satMul(bytes, 4)
         }
         perform Alloc.scratch(16)
     }
@@ -113,7 +113,7 @@ fn dependencies_are_derived_transitively_and_exactly() {
     let source = r#"
 static effect CountSignal { read: fn() -> int }
 static effect NameSignal { read: fn() -> string }
-fn doubled() = (perform CountSignal.read() * 2) ?: 0
+fn doubled() = satMul(perform CountSignal.read(), 2)
 fn counterLabel() = "count: ${doubled()}"
 fn greeting() = "hello ${perform NameSignal.read()}"
 fn statusBar() = "${greeting()} | ${counterLabel()}"
@@ -174,7 +174,7 @@ fn root() = {
 fn nested_regions_answer_the_same_effect_differently() {
     let source = r#"
 static effect Tile { size: fn() -> int }
-fn scaled(n) = (n * perform Tile.size()) ?: 0
+fn scaled(n) = satMul(n, perform Tile.size())
 fn main() = {
     let a = {
         handle static Tile {
@@ -213,7 +213,7 @@ fn main() = {
 
 const STATIC_ROW_SOURCE: &str = r#"
 static effect Scale { by: fn() -> int }
-fn scaled(n) = (n * perform Scale.by()) ?: 0
+fn scaled(n) = satMul(n, perform Scale.by())
 fn main() = {
     let v = {
         handle static Scale {
@@ -243,7 +243,7 @@ fn a_static_effect_inside_a_kernel_body_is_stage_legal() {
     // second one: discharge follows data typing but precedes residual purity.
     let source = r#"
 static effect Tile { size: fn() -> int }
-fn shade(px) = (px * perform Tile.size()) ?: 0
+fn shade(px) = satMul(px, perform Tile.size())
 fn main() = {
     let out = {
         handle static Tile {
@@ -264,7 +264,7 @@ fn main() = {
     // is residual and the kernel is rejected by name.
     let outside = r#"
 static effect Tile { size: fn() -> int }
-fn shade(px) = (px * perform Tile.size()) ?: 0
+fn shade(px) = satMul(px, perform Tile.size())
 fn main() = {
     let out = fromGpu(toGpu([1, 2, 3]) |> gpuMap(shade))
     handle static Tile {
@@ -284,13 +284,11 @@ fn main() = {
 fn a_kernel_region_is_a_handler_region_not_a_magic_block() {
     // [STAGE-GPU-KERNEL] `kernel` is a handler region whose signature admits
     // only stage-legal rows, supplying the static handlers for the device
-    // dialects its body may use. There is no such form today: the surface does
-    // not parse, so a kernel cannot carry its own dialect handlers and the
-    // device effects `Parallel`, `Alloc` and `Tensor` have nowhere to be
-    // answered.
+    // dialects its body may use, so a kernel answers its own device requests
+    // without an enclosing `handle static`.
     let source = r#"
 static effect Tile { size: fn() -> int }
-fn shade(px) = (px * perform Tile.size()) ?: 0
+fn shade(px) = satMul(px, perform Tile.size())
 fn main() = {
     let frame = kernel
         Tile size => 8
@@ -364,7 +362,7 @@ fn the_ml_surface_carries_the_stage_axis_too() {
     // [STAGE-DECL] The spec gives `static effect` and `handle static` an ML
     // spelling. Both lower to the same staged AST and pass through source
     // validation before discharge ([STAGE-LOWER-ORDER-PHASE]).
-    let source = "static effect Tile\n    size : Unit => int\n\nscaled n = n * perform Tile.size () ?: 0\n\nanswer =\n    handle static Tile\n        size => 8\n    scaled 2\n";
+    let source = "static effect Tile\n    size : Unit => int\n\nscaled n = satMul n (perform Tile.size ())\n\nanswer =\n    handle static Tile\n        size => 8\n    scaled 2\n";
     let errors = diagnostics(source, Flavor::Ml);
     assert!(
         errors.is_empty(),
@@ -466,4 +464,34 @@ fn main() = {
         errors.contains("handle static names unknown effect `Missing`"),
         "an unknown static effect must be reported against `handle static`: {errors}"
     );
+}
+
+#[test]
+fn a_static_arith_region_is_refused_without_calling_arith_unknown() {
+    // `Arith` is compiler-declared ([ARITH-EFFECT-OPS]), so "unknown effect"
+    // would be false; it simply has no static interpretation yet.
+    for (source, flavor, region) in [
+        (
+            "fn main() = {\n    handle static Arith { overflow _ _ _ wrapped => wrapped }\n    print(\"unreachable\")\n}\n",
+            Flavor::Default,
+            "handle static",
+        ),
+        (
+            "main () =\n    handle static Arith\n        overflow _ _ _ wrapped => wrapped\n    print \"unreachable\"\n",
+            Flavor::Ml,
+            "handle static",
+        ),
+        (
+            "fn main() = {\n    let frame = kernel\n        Arith overflow _ _ _ wrapped => wrapped\n    in 2\n    print(\"${frame}\")\n}\n",
+            Flavor::Default,
+            "kernel",
+        ),
+    ] {
+        let errors = diagnostics(source, flavor);
+        let refusal = format!(
+            "`{region} Arith` is not available: `Arith` has runtime policies only; install one with `handle Arith`"
+        );
+        assert!(errors.contains(&refusal), "{flavor:?}: {errors}");
+        assert!(!errors.contains("unknown effect"), "{flavor:?}: {errors}");
+    }
 }

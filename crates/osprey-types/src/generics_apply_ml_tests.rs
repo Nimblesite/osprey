@@ -116,7 +116,7 @@ print "${{held.value}}""#
 
     /// A function type is a type argument in ML too.
     ml_a_function_type_may_be_a_type_argument: accepts(Ml, format!(
-            r#"{ML_IDENTITY}double n = n * 2 ?: 0
+            r#"{ML_IDENTITY}double n = wrapMul (n, 2)
 f = identity<(int) -> int> double
 print "${{f 21}}""#
         ));

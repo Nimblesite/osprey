@@ -8,7 +8,7 @@
 module Money
     pennies : int -> string
     pennies c =
-        remainder = (c % 100) ?: 0
+        remainder = c % 100
         match remainder < 10
             true => "0${remainder}"
             false => "${remainder}"
@@ -24,12 +24,12 @@ module Money
     group dollars = match dollars < 1000
         true => "${dollars}"
         false =>
-            next = intDiv dollars 1000 ?: 0
-            remainder = (dollars % 1000) ?: 0
+            next = intDiv dollars 1000
+            remainder = dollars % 1000
             "${group next},${triple remainder}"
 
     export show : int -> string
-    show cents = "$${group (intDiv cents 100 ?: 0)}.${pennies cents}"
+    show cents = "$${group (intDiv cents 100)}.${pennies cents}"
 
     export positive : int -> bool
     positive cents = cents > 0
@@ -119,7 +119,7 @@ namableCase () =
 (** --- movement-amount rule --- *)
 movableCase () =
     pos = andThen (check ("positive cents move", true, Accounts::movable 5000)) (check ("one cent moves", true, Accounts::movable 1))
-    zeroNeg = andThen (check ("zero does not move", false, Accounts::movable 0)) (check ("negative does not move", false, Accounts::movable ((0 - 250) ?: 0)))
+    zeroNeg = andThen (check ("zero does not move", false, Accounts::movable 0)) (check ("negative does not move", false, Accounts::movable (-250)))
     andThen pos zeroNeg
 
 (** --- the Outcome union both API and main pattern-match --- *)
@@ -160,7 +160,7 @@ payRent account cents = match Accounts::movable cents && perform Vault.balance a
 flushVault () =
     handle Vault
         balance id => 9000
-        debit id cents => Landed(balance = (9000 - cents) ?: 0)
+        debit id cents => Landed(balance = satSub 9000 cents)
     settle (payRent 1 2500)
 
 (** Mock 2: a broke account — the guard refuses before storage is even asked. *)

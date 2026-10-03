@@ -11,23 +11,27 @@
 
 /// Q10 fixed point: one world unit is 1024 sub-units.
 fn unit() = 1024
-/// fpMul and fpDiv stay in Q10; a zero divisor saturates instead of failing.
-fn fpMul(a: int, b: int) = intDiv((a * b) ?: 0, unit()) ?: 0
-fn fpDiv(a: int, b: int) = intDiv((a * unit()) ?: 0, b) ?: 0
+/// fpMul and fpDiv stay in Q10; a zero scale produces no displacement.
+fn fpMul(a: int, b: int) = intDiv((a * b) , unit()) 
+fn fpDiv(a, b) = {
+    // A singular scale produces no displacement.
+    handle Arith { remainderByZero _ => 0 }
+    intDiv(a * unit(), b)
+}
 /// The sign helpers every component-wise kernel needs.
-fn negFp(x: int) = (0 - x) ?: 0
+fn negFp(x: int) = (0 - x) 
 fn fpAbs(x: int) = match x < 0 { true => negFp(x) false => x }
 /// Whole-buffer scale kernels at Q10.
-fn doubleFp(x) = fpMul(x, (2 * unit()) ?: 0)
-fn halveFp(x) = fpMul(x, intDiv(unit(), 2) ?: 0)
+fn doubleFp(x) = fpMul(x, (2 * unit()) )
+fn halveFp(x) = fpMul(x, intDiv(unit(), 2) )
 /// sumInts doubles as elementwise vector addition; subInts is displacement.
-fn sumInts(a: int, x: int) = (a + x) ?: a
-fn subInts(a: int, b: int) = (a - b) ?: a
-fn sqrOf(v: int) = (v * v) ?: 0
+fn sumInts(a: int, x: int) = (a + x) 
+fn subInts(a: int, b: int) = (a - b) 
+fn sqrOf(v: int) = (v * v) 
 /// Squared length in one pass, so a broadphase needs no product buffer.
-fn addSquares(dx: int, dy: int) = (sqrOf(dx) + sqrOf(dy)) ?: 0
+fn addSquares(dx: int, dy: int) = (sqrOf(dx) + sqrOf(dy)) 
 /// speedOf accumulates absolute magnitude — total speed, or total error.
-fn speedOf(acc: int, v: int) = (acc + fpAbs(v)) ?: acc
+fn speedOf(acc: int, v: int) = (acc + fpAbs(v)) 
 /// The associative fold combines that grow an axis-aligned box.
 fn boundMin(a: int, b: int) = match a <= b { true => a false => b }
 fn boundMax(a: int, b: int) = match a >= b { true => a false => b }
@@ -43,31 +47,31 @@ fn isMiss(flag) = !flag
 fn octagonal(x: int, y: int) = {
     let hi = boundMax(fpAbs(x), fpAbs(y))
     let lo = boundMin(fpAbs(x), fpAbs(y))
-    let beta = intDiv((3 * lo) ?: 0, 8) ?: 0
-    hi + beta ?: hi
+    let beta = intDiv((3 * lo) , 8) 
+    hi + beta 
 }
 /// A colour packs r:g:b into one int element, the way a framebuffer does.
 fn channelBits() = 256
-fn redShift() = (channelBits() * channelBits()) ?: 0
+fn redShift() = (channelBits() * channelBits()) 
 fn clampChannel(v: int) = match v < 0 {
     true => 0
     false => match v > 255 { true => 255 false => v }
 }
-fn packRG(r: int, g: int) = ((clampChannel(r) * channelBits()) ?: 0) + clampChannel(g) ?: 0
-fn packRGB(rg: int, b: int) = ((rg * channelBits()) ?: 0) + clampChannel(b) ?: 0
-fn redOf(c: int) = intDiv(c, redShift()) ?: 0
-fn greenOf(c: int) = (intDiv(c, channelBits()) ?: 0) % channelBits() ?: 0
-fn blueOf(c: int) = (c % channelBits()) ?: 0
+fn packRG(r: int, g: int) = ((clampChannel(r) * channelBits()) ) + clampChannel(g) 
+fn packRGB(rg: int, b: int) = ((rg * channelBits()) ) + clampChannel(b) 
+fn redOf(c: int) = intDiv(c, redShift()) 
+fn greenOf(c: int) = (intDiv(c, channelBits()) ) % channelBits() 
+fn blueOf(c: int) = (c % channelBits()) 
 /// Integer Rec.601 grey; the weights sum to exactly 256, so white maps to 255.
 fn luminance(c: int) = intDiv(
-    ((77 * redOf(c)) ?: 0) + ((151 * greenOf(c)) ?: 0) + ((28 * blueOf(c)) ?: 0) ?: 0,
-    channelBits()) ?: 0
+    ((77 * redOf(c)) ) + ((151 * greenOf(c)) ) + ((28 * blueOf(c)) ) ,
+    channelBits()) 
 /// A blend is two coverage-weighted scales and one add.
 fn scaleColor(c: int, w: int) = packRGB(
-    packRG(intDiv((redOf(c) * w) ?: 0, channelBits()) ?: 0,
-        intDiv((greenOf(c) * w) ?: 0, channelBits()) ?: 0),
-    intDiv((blueOf(c) * w) ?: 0, channelBits()) ?: 0)
-fn invAlpha(a: int) = (channelBits() - a) ?: 0
+    packRG(intDiv((redOf(c) * w) , channelBits()) ,
+        intDiv((greenOf(c) * w) , channelBits()) ),
+    intDiv((blueOf(c) * w) , channelBits()) )
+fn invAlpha(a: int) = (channelBits() - a) 
 /// The reference colours; missingColor is the magenta a failed asset paints.
 fn black() = 0
 fn red() = 16711680
@@ -77,26 +81,26 @@ fn missingColor() = 16711935
 /// at turns [GPU-GET]'s out-of-range Error into the engine's chosen padding.
 fn at(buf, i, miss) = gpuGet(buf, i) ?: miss
 /// clampIdx keeps a stencil tap on the field; blurAt is the three-tap average.
-fn clampIdx(i: int, n: int) = boundMin(boundMax(i, 0), (n - 1) ?: 0)
-fn blurAt(field, n, i) = intDiv(at(field, clampIdx((i - 1) ?: i, n), 0)
-    + at(field, i, 0) + at(field, clampIdx((i + 1) ?: i, n), 0) ?: 0, 3) ?: 0
+fn clampIdx(i: int, n: int) = boundMin(boundMax(i, 0), (n - 1) )
+fn blurAt(field, n, i) = intDiv(at(field, clampIdx((i - 1) , n), 0)
+    + at(field, i, 0) + at(field, clampIdx((i + 1) , n), 0) , 3) 
 /// tileTranspose reads a w-by-h tile grid column-major: dest(x, y) = src(y, x).
-fn tileTranspose(src, w, h) = gpuIota((w * h) ?: 0)
-    |> gpuMap(fn(i) => at(src, ((((i % h) ?: 0) * w) ?: 0) + (intDiv(i, h) ?: 0) ?: 0, 0))
+fn tileTranspose(src, w, h) = gpuIota((w * h) )
+    |> gpuMap(fn(i) => at(src, ((((i % h) ) * w) ) + (intDiv(i, h) ) , 0))
 /// Semi-implicit Euler: velocity updates first, then position integrates the
 /// *new* velocity. Only a concrete signature gets a recursive helper emitted.
 fn velAfter(vel: GpuBuffer<int>, acc: GpuBuffer<int>, n: int) = match n {
     0 => vel
-    _ => velAfter(gpuZipWith(vel, acc, sumInts), acc, (n - 1) ?: 0)
+    _ => velAfter(gpuZipWith(vel, acc, sumInts), acc, (n - 1) )
 }
 fn posAfter(pos: GpuBuffer<int>, vel: GpuBuffer<int>, acc: GpuBuffer<int>, n: int) = match n {
     0 => pos
-    _ => gpuZipWith(posAfter(pos, vel, acc, (n - 1) ?: 0), velAfter(vel, acc, n), sumInts)
+    _ => gpuZipWith(posAfter(pos, vel, acc, (n - 1) ), velAfter(vel, acc, n), sumInts)
 }
 /// damp reruns a drag multiply over a velocity buffer n times.
 fn damp(vel: GpuBuffer<int>, drag: int, n: int) = match n {
     0 => vel
-    _ => damp(vel |> gpuMap(fn(v) => fpMul(v, drag)), drag, (n - 1) ?: 0)
+    _ => damp(vel |> gpuMap(fn(v) => fpMul(v, drag)), drag, (n - 1) )
 }
 /// A tick is 0.1s; lerpQuarter eases a quarter of the way toward the target.
 fn integrate(p: float, v: float) = p + v * 0.1
@@ -111,8 +115,8 @@ fn clamp01(x) = match x < 0.0 {
     false => match x > 1.0 { true => 1.0 false => x }
 }
 /// applyDamage resolves a hit, flooring health at zero.
-fn applyDamage(h: int, d: int) = match ((h - d) ?: 0) > 0 {
-    true => (h - d) ?: 0
+fn applyDamage(h: int, d: int) = match ((h - d) ) > 0 {
+    true => (h - d) 
     false => 0
 }
 /// fixedPointCase pins the Q10 contract, truncation included — a product below
@@ -123,7 +127,7 @@ fn fixedPointCase() = {
         fpMul(unit(), unit()) == unit(), fpMul(unit(), 0) == 0, fpMul(0, unit()) == 0,
         fpMul(512, 512) == 256, fpMul(negFp(512), 512) == negFp(256),
         fpMul(negFp(512), negFp(512)) == 256, fpMul(1, 1) == 0, fpMul(negFp(1), 1) == 0,
-        fpDiv(unit(), (2 * unit()) ?: 0) == 512, fpDiv(768, 256) == 3072, fpDiv(unit(), 0) == 0,
+        fpDiv(unit(), (2 * unit()) ) == 512, fpDiv(768, 256) == 3072, fpDiv(unit(), 0) == 0,
         fpDiv(0, unit()) == 0, fpDiv(negFp(512), 512) == negFp(1024), fpAbs(negFp(7)) == 7,
         fpAbs(0) == 0, fpAbs(7) == 7, negFp(negFp(9)) == 9, at(scaled, 0, 0) == 2048,
         at(scaled, 1, 0) == 1024, at(scaled, 2, 1) == 0, at(scaled, 3, 0) == negFp(512),
@@ -225,9 +229,9 @@ fn aabbCase() = {
     let loY = ys |> gpuFold(9999, boundMin)
     let hiY = ys |> gpuFold(negFp(9999), boundMax)
     checkAll("bounding box", [
-        loX == negFp(10), hiX == 75, loY == negFp(20), hiY == 60, ((hiX - loX) ?: 0) == 85,
-        ((hiY - loY) ?: 0) == 80, (intDiv((loX + hiX) ?: 0, 2) ?: 0) == 32,
-        (intDiv((loY + hiY) ?: 0, 2) ?: 0) == 20,
+        loX == negFp(10), hiX == 75, loY == negFp(20), hiY == 60, ((hiX - loX) ) == 85,
+        ((hiY - loY) ) == 80, (intDiv((loX + hiX) , 2) ) == 32,
+        (intDiv((loY + hiY) , 2) ) == 20,
         gpuLength(xs |> gpuFilter(fn(x) => x >= loX && x <= hiX)) == 5,
         (toGpu([7]) |> gpuFold(9999, boundMin)) == 7,
         (toGpu([7]) |> gpuFold(negFp(9999), boundMax)) == 7,
@@ -354,7 +358,7 @@ fn blendCase() = {
 /// palette, and one off the end becomes magenta rather than a silent black.
 fn paletteCase() = {
     let pal = toGpu([black(), red(), green(), 255, white()])
-    let tiled = gpuIota(8) |> gpuMap(fn(i) => at(pal, (i % 5) ?: 0, missingColor()))
+    let tiled = gpuIota(8) |> gpuMap(fn(i) => at(pal, (i % 5) , missingColor()))
     let raw = gpuIota(8) |> gpuMap(fn(i) => at(pal, i, missingColor()))
     checkAll("palette gather", [
         gpuLength(tiled) == 8, gpuLength(raw) == 8, at(tiled, 0, 1) == black(),
@@ -370,11 +374,11 @@ fn paletteCase() = {
 /// gather; a read that overruns the stream must land on the padding value.
 fn gatherCase() = {
     let flat = toGpu([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
-    let xs = gpuIota(4) |> gpuMap(fn(i) => at(flat, (3 * i) ?: 0, 0))
-    let ys = gpuIota(4) |> gpuMap(fn(i) => at(flat, ((3 * i) ?: 0) + 1 ?: 0, 0))
-    let zs = gpuIota(4) |> gpuMap(fn(i) => at(flat, ((3 * i) ?: 0) + 2 ?: 0, 0))
-    let flipped = gpuIota(4) |> gpuMap(fn(i) => at(xs, (3 - i) ?: 0, 0))
-    let over = gpuIota(5) |> gpuMap(fn(i) => at(flat, (3 * i) ?: 0, negFp(1)))
+    let xs = gpuIota(4) |> gpuMap(fn(i) => at(flat, (3 * i) , 0))
+    let ys = gpuIota(4) |> gpuMap(fn(i) => at(flat, ((3 * i) ) + 1 , 0))
+    let zs = gpuIota(4) |> gpuMap(fn(i) => at(flat, ((3 * i) ) + 2 , 0))
+    let flipped = gpuIota(4) |> gpuMap(fn(i) => at(xs, (3 - i) , 0))
+    let over = gpuIota(5) |> gpuMap(fn(i) => at(flat, (3 * i) , negFp(1)))
     checkAll("aos to soa gather", [
         (xs |> gpuFold(0, sumInts)) == 22, (ys |> gpuFold(0, sumInts)) == 26,
         (zs |> gpuFold(0, sumInts)) == 30, (flat |> gpuFold(0, sumInts)) == 78, at(xs, 0, 0) == 1,
@@ -460,24 +464,44 @@ fn raggedCase() = {
         gpuLength(gpuZipWith(toGpu([1]), pos, subInts)) == 1
     ])
 }
-test("q10 fixed-point scalars and scale kernels truncate toward zero", fixedPointCase)
-test("vector algebra combines four component buffers", vectorCase)
-test("octagonal distance estimates length without a root", magnitudeCase)
-test("particles integrate velocity over ticks", integrationCase)
-test("semi-implicit euler advances three buffers together", eulerCase)
-test("drag damps velocity monotonically", dragCase)
-test("folds build a bounding box and survive an empty world", aabbCase)
-test("aabb overlap zips four interval buffers", overlapCase)
-test("circle broadphase combines six buffers", circleCase)
-test("culling keeps in-range entities in draw order", cullCase)
-test("damage resolves and survivors compact", damageCase)
-test("easing and clamping normalize float buffers", easingCase)
-test("three channel buffers pack, unpack and clamp", packCase)
-test("alpha blending composites through a coverage buffer", blendCase)
-test("palette gathers paint magenta where the index misses", paletteCase)
-test("a strided gather de-interleaves a vertex stream", gatherCase)
-test("transposing a tile grid twice is the identity", transposeCase)
-test("an edge-clamped stencil blurs a heightfield", stencilCase)
-test("scan accumulates a running frame budget", budgetCase)
-test("every combinator survives an empty world", emptyWorldCase)
-test("ragged entity streams truncate to the shortest", raggedCase)
+
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
+test("q10 fixed-point scalars and scale kernels truncate toward zero", fn() => exactArithmetic(fixedPointCase))
+test("vector algebra combines four component buffers", fn() => exactArithmetic(vectorCase))
+test("octagonal distance estimates length without a root", fn() => exactArithmetic(magnitudeCase))
+test("particles integrate velocity over ticks", fn() => exactArithmetic(integrationCase))
+test("semi-implicit euler advances three buffers together", fn() => exactArithmetic(eulerCase))
+test("drag damps velocity monotonically", fn() => exactArithmetic(dragCase))
+test("folds build a bounding box and survive an empty world", fn() => exactArithmetic(aabbCase))
+test("aabb overlap zips four interval buffers", fn() => exactArithmetic(overlapCase))
+test("circle broadphase combines six buffers", fn() => exactArithmetic(circleCase))
+test("culling keeps in-range entities in draw order", fn() => exactArithmetic(cullCase))
+test("damage resolves and survivors compact", fn() => exactArithmetic(damageCase))
+test("easing and clamping normalize float buffers", fn() => exactArithmetic(easingCase))
+test("three channel buffers pack, unpack and clamp", fn() => exactArithmetic(packCase))
+test("alpha blending composites through a coverage buffer", fn() => exactArithmetic(blendCase))
+test("palette gathers paint magenta where the index misses", fn() => exactArithmetic(paletteCase))
+test("a strided gather de-interleaves a vertex stream", fn() => exactArithmetic(gatherCase))
+test("transposing a tile grid twice is the identity", fn() => exactArithmetic(transposeCase))
+test("an edge-clamped stencil blurs a heightfield", fn() => exactArithmetic(stencilCase))
+test("scan accumulates a running frame budget", fn() => exactArithmetic(budgetCase))
+test("every combinator survives an empty world", fn() => exactArithmetic(emptyWorldCase))
+test("ragged entity streams truncate to the shortest", fn() => exactArithmetic(raggedCase))

@@ -166,8 +166,8 @@ fn constructors_of_an_exported_module_union_are_reachable() {
         "module Geo\n",
         "    export type Shape = Circle(radius : int) | Square(side : int)\n",
         "    export area shape = match shape\n",
-        "        Circle radius => (radius * radius) ?: 0\n",
-        "        Square side => (side * side) ?: 0\n\n",
+        "        Circle radius => satMul radius radius\n",
+        "        Square side => satMul side side\n\n",
         "print \"${Geo::area (Geo::Circle(radius = 3))}\"\n",
     );
     let assembled = project(Flavor::Ml, source).expect("module union must assemble");

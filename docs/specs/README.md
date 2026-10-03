@@ -67,13 +67,13 @@ This directory holds **all spec documents** for the project:
     data-parallel kernels with compile-time purity proofs, the host execution
     baseline, and the cited research foundation; the staged device-backend
     roadmap lives in [plan 0023](../plans/0023-gpu-computation.md).
-  - [`0037-ArithmeticEffects.md`](0037-ArithmeticEffects.md) — **normative
-    target**: integer arithmetic returns plain `int`/`float` and a fault
+  - [`0037-ArithmeticEffects.md`](0037-ArithmeticEffects.md) — **shipped**:
+    integer arithmetic returns plain `int`/`float` and a fault
     (overflow, zero divisor) dispatches to a compiler-declared `Arith` effect
     through the shipped substituting-handler path — one region states the
     policy (wrapping, fault-sticky, saturating) instead of a fabricated `?:`
     fallback at every call site. Motivated by
-    [#230](https://github.com/Nimblesite/osprey/issues/230); delivery in
+    [#230](https://github.com/Nimblesite/osprey/issues/230); implementation recorded in
     [plan 0027](../plans/0027-arithmetic-effects.md).
   - [`0038-iOSTarget.md`](0038-iOSTarget.md) — iPhone and ARM64 simulator static
     libraries with inferred C headers, synchronous Swift host calls, target

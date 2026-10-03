@@ -1,3 +1,37 @@
+/// This Result API deliberately converts a recorded arithmetic fault at its boundary.
+fn divideResult(a, b) = {
+    mut failed = false
+    handle Arith { divideByZero op _ => {
+        expect(op, "/")
+        failed = true
+        0.0
+    } }
+    let value = a / b
+    match failed {
+        true => Error { message: "division by zero" }
+        false => Success { value: value }
+    }
+}
+
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // [STRING-INTERPOLATION] also covers escapes and embedded expression rendering.
 // Edge-case verification for the string builtins: every error path and
 // boundary documented in spec/0012-Built-InFunctions.md. The integration
@@ -30,9 +64,9 @@ fn failWith(reason) -> Result<int, string> = Error { message: reason }
   print("ends-long=${"hi"    |> endsWith("hello")}\n")
 
   // ---- take / drop clamping ----
-  print("take-neg=\"${"hi" |> take((0 - 5) ?: 0)}\"\n")
+  print("take-neg=\"${"hi" |> take((0 - 5) )}\"\n")
   print("take-big=\"${"hi" |> take(99)}\"\n")
-  print("drop-neg=\"${"hi" |> drop((0 - 5) ?: 0)}\"\n")
+  print("drop-neg=\"${"hi" |> drop((0 - 5) )}\"\n")
   print("drop-big=\"${"hi" |> drop(99)}\"\n")
 
   // ---- trim on all-whitespace ----
@@ -48,7 +82,7 @@ Error => print("sub-empty FAILED\n")
 Success { value }   => print("sub-full=\"${value}\"\n")
 Error => print("sub-full FAILED\n")
   }
-  match substring("hi", (0 - 1) ?: 0, 2) {
+  match substring("hi", (0 - 1) , 2) {
 Success   => print("sub-neg unexpected\n")
 Error => print("sub-neg rejected\n")
   }
@@ -87,7 +121,7 @@ Error => print("rep-shrink FAILED\n")
 Success { value }   => print("rep0=\"${value}\"\n")
 Error => print("rep0 FAILED\n")
   }
-  match repeat("ab", (0 - 1) ?: 0) {
+  match repeat("ab", (0 - 1) ) {
 Success   => print("rep-neg unexpected\n")
 Error => print("rep-neg rejected\n")
   }
@@ -207,10 +241,10 @@ Error   { message } => print("roundtrip FAILED: ${message}\n")
 Success   => print("pi-msg unexpected\n")
 Error   { message } => print("pi-msg=${message}\n")
   }
-  match 10 / 0 {
+exactArithmetic(fn() =>   match divideResult(10, 0) {
 Success   => print("div-msg unexpected\n")
 Error   { message } => print("div-msg=${message}\n")
-  }
+  })
   match failWith("custom boom") {
 Success   => print("user-msg unexpected\n")
 Error   { message } => print("user-msg=${message}\n")
@@ -220,7 +254,7 @@ Error   { message } => print("user-msg=${message}\n")
 
 /// Re-evaluates successful boundaries, rejected inputs, cursor values, and payloads.
 fn stringEdgeCase() = {
-    let negativeOne = (0 - 1) ?: 0
+    let negativeOne = (0 - 1) 
     let substringNegative = match substring("hi", negativeOne, 2) {
         Success => false
         Error { message } => message != ""
@@ -313,7 +347,7 @@ fn stringEdgeCase() = {
         Success => false
         Error { message } => message == "custom boom"
     }
-    let divisionRejected = match 10 / 0 {
+    let divisionRejected = match divideResult(10, 0) {
         Success => false
         Error { message } => message != ""
     }
@@ -325,9 +359,9 @@ fn stringEdgeCase() = {
         endsWith("abc", ""),
         !startsWith("hi", "hello"),
         !endsWith("hi", "hello"),
-        take("hi", (0 - 5) ?: 0) == "",
+        take("hi", (0 - 5) ) == "",
         take("hi", 99) == "hi",
-        drop("hi", (0 - 5) ?: 0) == "hi",
+        drop("hi", (0 - 5) ) == "hi",
         drop("hi", 99) == "",
         trim("   ") == "",
         trim("") == "",
@@ -369,12 +403,13 @@ fn stringEdgeCase() = {
         invalidCodePoint,
         nulCodePoint,
         roundTrip,
-        (parseInt("-9223372036854775808") ?: 0) == (((0 - 9223372036854775807) - 1) ?: 0),
+        (parseInt("-9223372036854775808") ?: 0) == (((0 - 9223372036854775807) - 1) ),
         customPayload,
         divisionRejected
     ])
 }
-test("string edge cases preserve values and error payloads", stringEdgeCase)
+
+test("string edge cases preserve values and error payloads", fn() => exactArithmetic(stringEdgeCase))
 
 /// [STRING-INTERPOLATION] Rendering: "Integers, floats, and booleans use their
 /// normal scalar rendering"; [BUILTIN-TOSTRING] "Uses the same accepted types and
@@ -382,9 +417,9 @@ test("string edge cases preserve values and error payloads", stringEdgeCase)
 /// exact text the spec pins AND to `toString` of the same value, so the two
 /// lowerings cannot silently drift apart.
 fn interpolationScalarCase() = {
-    let negativeSeven = (0 - 7) ?: 0
+    let negativeSeven = (0 - 7) 
     let intMax = 9223372036854775807
-    let intMin = ((0 - 9223372036854775807) - 1) ?: 0
+    let intMin = ((0 - 9223372036854775807) - 1) 
     let emptyText = ""
     let spaceText = " "
 
@@ -472,10 +507,10 @@ fn interpolationScalarCase() = {
 /// accepts `Result<T, E>` only "when both payloads are printable", so every
 /// Result below carries an int, float or string payload.
 fn interpolationResultCase() = {
-    let negativeOne = (0 - 1) ?: 0
-    let negativeFive = (0 - 5) ?: 0
+    let negativeOne = (0 - 1) 
+    let negativeFive = (0 - 5) 
 
-    checkAll("a successful Result renders as Success(payload)", [
+    checkAll("Results retain their wrapper and arithmetic stays plain", [
         "${parseInt("42")}" == "Success(42)",
         "${parseInt("0")}" == "Success(0)",
         "${parseInt("-9223372036854775808")}" == "Success(-9223372036854775808)",
@@ -483,10 +518,10 @@ fn interpolationResultCase() = {
         "${parseFloat("2")}" == "Success(2.0)",
         "${parseFloat("1e3")}" == "Success(1000.0)",
         "${parseFloat("-0.5")}" == "Success(-0.5)",
-        "${intDiv(7, 2)}" == "Success(3)",
-        "${intDiv(255643, 10)}" == "Success(25564)",
-        "${10 / 4}" == "Success(2.5)",
-        "${abs(negativeFive)}" == "Success(5)",
+        "${intDiv(7, 2)}" == "3",
+        "${intDiv(255643, 10)}" == "25564",
+        "${10 / 4}" == "2.5",
+        "${abs(negativeFive)}" == "5",
         "${fromCodePoint(65)}" == "Success(A)",
         "${indexOf("banana", "na")}" == "Success(2)",
         "${substring("banana", 1, 4)}" == "Success(ana)",
@@ -503,8 +538,8 @@ fn interpolationResultCase() = {
         "${parseInt(" 42")}" == "Error(parseInt: invalid integer)",
         "${parseFloat("nan")}" == "Error(parseFloat: invalid number)",
         "${parseFloat("")}" == "Error(parseFloat: invalid number)",
-        "${intDiv(5, 0)}" == "Error(division by zero)",
-        "${10 / 0}" == "Error(division by zero)",
+        "${divideResult(5, 0)}" == "Error(division by zero)",
+        "${divideResult(10, 0)}" == "Error(division by zero)",
         "${indexOf("hello", "zz")}" == "Error(indexOf: substring not found)",
         "${replace("h", "", "")}" == "Error(replace: needle must not be empty)",
         "${repeat("a", negativeOne)}" == "Error(repeat: count must not be negative)",
@@ -519,19 +554,19 @@ fn interpolationResultCase() = {
         "${failWith("custom boom")}" == "Error(custom boom)"
     ])
 
-    // "Success(2)" is 10 bytes; "Error(division by zero)" is 6 + 16 + 1 = 23.
+    // Plain "2" is one byte; "Error(division by zero)" is 6 + 16 + 1 = 23.
     checkAll("toString and a hole agree on every Result", [
         toString(parseInt("42")) == "${parseInt("42")}",
         toString(parseInt("oops")) == "${parseInt("oops")}",
-        toString(10 / 0) == "${10 / 0}",
+        toString(divideResult(10, 0)) == "${divideResult(10, 0)}",
         toString(intDiv(7, 2)) == "${intDiv(7, 2)}",
         toString(fromCodePoint(65)) == "${fromCodePoint(65)}",
         toString(failWith("custom boom")) == "${failWith("custom boom")}",
-        "value=${intDiv(10, 5)}" == "value=Success(2)",
-        "a${intDiv(5, 0)}b" == "aError(division by zero)b",
-        "${intDiv(7, 2)}${intDiv(7, 2)}" == "Success(3)Success(3)",
-        length("${intDiv(10, 5)}") == 10,
-        length("${10 / 0}") == 23,
+        "value=${intDiv(10, 5)}" == "value=2",
+        "a${divideResult(5, 0)}b" == "aError(division by zero)b",
+        "${intDiv(7, 2)}${intDiv(7, 2)}" == "33",
+        length("${intDiv(10, 5)}") == 1,
+        length("${divideResult(10, 0)}") == 23,
         startsWith("${parseInt("42")}", "Success("),
         endsWith("${parseInt("42")}", ")"),
         !contains("${parseInt("42")}", "Error"),
@@ -539,7 +574,7 @@ fn interpolationResultCase() = {
         contains("${parseInt("oops")}", "invalid integer"),
         !contains("${parseInt("oops")}", "Success"),
         (indexOf("${parseInt("oops")}", "(") ?: negativeOne) == 5,
-        (indexOf("${intDiv(10, 5)}", "(") ?: negativeOne) == 7
+        (indexOf("${intDiv(10, 5)}", "(") ?: negativeOne) == negativeOne
     ])
 }
 
@@ -551,7 +586,7 @@ fn interpolationResultCase() = {
 fn escapeSequenceCase() = {
     let tabSplitCount = match split("a\tb", "\t") {
         Success { value } => listLength(value)
-        Error => (0 - 1) ?: 0
+        Error => (0 - 1) 
     }
 
     // ASCII: LF 10, CR 13, TAB 9, ESC 27, '"' 34, '\' 92, 'a' 97, 'b' 98.
@@ -645,7 +680,7 @@ fn escapeSequenceCase() = {
 /// reports the last match instead of the first cannot pass.
 fn substringPositionCase() = {
     let subject = "banana"
-    let missing = (0 - 1) ?: 0
+    let missing = (0 - 1) 
     let indexAbsent = match indexOf(subject, "xyz") {
         Success => false
         Error { message } => message == "indexOf: substring not found"
@@ -737,7 +772,7 @@ fn substringPositionCase() = {
 fn caseFoldingCase() = {
     let mixed = "MiXeD 123!"
     let accented = "héllo"
-    let missing = (0 - 1) ?: 0
+    let missing = (0 - 1) 
 
     checkAll("ASCII letters fold and every other byte is copied unchanged", [
         toUpperCase("") == "",
@@ -823,7 +858,7 @@ fn concatLengthCase() = {
     let middle = "cde"
     let right = "f"
     let joined = left + middle + right
-    let negativeFive = (0 - 5) ?: 0
+    let negativeFive = (0 - 5) 
     let noParts: List<string> = []
 
     checkAll("concatenation is associative with the empty string as identity", [
@@ -841,8 +876,8 @@ fn concatLengthCase() = {
         joined == "${left}${middle}${right}",
         length(joined) == 6,
         byteLength(joined) == length(joined),
-        length(left + middle) == ((length(left) + length(middle)) ?: 0),
-        length(joined) == ((((length(left) + length(middle)) ?: 0) + length(right)) ?: 0),
+        length(left + middle) == ((length(left) + length(middle)) ),
+        length(joined) == ((((length(left) + length(middle)) ) + length(right)) ),
         length("" + "") == 0,
         isEmpty("" + ""),
         !isEmpty(joined),
@@ -869,7 +904,7 @@ fn concatLengthCase() = {
         drop(joined, negativeFive) == joined,
         length(take(joined, 3)) == 3,
         length(drop(joined, 3)) == 3,
-        ((length(take(joined, 2)) + length(drop(joined, 2))) ?: 0) == length(joined),
+        ((length(take(joined, 2)) + length(drop(joined, 2))) ) == length(joined),
         take(joined, 3) == (substring(joined, 0, 3) ?: "missing"),
         drop(joined, 3) == (substring(joined, 3, 6) ?: "missing"),
         (substring(joined, 0, 0) ?: "missing") == "",
@@ -925,7 +960,7 @@ fn interpolationCompositionCase() = {
     let step4 = "${step3}${listGet(xs, 9) ?: "?"}|"
     let segmentCount = match split(step3, "|") {
         Success { value } => listLength(value)
-        Error => (0 - 1) ?: 0
+        Error => (0 - 1) 
     }
 
     checkAll("a hole may hold a call, a pipe, an operator or an index", [
@@ -943,8 +978,8 @@ fn interpolationCompositionCase() = {
         "${!(count == 3)}" == "false",
         "${isEmpty("")}" == "true",
         "${contains(name, "lic")}" == "true",
-        "${(count + 4) ?: 0}" == "7",
-        "${(count * 4) ?: 0}" == "12",
+        "${(count + 4) }" == "7",
+        "${(count * 4) }" == "12",
         "${listGet(xs, 0) ?: "none"}" == "red",
         "${listGet(xs, 9) ?: "none"}" == "none",
         "${xs[2] ?: "none"}" == "blue",
@@ -1009,10 +1044,10 @@ fn interpolationCompositionCase() = {
 }
 
 // Registration order fixes the TAP order in the shared golden.
-test("interpolation renders every printable scalar", interpolationScalarCase)
-test("a Result is never unwrapped at an interpolation hole", interpolationResultCase)
-test("escape sequences resolve to their exact bytes", escapeSequenceCase)
-test("search builtins scan every substring position", substringPositionCase)
-test("ASCII case folding is total and round-trips", caseFoldingCase)
-test("concatenation and length arithmetic hold", concatLengthCase)
-test("interpolation composes expressions and preserves text", interpolationCompositionCase)
+test("interpolation renders every printable scalar", fn() => exactArithmetic(interpolationScalarCase))
+test("a Result is never unwrapped at an interpolation hole", fn() => exactArithmetic(interpolationResultCase))
+test("escape sequences resolve to their exact bytes", fn() => exactArithmetic(escapeSequenceCase))
+test("search builtins scan every substring position", fn() => exactArithmetic(substringPositionCase))
+test("ASCII case folding is total and round-trips", fn() => exactArithmetic(caseFoldingCase))
+test("concatenation and length arithmetic hold", fn() => exactArithmetic(concatLengthCase))
+test("interpolation composes expressions and preserves text", fn() => exactArithmetic(interpolationCompositionCase))
