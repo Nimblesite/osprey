@@ -1,12 +1,7 @@
 //! The project a document belongs to.
 //!
-//! Every feature used to take only the open buffer's text, so a symbol declared
-//! in a sibling file was invisible: hover said nothing, go-to-definition
-//! returned nothing, and completion never offered it — even though the compiler
-//! links the two files into one program. This module supplies the missing
-//! context by reusing the **same** project loader the CLI and the diagnostics
-//! path already use (`osprey_project::load`), so the editor's idea of "the
-//! program" cannot drift from the compiler's. Implements [LSP-WORKSPACE].
+//! URI/path conversion and project-root discovery are shared by the editor's
+//! live source snapshots and diagnostic mapping. Implements [LSP-WORKSPACE].
 
 use std::path::{Path, PathBuf};
 
@@ -21,35 +16,7 @@ pub struct Sibling {
     pub(crate) source: String,
     /// The parsed program, for symbol collection.
     pub(crate) program: Program,
-}
-
-/// Every *other* source file of the project that claims `uri`.
-///
-/// Empty for a standalone script — a file under no `osprey.toml` has no
-/// siblings, which is the common case and costs one `is_file` check per
-/// ancestor. Loading is deliberately not cached: the manifest's own file set is
-/// the source of truth, and a stale index answering "no such symbol" is worse
-/// than re-reading a handful of files.
-#[must_use]
-pub(crate) fn siblings(uri: &str) -> Vec<Sibling> {
-    let Some(file) = file_path(uri) else {
-        return Vec::new();
-    };
-    let Some(root) = project_root(&file) else {
-        return Vec::new();
-    };
-    let Ok((_, sources)) = osprey_project::load(&root) else {
-        return Vec::new();
-    };
-    sources
-        .into_iter()
-        .filter(|source| !same_path(&source.path, &file))
-        .map(|source| Sibling {
-            uri: uri_of(&source.path),
-            source: source.source,
-            program: source.program,
-        })
-        .collect()
+    pub(crate) flavor: osprey_syntax::Flavor,
 }
 
 /// The directory of the nearest enclosing `osprey.toml`, if any.
@@ -85,11 +52,11 @@ pub(crate) fn file_path(uri: &str) -> Option<PathBuf> {
     Some(PathBuf::from(decoded))
 }
 
-/// The `file://` URI for `path` — the inverse of [`file_path`] for the ASCII
-/// paths a project loader yields.
+/// The percent-encoded URI for an absolute UTF-8 path, including spaces and
+/// non-ASCII names. Unrepresentable paths have no editor location.
 #[must_use]
-pub(crate) fn uri_of(path: &Path) -> String {
-    format!("file://{}", path.display())
+pub(crate) fn uri_of(path: &Path) -> Option<String> {
+    lspkit_server::uri::path_to_uri(path).ok()
 }
 
 fn percent_decode(encoded: &str) -> Option<String> {
@@ -127,7 +94,25 @@ mod tests {
     fn a_uri_round_trips_through_a_path_including_escapes() {
         let path = file_path("file:///tmp/my%20app/main.osp").expect("path");
         assert_eq!(path, PathBuf::from("/tmp/my app/main.osp"));
-        assert_eq!(uri_of(Path::new("/tmp/a.osp")), "file:///tmp/a.osp");
+        let (plain, uri, escaped) = if cfg!(windows) {
+            (
+                "C:\\tmp\\a.osp",
+                "file:///C:/tmp/a.osp",
+                "C:\\tmp\\my app\\#λ(main).osp",
+            )
+        } else {
+            (
+                "/tmp/a.osp",
+                "file:///tmp/a.osp",
+                "/tmp/my app/#λ(main).osp",
+            )
+        };
+        assert_eq!(uri_of(Path::new(plain)).as_deref(), Some(uri));
+        let escaped = PathBuf::from(escaped);
+        assert_eq!(
+            uri_of(&escaped).as_deref().and_then(file_path),
+            Some(escaped)
+        );
         // A non-file scheme and a truncated escape are refused, not guessed.
         assert!(file_path("untitled:Untitled-1").is_none());
         assert!(file_path("file:///a%2").is_none());
@@ -137,8 +122,44 @@ mod tests {
     fn a_file_under_no_manifest_has_no_siblings() {
         // The standalone case must stay free: no project, no work, no answers
         // invented from files that are not part of any program.
-        assert!(siblings("file:///nonexistent/scratch.osp").is_empty());
-        assert!(siblings("untitled:Untitled-1").is_empty());
+        assert!(crate::test_support::view("file:///nonexistent/scratch.osp")
+            .siblings
+            .is_empty());
+        assert!(crate::test_support::view("untitled:Untitled-1")
+            .siblings
+            .is_empty());
         assert!(project_root(Path::new("/nonexistent/scratch.osp")).is_none());
+    }
+}
+
+/// A feature request's live project inputs; standalone documents use defaults.
+#[derive(Debug, Default)]
+pub(crate) struct View {
+    pub(crate) siblings: Vec<Sibling>,
+    pub(crate) current: Option<osprey_project::SourceFile>,
+    pub(crate) configured: Option<osprey_syntax::Flavor>,
+}
+
+impl View {
+    pub(crate) fn flavor(&self, path: &str, text: &str) -> osprey_syntax::Flavor {
+        match osprey_syntax::resolve_flavor(self.configured, path, text) {
+            Ok(flavor) => flavor,
+            Err(_) => osprey_syntax::Flavor::Default,
+        }
+    }
+
+    pub(crate) fn program(&self, path: &str, text: &str) -> Program {
+        self.parsed(path, text).program
+    }
+
+    pub(crate) fn parsed(&self, path: &str, text: &str) -> osprey_syntax::Parsed {
+        match self.current.as_ref().filter(|file| file.source == text) {
+            Some(file) => osprey_syntax::Parsed {
+                program: file.program.clone(),
+                errors: Vec::new(),
+                flavor: file.flavor,
+            },
+            None => osprey_syntax::parse_program_with_flavor(text, self.flavor(path, text)),
+        }
     }
 }

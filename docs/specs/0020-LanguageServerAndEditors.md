@@ -124,9 +124,9 @@ it, rather than once per open file: on `examples/projects/modules` a single
 answer takes about six seconds, so repeating it per open buffer made the editor
 unusable with more than one file open.
 
-Each language-server engine owns the latest project analysis. Its key includes the complete project configuration and each source's path, syntax flavor and text, compared exactly. Siblings answering the same edit share that result, and later requests with identical inputs may reuse it. Separate server instances cannot evict each other's analysis.
+Each language-server engine owns the latest analysis for each manifest root, including nested projects. Its inputs include the complete project configuration and each source's path, syntax flavor and text, compared exactly. Siblings answering the same edit share that result, and later requests with identical inputs may reuse it. Separate projects and server instances cannot evict each other's analysis; syntax is retained while any loaded project includes its file. Code actions use the same analysis as diagnostics; requesting a quick fix does not repeat an unchanged project proof.
 
-A source or manifest change invalidates the analysis on the next diagnostics request, even when the buffer text is unchanged. Saving `osprey.toml` alone does not trigger diagnostics; this cache does not add a manifest file watcher.
+A source or manifest change invalidates the analysis on the next request, even when the requesting buffer is unchanged. `workspace/didChangeWatchedFiles` republishes diagnostics for open documents. The VS Code client watches both Osprey source flavors and `osprey.toml`, so saving a manifest, creating a source, or deleting a source refreshes the project without another keystroke. Loading failures in a closed sibling or manifest produce an open-document `project-error` identifying the failed input; an unanalyzable project must not appear healthy.
 
 A file's own diagnostics are then selected from that shared result by position:
 an error or warning is reported in the file its position lands in.
@@ -337,7 +337,7 @@ Both source surfaces lower to a flavor-blind `osprey_ast::Program`
 flavor.
 
 Every document-scoped feature resolves its flavor with the one
-`[FLAVOR-SELECT]` precedence chain — marker > extension > Default — the same
+`[FLAVOR-SELECT]` precedence chain — project override > marker > extension > Default — the same
 chain the CLI uses. There is exactly one resolver
 (`osprey_syntax::resolve_flavor`); a feature that sniffs the extension itself is
 a defect, because a `// osprey: flavor=ml` marker must outrank it.
@@ -412,21 +412,30 @@ holding an `osprey.toml` — hover, go-to-definition, find-implementations,
 find-references, completion, and signature help resolve against every source
 file linked by the manifest.
 
-Sibling files are loaded through `osprey_project::load`, the same loader used by
-the CLI and `[LSP-DIAGNOSTICS]`. URI/path resolution and project discovery are
-implemented in
-[`osprey-lsp/src/workspace.rs`](../../crates/osprey-lsp/src/workspace.rs).
+The server uses the compiler's `osprey_project::discover`, source-root membership and flavor-aware `parse_text` contracts. An engine-owned syntax cache keys each file by its path, configured flavor and exact text, including failed parses. The manifest's flavor override applies to both the active file and every sibling, including formatting and warning fixes. Unchanged sources reuse their syntax across diagnostics, navigation and code actions. The checked project cache described in [LSP-PROJECT-BATCH] reuses assembly and inference until any input changes. URI/path conversion lives in [`workspace.rs`](../../crates/osprey-lsp/src/workspace.rs); source snapshots live in [`project_sources.rs`](../../crates/osprey-lsp/src/project_sources.rs).
 
 Normative requirements:
 
 - **The open buffer is searched first.** A local declaration shadows an
   imported one, and the open buffer's *unsaved* text is authoritative for
-  itself.
+  itself. Every open sibling's unsaved text is also authoritative, including a
+  newly created buffer not yet saved inside a configured source root. Closing
+  a buffer restores its disk source, or removes it if it was never saved.
+  If outer and nested projects include the same source, opening, editing or
+  closing it refreshes every affected open project.
+- Incomplete sibling syntax may fall back to its saved source to preserve
+  known errors while editing. Such a snapshot cannot justify warning fixes;
+  warnings and code actions remain suppressed until the live project parses.
+  A valid unsaved repair takes precedence over invalid saved text.
+- Files outside configured source roots, hidden directories and `target`
+  directories do not join the project merely because they are open.
 - Without `osprey.toml`, only the open document is analyzed.
 - **Find-references reaches the declaration wherever it lives.** A declaring
   file spells the name unqualified (`openSql`) while its callers write the
   qualified path (`Ledger::openSql`), so a whole-word scan does not find the
   declaration; the sibling scan adds declaration sites by symbol identity.
+
+The transport tests `project_features_follow_unsaved_siblings_in_both_flavors`, `live_effect_declarations_and_handler_locations_follow_both_flavors`, `watched_sources_and_manifest_refresh_the_live_project`, `unsaved_mixed_flavor_files_join_and_leave_the_project`, `unsaved_repair_overrides_invalid_disk_and_actions_reuse_the_analysis`, `watched_invalid_project_inputs_report_their_source`, and `nested_project_edits_refresh_every_project_that_includes_the_source` pin these contracts. `nested_projects_do_not_share_the_first_sources_cache_slot` pins syntax and analysis reuse across overlapping roots. Existing incomplete-buffer and annotation-fix tests remain the safety oracle.
 
 ## Position encoding `[LSP-ENCODING]`
 
