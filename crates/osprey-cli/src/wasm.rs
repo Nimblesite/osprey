@@ -225,6 +225,9 @@ fn sysroot_candidates() -> Vec<PathBuf> {
     if let Ok(sdk) = std::env::var("WASI_SDK_PATH") {
         out.push(PathBuf::from(sdk).join("share/wasi-sysroot"));
     }
+    if Path::new("/usr/lib/wasm32-wasip1/crt1-command.o").is_file() {
+        out.push(PathBuf::from("/usr"));
+    }
     out
 }
 
@@ -649,17 +652,20 @@ mod tests {
             eprintln!("skipping wasm e2e: toolchain or runtime archive absent");
             return;
         }
-        let src = "let factor = parseInt(\"2\") ?: 0\n\
+        let src = "fn main() = {\n\
+                   let factor = parseInt(\"2\") ?: 0\n\
                    let large = parseInt(\"4294967296\") ?: 0\n\
-                   let product = match 21 * factor {\n\
-                     Success { value } => value\n\
-                     Error { message } => 0\n\
+                   mut overflow = false\n\
+                   handle Arith {\n\
+                     overflow op lhs rhs wrapped => {\n\
+                       overflow = op == \"*\" && lhs == 4294967296 && rhs == 4294967296 && wrapped == 0\n\
+                       wrapped\n\
+                     }\n\
                    }\n\
-                   let overflow = match large * large {\n\
-                     Success { value } => false\n\
-                     Error { message } => message == \"integer overflow\"\n\
-                   }\n\
-                   print(\"product=${product}, overflow=${overflow}\")\n";
+                   let product = 21 * factor\n\
+                   let discarded = large * large\n\
+                   print(\"product=${product}, overflow=${overflow}\")\n\
+                   }\n";
         let program = osprey_syntax::parse_program(src).program;
         let out = std::env::temp_dir().join(format!("osprey_wasm_e2e_{}.wasm", std::process::id()));
         build("e2e.osp", &program, &out).expect("wasm build");

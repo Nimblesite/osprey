@@ -67,15 +67,15 @@ fn rule() = dim("  ==================================================")
 
 // ---- tiny integer helpers ---------------------------------------------------
 // UI counters explicitly keep their previous value on arithmetic overflow.
-fn inc(x) = x + 1 ?: x
-fn dec(x) = x - 1 ?: x
+fn inc(x) = satAdd(x, 1)
+fn dec(x) = satSub(x, 1)
 fn min(a, b) = match a < b { true => a false => b }
-fn gap(a, b) = match a < b { true => b - a ?: 0 false => a - b ?: 0 }
-// `%` returns `Result<int, MathError>`; the UI uses positive constant divisors
-// and falls back to zero if that invariant is broken.
-fn modv(a: int, b: int) = match a % b {
-    Success { value } => value
-    Error => 0
+fn gap(a, b) = match a < b { true => satSub(b, a) false => satSub(a, b) }
+// `%` returns int; these positive constant divisors need no Arith policy.
+// A zero-sized animation cycle has a stationary first frame.
+fn modv(a, b) = {
+    handle Arith { remainderByZero _ => 0 }
+    a % b
 }
 
 // ---- Result-unwrapping helpers (one expression each) ------------------------
@@ -108,7 +108,7 @@ fn hue(frame: int) = match modv(a: frame, b: 6) {
 // Three rotors at staggered phases + staggered hues = a flowing comet of dots.
 fn comet(frame: int) =
     hue(frame) + rotor(frame) + hue(inc(inc(frame))) + rotor(inc(inc(inc(frame)))) +
-    hue(inc(inc(inc(inc(frame))))) + rotor(frame + 6 ?: frame) + "\e[0m"
+    hue(inc(inc(inc(inc(frame))))) + rotor(satAdd(frame, 6) ) + "\e[0m"
 
 // Animated trailing dots: "" . .. ...
 fn dots(frame: int) = match modv(a: frame, b: 4) {
@@ -119,7 +119,7 @@ fn dots(frame: int) = match modv(a: frame, b: 4) {
 fn waveWidth() = 36
 fn wavePos(frame: int) = match modv(a: frame, b: 70) < waveWidth() {
     true  => modv(a: frame, b: 70)
-    false => 70 - modv(a: frame, b: 70) ?: 0
+    false => satSub(70, modv(a: frame, b: 70)) 
 }
 fn waveCell(i: int, pos: int, frame: int) = match gap(a: i, b: pos) {
     0 => hue(frame) + "█\e[0m"
@@ -191,7 +191,7 @@ fn treeRow(tree: int, i: int, sel: int) = match i == sel {
 // A scrolling window keeps the cursor on screen for big directories.
 fn winStart(sel: int, n: int) = match n < 23 {
     true  => 0
-    false => match sel < 11 { true => 0 false => min(a: sel - 11 ?: 0, b: n - 22 ?: 0) }
+    false => match sel < 11 { true => 0 false => min(a: satSub(sel, 11) , b: satSub(n, 22) ) }
 }
 fn treeRows(tree: int, i: int, last: int, sel: int) = match i < last {
     true  => treeRow(tree: tree, i: i, sel: sel) + "\n" + treeRows(tree: tree, i: inc(i), last: last, sel: sel)
@@ -203,7 +203,7 @@ fn treeScreen(repo: string, path: string, tree: int, sel: int, n: int) =
     bold(cyan("FILES  ")) + green(repo) + dim("/" + path) + "\n" +
     rule() + "\n\n" +
     treeRows(tree: tree, i: winStart(sel: sel, n: n),
-             last: min(a: winStart(sel: sel, n: n) + 22 ?: n, b: n), sel: sel) + "\n" +
+             last: min(a: satAdd(winStart(sel: sel, n: n), 22) , b: n), sel: sel) + "\n" +
     rule() + "\n" +
     dim("  up/down move    enter open dir/file    esc back")
 

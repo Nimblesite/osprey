@@ -91,7 +91,7 @@ module Tax {
     let rate = 10
     export fn add(cents: int) -> int = {
         let scaled = cents * rate
-        let tax = intDiv(scaled, 100) ?: 0
+        let tax = intDiv(scaled, 100)
         let answer = cents + tax
         answer
     }
@@ -105,7 +105,7 @@ module Tax
     rate = 10
     export add cents =
         scaled = cents * rate
-        tax = intDiv (scaled, 100) ?: 0
+        tax = intDiv (scaled, 100)
         answer = cents + tax
         answer
 ```

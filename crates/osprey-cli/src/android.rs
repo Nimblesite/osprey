@@ -54,9 +54,16 @@ pub(crate) fn source(
     program: &Program,
     path: &str,
     target: Target,
+    entry_only: bool,
 ) -> Result<(String, String), String> {
     // AAPCS64 leaves bool extension to the callee; x86-64 requires zeroext.
-    ios_abi::source(program, path, target.name(), target == Target::X64)
+    ios_abi::source(
+        program,
+        path,
+        target.name(),
+        target == Target::X64,
+        entry_only,
+    )
 }
 
 /// Bundle generated PIC code and the matching runtime. [ANDROID-TARGET-LINK]
@@ -65,9 +72,10 @@ pub(crate) fn build(
     program: &Program,
     out: &Path,
     target: Target,
+    entry_only: bool,
 ) -> Result<(), ExitCode> {
     crate::toolchain::validate_archive_output(out, "Android").map_err(|e| fail(&e))?;
-    let (ir, header) = source(program, path, target).map_err(|e| fail(&e))?;
+    let (ir, header) = source(program, path, target, entry_only).map_err(|e| fail(&e))?;
     let bin = ndk_bin().map_err(|e| fail(&e))?;
     let runtime = find_runtime_lib(target.runtime()).ok_or_else(|| {
         fail(&format!(

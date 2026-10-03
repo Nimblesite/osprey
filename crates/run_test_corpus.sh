@@ -72,13 +72,13 @@ esac
 # Default/ML flavor pair. On wasm32 the programs blocked on a capability WASI
 # does not have are skipped — each named in tests/WASM_UNPORTABLE.txt, and a
 # resumable one named by the OPERATION it cannot suspend [MULTI-WASM] — leaving
-# 151. On the mobile C ABI targets the same accounting leaves 136: the rest are
+# 151. On the mobile C ABI targets the same accounting leaves 166: the rest are
 # rejected for a missing capability or for a boundary the scalar C ABI cannot
 # express, each pinned in tests/MOBILE_UNPORTABLE.txt.
 # Ratchet UP as goldens are added; never lower it to turn a red build green.
 case $TARGET in
   wasm32)            GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-151} ;;
-  ios-sim|android*) GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-136} ;;
+  ios-sim|android*) GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-166} ;;
   *)                 GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-217} ;;
 esac
 
@@ -185,7 +185,9 @@ detected_jobs() {
   [[ "$jobs" == <-> && $jobs -gt 0 ]] || jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null)
   [[ "$jobs" == <-> && $jobs -gt 0 ]] || jobs=$(sysctl -n hw.logicalcpu 2>/dev/null)
   [[ "$jobs" == <-> && $jobs -gt 0 ]] || jobs=2
-  (( jobs = jobs < 2 ? 2 : jobs ))
+  # Each worker starts a compiler and linker; using every host CPU can leave
+  # an interactive machine saturated for the whole corpus run.
+  (( jobs = jobs < 2 ? 2 : jobs > 4 ? 4 : jobs ))
   print -r -- "$jobs"
 }
 

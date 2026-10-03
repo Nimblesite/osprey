@@ -11,8 +11,8 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 cat > "$TMP/profdemo.osp" <<'EOF'
-fn add(a, b) = a + b ?: 0
-fn sub(a, b) = a - b ?: 0
+fn add(a, b) = satAdd(a, b)
+fn sub(a, b) = satSub(a, b)
 fn fib(n) = match n {
     0 => 0
     1 => 1
@@ -60,16 +60,8 @@ EOF
 # as arm64e. Together they printed `task_get_special_port` for what dladdr calls
 # `mach_absolute_time`, and bare hex for 40% of samples. A wrong name on a right
 # address is worse than no name, because only the wrong name looks like data.
-#
-# Do NOT reinstate the old form of this check, which counted any `mach_`,
-# `task_` or `_platform_` leaf as bogus on the premise that profdemo performs no
-# syscalls. It performs no syscalls and still spends most of its time in the
-# allocator: `fn add(a, b) = a + b ?: 0` heap-allocates a Result for every
-# arithmetic operation, so profdemo is an allocation benchmark. Apple's own
-# /usr/bin/sample, with the Osprey profiler switched off entirely, reports the
-# same shape (mach_absolute_time 416, _xzm_free 220, fib 23), so a correct
-# profiler CANNOT satisfy that premise. `fib` legitimately holds ~1% SELF and
-# ~100% TOTAL, and TOTAL is asserted below.
+# Do NOT classify runtime leaves by name: the profiler's own sampling and
+# symbolization can legitimately appear there. `fib` must dominate TOTAL below.
 python3 - <<'EOF'
 import json
 summary = json.load(open("profdemo.profile.json"))
@@ -118,11 +110,7 @@ frames = summary["hotFunctions"]
 
 # [PROF-COLLECT-UNWIND] "Frame 0 is the precise PC." The walk must report the
 # pc it captured, so self-time lands wherever the thread actually was — which
-# for profdemo is mostly the ALLOCATOR: `fn add(a, b) = a + b ?: 0` heap-boxes
-# a Result for every arithmetic operation, and fib(35) performs millions.
-# Apple's /usr/bin/sample, with the Osprey profiler switched off, reports the
-# same shape (mach_absolute_time 416, _xzm_free 220, _xzm_xzone_malloc_tiny
-# 156, fib 23), so this is the workload, not a capture defect.
+# for profdemo may be runtime or Osprey code, depending on host sampling.
 #
 # What must hold is that the frame-pointer chain still reaches Osprey code:
 # whatever the leaf is, `fib` has to own essentially all of the TOTAL time.

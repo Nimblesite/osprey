@@ -600,7 +600,7 @@ suite("Osprey Test Explorer", () => {
       // never mentions it, which is an ignored test.
       fs.writeFileSync(
         ghostUri.fsPath,
-        'fn add(a, b) = a + b\n\ntest("addition works", fn() => expect(add(2, 3), 5))\n',
+        'fn add(a, b) = wrapAdd(a, b)\n\ntest("addition works", fn() => expect(add(2, 3), 5))\n',
       );
       const sink = new RecordingSink();
       await executeRunRequest(

@@ -44,7 +44,8 @@ pub(crate) fn gen_expr(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
             .map(|site| site.op.ret.clone()),
         _ => None,
     };
-    let mut value = gen_expr_raw(cg, expr)?;
+    let folded = osprey_types::fold_arithmetic(expr).map_err(CodegenError::invalid)?;
+    let mut value = gen_expr_raw(cg, folded.as_ref().map_or(expr, |value| value))?;
     if let Some(ty) = inferred.filter(|ty| !osprey_types::has_type_var(ty)) {
         value.inferred_type = Some(ty);
     }
@@ -241,7 +242,7 @@ fn gen_binary(cg: &mut Codegen, op: &str, left: &Expr, right: &Expr) -> Result<V
     let l = gen_expr(cg, left)?;
     let r = gen_expr(cg, right)?;
     match op {
-        "+" | "-" | "*" | "/" | "%" => gen_arith_propagating(cg, op, l, r),
+        "+" | "-" | "*" | "/" | "%" => gen_arith(cg, op, l, r),
         "==" | "!=" | "<" | "<=" | ">" | ">=" => {
             if l.result_inner.is_some() || r.result_inner.is_some() {
                 return Err(CodegenError::invalid("cannot compare an unhandled Result"));
@@ -290,51 +291,6 @@ fn open_short_circuit(cg: &mut Codegen, op: &str, left: &Expr) -> Result<(String
     Ok((left.operand, short, end))
 }
 
-/// Arithmetic whose operands may themselves carry an error channel. The
-/// enclosing expression is ONE `Result`: an erroring operand makes the whole
-/// expression `Error` instead of contributing a fabricated success payload, so
-/// `(10 / 0) + 1.0` is `Error(division by zero)` and not `Success(1.0)`.
-/// With no `Result` operand this is exactly [`gen_arith`].
-fn gen_arith_propagating(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
-    let Some((bad, msg)) = operand_error(cg, &l, &r) else {
-        return gen_arith(cg, op, l, r);
-    };
-    gen_propagated_result(cg, &bad, &msg, |cg| {
-        let lv = crate::result::unwrap(cg, l);
-        let rv = crate::result::unwrap(cg, r);
-        gen_arith(cg, op, lv, rv)
-    })
-}
-
-/// The "an operand already failed" flag and the message to carry onward, or
-/// `None` when neither operand has an error channel and no propagation is
-/// needed. The left operand's message wins when both failed — it failed first.
-fn operand_error(cg: &mut Codegen, l: &Value, r: &Value) -> Option<(String, String)> {
-    if l.result_inner.is_none() && r.result_inner.is_none() {
-        return None;
-    }
-    let lbad = result_failed(cg, l);
-    let rbad = result_failed(cg, r);
-    let bad = cg.emit_reg(format!("or i1 {lbad}, {rbad}"));
-    let lmsg = crate::result::load_errmsg(cg, l);
-    let rmsg = crate::result::load_errmsg(cg, r);
-    let msg = cg.emit_reg(format!(
-        "select i1 {lbad}, i8* {}, i8* {}",
-        lmsg.operand, rmsg.operand
-    ));
-    Some((bad, msg))
-}
-
-/// `true` when `v` is a Result holding an Error; the constant `false` for a
-/// value with no error channel at all.
-fn result_failed(cg: &mut Codegen, v: &Value) -> String {
-    if v.result_inner.is_none() {
-        return "false".to_owned();
-    }
-    let disc = crate::result::load_disc(cg, v);
-    cg.emit_reg(format!("icmp ne i8 {disc}, 0"))
-}
-
 /// The typed zero literal for the unread payload slot of an `Error` block.
 /// Arithmetic. Float if either operand is a float (the other is promoted),
 /// otherwise integer. Division ALWAYS returns float (the Osprey spec); modulo
@@ -376,14 +332,13 @@ fn gen_arith(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
     if op == "+" && (l.ty == LType::Str || r.ty == LType::Str) {
         return gen_str_concat(cg, l, r);
     }
-    // `/` and `%` can be handed a divisor with no representable result, so they
-    // are typed `Result<…, MathError>` and build a Success/Error block. The
-    // Fallible operators preserve the wrapper until explicit handling.
+    // `/` and `%` dispatch zero divisors to the active Arith policy. Their
+    // value arms supply the numeric result without a Result wrapper.
     if op == "/" {
-        return gen_division(cg, l, r);
+        return crate::arithmetic::division(cg, "/", l, r);
     }
     if op == "%" {
-        return gen_remainder(cg, l, r);
+        return crate::arithmetic::remainder(cg, l, r);
     }
     // IEEE-754 arithmetic stays plain. Integer `+ - *` below are fallible and
     // return a Result when their exact mathematical result is outside i64.
@@ -403,142 +358,15 @@ fn gen_arith(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
         "-" => "ssub",
         _ => "smul",
     };
-    gen_checked_arith(cg, intrinsic, l, r)
+    crate::arithmetic::binary(cg, op, intrinsic, l, r)
 }
 
-/// The `/` operator — always float, divide-by-zero checked.
-fn gen_division(cg: &mut Codegen, l: Value, r: Value) -> Result<Value> {
-    let ld = as_double(cg, l)?;
-    let rd = as_double(cg, r)?;
-    gen_zero_checked(
-        cg,
-        &ld.operand,
-        &rd.operand,
-        LType::Double,
-        "fdiv double",
-        "fcmp oeq double",
-        "0.0",
-    )
-}
-
-/// The `%` operator — remainder, modulo-by-zero checked.
-/// `int % int` stays `int`-valued; a float operand promotes both to `float`.
-/// The guard replaces a bare `srem`, whose behaviour on a zero divisor is
-/// undefined.
-fn gen_remainder(cg: &mut Codegen, l: Value, r: Value) -> Result<Value> {
-    if l.ty == LType::Double || r.ty == LType::Double {
-        let ld = as_double(cg, l)?;
-        let rd = as_double(cg, r)?;
-        return gen_zero_checked(
-            cg,
-            &ld.operand,
-            &rd.operand,
-            LType::Double,
-            "frem double",
-            "fcmp oeq double",
-            "0.0",
-        );
-    }
-    // LLVM `srem INT64_MIN, -1` is poison even though the mathematical
-    // remainder is representable as zero. Substitute divisor 1 for that pair;
-    // both remainders are zero, preserving the defined result without executing
-    // undefined behaviour.
-    let (li, ri, div_zero, overflow_pair) = i64_div_guards(cg, l, r)?;
-    let safe_divisor = cg.emit_reg(format!(
-        "select i1 {overflow_pair}, i64 1, i64 {}",
-        ri.operand
-    ));
-    let remainder = format!("srem i64 {}, {safe_divisor}", li.operand);
-    gen_guarded(cg, &div_zero, LType::I64, "0", DIVIDE_BY_ZERO, |cg| {
-        cg.emit_reg(remainder)
-    })
-}
-
-/// The `intDiv(a, b)` builtin — truncating integer division, divide-by-zero
-/// checked. The integer sibling of `/` (which the spec fixes to float).
-/// Implements [BUILTIN-INTDIV].
-fn gen_int_division(cg: &mut Codegen, l: Value, r: Value) -> Result<Value> {
-    let (li, ri, div_zero, overflow) = i64_div_guards(cg, l, r)?;
-    let invalid = cg.emit_reg(format!("or i1 {div_zero}, {overflow}"));
-    let zero_message = cg.string_constant(DIVIDE_BY_ZERO);
-    let overflow_message = cg.string_constant("integer overflow");
-    let message = cg.emit_reg(format!(
-        "select i1 {div_zero}, i8* {}, i8* {}",
-        zero_message.operand, overflow_message.operand
-    ));
-    gen_guarded_with_message(cg, &invalid, LType::I64, "0", &message, |cg| {
-        cg.emit_reg(format!("sdiv i64 {}, {}", li.operand, ri.operand))
-    })
-}
-
-/// Load both operands as `i64` and emit the two guards every checked integer
-/// division shares: `div_zero` (`ri == 0`) and `overflow` (the `INT64_MIN ÷ -1`
-/// pair whose `sdiv`/`srem` is LLVM poison). Emit order matches the sequence
-/// `%` and intDiv both hand-wrote, so register numbering is unchanged.
-fn i64_div_guards(cg: &mut Codegen, l: Value, r: Value) -> Result<(Value, Value, String, String)> {
-    let li = as_i64(cg, l)?;
-    let ri = as_i64(cg, r)?;
-    let div_zero = cg.emit_reg(format!("icmp eq i64 {}, 0", ri.operand));
-    let lhs_min = cg.emit_reg(format!("icmp eq i64 {}, -9223372036854775808", li.operand));
-    let rhs_neg_one = cg.emit_reg(format!("icmp eq i64 {}, -1", ri.operand));
-    let overflow = cg.emit_reg(format!("and i1 {lhs_min}, {rhs_neg_one}"));
-    Ok((li, ri, div_zero, overflow))
-}
-
-/// `abs(n: int)`, lowered in the language's i64 ABI instead of falling through
-/// to libc's `int abs(int)`. The one unrepresentable magnitude (`INT64_MIN`)
-/// returns `Error(integer overflow)`. [BUILTIN-ABS]
-fn gen_abs(cg: &mut Codegen, argument: &Expr) -> Result<Value> {
-    let value = gen_expr(cg, argument)?;
-    gen_unary_propagating(cg, value, gen_abs_value)
-}
-
-/// Absolute value for an already-unwrapped integer operand.
-fn gen_abs_value(cg: &mut Codegen, value: Value) -> Result<Value> {
-    let value = as_i64(cg, value)?;
-    let negative = cg.emit_reg(format!("icmp slt i64 {}, 0", value.operand));
-    let (negated, overflow) =
-        emit_overflow_arith(cg, "ssub", Value::new("0", LType::I64), value.clone())?;
-    gen_guarded(cg, &overflow, LType::I64, "0", INTEGER_OVERFLOW, |cg| {
-        let negated = cg.emit_reg(negated);
-        cg.emit_reg(format!(
-            "select i1 {negative}, i64 {negated}, i64 {}",
-            value.operand
-        ))
-    })
-}
-
-/// Shared zero-divisor skeleton for `/`, `%` and `intDiv`: a zero divisor
-/// yields `Error` (`Result<_, MathError>` disc 1), else `Success(result)`.
-/// `div`/`cmp` carry their LLVM type, `zero` is the typed zero literal.
-fn gen_zero_checked(
-    cg: &mut Codegen,
-    lop: &str,
-    rop: &str,
-    inner: LType,
-    div: &str,
-    cmp: &str,
-    zero: &str,
-) -> Result<Value> {
-    let bad = cg.emit_reg(format!("{cmp} {rop}, {zero}"));
-    let quotient = format!("{div} {lop}, {rop}");
-    gen_guarded(cg, &bad, inner, zero, DIVIDE_BY_ZERO, |cg| {
-        cg.emit_reg(quotient)
-    })
-}
-
-/// The one `MathError` reason for a zero divisor, shared by `/`, `%` and
-/// `intDiv` so the three never drift apart in golden output.
-const DIVIDE_BY_ZERO: &str = "division by zero";
-const INTEGER_OVERFLOW: &str = "integer overflow";
-
-/// Checked integer arithmetic shared by the `+ - *` operators and the
-/// `checkedAdd` / `checkedSub` / `checkedMul` compatibility builtins.
+/// Explicit Result-producing `checkedAdd`, `checkedSub` and `checkedMul`.
 /// `llvm.s{add,sub,mul}.with.overflow.i64` returns the wrapped
 /// value paired with an overflow bit; the bit selects `Error`.
 fn gen_checked_arith(cg: &mut Codegen, intrinsic: &str, l: Value, r: Value) -> Result<Value> {
     let (wrapped, bad) = emit_overflow_arith(cg, intrinsic, l, r)?;
-    gen_guarded(cg, &bad, LType::I64, "0", INTEGER_OVERFLOW, |cg| {
+    gen_guarded(cg, &bad, LType::I64, "0", "integer overflow", |cg| {
         cg.emit_reg(wrapped)
     })
 }
@@ -546,7 +374,7 @@ fn gen_checked_arith(cg: &mut Codegen, intrinsic: &str, l: Value, r: Value) -> R
 /// Emit one LLVM signed-overflow intrinsic and return its wrapped-value
 /// extraction instruction plus the overflow flag. Callers decide how the
 /// successful value is shaped before joining it with the Error path.
-fn emit_overflow_arith(
+pub(crate) fn emit_overflow_arith(
     cg: &mut Codegen,
     intrinsic: &str,
     l: Value,
@@ -658,24 +486,6 @@ fn open_result_guard(cg: &mut Codegen, bad: &str) -> ResultGuard {
     }
 }
 
-fn gen_propagated_result(
-    cg: &mut Codegen,
-    bad: &str,
-    message: &str,
-    success: impl FnOnce(&mut Codegen) -> Result<Value>,
-) -> Result<Value> {
-    let guard = open_result_guard(cg, bad);
-    let value = success(cg)?;
-    let (ok, inner) = if let Some(inner) = value.result_inner {
-        (value, inner)
-    } else {
-        let inner = value.ty;
-        (crate::result::make_ok(cg, value, inner)?, inner)
-    };
-    let zero = Value::new(crate::llty::zero_literal(inner), inner);
-    finish_result_guard(cg, &guard, &ok, zero, message)
-}
-
 fn finish_result_guard(
     cg: &mut Codegen,
     guard: &ResultGuard,
@@ -783,7 +593,7 @@ pub(crate) fn gen_comparison(cg: &mut Codegen, op: &str, l: Value, r: Value) -> 
 fn gen_unary(cg: &mut Codegen, op: &str, operand: &Expr) -> Result<Value> {
     let v = gen_expr(cg, operand)?;
     match op {
-        "-" => gen_unary_propagating(cg, v, gen_negated_value),
+        "-" => crate::arithmetic::negation(cg, v),
         "!" => {
             let b = as_i1(cg, v)?;
             Ok(Value::new(
@@ -795,39 +605,6 @@ fn gen_unary(cg: &mut Codegen, op: &str, operand: &Expr) -> Result<Value> {
             "unary operator `{other}`"
         ))),
     }
-}
-
-/// Preserve an operand's existing error channel across a unary operation. The
-/// operation runs only on Success; its own Result is used directly, while a
-/// plain result is wrapped so the inherited Error and Success paths share one
-/// flattened Result.
-fn gen_unary_propagating(
-    cg: &mut Codegen,
-    value: Value,
-    operation: fn(&mut Codegen, Value) -> Result<Value>,
-) -> Result<Value> {
-    if value.result_inner.is_none() {
-        return operation(cg, value);
-    }
-
-    let bad = result_failed(cg, &value);
-    let msg = crate::result::load_errmsg(cg, &value);
-    gen_propagated_result(cg, &bad, &msg.operand, |cg| {
-        let payload = crate::result::unwrap(cg, value);
-        operation(cg, payload)
-    })
-}
-
-/// Unary numeric negation on an already-unwrapped value. IEEE-754 negation is
-/// total and remains plain; integer negation reports the `INT64_MIN` overflow.
-fn gen_negated_value(cg: &mut Codegen, value: Value) -> Result<Value> {
-    if value.ty == LType::Double {
-        return Ok(Value::new(
-            cg.emit_reg(format!("fneg double {}", value.operand)),
-            LType::Double,
-        ));
-    }
-    gen_checked_arith(cg, "ssub", Value::new("0", LType::I64), value)
 }
 
 /// One runtime-builtin dispatcher: returns `None` when `name` is not its
@@ -1030,11 +807,8 @@ fn gen_call(
         "abs" => {
             let arg = first_arg(arguments, named)
                 .ok_or_else(|| CodegenError::invalid("abs needs one argument"))?;
-            gen_abs(cg, arg)
-        }
-        "intDiv" => {
-            let (l, r) = two_int_args(cg, name, arguments, named)?;
-            gen_int_division(cg, l, r)
+            let value = gen_expr(cg, arg)?;
+            crate::arithmetic::absolute(cg, value)
         }
         // [BUILTIN-TOFLOAT] [GPU-CONVERT] Widening int → float: one `sitofp`,
         // round-to-nearest-even, exact for |n| <= 2^53. Total, so no Result.
@@ -1045,11 +819,9 @@ fn gen_call(
             let n = as_i64(cg, v)?;
             as_double(cg, n)
         }
-        // Compatibility names for the same checked integer operations used by
-        // the natural operators.
-        "checkedAdd" | "checkedSub" | "checkedMul" => {
-            let (l, r) = two_int_args(cg, name, arguments, named)?;
-            gen_checked_arith(cg, checked_intrinsic(name), l, r)
+        name if is_binary_integer_builtin(name) => {
+            let (left, right) = two_int_args(cg, name, arguments, named)?;
+            binary_integer_builtin(cg, name, left, right)
         }
         // Runtime builtins take precedence over a same-named user function: the
         // names below are reserved. Each dispatcher returns `None` when the name
@@ -1161,9 +933,6 @@ fn apply_bound_lambda(
     position: Option<Position>,
     arguments: &[&Expr],
 ) -> Result<Value> {
-    if !cg.lambda_prefix.contains_key(name) {
-        return apply_lambda(cg, params, body, position, arguments);
-    }
     let mut values = Vec::with_capacity(arguments.len());
     for a in arguments {
         values.push(gen_expr(cg, a)?);
@@ -1174,28 +943,99 @@ fn apply_bound_lambda(
     })
 }
 
-/// A generic factory's saved arguments are lexical captures for both direct
-/// calls and closure materialization at a higher-order argument boundary.
+/// Bind the file-scope names of an inlined lambda from their lexical scope.
+/// Its caller may have locals with the same names.
+fn file_lambda_globals(cg: &Codegen, name: &str) -> Vec<String> {
+    if !is_file_lambda_binding(cg, name) {
+        return Vec::new();
+    }
+    let Some((parameters, body, _)) = cg.file_lambdas.get(name) else {
+        return Vec::new();
+    };
+    let mut names = std::collections::BTreeSet::new();
+    osprey_ast::freevars::free_idents(body, &mut names);
+    for parameter in parameters {
+        let _ = names.remove(&parameter.name);
+    }
+    names
+        .into_iter()
+        .filter(|name| cg.module_globals.contains_key(name))
+        .collect()
+}
+
+fn is_file_lambda_binding(cg: &Codegen, name: &str) -> bool {
+    cg.file_lambdas
+        .get(name)
+        .is_some_and(|file| cg.lambdas.get(name).is_none_or(|local| local == file))
+}
+
+/// A file-scope lambda and a generic factory both carry lexical bindings.
 fn with_lambda_captures<T>(
     cg: &mut Codegen,
     name: &str,
     emit: impl FnOnce(&mut Codegen) -> Result<T>,
 ) -> Result<T> {
-    let Some((prefix_params, prefix_values)) = cg.lambda_prefix.get(name).cloned() else {
-        return emit(cg);
+    let globals = file_lambda_globals(cg, name);
+    let prefix = match cg.lambda_prefix.get(name).cloned() {
+        Some(prefix) => Some(prefix),
+        None => file_prefix_values(cg, name)?,
     };
+    if is_file_lambda_binding(cg, name) {
+        return cg.with_file_scope(|cg| bind_and_emit(cg, globals, prefix, emit));
+    }
+    bind_and_emit(cg, globals, prefix, emit)
+}
+
+fn bind_and_emit<T>(
+    cg: &mut Codegen,
+    globals: Vec<String>,
+    prefix: Option<(Vec<Parameter>, Vec<Value>)>,
+    emit: impl FnOnce(&mut Codegen) -> Result<T>,
+) -> Result<T> {
+    if globals.is_empty() && prefix.is_none() {
+        return emit(cg);
+    }
     cg.push_scope();
     let saved_fn_ptrs = cg.fn_ptr_locals.clone();
-    for (parameter, value) in prefix_params.iter().zip(prefix_values) {
+    for global in globals {
+        if let Some(value) = crate::globals::read(cg, &global) {
+            cg.bind(global, value);
+        }
+    }
+    bind_lambda_prefix(cg, prefix);
+    let result = emit(cg);
+    cg.fn_ptr_locals = saved_fn_ptrs;
+    cg.pop_scope();
+    result
+}
+
+fn file_prefix_values(
+    cg: &mut Codegen,
+    name: &str,
+) -> Result<Option<(Vec<Parameter>, Vec<Value>)>> {
+    if !is_file_lambda_binding(cg, name) {
+        return Ok(None);
+    }
+    let Some((parameters, slots)) = cg.file_lambda_prefix.get(name).cloned() else {
+        return Ok(None);
+    };
+    let values = slots
+        .iter()
+        .map(|slot| crate::globals::read(cg, slot).ok_or_else(|| CodegenError::unknown(slot)))
+        .collect::<Result<Vec<_>>>()?;
+    Ok(Some((parameters, values)))
+}
+
+fn bind_lambda_prefix(cg: &mut Codegen, prefix: Option<(Vec<Parameter>, Vec<Value>)>) {
+    let Some((parameters, values)) = prefix else {
+        return;
+    };
+    for (parameter, value) in parameters.iter().zip(values) {
         if let Some(ty @ osprey_types::Type::Fun { .. }) = &value.inferred_type {
             cg.bind_fn_local(&parameter.name, ty.clone());
         }
         cg.bind(parameter.name.clone(), value);
     }
-    let result = emit(cg);
-    cg.fn_ptr_locals = saved_fn_ptrs;
-    cg.pop_scope();
-    result
 }
 
 fn apply_lambda(
@@ -1366,6 +1206,37 @@ fn gen_user_call(
     call_with_values(cg, name, args)
 }
 
+fn is_binary_integer_builtin(name: &str) -> bool {
+    matches!(
+        name,
+        "intDiv"
+            | "checkedAdd"
+            | "checkedSub"
+            | "checkedMul"
+            | "wrapAdd"
+            | "wrapSub"
+            | "wrapMul"
+            | "satAdd"
+            | "satSub"
+            | "satMul"
+    )
+}
+
+fn binary_integer_builtin(
+    cg: &mut Codegen,
+    name: &str,
+    left: Value,
+    right: Value,
+) -> Result<Value> {
+    match name {
+        "intDiv" => crate::arithmetic::int_division(cg, &left, &right),
+        "checkedAdd" | "checkedSub" | "checkedMul" => {
+            gen_checked_arith(cg, checked_intrinsic(name), left, right)
+        }
+        _ => crate::arithmetic::total(cg, name, left, right),
+    }
+}
+
 /// Lower a builtin that was passed as a first-class callback — `forEach(xs,
 /// print)`, `gpuMap(toFloat)`. Each arm has a value form needing no argument
 /// expressions, so it lowers once per element. `None` means `name` has no such
@@ -1378,7 +1249,11 @@ fn call_builtin_with_values(cg: &mut Codegen, name: &str, args: &[Value]) -> Opt
         // [BUILTIN-TOFLOAT] [GPU-CONVERT] the canonical float-pipeline seed
         // `gpuIota(n) |> gpuMap(toFloat)` lowers through this arm.
         "toFloat" => as_i64(cg, arg()).and_then(|n| as_double(cg, n)),
-        "abs" => gen_unary_propagating(cg, arg(), gen_abs_value),
+        "abs" => crate::arithmetic::absolute(cg, arg()),
+        name if is_binary_integer_builtin(name) => match args {
+            [left, right] => binary_integer_builtin(cg, name, left.clone(), right.clone()),
+            _ => Err(CodegenError::invalid(format!("{name} needs two arguments"))),
+        },
         _ => return None,
     })
 }

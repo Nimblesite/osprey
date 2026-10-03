@@ -1,3 +1,18 @@
+// Record faults for the entire report and reject it at the publication boundary.
+fn printExact(work) = {
+    mut fault = ""
+    handle Arith {
+        overflow op lhs _ _ => { fault = "overflow in ${op}"
+            lhs }
+        divideByZero op lhs => { fault = "zero divisor in ${op}"
+            lhs }
+        remainderByZero lhs => { fault = "zero remainder divisor"
+            lhs }
+    }
+    let report = work()
+    print(match fault { "" => report _ => "REJECTED: ${fault}" })
+}
+
 // Osprey -> WebAssembly demo. [WASM-TARGET]
 //
 // Build:  osprey examples/wasm/hello.osp --target=wasm32 --compile
@@ -29,7 +44,7 @@ fn account() ![Console, Ledger] = {
     perform Console.emit("open account")
     let afterDeposit = perform Ledger.post(100)
     perform Console.emit("deposit 100  -> balance ${afterDeposit}")
-    let afterDraw = perform Ledger.post((0 - 40) ?: 0)
+    let afterDraw = perform Ledger.post((0 - 40) )
     perform Console.emit("withdraw 40  -> balance ${afterDraw}")
     afterDraw
 }
@@ -42,7 +57,7 @@ fn realWorld() = {
     }
     handle Ledger {
         post amount => {
-            balance = balance + amount ?: balance
+            balance = balance + amount 
             balance
         }
     }
@@ -78,11 +93,12 @@ fn badge(t) = match t {
 
 // ── pure functional pipeline: sum of squares of the evens in [1, n) ──
 // `fold` is the idiomatic iteration here -- no manual loops, no mutation.
-fn even(x) = (x % 2 ?: 1) == 0
-fn sq(x)   = x * x ?: 0
-fn crunch(n) = range(1, n) |> filter(even) |> map(sq) |> fold(0, fn(a, b) => a + b ?: a)
+fn even(x) = (x % 2 ) == 0
+fn sq(x)   = x * x 
+fn crunch(n) = range(1, n) |> filter(even) |> map(sq) |> fold(0, fn(a, b) => a + b )
 
 // ── persistent List<T> + Map<K,V> ── immutable, structurally shared ──
+fn report() = {
 let nums     = listAppend(listAppend(listAppend(listAppend(List(), 3), 1), 4), 1)
 let scores   = mapSet(mapSet(mapSet(Map(), "epic", 240), "solid", 80), "starter", 5)
 let hasEpic  = mapContains(scores, "epic")
@@ -90,7 +106,7 @@ let has4     = listContains(nums, 4)
 let has9     = listContains(nums, 9)
 let crunched = crunch(40)
 let who      = "Osprey" + " on " + "WebAssembly"
-let big      = 2 * 1500000000 ?: 0
+let big      = 2 * 1500000000 
 
 print("OSPREY -> WebAssembly  ::  language tour
 ======================================
@@ -99,7 +115,7 @@ effects  same logic, two worlds
 let real = realWorld()
 print("  World B (mock, frozen ledger):")
 let mock = dryRun()
-print("  -> realWorld returned ${real}, dryRun returned ${mock}
+"  -> realWorld returned ${real}, dryRun returned ${mock}
 --------------------------------------
 pipeline  sum even^2 in [1,40) = ${crunched}  ${badge(tier(crunched))}
 list      len ${listLength(nums)}, contains 4 = ${has4}, contains 9 = ${has9}
@@ -109,4 +125,6 @@ tiers     ${badge(tier(240))} / ${badge(tier(80))} / ${badge(tier(5))}
 wasm width fixes
   ${who}
   length = ${length(who)}
-  2 * 1500000000 = ${big}")
+  2 * 1500000000 = ${big}"
+}
+printExact(report)

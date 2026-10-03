@@ -79,7 +79,7 @@ print("${{boxed.value}}")"#
 
     /// A function type is a type, so it may be written as a type argument.
     a_function_type_may_be_a_type_argument: accepts(Default, format!(
-            r#"{IDENTITY}fn double(n) = n * 2 ?: 0
+            r#"{IDENTITY}fn double(n) = wrapMul(n, 2)
 let f = identity<(int) -> int>(double)
 print("${{f(21)}}")"#
         ));
@@ -87,7 +87,7 @@ print("${{f(21)}}")"#
     /// `Result<T, E>` is a type argument like any other — and writing it does NOT
     /// unwrap the failure channel ([TYPE-VARIANCE-ASSIGN]).
     a_result_type_may_be_a_type_argument: accepts(Default, format!(
-            r#"{IDENTITY}let quotient = identity<Result<int, MathError>>(20 * 5)
+            r#"{IDENTITY}let quotient = identity<Result<int, string>>(20 * 5)
 print("${{quotient ?: 0}}")"#
         ));
 
@@ -111,14 +111,14 @@ print("${first}")"#);
 
     /// A generic HOF's binder may be pinned while the callback stays inferred.
     type_application_pins_a_generic_higher_order_call: accepts(Default, r#"fn also<T>(x: T, f: (T) -> T) -> T = f(x)
-fn double(n) = n * 2 ?: 0
+fn double(n) = wrapMul(n, 2)
 print("${also<int>(21, double)}")"#);
 
     /// The binder in scope may be applied to a RECURSIVE call inside the generic
     /// function's own body.
     a_binder_in_scope_may_be_applied_recursively: accepts(Default, r#"fn repeatOf<T>(value: T, times: int) -> T = match times {
     0 => value
-    _ => repeatOf<T>(value, times - 1 ?: 0)
+    _ => repeatOf<T>(value, wrapSub(times, 1))
 }
 print("${repeatOf<int>(7, 3)}")"#);
 

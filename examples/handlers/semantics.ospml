@@ -1,11 +1,30 @@
+// Record faults for the entire report and reject it at the publication boundary.
+printExact work =
+    mut fault = ""
+    handle Arith
+        overflow op lhs _ _ =>
+            fault := "overflow in ${op}"
+            lhs
+        divideByZero op lhs =>
+            fault := "zero divisor in ${op}"
+            lhs
+        remainderByZero lhs =>
+            fault := "zero remainder divisor"
+            lhs
+    report = work ()
+    output = match fault
+        "" => report
+        _ => "REJECTED: ${fault}"
+    print output
+
 effect Ask
     control value : Unit => int
-work () = (perform Ask.value () + 1) ?: 0
+work () = (perform Ask.value () + 1) 
 
 replace = handler Ask
     value => resume 41
 around = handler Ask
-    value => ((resume 41) + 100) ?: 0
+    value => ((resume 41) + 100) 
 noResume = handler Ask
     value => 0
 deadResume = handler Ask
@@ -13,8 +32,11 @@ deadResume = handler Ask
         true => resume 0
         false => 0
 
-replacement = replace work
-resumed = around work
-returned = noResume work
-deadBranch = deadResume work
-print "replace=${replacement}\nresume=${resumed}\nno-resume=${returned}\ndead-resume=${deadBranch}"
+report () =
+    replacement = replace work
+    resumed = around work
+    returned = noResume work
+    deadBranch = deadResume work
+    "replace=${replacement}\nresume=${resumed}\nno-resume=${returned}\ndead-resume=${deadBranch}"
+
+printExact report

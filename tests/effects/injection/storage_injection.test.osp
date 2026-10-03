@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 /// Storage names the persistence the notebook logic needs and nothing more.
 /// No implementation appears here: `save`, `load` and `exists` are answered
 /// by whoever installs the handler, so the logic compiles once and runs unchanged
@@ -69,18 +88,18 @@ mut mockLog = ""
 fn withMockStorage(action) = {
     handle Storage {
         save key contents => {
-            mockSaves = mockSaves + 1 ?: mockSaves
+            mockSaves = mockSaves + 1 
             mockLog = "${mockLog}save(${key},${toString(byteLength(contents))});"
             mockFiles = mapSet(mockFiles, key, contents)
             byteLength(contents)
         }
         load key => {
-            mockLoads = mockLoads + 1 ?: mockLoads
+            mockLoads = mockLoads + 1 
             mockLog = "${mockLog}load(${key});"
             mapGet(mockFiles, key) ?: ""
         }
         exists key => {
-            mockExistsCalls = mockExistsCalls + 1 ?: mockExistsCalls
+            mockExistsCalls = mockExistsCalls + 1 
             mockLog = "${mockLog}exists(${key});"
             mapContains(mockFiles, key)
         }
@@ -107,8 +126,8 @@ let diskArchive = "${diskBook}.archive.txt"
 /// bytes with `readFile` from outside the handler.
 fn diskStorageCase() = {
     /// Truncate both paths so a rerun starts from the same file system state.
-    let clearedBook = writeFile(diskBook, "") ?: (0 - 1 ?: 0)
-    let clearedArchive = writeFile(diskArchive, "") ?: (0 - 1 ?: 0)
+    let clearedBook = writeFile(diskBook, "") ?: (0 - 1 )
+    let clearedArchive = writeFile(diskArchive, "") ?: (0 - 1 )
     let first = withDiskStorage(|| => appendNote(diskBook, "buy milk"))
     let second = withDiskStorage(|| => appendNote(diskBook, "call dentist"))
     let counted = withDiskStorage(|| => countNotes(diskBook))
@@ -140,7 +159,8 @@ fn diskStorageCase() = {
 }
 
 // Register the production implementation against the real file system.
-test("injected disk handler persists the notebook to real files", diskStorageCase)
+
+test("injected disk handler persists the notebook to real files", fn() => exactArithmetic(diskStorageCase))
 
 /// This case runs the identical logic against the in-memory double and
 /// verifies both the answers and the calls the logic made.
@@ -194,7 +214,7 @@ fn mockStorageCase() = {
 }
 
 // Register the test double standing in for the file system.
-test("injected mock handler replaces the file system and records every call", mockStorageCase)
+test("injected mock handler replaces the file system and records every call", fn() => exactArithmetic(mockStorageCase))
 
 /// This case swaps in a third policy to show the logic is unchanged by it.
 fn readOnlyStorageCase() = {
@@ -224,4 +244,4 @@ fn readOnlyStorageCase() = {
 }
 
 // Register the third policy, proving the logic depends on none of them.
-test("swapping the injected handler swaps the policy, not the logic", readOnlyStorageCase)
+test("swapping the injected handler swaps the policy, not the logic", fn() => exactArithmetic(readOnlyStorageCase))

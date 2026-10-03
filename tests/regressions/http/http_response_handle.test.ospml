@@ -10,7 +10,7 @@ handleRequest (_method, _path, _headers, _body) = HttpResponse(
     status = 200,
     headers = "X-Demo: hi\r\n",
     contentType = "text/plain",
-    streamFd = (0 - 1) ?: 0,
+    streamFd = (0 - 1) ,
     isComplete = true,
     partialBody = "hello body"
 )

@@ -1,4 +1,18 @@
-double n = n * 2 ?: 0
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
+double n = n * 2 
 
 x = 42
 name = "Alice"
@@ -14,23 +28,27 @@ print "Result: ${result}"
 age = 25
 score = 95
 print "Hello ${name}!"
-print "Next year you'll be ${(age + 1) ?: 0}"
-print "Double score: ${(score * 2) ?: 0}"
+exactArithmetic (\() =>
+    print "Next year you'll be ${(age + 1) }")
+exactArithmetic (\() =>
+    print "Double score: ${(score * 2) }")
 print "${name} (${age}) scored ${score}/100"
 
 analyzeNumber n = match n
     0 => "Zero"
     42 => "The answer!"
     _ => "Something else"
-square v = v * v ?: 0
+square v = v * v 
 print "Testing functions:"
 print (analyzeNumber 0)
 print (analyzeNumber 42)
 print (analyzeNumber 5)
 
 xx = 5
-doubled = double xx
-squared = square doubled
+doubled = exactArithmetic (\() =>
+    double xx)
+squared = exactArithmetic (\() =>
+    square doubled)
 print "${xx} doubled is ${doubled}"
 print "${doubled} squared is ${squared}"
 
@@ -46,13 +64,16 @@ print "Grade for 85: ${getGrade 85}"
 print "Grade for 75: ${getGrade 75}"
 print "Grade for 50: ${getGrade 50}"
 
-5 |> double |> square |> print
+exactArithmetic (\() =>
+    5 |> double |> square |> print)
 print "Range operations:"
 range 1 10 |> forEach print
 
-compute value = value * 2 ?: 0
-fiber1 = spawn (compute 5)
-fiber2 = spawn (compute 10)
+compute value = value * 2 
+fiber1 = exactArithmetic (\() =>
+    spawn (compute 5))
+fiber2 = exactArithmetic (\() =>
+    spawn (compute 10))
 print "Fiber 1 result: ${fiber1}"
 print "Fiber 2 result: ${fiber2}"
 job1 = yield 10
@@ -79,4 +100,5 @@ websiteExamplesCase () =
         compute 11 == 22,
         fiberValue == 14
     ]
-test "website snippets produce their documented values" websiteExamplesCase
+
+test "website snippets produce their documented values" (\() => exactArithmetic (websiteExamplesCase))

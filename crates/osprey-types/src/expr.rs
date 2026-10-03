@@ -15,12 +15,6 @@ use osprey_ast::{
 };
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-fn math_err() -> Type {
-    Type::prim(names::MATH_ERROR)
-}
-fn res_math(ok: Type) -> Type {
-    Type::result(ok, math_err())
-}
 fn generic_err() -> Type {
     Type::prim("Error")
 }
@@ -44,6 +38,19 @@ fn applied_type_parameter<'a>(
 
 impl Checker {
     pub(crate) fn infer_expr(&mut self, e: &Expr, env: &TypeEnv) -> Type {
+        osprey_ast::with_stack(|| {
+            if let Some(error) = crate::arithmetic::constant_overflow(e) {
+                self.errors.push(error);
+            }
+            let ty = self.infer_expr_raw(e, env);
+            let _ = self
+                .expression_types
+                .insert(std::ptr::from_ref(e).addr(), ty.clone());
+            ty
+        })
+    }
+
+    fn infer_expr_raw(&mut self, e: &Expr, env: &TypeEnv) -> Type {
         match e {
             Expr::Integer(_) => Type::int(),
             Expr::Float(_) => Type::float(),
@@ -742,7 +749,6 @@ impl Checker {
                         | names::UNIT
                         | names::ANY
                         | names::PTR
-                        | names::MATH_ERROR
                         | names::CHANNEL
                         | names::ITERATOR
                         | names::GPU_BUFFER
@@ -1109,8 +1115,8 @@ impl Checker {
     /// binds a variable before it reaches the `any` wildcard arm. That is how
     /// `expect(add(1, 1), 2)` erased the pending overload of
     /// `fn add(a, b) = a + b`: the site's open result became `any`, so
-    /// settling it later could no longer say `Result<int, MathError>` and the
-    /// backend read the call as a plain word. A constrained built-in defers the
+    /// settling it later could no longer select the integer overload and its
+    /// Arith obligation. A constrained built-in defers the
     /// same way for the same reason, by name.
     fn absorbed_by_any(&mut self, param: &Type, argument: &Type, deferred: bool) -> bool {
         param.is_named(names::ANY) && (deferred || matches!(self.ctx.prune(argument), Type::Var(_)))
@@ -1186,7 +1192,17 @@ impl Checker {
                 arguments: args,
                 named_arguments: named_arguments.clone(),
             };
-            self.infer_expr(&call, env)
+            let ty = self.infer_expr(&call, env);
+            if let Expr::Call {
+                arguments: cloned, ..
+            } = &call
+            {
+                for (source, original) in cloned.iter().zip(std::iter::once(left).chain(arguments))
+                {
+                    crate::arithmetic::transfer(source, original, &mut self.expression_types);
+                }
+            }
+            ty
         } else {
             let (name, ft) = self.infer_callee(right, env);
             let lt = self.infer_expr(left, env);
@@ -1450,16 +1466,6 @@ pub(crate) fn is_deferred_arith(name: &str) -> bool {
     parse_deferred_arith(name).is_some()
 }
 
-/// Operator → result type. Lives free of `self` so the borrow checker is happy.
-fn unwrap_result(t: &Type) -> Type {
-    match t {
-        Type::Con { name, args } if name == names::RESULT => {
-            args.first().cloned().unwrap_or_else(|| t.clone())
-        }
-        _ => t.clone(),
-    }
-}
-
 fn is_result(t: &Type) -> bool {
     t.is_named(names::RESULT)
 }
@@ -1471,16 +1477,6 @@ fn expected_params(expected: Option<&Type>, arity: usize) -> Vec<Type> {
     match expected {
         Some(Type::Fun { params, .. }) if params.len() == arity => params.clone(),
         _ => Vec::new(),
-    }
-}
-
-/// Arithmetic propagation is intentionally a single `MathError` channel. A
-/// Result carrying any other error type must be handled before arithmetic so
-/// its identity cannot be silently relabelled.
-fn result_error(t: &Type) -> Option<Type> {
-    match t {
-        Type::Con { name, args } if name == names::RESULT => args.get(1).cloned(),
-        _ => None,
     }
 }
 
@@ -1548,79 +1544,51 @@ impl Checker {
     ) -> Type {
         let l = self.ctx.prune(lt);
         let r = self.ctx.prune(rt);
-        // Arithmetic is the sole failure-preserving Result flattening context:
-        // inspect an operand's success type to choose the operator overload, but
-        // keep one outer Result whenever either operand already has an error
-        // channel. No other value context may erase that channel.
-        let propagates_error = is_result(&l) || is_result(&r);
-        if let Some(error) = result_error(&l) {
-            self.push_unify(&math_err(), &error);
-        }
-        if let Some(error) = result_error(&r) {
-            self.push_unify(&math_err(), &error);
-        }
-        let lu = unwrap_result(&l);
-        let ru = unwrap_result(&r);
-        let string_concat = op == "+" && (lu.is_named(names::STRING) || ru.is_named(names::STRING));
-        if !string_concat && (op == "/" || lu.is_named(names::FLOAT) || ru.is_named(names::FLOAT)) {
-            self.constrain_numeric_operands(op, &lu, &ru, position);
+        let string_concat = op == "+" && (l.is_named(names::STRING) || r.is_named(names::STRING));
+        if !string_concat && (op == "/" || l.is_named(names::FLOAT) || r.is_named(names::FLOAT)) {
+            self.constrain_numeric_operands(op, &l, &r, position);
         }
         match op {
-            "%" if lu.is_named(names::FLOAT) || ru.is_named(names::FLOAT) => {
-                res_math(Type::float())
-            }
-            "%" if self.defers(&lu, &ru) => self.deferred_arith(op, &l, &r, &lu, &ru, position),
-            "%" => {
-                self.push_unify(&Type::int(), &lu);
-                self.push_unify(&Type::int(), &ru);
-                res_math(Type::int())
-            }
-            "/" => res_math(Type::float()),
+            "%" if l.is_named(names::FLOAT) || r.is_named(names::FLOAT) => Type::float(),
+            "%" if self.defers(&l, &r) => self.deferred_arith(op, &l, &r, position),
+            "%" => self.int_arithmetic_result(&l, &r),
+            "/" => Type::float(),
             "+" => {
-                let total = if lu.is_named(names::STRING) || ru.is_named(names::STRING) {
-                    self.push_unify(&Type::string(), &lu);
-                    self.push_unify(&Type::string(), &ru);
+                if string_concat {
+                    self.push_unify(&Type::string(), &l);
+                    self.push_unify(&Type::string(), &r);
                     Type::string()
-                } else if lu.is_named(names::FLOAT) || ru.is_named(names::FLOAT) {
+                } else if l.is_named(names::FLOAT) || r.is_named(names::FLOAT) {
                     Type::float()
-                } else if lu.is_named(names::LIST) {
-                    let _ = unify(&mut self.ctx, &lu, &ru);
-                    lu
-                } else if ru.is_named(names::LIST) {
-                    let _ = unify(&mut self.ctx, &lu, &ru);
-                    ru
-                } else if lu.is_named(names::MAP) || ru.is_named(names::MAP) {
-                    let _ = unify(&mut self.ctx, &lu, &ru);
-                    if lu.is_named(names::MAP) {
-                        lu
+                } else if l.is_named(names::LIST) {
+                    let _ = unify(&mut self.ctx, &l, &r);
+                    l
+                } else if r.is_named(names::LIST) {
+                    let _ = unify(&mut self.ctx, &l, &r);
+                    r
+                } else if l.is_named(names::MAP) || r.is_named(names::MAP) {
+                    let _ = unify(&mut self.ctx, &l, &r);
+                    if l.is_named(names::MAP) {
+                        l
                     } else {
-                        ru
+                        r
                     }
-                } else if self.defers(&lu, &ru) {
-                    return self.deferred_arith(op, &l, &r, &lu, &ru, position);
+                } else if self.defers(&l, &r) {
+                    self.deferred_arith(op, &l, &r, position)
                 } else {
-                    return self.int_arithmetic_result(&lu, &ru);
-                };
-                if propagates_error {
-                    res_math(total)
-                } else {
-                    total
+                    self.int_arithmetic_result(&l, &r)
                 }
             }
             // Unlike `+`, `-` and `*` have no string/list overload; their
             // unconstrained form still defers, and resolves without the string
             // case ([`Checker::resolve_deferred_arith`]).
             _ => {
-                if self.defers(&lu, &ru) {
-                    self.deferred_arith(op, &l, &r, &lu, &ru, position)
-                } else if lu.is_named(names::FLOAT) || ru.is_named(names::FLOAT) {
-                    if propagates_error {
-                        res_math(Type::float())
-                    } else {
-                        Type::float()
-                    }
+                if self.defers(&l, &r) {
+                    self.deferred_arith(op, &l, &r, position)
+                } else if l.is_named(names::FLOAT) || r.is_named(names::FLOAT) {
+                    Type::float()
                 } else {
-                    self.int_arithmetic_result(&lu, &ru)
+                    self.int_arithmetic_result(&l, &r)
                 }
             }
         }
@@ -1663,7 +1631,7 @@ impl Checker {
     ///
     /// Eagerly defaulting here is what made a named numeric helper unusable as
     /// a float kernel: `fn plus(a, x) = a + x` is checked before anything says
-    /// what `a` is, so it became `(int, int) -> Result<int, MathError>` and
+    /// what `a` is, so it became `(int, int) -> int` and
     /// `gpuFold(0.0, plus)` over a float buffer was rejected with `cannot unify
     /// int with float` ([GPU-KERNEL-ELEM-TYPING], [GPU-KERNEL-FORM]). A lambda
     /// in the same slot already works, because its parameters are pinned from
@@ -1689,11 +1657,9 @@ impl Checker {
         op: &str,
         l: &Type,
         r: &Type,
-        lu: &Type,
-        ru: &Type,
         position: Option<osprey_ast::Position>,
     ) -> Type {
-        self.push_unify(lu, ru);
+        self.push_unify(l, r);
         let result = self.ctx.fresh();
         self.builtin_uses.push((
             crate::builtin_constraints::located_name(&deferred_arith_name(op), position),
@@ -1706,8 +1672,8 @@ impl Checker {
     /// the operands' final types with deferral closed, and tie the site's open
     /// result to the answer. Re-running rather than restating the rules is what
     /// keeps `p.x * p.x + p.y * p.y` right — by the time the outer `+` resolves,
-    /// its operands have become `Result<int, MathError>`, and only the real
-    /// selection knows to unwrap them and keep one flattened error channel.
+    /// its operands have become `int`, and the ordinary selection seeds each
+    /// fallible operator's Arith requirement.
     pub(crate) fn resolve_deferred_arith(&mut self, name: &str, site: &Type) {
         let Some(op) = parse_deferred_arith(name) else {
             return;
@@ -1727,33 +1693,23 @@ impl Checker {
         self.push_unify(&answer, &ret);
     }
 
-    /// Constrain both operands to integers and preserve overflow as a typed
-    /// failure. Integer `+`, `-`, and `*` can all exceed the i64 range.
+    /// Constrain both operands to integers. The result is a plain `int`: an
+    /// out-of-range result performs `Arith.overflow` instead ([ARITH-EFFECT]).
     fn int_arithmetic_result(&mut self, left: &Type, right: &Type) -> Type {
         self.push_unify(&Type::int(), left);
         self.push_unify(&Type::int(), right);
-        res_math(Type::int())
+        Type::int()
     }
 
-    /// Integer negation fails for `INT64_MIN`; float negation is total. A
-    /// Result operand is inspected only to propagate its existing failure into
-    /// the one flattened arithmetic Result.
+    /// Float negation is total; integer negation is a plain `int` whose
+    /// `INT64_MIN` case performs `Arith.overflow` ([ARITH-EFFECT]).
     fn infer_negation(&mut self, operand: &Type) -> Type {
-        let operand = self.ctx.prune(operand);
-        let propagates_error = is_result(&operand);
-        if let Some(error) = result_error(&operand) {
-            self.push_unify(&math_err(), &error);
-        }
-        let inner = unwrap_result(&operand);
+        let inner = self.ctx.prune(operand);
         if inner.is_named(names::FLOAT) {
-            if propagates_error {
-                res_math(Type::float())
-            } else {
-                Type::float()
-            }
+            Type::float()
         } else {
             self.push_unify(&Type::int(), &inner);
-            res_math(Type::int())
+            Type::int()
         }
     }
 }
@@ -1796,15 +1752,21 @@ mod tests {
     #[test]
     fn pipe_into_call_and_bare_function() {
         // Call form: `x |> f(a)` prepends `x`. Bare form: `x |> f` applies `f(x)`.
-        ok("fn add(a: int, b: int) -> Result<int, MathError> = a + b\n\
-            fn inc(n: int) -> Result<int, MathError> = n + 1\n\
-            let r = 10 |> add(5)\n\
-            let s = 10 |> inc\n");
+        ok("fn add(a, b) = a + b\n\
+            fn inc(n) = n + 1\n\
+            fn main() = {\n\
+              handle Arith { overflow _ _ _ wrapped => wrapped }\n\
+              let r = 10 |> add(5)\n\
+              let s = 10 |> inc\n\
+            }\n");
     }
 
     #[test]
     fn fused_iterator_functions_reject_materialized_lists() {
-        ok("range(0, 3) |> map(fn(x) => x + 1) |> forEach(print)\n");
+        ok("fn main() = {\n\
+              handle Arith { overflow _ _ _ wrapped => wrapped }\n\
+              range(0, 3) |> map(fn(x) => x + 1) |> forEach(print)\n\
+            }\n");
         let errs = bad("[1, 2, 3] |> map(fn(x) => x + 1) |> forEach(print)\n");
         assert!(errs
             .iter()
@@ -1864,7 +1826,7 @@ mod tests {
             "cannot unify int with string",
         );
         let result_channel = bad(
-            "fn sendFailed(ch: Channel<Result<int, MathError>>, value: Result<int, MathError>) -> Unit = send(ch, value)\n",
+            "fn sendFailed(ch: Channel<Result<int, string>>, value: Result<int, string>) -> Unit = send(ch, value)\n",
         );
         assert!(result_channel
             .iter()
@@ -1872,7 +1834,7 @@ mod tests {
         // The receiving end is gated for the same reason: handing the Result
         // wrapper back out of `recv` would erase it silently.
         let result_recv = bad(
-            "fn recvFailed(ch: Channel<Result<int, MathError>>) -> Result<int, MathError> = recv(ch)\n",
+            "fn recvFailed(ch: Channel<Result<int, string>>) -> Result<int, string> = recv(ch)\n",
         );
         assert!(result_recv
             .iter()
@@ -1960,7 +1922,7 @@ mod tests {
         // Implements [EFFECTS-RESUME].
         bad_with(
             "effect Sink { drop: fn(int) -> Unit }\n\
-                        fn risky(n: int) -> Result<int, MathError> = n + 1\n\
+                        fn risky(n) = checkedAdd(n, 1)\n\
                         fn go() -> int = {\n\
                             handle Sink {\n\
                                 drop v => risky(v)\n\
@@ -1970,7 +1932,7 @@ mod tests {
             "Unit effect operation arm",
         );
         ok("effect Sink { drop: fn(int) -> Unit }\n\
-            fn risky(n: int) -> Result<int, MathError> = n + 1\n\
+            fn risky(n) = checkedAdd(n, 1)\n\
             fn go() -> int = {\n\
                 handle Sink {\n\
                     drop v => { let handled = risky(v) ?: 0 }\n\
@@ -2026,7 +1988,7 @@ mod tests {
         // declaration.
         bad_with(
             "namespace tools;\n\
-                        fn twice(n: int) -> int = (n * 2) ?: 0\n\
+                        fn twice(n) = n * 2\n\
                         let doubled = tools::twice(21)\n",
             "unknown identifier `tools::twice`",
         );
@@ -2457,7 +2419,7 @@ mod tests {
     }
 
     #[test]
-    fn natural_arithmetic_infers_one_result() {
+    fn natural_arithmetic_infers_plain_numbers() {
         let parsed = parse_program(
             "fn intCalc(a: int, b: int, c: int) = (a + b) * c - 1\n\
              fn floatCalc(a: float, b: float, c: float) = (a + b) * c - 1.0\n\
@@ -2471,25 +2433,23 @@ mod tests {
             "syntax errors: {:?}",
             parsed.errors
         );
+        // [ARITH-EFFECT] No arithmetic type contains a `Result`.
         let types = infer_program(&parsed.program);
-        let result = |inner| Type::result(inner, Type::prim("MathError"));
-        assert_eq!(types.return_type("intCalc"), Some(&result(Type::int())));
+        assert_eq!(types.return_type("intCalc"), Some(&Type::int()));
         assert_eq!(types.return_type("floatCalc"), Some(&Type::float()));
-        assert_eq!(
-            types.return_type("mixedChain"),
-            Some(&result(Type::float()))
-        );
-        assert_eq!(
-            types.return_type("inferredIntAdd"),
-            Some(&result(Type::int()))
-        );
-        assert_eq!(types.return_type("intNeg"), Some(&result(Type::int())));
+        assert_eq!(types.return_type("mixedChain"), Some(&Type::float()));
+        assert_eq!(types.return_type("inferredIntAdd"), Some(&Type::int()));
+        assert_eq!(types.return_type("intNeg"), Some(&Type::int()));
         assert_eq!(types.return_type("floatNeg"), Some(&Type::float()));
 
+        // Arithmetic never unwraps a `Result` operand.
         let errors = bad("fn wrong(r: Result<int, Error>) = r + 1\n");
-        assert!(errors
-            .iter()
-            .any(|e| { e.message.contains("MathError") && e.message.contains("Error") }));
+        assert!(
+            errors.iter().any(|e| e
+                .message
+                .contains("cannot unify int with Result<int, Error>")),
+            "{errors:?}"
+        );
     }
 
     #[test]
@@ -2520,8 +2480,8 @@ mod tests {
     #[test]
     fn comparison_modulo_division_and_float_arith() {
         ok("fn lt(a: int, b: int) -> bool = a < b\n\
-            fn md(a: int, b: int) -> Result<int, MathError> = a % b\n\
-            fn dv(a: int, b: int) -> Result<float, MathError> = a / b\n\
+            fn md(a: int, b: int) = a % b\n\
+            fn dv(a: int, b: int) = a / b\n\
             fn fadd(a: float, b: float) -> float = a + b\n\
             fn fmul(a: float, b: float) -> float = a * b\n");
     }
@@ -2536,8 +2496,9 @@ mod tests {
     #[test]
     fn map_index_yields_value_result() {
         ok("fn lookup(m: Map<string, int>) -> Result<int, Error> = m[\"k\"]\n");
-        assert!(!bad("fn bad(m: Map<string, int>) = m[1 + 1]\n").is_empty());
-        assert!(!bad("fn bad(xs: List<int>) = xs[1 + 1]\n").is_empty());
+        // A key or index that is itself a `Result` is never silently unwrapped.
+        assert!(!bad("fn bad(m: Map<string, int>) = m[checkedAdd(1, 1)]\n").is_empty());
+        assert!(!bad("fn bad(xs: List<int>) = xs[checkedAdd(1, 1)]\n").is_empty());
     }
 
     #[test]
@@ -2562,28 +2523,34 @@ mod tests {
 
     #[test]
     fn comparison_over_results_requires_explicit_handling() {
-        let errs = bad("fn cmp(a: int, b: int) -> bool = (a % b) == (b % a)\n");
+        let errs = bad("fn cmp(a: int, b: int) -> bool = checkedAdd(a, b) == checkedAdd(b, a)\n");
         assert!(errs.iter().any(|e| {
             e.message.contains("cannot compare a `Result` directly")
                 && e.message.contains("match")
                 && e.message.contains("?:")
         }));
-        ok("fn cmp(a: int, b: int) -> bool = ((a % b) ?: 0) == ((b % a) ?: 0)\n");
+        ok("fn cmp(a: int, b: int) -> bool = (checkedAdd(a, b) ?: 0) == (checkedAdd(b, a) ?: 0)\n");
     }
 
     #[test]
     fn calling_a_non_identifier_and_a_non_function() {
         // Calling the result of a lambda expression directly: the callee is not a
         // bare identifier, so `infer_call` takes the `other` branch.
-        ok("let r = (fn(x) => x + 1)(41)\n");
+        ok("fn main() = {\n\
+              handle Arith { overflow _ _ _ wrapped => wrapped }\n\
+              let r = (fn(x) => x + 1)(41)\n\
+            }\n");
         // Calling a non-function value is an error (`apply_fn` non-function arm).
         bad_with("let x = 5\nlet r = x(1)\n", "cannot call");
     }
 
     #[test]
     fn lambda_with_param_and_return_annotations() {
-        ok("let f = fn(x: int) -> int => (x + 1) ?: 0\n\
-            let r = f(10)\n");
+        ok("let f = fn(x: int) -> int => x + 1\n\
+            fn main() = {\n\
+              handle Arith { overflow _ _ _ wrapped => wrapped }\n\
+              let r = f(10)\n\
+            }\n");
     }
 
     #[test]

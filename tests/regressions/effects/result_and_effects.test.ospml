@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 (** Cross-contract oracle for [ARITH-CHECKED], [PATTERN-RESULT-DEFAULT],
     [ERR-PAYLOAD], [EFFECTS-OP-TYPING], [EFFECTS-HANDLER-STATE], [TYPE-LIST],
     [TYPE-MAP], [TYPE-MAP-LOOKUP], [FLAVOR-ML-LIST], [FLAVOR-ML-MAP], and
@@ -10,15 +24,27 @@ effect Rescue
 
 RESCUED_DEFAULT = 100
 
-(** intDiv gives Result<int, Error>; the handler chooses the fallback value. *)
-divRescue (a, b) = match intDiv a b
-    Success value => value
-    Error message => perform Rescue.onErr message
+(** Bridge arithmetic requests to the application's existing Rescue capability. *)
+arithmeticRescue work =
+    handle Arith
+        overflow _ _ _ _ => perform Rescue.onErr "integer overflow"
+        remainderByZero _ => perform Rescue.onErr "division by zero"
+    work ()
 
-(** % is the zero-checked remainder: 7 % 0 => Error(division by zero). *)
-modRescue (a, b) = match a % b
-    Success value => value
-    Error message => perform Rescue.onErr message
+divRescue (a, b) = arithmeticRescue (\() => intDiv (a, b))
+modRescue (a, b) = arithmeticRescue (\() => a % b)
+
+integerDefault (value, work) =
+    handle Arith
+        remainderByZero _ => value
+    work ()
+
+floatDefault work =
+    handle Arith
+        divideByZero op lhs =>
+            checkAll "float fault payload" [op == "/", lhs == 10.0]
+            -1.0
+    work ()
 
 (** checkedAdd is overflow-checked: MAX_INT + 1 => Error(integer overflow). *)
 addRescue (a, b) = match checkedAdd a b
@@ -51,7 +77,7 @@ pipeline () =
     print "  step e  MAX + 1         -> ${toString e}"
     f = addRescue (100, 23)
     print "  step f  100 + 23        -> ${toString f}"
-    a + b + c + d + e + f ?: 0
+    a + b + c + d + e + f 
 
 print "=== Result -> effect rescue pipeline ==="
 
@@ -59,39 +85,40 @@ print "=== Result -> effect rescue pipeline ==="
     substituted at the perform site because this region contains no `resume`. *)
 mut rescues = 0
 total =
-    handle Rescue
-        onErr message =>
-            rescues := rescues + 1 ?: rescues
-            print "  RESCUE #${toString rescues}: original error \"${message}\" -> using ${toString RESCUED_DEFAULT}"
-            RESCUED_DEFAULT
-    pipeline ()
+    exactArithmetic (\() =>
+        handle Rescue
+            onErr message =>
+                rescues := rescues + 1 
+                print "  RESCUE #${toString rescues}: original error \"${message}\" -> using ${toString RESCUED_DEFAULT}"
+                RESCUED_DEFAULT
+        pipeline ())
 
 print "rescued ${toString rescues} failing step(s); healthy + rescued total = ${toString total}"
 
-(** `?:` supplies a local fallback without invoking the Rescue policy. *)
-localOk = (10 % 3) ?: ((0 - 1) ?: 0)
-localBad = (10 % 0) ?: ((0 - 1) ?: 0)
-print "local ?: default  10 % 3 -> ${toString localOk}   10 % 0 -> ${toString localBad}"
+(** A local Arith policy supplies a replacement without invoking Rescue. *)
+localOk = integerDefault (-1, \() => 10 % 3)
+localBad = integerDefault (-1, \() => 10 % 0)
+print "local remainder policy  10 % 3 -> ${toString localOk}   10 % 0 -> ${toString localBad}"
 
-// The raw float division Result remains a value.
-print "raw 10 / 0 as a value = ${toString (10 / 0)}"
+// Floating division is recovered by an explicit value policy.
+print "float policy for 10 / 0 = ${toString (floatDefault (\() => 10 / 0))}"
 print "=== pipeline complete ==="
 
 (** Verify rescued failures beside healthy Result, nested collections, and local fallbacks. *)
 resultAndEffectsCase () =
     hundreds = recoveredValues 100
     sevens = recoveredValues 7
-    negatives = recoveredValues ((0 - 1) ?: 0)
+    negatives = recoveredValues ((0 - 1) )
     policyMatrix = [hundreds, sevens, negatives]
     policyMap = ["hundred" => hundreds, "seven" => sevens, "negative" => negatives]
     grownMap = policyMap |> mapSet "zero" (recoveredValues 0)
-    bareSuccess = match 10 % 3
+    bareSuccess = match checkedSub (2, 1)
         Success value => value
         Error => 0
-    bareError = match 10 % 0
+    bareError = match checkedAdd (9223372036854775807, 1)
         Success => 7
         Error => 9
-    boundResult = match 10 % 3
+    boundResult = match checkedSub (2, 1)
         Error => 0
         whole => match whole
             Success value => value
@@ -104,16 +131,16 @@ resultAndEffectsCase () =
         rescues == 3,
         total == 430,
         localOk == 1,
-        localBad == ((0 - 1) ?: 0),
-        toString (10 / 0) == "Error(division by zero)",
-        (intDiv 20 4 ?: ((0 - 1) ?: 0)) == 5,
-        (intDiv 20 0 ?: ((0 - 1) ?: 0)) == ((0 - 1) ?: 0),
-        (17 % 5 ?: ((0 - 1) ?: 0)) == 2,
-        (17 % 0 ?: ((0 - 1) ?: 0)) == ((0 - 1) ?: 0),
+        localBad == ((0 - 1) ),
+        toString (floatDefault (\() => 10 / 0)) == "-1.0",
+        integerDefault (-1, \() => intDiv 20 4) == 5,
+        integerDefault (-1, \() => intDiv 20 0) == ((0 - 1) ),
+        integerDefault (-1, \() => 17 % 5) == 2,
+        integerDefault (-1, \() => 17 % 0) == ((0 - 1) ),
         (checkedAdd 100 23 ?: 0) == 123,
         (checkedAdd 9223372036854775807 1 ?: 77) == 77,
-        toString (intDiv 20 4) == "Success(5)",
-        toString (intDiv 20 0) == "Error(division by zero)",
+        toString (intDiv 20 4) == "5",
+        toString (integerDefault (-1, \() => intDiv 20 0)) == "-1",
         toString (checkedAdd 9223372036854775807 1) == "Error(integer overflow)"
     ]
 
@@ -133,8 +160,8 @@ resultAndEffectsCase () =
         (listGet sevens 3 ?: 99) == 2,
         (listGet sevens 4 ?: 99) == 7,
         (listGet sevens 5 ?: 99) == 123,
-        (listGet negatives 0 ?: 99) == ((0 - 1) ?: 0),
-        (listGet negatives 4 ?: 99) == ((0 - 1) ?: 0)
+        (listGet negatives 0 ?: 99) == ((0 - 1) ),
+        (listGet negatives 4 ?: 99) == ((0 - 1) )
     ]
 
     checkAll "recovered lists retain element types inside nested maps" [
@@ -142,17 +169,18 @@ resultAndEffectsCase () =
         listLength (listGet policyMatrix 0 ?: [99]) == 6,
         (listGet (listGet policyMatrix 0 ?: [99]) 4 ?: 99) == 100,
         (listGet (listGet policyMatrix 1 ?: [99]) 4 ?: 99) == 7,
-        (listGet (listGet policyMatrix 2 ?: [99]) 4 ?: 99) == ((0 - 1) ?: 0),
+        (listGet (listGet policyMatrix 2 ?: [99]) 4 ?: 99) == ((0 - 1) ),
         mapLength policyMap == 3,
         mapLength grownMap == 4,
         listLength (mapGet policyMap "hundred" ?: [99]) == 6,
         (listGet (mapGet policyMap "hundred" ?: [99]) 0 ?: 99) == 100,
         (listGet (mapGet policyMap "seven" ?: [99]) 2 ?: 99) == 7,
-        (listGet (mapGet policyMap "negative" ?: [99]) 4 ?: 99) == ((0 - 1) ?: 0),
+        (listGet (mapGet policyMap "negative" ?: [99]) 4 ?: 99) == ((0 - 1) ),
         (listGet (mapGet grownMap "zero" ?: [99]) 0 ?: 99) == 0,
         !(mapContains policyMap "zero"),
         mapContains grownMap "zero",
         listLength (mapKeys grownMap) == 4,
         listLength (mapValues grownMap) == 4
     ]
-test "fallible arithmetic is recovered without masking healthy results" resultAndEffectsCase
+
+test "fallible arithmetic is recovered without masking healthy results" (\() => exactArithmetic (resultAndEffectsCase))

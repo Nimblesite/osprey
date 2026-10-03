@@ -11,7 +11,7 @@ effect Choose {
     control pick: fn() -> int
 }
 
-fn both() = (perform Choose.pick() + 1) ?: 0
+fn both() = wrapAdd(perform Choose.pick(), 1)
 
 fn main() = {
     let total = {
@@ -19,7 +19,7 @@ fn main() = {
             pick => {
                 let a = resume(10)
                 let b = resume(20)
-                a + b ?: 0
+                wrapAdd(a, b)
             }
         }
         both()

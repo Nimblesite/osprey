@@ -139,6 +139,7 @@ pub(crate) struct Checker {
     pub(crate) ctors: HashMap<String, CtorInfo>,
     /// Effect name -> its generic declaration (type params + raw op sigs).
     effects: HashMap<String, EffectInfo>,
+    pub(crate) expression_types: HashMap<usize, Type>,
     /// Union/Result type name -> its variant constructor names (exhaustiveness).
     pub(crate) union_variants: HashMap<String, Vec<String>>,
     /// Function/extern name -> declared parameter names (for named arguments).
@@ -228,7 +229,8 @@ impl Checker {
             ctx: InferCtx::new(),
             errors: Vec::new(),
             ctors: HashMap::new(),
-            effects: HashMap::new(),
+            effects: crate::builtins::builtin_effects(),
+            expression_types: HashMap::new(),
             union_variants: HashMap::new(),
             fn_params: HashMap::new(),
             fn_sigs: HashMap::new(),
@@ -517,6 +519,13 @@ impl Checker {
         operations: &[EffectOperation],
         position: Option<Position>,
     ) {
+        if name == osprey_ast::ARITH_EFFECT {
+            self.record_err(
+                TypeError::new("cannot redeclare compiler built-in effect `Arith`"),
+                position,
+            );
+            return;
+        }
         let _ = self.effects.insert(
             name.to_string(),
             EffectInfo {
@@ -1537,6 +1546,9 @@ impl ResumeSite {
     /// an arm at all). Implements [EFFECTS-RESUME].
     pub(crate) fn refusal(site: Option<&Self>) -> String {
         match site {
+            Some(Self::Value { effect, operation }) if effect == osprey_ast::ARITH_EFFECT => format!(
+                "handler arm `Arith.{operation}` cannot `resume`: Arith operations use value mode; return the recovery value from the arm"
+            ),
             Some(Self::Value { effect, operation }) => format!(
                 "handler arm `{effect}.{operation}` cannot `resume`: `{operation}` is a value operation, so its arm supplies the operation's result and owns no continuation; `resume` requires the continuation of a control operation arm, so declare `{operation}` `control` to take it"
             ),
@@ -1602,7 +1614,12 @@ fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Instances {
     }
     let declared_rows = resolved_declared_rows(checker);
     crate::effect_rows::Instances {
+        expression_types: resolved_expression_types(checker).into(),
         methods: checker.methods.clone(),
+        non_callable_call_error: checker
+            .errors
+            .iter()
+            .any(|error| error.message.starts_with("cannot call non-function")),
         performs,
         handlers: dedupe_sites(handler_tys.into_iter().map(|(position, arguments, _)| {
             (
@@ -1610,7 +1627,6 @@ fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Instances {
                 resolved_effect_keys(checker, &arguments),
             )
         })),
-
         declared_rows,
         argument_types,
         instantiations: substitutions
@@ -1630,24 +1646,40 @@ fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Instances {
                 )
             })
             .collect(),
-        binders: checker
-            .fn_typarams
-            .iter()
-            .map(|(name, binders)| {
-                (
-                    name.clone(),
-                    binders
-                        .iter()
-                        .map(|(name, ty)| {
-                            let resolved = checker.ctx.apply(ty);
-                            (name.clone(), effect_type_key(&checker.ctx, &resolved))
-                        })
-                        .collect(),
-                )
-            })
-            .collect(),
+        binders: resolved_binders(checker),
         ..Default::default()
     }
+}
+
+/// Every inferred expression type under the final substitution, so the effect
+/// proof can tell an `int` operator site from a `float` one.
+/// Implements [ARITH-EFFECT-DISCHARGE].
+fn resolved_expression_types(checker: &mut Checker) -> HashMap<usize, Type> {
+    checker
+        .expression_types
+        .iter()
+        .map(|(site, ty)| (*site, checker.ctx.apply(ty)))
+        .collect()
+}
+
+/// Each generic function's type parameters, keyed to their resolved effect keys.
+fn resolved_binders(checker: &mut Checker) -> HashMap<String, HashMap<String, String>> {
+    checker
+        .fn_typarams
+        .iter()
+        .map(|(name, binders)| {
+            (
+                name.clone(),
+                binders
+                    .iter()
+                    .map(|(name, ty)| {
+                        let resolved = checker.ctx.apply(ty);
+                        (name.clone(), effect_type_key(&checker.ctx, &resolved))
+                    })
+                    .collect(),
+            )
+        })
+        .collect()
 }
 
 fn resolved_effect_keys(checker: &mut Checker, arguments: &[Type]) -> Vec<String> {
@@ -1927,7 +1959,7 @@ mod tests {
     fn module_bodies_are_checked_in_a_child_scope() {
         let errs = check(
             "module Math {\n\
-               fn square(x: int) -> int = (x * x) ?: 0\n\
+               fn square(x: int) -> int = x * x\n\
              }\n",
         );
         assert!(errs.is_empty(), "unexpected type errors: {errs:?}");
@@ -1953,14 +1985,14 @@ mod tests {
         // A bare statement whose value is a `Result` throws the failure away —
         // the one place the wrapper can vanish without anyone naming it.
         bad_with(
-            "fn risky(n: int) -> Result<int, MathError> = n + 1\n\
+            "fn risky(n: int) = checkedAdd(n, 1)\n\
              fn go() -> int = {\n\
                risky(1)\n\
                0\n\
              }\n",
             "cannot be discarded",
         );
-        ok("fn risky(n: int) -> Result<int, MathError> = n + 1\n\
+        ok("fn risky(n: int) = checkedAdd(n, 1)\n\
             fn go() -> int = {\n\
               let handled = risky(1) ?: 0\n\
               handled\n\
@@ -2109,7 +2141,7 @@ mod tests {
         ),
         (
             "a Result consumed with ?:",
-            "fn risky(n: int) -> Result<int, MathError> = n + 1\n\
+            "fn risky(n: int) = checkedAdd(n, 1)\n\
              fn go() -> int = {\n\
                let handled = risky(1) ?: 0\n\
                handled\n\
@@ -2268,7 +2300,7 @@ mod tests {
         // [TESTING-SHADOWING] a user test/expect/check replaces the built-in;
         // every other built-in still rejects redefinition.
         let errs = check(
-            "fn check(t: int) -> int = (t + 1) ?: 0\n\
+            "fn check(t: int) -> int = wrapAdd(t, 1)\n\
              fn expect(a: int) -> int = a\n\
              fn test(x: int) -> int = x\n\
              let r = check(expect(test(1)))\n",

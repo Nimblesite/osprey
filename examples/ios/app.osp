@@ -3,9 +3,9 @@ extern fn ios_host_log(message: string) -> int
 
 fn greeting() = "Osprey on iPhone"
 fn reset() = 0
-fn increment(count) = count + 1 ?: count
+fn increment(count) = satAdd(count, 1)
 fn decrement(count) = match count > 0 {
-    true => count - 1 ?: count
+    true => satSub(count, 1)
     false => 0
 }
 fn milestone(count) = count >= 5

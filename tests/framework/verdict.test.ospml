@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 (** Represent pure pass, failure, and precondition-skip outcomes. *)
 type Verdict = Pass | Fail string | Skip string
 
@@ -17,11 +31,11 @@ andThen (Fail reason) _ = Fail reason
 andThen (Skip why) _ = Skip why
 
 (** Add two integers for the composed Verdicts. *)
-add a b = a + b ?: 0
+add a b = a + b 
 
 (** Fold arithmetic, interpolation, and booleans into a passing Verdict. *)
 passingCase () =
-    arithmetic = andThen (checkVerdict "sum" "5" (toString (add 2 3))) (checkVerdict "difference" "2" (toString (add 5 ((0 - 3) ?: 0))))
+    arithmetic = andThen (checkVerdict "sum" "5" (toString (add 2 3))) (checkVerdict "difference" "2" (toString (add 5 ((0 - 3) ))))
     text = andThen (checkVerdict "interpolation" "total=8" "total=${add 3 5}") (checkVerdict "bool" "true" (toString (3 < 5)))
     andThen arithmetic text
 
@@ -29,8 +43,9 @@ passingCase () =
 skippedCase () =
     andThen (assume (2 > 3)) (checkVerdict "ignored after skip" "0" "1")
 
-test "pass folds several good interactions" passingCase
-test "skip preserves an unmet precondition" skippedCase
+
+test "pass folds several good interactions" (\() => exactArithmetic (passingCase))
+test "skip preserves an unmet precondition" (\() => exactArithmetic (skippedCase))
 
 (** Trace records every operation a curried body performs. *)
 effect Trace
@@ -41,14 +56,14 @@ effect Trace
 traced2 a b =
     x = perform Trace.step a
     y = perform Trace.step b
-    x + y ?: 0
+    x + y 
 
 (** Three whitespace parameters curry the same way. *)
 traced3 a b c =
     x = perform Trace.step a
     y = perform Trace.step b
     z = perform Trace.step c
-    (x + y ?: 0) + z ?: 0
+    (x + y ) + z 
 
 (** Four whitespace parameters — the exact shape [FLAVOR-ML-CURRY] warns about
     in issue #184, where an operation performed through the body is silently
@@ -58,7 +73,7 @@ traced4 a b c d =
     x = perform Trace.step b
     y = perform Trace.step c
     z = perform Trace.step d
-    ((w + x ?: 0) + y ?: 0) + z ?: 0
+    ((w + x ) + y ) + z 
 
 (** Five whitespace parameters: one nesting level past the reported shape. *)
 traced5 a b c d e =
@@ -67,7 +82,7 @@ traced5 a b c d e =
     x = perform Trace.step c
     y = perform Trace.step d
     z = perform Trace.step e
-    (((v + w ?: 0) + x ?: 0) + y ?: 0) + z ?: 0
+    (((v + w ) + x ) + y ) + z 
 
 (** Parenthesised comma-separated parameters are explicitly flat, and the spec
     names this the form that works today — so both forms must agree. *)
@@ -76,7 +91,7 @@ tracedFlat (a, b, c, d) =
     x = perform Trace.step b
     y = perform Trace.step c
     z = perform Trace.step d
-    ((w + x ?: 0) + y ?: 0) + z ?: 0
+    ((w + x ) + y ) + z 
 
 (** Curried and flat bodies perform through the same handler, so the operation
     indices they receive form one unbroken 1..18 sequence. A skipped operation
@@ -88,7 +103,7 @@ curriedEffectsReachTheHandlerCase () =
     traceReport =
         handle Trace
             step label =>
-                steps := steps + 1 ?: steps
+                steps := steps + 1 
                 seen := "${seen}${label}|"
                 steps
         r2 = traced2 "a" "b"
@@ -132,21 +147,21 @@ curriedEffectsReachTheHandlerCase () =
         // `?:` is the LOWEST precedence and right-associative, so every sum
         // that ends in one needs its own parentheses to sit under the `==`
         // [SYNTAX] — without them `x ?: 0 == 30` reads `x ?: (0 == 30)`.
-        ((6 + 7 ?: 0) + (8 + 9 ?: 0) ?: 0) == 30,
-        ((15 + 16 ?: 0) + (17 + 18 ?: 0) ?: 0) == 66,
+        ((6 + 7 ) + (8 + 9 ) ) == 30,
+        ((15 + 16 ) + (17 + 18 ) ) == 66,
         contains traceReport "30",
         contains traceReport "66",
-        (1 + 2 ?: 0) == 3,
-        ((3 + 4 ?: 0) + 5 ?: 0) == 12,
-        (((10 + 11 ?: 0) + (12 + 13 ?: 0) ?: 0) + 14 ?: 0) == 60,
+        (1 + 2 ) == 3,
+        ((3 + 4 ) + 5 ) == 12,
+        (((10 + 11 ) + (12 + 13 ) ) + 14 ) == 60,
         steps == 18
     ]
 
 (** Add three integers through whitespace parameters. *)
-addThree a b c = (a + b ?: 0) + c ?: 0
+addThree a b c = (a + b ) + c 
 
 (** The same addition with explicitly flat parenthesised parameters. *)
-addFlat (a, b, c) = (a + b ?: 0) + c ?: 0
+addFlat (a, b, c) = (a + b ) + c 
 
 (** [FLAVOR-ML-CURRY]: `add 1 2` lowers to nested one-argument calls and `add 1`
     returns the remaining function, while parenthesised comma parameters are
@@ -187,8 +202,8 @@ partialApplicationCase () =
         addFlat (10, 2, 3) == otherPart 2 3
     ]
 
-test "curried ML bodies perform every operation through the handler" curriedEffectsReachTheHandlerCase
-test "ML partial application follows the currying rule" partialApplicationCase
+test "curried ML bodies perform every operation through the handler" (\() => exactArithmetic (curriedEffectsReachTheHandlerCase))
+test "ML partial application follows the currying rule" (\() => exactArithmetic (partialApplicationCase))
 
 (** Render a Verdict as canonical text so both its state and its payload are
     assertable without comparing union values directly. Adjacent clauses with a
@@ -309,19 +324,19 @@ verdictAlgebraCase () =
 (** Four whitespace parameters, built on the existing three-parameter curried
     `addThree` so no arithmetic is duplicated: only the declared arity differs,
     which is the property [FLAVOR-ML-CURRY] is about. *)
-sum4 a b c d = addThree a b c + d ?: 0
+sum4 a b c d = addThree a b c + d 
 
 (** Five whitespace parameters. *)
-sum5 a b c d e = sum4 a b c d + e ?: 0
+sum5 a b c d e = sum4 a b c d + e 
 
 (** Six whitespace parameters — two arities past the shape issue #184 reports. *)
-sum6 a b c d e f = sum5 a b c d e + f ?: 0
+sum6 a b c d e f = sum5 a b c d e + f 
 
 (** The explicitly flat twin of `sum6`: identical body, different head. A
     parenthesised comma list is flat and does not partially apply, so the two
     must agree on every saturated call and differ only in how they are applied
     [FLAVOR-ML-CURRY], [FLAVOR-ML-TUPLE]. *)
-sumFlat6 (a, b, c, d, e, f) = sum5 a b c d e + f ?: 0
+sumFlat6 (a, b, c, d, e, f) = sum5 a b c d e + f 
 
 (** Currying is not integer-specific: three whitespace parameters over strings. *)
 tag3 a b c = a + b + c
@@ -359,7 +374,7 @@ curriedArityLadderCase () =
         add 0 7 == 7,
         add 7 0 == 7,
         add 3 4 == add 4 3,
-        add 5 ((0 - 5) ?: 0) == 0,
+        add 5 ((0 - 5) ) == 0,
         addThree 1 2 3 == 6,
         sum4 1 2 3 4 == 10,
         sum4 0 0 0 0 == 0,
@@ -403,7 +418,7 @@ curriedArityLadderCase () =
     checkAll "prefix partials are reusable independent values" [
         inc 41 == 42,
         inc 0 == 1,
-        inc ((0 - 1) ?: 0) == 0,
+        inc ((0 - 1) ) == 0,
         inc 41 == inc 41,
         p1 2 3 4 5 6 == 21,
         p2 3 4 5 6 == 21,
@@ -464,17 +479,17 @@ applyFlat (f, a, b) = f (a, b)
     stay distinguishable from the flat head, which takes one tuple and does not
     partially apply. *)
 lambdaCurryingCase () =
-    curriedAdd = \x y => x + y ?: 0
-    flatAdd = \(x, y) => x + y ?: 0
-    nestedAdd = \x => \y => x + y ?: 0
-    curriedTri = \x y z => (x + y ?: 0) + z ?: 0
+    curriedAdd = \x y => x + y 
+    flatAdd = \(x, y) => x + y 
+    nestedAdd = \x => \y => x + y 
+    curriedTri = \x y z => (x + y ) + z 
     bump = curriedAdd 10
     tri1 = curriedTri 1
     tri2 = curriedTri 1 2
     joinTwo = \a b => a + b
     andBoth = \a b => a && b
     offset = 100
-    shifted = \x => x + offset ?: 0
+    shifted = \x => x + offset 
 
     // Curried and flat heads compute the same sums from the same arguments;
     // only their application shape differs.
@@ -485,16 +500,16 @@ lambdaCurryingCase () =
         curriedAdd 0 9 == 9,
         curriedAdd 9 0 == 9,
         curriedAdd 3 4 == curriedAdd 4 3,
-        curriedAdd 5 ((0 - 5) ?: 0) == 0,
+        curriedAdd 5 ((0 - 5) ) == 0,
         flatAdd (3, 4) == 7,
         flatAdd (0, 0) == 0,
         flatAdd (0, 9) == 9,
         flatAdd (9, 0) == 9,
-        flatAdd (5, ((0 - 5) ?: 0)) == 0,
+        flatAdd (5, ((0 - 5) )) == 0,
         flatAdd (3, 4) == curriedAdd 3 4,
         bump 5 == 15,
         bump 0 == 10,
-        bump ((0 - 10) ?: 0) == 0,
+        bump ((0 - 10) ) == 0,
         bump 5 != curriedAdd 5 5,
         bump 5 == curriedAdd 10 5
     ]
@@ -526,16 +541,16 @@ lambdaCurryingCase () =
         applyCurried curriedAdd 3 4 == 7,
         applyCurried nestedAdd 3 4 == 7,
         applyCurried curriedAdd 0 0 == 0,
-        applyCurried (\x y => x + y ?: 0) 20 22 == 42,
-        applyCurried (\x y => (x + y ?: 0) + 1 ?: 0) 20 21 == 42,
+        applyCurried (\x y => x + y ) 20 22 == 42,
+        applyCurried (\x y => (x + y ) + 1 ) 20 21 == 42,
         (applyCurried curriedAdd 3) 4 == 7,
         applyCurried curriedAdd 3 4 != applyCurried curriedAdd 3 5,
         applyFlat (flatAdd, 3, 4) == 7,
         applyFlat (flatAdd, 0, 0) == 0,
-        applyFlat (flatAdd, 5, ((0 - 5) ?: 0)) == 0,
+        applyFlat (flatAdd, 5, ((0 - 5) )) == 0,
         applyFlat (flatAdd, 3, 4) == applyCurried curriedAdd 3 4,
-        (5 |> \x => x + 100 ?: 0) == 105,
-        (5 |> (\x => x + 100 ?: 0) |> (\x => x * 2 ?: 0)) == 210,
+        (5 |> \x => x + 100 ) == 105,
+        (5 |> (\x => x + 100 ) |> (\x => x * 2 )) == 210,
         shifted 5 == 105,
         shifted 0 == 100,
         shifted 5 == curriedAdd 100 5
@@ -598,7 +613,7 @@ recordLayoutAndUpdateCase () =
     twoFields = inlineBuilt(sensor = "south", depth = 30)
     everything = inlineBuilt(sensor = "east", value = 0.0, depth = 0, valid = false)
     doubledValue = inlineBuilt.value * 2.0
-    nextDepth = inlineBuilt.depth + 1 ?: 0
+    nextDepth = inlineBuilt.depth + 1 
     computed = inlineBuilt(value = doubledValue, depth = nextDepth)
     chained = renamed(depth = 4)
     reverted = renamed(sensor = inlineBuilt.sensor)
@@ -686,7 +701,7 @@ recordLayoutAndUpdateCase () =
         inlineBuilt.value == 1.5,
         inlineBuilt.depth == 3,
         computed.value == inlineBuilt.value * 2.0,
-        computed.depth == (inlineBuilt.depth + 1 ?: 0),
+        computed.depth == (inlineBuilt.depth + 1 ),
         computed.value > inlineBuilt.value,
         computed.depth > inlineBuilt.depth,
         computed.value != inlineBuilt.value,
@@ -812,7 +827,7 @@ matchLayoutAndClausesCase () =
         band 2 == "two",
         band 3 == "many",
         band 99 == "many",
-        band ((0 - 1) ?: 0) == "many",
+        band ((0 - 1) ) == "many",
         band 0 != band 1,
         band 3 == band 99,
         route "" == "root",
@@ -844,7 +859,7 @@ matchLayoutAndClausesCase () =
         readAt nums 2 == "at 2 = 30",
         readAt nums 3 == "miss 3",
         readAt nums 99 == "miss 99",
-        readAt nums ((0 - 1) ?: 0) == "miss -1",
+        readAt nums ((0 - 1) ) == "miss -1",
         readAt single 0 == "at 0 = 42",
         readAt [7] 1 == "miss 1",
         readAt [7] 0 == "at 0 = 7",
@@ -858,25 +873,25 @@ matchLayoutAndClausesCase () =
     affect layout [FLAVOR-ML-LAYOUT], and block comments nest
     [FLAVOR-ML-COMMENTS]. The result is 3n + 1. *)
 staged n =
-    doubled = n + n ?: 0
+    doubled = n + n 
 
     // A comment-only line inside the block.
     (* A nested (* block *) comment inside the block. *)
-    tripled = doubled + n ?: 0
-    tripled + 1 ?: 0
+    tripled = doubled + n 
+    tripled + 1 
 
 (** Parentheses suppress layout tokens until their matching delimiter
     [FLAVOR-ML-LAYOUT], so one expression may span several lines inside them. *)
 spread a b = (a
     + b
-    ?: 0)
+    )
 
 (** Layout and interpolation are the two places where ML's surface differs from
     Default without any AST difference to show for it [FLAVOR-BOUNDARY]. This
     case pins both: an indented block evaluates to its last line, a
     parenthesised expression survives being split across lines, an interpolation
     hole holds a juxtaposed call, and a checked integer operation left inside a
-    hole renders its whole `Result` — `${3 + 5}` is `Success(8)`, not `8`
+    hole renders arithmetic directly — `${3 + 5}` is `8`
     ([ARITH-CHECKED]). Collection literals and indexing round out the boundary
     inputs: first index, last index, one past the end, and a missing key. *)
 layoutAndInterpolationCase () =
@@ -884,9 +899,9 @@ layoutAndInterpolationCase () =
     prices = ["apple" => 2, "banana" => 3]
     first = xs[0] ?: 0
     last = xs[3] ?: 0
-    past = xs[4] ?: ((0 - 1) ?: 0)
+    past = xs[4] ?: ((0 - 1) )
     apple = prices["apple"] ?: 0
-    missing = prices["pear"] ?: ((0 - 1) ?: 0)
+    missing = prices["pear"] ?: ((0 - 1) )
     flavorName = "ml"
     ratio = 1.5
     text = "ab, ab, 12"
@@ -905,7 +920,7 @@ layoutAndInterpolationCase () =
         spread 0 0 == 0,
         spread 2 3 == spread 3 2,
         spread 20 22 == 42,
-        spread 5 ((0 - 5) ?: 0) == 0,
+        spread 5 ((0 - 5) ) == 0,
         spread 1 2 == 3,
         staged 5 == spread 10 6,
         staged 0 == spread 1 0
@@ -918,8 +933,8 @@ layoutAndInterpolationCase () =
         "${addThree 1 2 5}" == "8",
         "${staged 5}" == "16",
         "${toString (staged 5)}" == "16",
-        "${3 + 5}" == "Success(8)",
-        "total=${add 3 5} raw=${3 + 5}" == "total=8 raw=Success(8)",
+        "${3 + 5}" == "8",
+        "total=${add 3 5} raw=${3 + 5}" == "total=8 raw=8",
         "${toUpperCase flavorName}" == "ML",
         "${length flavorName}" == "2",
         "${first}/${last}" == "3/13",
@@ -939,7 +954,7 @@ layoutAndInterpolationCase () =
     checkAll "list and map literals index and fall back as declared" [
         first == 3,
         last == 13,
-        past == ((0 - 1) ?: 0),
+        past == ((0 - 1) ),
         (xs[1] ?: 0) == 5,
         (xs[2] ?: 0) == 8,
         (listGet xs 0 ?: 0) == first,
@@ -950,7 +965,7 @@ layoutAndInterpolationCase () =
         !(listContains xs 4),
         !(isEmpty xs),
         apple == 2,
-        missing == ((0 - 1) ?: 0),
+        missing == ((0 - 1) ),
         (prices["banana"] ?: 0) == 3,
         (mapGet prices "apple" ?: 0) == apple,
         mapLength prices == 2,
@@ -988,9 +1003,9 @@ layoutAndInterpolationCase () =
 
 // Registration order fixes the TAP numbering, so these follow the four cases
 // registered above.
-test "Verdict folding obeys the andThen monoid laws" verdictAlgebraCase
-test "curried arities two through six apply in every grouping" curriedArityLadderCase
-test "curried and flat lambda heads split as specified" lambdaCurryingCase
-test "ML record layout, inline heads and updates agree" recordLayoutAndUpdateCase
-test "ML match layout, clauses and list patterns select correctly" matchLayoutAndClausesCase
-test "ML layout blocks and interpolation render juxtaposed calls" layoutAndInterpolationCase
+test "Verdict folding obeys the andThen monoid laws" (\() => exactArithmetic (verdictAlgebraCase))
+test "curried arities two through six apply in every grouping" (\() => exactArithmetic (curriedArityLadderCase))
+test "curried and flat lambda heads split as specified" (\() => exactArithmetic (lambdaCurryingCase))
+test "ML record layout, inline heads and updates agree" (\() => exactArithmetic (recordLayoutAndUpdateCase))
+test "ML match layout, clauses and list patterns select correctly" (\() => exactArithmetic (matchLayoutAndClausesCase))
+test "ML layout blocks and interpolation render juxtaposed calls" (\() => exactArithmetic (layoutAndInterpolationCase))

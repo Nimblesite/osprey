@@ -2,5 +2,5 @@
 // Error: undefined variable 'unknownVar'
 
 let x = 42
-let result = x + unknownVar  // unknownVar is not defined
-print(result) 
+let result = wrapAdd(x, unknownVar)  // unknownVar is not defined
+print(result)

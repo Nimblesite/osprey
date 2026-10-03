@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // Exception-style handlers either resume with a recovery value or stop the rest of the computation.
 
 /// ResumeFallback lets a policy replace one failed integer and continue the caller.
@@ -7,11 +26,11 @@ effect ResumeFallback {
 }
 
 /// This workflow proves that work on both sides of a recovered operation still runs.
-fn recoveredSum() !ResumeFallback = {
+fn recoveredSum() ![ResumeFallback, Arith] = {
     let before = 10
     let replacement = perform ResumeFallback.recover("missing score", 20)
     let after = 12
-    before + replacement + after ?: 0
+    before + replacement + after 
 }
 
 /// A resuming recovery supplies the missing value and observes the completed answer.
@@ -21,7 +40,7 @@ fn resumeRecoveryContinuesCase() = {
     let result = {
         handle ResumeFallback {
             recover _message fallback => {
-                calls = calls + 1 ?: calls
+                calls = calls + 1 
                 let answer = resume(fallback)
                 completed = answer
                 answer
@@ -53,11 +72,11 @@ fn deepestFailure() ![FatalExit, ExitTrace] = {
 }
 
 /// The middle helper contains work that must disappear when the continuation stops.
-fn middleFailure() ![FatalExit, ExitTrace] = {
+fn middleFailure() ![FatalExit, ExitTrace, Arith] = {
     perform ExitTrace.mark("middle-before")
     let value = deepestFailure()
     perform ExitTrace.mark("middle-after")
-    value + 1 ?: 0
+    value + 1 
 }
 
 /// Returning without resume skips every expression after the failed perform.
@@ -71,7 +90,7 @@ fn fatalExitStopsDeepCallCase() = {
         handle FatalExit {
             raise message => match message {
                 "fatal" => {
-                    failures = failures + 1 ?: failures
+                    failures = failures + 1 
                     503
                 }
                 _ => resume(0)
@@ -93,11 +112,11 @@ effect RetryInput {
 }
 
 /// Invalid candidates recursively ask again under the same deep handler.
-fn requirePositive(attempt) !RetryInput = {
+fn requirePositive(attempt) ![RetryInput, Arith] = {
     let candidate = perform RetryInput.next(attempt)
     match candidate > 0 {
         true => candidate
-        false => requirePositive((attempt + 1) ?: attempt)
+        false => requirePositive((attempt + 1) )
     }
 }
 
@@ -108,8 +127,8 @@ fn recursiveRetryCase() = {
     let accepted = {
         handle RetryInput {
             next attempt => {
-                calls = calls + 1 ?: calls
-                let candidate = match attempt { 1 => (0 - 3) ?: 0 2 => 0 _ => 9 }
+                calls = calls + 1 
+                let candidate = match attempt { 1 => (0 - 3)  2 => 0 _ => 9 }
                 supplied = "${supplied}${toString(candidate)}|"
                 resume(candidate)
             }
@@ -132,10 +151,10 @@ effect LookupRecovery {
 }
 
 /// This configuration consumes two independently typed recovery channels.
-fn recoveredConfig() ![ParseRecovery, LookupRecovery] = {
+fn recoveredConfig() ![ParseRecovery, LookupRecovery, Arith] = {
     let port = perform ParseRecovery.parse("bad-port")
     let host = perform LookupRecovery.missing("host")
-    port + length(host) ?: 0
+    port + length(host) 
 }
 
 /// Nested resuming handlers stay active and settle from inner to outer.
@@ -183,22 +202,22 @@ fn resumingHandlerShadowCase() = {
     let total = {
         handle ScopedRecovery {
             value seed => {
-                outerCalls = outerCalls + 1 ?: outerCalls
-                resume((seed + 100) ?: seed)
+                outerCalls = outerCalls + 1 
+                resume((seed + 100) )
             }
         }
         let before = scopedValue(1)
         let inside = {
             handle ScopedRecovery {
                 value seed => {
-                    innerCalls = innerCalls + 1 ?: innerCalls
-                    resume((seed + 10) ?: seed)
+                    innerCalls = innerCalls + 1 
+                    resume((seed + 10) )
                 }
             }
             scopedValue(2)
         }
         let after = scopedValue(3)
-        before + inside + after ?: 0
+        before + inside + after 
     }
     checkAll("resuming handler shadow and restore", [
         total == 216, outerCalls == 2, innerCalls == 1
@@ -212,7 +231,7 @@ effect WrapAnswer {
 }
 
 /// The performer adds one to the value supplied by its handler.
-fn wrappedBody() !WrapAnswer = perform WrapAnswer.number() + 1 ?: 0
+fn wrappedBody() ![WrapAnswer, Arith] = perform WrapAnswer.number() + 1 
 
 /// Code after resume sees the body's answer and may return a different handler answer.
 fn postResumeTransformsAnswerCase() = {
@@ -222,13 +241,13 @@ fn postResumeTransformsAnswerCase() = {
             number => {
                 let answer = resume(10)
                 bodyAnswer = answer
-                answer * 2 ?: 0
+                answer * 2 
             }
         }
         wrappedBody()
     }
     checkAll("post-resume code transforms answer", [
-        bodyAnswer == 11, result == 22, result == (bodyAnswer * 2 ?: 0)
+        bodyAnswer == 11, result == 22, result == (bodyAnswer * 2 )
     ])
 }
 
@@ -251,16 +270,16 @@ fn resumeWholeResultCase() = {
     let total = {
         handle ResultRecovery {
             fetch key => {
-                calls = calls + 1 ?: calls
+                calls = calls + 1 
                 let answer = match key {
                     "ready" => resume(Success { value: 7 })
                     _ => resume(Error { message: "missing" })
                 }
-                settled = settled + 1 ?: settled
+                settled = settled + 1 
                 answer
             }
         }
-        resultValue("ready") + resultValue("absent") ?: 0
+        resultValue("ready") + resultValue("absent") 
     }
     checkAll("resume carries whole Result values", [
         total == 14, calls == 2, settled == 2, length("missing") == 7
@@ -277,9 +296,9 @@ effect ChoiceRecovery {
 }
 
 /// Exhaustive matching makes both recovery choices visible to the caller.
-fn choiceValue(label) !ChoiceRecovery = match perform ChoiceRecovery.decide(label) {
+fn choiceValue(label) ![ChoiceRecovery, Arith] = match perform ChoiceRecovery.decide(label) {
     Use { value } => value
-    Reject { code } => 0 - code ?: 0
+    Reject { code } => 0 - code 
 }
 
 /// Resume transports tagged values without losing constructor or payload information.
@@ -288,17 +307,17 @@ fn resumeTaggedChoiceCase() = {
     let total = {
         handle ChoiceRecovery {
             decide label => {
-                calls = calls + 1 ?: calls
+                calls = calls + 1 
                 match label {
                     "cache" => resume(Use { value: 30 })
                     _ => resume(Reject { code: 12 })
                 }
             }
         }
-        choiceValue("cache") + choiceValue("network") ?: 0
+        choiceValue("cache") + choiceValue("network") 
     }
     checkAll("resume carries tagged recovery choices", [
-        total == 18, calls == 2, total == (30 - 12 ?: 0)
+        total == 18, calls == 2, total == (30 - 12 )
     ])
 }
 
@@ -309,9 +328,9 @@ effect DeepRecovery {
 }
 
 /// Each recursive level performs once before descending to the next level.
-fn deepSum(depth) !DeepRecovery = match depth {
+fn deepSum(depth) ![DeepRecovery, Arith] = match depth {
     0 => 0
-    _ => perform DeepRecovery.checkpoint(depth) + deepSum((depth - 1) ?: 0) ?: 0
+    _ => perform DeepRecovery.checkpoint(depth) + deepSum((depth - 1) ) 
 }
 
 /// Thirty-two resumptions stress deep installation, delivery, and LIFO settlement.
@@ -321,9 +340,9 @@ fn deepResumeStressCase() = {
     let total = {
         handle DeepRecovery {
             checkpoint depth => {
-                entered = entered + 1 ?: entered
+                entered = entered + 1 
                 let answer = resume(depth)
-                settled = settled + 1 ?: settled
+                settled = settled + 1 
                 answer
             }
         }
@@ -347,13 +366,13 @@ effect TypedRecovery {
 }
 
 /// The workflow consumes every operation result type after its continuation resumes.
-fn typedRecoveryBody() !TypedRecovery = {
+fn typedRecoveryBody() ![TypedRecovery, Arith] = {
     let n = perform TypedRecovery.number("retries")
     let s = perform TypedRecovery.text("host")
     let ok = perform TypedRecovery.allow("deploy")
     perform TypedRecovery.note("assembled")
     let flag = match ok { true => 1 false => 0 }
-    n + length(s) + flag ?: 0
+    n + length(s) + flag 
 }
 
 /// Every arm resumes with the exact type declared by its operation.
@@ -362,19 +381,19 @@ fn heterogeneousResumeCase() = {
     let result = {
         handle TypedRecovery {
             number _key => {
-                calls = calls + 1 ?: calls
+                calls = calls + 1 
                 resume(3)
             }
             text _key => {
-                calls = calls + 1 ?: calls
+                calls = calls + 1 
                 resume("osprey.local")
             }
             allow _key => {
-                calls = calls + 1 ?: calls
+                calls = calls + 1 
                 resume(true)
             }
             note _message => {
-                calls = calls + 1 ?: calls
+                calls = calls + 1 
                 resume()
             }
         }
@@ -407,7 +426,7 @@ fn stringAnswerCase() = {
     let answer = {
         handle StringAnswerRecovery {
             get => {
-                calls = calls + 1 ?: calls
+                calls = calls + 1 
                 resume("rea" + "dy")
             }
         }
@@ -427,8 +446,8 @@ effect SixteenArgumentRecovery {
 }
 
 /// The operation sends sixteen distinct values so no mailbox position can hide behind equality.
-fn sixteenArgumentBody() !SixteenArgumentRecovery =
-    perform SixteenArgumentRecovery.recover(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16) + 100 ?: 0
+fn sixteenArgumentBody() ![SixteenArgumentRecovery, Arith] =
+    perform SixteenArgumentRecovery.recover(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16) + 100 
 
 /// The supported boundary preserves every argument and resumes from the final one.
 fn sixteenArgumentBoundaryCase() = {
@@ -437,7 +456,7 @@ fn sixteenArgumentBoundaryCase() = {
     let result = {
         handle SixteenArgumentRecovery {
             recover a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 => {
-                calls = calls + 1 ?: calls
+                calls = calls + 1 
                 observed = "${a1}|${a2}|${a3}|${a4}|${a5}|${a6}|${a7}|${a8}|${a9}|${a10}|${a11}|${a12}|${a13}|${a14}|${a15}|${a16}"
                 resume(a16)
             }
@@ -497,7 +516,7 @@ fn wideManagedArgumentCase() = {
     let joined = {
         handle WideArgumentRecovery {
             describe t1 n1 t2 n2 t3 n3 t4 n4 t5 n5 t6 n6 t7 n7 t8 n8 t9 n9 => {
-                calls = calls + 1 ?: calls
+                calls = calls + 1 
                 resume("${t1}${n1}${t2}${n2}${t3}${n3}${t4}${n4}${t5}${n5}${t6}${n6}${t7}${n7}${t8}${n8}${t9}${n9}")
             }
         }
@@ -511,30 +530,31 @@ fn wideManagedArgumentCase() = {
 }
 
 // Register recovery that resumes the caller with a fallback.
-test("resuming recovery continues after the failed operation", resumeRecoveryContinuesCase)
+
+test("resuming recovery continues after the failed operation", fn() => exactArithmetic(resumeRecoveryContinuesCase))
 // Register exception-style abort across a deep helper chain.
-test("returning without resume stops a deep failed computation", fatalExitStopsDeepCallCase)
+test("returning without resume stops a deep failed computation", fn() => exactArithmetic(fatalExitStopsDeepCallCase))
 // Register recursive retry under one deep handler.
-test("resumed validation can perform the same effect again", recursiveRetryCase)
+test("resumed validation can perform the same effect again", fn() => exactArithmetic(recursiveRetryCase))
 // Register independently typed nested recovery channels.
-test("nested resuming error channels enter FIFO and settle LIFO", nestedRecoveryChannelsCase)
+test("nested resuming error channels enter FIFO and settle LIFO", fn() => exactArithmetic(nestedRecoveryChannelsCase))
 // Register nearest-handler shadowing and restoration.
-test("an inner resuming handler shadows then restores its outer handler", resumingHandlerShadowCase)
+test("an inner resuming handler shadows then restores its outer handler", fn() => exactArithmetic(resumingHandlerShadowCase))
 // Register post-resume transformation of the completed answer.
-test("a handler can transform the completed continuation answer", postResumeTransformsAnswerCase)
+test("a handler can transform the completed continuation answer", fn() => exactArithmetic(postResumeTransformsAnswerCase))
 // Register complete Result transport through resume.
-test("resume preserves Success and Error values", resumeWholeResultCase)
+test("resume preserves Success and Error values", fn() => exactArithmetic(resumeWholeResultCase))
 // Register tagged domain recovery values through resume.
-test("resume preserves tagged recovery choices", resumeTaggedChoiceCase)
+test("resume preserves tagged recovery choices", fn() => exactArithmetic(resumeTaggedChoiceCase))
 // Register repeated deep suspension and settlement.
-test("thirty-two sequential recoveries settle exactly once", deepResumeStressCase)
+test("thirty-two sequential recoveries settle exactly once", fn() => exactArithmetic(deepResumeStressCase))
 // Register multiple operation result types in one resuming handler.
-test("one handler resumes integer string boolean and Unit operations", heterogeneousResumeCase)
+test("one handler resumes integer string boolean and Unit operations", fn() => exactArithmetic(heterogeneousResumeCase))
 // Register the managed continuation answer that must release under ARC.
-test("string continuation answers release under ARC", stringAnswerCase)
+test("string continuation answers release under ARC", fn() => exactArithmetic(stringAnswerCase))
 // Register the sixteen-argument operation boundary.
-test("sixteen resumable operation arguments arrive intact", sixteenArgumentBoundaryCase)
+test("sixteen resumable operation arguments arrive intact", fn() => exactArithmetic(sixteenArgumentBoundaryCase))
 // Register the first arity past the mailbox's former fixed width.
-test("seventeen resumable operation arguments arrive intact", seventeenArgumentCase)
+test("seventeen resumable operation arguments arrive intact", fn() => exactArithmetic(seventeenArgumentCase))
 // Register managed and scalar arguments interleaved past that width.
-test("managed and scalar arguments cross one wide operation", wideManagedArgumentCase)
+test("managed and scalar arguments cross one wide operation", fn() => exactArithmetic(wideManagedArgumentCase))

@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 (** Return a catalog item or the caller's fallback. *)
 itemAt : int -> string -> string
 itemAt index fallback = ["coffee", "bread", "fruit"][index] ?: fallback
@@ -8,15 +22,15 @@ unitPrice item = ["coffee" => 12, "bread" => 5, "fruit" => 7][item] ?: 0
 
 (** Apply the membership tier's percentage discount. *)
 loyaltyDiscount : string -> int -> int
-loyaltyDiscount "gold" subtotal = intDiv ((subtotal * 20) ?: 0) 100 ?: 0
-loyaltyDiscount "silver" subtotal = intDiv ((subtotal * 10) ?: 0) 100 ?: 0
+loyaltyDiscount "gold" subtotal = intDiv ((subtotal * 20) ) 100 
+loyaltyDiscount "silver" subtotal = intDiv ((subtotal * 10) ) 100 
 loyaltyDiscount _ _ = 0
 
 (** Compose price lookup, quantity, and loyalty policy. *)
 total : string -> string -> int -> int
 total level item quantity =
-    subtotal = unitPrice item * quantity ?: 0
-    subtotal - loyaltyDiscount level subtotal ?: 0
+    subtotal = unitPrice item * quantity 
+    subtotal - loyaltyDiscount level subtotal 
 
 (** Normalize the customer and render the receipt. *)
 receipt : string -> string -> string -> int -> string
@@ -63,9 +77,10 @@ receiptInteraction () =
         endsWith (receipt "Ada" "silver" "coffee" 2) ":22",
         !(contains (receipt " Ada " "guest" "fruit" 1) " "),
         (receipt "Ada" "guest" "fruit" 2 |> toUpperCase) == "ADA:FRUIT:2:14",
-        receipt "Kai" "silver" (itemAt 1 "missing") ((2 * 2) ?: 0) == "KAI:bread:4:18"
+        receipt "Kai" "silver" (itemAt 1 "missing") ((2 * 2) ) == "KAI:bread:4:18"
     ]
 
-test "catalogue lookup drives prices and fallbacks" catalogueInteraction
-test "pricing combines maps, matches, Results and arithmetic" pricingInteraction
-test "receipts compose normalization, totals and pipelines" receiptInteraction
+
+test "catalogue lookup drives prices and fallbacks" (\() => exactArithmetic (catalogueInteraction))
+test "pricing combines maps, matches, Results and arithmetic" (\() => exactArithmetic (pricingInteraction))
+test "receipts compose normalization, totals and pipelines" (\() => exactArithmetic (receiptInteraction))

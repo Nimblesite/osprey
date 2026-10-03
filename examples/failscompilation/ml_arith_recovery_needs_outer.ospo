@@ -1,0 +1,7 @@
+// [ARITH-EFFECT-ARMS-NO-REENTRY] Arithmetic inside an Arith arm needs an outer policy; it cannot re-enter its own arm.
+// osprey: flavor=ml
+add (a, b) = a + b
+main () =
+    handle Arith
+        overflow _ lhs rhs _ => lhs + rhs
+    print (add (9223372036854775807, 1))

@@ -1,6 +1,6 @@
 // Counting change — ways to make an amount from coins [1,5,10,25,50] (SICP classic).
-fn add(a, b) = a + b ?: 0
-fn sub(a, b) = a - b ?: 0
+fn add(a, b) = a + b
+fn sub(a, b) = a - b
 fn coin(k) = match k { 1 => 1  2 => 5  3 => 10  4 => 25  _ => 50 }
 fn ways(amount, kind) = match amount {
     0 => 1
@@ -12,4 +12,10 @@ fn ways(amount, kind) = match amount {
         }
     }
 }
-print("${ways(600, 5)}")
+fn main() = {
+    handle Arith { overflow _ _ _ wrapped => {
+            print("unexpected integer overflow")
+            wrapped
+        } }
+    print("${ways(600, 5)}")
+}

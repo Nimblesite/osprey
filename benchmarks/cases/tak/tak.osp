@@ -1,7 +1,13 @@
 // Takeuchi function — heavy ternary self-recursion.
-fn sub(a, b) = a - b ?: 0
+fn sub(a, b) = a - b
 fn tak(x, y, z) = match (x > y) {
     false => z
     true  => tak(tak(sub(x, 1), y, z), tak(sub(y, 1), z, x), tak(sub(z, 1), x, y))
 }
-print("${tak(32, 16, 8)}")
+fn main() = {
+    handle Arith { overflow _ _ _ wrapped => {
+            print("unexpected integer overflow")
+            wrapped
+        } }
+    print("${tak(32, 16, 8)}")
+}

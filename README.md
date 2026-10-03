@@ -37,26 +37,32 @@ Default flavor:
 ```osprey
 type Lookup = Found { value: int } | Missing
 
-fn doubleFound(result) = match result {
-  Found { value } => Success((value * 2) ?: value)
-  Missing => Error("value not found")
+fn doubleFound(lookup) = match lookup {
+    Found { value } => Success { value: value * 2 }
+    Missing => Error { message: "value not found" }
 }
 
-match doubleFound(Found { value: 21 }) {
-  Success(value) => print("result: ${value}")
-  Error(message) => print("error: ${message}")
+fn main() = {
+    handle Arith { overflow _ _ _ _ => 9223372036854775807 }
+    match doubleFound(Found { value: 21 }) {
+        Success { value } => print("result: ${value}")
+        Error { message } => print("error: ${message}")
+    }
 }
 ```
 
 ML flavor:
 
 ```osprey-ml
-adder : int -> int -> Result<int, MathError>
 adder a b = a + b
-
 addTen = adder 10
-answer = addTen 32 ?: 0
+
+wrapping = handler Arith
+    overflow _ _ _ wrapped => wrapped
+print "answer: ${wrapping (\() => addTen 32)}"
 ```
+
+Integer `+`, `-` and `*` return a plain `int`. An overflow is sent to the `Arith` handler that the surrounding code installed, which chooses the result (here: saturate, or keep the two's-complement value). A program that can overflow without installing a handler does not compile.
 
 Executable language tests live in [`tests/`](tests/).
 

@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 /// Prompt suspends a form until its handler supplies a field value.
 effect Prompt {
     /// Request the value the caller should use for `label`; the handler decides what is supplied.
@@ -30,7 +49,7 @@ fn resumeOuterHandlerBridgeCase() = {
     let result = {
         handle Log {
             line message => {
-                logCalls = logCalls + 1 ?: logCalls
+                logCalls = logCalls + 1 
                 logMessages = "${logMessages}${message}|"
                 transcript = "${transcript}[log] ${message}\n"
             }
@@ -38,10 +57,10 @@ fn resumeOuterHandlerBridgeCase() = {
         let answer = {
             handle Prompt {
                 ask field => {
-                    promptCalls = promptCalls + 1 ?: promptCalls
+                    promptCalls = promptCalls + 1 
                     transcript = "${transcript}ask ${field}\n"
                     let resumedAnswer = resume("Ada")
-                    promptSettled = promptSettled + 1 ?: promptSettled
+                    promptSettled = promptSettled + 1 
                     settledAnswer = resumedAnswer
                     transcript = "${transcript}after ask: ${resumedAnswer}\n"
                     resumedAnswer
@@ -75,7 +94,8 @@ fn resumeOuterHandlerBridgeCase() = {
 }
 
 // Register the resumed-body outer-handler regression.
-test("a resumed body retains its outer handlers", resumeOuterHandlerBridgeCase)
+
+test("a resumed body retains its outer handlers", fn() => exactArithmetic(resumeOuterHandlerBridgeCase))
 
 /// Ledger is handled by two nested regions, only one of which is complete.
 effect Ledger {
@@ -86,10 +106,10 @@ effect Ledger {
 }
 
 /// Two records, so the delegation happens more than once.
-fn ledgerWork() -> int !Ledger = {
+fn ledgerWork() -> int ![Ledger, Arith] = {
     let a = perform Ledger.record(5)
     let b = perform Ledger.record(7)
-    (a + b) ?: 0
+    (a + b) 
 }
 
 /// Spec 0017 draws the line inside a handler arm: an arm "is not permission to
@@ -109,21 +129,21 @@ fn partialHandlerDelegationCase() = {
     let total = {
         handle Ledger {
             record amount => {
-                outerRecords = outerRecords + 1 ?: outerRecords
-                amount * 1000 ?: amount
+                outerRecords = outerRecords + 1 
+                amount * 1000 
             }
             audit label => {
-                outerAudits = outerAudits + 1 ?: outerAudits
+                outerAudits = outerAudits + 1 
                 auditLog = "${auditLog}${label}|"
                 length(label)
             }
         }
         handle Ledger {
             record amount => {
-                innerRecords = innerRecords + 1 ?: innerRecords
+                innerRecords = innerRecords + 1 
                 let noted = perform Ledger.audit("record:${amount}")
                 lastNoted = noted
-                (amount + noted) ?: 0
+                (amount + noted) 
             }
         }
         ledgerWork()
@@ -140,14 +160,14 @@ fn partialHandlerDelegationCase() = {
         auditLog == "record:5|record:7|",
         innerRecords == outerAudits,
         innerRecords != outerRecords,
-        (innerRecords + outerAudits ?: 0) == 4
+        (innerRecords + outerAudits ) == 4
     ])
 
     // The outer `record` arm multiplies by 1000, so any leak of a `record`
     // operation past the inner region would be unmistakable in the total.
     checkAll("the innermost matching arm keeps its operation", [
-        total == (13 + 15 ?: 0),
-        total != (5000 + 7000 ?: 0),
+        total == (13 + 15 ),
+        total != (5000 + 7000 ),
         total != 24,
         total < 100,
         outerRecords == 0,
@@ -164,17 +184,17 @@ fn partialHandlerDelegationCase() = {
     checkAll("delegated answers return to the performing arm", [
         lastNoted == length("record:7"),
         lastNoted == 8,
-        (5 + 8 ?: 0) == 13,
-        (7 + 8 ?: 0) == 15,
+        (5 + 8 ) == 13,
+        (7 + 8 ) == 15,
         // `?:` is the LOWEST precedence and right-associative, so the whole
         // sum needs its own parentheses to sit under the `==` [SYNTAX].
-        total == ((5 + 7 ?: 0) + (8 + 8 ?: 0) ?: 0),
+        total == ((5 + 7 ) + (8 + 8 ) ),
         outerAudits == 2,
         auditLog != "",
         auditLog != "record:5|",
-        length(auditLog) == (9 + 9 ?: 0)
+        length(auditLog) == (9 + 9 )
     ])
 }
 
 // Register partial-handler delegation to the enclosing region.
-test("an arm delegates an operation its own handler does not cover", partialHandlerDelegationCase)
+test("an arm delegates an operation its own handler does not cover", fn() => exactArithmetic(partialHandlerDelegationCase))

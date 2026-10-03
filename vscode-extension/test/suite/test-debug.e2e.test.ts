@@ -34,7 +34,7 @@ import { RecordingSink } from "./test-explorer-harness";
 // inside the case body is what a breakpoint lands on; verified against the
 // real lldb on this exact program before it was written.
 const FIXTURE = [
-  "fn add(a, b) = a + b ?: 0", // 1
+  "fn add(a, b) = wrapAdd(a, b)", // 1
   "", // 2
   'test("adds in steps", fn() => {', // 3
   "    let x = add(2, 3)", // 4

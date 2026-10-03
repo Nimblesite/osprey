@@ -1,0 +1,6 @@
+// [ARITH-EFFECT-ARMS-NO-REENTRY] Arithmetic inside an Arith arm needs an outer policy; it cannot re-enter its own arm.
+fn add(a, b) = a + b
+fn main() = {
+    handle Arith { overflow _ lhs rhs _ => lhs + rhs }
+    print(add(9223372036854775807, 1))
+}

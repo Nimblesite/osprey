@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // Cross-contract oracle for [ARITH-CHECKED], [PATTERN-RESULT-DEFAULT],
 // [ERR-PAYLOAD], [EFFECTS-OP-TYPING], [EFFECTS-HANDLER-STATE], [TYPE-LIST],
 // [TYPE-MAP], [TYPE-MAP-LOOKUP], and [BUILTIN-STRING-UFCS].
@@ -9,16 +28,27 @@ effect Rescue {
 
 let RESCUED_DEFAULT = 100
 
-/// intDiv gives Result<int, Error>; the handler chooses the fallback value.
-fn divRescue(a, b) = match intDiv(a: a, b: b) {
-    Success { value } => value
-    Error { message } => perform Rescue.onErr(message)
+/// Bridge arithmetic requests to the application's existing Rescue capability.
+fn arithmeticRescue(work) = {
+    handle Arith {
+        overflow _ _ _ _ => perform Rescue.onErr("integer overflow")
+        remainderByZero _ => perform Rescue.onErr("division by zero")
+    }
+    work()
 }
+fn divRescue(a, b) = arithmeticRescue(fn() => intDiv(a, b))
+fn modRescue(a, b) = arithmeticRescue(fn() => a % b)
 
-/// % is the zero-checked remainder: 7 % 0 => Error(division by zero).
-fn modRescue(a, b) = match a % b {
-    Success { value } => value
-    Error { message } => perform Rescue.onErr(message)
+fn integerDefault(value, work) = {
+    handle Arith { remainderByZero _ => value }
+    work()
+}
+fn floatDefault(work) = {
+    handle Arith { divideByZero op lhs => {
+        checkAll("float fault payload", [op == "/", lhs == 10.0])
+        -1.0
+    } }
+    work()
 }
 
 /// checkedAdd is overflow-checked: MAX_INT + 1 => Error(integer overflow).
@@ -55,7 +85,7 @@ fn pipeline() = {
     print("  step e  MAX + 1         -> ${toString(e)}")
     let f = addRescue(100, 23)
     print("  step f  100 + 23        -> ${toString(f)}")
-    a + b + c + d + e + f ?: 0
+    a + b + c + d + e + f 
 }
 
 print("=== Result -> effect rescue pipeline ===")
@@ -63,39 +93,39 @@ print("=== Result -> effect rescue pipeline ===")
 /// [EFFECTS-HANDLER-STATE] The handler owns its rescue count; each arm value is
 /// substituted at the perform site because this region contains no `resume`.
 mut rescues = 0
-let total = {
+let total = exactArithmetic(fn() => {
     handle Rescue {
         onErr message => {
-            rescues = rescues + 1 ?: rescues
+            rescues = rescues + 1 
             print("  RESCUE #${toString(rescues)}: original error \"${message}\" -> using ${toString(RESCUED_DEFAULT)}")
             RESCUED_DEFAULT
         }
     }
     pipeline()
-}
+})
 
 print("rescued ${toString(rescues)} failing step(s); healthy + rescued total = ${toString(total)}")
 
-/// `?:` supplies a local fallback without invoking the Rescue policy.
-let localOk = (10 % 3) ?: ((0 - 1) ?: 0)
-let localBad = (10 % 0) ?: ((0 - 1) ?: 0)
-print("local ?: default  10 % 3 -> ${toString(localOk)}   10 % 0 -> ${toString(localBad)}")
+/// A local Arith policy supplies a replacement without invoking Rescue.
+let localOk = integerDefault(-1, fn() => 10 % 3)
+let localBad = integerDefault(-1, fn() => 10 % 0)
+print("local remainder policy  10 % 3 -> ${toString(localOk)}   10 % 0 -> ${toString(localBad)}")
 
-// The raw float division Result remains a value.
-print("raw 10 / 0 as a value = ${toString(10 / 0)}")
+// Floating division is recovered by an explicit value policy.
+print("float policy for 10 / 0 = ${toString(floatDefault(fn() => 10 / 0))}")
 print("=== pipeline complete ===")
 
 /// Verifies rescued failures beside healthy Result, nested collections, and local fallbacks.
 fn resultAndEffectsCase() = {
     let hundreds = recoveredValues(100)
     let sevens = recoveredValues(7)
-    let negatives = recoveredValues((0 - 1) ?: 0)
+    let negatives = recoveredValues((0 - 1) )
     let policyMatrix = [hundreds, sevens, negatives]
     let policyMap = { "hundred": hundreds, "seven": sevens, "negative": negatives }
     let grownMap = mapSet(policyMap, "zero", recoveredValues(0))
-    let bareSuccess = match 10 % 3 { Success { value } => value Error => 0 }
-    let bareError = match 10 % 0 { Success => 7 Error => 9 }
-    let boundResult = match 10 % 3 {
+    let bareSuccess = match checkedSub(2, 1) { Success { value } => value Error => 0 }
+    let bareError = match checkedAdd(9223372036854775807, 1) { Success => 7 Error => 9 }
+    let boundResult = match checkedSub(2, 1) {
         Error => 0
         whole => match whole { Success { value } => value Error => 0 }
     }
@@ -107,16 +137,16 @@ fn resultAndEffectsCase() = {
             rescues == 3,
             total == 430,
             localOk == 1,
-            localBad == ((0 - 1) ?: 0),
-            toString(10 / 0) == "Error(division by zero)",
-            (intDiv(20, 4) ?: ((0 - 1) ?: 0)) == 5,
-            (intDiv(20, 0) ?: ((0 - 1) ?: 0)) == ((0 - 1) ?: 0),
-            (17 % 5 ?: ((0 - 1) ?: 0)) == 2,
-            (17 % 0 ?: ((0 - 1) ?: 0)) == ((0 - 1) ?: 0),
+            localBad == ((0 - 1) ),
+            toString(floatDefault(fn() => 10 / 0)) == "-1.0",
+            integerDefault(-1, fn() => intDiv(20, 4)) == 5,
+            integerDefault(-1, fn() => intDiv(20, 0)) == ((0 - 1) ),
+            integerDefault(-1, fn() => 17 % 5) == 2,
+            integerDefault(-1, fn() => 17 % 0) == ((0 - 1) ),
             (checkedAdd(100, 23) ?: 0) == 123,
             (checkedAdd(9223372036854775807, 1) ?: 77) == 77,
-            toString(intDiv(20, 4)) == "Success(5)",
-            toString(intDiv(20, 0)) == "Error(division by zero)",
+            toString(intDiv(20, 4)) == "5",
+            toString(integerDefault(-1, fn() => intDiv(20, 0))) == "-1",
             toString(checkedAdd(9223372036854775807, 1)) == "Error(integer overflow)"
     ])
 
@@ -136,8 +166,8 @@ fn resultAndEffectsCase() = {
             (sevens.listGet(3) ?: 99) == 2,
             (sevens.listGet(4) ?: 99) == 7,
             (sevens.listGet(5) ?: 99) == 123,
-            (negatives.listGet(0) ?: 99) == ((0 - 1) ?: 0),
-            (negatives.listGet(4) ?: 99) == ((0 - 1) ?: 0)
+            (negatives.listGet(0) ?: 99) == ((0 - 1) ),
+            (negatives.listGet(4) ?: 99) == ((0 - 1) )
     ])
 
     checkAll("recovered lists retain element types inside nested maps", [
@@ -145,13 +175,13 @@ fn resultAndEffectsCase() = {
             listLength(policyMatrix.listGet(0) ?: [99]) == 6,
             ((policyMatrix.listGet(0) ?: [99]).listGet(4) ?: 99) == 100,
             ((policyMatrix.listGet(1) ?: [99]).listGet(4) ?: 99) == 7,
-            ((policyMatrix.listGet(2) ?: [99]).listGet(4) ?: 99) == ((0 - 1) ?: 0),
+            ((policyMatrix.listGet(2) ?: [99]).listGet(4) ?: 99) == ((0 - 1) ),
             mapLength(policyMap) == 3,
             mapLength(grownMap) == 4,
             listLength(policyMap.mapGet("hundred") ?: [99]) == 6,
             ((policyMap.mapGet("hundred") ?: [99]).listGet(0) ?: 99) == 100,
             ((policyMap.mapGet("seven") ?: [99]).listGet(2) ?: 99) == 7,
-            ((policyMap.mapGet("negative") ?: [99]).listGet(4) ?: 99) == ((0 - 1) ?: 0),
+            ((policyMap.mapGet("negative") ?: [99]).listGet(4) ?: 99) == ((0 - 1) ),
             ((grownMap.mapGet("zero") ?: [99]).listGet(0) ?: 99) == 0,
             !mapContains(policyMap, "zero"),
             mapContains(grownMap, "zero"),
@@ -159,4 +189,5 @@ fn resultAndEffectsCase() = {
             listLength(mapValues(grownMap)) == 4
     ])
 }
-test("fallible arithmetic is recovered without masking healthy results", resultAndEffectsCase)
+
+test("fallible arithmetic is recovered without masking healthy results", fn() => exactArithmetic(resultAndEffectsCase))

@@ -21,5 +21,6 @@ negativeIotaCase () =
         listLength (fromGpu piped) == 0
     ]
 
+
 test ("minimum int literals are flavor-equivalent in GPU buffers", minimumIntCase)
 test ("negative gpuIota arguments are flavor-equivalent", negativeIotaCase)

@@ -1,4 +1,4 @@
-// A Feed<Result<int, MathError>> is NOT assignable where a Feed<int> is
+// A Feed<Result<int, string>> is NOT assignable where a Feed<int> is
 // expected: constructor arguments match exactly at the leaves regardless of
 // variance (the coercive Result unwrap never applies under a container).
 // Implements [TYPE-VARIANCE-ASSIGN]
@@ -8,6 +8,6 @@ fn label(f: Feed<int>) = match f {
     Feed { supply } => "supplied"
     Dry => "dry"
 }
-fn mkFeed() -> Feed<Result<int, MathError>> = Feed { supply: 20 * 5 }
+fn mkFeed() -> Feed<Result<int, string>> = Feed { supply: Success { value: 100 } }
 
 fn main() -> Unit = print(label(mkFeed()))

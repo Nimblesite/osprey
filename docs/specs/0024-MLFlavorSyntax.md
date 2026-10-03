@@ -73,12 +73,27 @@ one-parameter `Stmt::Function` whose body is a one-parameter `Expr::Lambda`.
 `add 1 2` lowers to nested one-argument calls. `add 1` therefore returns the
 remaining function.
 
-[Critical issue #184](https://github.com/Nimblesite/osprey/issues/184) currently
-qualifies this rule for effects: an unannotated four-argument curried ML
-function can silently skip operations performed through its body. The
-equivalent flat parameter form works. Until the lowering bug is fixed, write
-effectful functions of that shape with parenthesised comma-separated
-parameters.
+Currying never drops an effect. A full or partial application performs the
+body's operations once its last argument arrives, at every arity and through
+both value and resuming handlers
+([#184](https://github.com/Nimblesite/osprey/issues/184) is fixed; the
+`curried_effects` CLI test pins arities one to five under every memory mode).
+
+A declared effect row bounds the full application, not the construction of the
+intermediate closures. Here `!Log` must admit the `perform` in the innermost
+body, even though `tagged "id"` alone performs nothing; a row without `Log` is
+rejected. The same rule covers a Default function whose body is a closure
+literal ([EFFECTS-ROW-POLY](0017-AlgebraicEffects.md#effectful-function-types-effects-row-poly)).
+
+```osprey-ml
+effect Log
+    note : string => Unit
+
+tagged : string -> string -> string !Log
+tagged prefix text =
+    perform Log.note text
+    prefix + text
+```
 
 Parenthesised comma-separated parameters are explicitly flat:
 

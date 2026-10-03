@@ -393,7 +393,7 @@ mod tests {
     use crate::hover::hover;
     use crate::test_support::col_of;
     const U16: PositionEncoding = PositionEncoding::Utf16;
-    const SRC: &str = "fn add(a: int, b: int) -> int = (a + b) ?: 0\nlet total = add(1, 2)\n";
+    const SRC: &str = "fn add(a: int, b: int) -> int = wrapAdd(a, b)\nlet total = add(1, 2)\n";
 
     #[test]
     fn definition_points_at_the_declaration() {

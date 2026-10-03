@@ -10,7 +10,7 @@ module Text
             Error _why => offset
             Success scalar =>
                 width = codePointWidth scalar ?: 1
-                boundary source ((remaining - 1) ?: 0) ((offset + width) ?: byteLength source)
+                boundary source ((satSub remaining 1) ) (satAdd offset width)
 
     export prefix source limit = take source (boundary source limit 0)
 

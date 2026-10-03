@@ -1,6 +1,6 @@
 // Sum of gcd(i, K) for i in 1..N — Euclidean-algorithm recursion (modulo heavy).
-fn add(a, b) = a + b ?: 0
-fn mod_(a, b) = a % b ?: 0
+fn add(a, b) = a + b
+fn mod_(a, b) = a % b
 
 fn gcd(a, b) = match b {
     0 => a
@@ -8,4 +8,16 @@ fn gcd(a, b) = match b {
 }
 fn step(acc, i) = add(acc, gcd(i, 1234567))
 
-print("${range(1, 2000000) |> fold(0, step)}")
+fn main() = {
+    handle Arith {
+        overflow _ _ _ wrapped => {
+            print("unexpected integer overflow")
+            wrapped
+        }
+        remainderByZero _ => {
+            print("unexpected zero divisor")
+            0
+        }
+    }
+    print("${range(1, 2000000) |> fold(0, step)}")
+}

@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 // ML operator twin covering precedence, grouping, and boolean composition.
 
 (** Verify arithmetic precedence and grouping. *)
@@ -9,21 +23,21 @@ arithmeticOperatorsCase () =
 
     // Preserve the complete rendered result.
     checkAll "arithmetic legacy rendered lines" [
-        "a=${a} b=${b} c=${c} d=${d}" == "a=Success(14) b=Success(20) c=Success(8) d=Success(26)"
+        "a=${a} b=${b} c=${c} d=${d}" == "a=14 b=20 c=8 d=26"
     ]
     // Check each derived number independently.
     checkAll "arithmetic legacy constituent values" [
-        (a ?: 0) == 14,
-        (b ?: 0) == 20,
-        (c ?: 0) == 8,
-        (d ?: 0) == 26
+        (a ) == 14,
+        (b ) == 20,
+        (c ) == 8,
+        (d ) == 26
     ]
     // Exercise associativity, grouping, zero, and negative results.
     checkAll "arithmetic precedence edge cases" [
-        (20 - 6 - 2 ?: 0) == 12,
-        (20 - (6 - 2) ?: 0) == 16,
-        (7 + 9 * 0 ?: 0) == 7,
-        (0 - 5 * 2 ?: 0) == ((0 - 10) ?: 0)
+        (20 - 6 - 2 ) == 12,
+        (20 - (6 - 2) ) == 16,
+        (7 + 9 * 0 ) == 7,
+        (0 - 5 * 2 ) == ((0 - 10) )
     ]
 
 (** Verify logical operators, comparisons, and composition. *)
@@ -54,8 +68,9 @@ booleanOperatorsCase () =
         (t && !f) == true
     ]
 
-test "operator precedence retains every arithmetic golden" arithmeticOperatorsCase
-test "boolean composition retains every logical golden" booleanOperatorsCase
+
+test "operator precedence retains every arithmetic golden" (\() => exactArithmetic (arithmeticOperatorsCase))
+test "boolean composition retains every logical golden" (\() => exactArithmetic (booleanOperatorsCase))
 
 (** [FLOAT-OPERANDS] One constrained helper accepts int and float callers. *)
 numericScale x = x * 1.5
@@ -65,6 +80,10 @@ numericQuotient left right = left / right
 runNumeric f x = f x
 (** Pins numeric obligations at calls, aliases and higher-order slots. *)
 numericPolymorphismCase () =
+    handle Arith
+        divideByZero op lhs =>
+            checkAll "division recovery payload" [op == "/", lhs == 4.0]
+            -1.0
     alias = numericScale
     checkAll "numeric helper polymorphism" [
         numericScale 2 == 3.0,
@@ -73,9 +92,9 @@ numericPolymorphismCase () =
         alias 4.5 == 6.75,
         runNumeric numericScale 5 == 7.5,
         runNumeric numericScale 5.5 == 8.25,
-        (numericQuotient 3 1.5 ?: 0.0) == 2.0,
-        (numericQuotient 2.5 2 ?: 0.0) == 1.25,
-        (((4.0 / 2.0) * 1.5) ?: 0.0) == 3.0,
-        (((4.0 / 0.0) * 1.5) ?: -1.0) == -1.0
+        (numericQuotient 3 1.5 ) == 2.0,
+        (numericQuotient 2.5 2 ) == 1.25,
+        (((4.0 / 2.0) * 1.5) ) == 3.0,
+        (((4.0 / 0.0) * 1.5) ) == -1.5
     ]
-test "numeric constraints retain mixed arithmetic and error propagation" numericPolymorphismCase
+test "numeric constraints retain mixed arithmetic and policy substitution" (\() => exactArithmetic (numericPolymorphismCase))

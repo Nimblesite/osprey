@@ -101,7 +101,7 @@ fn run(initial) = {
     let result = {
         handle static Counter {
             next => {
-                count = (count + 1) ?: count
+                count = satAdd(count, 1)
                 count
             }
         }
@@ -125,7 +125,7 @@ run initial =
     result =
         handle static Counter
             next =>
-                count := (count + 1) ?: count
+                count := satAdd count 1
                 count
         twice ()
     "${result}:${count}"
@@ -141,7 +141,7 @@ fn renamed_parameters_preserve_named_argument_calls() {
         "named_args",
         r#"
 static effect Read { get: fn() -> int }
-fn add(first, second) = (first + second) ?: 0
+fn add(first, second) = satAdd(first, second)
 let value = {
     handle static Read {
         get => 2
@@ -169,7 +169,7 @@ let value = {
     {
 }
     let f = |outer| => match Box { outer: outer } {
-        Box { outer } => (perform Read.get() + outer) ?: 0
+        Box { outer } => satAdd(perform Read.get(), outer)
     }
     f(2)
 }
@@ -186,7 +186,7 @@ fn global_captures_remain_visible_after_specialization() {
         r#"
 static effect Read { get: fn() -> int }
 let amount = 2
-fn work() = (perform Read.get() + amount) ?: 0
+fn work() = satAdd(perform Read.get(), amount)
 let value = {
     handle static Read {
         get => 1
@@ -207,7 +207,7 @@ fn recursive_specializations_preserve_lexical_captures() {
 static effect Read { get: fn() -> int }
 fn readAfterSteps(n) = match n == 0 {
     true => perform Read.get()
-    false => readAfterSteps((n - 1) ?: 0)
+    false => readAfterSteps(satSub(n, 1))
 }
 fn run(outer) = {
     handle static Read {
@@ -229,7 +229,7 @@ fn names_resolve_through_namespace_and_module_scopes() {
 static effect Read { get: fn() -> int }
 namespace app {
     module Math {
-        export fn double(n) = (n * 2) ?: 0
+        export fn double(n) = satMul(n, 2)
     }
 }
 import app::Math
@@ -267,10 +267,10 @@ let report = {
             Starter => 0
         }
         let spread = match moved {
-            { x, y } => (x + y) ?: 0
+            { x, y } => satAdd(x, y)
         }
         let tail = match [moved.x, moved.y, ranked] {
-            [head, ...rest] => (head + length(rest)) ?: 0
+            [head, ...rest] => satAdd(head, length(rest))
             [] => 0
         }
         "${base.x}:${moved.y}:${ranked}:${spread}:${tail}"

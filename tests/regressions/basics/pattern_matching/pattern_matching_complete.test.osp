@@ -1,3 +1,18 @@
+/// This Result API deliberately converts a recorded arithmetic fault at its boundary.
+fn divideResult(a, b) = {
+    mut failed = false
+    handle Arith { divideByZero op _ => {
+        expect(op, "/")
+        failed = true
+        0.0
+    } }
+    let value = a / b
+    match failed {
+        true => Error { message: "division by zero" }
+        false => Success { value: value }
+    }
+}
+
 // Pattern matching across every shape Osprey supports:
 // literal, wildcard, nested match, named ADT field destructuring (both
 // orders), multi-variant union, type-annotation pattern, dynamic union
@@ -97,13 +112,13 @@ print(env { value } ? value : "fallback")
 /// --- Result<T,E> from checked arithmetic: Elvis on Success / Error ---
 /// Every fallible integer operator carries an explicit error channel. Even the
 /// negative fallback is formed with checked subtraction and handled locally.
-let okCalc  = intDiv(a: 10, b: 5)
-let okElvis = okCalc ?: ((0 - 1) ?: 0)
+let okCalc = checkedAdd(1, 1)
+let okElvis = okCalc ?: ((0 - 1) )
 print("ok elvis = ${toString(okElvis)}")
 
-fn divide(a, b) = a / b
+fn divide(a, b) = divideResult(a, b)
 let badDiv  = divide(a: 10, b: 0)
-let badElv  = badDiv ?: 0.0
+let badElv = badDiv ?: 0.0
 print("bad elvis = ${toString(badElv)}")
 let goodDiv = divide(a: 10, b: 2)
 let goodElv = goodDiv ?: 0.0
@@ -148,7 +163,7 @@ fn patternMatchingCase() = {
         shapeKind(localCircle) == "dyn circle",
         shapeKind(localSquare) == "dyn square",
         extracted == "It worked",
-        (intDiv(a: 10, b: 5) ?: ((0 - 1) ?: 0)) == 2,
+        intDiv(10, 5) == 2,
         divisionFailed,
         (divide(a: 10, b: 2) ?: 0.0) == 5.0
     ])

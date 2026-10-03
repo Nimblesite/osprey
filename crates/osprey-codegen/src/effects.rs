@@ -219,7 +219,11 @@ pub(crate) fn op_sig_of(prog: &ProgramTypes, op: &osprey_types::OpType) -> OpSig
 /// Operation types and modes must come from the checked declaration.
 fn op_sig_for(cg: &Codegen, effect: &str, operation: &str) -> Result<OpSig> {
     let key = format!("{effect}.{operation}");
-    cg.effect_op(&key)
+    cg.prog
+        .effects
+        .get(effect)
+        .and_then(|operations| operations.get(operation))
+        .map(|operation| op_sig_of(&cg.prog, operation))
         .ok_or_else(|| CodegenError::invalid(format!("missing checked effect operation `{key}`")))
 }
 
@@ -1109,12 +1113,49 @@ pub(crate) fn gen_perform(
         typed.push(v.typed());
     }
 
-    let op_id = cg.operation_id(&lookup_key, operation)?.to_string();
+    dispatch_request(cg, &lookup_key, operation, &sig, &site.op.ret, typed)
+}
+
+/// Implicit arithmetic requests use the same value-operation ABI as `perform`.
+/// Implements [ARITH-EFFECT-OPS] on native, wasm and inherited fiber handlers.
+pub(crate) fn gen_arithmetic_request(
+    cg: &mut Codegen,
+    operation: &str,
+    args: &[Value],
+) -> Result<Value> {
+    declare_stack(cg);
+    let sig = op_sig_for(cg, osprey_ast::ARITH_EFFECT, operation)?;
+    let ret = cg
+        .prog
+        .effects
+        .get(osprey_ast::ARITH_EFFECT)
+        .and_then(|ops| ops.get(operation))
+        .map(|op| op.ret.clone())
+        .ok_or_else(|| CodegenError::invalid("missing Arith signature"))?;
+    dispatch_request(
+        cg,
+        osprey_ast::ARITH_EFFECT,
+        operation,
+        &sig,
+        &ret,
+        args.iter().map(Value::typed).collect(),
+    )
+}
+
+fn dispatch_request(
+    cg: &mut Codegen,
+    lookup_key: &str,
+    operation: &str,
+    sig: &OpSig,
+    ret: &osprey_types::Type,
+    typed: Vec<String>,
+) -> Result<Value> {
+    let op_id = cg.operation_id(lookup_key, operation)?.to_string();
     let raw = cg.emit_reg(format!("call i8* @__osprey_handler_lookup(i32 {op_id})"));
     // A missed lookup returns null — abort with a message instead of calling
     // a null pointer (an instantiation mismatch on a generic effect misses by
     // design, [EFFECTS-GENERIC-RUNTIME]).
-    emit_unhandled_guard(cg, &raw, &lookup_key, operation);
+    emit_unhandled_guard(cg, &raw, lookup_key, operation);
     let env = cg.emit_reg(format!(
         "call i8* @__osprey_handler_lookup_env(i32 {op_id})"
     ));
@@ -1133,7 +1174,7 @@ pub(crate) fn gen_perform(
         cg.call_void("__osprey_handler_restore_scope", "i8*", &[&scope]);
     }
     if sig.ret_erased {
-        let v = crate::effect_generics::unbox_erased(cg, &r, &site.op.ret);
+        let v = crate::effect_generics::unbox_erased(cg, &r, ret);
         crate::arc::own(cg, &v);
         return Ok(v);
     }

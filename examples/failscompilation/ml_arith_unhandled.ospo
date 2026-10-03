@@ -1,0 +1,4 @@
+// [ARITH-EFFECT-DISCHARGE] Fallible arithmetic with no installed policy is rejected at program entry.
+// osprey: flavor=ml
+add (a, b) = a + b
+print (add (1, 2))

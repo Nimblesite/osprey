@@ -35,14 +35,14 @@ fn resuming_an_undeclared_operation_twice_is_a_compile_error() {
     // the normal rejection path.
     let source = r#"
 effect Choose { control pick: fn() -> int }
-fn both() = (perform Choose.pick() + 1) ?: 0
+fn both() = satAdd(perform Choose.pick(), 1)
 fn main() = {
     let total = {
         handle Choose {
             pick => {
                 let a = resume(10)
                 let b = resume(20)
-                a + b ?: 0
+                satAdd(a, b)
             }
         }
         both()
@@ -63,7 +63,7 @@ fn an_abort_arm_that_resumes_is_rejected() {
     // its value answers the whole region and the `perform` never returns.
     let source = r#"
 effect Fail { control abort fail: fn(string) -> int }
-fn risky() = (perform Fail.fail("nope") + 1) ?: 0
+fn risky() = satAdd(perform Fail.fail("nope"), 1)
 fn main() = {
     let outcome = {
         handle Fail {
@@ -127,7 +127,7 @@ effect Job {
 fn run() = {
     let a = perform Job.step(1)
     let b = perform Job.quit("stop")
-    a + b ?: 0
+    satAdd(a, b)
 }
 fn main() = {
     let v = {
@@ -149,7 +149,7 @@ effect Job {
 fn run() = {
     let a = perform Job.step(1)
     let b = perform Job.quit("stop")
-    a + b ?: 0
+    satAdd(a, b)
 }
 fn main() = {
     let v = {
@@ -277,7 +277,7 @@ fn main() = {
 
 const ONCE_ON_WASM: &str = r#"
 effect Async { control once await: fn(int) -> int }
-fn pipeline() = (perform Async.await(1) + 1) ?: 0
+fn pipeline() = satAdd(perform Async.await(1), 1)
 fn main() = {
     let v = {
         handle Async {

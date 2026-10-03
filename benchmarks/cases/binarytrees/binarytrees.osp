@@ -3,11 +3,25 @@ type Tree = Leaf | Node(Tree, Tree)
 
 fn make(d) = match d {
     0 => Node(Leaf, Leaf)
-    _ => Node(make((d - 1) ?: 0), make((d - 1) ?: 0))
+    _ => Node(make(d - 1), make(d - 1))
 }
 fn check(t) = match t {
     Leaf       => 0
-    Node(l, r) => 1 + check(l) + check(r) ?: 0
+    Node(l, r) => 1 + check(l) + check(r)
 }
 
-print("${range(0, 1200) |> fold(0, |acc, _| => acc + check(make(13)) ?: 0)}")
+fn main() = {
+    mut fault = ""
+    handle Arith {
+        overflow op _ _ wrapped => {
+            fault = op
+            wrapped
+        }
+    }
+    let answer = range(0, 1200) |> fold(0, |acc, _| => acc + check(make(13)))
+    let rendered = match fault == "" {
+        true => "${answer}"
+        false => "arithmetic fault ${fault}"
+    }
+    print(rendered)
+}

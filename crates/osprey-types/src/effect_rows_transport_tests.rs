@@ -45,7 +45,7 @@ fn only_the_selected_method_branch_contributes_effects() {
             ("dispatch(r)", field_effectful),
             ("dispatch(5)", !field_effectful),
             ("dispatch(length(\"abc\"))", !field_effectful),
-            ("dispatch(intDiv(8,2) ?: 0)", !field_effectful),
+            ("dispatch(intDiv(8, 2))", !field_effectful),
         ] {
             probe_call(&declarations, call, required);
         }

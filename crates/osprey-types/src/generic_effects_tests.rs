@@ -100,7 +100,7 @@ spec_cases! {
     a_handler_arm_disagreeing_with_the_body_is_rejected: rejects_with(Default, r#"effect Stash<T> {
     take: fn() -> T
 }
-fn doubled() -> int = (perform Stash.take()) * 2 ?: 0
+fn doubled() -> int = wrapMul(perform Stash.take(), 2)
 fn main() -> Unit = {
     let held = {
         handle Stash {
@@ -164,7 +164,7 @@ fn store() = perform Stash.put("text")
 fn main() -> Unit = {
     let done = {
         handle Stash {
-            put v => print("stored ${v + 1 ?: 0}")
+            put v => print("stored ${wrapAdd(v, 1)}")
         }
         store()
     }

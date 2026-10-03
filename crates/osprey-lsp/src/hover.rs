@@ -254,10 +254,9 @@ fn inferred_parameter(program: &Program, function: &str, index: usize) -> Option
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::col_of;
+    use crate::test_support::{col_of, ADD_SRC as SRC};
     use crate::testkit::shows;
     const U16: PositionEncoding = PositionEncoding::Utf16;
-    const SRC: &str = "fn add(a: int, b: int) -> int = (a + b) ?: 0\nlet total = add(1, 2)\n";
 
     #[test]
     fn hovering_a_parameter_in_the_body_holes_it_exactly_as_the_declaration_does() {
@@ -335,13 +334,13 @@ mod tests {
         // hovering `inc` read `fn inc(x: int) -> int` — syntax their frontend
         // rejects — inside an `osprey`-fenced block the ML TextMate grammar
         // does not highlight. Re-apply the flavor at the presentation edge.
-        let ml = "inc : int -> int\ninc x = (x + 1) ?: 0\n";
+        let ml = "inc : int -> int\ninc x = x + 1\n";
         let hov = hover(ml, "file:///tour.ospml", 1, 0, U16).expect("hover");
         shows(&hov, &["```osprey-ml", "inc : int -> int"]);
         assert!(!hov.contains("fn inc("), "{hov}");
         // The identical program under a `.osp` path keeps the Default spelling,
         // proving the flavor — not the content — drives the rendering.
-        let default_src = "fn inc(x: int) -> int = (x + 1) ?: 0\n";
+        let default_src = "fn inc(x: int) -> int = x + 1\n";
         let plain = hover(default_src, "file:///a.osp", 0, 3, U16).expect("hover");
         shows(&plain, &["```osprey\n", "fn inc(x: int) -> int"]);
     }
@@ -369,7 +368,7 @@ mod tests {
     fn hover_on_a_documented_default_function_renders_its_docs() {
         // A `///` block above a function surfaces under its signature.
         // Implements [LSP-HOVER-DOCS]
-        let src = "/// Doubles `x`.\nfn dbl(x: int) -> int = (x * 2) ?: 0\n";
+        let src = "/// Doubles `x`.\nfn dbl(x: int) -> int = x * 2\n";
         let md = hover(src, "file:///a.osp", 1, 4, U16).expect("hover over `dbl`");
         shows(&md, &["fn dbl(x: int) -> int", "Doubles `x`."]);
 
@@ -512,16 +511,16 @@ mod tests {
         // A `[Symbol]` intra-doc link in a comment hovers to that symbol's own
         // docs ([DOC-LINK]) — here `[helper]` on the doc line of `main`.
         let src = "/// A helper.\n\
-                   fn helper(n) = n + 1\n\
+                   fn helper(n) = checkedAdd(n, 1)\n\
                    /// Calls [helper] to do the work.\n\
                    fn main() = helper(1)\n";
         let col = col_of(src, 2, "helper");
         let md = hover(src, "file:///a.osp", 2, col, U16).expect("hover over [helper]");
         // `helper` annotates nothing, so both slots come from the checker:
-        // `n: int`, returning the `Result` that checked `+` produces
+        // `n: int`, returning the `Result` that `checkedAdd` produces
         // ([ARITH-CHECKED], [LSP-HOVER-INFERRED-SIGNATURE]).
         assert!(
-            md.contains("fn helper(n: int) -> Result<int, MathError>"),
+            md.contains("fn helper(n: int) -> Result<int, Error>"),
             "resolves to helper's inferred signature: {md}"
         );
         assert!(md.contains("A helper."), "shows helper's docs: {md}");
@@ -531,12 +530,12 @@ mod tests {
     /// the parameter and the return type come from inference, in both flavors.
     #[test]
     fn unannotated_functions_hover_with_inferred_types() {
-        let osp = "fn double(n) = n * 2 ?: 0\n";
+        let osp = "fn double(n) = n * 2\n";
         let md = hover(osp, "file:///d.osp", 0, col_of(osp, 0, "double"), U16)
             .expect("hover over unannotated Default function");
         assert!(md.contains("fn double(n: int) -> int"), "{md}");
 
-        let ml = "double n = n * 2 ?: 0\n";
+        let ml = "double n = n * 2\n";
         let md = hover(ml, "file:///d.ospml", 0, col_of(ml, 0, "double"), U16)
             .expect("hover over unannotated ML function");
         assert!(md.contains("double : int -> int"), "{md}");
@@ -562,7 +561,8 @@ mod tests {
         // A parameter is not a `let`, so the binding table never held it and
         // hovering one — the most common hover in any typed body — returned
         // nothing at all. Implements [LSP-HOVER-WRITTEN].
-        let annotated = hover(SRC, "file:///a.osp", 0, 33, U16).expect("hover over `a`");
+        let in_body = col_of(SRC, 0, "(a, b)");
+        let annotated = hover(SRC, "file:///a.osp", 0, in_body, U16).expect("hover over `a`");
         assert!(annotated.contains("a: int"), "{annotated}");
 
         // With no annotation the type still comes from the checker, which is

@@ -4,5 +4,13 @@ ok 3 - effect policy bypasses its handler on success
 ok 4 - effect policy can preserve the exact overflow Result
 ok 5 - effect policy may deliberately recover from known overflow
 ok 6 - healthy arithmetic never invokes the recovery decision
-1..6
-# tests=6 passed=6 failed=0 skipped=0
+ok 7 - masked square preserves the mathematical answer
+ok 8 - overflow must not reset the fold accumulator
+ok 9 - overflow must not make a ledger deposit vanish
+ok 10 - arithmetic return annotation preserves output
+ok 11 - total helpers choose modular or saturating arithmetic
+ok 12 - nonzero literal divisors need no policy
+ok 13 - recovery arithmetic forwards to the outer policy
+ok 14 - direct handler calls preserve Result operation values
+1..14
+# tests=14 passed=14 failed=0 skipped=0

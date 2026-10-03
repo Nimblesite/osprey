@@ -9,8 +9,8 @@
   step e  MAX + 1         -> 100
   step f  100 + 23        -> 123
 rescued 3 failing step(s); healthy + rescued total = 430
-local ?: default  10 % 3 -> 1   10 % 0 -> -1
-raw 10 / 0 as a value = Error(division by zero)
+local remainder policy  10 % 3 -> 1   10 % 0 -> -1
+float policy for 10 / 0 = -1.0
 === pipeline complete ===
 ok 1 - fallible arithmetic is recovered without masking healthy results
 1..1

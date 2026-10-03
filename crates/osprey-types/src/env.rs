@@ -174,28 +174,7 @@ pub(crate) fn generalize(ctx: &mut InferCtx, env: &TypeEnv, ty: &Type) -> Scheme
 }
 
 pub(crate) fn subst_vars(t: &Type, map: &HashMap<VarId, Type>) -> Type {
-    match t {
-        Type::Var(v) => map.get(v).cloned().unwrap_or_else(|| t.clone()),
-        Type::Con { name, args } => Type::Con {
-            name: name.clone(),
-            args: args.iter().map(|a| subst_vars(a, map)).collect(),
-        },
-        Type::Fun { params, ret } => Type::Fun {
-            params: params.iter().map(|p| subst_vars(p, map)).collect(),
-            ret: Box::new(subst_vars(ret, map)),
-        },
-        Type::Record { name, fields } => Type::Record {
-            name: name.clone(),
-            fields: fields
-                .iter()
-                .map(|(k, v)| (k.clone(), subst_vars(v, map)))
-                .collect(),
-        },
-        Type::Union { name, variants } => Type::Union {
-            name: name.clone(),
-            variants: variants.iter().map(|v| subst_vars(v, map)).collect(),
-        },
-    }
+    crate::ty::map_type_vars(t, &mut |v| map.get(&v).cloned().unwrap_or(Type::Var(v)))
 }
 #[cfg(test)]
 #[expect(

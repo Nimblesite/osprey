@@ -3,4 +3,7 @@
 fn scale(x) = x * 1.5
 fn divide(left, right) = left / right
 let badScale = scale("text")
-let badDivision = divide(true, "text")
+let badDivision = {
+    handle Arith { divideByZero _ _ => 0.0 }
+    divide(true, "text")
+}

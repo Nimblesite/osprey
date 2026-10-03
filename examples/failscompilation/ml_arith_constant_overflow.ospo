@@ -1,0 +1,3 @@
+// [ARITH-EFFECT-CONST] A constant fold that overflows is a compile error naming the expression.
+// osprey: flavor=ml
+print (9223372036854775807 + 1)

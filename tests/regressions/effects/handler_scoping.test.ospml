@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 effect Logger
     (** Record `message` in whatever log the installed handler owns. *)
     log : string => Unit
@@ -69,20 +83,22 @@ askBoth n =
     perform Tell.tell a
 
 nested =
-    handle Ask
-        ask v => resume ((v + 1) ?: v)
-    handle Tell
-        tell v => resume ((v * 2) ?: v)
-    askBoth 4
+    exactArithmetic (\() =>
+        handle Ask
+            ask v => resume ((v + 1) )
+        handle Tell
+            tell v => resume ((v * 2) )
+        askBoth 4)
 
 askOnce n = perform Ask.ask n
 
 shadowed =
-    handle Ask
-        ask v => resume ((v + 100) ?: v)
-    handle Ask
-        ask v => resume ((v + 1) ?: v)
-    askOnce 1
+    exactArithmetic (\() =>
+        handle Ask
+            ask v => resume ((v + 100) )
+        handle Ask
+            ask v => resume ((v + 1) )
+        askOnce 1)
 print ("nested resuming " + toString nested + " shadowed resume " + toString shadowed)
 print "=== resume scoping done ==="
 
@@ -112,16 +128,17 @@ describeErased v =
 
 (** Both performs continue afterwards, so each one's box is live across a
     suspend — the heap payload is built at runtime so ARC actually counts it. *)
-auditWork : Unit -> int ! Audit
+auditWork : Unit -> int ![Audit, Arith]
 auditWork () =
     a = perform Audit.note (Boxed(held = "eff" + "ect", tag = 3))
     b = perform Audit.note 5
-    (a + b) ?: 0
+    (a + b) 
 
 audited =
-    handle Audit
-        note item => resume (length (describeErased item))
-    auditWork ()
+    exactArithmetic (\() =>
+        handle Audit
+            note item => resume (length (describeErased item))
+        auditWork ())
 
 (** Run the forward-referenced chain under a quiet handler. *)
 forwardResultForTest () =
@@ -131,13 +148,14 @@ forwardResultForTest () =
     nestedCall ()
 
 // Re-enter the forward call chain and check nested handler restoration.
-test "nested handlers override locally and restore outer scope" (\() => checkAll "handler scope results" [
-        (forwardResultForTest () ?: 0) == 42,
+
+test "nested handlers override locally and restore outer scope" (\() => exactArithmetic ((\() => checkAll "handler scope results" [
+        (forwardResultForTest () ) == 42,
         nested == 10,
         shadowed == 2,
         nested != shadowed,
         audited == 18
-])
+])))
 
 (** Counter proves handler-owned state is one shared cell no matter how deep the
     performing call sits ([EFFECTS-HANDLER-STATE]). *)
@@ -152,14 +170,14 @@ bumpVia : int -> int ! Counter
 bumpVia n = perform Counter.bump n
 
 (** Two nested helper levels, so the operation is two calls from the region. *)
-bumpTwice : int -> int ! Counter
+bumpTwice : int -> int ![Counter, Arith]
 bumpTwice n =
     first = bumpVia n
-    second = bumpVia (n + 1 ?: n)
-    (first + second) ?: 0
+    second = bumpVia (n + 1 )
+    (first + second) 
 
 (** Three levels: [EFFECTS-HANDLER-STATE] does not stop at a call boundary. *)
-deeplyNested : int -> int ! Counter
+deeplyNested : int -> int ![Counter, Arith]
 deeplyNested n = bumpTwice n
 
 (** A handler region at file scope owns its cell exactly as one inside a
@@ -167,13 +185,14 @@ deeplyNested n = bumpTwice n
 mut topCell = 0
 mut topBumps = 0
 topSum =
-    handle Counter
-        bump amount =>
-            topBumps := topBumps + 1 ?: topBumps
-            topCell := topCell + amount ?: topCell
-            topCell
-        snapshot offset => topCell + offset ?: topCell
-    deeplyNested 2
+    exactArithmetic (\() =>
+        handle Counter
+            bump amount =>
+                topBumps := topBumps + 1 
+                topCell := topCell + amount 
+                topCell
+            snapshot offset => topCell + offset 
+        deeplyNested 2)
 
 (** [EFFECTS-HANDLER-STATE] promotes a captured `mut` to a shared heap cell so
     "every arm, the handled body, and code after the region observe the same
@@ -188,23 +207,23 @@ handlerStateThroughNestedCallsCase () =
     sum =
         handle Counter
             bump amount =>
-                bumps := bumps + 1 ?: bumps
-                cell := cell + amount ?: cell
+                bumps := bumps + 1 
+                cell := cell + amount 
                 lastAmount := amount
                 cell
             snapshot offset =>
-                snapshots := snapshots + 1 ?: snapshots
-                cell + offset ?: cell
+                snapshots := snapshots + 1 
+                cell + offset 
         nestedSum = deeplyNested 5
         live = perform Counter.snapshot 0
-        (nestedSum + live) ?: 0
+        (nestedSum + live) 
     after =
         handle Counter
             bump amount =>
-                bumps := bumps + 1 ?: bumps
-                cell := cell + amount ?: cell
+                bumps := bumps + 1 
+                cell := cell + amount 
                 cell
-            snapshot offset => cell + offset ?: cell
+            snapshot offset => cell + offset 
         bumpVia 100
 
     // The arm's own answers accumulate on one cell across three call levels.
@@ -218,16 +237,16 @@ handlerStateThroughNestedCallsCase () =
         after == cell,
         sum != cell,
         bumps != snapshots,
-        (bumps + snapshots ?: 0) == 4
+        (bumps + snapshots ) == 4
     ]
 
     // Each intermediate total is observable, so a lost update cannot hide
     // behind a correct final sum.
     checkAll "handler cell reaches every intermediate total" [
-        (5 + 11 ?: 0) == 16,
-        sum == (16 + 11 ?: 0),
-        cell == (11 + 100 ?: 0),
-        lastAmount == (5 + 1 ?: 0),
+        (5 + 11 ) == 16,
+        sum == (16 + 11 ),
+        cell == (11 + 100 ),
+        lastAmount == (5 + 1 ),
         cell > 0,
         cell != 0,
         sum > 0,
@@ -243,14 +262,14 @@ handlerStateThroughNestedCallsCase () =
         topBumps == 2,
         topCell != cell,
         topSum != sum,
-        topCell == (2 + 3 ?: 0),
-        topSum == (2 + 5 ?: 0),
+        topCell == (2 + 3 ),
+        topSum == (2 + 5 ),
         topBumps != bumps,
         topCell > 0,
         topSum > topCell
     ]
 
-test "handler-owned state is one cell across nested calls and file scope" handlerStateThroughNestedCallsCase
+test "handler-owned state is one cell across nested calls and file scope" (\() => exactArithmetic (handlerStateThroughNestedCallsCase))
 
 (** (4) A `handle` that names no body handles the rest of the block it sits in
     ([EFFECTS-HANDLE-REST]). Nothing has to be indented to say "from here on",
@@ -270,4 +289,4 @@ restOfBlockCase () =
     ]
 
 // A handler region that names no body still covers everything after it.
-test "a handle with no `in` handles the rest of its block" restOfBlockCase
+test "a handle with no `in` handles the rest of its block" (\() => exactArithmetic (restOfBlockCase))

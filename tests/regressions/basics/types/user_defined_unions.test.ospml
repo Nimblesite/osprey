@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 (** Cross-contract oracle for [TYPE-MATCH-EXHAUSTIVE], [TYPE-LIST],
     [TYPE-LIST-PATTERNS], [TYPE-MAP], [TYPE-MAP-LOOKUP], [TYPE-MAP-OPS],
     [TYPE-GENERICS-FN], [BUILTIN-MAP-GET], [BUILTIN-MAP-SET],
@@ -90,7 +104,7 @@ auditIntKeys (items, keys) =
     mut encoded = 0
     handle MapLookupAudit
         observe value =>
-            encoded := encoded * 100 + value ?: encoded
+            encoded := encoded * 100 + value 
     forEachList keys (\key => perform MapLookupAudit.observe (valueOr (items, key, 0)))
     encoded
 
@@ -187,11 +201,12 @@ userDefinedUnionCase () =
     checkAll "returned union values stay valid call arguments" [
         render (classify 27) == "score 27",
         render (classify 0) == "reason empty",
-        render (classify ((0 - 4) ?: 0)) == "score -4",
+        render (classify ((0 - 4) )) == "score -4",
         render (Score(points = 9)) == "score 9",
         render (Reason(text = "blocked")) == "reason blocked"
     ]
-test "user-defined union variants preserve their tags and payloads" userDefinedUnionCase
+
+test "user-defined union variants preserve their tags and payloads" (\() => exactArithmetic (userDefinedUnionCase))
 
 (** Exercise generic lookup at scalar and nested collection types on maps BUILT
     at runtime, then route every recovered value through one generic effect. *)
@@ -211,10 +226,10 @@ builtMapIndexCase () =
         Error message => message != ""
 
     checkAll "built scalar maps preserve lookup replacement and persistence" [
-        (built["a"] ?: ((0 - 1) ?: 0)) == 9,
-        (built["b"] ?: ((0 - 1) ?: 0)) == 16,
-        valueOr (built, "a", ((0 - 1) ?: 0)) == 9,
-        valueOr (built, "missing", ((0 - 1) ?: 0)) == ((0 - 1) ?: 0),
+        (built["a"] ?: ((0 - 1) )) == 9,
+        (built["b"] ?: ((0 - 1) )) == 16,
+        valueOr (built, "a", ((0 - 1) )) == 9,
+        valueOr (built, "missing", ((0 - 1) )) == ((0 - 1) ),
         mapLength built == 2,
         mapContains built "a",
         mapContains built "b",
@@ -268,4 +283,4 @@ builtMapIndexCase () =
         listValueAt (listGet nestedMaps 0 ?: ["fallback" => [99]], "odd", 2, 99) == 5,
         listValueAt (listGet nestedMaps 1 ?: ["fallback" => [99]], "prime", 3, 99) == 7
     ]
-test "built maps support indexed lookup" builtMapIndexCase
+test "built maps support indexed lookup" (\() => exactArithmetic (builtMapIndexCase))

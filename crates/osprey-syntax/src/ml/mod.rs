@@ -28,6 +28,7 @@ mod annotation_edits;
 mod binding_ranges;
 mod clauses;
 mod cst;
+mod doc_text;
 mod kernel;
 mod lexer;
 mod lower;

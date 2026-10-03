@@ -1,3 +1,17 @@
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 // ML-flavor twin of token_scan.osp. A mini-lexer primitive built directly on
 // the O(1) string cursor (byteAt / byteLength, [BUILTIN-STRING-CURSOR]). It
 // scans a run of ASCII digits out of a string and accumulates them into an
@@ -29,7 +43,7 @@ scanInt (s, i, acc) =
     match byteAt s i
         Success value =>
             match value >= zero () && value <= nine ()
-                true => scanInt (s, ((i + 1) ?: i), ((acc * 10 + value - zero ()) ?: acc))
+                true => scanInt (s, ((i + 1) ), ((acc * 10 + value - zero ()) ))
                 false => acc
         Error _message => acc
 
@@ -37,7 +51,7 @@ scanInt (s, i, acc) =
     ends). Recurses while digits continue; returns i at the first non-digit/EOI. *)
 scanEnd (s, i) =
     match isDigitAt (s, i)
-        true => scanEnd (s, ((i + 1) ?: i))
+        true => scanEnd (s, ((i + 1) ))
         false => i
 
 (** Skip a run of non-digit bytes: index of the next digit at or after i, or
@@ -49,7 +63,7 @@ nextDigit (s, i) =
         false =>
             match isDigitAt (s, i)
                 true => i
-                false => nextDigit (s, ((i + 1) ?: i))
+                false => nextDigit (s, ((i + 1) ))
 
 (** Walk the whole string, scanning every number token into a List<int>.
     From position i: skip to the next digit, scan that number, append it, then
@@ -62,37 +76,47 @@ scanAll (s, i, acc) =
 (** ---- single token: "12345abc" stops at 'a' ---- *)
 mixed = "12345abc"
 print "byteLen=${byteLength mixed}\n"
-print "scan=${scanInt (mixed, 0, 0)}\n"
-print "end=${scanEnd (mixed, 0)}\n"
-match byteAt mixed (scanEnd (mixed, 0))
-    Success value => print "stopByte=${value}\n"
-    Error _message => print "stopByte FAILED\n"
+exactArithmetic (\() =>
+    print "scan=${scanInt (mixed, 0, 0)}\n")
+exactArithmetic (\() =>
+    print "end=${scanEnd (mixed, 0)}\n")
+exactArithmetic (\() =>
+    match byteAt mixed (scanEnd (mixed, 0))
+        Success value => print "stopByte=${value}\n"
+        Error _message => print "stopByte FAILED\n")
 
 (** ---- digits-only token runs to end-of-input via the Error branch ----
     ML's interpolation lexer can't carry a nested string literal inside a
     `${…}` span, so each call whose argument is a string literal is hoisted
     into a binding first; the temp collapses in codegen to the same IR the
     Default flavor emits for the inline `${scanInt("777", 0, 0)}` form. *)
-pure = scanInt ("777", 0, 0)
+pure = exactArithmetic (\() =>
+    scanInt ("777", 0, 0))
 print "pure=${pure}\n"
-pureEnd = scanEnd ("777", 0)
+pureEnd = exactArithmetic (\() =>
+    scanEnd ("777", 0))
 print "pureEnd=${pureEnd}\n"
 
 (** ---- leading non-digits: scan returns 0, nextDigit finds the run ---- *)
-leadScan = scanInt ("ab42", 0, 0)
+leadScan = exactArithmetic (\() =>
+    scanInt ("ab42", 0, 0))
 print "leadScan=${leadScan}\n"
-leadNext = nextDigit ("ab42", 0)
+leadNext = exactArithmetic (\() =>
+    nextDigit ("ab42", 0))
 print "leadNext=${leadNext}\n"
-leadVal = scanInt ("ab42", (nextDigit ("ab42", 0)), 0)
+leadVal = exactArithmetic (\() =>
+    scanInt ("ab42", (nextDigit ("ab42", 0)), 0))
 print "leadVal=${leadVal}\n"
 
 (** ---- empty input: nothing to scan ---- *)
-emptyScan = scanInt ("", 0, 0)
+emptyScan = exactArithmetic (\() =>
+    scanInt ("", 0, 0))
 print "emptyScan=${emptyScan}\n"
 
 (** ---- multi-token lexer over a delimited string ---- *)
 stream = "12,345-6789 0!42"
-tokens = scanAll (stream, 0, (List ()))
+tokens = exactArithmetic (\() =>
+    scanAll (stream, 0, (List ())))
 print "tokenCount=${listLength tokens}\n"
 forEachList tokens print
 
@@ -122,4 +146,5 @@ tokenScanCase () =
         tokenIs (scanned, 2, 6789), tokenIs (scanned, 3, 0),
         tokenIs (scanned, 4, 42)
     ]
-test "token scanner finds every integer and boundary" tokenScanCase
+
+test "token scanner finds every integer and boundary" (\() => exactArithmetic (tokenScanCase))

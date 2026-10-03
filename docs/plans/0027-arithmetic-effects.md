@@ -1,6 +1,6 @@
 # Arithmetic as an Effect — retiring `Result` arithmetic and the `?:` fabrication tax
 
-**Status:** design fixed by [spec 0037](../specs/0037-ArithmeticEffects.md) (normative target); implementation has not started. Driven by [#230](https://github.com/Nimblesite/osprey/issues/230). Interacts with [plan 0022](0022-arithmetic-totality-audit.md) (floats — stays there), [plan 0016](0016-algebraic-effects-and-handlers.md) (handler values gate prelude-named policies), which also owns explicit static policy selection.
+**Status:** implementation proposed; final verification and plan retirement remain. [Spec 0037](../specs/0037-ArithmeticEffects.md) defines the shipped contract. Driven by [#230](https://github.com/Nimblesite/osprey/issues/230). Interacts with [plan 0022](0022-arithmetic-totality-audit.md) (floats — stays there) and [plan 0016](0016-algebraic-effects-and-handlers.md) (shared handlers and explicit static policy selection).
 
 > Evidence line numbers may drift as code moves. Use the cited function and diagnostic-message names as stable anchors.
 

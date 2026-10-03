@@ -1,9 +1,28 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // Erased compatibility values [TYPE-ANY].
 
 fn getDynamicValue() -> any = 42
 
 /// This should also pass - explicit any with parameter
-fn processAnyValue(input) -> any = input + 10 ?: 0
+fn processAnyValue(input) -> any = input + 10 
 
 /// Every `any` above carries a SCALAR, which is why erased HEAP values went
 /// uncovered. Forwarding one through `any` must not disturb it: the erasure
@@ -27,11 +46,11 @@ fn forwardedHeap() = processAny(forward("dyn" + "amic"))
 
 print("Explicit any return type works")
 print("getDynamicValue() = ${getDynamicValue()}")
-print("processAnyValue(5) = ${processAnyValue(5)}")
+exactArithmetic(fn() => print("processAnyValue(5) = ${processAnyValue(5)}"))
 
 /// Test storing any values without auto-conversion
 let result1 = getDynamicValue()
-let result2 = processAnyValue(5)
+let result2 = exactArithmetic(fn() => processAnyValue(5))
 print("Any values stored without auto-conversion")
 
 /// Test getRegularArgumentPosition coverage
@@ -183,7 +202,7 @@ fn erasedPoint() -> any = Point { x: 1, y: 2 }
 type Shape = Circle { radius: int } | Square { side: int }
 
 fn erasedKinds() =
-    "${forward(1.5 + 0.25)}|${forward(1 < 2)}|${forward(Green)}|${forward(Circle { radius: 3 })}|${forward(intDiv(10, 2))}|${forward(listAppend(List(), 1))}|${forward(mapSet(Map(), "k", 1))}"
+    "${forward(1.5 + 0.25)}|${forward(1 < 2)}|${forward(Green)}|${forward(Circle { radius: 3 })}|${forward(checkedAdd(2, 3))}|${forward(listAppend(List(), 1))}|${forward(mapSet(Map(), "k", 1))}"
 
 /// A container of erased values keeps them BOXED. Folding an `any` element
 /// into the uniform integer word tagged the slots unmanaged and read each
@@ -282,4 +301,5 @@ fn anyTypeBehaviorCase() = {
         compareColors(c1: Red, c2: Blue) == "Different colors"
     ])
 }
-test("any values retain usable behavior across typed boundaries", anyTypeBehaviorCase)
+
+test("any values retain usable behavior across typed boundaries", fn() => exactArithmetic(anyTypeBehaviorCase))

@@ -1,3 +1,18 @@
+// Record faults for the entire report and reject it at the publication boundary.
+fn printExact(work) = {
+    mut fault = ""
+    handle Arith {
+        overflow op lhs _ _ => { fault = "overflow in ${op}"
+            lhs }
+        divideByZero op lhs => { fault = "zero divisor in ${op}"
+            lhs }
+        remainderByZero lhs => { fault = "zero remainder divisor"
+            lhs }
+    }
+    let report = work()
+    print(match fault { "" => report _ => "REJECTED: ${fault}" })
+}
+
 // Osprey Data Studio — the program behind the /wasm/ browser demo.
 // [WASM-TARGET] Default (brace) flavor. studio.ospml is the ML twin; both emit
 // a byte-identical manifest (proven by the wasm differential harness).
@@ -114,15 +129,15 @@ fn run() = {
     handle Db {
         record sale => {
             seed    = seed + insertLine(sale) + "\n"
-            revenue = revenue + (sale.qty * sale.price ?: 0) ?: revenue
-            units   = units + sale.qty ?: units
-            count   = count + 1 ?: count
-            premium = premium + isPremium(sale.price) ?: premium
+            revenue = revenue + (sale.qty * sale.price ) 
+            units   = units + sale.qty 
+            count   = count + 1 
+            premium = premium + isPremium(sale.price) 
             revenue
         }
     }
     let _total = books()
-    print("::OSPREY-STUDIO|1
+    "::OSPREY-STUDIO|1
 ::DDL
 ${ddl()}
 ::SEED
@@ -133,7 +148,7 @@ ${queries()}
 ::METRIC|order_count|${count}
 ::METRIC|premium_orders|${premium}
 ::METRIC|revenue_tier|${tier(revenue)}
-::END")
+::END"
 }
 
-let studio = run()
+printExact(run)

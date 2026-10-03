@@ -13,8 +13,8 @@ atFloat (xs, i) = gpuGet (xs, i) ?: 0.0
     recursive self-call must be emitted from the call site. *)
 rowDot (matrix, vector, cols, row, col) = match col == cols
     true => 0.0
-    false => (atFloat (matrix, (((row * cols) ?: 0) + col) ?: 0) * atFloat (vector, col)
-        + rowDot (matrix, vector, cols, row, (col + 1) ?: col))
+    false => (atFloat (matrix, (((row * cols) ) + col) ) * atFloat (vector, col)
+        + rowDot (matrix, vector, cols, row, (col + 1) ))
 
 multiplicationOrderCase () =
     t = 2.0
@@ -61,7 +61,22 @@ blockBodyCase () =
         (mapped |> gpuFold 0.0 addFloats) == 18.0
     ]
 
-test ("float kernel slots type both multiplication orders", multiplicationOrderCase)
-test ("named generic float combines specialize from buffer slots", genericCombineCase)
-test ("unannotated recursive helpers are valid GPU kernels", recursiveHelperCase)
-test ("block-bodied GPU kernels keep local bindings", blockBodyCase)
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
+
+test ("float kernel slots type both multiplication orders", \() => exactArithmetic (multiplicationOrderCase))
+test ("named generic float combines specialize from buffer slots", \() => exactArithmetic (genericCombineCase))
+test ("unannotated recursive helpers are valid GPU kernels", \() => exactArithmetic (recursiveHelperCase))
+test ("block-bodied GPU kernels keep local bindings", \() => exactArithmetic (blockBodyCase))

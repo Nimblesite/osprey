@@ -16,6 +16,7 @@
 mod aggregate;
 mod anybox;
 mod arc;
+mod arithmetic;
 mod builder;
 mod call;
 mod cast;
@@ -186,18 +187,21 @@ mod tests {
         // A monomorphic (annotated) function is emitted as a real definition and
         // called directly; a generic one would instead inline at its call sites.
         let ir = module(
-            "fn add(a: int, b: int) -> Result<int, MathError> = a + b\n\
+            "fn add(a: int, b: int) -> int = {\n\
+               handle Arith { overflow _ _ _ wrapped => wrapped }\n\
+               a + b\n\
+             }\n\
              let r = add(2, 3)\n",
         );
         // Parameters are named positionally, not after their source
         // identifier, so an ML/Default twin pair stays byte-identical
         // ([FLAVOR-IR-EQUIV]).
-        assert!(ir.contains("define { i64, i8, i8* }* @add(i64 %$p0, i64 %$p1)"));
+        assert!(ir.contains("define i64 @add(i64 %$p0, i64 %$p1)"));
         assert!(
             ir.contains("call { i64, i1 } @llvm.sadd.with.overflow.i64(i64 %$p0, i64 %$p1)"),
             "integer addition must lower through LLVM's checked intrinsic:\n{ir}"
         );
-        assert!(ir.contains("call { i64, i8, i8* }* @add(i64 2, i64 3)"));
+        assert!(ir.contains("call i64 @add(i64 2, i64 3)"));
     }
 
     // Testing built-ins lower to the TAP runtime and re-route main's exit
@@ -281,8 +285,9 @@ mod tests {
     #[test]
     fn error_results_render_visibly_and_handles_are_rejected() {
         // [TESTING-EQUALITY] a Result operand branches on its discriminant:
-        // Success renders bare, Error renders as Error(<message>).
-        let ir = module("expect(intDiv(1, 0), 2)\n");
+        // Success renders bare, Error renders as Error(<message>). Overflow
+        // reaches a value only through `checkedAdd` ([ARITH-EFFECT]).
+        let ir = module("expect(checkedAdd(9223372036854775807, 1), 2)\n");
         shows(
             &ir,
             &["call void @osp_test_assert(i8* null, i32", "Error(%s)"],
@@ -295,10 +300,10 @@ mod tests {
 
     #[test]
     fn assertion_operands_render_success_payloads_without_hiding_errors() {
-        // [TESTING-EQUALITY] intDiv returns Result<int, _>; expect compares
-        // a Success payload canonically, while the sibling test proves Error
-        // remains visible rather than being read as a fabricated payload.
-        let ir = module("expect(intDiv(4, 2), 2)\n");
+        // [TESTING-EQUALITY] checkedAdd returns Result<int, Error>; expect
+        // compares a Success payload canonically, while the sibling test proves
+        // Error remains visible rather than being read as a fabricated payload.
+        let ir = module("expect(checkedAdd(1, 1), 2)\n");
         assert!(ir.contains("call void @osp_test_assert(i8* null, i32"));
     }
 
@@ -664,9 +669,8 @@ mod tests {
     #[test]
     fn named_arguments_are_ordered_by_declaration() {
         // Call sites pass b before a; the emitted call must follow declared order.
-        // `sub`'s `a - b` body infers `Result<int, MathError>`, so the call's
-        // return type is `{ i64, i8 }*`; what matters here is the argument order.
-        let ir = module("fn sub(a, b) = a - b\nlet r = sub(b: 1, a: 9)\n");
+        // The total helper keeps this fixture focused on argument order.
+        let ir = module("fn sub(a, b) = wrapSub(a, b)\nlet r = sub(b: 1, a: 9)\n");
         assert!(ir.contains("@sub(i64 9, i64 1)"));
         let external = module(
             "extern fn takeFirst(first: int, second: int) -> int\n\
@@ -856,17 +860,22 @@ mod tests {
     fn union_match_binds_variant_fields_and_catch_all() {
         // User-union match: tag load + per-variant branch + field binding
         // (pattern.rs gen_union_match, bind_variant_fields) and a catch-all arm.
+        // Each `*` is `int` and may perform `Arith.overflow`, so the program
+        // installs a policy ([ARITH-EFFECT-DISCHARGE]).
         let ir = module(
             "type Shape =\n\
                Circle { r: int }\n\
                | Square { s: int }\n\
                | Blank\n\
-             fn area(sh: Shape) -> Result<int, MathError> = match sh {\n\
+             fn area(sh: Shape) = match sh {\n\
                Circle { r } => r * r\n\
                Square { s } => s * s\n\
-               _ => Success { value: 0 }\n\
+               _ => 0\n\
              }\n\
-             fn main() -> Unit = print(\"a=${area(Circle { r: 3 })}\")\n",
+             fn main() -> Unit = {\n\
+               handle Arith { overflow _ _ _ wrapped => wrapped }\n\
+               print(\"a=${area(Circle { r: 3 })}\")\n\
+             }\n",
         );
         shows(&ir, &["load i64, i64*", "icmp eq i64"]);
         assert_eq!(
@@ -1046,12 +1055,14 @@ mod tests {
 
     #[test]
     fn result_parameters_preserve_the_wrapper_for_named_functions_and_closures() {
+        // `checkedAdd` is the arithmetic that still returns overflow as a
+        // Result value ([ARITH-EFFECT]).
         let named = module(
-            "fn choose(r: Result<int, MathError>) -> int = match r {\n\
+            "fn choose(r: Result<int, Error>) -> int = match r {\n\
                Success { value } => value\n\
                Error { message } => 0\n\
              }\n\
-             let failed = choose(9223372036854775807 + 1)\n\
+             let failed = choose(checkedAdd(9223372036854775807, 1))\n\
              let wrapped = choose(7)\n\
              print(\"${failed}:${wrapped}\")\n",
         );
@@ -1062,11 +1073,11 @@ mod tests {
         assert!(named.contains("bitcast i8* %$p0 to { i64, i8, i8* }*"));
 
         let closure = module(
-            "let choose = fn(r: Result<int, MathError>) => match r {\n\
+            "let choose = fn(r: Result<int, Error>) => match r {\n\
                Success { value } => value\n\
                Error { message } => 0\n\
              }\n\
-             let failed = choose(9223372036854775807 + 1)\n\
+             let failed = choose(checkedAdd(9223372036854775807, 1))\n\
              let wrapped = choose(7)\n\
              print(\"${failed}:${wrapped}\")\n",
         );
@@ -1312,6 +1323,32 @@ mod tests {
     }
 
     #[test]
+    fn a_file_scope_list_literal_is_rebuilt_before_a_function_reads_it() {
+        // A module global is the same boundary as a parameter: the reading
+        // function sees one `List<T>` `i8*`. Publishing the flat literal as-is
+        // made a list pattern, `big[1]` or `toGpu(big)` inside a function walk
+        // the literal's data pointer as a trie and SEGFAULT, while `listLength`
+        // appeared to work (shared leading `i64`). [MODULES-FILE-SCOPE-BINDING]
+        let ir = module(
+            "let big = [1, 2]\n\
+             fn first() = match big {\n\
+               [] => 0\n\
+               [h, ...rest] => h\n\
+             }\n\
+             print(first())\n",
+        );
+        let main = function_body(&ir, "define i32 @main()");
+        let sealed = main.find("call i8* @osprey_list_builder_seal");
+        let published = main.find("@osp.g.big");
+        assert!(
+            sealed
+                .zip(published)
+                .is_some_and(|(seal, store)| seal < store),
+            "the literal must be sealed into a runtime list before it is published:\n{main}"
+        );
+    }
+
+    #[test]
     fn list_get_and_contains_runtime_calls() {
         // listGet (bounds-checked Result) and listContains (linear scan with
         // both the int and string equality paths).
@@ -1338,9 +1375,10 @@ mod tests {
             compile_program(&parsed.program).map_err(|error| error.to_string())
         }
 
+        // `checkedAdd` supplies the failed Result values ([ARITH-EFFECT]).
         let direct = try_module(
-            "effect Inspect { inspect: fn(Result<int, MathError>, Fiber<Result<int, MathError>>) -> int }\n\
-             fn ask() -> int !Inspect = perform Inspect.inspect(9223372036854775807 + 1, spawn(9223372036854775807 + 1))\n\
+            "effect Inspect { inspect: fn(Result<int, Error>, Fiber<Result<int, Error>>) -> int }\n\
+             fn ask() -> int !Inspect = perform Inspect.inspect(checkedAdd(9223372036854775807, 1), spawn(checkedAdd(9223372036854775807, 1)))\n\
              fn main() -> int = {\n\
                  handle Inspect {\n\
                      inspect immediate deferred => match immediate {\n\
@@ -1355,8 +1393,8 @@ mod tests {
              }\n",
         );
         let resuming = try_module(
-            "effect ResumeInspect { control inspect: fn(Result<int, MathError>, Fiber<Result<int, MathError>>) -> int }\n\
-             fn ask() -> int !ResumeInspect = perform ResumeInspect.inspect(9223372036854775807 + 1, spawn(9223372036854775807 + 1))\n\
+            "effect ResumeInspect { control inspect: fn(Result<int, Error>, Fiber<Result<int, Error>>) -> int }\n\
+             fn ask() -> int !ResumeInspect = perform ResumeInspect.inspect(checkedAdd(9223372036854775807, 1), spawn(checkedAdd(9223372036854775807, 1)))\n\
              fn main() -> int = {\n\
                  handle ResumeInspect {\n\
                      inspect immediate deferred => match immediate {\n\
@@ -1560,11 +1598,12 @@ mod tests {
                 .count()
         }
 
+        // `checkedAdd` is the Result-producing arithmetic ([ARITH-EFFECT]).
         let named = module(
-            "fn start(n: int) -> Fiber<Result<int, MathError>> = spawn(n + 1)\n\
-             fn finish(f: Fiber<Result<int, MathError>>) -> Result<int, MathError> = await(f)\n\
+            "fn start(n: int) -> Fiber<Result<int, Error>> = spawn(checkedAdd(n, 1))\n\
+             fn finish(f: Fiber<Result<int, Error>>) -> Result<int, Error> = await(f)\n\
              let through_return = await(start(9223372036854775807))\n\
-             let through_parameter = finish(spawn(9223372036854775807 + 1))\n",
+             let through_parameter = finish(spawn(checkedAdd(9223372036854775807, 1)))\n",
         );
         assert_eq!(
             result_pointer_unboxes(&named),
@@ -1573,10 +1612,10 @@ mod tests {
         );
 
         let closure = module(
-            "let start = fn(n: int) -> Fiber<Result<int, MathError>> => spawn(n + 1)\n\
-             let finish = fn(f: Fiber<Result<int, MathError>>) -> Result<int, MathError> => await(f)\n\
+            "let start = fn(n: int) -> Fiber<Result<int, Error>> => spawn(checkedAdd(n, 1))\n\
+             let finish = fn(f: Fiber<Result<int, Error>>) -> Result<int, Error> => await(f)\n\
              let through_return = await(start(9223372036854775807))\n\
-             let through_parameter = finish(spawn(9223372036854775807 + 1))\n",
+             let through_parameter = finish(spawn(checkedAdd(9223372036854775807, 1)))\n",
         );
         assert_eq!(
             result_pointer_unboxes(&closure),
@@ -2235,11 +2274,12 @@ card doc index selected =
 
     #[test]
     fn a_result_returning_kernel_keeps_its_scalar_diagnostic() {
-        // Checked `*` makes the kernel return Result<int, MathError>; the host
-        // still rejects it where it always did, with the same message.
+        // `checkedMul` makes the kernel return Result<int, Error> (`*` itself
+        // is `int` [ARITH-EFFECT]); the host still rejects it where it always
+        // did, with the same message.
         let err = compile_err(
             "fn f() = {\n\
-               let out = toGpu([1, 2]) |> gpuMap(fn(v) => v * 2)\n\
+               let out = toGpu([1, 2]) |> gpuMap(fn(v) => checkedMul(v, 2))\n\
                gpuLength(out)\n\
              }\n\
              print(f())\n",

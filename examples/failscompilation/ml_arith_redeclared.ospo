@@ -1,0 +1,4 @@
+// [ARITH-EFFECT-OPS] `Arith` is compiler-declared; user code may not redeclare it.
+// osprey: flavor=ml
+effect Arith
+    overflow : int => int

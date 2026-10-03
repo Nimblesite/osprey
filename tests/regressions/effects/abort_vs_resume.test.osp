@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 // Run one effectful pipeline under a handler that always resumes, then under a
 // handler that aborts by returning without resume. [EFFECTS-RESUME]
 
@@ -7,42 +26,42 @@ effect Step {
 }
 
 /// An aborted continuation omits observations after the poison step.
-fn pipeline() -> int !Step = {
+fn pipeline() -> int ![Step, Arith] = {
     let a = perform Step.run(1)
     print("pipeline saw step1 -> " + toString(a))
     let b = perform Step.run(2)
     print("pipeline saw step2 -> " + toString(b))
     let c = perform Step.run(3)
     print("pipeline saw step3 -> " + toString(c))
-    a + b + c ?: 0
+    a + b + c 
 }
 
-let sentinel = (0 - 99) ?: 0
+let sentinel = (0 - 99) 
 
 // Every arm resumes; audit lines run as continuations unwind.
 print("=== recovering handler: resume every step, drive to completion ===")
 mut counter = 0
-let recovered = {
+let recovered = exactArithmetic(fn() => {
     handle Step {
         run x => {
-            let stepNo = counter + 1 ?: counter
+            let stepNo = counter + 1 
             counter = stepNo
-            let v = resume((x * 10) ?: 0)
+            let v = resume((x * 10) )
             print("audit[recover]: step " + toString(stepNo) + " (input " + toString(x) + ") settled, downstream=" + toString(v))
             v
         }
     }
     pipeline()
-}
+})
 print("recovered result=" + toString(recovered))
 
 // Returning at step 2 aborts the suspended computation.
 print("=== stopping handler: step 2 stops the pipeline, then step 1 handler finishes ===")
 mut counter2 = 0
-let aborted = {
+let aborted = exactArithmetic(fn() => {
     handle Step {
         run x => {
-            let stepNo = counter2 + 1 ?: counter2
+            let stepNo = counter2 + 1 
             counter2 = stepNo
             match x == 2 {
                 true => {
@@ -51,7 +70,7 @@ let aborted = {
                     sentinel
                 }
                 false => {
-                    let v = resume((x * 10) ?: 0)
+                    let v = resume((x * 10) )
                     print("audit[abort-run]: step " + toString(stepNo) + " (input " + toString(x) + ") settled, downstream=" + toString(v))
                     v
                 }
@@ -60,6 +79,7 @@ let aborted = {
     }
     pipeline()
 }
+)
 print("aborted result=" + toString(aborted))
 
 /// A BRANCH of a resuming arm that returns without resuming abandons the
@@ -88,25 +108,26 @@ fn mixedPipeline() -> string !Mixed = {
     "unreached ${scaled} ${stopped}"
 }
 
-let stoppedAnswer = {
+let stoppedAnswer = exactArithmetic(fn() => {
     handle Mixed {
-        scale x => resume((x * 2) ?: 0)
+        scale x => resume((x * 2) )
         stop => match true {
             true => "stopped"
             false => resume(0)
         }
     }
     mixedPipeline()
-}
+})
 
 print("mixed answer: ${stoppedAnswer}")
 
 // Verifies both continuation policies and their exact operation counts.
-test("resuming completes while returning aborts the pipeline", fn() => checkAll("abort versus resume state", [
+
+test("resuming completes while returning aborts the pipeline", fn() => exactArithmetic(fn() => checkAll("abort versus resume state", [
     recovered == 60,
     counter == 3,
     aborted == sentinel,
     counter2 == 2,
     recovered != aborted,
     stoppedAnswer == "stopped"
-]))
+])))

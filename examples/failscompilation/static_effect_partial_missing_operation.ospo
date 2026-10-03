@@ -7,7 +7,7 @@ effect Pair {
 fn both() = {
     let first = perform Pair.first()
     let second = perform Pair.second()
-    first + second ?: 0
+    wrapAdd(first, second)
 }
 
 let answer = {

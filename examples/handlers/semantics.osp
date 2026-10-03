@@ -1,9 +1,24 @@
+// Record faults for the entire report and reject it at the publication boundary.
+fn printExact(work) = {
+    mut fault = ""
+    handle Arith {
+        overflow op lhs _ _ => { fault = "overflow in ${op}"
+            lhs }
+        divideByZero op lhs => { fault = "zero divisor in ${op}"
+            lhs }
+        remainderByZero lhs => { fault = "zero remainder divisor"
+            lhs }
+    }
+    let report = work()
+    print(match fault { "" => report _ => "REJECTED: ${fault}" })
+}
+
 // Independent semantic probe: unreachable resume must not be overlooked.
 effect Ask { control value: fn() -> int }
-fn work() = (perform Ask.value() + 1) ?: 0
+fn work() = (perform Ask.value() + 1) 
 
 let replace = handler Ask { value => resume(41) }
-let around = handler Ask { value => (resume(41) + 100) ?: 0 }
+let around = handler Ask { value => (resume(41) + 100)  }
 let noResume = handler Ask { value => 0 }
 let deadResume = handler Ask {
     value => match false {
@@ -12,8 +27,11 @@ let deadResume = handler Ask {
     }
 }
 
-let replacement = replace(work)
-let resumed = around(work)
-let returned = noResume(work)
-let deadBranch = deadResume(work)
-print("replace=${replacement}\nresume=${resumed}\nno-resume=${returned}\ndead-resume=${deadBranch}")
+fn report() = {
+    let replacement = replace(work)
+    let resumed = around(work)
+    let returned = noResume(work)
+    let deadBranch = deadResume(work)
+    "replace=${replacement}\nresume=${resumed}\nno-resume=${returned}\ndead-resume=${deadBranch}"
+}
+printExact(report)

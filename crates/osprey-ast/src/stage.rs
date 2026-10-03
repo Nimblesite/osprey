@@ -292,10 +292,9 @@ impl RuleCollector<'_> {
                 ),
                 position,
             )),
-            (Stage::Static | Stage::Kernel, None) => self.errors.push(StageError::new(
-                format!("{} names unknown effect `{base}`", stage.region_keyword()),
-                position,
-            )),
+            (Stage::Static | Stage::Kernel, None) => self
+                .errors
+                .push(StageError::new(undeclared_region(stage, base), position)),
             (Stage::Static | Stage::Kernel, Some(_)) => {
                 self.register_static(effect, arms, position);
             }
@@ -306,6 +305,18 @@ impl RuleCollector<'_> {
     fn register_static(&mut self, effect: &str, arms: &[HandlerArm], position: Option<Position>) {
         self.errors
             .extend(validate_static_arms(self.effects, effect, arms, position));
+    }
+}
+
+/// Why a compile-time region names no declared effect. `Arith` is declared by
+/// the compiler ([ARITH-EFFECT-OPS]), so calling it unknown would be false: it
+/// has runtime policies only.
+fn undeclared_region(stage: Stage, base: &str) -> String {
+    let region = stage.region_keyword();
+    if base == crate::ARITH_EFFECT {
+        format!("`{region} Arith` is not available: `Arith` has runtime policies only; install one with `handle Arith`")
+    } else {
+        format!("{region} names unknown effect `{base}`")
     }
 }
 

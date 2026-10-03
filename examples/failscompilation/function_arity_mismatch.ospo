@@ -2,7 +2,7 @@
 // A call must supply exactly the declared parameter count.
 // Implements [CALL-ARGUMENTS]
 
-fn add(x, y) = x + y
+fn add(x, y) = wrapAdd(x, y)
 
 let result = add(10)  // Function expects 2 args, got 1
 print(result)

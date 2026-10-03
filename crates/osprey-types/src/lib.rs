@@ -14,6 +14,8 @@
 //! inferrer would have derived on its own ([TYPE-ANNOTATION-REDUNDANT]).
 
 mod applications;
+mod arithmetic;
+pub use arithmetic::fold_arithmetic;
 mod builtin_constraints;
 mod builtin_docs;
 mod builtin_docs_lang;
@@ -101,7 +103,14 @@ mod tests {
 
     #[test]
     fn checks_arithmetic_and_let() {
-        ok("fn inc(x: int) -> Result<int, MathError> = x + 1\nlet y = inc(41)\n");
+        // A constant initializer folds at file scope; a fallible call runs
+        // inside the region that installs its policy ([ARITH-EFFECT-CONST]).
+        ok("fn inc(x) = x + 1\n\
+            let base = 40 + 1\n\
+            fn main() = {\n\
+              handle Arith { overflow _ _ _ wrapped => wrapped }\n\
+              let y = inc(base)\n\
+            }\n");
     }
 
     #[test]
@@ -186,7 +195,7 @@ mod tests {
 
     /// [FLOAT-OPERANDS] The same helper must retain int/float polymorphism.
     #[test]
-    fn float_helpers_accept_both_numeric_types_without_changing_result_propagation() {
+    fn float_helpers_accept_both_numeric_types() {
         for op in ["+", "-", "*", "/", "%"] {
             accepts(
                 Flavor::Default,
@@ -197,8 +206,13 @@ mod tests {
                 format!("scale x = x {op} 1.5\na = scale 3\nb = scale 2.5\n"),
             );
         }
-        ok("fn divide(a, b) = a / b\nlet a = divide(3, 1.5)\nlet b = divide(2.5, 3)\n");
-        ok("let value = ((4.0 / 2.0) * 1.5) ?: 0.0\n");
+        ok("fn divide(a, b) = a / b\n\
+            fn main() = {\n\
+              handle Arith { divideByZero _ lhs => lhs }\n\
+              let a = divide(3, 1.5)\n\
+              let b = divide(2.5, 3)\n\
+            }\n");
+        ok("let value = (4.0 / 2.0) * 1.5\n");
     }
 
     /// [FLOAT-OPERANDS] Aliasing and higher-order calls cannot shed the obligation.
@@ -367,9 +381,9 @@ mod tests {
     fn elvis_on_result_defaults_error_and_yields_success_payload() {
         // `r ?: fallback` desugars to an explicit exhaustive Result match:
         // Success yields its payload and Error yields the fallback.
-        ok("let okCalc = intDiv(a: 10, b: 5)\n\
+        ok("let okCalc = checkedAdd(10, 5)\n\
             let okElvis = okCalc ?: -1\n\
-            fn keep(x: int) -> int = (x + okElvis) ?: 0\n");
+            fn keep(x: int) -> int = checkedAdd(x, okElvis) ?: 0\n");
     }
 
     #[test]
@@ -409,8 +423,11 @@ mod tests {
     fn higher_order_function_application() {
         ok(
             "fn applyFn(value: int, func: (int) -> int) -> int = func(value)\n\
-            fn double(x: int) -> int = (x * 2) ?: 0\n\
-            let r = applyFn(value: 10, func: double)\n",
+            fn double(x: int) -> int = x * 2\n\
+            fn main() = {\n\
+              handle Arith { overflow _ _ _ wrapped => wrapped }\n\
+              let r = applyFn(value: 10, func: double)\n\
+            }\n",
         );
     }
 

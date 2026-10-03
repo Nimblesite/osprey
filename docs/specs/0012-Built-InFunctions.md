@@ -72,22 +72,43 @@ editor integration are specified in [Testing Framework](0027-TestingFramework.md
 
 ## Numeric Functions
 
-The numeric builtins are inside the arithmetic totality guarantee: none may trap, panic, wrap silently, or return an unspecified value ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). `abs` and `intDiv` follow the operators, so whatever the operators return, they return. `checkedAdd`/`checkedSub`/`checkedMul` are the explicit value-level form for code that wants overflow as data, and keep the runtime's generic `Error` channel.
+The numeric builtins are inside the arithmetic totality guarantee: none may trap, panic, wrap silently, or return an unspecified value ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). `abs` and `intDiv` follow the operators: they return a plain `int`, and an unrepresentable result performs an `Arith` operation whose handler supplies the value ([ARITH-EFFECT](0037-ArithmeticEffects.md#the-model--arith-effect)). `checkedAdd`/`checkedSub`/`checkedMul` are the explicit value-level form for code that wants overflow as data, and keep the runtime's generic `Error` channel. The wrapping and saturating helpers are total and perform nothing.
 
-**What ships today is the checked-`Result` form.** `abs` and `intDiv` return `Result<int, MathError>` — the same `MathError` channel the arithmetic operators use, because a division fault is a math fault and not a runtime fault — and a caller discharges it with `match` or `?:`. [Plan 0027](../plans/0027-arithmetic-effects.md) retires that shape in favour of a plain `int` whose faults dispatch to a compiler-declared `Arith` handler, which is what [spec 0037](0037-ArithmeticEffects.md) specifies as the normative target; **no part of it is implemented yet**. The signatures below are written in the shipped form, and the `Arith.*` faults name what each one performs once that plan lands.
+### `abs(n: int) -> int` — [BUILTIN-ABS]
+Returns the absolute value. Because `2^63` is not representable, `abs(-9223372036854775808)` performs `Arith.overflow` and the enclosing policy supplies the result; it never wraps or panics. A constant argument other than the minimum is total.
 
-### `abs(n: int) -> Result<int, MathError>` — [BUILTIN-ABS]
-Returns the absolute value. Because `2^63` is not representable, the minimum signed 64-bit input is the `Error` case (`Arith.overflow` under plan 0027); it never wraps or panics.
-
-### `intDiv(a: int, b: int) -> Result<int, MathError>` — [BUILTIN-INTDIV]
-Truncates toward zero. A zero divisor is the `Error` case (`Arith.remainderByZero`), as is `intDiv(-9223372036854775808, -1)` (`Arith.overflow`); every other input yields the quotient. The `/` operator instead returns `float`.
+### `intDiv(a: int, b: int) -> int` — [BUILTIN-INTDIV]
+Truncates toward zero. A zero divisor performs `Arith.remainderByZero`, and `intDiv(-9223372036854775808, -1)` performs `Arith.overflow`; every other input yields the quotient. A literal divisor other than `0` and `-1` is total, so `half` below needs no handler, while `ratio` requires an `Arith` handler for both operations. The `/` operator instead returns `float`.
 
 ```osprey
-intDiv(7, 2) ?: 0        // 3
-intDiv(255643, 10) ?: 0  // 25564
-intDiv(5, 0)             // Error — division by zero
-intDiv(-9223372036854775808, -1) // Error — integer overflow
-fn half(n) = intDiv(n, 2) ?: 0
+intDiv(7, 2)        // 3
+intDiv(255643, 10)  // 25564
+fn half(n) = intDiv(n, 2)
+fn ratio(a, b) = intDiv(a, b)
+```
+
+```osprey-ml
+intDiv (7, 2)        // 3
+intDiv (255643, 10)  // 25564
+half n = intDiv (n, 2)
+ratio (a, b) = intDiv (a, b)
+```
+
+### `wrapAdd` / `wrapSub` / `wrapMul` / `satAdd` / `satSub` / `satMul` — [BUILTIN-TOTAL-ARITH]
+Each has signature `(a: int, b: int) -> int` and never performs an `Arith` operation. The `wrap` helpers return the two's-complement result; the `sat` helpers clamp to the `int` range. They are the sanctioned spelling for code where wraparound or clamping is the definition rather than a fault — hashes, checksums, PRNGs — and for `Arith` arms that must not require an outer policy ([ARITH-EFFECT-TOTAL-HELPERS](0037-ArithmeticEffects.md#total-helpers--arith-effect-total-helpers)).
+
+```osprey
+wrapAdd(9223372036854775807, 1)   // -9223372036854775808
+wrapMul(4294967296, 4294967296)   // 0
+satAdd(9223372036854775807, 1)    // 9223372036854775807
+satSub(-9223372036854775808, 1)   // -9223372036854775808
+```
+
+```osprey-ml
+wrapAdd (9223372036854775807, 1)   // -9223372036854775808
+wrapMul (4294967296, 4294967296)   // 0
+satAdd (9223372036854775807, 1)    // 9223372036854775807
+satSub (-9223372036854775808, 1)   // -9223372036854775808
 ```
 
 ### `toFloat(n: int) -> float` — [BUILTIN-TOFLOAT]
@@ -105,18 +126,6 @@ toFloat(7)                        // 7.0
 toFloat(-3)                       // -3.0
 gpuIota(1000) |> gpuMap(toFloat)  // GpuBuffer<float>, 0.0 .. 999.0
 ```
-
-```osprey-ml
-intDiv (7, 2)        // Success(3)
-intDiv (255643, 10)  // Success(25564)
-intDiv (5, 0)        // Error — "division by zero"
-intDiv (-9223372036854775808, -1) // Error — "integer overflow"
-
-half : int -> Result<int, Error>
-half n = intDiv (n, 2)
-```
-
-`half` infers `int` and requires an `Arith` handler at the program entry.
 
 ### `checkedAdd` / `checkedSub` / `checkedMul` — [BUILTIN-CHECKED-ARITH]
 Each has signature `(a: int, b: int) -> Result<int, Error>`. Overflow-checked

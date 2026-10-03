@@ -21,13 +21,10 @@ mod tests {
     const U16: PositionEncoding = PositionEncoding::Utf16;
 
     /// `twice` annotation-free, and the identical program with every inferable
-    /// annotation written out. `*` is fallible, so the proven return is
-    /// `Result<int, MathError>` — a type the author who deleted the annotation
-    /// cannot see any other way.
-    const BARE: &str = "fn twice(n) = n * 2\nlet y = twice(2)\n";
-    const ANNOTATED: &str =
-        "fn twice(n: int) -> Result<int, MathError> = n * 2\nlet y = twice(2)\n";
-    const SIGNATURE: &str = "fn twice(n: int) -> Result<int, MathError>";
+    /// annotation written out. The total helper makes the return plain int.
+    const BARE: &str = "fn twice(n) = wrapMul(n, 2)\nlet y = twice(2)\n";
+    const ANNOTATED: &str = "fn twice(n: int) -> int = wrapMul(n, 2)\nlet y = twice(2)\n";
+    const SIGNATURE: &str = "fn twice(n: int) -> int";
 
     /// Every view of `name` in `src`, as the strings a user actually sees.
     struct Views {
@@ -93,9 +90,7 @@ mod tests {
             );
         }
         assert_eq!(v.sig_params, vec!["n: int".to_owned()]);
-        assert!(v
-            .symbols
-            .contains("\"returnType\":\"Result<int, MathError>\""));
+        assert!(v.symbols.contains("\"returnType\":\"int\""));
         assert!(v.symbols.contains("\"type\":\"int\""), "the parameter too");
     }
 
@@ -114,8 +109,8 @@ mod tests {
         // share — the annotated form is longer. Compare the part that describes
         // the TYPE, which must be identical.
         for fragment in [
-            "\"signature\":\"fn twice(n: int) -> Result<int, MathError>\"",
-            "\"returnType\":\"Result<int, MathError>\"",
+            "\"signature\":\"fn twice(n: int) -> int\"",
+            "\"returnType\":\"int\"",
         ] {
             assert!(bare.symbols.contains(fragment), "bare: {}", bare.symbols);
             assert!(
@@ -336,7 +331,7 @@ mod tests {
             assert!(regex_like_type_var(leaked), "must catch {leaked}");
         }
         for clean in [
-            "fn twice(n: int) -> Result<int, MathError>",
+            "fn twice(n: int) -> int",
             "fn classify(xs: List<_>) -> string",
             "{ total2: int }",
         ] {

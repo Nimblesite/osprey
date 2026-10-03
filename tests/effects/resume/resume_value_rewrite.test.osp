@@ -1,3 +1,22 @@
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
 /// Supply lets a handler choose each integer observed by the performer.
 effect Supply {
     /// Request the next scripted value for `label`.
@@ -5,11 +24,11 @@ effect Supply {
 }
 
 /// This helper sums three values supplied through explicit resume calls.
-fn total() -> int !Supply = {
+fn total() -> int ![Supply, Arith] = {
     let first = perform Supply.next("first")
     let second = perform Supply.next("second")
     let third = perform Supply.next("third")
-    first + second + third ?: 0
+    first + second + third 
 }
 
 /// Relay proves generic operation values unbox at two distinct instantiations.
@@ -44,8 +63,8 @@ fn resumeValueRewriteCase() = {
     let result = {
         handle Supply {
             next label => {
-                supplyCalls = supplyCalls + 1 ?: supplyCalls
-                seed = seed + 5 ?: seed
+                supplyCalls = supplyCalls + 1 
+                seed = seed + 5 
                 supplied = "${supplied}${label}:${toString(seed)}|"
                 supplyTranscript = "${supplyTranscript}supply ${label}=${toString(seed)}\n"
                 let answer = resume(seed)
@@ -63,7 +82,7 @@ fn resumeValueRewriteCase() = {
     let word = {
         handle Relay {
             ask => {
-                wordRelayCalls = wordRelayCalls + 1 ?: wordRelayCalls
+                wordRelayCalls = wordRelayCalls + 1 
                 let answer = resume("carried")
                 wordSettled = answer
                 relayTranscript = "${relayTranscript}relay answered: ${answer}\n"
@@ -77,7 +96,7 @@ fn resumeValueRewriteCase() = {
     let checked = {
         handle Checked {
             half n => {
-                checkedCalls = checkedCalls + 1 ?: checkedCalls
+                checkedCalls = checkedCalls + 1 
                 resume(Success { value: n })
             }
         }
@@ -88,7 +107,7 @@ fn resumeValueRewriteCase() = {
     let num = {
         handle Relay {
             ask => {
-                numRelayCalls = numRelayCalls + 1 ?: numRelayCalls
+                numRelayCalls = numRelayCalls + 1 
                 resume(41)
             }
         }
@@ -118,7 +137,7 @@ fn resumeValueRewriteCase() = {
         supplyCalls == 3,
         supplied == "first:105|second:110|third:115|",
         settled == "third:330|second:330|first:330|",
-        result == (105 + 110 + 115 ?: 0),
+        result == (105 + 110 + 115 ),
         word == "carried",
         wordRelayCalls == 1,
         wordSettled == "carried",
@@ -131,7 +150,8 @@ fn resumeValueRewriteCase() = {
 }
 
 // Register the value-rewriting and generic-resume regression.
-test("resume rewrites values across scalar, Result, and generic effects", resumeValueRewriteCase)
+
+test("resume rewrites values across scalar, Result, and generic effects", fn() => exactArithmetic(resumeValueRewriteCase))
 
 /// Script hands the performer one scripted integer per numbered slot.
 effect Script {
@@ -146,8 +166,8 @@ fn weightedReads() = {
     let b = perform Script.read(2)
     let c = perform Script.read(3)
     let d = perform Script.read(4)
-    let weighted = ((a * 1000) ?: 0) + ((b * 100) ?: 0) + ((c * 10) ?: 0) ?: 0
-    (weighted + d) ?: 0
+    let weighted = ((a * 1000) ) + ((b * 100) ) + ((c * 10) ) 
+    (weighted + d) 
 }
 
 /// [EFFECTS-RESUME] "`resume(value)` supplies the current operation result and
@@ -165,11 +185,11 @@ fn resumeSubstitutesSuppliedValueCase() = {
     let picked = {
         handle Script {
             read slot => {
-                reads = reads + 1 ?: reads
+                reads = reads + 1 
                 let value = match slot {
                     1 => 0
                     2 => 7
-                    3 => (0 - 4) ?: 0
+                    3 => (0 - 4) 
                     _ => 7
                 }
                 asked = "${asked}${toString(slot)}|"
@@ -186,7 +206,7 @@ fn resumeSubstitutesSuppliedValueCase() = {
     let steady = {
         handle Script {
             read _slot => {
-                steadyReads = steadyReads + 1 ?: steadyReads
+                steadyReads = steadyReads + 1 
                 resume(1)
             }
         }
@@ -197,7 +217,7 @@ fn resumeSubstitutesSuppliedValueCase() = {
     let zeroed = {
         handle Script {
             read _slot => {
-                zeroReads = zeroReads + 1 ?: zeroReads
+                zeroReads = zeroReads + 1 
                 resume(0)
             }
         }
@@ -209,7 +229,7 @@ fn resumeSubstitutesSuppliedValueCase() = {
     // the unweighted sum, 7777 every site receiving 7, 6670 the script arriving
     // reversed, and 1234 the slot numbers arriving instead of the script.
     checkAll("resume substitutes the scripted value at each perform site", [
-        picked == 667, picked == ((660 + 7) ?: 0), reads == 4,
+        picked == 667, picked == ((660 + 7) ), reads == 4,
         gave == "0|7|-4|7|", asked == "1|2|3|4|",
         picked != 10, picked != 7777, picked != 6670, picked != 1234,
         picked != 0, picked > 660, picked < 700,
@@ -244,15 +264,15 @@ fn resumeSubstitutesSuppliedValueCase() = {
     // are what move. Neither later region disturbs the first region's state.
     checkAll("the same body answers differently under a different script", [
         steady == 1111, steadyReads == 4, steady != picked, picked != 1111,
-        ((steady - picked) ?: 0) == 444,
-        steady == (((1000 + 100) ?: 0) + ((10 + 1) ?: 0) ?: 0),
+        ((steady - picked) ) == 444,
+        steady == (((1000 + 100) ) + ((10 + 1) ) ),
         zeroed == 0, zeroReads == 4, zeroed != picked,
         asked == "1|2|3|4|", gave == "0|7|-4|7|", reads == steadyReads
     ])
 }
 
 // Register value substitution at the perform site.
-test("resume substitutes exactly the value each arm supplied", resumeSubstitutesSuppliedValueCase)
+test("resume substitutes exactly the value each arm supplied", fn() => exactArithmetic(resumeSubstitutesSuppliedValueCase))
 
 /// Layer lets each arm adjust the answer its resumed continuation produced.
 effect Layer {
@@ -265,11 +285,11 @@ fn layered() = {
     let a = perform Layer.fetch(1)
     let b = perform Layer.fetch(2)
     let c = perform Layer.fetch(3)
-    ((a * 100) ?: 0) + ((b * 10) ?: 0) + c ?: 0
+    ((a * 100) ) + ((b * 10) ) + c 
 }
 
 /// One perform, so the arm's own value is unmistakably the region's answer.
-fn soloLayer() = (perform Layer.fetch(4) + 1) ?: 0
+fn soloLayer() = (perform Layer.fetch(4) + 1) 
 
 /// [EFFECTS-RESUME] resume "evaluates to that computation's answer, so the arm
 /// may execute code after the resumed computation returns", and handlers "are
@@ -290,7 +310,7 @@ fn resumeAnswerComposesLifoCase() = {
                 entered = "${entered}${toString(slot)}|"
                 let answer = resume(slot)
                 observed = "${observed}${toString(slot)}:${toString(answer)}|"
-                let adjusted = (answer + slot) ?: answer
+                let adjusted = (answer + slot) 
                 returned = "${returned}${toString(slot)}:${toString(adjusted)}|"
                 adjusted
             }
@@ -302,7 +322,7 @@ fn resumeAnswerComposesLifoCase() = {
     let plain = {
         handle Layer {
             fetch slot => {
-                plainCalls = plainCalls + 1 ?: plainCalls
+                plainCalls = plainCalls + 1 
                 resume(slot)
             }
         }
@@ -314,10 +334,10 @@ fn resumeAnswerComposesLifoCase() = {
     let solo = {
         handle Layer {
             fetch slot => {
-                soloCalls = soloCalls + 1 ?: soloCalls
+                soloCalls = soloCalls + 1 
                 let answer = resume(slot)
                 soloObserved = answer
-                (answer * 3) ?: answer
+                (answer * 3) 
             }
         }
         soloLayer()
@@ -330,7 +350,7 @@ fn resumeAnswerComposesLifoCase() = {
         layeredResult == 129, entered == "1|2|3|",
         observed == "3:123|2:126|1:128|", returned == "3:126|2:128|1:129|",
         layeredResult != 123, layeredResult != 126, layeredResult != 124,
-        layeredResult == ((123 + 6) ?: 0),
+        layeredResult == ((123 + 6) ),
         startsWith(observed, "3:"), endsWith(observed, "1:128|"),
         observed != returned, contains(observed, "3:123|")
     ])
@@ -351,9 +371,9 @@ fn resumeAnswerComposesLifoCase() = {
     // the region's result, which is what the adjusting region moved by 1+2+3.
     checkAll("an unadjusted region answers with the body value", [
         plain == 123, plainCalls == 3,
-        plain == ((((1 * 100) ?: 0) + ((2 * 10) ?: 0) + 3) ?: 0),
-        plain != layeredResult, ((layeredResult - plain) ?: 0) == 6,
-        layeredResult == ((plain + 6) ?: 0),
+        plain == ((((1 * 100) ) + ((2 * 10) ) + 3) ),
+        plain != layeredResult, ((layeredResult - plain) ) == 6,
+        layeredResult == ((plain + 6) ),
         plain > 100, plain < 129, plainCalls == 3,
         !contains(observed, "3:129|"), entered == "1|2|3|"
     ])
@@ -362,15 +382,15 @@ fn resumeAnswerComposesLifoCase() = {
     // the body computes 4 + 1 = 5 and the arm triples it.
     checkAll("a single-perform arm supplies the whole region answer", [
         solo == 15, soloObserved == 5, soloCalls == 1,
-        solo == ((soloObserved * 3) ?: 0),
-        soloObserved == ((4 + 1) ?: 0),
+        solo == ((soloObserved * 3) ),
+        soloObserved == ((4 + 1) ),
         solo != 5, solo != 4, solo != 12, solo != layeredResult,
         solo > 5, solo < 129, soloObserved != 4
     ])
 }
 
 // Register the composition of post-resume adjustments.
-test("post-resume adjustments compose into the region answer", resumeAnswerComposesLifoCase)
+test("post-resume adjustments compose into the region answer", fn() => exactArithmetic(resumeAnswerComposesLifoCase))
 
 /// Scalar carries one operation per scalar payload kind a resume can supply.
 effect Scalar {
@@ -417,12 +437,12 @@ fn resumeScalarPayloadsCase() = {
     let countText = {
         handle Scalar {
             count step => {
-                countCalls = countCalls + 1 ?: countCalls
+                countCalls = countCalls + 1 
                 let value = match step {
                     1 => 0
-                    2 => (0 - 9) ?: 0
+                    2 => (0 - 9) 
                     3 => 1000000
-                    _ => (0 - 9) ?: 0
+                    _ => (0 - 9) 
                 }
                 countGave = "${countGave}${toString(value)}|"
                 resume(value)
@@ -435,7 +455,7 @@ fn resumeScalarPayloadsCase() = {
     let lone = {
         handle Scalar {
             ratio _step => {
-                loneCalls = loneCalls + 1 ?: loneCalls
+                loneCalls = loneCalls + 1 
                 resume(2.5)
             }
         }
@@ -449,7 +469,7 @@ fn resumeScalarPayloadsCase() = {
     let ratioTotal = {
         handle Scalar {
             ratio step => {
-                ratioCalls = ratioCalls + 1 ?: ratioCalls
+                ratioCalls = ratioCalls + 1 
                 ratioSlots = "${ratioSlots}${toString(step)}|"
                 let value = match step {
                     1 => 1.25
@@ -497,13 +517,13 @@ fn resumeScalarPayloadsCase() = {
         lastRatioAnswer == ratioTotal, lone != ratioTotal,
         countCalls == 4, ratioCalls == 3, loneCalls == 1,
         countCalls != ratioCalls,
-        (((countCalls + ratioCalls) ?: 0) + loneCalls ?: 0) == 8,
+        (((countCalls + ratioCalls) ) + loneCalls ) == 8,
         countText != ""
     ])
 }
 
 // Register integer and float resume payloads.
-test("resume carries integer and float payloads", resumeScalarPayloadsCase)
+test("resume carries integer and float payloads", fn() => exactArithmetic(resumeScalarPayloadsCase))
 
 /// Three booleans rendered in order, so both truth values must survive.
 fn flagBody() = {
@@ -544,7 +564,7 @@ fn resumeBoolAndUnitPayloadsCase() = {
     let flagText = {
         handle Scalar {
             flag step => {
-                flagCalls = flagCalls + 1 ?: flagCalls
+                flagCalls = flagCalls + 1 
                 let value = match step {
                     2 => false
                     _ => true
@@ -565,7 +585,7 @@ fn resumeBoolAndUnitPayloadsCase() = {
     let routeText = {
         handle Scalar {
             flag step => {
-                routeCalls = routeCalls + 1 ?: routeCalls
+                routeCalls = routeCalls + 1 
                 let value = match step {
                     2 => false
                     _ => true
@@ -588,7 +608,7 @@ fn resumeBoolAndUnitPayloadsCase() = {
     let beatText = {
         handle Scalar {
             beat step => {
-                beats = beats + 1 ?: beats
+                beats = beats + 1 
                 beatOrder = "${beatOrder}${toString(step)}|"
                 let answer = resume()
                 beatAfter = "${beatAfter}${toString(step)}|"
@@ -638,14 +658,14 @@ fn resumeBoolAndUnitPayloadsCase() = {
     checkAll("bool and Unit regions keep separate state", [
         flagCalls == 3, routeCalls == 2, beats == 3,
         flagCalls == beats, flagCalls != routeCalls,
-        (((flagCalls + routeCalls) ?: 0) + beats ?: 0) == 8,
+        (((flagCalls + routeCalls) ) + beats ) == 8,
         beatSeen != flagText, beatOrder != routeGave,
         flagText != routeText, beatText != flagText
     ])
 }
 
 // Register boolean and Unit resume payloads.
-test("resume carries boolean and Unit payloads", resumeBoolAndUnitPayloadsCase)
+test("resume carries boolean and Unit payloads", fn() => exactArithmetic(resumeBoolAndUnitPayloadsCase))
 
 /// Slot is a record supplied whole through one resumed operation.
 type Slot = { label: string, weight: int, ready: bool }
@@ -680,20 +700,20 @@ fn slotBody() = {
 /// One record whose numeric field the caller does arithmetic with.
 fn weightBody() = {
     let held = perform Managed.slot(7)
-    (held.weight * 2) ?: 0
+    (held.weight * 2) 
 }
 
 /// The caller, not the handler, turns the supplied Result into an integer.
 fn parseValue(key) = match perform Managed.parse(key) {
     Success { value } => value
-    Error { message } => (0 - length(message)) ?: 0
+    Error { message } => (0 - length(message)) 
 }
 
 /// One success and one error weighted 10/1, so both must arrive intact.
 fn parsedPair() = {
     let good = parseValue("ok")
     let bad = parseValue("bad")
-    ((good * 10) ?: 0) + bad ?: 0
+    ((good * 10) ) + bad 
 }
 
 /// [EFFECTS-RESUME] with [EFFECTS-OPERATION-MAILBOX]: a managed payload is
@@ -708,7 +728,7 @@ fn resumeManagedPayloadsCase() = {
     let textResult = {
         handle Managed {
             text key => {
-                textCalls = textCalls + 1 ?: textCalls
+                textCalls = textCalls + 1 
                 let value = match key {
                     "empty" => ""
                     "one" => "x"
@@ -726,7 +746,7 @@ fn resumeManagedPayloadsCase() = {
     let slotText = {
         handle Managed {
             slot n => {
-                slotCalls = slotCalls + 1 ?: slotCalls
+                slotCalls = slotCalls + 1 
                 match n {
                     1 => resume(Slot { label: "left", weight: 3, ready: true })
                     _ => resume(Slot { label: "", weight: 0, ready: false })
@@ -740,7 +760,7 @@ fn resumeManagedPayloadsCase() = {
     let doubledWeight = {
         handle Managed {
             slot _n => {
-                weightCalls = weightCalls + 1 ?: weightCalls
+                weightCalls = weightCalls + 1 
                 resume(Slot { label: "seven", weight: 21, ready: true })
             }
         }
@@ -752,7 +772,7 @@ fn resumeManagedPayloadsCase() = {
     let parsedTotal = {
         handle Managed {
             parse key => {
-                parseCalls = parseCalls + 1 ?: parseCalls
+                parseCalls = parseCalls + 1 
                 match key {
                     "ok" => {
                         parseGave = "${parseGave}ok=Success|"
@@ -791,7 +811,7 @@ fn resumeManagedPayloadsCase() = {
         contains(slotText, "/:0:"), !contains(slotText, "//"),
         contains(slotText, "true"), contains(slotText, "false"),
         slotCalls == 2, doubledWeight == 42, weightCalls == 1,
-        doubledWeight == ((21 * 2) ?: 0),
+        doubledWeight == ((21 * 2) ),
         doubledWeight != 21, doubledWeight != 0
     ])
 
@@ -799,7 +819,7 @@ fn resumeManagedPayloadsCase() = {
     // own match turns them into 12 and -5, weighted to 120 - 5 = 115.
     checkAll("resume inside a match arm supplies whole Results", [
         parsedTotal == 115, parseCalls == 2,
-        parsedTotal == ((120 - 5) ?: 0), length("nope!") == 5,
+        parsedTotal == ((120 - 5) ), length("nope!") == 5,
         parsedTotal != 120, parsedTotal != 125, parsedTotal != 12,
         parseGave == "ok=Success|bad=Error|", length(parseGave) == 21,
         contains(parseGave, "ok=Success|"), contains(parseGave, "bad=Error|"),
@@ -809,14 +829,14 @@ fn resumeManagedPayloadsCase() = {
     // Four regions over three managed operations, each with its own counter.
     checkAll("managed regions keep separate state", [
         textCalls == 4, slotCalls == 2, weightCalls == 1, parseCalls == 2,
-        (((textCalls + slotCalls) ?: 0) + ((weightCalls + parseCalls) ?: 0) ?: 0) == 9,
+        (((textCalls + slotCalls) ) + ((weightCalls + parseCalls) ) ) == 9,
         textCalls != parseCalls, slotCalls == parseCalls,
         textResult != slotText, slotText != "", parsedTotal > 100
     ])
 }
 
 // Register string, record and Result resume payloads.
-test("resume carries string record and Result payloads", resumeManagedPayloadsCase)
+test("resume carries string record and Result payloads", fn() => exactArithmetic(resumeManagedPayloadsCase))
 
 /// Depth exposes one operation performed only by the deepest frame.
 effect Depth {
@@ -828,20 +848,20 @@ effect Depth {
 fn depth3(tag) = perform Depth.supply(tag)
 
 /// One frame up performs twice through the deepest one.
-fn depth2(tag) = (depth3("${tag}.a") + depth3("${tag}.b")) ?: 0
+fn depth2(tag) = (depth3("${tag}.a") + depth3("${tag}.b")) 
 
 /// Each frame on the way out applies its own transform.
-fn depth1(tag) = (depth2(tag) * 2) ?: 0
+fn depth1(tag) = (depth2(tag) * 2) 
 
 /// The outermost frame adds the constant the transforms must not erase.
-fn depth0() = (depth1("deep") + 5) ?: 0
+fn depth0() = (depth1("deep") + 5) 
 
 /// The chain performs from three different depths, before and after a resume.
 fn spanBody() = {
     let first = depth3("shallow")
     let inner = depth1("nested")
     let tailValue = depth3("tail")
-    ((first + inner) ?: 0) + tailValue ?: 0
+    ((first + inner) ) + tailValue 
 }
 
 /// [EFFECTS-RESUME] Handlers "are deep: the same handler remains installed
@@ -858,10 +878,10 @@ fn resumeFromNestedHelpersCase() = {
     let deepResult = {
         handle Depth {
             supply tag => {
-                depthCalls = depthCalls + 1 ?: depthCalls
-                depthSeed = (depthSeed + 1) ?: depthSeed
+                depthCalls = depthCalls + 1 
+                depthSeed = (depthSeed + 1) 
                 depthTags = "${depthTags}${tag}|"
-                let answer = resume((depthSeed + 2) ?: depthSeed)
+                let answer = resume((depthSeed + 2) )
                 depthSettled = "${depthSettled}${tag}|"
                 depthAnswers = "${depthAnswers}${toString(answer)}|"
                 answer
@@ -878,8 +898,8 @@ fn resumeFromNestedHelpersCase() = {
     let spanResult = {
         handle Depth {
             supply tag => {
-                spanCalls = spanCalls + 1 ?: spanCalls
-                spanSeed = (spanSeed + 1) ?: spanSeed
+                spanCalls = spanCalls + 1 
+                spanSeed = (spanSeed + 1) 
                 spanTags = "${spanTags}${tag}|"
                 let answer = resume(spanSeed)
                 spanSettled = "${spanSettled}${tag}|"
@@ -896,8 +916,8 @@ fn resumeFromNestedHelpersCase() = {
         deepResult == 19, depthCalls == 2, depthSeed == 2,
         depthTags == "deep.a|deep.b|", depthSettled == "deep.b|deep.a|",
         depthTags != depthSettled, depthAnswers == "19|19|",
-        deepResult == ((14 + 5) ?: 0), ((3 + 4) ?: 0) == 7,
-        ((7 * 2) ?: 0) == 14,
+        deepResult == ((14 + 5) ), ((3 + 4) ) == 7,
+        ((7 * 2) ) == 14,
         deepResult != 7, deepResult != 14, deepResult != 24,
         deepResult > 14, deepResult < 24
     ])
@@ -911,8 +931,8 @@ fn resumeFromNestedHelpersCase() = {
         startsWith(spanTags, "shallow|"), endsWith(spanTags, "tail|"),
         startsWith(spanSettled, "tail|"), endsWith(spanSettled, "shallow|"),
         spanTags != spanSettled, length(spanTags) == 31,
-        length(spanSettled) == 31, spanResult == ((11 + 4) ?: 0),
-        (((2 + 3) ?: 0) * 2 ?: 0) == 10, spanResult != 10, spanResult != 5
+        length(spanSettled) == 31, spanResult == ((11 + 4) ),
+        (((2 + 3) ) * 2 ) == 10, spanResult != 10, spanResult != 5
     ])
 
     // Every arm in the span region observed the one completed answer, and the
@@ -929,7 +949,7 @@ fn resumeFromNestedHelpersCase() = {
 }
 
 // Register a perform reached through four frames of helpers.
-test("resume reaches a perform four frames deep", resumeFromNestedHelpersCase)
+test("resume reaches a perform four frames deep", fn() => exactArithmetic(resumeFromNestedHelpersCase))
 
 /// Ticker supplies one scripted value per index of a twelve-step walk.
 effect Ticker {
@@ -943,7 +963,7 @@ fn scriptValues() = [0, 7, -4, 7, 100, 0, -1, 12, 12, 3, 0, 25]
 
 /// Twelve sequential performs in one region, folded on the way back out.
 fn drain(i) = match i < 12 {
-    true => perform Ticker.tick(i) + drain((i + 1) ?: i) ?: 0
+    true => perform Ticker.tick(i) + drain((i + 1) ) 
     false => 0
 }
 
@@ -961,13 +981,13 @@ fn manyPerformsOneRegionCase() = {
     let drained = {
         handle Ticker {
             tick i => {
-                tickEntered = (tickEntered + 1) ?: tickEntered
+                tickEntered = (tickEntered + 1) 
                 let value = listGet(scriptValues(), i) ?: 0
                 tickGave = "${tickGave}${toString(value)}|"
                 let answer = resume(value)
-                tickSettled = (tickSettled + 1) ?: tickSettled
+                tickSettled = (tickSettled + 1) 
                 tickOrder = "${tickOrder}${toString(i)}|"
-                seenSum = (seenSum + answer) ?: seenSum
+                seenSum = (seenSum + answer) 
                 answer
             }
         }
@@ -994,7 +1014,7 @@ fn manyPerformsOneRegionCase() = {
         startsWith(tickGave, "0|7|-4|"), endsWith(tickGave, "|25|"),
         contains(tickGave, "|100|"), contains(tickGave, "|-1|"),
         contains(tickGave, "|12|12|"), !contains(tickGave, "|13|"),
-        drained == 161, (((10 + 111) ?: 0) + 40 ?: 0) == 161,
+        drained == 161, (((10 + 111) ) + 40 ) == 161,
         drained != 10, drained != 40, drained != 111
     ])
 
@@ -1005,10 +1025,10 @@ fn manyPerformsOneRegionCase() = {
         startsWith(tickOrder, "11|10|"), endsWith(tickOrder, "|1|0|"),
         !startsWith(tickOrder, "0|"), contains(tickOrder, "|5|4|"),
         tickOrder != tickGave, tickSettled == 12, tickEntered == 12,
-        seenSum == 1932, seenSum == ((161 * 12) ?: 0),
+        seenSum == 1932, seenSum == ((161 * 12) ),
         seenSum != 161, seenSum != 0
     ])
 }
 
 // Register twelve performs settling through one region.
-test("twelve performs in one region each settle once", manyPerformsOneRegionCase)
+test("twelve performs in one region each settle once", fn() => exactArithmetic(manyPerformsOneRegionCase))

@@ -6,28 +6,28 @@ effect Susp
 
 value1 a1 = perform Direct.tick a1
 value2 a1 a2 =
-    _ = (a1 + 0) ?: 0
+    _ = satAdd a1 0
     perform Direct.tick a2
 value3 a1 a2 a3 =
-    _ = (a1 + 0) ?: 0
-    _ = (a2 + 0) ?: 0
+    _ = satAdd a1 0
+    _ = satAdd a2 0
     perform Direct.tick a3
 value4 a1 a2 a3 a4 =
-    _ = (a1 + 0) ?: 0
-    _ = (a2 + 0) ?: 0
-    _ = (a3 + 0) ?: 0
+    _ = satAdd a1 0
+    _ = satAdd a2 0
+    _ = satAdd a3 0
     perform Direct.tick a4
 value5 a1 a2 a3 a4 a5 =
-    _ = (a1 + 0) ?: 0
-    _ = (a2 + 0) ?: 0
-    _ = (a3 + 0) ?: 0
-    _ = (a4 + 0) ?: 0
+    _ = satAdd a1 0
+    _ = satAdd a2 0
+    _ = satAdd a3 0
+    _ = satAdd a4 0
     perform Direct.tick a5
 
 runValue () =
     mut count = 0
     handle Direct
-        tick n => count := (count + n) ?: count
+        tick n => count := satAdd count n
     _ = value1 1
     partial1 = value1
     _ = partial1 1
@@ -47,29 +47,29 @@ runValue () =
 
 control1 a1 = perform Susp.tick a1
 control2 a1 a2 =
-    _ = (a1 + 0) ?: 0
+    _ = satAdd a1 0
     perform Susp.tick a2
 control3 a1 a2 a3 =
-    _ = (a1 + 0) ?: 0
-    _ = (a2 + 0) ?: 0
+    _ = satAdd a1 0
+    _ = satAdd a2 0
     perform Susp.tick a3
 control4 a1 a2 a3 a4 =
-    _ = (a1 + 0) ?: 0
-    _ = (a2 + 0) ?: 0
-    _ = (a3 + 0) ?: 0
+    _ = satAdd a1 0
+    _ = satAdd a2 0
+    _ = satAdd a3 0
     perform Susp.tick a4
 control5 a1 a2 a3 a4 a5 =
-    _ = (a1 + 0) ?: 0
-    _ = (a2 + 0) ?: 0
-    _ = (a3 + 0) ?: 0
-    _ = (a4 + 0) ?: 0
+    _ = satAdd a1 0
+    _ = satAdd a2 0
+    _ = satAdd a3 0
+    _ = satAdd a4 0
     perform Susp.tick a5
 
 runControl () =
     mut count = 0
     handle Susp
         tick n =>
-            count := (count + n) ?: count
+            count := satAdd count n
             resume ()
     _ = control1 1
     partial1 = control1
@@ -107,8 +107,8 @@ validate name age score email =
 audit name age score email =
     mut count = 0
     handle Invalid
-        report _message => count := (count + 1) ?: count
+        report _message => count := satAdd count 1
     _ = validate name age score email
     count
 
-print "direct=${toString (runValue ())},control=${toString (runControl ())},audit=${toString (audit "" ((0 - 3) ?: 0) 250 "invalid")}"
+print "direct=${toString (runValue ())},control=${toString (runControl ())},audit=${toString (audit "" (-3) 250 "invalid")}"

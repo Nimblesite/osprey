@@ -7,7 +7,7 @@ After add5: 15
 square(5) = 25
 Function composition working correctly!
 hi!
-Success(11)
+11
 110
 strEq=hi
 strNe=ok
@@ -20,19 +20,19 @@ Hi "Bob"
 lit: ab\nc
 -2.5
 adders: 8 13 105
-direct: 10 inferred: Success(21)
+direct: 10 inferred: 21
 passed: 111
-wrapped: 41 nested: Success(33)
+wrapped: 41 nested: 33
 pins: 42 42 9
 field: true false
 mapped: 13
 mapped: 23
 mapped: 33
 evensum: 20
-elem: Success(12)
-elem: Success(15)
-chain3: Success(6) computed: 36 fieldcb: 23
-generic-values: 33 7 Success(42) osp!
+elem: 12
+elem: 15
+chain3: 6 computed: 36 fieldcb: 23
+generic-values: 33 7 42 osp!
 === Function Composition Test Complete ===
 ok 1 - functions compose across scalar and string values
 ok 2 - closures retain captures through higher-order consumers

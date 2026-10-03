@@ -131,59 +131,11 @@ pub(crate) struct HostAbi {
     pub(crate) imports: Vec<Import>,
 }
 
-/// Derive the host ABI of `program` from its resolved types and the IR codegen
-/// emitted for it. A function is exported only when codegen actually defined
-/// it — a generic function is inlined at each call site and has no symbol.
-///
-/// # Errors
-///
-/// Two functions whose C names coincide (`app::x_y` and `app_x::y`), or an
-/// export whose name an import already takes, would silently shadow one
-/// another at link time, so the ABI refuses to be generated.
-pub(crate) fn host_abi(
-    program: &Program,
-    types: &ProgramTypes,
-    ir: &str,
-) -> Result<HostAbi, String> {
-    let mut abi = HostAbi::default();
-    for statement in &program.statements {
-        match statement {
-            Stmt::Function {
-                name, parameters, ..
-            } if name != SOURCE_MAIN && defines(ir, name) => {
-                let names = parameters.iter().map(|p| p.name.as_str());
-                if let Some((params, ret)) = c_signature(types, name, names) {
-                    abi.exports.push(export(name, params, ret));
-                }
-            }
-            Stmt::Extern {
-                name, parameters, ..
-            } => {
-                let names = parameters.iter().map(|p| p.name.as_str());
-                let (params, ret) = c_signature(types, name, names).ok_or_else(|| format!(
-                    "extern `{name}` has an unsupported C ABI signature: parameters must be int, float, bool or string; returns may also be Unit"
-                ))?;
-                abi.imports.push(Import {
-                    symbol: name.clone(),
-                    params,
-                    ret,
-                });
-            }
-            _ => {}
-        }
-    }
-    reject_clashes(&abi, program, ir)?;
-    let exports: Vec<_> = abi.exports.iter().map(|e| e.symbol.as_str()).collect();
-    let errors = osprey_types::check_program_exports(program, &exports);
-    if !errors.is_empty() {
-        return Err(errors
-            .iter()
-            .map(|e| e.message.as_str())
-            .collect::<Vec<_>>()
-            .join("\n"));
-    }
-    Ok(abi)
-}
+#[path = "ios_abi_selection.rs"]
+mod selection;
+#[cfg(test)]
+use selection::host_abi;
+use selection::host_abi_selected;
 
 fn defines(ir: &str, symbol: &str) -> bool {
     let needle = format!(" @{symbol}(");
@@ -465,11 +417,17 @@ pub(crate) fn source(
     path: &str,
     target: &str,
     extend_bool: bool,
+    entry_only: bool,
 ) -> Result<(String, String), String> {
     crate::target_capabilities::validate(program, target)?;
     let ir = osprey_codegen::compile_library(program).map_err(|e| format!("{path}: {e}"))?;
-    let abi = host_abi(program, &osprey_types::infer_program(program), &ir)
-        .map_err(|error| format!("{path}: target `{target}` C ABI: {error}"))?;
+    let abi = host_abi_selected(
+        program,
+        &osprey_types::infer_program(program),
+        &ir,
+        !entry_only,
+    )
+    .map_err(|error| format!("{path}: target `{target}` C ABI: {error}"))?;
     let adapted = if extend_bool {
         with_host_abi(&ir, &abi)?
     } else {

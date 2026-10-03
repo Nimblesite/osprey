@@ -181,7 +181,12 @@ must not discard the shared-tail constraint. Closed rows must match exactly
 under equality; cyclic row substitutions are rejected.
 
 The preceding equality rules solve inference constraints, not annotation admissibility. Annotation checking uses **inclusion**, not equality: inferred requirements
-must fit the declared bound; permitted unused operations are legal. Quantified
+must fit the declared bound; permitted unused operations are legal. When a
+function's body is a closure literal — which every curried ML binding
+`f a b = …` lowers to ([FLAVOR-ML-CURRY](0024-MLFlavorSyntax.md#functions-and-currying))
+— the declared bound covers the full application: the requirements it must
+admit are those of the innermost body, not only those of constructing the
+returned closure. Quantified
 annotation tails are rigid while checking, so extra requirements cannot be
 hidden by assigning them to the caller's variable. Free row variables generalize
 at function/let boundaries when absent from the environment, subject to the
@@ -202,6 +207,16 @@ its latent operations, and being constructed inside a handler does not discharge
 operations invoked after escape. Not calling a callback contributes none of its
 latent requirements. Builtin behavior belongs to the resolved binding; shadowing
 a builtin name cannot confer builtin effect behavior.
+
+`[EFFECTS-PROVENANCE]` Callable provenance follows values through constructor and
+record fields, list and map elements, collection `+`, Result payloads, and fibers.
+An operator that produces a primitive value does not carry the callable
+provenance of its operands into that result. Analysis of recursive aggregates
+must reach a finite fixed point. If a nested value must be widened, projections
+through it remain unknown rather than being treated as pure; invoking an
+unresolved callable is rejected. Widening never removes a known operation
+requirement or turns an unknown field into proof that a same-named free function
+was selected.
 
 ## Handler-owned state
 

@@ -1,8 +1,8 @@
 // Triple-nested counting loop accumulating (i*j*k) mod P — nested iteration.
-fn add(a, b) = a + b ?: 0
-fn sub(a, b) = a - b ?: 0
-fn mul(a, b) = a * b ?: 0
-fn mod_(a, b) = a % b ?: 0
+fn add(a, b) = a + b
+fn sub(a, b) = a - b
+fn mul(a, b) = a * b
+fn mod_(a, b) = a % b
 
 fn loopK(i, j, k, acc) = match k {
     0 => acc
@@ -17,4 +17,16 @@ fn loopI(i, n, acc) = match i {
     _ => loopI(sub(i, 1), n, loopJ(i, n, n, acc))
 }
 
-print("${loopI(250, 250, 0)}")
+fn main() = {
+    handle Arith {
+        overflow _ _ _ wrapped => {
+            print("unexpected integer overflow")
+            wrapped
+        }
+        remainderByZero _ => {
+            print("unexpected zero divisor")
+            0
+        }
+    }
+    print("${loopI(250, 250, 0)}")
+}

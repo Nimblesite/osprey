@@ -72,7 +72,7 @@ suite("Installed VSIX unused symbol diagnostics and editing", () => {
     const editor = await openSource("unused-curried.ospml", source);
     const parameter = unused("parameter", "ignored", "parameter");
     await noRemoval(editor, [parameter, unused("variable", "spare", "variable")]);
-    await replace(editor, "    used\n", "    (used + spare) ?: 0\n");
+    await replace(editor, "    used\n", "    wrapAdd used spare\n");
     await diagnostics(editor.document, [parameter]);
     await replace(editor, "ignored", "_ignored");
     await diagnostics(editor.document, []);
@@ -108,7 +108,7 @@ suite("Installed VSIX unused symbol diagnostics and editing", () => {
   test("closure capture uses the outer parameter and only the written unused lambda parameter is faded", async () => {
     const editor = await openSource("unused-lambda.osp", "fn outer(value) = fn(other) => value\nlet result = outer(1)(2)\n");
     await noRemoval(editor, [unused("parameter", "other", "parameter")]);
-    await replace(editor, "=> value", "=> (value + other) ?: 0");
+    await replace(editor, "=> value", "=> wrapAdd(value, other)");
     await diagnostics(editor.document, []);
     await save(editor.document);
   });
@@ -118,7 +118,7 @@ suite("Installed VSIX unused symbol diagnostics and editing", () => {
       "type Pair = { left: int, right: int }\nfn first(pair: Pair) = match pair { { left, right } => left }\nlet result = first(Pair { left: 1, right: 2 })\n");
     await noRemoval(editor, [unused("pattern-binding", "right", "pattern binding", 1)]);
     assert.deepStrictEqual(await actions(editor.document, rangeOf(editor.document, ": Pair")), []);
-    await replace(editor, "=> left", "=> (left + right) ?: 0");
+    await replace(editor, "=> left", "=> wrapAdd(left, right)");
     await diagnostics(editor.document, []);
     await save(editor.document);
   });
@@ -127,7 +127,7 @@ suite("Installed VSIX unused symbol diagnostics and editing", () => {
     const editor = await openSource("unused-list-pattern.osp",
       "fn first(items) = match items { [head, ...tail] => head\n[] => 0 }\nlet result = first([1, 2])\n");
     await noRemoval(editor, [unused("pattern-binding", "tail", "pattern binding")]);
-    await replace(editor, "=> head", "=> (head + listLength(tail)) ?: 0");
+    await replace(editor, "=> head", "=> wrapAdd(head, listLength(tail))");
     await diagnostics(editor.document, []);
     await save(editor.document);
   });
@@ -138,7 +138,7 @@ suite("Installed VSIX unused symbol diagnostics and editing", () => {
     const warning = { ...unused("handler-parameter", "second", "handler parameter"),
       message: "unused handler parameter `second` of `Pick.choose`" };
     await noRemoval(editor, [warning]);
-    await replace(editor, "resume(first)", "resume((first + second) ?: 0)");
+    await replace(editor, "resume(first)", "resume(wrapAdd(first, second))");
     await diagnostics(editor.document, []);
     await save(editor.document);
   });

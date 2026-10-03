@@ -118,7 +118,7 @@ fn stringPipelineCase() = {
     let cleaned = source |> trim |> toLowerCase
     let splitCount = match split("a,b,c", ",") {
         Success { value } => listLength(value)
-        Error => (0 - 1) ?: 0
+        Error => (0 - 1) 
     }
     let splitEmptyRejected = match split("anything", "") {
         Success => false
@@ -151,7 +151,7 @@ fn stringPipelineCase() = {
         reverse("abc") == "cba"
     ])
     checkAll("fallible string values and collection results", [
-        (indexOf(source, "?") ?: ((0 - 1) ?: 0)) == 16,
+        (indexOf(source, "?") ?: ((0 - 1) )) == 16,
         (substring("hello world", 6, 11) ?: "missing") == "world",
         (replace("a-b-c-d", "-", "/") ?: "missing") == "a/b/c/d",
         (repeat("ab", 4) ?: "missing") == "abababab",

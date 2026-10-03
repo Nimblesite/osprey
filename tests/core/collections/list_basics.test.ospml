@@ -15,7 +15,7 @@ type Slot =
 appendThrough : List int -> int -> int -> List int
 appendThrough xs next last = match next > last
     true => xs
-    false => appendThrough (listAppend xs next) (next + 1 ?: next) last
+    false => appendThrough (listAppend xs next) (next + 1 ) last
 
 (** classify exercises exact-length, singleton, pair, and head-tail list patterns. *)
 classify : List int -> string
@@ -27,7 +27,7 @@ classify [head, ...tail] = "many head=${head} rest=${listLength tail}"
 (** sumList proves recursive head-tail destructuring retains every element. *)
 sumList : List int -> int
 sumList [] = 0
-sumList [head, ...tail] = head + sumList tail ?: 0
+sumList [head, ...tail] = head + sumList tail 
 
 (** restLen exercises a wildcard prefix followed by a captured list tail. *)
 restLen : List int -> int
@@ -41,7 +41,7 @@ encodeIteration xs =
     mut encoded = 0
     handle IterationProbe
         observe value =>
-            encoded := encoded * 100 + value ?: encoded
+            encoded := encoded * 100 + value 
     forEachList xs (\value => perform IterationProbe.observe value)
     encoded
 
@@ -77,34 +77,34 @@ constructionAndIdentityCase () =
 
     // Constituent checks ensure the old length-only observations cannot hide corrupt contents.
     checkAll "construction and reverse contents" [
-        (listGet a 0 ?: ((0 - 999) ?: 0)) == 1,
-        (listGet a 1 ?: ((0 - 999) ?: 0)) == 2,
-        (listGet a 2 ?: ((0 - 999) ?: 0)) == 3,
-        (listGet b 0 ?: ((0 - 999) ?: 0)) == 10,
-        (listGet b 1 ?: ((0 - 999) ?: 0)) == 20,
-        (listGet reversed 0 ?: ((0 - 999) ?: 0)) == 3,
-        (listGet reversed 1 ?: ((0 - 999) ?: 0)) == 2,
-        (listGet reversed 2 ?: ((0 - 999) ?: 0)) == 1,
-        (listGet restored 0 ?: ((0 - 999) ?: 0)) == 1,
-        (listGet restored 1 ?: ((0 - 999) ?: 0)) == 2,
-        (listGet restored 2 ?: ((0 - 999) ?: 0)) == 3,
-        (listGet prepended 0 ?: ((0 - 999) ?: 0)) == 0,
-        (listGet prepended 1 ?: ((0 - 999) ?: 0)) == 1,
-        (listGet prepended 2 ?: ((0 - 999) ?: 0)) == 2,
-        (listGet prepended 3 ?: ((0 - 999) ?: 0)) == 3
+        (listGet a 0 ?: ((0 - 999) )) == 1,
+        (listGet a 1 ?: ((0 - 999) )) == 2,
+        (listGet a 2 ?: ((0 - 999) )) == 3,
+        (listGet b 0 ?: ((0 - 999) )) == 10,
+        (listGet b 1 ?: ((0 - 999) )) == 20,
+        (listGet reversed 0 ?: ((0 - 999) )) == 3,
+        (listGet reversed 1 ?: ((0 - 999) )) == 2,
+        (listGet reversed 2 ?: ((0 - 999) )) == 1,
+        (listGet restored 0 ?: ((0 - 999) )) == 1,
+        (listGet restored 1 ?: ((0 - 999) )) == 2,
+        (listGet restored 2 ?: ((0 - 999) )) == 3,
+        (listGet prepended 0 ?: ((0 - 999) )) == 0,
+        (listGet prepended 1 ?: ((0 - 999) )) == 1,
+        (listGet prepended 2 ?: ((0 - 999) )) == 2,
+        (listGet prepended 3 ?: ((0 - 999) )) == 3
     ]
 
     // Concatenation identities and the operator alias are checked at their seams and endpoints.
     checkAll "concat identities and boundaries" [
-        (listGet concatenated 0 ?: ((0 - 999) ?: 0)) == 1,
-        (listGet concatenated 2 ?: ((0 - 999) ?: 0)) == 3,
-        (listGet concatenated 3 ?: ((0 - 999) ?: 0)) == 10,
-        (listGet concatenated 4 ?: ((0 - 999) ?: 0)) == 20,
-        (listGet emptyPlusA 0 ?: ((0 - 999) ?: 0)) == 1,
-        (listGet aPlusEmpty 2 ?: ((0 - 999) ?: 0)) == 3,
-        (listGet doubledA 3 ?: ((0 - 999) ?: 0)) == 1,
-        (listGet abPlusA 5 ?: ((0 - 999) ?: 0)) == 1,
-        (listGet abPlusA 7 ?: ((0 - 999) ?: 0)) == 3
+        (listGet concatenated 0 ?: ((0 - 999) )) == 1,
+        (listGet concatenated 2 ?: ((0 - 999) )) == 3,
+        (listGet concatenated 3 ?: ((0 - 999) )) == 10,
+        (listGet concatenated 4 ?: ((0 - 999) )) == 20,
+        (listGet emptyPlusA 0 ?: ((0 - 999) )) == 1,
+        (listGet aPlusEmpty 2 ?: ((0 - 999) )) == 3,
+        (listGet doubledA 3 ?: ((0 - 999) )) == 1,
+        (listGet abPlusA 5 ?: ((0 - 999) )) == 1,
+        (listGet abPlusA 7 ?: ((0 - 999) )) == 3
     ]
 
     // All three legacy contains results survive alongside additional positive and
@@ -145,17 +145,17 @@ iterationAndPersistenceCase () =
 
     // One condition per formerly printed iteration value keeps the golden observations explicit.
     checkAll "iteration constituent values" [
-        (listGet a 0 ?: ((0 - 999) ?: 0)) == 1,
-        (listGet a 1 ?: ((0 - 999) ?: 0)) == 2,
-        (listGet a 2 ?: ((0 - 999) ?: 0)) == 3,
-        (listGet reversed 0 ?: ((0 - 999) ?: 0)) == 3,
-        (listGet reversed 1 ?: ((0 - 999) ?: 0)) == 2,
-        (listGet reversed 2 ?: ((0 - 999) ?: 0)) == 1,
-        (listGet combined 0 ?: ((0 - 999) ?: 0)) == 1,
-        (listGet combined 1 ?: ((0 - 999) ?: 0)) == 2,
-        (listGet combined 2 ?: ((0 - 999) ?: 0)) == 3,
-        (listGet combined 3 ?: ((0 - 999) ?: 0)) == 10,
-        (listGet combined 4 ?: ((0 - 999) ?: 0)) == 20
+        (listGet a 0 ?: ((0 - 999) )) == 1,
+        (listGet a 1 ?: ((0 - 999) )) == 2,
+        (listGet a 2 ?: ((0 - 999) )) == 3,
+        (listGet reversed 0 ?: ((0 - 999) )) == 3,
+        (listGet reversed 1 ?: ((0 - 999) )) == 2,
+        (listGet reversed 2 ?: ((0 - 999) )) == 1,
+        (listGet combined 0 ?: ((0 - 999) )) == 1,
+        (listGet combined 1 ?: ((0 - 999) )) == 2,
+        (listGet combined 2 ?: ((0 - 999) )) == 3,
+        (listGet combined 3 ?: ((0 - 999) )) == 10,
+        (listGet combined 4 ?: ((0 - 999) )) == 20
     ]
 
     // The six generation lengths, retained g2 length, and all branch lengths mirror the old golden.
@@ -193,9 +193,9 @@ iterationAndPersistenceCase () =
         !(listContains g3 999),
         !(listContains g3 888),
         !(listContains g3 777),
-        (listGet g5 4 ?: ((0 - 999) ?: 0)) == 50,
-        (listGet y2 3 ?: ((0 - 999) ?: 0)) == 888,
-        (listGet y2 4 ?: ((0 - 999) ?: 0)) == 777
+        (listGet g5 4 ?: ((0 - 999) )) == 50,
+        (listGet y2 3 ?: ((0 - 999) )) == 888,
+        (listGet y2 4 ?: ((0 - 999) )) == 777
     ]
 
 (** tailBoundaryCase retains the 10/20/30/35 generations and probes both sides of the 32-element tail boundary. *)
@@ -219,22 +219,22 @@ tailBoundaryCase () =
 
     // Boundary indices assert actual content before, at, and after the 32-element trie tail split.
     checkAll "tail boundary contents" [
-        (listGet t 0 ?: ((0 - 999) ?: 0)) == 1,
-        (listGet t 9 ?: ((0 - 999) ?: 0)) == 10,
-        (listGet t2 10 ?: ((0 - 999) ?: 0)) == 11,
-        (listGet t2 19 ?: ((0 - 999) ?: 0)) == 20,
-        (listGet t3 29 ?: ((0 - 999) ?: 0)) == 30,
-        (listGet t4 30 ?: ((0 - 999) ?: 0)) == 31,
-        (listGet t4 31 ?: ((0 - 999) ?: 0)) == 32,
-        (listGet t4 32 ?: ((0 - 999) ?: 0)) == 33,
-        (listGet t4 34 ?: ((0 - 999) ?: 0)) == 35,
-        (listGet reversed 0 ?: ((0 - 999) ?: 0)) == 35,
-        (listGet reversed 2 ?: ((0 - 999) ?: 0)) == 33,
-        (listGet reversed 3 ?: ((0 - 999) ?: 0)) == 32,
-        (listGet reversed 34 ?: ((0 - 999) ?: 0)) == 1,
-        (listGet doubled 34 ?: ((0 - 999) ?: 0)) == 35,
-        (listGet doubled 35 ?: ((0 - 999) ?: 0)) == 1,
-        (listGet doubled 69 ?: ((0 - 999) ?: 0)) == 35,
+        (listGet t 0 ?: ((0 - 999) )) == 1,
+        (listGet t 9 ?: ((0 - 999) )) == 10,
+        (listGet t2 10 ?: ((0 - 999) )) == 11,
+        (listGet t2 19 ?: ((0 - 999) )) == 20,
+        (listGet t3 29 ?: ((0 - 999) )) == 30,
+        (listGet t4 30 ?: ((0 - 999) )) == 31,
+        (listGet t4 31 ?: ((0 - 999) )) == 32,
+        (listGet t4 32 ?: ((0 - 999) )) == 33,
+        (listGet t4 34 ?: ((0 - 999) )) == 35,
+        (listGet reversed 0 ?: ((0 - 999) )) == 35,
+        (listGet reversed 2 ?: ((0 - 999) )) == 33,
+        (listGet reversed 3 ?: ((0 - 999) )) == 32,
+        (listGet reversed 34 ?: ((0 - 999) )) == 1,
+        (listGet doubled 34 ?: ((0 - 999) )) == 35,
+        (listGet doubled 35 ?: ((0 - 999) )) == 1,
+        (listGet doubled 69 ?: ((0 - 999) )) == 35,
         listLength t3 == 30,
         !(listContains t3 31),
         sumList t == 55,
@@ -347,24 +347,38 @@ indexingPatternsAndDispatchCase () =
         !(listContains (empty + commands) "echo missing"),
         listLength (a + [7, 8]) == 5,
         listLength ([7, 8] + a) == 5,
-        (listGet ([7, 8] + a) 0 ?: ((0 - 999) ?: 0)) == 7,
-        (listGet ([7, 8] + a) 2 ?: ((0 - 999) ?: 0)) == 1,
-        (listGet (a + [7, 8]) 3 ?: ((0 - 999) ?: 0)) == 7,
-        (listGet (a + [7, 8]) 4 ?: ((0 - 999) ?: 0)) == 8,
+        (listGet ([7, 8] + a) 0 ?: ((0 - 999) )) == 7,
+        (listGet ([7, 8] + a) 2 ?: ((0 - 999) )) == 1,
+        (listGet (a + [7, 8]) 3 ?: ((0 - 999) )) == 7,
+        (listGet (a + [7, 8]) 4 ?: ((0 - 999) )) == 8,
         length ([7, 8] + a) == 5
     ]
 
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
 // Register the construction, identity, and content scenario.
-test "lists construct, reverse, prepend, concatenate, and retain contents" constructionAndIdentityCase
+test "lists construct, reverse, prepend, concatenate, and retain contents" (\() => exactArithmetic (constructionAndIdentityCase))
 
 // Register the traversal, persistence, and branching scenario.
-test "list iteration and persistent branches retain order and isolation" iterationAndPersistenceCase
+test "list iteration and persistent branches retain order and isolation" (\() => exactArithmetic (iterationAndPersistenceCase))
 
 // Register the 32-element structural boundary scenario.
-test "lists preserve content across the 32-element tail boundary" tailBoundaryCase
+test "lists preserve content across the 32-element tail boundary" (\() => exactArithmetic (tailBoundaryCase))
 
 // Register Result indexing, patterns, recursion, and builtin dispatch together.
-test "list indexing, patterns, recursion, and receiver dispatch compose" indexingPatternsAndDispatchCase
+test "list indexing, patterns, recursion, and receiver dispatch compose" (\() => exactArithmetic (indexingPatternsAndDispatchCase))
 
 (** [BUILTIN-LIST-GET] declares `listGet(list: List<T>, index: int) -> Result<T, Error>`
     and says it is "equivalent to `list[index]`", with an out-of-range index
@@ -483,7 +497,7 @@ typedElementRetrievalCase () =
     ]
 
 // Register typed element retrieval across string, float, bool and record lists.
-test "listGet returns the element type for every element type" typedElementRetrievalCase
+test "listGet returns the element type for every element type" (\() => exactArithmetic (typedElementRetrievalCase))
 
 (** TranscriptProbe renders one visited element at a time, so `forEachList`'s
     traversal order over non-integer element types is observable without stdout. *)
@@ -516,7 +530,7 @@ secondOr (xs, fallback) = match xs
 (** tailLength reports the rest binder's own length, distinguishing the empty
     list (-1) from a singleton whose tail is empty (0). *)
 tailLength xs = match xs
-    [] => ((0 - 1) ?: 0)
+    [] => ((0 - 1) )
     [_head, ...tail] => listLength tail
 
 (** joinWords walks a string list through the rest binder, so a dropped,
@@ -550,7 +564,7 @@ sumFloats xs = match xs
 (** countTrue counts the `true` elements of a bool list through list patterns. *)
 countTrue xs = match xs
     [] => 0
-    [head, ...tail] => boolWeight head + countTrue tail ?: 0
+    [head, ...tail] => boolWeight head + countTrue tail 
 
 (** slotLabels proves a record element survives head/tail destructuring WHOLE:
     the bound head is a record whose fields are all readable. *)
@@ -562,7 +576,7 @@ slotLabels xs = match xs
     the wrong slot cannot pass by matching only one field. *)
 readySlots xs = match xs
     [] => 0
-    [head, ...tail] => boolWeight head.ready + readySlots tail ?: 0
+    [head, ...tail] => boolWeight head.ready + readySlots tail 
 
 (** totalWeight reads the third, float-typed field off the bound head. *)
 totalWeight xs = match xs
@@ -580,7 +594,7 @@ rowAt (rows, index) = match listGet rows index
     `T` is itself a `List<int>` ([TYPE-LIST]). *)
 sumInner xs = match xs
     [] => 0
-    [head, ...tail] => sumList head + sumInner tail ?: 0
+    [head, ...tail] => sumList head + sumInner tail 
 
 (** describeMatrix selects its arm on the OUTER list's length while reading the
     INNER list's length [TYPE-LIST-PATTERNS]. *)
@@ -592,13 +606,13 @@ describeMatrix xs = match xs
 
 (** weave folds a running base-10 encoding, so a fold's visit ORDER is observable
     as one integer ([BUILTIN-ITER-FOLD] "reduces an iterator to a single value"). *)
-weave (acc, value) = acc * 10 + value ?: acc
+weave (acc, value) = acc * 10 + value 
 
 (** twice is the [BUILTIN-ITER-MAP] callback; isEvenValue the
     [BUILTIN-ITER-FILTER] predicate. *)
-twice n = n * 2 ?: n
+twice n = n * 2 
 
-isEvenValue n = (n % 2 ?: 1) == 0
+isEvenValue n = (n % 2 ) == 0
 
 (** [TYPE-LIST-PATTERNS] states a list pattern "matches exactly the listed length
     unless its final element is a rest binder" and that "the rest binder receives
@@ -636,7 +650,7 @@ stringListPatternCase () =
         shapeOf (listConcat noWords solo) == "single",
         shapeOf (listConcat duo noWords) == "pair",
         shapeOf (noWords + noWords) == "none",
-        tailLength noWords == ((0 - 1) ?: 0),
+        tailLength noWords == ((0 - 1) ),
         tailLength solo == 0,
         tailLength duo == 1,
         tailLength words == 2,
@@ -733,7 +747,7 @@ stringListPatternCase () =
     ]
 
 // Register list patterns over string elements.
-test "string lists destructure, iterate, and rebuild through list patterns" stringListPatternCase
+test "string lists destructure, iterate, and rebuild through list patterns" (\() => exactArithmetic (stringListPatternCase))
 
 (** The same [TYPE-LIST-PATTERNS] shape rules over `List<float>` and `List<bool>`,
     the two element types whose storage word is NOT an int. Every float used here
@@ -774,7 +788,7 @@ floatAndBoolListPatternCase () =
         secondOr (twoFloats, 9.5) == 0.75,
         secondOr (ratios, 9.5) == 1.25,
         secondOr (quarters, 9.5) == 0.25,
-        tailLength noFloats == ((0 - 1) ?: 0),
+        tailLength noFloats == ((0 - 1) ),
         tailLength oneFloat == 0,
         tailLength ratios == 2,
         tailLength quarters == 3
@@ -853,12 +867,12 @@ floatAndBoolListPatternCase () =
         listLength (mixed + allOff) == 6,
         countTrue (mixed + allOff) == 2,
         tailLength mixed == 2,
-        tailLength noFlags == ((0 - 1) ?: 0),
+        tailLength noFlags == ((0 - 1) ),
         listLength (listReverse allOn) == 3
     ]
 
 // Register list patterns over float and bool elements.
-test "float and bool lists destructure and recombine through list patterns" floatAndBoolListPatternCase
+test "float and bool lists destructure and recombine through list patterns" (\() => exactArithmetic (floatAndBoolListPatternCase))
 
 (** [TYPE-LIST-PATTERNS] over `List<Slot>`. A rest-binder pattern must bind the
     WHOLE record, not the storage word behind it, so every arm below reads more
@@ -967,7 +981,7 @@ recordListPatternCase () =
     ]
 
 // Register list patterns over record elements.
-test "record lists destructure whole through list patterns" recordListPatternCase
+test "record lists destructure whole through list patterns" (\() => exactArithmetic (recordListPatternCase))
 
 (** A `List<T>` whose `T` is itself a `List<int>` ([TYPE-LIST]). [BUILTIN-LIST-GET]
     must hand back the inner LIST, so every retrieval here is indexed again or
@@ -1060,7 +1074,7 @@ nestedListCase () =
     ]
 
 // Register nested-list indexing, patterns and isolation.
-test "nested lists index, destructure, and stay isolated" nestedListCase
+test "nested lists index, destructure, and stay isolated" (\() => exactArithmetic (nestedListCase))
 
 (** [BUILTIN-LIST-FOREACH] states `forEachList` "calls `function` once per element
     in index order". One handler owns the transcript, so the assertions between
@@ -1093,7 +1107,7 @@ typedIterationOrderCase () =
         isEmpty noWords,
         listLength noWords == 0,
         shapeOf noWords == "none",
-        tailLength noWords == ((0 - 1) ?: 0)
+        tailLength noWords == ((0 - 1) )
     ]
 
     forEachList words (\word => perform TranscriptProbe.note word)
@@ -1164,11 +1178,11 @@ typedIterationOrderCase () =
         (range (0, 3) |> fold 0 (\(acc, i) => weave (acc, (listGet (listReverse counts) i ?: 0)))) == 987,
         (range (1, 3) |> fold 0 (\(acc, i) => weave (acc, (listGet counts i ?: 0)))) == 89,
         (range (0, 0) |> fold 0 (\(acc, i) => weave (acc, (listGet counts i ?: 0)))) == 0,
-        (range (0, 2) |> fold 0 (\(acc, i) => acc + boolWeight (listGet flags i ?: false) ?: acc)) == 1,
+        (range (0, 2) |> fold 0 (\(acc, i) => acc + boolWeight (listGet flags i ?: false) )) == 1,
         (range (0, 2) |> fold 0.0 (\(acc, i) => acc + (listGet ratios i ?: 0.0))) == 1.75,
         (range (0, 3) |> fold 0.0 (\(acc, i) => acc + (listGet ratios i ?: 0.0))) == 4.5,
         (range (0, 2) |> fold "" (\(acc, i) => "${acc}${(listGet slots i ?: missingSlot).label}>")) == "left>right>",
-        (range (0, 5) |> fold 0 (\(acc, i) => acc + i ?: acc)) == 10,
+        (range (0, 5) |> fold 0 (\(acc, i) => acc + i )) == 10,
         (range (5, 5) |> fold 99 weave) == 99,
         (range (1, 6) |> fold 0 weave) == 12345,
         (range (0, 3) |> fold "" (\(acc, i) => "${acc}${i};")) == "0;1;2;"
@@ -1183,8 +1197,8 @@ typedIterationOrderCase () =
         (range (1, 6) |> filter isEvenValue |> fold 0 weave) == 24,
         (range (1, 10) |> filter isEvenValue |> map twice |> fold 0 weave) == 4936,
         (range (1, 6) |> map twice |> filter isEvenValue |> fold 0 weave) == 24690,
-        (range (1, 6) |> map twice |> fold 0 (\(a, b) => a + b ?: a)) == 30,
-        (range (1, 6) |> filter isEvenValue |> fold 0 (\(a, b) => a + b ?: a)) == 6,
+        (range (1, 6) |> map twice |> fold 0 (\(a, b) => a + b )) == 30,
+        (range (1, 6) |> filter isEvenValue |> fold 0 (\(a, b) => a + b )) == 6,
         (range (0, 4) |> map twice |> fold 0 weave) == 246,
         (range (0, 1) |> map twice |> fold 7 weave) == 70,
         (range (2, 2) |> map twice |> fold 5 weave) == 5,
@@ -1200,7 +1214,7 @@ typedIterationOrderCase () =
     ]
 
 // Register traversal order across every element type and the iterator surface.
-test "forEachList and range pipelines visit every element type in order" typedIterationOrderCase
+test "forEachList and range pipelines visit every element type in order" (\() => exactArithmetic (typedIterationOrderCase))
 
 (** [BUILTIN-LIST-GET] says an "out-of-range index returns `Error`", and
     [TYPE-LIST] says "index access is bounds-checked". These blocks walk the
@@ -1220,9 +1234,9 @@ boundaryIndexCase () =
     marks = [true, false]
     missingSlot = Slot(label = "missing", weight = 0.0, ready = false)
     slots = [Slot(label = "left", weight = 1.5, ready = true), Slot(label = "right", weight = 2.5, ready = false)]
-    negIndex = (0 - 1) ?: 0
-    farNegIndex = (0 - 1000) ?: 0
-    lastIndex = (listLength forty - 1) ?: 0
+    negIndex = (0 - 1) 
+    farNegIndex = (0 - 1000) 
+    lastIndex = (listLength forty - 1) 
     negError = match listGet words negIndex
         Success _value => false
         Error message => message == "index out of bounds"
@@ -1317,4 +1331,4 @@ boundaryIndexCase () =
     ]
 
 // Register bounds checking across element types and the tail boundary.
-test "list index boundaries are checked on every element type" boundaryIndexCase
+test "list index boundaries are checked on every element type" (\() => exactArithmetic (boundaryIndexCase))

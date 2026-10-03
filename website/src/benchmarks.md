@@ -59,15 +59,19 @@ compiled to a native binary, checked for correct output, then timed.
   the language/compiler/runtime, not who is cleverest. Ranges match Osprey's
   half-open `range(a, b)` = `[a, b)` exactly.
 - **Integer arithmetic is checked.** Osprey's integer `+ - *`, unary `-`, and
-  `abs` return `Result<int, MathError>` and report overflow; they never silently
-  wrap or panic. `/` and `%` likewise preserve their failure channel. Programs
-  must handle the Result with `match`/`?:`, or propagate it through arithmetic.
-  `checkedAdd`/`checkedSub`/`checkedMul` remain safe compatibility aliases, not
-  an opt-in safety tier. See [ARITH-CHECKED](/spec/0013-errorhandling/).
+  `abs` return a plain `int`. Overflow is detected without trapping and sent to
+  the `Arith` handler the program installed, which chooses the result; a zero
+  divisor for `/` or `%` goes to the same handler. Arithmetic never silently
+  wraps or panics, and a program that can fail without a handler does not
+  compile. `checkedAdd`/`checkedSub`/`checkedMul` return `Result<int, Error>`
+  for code that wants overflow as data. See
+  [Arithmetic Effects](/spec/0037-arithmeticeffects/).
 - **The Rust command disables Rust's overflow checks.** The comparison is
-  deliberately asymmetric: Osprey enforces its checked arithmetic contract
-  while this Rust configuration measures wrapping release arithmetic. Every
-  number on this page was measured under that contract.
+  deliberately asymmetric: Osprey always checks for overflow while this Rust
+  configuration measures wrapping release arithmetic.
+- **These numbers predate the `Arith` handler model.** They were measured when
+  integer `+ - *` returned a heap-allocated `Result<int, MathError>`, and have
+  not yet been re-measured.
 - **Osprey loops via `range |> fold`,** not deep linear recursion, because it has
   no tail-call optimization yet (a 1e6-deep recursion overflows the stack). The
   work is identical; only the iteration mechanism differs.
@@ -83,12 +87,13 @@ the suite it runs **11.6× Rust's CPU time and 13.1× C's**, and the default
 memory backend never wins a row either — `binarytrees` peaks at **1.77 GB**
 against C's 1.75 MB.
 
-The CPU gap is not attributable to `/` and `%` alone. Under
-[ARITH-CHECKED](/spec/0013-errorhandling/) integer `+ - *` also produce an
-explicit `Result<int, MathError>`, so every arithmetic-heavy row carries that
-safety cost: `fn addup(a, b) = a + b` returns a heap-allocated Result, not an
-`i64`. Making that representation cheap is open work; removing its failure
-channel is not.
+The CPU gap is not attributable to `/` and `%` alone. When these numbers were
+measured, integer `+ - *` also produced an explicit `Result<int, MathError>`, so
+every arithmetic-heavy row carried that cost: `fn addup(a, b) = a + b` returned
+a heap-allocated Result, not an `i64`. Under
+[Arithmetic Effects](/spec/0037-arithmeticeffects/) it returns an `i64` and
+reports overflow on a separate, rarely taken branch; how much of the gap that
+closes is unmeasured until the suite is re-run.
 
 **The memory gap is a backend choice, not a language one.** Allocation funnels
 through the one swappable boundary of the

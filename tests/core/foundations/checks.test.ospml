@@ -1,6 +1,6 @@
 (** Subtract two integers through a curried call. *)
 sub : int -> int -> int
-sub a b = a - b ?: 0
+sub a b = a - b 
 (** Classify exact integers before the wildcard case. *)
 classify 0 = "zero"
 classify 1 = "one"
@@ -11,8 +11,8 @@ arithmeticCase () =
     // Check results and ordering independently.
     checkAll "arithmetic foundations" [
         sub 7 3 == 4,
-        (6 * 7 ?: 0) == 42,
-        sub 20 (2 * 4 ?: 0) == 12,
+        (6 * 7 ) == 42,
+        sub 20 (2 * 4 ) == 12,
         sub 8 3 > 4,
         sub 100 1 > 0,
         sub 9 4 != sub 4 9
@@ -43,6 +43,21 @@ stringsAndListsCase () =
         listLength [10, 20, 30] == 3
     ]
 
-test "arithmetic checks share derived values" arithmeticCase
-test "classification checks include computed inputs" classifyCase
-test "strings and lists mix with matching" stringsAndListsCase
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
+
+
+test "arithmetic checks share derived values" (\() => exactArithmetic (arithmeticCase))
+test "classification checks include computed inputs" (\() => exactArithmetic (classifyCase))
+test "strings and lists mix with matching" (\() => exactArithmetic (stringsAndListsCase))

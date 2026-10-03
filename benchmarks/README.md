@@ -38,7 +38,7 @@ same way, for the same reason.
 > column on a machine with a few GB free, or skip it with `BENCH_FILTER`.
 >
 > <!-- binarytrees-results:start -->
-> Current measured peaks: default **1.9 GB**, `--memory=arc` **3.03 MB**, and `--memory=gc` **21.3 MB**.
+> Current measured peaks: default **631 MB**, `--memory=arc` **3.26 MB**, and `--memory=gc` **14.9 MB**.
 > <!-- binarytrees-results:end -->
 
 Results are written to `benchmarks/results/`. The measured outputs below are
@@ -207,10 +207,9 @@ deterministic constant-seed run.
 
 ## Reading the numbers fairly
 
-- **Arithmetic semantics differ.** Osprey's integer `+ - *` return plain
-  wrapping values; `%` returns `Result<int, MathError>` and rejects a zero
-  divisor. Rust is compiled with `-C overflow-checks=off` for its release
-  profile.
+- **Arithmetic semantics differ.** Osprey's integer `+ - *` and `%` return
+  plain `int`; overflow or a zero divisor requires an explicit `Arith` policy.
+  Rust is compiled with `-C overflow-checks=off` for its release profile.
 - **Same algorithm everywhere.** Identical *naive* algorithm and parameters in
   every language — no memoization, closed forms, SIMD, or parallelism. We measure
   the language/compiler/runtime, not who is cleverest. Ranges match Osprey's

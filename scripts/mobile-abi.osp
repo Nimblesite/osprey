@@ -20,11 +20,14 @@ fn invert(value) = !value
 fn invertViaHost(value) = hostNegate(value)
 fn both(left, right) = left && right
 fn big() = 9223372036854775807
-fn small() = (0 - 9223372036854775807 ?: 0) - 1 ?: 0
-fn overflowDefault() = 9223372036854775807 + 1 ?: -1
-fn negate(value) = 0 - value ?: 0
+fn small() = 0 - 9223372036854775807 - 1
+fn overflowDefault() = {
+    handle Arith { overflow _ _ _ _ => -1 }
+    big() + 1
+}
+fn negate(value) = wrapSub(0, value)
 fn scale(value: float) = value * 1.5
-fn half(value: float) -> float = value / 2.0 ?: 0.0
+fn half(value: float) -> float = value / 2.0
 
 /// `length`, string interpolation and `/` are polymorphic, so these three
 /// annotations are what resolve the signatures the C boundary can carry. A

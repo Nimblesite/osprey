@@ -161,7 +161,9 @@ fn range(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let obj = cg.malloc_struct(RANGE_TY, crate::meta::KIND_RAW);
     crate::aggregate::store_field(cg, RANGE_TY, &obj, 0, LType::I64, &s.operand);
     crate::aggregate::store_field(cg, RANGE_TY, &obj, 1, LType::I64, &e.operand);
-    Ok(Value::handle(obj, RANGE_OWNER))
+    let range = Value::handle(obj, RANGE_OWNER);
+    crate::arc::own(cg, &range);
+    Ok(range)
 }
 
 /// `map`/`filter`: record a pending stage and return the iterator unchanged.

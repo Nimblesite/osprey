@@ -1,22 +1,36 @@
-simpleTask value = value * 100 ?: 0
-handleRequest id = id
-queryDatabase userId = userId * 1000 ?: 0
+(** Exact-value tests record any arithmetic fault as a failed assertion. *)
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+        divideByZero op _ =>
+            check "unexpected zero divisor" "none" op
+            0.0
+        remainderByZero _ =>
+            expectFalse true
+            0
+    work ()
 
-mapPhase d = d * d ?: 0
-fetchUserData id = id * 1000 + 123 ?: 0
-fetchOrderData id = id * 100  + 45 ?: 0
+simpleTask value = value * 100 
+handleRequest id = id
+queryDatabase userId = userId * 1000 
+
+mapPhase d = d * d 
+fetchUserData id = id * 1000 + 123 
+fetchOrderData id = id * 100  + 45 
 
 authService uid = match uid
     0 => 401
     _ => 200
-inventoryService pid = pid * 50 ?: 0
-paymentService amt = amt + 25 ?: 0
-streamProcessor b = b * 8 ?: 0
+inventoryService pid = pid * 50 
+paymentService amt = amt + 25 
+streamProcessor b = b * 8 
 
-stage1 x = x + 100 ?: 0
-stage2 x = x * 2 ?: 0
-stage3 x = x - 50 ?: 0
-combine (a, b) = a * 100 + b ?: 0
+stage1 x = x + 100 
+stage2 x = x * 2 
+stage3 x = x - 50 
+combine (a, b) = a * 100 + b 
 
 (** A record argument crossing the fiber boundary. The spawned closure once
     referenced the PARENT function's SSA values for any non-constant capture, so
@@ -27,32 +41,43 @@ type Job =
     id : int
     weight : int
 
-runJob j = j.id * j.weight ?: 0
+runJob j = j.id * j.weight 
 
 print "=== Fiber Showcase ==="
 
-f1 = spawn (simpleTask 1)
-f2 = spawn (simpleTask 2)
-f3 = spawn (simpleTask 3)
-f4 = spawn (simpleTask 4)
+f1 = exactArithmetic (\() =>
+    spawn (simpleTask 1))
+f2 = exactArithmetic (\() =>
+    spawn (simpleTask 2))
+f3 = exactArithmetic (\() =>
+    spawn (simpleTask 3))
+f4 = exactArithmetic (\() =>
+    spawn (simpleTask 4))
 print "ids ${f1} ${f2} ${f3} ${f4}"
 print "await f3 = ${await f3}"
 print "await f1 = ${await f1}"
 print "await f4 = ${await f4}"
 print "await f2 = ${await f2}"
 
-m1 = spawn (mapPhase 10)
-m2 = spawn (mapPhase 20)
-m3 = spawn (mapPhase 30)
-mappedTotal = await m1 + await m2 + await m3 ?: 0
+m1 = exactArithmetic (\() =>
+    spawn (mapPhase 10))
+m2 = exactArithmetic (\() =>
+    spawn (mapPhase 20))
+m3 = exactArithmetic (\() =>
+    spawn (mapPhase 30))
+mappedTotal = exactArithmetic (\() =>
+    await m1 + await m2 + await m3) 
 print "map-reduce total = ${mappedTotal}"
 
 auth = spawn (authService 123)
-inv  = spawn (inventoryService 456)
-pay  = spawn (paymentService 1000)
+inv  = exactArithmetic (\() =>
+    spawn (inventoryService 456))
+pay  = exactArithmetic (\() =>
+    spawn (paymentService 1000))
 print "auth=${await auth} inv=${await inv} pay=${await pay}"
 
-p = await (spawn (stage3 (await (spawn (stage2 (await (spawn (stage1 25))))))))
+p = exactArithmetic (\() =>
+    await (spawn (stage3 (await (spawn (stage2 (await (spawn (stage1 25)))))))))
 print "pipeline = ${p}"
 
 y1 = yield 25
@@ -69,32 +94,42 @@ print "recv ch1 = ${recv ch1}"
 send ch2 123
 print "recv ch2 = ${recv ch2}"
 
-dbl   = \x => x * 2 ?: 0
-tri   = \x => x * 3 ?: 0
-addF  = \(a, b) => a + b ?: 0
-print "lam dbl=${dbl 10} tri=${tri 7} add=${addF (5, 8)}"
+dbl   = \x => x * 2 
+tri   = \x => x * 3 
+addF  = \(a, b) => a + b 
+exactArithmetic (\() =>
+    print "lam dbl=${dbl 10} tri=${tri 7} add=${addF (5, 8)}")
 
-b1 = yield (streamProcessor 128)
-b2 = yield (streamProcessor 256)
-b3 = yield (streamProcessor 512)
+b1 = exactArithmetic (\() =>
+    yield (streamProcessor 128))
+b2 = exactArithmetic (\() =>
+    yield (streamProcessor 256))
+b3 = exactArithmetic (\() =>
+    yield (streamProcessor 512))
 print "stream ${b1} ${b2} ${b3}"
 
 req = spawn (handleRequest 1)
-db  = spawn (queryDatabase 123)
+db  = exactArithmetic (\() =>
+    spawn (queryDatabase 123))
 print "req=${req} db=${await db}"
 
-u = spawn (fetchUserData 5)
-o = spawn (fetchOrderData 5)
+u = exactArithmetic (\() =>
+    spawn (fetchUserData 5))
+o = exactArithmetic (\() =>
+    spawn (fetchOrderData 5))
 print "user=${await u} order=${await o}"
 
 capArg = 7
-capF = spawn (combine (capArg, 5))
+capF = exactArithmetic (\() =>
+    spawn (combine (capArg, 5)))
 print "captured spawn = ${await capF} done=${fiberDone capF}"
 
 jobHigh = Job(id = 3, weight = 9)
 jobWide = Job(id = 4, weight = 7)
-spawnedJob = await (spawn (runJob jobWide))
-print "record spawn direct=${runJob jobHigh} spawned=${spawnedJob}"
+spawnedJob = exactArithmetic (\() =>
+    await (spawn (runJob jobWide)))
+exactArithmetic (\() =>
+    print "record spawn direct=${runJob jobHigh} spawned=${spawnedJob}")
 
 print "=== Fiber Showcase Complete ==="
 
@@ -108,7 +143,8 @@ print "=== Fiber Showcase Complete ==="
 erasedFiberResult : Unit -> any
 erasedFiberResult () = "fib" + "er"
 
-test "fiber primitives compose into deterministic values" (\() => checkAll "fiber showcase results" [
+
+test "fiber primitives compose into deterministic values" (\() => exactArithmetic ((\() => checkAll "fiber showcase results" [
     "${await (spawn (erasedFiberResult ()))}" == "fiber",
     mappedTotal == 1400,
     p == 200,
@@ -131,4 +167,4 @@ test "fiber primitives compose into deterministic values" (\() => checkAll "fibe
     spawnedJob == 28,
     jobHigh.id == 3,
     jobHigh.weight == 9
-])
+])))

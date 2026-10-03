@@ -327,7 +327,7 @@ const PARTIAL_SHADOWING_DEFAULT: &str = "effect Pair { first: fn() -> int second
 fn pairTotal() = {
     let first = perform Pair.first()
     let second = perform Pair.second()
-    first + second ?: 0
+    satAdd(first, second)
 }
 fn firstOnly() = {
     handle Pair {
@@ -343,7 +343,7 @@ let answer = {
         handle Pair {
             first => 2
         }
-        (perform Pair.first() + perform Pair.second()) ?: 0
+        satAdd(perform Pair.first(), perform Pair.second())
     }
     let helper = {
         handle Pair {
@@ -364,7 +364,7 @@ const PARTIAL_SHADOWING_ML: &str = "effect Pair
 pairTotal () =
     first = perform Pair.first ()
     second = perform Pair.second ()
-    first + second ?: 0
+    satAdd first second
 
 firstOnly () =
     handle Pair
@@ -378,7 +378,7 @@ answer =
     direct =
         handle Pair
             first => 2
-        (perform Pair.first () + perform Pair.second ()) ?: 0
+        satAdd (perform Pair.first ()) (perform Pair.second ())
     helper =
         handle Pair
             first => 2
@@ -424,7 +424,7 @@ fn partial_dynamic_shadowing_executes_with_the_outer_static_answers() {
 /// partial runtime handler still performs `Pair.first`, so it keeps `!Pair`
 /// ([STAGE-RESIDUE]).
 const DECLARED_ROW_SHADOWING: &str = "effect Pair { first: fn() -> int second: fn() -> int }
-fn total() !Pair = (perform Pair.first() + perform Pair.second()) ?: 0
+fn total() !Pair = satAdd(perform Pair.first(), perform Pair.second())
 let answer = {
     handle static Pair {
         first => 1 second => 40

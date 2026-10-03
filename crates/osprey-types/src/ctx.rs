@@ -132,28 +132,10 @@ impl InferCtx {
     /// keeps the substitution acyclic, so this terminates.
     pub(crate) fn apply(&mut self, t: &Type) -> Type {
         let t = self.prune(t);
-        match &t {
-            Type::Var(_) => t,
-            Type::Con { name, args } => Type::Con {
-                name: name.clone(),
-                args: args.iter().map(|a| self.apply(a)).collect(),
-            },
-            Type::Fun { params, ret } => Type::Fun {
-                params: params.iter().map(|p| self.apply(p)).collect(),
-                ret: Box::new(self.apply(ret)),
-            },
-            Type::Record { name, fields } => Type::Record {
-                name: name.clone(),
-                fields: fields
-                    .iter()
-                    .map(|(k, v)| (k.clone(), self.apply(v)))
-                    .collect(),
-            },
-            Type::Union { name, variants } => Type::Union {
-                name: name.clone(),
-                variants: variants.iter().map(|v| self.apply(v)).collect(),
-            },
+        if matches!(t, Type::Var(_)) {
+            return t;
         }
+        crate::ty::map_type_vars(&t, &mut |v| self.apply(&Type::Var(v)))
     }
 
     /// Collect the free (unbound) variables of `t` into `out`.

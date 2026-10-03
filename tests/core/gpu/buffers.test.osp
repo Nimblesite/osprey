@@ -6,10 +6,10 @@
 // [GPU-BUFFER-LENGTH], [GPU-IOTA], [GPU-GET] — 0034-GPUComputation.md).
 
 /// square is a pure int kernel; the checker proves it performs no effects.
-fn square(x) = (x * x) ?: 0
+fn square(x) = (x * x) 
 
 /// addInts keeps the checked-arithmetic Result inside the kernel.
-fn addInts(acc: int, x: int) = (acc + x) ?: acc
+fn addInts(acc: int, x: int) = (acc + x) 
 
 /// scale is a pure float kernel; the buffer's element tag types x as float.
 fn scale(x) = x * 1.5
@@ -18,11 +18,11 @@ fn scale(x) = x * 1.5
 fn addFloats(a: float, x: float) = a + x
 
 /// isOdd maps an int element to a bool element, changing the buffer's type.
-fn isOdd(x) = (x % 2 ?: 0) == 1
+fn isOdd(x) = (x % 2 ) == 1
 
 /// countOdd counts the true elements of a bool buffer.
 fn countOdd(acc: int, flag: bool) = match flag {
-    true => (acc + 1) ?: acc
+    true => (acc + 1) 
     false => acc
 }
 
@@ -44,7 +44,7 @@ fn readback(b, i) = match gpuGet(b, i) {
 
 /// lastOf computes the final index from the length: the read that sits
 /// exactly on the in-bounds boundary.
-fn lastOf(b) = gpuGet(b, (gpuLength(b) - 1) ?: 0)
+fn lastOf(b) = gpuGet(b, (gpuLength(b) - 1) )
 
 /// widthOf takes a buffer as a plain parameter — the handle and its element
 /// tag have to survive the call.
@@ -52,7 +52,7 @@ fn widthOf(b) = gpuLength(b)
 
 /// doubledInts both receives and returns a buffer, so the tag must survive a
 /// parameter and a return in one call.
-fn doubledInts(b) = b |> gpuMap(fn(x) => (x * 2) ?: 0)
+fn doubledInts(b) = b |> gpuMap(fn(x) => (x * 2) )
 
 /// scaledFloats is doubledInts' float twin: tags are per-buffer, so a float
 /// buffer must come back out of a return still reading as float.
@@ -210,7 +210,7 @@ fn boundsCase() = {
     let flags = toGpu([true, false])
     checkAll("bounds", [
         (gpuGet(ints, 0) ?: 0) == 10, (gpuGet(ints, 2) ?: 0) == 30,
-        (gpuGet(ints, (gpuLength(ints) - 1) ?: 0) ?: 0) == 30,
+        (gpuGet(ints, (gpuLength(ints) - 1) ) ?: 0) == 30,
         readback(ints, 0) == "10", readback(ints, 2) == "30",
         readback(floats, 0) == "1.25", readback(floats, 1) == "2.5",
         readback(flags, 0) == "true", readback(flags, 1) == "false",
@@ -376,7 +376,7 @@ fn fusionCase() = {
 /// including over negative elements and over no elements at all.
 fn intKernelCase() = {
     let total = toGpu([1, 2, 3, 4]) |> gpuMap(square) |> gpuFold(0, addInts)
-    let squares = toGpu([1, 2, 3]) |> gpuMap(fn(x) => (x * x) ?: 0) |> fromGpu()
+    let squares = toGpu([1, 2, 3]) |> gpuMap(fn(x) => (x * x) ) |> fromGpu()
     let negatives = toGpu([-1, -2, -3]) |> gpuMap(square)
     checkAll("int kernels", [
         total == 30, listLength(squares) == 3,
@@ -456,10 +456,10 @@ fn bigCase() = {
 /// `OSPREY_GPU_KERNELS=extract` and `=inline`, so this holds for the extracted
 /// and the inlined lowering alike. Implements [GPU-KERNEL-FORM].
 fn blockBodiedKernelCase() = {
-    let fromFn = gpuIota(4) |> gpuMap(fn(r) => { let base = (r * 3) ?: 0
-                                                 base + 1 ?: base })
-    let fromLambda = gpuIota(4) |> gpuMap(|r| => { let tripled = (r * 3) ?: 0
-                                                   tripled + 1 ?: tripled })
+    let fromFn = gpuIota(4) |> gpuMap(fn(r) => { let base = (r * 3) 
+                                                 base + 1  })
+    let fromLambda = gpuIota(4) |> gpuMap(|r| => { let tripled = (r * 3) 
+                                                   tripled + 1  })
     let widened = gpuIota(3) |> gpuMap(fn(r) => { let asFloat = toFloat(r)
                                                   asFloat * 0.5 })
     checkAll("a block-bodied kernel keeps its internal let bindings", [
@@ -477,19 +477,39 @@ fn blockBodiedKernelCase() = {
     ])
 }
 
-test("buffer literals store elements densely at constant indices", literalCase)
-test("a list value copies into a buffer element for element", listCopyCase)
-test("gpu buffers round-trip lists densely", roundTripCase)
-test("the empty buffer answers every builtin without elements", emptyCase)
-test("a one-element buffer bounds gpuGet to index zero", singletonCase)
-test("gpuGet errors identically at both ends of every buffer", boundsCase)
-test("gpuIota spans zero, one and two hundred thousand indices", iotaCase)
-test("int, float and bool words survive the identity kernel", elementCase)
-test("buffers keep their tag through lets, pipes, params and returns", flowCase)
-test("aliased bindings observe one immutable buffer", aliasCase)
-test("a fused iterator buffer is addressable element by element", fusionCase)
-test("pure int kernels map and fold on buffers", intKernelCase)
-test("float kernels keep element bits through map and fold", floatKernelCase)
-test("kernels may change the element scalar type", boolKernelCase)
-test("the copy path stays exact at a hundred thousand elements", bigCase)
-test("a block-bodied kernel keeps its internal let bindings", blockBodiedKernelCase)
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
+
+test("buffer literals store elements densely at constant indices", fn() => exactArithmetic(literalCase))
+test("a list value copies into a buffer element for element", fn() => exactArithmetic(listCopyCase))
+test("gpu buffers round-trip lists densely", fn() => exactArithmetic(roundTripCase))
+test("the empty buffer answers every builtin without elements", fn() => exactArithmetic(emptyCase))
+test("a one-element buffer bounds gpuGet to index zero", fn() => exactArithmetic(singletonCase))
+test("gpuGet errors identically at both ends of every buffer", fn() => exactArithmetic(boundsCase))
+test("gpuIota spans zero, one and two hundred thousand indices", fn() => exactArithmetic(iotaCase))
+test("int, float and bool words survive the identity kernel", fn() => exactArithmetic(elementCase))
+test("buffers keep their tag through lets, pipes, params and returns", fn() => exactArithmetic(flowCase))
+test("aliased bindings observe one immutable buffer", fn() => exactArithmetic(aliasCase))
+test("a fused iterator buffer is addressable element by element", fn() => exactArithmetic(fusionCase))
+test("pure int kernels map and fold on buffers", fn() => exactArithmetic(intKernelCase))
+test("float kernels keep element bits through map and fold", fn() => exactArithmetic(floatKernelCase))
+test("kernels may change the element scalar type", fn() => exactArithmetic(boolKernelCase))
+test("the copy path stays exact at a hundred thousand elements", fn() => exactArithmetic(bigCase))
+test("a block-bodied kernel keeps its internal let bindings", fn() => exactArithmetic(blockBodiedKernelCase))

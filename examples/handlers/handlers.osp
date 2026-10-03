@@ -1,18 +1,36 @@
+// Record faults for the entire report and reject it at the publication boundary.
+fn printExact(work) = {
+    mut fault = ""
+    handle Arith {
+        overflow op lhs _ _ => { fault = "overflow in ${op}"
+            lhs }
+        divideByZero op lhs => { fault = "zero divisor in ${op}"
+            lhs }
+        remainderByZero lhs => { fault = "zero remainder divisor"
+            lhs }
+    }
+    let report = work()
+    print(match fault { "" => report _ => "REJECTED: ${fault}" })
+}
+
 // Define handlers independently, then call them with the work to handle.
 effect Ask { value: fn() -> int }
 effect Reader { name: fn() -> string }
 
 let answer = handler Ask { value => 41 }
-fn work() = (perform Ask.value() + 1) ?: 0
+fn work() = (perform Ask.value() + 1) 
 
 fn reading(person) = handler Reader { name => person }
 fn greet() = "Hello, " + perform Reader.name() + "!"
 
 let ada = reading("Ada")
 let grace = reading("Grace")
-let first = answer(work)
-let second = answer(work)
-let helloAda = ada(greet)
-let helloGrace = grace(greet)
-let helloAgain = ada(greet)
-print("${first}\n${second}\n${helloAda}\n${helloGrace}\n${helloAgain}")
+fn report() = {
+    let first = answer(work)
+    let second = answer(work)
+    let helloAda = ada(greet)
+    let helloGrace = grace(greet)
+    let helloAgain = ada(greet)
+    "${first}\n${second}\n${helloAda}\n${helloGrace}\n${helloAgain}"
+}
+printExact(report)

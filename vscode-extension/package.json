@@ -34,14 +34,6 @@
   ],
   "main": "./out/client/src/extension.js",
   "activationEvents": [
-    "onLanguage:osprey",
-    "onLanguage:osprey-ml",
-    "onCommand:osprey.compile",
-    "onCommand:osprey.run",
-    "onCommand:osprey.debug",
-    "onCommand:osprey.profileCurrentFile",
-    "onCommand:osprey.profiler.openLast",
-    "onCommand:osprey.showTestDocumentation",
     "onDebugResolve:osprey",
     "workspaceContains:**/*.test.osp",
     "workspaceContains:**/*.test.ospml"

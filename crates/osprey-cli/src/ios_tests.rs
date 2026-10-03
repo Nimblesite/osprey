@@ -84,7 +84,7 @@ fn app_globals_remain_initialized_after_the_host_calls_entry() {
     );
     assert!(osprey_types::check_program(&parsed.program).is_empty());
     let (ir, header) =
-        source(&parsed.program, "globals.osp", Target::Device).expect("library source");
+        source(&parsed.program, "globals.osp", Target::Device, false).expect("library source");
     assert!(header.contains("osprey_greet(void)"));
     assert!(
         !ir.contains("store i8* null, i8** @"),
@@ -106,7 +106,7 @@ fn each_slice_names_itself_in_its_header_and_diagnostics() {
     // artifact told the reader to undo the choice they had just made.
     let parsed = osprey_syntax::parse_program("fn greet(name: string) = \"hi ${name}\"\n");
     for (target, name) in [(Target::Device, "ios"), (Target::Simulator, "ios-sim")] {
-        let (_, header) = source(&parsed.program, "app.osp", target).expect("abi");
+        let (_, header) = source(&parsed.program, "app.osp", target, false).expect("abi");
         assert!(
             header.contains(&format!("--target={name}")),
             "{name} header must name its own slice:\n{header}"
@@ -118,7 +118,8 @@ fn each_slice_names_itself_in_its_header_and_diagnostics() {
     // sends the reader to the other slice.
     let rejected = osprey_syntax::parse_program("extern fn host(values: List<int>) -> int\n");
     for (target, name) in [(Target::Device, "ios"), (Target::Simulator, "ios-sim")] {
-        let error = source(&rejected.program, "app.osp", target).expect_err("aggregate extern");
+        let error =
+            source(&rejected.program, "app.osp", target, false).expect_err("aggregate extern");
         assert!(
             error.contains(&format!("target `{name}`")),
             "{name} diagnostic must name its own slice: {error}"

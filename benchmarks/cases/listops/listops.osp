@@ -5,9 +5,9 @@
 //
 // Modes via the first stdin line: "0"/empty -> fixed seed (deterministic,
 // oracle-checked); "1" -> cryptographically-secure random seed (randomBelow).
-fn add(a, b) = a + b ?: 0
-fn mul(a, b) = a * b ?: 0
-fn modp(a, b) = a % b ?: 0
+fn add(a, b) = a + b
+fn mul(a, b) = a * b
+fn modp(a, b) = a % b
 fn r1(x) = modp(mul(x, 16807), 2147483647)
 fn hashAt(seed, i) = r1(r1(add(seed, i)))
 fn addM(a, b) = modp(add(a, b), 1000000007)
@@ -20,5 +20,17 @@ fn runOne(s) = {
     let xs = buildList(s)
     add(sumL(xs), belowL(xs))
 }
-let seed = seedOf(input())
-print("${range(0, 8) |> fold(0, |acc, t| => addM(acc, runOne(add(seed, mul(t, 131)))))}")
+fn main() = {
+    handle Arith {
+        overflow _ _ _ wrapped => {
+            print("unexpected integer overflow")
+            wrapped
+        }
+        remainderByZero _ => {
+            print("unexpected zero divisor")
+            0
+        }
+    }
+    let seed = seedOf(input())
+    print("${range(0, 8) |> fold(0, |acc, t| => addM(acc, runOne(add(seed, mul(t, 131)))))}")
+}
