@@ -35,6 +35,8 @@ Minimum emitted metadata:
 - `!DISubprogram` for user functions and generated `main`.
 - `!DILocation` on instructions derived from executable source statements.
 
+Module function names in debug metadata and stack frames use their qualified source identity, such as `billing::Tax::add`; native symbols retain their encoded ABI. The optional DWARF linkage name is omitted because LLDB otherwise displays that encoded name. Both-flavor `module stack frames retain their source names` editor tests stop in a real adapter and check the source name, line and parameter value. See [MODULES-ABI](0025-ModulesAndNamespaces.md#name-mangling-and-abi-modules-abi).
+
 ## Source Mapping `[DEBUGGER-SOURCE-MAP]`
 
 The parser and lowerers must preserve source positions for executable
@@ -102,6 +104,6 @@ resume describes a control path no source line expresses.
 
 ## Variables `[DEBUGGER-DBG-DECLARE]`
 
-Primitive function parameters use `llvm.dbg.value`. Primitive `let` bindings
+Primitive function parameters use `llvm.dbg.value` and a one-based `arg` in `DILocalVariable`. The argument number identifies a formal parameter; omitting it can discard the parameter's location during LLVM instruction selection. Primitive `let` bindings
 use an addressable debug-only slot and `llvm.dbg.declare`, so LLDB/DAP can read
 them while paused. Composite values have no Osprey-specific renderer.

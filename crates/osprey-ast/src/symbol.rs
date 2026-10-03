@@ -16,6 +16,20 @@ const LENGTH_TERMINATOR: char = 'x';
 const HEX_PER_BYTE: usize = 2;
 const HEX_RADIX: u32 = 16;
 
+/// An uppercase identifier denotes a constructor in a pattern.
+#[must_use]
+pub fn is_constructor_name(name: &str) -> bool {
+    name.chars().next().is_some_and(char::is_uppercase)
+}
+
+/// Distinguish record construction from update [TYPE-RECORD-UPDATE].
+/// The legal type name `_` constructs in expression position; this does not
+/// change its meaning as a wildcard pattern or discarded parameter.
+#[must_use]
+pub fn is_record_constructor(name: &str, has_type_arguments: bool) -> bool {
+    has_type_arguments || name.contains("::") || name == "_" || is_constructor_name(name)
+}
+
 /// Encode namespace-and-path segments as one flat linkage name.
 #[must_use]
 pub fn mangle<'a>(segments: impl IntoIterator<Item = &'a str>) -> String {

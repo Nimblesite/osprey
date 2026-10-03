@@ -51,6 +51,9 @@ RAW=$RUNOUT/raw.jsonl
 WARMUP=${BENCH_WARMUP:-3}
 MINRUNS=${BENCH_MINRUNS:-10}
 MEMRUNS=${BENCH_MEMRUNS:-3}
+# The deep-recursion workload needs more than Wasmtime's default call-stack
+# budget. Use the same explicit 4 MiB budget for every language's wasm column.
+WASM_STACK_BYTES=4194304
 
 # Language order is the report's column order. "Speed of light" baselines (C,
 # Rust) first after Osprey so the gap to Osprey reads left-to-right. `osprey-gc`
@@ -82,7 +85,7 @@ if [[ -z "$WASI_SYSROOT" ]]; then
 fi
 # A *-wasm "binary" is a tiny wrapper that runs the module under wasmtime, so the
 # oracle/hyperfine/rss machinery drives it unchanged (stdin is inherited).
-wasm_wrap() { printf '#!/bin/sh\nexec wasmtime run "%s.wasm" "$@"\n' "$1" > "$1"; chmod +x "$1" }
+wasm_wrap() { printf '#!/bin/sh\nexec wasmtime run -W max-wasm-stack=%s "%s.wasm" "$@"\n' "$WASM_STACK_BYTES" "$1" > "$1"; chmod +x "$1" }
 
 # toolchain_ok <lang> — is the compiler for <lang> installed? (wasm langs also
 # need wasmtime + a wasm backend; c-wasm needs a wasi-sdk that ships compiler-rt,

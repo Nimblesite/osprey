@@ -352,7 +352,7 @@ impl Lowerer<'_> {
             .map(|l| self.lower_type_list(l))
             .unwrap_or_default();
         let fields = self.lower_field_assignments(node);
-        if type_args.is_empty() && !name.contains("::") && !osprey_ast::is_constructor_name(&name) {
+        if !osprey_ast::is_record_constructor(&name, !type_args.is_empty()) {
             return Expr::Update {
                 record: name,
                 fields,

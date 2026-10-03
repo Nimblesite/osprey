@@ -2,6 +2,81 @@
 // the mobile menu drawer, and the prose Table-of-Contents.
 const { test, expect } = require("@playwright/test");
 
+async function executeExample(source, file) {
+  const { writeFile } = require("node:fs/promises");
+  const { execFileSync } = require("node:child_process");
+  const path = require("node:path");
+  await writeFile(file, source);
+  return execFileSync(path.resolve("../target/release/osprey"), [file, "--run", "--quiet"], { encoding: "utf8", timeout: 20_000 });
+}
+
+test.describe("homepage flight and source examples", () => {
+  test("both syntax examples execute with the displayed output", async ({ page }, testInfo) => {
+    await page.goto("/");
+    for (const [flavor, extension] of [["default", "osp"], ["ml", "ospml"]]) {
+      await page.locator(`[data-flavor="${flavor}"]`).click();
+      const source = page.locator(`#example-${flavor}`);
+      await expect(source).toBeVisible();
+      const file = testInfo.outputPath(`greeting.${extension}`);
+      const output = await executeExample(await source.textContent(), file);
+      expect(output).toBe(`${await page.locator(".code-result samp").textContent()}\n`);
+    }
+  });
+
+  test("the effects guide preserves runnable authored examples in both flavors", async ({ page }, testInfo) => {
+    await page.goto("/docs/effects/");
+    const blocks = page.locator('pre > code.language-osprey, pre > code.language-osprey-ml');
+    const outputs = ["Hello, Ada / Hello, Grace\n", "Hello, Ada / Hello, Grace\n", "Hello, Ada\n", "Order accepted\nOrder accepted\n", "41\n", "Submitted / Cancelled\n", "Report: Hello, Ada\n"];
+    await expect(blocks).toHaveCount(outputs.length);
+    for (let i = 0; i < outputs.length; i++) {
+      const block = blocks.nth(i);
+      const extension = (await block.getAttribute('class')).includes('osprey-ml') ? 'ospml' : 'osp';
+      const output = await executeExample(await block.textContent(), testInfo.outputPath(`effects-${i}.${extension}`));
+      expect(output).toBe(outputs[i]);
+    }
+  });
+
+  test("motion plays, pauses on demand and stays paused after scrolling", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/");
+    const video = page.locator("#flight-video");
+    await expect.poll(() => video.evaluate((el) => el.currentTime)).toBeGreaterThan(2);
+    expect(await video.evaluate((el) => el.getVideoPlaybackQuality().totalVideoFrames)).toBeGreaterThan(15);
+    await page.getByRole("button", { name: "Pause motion", exact: true }).click();
+    await expect.poll(() => video.evaluate((el) => el.paused)).toBe(true);
+    await page.locator(".home-install").scrollIntoViewIfNeeded();
+    await page.locator(".hero-title").scrollIntoViewIfNeeded();
+    await expect.poll(() => video.evaluate((el) => el.paused)).toBe(true);
+    await page.getByRole("button", { name: "Play motion", exact: true }).click();
+    await expect.poll(() => video.evaluate((el) => el.paused)).toBe(false);
+    await page.locator(".home-install").scrollIntoViewIfNeeded();
+    await expect.poll(() => video.evaluate((el) => el.paused)).toBe(true);
+  });
+
+  test("reduced motion loads the poster without fetching the film", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const requests = [];
+    page.on("request", (request) => { if (request.url().endsWith(".webm")) requests.push(request.url()); });
+    await page.goto("/", { waitUntil: "networkidle" });
+    await expect(page.getByRole("button", { name: "Play motion", exact: true })).toBeVisible();
+    expect(requests).toEqual([]);
+    expect(await page.locator("#flight-video").evaluate((el) => el.paused)).toBe(true);
+    await expect(page.locator("#flight-video")).toHaveAttribute("poster", /osprey-flight\.png$/);
+  });
+
+  test("the page works without JavaScript", async ({ browser }) => {
+    const context = await browser.newContext({ javaScriptEnabled: false });
+    const page = await context.newPage();
+    await page.goto("/");
+    await expect(page.locator(".hero-title")).toBeVisible();
+    await expect(page.locator("#example-default")).toContainText("handler Account");
+    await expect(page.locator("#motion-toggle")).toBeHidden();
+    await page.getByRole("link", { name: "Explore effects" }).click();
+    await expect(page).toHaveURL(/\/docs\/effects\/$/);
+    await context.close();
+  });
+});
+
 test.describe("desktop interactions", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 

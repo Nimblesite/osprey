@@ -307,14 +307,7 @@ pub fn is_positional_field(name: &str) -> bool {
     !name.is_empty() && name.bytes().all(|b| b.is_ascii_digit())
 }
 
-/// Whether a brace or application head names a constructor: an initial
-/// uppercase identifier reads as a type or variant, a lowercase one as a
-/// binding. One rule for both frontends and the checker, so `Point { x: 1 }`
-/// constructs and `p { x: 1 }` updates in either flavor ([TYPE-RECORD-UPDATE]).
-#[must_use]
-pub fn is_constructor_name(name: &str) -> bool {
-    name.chars().next().is_some_and(char::is_uppercase)
-}
+pub use symbol::{is_constructor_name, is_record_constructor};
 
 /// The canonical [`Pattern::Structural`] a tuple pattern `(a, b)` lowers to:
 /// slot *i* is the decimal field [`positional_field_name`], its binder the

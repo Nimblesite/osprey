@@ -174,6 +174,8 @@ paired `.osp` and `.ospml` examples and requires byte-identical LLVM IR. Each ML
 example has a Default twin and shares its expected-output file, except for the
 explicit ML-only allowlist in that test.
 
+`mixed_flavor_project_graphs_emit_identical_ir` checks all eight flavor assignments to a three-file project. The graph splits one namespace across physical folders and combines imported handlers and arithmetic policies with abstract and manifest signature types. Every graph must type-check and emit the same LLVM IR.
+
 Twins must express the same typing contract. A helper explicitly constrained
 to `Source<int>` is not the twin of an unannotated helper that generalizes
 over records with the required field. The paired sources must agree on that

@@ -74,14 +74,25 @@ fn flavor_roots() -> Vec<PathBuf> {
 /// loudly so a malformed example fails the test instead of silently lowering a
 /// partial AST.
 fn ir_for(source: &str, flavor: Flavor, label: &str) -> Result<String, String> {
-    let parsed = parse_program_with_flavor(source, flavor);
-    assert!(
-        parsed.errors.is_empty(),
-        "{label}: unexpected {flavor} parse errors: {:?}",
-        parsed.errors
-    );
-    let program = assembled_if_module_aware(parsed.program, flavor, label, source)?;
+    let source_file = parsed_source(source, flavor, label)?;
+    let program = assembled_if_module_aware(source_file)?;
     compile_program(&program).map_err(|e| format!("{label}: codegen failed: {e:?}"))
+}
+
+fn parsed_source(source: &str, flavor: Flavor, label: &str) -> Result<SourceFile, String> {
+    let parsed = parse_program_with_flavor(source, flavor);
+    if !parsed.errors.is_empty() {
+        return Err(format!(
+            "{label}: unexpected {flavor} parse errors: {:?}",
+            parsed.errors
+        ));
+    }
+    Ok(SourceFile {
+        path: PathBuf::from(label),
+        flavor,
+        source: source.to_owned(),
+        program: parsed.program,
+    })
 }
 
 /// A module-bearing source is not a program until the project layer resolves its
@@ -89,25 +100,13 @@ fn ir_for(source: &str, flavor: Flavor, label: &str) -> Result<String, String> {
 /// have no meaning before that. Lowering the raw parse would compare IR neither
 /// flavor ever runs, so this reproduces the CLI's own single-source path
 /// ([MODULES-MODEL]) for both flavors alike, leaving ordinary scripts untouched.
-fn assembled_if_module_aware(
-    program: Program,
-    flavor: Flavor,
-    label: &str,
-    source: &str,
-) -> Result<Program, String> {
-    if !osprey_project::needs_assembly(&program) {
-        return Ok(program);
+fn assembled_if_module_aware(source: SourceFile) -> Result<Program, String> {
+    if !osprey_project::needs_assembly(&source.program) {
+        return Ok(source.program);
     }
-    let source_file = SourceFile {
-        path: PathBuf::from(label),
-        flavor,
-        source: source.to_string(),
-        program,
-    };
-    match osprey_project::assemble_one(source_file) {
-        Ok(assembled) => Ok(assembled.program),
-        Err(errors) => Err(format!("{label}: project assembly failed: {errors:?}")),
-    }
+    osprey_project::assemble_one(source)
+        .map(|assembled| assembled.program)
+        .map_err(|errors| format!("project assembly failed: {errors:?}"))
 }
 
 /// Every `.ospml` file anywhere under `dir`, found by a recursive walk and
@@ -213,4 +212,136 @@ fn first_diff(default_ir: &str, ml_ir: &str) -> String {
         default_ir.lines().count(),
         ml_ir.lines().count()
     )
+}
+
+const PROJECT_SOURCES: [(&str, &str, &str); 3] = [
+    (
+        "main.osp",
+        r"namespace app;
+import ledger::Ledger
+import ledger::Policy
+fn main() = {
+    handle Arith { overflow _ _ _ wrapped => wrapped }
+    handle Policy::Fee { value => 2 }
+    print(Ledger::amount(Ledger::make(Policy::credit(40))))
+}
+",
+        r"namespace app
+import ledger::Ledger
+import ledger::Policy
+main () =
+    handle Arith
+        overflow _ _ _ wrapped => wrapped
+    handle Policy::Fee
+        value => 2
+    print (Ledger::amount (Ledger::make (Policy::credit 40)))
+",
+    ),
+    (
+        "unrelated/model.osp",
+        r"namespace ledger;
+signature LedgerApi {
+    type Entry
+    type Amount = int
+    fn make(value: Amount) -> Entry
+    fn amount(value: Entry) -> Amount
+}
+module Ledger : LedgerApi {
+    type Entry = { amount: int }
+    type Amount = int
+    fn make(value) = Entry { amount: value }
+    fn amount(value) = value.amount
+}
+",
+        r"namespace ledger
+signature LedgerApi
+    type Entry
+    type Amount = int
+    make : Amount -> Entry
+    amount : Entry -> Amount
+module Ledger : LedgerApi
+    type Entry =
+        amount : int
+    type Amount = int
+    make value = Entry(amount = value)
+    amount value = value.amount
+",
+    ),
+    (
+        "another/place/policy.osp",
+        r"namespace ledger;
+module Policy {
+    export effect Fee { value: fn() -> int }
+    export fn credit(value) = value + perform Fee.value()
+}
+",
+        r"namespace ledger
+module Policy
+    export effect Fee
+        value : Unit => int
+    export credit value = value + perform Fee.value ()
+",
+    ),
+];
+
+fn project_sources(mask: usize) -> Result<Vec<SourceFile>, String> {
+    PROJECT_SOURCES
+        .iter()
+        .enumerate()
+        .map(|(index, (path, default, ml))| {
+            let (source, flavor) = if mask & (1 << index) == 0 {
+                (*default, Flavor::Default)
+            } else {
+                (*ml, Flavor::Ml)
+            };
+            parsed_source(source, flavor, path)
+        })
+        .collect()
+}
+
+fn project_ir(mask: usize) -> Result<String, String> {
+    let mut config = osprey_project::ProjectConfig::for_root(Path::new("app"));
+    config.entry = Some(PathBuf::from("main.osp"));
+    let project = osprey_project::assemble(&config, &project_sources(mask)?)
+        .map_err(|errors| format!("project {mask}: {errors:?}"))?;
+    let errors = osprey_types::check_program(&project.program);
+    if !errors.is_empty() {
+        return Err(format!("project {mask}: {errors:?}"));
+    }
+    compile_program(&project.program).map_err(|error| format!("project {mask}: {error:?}"))
+}
+
+/// [MODULES-FLAVOR-PROJECTION] [MODULES-ABI] [FLAVOR-IR-EQUIV]
+/// Abstract and manifest types, split namespaces, imports and effect dispatch keep
+/// identical IR under all eight flavor assignments to this three-file graph.
+#[test]
+fn mixed_flavor_project_graphs_emit_identical_ir() -> Result<(), String> {
+    let expected = project_ir(0)?;
+    for mask in 1..(1 << PROJECT_SOURCES.len()) {
+        let actual = project_ir(mask)?;
+        assert_eq!(
+            expected,
+            actual,
+            "project flavor mask {mask}: {}",
+            first_diff(&expected, &actual)
+        );
+    }
+    Ok(())
+}
+
+/// [MODULES-ABI] Debugger names are source identities; linkage stays encoded.
+#[test]
+fn module_debug_frames_keep_source_names_in_both_flavors() -> Result<(), String> {
+    for (source, flavor) in [
+        ("namespace \"billing/api\";\nmodule Tax { export fn add(n) = satAdd(n, 1) }\nfn main() = print(Tax::add(41))", Flavor::Default),
+        ("namespace \"billing/api\"\nmodule Tax\n    export add n = satAdd n 1\nmain () = print (Tax::add 41)", Flavor::Ml),
+    ] {
+        let program = assembled_if_module_aware(parsed_source(source, flavor, "debug.osp")?)?;
+        let ir = osprey_codegen::compile_program_debug(&program, osprey_codegen::DebugSource::from_path("debug.osp"))
+            .map_err(|error| format!("{flavor}: {error}"))?;
+        let linkage = osprey_ast::symbol::mangle(["billing/api", "Tax", "add"]);
+        assert!(ir.contains("!DISubprogram(name: \"billing/api::Tax::add\", scope:"), "{flavor}: {ir}");
+        assert!(ir.contains(&format!("define i64 @{linkage}(")), "preserve native ABI");
+    }
+    Ok(())
 }

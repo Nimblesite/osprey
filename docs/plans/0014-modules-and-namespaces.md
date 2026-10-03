@@ -6,10 +6,11 @@
 **Status:** Core shipped and tested — Default + ML project compilation, the
 resolver/flattener, project-aware CLI and LSP diagnostics, state-ownership
 enforcement, cross-file LSP resolution, and public namespace/module documentation.
-Ten checklist items remain, including opaque manifest aliases, separate
+Eight checklist items remain, including opaque manifest aliases, separate
 checking of importers against signatures, an incremental LSP project graph,
-source names in debug info, cross-flavor module IR equivalence, and state-boundary
-warnings. Record-payload opacity is enforced (2026-10-02).
+and state-boundary warnings. Record-payload opacity
+is enforced (2026-10-02). Cross-flavor multi-file IR equivalence is enforced
+across every flavor assignment of a three-file graph (2026-10-03).
 **Spec:** [0025 - Modules and Namespaces](../specs/0025-ModulesAndNamespaces.md)
 (`[MODULES-*]`)
 
@@ -155,6 +156,8 @@ TODO:
       structural patterns, updates, site-tagged field obligations). Opaque
       manifest aliases still fail loudly instead of leaking; transparent
       aliases are implemented.
+- [ ] Implement opaque manifest aliases without exposing their representation
+      outside the owner; preserve the existing record/union opacity checks.
 - [x] Check effect declarations and operation shapes through signatures.
 - [ ] Allow separate type checking of importers against signatures.
 - [x] Add tests for cross-file values, functions, effects, signatures, and
@@ -207,9 +210,11 @@ TODO:
 - [x] Lower state module instances through explicit handler/instance
       construction.
 - [x] Reject cyclic/impure constant and state initialization before codegen.
-- [ ] Preserve source-level names in debug info and stack traces.
-- [ ] Add IR equivalence tests for cross-flavor modules with identical canonical
-      project graphs.
+- [x] Preserve source-level names in debug info and stack traces. `module_debug_frames_keep_source_names_in_both_flavors` pins source names alongside unchanged encoded linkage names (2026-10-03).
+- [x] Add IR equivalence tests for cross-flavor modules with identical canonical
+      project graphs. `mixed_flavor_project_graphs_emit_identical_ir` covers all
+      eight flavor assignments of a three-file graph, abstract and manifest
+      signature types, imports, and caller-supplied handlers (2026-10-03).
 
 ## Phase 7 - CLI, LSP, Formatter, Docs
 
@@ -217,9 +222,9 @@ TODO:
 
 - [x] CLI: `osprey build` / project mode reads `osprey.toml`; existing single-file
       commands keep working.
-- [ ] CLI: diagnostics show namespace labels, `::` symbol paths, and ranked
-      import candidates. Physical source mapping and qualified paths work;
-      ranked candidate suggestions remain.
+- [x] CLI: diagnostics show namespace labels, `::` symbol paths, and ranked
+      import candidates. Both-flavor `misspelled_import_*` tests pin ranking;
+      `import_suggestions_never_reveal_private_intermediate_modules` pins privacy (2026-10-03).
 - [ ] LSP: maintain an incremental project graph across open files and source
       roots.
 - [x] LSP: run diagnostics through the mixed-flavor project assembler, overlay
@@ -309,8 +314,8 @@ wrapper — the newtype idiom the feature exists to serve.
 
 - Resolver churn will touch type checking and codegen. Keep a raw-name fallback
   only temporarily and remove it before project mode is declared complete.
-- Opaque types need careful interaction with existing union/record constructors.
-  See the defect above: today they interact by not being enforced.
+- Opaque aliases must retain owner-only representation access without weakening
+  the enforced record/union constructor and field boundaries described above.
 - State modules overlap with existing handler-owned state. Treat state modules as
   a disciplined way to define handlers and access paths, not as process-global
   mutable singletons.

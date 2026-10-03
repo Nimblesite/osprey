@@ -390,7 +390,7 @@ and module path segment deterministically and collision-free. Extern declaration
 retain their external symbol name. The assembled project keeps a reverse map so
 symbol output and project diagnostics can restore source-level names.
 
-The selected entry function links as `main`.
+The selected entry function links as `main`. Native LLVM symbols retain that ABI while debug metadata emits the qualified source identity as the subprogram `name`, so debugger stack frames show names such as `billing::Tax::add`. The optional DWARF linkage name is omitted: LLDB otherwise prefers the encoded name even though it cannot demangle it. Generated handler names also restore embedded module identities. `module_debug_frames_keep_source_names_in_both_flavors` pins the distinction for both source flavors; the editor’s `module stack frames retain their source names` tests stop in real LLDB sessions and assert the frame name, source line and parameter value.
 
 ## Diagnostics `[MODULES-DIAG]`
 
@@ -398,7 +398,7 @@ Project diagnostics include the source path and local position when available.
 The implemented checks report unknown/private imports, ambiguous bindings,
 duplicate declarations, private path traversal, signature mismatches, opaque
 alias rejection, state ownership violations, entry conflicts, and initializer
-cycles.
+cycles. Unknown import targets and members include up to three visible candidates ranked by Unicode edit distance, then qualified source name for deterministic ties. Private declarations and declarations behind private intermediate modules are excluded. `misspelled_import_targets_offer_ranked_public_candidates`, `misspelled_import_members_only_suggest_exports`, and `import_suggestions_never_reveal_private_intermediate_modules` exercise both flavors.
 
 ## Tested Example
 
@@ -407,3 +407,5 @@ end-to-end project fixture. `crates/osprey-cli/tests/project_e2e.rs` checks
 directory/manifest inputs, AST flattening, LLVM output, source-name restoration,
 and byte-exact execution. `crates/osprey-project/tests/` covers graph,
 visibility, signature, state, entry, cycle, and opaque-boundary behavior.
+
+`mixed_flavor_project_graphs_emit_identical_ir` in `crates/osprey-cli/tests/cross_flavor_ir_equiv.rs` requires byte-identical IR for all eight flavor assignments to a three-file graph. It covers split namespace contributions, imported modules, abstract and manifest signature types, and caller-supplied effect and arithmetic handlers.

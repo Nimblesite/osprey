@@ -134,7 +134,8 @@ suite("Osprey Debugger E2E Workflows", function () {
     specs: Parameters<typeof setSourceBreakpoints>[1],
     overrides: Record<string, unknown> = {},
   ): Promise<{ session: vscode.DebugSession; stop: DapStop }> {
-    setSourceBreakpoints(source, specs);
+    const program = typeof overrides.program === "string" ? overrides.program : source;
+    setSourceBreakpoints(program, specs);
     const sessionPromise = waitForDebugSessionStart(LAUNCH_TIMEOUT_MS);
     const started = await vscode.debug.startDebugging(undefined, {
       type: "osprey",
@@ -157,6 +158,26 @@ suite("Osprey Debugger E2E Workflows", function () {
   const topName = (stop: DapStop): string => stop.stack.stackFrames[0].name;
   const hasFrame = (stop: DapStop, name: string): boolean =>
     stop.stack.stackFrames.some((frame) => frame.name.includes(name));
+
+  for (const [extension, text] of [
+    ["osp", 'namespace "billing/api";\nmodule Tax {\n export fn add(n) = satAdd(n, 1)\n}\nfn main() = print(Tax::add(41))\n'],
+    ["ospml", 'namespace "billing/api"\nmodule Tax\n    export add n = satAdd n 1\nmain () = print (Tax::add 41)\n'],
+  ]) {
+    test(`module stack frames retain their source names (${extension})`, async function () {
+      this.timeout(TEST_TIMEOUT_MS);
+      const program = path.join(tempDir, `module.${extension}`);
+      fs.writeFileSync(program, text);
+      const { session, stop } = await launchToFirstStop([3], {
+        program, debugOutput: defaultDebugOutputPath(program),
+      });
+      const frame = assertCurrentLine(stop.stack, 3, program);
+      assert.ok(frame.name.includes("billing/api::Tax::add"), frame.name);
+      assert.ok(!frame.name.includes("__osp_"), "no encoded names in user frames");
+      await assertLocalVariable(session, frame.id, "n", /\b41\b/);
+      await continueExecution(session, stop.threadId);
+      await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
+    });
+  }
 
   test("conditional breakpoint stops only on the matching call, with detailed watch", async function () {
     this.timeout(TEST_TIMEOUT_MS);

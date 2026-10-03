@@ -1,343 +1,112 @@
 ---
 layout: layouts/base.njk
-title: "Osprey — Safe, Fast Functional Programming"
-description: "A practical functional language for native programs, WebAssembly, iOS and Android. See the same reactive Osprey app running with native mobile interfaces, SQLite and live APIs."
-# Read from git history, not the filesystem: a fresh CI checkout gives every
-# file a birthtime of "now", which would put a fake date in the sitemap.
+title: "Osprey — Logic in flight. Effects in your hands."
+description: "A functional language with typed algebraic effects. Keep your logic clear, choose its handlers, and compile for native, WebAssembly, iOS and Android."
 date: "git Last Modified"
 ---
-
 {% from "mobile-gallery.njk" import gallery %}
-
-<section class="hero">
-  <div class="container">
+<link rel="stylesheet" href="/css/home.css">
+<div class="home">
+<section class="hero home-hero" aria-labelledby="hero-title">
+  <figure class="flight-film" aria-label="Luminous threads form an osprey in flight">
+    <video id="flight-video" muted loop playsinline preload="none" poster="/assets/motion/osprey-flight.png" data-src="/assets/motion/osprey-flight.webm" aria-hidden="true"></video>
+  </figure>
+  <div class="container hero-grid">
     <div class="hero-content">
-      <h1 class="hero-title animate-on-scroll">
-        <span class="accent">Osprey</span> — safe, fast functional programming without the clutter.
-      </h1>
-      <p class="hero-subtitle animate-on-scroll">
-        A practical language with strong inferred types, explicit errors, first-class effects and
-        lightweight concurrency. Compile through LLVM to native programs, WebAssembly, or shared app logic for iOS and Android.
-      </p>
-      <div class="hero-actions animate-on-scroll">
-        <a href="/playground/" class="btn btn-primary btn-lg">Try Osprey Online</a>
-        <a href="/docs/" class="btn btn-secondary btn-lg">Read the Docs</a>
+      <a class="home-eyebrow alpha-link" href="/status/"><span class="status-dot"></span> An open-source language, taking flight <span>↗</span></a>
+      <h1 class="hero-title" id="hero-title">Osprey.<br>Logic, <em>in flight.</em></h1>
+      <p class="hero-subtitle">Keep the logic clear.<br>Choose how it meets the world.</p>
+      <p class="hero-description">A functional language built around <strong>algebraic effects</strong>. Your code declares what it needs. You choose the handler that makes it happen.</p>
+      <div class="hero-actions">
+        <a href="/playground/" class="btn btn-primary btn-lg">Try Osprey Online <span aria-hidden="true">↗</span></a>
+        <a href="/docs/effects/" class="btn btn-secondary btn-lg">Explore effects <span aria-hidden="true">→</span></a>
       </div>
-      <nav class="target-links" aria-label="Compilation targets">
-        <a href="#targets">Native</a><a href="/docs/web-apps/">WebAssembly</a><a href="/docs/mobile-apps/#run-on-ios">iOS</a><a href="/docs/mobile-apps/#run-on-android">Android</a>
-      </nav>
+      <nav class="target-links" aria-label="Compilation targets"><a href="#targets">Native</a><a href="/docs/web-apps/">WebAssembly</a><a href="/docs/mobile-apps/#run-on-ios">iOS</a><a href="/docs/mobile-apps/#run-on-android">Android</a></nav>
     </div>
+    <div class="hero-code">
+      <div class="flight-code">
+        <div class="code-toolbar"><span>greeting<span id="source-extension">.osp</span></span><div class="flavor-controls" aria-label="Example syntax"><button type="button" data-flavor="default" aria-pressed="true">Default</button><button type="button" data-flavor="ml" aria-pressed="false">ML</button></div></div>
+        <pre id="example-default" data-source-flavor="default" class="language-osprey"><code class="language-osprey">effect Account { name: fn() -> string }
+fn greet() = "Hello, " + perform Account.name()
 
-    <div class="hero-code animate-on-scroll">
-      <p class="hero-code-caption">Strong types and explicit failure, without noisy annotations.</p>
-      <div class="code-example">
-        <pre class="language-osprey"><code class="language-osprey">type Lookup = Found { value: int } | Missing
+let ada = handler Account { name => "Ada" }
+let grace = handler Account { name => "Grace" }
 
-fn doubleFound(result) = match result {
-  Found { value } => Success(value * 2)
-  Missing => Error("value not found")
-}
+print("${ada(greet)} / ${grace(greet)}")</code></pre>
+        <pre id="example-ml" data-source-flavor="ml" class="language-osprey-ml" hidden><code class="language-osprey-ml">effect Account
+  name : Unit => string
+greet () = "Hello, " + perform Account.name ()
 
-match doubleFound(Found { value: 21 }) {
-  Success(value) => print("result: ${value}")
-  Error(message) => print("error: ${message}")
-}</code></pre>
+ada = handler Account
+  name => "Ada"
+grace = handler Account
+  name => "Grace"
+print "${ada greet} / ${grace greet}"</code></pre>
+        <div class="code-result"><span aria-hidden="true">↳</span><samp>Hello, Ada / Hello, Grace</samp><span class="result-label">OUTPUT</span></div>
       </div>
+      <p class="hero-code-caption">One function. Two handlers. The same logic.</p>
+    </div>
+    <div class="hero-footnote"><span>INFERRED TYPES</span><span>EXPLICIT EFFECTS</span><span>COMPILED WITH LLVM</span><a href="https://github.com/Nimblesite/osprey">Open source. MIT licensed. ↗</a><button id="motion-toggle" type="button" hidden>Play motion</button></div>
+  </div>
+</section>
+
+<section class="section effect-story" id="effects" aria-labelledby="effects-title">
+  <div class="container">
+    <div class="section-heading"><p class="home-eyebrow">01 / A different way to connect</p><h2 id="effects-title">Your logic stays.<br><span class="muted-heading">The implementation changes.</span></h2></div>
+    <div class="effect-layout">
+      <div class="effect-intro"><p>Read an account. Write a log. Save a document. Declare a typed request, then decide how to answer it at the application boundary.</p><p>Use the real database in production and a predictable answer in a test. The functions in between stay focused on their work.</p><a class="text-link" href="/docs/effects/">Understand algebraic effects <span>↗</span></a></div>
+      <ol class="effect-steps">
+        <li><span class="step-number">01</span><div><h3>Declare the need.</h3><p><code>effect</code> defines an operation and its types. <code>perform</code> asks for it.</p></div></li>
+        <li><span class="step-number">02</span><div><h3>Choose the behavior.</h3><p>A reusable <code>handler</code> supplies the implementation while your function runs.</p></div></li>
+        <li><span class="step-number">03</span><div><h3>Let the compiler check the boundary.</h3><p>Missing handlers and incompatible operation types are compile errors.</p></div></li>
+      </ol>
+    </div>
+    <p class="support-note">Osprey is alpha software. Native control effects support single-shot resumption; full scoped effect rows and reusable continuations remain in development. <a href="/status/#algebraic-effects">Current support →</a></p>
+  </div>
+</section>
+
+<section class="section language-section" aria-labelledby="language-title">
+  <div class="container">
+    <div class="section-heading"><p class="home-eyebrow">02 / Less ceremony. More intent.</p><h2 id="language-title">A language that leaves<br>room for your thinking.</h2></div>
+    <div class="language-grid">
+      <article><span class="feature-mark" aria-hidden="true">:τ</span><h3>Types that follow your thinking</h3><p>Inferred static types, immutable data, and exhaustive pattern matching. Expected failures remain visible as <code>Result</code> values.</p><a href="/spec/0004-typesystem/">Explore the type system ↗</a></article>
+      <article><span class="feature-mark" aria-hidden="true">{ λ }</span><h3>Two flavors. One language.</h3><p>Familiar braces and calls, or ML layout and currying. Mix <code>.osp</code> and <code>.ospml</code> files in one project with the same types and effects.</p><a href="/blog/2026-06-30-osprey-flavors/">Find your syntax ↗</a></article>
+      <article><span class="feature-mark" aria-hidden="true">⇄</span><h3>Concurrency that reads directly</h3><p>Native fibers and channels keep concurrent work in ordinary functions. Choose the default allocator, tracing GC, or reference counting for your native build.</p><a href="/spec/0011-lightweightfibersandconcurrency/">Follow the fibers ↗</a></article>
+      <article><span class="feature-mark" aria-hidden="true">+ !</span><h3>Arithmetic with a stated policy</h3><p>Integer overflow asks an <code>Arith</code> handler for the region's chosen behavior. Wrapping and saturating helpers make that choice explicit.</p><a href="/spec/0037-arithmeticeffects/">See arithmetic effects ↗</a></article>
     </div>
   </div>
 </section>
 
-<section class="section section-alt mobile-showcase" id="mobile-apps" aria-labelledby="mobile-title">
+<section class="section deployment-section" id="targets" aria-labelledby="targets-title">
   <div class="container">
-    <div class="mobile-intro">
-      <p class="mobile-eyebrow">Running on iOS and Android</p>
-      <h2 id="mobile-title">One Osprey app.<br>Two native interfaces.</h2>
-      <p>Issue Inbox puts the model, reactive updates, UI layout, GitHub decoding, and SQLite commands in shared Osprey modules. SwiftUI and Android widgets render the same application.</p>
-      <ul class="mobile-capabilities">
-        <li>Browse and search live GitHub issues</li>
-        <li>Read details, save issues, and add local notes and priorities</li>
-        <li>Reopen the inbox from its SQLite cache</li>
-      </ul>
-      <div class="mobile-actions">
-        <a class="btn btn-primary" href="/docs/mobile-apps/">Build the mobile app</a>
-        <a class="btn btn-secondary" href="https://github.com/Nimblesite/osprey/tree/main/examples/mobile">Explore the source</a>
-      </div>
-      <p class="mobile-proof">Actual simulator and emulator captures. The iOS app has also been installed and verified on a physical iPhone. Native hosts supply rendering, SQLite, HTTPS, and lifecycle services through the generated C interface.</p>
+    <div class="section-heading"><p class="home-eyebrow">03 / Take it into the world</p><h2 id="targets-title">One language.<br><span class="muted-heading">A wider horizon.</span></h2><p>Compile through LLVM to native programs, WebAssembly, or application logic for native mobile hosts.</p></div>
+    <div class="deployment-grid">
+      <a class="deployment-target" href="/docs/my-first-app/"><span class="target-index">01 / HOST</span><h3>Native<span>↗</span></h3><p>Direct executables. C interop. A choice of memory backends.</p><code>--target=native</code></a>
+      <a class="deployment-target" href="/docs/web-apps/"><span class="target-index">02 / BROWSER &amp; WASI</span><h3>WebAssembly<span>↗</span></h3><p>Shared application logic, connected to the browser through a host.</p><code>--target=wasm32</code></a>
+      <a class="deployment-target" href="/docs/mobile-apps/"><span class="target-index">03 / IN YOUR HAND</span><h3>iOS + Android<span>↗</span></h3><p>Osprey modules behind SwiftUI and native Android interfaces.</p><code>--target=ios / android-arm64</code></a>
     </div>
+    <div class="deployment-note"><p>Build for the capabilities of your target. Unsupported dynamic control effects are rejected on WebAssembly and mobile.</p><a class="text-link" href="/benchmarks/">Real measurements, open benchmarks ↗</a></div>
+  </div>
+</section>
+
+<section class="section mobile-showcase" id="mobile-apps" aria-labelledby="mobile-title">
+  <div class="container">
+    <div class="mobile-intro"><p class="home-eyebrow">04 / From language to application</p><h2 id="mobile-title">Shared logic.<br>Native feel.</h2><p>Issue Inbox puts its model, updates, UI layout, GitHub decoding, and SQLite commands in shared Osprey modules. SwiftUI and Android widgets render the application.</p><ul class="mobile-capabilities"><li>Browse and search GitHub issues</li><li>Save issues, notes, and priorities</li><li>Restore your inbox from SQLite</li></ul><div class="mobile-actions"><a class="btn btn-primary" href="/docs/mobile-apps/">Build the mobile app ↗</a><a class="text-link" href="https://github.com/Nimblesite/osprey/tree/main/examples/mobile">Read the source →</a></div><p class="mobile-proof">Actual simulator and emulator captures. Also verified on a physical iPhone. Native hosts provide rendering, SQLite, HTTPS, and lifecycle services.</p></div>
     {{ gallery(mobile.screenshots) }}
   </div>
 </section>
 
-<section class="section" id="targets" aria-labelledby="targets-title">
+<section class="blue-box-installation home-install">
   <div class="container">
-    <h2 class="section-title" id="targets-title">Choose your target</h2>
-    <p class="section-subtitle">Build a native executable, a WebAssembly module, or application logic for a native mobile host.</p>
-    <div class="target-grid">
-      <article class="card">
-        <h3>Native</h3><code>--target=native</code>
-        <p>Executables for your host platform, with native networking, files, processes, and a choice of memory backends.</p>
-        <a href="/docs/my-first-app/">Build a native app →</a>
-      </article>
-      <article class="card">
-        <h3>WebAssembly</h3><code>--target=wasm32</code>
-        <p>A WASI module with browser examples that connect Osprey application logic to a JavaScript host.</p>
-        <a href="/docs/web-apps/">Build a web app →</a>
-      </article>
-      <article class="card">
-        <h3>iOS</h3><code>--target=ios / ios-sim</code>
-        <p>ARM64 app-logic archives and C headers for iPhone and simulator applications, called from Swift.</p>
-        <a href="/docs/mobile-apps/#run-on-ios">Build for iOS →</a>
-      </article>
-      <article class="card">
-        <h3>Android</h3><code>--target=android-arm64 / android-x64</code>
-        <p>ARM64 and x86-64 app-logic archives and C headers, linked into Android applications through JNI.</p>
-        <a href="/docs/mobile-apps/#run-on-android">Build for Android →</a>
-      </article>
-    </div>
-    <p class="target-note">The compiler rejects unsupported operations before generating code, including resumable effects on mobile and WebAssembly. <a href="/status/#target-support">See target capabilities and current limits.</a></p>
-  </div>
-</section>
-
-<section class="section section-alt">
-  <div class="container">
-    <h2 class="section-title">Built for real programs</h2>
-    <p class="section-subtitle">
-      Osprey combines functional clarity with systems-oriented deployment. The features fit together
-      around four priorities: practical code, safety, performance and elegance.
-    </p>
-    <div class="philosophy-grid">
-      <div class="card">
-        <h3>Practical by design</h3>
-        <p>Write direct code, call existing C libraries, and build native, WebAssembly, iOS, or Android applications. Useful abstractions should remove work, not create ceremony.</p>
-      </div>
-      <div class="card">
-        <h3>Safe where it matters</h3>
-        <p>Expected failures use results, pattern matching checks every case, arithmetic does not silently wrap and fibers avoid shared mutable state.</p>
-      </div>
-      <div class="card">
-        <h3>Native performance</h3>
-        <p>LLVM compilation, lightweight fibers, persistent collections and selectable memory management give high-level code a systems-oriented runtime.</p>
-      </div>
-      <div class="card">
-        <h3>Functional elegance</h3>
-        <p>Type inference, immutable data, direct-style concurrency and first-class effects keep the important parts visible and the plumbing out of the way.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="section">
-  <div class="container">
-    <h2 class="section-title">Safety without busywork</h2>
-    <div class="two-column">
-      <div class="content">
-        <h3>Make invalid states and hidden failure harder to write</h3>
-        <p>
-          Osprey uses inferred static types, explicit result values and exhaustive pattern matching.
-          You get strong checks without repeating obvious type information throughout the program.
-        </p>
-        <ul>
-          <li>Errors are values instead of hidden exceptions or nulls</li>
-          <li>Pattern matching checks that every data case is handled</li>
-          <li>Checked arithmetic reports overflow instead of silently wrapping</li>
-          <li>Osprey-managed memory is safe; calls into C cross that safety boundary</li>
-        </ul>
-      </div>
-      <div class="visual">
-        <div class="code-example">
-          <pre class="language-osprey"><code class="language-osprey">type Payment = Approved { receipt: string }
-             | Declined { reason: string }
-
-fn describe(payment) = match payment {
-  Approved { receipt } => "paid: ${receipt}"
-  Declined { reason } => "declined: ${reason}"
-}</code></pre>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="section section-alt">
-  <div class="container">
-    <h2 class="section-title">Effects without dependency plumbing</h2>
-    <div class="two-column">
-      <div class="visual">
-        <div class="code-example">
-          <pre class="language-osprey"><code class="language-osprey">effect Logger {
-  log: fn(string) -> Unit
-}
-
-fn process(orderId) !Logger = {
-  perform Logger.log("processing ${orderId}")
-  orderId * 2
-}
-
-handle Logger
-  log message => print(message)
-in process(21)</code></pre>
-        </div>
-      </div>
-      <div class="content">
-        <h3>Ask for work where it is needed; decide how it happens at the edge</h3>
-        <p>
-          Code can log, store data or retry work without passing service objects through every intermediate
-          function. Swap a handler in a test without changing the code under test.
-        </p>
-        <p>
-          Effect inputs and outputs are type-checked. If an operation has no matching handler, the compiler
-          rejects the program and names the missing effect. Target checks also reject unsupported effect resumption.
-        </p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="section">
-  <div class="container">
-    <h2 class="section-title">Concurrency that stays direct</h2>
-    <div class="two-column">
-      <div class="content">
-        <h3>Lightweight fibers, message passing and no function colouring</h3>
-        <p>
-          Spawn concurrent work without turning every function in the call chain into a special async kind.
-          Fibers communicate by moving or copying values through channels rather than sharing mutable state.
-        </p>
-        <ul>
-          <li>Spawn and await work with ordinary functions</li>
-          <li>Channels for isolated communication</li>
-          <li>Ordinary direct-style functions and results</li>
-        </ul>
-      </div>
-      <div class="visual">
-        <div class="code-example">
-          <pre class="language-osprey"><code class="language-osprey">fn work(n) = n * n
-
-let first = spawn work(6)
-let second = spawn work(7)
-
-print("${await(first)}, ${await(second)}")
-
-let messages = Channel(1)
-send(messages, "done")
-print(recv(messages))</code></pre>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="section section-alt">
-  <div class="container">
-    <h2 class="section-title">Fast programs, deliberate trade-offs</h2>
-    <p class="section-subtitle">
-      Osprey compiles through LLVM with no VM or JIT warm-up. Choose the memory strategy that fits the build,
-      and use the same language semantics across those choices.
-    </p>
-    <div class="philosophy-grid">
-      <div class="card">
-        <h3>Native, web, and mobile</h3>
-        <p>Compile executables, WebAssembly modules, or C ABI libraries for native iOS and Android hosts.</p>
-      </div>
-      <div class="card">
-        <h3>Selectable memory</h3>
-        <p>Native builds can use the default non-reclaiming allocator, tracing garbage collection or Perceus reference counting.</p>
-      </div>
-      <div class="card">
-        <h3>Persistent collections</h3>
-        <p>Immutable lists and maps reuse unchanged structure, so an update does not copy the entire collection.</p>
-      </div>
-      <div class="card">
-        <h3>Direct C interop</h3>
-        <p>Declare and link the C functions you need. C code remains outside Osprey's memory-safety guarantee.</p>
-      </div>
-    </div>
-    <p class="comparison-cta">
-      Performance claims belong with measurements. See the reproducible
-      <a href="/benchmarks/">cross-language benchmarks →</a>
-    </p>
-  </div>
-</section>
-
-<section class="section">
-  <div class="container">
-    <h2 class="section-title">Two flavors, one language</h2>
-    <p class="section-subtitle">
-      Choose familiar braces and calls or clean ML-style layout and currying. Both flavors use the same type
-      system, effects, runtime and backends; neither is a reduced or secondary form of Osprey.
-    </p>
-    <div class="two-column">
-      <div class="content">
-        <h3>Default <code>.osp</code></h3>
-        <p>Braces, <code>fn</code> and familiar function calls for developers coming from C#, Go, Rust, Java, Kotlin or Swift.</p>
-        <div class="code-example">
-          <pre class="language-osprey"><code class="language-osprey">fn greet(name) = {
-  let message = "Hello, ${name}"
-  print(message)
-}
-
-greet("Ada")</code></pre>
-        </div>
-      </div>
-      <div class="visual">
-        <h3>ML <code>.ospml</code></h3>
-        <p>Layout-sensitive syntax, currying and whitespace application for developers at home in ML, OCaml, F# or Haskell.</p>
-        <div class="code-example">
-          <pre class="language-osprey"><code class="language-osprey">greet name =
-  message = "Hello, ${name}"
-  print message
-
-greet "Ada"</code></pre>
-        </div>
-      </div>
-    </div>
-    <p class="section-subtitle">
-      Files choose a flavor independently. Issue Inbox combines ML application modules with a small Default-flavor
-      C entry point in one project. <a href="/blog/2026-06-30-osprey-flavors/">Read about the two flavors →</a>
-    </p>
-  </div>
-</section>
-
-<section class="blue-box-installation">
-  <div class="container">
-    <h2 class="section-title animate-on-scroll">Try Osprey</h2>
-    <p class="section-subtitle">Use the browser playground, or install the compiler and build a native program.</p>
+    <p class="home-eyebrow">Your next idea starts here</p><h2 class="section-title">Give it wings.</h2><p class="section-subtitle">Start with a small program. Make the behavior your own.</p>
     <div class="install-grid">
-      <div class="install-card animate-on-scroll">
-        <h3>Browser playground</h3>
-        <p>Compile and run Osprey without installing anything.</p>
-        <a href="/playground/" class="btn btn-primary">Open Playground</a>
-      </div>
-      <div class="install-card primary animate-on-scroll">
-        <h3>macOS / Linux</h3>
-        <div class="install-code">
-          <pre class="language-bash"><code class="language-bash">brew install nimblesite/tap/osprey</code></pre>
-        </div>
-      </div>
-      <div class="install-card primary animate-on-scroll">
-        <h3>Windows</h3>
-        <div class="install-code">
-          <pre class="language-bash"><code class="language-bash">scoop bucket add nimblesite https://github.com/Nimblesite/scoop-bucket
-scoop install osprey</code></pre>
-        </div>
-      </div>
+      <div class="install-card"><h3>Start in your browser</h3><p>Explore the language without installing anything.</p><a href="/playground/" class="btn btn-primary">Open Playground ↗</a></div>
+      <div class="install-card"><h3>macOS / Linux</h3><div class="install-code"><pre class="language-bash"><code class="language-bash">brew install nimblesite/tap/osprey</code></pre></div></div>
+      <div class="install-card"><h3>Windows</h3><div class="install-code"><pre class="language-bash"><code class="language-bash">scoop bucket add nimblesite https://github.com/Nimblesite/scoop-bucket
+scoop install osprey</code></pre></div></div>
     </div>
-    <p class="banner warn animate-on-scroll">
-      Native compilation requires <code>clang</code> (LLVM 15+) on your <code>PATH</code>; installers do not bundle it.
-      See the <a href="/docs/installation/">installation guide</a> for platform steps and troubleshooting.
-    </p>
+    <p class="support-note">Native compilation requires clang (LLVM 15+). <a href="/docs/installation/">Installation guide →</a> · <a href="https://github.com/Nimblesite/osprey">Contribute on GitHub ↗</a></p>
   </div>
 </section>
-
-<section class="blue-box">
-  <div class="container">
-    <div class="blue-box-content animate-on-scroll">
-      <h2>Build something practical</h2>
-      <p>Start in the playground, follow the documentation or explore the compiler on GitHub.</p>
-      <div class="blue-box-actions">
-        <a href="/playground/" class="btn btn-primary btn-lg">Try Osprey</a>
-        <a href="https://github.com/Nimblesite/osprey" class="btn btn-secondary btn-lg">View on GitHub</a>
-      </div>
-    </div>
-  </div>
-</section>
+</div>
+<script type="module" src="/js/home.js"></script>

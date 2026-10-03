@@ -547,6 +547,8 @@ def main():
     n = 0
     for f in files:
         source = f.read_text()
+        if re.search(r'^mlTwins:\s*manual\s*$', source, re.M):
+            continue  # Hand-authored guides own their examples.
         if re.search(r'^mlTwins:\s*false\s*$', source, re.M):
             without_twins = strip_twins(source)
             if without_twins != source:

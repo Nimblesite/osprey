@@ -56,6 +56,8 @@ print(computed.y)
 
 print("=== RECORD UPDATE BASIC TESTS COMPLETE ===")
 
+type _ = { x: int }
+
 /// Verifies updates replace selected fields without mutating their source record.
 fn recordUpdateCase() = {
     let original = Point { x: 10, y: 20 }
@@ -76,7 +78,8 @@ fn recordUpdateCase() = {
         olderPerson.name == "Alice",
         olderPerson.age == 26,
         computedPoint.x == 20,
-        computedPoint.y == 10
+        computedPoint.y == 10,
+        (_ { x: 9 }).x == 9
     ])
 }
 test("record updates preserve the source and untouched fields", recordUpdateCase)
@@ -107,19 +110,19 @@ fn steered() = {
     mut acc = Point { x: 0, y: 0 }
     handle Steer {
         nudge by => {
-            acc = acc { x: by, y: (acc.y + by) ?: 0 }
+            acc = acc { x: by, y: satAdd(acc.y, by) }
             acc.y
         }
     }
     let first = perform Steer.nudge(5)
     let second = perform Steer.nudge(1)
-    acc { x: (first + second) ?: 0 }
+    acc { x: satAdd(first, second) }
 }
 
 /// A recursive walk threads a record through its own updates.
 fn walk(p, steps) = match steps {
     0 => p
-    _ => walk(p { x: (p.x + 1) ?: 0, y: (p.y + 2) ?: 0 }, (steps - 1) ?: 0)
+    _ => walk(p { x: satAdd(p.x, 1), y: satAdd(p.y, 2) }, satSub(steps, 1))
 }
 
 fn genericUpdateCase() = {
@@ -155,9 +158,9 @@ fn nestedUpdateCase() = {
     let moved = acme { address: home { city: "Hobart" } }
     let closed = moved { active: false, name: "Acme (closed)" }
     let boxed = Box { held: 2 }
-    let doubled = boxed { held: (boxed.held * 2) ?: 0 }
+    let doubled = boxed { held: satMul(boxed.held, 2) }
     let pair = Pair { first: "a", second: 1 }
-    let bumped = pair { second: (pair.second + 1) ?: 0, first: "b" }
+    let bumped = pair { second: satAdd(pair.second, 1), first: "b" }
     checkAll("nested and generic records update without touching their source", [
         moved.address.city == "Hobart",
         moved.address.zip == 6000,
@@ -179,7 +182,7 @@ fn flowUpdateCase() = {
         0 => start { x: 1 }
         _ => start { y: 1 }
     }
-    let shift = fn(p) => p { y: (p.y + 10) ?: 0 }
+    let shift = fn(p) => p { y: satAdd(p.y, 10) }
     let shifted = shift(stepped)
     let walked = walk(start, 3)
     let steeredPoint = steered()

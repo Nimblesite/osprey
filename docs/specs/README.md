@@ -73,8 +73,8 @@ This directory holds **all spec documents** for the project:
     through the shipped substituting-handler path — one region states the
     policy (wrapping, fault-sticky, saturating) instead of a fabricated `?:`
     fallback at every call site. Motivated by
-    [#230](https://github.com/Nimblesite/osprey/issues/230); implementation recorded in
-    [plan 0027](../plans/0027-arithmetic-effects.md).
+    [#230](https://github.com/Nimblesite/osprey/issues/230); implementation and named regression evidence are recorded in
+    [the arithmetic contract](0037-ArithmeticEffects.md#implementation-and-verification).
   - [`0038-iOSTarget.md`](0038-iOSTarget.md) — iPhone and ARM64 simulator static
     libraries with inferred C headers, synchronous Swift host calls, target
     capability rejection before LLVM, and a runnable SwiftUI sample. Implementation

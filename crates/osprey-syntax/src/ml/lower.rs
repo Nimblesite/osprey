@@ -1387,7 +1387,7 @@ fn lower_multi_application(func: MlExpr, args: Vec<MlExpr>) -> Expr {
 /// This mirrors the Default flavor's distinct `TypeConstructor`/`Update` nodes.
 fn lower_record(name: String, type_args: &[MlType], fields: Vec<MlField>) -> Expr {
     let fields = fields.into_iter().map(lower_field).collect();
-    if !super::parser::is_constructor(super::parser::constructor_segment(&name)) {
+    if !osprey_ast::is_record_constructor(&name, !type_args.is_empty()) {
         return Expr::Update {
             record: name,
             fields,

@@ -2,6 +2,10 @@
 
 Scripts for building the Osprey website.
 
+## Homepage motion
+
+Run `node scripts/render-flight.mjs` from `website/` to reproduce the original wireframe osprey film and its static poster in `src/assets/motion/`. The geometry lives in `flight-scene.js`; Playwright's Chromium records an eight-second VP9 WebM loop. These authored media assets ship with the site, so normal builds need no rendering step. The browser decodes the film without running its canvas renderer. Playback pauses offscreen and in background tabs; reduced-motion and data-saving preferences use the poster until the visitor requests playback.
+
 ## Scripts
 
 ### `generate-docs.sh`

@@ -480,11 +480,10 @@ Landmines previous sessions hit:
   `OSPREY_GPU_KERNELS`; without that the harness compares one cached binary to
   itself and the differential silently passes forever. Falsify any new mode
   gate by breaking it on purpose once and watching it fail.
-- The deslop duplication ceiling is 5.00% and the repo is **at** it (5.0%,
-  3367/67685 LOC): any new combinator in `gpu.rs` must reuse
+- The deslop duplication ceiling is defined in `.deslop.toml`: any new combinator in `gpu.rs` must reuse
   `kernel_of`/`scalar_acc_init`, and any new lifted-call helper must reuse
   `closure.rs` rather than restating it.
-- Float `/` returns `Result<float, MathError>` — kernels need `?:`. ML twins:
+- Float `/` returns `float`; a nonliteral divisor requires an enclosing runtime `Arith.divideByZero` policy on the host backend ([spec 0037](../specs/0037-ArithmeticEffects.md)). Nonzero literal divisors are total. ML twins:
   no braces in constructor patterns (`Success value`), lambdas are `\x => …`,
   parenthesize match-arm and pipe continuations, and **parenthesize a negative
   literal argument** (`gpuIota (-4)`) or juxtaposition reads it as subtraction.
@@ -492,7 +491,7 @@ Landmines previous sessions hit:
   `expr.rs::call_builtin_with_values`, or it emits `call @name` to a symbol
   that is never defined and fails at *link* time with no source location.
 - A line opening with `(` starts a NEW statement, so `let d = 5` followed by
-  `(d + 1) ?: d` no longer misparses as `5(d + 1)`
+  `(d + 1)` no longer misparses as `5(d + 1)`
   ([LEX-STATEMENT-BREAK](../specs/0002-LexicalStructure.md#the-rule-lex-statement-break)).
   A callee and its argument list must still share one line.
 - Debug builds emit **no `DISubprogram`** for a lifted kernel, matching

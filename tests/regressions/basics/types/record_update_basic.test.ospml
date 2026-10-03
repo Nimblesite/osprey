@@ -54,6 +54,9 @@ print computed.y
 
 print "=== RECORD UPDATE BASIC TESTS COMPLETE ==="
 
+type _ =
+    x : int
+
 (** Verify updates replace selected fields without mutating their source record. *)
 recordUpdateCase () =
     original = Point(x = 10, y = 20)
@@ -74,7 +77,8 @@ recordUpdateCase () =
         olderPerson.name == "Alice",
         olderPerson.age == 26,
         computedPoint.x == 20,
-        computedPoint.y == 10
+        computedPoint.y == 10,
+        (_(x = 9)).x == 9
     ]
 test "record updates preserve the source and untouched fields" recordUpdateCase
 
@@ -121,16 +125,16 @@ steered () =
     mut acc = Point(x = 0, y = 0)
     handle Steer
         nudge by =>
-            acc := acc(x = by, y = (acc.y + by) ?: 0)
+            acc := acc(x = by, y = satAdd acc.y by)
             acc.y
     first = perform Steer.nudge 5
     second = perform Steer.nudge 1
-    acc(x = (first + second) ?: 0)
+    acc(x = satAdd first second)
 
 (** A recursive walk threads a record through its own updates. *)
-walk p steps = match steps
+walk (p, steps) = match steps
     0 => p
-    _ => walk (p(x = (p.x + 1) ?: 0, y = (p.y + 2) ?: 0)) ((steps - 1) ?: 0)
+    _ => walk (p(x = satAdd p.x 1, y = satAdd p.y 2), satSub steps 1)
 
 genericUpdateCase () =
     point = Point(x = 1, y = 2)
@@ -164,9 +168,9 @@ nestedUpdateCase () =
     moved = acme(address = home(city = "Hobart"))
     closed = moved(active = false, name = "Acme (closed)")
     boxed = Box(held = 2)
-    doubled = boxed(held = (boxed.held * 2) ?: 0)
+    doubled = boxed(held = satMul boxed.held 2)
     pair = Pair(first = "a", second = 1)
-    bumped = pair(second = (pair.second + 1) ?: 0, first = "b")
+    bumped = pair(second = satAdd pair.second 1, first = "b")
     checkAll "nested and generic records update without touching their source" [
         moved.address.city == "Hobart",
         moved.address.zip == 6000,
@@ -186,9 +190,9 @@ flowUpdateCase () =
     stepped = match start.x
         0 => start(x = 1)
         _ => start(y = 1)
-    shift = \p => p(y = (p.y + 10) ?: 0)
+    shift = \p => p(y = satAdd p.y 10)
     shifted = shift stepped
-    walked = walk start 3
+    walked = walk (start, 3)
     steeredPoint = steered ()
     checkAll "updates inside match arms, lambdas, recursion and handler arms" [
         stepped.x == 1,
@@ -204,7 +208,7 @@ flowUpdateCase () =
     ]
 
 erasedCell = erase (Cell(v = "s"))
-walkedTwice = walk (Point(x = 1, y = 1)) 2
+walkedTwice = walk (Point(x = 1, y = 1), 2)
 print "${erasedCell.v} ${describe walkedTwice}"
 test "record updates through generic functions" genericUpdateCase
 test "record updates of nested and generic records" nestedUpdateCase

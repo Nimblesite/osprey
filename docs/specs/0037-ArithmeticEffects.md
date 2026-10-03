@@ -1,6 +1,6 @@
 # Arithmetic Effects
 
-**Status:** shipped. [Plan 0027](../plans/0027-arithmetic-effects.md) records the implementation and verification.
+**Status:** shipped in [PR #241](https://github.com/Nimblesite/osprey/pull/241). Implementation and verification evidence is recorded below.
 
 The key words `MUST`, `MUST NOT`, `SHOULD`, and `MAY` are to be interpreted as described by BCP 14 (RFC 2119 and RFC 8174) when they appear in capitals. A feature is not implemented merely because this document specifies it.
 
@@ -20,7 +20,7 @@ Floating-point `+`, `-`, `*`, and unary `-` satisfy the same totality through IE
 
 The numeric builtins are inside the guarantee: `abs` and `intDiv` follow the operators — plain `int` results, with `abs(-9223372036854775808)` and `intDiv(-9223372036854775808, -1)` performing `Arith.overflow` and `intDiv(_, 0)` performing `Arith.remainderByZero`. `checkedAdd`/`checkedSub`/`checkedMul` remain the explicit value-level spelling; an `Error` they return is ordinary data, produced totally.
 
-Conformance: [plan 0027](../plans/0027-arithmetic-effects.md) MUST land a rejection fixture or differential runtime test for every clause above, exercised on native under all three memory backends and on wasm32.
+Conformance requires a rejection fixture or differential runtime test for every clause above, exercised on native under all three memory backends and on wasm32. The verification matrix below names those tests.
 
 ## The model — [ARITH-EFFECT]
 
@@ -173,5 +173,23 @@ host-backend GPU kernel dispatches to the enclosing runtime policy. A checked
 static interpretation for device regions under
 [STAGE-HANDLE-STATIC](0017-AlgebraicEffects.md#static-handlers--stage-handle-static)
 belongs to the staging delivery.
-Arithmetic delivery is recorded in [plan 0027](../plans/0027-arithmetic-effects.md);
-shared handler and staging delivery belongs to [plan 0016](../plans/0016-algebraic-effects-and-handlers.md).
+Shared handler and staging delivery belongs to [plan 0016](../plans/0016-algebraic-effects-and-handlers.md).
+
+## Implementation and verification
+
+Integer arithmetic produces plain numeric values. `MathError` and arithmetic Result flattening have been removed; `checkedAdd`, `checkedSub` and `checkedMul` preserve their explicit `Result<int, Error>` interface. `osprey-types::arithmetic` classifies requirements and constant folds, `effect_rows` propagates and discharges them, and `osprey-codegen::arithmetic` sends faults through the ordinary value-handler path.
+
+| Contract | Regression evidence |
+| --- | --- |
+| Correct square, fold accumulator and ledger results after overflow (#230); total helpers; outer-policy forwarding | `tests/core/arithmetic/effect_policies.test.osp` and its ML twin |
+| Return annotations preserve arithmetic values (#163) | `arithmetic_return_annotations_preserve_values_in_both_flavors` in `crates/osprey-cli/tests/redundant_annotations.rs`, executed under default, GC and ARC |
+| Direct handlers preserve complete integer/float `Result` operation payloads (#183) | `direct handler calls preserve Result operation values` in `effect_policies` |
+| Ordered overflow payloads, unary boundaries, integer remainder and float zero divisors | `result_chain_unary_stress` and `boundary_error_stress`, both flavors; each case checks the numeric answer and complete ordered fault trace |
+| No implicit policy, reserved `Arith`, value-mode arms, constant-overflow errors, file-scope restrictions and recovery requiring an outer policy | `arith_unhandled`, `arith_redeclared`, `arith_resume`, `arith_constant_overflow`, `arith_file_initializer`, `arith_recovery_needs_outer` in `examples/failscompilation/`, each with an `ml_` fixture and exact diagnostic golden |
+| Retired `MathError` cannot be named as a builtin | `explicit_arguments_validate_nested_types_and_enclosing_binders` in `crates/osprey-types/src/methods.rs` |
+
+`make ci` runs the Rust suites, coverage gates, exact rejection diagnostics, native default/GC/ARC goldens, editor tests and application acceptance tests. The ARC corpus also requires zero live objects at exit. `make wasm` runs the same target-supported corpus against the same goldens through WASI; unsupported capabilities are enumerated by the target manifest. ML twins share the Default golden; the standalone ML currying suite has its own golden because it has no Default twin. The arithmetic policy and stress suites participate in each supported target run.
+
+The policy examples above can be compiled with concrete iterator inputs and definitions for their application-specific names (`payload`, `ledger`, `postings`, `settle`, `backoff`, `capMs`). The `Arith` declaration describes the compiler builtin; redeclaring it in source is deliberately rejected.
+
+Benchmark measurements and their machine/provenance limits live in [the benchmark report](../../website/src/benchmarks.md). `make bench-osprey` refreshes Osprey's four backend columns while preserving the other languages' recorded measurements.

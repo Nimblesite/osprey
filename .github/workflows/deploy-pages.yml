@@ -64,7 +64,7 @@ jobs:
       - name: Install wasm toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm lld wabt zsh
+          sudo apt-get install -y clang llvm lld wabt zsh pkg-config libssl-dev libsqlite3-dev
           WASI_VERSION=24
           curl -fsSL -o /tmp/wasi-sysroot.tar.gz \
             "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_VERSION}/wasi-sysroot-${WASI_VERSION}.0.tar.gz"
@@ -78,8 +78,8 @@ jobs:
         working-directory: ./website
         run: npm ci
 
-      - name: Build website WebAssembly demo
-        run: make wasm-site
+      - name: Build runtimes and website WebAssembly demo
+        run: make _runtime wasm-site
 
       - name: Build website (regenerates reference docs from the compiler)
         working-directory: ./website

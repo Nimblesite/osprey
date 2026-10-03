@@ -638,6 +638,8 @@ Codegen resolves a **named-field** payload by name, never by declaration order, 
 
 Records cannot be modified. To produce a record that differs in some fields from an existing one, use the update form. The base must be a bound record — a union, a scalar or an erased `any` is rejected (match it first). Each named field is checked as a field read plus an assignment: the field must exist on the record (``record type `Point` has no field `z` ``), the value must be assignable to it, and a field may be written at most once (``record update assigns field `x` more than once``; a construction is held to the same rule). An update through a still-generic parameter is deferred to the call that fixes the record, exactly as a `.field` read is, and keeps the assignment rules there: a bare value still fills a `Result` field, any value still erases into an `any` field. Generic records update like any other, including through a generic function. In both flavors the head's spelling decides the form: a capitalised, qualified or type-applied head constructs, a lowercase head updates the binding it names, and both frontends lower an update to the same `Expr::Update`.
 
+The identifier `_` may also name a declared record type. In a construction such as `_ { x: 1 }`, it names that type; it remains a wildcard in pattern position. It never refers to a discarded binding as an update base.
+
 ```osprey
 let p2 = point  { x: 15 }                // y carried over
 let p3 = person { age: 26, active: false }

@@ -1,10 +1,9 @@
 {
   "main": [
     { "text": "Install", "url": "/docs/installation/" },
-    { "text": "Status", "url": "/status/" },
+    { "text": "Effects", "url": "/docs/effects/" },
     { "text": "Spec", "url": "/spec/" },
     { "text": "Playground", "url": "/playground/" },
-    { "text": "WASM", "url": "/wasm/" },
     { "text": "Docs", "url": "/docs/" },
     { "text": "Benchmarks", "url": "/benchmarks/" },
     { "text": "Blog", "url": "/blog/" },
@@ -15,6 +14,7 @@
       "title": "Start here",
       "items": [
         { "text": "Documentation home", "url": "/docs/" },
+        { "text": "Algebraic effects", "url": "/docs/effects/" },
         { "text": "Installation", "url": "/docs/installation/" },
         { "text": "My First App", "url": "/docs/my-first-app/" }
       ]
@@ -58,6 +58,7 @@
       "title": "Learn",
       "items": [
         { "text": "Documentation", "url": "/docs/" },
+        { "text": "Algebraic Effects", "url": "/docs/effects/" },
         { "text": "Web Apps Guide", "url": "/docs/web-apps/" },
         { "text": "Mobile Apps Guide", "url": "/docs/mobile-apps/" },
         { "text": "Feature Status", "url": "/status/" },

@@ -101,7 +101,7 @@ impl Builder<'_> {
             self.error(
                 contribution.source,
                 import.position,
-                format!("unknown import target `{}`", target.source_name()),
+                with_candidates("unknown import target", &target, self.visible_targets()),
             );
             return;
         }
@@ -152,7 +152,11 @@ impl Builder<'_> {
             self.error(
                 contribution.source,
                 import.position,
-                format!("{description} imported member `{}`", key.source_name()),
+                with_candidates(
+                    &format!("{description} imported member"),
+                    &key,
+                    self.direct_visible_members(target),
+                ),
             );
             return;
         }
@@ -214,6 +218,21 @@ impl Builder<'_> {
         }
     }
 
+    fn visible_targets(&self) -> Vec<SymbolKey> {
+        self.graph
+            .namespaces
+            .iter()
+            .map(|namespace| SymbolKey::new(namespace, Vec::new()))
+            .chain(
+                self.graph
+                    .modules
+                    .keys()
+                    .filter(|key| self.target_visible(key))
+                    .cloned(),
+            )
+            .collect()
+    }
+
     fn target_visible(&self, target: &SymbolKey) -> bool {
         target.path.is_empty()
             || (1..=target.path.len()).all(|length| {
@@ -262,6 +281,55 @@ impl Builder<'_> {
             message,
         ));
     }
+}
+
+/// [MODULES-DIAG] Rank only visibility-filtered candidates; ties use source names.
+fn with_candidates(description: &str, target: &SymbolKey, candidates: Vec<SymbolKey>) -> String {
+    let name = target.source_name();
+    let suggestions = ranked_candidates(&name, candidates);
+    let message = format!("{description} `{name}`");
+    if suggestions.is_empty() {
+        message
+    } else {
+        format!("{message}; candidates: {suggestions}")
+    }
+}
+
+fn ranked_candidates(name: &str, candidates: Vec<SymbolKey>) -> String {
+    let budget = name.chars().count().div_ceil(3).max(2);
+    let mut ranked: Vec<_> = candidates
+        .into_iter()
+        .map(|key| key.source_name())
+        .map(|candidate| (edit_distance(name, &candidate), candidate))
+        .filter(|(distance, _)| *distance <= budget)
+        .collect();
+    ranked.sort();
+    ranked
+        .iter()
+        .take(3)
+        .map(|(_, name)| format!("`{name}`"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn edit_distance(left: &str, right: &str) -> usize {
+    let mut row: Vec<usize> = (0..=right.chars().count()).collect();
+    for (index, a) in left.chars().enumerate() {
+        let mut diagonal = index;
+        let mut previous = index + 1;
+        for (cell, b) in row.iter_mut().skip(1).zip(right.chars()) {
+            let distance = (diagonal + usize::from(a != b))
+                .min(previous + 1)
+                .min(*cell + 1);
+            diagonal = *cell;
+            *cell = distance;
+            previous = distance;
+        }
+        if let Some(first) = row.first_mut() {
+            *first = index + 1;
+        }
+    }
+    row.last().copied().unwrap_or_default()
 }
 
 fn whole_alias(import: &ImportDecl) -> Option<String> {
