@@ -6,8 +6,10 @@
 **Status:** Core shipped and tested — Default + ML project compilation, the
 resolver/flattener, project-aware CLI and LSP diagnostics, state-ownership
 enforcement, cross-file LSP resolution, and public namespace/module documentation.
-Seven checklist items remain, including opaque manifest aliases, separate
-checking of importers against signatures, and state-boundary warnings. The
+Four checklist items remain: opaque manifest aliases, separate checking of
+importers against signatures, pointer escape analysis, and the runnable project's
+signature examples. Project style advice, state-boundary inventory and warnings,
+and compiler-proved module repair actions are implemented (2026-10-04). The
 incremental LSP project snapshot is implemented (2026-10-04): live source
 membership, syntax reuse, shared checking and file/manifest invalidation. Record-payload opacity
 is enforced (2026-10-02). Cross-flavor multi-file IR equivalence is enforced
@@ -133,8 +135,11 @@ TODO:
       paths.
 - [x] Detect duplicate declarations/exports in one namespace/module.
 - [x] Detect ambiguous imports and require explicit qualification or aliases.
-- [ ] Add style diagnostics as warnings only: folder drift, deep hierarchy in app
+- [x] Add style diagnostics as warnings only: folder drift, deep hierarchy in app
       code, and reverse-domain labels outside published-library config.
+      `project_advice` pins path independence, deterministic locations, shallow
+      modules and the validated `published_library` policy; CLI and LSP consume
+      the same findings ([MODULES-STYLE]).
 - [x] Enforce one project entry point: designated entry file or `fn main()`.
 - [x] Reject executable top-level statements in non-entry project files.
 
@@ -191,7 +196,12 @@ TODO:
       exception.
 - [x] Instantiate fresh private cells inside each handler installer rather than
       emitting module-global storage.
-- [ ] Add LSP warnings and docs metadata that list all project state boundaries.
+- [x] Add LSP warnings and docs metadata that list all project state boundaries.
+      The compiler retains every owner, private cell count and exported owned
+      effect; live editor diagnostics and Markdown/HTML exports consume it.
+      `state_advice_tracks_unsaved_edits_and_never_survives_errors` and
+      `extra_docs_state_inventory_survives_both_flavors_and_regeneration` pin
+      invalidation, both flavors, private owners, navigation and cleanup.
 - [x] Add negative tests for scattered state, direct/qualified access,
       wrong-effect handlers, escaping lambda/spawn factories, nested-module
       handlers, wildcard state imports, impure initialization, and exported
@@ -239,8 +249,11 @@ TODO:
       fully-qualified document symbols understand namespaces/modules/imports.
       These features share the live project snapshot above, including unsaved
       siblings in either flavor.
-- [ ] LSP: show state-boundary warnings and quick fixes for aliases and explicit
-      `::` paths.
+- [x] LSP: show state-boundary warnings and quick fixes for aliases and explicit
+      `::` paths. A quoted-import alias or dot-to-`::` repair is offered only
+      after the entire edited live project checks. `module_repairs_*` pin
+      privacy, collisions, remaining errors, unsaved siblings, UTF-8/UTF-16,
+      comments, CRLF, action selection and exclusion from annotation fix-all.
 - [x] Formatter: preserve file-scoped namespace and format module/signature
       blocks in both flavors.
 - [x] Docs generator: create namespace/module reference pages from exported

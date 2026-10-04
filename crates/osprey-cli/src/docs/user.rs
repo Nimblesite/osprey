@@ -34,7 +34,9 @@ pub(super) fn pages(options: &Options) -> io::Result<Vec<Page>> {
         serde_json::from_str(&input.documentation_symbols_json()).map_err(io::Error::other)?;
     let root = source_root(path)?;
     let documented = public_entries(&sources, &input, &root)?;
-    render_pages(documented, &symbols, &root)
+    let mut pages = render_pages(documented, &symbols, &root)?;
+    pages.extend(super::boundaries::page(&input));
+    Ok(pages)
 }
 
 fn source_root(path: &str) -> io::Result<std::path::PathBuf> {

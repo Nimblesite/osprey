@@ -26,6 +26,8 @@ pub struct ProjectConfig {
     pub flavor: Option<Flavor>,
     /// Whether `::*` imports are permitted outside scripts and tests.
     pub allow_wildcard_imports: bool,
+    /// Suppress application-only hierarchy and reverse-domain style advice.
+    pub published_library: bool,
 }
 
 impl ProjectConfig {
@@ -55,6 +57,7 @@ impl ProjectConfig {
             entry: None,
             flavor: None,
             allow_wildcard_imports: false,
+            published_library: false,
         }
     }
 
@@ -123,6 +126,7 @@ fn apply_key(
         ("modules", "allow_wildcard_imports") => {
             parse_bool(value).map(|v| config.allow_wildcard_imports = v)
         }
+        ("modules", "published_library") => parse_bool(value).map(|v| config.published_library = v),
         _ => return,
     };
     if let Err(message) = result {

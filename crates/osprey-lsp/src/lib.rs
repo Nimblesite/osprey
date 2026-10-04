@@ -21,6 +21,7 @@ mod inferred_views;
 pub(crate) mod keywords;
 pub(crate) mod mlrender;
 pub mod model;
+mod module_actions;
 mod project_cache;
 mod project_sources;
 pub(crate) mod reference_docs;

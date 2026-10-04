@@ -235,6 +235,10 @@ remains wholly generated. Unrelated files outside that tree are preserved.
 Duplicate output paths, malformed manifests, and symlinks inside the destination
 are rejected before writing the output set.
 
+### State ownership `[DOC-STATE-BOUNDARIES]`
+
+Projects containing state modules generate `api/project/state-boundaries.md` (or `.html`) from the compiler's [state inventory](0025-ModulesAndNamespaces.md#state-boundary-inventory-modules-state-inventory). The page lists every state owner in deterministic qualified-name order, including private or empty modules, with private cell counts and exported owned effects. This architecture inventory intentionally names private owners but exposes no cell names, initializers or private helper APIs. It explains per-handler instance creation, appears in API navigation and offline search, and is removed on regeneration when the project no longer contains state modules. Public declaration filtering remains unchanged.
+
 ### HTML sites `[DOC-EXPORT-HTML]`
 
 `--docs-format html` produces a complete static site with a root `index.html`,

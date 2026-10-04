@@ -5,6 +5,7 @@
 //! Implements [DOC-EXPORT], [DOC-EXPORT-HTML], [DOC-EXPORT-PAGES], [DOC-EXPORT-CSS].
 
 mod assets;
+mod boundaries;
 mod declarations;
 mod facts;
 mod html;

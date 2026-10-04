@@ -43,6 +43,7 @@ The release list was unavailable when this page was built. See
 - A shared modular mobile application with reactive native UI, SQLite cache, live GitHub requests, and local notes and priorities
 - Compiler-backed formatting, documentation generation, testing, profiling and
   language-server commands
+- Mixed-flavor projects with live cross-file editor analysis, project layout warnings, visible state boundaries and compiler-checked import repairs
 - [HTML API documentation](/docs/documentation/) for public modules in both
   flavors, with executable examples, Markdown guides, custom CSS, three themes,
   offline search and responsive navigation
@@ -84,6 +85,7 @@ accepted:
 - The effect checker follows operations through the closed program, including exported mobile functions. It does not yet provide general polymorphic effect-row variables in public higher-order signatures.
 - Tail-call optimisation is not implemented.
 - The package manager remains roadmap work. Working project/module examples do not imply every module-system feature is complete.
+- Opaque record and union types enforce their module boundaries. Opaque manifest aliases and separate checking of importers against signatures remain unfinished; unsupported opaque aliases are rejected.
 - The strict static-memory mode described in the memory specification is not a current CLI option. Native builds accept `default`, `gc`, and `arc`; mobile and WebAssembly accept `default` only.
 - The initial mobile runtime retains general allocations for process lifetime and has no public library teardown or returned-string release API.
 - The mobile sample reads one public GitHub issue page. Authentication, pagination, background refresh, and posting changes to GitHub are not implemented.

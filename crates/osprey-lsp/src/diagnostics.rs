@@ -307,6 +307,24 @@ fn assembled_type_errors(
         .collect();
     let mut analysis = Analysis::from(diagnostics);
     if errors.is_empty() {
+        // [LSP-MODULE-ADVICE]: retain the compiler's rule and physical owner.
+        analysis
+            .diagnostics
+            .extend(project.warnings.iter().filter_map(|advice| {
+                let (owner, line) = project.source_at_line(advice.position.line)?;
+                same_path(&owner.path, file).then(|| {
+                    warning(
+                        source,
+                        Position {
+                            line,
+                            column: advice.position.column,
+                        },
+                        &advice.message,
+                        advice.rule,
+                        encoding,
+                    )
+                })
+            }));
         if let Some(metadata) = project
             .sources
             .iter()

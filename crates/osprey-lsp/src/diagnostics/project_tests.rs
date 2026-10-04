@@ -3,6 +3,23 @@ use super::*;
 #[test]
 fn module_files_use_the_assembled_project_graph() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let main_warnings = bank_warnings();
+    for (relative, expected) in [
+        (
+            "examples/projects/modules/src/main.ospml",
+            main_warnings.as_slice(),
+        ),
+        ("examples/projects/modules/src/web/pages.ospml", &[]),
+    ] {
+        let path = root.join(relative);
+        let source = std::fs::read_to_string(&path).expect("read module example");
+        let uri = format!("file://{}", path.display());
+        let diagnostics = compute(&source, &uri, U16);
+        assert_warnings(&diagnostics, expected);
+    }
+}
+
+fn bank_warnings() -> Vec<(&'static str, &'static str, crate::model::Span)> {
     let main_warnings = [
         (
             "redundant type signature on `bank::fetch`: inference derives `(int) -> (string) -> string` without it",
@@ -25,6 +42,14 @@ fn module_files_use_the_assembled_project_graph() {
         .into_iter()
         .map(|(message, range)| ("redundant-annotation", message, range))
         .collect();
+    main_warnings.insert(
+        0,
+        (
+            "namespace-folder-drift",
+            "namespace `bank` spans 5 folders; source paths do not change its identity",
+            (9, 0, 9, 14),
+        ),
+    );
     main_warnings.extend([
         (
             "unused-pattern-binding",
@@ -84,19 +109,7 @@ fn module_files_use_the_assembled_project_graph() {
             (115, 4, 115, 8),
         ),
     ]);
-    for (relative, expected) in [
-        (
-            "examples/projects/modules/src/main.ospml",
-            main_warnings.as_slice(),
-        ),
-        ("examples/projects/modules/src/web/pages.ospml", &[]),
-    ] {
-        let path = root.join(relative);
-        let source = std::fs::read_to_string(&path).expect("read module example");
-        let uri = format!("file://{}", path.display());
-        let diagnostics = compute(&source, &uri, U16);
-        assert_warnings(&diagnostics, expected);
-    }
+    main_warnings
 }
 
 #[cfg(unix)]
@@ -236,6 +249,8 @@ fn project_diagnostics_map_resolution_and_type_errors_to_the_open_file() {
 
     let source = "print(missing)\n";
     let project = AssembledProject {
+        warnings: Vec::new(),
+        state_boundaries: Vec::new(),
         program: osprey_syntax::parse_program(source).program,
         entry_prologue: Vec::new(),
         entry_source: 0,

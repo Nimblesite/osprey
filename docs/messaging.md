@@ -225,6 +225,7 @@ These constraints materially affect how the language must be described:
   forms for value-level error handling. See [Spec 0037](specs/0037-ArithmeticEffects.md).
 - Tail-call optimisation is not implemented.
 - Multi-file project modules and cross-flavor imports are implemented. A package manager remains roadmap work; describe further module or generic features according to their individual implementation status.
+- Project warnings and generated documentation show where state is owned, its private cell count and exported effects. The inventory includes private owners without exposing cell names, initial values or private helper APIs. Editors check module repair suggestions against the current unsaved project. Opaque manifest aliases and separate checking against module signatures remain unfinished.
 - GPU computation is a typed language surface with a host execution backend:
   `GpuBuffer` types, data-parallel kernels the compiler proves pure at compile
   time, and dense buffers that run as native loops today

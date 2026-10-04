@@ -31,7 +31,12 @@ pub(crate) fn assemble(
     let mut resolution = resolve::flatten(&contributions, &scopes, &graph, entry_source, &metadata);
     errors.append(&mut resolution.errors);
     if errors.is_empty() {
+        let state_boundaries = crate::advice::boundaries(&graph, &metadata);
+        let warnings =
+            crate::advice::warnings(config, &contributions, &graph, &metadata, &state_boundaries);
         Ok(AssembledProject {
+            warnings,
+            state_boundaries,
             program: resolution.program,
             entry_prologue: resolution.entry_prologue,
             entry_source,

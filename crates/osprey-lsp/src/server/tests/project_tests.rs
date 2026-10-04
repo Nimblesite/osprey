@@ -3,6 +3,162 @@
 use super::*;
 
 #[tokio::test]
+async fn state_advice_tracks_unsaved_edits_and_never_survives_errors(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for (extension, state, plain, invalid) in [
+        (
+            "osp",
+            "state module Store { export fn zero() = 0 }\n",
+            "module Store { export fn zero() = 0 }\n",
+            "state module Store { export fn zero() = missing }\n",
+        ),
+        (
+            "ospml",
+            "state Store\n    export zero () = 0\n",
+            "module Store\n    export zero () = 0\n",
+            "state Store\n    export zero () = missing\n",
+        ),
+    ] {
+        state_advice_changes(extension, [state, plain, invalid]).await?;
+    }
+    Ok(())
+}
+
+async fn state_advice_changes(
+    extension: &str,
+    sources: [&str; 3],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = crate::test_support::ProjectFixture::new(extension)?;
+    let uri = fixture.write("main", sources[0])?;
+    let mut h = Harness::start();
+    let report = h
+        .open_at(&uri, sources[0])
+        .await
+        .params
+        .ok_or("diagnostics")?;
+    assert_at(&report, "/diagnostics/0/code", "state-boundary");
+    for (version, text, code) in [
+        (2, sources[1], None),
+        (3, sources[2], Some("type-error")),
+        (4, sources[0], Some("state-boundary")),
+        (5, "(", Some("syntax-error")),
+    ] {
+        assert_changed_advice(&mut h, &uri, version, text, code).await?;
+    }
+    h.shutdown_and_exit().await;
+    Ok(())
+}
+
+async fn assert_changed_advice(
+    h: &mut Harness,
+    uri: &str,
+    version: i32,
+    source: &str,
+    code: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    h.notify(
+        "textDocument/didChange",
+        json!({"textDocument":{"uri":uri,"version":version},"contentChanges":[{"text":source}]}),
+    )
+    .await;
+    let report = h.read_message().await.params.ok_or("changed diagnostics")?;
+    assert_at(&report, "/uri", uri);
+    if let Some(code) = code {
+        assert_at(&report, "/diagnostics/0/code", code);
+        if code != "state-boundary" {
+            assert!(!report.to_string().contains("state-boundary"));
+        }
+    } else {
+        assert_eq!(report.get("diagnostics"), Some(&json!([])));
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn library_manifest_changes_invalidate_style_advice() -> Result<(), Box<dyn std::error::Error>>
+{
+    let fixture = crate::test_support::ProjectFixture::new("osp")?;
+    let source = "namespace \"com.example.app\";\nstate module Store {}\n";
+    let uri = fixture.write("main", source)?;
+    let mut h = Harness::start();
+    let initial = h
+        .open_at(&uri, source)
+        .await
+        .params
+        .ok_or("initial diagnostics")?;
+    assert_at(&initial, "/diagnostics/0/code", "namespace-reverse-domain");
+    assert_at(&initial, "/diagnostics/1/code", "state-boundary");
+    let manifest = fixture.root.join("osprey.toml");
+    let config = std::fs::read_to_string(&manifest)?;
+    std::fs::write(
+        &manifest,
+        format!("{config}\n[modules]\npublished_library = true\n"),
+    )?;
+    assert_changed_advice(&mut h, &uri, 2, source, Some("state-boundary")).await?;
+    h.shutdown_and_exit().await;
+    Ok(())
+}
+
+// [MODULES-STATE-INVENTORY], [LSP-MODULE-ADVICE]: exact ownership locations.
+#[tokio::test]
+async fn state_boundaries_are_visible_in_both_flavors() -> Result<(), Box<dyn std::error::Error>> {
+    for (extension, source) in [
+        (
+            "osp",
+            "namespace vault;\nstate module Store { export fn zero() = 0 }\n",
+        ),
+        (
+            "ospml",
+            "namespace vault\nstate Store\n    export zero () = 0\n",
+        ),
+    ] {
+        let fixture = crate::test_support::ProjectFixture::new(extension)?;
+        let uri = fixture.write("main", source)?;
+        let mut h = Harness::start();
+        let report = h
+            .open_at(&uri, source)
+            .await
+            .params
+            .ok_or("missing diagnostics")?;
+        assert_at(&report, "/diagnostics/0/code", "state-boundary");
+        assert_at(&report, "/diagnostics/0/severity", 2);
+        assert_at(&report, "/diagnostics/0/range/start/line", 1);
+        assert_at(
+            &report,
+            "/diagnostics/0/message",
+            "state boundary `vault::Store`: 0 private cells; exported effects: none",
+        );
+        h.shutdown_and_exit().await;
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn project_layout_advice_is_warning_only() -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = crate::test_support::ProjectFixture::new("osp")?;
+    std::fs::create_dir_all(fixture.root.join("src/nested"))?;
+    let source = "namespace app;\nfn main() = 0\n";
+    let uri = fixture.write("main", source)?;
+    let _ = fixture.write("nested/helper", "namespace app;\nfn identity(x) = x\n")?;
+    let mut h = Harness::start();
+    let report = h
+        .open_at(&uri, source)
+        .await
+        .params
+        .ok_or("missing diagnostics")?;
+    assert_at(&report, "/diagnostics/0/code", "namespace-folder-drift");
+    assert_at(&report, "/diagnostics/0/severity", 2);
+    assert_at(&report, "/diagnostics/0/range/start/line", 0);
+    assert_at(
+        &report,
+        "/diagnostics/0/message",
+        "namespace `app` spans 2 folders; source paths do not change its identity",
+    );
+    h.shutdown_and_exit().await;
+    Ok(())
+}
+
+#[tokio::test]
 async fn sibling_syntax_errors_preserve_existing_type_errors() {
     let root = std::env::temp_dir().join(format!("osprey sibling error {}", std::process::id()));
     std::fs::create_dir_all(root.join("src")).expect("fixture directory");

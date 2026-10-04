@@ -7,6 +7,7 @@
 //! [MODULES-MODEL], [MODULES-PATH-INDEPENDENCE], [MODULES-PROJECT], and
 //! [FLAVOR-INTEROP].
 
+mod advice;
 mod annotation;
 mod assemble;
 mod collect;
@@ -29,6 +30,7 @@ mod state_support;
 mod symbol_rewrite;
 mod type_rewrite;
 
+pub use advice::{ProjectWarning, StateBoundary};
 pub use manifest::ProjectConfig;
 use osprey_syntax::Flavor;
 use std::collections::BTreeMap;
@@ -150,6 +152,10 @@ impl SourceMetadata {
 /// One fully assembled project ready for the shared checker and backend.
 #[derive(Debug, Clone)]
 pub struct AssembledProject {
+    /// Non-fatal style and ownership advice from the resolved project graph.
+    pub warnings: Vec<ProjectWarning>,
+    /// Every state owner, in deterministic source-name order.
+    pub state_boundaries: Vec<StateBoundary>,
     /// Flavor-neutral flat program with imports/modules removed and names resolved.
     pub program: osprey_ast::Program,
     /// Ordered executable statements contributed by the entry source.

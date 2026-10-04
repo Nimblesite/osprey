@@ -75,6 +75,12 @@ The source path is used for discovery and diagnostics only. Moving
 `src/a.ospml` to `src/deep/b.ospml` does not change the namespace or symbol
 identity written in that source.
 
+### Project Style Advice `[MODULES-STYLE]`
+
+Style findings are warnings, never rejection criteria. `namespace-folder-drift` reports each contributing source when one namespace spans more than one physical parent folder; no folder-to-namespace naming convention is imposed. `module-deep-hierarchy` reports module declarations nested more than three levels. `namespace-reverse-domain` reports application namespace labels starting with `com.`, `org.`, `net.`, `io.`, `dev.` or `edu.` and containing at least three nonempty dot-separated components. Dots and slashes remain ordinary label characters, never namespace ancestry.
+
+`[modules].published_library = true` suppresses the application-only hierarchy and reverse-domain advice. It does not suppress folder drift or state ownership warnings. Omitted, it defaults to `false`; a non-boolean value is a manifest error. CLI and LSP consume the same sorted, source-located findings from project assembly.
+
 ## Modules `[MODULES-MODULE]`
 
 A plain module is a closed, stateless declaration boundary. It may contain
@@ -229,6 +235,12 @@ Local `mut` remains lexical. Durable module-owned cells may occur only in a
 state module and may be accessed only inside that module's own lexical effect
 handler arms.
 
+### State Boundary Inventory `[MODULES-STATE-INVENTORY]`
+
+Every resolved state module, including an empty or private owner, contributes one inventory entry: its qualified source name, declaration location, private cell count and sorted exported owned effect names. Cell names, initializers and private helper declarations are excluded. Every declaration receives a `state-boundary` warning describing that entry. This makes state ownership visible without changing acceptance or implying that importing a module installs a handler. Each installer still creates fresh cells.
+
+The CLI, LSP and generated project documentation consume this same inventory. Live editor changes replace it together with the checked project. Invalid syntax, assembly or types cannot justify a stale ownership report.
+
 ### Forbidden Top-level State `[MODULES-STATE-TOPLEVEL]`
 
 A direct `mut` in a namespace or plain module is an error. `export mut` is
@@ -348,6 +360,7 @@ entry = "src/main.ospml"
 
 [modules]
 allow_wildcard_imports = false
+published_library = false
 ```
 
 Files without a namespace contribute to `default_namespace`, or to the project
