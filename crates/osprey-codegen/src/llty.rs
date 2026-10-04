@@ -245,6 +245,8 @@ pub struct Value {
     /// carries `[]i64` so the unwrapped element is itself indexable. `None` for
     /// scalar payloads.
     pub(crate) payload_owner: Option<String>,
+    /// The known Success type before the Result's error parameter is inferred.
+    pub(crate) result_payload_type: Option<osprey_types::Type>,
     /// For a `Fiber<T>` handle: the element type `T` the fiber's result was
     /// boxed from, so `await` can unbox the uniform `i64` result back to `T`
     /// (a string fiber result is a pointer, not an integer). `None` for
@@ -270,6 +272,7 @@ impl Value {
             result_inner: None,
             result_inner_is_placeholder: false,
             payload_owner: None,
+            result_payload_type: None,
             fiber_elem: None,
             fiber_elem_owner: None,
             fiber_elem_result_inner: None,
@@ -280,17 +283,8 @@ impl Value {
     /// An aggregate handle tagged with its Osprey owner type name.
     pub(crate) fn handle(operand: impl Into<String>, owner: impl Into<String>) -> Value {
         Value {
-            operand: operand.into(),
-            ty: LType::Ptr,
             osp_ty: Some(owner.into()),
-            inferred_type: None,
-            result_inner: None,
-            result_inner_is_placeholder: false,
-            payload_owner: None,
-            fiber_elem: None,
-            fiber_elem_owner: None,
-            fiber_elem_result_inner: None,
-            fiber_elem_payload_owner: None,
+            ..Self::new(operand, LType::Ptr)
         }
     }
 
@@ -298,17 +292,8 @@ impl Value {
     /// `{ inner, i8 disc, i8* errmsg }` block.
     pub(crate) fn result(operand: impl Into<String>, inner: LType) -> Value {
         Value {
-            operand: operand.into(),
-            ty: LType::Ptr,
-            osp_ty: Some("Result".to_string()),
-            inferred_type: None,
             result_inner: Some(inner),
-            result_inner_is_placeholder: false,
-            payload_owner: None,
-            fiber_elem: None,
-            fiber_elem_owner: None,
-            fiber_elem_result_inner: None,
-            fiber_elem_payload_owner: None,
+            ..Self::handle(operand, "Result")
         }
     }
 
@@ -352,6 +337,14 @@ impl Value {
     #[must_use]
     pub(crate) fn unit() -> Value {
         Value::new("0", LType::I64)
+    }
+
+    /// The checked payload type of a named generic container.
+    pub(crate) fn element_type(&self, container: &str) -> Option<osprey_types::Type> {
+        match self.inferred_type.as_ref()? {
+            osprey_types::Type::Con { name, args } if name == container => args.first().cloned(),
+            _ => None,
+        }
     }
 
     /// The LLVM type spelling this value travels as — the precise Result block

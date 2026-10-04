@@ -49,7 +49,8 @@ pub(crate) fn make_result(
     // The block's drop mask releases the errmsg word too [GC-ARC-PERCEUS].
     crate::arc::dup_store(cg, "i8*", errmsg);
     cg.emit(format!("store i8* {errmsg}, i8** {mp}"));
-    let out = Value::result(obj, inner).with_payload_owner(payload_owner);
+    let mut out = Value::result(obj, inner).with_payload_owner(payload_owner);
+    out.result_payload_type = v.inferred_type.clone();
     crate::arc::own(cg, &out);
     // A scalar payload plus an unmanaged errmsg means the block holds zero
     // managed references — eligible for the consume-at-unwrap fast path that
@@ -198,7 +199,11 @@ pub(crate) fn load_value(cg: &mut Codegen, v: &Value) -> Value {
     };
     let struct_ty = result_struct_ty(inner);
     let loaded = crate::aggregate::load_field(cg, &struct_ty, v.operand.as_str(), 0, inner);
-    Value::new(loaded, inner).with_owner(v.payload_owner.clone())
+    let mut value = Value::new(loaded, inner).with_owner(v.payload_owner.clone());
+    value.inferred_type = v
+        .element_type(osprey_types::names::RESULT)
+        .or_else(|| v.result_payload_type.clone());
+    value
 }
 
 /// Load a Result block's raw error-message pointer (slot 2) as an `i8*` — `null`

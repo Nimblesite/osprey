@@ -220,10 +220,15 @@ fn finish_phi(
             .iter()
             .all(|(v, _)| v.result_inner_is_placeholder);
     out.payload_owner = if result_inner.is_some() {
-        result_join_owner(phi_in)
+        result_payload_property(phi_in, |value| value.payload_owner.clone())
     } else {
         common(|v| v.payload_owner.clone())
     };
+    out.result_payload_type = result_payload_property(phi_in, |value| {
+        value
+            .element_type(osprey_types::names::RESULT)
+            .or_else(|| value.result_payload_type.clone())
+    });
     // Perceus join transfer: if every arm produced a fresh owner AFTER `mark`
     // (i.e. inside its own arm — never the scrutinee, which predates the mark
     // and lives on every path), the phi owns the merged value directly — the
@@ -264,14 +269,17 @@ fn result_join_inner(phi_in: &[(Value, String)]) -> Result<Option<LType>> {
 
 /// [MODULES-ABI]: Error has no Success payload whose owner can disagree with
 /// a record-producing arm. Use the original arms before placeholder repacking.
-fn result_join_owner(phi_in: &[(Value, String)]) -> Option<String> {
-    let mut owners = phi_in
+fn result_payload_property<T: PartialEq>(
+    phi_in: &[(Value, String)],
+    property: impl Fn(&Value) -> Option<T>,
+) -> Option<T> {
+    let mut values = phi_in
         .iter()
         .filter(|(value, _)| !value.result_inner_is_placeholder)
-        .map(|(value, _)| value.payload_owner.clone());
-    let first = owners.next()?;
-    owners
-        .all(|owner| owner == first)
+        .map(|(value, _)| property(value));
+    let first = values.next()?;
+    values
+        .all(|value| value == first)
         .then_some(first)
         .flatten()
 }

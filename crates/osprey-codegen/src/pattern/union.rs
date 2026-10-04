@@ -183,10 +183,8 @@ fn bind_variant_fields(
         let fty = *fty;
         let owner = cg.ctor_field_owner(variant, declared);
         let loaded = crate::aggregate::load_field(cg, &struct_ty, src.as_str(), idx + 1, fty);
-        bind_value(
-            cg,
-            bind_name.clone(),
-            Value::new(loaded, fty).with_owner(owner),
-        );
+        let mut value = Value::new(loaded, fty).with_owner(owner);
+        value.inferred_type = crate::aggregate::field_type(cg, disc, variant, declared);
+        bind_value(cg, bind_name.clone(), value);
     }
 }

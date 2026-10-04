@@ -6,5 +6,9 @@ ok 5 - pattern arms retain their own lexical bindings
 ok 6 - escaping closures retain pattern bindings
 ok 7 - nested matches restore enclosing pattern bindings
 ok 8 - pattern bindings shadow captured mutable cells
-1..8
-# tests=8 passed=8 failed=0 skipped=0
+ok 9 - callable pattern bindings retain their own signatures
+ok 10 - callable payload patterns preserve function values
+ok 11 - direct callable scrutinees preserve function types
+ok 12 - joined callable Results retain their payload signatures
+1..12
+# tests=12 passed=12 failed=0 skipped=0

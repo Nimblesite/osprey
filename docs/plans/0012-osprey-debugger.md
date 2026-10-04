@@ -770,7 +770,7 @@ Acceptance:
 - [x] Preserve return-only function/lambda body locations; both-flavor compiler tests cover literals, identifiers and calls, and LLDB-DAP tests verify the exact return line and its parameter/capture values.
 - [x] Expose primitive shared mutable cells and direct/resumable handler parameters; real LLDB-DAP tests inspect changing cell values in both-flavor handlers and ordinary closures.
 - [x] Preserve source declaration names, scopes and parameter bindings in materialized generic function values and C/runtime callback specializations; compiler assertions and integer/float LLDB-DAP cases cover both flavors. The accompanying generic-binding regression suite verifies declaration scope, live global reads, caller argument order and independent nested type instantiations.
-- [x] Scope primitive pattern bindings to their match arm and preserve block-arm return locations; both-flavor LLDB-DAP cases verify shadowed name lookup, outer-value restoration and arm-local disappearance. Runtime assertions cover every match representation, nested arms, escaping captures and captured mutable cells.
+- [x] Scope primitive pattern bindings to their match arm and preserve block-arm return locations; both-flavor LLDB-DAP cases verify shadowed name lookup, outer-value restoration and arm-local disappearance. Runtime assertions cover every match representation, nested arms, escaping captures, captured mutable cells and callable payload signatures, including float-returning Result joins.
 - [ ] Extend value-location records to remaining capture representations.
 - [ ] Complete lexical scopes for ordinary nested blocks and remaining handler/lambda nesting.
 - [x] Validate primitive local inspection in LLDB-DAP.

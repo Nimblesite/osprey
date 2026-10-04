@@ -210,12 +210,73 @@ fn mutablePatternCase() = {
         }
     }
     let readOuter = || => value
-    let selected = match Pick(2) { Pick(value) => value Other => value }
+    let selectedReader = match Pick(2) { Pick(value) => || => value Other => || => value }
+    let selected = selectedReader()
     let updated = perform PatternCounter.set(101)
     checkAll("pattern values shadow cell storage without changing it", [
-        selected == 2, updated == 101, value == 101, readOuter() == 101
+        selected == 2, selectedReader() == 2, updated == 101, value == 101, readOuter() == 101
     ])
 }
 
 test("nested matches restore enclosing pattern bindings", nestedPatternCase)
 test("pattern bindings shadow captured mutable cells", mutablePatternCase)
+
+type CallChoice = Apply(fn(int) -> int) | Absent
+type IntOperation = { run: fn(int) -> int }
+
+fn callablePatternCase() = {
+    let apply = fn(n) => wrapAdd(n, 100)
+    let input = Apply(fn(n) => wrapAdd(n, 1))
+    let selected = match input { Apply(apply) => apply(2) Absent => apply(2) }
+    let run = fn(n) => wrapAdd(n, 200)
+    let record = IntOperation { run: fn(n) => wrapAdd(n, 2) }
+    let structural = match record { { run } => run(2) }
+    checkAll("pattern bindings retain function signatures", [
+        selected == 3, apply(2) == 102, structural == 4, run(2) == 202
+    ])
+}
+
+test("callable pattern bindings retain their own signatures", callablePatternCase)
+
+fn callablePayloadCase() = {
+    let value = fn(n) => wrapAdd(n, 100)
+    let wrapped = Success { value: fn(n) => wrapAdd(n, 1) }
+    let selected = match wrapped {
+        Success { value } => value(2)
+        Error { message } => length(message)
+    }
+    let callbacks = [fn(n) => wrapAdd(n, 2)]
+    let listed = match callbacks { [] => 0 [value, ...rest] => wrapAdd(value(2), listLength(rest)) }
+    let bound = match value { call => call(2) }
+    checkAll("Result list and catch-all bindings retain callable signatures", [
+        selected == 3, listed == 4, bound == 102, value(2) == 102
+    ])
+}
+
+test("callable payload patterns preserve function values", callablePayloadCase)
+
+fn directCallablePatternCase() = {
+    let result = match Success { value: fn(n) => wrapAdd(n, 1) } {
+        Success { value } => value(2)
+        Error { message } => length(message)
+    }
+    let listed = match [fn(n) => wrapAdd(n, 2)] { [] => 0 [value] => value(2) }
+    let called = match (fn(n) => wrapAdd(n, 3)) { call => call(2) }
+    checkAll("direct scrutinees keep their callable payloads", [result == 3, listed == 4, called == 5])
+}
+
+test("direct callable scrutinees preserve function types", directCallablePatternCase)
+
+fn joinedCallable(flag) = match flag {
+    true => Success { value: fn(n) => n * 2.0 }
+    false => Success { value: fn(n) => n * 3.0 }
+}
+fn applyJoined(flag) = match joinedCallable(flag) {
+    Success { value } => value(1.25)
+    Error { message } => toFloat(length(message))
+}
+fn joinedCallablePatternCase() = checkAll("joined callable Results retain their float ABI", [
+    applyJoined(true) == 2.5, applyJoined(false) == 3.75
+])
+
+test("joined callable Results retain their payload signatures", joinedCallablePatternCase)

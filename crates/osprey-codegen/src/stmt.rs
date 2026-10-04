@@ -238,7 +238,8 @@ fn gen_bind(cg: &mut Codegen, name: &str, value: &Expr, position: Option<Positio
         // still-generic lambda stays inline-only (its cell ABI would lose the
         // per-instantiation types).
         if let Some((ty, sig)) = lambda_cell(cg, *position) {
-            let v = crate::closure::emit_closure(cg, parameters, body, &sig, *position)?;
+            let mut v = crate::closure::emit_closure(cg, parameters, body, &sig, *position)?;
+            v.inferred_type = Some(ty.clone());
             cg.emit_debug_local(name, &v);
             crate::arc::bind_owned(cg, name, &v);
             cg.bind(name.to_string(), v);

@@ -217,7 +217,8 @@ pub(crate) fn to_runtime_list(cg: &mut Codegen, v: Value) -> Value {
     // The literal knew its element type; the runtime list keeps that knowledge
     // in its owner tag rather than losing it to the uniform `i64` element ABI
     // ([`crate::collections::LIST_TAG`]).
-    let sealed = crate::collections::list_builder_seal(cg, &bld);
+    let mut sealed = crate::collections::list_builder_seal(cg, &bld);
+    sealed.inferred_type = v.inferred_type.clone();
     sealed.with_owner(Some(crate::collections::list_owner(
         crate::llty::elem_of_tag(&v, LIST_LIT).as_deref(),
     )))
