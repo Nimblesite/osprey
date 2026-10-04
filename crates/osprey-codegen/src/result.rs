@@ -50,7 +50,7 @@ pub(crate) fn make_result(
     crate::arc::dup_store(cg, "i8*", errmsg);
     cg.emit(format!("store i8* {errmsg}, i8** {mp}"));
     let mut out = Value::result(obj, inner).with_payload_owner(payload_owner);
-    out.result_payload_type = v.inferred_type.clone();
+    out.result_payload_type.clone_from(&v.inferred_type);
     crate::arc::own(cg, &out);
     // A scalar payload plus an unmanaged errmsg means the block holds zero
     // managed references — eligible for the consume-at-unwrap fast path that
