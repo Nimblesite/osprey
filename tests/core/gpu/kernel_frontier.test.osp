@@ -1,9 +1,9 @@
-// Aspirational kernel-frontier conformance. The GPU contract requires element
+// Kernel-frontier conformance. The GPU contract requires element
 // types to flow from combinator slots before bodies default, and every pure
 // function form to remain usable as a kernel ([GPU-KERNEL-ELEM-TYPING],
 // [GPU-KERNEL-FORM], [GPU-KERNEL-EXTRACT]).
 
-fn addFloats(a: float, x: float) = a + x
+fn addFloats(a, x) = a + x
 
 /// Numeric operators must specialize this definition from gpuFold's float slots.
 fn plus(a, x) = a + x
@@ -92,3 +92,94 @@ test("float kernel slots type both multiplication orders", fn() => exactArithmet
 test("named generic float combines specialize from buffer slots", fn() => exactArithmetic(genericCombineCase))
 test("unannotated recursive helpers are valid GPU kernels", fn() => exactArithmetic(recursiveHelperCase))
 test("block-bodied GPU kernels keep local bindings", fn() => exactArithmetic(blockBodyCase))
+
+fn builtinMapCase() = {
+    let floats = gpuMap(toGpu([9007199254740993, -7]), toFloat)
+    let positive = gpuMap(toGpu([-1.5, -0.0, 2.25]), abs)
+    let abs = fn(x) => x * 2.0
+    let shadowed = gpuMap(toGpu([3.0]), abs)
+    checkAll("builtin maps preserve scalar types and lexical shadowing", [
+        (gpuGet(floats, 0) ?: 0.0) == 9007199254740992.0,
+        (gpuGet(floats, 1) ?: 0.0) == -7.0,
+        (gpuGet(positive, 0) ?: 0.0) == 1.5,
+        toString(gpuGet(positive, 1) ?: 1.0) == "0.0",
+        (gpuGet(positive, 2) ?: 0.0) == 2.25,
+        (gpuGet(shadowed, 0) ?: 0.0) == 6.0
+    ])
+}
+
+fn builtinZipCase() = {
+    let left = toGpu([9223372036854775807, -9223372036854775808, 4000000000])
+    let right = toGpu([1, -1, 4000000000])
+    let added = gpuZipWith(left, right, wrapAdd)
+    let subtracted = gpuZipWith(left, right, wrapSub)
+    let multiplied = gpuZipWith(left, right, wrapMul)
+    let saturated = gpuZipWith(left, right, satMul)
+    checkAll("builtin zip preserves wrapping and saturation boundaries", [
+        (gpuGet(added, 0) ?: 0) == -9223372036854775808,
+        (gpuGet(added, 1) ?: 0) == 9223372036854775807,
+        (gpuGet(subtracted, 0) ?: 0) == 9223372036854775806,
+        (gpuGet(subtracted, 1) ?: 0) == -9223372036854775807,
+        (gpuGet(multiplied, 1) ?: 0) == -9223372036854775808,
+        (gpuGet(multiplied, 2) ?: 0) == -2446744073709551616,
+        (gpuGet(saturated, 1) ?: 0) == 9223372036854775807,
+        (gpuGet(saturated, 2) ?: 0) == 9223372036854775807
+    ])
+}
+
+fn builtinFoldCase() = {
+    let source = toGpu([1, 1])
+    let lower = gpuScan(source, -9223372036854775808, satSub)
+    let upper = gpuScan(source, 9223372036854775807, satAdd)
+    checkAll("builtin folds and scans preserve accumulator policy", [
+        gpuFold(source, 9223372036854775807, wrapAdd) == -9223372036854775807,
+        gpuFold(source, 9223372036854775807, satAdd) == 9223372036854775807,
+        (gpuGet(lower, 1) ?: 0) == -9223372036854775808,
+        (gpuGet(upper, 1) ?: 0) == 9223372036854775807
+    ])
+}
+
+fn builtinPolicyCase() = {
+    mut faults = 0
+    handle Arith {
+        overflow op left right wrapped => {
+            faults = wrapAdd(faults, 1)
+            checkAll("extracted absolute overflow preserves operation arguments", [
+                op == "abs", left == -9223372036854775808,
+                right == 0, wrapped == -9223372036854775808
+            ])
+            77
+        }
+    }
+    let values = gpuMap(toGpu([-9223372036854775808, -4, 5]), abs)
+    checkAll("builtin kernel dispatches to the active arithmetic policy", [
+        faults == 1, (gpuGet(values, 0) ?: 0) == 77,
+        (gpuGet(values, 1) ?: 0) == 4, (gpuGet(values, 2) ?: 0) == 5
+    ])
+}
+
+test("builtin maps specialize and respect shadowing", builtinMapCase)
+test("builtin zip pins wrapping and saturation", builtinZipCase)
+test("builtin folds and scans preserve accumulator policy", builtinFoldCase)
+test("builtin kernels preserve the active overflow policy", builtinPolicyCase)
+
+fn builtinDivisionCase() = {
+    mut faults = ""
+    handle Arith {
+        overflow op left right wrapped => {
+            checkAll("division overflow arguments", [op == "intDiv", left == -9223372036854775808, right == -1, wrapped == left])
+            faults = faults + "overflow;"
+            41
+        }
+        remainderByZero left => {
+            expect(left, 7)
+            faults = faults + "zero;"
+            42
+        }
+    }
+    let values = gpuZipWith(toGpu([-9223372036854775808, 7, 9]), toGpu([-1, 0, 2]), intDiv)
+    checkAll("builtin division dispatches once in element order", [faults == "overflow;zero;",
+        (gpuGet(values, 0) ?: 0) == 41, (gpuGet(values, 1) ?: 0) == 42, (gpuGet(values, 2) ?: 0) == 4])
+}
+
+test("builtin integer division preserves ordered recovery", builtinDivisionCase)

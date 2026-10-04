@@ -426,22 +426,19 @@ Arithmetic keeps its policy contract at the kernel boundary: the compiler never 
   it — extraction emits nothing new and copies nothing.
 - An **inline lambda** is lifted to a fresh module-scope function, its free
   variables becoming leading uniform parameters.
-- An **unannotated (generic) function** kernel is specialised at its call
-  site with the buffer's element type, by inlining — the language-wide rule
-  for generic functions. A **recursive** one instead gets its own emitted
-  definition per instantiation ([GPU-KERNEL-FORM]), because a body that
-  calls itself cannot be specialised by inlining.
+- An **unannotated (generic) function** kernel is specialised at its call site with the buffer's element type and lifted when its body fits the extracted ABI. A **recursive** function gets its own emitted definition per instantiation ([GPU-KERNEL-FORM]), because its body cannot be specialised by inlining.
 - A kernel that reaches the combinator as an **already-built function value**
   (a closure held in a local, a record field, a call result) keeps its
   closure-cell call. A cell *is* a captured environment, which this ABI has no
   representation for; the host backend runs it correctly and a device backend
   must reject it rather than silently offload a host pointer.
-- A **built-in passed by name** (`gpuMap(toFloat)`) has no symbol to call: it
-  is an intrinsic with a per-element value form, and it lowers inline.
+- A **scalar builtin passed by name** (`gpuMap(toFloat)`, `gpuMap(abs)`, or `gpuZipWith(..., wrapAdd)`) is lifted into a scalar function containing its ordinary intrinsic lowering. Its argument types come from the combinator slots, so float `abs` keeps a `double` ABI. The wrapper has no closure cell or environment pointer. The same rule covers total saturating arithmetic and `intDiv`; fallible integer builtins retain the enclosing `Arith` policy, operation arguments, recovery values and element order. Lexical bindings take precedence over builtin names. A builtin whose scheme requires host handles or a `Result` slot declines extraction.
 - A lambda whose body reads a name the lifted function cannot see — a
   let-bound lambda, a function-typed local, a handler-owned mutable cell —
   keeps the inlined lowering rather than emitting a call to a symbol that was
   never defined.
+
+`builtin_kernels_are_extracted_with_specialized_scalar_abis` pins scalar definitions and intrinsic instructions in both flavors. `every_gpu_combinator_propagates_arithmetic_and_outer_recovery_requirements` checks missing, sufficient and insufficient policies for all five combinators in both flavors. The existing `kernel_frontier` twins assert conversion rounding, float and integer absolute values, all six total arithmetic builtins, accumulator boundaries, lexical shadowing and ordered handler recovery under both extraction modes.
 
 Declining to extract is always safe: it is the pre-extraction lowering, which
 produces the same values, and it never changes what a program prints.

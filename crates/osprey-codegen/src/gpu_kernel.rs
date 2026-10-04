@@ -13,6 +13,8 @@
 //! `crates/run_test_corpus.sh` compiles `tests/core/gpu` both ways and requires
 //! byte-identical output.
 
+mod builtin;
+
 use crate::builder::{Codegen, FnSig, ParamSig};
 use crate::error::{CodegenError, Result};
 use crate::iter::{callback_of, nth, Callback};
@@ -136,7 +138,10 @@ pub(crate) fn kernel_of(
     slot: usize,
 ) -> Result<(Callback, Option<LType>)> {
     let expr = nth(args, arg_i)?;
-    let kernel = callback_of(cg, expr)?;
+    let kernel = match builtin::callback(cg, expr) {
+        Some(kernel) => kernel,
+        None => callback_of(cg, expr)?,
+    };
     let elem = kernel_elem(cg, expr, &kernel, src, slot);
     Ok((kernel, elem))
 }
@@ -155,8 +160,8 @@ pub(crate) fn slot(elem: Option<LType>) -> LType {
 /// A named kernel is left alone: it already has an emitted symbol with a
 /// concrete signature and the host loop already calls it
 /// ([`crate::expr::call_with_values`]), so re-lifting would emit a second copy
-/// of a body that exists — and a BUILTIN name (`gpuMap(toFloat)`) has no symbol
-/// at all, only a per-element value form. A closure cell (`Local`/`Value`) is
+/// of a body that exists. A scalar builtin receives a wrapper containing its
+/// intrinsic value form. A closure cell (`Local`/`Value`) is
 /// precisely the captured environment this ABI forbids, and its call already
 /// goes through the cell rather than the loop.
 pub(crate) fn extract(cg: &mut Codegen, cb: Callback, slots: &[LType]) -> Result<Callback> {
@@ -164,6 +169,9 @@ pub(crate) fn extract(cg: &mut Codegen, cb: Callback, slots: &[LType]) -> Result
         return Ok(cb);
     }
     match cb {
+        Callback::Named(name) if builtin::admissible(&name, slots) => {
+            builtin::lift(cg, name, slots)
+        }
         Callback::Named(_) | Callback::Local(..) | Callback::Value(..) | Callback::Extracted(_) => {
             Ok(cb)
         }

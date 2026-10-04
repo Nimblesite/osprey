@@ -3,10 +3,10 @@
 **Subsystem:** `crates/osprey-types` + `crates/osprey-codegen` + `compiler/runtime` (+ CLI target drivers)
 **Status:** **NOT SHIPPED. No GPU execution exists.** Stages 1–2 (typed
 surface, purity checking, CPU host backend, eleven built-ins, differential
-corpus) are done bar two items delegated to other plans. Stage 3 (kernel
-extraction, `[GPU-KERNEL-EXTRACT]`) has **landed for lambda kernels** —
+corpus), including their previously delegated numeric typing cases, are complete. Stage 3 (kernel
+extraction, `[GPU-KERNEL-EXTRACT]`) has **landed for admissible lambda and scalar builtin kernels** —
 `crates/osprey-codegen/src/gpu_kernel.rs`, differentially gated against the
-retained inlined lowering — with three kernel shapes that still decline,
+retained inlined lowering — with two kernel shapes that still decline,
 listed below. Stages 4–7 — *every* device backend — are unstarted. Until
 stage 4 lands, this feature runs entirely on the CPU and nothing in it may be
 described as GPU-accelerated.
@@ -22,7 +22,7 @@ The GPU surface is a language feature, not a library: `GpuBuffer<T>` in the
 type system, kernel purity proven by the effect checker (fail-closed), and a
 host execution backend whose fused loops over dense unboxed buffers define
 the reference semantics device backends must reproduce byte-for-byte. Kernel
-extraction has since made each kernel a real, first-order, capture-free
+extraction makes each admissible kernel a real, first-order, capture-free
 function — the artifact a device emitter consumes. What remains is everything
 between an extracted kernel and a running device: an IR emitter, a launch and
 transfer path, effect-selected execution, portability backends, and the
@@ -555,7 +555,9 @@ extracted paths cannot drift.
 - [x] Generic kernels are monomorphised rather than inlined: an unannotated
       `fn twice(x) = x * 2.0` passed to `gpuMap` emits
       `define double @__gpu_kernel_0(double %$p0)` and a call to it.
-- [ ] **Extract *every* combinator kernel.** Not done — three shapes still
+- [x] Propagate host GPU callback requirements through the ordinary effect solver. All five combinators reject unhandled arithmetic in both flavors, accept an explicit policy, and reject recovery-arm arithmetic without an outer policy. Stage legality alone cannot discharge an operation.
+- [x] Extract scalar builtins passed by name, including inferred `abs` instantiations, through the shared intrinsic lowering. The existing `kernel_frontier` twins pin all six total arithmetic helpers, float conversion and absolute values, integer overflow/zero-divisor dispatch, recovery order and callable shadowing. IR tests require real scalar definitions and calls without closure environments in both flavors.
+- [ ] **Extract *every* combinator kernel.** Not done — two shapes still
       take the inlined lowering, each for a stated reason, each safe (the
       pre-extraction lowering produces the same values):
       - **Closure cells** (`Callback::Local`/`Value`). A let-bound lambda that
@@ -566,9 +568,6 @@ extracted paths cannot drift.
         or teaching the ABI a uniform-pack — a real design decision, and the
         one that decides whether a device backend can offload such a kernel or
         must reject it.
-      - **Builtins passed by name** (`gpuMap(toFloat)` in `stress`). No symbol
-        exists to call; an intrinsic lowers to its per-element value form.
-        A device emitter must therefore know the intrinsics itself.
       - **Bodies reaching host-only state** — a free name in `cell_slots`,
         `lambdas`, `fn_ptr_locals` or `call_aliases`, a non-scalar/non-buffer
         capture, or a `Result`/Fiber parameter slot. `admissible` declines

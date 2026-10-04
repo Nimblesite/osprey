@@ -230,7 +230,9 @@ These constraints materially affect how the language must be described:
 - Project warnings and generated documentation show where state is owned, its private cell count and exported effects. The inventory includes private owners without exposing cell names, initial values or private helper APIs. Editors check module repair suggestions against the current unsaved project. Opaque manifest aliases and separate checking against module signatures remain unfinished.
 - GPU computation is a typed language surface with a host execution backend:
   `GpuBuffer` types, data-parallel kernels the compiler proves pure at compile
-  time, and dense buffers that run as native loops today
+  time, and dense buffers that run as native loops today. Admissible lambdas
+  and scalar builtins become standalone kernel functions; builtin integer
+  faults still use the application's arithmetic policy
   (docs/specs/0034-GPUComputation.md). Device code generation (PTX, Metal,
   WebGPU) is staged roadmap work — do not describe Osprey as executing on GPU
   hardware yet.

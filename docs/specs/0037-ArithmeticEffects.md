@@ -82,6 +82,8 @@ An arithmetic operation that MAY perform an `Arith` operation seeds that require
 unhandled effect operations at program entry: Arith.overflow; add a matching `handle`
 ```
 
+Host GPU combinators (`gpuMap`, `gpuFilter`, `gpuFold`, `gpuScan` and `gpuZipWith`) invoke their callbacks and therefore propagate the callbacks' arithmetic requirements. This applies to inline lambdas, named helpers and builtin function values. Kernel stage-legality checks do not discharge `Arith`; an integer `abs` or `intDiv` kernel still requires a matching surrounding policy. A recovery arm's own fallible arithmetic still requires an outer handler.
+
 ### Provably total sites — [ARITH-EFFECT-TOTAL-SITES]
 
 A site whose failure is impossible MUST NOT seed a requirement:
@@ -209,6 +211,7 @@ Integer arithmetic produces plain numeric values. `MathError` and arithmetic Res
 | No implicit policy, reserved `Arith`, value-mode arms, constant-overflow errors, file-scope restrictions and recovery requiring an outer policy | `arith_unhandled`, `arith_redeclared`, `arith_resume`, `arith_constant_overflow`, `arith_file_initializer`, `arith_recovery_needs_outer` in `examples/failscompilation/`, each with an `ml_` fixture and exact diagnostic golden |
 | IEEE closure, signed zero, subnormals, nonzero remainder and ordered zero-divisor recovery | `boolean_consolidated.test.osp` and its ML twin; ten cases with a shared golden, including float absolute values and integer recovery through function values |
 | Host GPU IEEE values, scalar transfers, numeric `abs` callbacks and ordered fault recovery | `scalar_contracts.test.osp` and its ML twin, under both inline and extracted kernel lowering |
+| GPU callback requirements, builtin extraction, lexical shadowing and ordered recovery | `effect_rows_tests::gpu`, `builtin_kernels_are_extracted_with_specialized_scalar_abis` and the existing `kernel_frontier` twins under both kernel modes |
 | Numeric operands through generic aliases and higher-order calls; finite source literals | `float_operand_constraint` and `float_literal_overflow` rejection fixtures in both flavors, plus type and frontend unit tests |
 | Defined internal float narrowing for NaNs, infinities, fractions and signed range boundaries | `float_coercions_use_defined_saturation_for_extreme_inputs` in `osprey-codegen::conv`; saturating LLVM intrinsic over twelve boundary operands |
 | Native float remainder links its platform math runtime | `native_float_remainder_links_its_platform_math_runtime` in the CLI driver tests, plus the float corpus on native and WASM |

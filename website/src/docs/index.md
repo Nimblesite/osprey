@@ -23,6 +23,7 @@ Osprey is a practical functional language for safe, fast native programs. Start 
 ## Language
 
 - **[Read the language specification](/spec/)** — the precise syntax and behavior of implemented features.
+- **[Use dense computation buffers](/spec/0034-gpucomputation/)** — typed buffers and pure kernels run on the CPU today. Scalar builtin kernels preserve numeric types and the surrounding arithmetic policy; device execution remains planned.
 - **[Check feature status](/status/)** — see what is stable, partial, experimental, or planned.
 - **[Browse keywords](/docs/keywords/)** — declarations, bindings, matching, imports, and literals.
 

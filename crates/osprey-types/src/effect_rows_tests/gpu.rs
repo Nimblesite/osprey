@@ -170,3 +170,92 @@ const UNKNOWN_CALLBACKS: [(&str, &str); 5] = [
     ("gpuFold(toGpu([1]), 0, f)", "gpuFold (toGpu [1], 0, f)"),
     ("gpuScan(toGpu([1]), 0, f)", "gpuScan (toGpu [1], 0, f)"),
 ];
+
+/// [ARITH-TOTAL] Extractable builtins still require an explicit host policy.
+#[test]
+fn scalar_builtin_kernels_cannot_invent_an_arithmetic_policy() {
+    for (default, ml, operation) in [
+        (
+            "gpuMap(toGpu([-1]), abs)",
+            "gpuMap (toGpu [-1]) abs",
+            "Arith.overflow",
+        ),
+        (
+            "gpuZipWith(toGpu([1]), toGpu([0]), intDiv)",
+            "gpuZipWith (toGpu [1], toGpu [0], intDiv)",
+            "Arith.remainderByZero",
+        ),
+    ] {
+        for (source, flavor) in [
+            (format!("fn main() = gpuLength({default})"), Flavor::Default),
+            (format!("main () = gpuLength ({ml})"), Flavor::Ml),
+        ] {
+            rejects_with(
+                flavor,
+                &source,
+                "unhandled effect operations at program entry",
+            );
+            rejects_with(flavor, &source, operation);
+        }
+    }
+}
+
+/// [ARITH-EFFECT-DISCHARGE] Every host GPU callback contributes to its caller's row.
+#[test]
+fn every_gpu_combinator_propagates_arithmetic_and_outer_recovery_requirements() {
+    for (default, ml) in ARITHMETIC_KERNELS {
+        for (body, flavor) in [(default, Flavor::Default), (ml, Flavor::Ml)] {
+            let unhandled = arithmetic_program(flavor, body, "");
+            rejects_with(
+                flavor,
+                unhandled,
+                "unhandled effect operations at program entry: Arith.overflow",
+            );
+            accepts(flavor, arithmetic_program(flavor, body, "wrapped"));
+            rejects_with(
+                flavor,
+                arithmetic_program(flavor, body, "wrapped + 1"),
+                "Arith.overflow",
+            );
+        }
+    }
+}
+
+fn arithmetic_program(flavor: Flavor, body: &str, recovery: &str) -> String {
+    let handler = match (flavor, recovery.is_empty()) {
+        (_, true) => String::new(),
+        (Flavor::Default, false) => {
+            format!("handle Arith {{ overflow _ _ _ wrapped => {recovery} }}\n")
+        }
+        (Flavor::Ml, false) => {
+            format!("    handle Arith\n        overflow _ _ _ wrapped => {recovery}\n")
+        }
+    };
+    match flavor {
+        Flavor::Default => format!("fn main() = {{ {handler} let result = {body}\n print(0) }}"),
+        Flavor::Ml => format!("main () =\n{handler}    result = {body}\n    print 0"),
+    }
+}
+
+const ARITHMETIC_KERNELS: [(&str, &str); 5] = [
+    (
+        "gpuMap(toGpu([1]), fn(x) => x + 1)",
+        "gpuMap (toGpu [1]) (\\x => x + 1)",
+    ),
+    (
+        "gpuFilter(toGpu([1]), fn(x) => x + 1 > 0)",
+        "gpuFilter (toGpu [1]) (\\x => x + 1 > 0)",
+    ),
+    (
+        "gpuFold(toGpu([1]), 0, fn(x, y) => x + y)",
+        "gpuFold (toGpu [1], 0, \\(x, y) => x + y)",
+    ),
+    (
+        "gpuScan(toGpu([1]), 0, fn(x, y) => x + y)",
+        "gpuScan (toGpu [1], 0, \\(x, y) => x + y)",
+    ),
+    (
+        "gpuZipWith(toGpu([1]), toGpu([2]), fn(x, y) => x + y)",
+        "gpuZipWith (toGpu [1], toGpu [2], \\(x, y) => x + y)",
+    ),
+];

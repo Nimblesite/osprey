@@ -30,10 +30,10 @@ const EXTRACTION_FLOORS: [(&str, usize); 7] = [
     ("buffers.test", 7),
     ("combinators.test", 2),
     ("gamedev.test", 17),
-    ("kernel_frontier.test", 4),
+    ("kernel_frontier.test", 16),
     ("mlkernels.test", 78),
     ("raster.test", 5),
-    ("stress.test", 4),
+    ("stress.test", 9),
 ];
 
 #[test]
@@ -234,3 +234,53 @@ fn backward_branches(ir: &str) -> usize {
     }
     count
 }
+
+/// [GPU-KERNEL-EXTRACT] Intrinsics passed as kernels need real scalar definitions.
+#[test]
+fn builtin_kernels_are_extracted_with_specialized_scalar_abis() -> Result<(), String> {
+    for (default, ml, signature, instruction) in BUILTIN_KERNELS {
+        for ir in buffer_ir(default, ml)? {
+            assert!(
+                ir.contains(signature),
+                "missing builtin kernel {signature}: {ir}"
+            );
+            assert!(
+                ir.contains(instruction),
+                "missing intrinsic operation {instruction}"
+            );
+            assert_eq!(calls(&ir, "@__gpu_kernel_0("), 1);
+            assert!(
+                !ir.contains("@__closure_"),
+                "scalar builtins need no closure"
+            );
+        }
+    }
+    Ok(())
+}
+
+const BUILTIN_KERNELS: [(&str, &str, &str, &str); 4] = [
+    (
+        "gpuMap(toGpu([1]), toFloat)",
+        "gpuMap (toGpu [1]) toFloat",
+        "define double @__gpu_kernel_0(i64 %$p0)",
+        "sitofp i64",
+    ),
+    (
+        "gpuMap(toGpu([-1.5]), abs)",
+        "gpuMap (toGpu [-1.5]) abs",
+        "define double @__gpu_kernel_0(double %$p0)",
+        "@llvm.fabs.f64(",
+    ),
+    (
+        "gpuZipWith(toGpu([1]), toGpu([2]), wrapAdd)",
+        "gpuZipWith (toGpu [1], toGpu [2], wrapAdd)",
+        "define i64 @__gpu_kernel_0(i64 %$p0, i64 %$p1)",
+        "add i64",
+    ),
+    (
+        "gpuScan(toGpu([1]), 0, satMul)",
+        "gpuScan (toGpu [1], 0, satMul)",
+        "define i64 @__gpu_kernel_0(i64 %$p0, i64 %$p1)",
+        "mul i128",
+    ),
+];

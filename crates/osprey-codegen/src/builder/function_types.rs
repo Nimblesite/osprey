@@ -57,14 +57,12 @@ impl Codegen {
     /// The function type of a named callee: a function-typed local first (its
     /// inferred value type), else a top-level function's resolved signature.
     pub(super) fn identifier_fn_type(&self, name: &str) -> Option<Type> {
-        if let Some(t) = self.fn_value_types.get(name) {
+        if let Some(t) = self.fn_value_types.get(name).or_else(|| {
+            self.lambdas
+                .get(name)
+                .and_then(|(_, _, position)| self.prog.lambda_type(*position))
+        }) {
             return Some(t.clone());
-        }
-        // A file-scope function value read from inside a function body: its
-        // closure cell lives in a module global, not this frame
-        // ([`crate::globals`]).
-        if let Some(t) = crate::globals::fn_type(self, name) {
-            return Some(t);
         }
         // A function-valued parameter bound while INLINING a generic function
         // is recorded as an alias of the callee it stands for, not as a local
@@ -74,6 +72,12 @@ impl Codegen {
         // arrow it is peeling. [TYPE-FN-HIGHER-ORDER]
         if let Some(target) = self.call_aliases.get(name).filter(|t| *t != name) {
             return self.identifier_fn_type(&target.clone());
+        }
+        // A file-scope function value read from inside a function body: its
+        // closure cell lives in a module global, not this frame
+        // ([`crate::globals`]).
+        if let Some(t) = crate::globals::fn_type(self, name) {
+            return Some(t);
         }
         match self.prog.functions.get(name) {
             Some((params, ret)) => Some(Type::fun(params.clone(), ret.clone())),
