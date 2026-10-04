@@ -5,6 +5,7 @@ import * as assert from "assert";
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
+import { patternFixtures, sourceFixtures } from "./debug-fixtures";
 import { defaultDebugOutputPath } from "../../client/src/extension";
 import { resolveBuiltOsprey, resolveRequiredLldbDap } from "./osprey-test-env";
 import {
@@ -179,44 +180,7 @@ suite("Osprey Debugger E2E Workflows", function () {
     });
   }
 
-  for (const fixture of [
-    {
-      "label": "captured lambda breakpoints expose their own variables",
-      "locals": { x: 40, n: 2, sum: 42 },
-      "line": 3,
-      "prefix": "__closure_fn_",
-      "sources": {
-        "osp": "fn makeAdder(n) = fn(x) => {\n    let sum = wrapAdd(x, n)\n    sum\n}\nfn main() = {\n    let add = makeAdder(2)\n    print(add(40))\n}\n",
-        "ospml": "makeAdder n = \\x =>\n    sum = wrapAdd x n\n    sum\nmain () =\n    add = makeAdder 2\n    print (add 40)\n"
-      }
-    },
-    {
-      "label": "extracted GPU kernel breakpoints expose uniforms and locals",
-      "locals": { x: 40, n: 2, sum: 42 },
-      "line": 5,
-      "prefix": "__gpu_kernel_",
-      "sources": {
-        "osp": "fn main() = {\n    let n = 2\n    let result = gpuMap(toGpu([40]), fn(x) => {\n        let sum = wrapAdd(x, n)\n        sum\n    })\n    print(gpuGet(result, 0) ?: -1)\n}\n",
-        "ospml": "main () =\n    n = 2\n    result = gpuMap (toGpu [40]) (\\x =>\n        sum = wrapAdd x n\n        sum)\n    print (gpuGet (result, 0) ?: -1)\n"
-      }
-    },
-    {
-      label: "single-expression lambda breakpoints retain return locations",
-      locals: { x: 40, n: 2 }, line: 2, prefix: "__closure_fn_",
-      sources: {
-        osp: "fn makeAdder(n) = fn(x) => {\n    wrapAdd(x, n)\n}\nfn main() = {\n    let add = makeAdder(2)\n    print(add(40))\n}\n",
-        ospml: "makeAdder n = \\x =>\n    wrapAdd x n\nmain () =\n    add = makeAdder 2\n    print (add 40)\n",
-      },
-    },
-    ...([ ["int", 42], ["float", 2.5] ] as const).map(([type, value]) => ({
-      label: `generic function values retain source names and variables (${type})`,
-      locals: { x: value, value }, line: 5, prefix: "identity",
-      sources: {
-        osp: `type Operation = { run: fn(${type}) -> ${type} }\n\nfn identity(x) = {\n    let value = x\n    value\n}\nfn main() = {\n    let holder = Operation { run: identity }\n    print(holder.run(${value}))\n}\n`,
-        ospml: `type Operation =\n    run : ${type} -> ${type}\nidentity x =\n    value = x\n    value\nmain () =\n    holder = Operation(run = identity)\n    print (holder.run ${value})\n`,
-      },
-    })),
-  ]) {
+  for (const fixture of sourceFixtures) {
     for (const [extension, text] of Object.entries(fixture.sources)) {
       test(`${fixture.label} (${extension})`, async function () {
         this.timeout(TEST_TIMEOUT_MS);
@@ -225,11 +189,7 @@ suite("Osprey Debugger E2E Workflows", function () {
         const { session, stop } = await launchToFirstStop([fixture.line], {
           program, debugOutput: defaultDebugOutputPath(program),
         });
-        const frame = assertCurrentLine(stop.stack, fixture.line, program);
-        assert.ok(frame.name.includes(fixture.prefix), frame.name);
-        for (const [name, value] of Object.entries(fixture.locals)) {
-          await assertLocalVariable(session, frame.id, name, new RegExp(`^${value}$`));
-        }
+        await assertFrameLocals(session, stop, program, fixture.line, fixture.prefix, fixture.locals);
         await continueExecution(session, stop.threadId);
         await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
       });
@@ -277,13 +237,40 @@ suite("Osprey Debugger E2E Workflows", function () {
   }
 
   async function assertCellState(session: vscode.DebugSession, stop: DapStop, program: string, line: number, prefix: string, x: number, n: number) {
+    await assertFrameLocals(session, stop, program, line, prefix, {
+      x, n, ...(prefix === "__closure_fn_" ? { sum: n } : {}),
+    });
+  }
+
+
+  async function assertFrameLocals(session: vscode.DebugSession, stop: DapStop, program: string, line: number, prefix: string, locals: Record<string, number | undefined>) {
     const frame = assertCurrentLine(stop.stack, line, program);
     assert.ok(frame.name.includes(prefix), frame.name);
-    await assertLocalVariable(session, frame.id, "x", new RegExp(`^${x}$`));
-    await assertLocalVariable(session, frame.id, "n", new RegExp(`^${n}$`));
-    if (prefix === "__closure_fn_") {
-      await assertLocalVariable(session, frame.id, "sum", new RegExp(`^${n}$`));
+    for (const [name, value] of Object.entries(locals)) {
+      await assertLocalVariable(session, frame.id, name, new RegExp(`^${value}$`));
     }
+    return frame.id;
+  }
+
+  for (const fixture of patternFixtures) {
+    test(`pattern bindings stay in their debugger arm (${fixture.extension})`, async function () {
+      this.timeout(TEST_TIMEOUT_MS);
+      const program = path.join(tempDir, `pattern.${fixture.extension}`);
+      fs.writeFileSync(program, fixture.text);
+      const { session, stop } = await launchToFirstStop([7, fixture.outerLine], {
+        program, debugOutput: defaultDebugOutputPath(program),
+      });
+      const inside = await assertFrameLocals(session, stop, program, 7, "choose", { observed: 3 });
+      await assertWatch(session, inside, "value", /^2$/);
+      const bindings = await readFrameVariables(session, inside);
+      assert.ok(bindings.some(variable => /^value(?: @ .*:6)?$/.test(variable.name) && variable.value === "2"), "the arm exposes its own pattern binding");
+      await continueExecution(session, stop.threadId);
+      const outside = await waitForStop(session, LAUNCH_TIMEOUT_MS);
+      const frame = await assertFrameLocals(session, outside, program, fixture.outerLine, "choose", { value: 100, selected: 3, outside: 103 });
+      assert.ok(!(await readFrameVariables(session, frame)).some(variable => variable.name === "observed"), "arm-local values leave scope after the match");
+      await continueExecution(session, outside.threadId);
+      await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
+    });
   }
 
   test("conditional breakpoint stops only on the matching call, with detailed watch", async function () {

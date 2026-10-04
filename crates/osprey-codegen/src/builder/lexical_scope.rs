@@ -5,8 +5,8 @@ use osprey_ast::Parameter;
 use osprey_types::Type;
 use std::collections::{HashMap, HashSet};
 
-#[derive(Default)]
-pub(crate) struct FileScopeState {
+#[derive(Clone, Default)]
+pub(crate) struct LexicalScopeState {
     scopes: Vec<HashMap<String, Value>>,
     scope_ids: Vec<usize>,
     lambdas: HashMap<String, LambdaDef>,
@@ -19,7 +19,15 @@ pub(crate) struct FileScopeState {
     cell_slots: HashMap<String, CellSlot>,
 }
 
-impl FileScopeState {
+impl LexicalScopeState {
+    pub(crate) fn child(cg: &mut Codegen) -> Self {
+        let mut saved = Self::default();
+        saved.swap(cg);
+        saved.clone().swap(cg);
+        cg.push_scope();
+        saved
+    }
+
     pub(crate) fn enter(cg: &mut Codegen) -> Self {
         let mut saved = Self {
             call_aliases: cg.file_aliases.clone(),
@@ -58,6 +66,13 @@ impl FileScopeState {
 }
 
 impl Codegen {
+    pub(crate) fn with_local_scope<T>(&mut self, emit: impl FnOnce(&mut Self) -> T) -> T {
+        let saved = LexicalScopeState::child(self);
+        let result = emit(self);
+        saved.restore(self);
+        result
+    }
+
     /// Caller expressions must not inherit the callee's type substitution.
     pub(crate) fn with_caller_types<T>(&mut self, emit: impl FnOnce(&mut Self) -> T) -> T {
         let original = self

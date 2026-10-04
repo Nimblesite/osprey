@@ -14,7 +14,7 @@ Source lambda scopes, primitive parameters, immutable captures and block return-
 
 Remaining gaps include:
 
-- **Source coverage and value inspection remain incomplete.** Match-arm expressions and inlined generic call-frame reconstruction still need complete source scopes and variable locations. Composite values have no Osprey-specific rendering. The source-lambda regression closes one concrete gap; it does not complete Phase 3.
+- **Source coverage and value inspection remain incomplete.** Ordinary nested blocks and inlined generic call-frame reconstruction still need complete source scopes and variable locations. Composite values have no Osprey-specific rendering. The source-lambda regression closes one concrete gap; it does not complete Phase 3.
 - **Layer 3's and Layer 4's advertised surfaces do not exist.** The plan describes
   `--debug-info`, `--debug-opt`, `--debug-out`, `--debug-preserve-ir` and
   `--debug-preserve-symbols`; `crates/osprey-cli/src/main.rs` accepts only
@@ -770,8 +770,9 @@ Acceptance:
 - [x] Preserve return-only function/lambda body locations; both-flavor compiler tests cover literals, identifiers and calls, and LLDB-DAP tests verify the exact return line and its parameter/capture values.
 - [x] Expose primitive shared mutable cells and direct/resumable handler parameters; real LLDB-DAP tests inspect changing cell values in both-flavor handlers and ordinary closures.
 - [x] Preserve source declaration names, scopes and parameter bindings in materialized generic function values and C/runtime callback specializations; compiler assertions and integer/float LLDB-DAP cases cover both flavors. The accompanying generic-binding regression suite verifies declaration scope, live global reads, caller argument order and independent nested type instantiations.
-- [ ] Extend value-location records to remaining capture representations and match bindings.
-- [ ] Add lexical scopes for blocks, lambdas, match arms, and handlers.
+- [x] Scope primitive pattern bindings to their match arm and preserve block-arm return locations; both-flavor LLDB-DAP cases verify shadowed name lookup, outer-value restoration and arm-local disappearance. Runtime assertions cover every match representation, nested arms, escaping captures and captured mutable cells.
+- [ ] Extend value-location records to remaining capture representations.
+- [ ] Complete lexical scopes for ordinary nested blocks and remaining handler/lambda nesting.
 - [x] Validate primitive local inspection in LLDB-DAP.
 - [ ] Add unavailable-value reporting tests.
 

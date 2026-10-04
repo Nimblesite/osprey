@@ -62,6 +62,12 @@ Primitive lambda parameters, immutable captures, captured mutable cells and loca
 
 `captured_lambda_bodies_keep_debug_scopes_in_both_flavors` and `bound_argument_and_ffi_lambdas_keep_their_debug_scopes` pin the metadata and scope ownership. The editor's `captured lambda breakpoints expose their own variables` cases stop on the return line in both flavors and read the parameter, capture and calculated local through LLDB-DAP. `single_expression_blocks_keep_their_return_locations` checks function/lambda scope ownership of return-only body locations; `single-expression lambda breakpoints retain return locations` verifies the exact stopping line and live values through LLDB-DAP. `generic_function_values_keep_their_source_scope`, `generic_c_callbacks_keep_their_source_scope` and `generic_runtime_callbacks_keep_their_source_scope` check specialized scopes and ABI argument numbering. The editor's `generic function values retain source names and variables` cases inspect integer and float specializations in both flavors.
 
+## Match-arm scopes `[DEBUGGER-MATCH-SCOPES]`
+
+Each selected match arm has its own lexical debug scope. Primitive pattern bindings and arm-local values are inspectable within that scope. A block arm's trailing expression retains its source line, including an identifier-only return. After execution leaves the arm, its locals are no longer visible and an enclosing binding with the same name becomes the selected binding again. LLDB may display both visible shadowed names with source-line labels; evaluating the unqualified name selects the innermost binding.
+
+The editor's `pattern bindings stay in their debugger arm` cases verify the exact return-line stop, the inner pattern value, the arm's calculated local, restoration of the outer value and disappearance of the arm-local variable in both flavors. Composite value rendering, complete nested ordinary-block scopes and inlined generic call-frame reconstruction remain unfinished.
+
 ## Editor Launch `[DEBUGGER-EDITOR-LAUNCH]`
 
 For VS Code:

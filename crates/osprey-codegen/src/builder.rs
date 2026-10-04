@@ -3,9 +3,10 @@
 //! current basic block, lexical scopes). Low-level helpers here only *emit*
 //! text; the AST-walking lives in `lower.rs`.
 
+mod debug_scopes;
 mod debug_variables;
 mod lexical_scope;
-pub(crate) use lexical_scope::FileScopeState;
+pub(crate) use lexical_scope::LexicalScopeState;
 
 use crate::error::{CodegenError, Result};
 use crate::llty::{LType, Value};
@@ -1380,7 +1381,7 @@ impl Codegen {
     }
 
     pub(crate) fn with_file_scope<T>(&mut self, emit: impl FnOnce(&mut Self) -> T) -> T {
-        let saved = FileScopeState::enter(self);
+        let saved = LexicalScopeState::enter(self);
         let result = emit(self);
         saved.restore(self);
         result
