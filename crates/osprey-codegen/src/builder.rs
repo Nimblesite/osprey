@@ -1363,7 +1363,7 @@ impl Codegen {
             value.ty.as_str(),
             value.operand
         ));
-        self.emit_debug_slot(var_id, value);
+        self.emit_debug_slot(var_id, value, true);
     }
 
     /// Record a source-level **local** (`let` binding) for native debuggers via
@@ -1381,16 +1381,23 @@ impl Codegen {
         let Some(var_id) = self.debug_var_id(name, value.ty, None) else {
             return;
         };
-        self.emit_debug_slot(var_id, value);
+        self.emit_debug_slot(var_id, value, false);
     }
 
     /// Preserve immutable source values after LLVM reuses their input register.
     /// Parameters and locals share this storage; the metadata retains arg IDs.
-    fn emit_debug_slot(&mut self, var_id: usize, value: &Value) {
+    /// Parameter initialization is prologue code: entry breakpoints must follow
+    /// the store, otherwise the debugger reads an uninitialized source value.
+    fn emit_debug_slot(&mut self, var_id: usize, value: &Value, prologue: bool) {
         self.add_extern("declare void @llvm.dbg.declare(metadata, metadata, metadata)");
         let ty = value.ty.as_str();
+        let previous = self.debug.as_ref().and_then(|debug| debug.current_position);
+        if prologue {
+            self.restore_debug_position(None);
+        }
         let slot = self.emit_reg(format!("alloca {ty}"));
         self.emit(format!("store {ty} {}, {ty}* {slot}", value.operand));
+        self.restore_debug_position(previous);
         self.emit(format!(
             "call void @llvm.dbg.declare(metadata {ty}* {slot}, metadata !{var_id}, metadata !DIExpression())"
         ));
