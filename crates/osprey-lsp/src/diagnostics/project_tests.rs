@@ -125,98 +125,50 @@ fn module_bearing_files_outside_project_roots_are_assembled_standalone() {
     let source = std::fs::read_to_string(&path).expect("read module test suite");
     let uri = format!("file://{}", path.display());
     let diagnostics = compute(&source, &uri, U16);
-    let annotations = [
-            (
-                "redundant type signature on `test::Money::pennies`: inference derives `(int) -> string` without it",
-                (8, 4, 8, 27),
-            ),
-            (
-                "redundant type signature on `test::Money::triple`: inference derives `(int) -> string` without it",
-                (15, 4, 15, 26),
-            ),
-            (
-                "redundant type signature on `test::Money::group`: inference derives `(int) -> string` without it",
-                (22, 4, 22, 25),
-            ),
-            (
-                "redundant type signature on `test::Money::show`: inference derives `(int) -> string` without it",
-                (30, 11, 30, 31),
-            ),
-            (
-                "redundant type signature on `test::Money::positive`: inference derives `(int) -> bool` without it",
-                (33, 11, 33, 33),
-            ),
-            (
-                "redundant type signature on `test::Json::escape`: inference derives `(string) -> string` without it",
-                (37, 4, 37, 29),
-            ),
-            (
-                "redundant type signature on `test::Json::quoted`: inference derives `(string) -> string` without it",
-                (44, 4, 44, 29),
-            ),
-            (
-                "redundant type signature on `test::Json::strField`: inference derives `(string) -> (string) -> string` without it",
-                (49, 11, 49, 48),
-            ),
-            (
-                "redundant type signature on `test::Json::obj`: inference derives `(string) -> string` without it",
-                (55, 11, 55, 33),
-            ),
-            (
-                "redundant type signature on `test::Accounts::movable`: inference derives `(int) -> bool` without it",
-                (73, 11, 73, 32),
-            ),
-            (
-                "redundant type signature on `test::settle`: inference derives `(test::Outcome) -> string` without it",
-                (89, 0, 89, 26),
-            ),
+    // The inferred implementations carry no redundant annotations; contract
+    // aliases must not reintroduce phantom warnings. Pin every remaining warning.
+    let expected = [
+        (
+            "unused-handler-parameter",
+            "unused handler parameter `id` of `test::Vault.balance`",
+            (170, 16, 170, 18),
+        ),
+        (
+            "unused-handler-parameter",
+            "unused handler parameter `id` of `test::Vault.debit`",
+            (171, 14, 171, 16),
+        ),
+        (
+            "unused-handler-parameter",
+            "unused handler parameter `id` of `test::Vault.balance`",
+            (177, 16, 177, 18),
+        ),
+        (
+            "unused-handler-parameter",
+            "unused handler parameter `id` of `test::Vault.debit`",
+            (178, 14, 178, 16),
+        ),
+        (
+            "unused-handler-parameter",
+            "unused handler parameter `cents` of `test::Vault.debit`",
+            (178, 17, 178, 22),
+        ),
+        (
+            "unused-handler-parameter",
+            "unused handler parameter `id` of `test::Vault.balance`",
+            (187, 16, 187, 18),
+        ),
+        (
+            "unused-handler-parameter",
+            "unused handler parameter `id` of `test::Vault.debit`",
+            (188, 14, 188, 16),
+        ),
+        (
+            "unused-handler-parameter",
+            "unused handler parameter `cents` of `test::Vault.debit`",
+            (188, 17, 188, 22),
+        ),
     ];
-    let mut expected: Vec<_> = annotations
-        .into_iter()
-        .map(|(message, range)| ("redundant-annotation", message, range))
-        .collect();
-    expected.extend([
-        (
-            "unused-handler-parameter",
-            "unused handler parameter `id` of `test::Vault.balance`",
-            (161, 16, 161, 18),
-        ),
-        (
-            "unused-handler-parameter",
-            "unused handler parameter `id` of `test::Vault.debit`",
-            (162, 14, 162, 16),
-        ),
-        (
-            "unused-handler-parameter",
-            "unused handler parameter `id` of `test::Vault.balance`",
-            (168, 16, 168, 18),
-        ),
-        (
-            "unused-handler-parameter",
-            "unused handler parameter `id` of `test::Vault.debit`",
-            (169, 14, 169, 16),
-        ),
-        (
-            "unused-handler-parameter",
-            "unused handler parameter `cents` of `test::Vault.debit`",
-            (169, 17, 169, 22),
-        ),
-        (
-            "unused-handler-parameter",
-            "unused handler parameter `id` of `test::Vault.balance`",
-            (178, 16, 178, 18),
-        ),
-        (
-            "unused-handler-parameter",
-            "unused handler parameter `id` of `test::Vault.debit`",
-            (179, 14, 179, 16),
-        ),
-        (
-            "unused-handler-parameter",
-            "unused handler parameter `cents` of `test::Vault.debit`",
-            (179, 17, 179, 22),
-        ),
-    ]);
     assert_warnings(&diagnostics, &expected);
 }
 

@@ -1,4 +1,7 @@
 import json
+import os
+import runpy
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,6 +10,24 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from merge_results import merge
 from report import update_readme
+
+
+class LspFixtureTests(unittest.TestCase):
+    """LSP timings must analyze a valid project under [ARITH-EFFECT]."""
+
+    def test_synthetic_project_compiles_and_runs_with_an_explicit_arithmetic_policy(self):
+        repo = Path(__file__).resolve().parent.parent
+        compiler = os.environ.get("OSPREY_BIN", str(repo / "target/release/osprey"))
+        generate = runpy.run_path(str(repo / "scripts/benchmark-lsp.py"))["synthetic_project"]
+        with tempfile.TemporaryDirectory() as directory:
+            root = generate(Path(directory))
+            self.assertEqual(len(list((root / "src").glob("*.ospml"))), 10)
+            for argument, expected in [(41, "42\n"), (9223372036854775807, "-9223372036854775808\n")]:
+                (root / "src/main.ospml").write_text(f'print (helper1 {argument})\n')
+                result = subprocess.run([compiler, str(root), "--run", "--quiet"],
+                                        cwd=repo, capture_output=True, text=True, timeout=30)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, expected)
 
 
 class MergeResultsTests(unittest.TestCase):

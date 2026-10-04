@@ -5,7 +5,6 @@ import talon::BankData
 import bank::Money
 
 module ActivityView
-    visible : string -> string -> string -> string -> string -> bool
     visible kind note owner filter search =
         kindMatch = match filter
             "all" => true
@@ -20,29 +19,24 @@ module ActivityView
             false => contains haystack query
         kindMatch && searchMatch
 
-    mark : string -> string
     mark kind = match kind
         "credit" => "↙"
         "debit" => "↗"
         _ => "!"
 
-    label : string -> string
     label kind = match kind
         "credit" => "Money in"
         "debit" => "Money out"
         _ => "Declined"
 
-    amount : string -> int -> string
     amount kind cents = match kind
-        "credit" => "+${Money::show cents}"
-        "debit" => "−${Money::show cents}"
-        _ => Money::show cents
+        "credit" => "+${Money::show (Money::fromCents cents)}"
+        "debit" => "−${Money::show (Money::fromCents cents)}"
+        _ => Money::show (Money::fromCents cents)
 
-    increment : int -> int
     increment number = wrapAdd number 1
 
-    export row : int -> int -> string
-    row doc index =
+    export row doc index =
         kind = BankData::value doc "[${index}].kind" "refused"
         note = BankData::value doc "[${index}].note" "Bank movement"
         owner = BankData::value doc "[${index}].owner" "Talon customer"
@@ -53,7 +47,6 @@ module ActivityView
         meta = UI::node "span" (UI::prop "className" "movement-meta") (UI::leaf "strong" (UI::prop "className" "movement-amount ${kind}") (amount kind cents) + "," + UI::leaf "small" "" (label kind))
         UI::node "div" (UI::prop "className" "movement-row ${kind}") (icon + "," + copy + "," + meta)
 
-    rowsFrom : int -> int -> int -> string -> string -> int -> string
     rowsFrom doc index limit filter search shown = match shown >= limit
         true => ""
         false =>
@@ -75,14 +68,12 @@ module ActivityView
                             true => row doc index
                             false => row doc index + "," + rest
 
-    export rows : string -> int -> string -> string -> string
-    rows source limit filter search =
+    export rows source limit filter search =
         doc = jsonParse source ?: 0
         content = rowsFrom doc 0 limit filter search 0
         freed = jsonFree doc ?: 0
         content
 
-    countFrom : int -> int -> string -> int -> int
     countFrom doc index kind running =
         found = jsonGet doc "[${index}].kind"
         match found
@@ -94,8 +85,7 @@ module ActivityView
                 nextIndex = wrapAdd index 1
                 countFrom doc nextIndex kind nextCount
 
-    export count : string -> string -> int
-    count source kind =
+    export count source kind =
         doc = jsonParse source ?: 0
         total = countFrom doc 0 kind 0
         freed = jsonFree doc ?: 0

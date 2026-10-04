@@ -50,7 +50,7 @@ def synthetic_project(root):
     (root / "src/main.ospml").write_text('print (helper1 41)\n')
     for index in range(1, 10):
         (root / f"src/helper{index}.ospml").write_text(
-            f"helper{index} : int -> int\nhelper{index} value = value + {index} ?: 0\n"
+            f"helper{index} : int -> int\nhelper{index} value = wrapAdd value {index}\n"
         )
     return root
 

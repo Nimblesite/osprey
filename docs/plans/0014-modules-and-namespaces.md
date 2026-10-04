@@ -6,9 +6,9 @@
 **Status:** Core shipped and tested — Default + ML project compilation, the
 resolver/flattener, project-aware CLI and LSP diagnostics, state-ownership
 enforcement, cross-file LSP resolution, and public namespace/module documentation.
-Four checklist items remain: opaque manifest aliases, separate checking of
-importers against signatures, pointer escape analysis, and the runnable project's
-signature examples. Project style advice, state-boundary inventory and warnings,
+Three checklist items remain: opaque manifest aliases, separate checking of
+importers against signatures, and pointer escape analysis. The bank now exercises
+an abstract record-backed amount and a manifest cents alias in one signature. Project style advice, state-boundary inventory and warnings,
 and compiler-proved module repair actions are implemented (2026-10-04). The
 incremental LSP project snapshot is implemented (2026-10-04): live source
 membership, syntax reuse, shared checking and file/manifest invalidation. Record-payload opacity
@@ -273,7 +273,14 @@ TODO:
 - [x] Include Default imports ML and ML imports Default.
 - [x] Include explicit import lists and aliases in the runnable project, plus
       ambiguous-import and wildcard-policy failures in project tests.
-- [ ] Include signatures with opaque and manifest types.
+- [x] Include signatures with opaque and manifest types. `MoneyApi` exposes
+      abstract `Amount` and manifest `Cents = int`; the native server and Wasm
+      client use explicit conversions. `bank_money_signature_*` runs actual bank
+      source from both flavors across all native allocators and rejects outside
+      construction, field access and raw integers. The existing bank golden and
+      browser journeys retain their exact expected behavior. Alias expansion
+      preserves contract provenance and written annotation locations, pinned by
+      project and LSP regression tests ([TYPE-ANNOTATION-REDUNDANT]).
 - [x] Include a state module that exposes an effect handler and a pure test
       implementation.
 - [x] Add compile-fail project tests for namespace/plain-module/exported `mut`,

@@ -26,10 +26,8 @@ module Api
 
     // The `headers` string is spliced verbatim into the wire response, so
     // each header line must carry its own CRLF terminator.
-    json : int -> string -> HttpResponse
     json status body = HttpResponse(status = status, headers = "Content-Type: application/json\r\n", contentType = "application/json", streamFd = -1, isComplete = true, partialBody = body)
 
-    refuse : string -> HttpResponse
     refuse why = json 422 (Json::error why)
 
     reject operation why =
@@ -37,14 +35,12 @@ module Api
         refuse why
 
     // Pull one string field out of a JSON request body.
-    field : string -> string -> string
     field body path =
         doc = jsonParse body ?: 0
         v = jsonGet doc path ?: ""
         freed = jsonFree doc ?: 0
         v
 
-    num : string -> string -> int
     num body path = parseInt (field body path) ?: 0
 
     load : int -> Account ! Ledger::Store
@@ -87,7 +83,7 @@ module Api
                 false => reject "deposit to account #${id}" "account not found"
                 true =>
                     balance = perform Ledger::Store.credit id cents note
-                    perform Audit.log "deposit ${Money::show cents} -> account #${id} (${note})"
+                    perform Audit.log "deposit ${Money::show (Money::fromCents cents)} -> account #${id} (${note})"
                     json 200 (Accounts::json (load id))
 
     onWithdraw : string -> HttpResponse ! [Ledger::Store, Audit]
@@ -103,10 +99,10 @@ module Api
                     attempt = perform Ledger::Store.debit id cents note
                     match attempt
                         Landed balance =>
-                            perform Audit.log "withdraw ${Money::show cents} from account #${id} (${note})"
+                            perform Audit.log "withdraw ${Money::show (Money::fromCents cents)} from account #${id} (${note})"
                             json 200 (Accounts::json (load id))
                         Refused why =>
-                            perform Audit.log "withdraw ${Money::show cents} from account #${id} REFUSED (${why})"
+                            perform Audit.log "withdraw ${Money::show (Money::fromCents cents)} from account #${id} REFUSED (${why})"
                             refuse why
 
     // A transfer delegates one atomic domain operation to the storage
@@ -114,10 +110,10 @@ module Api
     transferReply : int -> int -> int -> string -> Outcome -> HttpResponse ! [Ledger::Store, Audit]
     transferReply from to cents note attempt = match attempt
         Refused why =>
-            perform Audit.log "transfer ${Money::show cents} account #${from} -> account #${to} REFUSED (${why})"
+            perform Audit.log "transfer ${Money::show (Money::fromCents cents)} account #${from} -> account #${to} REFUSED (${why})"
             refuse why
         Landed balance =>
-            perform Audit.log "transfer ${Money::show cents} account #${from} -> account #${to} (${note})"
+            perform Audit.log "transfer ${Money::show (Money::fromCents cents)} account #${from} -> account #${to} (${note})"
             json 200 (Json::arr (Accounts::json (load from) + "," + Accounts::json (load to)))
 
     onTransfer : string -> HttpResponse ! [Ledger::Store, Audit]
