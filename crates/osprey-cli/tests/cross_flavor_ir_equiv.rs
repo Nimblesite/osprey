@@ -23,6 +23,9 @@
 //! has no twin to be IR-identical to. Those stems are listed in
 //! [`ML_ONLY_STEMS`] and skipped by both tests below.
 
+#[path = "cross_flavor_ir_equiv/gpu.rs"]
+mod gpu;
+
 use std::path::{Path, PathBuf};
 
 use osprey_ast::Program;
@@ -76,7 +79,9 @@ fn flavor_roots() -> Vec<PathBuf> {
 fn ir_for(source: &str, flavor: Flavor, label: &str) -> Result<String, String> {
     let source_file = parsed_source(source, flavor, label)?;
     let program = assembled_if_module_aware(source_file)?;
-    compile_program(&program).map_err(|e| format!("{label}: codegen failed: {e:?}"))
+    let ir = compile_program(&program).map_err(|e| format!("{label}: codegen failed: {e:?}"))?;
+    gpu::check_extraction_floor(label, &ir)?;
+    Ok(ir)
 }
 
 fn parsed_source(source: &str, flavor: Flavor, label: &str) -> Result<SourceFile, String> {
@@ -419,70 +424,3 @@ fn bound_argument_and_ffi_lambdas_keep_their_debug_scopes() -> Result<(), String
     }
     Ok(())
 }
-
-/// [GPU-KERNEL-EXTRACT] Lifted kernels preserve source scopes and uniform values.
-#[test]
-fn extracted_kernel_debug_scopes_keep_uniforms_and_source_parameters() -> Result<(), String> {
-    for (source, flavor) in [
-        ("fn main() = {\n    let n = 2\n    let result = gpuMap(toGpu([40]), fn(x) => {\n        let sum = wrapAdd(x, n)\n        sum\n    })\n    print(gpuGet(result, 0) ?: -1)\n}\n", Flavor::Default),
-        ("main () =\n    n = 2\n    result = gpuMap (toGpu [40]) (\\x =>\n        sum = wrapAdd x n\n        sum)\n    print (gpuGet (result, 0) ?: -1)\n", Flavor::Ml),
-    ] {
-        let ir = lambda_debug_ir(source, flavor)?;
-        assert_lambda_variables(&ir, "__gpu_kernel_", &["x", "n", "sum"])?;
-        assert!(ir.contains("!DILocalVariable(name: \"x\", arg: 2,"));
-        assert!(ir.contains("!DILocation(line: 5,"));
-    }
-    Ok(())
-}
-
-/// [DEBUGGER-LAMBDA-SCOPES] Kernel combinators share the parameter/location contract.
-#[test]
-fn every_extracting_combinator_preserves_its_source_arguments() -> Result<(), String> {
-    for (default, ml, variables) in KERNEL_COMBINATORS {
-        for (source, flavor) in [(default, Flavor::Default), (ml, Flavor::Ml)] {
-            let ir = kernel_debug_ir(source, flavor)?;
-            assert_lambda_variables(&ir, "__gpu_kernel_", variables)?;
-            for (index, name) in variables.iter().enumerate() {
-                let arg = index + 1;
-                assert!(ir.contains(&format!("!DILocalVariable(name: \"{name}\", arg: {arg},")));
-            }
-        }
-    }
-    Ok(())
-}
-
-fn kernel_debug_ir(source: &str, flavor: Flavor) -> Result<String, String> {
-    let wrapped = match flavor {
-        Flavor::Default => format!("fn main() = {{\n let result = {source}\n print(0)\n}}"),
-        Flavor::Ml => format!("main () =\n    result = {source}\n    print 0"),
-    };
-    lambda_debug_ir(&wrapped, flavor)
-}
-
-const KERNEL_COMBINATORS: [(&str, &str, &[&str]); 5] = [
-    (
-        "gpuMap(toGpu([1]), fn(x) => wrapAdd(x, 2))",
-        "gpuMap (toGpu [1]) (\\x => wrapAdd x 2)",
-        &["x"],
-    ),
-    (
-        "gpuFilter(toGpu([1]), fn(x) => x > 0)",
-        "gpuFilter (toGpu [1]) (\\x => x > 0)",
-        &["x"],
-    ),
-    (
-        "gpuZipWith(toGpu([1]), toGpu([2]), fn(x, y) => wrapAdd(x, y))",
-        "gpuZipWith (toGpu [1], toGpu [2], \\(x, y) => wrapAdd x y)",
-        &["x", "y"],
-    ),
-    (
-        "gpuFold(toGpu([1]), 0, fn(x, y) => wrapAdd(x, y))",
-        "gpuFold (toGpu [1], 0, \\(x, y) => wrapAdd x y)",
-        &["x", "y"],
-    ),
-    (
-        "gpuScan(toGpu([1]), 0, fn(x, y) => wrapAdd(x, y))",
-        "gpuScan (toGpu [1], 0, \\(x, y) => wrapAdd x y)",
-        &["x", "y"],
-    ),
-];

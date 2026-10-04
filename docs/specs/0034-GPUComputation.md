@@ -77,9 +77,7 @@ let buf = toGpu [1, 2, 3, 4]
 
 A **literal** argument to `toGpu` stores its elements straight into the dense
 buffer at constant indices. No list is built — neither the flat literal block
-nor an `OspreyList` — so the form above costs one allocation and four stores
-rather than three allocations and a copy loop. The result is identical to
-copying a list of the same elements; only the lowering differs.
+nor an `OspreyList` — so the form above emits one `osprey_gpu_alloc` call and four indexed stores, with no intermediate list or copy loop. The runtime constructor allocates the buffer header and payload separately and zero-fills the payload. The result is identical to copying a list of the same elements; only the lowering differs.
 
 #### Iterator fusion — [GPU-BUFFER-FUSE]
 
@@ -325,17 +323,9 @@ is resolved by emitting a definition rather than by inlining; the
 language-wide rule is unchanged, because inlining cannot specialise a body
 that calls itself.
 
-Remaining limits, neither of them about kernel shape:
+A recursive function whose **return type** inference cannot resolve has no signature to emit and is still rejected with `annotate its return type so it is emitted as a real function` (fail-closed). Parameter annotations are no longer required.
 
-- A recursive function whose **return type** inference cannot resolve has no
-  signature to emit and is still rejected with `annotate its return type so
-  it is emitted as a real function` (fail-closed). Parameter annotations are
-  no longer required.
-- A block-bodied lambda has no ML twin: ML suppresses layout inside brackets,
-  so `gpuMap (\x => …)` cannot open an indented body
-  ([0023-LanguageFlavors.md](0023-LanguageFlavors.md), [FLAVOR-ML-LAYOUT]).
-  The Default form runs; the twinned corpus therefore covers it in one
-  flavor only.
+Block-bodied lambdas support local bindings in both flavors, including an indented ML callback body inside a combinator argument. The `kernel_frontier` twins execute the same block-bodied and recursive-helper cases; their generated IR must also agree ([FLAVOR-ML-LAYOUT](0023-LanguageFlavors.md)).
 
 ### Kernel element typing — [GPU-KERNEL-ELEM-TYPING]
 
