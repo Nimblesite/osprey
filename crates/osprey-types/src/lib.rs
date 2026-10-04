@@ -78,7 +78,7 @@ mod variance;
 pub use builtin_docs::{
     builtin_doc_view, builtin_hover_markdown, builtin_names, BuiltinDocView, BuiltinParam,
 };
-pub use builtins::{builtin_callback_type, builtin_signature};
+pub use builtins::{builtin_callback_type, builtin_function_type, builtin_signature};
 pub use check::{check_program, check_program_exports, erased_var, infer_program};
 pub use error::TypeError;
 pub use info::{CtorLayout, HandlerSite, OpType, PerformSite, ProgramTypes};

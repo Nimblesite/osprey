@@ -98,7 +98,10 @@ fn gen_expr_raw(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
         },
         Expr::TypeApply {
             function, position, ..
-        } => with_application(cg, *position, |cg| gen_expr(cg, function)),
+        } => match crate::builtin_values::intrinsic_value(cg, function, *position) {
+            Some(value) => value,
+            None => with_application(cg, *position, |cg| gen_expr(cg, function)),
+        },
         Expr::Binary {
             op, left, right, ..
         } => gen_binary(cg, op, left, right),

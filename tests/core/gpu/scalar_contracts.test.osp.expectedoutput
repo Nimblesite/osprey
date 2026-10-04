@@ -2,5 +2,8 @@ ok 1 - runtime list values retain float and bool GPU element tags
 ok 2 - fromGpu reads float and bool elements at their source types
 ok 3 - repeated List and GpuBuffer crossings preserve scalar types
 ok 4 - empty GPU literals retain contextual scalar types
-1..4
-# tests=4 passed=4 failed=0 skipped=0
+ok 5 - host GPU arithmetic preserves IEEE non-finite values
+ok 6 - host GPU float zero divisors use explicit recovery
+ok 7 - host GPU abs callbacks retain numeric types and recovery
+1..7
+# tests=7 passed=7 failed=0 skipped=0

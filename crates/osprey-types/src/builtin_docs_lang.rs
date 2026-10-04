@@ -65,9 +65,9 @@ pub(crate) static CORE: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "abs",
-        "Returns the absolute value as a plain int. INT64_MIN performs Arith.overflow because its positive magnitude is not representable; the enclosing Arith policy supplies the result.",
-        ["value" => "The integer whose magnitude to take"],
-        "let d = abs(0 - 5)  // 5",
+        "Returns the absolute value with the same numeric type as its input: t0 is int or float. Integer INT64_MIN performs Arith.overflow; the enclosing policy supplies the result. Float absolute value is total: negative zero becomes positive zero, infinities become positive infinity, and NaN remains NaN.",
+        ["value" => "The int or float whose magnitude to take"],
+        "let d = abs(0 - 5)  // int: 5\nlet f = abs(-2.5)   // float: 2.5",
     ),
     builtin_doc!(
         "intDiv",

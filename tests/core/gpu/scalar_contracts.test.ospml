@@ -1,20 +1,16 @@
-// Aspirational conformance for scalar transfers ([GPU-BUFFER-ELEM],
-// [GPU-BUFFER-FROM-LIST], [GPU-BUFFER-TO-LIST]). The Default twin shares this
-// file's golden; both flavors must preserve identical runtime element types.
+// Scalar transfer conformance: inferred element types survive runtime lists,
+// GPU buffers and repeated crossings [GPU-BUFFER-ELEM] [GPU-BUFFER-FROM-LIST]
+// [GPU-BUFFER-TO-LIST]. Host kernels retain [FLOAT-IEEE-RESULTS].
 
-addFloats : (float, float) -> float
 addFloats (a, x) = a + x
 
-countTrue : (int, bool) -> int
 countTrue (a, x) = match x
     true => (a + 1) 
     false => a
 
 (** listReverse forces the runtime-list copy path rather than literal lowering. *)
-floatListValue : Unit -> List<float>
 floatListValue () = listReverse [2.5, 1.5]
 
-boolListValue : Unit -> List<bool>
 boolListValue () = listReverse [true, false, false]
 
 listValueTagsCase () =
@@ -91,3 +87,64 @@ test ("runtime list values retain float and bool GPU element tags", \() => exact
 test ("fromGpu reads float and bool elements at their source types", \() => exactArithmetic (fromGpuScalarCase))
 test ("repeated List and GpuBuffer crossings preserve scalar types", \() => exactArithmetic (repeatedCrossingCase))
 test ("empty GPU literals retain contextual scalar types", \() => exactArithmetic (emptyTypedLiteralCase))
+
+(** [FLOAT-IEEE-RESULTS]: host kernels obey the scalar arithmetic contract. *)
+squareScalar value = value * value
+subtractSelf value = value - value
+divideZero value = value / 0.0
+remainderZero value = value % -0.0
+
+gpuIeeeCase () =
+    seed = toGpu [10000000000000000.0]
+    fourth = seed |> gpuMap squareScalar |> gpuMap squareScalar
+    infinityBuffer = fourth |> gpuMap squareScalar |> gpuMap squareScalar |> gpuMap squareScalar
+    infinity = gpuGet (infinityBuffer, 0) ?: 0.0
+    nanBuffer = infinityBuffer |> gpuMap subtractSelf
+    nan = gpuGet (nanBuffer, 0) ?: 0.0
+    roundTrip = toGpu (listReverse (fromGpu (toGpu [infinity, nan, -0.0])))
+    checkAll "host GPU kernels preserve non-finite values and signed zero" [
+        infinity > 10000000000000000.0, nan != nan,
+        (infinityBuffer |> gpuFold 0.0 addFloats) == infinity,
+        (gpuGet (roundTrip, 2) ?: 0.0) == infinity,
+        (gpuGet (roundTrip, 1) ?: 0.0) != (gpuGet (roundTrip, 1) ?: 0.0),
+        toString (gpuGet (roundTrip, 0) ?: 1.0) == "-0.0"
+    ]
+
+gpuFloatZeroCase () =
+    mut faults = ""
+    handle Arith
+        divideByZero op _ =>
+            faults := faults + op
+            0.25
+    input = toGpu [1.0, 0.0, -1.0]
+    quotients = input |> gpuMap divideZero
+    remainders = input |> gpuMap remainderZero
+    checkAll "host GPU zero divisors use the enclosing policy" [
+        (quotients |> gpuFold 0.0 addFloats) == 0.75,
+        (remainders |> gpuFold 0.0 addFloats) == 0.75,
+        faults == "///%%%"
+    ]
+
+test "host GPU arithmetic preserves IEEE non-finite values" gpuIeeeCase
+test "host GPU float zero divisors use explicit recovery" gpuFloatZeroCase
+
+(** [BUILTIN-ABS]: builtin callbacks use their inferred scalar ABI and policy. *)
+gpuAbsoluteCase () =
+    floats = toGpu [-2.5, -0.0, 3.5] |> gpuMap abs
+    mut faults = ""
+    handle Arith
+        overflow op lhs rhs wrapped =>
+            checkAll "GPU abs overflow payload" [lhs == -9223372036854775808, rhs == 0, wrapped == lhs]
+            faults := faults + op
+            17
+    integers = toGpu [-9223372036854775808, -3, 4] |> gpuMap abs
+    checkAll "GPU abs keeps float and integer callback contracts" [
+        (gpuGet (floats, 0) ?: 0.0) == 2.5,
+        toString (gpuGet (floats, 1) ?: 1.0) == "0.0",
+        (gpuGet (floats, 2) ?: 0.0) == 3.5,
+        (gpuGet (integers, 0) ?: 0) == 17,
+        (gpuGet (integers, 1) ?: 0) == 3,
+        (gpuGet (integers, 2) ?: 0) == 4, faults == "abs"
+    ]
+
+test "host GPU abs callbacks retain numeric types and recovery" gpuAbsoluteCase

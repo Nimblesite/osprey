@@ -208,7 +208,7 @@ Both closed. `tests/core/gpu/kernel_frontier` and
 default/GC/ARC and wasm32:
 
 - **A named context-free numeric function can now serve a float slot** (F10,
-  [plan 0022](0022-arithmetic-totality-audit.md)). No numeric class was
+  [the shipped scalar contract](../specs/0037-ArithmeticEffects.md#floating-point-results--float-ieee-results)). No numeric class was
   needed: the overload is left open and settled after unification, at the cost
   that one definition gets one overload (using a helper at both `int` and
   `float` is a type error, not a reinterpretation).
@@ -253,7 +253,7 @@ The corrections below have been applied to
 ## Gaps delegated to other plans
 
 - ~~**Numeric defaulting for named context-free functions (F10)**~~ —
-  [plan 0022](0022-arithmetic-totality-audit.md) (spec
+  [the shipped scalar contract](../specs/0037-ArithmeticEffects.md#floating-point-results--float-ieee-results) (spec
   `[GPU-KERNEL-ELEM-TYPING]`). **Landed.** Both halves — lambda and named —
   now type from the consuming slot.
 - ~~**Positions on list literals**~~, so an empty literal's inferred element

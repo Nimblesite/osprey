@@ -174,3 +174,127 @@ fn orderedFloatComparisonsCase() = {
 }
 test("NaN comparison truth table", fn() => exactArithmetic(nanComparisonsCase))
 test("ordered float comparison controls", fn() => exactArithmetic(orderedFloatComparisonsCase))
+
+/// [FLOAT-IEEE-RESULTS]: non-finite values require no overflow policy.
+fn floatIdentity(value) = value
+fn isNan(value) = value != value
+let largeFinite = 100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000.0
+let smallFinite = 0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001
+let literalInfinity = largeFinite * largeFinite
+
+fn ieeeArithmeticCase() = {
+    let large = floatIdentity(largeFinite)
+    let infinity = large * large
+    let nan = infinity - infinity
+    checkAll("IEEE closure for arithmetic and supplied non-finite values", [
+        infinity > large, literalInfinity == infinity,
+        large + large == infinity, -large - large == -infinity,
+        infinity + 1.0 == infinity, infinity * -2.0 == -infinity,
+        isNan(infinity + -infinity), isNan(infinity * 0.0),
+        isNan(nan + 1.0), isNan(1.0 - nan), isNan(nan * 2.0),
+        isNan(-nan), -infinity < -large,
+        (5 + 0.5) == 5.5, (0.5 * 5) == 2.5,
+        toFloat(9223372036854775807) == 9223372036854775808.0,
+        toFloat(-9223372036854775808) == -9223372036854775808.0
+    ])
+}
+
+fn signedZeroAndUnderflowCase() = {
+    let small = floatIdentity(smallFinite)
+    checkAll("signed zeros and gradual underflow", [
+        small * small == 0.0, -small * small == -0.0,
+        toString(-small * small) == "-0.0", toString(-0.0 * 2.0) == "-0.0",
+        toString(-0.0 - 0.0) == "-0.0", toString(-(-0.0)) == "0.0",
+        smallFinite * 0.0000000001 > 0.0, -0.0 == 0.0,
+        toString(-0.0 / 2.0) == "-0.0", toString(-0.0 % 2.0) == "-0.0",
+        5.5 % 2.0 == 1.5, -5.5 % 2.0 == -1.5,
+        5.5 % -2.0 == 1.5, -5.5 % -2.0 == -1.5
+    ])
+}
+
+fn nonFiniteDivisionCase() = {
+    let infinity = floatIdentity(largeFinite) * largeFinite
+    let nan = infinity - infinity
+    handle Arith { divideByZero _ _ => { expectFalse(true)
+        0.0 } }
+    checkAll("nonzero division and remainder retain IEEE results", [
+        largeFinite / smallFinite == infinity,
+        infinity / 2.0 == infinity, 2.0 / infinity == 0.0,
+        toString(-2.0 / infinity) == "-0.0", isNan(infinity / infinity),
+        isNan(nan / 2.0), isNan(2.0 / nan), isNan(nan / nan),
+        isNan(infinity % 2.0), 2.0 % infinity == 2.0,
+        isNan(nan % 2.0), isNan(2.0 % nan), isNan(infinity % infinity)
+    ])
+}
+
+fn zeroDivisorCase() = {
+    let infinity = floatIdentity(largeFinite) * largeFinite
+    let nan = infinity - infinity
+    mut faults = ""
+    handle Arith { divideByZero op lhs => {
+        faults = faults + op + (isNan(lhs) ? "n" : "v")
+        7.25
+    } }
+    checkAll("zero divisors recover before IEEE division or remainder", [
+        1.0 / 0.0 == 7.25, 1.0 / -0.0 == 7.25,
+        0.0 / 0.0 == 7.25, infinity / -0.0 == 7.25, nan / 0.0 == 7.25,
+        1.0 % 0.0 == 7.25, 1.0 % -0.0 == 7.25,
+        0.0 % 0.0 == 7.25, infinity % -0.0 == 7.25, nan % 0.0 == 7.25
+    ])
+    expect(faults, "/v/v/v/v/n%v%v%v%v%n")
+}
+
+test("IEEE arithmetic preserves defined non-finite results", ieeeArithmeticCase)
+test("float signed zero and underflow remain defined", signedZeroAndUnderflowCase)
+test("nonzero float division and remainder preserve IEEE results", nonFiniteDivisionCase)
+test("float zero divisors request explicit recovery even for NaN", zeroDivisorCase)
+
+/// [BUILTIN-ABS]: float overload stays total through aliases and callbacks.
+fn absoluteValue(value) = abs(value)
+fn applyAbsolute(callback, value) = callback(value)
+fn floatAbsoluteCase() = {
+    let infinity = floatIdentity(largeFinite) * largeFinite
+    let nan = infinity - infinity
+    let magnitude = abs
+    checkAll("float absolute value preserves its numeric type and IEEE values", [
+        abs(-2.5) == 2.5, abs(2.5) == 2.5,
+        toString(abs(-0.0)) == "0.0", toString(abs(0.0)) == "0.0",
+        abs(-infinity) == infinity, abs(infinity) == infinity,
+        isNan(abs(nan)), absoluteValue(-3.5) == 3.5,
+        magnitude(-4.5) == 4.5, applyAbsolute(abs, -5.5) == 5.5
+    ])
+}
+test("float absolute value is total through function values", floatAbsoluteCase)
+
+type FloatOperation = { apply: fn(float) -> float }
+fn returnedAbsolute() = abs
+fn shadowedAbsolute(abs) = abs(-6.5)
+fn absoluteTransportCase() = {
+    let returned = returnedAbsolute()
+    let record = FloatOperation { apply: abs }
+    let functions = [abs]
+    let selected = listGet(functions, 0) ?: fn(value) => value * 1.0
+    let branch = true ? abs : fn(value) => value * 1.0
+    checkAll("absolute function values retain float ABI and lexical bindings", [
+        returned(-2.5) == 2.5, record.apply(-3.5) == 3.5,
+        selected(-4.5) == 4.5, branch(-5.5) == 5.5,
+        shadowedAbsolute(fn(value) => value * 2.0) == -13.0
+    ])
+}
+test("float absolute values survive return and aggregate transport", absoluteTransportCase)
+
+fn integerAbsoluteCase() = {
+    mut faults = ""
+    handle Arith { overflow op lhs rhs wrapped => {
+        checkAll("integer abs overflow payload", [op == "abs", lhs == -9223372036854775808, rhs == 0, wrapped == lhs])
+        faults = faults + op
+        19
+    } }
+    let magnitude = abs
+    checkAll("integer abs function values retain explicit recovery", [
+        magnitude(-9223372036854775808) == 19,
+        applyAbsolute(abs, -9223372036854775808) == 19,
+        magnitude(-27) == 27, faults == "absabs"
+    ])
+}
+test("integer absolute function values keep overflow recovery", integerAbsoluteCase)

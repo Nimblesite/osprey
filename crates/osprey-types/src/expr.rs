@@ -652,13 +652,10 @@ impl Checker {
                 type_args,
                 position,
             } => self.infer_type_application(function, type_args, *position, env),
-            Expr::Identifier(name) => (
-                Some(name.clone()),
-                self.lookup_ident_at(name, env, Some(function)),
-            ),
+            Expr::Identifier(name) => (Some(name.clone()), self.infer_expr(function, env)),
             Expr::Path(path) => {
                 let name = path.to_string();
-                let ty = self.lookup_ident_at(&name, env, Some(function));
+                let ty = self.infer_expr(function, env);
                 (Some(name), ty)
             }
             other => (None, self.infer_expr(other, env)),
@@ -1705,15 +1702,14 @@ impl Checker {
         let Type::Fun { params, ret } = self.ctx.apply(site) else {
             return;
         };
-        let [left, right] = params.as_slice() else {
-            return;
+        let position = crate::builtin_constraints::source_position(name);
+        let answer = match params.as_slice() {
+            [operand] if op == "abs" && crate::arithmetic::absolute_operand(operand) => {
+                self.infer_negation(operand)
+            }
+            [left, right] => self.infer_arith(op, left, right, position),
+            _ => return,
         };
-        let answer = self.infer_arith(
-            op,
-            left,
-            right,
-            crate::builtin_constraints::source_position(name),
-        );
         self.push_unify(&answer, &ret);
     }
 
