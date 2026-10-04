@@ -330,6 +330,9 @@ impl Codegen {
     /// The LLVM struct spelling for a constructor's heap block: `{ i64, f0, … }`
     /// — a leading `i64` discriminant tag followed by each field's LLVM type.
     pub(crate) fn ctor_struct_ty(&self, name: &str) -> Option<String> {
+        if name == crate::aggregate::HTTP_RESPONSE {
+            return Some(crate::aggregate::HTTP_RESPONSE_STRUCT.to_string());
+        }
         let view = self.ctor_layout(name)?;
         let mut parts = vec!["i64".to_string()];
         for (_, lt) in &view.fields {

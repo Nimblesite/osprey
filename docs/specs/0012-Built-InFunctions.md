@@ -17,9 +17,7 @@ surface unless an ML example clarifies different call syntax.
 `Result<T, E>` when both payloads are printable. Concrete records, collections, functions,
 iterators, fibers, channels, and pointers are rejected. Results render as
 `Success(value)` or `Error(message)`; `Unit` renders as `0`; `print` appends a
-newline. An explicitly erased `any` value is a compatibility exception, not a
-dynamic formatter: if it hides an aggregate, the raw pointer-sized value is
-rendered rather than the aggregate's contents.
+newline. An explicitly erased `any` value renders through its shape descriptor: records show their named fields, unions their selected variant and Results their success/error case. Opaque runtime handles use kind labels; the underlying pointer word is never interpreted as a string or shown as the value. An explicit `any` local may retain a concrete backend representation until rendering, which must produce the same result as a boxed `any` parameter. See [TYPE-ANY](0004-TypeSystem.md#the-any-type--type-any).
 
 ```osprey
 print("Hello World")

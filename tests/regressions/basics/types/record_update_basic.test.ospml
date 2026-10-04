@@ -185,6 +185,32 @@ nestedUpdateCase () =
         pair.second == 1
     ]
 
+httpRecordPattern response = match response
+    HttpResponse status headers contentType streamFd isComplete partialBody => status == 201 && headers == "X: yes" && contentType == "text/plain" && streamFd == -1 && !isComplete && partialBody == "updated"
+erasedRecordStatus : any -> string
+erasedRecordStatus value = match value
+    { status, .. } => toString status
+    _ => "missing"
+
+(** [TYPE-RECORD-UPDATE] The C ABI record has no leading discriminant. *)
+httpRecordLayout () =
+    response = HttpResponse(status = 200, headers = "X: yes", contentType = "text/plain", streamFd = -1, isComplete = true, partialBody = "hi")
+    changed = response(status = 201, isComplete = false, partialBody = "updated")
+    selected = match changed
+        { status, isComplete, .. } => status == 201 && !isComplete
+    erased : any
+    erased = response
+    rendered = "{ status: 200, headers: X: yes, contentType: text/plain, streamFd: -1, isComplete: true, partialBody: hi }"
+    selected && response.status == 200 && response.headers == "X: yes" && response.contentType == "text/plain" && response.streamFd == -1 && response.isComplete && response.partialBody == "hi" && changed.partialBody == "updated" && changed.headers == "X: yes" && toString erased == rendered && httpRecordPattern changed && erasedRecordStatus response == "200" && erasedRecordStatus changed == "201"
+
+(** [TYPE-RECORD-ANON] Captures preserve nested anonymous layout identity. *)
+nestedAnonymousCapture () =
+    box = { child = { count = 42 }, label = "hi" }
+    read = \x =>
+        selected = box.child
+        wrapAdd selected.count x
+    read 1 == 43 && box.child.count == 42 && box.label == "hi"
+
 flowUpdateCase () =
     start = Point(x = 0, y = 0)
     stepped = match start.x
@@ -204,7 +230,9 @@ flowUpdateCase () =
         start.x == 0,
         steeredPoint.x == 11,
         steeredPoint.y == 6,
-        describe (start(y = 9, x = 8)) == "8,9"
+        describe (start(y = 9, x = 8)) == "8,9",
+        nestedAnonymousCapture (),
+        httpRecordLayout ()
     ]
 
 erasedCell = erase (Cell(v = "s"))

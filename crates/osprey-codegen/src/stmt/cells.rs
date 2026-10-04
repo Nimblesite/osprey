@@ -34,14 +34,15 @@ pub(super) fn gen_cell_define(cg: &mut Codegen, name: &str, value: &Expr) -> Res
     };
     crate::arc::own_beyond_stmt(cg, &Value::new(handle, LType::Ptr));
     cg.forget_binding(name);
-    cg.emit_debug_cell_binding(name, &ptr, pointee);
-    let _ = cg.cell_slots.insert(
-        name.to_string(),
+    cg.bind_cell(
+        name,
         crate::builder::CellSlot {
             ptr,
             pointee,
             osp_ty: v.osp_ty,
+            inferred_type: v.inferred_type,
         },
+        true,
     );
     if let Some(ty) = fn_ty {
         cg.bind_fn_local(name, ty);

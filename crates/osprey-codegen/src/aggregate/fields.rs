@@ -61,7 +61,7 @@ fn load_field_value(
     let ty = inferred.map_or(ty, crate::types::ltype_of);
     let target = crate::cast::coerce_to(cg, target, LType::Ptr)?;
     let source = cg.emit_reg(format!("bitcast i8* {} to {struct_ty}*", target.operand));
-    let loaded = super::load_field(cg, &struct_ty, &source, index + 1, ty);
+    let loaded = super::load_record_field(cg, owner, &struct_ty, &source, index, ty);
     Ok(restore_field(
         cg,
         Value::new(loaded, ty),
@@ -85,8 +85,9 @@ fn restore_field(
     {
         return handle.restore(value);
     }
-    value.with_owner(inferred.map_or_else(
-        || cg.ctor_field_owner(owner, field),
-        |ty| crate::types::owner_name(&cg.prog, ty),
-    ))
+    value.with_owner(
+        inferred
+            .and_then(|ty| crate::types::owner_name(&cg.prog, ty))
+            .or_else(|| cg.ctor_field_owner(owner, field)),
+    )
 }

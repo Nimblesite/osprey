@@ -1,5 +1,33 @@
 //! LLVM/DWARF identities and source metadata.
-use super::{host_dwarf_version, metadata_escape, DebugSource, DebugState, LType, Position};
+use super::{host_dwarf_version, metadata_escape, DebugSource, LType, Position};
+
+#[derive(Debug, Clone)]
+pub(super) struct DebugState {
+    pub(super) source: DebugSource,
+    pub(super) current_scope: Option<usize>,
+    pub(super) current_function: Option<usize>,
+    pub(super) current_position: Option<Position>,
+    pub(super) current_retained_nodes: Option<usize>,
+    pub(super) current_local_ids: Vec<usize>,
+    pub(super) next_id: usize,
+    pub(super) file_id: usize,
+    pub(super) cu_id: usize,
+    pub(super) empty_id: usize,
+    pub(super) subroutine_type_id: usize,
+    pub(super) dwarf_flag_id: usize,
+    pub(super) debug_version_flag_id: usize,
+    pub(super) ident_id: usize,
+    pub(super) dwarf_version: u8,
+    pub(super) i64_type_id: usize,
+    pub(super) i32_type_id: usize,
+    pub(super) bool_type_id: usize,
+    pub(super) double_type_id: usize,
+    pub(super) char_type_id: usize,
+    pub(super) ptr_type_id: usize,
+    pub(super) record_types: std::collections::HashMap<String, usize>,
+    pub(super) opaque_ptr_type_id: usize,
+    pub(super) dynamic: Vec<(usize, String)>,
+}
 
 impl DebugState {
     pub(super) fn new(source: DebugSource) -> Self {
@@ -10,7 +38,7 @@ impl DebugState {
             current_position: None,
             current_retained_nodes: None,
             current_local_ids: Vec::new(),
-            next_id: 13,
+            next_id: 14,
             file_id: 0,
             cu_id: 1,
             empty_id: 2,
@@ -25,6 +53,8 @@ impl DebugState {
             double_type_id: 10,
             char_type_id: 11,
             ptr_type_id: 12,
+            opaque_ptr_type_id: 13,
+            record_types: std::collections::HashMap::new(),
             dynamic: Vec::new(),
         }
     }
@@ -104,14 +134,13 @@ impl DebugState {
     pub(super) fn local_variable_id(
         &mut self,
         name: &str,
-        ty: LType,
+        type_id: usize,
         argument: Option<usize>,
     ) -> Option<usize> {
         let scope = self.current_scope?;
         let position = self.current_position?;
         let id = self.alloc_id();
         let line = position.line.max(1);
-        let type_id = self.debug_type_id(ty);
         let name = metadata_escape(name);
         let argument = argument.map_or_else(String::new, |index| format!("arg: {index}, "));
         self.dynamic.push((
@@ -131,7 +160,8 @@ impl DebugState {
             LType::I32 => self.i32_type_id,
             LType::I1 => self.bool_type_id,
             LType::Double => self.double_type_id,
-            LType::Str | LType::Ptr | LType::Any => self.ptr_type_id,
+            LType::Str => self.ptr_type_id,
+            LType::Ptr | LType::Any => self.opaque_ptr_type_id,
         }
     }
 
@@ -170,7 +200,7 @@ impl DebugState {
                 self.i32_type_id
             ),
             format!(
-                "!{} = !DIBasicType(name: \"bool\", size: 1, encoding: DW_ATE_boolean)",
+                "!{} = !DIBasicType(name: \"bool\", size: 8, encoding: DW_ATE_boolean)",
                 self.bool_type_id
             ),
             format!(
@@ -186,6 +216,10 @@ impl DebugState {
                 self.ptr_type_id, self.char_type_id
             ),
         ];
+        out.push(format!(
+            "!{} = !DIDerivedType(tag: DW_TAG_pointer_type, baseType: null, size: 64)",
+            self.opaque_ptr_type_id
+        ));
         out.extend(self.dynamic.iter().map(|(_, line)| line.clone()));
         out
     }

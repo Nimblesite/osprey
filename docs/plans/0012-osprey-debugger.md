@@ -2,7 +2,7 @@
 
 **Subsystem:** `crates/osprey-debug`, `crates/osprey-codegen` (DWARF metadata),
 `crates/osprey-cli`, `vscode-extension`
-**Status:** Phases 1–3 substantially shipped; Phase 4 onward unstarted. Line
+**Status:** Phases 1–3 substantially shipped; Phase 4 record metadata implemented; remaining renderers and later phases are unfinished. Line
 tables land in native debug builds (`compile_program_debug` emitting
 `DICompileUnit`/`DIFile`/`DISubprogram`/`DILocation` plus module flags, DWARF 4 on
 macOS and 5 elsewhere, 1-based `DILocation` columns), and F5 in VS Code is a real
@@ -14,7 +14,7 @@ Source lambda scopes, primitive parameters, immutable captures and block return-
 
 Remaining gaps include:
 
-- **Source coverage and value inspection remain incomplete.** Inlined generic call-frame reconstruction and optimized-away value reporting still need work. Primitive declarations now become visible only after initialization, including shared mutable cells; enclosing names remain visible within shadowing initializers. Ordinary nested block scopes now preserve initialized primitive bindings and exact return stops in named functions, closures and both handler modes. Composite values have no Osprey-specific rendering. The source-lambda regression closes one concrete gap; it does not complete Phase 3.
+- **Source coverage and value inspection remain incomplete.** Inlined generic call-frame reconstruction and optimized-away value reporting still need work. Primitive declarations now become visible only after initialization, including shared mutable cells; enclosing names remain visible within shadowing initializers. Ordinary nested block scopes now preserve initialized primitive bindings and exact return stops in named functions, closures and both handler modes. Native DWARF field expansion now supports named, anonymous, generic and C ABI records, including parameters, captures and live cells. Union, Result, collection and closure rendering remains unfinished. The source-lambda regression closes one concrete gap; it does not complete Phase 3.
 - **Build and launch controls are partially completed.** The native CLI implements `--debug-info=dwarf|none`, `--debug-opt=none`, `--debug-memory=off`, `--debug-out`, IR preservation and symbol preservation. Debug and profile builds collect macOS symbols before deleting objects, and collection failure fails the build. Unsupported optimizer and memory-inspection modes are rejected explicitly. The editor accepts `compilerPath` and `preserveArtifacts` and forces `--debug-opt=none`; real adapter tests inspect the retained binary and source-specific IR in both flavors. Console selection and the optimized/memory inspection modes remain unfinished.
 
 A debug-metadata coverage metric — Layer 6 — is still needed to detect omissions across all executable expression forms.
@@ -775,7 +775,8 @@ Acceptance:
 
 ### Phase 4 - Osprey type and value rendering
 
-- [ ] Emit type metadata for primitives, records, unions, Result, and closures.
+- [x] Emit native metadata for primitive values and named, anonymous, nested and concrete generic records, including C ABI field offsets. Preserve record types through parameters, immutable captures and shared cells. Both-flavor real-adapter cases assert exact field sets and values, simultaneous integer/float instantiations and live replacements in closures and direct/resumable handlers. Compiler assertions pin offsets and field types; corpus assertions cover the anonymous-layout and C ABI projection/update defects exposed by inspection.
+- [ ] Emit union, Result and closure type metadata and value rendering.
 - [ ] Add LLDB summaries/synthetic providers or an Osprey DAP shim.
 - [ ] Add runtime inspection helpers for list/map/string/fiber/channel/effect
       handles.

@@ -521,6 +521,14 @@ that is what separates a record from a map literal, whose keys are string or
 expression values (`{ "Dave": 28 }`). A brace literal with no fields is the
 empty map, not the empty record.
 
+ML writes the same nonempty anonymous row with `=` separators: `origin = { x = 0, y = 0 }`. Nested fields and captures retain the actual record layout through projection; an unnamed inferred row must not erase the concrete layout identity needed for a later field access. Both-flavor `record_update_basic` assertions pin this behavior.
+
+### C ABI record layout — [TYPE-RECORD-C-ABI]
+
+The built-in `HttpResponse` record uses the runtime's C layout, without an Osprey discriminant and with a byte-sized C boolean. Construction, field access, immutable updates, structural and constructor patterns, `any` boxing and native debug inspection must agree on that layout. Updating a field preserves the source and every untouched field. Layout differences cannot change a field's Osprey type or value.
+
+The `httpRecordLayout` assertions in both `record_update_basic` twins exercise reads, boolean and string updates, pattern bindings, preservation of the original and erased-row rendering. Native LLDB-DAP cases inspect every C ABI field by name and exact value.
+
 ### Tuples — [TYPE-TUPLE]
 
 A tuple is a row whose field names are the decimal positions `0`, `1`, …, the
