@@ -190,33 +190,35 @@ fn assert_money_runs(project: &Path) {
     }
 }
 
+const MONEY_REJECTIONS: &[(&str, &str, &str)] = &[
+    (
+        "osp",
+        "fn main() = Money::Amount { cents: 1 }\n",
+        "cannot be constructed outside module",
+    ),
+    (
+        "ospml",
+        "main () = Money::Amount(cents = 1)\n",
+        "cannot be constructed outside module",
+    ),
+    (
+        "osp",
+        "fn main() = { let amount = Money::fromCents(1)\n amount.cents }\n",
+        "is hidden outside module",
+    ),
+    (
+        "ospml",
+        "main () =\n    amount = Money::fromCents 1\n    amount.cents\n",
+        "is hidden outside module",
+    ),
+    ("osp", "fn main() = Money::show(1)\n", "type mismatch"),
+    ("ospml", "main () = Money::show 1\n", "type mismatch"),
+];
+
 #[test]
 fn bank_money_signature_rejects_representation_access_from_both_flavors(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    for (extension, source, error) in [
-        (
-            "osp",
-            "fn main() = Money::Amount { cents: 1 }\n",
-            "cannot be constructed outside module",
-        ),
-        (
-            "ospml",
-            "main () = Money::Amount(cents = 1)\n",
-            "cannot be constructed outside module",
-        ),
-        (
-            "osp",
-            "fn main() = { let amount = Money::fromCents(1)\n amount.cents }\n",
-            "is hidden outside module",
-        ),
-        (
-            "ospml",
-            "main () =\n    amount = Money::fromCents 1\n    amount.cents\n",
-            "is hidden outside module",
-        ),
-        ("osp", "fn main() = Money::show(1)\n", "type mismatch"),
-        ("ospml", "main () = Money::show 1\n", "type mismatch"),
-    ] {
+    for &(extension, source, error) in MONEY_REJECTIONS {
         let project = money_client_fixture(extension, source)?;
         let output = run(&[arg(&project), "--check".into(), "--quiet".into()]);
         assert_eq!(output.code, Some(1), "{source}: {}", output.stderr);
@@ -230,22 +232,27 @@ fn money_client_fixture(
     extension: &str,
     source: &str,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let project = std::env::temp_dir().join(format!(
-        "osprey_money_signature_{}_{}_{}",
-        std::process::id(),
-        extension,
-        source.len()
-    ));
-    std::fs::create_dir_all(project.join("src"))?;
-    let _ = std::fs::copy(
-        fixture().join("src/domain/money.ospml"),
-        project.join("src/money.ospml"),
-    )?;
+    let project = money_project_directory(extension, source.len())?;
     let entry = project.join(format!("src/main.{extension}"));
     std::fs::write(&entry, source)?;
     std::fs::write(
         project.join("osprey.toml"),
         format!("[project]\nname = \"money-contract\"\nsource_roots = [\"src\"]\ndefault_namespace = \"bank\"\nentry = \"src/main.{extension}\"\n"),
+    )?;
+    Ok(project)
+}
+
+fn money_project_directory(extension: &str, source_length: usize) -> std::io::Result<PathBuf> {
+    let project = std::env::temp_dir().join(format!(
+        "osprey_money_signature_{}_{}_{}",
+        std::process::id(),
+        extension,
+        source_length
+    ));
+    std::fs::create_dir_all(project.join("src"))?;
+    let _ = std::fs::copy(
+        fixture().join("src/domain/money.ospml"),
+        project.join("src/money.ospml"),
     )?;
     Ok(project)
 }
