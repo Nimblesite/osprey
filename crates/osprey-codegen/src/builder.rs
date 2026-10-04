@@ -4,6 +4,8 @@
 //! text; the AST-walking lives in `lower.rs`.
 
 mod debug_variables;
+mod lexical_scope;
+pub(crate) use lexical_scope::FileScopeState;
 
 use crate::error::{CodegenError, Result};
 use crate::llty::{LType, Value};
@@ -52,6 +54,7 @@ pub(crate) struct Lowered {
 
 /// Accumulates a whole module while lowering one function at a time.
 pub(crate) struct Codegen {
+    pub(crate) application_caller: Option<ProgramTypes>,
     /// `declare` lines, de-duplicated and stably ordered.
     externs: BTreeSet<String>,
     /// Global constant definitions (string literals).
@@ -398,50 +401,6 @@ pub(crate) struct SavedFn {
     debug_local_ids: Vec<usize>,
 }
 
-/// Caller bindings hidden while an inlined file-scope lambda executes.
-struct FileScopeState {
-    scopes: Vec<HashMap<String, Value>>,
-    scope_ids: Vec<usize>,
-    lambdas: HashMap<String, LambdaDef>,
-    lambda_prefix: HashMap<String, (Vec<osprey_ast::Parameter>, Vec<Value>)>,
-    call_aliases: HashMap<String, String>,
-    fn_ptr_locals: HashMap<String, FnSig>,
-    fn_value_types: HashMap<String, Type>,
-    cell_vars: HashSet<String>,
-    cell_slots: HashMap<String, CellSlot>,
-}
-
-impl FileScopeState {
-    fn enter(cg: &mut Codegen) -> Self {
-        let state = Self {
-            scopes: std::mem::take(&mut cg.scopes),
-            scope_ids: std::mem::take(&mut cg.scope_ids),
-            lambdas: std::mem::take(&mut cg.lambdas),
-            lambda_prefix: std::mem::take(&mut cg.lambda_prefix),
-            call_aliases: std::mem::replace(&mut cg.call_aliases, cg.file_aliases.clone()),
-            fn_ptr_locals: std::mem::take(&mut cg.fn_ptr_locals),
-            fn_value_types: std::mem::take(&mut cg.fn_value_types),
-            cell_vars: std::mem::take(&mut cg.cell_vars),
-            cell_slots: std::mem::take(&mut cg.cell_slots),
-        };
-        cg.push_scope();
-        state
-    }
-
-    fn restore(self, cg: &mut Codegen) {
-        cg.pop_scope();
-        cg.scopes = self.scopes;
-        cg.scope_ids = self.scope_ids;
-        cg.lambdas = self.lambdas;
-        cg.lambda_prefix = self.lambda_prefix;
-        cg.call_aliases = self.call_aliases;
-        cg.fn_ptr_locals = self.fn_ptr_locals;
-        cg.fn_value_types = self.fn_value_types;
-        cg.cell_vars = self.cell_vars;
-        cg.cell_slots = self.cell_slots;
-    }
-}
-
 #[derive(Debug, Clone)]
 struct DebugState {
     source: DebugSource,
@@ -709,6 +668,7 @@ impl Codegen {
             pending_iter_ops: Vec::new(),
             lambdas: HashMap::new(),
             file_lambdas: HashMap::new(),
+            application_caller: None,
             file_lambda_prefix: HashMap::new(),
             file_aliases: HashMap::new(),
             lambda_prefix: HashMap::new(),

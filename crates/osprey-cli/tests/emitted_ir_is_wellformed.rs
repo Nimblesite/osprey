@@ -335,3 +335,18 @@ fn generic_runtime_callbacks_keep_their_source_scope() -> Result<(), String> {
 }
 
 const INFERRED_ML: &str = "respond (method, path, headers, body) = HttpResponse(status = 200, headers = \"\", contentType = \"text/plain\", streamFd = 0, isComplete = true, partialBody = \"ok\")\nserver = httpCreateServer (18201, \"127.0.0.1\")\nlistening = httpListen (server, respond)\nprint \"${listening}\"\n";
+
+/// [TYPE-GENERICS-FN] Named C callbacks read their declaration's global bindings.
+#[test]
+fn generic_c_callbacks_do_not_capture_shadowing_callers() -> Result<(), String> {
+    for (source, extension) in [
+        ("extern fn invoke(f: (int) -> int, n: int) -> int\nlet anchor = 2\nfn declared(ignored) = anchor\nfn main() = {\n    let anchor = 100\n    print(invoke(declared, anchor))\n}\n", "osp"),
+        ("extern invoke (f : int -> int) (n : int) -> int\nanchor = 2\ndeclared ignored = anchor\nmain () =\n    anchor = 100\n    print (invoke (declared, anchor))\n", "ospml"),
+    ] {
+        let ir = return_debug_ir(source, extension)?;
+        assert!(ir.contains("load i64, i64* @osp.g.anchor"));
+        assert!(ir.contains("!DILocalVariable(name: \"ignored\", arg: 1,"));
+        assert!(undefined_symbols(&ir).is_empty());
+    }
+    Ok(())
+}

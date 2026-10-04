@@ -185,6 +185,8 @@ polymorphic function is monomorphised independently at each call site.
 Variance markers are **not** permitted on function binders (variance is
 declaration-site on types and effects only — [TYPE-VARIANCE-DECL]).
 
+Specialization preserves lexical binding identity. A named function reads bindings from its declaration scope, including when it is passed as a callback or stored in a record; caller bindings with the same spelling cannot replace them. Arguments are evaluated exactly once in their caller scope, in application order. In a curried call, a function body runs before the arguments of the next application. Nested applications of the same generic function have independent type substitutions; nesting alone is not recursion. The Default/ML `tests/modules/file_scope_generic_binding.test` pair pins shadowing, ordinary closure captures, live global storage, nested instantiations and effect order. C callback lowering is also pinned by `generic_c_callbacks_do_not_capture_shadowing_callers`.
+
 ```osprey
 fn pick<T>(first: T, second: T) = first
 let n = pick(10, 20)

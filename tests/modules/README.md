@@ -27,71 +27,14 @@ parse → type-check → codegen and never runs `osprey_project::assemble`, so a
 module-assembly rejection written there would be graded on a path that cannot
 produce it.
 
-## Known defects pinned red
+## Regression coverage
 
-Writing these suites surfaced eight defects. Each has a failing test; none has
-been worked around in the passing suites above, and the passing suites are
-written to steer clear of the broken shapes so they measure what they claim to.
+The original module and effect-installer defects found on 2026-08-22 are fixed and remain mandatory regression tests. Their historical repros live in [`module_defects.rs`](../../crates/osprey-project/tests/module_defects.rs) and [`effect_installer_defects.rs`](../../crates/osprey-cli/tests/effect_installer_defects.rs).
 
-The red tests live in
-[`crates/osprey-project/tests/module_defects.rs`](../../crates/osprey-project/tests/module_defects.rs)
-and
-[`crates/osprey-cli/tests/effect_installer_defects.rs`](../../crates/osprey-cli/tests/effect_installer_defects.rs).
+- Repeated file-scoped namespaces retain their declarations and executable statements in both flavors.
+- Project assembly rejects conflicting entrypoints and exposes ordinary exported union constructors while retaining opaque boundaries.
+- Generic handler installers preserve string and integer results in either statement order, and curried ML installers emit callable resumable bodies.
+- Single-line ML handler arms may assign to their cells, and a file-scope handler may coexist with a generic binding.
+- Handler-owned mutable cells remain values when passed to inferred helpers returning `Result`.
 
-### Silent — the program exits zero having done the wrong thing
-
-1. **A generic handler installer applied at two body result types renders a raw
-   pointer.** `fn feeding(reading, body) = handle Feed … in body()` used once
-   with a `string`-returning body and once with an `int`-returning one, both
-   evaluated inside a top-level statement's interpolation, prints a
-   machine-dependent integer where the string belonged — and exits `0`.
-   Reversing the two statements turns it into a SIGSEGV instead. Binding each
-   call to a `let`, or making the calls from inside a function body, avoids it.
-   Reproduces under `default`, `gc` and `arc`.
-
-2. **A second file-scoped `namespace` header silently discards everything after
-   it (ML).** The ML lowering nests the second header inside the first
-   namespace's body instead of closing it, and `osprey_project::contribution`
-   only walks top-level `Stmt::Namespace`. The second namespace's declarations
-   vanish and every statement written after the header never runs. Empty output,
-   exit `0`, no diagnostic.
-
-3. **A second file-scoped `namespace` header is ignored outright (Default).**
-   Declarations after it are filed under the FIRST namespace, so a source that
-   wrote `two::B::v` gets a declaration answering to `one::B::v` and a call site
-   blamed for an unknown path.
-
-4. **`main` beside a top-level statement is not rejected under project
-   assembly.** [MODULES-ENTRYPOINT] forbids one source declaring two entries, and
-   `examples/failscompilation/main_beside_top_level_statement.ospo` pins the
-   rejection for a plain program. Add a `namespace` and the check is skipped:
-   both entries are kept and both run, statement first.
-
-### Loud — rejected or crashing, but wrong
-
-5. **A curried ML installer emits an unlinkable resume trampoline.** ML's
-   `feeding reading body = handle … in body ()` fails to link with
-   `undefined symbol "_body"` from `___resume_body_Feed_0`. The tupled head
-   `feeding (reading, body)`, which lowers to a flat parameter list, compiles —
-   so currying and resume-body outlining disagree, against [FLAVOR-ML-CURRY].
-
-6. **The ML spec's own single-line assigning handler arm does not parse.**
-   [FLAVOR-ML-BIND] prints `tick => requests := (requests + 1) ?: requests`.
-   Only the indented-block form is accepted; either the grammar or the spec page
-   is stale.
-
-7. **A file-scope handler and a file-scope generic binding cannot coexist.**
-   [MODULES-FILE-SCOPE-BINDING] documents both in the same section, and each
-   half compiles alone, but together they are rejected with "program entry
-   invokes a dynamic callable whose effect provenance cannot be proven". A
-   generic binding has no runtime value to store ([TYPE-GENERICS-FN]), so it
-   cannot be the dynamic callable — the check is over-approximating. This is why
-   `file_scope_generic_binding` is a separate program from `file_scope_bindings`.
-
-8. **An exported module union has no reachable constructors.**
-   [MODULES-OPAQUE-TYPES] singles out OPAQUE union constructors as private,
-   which only means something if a plain exported union's are public. Neither
-   `Circle` nor `Geo::Circle` resolves outside the module, so an exported type
-   can only be constructed if the module also exports a factory per variant.
-   `module_data_types` therefore builds every value through a factory, and says
-   so in its header.
+The `file_scope_generic_binding` twins additionally pin declaration scope through direct calls, aliases, higher-order calls, iterator callbacks and typed record fields. They distinguish global storage from shadowing caller values and genuine local closure captures. Curried calls retain their caller arguments, nested calls use independent type instantiations, and an effect transcript proves first argument → body → second argument ordering with no duplicated work. Both flavors share one exact golden under every supported target and memory backend.

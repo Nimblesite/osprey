@@ -1,13 +1,8 @@
-//! RED tests pinning module defects found on 2026-08-22.
+//! Regression tests for module defects found on 2026-08-22.
 //!
-//! Every test here fails against the current compiler. That is deliberate: a
-//! failing test that pins a compiler bug outranks a speculative fix, because it
-//! survives refactors and turns a suspicion into an enforceable contract. Do
-//! not weaken an assertion here to make one pass — fix the compiler.
-//!
-//! Two of these pin SILENT failures, which is the worst outcome the language
-//! can produce: the program exits zero having run something other than what was
-//! written. See `tests/modules/README.md` for the full write-up.
+//! The original failures are fixed. Preserve every assertion: namespace scope,
+//! entrypoint selection and exported constructors remain mandatory contracts.
+//! See `tests/modules/README.md` for current coverage.
 
 mod support;
 
@@ -64,7 +59,7 @@ fn executable_count(project: &osprey_project::AssembledProject) -> usize {
 /// says each applies to the declarations that follow it, so `two::B::v` must
 /// exist and both `print` statements must run.
 ///
-/// DEFECT: the ML lowering nests the second header inside the first namespace's
+/// Original defect: the ML lowering nests the second header inside the first namespace's
 /// body instead of closing it, and `osprey_project::contribution` only walks
 /// TOP-LEVEL `Stmt::Namespace`. The nested contribution is filed as an ordinary
 /// declaration, so `two::B::v` never registers and every statement written
@@ -99,7 +94,7 @@ fn ml_second_file_scoped_namespace_keeps_its_declarations_and_statements() {
 
 /// The Default spelling of the same program. [MODULES-FILE-SCOPED-NAMESPACE]
 ///
-/// DEFECT: the second `namespace two;` header is ignored outright, so `module B`
+/// Original defect: the second `namespace two;` header is ignored outright, so `module B`
 /// is filed under `one`. Nothing is reported; the declaration simply answers to
 /// `one::B::v`, a name the source never wrote. A program that asks for
 /// `two::B::v` is then told the path is unknown, blaming the call site for the
@@ -130,7 +125,7 @@ fn default_second_file_scoped_namespace_rescopes_the_declarations_after_it() {
 /// them could run". `examples/failscompilation/main_beside_top_level_statement.ospo`
 /// pins the rejection for a plain program.
 ///
-/// DEFECT: a source carrying a namespace routes through project assembly, where
+/// Original defect: a source carrying a namespace routes through project assembly, where
 /// the check is missing. Both entries are then kept and BOTH run — the statement
 /// first, then `main` — which is the exact "only one of them could run"
 /// situation the rule exists to prevent.
@@ -155,7 +150,7 @@ fn namespaced_main_beside_a_top_level_statement_is_rejected() {
 /// ones — which only means anything if a plain exported union's constructors
 /// are public.
 ///
-/// DEFECT: a union declared inside a module has no reachable constructors at
+/// Original defect: a union declared inside a module has no reachable constructors at
 /// all. Neither the bare name nor the qualified path resolves, so an exported
 /// type can only be built by also exporting a factory function for every
 /// variant. The type is exported; the only way to make a value of it is not.

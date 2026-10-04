@@ -231,6 +231,16 @@ fn gen_block(
     value: Option<&Expr>,
     position: Option<Position>,
 ) -> Result<Value> {
+    gen_block_with(cg, statements, value, position, gen_expr)
+}
+
+pub(crate) fn gen_block_with(
+    cg: &mut Codegen,
+    statements: &[Stmt],
+    value: Option<&Expr>,
+    position: Option<Position>,
+    tail: impl FnOnce(&mut Codegen, &Expr) -> Result<Value>,
+) -> Result<Value> {
     // A child scope preserves outer bindings across nested blocks [BLOCK-SCOPE].
     cg.push_scope();
     let result = (|| {
@@ -241,7 +251,7 @@ fn gen_block(
             crate::arc::release_dead_after(cg, statements.get(i + 1..).unwrap_or(&[]), value);
         }
         let previous = cg.set_debug_position(position);
-        let result = value.map_or_else(|| Ok(Value::unit()), |e| gen_expr(cg, e));
+        let result = value.map_or_else(|| Ok(Value::unit()), |e| tail(cg, e));
         cg.restore_debug_position(previous);
         result
     })();
@@ -665,17 +675,18 @@ pub(crate) fn with_application<R>(
     position: Option<Position>,
     generate: impl FnOnce(&mut Codegen) -> R,
 ) -> R {
-    let bindings = position
+    let Some(bindings) = position
         .and_then(|p| cg.prog.applications.get(&(p.line, p.column)))
-        .cloned();
-    let original = bindings.map(|b| {
-        let specialized = cg.prog.specialized(&b);
-        std::mem::replace(&mut cg.prog, specialized)
-    });
+        .cloned()
+    else {
+        return generate(cg);
+    };
+    let specialized = cg.prog.specialized(&bindings);
+    let original = std::mem::replace(&mut cg.prog, specialized);
+    let previous = cg.application_caller.replace(original.clone());
     let result = generate(cg);
-    if let Some(original) = original {
-        cg.prog = original;
-    }
+    cg.prog = original;
+    cg.application_caller = previous;
     result
 }
 
@@ -1100,7 +1111,15 @@ pub(crate) fn apply_lambda_values(
     sig: Option<&FnSig>,
     position: Option<Position>,
 ) -> Result<Value> {
-    reduce_lambda(cg, parameters, body, values, sig, &[], position)
+    reduce_lambda(
+        cg,
+        parameters,
+        body,
+        values,
+        sig,
+        &mut crate::curry::Groups::default(),
+        position,
+    )
 }
 
 /// [`apply_lambda_values`] with the groups of a curried application spine that
@@ -1113,7 +1132,7 @@ pub(crate) fn reduce_lambda(
     body: &Expr,
     values: Vec<Value>,
     sig: Option<&FnSig>,
-    rest: &[crate::curry::ArgGroup<'_>],
+    rest: &mut crate::curry::Groups<'_>,
     position: Option<Position>,
 ) -> Result<Value> {
     cg.push_scope();
@@ -1124,8 +1143,9 @@ pub(crate) fn reduce_lambda(
     let saved_fn_types = cg.fn_value_types.clone();
     let lowered = (|| {
         bind_lambda_params(cg, parameters, values, sig, position)?;
+        let final_group = rest.is_empty();
         let value = crate::curry::apply_groups(cg, body, rest)?;
-        if rest.is_empty() {
+        if final_group {
             fit_lambda_return(cg, value, sig)
         } else {
             Ok(value)
@@ -1446,31 +1466,33 @@ fn eval_arg(cg: &mut Codegen, expr: &Expr, sig: Option<&FnSig>, ffi: bool) -> Re
             // once-per-module forwarder cell via `gen_expr`/`named_fn_cell`.
             // Implements [TYPE-GENERICS-FN].
             if let Some((params, body, position)) = cg.fn_defs.get(&target).cloned() {
-                return if ffi {
-                    crate::closure::raw_callback_lambda(
-                        cg,
-                        &params,
-                        &body,
-                        sig,
-                        position,
-                        Some(&target),
-                    )
-                } else {
-                    // Keyed by (function, slot ABI): every use at the same ABI
-                    // lowers to a byte-identical body, so emit it once and
-                    // share the cell. Distinct ABIs still get distinct bodies —
-                    // that is what specialising means.
-                    let key = crate::closure::specialisation_key(&target, sig);
-                    crate::closure::emit_closure_keyed(
-                        cg,
-                        &params,
-                        &body,
-                        sig,
-                        Some(key),
-                        position,
-                        Some(&target),
-                    )
-                };
+                return cg.with_file_scope(|cg| {
+                    if ffi {
+                        crate::closure::raw_callback_lambda(
+                            cg,
+                            &params,
+                            &body,
+                            sig,
+                            position,
+                            Some(&target),
+                        )
+                    } else {
+                        // Keyed by (function, slot ABI): every use at the same ABI
+                        // lowers to a byte-identical body, so emit it once and
+                        // share the cell. Distinct ABIs still get distinct bodies —
+                        // that is what specialising means.
+                        let key = crate::closure::specialisation_key(&target, sig);
+                        crate::closure::emit_closure_keyed(
+                            cg,
+                            &params,
+                            &body,
+                            sig,
+                            Some(key),
+                            position,
+                            Some(&target),
+                        )
+                    }
+                });
             }
             if ffi && cg.fn_params.contains_key(&target) {
                 return Ok(fn_pointer(cg, &target));

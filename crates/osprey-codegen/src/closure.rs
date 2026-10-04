@@ -314,8 +314,9 @@ fn specialized_named_cell(
     let sig = Codegen::fn_value_sig(&cg.prog, &ty)
         .ok_or_else(|| CodegenError::invalid("function value has no signature"))?;
     let key = format!("{}|{ty:?}", specialisation_key(name, &sig));
-    let mut value =
-        emit_closure_keyed(cg, parameters, body, &sig, Some(key), position, Some(name))?;
+    let mut value = cg.with_file_scope(|cg| {
+        emit_closure_keyed(cg, parameters, body, &sig, Some(key), position, Some(name))
+    })?;
     value.inferred_type = Some(ty);
     Ok(value)
 }

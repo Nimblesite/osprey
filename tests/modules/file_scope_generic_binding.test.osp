@@ -4,9 +4,8 @@
 /// ([TYPE-GENERICS-FN]), so binding it produces no runtime value to store — the
 /// name resolves to the body, and every call site specialises it independently.
 ///
-/// This lives beside `file_scope_bindings` rather than inside it because that
-/// program also installs a file-scope handler, and the two together are
-/// currently rejected: see `tests/modules/README.md`.
+/// Handler coexistence is covered by `effect_installer_defects`; the tests below
+/// focus on independent specialization and lexical binding identity.
 
 /// A generic identity, bound by name below.
 fn identity(x) = x
@@ -55,7 +54,116 @@ fn secondBindingCase() = checkAll("a second generic binding is independent", [
     tagged("via", round(4)) == "via:4"
 ])
 
+// [TYPE-GENERICS-FN] Specialization preserves declaration scope and caller arguments.
+let anchor = 2
+fn declared(_ignored) = anchor
+let declaredAlias = declared
+fn apply(f, value) = f(value)
+fn relay(f, value) = apply(f, value)
+fn curried(first) = |second| => "${first}:${second}:${anchor}"
+type IntOperation = { run: fn(int) -> int }
+type StringOperation = { run: fn(string) -> int }
+
+fn lexicalCallCase() = {
+    let anchor = 100
+    let caller = |value| => wrapAdd(anchor, value)
+    let captured = |value| => "${anchor}:${value}"
+    checkAll("generic calls use declaration bindings", [
+        (range(1, 3) |> map(declared) |> fold(0, wrapAdd)) == 4,
+        declared(anchor) == 2,
+        declaredAlias("independent") == 2,
+        identity(anchor) == 100,
+        caller(1) == 101,
+        apply(declared, anchor) == 2,
+        relay(declaredAlias, "forwarded") == 2,
+        apply(captured, 1) == "100:1",
+        relay(captured, "a") == "100:a",
+        anchor == 100
+    ])
+}
+
+fn lexicalValueCase() = {
+    let anchor = 100
+    let integers = IntOperation { run: declared }
+    let strings = StringOperation { run: declaredAlias }
+    let local = IntOperation { run: |value| => wrapAdd(anchor, value) }
+    checkAll("generic values use declaration bindings", [
+        integers.run(anchor) == 2,
+        strings.run("independent") == 2,
+        local.run(1) == 101,
+        anchor == 100
+    ])
+}
+
+fn lexicalCurryCase() = {
+    let first = 100
+    let anchor = 200
+    checkAll("curried arguments stay in caller scope", [
+        curried(1)(curried(2)(3)) == "1:2:3:2:2",
+        curried(1)(first) == "1:100:2",
+        curried("a")(anchor) == "a:200:2",
+        first == 100,
+        anchor == 200
+    ])
+}
+
+effect Trace { step: fn(string) -> int }
+fn marked(label, value) = {
+    let _ = perform Trace.step(label)
+    value
+}
+fn staged(first) = {
+    let _ = perform Trace.step("body")
+    |second| => "${first}:${second}:${anchor}"
+}
+
+fn applicationOrderCase() = {
+    mut seen = ""
+    handle Trace {
+        step label => {
+            seen = "${seen}${label}|"
+            length(seen)
+        }
+    }
+    let first = 100
+    let anchor = 200
+    let actual = staged(marked("first", 1))(marked("second", first))
+    checkAll("curried effects execute once in application order", [
+        actual == "1:100:2",
+        seen == "first|body|second|",
+        first == 100,
+        anchor == 200
+    ])
+}
+
+mut shared = 2
+effect Counter { set: fn(int) -> int }
+fn readShared(_ignored) = shared
+
+fn mutableScopeCase() = {
+    handle Counter {
+        set value => {
+            shared = value
+            shared
+        }
+    }
+    mut shared = 100
+    let local = || => shared
+    let holder = IntOperation { run: readShared }
+    let before = holder.run(0)
+    let updated = perform Counter.set(7)
+    checkAll("generic values read live declaration storage", [
+        before == 2, updated == 7, holder.run(0) == 7,
+        readShared("another type") == 7, local() == 100, shared == 100
+    ])
+}
+
 print("${round(1)} ${label("s")} ${flag(true)} ${tagged("n", 1)}")
 test("one generic binding specialises at every call site", independentSpecialisationCase)
 test("a generic binding resolves to the named body", bindingEqualsNameCase)
 test("generic bindings specialise independently of each other", secondBindingCase)
+test("generic calls preserve lexical bindings", lexicalCallCase)
+test("generic values preserve lexical bindings", lexicalValueCase)
+test("curried arguments preserve caller bindings", lexicalCurryCase)
+test("curried effects preserve application order", applicationOrderCase)
+test("generic values preserve live global storage", mutableScopeCase)

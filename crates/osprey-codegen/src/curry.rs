@@ -87,57 +87,129 @@ fn spine(expr: &Expr) -> Option<Spine<'_>> {
     }
 }
 
-/// Apply the still-unconsumed groups of a spine to an inlined body, beta-
-/// reducing one lambda per group. With no groups left this is just the body.
+/// Remaining applications retain their caller independently of callee bindings.
+#[derive(Default)]
+pub(crate) struct Groups<'a> {
+    remaining: &'a [ArgGroup<'a>],
+    caller: Option<crate::builder::FileScopeState>,
+}
+
+impl<'a> Groups<'a> {
+    pub(crate) fn file_scoped(cg: &mut Codegen, remaining: &'a [ArgGroup<'a>]) -> Self {
+        Self {
+            remaining,
+            caller: Some(crate::builder::FileScopeState::enter(cg)),
+        }
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.remaining.is_empty()
+    }
+
+    pub(crate) fn restore(self, cg: &mut Codegen) {
+        if let Some(caller) = self.caller {
+            caller.restore(cg);
+        }
+    }
+
+    fn in_caller<T>(&mut self, cg: &mut Codegen, emit: impl FnOnce(&mut Codegen) -> T) -> T {
+        cg.with_caller_types(|cg| match &mut self.caller {
+            Some(caller) => caller.with(cg, emit),
+            None => emit(cg),
+        })
+    }
+}
+
+/// Beta-reduce each lambda in declaration scope, evaluating each group in caller scope.
+/// Implements [TYPE-GENERICS-FN] [FLAVOR-ML-CURRY].
 pub(crate) fn apply_groups(
     cg: &mut Codegen,
     body: &Expr,
-    groups: &[ArgGroup<'_>],
+    groups: &mut Groups<'_>,
 ) -> Result<Value> {
-    let Some((group, rest)) = groups.split_first() else {
+    if groups.is_empty() {
+        return gen_expr(cg, body);
+    }
+    match body {
+        Expr::Block {
+            statements,
+            value,
+            position,
+        } => {
+            crate::expr::gen_block_with(cg, statements, value.as_deref(), *position, |cg, tail| {
+                apply_groups(cg, tail, groups)
+            })
+        }
+        Expr::Lambda {
+            parameters,
+            body: inner,
+            position,
+            ..
+        } if groups
+            .remaining
+            .first()
+            .is_some_and(|group| parameters.len() == group.0.len() + group.1.len()) =>
+        {
+            apply_lambda_group(cg, parameters, inner, *position, groups)
+        }
+        _ => apply_value_groups(cg, body, groups),
+    }
+}
+
+fn apply_lambda_group(
+    cg: &mut Codegen,
+    parameters: &[osprey_ast::Parameter],
+    body: &Expr,
+    position: Option<Position>,
+    groups: &mut Groups<'_>,
+) -> Result<Value> {
+    let Some((group, rest)) = groups.remaining.split_first() else {
         return gen_expr(cg, body);
     };
-    let Expr::Lambda {
-        parameters,
-        body: inner,
-        position,
-        ..
-    } = body
-    else {
-        return gen_expr(cg, &applied(body, groups));
-    };
-    // A group that does not fill the lambda's parameter list is a partial
-    // application of a flat head, which beta-reduction cannot express; hand the
-    // rebuilt call back to the ordinary paths so it reports there.
-    if parameters.len() != group.0.len() + group.1.len() {
-        return gen_expr(cg, &applied(body, groups));
-    }
-    let values = group_values(cg, group)?;
-    // A still-generic lambda in the spine is specialised by its arguments, not
-    // by the one type inference recorded for its position
-    // ([`crate::expr::inline_sig`]).
-    let sig = crate::expr::inline_sig(cg, *position);
-    crate::expr::reduce_lambda(cg, parameters, inner, values, sig.as_ref(), rest, *position)
+    let values = groups.in_caller(cg, |cg| group_values(cg, group))?;
+    groups.remaining = rest;
+    let sig = crate::expr::inline_sig(cg, position);
+    crate::expr::reduce_lambda(cg, parameters, body, values, sig.as_ref(), groups, position)
 }
 
-/// Lower one group's arguments, named ones in their parameter's position.
+fn apply_value_groups(cg: &mut Codegen, body: &Expr, groups: &mut Groups<'_>) -> Result<Value> {
+    let mut ty = cg.callee_fn_type(body);
+    let mut value = gen_expr(cg, body)?;
+    while let Some((group, rest)) = groups.remaining.split_first() {
+        (value, ty) = groups.in_caller(cg, |cg| apply_value_group(cg, &value, ty, group))?;
+        groups.remaining = rest;
+    }
+    Ok(value)
+}
+
+fn apply_value_group(
+    cg: &mut Codegen,
+    value: &Value,
+    ty: Option<osprey_types::Type>,
+    group: &ArgGroup<'_>,
+) -> Result<(Value, Option<osprey_types::Type>)> {
+    let signature = ty
+        .as_ref()
+        .and_then(|ty| Codegen::fn_value_sig(&cg.prog, ty))
+        .ok_or_else(|| {
+            crate::error::CodegenError::invalid("curried value has no function signature")
+        })?;
+    let value = crate::closure::cell_call_exprs(
+        cg,
+        &value.operand,
+        &signature,
+        &crate::expr::arg_exprs(group.0, group.1),
+    )?;
+    let returned_type = ty.and_then(|ty| match ty {
+        osprey_types::Type::Fun { ret, .. } => Some(*ret),
+        _ => None,
+    });
+    Ok((value, returned_type))
+}
+
 fn group_values(cg: &mut Codegen, group: &ArgGroup<'_>) -> Result<Vec<Value>> {
-    let exprs = crate::expr::arg_exprs(group.0, group.1);
-    let mut values = Vec::with_capacity(exprs.len());
-    for a in exprs {
-        values.push(gen_expr(cg, a)?);
-    }
-    Ok(values)
-}
-
-/// Rebuild `head(g1)(g2)…` as an AST so a spine this module cannot reduce is
-/// lowered by the ordinary call paths rather than silently dropped.
-fn applied(head: &Expr, groups: &[ArgGroup<'_>]) -> Expr {
-    groups
-        .iter()
-        .fold(head.clone(), |function, (arguments, named)| Expr::Call {
-            function: Box::new(function),
-            arguments: arguments.to_vec(),
-            named_arguments: named.to_vec(),
-        })
+    crate::expr::arg_exprs(group.0, group.1)
+        .into_iter()
+        .map(|a| gen_expr(cg, a))
+        .collect()
 }
