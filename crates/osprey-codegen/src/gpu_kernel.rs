@@ -196,6 +196,7 @@ fn lift(
         parameters: &parameters,
         body: &body,
         own: own.as_ref(),
+        position,
     };
     emit(cg, &kernel, params)
 }
@@ -207,6 +208,7 @@ struct Lifting<'a> {
     parameters: &'a [Parameter],
     body: &'a Expr,
     own: Option<&'a FnSig>,
+    position: Option<osprey_ast::Position>,
 }
 
 /// Whether this lambda's shape fits the extracted ABI.
@@ -286,6 +288,7 @@ fn emit(cg: &mut Codegen, k: &Lifting<'_>, params: Vec<ParamSig>) -> Result<Call
     let symbol = format!("{KERNEL_PREFIX}{}", cg.next_kernel_id());
     let uniforms: Vec<Value> = k.caps.iter().map(|c| c.val.clone()).collect();
     let saved = cg.enter_nested_fn();
+    crate::closure::begin_source(cg, &symbol, k.position);
     let plist = declare(cg, k, &params);
     let emitted = kernel_body(cg, k.body, k.own);
     let ret = emitted
@@ -320,6 +323,7 @@ fn declare(cg: &mut Codegen, k: &Lifting<'_>, params: &[ParamSig]) -> Vec<(LType
         params,
         k.caps.len(),
     ));
+    crate::closure::source_parameters(cg, k.parameters, k.caps.len());
     plist
 }
 
@@ -339,6 +343,7 @@ fn bind_uniforms(cg: &mut Codegen, caps: &[crate::closure::Capture]) -> Vec<(LTy
         // BORROWED for the call's duration, exactly as a top-level function's
         // parameters are [GC-ARC-PERCEUS].
         let value = crate::cast::incoming_param(cg, format!("%{reg}"), sig, c.val.osp_ty.clone());
+        cg.emit_debug_local(&c.name, &value);
         cg.bind(c.name.clone(), value);
         out.push((c.val.ty, reg));
     }
@@ -353,6 +358,7 @@ fn kernel_body(cg: &mut Codegen, body: &Expr, own: Option<&FnSig>) -> Result<Val
     let lowered = gen_expr(cg, body).and_then(|v| crate::expr::fit_lambda_return(cg, v, own));
     cg.value_discarded = outer;
     let value = lowered?;
+    let _ = cg.set_debug_position(crate::stmt::tail_position(body));
     // Function epilogue: the return transfers +1, owned locals drop
     // [GC-ARC-PERCEUS]. A scalar return makes the retain a no-op.
     crate::arc::epilogue(cg, Some(&value));

@@ -633,12 +633,8 @@ extracted paths cannot drift.
       under both modes while its eleven lambda kernels are not.
 - [ ] Measure the host-backend payoff under `extract` versus `inline` and
       record it in "What that costs, measured". Unmeasured today.
-- [ ] Remove the `gpu_kernel::returned` / `closure::cell_call` clone
-      (`deslop` cluster #48, 31 nodes) — one shared helper for
-      `sig.2`/`sig.3` return reconstruction.
-- [ ] Lifted kernels carry no `DISubprogram`, so they are invisible to lldb.
-      Deliberate (it matches `closure::emit_closure_fn`) and owned by
-      [plan 0012](0012-osprey-debugger.md).
+- [x] Share return reconstruction: `gpu_kernel::extracted_call` and `closure::cell_call` both use `closure::returned`, preserving Result, Fiber and owner metadata. The duplicated implementation is gone; allocator and alternate-lowering goldens cover the shared path.
+- [x] Preserve debugger scopes for extracted host kernels. Source parameters follow captured uniforms in native argument numbering; captures and locals remain inspectable on the return line. Both-flavor compiler tests cover all five extracting combinators, and real LLDB-DAP editor tests assert `x = 40`, uniform `n = 2` and local `sum = 42`. Shares the source-lambda machinery owned by [plan 0012](0012-osprey-debugger.md).
 
 ### Stage 4 — first device target (NVPTX)
 

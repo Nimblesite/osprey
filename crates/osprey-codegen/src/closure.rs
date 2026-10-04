@@ -21,7 +21,9 @@ mod source;
 
 use captures::closure_captures;
 pub(crate) use captures::{capture_list, free_names, reload_captures};
-pub(crate) use source::{emit_closure, emit_closure_keyed, lambda_value};
+pub(crate) use source::{
+    begin_source, emit_closure, emit_closure_keyed, lambda_value, source_parameters,
+};
 
 use crate::builder::{Codegen, FnSig, ParamSig};
 use crate::error::{CodegenError, Result};
@@ -155,9 +157,9 @@ pub(crate) fn raw_callback_lambda(
     let (ret_spelling, plist) = spelling(sig);
     let name = format!("__callback_{}", cg.next_lambda_id());
     let saved = cg.enter_nested_fn();
-    source::begin_source(cg, &name, position);
+    begin_source(cg, &name, position);
     let params = bind_params_from(cg, parameters, param_tys, 0);
-    source::source_parameters(cg, parameters, 0);
+    source_parameters(cg, parameters, 0);
     let emitted = closure_return(cg, body, *ret_ty, *ret_inner);
     cg.exit_nested_fn(saved, &ret_spelling, &name, &params);
     emitted?;

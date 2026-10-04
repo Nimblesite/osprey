@@ -10,11 +10,11 @@ macOS and 5 elsewhere, 1-based `DILocation` columns), and F5 in VS Code is a rea
 `debug_compile_emits_source_level_metadata` and
 `a_breakpoint_inside_a_handler_arm_body_has_a_line_to_bind_to`.
 
-Source lambda scopes, primitive parameters, immutable captures and block return-line locations are now implemented. Both-flavor compiler assertions cover returned, locally bound, argument and C-callback lambdas; the real LLDB-DAP editor cases inspect `x = 40`, captured `n = 2` and local `sum = 42` at the lambda's return line. Default and ML corpus IR remains byte-identical without debug metadata.
+Source lambda scopes, primitive parameters, immutable captures and block return-line locations are now implemented. Both-flavor compiler assertions cover returned, locally bound, argument and C-callback lambdas; the real LLDB-DAP editor cases inspect `x = 40`, captured `n = 2` and local `sum = 42` at the lambda's return line. Extracted host GPU kernels now retain the same source scopes, parameter and uniform locations, verified for all five extracting combinators and through real LLDB-DAP breakpoints. Primitive shared cells and direct/resumable handler parameters are inspectable: both-flavor LLDB-DAP tests follow live mutations from `42` to `43` in closures and handler arms. Default and ML corpus IR remains byte-identical without debug metadata.
 
 Remaining gaps include:
 
-- **Source coverage and value inspection remain incomplete.** Single-expression ML layout bodies, match-arm expressions, mutable capture cells and generic named-function adapters still need complete source scopes and variable locations. Composite values have no Osprey-specific rendering. The source-lambda regression closes one concrete gap; it does not complete Phase 3.
+- **Source coverage and value inspection remain incomplete.** Single-expression ML layout bodies, match-arm expressions and generic named-function adapters still need complete source scopes and variable locations. Composite values have no Osprey-specific rendering. The source-lambda regression closes one concrete gap; it does not complete Phase 3.
 - **Layer 3's and Layer 4's advertised surfaces do not exist.** The plan describes
   `--debug-info`, `--debug-opt`, `--debug-out`, `--debug-preserve-ir` and
   `--debug-preserve-symbols`; `crates/osprey-cli/src/main.rs` accepts only
@@ -739,9 +739,7 @@ Acceptance:
 - [x] Add golden tests for debug IR metadata, including `DIFile`, user-function
       `DISubprogram`, per-platform DWARF version, and 1-based `DILocation`
       column assertions.
-- [ ] Add a repo-run headless LLDB smoke test for source breakpoint and
-      stepping. A manual LLDB smoke has passed; it is not yet an automated repo
-      test.
+- [x] Run LLDB-DAP source breakpoint, stack, variable and stepping workflows in the repository extension suite under headless VS Code/Xvfb; `make ci` runs these automated tests.
 
 ### Phase 2 - VS Code real debug launch
 
@@ -769,8 +767,8 @@ Acceptance:
       to `#dbg_*` debug records once the supported LLVM floor makes that path
       portable.
 - [x] Emit source-lambda scopes, primitive parameters and immutable capture locations; verify return-line breakpoints and captured/local values through LLDB-DAP in both flavors.
-- [ ] Extend value-location records to mut cells, remaining capture representations, match bindings, and
-      handler parameters.
+- [x] Expose primitive shared mutable cells and direct/resumable handler parameters; real LLDB-DAP tests inspect changing cell values in both-flavor handlers and ordinary closures.
+- [ ] Extend value-location records to remaining capture representations and match bindings.
 - [ ] Add lexical scopes for blocks, lambdas, match arms, and handlers.
 - [x] Validate primitive local inspection in LLDB-DAP.
 - [ ] Add unavailable-value reporting tests.

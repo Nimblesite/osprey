@@ -58,7 +58,7 @@ A materialized source lambda has its own native debug scope, declaration locatio
 
 A block with local bindings retains its trailing value's own source position, including when that value is a bare identifier. Debug builds associate the return with that position so a breakpoint there can inspect the completed local bindings. Project assembly and string interpolation preserve these positions in the original source coordinates.
 
-Primitive lambda parameters, immutable captures and local bindings are visible in the lambda's scope. The hidden closure environment occupies native argument one; source arguments follow it. A C callback has no environment, so its first source argument is native argument one. Captures are locals, not additional source arguments.
+Primitive lambda parameters, immutable captures, captured mutable cells and local bindings are visible in the lambda's scope. The hidden closure environment occupies native argument one; source arguments follow it. A C callback has no environment, so its first source argument is native argument one. Captures are locals, not additional source arguments. Extracted host GPU kernels also retain source-lambda scopes; their flat ABI places captured uniforms before the source parameters, without an environment pointer ([GPU-KERNEL-EXTRACT](0034-GPUComputation.md#kernel-extraction--gpu-kernel-extract)).
 
 `captured_lambda_bodies_keep_debug_scopes_in_both_flavors` and `bound_argument_and_ffi_lambdas_keep_their_debug_scopes` pin the metadata and scope ownership. The editor's `captured lambda breakpoints expose their own variables` cases stop on the return line in both flavors and read the parameter, capture and calculated local through LLDB-DAP.
 
@@ -116,4 +116,8 @@ resume describes a control path no source line expresses.
 
 Primitive function parameters use `llvm.dbg.value` and a one-based `arg` in `DILocalVariable`. The argument number identifies a formal parameter; omitting it can discard the parameter's location during LLVM instruction selection. Parameters also retain an addressable debug-only slot after their incoming register is reused. Primitive `let` bindings
 use the same slot representation and `llvm.dbg.declare`, so LLDB/DAP can read
-them while paused. Composite values have no Osprey-specific renderer.
+them while paused. Parameter storage initialization belongs to the native prologue, before the first executable source breakpoint.
+
+A primitive mutable variable promoted to a shared heap cell must expose the live cell value in its owning function, captured lambda and handler arm. Debug storage retains the cell address with a dereferencing location expression; it must not copy the initial value. Direct and resumable handler arms expose their source parameters and primitive captures. Native argument numbering accounts for the hidden environment and, for resumable arms, the continuation parameter.
+
+The both-flavor editor cases `handler debugger values follow live cell mutations`, `resuming handler debugger values follow live cell mutations` and `closure debugger values follow live cell mutations` stop twice and require the shared value to change from `42` to `43`, with the correct source parameter on each call. Closure cases also check the calculated local on both stops. Composite values have no Osprey-specific renderer.

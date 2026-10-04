@@ -169,6 +169,7 @@ fn gen_cell_define(cg: &mut Codegen, name: &str, value: &Expr) -> Result<()> {
         cg.emit_reg(format!("bitcast {ty}* {ptr} to i8*"))
     };
     crate::arc::own_beyond_stmt(cg, &Value::new(handle, LType::Ptr));
+    cg.emit_debug_cell(name, &ptr, pointee);
     let _ = cg.cell_slots.insert(
         name.to_string(),
         crate::builder::CellSlot {
