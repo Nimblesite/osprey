@@ -15,14 +15,7 @@ Source lambda scopes, primitive parameters, immutable captures and block return-
 Remaining gaps include:
 
 - **Source coverage and value inspection remain incomplete.** Inlined generic call-frame reconstruction and optimized-away value reporting still need work. Primitive declarations now become visible only after initialization, including shared mutable cells; enclosing names remain visible within shadowing initializers. Ordinary nested block scopes now preserve initialized primitive bindings and exact return stops in named functions, closures and both handler modes. Composite values have no Osprey-specific rendering. The source-lambda regression closes one concrete gap; it does not complete Phase 3.
-- **Layer 3's and Layer 4's advertised surfaces do not exist.** The plan describes
-  `--debug-info`, `--debug-opt`, `--debug-out`, `--debug-preserve-ir` and
-  `--debug-preserve-symbols`; `crates/osprey-cli/src/main.rs` accepts only
-  `--debug` (`osprey x.osp --debug-info` → `unknown flag --debug-info`), and
-  `build_executable` deletes the `.ll` unconditionally, so `--debug-preserve-ir`
-  has nothing to preserve. Likewise the `compilerPath`, `preserveArtifacts` and
-  `console` launch fields are contributed by no entry in
-  `vscode-extension/package.json` `debuggers[0]`.
+- **Build and launch controls are partially completed.** The native CLI implements `--debug-info=dwarf|none`, `--debug-opt=none`, `--debug-memory=off`, `--debug-out`, IR preservation and symbol preservation. Debug and profile builds collect macOS symbols before deleting objects, and collection failure fails the build. Unsupported optimizer and memory-inspection modes are rejected explicitly. The editor accepts `compilerPath` and `preserveArtifacts` and forces `--debug-opt=none`; real adapter tests inspect the retained binary and source-specific IR in both flavors. Console selection and the optimized/memory inspection modes remain unfinished.
 
 A debug-metadata coverage metric — Layer 6 — is still needed to detect omissions across all executable expression forms.
 **Spec:** [0021 - Debugger](../specs/0021-Debugger.md)
@@ -736,6 +729,7 @@ Acceptance:
       flags.
 - [x] Add `--debug` and debug clang flags.
 - [x] Preserve debug artifacts for tests.
+- [x] Implement explicit native metadata, unoptimized build, output and artifact controls; reject unsupported optimization and memory-inspection modes. Both-flavor CLI tests execute retained binaries and inspect the exact IR. Collect macOS debug/profiling symbols before deleting objects, with failure propagated.
 - [x] Add golden tests for debug IR metadata, including `DIFile`, user-function
       `DISubprogram`, per-platform DWARF version, and 1-based `DILocation`
       column assertions.
@@ -750,6 +744,8 @@ Acceptance:
       paths with a precise missing-tool error.
 - [x] Launch LLDB-DAP with the compiled binary.
 - [x] Add extension tests for configuration synthesis and missing-tool errors.
+- [x] Add per-launch compiler selection and artifact preservation; force unoptimized editor builds and inspect preserved IR through both-flavor LLDB-DAP tests.
+- [ ] Implement explicit console selection across supported adapters.
 - [x] Add a DAP smoke test that launches, hits a source breakpoint, reads stack
       and primitive locals, steps over, continues, and terminates.
 - [ ] Upstream/import generic VS Code debugger glue and the DAP test harness

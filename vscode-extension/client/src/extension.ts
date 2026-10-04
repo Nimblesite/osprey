@@ -266,11 +266,12 @@ export function activate(context: ExtensionContext) {
         );
         try {
           await compileDebugProgram(
-            resolveServerCommand(context),
+            config.compilerPath || resolveServerCommand(context),
             sourceProgram,
             debugOutput,
             cwd,
             (message) => outputChannel.appendLine(message),
+            config.preserveArtifacts === true,
           );
         } catch (error: any) {
           const msg = error?.message || String(error);

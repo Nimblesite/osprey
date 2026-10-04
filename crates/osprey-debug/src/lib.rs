@@ -62,6 +62,8 @@ pub enum BuildKind {
     Release,
     /// Source-level debugging: full debug info at `-O0`.
     Debug,
+    /// Debug optimization and frame pointers without source metadata.
+    DebugWithoutInfo,
     /// CPU profiling [PROF-BUILD-MODE]: DWARF line info + frame pointers at
     /// FULL optimization — a profile of an unoptimized program misleads, so
     /// unlike `Debug` this keeps the release optimizer flag.
@@ -76,7 +78,9 @@ impl BuildKind {
     #[must_use]
     pub fn opt_flag(self, release_default: String, debug_override: Option<String>) -> String {
         match self {
-            BuildKind::Debug => debug_override.unwrap_or_else(|| "-O0".to_string()),
+            BuildKind::Debug | BuildKind::DebugWithoutInfo => {
+                debug_override.unwrap_or_else(|| "-O0".to_string())
+            }
             BuildKind::Release | BuildKind::Profile | BuildKind::Coverage => release_default,
         }
     }
@@ -86,6 +90,7 @@ impl BuildKind {
     pub fn native_driver_flags(self) -> Vec<String> {
         match self {
             BuildKind::Release | BuildKind::Coverage => Vec::new(),
+            BuildKind::DebugWithoutInfo => vec!["-fno-omit-frame-pointer".to_string()],
             BuildKind::Debug | BuildKind::Profile => {
                 vec!["-g".to_string(), "-fno-omit-frame-pointer".to_string()]
             }
@@ -205,6 +210,15 @@ mod tests {
         assert!(profile.wants_debug_info());
         assert!(BuildKind::Debug.wants_debug_info());
         assert!(!BuildKind::Release.wants_debug_info());
+        assert!(!BuildKind::DebugWithoutInfo.wants_debug_info());
+        assert_eq!(
+            BuildKind::DebugWithoutInfo.native_driver_flags(),
+            vec!["-fno-omit-frame-pointer".to_string()]
+        );
+        assert_eq!(
+            BuildKind::DebugWithoutInfo.opt_flag("-O3".into(), None),
+            "-O0"
+        );
     }
 
     // [TESTING-COVERAGE-CODEGEN]: coverage builds run at release optimization

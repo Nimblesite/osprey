@@ -356,3 +356,107 @@ fn generic_c_callbacks_do_not_capture_shadowing_callers() -> Result<(), String> 
     }
     Ok(())
 }
+
+type DebugTestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
+
+/// [DEBUGGER-BUILD-OPTIONS] Artifact controls work on both authoring surfaces.
+#[test]
+fn debug_build_controls_preserve_inspectable_ir_and_runnable_output() -> DebugTestResult {
+    for (extension, source) in [
+        ("osp", "fn main() = print(42)\n"),
+        ("ospml", "main () = print 42\n"),
+    ] {
+        for info in ["dwarf", "none"] {
+            assert_debug_artifacts(extension, source, info)?;
+        }
+    }
+    Ok(())
+}
+
+fn debug_fixture(
+    label: &str,
+    extension: &str,
+    source: &str,
+) -> DebugTestResult<(std::path::PathBuf, std::path::PathBuf)> {
+    let dir = std::env::temp_dir().join(format!(
+        "osprey-debug-{}-{label}-{extension}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&dir)?;
+    let input = dir.join(format!("source.{extension}"));
+    fs::write(&input, source)?;
+    Ok((input, dir.join("debug program.exe")))
+}
+
+fn debug_command(input: &Path, output: &Path) -> std::process::Command {
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_osprey"));
+    let _ = command
+        .current_dir(repo_root())
+        .arg(input)
+        .arg("--debug-out")
+        .arg(output);
+    command
+}
+
+fn assert_debug_success(output: &std::process::Output) {
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn compile_debug_artifact(
+    input: &Path,
+    output: &Path,
+    info: &str,
+) -> DebugTestResult<std::process::Output> {
+    Ok(debug_command(input, output)
+        .args([
+            "--debug",
+            "--compile",
+            "--debug-preserve-ir",
+            "--debug-opt=none",
+            &format!("--debug-info={info}"),
+        ])
+        .env("OSPREY_DEBUG_OPT", "-O3")
+        .output()?)
+}
+
+fn assert_debug_artifacts(extension: &str, source: &str, info: &str) -> DebugTestResult {
+    let (input, output) = debug_fixture(info, extension, source)?;
+    let built = compile_debug_artifact(&input, &output, info)?;
+    assert_debug_success(&built);
+    let ir = fs::read_to_string(output.with_extension("exe.ll"))?;
+    assert_eq!(ir.contains("!DICompileUnit"), info == "dwarf");
+    assert_eq!(ir.contains("!DILocation"), info == "dwarf");
+    let run = std::process::Command::new(&output).output()?;
+    assert_debug_success(&run);
+    assert_eq!(run.stdout, b"42\n");
+    if let Some(dir) = input.parent() {
+        fs::remove_dir_all(dir)?;
+    }
+    Ok(())
+}
+
+/// --run preserves explicitly named output and IR, with unchanged program stdout.
+#[test]
+fn debug_run_retains_requested_artifacts_in_both_flavors() -> DebugTestResult {
+    for extension in ["osp", "ospml"] {
+        let (input, output) = debug_fixture("run", extension, "print(42)\n")?;
+        let run = debug_command(&input, &output)
+            .args(["--run", "--debug-preserve-ir", "--debug-preserve-symbols"])
+            .output()?;
+        assert_debug_success(&run);
+        assert_eq!(run.stdout, b"42\n");
+        assert!(output.is_file());
+        assert!(output.with_extension("exe.ll").is_file());
+        if cfg!(target_os = "macos") {
+            assert!(output.with_extension("exe.dSYM").is_dir());
+        }
+        if let Some(dir) = input.parent() {
+            fs::remove_dir_all(dir)?;
+        }
+    }
+    Ok(())
+}

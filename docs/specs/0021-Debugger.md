@@ -37,6 +37,21 @@ Minimum emitted metadata:
 
 Module function names in debug metadata and stack frames use their qualified source identity, such as `billing::Tax::add`; native symbols retain their encoded ABI. The optional DWARF linkage name is omitted because LLDB otherwise displays that encoded name. Both-flavor `module stack frames retain their source names` editor tests stop in a real adapter and check the source name, line and parameter value. See [MODULES-ABI](0025-ModulesAndNamespaces.md#name-mangling-and-abi-modules-abi).
 
+## Native build controls `[DEBUGGER-BUILD-OPTIONS]`
+
+Each debug modifier enables native debug build policy, with the same target and profiling exclusions as `--debug`:
+
+- `--debug-info=dwarf|none` selects source metadata. `dwarf` is the default; `none` omits both compiler metadata and the driver's `-g` flag while retaining debug optimization and frame pointers.
+- `--debug-opt=none` explicitly selects `-O0`, even when `OSPREY_DEBUG_OPT` is set. Without this option, the existing environment override applies. `limited` and `optimized` are rejected until their stepping and variable-history contracts are implemented.
+- `--debug-memory=off` explicitly requests the current runtime metadata policy. `object-graph` and `timeline` are rejected as unimplemented; accepting the flag must not imply that inspection exists.
+- `--debug-out <path>` (also `--debug-out=<path>`) selects the executable path. It agrees with `-o`; conflicting paths are an error regardless of argument order.
+- `--debug-preserve-ir` retains the exact generated IR at `<executable>.ll`, appending the suffix rather than replacing an extension. A native-driver failure still leaves this IR available for diagnosis.
+- `--debug-preserve-symbols` retains the executable and its native symbols after `--run`. It requires DWARF. ELF and PE binaries retain embedded metadata; macOS debug and profiling builds collect a `.dSYM` before removing their intermediate object. Failed symbol collection fails the build.
+
+Artifact controls require `--compile` or `--run`. An explicitly selected debug output or either preservation flag makes `--run` retain the executable; without an explicit path it uses the normal compile output location. Otherwise `--run` removes its temporary executable and symbol bundle after exit. Preserving artifacts does not change the program's stdout or exit status. Debug builds bypass the executable-only test cache so metadata and sidecars always belong to the current build.
+
+`debug_build_controls_preserve_inspectable_ir_and_runnable_output` and `debug_run_retains_requested_artifacts_in_both_flavors` compile and execute both surfaces, inspect retained metadata and check exact output. Invocation tests cover unsupported policies, incompatible flags, output conflicts and cache exclusion. Editor tests stop in the retained binary and inspect its local value and source-specific IR.
+
 ## Source Mapping `[DEBUGGER-SOURCE-MAP]`
 
 The parser and lowerers must preserve source positions for executable
@@ -94,7 +109,7 @@ For VS Code:
 3. The provider runs the version-matched compiler:
 
    ```text
-   osprey <source.osp> --debug --compile -o <debug-binary>
+   osprey <source.osp> --debug --debug-opt=none --compile -o <debug-binary>
    ```
 
 4. The provider launches a DAP adapter, initially `lldb-dap`, against the
@@ -103,7 +118,7 @@ For VS Code:
 
 Launch configuration accepts the program, arguments, working directory,
 environment, stop-on-entry, debug output path, and LLDB-DAP path. Compiler
-resolution uses the extension's configured Osprey compiler.
+resolution uses the extension's configured Osprey compiler, unless `compilerPath` selects an executable for this launch. A missing override fails the launch rather than falling back. `preserveArtifacts: true` adds the IR and symbol preservation flags. The editor always passes `--debug-opt=none` so an inherited optimizer override cannot silently alter stepping. Console selection remains unfinished.
 
 ## Reusable Debugger Helpers `[DEBUGGER-REUSE]`
 

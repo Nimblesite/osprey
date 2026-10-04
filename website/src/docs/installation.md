@@ -143,8 +143,10 @@ Breakpoints inside a lambda can inspect its primitive parameters, captures and l
 To build a debug executable from the command line:
 
 ```bash
-osprey hello.osp --debug --compile -o hello-debug
+osprey hello.osp --debug --debug-opt=none --compile --debug-out hello-debug --debug-preserve-ir
 ```
+
+This keeps the executable and its generated IR (`hello-debug.ll`) for inspection. Add `"preserveArtifacts": true` to a VS Code launch configuration to keep the IR from an editor build, or set `"compilerPath"` to select a compiler for that launch. Editor launches always build without optimization. Optimized debugging and heap inspection are still planned; unsupported CLI modes report an error.
 
 ## The `OSPREY_CC` override
 

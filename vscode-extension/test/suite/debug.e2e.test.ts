@@ -156,6 +156,34 @@ suite("Osprey Debugger E2E Workflows", function () {
     return { session, stop };
   }
 
+  for (const extension of ["osp", "ospml"]) {
+    test(`debug launch preserves requested build artifacts (${extension})`, async function () {
+      this.timeout(TEST_TIMEOUT_MS);
+      const program = path.join(tempDir, `artifacts.${extension}`);
+      const output = defaultDebugOutputPath(program);
+      fs.writeFileSync(program, extension === "osp"
+        ? "fn main() = {\n    let value = 41\n    print(wrapAdd(value, 1))\n}\n"
+        : "main () =\n    value = 41\n    print (wrapAdd value 1)\n");
+      const { session, stop } = await launchToFirstStop([{ line: 3 }], {
+        program, debugOutput: output, compilerPath: resolveBuiltOsprey(), preserveArtifacts: true,
+      });
+      await assertFrameLocals(session, stop, program, 3, "main", { value: 41 });
+      const ir = fs.readFileSync(`${output}.ll`, "utf8");
+      assert.ok(ir.includes("!DICompileUnit"), "the exact debug build retains its IR");
+      assert.ok(ir.includes(`artifacts.${extension}`), "the retained IR belongs to the current source");
+      if (process.platform === "darwin") assert.ok(fs.existsSync(`${output}.dSYM`));
+    });
+  }
+
+  test("debug launch honors an explicit compiler override without fallback", async function () {
+    this.timeout(TEST_TIMEOUT_MS);
+    const started = await vscode.debug.startDebugging(undefined, {
+      type: "osprey", request: "launch", name: "Compiler override",
+      program: source, compilerPath: path.join(tempDir, "missing-compiler"), lldbDapPath,
+    });
+    assert.strictEqual(started, false, "a missing override must not silently select another compiler");
+  });
+
   const topName = (stop: DapStop): string => stop.stack.stackFrames[0].name;
   const hasFrame = (stop: DapStop, name: string): boolean =>
     stop.stack.stackFrames.some((frame) => frame.name.includes(name));

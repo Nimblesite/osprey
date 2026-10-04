@@ -113,7 +113,11 @@ pub(super) fn ensure_cached_executable(
         return Ok(());
     }
     let staging = cached.with_extension(format!("{}.tmp", std::process::id()));
-    let build = build_input(input, &staging, memory, kind);
+    let build = build_input(
+        input,
+        &staging,
+        crate::native::NativeOptions::new(memory, kind),
+    );
     if let Err(code) = build {
         let _ = std::fs::remove_file(&staging);
         return Err(code);

@@ -26,7 +26,11 @@ pub(super) fn execute_profiled(cli: &Cli, input: &CompilationInput) -> Result<u8
 
 fn profile_executable(cli: &Cli, input: &CompilationInput) -> Result<PathBuf, ExitCode> {
     let exe = std::env::temp_dir().join(format!("{}.out", scratch_stem(input.display_path())));
-    build_input(input, &exe, &cli.memory, osprey_debug::BuildKind::Profile)?;
+    build_input(
+        input,
+        &exe,
+        crate::native::NativeOptions::new(&cli.memory, osprey_debug::BuildKind::Profile),
+    )?;
     Ok(exe)
 }
 
