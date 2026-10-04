@@ -3,6 +3,48 @@ use super::Codegen;
 use crate::llty::{LType, Value};
 
 impl Codegen {
+    /// A declaration becomes visible only after its initializer and debug store.
+    /// Assignments and capture reloads retain their existing lexical scopes.
+    /// Implements [DEBUGGER-BINDING-LIFETIME].
+    pub(crate) fn emit_debug_binding(&mut self, name: &str, value: &Value, declaration: bool) {
+        if declaration {
+            self.emit_debug_declaration(name, value.ty, value.ty.as_str(), &value.operand, "");
+        } else {
+            self.emit_debug_local(name, value);
+        }
+    }
+
+    pub(crate) fn emit_debug_cell_binding(&mut self, name: &str, ptr: &str, pointee: LType) {
+        self.emit_debug_declaration(name, pointee, &format!("{pointee}*"), ptr, "DW_OP_deref");
+    }
+
+    fn emit_debug_declaration(
+        &mut self,
+        name: &str,
+        ty: LType,
+        storage: &str,
+        value: &str,
+        expression: &str,
+    ) {
+        let Some(debug) = self.debug.as_mut() else {
+            return;
+        };
+        let Some(parent) = debug.begin_lexical_scope(None) else {
+            return;
+        };
+        let scope = debug.current_scope;
+        let variable = debug.local_variable_id(name, ty, None);
+        debug.current_scope = Some(parent);
+        let slot =
+            variable.map(|variable| (variable, self.debug_storage_slot(storage, value, false)));
+        if let Some(debug) = self.debug.as_mut() {
+            debug.current_scope = scope;
+        }
+        if let Some((variable, slot)) = slot {
+            self.emit_debug_declare(variable, storage, &slot, expression);
+        }
+    }
+
     /// The `DILocalVariable` metadata id for `name` of type `ty`, if a debug
     /// build is active. The single lookup both debug-recorders funnel through.
     fn debug_var_id(&mut self, name: &str, ty: LType, argument: Option<usize>) -> Option<usize> {
@@ -70,14 +112,29 @@ impl Codegen {
         expression: &str,
         prologue: bool,
     ) {
-        self.add_extern("declare void @llvm.dbg.declare(metadata, metadata, metadata)");
+        let slot = self.debug_storage_slot(ty, operand, prologue);
+        self.emit_debug_declare(var_id, ty, &slot, expression);
+    }
+
+    fn debug_storage_slot(&mut self, ty: &str, operand: &str, prologue: bool) -> String {
         let previous = self.debug.as_ref().and_then(|debug| debug.current_position);
         if prologue {
             self.restore_debug_position(None);
         }
-        let slot = self.emit_reg(format!("alloca {ty}"));
+        // Entry allocation gives DWARF a stable frame address after branches
+        // and avoids allocating another debug slot on every loop iteration.
+        let slot = self.fresh_reg();
+        self.cur_lines.insert(
+            usize::from(!self.cur_lines.is_empty()),
+            format!("  {slot} = alloca {ty}"),
+        );
         self.emit(format!("store {ty} {operand}, {ty}* {slot}"));
         self.restore_debug_position(previous);
+        slot
+    }
+
+    fn emit_debug_declare(&mut self, var_id: usize, ty: &str, slot: &str, expression: &str) {
+        self.add_extern("declare void @llvm.dbg.declare(metadata, metadata, metadata)");
         self.emit(format!(
             "call void @llvm.dbg.declare(metadata {ty}* {slot}, metadata !{var_id}, metadata !DIExpression({expression}))"
         ));

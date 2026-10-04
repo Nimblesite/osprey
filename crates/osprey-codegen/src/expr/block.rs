@@ -50,8 +50,7 @@ fn gen_block_contents(
     tail: impl FnOnce(&mut Codegen, &Expr) -> Result<Value>,
 ) -> Result<Value> {
     // A child scope preserves outer bindings across nested blocks [BLOCK-SCOPE].
-    cg.push_scope();
-    let result = (|| {
+    cg.with_local_scope(|cg| {
         for (i, s) in statements.iter().enumerate() {
             crate::stmt::gen_local_stmt(cg, s)?;
             // Last-use drops: names the continuation no longer references die
@@ -62,7 +61,5 @@ fn gen_block_contents(
         let result = value.map_or_else(|| Ok(Value::unit()), |e| tail(cg, e));
         cg.restore_debug_position(previous);
         result
-    })();
-    cg.pop_scope();
-    result
+    })
 }

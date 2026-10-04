@@ -203,3 +203,88 @@ fn blockStatementsCase() = {
 }
 
 test("blocks preserve values and lexical scope", fn() => exactArithmetic(blockStatementsCase))
+
+// [BLOCK-SCOPE] Runtime storage and callable metadata follow source bindings.
+effect BlockRead { value: fn() -> int }
+fn blockCellShadow(input) = {
+    let value = 100
+    let selected = {
+        mut value = wrapAdd(value, input)
+        handle BlockRead { value => value }
+        perform BlockRead.value()
+    }
+    "${selected}:${value}"
+}
+fn blockOuterCell() = {
+    mut value = 100
+    handle BlockRead { value => value }
+    let selected = {
+        mut value = 2
+        handle BlockRead { value => value }
+        perform BlockRead.value()
+    }
+    "${selected}:${value}:${perform BlockRead.value()}"
+}
+fn blockImmutableOverCell() = {
+    mut value = 100
+    handle BlockRead { value => value }
+    let selected = {
+        let value = wrapAdd(value, 2)
+        let read = fn() => value
+        read()
+    }
+    "${selected}:${value}"
+}
+fn blockCallableShadow() = {
+    let apply = fn(x) => wrapAdd(x, 100)
+    let selected = {
+        let apply = fn(x) => wrapMul(x, 2)
+        apply(3)
+    }
+    "${selected}:${apply(3)}"
+}
+fn blockIdentity(x) = x
+fn blockConstant(x) = fn(_unused) => x
+fn blockGenericShadow() = {
+    let apply = blockIdentity
+    let selected = {
+        let apply = blockConstant(9)
+        apply(3)
+    }
+    "${selected}:${apply(3)}"
+}
+fn blockEscapingCallable() = {
+    let apply = fn(x) => wrapAdd(x, 100)
+    let selected = {
+        let apply = fn(x) => wrapAdd(x, 2)
+        apply
+    }
+    "${selected(40)}:${apply(40)}"
+}
+test("nested cells leave their enclosing immutable binding intact", fn() => check("cell shadow", "102:100", blockCellShadow(2)))
+test("nested cells restore the enclosing cell and handler", fn() => check("outer cell", "2:100:100", blockOuterCell()))
+test("immutable shadowing reads then hides an enclosing cell", fn() => check("immutable shadow", "102:100", blockImmutableOverCell()))
+test("nested callable bindings restore their enclosing lambda", fn() => check("lambda shadow", "6:103", blockCallableShadow()))
+test("nested generic aliases restore their enclosing function", fn() => check("generic shadow", "9:3", blockGenericShadow()))
+test("escaping block callables retain their own lexical binding", fn() => check("escaping lambda", "42:140", blockEscapingCallable()))
+
+fn blockResultShadow() = {
+    let value = Success { value: 100 }
+    let selected = {
+        let value = 42
+        "${value}"
+    }
+    "${selected}:${value ?: 0}"
+}
+fn blockApply(f) = f(42)
+fn blockAliasOverCell() = {
+    mut value = 100
+    handle BlockRead { value => value }
+    let selected = {
+        let value = blockIdentity
+        blockApply(value)
+    }
+    "${selected}:${value}"
+}
+test("a plain shadowing binding never inherits Result storage", fn() => check("Result shadow", "42:100", blockResultShadow()))
+test("a generic alias hides an enclosing cell when passed as a value", fn() => check("alias over cell", "42:100", blockAliasOverCell()))

@@ -66,6 +66,21 @@ impl LexicalScopeState {
 }
 
 impl Codegen {
+    /// A completed declaration replaces every representation of its name.
+    /// The containing lexical scope restores enclosing bindings on exit.
+    /// Implements [BLOCK-SCOPE] and [PATTERN-BINDING-SCOPE].
+    pub(crate) fn forget_binding(&mut self, name: &str) {
+        for scope in &mut self.scopes {
+            let _ = scope.remove(name);
+        }
+        let _ = self.cell_slots.remove(name);
+        let _ = self.call_aliases.remove(name);
+        let _ = self.lambdas.remove(name);
+        let _ = self.lambda_prefix.remove(name);
+        let _ = self.fn_ptr_locals.remove(name);
+        let _ = self.fn_value_types.remove(name);
+    }
+
     pub(crate) fn with_local_scope<T>(&mut self, emit: impl FnOnce(&mut Self) -> T) -> T {
         let saved = LexicalScopeState::child(self);
         let result = emit(self);
@@ -84,5 +99,72 @@ impl Codegen {
             self.prog = original;
         }
         result
+    }
+}
+
+impl Codegen {
+    // ---- scopes ----
+
+    pub(crate) fn push_scope(&mut self) {
+        self.scopes.push(HashMap::new());
+        self.scope_ids.push(self.next_scope_id);
+        self.next_scope_id = self.next_scope_id.saturating_add(1);
+    }
+
+    pub(crate) fn with_file_scope<T>(&mut self, emit: impl FnOnce(&mut Self) -> T) -> T {
+        let saved = LexicalScopeState::enter(self);
+        let result = emit(self);
+        saved.restore(self);
+        result
+    }
+
+    pub(crate) fn pop_scope(&mut self) {
+        let _ = self.scopes.pop();
+        let _ = self.scope_ids.pop();
+    }
+
+    pub(crate) fn scope_id(&self) -> Option<usize> {
+        self.scope_ids.last().copied()
+    }
+
+    pub(crate) fn bind(&mut self, name: impl Into<String>, value: Value) {
+        if let Some(scope) = self.scopes.last_mut() {
+            let _ = scope.insert(name.into(), value);
+        }
+    }
+
+    pub(crate) fn lookup(&self, name: &str) -> Option<Value> {
+        self.scopes.iter().rev().find_map(|s| s.get(name).cloned())
+    }
+
+    /// Re-tag an already-bound name in the innermost scope that holds it. Used
+    /// to record a channel's element type at the `send` that establishes it, so
+    /// a later `recv` on the same binding unboxes to that type rather than to
+    /// the uniform `i64` wire word ([CONCURRENCY-CHANNEL]).
+    pub(crate) fn retag(&mut self, name: &str, retag: impl FnOnce(Value) -> Value) {
+        if let Some(scope) = self.scopes.iter_mut().rev().find(|s| s.contains_key(name)) {
+            if let Some(stored) = scope.remove(name) {
+                let _ = scope.insert(String::from(name), retag(stored));
+            }
+        }
+    }
+
+    /// Read a cell-backed variable: `load` its current value from the heap slot.
+    /// `None` when `name` is not promoted to a cell (the caller falls back to a
+    /// normal scope lookup).
+    pub(crate) fn cell_read(&mut self, name: &str) -> Option<Value> {
+        let slot = self.cell_slots.get(name).cloned()?;
+        let ty = slot.pointee.as_str();
+        let r = self.emit_reg(format!("load {ty}, {ty}* {}", slot.ptr));
+        Some(Value::new(r, slot.pointee).with_owner(slot.osp_ty))
+    }
+
+    /// The lambda `name` is bound to for inline application: this function's
+    /// own beta-reduction cache first, then the file-scope bindings that
+    /// outlive it ([`Codegen::file_lambdas`]).
+    pub(crate) fn lambda_def(&self, name: &str) -> Option<&LambdaDef> {
+        self.lambdas
+            .get(name)
+            .or_else(|| self.file_lambdas.get(name))
     }
 }

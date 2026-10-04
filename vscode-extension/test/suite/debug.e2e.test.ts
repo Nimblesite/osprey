@@ -260,13 +260,15 @@ suite("Osprey Debugger E2E Workflows", function () {
       const { session, stop } = await launchToFirstStop([fixture.innerLine, fixture.outerLine], {
         program, debugOutput: defaultDebugOutputPath(program),
       });
-      const inside = await assertFrameLocals(session, stop, program, fixture.innerLine, fixture.prefix, { observed: 3 });
-      await assertWatch(session, inside, "value", /^2$/);
+      const inside = await assertFrameLocals(session, stop, program, fixture.innerLine, fixture.prefix, fixture.innerLocals);
+      await assertWatch(session, inside, "value", new RegExp(`^${fixture.innerValue}$`));
       const bindings = await readFrameVariables(session, inside);
-      assert.ok(bindings.some(variable => new RegExp(`^value(?: @ .*:${fixture.bindingLine})?$`).test(variable.name) && variable.value === "2"), "the inner scope exposes its own value binding");
+      assert.ok(!bindings.some(variable => ["selected", "outside"].includes(variable.name)), "bindings whose initializers have not completed must stay out of scope");
+      assert.ok(bindings.some(variable => new RegExp(`^value(?: @ .*:${fixture.bindingLine})?$`).test(variable.name) && variable.value === String(fixture.innerValue)), "the visible scope exposes its initialized value binding");
+      if (fixture.uniqueValue) assert.strictEqual(bindings.filter(variable => /^value(?: @ .*)?$/.test(variable.name)).length, 1, "an incomplete initializer cannot shadow the enclosing debugger binding");
       await continueExecution(session, stop.threadId);
       const outside = await waitForStop(session, LAUNCH_TIMEOUT_MS);
-      const frame = await assertFrameLocals(session, outside, program, fixture.outerLine, fixture.prefix, { value: 100, selected: 3, outside: 103 });
+      const frame = await assertFrameLocals(session, outside, program, fixture.outerLine, fixture.prefix, { value: 100, selected: fixture.selected, outside: 100 + fixture.selected });
       assert.ok(!(await readFrameVariables(session, frame)).some(variable => variable.name === "observed"), "inner locals leave scope after the expression");
       await continueExecution(session, outside.threadId);
       await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);

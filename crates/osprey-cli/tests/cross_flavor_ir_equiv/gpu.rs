@@ -1,6 +1,7 @@
 //! Structural conformance for [GPU-KERNEL-EXTRACT].
 
-use super::{assert_lambda_variables, lambda_debug_ir, Flavor};
+use super::debug::{assert_lambda_variables, lambda_debug_ir};
+use super::Flavor;
 
 /// Ratchets [GPU-KERNEL-EXTRACT] independently of runtime output equivalence.
 pub(super) fn check_extraction_floor(label: &str, ir: &str) -> Result<(), String> {

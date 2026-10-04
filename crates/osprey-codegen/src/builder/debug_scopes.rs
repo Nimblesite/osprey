@@ -4,7 +4,7 @@ use crate::error::{CodegenError, Result};
 use osprey_ast::Position;
 
 impl DebugState {
-    fn begin_lexical_scope(&mut self, position: Option<Position>) -> Option<usize> {
+    pub(super) fn begin_lexical_scope(&mut self, position: Option<Position>) -> Option<usize> {
         let parent = self.current_scope?;
         let position = position.or(self.current_position)?;
         let id = self.alloc_id();
@@ -65,5 +65,22 @@ impl Codegen {
             debug.current_position = previous;
         }
         result
+    }
+}
+
+impl Codegen {
+    /// Set the current debug source position [DEBUGGER-SOURCE-MAP], returning
+    /// the previous position.
+    pub(crate) fn set_debug_position(&mut self, position: Option<Position>) -> Option<Position> {
+        self.debug
+            .as_mut()
+            .and_then(|debug| debug.set_position(position))
+    }
+
+    /// Restore the debug source position captured by [`set_debug_position`].
+    pub(crate) fn restore_debug_position(&mut self, previous: Option<Position>) {
+        if let Some(debug) = self.debug.as_mut() {
+            debug.current_position = previous;
+        }
     }
 }

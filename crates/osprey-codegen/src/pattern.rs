@@ -306,12 +306,7 @@ fn bind_catch_all(cg: &mut Codegen, pattern: &Pattern, disc: &Value) {
 /// Pattern names shadow every representation of an enclosing binding.
 /// Implements [PATTERN-BINDING-SCOPE].
 fn bind_value(cg: &mut Codegen, name: String, value: Value) {
-    let _ = cg.cell_slots.remove(&name);
-    let _ = cg.call_aliases.remove(&name);
-    let _ = cg.lambdas.remove(&name);
-    let _ = cg.lambda_prefix.remove(&name);
-    let _ = cg.fn_ptr_locals.remove(&name);
-    let _ = cg.fn_value_types.remove(&name);
+    cg.forget_binding(&name);
     if let Some(ty @ osprey_types::Type::Fun { .. }) = &value.inferred_type {
         cg.bind_fn_local(&name, ty.clone());
     }

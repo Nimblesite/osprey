@@ -76,6 +76,14 @@ A nested block's trailing value retains an executable location within that scope
 
 `nested_source_blocks_keep_distinct_variable_scopes` asserts child scope ownership and the return location. The editor's `nested blocks restore debugger bindings` cases stop before and after a nested block, inspect the inner value and calculated local, then verify the enclosing value and disappearance of the inner local. They cover named functions, closures and both handler modes in each flavor.
 
+## Binding lifetime `[DEBUGGER-BINDING-LIFETIME]`
+
+A local binding becomes visible after its initializer completes and its value or cell address has been stored. Before that point, the debugger must not expose an uninitialized stack value under the binding's name. An initializer can inspect an enclosing binding with the same name; the new binding shadows it only after initialization. Later declarations remain out of scope. This applies to immutable bindings and shared mutable cells in both flavors.
+
+Variable storage has a stable frame address even when initialization follows an effect-dispatch branch. Declaration instructions belong to the new lexical scope; the preceding initialization stores belong to the enclosing scope. The function's `DISubprogram` identity remains distinct from the current local scope. File-scope publication and cleanup retain their statement's source location, so stepping forward does not hit an earlier declaration again.
+
+The editor's block and pattern scope cases assert that incomplete and later bindings are absent. The `immutable initializer keeps the enclosing debugger binding` and `cell initializer keeps the enclosing debugger binding` cases inspect the outer value during initialization and the completed result afterward. Existing stepping tests and `top_level_bindings_keep_monotonic_source_locations` pin file-scope stepping. Optimized-away values and composite rendering remain separate unfinished work.
+
 ## Editor Launch `[DEBUGGER-EDITOR-LAUNCH]`
 
 For VS Code:

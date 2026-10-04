@@ -63,7 +63,7 @@ function blockFixture(extension: string, prefix: string, text: string) {
   };
 }
 
-export const lexicalFixtures = [
+const blockFixtures = [
   ...patternFixtures.map(fixture => ({ ...fixture, label: "pattern bindings stay in their debugger arm", innerLine: 7, bindingLine: 6, prefix: "choose" })),
   blockFixture("osp", "choose", `fn choose(input) = {\n${defaultBlock}}\nprint(choose(2))\n`),
   blockFixture("ospml", "choose", `choose input =\n${mlBlock}print (choose 2)\n`),
@@ -76,3 +76,21 @@ export const lexicalFixtures = [
     .replace("step:", "control step:").replace("step :", "control step :")
     .replace(/^(\s*)outside$/m, fixture.extension === "osp" ? "$1resume(outside)" : "$1resume outside"),
 )] : [fixture]);
+
+function initializerFixture(extension: string, mutable: boolean) {
+  const declaration = mutable ? "mut" : "let";
+  const text = extension === "osp"
+    ? `effect Read { get: fn() -> int }\nfn choose(input) = {\n    let value = 100\n    let selected = {\n        ${declaration} value = {\n            let observed = wrapAdd(value, input)\n            observed\n        }\n        ${mutable ? "handle Read { get => value }\n        perform Read.get()" : "wrapAdd(value, 1)"}\n    }\n    let outside = wrapAdd(value, selected)\n    outside\n}\nprint(choose(2))\n`
+    : `effect Read\n    get : Unit => int\nchoose input =\n    value = 100\n    selected =\n        ${mutable ? "mut " : ""}value =\n            observed = wrapAdd value input\n            observed\n        ${mutable ? "handle Read\n            get => value\n        perform Read.get ()" : "wrapAdd value 1"}\n    outside = wrapAdd value selected\n    outside\nprint (choose 2)\n`;
+  return {
+    ...blockFixture(extension, "choose", text),
+    label: `${mutable ? "cell" : "immutable"} initializer keeps the enclosing debugger binding`,
+    bindingLine: text.split("\n").findIndex(line => line.trim().endsWith("value = 100")) + 1,
+    innerLocals: { observed: 102 }, innerValue: 100, selected: mutable ? 102 : 103, uniqueValue: true,
+  };
+}
+
+export const lexicalFixtures = [
+  ...blockFixtures.map(fixture => ({ ...fixture, innerLocals: { observed: 3 }, innerValue: 2, selected: 3, uniqueValue: false })),
+  ...["osp", "ospml"].flatMap(extension => [false, true].map(mutable => initializerFixture(extension, mutable))),
+];

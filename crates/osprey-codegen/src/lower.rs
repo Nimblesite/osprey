@@ -156,6 +156,9 @@ fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> 
     // reaches this loop in that case [MODULES-ENTRYPOINT].
     cg.cell_vars = top_level_cells;
     for (i, stmt) in top_level.iter().enumerate() {
+        // Publishing and releasing a file binding belong to that statement,
+        // not to main's first source line [DEBUGGER-BINDING-LIFETIME].
+        let _ = cg.set_debug_position(crate::stmt::stmt_position(stmt));
         crate::stmt::gen_local_stmt(&mut cg, stmt)?;
         crate::stmt::publish_binding(&mut cg, stmt)?;
         let rest = top_level.get(i + 1..).unwrap_or(&[]);

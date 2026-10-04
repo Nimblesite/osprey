@@ -14,7 +14,7 @@ Source lambda scopes, primitive parameters, immutable captures and block return-
 
 Remaining gaps include:
 
-- **Source coverage and value inspection remain incomplete.** Inlined generic call-frame reconstruction and unavailable-value reporting still need work. Ordinary nested block scopes now preserve initialized primitive bindings and exact return stops in named functions, closures and both handler modes. Composite values have no Osprey-specific rendering. The source-lambda regression closes one concrete gap; it does not complete Phase 3.
+- **Source coverage and value inspection remain incomplete.** Inlined generic call-frame reconstruction and optimized-away value reporting still need work. Primitive declarations now become visible only after initialization, including shared mutable cells; enclosing names remain visible within shadowing initializers. Ordinary nested block scopes now preserve initialized primitive bindings and exact return stops in named functions, closures and both handler modes. Composite values have no Osprey-specific rendering. The source-lambda regression closes one concrete gap; it does not complete Phase 3.
 - **Layer 3's and Layer 4's advertised surfaces do not exist.** The plan describes
   `--debug-info`, `--debug-opt`, `--debug-out`, `--debug-preserve-ir` and
   `--debug-preserve-symbols`; `crates/osprey-cli/src/main.rs` accepts only
@@ -774,6 +774,7 @@ Acceptance:
 - [ ] Extend value-location records to remaining capture representations.
 - [x] Complete ordinary nested-block scopes in named functions, materialized lambdas and direct/resumable handlers. Eight both-flavor LLDB-DAP cases stop on the inner return, resolve the shadowed name to 2 and local result to 3, then see the outer value 100 and result 103 with the inner local absent. A debug-only marker survives LLVM instruction selection; it uses one hoisted stack byte per frame and leaves ordinary IR unchanged.
 - [x] Validate primitive local inspection in LLDB-DAP.
+- [x] Begin primitive binding visibility after initialization, keep outer names visible within a shadowing initializer, and hide later declarations. Both-flavor LLDB-DAP assertions cover immutable bindings and shared cells; declaration storage is hoisted to the entry block for stable inspection after effect branches. Function metadata keeps its subprogram identity and top-level publication/cleanup retains the current statement's line. Expanded block corpus twins also pin restoration of cell storage and generic aliases at runtime.
 - [ ] Add unavailable-value reporting tests.
 
 ### Phase 4 - Osprey type and value rendering

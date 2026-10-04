@@ -23,6 +23,9 @@
 //! has no twin to be IR-identical to. Those stems are listed in
 //! [`ML_ONLY_STEMS`] and skipped by both tests below.
 
+#[path = "cross_flavor_ir_equiv/debug.rs"]
+mod debug;
+
 #[path = "cross_flavor_ir_equiv/gpu.rs"]
 mod gpu;
 
@@ -349,107 +352,4 @@ fn module_debug_frames_keep_source_names_in_both_flavors() -> Result<(), String>
         assert!(ir.contains(&format!("define i64 @{linkage}(")), "preserve native ABI");
     }
     Ok(())
-}
-
-const CAPTURED_LAMBDAS: [(&str, Flavor); 2] = [
-    ("fn makeAdder(n) = fn(x) => {\n    let sum = wrapAdd(x, n)\n    sum\n}\nfn main() = {\n    let add = makeAdder(2)\n    print(add(40))\n}\n", Flavor::Default),
-    ("makeAdder n = \\x =>\n    sum = wrapAdd x n\n    sum\nmain () =\n    add = makeAdder 2\n    print (add 40)\n", Flavor::Ml),
-];
-
-/// [DEBUGGER-SOURCE-MAP] Source lambdas need scopes, body lines and variables.
-#[test]
-fn captured_lambda_bodies_keep_debug_scopes_in_both_flavors() -> Result<(), String> {
-    for (source, flavor) in CAPTURED_LAMBDAS {
-        let ir = lambda_debug_ir(source, flavor)?;
-        for expected in [
-            "!DISubprogram(name: \"__closure_fn_",
-            "!DILocation(line: 2,",
-            "!DILocation(line: 3,",
-            "!DILocalVariable(name: \"x\", arg: 2,",
-            "!DILocalVariable(name: \"sum\"",
-            "!DILocalVariable(name: \"n\"",
-        ] {
-            assert!(ir.contains(expected), "{flavor}: missing {expected}");
-        }
-        assert_lambda_variables(&ir, "__closure_fn_", &["x", "n", "sum"])?;
-    }
-    Ok(())
-}
-
-fn lambda_debug_ir(source: &str, flavor: Flavor) -> Result<String, String> {
-    let program = parsed_source(source, flavor, "lambda.osp")?.program;
-    let errors = osprey_types::check_program(&program);
-    assert!(errors.is_empty(), "{flavor}: {errors:?}");
-    osprey_codegen::compile_program_debug(
-        &program,
-        osprey_codegen::DebugSource::from_path("lambda.osp"),
-    )
-    .map_err(|error| format!("{flavor}: {error}"))
-}
-
-fn assert_lambda_variables(ir: &str, name: &str, variables: &[&str]) -> Result<(), String> {
-    let prefix = format!("!DISubprogram(name: \"{name}");
-    let (scope, _) = ir
-        .lines()
-        .find(|line| line.contains(&prefix))
-        .and_then(|line| line.split_once(" = "))
-        .ok_or_else(|| format!("missing lambda scope {name}"))?;
-    for variable in variables {
-        assert!(
-            ir.lines().any(
-                |line| line.contains(&format!("!DILocalVariable(name: \"{variable}\""))
-                    && line.contains(&format!("scope: {scope},"))
-            ),
-            "{variable} must belong to {name}'s scope {scope}"
-        );
-    }
-    Ok(())
-}
-
-/// [DEBUGGER-SOURCE-MAP] Every materialized source-lambda path has a native scope.
-#[test]
-fn bound_argument_and_ffi_lambdas_keep_their_debug_scopes() -> Result<(), String> {
-    let paths = [
-        ("fn main() = {\n let f = fn(x) => wrapMul(x, 2)\n print(f(21))\n}", Flavor::Default, "__closure_fn_", 2),
-        ("main () =\n    f = \\x => wrapMul x 2\n    print (f 21)", Flavor::Ml, "__closure_fn_", 2),
-        ("fn apply(f, n) = f(n)\nfn main() = print(apply(fn(x) => wrapMul(x, 2), 21))", Flavor::Default, "__closure_fn_", 2),
-        ("apply f n = f n\nmain () = print (apply (\\x => wrapMul x 2) 21)", Flavor::Ml, "__closure_fn_", 2),
-        ("extern fn invoke(f: (int) -> int, n: int) -> int\nfn main() = print(invoke(fn(x) => wrapMul(x, 2), 21))", Flavor::Default, "__callback_", 1),
-        ("extern invoke (f : int -> int) (n : int) -> int\nmain () = print (invoke (\\x => wrapMul x 2) 21)", Flavor::Ml, "__callback_", 1),
-    ];
-    for (source, flavor, name, arg) in paths {
-        let ir = lambda_debug_ir(source, flavor)?;
-        assert_lambda_variables(&ir, name, &["x"])?;
-        assert!(ir.contains(&format!("!DILocalVariable(name: \"x\", arg: {arg},")));
-    }
-    Ok(())
-}
-
-/// [DEBUGGER-BLOCK-SCOPES] Inner bindings have a scope separate from function locals.
-#[test]
-fn nested_source_blocks_keep_distinct_variable_scopes() -> Result<(), String> {
-    for (source, flavor) in [
-        ("fn choose(input) = {\n let value = 100\n let selected = {\n  let value = input\n  let observed = wrapAdd(value, 1)\n  observed\n }\n let outside = wrapAdd(value, selected)\n outside\n}\nprint(choose(2))\n", Flavor::Default),
-        ("choose input =\n    value = 100\n    selected =\n        value = input\n        observed = wrapAdd value 1\n        observed\n    outside = wrapAdd value selected\n    outside\nprint (choose 2)\n", Flavor::Ml),
-    ] {
-        let normal = ir_for(source, flavor, "block.osp")?;
-        assert!(!normal.contains("br label"), "scope boundaries add no ordinary control flow");
-        assert!(!normal.contains("store volatile"), "debug markers stay out of ordinary builds");
-        let ir = lambda_debug_ir(source, flavor)?;
-        assert_eq!(ir.matches("%__osprey_debug_scope = alloca i8").count(), 1);
-        let inside = local_scope(&ir, "observed")?;
-        let outside = local_scope(&ir, "outside")?;
-        assert_ne!(inside, outside, "{flavor}: nested locals need their own scope");
-        assert!(ir.contains(&format!("{inside} = distinct !DILexicalBlock(scope: {outside},")));
-        assert!(ir.lines().any(|line| line.contains("!DILocation(line: 6,") && line.contains(&format!("scope: {inside})"))), "{flavor}: the block return must remain inside its scope");
-    }
-    Ok(())
-}
-
-fn local_scope<'a>(ir: &'a str, name: &str) -> Result<&'a str, String> {
-    ir.lines()
-        .find(|line| line.contains(&format!("!DILocalVariable(name: \"{name}\",")))
-        .and_then(|line| line.split_once("scope: "))
-        .and_then(|(_, scope)| scope.split(',').next())
-        .ok_or_else(|| format!("missing scope for {name}"))
 }
