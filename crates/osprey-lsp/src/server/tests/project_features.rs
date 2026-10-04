@@ -438,7 +438,11 @@ async fn nested_project_edits_refresh_every_project_that_includes_the_source(
     assert!(
         reports.iter().any(
             |report| report.get("uri").and_then(Value::as_str) == Some(&uri)
-                && report.get("diagnostics") == Some(&json!([]))
+                && report.get("diagnostics") == Some(&json!([{
+                    "code": "namespace-folder-drift", "severity": 2, "source": "osprey",
+                    "message": "namespace `live` spans 2 folders; source paths do not change its identity",
+                    "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 29}}
+                }]))
         ),
         "{reports:?}"
     );

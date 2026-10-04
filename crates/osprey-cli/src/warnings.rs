@@ -37,7 +37,18 @@ pub(crate) fn collect(program: &osprey_ast::Program) -> Vec<TypeWarning> {
 
 /// Print `warnings` to stderr. A clean build prints nothing.
 pub(crate) fn report(input: &CompilationInput, warnings: &[TypeWarning]) {
-    if let Some(text) = render(input, warnings) {
+    let mut warnings = warnings.to_vec();
+    warnings.extend(input.project_warnings().iter().map(|warning| TypeWarning {
+        rule: warning.rule,
+        message: warning.message.clone(),
+        position: Some(warning.position),
+    }));
+    warnings.sort_by_key(|warning| {
+        warning
+            .position
+            .map(|position| (position.line, position.column))
+    });
+    if let Some(text) = render(input, &warnings) {
         eprintln!("{text}");
     }
 }

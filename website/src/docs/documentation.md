@@ -69,6 +69,8 @@ search, and the built-in reference. Single `.osp` and `.ospml` files work too.
 Library projects can generate documentation without an application entry point.
 Module pages link directly to their public members.
 
+Projects with state modules also get a **State boundaries** page at `api/project/state-boundaries.html`. It lists every state owner, its private cell count and exported effects, including owners inside private modules. Cell names, initial values and private helper APIs stay out of the reference. The same ownership information appears as a warning at each state declaration in the editor and CLI. Installing a handler creates fresh cells; importing its module does not share an instance.
+
 Choose a built-in theme:
 
 | Theme | Appearance |

@@ -22,6 +22,13 @@ pub(crate) fn actions(
         crate::diagnostics::analyze_cached(&source, uri.as_str(), vfs.encoding(), Some(vfs), cache);
     let mut actions = Vec::new();
     if includes(only, "quickfix") {
+        actions.extend(crate::module_actions::actions(
+            vfs,
+            uri,
+            range,
+            cache,
+            &analysis.diagnostics,
+        ));
         actions.extend(
             analysis
                 .fixes
@@ -66,7 +73,7 @@ fn includes(only: &[String], kind: &str) -> bool {
         })
 }
 
-fn overlaps(selection: Span, diagnostic: Span) -> bool {
+pub(crate) fn overlaps(selection: Span, diagnostic: Span) -> bool {
     let (start, end) = ((selection.0, selection.1), (selection.2, selection.3));
     let (low, high) = ((diagnostic.0, diagnostic.1), (diagnostic.2, diagnostic.3));
     if start == end {
@@ -88,6 +95,179 @@ mod tests {
         )
     }
     use super::*;
+
+    // [LSP-CODE-ACTIONS-MODULES]: edits must repair the actual compiler contract.
+    #[test]
+    fn module_paths_and_quoted_import_aliases_have_proven_fixes() -> Result<(), String> {
+        for (extension, source, expected) in [
+            (
+                "osp",
+                "module Store { export fn read() = 42 }\nlet answer = Store.read()\n",
+                "Store::read",
+            ),
+            (
+                "ospml",
+                "module Store\n    export read () = 42\nanswer = Store.read ()\n",
+                "Store::read",
+            ),
+            (
+                "osp",
+                "namespace \"billing/api\" { fn read() = 42 }\nimport \"billing/api\"\n",
+                " as BillingApi",
+            ),
+            (
+                "ospml",
+                "namespace \"billing/api\"\n    read () = 42\nimport \"billing/api\"\n",
+                " as BillingApi",
+            ),
+        ] {
+            assert_module_fix(extension, source, expected)?;
+        }
+        Ok(())
+    }
+
+    fn assert_module_fix(extension: &str, source: &str, expected: &str) -> Result<(), String> {
+        let (vfs, uri) = document(source, extension);
+        let result = actions(&vfs, &uri, (0, 0, 99, 0), &["quickfix".into()]);
+        assert_eq!(result.len(), 1, "{extension}: {result:?}");
+        let fix = result.first().ok_or("missing action")?;
+        assert_eq!(fix.version, 7);
+        assert_eq!(fix.kind, "quickfix");
+        assert_eq!(fix.edits.len(), 1);
+        assert_eq!(
+            fix.edits.first().map(|edit| edit.new_text.as_str()),
+            Some(expected)
+        );
+        assert!(!fix.diagnostics.is_empty());
+        assert!(actions(&vfs, &uri, (0, 0, 99, 0), &[FIX_ALL.into()]).is_empty());
+        let repaired = apply(&vfs, &uri, fix);
+        assert!(repaired.contains(expected), "{repaired}");
+        assert!(actions(&vfs, &uri, (0, 0, 99, 0), &["quickfix".into()]).is_empty());
+        assert!(
+            crate::diagnostics::compute(&repaired, uri.as_str(), PositionEncoding::Utf16)
+                .iter()
+                .all(|finding| finding.severity != lspkit_server::Severity::Error)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn module_repairs_respect_privacy_alias_collisions_and_remaining_errors() {
+        for source in [
+            "module Store { fn read() = 42 }\nlet answer = Store.read()\n",
+            "module Store { export fn read() = 42 }\nlet answer = Store.read()\nlet bad = missing\n",
+            "let store = { read: 42 }\nlet answer = store.read\n",
+            "// Store.read\nlet bad = missing\n",
+            "let label = \"Store.read\"\nlet bad = missing\n",
+            "namespace \"billing/api\" { fn read() = 42 }\nnamespace lib { fn read() = 1 }\nimport lib as BillingApi\nimport \"billing/api\"\n",
+            "import \"missing/library\"\n",
+            "module Store { export fn read() = 42 }\nlet answer = Store.read(\n",
+        ] {
+            let (vfs, uri) = document(source, "osp");
+            assert!(actions(&vfs, &uri, (0, 0, 99, 0), &["quickfix".into()]).is_empty(), "{source}");
+        }
+    }
+
+    #[test]
+    fn module_repairs_select_imports_at_the_keyword_and_preserve_comments() -> Result<(), String> {
+        let source = "namespace \"billing/api\" { fn read() = 42 }\r\nimport \"billing/api\" // preserve this\r\n";
+        let (vfs, uri) = document(source, "osp");
+        assert!(actions(&vfs, &uri, (0, 0, 0, 1), &["quickfix".into()]).is_empty());
+        let result = actions(&vfs, &uri, (1, 0, 1, 0), &["quickfix".into()]);
+        assert_eq!(result.len(), 1);
+        let fixed = apply(&vfs, &uri, result.first().ok_or("missing alias fix")?);
+        assert_eq!(
+            fixed,
+            source.replace(
+                "import \"billing/api\"",
+                "import \"billing/api\" as BillingApi"
+            )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn quoted_namespace_aliases_handle_digits_unicode_and_escaped_quotes() -> Result<(), String> {
+        for (label, alias) in [
+            ("123/foo", "Imported123Foo"),
+            ("☃", "Imported"),
+            ("a\\\"b", "AB"),
+        ] {
+            let source =
+                format!("namespace \"{label}\" {{ fn read() = 42 }}\nimport \"{label}\"\n");
+            assert_module_fix("osp", &source, &format!(" as {alias}"))?;
+            let ml = format!("namespace \"{label}\"\n    read () = 42\nimport \"{label}\"\n");
+            assert_module_fix("ospml", &ml, &format!(" as {alias}"))?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn module_repairs_preserve_unicode_and_newlines() -> Result<(), String> {
+        let source = "module Store { export fn read() = 42 }\r\nfn pair(_label, value) = value\r\nlet answer = pair(\"😀\", Store.read())\r\n";
+        for encoding in [PositionEncoding::Utf8, PositionEncoding::Utf16] {
+            let vfs = Vfs::new(encoding);
+            let uri = DocumentUri::new("file:///module-unicode.osp");
+            vfs.open(uri.clone(), source, DocumentVersion::new(7));
+            let result = actions(&vfs, &uri, (2, 0, 2, 99), &["quickfix".into()]);
+            assert_eq!(result.len(), 1);
+            assert_eq!(
+                apply(&vfs, &uri, result.first().ok_or("missing path fix")?),
+                source.replace("Store.read", "Store::read")
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn module_repairs_follow_unsaved_siblings_in_both_flavors(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        for (extension, main, library) in [
+            (
+                "osp",
+                "fn main() = Store.read()\n",
+                "module Store { export fn read() = 42 }\n",
+            ),
+            (
+                "ospml",
+                "main () = Store.read ()\n",
+                "module Store\n    export read () = 42\n",
+            ),
+        ] {
+            assert_live_module_repairs(extension, main, library)?;
+        }
+        Ok(())
+    }
+
+    fn assert_live_module_repairs(
+        extension: &str,
+        main: &str,
+        library: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = crate::test_support::ProjectFixture::new(extension)?;
+        let uri = DocumentUri::new(fixture.write("main", main)?);
+        let sibling = DocumentUri::new(fixture.write("library", &library.replace("export ", ""))?);
+        let vfs = Vfs::new(PositionEncoding::Utf16);
+        vfs.open(uri.clone(), main, DocumentVersion::new(7));
+        let cache = crate::project_cache::ProjectCache::default();
+        let repairs = || super::actions(&vfs, &uri, (0, 0, 0, 99), &["quickfix".into()], &cache);
+        assert!(repairs().is_empty(), "private disk implementation");
+        vfs.open(sibling.clone(), library, DocumentVersion::new(1));
+        assert_eq!(repairs().len(), 1, "public live implementation");
+        vfs.open(sibling.clone(), "(", DocumentVersion::new(2));
+        assert!(repairs().is_empty(), "incomplete sibling");
+        vfs.close(&sibling);
+        assert!(
+            repairs().is_empty(),
+            "closing restores private disk implementation"
+        );
+        std::fs::write(
+            fixture.root.join("osprey.toml"),
+            "[project]\nsource_roots = broken\n",
+        )?;
+        assert!(repairs().is_empty(), "invalid manifest");
+        Ok(())
+    }
     use lspkit_vfs::{DocumentVersion, Position, PositionEncoding, Range, TextEdit};
 
     const SOURCE: &str = "decorate : string -> string\ndecorate text = text + \"!\"\n";

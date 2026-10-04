@@ -396,7 +396,10 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
     fs.writeFileSync(path.join(project, "generic", "helper.ospml"), "decorate text = text\n");
     const source = `${greetHeader}\ngreet name = decorate name\nmain () = print (greet "Ada")\n`;
     const editor = await openSource("manifest-project/src/main.ospml", source);
-    const [warning] = await diagnostics(editor.document, [signature("manifest_project::greet", "(string) -> string", greetHeader)]);
+    const layout = { code: "namespace-folder-drift", text: greetHeader,
+      message: "namespace `manifest_project` spans 2 folders; source paths do not change its identity" };
+    const [, warning] = await diagnostics(editor.document, [layout,
+      signature("manifest_project::greet", "(string) -> string", greetHeader)]);
     const quick = await actions(editor.document, warning.range);
     const all = await actions(editor.document, warning.range, fixAllKind);
     assert.strictEqual(quick.length, 1);
@@ -413,12 +416,13 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
     }
     assert.deepStrictEqual(await actions(editor.document, warning.range), []);
     assert.deepStrictEqual(await actions(editor.document, warning.range, fixAllKind), []);
+    await diagnostics(editor.document, [layout]);
     fs.writeFileSync(manifestPath, manifest);
     const restored = await actions(editor.document, warning.range, fixAllKind);
     assert.strictEqual(restored.length, 1);
     assertEdit(restored[0], editor.document, source.replace(`${greetHeader}\n`, ""));
     await invokeFix(editor, warning.range, source.replace(`${greetHeader}\n`, ""), fixAllKind.value);
-    await diagnostics(editor.document, []);
+    await diagnostics(editor.document, [{ ...layout, text: "greet name = decorate name" }]);
     await save(editor.document);
   });
 });

@@ -8,6 +8,7 @@ use osprey_ast::{ImportDecl, NamespaceName, Stmt};
 pub(crate) struct Contribution {
     pub source: usize,
     pub namespace: NamespaceName,
+    pub position: Option<osprey_ast::Position>,
     pub imports: Vec<ImportDecl>,
     pub statements: Vec<Stmt>,
 }
@@ -32,8 +33,15 @@ fn from_file(config: &ProjectConfig, source: usize, statements: &[Stmt]) -> Vec<
         .collect();
     for statement in statements {
         match statement {
-            Stmt::Namespace { name, body, .. } => {
-                out.push(build(source, name.clone(), body.clone(), &file_imports));
+            Stmt::Namespace {
+                name,
+                body,
+                position,
+                ..
+            } => {
+                let mut contribution = build(source, name.clone(), body.clone(), &file_imports);
+                contribution.position = *position;
+                out.push(contribution);
             }
             Stmt::Import(_) => {}
             other => unscoped.push(other.clone()),
@@ -60,6 +68,7 @@ fn build(
         }
     }
     Contribution {
+        position: None,
         source,
         namespace,
         imports,
