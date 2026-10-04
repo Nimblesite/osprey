@@ -346,6 +346,7 @@ fn gen_fn_body(cg: &mut Codegen, name: &str, body: &Expr) -> Result<Value> {
     if let Expr::Lambda {
         parameters,
         body: lbody,
+        position,
         ..
     } = body
     {
@@ -354,7 +355,7 @@ fn gen_fn_body(cg: &mut Codegen, name: &str, body: &Expr) -> Result<Value> {
             .return_type(name)
             .and_then(|t| Codegen::fn_value_sig(&cg.prog, t))
         {
-            return crate::closure::emit_closure(cg, parameters, lbody, &sig);
+            return crate::closure::emit_closure(cg, parameters, lbody, &sig, *position);
         }
     }
     gen_expr(cg, body)

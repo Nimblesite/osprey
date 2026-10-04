@@ -121,9 +121,9 @@ impl Checker {
                 position,
             } => self.infer_lambda(parameters, return_type.as_ref(), body, *position, env),
             Expr::Match { value, arms } => self.infer_match(value, arms, env),
-            Expr::Block { statements, value } => {
-                self.infer_block(statements, value.as_deref(), env)
-            }
+            Expr::Block {
+                statements, value, ..
+            } => self.infer_block(statements, value.as_deref(), env),
             Expr::TypeConstructor {
                 name,
                 type_args,

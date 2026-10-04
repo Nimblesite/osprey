@@ -345,3 +345,34 @@ fn module_debug_frames_keep_source_names_in_both_flavors() -> Result<(), String>
     }
     Ok(())
 }
+
+const CAPTURED_LAMBDAS: [(&str, Flavor); 2] = [
+    ("fn makeAdder(n) = fn(x) => {\n    let sum = wrapAdd(x, n)\n    sum\n}\nfn main() = {\n    let add = makeAdder(2)\n    print(add(40))\n}\n", Flavor::Default),
+    ("makeAdder n = \\x =>\n    sum = wrapAdd x n\n    sum\nmain () =\n    add = makeAdder 2\n    print (add 40)\n", Flavor::Ml),
+];
+
+/// [DEBUGGER-SOURCE-MAP] Source lambdas need scopes, body lines and variables.
+#[test]
+fn captured_lambda_bodies_keep_debug_scopes_in_both_flavors() -> Result<(), String> {
+    for (source, flavor) in CAPTURED_LAMBDAS {
+        let program = parsed_source(source, flavor, "lambda.osp")?.program;
+        let errors = osprey_types::check_program(&program);
+        assert!(errors.is_empty(), "{flavor}: {errors:?}");
+        let ir = osprey_codegen::compile_program_debug(
+            &program,
+            osprey_codegen::DebugSource::from_path("lambda.osp"),
+        )
+        .map_err(|error| format!("{flavor}: {error}"))?;
+        for expected in [
+            "!DISubprogram(name: \"__closure_fn_",
+            "!DILocation(line: 2,",
+            "!DILocation(line: 3,",
+            "!DILocalVariable(name: \"x\", arg: 2,",
+            "!DILocalVariable(name: \"sum\"",
+            "!DILocalVariable(name: \"n\"",
+        ] {
+            assert!(ir.contains(expected), "{flavor}: missing {expected}");
+        }
+    }
+    Ok(())
+}

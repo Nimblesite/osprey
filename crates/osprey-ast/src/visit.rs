@@ -145,7 +145,9 @@ fn expression_children<'a>(expression: &'a Expr, visit: &mut impl FnMut(AstNode<
             visit(AstNode::Expression(value));
             visit_each(arms, visit, |arm| &arm.body);
         }
-        Expr::Block { statements, value } => {
+        Expr::Block {
+            statements, value, ..
+        } => {
             for statement in statements {
                 visit(AstNode::Statement(statement));
             }

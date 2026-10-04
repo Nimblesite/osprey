@@ -136,6 +136,7 @@ fn branches_take_the_worst_arm_while_sequences_add_up() {
     assert_eq!(resumes_on_one_path(&scrutinised), 2);
     // Two in sequence are two on one path.
     let sequential = Expr::Block {
+        position: None,
         statements: vec![stmt(r())],
         value: Some(b(r())),
     };

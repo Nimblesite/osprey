@@ -336,6 +336,7 @@ fn with_renames(renames: Vec<MlItem>, body: MlExpr) -> MlExpr {
     }
     MlExpr::Block {
         items: renames,
+        pos: None,
         value: Some(Box::new(body)),
     }
 }

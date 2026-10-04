@@ -106,6 +106,7 @@ fn bind_expression(expression: &mut Expr, replacement: &str) {
     }
     let body = std::mem::replace(expression, Expr::Identifier(String::new()));
     *expression = Expr::Block {
+        position: None,
         statements: vec![Stmt::Let {
             name: "main".into(),
             mutable: false,

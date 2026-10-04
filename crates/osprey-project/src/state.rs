@@ -280,7 +280,9 @@ impl<'a> Inspector<'a> {
                     self.match_arm(arm, in_owner_arm, position);
                 }
             }
-            Expr::Block { statements, value } => {
+            Expr::Block {
+                statements, value, ..
+            } => {
                 self.block(statements, value.as_deref(), in_owner_arm);
             }
             Expr::Yield(value) | Expr::Resume(value) => {

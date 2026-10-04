@@ -179,6 +179,27 @@ suite("Osprey Debugger E2E Workflows", function () {
     });
   }
 
+  for (const [extension, text] of [
+    ["osp", "fn makeAdder(n) = fn(x) => {\n    let sum = wrapAdd(x, n)\n    sum\n}\nfn main() = {\n    let add = makeAdder(2)\n    print(add(40))\n}\n"],
+    ["ospml", "makeAdder n = \\x =>\n    sum = wrapAdd x n\n    sum\nmain () =\n    add = makeAdder 2\n    print (add 40)\n"],
+  ]) {
+    test(`captured lambda breakpoints expose their own variables (${extension})`, async function () {
+      this.timeout(TEST_TIMEOUT_MS);
+      const program = path.join(tempDir, `lambda.${extension}`);
+      fs.writeFileSync(program, text);
+      const { session, stop } = await launchToFirstStop([3], {
+        program, debugOutput: defaultDebugOutputPath(program),
+      });
+      const frame = assertCurrentLine(stop.stack, 3, program);
+      assert.ok(frame.name.includes("__closure_fn_"), frame.name);
+      await assertLocalVariable(session, frame.id, "x", /\b40\b/);
+      await assertLocalVariable(session, frame.id, "n", /\b2\b/);
+      await assertLocalVariable(session, frame.id, "sum", /\b42\b/);
+      await continueExecution(session, stop.threadId);
+      await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
+    });
+  }
+
   test("conditional breakpoint stops only on the matching call, with detailed watch", async function () {
     this.timeout(TEST_TIMEOUT_MS);
 

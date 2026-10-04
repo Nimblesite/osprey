@@ -79,7 +79,9 @@ fn collect_stmt(stmt: &Stmt, lines: &mut BTreeSet<u32>) {
 /// — the places nested coverable statements live.
 fn collect_expr(expr: &Expr, lines: &mut BTreeSet<u32>) {
     match expr {
-        Expr::Block { statements, value } => {
+        Expr::Block {
+            statements, value, ..
+        } => {
             collect_stmts(statements, lines);
             if let Some(v) = value {
                 collect_expr(v, lines);

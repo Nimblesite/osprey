@@ -220,7 +220,9 @@ fn walk_value(
             arguments,
             ..
         } => record_test_call(function, arguments, pos, doc, out),
-        Expr::Block { statements, value } => {
+        Expr::Block {
+            statements, value, ..
+        } => {
             walk_stmts(statements, pos, out);
             if let Some(v) = value {
                 walk_value(v, pos, None, out);

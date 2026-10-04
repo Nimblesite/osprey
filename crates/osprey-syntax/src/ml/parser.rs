@@ -1779,11 +1779,11 @@ impl Parser<'_> {
     fn handle_line(&mut self) -> MlExpr {
         let head = self.handle_head();
         self.skip_separators();
-        let (items, value) = self.block_items();
+        let (items, value, pos) = self.block_items();
         if items.is_empty() && value.is_none() {
             self.error_at(head.pos, crate::NOTHING_TO_HANDLE);
         }
-        head.over(MlExpr::Block { items, value })
+        head.over(MlExpr::Block { items, value, pos })
     }
 
     /// The effect a request or region names, INCLUDING the instantiation when
@@ -2271,9 +2271,9 @@ impl Parser<'_> {
             return self.inline_body();
         }
         self.advance(); // `Indent`
-        let (items, value) = self.block_items();
+        let (items, value, pos) = self.block_items();
         let _ = self.eat(&TokKind::Dedent);
-        MlExpr::Block { items, value }
+        MlExpr::Block { items, value, pos }
     }
 
     /// A body written on one line. `name := value` is an ITEM, not an
@@ -2292,22 +2292,28 @@ impl Parser<'_> {
             Some(item) => MlExpr::Block {
                 items: vec![item],
                 value: None,
+                pos: None,
             },
             None => self.expr(0),
         }
     }
 
     /// The items (and optional trailing value) of an indented block.
-    fn block_items(&mut self) -> (Vec<MlItem>, Option<Box<MlExpr>>) {
+    fn block_items(&mut self) -> (Vec<MlItem>, Option<Box<MlExpr>>, Option<Position>) {
         let mut items = Vec::new();
         let mut value = None;
+        let mut pos = None;
         while !self.at_block_end() {
             self.skip_separators();
             if self.at_block_end() {
                 break;
             }
             let before = self.i;
+            let start = self.pos();
             value = self.block_line(&mut items);
+            if value.is_some() {
+                pos = Some(start);
+            }
             // Forward-progress guard ([FLAVOR-LOWER-CONTRACT]): a `block_line`
             // whose `item()` errored without consuming a token — a reserved word
             // (`do`/`effect`/…) or a malformed line inside the block — would
@@ -2318,7 +2324,7 @@ impl Parser<'_> {
                 self.recover();
             }
         }
-        (items, value)
+        (items, value, pos)
     }
 
     /// Parse one block line. A trailing bare expression with nothing after it is
