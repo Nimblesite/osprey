@@ -433,6 +433,7 @@ fn assert_debug_artifacts(extension: &str, source: &str, info: &str) -> DebugTes
     let run = std::process::Command::new(&output).output()?;
     assert_debug_success(&run);
     assert_eq!(run.stdout, b"42\n");
+    assert_debug_driver_failure(&input, &output)?;
     if let Some(dir) = input.parent() {
         fs::remove_dir_all(dir)?;
     }
@@ -458,5 +459,22 @@ fn debug_run_retains_requested_artifacts_in_both_flavors() -> DebugTestResult {
             fs::remove_dir_all(dir)?;
         }
     }
+    Ok(())
+}
+
+fn assert_debug_driver_failure(input: &Path, output: &Path) -> DebugTestResult {
+    let failed_output = output.with_extension("missing.exe");
+    let failed = debug_command(input, &failed_output)
+        .args(["--compile", "--debug-preserve-ir"])
+        .env("OSPREY_CC", output.with_extension("missing-compiler"))
+        .output()?;
+    assert!(!failed.status.success());
+    assert!(String::from_utf8_lossy(&failed.stderr).contains("could not invoke"));
+    assert!(!failed_output.exists());
+    let ir = fs::read_to_string(failed_output.with_extension("exe.ll"))?;
+    assert!(
+        ir.contains("!DICompileUnit"),
+        "driver failures must retain the requested IR"
+    );
     Ok(())
 }

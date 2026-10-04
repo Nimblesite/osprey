@@ -303,3 +303,26 @@ fn wasm_target_rejects_debug_then_dispatches_to_the_backend() {
     let _ = compile_program_to_disk(&c, &input);
     let _ = run_program(&c, &input);
 }
+
+/// [DEBUGGER-BUILD-OPTIONS] A failed IR write is a build failure, not a lost artifact.
+#[test]
+fn debug_build_rejects_an_unwritable_artifact_path() -> Result<(), String> {
+    let source = "print(42)\n";
+    let program = osprey_syntax::parse_program(source).program;
+    let input = CompilationInput::script("debug-write.osp", source.into(), program);
+    let dir = std::env::temp_dir().join(format!("osprey-debug-write-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let output = dir.join("absent/output");
+    let cli = parse_args(&args(&[
+        "debug-write.osp",
+        "--compile",
+        "--debug-preserve-ir",
+    ]))?;
+    assert!(build_input(&input, &output, NativeOptions::from_cli(&cli)).is_err());
+    assert!(!output.exists());
+    assert!(
+        !dir.exists(),
+        "a failed write cannot silently select another output"
+    );
+    Ok(())
+}
