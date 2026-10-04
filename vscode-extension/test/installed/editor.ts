@@ -146,19 +146,21 @@ async function focusAt(editor: vscode.TextEditor, range: vscode.Range): Promise<
   assert.ok(editor.selection.isEmpty);
 }
 
+/** Wait for an advertised action on one unchanged source snapshot. */
+export async function requiredActions(document: vscode.TextDocument, range: vscode.Range,
+  kind: vscode.CodeActionKind | string = vscode.CodeActionKind.QuickFix): Promise<vscode.CodeAction[]> {
+  const version = document.version;
+  // Diagnostic publication and the editor's provider refresh are separate
+  // asynchronous operations. Preserve the existing deadline and every exact
+  // action assertion; a source change or permanently absent fix still fails.
+  return waitFor(async () => {
+    assert.strictEqual(document.version, version, "The source changed before the quick fix arrived");
+    return actions(document, range, kind);
+  }, (found) => found.length > 0, "Advertised quick fix becomes available on the unchanged document");
+}
+
 async function focusedAction(editor: vscode.TextEditor, range: vscode.Range, kind: string): Promise<vscode.CodeAction> {
-  // The generic editor picker may cancel or apply an unrelated provider's
-  // action while the language server republishes diagnostics. Execute the
-  // exact action the installed extension just offered and prove its guarded
-  // command accepted the fresh document. This still exercises the production
-  // provider, revalidation request and workspace edit end to end.
-  const version = editor.document.version;
-  // VS Code can answer with no actions while the focused editor refreshes its
-  // provider. Wait for the same source version's action before invoking it.
-  const offered = await waitFor(async () => {
-    assert.strictEqual(editor.document.version, version, "The source changed before quick-fix invocation");
-    return actions(editor.document, range, kind);
-  }, (found) => found.length > 0, "Requested quick fix returns after editor focus");
+  const offered = await requiredActions(editor.document, range, kind);
   assert.strictEqual(offered.length, 1, "The requested fix must remain available at invocation");
   return offered[0];
 }
