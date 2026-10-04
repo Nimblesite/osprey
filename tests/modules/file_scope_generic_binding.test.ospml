@@ -54,7 +54,7 @@ secondBindingCase () = checkAll ("a second generic binding is independent", [
     tagged ("via", round 4) == "via:4"
 ])
 
-// [TYPE-GENERICS-FN] Specialization preserves declaration scope and caller arguments.
+(** [TYPE-GENERICS-FN] Specialization preserves declaration scope and caller arguments. *)
 anchor = 2
 declared _ignored = anchor
 declaredAlias = declared
