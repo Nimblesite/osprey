@@ -21,9 +21,9 @@ module Money : MoneyApi
     fromCents cents = Amount(cents = cents)
     toCents amount = amount.cents
 
-    // "$4,250.05" — cents are zero-padded via the two-digit remainder and
-    // dollars are thousands-grouped by recursion. `/` is float division, so
-    // this runs on `intDiv` and `%` by nonzero literals: total, never faulting.
+    (** "$4,250.05" — cents are zero-padded via the two-digit remainder and
+        dollars are thousands-grouped by recursion. `/` is float division, so
+        this runs on `intDiv` and `%` by nonzero literals: total, never faulting. *)
     pennies c =
         remainder = c % 100
         match remainder < 10
