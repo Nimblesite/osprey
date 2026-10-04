@@ -13,6 +13,7 @@ use osprey_ast::{
 };
 use std::fmt::Write as _;
 mod render;
+pub(crate) mod requirements;
 pub(crate) use render::fill_inferred;
 pub use render::render_type_params;
 use render::{
@@ -78,6 +79,8 @@ pub struct SymbolInfo {
     /// Written upper bound, never an inferred set of required operations.
     /// Kept separate so inference cannot drop it while rebuilding a signature.
     pub(crate) declared_effect_row: Option<String>,
+    /// Inferred operation proof, kept separate from an author's upper bound.
+    pub(crate) effect_requirements: Option<osprey_types::EffectRequirements>,
     /// The declaration's documentation rendered to hover Markdown, when it
     /// carries a doc comment (either flavor). Implements [LSP-HOVER-DOCS].
     pub(crate) doc: Option<String>,
@@ -154,6 +157,7 @@ fn container_sym(
         parameters: Vec::new(),
         return_type: None,
         declared_effect_row: None,
+        effect_requirements: None,
         doc: render_scope_docs(docs),
     }
 }
@@ -442,6 +446,13 @@ fn sym_json(s: &SymbolInfo) -> String {
     }
     if let Some(row) = &s.declared_effect_row {
         let _ = write!(o, ",\"declaredEffectRow\":{}", json_str(row));
+    }
+    if let Some(requirements) = &s.effect_requirements {
+        let _ = write!(
+            o,
+            ",\"effectRequirements\":{}",
+            requirements::json(requirements)
+        );
     }
     o.push('}');
     o

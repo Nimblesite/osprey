@@ -215,6 +215,7 @@ These constraints materially affect how the language must be described:
   still make ordinary calls, allocate and read runtime values. Say “no runtime
   effect dispatch,” not “no runtime cost.” Dependency analysis is a sound set
   of possible reads, not a promise to know precisely which branch will run.
+- Editors and generated API pages show the operations a function requires through its helpers, distinguish host runtime operations and flag unresolved callback effects. These facts come from the existing whole-program checker; they do not imply that effect-row polymorphism in reusable function types is complete.
 - The [reactive mobile application](../examples/mobile/README.md) is implemented using ordinary Osprey modules and explicit event/state/command transitions. Osprey defines its screen tree, state, GitHub request and decoding logic, SQLite schema and statements, offline cache, search, bookmarks, notes, and priorities. Native hosts render the tree and execute platform services. This working application does not imply that the staged-effects reactive runtime is implemented.
 
 - Integer arithmetic returns plain `int`. Fallible `+`, `-`, `*`, `abs` and

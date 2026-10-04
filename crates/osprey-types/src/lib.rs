@@ -81,7 +81,7 @@ pub use builtin_docs::{
 pub use builtins::{builtin_callback_type, builtin_function_type, builtin_signature};
 pub use check::{check_program, check_program_exports, erased_var, infer_program};
 pub use error::TypeError;
-pub use info::{CtorLayout, HandlerSite, OpType, PerformSite, ProgramTypes};
+pub use info::{CtorLayout, EffectRequirements, HandlerSite, OpType, PerformSite, ProgramTypes};
 pub use redundant::{
     redundant_annotation_sites, redundant_annotation_sites_where, redundant_annotations,
     redundant_annotations_where, RedundantAnnotation, RedundantTarget, TypeWarning,

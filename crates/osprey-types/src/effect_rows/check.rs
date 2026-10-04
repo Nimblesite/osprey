@@ -1,4 +1,5 @@
 //! Effect row check.
+use super::reports::CheckedEffects;
 use super::{
     clear_verdicts, converge, entry_errors, file_scope_env, full_application, requirement_name,
     specialize_argument, validate_arithmetic_initializers, validate_handler_arms,
@@ -12,7 +13,7 @@ use super::{
     clippy::too_many_lines,
     reason = "the fixed point, contract validation, and entry proof form one ordered checker pass"
 )]
-pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) -> Vec<TypeError> {
+pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) -> CheckedEffects {
     let mut index = Index::collect(program);
     for function in &mut index.functions {
         let entries = function.position.and_then(|position| {
@@ -83,7 +84,10 @@ pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) 
             .iter()
             .all(|function| !function.effect_row_present)
     {
-        return errors;
+        return CheckedEffects {
+            errors,
+            ..CheckedEffects::default()
+        };
     }
     let mut rows = vec![Summary::default(); index.functions.len()];
     let mut returns = vec![None; index.functions.len()];
@@ -239,5 +243,8 @@ pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) 
             ));
         }
     }
-    errors
+    CheckedEffects {
+        errors,
+        functions: super::reports::collect(&index, instances, &rows, &returns),
+    }
 }

@@ -233,6 +233,7 @@ pub(crate) fn signature_help(
     let params: Vec<String> = sym.parameters.iter().map(param_label).collect();
     let last = u32::try_from(params.len().saturating_sub(1)).unwrap_or(0);
     Some(SignatureInfo {
+        documentation: crate::analysis::requirements::description(sym.effect_requirements.as_ref()),
         label: mlrender::signature(flavor, &sym.signature.unwrap_or(sym.name)),
         parameters: params,
         active_parameter: active.min(last),

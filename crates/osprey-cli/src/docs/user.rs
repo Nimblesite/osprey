@@ -294,7 +294,8 @@ fn page(
         .get(&entry.qualified_name)
         .ok_or_else(|| invalid("missing API page slug"))?;
     let signature = declared_signature(entry, symbols, origin)?;
-    let markdown = article(entry, &signature, origin);
+    let requirements = inferred_requirements(entry, symbols)?;
+    let markdown = article(entry, &signature, requirements, origin);
     Ok(Page {
         slug: format!("api/{slug}"),
         title: entry.qualified_name.clone(),
@@ -305,13 +306,25 @@ fn page(
     })
 }
 
+fn inferred_requirements<'a>(entry: &DocEntry, symbols: &'a [Value]) -> io::Result<&'a str> {
+    if entry.kind != "Function" {
+        return Ok("");
+    }
+    Ok(symbol_for(entry, symbols)?
+        .and_then(|symbol| symbol.get("effectRequirements"))
+        .and_then(|requirements| requirements.get("description"))
+        .and_then(Value::as_str)
+        .unwrap_or_default())
+}
+
 /// Everything the page says, in reading order: the name, the signature, what
 /// the author wrote, what the declaration's own shape adds.
-fn article(entry: &DocEntry, signature: &str, origin: &Origin) -> String {
+fn article(entry: &DocEntry, signature: &str, requirements: &str, origin: &Origin) -> String {
     let fence = osprey_lsp::source_fence(origin.flavor);
     body(&[
         format!("# {}", entry.qualified_name),
         format!("```{fence}\n{signature}\n```"),
+        requirements.to_owned(),
         entry
             .markdown()
             .replace("```osprey\n", &format!("```{fence}\n")),
@@ -378,16 +391,7 @@ fn signature(entry: &DocEntry, symbols: &[Value]) -> io::Result<String> {
         return Ok(format!("{}: {ty}", entry.qualified_name.replace("::", ".")));
     }
     let name = entry.symbol_name.as_str();
-    let exact = symbols
-        .iter()
-        .find(|symbol| symbol.get("name").and_then(Value::as_str) == Some(name));
-    let symbol = match exact {
-        Some(symbol) => Some(symbol),
-        None => match unique_suffix(symbols, name)? {
-            Some(symbol) => Some(symbol),
-            None => local_binding(entry, symbols),
-        },
-    };
+    let symbol = symbol_for(entry, symbols)?;
     match symbol {
         Some(symbol) => Ok(render_symbol(symbol, &entry.qualified_name)),
         None if matches!(entry.kind, "Function" | "Extern" | "Value") => {
@@ -399,6 +403,20 @@ fn signature(entry: &DocEntry, symbols: &[Value]) -> io::Result<String> {
             entry.qualified_name
         )),
     }
+}
+
+fn symbol_for<'a>(entry: &DocEntry, symbols: &'a [Value]) -> io::Result<Option<&'a Value>> {
+    let name = entry.symbol_name.as_str();
+    let exact = symbols
+        .iter()
+        .find(|symbol| symbol.get("name").and_then(Value::as_str) == Some(name));
+    Ok(match exact {
+        Some(symbol) => Some(symbol),
+        None => match unique_suffix(symbols, name)? {
+            Some(symbol) => Some(symbol),
+            None => local_binding(entry, symbols),
+        },
+    })
 }
 
 fn local_binding<'a>(entry: &DocEntry, symbols: &'a [Value]) -> Option<&'a Value> {

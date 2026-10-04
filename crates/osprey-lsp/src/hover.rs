@@ -143,21 +143,21 @@ fn resolve_link(
 /// **authoring** flavor ([`mlrender`]) — an ML author never wrote `fn f(x: int)`
 /// and should not be shown it. Implements [LSP-FLAVOR-RENDER], [FLAVOR-ML-FN].
 fn symbol_hover(s: &SymbolInfo, program: &Program, flavor: Flavor) -> String {
-    let code = match (s.kind, &s.signature) {
-        (SymbolKind::Function, Some(sig)) => inferred_signature(s, sig, program),
+    let filled = inferred_symbol(s, program);
+    let code = match (filled.kind, &filled.signature) {
         (_, Some(sig)) => sig.clone(),
         (SymbolKind::Namespace | SymbolKind::Module | SymbolKind::Signature, None) => {
-            format!("{} {}", s.kind.as_str(), s.name)
+            format!("{} {}", filled.kind.as_str(), filled.name)
         }
-        (_, None) => format!("{}: {}", s.name, displayed_type(s, program)),
+        (_, None) => format!("{}: {}", filled.name, displayed_type(&filled, program)),
     };
     let code = mlrender::signature(flavor, &code);
-    let mut out = format!("```{}\n{code}\n```", mlrender::fence(flavor));
-    if let Some(doc) = &s.doc {
-        out.push_str("\n\n");
-        out.push_str(doc);
-    }
-    out
+    let mut parts = vec![format!("```{}\n{code}\n```", mlrender::fence(flavor))];
+    parts.extend(crate::analysis::requirements::description(
+        filled.effect_requirements.as_ref(),
+    ));
+    parts.extend(filled.doc);
+    parts.join("\n\n")
 }
 
 /// A function's signature with every slot the author left blank filled in by
@@ -171,10 +171,12 @@ fn symbol_hover(s: &SymbolInfo, program: &Program, flavor: Flavor) -> String {
 /// about the function). Hover is the main way a reader recovers the types the
 /// source deliberately omits, so it must answer from inference.
 /// Implements [LSP-HOVER-INFERRED-SIGNATURE].
-fn inferred_signature(s: &SymbolInfo, sig: &str, program: &Program) -> String {
+fn inferred_symbol(s: &SymbolInfo, program: &Program) -> SymbolInfo {
     let mut filled = s.clone();
-    crate::analysis::fill_inferred(&mut filled, &osprey_types::infer_program(program));
-    filled.signature.unwrap_or_else(|| sig.to_string())
+    if s.kind == SymbolKind::Function {
+        crate::analysis::fill_inferred(&mut filled, &osprey_types::infer_program(program));
+    }
+    filled
 }
 
 /// The type shown for a non-function symbol: its declared/category type, or —

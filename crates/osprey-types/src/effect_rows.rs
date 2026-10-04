@@ -48,6 +48,7 @@ mod specialize;
 use specialize::{specialize_argument, specialize_summary, specialize_value};
 mod check;
 pub(crate) use check::check;
+mod reports;
 mod validate;
 use validate::{entry_errors, validate_arithmetic_initializers, validate_statement_handlers};
 mod gpu;
@@ -84,6 +85,8 @@ pub(crate) struct Instances {
     pub(crate) declared_rows: HashMap<(u32, u32), Vec<Option<Vec<String>>>>,
     /// Substituted operation arguments available to refine a handler.
     pub(crate) argument_types: HashMap<Vec<String>, Vec<crate::ty::Type>>,
+    /// Display arguments replace inference variables structurally with holes.
+    pub(crate) display_arguments: HashMap<Vec<String>, Vec<String>>,
     /// Candidate instantiations required by each handler's body after calls
     /// and callbacks have propagated through the closed-program summary.
     pub(crate) handler_inference: RefCell<HandlerCandidates>,

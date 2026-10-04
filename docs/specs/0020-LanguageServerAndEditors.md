@@ -159,8 +159,17 @@ For a function with a written effect row, hover, signature help, completion
 detail and `--symbols` preserve that row after type inference fills unwritten
 parameter and return types. `declaredEffectRow` in symbol JSON is the written
 upper bound (`![]`, `!e`, or a fixed/open row), not an assertion that every
-permitted operation actually occurs. Inferring and displaying a function's
-transitive required operations remains part of [plan 0016](../plans/0016-algebraic-effects-and-handlers.md).
+permitted operation actually occurs. Inferred requirements are presented separately under [LSP-EFFECT-REQUIREMENTS].
+
+### Inferred effect requirements `[LSP-EFFECT-REQUIREMENTS]`
+
+Function hover, signature-help documentation, completion documentation, symbol JSON and generated API pages share the checker's final closed-program operation summary. The summary describes full application, including curried parameters. It follows transitive calls, callback provenance and arithmetic; a handler removes only the operations and generic instances it covers. Operations performed by a recovery arm remain requirements of the enclosing policy. A written row remains a separate upper bound and is never copied into the inferred requirements.
+
+`effectRequirements` in symbol JSON contains sorted `operations`, sorted `runtimeBuiltins`, `unresolvedCallbacks` and their shared Markdown `description`. Generic operation names retain concrete arguments (`Read<int>.get`); unresolved argument types use `_`, never private inference IDs. Host runtime builtins are listed separately. An unresolved callback or dynamic callable must produce an explicit uncertainty statement, even when the known operation list is empty. Absence of a report, including on externs, is not a purity guarantee. These summaries do not implement independently quantified rows in function types.
+
+The views must update when an unsaved source edit changes a helper's requirements. Both-flavor unit and LSP transport tests verify transitive requirements, discharge and removal of stale descriptions; checker tests additionally cover recursive calls, exact generic discharge, forwarding, arithmetic and unknown callbacks.
+
+### Symbol resolution
 
 Resolution order for the symbol under the cursor:
 

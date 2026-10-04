@@ -427,6 +427,7 @@ mod tests {
                 label: String::from("boxed"),
                 kind: crate::model::CompletionKind::Function,
                 detail: Some(String::from(BOXED)),
+                documentation: None,
                 insert_text: None,
             },
             "completion agrees with the outline, field for field"

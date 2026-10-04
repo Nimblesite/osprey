@@ -194,6 +194,7 @@ fn value_builders_map_matching_reports_and_fall_back_otherwise() {
     let sig = Report::Signature(Some(SignatureInfo {
         label: "fn f()".to_owned(),
         parameters: Vec::new(),
+        documentation: None,
         active_parameter: 0,
     }));
     assert_eq!(
@@ -216,6 +217,7 @@ fn value_builders_map_matching_reports_and_fall_back_otherwise() {
         label: "fn".to_owned(),
         kind: CompletionKind::Keyword,
         detail: None,
+        documentation: None,
         insert_text: None,
     }]);
     assert_eq!(
