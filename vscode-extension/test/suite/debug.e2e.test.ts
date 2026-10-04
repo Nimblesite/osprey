@@ -182,6 +182,7 @@ suite("Osprey Debugger E2E Workflows", function () {
   for (const fixture of [
     {
       "label": "captured lambda breakpoints expose their own variables",
+      "locals": { x: 40, n: 2, sum: 42 },
       "line": 3,
       "prefix": "__closure_fn_",
       "sources": {
@@ -191,12 +192,21 @@ suite("Osprey Debugger E2E Workflows", function () {
     },
     {
       "label": "extracted GPU kernel breakpoints expose uniforms and locals",
+      "locals": { x: 40, n: 2, sum: 42 },
       "line": 5,
       "prefix": "__gpu_kernel_",
       "sources": {
         "osp": "fn main() = {\n    let n = 2\n    let result = gpuMap(toGpu([40]), fn(x) => {\n        let sum = wrapAdd(x, n)\n        sum\n    })\n    print(gpuGet(result, 0) ?: -1)\n}\n",
         "ospml": "main () =\n    n = 2\n    result = gpuMap (toGpu [40]) (\\x =>\n        sum = wrapAdd x n\n        sum)\n    print (gpuGet (result, 0) ?: -1)\n"
       }
+    },
+    {
+      label: "single-expression lambda breakpoints retain return locations",
+      locals: { x: 40, n: 2 }, line: 2, prefix: "__closure_fn_",
+      sources: {
+        osp: "fn makeAdder(n) = fn(x) => {\n    wrapAdd(x, n)\n}\nfn main() = {\n    let add = makeAdder(2)\n    print(add(40))\n}\n",
+        ospml: "makeAdder n = \\x =>\n    wrapAdd x n\nmain () =\n    add = makeAdder 2\n    print (add 40)\n",
+      },
     }
   ]) {
     for (const [extension, text] of Object.entries(fixture.sources)) {
@@ -209,9 +219,9 @@ suite("Osprey Debugger E2E Workflows", function () {
         });
         const frame = assertCurrentLine(stop.stack, fixture.line, program);
         assert.ok(frame.name.includes(fixture.prefix), frame.name);
-        await assertLocalVariable(session, frame.id, "x", /\b40\b/);
-        await assertLocalVariable(session, frame.id, "n", /\b2\b/);
-        await assertLocalVariable(session, frame.id, "sum", /\b42\b/);
+        for (const [name, value] of Object.entries(fixture.locals)) {
+          await assertLocalVariable(session, frame.id, name, new RegExp(`^${value}$`));
+        }
         await continueExecution(session, stop.threadId);
         await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
       });

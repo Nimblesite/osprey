@@ -225,3 +225,61 @@ fn no_corpus_program_emits_a_reference_to_an_undefined_symbol() {
         broken.join("\n")
     );
 }
+
+/// [DEBUGGER-SOURCE-MAP] A return-only block still has an executable body line.
+#[test]
+fn single_expression_blocks_keep_their_return_locations() -> Result<(), String> {
+    for (default, ml, scope, line) in RETURN_ONLY_BLOCKS {
+        for (source, extension) in [(default, "osp"), (ml, "ospml")] {
+            assert_return_location(&return_debug_ir(source, extension)?, scope, line)?;
+        }
+    }
+    Ok(())
+}
+
+fn return_debug_ir(source: &str, extension: &str) -> Result<String, String> {
+    let path = format!("return_location.{extension}");
+    let parsed = osprey_syntax::parse_program_for_path(&path, source);
+    assert!(parsed.errors.is_empty(), "{extension}: {:?}", parsed.errors);
+    let errors = osprey_types::check_program(&parsed.program);
+    assert!(errors.is_empty(), "{extension}: {errors:?}");
+    osprey_codegen::compile_program_debug(
+        &parsed.program,
+        osprey_codegen::DebugSource::from_path(&path),
+    )
+    .map_err(|error| format!("{extension}: {error}"))
+}
+
+fn assert_return_location(ir: &str, name: &str, line: usize) -> Result<(), String> {
+    let scope = ir
+        .lines()
+        .find(|line| line.contains(&format!("!DISubprogram(name: \"{name}")))
+        .and_then(|line| line.split_once(" = "))
+        .map(|(id, _)| id)
+        .ok_or_else(|| format!("missing scope {name}"))?;
+    let location = format!("!DILocation(line: {line},");
+    assert!(
+        ir.lines()
+            .any(|line| line.contains(&location) && line.contains(&format!("scope: {scope})"))),
+        "missing return line in {name}: {ir}"
+    );
+    Ok(())
+}
+
+const RETURN_ONLY_BLOCKS: [(&str, &str, &str, usize); 3] = [
+    (
+        "let value = 42\nfn read() = {\n    value\n}\nfn main() = print(read())\n",
+        "value = 42\nread () =\n    value\nmain () = print (read ())\n",
+        "read", 3,
+    ),
+    (
+        "fn answer() = {\n    42\n}\nfn main() = print(answer())\n",
+        "answer () =\n    42\nmain () = print (answer ())\n",
+        "answer", 2,
+    ),
+    (
+        "fn make() = fn(x) => {\n    wrapAdd(x, 0)\n}\nfn main() = {\n let f = make()\n print(f(42))\n}\n",
+        "make () = \\x =>\n    wrapAdd x 0\nmain () =\n    f = make ()\n    print (f 42)\n",
+        "__closure_fn_", 2,
+    ),
+];

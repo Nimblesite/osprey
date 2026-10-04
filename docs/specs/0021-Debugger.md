@@ -56,11 +56,11 @@ Rules:
 
 A materialized source lambda has its own native debug scope, declaration location and body locations. This applies when a lambda is returned, bound to a local, passed to another Osprey function or passed as a capture-free C callback. Synthetic compiler adapters do not acquire an invented source location.
 
-A block with local bindings retains its trailing value's own source position, including when that value is a bare identifier. Debug builds associate the return with that position so a breakpoint there can inspect the completed local bindings. Project assembly and string interpolation preserve these positions in the original source coordinates.
+A function or lambda's block body retains its trailing value's own source position, including a block consisting only of a literal, identifier or call. Debug builds associate the return with that position so a breakpoint there stops inside the correct function and can inspect its parameters, captures and completed local bindings. Project assembly and string interpolation preserve these positions in the original source coordinates.
 
 Primitive lambda parameters, immutable captures, captured mutable cells and local bindings are visible in the lambda's scope. The hidden closure environment occupies native argument one; source arguments follow it. A C callback has no environment, so its first source argument is native argument one. Captures are locals, not additional source arguments. Extracted host GPU kernels also retain source-lambda scopes; their flat ABI places captured uniforms before the source parameters, without an environment pointer ([GPU-KERNEL-EXTRACT](0034-GPUComputation.md#kernel-extraction--gpu-kernel-extract)).
 
-`captured_lambda_bodies_keep_debug_scopes_in_both_flavors` and `bound_argument_and_ffi_lambdas_keep_their_debug_scopes` pin the metadata and scope ownership. The editor's `captured lambda breakpoints expose their own variables` cases stop on the return line in both flavors and read the parameter, capture and calculated local through LLDB-DAP.
+`captured_lambda_bodies_keep_debug_scopes_in_both_flavors` and `bound_argument_and_ffi_lambdas_keep_their_debug_scopes` pin the metadata and scope ownership. The editor's `captured lambda breakpoints expose their own variables` cases stop on the return line in both flavors and read the parameter, capture and calculated local through LLDB-DAP. `single_expression_blocks_keep_their_return_locations` checks function/lambda scope ownership of return-only body locations; `single-expression lambda breakpoints retain return locations` verifies the exact stopping line and live values through LLDB-DAP.
 
 ## Editor Launch `[DEBUGGER-EDITOR-LAUNCH]`
 

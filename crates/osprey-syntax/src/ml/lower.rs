@@ -696,8 +696,13 @@ pub(super) fn lower_binding(
     } else {
         curry_position(pos, params.len().saturating_sub(2))
     };
+    let lower_body = if params.is_empty() {
+        lower_expr
+    } else {
+        lower_function_body
+    };
     let body = super::binding_ranges::with_owner(owner, || {
-        in_scope(params_scope(&params), move || lower_expr(body))
+        in_scope(params_scope(&params), move || lower_body(body))
     });
     // Split the paired signature into its type params, declared type and
     // effect row.
@@ -1413,7 +1418,7 @@ fn lower_lambda_node(params: Vec<MlParam>, uncurried: bool, body: MlExpr, pos: P
         curry_position(pos, params.len().saturating_sub(1))
     };
     let body = super::binding_ranges::with_owner(owner, || {
-        in_scope(params_scope(&params), move || lower_expr(body))
+        in_scope(params_scope(&params), move || lower_function_body(body))
     });
     if !uncurried {
         return lower_lambda(params, body, pos);
@@ -1457,6 +1462,23 @@ fn lower_binary(op: &str, left: MlExpr, right: MlExpr, pos: Position) -> Expr {
         op: op.to_owned(),
         left: Box::new(left),
         right: Box::new(right),
+    }
+}
+
+/// A function's return-only layout body retains its own executable source line.
+/// Value bindings keep the canonical expression shape. [DEBUGGER-SOURCE-MAP]
+fn lower_function_body(body: MlExpr) -> Expr {
+    let position = match &body {
+        MlExpr::Block { pos, .. } => *pos,
+        _ => None,
+    };
+    match (lower_expr(body), position) {
+        (body @ (Expr::Block { .. } | Expr::Handler { .. }), _) | (body, None) => body,
+        (body, position) => Expr::Block {
+            statements: Vec::new(),
+            value: Some(Box::new(body)),
+            position,
+        },
     }
 }
 
