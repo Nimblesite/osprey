@@ -166,3 +166,99 @@ fn function_source_lines(ir: &str, name: &str) -> Result<Vec<usize>, String> {
     })
     .collect()
 }
+
+const RECORD_VALUES: [(&str, Flavor); 2] = [
+    ("type Point = { active: bool, amount: float, count: int }\ntype Envelope = { point: Point, label: string }\nfn main() = {\n let box = Envelope { point: Point { active: true, amount: 2.5, count: 42 }, label: \"hi\" }\n let point = box.point\n print(point.count)\n}", Flavor::Default),
+    ("type Point =\n    active : bool\n    amount : float\n    count : int\ntype Envelope =\n    point : Point\n    label : string\nmain () =\n    box = Envelope(point = Point(active = true, amount = 2.5, count = 42), label = \"hi\")\n    point = box.point\n    print point.count", Flavor::Ml),
+];
+
+/// [DEBUGGER-RECORD-VALUES] Native field offsets include tag and alignment padding.
+#[test]
+fn record_debug_fields_match_the_native_layout_in_both_flavors() -> Result<(), String> {
+    for (source, flavor) in RECORD_VALUES {
+        let ir = lambda_debug_ir(source, flavor)?;
+        assert_record_layout(
+            &ir,
+            "point",
+            &[("active", 8, 64), ("amount", 64, 128), ("count", 64, 192)],
+        )?;
+        assert_record_layout(&ir, "box", &[("point", 64, 64), ("label", 64, 128)])?;
+        assert!(ir.contains("!DIBasicType(name: \"bool\", size: 8, encoding: DW_ATE_boolean)"));
+        let plain = ir_for(source, flavor, "records.osp")?;
+        assert!(
+            !plain.contains("!DI"),
+            "record metadata must remain debug-only"
+        );
+    }
+    Ok(())
+}
+
+fn assert_record_layout(ir: &str, name: &str, expected: &[(&str, u64, u64)]) -> Result<(), String> {
+    let fields = debug_record_fields(ir, name)?;
+    assert_eq!(
+        fields.len(),
+        expected.len(),
+        "{name}: no missing or invented fields"
+    );
+    for (field, (name, size, offset)) in fields.iter().zip(expected) {
+        assert!(field.contains(&format!("name: \"{name}\",")), "{field}");
+        assert!(
+            field.contains(&format!("size: {size}, offset: {offset})")),
+            "{field}"
+        );
+    }
+    Ok(())
+}
+
+fn debug_record_fields<'a>(ir: &'a str, name: &str) -> Result<Vec<&'a str>, String> {
+    let local = ir
+        .lines()
+        .find(|line| line.contains(&format!("!DILocalVariable(name: \"{name}\",")))
+        .ok_or_else(|| format!("missing local {name}"))?;
+    let pointer = referenced_metadata(ir, local, "type: ")?;
+    assert!(pointer.contains("DW_TAG_pointer_type"), "{name}: {pointer}");
+    let record = referenced_metadata(ir, pointer, "baseType: ")?;
+    assert!(record.contains("DW_TAG_structure_type"), "{name}: {record}");
+    let members = referenced_metadata(ir, record, "elements: ")?;
+    members
+        .split_once("!{")
+        .ok_or_else(|| format!("missing member list: {members}"))?
+        .1
+        .trim_end_matches('}')
+        .split(", ")
+        .filter(|id| !id.is_empty())
+        .map(|id| metadata_line(ir, id))
+        .collect()
+}
+
+fn referenced_metadata<'a>(ir: &'a str, line: &str, field: &str) -> Result<&'a str, String> {
+    let id = line
+        .split_once(field)
+        .and_then(|(_, tail)| tail.split([',', ')']).next())
+        .ok_or_else(|| format!("missing {field} in {line}"))?;
+    metadata_line(ir, id)
+}
+
+fn metadata_line<'a>(ir: &'a str, id: &str) -> Result<&'a str, String> {
+    ir.lines()
+        .find(|line| line.starts_with(&format!("{id} = ")))
+        .ok_or_else(|| format!("missing metadata {id}"))
+}
+
+/// [DEBUGGER-RECORD-VALUES] Concrete generic signatures work before any construction.
+#[test]
+fn generic_record_parameters_keep_their_field_types_in_debug_metadata() -> Result<(), String> {
+    for (source, flavor) in [
+        ("type Box<T> = { value: T }\ntype Operation = { run: fn(Box<float>) -> float }\nfn inspect(input) = { let local = input\n local.value }\nfn main() = { let op = Operation { run: inspect }\n print(op.run(Box { value: 2.5 })) }", Flavor::Default),
+        ("type Box T =\n    value : T\ntype Operation =\n    run : Box<float> -> float\ninspect input =\n    local = input\n    local.value\nmain () =\n    op = Operation(run = inspect)\n    print (op.run (Box(value = 2.5)))", Flavor::Ml),
+    ] {
+        let ir = lambda_debug_ir(source, flavor)?;
+        for name in ["input", "local"] {
+            assert_record_layout(&ir, name, &[("value", 64, 64)])?;
+            for field in debug_record_fields(&ir, name)? {
+                assert!(referenced_metadata(&ir, field, "baseType: ")?.contains("DW_ATE_float"));
+            }
+        }
+    }
+    Ok(())
+}

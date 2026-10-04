@@ -77,7 +77,7 @@ fn bind_row_statically(
         else {
             continue;
         };
-        let loaded = crate::aggregate::load_field(cg, struct_ty, &src, idx + 1, fty);
+        let loaded = crate::aggregate::load_record_field(cg, owner, struct_ty, &src, idx, fty);
         let field_owner = cg.ctor_field_owner(owner, fname);
         let mut value = Value::new(loaded, fty).with_owner(field_owner);
         value.inferred_type = crate::aggregate::field_type(cg, disc, owner, fname);

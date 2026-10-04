@@ -156,7 +156,7 @@ impl Codegen {
         let slot = self.cell_slots.get(name).cloned()?;
         let ty = slot.pointee.as_str();
         let r = self.emit_reg(format!("load {ty}, {ty}* {}", slot.ptr));
-        Some(Value::new(r, slot.pointee).with_owner(slot.osp_ty))
+        Some(slot.value(r))
     }
 
     /// The lambda `name` is bound to for inline application: this function's

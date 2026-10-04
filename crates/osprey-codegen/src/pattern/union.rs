@@ -83,8 +83,7 @@ pub(super) fn gen_union_match(
     owner: &str,
 ) -> Result<Value> {
     // Load the discriminant tag (every variant block starts with `{ i64 tag, … }`).
-    let tagp = cg.emit_reg(format!("bitcast i8* {} to i64*", disc.operand));
-    let tag = cg.emit_reg(format!("load i64, i64* {tagp}"));
+    let tag = discriminant(cg, disc, owner);
 
     let end = cg.fresh_label();
     let mark = crate::arc::frame_mark(cg);
@@ -182,9 +181,17 @@ fn bind_variant_fields(
         };
         let fty = *fty;
         let owner = cg.ctor_field_owner(variant, declared);
-        let loaded = crate::aggregate::load_field(cg, &struct_ty, src.as_str(), idx + 1, fty);
+        let loaded = crate::aggregate::load_record_field(cg, variant, &struct_ty, &src, idx, fty);
         let mut value = Value::new(loaded, fty).with_owner(owner);
         value.inferred_type = crate::aggregate::field_type(cg, disc, variant, declared);
         bind_value(cg, bind_name.clone(), value);
     }
+}
+
+fn discriminant(cg: &mut Codegen, value: &Value, owner: &str) -> String {
+    if !crate::aggregate::record_has_tag(owner) {
+        return "0".to_string();
+    }
+    let pointer = cg.emit_reg(format!("bitcast i8* {} to i64*", value.operand));
+    cg.emit_reg(format!("load i64, i64* {pointer}"))
 }

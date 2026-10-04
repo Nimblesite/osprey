@@ -5,11 +5,12 @@ import * as assert from "assert";
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
-import { lexicalFixtures, sourceFixtures } from "./debug-fixtures";
+import { lexicalFixtures, mutableFixtures, sourceFixtures } from "./debug-fixtures";
 import { defaultDebugOutputPath } from "../../client/src/extension";
 import { resolveBuiltOsprey, resolveRequiredLldbDap } from "./osprey-test-env";
 import {
   assertCurrentLine,
+  assertFrameLocals,
   assertLocalVariable,
   assertWatch,
   clearDebugBreakpoints,
@@ -224,28 +225,7 @@ suite("Osprey Debugger E2E Workflows", function () {
     }
   }
 
-  for (const fixture of [
-    {
-      label: "handler debugger values follow live cell mutations", prefix: "__handler_Counter_step", arguments: [40, 1],
-      sources: {
-        osp: { line: 7, text: "effect Counter { step: fn(int) -> int }\nfn main() = {\n    mut n = 2\n    handle Counter {\n        step x => {\n            n = wrapAdd(n, x)\n            n\n        }\n    }\n    let first = perform Counter.step(40)\n    let second = perform Counter.step(1)\n    print(\"${first}:${second}\")\n}\n" },
-        ospml: { line: 8, text: "effect Counter\n    step : int => int\nmain () =\n    mut n = 2\n    handle Counter\n        step x =>\n            n := wrapAdd n x\n            n\n    first = perform Counter.step 40\n    second = perform Counter.step 1\n    print \"${first}:${second}\"\n" },
-      },
-    },
-    {
-      label: "closure debugger values follow live cell mutations", prefix: "__closure_fn_", arguments: [0, 0],
-      sources: {
-        osp: { line: 6, text: "effect Counter { step: fn(int) -> int }\nfn main() = {\n    mut n = 2\n    let read = fn(x) => {\n        let sum = wrapAdd(n, x)\n        sum\n    }\n    handle Counter {\n        step x => {\n            n = wrapAdd(n, x)\n            n\n        }\n    }\n    let first = perform Counter.step(40)\n    let before = read(0)\n    let second = perform Counter.step(1)\n    let after = read(0)\n    print(\"${first}:${before}:${second}:${after}\")\n}\n" },
-        ospml: { line: 7, text: "effect Counter\n    step : int => int\nmain () =\n    mut n = 2\n    read = \\x =>\n        sum = wrapAdd n x\n        sum\n    handle Counter\n        step x =>\n            n := wrapAdd n x\n            n\n    first = perform Counter.step 40\n    before = read 0\n    second = perform Counter.step 1\n    after = read 0\n    print \"${first}:${before}:${second}:${after}\"\n" },
-      },
-    },
-  ].flatMap(fixture => fixture.prefix === "__handler_Counter_step" ? [fixture, {
-    ...fixture, label: "resuming handler debugger values follow live cell mutations", prefix: "__resume_arm_Counter_step",
-    sources: {
-      osp: { ...fixture.sources.osp, text: fixture.sources.osp.text.replace("step:", "control step:").replace("            n\n", "            resume(n)\n") },
-      ospml: { ...fixture.sources.ospml, text: fixture.sources.ospml.text.replace("step :", "control step :").replace("            n\n", "            resume n\n") },
-    },
-  }] : [fixture])) {
+  for (const fixture of mutableFixtures) {
     for (const [extension, source] of Object.entries(fixture.sources)) {
       test(`${fixture.label} (${extension})`, async function () {
         this.timeout(TEST_TIMEOUT_MS);
@@ -254,31 +234,22 @@ suite("Osprey Debugger E2E Workflows", function () {
         const { session, stop } = await launchToFirstStop([source.line], {
           program, debugOutput: defaultDebugOutputPath(program),
         });
-        await assertCellState(session, stop, program, source.line, fixture.prefix, fixture.arguments[0], 42);
+        await assertCellState(session, stop, program, source.line, fixture.prefix, fixture.arguments[0], 42, fixture.record);
         await continueExecution(session, stop.threadId);
         const second = await waitForStop(session, LAUNCH_TIMEOUT_MS);
-        await assertCellState(session, second, program, source.line, fixture.prefix, fixture.arguments[1], 43);
+        await assertCellState(session, second, program, source.line, fixture.prefix, fixture.arguments[1], 43, fixture.record);
         await continueExecution(session, second.threadId);
         await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
       });
     }
   }
 
-  async function assertCellState(session: vscode.DebugSession, stop: DapStop, program: string, line: number, prefix: string, x: number, n: number) {
+  async function assertCellState(session: vscode.DebugSession, stop: DapStop, program: string, line: number, prefix: string, x: number, n: number, record: boolean) {
     await assertFrameLocals(session, stop, program, line, prefix, {
-      x, n, ...(prefix === "__closure_fn_" ? { sum: n } : {}),
+      x, n: record ? { count: n } : n, ...(prefix === "__closure_fn_" ? { sum: n } : {}),
     });
   }
 
-
-  async function assertFrameLocals(session: vscode.DebugSession, stop: DapStop, program: string, line: number, prefix: string, locals: Record<string, number | undefined>) {
-    const frame = assertCurrentLine(stop.stack, line, program);
-    assert.ok(frame.name.includes(prefix), frame.name);
-    for (const [name, value] of Object.entries(locals)) {
-      await assertLocalVariable(session, frame.id, name, new RegExp(`^${value}$`));
-    }
-    return frame.id;
-  }
 
   for (const fixture of lexicalFixtures) {
     test(`${fixture.label} (${fixture.extension})`, async function () {

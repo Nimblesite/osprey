@@ -111,7 +111,9 @@ pub(crate) fn owner_name(prog: &ProgramTypes, ty: &Type) -> Option<String> {
                 .collect();
             shape.map(|shape| format!("{name}#{}", shape.join(",")))
         }
-        Type::Record { name, .. } | Type::Union { name, .. } => Some(name.clone()),
+        Type::Record { name, .. } | Type::Union { name, .. } => {
+            (!name.is_empty()).then(|| name.clone())
+        }
         Type::Con { name, args } => match name.as_str() {
             names::INT
             | names::FLOAT

@@ -5,8 +5,15 @@
 //! Construction, record update, field access and anonymous object literals all
 //! share this one block shape.
 
+mod debug;
 mod fields;
+mod update;
+pub(crate) use update::gen_update;
+mod http;
+pub(crate) use debug::{record_fields as debug_record_fields, DebugRecord};
 pub(crate) use fields::{field_type, gen_field_access};
+use http::gen_http_response;
+pub(crate) use http::{HTTP_RESPONSE, HTTP_RESPONSE_STRUCT};
 
 use crate::builder::Codegen;
 use crate::error::{CodegenError, Result};
@@ -206,59 +213,6 @@ fn own_struct_handle(
     v
 }
 
-/// The built-in HTTP response record name.
-const HTTP_RESPONSE: &str = "HttpResponse";
-
-/// `{ i64 status, i8* headers, i8* contentType, i64 streamFd, i8 isComplete,
-/// i8* partialBody }` — the C `struct HttpResponse` (`runtime/http_shared.h`),
-/// the one record returned across the FFI boundary. Field LLVM types in layout
-/// order; `isComplete` is the C `bool`, an `i8`.
-const HTTP_RESPONSE_STRUCT: &str = "{ i64, i8*, i8*, i64, i8, i8* }";
-const HTTP_RESPONSE_FIELDS: [(&str, &str); 6] = [
-    ("status", "i64"),
-    ("headers", "i8*"),
-    ("contentType", "i8*"),
-    ("streamFd", "i64"),
-    ("isComplete", "i8"),
-    ("partialBody", "i8*"),
-];
-
-/// Construct an `HttpResponse` in the exact C layout and return the `i8*` a
-/// request handler hands back to the runtime. Unlike a generic record there is
-/// **no leading tag**, and the boolean `isComplete` widens to `i8`.
-fn gen_http_response(cg: &mut Codegen, fields: &[FieldAssignment]) -> Result<Value> {
-    // Layout word for the fixed C ABI: string pointers at words 1, 2 and 5
-    // (headers / contentType / partialBody) — pinned by meta.rs unit tests.
-    let meta = crate::meta::struct_meta(
-        &HTTP_RESPONSE_FIELDS.map(|(_, llty)| crate::meta::MetaField::of_slot_ty(llty)),
-    );
-    let obj = cg.malloc_struct(HTTP_RESPONSE_STRUCT, meta);
-    for (i, (fname, llty)) in HTTP_RESPONSE_FIELDS.iter().enumerate() {
-        let fa = fields.iter().find(|f| &f.name == fname).ok_or_else(|| {
-            CodegenError::invalid(format!("missing field `{fname}` for `{HTTP_RESPONSE}`"))
-        })?;
-        let v = gen_expr(cg, &fa.value)?;
-        let operand = match *llty {
-            // C `bool` is one byte; widen the i1.
-            "i8" => {
-                let b = crate::conv::as_i1(cg, v)?;
-                cg.emit_reg(format!("zext i1 {} to i8", b.operand))
-            }
-            "i64" => crate::conv::as_i64(cg, v)?.operand,
-            _ => crate::cast::coerce_to(cg, v, LType::Str)?.operand,
-        };
-        crate::arc::dup_store(cg, llty, &operand);
-        let p = cg.emit_reg(format!(
-            "getelementptr {HTTP_RESPONSE_STRUCT}, {HTTP_RESPONSE_STRUCT}* {obj}, i32 0, i32 {i}"
-        ));
-        cg.emit(format!("store {llty} {operand}, {llty}* {p}"));
-    }
-    let handle = cg.emit_reg(format!("bitcast {HTTP_RESPONSE_STRUCT}* {obj} to i8*"));
-    let v = Value::handle(handle, HTTP_RESPONSE);
-    crate::arc::own(cg, &v);
-    Ok(v)
-}
-
 /// Build a `Success`/`Error` value in the Result ABI: the single field becomes
 /// the block's success payload (slot 0), with disc `0` (Success) or `1`
 /// (Error). For `Error { message: m }` the (string) message is also written to
@@ -286,60 +240,12 @@ fn gen_result_ctor(cg: &mut Codegen, name: &str, fields: &[FieldAssignment]) -> 
     })
 }
 
-/// `record { field: newValue }` — copy every field of `record` into a fresh
-/// block, overriding the named ones.
-pub(crate) fn gen_update(
-    cg: &mut Codegen,
-    record: &str,
-    fields: &[FieldAssignment],
-) -> Result<Value> {
-    // The base is read exactly as the identifier `record` would be, so a
-    // scoped value, a file-scope global and a `mut` cell promoted into a
-    // handler arm all reach here; a bare scope lookup lost the cell and died
-    // with `unknown name` on the one rebinding the language allows.
-    let base = gen_expr(cg, &Expr::Identifier(record.to_owned()))?;
-    let owner = base
-        .osp_ty
-        .clone()
-        .ok_or_else(|| CodegenError::invalid(format!("`{record}` is not a record")))?;
-    let block = record_block(cg, &owner, base.inferred_type.as_ref())
-        .ok_or_else(|| CodegenError::unknown(&owner))?;
-    if block
-        .fields
-        .iter()
-        .any(|(field, _)| cg.ctor_field_result_inner(&owner, field).is_some())
-    {
-        return Err(result_field_unsupported());
-    }
-    let struct_ty = block.struct_ty;
-
-    let src = cg.emit_reg(format!("bitcast i8* {} to {struct_ty}*", base.operand));
-    // noinit: the tag and every field are stored below (new value or copied
-    // from the base) before the block escapes, so ARC skips its drop-safety
-    // pre-zero.
-    let obj = cg.malloc_struct_noinit(&struct_ty, block.meta);
-    store_tag(cg, &struct_ty, obj.as_str(), block.tag);
-
-    for (i, (fname, fty)) in block.fields.iter().enumerate() {
-        let val = match fields.iter().find(|f| &f.name == fname) {
-            Some(fa) => {
-                let v = gen_expr(cg, &fa.value)?;
-                crate::cast::coerce_to(cg, v, *fty)?.operand
-            }
-            None => load_field(cg, &struct_ty, src.as_str(), i + 1, *fty),
-        };
-        store_field(cg, &struct_ty, obj.as_str(), i + 1, *fty, &val);
-    }
-
-    Ok(own_struct_handle(cg, &struct_ty, &obj, owner))
-}
-
 /// The heap block an update rebuilds: struct spelling, ordered slots, the
 /// discriminant and the allocation meta word.
 struct RecordBlock {
     struct_ty: String,
     fields: Vec<(String, LType)>,
-    tag: i64,
+    tag: Option<i64>,
     meta: i64,
 }
 
@@ -360,8 +266,12 @@ fn record_block(
         return Some(RecordBlock {
             struct_ty: cg.ctor_struct_ty(owner)?,
             fields: view.fields,
-            tag: view.tag,
-            meta: view.meta,
+            tag: record_has_tag(owner).then_some(view.tag),
+            meta: if owner == HTTP_RESPONSE {
+                http::layout_meta()
+            } else {
+                view.meta
+            },
         });
     }
     if cg.obj_layout(owner).is_none() {
@@ -373,7 +283,7 @@ fn record_block(
     Some(RecordBlock {
         struct_ty,
         fields,
-        tag: 0,
+        tag: Some(0),
         meta,
     })
 }
@@ -385,7 +295,8 @@ fn derived_slots(
     cg: &Codegen,
     inferred: &osprey_types::Type,
 ) -> Option<Vec<crate::builder::ObjField>> {
-    let osprey_types::Type::Record { name, fields } = inferred else {
+    let (osprey_types::Type::Record { name, .. } | osprey_types::Type::Con { name, .. }) = inferred
+    else {
         return None;
     };
     let declared = cg.ctor_layout(name)?;
@@ -393,11 +304,11 @@ fn derived_slots(
         .fields
         .iter()
         .map(|(field, _)| {
-            let ty = fields.get(field)?;
+            let ty = cg.prog.field_type(inferred, field)?;
             Some((
                 field.clone(),
-                crate::types::ltype_of(ty),
-                crate::types::owner_name(&cg.prog, ty),
+                crate::types::ltype_of(&ty),
+                crate::types::owner_name(&cg.prog, &ty),
             ))
         })
         .collect()
@@ -457,4 +368,53 @@ pub(crate) fn load_field(
     ));
     let r = cg.emit_reg(format!("load {fty}, {fty}* {p}"));
     r
+}
+
+/// C ABI records omit Osprey's discriminant. [TYPE-RECORD-C-ABI]
+pub(crate) fn record_has_tag(owner: &str) -> bool {
+    owner != HTTP_RESPONSE
+}
+
+pub(crate) fn load_record_field(
+    cg: &mut Codegen,
+    owner: &str,
+    ty: &str,
+    source: &str,
+    index: usize,
+    field: LType,
+) -> String {
+    if owner == HTTP_RESPONSE && field == LType::I1 {
+        http::load_bool(cg, ty, source, index)
+    } else {
+        load_field(
+            cg,
+            ty,
+            source,
+            index + usize::from(record_has_tag(owner)),
+            field,
+        )
+    }
+}
+
+fn store_record_field(
+    cg: &mut Codegen,
+    owner: &str,
+    ty: &str,
+    target: &str,
+    index: usize,
+    field: LType,
+    value: &str,
+) {
+    if owner == HTTP_RESPONSE && field == LType::I1 {
+        http::store_bool(cg, ty, target, index, value);
+    } else {
+        store_field(
+            cg,
+            ty,
+            target,
+            index + usize::from(record_has_tag(owner)),
+            field,
+            value,
+        );
+    }
 }

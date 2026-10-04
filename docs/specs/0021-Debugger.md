@@ -81,7 +81,7 @@ Primitive lambda parameters, immutable captures, captured mutable cells and loca
 
 Each selected match arm has its own lexical debug scope. Primitive pattern bindings and arm-local values are inspectable within that scope. A block arm's trailing expression retains its source line, including an identifier-only return. After execution leaves the arm, its locals are no longer visible and an enclosing binding with the same name becomes the selected binding again. LLDB may display both visible shadowed names with source-line labels; evaluating the unqualified name selects the innermost binding.
 
-The editor's `pattern bindings stay in their debugger arm` cases verify the exact return-line stop, the inner pattern value, the arm's calculated local, restoration of the outer value and disappearance of the arm-local variable in both flavors. Composite value rendering and inlined generic call-frame reconstruction remain unfinished.
+The editor's `pattern bindings stay in their debugger arm` cases verify the exact return-line stop, the inner pattern value, the arm's calculated local, restoration of the outer value and disappearance of the arm-local variable in both flavors. Union/Result/collection rendering and inlined generic call-frame reconstruction remain unfinished.
 
 ## Nested block scopes `[DEBUGGER-BLOCK-SCOPES]`
 
@@ -97,7 +97,7 @@ A local binding becomes visible after its initializer completes and its value or
 
 Variable storage has a stable frame address even when initialization follows an effect-dispatch branch. Declaration instructions belong to the new lexical scope; the preceding initialization stores belong to the enclosing scope. The function's `DISubprogram` identity remains distinct from the current local scope. File-scope publication and cleanup retain their statement's source location, so stepping forward does not hit an earlier declaration again.
 
-The editor's block and pattern scope cases assert that incomplete and later bindings are absent. The `immutable initializer keeps the enclosing debugger binding` and `cell initializer keeps the enclosing debugger binding` cases inspect the outer value during initialization and the completed result afterward. Existing stepping tests and `top_level_bindings_keep_monotonic_source_locations` pin file-scope stepping. Optimized-away values and composite rendering remain separate unfinished work.
+The editor's block and pattern scope cases assert that incomplete and later bindings are absent. The `immutable initializer keeps the enclosing debugger binding` and `cell initializer keeps the enclosing debugger binding` cases inspect the outer value during initialization and the completed result afterward. Existing stepping tests and `top_level_bindings_keep_monotonic_source_locations` pin file-scope stepping. Optimized-away values and union/Result/collection rendering remain separate unfinished work.
 
 ## Editor Launch `[DEBUGGER-EDITOR-LAUNCH]`
 
@@ -157,4 +157,14 @@ them while paused. Parameter storage initialization belongs to the native prolog
 
 A primitive mutable variable promoted to a shared heap cell must expose the live cell value in its owning function, captured lambda and handler arm. Debug storage retains the cell address with a dereferencing location expression; it must not copy the initial value. Direct and resumable handler arms expose their source parameters and primitive captures. Native argument numbering accounts for the hidden environment and, for resumable arms, the continuation parameter.
 
-The both-flavor editor cases `handler debugger values follow live cell mutations`, `resuming handler debugger values follow live cell mutations` and `closure debugger values follow live cell mutations` stop twice and require the shared value to change from `42` to `43`, with the correct source parameter on each call. Closure cases also check the calculated local on both stops. Composite values have no Osprey-specific renderer.
+The both-flavor editor cases `handler debugger values follow live cell mutations`, `resuming handler debugger values follow live cell mutations` and `closure debugger values follow live cell mutations` stop twice and require the shared value to change from `42` to `43`, with the correct source parameter on each call. Closure cases also check the calculated local on both stops. Record fields are covered by [DEBUGGER-RECORD-VALUES]; other composite values still have no Osprey-specific renderer.
+
+## Record field inspection `[DEBUGGER-RECORD-VALUES]`
+
+Native debug builds describe record pointers and their named fields with DWARF composite/member metadata. Expanding a named, anonymous or concretely instantiated generic record exposes its actual nested fields, including integer, float, boolean and string values. Distinct generic instantiations must retain distinct debug type identities in one executable; a float field must never be displayed as its integer bits. Osprey's internal record tag is not a user field.
+
+Field offsets follow the physical ABI, including tag words, boolean storage bytes and padding. The built-in C ABI `HttpResponse` has no tag; its boolean remains a full storage byte. Unsupported opaque handles are described as opaque pointers, never guessed to be strings or records. Metadata is confined to native debug builds.
+
+Record parameters, immutable captures and shared mutable cells retain their concrete field types. A cell's debug location follows the live slot; when a handler replaces its record, inspection must show the replacement in the owning scope, closure and direct/resumable handler. Binding lifetime and lexical scope follow [DEBUGGER-BINDING-LIFETIME].
+
+Both-flavor LLDB-DAP fixtures inspect exact field sets and values for nested records, simultaneous generic instantiations, specialized function parameters, anonymous captures, C ABI records and record cells changing from `42` to `43`. `record_debug_fields_match_the_native_layout_in_both_flavors` and `generic_record_parameters_keep_their_field_types_in_debug_metadata` pin metadata references, field types and offsets. This uses the native debugger's field expansion; dedicated collection, union, Result and closure renderers remain unfinished.

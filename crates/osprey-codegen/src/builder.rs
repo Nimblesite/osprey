@@ -4,7 +4,11 @@
 //! text; the AST-walking lives in `lower.rs`.
 
 mod allocation;
+mod cells;
+pub(crate) use cells::CellSlot;
 mod debug_metadata;
+use debug_metadata::DebugState;
+mod debug_types;
 mod emit;
 mod function_state;
 mod function_types;
@@ -243,15 +247,6 @@ pub(crate) struct Codegen {
     rodata_regs: HashSet<String>,
 }
 
-/// A mutable variable promoted to a heap cell so an effect handler can own it.
-/// `ptr` is a `{pointee}*` operand; reads `load` it, writes `store` to it.
-#[derive(Clone)]
-pub(crate) struct CellSlot {
-    pub ptr: String,
-    pub pointee: LType,
-    pub osp_ty: Option<String>,
-}
-
 #[derive(Clone)]
 pub(crate) struct ResumeCodegenContext {
     pub env: String,
@@ -304,32 +299,6 @@ pub(crate) struct SavedFn {
     debug_position: Option<Position>,
     debug_retained_nodes: Option<usize>,
     debug_local_ids: Vec<usize>,
-}
-
-#[derive(Debug, Clone)]
-struct DebugState {
-    source: DebugSource,
-    current_scope: Option<usize>,
-    current_function: Option<usize>,
-    current_position: Option<Position>,
-    current_retained_nodes: Option<usize>,
-    current_local_ids: Vec<usize>,
-    next_id: usize,
-    file_id: usize,
-    cu_id: usize,
-    empty_id: usize,
-    subroutine_type_id: usize,
-    dwarf_flag_id: usize,
-    debug_version_flag_id: usize,
-    ident_id: usize,
-    dwarf_version: u8,
-    i64_type_id: usize,
-    i32_type_id: usize,
-    bool_type_id: usize,
-    double_type_id: usize,
-    char_type_id: usize,
-    ptr_type_id: usize,
-    dynamic: Vec<(usize, String)>,
 }
 
 impl Codegen {
