@@ -346,10 +346,9 @@ mod tests {
                 "!DILocalVariable(name: \"x\"",
             ],
         );
-        // Parameters (a, b) use dbg.value — SSA args live for the whole
-        // function. `let` locals (x) use dbg.declare over a stack slot, the
-        // robust -O0 representation that keeps the line table free of stray
-        // line-0 rows. [DEBUGGER-DBG-DECLARE]
+        // Parameters (a, b) retain their formal argument metadata and use the
+        // same addressable storage as local x, so register reuse cannot erase
+        // a source value at a later breakpoint. [DEBUGGER-DBG-DECLARE]
         shows(
             &ir,
             &[

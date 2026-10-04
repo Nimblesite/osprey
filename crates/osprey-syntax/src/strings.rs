@@ -360,6 +360,24 @@ mod tests {
                 column: 13
             })
         );
+        for flavor in [Flavor::Default, Flavor::Ml] {
+            let mut block = Expr::Block {
+                statements: vec![],
+                value: Some(Box::new(Expr::Identifier("second".into()))),
+                position: Some(Position { line: 2, column: 0 }),
+            };
+            positions::rebase_expr(&mut block, map, flavor);
+            assert!(matches!(
+                block,
+                Expr::Block {
+                    position: Some(Position {
+                        line: 2,
+                        column: 13
+                    }),
+                    ..
+                }
+            ));
+        }
         let multiline = fragments("\"${first\nsecond}\"", Position { line: 2, column: 3 });
         assert_eq!(
             multiline[0].map_position(Position { line: 2, column: 0 }, 14, Flavor::Default),

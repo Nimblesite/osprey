@@ -145,6 +145,7 @@ fn every_container_with_a_nested_let() -> Vec<Expr> {
         Expr, FieldAssignment, HandlerArm, MapEntry, MatchArm, NamedArgument, Pattern,
     };
     let blk = |name: &str| Expr::Block {
+        position: None,
         statements: vec![Stmt::Let {
             name: name.into(),
             mutable: false,

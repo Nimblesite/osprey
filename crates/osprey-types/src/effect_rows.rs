@@ -754,7 +754,10 @@ impl Analyzer<'_> {
         scope: &[String],
         env: &mut CallableEnv,
     ) -> Option<Value> {
-        if let Expr::Block { statements, value } = expression {
+        if let Expr::Block {
+            statements, value, ..
+        } = expression
+        {
             // Bind value provenance in execution order, but do not confuse the
             // statements' immediate effects with the trailing value's latent
             // callable/deferred row.
@@ -890,7 +893,7 @@ impl Analyzer<'_> {
             Expr::Select { arms } => {
                 self.union_over(arms.iter().map(|arm| &arm.body), scope, env)
             }
-            Expr::Block { statements, value } => {
+            Expr::Block { statements, value, .. } => {
                 let mut local = env.clone();
                 let mut out = self.statements(statements, scope, &mut local);
                 if let Some(value) = value {
@@ -1865,7 +1868,9 @@ impl Analyzer<'_> {
                 }
                 merged
             }
-            Expr::Block { statements, value } => {
+            Expr::Block {
+                statements, value, ..
+            } => {
                 let mut local = env.clone();
                 let _ = self.statements(statements, scope, &mut local);
                 value
@@ -1962,7 +1967,9 @@ impl Analyzer<'_> {
         env: &mut CallableEnv,
     ) {
         match expression {
-            Expr::Block { statements, value } => {
+            Expr::Block {
+                statements, value, ..
+            } => {
                 for statement in statements {
                     match statement {
                         Stmt::Assignment { name, value, .. } => {
@@ -3125,6 +3132,7 @@ fn curried_body(body: &Expr) -> Option<&Expr> {
         Expr::Block {
             statements,
             value: Some(value),
+            ..
         } if statements.iter().all(is_parameter_annotation) => curried_body(value),
         _ => None,
     }
@@ -3714,7 +3722,10 @@ fn validate_handler_arms(
     errors: &mut Vec<TypeError>,
 ) {
     validate_gpu_kernel(analyzer, expression, scope, env, errors);
-    if let Expr::Block { statements, value } = expression {
+    if let Expr::Block {
+        statements, value, ..
+    } = expression
+    {
         let mut local = env.clone();
         validate_statement_handlers(analyzer, axis, statements, scope, &mut local, errors);
         if let Some(value) = value {

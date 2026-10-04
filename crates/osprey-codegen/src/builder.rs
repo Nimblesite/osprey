@@ -1363,6 +1363,7 @@ impl Codegen {
             value.ty.as_str(),
             value.operand
         ));
+        self.emit_debug_slot(var_id, value);
     }
 
     /// Record a source-level **local** (`let` binding) for native debuggers via
@@ -1380,6 +1381,12 @@ impl Codegen {
         let Some(var_id) = self.debug_var_id(name, value.ty, None) else {
             return;
         };
+        self.emit_debug_slot(var_id, value);
+    }
+
+    /// Preserve immutable source values after LLVM reuses their input register.
+    /// Parameters and locals share this storage; the metadata retains arg IDs.
+    fn emit_debug_slot(&mut self, var_id: usize, value: &Value) {
         self.add_extern("declare void @llvm.dbg.declare(metadata, metadata, metadata)");
         let ty = value.ty.as_str();
         let slot = self.emit_reg(format!("alloca {ty}"));

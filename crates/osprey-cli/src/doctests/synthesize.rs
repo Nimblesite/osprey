@@ -169,6 +169,7 @@ fn install_snippet(statements: &mut Vec<Stmt>, snippet: Program) {
         }
     }
     statements.push(function(Expr::Block {
+        position: None,
         statements: executable,
         value: main.map(Box::new),
     }));

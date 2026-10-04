@@ -584,6 +584,8 @@ pub(crate) enum MlExpr {
         items: Vec<MlItem>,
         /// The trailing value expression, if any.
         value: Option<Box<MlExpr>>,
+        /// Position of the trailing value expression.
+        pos: Option<Position>,
     },
     /// `spawn body` — start a fiber whose body (an indented block or inline
     /// expression) runs concurrently ([FLAVOR-ML-SPAWN]).

@@ -16,13 +16,18 @@
 //! forwarder that drops the env ([`named_fn_cell`]). Callable handlers use this
 //! representation and install their arms through the existing effect ABI.
 
+mod captures;
+mod source;
+
+use captures::closure_captures;
+pub(crate) use captures::{capture_list, free_names, reload_captures};
+pub(crate) use source::{emit_closure, emit_closure_keyed, lambda_value};
+
 use crate::builder::{Codegen, FnSig, ParamSig};
 use crate::error::{CodegenError, Result};
 use crate::expr::gen_expr;
 use crate::llty::{LType, Value};
-use osprey_ast::freevars::free_idents;
 use osprey_ast::{Expr, Parameter, Position};
-use std::collections::BTreeSet;
 
 /// One captured binding: its source name and the parent-scope [`Value`] whose
 /// metadata (Result shape, owner tag) the reload inside the closure must keep.
@@ -30,106 +35,6 @@ pub(crate) struct Capture {
     pub(crate) name: String,
     pub(crate) val: Value,
     cell: Option<crate::builder::CellSlot>,
-}
-
-/// Lower a lambda in plain expression position (returned, block tail, stored)
-/// using its HM-inferred type as the ABI. A lambda whose recorded type is
-/// still generic (inside an inlined generic function, where one source
-/// position serves several instantiations) is rejected loudly — a
-/// variables-as-`i64` ABI would silently corrupt string/float instantiations.
-pub(crate) fn lambda_value(
-    cg: &mut Codegen,
-    parameters: &[Parameter],
-    body: &Expr,
-    position: Option<Position>,
-) -> Result<Value> {
-    let inferred = cg
-        .prog
-        .lambda_type(position)
-        .ok_or_else(|| CodegenError::invalid("lambda has no inferred function type"))?
-        .clone();
-    let ty = if crate::types::fn_value_concrete(&inferred) {
-        inferred
-    } else {
-        cg.expected_lambda
-            .as_ref()
-            .filter(|(sites, ty)| {
-                position.is_some_and(|position| sites.contains(&position))
-                    && crate::types::fn_value_concrete(ty)
-            })
-            .map(|(_, ty)| ty.clone())
-            .ok_or_else(|| CodegenError::unsupported(
-            "a closure value with a still-generic type (wrap it in a function with concrete parameter/return types)",
-        ))?
-    };
-    let sig = Codegen::fn_value_sig(&cg.prog, &ty)
-        .ok_or_else(|| CodegenError::invalid("lambda has no inferred function type"))?;
-    let mut value = emit_closure(cg, parameters, body, &sig)?;
-    value.inferred_type = Some(ty);
-    Ok(value)
-}
-
-/// Emit a lambda as a closure value with the given signature (the consuming
-/// slot's ABI when known, else the lambda's own inferred type).
-pub(crate) fn emit_closure(
-    cg: &mut Codegen,
-    parameters: &[Parameter],
-    body: &Expr,
-    sig: &FnSig,
-) -> Result<Value> {
-    emit_closure_keyed(cg, parameters, body, sig, None)
-}
-
-/// [`emit_closure`] with an optional **emit-once key** naming a (function, ABI)
-/// pair whose lowering is identical every time — a generic function specialised
-/// into the same slot ABI at several call sites. The first use emits the body
-/// and its cell; later ones re-point at that cell, so the module carries one
-/// body per instantiation instead of one per call site. Implements
-/// [TYPE-GENERICS-FN].
-///
-/// Only a **capture-free** cell is shareable, and the caller's captures are
-/// recomputed here rather than assumed: a capturing cell snapshots the values
-/// live at *its* evaluation, so two evaluations are two different closures.
-pub(crate) fn emit_closure_keyed(
-    cg: &mut Codegen,
-    parameters: &[Parameter],
-    body: &Expr,
-    sig: &FnSig,
-    key: Option<String>,
-) -> Result<Value> {
-    let caps = closure_captures(cg, parameters, body);
-    let key = key.filter(|_| caps.is_empty());
-    let v = match key.as_deref().and_then(|k| cg.fnval_cells.get(k).cloned()) {
-        Some(cell) => Value::new(
-            cg.emit_reg(format!("bitcast {{ i8* }}* {cell} to i8*")),
-            LType::Ptr,
-        ),
-        None => emit_fresh_closure(cg, &caps, parameters, body, sig, key)?,
-    };
-    // The cell is a fresh +1 producer here; a spawn's cell instead transfers
-    // to the fiber runtime (fiber.rs calls `cell_value` directly).
-    crate::arc::own(cg, &v);
-    Ok(v)
-}
-
-/// Lower a brand-new closure body and cell, registering the cell under `key`
-/// when one was supplied so the next same-ABI use can share it.
-fn emit_fresh_closure(
-    cg: &mut Codegen,
-    caps: &[Capture],
-    parameters: &[Parameter],
-    body: &Expr,
-    sig: &FnSig,
-    key: Option<String>,
-) -> Result<Value> {
-    let id = cg.next_lambda_id();
-    let fn_name = format!("__closure_fn_{id}");
-    let cell_ty = cell_struct_ty(caps);
-    emit_closure_fn(cg, &fn_name, &cell_ty, caps, parameters, body, sig)?;
-    if let Some(k) = key {
-        let _ = cg.fnval_cells.insert(k, format!("@__closure_cell_{id}"));
-    }
-    Ok(cell_value(cg, id, &fn_name, &cell_ty, caps, sig))
 }
 
 /// The emit-once key of `target` specialised at `sig`: two uses share a body
@@ -151,92 +56,12 @@ pub(crate) fn specialisation_key(target: &str, sig: &FnSig) -> String {
     )
 }
 
-/// The free identifiers of `body` (minus the lambda's own parameters) that are
-/// bound to a value in the enclosing scope — the closure's captures, in stable
-/// (sorted) order. Also used by `fiber::gen_spawn` (a spawn body is a
-/// zero-parameter closure).
-pub(crate) fn capture_list(cg: &Codegen, parameters: &[Parameter], body: &Expr) -> Vec<Capture> {
-    free_names(parameters, body)
-        .into_iter()
-        .filter_map(|name| {
-            cg.lookup(&name).map(|val| Capture {
-                name,
-                val,
-                cell: None,
-            })
-        })
-        .collect()
-}
-
-/// Retain handler-owned state when its handler is bound, passed or returned.
-/// Implements [EFFECTS-HANDLER-VALUE-STATE].
-fn closure_captures(cg: &mut Codegen, parameters: &[Parameter], body: &Expr) -> Vec<Capture> {
-    free_names(parameters, body)
-        .into_iter()
-        .filter_map(|name| {
-            if let Some(cell) = cg.cell_slots.get(&name).cloned() {
-                let operand = cg.emit_reg(format!("bitcast {}* {} to i8*", cell.pointee, cell.ptr));
-                Some(Capture {
-                    name,
-                    val: Value::new(operand, LType::Ptr),
-                    cell: Some(cell),
-                })
-            } else {
-                cg.lookup(&name).map(|val| Capture {
-                    name,
-                    val,
-                    cell: None,
-                })
-            }
-        })
-        .collect()
-}
-
-/// The free identifiers of `body` minus the lambda's own parameters, in stable
-/// (sorted) order — what [`capture_list`] narrows to the bound ones, and what
-/// kernel extraction tests against the host state a lifted body cannot see
-/// ([`crate::gpu_kernel`]).
-pub(crate) fn free_names(parameters: &[Parameter], body: &Expr) -> BTreeSet<String> {
-    let mut names = BTreeSet::new();
-    free_idents(body, &mut names);
-    names.retain(|n| !parameters.iter().any(|p| &p.name == n));
-    names
-}
-
 /// The LLVM struct spelling of a closure cell: the fnptr slot then one slot per
 /// capture, each in the capture's own travelling type.
 pub(crate) fn cell_struct_ty(caps: &[Capture]) -> String {
     let mut parts = vec!["i8*".to_string()];
     parts.extend(caps.iter().map(|c| c.val.llvm_ty()));
     format!("{{ {} }}", parts.join(", "))
-}
-
-/// Emit the lifted closure function: `define {ret} @{fn_name}(i8* %__env, …)`,
-/// reloading each capture from the cell before lowering the body.
-fn emit_closure_fn(
-    cg: &mut Codegen,
-    fn_name: &str,
-    cell_ty: &str,
-    caps: &[Capture],
-    parameters: &[Parameter],
-    body: &Expr,
-    sig: &FnSig,
-) -> Result<()> {
-    let (param_tys, ret_ty, ret_inner, _, _) = sig;
-    let (ret_spelling, _) = spelling(sig);
-    let saved = cg.enter_nested_fn();
-    // Cell promotion is per lowered body and `enter_nested_fn` cleared the
-    // host's set. Without repopulating it, a `mut` this closure declares and a
-    // handler arm inside it captures stays an unpromoted local: the arm writes a
-    // private copy and the read after the `handle` returns the initial value
-    // ([EFFECTS-HANDLER-STATE]).
-    cg.cell_vars = crate::effects::captured_mut_vars(body);
-    reload_captures(cg, cell_ty, caps);
-    let mut params = vec![(LType::Ptr, String::from("__env"))];
-    params.extend(bind_params_from(cg, parameters, param_tys, 0));
-    let emitted = closure_return(cg, body, *ret_ty, *ret_inner);
-    cg.exit_nested_fn(saved, &ret_spelling, fn_name, &params);
-    emitted
 }
 
 /// Bind each lambda parameter as its incoming LLVM register and collect the
@@ -260,40 +85,6 @@ pub(crate) fn bind_params_from(
         out.push((pty.ty, reg));
     }
     out
-}
-
-/// Inside the closure function: cast `%__env` back to the cell type and load
-/// each capture into scope (parameters bind after, so they shadow correctly).
-pub(crate) fn reload_captures(cg: &mut Codegen, cell_ty: &str, caps: &[Capture]) {
-    if caps.is_empty() {
-        return;
-    }
-    let cell = cg.emit_reg(format!("bitcast i8* %__env to {cell_ty}*"));
-    for (i, c) in caps.iter().enumerate() {
-        let slot = i + 1;
-        let p = cg.emit_reg(format!(
-            "getelementptr {cell_ty}, {cell_ty}* {cell}, i32 0, i32 {slot}"
-        ));
-        let lty = c.val.llvm_ty();
-        let r = cg.emit_reg(format!("load {lty}, {lty}* {p}"));
-        if let Some(cell) = &c.cell {
-            let ptr = cg.emit_reg(format!("bitcast i8* {r} to {}*", cell.pointee));
-            let _ = cg.cell_slots.insert(
-                c.name.clone(),
-                crate::builder::CellSlot {
-                    ptr,
-                    ..cell.clone()
-                },
-            );
-            continue;
-        }
-        let mut v = c.val.clone();
-        v.operand = r;
-        if let Some(ty) = &v.inferred_type {
-            cg.bind_fn_local(&c.name, ty.clone());
-        }
-        cg.bind(c.name.clone(), v);
-    }
 }
 
 /// Build the cell and hand back its `i8*` handle. Capture-free closures share
@@ -353,6 +144,7 @@ pub(crate) fn raw_callback_lambda(
     parameters: &[Parameter],
     body: &Expr,
     sig: &FnSig,
+    position: Option<Position>,
 ) -> Result<Value> {
     if !closure_captures(cg, parameters, body).is_empty() {
         return Err(CodegenError::unsupported(
@@ -363,7 +155,9 @@ pub(crate) fn raw_callback_lambda(
     let (ret_spelling, plist) = spelling(sig);
     let name = format!("__callback_{}", cg.next_lambda_id());
     let saved = cg.enter_nested_fn();
+    source::begin_source(cg, &name, position);
     let params = bind_params_from(cg, parameters, param_tys, 0);
+    source::source_parameters(cg, parameters, 0);
     let emitted = closure_return(cg, body, *ret_ty, *ret_inner);
     cg.exit_nested_fn(saved, &ret_spelling, &name, &params);
     emitted?;
@@ -515,7 +309,7 @@ fn specialized_named_cell(
     let sig = Codegen::fn_value_sig(&cg.prog, &ty)
         .ok_or_else(|| CodegenError::invalid("function value has no signature"))?;
     let key = format!("{}|{ty:?}", specialisation_key(name, &sig));
-    let mut value = emit_closure_keyed(cg, parameters, body, &sig, Some(key))?;
+    let mut value = emit_closure_keyed(cg, parameters, body, &sig, Some(key), None)?;
     value.inferred_type = Some(ty);
     Ok(value)
 }
@@ -607,6 +401,7 @@ fn closure_return(
     ret_inner: Option<LType>,
 ) -> Result<()> {
     let bv = gen_expr(cg, body)?;
+    let _ = cg.set_debug_position(crate::stmt::tail_position(body));
     ret_as_sig(cg, bv, ret_ty, ret_inner)
 }
 

@@ -134,6 +134,18 @@ osprey hello.osp --run
 
 You should see `Osprey is installed`.
 
+## Debugging in VS Code
+
+Install the Osprey extension and LLDB, including its `lldb-dap` executable. Open an `.osp` or `.ospml` file, set a breakpoint and press **F5**. The extension builds a native debug executable and launches LLDB-DAP. If the adapter is outside your `PATH`, set `osprey.debug.lldbDapPath` to its full path in VS Code settings.
+
+Breakpoints inside a lambda can inspect its primitive parameters, immutable captures and local bindings, including at a block's return line. Records and collections do not yet have Osprey-specific displays; mutable captures and complete match-arm scopes remain unfinished. See the [debugger contract](/spec/0021-debugger/) for the supported build and source-mapping behavior.
+
+To build a debug executable from the command line:
+
+```bash
+osprey hello.osp --debug --compile -o hello-debug
+```
+
 ## The `OSPREY_CC` override
 
 When several clangs coexist — for example a keg-only Homebrew LLVM, or the MinGW
