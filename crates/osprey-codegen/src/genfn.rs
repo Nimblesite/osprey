@@ -31,7 +31,7 @@ pub(crate) fn try_inline(
              annotate its parameters and return type so it is emitted as a real function"
         )));
     }
-    let Some((params, body)) = cg.fn_defs.get(name).cloned() else {
+    let Some((params, body, _)) = cg.fn_defs.get(name).cloned() else {
         return Ok(None);
     };
     // A body that calls itself cannot be specialised by expanding it here, so

@@ -47,6 +47,7 @@ fn absolute_cell(cg: &mut Codegen, ty: osprey_types::Type) -> Result<Value> {
         &sig,
         Some(key),
         None,
+        None,
     )?;
     value.inferred_type = Some(ty);
     Ok(value)

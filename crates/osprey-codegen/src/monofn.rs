@@ -145,7 +145,10 @@ fn emit_at(
     };
     let _ = cg.monofns.insert(key, target.clone());
     let saved = cg.enter_nested_fn();
+    let position = cg.fn_defs.get(name).and_then(|(_, _, position)| *position);
+    crate::closure::begin_source(cg, name, position);
     let plist = bind_params(cg, parameters, owners, params);
+    crate::closure::source_parameters(cg, parameters, 0);
     // Inside the body, so the definition line is credited when the
     // instantiation RUNS rather than when it is emitted or handed to a C
     // callback slot — the same placement `gen_function` uses for a monomorphic
@@ -177,7 +180,7 @@ pub(crate) fn specialize_callback(
     name: &str,
     declared: &(Vec<osprey_types::Type>, osprey_types::Type),
 ) -> Result<Option<String>> {
-    let Some((parameters, body)) = cg.fn_defs.get(name).cloned() else {
+    let Some((parameters, body, _)) = cg.fn_defs.get(name).cloned() else {
         return Ok(None);
     };
     let (param_types, ret_type) = declared;
@@ -279,6 +282,7 @@ fn lower_body(cg: &mut Codegen, body: &Expr, sig: &FnSig) -> Result<Value> {
     let lowered = gen_expr(cg, body).and_then(|v| crate::expr::fit_lambda_return(cg, v, Some(sig)));
     cg.value_discarded = outer;
     let value = lowered?;
+    let _ = cg.set_debug_position(crate::stmt::tail_position(body));
     // Function epilogue: the return transfers +1, owned locals drop
     // [GC-ARC-PERCEUS].
     crate::arc::epilogue(cg, Some(&value));

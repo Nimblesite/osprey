@@ -22,7 +22,8 @@ mod source;
 use captures::closure_captures;
 pub(crate) use captures::{capture_list, free_names, reload_captures};
 pub(crate) use source::{
-    begin_source, emit_closure, emit_closure_keyed, lambda_value, source_parameters,
+    begin_named_source, begin_source, emit_closure, emit_closure_keyed, lambda_value,
+    source_parameters,
 };
 
 use crate::builder::{Codegen, FnSig, ParamSig};
@@ -147,6 +148,7 @@ pub(crate) fn raw_callback_lambda(
     body: &Expr,
     sig: &FnSig,
     position: Option<Position>,
+    source_name: Option<&str>,
 ) -> Result<Value> {
     if !closure_captures(cg, parameters, body).is_empty() {
         return Err(CodegenError::unsupported(
@@ -157,7 +159,7 @@ pub(crate) fn raw_callback_lambda(
     let (ret_spelling, plist) = spelling(sig);
     let name = format!("__callback_{}", cg.next_lambda_id());
     let saved = cg.enter_nested_fn();
-    begin_source(cg, &name, position);
+    begin_named_source(cg, &name, source_name, position);
     let params = bind_params_from(cg, parameters, param_tys, 0);
     source_parameters(cg, parameters, 0);
     let emitted = closure_return(cg, body, *ret_ty, *ret_inner);
@@ -283,8 +285,8 @@ pub(crate) fn returned(reg: String, sig: &FnSig) -> Value {
 /// module) a forwarder that drops the env argument and tail-calls the real
 /// function, plus a constant cell pointing at it.
 pub(crate) fn named_fn_cell(cg: &mut Codegen, name: &str) -> Result<Value> {
-    if let Some((parameters, body)) = cg.fn_defs.get(name).cloned() {
-        return specialized_named_cell(cg, name, &parameters, &body);
+    if let Some((parameters, body, position)) = cg.fn_defs.get(name).cloned() {
+        return specialized_named_cell(cg, name, &parameters, &body, position);
     }
     let cell = match cg.fnval_cells.get(name) {
         Some(g) => g.clone(),
@@ -301,6 +303,7 @@ fn specialized_named_cell(
     name: &str,
     parameters: &[Parameter],
     body: &Expr,
+    position: Option<Position>,
 ) -> Result<Value> {
     let ty = cg.callee_fn_type(&Expr::Identifier(name.to_owned()));
     let Some(ty) = ty.filter(crate::types::fn_value_concrete) else {
@@ -311,7 +314,8 @@ fn specialized_named_cell(
     let sig = Codegen::fn_value_sig(&cg.prog, &ty)
         .ok_or_else(|| CodegenError::invalid("function value has no signature"))?;
     let key = format!("{}|{ty:?}", specialisation_key(name, &sig));
-    let mut value = emit_closure_keyed(cg, parameters, body, &sig, Some(key), None)?;
+    let mut value =
+        emit_closure_keyed(cg, parameters, body, &sig, Some(key), position, Some(name))?;
     value.inferred_type = Some(ty);
     Ok(value)
 }

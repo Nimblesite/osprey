@@ -220,7 +220,7 @@ fn record_declarations(cg: &mut Codegen, program: &Program) {
                 if cg.is_generic_fn(name) {
                     let _ = cg
                         .fn_defs
-                        .insert(name.clone(), (parameters.clone(), body.clone()));
+                        .insert(name.clone(), (parameters.clone(), body.clone(), *position));
                     cg.cov_note_inline_fn(name, *position);
                 }
             }

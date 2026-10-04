@@ -282,4 +282,56 @@ const RETURN_ONLY_BLOCKS: [(&str, &str, &str, usize); 3] = [
         "make () = \\x =>\n    wrapAdd x 0\nmain () =\n    f = make ()\n    print (f 42)\n",
         "__closure_fn_", 2,
     ),
+
 ];
+
+/// [DEBUGGER-LAMBDA-SCOPES] A generic function value retains its real definition.
+#[test]
+fn generic_function_values_keep_their_source_scope() -> Result<(), String> {
+    for (source, extension) in [(GENERIC_RECORD.0, "osp"), (GENERIC_RECORD.1, "ospml")] {
+        let ir = return_debug_ir(source, extension)?;
+        assert_return_location(&ir, "identity", 5)?;
+        assert!(ir.contains("!DILocalVariable(name: \"x\", arg: 2,"));
+    }
+    Ok(())
+}
+
+const GENERIC_RECORD: (&str, &str) = (
+    "type IntFunction = { run: fn(int) -> int }\n\nfn identity(x) = {\n    let value = x\n    value\n}\nfn main() = {\n    let holder = IntFunction { run: identity }\n    print(holder.run(42))\n}\n",
+    "type IntFunction =\n    run : int -> int\nidentity x =\n    value = x\n    value\nmain () =\n    holder = IntFunction(run = identity)\n    print (holder.run 42)\n",
+);
+
+/// [FFI-CALLBACKS] Specializing a named function preserves its C ABI debug arguments.
+#[test]
+fn generic_c_callbacks_keep_their_source_scope() -> Result<(), String> {
+    for (source, extension) in GENERIC_C_CALLBACKS {
+        let ir = return_debug_ir(source, extension)?;
+        assert_return_location(&ir, "identity", 4)?;
+        assert!(ir.contains("!DILocalVariable(name: \"x\", arg: 1,"));
+    }
+    Ok(())
+}
+
+const GENERIC_C_CALLBACKS: [(&str, &str); 2] = [
+    ("extern fn invoke(f: (int) -> int, n: int) -> int\nfn identity(x) = {\n    let value = x\n    value\n}\nfn main() = print(invoke(identity, 42))\n", "osp"),
+    ("extern invoke (f : int -> int) (n : int) -> int\nidentity x =\n    value = x\n    value\nmain () = print (invoke (identity, 42))\n", "ospml"),
+];
+
+/// [DEBUGGER-SOURCE-MAP] Runtime callback instantiations keep the original definition.
+#[test]
+fn generic_runtime_callbacks_keep_their_source_scope() -> Result<(), String> {
+    for (source, extension) in [
+        (INFERRED.replace("handler", "respond"), "osp"),
+        (INFERRED_ML.to_owned(), "ospml"),
+    ] {
+        let ir = return_debug_ir(&source, extension)?;
+        assert_return_location(&ir, "respond", 1)?;
+        for (index, name) in ["method", "path", "headers", "body"].iter().enumerate() {
+            let arg = index + 1;
+            assert!(ir.contains(&format!("!DILocalVariable(name: \"{name}\", arg: {arg},")));
+        }
+    }
+    Ok(())
+}
+
+const INFERRED_ML: &str = "respond (method, path, headers, body) = HttpResponse(status = 200, headers = \"\", contentType = \"text/plain\", streamFd = 0, isComplete = true, partialBody = \"ok\")\nserver = httpCreateServer (18201, \"127.0.0.1\")\nlistening = httpListen (server, respond)\nprint \"${listening}\"\n";

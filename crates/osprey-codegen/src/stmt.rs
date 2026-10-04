@@ -403,7 +403,7 @@ fn generic_returned_lambda(cg: &Codegen, value: &Expr) -> Option<ReturnedLambda>
     if fn_result_type(cg, value).is_some_and(|t| crate::types::fn_value_concrete(&t)) {
         return None;
     }
-    let (params, body) = cg.fn_defs.get(callee)?;
+    let (params, body, _) = cg.fn_defs.get(callee)?;
     let Expr::Lambda {
         parameters,
         body: lambda_body,
@@ -432,7 +432,7 @@ fn factory_lambda_abi(
     let Expr::Identifier(callee) = crate::expr::unapplied(function) else {
         return None;
     };
-    let (_, body) = cg.fn_defs.get(callee)?;
+    let (_, body, _) = cg.fn_defs.get(callee)?;
     let mut lambdas = Vec::new();
     returned_lambda_positions(body, &mut lambdas);
     if lambdas.is_empty() {

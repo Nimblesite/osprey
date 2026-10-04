@@ -207,7 +207,15 @@ suite("Osprey Debugger E2E Workflows", function () {
         osp: "fn makeAdder(n) = fn(x) => {\n    wrapAdd(x, n)\n}\nfn main() = {\n    let add = makeAdder(2)\n    print(add(40))\n}\n",
         ospml: "makeAdder n = \\x =>\n    wrapAdd x n\nmain () =\n    add = makeAdder 2\n    print (add 40)\n",
       },
-    }
+    },
+    ...([ ["int", 42], ["float", 2.5] ] as const).map(([type, value]) => ({
+      label: `generic function values retain source names and variables (${type})`,
+      locals: { x: value, value }, line: 5, prefix: "identity",
+      sources: {
+        osp: `type Operation = { run: fn(${type}) -> ${type} }\n\nfn identity(x) = {\n    let value = x\n    value\n}\nfn main() = {\n    let holder = Operation { run: identity }\n    print(holder.run(${value}))\n}\n`,
+        ospml: `type Operation =\n    run : ${type} -> ${type}\nidentity x =\n    value = x\n    value\nmain () =\n    holder = Operation(run = identity)\n    print (holder.run ${value})\n`,
+      },
+    })),
   ]) {
     for (const [extension, text] of Object.entries(fixture.sources)) {
       test(`${fixture.label} (${extension})`, async function () {

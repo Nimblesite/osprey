@@ -14,6 +14,7 @@ struct Definition<'a> {
     body: &'a Expr,
     sig: &'a FnSig,
     position: Option<Position>,
+    source_name: Option<&'a str>,
 }
 
 /// Lower a lambda in plain expression position (returned, block tail, stored)
@@ -66,7 +67,7 @@ pub(crate) fn emit_closure(
     sig: &FnSig,
     position: Option<Position>,
 ) -> Result<Value> {
-    emit_closure_keyed(cg, parameters, body, sig, None, position)
+    emit_closure_keyed(cg, parameters, body, sig, None, position, None)
 }
 
 /// [`emit_closure`] with an optional **emit-once key** naming a (function, ABI)
@@ -86,12 +87,14 @@ pub(crate) fn emit_closure_keyed(
     sig: &FnSig,
     key: Option<String>,
     position: Option<Position>,
+    source_name: Option<&str>,
 ) -> Result<Value> {
     let definition = Definition {
         parameters,
         body,
         sig,
         position,
+        source_name,
     };
     owned_closure(cg, &definition, key)
 }
@@ -146,7 +149,7 @@ fn emit_closure_fn(
     let (_, ret_ty, ret_inner, _, _) = definition.sig;
     let (ret_spelling, _) = spelling(definition.sig);
     let saved = cg.enter_nested_fn();
-    begin_source(cg, fn_name, definition.position);
+    begin_named_source(cg, fn_name, definition.source_name, definition.position);
     let params = prepare_body(cg, cell_ty, caps, definition);
     let emitted = closure_return(cg, definition.body, *ret_ty, *ret_inner);
     cg.exit_nested_fn(saved, &ret_spelling, fn_name, &params);
@@ -190,4 +193,18 @@ pub(crate) fn source_parameters(cg: &mut Codegen, parameters: &[Parameter], offs
             cg.emit_debug_param(&parameter.name, &value, index + offset);
         }
     }
+}
+
+/// A materialized generic body keeps its declaration name rather than its adapter symbol.
+pub(crate) fn begin_named_source(
+    cg: &mut Codegen,
+    symbol: &str,
+    source_name: Option<&str>,
+    position: Option<Position>,
+) {
+    let name = match source_name {
+        Some(name) => name,
+        None => symbol,
+    };
+    begin_source(cg, name, position);
 }

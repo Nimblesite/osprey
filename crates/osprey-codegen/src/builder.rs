@@ -159,7 +159,7 @@ pub(crate) struct Codegen {
     /// function at each call site so its type variables monomorphize to the
     /// concrete argument types there (specialisation by inlining rather than by
     /// emitting a name-mangled copy per instantiation).
-    pub(crate) fn_defs: HashMap<String, (Vec<osprey_ast::Parameter>, Expr)>,
+    pub(crate) fn_defs: HashMap<String, (Vec<osprey_ast::Parameter>, Expr, Option<Position>)>,
     /// Generic functions currently being inlined — a re-entry guard so a
     /// (mutually) recursive generic call falls back to a direct call instead of
     /// inlining forever.

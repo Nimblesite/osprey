@@ -80,7 +80,7 @@ pub(crate) fn callback_of(cg: &mut Codegen, e: &Expr) -> Result<Callback> {
                         .and_then(|t| Codegen::fn_value_sig(&cg.prog, t)),
                     position,
                 ))
-            } else if let Some((params, body)) = cg.fn_defs.get(n) {
+            } else if let Some((params, body, _)) = cg.fn_defs.get(n) {
                 // A generic (unannotated) user function has NO emitted `@name`
                 // symbol — it is specialised by inlining at each call site
                 // (lower.rs). As an iterator callback it must be beta-reduced
