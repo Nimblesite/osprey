@@ -173,8 +173,8 @@ fn apply_lambda_group(
 }
 
 fn apply_value_groups(cg: &mut Codegen, body: &Expr, groups: &mut Groups<'_>) -> Result<Value> {
-    let mut ty = cg.callee_fn_type(body);
     let mut value = gen_expr(cg, body)?;
+    let mut ty = value.inferred_type.clone().or_else(|| cg.callee_fn_type(body));
     while let Some((group, rest)) = groups.remaining.split_first() {
         (value, ty) = groups.in_caller(cg, |cg| apply_value_group(cg, &value, ty, group))?;
         groups.remaining = rest;
