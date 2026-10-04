@@ -188,7 +188,7 @@ blockStatementsCase () =
 
 test "blocks preserve values and lexical scope" (\() => exactArithmetic (blockStatementsCase))
 
-// [BLOCK-SCOPE] Runtime storage and callable metadata follow source bindings.
+(** [BLOCK-SCOPE] Runtime storage and callable metadata follow source bindings. *)
 effect BlockRead
     value : Unit => int
 blockCellShadow input =

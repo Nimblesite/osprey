@@ -204,7 +204,7 @@ fn blockStatementsCase() = {
 
 test("blocks preserve values and lexical scope", fn() => exactArithmetic(blockStatementsCase))
 
-// [BLOCK-SCOPE] Runtime storage and callable metadata follow source bindings.
+/// [BLOCK-SCOPE] Runtime storage and callable metadata follow source bindings.
 effect BlockRead { value: fn() -> int }
 fn blockCellShadow(input) = {
     let value = 100
