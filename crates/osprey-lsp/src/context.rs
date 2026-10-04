@@ -242,7 +242,7 @@ fn in_parameter_list(head: &str) -> bool {
     let declares = ["fn ", "extern fn ", "type ", "effect "]
         .iter()
         .any(|keyword| line.starts_with(keyword));
-    declares && open_parens(line) > 0
+    declares && !line.contains('=') && open_parens(line) > 0
 }
 
 fn open_parens(line: &str) -> usize {
@@ -361,6 +361,8 @@ mod tests {
         // A *call* argument at the same depth is a value position, because the
         // line is not a declaration head.
         assert_eq!(end_of("let t = add("), Cursor::Value);
+        assert_eq!(end_of("fn main() = print(fresh("), Cursor::Value);
+        assert_eq!(end_of("export fn main() = print(fresh("), Cursor::Value);
     }
 
     #[test]

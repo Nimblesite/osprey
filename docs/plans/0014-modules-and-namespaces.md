@@ -6,9 +6,10 @@
 **Status:** Core shipped and tested — Default + ML project compilation, the
 resolver/flattener, project-aware CLI and LSP diagnostics, state-ownership
 enforcement, cross-file LSP resolution, and public namespace/module documentation.
-Eight checklist items remain, including opaque manifest aliases, separate
-checking of importers against signatures, an incremental LSP project graph,
-and state-boundary warnings. Record-payload opacity
+Seven checklist items remain, including opaque manifest aliases, separate
+checking of importers against signatures, and state-boundary warnings. The
+incremental LSP project snapshot is implemented (2026-10-04): live source
+membership, syntax reuse, shared checking and file/manifest invalidation. Record-payload opacity
 is enforced (2026-10-02). Cross-flavor multi-file IR equivalence is enforced
 across every flavor assignment of a three-file graph (2026-10-03).
 **Spec:** [0025 - Modules and Namespaces](../specs/0025-ModulesAndNamespaces.md)
@@ -38,19 +39,18 @@ The remaining work is listed below.
   resolved flat program for the existing type checker and backend.
 - `osprey build`, directory/manifest inputs, and module-aware single files work;
   ordinary scripts still bypass assembly unchanged.
-- LSP diagnostics assemble the saved mixed-flavor project graph and overlay the
-  current document buffer; formatter/navigation understand module syntax within
-  a document. Cross-file resolution itself has since shipped — see
-  `[LSP-WORKSPACE]` in spec 0020; what remains is making the index
-  *incremental* rather than reloading the manifest's file set per request.
+- LSP diagnostics and navigation share the live mixed-flavor project graph,
+  including unsaved sibling buffers and new files inside source roots. Syntax
+  and checked programs are reused until their inputs change; source and manifest
+  file notifications refresh open documents (spec 0020 `[LSP-WORKSPACE]`).
 - Opaque record/union boundaries retain nominal structure. Opaque manifest
   aliases are rejected because the flat checker cannot yet expose their
   representation only to the owner without leaking its ABI to clients.
 - `docs/specs/0011-LightweightFibersAndConcurrency.md` has an older
   fiber-isolated module sketch. Spec 0025 supersedes it.
-- Cross-file LSP has shipped on this plan's module graph: hover, definition,
-  references, completion and signature help all resolve through
-  `osprey_project::load` (spec 0020 `[LSP-WORKSPACE]`; plan 0009, retired).
+- Cross-file LSP hover, definition, references, completion and signature help
+  share compiler discovery and parsing through cached live snapshots
+  (spec 0020 `[LSP-WORKSPACE]`; plan 0009, retired).
 
 ## Non-Goals
 
@@ -225,14 +225,20 @@ TODO:
 - [x] CLI: diagnostics show namespace labels, `::` symbol paths, and ranked
       import candidates. Both-flavor `misspelled_import_*` tests pin ranking;
       `import_suggestions_never_reveal_private_intermediate_modules` pins privacy (2026-10-03).
-- [ ] LSP: maintain an incremental project graph across open files and source
-      roots.
+- [x] LSP: maintain an incremental project graph across open files and source
+      roots. `project_features_follow_unsaved_siblings_in_both_flavors`,
+      `live_effect_declarations_and_handler_locations_follow_both_flavors`,
+      `watched_sources_and_manifest_refresh_the_live_project`, and
+      `unsaved_mixed_flavor_files_join_and_leave_the_project` exercise the real
+      server transport; counters pin unchanged syntax reuse. Code actions reuse
+      the diagnostics proof, and invalid project inputs report their source.
 - [x] LSP: run diagnostics through the mixed-flavor project assembler, overlay
       the current unsaved document, and map project/type errors back to its
       physical local lines.
 - [x] LSP: same-document go-to-definition, references, hover, completion, and
       fully-qualified document symbols understand namespaces/modules/imports.
-      Cross-file behavior depends on the incremental graph item above.
+      These features share the live project snapshot above, including unsaved
+      siblings in either flavor.
 - [ ] LSP: show state-boundary warnings and quick fixes for aliases and explicit
       `::` paths.
 - [x] Formatter: preserve file-scoped namespace and format module/signature

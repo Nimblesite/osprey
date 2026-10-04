@@ -44,19 +44,25 @@ pub(crate) struct Checked {
 /// evict the project while its open siblings are being refreshed.
 #[derive(Debug, Default)]
 pub(crate) struct ProjectCache {
-    latest: Mutex<Option<(Inputs, Arc<Checked>)>>,
+    latest: Mutex<std::collections::BTreeMap<PathBuf, (Inputs, Arc<Checked>)>>,
+    sources: Mutex<crate::project_sources::SourceCache>,
     #[cfg(test)]
     computed: std::sync::atomic::AtomicUsize,
 }
 
 impl ProjectCache {
-    pub(crate) fn checked(&self, config: &ProjectConfig, sources: &[SourceFile]) -> Arc<Checked> {
+    pub(crate) fn checked(
+        &self,
+        root: &std::path::Path,
+        config: &ProjectConfig,
+        sources: &[SourceFile],
+    ) -> Arc<Checked> {
         let inputs = Inputs::of(config, sources);
         // The entry is replaced whole, so a poisoned mutex cannot expose a
         // partially written analysis. Hold it through computation to avoid
         // duplicate work if two requests arrive together.
-        let mut latest = self.latest.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some((_, value)) = latest.as_ref().filter(|(seen, _)| *seen == inputs) {
+        let mut latest = lock(&self.latest);
+        if let Some((_, value)) = latest.get(root).filter(|(seen, _)| *seen == inputs) {
             return Arc::clone(value);
         }
         let value = Arc::new(analyse(config, sources));
@@ -64,13 +70,52 @@ impl ProjectCache {
         let _ = self
             .computed
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        *latest = Some((inputs, Arc::clone(&value)));
+        let _ = latest.insert(root.to_path_buf(), (inputs, Arc::clone(&value)));
         value
+    }
+
+    pub(crate) fn sources(
+        &self,
+        uri: &str,
+        vfs: Option<&lspkit_vfs::Vfs>,
+        text: Option<&str>,
+    ) -> Option<Result<crate::project_sources::Sources, Vec<ProjectError>>> {
+        lock(&self.sources).load(uri, vfs, text)
+    }
+
+    pub(crate) fn view(&self, uri: &str, vfs: &lspkit_vfs::Vfs) -> crate::workspace::View {
+        self.sources(uri, Some(vfs), None)
+            .and_then(Result::ok)
+            .map_or_else(crate::workspace::View::default, |sources| sources.view(uri))
+    }
+
+    pub(crate) fn opened(&self, uri: &str, open: bool) {
+        lock(&self.sources).opened(uri, open);
+    }
+
+    pub(crate) fn documents(&self) -> Vec<lspkit_vfs::DocumentUri> {
+        lock(&self.sources).documents()
+    }
+
+    pub(crate) fn affected(&self, document: &str, changed: &str) -> bool {
+        lock(&self.sources).affected(document, changed)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn parses(&self) -> usize {
+        lock(&self.sources).parses
     }
 
     #[cfg(test)]
     pub(crate) fn analyses(&self) -> usize {
         self.computed.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    match mutex.lock() {
+        Ok(guard) => guard,
+        Err(error) => PoisonError::into_inner(error),
     }
 }
 
@@ -139,7 +184,7 @@ mod tests {
         let (config, sources) = loaded(&root);
         let cache = ProjectCache::default();
         for _ in 0..3 {
-            let _ = cache.checked(&config, &sources);
+            let _ = cache.checked(&root, &config, &sources);
         }
         let performed = cache.analyses();
         let _ = std::fs::remove_dir_all(&root);
@@ -157,12 +202,12 @@ mod tests {
         let root = project("manifest", "before");
         let (config, sources) = loaded(&root);
         let cache = ProjectCache::default();
-        let first = cache.checked(&config, &sources);
+        let first = cache.checked(&root, &config, &sources);
         let renamed = ProjectConfig {
             default_namespace: Some("after".to_owned()),
             ..config
         };
-        let second = cache.checked(&renamed, &sources);
+        let second = cache.checked(&root, &renamed, &sources);
         let performed = cache.analyses();
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(
@@ -173,5 +218,57 @@ mod tests {
             !std::sync::Arc::ptr_eq(&first, &second),
             "a manifest edit reused the previous analysis"
         );
+    }
+
+    #[test]
+    fn separate_projects_keep_their_analysis_when_requests_alternate(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let first = crate::test_support::ProjectFixture::new("osp")?;
+        let second = crate::test_support::ProjectFixture::new("osp")?;
+        let a = first.write("main", "fn main() = print(\"one\")\n")?;
+        let b = second.write("main", "fn main() = print(\"two\")\n")?;
+        let cache = ProjectCache::default();
+        for uri in [&a, &b, &a, &b] {
+            let sources = cache
+                .sources(uri, None, None)
+                .ok_or("missing project")?
+                .map_err(|errors| format!("{errors:?}"))?;
+            let checked = cache.checked(&sources.root, &sources.config, &sources.files);
+            assert!(checked.assembled.is_ok(), "{checked:?}");
+        }
+        assert_eq!((cache.parses(), cache.analyses()), (2, 2));
+        Ok(())
+    }
+
+    #[test]
+    fn nested_projects_do_not_share_the_first_sources_cache_slot(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        for relative in ["src/aaa", "nested"] {
+            nested_project_cache(relative)?;
+        }
+        Ok(())
+    }
+
+    fn nested_project_cache(relative: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let outer = crate::test_support::ProjectFixture::new("osp")?;
+        let entry = outer.write("main", "fn main() = print(\"outer\")\n")?;
+        let nested = outer.root.join(relative);
+        std::fs::create_dir_all(nested.join("src"))?;
+        std::fs::write(nested.join("osprey.toml"), "[project]\nsource_roots = [\"src\"]\ndefault_namespace = \"nested\"\nentry = \"src/helper.osp\"\n")?;
+        let helper = nested.join("src/helper.osp");
+        std::fs::write(&helper, "fn helper(x) = x\n")?;
+        let uri = lspkit_server::uri::path_to_uri(&helper)?;
+        let cache = ProjectCache::default();
+        for uri in [&entry, &uri, &entry, &uri] {
+            let sources = cache
+                .sources(uri, None, None)
+                .ok_or("missing project")?
+                .map_err(|errors| format!("{errors:?}"))?;
+            let checked = cache.checked(&sources.root, &sources.config, &sources.files);
+            assert!(checked.assembled.is_ok(), "{checked:?}");
+        }
+        assert_eq!(cache.analyses(), 2);
+        assert_eq!(cache.parses(), 2);
+        Ok(())
     }
 }

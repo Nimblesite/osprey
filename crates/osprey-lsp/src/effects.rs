@@ -48,7 +48,7 @@ struct EffectIndex {
 pub(crate) fn operation_hover(
     program: &Program,
     source: &str,
-    uri: &str,
+    siblings: &[workspace::Sibling],
     line: u32,
     character: u32,
     encoding: PositionEncoding,
@@ -56,7 +56,7 @@ pub(crate) fn operation_hover(
 ) -> Option<String> {
     let index = effect_index(program);
     let id = target_at(&index, source, line, character, encoding, flavor)?;
-    let declaration = declaration(&index, uri, &id)?;
+    let declaration = declaration(&index, siblings, &id)?;
     Some(render_hover(&declaration, flavor))
 }
 
@@ -67,15 +67,18 @@ pub(crate) fn implementations(
     line: u32,
     character: u32,
     encoding: PositionEncoding,
+    project: &workspace::View,
 ) -> Vec<Location> {
-    let parsed = osprey_syntax::parse_program_for_path(uri, source);
-    let index = effect_index(&parsed.program);
-    let Some(id) = target_at(&index, source, line, character, encoding, parsed.flavor) else {
+    let siblings = &project.siblings;
+    let program = project.program(uri, source);
+    let flavor = project.flavor(uri, source);
+    let index = effect_index(&program);
+    let Some(id) = target_at(&index, source, line, character, encoding, flavor) else {
         return Vec::new();
     };
-    let mut out = handler_locations(&index, source, uri, &id, encoding, parsed.flavor);
-    for sibling in workspace::siblings(uri) {
-        let flavor = crate::features::flavor_of(&sibling.uri, &sibling.source);
+    let mut out = handler_locations(&index, source, uri, &id, encoding, flavor);
+    for sibling in siblings {
+        let flavor = sibling.flavor;
         let sibling_index = effect_index(&sibling.program);
         out.extend(handler_locations(
             &sibling_index,
@@ -89,14 +92,18 @@ pub(crate) fn implementations(
     out
 }
 
-fn declaration(index: &EffectIndex, uri: &str, id: &OperationId) -> Option<Declaration> {
+fn declaration(
+    index: &EffectIndex,
+    siblings: &[workspace::Sibling],
+    id: &OperationId,
+) -> Option<Declaration> {
     index
         .declarations
         .iter()
         .find(|declaration| same_operation(&declaration.id, id))
         .cloned()
         .or_else(|| {
-            workspace::siblings(uri).into_iter().find_map(|sibling| {
+            siblings.iter().find_map(|sibling| {
                 effect_index(&sibling.program)
                     .declarations
                     .into_iter()
@@ -387,7 +394,7 @@ mod tests {
             operation_hover(
                 &parsed.program,
                 source,
-                uri,
+                &crate::test_support::view(uri).siblings,
                 line,
                 column,
                 PositionEncoding::Utf16,
@@ -398,7 +405,7 @@ mod tests {
 
         fn credit_implementations(source: &str, uri: &str) -> Vec<Location> {
             let (line, column) = locate(source, CREDIT_PERFORM);
-            implementations(source, uri, line, column, PositionEncoding::Utf16)
+            crate::test_support::implementations(source, uri, line, column, PositionEncoding::Utf16)
         }
 
         // Hover resolves the operation's declaration across project files

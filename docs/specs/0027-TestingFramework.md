@@ -360,6 +360,8 @@ runs. An unset value uses the host's available parallelism, capped at four
 workers and with at least two when the corpus contains multiple suites. Invalid or zero values fail
 argument validation with exit code `2`.
 
+The Android corpus harness defaults to one worker because all suites share the attached device's memory budget. An explicit `OSPREY_TEST_JOBS` overrides that default; host CPU count does not select device concurrency.
+
 **`[TESTING-NATIVE-CACHE]`** Native test runs reuse a content-addressed
 executable when the suite sources, compiler binary, runtime archive, memory
 mode, build kind, compiler command, and optimization setting are unchanged.
