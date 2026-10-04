@@ -148,6 +148,8 @@ osprey hello.osp --debug --debug-opt=none --compile --debug-out hello-debug --de
 
 This keeps the executable and its generated IR (`hello-debug.ll`) for inspection. Add `"preserveArtifacts": true` to a VS Code launch configuration to keep the IR from an editor build, or set `"compilerPath"` to select a compiler for that launch. Editor launches always build without optimization. Optimized debugging and heap inspection are still planned; unsupported CLI modes report an error.
 
+For programs that read input, add `"console": "integratedTerminal"` to the launch configuration. `"externalTerminal"` uses VS Code’s configured external terminal. Both terminal modes require LLDB-DAP 21 or newer; an older or unrecognised adapter produces a clear error. The default `"internalConsole"` displays output in the Debug Console and does not provide stdin.
+
 ## The `OSPREY_CC` override
 
 When several clangs coexist — for example a keg-only Homebrew LLVM, or the MinGW

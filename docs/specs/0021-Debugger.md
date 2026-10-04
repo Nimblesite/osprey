@@ -118,7 +118,19 @@ For VS Code:
 
 Launch configuration accepts the program, arguments, working directory,
 environment, stop-on-entry, debug output path, and LLDB-DAP path. Compiler
-resolution uses the extension's configured Osprey compiler, unless `compilerPath` selects an executable for this launch. A missing override fails the launch rather than falling back. `preserveArtifacts: true` adds the IR and symbol preservation flags. The editor always passes `--debug-opt=none` so an inherited optimizer override cannot silently alter stepping. Console selection remains unfinished.
+resolution uses the extension's configured Osprey compiler, unless `compilerPath` selects an executable for this launch. A missing override fails the launch rather than falling back. `preserveArtifacts: true` adds the IR and symbol preservation flags. The editor always passes `--debug-opt=none` so an inherited optimizer override cannot silently alter stepping. Console selection follows [DEBUGGER-CONSOLE].
+
+## Program input and output `[DEBUGGER-CONSOLE]`
+
+Launch configurations accept `console: "internalConsole" | "integratedTerminal" | "externalTerminal"`. The default is `internalConsole`: program output reaches the Debug Console through DAP output events; this console is not stdin. LLDB's native pseudo-terminal can translate newlines to CRLF. `integratedTerminal` supplies interactive stdin in a VS Code terminal. `externalTerminal` asks VS Code to open its configured external terminal. Arguments, environment and working directory retain the ordinary launch contract.
+
+Terminal modes require a verified LLDB-DAP version of at least 21, which introduced the three-way console contract. A failed, timed-out or unrecognised version probe rejects the launch with an actionable diagnostic; it must not silently launch in the Debug Console. The probe runs the selected adapter directly, without a shell, and is bounded to three seconds. Internal-console launches do not need a version probe. This requirement is specific to terminal selection; it does not change the compiler's LLVM floor.
+
+Invalid console values, the obsolete `runInTerminal` launch field and terminal modes combined with custom `launchCommands` are rejected before compilation. `console: "integratedTerminal"` replaces `runInTerminal`. The native adapter receives the same resolved executable that passed the capability check. The Test Explorer keeps the internal default so its TAP verdicts remain available through DAP output events.
+
+Both-flavor `console selection preserves input and breakpoints` tests launch through the actual extension, read a line from the integrated terminal, inspect the resulting source binding, continue and verify output routing. `external console requests the external host terminal` compiles both surfaces and checks the real adapter's external reverse request, executable and working directory without opening an unmanaged operating-system window. Unit cases cover supported, old, unknown and failing probes, conflicting options and the launch schema. The host editor owns the external terminal UI.
+
+The adapter contract is documented by [LLVM 21's LLDB-DAP reference](https://github.com/llvm/llvm-project/blob/release/21.x/lldb/tools/lldb-dap/README.md#configuration-settings-reference).
 
 ## Reusable Debugger Helpers `[DEBUGGER-REUSE]`
 

@@ -745,7 +745,7 @@ Acceptance:
 - [x] Launch LLDB-DAP with the compiled binary.
 - [x] Add extension tests for configuration synthesis and missing-tool errors.
 - [x] Add per-launch compiler selection and artifact preservation; force unoptimized editor builds and inspect preserved IR through both-flavor LLDB-DAP tests.
-- [ ] Implement explicit console selection across supported adapters.
+- [x] Implement explicit internal, integrated and external console selection. Terminal modes require verified LLDB-DAP 21+ support and fail before compilation if unavailable. Both-flavor tests exercise integrated stdin, internal output, source breakpoints and the real external-terminal reverse request; unit tests pin invalid options and bounded probe failures.
 - [x] Add a DAP smoke test that launches, hits a source breakpoint, reads stack
       and primitive locals, steps over, continues, and terminates.
 - [ ] Upstream/import generic VS Code debugger glue and the DAP test harness

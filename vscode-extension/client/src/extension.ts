@@ -1,6 +1,5 @@
 // Real DAP launch and LSP/DAP separation [DEBUGGER-EDITOR-LAUNCH]
 // [DEBUGGER-PROTOCOLS].
-import * as path from "path";
 import {
   workspace,
   ExtensionContext,
@@ -20,6 +19,7 @@ import {
   ServerOptions,
   TransportKind,
 } from "vscode-languageclient/node";
+import { registerDebugLaunch } from "./debug-launch";
 import { registerOspreyDebugPanel } from "./debug-panel";
 import { registerProfilerCommands } from "./profiler/profile-run";
 import { registerTestDocsCommand } from "./test-docs-panel";
@@ -28,8 +28,8 @@ import { registerTestDebugProfile } from "./test-debug";
 import { registerTestProfileProfile } from "./test-profile";
 import { registerWarningFixes, warningFixMiddleware } from "./warning-fixes";
 
-import { resolveServerCommand, makeClientFailureHandling, defaultOspreyDebugConfigForEditor, applyDefaultOspreyDebugConfig, defaultDebugOutputPath, ospreyLanguageForFile } from "./client-config";
-import { resolveLldbDapExecutable, missingLldbDapMessage, compileDebugProgram } from "./debug-config";
+import { resolveServerCommand, makeClientFailureHandling, defaultOspreyDebugConfigForEditor, ospreyLanguageForFile } from "./client-config";
+import { resolveLldbDapExecutable, missingLldbDapMessage } from "./debug-config";
 import { compileCurrentFile, compileAndRunCurrentFile } from "./compile-commands";
 export * from "./client-config";
 export * from "./debug-config";
@@ -231,66 +231,7 @@ export function activate(context: ExtensionContext) {
   // refreshes on every stop.
   registerOspreyDebugPanel(context);
 
-  // Register debug configuration provider
-  context.subscriptions.push(
-    debug.registerDebugConfigurationProvider("osprey", {
-      async resolveDebugConfiguration(_folder: any, config: any, _token: any) {
-        // If no config is provided, synthesize one from the active osprey editor.
-        config = applyDefaultOspreyDebugConfig(config, window.activeTextEditor);
-
-        if (!config.program) {
-          return window
-            .showInformationMessage("Cannot find a program to run")
-            .then((_) => {
-              return undefined;
-            });
-        }
-
-        const sourceProgram = config.program;
-        const cwd = config.cwd || path.dirname(sourceProgram);
-        const debugOutput =
-          config.debugOutput || defaultDebugOutputPath(sourceProgram);
-        const document = workspace.textDocuments.find(
-          (d) => d.fileName === sourceProgram,
-        );
-        if (document && document.isDirty) {
-          const saved = await document.save();
-          if (!saved) {
-            window.showErrorMessage("Save the Osprey file before debugging.");
-            return undefined;
-          }
-        }
-
-        outputChannel.appendLine(
-          `Debug build: ${sourceProgram} -> ${debugOutput}`,
-        );
-        try {
-          await compileDebugProgram(
-            config.compilerPath || resolveServerCommand(context),
-            sourceProgram,
-            debugOutput,
-            cwd,
-            (message) => outputChannel.appendLine(message),
-            config.preserveArtifacts === true,
-          );
-        } catch (error: any) {
-          const msg = error?.message || String(error);
-          outputChannel.appendLine(msg);
-          window.showErrorMessage(msg);
-          return undefined;
-        }
-
-        return {
-          ...config,
-          type: "osprey",
-          request: "launch",
-          program: debugOutput,
-          sourceProgram,
-          cwd,
-        };
-      },
-    }),
-  );
+  registerDebugLaunch(context, () => resolveServerCommand(context), outputChannel);
 
   // Auto-detect and force language association for .osp and .ospml files. The
   // ML layout flavor (.ospml) binds to "osprey-ml"; the brace flavor (.osp) to
