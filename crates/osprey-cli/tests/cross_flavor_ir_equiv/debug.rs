@@ -1,6 +1,10 @@
 //! Native debugger scope contracts in both source flavors.
 use super::{ir_for, parsed_source, Flavor};
 
+#[path = "../common/debug_scope.rs"]
+mod debug_scope;
+use debug_scope::{scope_chain, scope_parent};
+
 const CAPTURED_LAMBDAS: [(&str, Flavor); 2] = [
     ("fn makeAdder(n) = fn(x) => {\n    let sum = wrapAdd(x, n)\n    sum\n}\nfn main() = {\n    let add = makeAdder(2)\n    print(add(40))\n}\n", Flavor::Default),
     ("makeAdder n = \\x =>\n    sum = wrapAdd x n\n    sum\nmain () =\n    add = makeAdder 2\n    print (add 40)\n", Flavor::Ml),
@@ -123,36 +127,6 @@ fn local_scope<'a>(ir: &'a str, name: &str) -> Result<&'a str, String> {
         .find(|line| line.contains(&format!("!DILocalVariable(name: \"{name}\",")))
         .ok_or_else(|| format!("missing scope for {name}"))
         .and_then(scope_parent)
-}
-
-fn scope_parent(metadata: &str) -> Result<&str, String> {
-    metadata
-        .split_once("scope: ")
-        .and_then(|(_, scope)| scope.split(',').next())
-        .ok_or_else(|| format!("missing scope parent in {metadata}"))
-}
-
-/// Follow verified lexical parents, rejecting missing nodes and cycles.
-fn scope_chain<'a>(ir: &'a str, scope: &'a str) -> Result<Vec<&'a str>, String> {
-    let mut chain = vec![scope];
-    let mut current = scope;
-    loop {
-        let metadata = ir
-            .lines()
-            .find(|line| line.starts_with(&format!("{current} = ")))
-            .ok_or_else(|| format!("missing scope metadata {current}"))?;
-        if metadata.contains("!DISubprogram(") {
-            return Ok(chain);
-        }
-        assert!(
-            metadata.contains("!DILexicalBlock("),
-            "invalid scope: {metadata}"
-        );
-        let parent = scope_parent(metadata)?;
-        assert!(!chain.contains(&parent), "cyclic scope: {parent}");
-        chain.push(parent);
-        current = parent;
-    }
 }
 
 /// [DEBUGGER-BINDING-LIFETIME] Cleanup must not reintroduce an earlier breakpoint.

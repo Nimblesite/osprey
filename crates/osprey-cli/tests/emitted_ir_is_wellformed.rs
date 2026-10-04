@@ -15,6 +15,9 @@
 //! value, which is precisely why these assertions read the emitted IR.
 
 mod common;
+#[path = "common/debug_scope.rs"]
+mod debug_scope;
+use debug_scope::{scope_chain, scope_parent};
 
 use common::{bound_symbols, repo_root, sources, symbol_at, undefined_symbols};
 use std::fs;
@@ -258,9 +261,12 @@ fn assert_return_location(ir: &str, name: &str, line: usize) -> Result<(), Strin
         .map(|(id, _)| id)
         .ok_or_else(|| format!("missing scope {name}"))?;
     let location = format!("!DILocation(line: {line},");
+    let locations = ir.lines().filter(|metadata| metadata.contains(&location));
+    let owners = locations
+        .map(|metadata| scope_parent(metadata).and_then(|owner| scope_chain(ir, owner)))
+        .collect::<Result<Vec<_>, _>>()?;
     assert!(
-        ir.lines()
-            .any(|line| line.contains(&location) && line.contains(&format!("scope: {scope})"))),
+        owners.iter().any(|chain| chain.last() == Some(&scope)),
         "missing return line in {name}: {ir}"
     );
     Ok(())
