@@ -424,3 +424,32 @@ fn bound_argument_and_ffi_lambdas_keep_their_debug_scopes() -> Result<(), String
     }
     Ok(())
 }
+
+/// [DEBUGGER-BLOCK-SCOPES] Inner bindings have a scope separate from function locals.
+#[test]
+fn nested_source_blocks_keep_distinct_variable_scopes() -> Result<(), String> {
+    for (source, flavor) in [
+        ("fn choose(input) = {\n let value = 100\n let selected = {\n  let value = input\n  let observed = wrapAdd(value, 1)\n  observed\n }\n let outside = wrapAdd(value, selected)\n outside\n}\nprint(choose(2))\n", Flavor::Default),
+        ("choose input =\n    value = 100\n    selected =\n        value = input\n        observed = wrapAdd value 1\n        observed\n    outside = wrapAdd value selected\n    outside\nprint (choose 2)\n", Flavor::Ml),
+    ] {
+        let normal = ir_for(source, flavor, "block.osp")?;
+        assert!(!normal.contains("br label"), "scope boundaries add no ordinary control flow");
+        assert!(!normal.contains("store volatile"), "debug markers stay out of ordinary builds");
+        let ir = lambda_debug_ir(source, flavor)?;
+        assert_eq!(ir.matches("%__osprey_debug_scope = alloca i8").count(), 1);
+        let inside = local_scope(&ir, "observed")?;
+        let outside = local_scope(&ir, "outside")?;
+        assert_ne!(inside, outside, "{flavor}: nested locals need their own scope");
+        assert!(ir.contains(&format!("{inside} = distinct !DILexicalBlock(scope: {outside},")));
+        assert!(ir.lines().any(|line| line.contains("!DILocation(line: 6,") && line.contains(&format!("scope: {inside})"))), "{flavor}: the block return must remain inside its scope");
+    }
+    Ok(())
+}
+
+fn local_scope<'a>(ir: &'a str, name: &str) -> Result<&'a str, String> {
+    ir.lines()
+        .find(|line| line.contains(&format!("!DILocalVariable(name: \"{name}\",")))
+        .and_then(|line| line.split_once("scope: "))
+        .and_then(|(_, scope)| scope.split(',').next())
+        .ok_or_else(|| format!("missing scope for {name}"))
+}

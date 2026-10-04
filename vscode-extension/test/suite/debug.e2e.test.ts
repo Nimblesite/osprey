@@ -5,7 +5,7 @@ import * as assert from "assert";
 import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
-import { patternFixtures, sourceFixtures } from "./debug-fixtures";
+import { lexicalFixtures, sourceFixtures } from "./debug-fixtures";
 import { defaultDebugOutputPath } from "../../client/src/extension";
 import { resolveBuiltOsprey, resolveRequiredLldbDap } from "./osprey-test-env";
 import {
@@ -252,22 +252,22 @@ suite("Osprey Debugger E2E Workflows", function () {
     return frame.id;
   }
 
-  for (const fixture of patternFixtures) {
-    test(`pattern bindings stay in their debugger arm (${fixture.extension})`, async function () {
+  for (const fixture of lexicalFixtures) {
+    test(`${fixture.label} (${fixture.extension})`, async function () {
       this.timeout(TEST_TIMEOUT_MS);
       const program = path.join(tempDir, `pattern.${fixture.extension}`);
       fs.writeFileSync(program, fixture.text);
-      const { session, stop } = await launchToFirstStop([7, fixture.outerLine], {
+      const { session, stop } = await launchToFirstStop([fixture.innerLine, fixture.outerLine], {
         program, debugOutput: defaultDebugOutputPath(program),
       });
-      const inside = await assertFrameLocals(session, stop, program, 7, "choose", { observed: 3 });
+      const inside = await assertFrameLocals(session, stop, program, fixture.innerLine, fixture.prefix, { observed: 3 });
       await assertWatch(session, inside, "value", /^2$/);
       const bindings = await readFrameVariables(session, inside);
-      assert.ok(bindings.some(variable => /^value(?: @ .*:6)?$/.test(variable.name) && variable.value === "2"), "the arm exposes its own pattern binding");
+      assert.ok(bindings.some(variable => new RegExp(`^value(?: @ .*:${fixture.bindingLine})?$`).test(variable.name) && variable.value === "2"), "the inner scope exposes its own value binding");
       await continueExecution(session, stop.threadId);
       const outside = await waitForStop(session, LAUNCH_TIMEOUT_MS);
-      const frame = await assertFrameLocals(session, outside, program, fixture.outerLine, "choose", { value: 100, selected: 3, outside: 103 });
-      assert.ok(!(await readFrameVariables(session, frame)).some(variable => variable.name === "observed"), "arm-local values leave scope after the match");
+      const frame = await assertFrameLocals(session, outside, program, fixture.outerLine, fixture.prefix, { value: 100, selected: 3, outside: 103 });
+      assert.ok(!(await readFrameVariables(session, frame)).some(variable => variable.name === "observed"), "inner locals leave scope after the expression");
       await continueExecution(session, outside.threadId);
       await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
     });

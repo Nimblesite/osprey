@@ -48,3 +48,31 @@ export const patternFixtures = [
     text: "type Choice = Pick int | Other\nchoose input =\n    value = 100\n    selected = match input\n        Pick value =>\n            observed = wrapAdd (value, 1)\n            observed\n        Other => value\n    outside = wrapAdd (value, selected)\n    outside\nprint (choose (Pick 2))\n",
   },
 ];
+
+const defaultBlock = "    let value = 100\n    let selected = {\n        let value = input\n        let observed = wrapAdd(value, 1)\n        observed\n    }\n    let outside = wrapAdd(value, selected)\n    outside\n";
+const mlBlock = "    value = 100\n    selected =\n        value = input\n        observed = wrapAdd value 1\n        observed\n    outside = wrapAdd value selected\n    outside\n";
+
+function blockFixture(extension: string, prefix: string, text: string) {
+  const lines = text.split("\n");
+  return {
+    extension, prefix, text,
+    label: `nested blocks restore debugger bindings in ${prefix}`,
+    bindingLine: lines.findIndex(line => /^(?:let )?value = input$/.test(line.trim())) + 1,
+    innerLine: lines.findIndex(line => line.trim() === "observed") + 1,
+    outerLine: lines.findIndex(line => ["outside", "resume(outside)", "resume outside"].includes(line.trim())) + 1,
+  };
+}
+
+export const lexicalFixtures = [
+  ...patternFixtures.map(fixture => ({ ...fixture, label: "pattern bindings stay in their debugger arm", innerLine: 7, bindingLine: 6, prefix: "choose" })),
+  blockFixture("osp", "choose", `fn choose(input) = {\n${defaultBlock}}\nprint(choose(2))\n`),
+  blockFixture("ospml", "choose", `choose input =\n${mlBlock}print (choose 2)\n`),
+  blockFixture("osp", "__closure_fn_", `fn main() = {\n let choose = fn(input) => {\n${defaultBlock}}\n print(choose(2))\n}\n`),
+  blockFixture("ospml", "__closure_fn_", `main () =\n    choose = \\input =>\n${mlBlock.replace(/^/gm, "    ")}\n    print (choose 2)\n`),
+  blockFixture("osp", "__handler_Input_step", `effect Input { step: fn(int) -> int }\nfn main() = {\n handle Input {\n  step input => {\n${defaultBlock}}\n }\n print(perform Input.step(2))\n}\n`),
+  blockFixture("ospml", "__handler_Input_step", `effect Input\n    step : int => int\nmain () =\n    handle Input\n        step input =>\n${mlBlock.replace(/^/gm, "        ")}\n    print (perform Input.step 2)\n`),
+].flatMap(fixture => fixture.prefix === "__handler_Input_step" ? [fixture, blockFixture(
+  fixture.extension, "__resume_arm_Input_step", fixture.text
+    .replace("step:", "control step:").replace("step :", "control step :")
+    .replace(/^(\s*)outside$/m, fixture.extension === "osp" ? "$1resume(outside)" : "$1resume outside"),
+)] : [fixture]);

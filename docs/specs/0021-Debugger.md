@@ -66,7 +66,15 @@ Primitive lambda parameters, immutable captures, captured mutable cells and loca
 
 Each selected match arm has its own lexical debug scope. Primitive pattern bindings and arm-local values are inspectable within that scope. A block arm's trailing expression retains its source line, including an identifier-only return. After execution leaves the arm, its locals are no longer visible and an enclosing binding with the same name becomes the selected binding again. LLDB may display both visible shadowed names with source-line labels; evaluating the unqualified name selects the innermost binding.
 
-The editor's `pattern bindings stay in their debugger arm` cases verify the exact return-line stop, the inner pattern value, the arm's calculated local, restoration of the outer value and disappearance of the arm-local variable in both flavors. Composite value rendering, complete nested ordinary-block scopes and inlined generic call-frame reconstruction remain unfinished.
+The editor's `pattern bindings stay in their debugger arm` cases verify the exact return-line stop, the inner pattern value, the arm's calculated local, restoration of the outer value and disappearance of the arm-local variable in both flavors. Composite value rendering and inlined generic call-frame reconstruction remain unfinished.
+
+## Nested block scopes `[DEBUGGER-BLOCK-SCOPES]`
+
+Ordinary nested block expressions follow the same visibility rule as match arms. Their primitive local bindings belong to a child lexical scope; an unqualified shadowed name selects the innermost visible binding. Leaving the block hides its locals and restores enclosing bindings. This applies inside named functions, materialized lambdas, and both direct and resumable effect handlers, in both flavors.
+
+A nested block's trailing value retains an executable location within that scope, including an identifier-only return. The outer body of a function or handler shares its frame scope so completed local bindings remain inspectable at the function return. Debug-only scope boundaries do not change ordinary generated IR or program results.
+
+`nested_source_blocks_keep_distinct_variable_scopes` asserts child scope ownership and the return location. The editor's `nested blocks restore debugger bindings` cases stop before and after a nested block, inspect the inner value and calculated local, then verify the enclosing value and disappearance of the inner local. They cover named functions, closures and both handler modes in each flavor.
 
 ## Editor Launch `[DEBUGGER-EDITOR-LAUNCH]`
 

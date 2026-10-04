@@ -407,8 +407,7 @@ fn closure_return(
     ret_ty: LType,
     ret_inner: Option<LType>,
 ) -> Result<()> {
-    let bv = gen_expr(cg, body)?;
-    let _ = cg.set_debug_position(crate::stmt::tail_position(body));
+    let bv = crate::expr::gen_body(cg, body)?;
     ret_as_sig(cg, bv, ret_ty, ret_inner)
 }
 

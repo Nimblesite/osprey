@@ -12,6 +12,10 @@ use crate::pattern::gen_match;
 use crate::runtime::{gen_print, to_string_value};
 use osprey_ast::{Expr, InterpolatedPart, NamedArgument, Parameter, Position, Stmt};
 
+mod block;
+use block::gen_block;
+pub(crate) use block::{gen_block_with, gen_body};
+
 pub(crate) fn gen_expr(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
     let inferred = match expr {
         Expr::Integer(_) => Some(osprey_types::Type::con(
@@ -223,40 +227,6 @@ fn fmt_double(f: f64) -> String {
         // Hex float is the exact, locale-free spelling LLVM accepts.
         format!("0x{:016X}", f.to_bits())
     }
-}
-
-fn gen_block(
-    cg: &mut Codegen,
-    statements: &[Stmt],
-    value: Option<&Expr>,
-    position: Option<Position>,
-) -> Result<Value> {
-    gen_block_with(cg, statements, value, position, gen_expr)
-}
-
-pub(crate) fn gen_block_with(
-    cg: &mut Codegen,
-    statements: &[Stmt],
-    value: Option<&Expr>,
-    position: Option<Position>,
-    tail: impl FnOnce(&mut Codegen, &Expr) -> Result<Value>,
-) -> Result<Value> {
-    // A child scope preserves outer bindings across nested blocks [BLOCK-SCOPE].
-    cg.push_scope();
-    let result = (|| {
-        for (i, s) in statements.iter().enumerate() {
-            crate::stmt::gen_local_stmt(cg, s)?;
-            // Last-use drops: names the continuation no longer references die
-            // here, not at function end [GC-ARC-PERCEUS].
-            crate::arc::release_dead_after(cg, statements.get(i + 1..).unwrap_or(&[]), value);
-        }
-        let previous = cg.set_debug_position(position);
-        let result = value.map_or_else(|| Ok(Value::unit()), |e| tail(cg, e));
-        cg.restore_debug_position(previous);
-        result
-    })();
-    cg.pop_scope();
-    result
 }
 
 fn gen_binary(cg: &mut Codegen, op: &str, left: &Expr, right: &Expr) -> Result<Value> {

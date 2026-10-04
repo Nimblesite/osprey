@@ -1,5 +1,6 @@
 //! Lexical source scopes for native variable visibility. [DEBUGGER-DBG-DECLARE]
 use super::{Codegen, DebugState};
+use crate::error::{CodegenError, Result};
 use osprey_ast::Position;
 
 impl DebugState {
@@ -20,6 +21,34 @@ impl DebugState {
 }
 
 impl Codegen {
+    /// An identifier-only block tail still needs a source instruction in its scope.
+    pub(crate) fn mark_debug_block_exit(&mut self, position: Option<Position>) -> Result<()> {
+        if self
+            .debug
+            .as_ref()
+            .and_then(|debug| debug.current_scope)
+            .is_some()
+        {
+            self.hoist_debug_marker()?;
+            let _ = self.set_debug_position(position);
+            self.emit("store volatile i8 0, i8* %__osprey_debug_scope");
+        }
+        Ok(())
+    }
+
+    /// A fall-through branch disappears even at -O0. One stack byte per frame
+    /// provides a real instruction without growing the stack in repeated blocks.
+    fn hoist_debug_marker(&mut self) -> Result<()> {
+        const SLOT: &str = "  %__osprey_debug_scope = alloca i8";
+        if self.cur_lines.is_empty() {
+            return Err(CodegenError::invalid("debug scope has no active function"));
+        }
+        if !self.cur_lines.iter().any(|line| line == SLOT) {
+            self.cur_lines.insert(1, SLOT.to_string());
+        }
+        Ok(())
+    }
+
     pub(crate) fn with_debug_scope<T>(
         &mut self,
         position: Option<Position>,

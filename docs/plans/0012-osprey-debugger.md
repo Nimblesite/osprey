@@ -14,7 +14,7 @@ Source lambda scopes, primitive parameters, immutable captures and block return-
 
 Remaining gaps include:
 
-- **Source coverage and value inspection remain incomplete.** Ordinary nested blocks and inlined generic call-frame reconstruction still need complete source scopes and variable locations. Composite values have no Osprey-specific rendering. The source-lambda regression closes one concrete gap; it does not complete Phase 3.
+- **Source coverage and value inspection remain incomplete.** Inlined generic call-frame reconstruction and unavailable-value reporting still need work. Ordinary nested block scopes now preserve initialized primitive bindings and exact return stops in named functions, closures and both handler modes. Composite values have no Osprey-specific rendering. The source-lambda regression closes one concrete gap; it does not complete Phase 3.
 - **Layer 3's and Layer 4's advertised surfaces do not exist.** The plan describes
   `--debug-info`, `--debug-opt`, `--debug-out`, `--debug-preserve-ir` and
   `--debug-preserve-symbols`; `crates/osprey-cli/src/main.rs` accepts only
@@ -772,7 +772,7 @@ Acceptance:
 - [x] Preserve source declaration names, scopes and parameter bindings in materialized generic function values and C/runtime callback specializations; compiler assertions and integer/float LLDB-DAP cases cover both flavors. The accompanying generic-binding regression suite verifies declaration scope, live global reads, caller argument order and independent nested type instantiations.
 - [x] Scope primitive pattern bindings to their match arm and preserve block-arm return locations; both-flavor LLDB-DAP cases verify shadowed name lookup, outer-value restoration and arm-local disappearance. Runtime assertions cover every match representation, nested arms, escaping captures, captured mutable cells and callable payload signatures, including float-returning Result joins.
 - [ ] Extend value-location records to remaining capture representations.
-- [ ] Complete lexical scopes for ordinary nested blocks and remaining handler/lambda nesting.
+- [x] Complete ordinary nested-block scopes in named functions, materialized lambdas and direct/resumable handlers. Eight both-flavor LLDB-DAP cases stop on the inner return, resolve the shadowed name to 2 and local result to 3, then see the outer value 100 and result 103 with the inner local absent. A debug-only marker survives LLVM instruction selection; it uses one hoisted stack byte per frame and leaves ordinary IR unchanged.
 - [x] Validate primitive local inspection in LLDB-DAP.
 - [ ] Add unavailable-value reporting tests.
 

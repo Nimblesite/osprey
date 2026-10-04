@@ -15,7 +15,6 @@
 
 use crate::builder::{Codegen, FnSig, ParamSig};
 use crate::error::{CodegenError, Result};
-use crate::expr::gen_expr;
 use crate::iter::{callback_of, nth, Callback};
 use crate::llty::{LType, Value};
 use osprey_ast::{Expr, Parameter};
@@ -355,10 +354,10 @@ fn bind_uniforms(cg: &mut Codegen, caps: &[crate::closure::Capture]) -> Vec<(LTy
 /// statement was doing with the loop.
 fn kernel_body(cg: &mut Codegen, body: &Expr, own: Option<&FnSig>) -> Result<Value> {
     let outer = std::mem::replace(&mut cg.value_discarded, false);
-    let lowered = gen_expr(cg, body).and_then(|v| crate::expr::fit_lambda_return(cg, v, own));
+    let lowered =
+        crate::expr::gen_body(cg, body).and_then(|v| crate::expr::fit_lambda_return(cg, v, own));
     cg.value_discarded = outer;
     let value = lowered?;
-    let _ = cg.set_debug_position(crate::stmt::tail_position(body));
     // Function epilogue: the return transfers +1, owned locals drop
     // [GC-ARC-PERCEUS]. A scalar return makes the retain a no-op.
     crate::arc::epilogue(cg, Some(&value));

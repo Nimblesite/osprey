@@ -61,10 +61,9 @@ fn push_arm(cg: &mut Codegen, body: &Expr, phi_in: &mut Vec<(Value, String)>) ->
     // — whose owners disagree, so it carries none — was then read as whichever
     // one the receiver's type predicted, dereferencing a `{ length, data }`
     // header as an `OspreyList` ([`crate::listlit::escaping`]).
-    let raw = gen_expr(cg, body)?;
+    let raw = crate::expr::gen_body(cg, body)?;
     let v = crate::listlit::escaping(cg, raw);
     let exit = cg.fresh_label();
-    let _ = cg.set_debug_position(crate::stmt::tail_position(body));
     cg.emit(format!("br label %{exit}"));
     phi_in.push((v, exit));
     Ok(())

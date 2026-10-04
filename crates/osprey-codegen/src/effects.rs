@@ -524,7 +524,7 @@ fn emit_handler_fn(
     let mut params = vec![(LType::Ptr, String::from("__env"))];
     reload_env(cg, caps, env_ty);
     bind_arm_params(cg, arm, sig, resolved, &mut params)?;
-    let body = gen_expr(cg, &arm.body)?;
+    let body = crate::expr::gen_body(cg, &arm.body)?;
     let ret = if sig.ret_erased {
         // Adapt before retaining: a plain body can become a freshly allocated
         // Success block, and that actual return value must survive the epilogue.
@@ -791,7 +791,7 @@ fn emit_resuming_body_fn(
 ) -> Result<AnswerShape> {
     let saved = cg.enter_nested_fn();
     reload_env(cg, caps, env_ty);
-    let body = gen_expr(cg, body)?;
+    let body = crate::expr::gen_body(cg, body)?;
     let answer = AnswerShape::of(&body);
     let boxed = box_codegen_value(cg, body);
     crate::arc::epilogue(cg, None);
@@ -872,7 +872,7 @@ fn emit_resuming_arm_fn(cg: &mut Codegen, arm: &HandlerArm, spec: &ArmFnSpec<'_>
         op_ret_ty,
         op_ret_result_inner,
     });
-    let body_raw = gen_expr(cg, &arm.body)?;
+    let body_raw = crate::expr::gen_body(cg, &arm.body)?;
     // Control arms answer the region even when they never invoke resume.
     // Value arms supply the operation result. Implements [EFFECTS-HANDLER-ARMS].
     let body = if spec.sig.mode.is_control() {

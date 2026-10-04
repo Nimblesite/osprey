@@ -279,10 +279,10 @@ fn lower_body(cg: &mut Codegen, body: &Expr, sig: &FnSig) -> Result<Value> {
     // ([EFFECTS-HANDLER-STATE]).
     cg.cell_vars = crate::effects::captured_mut_vars(body);
     let outer = std::mem::replace(&mut cg.value_discarded, false);
-    let lowered = gen_expr(cg, body).and_then(|v| crate::expr::fit_lambda_return(cg, v, Some(sig)));
+    let lowered = crate::expr::gen_body(cg, body)
+        .and_then(|v| crate::expr::fit_lambda_return(cg, v, Some(sig)));
     cg.value_discarded = outer;
     let value = lowered?;
-    let _ = cg.set_debug_position(crate::stmt::tail_position(body));
     // Function epilogue: the return transfers +1, owned locals drop
     // [GC-ARC-PERCEUS].
     crate::arc::epilogue(cg, Some(&value));
