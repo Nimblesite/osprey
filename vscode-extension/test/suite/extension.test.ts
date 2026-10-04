@@ -26,11 +26,14 @@ import {
   resolveRequiredLldbDap,
 } from "./osprey-test-env";
 import {
+  assertCurrentLine,
   assertLocalVariable,
   clearDebugBreakpoints,
   getScopes,
   getVariables,
+  readFrameVariables,
   setSourceBreakpoints,
+  stepOver,
   waitForDebugSessionEnd,
   waitForDebugSessionStart,
   waitForStop,
@@ -3087,7 +3090,7 @@ suite("Osprey VSIX Debugger E2E", () => {
       );
 
       const debugOutput = defaultDebugOutputPath(source);
-      setSourceBreakpoints(source, [2]); // edited-only `let tagged = tag(base)`
+      setSourceBreakpoints(source, [2]); // edited-only `let base = 7`
       const sessionPromise = waitForDebugSessionStart(45000);
       const started = await vscode.debug.startDebugging(undefined, {
         type: "osprey",
@@ -3136,15 +3139,21 @@ suite("Osprey VSIX Debugger E2E", () => {
         "stopped on the edited-only breakpoint line (proves the save happened)",
       );
 
-      // The edited-only local `base` is live — findVariable searches every scope,
-      // and this also exercises the shared DAP harness assertLocalVariable path.
-      // The matcher is a predicate (its rendered value is a materialized string
-      // whose exact form depends on where in the line execution paused).
+      // [DEBUGGER-BINDING-LIFETIME] Locals appear only after initialization.
+      assert.ok(
+        !(await readFrameVariables(session, topFrame.id)).some(
+          (variable) => variable.name === "base",
+        ),
+        "base is hidden until its initializer completes",
+      );
+      await stepOver(session, stopped.threadId);
+      const initialized = await waitForStop(session, 45000);
+      const initializedFrame = assertCurrentLine(initialized.stack, 3, source);
       const base = await assertLocalVariable(
         session,
-        topFrame.id,
+        initializedFrame.id,
         "base",
-        (value) => typeof value === "string" && value.length > 0,
+        (value) => value === "7",
       );
       assert.strictEqual(base.name, "base", "assertLocalVariable returns base");
       assert.ok(
@@ -3152,7 +3161,7 @@ suite("Osprey VSIX Debugger E2E", () => {
         "the saved (not stale) program was debug-compiled to a native binary",
       );
 
-      await session.customRequest("continue", { threadId: stopped.threadId });
+      await session.customRequest("continue", { threadId: initialized.threadId });
       await waitForDebugSessionEnd(45000, session.id);
     } finally {
       await debugConfig.update(
