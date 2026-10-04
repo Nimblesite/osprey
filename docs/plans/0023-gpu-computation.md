@@ -439,14 +439,8 @@ stage 4 starts, in this order:
    benchmark artifact and environment metadata. The stage was justified by a
    host-backend speedup that has never been measured. If there is none, say
    so here and keep extraction anyway — its value is the device ABI.
-5. **Decide the wasm corpus gate (review P1.14).** The full wasm GPU
-   differential runs in a non-required job; either move it into the required
-   `ci` job or make the wasm job required. Until then a wasm-only regression
-   does not block a merge.
-6. **De-duplicate `gpu_kernel::returned`.** `deslop` cluster #48 pairs it with
-   the identical `sig.2`/`sig.3` reconstruction inside
-   `closure.rs::cell_call`. The repo sits at exactly 5.0% against a 5.00%
-   ceiling, so this is one of the cheapest ways to buy headroom.
+5. **Keep the wasm corpus gate required.** The WebAssembly job is required by the active branch rulesets and checked by `scripts/verify-branch-protection.mjs`. It runs the GPU differential through `make wasm`; no gate change remains here.
+6. **Keep return reconstruction shared.** Extracted kernels and closure calls now use `closure::returned`; the Stage 3 checklist records this completed refactor.
 
 **Then stage 4 or stage 6 — nothing else on this page reaches a GPU.** Stage 6
 (Metal) is closer on this hardware, because [plan
@@ -472,7 +466,7 @@ Landmines previous sessions hit:
   under `make wasm`, not `make ci` — run both. `make wasm` also *builds*
   `libosprey_runtime_wasm.a`; without it every wasm golden fails at once and
   `TEST_CORPUS_WASM_SKIPPED` reads 0 instead of 53.
-- `GOLDEN_MIN` (179 native / 126 wasm) counts *programs*, not test cases —
+- `GOLDEN_MIN` (217 native / 151 wasm) counts *programs*, not test cases —
   adding a `test(...)` to an existing suite does not move it. Never lower it.
   `GPU_MODE_MIN` (18) counts the `tests/core/gpu` programs re-run under the
   opposite kernel lowering; adding a tenth suite raises it to 20.
@@ -494,9 +488,7 @@ Landmines previous sessions hit:
   `(d + 1)` no longer misparses as `5(d + 1)`
   ([LEX-STATEMENT-BREAK](../specs/0002-LexicalStructure.md#the-rule-lex-statement-break)).
   A callee and its argument list must still share one line.
-- Debug builds emit **no `DISubprogram`** for a lifted kernel, matching
-  `closure::emit_closure_fn`. Stepping into a kernel under lldb will not work
-  until [plan 0012](0012-osprey-debugger.md) closes the lambda-debug-info gap.
+- Lifted host kernels and materialized source lambdas emit their own `DISubprogram`, parameters and captured values. Both-flavor compiler and real LLDB-DAP tests now verify return-line breakpoints and primitive inspection; see [plan 0012](0012-osprey-debugger.md).
 
 ## TODO checklist
 
@@ -543,30 +535,8 @@ Landmines previous sessions hit:
       symbol never defined, failing at link time with no source location.
       `expr.rs::call_builtin_with_values` now lowers `print`, `toString`,
       `toFloat` and `abs` to value forms at the callback site.
-- [ ] Kernel-form gaps (plan 0002). Re-measured; the two halves differ:
-      - Block-bodied lambda kernels **already work in Default** —
-        a `gpuMap` lambda whose block binds `let d = x * 2 ?: 0` and returns
-        `d + 1 ?: d`, and `|x| => { … }`, both run. Only the brace-only
-        `fn(x) { … }` (no `=>`) is rejected.
-        The blocker is the ML parser, which has no multi-statement lambda body,
-        so the construct cannot enter the corpus without drifting
-        `cross_flavor_ir_equiv`. Next step is ML-parser support, not Default
-        grammar work.
-      - Recursive helpers need annotations **only when their signature is not
-        inferable** — `fn triangular(n)` as a kernel runs; `fn walk(src, w, i)`
-        taking a `GpuBuffer<int>` fails closed. Generic functions are lowered
-        by inlining (`genfn.rs::try_inline`), never emitted as symbols, so a
-        recursive generic with an uninferred signature has no call target and
-        the guard must fail. Closing it means real monomorphization — a
-        name-mangled copy per instantiation with the self-call bound to it.
-        Four annotations in `raster` and three in `stress` stay load-bearing
-        until then; the other 29 (raster) and 15 (stress) were redundant and
-        have been removed.
-      - Fixed meanwhile: nine builtin docs examples used the rejected
-        `fn(x) { … }` spelling, and four were also semantically wrong (`x * 2`
-        is checked arithmetic, so `map`/`forEach` printed `Success(2)` where
-        the comment claimed `2`; `filter`/`gpuZipWith` did not compile). All
-        nine now run and match their stated output.
+- [x] Block-bodied lambda kernels in both flavors. ML layout bodies inside callback brackets now lower with the Default twin. `every_extracting_combinator_preserves_its_source_arguments` checks all five extracting combinators; `extracted GPU kernel breakpoints expose uniforms and locals` executes a block-bodied kernel under LLDB-DAP in both flavors.
+- [ ] Recursive helpers whose signatures remain polymorphic still need specialization before recursive emission. Concrete recursive signatures may be inferred: `rowDot`, `train`, `simulate` and `mix` in the GPU corpus no longer carry the annotations previously reported as required. Distinguish this remaining generic-emission restriction from the completed block-body support.
 - [x] Kernel element typing (plan 0022 F10). Re-measured; narrower than "int
       defaulting". Let-polymorphism was always fine (`fn id(x) = x` instantiates
       at three types). `+` was the problem: in `fn add(a, x) = a + x` it
@@ -574,9 +544,7 @@ Landmines previous sessions hit:
       `gpuFold(0.0, add)` gave `cannot unify int with float`. **Fixed** by
       leaving the overload open at the definition and settling it after
       unification — no numeric class, and no GPU-surface change. `gpuFold(0,
-      add)` still needs the combine slot's `(v, t) -> v` to accept checked
-      integer `+`'s `Result`, which is the shape question the float-totality
-      decision owns.
+      add)` returns a plain integer under an explicit `Arith` policy, as required by [spec 0037](../specs/0037-ArithmeticEffects.md); the retired float-totality plan no longer owns an unresolved Result-shape decision.
 
 ### Stage 3 — kernel extraction
 
