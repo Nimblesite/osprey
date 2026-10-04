@@ -229,6 +229,10 @@ implementation. Non-exported implementation details remain private.
 In an ML signature, bare `type T` is abstract and `type T = R` is manifest;
 `opaque type T` is redundant and rejected.
 
+Alias expansion preserves annotation provenance: a type inserted by an ascription remains a contract constraint and cannot produce a redundant-annotation warning or deletion action. A written annotation retains its own source identity through chained and generic aliases; separate uses remain separately removable under [TYPE-ANNOTATION-REDUNDANT](0004-TypeSystem.md#redundant-annotations--type-annotation-redundant). `alias_expansion_preserves_*` and the editor alias-action tests enforce both flavors.
+
+The runnable bank’s `MoneyApi` exposes manifest `Cents = int` and abstract `Amount`, implemented by a private record. Clients convert through `fromCents`/`toCents`; they cannot construct the record, read its fields or substitute a raw integer for an amount. `bank_money_signature_*` exercises the actual source from both syntax flavors under every native allocator. The same module supplies the Wasm browser application. This example does not require or imply support for opaque manifest aliases.
+
 ## State Ownership `[MODULES-STATE]`
 
 Local `mut` remains lexical. Durable module-owned cells may occur only in a

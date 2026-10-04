@@ -111,8 +111,11 @@ src/
   one SQLite transaction.
 - **Refusals are domain outcomes.** Overdraft attempts return HTTP 422 and are
   still recorded in the audit ledger.
-- **Money is integral.** The full path uses cents, avoiding floating-point
-  drift.
+- **Money is integral and its representation is private.** `MoneyApi` exposes
+  manifest `Cents = int` and abstract `Amount`. Both the native API and Wasm
+  client construct amounts with `Money::fromCents`, format with `Money::show`,
+  and recover cents with `Money::toCents`. Clients cannot construct the hidden
+  record or read its field. Conversions preserve every signed 64-bit cent.
 - **Input is bound and output is encoded.** SQL uses prepared parameters, JSON
   strings are escaped centrally, and the React adapter rejects executable DOM
   properties and raw HTML injection.
@@ -141,8 +144,11 @@ the built-in harness:
 make bank-test          # or: osprey test examples/projects/modules/test
 ```
 
-Three suites (`money`, `json`, `accounts`) — 12 cases, ~50 `check` assertions —
-emit TAP and exercise every formatting boundary and escaping case.
+Three suites (`money`, `json`, `accounts`) emit TAP for 14 cases covering
+formatting, escaping, domain rules and opaque-amount conversions, including
+zero and both signed 64-bit limits. Compiler integration tests import the actual
+Money module from both flavors, require identical output under default/GC/ARC,
+and reject construction, field access and raw-integer substitution outside it.
 
 ### Browser end-to-end (`osprey test` → Playwright)
 
@@ -169,6 +175,7 @@ native unit tests, the byte-exact tour, and the browser suite.
 | File-scoped and quoted namespaces | native modules and `bank/web` |
 | Multi-root Osprey project | browser client plus shared domain modules |
 | Signature-ascribed modules and state | `Money`, `Json`, `Metrics` |
+| Abstract record and manifest alias in one signature | `MoneyApi.Amount`, `MoneyApi.Cents` |
 | Exported algebraic effects | `Ledger::Store`, `Api::Audit` |
 | Effect rows and exhaustive outcomes | API routes and ledger mutations |
 | Private state behind an installer | request metrics |

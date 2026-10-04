@@ -180,3 +180,36 @@ fn constructors_of_an_exported_module_union_are_reachable() {
         "an exported union's constructors are unreachable: {errors:?}"
     );
 }
+
+// [TYPE-ANNOTATION-REDUNDANT], [MODULES-SIGNATURE]: aliases retain the
+// distinction between a contract and an annotation actually written on a body.
+#[test]
+fn alias_expansion_preserves_contract_annotations() -> Result<(), String> {
+    for (flavor, source) in [
+        (Flavor::Default, "signature Api { type Number = int\n fn next(value: Number) -> Number }\nmodule M : Api { type Number = int\n fn next(value) = wrapAdd(value, 1) }\n"),
+        (Flavor::Ml, "signature Api\n    type Number = int\n    next : Number -> Number\nmodule M : Api\n    type Number = int\n    next value = wrapAdd value 1\n"),
+    ] {
+        let assembled = project(flavor, source).map_err(|errors| errors.join("\n"))?;
+        let errors = osprey_types::check_program(&assembled.program);
+        assert!(errors.is_empty(), "{flavor:?}: {errors:?}");
+        let warnings = osprey_types::redundant_annotations(&assembled.program);
+        assert!(warnings.is_empty(), "{flavor:?}: {warnings:?}");
+    }
+    Ok(())
+}
+
+#[test]
+fn alias_expansion_preserves_separate_written_annotation_sites() -> Result<(), String> {
+    for (flavor, source, expected_lines) in [
+        (Flavor::Default, "type Items<T> = List<T>\ntype Numbers = Items<int>\nfn first() -> Numbers = [1]\nfn second() -> Numbers = [2]\n", [3, 4]),
+        (Flavor::Ml, "type Items T = (List T)\ntype Numbers = (Items int)\nfirst : Unit -> Numbers\nfirst () = [1]\nsecond : Unit -> Numbers\nsecond () = [2]\n", [3, 5]),
+    ] {
+        let assembled = project(flavor, source).map_err(|errors| errors.join("\n"))?;
+        let errors = osprey_types::check_program(&assembled.program);
+        assert!(errors.is_empty(), "{flavor:?}: {errors:?}");
+        let sites = osprey_types::redundant_annotation_sites(&assembled.program);
+        let lines: Vec<_> = sites.iter().filter_map(|site| site.annotation_position.or(site.warning.position).map(|p| p.line)).collect();
+        assert_eq!(lines, expected_lines, "{flavor:?}: {sites:?}");
+    }
+    Ok(())
+}

@@ -163,6 +163,93 @@ fn bank_project_runs_byte_exact_against_expectedoutput() {
     assert_eq!(output.stdout, expected_output());
 }
 
+// [MODULES-SIGNATURE], [MODULES-OPAQUE-TYPES]: exercise the shipped bank source.
+#[test]
+fn bank_money_signature_keeps_amounts_opaque_and_cents_manifest(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for (extension, source) in [
+        ("osp", "fn main() = { let amount = Money::fromCents(420005)\n print(\"${Money::show(amount)}|${wrapAdd(Money::toCents(amount), 1)}|${Money::positive(amount)}|${Money::show(Money::fromCents(-9223372036854775808))}\") }\n"),
+        ("ospml", "main () =\n    amount = Money::fromCents 420005\n    print \"${Money::show amount}|${wrapAdd (Money::toCents amount) 1}|${Money::positive amount}|${Money::show (Money::fromCents (-9223372036854775808))}\"\n"),
+    ] {
+        let project = money_client_fixture(extension, source)?;
+        assert_money_runs(&project);
+        std::fs::remove_dir_all(project)?;
+    }
+    Ok(())
+}
+
+fn assert_money_runs(project: &Path) {
+    for backend in ["default", "gc", "arc"] {
+        let output = run(&[arg(project), "--run".into(), format!("--memory={backend}")]);
+        assert_eq!(output.code, Some(0), "{backend}: {}", output.stderr);
+        assert_eq!(
+            output.stdout, "$4,200.05|420006|true|-$92,233,720,368,547,758.08\n",
+            "{backend}"
+        );
+        assert!(!output.stderr.contains("redundant"), "{}", output.stderr);
+    }
+}
+
+#[test]
+fn bank_money_signature_rejects_representation_access_from_both_flavors(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for (extension, source, error) in [
+        (
+            "osp",
+            "fn main() = Money::Amount { cents: 1 }\n",
+            "cannot be constructed outside module",
+        ),
+        (
+            "ospml",
+            "main () = Money::Amount(cents = 1)\n",
+            "cannot be constructed outside module",
+        ),
+        (
+            "osp",
+            "fn main() = { let amount = Money::fromCents(1)\n amount.cents }\n",
+            "is hidden outside module",
+        ),
+        (
+            "ospml",
+            "main () =\n    amount = Money::fromCents 1\n    amount.cents\n",
+            "is hidden outside module",
+        ),
+        ("osp", "fn main() = Money::show(1)\n", "type mismatch"),
+        ("ospml", "main () = Money::show 1\n", "type mismatch"),
+    ] {
+        let project = money_client_fixture(extension, source)?;
+        let output = run(&[arg(&project), "--check".into(), "--quiet".into()]);
+        assert_eq!(output.code, Some(1), "{source}: {}", output.stderr);
+        assert!(output.stderr.contains(error), "{source}: {}", output.stderr);
+        std::fs::remove_dir_all(project)?;
+    }
+    Ok(())
+}
+
+fn money_client_fixture(
+    extension: &str,
+    source: &str,
+) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let project = std::env::temp_dir().join(format!(
+        "osprey_money_signature_{}_{}_{}",
+        std::process::id(),
+        extension,
+        source.len()
+    ));
+    std::fs::create_dir_all(project.join("src"))?;
+    let _ = std::fs::copy(
+        fixture().join("src/domain/money.ospml"),
+        project.join("src/money.ospml"),
+    )?;
+    let entry = project.join(format!("src/main.{extension}"));
+    std::fs::write(&entry, source)?;
+    std::fs::write(
+        project.join("osprey.toml"),
+        format!("[project]\nname = \"money-contract\"\nsource_roots = [\"src\"]\ndefault_namespace = \"bank\"\nentry = \"src/main.{extension}\"\n"),
+    )?;
+    Ok(project)
+}
+
 #[test]
 fn module_aware_single_file_uses_assembly_without_loading_siblings() {
     let directory =
@@ -341,11 +428,11 @@ fn flattened_type_errors_map_back_to_physical_local_lines() {
     let project = copy_fixture("diagnostic");
     let money = project.join("src/domain/money.ospml");
     let source = std::fs::read_to_string(&money).expect("read ML source");
-    let broken = source.replace("show : int -> string", "show : int -> int");
+    let broken = source.replace("show : Amount -> string", "show : Amount -> int");
     assert_ne!(broken, source, "fixture mutation must change the ML source");
     let line = broken
         .lines()
-        .position(|line| line.contains("show cents ="))
+        .position(|line| line.contains("show amount ="))
         .map_or(0, |line| line.saturating_add(1));
     std::fs::write(&money, broken).expect("write broken ML source");
 

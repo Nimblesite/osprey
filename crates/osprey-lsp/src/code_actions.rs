@@ -272,6 +272,39 @@ mod tests {
 
     const SOURCE: &str = "decorate : string -> string\ndecorate text = text + \"!\"\n";
 
+    // [TYPE-ANNOTATION-REDUNDANT], [LSP-CODE-ACTIONS-ANNOTATIONS]: module
+    // contract copies cannot justify erasing source that was never written.
+    #[test]
+    fn manifest_alias_contracts_have_no_warning_or_deletion_action() {
+        for (extension, source) in [
+            ("osp", "signature Api { type Number = int\n fn next(value: Number) -> Number }\nmodule M : Api { type Number = int\n fn next(value) = wrapAdd(value, 1) }\n"),
+            ("ospml", "signature Api\n    type Number = int\n    next : Number -> Number\nmodule M : Api\n    type Number = int\n    next value = wrapAdd value 1\n"),
+        ] {
+            let (vfs, uri) = document(source, extension);
+            let diagnostics = crate::diagnostics::compute(source, uri.as_str(), vfs.encoding());
+            assert!(diagnostics.is_empty(), "{extension}: {diagnostics:?}");
+            assert!(actions(&vfs, &uri, (0, 0, 99, 0), &[]).is_empty());
+        }
+    }
+
+    #[test]
+    fn written_alias_annotations_remain_independently_removable() -> Result<(), String> {
+        for (extension, source, expected) in [
+            ("osp", "namespace app;\ntype Numbers = List<int>\nfn first() -> Numbers = [1]\nfn second() -> Numbers = [2]\n", "namespace app;\ntype Numbers = List<int>\nfn first() = [1]\nfn second() = [2]\n"),
+            ("ospml", "namespace app\ntype Numbers = (List int)\nfirst : Unit -> Numbers\nfirst () = [1]\nsecond : Unit -> Numbers\nsecond () = [2]\n", "namespace app\ntype Numbers = (List int)\nfirst () = [1]\nsecond () = [2]\n"),
+        ] {
+            let (vfs, uri) = document(source, extension);
+            let fixes = actions(&vfs, &uri, (0, 0, 99, 0), &[FIX_ALL.into()]);
+            assert_eq!(fixes.len(), 1, "{extension}: {fixes:?}");
+            let fix = fixes.first().ok_or("missing alias annotation fix")?;
+            assert_eq!(fix.diagnostics.len(), 2, "{fix:?}");
+            assert_eq!(apply(&vfs, &uri, fix), expected);
+            let diagnostics = crate::diagnostics::compute(expected, uri.as_str(), vfs.encoding());
+            assert!(diagnostics.is_empty(), "{extension}: {diagnostics:?}");
+        }
+        Ok(())
+    }
+
     fn document(source: &str, flavor: &str) -> (Vfs, DocumentUri) {
         let vfs = Vfs::new(PositionEncoding::Utf16);
         let uri = DocumentUri::new(format!("file:///annotation-action.{flavor}"));
