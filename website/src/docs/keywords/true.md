@@ -10,7 +10,10 @@ description: "Boolean literal representing the logical value true."
 
 ```osprey
 let isReady = true
-if (isReady) { print("Ready!") }
+print(match isReady {
+    true => "Ready!"
+    false => "Wait"
+})
 ```
 
 ```osprey-ml

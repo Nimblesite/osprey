@@ -10,12 +10,15 @@ description: "Boolean literal representing the logical value false."
 
 ```osprey
 let isComplete = false
-if (!isComplete) { print("Not done yet") }
+print(match isComplete {
+    false => "Not done yet"
+    true => "Done"
+})
 ```
 
 ```osprey-ml
 isComplete = false
 match isComplete
     false => print "Not done yet"
-    true => print "done"
+    true => print "Done"
 ```

@@ -16,13 +16,13 @@ type CreateUserResult =
     Created { id: int }
     | ValidationFailed { message: string }
     | DuplicateEmail { email: string }
-    | DatabaseFailure { message: string }
+    | DatabaseUnavailable
 ```
 
-A handler maps each outcome to an HTTP response:
+One function maps each outcome to an HTTP response:
 
 ```osprey
-fn json(status: int, body: string) -> HttpResponse = HttpResponse {
+fn json(status, body) = HttpResponse {
     status: status,
     headers: "Content-Type: application/json",
     contentType: "application/json",
@@ -31,25 +31,17 @@ fn json(status: int, body: string) -> HttpResponse = HttpResponse {
     partialBody: body
 }
 
-fn toResponse(result: CreateUserResult) -> HttpResponse = match result {
-    Created { id } =>
-        json(201, "{\"id\": ${toString(id)}}")
-    ValidationFailed { message } =>
-        json(400, "{\"error\": \"${message}\"}")
-    DuplicateEmail { email } =>
-        json(409, "{\"error\": \"${email} is already registered\"}")
-    DatabaseFailure { message } =>
-        json(502, "{\"error\": \"database failure\"}")
+fn toResponse(result) = match result {
+    Created { id } => json(201, "{\"id\": ${id}}")
+    ValidationFailed { message } => json(400, "{\"error\": \"${message}\"}")
+    DuplicateEmail { email } => json(409, "{\"error\": \"${email} is already registered\"}")
+    DatabaseUnavailable => json(503, "{\"error\": \"try again later\"}")
 }
 ```
 
-For supported patterns, the checker reports a non-exhaustive match when a
-variant is omitted. Adding a variant therefore identifies matches that need a
-new policy.
+The checker rejects a match that omits a variant, so adding a variant points at every match that needs a new case.
 
-This does not prove that an API cannot fail: HTTP, parsing, FFI code and the
-runtime still have failure boundaries. It makes the modeled domain outcomes
-visible in ordinary data and keeps their HTTP mapping in one function.
+HTTP, parsing and FFI code can still fail; this keeps the modeled outcomes in ordinary data and their HTTP mapping in one function.
 
 See the [HTTP specification](/spec/0014-http/) and [pattern-matching
 specification](/spec/0007-patternmatching/) for the implemented contracts.

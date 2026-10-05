@@ -17,8 +17,8 @@ pub(crate) struct CompilationInput {
 
 #[derive(Debug)]
 enum CompilationUnit {
-    Script(Program),
-    Project(AssembledProject),
+    Script(Box<Program>),
+    Project(Box<AssembledProject>),
 }
 
 #[derive(Debug)]
@@ -52,7 +52,7 @@ impl CompilationInput {
     /// Preserve the historical single-file path for an ordinary script.
     pub(crate) fn script(path: &str, source: String, program: Program) -> Self {
         Self {
-            unit: CompilationUnit::Script(program),
+            unit: CompilationUnit::Script(Box::new(program)),
             source,
             display_path: path.to_string(),
             debug_path: path.to_string(),
@@ -118,7 +118,7 @@ impl CompilationInput {
             |entry| entry.path.display().to_string(),
         );
         Self {
-            unit: CompilationUnit::Project(assembled),
+            unit: CompilationUnit::Project(Box::new(assembled)),
             source,
             display_path,
             debug_path,

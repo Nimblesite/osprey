@@ -22,6 +22,7 @@ Start with the [practical guide](/docs/effects/). Both source flavors support:
 - `return` clauses that transform normal completion.
 - `handle static` and static handler values that remove handled effect dispatch after source validation.
 - Compile-time rejection of unhandled operations, including requests through helpers and callbacks.
+- Integer overflow and zero divisors request the built-in `Arith` effect; each region chooses its policy.
 
 Value handlers and static interpretation have native, WebAssembly and mobile paths. Dynamic control handlers require the native target. Open `!e` annotations have a closed-program prototype; independently quantified effect rows in function types, reusable continuations, owned escaping continuations, named instances, masking and finalizers remain unfinished. [Plan 0016](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0016-algebraic-effects-and-handlers.md) records the evidence and remaining work.
 
@@ -47,7 +48,7 @@ The release list was unavailable when this page was built. See
 - Hindley–Milner type inference, algebraic data types and exhaustive pattern
   matching for supported patterns
 - User-defined generics, declaration-site variance, generic effects and explicit
-  call-site type arguments in both flavors. Generic calls and callbacks preserve declaration scope; nested calls keep independent types and evaluate arguments once in application order.
+  call-site type arguments in both flavors.
 - Immutable persistent lists and maps
 - Lightweight native fibers and channels
 - Native HTTP, WebSocket, file, process and C FFI runtime APIs
@@ -83,20 +84,14 @@ The compiler rejects unsupported target operations during `--check`, `--llvm`, a
 
 The current development build rejects these older forms:
 
-- `handle … in …` and ML `handle … do …` are removed. Use `let h = handler E { … }` then `h(work)`, or a rest-of-block `handle`. Operations that use `resume` must be declared `control`; an arm without `resume` for a control operation abandons the computation. Ordinary value arms return to their perform site.
+- `handle … in …` and ML `handle … do …` are removed. Use `let h = handler E { … }` then `h(work)`, or a rest-of-block `handle`. Operations that use `resume` must be declared `control`.
+- Integer `+`, `-` and `*` return `int` instead of `Result`; overflow and zero divisors need an `Arith` handler.
 
-- A comparison needs two operands of one type. `true < 1` used to compile and answer `false`; it is now a type error naming both types.
+- A comparison needs two operands of one type; `true < 1` is a type error.
 
-- A `map`/`filter` pipeline belongs to the function that builds it. Returning one, or passing it to a function compiled on its own, is now rejected; collect it with `toList` first. Earlier builds accepted both, and a pipeline bound to a name could run another pipeline's stages.
+- A `map`/`filter` pipeline cannot be returned or passed to a separately compiled function; collect it with `toList` first.
 
-- `//!` documents whatever encloses it — a file, a namespace or a module — so it
-  has to be the first item of one. Written anywhere else it is now a compile
-  error in both flavors, naming the `//!` itself. Earlier builds accepted some of
-  those placements, and a Default-flavor file could even read the comment as
-  code: `//! ready` at the end of a function body parsed as the expression
-  `!ready`, so the function returned the opposite answer and the program still
-  exited successfully. Move the comment to the top of the file, namespace or
-  module it describes, or write it as an ordinary `//` comment.
+- `//!` must be the first item of the file, namespace or module it documents; elsewhere it is a compile error. Use `//` for ordinary comments.
 
 ## Current limits
 

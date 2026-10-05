@@ -89,10 +89,9 @@ This directory holds the language and engineering specifications:
     [the arithmetic contract](0037-ArithmeticEffects.md#implementation-and-verification).
   - [`0038-iOSTarget.md`](0038-iOSTarget.md) — iPhone and ARM64 simulator static
     libraries with inferred C headers, synchronous Swift host calls, target
-    capability rejection before LLVM, and a runnable SwiftUI sample. Implementation
-    and verification are tracked in [plan 0029](../plans/0029-ios-c-abi.md).
+    capability rejection before LLVM, and a runnable SwiftUI sample.
   - [`0039-AndroidTarget.md`](0039-AndroidTarget.md) — Android ARM64/x64 archives, checked C ABI, NDK runtime builds, and JNI integration.
-  - [`0040-ReactiveMobileApplications.md`](0040-ReactiveMobileApplications.md) — one Osprey application defining screens, reactive state, SQLite persistence, and API commands for generic iOS and Android hosts. Delivery is tracked in [plan 0030](../plans/0030-reactive-mobile-apps.md).
+  - [`0040-ReactiveMobileApplications.md`](0040-ReactiveMobileApplications.md) — one Osprey application defining screens, reactive state, SQLite persistence, and API commands for generic iOS and Android hosts.
 
 ## Spec ID convention
 

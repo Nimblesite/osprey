@@ -207,7 +207,9 @@ fn resolve(cg: &Codegen, env: &Environment) -> Result<Frame> {
                 for alias in aliases(env) {
                     frame.slots.push(slot(cg, &alias, &alias)?);
                 }
-                frame.lambdas.push((name.clone(), def.clone(), env.clone()));
+                frame
+                    .lambdas
+                    .push((name.clone(), def.clone(), Rc::clone(env)));
             }
         }
     }
