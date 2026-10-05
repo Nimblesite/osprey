@@ -107,9 +107,7 @@ impl Checker {
             Pattern::Constructor { name, .. } if !is_result_variant(name) => {
                 "a constructor pattern"
             }
-            Pattern::Binding(name) if self.ctors.get(name).is_some_and(|i| i.fields.is_empty()) => {
-                "a variant pattern"
-            }
+            Pattern::Binding(name) if self.names_variant(name) => "a variant pattern",
             _ => return false,
         };
         // Bind the pattern's names as `any` so one mistake does not cascade
@@ -319,8 +317,8 @@ impl Checker {
         }
     }
 
-    /// A bare identifier pattern is either a nullary constructor (matches that
-    /// variant) or a fresh variable binding.
+    /// A bare identifier pattern is either a variant name (matches that variant
+    /// and binds nothing, payload or not) or a fresh variable binding.
     fn bind_binding(&mut self, name: &str, disc: &Type, local: &mut TypeEnv) {
         // `Success`/`Error` over a real `Result` always mean the built-in
         // variant, even when a user union shadows those names: match the
@@ -328,10 +326,10 @@ impl Checker {
         if is_result_variant(name) && is_result(&self.ctx.expose(disc)) {
             return;
         }
-        if self.ctors.get(name).is_some_and(|i| i.fields.is_empty()) {
-            if let Some((args, _f, owner, is_record)) = self.ctor_instance(name) {
-                let owner_ty = nullary_owner_ty(owner, args, is_record);
-                self.push_unify(&owner_ty, disc);
+        if self.names_variant(name) {
+            if let Some((args, declared, owner, is_record)) = self.ctor_instance(name) {
+                let fields = declared.into_iter().collect();
+                self.push_unify(&ctor_owner_ty(owner, args, fields, is_record), disc);
                 return;
             }
         }
@@ -401,14 +399,7 @@ impl Checker {
         }
         let declared_map: BTreeMap<String, Type> = declared.iter().cloned().collect();
         // Tie the discriminant's type arguments to this constructor's owner.
-        let owner_ty = if is_record {
-            Type::Record {
-                name: owner,
-                fields: declared_map.clone(),
-            }
-        } else {
-            Type::con(owner, args)
-        };
+        let owner_ty = ctor_owner_ty(owner, args, declared_map.clone(), is_record);
         self.push_unify(&owner_ty, disc);
 
         // Named field destructure: `Ctor { a, b }`.
@@ -645,20 +636,28 @@ impl Checker {
     }
 
     /// A bare binding is a genuine variable (not a variant) when it is lower-case
-    /// and not a known nullary constructor.
+    /// and names no variant.
     fn is_variable_binding(&self, name: &str) -> bool {
-        !starts_uppercase(name) && self.ctors.get(name).is_none_or(|i| !i.fields.is_empty())
+        !starts_uppercase(name) && !self.names_variant(name)
+    }
+
+    /// Whether a bare name selects a user variant, payload or not, as ML's
+    /// upper-case patterns and codegen's `pattern_ctor` read it. The built-in
+    /// `Result` variants keep their own auto-wrap rules. Implements
+    /// [TYPE-MATCH-EXHAUSTIVE].
+    fn names_variant(&self, name: &str) -> bool {
+        self.ctors
+            .get(name)
+            .is_some_and(|i| i.owner != names::RESULT)
     }
 
     /// The variant a pattern covers for exhaustiveness, if any: an explicit
-    /// constructor, a bare built-in `Result` variant (`Success`/`Error`, whose
-    /// fields are non-empty yet still name a variant), or a nullary-constructor
-    /// binding.
+    /// constructor, a bare built-in `Result` variant (`Success`/`Error`), or a
+    /// bare user variant.
     fn pattern_ctor_name(&self, pattern: &Pattern) -> Option<String> {
         match pattern {
             Pattern::Constructor { name, .. } => Some(name.clone()),
-            Pattern::Binding(name) if is_result_variant(name) => Some(name.clone()),
-            Pattern::Binding(name) if self.ctors.get(name).is_some_and(|i| i.fields.is_empty()) => {
+            Pattern::Binding(name) if is_result_variant(name) || self.names_variant(name) => {
                 Some(name.clone())
             }
             _ => None,
@@ -726,11 +725,18 @@ pub(crate) fn pattern_binders_where(
     }
 }
 
-fn nullary_owner_ty(owner: String, args: Vec<Type>, is_record: bool) -> Type {
+/// The type a variant pattern ties its discriminant to: the owning record with
+/// the constructor's declared fields, or the owning union.
+fn ctor_owner_ty(
+    owner: String,
+    args: Vec<Type>,
+    fields: BTreeMap<String, Type>,
+    is_record: bool,
+) -> Type {
     if is_record {
         Type::Record {
             name: owner,
-            fields: BTreeMap::new(),
+            fields,
         }
     } else {
         Type::con(owner, args)
@@ -1010,6 +1016,54 @@ mod tests {
             .any(|e| e.message.contains("non-exhaustive") && e.message.contains("Blue")));
     }
 
+    /// `describe` matching `arms` over a union with a positional, a named and
+    /// a nullary variant.
+    fn describe_shape(arms: &str) -> String {
+        format!(
+            "type Shape = Circle(int) | Square {{ side: int }} | Dot\n\
+             fn describe(s) = match s {{\n{arms}}}\n"
+        )
+    }
+
+    // A bare variant name selects that variant whether or not it carries a
+    // payload — what ML's `Circle =>` and codegen's `pattern_ctor` already do.
+    // The checker read a bare *payload* variant as a variable binding, so the
+    // arm covered no variant, repeated none, and left the scrutinee untyped
+    // ([TYPE-MATCH-EXHAUSTIVE]).
+    #[test]
+    fn bare_payload_variant_arms_cover_their_variants() {
+        ok(&describe_shape(
+            "Circle => \"circle\"\nSquare => \"square\"\nDot => \"dot\"\n",
+        ));
+    }
+
+    #[test]
+    fn bare_payload_variant_arm_leaves_the_others_missing() {
+        // Accepted without a diagnostic, `describe(Dot)` runs off the last arm
+        // into codegen's `unreachable`.
+        bad_with(
+            &describe_shape("Circle => \"circle\"\n"),
+            "non-exhaustive match on `Shape`: missing Square, Dot",
+        );
+    }
+
+    #[test]
+    fn bare_payload_variant_arm_repeated_is_unreachable() {
+        bad_with(
+            &describe_shape("Circle => \"circle\"\nCircle => \"again\"\n_ => \"other\"\n"),
+            "unreachable match arm: variant `Circle` is already matched by an earlier arm",
+        );
+    }
+
+    #[test]
+    fn bare_payload_variant_arm_ties_the_scrutinee_to_its_union() {
+        // Accepted without a diagnostic, `describe(7)` reaches clang as
+        // `bitcast i8* 7 to i64*`.
+        let src =
+            describe_shape("Circle => \"circle\"\n_ => \"other\"\n") + "let wrong = describe(7)\n";
+        bad_with(&src, "type mismatch: cannot unify Shape with int");
+    }
+
     #[test]
     fn uppercase_binding_over_non_union_is_a_plain_binding() {
         // An uppercase name over an unconstrained (non-Con) discriminant is just a
@@ -1077,7 +1131,7 @@ mod tests {
     #[test]
     fn nullary_record_owner_pattern_unifies() {
         // `type Foo = Foo` is a nullary record constructor; matching it ties the
-        // discriminant to the empty-record owner type (`nullary_owner_ty`'s
+        // discriminant to the empty-record owner type (`ctor_owner_ty`'s
         // record arm).
         ok("type Foo = Foo\n\
             fn f(x: Foo) -> int = match x {\n\

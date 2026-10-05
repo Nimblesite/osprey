@@ -25,9 +25,7 @@ This applies equally to literal catch-all bindings, Result and union payloads, l
 
 ## Union patterns
 
-A nullary variant is matched by name. A payload has two destructuring forms, and
-the **form written** — not how the payload was declared — decides how binders map
-onto slots:
+A bare variant name matches that variant and binds nothing, whether or not the variant carries a payload. A payload has two destructuring forms, and the **form written** — not how the payload was declared — decides how binders map onto slots:
 
 - `Ctor { a, b }` binds each binder to the field of that same name, independent
   of their order in the pattern.
