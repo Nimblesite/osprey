@@ -1,17 +1,17 @@
-//! The `Result<T, E>` ABI: a heap block `{ T value, i8 disc, i8* errmsg }`
+//! The `Result<T, E>` ABI: a heap block `{ i64 bits, i8 disc, i8* errmsg }`
 //! reached by pointer, `disc == 0` ⇒ Success. `value` (slot 0) carries the
-//! success payload; `errmsg` (slot 2) carries the Error-arm message as a
+//! success payload bits; `errmsg` (slot 2) carries the Error-arm message as a
 //! null-terminated `i8*` (`null` when there is none). The builders here
 //! construct that block; the readers branch on or load out of it. Runtime
 //! fallible builtins (list/map get, string ops) and user functions declared
-//! `-> Result<…>` both produce this shape, so match, `?:`, failure-preserving
-//! arithmetic, and rendering handle exactly one representation. Implements
+//! `-> Result<…>` both produce this shape, so match, `?:`, aggregate fields
+//! and rendering handle exactly one representation. Implements
 //! [ERR-PAYLOAD].
 
 use crate::builder::Codegen;
 use crate::cast::coerce_to;
 use crate::error::Result;
-use crate::llty::{result_struct_ty, LType, Value};
+use crate::llty::{LType, Value, RESULT_STRUCT};
 
 /// A literal `null` `i8*` — the errmsg slot of a Success (or message-less Error).
 pub(crate) const NO_MSG: &str = "null";
@@ -27,43 +27,47 @@ pub(crate) fn make_result(
     disc: &str,
     errmsg: &str,
 ) -> Result<Value> {
-    let v = coerce_to(cg, value, inner)?;
-    let payload_owner = v.osp_ty.clone();
-    let struct_ty = result_struct_ty(inner);
-    // Layout word: payload word 0 managed iff pointer-typed; the errmsg slot
-    // is always a (possibly rodata) pointer — the registry probe sorts it out.
-    let meta = crate::meta::struct_meta(&[
-        crate::meta::MetaField::of_lty(inner),
-        crate::meta::MetaField::Byte,
-        crate::meta::MetaField::PtrManaged,
-    ]);
-    let obj = cg.malloc_struct(&struct_ty, meta);
-    crate::aggregate::store_field(cg, &struct_ty, obj.as_str(), 0, inner, &v.operand);
+    let value = coerce_to(cg, value, inner)?;
+    let obj = cg.malloc_struct(RESULT_STRUCT, result_meta(inner));
+    store_payload(cg, &obj, &value);
+    store_status(cg, &obj, disc, errmsg);
+    let mut out = Value::result(obj, inner).with_payload_owner(value.osp_ty);
+    out.result_payload_type = value.inferred_type;
+    own_result(cg, &out, inner, errmsg);
+    Ok(out)
+}
+
+fn result_meta(inner: LType) -> i64 {
+    use crate::meta::MetaField;
+    let payload = if inner.is_managed_ptr() {
+        MetaField::PtrManaged
+    } else {
+        MetaField::Word
+    };
+    crate::meta::struct_meta(&[payload, MetaField::Byte, MetaField::PtrManaged])
+}
+
+fn store_status(cg: &mut Codegen, object: &str, disc: &str, errmsg: &str) {
     let dp = cg.emit_reg(format!(
-        "getelementptr {struct_ty}, {struct_ty}* {obj}, i32 0, i32 1"
+        "getelementptr {RESULT_STRUCT}, {RESULT_STRUCT}* {object}, i32 0, i32 1"
     ));
     cg.emit(format!("store i8 {disc}, i8* {dp}"));
-    let mp = cg.emit_reg(format!(
-        "getelementptr {struct_ty}, {struct_ty}* {obj}, i32 0, i32 2"
-    ));
-    // The block's drop mask releases the errmsg word too [GC-ARC-PERCEUS].
-    crate::arc::dup_store(cg, "i8*", errmsg);
-    cg.emit(format!("store i8* {errmsg}, i8** {mp}"));
-    let mut out = Value::result(obj, inner).with_payload_owner(payload_owner);
-    out.result_payload_type.clone_from(&v.inferred_type);
-    crate::arc::own(cg, &out);
-    // A scalar payload plus an unmanaged errmsg means the block holds zero
-    // managed references — eligible for the consume-at-unwrap fast path that
-    // lets -O2 delete the whole block. A literal reason (`"integer overflow"`,
-    // `"division by zero"`) reaches here as a REGISTER holding a getelementptr
-    // into a private constant, so testing the spelling alone would misjudge
-    // every checked-arithmetic Error arm as impure; ask the rodata ledger
-    // instead. [GC-ARC-PERCEUS]
+    crate::aggregate::store_field(cg, RESULT_STRUCT, object, 2, LType::Str, errmsg);
+}
+
+/// Scalar payloads with static reasons hold no managed references. [GC-ARC-PERCEUS]
+fn own_result(cg: &mut Codegen, value: &Value, inner: LType, errmsg: &str) {
+    crate::arc::own(cg, value);
     let errmsg_unmanaged = !errmsg.starts_with('%') || cg.is_rodata(errmsg);
     if !inner.is_managed_ptr() && errmsg_unmanaged {
-        crate::arc::mark_pure_scalar(cg, &out);
+        crate::arc::mark_pure_scalar(cg, value);
     }
-    Ok(out)
+}
+
+fn store_payload(cg: &mut Codegen, object: &str, value: &Value) {
+    crate::arc::dup_store(cg, value.ty.as_str(), &value.operand);
+    let bits = crate::conv::box_to_i64(cg, value.clone());
+    crate::aggregate::store_field(cg, RESULT_STRUCT, object, 0, LType::I64, &bits.operand);
 }
 
 /// A Success result wrapping `value` (disc 0, no message).
@@ -197,9 +201,10 @@ pub(crate) fn load_value(cg: &mut Codegen, v: &Value) -> Value {
     let Some(inner) = v.result_inner else {
         return Value::unit();
     };
-    let struct_ty = result_struct_ty(inner);
-    let loaded = crate::aggregate::load_field(cg, &struct_ty, v.operand.as_str(), 0, inner);
-    let mut value = Value::new(loaded, inner).with_owner(v.payload_owner.clone());
+    let struct_ty = RESULT_STRUCT;
+    let bits = crate::aggregate::load_field(cg, struct_ty, &v.operand, 0, LType::I64);
+    let mut value =
+        crate::conv::unbox_from_i64(cg, &bits, inner).with_owner(v.payload_owner.clone());
     value.inferred_type = v
         .element_type(osprey_types::names::RESULT)
         .or_else(|| v.result_payload_type.clone());
@@ -210,10 +215,10 @@ pub(crate) fn load_value(cg: &mut Codegen, v: &Value) -> Value {
 /// when the producer stored no message. Invariant: `v` is a Result; a non-Result
 /// yields `null`. `toString` distinguishes the null case to print a bare `Error`.
 pub(crate) fn load_errmsg(cg: &mut Codegen, v: &Value) -> Value {
-    let Some(inner) = v.result_inner else {
+    let Some(_) = v.result_inner else {
         return Value::new(NO_MSG, LType::Str);
     };
-    let struct_ty = result_struct_ty(inner);
+    let struct_ty = RESULT_STRUCT;
     let mp = cg.emit_reg(format!(
         "getelementptr {struct_ty}, {struct_ty}* {}, i32 0, i32 2",
         v.operand
@@ -236,67 +241,48 @@ pub(crate) fn load_errmsg_str(cg: &mut Codegen, v: &Value) -> Value {
     Value::new(msg, LType::Str)
 }
 
-/// Re-lay a `Result` block under `inner` as its success-slot type, preserving
-/// the discriminant and error message. A no-op when `inner` already matches;
-/// otherwise it rebuilds `{T, i8, i8*}` so the producer and every reader agree
-/// on the layout. Load-bearing on 32-bit targets (wasm32), where `i8*` (4 bytes)
-/// and `i64` (8 bytes) differ in size: an `Error { message }` constructor types
-/// its success slot from the *message* (`i8*`), but a function declared
-/// `-> Result<int, _>` is read back with an `i64` slot, which silently shifts
-/// the disc/errmsg offsets and flips Error to Success. [WASM-TARGET-WIDTH]
-pub(crate) fn repack_to_inner(cg: &mut Codegen, v: Value, inner: LType) -> Result<Value> {
-    if v.result_inner == Some(inner) {
-        return Ok(v);
+/// Adapt the success payload while retaining failure and its message.
+/// Every payload uses the same physical block on native and wasm32 targets.
+pub(crate) fn repack_to_inner(cg: &mut Codegen, value: Value, inner: LType) -> Result<Value> {
+    if value.result_inner == Some(inner) {
+        return Ok(value);
     }
-    let disc = load_disc(cg, &v);
-    let errmsg = load_errmsg(cg, &v);
-    let is_success = cg.emit_reg(format!("icmp eq i8 {disc}, 0"));
-    let (success, error, end) = cg.diamond(&is_success);
-
-    cg.start_block(&success);
-    let loaded = load_value(cg, &v);
+    let disc = load_disc(cg, &value);
+    let errmsg = load_errmsg(cg, &value);
+    let (_, error, end) = open_result_branch(cg, &value);
+    let loaded = load_value(cg, &value);
     let owner = loaded.osp_ty.clone();
-    // An `Error { message }` constructor initially carries a string-shaped
-    // placeholder success slot. This branch is unreachable for that value, but
-    // its LLVM still has to type-check when the contextual Result payload is a
-    // float or bool. Convert pointer bits through the erased word solely to
-    // produce a well-typed unreachable operand; real Success values have
-    // matching source types and take the ordinary coercion.
-    let converted = match (loaded.ty, inner) {
-        (LType::Str | LType::Ptr, LType::Double) => {
-            let bits = crate::conv::box_to_i64(cg, loaded);
-            Value::new(
-                cg.emit_reg(format!("bitcast i64 {} to double", bits.operand)),
-                LType::Double,
-            )
-        }
-        (LType::Str | LType::Ptr, LType::I1) => {
-            let bits = crate::conv::box_to_i64(cg, loaded);
-            Value::new(
-                cg.emit_reg(format!("trunc i64 {} to i1", bits.operand)),
-                LType::I1,
-            )
-        }
-        _ => coerce_to(cg, loaded, inner)?,
-    };
-    let success_pred = cg.snapshot_to(&end);
+    let converted = convert_payload(cg, loaded, inner)?;
+    let payload = join_payload(cg, converted, &error, &end).with_owner(owner);
+    make_result(cg, payload, inner, &disc, &errmsg.operand)
+}
 
-    cg.start_block(&error);
-    let zero = crate::llty::zero_literal(inner);
-    let error_pred = cg.snapshot_to(&end);
+/// Error constructors have an unreachable string-shaped success placeholder.
+/// Bit conversion keeps that unused branch well typed for float/bool contexts.
+fn convert_payload(cg: &mut Codegen, value: Value, inner: LType) -> Result<Value> {
+    match (value.ty, inner) {
+        (LType::Str | LType::Ptr, LType::Double | LType::I1) => {
+            let bits = crate::conv::box_to_i64(cg, value);
+            Ok(crate::conv::unbox_from_i64(cg, &bits.operand, inner))
+        }
+        _ => coerce_to(cg, value, inner),
+    }
+}
 
-    cg.start_block(&end);
+fn join_payload(cg: &mut Codegen, value: Value, error: &str, end: &str) -> Value {
+    let success_pred = cg.snapshot_to(end);
+    cg.start_block(error);
+    let error_pred = cg.snapshot_to(end);
+    cg.start_block(end);
+    let zero = crate::llty::zero_literal(value.ty);
     let payload = cg.emit_reg(format!(
-        "phi {inner} [ {}, %{success_pred} ], [ {zero}, %{error_pred} ]",
-        converted.operand
+        "phi {} [ {}, %{success_pred} ], [ {zero}, %{error_pred} ]",
+        value.ty, value.operand
     ));
-    make_result(
-        cg,
-        Value::new(payload, inner).with_owner(owner),
-        inner,
-        &disc,
-        &errmsg.operand,
-    )
+    Value {
+        operand: payload,
+        ..value
+    }
 }
 
 /// Fit a value into a declared `Result<inner, _>` slot: an existing Result is

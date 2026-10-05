@@ -53,9 +53,9 @@ pub(crate) enum DescKey {
     /// Field names in layout order — the ONLY identity a row has once erased.
     Row(Vec<String>),
     /// A union value; the variant is decided at run time by the block's tag.
-    Union(String),
-    /// A `Result<T, _>` block with this success-slot layout.
-    ResultOf(LType),
+    Union(String, Option<String>),
+    /// A Result whose Success payload has been deep-boxed as `any`.
+    Result,
     /// A shape rendering cannot see into: lists, maps, closures, foreign
     /// handles. `.0` is the placeholder it renders as.
     Opaque(&'static str),
@@ -68,6 +68,8 @@ pub(crate) struct AnyState {
     descs: HashMap<DescKey, String>,
     /// Row-source owner → emitted deep-box function name.
     boxers: HashMap<String, String>,
+    /// Concrete union types retained across erasure for payload projection.
+    union_types: HashMap<String, osprey_types::Type>,
     /// Whether `@osp.any.to_string` has been emitted.
     to_string_emitted: bool,
     /// Every row shape a declared record can erase to, in declaration order —
@@ -125,7 +127,7 @@ pub(crate) fn descriptor(cg: &mut Codegen, key: &DescKey) -> Result<String> {
     if let Some(name) = cg.anys.descs.get(key) {
         return Ok(name.clone());
     }
-    let slug = key_slug(key);
+    let slug = key_slug(key, cg.anys.descs.len());
     let name = format!("osp.any.desc.{slug}");
     let render = format!("osp.any.str.{slug}");
     let _ = cg.anys.descs.insert(key.clone(), name.clone());
@@ -144,8 +146,8 @@ fn key_kind(key: &DescKey) -> i64 {
         DescKey::Float => KIND_FLOAT,
         DescKey::Str => KIND_STRING,
         DescKey::Row(_) => ROW,
-        DescKey::Union(_) => KIND_UNION,
-        DescKey::ResultOf(_) => KIND_RESULT,
+        DescKey::Union(..) => KIND_UNION,
+        DescKey::Result => KIND_RESULT,
         DescKey::Opaque(_) => KIND_OPAQUE,
     }
 }
@@ -154,15 +156,16 @@ fn key_kind(key: &DescKey) -> i64 {
 /// are Osprey identifiers, so joining with `.` stays inside LLVM's unquoted
 /// alphabet; determinism is what keeps the two flavors byte-identical
 /// ([FLAVOR-IR-EQUIV]).
-fn key_slug(key: &DescKey) -> String {
+fn key_slug(key: &DescKey, serial: usize) -> String {
     match key {
         DescKey::Int => "int".into(),
         DescKey::Bool => "bool".into(),
         DescKey::Float => "float".into(),
         DescKey::Str => "string".into(),
         DescKey::Row(names) => format!("row.{}", names.join(".")),
-        DescKey::Union(owner) => format!("union.{owner}"),
-        DescKey::ResultOf(inner) => format!("result.{}", inner.as_str().replace('*', "p")),
+        DescKey::Union(owner, None) => format!("union.{owner}"),
+        DescKey::Union(owner, Some(_)) => format!("union.{owner}.{serial}"),
+        DescKey::Result => "result".to_string(),
         DescKey::Opaque(label) => format!("opaque.{}", label.trim_matches(['<', '>'])),
     }
 }
@@ -287,8 +290,8 @@ fn build_box(cg: &mut Codegen, desc: &str, payload: Value, managed: bool) -> Val
 /// crossing into `any`. Rows are deep-boxed here; a `Result` keeps its block.
 fn classify(cg: &mut Codegen, v: Value) -> Result<(DescKey, Value, bool)> {
     if v.result_inner.is_some() {
-        let inner = v.result_inner.unwrap_or(LType::I64);
-        return Ok((DescKey::ResultOf(inner), v, true));
+        let boxed = crate::result::repack_to_inner(cg, v, LType::Any)?;
+        return Ok((DescKey::Result, boxed, true));
     }
     Ok(match v.ty {
         LType::I64 | LType::I32 => (DescKey::Int, v, false),
@@ -310,7 +313,8 @@ fn classify_handle(cg: &mut Codegen, v: Value) -> Result<(DescKey, Value, bool)>
         return Ok((DescKey::Opaque(opaque_label(&owner)), v, true));
     }
     if cg.union_variants(&owner).is_some() {
-        return Ok((DescKey::Union(owner), v, true));
+        let key = union_key(cg, owner, &v);
+        return Ok((key, v, true));
     }
     if let Some((_, fields)) = cg.record_layout(&owner) {
         let names: Vec<String> = fields.iter().map(|(f, _)| f.clone()).collect();
@@ -327,6 +331,15 @@ fn classify_handle(cg: &mut Codegen, v: Value) -> Result<(DescKey, Value, bool)>
         return Ok((DescKey::Row(names), block, true));
     }
     Ok((DescKey::Opaque(opaque_label(&owner)), v, true))
+}
+
+fn union_key(cg: &mut Codegen, owner: String, value: &Value) -> DescKey {
+    let inferred = value.inferred_type.as_ref().map(|ty| {
+        let key = format!("{ty:?}");
+        let _ = cg.anys.union_types.insert(key.clone(), ty.clone());
+        key
+    });
+    DescKey::Union(owner, inferred)
 }
 
 /// Owners whose heap layout is not the `{ i64 tag, fields… }` record block —
@@ -362,35 +375,62 @@ fn opaque_label(owner: &str) -> &'static str {
 /// slots hold one child box per field. A function rather than inline code so
 /// a recursive record type terminates at emission time.
 fn call_row_boxer(cg: &mut Codegen, owner: &str, v: &Value) -> Result<Value> {
-    let name = ensure_row_boxer(cg, owner)?;
+    let name = ensure_row_boxer(cg, owner, v)?;
     Ok(owned_call(cg, LType::Ptr, &name, &v.operand))
 }
 
-fn ensure_row_boxer(cg: &mut Codegen, owner: &str) -> Result<String> {
-    if let Some(name) = cg.anys.boxers.get(owner) {
+fn ensure_row_boxer(cg: &mut Codegen, owner: &str, value: &Value) -> Result<String> {
+    let key = format!("{owner}:{:?}", value.inferred_type);
+    if let Some(name) = cg.anys.boxers.get(&key) {
         return Ok(name.clone());
     }
-    let name = format!("osp.any.boxrow.{owner}");
-    let _ = cg.anys.boxers.insert(owner.to_string(), name.clone());
-    let Some((src_ty, fields)) = cg.record_layout(owner) else {
-        return Err(CodegenError::unknown(owner));
-    };
+    let slug: String = owner
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let name = format!("osp.any.boxrow.{slug}.{}", cg.anys.boxers.len());
+    let _ = cg.anys.boxers.insert(key, name.clone());
+    emit_row_boxer(cg, owner, value, &name)?;
+    Ok(name)
+}
+
+fn emit_row_boxer(cg: &mut Codegen, owner: &str, value: &Value, name: &str) -> Result<()> {
+    let (src_ty, fields) = cg
+        .record_layout(owner)
+        .ok_or_else(|| CodegenError::unknown(owner))?;
     let saved = cg.enter_nested_fn();
+    let payload = boxed_row_payload(cg, owner, value, &src_ty, &fields)?;
+    crate::arc::own(cg, &payload);
+    crate::arc::epilogue(cg, Some(&payload));
+    cg.emit(format!("ret i8* {}", payload.operand));
+    cg.exit_nested_fn(saved, "i8*", name, &[(LType::Ptr, "src".into())]);
+    Ok(())
+}
+
+fn boxed_row_payload(
+    cg: &mut Codegen,
+    owner: &str,
+    value: &Value,
+    src_ty: &str,
+    fields: &[(String, LType)],
+) -> Result<Value> {
     let row_ty = row_block_ty(fields.len());
     let meta = crate::meta::struct_meta(&field_metas(fields.len()));
     let block = cg.malloc_struct_noinit(&row_ty, meta);
     let src = cg.emit_reg(format!("bitcast i8* %src to {src_ty}*"));
     for (i, (fname, fty)) in fields.iter().enumerate() {
-        let child = boxed_field(cg, &src_ty, &src, owner, i, fname, *fty)?;
+        let inferred = crate::aggregate::field_type(cg, value, owner, fname);
+        let child = boxed_field(cg, src_ty, &src, owner, (i, fname, *fty), inferred.as_ref())?;
         crate::aggregate::store_field(cg, &row_ty, &block, i, LType::Any, &child.operand);
     }
     let handle = cg.emit_reg(format!("bitcast {row_ty}* {block} to i8*"));
-    let ret = Value::new(handle, LType::Ptr);
-    crate::arc::own(cg, &ret);
-    crate::arc::epilogue(cg, Some(&ret));
-    cg.emit(format!("ret i8* {}", ret.operand));
-    cg.exit_nested_fn(saved, "i8*", &name, &[(LType::Ptr, "src".into())]);
-    Ok(name)
+    Ok(Value::new(handle, LType::Ptr))
 }
 
 /// Load field `i` of a `{ i64 tag, fields… }` block and box it — the shared
@@ -400,13 +440,13 @@ fn boxed_field(
     struct_ty: &str,
     src: &str,
     owner: &str,
-    i: usize,
-    fname: &str,
-    fty: LType,
+    (i, fname, fty): (usize, &str, LType),
+    inferred: Option<&osprey_types::Type>,
 ) -> Result<Value> {
     let loaded = crate::aggregate::load_record_field(cg, owner, struct_ty, src, i, fty);
-    let field_owner = cg.ctor_field_owner(owner, fname);
-    box_any(cg, Value::new(loaded, fty).with_owner(field_owner))
+    let value =
+        crate::aggregate::restore_field(cg, Value::new(loaded, fty), owner, fname, inferred);
+    box_any(cg, value)
 }
 
 /// The meta fields of a deep-boxed row block: every slot is a managed child

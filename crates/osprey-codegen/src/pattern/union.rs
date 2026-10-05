@@ -180,10 +180,15 @@ fn bind_variant_fields(
             continue;
         };
         let fty = *fty;
-        let owner = cg.ctor_field_owner(variant, declared);
         let loaded = crate::aggregate::load_record_field(cg, variant, &struct_ty, &src, idx, fty);
-        let mut value = Value::new(loaded, fty).with_owner(owner);
-        value.inferred_type = crate::aggregate::field_type(cg, disc, variant, declared);
+        let inferred = crate::aggregate::field_type(cg, disc, variant, declared);
+        let value = crate::aggregate::restore_field(
+            cg,
+            Value::new(loaded, fty),
+            variant,
+            declared,
+            inferred.as_ref(),
+        );
         bind_value(cg, bind_name.clone(), value);
     }
 }

@@ -78,9 +78,14 @@ fn bind_row_statically(
             continue;
         };
         let loaded = crate::aggregate::load_record_field(cg, owner, struct_ty, &src, idx, fty);
-        let field_owner = cg.ctor_field_owner(owner, fname);
-        let mut value = Value::new(loaded, fty).with_owner(field_owner);
-        value.inferred_type = crate::aggregate::field_type(cg, disc, owner, fname);
+        let inferred = crate::aggregate::field_type(cg, disc, owner, fname);
+        let value = crate::aggregate::restore_field(
+            cg,
+            Value::new(loaded, fty),
+            owner,
+            fname,
+            inferred.as_ref(),
+        );
         bind_value(cg, binder.clone(), value);
     }
 }

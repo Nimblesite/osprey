@@ -120,8 +120,20 @@ fn typed_initializer(
     position: Option<Position>,
     declaration: bool,
 ) -> Result<Value> {
-    let inner = cg
-        .prog
+    let inner = binding_result_inner(cg, name, position, declaration);
+    let generated = generate_initializer(cg, value, position)?;
+    let fitted = fit_result(cg, generated, inner)?;
+    let bound = tag_handle_element(cg, position, fitted);
+    infer_binding(cg, position, bound)
+}
+
+fn binding_result_inner(
+    cg: &Codegen,
+    name: &str,
+    position: Option<Position>,
+    declaration: bool,
+) -> Option<LType> {
+    cg.prog
         .let_type(position)
         .and_then(crate::types::result_inner)
         .or_else(|| {
@@ -130,20 +142,35 @@ fn typed_initializer(
             } else {
                 cg.lookup(name).and_then(|bound| bound.result_inner)
             }
-        });
+        })
+}
+
+fn generate_initializer(
+    cg: &mut Codegen,
+    value: &Expr,
+    position: Option<Position>,
+) -> Result<Value> {
     let expected = factory_lambda_abi(cg, value, position);
     let prior = std::mem::replace(&mut cg.expected_lambda, expected);
     let generated = gen_expr(cg, value);
     cg.expected_lambda = prior;
-    let fitted = fit_result(cg, generated?, inner)?;
-    let mut bound = tag_handle_element(cg, position, fitted);
-    if let Some(ty) = cg
+    generated
+}
+
+/// Erase while the source still carries its concrete generic shape. [TYPE-ANY]
+fn infer_binding(cg: &mut Codegen, position: Option<Position>, mut bound: Value) -> Result<Value> {
+    let Some(ty) = cg
         .prog
         .let_type(position)
         .filter(|ty| !osprey_types::has_type_var(ty))
-    {
-        bound.inferred_type = Some(ty.clone());
+        .cloned()
+    else {
+        return Ok(bound);
+    };
+    if crate::types::ltype_of(&ty) == LType::Any {
+        bound = crate::cast::coerce_to(cg, bound, LType::Any)?;
     }
+    bound.inferred_type = Some(ty);
     Ok(bound)
 }
 

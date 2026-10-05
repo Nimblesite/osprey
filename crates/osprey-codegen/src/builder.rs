@@ -267,7 +267,7 @@ pub(crate) struct ResumeCodegenContext {
 /// One slot of a registered heap-block layout: field name, its LLVM type, and
 /// the owner tag the value stored there carried — the only record of a generic
 /// record's real field types, which its declaration spells as type parameters.
-pub(crate) type ObjField = (String, LType, Option<String>);
+pub(crate) type ObjField = (String, Value);
 
 /// Saved emission state of a suspended function (see [`Codegen::enter_nested_fn`]).
 pub(crate) struct SavedFn {

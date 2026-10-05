@@ -20,7 +20,7 @@ converts `Result<T, E>` to `T`. Callers must pattern-match the `Result` (see
 [Pattern Matching](0007-PatternMatching.md)) or use `?:` to supply a fallback
 ([Result Default](0007-PatternMatching.md#result-default---pattern-result-default)).
 Assignments, arguments, comparisons, interpolation, and declared plain return
-types do not erase the wrapper ([Result Preservation](0004-TypeSystem.md#result-preservation)).
+types do not erase the wrapper ([Result Preservation](0004-TypeSystem.md#result-preservation)). Record and union fields preserve the complete Result through construction, updates, pattern binding and erasure; a bare payload may be promoted to `Success` ([TYPE-RECORD-RESULT](0004-TypeSystem.md#result-fields--type-record-result)).
 
 ```osprey
 let result = someFunctionThatCanFail()

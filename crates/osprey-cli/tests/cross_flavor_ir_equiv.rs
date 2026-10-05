@@ -353,3 +353,48 @@ fn module_debug_frames_keep_source_names_in_both_flavors() -> Result<(), String>
     }
     Ok(())
 }
+
+const RESULT_RECORD_ABI: [(&str, Flavor); 2] = [
+    ("type Packet = { number: Result<float, Error>, flag: Result<bool, Error> }\nfn make(n, b) = Packet { number: Success { value: n }, flag: Success { value: b } }\nlet packet = make(2.5, true)\nprint(\"${packet.number},${packet.flag}\")", Flavor::Default),
+    ("type Packet =\n    number: Result<float, Error>\n    flag: Result<bool, Error>\nmake (n, b) = Packet(number = Success(value = n), flag = Success(value = b))\npacket = make (2.5, true)\nprint \"${packet.number},${packet.flag}\"", Flavor::Ml),
+];
+
+/// [TYPE-RECORD-RESULT] Payload bits must not move the tag or error-message slots.
+#[test]
+fn result_record_fields_use_complete_pointer_slots_and_bit_preserving_payloads(
+) -> Result<(), String> {
+    let mut modules = Vec::new();
+    for (source, flavor) in RESULT_RECORD_ABI {
+        let ir = ir_for(source, flavor, "result-record.osp")?;
+        assert_result_record_storage(&ir);
+        modules.push(ir);
+    }
+    assert_eq!(
+        modules.first(),
+        modules.get(1),
+        "both flavors share the Result ABI"
+    );
+    Ok(())
+}
+
+fn assert_result_record_storage(ir: &str) {
+    for required in [
+        "getelementptr { i64, i8*, i8* }", // both fields point to whole Results
+        "getelementptr { i64, i8, i8* }",  // canonical Result block
+        "bitcast double",
+        "to i64",
+        "bitcast i64",
+        "to double",
+        "zext i1",
+        "trunc i64",
+        "to i1", // booleans use payload bits too
+    ] {
+        assert!(ir.contains(required), "missing {required}: {ir}");
+    }
+    for forbidden in ["{ double, i8, i8* }", "{ i1, i8, i8* }", "{ i8*, i8, i8* }"] {
+        assert!(
+            !ir.contains(forbidden),
+            "payload-dependent Result offsets: {forbidden}"
+        );
+    }
+}

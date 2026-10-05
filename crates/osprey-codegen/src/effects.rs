@@ -401,7 +401,7 @@ pub(crate) fn unbox_coro_value(
 ) -> Value {
     if let Some(inner) = result_inner {
         let ptr = cg.emit_reg(format!("inttoptr i64 {raw} to i8*"));
-        let struct_ty = crate::llty::result_struct_ty(inner);
+        let struct_ty = crate::llty::RESULT_STRUCT;
         let typed = cg.emit_reg(format!("bitcast i8* {ptr} to {struct_ty}*"));
         return Value::result(typed, inner);
     }

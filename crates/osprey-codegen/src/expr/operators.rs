@@ -277,7 +277,7 @@ fn finish_result_guard(
     crate::arc::close_conditional(cg);
     let reg = cg.emit_reg(format!(
         "phi {0}* [ {1}, %{ok_block} ], [ {2}, %{err_block} ]",
-        crate::llty::result_struct_ty(inner),
+        crate::llty::RESULT_STRUCT,
         ok.operand,
         err.operand
     ));

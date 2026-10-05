@@ -1,7 +1,6 @@
 //! Immutable updates preserve the concrete record ABI and source. [TYPE-RECORD-UPDATE]
 use super::{
-    gen_expr, load_record_field, own_struct_handle, record_block, result_field_unsupported,
-    store_record_field, store_tag,
+    gen_expr, load_record_field, own_struct_handle, record_block, store_record_field, store_tag,
 };
 use super::{Codegen, CodegenError, Expr, FieldAssignment, RecordBlock, Result, Value};
 
@@ -18,13 +17,6 @@ pub(crate) fn gen_update(
         .ok_or_else(|| CodegenError::invalid(format!("`{record}` is not a record")))?;
     let block = record_block(cg, &owner, base.inferred_type.as_ref())
         .ok_or_else(|| CodegenError::unknown(&owner))?;
-    if block
-        .fields
-        .iter()
-        .any(|(field, _)| cg.ctor_field_result_inner(&owner, field).is_some())
-    {
-        return Err(result_field_unsupported());
-    }
     copy_record(cg, &owner, &base, &block, fields)
 }
 
@@ -42,13 +34,14 @@ fn copy_record(
     if let Some(tag) = block.tag {
         store_tag(cg, ty, &target, tag);
     }
-    copy_fields(cg, owner, block, &source, &target, fields)?;
+    copy_fields(cg, owner, base, block, &source, &target, fields)?;
     Ok(own_struct_handle(cg, ty, &target, owner))
 }
 
 fn copy_fields(
     cg: &mut Codegen,
     owner: &str,
+    base: &Value,
     block: &RecordBlock,
     source: &str,
     target: &str,
@@ -58,7 +51,9 @@ fn copy_fields(
         let value = match overrides.iter().find(|field| &field.name == name) {
             Some(field) => {
                 let value = gen_expr(cg, &field.value)?;
-                crate::cast::coerce_to(cg, value, *ty)?.operand
+                let inferred = super::field_type(cg, base, owner, name);
+                let value = super::fields::coerce_field(cg, value, owner, name, inferred.as_ref())?;
+                crate::cast::erase_result(cg, value).operand
             }
             None => load_record_field(cg, owner, &block.struct_ty, source, index, *ty),
         };

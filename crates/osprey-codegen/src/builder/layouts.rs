@@ -30,8 +30,15 @@ impl Codegen {
     pub(crate) fn record_layout(&self, owner: &str) -> Option<(String, Vec<(String, LType)>)> {
         if let Some(fields) = self.obj_layouts.get(owner) {
             let mut parts = vec!["i64".to_string()];
-            parts.extend(fields.iter().map(|(_, lt, _)| lt.as_str().to_string()));
-            let slots = fields.iter().map(|(f, lt, _)| (f.clone(), *lt)).collect();
+            parts.extend(
+                fields
+                    .iter()
+                    .map(|(_, value)| value.ty.as_str().to_string()),
+            );
+            let slots = fields
+                .iter()
+                .map(|(f, value)| (f.clone(), value.ty))
+                .collect();
             return Some((format!("{{ {} }}", parts.join(", ")), slots));
         }
         let view = self.ctor_layout(owner)?;

@@ -523,6 +523,14 @@ empty map, not the empty record.
 
 ML writes the same nonempty anonymous row with `=` separators: `origin = { x = 0, y = 0 }`. Nested fields and captures retain the actual record layout through projection; an unnamed inferred row must not erase the concrete layout identity needed for a later field access. Both-flavor `record_update_basic` assertions pin this behavior.
 
+### Result fields — [TYPE-RECORD-RESULT]
+
+A record or union payload field of type `Result<T, E>` stores the complete `Success` or `Error` value. Named, anonymous and generic records obey the same rule. Construction and immutable updates may promote a bare `T` to `Success(T)`; they MUST preserve an existing failure and its message. A field read, constructor or structural pattern, function argument, closure capture, shared cell or permitted conversion to `any` ([TYPE-ANY](#the-any-type--type-any)) MUST retain the concrete success payload type and the discriminant. Updating another field preserves the stored Result and the source record.
+
+The native and wasm32 backends use one Result block shape: a 64-bit payload word, a byte discriminant and a message pointer, with target-specific alignment. Float payloads preserve their IEEE bits, booleans preserve their truth value, and pointer payloads retain their ownership and concrete type. An aggregate field holds a pointer to the whole block. Its static payload type cannot change the discriminant or message offsets.
+
+The `resultRecordCase`, `genericResultRecordCase`, `anonymousResultRecordCase`, `resultTransportCase` and `genericUnionResultCase` assertions in both `record_update_basic` twins pin failure preservation, promotion, nested payloads, erasure, pattern binding and live captures. The cross-flavor IR test pins the common block and bit-preserving float/boolean conversions.
+
 ### C ABI record layout — [TYPE-RECORD-C-ABI]
 
 The built-in `HttpResponse` record uses the runtime's C layout, without an Osprey discriminant and with a byte-sized C boolean. Construction, field access, immutable updates, structural and constructor patterns, `any` boxing and native debug inspection must agree on that layout. Updating a field preserves the source and every untouched field. Layout differences cannot change a field's Osprey type or value.
@@ -932,10 +940,10 @@ annotated `Int` is a type mismatch rather than a silent alias.
 
 ```osprey
 let xs: List<int> = []
-fn half(n: int) -> Result<int, Error> = intDiv(n, 2)
+fn doubled(n) -> Result<int, Error> = checkedAdd(n, n)
 ```
 
-Writing `-> int` for `half` would be a type error; a return annotation cannot
+Writing `-> int` for `doubled` would be a type error; a return annotation cannot
 erase the body's `Result` ([Result Preservation](#result-preservation)).
 
 ## Redundant Annotations — [TYPE-ANNOTATION-REDUNDANT]

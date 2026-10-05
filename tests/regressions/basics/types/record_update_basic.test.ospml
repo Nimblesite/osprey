@@ -211,6 +211,83 @@ nestedAnonymousCapture () =
         wrapAdd selected.count x
     read 1 == 43 && box.child.count == 42 && box.label == "hi"
 
+(** [TYPE-RECORD-UPDATE] Result fields retain their whole value across every record path. *)
+type Outcome =
+    answer: Result<int, Error>
+    note: string
+type GenericOutcome T =
+    answer: Result<T, Error>
+    note: string
+
+readOutcome record = record.answer
+matchOutcome record = match record
+    Outcome answer note => toString answer == "Success(42)" && note == "copy"
+structuralOutcome (record: Outcome) = match record
+    { answer, note } => toString answer == "Success(42)" && note == "copy"
+resultRecordCase () =
+    failed = Outcome(answer = Error(message = "kept"), note = "first")
+    success = failed(answer = 42)
+    copied = success(note = "copy")
+    erased : any
+    erased = copied
+    toString failed.answer == "Error(kept)" && toString success.answer == "Success(42)" && success.note == "first" && toString (readOutcome copied) == "Success(42)" && matchOutcome copied && structuralOutcome copied && toString erased == "{ answer: Success(42), note: copy }"
+genericResultRecordCase () =
+    floating = GenericOutcome(answer = Success(value = 2.5), note = "float")
+    failed = floating(answer = Error(message = "float error"))
+    promoted = failed(answer = 1.25)
+    nested = GenericOutcome(answer = Success(value = Point(x = 4, y = 5)), note = "nested")
+    erasedFloat : any
+    erasedFloat = floating
+    erasedError : any
+    erasedError = failed
+    erasedNested : any
+    erasedNested = nested
+    point = match readOutcome nested
+        Success value => value
+        Error _ => Point(x = 0, y = 0)
+    toString floating.answer == "Success(2.5)" && toString failed.answer == "Error(float error)" && toString promoted.answer == "Success(1.25)" && point.x == 4 && point.y == 5 && toString erasedFloat == "{ answer: Success(2.5), note: float }" && toString erasedError == "{ answer: Error(float error), note: float }" && toString erasedNested == "{ answer: Success({ x: 4, y: 5 }), note: nested }"
+anonymousResultRecordCase () =
+    original = { answer = Success(value = false), note = "anonymous" }
+    failed = original(answer = Error(message = "bool error"))
+    copied = failed(note = "copy")
+    success = copied(answer = true)
+    toString original.answer == "Success(false)" && toString failed.answer == "Error(bool error)" && toString (readOutcome copied) == "Error(bool error)" && toString success.answer == "Success(true)" && copied.note == "copy"
+
+(** [TYPE-RECORD-RESULT] Constructors, generic slots and live cells preserve failures. *)
+type Delivery = Waiting | Delivered(answer: Result<float, Error>)
+effect ReplaceOutcome
+    replace: int => int
+deliveryResult delivery = match delivery
+    Waiting => "waiting"
+    Delivered answer => toString answer
+resultTransportCase () =
+    mut current = Outcome(answer = Error(message = "initial"), note = "cell")
+    read = \() => current.answer
+    before = read ()
+    handle ReplaceOutcome
+        replace number =>
+            current := current(answer = number)
+            number
+    changed = perform ReplaceOutcome.replace 42
+    boxed = Box(held = read ())
+    errorBox = Box(held = Error(message = "generic error"))
+    changed == 42 && toString before == "Error(initial)" && toString (read ()) == "Success(42)" && toString boxed.held == "Success(42)" && toString errorBox.held == "Error(generic error)" && deliveryResult (Delivered(answer = 2.5)) == "Success(2.5)" && deliveryResult (Delivered(answer = Error(message = "delivery"))) == "Error(delivery)" && deliveryResult Waiting == "waiting"
+
+(** [TYPE-RECORD-RESULT] Generic union slots preserve concrete Result payloads. *)
+type Parcel T = Absent | Packed(answer: Result<T, Error>)
+parcelText parcel = match parcel
+    Absent => "absent"
+    Packed answer => toString answer
+genericUnionResultCase () =
+    floating = Packed(answer = Success(value = 2.5))
+    boolean = Packed(answer = Success(value = false))
+    failed = Packed(answer = Error(message = "parcel"))
+    erasedFloat : any
+    erasedFloat = floating
+    erasedBool : any
+    erasedBool = boolean
+    parcelText floating == "Success(2.5)" && parcelText boolean == "Success(false)" && parcelText failed == "Error(parcel)" && parcelText Absent == "absent" && toString erasedFloat == "Packed { answer: Success(2.5) }" && toString erasedBool == "Packed { answer: Success(false) }"
+
 flowUpdateCase () =
     start = Point(x = 0, y = 0)
     stepped = match start.x
@@ -232,7 +309,12 @@ flowUpdateCase () =
         steeredPoint.y == 6,
         describe (start(y = 9, x = 8)) == "8,9",
         nestedAnonymousCapture (),
-        httpRecordLayout ()
+        httpRecordLayout (),
+        resultRecordCase (),
+        genericResultRecordCase (),
+        anonymousResultRecordCase (),
+        resultTransportCase (),
+        genericUnionResultCase ()
     ]
 
 erasedCell = erase (Cell(v = "s"))

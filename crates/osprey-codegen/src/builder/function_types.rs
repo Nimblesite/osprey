@@ -109,7 +109,7 @@ impl Codegen {
 
     /// The declared type of `field` on constructor `owner` — the single field
     /// lookup behind [`Self::declares_field`] and every `ctor_field_*` accessor.
-    pub(super) fn ctor_field_ty(&self, owner: &str, field: &str) -> Option<&Type> {
+    pub(crate) fn ctor_field_ty(&self, owner: &str, field: &str) -> Option<&Type> {
         self.prog
             .ctors
             .get(owner)?
@@ -254,7 +254,7 @@ impl Codegen {
         let fields = c
             .fields
             .iter()
-            .map(|(f, t)| (f.clone(), ltype_of(t)))
+            .map(|(f, t)| (f.clone(), ParamSig::of(&self.prog, t).ty))
             .collect();
         let mut mf = vec![crate::meta::MetaField::Word]; // leading tag
         mf.extend(c.fields.iter().map(|(_, t)| self.field_meta(t)));
@@ -281,7 +281,7 @@ impl Codegen {
         if proven && ltype_of(t) == LType::Ptr {
             crate::meta::MetaField::PtrDirect
         } else {
-            crate::meta::MetaField::of_lty(ltype_of(t))
+            crate::meta::MetaField::of_lty(ParamSig::of(&self.prog, t).ty)
         }
     }
 
@@ -362,8 +362,8 @@ impl Codegen {
         if let Some(fields) = self.obj_layouts.get(owner) {
             return fields
                 .iter()
-                .find(|(f, _, _)| f == field)
-                .and_then(|(_, _, tag)| tag.clone());
+                .find(|(f, _)| f == field)
+                .and_then(|(_, value)| value.osp_ty.clone());
         }
         let ty = self.ctor_field_ty(owner, field)?.clone();
         let head = crate::types::owner_name(&self.prog, &ty)?;
@@ -372,23 +372,6 @@ impl Codegen {
             || crate::collections::is_list_owner(&head)
             || crate::collections::is_map_owner(&head);
         known.then_some(head)
-    }
-
-    /// The success payload layout when a declared aggregate field is a
-    /// `Result<T, E>`. Aggregate slots currently carry only an [`LType`], so
-    /// callers use this to reject a field before its discriminant could be
-    /// erased.
-    /// The element ABI of a STATEFUL HANDLE stored in a record field, plus its
-    /// element's owner tag. A field holding a `Channel<List<T>>` is a machine
-    /// word like any other handle, so without this a `recv` on `hub.channel`
-    /// read the wire word raw and the element came back untyped.
-    /// Implements [CONCURRENCY-CHANNEL].
-    pub(crate) fn ctor_field_handle(&self, owner: &str, field: &str) -> Option<FiberSig> {
-        FiberSig::of(&self.prog, self.ctor_field_ty(owner, field)?)
-    }
-
-    pub(crate) fn ctor_field_result_inner(&self, owner: &str, field: &str) -> Option<LType> {
-        crate::types::result_inner(self.ctor_field_ty(owner, field)?)
     }
 
     /// The variant constructor names of a union owner, in tag order.
