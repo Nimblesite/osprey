@@ -34,7 +34,18 @@ ML twins are verification aids and optional comparisons. They do not replace the
 
 ## Product and roadmap boundary
 
-The book states that Osprey is alpha software. It does not describe planned generics completion, package management, complete multi-file imports, strict static memory, device GPU code generation, or unsupported WebAssembly runtime services as shipped.
+The book states that Osprey is alpha software and separates implemented features from specifications of future work.
+
+Project modules, multi-file assembly, and imports across Default and ML flavors are implemented. The package registry and manager remain planned. Use the [module specification](../docs/specs/0025-ModulesAndNamespaces.md) and its executable project tests for module claims; a package-manager specification is not evidence of an available command.
+
+Qualify runtime claims where they are taught:
+
+- Native dynamic control handlers currently provide single-shot resumption. WebAssembly and mobile C ABI targets support value handlers and static discharge, and reject unsupported dynamic control operations.
+- The default allocator retains general allocations. Native `gc` and `arc` are separate choices with platform limits; neither is the default, and neither is currently available for WebAssembly or mobile libraries.
+- Normal native fibers use one operating-system thread each and can co-own immutable allocations. Structured scopes, fiber cancellation, `join`, and deadlines remain design work.
+- Strict static-memory checking and GPU device execution remain unimplemented. Current GPU kernels run through host loops.
+
+Check these boundaries against the relevant specifications, implementation tests, and delivery plans before describing a feature as available. The [messaging guide](../docs/messaging.md) links the maintained status sources; it does not replace executable evidence.
 
 When source, specification, implementation, and tests disagree, the book omits the disputed behavior from learner-facing instruction and records the gap in `evidence.json`.
 
@@ -55,4 +66,3 @@ Before publishing an edition:
 4. render and inspect every figure at desktop and 320 px width;
 5. run `make release`; and
 6. record unresolved limits beside the relevant feature.
-

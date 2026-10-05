@@ -1,0 +1,52 @@
+effect Web {
+    title: fn() -> Result<string, Error>
+}
+
+fn responseBody(response) = {
+    let status = httpResponseStatus(response)
+    if status == 200 {
+        httpResponseBody(response)
+    } else {
+        Error { message: "HTTP ${status}" }
+    }
+}
+
+fn consumeResponse(response) = {
+    let body = responseBody(response)
+    let released = httpResponseFree(response)
+    match released {
+        Success => body
+        Error { message } => Error { message: message }
+    }
+}
+
+fn request(client) = match httpGetResponse(client, "/title.txt", "") {
+    Success { value } => consumeResponse(value)
+    Error { message } => Error { message: message }
+}
+
+fn requestAndClose(client) = {
+    let body = request(client)
+    let closed = httpCloseClient(client)
+    if closed == 0 {
+        body
+    } else {
+        Error { message: "could not close HTTP client" }
+    }
+}
+
+fn nativeTitle() = {
+    let client = httpCreateClient("http://127.0.0.1:18872", 2000)
+    if client > 0 {
+        requestAndClose(client)
+    } else {
+        Error { message: "could not create HTTP client" }
+    }
+}
+
+fn fetch() = perform Web.title()
+
+fn main() = {
+    let native = handler Web { title => nativeTitle() }
+    print(native(fetch))
+}

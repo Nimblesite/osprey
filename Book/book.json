@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "title": "The Osprey Book",
-  "status": "structural-scaffold-chapters-1-3-complete",
+  "status": "partial-manuscript-chapters-1-3-and-8-10-complete",
   "editionModel": "living-release-aligned",
   "ospreyRelease": "0.0.0-dev",
   "releasePinStatus": "pin-before-publication",
@@ -29,7 +29,7 @@
     },
     {
       "kind": "chapter",
-      "part": "Part I — Make the computer do something",
+      "part": "Part I \u2014 Make the computer do something",
       "number": 1,
       "title": "One file, one result",
       "file": "manuscript/01-one-file-one-result.md",
@@ -40,7 +40,7 @@
     },
     {
       "kind": "chapter",
-      "part": "Part I — Make the computer do something",
+      "part": "Part I \u2014 Make the computer do something",
       "number": 2,
       "title": "Give values useful names",
       "file": "manuscript/02-give-values-useful-names.md",
@@ -51,7 +51,7 @@
     },
     {
       "kind": "chapter",
-      "part": "Part I — Make the computer do something",
+      "part": "Part I \u2014 Make the computer do something",
       "number": 3,
       "title": "Let the compiler work out the types",
       "file": "manuscript/03-let-the-compiler-work-out-the-types.md",
@@ -62,7 +62,7 @@
     },
     {
       "kind": "chapter",
-      "part": "Part I — Make the computer do something",
+      "part": "Part I \u2014 Make the computer do something",
       "number": 4,
       "title": "Make every decision visible",
       "file": "manuscript/04-make-every-decision-visible.md",
@@ -73,7 +73,7 @@
     },
     {
       "kind": "chapter",
-      "part": "Part II — Build honest data",
+      "part": "Part II \u2014 Build honest data",
       "number": 5,
       "title": "Move a collection through a pipeline",
       "file": "manuscript/05-move-a-collection-through-a-pipeline.md",
@@ -84,7 +84,7 @@
     },
     {
       "kind": "chapter",
-      "part": "Part II — Build honest data",
+      "part": "Part II \u2014 Build honest data",
       "number": 6,
       "title": "Model only valid states",
       "file": "manuscript/06-model-only-valid-states.md",
@@ -95,7 +95,7 @@
     },
     {
       "kind": "chapter",
-      "part": "Part II — Build honest data",
+      "part": "Part II \u2014 Build honest data",
       "number": 7,
       "title": "Keep failure in the open",
       "file": "manuscript/07-keep-failure-in-the-open.md",
@@ -106,40 +106,40 @@
     },
     {
       "kind": "chapter",
-      "part": "Part II — Build honest data",
+      "part": "Part II \u2014 Build honest data",
       "number": 8,
       "title": "Prove what the program does",
       "file": "manuscript/08-prove-what-the-program-does.md",
-      "status": "editorial-scaffold",
+      "status": "complete",
       "targetWords": 2700,
       "targetPages": 10,
       "targetFigures": 2
     },
     {
       "kind": "chapter",
-      "part": "Part III — Meet the outside world",
+      "part": "Part III \u2014 Meet the outside world",
       "number": 9,
       "title": "Ask for an effect",
       "file": "manuscript/09-ask-for-an-effect.md",
-      "status": "editorial-scaffold",
+      "status": "complete",
       "targetWords": 3000,
       "targetPages": 11,
       "targetFigures": 4
     },
     {
       "kind": "chapter",
-      "part": "Part III — Meet the outside world",
+      "part": "Part III \u2014 Meet the outside world",
       "number": 10,
       "title": "Read, write, and call the web",
       "file": "manuscript/10-read-write-and-call-the-web.md",
-      "status": "editorial-scaffold",
+      "status": "complete",
       "targetWords": 3000,
       "targetPages": 11,
       "targetFigures": 3
     },
     {
       "kind": "chapter",
-      "part": "Part III — Meet the outside world",
+      "part": "Part III \u2014 Meet the outside world",
       "number": 11,
       "title": "Let work happen together",
       "file": "manuscript/11-let-work-happen-together.md",
@@ -150,7 +150,7 @@
     },
     {
       "kind": "chapter",
-      "part": "Part IV — Make it yours",
+      "part": "Part IV \u2014 Make it yours",
       "number": 12,
       "title": "Ship a real program",
       "file": "manuscript/12-ship-a-real-program.md",
@@ -161,7 +161,7 @@
     },
     {
       "kind": "chapter",
-      "part": "Part IV — Make it yours",
+      "part": "Part IV \u2014 Make it yours",
       "number": 13,
       "title": "Choose another flavor when it helps",
       "file": "manuscript/13-choose-another-flavor-when-it-helps.md",
@@ -172,7 +172,7 @@
     },
     {
       "kind": "chapter",
-      "part": "Part IV — Make it yours",
+      "part": "Part IV \u2014 Make it yours",
       "number": 14,
       "title": "Build your own flight plan",
       "file": "manuscript/14-build-your-own-flight-plan.md",
@@ -186,7 +186,7 @@
       "part": "Back matter",
       "title": "Appendices and next steps",
       "file": "manuscript/90-appendices-and-next-steps.md",
-      "status": "editorial-scaffold",
+      "status": "partial-reference-current-commands-and-qualifications",
       "targetWords": 1000,
       "targetPages": 4,
       "targetFigures": 0

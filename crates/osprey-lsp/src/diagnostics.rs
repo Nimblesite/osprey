@@ -74,7 +74,7 @@ pub(crate) fn analyze_cached(
                 "flavor-error",
                 encoding,
             )]
-            .into()
+            .into();
         }
     };
     let parsed = osprey_syntax::parse_program_with_flavor(source, flavor);
@@ -671,85 +671,59 @@ mod tests {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let main_warnings = [
             (
-                "redundant type signature on `bank::fetch`: inference derives `(int) -> (string) -> string` without it",
-                (20, 0, 20, 31),
-            ),
-            (
-                "redundant type signature on `bank::drive`: inference derives `(int) -> Unit` without it",
-                (32, 0, 32, 19),
-            ),
-            (
-                "redundant return type annotation on `bank::hold`: inference derives `int` without it",
-                (54, 0, 54, 18),
-            ),
-            (
-                "redundant type signature on `bank::handleRequest`: inference derives `(string, string, string, string) -> HttpResponse` without it",
-                (113, 0, 113, 68),
-            ),
-        ];
-        let mut main_warnings: Vec<_> = main_warnings
-            .into_iter()
-            .map(|(message, range)| ("redundant-annotation", message, range))
-            .collect();
-        main_warnings.extend([
-            (
                 "unused-pattern-binding",
                 "unused pattern binding `message`",
-                (27, 22, 27, 29),
+                (20, 22, 20, 29),
             ),
             (
                 "unused-variable",
                 "unused variable `freed`",
-                (28, 12, 28, 17),
+                (21, 12, 21, 17),
             ),
             (
                 "unused-pattern-binding",
                 "unused pattern binding `message`",
-                (30, 14, 30, 21),
+                (23, 14, 23, 21),
             ),
             (
                 "unused-pattern-binding",
                 "unused pattern binding `message`",
-                (58, 14, 58, 21),
+                (49, 14, 49, 21),
             ),
             (
                 "unused-pattern-binding",
                 "unused pattern binding `value`",
-                (59, 16, 59, 21),
+                (50, 16, 50, 21),
             ),
             (
                 "unused-variable",
                 "unused variable `slept`",
-                (60, 12, 60, 17),
+                (51, 12, 51, 17),
             ),
             (
                 "unused-variable",
                 "unused variable `listening`",
-                (80, 4, 80, 13),
+                (71, 4, 71, 13),
             ),
-            ("unused-variable", "unused variable `held`", (86, 4, 86, 8)),
+            ("unused-variable", "unused variable `held`", (77, 4, 77, 8)),
             (
                 "unused-variable",
                 "unused variable `stopped`",
-                (87, 4, 87, 11),
+                (78, 4, 78, 11),
             ),
             (
                 "unused-variable",
                 "unused variable `closed`",
-                (88, 4, 88, 10),
+                (79, 4, 79, 10),
             ),
-            ("unused-variable", "unused variable `made`", (96, 4, 96, 8)),
+            ("unused-variable", "unused variable `made`", (86, 4, 86, 8)),
             (
                 "unused-parameter",
                 "unused parameter `headers`",
-                (114, 29, 114, 36),
+                (95, 29, 95, 36),
             ),
-            (
-                "unused-variable",
-                "unused variable `seen`",
-                (115, 4, 115, 8),
-            ),
-        ]);
+            ("unused-variable", "unused variable `seen`", (96, 4, 96, 8)),
+        ];
         for (relative, expected) in [
             (
                 "examples/projects/modules/src/main.ospml",
@@ -775,102 +749,23 @@ mod tests {
         // `unknown identifier `Money::positive`` by checking the raw AST.
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let path = root.join("examples/projects/modules/test/accounts.test.ospml");
-        let source = std::fs::read_to_string(&path).expect("read module test suite");
+        // Keep the assembly regression independent of annotations removed
+        // from the banking example. This edited buffer retains one intentional
+        // redundant signature, so warning identity and source mapping stay exact.
+        let source = "namespace test\n\nmodule Money\n    export positive : int -> bool\n    positive cents = cents > 0\n\ntest \"positive\" (\\() => expect (Money::positive 1) true)\n";
         let uri = format!("file://{}", path.display());
-        let diagnostics = compute(&source, &uri, U16);
-        let annotations = [
-                (
-                    "redundant type signature on `test::Money::pennies`: inference derives `(int) -> string` without it",
-                    (8, 4, 8, 27),
-                ),
-                (
-                    "redundant type signature on `test::Money::triple`: inference derives `(int) -> string` without it",
-                    (15, 4, 15, 26),
-                ),
-                (
-                    "redundant type signature on `test::Money::group`: inference derives `(int) -> string` without it",
-                    (22, 4, 22, 25),
-                ),
-                (
-                    "redundant type signature on `test::Money::show`: inference derives `(int) -> string` without it",
-                    (30, 11, 30, 31),
-                ),
-                (
-                    "redundant type signature on `test::Money::positive`: inference derives `(int) -> bool` without it",
-                    (33, 11, 33, 33),
-                ),
-                (
-                    "redundant type signature on `test::Json::escape`: inference derives `(string) -> string` without it",
-                    (37, 4, 37, 29),
-                ),
-                (
-                    "redundant type signature on `test::Json::quoted`: inference derives `(string) -> string` without it",
-                    (44, 4, 44, 29),
-                ),
-                (
-                    "redundant type signature on `test::Json::strField`: inference derives `(string) -> (string) -> string` without it",
-                    (49, 11, 49, 48),
-                ),
-                (
-                    "redundant type signature on `test::Json::obj`: inference derives `(string) -> string` without it",
-                    (55, 11, 55, 33),
-                ),
-                (
-                    "redundant type signature on `test::Accounts::movable`: inference derives `(int) -> bool` without it",
-                    (73, 11, 73, 32),
-                ),
-                (
-                    "redundant type signature on `test::settle`: inference derives `(test::Outcome) -> string` without it",
-                    (89, 0, 89, 26),
-                ),
-        ];
-        let mut expected: Vec<_> = annotations
-            .into_iter()
-            .map(|(message, range)| ("redundant-annotation", message, range))
-            .collect();
-        expected.extend([
-            (
-                "unused-handler-parameter",
-                "unused handler parameter `id` of `test::Vault.balance`",
-                (161, 16, 161, 18),
-            ),
-            (
-                "unused-handler-parameter",
-                "unused handler parameter `id` of `test::Vault.debit`",
-                (162, 14, 162, 16),
-            ),
-            (
-                "unused-handler-parameter",
-                "unused handler parameter `id` of `test::Vault.balance`",
-                (168, 16, 168, 18),
-            ),
-            (
-                "unused-handler-parameter",
-                "unused handler parameter `id` of `test::Vault.debit`",
-                (169, 14, 169, 16),
-            ),
-            (
-                "unused-handler-parameter",
-                "unused handler parameter `cents` of `test::Vault.debit`",
-                (169, 17, 169, 22),
-            ),
-            (
-                "unused-handler-parameter",
-                "unused handler parameter `id` of `test::Vault.balance`",
-                (178, 16, 178, 18),
-            ),
-            (
-                "unused-handler-parameter",
-                "unused handler parameter `id` of `test::Vault.debit`",
-                (179, 14, 179, 16),
-            ),
-            (
-                "unused-handler-parameter",
-                "unused handler parameter `cents` of `test::Vault.debit`",
-                (179, 17, 179, 22),
-            ),
-        ]);
-        assert_warnings(&diagnostics, &expected);
+        let diagnostics = compute(source, &uri, U16);
+        assert_redundant_annotations(
+            &diagnostics,
+            &[(
+                "redundant type signature on `test::Money::positive`: inference derives `(int) -> bool` without it",
+                (3, 11, 3, 33),
+            )],
+        );
+        let inferred = source
+            .replace("    export positive : int -> bool\n", "")
+            .replace("    positive cents =", "    export positive cents =");
+        assert_warnings(&compute(&inferred, &uri, U16), &[]);
     }
 
     #[cfg(unix)]

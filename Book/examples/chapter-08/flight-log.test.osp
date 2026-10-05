@@ -1,0 +1,75 @@
+type Status = Planned | Learning | Complete
+type Lesson = { title: string, status: Status }
+
+fn statusLabel(status) = match status {
+    Planned => "planned"
+    Learning => "learning"
+    Complete => "complete"
+}
+
+fn advance(status) = match status {
+    Planned => Learning
+    Learning => Complete
+    Complete => Complete
+}
+
+fn summary(lesson) =
+    "${lesson.title} [${statusLabel(lesson.status)}]"
+
+fn parseEstimate(text) = match parseInt(text) {
+    Success { value } => match value >= 1 && value <= 60 {
+        true => Success { value: value }
+        false => Error { message: "estimate must be 1 to 60 minutes" }
+    }
+    Error { message } => Error { message: message }
+}
+
+fn accepts(text, expected) = match parseEstimate(text) {
+    Success { value } => value == expected
+    Error => false
+}
+
+fn rejects(text, expected) = match parseEstimate(text) {
+    Success => false
+    Error { message } => message == expected
+}
+
+test("each status has its own label", fn() => {
+    check("planned", "planned", statusLabel(Planned))
+    check("learning", "learning", statusLabel(Learning))
+    check("complete", "complete", statusLabel(Complete))
+})
+
+test("advancing completes a lesson and stays complete", fn() =>
+    checkAll("status transitions", [
+        advance(Planned) == Learning,
+        advance(Learning) == Complete,
+        advance(Complete) == Complete
+    ])
+)
+
+test("summary keeps the title and shows current status", fn() => {
+    let lesson = Lesson { title: "Read a match", status: Learning }
+    expect(summary(lesson), "Read a match [learning]")
+})
+
+test("estimates include both endpoints", fn() =>
+    checkAll("accepted minutes", [
+        accepts("1", 1), accepts("25", 25), accepts("60", 60)
+    ])
+)
+
+test("estimates preserve the integer parser's message", fn() =>
+    checkAll("invalid text", [
+        rejects("soon", "parseInt: invalid integer"),
+        rejects("25x", "parseInt: invalid integer")
+    ])
+)
+
+test("estimates reject values outside the session range", fn() =>
+    checkAll("out of range", [
+        rejects("0", "estimate must be 1 to 60 minutes"),
+        rejects("-1", "estimate must be 1 to 60 minutes"),
+        rejects("61", "estimate must be 1 to 60 minutes")
+    ])
+)

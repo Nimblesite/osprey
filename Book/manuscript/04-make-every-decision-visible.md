@@ -1,8 +1,10 @@
 # Chapter 4 — Make every decision visible
 
+**Chapter outline.** The teaching plan below has been checked against the current language; the full lesson and checkpoint are still to be written.
+
 ## Reader outcome
 
-Use `match` to make decisions, unpack data, and cover every possible case of a known type.
+Use `match` to make decisions, unpack data, and cover every case of a boolean, `Result`, or closed union. Use a catch-all for open scalar domains such as integers, whose exhaustiveness the compiler does not prove.
 
 ## Flight Log state
 
@@ -35,4 +37,3 @@ Render every project state to a string and test each branch.
 ## Source map
 
 `0003-Syntax`, `0004-TypeSystem`, `0007-PatternMatching`
-

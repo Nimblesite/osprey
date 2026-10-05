@@ -1,0 +1,15 @@
+effect Learner { name: fn() -> string }
+
+fn greeting() = "Ready to learn, " + perform Learner.name() + "?"
+
+let report = {
+    handle Learner { name => "Mika" }
+    let before = greeting()
+    let inside = {
+        handle Learner { name => "Rowan" }
+        greeting()
+    }
+    let after = greeting()
+    "${before}\n${inside}\n${after}"
+}
+print(report)

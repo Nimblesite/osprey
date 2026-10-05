@@ -5,6 +5,8 @@ of [Osprey Package Registry and Manager](0029-PackageManagement.md). Its
 requirements are mandatory for the public registry. The full academic and
 standards basis is [annotated here](../package-manager-research.md).
 
+Every executable component covered here MUST be implemented in Osprey under [the implementation-language contract](0029-PackageManagement.md#implementation-language-package-implementation-language). This includes cryptography and verification, TUF and transparency clients, filesystem/CAS transactions, sandbox orchestration, authentication, HSM/forge adapters, publication services, evidence processing, and operational and conformance tooling. Host work has no exception permitting another implementation language. Existing platform APIs and external services are dependencies accessed by Osprey code; they do not authorize a package-specific native host or shim.
+
 The registry accepts open participation without accepting unverifiable bytes.
 It assembles immutable releases from source, records each decision as evidence,
 uses AI only inside a measured review pipeline, and distributes attention
@@ -204,7 +206,7 @@ Each signer independently verifies final publication authorization, frozen
 source, required attestations, policy result, and log receipt; one service
 process cannot obtain two shares.
 
-The initial root is embedded in reviewed CLI/compiler source and its version and
+The initial root is embedded in reviewed Osprey package-CLI source and its version and
 five fingerprints are published through the governance repository and DNSSEC.
 A client updates root only one version at a time; root `N+1` must verify at the
 old 3-of-5 threshold and the new 3-of-5 threshold before replacing `N`. Clients

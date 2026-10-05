@@ -340,3 +340,27 @@ fn restOfBlockCase() = {
 
 // A handler region that names no body still covers everything after it.
 test("a handle with no `in` handles the rest of its block", fn() => exactArithmetic(restOfBlockCase))
+
+/// A captured handler must retain its shared state when another handler calls it.
+/// [EFFECTS-HANDLER-VALUE-STATE]
+effect HandlerLabel { current: fn() -> string }
+
+fn reportHandlerLabel() = {
+    let label = perform HandlerLabel.current()
+    perform Logger.log(label)
+    label
+}
+
+fn callableStateAcrossHandlersCase() = {
+    mut recorded = ""
+    let label = handler HandlerLabel { current => "seen" }
+    let recording = handler Logger {
+        log message => { recorded = message }
+        debug _message => 0
+    }
+    let answer = label(|| => recording(reportHandlerLabel))
+    expect(answer, "seen")
+    expect(recorded, "seen")
+}
+
+test("nested callable handlers retain one mutable capture", callableStateAcrossHandlersCase)

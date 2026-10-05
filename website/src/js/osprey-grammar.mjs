@@ -14,7 +14,7 @@ export const ospreyGrammar = {
     inside: { punctuation: /^\$\{|\}$/ },
   },
   keyword:
-    /\b(?:fn|let|mut|match|type|effect|perform|handle|in|extern|spawn|await|yield|if|else|import|module|true|false|where|Unit|Result|Option|Some|None|Ok|Err)\b/,
+    /\b(?:fn|let|mut|match|type|effect|perform|handler|handle|static|control|abort|once|many|replayable|resume|return|in|extern|spawn|await|yield|if|else|import|module|true|false|where|Unit|Result|Option|Some|None|Ok|Err)\b/,
   type: /\b(?:int|float|string|bool|List|Map|Set|Ptr|Channel|Fiber|Json|HttpResponse)\b/,
   function: /\b[a-zA-Z_][a-zA-Z0-9_]*(?=\s*\()/,
   number: /\b(?:0x[\da-f]+|\d*\.?\d+(?:e[+-]?\d+)?)\b/i,

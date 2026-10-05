@@ -8,7 +8,7 @@ assertions inspect values produced inside the program.
   mixed-feature behavior by language concept.
 - `flavors/` keeps Default/ML twins side by side and proves both spellings over
   the same dense behavior tables.
-- `effects/` groups handler, resume, and cross-effect interactions.
+- [`effects/`](effects/README.md) exercises callable and block-scoped handlers, declared value/control operations, static selection, and cross-effect interactions.
 - `workflows/` contains real-world scenarios that deliberately combine several
   language features.
 - `framework/` exercises the test framework's own special behavior.
@@ -31,9 +31,7 @@ checkAll "order state" [
 
 ML twins use the current compact surface: whitespace currying, adjacent
 equation clauses for parameter matches, inline unions and positional payloads,
-and `?:` for simple `Result` fallbacks. Integer `+`, `-`, and `*` return checked
-`Result` values; preserve that channel or handle it explicitly with `?:` or a
-`match` before a plain value is required.
+and `?:` for simple `Result` fallbacks. Integer `+`, `-`, and `*` return plain integers and require an `Arith` handler when overflow is possible. Use a scoped policy that matches the test, or the explicit `checkedAdd`, `checkedSub`, and `checkedMul` helpers when testing `Result` behavior.
 
 `expectAll([condition, ...])` is the unlabeled equivalent. Both require a
 non-empty list literal, evaluate every condition, and continue after failures.

@@ -4,78 +4,80 @@
 
 # Osprey Programming Language
 
-Osprey is a functional language with inferred types, algebraic effects, fiber
-concurrency, and a choice of brace or ML layout syntax.
+Osprey is a functional language built around **algebraic effects**: application code requests an operation, and a handler supplies its implementation. Use the same logic with a real database, an in-memory test, or a different platform service.
 
-Osprey compiles through LLVM to native binaries, WebAssembly, and C ABI libraries for iOS and Android applications. Osprey is alpha software.
+Types and effect requirements are inferred. Osprey compiles through LLVM to native binaries, WebAssembly, and C ABI libraries for iOS and Android. It is alpha software.
+
+## Choose the implementation where the work runs
+
+```osprey
+effect Log { write: fn(string) -> Unit }
+
+fn placeOrder() = {
+    perform Log.write("Order accepted")
+    "accepted"
+}
+
+let console = handler Log { write message => print(message) }
+mut captured = ""
+let recording = handler Log { write message => { captured = message } }
+
+let live = console(placeOrder)
+let tested = recording(placeOrder)
+print("${live}, ${tested}; recorded: ${captured}")
+```
+
+`placeOrder` asks to log without taking a logger parameter. `console` and `recording` are ordinary callable handler values. Each takes the work to run so its implementation is installed **before** the work performs an operation. The compiler rejects a call whose required operations have no handler.
+
+The same example in ML flavor:
+
+```osprey-ml
+effect Log
+    write : string => Unit
+
+placeOrder () =
+    perform Log.write "Order accepted"
+    "accepted"
+
+console = handler Log
+    write message => print message
+mut captured = ""
+recording = handler Log
+    write message => captured := message
+
+live = console placeOrder
+tested = recording placeOrder
+print "${live}, ${tested}; recorded: ${captured}"
+```
+
+Use `handle E { ... }` inside a block to handle the rest of that block. Value operations return to their caller; operations declared `control` can resume or stop the remaining computation. `handle static E` removes effect dispatch during compilation. See the [effects guide](website/src/docs/algebraic-effects.md), [runnable comparisons](examples/handlers/README.md), and [implementation status](docs/plans/0016-algebraic-effects-and-handlers.md).
+
+## Applications using effects
+
+| Application | What the handlers provide |
+| --- | --- |
+| [Talon Bank: web, iOS, and Android](examples/projects/modules/README.md) | SQLite storage, audit logging, request metrics, and platform rendering handlers around shared screens and behavior |
+| [Issue Inbox for iOS and Android](examples/mobile/README.md) | SQL and HTTP command descriptions for native hosts, with replaceable test implementations |
+| [iPhone counter](examples/ios/README.md) | A Swift logging callback behind an Osprey effect |
+
+Issue Inbox shares its state transitions, screen tree, GitHub decoding, SQLite statements, search, bookmarks, and notes across both platforms. SwiftUI and Android hosts render the screen and execute platform commands.
+
+<p align="center">
+  <img src="website/src/assets/images/mobile/issue-inbox-ios.png" alt="Issue Inbox with live GitHub issues on an iPhone simulator" width="280" />
+  <img src="website/src/assets/images/mobile/issue-inbox-android.png" alt="Issue Inbox restored from SQLite on an Android emulator" width="280" />
+</p>
 
 ## Language features
 
-- **One language, two flavors** — Default (`.osp`) uses braces, `fn`, and
-  parenthesized calls; ML (`.ospml`) uses layout, currying, and whitespace
-  application. Both lower to the same program representation before type
-  checking and code generation.
-- **Inferred types** — algebraic data types and pattern matching express state
-  and failure without requiring every type annotation.
-- **Algebraic effects** — typed operations and lexical handlers separate an
-  operation from its implementation.
-- **Isolated fiber concurrency** — fibers communicate through typed channels
-  without a separate `async fn` kind.
-- **Selectable memory management** — native builds support the default
-  non-reclaiming allocator, tracing garbage collection (`--memory=gc`) and
-  Perceus reference counting (`--memory=arc`).
-- **Native, WebAssembly, iOS and Android output** — mobile applications link compiled Osprey logic through a generated C interface. C code remains outside Osprey's memory-safety guarantee.
+- **Algebraic effects:** reusable handlers, inferred requirements, explicit control operations, and static handler selection.
+- **Inferred types:** algebraic data types and exhaustive pattern matching; expected failures use `Result`.
+- **Two syntax flavors:** braces and `fn` in `.osp`, or layout and currying in `.ospml`. Project modules can mix them.
+- **Isolated fibers:** typed message passing without a separate `async fn` kind.
+- **Memory choices:** the default non-reclaiming allocator, tracing GC (`--memory=gc`), or Perceus reference counting (`--memory=arc`) on native builds.
 
-Effect operation inputs and outputs are checked statically, and the compiler rejects unhandled effect operations at program entry. Resumable effects are supported on the host `native` target. WebAssembly and mobile C ABI targets reject unsupported operations, including `resume`, before emitting an artifact.
+Integer arithmetic returns plain values and requests the `Arith` effect on overflow or a zero divisor. The application chooses a policy; an unhandled fault is a compile error. See [arithmetic effects](docs/specs/0037-ArithmeticEffects.md).
 
-Each file selects its flavor by extension, a source marker, or `--flavor` for a single-file build. Project modules can import files written in either flavor; the mobile example combines an ML application with a small Default C ABI entry file.
-
-## Example
-
-Default flavor:
-
-```osprey
-type Lookup = Found { value: int } | Missing
-
-fn doubleFound(lookup) = match lookup {
-    Found { value } => Success { value: value * 2 }
-    Missing => Error { message: "value not found" }
-}
-
-fn main() = {
-    handle Arith { overflow _ _ _ _ => 9223372036854775807 }
-    match doubleFound(Found { value: 21 }) {
-        Success { value } => print("result: ${value}")
-        Error { message } => print("error: ${message}")
-    }
-}
-```
-
-ML flavor:
-
-```osprey-ml
-adder a b = a + b
-addTen = adder 10
-
-wrapping = handler Arith
-    overflow _ _ _ wrapped => wrapped
-print "answer: ${wrapping (\() => addTen 32)}"
-```
-
-Integer `+`, `-` and `*` return a plain `int`. An overflow is sent to the `Arith` handler that the surrounding code installed, which chooses the result (here: saturate, or keep the two's-complement value). A program that can overflow without installing a handler does not compile.
-
-Executable language tests live in [`tests/`](tests/).
-
-## The same app on iOS and Android
-
-[Issue Inbox](examples/mobile/README.md) is a working reactive application built from shared Osprey modules. Osprey defines the screen tree, state transitions, GitHub requests and decoding, SQLite statements, offline cache, search, bookmarks, issue details, local notes, and priorities. SwiftUI and Android hosts provide native rendering, networking, and SQLite execution.
-
-<p align="center">
-  <img src="website/src/assets/images/mobile/issue-inbox-ios.png" alt="Issue Inbox with live GitHub issues on the iPhone 17 Pro simulator" width="280" />
-  <img src="website/src/assets/images/mobile/issue-inbox-android.png" alt="Issue Inbox restored from SQLite on the Pixel 7 Android emulator" width="280" />
-</p>
-
-iPhone 17 Pro simulator (left) and Pixel 7 Android emulator (right), running the same Osprey application. The signed iOS app was also installed, launched, and smoke-tested on a physical iPhone 16. Android ARM64 smoke and live GitHub checks passed; Android x86-64 was compiled and packaged. See the [run commands and validation record](examples/mobile/README.md#validation).
+Dynamic control operations currently require the native target. WebAssembly and mobile support value handlers and static discharge, but reject dynamic resumption. Generalized effect rows, reusable continuations, and other remaining work are tracked in [plan 0016](docs/plans/0016-algebraic-effects-and-handlers.md).
 
 ## Installation
 
@@ -130,6 +132,7 @@ The [iOS](docs/specs/0038-iOSTarget.md) and [Android](docs/specs/0039-AndroidTar
 
 ## Documentation
 
+- [Algebraic effects guide](website/src/docs/algebraic-effects.md)
 - [Language and engineering specifications](docs/specs/)
 - [Website documentation](website/src/docs/)
 - [VS Code extension](vscode-extension/README.md)

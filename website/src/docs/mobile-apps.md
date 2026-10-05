@@ -1,14 +1,15 @@
 ---
+mlTwins: manual
 layout: page
 title: Building native iOS and Android apps with Osprey
-description: Run the same modular Osprey application on iPhone and Android, with reactive native UI, SQLite persistence, live GitHub requests, issue details, and local triage.
+description: Use algebraic effects and reusable handlers to connect shared Osprey application logic to native iOS and Android services.
 permalink: /docs/mobile-apps/
 tags: [mobile, ios, android, applications]
 ---
 
 {% from "mobile-gallery.njk" import gallery %}
 
-Issue Inbox is a native iPhone and Android application built around the same Osprey project. Its model, update functions, UI layout, GitHub decoding, search, bookmarks, notes, priorities, and SQLite statements live in Osprey modules. SwiftUI and Android widgets render the UI description and send events back to Osprey.
+Issue Inbox is a native iPhone and Android application built around the same Osprey project. Typed effects request SQL and HTTP work; a reusable handler turns those requests into native host commands. Its model, update functions, UI layout, GitHub decoding and local triage live in Osprey modules. SwiftUI and Android widgets render the UI description and send events back to Osprey.
 
 These are actual captures of the running application. The iOS screenshot comes from an iPhone 17 Pro simulator; the Android screenshot comes from a Pixel 7 emulator. The iOS build has also been installed and verified on a physical iPhone 16.
 
@@ -16,7 +17,9 @@ These are actual captures of the running application. The iOS screenshot comes f
 
 The [complete source and launch scripts](https://github.com/Nimblesite/osprey/tree/main/examples/mobile) are in `examples/mobile/`. Build this example from a repository checkout using the platform prerequisites below.
 
-## What the app does
+For a banking example, [Talon Bank's native clients](https://github.com/Nimblesite/osprey/tree/main/examples/projects/modules/mobile) share the web app's screens, state transitions, validation and API commands. SwiftUI and Android widgets use the same `Bridge::Render` effect through native C exports. The [web app guide](/docs/web-apps/#native-android-and-ios) explains the shared boundary; its source README includes build and device-test commands.
+
+## What Issue Inbox does
 
 Open issues for a public GitHub repository, search titles and authors, save issues for later, and open their descriptions and labels. Osprey parses description Markdown into headings, lists, quotes, code, emphasis, and links that the native hosts render. Add a local note or set a priority on the detail screen. Successful refreshes and local edits are saved to SQLite; a populated cache opens without requiring a network request.
 
@@ -25,6 +28,29 @@ The UI reacts to each event. Typing a search, choosing a filter, opening an issu
 Notes and priorities remain local. The example reads public GitHub data and does not post changes to GitHub. It requests one page of open issues, excludes pull requests, and starts with `swiftlang/swift`. Authentication, pagination, and background refresh are not implemented.
 
 {{ gallery(mobile.details) }}
+
+## Application effects
+
+The [`Storage` module](https://github.com/Nimblesite/osprey/blob/main/examples/mobile/inbox/src/storage.ospml) declares the operations needed by the update code:
+
+```osprey-ml
+export effect Requests
+    sql : SqlRequest => string
+    http : HttpRequest => string
+```
+
+`SqlRequest` carries an id, statement and parameters; `HttpRequest` carries an id and URL. The update code performs `Storage::Requests.sql` or `Storage::Requests.http` with these request records. The production `Storage::commands` function installs a reusable handler whose arms serialize them as JSON commands. The application selects that implementation at its boundary:
+
+```osprey-ml
+export initial () = Storage::commands Update::initial
+
+export dispatch model event =
+    Storage::commands (\() => Update::dispatch model event)
+```
+
+Tests run the same update functions under substitute `Storage::Requests` handlers. They can record the SQL, parameters and request URL without SQLite or a network connection.
+
+These are value operations: the handler returns a command description immediately. The native host executes it after Osprey returns and delivers completion as another event. Asynchronous HTTP does not require capturing an Osprey continuation. See the [algebraic effects guide](/docs/effects/) for callable handlers and block scope.
 
 ## How the native boundary works
 
@@ -39,7 +65,7 @@ The compiler turns Osprey into native app-logic code through LLVM and emits a st
 
 After `osprey_main()` initializes the library, the host calls `osprey_mobile_start()` and then `osprey_mobile_dispatch(model, event)`. Each call returns a JSON envelope containing the opaque model, view data, UI tree, and commands. The host executes requested SQL or HTTP work and returns its result as another event. All calls into Osprey are serialized on the host's main thread.
 
-This is ordinary event-driven application code. It does not require resumable effects or a special reactive compiler feature. The native hosts provide reusable rendering and transport; the application-specific decisions remain in Osprey.
+The update loop uses ordinary modules and value handlers. Reactive updates are driven by explicit events; the staged-effects reactive runtime is still planned.
 
 ## Run on iOS
 

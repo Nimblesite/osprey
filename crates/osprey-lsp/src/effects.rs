@@ -413,9 +413,9 @@ mod tests {
             let locations = credit_implementations(&source, &uri);
             assert_eq!(locations.len(), 1, "{locations:?}");
             let handler = locations.first().expect("one Store.credit handler");
-            assert!(handler.uri.ends_with("src/main.ospml"), "{handler:?}");
-            let (main, _) = project_source("main.ospml");
-            let (line, column) = locate(&main, CREDIT_PERFORM);
+            assert!(handler.uri.ends_with("store/ledger.ospml"), "{handler:?}");
+            let (ledger, _) = project_source("store/ledger.ospml");
+            let (line, column) = locate(&ledger, CREDIT_PERFORM);
             let end = column.saturating_add(
                 u32::try_from(CREDIT_OPERATION.len()).expect("operation name fits a u32"),
             );

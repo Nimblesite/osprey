@@ -1,0 +1,3 @@
+fn fitsSession(minutes) = minutes <= 30
+
+print(fitsSession(parseInt("25")))

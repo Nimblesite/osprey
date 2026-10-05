@@ -1,4 +1,7 @@
-# Play with handlers
+# Algebraic effects: choose and reuse handlers
+
+Start with callable `handler` values, then explore control operations, return transformations, and static selection. The [bank](../projects/modules/README.md) and [mobile apps](../mobile/README.md) apply the same forms to storage, auditing, rendering, and platform requests. The [effects guide](../../website/src/docs/algebraic-effects.md) explains each step.
+
 
 Run from the repository root:
 
@@ -39,7 +42,7 @@ let ada = reading("Ada")
 print(ada(greet))
 ```
 
-The ML spelling is in [handlers.ospml](handlers.ospml). The prototype also supports installing a handler for the rest of a block: `handle Reader { name => "Ada" }`, followed by the work it handles, with no `in`/`do`.
+The ML spelling is in [handlers.ospml](handlers.ospml). You can also install a handler for the rest of a block: `handle Reader { name => "Ada" }`, followed by the work it handles, with no `in`/`do`.
 
 | Language | Handler definition | Run the same work with it |
 |---|---|---|

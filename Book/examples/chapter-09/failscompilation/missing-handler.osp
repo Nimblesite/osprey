@@ -1,0 +1,5 @@
+effect Learner { name: fn() -> string }
+
+fn greeting() = "Ready to learn, " + perform Learner.name() + "?"
+
+print(greeting())

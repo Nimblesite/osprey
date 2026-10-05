@@ -1,16 +1,15 @@
 # Osprey Examples
 
-These examples cover native programs, WebAssembly, and native iOS and Android applications. Osprey has two first-class syntax **flavors**:
+Start with algebraic effects: declare an operation, request it with `perform`, and run the same work under different callable handlers.
 
-- **Default flavor (`.osp`)** — C-style braces, `fn`, `f(x: a, y: b)` calls with
-  named arguments.
-- **ML flavor (`.ospml`)** — offside-rule layout (indentation, no braces),
-  curry-by-default, whitespace application `f a b`, `\x => e` lambdas, `:=`
-  mutation, `->` for types and `=>` for clauses. Both flavors have runnable coverage in the paired [`tests/flavors/`](../tests/flavors) assertion corpus.
+| Example | What to try |
+| --- | --- |
+| [Handlers](handlers/README.md) | Reusable policies, return transformations, static selection, and comparisons with Koka and OCaml |
+| [Talon Bank](projects/modules/README.md) | Shared web/iOS/Android application, SQLite and mock storage, auditing, metrics, and platform rendering |
+| [Issue Inbox](mobile/README.md) | Shared iOS/Android state and UI, with SQL/HTTP requests interpreted by a platform-command handler |
+| [iPhone counter](ios/README.md) | A native logging callback behind a value effect |
 
-Both surfaces lower to the same canonical AST before any type checking. After
-lowering, nothing — type checker, effect checker, optimiser, codegen — can tell
-which flavor you wrote. Same safety, same effects, same performance.
+`handler E { ... }` creates a callable implementation; `h(work)` installs it while the callback runs. `handle E { ... }` handles the rest of its block. Both forms work in Default (`.osp`) and ML (`.ospml`) syntax. See the [effects contract](../docs/specs/0017-AlgebraicEffects.md) and [current limits](../docs/plans/0016-algebraic-effects-and-handlers.md).
 
 ## Flavor convention
 
@@ -33,7 +32,7 @@ proving both flavors print the same bytes.
 
 ## Directory layout
 
-- **`tested/`** — working examples that compile and run; output is checked
+- **`../tests/regressions/`** — working programs that compile and run; output is checked
   byte-for-byte against `.expectedoutput`. Subfolders: `basics/`, `db/`,
   `effects/`, `fiber/`, and `http/`.
 - **`../tests/flavors/`** — paired Default/ML executable documentation with
@@ -93,7 +92,7 @@ breaks CI. Never add one without confirming it is actually rejected.
   (`flavor_from_extension` has no opinion on it), so the marker alone selects the
   ML frontend with no extension/marker conflict, and the marker path and
   `--flavor ml` produce byte-identical diagnostics. The `ml_*.ospo` fixtures pin
-  the ML-specific rejection paths: reserved `handler`/`do`
+  the ML-specific rejection paths: removed `handle ... in/do` forms
   ([`[FLAVOR-ML-HANDLER]`](../docs/specs/0024-MLFlavorSyntax.md)), offside-rule
   violations `[FLAVOR-ML-LAYOUT]`, unterminated `(** … *)`
   `[FLAVOR-ML-COMMENTS]`, `->` where a clause needs `=>` `[FLAVOR-ML-MATCH]`, and
@@ -121,9 +120,3 @@ osprey test tests/flavors/smoke/smoke.test.ospml
 The flavor is resolved automatically from the extension; add `--flavor ml` only to
 force the ML surface on a file without the `.ospml` extension or marker.
 
-## ML status (honest)
-
-- **H1.** Default is fully implemented; ML is in active development with the paired
-  assertion suites above as executable proof.
-- **H2.** ML effects and handlers are covered by paired suites under
-  `tests/flavors/effects/` and `tests/effects/resume/`.

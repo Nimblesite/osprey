@@ -12,6 +12,7 @@
 - [The `any` Type](#the-any-type--type-any)
 - [Type Annotations](#type-annotations--type-annotation-check)
 - [Redundant Annotations](#redundant-annotations--type-annotation-redundant)
+- [Redundant callbacks](#redundant-callbacks-type-warnings-callbacks)
 
 ## Hindley-Milner Inference
 
@@ -1073,6 +1074,22 @@ The editor offers **Remove redundant type signature** for a standalone ML header
 
 For an assembled project, the safe set is chosen for the entire program before filtering diagnostics to an open file. The editor checks current open source buffers when deciding the set. Each action is checked again when requested and carries the document version it was computed from; the VS Code extension rejects a cached action after the checked source changes. See [LSP-CODE-ACTIONS-ANNOTATIONS](0020-LanguageServerAndEditors.md#annotation-quick-fixes-lsp-code-actions-annotations).
 
+
+## Redundant callbacks `[TYPE-WARNINGS-CALLBACKS]`
+
+The analyzer reports `redundant-callback` for an anonymous zero-argument lambda passed directly to a proven callable handler or a relay that only invokes its callback. The lambda must only call a known zero-argument function, and passing that function directly must preserve the inferred types and effect requirements.
+
+```osprey
+fn work() = 41
+fn relay(callback) = callback()
+print(relay(|| => work())) // warning: pass `work` directly
+```
+
+Write `print(relay(work))` to remove the wrapper. The same rule applies to `\() => work ()` in ML syntax. The diagnostic names the replacement: `redundant callback wrapper: pass ` followed by the function name in backticks and ` directly; it already takes no arguments`. The CLI reports the source location; the editor shows a Warning and marks the wrapper unnecessary. Warnings do not change generated code or exit status.
+
+This is a conservative simplification. A callback that supplies arguments, performs additional work, installs a handler, or reads a mutable or shadowed callee is not reported. Stored callbacks and consumers that could retain or inspect the callback are excluded: function identity is observable. Both the consumer and the forwarded function must resolve to unambiguous immutable declarations. Explicit lambda return constraints, unresolved generic types, and contexts that adapt the callback's result representation are also excluded. Unrelated comparisons, interpolation and foreign declarations do not suppress the rule.
+
+A handler still needs a callback to delay execution until its scope is installed: `policy(work)` preserves that delay. `policy(work())` does not.
 
 ## Unused symbols `[TYPE-WARNINGS-UNUSED]`
 

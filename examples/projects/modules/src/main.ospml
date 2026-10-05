@@ -1,11 +1,5 @@
-// main — the COMPOSITION ROOT. [MODULES-EXPORTS] [MODULES-STATE-MODULE]
-//
-// The only file allowed to know everything. Here — and nowhere else — the
-// abstract `Ledger::Store` capability is bound to its SQLite implementation,
-// `Api::Audit` is bound to the console, and the `Metrics` state module's
-// installer opens the one region where request counting may mutate. The
-// layers underneath stay pure and swappable; rewiring the bank is a
-// main-only edit.
+// Select storage, audit and request-counting policies at the application root.
+// [MODULES-EXPORTS] [MODULES-STATE-MODULE] [EFFECTS-HANDLER-VALUE]
 
 namespace bank
 
@@ -18,7 +12,6 @@ import "bank/web" as web
 // One deterministic tour of the whole stack, driven over REAL HTTP by the
 // in-process client: JSON mutations, a refused overdraft, the JSON listing,
 // and the Osprey-WASM application shell.
-fetch : int -> string -> string
 fetch client path =
     reply = httpGetResponse client path ""
     match reply
@@ -30,7 +23,6 @@ fetch client path =
             body
         Error message => "GET ${path} failed"
 
-drive : int -> Unit
 drive client =
     amelia = httpPost client "/api/accounts" "{\"name\":\"Amelia Chen\"}" ""
     marcus = httpPost client "/api/accounts" "{\"name\":\"Marcus Webb\"}" ""
@@ -52,7 +44,6 @@ drive client =
 // Playwright hold: while /tmp/talon_bank.hold exists the server keeps serving
 // and the demo pauses right here — remove the file (or never create it) and
 // the run finishes deterministically with identical stdout either way.
-hold : Unit -> int
 hold () =
     marker = readFile "/tmp/talon_bank.hold"
     match marker
@@ -89,29 +80,19 @@ serve db =
     closed = Sqlite::shutdown db
     perform Metrics::MetricsFx.total ()
 
-// Everything below runs inside the Metrics installer's handler region, so
-// the request counter cell exists exactly as long as the bank is serving.
+// SQLite and audit handlers compose around the same serving callback.
 boot : Unit -> int ! Metrics::MetricsFx
 boot () =
     db = Sqlite::openAt "/tmp/talon_bank.db"
     made = Ledger::schema db
     print "[boot] fresh ledger at /tmp/talon_bank.db"
-    handle Ledger::Store
-        open name => Ledger::openSql db name
-        credit id cents note => Ledger::creditSql db id cents note
-        debit id cents note => Ledger::debitSql db id cents note
-        transfer fromId toId cents note => Ledger::transferSql db fromId toId cents note
-        balance id => Ledger::balanceSql db id
-        owner id => Ledger::ownerSql db id
-        count => Ledger::countSql db
-        activity => Ledger::activitySql db
-    handle Api::Audit
+    storage = Ledger::sqlite db
+    consoleAudit = handler Api::Audit
         log line => print "[audit] ${line}"
-    serve db
+    consoleAudit (\() => storage (\() => serve db))
 
 // The router: every request is counted by the state module, then dispatched —
 // `/api/*` to the JSON API, everything else to the browser-app host.
-handleRequest : string -> string -> string -> string -> HttpResponse
 handleRequest (method, path, headers, body) =
     seen = perform Metrics::MetricsFx.hit path
     match startsWith path "/api"

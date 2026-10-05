@@ -1,0 +1,9 @@
+flowchart TD
+    accTitle: A mobile host completes an outside operation
+    accDescr: An Osprey event handler produces a new model and a command. The native host executes the command and sends a completion event. A later Osprey update checks that event and produces the next model.
+    A["User event"] --> B["Osprey update"]
+    B --> C["Model + command"]
+    C --> D["Native host performs HTTP or SQL"]
+    D --> E["Completion event"]
+    E --> F["Osprey checks result"]
+    F --> G["Next model + view"]

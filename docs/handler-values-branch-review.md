@@ -1,5 +1,7 @@
 # Handler-values branch review
 
+Historical review of the revisions named below. For current syntax and support, use the [effects guide](../website/src/docs/algebraic-effects.md) and [delivery plan](plans/0016-algebraic-effects-and-handlers.md).
+
 Reviewed on 2026-09-20: `codex/handler-values` at `0a92010a7ad7efcebff23d1055b37c4711f80c98`, against `main` / `origin/main` at `152be13fc0a9ec2e511d2f75771d61ebe0a9a346`.
 
 **Verdict: CI is green and I found no weakening of CI gates or existing corpus assertions. There is one confirmed defect in the new static/dynamic composition support. Several older compiler limitations also survive behind the new handler syntax.** Fix the composition defect before presenting static and runtime handlers as interchangeable. This is a working breaking prototype, not completion of the effects specification.

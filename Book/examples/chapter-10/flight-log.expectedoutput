@@ -1,0 +1,6 @@
+fixture: Flight Log: Build a small Osprey CLI
+invalid: Cannot load: title is empty
+read error: Cannot load: permission denied
+write error: Cannot save: disk full
+fixture save: Saved 24 bytes; Flight Log: Build a small Osprey CLI
+native save: Saved 24 bytes; Flight Log: Build a small Osprey CLI

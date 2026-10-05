@@ -31,14 +31,17 @@ enum SmokeCheck {
     private static func behaviorChecks() -> [(String, Bool)] {
         let start = osprey_reset()
         let count = (0..<5).reduce(start) { value, _ in osprey_increment(value) }
+        let initialCalls = HostLog.calls
         let callbackStatus = osprey_notify(count)
+        let repeatedStatus = osprey_notify(count)
         return [
             ("integer return", start == 0 && count == 5),
-            ("checked overflow", osprey_increment(Int64.max) == Int64.max),
+            ("saturating overflow", osprey_increment(Int64.max) == Int64.max),
             ("decrement floor", osprey_decrement(0) == 0 && osprey_decrement(count) == 4),
             ("boolean return", !osprey_milestone(4) && osprey_milestone(count)),
             ("allocated string return", ospreyString(osprey_summary(count)) == "Count: 5"),
-            ("Swift host callback", callbackStatus == 8 && HostLog.message == "Count: 5")
+            ("Swift host callback", callbackStatus == 8 && HostLog.message == "Count: 5"),
+            ("reusable log handler", repeatedStatus == callbackStatus && HostLog.calls == initialCalls + 2)
         ]
     }
 }

@@ -31,6 +31,10 @@ Deliver the same usable GitHub Issue Inbox on iPhone and Android. Osprey owns th
 5. Relaunch against the saved SQLite snapshot and verify the cache and bookmarks survive without requiring another network request.
 6. Record the actual commands and results here, and update the spec's implementation status only when both platform checks pass. Earlier platform acceptance is recorded; final release revalidation remains open below.
 
+## Callable handler migration
+
+The shared application now requests SQL and HTTP command descriptions through `Storage::Requests` value operations. `App` installs the reusable `Storage::commands` handler around each update; tests capture typed requests with alternative handlers. C exports, command JSON, completion events, and native host responsibilities retain the same contract. Current migration checks are recorded in the [application README](../../examples/mobile/README.md#validation); earlier device results below predate this change.
+
 ## Recorded validation
 
 - The final iOS simulator smoke returned `OSPREY_INBOX_SMOKE_OK`. The signed Issue Inbox application installed and launched on a physical iPhone 16 and returned the same success marker. Physical-device diagnostics showed eight live public GitHub issues, saved bookmarks, and no application error.

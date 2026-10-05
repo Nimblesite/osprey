@@ -1,6 +1,7 @@
 ---
+mlTwins: manual
 author: Christian Findlay
-description: Build Osprey web apps with a WebAssembly model/update core and React renderer. Learn the ABI, state loop, commands, effects, routing, building, and deployment.
+description: Build Talon Bank with reusable storage, audit and browser-render handlers, an Osprey WebAssembly application, and a React host.
 layout: page
 permalink: /docs/web-apps/
 tags:
@@ -12,19 +13,11 @@ tags:
 title: Building Osprey Web Apps with React and WebAssembly
 ---
 
-# Building Osprey Web Apps with React and WebAssembly
+[Talon Bank](https://github.com/Nimblesite/osprey/tree/main/examples/projects/modules) uses algebraic effects for storage, audit logging and browser rendering. Reusable handlers select SQLite and console output on the server, or the browser bridge in the WebAssembly client. Tests replace these implementations around the same application code.
 
-*By Christian Findlay · Last verified 23 July 2026*
+Osprey owns the model, transitions, routes, validation and view description. A JavaScript host executes browser commands and gives the view to React, which updates the DOM. Start with the [effects guide](/docs/effects/) if `handler` and `perform` are new to you.
 
-Osprey Web Apps put the application model, update logic, routing, validation, and declarative view construction in Osprey compiled to WebAssembly. A small JavaScript host turns the emitted view document into React elements, lets React reconcile the browser DOM, and sends browser events back to Osprey.
-
-The result is not “React components written in Osprey.” It is a coarse message boundary between two runtimes:
-
-- **Osprey owns application decisions**: model schema, transitions, routes, validation, page selection, view data, and requested browser work.
-- **The JavaScript host owns browser integration**: Wasm startup, memory copies, React, DOM events, `fetch`, focus, history, and diagnostics.
-- **React owns DOM reconciliation**: it receives a complete element description on each render and updates the existing DOM.
-
-> **Current status, verified 23 July 2026:** the repository ships the Wasm web ABI and a complete reference application, [Talon Bank](https://github.com/Nimblesite/osprey/tree/main/examples/projects/modules). The host is still a private, example-specific package rather than a published framework package or `osprey new web` scaffold. Treat its protocol as the implementation to reuse and the example as the starting template.
+The host is an application reference in this repository. Its protocol and source can be adapted for another app; there is no published framework package or `osprey new web` scaffold.
 
 ## The architecture at a glance
 
@@ -59,21 +52,32 @@ This is a whole-document protocol. Osprey does not call JavaScript once per comp
 | React | Element creation and reconciliation inside one root | The authoritative application model |
 | Native Osprey server in Talon Bank | HTTP routes, SQLite adapter, storage/audit handlers, embedded assets | Browser rendering |
 
-That division is architectural, not magical. The current compiler does not turn arbitrary Osprey code into a React component, and the Osprey Wasm runtime does not provide browser networking. The host is the adapter between those worlds.
-
 ## The complete startup and event loop
 
 The [client entry point](https://github.com/Nimblesite/osprey/blob/main/examples/projects/modules/client/src/main.ospml) defines the browser-facing dispatcher and `main`:
 
-``` osprey-ml
+```osprey-ml
+// Browser composition root. The compiler exposes osprey_web_dispatch as a
+// callable wasm export; _start invokes main for the initial render.
 namespace talon
 
 import talon::App
+import talon::Bridge
 
-osprey_web_dispatch : string -> int
-osprey_web_dispatch payload = App::receive payload
+extern osprey_web_render (payload : string) -> int
 
-main () = App::start ()
+browser () = handler Bridge::Render
+    present envelope =>
+        _rendered = osprey_web_render envelope
+        envelope
+
+osprey_web_dispatch payload =
+    _envelope = App::receive (browser ()) payload
+    0
+
+main () =
+    _envelope = App::start (browser ())
+    0
 ```
 
 The sequence is:
@@ -81,13 +85,13 @@ The sequence is:
 1.  The host decodes or fetches the `.wasm` bytes and calls [`WebAssembly.instantiate`](https://developer.mozilla.org/en-US/docs/WebAssembly/Reference/JavaScript_interface/instantiate_static).
 2.  It supplies `wasi_snapshot_preview1` plus the `osprey_web.render` and `osprey_web.command` imports.
 3.  The host attaches the module's exported linear `memory`, then calls `_start`.
-4.  WASI's `_start` reaches Osprey `main`, which calls `App::start`.
-5.  `App::start` creates `Model::initial()` and asks for the initial account and activity data with `Commands::hydrate()`.
-6.  `App::present` builds `{model, view, commands}` and calls the imported `osprey_web_render` function.
+4.  WASI's `_start` reaches Osprey `main`, which passes the `browser ()` handler to `App::start`.
+5.  `App::start` runs its render callback under that handler. It creates `Model::initial()` and asks for the initial account and activity data with `Commands::hydrate()`.
+6.  `App::present` builds `{model, view, commands}` through `Bridge::present`; its `Render.present` handler calls the imported `osprey_web_render` function.
 7.  JavaScript synchronously reads the NUL-terminated JSON string from Wasm memory, stores its opaque `model`, converts `view` to React elements, and calls the React root's `render` method.
 8.  After React has been asked to commit, the host executes the envelope's commands. This ordering matters for a focus command whose target has just appeared.
 9.  A browser event is flattened to JSON. The host adds the latest model, writes the UTF-8 bytes plus a trailing NUL into Wasm memory, and calls `osprey_web_dispatch`.
-10. Osprey decodes the model and event, returns the next model plus commands, and presents a new view. The loop repeats.
+10. The dispatcher installs a fresh browser handler, then Osprey decodes the model and event, returns the next model plus commands, and presents a new view. The loop repeats.
 
 Deep-link startup and browser back/forward use the same loop. The host dispatches `{kind:"location",value:window.location.hash}`; Osprey validates the route and selects the page.
 
@@ -234,31 +238,39 @@ This command pattern keeps `Update::dispatch` deterministic for a given event an
 
 ## Algebraic effects: what runs where
 
-“Effect” has two related but distinct meanings in this architecture:
+The server declares `Ledger::Store` for storage and `Api::Audit` for logging. `Ledger::sqlite db` creates a callable storage handler capturing the database. The startup boundary composes it with the audit handler:
 
-1.  **Browser command effects** are JSON values such as `http`, `focus`, and `navigate`. They are the mechanism used by the current Wasm client.
-2.  **Osprey algebraic effects** are language constructs declared with `effect`, invoked with `perform`, and interpreted by a lexical `handle` region.
+```osprey-ml
+storage = Ledger::sqlite db
+consoleAudit = handler Api::Audit
+    log line => print "[audit] ${line}"
+consoleAudit (\() => storage (\() => serve db))
+```
 
-The Talon browser client uses the first mechanism. Its `client/src` files do not declare or perform algebraic effects. `osprey_web_render` is an extern call, not an algebraic effect.
+Creating either handler installs nothing. Calling it with a callback installs it while that work runs. Tests supply an in-memory store, reuse it across operations, and create independent stores for separate scenarios. The surrounding `Metrics::track` block supplies the request counter.
 
-The native Talon server demonstrates the language feature instead:
+The client uses the same handler model for its rendering boundary. In [`Bridge`](https://github.com/Nimblesite/osprey/blob/main/examples/projects/modules/client/src/bridge.ospml):
 
-- `Ledger::Store` describes storage operations without embedding SQLite in API code.
-- `Api::Audit` describes audit logging.
-- the `Metrics` state module owns a mutable request counter inside its handler region; importing the module does not initialize global state.
-- `main.ospml` installs handlers that bind those operations to SQLite, console output, and the metrics cell.
+```osprey-ml
+export effect Render
+    present : string => string
 
-The module graph and the browser's limited import surface keep the UI away from SQLite: the browser can issue HTTP commands, while only the native composition root imports and installs the storage implementation.
+// The browser-only main file installs this policy.
+browser () = handler Bridge::Render
+    present envelope =>
+        _rendered = osprey_web_render envelope
+        envelope
+```
 
-### What algebraic effects compile to on Wasm
+`Bridge::present` builds the envelope and calls `perform Render.present envelope`. Both startup and the exported event dispatcher install the `browser ()` handler around the application callback. A test can replace the render operation and inspect that envelope without invoking the JavaScript host.
 
-The parser lowers both Osprey flavors to the same effect AST. Type inference checks operation argument/result types and uses declared effect rows to resolve generic effect instantiations before target-specific code generation.
+Browser commands such as `http`, `focus` and `navigate` remain JSON data inside the envelope. JavaScript executes them and returns asynchronous HTTP results as new events. A value handler returns the render result immediately; it does not suspend Osprey until the network responds.
 
-A handler arm for a declared value operation compiles to an ordinary function. The handled region pushes effect/operation/function/environment entries onto the runtime handler stack; `perform` looks up the innermost matching entry and calls it. This stack is included in the Wasm runtime and its mutexes become no-ops in the current single-threaded Wasm build. The arm's returned value becomes the operation result and the performer continues.
+### Target support
 
-An operation declared `control` takes a different path, whether or not its arm contains `resume`. Native Osprey runs the handled body on a pthread and uses condition variables to suspend and resume its single-shot continuation. The compiler rejects a dynamic control handler on `wasm32-wasip1` before LLVM or linking, naming the operation and missing continuation capability. A thread-free continuation or CPS backend is future work.
+Callable value handlers, rest-of-block `handle` and static interpretation work on WebAssembly. `handle static` removes effect dispatch during compilation; dynamic value handlers use the runtime handler stack. The compiler checks operation types and missing handlers before generating code.
 
-> **Current boundary:** Omitting `!Effect` requests inference; it does not declare purity. The checker rejects a known `perform` that reaches program entry without a matching handler, and a written row bounds a function's inferred operations. Function types do not yet carry independently quantified, scoped effect rows, so this is not the complete static capability system specified for reusable interfaces. Runtime `unhandled effect` is a defensive guard. See the implementation status in [plan 0016](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0016-algebraic-effects-and-handlers.md).
+Dynamic `control` operations require native continuation support and are rejected for WebAssembly and mobile targets. General independently quantified effect rows remain unfinished; the current checker follows operation requirements through the closed program. See [feature status](/status/#algebraic-effects) and [plan 0016](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0016-algebraic-effects-and-handlers.md).
 
 ## How an Osprey project becomes `.wasm`
 
@@ -385,10 +397,8 @@ When extending the framework:
 - The JSON view, event, command, and model schemas are application conventions rather than compiler-checked framework types, and there is no protocol-version negotiation.
 - Rendering sends the complete view document and serializes the model on every event; there is no incremental Wasm-side component protocol.
 - The renderer is client-only. It uses `createRoot`, not server rendering or `hydrateRoot`, so initial app content is not pre-rendered HTML.
-- Wasm Osprey cannot directly use the native fiber, socket HTTP/WebSocket, FFI, process, terminal, or file runtimes. Referencing unavailable runtime symbols fails at link time.
+- WebAssembly rejects unsupported fibers, socket HTTP/WebSocket, process, terminal and arbitrary C imports before code generation. Approved browser imports and supported host filesystem operations remain available.
 - Dynamic control handlers require native continuation support; value-operation handlers work on Wasm.
-- First-class handler values and multi-handler installation are not implemented.
-- Effect-row coverage is not yet fully enforced at compile time.
 - The current Wasm runtime uses the non-reclaiming allocator, so a long-lived app must watch linear-memory growth.
 - Routing is hash-based only. The example has no pathname deep links, route parameters, query parser, or React Router integration.
 - HTTP commands run concurrently without cancellation, timeout, or stale-response generation checks; applications with overlapping requests must add those policies.
@@ -412,10 +422,15 @@ cargo test -p osprey-cli wasm::tests
 
 The browser suite covers Wasm boot, route changes, HTTP round trips, model updates, forms, responsive navigation, bridge telemetry, and injection-safe text rendering. The compiler's Wasm differential suite separately compares the portable Osprey examples with their native expected output.
 
+## Native Android and iOS
+
+The [native Talon Bank apps](https://github.com/Nimblesite/osprey/tree/main/examples/projects/modules/mobile) reuse these Osprey screens, validation, state transitions, and command descriptions. SwiftUI and Android widgets render the same view tree; a mobile handler returns its envelope through the C ABI. They connect to the same bank API, with native form controls and a shared font and palette. See the mobile README for build commands and platform test results.
+
 ## Related documentation
 
 - [WebAssembly target specification](/spec/0022-webassemblytarget/)
-- [Algebraic effects specification and current status](/spec/0017-algebraiceffects/)
+- [Algebraic effects guide](/docs/effects/)
+- [Algebraic effects specification](/spec/0017-algebraiceffects/)
 - [Modules, namespaces, and state modules](/spec/0025-modulesandnamespaces/)
 - [Memory-management backends](/spec/0018-memorymanagement/)
 - [React `createRoot`](https://react.dev/reference/react-dom/client/createRoot)

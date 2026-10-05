@@ -1,0 +1,10 @@
+flowchart TD
+    accTitle: Check outside data before using it
+    accDescr: A storage handler returns either a read error or raw text. Decoding raw text returns either a validation error or an Entry. Only an Entry reaches summary.
+    A["Storage handler"] --> B{"Read result"}
+    B -->|Error| C["Keep error"]
+    B -->|Success| D["Raw text"]
+    D --> E{"decodeTitle"}
+    E -->|Error| F["Keep error"]
+    E -->|Success| G["Entry"]
+    G --> H["Pure summary"]

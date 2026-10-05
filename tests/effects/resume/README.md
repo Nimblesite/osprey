@@ -1,7 +1,6 @@
 # Explicit resume and early-exit tests
 
-These paired Default/ML suites exercise handlers whose regions contain
-`resume`. The handled computation pauses at `perform`; `resume(value)` supplies
+These paired Default/ML suites exercise operations declared `control`. The handled computation pauses at `perform`; `resume(value)` supplies
 that operation's result and runs the remaining computation. Returning from the
 selected branch without `resume` stops the remaining work and makes the arm's
 value the answer of the whole handler.
@@ -30,8 +29,7 @@ internal oracles, then assert operation counts, supplied values, abort behavior,
 handler reachability and settlement order.
 
 Resume is currently deep, single-shot and native-only. A second resume of a
-completed continuation aborts with a clear diagnostic. Direct handlers that do
-not contain `resume` do not use this runtime and can compile to WebAssembly.
+completed continuation aborts with a clear diagnostic. Value operations do not use this runtime and can compile to WebAssembly. A control operation still requires native support when its arm returns without resuming.
 A resuming region may finish with a dynamic string under every memory backend;
 the case is asserted here rather than avoided.
 

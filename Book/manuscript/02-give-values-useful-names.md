@@ -115,7 +115,7 @@ Add one more input, `minutesPerSession`, and calculate the planned time:
 
 ```osprey
 fn plannedMinutes(sessionCount, minutesPerSession) =
-    sessionCount * minutesPerSession
+    checkedMul(sessionCount, minutesPerSession)
 
 fn summary(owner, goal, isActive, sessionCount, minutesPerSession) =
     "${owner} | goal: ${goal} | active: ${isActive} | sessions: ${sessionCount} | minutes: ${plannedMinutes(sessionCount, minutesPerSession)}"
@@ -145,12 +145,12 @@ Immutability does not mean an application can never represent change. Later the 
 
 ## Arithmetic keeps failure visible
 
-You might expect `3 * 25` to have the integer value `75`. In Osprey, integer arithmetic is checked for overflow. The multiplication therefore produces a `Result` with one of two shapes:
+The call `checkedMul(3, 25)` checks whether the product fits in an integer. It returns a `Result` with one of two shapes:
 
 - `Success(75)` when the answer fits in an integer;
 - `Error(integer overflow)` when it does not.
 
-![Two integer inputs flow through checked multiplication to either a successful value or an overflow error.](assets/diagrams/02-expression-flow.png)
+![Two integer inputs flow through checkedMul; 3 and 25 produce Success(75), while inputs whose product overflows produce Error.](assets/diagrams/02-expression-flow.png)
 
 *Figure 2.2 — Checked arithmetic refuses to replace an impossible answer with a plausible wrapped number.*
 
@@ -158,7 +158,7 @@ The full summary prints the successful result as `Mika | goal: Build a small Osp
 
 For now, leave the result visible. Chapter 7 will open both branches with `match` and decide what the Flight Log should do on failure. Introducing the shape now prevents a dangerous assumption: integer operations do not silently wrap around to a different number.
 
-Floating-point arithmetic follows different machine rules and does not use this checked integer `Result` contract. That distinction matters when choosing a numeric model. A count of sessions is an integer, so the checked behavior is appropriate.
+The name `checkedMul` selects this explicit `Result` contract. Plain integer `*` produces an integer and requires an `Arith` handler for overflow; Chapter 9 introduces handlers. Floating-point arithmetic has different machine rules. For this count of minutes, `checkedMul` makes both success and failure visible without an effect handler.
 
 ### Try it: follow the expression
 
@@ -182,7 +182,13 @@ fn main() = {
 
 Run `osprey flight-log.osp --check`. The check fails at the attempted assignment because `sessionCount` was bound with `let` and cannot be reassigned.
 
-Read the real diagnostic rather than memorising wording that may change while Osprey is in alpha. It should identify the location, the immutable name, and the forbidden assignment.
+The book stores this rejected program in `examples/chapter-02/failscompilation/immutable-assignment.osp`. Checked from `Book`, its current diagnostic is:
+
+```text
+examples/chapter-02/failscompilation/immutable-assignment.osp:3:4: cannot assign to immutable variable `sessionCount`
+```
+
+Here the compiler includes a line and column, as well as the immutable name and forbidden assignment. A different source path changes the path in the message.
 
 The repair is not to search for a spelling that forces mutation. Decide which fact the program means:
 
@@ -200,7 +206,7 @@ Replace the Chapter 1 source with the complete Chapter 2 program in `examples/ch
 
 ```osprey
 fn plannedMinutes(sessionCount, minutesPerSession) =
-    sessionCount * minutesPerSession
+    checkedMul(sessionCount, minutesPerSession)
 
 fn summary(owner, goal, isActive, sessionCount, minutesPerSession) =
     "${owner} | goal: ${goal} | active: ${isActive} | sessions: ${sessionCount} | minutes: ${plannedMinutes(sessionCount, minutesPerSession)}"
@@ -233,8 +239,8 @@ Update flight-log.osp in Osprey Default flavor.
 
 Keep one immutable binding for the owner, goal, active status, session count,
 and minutes per session. Name each value for its role in the Flight Log, not
-for its type. Keep plannedMinutes pure and let checked integer multiplication
-return its Result visibly. Build one summary string and use only one print path.
+for its type. Keep plannedMinutes pure and use checkedMul so multiplication
+returns a visible Result. Build one summary string and use only one print path.
 Do not add inferable type annotations or mutable bindings.
 
 Run:
@@ -264,4 +270,5 @@ Chapter 3 follows the types the compiler inferred through these same expressions
 - Osprey [Type System](https://github.com/Nimblesite/osprey/blob/main/docs/specs/0004-TypeSystem.md) for inferred primitive types and function results.
 - Osprey [String Interpolation](https://github.com/Nimblesite/osprey/blob/main/docs/specs/0006-StringInterpolation.md) for embedded value rendering.
 - Osprey [Error Handling](https://github.com/Nimblesite/osprey/blob/main/docs/specs/0013-ErrorHandling.md) for checked integer arithmetic and visible overflow.
-- The executable Chapter 2 Flight Log source and expected output in `examples/chapter-02/`.
+- Osprey [Arithmetic Effects](https://github.com/Nimblesite/osprey/blob/main/docs/specs/0037-ArithmeticEffects.md) for the distinction between ordinary operators with an `Arith` policy and the explicit `checkedMul` result.
+- The executable Chapter 2 Flight Log, expected output, and immutable-assignment rejection fixture in `examples/chapter-02/`.

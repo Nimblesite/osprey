@@ -58,7 +58,7 @@ module Layout
         true =>
             head = UI::node "div" (UI::prop "className" "modal-heading") (UI::node "div" "" (UI::leaf "span" (UI::prop "className" "eyebrow") "NEW TALON ACCOUNT" + "," + UI::leaf "h2" (UI::prop "id" "open-account-title") "Open account" + "," + UI::leaf "p" "" "Create a protected client account in one step.") + "," + UI::button "close-modal" "icon-button modal-close" "Close" "×")
             owner = UI::field "new-owner" "name" "Account owner" "Full legal name" "text"
-            reassurance = UI::node "div" (UI::prop "className" "modal-reassurance") (UI::leaf "span" "" "◇" + "," + UI::leaf "p" "" "Storage access remains server-side. Your browser receives only the account response.")
+            reassurance = UI::node "div" (UI::prop "className" "modal-reassurance") (UI::leaf "span" "" "◇" + "," + UI::leaf "p" "" "Storage access remains server-side. The app receives only the account response.")
             actions = UI::node "div" (UI::prop "className" "modal-actions") (UI::button "cancel-modal" "button secondary" "Cancel" "" + "," + UI::node "button" (UI::prop "type" "submit" + "," + UI::prop "className" "button primary") (UI::leaf "span" "" "Open account" + "," + UI::leaf "span" "" "→"))
             form = UI::node "form" (UI::prop "id" "submit-open-account" + "," + UI::prop "event" "submit" + "," + UI::prop "className" "modal-form") (head + "," + owner + "," + reassurance + "," + actions)
             UI::node "div" (UI::prop "className" "modal-backdrop") (UI::node "section" (UI::prop "className" "modal" + "," + UI::prop "role" "dialog" + "," + UI::prop "aria-modal" "true" + "," + UI::prop "aria-labelledby" "open-account-title") form)

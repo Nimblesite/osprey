@@ -10,9 +10,17 @@ A value supplied when calling a function. In `greet("Mika")`, the string `"Mika"
 
 A name connected to a value. Default flavor writes an immutable binding as `let name = "Mika"`. The name helps later expressions refer to that value; it does not imply a box that must change.
 
+## Callback
+
+A function passed as a value so another piece of code can call it. In `mika(greeting)`, the handler receives `greeting` and calls it after installing its operations. A callback does not by itself imply asynchronous execution.
+
 ## Compiler
 
-The program that reads Osprey source, checks it, and produces a native program or WebAssembly module. Running with `--check` stops after checking.
+The program that reads Osprey source, checks it, and produces a native program, WebAssembly module, or mobile library. Running with `--check` stops after checking.
+
+## Continuation
+
+The work remaining after a suspended operation. A handler for a declared `control` operation can use `resume(value)` to continue that work or answer the surrounding handler call without continuing. Current dynamic resumptions in native executables are single-shot: at most one resumption of each captured remainder. WebAssembly and mobile library targets currently reject dynamic `control` operations.
 
 ## Default flavor
 
@@ -20,7 +28,7 @@ The book's teaching surface and Osprey's default source syntax. It uses `.osp` f
 
 ## Effect
 
-A typed request for work outside an ordinary calculation, such as logging or storage. The code performing an effect asks for an operation; a handler decides how to answer it.
+A typed interface through which code requests an operation, such as reading configuration, reporting progress, or accessing storage. The code uses `perform` to ask; a handler decides how to answer.
 
 ## Expression
 
@@ -28,7 +36,7 @@ Code that produces a value. A string, a function call, a `match`, and many block
 
 ## Fiber
 
-A lightweight unit of concurrent work. Osprey fibers communicate by sending values rather than sharing mutable state.
+A concurrent computation created with `spawn`; `await` receives its result. In the normal native runtime, each fiber uses one operating-system thread. Fibers can exchange values through channels and share ownership of immutable allocations; they do not have separate heaps.
 
 ## Flavor
 
@@ -40,7 +48,7 @@ A named or anonymous transformation from input values to an output value. A func
 
 ## Handler
 
-Code that gives meaning to one or more effect operations for a particular region of a program.
+An implementation of effect operations for a region of a program. A callable `handler` value is applied to the work, as `h(work)`; a block-scoped `handle` governs the remaining statements in its block. Value operations supply a result to their caller. Operations declared `control` may resume or abandon the remaining computation.
 
 ## Immutable
 
@@ -50,13 +58,29 @@ Unable to be reassigned after creation. Most Osprey bindings are immutable, so a
 
 The compiler's ability to work out types from how values are created and used. Inference keeps strong checking while removing obvious annotations.
 
+## Memory backend
+
+The runtime's method for managing allocated values. The default backend retains general allocations. Tracing garbage collection (`gc`) and automatic reference counting (`arc`) are separate native options with platform limits; WebAssembly and mobile libraries currently support only the default backend.
+
 ## ML flavor
 
-An optional Osprey source flavor using indentation-based layout, whitespace application, and currying by default. This book teaches it as an alternative after the shared language ideas are comfortable.
+An optional Osprey source flavor using `.ospml` files, indentation-based layout, whitespace application, and currying by default. This book teaches it as an alternative after the shared language ideas are comfortable.
+
+## Module
+
+A named group of declarations with an explicit public boundary. A project can contain several source files and import exported declarations across Default and ML flavors. Imports refer to logical names rather than file paths.
 
 ## Native program
 
 A program compiled for a particular operating system and processor, without a virtual machine or JIT warm-up. Osprey produces native code through LLVM and clang.
+
+## Operation
+
+A named request declared by an effect, with specified argument and result types. `perform Learner.name()` requests the `name` operation. A value operation returns its handler arm's answer to the requesting code; a declared control operation gives its handler a suspended remainder to resume or abandon.
+
+## Package
+
+A distributable unit of reusable project code. Osprey's package registry and manager are planned; existing project modules and imports do not require them.
 
 ## Parameter
 

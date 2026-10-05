@@ -1,199 +1,54 @@
 # Algebraic effect tests
 
-These assertion suites are executable documentation for Osprey's algebraic
-effects. Every behavior is tested in both Default (`.osp`) and ML (`.ospml`)
-syntax. The two files in each pair describe the same program and compile through
-the same checker and native backend.
+These Default (`.osp`) and ML (`.ospml`) suites exercise the current effects implementation. Each pair shares an expected output. Start with the [runnable guide](../../examples/handlers/README.md); the [specification](../../docs/specs/0017-AlgebraicEffects.md) defines the contract and [plan 0016](../../docs/plans/0016-algebraic-effects-and-handlers.md) tracks unfinished work.
 
-## The basic model
-
-An `effect` names an operation and its input and output types. `perform` asks the
-nearest matching handler to carry out that operation. `handle … in` installs the
-policy around the code that may ask.
-
-The operation result always has the declared type. What happens around that
-result depends on whether the handler region uses `resume`.
-
-### Direct substitution
-
-If no arm in a handler region contains `resume`, the arm's return value becomes
-the result of `perform`. The caller continues immediately after the operation.
-This is useful for defaults, test doubles, collecting validation errors and
-replacing infrastructure without passing it through every intermediate
-function.
-
-For example, if `Missing.value` returns `int`, this handler makes the failed
-operation evaluate to `42`:
+## Request work and choose its implementation
 
 ```osprey
-handle Missing
-    value key => 42
-in load()
+effect Read { value: fn() -> int }
+fn work() = perform Read.value()
+let live = handler Read { value => 41 }
+let test = handler Read { value => 7 }
+print("${live(work)} ${test(work)}")
 ```
 
-Returning `42` here does **not** stop `load`. It supplies a value and lets
-`load` continue. The paired [direct recovery suites](errors/README.md) exercise
-that rule across nested policies, repeated failures, handler-owned state,
-multiple result types, recursion and outer effects.
+`handler` creates a callable value. Calling it with `work` installs its implementation before calling the function. `handle Read { value => 41 }` inside a block instead handles the rest of that block. The removed `handle ... in/do ...` forms are rejected.
 
-Because `handle … in` is an expression, the policy does not have to be written
-where the logic is. A function that returns one is an implementation the caller
-passes in:
+An ordinary operation is a **value operation**: its arm returns the operation result and the caller continues. The [recovery suites](errors/README.md) test defaults, validation reports, shared state, generic results, and nested policies. The [injection suites](injection/README.md) run the same work under real and test storage/logging implementations.
+
+## Control operations choose whether to continue
 
 ```osprey
-fn withDiskStorage(action) = handle Storage
-    save key contents => writeFile(key, contents) ?: 0
-    load key => readFile(key) ?: ""
-in action()
+effect Ask { control value: fn() -> int }
+fn work() = perform Ask.value()
+let continueWith = handler Ask { value => resume(41) }
+let stop = handler Ask { value => 0 }
+print("${continueWith(work)} ${stop(work)}")
 ```
 
-The same logic then runs against the real file system, against an in-memory
-test double that records every call, or against a policy that refuses to write
-— chosen at the call site, with no change to the code performing the
-operations. The paired [injection suites](injection/README.md) hold that
-pattern end to end, including the mock verification a file system cannot
-offer.
+`control` on the declaration selects continuation behavior. `resume(value)` supplies the operation result and runs the remaining work; its return is the completed handler answer. Returning without resuming abandons that work. Adding or removing an unreachable `resume` never changes an operation's mode.
 
-### Explicit resume and early exit
+A `return value => expression` clause transforms normal completion. A control arm's answer bypasses that clause. See the [resume suites](resume/README.md) and [answer-transform examples](../../examples/handlers/README.md#transforming-the-answer).
 
-If any arm in a handler region contains `resume`, Osprey runs the handled code
-as a suspended continuation. `resume(value)` supplies the current operation
-result and runs the rest of that code. When it finishes, `resume` itself returns
-the completed answer to the handler arm.
+## Scope and checking
 
-In that continuation mode, returning from an active branch without calling
-`resume` stops the suspended computation. That branch's value becomes the value
-of the whole `handle … in` expression. This is Osprey's exception-style early
-exit: the operation is named and typed, and the handler chooses whether to
-continue or stop.
+The innermost active matching handler answers an operation, including through helpers and callbacks. A partial handler covers only its declared arms and resolved generic instantiation. Arms run outside their own activation, allowing an operation to forward to an outer handler. Deep resumption reinstalls the suspended scope.
 
-The common shape is one operation arm with two branches:
+The compiler checks operation arguments, arm results, and required handlers at program entry. A function's effect annotation constrains its requirements; it does not install an implementation. Constructing a closure inside a handler does not handle calls made after that closure escapes. The current open-row callback support is a closed-program prototype; independently quantified rows remain unfinished.
 
-```osprey
-handle ParseFailure
-    parse text => match parseInt(text) {
-        Success { value } => resume(value)
-        Error { message } => 1
-    }
-in boot()
-```
+## Static handlers and target support
 
-The success branch continues `boot`; the error branch stops it and makes the
-whole handler evaluate to `1`. The paired [resume suites](resume/README.md)
-cover recovery, retry, early exit, nested handlers, unwind order, typed values
-and repeated suspension.
+`handle static E` and resolved `handler static E` values specialize all-value effects during compilation. The staged suites check captures, callback requirements, partial shadowing, and rejection of residual runtime dispatch. Removing dispatch does not imply all computation happens at compile time.
 
-Handler mode is currently selected for the whole region, not independently for
-each operation arm. Mixing a resuming operation with a non-resuming sibling can
-therefore change the sibling from substitution to early exit. This is tracked by
-[issue #177](https://github.com/Nimblesite/osprey/issues/177). Branching between
-`resume` and early exit inside one operation arm is the intended exception-style
-pattern.
-
-### How many times a request may be answered
-
-An operation also declares its **multiplicity** — `abort`, `once` (the default)
-or `many` — because a handler that resumes twice re-runs the remainder of the
-handled computation, so a body that sends an email sends it twice. `once` is
-affine: an arm may resume at most once on any one control path, and may resume
-zero times, which is the early exit above. The paired
-[multiplicity suites](multiplicity/README.md) hold the `[MULTI-FALSIFY]`
-programs that must be accepted and record what the whole gate measured.
-
-## Choosing an error shape
-
-| Need | Use | Behavior |
-| --- | --- | --- |
-| The immediate caller needs the failure | `Result<T, E>` | Match `Success` and `Error` as ordinary data |
-| A surrounding policy should supply a default | Direct effect handler | Return the operation value; the caller continues |
-| Validation should report every problem | Direct `Unit` operation | Handle each report and continue checking |
-| A policy should retry or rewrite a value | Resuming handler | Call `resume(value)` |
-| A policy should stop the remaining work | Resuming handler | Return from the selected branch without `resume` |
-
-## What the compiler checks today
-
-The compiler checks that effects, operations, arguments, handler parameters and
-operation results agree. It also infers operation requirements when return and
-effect annotations are omitted, propagates them through named and higher-order
-calls, and rejects a program entry with any undisclosed operation. An explicit
-row such as `!Logger` is a checked contract on the function body, not a handler
-and not permission for an unhandled call.
-
-Handler discharge is exact: only an operation named by an arm is removed, and
-only for the same resolved generic effect instantiation. A partial `Pair.first`
-handler leaves `Pair.second` outstanding; `Stash<string>` does not discharge
-`Stash<int>.put`. Nested partial handlers may cover complementary operations.
-A lambda's requirements remain latent while it is merely constructed and are
-checked when it is invoked, including after it escapes the lexical handler
-where it was created. A handler arm that performs its own active operation at
-the same generic instantiation is rejected as recursive re-entry. An uncovered
-operation or different instantiation may route to an enclosing matching
-handler. The runtime `unhandled effect` guard remains a defensive backstop for
-invalid compiler output, not the expected path for source-level error handling.
-
-Explicit resume is deep, single-shot and native-only. A resumed computation may
-perform the same effect again because its handler stays installed. Resuming the
-same completed continuation twice is rejected. WebAssembly supports direct
-substitution handlers, but not the current pthread-backed resume runtime.
-
-## Current critical defects
-
-The suites keep known failures visible as TAP skips rather than reporting them
-as successes or making unrelated CI unusable:
-
-- ~~[#182](https://github.com/Nimblesite/osprey/issues/182): resumable operations
-  silently replace arguments after the 16th with zero.~~ **Fixed.** Operands
-  travel in a heap mailbox instead of a fixed register window, so there is no
-  16-argument cliff. The former skip is now an assertion: the paired suite
-  performs a 17-argument operation and checks every position arrives intact.
-- ~~[#183](https://github.com/Nimblesite/osprey/issues/183): direct handlers
-  corrupt whole `Result<T, E>` operation values.~~ **Fixed.** A direct operation
-  may return a complete `Result`; `errors/direct_recovery.test.{osp,ospml}` case
-  10 passes in both flavors under default, `--memory=gc` and `--memory=arc`.
-  Explicit-resume transport keeps its separate coverage.
-- ~~[#184](https://github.com/Nimblesite/osprey/issues/184): a four-argument
-  curried ML function silently skipped handled effects.~~ **Fixed.** The
-  current block-handler version reports all four operations. The
-  `curried_effects` integration test also checks full and partial ML calls at
-  arities one through five through value and resuming handlers in default,
-  GC and ARC modes.
-- ~~[#185](https://github.com/Nimblesite/osprey/issues/185): a resuming handler
-  whose completed continuation answer is a dynamic string leaks an ARC
-  object.~~ **Fixed.** The managed-answer shape is now an assertion rather than
-  a skip: both the resume value and the answer are built at runtime, so neither
-  is an immortal literal, and the ARC exit audit sees no survivor.
-
-## Invalid programs
-
-The must-reject corpus under
-[`examples/failscompilation`](../../examples/failscompilation) checks both
-frontends for:
-
-- the wrong number of operation arguments;
-- a direct handler returning the wrong operation type;
-- `resume` receiving the wrong value type;
-- `resume` outside a handler arm; and
-- one generic recovery region being forced to incompatible types;
-- a direct or transitively inferred operation reaching program entry without a
-  matching handler;
-- partial handlers leaving an operation uncovered;
-- handlers and callees using different generic effect instantiations; and
-- recursive same-effect performance from a handler arm.
-
-Default fixtures use names such as `effect_perform_arity_mismatch.ospo`; their
-ML twins use the `ml_` prefix and an explicit flavor marker. Each fixture has an
-`.expectedoutput` file documenting the intended diagnostic. The harness requires
-every program to exit nonzero; focused diagnostic checks compare the captured
-message with that documented output.
+Value handlers and static discharge have portable native, WebAssembly, and mobile paths. Dynamic control operations currently require native execution, including control arms that never resume. Native resumption is deep and single-shot. The [multiplicity suites](multiplicity/README.md) distinguish retrying an operation from replaying the remaining computation; `many` remains unsupported.
 
 ## Run the tests
 
 ```sh
-target/release/osprey test tests/regressions/effects
-zsh crates/run_test_corpus.sh gc
-OSPREY_ARC_DEBUG=1 zsh crates/run_test_corpus.sh arc
+cargo build --release -p osprey-cli
+target/release/osprey test tests/effects/errors
+target/release/osprey test tests/effects/injection
+target/release/osprey test tests/effects/resume
 ```
 
-The first command runs internal assertions. The final two commands repeat the
-complete assertion corpus under tracing GC and ARC; ARC also requires zero live
-objects at exit.
+The differential corpus runner also compares both flavors across memory backends. Rejection fixtures live in [`examples/failscompilation`](../../examples/failscompilation). Compiler integration suites cover handler values, operation modes, answer transformations, and static selection.

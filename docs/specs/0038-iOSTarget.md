@@ -64,7 +64,7 @@ The sample implements `ios_host_log(const char *) -> int64_t` in Swift with `@_c
 
 The compiler checks the complete program before generating LLVM IR or invoking a native tool. An unsupported construct in a helper is rejected even when a top-level execution path does not call that helper. The diagnostic names the target, offending construct or operation, and the unsupported capability. `--check`, `--compile`, and `--llvm` enforce the same rules.
 
-Explicit `resume` and resumable effect handling are rejected for this C ABI target. A suspended Osprey continuation cannot cross or outlive a synchronous host call. Substituting effect handlers and effects eliminated at compile time remain available when their bodies use supported operations. Exported functions must discharge their own effect requirements.
+Dynamic `control` operations, including arms that never resume, are rejected for this C ABI target. A suspended Osprey continuation cannot cross or outlive a synchronous host call. Callable value handlers, block-scoped value handlers, and effects eliminated at compile time remain available when their bodies use supported operations. Exported functions must discharge their own effect requirements.
 
 Process launching and the built-in HTTP/WebSocket operations have no iOS implementation and are rejected at compile time. The Swift host supplies platform networking and services through explicit imports. The runtime includes allocation, strings, collections, JSON, file operations, fibers/channels, and ordinary effect handling. This does not authorize an effect continuation to cross the C boundary. GPU buffers and pure kernels use the existing CPU execution path; Metal execution is not implemented.
 

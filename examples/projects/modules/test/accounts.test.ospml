@@ -6,21 +6,18 @@
 // of an Account (escaping included), and the fixed-width TUI row.
 
 module Money
-    pennies : int -> string
     pennies c =
         remainder = c % 100
         match remainder < 10
             true => "0${remainder}"
             false => "${remainder}"
 
-    triple : int -> string
     triple n = match n < 10
         true => "00${n}"
         false => match n < 100
             true => "0${n}"
             false => "${n}"
 
-    group : int -> string
     group dollars = match dollars < 1000
         true => "${dollars}"
         false =>
@@ -28,33 +25,27 @@ module Money
             remainder = dollars % 1000
             "${group next},${triple remainder}"
 
-    export show : int -> string
-    show cents = "$${group (intDiv cents 100)}.${pennies cents}"
+    export show cents = "$${group (intDiv cents 100)}.${pennies cents}"
 
-    export positive : int -> bool
-    positive cents = cents > 0
+    export positive cents = cents > 0
 
 module Json
-    escape : string -> string
     escape s =
         bslash = "\\"
         quote = "\""
         step = replace s bslash (bslash + bslash) ?: ""
         replace step quote (bslash + quote) ?: ""
 
-    quoted : string -> string
     quoted s =
         quote = "\""
         quote + escape s + quote
 
-    export strField : string -> string -> string
-    strField key value = quoted key + ":" + quoted value
+    export strField key value = quoted key + ":" + quoted value
 
     export numField : string -> int -> string
     numField key value = quoted key + ":" + toString value
 
-    export obj : string -> string
-    obj members = "{" + members + "}"
+    export obj members = "{" + members + "}"
 
 type Account =
     id : int
@@ -71,8 +62,7 @@ module Accounts
     export namable : string -> bool
     namable owner = length owner > 0
 
-    export movable : int -> bool
-    movable cents = Money::positive cents
+    export movable cents = Money::positive cents
 
     export json : Account -> string
     json a = Json::obj (Json::numField "id" a.id + "," + Json::strField "owner" a.owner + "," + Json::numField "cents" a.balance + "," + Json::strField "balance" (Money::show a.balance))
@@ -87,7 +77,6 @@ module Accounts
 q = "\""
 
 (** A refusal is a domain value, not an error: classify one exhaustively. *)
-settle : Outcome -> string
 settle o = match o
     Landed balance => "landed ${balance}"
     Refused why => "refused ${why}"
@@ -138,13 +127,7 @@ rowCase () =
 
 bs = "\\"
 
-(** --- MOCKING VIA ALGEBRAIC EFFECTS ---
-
-    `Vault` is the same capability shape main.ospml wires to SQLite via
-    Ledger::Store. Business logic performs against the EFFECT; each test
-    installs its own handler — a mock — so one workflow is proven against
-    any storage behavior with no database, no injection framework, and
-    compile-time safety: forget a handler and the suite refuses to build. *)
+(** A small storage contract for testing the rent workflow without SQLite. *)
 effect Vault
     (** Read the balance held for `account`. *)
     balance : int => int
@@ -156,38 +139,41 @@ payRent account cents = match Accounts::movable cents && perform Vault.balance a
     true => perform Vault.debit account cents
     false => Refused(why = "blocked by guard")
 
-(** Mock 1: a flush account — every debit lands on a fixed 9000-cent float. *)
-flushVault () =
-    handle Vault
-        balance id => 9000
-        debit id cents => Landed(balance = satSub 9000 cents)
-    settle (payRent 1 2500)
-
-(** Mock 2: a broke account — the guard refuses before storage is even asked. *)
-brokeVault () =
-    handle Vault
-        balance id => 40
-        debit id cents => Landed(balance = 0)
-    settle (payRent 1 2500)
-
-(** Mock 3: interaction spy — proves the guard SHORT-CIRCUITS on a bad amount.
-    The arms are poisoned to PASS the guard and land if ever consulted: a
-    "landed"/"vault touched" result would unmask a zero-cent debit reaching
-    storage, so "refused blocked by guard" proves domain-only refusal. *)
-spyVault () =
-    handle Vault
-        balance id => 999999
-        debit id cents => Refused(why = "vault touched")
-    settle (payRent 1 0)
+(** Each factory call owns a balance; reusing its handler shares that balance.
+    The return clause converts the completed workflow's Outcome to text. *)
+vault opening =
+    mut balance = opening
+    handler Vault
+        balance _ => balance
+        debit _ cents =>
+            balance := satSub balance cents
+            Landed(balance = balance)
+        return outcome => settle outcome
 
 mockedVaultCase () =
-    landed = check ("flush vault lands the rent", "landed 6500", flushVault ())
-    refused = andThen landed (check ("broke vault refuses via the guard", "refused blocked by guard", brokeVault ()))
-    andThen refused (check ("zero cents never reaches storage", "refused blocked by guard", spyVault ()))
+    flush = vault 9000
+    broke = vault 40
+    rent = \() => payRent 1 2500
+    landed = check ("flush vault lands the rent", "landed 6500", flush rent)
+    reused = andThen landed (check ("reusing a handler keeps its balance", "landed 4000", flush rent))
+    andThen reused (check ("independent handler refuses via the guard", "refused blocked by guard", broke rent))
+
+guardCase () =
+    mut touched = false
+    spy = handler Vault
+        balance _ =>
+            touched := true
+            999999
+        debit _ _ =>
+            touched := true
+            Refused(why = "vault touched")
+    refused = check ("zero cents are refused", "refused blocked by guard", settle (spy (\() => payRent 1 0)))
+    andThen refused (check ("invalid amount performs no storage operations", false, touched))
 
 test "namable enforces a non-empty owner" namableCase
 test "movable enforces positive whole cents" movableCase
 test "Outcome classifies landed vs refused" outcomeCase
 test "Account renders escaped JSON" jsonCase
 test "Account renders an aligned TUI row" rowCase
-test "effect handlers mock the vault per test" mockedVaultCase
+test "handler values reuse state and isolate factory instances" mockedVaultCase
+test "invalid payments never perform storage operations" guardCase

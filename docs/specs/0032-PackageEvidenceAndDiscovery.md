@@ -15,6 +15,8 @@ The key words `MUST`, `MUST NOT`, `SHOULD`, and `MAY` are interpreted as BCP 14
 (RFC 2119 and RFC 8174) when capitalized. There are no implementation-selected
 weights, thresholds, priors, tie-breakers, or missing-data substitutions.
 
+The scoring, discovery, replay, simulation, and conformance implementations MUST all be Osprey under [the implementation-language contract](0029-PackageManagement.md#implementation-language-package-implementation-language). Independent test oracles and reference implementations MUST also be Osprey. Independence means separately derived algorithms and code, not an exception to the implementation-language requirement.
+
 ## Canonical arithmetic `[PACKAGE-EVIDENCE-ARITHMETIC]`
 
 All scores use unsigned basis points: `0` is 0.00 and `10_000` is 100.00. The
@@ -435,7 +437,7 @@ Every response identifies the policy, catalog, `asOf`, evidence and ledger
 snapshots, mode, cohort, candidate-set digest, component scores, exclusions,
 debts, tie-breaks, publisher-cap decisions, and VRF proof. Anyone can replay the
 response after the VRF proof is public. Conformance requires byte-identical
-golden vectors on two independent implementations.
+golden vectors on two independent Osprey implementations.
 
 A ranking policy deploys only when, on the signed editorial benchmark and
 28-day replay simulation, NDCG@10 falls by no more than 100 absolute basis points from

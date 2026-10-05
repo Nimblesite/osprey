@@ -34,9 +34,9 @@ Records, collections, closures, and effect handlers remain internal. A scalar wr
 
 ## Target capability checks [ANDROID-TARGET-CAPABILITIES]
 
-The compiler rejects resumable algebraic effects, including explicit `resume`, and unavailable native process, HTTP, and WebSocket operations. Diagnostics identify the target and offending operation before LLVM or linking. The same principle applies to [WASM](0022-WebAssemblyTarget.md) and iOS.
+The compiler rejects dynamic `control` operations, including arms that never resume, and unavailable native process, HTTP, and WebSocket operations. Diagnostics identify the target and offending operation before LLVM or linking. The same principle applies to [WASM](0022-WebAssemblyTarget.md) and iOS.
 
-Supported substituting handlers and effects eliminated during compilation remain usable. Platform networking is provided by the host through the C ABI or an application command protocol. Explicit scalar host imports remain legal; the final Android application link must provide their implementations.
+Callable value handlers, block-scoped value handlers, and effects eliminated during compilation remain usable. Platform networking is provided by the host through the C ABI or an application command protocol. Explicit scalar host imports remain legal; the final Android application link must provide their implementations.
 
 ## Compile and link [ANDROID-TARGET-LINK]
 

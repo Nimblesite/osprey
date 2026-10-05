@@ -1,0 +1,136 @@
+namespace talonmobile
+
+import talonmobile::Mobile
+import talonmobile::Support
+import talon::App
+import talon::Bridge
+import talon::Model
+import bank::Json
+
+startupCase () =
+    envelope = Mobile::start ()
+    check "model starts on overview" "overview" (Support::model envelope).route
+    check "loading state" "true" (Support::model envelope).loading
+    check "accounts requested" "accounts" (Support::projected envelope "commands[0].id")
+    check "accounts endpoint" "/api/accounts" (Support::projected envelope "commands[0].url")
+    check "activity requested" "activity" (Support::projected envelope "commands[1].id")
+    check "activity endpoint" "/api/activity" (Support::projected envelope "commands[1].url")
+    check "GET hydration" "GET" (Support::projected envelope "commands[0].method")
+    check "shared shell emitted" "app-shell" (Support::projected envelope "view.props.className")
+    check "loading skeleton" true (Support::hasClass envelope "page loading-page")
+
+hydrationCase () =
+    initial = Mobile::start ()
+    first = Support::http initial "activity" 200 (Support::activity ())
+    ready = Support::http first "accounts" 200 (Support::accounts ())
+    check "waits for both resources" "true" (Support::model first).loading
+    check "loading finishes in either order" "false" (Support::model ready).loading
+    check "accounts retained" (Support::accounts ()) (Support::model ready).accounts
+    check "journal retained" (Support::activity ()) (Support::model ready).activity
+    check "portfolio uses integer totals" true (Support::hasText ready "$2,000.50")
+    check "all clients visible" true (Support::hasText ready "Nora Okafor")
+    check "hydration does not loop" "MISSING" (Support::projected ready "commands[0].kind")
+
+handlerCase () =
+    recording = handler Bridge::Render
+        present envelope => "captured:" + Support::projected envelope "commands[0].id"
+    check "callable handler supplies native return value" "captured:accounts" (App::start recording)
+    check "handler reusable" "captured:accounts" (App::start recording)
+    nested = handler Bridge::Render
+        present envelope => perform Bridge::Render.present envelope
+    check "handler arms forward to outer handler" "captured:accounts" (recording (\() => App::start nested))
+
+restoreCase () =
+    loaded = Support::click (Support::loaded ()) "nav-activity"
+    searched = Support::input loaded "activity-search" "Amelia"
+    restored = Support::dispatch searched (Json::strField "kind" "restore")
+    check "opaque model survives native lifecycle" (Support::projected searched "model") (Support::projected restored "model")
+    check "view survives native lifecycle" searched restored
+    check "restore performs no HTTP" "MISSING" (Support::projected restored "commands[0].kind")
+
+routeCase route heading =
+    navigated = Support::click (Support::loaded ()) "nav-${route}"
+    check "route stored" route (Support::model navigated).route
+    check "native navigation command" "#/${route}" (Support::projected navigated "commands[0].url")
+    check "screen heading visible" true (Support::hasText navigated heading)
+    check "sidebar active state" true (contains navigated (Json::strField "aria-current" "page"))
+
+routesCase () =
+    routeCase "overview" "$2,000.50"
+    routeCase "accounts" "Client accounts"
+    routeCase "move" "Client funds, in motion"
+    routeCase "activity" "Activity"
+    routeCase "security" "Trust you can inspect"
+
+locationCase () =
+    loaded = Support::loaded ()
+    accounts = Support::location loaded "#/accounts"
+    direct = Support::location accounts "activity"
+    invalid = Support::location direct "#/unknown"
+    check "URL navigation" "accounts" (Support::model accounts).route
+    check "native route navigation" "activity" (Support::model direct).route
+    check "unknown route returns home" "overview" (Support::model invalid).route
+    check "location never loops navigation" "MISSING" (Support::projected direct "commands[0].kind")
+
+menuCase () =
+    opened = Support::click (Support::loaded ()) "toggle-menu"
+    closed = Support::click opened "toggle-menu"
+    navigated = Support::click opened "nav-move"
+    check "drawer opens" "open" (Support::model opened).menu
+    check "drawer marked for native renderers" true (Support::hasClass opened "sidebar open")
+    check "drawer toggles closed" "closed" (Support::model closed).menu
+    check "navigation closes drawer" "closed" (Support::model navigated).menu
+
+selectionCase () =
+    selected = Support::click (Support::loaded ()) "account-2"
+    deposit = Support::click selected "quick-deposit"
+    withdraw = Support::click selected "quick-withdraw"
+    transfer = Support::click selected "quick-transfer"
+    check "card selection persists" "2" (Support::model selected).selected
+    check "card opens accounts" "accounts" (Support::model selected).route
+    check "account owner is a heading node" true (contains selected (Json::strField "tag" "h2" + "," + Json::strField "text" "Luca Moretti"))
+    check "deposit mode" "deposit" (Support::model deposit).moveMode
+    check "withdraw mode" "withdraw" (Support::model withdraw).moveMode
+    check "transfer mode" "transfer" (Support::model transfer).moveMode
+    check "quick action moves screens" "move" (Support::model deposit).route
+    check "form uses selected account" true (contains deposit (Json::strField "defaultValue" "2"))
+
+modalCase () =
+    opened = Support::click (Support::loaded ()) "open-account"
+    cancelled = Support::click opened "cancel-modal"
+    closed = Support::click opened "close-modal"
+    check "modal opened" "open" (Support::model opened).modal
+    check "owner field receives focus" "new-owner" (Support::projected opened "commands[0].id")
+    check "focus command kind" "focus" (Support::projected opened "commands[0].kind")
+    check "accessible dialog" true (contains opened (Json::strField "role" "dialog"))
+    check "cancel dismisses" "closed" (Support::model cancelled).modal
+    check "close dismisses" "closed" (Support::model closed).modal
+
+test "native startup returns shared view and hydration commands" startupCase
+test "HTTP completions hydrate both resources in either order" hydrationCase
+test "callable effect handlers return and forward native envelopes" handlerCase
+test "native lifecycle restores the exact shared state and view" restoreCase
+test "all five screens use the same route transitions and headings" routesCase
+test "native and browser locations normalize and never loop" locationCase
+test "mobile drawer toggles and closes after navigation" menuCase
+test "account selection and quick actions preserve shared form defaults" selectionCase
+test "account modal exposes focus and accessible dismiss actions" modalCase
+
+test "activity filters share exact credit debit and refused semantics" filtersCase
+test "search matches owner and note without network access" searchCase
+test "search and filter intersect while totals remain complete" combinedFilterCase
+test "failed hydration remains visible and refresh retries both resources" failedLoadCase
+test "offline HTTP and ledger errors become actionable notices" transportErrorsCase
+test "empty accounts and journal render usable shared empty states" emptyCase
+test "unknown native events preserve model and view without commands" unknownEventCase
+
+test "deposit emits exact cents and preserves escaped Unicode notes" depositCase
+test "withdraw emits the shared protected ledger request" withdrawCase
+test "transfer emits exact source destination and integer amount" transferCase
+test "invalid forms reject before any native network request" invalidFormsCase
+test "money validation rejects precision grouping signs and overflow" moneyCase
+test "account creation trims names and closes modal after success" openAccountCase
+test "all successful mutations show matching notices and refresh" successesCase
+test "overdraft refusal preserves balances and refreshes the audit trail" refusalCase
+
+test "pending movement cannot be submitted twice before completion" pendingSubmissionCase

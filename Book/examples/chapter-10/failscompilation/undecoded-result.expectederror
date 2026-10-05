@@ -1,0 +1,1 @@
+examples/chapter-10/failscompilation/undecoded-result.osp: type mismatch: cannot unify string with Result<string, Error>

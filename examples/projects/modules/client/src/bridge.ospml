@@ -1,12 +1,12 @@
-// The complete React/WASM boundary: one coarse data crossing, no component FFI.
+// A callable value handler chooses how the shared app delivers its envelope.
 namespace talon
 
 import bank::Json
 
-extern osprey_web_render (payload : string) -> int
-
 module Bridge
-    export present : string -> string -> string -> int
-    present model view commands =
+    export effect Render
+        present : string => string
+
+    export present model view commands =
         envelope = Json::obj (Json::strField "model" model + "," + Json::rawField "view" view + "," + Json::rawField "commands" commands)
-        osprey_web_render envelope
+        perform Render.present envelope

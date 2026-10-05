@@ -72,7 +72,7 @@
       "width": 1600,
       "height": 1000,
       "chapter": 2,
-      "alt": "Two integer inputs flow through checked multiplication to either a successful value or an overflow error."
+      "alt": "Two integer inputs flow through checkedMul to either a successful product or an overflow error."
     },
     {
       "id": "flavors-converge",
@@ -90,7 +90,7 @@
       "master": "assets/diagrams/03-inference-trail.svg",
       "publication": "assets/diagrams/03-inference-trail.png",
       "width": 838,
-      "height": 1332,
+      "height": 1330,
       "alt": "String concatenation requires a string parameter; heading receives a string and returns a string.",
       "provenance": "Deterministic Mermaid source, rendered by Mermaid CLI with styles/mermaid.json; explanatory diagram, not a product capture."
     },
@@ -102,7 +102,7 @@
       "source": "assets/diagrams/03-annotation-choice.mmd",
       "master": "assets/diagrams/03-annotation-choice.svg",
       "publication": "assets/diagrams/03-annotation-choice.png",
-      "width": 814,
+      "width": 816,
       "height": 1374,
       "alt": "Keep the field types defining Learner; omit heading annotations when inference already proves the same types.",
       "provenance": "Deterministic Mermaid source, rendered by Mermaid CLI with styles/mermaid.json; explanatory diagram, not a product capture."
@@ -119,6 +119,97 @@
       "height": 1384,
       "alt": "Read the reported file and string/bool disagreement, then follow heading(true) into the string operation.",
       "provenance": "Deterministic Mermaid source, rendered by Mermaid CLI with styles/mermaid.json; explanatory diagram, not a product capture."
+    },
+    {
+      "id": "08-evidence-boundaries",
+      "kind": "concept-diagram",
+      "status": "ready",
+      "chapter": 8,
+      "source": "assets/diagrams/08-evidence-boundaries.mmd",
+      "master": "assets/diagrams/08-evidence-boundaries.svg",
+      "publication": "assets/diagrams/08-evidence-boundaries.png",
+      "width": 848,
+      "height": 1000,
+      "alt": "The compiler checks compatible programs. Named tests check chosen behavior. Output comparisons check an entire visible transcript. Each answers a different question.",
+      "provenance": "Deterministic Mermaid source, rendered with Mermaid CLI and styles/mermaid.json; explanatory diagram, not a product capture."
+    },
+    {
+      "id": "08-test-feedback",
+      "kind": "concept-diagram",
+      "status": "ready",
+      "chapter": 8,
+      "source": "assets/diagrams/08-test-feedback.mmd",
+      "master": "assets/diagrams/08-test-feedback.svg",
+      "publication": "assets/diagrams/08-test-feedback.png",
+      "width": 860,
+      "height": 1708,
+      "alt": "Write a behavior claim, check the program, run its tests, read a failure, and repair the behavior or a mistaken expectation before running the complete suite again.",
+      "provenance": "Deterministic Mermaid source, rendered with Mermaid CLI and styles/mermaid.json; explanatory diagram, not a product capture."
+    },
+    {
+      "id": "09-control-choice",
+      "kind": "concept-diagram",
+      "status": "ready",
+      "chapter": 9,
+      "source": "assets/diagrams/09-control-choice.mmd",
+      "master": "assets/diagrams/09-control-choice.svg",
+      "publication": "assets/diagrams/09-control-choice.png",
+      "width": 974,
+      "height": 1120,
+      "alt": "After Confirm.ask suspends submit, resuming false runs submit's remaining match and returns Lesson declined. Answering Submission cancelled skips that match and completes the handler call.",
+      "provenance": "Deterministic Mermaid source, rendered with Mermaid CLI and styles/mermaid.json; explanatory diagram, not a product capture."
+    },
+    {
+      "id": "09-handler-lifetime",
+      "kind": "concept-diagram",
+      "status": "ready",
+      "chapter": 9,
+      "source": "assets/diagrams/09-handler-lifetime.mmd",
+      "master": "assets/diagrams/09-handler-lifetime.svg",
+      "publication": "assets/diagrams/09-handler-lifetime.png",
+      "width": 878,
+      "height": 1610,
+      "alt": "Constructing a handler leaves it inactive. Applying it installs its operations, calls the supplied zero-argument function, then returns after the handler scope ends.",
+      "provenance": "Deterministic Mermaid source, rendered with Mermaid CLI and styles/mermaid.json; explanatory diagram, not a product capture."
+    },
+    {
+      "id": "09-request-answer",
+      "kind": "concept-diagram",
+      "status": "ready",
+      "chapter": 9,
+      "source": "assets/diagrams/09-request-answer.mmd",
+      "master": "assets/diagrams/09-request-answer.svg",
+      "publication": "assets/diagrams/09-request-answer.png",
+      "width": 780,
+      "height": 1644,
+      "alt": "The installed handler answers a request from greeting. Its string becomes the value of perform, then greeting returns its completed message.",
+      "provenance": "Deterministic Mermaid source, rendered with Mermaid CLI and styles/mermaid.json; explanatory diagram, not a product capture."
+    },
+    {
+      "id": "10-boundary-path",
+      "kind": "concept-diagram",
+      "status": "ready",
+      "chapter": 10,
+      "source": "assets/diagrams/10-boundary-path.mmd",
+      "master": "assets/diagrams/10-boundary-path.svg",
+      "publication": "assets/diagrams/10-boundary-path.png",
+      "width": 1166,
+      "height": 1894,
+      "alt": "A storage handler returns either a read error or raw text. Decoding raw text returns either a validation error or an Entry. Only an Entry reaches summary.",
+      "provenance": "Deterministic Mermaid source, rendered with Mermaid CLI and styles/mermaid.json; explanatory diagram, not a product capture."
+    },
+    {
+      "id": "10-mobile-command",
+      "kind": "concept-diagram",
+      "status": "ready",
+      "chapter": 10,
+      "source": "assets/diagrams/10-mobile-command.mmd",
+      "master": "assets/diagrams/10-mobile-command.svg",
+      "publication": "assets/diagrams/10-mobile-command.png",
+      "width": 754,
+      "height": 1528,
+      "alt": "An Osprey event handler produces a new model and a command. The native host executes the command and sends a completion event. A later Osprey update checks that event and produces the next model.",
+      "provenance": "Deterministic Mermaid source, rendered with Mermaid CLI and styles/mermaid.json; explanatory diagram, not a product capture."
     }
   ]
 }

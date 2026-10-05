@@ -1,0 +1,9 @@
+flowchart TD
+    accTitle: Install the handler before calling the work
+    accDescr: Constructing a handler leaves it inactive. Applying it installs its operations, calls the supplied zero-argument function, then returns after the handler scope ends.
+    A["CREATE HANDLER<br/>Keep the value named mika"] -->|pass greeting as work| B
+    subgraph S["During mika(greeting)"]
+        B["Install Learner handler"] -->|then| C["Call greeting"]
+        C -->|its requests use| D["The active name arm"]
+    end
+    D -->|work finishes| E["Scope ends<br/>Return the message"]

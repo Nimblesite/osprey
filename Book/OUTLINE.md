@@ -83,7 +83,7 @@ No chapter introduces more than four conceptual families. Every factual visual i
 - A name points to a value; it is not a storage box that must change
 - Choose names from the problem rather than from the type
 - String interpolation and function parameters
-- Checked integer arithmetic introduces `Result` without teaching recovery yet
+- Explicit `checkedMul` introduces `Result` without teaching recovery yet
 - Keep functions small and expression-shaped
 - Under the wing: immutability and referential transparency
 - Flight Log checkpoint: derive a readable summary from project data
@@ -191,13 +191,16 @@ No chapter introduces more than four conceptual families. Every factual visual i
 
 - Pure decisions at the centre, outside work at the edge
 - Declare an effect operation
-- `perform` asks; a handler answers
+- `perform` asks; a callable `handler` answers while running the supplied work
+- Pass work as a callback so the handler is installed before it runs
+- Use block-scoped `handle` for a local policy
 - Inputs, outputs, and missing handlers are checked
 - Replace production behavior in a test without service plumbing
 - Native-only resumption limit
-- Under the wing: algebraic effects without transformer stacks
-- Flight Log checkpoint: request logging through an effect
-- Visuals: request/handler boundary; direct-style call; test handler; missing-handler gate
+- Value operations return; declared control operations resume or cancel
+- Static selection and current effect-row limits, after the practical examples
+- Flight Log checkpoint: compose learner configuration and progress reporting
+- Visuals: request and answer; callback timing and handler lifetime; resume or cancel
 
 ### Chapter 10 — Read, write, and call the web
 
@@ -205,29 +208,31 @@ No chapter introduces more than four conceptual families. Every factual visual i
 
 **Reader outcome:** Perform one file or HTTP workflow while keeping every expected failure visible.
 
-- Pick one supported native boundary for the running example
+- Choose scripted success/failure handlers, then a native file adapter
 - Decode at the edge and model data inside
 - Handle `Result` next to the decision that can recover
 - Keep secrets and personal data out of logs
 - WebAssembly runtime limits remain explicit
 - C integrations cross Osprey's safety boundary
-- Flight Log checkpoint: save or fetch a deterministic fixture
-- Visuals: pure core/impure shell; boundary validation; platform support map
+- Read a local HTTP response and release its handles; keep offline examples deterministic
+- Follow host commands and completion events in mobile applications
+- Flight Log checkpoint: save, read, and validate one title
+- Visuals: boundary validation path; mobile command and completion event
 
 ### Chapter 11 — Let work happen together
 
 **Target:** 2,700 words · 10 pages · 3 visuals
 
-**Reader outcome:** Spawn isolated fibers, pass values through channels, and avoid shared mutable state or colored function chains.
+**Reader outcome:** Spawn work, communicate through typed channels, and understand the current native runtime's ownership and lifetime limits.
 
 - Concurrency is multiple jobs making progress
-- Fibers are lightweight work units
+- Native fibers currently use operating-system threads
 - Send values instead of sharing writable memory
-- `spawn`, `send`, `recv`, `await`, and `yield`
+- Use the current `spawn`, channel, `send`, `recv`, `await`, and `yield` contracts
 - Failure and effects remain visible
 - Native support boundary
 - Flight Log checkpoint: process independent entries concurrently
-- Visuals: isolated paths; channel handoff; structured lifetime
+- Visuals: concurrent paths; channel handoff; implemented lifetime versus planned scopes
 
 ## Part IV — Make it yours
 
@@ -308,7 +313,7 @@ No chapter introduces more than four conceptual families. Every factual visual i
 - A complete API or built-in-function reference
 - Teaching ML before the Default path is comfortable
 - Claims that Osprey will always have exactly two source flavors
-- Roadmap-only package workflows, complete imports, strict static memory, or hardware GPU execution
+- Roadmap-only package management, structured concurrency scopes, strict static memory, or hardware GPU execution; project modules and cross-flavor imports are implemented
 - Pretending all WebAssembly targets have native runtime services
 - Presenting C calls as covered by Osprey's memory-safety guarantee
 - Invented diagnostics, Playground screens, benchmark results, or performance rankings

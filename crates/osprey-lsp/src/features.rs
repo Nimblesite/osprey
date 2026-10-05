@@ -546,7 +546,7 @@ mod tests {
     #[test]
     fn a_symbol_declared_in_a_sibling_file_resolves_across_the_project() {
         // Single-file analysis made every imported symbol invisible: hovering
-        // `Ledger::openSql` in the composition root said nothing and
+        // `Ledger::sqlite` in the composition root said nothing and
         // go-to-definition went nowhere, even though the compiler links both
         // files into one program. Implements [LSP-WORKSPACE].
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -554,10 +554,10 @@ mod tests {
         let entry = root.join("src/main.ospml");
         let text = std::fs::read_to_string(&entry).expect("read the composition root");
         let uri = format!("file://{}", entry.display());
-        let (line, column) = position_of(&text, "Ledger::openSql");
+        let (line, column) = position_of(&text, "Ledger::sqlite");
 
         let hovered = hover(&text, &uri, line, column, U16).expect("cross-file hover");
-        assert!(hovered.contains("openSql"), "{hovered}");
+        assert!(hovered.contains("sqlite"), "{hovered}");
 
         let definitions = definition(&text, &uri, line, column, U16);
         let first = definitions.first().expect("cross-file definition");
@@ -578,7 +578,7 @@ mod tests {
             .map(|item| item.label)
             .collect();
         assert!(
-            labels.iter().any(|label| label == "bank::Ledger::openSql"),
+            labels.iter().any(|label| label == "bank::Ledger::sqlite"),
             "{labels:?}"
         );
     }

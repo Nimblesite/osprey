@@ -1,5 +1,5 @@
 fn plannedMinutes(sessionCount, minutesPerSession) =
-    sessionCount * minutesPerSession
+    checkedMul(sessionCount, minutesPerSession)
 
 fn summary(owner, goal, isActive, sessionCount, minutesPerSession) =
     "${owner} | goal: ${goal} | active: ${isActive} | sessions: ${sessionCount} | minutes: ${plannedMinutes(sessionCount, minutesPerSession)}"

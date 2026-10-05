@@ -1,0 +1,5 @@
+Mika completed: Algebraic effects
+ok 1 - completion returns the expected message
+ok 2 - another learner uses the same application functions
+1..2
+# tests=2 passed=2 failed=0 skipped=0
