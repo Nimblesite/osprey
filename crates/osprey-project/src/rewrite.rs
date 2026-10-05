@@ -151,9 +151,6 @@ impl Resolver<'_> {
                 let mut locals = locals_with_type_parameters(type_params);
                 if let Some(representation) = alias {
                     self.rewrite_type(representation, context, &mut locals);
-                    if opaque {
-                        *alias = None;
-                    }
                 }
                 for variant in variants {
                     let variant_name = variant.name.clone();

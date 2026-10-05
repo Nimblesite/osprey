@@ -100,7 +100,7 @@ fn kernel_elem_ltype(
         .as_ref()
         .and_then(|t| Codegen::fn_value_sig(&cg.prog, t))
         .or_else(|| match kernel {
-            Callback::Lambda(_, _, sig, _) => sig.clone(),
+            Callback::Lambda(_, _, sig, _) | Callback::Closed(_, _, _, sig, _) => sig.clone(),
             Callback::Local(_, sig) | Callback::Value(_, sig) => Some(sig.clone()),
             Callback::Named(_) | Callback::Extracted(_) => None,
         });
@@ -175,6 +175,12 @@ pub(crate) fn extract(cg: &mut Codegen, cb: Callback, slots: &[LType]) -> Result
         Callback::Named(_) | Callback::Local(..) | Callback::Value(..) | Callback::Extracted(_) => {
             Ok(cb)
         }
+        // A lambda closing over nothing lifts as it would written in place;
+        // one with an environment keeps the inlined lowering that reads it.
+        Callback::Closed(env, parameters, body, own, position) if env.is_empty() => {
+            lift(cg, parameters, body, own, position, slots)
+        }
+        Callback::Closed(..) => Ok(cb),
         Callback::Lambda(parameters, body, own, position) => {
             lift(cg, parameters, body, own, position, slots)
         }

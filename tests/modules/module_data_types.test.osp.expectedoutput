@@ -3,5 +3,6 @@ ok 1 - module unions keep their payloads
 ok 2 - module records keep their fields
 ok 3 - module generics specialise per call site
 ok 4 - module opaque records stay abstract
-1..4
-# tests=4 passed=4 failed=0 skipped=0
+ok 5 - module opaque aliases stay abstract
+1..5
+# tests=5 passed=5 failed=0 skipped=0

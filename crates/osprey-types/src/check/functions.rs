@@ -26,7 +26,9 @@ impl Checker {
                     ..
                 } => {
                     let outer = std::mem::replace(&mut self.site, name.clone());
+                    let outer_site = self.ctx.enter(name.clone());
                     self.check_function(name, parameters, effects, body, env, *position);
+                    let _ = self.ctx.enter(outer_site);
                     self.site = outer;
                 }
                 Stmt::Module { body, .. } => {

@@ -105,13 +105,32 @@ scalarPipelineCase () =
 
 (** Verify range boundaries and both map/filter orderings through folds. *)
 iteratorPipelineCase () =
+    source = range 1 5
+    doubled = source |> map dbl
+    small = source |> filter lt3
+    kept = doubled |> filter gt4 |> toList
+    names = range 0 3 |> map (\i => "n${i}") |> toList
+    halves = range 1 3 |> map (\i => toFloat i * 0.5) |> toList
     checkAll "functional iterator pipelines" [
         (range 1 6 |> fold 0 add) == 15,
         (range 1 5 |> fold 1 mul) == 24,
         (range 5 5 |> fold 9 add) == 9,
         (range ((0 - 2) ) 3 |> fold 0 add) == 0,
         (range 1 5 |> map dbl |> filter gt4 |> fold 0 add) == 14,
-        (range 1 6 |> filter lt3 |> map dbl |> fold 0 add) == 6
+        (range 1 6 |> filter lt3 |> map dbl |> fold 0 add) == 6,
+        (small |> fold 0 add) == 3,
+        (doubled |> fold 0 add) == 20,
+        (doubled |> filter gt4 |> fold 0 add) == 14,
+        (doubled |> fold 0 add) == 20,
+        (source |> fold 0 add) == 10,
+        listLength kept == 2,
+        (listGet kept 0 ?: 0) == 6,
+        (listGet kept 1 ?: 0) == 8,
+        listLength (range 3 3 |> toList) == 0,
+        listLength (source |> toList) == 4,
+        listLength names == 3,
+        (listGet names 2 ?: "none") == "n2",
+        (listGet halves 1 ?: 9.5) == 1.0
     ]
 
 (** A `mut` a handler arm captures is promoted to a shared cell in EVERY
@@ -253,9 +272,69 @@ genericReturnedLambdaCase () =
     ]
 
 
+(** A still-generic lambda has no closure cell, so it is applied inline at each
+    call site. Its environment is nonetheless fixed where it was DEFINED. A
+    shadowing binding, a nested closure, a handler arm, a second generic
+    lambda and an early ARC release must all see the captured value;
+    each used to read the caller's scope instead — a wrong answer, freed memory
+    or `unknown name`. A handler-owned cell stays one shared cell, and a lazy
+    stage consumed by a later statement still reads what it closed over.
+    Implements [TYPE-FN-CLOSURE], [TYPE-GENERICS-FN], [BUILTIN-ITER-CALLBACK]. *)
+effect Probe
+    ask : Unit => string
+
+heapText n = "kept-${n}"
+runThunk work = work ()
+askProbe () = perform Probe.ask ()
+
+genericLambdaEnvironmentCase () =
+    kept = heapText 7
+    tagged = \x => "${x}:${kept}"
+    fromFactory = constly (heapText 8)
+    later = heapText 9
+    stageText = heapText 5
+    staged = map (range (0, 2)) (\i => "${i}:${stageText}")
+    afterStage = heapText 6
+    viaLambda = \x => tagged x
+    shadowed =
+        kept = "shadow"
+        "${tagged 1}/${kept}"
+    shadowedStage =
+        kept = "shadow"
+        fold (map (range (0, 2)) tagged) kept (\(acc, s) => acc + s)
+    inArm =
+        handle Probe
+            ask => tagged "arm"
+        askProbe ()
+    mut total = 0
+    report = \x => "${x}=${total}"
+    handle Tally
+        note value =>
+            total := total + value
+    perform Tally.note 5
+    checkAll "a generic lambda keeps the environment it was defined in" [
+        fold staged "" (\(acc, s) => acc + s) == "0:kept-51:kept-5",
+        afterStage == "kept-6",
+        shadowedStage == "shadow0:kept-71:kept-7",
+        tagged 1 == "1:kept-7",
+        tagged "s" == "s:kept-7",
+        fromFactory 1 == "kept-8",
+        fromFactory "s" == "kept-8",
+        later == "kept-9",
+        shadowed == "1:kept-7/shadow",
+        runThunk (\() => tagged 2) == "2:kept-7",
+        runThunk (\() => runThunk (\() => tagged "deep")) == "deep:kept-7",
+        runThunk (\() => fromFactory 3) == "kept-8",
+        runThunk (\() => viaLambda 4) == "4:kept-7",
+        inArm == "arm:kept-7",
+        report "t" == "t=5",
+        runThunk (\() => report true) == "true=5"
+    ]
+
 test "scalar pipes preserve helper composition" (\() => exactArithmetic (scalarPipelineCase))
 test "iterator pipes preserve order and boundaries" (\() => exactArithmetic (iteratorPipelineCase))
 test "a let-bound lambda picks its arithmetic overload from its use" (\() => exactArithmetic (lambdaOverloadCase))
 test "a handler inside a closure keeps its captured state" (\() => exactArithmetic (closureHandlerCase))
 test "a function value returning a collection keeps its element type" (\() => exactArithmetic (functionValueCollectionCase))
 test "a generic function's returned lambda specialises per call site" (\() => exactArithmetic (genericReturnedLambdaCase))
+test "a generic lambda keeps the environment it was defined in" (\() => exactArithmetic (genericLambdaEnvironmentCase))

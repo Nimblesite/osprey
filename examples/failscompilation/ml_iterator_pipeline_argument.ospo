@@ -1,0 +1,8 @@
+// [BUILTIN-ITER-FUSION] A pipeline handed to a function compiled on its own
+// arrives there as the bare range: its `map` stage is known only where the
+// pipeline was built, so the callee would print 0 and 1 instead of 0 and 10.
+// osprey: flavor=ml
+show : Iterator<int> -> Unit
+show numbers = forEach numbers print
+
+show (map (range (0, 2)) (\i => satMul i 10))

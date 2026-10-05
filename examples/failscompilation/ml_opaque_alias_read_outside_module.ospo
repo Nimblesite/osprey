@@ -1,0 +1,26 @@
+// osprey: flavor=ml
+// [MODULES-OPAQUE-TYPES] The ML half of `opaque_alias_read_outside_module.ospo`:
+// outside the owning module an opaque alias cannot be computed with, compared
+// with its representation, printed, read as an `int` or forged from one.
+namespace opq
+
+module Tokens
+    export opaque type Token = int
+
+    export issue : int -> Token
+    issue n = satMul n 2
+
+    export raw : Token -> int
+    raw token = token
+
+bump x = satAdd x 1
+
+asInt : Tokens::Token -> int
+asInt token = token
+
+forge : int -> Tokens::Token
+forge n = n
+
+main () =
+    token = Tokens::issue 5
+    print "${satAdd token 1} ${bump token} ${token == 10} ${token} ${Tokens::raw 41} ${asInt token} ${Tokens::raw (forge 7)} ${Tokens::raw token}"

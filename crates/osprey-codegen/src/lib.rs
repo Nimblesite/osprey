@@ -1799,6 +1799,26 @@ card doc index selected =
     }
 
     #[test]
+    fn an_unexpanded_opaque_alias_is_refused_instead_of_lowered_as_a_handle() {
+        // [MODULES-OPAQUE-TYPES]: the checker reads a project in which an
+        // opaque alias keeps its name; the backend must be handed the copy
+        // with every alias expanded. Lowering the checked program would treat
+        // the `int` behind `Token` as a heap handle, so it is refused.
+        let mut program = parse_program("type Token = int\nprint(\"x\")\n").program;
+        for statement in &mut program.statements {
+            if let osprey_ast::Stmt::Type { opaque, .. } = statement {
+                *opaque = true;
+            }
+        }
+        let err = compile_program(&program).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("opaque alias `Token` reached code generation unexpanded"),
+            "expected the unexpanded-alias refusal, got {err}"
+        );
+    }
+
+    #[test]
     fn match_arms_of_different_physical_types_are_rejected_not_unitised() {
         // The other loud-failure branch with no surface syntax of its own: the
         // checker rejects mismatched arms (`cannot unify int with string`), so
@@ -2016,7 +2036,7 @@ card doc index selected =
         // lambda is recorded for inline application instead, so each call site
         // specialises it — and the callee's argument is evaluated ONCE, at the
         // binding, then carried as a value (stmt.rs generic_returned_lambda,
-        // Codegen::lambda_prefix).
+        // closure::Environment).
         let ir = module(
             "fn mk<T>(x: T) = |y| => x\n\
              fn main() -> Unit = {\n\

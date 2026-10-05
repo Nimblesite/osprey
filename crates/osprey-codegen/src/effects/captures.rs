@@ -129,7 +129,9 @@ pub(super) fn capture_list_resuming(
     caps_from_names(cg, names)
 }
 
-pub(super) fn caps_from_names(cg: &Codegen, names: BTreeSet<String>) -> Vec<ArmCap> {
+pub(super) fn caps_from_names(cg: &Codegen, mut names: BTreeSet<String>) -> Vec<ArmCap> {
+    // An arm applying an inline lambda needs that lambda's environment too.
+    names.extend(crate::closure::reach(cg, &names));
     names
         .into_iter()
         .filter_map(|name| {

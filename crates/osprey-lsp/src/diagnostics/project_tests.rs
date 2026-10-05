@@ -147,6 +147,7 @@ fn project_diagnostics_map_resolution_and_type_errors_to_the_open_file() {
         warnings: Vec::new(),
         state_boundaries: Vec::new(),
         program: osprey_syntax::parse_program(source).program,
+        backend: None,
         entry_prologue: Vec::new(),
         entry_source: 0,
         sources: vec![osprey_project::SourceMetadata {

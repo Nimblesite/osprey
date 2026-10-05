@@ -28,8 +28,25 @@ pub(crate) fn assemble(
     let Some(entry_source) = entry_source else {
         return Err(errors);
     };
-    let mut resolution = resolve::flatten(&contributions, &scopes, &graph, entry_source, &metadata);
+    let flatten = |transparent| {
+        resolve::flatten(
+            &contributions,
+            &scopes,
+            &graph,
+            entry_source,
+            &metadata,
+            transparent,
+        )
+    };
+    let mut resolution = flatten(false);
     errors.append(&mut resolution.errors);
+    let backend = resolution.opaque_aliases.then(|| flatten(true));
+    // Expansion reports what a nominal alias cannot: a cycle through itself.
+    for error in backend.iter().flat_map(|backend| &backend.errors) {
+        if !errors.contains(error) {
+            errors.push(error.clone());
+        }
+    }
     if errors.is_empty() {
         let state_boundaries = crate::advice::boundaries(&graph, &metadata);
         let warnings =
@@ -38,6 +55,7 @@ pub(crate) fn assemble(
             warnings,
             state_boundaries,
             program: resolution.program,
+            backend: backend.map(|backend| backend.program),
             entry_prologue: resolution.entry_prologue,
             entry_source,
             sources: metadata,

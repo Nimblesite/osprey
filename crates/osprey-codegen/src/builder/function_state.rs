@@ -27,6 +27,14 @@ impl Codegen {
         Ok(id)
     }
 
+    /// A fresh id for an environment alias. Advanced only by environment
+    /// capture, so a Default/ML twin pair numbers alike [FLAVOR-IR-EQUIV].
+    pub(crate) fn next_env_id(&mut self) -> usize {
+        let id = self.env_count;
+        self.env_count += 1;
+        id
+    }
+
     /// A fresh, module-unique id for a lifted lambda's function name.
     pub(crate) fn next_lambda_id(&mut self) -> usize {
         let id = self.lambda_count;
@@ -68,10 +76,9 @@ impl Codegen {
             regs: self.reg_count,
             labels: self.label_count,
             scopes: std::mem::take(&mut self.scopes),
-            lambda_prefix: std::mem::take(&mut self.lambda_prefix),
             expected_lambda: self.expected_lambda.take(),
             scope_ids: std::mem::take(&mut self.scope_ids),
-            pending_iter_ops: std::mem::take(&mut self.pending_iter_ops),
+            iter_stages: std::mem::take(&mut self.iter_stages),
             cell_vars: std::mem::take(&mut self.cell_vars),
             cell_slots: std::mem::take(&mut self.cell_slots),
             resume_ctx: self.resume_ctx.take(),
@@ -114,9 +121,8 @@ impl Codegen {
         self.label_count = saved.labels;
         self.scopes = saved.scopes;
         self.scope_ids = saved.scope_ids;
-        self.lambda_prefix = saved.lambda_prefix;
         self.expected_lambda = saved.expected_lambda;
-        self.pending_iter_ops = saved.pending_iter_ops;
+        self.iter_stages = saved.iter_stages;
         self.cell_vars = saved.cell_vars;
         self.cell_slots = saved.cell_slots;
         self.resume_ctx = saved.resume_ctx;
@@ -145,7 +151,8 @@ impl Codegen {
         // The beta-reduction cache is per-function too: a stale entry from an
         // earlier function must not hijack a same-named local here.
         self.lambdas.clear();
-        self.lambda_prefix.clear();
+        self.lambda_envs.clear();
+        self.iter_stages.clear();
         // Cell-promotion is per-function; `lower` repopulates `cell_vars` from
         // this function's body before lowering it.
         self.cell_vars.clear();

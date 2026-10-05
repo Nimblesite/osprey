@@ -1,0 +1,22 @@
+// osprey: flavor=ml
+// [MODULES-STATE-MODULE] The ML half of `state_cell_cannot_hold_a_pointer.ospo`.
+// ML has no annotated `mut`, so a cell's type is always its pure initializer's
+// and the one route left is assigning a `Ptr` later, which is rejected.
+namespace app
+
+extern osprey_ffi_null -> Ptr
+
+state Db
+    mut slot = 0
+
+    export effect Store
+        open : Unit => int
+
+    export withDb body =
+        handle Store
+            open =>
+                slot := osprey_ffi_null ()
+                1
+        body ()
+
+main () = print "unreachable"

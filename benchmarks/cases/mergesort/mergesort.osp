@@ -1,0 +1,57 @@
+// mergesort — build a persistent List<int> of pseudo-random values and sort it
+// with the naive top-down merge sort: deal the list into two halves by
+// alternating elements, sort each half and merge the two sorted results.
+// The checksum weights every sorted element by its rank, so a wrong ORDER —
+// not only a wrong multiset — changes the answer. Repeated K times with
+// rolling seeds.
+//
+// Modes via the first stdin line: "0"/empty -> fixed seed (deterministic,
+// oracle-checked); "1" -> cryptographically-secure random seed (randomBelow).
+fn add(a, b) = a + b
+fn mul(a, b) = a * b
+fn modp(a, b) = a % b
+fn r1(x) = modp(mul(x, 16807), 2147483647)
+fn hashAt(seed, i) = r1(r1(add(seed, i)))
+fn addM(a, b) = modp(add(a, b), 1000000007)
+fn randSeed() = match randomBelow(2147483646) { Success { value } => add(value, 1)  Error { message } => 1 }
+fn seedOf(s) = match parseInt(s) { Success { value } => match value { 0 => 1  _ => randSeed() }  Error { message } => 1 }
+fn buildList(s) = range(0, 2000) |> fold(List(), |acc, i| => listAppend(acc, modp(hashAt(s, i), 100000)))
+fn evens(xs) = match xs {
+    [] => []
+    [head, ...tail] => listPrepend(odds(tail), head)
+}
+fn odds(xs) = match xs {
+    [] => []
+    [_, ...tail] => evens(tail)
+}
+fn merge(left, right) = match left {
+    [] => right
+    [l, ...ls] => match right {
+        [] => left
+        [r, ...rs] => match r < l {
+            true => listPrepend(merge(left, rs), r)
+            false => listPrepend(merge(ls, right), l)
+        }
+    }
+}
+fn mergesort(xs) = match xs {
+    [] => []
+    [only] => [only]
+    _ => merge(mergesort(evens(xs)), mergesort(odds(xs)))
+}
+fn weigh(xs, rank) = match xs { [] => 0  [head, ...tail] => addM(mul(head, rank), weigh(tail, add(rank, 1))) }
+fn runOne(s) = weigh(mergesort(buildList(s)), 1)
+fn main() = {
+    handle Arith {
+        overflow _ _ _ wrapped => {
+            print("unexpected integer overflow")
+            wrapped
+        }
+        remainderByZero _ => {
+            print("unexpected zero divisor")
+            0
+        }
+    }
+    let seed = seedOf(input())
+    print("${range(0, 8) |> fold(0, |acc, t| => addM(acc, runOne(add(seed, mul(t, 131)))))}")
+}

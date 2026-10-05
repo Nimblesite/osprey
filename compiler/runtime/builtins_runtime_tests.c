@@ -54,6 +54,20 @@ long g_checks = 0;
 
 // --- fork harness ------------------------------------------------------------
 
+// Write `input` to the child's stdin pipe and close the parent's ends. The
+// read end stays open until the bytes are written: a child that exits without
+// reading leaves no other reader, and a write to a readerless pipe raises
+// SIGPIPE -- on macOS even for zero bytes -- which killed the whole suite with
+// status 141 whenever such a child won the race.
+static void feed_child_stdin(int in_pipe[2], const char *input) {
+  if (input != NULL) {
+    size_t len = strlen(input);
+    CHECK(write(in_pipe[1], input, len) == (ssize_t)len);
+  }
+  close(in_pipe[0]);
+  close(in_pipe[1]);
+}
+
 // Run `fn` in a child with stdin fed `input` and stdout captured; assert the
 // exit code and (when `want_out` is non-NULL) the exact output bytes.
 static void run_child_expect(int (*fn)(void), const char *input,
@@ -78,13 +92,8 @@ static void run_child_expect(int (*fn)(void), const char *input,
     OSP_GCOV_DUMP();
     _exit(code);
   }
-  close(in_pipe[0]);
   close(out_pipe[1]);
-  if (input != NULL) {
-    size_t len = strlen(input);
-    CHECK(write(in_pipe[1], input, len) == (ssize_t)len);
-  }
-  close(in_pipe[1]);
+  feed_child_stdin(in_pipe, input);
   static char out[OUT_CAP];
   size_t got = 0;
   ssize_t n;
@@ -99,6 +108,24 @@ static void run_child_expect(int (*fn)(void), const char *input,
   if (want_out != NULL) {
     CHECK(strcmp(out, want_out) == 0);
   }
+}
+
+// A child that never reads stdin can exit before the parent feeds it. Reaping
+// it first makes that order certain, so the feed runs against a pipe whose
+// only other reader is gone.
+static void t_feed_survives_a_child_that_exited_first(void) {
+  int in_pipe[2];
+  CHECK(pipe(in_pipe) == 0);
+  pid_t pid = fork();
+  CHECK(pid >= 0);
+  if (pid == 0) {
+    close(in_pipe[0]);
+    close(in_pipe[1]);
+    _exit(0);
+  }
+  int status = 0;
+  CHECK(waitpid(pid, &status, 0) == pid);
+  feed_child_stdin(in_pipe, "");
 }
 
 // --- ffi_runtime -------------------------------------------------------------
@@ -573,6 +600,7 @@ static void t_bootstrap_arena_hands_out_only_its_own_bytes(void) {
 }
 
 int main(void) {
+  t_feed_survives_a_child_that_exited_first();
   t_ffi_cells();
   t_random_bounds();
   t_random_below();

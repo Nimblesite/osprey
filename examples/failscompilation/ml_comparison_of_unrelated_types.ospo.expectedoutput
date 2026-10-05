@@ -1,0 +1,3 @@
+cannot compare `bool` with `int`: `<` needs two operands of one type
+cannot compare `string` with `int`: `==` needs two operands of one type
+cannot compare `List<int>` with `int`: `==` needs two operands of one type

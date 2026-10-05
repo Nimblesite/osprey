@@ -1,7 +1,7 @@
 //! Preserve declaration scope while specialization emits into a caller's frame.
 use super::{CellSlot, Codegen, FnSig, LambdaDef};
+use crate::closure::Environment;
 use crate::llty::Value;
-use osprey_ast::Parameter;
 use osprey_types::Type;
 use std::collections::{HashMap, HashSet};
 
@@ -10,7 +10,7 @@ pub(crate) struct LexicalScopeState {
     scopes: Vec<HashMap<String, Value>>,
     scope_ids: Vec<usize>,
     lambdas: HashMap<String, LambdaDef>,
-    lambda_prefix: HashMap<String, (Vec<Parameter>, Vec<Value>)>,
+    lambda_envs: HashMap<String, Environment>,
     call_aliases: HashMap<String, String>,
     fn_ptr_locals: HashMap<String, FnSig>,
     fn_value_types: HashMap<String, Type>,
@@ -55,7 +55,7 @@ impl LexicalScopeState {
         std::mem::swap(&mut self.scopes, &mut cg.scopes);
         std::mem::swap(&mut self.scope_ids, &mut cg.scope_ids);
         std::mem::swap(&mut self.lambdas, &mut cg.lambdas);
-        std::mem::swap(&mut self.lambda_prefix, &mut cg.lambda_prefix);
+        std::mem::swap(&mut self.lambda_envs, &mut cg.lambda_envs);
         std::mem::swap(&mut self.call_aliases, &mut cg.call_aliases);
         std::mem::swap(&mut self.fn_ptr_locals, &mut cg.fn_ptr_locals);
         std::mem::swap(&mut self.fn_value_types, &mut cg.fn_value_types);
@@ -76,7 +76,7 @@ impl Codegen {
         let _ = self.cell_slots.remove(name);
         let _ = self.call_aliases.remove(name);
         let _ = self.lambdas.remove(name);
-        let _ = self.lambda_prefix.remove(name);
+        let _ = self.lambda_envs.remove(name);
         let _ = self.fn_ptr_locals.remove(name);
         let _ = self.fn_value_types.remove(name);
     }

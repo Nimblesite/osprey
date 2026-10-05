@@ -438,6 +438,8 @@ list, as specified in [Function Calls](0005-FunctionCalls.md).
 
 A lambda (`fn(...) => expr` or `|x| => expr`) captures every free identifier from its enclosing lexical scope by reference to its value at capture time. Captured bindings are immutable, so by-reference and by-value capture are observationally identical and the implementation MAY choose either. A captured binding outlives the surrounding stack frame: a closure returned from a function remains callable and continues to read the captured values.
 
+The same holds for a lambda whose type is still generic. It has no single closure value and is specialised at each call site, but it reads the bindings it captured where it was written, whether it is called there, from a nested lambda, from a handler arm or from a fiber, and it keeps them alive for as long as it can be called.
+
 ```osprey
 fn makeAdder(n: int) -> (int) -> int = fn(x: int) => x + n
 

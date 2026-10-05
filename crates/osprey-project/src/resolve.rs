@@ -16,6 +16,9 @@ pub(crate) struct Resolution {
     pub documentation_bindings: Vec<Stmt>,
     pub source_names: BTreeMap<String, String>,
     pub errors: Vec<ProjectError>,
+    /// Whether the program declares an opaque alias, and so needs a second,
+    /// transparent assembly for the backend.
+    pub opaque_aliases: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -51,6 +54,9 @@ pub(crate) struct Resolver<'a> {
     pub source_names: BTreeMap<String, String>,
     pub aliases: BTreeMap<SymbolKey, AliasInfo>,
     pub alias_active: BTreeSet<SymbolKey>,
+    /// Assemble the backend's view: an opaque alias expands like any other
+    /// instead of staying a nominal type the checker guards.
+    pub transparent: bool,
     pub constant_cache: BTreeMap<SymbolKey, Expr>,
     pub constant_active: BTreeSet<SymbolKey>,
     pub invalid_constants: BTreeSet<SymbolKey>,
@@ -69,6 +75,7 @@ pub(crate) fn flatten(
     graph: &ProjectGraph,
     entry_source: usize,
     sources: &[SourceMetadata],
+    transparent: bool,
 ) -> Resolution {
     let aliases = crate::type_rewrite::collect_aliases(contributions, graph);
     let mut resolver = Resolver {
@@ -80,6 +87,7 @@ pub(crate) fn flatten(
         source_names: BTreeMap::new(),
         aliases,
         alias_active: BTreeSet::new(),
+        transparent,
         constant_cache: BTreeMap::new(),
         constant_active: BTreeSet::new(),
         invalid_constants: BTreeSet::new(),
@@ -132,6 +140,7 @@ impl Resolver<'_> {
             documentation_bindings,
             source_names: self.source_names,
             errors: self.errors,
+            opaque_aliases: self.aliases.values().any(|alias| alias.opaque),
         }
     }
 
@@ -254,13 +263,11 @@ impl Resolver<'_> {
                 self.rewrite_declaration(&mut rewritten, context, opaque, false);
                 self.program.push(rewritten);
             }
-            Stmt::Type { alias: Some(_), .. } if !opaque => {
+            Stmt::Type { alias: Some(_), .. } if !opaque || self.transparent => {
                 let mut declaration = statement.clone();
                 self.rewrite_declaration(&mut declaration, context, false, false);
             }
-            Stmt::Type { alias: Some(_), .. } if opaque => {
-                self.reject_opaque_alias(statement, context);
-            }
+            Stmt::Type { alias: Some(_), .. } => self.declare_opaque_alias(statement, context),
             Stmt::Type { .. } | Stmt::Effect { .. } => {
                 let mut rewritten = statement.clone();
                 self.rewrite_declaration(&mut rewritten, context, opaque, false);

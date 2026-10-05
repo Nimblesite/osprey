@@ -126,11 +126,20 @@ impl CompilationInput {
         }
     }
 
-    /// The flavor-neutral program consumed by the checker and backend.
+    /// The flavor-neutral program the checker and every source-level tool read.
     pub(crate) fn program(&self) -> &Program {
         match &self.unit {
             CompilationUnit::Script(program) => program,
             CompilationUnit::Project(project) => &project.program,
+        }
+    }
+
+    /// The program code generation lowers. A project's opaque aliases are
+    /// expanded to their representations there ([MODULES-OPAQUE-TYPES]).
+    pub(crate) fn backend_program(&self) -> &Program {
+        match &self.unit {
+            CompilationUnit::Script(program) => program,
+            CompilationUnit::Project(project) => project.backend_program(),
         }
     }
 

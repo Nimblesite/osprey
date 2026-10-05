@@ -93,7 +93,7 @@ fn run_example(
     if crate::report_syntax_errors(name, &parsed.errors) {
         return Err("documentation example contains syntax errors".into());
     }
-    let program = synthesize::program(
+    let synthesized = synthesize::program(
         &sources.sources,
         sources.config.as_ref(),
         source_index,
@@ -106,6 +106,7 @@ fn run_example(
         .map(|source| source.source.as_str())
         .collect::<Vec<_>>()
         .join("\n");
-    let input = CompilationInput::script(name, format!("{context}\n{}", example.code), program);
-    execute::check(cli, &input, example)
+    let source = format!("{context}\n{}", example.code);
+    let input = CompilationInput::script(name, source, synthesized.checked);
+    execute::check(cli, &input, synthesized.backend, example)
 }

@@ -192,10 +192,13 @@ in, so it keeps its rights when it travels to a client's call. A module constant
 whose initializer reads an opaque field is inlined at each use and is therefore
 rejected in a client; export a function instead.
 
-A manifest opaque alias such as `export opaque type UserId = int`, including an
-implementation of an abstract signature type by such an alias, is rejected
-during flattening with `opaque alias ... unsupported`: the flat checker would
-expose `int` to clients, and rejecting is the truthful answer.
+A manifest opaque alias such as `export opaque type UserId = int`, including an implementation of an abstract signature type by such an alias, is its representation only inside the module that declares it. There a `UserId` is an `int`: arithmetic, comparison, interpolation, patterns, calls and field access on an aliased record all read through the alias, and a value annotated `UserId` keeps that name in the types the module exports. Generic aliases (`Bag<T> = List<T>`) and aliases of records, unions, `Result` and function types follow the same rule.
+
+Outside the module `UserId` is a name with no structure. It unifies only with itself, so a client cannot compute with one, compare it with an `int`, print it, pass an `int` where one is required or read a field of an aliased record: ``type mismatch: cannot unify int with `M::UserId`; `M::UserId` is opaque outside module `M` ``. Where the code is written decides, not where it is called from: a generic helper a client wrote keeps the client's view when the module calls it, and one the module wrote keeps the module's.
+
+A function converts only where its signature says so. `export fn make(n: int) -> UserId = n` turns an `int` into a `UserId`; `export fn bump(id) = id + 1` is `int -> int`. A module constant of an opaque type is inlined at each use, so a client receives a bare literal; export a function instead.
+
+An opaque alias costs nothing at run time. The checker enforces the boundary, and code generation lowers a copy of the program in which every opaque alias is expanded.
 
 ## Signatures `[MODULES-SIGNATURE]`
 
@@ -229,9 +232,11 @@ implementation. Non-exported implementation details remain private.
 In an ML signature, bare `type T` is abstract and `type T = R` is manifest;
 `opaque type T` is redundant and rejected.
 
+An importer is checked against the signature, not the implementation. Ascription gives every signature item exactly its declared type, so a parameter the implementation leaves general, or a helper the signature omits, is invisible outside the module, and replacing the implementation with another that satisfies the signature cannot change the types an importer sees. Effect obligations are still computed from the operations the program performs, within the row the signature declares ([MODULES-EFFECTS](#effects-and-capabilities-modules-effects)). A project is assembled from source and a signature item with no implementation is an error, so no mode checks an importer against a signature alone.
+
 Alias expansion preserves annotation provenance: a type inserted by an ascription remains a contract constraint and cannot produce a redundant-annotation warning or deletion action. A written annotation retains its own source identity through chained and generic aliases; separate uses remain separately removable under [TYPE-ANNOTATION-REDUNDANT](0004-TypeSystem.md#redundant-annotations--type-annotation-redundant). `alias_expansion_preserves_*` and the editor alias-action tests enforce both flavors.
 
-The runnable bank’s `MoneyApi` exposes manifest `Cents = int` and abstract `Amount`, implemented by a private record. Clients convert through `fromCents`/`toCents`; they cannot construct the record, read its fields or substitute a raw integer for an amount. `bank_money_signature_*` exercises the actual source from both syntax flavors under every native allocator. The same module supplies the Wasm browser application. This example does not require or imply support for opaque manifest aliases.
+The runnable bank’s `MoneyApi` exposes manifest `Cents = int` and abstract `Amount`, implemented by a private record. Clients convert through `fromCents`/`toCents`; they cannot construct the record, read its fields or substitute a raw integer for an amount. `bank_money_signature_*` exercises the actual source from both syntax flavors under every native allocator. The same module supplies the Wasm browser application.
 
 ## State Ownership `[MODULES-STATE]`
 
@@ -264,6 +269,8 @@ containing a handler. Qualified aliases cannot bypass this check.
 
 Each namespace may contain at most one state module. Importing a state module
 allocates no cells; calling an installer creates a fresh instance.
+
+State cannot leave its module as a pointer or a reference. A cell's initializer must be pure and a `Ptr` comes only from an extern call, so a cell can neither be declared as a foreign pointer nor be assigned one later; Osprey has no address-of operator; and a lambda written in a handler arm cannot capture a cell.
 
 ### Cross-Module State Access `[MODULES-STATE-SOURCE-OF-TRUTH]`
 

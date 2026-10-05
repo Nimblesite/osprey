@@ -224,6 +224,8 @@ fn functional(e: &mut TypeEnv) {
         vec![iter_t(), v(), Type::fun(vec![v(), t()], v())],
         v(),
     );
+    // The one bridge from a fused pipeline to a runtime list [BUILTIN-ITER-TOLIST].
+    poly(e, "toList", vec![0], vec![iter_t()], Type::list(t()));
 }
 
 fn lists(e: &mut TypeEnv) {

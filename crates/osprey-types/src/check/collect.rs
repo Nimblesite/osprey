@@ -38,12 +38,17 @@ impl Checker {
                     type_params,
                     variants,
                     validation_func,
+                    alias,
                     opaque,
                     position,
                     ..
                 } => {
                     if *opaque {
                         let _ = self.opaque_types.insert(name.clone());
+                    }
+                    if let (true, Some(alias)) = (*opaque, alias) {
+                        let params = type_params.iter().map(|p| p.name.clone()).collect();
+                        self.ctx.set_equation(name.clone(), params, alias.clone());
                     }
                     if validation_func.is_some() {
                         self.record_err(

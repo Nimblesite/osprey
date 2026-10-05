@@ -1,0 +1,5 @@
+// [BOOL-COMPARE-OPERANDS] A comparison lowers to one machine comparison, so its two
+// operands must have one type. Comparing a `bool` with an `int` used to
+// compile and answer `false`, and a `string` with an `int` reached code
+// generation before anything objected.
+fn main() = print("${true < 1} ${"a" == 1} ${[1] == 1}")

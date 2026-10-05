@@ -1,0 +1,7 @@
+19:0: function `opq::asInt` body: type mismatch: cannot unify int with opq::Tokens::Token; `opq::Tokens::Token` is opaque outside module `opq::Tokens`
+22:0: function `opq::forge` body: type mismatch: cannot unify opq::Tokens::Token with int; `opq::Tokens::Token` is opaque outside module `opq::Tokens`
+type mismatch: cannot unify int with opq::Tokens::Token; `opq::Tokens::Token` is opaque outside module `opq::Tokens`
+type mismatch: cannot unify int with opq::Tokens::Token; `opq::Tokens::Token` is opaque outside module `opq::Tokens`
+cannot compare `opq::Tokens::Token` with `int`: `==` needs two operands of one type
+type mismatch: cannot unify opq::Tokens::Token with int; `opq::Tokens::Token` is opaque outside module `opq::Tokens`
+cannot convert value for interpolation: opq::Tokens::Token

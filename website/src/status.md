@@ -57,6 +57,7 @@ The release list was unavailable when this page was built. See
 - Compiler-backed formatting, documentation generation, testing, profiling and
   language-server commands
 - Mixed-flavor projects with live cross-file editor analysis, project layout warnings, visible state boundaries and compiler-checked import repairs
+- Module signatures and opaque types. Opaque records, unions and manifest aliases are abstract outside their module, and importers are checked against a signature's declared types
 - [HTML API documentation](/docs/documentation/) for public modules in both
   flavors, with executable examples, Markdown guides, custom CSS, three themes,
   offline search and responsive navigation
@@ -84,6 +85,10 @@ The current development build rejects these older forms:
 
 - `handle … in …` and ML `handle … do …` are removed. Use `let h = handler E { … }` then `h(work)`, or a rest-of-block `handle`. Operations that use `resume` must be declared `control`; an arm without `resume` for a control operation abandons the computation. Ordinary value arms return to their perform site.
 
+- A comparison needs two operands of one type. `true < 1` used to compile and answer `false`; it is now a type error naming both types.
+
+- A `map`/`filter` pipeline belongs to the function that builds it. Returning one, or passing it to a function compiled on its own, is now rejected; collect it with `toList` first. Earlier builds accepted both, and a pipeline bound to a name could run another pipeline's stages.
+
 - `//!` documents whatever encloses it — a file, a namespace or a module — so it
   has to be the first item of one. Written anywhere else it is now a compile
   error in both flavors, naming the `//!` itself. Earlier builds accepted some of
@@ -97,7 +102,7 @@ The current development build rejects these older forms:
 
 - Tail-call optimisation is not implemented.
 - The package manager remains roadmap work. Working project/module examples do not imply every module-system feature is complete.
-- Opaque record and union types enforce their module boundaries. Opaque manifest aliases and separate checking of importers against signatures remain unfinished; unsupported opaque aliases are rejected.
+- A project is assembled from source, so a signature item with no implementation is an error. A module constant of an opaque type reaches a client as a bare literal; export a function instead.
 - The strict static-memory mode described in the memory specification is not a current CLI option. Native builds accept `default`, `gc`, and `arc`; mobile and WebAssembly accept `default` only.
 - The initial mobile runtime retains general allocations for process lifetime and has no public library teardown or returned-string release API.
 - The mobile sample reads one public GitHub issue page. Authentication, pagination, background refresh, and posting changes to GitHub are not implemented.

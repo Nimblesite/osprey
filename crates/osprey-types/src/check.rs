@@ -202,6 +202,10 @@ pub(crate) struct Checker {
     /// keeps its access rights when the obligation travels to a client's call.
     /// Empty outside any function (the entry prologue).
     pub(crate) site: String,
+    /// The function each located arithmetic obligation was written in. An
+    /// obligation is settled long after its function, and whether its operand
+    /// may be read through an opaque alias depends on where the operator is.
+    pub(crate) use_sites: HashMap<String, String>,
     /// Generalized constraints remain part of each source binding's contract.
     scheme_obligations: HashMap<String, Vec<(String, Type)>>,
     /// Every discarded value, where it was written, and whether the author said

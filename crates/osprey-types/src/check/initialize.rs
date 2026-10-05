@@ -23,6 +23,7 @@ impl Checker {
             builtin_uses: Vec::new(),
             opaque_types: HashSet::new(),
             site: String::new(),
+            use_sites: HashMap::new(),
             scheme_obligations: HashMap::new(),
             discards: Vec::new(),
             builtins: HashSet::new(),

@@ -90,6 +90,77 @@ module Ids
             Id
                 value = value + 1
 
+module Tokens
+    (** Manifest aliases kept abstract: inside `Tokens` a `Token` IS an `int`
+        and a `Label` IS a `string`, so the module computes with them freely.
+        A client can only hold one and hand it back ([MODULES-OPAQUE-TYPES]). *)
+    export opaque type Token = int
+    export opaque type Label = string
+
+    export issue : int -> Token
+    issue n = n * 2
+
+    export next : Token -> Token
+    next token = token + 1
+
+    export raw : Token -> int
+    raw token = token
+
+    export same : (Token, Token) -> bool
+    same (left, right) = left == right
+
+    export label : Token -> Label
+    label token = "t${token}"
+
+    export text : Label -> string
+    text label = label
+
+module Sealed
+    type Conn =
+        host : string
+        port : int
+
+    (** Aliases of every shape stay abstract alike: a generic application, a
+        record, a `Result` and a function type. Inside the module each one is
+        the type it names, so list, field, `?:` and call rules all apply. *)
+    export opaque type Bag T = (List T)
+    export opaque type Link = (Conn)
+    export opaque type Attempt = (Result int string)
+    export opaque type Step = (int -> int)
+
+    export bag : (int, int) -> Bag int
+    bag (first, second) = [first, second]
+
+    export size : Bag int -> int
+    size bag = listLength bag
+
+    export open : (string, int) -> Link
+    open (host, port) =
+        Conn
+            host = host
+            port = port
+
+    export moved : (Link, int) -> Link
+    moved (link, port) = link(port = port)
+
+    export describe : Link -> string
+    describe link = "${link.host}:${link.port}"
+
+    export tried : int -> Attempt
+    tried n = n
+
+    export failed : string -> Attempt
+    failed why = Error(message = why)
+
+    export orElse : (Attempt, int) -> int
+    orElse (attempt, fallback) = attempt ?: fallback
+
+    export stepBy : int -> Step
+    stepBy n = \x => x + n
+
+    export run : (Step, int) -> int
+    run (step, start) = step start
+
 (** Constructors reached through exported factories keep their payloads. *)
 unionPayloadCase () = checkAll ("module union payloads survive the boundary", [
     Geo::area (Geo::circle 3) == 9,
@@ -125,6 +196,29 @@ opaqueCase () = checkAll ("opaque records are reached through their module", [
     Ids::value (Ids::next (Ids::next (Ids::make 0))) == 2
 ])
 
+(** An opaque alias is the bare representation at run time, yet it cannot be
+    forged or inspected: it travels through bindings, generic functions and
+    lists, and back into its module, unchanged. *)
+opaqueAliasCase () =
+    first = Tokens::issue 20
+    second = Tokens::next first
+    held = [first, second]
+    checkAll ("opaque aliases are reached through their module", [
+        Tokens::raw first == 40,
+        Tokens::raw second == 41,
+        Tokens::same (first, first),
+        !Tokens::same (first, second),
+        Tokens::text (Tokens::label second) == "t41",
+        Tokens::same (Boxes::held (Boxes::wrap second), second),
+        listLength held == 2,
+        Tokens::raw (listGet held 1 ?: first) == 41,
+        Sealed::size (Sealed::bag (4, 5)) == 2,
+        Sealed::describe (Sealed::moved (Sealed::open ("host", 80), 81)) == "host:81",
+        Sealed::orElse (Sealed::tried 3, 9) == 3,
+        Sealed::orElse (Sealed::failed "no", 9) == 9,
+        Sealed::run (Sealed::stepBy 5, 10) == 15
+    ])
+
 exactArithmetic (\() =>
     print "${Geo::area (Geo::circle 3)} ${Geo::name (Geo::square 4)} ${Geo::perimeterOf (Geo::extent (Geo::square 5))} ${Boxes::held (Boxes::wrap "seven")}")
 
@@ -132,3 +226,4 @@ test ("module unions keep their payloads", \() => exactArithmetic (unionPayloadC
 test ("module records keep their fields", \() => exactArithmetic (recordFieldCase))
 test ("module generics specialise per call site", \() => exactArithmetic (genericModuleCase))
 test ("module opaque records stay abstract", \() => exactArithmetic (opaqueCase))
+test ("module opaque aliases stay abstract", \() => exactArithmetic (opaqueAliasCase))

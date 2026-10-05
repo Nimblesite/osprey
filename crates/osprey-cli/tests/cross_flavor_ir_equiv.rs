@@ -108,12 +108,14 @@ fn parsed_source(source: &str, flavor: Flavor, label: &str) -> Result<SourceFile
 /// have no meaning before that. Lowering the raw parse would compare IR neither
 /// flavor ever runs, so this reproduces the CLI's own single-source path
 /// ([MODULES-MODEL]) for both flavors alike, leaving ordinary scripts untouched.
+/// The program answered is the one the backend lowers, with every opaque alias
+/// expanded ([MODULES-OPAQUE-TYPES]).
 fn assembled_if_module_aware(source: SourceFile) -> Result<Program, String> {
     if !osprey_project::needs_assembly(&source.program) {
         return Ok(source.program);
     }
     osprey_project::assemble_one(source)
-        .map(|assembled| assembled.program)
+        .map(|assembled| assembled.backend_program().clone())
         .map_err(|errors| format!("project assembly failed: {errors:?}"))
 }
 
@@ -316,7 +318,7 @@ fn project_ir(mask: usize) -> Result<String, String> {
     if !errors.is_empty() {
         return Err(format!("project {mask}: {errors:?}"));
     }
-    compile_program(&project.program).map_err(|error| format!("project {mask}: {error:?}"))
+    compile_program(project.backend_program()).map_err(|error| format!("project {mask}: {error:?}"))
 }
 
 /// [MODULES-FLAVOR-PROJECTION] [MODULES-ABI] [FLAVOR-IR-EQUIV]

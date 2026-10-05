@@ -7,9 +7,12 @@ use osprey_ast::DocExample;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode, Output};
 
+/// Gate the example on the program the checker reads, then run the one the
+/// backend lowers.
 pub(super) fn check(
     cli: &Cli,
     input: &CompilationInput,
+    backend: osprey_ast::Program,
     example: &DocExample,
 ) -> Result<(), String> {
     if report_type_errors(input) != 0 {
@@ -18,7 +21,7 @@ pub(super) fn check(
     let input = CompilationInput::script(
         input.display_path(),
         input.source().to_string(),
-        super::synthesize::reachable(input.program().clone()),
+        super::synthesize::reachable(backend),
     );
     validate(cli, &input)?;
     if !example.run {

@@ -6,7 +6,7 @@ iteration surface in both language flavors.
 ## Core Iterator Functions — [BUILTIN-ITER]
 
 `Iterator<T>` is the opaque type produced by `range`. It is distinct from a
-materialized `List<T>` and is consumed by `forEach` or `fold`.
+materialized `List<T>` and is consumed by `forEach`, `fold` or `toList`.
 
 ### `range(start: int, end: int) -> Iterator<int>` — [BUILTIN-ITER-RANGE]
 Generates integers from `start` (inclusive) to `end` (exclusive).
@@ -67,6 +67,18 @@ add (total, value) = total + value
 range (1, 5) |> fold (0, add)   // 0+1+2+3+4 = 10
 ```
 
+### `toList(iterator: Iterator<T>) -> List<T>` — [BUILTIN-ITER-TOLIST]
+Runs the pipeline once and collects every element it yields, in order, into a
+`List<T>`. It is the bridge from a pipeline back to a materialized list.
+
+```osprey
+range(1, 7) |> filter(isEven) |> toList   // [2, 4, 6]
+```
+
+```osprey-ml
+range (1, 7) |> filter isEven |> toList   // [2, 4, 6]
+```
+
 ## Callbacks and Accumulators — [BUILTIN-ITER-CALLBACK]
 
 Callbacks may be lambdas, named functions, or function values. Generic named functions are specialized at the call site. Iterator combinators preserve a callback's complete return type, including `Result<T, E>`; they never unwrap a failure channel. Arithmetic in a callback needs no fallback, because it produces no `Result`; an arithmetic fault inside a lambda passed to a combinator propagates to the enclosing `Arith` handler, or the program is rejected ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)).
@@ -103,7 +115,7 @@ range (0, 20) |> filter isEven |> map double |> forEach print
 ## Stream Fusion — [BUILTIN-ITER-FUSION]
 
 Chains of `map` and `filter` over a range are emitted as one loop when consumed
-by `forEach` or `fold`; no intermediate collection is created:
+by `forEach`, `fold` or `toList`; no intermediate collection is created:
 
 ```osprey
 range(1, 5) |> map(double) |> filter(isEven) |> forEach(print)
@@ -121,3 +133,7 @@ for (i = 1; i < 5; i++) {
     if (isEven(value)) print(value);
 }
 ```
+
+A pipeline's stages belong to the iterator they were applied to. A pipeline bound to a name keeps them, two pipelines built on one source are independent, and consuming a pipeline twice runs its stages twice. A lambda stage reads the bindings it closed over where it was written, even when a later statement consumes it.
+
+Fusion happens while the enclosing function is compiled. A pipeline carrying `map` or `filter` stages therefore cannot be returned from that function or passed to a function compiled on its own; both are rejected with ``a `map`/`filter` pipeline leaving the function that built it``. Collect it with `toList` to hand the elements on.

@@ -657,6 +657,8 @@ list, or map behavior for both common functions.
 ### `List<T>` — [BUILTIN-LIST]
 
 `List()` creates an empty list. List literals create populated lists.
+[`toList`](0010-LoopConstructsAndFunctionalIterators.md#tolistiterator-iteratort---listt--builtin-iter-tolist)
+collects an iterator pipeline into one ([BUILTIN-ITER-TOLIST]).
 
 #### `listGet(list: List<T>, index: int) -> Result<T, Error>` — [BUILTIN-LIST-GET]
 Equivalent to `list[index]`. An out-of-range index returns `Error`.
@@ -708,7 +710,7 @@ Returns all values in the same traversal order as `mapKeys`.
 
 ## Iterators and Pipe
 
-`range`, `forEach`, `map`, `filter`, `fold`, and `|>` are documented in
+`range`, `forEach`, `map`, `filter`, `fold`, `toList`, and `|>` are documented in
 [Iterators and Iteration](0010-LoopConstructsAndFunctionalIterators.md).
 
 ## HTTP

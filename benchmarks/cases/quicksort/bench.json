@@ -1,0 +1,4 @@
+{
+  "name": "quicksort",
+  "description": "Naive first-element-pivot quicksort of a pseudo-random persistent List<int>, rank-weighted checksum, repeated — partition allocation + list concatenation"
+}

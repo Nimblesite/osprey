@@ -97,7 +97,7 @@ impl Checker {
         disc: &Type,
         local: &mut TypeEnv,
     ) -> bool {
-        if !self.ctx.prune(disc).is_named(names::ANY) {
+        if !self.ctx.expose(disc).is_named(names::ANY) {
             return false;
         }
         let offending = match pattern {
@@ -152,7 +152,7 @@ impl Checker {
             self.bind_fresh(fields, local);
             return;
         }
-        let dp = self.ctx.prune(disc);
+        let dp = self.ctx.expose(disc);
         if dp.is_named(names::ANY) {
             for (_, binder) in fields {
                 if !binder.is_empty() {
@@ -325,7 +325,7 @@ impl Checker {
         // `Success`/`Error` over a real `Result` always mean the built-in
         // variant, even when a user union shadows those names: match the
         // variant, bind nothing.
-        if is_result_variant(name) && is_result(&self.ctx.prune(disc)) {
+        if is_result_variant(name) && is_result(&self.ctx.expose(disc)) {
             return;
         }
         if self.ctors.get(name).is_some_and(|i| i.fields.is_empty()) {
@@ -351,7 +351,7 @@ impl Checker {
         if !starts_uppercase(name) {
             return None;
         }
-        match self.ctx.prune(disc) {
+        match self.ctx.expose(disc) {
             Type::Con { name: owner, .. } => {
                 let variants = self.union_variants.get(&owner)?;
                 if variants.iter().any(|v| v == name) {
@@ -375,7 +375,7 @@ impl Checker {
         // `Success { value }` / `Error { message }` over a real `Result` always
         // bind the built-in variant's fields, even when a user union shadows
         // those constructor names.
-        if is_result_variant(name) && is_result(&self.ctx.prune(disc)) {
+        if is_result_variant(name) && is_result(&self.ctx.expose(disc)) {
             self.bind_result_fields(fields, disc, local);
             return;
         }
@@ -464,7 +464,7 @@ impl Checker {
         {
             return;
         }
-        let pruned = self.ctx.prune(disc);
+        let pruned = self.ctx.expose(disc);
         if is_result(&pruned) || matches!(pruned, Type::Var(_)) {
             return;
         }
@@ -482,11 +482,11 @@ impl Checker {
         // variable as the payload instead detached the two: once the scrutinee
         // later became `Result<int, Error>`, `value` was still the Result, and
         // `Success { value: value }` failed to unify it with `int`.
-        if matches!(self.ctx.prune(disc), Type::Var(_)) {
+        if matches!(self.ctx.expose(disc), Type::Var(_)) {
             let open = Type::result(self.ctx.fresh(), self.ctx.fresh());
             self.push_unify(&open, disc);
         }
-        let dp = self.ctx.prune(disc);
+        let dp = self.ctx.expose(disc);
         let ok = match &dp {
             Type::Con { name, args } if name == names::RESULT && !args.is_empty() => {
                 args.first().cloned().unwrap_or_else(|| dp.clone())

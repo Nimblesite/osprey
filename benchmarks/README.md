@@ -56,7 +56,7 @@ gitignored:
 [`/benchmarks`](../website/src/benchmarks.md) page renders them at site-build
 time. The standalone report and website tables are generated mechanically by [`report.py`](report.py). The website prose must be updated to describe those measurements and their provenance.
 
-## The benchmarks (22)
+## The benchmarks (24)
 
 Every case prints a single deterministic **integer** result, so output is
 byte-comparable across languages (a broken implementation is caught and excluded
@@ -112,9 +112,13 @@ seeded token generator and runs in constant *or* randomized mode (below).
 | `wordfreq`  | `String` keys + `Map<string,int>` | HAMT insert/lookup + string hashing | count 200k tokens, position-weighted checksum |
 | `textstats` | `String`                          | immutable string builtins (`length`/`contains`/`startsWith`) in a hot loop | score 200k tokens |
 | `listops`   | persistent `List<int>`            | bitmapped-vector-trie build + recursive traversal | build+traverse 4k-element lists ×8 |
+| `quicksort` | persistent `List<int>`            | list pattern matching, prepend and concatenation in a first-element-pivot quicksort | sort 2k-element lists ×8, rank-weighted checksum |
+| `mergesort` | persistent `List<int>`            | list splitting and merging in a top-down merge sort | sort 2k-element lists ×8, rank-weighted checksum |
 | `exprtree`  | recursive union + records         | constructor allocation + pattern-match dispatch + modular eval | build+evaluate depth-14 trees ×10 |
 
-`listops` and `wordfreq` exercise persistent list and map allocation. Compare the default, ARC and GC columns for the same source; the current measurements are in `results/results.json`.
+`listops`, `quicksort`, `mergesort` and `wordfreq` exercise persistent list and map allocation. Compare the default, ARC and GC columns for the same source; the current measurements are in `results/results.json`.
+
+The two sorts build every partition and merged run as a new persistent list, so each allocates heavily. The other languages run the same out-of-place algorithm on their own sequence type: arrays or vectors in C, Rust, C# and Dart, linked lists in OCaml and Haskell. Their checksum weights each sorted element by its rank, so a wrong order changes the answer, and both sorts share one oracle.
 
 ## Methodology
 
@@ -225,7 +229,6 @@ Blocked on language features Osprey doesn't expose today (left out, not faked):
 |-----------|-----------|
 | mandelbrot, n-body, spectral-norm | `sqrt`/trig support and a common numeric accuracy/output oracle; integer/float conversions already exist |
 | n-queens, fannkuch | no mutable arrays |
-| quicksort, mergesort | **unblocked — cases not written yet.** The recursive-`List` miscompile this row used to cite is fixed: a list *literal* is a different layout from an `OspreyList` handle, and passing one into a callee that list-pattern-matches segfaulted, so `quicksort([3, 1, 2, 5, 4])` crashed while the same call on a `listAppend` chain worked. Literal arguments are now rebuilt at the call boundary and both sorts run correctly under all three memory backends. Note `filter` itself still cannot express them — it returns `Iterator<T>` and nothing collects an iterator back into a `List<T>` — so the cases need explicit head/tail recursion, as `listops` already uses |
 | sieve of Eratosthenes, matrix-multiply, n-sieve | no mutable arrays |
 | pidigits | no arbitrary-precision integers (i64 only) |
 

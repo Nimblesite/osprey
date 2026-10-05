@@ -72,6 +72,7 @@ pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
         return (!is_numeric_scalar(ty) && !matches!(ty, Type::Var(_)))
             .then(|| format!("operator `{op}` requires int or float; got {ty}"));
     }
+    let name = operation_name(name);
     match name {
         "interpolation" if matches!(ty, Type::Fun { .. }) && crate::ty::has_type_var(ty) => Some(
             "a closure value with a still-generic type cannot be interpolated; apply it or give it a concrete function type".to_owned()

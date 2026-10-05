@@ -9,7 +9,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from merge_results import merge
-from report import update_readme
+from report import load, update_readme
 
 
 class LspFixtureTests(unittest.TestCase):
@@ -96,6 +96,54 @@ class MergeResultsTests(unittest.TestCase):
             means = {r["command"]: r["mean"]
                      for r in json.loads((destination / "hf" / "fib.json").read_text())["results"]}
             self.assertEqual(means, {"osprey": 0.9, "osprey-wasm": 9.0, "rust": 0.5})
+
+
+class RecordedTimingTests(unittest.TestCase):
+    """The hyperfine exports are untracked, so results.json is the only durable
+    record of a timing. A run that measures some cases must not erase the rest."""
+
+    TIMING = {"mean": 1.0, "stddev": 0.1, "min": 0.9, "max": 1.2}
+
+    def published(self, out: Path, status: str) -> None:
+        (out / "hf").mkdir()
+        (out / "raw.jsonl").write_text(
+            f'{{"case":"fib","lang":"osprey","status":"{status}","rss":10}}\n'
+            '{"case":"sort","lang":"osprey","status":"ok","rss":20}\n'
+        )
+        cell = {"status": "ok", "rss": 10, **self.TIMING}
+        (out / "results.json").write_text(
+            json.dumps({"languages": ["osprey"], "cases": {"fib": {"osprey": cell}}})
+        )
+
+    def export(self, out: Path, case: str, mean: float) -> None:
+        result = {"command": "osprey", "mean": mean, "stddev": 0.2, "min": 1.8, "max": 2.4}
+        (out / "hf" / f"{case}.json").write_text(json.dumps({"results": [result]}))
+
+    def test_a_case_with_no_hyperfine_export_keeps_its_published_timing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            self.published(out, "ok")
+            self.export(out, "sort", 2.0)
+
+            data = load(out)
+
+            self.assertEqual(data["fib"]["osprey"], {"status": "ok", "rss": 10, **self.TIMING})
+            self.assertEqual(data["sort"]["osprey"]["mean"], 2.0)
+
+    def test_a_fresh_export_replaces_the_published_timing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            self.published(out, "ok")
+            self.export(out, "fib", 3.0)
+
+            self.assertEqual(load(out)["fib"]["osprey"]["mean"], 3.0)
+
+    def test_a_cell_that_stopped_passing_has_no_timing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            self.published(out, "wrong_output")
+
+            self.assertEqual(load(out)["fib"]["osprey"], {"status": "wrong_output", "rss": 10})
 
 
 class UpdateReadmeTests(unittest.TestCase):

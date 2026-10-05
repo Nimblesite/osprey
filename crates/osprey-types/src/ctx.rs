@@ -3,8 +3,9 @@
 //! — the textbook union-find layout. `prune` compresses paths as it resolves,
 //! so a chain of variable bindings is walked once and then answers in one hop.
 
+use crate::error::TypeError;
 use crate::ty::{Type, VarId};
-use osprey_ast::Variance;
+use osprey_ast::{TypeExpr, Variance};
 use std::collections::{BTreeSet, HashMap};
 
 type RecordTemplate = (Vec<String>, Vec<(String, String)>);
@@ -19,6 +20,11 @@ pub(crate) struct InferCtx {
     variances: HashMap<String, Vec<Variance>>,
     /// Nominal record layouts, before instantiating their declaration binders.
     records: HashMap<String, RecordTemplate>,
+    /// Opaque alias → its binders and representation [MODULES-OPAQUE-TYPES].
+    equations: HashMap<String, (Vec<String>, TypeExpr)>,
+    /// The declaration being checked. An opaque alias is its representation
+    /// exactly where this sits inside the alias's owning module.
+    site: String,
 }
 
 impl InferCtx {
@@ -69,6 +75,91 @@ impl InferCtx {
                     )
                 })
                 .collect(),
+        )
+    }
+
+    /// Declare an opaque alias: a nominal type that only the declarations of
+    /// its owning module may read through [MODULES-OPAQUE-TYPES].
+    pub(crate) fn set_equation(&mut self, name: String, params: Vec<String>, alias: TypeExpr) {
+        let _ = self.equations.insert(name, (params, alias));
+    }
+
+    /// Move to the declaration `site`, answering the one it replaces.
+    pub(crate) fn enter(&mut self, site: String) -> String {
+        std::mem::replace(&mut self.site, site)
+    }
+
+    /// Whether the current declaration reads through any opaque alias at all.
+    pub(crate) fn sees_through_aliases(&self) -> bool {
+        self.equations
+            .keys()
+            .any(|alias| osprey_ast::symbol::encloses(alias, &self.site))
+    }
+
+    /// What `t` stands for when it is an opaque alias `site` may read through.
+    fn representation(&self, t: &Type, site: &str) -> Option<Type> {
+        let Type::Con { name, args } = t else {
+            return None;
+        };
+        let (params, alias) = self.equations.get(name)?;
+        (params.len() == args.len() && osprey_ast::symbol::encloses(name, site)).then(|| {
+            let binder = params.iter().cloned().zip(args.iter().cloned()).collect();
+            crate::convert::type_expr_to_type(alias, &binder)
+        })
+    }
+
+    /// `t` with every opaque alias `site` may read through replaced, outermost
+    /// first, by its representation.
+    #[must_use]
+    pub(crate) fn exposed_at(&self, t: Type, site: &str) -> Type {
+        match self.representation(&t, site) {
+            Some(representation) => self.exposed_at(representation, site),
+            None => t,
+        }
+    }
+
+    /// [`Self::prune`], then [`Self::exposed_at`] the current declaration:
+    /// what a rule that inspects a type's shape must look at.
+    pub(crate) fn expose(&mut self, t: &Type) -> Type {
+        let pruned = self.prune(t);
+        self.exposed_at(pruned, &self.site)
+    }
+
+    /// The mismatch of `a` and `b`. When one is an opaque alias, the error
+    /// names the module that keeps its representation: the author can read
+    /// `type T = int` there and would otherwise learn only that `int` is not
+    /// `T`.
+    pub(crate) fn mismatch(&self, a: &Type, b: &Type) -> TypeError {
+        let error = TypeError::mismatch(a, b);
+        let sealed = [a, b].into_iter().find_map(|t| match t {
+            Type::Con { name, .. } if self.equations.contains_key(name) => {
+                osprey_ast::symbol::parent(name).map(|owner| (name, owner))
+            }
+            _ => None,
+        });
+        match sealed {
+            Some((alias, owner)) => TypeError::new(format!(
+                "{}; `{alias}` is opaque outside module `{owner}`",
+                error.message
+            )),
+            None => error,
+        }
+    }
+
+    /// Prune both sides of a unification and read through an opaque alias the
+    /// current declaration may see through, unless the other side is that same
+    /// alias. A variable is left to bind the alias itself, so a value keeps the
+    /// abstract type its annotation gave it.
+    pub(crate) fn seen_through(&mut self, a: &Type, b: &Type) -> (Type, Type) {
+        let (a, b) = (self.prune(a), self.prune(b));
+        let settled = matches!((&a, &b), (Type::Var(_), _) | (_, Type::Var(_)))
+            || matches!((&a, &b), (Type::Con { name: left, .. }, Type::Con { name: right, .. }) if left == right);
+        if settled || self.equations.is_empty() {
+            return (a, b);
+        }
+        (
+            self.exposed_at(a, &self.site),
+            self.exposed_at(b, &self.site),
         )
     }
 

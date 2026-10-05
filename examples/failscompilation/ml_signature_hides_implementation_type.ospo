@@ -1,0 +1,14 @@
+// osprey: flavor=ml
+// [MODULES-SIGNATURE] The ML half of `signature_hides_implementation_type.ospo`:
+// an importer sees the signature's `int`, not the implementation's inferred
+// generality.
+namespace app
+
+signature ShowApi
+    show : int -> string
+
+module Show : ShowApi
+    helper x = "<${x}>"
+    show x = helper x
+
+main () = print (Show::show "text")
