@@ -10,15 +10,11 @@ macOS and 5 elsewhere, 1-based `DILocation` columns), and F5 in VS Code is a rea
 `debug_compile_emits_source_level_metadata` and
 `a_breakpoint_inside_a_handler_arm_body_has_a_line_to_bind_to`.
 
-Two gaps no checklist item currently tracks, both verified against the tree:
+Source lambda scopes, primitive parameters, immutable captures and block return-line locations are now implemented. Both-flavor compiler assertions cover returned, locally bound, argument and C-callback lambdas; the real LLDB-DAP editor cases inspect `x = 40`, captured `n = 2` and local `sum = 42` at the lambda's return line. Default and ML corpus IR remains byte-identical without debug metadata.
 
-- **Lambda bodies are undebuggable.** `let f = |x| => …` emits
-  `define i64 @__closure_fn_0(i8* %__env, i64 %$p0)` with **no** `!dbg`
-  attachment and no body `DILocation`s — the module carries exactly one
-  `DISubprogram`, for `@main`. The fix is the one already proven for handler arms
-  (`crates/osprey-codegen/src/effects.rs`), applied to closure bodies. Match-arm
-  bodies have the same shape of problem: a `fn classify` spanning four lines emits
-  only the `DILocation` of its first.
+Remaining gaps include:
+
+- **Source coverage and value inspection remain incomplete.** Single-expression ML layout bodies, match-arm expressions, mutable capture cells and generic named-function adapters still need complete source scopes and variable locations. Composite values have no Osprey-specific rendering. The source-lambda regression closes one concrete gap; it does not complete Phase 3.
 - **Layer 3's and Layer 4's advertised surfaces do not exist.** The plan describes
   `--debug-info`, `--debug-opt`, `--debug-out`, `--debug-preserve-ir` and
   `--debug-preserve-symbols`; `crates/osprey-cli/src/main.rs` accepts only
@@ -28,9 +24,8 @@ Two gaps no checklist item currently tracks, both verified against the tree:
   `console` launch fields are contributed by no entry in
   `vscode-extension/package.json` `debuggers[0]`.
 
-A debug-metadata coverage metric — Layer 6 — would have caught both, which is an
-argument for pulling it earlier than its current position.
-**Spec:** [0021 - Debugging](../specs/0021-Debugging.md)
+A debug-metadata coverage metric — Layer 6 — is still needed to detect omissions across all executable expression forms.
+**Spec:** [0021 - Debugger](../specs/0021-Debugger.md)
 
 ## Summary
 
@@ -773,7 +768,8 @@ Acceptance:
 - [ ] Migrate the textual spelling from `@llvm.dbg.*` compatibility intrinsics
       to `#dbg_*` debug records once the supported LLVM floor makes that path
       portable.
-- [ ] Extend value-location records to mut cells, captures, match bindings, and
+- [x] Emit source-lambda scopes, primitive parameters and immutable capture locations; verify return-line breakpoints and captured/local values through LLDB-DAP in both flavors.
+- [ ] Extend value-location records to mut cells, remaining capture representations, match bindings, and
       handler parameters.
 - [ ] Add lexical scopes for blocks, lambdas, match arms, and handlers.
 - [x] Validate primitive local inspection in LLDB-DAP.

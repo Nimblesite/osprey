@@ -276,7 +276,9 @@ fn walk_stmt_body(stmt: &Stmt, prefix: &[String], out: &mut Vec<SymbolInfo>) {
 /// Descend expressions while preserving block-local symbol collection.
 fn walk_expr(e: &Expr, prefix: &[String], out: &mut Vec<SymbolInfo>) {
     match e {
-        Expr::Block { statements, value } => {
+        Expr::Block {
+            statements, value, ..
+        } => {
             walk_stmts(statements, prefix, Bodies::Descend, out);
             if let Some(value) = value {
                 walk_expr(value, prefix, out);

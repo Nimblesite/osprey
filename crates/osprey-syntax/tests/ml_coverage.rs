@@ -497,7 +497,9 @@ fn block_with_leading_statement_then_trailing_value() {
     let src = "f x =\n    y = x + 1\n    y\n";
     match ml_one(src) {
         Stmt::Function {
-            body: Expr::Block { statements, value },
+            body: Expr::Block {
+                statements, value, ..
+            },
             ..
         } => {
             assert_eq!(statements.len(), 1);

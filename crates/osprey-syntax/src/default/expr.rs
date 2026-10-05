@@ -177,6 +177,7 @@ impl Lowerer<'_> {
                 })
                 .collect();
             return Expr::Block {
+                position: None,
                 statements,
                 value: Some(Box::new(then_expr)),
             };
@@ -402,23 +403,32 @@ impl Lowerer<'_> {
     /// handled region — the same node ML's layout form lowers to
     /// ([FLAVOR-IR-EQUIV]).
     fn lower_block_items(&self, children: &[Node<'_>]) -> Expr {
-        let (statements, value) = self.block_items(children);
+        let (statements, value, position) = self.block_items(children);
         match value.as_deref() {
-            Some(Expr::Handler { .. }) => crate::desugar::block(statements, value),
-            _ => Expr::Block { statements, value },
+            Some(Expr::Handler { .. }) => crate::desugar::block(statements, value, position),
+            _ => Expr::Block {
+                statements,
+                value,
+                position,
+            },
         }
     }
 
     /// The statements and trailing value of one block's items.
-    fn block_items(&self, children: &[Node<'_>]) -> (Vec<Stmt>, Option<Box<Expr>>) {
+    fn block_items(
+        &self,
+        children: &[Node<'_>],
+    ) -> (Vec<Stmt>, Option<Box<Expr>>, Option<osprey_ast::Position>) {
         let mut statements = Vec::new();
         let mut value = None;
+        let mut position = None;
         for (index, child) in children.iter().enumerate() {
             if let Some(handler) = self.handler_over_rest(*child) {
                 let rest = children.get(index + 1..).unwrap_or_default();
                 return (
                     statements,
                     Some(Box::new(self.handling_rest(handler, rest))),
+                    Some(self.pos(*child)),
                 );
             }
             match child.kind() {
@@ -427,7 +437,10 @@ impl Lowerer<'_> {
                         statements.push(s);
                     }
                 }
-                "expression" => value = Some(Box::new(self.lower_expr(*child))),
+                "expression" => {
+                    value = Some(Box::new(self.lower_expr(*child)));
+                    position = Some(self.pos(*child));
+                }
                 _ => {}
             }
         }
@@ -435,11 +448,17 @@ impl Lowerer<'_> {
         // that trailing expression as an `expression_statement`; recover it as
         // the block value so the type of `{ ...; r }` is the type of `r`.
         if value.is_none() && matches!(statements.last(), Some(Stmt::Expr { .. })) {
-            if let Some(Stmt::Expr { value: e, .. }) = statements.pop() {
+            if let Some(Stmt::Expr {
+                value: e,
+                position: source,
+                ..
+            }) = statements.pop()
+            {
                 value = Some(Box::new(e));
+                position = source;
             }
         }
-        (statements, value)
+        (statements, value, position)
     }
 
     /// A `handle E { … }` block statement governs the remaining block items.
@@ -469,8 +488,8 @@ impl Lowerer<'_> {
             // The rest of the block is the region, not braces the user wrote:
             // a lone trailing value is the body itself, as in ML layout.
             body: Box::new({
-                let (statements, value) = self.block_items(rest);
-                crate::desugar::block(statements, value)
+                let (statements, value, position) = self.block_items(rest);
+                crate::desugar::block(statements, value, position)
             }),
             position: Some(self.pos(handler)),
         }
@@ -664,7 +683,9 @@ mod tests {
             .next()
         {
             Some(Stmt::Function {
-                body: Expr::Block { statements, value },
+                body: Expr::Block {
+                    statements, value, ..
+                },
                 ..
             }) => {
                 assert_eq!(statements.len(), 1);
@@ -840,7 +861,9 @@ mod tests {
         );
         // block with a statement plus a trailing value expression.
         match let_value("let r = {\n  let a = 1\n  a\n}\n") {
-            Expr::Block { statements, value } => {
+            Expr::Block {
+                statements, value, ..
+            } => {
                 assert_eq!(statements.len(), 1);
                 assert!(value.is_some());
             }

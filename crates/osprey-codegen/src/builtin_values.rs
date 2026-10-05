@@ -40,8 +40,14 @@ fn absolute_cell(cg: &mut Codegen, ty: osprey_types::Type) -> Result<Value> {
         inline_constraint: false,
     };
     let key = crate::closure::specialisation_key("abs", &sig);
-    let mut value =
-        crate::closure::emit_closure_keyed(cg, &[parameter], &absolute_body(), &sig, Some(key))?;
+    let mut value = crate::closure::emit_closure_keyed(
+        cg,
+        &[parameter],
+        &absolute_body(),
+        &sig,
+        Some(key),
+        None,
+    )?;
     value.inferred_type = Some(ty);
     Ok(value)
 }

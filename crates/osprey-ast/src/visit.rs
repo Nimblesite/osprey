@@ -145,14 +145,9 @@ fn expression_children<'a>(expression: &'a Expr, visit: &mut impl FnMut(AstNode<
             visit(AstNode::Expression(value));
             visit_each(arms, visit, |arm| &arm.body);
         }
-        Expr::Block { statements, value } => {
-            for statement in statements {
-                visit(AstNode::Statement(statement));
-            }
-            if let Some(value) = value {
-                visit(AstNode::Expression(value));
-            }
-        }
+        Expr::Block {
+            statements, value, ..
+        } => block_children(statements, value.as_deref(), visit),
         Expr::Yield(value) | Expr::Resume(value) => {
             if let Some(value) = value {
                 visit(AstNode::Expression(value));
@@ -214,6 +209,19 @@ pub fn walk_each<T, Ctx>(
 ) {
     for item in items {
         recur(pick(item), ctx);
+    }
+}
+
+fn block_children<'a>(
+    statements: &'a [Stmt],
+    value: Option<&'a Expr>,
+    visit: &mut impl FnMut(AstNode<'a>),
+) {
+    for statement in statements {
+        visit(AstNode::Statement(statement));
+    }
+    if let Some(value) = value {
+        visit(AstNode::Expression(value));
     }
 }
 

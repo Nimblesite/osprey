@@ -79,6 +79,7 @@ fn prune(program: &mut Program, consumed: &BTreeSet<String>, retained: &BTreeSet
         if let Expr::Block {
             statements: block,
             value: result,
+            ..
         } = value
         {
             statements(block, consumed, retained);

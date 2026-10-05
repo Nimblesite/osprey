@@ -234,7 +234,9 @@ impl Analysis {
                     position: *position,
                 },
             ),
-            Expr::Block { statements, value } => self.block(statements, value.as_deref(), owner),
+            Expr::Block {
+                statements, value, ..
+            } => self.block(statements, value.as_deref(), owner),
             Expr::Match { value, arms } => {
                 self.expression(value, owner);
                 self.arms(arms, owner);
@@ -326,6 +328,7 @@ fn source_body<'a>(parameters: &[Parameter], mut body: &'a Expr) -> &'a Expr {
         if let Expr::Block {
             statements,
             value: Some(value),
+            ..
         } = body
         {
             if matches!(statements.as_slice(), [Stmt::Let { .. }]) {

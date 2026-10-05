@@ -90,9 +90,17 @@ fn bool_arm(matches: bool, body: Expr) -> MatchArm {
 /// statements IS its value — an ML layout body and a Default `handle` region
 /// lower to one node ([FLAVOR-IR-EQUIV]). Braces the user wrote are not layout
 /// and keep their [`Expr::Block`] (see the Default block lowering).
-pub(crate) fn block(statements: Vec<Stmt>, value: Option<Box<Expr>>) -> Expr {
+pub(crate) fn block(
+    statements: Vec<Stmt>,
+    value: Option<Box<Expr>>,
+    position: Option<osprey_ast::Position>,
+) -> Expr {
     match (statements.is_empty(), value) {
         (true, Some(value)) => *value,
-        (_, value) => Expr::Block { statements, value },
+        (_, value) => Expr::Block {
+            statements,
+            value,
+            position,
+        },
     }
 }

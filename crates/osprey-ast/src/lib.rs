@@ -923,6 +923,8 @@ pub enum Expr {
         statements: Vec<Stmt>,
         /// The trailing value-expression, if any.
         value: Option<Box<Expr>>,
+        /// Source position of the trailing expression, retained for debugging.
+        position: Option<Position>,
     },
     /// `Type<T> { field: value }` type constructor.
     TypeConstructor {

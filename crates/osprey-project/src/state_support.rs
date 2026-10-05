@@ -47,6 +47,7 @@ pub(crate) fn inject(body: &mut Expr, cells: &[Stmt]) {
     } else {
         let original = std::mem::replace(body, Expr::Bool(false));
         *body = Expr::Block {
+            position: None,
             statements: cells.to_vec(),
             value: Some(Box::new(original)),
         };

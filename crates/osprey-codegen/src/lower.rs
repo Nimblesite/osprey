@@ -329,6 +329,7 @@ fn gen_function(
     // [TESTING-COVERAGE-CODEGEN].
     cg.cov_hit(position);
     let body_val = gen_fn_body(cg, name, body)?;
+    let _ = cg.set_debug_position(crate::stmt::tail_position(body));
     let ret = coerce_return(cg, name, body_val)?;
     // Returns transfer +1; everything else the function owned drops here
     // [GC-ARC-PERCEUS].
@@ -346,6 +347,7 @@ fn gen_fn_body(cg: &mut Codegen, name: &str, body: &Expr) -> Result<Value> {
     if let Expr::Lambda {
         parameters,
         body: lbody,
+        position,
         ..
     } = body
     {
@@ -354,7 +356,7 @@ fn gen_fn_body(cg: &mut Codegen, name: &str, body: &Expr) -> Result<Value> {
             .return_type(name)
             .and_then(|t| Codegen::fn_value_sig(&cg.prog, t))
         {
-            return crate::closure::emit_closure(cg, parameters, lbody, &sig);
+            return crate::closure::emit_closure(cg, parameters, lbody, &sig, *position);
         }
     }
     gen_expr(cg, body)

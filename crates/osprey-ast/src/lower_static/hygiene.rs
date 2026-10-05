@@ -107,7 +107,9 @@ impl Resolver {
     fn expression(&mut self, expression: &mut Expr, scope: &Scope) {
         match expression {
             Expr::Identifier(name) => Self::reference(name, scope),
-            Expr::Block { statements, value } => {
+            Expr::Block {
+                statements, value, ..
+            } => {
                 let mut nested = scope.clone();
                 self.statements(statements, &mut nested, false);
                 if let Some(value) = value {

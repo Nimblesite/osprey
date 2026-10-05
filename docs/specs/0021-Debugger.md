@@ -32,7 +32,7 @@ Minimum emitted metadata:
 - `!llvm.module.flags` including debug-info version and DWARF version.
 - `!DIFile`.
 - `!DICompileUnit`.
-- `!DISubprogram` for user functions and generated `main`.
+- `!DISubprogram` for user functions, materialized source lambdas and generated `main`.
 - `!DILocation` on instructions derived from executable source statements.
 
 Module function names in debug metadata and stack frames use their qualified source identity, such as `billing::Tax::add`; native symbols retain their encoded ABI. The optional DWARF linkage name is omitted because LLDB otherwise displays that encoded name. Both-flavor `module stack frames retain their source names` editor tests stop in a real adapter and check the source name, line and parameter value. See [MODULES-ABI](0025-ModulesAndNamespaces.md#name-mangling-and-abi-modules-abi).
@@ -51,6 +51,16 @@ Rules:
   reserves `!DILocation` column `0` as the "no column" sentinel — emitting a
   raw 0-based column collides with it and yields off-by-one or dropped column
   data. A 1-based AST line maps straight through.
+
+## Lambda Scopes `[DEBUGGER-LAMBDA-SCOPES]`
+
+A materialized source lambda has its own native debug scope, declaration location and body locations. This applies when a lambda is returned, bound to a local, passed to another Osprey function or passed as a capture-free C callback. Synthetic compiler adapters do not acquire an invented source location.
+
+A block with local bindings retains its trailing value's own source position, including when that value is a bare identifier. Debug builds associate the return with that position so a breakpoint there can inspect the completed local bindings. Project assembly and string interpolation preserve these positions in the original source coordinates.
+
+Primitive lambda parameters, immutable captures and local bindings are visible in the lambda's scope. The hidden closure environment occupies native argument one; source arguments follow it. A C callback has no environment, so its first source argument is native argument one. Captures are locals, not additional source arguments.
+
+`captured_lambda_bodies_keep_debug_scopes_in_both_flavors` and `bound_argument_and_ffi_lambdas_keep_their_debug_scopes` pin the metadata and scope ownership. The editor's `captured lambda breakpoints expose their own variables` cases stop on the return line in both flavors and read the parameter, capture and calculated local through LLDB-DAP.
 
 ## Editor Launch `[DEBUGGER-EDITOR-LAUNCH]`
 
@@ -104,6 +114,6 @@ resume describes a control path no source line expresses.
 
 ## Variables `[DEBUGGER-DBG-DECLARE]`
 
-Primitive function parameters use `llvm.dbg.value` and a one-based `arg` in `DILocalVariable`. The argument number identifies a formal parameter; omitting it can discard the parameter's location during LLVM instruction selection. Primitive `let` bindings
-use an addressable debug-only slot and `llvm.dbg.declare`, so LLDB/DAP can read
+Primitive function parameters use `llvm.dbg.value` and a one-based `arg` in `DILocalVariable`. The argument number identifies a formal parameter; omitting it can discard the parameter's location during LLVM instruction selection. Parameters also retain an addressable debug-only slot after their incoming register is reused. Primitive `let` bindings
+use the same slot representation and `llvm.dbg.declare`, so LLDB/DAP can read
 them while paused. Composite values have no Osprey-specific renderer.

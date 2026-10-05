@@ -765,6 +765,7 @@ fn inline_param_constraint(
     };
     let name = parameter_name(name.name.clone(), index);
     Expr::Block {
+        position: None,
         statements: vec![Stmt::Let {
             value: Expr::Identifier(name.clone()),
             name,
@@ -1312,7 +1313,7 @@ fn lower_expr(expr: MlExpr) -> Expr {
             type_args,
             fields,
         } => lower_record(name, &type_args, fields),
-        MlExpr::Block { items, value } => lower_block(items, value),
+        MlExpr::Block { items, value, pos } => lower_block(items, value, pos),
         MlExpr::Spawn(body) => Expr::Spawn(Box::new(lower_expr(*body))),
         MlExpr::Perform {
             effect,
@@ -1460,11 +1461,11 @@ fn lower_binary(op: &str, left: MlExpr, right: MlExpr, pos: Position) -> Expr {
 }
 
 /// A block lowers to the flavor-neutral block shape ([`crate::desugar::block`]).
-fn lower_block(items: Vec<MlItem>, value: Option<Box<MlExpr>>) -> Expr {
+fn lower_block(items: Vec<MlItem>, value: Option<Box<MlExpr>>, position: Option<Position>) -> Expr {
     let (statements, value) = in_scope(scope_of(&items), move || {
         (lower_items(items), value.map(|v| Box::new(lower_expr(*v))))
     });
-    crate::desugar::block(statements, value)
+    crate::desugar::block(statements, value, position)
 }
 
 /// `e ?: d` — the explicit Result default ([PATTERN-RESULT-DEFAULT]). Both
@@ -2304,7 +2305,9 @@ mod tests {
             "expected block body, got {s:?}"
         );
         if let Stmt::Function {
-            body: Expr::Block { statements, value },
+            body: Expr::Block {
+                statements, value, ..
+            },
             ..
         } = s
         {

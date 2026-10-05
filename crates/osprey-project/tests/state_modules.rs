@@ -40,6 +40,7 @@ fn ordinary_state_read_and_write_are_rejected() {
         function(
             "writeOutside",
             Expr::Block {
+                position: None,
                 statements: vec![Stmt::Assignment {
                     name: "count".to_string(),
                     value: Expr::Integer(1),
@@ -342,6 +343,7 @@ fn module_mutation_boundaries_preserve_ordinary_local_mut() {
     let local_main = function(
         "main",
         Expr::Block {
+            position: None,
             statements: vec![
                 mutable("local"),
                 Stmt::Assignment {

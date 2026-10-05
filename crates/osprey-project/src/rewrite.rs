@@ -364,7 +364,9 @@ impl Resolver<'_> {
                 self.rewrite_expr(value, context, locals);
                 self.rewrite_pattern_arms(arms, context, locals);
             }
-            Expr::Block { statements, value } => {
+            Expr::Block {
+                statements, value, ..
+            } => {
                 let saved = locals.clone();
                 for statement in statements {
                     self.rewrite_local_statement(statement, context, locals);

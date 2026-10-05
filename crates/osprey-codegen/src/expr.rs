@@ -118,7 +118,11 @@ fn gen_expr_raw(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
             named_arguments,
         } => gen_method_call(cg, target, method, arguments, named_arguments),
         Expr::Match { value, arms } => gen_match(cg, value, arms),
-        Expr::Block { statements, value } => gen_block(cg, statements, value.as_deref()),
+        Expr::Block {
+            statements,
+            value,
+            position,
+        } => gen_block(cg, statements, value.as_deref(), *position),
         Expr::TypeConstructor { name, fields, .. } => {
             crate::aggregate::gen_constructor(cg, name, fields)
         }
@@ -221,7 +225,12 @@ fn fmt_double(f: f64) -> String {
     }
 }
 
-fn gen_block(cg: &mut Codegen, statements: &[Stmt], value: Option<&Expr>) -> Result<Value> {
+fn gen_block(
+    cg: &mut Codegen,
+    statements: &[Stmt],
+    value: Option<&Expr>,
+    position: Option<Position>,
+) -> Result<Value> {
     // A child scope preserves outer bindings across nested blocks [BLOCK-SCOPE].
     cg.push_scope();
     let result = (|| {
@@ -231,7 +240,10 @@ fn gen_block(cg: &mut Codegen, statements: &[Stmt], value: Option<&Expr>) -> Res
             // here, not at function end [GC-ARC-PERCEUS].
             crate::arc::release_dead_after(cg, statements.get(i + 1..).unwrap_or(&[]), value);
         }
-        value.map_or_else(|| Ok(Value::unit()), |e| gen_expr(cg, e))
+        let previous = cg.set_debug_position(position);
+        let result = value.map_or_else(|| Ok(Value::unit()), |e| gen_expr(cg, e));
+        cg.restore_debug_position(previous);
+        result
     })();
     cg.pop_scope();
     result
@@ -1403,25 +1415,28 @@ fn eval_arg(cg: &mut Codegen, expr: &Expr, sig: Option<&FnSig>, ffi: bool) -> Re
     match (expr, sig) {
         (
             Expr::Lambda {
-                parameters, body, ..
+                parameters,
+                body,
+                position,
+                ..
             },
             Some(sig),
         ) => {
             if ffi {
-                crate::closure::raw_callback_lambda(cg, parameters, body, sig)
+                crate::closure::raw_callback_lambda(cg, parameters, body, sig, *position)
             } else {
-                crate::closure::emit_closure(cg, parameters, body, sig)
+                crate::closure::emit_closure(cg, parameters, body, sig, *position)
             }
         }
         (Expr::Identifier(n), Some(sig)) if cg.lookup(n).is_none() => {
             // Resolve a call alias (`let g = identity`) to its real target.
             let target = cg.call_aliases.get(n).cloned().unwrap_or_else(|| n.clone());
-            if let Some((params, body, _)) = cg.lambda_def(&target).cloned() {
+            if let Some((params, body, position)) = cg.lambda_def(&target).cloned() {
                 return with_lambda_captures(cg, &target, |cg| {
                     if ffi {
-                        crate::closure::raw_callback_lambda(cg, &params, &body, sig)
+                        crate::closure::raw_callback_lambda(cg, &params, &body, sig, position)
                     } else {
-                        crate::closure::emit_closure(cg, &params, &body, sig)
+                        crate::closure::emit_closure(cg, &params, &body, sig, position)
                     }
                 });
             }
@@ -1432,14 +1447,14 @@ fn eval_arg(cg: &mut Codegen, expr: &Expr, sig: Option<&FnSig>, ffi: bool) -> Re
             // Implements [TYPE-GENERICS-FN].
             if let Some((params, body)) = cg.fn_defs.get(&target).cloned() {
                 return if ffi {
-                    crate::closure::raw_callback_lambda(cg, &params, &body, sig)
+                    crate::closure::raw_callback_lambda(cg, &params, &body, sig, None)
                 } else {
                     // Keyed by (function, slot ABI): every use at the same ABI
                     // lowers to a byte-identical body, so emit it once and
                     // share the cell. Distinct ABIs still get distinct bodies —
                     // that is what specialising means.
                     let key = crate::closure::specialisation_key(&target, sig);
-                    crate::closure::emit_closure_keyed(cg, &params, &body, sig, Some(key))
+                    crate::closure::emit_closure_keyed(cg, &params, &body, sig, Some(key), None)
                 };
             }
             if ffi && cg.fn_params.contains_key(&target) {
