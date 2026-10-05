@@ -66,6 +66,7 @@ Rules:
   reserves `!DILocation` column `0` as the "no column" sentinel — emitting a
   raw 0-based column collides with it and yields off-by-one or dropped column
   data. A 1-based AST line maps straight through.
+- Debug metadata names a source by the path the compiler was given, made absolute with its symlinks kept as written. LLDB matches a breakpoint's path literally, so a canonical spelling (macOS resolves `/var/folders/…` to `/private/var/…`) leaves every breakpoint the editor sets unbound. `module_aware_source_keeps_the_path_spelling_it_was_given` pins this through a symlinked directory.
 
 ## Lambda Scopes `[DEBUGGER-LAMBDA-SCOPES]`
 

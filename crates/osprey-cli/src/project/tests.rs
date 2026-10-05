@@ -229,3 +229,27 @@ fn project_errors_include_every_available_location_component() {
         assert_eq!(format_project_error(&error, "fallback"), expected);
     }
 }
+
+// LLDB binds a breakpoint only on the path spelling the editor opened. macOS
+// spells its temp dir `/var/folders/…` and canonicalizes it to
+// `/private/var/…`, so a canonical debug path left every breakpoint in a
+// module-aware source unbound ([DEBUGGER-SOURCE-MAP]).
+#[cfg(unix)]
+#[test]
+fn module_aware_source_keeps_the_path_spelling_it_was_given() {
+    let real = std::env::temp_dir().join(format!("osprey_spelling_{}", std::process::id()));
+    let link = real.with_extension("link");
+    std::fs::create_dir_all(&real).expect("real dir");
+    let _ = std::fs::remove_file(&link);
+    std::os::unix::fs::symlink(&real, &link).expect("symlinked dir");
+    let path = link.join("module.osp");
+    let source = "module Tax {\n    export fn add(n) = n + 1\n}\nfn main() = print(Tax::add(41))\n";
+    std::fs::write(&path, source).expect("source written");
+    let program = osprey_syntax::parse_program(source).program;
+    let path = path.to_string_lossy();
+    let input = CompilationInput::one_source(&path, Flavor::Default, source.into(), program)
+        .unwrap_or_else(|errors| panic!("{errors:?}"));
+    let _ = std::fs::remove_file(&link);
+    let _ = std::fs::remove_dir_all(&real);
+    assert_eq!(input.debug_path(), path);
+}

@@ -68,7 +68,7 @@ impl CompilationInput {
         program: Program,
     ) -> Result<Self, Vec<ProjectError>> {
         let source_file = SourceFile {
-            path: normalize_path(Path::new(path)),
+            path: spelled_path(Path::new(path)),
             flavor,
             source: source.clone(),
             program,
@@ -271,6 +271,13 @@ fn project_root(path: &Path) -> PathBuf {
 
 fn normalize_path(path: &Path) -> PathBuf {
     std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// The absolute form of a source path with its symlinks kept as written: debug
+/// metadata must name the file the editor opened, because LLDB matches a
+/// breakpoint's path literally. Implements [DEBUGGER-SOURCE-MAP].
+fn spelled_path(path: &Path) -> PathBuf {
+    std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 fn aggregate_sources(project: &AssembledProject) -> String {
