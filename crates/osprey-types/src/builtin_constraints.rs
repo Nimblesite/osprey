@@ -37,6 +37,12 @@ pub(crate) fn is_numeric_scalar(ty: &Type) -> bool {
     ty.is_named(names::INT) || ty.is_named(names::FLOAT)
 }
 
+/// A known outer constructor cannot become numeric by resolving its arguments.
+/// Keep its obligation at the definition even when a Result error stays open.
+pub(crate) fn fixed_numeric_operand(name: &str, ty: &Type) -> bool {
+    operation_name(name).starts_with(NUMERIC_OPERAND_PREFIX) && !matches!(ty, Type::Var(_))
+}
+
 const SIZED_DISPLAY: &str = "string | List<T> | Map<string, V>";
 const PRINTABLE_DISPLAY: &str =
     "int | float | bool | string | Unit | any | Result<printable, printable>";

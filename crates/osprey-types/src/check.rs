@@ -994,7 +994,10 @@ impl Checker {
             // ([`Checker::deferred_arith`]), and the variables it rests on stay
             // monomorphic so every use of the definition constrains the SAME
             // choice.
-            if crate::expr::is_deferred_arith(&name) || !self.mentions_any(&ty, vars) {
+            if crate::expr::is_deferred_arith(&name)
+                || crate::builtin_constraints::fixed_numeric_operand(&name, &ty)
+                || !self.mentions_any(&ty, vars)
+            {
                 kept.push((name, ty));
             } else {
                 deferred.push((name, ty));

@@ -58,6 +58,7 @@ fn recover(
     Ok(Value::new(result, value.ty))
 }
 
+/// Implements [FLOAT-IEEE-RESULTS]: ordered zero guard, then strict IEEE IR.
 pub(crate) fn division(cg: &mut Codegen, op: &str, left: Value, right: Value) -> Result<Value> {
     let left = as_double(cg, left)?;
     let right = as_double(cg, right)?;
@@ -150,6 +151,23 @@ pub(crate) fn negation(cg: &mut Codegen, value: Value) -> Result<Value> {
 }
 
 pub(crate) fn absolute(cg: &mut Codegen, value: Value) -> Result<Value> {
+    if value.ty == LType::Double {
+        return Ok(float_absolute(cg, &value));
+    }
+    integer_absolute(cg, value)
+}
+
+/// [BUILTIN-ABS] clears the sign of zero and infinity, preserving NaN.
+fn float_absolute(cg: &mut Codegen, value: &Value) -> Value {
+    cg.add_extern("declare double @llvm.fabs.f64(double)");
+    let operand = cg.emit_reg(format!(
+        "call double @llvm.fabs.f64(double {})",
+        value.operand
+    ));
+    Value::new(operand, LType::Double)
+}
+
+fn integer_absolute(cg: &mut Codegen, value: Value) -> Result<Value> {
     let value = as_i64(cg, value)?;
     let zero = Value::new("0", LType::I64);
     let (negated, bad) = crate::expr::emit_overflow_arith(cg, "ssub", zero.clone(), value.clone())?;

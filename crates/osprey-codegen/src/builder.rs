@@ -813,11 +813,10 @@ impl Codegen {
         if let Some(target) = self.call_aliases.get(name).filter(|t| *t != name) {
             return self.identifier_fn_type(&target.clone());
         }
-        let (params, ret) = self.prog.functions.get(name)?;
-        Some(Type::Fun {
-            params: params.clone(),
-            ret: Box::new(ret.clone()),
-        })
+        match self.prog.functions.get(name) {
+            Some((params, ret)) => Some(Type::fun(params.clone(), ret.clone())),
+            None => osprey_types::builtin_function_type(name),
+        }
     }
 
     /// The type of `target.field` when `field` names a function-valued record

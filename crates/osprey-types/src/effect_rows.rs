@@ -1638,7 +1638,10 @@ impl Analyzer<'_> {
                 self.index
                     .resolve(scope, name)
                     .map(|id| self.function_value(id))
-                    .or_else(|| builtin_callable_value(name))
+                    .or_else(|| {
+                        let types = self.instances.expression_types.borrow();
+                        builtin_callable_value(name, types.get(&expression_site(expression)))
+                    })
             }
             Expr::Path(path) => self
                 .index
@@ -2524,15 +2527,19 @@ fn builtin_environment() -> &'static crate::env::TypeEnv {
     &BUILTINS
 }
 
-fn arithmetic_builtin_operations(name: &str) -> &'static [&'static str] {
+fn arithmetic_builtin_operations(
+    name: &str,
+    ty: Option<&crate::ty::Type>,
+) -> &'static [&'static str] {
     match name {
+        "abs" if !crate::arithmetic::absolute_overflow_possible(ty) => &[],
         "abs" => &["overflow"],
         "intDiv" => &["overflow", "remainderByZero"],
         _ => &[],
     }
 }
 
-fn builtin_callable_value(name: &str) -> Option<Value> {
+fn builtin_callable_value(name: &str, ty: Option<&crate::ty::Type>) -> Option<Value> {
     let env = builtin_environment();
     if !env.is_runtime_builtin(name)
         && !matches!(
@@ -2568,7 +2575,7 @@ fn builtin_callable_value(name: &str) -> Option<Value> {
                     .then(|| name.to_owned())
                     .into_iter()
                     .collect(),
-                required: arithmetic_builtin_operations(name)
+                required: arithmetic_builtin_operations(name, ty)
                     .iter()
                     .map(|op| Requirement::new(osprey_ast::ARITH_EFFECT, op, Vec::new()))
                     .collect(),

@@ -5,6 +5,35 @@ use crate::ty::{names, Type};
 use osprey_ast::{AstNode, Expr, Position};
 use std::collections::HashMap;
 
+/// [BUILTIN-ABS]: one numeric overload per use; wrappers retain its open type
+/// until their call sites resolve it, just like other arithmetic operators.
+pub(crate) fn absolute_scheme() -> crate::ty::Scheme {
+    let signature = Type::fun(vec![Type::Var(0)], Type::Var(0));
+    let mut scheme = crate::ty::Scheme::poly(vec![0], signature.clone());
+    scheme.obligations.push(("arith abs".into(), signature));
+    scheme
+        .obligations
+        .push(("numeric abs".into(), Type::Var(0)));
+    scheme
+}
+
+/// Open overloads resolve at the end of inference; known invalid types are
+/// reported once by the numeric operand obligation.
+pub(crate) fn absolute_operand(ty: &Type) -> bool {
+    crate::builtin_constraints::is_numeric_scalar(ty) || matches!(ty, Type::Var(_))
+}
+
+/// Only the integer overload can request overflow; unknown types fail closed.
+pub(crate) fn absolute_overflow_possible(ty: Option<&Type>) -> bool {
+    match ty {
+        Some(Type::Fun { params, .. }) => match params.as_slice() {
+            [operand] => operand.is_named(names::INT) || matches!(operand, Type::Var(_)),
+            _ => true,
+        },
+        _ => true,
+    }
+}
+
 /// Evaluate literal arithmetic without executing a fallible instruction.
 /// Implements [ARITH-EFFECT-CONST]; a zero divisor remains a runtime request.
 ///
@@ -190,6 +219,74 @@ mod tests {
                 overflow.first().and_then(|e| e.position),
                 Some(Position { line: 1, column }),
                 "{flavor}: {errors:?}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod absolute_tests {
+    use crate::testutil::{accepts, typecheck};
+    use osprey_syntax::Flavor;
+
+    const INVALID_DEFAULT: &[&str] = &[
+        "let bad = abs(true)",
+        "let bad = abs([1])",
+        "let bad = abs(Success { value: 1 })",
+        "let f = abs\nlet bad = f(\"text\")",
+        "fn apply(f, x) = f(x)\nlet bad = apply(abs, true)",
+    ];
+    const INVALID_ML: &[&str] = &[
+        "bad = abs true",
+        "bad = abs [1]",
+        "bad = abs (Success(value = 1))",
+        "f = abs\nbad = f \"text\"",
+        "apply (f, x) = f x\nbad = apply (abs, true)",
+    ];
+
+    #[test]
+    fn absolute_rejects_nonnumeric_values_without_fabricating_effect_errors() {
+        for (flavor, sources) in [(Flavor::Default, INVALID_DEFAULT), (Flavor::Ml, INVALID_ML)] {
+            for source in sources {
+                let errors = typecheck(flavor, source);
+                assert_eq!(errors.len(), 1, "{flavor:?}: {source}: {errors:?}");
+                assert!(
+                    errors.iter().all(|error| error
+                        .message
+                        .starts_with("operator `abs` requires int or float")),
+                    "{errors:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn absolute_float_values_are_total_and_integer_values_still_require_policy() {
+        for (flavor, total, fallible) in [
+            (
+                Flavor::Default,
+                "let magnitude = abs\nlet x = magnitude(-1.5)",
+                "let magnitude = abs\nlet x = magnitude(-9223372036854775808)",
+            ),
+            (
+                Flavor::Ml,
+                "magnitude = abs\nx = magnitude (-1.5)",
+                "magnitude = abs\nx = magnitude (-9223372036854775808)",
+            ),
+        ] {
+            accepts(flavor, total);
+            let errors = typecheck(flavor, fallible);
+            assert!(
+                errors
+                    .iter()
+                    .any(|error| error.message.contains("file-scope initializer")),
+                "{errors:?}"
+            );
+            assert!(
+                errors.iter().any(|error| error
+                    .message
+                    .contains("unhandled effect operations at program entry: Arith.overflow")),
+                "{errors:?}"
             );
         }
     }
