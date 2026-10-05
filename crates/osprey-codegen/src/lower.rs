@@ -331,6 +331,7 @@ fn gen_function(
     // [TESTING-COVERAGE-CODEGEN].
     cg.cov_hit(position);
     let body_val = gen_fn_body(cg, name, body)?;
+    let _ = cg.set_debug_position(crate::stmt::tail_position(body));
     let ret = coerce_return(cg, name, body_val)?;
     // Returns transfer +1; everything else the function owned drops here
     // [GC-ARC-PERCEUS].

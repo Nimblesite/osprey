@@ -366,6 +366,7 @@ fn kernel_body(cg: &mut Codegen, body: &Expr, own: Option<&FnSig>) -> Result<Val
         crate::expr::gen_body(cg, body).and_then(|v| crate::expr::fit_lambda_return(cg, v, own));
     cg.value_discarded = outer;
     let value = lowered?;
+    let _ = cg.set_debug_position(crate::stmt::tail_position(body));
     // Function epilogue: the return transfers +1, owned locals drop
     // [GC-ARC-PERCEUS]. A scalar return makes the retain a no-op.
     crate::arc::epilogue(cg, Some(&value));
