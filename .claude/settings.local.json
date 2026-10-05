@@ -16,5 +16,6 @@
     "deny": [],
     "ask": []
   },
+  "remoteControlAtStartup": true,
   "autoMemoryEnabled": false
 }

@@ -1,0 +1,8 @@
+[project]
+name = "talon-bank-mobile-fixtures"
+source_roots = ["main.ospml","../test/support.ospml","../src","../../../client/src/bridge.ospml","../../../client/src/app.ospml","../../../client/src/update.ospml","../../../client/src/model.ospml","../../../client/src/commands.ospml","../../../client/src/ui.ospml","../../../client/src/data.ospml","../../../client/src/layout.ospml","../../../client/src/account_view.ospml","../../../client/src/activity_view.ospml","../../../client/src/pages","../../../src/domain/json.ospml","../../../src/domain/money.ospml"]
+default_namespace = "talonmobile"
+entry = "main.ospml"
+
+[modules]
+allow_wildcard_imports = false

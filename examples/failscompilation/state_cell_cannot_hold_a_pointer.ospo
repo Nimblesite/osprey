@@ -1,0 +1,27 @@
+// [MODULES-STATE-MODULE] State cannot leave its module as a pointer. A `Ptr`
+// comes only from an extern call, which a pure cell initializer may not make,
+// so a cell can neither be declared as one nor be assigned one later.
+namespace app;
+
+extern fn osprey_ffi_null() -> Ptr
+
+state module Db {
+    mut conn: Ptr = 0
+    mut slot = 0
+
+    export effect Store {
+        open : fn() -> int
+    }
+
+    export fn withDb(body) = {
+        handle Store {
+            open => {
+                slot = osprey_ffi_null()
+                1
+            }
+        }
+        body()
+    }
+}
+
+fn main() = print("unreachable")

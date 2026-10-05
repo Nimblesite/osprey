@@ -1,0 +1,4 @@
+{
+  "name": "mergesort",
+  "description": "Naive top-down merge sort of a pseudo-random persistent List<int>, rank-weighted checksum, repeated — list splitting + merging allocation"
+}

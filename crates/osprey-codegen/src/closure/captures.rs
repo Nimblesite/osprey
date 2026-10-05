@@ -11,7 +11,7 @@ use std::collections::BTreeSet;
 /// (sorted) order. Also used by `fiber::gen_spawn` (a spawn body is a
 /// zero-parameter closure).
 pub(crate) fn capture_list(cg: &Codegen, parameters: &[Parameter], body: &Expr) -> Vec<Capture> {
-    free_names(parameters, body)
+    reaching_names(cg, parameters, body)
         .into_iter()
         .filter_map(|name| {
             cg.lookup(&name).map(|val| Capture {
@@ -30,10 +30,19 @@ pub(super) fn closure_captures(
     parameters: &[Parameter],
     body: &Expr,
 ) -> Vec<Capture> {
-    free_names(parameters, body)
+    reaching_names(cg, parameters, body)
         .into_iter()
         .filter_map(|name| capture(cg, name))
         .collect()
+}
+
+/// The names a nested function must find in its enclosing scope: its own free
+/// names, and the environment of every inline lambda it applies
+/// ([`super::environment`]).
+fn reaching_names(cg: &Codegen, parameters: &[Parameter], body: &Expr) -> BTreeSet<String> {
+    let mut names = free_names(parameters, body);
+    names.extend(super::environment::reach(cg, &names));
+    names
 }
 
 fn capture(cg: &mut Codegen, name: String) -> Option<Capture> {

@@ -8,8 +8,7 @@
 > compiler's current feature set.
 
 Language support for [Osprey](https://ospreylang.dev) — a functional programming
-language with inferred types, algebraic effects, fiber-based concurrency and
-pattern matching.
+language built around algebraic effects, inferred types, fibers, and pattern matching. The [effects guide](../website/src/docs/algebraic-effects.md) introduces callable handlers, block-scoped policies, and static selection.
 
 Osprey has two source flavors. Default (`.osp`) uses braces, `fn` and familiar
 function calls. ML (`.ospml`) uses layout, currying and whitespace application.
@@ -17,7 +16,7 @@ Both lower to the same AST before type checking and compilation.
 
 Select a flavor per file with its extension or a leading
 `// osprey: flavor=ml` marker. The compiler also accepts `--flavor ml` for a
-single-file build. Multi-file cross-flavor imports remain under development.
+single-file build. Multi-file projects can import modules written in either flavor.
 
 Powered by a Rust language server (`osprey lsp`, built on
 [lspkit](https://github.com/Nimblesite/lspkit)) that runs the compiler front-end

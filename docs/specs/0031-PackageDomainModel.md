@@ -12,6 +12,8 @@ can generate the Osprey model when that output target lands. Field removal,
 meaning change, or union narrowing is a schema-breaking change; additive fields
 require a lock/API format bump unless they have an explicit compatible default.
 
+Executable model generation, validation, canonical serialization, and conformance tooling MUST be implemented in Osprey under [the implementation-language contract](0029-PackageManagement.md#implementation-language-package-implementation-language). Generated package-domain source MUST be Osprey; a handwritten or generated implementation in another language is not permitted. Until Osprey model generation is available, Osprey code consumes serialized conformance fixtures directly, without a duplicate handwritten domain model. The typeDiagram schema and serialized fixtures remain declarative data.
+
 ```typediagram
 typeDiagram
 alias ScopeName = String

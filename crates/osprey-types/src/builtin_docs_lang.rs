@@ -415,6 +415,12 @@ pub(crate) static FUNCTIONAL: &[BuiltinDoc] = &[
         ["iterator" => "The iterator to reduce", "initial" => "The initial value for the accumulator", "fn" => "The reduction function that takes (accumulator, current) and returns new accumulator"],
         "range(1, 5) |> fold(0, add)  // sum: 0+1+2+3+4 = 10",
     ),
+    builtin_doc!(
+        "toList",
+        "Runs an iterator pipeline once and collects every element it yields into a list, in order.",
+        ["iterator" => "The iterator to collect"],
+        "range(1, 7) |> filter(fn(x) => x % 2 == 0) |> toList  // [2, 4, 6]",
+    ),
 ];
 
 /// `lists` built-in documentation. Prose only — types come from the

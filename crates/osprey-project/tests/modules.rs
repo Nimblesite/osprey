@@ -274,8 +274,10 @@ fn explicit_function_types_must_conform_to_signature() {
 }
 
 #[test]
-fn abstract_alias_is_rejected_instead_of_leaking_representation() {
-    // Implements [MODULES-OPAQUE-TYPES], [MODULES-SIGNATURE].
+fn abstract_signature_type_implemented_by_an_alias_stays_opaque() {
+    // Implements [MODULES-OPAQUE-TYPES], [MODULES-SIGNATURE]: the signature
+    // makes the module's manifest alias abstract, so the checked program keeps
+    // it as an opaque name and only the backend program expands it.
     let contract = Stmt::Signature {
         name: "Api".to_string(),
         items: vec![SignatureItem::Type {
@@ -299,12 +301,16 @@ fn abstract_alias_is_rejected_instead_of_leaking_representation() {
         position: None,
     };
     let module = ascribed_module("Api", vec![item(Visibility::Private, implementation)]);
-    let messages = error_messages(
+    let project = assemble(
         &config("api.osp"),
         &[ast("api.osp", vec![contract, module])],
-    );
-    assert!(contains(&messages, "opaque alias"), "{messages:?}");
-    assert!(contains(&messages, "unsupported"), "{messages:?}");
+    )
+    .unwrap_or_else(|errors| panic!("an alias may implement an abstract type: {errors:?}"));
+    let opaque = project.program.statements.iter().any(|statement| {
+        matches!(statement, Stmt::Type { opaque: true, alias: Some(alias), .. } if alias.name == "int")
+    });
+    assert!(opaque, "{:#?}", project.program.statements);
+    assert!(project.backend.is_some());
 }
 
 #[test]

@@ -22,14 +22,14 @@ module Update
 
     nextSequence model = parseInt model.seq ?: 0
 
-    export initial () = result (Model::initial ()) (Storage::schema ())
+    export initial () = result (Model::initial ()) (perform Storage::Requests.sql (Storage::schema ()))
 
     fetch model = match checkedAdd (nextSequence model) 1
         Error why => failure model "Request counter exhausted. Close and reopen the app."
         Success sequence =>
             prepared = Model::set (Model::set (Model::set model "seq" (toString sequence)) "loading" "true") "error" ""
             pending = Model::set (Model::set prepared "pending" "fetch:${sequence}:${model.repo}") "status" "Refreshing ${model.repo}…"
-            result pending (Storage::http pending)
+            result pending (perform Storage::Requests.http (Storage::fetch pending))
 
     persist model = match model.dbReady == "true"
         false => unchanged (Model::set model "storageError" "SQLite is unavailable; these changes are only in memory.")
@@ -37,7 +37,7 @@ module Update
             Error why => unchanged (Model::set model "storageError" "Request counter exhausted; changes were not saved. Close and reopen the app.")
             Success sequence =>
                 pending = Model::set (Model::set model "seq" (toString sequence)) "write" "save:${sequence}"
-                result pending (Storage::save pending)
+                result pending (perform Storage::Requests.sql (Storage::save pending))
 
     ready model = Model::set (Model::set model "stage" "ready") "loading" "false"
 
@@ -47,7 +47,7 @@ module Update
 
     schema model event = match Json::getOr event "ok" "false" == "true"
         false => storageFailure model event
-        true => result (Model::set (Model::set (Model::set model "stage" "load") "dbReady" "true") "status" "Reading the SQLite cache…") (Storage::load ())
+        true => result (Model::set (Model::set (Model::set model "stage" "load") "dbReady" "true") "status" "Reading the SQLite cache…") (perform Storage::Requests.sql (Storage::load ()))
 
     restore model source =
         cached = Storage::restore (ready model) source

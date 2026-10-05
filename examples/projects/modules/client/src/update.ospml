@@ -174,12 +174,14 @@ module Update
             false => postMovement model "mutate-open" "/api/accounts" (Json::obj (Json::strField "name" owner)) "Opening account"
 
     submit : AppModel -> string -> string -> UpdateResult
-    submit model id data = match id
-        "submit-deposit" => deposit model data
-        "submit-withdraw" => withdraw model data
-        "submit-transfer" => transfer model data
-        "submit-open-account" => openAccount model data
-        _ => noCommand model
+    submit model id data = match model.busy == "true"
+        true => noCommand model
+        false => match id
+            "submit-deposit" => deposit model data
+            "submit-withdraw" => withdraw model data
+            "submit-transfer" => transfer model data
+            "submit-open-account" => openAccount model data
+            _ => noCommand model
 
     loaded : AppModel -> AppModel
     loaded model = match model.accountsLoaded == "true" && model.activityLoaded == "true"
@@ -192,7 +194,7 @@ module Update
         loaded (Model::notice marked "error" "Bank data unavailable" "The ${resource} request failed. Refresh to try again.")
 
     statusError status = match status
-        0 => "The browser could not reach the ledger. Check the bridge diagnostics and try again."
+        0 => "The app could not reach the ledger. Check your connection and try again."
         _ => match status >= 500
             true => "The ledger failed with HTTP ${status}. Try again shortly."
             false => match status >= 400

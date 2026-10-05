@@ -1,0 +1,7 @@
+// Both native hosts invoke the shared app through the same callable handler.
+namespace talonmobile;
+
+import talonmobile::Mobile
+
+fn start() = Mobile::start()
+fn dispatch(payload) = Mobile::dispatch(payload)

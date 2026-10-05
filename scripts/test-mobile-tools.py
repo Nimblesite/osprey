@@ -3,6 +3,7 @@
 
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -10,6 +11,16 @@ import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
 WRAPPER = ROOT / "examples/mobile/android/gradlew"
+BANK_RUN = "examples/projects/modules/mobile/android/run.sh"
+ANDROID_ENV = "scripts/android-env.sh"
+# What every runner has: no Homebrew, no cargo bin, no developer extras.
+BASE_PATH = "/usr/bin:/bin"
+STUB_TOOL = """#!/bin/sh
+case "$*" in
+  *"am instrument"*) printf '%s\\n' "$REPORT" ;;
+  *"settings get"*) echo null ;;
+esac
+"""
 
 
 def corpus_jobs(target, override=None):
@@ -73,6 +84,44 @@ class GradleSelection(unittest.TestCase):
                 capture_output=True, text=True, check=True,
             )
             self.assertEqual(result.stdout.strip(), "Gradle 8.7")
+
+
+def stub_android_tree(root):
+    """Copy the bank driver beside a stub SDK whose adb prints $REPORT."""
+    hosts = ["darwin-x86_64", "linux-x86_64"]
+    clangs = [root / "ndk/toolchains/llvm/prebuilt" / host / "bin/clang" for host in hosts]
+    for stub in [root / "sdk/platform-tools/adb", *clangs]:
+        stub.parent.mkdir(parents=True)
+        stub.write_text(STUB_TOOL)
+        stub.chmod(0o755)
+    for script in [BANK_RUN, ANDROID_ENV]:
+        (root / script).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(ROOT / script, root / script)
+    (root / BANK_RUN).parent.joinpath("build").mkdir()
+
+
+def instrumentation_verdict(report):
+    """Exit status of the bank's Android test driver for a device that prints `report`."""
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        stub_android_tree(root)
+        env = {
+            "PATH": BASE_PATH, "REPORT": report, "OSPREY_ANDROID_SKIP_BUILD": "1",
+            "OSPREY_ANDROID_SERIAL": "stub", "ANDROID_HOME": str(root / "sdk"),
+            "ANDROID_NDK_HOME": str(root / "ndk"),
+        }
+        return subprocess.run(
+            ["bash", str(root / BANK_RUN), "--test"], env=env,
+            capture_output=True, text=True, check=False,
+        ).returncode
+
+
+class BankAndroidVerdict(unittest.TestCase):
+    def test_report_is_judged_with_tools_every_runner_has(self):
+        self.assertEqual(instrumentation_verdict("Time: 23.282\n\nOK (6 tests)"), 0)
+        failures = "FAILURES!!!\nTests run: 6,  Failures: 1"
+        for report in [failures, "INSTRUMENTATION_FAILED: stub", "Time: 1.2"]:
+            self.assertNotEqual(instrumentation_verdict(report), 0, report)
 
 
 if __name__ == "__main__":

@@ -17,8 +17,8 @@ pub(crate) struct CompilationInput {
 
 #[derive(Debug)]
 enum CompilationUnit {
-    Script(Program),
-    Project(AssembledProject),
+    Script(Box<Program>),
+    Project(Box<AssembledProject>),
 }
 
 #[derive(Debug)]
@@ -52,7 +52,7 @@ impl CompilationInput {
     /// Preserve the historical single-file path for an ordinary script.
     pub(crate) fn script(path: &str, source: String, program: Program) -> Self {
         Self {
-            unit: CompilationUnit::Script(program),
+            unit: CompilationUnit::Script(Box::new(program)),
             source,
             display_path: path.to_string(),
             debug_path: path.to_string(),
@@ -68,7 +68,7 @@ impl CompilationInput {
         program: Program,
     ) -> Result<Self, Vec<ProjectError>> {
         let source_file = SourceFile {
-            path: normalize_path(Path::new(path)),
+            path: spelled_path(Path::new(path)),
             flavor,
             source: source.clone(),
             program,
@@ -118,7 +118,7 @@ impl CompilationInput {
             |entry| entry.path.display().to_string(),
         );
         Self {
-            unit: CompilationUnit::Project(assembled),
+            unit: CompilationUnit::Project(Box::new(assembled)),
             source,
             display_path,
             debug_path,
@@ -126,11 +126,20 @@ impl CompilationInput {
         }
     }
 
-    /// The flavor-neutral program consumed by the checker and backend.
+    /// The flavor-neutral program the checker and every source-level tool read.
     pub(crate) fn program(&self) -> &Program {
         match &self.unit {
             CompilationUnit::Script(program) => program,
             CompilationUnit::Project(project) => &project.program,
+        }
+    }
+
+    /// The program code generation lowers. A project's opaque aliases are
+    /// expanded to their representations there ([MODULES-OPAQUE-TYPES]).
+    pub(crate) fn backend_program(&self) -> &Program {
+        match &self.unit {
+            CompilationUnit::Script(program) => program,
+            CompilationUnit::Project(project) => project.backend_program(),
         }
     }
 
@@ -262,6 +271,13 @@ fn project_root(path: &Path) -> PathBuf {
 
 fn normalize_path(path: &Path) -> PathBuf {
     std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// The absolute form of a source path with its symlinks kept as written: debug
+/// metadata must name the file the editor opened, because LLDB matches a
+/// breakpoint's path literally. Implements [DEBUGGER-SOURCE-MAP].
+fn spelled_path(path: &Path) -> PathBuf {
+    std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 fn aggregate_sources(project: &AssembledProject) -> String {

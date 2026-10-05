@@ -66,6 +66,9 @@ fn gen_stmt_kind(cg: &mut Codegen, stmt: &Stmt) -> Result<()> {
         } => with_stmt_debug(cg, *position, |cg| {
             gen_bind(cg, name, value, *position, true)
         }),
+        // Rebinding a name that has no binding here would create a local
+        // nobody reads: the write would vanish without a diagnostic.
+        Stmt::Assignment { name, .. } if !rebindable(cg, name) => Err(CodegenError::unknown(name)),
         Stmt::Assignment {
             name,
             value,
@@ -87,6 +90,11 @@ fn gen_stmt_kind(cg: &mut Codegen, stmt: &Stmt) -> Result<()> {
         }),
         _ => Err(CodegenError::unsupported("statement in block/main")),
     }
+}
+
+/// Whether an assignment to `name` replaces a binding this scope can see.
+fn rebindable(cg: &Codegen, name: &str) -> bool {
+    cg.lookup(name).is_some() || cg.lambda_def(name).is_some() || cg.call_aliases.contains_key(name)
 }
 
 /// Copy a just-lowered file-scope `let` into its module global, so functions
@@ -167,7 +175,7 @@ fn with_stmt_debug(
 /// 1. The callee's body must be syntactically the lambda, so calling it
 ///    performs no work of its own that inlining could duplicate or drop.
 /// 2. What the lambda reads from the callee's parameters is evaluated ONCE,
-///    here, and carried as values in [`Codegen::lambda_prefix`]. A body
+///    here, and carried as the binding's [`crate::closure::Environment`]. A body
 ///    inlined later would otherwise read those names from whatever scope it
 ///    landed in — a silently wrong answer — and re-evaluating the argument
 ///    expression per call site would duplicate its effects. `fn constly(v) =
@@ -247,7 +255,7 @@ fn returned_lambda_positions(body: &Expr, positions: &mut Vec<Position>) {
 
 /// Whether a generic returned lambda reads the producing call's parameters.
 ///
-/// Local bindings keep the values as SSA registers in [`Codegen::lambda_prefix`].
+/// Local bindings keep the values in their [`crate::closure::Environment`].
 /// A file-scope binding read from another function instead stores the captured
 /// arguments in module globals, evaluated once at the factory call.
 fn captures_callee_params(cg: &Codegen, value: &Expr) -> bool {

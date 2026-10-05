@@ -69,10 +69,11 @@ pub(super) fn build_input(
     exe: &Path,
     options: NativeOptions<'_>,
 ) -> Result<(), ExitCode> {
-    let ir = compile_ir(input.debug_path(), input.program(), options.kind).map_err(|error| {
-        eprintln!("{}: {error}", input.display_path());
-        ExitCode::FAILURE
-    })?;
+    let ir =
+        compile_ir(input.debug_path(), input.backend_program(), options.kind).map_err(|error| {
+            eprintln!("{}: {error}", input.display_path());
+            ExitCode::FAILURE
+        })?;
     let ll = write_ir(input.debug_path(), exe, &ir, options.debug.preserve_ir)?;
     let result = build_ir(&ll, &ir, input.source(), exe, options);
     if !options.debug.preserve_ir {

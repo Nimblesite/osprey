@@ -50,18 +50,19 @@ pub(super) fn compile(path: &Path, source: &str) -> Result<usize, String> {
             .collect::<Vec<_>>();
         return Err(format!("parse: {}", messages.join("; ")));
     }
-    let program = assemble_if_needed(path, source, parsed.program).map_err(|errors| {
-        let first = errors.first().map(|error| error.message.as_str());
-        format!(
-            "project: {}",
-            first.unwrap_or("assembly failed with no diagnostic")
-        )
-    })?;
+    let (program, backend) =
+        assemble_if_needed(path, source, parsed.program).map_err(|errors| {
+            let first = errors.first().map(|error| error.message.as_str());
+            format!(
+                "project: {}",
+                first.unwrap_or("assembly failed with no diagnostic")
+            )
+        })?;
     let type_errors = osprey_types::check_program(&program);
     if let Some(first) = type_errors.first() {
         return Err(format!("typecheck: {first:?}"));
     }
-    osprey_codegen::compile_program(&program)
+    osprey_codegen::compile_program(backend.as_ref().unwrap_or(&program))
         .map(|ir| ir.len())
         .map_err(|e| format!("codegen: {e:?}"))
 }
@@ -73,14 +74,15 @@ pub(super) fn compile(path: &Path, source: &str) -> Result<usize, String> {
 /// `Tax::add` is an unknown identifier until then. Grading the raw parse would
 /// report every module program as broken while the CLI runs it perfectly — so
 /// this reproduces the CLI's own single-source path. Ordinary scripts skip it
-/// and keep exactly the IR and symbol names they had.
+/// and keep exactly the IR and symbol names they had. The second program is
+/// the one the backend lowers, when it differs ([MODULES-OPAQUE-TYPES]).
 fn assemble_if_needed(
     path: &Path,
     source: &str,
     program: osprey_ast::Program,
-) -> Result<osprey_ast::Program, Vec<osprey_project::ProjectError>> {
+) -> Result<Assembled, Vec<osprey_project::ProjectError>> {
     if !osprey_project::needs_assembly(&program) {
-        return Ok(program);
+        return Ok((program, None));
     }
     let source_file = osprey_project::SourceFile {
         path: path.to_path_buf(),
@@ -89,8 +91,11 @@ fn assemble_if_needed(
         source: source.to_string(),
         program,
     };
-    osprey_project::assemble_one(source_file).map(|assembled| assembled.program)
+    osprey_project::assemble_one(source_file)
+        .map(|assembled| (assembled.program, assembled.backend))
 }
+
+type Assembled = (osprey_ast::Program, Option<osprey_ast::Program>);
 
 /// Every diagnostic the CLI would print for one rejected source, path prefix
 /// stripped so the golden is location-independent. Mirrors the two shapes
@@ -108,8 +113,8 @@ pub(super) fn rejection_diagnostics(path: &Path, source: &str) -> String {
     }
     // A module-bearing fixture is rejected by the project layer before the
     // checker ever sees it, exactly as the CLI's single-source path does.
-    let program = match assemble_if_needed(path, source, parsed.program) {
-        Ok(program) => program,
+    let (program, backend) = match assemble_if_needed(path, source, parsed.program) {
+        Ok(assembled) => assembled,
         Err(errors) => {
             return diagnostic_lines(errors.iter().map(|e| located(e.line, e.column, &e.message)));
         }
@@ -127,7 +132,7 @@ pub(super) fn rejection_diagnostics(path: &Path, source: &str) -> String {
     // A program the frontend accepts can still be rejected at lowering (the
     // CLI prints these as `{path}: {msg}` too) — e.g. a recursive function
     // whose signature never became concrete enough to emit.
-    osprey_codegen::compile_program(&program)
+    osprey_codegen::compile_program(backend.as_ref().unwrap_or(&program))
         .err()
         .map(|e| format!("{e}\n"))
         .unwrap_or_default()

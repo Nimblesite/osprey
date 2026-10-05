@@ -1,0 +1,1 @@
+examples/chapter-09/failscompilation/missing-handler.osp: unhandled effect operations at program entry: Learner.name; add a matching `handle`

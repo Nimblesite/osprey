@@ -1,6 +1,6 @@
 # Android Application Target [ANDROID-TARGET]
 
-Osprey application logic compiles through LLVM into a native Android archive and generated C header. An Android application links the archive through a small JNI bridge and provides the lifecycle, native rendering, and platform services. The same source can target [iOS](0038-iOSTarget.md); the [reactive mobile application spec](0040-ReactiveMobileApplications.md) defines the shared application boundary. Delivery and verification are tracked in [plan 0030](../plans/0030-reactive-mobile-apps.md).
+Osprey application logic compiles through LLVM into a native Android archive and generated C header. An Android application links the archive through a small JNI bridge and provides the lifecycle, native rendering, and platform services. The same source can target [iOS](0038-iOSTarget.md); the [reactive mobile application spec](0040-ReactiveMobileApplications.md) defines the shared application boundary.
 
 ## Platform selection [ANDROID-TARGET-TRIPLE]
 
@@ -34,9 +34,9 @@ Records, collections, closures, and effect handlers remain internal. A scalar wr
 
 ## Target capability checks [ANDROID-TARGET-CAPABILITIES]
 
-The compiler rejects resumable algebraic effects, including explicit `resume`, and unavailable native process, HTTP, and WebSocket operations. Diagnostics identify the target and offending operation before LLVM or linking. The same principle applies to [WASM](0022-WebAssemblyTarget.md) and iOS.
+The compiler rejects dynamic `control` operations, including arms that never resume, and unavailable native process, HTTP, and WebSocket operations. Diagnostics identify the target and offending operation before LLVM or linking. The same principle applies to [WASM](0022-WebAssemblyTarget.md) and iOS.
 
-Supported substituting handlers and effects eliminated during compilation remain usable. Platform networking is provided by the host through the C ABI or an application command protocol. Explicit scalar host imports remain legal; the final Android application link must provide their implementations.
+Callable value handlers, block-scoped value handlers, and effects eliminated during compilation remain usable. Platform networking is provided by the host through the C ABI or an application command protocol. Explicit scalar host imports remain legal; the final Android application link must provide their implementations.
 
 ## Compile and link [ANDROID-TARGET-LINK]
 
@@ -48,6 +48,6 @@ The driver locates the Android NDK through `ANDROID_NDK_HOME` or `ANDROID_NDK_RO
 
 `make android-test` checks the shared C ABI fixture, the whole `tests/` corpus, and the actual application's deterministic reactive/SQLite smoke test. The fixture and the corpus are the same ones iOS runs: [`scripts/mobile-abi.osp`](../../scripts/mobile-abi.osp) states the boundary contract once, and `make _test_android_goldens` builds every accepted corpus program as an entry-only library, links it with the NDK, pushes it to the attached device and holds its stdout to the byte-exact native golden. Rejections are pinned in the shared [`MOBILE_UNPORTABLE.txt`](../../tests/MOBILE_UNPORTABLE.txt).
 
-The slice follows the hardware: `OSPREY_TARGET=android` runs whichever ABI the attached device reports, so an ARM64 phone and an x86-64 emulator need the same command, and naming a slice that the device cannot run is an error rather than a per-program failure. The separate live smoke performs real GitHub requests. Execution is recorded per ABI; a packaged ABI is not evidence that it executed.
+The slice follows the hardware: `OSPREY_TARGET=android` runs whichever ABI the attached device reports, so an ARM64 phone and an x86-64 emulator need the same command, and naming a slice that the device cannot run is an error rather than a per-program failure. The separate live smoke performs real GitHub requests. Execution is recorded per ABI; a packaged ABI is not evidence that it executed. Hosted CI executes the x86-64 slice on an API 34 emulator for every pull request: the fixture, the whole corpus, and the application smoke's fresh and restored phases, ending in `OSPREY_ANDROID_SMOKE_OK`. The ARM64 slice passed the same checks on a local ARM64 emulator; no hosted runner executes it.
 
 Implementation lives in [android.rs](../../crates/osprey-cli/src/android.rs), the shared [mobile ABI generator](../../crates/osprey-cli/src/ios_abi.rs), [target capability validator](../../crates/osprey-cli/src/target_capabilities.rs), and [Android runtime/build scripts](../../scripts/android.mk). Application sources and runnable commands are in [examples/mobile](../../examples/mobile/README.md).

@@ -18,8 +18,7 @@ use osprey_ast::Variance;
 /// failing call may have applied partial bindings, so callers that want to
 /// "try" a unification should pre-check shapes rather than relying on rollback.
 pub(crate) fn unify(ctx: &mut InferCtx, a: &Type, b: &Type) -> Result<(), TypeError> {
-    let a = ctx.prune(a);
-    let b = ctx.prune(b);
+    let (a, b) = ctx.seen_through(a, b);
     match (&a, &b) {
         (Type::Var(x), Type::Var(y)) if x == y => Ok(()),
         (Type::Var(x), _) => bind_var(ctx, *x, &b),
@@ -92,7 +91,7 @@ pub(crate) fn unify(ctx: &mut InferCtx, a: &Type, b: &Type) -> Result<(), TypeEr
             unify_seq(ctx, v1, v2, &a, &b)
         }
 
-        _ => Err(TypeError::mismatch(&a, &b)),
+        _ => Err(ctx.mismatch(&a, &b)),
     }
 }
 
@@ -104,8 +103,7 @@ pub(crate) fn unify_assignable(
     expected: &Type,
     actual: &Type,
 ) -> Result<(), TypeError> {
-    let expected = ctx.prune(expected);
-    let actual = ctx.prune(actual);
+    let (expected, actual) = ctx.seen_through(expected, actual);
     // Erasure is ONE-WAY [TYPE-ANY]. Every value assigns into an `any` slot;
     // no annotation recovers one back out. Recovery by declared type was an
     // unchecked cast — it printed a heap address as a decimal integer (#209)
@@ -299,7 +297,7 @@ fn unify_con(
     if n1 == n2 && (a1.is_empty() || a2.is_empty()) {
         return Ok(());
     }
-    Err(TypeError::mismatch(a, b))
+    Err(ctx.mismatch(a, b))
 }
 
 fn unify_fun(

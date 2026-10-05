@@ -2,7 +2,19 @@
 
 # Osprey Specifications
 
-This directory holds **all spec documents** for the project:
+## Managing effects
+
+[0017 — Algebraic Effects](0017-AlgebraicEffects.md) is the single effects
+contract: choosing and composing handlers, effect requirements, continuation
+control, replay and staging. [Plan 0016](../plans/0016-algebraic-effects-and-handlers.md)
+records delivery status and comparisons; [runnable examples](../../examples/handlers/README.md)
+are the practical starting point. The former 0035 document redirects to 0017.
+Flavor, target and concurrency documents specify only their own integration
+rules and refer to the canonical effects contract.
+
+## Reference documents
+
+This directory holds the language and engineering specifications:
 
 - **`0001-…` through `0019-…`** — the **Osprey language specification**: the
   authoritative reference for the language this compiler implements. These
@@ -27,7 +39,7 @@ This directory holds **all spec documents** for the project:
     canonicalisation, interop, and flavor-aware diagnostics.
   - [`0024-MLFlavorSyntax.md`](0024-MLFlavorSyntax.md) — the ML flavor surface
     reference: layout blocks, curry-by-default functions, `=>` effect operations,
-    lexical effect handlers, and each construct's canonical lowering.
+    callable and block-scoped effect handlers, and each construct's canonical lowering.
   - [`0025-ModulesAndNamespaces.md`](0025-ModulesAndNamespaces.md) — multi-file
     application structure: path-independent namespaces, explicit module exports,
     signatures, state modules, import resolution, and project assembly.
@@ -41,7 +53,7 @@ This directory holds **all spec documents** for the project:
     collection backends, offline symbolization, export formats, and editor UX.
   - [`0029-PackageManagement.md`](0029-PackageManagement.md) — package identity,
     compatibility epochs, manifests, exact locks, deterministic MaxSAT
-    resolution, local/published switching, CLI/API contracts, and Supabase boundary.
+    resolution, local/published switching, CLI/API contracts, and Supabase boundary. Every package-system component, including CLI, host effects, tests, and operations, must be implemented in Osprey; no Rust host or other implementation-language exception is permitted.
   - [`0030-PackageRegistryTrustAndDiscovery.md`](0030-PackageRegistryTrustAndDiscovery.md)
     — source-derived publication, TUF/provenance/transparency, hermetic builds,
     AI review gates, maintenance evidence, and popularity-resistant discovery.
@@ -77,10 +89,9 @@ This directory holds **all spec documents** for the project:
     [the arithmetic contract](0037-ArithmeticEffects.md#implementation-and-verification).
   - [`0038-iOSTarget.md`](0038-iOSTarget.md) — iPhone and ARM64 simulator static
     libraries with inferred C headers, synchronous Swift host calls, target
-    capability rejection before LLVM, and a runnable SwiftUI sample. Implementation
-    and verification are tracked in [plan 0029](../plans/0029-ios-c-abi.md).
+    capability rejection before LLVM, and a runnable SwiftUI sample.
   - [`0039-AndroidTarget.md`](0039-AndroidTarget.md) — Android ARM64/x64 archives, checked C ABI, NDK runtime builds, and JNI integration.
-  - [`0040-ReactiveMobileApplications.md`](0040-ReactiveMobileApplications.md) — one Osprey application defining screens, reactive state, SQLite persistence, and API commands for generic iOS and Android hosts. Delivery is tracked in [plan 0030](../plans/0030-reactive-mobile-apps.md).
+  - [`0040-ReactiveMobileApplications.md`](0040-ReactiveMobileApplications.md) — one Osprey application defining screens, reactive state, SQLite persistence, and API commands for generic iOS and Android hosts.
 
 ## Spec ID convention
 
@@ -92,13 +103,3 @@ Code implementing a spec section MUST repeat that section's bracketed ID in a
 comment. Normative targets may precede implementation; their delivery plans
 record unmet requirements. A missing capability must produce a diagnostic, not
 an incorrectly compiled program.
-
-## Managing effects
-
-[0017 — Algebraic Effects](0017-AlgebraicEffects.md) is the single effects
-contract: choosing and composing handlers, effect requirements, continuation
-control, replay and staging. [Plan 0016](../plans/0016-algebraic-effects-and-handlers.md)
-records delivery status and comparisons; [runnable examples](../../examples/handlers/README.md)
-are the practical starting point. The former 0035 document redirects to 0017.
-Flavor, target and concurrency documents specify only their own integration
-rules and refer to the canonical effects contract.

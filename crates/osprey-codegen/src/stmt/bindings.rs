@@ -32,6 +32,8 @@ pub(super) fn gen_bind(
 }
 
 /// A concrete lambda has a closure cell as well as its inline application path.
+/// A still-generic one is only ever applied inline, so what it closes over is
+/// fixed here, where it is defined ([`crate::closure::Environment`]).
 fn bind_lambda(cg: &mut Codegen, name: &str, value: &Expr, declaration: bool) -> Result<bool> {
     let Expr::Lambda {
         parameters,
@@ -49,11 +51,15 @@ fn bind_lambda(cg: &mut Codegen, name: &str, value: &Expr, declaration: bool) ->
     } else {
         None
     };
+    let definition = (parameters.clone(), (**body).clone(), *position);
+    // A file-scope lambda other functions read resolves through module storage.
+    let env = (bound.is_none() && cg.file_lambdas.get(name) != Some(&definition))
+        .then(|| crate::closure::capture(cg, crate::closure::free_names(parameters, body)));
     cg.forget_binding(name);
-    let _ = cg.lambdas.insert(
-        name.to_string(),
-        (parameters.clone(), (**body).clone(), *position),
-    );
+    let _ = cg.lambdas.insert(name.to_string(), definition);
+    if let Some(env) = env {
+        let _ = cg.lambda_envs.insert(name.to_string(), env);
+    }
     if let Some(bound) = bound {
         finish_binding(cg, name, value, bound, declaration);
     }
@@ -70,10 +76,13 @@ fn bind_returned_lambda(cg: &mut Codegen, name: &str, value: &Expr) -> Result<bo
     };
     let prefix = call_prefix(cg, value)?;
     cg.forget_binding(name);
-    store_prefix(cg, name, callee_params, prefix)?;
+    let env = store_prefix(cg, name, callee_params, prefix)?;
     let _ = cg
         .lambdas
         .insert(name.to_string(), (parameters, body, position));
+    if let Some(env) = env {
+        let _ = cg.lambda_envs.insert(name.to_string(), env);
+    }
     Ok(true)
 }
 
@@ -93,24 +102,25 @@ fn call_prefix(cg: &mut Codegen, value: &Expr) -> Result<Vec<Value>> {
         .collect()
 }
 
+/// Keep the producing call's arguments for the returned lambda to read: in the
+/// module slots of a file-scope binding, else as the local binding's environment.
 fn store_prefix(
     cg: &mut Codegen,
     name: &str,
     parameters: Vec<Parameter>,
     prefix: Vec<Value>,
-) -> Result<()> {
+) -> Result<Option<crate::closure::Environment>> {
     if let Some((_, slots)) = cg.file_lambda_prefix.get(name).cloned() {
         for (slot, captured) in slots.iter().zip(prefix) {
             crate::globals::publish(cg, slot, captured)?;
         }
-    } else if prefix.len() == parameters.len() {
-        let _ = cg
-            .lambda_prefix
-            .insert(name.to_string(), (parameters, prefix));
-    } else {
-        let _ = cg.lambda_prefix.remove(name);
+        return Ok(None);
     }
-    Ok(())
+    if prefix.len() != parameters.len() {
+        return Ok(None);
+    }
+    let bound = parameters.into_iter().map(|p| p.name).zip(prefix).collect();
+    Ok(Some(crate::closure::of_values(cg, bound)))
 }
 
 fn typed_initializer(

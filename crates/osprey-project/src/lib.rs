@@ -158,6 +158,12 @@ pub struct AssembledProject {
     pub state_boundaries: Vec<StateBoundary>,
     /// Flavor-neutral flat program with imports/modules removed and names resolved.
     pub program: osprey_ast::Program,
+    /// The same program with every opaque alias expanded to its representation,
+    /// which is what code generation lowers: the checker enforces the boundary
+    /// on [`Self::program`], and past it an opaque alias IS its representation.
+    /// `None` when the project declares none and one program serves both
+    /// ([MODULES-OPAQUE-TYPES]).
+    pub backend: Option<osprey_ast::Program>,
     /// Ordered executable statements contributed by the entry source.
     pub entry_prologue: Vec<osprey_ast::Stmt>,
     /// Index into [`Self::sources`] for the configured or inferred entry source.
@@ -176,6 +182,12 @@ pub struct AssembledProject {
 }
 
 impl AssembledProject {
+    /// The program code generation lowers.
+    #[must_use]
+    pub fn backend_program(&self) -> &osprey_ast::Program {
+        self.backend.as_ref().unwrap_or(&self.program)
+    }
+
     /// Metadata for the selected entry source, or `None` for a malformed value.
     #[must_use]
     pub fn entry(&self) -> Option<&SourceMetadata> {

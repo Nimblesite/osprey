@@ -72,8 +72,8 @@ type Published = BTreeMap<String, Type>;
 
 /// Equal signatures alone do not prove that dotted calls choose the same
 /// implementation. Preserve dispatch choices alongside the inferred types.
-struct Snapshot {
-    types: Published,
+pub(crate) struct Snapshot {
+    pub(crate) types: Published,
     methods: crate::methods::Targets,
 }
 
@@ -190,7 +190,7 @@ fn preserves(program: &Program, baseline: &Snapshot, written: &[Site], chosen: &
 
 /// Everything the inferrer resolved, labelled so two runs compare entry by
 /// entry.
-fn published(program: &Program) -> Option<Snapshot> {
+pub(crate) fn published(program: &Program) -> Option<Snapshot> {
     let types = infer_checked(program).ok()?;
     let functions = types.functions.iter().map(|(name, (params, ret))| {
         let signature = Type::Fun {
@@ -243,6 +243,29 @@ fn published(program: &Program) -> Option<Snapshot> {
         types: published,
         methods: types.methods,
     })
+}
+
+/// A callback rewrite deletes only its wrapper lambdas. Other inferred sites,
+/// method choices and entry effect requirements must remain valid unchanged.
+pub(crate) fn preserves_callbacks(
+    baseline: &Snapshot,
+    candidate: &Program,
+    removed: &[Position],
+) -> bool {
+    let Some(candidate) = published(candidate) else {
+        return false;
+    };
+    let mut types = baseline.types.clone();
+    for position in removed {
+        let _ = types.remove(&format!("lambda {}:{}", position.line, position.column));
+    }
+    ordered_methods(&baseline.methods) == ordered_methods(&candidate.methods)
+        && same_types(&types, &candidate.types)
+}
+
+fn ordered_methods(methods: &crate::methods::Targets) -> Vec<&crate::methods::Target> {
+    let ordered: BTreeMap<_, _> = methods.iter().collect();
+    ordered.into_values().collect()
 }
 
 fn publish_operation(

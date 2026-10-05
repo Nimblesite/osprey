@@ -2,8 +2,7 @@
 namespace mobile;
 
 import mobile::Model
-import mobile::Update
 import mobile::App
 
-fn start() = App::envelope(Update::initial())
-fn dispatch(model, event) = App::envelope(Update::dispatch(Model::decode(model))(event))
+fn start() = App::envelope(App::initial())
+fn dispatch(model, event) = App::envelope(App::dispatch(Model::decode(model))(event))

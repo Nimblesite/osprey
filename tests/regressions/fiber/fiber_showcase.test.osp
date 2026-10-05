@@ -147,10 +147,21 @@ print("=== Fiber Showcase Complete ===")
 /// wasm goldens. [GC-ARC-PERCEUS] [TYPE-ANY]
 fn erasedFiberResult() -> any = "fib" + "er"
 
+/// A still-generic lambda applied inside spawned bodies. A fiber's thunk is a
+/// nested function, so it must capture what the lambda closed over where it
+/// was defined; it used to fail with `unknown name`. Hosted here for the same
+/// reason as the case above. [CONCURRENCY-SPAWN-AWAIT] [TYPE-GENERICS-FN]
+fn spawnedGenericLambda() = {
+    let prefix = "job-" + "7"
+    let labelled = |x| => "${prefix}:${x}"
+    "${await(spawn labelled(1))} ${await(spawn labelled("two"))}"
+}
+
 // Verifies each composed fiber/yield/lambda result instead of merely printing it.
 
 test("fiber primitives compose into deterministic values", fn() => exactArithmetic(fn() => checkAll("fiber showcase results", [
     "${await(spawn erasedFiberResult())}" == "fiber",
+    spawnedGenericLambda() == "job-7:1 job-7:two",
     mappedTotal == 1400,
     p == 200,
     y1 == 25,

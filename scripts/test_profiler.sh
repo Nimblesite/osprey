@@ -10,9 +10,21 @@ BIN="$ROOT/target/release/osprey"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
+# `add` and `sub` recurse so each stays a real frame. One-line wrappers are
+# inlined into `fib` at -O2, and the optimizer keeps no inlined range a sample
+# can land in for them on every host: on Apple Silicon `sub` was named in 0 of
+# 6 runs, so the "every defined function is named" assertion below failed on a
+# correct symbolizer [PROF-SYMBOLIZE-OFFLINE].
 cat > "$TMP/profdemo.osp" <<'EOF'
-fn add(a, b) = satAdd(a, b)
-fn sub(a, b) = satSub(a, b)
+fn add(a, b) = match b {
+    0 => a
+    1 => satAdd(a, 1)
+    _ => satAdd(add(a, intDiv(b, 2)), satSub(b, intDiv(b, 2)))
+}
+fn sub(a, b) = match b {
+    0 => a
+    _ => satSub(sub(a, satSub(b, 1)), 1)
+}
 fn fib(n) = match n {
     0 => 0
     1 => 1

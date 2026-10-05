@@ -174,7 +174,7 @@ If you search for an **algebraic effects programming language**, these are the m
 - **OCaml 5 effect handlers** provide the runtime control feature, but the [OCaml manual](https://ocaml.org/manual/effects.html) says the compiler does not guarantee that every effect has a handler.
 - **Unison abilities** are Unison's name for effects, and [required abilities](https://www.unison-lang.org/docs/language-reference/abilities-and-ability-handlers/) appear directly in function types.
 
-Osprey combines `Result<T, E>` for ordinary failures with named effects for decisions that belong outside the function. Both work in its brace and ML syntax. Osprey is aiming for the compile-time checks used by Koka, Eff and Unison, but it does not yet follow every effect through every function call. It cannot yet promise that every missing handler is caught during compilation.
+Osprey combines `Result<T, E>` for ordinary failures with named effects for decisions that belong outside the function. Both work in its brace and ML syntax. The current checker follows operation requirements through the closed program and rejects unhandled requests. General independently quantified effect rows in function types remain unfinished; [plan 0016](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0016-algebraic-effects-and-handlers.md) records that boundary.
 
 ### Algebraic effect example: recover by substituting a value
 
@@ -259,7 +259,7 @@ A production `Accounts` handler could query a database. A test handler could ret
 
 The tested suite includes paired Default/ML versions of [result_and_effects](https://github.com/Nimblesite/osprey/blob/main/tests/regressions/effects/result_and_effects.test.osp), [typed_error_channels](https://github.com/Nimblesite/osprey/blob/main/tests/regressions/effects/typed_error_channels.test.osp) and [collect_all_errors](https://github.com/Nimblesite/osprey/blob/main/tests/regressions/effects/collect_all_errors.test.osp). They show local Results feeding a handler policy, separate named error channels, and accumulation of multiple validation failures instead of stopping at the first one. The ML twins sit beside those files with the `.ospml` extension.
 
-**Update:** a direct handler operation declared to return a whole `Result<T, E>` used to corrupt that value, and this post recommended keeping the `Result` outside the direct operation boundary. [Critical issue #183](https://github.com/Nimblesite/osprey/issues/183) is fixed — the paired reproducers now pass in both flavors under all three memory backends, so a direct operation may return a complete `Result`.
+An operation can also return a whole `Result<T, E>`. Both its success and error values are checked across the handler boundary.
 
 ## Result type or algebraic effect?
 
@@ -286,14 +286,9 @@ The compiler checks the values passed into and returned from effect operations. 
 Important limits include:
 
 - An `Error` currently always carries a string message. Although signatures use `Result<T, E>`, `E` cannot yet be an arbitrary error value. That is why these examples use `Result<T, string>`.
-- ~~The compiler does not yet prove that every effect has a handler.~~ **It does now.** A program that performs an effect nothing handles fails to build, with the effect and operation named: `unhandled effect operations at program entry: Log.write; add a matching handle`. The check reaches through helper calls, lambdas passed to higher-order functions, and fibers. It reasons over a closed program's operation summaries rather than an effect-row variable in a function type, so a future surface with independently quantified rows in public higher-order signatures would need more work — see the [algebraic-effects specification](/spec/0017-algebraiceffects/). Handlers that pause and resume work remain native-only; WebAssembly handlers must return immediately.
+- Missing handlers are rejected at the application boundary, including requests through helpers, callbacks and fibers. Callable handlers and rest-of-block `handle` are supported in both flavors. Dynamic control handlers require the native target; WebAssembly and mobile use value handlers or static interpretation. General quantified effect rows and reusable continuations remain unfinished.
 - The compiler automatically extracts the success value from a `Result` in six convenience cases. If the value is actually an `Error`, the current code can discard that error and produce a zero or default value. Osprey therefore does **not** yet force explicit handling of every `Result` on every path. This is an alpha safety gap to fix, not intended language behaviour.
-- ~~Resuming effect operations transport 16 arguments; the compiler accepts a 17th, but the runtime silently replaces it with zero.~~ **Fixed** — [critical issue #182](https://github.com/Nimblesite/osprey/issues/182). An operation's arguments now travel in a mailbox sized by its real arity, so an operation of any width delivers every argument it was given. Paired tests assert 16, 17 and 18 arguments.
-- ~~Direct handlers corrupt whole `Result<T, E>` operation values.~~ **Fixed** — [critical issue #183](https://github.com/Nimblesite/osprey/issues/183) now passes in both flavors under all three memory backends. Whole Results passed through explicit `resume` keep their separate tests.
-- An unannotated four-argument curried ML helper can silently skip effects performed through its body. The verified workaround is a flat parenthesised parameter list while [critical issue #184](https://github.com/Nimblesite/osprey/issues/184) is open.
-- ~~Under ARC memory management, a resuming handler whose completed answer is a dynamic string leaks one managed object.~~ **Fixed** — [critical issue #185](https://github.com/Nimblesite/osprey/issues/185). The whole effects test corpus now exits with zero live objects under ARC.
-
-This post states the standard Osprey is aiming for. To meet it, the compiler must reject missing handlers, preserve every accepted operation value and never silently discard an `Error`. Operation values now transport intact; the remaining gaps above are the `Error` payload type, automatic `Result` extraction, and the curried ML path.
+Operation arity, whole `Result` transport, managed handler answers and curried ML calls have current regression coverage. See [plan 0016](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0016-algebraic-effects-and-handlers.md) for delivery evidence and remaining ownership work, and the [effects guide](/docs/effects/) for the replacement handler syntax.
 
 ## Stop hiding the second return channel
 

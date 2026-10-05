@@ -126,6 +126,72 @@
       "kind": "executable-evidence",
       "path": "examples/chapter-03/",
       "use": "Inferred string heading, independently typed identity calls, Learner fields, and an exact compiler-rejection diagnostic"
+    },
+    {
+      "id": "chapter-eight-examples",
+      "kind": "executable-evidence",
+      "path": "examples/chapter-08/",
+      "use": "Seven behavior tests, exact TAP output, Result rejection, and exercised mutation checks"
+    },
+    {
+      "id": "chapter-nine-examples",
+      "kind": "executable-evidence",
+      "path": "examples/chapter-09/",
+      "use": "Typed requests, callback timing, nested scopes, composed handlers, control cancellation, static interpretation, and rejection fixtures"
+    },
+    {
+      "id": "chapter-ten-examples",
+      "kind": "executable-evidence",
+      "path": "examples/chapter-10/",
+      "use": "Scripted storage and HTTP outcomes, native file round trip, local native HTTP response adapter, and Result rejection"
+    },
+    {
+      "id": "spec-file-builtins",
+      "kind": "repository-specification",
+      "path": "../docs/specs/0012-Built-InFunctions.md",
+      "use": "File read/write Result contracts and string decoding operations"
+    },
+    {
+      "id": "spec-http",
+      "kind": "repository-specification",
+      "path": "../docs/specs/0014-HTTP.md",
+      "use": "Native response handles, status/body access, resource cleanup, and platform limits"
+    },
+    {
+      "id": "effects-delivery",
+      "kind": "implementation-status",
+      "path": "../docs/plans/0016-algebraic-effects-and-handlers.md",
+      "use": "Implemented handler semantics and remaining row, continuation, and platform limits"
+    },
+    {
+      "id": "spec-memory",
+      "kind": "repository-authority",
+      "path": "../docs/specs/0018-MemoryManagement.md",
+      "use": "Default allocator, native GC/ARC, fiber ownership, and runtime qualifications"
+    },
+    {
+      "id": "spec-modules",
+      "kind": "repository-authority",
+      "path": "../docs/specs/0025-ModulesAndNamespaces.md",
+      "use": "Implemented projects, namespaces, imports, and project flavor selection"
+    },
+    {
+      "id": "spec-ios",
+      "kind": "repository-authority",
+      "path": "../docs/specs/0038-iOSTarget.md",
+      "use": "Apple archive/header targets and native host requirements"
+    },
+    {
+      "id": "spec-android",
+      "kind": "repository-authority",
+      "path": "../docs/specs/0039-AndroidTarget.md",
+      "use": "Android ABI targets and native host requirements"
+    },
+    {
+      "id": "structured-concurrency-delivery",
+      "kind": "repository-authority",
+      "path": "../docs/plans/0026-structured-concurrency.md",
+      "use": "Distinguish planned scopes, cancellation, deadlines, and join from the current native fiber runtime"
     }
   ]
 }

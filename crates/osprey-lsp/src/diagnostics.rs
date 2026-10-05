@@ -82,7 +82,7 @@ pub(crate) fn analyze_cached(
                 "flavor-error",
                 encoding,
             )]
-            .into()
+            .into();
         }
     };
     let parsed = view.parsed(path, source);

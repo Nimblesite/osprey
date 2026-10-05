@@ -371,7 +371,7 @@ fn diagnostic_json(d: &Diagnostic) -> Value {
     });
     if d.code
         .as_deref()
-        .is_some_and(|code| code.starts_with("unused-"))
+        .is_some_and(|code| code.starts_with("unused-") || code == "redundant-callback")
     {
         insert_opt(&mut obj, "tags", Some(json!([1])));
     }

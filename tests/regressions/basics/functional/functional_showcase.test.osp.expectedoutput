@@ -39,5 +39,6 @@ ok 3 - a let-bound lambda picks its arithmetic overload from its use
 ok 4 - a handler inside a closure keeps its captured state
 ok 5 - a function value returning a collection keeps its element type
 ok 6 - a generic function's returned lambda specialises per call site
-1..6
-# tests=6 passed=6 failed=0 skipped=0
+ok 7 - a generic lambda keeps the environment it was defined in
+1..7
+# tests=7 passed=7 failed=0 skipped=0

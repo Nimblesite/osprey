@@ -1,0 +1,8 @@
+ok 1 - each status has its own label
+ok 2 - advancing completes a lesson and stays complete
+ok 3 - summary keeps the title and shows current status
+ok 4 - estimates include both endpoints
+ok 5 - estimates preserve the integer parser's message
+ok 6 - estimates reject values outside the session range
+1..6
+# tests=6 passed=6 failed=0 skipped=0

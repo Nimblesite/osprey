@@ -1,13 +1,15 @@
 # Osprey Issue Inbox
 
-An iPhone and Android application with shared Osprey state, UI layout, GitHub decoding, and SQLite commands. Browse public repository issues, search titles and authors, open issue details, save issues, add local notes and priorities, and reopen the cached inbox offline. SwiftUI and Android widgets render the same Osprey UI description.
+An iPhone and Android application using algebraic effects for SQLite and HTTP requests. Shared Osprey code owns state, issue decoding, local notes, bookmarks, and the UI description. A callable handler turns typed requests into commands for SwiftUI and Android hosts.
+
+For a banking workflow shared across web, Android and iOS, see [Talon Bank's native apps](../projects/modules/mobile/README.md).
 
 <p align="center">
   <img src="../../website/src/assets/images/mobile/issue-inbox-ios.png" alt="Issue Inbox showing live GitHub issues on the iPhone 17 Pro simulator" width="280" />
   <img src="../../website/src/assets/images/mobile/issue-inbox-android.png" alt="Issue Inbox restoring cached GitHub issues on the Pixel 7 Android emulator" width="280" />
 </p>
 
-Real captures from the iPhone 17 Pro simulator (left) and Pixel 7 Android emulator (right). iOS shows a completed GitHub refresh; Android shows the same repository restored from SQLite after restart. Physical iPhone verification is recorded in [Validation](#validation).
+Earlier captures from the iPhone simulator (left) and Android emulator (right), showing live issues and a restored SQLite cache.
 
 ```mermaid
 flowchart LR
@@ -21,7 +23,31 @@ flowchart LR
     H -->|completion events| O
 ```
 
-The native shells contain rendering, transport, and lifecycle code. Application-specific rules, labels, layout, and action definitions live in [`inbox/src/`](inbox/src/). This is an ordinary event-driven Osprey application; no special reactive compiler feature or resumable effect support is required.
+The native shells render the screen and execute platform services. Application rules and layout live in [`inbox/src/`](inbox/src/).
+
+## Effects at the host boundary
+
+[`Storage::Requests`](inbox/src/storage.ospml) declares two value operations: `sql` accepts a record containing a request ID, statement, and bound parameters; `http` accepts a request ID and URL. [`Update`](inbox/src/update.ospml) performs them while computing the next immutable state:
+
+```ospml
+result pending (perform Storage::Requests.http (Storage::fetch pending))
+```
+
+The production policy is a callable handler inside `Storage::commands`:
+
+```ospml
+export commands work =
+    native = handler Requests
+        sql request => sqlCommand request
+        http request => httpCommand request
+    native work
+```
+
+[`App`](inbox/src/app.ospml) selects that policy around each transition: `Storage::commands Update::initial`, or `Storage::commands (\() => Update::dispatch model event)`. Intermediate application functions need no service parameter. The callback lets the handler install its policy before the transition runs.
+
+Tests can run the same transition under another handler. A callable handler in [the domain suite](inbox/test/main.ospml) records schema requests; a rest-of-block `handle Storage::Requests` replaces HTTP command generation and verifies request correlation. Existing tests also exercise the production policy's SQL parameters and JSON envelope.
+
+These value operations return command descriptions synchronously. Swift and Kotlin execute them after the call returns, then deliver completion events. No continuation crosses the C boundary, and this example does not depend on the planned staged reactive runtime.
 
 ## iPhone and simulator
 
@@ -62,11 +88,11 @@ make android-test
 | `inbox/src/update.ospml` | Events, command sequencing, and error handling |
 | `inbox/src/annotations.ospml` | Local notes, priorities, and annotation limits |
 | `inbox/src/github.ospml` | Repository validation, API URL, response decoding |
-| `inbox/src/storage.ospml` | Actual SQLite schema, load/save statements, parameters |
+| `inbox/src/storage.ospml` | Typed request effect, callable command handler, SQLite schema and bound statements |
 | `inbox/src/view.ospml` | Search, saved filter, counts, and issue presentation |
 | `inbox/src/markdown.ospml` | Issue description Markdown to UI nodes and rich spans |
 | `inbox/src/ui.ospml` | Native UI tree, labels, layout, and action events |
-| `inbox/src/app.ospml`, `main.osp` | Envelope assembly and C-callable scalar start/dispatch wrappers |
+| `inbox/src/app.ospml`, `main.osp` | Handler selection, envelope assembly, and C-callable start/dispatch wrappers |
 
 `osprey_mobile_start()` and `osprey_mobile_dispatch(model, event)` return JSON containing an opaque model string, structured view, UI tree, and platform commands. Hosts copy the returned string immediately and run emitted SQL/HTTP commands in order. Each completion returns to Osprey as another event. The hosts do not implement issue filtering, bookmarks, SQL selection, or GitHub response decoding.
 
@@ -98,26 +124,14 @@ xcrun simctl get_app_container booted org.ospreylang.IssueInbox data
 
 Use the returned container path to read `Documents/inbox-state.json`. With multiple booted simulators, replace `booted` with the chosen UDID. Adding `--inbox-open-first` opens the first loaded issue automatically, which is how the Markdown detail screenshot is captured with `xcrun simctl io booted screenshot`. Diagnostic output is disabled in ordinary launches.
 
-The native C boundary currently uses the default memory runtime and retains general allocations for the process lifetime. Hosts copy strings but cannot release Osprey allocations through a stable public API yet. Mobile targets reject unsupported features such as resumable effects and built-in native HTTP; platform networking runs through the host command boundary. See the [iOS target](../../docs/specs/0038-iOSTarget.md), [Android target](../../docs/specs/0039-AndroidTarget.md), [application specification](../../docs/specs/0040-ReactiveMobileApplications.md), and [delivery plan](../../docs/plans/0030-reactive-mobile-apps.md).
+The native C boundary currently uses the default memory runtime and retains general allocations for the process lifetime. Hosts copy strings but cannot release Osprey allocations through a stable public API yet. Mobile targets reject unsupported features such as resumable effects and built-in native HTTP; platform networking runs through the host command boundary. See the [iOS target](../../docs/specs/0038-iOSTarget.md), [Android target](../../docs/specs/0039-AndroidTarget.md), and [application specification](../../docs/specs/0040-ReactiveMobileApplications.md).
 
 ## Validation
 
-The completed verification run used the actual compiled Osprey application archives:
-
-| Environment | Result |
-| --- | --- |
-| Physical iPhone 16 | Initial app installed, launched, and passed reactive/SQLite smoke with eight live GitHub issues. The subsequent Markdown build is installed; its launch check awaits an unlocked phone. |
-| iPhone simulator | Application build and reactive/SQLite smoke passed; live GitHub data rendered |
-| Android ARM64 emulator | C ABI and language checks, reactive/SQLite smoke, process restart, and live GitHub checks passed |
-| Android x86-64 | Native archive and APK packaging built; execution was not verified |
-| Shared Osprey project | 29 domain checks passed, covering transitions, cache restoration, errors, response correlation, notes, priorities, JSON escaping, and Markdown rendering |
-
-Issue counts reflect that verification run and change with GitHub activity. Run the shared domain checks from the repository root with:
+Run the shared domain suite without a device:
 
 ```sh
 target/release/osprey examples/mobile/inbox/test --run
 ```
 
-The iOS and Android commands above reproduce platform builds and smoke checks. Live checks need network access and available GitHub rate limits.
-
-Full repository `make ci` remains failing. Its unchanged Deslop gate reports 9.4% duplication (7,516 of 79,911 lines) against the 5% limit and exits with code 3, stopping CI before later stages. The platform and domain checks above passed independently; they do not mean the full pipeline passed. Deslop writes its detailed report to `target/deslop-report.txt`.
+The suite covers handler substitution, command generation, state transitions, offline cache restoration, errors, response correlation, notes, priorities, JSON escaping, Unicode, and Markdown rendering. Platform builds and device smoke checks require the toolchains above. Earlier simulator/device screenshots do not verify later source changes; rerun the native checks after changing the application or compiler.

@@ -41,12 +41,16 @@ impl Codegen {
 
     /// The `DILocalVariable` metadata id for `name` of type `ty`, if a debug
     /// build is active. The single lookup both debug-recorders funnel through.
+    /// An environment alias is not a variable anyone wrote, so it has none.
     fn debug_var_id(
         &mut self,
         name: &str,
         value: &Value,
         argument: Option<usize>,
     ) -> Option<usize> {
+        if crate::closure::is_alias(name) {
+            return None;
+        }
         let type_id = self.debug_value_type(value)?;
         self.debug
             .as_mut()?

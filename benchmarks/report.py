@@ -2,8 +2,10 @@
 """Aggregate harness output into an HTML report — generated MECHANICALLY, never
 hand-edited.
 
-Reads <out>/raw.jsonl (per case/lang: status + peak RSS) and the hyperfine
-exports in <out>/hf/<case>.json (per case/lang: timing), then renders:
+Reads <out>/raw.jsonl (per case/lang: status + peak RSS), the hyperfine
+exports in <out>/hf/<case>.json (per case/lang: timing) and, for a case with no
+export on this machine, the timing already published in <out>/results.json,
+then renders:
 
   <out>/results.html  — self-contained report (Osprey website CSS inlined)
   <out>/results.json  — same data, structured, for tracking over time
@@ -36,12 +38,34 @@ Cell = dict[str, object]
 Data = dict[str, dict[str, Cell]]
 
 
+TIMING: tuple[str, ...] = ("mean", "stddev", "min", "max")
+
+
+def recorded_timings(path: Path) -> list[tuple[str, str, Cell]]:
+    """Every timing the published results.json holds, as (case, lang, timing)."""
+    if not path.exists():
+        return []
+    cases: Data = json.loads(path.read_text()).get("cases", {})
+    return [(case, lang, {k: cell[k] for k in TIMING if k in cell})
+            for case, langs in cases.items() for lang, cell in langs.items()]
+
+
 def load(out: Path) -> Data:
-    """Merge raw status/RSS records with hyperfine timings, keyed by case/lang."""
+    """Merge raw status/RSS records with timings, keyed by case/lang.
+
+    A timing comes from a hyperfine export when one is present. The exports are
+    untracked, so for every other passing cell the published results.json is
+    the only record of it: reading the exports alone erased the timing of every
+    case a filtered run did not re-measure.
+    """
     data: Data = cast(Data, {})
     for line in (out / "raw.jsonl").read_text().splitlines():
         r = json.loads(line)
         data.setdefault(r["case"], {})[r["lang"]] = {"status": r["status"], "rss": r["rss"]}
+    for case, lang, timing in recorded_timings(out / "results.json"):
+        cell = data.get(case, {}).get(lang)
+        if cell is not None and cell["status"] == "ok":
+            cell.update(timing)
     for hf in (out / "hf").glob("*.json"):
         for res in json.loads(hf.read_text())["results"]:
             cell = data.setdefault(hf.stem, {}).setdefault(res["command"], {})

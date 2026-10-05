@@ -9,8 +9,8 @@ use super::{gen_expr, Codegen, CodegenError, Expr, FnSig, Parameter, Position, R
 ///
 /// A lambda a GENERIC function returned also closes over that call's
 /// parameters, evaluated once at the binding
-/// ([`Codegen::lambda_prefix`], [`crate::stmt`]). Captures are bindings, not
-/// lambda parameters: prepending them shifts callback slots away from the
+/// ([`crate::closure::Environment`], [`crate::stmt`]). Captures are bindings,
+/// not lambda parameters: prepending them shifts callback slots away from the
 /// lambda's inferred signature and emits calls to nonexistent function names.
 pub(super) fn apply_bound_lambda(
     cg: &mut Codegen,
@@ -33,9 +33,6 @@ pub(super) fn apply_bound_lambda(
 /// Bind the file-scope names of an inlined lambda from their lexical scope.
 /// Its caller may have locals with the same names.
 fn file_lambda_globals(cg: &Codegen, name: &str) -> Vec<String> {
-    if !is_file_lambda_binding(cg, name) {
-        return Vec::new();
-    }
     let Some((parameters, body, _)) = cg.file_lambdas.get(name) else {
         return Vec::new();
     };
@@ -56,21 +53,20 @@ fn is_file_lambda_binding(cg: &Codegen, name: &str) -> bool {
         .is_some_and(|file| cg.lambdas.get(name).is_none_or(|local| local == file))
 }
 
-/// A file-scope lambda and a generic factory both carry lexical bindings.
+/// Lower `emit` in the lexical scope of the inline lambda `name`: module
+/// storage for a file-scope binding, else the environment fixed where the
+/// lambda was defined ([`crate::closure::within`]).
 pub(super) fn with_lambda_captures<T>(
     cg: &mut Codegen,
     name: &str,
     emit: impl FnOnce(&mut Codegen) -> Result<T>,
 ) -> Result<T> {
-    let globals = file_lambda_globals(cg, name);
-    let prefix = match cg.lambda_prefix.get(name).cloned() {
-        Some(prefix) => Some(prefix),
-        None => file_prefix_values(cg, name)?,
-    };
-    if is_file_lambda_binding(cg, name) {
-        return cg.with_file_scope(|cg| bind_and_emit(cg, globals, prefix, emit));
+    if !is_file_lambda_binding(cg, name) {
+        return crate::closure::within(cg, name, emit);
     }
-    bind_and_emit(cg, globals, prefix, emit)
+    let globals = file_lambda_globals(cg, name);
+    let prefix = file_prefix_values(cg, name)?;
+    cg.with_file_scope(|cg| bind_and_emit(cg, globals, prefix, emit))
 }
 
 fn bind_and_emit<T>(
@@ -100,9 +96,6 @@ fn file_prefix_values(
     cg: &mut Codegen,
     name: &str,
 ) -> Result<Option<(Vec<Parameter>, Vec<Value>)>> {
-    if !is_file_lambda_binding(cg, name) {
-        return Ok(None);
-    }
     let Some((parameters, slots)) = cg.file_lambda_prefix.get(name).cloned() else {
         return Ok(None);
     };

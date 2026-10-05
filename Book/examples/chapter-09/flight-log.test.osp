@@ -1,0 +1,39 @@
+effect Learner { name: fn() -> string }
+effect Progress { report: fn(string) -> Unit }
+
+fn completion(title) = perform Learner.name() + " completed: " + title
+
+fn finishLesson(title) = {
+    let message = completion(title)
+    perform Progress.report(message)
+    message
+}
+
+fn reading(person) = handler Learner { name => person }
+
+let mika = reading("Mika")
+let terminal = handler Progress { report message => print(message) }
+
+let live = mika(|| => terminal(|| => finishLesson("Algebraic effects")))
+
+test("completion returns the expected message", || => {
+    expect(live, "Mika completed: Algebraic effects")
+    let checking = handler Progress {
+        report message =>
+            expect(message, "Mika completed: Algebraic effects")
+    }
+    let answer = mika(|| =>
+        checking(|| => finishLesson("Algebraic effects")))
+    expect(answer, "Mika completed: Algebraic effects")
+})
+
+test("another learner uses the same application functions", || => {
+    let rowan = reading("Rowan")
+    let checking = handler Progress {
+        report message =>
+            expect(message, "Rowan completed: Pattern matching")
+    }
+    let answer = rowan(|| =>
+        checking(|| => finishLesson("Pattern matching")))
+    expect(answer, "Rowan completed: Pattern matching")
+})

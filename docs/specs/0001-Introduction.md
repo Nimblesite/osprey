@@ -1,20 +1,18 @@
 # Introduction
 
-Osprey is a statically typed functional language that compiles through LLVM to
-native code or WebAssembly. Default (`.osp`) and ML (`.ospml`) are surface
+Osprey is a statically typed functional language built around algebraic effects. Application code requests typed operations; handlers supply their implementation. Osprey compiles through LLVM to native code, WebAssembly, and C ABI libraries for iOS and Android. Default (`.osp`) and ML (`.ospml`) are surface
 flavors of the same language; both lower to `osprey_ast::Program` before type
 checking and code generation. Their precise boundary is defined in
 [Language Flavors](0023-LanguageFlavors.md).
 
 ## Language shape
 
+- Callable algebraic-effect handlers: `handler E { ... }` creates a policy, and `h(work)` runs a callback under it. `handle E { ... }` handles the rest of its block.
 - Hindley-Milner inference with optional, constraining type annotations.
 - Immutable bindings and explicit mutable bindings.
 - Expression-oriented branching through `match`, ternaries, and the Default
   flavor's `if`/`else` expression.
-- Typed algebraic-effect operations and lexical handlers. An effect that can
-  escape a function is present in its function type, and every effect must be
-  discharged by a statically known handler before program entry.
+- Checked operation requirements and explicit value/control operation modes. The [effects contract](0017-AlgebraicEffects.md) defines scoped rows and continuation semantics; [plan 0016](../plans/0016-algebraic-effects-and-handlers.md) distinguishes current support from unfinished requirements.
 - `Result<T, E>` values for structured failures.
 
 ## Failure safety — [FAILURE-EXPLICIT]

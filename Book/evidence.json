@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "editionStatus": "structural-scaffold-chapters-1-3-complete",
+  "editionStatus": "partial-manuscript-chapters-1-3-and-8-10-complete",
   "releasePinned": false,
   "compilerVersion": "0.0.0-dev",
   "chapters": [
@@ -9,16 +9,24 @@
       "editorial": "complete",
       "spec": "mapped",
       "implementation": "compiler-checked",
-      "examples": "run-with-pinned-dev-binary",
-      "capture": "concept-diagrams-and-editorial-opener-ready"
+      "examples": "run-with-recorded-dev-binary",
+      "capture": "concept-diagrams-ready",
+      "auditedOn": "2026-10-04",
+      "verifiedOn": "2026-10-04",
+      "compilerSha256": "533fdd2b2bfb54c543b555a15cb0c455389391a28dca5ff0517fe139ecb0bd47",
+      "platform": "linux-x86_64"
     },
     {
       "number": 2,
       "editorial": "complete",
       "spec": "mapped",
       "implementation": "compiler-checked",
-      "examples": "run-with-pinned-dev-binary",
-      "capture": "concept-diagrams-ready"
+      "examples": "run-with-recorded-dev-binary",
+      "capture": "concept-diagrams-ready",
+      "auditedOn": "2026-10-04",
+      "verifiedOn": "2026-10-04",
+      "compilerSha256": "533fdd2b2bfb54c543b555a15cb0c455389391a28dca5ff0517fe139ecb0bd47",
+      "platform": "linux-x86_64"
     },
     {
       "number": 3,
@@ -27,98 +35,219 @@
       "capture": "concept-diagrams-ready",
       "editorial": "complete",
       "implementation": "compiler-checked",
-      "verifiedOn": "2026-09-12",
-      "compilerSha256": "6c3ab5c12924b639327a9f6a2730ed338dacda5420de64c44ed9c1fb5778daaa",
-      "platform": "darwin-arm64",
-      "checks": [
-        "make check-examples: exact output and exact compiler-rejection message",
-        "Manuscript code matches all chapter3 source examples",
-        "String-concatenation rejection versus interpolation acceptance",
-        "Record rejects a string in the integer sessionCount field",
-        "make release: all book examples, HTML and EPUB; EPUBCheck0 errors/warnings",
-        "Rendered chapter checked at1280px and320px; all3 diagrams readable and loaded"
-      ]
+      "auditedOn": "2026-10-04",
+      "previousVerification": {
+        "verifiedOn": "2026-09-12",
+        "compilerSha256": "6c3ab5c12924b639327a9f6a2730ed338dacda5420de64c44ed9c1fb5778daaa",
+        "platform": "darwin-arm64",
+        "checks": [
+          "make check-examples: exact output and exact compiler-rejection message",
+          "Manuscript code matches all chapter3 source examples",
+          "String-concatenation rejection versus interpolation acceptance",
+          "Record rejects a string in the integer sessionCount field",
+          "make release: all book examples, HTML and EPUB; EPUBCheck0 errors/warnings",
+          "Rendered chapter checked at1280px and320px; all3 diagrams readable and loaded"
+        ]
+      },
+      "verifiedOn": "2026-10-04",
+      "compilerSha256": "533fdd2b2bfb54c543b555a15cb0c455389391a28dca5ff0517fe139ecb0bd47",
+      "platform": "linux-x86_64"
     },
     {
       "number": 4,
       "spec": "mapped",
       "examples": "planned",
-      "capture": "planned"
+      "capture": "planned",
+      "auditedOn": "2026-10-04",
+      "editorial": "editorial-scaffold",
+      "implementation": "current-contracts-audited; checkpoint-not-written"
     },
     {
       "number": 5,
       "spec": "mapped",
       "examples": "planned",
-      "capture": "planned"
+      "capture": "planned",
+      "auditedOn": "2026-10-04",
+      "editorial": "editorial-scaffold",
+      "implementation": "current-contracts-audited; checkpoint-not-written"
     },
     {
       "number": 6,
       "spec": "mapped",
       "examples": "planned",
-      "capture": "planned"
+      "capture": "planned",
+      "auditedOn": "2026-10-04",
+      "editorial": "editorial-scaffold",
+      "implementation": "current-contracts-audited; checkpoint-not-written"
     },
     {
       "number": 7,
       "spec": "mapped",
       "examples": "planned",
-      "capture": "planned"
+      "capture": "planned",
+      "auditedOn": "2026-10-04",
+      "editorial": "editorial-scaffold",
+      "implementation": "current-contracts-audited; checkpoint-not-written"
     },
     {
       "number": 8,
       "spec": "mapped",
-      "examples": "planned",
-      "capture": "planned"
+      "examples": "run-with-recorded-dev-binary",
+      "capture": "concept-diagrams-ready",
+      "auditedOn": "2026-10-04",
+      "editorial": "complete",
+      "implementation": "compiler-checked",
+      "verifiedOn": "2026-10-04",
+      "compilerSha256": "533fdd2b2bfb54c543b555a15cb0c455389391a28dca5ff0517fe139ecb0bd47",
+      "platform": "linux-x86_64",
+      "checks": [
+        "7 named test cases pass; deliberate false assertion fails at runtime",
+        "Three temporary implementation mutations fail the appropriate cases",
+        "Displayed source and transcripts match checked examples"
+      ]
     },
     {
       "number": 9,
       "spec": "mapped",
-      "examples": "planned",
-      "capture": "planned"
+      "examples": "run-with-recorded-dev-binary",
+      "capture": "concept-diagrams-ready",
+      "auditedOn": "2026-10-04",
+      "editorial": "complete",
+      "implementation": "compiler-checked",
+      "verifiedOn": "2026-10-04",
+      "compilerSha256": "533fdd2b2bfb54c543b555a15cb0c455389391a28dca5ff0517fe139ecb0bd47",
+      "platform": "linux-x86_64",
+      "checks": [
+        "5 runnable programs and 2 rejection fixtures match exact goldens",
+        "2 named cases pass with assertions inside test handlers",
+        "All example outputs match under default, GC, and ARC",
+        "Every code excerpt matches checked source; callback, scope, control, and static claims reviewed"
+      ]
     },
     {
       "number": 10,
       "spec": "mapped",
-      "examples": "planned",
-      "capture": "planned"
+      "examples": "run-with-recorded-dev-binary",
+      "capture": "concept-diagrams-ready",
+      "auditedOn": "2026-10-04",
+      "editorial": "complete",
+      "implementation": "compiler-checked",
+      "verifiedOn": "2026-10-04",
+      "compilerSha256": "533fdd2b2bfb54c543b555a15cb0c455389391a28dca5ff0517fe139ecb0bd47",
+      "platform": "linux-x86_64",
+      "checks": [
+        "2 offline programs match exact output; native file run isolated",
+        "Saved title bytes verified after native write/read/decode",
+        "Decoder exercise variants and local native HTTP success/status/transport failures executed"
+      ]
     },
     {
       "number": 11,
       "spec": "mapped",
       "examples": "planned",
-      "capture": "planned"
+      "capture": "planned",
+      "auditedOn": "2026-10-04",
+      "editorial": "editorial-scaffold",
+      "implementation": "current-contracts-audited; checkpoint-not-written"
     },
     {
       "number": 12,
       "spec": "mapped",
       "examples": "planned",
-      "capture": "planned"
+      "capture": "planned",
+      "auditedOn": "2026-10-04",
+      "editorial": "editorial-scaffold",
+      "implementation": "current-contracts-audited; checkpoint-not-written"
     },
     {
       "number": 13,
       "spec": "mapped",
       "editionDirection": "default-first-ml-optional-future-flavors-open",
       "examples": "planned",
-      "capture": "planned"
+      "capture": "planned",
+      "auditedOn": "2026-10-04",
+      "editorial": "editorial-scaffold",
+      "implementation": "current-contracts-audited; checkpoint-not-written"
     },
     {
       "number": 14,
       "spec": "mapped",
       "examples": "planned",
-      "capture": "planned"
+      "capture": "planned",
+      "auditedOn": "2026-10-04",
+      "editorial": "editorial-scaffold",
+      "implementation": "current-contracts-audited; checkpoint-not-written"
     }
   ],
   "editionAuditNotes": [
     {
       "chapter": 2,
-      "status": "reconcile-before-publication",
+      "status": "resolved-2026-10-04",
       "topic": "Integer arithmetic contract differs between the recorded development binary and current specifications",
-      "observed": "The checked chapter2 golden prints Success(75) for 3 * 25.",
       "specifications": [
         "../docs/specs/0004-TypeSystem.md",
         "../docs/specs/0013-ErrorHandling.md"
       ],
       "specified": "Current specifications give plain integer multiplication type int; checkedMul explicitly returns Result.",
-      "chapter3Scope": "Chapter3 displays the integer input fields separately and makes no arithmetic-result claim."
+      "chapter3Scope": "Chapter3 displays the integer input fields separately and makes no arithmetic-result claim.",
+      "previousObservation": "The checked chapter2 golden prints Success(75) for 3 * 25.",
+      "resolution": "Changed plannedMinutes and both manuscript excerpts to checkedMul; preserved the existing Success(75) golden and updated the diagram. Plain multiplication uses Arith."
+    },
+    {
+      "chapter": 9,
+      "status": "open-compiler-regression",
+      "topic": "Nested callable handlers lose a shared mutable capture",
+      "observed": "The handler returns the correct string, but assignment to its captured recording cell is not visible after calling it through another callable handler.",
+      "verification": "Reproduced on the rebuilt current compiler in Default and ML with default, GC, and ARC; existing handler_scoping cases 1\u20133 pass and the added case 4 fails.",
+      "regressions": [
+        "../tests/regressions/effects/handler_scoping.test.osp",
+        "../tests/regressions/effects/handler_scoping.test.ospml"
+      ],
+      "expectedOutput": "../tests/regressions/effects/handler_scoping.test.osp.expectedoutput",
+      "bookTreatment": "Do not teach nested mutable recording as working. Chapter 9 uses verified immutable configuration captures and direct assertions in handler arms. No compiler fix is claimed."
     }
-  ]
+  ],
+  "currentAudit": {
+    "verifiedOn": "2026-10-04",
+    "compilerVersion": "0.0.0-dev",
+    "compilerSha256": "533fdd2b2bfb54c543b555a15cb0c455389391a28dca5ff0517fe139ecb0bd47",
+    "platform": "linux-x86_64",
+    "scope": "All 14 chapters, front matter, appendices, glossary, source policy, and editorial/outline claims",
+    "completedChapters": [
+      1,
+      2,
+      3,
+      8,
+      9,
+      10
+    ],
+    "outlineChapters": [
+      4,
+      5,
+      6,
+      7,
+      11,
+      12,
+      13,
+      14
+    ],
+    "checks": [
+      "16 runnable sources: check, compile, execute in isolated working directories, and exact stdout comparison",
+      "7 compile-rejection fixtures match exact stored diagnostics",
+      "9 named cases across 3 test suites pass",
+      "Chapter 9 outputs also match under native GC and ARC",
+      "Chapter 10 native file round trip preserves the exact 24-byte fixture",
+      "Optional native HTTP adapter executed with loopback 200, 404, and connection failure",
+      "All 9 appendix CLI commands executed; temporary project checked and built",
+      "Mobile target checks and target/runtime rejection diagnostics verified; no claim of app execution from those checks",
+      "Existing deterministic fiber and typed-channel programs run; flavor twins retain exact stdout",
+      "HTML inspected at 1280px and 320px: no document horizontal overflow or missing images",
+      "make release builds HTML and EPUB; EPUBCheck reports 0 errors and 0 warnings"
+    ],
+    "limits": [
+      "Development compiler remains unpinned for publication",
+      "Outline chapters have no completed Flight Log checkpoints",
+      "Book checks do not establish that the complete compiler regression suite passes"
+    ]
+  }
 }

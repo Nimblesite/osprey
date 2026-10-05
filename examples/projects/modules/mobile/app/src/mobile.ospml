@@ -1,0 +1,12 @@
+namespace talonmobile
+
+import talon::App
+import talon::Bridge
+
+module Mobile
+    returning () = handler Bridge::Render
+        present envelope => envelope
+
+    export start () = App::start (returning ())
+
+    export dispatch payload = App::receive (returning ()) payload

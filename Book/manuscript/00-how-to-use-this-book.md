@@ -1,12 +1,10 @@
 # How to use this book
 
-You do not need to know what a monad is. You do not need a favourite operating system, a perfectly configured editor, or a hot take about programming languages. You need enough curiosity to change a line of code and ask what happened.
+You can begin with a text file and one change to a quoted string. This book builds from that first result, explaining each new idea through a program you can run.
 
-This book begins there.
+Osprey helps you build programs from values and functions, keep ordinary failure visible, and choose how operations such as logging or storage are implemented. That last ability comes from **algebraic effects**. Chapter 9 introduces them from the beginning; no previous knowledge of functional programming is required.
 
-Osprey is a practical functional programming language. That description will mean more after you have used it. For now, it means the language helps you build programs from values and functions, keeps ordinary failure visible, and checks a surprising amount before the program runs.
-
-The goal is not to memorise syntax. The goal is to understand why your program behaves the way it does and to make the next change with confidence.
+This working manuscript has completed Chapters 1–3 and 8–10. The remaining chapters are labelled outlines. Each finished chapter supplies self-contained examples, so you can explore the effects sequence while the intervening lessons are being written.
 
 ![The book moves from one running file through honest data and outside-world interaction to a program the reader can ship and reshape.](assets/diagrams/00-reading-journey.png)
 
@@ -56,7 +54,7 @@ Each chapter uses a few repeated signals.
 
 **Try it** asks you to make one small edit, predict the result, and run it.
 
-**Compiler says** creates a useful error on purpose. Read the source location and the expected shape before changing anything.
+**Compiler says** creates a useful error on purpose. Read the reported file, name, or type disagreement before changing anything. Some diagnostics also give a line and column; others do not.
 
 **Under the wing** gives the precise functional-programming term for something you have already used. These notes are optional; they are also a quiet promise to experienced FP readers that the book is teaching the real language ideas.
 
@@ -78,11 +76,15 @@ Ask the agent to show a small diff and run a specific check. If it changes the d
 
 ## Alpha means honest edges
 
-Osprey is alpha software. Syntax, tooling, and implementation details can change. The book is tied to an edition and a compiler version so its examples can be checked rather than merely remembered.
+Osprey is alpha software. Syntax, tooling, and implementation details can change. This working edition records its development compiler's identity and checks in `evidence.json`; a release version still needs to be pinned before publication.
 
-Some language areas are deliberately qualified. Native programs and WebAssembly do not have identical runtime capabilities. Effect resumption is currently native-only. Complete package and module workflows remain in development. C libraries are useful, but C code sits outside Osprey's memory-safety guarantee.
+Project modules and imports between Default and ML files already work. The package manager remains planned. The later chapters distinguish using code in your own project from downloading and distributing packages.
 
-These are not footnotes designed to spoil the fun. They are part of learning to trust technical claims: say what works, say where it works, and test the program you plan to ship.
+Examples identify their target when it matters. Native executables support dynamic control handlers with single-shot resumption; WebAssembly and mobile libraries currently support value handlers and static discharge, but reject dynamic control operations. Chapter 9 explains those terms beside runnable examples.
+
+Memory choices also have limits: the default allocator retains general allocations, while native GC and ARC are separate options. Chapter 12 explains the choices and deployment boundaries. Calling a C library crosses Osprey's memory-safety boundary.
+
+Read each example's requirements and test the program on the target you plan to use.
 
 ## A good pace
 
@@ -91,4 +93,3 @@ Type the Chapter 1 program yourself. After that, copying a longer example is fin
 Stop at each Flight Log checkpoint. Commit it to memory, a notebook, or version control if that helps you see progress. When a chapter introduces a specialist term, connect it to the code you already ran.
 
 You are ready when you can create a text file and change a quoted string. The next chapter turns that small ability into a running program.
-

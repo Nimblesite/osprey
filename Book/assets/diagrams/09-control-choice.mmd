@@ -1,0 +1,8 @@
+flowchart TD
+    accTitle: A control handler can resume or finish the region
+    accDescr: After Confirm.ask suspends submit, resuming false runs submit's remaining match and returns Lesson declined. Answering Submission cancelled skips that match and completes the handler call.
+    A["Confirm.ask<br/>suspends submit"] -. requests .-> B["Control arm"]
+    B -->|resume false| C["Run match"]
+    C -->|returns| D["Declined"]
+    B -->|return text| E["Skip match"]
+    E -->|returns| F["Cancelled"]

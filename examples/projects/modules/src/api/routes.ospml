@@ -1,13 +1,5 @@
-// api/routes — the JSON API over the data. [MODULES-IMPORT] [MODULES-EFFECTS]
-//
-// The ONLY layer that talks to storage, and it does so purely through the
-// `Ledger::Store` capability — this file never imports the Sqlite library,
-// so it cannot bypass the effect surface even by accident. The import graph
-// IS the architecture, and the compiler enforces it.
-//
-// The module exports its own cross-cutting `Audit` effect: every mutation is
-// announced as a domain fact, and the composition root decides what an audit
-// line physically is (here: a console log).
+// JSON routes request Ledger::Store operations and report mutations via Audit.
+// The application root chooses both handlers. [MODULES-IMPORT] [MODULES-EFFECTS]
 
 namespace bank
 

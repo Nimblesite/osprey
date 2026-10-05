@@ -20,6 +20,9 @@ toolchain.
 ./scripts/generate-docs.sh
 ```
 
+### `add-ml-twins.py`
+Adds ML examples to generated reference pages. Set `mlTwins: manual` in a hand-authored guide to preserve its complete examples; `mlTwins: false` omits generated twins.
+
 ### `copy-spec.js`
 Copies the language specification from `docs/specs/` to the website source.
 

@@ -38,6 +38,7 @@ impl From<Vec<Diagnostic>> for Analysis {
 pub(crate) struct Warnings {
     pub(crate) redundant: Vec<RedundantAnnotation>,
     pub(crate) unused: Vec<osprey_types::UnusedSymbol>,
+    pub(crate) callbacks: Vec<osprey_types::TypeWarning>,
 }
 
 impl Warnings {
@@ -46,6 +47,7 @@ impl Warnings {
         Self {
             redundant: Vec::new(),
             unused: Vec::new(),
+            callbacks: Vec::new(),
         }
     }
 
@@ -53,6 +55,7 @@ impl Warnings {
         Self {
             redundant: osprey_types::redundant_annotation_sites(program),
             unused: osprey_types::unused_symbols(program),
+            callbacks: osprey_types::redundant_callbacks(program),
         }
     }
 }
@@ -91,6 +94,17 @@ impl Analysis {
             self.add_annotation(source, &site, &edits, encoding);
         }
         self.add_unused(source, &warnings.unused, flavor, encoding, locate);
+        for callback in &warnings.callbacks {
+            if let Some(position) = callback.position.and_then(locate) {
+                self.diagnostics.push(crate::diagnostics::warning(
+                    source,
+                    position,
+                    &callback.message,
+                    callback.rule,
+                    encoding,
+                ));
+            }
+        }
     }
 
     fn add_unused(
@@ -235,6 +249,60 @@ fn binding_kind_matches(left: osprey_syntax::BindingKind, right: osprey_types::U
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn forwarding_callbacks_warn_on_both_source_flavors() {
+        let programs = [
+            (
+                "osp",
+                "fn work() = 41\nfn run(callback) = callback()\nprint(run(|| => work()))\n",
+            ),
+            (
+                "ospml",
+                "work () = 41\nrun callback = callback ()\nprint (run (\\() => work ()))\n",
+            ),
+        ];
+        for (extension, source) in programs {
+            let analysis = crate::diagnostics::analyze(
+                source,
+                &format!("forwarding.{extension}"),
+                PositionEncoding::Utf16,
+            );
+            let found: Vec<_> = analysis
+                .diagnostics
+                .iter()
+                .filter(|warning| warning.code.as_deref() == Some("redundant-callback"))
+                .collect();
+            assert_eq!(found.len(), 1, "{extension}: {analysis:?}");
+            let found = found.first().expect("one redundant-callback warning");
+            assert_eq!(found.range.0, 2, "callback line in {extension}");
+            assert!(
+                found.message.contains("work"),
+                "name the direct replacement"
+            );
+            let wire =
+                crate::wire::publish_diagnostics("file:///forwarding", &analysis.diagnostics);
+            let warnings = wire
+                .get("diagnostics")
+                .and_then(serde_json::Value::as_array)
+                .expect("diagnostics array");
+            let callback = warnings
+                .iter()
+                .find(|d| d["code"] == "redundant-callback")
+                .expect("callback");
+            assert_eq!(callback["severity"], 2);
+            assert_eq!(callback["tags"], serde_json::json!([1]));
+        }
+    }
+
+    #[test]
+    fn callbacks_that_supply_arguments_are_not_redundant() {
+        let source =
+            "fn work(value) = value\nfn run(callback) = callback()\nprint(run(|| => work(41)))\n";
+        let analysis =
+            crate::diagnostics::analyze(source, "arguments.osp", PositionEncoding::Utf16);
+        assert!(analysis.diagnostics.is_empty(), "{analysis:?}");
+    }
 
     #[test]
     fn unused_findings_have_exact_binder_ranges_and_never_deletion_actions() {

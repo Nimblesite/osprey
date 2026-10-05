@@ -202,7 +202,7 @@ fn a_file_scope_handler_and_a_generic_binding_coexist() {
 /// may read, and Osprey's Hindley-Milner inference means a helper whose types
 /// are inferable carries no annotation. Each half is ordinary Osprey, and the
 /// pair is the natural spelling of the retry handler in [MULTI-FALSIFY] case 1
-/// (docs/specs/0035-StagedEffects.md, plan 0028).
+/// (docs/specs/0035-StagedEffects.md, plan 0016).
 ///
 /// Original defect: reading such a cell as the ARGUMENT of an unannotated helper whose
 /// result is a `Result` is rejected at lowering with "`attempts` has no

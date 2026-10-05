@@ -222,14 +222,118 @@ fn wildcard_import_is_refused_while_the_manifest_forbids_it() {
     );
 }
 
+/// The written return type of every function `program` declares, by source name.
+fn return_types(program: &osprey_ast::Program) -> Vec<(String, String)> {
+    let source_name = |name: &str| osprey_ast::symbol::demangle(name).unwrap_or(name.to_string());
+    program
+        .statements
+        .iter()
+        .filter_map(|statement| match statement {
+            Stmt::Function {
+                name,
+                return_type: Some(ty),
+                ..
+            } => Some((source_name(name), source_name(&ty.name))),
+            _ => None,
+        })
+        .collect()
+}
+
 #[test]
-fn manifest_opaque_alias_is_refused_rather_than_leaking_its_representation() {
-    // Implements [MODULES-OPAQUE-TYPES]: `export opaque type T = int` would
-    // expose `int` to clients, so flattening rejects it instead.
+fn manifest_opaque_alias_stays_a_name_for_the_checker_and_expands_for_the_backend() {
+    // Implements [MODULES-OPAQUE-TYPES]: `export opaque type T = int` is one
+    // declaration in two programs. The checked program keeps `T` as a name,
+    // its representation attached for the checker to grant to the owning
+    // module alone; the backend program has no `T` left in it.
+    let sources = [
+        (
+            Flavor::Default,
+            "main.osp",
+            "namespace app;\nmodule M {\n    export opaque type UserId = int\n    export fn make(n) -> UserId = n\n}\n",
+        ),
+        (
+            Flavor::Ml,
+            "main.ospml",
+            "namespace app\n\nmodule M\n    export opaque type UserId = int\n\n    export make : int -> UserId\n    make n = n\n",
+        ),
+    ];
+    for (flavor, name, text) in sources {
+        let project = assemble(&config(name), &[parsed(name, flavor, text)])
+            .unwrap_or_else(|errors| panic!("{name}: an opaque alias assembles: {errors:?}"));
+        let make = |ty: &str| vec![("app::M::make".to_string(), ty.to_string())];
+        assert_eq!(
+            return_types(&project.program),
+            make("app::M::UserId"),
+            "{name}"
+        );
+        let declared = project.program.statements.iter().any(|statement| {
+            matches!(statement, Stmt::Type { opaque: true, alias: Some(alias), .. } if alias.name == "int")
+        });
+        assert!(
+            declared,
+            "{name}: the checker needs the alias and what it stands for"
+        );
+        let backend = project
+            .backend
+            .as_ref()
+            .expect("an expanded backend program");
+        assert_eq!(return_types(backend), make("int"), "{name}");
+        let erased = !backend
+            .statements
+            .iter()
+            .any(|statement| matches!(statement, Stmt::Type { alias: Some(_), .. }));
+        assert!(erased, "{name}: the backend never meets an opaque alias");
+    }
+}
+
+#[test]
+fn a_project_without_opaque_aliases_has_one_program() {
+    // The second assembly exists only to expand opaque aliases.
+    let text = "namespace app;\nmodule M { export type Meters = int\n export fn of(n: Meters) -> Meters = n }\n";
+    let project = assemble(
+        &config("main.osp"),
+        &[parsed("main.osp", Flavor::Default, text)],
+    )
+    .unwrap_or_else(|errors| panic!("a transparent alias assembles: {errors:?}"));
+    assert!(project.backend.is_none());
+    assert_eq!(
+        return_types(project.backend_program()),
+        vec![("app::M::of".to_string(), "int".to_string())]
+    );
+}
+
+#[test]
+fn opaque_alias_cycle_and_arity_are_rejected_on_both_surfaces() {
+    // Implements [MODULES-CYCLES] for an alias that keeps its name: only the
+    // expanding assembly can notice that `Loop` stands for itself.
     both_reject(
-        "opaque alias `UserId` is unsupported by the flat checker",
-        "namespace app;\nmodule M { export opaque type UserId = int }\n",
-        "namespace app\n\nmodule M\n    export opaque type UserId = int\n",
+        "type alias cycle involving `app::M::Loop`",
+        "namespace app;\nmodule M { export opaque type Loop = List<Loop> }\n",
+        "namespace app\n\nmodule M\n    export opaque type Loop = (List Loop)\n",
+    );
+    both_reject(
+        "type alias `app::M::Pair` expects 1 type argument(s), found 0",
+        "namespace app;\nmodule M {\n    export opaque type Pair<T> = List<T>\n    export fn none() -> Pair = []\n}\n",
+        "namespace app\n\nmodule M\n    export opaque type Pair T = (List T)\n\n    export none : Unit -> Pair\n    none () = []\n",
+    );
+}
+
+#[test]
+fn state_cannot_leave_its_module_as_a_pointer_or_inside_a_closure() {
+    // Implements [MODULES-STATE-MODULE]: a cell cannot start as a foreign
+    // pointer, because its initializer must be pure and a `Ptr` comes only
+    // from an extern call, and a lambda written in an arm cannot carry the
+    // cell out. The checker-level half (a cell is never ASSIGNED a `Ptr`) is
+    // `examples/failscompilation/state_cell_cannot_hold_a_pointer.ospo`.
+    both_reject(
+        "state initializer `conn` must be pure",
+        "namespace app;\nextern fn osprey_ffi_null() -> Ptr\nstate module Db {\n    mut conn = osprey_ffi_null()\n    export effect Store { opened : fn() -> int }\n    export fn withDb(body) = {\n        handle Store { opened => 1 }\n        body()\n    }\n}\n",
+        "namespace app\n\nextern osprey_ffi_null -> Ptr\n\nstate Db\n    mut conn = osprey_ffi_null ()\n\n    export effect Store\n        opened : Unit => int\n\n    export withDb body =\n        handle Store\n            opened => 1\n        body ()\n",
+    );
+    both_reject(
+        "state cell `total` is only accessible inside its owning handler arms",
+        "namespace app;\nstate module Tally {\n    mut total = 0\n    export effect Counter { reader : fn() -> fn() -> int }\n    export fn withTally(body) = {\n        handle Counter { reader => fn() => total }\n        body()\n    }\n}\n",
+        "namespace app\n\nstate Tally\n    mut total = 0\n\n    export effect Counter\n        reader : Unit => (Unit -> int)\n\n    export withTally body =\n        handle Counter\n            reader => \\() => total\n        body ()\n",
     );
 }
 

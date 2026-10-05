@@ -13,6 +13,21 @@ iOS and Android. Each target has an explicit runtime boundary.
 
 Current version: **{% if releases.latest %}{{ releases.latest.tag }}{% else %}development build{% endif %}**.
 
+## Algebraic effects
+
+Start with the [practical guide](/docs/effects/). Both source flavors support:
+
+- Callable `handler` values, captured handler factories, composition and rest-of-block `handle`.
+- Typed value operations and explicit `control` operations; native control handlers can resume once or abandon the computation.
+- `return` clauses that transform normal completion.
+- `handle static` and static handler values that remove handled effect dispatch after source validation.
+- Compile-time rejection of unhandled operations, including requests through helpers and callbacks.
+- Integer overflow and zero divisors request the built-in `Arith` effect; each region chooses its policy.
+
+Value handlers and static interpretation have native, WebAssembly and mobile paths. Dynamic control handlers require the native target. Open `!e` annotations have a closed-program prototype; independently quantified effect rows in function types, reusable continuations, owned escaping continuations, named instances, masking and finalizers remain unfinished. [Plan 0016](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0016-algebraic-effects-and-handlers.md) records the evidence and remaining work.
+
+The [banking](/docs/web-apps/) and [mobile](/docs/mobile-apps/) examples use these handlers at their application boundaries.
+
 ## Releases
 
 {% if releases.list.length %}
@@ -33,8 +48,7 @@ The release list was unavailable when this page was built. See
 - Hindley–Milner type inference, algebraic data types and exhaustive pattern
   matching for supported patterns
 - User-defined generics, declaration-site variance, generic effects and explicit
-  call-site type arguments in both flavors. Generic calls and callbacks preserve declaration scope; nested calls keep independent types and evaluate arguments once in application order.
-- Typed effect operations, lexical handlers, compile-time rejection of missing handlers, and single-shot `resume` for `--target=native`
+  call-site type arguments in both flavors.
 - Immutable persistent lists and maps
 - Lightweight native fibers and channels
 - Native HTTP, WebSocket, file, process and C FFI runtime APIs
@@ -44,6 +58,7 @@ The release list was unavailable when this page was built. See
 - Compiler-backed formatting, documentation generation, testing, profiling and
   language-server commands
 - Mixed-flavor projects with live cross-file editor analysis, project layout warnings, visible state boundaries and compiler-checked import repairs
+- Module signatures and opaque types. Opaque records, unions and manifest aliases are abstract outside their module, and importers are checked against a signature's declared types
 - [HTML API documentation](/docs/documentation/) for public modules in both
   flavors, with executable examples, Markdown guides, custom CSS, three themes,
   offline search and responsive navigation
@@ -67,25 +82,22 @@ The compiler rejects unsupported target operations during `--check`, `--llvm`, a
 
 ## Source compatibility
 
-One change in the current development build rejects source that older builds
-accepted:
+The current development build rejects these older forms:
 
-- `//!` documents whatever encloses it — a file, a namespace or a module — so it
-  has to be the first item of one. Written anywhere else it is now a compile
-  error in both flavors, naming the `//!` itself. Earlier builds accepted some of
-  those placements, and a Default-flavor file could even read the comment as
-  code: `//! ready` at the end of a function body parsed as the expression
-  `!ready`, so the function returned the opposite answer and the program still
-  exited successfully. Move the comment to the top of the file, namespace or
-  module it describes, or write it as an ordinary `//` comment.
+- `handle … in …` and ML `handle … do …` are removed. Use `let h = handler E { … }` then `h(work)`, or a rest-of-block `handle`. Operations that use `resume` must be declared `control`.
+- Integer `+`, `-` and `*` return `int` instead of `Result`; overflow and zero divisors need an `Arith` handler.
+
+- A comparison needs two operands of one type; `true < 1` is a type error.
+
+- A `map`/`filter` pipeline cannot be returned or passed to a separately compiled function; collect it with `toList` first.
+
+- `//!` must be the first item of the file, namespace or module it documents; elsewhere it is a compile error. Use `//` for ordinary comments.
 
 ## Current limits
 
-- Dynamic control handlers are supported by `--target=native`. Mobile C ABI targets and WebAssembly reject their unavailable continuations at compile time; value-operation handlers remain usable.
-- The effect checker follows operations through the closed program, including exported mobile functions. It does not yet provide general polymorphic effect-row variables in public higher-order signatures.
 - Tail-call optimisation is not implemented.
 - The package manager remains roadmap work. Working project/module examples do not imply every module-system feature is complete.
-- Opaque record and union types enforce their module boundaries. Opaque manifest aliases and separate checking of importers against signatures remain unfinished; unsupported opaque aliases are rejected.
+- A project is assembled from source, so a signature item with no implementation is an error. A module constant of an opaque type reaches a client as a bare literal; export a function instead.
 - The strict static-memory mode described in the memory specification is not a current CLI option. Native builds accept `default`, `gc`, and `arc`; mobile and WebAssembly accept `default` only.
 - The initial mobile runtime retains general allocations for process lifetime and has no public library teardown or returned-string release API.
 - The mobile sample reads one public GitHub issue page. Authentication, pagination, background refresh, and posting changes to GitHub are not implemented.

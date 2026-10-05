@@ -44,9 +44,14 @@ impl Resolver<'_> {
         }
         let alias = self.aliases.get(&key).cloned();
         if let Some(alias) = alias {
-            let visible_representation = !alias.opaque || context.module.starts_with(&alias.owner);
-            if visible_representation {
+            if !alias.opaque || self.transparent {
                 self.expand_alias(ty, &key, &alias, context);
+                return;
+            }
+            // An opaque alias keeps its name everywhere, its owner included:
+            // the checker reads through it where the representation is visible.
+            if let Some(message) = self.alias_problem(ty, &key, &alias) {
+                self.error(context.source, ty.position, message);
                 return;
             }
         }

@@ -77,7 +77,33 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
     compile_module(program, options, false)
 }
 
+/// An opaque alias is the checker's concept. The backend lowers the copy of an
+/// assembled project in which every alias is expanded; lowering one as written
+/// would take the `int` behind a name for a heap handle, so that mistake is
+/// refused instead of miscompiled ([MODULES-OPAQUE-TYPES]).
+fn reject_opaque_aliases(program: &Program) -> Result<()> {
+    let unexpanded = program
+        .statements
+        .iter()
+        .find_map(|statement| match statement {
+            Stmt::Type {
+                name,
+                opaque: true,
+                alias: Some(_),
+                ..
+            } => Some(name),
+            _ => None,
+        });
+    match unexpanded {
+        Some(name) => Err(crate::error::CodegenError::invalid(format!(
+            "opaque alias `{name}` reached code generation unexpanded; lower the project's backend program"
+        ))),
+        None => Ok(()),
+    }
+}
+
 fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> Result<String> {
+    reject_opaque_aliases(program)?;
     let options = with_kernel_mode(options)?;
     let lowered = osprey_types::lower_static_checked(program).map_err(|errors| {
         crate::error::CodegenError::invalid(
@@ -331,6 +357,7 @@ fn gen_function(
     // [TESTING-COVERAGE-CODEGEN].
     cg.cov_hit(position);
     let body_val = gen_fn_body(cg, name, body)?;
+    crate::iter::reject_escape(cg, &body_val)?;
     let ret = coerce_return(cg, name, body_val)?;
     // Returns transfer +1; everything else the function owned drops here
     // [GC-ARC-PERCEUS].

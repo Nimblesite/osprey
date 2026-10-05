@@ -90,6 +90,14 @@ impl Checker {
         field: &str,
         site: &str,
     ) -> Result<Type, TypeError> {
+        // The access was written at `site`: inside the module that owns an
+        // opaque alias, the receiver is the record the alias stands for.
+        let receiver = &self.ctx.exposed_at(receiver.clone(), site);
+        // Opacity is decided first: an opaque alias `site` cannot read through
+        // has no fields to offer, and saying it is "not a struct" would hide why.
+        if let Some(hidden) = self.hidden_field(receiver, field, site) {
+            return Err(hidden);
+        }
         let fields = match receiver {
             Type::Record { fields, .. } => Some(fields.clone()),
             Type::Con { name, args } => self.ctx.record_fields(name, args),
@@ -100,9 +108,6 @@ impl Checker {
                 "cannot access field '{field}' on non-struct type {receiver}"
             ))
         })?;
-        if let Some(hidden) = self.hidden_field(receiver, field, site) {
-            return Err(hidden);
-        }
         fields.get(field).cloned().ok_or_else(|| {
             // A declared record is named by its declaration, not by the row it
             // happens to carry, so the message reads as the author wrote it.

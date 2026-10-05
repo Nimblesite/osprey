@@ -8,9 +8,9 @@
 //
 // TODAY the program is rejected twice: by the blanket [EFFECTS-RESUME] rule,
 // and because `many` has no re-entrant continuation to offer any arm. The
-// arm-naming wording [MULTI-HANDLE-MANY-LEXICAL] specifies arrives with phase 5
-// of docs/plans/0028-resumption-multiplicity.md, which needs the multi-shot
-// runtime of plan 0016; until then the blanket rule is not misleading, because
+// arm-naming wording [MULTI-HANDLE-MANY-LEXICAL] specifies arrives with step 6
+// of docs/plans/0016-algebraic-effects-and-handlers.md, the reusable
+// continuations; until then the blanket rule is not misleading, because
 // no `many` arm compiles at all. This golden records what the compiler says,
 // so the wording cannot change silently when that phase lands.
 effect Choice {

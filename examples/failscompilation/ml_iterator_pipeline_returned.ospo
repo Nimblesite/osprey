@@ -1,0 +1,8 @@
+// [BUILTIN-ITER-FUSION] The `map`/`filter` stages of a pipeline exist only
+// while the function that built it is compiled. Returning the pipeline would
+// hand the caller the bare range, so `forEach` would print every number and
+// the filter would vanish without a diagnostic.
+// osprey: flavor=ml
+evens n = filter (range (0, n)) (\i => (i % 2) == 0)
+
+forEach (evens 6) print

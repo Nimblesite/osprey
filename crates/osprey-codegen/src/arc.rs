@@ -490,6 +490,10 @@ pub(crate) fn release_dead_after<S: std::borrow::Borrow<Stmt>>(
     }
     let mut live = std::collections::BTreeSet::new();
     osprey_ast::freevars::free_idents_of_stmts(rest, value, &mut live);
+    // An inline lambda the continuation can still apply keeps what it closes
+    // over alive, though the continuation never names those captures.
+    live.extend(crate::closure::reach(cg, &live));
+    live.extend(crate::iter::stage_aliases(cg));
     release_dead(cg, &live);
 }
 

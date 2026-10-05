@@ -10,6 +10,10 @@ impl Checker {
         let uses = std::mem::take(&mut self.builtin_uses);
         for (name, ty) in uses {
             let resolved = self.ctx.apply(&ty);
+            let resolved = match self.use_sites.get(&name) {
+                Some(site) => self.ctx.exposed_at(resolved, site),
+                None => resolved,
+            };
             if let Some(message) = crate::builtin_constraints::invalid_use(&name, &resolved) {
                 self.errors.push(
                     TypeError::new(message)

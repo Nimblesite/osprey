@@ -1,0 +1,16 @@
+// [MODULES-SIGNATURE] An importer is checked against the signature, never
+// against what the implementation happens to infer. `Show::show` is written
+// generically, so its own body would accept a string; the signature promises
+// only `int`, and that is all an importer may rely on.
+namespace app;
+
+signature ShowApi {
+    fn show(n: int) -> string
+}
+
+module Show : ShowApi {
+    fn helper(x) = "<${x}>"
+    fn show(x) = helper(x)
+}
+
+fn main() = print(Show::show("text"))

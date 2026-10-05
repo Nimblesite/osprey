@@ -169,8 +169,8 @@ fn the_undeclared_control_pays_for_a_continuation_at_every_perform_site() {
     // way [STAGE-RESIDUE] is: an `abort` perform site must not allocate a
     // continuation, because the declaration says the arm never resumes.
     //
-    // That saving is phase 4 of docs/plans/0028-resumption-multiplicity.md and
-    // is blocked on plan 0026 — see the test below for why. What is measurable
+    // That saving is step 5 of docs/plans/0016-algebraic-effects-and-handlers.md
+    // and is blocked on plan 0026 — see the test below for why. What is measurable
     // NOW is the baseline it must beat: without the keyword, BOTH perform sites
     // pay, including the one whose arm never resumes. Pinning it here means the
     // phase-4 measurement is a comparison against a recorded number rather than

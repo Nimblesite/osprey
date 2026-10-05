@@ -20,96 +20,66 @@ fn module_files_use_the_assembled_project_graph() {
 }
 
 fn bank_warnings() -> Vec<(&'static str, &'static str, crate::model::Span)> {
-    let main_warnings = [
-        (
-            "redundant type signature on `bank::fetch`: inference derives `(int) -> (string) -> string` without it",
-            (20, 0, 20, 31),
-        ),
-        (
-            "redundant type signature on `bank::drive`: inference derives `(int) -> Unit` without it",
-            (32, 0, 32, 19),
-        ),
-        (
-            "redundant return type annotation on `bank::hold`: inference derives `int` without it",
-            (54, 0, 54, 18),
-        ),
-        (
-            "redundant type signature on `bank::handleRequest`: inference derives `(string, string, string, string) -> HttpResponse` without it",
-            (113, 0, 113, 68),
-        ),
-    ];
-    let mut main_warnings: Vec<_> = main_warnings
-        .into_iter()
-        .map(|(message, range)| ("redundant-annotation", message, range))
-        .collect();
-    main_warnings.insert(
-        0,
+    vec![
         (
             "namespace-folder-drift",
             "namespace `bank` spans 5 folders; source paths do not change its identity",
-            (9, 0, 9, 14),
+            (3, 0, 3, 14),
         ),
-    );
-    main_warnings.extend([
         (
             "unused-pattern-binding",
             "unused pattern binding `message`",
-            (27, 22, 27, 29),
+            (20, 22, 20, 29),
         ),
         (
             "unused-variable",
             "unused variable `freed`",
-            (28, 12, 28, 17),
+            (21, 12, 21, 17),
         ),
         (
             "unused-pattern-binding",
             "unused pattern binding `message`",
-            (30, 14, 30, 21),
+            (23, 14, 23, 21),
         ),
         (
             "unused-pattern-binding",
             "unused pattern binding `message`",
-            (58, 14, 58, 21),
+            (49, 14, 49, 21),
         ),
         (
             "unused-pattern-binding",
             "unused pattern binding `value`",
-            (59, 16, 59, 21),
+            (50, 16, 50, 21),
         ),
         (
             "unused-variable",
             "unused variable `slept`",
-            (60, 12, 60, 17),
+            (51, 12, 51, 17),
         ),
         (
             "unused-variable",
             "unused variable `listening`",
-            (80, 4, 80, 13),
+            (71, 4, 71, 13),
         ),
-        ("unused-variable", "unused variable `held`", (86, 4, 86, 8)),
+        ("unused-variable", "unused variable `held`", (77, 4, 77, 8)),
         (
             "unused-variable",
             "unused variable `stopped`",
-            (87, 4, 87, 11),
+            (78, 4, 78, 11),
         ),
         (
             "unused-variable",
             "unused variable `closed`",
-            (88, 4, 88, 10),
+            (79, 4, 79, 10),
         ),
-        ("unused-variable", "unused variable `made`", (96, 4, 96, 8)),
+        ("unused-variable", "unused variable `made`", (86, 4, 86, 8)),
         (
             "unused-parameter",
             "unused parameter `headers`",
-            (114, 29, 114, 36),
+            (95, 29, 95, 36),
         ),
-        (
-            "unused-variable",
-            "unused variable `seen`",
-            (115, 4, 115, 8),
-        ),
-    ]);
-    main_warnings
+        ("unused-variable", "unused variable `seen`", (96, 4, 96, 8)),
+    ]
 }
 
 #[cfg(unix)]
@@ -126,50 +96,23 @@ fn module_bearing_files_outside_project_roots_are_assembled_standalone() {
     let uri = format!("file://{}", path.display());
     let diagnostics = compute(&source, &uri, U16);
     // The inferred implementations carry no redundant annotations; contract
-    // aliases must not reintroduce phantom warnings. Pin every remaining warning.
-    let expected = [
-        (
-            "unused-handler-parameter",
-            "unused handler parameter `id` of `test::Vault.balance`",
-            (170, 16, 170, 18),
-        ),
-        (
-            "unused-handler-parameter",
-            "unused handler parameter `id` of `test::Vault.debit`",
-            (171, 14, 171, 16),
-        ),
-        (
-            "unused-handler-parameter",
-            "unused handler parameter `id` of `test::Vault.balance`",
-            (177, 16, 177, 18),
-        ),
-        (
-            "unused-handler-parameter",
-            "unused handler parameter `id` of `test::Vault.debit`",
-            (178, 14, 178, 16),
-        ),
-        (
-            "unused-handler-parameter",
-            "unused handler parameter `cents` of `test::Vault.debit`",
-            (178, 17, 178, 22),
-        ),
-        (
-            "unused-handler-parameter",
-            "unused handler parameter `id` of `test::Vault.balance`",
-            (187, 16, 187, 18),
-        ),
-        (
-            "unused-handler-parameter",
-            "unused handler parameter `id` of `test::Vault.debit`",
-            (188, 14, 188, 16),
-        ),
-        (
-            "unused-handler-parameter",
-            "unused handler parameter `cents` of `test::Vault.debit`",
-            (188, 17, 188, 22),
-        ),
-    ];
-    assert_warnings(&diagnostics, &expected);
+    // aliases must not reintroduce phantom warnings, and the `_` handler
+    // parameters leave nothing unused.
+    assert_warnings(&diagnostics, &[]);
+    // This edited buffer retains one intentional redundant signature, so
+    // warning identity and source mapping stay exact.
+    let source = "namespace test\n\nmodule Money\n    export positive : int -> bool\n    positive cents = cents > 0\n\ntest \"positive\" (\\() => expect (Money::positive 1) true)\n";
+    assert_redundant_annotations(
+        &compute(source, &uri, U16),
+        &[(
+            "redundant type signature on `test::Money::positive`: inference derives `(int) -> bool` without it",
+            (3, 11, 3, 33),
+        )],
+    );
+    let inferred = source
+        .replace("    export positive : int -> bool\n", "")
+        .replace("    positive cents =", "    export positive cents =");
+    assert_warnings(&compute(&inferred, &uri, U16), &[]);
 }
 
 #[cfg(unix)]
@@ -204,6 +147,7 @@ fn project_diagnostics_map_resolution_and_type_errors_to_the_open_file() {
         warnings: Vec::new(),
         state_boundaries: Vec::new(),
         program: osprey_syntax::parse_program(source).program,
+        backend: None,
         entry_prologue: Vec::new(),
         entry_source: 0,
         sources: vec![osprey_project::SourceMetadata {

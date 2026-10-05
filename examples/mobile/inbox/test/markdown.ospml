@@ -1,8 +1,8 @@
 namespace inboxtests
 
 import bank::Json
+import mobile::App
 import mobile::Markdown
-import mobile::Update
 import mobile::View
 import mobile::Ui
 import inboxtests::Support
@@ -66,12 +66,12 @@ markdownEdgeCase () =
 markdownDetailCase () =
     waiting = Support::awaiting ()
     body = "[{\"id\":101,\"number\":42,\"title\":\"Investigate\",\"user\":{\"login\":\"alice\"},\"comments\":0,\"body\":\"**Steps**\\n- open\\n- crash\",\"labels\":[]}]"
-    loaded = Update::dispatch waiting.model (Support::http waiting.model.pending 200 body "")
-    selected = Update::dispatch loaded.model (TriageSupport::edit "open" "101" "")
+    loaded = App::dispatch waiting.model (Support::http waiting.model.pending 200 body "")
+    selected = App::dispatch loaded.model (TriageSupport::edit "open" "101" "")
     view = View::render selected.model
     ui = Ui::render view
     check "view keeps the raw markdown" "**Steps**\n- open\n- crash" (Support::projected view "detail.body")
     check "detail screen renders rich nodes" true (contains ui "\"kind\":\"rich\"")
     check "detail screen renders the bold step" true (contains ui "\"text\":\"Steps\",\"style\":\"bold\"")
     check "detail screen renders bullets" true (contains ui "\"text\":\"•\"")
-    check "no description keeps the placeholder" true (contains (Ui::render (View::render (Update::dispatch (Support::loaded ()).model (TriageSupport::edit "open" "101" "")).model)) "The author has not added a description.")
+    check "no description keeps the placeholder" true (contains (Ui::render (View::render (App::dispatch (Support::loaded ()).model (TriageSupport::edit "open" "101" "")).model)) "The author has not added a description.")

@@ -1,0 +1,3 @@
+fn heading(title) = "Flight Log: " + title
+
+fn main() = heading(readFile("flight-log.txt")) |> print

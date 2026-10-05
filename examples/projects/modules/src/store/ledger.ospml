@@ -1,19 +1,5 @@
-// store/ledger — the STORAGE CAPABILITY. [MODULES-EFFECTS]
-//
-// `Store` is an algebraic effect exported from this module: it is the ONLY way
-// any layer above can reach the ledger. App code says WHAT it needs
-// (`perform Ledger::Store.credit …`); the composition root in main.ospml
-// decides HOW, by installing handler arms that pair each operation with the
-// SQL implementation exported below. Unhandled operations are COMPILE errors,
-// and swapping SQLite for a fake is a main-only change — the api/ and web/
-// layers never know.
-//
-// The bank is DOUBLE-ENTRY at the storage level: every movement — including
-// a refused one — lands as a row in `entries`, so the activity feed is a
-// faithful audit ledger, not a best-effort log.
-//
-// The SQL functions take the open database as an explicit `Ptr` parameter, so
-// this module stays stateless and pure-by-construction. [MODULES-STATE-SOURCE-OF-TRUTH]
+// Storage operations and their SQLite handler. [MODULES-EFFECTS]
+// The application selects this handler; API functions only perform Store.
 
 namespace bank
 
@@ -34,10 +20,20 @@ module Ledger
         count : Unit => int
         activity : Unit => string
 
+    // Construction captures the connection; applying the handler runs work.
+    export sqlite db = handler Store
+        open name => openSql db name
+        credit id cents note => creditSql db id cents note
+        debit id cents note => debitSql db id cents note
+        transfer fromId toId cents note => transferSql db fromId toId cents note
+        balance id => balanceSql db id
+        owner id => ownerSql db id
+        count => countSql db
+        activity => activitySql db
+
     // Idempotent reset-and-create: the demo starts from a known-empty ledger
     // no matter what a previous run left in the database file.
-    export schema : Ptr -> int
-    schema db =
+    export schema db =
         droppedEntries = Sqlite::run db "DROP TABLE IF EXISTS entries"
         droppedAccounts = Sqlite::run db "DROP TABLE IF EXISTS accounts"
         accounts = Sqlite::run db "CREATE TABLE accounts (id INTEGER PRIMARY KEY, owner TEXT NOT NULL, balance INTEGER NOT NULL DEFAULT 0)"
@@ -45,7 +41,6 @@ module Ledger
 
     // Every movement is journalled, refusals included — all four values
     // BOUND through the library's prepared-statement cursor, never spliced.
-    journal : Ptr -> int -> string -> int -> string -> int
     journal db account kind cents note =
         cursor = Sqlite::query db "INSERT INTO entries (account, kind, cents, note) VALUES (?, ?, ?, ?)"
         b1 = Sqlite::bindIntAt cursor 1 account
@@ -55,11 +50,9 @@ module Ledger
         stepped = Sqlite::step cursor
         Sqlite::closeQuery cursor
 
-    export openSql : Ptr -> string -> int
-    openSql db name = Sqlite::insertIntText db "INSERT INTO accounts (balance, owner) VALUES (?, ?)" 0 name
+    export openSql db name = Sqlite::insertIntText db "INSERT INTO accounts (balance, owner) VALUES (?, ?)" 0 name
 
-    export creditSql : Ptr -> int -> int -> string -> int
-    creditSql db id cents note =
+    export creditSql db id cents note =
         rc = Sqlite::updateIntInt db "UPDATE accounts SET balance = balance + ? WHERE id = ?" cents id
         entry = journal db id "credit" cents note
         balanceSql db id
@@ -67,8 +60,7 @@ module Ledger
     // A debit is transactional and guarded: the UPDATE only fires when the
     // funds exist, and the row-check decides commit versus refusal. Either
     // way the attempt is journalled.
-    export debitSql : Ptr -> int -> int -> string -> Outcome
-    debitSql db id cents note =
+    export debitSql db id cents note =
         before = balanceSql db id
         match before < cents
             true =>
@@ -85,8 +77,7 @@ module Ledger
     // transaction. The API validates both account ids before invoking this
     // capability, so a successful debit can never disappear into a missing
     // destination account.
-    export transferSql : Ptr -> int -> int -> int -> string -> Outcome
-    transferSql db fromId toId cents note =
+    export transferSql db fromId toId cents note =
         before = balanceSql db fromId
         match before < cents
             true =>
@@ -101,18 +92,14 @@ module Ledger
                 done = Sqlite::run db "COMMIT"
                 Landed(balance = balanceSql db fromId)
 
-    export balanceSql : Ptr -> int -> int
-    balanceSql db id = Sqlite::queryInt db "SELECT balance FROM accounts WHERE id = ?" id
+    export balanceSql db id = Sqlite::queryInt db "SELECT balance FROM accounts WHERE id = ?" id
 
-    export ownerSql : Ptr -> int -> string
-    ownerSql db id = Sqlite::queryText db "SELECT owner FROM accounts WHERE id = ?" id
+    export ownerSql db id = Sqlite::queryText db "SELECT owner FROM accounts WHERE id = ?" id
 
-    export countSql : Ptr -> int
-    countSql db = Sqlite::queryScalar db "SELECT COUNT(*) FROM accounts"
+    export countSql db = Sqlite::queryScalar db "SELECT COUNT(*) FROM accounts"
 
     // Walk the journal newest-first with the library's cursor API and render
     // it as the JSON the API serves. SQLITE_ROW is 100.
-    feedRows : Ptr -> string -> string
     feedRows cursor sep =
         stepped = Sqlite::step cursor
         match stepped == 100
@@ -127,8 +114,7 @@ module Ledger
                 entry = Json::obj (Json::numField "id" id + "," + Json::numField "account" account + "," + Json::strField "kind" kind + "," + Json::numField "cents" cents + "," + Json::strField "note" note + "," + Json::strField "owner" who)
                 "${sep}${entry}${feedRows cursor ","}"
 
-    export activitySql : Ptr -> string
-    activitySql db =
+    export activitySql db =
         cursor = Sqlite::query db "SELECT e.id, e.account, e.kind, e.cents, e.note, a.owner FROM entries e JOIN accounts a ON a.id = e.account ORDER BY e.id DESC LIMIT 50"
         listing = feedRows cursor ""
         closed = Sqlite::closeQuery cursor

@@ -33,7 +33,7 @@ evidence record; this specification states only the resulting rules.
 | Local development | `osprey use <path>` overlays a canonical package key everywhere in the graph; switching back never edits dependency declarations. |
 | Release resolution | Every source, dependency, toolchain, target, policy, and system input is digest-pinned, and each package key occurs exactly once. Local overlays are forbidden. |
 | Upgrades | The solver proposes eligible candidates; contract analysis, compilation, client-impact analysis, tests, and security policy decide whether the new lock activates. |
-| Backend and frontend | The registry API and shared domain logic are Osprey programs; the web UI is Osprey compiled to WebAssembly. The existing Rust CLI remains the bootstrap host. |
+| Implementation language | The entire package system is Osprey: CLI, parser, resolver, host effects, cryptography, adapters, registry, web UI, tests, and operational tools. There is no Rust host or other implementation-language exception. |
 | Initial platform | Supabase supplies Postgres, authentication, and object-storage replicas. It is never a cryptographic trust root. |
 | AI | Every submission receives AI review, but AI can only add evidence or quarantine for confirmation. It cannot approve or permanently reject a release by itself. |
 | Discovery | Default rank excludes downloads, dependents, stars, impressions, publisher revenue, and sponsorship. Merit plus measured exposure determines order. |
@@ -88,7 +88,7 @@ The following invariants hold even under those assumptions:
 ```mermaid
 flowchart LR
     subgraph Clients
-        CLI[Existing Rust CLI\nOsprey package core]
+        CLI[Osprey CLI\nOsprey package core]
         WEB[Osprey Web UI\ncompiled to WASM]
     end
     subgraph ProductPlane[Osprey product plane]
@@ -134,10 +134,21 @@ database directly. All authorization passes through the Osprey API. Signing
 keys live in offline custody or external HSM/KMS services, not Postgres or
 Supabase environment variables. Replacing Supabase cannot change a package ID.
 
-Osprey owns domain rules, policy evaluation, API handlers, fair ranking, and UI.
-Audited native adapters provide cryptographic primitives, HSM access, forge
-protocols, sandbox control, and the existing compiler/CLI bootstrap. There is
-one shared Osprey package-core implementation across server, CLI, and WASM.
+Osprey implements every package-system component. Osprey effect handlers provide cryptography, filesystem transactions, HSM access, forge protocols, sandbox control, and compiler invocation. There is one shared Osprey package-core implementation across server, CLI, and WASM.
+
+## Implementation language `[PACKAGE-IMPLEMENTATION-LANGUAGE]`
+
+The package manager and registry MUST be implemented 100% in Osprey. All executable source delivered for this system MUST be `.osp` or `.ospml`, including command parsing and routing, manifest parsing, domain rules, resolution, canonical serialization, hashing and signature handling, locks, caches, filesystem atomicity, process isolation, authentication, network protocols, HSM/forge adapters, API services, publication and verification pipelines, scoring, discovery, browser behavior, tests, independent reference implementations, migration runners, and operational tooling.
+
+A Rust host, Rust CLI bridge, native shim, shell launcher, or implementation in any other language MUST NOT be introduced for the package system. Calling a non-Osprey package implementation through an Osprey wrapper does not satisfy this requirement. The browser application MUST be compiled from Osprey to WebAssembly; handwritten application JavaScript is not permitted.
+
+The existing compiler and runtime are build and execution infrastructure, not locations for package-system implementation. The Osprey frontend MUST invoke the existing compiler through Osprey process effects; this work MUST NOT add package-specific code to the compiler or runtime in another language. Existing operating-system interfaces, installed libraries, and external services remain platform dependencies. Their use does not authorize new non-Osprey adapters, wrappers, or package logic. Osprey bindings and effect handlers own every package interaction with those dependencies.
+
+The canonical typeDiagram model, TOML manifests, JSON fixtures, declarative database schemas/RLS policies, styles, and deployment configuration are data, not alternative implementation languages. They MUST NOT contain executable package behavior. Generated machine code, WebAssembly, and compiler-generated interop are build artifacts, not handwritten source exceptions.
+
+If Osprey cannot express or safely perform a required operation, implementation MUST record the missing capability and an Osprey regression case as a delivery blocker. It MUST NOT substitute another language, invent an unverified security primitive, weaken the contract, or report the blocked feature as complete. Cryptography and host operations retain every audit, conformance, and platform requirement in specs 0029–0032.
+
+Conformance MUST verify this language requirement over the complete package-system source and build graph. An implementation that moves any package component, test, oracle, host handler, or operational tool into another language is non-conforming.
 
 ## Names and ownership `[PACKAGE-NAMES]`
 
@@ -459,6 +470,7 @@ advisories, and history.
 
 General availability requires all of these, with no waiver path:
 
+- every delivered package-system executable component, including host effects, tests, independent oracles, and operational tooling, satisfies `[PACKAGE-IMPLEMENTATION-LANGUAGE]`;
 - adversarial TUF, threshold-key, rollback, freeze, equivocation, witness, CAS,
   and compromised-mirror test vectors pass in every client;
 - resolver property tests prove closure, uniqueness, constraint satisfaction,

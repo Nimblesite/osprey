@@ -17,10 +17,14 @@
 //! representation and install their arms through the existing effect ABI.
 
 mod captures;
+mod environment;
 mod source;
 
 use captures::closure_captures;
 pub(crate) use captures::{capture_list, free_names, reload_captures};
+pub(crate) use environment::{
+    aliases, capture, is_alias, of_values, reach, within, within_env, Environment,
+};
 pub(crate) use source::{
     begin_named_source, begin_source, emit_closure, emit_closure_keyed, lambda_value,
     source_parameters,
@@ -408,6 +412,7 @@ fn closure_return(
     ret_inner: Option<LType>,
 ) -> Result<()> {
     let bv = crate::expr::gen_body(cg, body)?;
+    crate::iter::reject_escape(cg, &bv)?;
     ret_as_sig(cg, bv, ret_ty, ret_inner)
 }
 

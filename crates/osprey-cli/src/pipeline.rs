@@ -193,7 +193,7 @@ pub(super) fn app_target_error(
 }
 
 pub(super) fn target_ir(cli: &Cli, input: &CompilationInput) -> Result<String, String> {
-    let program = input.program();
+    let program = input.backend_program();
     let path = input.debug_path();
     let entry_only = cli.exports.entry_only();
     if let Some(target) = android::Target::parse(&cli.target) {
@@ -285,7 +285,7 @@ fn build_artifact(
         if let Some(code) = reject_debug_cross_target(cli) {
             return Err(code);
         }
-        return wasm::build(input.debug_path(), input.program(), out);
+        return wasm::build(input.debug_path(), input.backend_program(), out);
     }
     if cli.target != "native" {
         return build_mobile(cli, input, out);
@@ -299,7 +299,7 @@ fn build_mobile(
     out: &std::path::Path,
 ) -> Result<(), ExitCode> {
     let path = input.debug_path();
-    let program = input.program();
+    let program = input.backend_program();
     let entry_only = cli.exports.entry_only();
     if let Some(target) = android::Target::parse(&cli.target) {
         return android::build(path, program, out, target, entry_only);
@@ -331,7 +331,7 @@ pub(super) fn run_program(cli: &Cli, input: &CompilationInput) -> ExitCode {
     match cli.target.as_str() {
         "wasm32" => match reject_debug_cross_target(cli) {
             Some(code) => code,
-            None => wasm::run(input.debug_path(), input.program()),
+            None => wasm::run(input.debug_path(), input.backend_program()),
         },
         "android-arm64" | "android-x64" => {
             toolchain::fail("Android libraries must run inside a host app; use --compile")

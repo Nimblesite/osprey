@@ -5,8 +5,13 @@ import mobile::Model
 import mobile::Update
 import mobile::View
 import mobile::Ui
+import mobile::Storage
 
 module App
+    export initial () = Storage::commands Update::initial
+
+    export dispatch model event = Storage::commands (\() => Update::dispatch model event)
+
     export envelope update =
         view = View::render update.model
         Json::obj (Json::strField "model" (Model::encode update.model) + "," + Json::rawField "view" view + "," + Json::rawField "commands" update.commands + "," + Json::rawField "ui" (Ui::render view))

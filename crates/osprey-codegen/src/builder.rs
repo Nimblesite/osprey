@@ -109,10 +109,12 @@ pub(crate) struct Codegen {
     /// Erased-`any` descriptors, deep-box functions and the candidate row
     /// table ([`crate::anybox`], [TYPE-ANY]).
     pub(crate) anys: crate::anybox::AnyState,
-    /// Stream-fusion pipeline: pending `map`/`filter` stages recorded by those
-    /// builtins and replayed (in source order) when `forEach`/`fold` consumes
-    /// the iterator. Cleared after each consumer.
-    pub(crate) pending_iter_ops: Vec<crate::iter::IterOp>,
+    /// Stream-fusion pipelines: the `map`/`filter` stages recorded on each
+    /// iterator, keyed by the operand naming it, and replayed in source order
+    /// by whichever `forEach`/`fold` consumes THAT iterator. One function-wide
+    /// list let a consumer run the stages of every pipeline still pending, so
+    /// a second pipeline stole the first one's `map` [BUILTIN-ITER-FUSION].
+    pub(crate) iter_stages: HashMap<String, Vec<crate::iter::IterOp>>,
     /// Let-bound lambdas, kept for inline application at *direct* call sites
     /// (`let f = fn(x) => …` then `f(y)`) — a beta-reduction fast path. The
     /// same lambda is also materialized as a closure cell (`crate::closure`)
@@ -132,17 +134,14 @@ pub(crate) struct Codegen {
     /// Generic aliases seeded at file scope, before local aliases can shadow
     /// them while a file-scope lambda is inlined.
     pub(crate) file_aliases: HashMap<String, String>,
-    /// Values already lowered for the CALLEE parameters a generic returned
-    /// lambda closes over, keyed by the binding name
-    /// (`crate::stmt::generic_returned_lambda`).
-    ///
-    /// `let c = constly("hi")` for `fn constly(v) = |x| => v` evaluates the
-    /// argument ONCE here; each later `c(7)` prepends these values to its own,
-    /// so the inlined body reads `v` from the binding's evaluation rather than
-    /// from whatever scope it was inlined into. These are SSA registers of the
-    /// function being emitted, so the map is cleared whenever emission moves to
-    /// another function body.
-    pub(crate) lambda_prefix: HashMap<String, (Vec<osprey_ast::Parameter>, Vec<Value>)>,
+    /// What each local lambda in `lambdas` closes over, fixed where it was
+    /// defined ([`crate::closure::Environment`]). A captured parameter of the
+    /// generic function that returned the lambda is one such binding: `let c =
+    /// constly("hi")` for `fn constly(v) = |x| => v` evaluates the argument
+    /// ONCE at the binding and every later `c(7)` reads that value.
+    pub(crate) lambda_envs: HashMap<String, crate::closure::Environment>,
+    /// Monotonic id making each environment alias unique in its function.
+    env_count: usize,
     /// A call-site-concrete ABI for the single returned lambda currently
     /// produced by an inlined handler factory.
     pub(crate) expected_lambda: Option<(Vec<Position>, Type)>,
@@ -277,13 +276,10 @@ pub(crate) struct SavedFn {
     labels: usize,
     scopes: Vec<HashMap<String, Value>>,
     scope_ids: Vec<usize>,
-    /// Saved with the rest of the function frame: the prefix values are SSA
-    /// registers of the SUSPENDED function, so a nested body must not read them.
-    lambda_prefix: HashMap<String, (Vec<osprey_ast::Parameter>, Vec<Value>)>,
     expected_lambda: Option<(Vec<Position>, Type)>,
-    /// Stream-fusion stages are per-function: a stage recorded inside a nested
-    /// function body must never replay in the suspended function's next loop.
-    pending_iter_ops: Vec<crate::iter::IterOp>,
+    /// Stream-fusion stages are per-function: they name operands of the
+    /// function that recorded them.
+    iter_stages: HashMap<String, Vec<crate::iter::IterOp>>,
     /// Cell-promotion state is per-function: a handler arm (a nested function)
     /// gets its own captured cells, never the suspended outer function's.
     cell_vars: HashSet<String>,
@@ -332,13 +328,14 @@ impl Codegen {
             extern_ret_types: BTreeSet::new(),
             nullary_singletons: HashMap::new(),
             prog,
-            pending_iter_ops: Vec::new(),
+            iter_stages: HashMap::new(),
             lambdas: HashMap::new(),
             file_lambdas: HashMap::new(),
             application_caller: None,
             file_lambda_prefix: HashMap::new(),
             file_aliases: HashMap::new(),
-            lambda_prefix: HashMap::new(),
+            lambda_envs: HashMap::new(),
+            env_count: 0,
             expected_lambda: None,
             fnval_cells: HashMap::new(),
             handler_count: 0,

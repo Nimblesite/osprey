@@ -1,12 +1,8 @@
 # Plan 0016 — Managing effects
 
 **Contract:** [Algebraic Effects](../specs/0017-AlgebraicEffects.md).
-**Try the prototype:** [runnable comparison](../../examples/handlers/README.md).
-**Status, 2026-09-17:** specification agreed with OspreyOpus1 on TMC and pushed as `053eae19`; breaking implementation underway. Legacy tests and examples are retained but do not constrain the new semantics. This plan
-owns delivery of handlers, effect rows, staging and continuations. It replaces
-plans 0008, 0024 and 0028 and the effects checklist formerly duplicated in 0013.
-Specifications define the required language; this plan records implementation
-status and evidence. A requirement being specified does not mean it works today.
+**Try it:** [runnable handler examples](../../examples/handlers/README.md), [banking application](../../examples/projects/modules/README.md), and [mobile application](../../examples/mobile/README.md).
+**Status:** callable handlers, block-scoped handling, declared operation modes, return transformations, and static handler selection are implemented. Full scoped row polymorphism and continuation ownership/replay remain unfinished; the evidence and gates below define their status. This plan owns delivery of handlers, rows, staging, and continuations, replacing plans 0008, 0024, and 0028.
 
 ## Outcome
 
@@ -27,14 +23,14 @@ parity, completeness or superior performance is earned by syntax alone.
 The replacement grammar accepts callable `handler` values and block-scoped
 `handle` statements only. Explicit `handle … in/do …` applications, inferred
 arm modes, runtime ABI aliases and missing-signature fallbacks are deleted.
-Old source examples remain historical evidence; they are not compatibility
-requirements. The compiler rejects absent or unresolved operation metadata.
+Historical review reproductions may retain removed syntax; current guides and applications use callable or block-scoped handlers. The compiler rejects absent or unresolved operation metadata.
 
 | Area | Observed state | Evidence |
 | --- | --- | --- |
 | Existing runtime | Value substitution, deep single-shot resume, generic operation identity, shared handler state and native fiber serialization exist. Native continuation storage uses pthreads. | `tests/effects/resume/`, `tests/effects/errors/`, `tests/regressions/effects/fiber_effects.test.osp` |
 | Transport fixes | Operation arity is length-carrying; whole `Result` values and managed answers have regression coverage. | `resume_error_policies.test.{osp,ospml}`, `direct_recovery.test.{osp,ospml}`, `compiler/runtime/effects_runtime_tests.c`; issues #182, #183, #185 |
 | Callable handlers | Both flavors run reusable handlers, captured factory values and rest-of-block installation, through generic/typed callbacks, in every memory mode. The same storage and logging work runs under real and test implementations. | `examples/handlers/handlers.*`, `crates/osprey-cli/tests/handler_values.rs`, `tests/effects/injection/` |
+| Application examples | Talon Bank selects callable SQLite/audit/render policies. Issue Inbox handles typed SQL/HTTP requests at its application boundary; tests capture requests. The iOS counter handles Swift logging through a value effect. | `examples/projects/modules/`, `examples/mobile/`, `examples/ios/` |
 | Runtime dispatch | Codegen interns each `(effect instance, operation)` to a dense id; the thread-local handler stack keeps an evidence slot per id, so a perform is one array read. Full evidence passing waits on effect rows in `Type::Fun`. | `compiler/runtime/effects_runtime.c`, `effects_runtime_tests.c`, `crates/osprey-codegen/src/effects.rs` |
 | Effects checker | Closed-program operation propagation, partial generic discharge and explicit closed empty `![]` bounds exist in both flavors, including ascribed module signatures. A first open-row prototype parses and preserves `!e` and `![Log | e]`, permits unknown callback effects and keeps fixed labels checked. It does not put latent rows in function types or independently quantify, unify and discharge scoped row tails; the full row-polymorphism gate remains open. | `crates/osprey-types/src/effect_rows.rs`, `generic_effects_tests.rs`, `effect_rows_tests.rs`, `crates/osprey-project/tests/module_diagnostics.rs` |
 | Modes and continuations | Declared value/control modes replace arm-body classification. Arms run outside their activation; deep resume restores it. Owned escaping continuations, `many`, finalizers and masking remain unfinished. | `operation_modes.rs`: both flavors, default/GC/ARC; independent comparison below |

@@ -1,5 +1,7 @@
 # Branch regression review
 
+Historical review of the revisions named below. For current syntax and support, use the [effects guide](../website/src/docs/algebraic-effects.md) and [delivery plan](plans/0016-algebraic-effects-and-handlers.md).
+
 Baseline: `origin/main` at `a57673e2`. Reviewed through branch commit
 `e5031dc9` plus the current working-tree changes.
 

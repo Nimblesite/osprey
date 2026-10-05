@@ -16,32 +16,28 @@ Osprey now has first-class persistent collections. **`List<T>` and `Map<K, V>` a
 `List<T>` is backed by a 32-way bitmapped vector trie with a tail buffer — the same design as Clojure's `PersistentVector` and Scala's `immutable.Vector`. Every operation returns a *new* list that shares almost all of its nodes with the old one:
 
 ```osprey
-let xs  = listAppend(listAppend(List(), 10), 20)
+let xs = listAppend(listAppend(List(), 10), 20)
 let xs1 = listAppend(xs, 30)
 let xs2 = listAppend(xs, 99)
 
-listLength(xs)   // 2  — xs is untouched
-listLength(xs1)  // 3  — extended with 30
-listLength(xs2)  // 3  — independent branch with 99
+print("${listLength(xs)} ${listLength(xs1)} ${listLength(xs2)}") // 2 3 3: xs is untouched
 ```
 
 `Map<K, V>` uses a **Hash Array Mapped Trie** (HAMT) per Phil Bagwell's 2000 paper, [*Ideal Hash Trees*](https://lampwww.epfl.ch/papers/idealhashtrees.pdf). Each internal node holds a 32-bit bitmap of present slots plus a packed array of children — no wasted pointer slots — so lookup, insert and remove are O(log₃₂ n) expected:
 
 ```osprey
-let m  = mapSet(mapSet(Map(), "alice", 25), "bob", 30)
+let m = mapSet(mapSet(Map(), "alice", 25), "bob", 30)
 let m1 = mapSet(m, "charlie", 35)
 let m2 = mapRemove(m, "alice")
 
-mapLength(m)   // 2  — m is untouched
-mapLength(m1)  // 3
-mapLength(m2)  // 1
+print("${mapLength(m)} ${mapLength(m1)} ${mapLength(m2)}") // 2 3 1: m is untouched
 ```
 
 Both collections are full participants in the operator algebra:
 
 ```osprey
-xs + xs1     // O(n+m) list concat via listConcat
-m + m1       // right-biased union via mapMerge
+let joined = xs + xs1 // O(n+m) list concat via listConcat
+let merged = m + m1 // right-biased union via mapMerge
 ```
 
 The `+` operator dispatches on the inferred type — list operands route to `osprey_list_concat`, map operands to `osprey_map_merge`, and integer/string operands stay on the existing fast paths.

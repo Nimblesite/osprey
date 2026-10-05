@@ -63,6 +63,7 @@ pub(crate) fn coerce_to(cg: &mut Codegen, v: Value, want: LType) -> Result<Value
 /// an opaque pointer at the call boundary while retaining their complete block;
 /// a plain value is safely promoted to Success, never the reverse.
 pub(crate) fn coerce_param(cg: &mut Codegen, v: Value, want: &ParamSig) -> Result<Value> {
+    crate::iter::reject_escape(cg, &v)?;
     let semantic = coerce_semantic_param(cg, v, want)?;
     Ok(erase_result(cg, semantic))
 }

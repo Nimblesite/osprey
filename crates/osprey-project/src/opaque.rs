@@ -1,23 +1,17 @@
 //! The representation boundary of an opaque type ([MODULES-OPAQUE-TYPES]):
 //! a constructor is usable only inside the owning module, and a manifest
-//! alias is refused outright because the flat checker would expose it.
+//! alias reaches the checker as a nominal type whose representation only that
+//! module may see.
 
 use crate::model::SymbolKey;
 use crate::resolve::{Context, Resolver};
 use osprey_ast::Stmt;
 
 impl Resolver<'_> {
-    pub(crate) fn reject_opaque_alias(&mut self, statement: &Stmt, context: &Context) {
-        let Stmt::Type { name, position, .. } = statement else {
-            return;
-        };
-        self.error(
-            context.source,
-            *position,
-            format!(
-                "opaque alias `{name}` is unsupported by the flat checker; representation would leak"
-            ),
-        );
+    /// Hand an opaque manifest alias to the checker together with its
+    /// representation. Every use keeps the alias's own name, so the checker
+    /// decides, declaration by declaration, who may read through it.
+    pub(crate) fn declare_opaque_alias(&mut self, statement: &Stmt, context: &Context) {
         let mut rewritten = statement.clone();
         self.rewrite_declaration(&mut rewritten, context, true, false);
         self.program.push(rewritten);

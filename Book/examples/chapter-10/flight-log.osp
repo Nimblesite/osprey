@@ -1,0 +1,74 @@
+type Entry = { title: string }
+
+effect Store {
+    read: fn() -> Result<string, Error>
+    write: fn(string) -> Result<int, Error>
+}
+
+fn decodeTitle(raw) = {
+    let title = trim(raw)
+    if title == "" {
+        Error { message: "title is empty" }
+    } else if contains(title, "\n") || contains(title, "\r") {
+        Error { message: "title must be one line" }
+    } else {
+        Success { value: Entry { title: title } }
+    }
+}
+
+fn summary(entry) = "Flight Log: ${entry.title}"
+
+fn load() = match perform Store.read() {
+    Success { value } => decodeTitle(value)
+    Error { message } => Error { message: message }
+}
+
+fn preview() = match load() {
+    Success { value } => summary(value)
+    Error { message } => "Cannot load: ${message}"
+}
+
+fn saveAndLoad() =
+    match perform Store.write("Build a small Osprey CLI") {
+        Success { value } => "Saved ${value} bytes; ${preview()}"
+        Error { message } => "Cannot save: ${message}"
+    }
+
+fn fixture(raw) = handler Store {
+    read => Success { value: raw }
+    write text => if text == "Build a small Osprey CLI" {
+        Success { value: byteLength(text) }
+    } else {
+        Error { message: "unexpected title" }
+    }
+}
+
+fn fixtureExamples() = {
+    let ready = fixture("Build a small Osprey CLI")
+    let invalid = fixture("  \n  ")
+    let unreadable = handler Store {
+        read => Error { message: "permission denied" }
+    }
+    let unwritable = handler Store {
+        read => Error { message: "read must not follow failed save" }
+        write _text => Error { message: "disk full" }
+    }
+    let loaded = ready(preview)
+    let rejected = invalid(preview)
+    let denied = unreadable(preview)
+    let failedSave = unwritable(saveAndLoad)
+    let saved = ready(saveAndLoad)
+    "fixture: ${loaded}\ninvalid: ${rejected}\n" +
+        "read error: ${denied}\nwrite error: ${failedSave}\n" +
+        "fixture save: ${saved}"
+}
+
+fn nativeExample() = {
+    let native = handler Store {
+        read => readFile("flight-log.txt")
+        write text => writeFile("flight-log.txt", text)
+    }
+    native(saveAndLoad)
+}
+
+fn main() = print("${fixtureExamples()}\nnative save: ${nativeExample()}")

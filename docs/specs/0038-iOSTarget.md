@@ -2,7 +2,7 @@
 
 Osprey application logic compiles through LLVM into an ARM64 iOS static library with a generated C header. A Swift application links that library, owns the iOS lifecycle and platform APIs, and calls Osprey through the C ABI. This target covers iPhone devices and the Apple silicon iOS Simulator. [Android](0039-AndroidTarget.md) has a separate target contract and shares the [reactive mobile application](0040-ReactiveMobileApplications.md) boundary.
 
-Implementation sequence, test evidence, and remaining validation are tracked in [plan 0029 — iOS C ABI application logic and Swift host](../plans/0029-ios-c-abi.md).
+The test layers, what hosted CI executes, and the state of signed-device evidence are in [Verification](#verification-ios-verification).
 
 ## Platform selection [IOS-TARGET-TRIPLE]
 
@@ -64,7 +64,7 @@ The sample implements `ios_host_log(const char *) -> int64_t` in Swift with `@_c
 
 The compiler checks the complete program before generating LLVM IR or invoking a native tool. An unsupported construct in a helper is rejected even when a top-level execution path does not call that helper. The diagnostic names the target, offending construct or operation, and the unsupported capability. `--check`, `--compile`, and `--llvm` enforce the same rules.
 
-Explicit `resume` and resumable effect handling are rejected for this C ABI target. A suspended Osprey continuation cannot cross or outlive a synchronous host call. Substituting effect handlers and effects eliminated at compile time remain available when their bodies use supported operations. Exported functions must discharge their own effect requirements.
+Dynamic `control` operations, including arms that never resume, are rejected for this C ABI target. A suspended Osprey continuation cannot cross or outlive a synchronous host call. Callable value handlers, block-scoped value handlers, and effects eliminated at compile time remain available when their bodies use supported operations. Exported functions must discharge their own effect requirements.
 
 Process launching and the built-in HTTP/WebSocket operations have no iOS implementation and are rejected at compile time. The Swift host supplies platform networking and services through explicit imports. The runtime includes allocation, strings, collections, JSON, file operations, fibers/channels, and ordinary effect handling. This does not authorize an effect continuation to cross the C boundary. GPU buffers and pure kernels use the existing CPU execution path; Metal execution is not implemented.
 
@@ -87,3 +87,7 @@ The C ABI fixture in [`scripts/mobile-abi.osp`](../../scripts/mobile-abi.osp) an
 Finally the actual SwiftUI app's smoke assertions run. They cover initialization exactly once, scalar and allocated string returns, checked arithmetic, and calls back into Swift. The launch script removes old output and requires a fresh success marker from the app sandbox.
 
 Compiler unit tests pin target selection, options, inferred header types, symbol collision rejection, boolean/Unit adaptation, initialization, and target capability diagnostics. Unsupported effect resumption and unavailable APIs have negative tests that run before SDK discovery, so target legality remains verifiable on machines without Xcode.
+
+Hosted CI runs `make ios-test mobile-ios-test` on an ARM64 `macos-15` runner for every pull request. It builds the device archive and links its C host, then executes the fixture, the corpus and both application smokes in an iPhone simulator, ending in `OSPREY_IOS_SMOKE_OK` and `OSPREY_INBOX_SMOKE_OK`. The runner and a phone share one instruction set, so what a device adds is signing, provisioning and device-only OS behaviour rather than different code generation.
+
+A signed build on real hardware is outside what a hosted runner can do, so it is a manual check. `OSPREY_DEVELOPMENT_TEAM=<team-id> examples/mobile/ios/run.sh ios-device` builds, signs, installs and launches the [Issue Inbox](0040-ReactiveMobileApplications.md) on a connected, unlocked iPhone; launching the installed application with `--inbox-smoke` runs the assertions the simulator runs and writes the same marker to its sandbox. The signed application passed that smoke and displayed live GitHub issues on an iPhone 16. That run predates [issue-description Markdown](0040-ReactiveMobileApplications.md#issue-description-markdown-mobile-markdown) and the callable handler migration. The current build compiled, signed and installed on the same phone on 5 October 2026, but iOS refuses to launch an application on a locked phone, so its device smoke has not executed. Until it does, device execution of the current application rests on the earlier run plus the simulator evidence above.
