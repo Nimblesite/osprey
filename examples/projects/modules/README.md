@@ -69,7 +69,7 @@ flowchart TD
 | Storage policy | `src/store/ledger.ospml`: the `Store` contract, SQLite handler factory and SQL operations |
 | Audit policy | `src/api/routes.ospml`: mutation events; `src/main.ospml`: console handler |
 | Request counts | `src/store/metrics.ospml`: private state and a scoped handler |
-| Domain rules | `src/domain/`: whole-cent money, account outcomes and JSON encoding |
+| Domain rules | `src/domain/`: whole-cent money behind the `MoneyApi` signature (`Cents` alias, abstract `Amount`), account outcomes and JSON encoding |
 | Browser application | `client/src/`: model, update, views and command descriptions |
 | Browser output | `client/src/bridge.ospml`: `Render` operation; `client/src/main.ospml`: browser handler |
 | Host and build | `web/`: generic React renderer, WASI host and bundle generator |

@@ -52,6 +52,8 @@ This is a whole-document protocol. Osprey does not call JavaScript once per comp
 | React | Element creation and reconciliation inside one root | The authoritative application model |
 | Native Osprey server in Talon Bank | HTTP routes, SQLite adapter, storage/audit handlers, embedded assets | Browser rendering |
 
+The server and Wasm client share the bank’s `Money` module. Its signature exposes an integer `Cents` alias and an abstract `Amount`: callers use `Money::fromCents`, `Money::show` and `Money::toCents` while the record representation stays private. The compiler rejects direct construction, field access and passing a raw integer where an amount is required. Native tests cover both source flavors and all three allocators; the browser journeys exercise the same module through WebAssembly.
+
 ## The complete startup and event loop
 
 The [client entry point](https://github.com/Nimblesite/osprey/blob/main/examples/projects/modules/client/src/main.ospml) defines the browser-facing dispatcher and `main`:

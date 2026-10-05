@@ -20,16 +20,12 @@ fn module_files_use_the_assembled_project_graph() {
 }
 
 fn bank_warnings() -> Vec<(&'static str, &'static str, crate::model::Span)> {
-    let mut main_warnings: Vec<(&str, &str, crate::model::Span)> = Vec::new();
-    main_warnings.insert(
-        0,
+    vec![
         (
             "namespace-folder-drift",
             "namespace `bank` spans 5 folders; source paths do not change its identity",
-            (9, 0, 9, 14),
+            (3, 0, 3, 14),
         ),
-    );
-    main_warnings.extend([
         (
             "unused-pattern-binding",
             "unused pattern binding `message`",
@@ -82,13 +78,8 @@ fn bank_warnings() -> Vec<(&'static str, &'static str, crate::model::Span)> {
             "unused parameter `headers`",
             (95, 29, 95, 36),
         ),
-        (
-            "unused-variable",
-            "unused variable `seen`",
-            (96, 4, 96, 8),
-        ),
-    ]);
-    main_warnings
+        ("unused-variable", "unused variable `seen`", (96, 4, 96, 8)),
+    ]
 }
 
 #[cfg(unix)]
@@ -105,50 +96,23 @@ fn module_bearing_files_outside_project_roots_are_assembled_standalone() {
     let uri = format!("file://{}", path.display());
     let diagnostics = compute(&source, &uri, U16);
     // The inferred implementations carry no redundant annotations; contract
-    // aliases must not reintroduce phantom warnings. Pin every remaining warning.
-    let expected = [
-        (
-            "unused-handler-parameter",
-            "unused handler parameter `id` of `test::Vault.balance`",
-            (170, 16, 170, 18),
-        ),
-        (
-            "unused-handler-parameter",
-            "unused handler parameter `id` of `test::Vault.debit`",
-            (171, 14, 171, 16),
-        ),
-        (
-            "unused-handler-parameter",
-            "unused handler parameter `id` of `test::Vault.balance`",
-            (177, 16, 177, 18),
-        ),
-        (
-            "unused-handler-parameter",
-            "unused handler parameter `id` of `test::Vault.debit`",
-            (178, 14, 178, 16),
-        ),
-        (
-            "unused-handler-parameter",
-            "unused handler parameter `cents` of `test::Vault.debit`",
-            (178, 17, 178, 22),
-        ),
-        (
-            "unused-handler-parameter",
-            "unused handler parameter `id` of `test::Vault.balance`",
-            (187, 16, 187, 18),
-        ),
-        (
-            "unused-handler-parameter",
-            "unused handler parameter `id` of `test::Vault.debit`",
-            (188, 14, 188, 16),
-        ),
-        (
-            "unused-handler-parameter",
-            "unused handler parameter `cents` of `test::Vault.debit`",
-            (188, 17, 188, 22),
-        ),
-    ];
-    assert_warnings(&diagnostics, &expected);
+    // aliases must not reintroduce phantom warnings, and the `_` handler
+    // parameters leave nothing unused.
+    assert_warnings(&diagnostics, &[]);
+    // This edited buffer retains one intentional redundant signature, so
+    // warning identity and source mapping stay exact.
+    let source = "namespace test\n\nmodule Money\n    export positive : int -> bool\n    positive cents = cents > 0\n\ntest \"positive\" (\\() => expect (Money::positive 1) true)\n";
+    assert_redundant_annotations(
+        &compute(source, &uri, U16),
+        &[(
+            "redundant type signature on `test::Money::positive`: inference derives `(int) -> bool` without it",
+            (3, 11, 3, 33),
+        )],
+    );
+    let inferred = source
+        .replace("    export positive : int -> bool\n", "")
+        .replace("    positive cents =", "    export positive cents =");
+    assert_warnings(&compute(&inferred, &uri, U16), &[]);
 }
 
 #[cfg(unix)]

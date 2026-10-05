@@ -100,7 +100,7 @@ fn lambda_return_contracts_and_generic_targets_are_kept() {
 #[test]
 fn necessary_handler_scope_inside_a_callback_is_preserved() {
     let source = "effect Read { value: fn() -> int }\nfn work() !Read = perform Read.value()\nlet callback = fn() => { handle Read { value => 41 }\nwork() }\nlet answer = callback()\n";
-    assert!(warnings(Flavor::Default, source).is_empty());
+    assert!(warnings(Flavor::Default, source).is_empty(), "{source}");
 }
 
 #[test]
@@ -119,9 +119,11 @@ fn invalid_programs_do_not_receive_speculative_simplifications() {
         "fn work() = missing\nfn relay(callback) = callback()\nlet answer = relay(fn() => work())\n",
         Flavor::Default,
     );
-    assert!(parsed.errors.is_empty());
-    assert!(!crate::check_program(&parsed.program).is_empty());
-    assert!(redundant_callbacks(&parsed.program).is_empty());
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let errors = crate::check_program(&parsed.program);
+    assert!(!errors.is_empty(), "`missing` must be a type error");
+    let raised = redundant_callbacks(&parsed.program);
+    assert!(raised.is_empty(), "{raised:?}");
 }
 
 #[test]
@@ -158,7 +160,7 @@ fn ml_effect_handler_keeps_delayed_execution_while_removing_only_forwarding() {
 fn inferred_generic_functions_are_not_monomorphized_by_advice() {
     let source =
         "fn work() = []\nfn relay(callback) = callback()\nlet answer: List<int> = relay(fn() => work())\n";
-    assert!(warnings(Flavor::Default, source).is_empty());
+    assert!(warnings(Flavor::Default, source).is_empty(), "{source}");
 }
 
 #[test]

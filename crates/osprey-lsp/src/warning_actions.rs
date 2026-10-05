@@ -274,14 +274,18 @@ mod tests {
                 .filter(|warning| warning.code.as_deref() == Some("redundant-callback"))
                 .collect();
             assert_eq!(found.len(), 1, "{extension}: {analysis:?}");
-            assert_eq!(found[0].range.0, 2, "callback line in {extension}");
+            let found = found.first().expect("one redundant-callback warning");
+            assert_eq!(found.range.0, 2, "callback line in {extension}");
             assert!(
-                found[0].message.contains("work"),
+                found.message.contains("work"),
                 "name the direct replacement"
             );
             let wire =
                 crate::wire::publish_diagnostics("file:///forwarding", &analysis.diagnostics);
-            let warnings = wire["diagnostics"].as_array().expect("diagnostics array");
+            let warnings = wire
+                .get("diagnostics")
+                .and_then(serde_json::Value::as_array)
+                .expect("diagnostics array");
             let callback = warnings
                 .iter()
                 .find(|d| d["code"] == "redundant-callback")
