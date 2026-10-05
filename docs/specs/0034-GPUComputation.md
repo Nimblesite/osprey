@@ -464,6 +464,12 @@ position, an identifier spelling, a file path or a source hash, so a
 Default/ML twin pair still emits byte-identical IR ([FLAVOR-IR-EQUIV],
 [0023-LanguageFlavors.md](0023-LanguageFlavors.md)).
 
+### Native debugging
+
+Extracted host kernels preserve the source lambda's declaration and body locations in their own `DISubprogram`. Primitive source arguments and immutable captured uniforms remain inspectable at a breakpoint inside the kernel, including a block's trailing value. Uniforms precede element parameters in the native ABI; the debugger shows their source names as captures and numbers formal element parameters after them. This uses the same immutable debug storage as ordinary lambdas ([DEBUGGER-LAMBDA-SCOPES](0021-Debugger.md#lambda-scopes-debugger-lambda-scopes)).
+
+`extracted_kernel_debug_scopes_keep_uniforms_and_source_parameters` and `every_extracting_combinator_preserves_its_source_arguments` assert the metadata in both flavors. The editor's `extracted GPU kernel breakpoints expose uniforms and locals` tests pause a real host kernel and inspect the source parameter, uniform and calculated local. These checks cover native host execution; they make no device-debugging claim.
+
 ### Differential guarantee
 
 Extraction is a lowering choice, never a semantic one. The compiler retains

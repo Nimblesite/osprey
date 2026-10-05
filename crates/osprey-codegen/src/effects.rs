@@ -134,6 +134,7 @@ fn bind_arm_params(
                     .and_then(|t| crate::types::owner_name(&cg.prog, t)),
             ),
         };
+        cg.emit_debug_param(pname, &bound, params.len());
         cg.bind(pname.clone(), bound);
         params.push((param.ty, format!("__arm{i}")));
     }
@@ -568,6 +569,7 @@ fn reload_env(cg: &mut Codegen, caps: &[ArmCap], env_ty: &str) {
                 ..
             } => {
                 let ptr = cg.emit_reg(format!("bitcast i8* {loaded} to {}*", pointee.as_str()));
+                cg.emit_debug_cell(name, &ptr, *pointee);
                 let _ = cg.cell_slots.insert(
                     name.clone(),
                     CellSlot {
@@ -580,6 +582,7 @@ fn reload_env(cg: &mut Codegen, caps: &[ArmCap], env_ty: &str) {
             ArmCap::Val { name, val } => {
                 let mut v = val.clone();
                 v.operand = loaded;
+                cg.emit_debug_local(name, &v);
                 cg.bind(name.clone(), v);
             }
         }

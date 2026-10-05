@@ -177,14 +177,14 @@ fn prepare_body(
 
 /// Source lambdas retain their own scope; synthetic adapters have no source.
 /// Implements [DEBUGGER-LAMBDA-SCOPES].
-pub(super) fn begin_source(cg: &mut Codegen, name: &str, position: Option<Position>) {
+pub(crate) fn begin_source(cg: &mut Codegen, name: &str, position: Option<Position>) {
     if position.is_some() {
         cg.begin_nested_debug(name, position);
     }
 }
 
-/// Account for the hidden environment when numbering source arguments in DWARF.
-pub(super) fn source_parameters(cg: &mut Codegen, parameters: &[Parameter], offset: usize) {
+/// Number source arguments after any compiler-supplied leading parameters.
+pub(crate) fn source_parameters(cg: &mut Codegen, parameters: &[Parameter], offset: usize) {
     for (index, parameter) in parameters.iter().enumerate() {
         if let Some(value) = cg.lookup(&parameter.name) {
             cg.emit_debug_param(&parameter.name, &value, index + offset);

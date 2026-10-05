@@ -84,6 +84,7 @@ fn reload_capture(cg: &mut Codegen, cell_ty: &str, cell: &str, slot: usize, capt
     let operand = cg.emit_reg(format!("load {lty}, {lty}* {p}"));
     if let Some(cell) = &capture.cell {
         let ptr = cg.emit_reg(format!("bitcast i8* {operand} to {}*", cell.pointee));
+        cg.emit_debug_cell(&capture.name, &ptr, cell.pointee);
         let _ = cg.cell_slots.insert(
             capture.name.clone(),
             crate::builder::CellSlot {
