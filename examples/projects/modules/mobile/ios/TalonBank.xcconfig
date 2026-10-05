@@ -1,7 +1,4 @@
-OSPREY_PLATFORM = ios
-OSPREY_PLATFORM[sdk=iphonesimulator*] = ios-sim
-OSPREY_LIBRARY_DIR = $(SRCROOT)/build/$(OSPREY_PLATFORM)
-HEADER_SEARCH_PATHS = $(inherited) "$(OSPREY_LIBRARY_DIR)"
+#include "OspreyLibrary.xcconfig"
 LIBRARY_SEARCH_PATHS = $(inherited) "$(OSPREY_LIBRARY_DIR)"
 OTHER_LDFLAGS = $(inherited) -lOspreyApp -lsqlite3
 SWIFT_OBJC_BRIDGING_HEADER = TalonBank/Bridge.h

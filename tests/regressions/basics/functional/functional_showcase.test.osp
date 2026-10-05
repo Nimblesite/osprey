@@ -281,7 +281,8 @@ fn genericReturnedLambdaCase() = {
 /// A still-generic lambda has no closure cell, so it is applied inline at each
 /// call site. Its environment is nonetheless fixed where it was DEFINED. A
 /// shadowing binding, a nested closure, a handler arm, a second generic
-/// lambda and an early ARC release must all see the captured value;
+/// lambda, a function alias, a function value and an early ARC release must
+/// all see the captured value;
 /// each used to read the caller's scope instead — a wrong answer, freed memory
 /// or `unknown name`. A handler-owned cell stays one shared cell, and a lazy
 /// stage consumed by a later statement still reads what it closed over.
@@ -289,6 +290,7 @@ fn genericReturnedLambdaCase() = {
 effect Probe { ask: fn() -> string }
 
 fn heapText(n) = "kept-${n}"
+fn sameValue(x) = x
 fn runThunk(work) = work()
 fn askProbe() = perform Probe.ask()
 
@@ -301,6 +303,15 @@ fn genericLambdaEnvironmentCase() = {
     let staged = map(range(0, 2), |i| => "${i}:${stageText}")
     let afterStage = heapText(6)
     let viaLambda = |x| => tagged(x)
+    let sameAgain = sameValue
+    let shout = |text| => text + "!"
+    let viaAlias = |x| => sameAgain(x)
+    let viaShout = |x| => shout("${x}")
+    let rebound = {
+        let sameAgain = |x| => "shadow:${x}"
+        let shout = |text| => text + "?"
+        viaAlias(1) == 1 && viaShout(2) == "2!" && sameAgain(0) == "shadow:0" && shout("c") == "c?"
+    }
     let shadowed = {
         let kept = "shadow"
         "${tagged(1)}/${kept}"
@@ -334,6 +345,11 @@ fn genericLambdaEnvironmentCase() = {
         runThunk(|| => runThunk(|| => tagged("deep"))) == "deep:kept-7",
         runThunk(|| => fromFactory(3)) == "kept-8",
         runThunk(|| => viaLambda(4)) == "4:kept-7",
+        viaAlias(3) == 3,
+        viaAlias("a") == "a",
+        viaShout(4) == "4!",
+        viaShout("b") == "b!",
+        rebound,
         inArm == "arm:kept-7",
         report("t") == "t=5",
         runThunk(|| => report(true)) == "true=5"

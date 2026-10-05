@@ -1799,6 +1799,23 @@ card doc index selected =
     }
 
     #[test]
+    fn direct_ast_assignment_to_an_unbound_name_is_rejected_instead_of_binding_a_local() {
+        // The type checker rejects rebinding an unknown name first, so codegen
+        // sees one only when an AST is compiled directly. It used to bind a
+        // fresh local nobody reads, so the write vanished without a diagnostic.
+        let err = compile_err(
+            "fn main() -> Unit = {\n\
+               ghost = 1\n\
+               print(\"done\")\n\
+             }\n",
+        );
+        assert!(
+            matches!(&err, CodegenError::UnknownName(name) if name == "ghost"),
+            "expected the unknown-name rejection, got {err}"
+        );
+    }
+
+    #[test]
     fn an_unexpanded_opaque_alias_is_refused_instead_of_lowered_as_a_handle() {
         // [MODULES-OPAQUE-TYPES]: the checker reads a project in which an
         // opaque alias keeps its name; the backend must be handed the copy

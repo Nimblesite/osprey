@@ -275,7 +275,8 @@ genericReturnedLambdaCase () =
 (** A still-generic lambda has no closure cell, so it is applied inline at each
     call site. Its environment is nonetheless fixed where it was DEFINED. A
     shadowing binding, a nested closure, a handler arm, a second generic
-    lambda and an early ARC release must all see the captured value;
+    lambda, a function alias, a function value and an early ARC release must
+    all see the captured value;
     each used to read the caller's scope instead — a wrong answer, freed memory
     or `unknown name`. A handler-owned cell stays one shared cell, and a lazy
     stage consumed by a later statement still reads what it closed over.
@@ -284,6 +285,7 @@ effect Probe
     ask : Unit => string
 
 heapText n = "kept-${n}"
+sameValue x = x
 runThunk work = work ()
 askProbe () = perform Probe.ask ()
 
@@ -296,6 +298,14 @@ genericLambdaEnvironmentCase () =
     staged = map (range (0, 2)) (\i => "${i}:${stageText}")
     afterStage = heapText 6
     viaLambda = \x => tagged x
+    sameAgain = sameValue
+    shout = \text => text + "!"
+    viaAlias = \x => sameAgain x
+    viaShout = \x => shout "${x}"
+    rebound =
+        sameAgain = \x => "shadow:${x}"
+        shout = \text => text + "?"
+        viaAlias 1 == 1 && viaShout 2 == "2!" && sameAgain 0 == "shadow:0" && shout "c" == "c?"
     shadowed =
         kept = "shadow"
         "${tagged 1}/${kept}"
@@ -326,6 +336,11 @@ genericLambdaEnvironmentCase () =
         runThunk (\() => runThunk (\() => tagged "deep")) == "deep:kept-7",
         runThunk (\() => fromFactory 3) == "kept-8",
         runThunk (\() => viaLambda 4) == "4:kept-7",
+        viaAlias 3 == 3,
+        viaAlias "a" == "a",
+        viaShout 4 == "4!",
+        viaShout "b" == "b!",
+        rebound,
         inArm == "arm:kept-7",
         report "t" == "t=5",
         runThunk (\() => report true) == "true=5"
