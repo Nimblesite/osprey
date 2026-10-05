@@ -190,21 +190,35 @@ impl fmt::Display for LType {
     }
 }
 
-/// The LLVM spelling of a `Result<T, E>` heap block:
-/// `{ T value, i8 disc, i8* errmsg }`. Slot 0 is the success payload; slot 1 the
-/// discriminant (0 = Success, 1 = Error); slot 2 the error-message string
-/// (`null` when Success or when the producer set no message). The single source
-/// of truth for the Result ABI layout — every builder/reader spells it via here.
-#[must_use]
-pub(crate) fn result_struct_ty(inner: LType) -> String {
-    format!("{{ {inner}, i8, i8* }}")
+/// Canonical Result storage: payload bits, discriminant (0 Success / 1 Error),
+/// and nullable error text. Every payload has the same offsets on every target.
+/// Semantic payload types remain on Value; pointer ownership remains in metadata.
+/// Implements [TYPE-RECORD-RESULT].
+pub(crate) const RESULT_STRUCT: &str = "{ i64, i8, i8* }";
+
+pub(crate) fn result_pointer() -> String {
+    format!("{RESULT_STRUCT}*")
+}
+
+/// Distinguish Result payload shapes inside otherwise identical pointer slots.
+pub(crate) fn record_slot_key(value: &Value) -> String {
+    match value.result_inner {
+        Some(inner) => {
+            let mut key = format!("Result.{inner}.");
+            if let Some(owner) = &value.payload_owner {
+                key.push_str(owner);
+            }
+            key
+        }
+        None => value.ty.as_str().to_string(),
+    }
 }
 
 /// The LLVM spelling of a return slot: the Result block pointer when the
 /// callee returns `Result<T, _>`, else the plain scalar type.
 pub(crate) fn ret_spelling(ret_ty: LType, ret_inner: Option<LType>) -> String {
     match ret_inner {
-        Some(inner) => format!("{}*", result_struct_ty(inner)),
+        Some(_) => result_pointer(),
         None => ret_ty.to_string(),
     }
 }
@@ -230,21 +244,23 @@ pub struct Value {
     /// The semantic type survives equal-layout generic record instantiations.
     pub(crate) inferred_type: Option<osprey_types::Type>,
     /// When `Some(inner)`, this value is a `Result<inner, _>` carried as a
-    /// pointer to a heap block `{ inner, i8 disc }` (disc 0 = Success). Match,
-    /// `?:`, failure-preserving arithmetic, and Result rendering read this to
+    /// pointer to a heap block `{ i64 payload_bits, i8 disc, i8* errmsg }` (disc 0 = Success). Match,
+    /// `?:`, pattern matching and Result rendering read this to
     /// branch on the discriminant; ordinary value sites preserve the whole
     /// block. Every fallible producer in the backend builds this exact shape.
     pub(crate) result_inner: Option<LType>,
-    /// Whether `result_inner` is only the physical placeholder layout chosen
+    /// Whether `result_inner` is only the semantic placeholder type chosen
     /// by a bare `Error { message }` constructor.  An Error has no success
     /// payload from which to discover `T`, so joins and contextual boundaries
-    /// must re-layout it to a concrete Success arm before the Result escapes.
+    /// must adapt it to the concrete success type before the Result escapes.
     pub(crate) result_inner_is_placeholder: bool,
     /// The Osprey owner type to tag the success payload with when this Result is
     /// unwrapped — e.g. a `Result<List<int>, _>` from indexing a list-of-lists
     /// carries `[]i64` so the unwrapped element is itself indexable. `None` for
     /// scalar payloads.
     pub(crate) payload_owner: Option<String>,
+    /// The known Success type before the Result's error parameter is inferred.
+    pub(crate) result_payload_type: Option<osprey_types::Type>,
     /// For a `Fiber<T>` handle: the element type `T` the fiber's result was
     /// boxed from, so `await` can unbox the uniform `i64` result back to `T`
     /// (a string fiber result is a pointer, not an integer). `None` for
@@ -270,6 +286,7 @@ impl Value {
             result_inner: None,
             result_inner_is_placeholder: false,
             payload_owner: None,
+            result_payload_type: None,
             fiber_elem: None,
             fiber_elem_owner: None,
             fiber_elem_result_inner: None,
@@ -280,35 +297,17 @@ impl Value {
     /// An aggregate handle tagged with its Osprey owner type name.
     pub(crate) fn handle(operand: impl Into<String>, owner: impl Into<String>) -> Value {
         Value {
-            operand: operand.into(),
-            ty: LType::Ptr,
             osp_ty: Some(owner.into()),
-            inferred_type: None,
-            result_inner: None,
-            result_inner_is_placeholder: false,
-            payload_owner: None,
-            fiber_elem: None,
-            fiber_elem_owner: None,
-            fiber_elem_result_inner: None,
-            fiber_elem_payload_owner: None,
+            ..Self::new(operand, LType::Ptr)
         }
     }
 
     /// A `Result<inner, _>` value: `operand` points at a
-    /// `{ inner, i8 disc, i8* errmsg }` block.
+    /// `{ i64 payload_bits, i8 disc, i8* errmsg }` block.
     pub(crate) fn result(operand: impl Into<String>, inner: LType) -> Value {
         Value {
-            operand: operand.into(),
-            ty: LType::Ptr,
-            osp_ty: Some("Result".to_string()),
-            inferred_type: None,
             result_inner: Some(inner),
-            result_inner_is_placeholder: false,
-            payload_owner: None,
-            fiber_elem: None,
-            fiber_elem_owner: None,
-            fiber_elem_result_inner: None,
-            fiber_elem_payload_owner: None,
+            ..Self::handle(operand, "Result")
         }
     }
 
@@ -354,6 +353,14 @@ impl Value {
         Value::new("0", LType::I64)
     }
 
+    /// The checked payload type of a named generic container.
+    pub(crate) fn element_type(&self, container: &str) -> Option<osprey_types::Type> {
+        match self.inferred_type.as_ref()? {
+            osprey_types::Type::Con { name, args } if name == container => args.first().cloned(),
+            _ => None,
+        }
+    }
+
     /// The LLVM type spelling this value travels as — the precise Result block
     /// pointer for a Result, else the plain [`LType`].
     #[must_use]
@@ -363,8 +370,8 @@ impl Value {
 
     /// The Result block struct spelling (no pointer), or `None` for a non-Result.
     #[must_use]
-    pub(crate) fn result_struct_ty(&self) -> Option<String> {
-        self.result_inner.map(result_struct_ty)
+    pub(crate) fn result_struct_ty(&self) -> Option<&'static str> {
+        self.result_inner.map(|_| RESULT_STRUCT)
     }
 
     /// Render as a typed operand, e.g. `i64 %3` — the form arguments and `ret`

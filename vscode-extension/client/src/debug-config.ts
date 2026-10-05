@@ -145,42 +145,33 @@ export function missingLldbDapMessage(config: any = {}): string {
   );
 }
 
+/** Compile the exact debug artifact selected by this launch. [DEBUGGER-EDITOR-LAUNCH] */
 export function compileDebugProgram(
   compilerCommand: string,
   sourceProgram: string,
   debugOutput: string,
   cwd: string,
   log: (message: string) => void,
+  preserveArtifacts = false,
 ): Promise<void> {
   fs.mkdirSync(path.dirname(debugOutput), { recursive: true });
   return new Promise((resolve, reject) => {
-    const build = execFile(
-      compilerCommand,
-      [sourceProgram, "--debug", "--compile", "-o", debugOutput],
-      { cwd },
-      (error: any, stdout: any, stderr: any) => {
-        if (stdout) {
-          log(stdout);
-        }
-        if (stderr) {
-          log(stderr);
-        }
-        if (error) {
-          reject(
-            new Error(
-              `Osprey debug build failed with exit code ${error.code || "unknown"}`,
-            ),
-          );
-          return;
-        }
+    const args = debugBuildArguments(sourceProgram, debugOutput, preserveArtifacts);
+    const build = execFile(compilerCommand, args, { cwd }, (error, stdout, stderr) => {
+      [stdout, stderr].filter(Boolean).forEach(log);
+      if (error) {
+        reject(new Error(`Osprey debug build failed: ${error.message}`));
+      } else {
         resolve();
-      },
-    );
-    // The third of this extension's three spawn sites, and the one that used to
-    // forget: `execFile` OPENS a stdin pipe and never ends it, so a compiler
-    // that ever reads stdin parks on a descriptor that is neither data nor EOF.
-    // Nothing writes to a debug build's stdin, so EOF is the honest thing for
-    // it to see -- and "every caller must remember" is not a working contract.
+      }
+    });
+    // Nothing writes to a debug build's stdin. Closing it prevents a child
+    // from waiting forever on an open, empty pipe.
     build.stdin?.end();
   });
+}
+
+function debugBuildArguments(source: string, output: string, preserve: boolean): string[] {
+  return [source, "--debug", "--debug-opt=none", "--compile", "-o", output,
+    ...(preserve ? ["--debug-preserve-ir", "--debug-preserve-symbols"] : [])];
 }

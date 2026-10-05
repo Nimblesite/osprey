@@ -3,7 +3,7 @@
 use crate::invocation::{Cli, TEST_COVERAGE_BUILD_ENV};
 #[cfg(test)]
 use crate::native::stem_of;
-use crate::native::{build_input, compile_ir, execute_native};
+use crate::native::{build_input, compile_ir, execute_native, NativeOptions};
 use crate::profiling::execute_profiled;
 use crate::project::CompilationInput;
 use crate::{
@@ -249,7 +249,9 @@ pub(super) fn reject_cross_target_options(
 /// The native build kind this invocation asked for (`--debug` and `--profile`
 /// are mutually exclusive; `parse_args` enforces that).
 pub(super) fn build_kind(cli: &Cli) -> osprey_debug::BuildKind {
-    if cli.debug {
+    if cli.debug && cli.debug_options.info == crate::debug_options::DebugInfo::None {
+        osprey_debug::BuildKind::DebugWithoutInfo
+    } else if cli.debug {
         osprey_debug::DebugBuild::ON.kind()
     } else if cli.profile {
         osprey_debug::BuildKind::Profile
@@ -288,7 +290,7 @@ fn build_artifact(
     if cli.target != "native" {
         return build_mobile(cli, input, out);
     }
-    build_input(input, out, &cli.memory, build_kind(cli))
+    build_input(input, out, NativeOptions::from_cli(cli))
 }
 
 fn build_mobile(
@@ -346,7 +348,9 @@ fn run_native(cli: &Cli, input: &CompilationInput) -> ExitCode {
     let result = if cli.profile {
         execute_profiled(cli, input)
     } else {
-        execute_native(input, &cli.memory, build_kind(cli))
+        let output = (cli.debug && (cli.output.is_some() || cli.debug_options.keeps_artifacts()))
+            .then(|| input.output_path(cli.output.as_deref(), "native"));
+        execute_native(input, NativeOptions::from_cli(cli), output.as_deref())
     };
     match result {
         Ok(code) => ExitCode::from(code),

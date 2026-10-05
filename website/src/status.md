@@ -33,7 +33,7 @@ The release list was unavailable when this page was built. See
 - Hindley–Milner type inference, algebraic data types and exhaustive pattern
   matching for supported patterns
 - User-defined generics, declaration-site variance, generic effects and explicit
-  call-site type arguments in both flavors
+  call-site type arguments in both flavors. Generic calls and callbacks preserve declaration scope; nested calls keep independent types and evaluate arguments once in application order.
 - Typed effect operations, lexical handlers, compile-time rejection of missing handlers, and single-shot `resume` for `--target=native`
 - Immutable persistent lists and maps
 - Lightweight native fibers and channels

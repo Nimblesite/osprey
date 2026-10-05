@@ -17,7 +17,9 @@ pub(crate) const USAGE: &str =
        osprey --docs [<file-or-project> | --source <file-or-project>] --docs-dir <dir> \
 [--docs-format markdown|html] [--docs-theme osprey|midnight|paper] \
 [--docs-page <markdown-file-or-directory>]... [--docs-css <stylesheet>]...\n\
-       osprey lsp";
+       osprey lsp\n\
+Debug options: [--debug-info=dwarf|none] [--debug-opt=none] [--debug-memory=off] \
+[--debug-out <path>] [--debug-preserve-ir] [--debug-preserve-symbols]";
 
 /// Internal child-process switch used by the parallel test runner.
 pub(crate) const TEST_COVERAGE_BUILD_ENV: &str = "OSPREY_TEST_COVERAGE_BUILD";
@@ -56,6 +58,7 @@ pub(crate) struct Cli {
     pub(super) output: Option<String>,
     /// Emit source-level debug metadata and link a debugger-friendly binary.
     pub(super) debug: bool,
+    pub(super) debug_options: crate::debug_options::DebugOptions,
     /// Profile the run [PROF-CLI-RUN]: build with line tables + frame pointers
     /// at full optimization, sample via the in-runtime profiler, then export
     /// and report (docs/specs/0028-Profiler.md).
@@ -78,6 +81,7 @@ pub(super) fn parse_args(args: &[String]) -> Result<Cli, String> {
     cli.path = invocation_path(path, project_build)?;
     cli.exports = mobile_exports(cli.exports.entry_only(), &cli.target)?;
     apply_profile_rules(&mut cli, mode_chosen)?;
+    crate::debug_options::validate(&cli)?;
     Ok(cli)
 }
 
@@ -116,6 +120,7 @@ fn default_invocation(project_build: bool) -> Cli {
         exports: MobileExports::All,
         output: None,
         debug: false,
+        debug_options: crate::debug_options::DebugOptions::default(),
         profile: false,
         flavor: None,
     }
@@ -161,6 +166,9 @@ fn parse_option(
     argument: &str,
     rest: &mut std::slice::Iter<'_, String>,
 ) -> Result<(), String> {
+    if crate::debug_options::parse(cli, argument)? {
+        return Ok(());
+    }
     match argument {
         "--quiet" => cli.quiet = true,
         "--debug" => cli.debug = true,
@@ -183,7 +191,11 @@ fn parse_value_option(
     rest: &mut std::slice::Iter<'_, String>,
 ) -> Result<(), String> {
     match argument {
-        "-o" => cli.output = Some(required_value(rest, "-o requires a path")?.into()),
+        "-o" | "--debug-out" => crate::debug_options::set_output(
+            cli,
+            required_value(rest, &format!("{argument} requires a path"))?,
+            argument == "--debug-out",
+        )?,
         "--flavor" => {
             cli.flavor = Some(parse_flavor(required_value(
                 rest,
@@ -208,6 +220,7 @@ fn required_value<'a>(
 
 fn parse_named_value(cli: &mut Cli, flag: &str) -> Result<(), String> {
     match flag.split_once('=') {
+        Some(("--debug-out", value)) => crate::debug_options::set_output(cli, value, true)?,
         Some(("--flavor", value)) => cli.flavor = Some(parse_flavor(value)?),
         Some(("--memory", value)) => cli.memory = parse_memory(value)?,
         Some(("--target", value)) => cli.target = parse_target(value)?,

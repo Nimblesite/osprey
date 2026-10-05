@@ -5,7 +5,6 @@
 
 use crate::builder::{Codegen, CodegenOptions, ParamSig};
 use crate::error::Result;
-use crate::expr::gen_expr;
 use crate::llty::{LType, Value};
 use osprey_ast::{Expr, Parameter, Position, Program, Stmt};
 use osprey_debug::DebugSource;
@@ -157,6 +156,9 @@ fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> 
     // reaches this loop in that case [MODULES-ENTRYPOINT].
     cg.cell_vars = top_level_cells;
     for (i, stmt) in top_level.iter().enumerate() {
+        // Publishing and releasing a file binding belong to that statement,
+        // not to main's first source line [DEBUGGER-BINDING-LIFETIME].
+        let _ = cg.set_debug_position(crate::stmt::stmt_position(stmt));
         crate::stmt::gen_local_stmt(&mut cg, stmt)?;
         crate::stmt::publish_binding(&mut cg, stmt)?;
         let rest = top_level.get(i + 1..).unwrap_or(&[]);
@@ -164,7 +166,7 @@ fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> 
     }
     if let Some((body, _)) = user_main {
         cg.cell_vars = crate::effects::captured_mut_vars(body);
-        let _ = gen_expr(&mut cg, body)?;
+        let _ = crate::expr::gen_body(&mut cg, body)?;
     }
     if !library {
         crate::globals::release_all(&mut cg);
@@ -220,7 +222,7 @@ fn record_declarations(cg: &mut Codegen, program: &Program) {
                 if cg.is_generic_fn(name) {
                     let _ = cg
                         .fn_defs
-                        .insert(name.clone(), (parameters.clone(), body.clone()));
+                        .insert(name.clone(), (parameters.clone(), body.clone(), *position));
                     cg.cov_note_inline_fn(name, *position);
                 }
             }
@@ -329,7 +331,6 @@ fn gen_function(
     // [TESTING-COVERAGE-CODEGEN].
     cg.cov_hit(position);
     let body_val = gen_fn_body(cg, name, body)?;
-    let _ = cg.set_debug_position(crate::stmt::tail_position(body));
     let ret = coerce_return(cg, name, body_val)?;
     // Returns transfer +1; everything else the function owned drops here
     // [GC-ARC-PERCEUS].
@@ -359,7 +360,7 @@ fn gen_fn_body(cg: &mut Codegen, name: &str, body: &Expr) -> Result<Value> {
             return crate::closure::emit_closure(cg, parameters, lbody, &sig, *position);
         }
     }
-    gen_expr(cg, body)
+    crate::expr::gen_body(cg, body)
 }
 
 /// Coerce a function body value to its declared return type. A `Result<T, E>`

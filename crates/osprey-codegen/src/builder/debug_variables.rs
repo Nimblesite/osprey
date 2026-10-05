@@ -1,14 +1,56 @@
 //! Source-variable storage for native debuggers. [DEBUGGER-DBG-DECLARE]
-use super::Codegen;
-use crate::llty::{LType, Value};
+use super::{CellSlot, Codegen, DebugState};
+use crate::llty::Value;
 
 impl Codegen {
+    /// A declaration becomes visible only after its initializer and debug store.
+    /// Assignments and capture reloads retain their existing lexical scopes.
+    /// Implements [DEBUGGER-BINDING-LIFETIME].
+    pub(crate) fn emit_debug_binding(&mut self, name: &str, value: &Value, declaration: bool) {
+        if declaration {
+            self.emit_debug_declaration(name, value, value.ty.as_str(), &value.operand, "");
+        } else {
+            self.emit_debug_local(name, value);
+        }
+    }
+
+    fn emit_debug_declaration(
+        &mut self,
+        name: &str,
+        value_type: &Value,
+        storage: &str,
+        value: &str,
+        expression: &str,
+    ) {
+        let Some(type_id) = self.debug_value_type(value_type) else {
+            return;
+        };
+        let Some((variable, scope)) = self
+            .debug
+            .as_mut()
+            .and_then(|debug| debug.declaration(name, type_id))
+        else {
+            return;
+        };
+        let slot = self.debug_storage_slot(storage, value, false);
+        if let Some(debug) = self.debug.as_mut() {
+            debug.current_scope = Some(scope);
+        }
+        self.emit_debug_declare(variable, storage, &slot, expression);
+    }
+
     /// The `DILocalVariable` metadata id for `name` of type `ty`, if a debug
     /// build is active. The single lookup both debug-recorders funnel through.
-    fn debug_var_id(&mut self, name: &str, ty: LType, argument: Option<usize>) -> Option<usize> {
+    fn debug_var_id(
+        &mut self,
+        name: &str,
+        value: &Value,
+        argument: Option<usize>,
+    ) -> Option<usize> {
+        let type_id = self.debug_value_type(value)?;
         self.debug
-            .as_mut()
-            .and_then(|debug| debug.local_variable_id(name, ty, argument))
+            .as_mut()?
+            .local_variable_id(name, type_id, argument)
     }
 
     /// Record a source-level **parameter** for native debuggers via
@@ -19,7 +61,7 @@ impl Codegen {
     /// example while expanding saturating arithmetic to wide integer ops).
     /// Emitting at entry also avoids an inter-statement line-0 row.
     pub(crate) fn emit_debug_param(&mut self, name: &str, value: &Value, index: usize) {
-        let Some(var_id) = self.debug_var_id(name, value.ty, Some(index.saturating_add(1))) else {
+        let Some(var_id) = self.debug_var_id(name, value, Some(index.saturating_add(1))) else {
             return;
         };
         self.add_extern("declare void @llvm.dbg.value(metadata, metadata, metadata)");
@@ -43,7 +85,7 @@ impl Codegen {
     /// using `value.operand`, and Osprey `let` bindings are immutable, so the
     /// once-written slot stays correct.
     pub(crate) fn emit_debug_local(&mut self, name: &str, value: &Value) {
-        let Some(var_id) = self.debug_var_id(name, value.ty, None) else {
+        let Some(var_id) = self.debug_var_id(name, value, None) else {
             return;
         };
         self.emit_debug_storage(var_id, value.ty.as_str(), &value.operand, "", false);
@@ -51,11 +93,14 @@ impl Codegen {
 
     /// A mutable variable's debug location follows its live heap cell.
     /// Store the address, not a snapshot of the value. [DEBUGGER-DBG-DECLARE]
-    pub(crate) fn emit_debug_cell(&mut self, name: &str, ptr: &str, pointee: LType) {
-        let Some(var_id) = self.debug_var_id(name, pointee, None) else {
-            return;
-        };
-        self.emit_debug_storage(var_id, &format!("{pointee}*"), ptr, "DW_OP_deref", false);
+    pub(super) fn emit_debug_cell(&mut self, name: &str, cell: &CellSlot, declaration: bool) {
+        let value = cell.value("");
+        let storage = format!("{}*", cell.pointee);
+        if declaration {
+            self.emit_debug_declaration(name, &value, &storage, &cell.ptr, "DW_OP_deref");
+        } else if let Some(var_id) = self.debug_var_id(name, &value, None) {
+            self.emit_debug_storage(var_id, &storage, &cell.ptr, "DW_OP_deref", false);
+        }
     }
 
     /// Keep immutable values or mutable cell addresses in debug-only storage.
@@ -70,16 +115,41 @@ impl Codegen {
         expression: &str,
         prologue: bool,
     ) {
-        self.add_extern("declare void @llvm.dbg.declare(metadata, metadata, metadata)");
+        let slot = self.debug_storage_slot(ty, operand, prologue);
+        self.emit_debug_declare(var_id, ty, &slot, expression);
+    }
+
+    fn debug_storage_slot(&mut self, ty: &str, operand: &str, prologue: bool) -> String {
         let previous = self.debug.as_ref().and_then(|debug| debug.current_position);
         if prologue {
             self.restore_debug_position(None);
         }
-        let slot = self.emit_reg(format!("alloca {ty}"));
+        // Entry allocation gives DWARF a stable frame address after branches
+        // and avoids allocating another debug slot on every loop iteration.
+        let slot = self.fresh_reg();
+        self.cur_lines.insert(
+            usize::from(!self.cur_lines.is_empty()),
+            format!("  {slot} = alloca {ty}"),
+        );
         self.emit(format!("store {ty} {operand}, {ty}* {slot}"));
         self.restore_debug_position(previous);
+        slot
+    }
+
+    fn emit_debug_declare(&mut self, var_id: usize, ty: &str, slot: &str, expression: &str) {
+        self.add_extern("declare void @llvm.dbg.declare(metadata, metadata, metadata)");
         self.emit(format!(
             "call void @llvm.dbg.declare(metadata {ty}* {slot}, metadata !{var_id}, metadata !DIExpression({expression}))"
         ));
+    }
+}
+
+impl DebugState {
+    fn declaration(&mut self, name: &str, type_id: usize) -> Option<(usize, usize)> {
+        let parent = self.begin_lexical_scope(None)?;
+        let scope = self.current_scope?;
+        let variable = self.local_variable_id(name, type_id, None)?;
+        self.current_scope = Some(parent);
+        Some((variable, scope))
     }
 }

@@ -19,6 +19,7 @@
 //! outline/signature helpers it shares now live there too.
 
 mod android;
+mod debug_options;
 mod docs;
 mod doctests;
 mod document_entries;
@@ -55,9 +56,7 @@ use linking::find_runtime_lib;
 #[cfg(test)]
 use native::c_compiler;
 use native::{child_exit_code, native_executable, scratch_stem};
-use pipeline::{
-    build_kind, load_input, reject_cross_target_options, report_type_errors, run, target_error,
-};
+use pipeline::{load_input, reject_cross_target_options, report_type_errors, run, target_error};
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();

@@ -441,11 +441,9 @@ this flavor because ML maps use `[k => v]` ([FLAVOR-ML-MAP](#collections-and-ind
 origin = { x = 0, y = 0 }
 ```
 
-> **Status:** the inline brace record is not implemented — the ML expression
-> parser rejects `{` (`unexpected token LBrace in expression`, pinned by
-> `examples/failscompilation/ml_brace_record_and_question_sigil.ospo`).
-> Construct records with the layout or parenthesised `Name(field = value)`
-> forms. The brace structural *pattern* below is implemented, including `..`.
+Inline and multiline brace records, nested records, trailing commas and record arguments are implemented. They lower to the same anonymous-object AST as Default literals. An empty brace literal remains an empty map, matching [TYPE-RECORD-ANON]; `[=>]` is also the explicit ML empty-map form. Field separators must be `=`; Default-style `:` fields and a lone `?` sigil are rejected. `?:` remains the Result-default operator in both flavors.
+
+`anonymous_records_lower_to_objects_in_ml` asserts field names, values, nesting, application and the empty-map boundary. `anonymous_records_reject_malformed_fields_and_delimiters` pins malformed fields and missing delimiters. The `record_update_basic` corpus twins exercise nested anonymous captures through ordinary native and wasm execution and retain byte-identical non-debug IR.
 
 Structural patterns use the same spelling with binders in place of values, and
 `..` opens the row

@@ -36,6 +36,16 @@ test.describe("homepage flight and source examples", () => {
     }
   });
 
+  test("the match guide demonstrates binding scope in both flavors", async ({ page }, testInfo) => {
+    await page.goto("/docs/keywords/match/");
+    const blocks = page.locator('pre > code.language-osprey, pre > code.language-osprey-ml');
+    await expect(blocks).toHaveCount(2);
+    for (const [index, extension] of [[0, "osp"], [1, "ospml"]]) {
+      const source = await blocks.nth(index).textContent();
+      expect(await executeExample(source, testInfo.outputPath(`match.${extension}`))).toBe("2:100 / 100:100\n");
+    }
+  });
+
   test("motion plays, pauses on demand and stays paused after scrolling", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.goto("/");

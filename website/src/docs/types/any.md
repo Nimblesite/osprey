@@ -1,6 +1,7 @@
 ---
 layout: page
-title: "Any (Type)"
+mlTwins: manual
+title: "any (Type)"
 description: "An explicitly dynamic value that must be type-matched before concrete operations"
 ---
 
@@ -11,14 +12,37 @@ rejected.
 ## Example
 
 ```osprey
-let value: Any = 42
-let text: Any = "Hello"
+let value: any = 42
+let text: any = "Hello"
 ```
 
 ```osprey-ml
-value : Any
+value : any
 value = 42
 
-text : Any
+text : any
 text = "Hello"
+```
+
+Erasing a record keeps its fields, including complete `Result` values. A record update preserves every field it does not replace; it also leaves the original record unchanged.
+
+```osprey
+type Outcome = { answer: Result<int, Error>, note: string }
+let original = Outcome { answer: Error { message: "saved" }, note: "first" }
+let copied = original { note: "copy" }
+let erased: any = copied
+print(toString(erased))
+// { answer: Error(saved), note: copy }
+```
+
+```osprey-ml
+type Outcome =
+    answer: Result<int, Error>
+    note: string
+original = Outcome(answer = Error(message = "saved"), note = "first")
+copied = original(note = "copy")
+erased : any
+erased = copied
+print (toString erased)
+// { answer: Error(saved), note: copy }
 ```

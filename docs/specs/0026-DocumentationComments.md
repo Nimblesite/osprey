@@ -210,6 +210,8 @@ effect row. The exporter replaces the editor's resolved row with the author's
 source-local row once. ML source signatures and example fences are
 presented in the ML flavor.
 
+Function pages also include the same inferred effect requirements as editor hover ([LSP-EFFECT-REQUIREMENTS](0020-LanguageServerAndEditors.md#inferred-effect-requirements-lsp-effect-requirements)). This includes transitive required operations, separate host runtime operations and explicit unresolved-callback status. It is distinct from a written upper bound and from the source operations listed elsewhere on the page. Only the compiler's summary supplies these facts; the documentation exporter must not infer a second answer by walking source calls.
+
 A declaration with no comment still states facts about itself, and its page
 carries them: the effects it performs, each linked to the effect's own page; the
 result type where one was written; and the file and line it is declared on. An

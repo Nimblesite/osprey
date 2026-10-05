@@ -209,3 +209,84 @@ fn directive_parses_both_spellings_and_ignores_others() {
     assert_eq!(directive("let x = 1", "link"), None);
     assert_eq!(directive("// @link: sqlite3", "linkdir"), None);
 }
+
+// [DEBUGGER-BUILD-OPTIONS] Debug modifiers enable a native debug build.
+#[test]
+fn debug_controls_select_metadata_and_artifact_policies() -> Result<(), String> {
+    for info in ["dwarf", "none"] {
+        assert_debug_metadata_policy(info)?;
+    }
+    let cli = parse_args(&args(&[
+        "main.osp",
+        "--run",
+        "--debug-out=chosen",
+        "-o",
+        "chosen",
+        "--debug-preserve-ir",
+        "--debug-preserve-symbols",
+    ]))?;
+    assert_eq!(cli.output.as_deref(), Some("chosen"));
+    assert!(cli.debug_options.preserve_ir && cli.debug_options.preserve_symbols);
+    assert!(cli.debug_options.keeps_artifacts());
+    Ok(())
+}
+
+fn assert_debug_metadata_policy(info: &str) -> Result<(), String> {
+    use osprey_debug::BuildKind;
+    let flags = [
+        "main.osp",
+        "--llvm",
+        &format!("--debug-info={info}"),
+        "--debug-opt=none",
+        "--debug-memory=off",
+    ];
+    let cli = parse_args(&args(&flags))?;
+    assert!(cli.debug);
+    let expected = if info == "dwarf" {
+        BuildKind::Debug
+    } else {
+        BuildKind::DebugWithoutInfo
+    };
+    assert_eq!(build_kind(&cli), expected);
+    let options = NativeOptions::from_cli(&cli);
+    assert_eq!(options.optimization(), "-O0");
+    assert!(
+        !options.cacheable(),
+        "explicit build controls cannot reuse incompatible cached artifacts"
+    );
+    Ok(())
+}
+
+#[test]
+fn debug_controls_reject_unsupported_and_conflicting_requests() {
+    for (flags, diagnostic) in INVALID_DEBUG_OPTIONS {
+        let values = [vec!["main.osp"], flags.to_vec()].concat();
+        assert!(
+            parse_args(&args(&values)).is_err_and(|error| error.contains(diagnostic)),
+            "{values:?}: expected {diagnostic}"
+        );
+    }
+}
+
+const INVALID_DEBUG_OPTIONS: &[(&[&str], &str)] = &[
+    (&["--debug-opt=optimized"], "not implemented"),
+    (&["--debug-opt=limited"], "not implemented"),
+    (&["--debug-memory=object-graph"], "not implemented"),
+    (&["--debug-memory=timeline"], "not implemented"),
+    (&["--debug-info=codeview"], "supported: dwarf or none"),
+    (&["--debug-preserve-ir"], "require --compile or --run"),
+    (
+        &["--run", "--debug-info=none", "--debug-preserve-symbols"],
+        "requires --debug-info=dwarf",
+    ),
+    (
+        &["--compile", "--debug-out", "a", "-o", "b"],
+        "must name the same output",
+    ),
+    (
+        &["--compile", "-o", "a", "--debug-out=b"],
+        "must name the same output",
+    ),
+    (&["--compile", "--debug-out"], "requires a path"),
+    (&["--compile", "--debug-out="], "cannot be empty"),
+];

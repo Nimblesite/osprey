@@ -1,14 +1,8 @@
-//! RED tests pinning effect-installer defects found on 2026-08-22.
+//! Regression tests for effect-installer defects found on 2026-08-22.
 //!
-//! These drive the real binary because every one of them is a LOWERING or LINK
-//! failure: the frontend accepts each program, so an in-process type-check
-//! oracle cannot see any of them. Two produce silently wrong output — the
-//! program exits ZERO having printed a raw pointer where a string belonged —
-//! which is the single worst outcome the language can produce, and the reason
-//! these are pinned red rather than described in a comment.
-//!
-//! Do not weaken an assertion here to make one pass. See
-//! `tests/modules/README.md` for the full write-up.
+//! These drive the real binary to verify values, linking and effect handling.
+//! The original failures are fixed; the exact transcripts remain regression gates.
+//! See `tests/modules/README.md` for current coverage.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -47,7 +41,7 @@ fn run_source(name: &str, extension: &str, body: &str) -> (Option<i32>, String) 
 /// [EFFECTS-HANDLER] puts no restriction on that, so both call sites must
 /// render their own value.
 ///
-/// DEFECT: evaluated directly inside a top-level statement's interpolation, the
+/// Original defect: evaluated directly inside a top-level statement's interpolation, the
 /// two instantiations collide. The `string` site renders the RAW POINTER as an
 /// integer and the run still exits ZERO — a different, machine-dependent number
 /// on every execution, so nothing downstream can even notice. Reversing the two
@@ -79,7 +73,7 @@ fn a_generic_handler_installer_renders_both_instantiations() {
 /// The same program with the statements swapped. [FLAVOR-IR-EQUIV] and ordinary
 /// evaluation order both make this the same two calls in the other sequence.
 ///
-/// DEFECT: this ordering crashes outright (SIGSEGV, exit 139) rather than
+/// Original defect: this ordering crashes outright (SIGSEGV, exit 139) rather than
 /// printing a wrong number. Same root cause, louder symptom — pinned separately
 /// so a fix that only silences one ordering cannot pass.
 #[test]
@@ -109,7 +103,7 @@ fn a_generic_handler_installer_survives_either_statement_order() {
 /// ML's `feeding reading body` the same function as Default's
 /// `fn feeding(reading, body)`.
 ///
-/// DEFECT: when the curried spine's trailing parameter is the body a `handle`
+/// Original defect: when the curried spine's trailing parameter is the body a `handle`
 /// installs over, the emitted IR references an undefined `_body` symbol from the
 /// resume trampoline and the link fails. The tupled ML head
 /// `feeding (reading, body)` — which lowers to a flat parameter list — compiles,
@@ -141,7 +135,7 @@ fn a_curried_ml_installer_emits_a_linkable_resume_trampoline() {
 /// may perform `Arith.overflow` ([ARITH-EFFECT-DISCHARGE]), so the region names
 /// a wrapping policy around it.
 ///
-/// DEFECT: the ML parser rejects `:=` in a single-line arm body; only the
+/// Original defect: the ML parser rejects `:=` in a single-line arm body; only the
 /// indented-block form parses. The spec's own example does not compile, so
 /// either the grammar or the spec is stale — and until they agree, a reader
 /// following the documentation writes a program the compiler refuses.
@@ -170,7 +164,7 @@ fn a_single_line_ml_handler_arm_may_assign_to_its_cell() {
 /// own a `mut` cell AND a file-scope binding naming a generic function, and its
 /// two worked examples sit in the same section of the same spec page.
 ///
-/// DEFECT: a source carrying both is rejected — "program entry invokes a dynamic
+/// Original defect: a source carrying both is rejected — "program entry invokes a dynamic
 /// callable whose effect provenance cannot be proven" — although each half
 /// compiles and runs on its own. The generic binding has no runtime value to
 /// store ([TYPE-GENERICS-FN]), so it cannot be the dynamic callable the entry
@@ -210,7 +204,7 @@ fn a_file_scope_handler_and_a_generic_binding_coexist() {
 /// pair is the natural spelling of the retry handler in [MULTI-FALSIFY] case 1
 /// (docs/specs/0035-StagedEffects.md, plan 0028).
 ///
-/// DEFECT: reading such a cell as the ARGUMENT of an unannotated helper whose
+/// Original defect: reading such a cell as the ARGUMENT of an unannotated helper whose
 /// result is a `Result` is rejected at lowering with "`attempts` has no
 /// resolved signature". That message comes from `named_fn_cell`
 /// (crates/osprey-codegen/src/closure.rs), which emits a forwarder for a

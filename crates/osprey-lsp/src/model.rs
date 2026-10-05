@@ -75,6 +75,8 @@ pub struct Location {
 /// Rendered signature help for one call.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SignatureInfo {
+    /// Effect requirements shown separately from the written signature.
+    pub(crate) documentation: Option<String>,
     /// Full signature label, e.g. `fn add(a: int, b: int) -> int`.
     pub(crate) label: String,
     /// Per-parameter labels, e.g. `a: int`.
@@ -99,6 +101,8 @@ pub enum CompletionKind {
 /// A single completion suggestion.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompletionItem {
+    /// Supplemental Markdown, including inferred effect requirements.
+    pub(crate) documentation: Option<String>,
     /// Insert/display label.
     pub(crate) label: String,
     /// Item category.

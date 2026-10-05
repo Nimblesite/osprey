@@ -1,5 +1,14 @@
 ok 1 - literal matching retains every printed arm
 ok 2 - boolean matching covers thresholds and parity
 ok 3 - integer matching covers literals and wildcard
-1..3
-# tests=3 passed=3 failed=0 skipped=0
+ok 4 - catch-all bindings remain inside their arm
+ok 5 - pattern arms retain their own lexical bindings
+ok 6 - escaping closures retain pattern bindings
+ok 7 - nested matches restore enclosing pattern bindings
+ok 8 - pattern bindings shadow captured mutable cells
+ok 9 - callable pattern bindings retain their own signatures
+ok 10 - callable payload patterns preserve function values
+ok 11 - direct callable scrutinees preserve function types
+ok 12 - joined callable Results retain their payload signatures
+1..12
+# tests=12 passed=12 failed=0 skipped=0

@@ -26,6 +26,7 @@ fn cli(path: impl Into<String>, mode: &str, policy: Policy) -> Cli {
         exports: MobileExports::All,
         output: None,
         debug: false,
+        debug_options: debug_options::DebugOptions::default(),
         profile: false,
         flavor: None,
     }

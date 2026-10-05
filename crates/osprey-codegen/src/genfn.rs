@@ -12,12 +12,8 @@ use crate::expr::gen_expr;
 use crate::llty::Value;
 use osprey_ast::{Expr, NamedArgument, Parameter};
 
-/// If `name` is a generic user function, inline its body with the call's
-/// arguments bound to its parameters (so its type variables monomorphise to the
-/// concrete argument types here) and return the result. A re-entry guard stops
-/// a recursive generic call from inlining forever — and fails closed, because
-/// the fallback (a direct call) would name a definition that is never emitted:
-/// generic functions exist only as inlined specialisations.
+/// Specialize a generic call without exposing its caller's lexical bindings.
+/// Implements [TYPE-GENERICS-FN].
 pub(crate) fn try_inline(
     cg: &mut Codegen,
     name: &str,
@@ -25,91 +21,64 @@ pub(crate) fn try_inline(
     named: &[NamedArgument],
     rest: &[crate::curry::ArgGroup<'_>],
 ) -> Result<Option<Value>> {
+    let Some((params, body, _)) = inline_definition(cg, name)? else {
+        return Ok(None);
+    };
+    if crate::monofn::calls_itself(name, &body) {
+        if !rest.is_empty() {
+            return Ok(None);
+        }
+        let exprs = pair_args(&params, args, named)
+            .into_iter()
+            .map(|(_, a)| a)
+            .collect::<Vec<_>>();
+        return crate::monofn::specialize(cg, name, &params, &body, &exprs).map(Some);
+    }
+    cg.cov_hit_inline_fn(name);
+    // Caller arguments precede both the lexical barrier and recursion guard.
+    let lowered = lower_inline_args(cg, name, &params, args, named)?;
+    inline_body(cg, name, &params, &body, lowered, rest).map(Some)
+}
+
+fn inline_definition(cg: &Codegen, name: &str) -> Result<Option<crate::builder::LambdaDef>> {
     if cg.inlining.contains(name) {
         return Err(crate::error::CodegenError::unsupported(format!(
             "`{name}` is recursive but its signature is not fully inferred; \
              annotate its parameters and return type so it is emitted as a real function"
         )));
     }
-    let Some((params, body)) = cg.fn_defs.get(name).cloned() else {
-        return Ok(None);
-    };
-    // A body that calls itself cannot be specialised by expanding it here, so
-    // this instantiation is emitted as a real function instead
-    // ([`crate::monofn`]).
-    if crate::monofn::calls_itself(name, &body) {
-        // A recursive definition is emitted as a real function, so its result
-        // is a concrete value the ordinary call paths apply the rest of the
-        // spine to; there is no body here to beta-reduce them into.
-        if !rest.is_empty() {
-            return Ok(None);
-        }
-        let exprs: Vec<&Expr> = pair_args(&params, args, named)
-            .into_iter()
-            .map(|(_, a)| a)
-            .collect();
-        return crate::monofn::specialize(cg, name, &params, &body, &exprs).map(Some);
-    }
-    let returns_result = cg
-        .prog
-        .return_type(name)
-        .is_some_and(|ty| {
-            matches!(ty, osprey_types::Type::Con { name, .. } if name == osprey_types::names::RESULT)
-        });
-    // Pair each parameter with its argument expression (named by name, else
-    // positional), then bind it as a value — or, when the argument is a bare
-    // callee name, as a call alias so the parameter stays callable.
-    let saved_aliases = cg.call_aliases.clone();
-    let saved_ptr_locals = cg.fn_ptr_locals.clone();
-    let saved_value_types = cg.fn_value_types.clone();
-    // The inlined body executing covers the definition line, exactly as a
-    // monomorphic call covers it via gen_function [TESTING-COVERAGE-CODEGEN].
-    cg.cov_hit_inline_fn(name);
-    // The arguments are the CALLER's expressions, so they are lowered in the
-    // CALLER's scope and BEFORE the re-entry guard is armed. Lowering them
-    // after `inlining.insert` made `identity(identity(x))` — one generic call
-    // nested in another's argument — report `identity` as recursive and demand
-    // annotations for a body that never calls itself. Lowering them after
-    // `push_scope` additionally let a parameter bound from an earlier argument
-    // shadow a caller binding a later argument reads.
-    let lowered = lower_inline_args(cg, name, &params, args, named);
-    cg.push_scope();
-    // The inlined body is a DIFFERENT AST from the caller's, so the caller's
-    // cell-promotion pass never saw its `mut` bindings. Without this union a
-    // `mut` the body declares and a handler arm captures stays an unpromoted
-    // local: the arm writes a private copy and the read after the `handle`
-    // returns the initial value — a silently wrong answer, not a diagnostic
-    // ([EFFECTS-HANDLER-STATE], [`crate::effects::captured_mut_vars`]).
-    let saved_cells = cg.cell_vars.clone();
-    cg.cell_vars
-        .extend(crate::effects::captured_mut_vars(&body));
+    Ok(cg.fn_defs.get(name).cloned())
+}
+
+fn inline_body(
+    cg: &mut Codegen,
+    name: &str,
+    params: &[Parameter],
+    body: &Expr,
+    lowered: Vec<InlineArg>,
+    rest: &[crate::curry::ArgGroup<'_>],
+) -> Result<Value> {
+    let mut groups = crate::curry::Groups::file_scoped(cg, rest);
+    cg.cell_vars = crate::effects::captured_mut_vars(body);
     let _ = cg.inlining.insert(name.to_string());
-    let result = lowered.and_then(|lowered| {
-        for (p, arg) in pair_args(&params, args, named)
-            .into_iter()
-            .map(|(p, _)| p)
-            .zip(lowered)
-        {
-            bind_inline_arg(cg, p, arg);
-        }
-        crate::curry::apply_groups(cg, &body, rest)
+    for (parameter, argument) in params.iter().zip(lowered) {
+        bind_inline_arg(cg, parameter, argument);
+    }
+    let result = crate::curry::apply_groups(cg, body, &mut groups);
+    groups.restore(cg);
+    result.and_then(|value| inline_result(cg, name, value, rest.is_empty()))
+}
+
+fn inline_result(cg: &mut Codegen, name: &str, value: Value, final_group: bool) -> Result<Value> {
+    let returns_result = cg.prog.return_type(name).is_some_and(|ty| {
+        matches!(ty, osprey_types::Type::Con { name, .. } if name == osprey_types::names::RESULT)
     });
-    let _ = cg.inlining.remove(name);
-    cg.cell_vars = saved_cells;
-    cg.pop_scope();
-    cg.call_aliases = saved_aliases;
-    cg.fn_ptr_locals = saved_ptr_locals;
-    cg.fn_value_types = saved_value_types;
-    result
-        .and_then(|value| {
-            if returns_result && rest.is_empty() && value.result_inner.is_none() {
-                let inner = value.ty;
-                crate::result::make_ok(cg, value, inner)
-            } else {
-                Ok(value)
-            }
-        })
-        .map(Some)
+    if returns_result && final_group && value.result_inner.is_none() {
+        let inner = value.ty;
+        crate::result::make_ok(cg, value, inner)
+    } else {
+        Ok(value)
+    }
 }
 
 /// Re-lay a PLACEHOLDER `Result` argument onto the success slot inference gave
@@ -155,11 +124,13 @@ fn lower_inline_args(
     named: &[NamedArgument],
 ) -> Result<Vec<InlineArg>> {
     let declared = cg.prog.param_types(name).map(<[_]>::to_vec);
-    pair_args(params, args, named)
-        .into_iter()
-        .enumerate()
-        .map(|(i, (p, a))| lower_inline_arg(cg, p, a, declared.as_ref().and_then(|d| d.get(i))))
-        .collect()
+    cg.with_caller_types(|cg| {
+        pair_args(params, args, named)
+            .into_iter()
+            .enumerate()
+            .map(|(i, (p, a))| lower_inline_arg(cg, p, a, declared.as_ref().and_then(|d| d.get(i))))
+            .collect()
+    })
 }
 
 /// Lower one inlined-call argument: a bare callee name becomes a call alias;

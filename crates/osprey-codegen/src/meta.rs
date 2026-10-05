@@ -56,7 +56,7 @@ pub(crate) enum MetaField {
 }
 
 impl MetaField {
-    fn size_align(self) -> u64 {
+    pub(crate) fn size_align(self) -> u64 {
         match self {
             MetaField::Word
             | MetaField::PtrManaged
@@ -96,18 +96,25 @@ impl MetaField {
     }
 }
 
+/// Physical field offsets shared by allocation metadata and native DWARF.
+pub(crate) fn field_offsets(fields: &[MetaField]) -> impl Iterator<Item = (u64, u64)> + '_ {
+    fields.iter().scan(0u64, |offset, field| {
+        let size = field.size_align();
+        let start = offset.div_ceil(size) * size;
+        *offset = start + size;
+        Some((start, size))
+    })
+}
+
 /// The meta word for a struct laid out from `fields` in order, natural
 /// alignment (LLVM's rules for this field set). Falls back to `KIND_RAW`
 /// (leak-safe, never corrupting) when a managed pointer lands beyond the
 /// mask's reach. All-`PtrDirect` masks upgrade to `KIND_MASK_DIRECT`; one
 /// unproven field keeps the whole struct on the probing `KIND_MASK`.
 pub(crate) fn struct_meta(fields: &[MetaField]) -> i64 {
-    let mut off: u64 = 0;
     let mut mask: u64 = 0;
     let mut all_direct = true;
-    for f in fields {
-        let sa = f.size_align();
-        off = off.div_ceil(sa) * sa;
+    for (f, (off, _)) in fields.iter().zip(field_offsets(fields)) {
         if matches!(f, MetaField::PtrManaged | MetaField::PtrDirect) {
             let word = off / 8;
             if word > MASK_MAX_WORD {
@@ -116,7 +123,6 @@ pub(crate) fn struct_meta(fields: &[MetaField]) -> i64 {
             mask |= 1u64 << word;
             all_direct &= *f == MetaField::PtrDirect;
         }
-        off += sa;
     }
     if mask == 0 {
         KIND_RAW

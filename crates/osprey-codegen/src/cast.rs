@@ -64,15 +64,20 @@ pub(crate) fn coerce_to(cg: &mut Codegen, v: Value, want: LType) -> Result<Value
 /// a plain value is safely promoted to Success, never the reverse.
 pub(crate) fn coerce_param(cg: &mut Codegen, v: Value, want: &ParamSig) -> Result<Value> {
     let semantic = coerce_semantic_param(cg, v, want)?;
-    let Some(_) = want.result_inner else {
-        return Ok(semantic);
-    };
+    Ok(erase_result(cg, semantic))
+}
+
+/// Store a complete Result block behind an opaque ABI pointer. [TYPE-RECORD-RESULT]
+pub(crate) fn erase_result(cg: &mut Codegen, semantic: Value) -> Value {
+    if semantic.result_inner.is_none() {
+        return semantic;
+    }
     let ptr = cg.emit_reg(format!(
         "bitcast {} {} to i8*",
         semantic.llvm_ty(),
         semantic.operand
     ));
-    Ok(Value::new(ptr, LType::Ptr))
+    Value::new(ptr, LType::Ptr)
 }
 
 /// Adapt an inline argument to the semantic parameter shape while keeping a
@@ -100,26 +105,36 @@ pub(crate) fn incoming_param(
             .as_ref()
             .and_then(|ty| crate::types::owner_name(&cg.prog, ty))
     });
-    // A handle parameter's `owner` slot carries its ELEMENT's tag, not its own
-    // — a fiber or channel id is a machine word with nothing to own.
-    let (own_tag, elem_tag) = match sig.fiber {
-        Some(_) => (None, owner),
-        None => (owner, None),
-    };
-    let mut value = if let Some(inner) = sig.result_inner {
-        let struct_ty = crate::llty::result_struct_ty(inner);
-        let typed = cg.emit_reg(format!("bitcast i8* {operand} to {struct_ty}*"));
-        Value::result(typed, inner)
-    } else {
-        Value::new(operand, sig.ty).with_owner(own_tag)
-    };
+    let mut value = parameter_value(cg, operand, &sig, owner.clone());
     value.inferred_type = sig.inferred_type;
     match sig.fiber {
         Some(fiber) => {
             let mut restored = fiber.restore(value);
-            restored.fiber_elem_owner = elem_tag.or(restored.fiber_elem_owner);
+            restored.fiber_elem_owner = owner.or(restored.fiber_elem_owner);
             restored
         }
         None => value,
+    }
+}
+
+fn parameter_value(
+    cg: &mut Codegen,
+    operand: String,
+    sig: &ParamSig,
+    owner: Option<String>,
+) -> Value {
+    match sig.result_inner {
+        Some(inner) => {
+            let struct_ty = crate::llty::RESULT_STRUCT;
+            let typed = cg.emit_reg(format!("bitcast i8* {operand} to {struct_ty}*"));
+            Value::result(typed, inner).with_payload_owner(
+                sig.inferred_type
+                    .as_ref()
+                    .and_then(|ty| crate::types::result_payload_owner(&cg.prog, ty)),
+            )
+        }
+        None => {
+            Value::new(operand, sig.ty).with_owner(if sig.fiber.is_some() { None } else { owner })
+        }
     }
 }

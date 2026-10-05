@@ -6,86 +6,102 @@ use crate::project::CompilationInput;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-/// Compile `input` natively to a temp binary and execute it inheriting stdio;
-/// the child's exit code. Shared by `--run` and the `osprey test` runner
-/// [TESTING-CLI-RUN].
+mod options;
+mod symbols;
+pub(crate) use options::NativeOptions;
+pub(crate) use symbols::remove_temporary;
+
+/// Build and run; only implicit temporary artifacts are removed afterward.
 pub(crate) fn execute_native(
     input: &CompilationInput,
-    memory: &str,
-    kind: osprey_debug::BuildKind,
+    options: NativeOptions<'_>,
+    output: Option<&Path>,
 ) -> Result<u8, ExitCode> {
-    let (exe, temporary) = native_executable(input, memory, kind)?;
+    let (exe, temporary) = selected_executable(input, options, output)?;
     let status = Command::new(&exe).status();
     if temporary {
-        let _ = std::fs::remove_file(&exe);
+        remove_temporary(&exe);
     }
-    match status {
-        Ok(s) => Ok(child_exit_code(s)),
-        Err(e) => {
-            eprintln!("error: could not run {}: {e}", exe.display());
-            Err(ExitCode::FAILURE)
-        }
-    }
+    status.map(child_exit_code).map_err(|error| {
+        eprintln!("error: could not run {}: {error}", exe.display());
+        ExitCode::FAILURE
+    })
+}
+
+fn selected_executable(
+    input: &CompilationInput,
+    options: NativeOptions<'_>,
+    output: Option<&Path>,
+) -> Result<(PathBuf, bool), ExitCode> {
+    let Some(output) = output else {
+        return native_executable(input, options);
+    };
+    build_input(input, output, options)?;
+    let path = std::fs::canonicalize(output).map_err(|error| {
+        eprintln!(
+            "error: cannot resolve executable {}: {error}",
+            output.display()
+        );
+        ExitCode::FAILURE
+    })?;
+    Ok((path, false))
 }
 
 pub(super) fn native_executable(
     input: &CompilationInput,
-    memory: &str,
-    kind: osprey_debug::BuildKind,
+    options: NativeOptions<'_>,
 ) -> Result<(PathBuf, bool), ExitCode> {
-    if let Some(cached) = test_cache_path(input, memory, kind) {
-        ensure_cached_executable(input, memory, kind, &cached)?;
+    if let Some(cached) = options
+        .cacheable()
+        .then(|| test_cache_path(input, options.memory, options.kind))
+        .flatten()
+    {
+        ensure_cached_executable(input, options.memory, options.kind, &cached)?;
         return Ok((cached, false));
     }
     let exe = std::env::temp_dir().join(format!("{}.out", scratch_stem(input.display_path())));
-    build_input(input, &exe, memory, kind)?;
+    build_input(input, &exe, options)?;
     Ok((exe, true))
 }
 
 pub(super) fn build_input(
     input: &CompilationInput,
     exe: &Path,
-    memory: &str,
-    kind: osprey_debug::BuildKind,
+    options: NativeOptions<'_>,
 ) -> Result<(), ExitCode> {
-    build_executable(
-        input.debug_path(),
-        input.program(),
-        input.source(),
-        exe,
-        memory,
-        kind,
-    )
-}
-
-/// Lower to LLVM IR and hand it to clang together with the prebuilt C runtime,
-/// producing `exe`.
-pub(super) fn build_executable(
-    path: &str,
-    program: &osprey_ast::Program,
-    source: &str,
-    exe: &Path,
-    memory: &str,
-    kind: osprey_debug::BuildKind,
-) -> Result<(), ExitCode> {
-    let ir = compile_ir(path, program, kind).map_err(|error| {
-        eprintln!("{path}: {error}");
+    let ir = compile_ir(input.debug_path(), input.program(), options.kind).map_err(|error| {
+        eprintln!("{}: {error}", input.display_path());
         ExitCode::FAILURE
     })?;
-    let ll = write_ir(path, &ir)?;
-    let result = if kind == osprey_debug::BuildKind::Profile {
-        build_profile_executable(&ll, &ir, source, exe, memory)
-    } else {
-        let mut command = ir_driver(&ll, exe, kind);
-        let _ = command.args(link_args(&ir, source, memory));
-        run_build_step(command, &ll)
-    };
-    let _ = std::fs::remove_file(&ll);
+    let ll = write_ir(input.debug_path(), exe, &ir, options.debug.preserve_ir)?;
+    let result = build_ir(&ll, &ir, input.source(), exe, options);
+    if !options.debug.preserve_ir {
+        let _ = std::fs::remove_file(&ll);
+    }
     result
 }
 
-fn write_ir(path: &str, ir: &str) -> Result<PathBuf, ExitCode> {
-    let ll = std::env::temp_dir().join(format!("{}.ll", scratch_stem(path)));
+fn build_ir(
+    ll: &Path,
+    ir: &str,
+    source: &str,
+    exe: &Path,
+    options: NativeOptions<'_>,
+) -> Result<(), ExitCode> {
+    if options.kind.wants_debug_info() {
+        return symbols::build(ll, ir, source, exe, options);
+    }
+    let mut command = ir_driver(ll, exe, options);
+    let _ = command.args(link_args(ir, source, options.memory));
+    run_build_step(command, ll)
+}
+
+fn write_ir(path: &str, exe: &Path, ir: &str, preserve: bool) -> Result<PathBuf, ExitCode> {
+    let ll = if preserve {
+        symbols::sidecar(exe, ".ll")
+    } else {
+        std::env::temp_dir().join(format!("{}.ll", scratch_stem(path)))
+    };
     std::fs::write(&ll, ir.as_bytes()).map_err(|error| {
         eprintln!("error: cannot write IR to {}: {error}", ll.display());
         ExitCode::FAILURE
@@ -93,57 +109,16 @@ fn write_ir(path: &str, ir: &str) -> Result<PathBuf, ExitCode> {
     Ok(ll)
 }
 
-fn ir_driver(input: &Path, output: &Path, kind: osprey_debug::BuildKind) -> Command {
+fn ir_driver(input: &Path, output: &Path, options: NativeOptions<'_>) -> Command {
     let mut command = Command::new(c_compiler());
     let _ = command
         .arg(input)
         .arg("-o")
         .arg(output)
         .arg("-Wno-override-module")
-        .arg(opt_flag(kind))
-        .args(kind.native_driver_flags());
+        .arg(options.optimization())
+        .args(options.kind.native_driver_flags());
     command
-}
-
-/// Profile builds go `.ll -> .o -> link -> dsymutil` [PROF-BUILD-MODE]: the
-/// single-step clang pipeline deletes the temp object that holds the DWARF on
-/// macOS, making line-level attribution unrecoverable.
-pub(super) fn build_profile_executable(
-    ll: &Path,
-    ir: &str,
-    source: &str,
-    exe: &Path,
-    memory: &str,
-) -> Result<(), ExitCode> {
-    let obj = ll.with_extension("o");
-    let mut compile = ir_driver(ll, &obj, osprey_debug::BuildKind::Profile);
-    let _ = compile.arg("-c");
-    let result =
-        run_build_step(compile, ll).and_then(|()| link_profile(&obj, ir, source, exe, memory));
-    let _ = std::fs::remove_file(&obj);
-    result
-}
-
-fn link_profile(
-    obj: &Path,
-    ir: &str,
-    source: &str,
-    exe: &Path,
-    memory: &str,
-) -> Result<(), ExitCode> {
-    let mut link = Command::new(c_compiler());
-    let _ = link
-        .arg(obj)
-        .arg("-o")
-        .arg(exe)
-        .args(osprey_debug::BuildKind::Profile.native_driver_flags())
-        .args(link_args(ir, source, memory));
-    let result = run_build_step(link, obj);
-    if result.is_ok() && cfg!(target_os = "macos") {
-        // Best-effort: symbols remain available without source lines.
-        let _ = Command::new("dsymutil").arg(exe).status();
-    }
-    result
 }
 
 /// Run one compiler/linker step, mapping failure onto the CLI exit contract.

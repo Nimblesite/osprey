@@ -1,5 +1,84 @@
 use super::*;
 
+/// [LSP-EFFECT-REQUIREMENTS] All wire views follow the current unsaved body.
+#[tokio::test]
+async fn live_effect_requirement_views_refresh_in_both_flavors() -> Result<(), String> {
+    for (uri, source, performed, line, column) in [
+        (URI, "effect Read { get: fn() -> int }\nfn leaf() = perform Read.get()\nfn relay() = leaf()\n", "perform Read.get()", 2, 4),
+        (ML_URI, "effect Read\n    get : Unit => int\nleaf () = perform Read.get ()\nrelay () = leaf ()\n", "perform Read.get ()", 3, 1),
+    ] {
+        let mut h = Harness::start();
+        let _ = h.open_at(uri, source).await;
+        assert_requirement_views(&mut h, uri, line, column, Some("Requires on full application: `Read.get`.")).await?;
+        h.notify("textDocument/didChange", json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":source.replace(performed, "42")}]})).await;
+        let _ = h.read_message().await;
+        assert_requirement_views(&mut h, uri, line, column, None).await?;
+        h.shutdown_and_exit().await;
+    }
+    Ok(())
+}
+
+async fn assert_requirement_views(
+    h: &mut Harness,
+    uri: &str,
+    line: u32,
+    column: u32,
+    expected: Option<&str>,
+) -> Result<(), String> {
+    let hover = h
+        .request(
+            701,
+            "textDocument/hover",
+            position_params(uri, line, column),
+        )
+        .await
+        .result
+        .ok_or("hover")?;
+    let text = hover
+        .pointer("/contents/value")
+        .and_then(Value::as_str)
+        .ok_or("hover text")?;
+    assert_eq!(
+        text.contains("Requires on full application:"),
+        expected.is_some(),
+        "{text}"
+    );
+    if let Some(expected) = expected {
+        assert!(text.contains(expected), "{text}");
+    }
+    let signature = h
+        .request(
+            702,
+            "textDocument/signatureHelp",
+            position_params(uri, line, column),
+        )
+        .await
+        .result
+        .ok_or("signature")?;
+    assert_eq!(
+        signature
+            .pointer("/signatures/0/documentation/value")
+            .and_then(Value::as_str),
+        expected
+    );
+    let completion = h
+        .request(
+            703,
+            "textDocument/completion",
+            position_params(uri, line, column),
+        )
+        .await;
+    let items = array_result(&completion, "completion");
+    let relay = find_by(&items, "/label", "relay");
+    assert_eq!(
+        relay
+            .pointer("/documentation/value")
+            .and_then(Value::as_str),
+        expected
+    );
+    Ok(())
+}
+
 #[tokio::test]
 async fn hover_definition_references_over_open_document() {
     let mut h = Harness::start();

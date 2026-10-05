@@ -111,6 +111,7 @@ fn type_items(symbols: &[SymbolInfo], flavor: Flavor) -> Vec<CompletionItem> {
             label: (*name).to_owned(),
             kind: CompletionKind::Type,
             detail: Some(String::from("built-in type")),
+            documentation: None,
             insert_text: None,
         }))
         .collect()
@@ -128,6 +129,7 @@ fn pattern_items(program: &Program) -> Vec<CompletionItem> {
             label: name.clone(),
             kind: CompletionKind::Type,
             detail: Some(layout.owner.clone()),
+            documentation: None,
             insert_text: None,
         })
         .collect();
@@ -136,6 +138,7 @@ fn pattern_items(program: &Program) -> Vec<CompletionItem> {
         label: WILDCARD.to_owned(),
         kind: CompletionKind::Keyword,
         detail: Some(String::from("Wildcard pattern")),
+        documentation: None,
         insert_text: None,
     });
     items
@@ -209,6 +212,7 @@ fn field_item(name: &str, ty: &Type) -> CompletionItem {
         // `t0` is the checker's private name and means nothing to a reader
         // ([TYPE-RENDER-HOLES]).
         detail: Some(osprey_types::render_with_holes(ty)),
+        documentation: None,
         insert_text: None,
     }
 }
@@ -267,6 +271,7 @@ fn symbol_item(s: &SymbolInfo, flavor: Flavor) -> CompletionItem {
     };
     CompletionItem {
         label: s.name.clone(),
+        documentation: crate::analysis::requirements::description(s.effect_requirements.as_ref()),
         kind,
         detail: Some(mlrender::signature(flavor, &s.ty)),
         insert_text: None,

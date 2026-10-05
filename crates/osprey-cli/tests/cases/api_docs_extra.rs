@@ -6,6 +6,26 @@
 use super::api_docs::export;
 use super::{finish, osprey, read_text, temp_dir};
 
+/// [LSP-EFFECT-REQUIREMENTS] Published APIs retain transitive operation facts.
+#[test]
+fn extra_docs_publish_inferred_effect_requirements_in_both_flavors() {
+    for (extension, source) in [
+        ("osp", "effect Read { get: fn() -> int }\nfn leaf() = perform Read.get()\nfn relay() = leaf()\nfn safe() = {\n handle Read { get => 42 }\n relay()\n}\nfn invoke(f) = f()\n"),
+        ("ospml", "effect Read\n    get : Unit => int\nleaf () = perform Read.get ()\nrelay () = leaf ()\nsafe () =\n    handle Read\n        get => 42\n    relay ()\ninvoke f = f ()\n"),
+    ] {
+        let (result, output) = export(source, extension, &format!("effect_requirements_{extension}"));
+        assert_eq!(result.code, Some(0), "{}", result.stderr);
+        for name in ["leaf", "relay"] {
+            let page = read_text(&output.join(format!("api/{name}.md")));
+            assert!(page.contains("Requires on full application: `Read.get`."), "{page}");
+        }
+        let safe = read_text(&output.join("api/safe.md"));
+        assert!(!safe.contains("Requires on full application:"), "{safe}");
+        let unknown = read_text(&output.join("api/invoke.md"));
+        assert!(unknown.contains("Callback effects remain unresolved."), "{unknown}");
+    }
+}
+
 /// Exported nested modules recurse: every level's page is written, down to the
 /// leaf declaration.
 #[test]

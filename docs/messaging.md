@@ -215,6 +215,7 @@ These constraints materially affect how the language must be described:
   still make ordinary calls, allocate and read runtime values. Say “no runtime
   effect dispatch,” not “no runtime cost.” Dependency analysis is a sound set
   of possible reads, not a promise to know precisely which branch will run.
+- Editors and generated API pages show the operations a function requires through its helpers, distinguish host runtime operations and flag unresolved callback effects. These facts come from the existing whole-program checker; they do not imply that effect-row polymorphism in reusable function types is complete.
 - The [reactive mobile application](../examples/mobile/README.md) is implemented using ordinary Osprey modules and explicit event/state/command transitions. Osprey defines its screen tree, state, GitHub request and decoding logic, SQLite schema and statements, offline cache, search, bookmarks, notes, and priorities. Native hosts render the tree and execute platform services. This working application does not imply that the staged-effects reactive runtime is implemented.
 
 - Integer arithmetic returns plain `int`. Fallible `+`, `-`, `*`, `abs` and
@@ -224,13 +225,17 @@ These constraints materially affect how the language must be described:
   intended; `checkedAdd`/`checkedSub`/`checkedMul` retain explicit `Result`
   forms for value-level error handling. See [Spec 0037](specs/0037-ArithmeticEffects.md).
 - Floating-point arithmetic follows IEEE-754: infinity and NaN are defined results, and underflow preserves subnormal values and signed zero. Float division and remainder by either signed zero still require an explicit `Arith` policy. Code that requires finite results must check that requirement explicitly. Float `abs` is total, preserves its numeric type and clears the sign of zero and infinity. Host GPU kernels follow the same rules.
-- Native debugging supports source breakpoints and primitive variable inspection in named functions and materialized lambdas, including immutable captures and live shared cells, in both flavors. Direct and resumable effect handlers expose primitive parameters and captures; extracted host GPU kernels retain source breakpoints and variable inspection. Composite rendering and complete match-arm scopes remain unfinished; see [the debugger plan](plans/0012-osprey-debugger.md).
+- Native debugging supports source breakpoints and primitive variable inspection in named functions and materialized lambdas, including immutable captures and live shared cells, in both flavors. Generic function values and C/runtime callback specializations retain their source names and parameters. Direct and resumable effect handlers expose primitive parameters and captures; extracted host GPU kernels retain source breakpoints and variable inspection. Match arms and ordinary nested blocks expose primitive bindings within their own scope and restore enclosing names on exit, including inside closures and direct/resumable handlers. Local bindings become visible only after initialization; a shadowing initializer still exposes the enclosing value, including when the new binding is a shared mutable cell. Native record expansion shows named, anonymous, generic and C ABI fields, including nested values, parameters, captures and current shared-cell contents. Union, Result, collection and closure rendering and optimized-away value reporting remain unfinished; see [the debugger plan](plans/0012-osprey-debugger.md).
+- Native debug builds offer explicit metadata, output and artifact controls. Editor launches can select a compiler and retain generated IR, and always select unoptimized code. Editor launches select the Debug Console or an integrated/external terminal; interactive terminal modes require LLDB-DAP 21 or newer. Optimized debugging and heap inspection remain unfinished.
+- Results remain complete values inside named, anonymous and generic records and union payloads. Updates preserve failures and untouched fields; matching, captures and conversion to `any` retain the success payload type and error message.
 - Tail-call optimisation is not implemented.
 - Multi-file project modules and cross-flavor imports are implemented. A package manager remains roadmap work; describe further module or generic features according to their individual implementation status.
 - Project warnings and generated documentation show where state is owned, its private cell count and exported effects. The inventory includes private owners without exposing cell names, initial values or private helper APIs. Editors check module repair suggestions against the current unsaved project. Opaque manifest aliases and separate checking against module signatures remain unfinished.
 - GPU computation is a typed language surface with a host execution backend:
   `GpuBuffer` types, data-parallel kernels the compiler proves pure at compile
-  time, and dense buffers that run as native loops today
+  time, and dense buffers that run as native loops today. Admissible lambdas
+  and scalar builtins become standalone kernel functions; builtin integer
+  faults still use the application's arithmetic policy
   (docs/specs/0034-GPUComputation.md). Device code generation (PTX, Metal,
   WebGPU) is staged roadmap work — do not describe Osprey as executing on GPU
   hardware yet.

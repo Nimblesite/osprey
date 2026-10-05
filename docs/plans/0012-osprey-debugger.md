@@ -2,7 +2,7 @@
 
 **Subsystem:** `crates/osprey-debug`, `crates/osprey-codegen` (DWARF metadata),
 `crates/osprey-cli`, `vscode-extension`
-**Status:** Phases 1–3 substantially shipped; Phase 4 onward unstarted. Line
+**Status:** Phases 1–3 substantially shipped; Phase 4 record metadata implemented; remaining renderers and later phases are unfinished. Line
 tables land in native debug builds (`compile_program_debug` emitting
 `DICompileUnit`/`DIFile`/`DISubprogram`/`DILocation` plus module flags, DWARF 4 on
 macOS and 5 elsewhere, 1-based `DILocation` columns), and F5 in VS Code is a real
@@ -10,19 +10,12 @@ macOS and 5 elsewhere, 1-based `DILocation` columns), and F5 in VS Code is a rea
 `debug_compile_emits_source_level_metadata` and
 `a_breakpoint_inside_a_handler_arm_body_has_a_line_to_bind_to`.
 
-Source lambda scopes, primitive parameters, immutable captures and block return-line locations are now implemented. Both-flavor compiler assertions cover returned, locally bound, argument and C-callback lambdas; the real LLDB-DAP editor cases inspect `x = 40`, captured `n = 2` and local `sum = 42` at the lambda's return line. Extracted host GPU kernels now retain the same source scopes, parameter and uniform locations, verified for all five extracting combinators and through real LLDB-DAP breakpoints. Primitive shared cells and direct/resumable handler parameters are inspectable: both-flavor LLDB-DAP tests follow live mutations from `42` to `43` in closures and handler arms. Default and ML corpus IR remains byte-identical without debug metadata.
+Source lambda scopes, primitive parameters, immutable captures and block return-line locations are now implemented. Both-flavor compiler assertions cover returned, locally bound, argument and C-callback lambdas; the real LLDB-DAP editor cases inspect `x = 40`, captured `n = 2` and local `sum = 42` at the lambda's return line. Extracted host GPU kernels now retain the same source scopes, parameter and uniform locations, verified for all five extracting combinators and through real LLDB-DAP breakpoints. Primitive shared cells and direct/resumable handler parameters are inspectable: both-flavor LLDB-DAP tests follow live mutations from `42` to `43` in closures and handler arms. Return-only ML function and lambda bodies now retain their source lines, including bare literal/identifier results; compiler assertions and real adapter stops cover the previous line-loss defect. Materialized generic function values, raw C callbacks and runtime callbacks now retain their actual source names, scopes and parameters. Real LLDB-DAP cases inspect integer and float function values stored in records in both flavors. Default and ML corpus IR remains byte-identical without debug metadata.
 
 Remaining gaps include:
 
-- **Source coverage and value inspection remain incomplete.** Single-expression ML layout bodies, match-arm expressions and generic named-function adapters still need complete source scopes and variable locations. Composite values have no Osprey-specific rendering. The source-lambda regression closes one concrete gap; it does not complete Phase 3.
-- **Layer 3's and Layer 4's advertised surfaces do not exist.** The plan describes
-  `--debug-info`, `--debug-opt`, `--debug-out`, `--debug-preserve-ir` and
-  `--debug-preserve-symbols`; `crates/osprey-cli/src/main.rs` accepts only
-  `--debug` (`osprey x.osp --debug-info` → `unknown flag --debug-info`), and
-  `build_executable` deletes the `.ll` unconditionally, so `--debug-preserve-ir`
-  has nothing to preserve. Likewise the `compilerPath`, `preserveArtifacts` and
-  `console` launch fields are contributed by no entry in
-  `vscode-extension/package.json` `debuggers[0]`.
+- **Source coverage and value inspection remain incomplete.** Inlined generic call-frame reconstruction and optimized-away value reporting still need work. Primitive declarations now become visible only after initialization, including shared mutable cells; enclosing names remain visible within shadowing initializers. Ordinary nested block scopes now preserve initialized primitive bindings and exact return stops in named functions, closures and both handler modes. Native DWARF field expansion now supports named, anonymous, generic and C ABI records, including parameters, captures and live cells. Union, Result, collection and closure rendering remains unfinished. The source-lambda regression closes one concrete gap; it does not complete Phase 3.
+- **Build and launch controls are partially completed.** The native CLI implements `--debug-info=dwarf|none`, `--debug-opt=none`, `--debug-memory=off`, `--debug-out`, IR preservation and symbol preservation. Debug and profile builds collect macOS symbols before deleting objects, and collection failure fails the build. Unsupported optimizer and memory-inspection modes are rejected explicitly. The editor accepts `compilerPath` and `preserveArtifacts` and forces `--debug-opt=none`; real adapter tests inspect the retained binary and source-specific IR in both flavors. Console selection supports internal output and integrated/external terminals; terminal launches require a verified LLDB-DAP 21+ adapter. Optimized debugging and memory inspection modes remain unfinished.
 
 A debug-metadata coverage metric — Layer 6 — is still needed to detect omissions across all executable expression forms.
 **Spec:** [0021 - Debugger](../specs/0021-Debugger.md)
@@ -736,6 +729,7 @@ Acceptance:
       flags.
 - [x] Add `--debug` and debug clang flags.
 - [x] Preserve debug artifacts for tests.
+- [x] Implement explicit native metadata, unoptimized build, output and artifact controls; reject unsupported optimization and memory-inspection modes. Both-flavor CLI tests execute retained binaries and inspect the exact IR. Collect macOS debug/profiling symbols before deleting objects, with failure propagated.
 - [x] Add golden tests for debug IR metadata, including `DIFile`, user-function
       `DISubprogram`, per-platform DWARF version, and 1-based `DILocation`
       column assertions.
@@ -750,6 +744,8 @@ Acceptance:
       paths with a precise missing-tool error.
 - [x] Launch LLDB-DAP with the compiled binary.
 - [x] Add extension tests for configuration synthesis and missing-tool errors.
+- [x] Add per-launch compiler selection and artifact preservation; force unoptimized editor builds and inspect preserved IR through both-flavor LLDB-DAP tests.
+- [x] Implement explicit internal, integrated and external console selection. Terminal modes require verified LLDB-DAP 21+ support and fail before compilation if unavailable. Both-flavor tests exercise integrated stdin, internal output, source breakpoints and the real external-terminal reverse request; unit tests pin invalid options and bounded probe failures.
 - [x] Add a DAP smoke test that launches, hits a source breakpoint, reads stack
       and primitive locals, steps over, continues, and terminates.
 - [ ] Upstream/import generic VS Code debugger glue and the DAP test harness
@@ -767,15 +763,20 @@ Acceptance:
       to `#dbg_*` debug records once the supported LLVM floor makes that path
       portable.
 - [x] Emit source-lambda scopes, primitive parameters and immutable capture locations; verify return-line breakpoints and captured/local values through LLDB-DAP in both flavors.
+- [x] Preserve return-only function/lambda body locations; both-flavor compiler tests cover literals, identifiers and calls, and LLDB-DAP tests verify the exact return line and its parameter/capture values.
 - [x] Expose primitive shared mutable cells and direct/resumable handler parameters; real LLDB-DAP tests inspect changing cell values in both-flavor handlers and ordinary closures.
-- [ ] Extend value-location records to remaining capture representations and match bindings.
-- [ ] Add lexical scopes for blocks, lambdas, match arms, and handlers.
+- [x] Preserve source declaration names, scopes and parameter bindings in materialized generic function values and C/runtime callback specializations; compiler assertions and integer/float LLDB-DAP cases cover both flavors. The accompanying generic-binding regression suite verifies declaration scope, live global reads, caller argument order and independent nested type instantiations.
+- [x] Scope primitive pattern bindings to their match arm and preserve block-arm return locations; both-flavor LLDB-DAP cases verify shadowed name lookup, outer-value restoration and arm-local disappearance. Runtime assertions cover every match representation, nested arms, escaping captures, captured mutable cells and callable payload signatures, including float-returning Result joins.
+- [ ] Extend value-location records to remaining capture representations.
+- [x] Complete ordinary nested-block scopes in named functions, materialized lambdas and direct/resumable handlers. Eight both-flavor LLDB-DAP cases stop on the inner return, resolve the shadowed name to 2 and local result to 3, then see the outer value 100 and result 103 with the inner local absent. A debug-only marker survives LLVM instruction selection; it uses one hoisted stack byte per frame and leaves ordinary IR unchanged.
 - [x] Validate primitive local inspection in LLDB-DAP.
+- [x] Begin primitive binding visibility after initialization, keep outer names visible within a shadowing initializer, and hide later declarations. Both-flavor LLDB-DAP assertions cover immutable bindings and shared cells; declaration storage is hoisted to the entry block for stable inspection after effect branches. Function metadata keeps its subprogram identity and top-level publication/cleanup retains the current statement's line. Expanded block corpus twins also pin restoration of cell storage and generic aliases at runtime.
 - [ ] Add unavailable-value reporting tests.
 
 ### Phase 4 - Osprey type and value rendering
 
-- [ ] Emit type metadata for primitives, records, unions, Result, and closures.
+- [x] Emit native metadata for primitive values and named, anonymous, nested and concrete generic records, including C ABI field offsets. Preserve record types through parameters, immutable captures and shared cells. Both-flavor real-adapter cases assert exact field sets and values, simultaneous integer/float instantiations and live replacements in closures and direct/resumable handlers. Compiler assertions pin offsets and field types; corpus assertions cover the anonymous-layout and C ABI projection/update defects exposed by inspection.
+- [ ] Emit union, Result and closure type metadata and value rendering.
 - [ ] Add LLDB summaries/synthetic providers or an Osprey DAP shim.
 - [ ] Add runtime inspection helpers for list/map/string/fiber/channel/effect
       handles.

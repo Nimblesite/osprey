@@ -23,6 +23,12 @@
 //! has no twin to be IR-identical to. Those stems are listed in
 //! [`ML_ONLY_STEMS`] and skipped by both tests below.
 
+#[path = "cross_flavor_ir_equiv/debug.rs"]
+mod debug;
+
+#[path = "cross_flavor_ir_equiv/gpu.rs"]
+mod gpu;
+
 use std::path::{Path, PathBuf};
 
 use osprey_ast::Program;
@@ -76,7 +82,9 @@ fn flavor_roots() -> Vec<PathBuf> {
 fn ir_for(source: &str, flavor: Flavor, label: &str) -> Result<String, String> {
     let source_file = parsed_source(source, flavor, label)?;
     let program = assembled_if_module_aware(source_file)?;
-    compile_program(&program).map_err(|e| format!("{label}: codegen failed: {e:?}"))
+    let ir = compile_program(&program).map_err(|e| format!("{label}: codegen failed: {e:?}"))?;
+    gpu::check_extraction_floor(label, &ir)?;
+    Ok(ir)
 }
 
 fn parsed_source(source: &str, flavor: Flavor, label: &str) -> Result<SourceFile, String> {
@@ -346,143 +354,47 @@ fn module_debug_frames_keep_source_names_in_both_flavors() -> Result<(), String>
     Ok(())
 }
 
-const CAPTURED_LAMBDAS: [(&str, Flavor); 2] = [
-    ("fn makeAdder(n) = fn(x) => {\n    let sum = wrapAdd(x, n)\n    sum\n}\nfn main() = {\n    let add = makeAdder(2)\n    print(add(40))\n}\n", Flavor::Default),
-    ("makeAdder n = \\x =>\n    sum = wrapAdd x n\n    sum\nmain () =\n    add = makeAdder 2\n    print (add 40)\n", Flavor::Ml),
+const RESULT_RECORD_ABI: [(&str, Flavor); 2] = [
+    ("type Packet = { number: Result<float, Error>, flag: Result<bool, Error> }\nfn make(n, b) = Packet { number: Success { value: n }, flag: Success { value: b } }\nlet packet = make(2.5, true)\nprint(\"${packet.number},${packet.flag}\")", Flavor::Default),
+    ("type Packet =\n    number: Result<float, Error>\n    flag: Result<bool, Error>\nmake (n, b) = Packet(number = Success(value = n), flag = Success(value = b))\npacket = make (2.5, true)\nprint \"${packet.number},${packet.flag}\"", Flavor::Ml),
 ];
 
-/// [DEBUGGER-SOURCE-MAP] Source lambdas need scopes, body lines and variables.
+/// [TYPE-RECORD-RESULT] Payload bits must not move the tag or error-message slots.
 #[test]
-fn captured_lambda_bodies_keep_debug_scopes_in_both_flavors() -> Result<(), String> {
-    for (source, flavor) in CAPTURED_LAMBDAS {
-        let ir = lambda_debug_ir(source, flavor)?;
-        for expected in [
-            "!DISubprogram(name: \"__closure_fn_",
-            "!DILocation(line: 2,",
-            "!DILocation(line: 3,",
-            "!DILocalVariable(name: \"x\", arg: 2,",
-            "!DILocalVariable(name: \"sum\"",
-            "!DILocalVariable(name: \"n\"",
-        ] {
-            assert!(ir.contains(expected), "{flavor}: missing {expected}");
-        }
-        assert_lambda_variables(&ir, "__closure_fn_", &["x", "n", "sum"])?;
+fn result_record_fields_use_complete_pointer_slots_and_bit_preserving_payloads(
+) -> Result<(), String> {
+    let mut modules = Vec::new();
+    for (source, flavor) in RESULT_RECORD_ABI {
+        let ir = ir_for(source, flavor, "result-record.osp")?;
+        assert_result_record_storage(&ir);
+        modules.push(ir);
     }
+    assert_eq!(
+        modules.first(),
+        modules.get(1),
+        "both flavors share the Result ABI"
+    );
     Ok(())
 }
 
-fn lambda_debug_ir(source: &str, flavor: Flavor) -> Result<String, String> {
-    let program = parsed_source(source, flavor, "lambda.osp")?.program;
-    let errors = osprey_types::check_program(&program);
-    assert!(errors.is_empty(), "{flavor}: {errors:?}");
-    osprey_codegen::compile_program_debug(
-        &program,
-        osprey_codegen::DebugSource::from_path("lambda.osp"),
-    )
-    .map_err(|error| format!("{flavor}: {error}"))
-}
-
-fn assert_lambda_variables(ir: &str, name: &str, variables: &[&str]) -> Result<(), String> {
-    let prefix = format!("!DISubprogram(name: \"{name}");
-    let (scope, _) = ir
-        .lines()
-        .find(|line| line.contains(&prefix))
-        .and_then(|line| line.split_once(" = "))
-        .ok_or_else(|| format!("missing lambda scope {name}"))?;
-    for variable in variables {
+fn assert_result_record_storage(ir: &str) {
+    for required in [
+        "getelementptr { i64, i8*, i8* }", // both fields point to whole Results
+        "getelementptr { i64, i8, i8* }",  // canonical Result block
+        "bitcast double",
+        "to i64",
+        "bitcast i64",
+        "to double",
+        "zext i1",
+        "trunc i64",
+        "to i1", // booleans use payload bits too
+    ] {
+        assert!(ir.contains(required), "missing {required}: {ir}");
+    }
+    for forbidden in ["{ double, i8, i8* }", "{ i1, i8, i8* }", "{ i8*, i8, i8* }"] {
         assert!(
-            ir.lines().any(
-                |line| line.contains(&format!("!DILocalVariable(name: \"{variable}\""))
-                    && line.contains(&format!("scope: {scope},"))
-            ),
-            "{variable} must belong to {name}'s scope {scope}"
+            !ir.contains(forbidden),
+            "payload-dependent Result offsets: {forbidden}"
         );
     }
-    Ok(())
 }
-
-/// [DEBUGGER-SOURCE-MAP] Every materialized source-lambda path has a native scope.
-#[test]
-fn bound_argument_and_ffi_lambdas_keep_their_debug_scopes() -> Result<(), String> {
-    let paths = [
-        ("fn main() = {\n let f = fn(x) => wrapMul(x, 2)\n print(f(21))\n}", Flavor::Default, "__closure_fn_", 2),
-        ("main () =\n    f = \\x => wrapMul x 2\n    print (f 21)", Flavor::Ml, "__closure_fn_", 2),
-        ("fn apply(f, n) = f(n)\nfn main() = print(apply(fn(x) => wrapMul(x, 2), 21))", Flavor::Default, "__closure_fn_", 2),
-        ("apply f n = f n\nmain () = print (apply (\\x => wrapMul x 2) 21)", Flavor::Ml, "__closure_fn_", 2),
-        ("extern fn invoke(f: (int) -> int, n: int) -> int\nfn main() = print(invoke(fn(x) => wrapMul(x, 2), 21))", Flavor::Default, "__callback_", 1),
-        ("extern invoke (f : int -> int) (n : int) -> int\nmain () = print (invoke (\\x => wrapMul x 2) 21)", Flavor::Ml, "__callback_", 1),
-    ];
-    for (source, flavor, name, arg) in paths {
-        let ir = lambda_debug_ir(source, flavor)?;
-        assert_lambda_variables(&ir, name, &["x"])?;
-        assert!(ir.contains(&format!("!DILocalVariable(name: \"x\", arg: {arg},")));
-    }
-    Ok(())
-}
-
-/// [GPU-KERNEL-EXTRACT] Lifted kernels preserve source scopes and uniform values.
-#[test]
-fn extracted_kernel_debug_scopes_keep_uniforms_and_source_parameters() -> Result<(), String> {
-    for (source, flavor) in [
-        ("fn main() = {\n    let n = 2\n    let result = gpuMap(toGpu([40]), fn(x) => {\n        let sum = wrapAdd(x, n)\n        sum\n    })\n    print(gpuGet(result, 0) ?: -1)\n}\n", Flavor::Default),
-        ("main () =\n    n = 2\n    result = gpuMap (toGpu [40]) (\\x =>\n        sum = wrapAdd x n\n        sum)\n    print (gpuGet (result, 0) ?: -1)\n", Flavor::Ml),
-    ] {
-        let ir = lambda_debug_ir(source, flavor)?;
-        assert_lambda_variables(&ir, "__gpu_kernel_", &["x", "n", "sum"])?;
-        assert!(ir.contains("!DILocalVariable(name: \"x\", arg: 2,"));
-        assert!(ir.contains("!DILocation(line: 5,"));
-    }
-    Ok(())
-}
-
-/// [DEBUGGER-LAMBDA-SCOPES] Kernel combinators share the parameter/location contract.
-#[test]
-fn every_extracting_combinator_preserves_its_source_arguments() -> Result<(), String> {
-    for (default, ml, variables) in KERNEL_COMBINATORS {
-        for (source, flavor) in [(default, Flavor::Default), (ml, Flavor::Ml)] {
-            let ir = kernel_debug_ir(source, flavor)?;
-            assert_lambda_variables(&ir, "__gpu_kernel_", variables)?;
-            for (index, name) in variables.iter().enumerate() {
-                let arg = index + 1;
-                assert!(ir.contains(&format!("!DILocalVariable(name: \"{name}\", arg: {arg},")));
-            }
-        }
-    }
-    Ok(())
-}
-
-fn kernel_debug_ir(source: &str, flavor: Flavor) -> Result<String, String> {
-    let wrapped = match flavor {
-        Flavor::Default => format!("fn main() = {{\n let result = {source}\n print(0)\n}}"),
-        Flavor::Ml => format!("main () =\n    result = {source}\n    print 0"),
-    };
-    lambda_debug_ir(&wrapped, flavor)
-}
-
-const KERNEL_COMBINATORS: [(&str, &str, &[&str]); 5] = [
-    (
-        "gpuMap(toGpu([1]), fn(x) => wrapAdd(x, 2))",
-        "gpuMap (toGpu [1]) (\\x => wrapAdd x 2)",
-        &["x"],
-    ),
-    (
-        "gpuFilter(toGpu([1]), fn(x) => x > 0)",
-        "gpuFilter (toGpu [1]) (\\x => x > 0)",
-        &["x"],
-    ),
-    (
-        "gpuZipWith(toGpu([1]), toGpu([2]), fn(x, y) => wrapAdd(x, y))",
-        "gpuZipWith (toGpu [1], toGpu [2], \\(x, y) => wrapAdd x y)",
-        &["x", "y"],
-    ),
-    (
-        "gpuFold(toGpu([1]), 0, fn(x, y) => wrapAdd(x, y))",
-        "gpuFold (toGpu [1], 0, \\(x, y) => wrapAdd x y)",
-        &["x", "y"],
-    ),
-    (
-        "gpuScan(toGpu([1]), 0, fn(x, y) => wrapAdd(x, y))",
-        "gpuScan (toGpu [1], 0, \\(x, y) => wrapAdd x y)",
-        &["x", "y"],
-    ),
-];

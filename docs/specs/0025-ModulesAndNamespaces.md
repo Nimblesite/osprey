@@ -337,7 +337,7 @@ exists only as a body each call site specialises
 to store. `let alias = identity` and `let idl = |x| => x` therefore resolve by
 NAME, and a function that calls one specialises the same body its own arguments
 fix. Every such call site is independent: the binding is not narrowed to
-whichever type the first caller used.
+whichever type the first caller used. Specialization retains the declaration’s lexical scope. A caller’s shadowing local cannot replace a free module binding, and a function value reading a mutable module binding continues to read its live storage. The paired `file_scope_generic_binding` suite checks these rules through direct calls, aliases, higher-order calls, iterators, records and nested curried applications.
 
 ```osprey
 fn identity(x) = x

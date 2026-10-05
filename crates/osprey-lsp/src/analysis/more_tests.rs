@@ -1,5 +1,85 @@
 use super::*;
 
+/// [LSP-EFFECT-REQUIREMENTS] Inferred requirements are distinct from written bounds.
+#[test]
+fn symbols_publish_transitive_effect_requirements_in_both_flavors() -> Result<(), String> {
+    for (source, flavor) in EFFECT_REQUIREMENT_SOURCES {
+        let parsed = osprey_syntax::parse_program_with_flavor(source, flavor);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        assert_eq!(
+            osprey_types::check_program(&parsed.program),
+            Vec::<osprey_types::TypeError>::new()
+        );
+        let symbols: serde_json::Value = serde_json::from_str(&symbols_json(&parsed.program))
+            .map_err(|error| error.to_string())?;
+        let entries = symbols.as_array().ok_or("symbol array missing")?;
+        for (name, expected) in [
+            ("leaf", vec!["Read.get"]),
+            ("relay", vec!["Read.get"]),
+            ("safe", vec![]),
+        ] {
+            let symbol = entries
+                .iter()
+                .find(|symbol| symbol.get("name").and_then(serde_json::Value::as_str) == Some(name))
+                .ok_or(name)?;
+            assert_eq!(
+                symbol.pointer("/effectRequirements/operations"),
+                Some(&serde_json::json!(expected)),
+                "{name}: {symbol}"
+            );
+            assert_eq!(
+                symbol.pointer("/effectRequirements/unresolvedCallbacks"),
+                Some(&serde_json::json!(false)),
+                "{name}"
+            );
+        }
+    }
+    Ok(())
+}
+
+const EFFECT_REQUIREMENT_SOURCES: [(&str, osprey_syntax::Flavor); 2] = [
+    ("effect Read { get: fn() -> int }\nfn leaf() = perform Read.get()\nfn relay() = leaf()\nfn safe() = {\n handle Read { get => 42 }\n relay()\n}\n", osprey_syntax::Flavor::Default),
+    ("effect Read\n    get : Unit => int\nleaf () = perform Read.get ()\nrelay () = leaf ()\nsafe () =\n    handle Read\n        get => 42\n    relay ()\n", osprey_syntax::Flavor::Ml),
+];
+
+#[test]
+fn effect_requirements_follow_every_editor_view() -> Result<(), String> {
+    use lspkit_vfs::PositionEncoding::Utf16;
+    for (source, flavor) in EFFECT_REQUIREMENT_SOURCES {
+        let (uri, line, column) = match flavor {
+            osprey_syntax::Flavor::Default => ("file:///requirements.osp", 2, 4),
+            osprey_syntax::Flavor::Ml => ("file:///requirements.ospml", 3, 1),
+        };
+        let expected = "Requires on full application: `Read.get`.";
+        let hover = crate::test_support::hover(source, uri, line, column, Utf16).ok_or("hover")?;
+        assert!(hover.contains(expected), "{hover}");
+        let signature = crate::wire::signature_result(crate::test_support::signature_help(
+            source, uri, line, column, Utf16,
+        ));
+        assert_eq!(
+            signature
+                .pointer("/signatures/0/documentation/value")
+                .and_then(serde_json::Value::as_str),
+            Some(expected)
+        );
+        let completions = crate::test_support::completion(source, uri, line, column, Utf16);
+        let items = crate::wire::completion_result(&completions);
+        let relay = items
+            .as_array()
+            .ok_or("completions")?
+            .iter()
+            .find(|item| item.get("label").and_then(serde_json::Value::as_str) == Some("relay"))
+            .ok_or("relay completion")?;
+        assert_eq!(
+            relay
+                .pointer("/documentation/value")
+                .and_then(serde_json::Value::as_str),
+            Some(expected)
+        );
+    }
+    Ok(())
+}
+
 #[test]
 fn structured_sections_render_in_hover() {
     let src = "/// Divides two numbers.\n\
