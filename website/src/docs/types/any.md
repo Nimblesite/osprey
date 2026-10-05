@@ -1,5 +1,6 @@
 ---
 layout: page
+mlTwins: manual
 title: "any (Type)"
 description: "An explicitly dynamic value that must be type-matched before concrete operations"
 ---
@@ -16,10 +17,10 @@ let text: any = "Hello"
 ```
 
 ```osprey-ml
-value : Any
+value : any
 value = 42
 
-text : Any
+text : any
 text = "Hello"
 ```
 
@@ -31,5 +32,17 @@ let original = Outcome { answer: Error { message: "saved" }, note: "first" }
 let copied = original { note: "copy" }
 let erased: any = copied
 print(toString(erased))
+// { answer: Error(saved), note: copy }
+```
+
+```osprey-ml
+type Outcome =
+    answer: Result<int, Error>
+    note: string
+original = Outcome(answer = Error(message = "saved"), note = "first")
+copied = original(note = "copy")
+erased : any
+erased = copied
+print (toString erased)
 // { answer: Error(saved), note: copy }
 ```
