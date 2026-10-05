@@ -85,8 +85,11 @@ struct BankScreen: View {
 
     @ViewBuilder private var notice: some View {
         if let toast = store.view?.first({ $0.has("toast") }) {
+            // A container element keeps the identifier on the notice itself. Without it SwiftUI
+            // stamps "bank-notice" over every child, and the dismiss button loses "dismiss-notice".
             NativeNode(node: toast, store: store, dark: true)
-                .frame(maxWidth: 430).padding(12).shadow(radius: 10).accessibilityIdentifier("bank-notice")
+                .frame(maxWidth: 430).padding(12).shadow(radius: 10)
+                .accessibilityElement(children: .contain).accessibilityIdentifier("bank-notice")
         }
     }
 
