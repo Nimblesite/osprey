@@ -1,0 +1,77 @@
+namespace talonmobile
+
+import talonmobile::Support
+import talonmobile::Mobile
+import bank::Json
+
+filterCase id present absent =
+    activity = Support::click (Support::loaded ()) "nav-activity"
+    filtered = Support::click activity id
+    check "matching movement remains" true (Support::hasText filtered present)
+    check "other movement hidden" false (Support::hasText filtered absent)
+    check "filter needs no transport" "MISSING" (Support::projected filtered "commands[0].kind")
+
+filtersCase () =
+    filterCase "filter-in" "Opening deposit" "Rent payment"
+    filterCase "filter-out" "Rent payment" "Opening deposit"
+    filterCase "filter-refused" "Protected refusal" "Rent payment"
+    all = Support::click (Support::click (Support::loaded ()) "nav-activity") "filter-all"
+    check "all includes credits" true (Support::hasText all "Opening deposit")
+    check "all includes debits" true (Support::hasText all "Rent payment")
+    check "all includes refusals" true (Support::hasText all "Protected refusal")
+
+searchCase () =
+    activity = Support::click (Support::loaded ()) "nav-activity"
+    owner = Support::input activity "activity-search" "  aMeLiA  "
+    note = Support::input activity "activity-search" "RENT"
+    missing = Support::input activity "activity-search" "nonexistent"
+    check "case insensitive owner search" true (Support::hasText owner "Opening deposit")
+    check "nonmatching owner hidden" false (Support::hasText owner "Rent payment")
+    check "case insensitive description search" true (Support::hasText note "Rent payment")
+    check "empty results displayed" true (Support::hasText missing "No matching activity")
+    check "search requires no request" "MISSING" (Support::projected note "commands[0].kind")
+
+combinedFilterCase () =
+    activity = Support::click (Support::loaded ()) "nav-activity"
+    credit = Support::click activity "filter-in"
+    searched = Support::input credit "activity-search" "Luca"
+    check "filter and search intersect" true (Support::hasText searched "No matching activity")
+    check "full journal stats retained" true (Support::hasText searched "All 3")
+
+failedLoadCase () =
+    first = Support::http (Mobile::start ()) "accounts" 503 "{}"
+    ready = Support::http first "activity" 200 "[]"
+    refreshed = Support::click ready "refresh-data"
+    check "failed load visible" "Bank data unavailable" (Support::model first).noticeTitle
+    check "both completions stop skeleton" "false" (Support::model ready).loading
+    check "refresh displays progress" "true" (Support::model refreshed).loading
+    check "refresh retries accounts" "accounts" (Support::projected refreshed "commands[0].id")
+    check "refresh retries activity" "activity" (Support::projected refreshed "commands[1].id")
+
+transportErrorsCase () =
+    loaded = Support::loaded ()
+    offline = Support::http loaded "mutate-deposit" 0 "{}"
+    server = Support::http loaded "mutate-deposit" 503 "{}"
+    denied = Support::http loaded "mutate-deposit" 403 "{}"
+    detail = Support::http loaded "mutate-deposit" 0 (Json::error "Connection timed out")
+    check "offline reason visible" true (contains (Support::model offline).noticeBody "could not reach")
+    check "server status visible" true (contains (Support::model server).noticeBody "503")
+    check "refusal status visible" true (contains (Support::model denied).noticeBody "403")
+    check "native transport detail takes priority" "Connection timed out" (Support::model detail).noticeBody
+
+emptyCase () =
+    loaded = Support::http (Support::http (Mobile::start ()) "accounts" 200 "[]") "activity" 200 "[]"
+    accounts = Support::click loaded "nav-accounts"
+    activity = Support::click loaded "nav-activity"
+    check "zero portfolio" true (Support::hasText loaded "$0.00")
+    check "no accounts view" true (Support::hasText accounts "No accounts yet")
+    check "empty audit view" true (Support::hasText activity "No matching activity")
+
+unknownEventCase () =
+    loaded = Support::loaded ()
+    clicked = Support::click loaded "does-not-exist"
+    submitted = Support::submit loaded "does-not-exist" "{}"
+    entered = Support::input loaded "does-not-exist" "value"
+    check "unknown click is inert" loaded clicked
+    check "unknown submit is inert" loaded submitted
+    check "unknown input is inert" loaded entered

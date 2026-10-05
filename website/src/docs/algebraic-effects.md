@@ -26,7 +26,7 @@ print("${ada(greeting)} / ${grace(greeting)}")
 
 The function is passed as a callback because it must run **after** the handler is installed. Passing `greeting()` would run it first, before `ada` could answer its request. For work with arguments, wrap the call in a zero-argument function: `ada(|| => greetCustomer(customer))`.
 
-Pass an existing zero-argument function directly: `ada(greeting)`. A wrapper that supplies arguments or installs another handler still does useful work.
+Pass an existing zero-argument function directly: `ada(greeting)`. The analyzer's `redundant-callback` warning identifies forwarding wrappers it can prove unnecessary, such as `ada(|| => greeting())`, and names the direct replacement. A wrapper that supplies arguments or installs another handler still does useful work.
 
 The same example in ML flavor:
 

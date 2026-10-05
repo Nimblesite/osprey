@@ -117,6 +117,7 @@ jobs:
             webcompiler/package-lock.json
             website/package-lock.json
             examples/projects/modules/e2e/package-lock.json
+            examples/projects/modules/web/package-lock.json
 
       # Rust toolchain + clang/LLVM + lldb-dap + the C runtime archives + the
       # release binary.
@@ -142,6 +143,11 @@ jobs:
 
       - name: Build the wasm runtime archive
         run: make _runtime_wasm
+
+      - name: Build the shared Talon browser client
+        run: |
+          npm ci --prefix examples/projects/modules/web
+          npm --prefix examples/projects/modules/web run build
 
       # ── Static analysis. All of it, before anything is tested. ──
 
@@ -220,6 +226,7 @@ jobs:
             target/release/osprey
             compiler/lib/
             compiler/bin/*.a
+            examples/projects/modules/src/web/bundle.ospml
           retention-days: 7
           if-no-files-found: error
 
@@ -650,6 +657,7 @@ jobs:
         run: |
           python3 scripts/test-mobile-tools.py
           target/release/osprey examples/mobile/inbox/test --run
+          target/release/osprey examples/projects/modules/mobile/app/test --run
 
       - name: Set up Java for Android
         uses: actions/setup-java@v4
@@ -685,7 +693,21 @@ jobs:
           arch: x86_64
           script: |
             make android-test
+            make bank-android-test
+            examples/projects/modules/mobile/android/gradlew -p examples/projects/modules/mobile/android --console=plain :app:lintDebug
             cd examples/mobile/android && ./gradlew --console=plain :app:lintDebug
+
+      - name: Native bank Android results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bank-android-results
+          path: |
+            examples/projects/modules/mobile/android/build/instrumentation.txt
+            examples/projects/modules/mobile/android/build/screenshots/
+            examples/projects/modules/mobile/android/app/build/reports/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Install bank e2e dependencies
         run: npm ci
@@ -767,7 +789,15 @@ jobs:
         run: make _coverage_check_vscode_extension
 
       - name: iOS device and simulator builds, ABI, goldens and app persistence
-        run: make ios-test mobile-ios-test
+        run: make ios-test mobile-ios-test bank-ios-test
+
+      - name: Native bank simulator results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bank-ios-results
+          path: examples/projects/modules/mobile/ios/build/**/*.xcresult
+          if-no-files-found: ignore
 
       - name: Upload combined coverage
         uses: actions/upload-artifact@v4

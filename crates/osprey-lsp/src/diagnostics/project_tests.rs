@@ -20,28 +20,7 @@ fn module_files_use_the_assembled_project_graph() {
 }
 
 fn bank_warnings() -> Vec<(&'static str, &'static str, crate::model::Span)> {
-    let main_warnings = [
-        (
-            "redundant type signature on `bank::fetch`: inference derives `(int) -> (string) -> string` without it",
-            (20, 0, 20, 31),
-        ),
-        (
-            "redundant type signature on `bank::drive`: inference derives `(int) -> Unit` without it",
-            (32, 0, 32, 19),
-        ),
-        (
-            "redundant return type annotation on `bank::hold`: inference derives `int` without it",
-            (54, 0, 54, 18),
-        ),
-        (
-            "redundant type signature on `bank::handleRequest`: inference derives `(string, string, string, string) -> HttpResponse` without it",
-            (113, 0, 113, 68),
-        ),
-    ];
-    let mut main_warnings: Vec<_> = main_warnings
-        .into_iter()
-        .map(|(message, range)| ("redundant-annotation", message, range))
-        .collect();
+    let mut main_warnings: Vec<(&str, &str, crate::model::Span)> = Vec::new();
     main_warnings.insert(
         0,
         (
@@ -54,59 +33,59 @@ fn bank_warnings() -> Vec<(&'static str, &'static str, crate::model::Span)> {
         (
             "unused-pattern-binding",
             "unused pattern binding `message`",
-            (27, 22, 27, 29),
+            (20, 22, 20, 29),
         ),
         (
             "unused-variable",
             "unused variable `freed`",
-            (28, 12, 28, 17),
+            (21, 12, 21, 17),
         ),
         (
             "unused-pattern-binding",
             "unused pattern binding `message`",
-            (30, 14, 30, 21),
+            (23, 14, 23, 21),
         ),
         (
             "unused-pattern-binding",
             "unused pattern binding `message`",
-            (58, 14, 58, 21),
+            (49, 14, 49, 21),
         ),
         (
             "unused-pattern-binding",
             "unused pattern binding `value`",
-            (59, 16, 59, 21),
+            (50, 16, 50, 21),
         ),
         (
             "unused-variable",
             "unused variable `slept`",
-            (60, 12, 60, 17),
+            (51, 12, 51, 17),
         ),
         (
             "unused-variable",
             "unused variable `listening`",
-            (80, 4, 80, 13),
+            (71, 4, 71, 13),
         ),
-        ("unused-variable", "unused variable `held`", (86, 4, 86, 8)),
+        ("unused-variable", "unused variable `held`", (77, 4, 77, 8)),
         (
             "unused-variable",
             "unused variable `stopped`",
-            (87, 4, 87, 11),
+            (78, 4, 78, 11),
         ),
         (
             "unused-variable",
             "unused variable `closed`",
-            (88, 4, 88, 10),
+            (79, 4, 79, 10),
         ),
-        ("unused-variable", "unused variable `made`", (96, 4, 96, 8)),
+        ("unused-variable", "unused variable `made`", (86, 4, 86, 8)),
         (
             "unused-parameter",
             "unused parameter `headers`",
-            (114, 29, 114, 36),
+            (95, 29, 95, 36),
         ),
         (
             "unused-variable",
             "unused variable `seen`",
-            (115, 4, 115, 8),
+            (96, 4, 96, 8),
         ),
     ]);
     main_warnings

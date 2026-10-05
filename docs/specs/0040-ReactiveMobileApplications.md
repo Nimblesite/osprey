@@ -1,10 +1,10 @@
 # Reactive Mobile Applications
 
-**Status:** implemented and verified on an ARM64 iOS simulator, a physical iPhone 16, an ARM64 Android emulator, and an x86-64 Android emulator in hosted CI. Compiler, application, and native integration checks pass, and the unchanged duplication gate passes with the Deslop 0.27.0 version CI pins.
+**Status:** the application uses callable value-effect handlers at its Osprey/native boundary. The current migration passes shared domain tests, iOS/Android LLVM and ABI generation, and native C-entrypoint checks on Linux. Earlier simulator, device, and hosted CI results predate this migration; see the [current validation record](../../examples/mobile/README.md#validation).
 
 The Issue Inbox sample shares its application state, repository validation, GitHub decoding, SQL statements, filtering, bookmarking, issue details, local notes/priorities, messages, and UI tree in Osprey. Swift and Kotlin provide native rendering and platform services. Both applications compile the same [`examples/mobile/inbox/`](../../examples/mobile/inbox/) project through the C ABI.
 
-This is an application architecture using ordinary Osprey functions and event messages. It does not add a reactive compiler feature, a new UI language, or resumable effects. The platform target restrictions still apply.
+The application uses callable value-effect handlers and event messages. `Storage::Requests` declares typed SQL and HTTP requests; `Storage::commands` interprets them as the command JSON consumed by each host. Test handlers can capture the same requests. Platform completion remains asynchronous event processing; mobile dynamic control operations are unsupported.
 
 ## Native application boundary [MOBILE-NATIVE-HOST]
 
@@ -63,6 +63,12 @@ A `rich` node carries `spans`, an ordered array of `{"text", "style", "url"}` ob
 
 Native renderers concatenate the spans into one text view: SwiftUI through `AttributedString` presentation intents and `link` attributes, Android through `StyleSpan`, `TypefaceSpan` and `URLSpan`. The host smoke fixtures include a bold marker in an issue body and assert that the rendered tree contains a bold span while the `view` still holds the raw Markdown. Tables, images, HTML, footnotes, task-list toggling and syntax highlighting are not implemented; they render as text.
 
+## Effect boundary [MOBILE-EFFECT-BOUNDARY]
+
+`Update` requests `Storage::Requests.sql` or `Storage::Requests.http` with typed request records. Those value operations return serialized command descriptions. `App::initial` and `App::dispatch` run the update functions through the callable `Storage::commands` handler, so each scalar C export discharges its requirements before returning to the host.
+
+The handler builds descriptions; it does not wait for SQLite or HTTP completion. The existing host protocol below carries those requests and their later results. Tests may substitute a handler that records the request ID, SQL parameters, or URL without executing platform work. Pure view rendering and cache decoding do not require a service handler.
+
 ## Platform commands [MOBILE-HOST-SERVICES]
 
 | Command | Fields | Completion event |
@@ -90,9 +96,7 @@ The Android smoke exercises shared state transitions through JNI, Android SQLite
 
 [`examples/mobile/README.md`](../../examples/mobile/README.md) contains the reproducible build and launch commands. Final acceptance requires shared Osprey checks, both native application builds, deterministic host smoke on both platforms, a live public GitHub response displayed by the application, and a subsequent cache-backed launch.
 
-The shared application passed 29 Osprey domain assertions, including the Markdown rendering suites. The expanded Markdown smoke passed on the iOS simulator. The original application smoke passed inside the signed application on a physical iPhone 16; its diagnostics recorded eight live GitHub issues, saved bookmarks, and no application error. The subsequent Markdown build installed on that phone, but its launch check is waiting for the device to be unlocked. Android passed deterministic and live workflows, including detail navigation, notes/priorities, bookmarks, Unicode search, failed-refresh cache retention, and restoration after terminating and restarting the process. Its live workflow displayed eight issues. Native renderer regression checks and Android lint also passed.
-
-Both mobile runtimes pass the shared C ABI fixture and the whole `tests/` corpus through the mobile C ABI on ARM64 — 130 byte-exact goldens and 18 GPU-lowering comparisons each, with every rejection pinned by name and reason in [`tests/MOBILE_UNPORTABLE.txt`](../../tests/MOBILE_UNPORTABLE.txt). The original iOS counter's `make ios-test` still passes. Compiler verification passed the Rust workspace suite, strict workspace Clippy, and formatting, and the duplication gate passes at 4.8% against its unchanged 5% ceiling under the Deslop 0.27.0 version CI pins. Android x86-64 is no longer compile/link evidence alone: the hosted `test-integration` job executes the same 130 goldens, the same 79 pinned rejections and the same 18 GPU comparisons on an x86-64 emulator, and the application smoke passes there in both its fresh and process-restart phases. The rejection set is identical across `ios-sim`, `android-arm64` and `android-x64`, which is what makes one shared manifest correct: three slices, one boundary implementation.
+Earlier platform runs exercised the iOS simulator, a physical iPhone, and Android emulators, including SQLite restoration and live GitHub responses. Those historical results and the mobile corpus gates are recorded in [plan 0030](../plans/0030-reactive-mobile-apps.md). They do not establish device execution of the current handler migration. Re-run the platform commands in the application README to refresh that evidence.
 
 On iOS, `--inbox-diagnostics` writes the latest complete envelope to `Documents/inbox-state.json`, and `--inbox-open-first` sends one ordinary `open` event for the first loaded issue once startup commands finish, so the Markdown detail screen can be captured without simulated taps. Both are explicit local debugging modes, disabled during ordinary launch. The envelope allows checking that the displayed UI, issue data, pending commands, and persisted application state came from Osprey. Screenshots provide visual evidence alongside those protocol assertions.
 

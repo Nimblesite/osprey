@@ -21,13 +21,10 @@ module App
         "security" => SecurityPage::view model
         _ => OverviewPage::view model
 
-    export present : AppModel -> string -> int
-    present model commands = Bridge::present (Model::encode model) (Layout::shell model (page model)) commands
+    export present model commands = Bridge::present (Model::encode model) (Layout::shell model (page model)) commands
 
-    export start : Unit -> int
-    start () = present (Model::initial ()) (Commands::hydrate ())
+    export start render = render (\() => present (Model::initial ()) (Commands::hydrate ()))
 
-    export receive : string -> int
-    receive payload =
+    export receive render payload =
         updated = Update::dispatch payload
-        present updated.model updated.commands
+        render (\() => present updated.model updated.commands)

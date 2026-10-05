@@ -1,0 +1,1 @@
+examples/chapter-02/failscompilation/immutable-assignment.osp:3:4: cannot assign to immutable variable `sessionCount`

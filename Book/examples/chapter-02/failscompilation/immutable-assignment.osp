@@ -1,0 +1,5 @@
+fn main() = {
+    let sessionCount = 3
+    sessionCount = 4
+    print(sessionCount)
+}

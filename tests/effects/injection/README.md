@@ -63,6 +63,4 @@ from `appendNote` and `countNotes` and refuses to let either reach program
 entry without a handler that discharges it. Swapping the implementation is
 swapping the caller's one word: `withDiskStorage` becomes `withMockStorage`.
 
-These handlers are direct-substitution handlers — no arm calls `resume` — so
-each arm's value simply becomes the operation's result and the caller carries
-on. See the [effects overview](../README.md) for the resuming form.
+These effects declare value operations, so each arm returns the operation result and the caller continues. See the [effects overview](../README.md) for the resuming form.

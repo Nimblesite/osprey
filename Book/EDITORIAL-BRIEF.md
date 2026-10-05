@@ -2,7 +2,7 @@
 
 ## Positioning
 
-*The Osprey Book* is the bridge between “I can copy a code sample” and “I can design a small, honest program.” It teaches programming through Osprey's practical functional core: values, functions, inferred types, pattern matching, explicit failure, effects, and isolated concurrency.
+*The Osprey Book* is the bridge between “I can copy a code sample” and “I can design a small, honest program.” It teaches programming through Osprey's practical functional core: values, functions, inferred types, pattern matching, explicit failure, algebraic effects, and concurrent work. Effects receive a full beginner introduction: request an operation, choose its handler, and run the same application code under another implementation.
 
 The book is not a compressed language specification. It is a guided build in which every new idea solves a problem the reader has already met.
 
@@ -84,6 +84,9 @@ The project is intentionally ordinary. It provides enough domain to make types a
 - A generated illustration never contains product output, syntax, diagnostics, or labels.
 - Future work is visibly labelled as future work.
 - Native, WebAssembly, effect-resumption, module, package, GPU, and C-FFI limits remain beside the relevant claim.
+- Teach implemented project modules and cross-flavor imports separately from the planned package manager.
+- Explain the default allocator, GC, and ARC as distinct choices with target limits. Do not imply that default builds reclaim general allocations automatically.
+- Describe the current thread-backed fiber runtime accurately; reserve structured scopes and cancellation for explicitly labelled future work.
 
 ## Explicitly out of scope
 
@@ -93,5 +96,4 @@ The project is intentionally ordinary. It provides enough domain to make types a
 - A promise that alpha software will never change
 - Treating ML syntax as mandatory for “real” functional programming
 - Pretending a coding agent makes checking and testing optional
-- Teaching roadmap-only modules, packages, hardware GPU execution, or strict static memory as shipped features
-
+- Teaching the planned package manager, structured cancellation, GPU device execution, or strict static memory as shipped features

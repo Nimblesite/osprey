@@ -13,6 +13,20 @@ iOS and Android. Each target has an explicit runtime boundary.
 
 Current version: **{% if releases.latest %}{{ releases.latest.tag }}{% else %}development build{% endif %}**.
 
+## Algebraic effects
+
+Start with the [practical guide](/docs/effects/). Both source flavors support:
+
+- Callable `handler` values, captured handler factories, composition and rest-of-block `handle`.
+- Typed value operations and explicit `control` operations; native control handlers can resume once or abandon the computation.
+- `return` clauses that transform normal completion.
+- `handle static` and static handler values that remove handled effect dispatch after source validation.
+- Compile-time rejection of unhandled operations, including requests through helpers and callbacks.
+
+Value handlers and static interpretation have native, WebAssembly and mobile paths. Dynamic control handlers require the native target. Open `!e` annotations have a closed-program prototype; independently quantified effect rows in function types, reusable continuations, owned escaping continuations, named instances, masking and finalizers remain unfinished. [Plan 0016](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0016-algebraic-effects-and-handlers.md) records the evidence and remaining work.
+
+The [banking](/docs/web-apps/) and [mobile](/docs/mobile-apps/) examples use these handlers at their application boundaries.
+
 ## Releases
 
 {% if releases.list.length %}
@@ -33,8 +47,7 @@ The release list was unavailable when this page was built. See
 - Hindley–Milner type inference, algebraic data types and exhaustive pattern
   matching for supported patterns
 - User-defined generics, declaration-site variance, generic effects and explicit
-  call-site type arguments in both flavors. Generic calls and callbacks preserve declaration scope; nested calls keep independent types and evaluate arguments once in application order.
-- Typed effect operations, lexical handlers, compile-time rejection of missing handlers, and single-shot `resume` for `--target=native`
+  call-site type arguments in both flavors
 - Immutable persistent lists and maps
 - Lightweight native fibers and channels
 - Native HTTP, WebSocket, file, process and C FFI runtime APIs
@@ -67,8 +80,9 @@ The compiler rejects unsupported target operations during `--check`, `--llvm`, a
 
 ## Source compatibility
 
-One change in the current development build rejects source that older builds
-accepted:
+The current development build rejects these older forms:
+
+- `handle … in …` and ML `handle … do …` are removed. Use `let h = handler E { … }` then `h(work)`, or a rest-of-block `handle`. Operations that use `resume` must be declared `control`; an arm without `resume` for a control operation abandons the computation. Ordinary value arms return to their perform site.
 
 - `//!` documents whatever encloses it — a file, a namespace or a module — so it
   has to be the first item of one. Written anywhere else it is now a compile
@@ -81,8 +95,6 @@ accepted:
 
 ## Current limits
 
-- Dynamic control handlers are supported by `--target=native`. Mobile C ABI targets and WebAssembly reject their unavailable continuations at compile time; value-operation handlers remain usable.
-- The effect checker follows operations through the closed program, including exported mobile functions. It does not yet provide general polymorphic effect-row variables in public higher-order signatures.
 - Tail-call optimisation is not implemented.
 - The package manager remains roadmap work. Working project/module examples do not imply every module-system feature is complete.
 - Opaque record and union types enforce their module boundaries. Opaque manifest aliases and separate checking of importers against signatures remain unfinished; unsupported opaque aliases are rejected.

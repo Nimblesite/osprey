@@ -1,0 +1,5 @@
+fn lessonTitle(goal) = "Lesson: " + goal
+
+test("title keeps the learner's goal", fn() =>
+    expect(lessonTitle("Read a match"), "Lesson: Read a match")
+)

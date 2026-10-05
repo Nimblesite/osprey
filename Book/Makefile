@@ -19,7 +19,10 @@ DIAGRAM_PNGS := \
 	assets/diagrams/02-expression-flow.png \
 	assets/diagrams/03-inference-trail.png \
 	assets/diagrams/03-annotation-choice.png \
-	assets/diagrams/03-mismatch-locator.png
+	assets/diagrams/03-mismatch-locator.png \
+	$(patsubst %.mmd,%.png,$(wildcard assets/diagrams/08-*.mmd assets/diagrams/09-*.mmd assets/diagrams/10-*.mmd))
+
+MERMAID_PNGS := $(patsubst %.mmd,%.png,$(wildcard assets/diagrams/*.mmd))
 
 .PHONY: check check-examples render-assets epub html release clean
 
@@ -36,7 +39,9 @@ check-examples:
 		for source in examples/chapter-*/*.osp examples/chapter-*/*.ospml; do \
 			test -f "$$source" || continue; \
 			$(OSPREY) "$$source" --check >/dev/null; \
-			$(OSPREY) "$$source" --run > "$$book_tmp/output"; \
+			book_case=$$(mktemp -d "$$book_tmp/run.XXXXXX"); \
+			$(OSPREY) "$$source" --compile -o "$$book_case/program" >/dev/null; \
+			(cd "$$book_case" && ./program) > "$$book_tmp/output"; \
 			diff -u "$${source%.*}.expectedoutput" "$$book_tmp/output"; \
 		done; \
 		for source in examples/chapter-*/failscompilation/*.osp; do \
@@ -57,7 +62,7 @@ assets/cover/cover.png: assets/cover/cover.svg
 assets/diagrams/%.png: assets/diagrams/%.svg
 	@$(RSVG_CONVERT) --width 1600 --height 1000 --output $@ $<
 
-$(filter assets/diagrams/03-%,$(DIAGRAM_PNGS)): assets/diagrams/03-%.png: assets/diagrams/03-%.svg Makefile
+$(MERMAID_PNGS): assets/diagrams/%.png: assets/diagrams/%.svg Makefile
 	@$(MMDC) $(MERMAID_FLAGS) --input $(@:.png=.mmd) --output $@ --scale 2
 
 .PRECIOUS: assets/diagrams/%.svg

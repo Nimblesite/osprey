@@ -1,0 +1,15 @@
+namespace talonmobile
+
+import talonmobile::Support
+import talonmobile::Mobile
+import bank::Json
+
+main () =
+    loaded = Support::loaded ()
+    activity = Support::click loaded "nav-activity"
+    modal = Support::click loaded "open-account"
+    refused = Support::http loaded "mutate-withdraw" 400 (Json::error "insufficient funds")
+    routes = Json::rawField "overview" loaded + "," + Json::rawField "accounts" (Support::click loaded "nav-accounts") + "," + Json::rawField "activity" activity + "," + Json::rawField "security" (Support::click loaded "nav-security")
+    forms = Json::rawField "deposit" (Support::click loaded "quick-deposit") + "," + Json::rawField "withdraw" (Support::click loaded "quick-withdraw") + "," + Json::rawField "transfer" (Support::click loaded "quick-transfer") + "," + Json::rawField "modal" modal
+    states = Json::rawField "startup" (Mobile::start ()) + "," + Json::rawField "refused" refused + "," + Json::rawField "filtered" (Support::click activity "filter-refused") + "," + Json::rawField "searched" (Support::input activity "activity-search" "Amelia")
+    print (Json::obj (routes + "," + forms + "," + states))

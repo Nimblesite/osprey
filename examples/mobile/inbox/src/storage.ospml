@@ -11,20 +11,42 @@ type CacheResult =
     valid : bool
     error : string
 
+type SqlRequest =
+    id : string
+    statement : string
+    params : string
+
+type HttpRequest =
+    id : string
+    url : string
+
 module Storage
-    sql id statement params = Json::arr (Json::obj (
-        Json::strField "kind" "sql" + "," + Json::strField "id" id + "," +
-        Json::strField "sql" statement + "," + Json::rawField "params" params))
+    export effect Requests
+        sql : SqlRequest => string
+        http : HttpRequest => string
 
-    export schema () = sql "schema" "CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)" "[]"
+    sqlCommand request = Json::arr (Json::obj (
+        Json::strField "kind" "sql" + "," + Json::strField "id" request.id + "," +
+        Json::strField "sql" request.statement + "," + Json::rawField "params" request.params))
 
-    export load () = sql "load" "SELECT value FROM app_state WHERE key = ?" (Json::arr (Json::quote "inbox"))
+    httpCommand request = Json::arr (Json::obj (
+        Json::strField "kind" "http" + "," + Json::strField "id" request.id + "," +
+        Json::strField "url" request.url))
 
-    export save model = sql model.write "INSERT OR REPLACE INTO app_state (key, value) VALUES (?, ?)" (Json::arr (Json::quote "inbox" + "," + Json::quote (Model::snapshot model)))
+    // The native host executes these commands after the Osprey call returns.
+    export commands work =
+        native = handler Requests
+            sql request => sqlCommand request
+            http request => httpCommand request
+        native work
 
-    export http model = Json::arr (Json::obj (
-        Json::strField "kind" "http" + "," + Json::strField "id" model.pending + "," +
-        Json::strField "url" (Github::url model.repo)))
+    export schema () = SqlRequest(id = "schema", statement = "CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)", params = "[]")
+
+    export load () = SqlRequest(id = "load", statement = "SELECT value FROM app_state WHERE key = ?", params = Json::arr (Json::quote "inbox"))
+
+    export save model = SqlRequest(id = model.write, statement = "INSERT OR REPLACE INTO app_state (key, value) VALUES (?, ?)", params = Json::arr (Json::quote "inbox" + "," + Json::quote (Model::snapshot model)))
+
+    export fetch model = HttpRequest(id = model.pending, url = Github::url model.repo)
 
     validItem doc index =
         prefix = "[${index}]"

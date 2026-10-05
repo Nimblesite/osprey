@@ -3,7 +3,19 @@
 namespace talon
 
 import talon::App
+import talon::Bridge
 
-osprey_web_dispatch payload = App::receive payload
+extern osprey_web_render (payload : string) -> int
 
-main () = App::start ()
+browser () = handler Bridge::Render
+    present envelope =>
+        _rendered = osprey_web_render envelope
+        envelope
+
+osprey_web_dispatch payload =
+    _envelope = App::receive (browser ()) payload
+    0
+
+main () =
+    _envelope = App::start (browser ())
+    0

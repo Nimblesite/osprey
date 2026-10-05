@@ -1,5 +1,7 @@
 # Chapter 6 — Model only valid states
 
+**Chapter outline.** The teaching plan below has been checked against the current type system; the full lesson and checkpoint are still to be written.
+
 ## Reader outcome
 
 Use records and unions to represent the real states of a problem and remove meaningless field combinations.
@@ -35,4 +37,3 @@ Replace status booleans with a closed union and update every renderer and test.
 ## Source map
 
 `0003-Syntax`, `0004-TypeSystem`, `0007-PatternMatching`
-

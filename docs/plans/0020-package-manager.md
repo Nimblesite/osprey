@@ -16,10 +16,7 @@ non-executable installation, evidence-based maintenance scoring, and fair
 discovery. Local development can replace any canonical package key globally with
 a checkout and switch it back in one command. Release builds reject those
 overlays, pin every input, and contain exactly one source for each package key.
-The API, policy/domain layer, resolver, and WebAssembly frontend are written in
-Osprey. Rust remains only the existing compiler/CLI bootstrap and a small native
-host for cryptography, filesystem atomicity, process isolation, and HSM/forge
-protocols.
+The entire package system is implemented in Osprey. This includes the CLI, manifest parser, domain model, resolver, locks, cache, cryptography, filesystem transactions, process isolation, HSM/forge adapters, registry API, publication pipeline, scoring, and WebAssembly frontend. Package tests, independent reference implementations, and operational tooling are also Osprey. There is no Rust host, CLI bridge, or other implementation-language exception. The binding contract is `[PACKAGE-IMPLEMENTATION-LANGUAGE]` in spec 0029.
 
 The launch package format is Osprey source plus closed-format declared data. SQLite and
 other native components are explicit system capabilities installed separately
@@ -43,19 +40,22 @@ binaries, runs lifecycle hooks, or invokes those installers.
 - The package system therefore starts with local identity/resolution tests and
   does not put a network facade in front of unfinished trust semantics.
 
+These compiler crates are existing build tools, not implementation locations for this plan. Build the checked-in Osprey package application with the existing compiler. Do not add package commands, package-specific host code, or package semantics to compiler/runtime sources in another language. Missing Osprey capabilities are explicit delivery blockers with Osprey regression cases, never permission to implement a component elsewhere.
+
 ## One-source architecture
 
 The implementation is placed deliberately:
 
 ```text
 schemas/package-registry.td       canonical typeDiagram model
-registry/core/                    Osprey domain, policy, resolver, scoring
+registry/core/                    Osprey manifests, domain, policy, resolver, scoring
+registry/cli/                     Osprey command parsing, presentation, compiler invocation
+registry/host/                    Osprey effect handlers, crypto, filesystem and process adapters
 registry/api/                     Osprey REST application
 registry/web/                     Osprey browser application -> WebAssembly
-registry/supabase/migrations/     PostgreSQL schema and RLS policy
-crates/osprey-package-host/       audited Rust host effects and CLI bridge
-crates/osprey-project/            manifest/project integration
-crates/osprey-cli/src/package/    thin package command presentation
+registry/tests/                   Osprey conformance tests, independent oracles, fuzz drivers
+registry/ops/                     Osprey publication, migration and operational tooling
+registry/supabase/migrations/     declarative PostgreSQL schema and RLS data
 ```
 
 `schemas/package-registry.td` is the source of generated Osprey domain types as
@@ -65,14 +65,17 @@ fixtures directly and does not duplicate the model in service code.
 
 `registry/core` owns every rule shared by CLI, API, and web: identities,
 manifest semantics, catalog projection, solver clauses/objectives, score
-methodology, and ranking policy. Host code implements effects but cannot choose
-policy. API preview resolution and local lock resolution run the same compiled
-core and policy digest.
+methodology, and ranking policy. `registry/host` implements effect handlers in Osprey and cannot choose policy. API preview resolution and local lock resolution run the same compiled core and policy digest. Schema, manifest, fixture, and deployment data are declarative inputs; they cannot hide executable package logic in another language.
+
+The Osprey command frontend owns the planned `osprey package`, `add`, `use`, `lock`, and other package commands. It invokes the existing compiler for compilation through Osprey process effects. Bootstrap and command routing must not require edits to the existing Rust CLI or a non-Osprey launcher.
 
 ## Milestone A — Local package engine
 
 ### Phase 0 — Schemas and adversarial fixtures
 
+- [ ] Establish `registry/core`, `registry/cli`, `registry/host`, and `registry/tests` as ordinary Osprey projects built by the existing compiler; prove an Osprey command reaches the shared core and returns a tested result.
+- [ ] Inventory required argument, byte-buffer, filesystem, atomicity, process, cryptographic, and network capabilities. Exercise each through Osprey tests and record unavailable capabilities before depending on them. No substitute implementation in another language is permitted.
+- [ ] Add an Osprey conformance gate that rejects non-Osprey executable source in the package system, including tests, host adapters, operational tools, and handwritten browser glue; validate declarative inputs separately.
 - [ ] Extract the typeDiagram block from spec 0031 into
       `schemas/package-registry.td` and make documentation import/render it.
 - [ ] Add canonical JSON fixtures for manifests; proof-free publication payloads
@@ -92,15 +95,14 @@ core and policy digest.
       and acyclic dependency-selection/build-plan/full-lock staging.
 - [ ] Make schema/fixture validation a fail-fast `make test` stage.
 
-Exit gate: every serialized form and security state transition has a reviewed,
-byte-exact fixture before storage or API code exists.
+Exit gate: the package application and test harness compile from Osprey source without a package-specific host or launcher in another language, and every serialized form and security state transition has a reviewed, byte-exact fixture before storage or API code exists.
 
 ### Phase 1 — Manifest and canonical identity
 
-- [ ] Replace the narrow line parser in `osprey-project` with one typed TOML
-      parser that preserves current `[project]`/`[modules]` behavior and adds
+- [ ] Implement one typed TOML parser in `registry/core`, written in Osprey, that preserves current `[project]`/`[modules]` behavior and adds
       `[package]`, bounded discovery metadata, all three dependency tables,
       `[[assets]]`, and `[system.*]` from `[PACKAGE-MANIFEST]`.
+- [ ] Have the Osprey frontend validate manifests and prepare deterministic compiler inputs through the existing compiler interface. Keep package parsing and resolution out of the compiler's Rust project loader.
 - [ ] Reject SemVer/version fields, upper ranges, peer/optional dependencies,
       forge dependencies, published path dependencies, and unknown security-
       relevant keys with actionable source spans.
@@ -163,7 +165,7 @@ supported hosts, and every forbidden package input fails before hashing.
       capability-denied `--audit-revoked` reproduction.
 - [ ] Implement cache locks, concurrent fetch deduplication, interrupted-write
       recovery, garbage collection from lock roots, and corruption self-healing.
-- [ ] Add `fetch`, `verify --offline`, `tree`, `why`, and `doctor` host effects
+- [ ] Add `fetch`, `verify --offline`, `tree`, `why`, and `doctor` in Osprey with Osprey host-effect handlers
       with stable machine-readable output beneath concise terminal rendering.
 
 Exit gate: a fetched release graph rebuilds offline byte-for-byte with one node
@@ -187,7 +189,7 @@ termination at every write boundary leaves either the old graph or the new one.
 - [ ] Property-test soundness, bounded completeness, determinism, safe
       downgrade, global one-key/one-source uniqueness, overlay replacement, and
       objective ordering; differentially test against an independent exhaustive
-      oracle on small graphs.
+      Osprey oracle on small graphs.
 - [ ] Benchmark a representative 100,000-release catalog after metadata load:
       ordinary add/update p95 below two seconds and adversarial unsat below ten
       seconds on the CI reference machine. Performance work cannot weaken
@@ -200,7 +202,7 @@ permutation changes a lock or explanation.
 
 - [ ] Add `login`, `package init`, `add`, `remove`, `lock`, `update`, `use`,
       `fetch`, `tree`, `why`, `audit`, `verify`, `doctor`, `publish`, and `yank`
-      as thin modules rather than enlarging `main.rs`.
+      as Osprey modules in `registry/cli`, sharing `registry/core` and `registry/host`.
 - [ ] Make `add`, `remove`, `lock`, and `update` show dependency, capability,
       vulnerability, and epoch deltas before one atomic manifest/lock update.
 - [ ] Make `add`, `remove`, and `update` atomically recompute the registry-only
@@ -379,7 +381,7 @@ or exercise authority unsupported by measured evidence.
 - [ ] Add counterfactual tests proving disclosure, a new package, a small
       community, or absence of popularity cannot mechanically lower rank.
 - [ ] Differentially replay every normalizer, percentile, confidence and score
-      against a second implementation and the signed basis-point golden vectors.
+      against a second independent Osprey implementation and the signed basis-point golden vectors.
 
 Exit gate: every score is independently reproducible and no aggregate conceals
 which evidence changed it.
@@ -413,6 +415,7 @@ lowering security eligibility or allowing the ranker to learn its own bias.
 
 ### Phase 12 — Hardening and general availability
 
+- [ ] Verify `[PACKAGE-IMPLEMENTATION-LANGUAGE]` across the complete delivered source and build graph: all package-system executable implementation, tests, adapters, and operational tooling are Osprey; no package-specific Rust/C/JavaScript/Python component or launcher is present.
 - [ ] Operate independent CAS replicas, log monitors, four external witnesses
       with 3-of-4 quorum, cross-logging, 3-of-5 offline root custody, 2-of-3
       release-role HSMs, documented ceremonies, and compromise runbooks.
@@ -438,7 +441,8 @@ Exit gate: every `[PACKAGE-CONFORMANCE]` and
 
 | Risk | Required control |
 | --- | --- |
-| Package manager bootstraps itself | Registry core is an ordinary checked-in Osprey project built by the existing compiler; its released source later enters the same pipeline. |
+| Package manager bootstraps itself | The entire package application, including CLI and host effects, is checked-in Osprey built by the existing compiler; no non-Osprey package bootstrap is introduced. Its released source later enters the same pipeline. |
+| Required capability is unavailable in Osprey | Record the blocker with an Osprey regression case and resolve it through Osprey source or an existing platform interface. Never substitute package implementation in another language or weaken a security gate. |
 | Solver complexity or slowness | Complete CDCL/MaxSAT remains mandatory; indexing, incremental reuse, and objective encodings optimize it. There is no greedy mode. |
 | Supabase compromise or lock-in | Clients trust TUF/log/digests; all authoritative objects are reconstructable and storage/API are replaceable. |
 | AI false positives or evasion | Real-prior gates, abstention, drift demotion, quarantine, independent appeal, and no AI-only authority. |
@@ -450,6 +454,8 @@ Exit gate: every `[PACKAGE-CONFORMANCE]` and
 | Key compromise | 3-of-5 offline root, 2-of-3 release roles, independent custody/control planes, witnessed rotation, and client version floors. |
 
 ## Definition of done
+
+Every executable component delivered by this plan is implemented in Osprey, including the CLI, host effects, cryptography, adapters, tests, and operational tools. A mixed-language package implementation does not satisfy this plan.
 
 The work is complete only when an unknown new publisher can publish a small
 Osprey library from a reviewed forge commit with one command; a fresh client can

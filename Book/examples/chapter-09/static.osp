@@ -1,0 +1,9 @@
+effect Learner { name: fn() -> string }
+
+fn greeting() = "Ready to learn, " + perform Learner.name() + "?"
+
+let message = {
+    handle static Learner { name => "Mika" }
+    greeting()
+}
+print(message)

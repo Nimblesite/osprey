@@ -1,12 +1,5 @@
-// store/metrics — the namespace's ONE state module. [MODULES-STATE-MODULE]
-//
-// `state Metrics : MetricsApi` owns the only durable mutable cell in the
-// whole bank. The cell is private by construction: it can be touched ONLY
-// inside the handler arms of the module's own exported effect, and that
-// handler region exists only while the exported installer (`track`) is
-// running. Importing this module allocates nothing; each `track` call
-// instantiates a fresh `served` cell for exactly that region.
-// [MODULES-STATE-SOURCE-OF-TRUTH]
+// Each track call owns a request counter, accessed through MetricsFx arms.
+// [MODULES-STATE-MODULE] [MODULES-STATE-SOURCE-OF-TRUTH]
 
 namespace bank
 

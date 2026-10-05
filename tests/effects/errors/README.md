@@ -1,8 +1,7 @@
 # Direct recovery tests
 
 The paired `direct_recovery.test.osp` and `direct_recovery.test.ospml` suites
-cover handlers whose regions contain no `resume`. In this mode an arm supplies
-the current operation result, and execution continues after `perform`.
+cover operations declared without `control`. Each value arm supplies the operation result, and execution continues after `perform`. The operation declaration determines this behavior.
 
 The ten named cases check:
 
@@ -19,12 +18,6 @@ The ten named cases check:
 - a whole `Result<T, E>` operation value crosses the direct handler boundary
   intact — formerly the corruption in
   [critical issue #183](https://github.com/Nimblesite/osprey/issues/183).
-
-That final case was written to return `Pass` automatically when the correct value
-arrives and an explicit `Skip` while #183 remained reproducible, so it could never
-label corrupted data as passing. **#183 is fixed, so it now returns `Pass`** in
-both flavors under all three memory backends — the self-skipping shape is what
-made the transition observable rather than silent.
 
 Run only these twins with:
 

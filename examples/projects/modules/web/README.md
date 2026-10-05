@@ -1,9 +1,8 @@
 # Osprey React host
 
-This package is the deliberately small browser runtime for the Talon Bank
-example. Osprey owns the application model, update function, view document and
-effects. React only reconciles the JSON view document with the DOM; no React
-component tree is hand-authored for the bank.
+This package hosts Talon Bank’s Osprey WebAssembly application. The app performs `Bridge::Render.present` with a complete render envelope. Both browser entry points apply the callable `browser ()` handler in `client/src/main.ospml`, which supplies the `osprey_web.render` import. The application model, updates and views stay in Osprey; React reconciles the supplied view data.
+
+`Render.present` is a value operation: the handler returns the host result to the caller without capturing a continuation. HTTP, focus and navigation are command data inside the envelope, interpreted by this host.
 
 `npm run build` performs the complete pipeline:
 

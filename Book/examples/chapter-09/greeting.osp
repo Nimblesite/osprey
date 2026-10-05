@@ -1,0 +1,8 @@
+effect Learner { name: fn() -> string }
+
+fn greeting() = "Ready to learn, " + perform Learner.name() + "?"
+
+let mika = handler Learner { name => "Mika" }
+let rowan = handler Learner { name => "Rowan" }
+
+print("${mika(greeting)}\n${rowan(greeting)}")

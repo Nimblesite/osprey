@@ -1,6 +1,17 @@
 # Osprey on iPhone
 
-This example runs Osprey application logic inside a SwiftUI iPhone app. Osprey decides how the counter changes and formats its messages. Swift owns the screen and the host callback that writes to the iOS log. The compiler produces a native static library and a C header that Swift imports directly.
+A SwiftUI counter with Osprey application logic and an algebraic effect for host logging. Osprey decides how the counter changes and formats messages. A callable `HostLog` handler forwards messages to Swift through the generated C interface.
+
+The policy in [`app.osp`](app.osp) is an ordinary handler value:
+
+```osprey
+effect HostLog { write: fn(string) -> int }
+let nativeLog = handler HostLog { write message => ios_host_log(message) }
+
+fn notify(count) = nativeLog(|| => perform HostLog.write(summary(count)))
+```
+
+The same handler runs initialization logging and counter notifications. Its value operation returns the host callback's integer result synchronously. Handler construction installs nothing; `nativeLog(work)` installs it while `work` runs. Swift keeps calling the existing `osprey_notify` function.
 
 ## Build and launch
 
@@ -37,11 +48,10 @@ target/release/osprey examples/ios/app.osp --compile --target=ios-sim \
 
 This emits `libOspreyApp.a`, containing application code and the matching runtime, and `libOspreyApp.h`. `OspreyCounter/Bridge.h` includes that generated header. The app calls `osprey_main()` once before calling functions such as `osprey_increment(count)` and `osprey_summary(count)`.
 
-The call back into Swift is declared in Osprey:
+The handler calls this Osprey declaration:
 
 ```osprey
 extern fn ios_host_log(message: string) -> int
-fn notify(count) = ios_host_log(summary(count))
 ```
 
 `iosHostLog` implements that C symbol using Swift's `@_cdecl`, copies the incoming UTF-8 string, and uses Foundation's `NSLog`. The screen displays the copied message after every counter change. A platform service can follow the same pattern: expose a small scalar C function, implement it in Swift, and call it from Osprey.
@@ -50,7 +60,7 @@ Calls are synchronous and run on the main thread in this sample. Host strings ar
 
 ## Verification and supported scope
 
-`examples/ios/run.sh --smoke` launches the actual app with assertions for initialization exactly once, scalar and UTF-8 string returns, checked integer overflow, decrement bounds, and the Swift callback. The app writes `OSPREY_IOS_SMOKE_OK` into its sandbox only if every assertion passes. The script removes any previous result before launch and fails on an assertion failure or missing result.
+`examples/ios/run.sh --smoke` launches the actual app with assertions for initialization exactly once, scalar and UTF-8 string returns, saturating counter arithmetic, decrement bounds, and the effect-backed Swift callback. The app writes `OSPREY_IOS_SMOKE_OK` into its sandbox only if every assertion passes. The script removes any previous result before launch and fails on an assertion failure or missing result.
 
 The boundary supports `int`, `float`, `bool`, `string`, and `Unit` returns. Keep records, collections, closures, and effect handlers inside Osprey and expose scalar wrapper functions. Unsupported target features, including explicit resumable effects and unavailable process/network APIs, produce compiler errors before LLVM or linking. Swift supplies platform services through the C boundary. See the [iOS target specification](../../docs/specs/0038-iOSTarget.md) for the exact contract and limitations.
 

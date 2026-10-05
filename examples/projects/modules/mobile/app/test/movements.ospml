@@ -1,0 +1,110 @@
+namespace talonmobile
+
+import talonmobile::Support
+import talon::BankData
+import bank::Json
+
+postCase id url data cents =
+    envelope = Support::submit (Support::loaded ()) id data
+    check "POST method" "POST" (Support::projected envelope "commands[0].method")
+    check "correct endpoint" url (Support::projected envelope "commands[0].url")
+    check "whole cents payload" cents (Support::projected (Support::body envelope) "cents")
+    check "pending mutation visible" "true" (Support::model envelope).busy
+    check "pending notice" "info" (Support::model envelope).noticeTone
+
+depositCase () =
+    fields = Support::fields "2" " $1,234.56 " "  Deposit \"日本語\"\nready  "
+    posted = Support::submit (Support::loaded ()) "submit-deposit" fields
+    postCase "submit-deposit" "/api/deposit" fields "123456"
+    check "account number typed" "2" (Support::projected (Support::body posted) "account")
+    check "Unicode quotes and newline kept" "Deposit \"日本語\"\nready" (Support::projected (Support::body posted) "note")
+    check "completion id" "mutate-deposit" (Support::projected posted "commands[0].id")
+
+withdrawCase () =
+    fields = Support::fields "1" "9.5" "Withdrawal"
+    posted = Support::submit (Support::loaded ()) "submit-withdraw" fields
+    postCase "submit-withdraw" "/api/withdraw" fields "950"
+    check "withdraw completion id" "mutate-withdraw" (Support::projected posted "commands[0].id")
+
+transferCase () =
+    fields = Support::transferFields "1" "2" "25.05"
+    posted = Support::submit (Support::loaded ()) "submit-transfer" fields
+    postCase "submit-transfer" "/api/transfer" fields "2505"
+    check "source account" "1" (Support::projected (Support::body posted) "from")
+    check "destination account" "2" (Support::projected (Support::body posted) "to")
+    check "transfer completion id" "mutate-transfer" (Support::projected posted "commands[0].id")
+
+invalidSubmission id fields title =
+    rejected = Support::submit (Support::loaded ()) id fields
+    check "validation has no HTTP request" "MISSING" (Support::projected rejected "commands[0].kind")
+    check "validation does not become busy" "false" (Support::model rejected).busy
+    check "validation displayed" title (Support::model rejected).noticeTitle
+    check "validation error tone" "error" (Support::model rejected).noticeTone
+
+invalidFormsCase () =
+    invalidSubmission "submit-deposit" (Support::fields "0" "1" "") "Check the deposit"
+    invalidSubmission "submit-deposit" (Support::fields "1" "0" "") "Check the deposit"
+    invalidSubmission "submit-withdraw" (Support::fields "bad" "1" "") "Check the withdrawal"
+    invalidSubmission "submit-withdraw" (Support::fields "1" "-1" "") "Check the withdrawal"
+    invalidSubmission "submit-transfer" (Support::transferFields "1" "1" "2") "Choose two accounts"
+    invalidSubmission "submit-transfer" (Support::transferFields "1" "0" "2") "Check the transfer"
+    invalidSubmission "submit-transfer" (Support::transferFields "1" "2" "1.234") "Check the transfer"
+    invalidSubmission "submit-open-account" (Json::obj (Json::strField "name" " \t\n ")) "Owner name required"
+
+moneyCase () =
+    check "single fractional digit" 120 (BankData::amountCents "1.2")
+    check "properly grouped dollars" 123456789 (BankData::amountCents "$1,234,567.89")
+    check "leading decimal rejected" 0 (BankData::amountCents ".50")
+    check "exponent rejected" 0 (BankData::amountCents "1e3")
+    check "bad comma grouping rejected" 0 (BankData::amountCents "1,23.45")
+    check "extra fraction rejected" 0 (BankData::amountCents "1.234")
+    check "signed amount rejected" 0 (BankData::amountCents "+1.00")
+    check "integer overflow rejected" 0 (BankData::amountCents "9223372036854775807.99")
+
+openAccountCase () =
+    name = "Nora \"N\" Okafor 日本語"
+    opened = Support::click (Support::loaded ()) "open-account"
+    posted = Support::submit opened "submit-open-account" (Json::obj (Json::strField "name" "  ${name}  "))
+    completed = Support::http posted "mutate-open" 201 "{}"
+    check "account endpoint" "/api/accounts" (Support::projected posted "commands[0].url")
+    check "trimmed Unicode owner" name (Support::projected (Support::body posted) "name")
+    check "success closes modal" "closed" (Support::model completed).modal
+    check "success title" "Account opened" (Support::model completed).noticeTitle
+    check "success rehydrates accounts" "accounts" (Support::projected completed "commands[0].id")
+    check "success rehydrates journal" "activity" (Support::projected completed "commands[1].id")
+
+successCase id title =
+    completed = Support::http (Support::loaded ()) id 200 "{}"
+    check "success tone" "success" (Support::model completed).noticeTone
+    check "correct success title" title (Support::model completed).noticeTitle
+    check "busy clears" "false" (Support::model completed).busy
+    check "successful mutation refreshes ledger" "/api/accounts" (Support::projected completed "commands[0].url")
+
+successesCase () =
+    successCase "mutate-deposit" "Deposit complete"
+    successCase "mutate-withdraw" "Withdrawal complete"
+    successCase "mutate-transfer" "Transfer complete"
+
+refusalCase () =
+    loaded = Support::loaded ()
+    posted = Support::submit loaded "submit-withdraw" (Support::fields "3" "9999.99" "Too much")
+    refused = Support::http posted "mutate-withdraw" 400 (Json::error "insufficient funds")
+    dismissed = Support::click refused "dismiss-notice"
+    check "domain refusal title" "Operation refused" (Support::model refused).noticeTitle
+    check "server detail shown" "insufficient funds" (Support::model refused).noticeBody
+    check "balances remain until server confirms" (Support::model loaded).accounts (Support::model refused).accounts
+    check "refusal stops pending state" "false" (Support::model refused).busy
+    check "refusal refreshes audit journal" "/api/activity" (Support::projected refused "commands[1].url")
+    check "notice dismisses" "" (Support::model dismissed).noticeTone
+
+pendingSubmissionCase () =
+    fields = Support::fields "1" "25.00" "One tap"
+    pending = Support::submit (Support::loaded ()) "submit-deposit" fields
+    repeated = Support::submit pending "submit-deposit" fields
+    another = Support::submit pending "submit-transfer" (Support::transferFields "1" "2" "5")
+    check "repeated tap emits no second request" "MISSING" (Support::projected repeated "commands[0].kind")
+    check "different movement waits for completion" "MISSING" (Support::projected another "commands[0].kind")
+    check "pending state preserved" (Support::projected pending "model") (Support::projected repeated "model")
+    ready = Support::http pending "mutate-deposit" 200 "{}"
+    next = Support::submit ready "submit-deposit" fields
+    check "next operation enabled after completion" "POST" (Support::projected next "commands[0].method")

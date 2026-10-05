@@ -1,0 +1,24 @@
+namespace talonmobile
+
+import bank::Json
+import talon::Model
+import talonmobile::Mobile
+
+module Support
+    export projected source path = Json::getOr source path "MISSING"
+    export model envelope = Model::decode (projected envelope "model")
+    export event envelope members = Json::obj (Json::strField "model" (projected envelope "model") + "," + members)
+    export dispatch envelope members = Mobile::dispatch (event envelope members)
+    export click envelope id = dispatch envelope (Json::strField "kind" "click" + "," + Json::strField "id" id)
+    export input envelope id value = dispatch envelope (Json::strField "kind" "input" + "," + Json::strField "id" id + "," + Json::strField "value" value)
+    export submit envelope id data = dispatch envelope (Json::strField "kind" "submit" + "," + Json::strField "id" id + "," + Json::strField "data" data)
+    export http envelope id status data = dispatch envelope (Json::strField "kind" "http" + "," + Json::strField "id" id + "," + Json::numField "status" status + "," + Json::strField "data" data)
+    export location envelope route = dispatch envelope (Json::strField "kind" "location" + "," + Json::strField "value" route)
+    export accounts () = "[{\"id\":1,\"owner\":\"Amelia Chen\",\"cents\":125050,\"balance\":\"$1,250.50\"},{\"id\":2,\"owner\":\"Luca Moretti\",\"cents\":75000,\"balance\":\"$750.00\"},{\"id\":3,\"owner\":\"Nora Okafor\",\"cents\":0,\"balance\":\"$0.00\"}]"
+    export activity () = "[{\"id\":3,\"account\":3,\"owner\":\"Nora Okafor\",\"kind\":\"refused\",\"cents\":999999,\"note\":\"Protected refusal\"},{\"id\":2,\"account\":2,\"owner\":\"Luca Moretti\",\"kind\":\"debit\",\"cents\":20000,\"note\":\"Rent payment\"},{\"id\":1,\"account\":1,\"owner\":\"Amelia Chen\",\"kind\":\"credit\",\"cents\":125050,\"note\":\"Opening deposit\"}]"
+    export loaded () = http (http (Mobile::start ()) "accounts" 200 (accounts ())) "activity" 200 (activity ())
+    export hasText envelope value = contains envelope (Json::strField "text" value)
+    export hasClass envelope value = contains envelope (Json::strField "className" value)
+    export body envelope = projected envelope "commands[0].body"
+    export fields account amount note = Json::obj (Json::strField "account" account + "," + Json::strField "amount" amount + "," + Json::strField "note" note)
+    export transferFields from to amount = Json::obj (Json::strField "from" from + "," + Json::strField "to" to + "," + Json::strField "amount" amount + "," + Json::strField "note" "Savings")

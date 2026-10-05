@@ -1,0 +1,22 @@
+effect Web {
+    title: fn() -> Result<string, Error>
+}
+
+fn download() = match perform Web.title() {
+    Success { value } => "Received title: ${value}"
+    Error { message } => "Cannot download: ${message}"
+}
+
+fn main() = {
+    let available = handler Web {
+        title => Success { value: "Build a small Osprey CLI" }
+    }
+    let missing = handler Web {
+        title => Error { message: "HTTP 404" }
+    }
+    let offline = handler Web {
+        title => Error { message: "connection unavailable" }
+    }
+    print("${available(download)}\n${missing(download)}\n" +
+        offline(download))
+}

@@ -1,0 +1,12 @@
+effect Confirm { control ask: fn() -> bool }
+
+fn submit() = match perform Confirm.ask() {
+    true => "Lesson submitted"
+    false => "Lesson declined"
+}
+
+let yes = handler Confirm { ask => resume(true) }
+let no = handler Confirm { ask => resume(false) }
+let cancel = handler Confirm { ask => "Submission cancelled" }
+
+print("${yes(submit)}\n${no(submit)}\n${cancel(submit)}")

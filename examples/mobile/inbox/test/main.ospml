@@ -25,13 +25,37 @@ repositoryCase () =
     check "no spaces" false (Github::validRepository "own er/repo")
 
 startupCase () =
-    initial = Update::initial ()
-    schema = Update::dispatch initial.model (Support::sql "schema" true "[]" "")
-    fetching = Update::dispatch schema.model (Support::sql "load" true "[]" "")
+    initial = App::initial ()
+    schema = App::dispatch initial.model (Support::sql "schema" true "[]" "")
+    fetching = App::dispatch schema.model (Support::sql "load" true "[]" "")
     check "schema first" "schema" (Support::projected initial.commands "[0].id")
     check "prepared cache read" "inbox" (Support::projected schema.commands "[0].params[0]")
     check "fetch after empty cache" "http" (Support::projected fetching.commands "[0].kind")
     check "bounded public API URL" (Github::url "swiftlang/swift") (Support::projected fetching.commands "[0].url")
+
+requestHandlerCase () =
+    recording = handler Storage::Requests
+        sql request =>
+            check "schema request id" "schema" request.id
+            check "schema remains application SQL" true (startsWith request.statement "CREATE TABLE IF NOT EXISTS app_state")
+            check "schema has no bound values" "[]" request.params
+            "recorded SQL"
+    initial = recording Update::initial
+    repeated = recording Update::initial
+    check "handler supplies command representation" "recorded SQL" initial.commands
+    check "same handler can run again" initial.commands repeated.commands
+    check "state transition survives substitution" "schema" initial.model.stage
+
+scopedRequestsCase () =
+    loaded = Support::loaded ()
+    handle Storage::Requests
+        http request => "${request.id}|${request.url}"
+        sql request => "unexpected SQL"
+    refreshed = Update::dispatch loaded.model (Support::event "refresh")
+    check "scoped handler sees correlated request and URL" (refreshed.model.pending + "|" + Github::url loaded.model.repo) refreshed.commands
+    check "refresh still enters loading state" "true" refreshed.model.loading
+    searched = Update::dispatch loaded.model (Support::value "search" "parser")
+    check "local events require no host operation" "[]" searched.commands
 
 loadedCase () =
     updated = Support::loaded ()
@@ -44,7 +68,7 @@ loadedCase () =
 
 searchCase () =
     loaded = Support::loaded ()
-    searched = Update::dispatch loaded.model (Support::value "search" "ALICE")
+    searched = App::dispatch loaded.model (Support::value "search" "ALICE")
     view = View::render searched.model
     check "case insensitive author match" "101" (Support::projected view "items[0].id")
     check "second item filtered" "MISSING" (Support::projected view "items[1].id")
@@ -53,8 +77,8 @@ searchCase () =
 
 bookmarkCase () =
     loaded = Support::loaded ()
-    saved = Update::dispatch loaded.model (Support::bookmark "102")
-    filtered = Update::dispatch saved.model (Support::value "filter" "saved")
+    saved = App::dispatch loaded.model (Support::bookmark "102")
+    filtered = App::dispatch saved.model (Support::value "filter" "saved")
     view = View::render filtered.model
     check "saved count changes immediately" "1" (Support::projected view "bookmarked")
     check "saved filter" "102" (Support::projected view "items[0].id")
@@ -63,11 +87,11 @@ bookmarkCase () =
 
 cacheCase () =
     loaded = Support::loaded ()
-    saved = Update::dispatch loaded.model (Support::bookmark "101")
+    saved = App::dispatch loaded.model (Support::bookmark "101")
     snapshot = Model::snapshot saved.model
-    initial = Update::initial ()
-    schema = Update::dispatch initial.model (Support::sql "schema" true "[]" "")
-    restored = Update::dispatch schema.model (Support::sql "load" true (Json::arr (Json::obj (Json::strField "value" snapshot))) "")
+    initial = App::initial ()
+    schema = App::dispatch initial.model (Support::sql "schema" true "[]" "")
+    restored = App::dispatch schema.model (Support::sql "load" true (Json::arr (Json::obj (Json::strField "value" snapshot))) "")
     check "reopen restores issues" saved.model.items restored.model.items
     check "reopen restores bookmarks" saved.model.saved restored.model.saved
     check "cached launch stays offline" "[]" restored.commands
@@ -75,15 +99,15 @@ cacheCase () =
 
 staleCase () =
     first = Support::awaiting ()
-    second = Update::dispatch first.model (Support::value "repository" "rust-lang/rust")
-    stale = Update::dispatch second.model (Support::http first.model.pending 200 (Support::fixture ()) "")
+    second = App::dispatch first.model (Support::value "repository" "rust-lang/rust")
+    stale = App::dispatch second.model (Support::http first.model.pending 200 (Support::fixture ()) "")
     check "old response ignored" (Model::encode second.model) (Model::encode stale.model)
     check "old response cannot persist" "[]" stale.commands
 
 offlineCase () =
     loaded = Support::loaded ()
-    refresh = Update::dispatch loaded.model (Support::event "refresh")
-    failed = Update::dispatch refresh.model (Support::http refresh.model.pending 0 "" "The internet connection is offline.")
+    refresh = App::dispatch loaded.model (Support::event "refresh")
+    failed = App::dispatch refresh.model (Support::http refresh.model.pending 0 "" "The internet connection is offline.")
     check "offline retains issues" loaded.model.items failed.model.items
     check "error is visible" true (contains failed.model.error "offline")
     check "loading stops on failure" "false" failed.model.loading
@@ -91,15 +115,15 @@ offlineCase () =
 
 malformedCase () =
     loaded = Support::loaded ()
-    refresh = Update::dispatch loaded.model (Support::event "refresh")
-    failed = Update::dispatch refresh.model (Support::http refresh.model.pending 200 "[{\"id\":7}]" "")
+    refresh = App::dispatch loaded.model (Support::event "refresh")
+    failed = App::dispatch refresh.model (Support::http refresh.model.pending 200 "[{\"id\":7}]" "")
     check "invalid issue rejected" true (contains failed.model.error "missing a valid")
     check "invalid API cannot replace cache" loaded.model.items failed.model.items
     check "invalid API cannot persist" "[]" failed.commands
 
 sqliteFailureCase () =
     loaded = Support::loaded ()
-    failed = Update::dispatch loaded.model (Support::sql loaded.model.write false "[]" "disk full")
+    failed = App::dispatch loaded.model (Support::sql loaded.model.write false "[]" "disk full")
     check "save error visible" true (contains (View::render failed.model) "disk full")
     check "save error retains data" loaded.model.items failed.model.items
     check "failed save not retried silently" "[]" failed.commands
@@ -120,6 +144,8 @@ envelopeCase () =
 
 test "repository validation prevents path and query injection" repositoryCase
 test "startup sequences SQLite schema load and HTTP" startupCase
+test "callable request handler substitutes native SQL commands" requestHandlerCase
+test "scoped request handler changes transport without changing transitions" scopedRequestsCase
 test "GitHub data normalized and pull requests excluded" loadedCase
 test "search reacts locally without network or SQL" searchCase
 test "bookmarks derive views and prepared SQLite writes" bookmarkCase

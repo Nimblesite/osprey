@@ -17,13 +17,13 @@ const SITE_URL = "https://www.ospreylang.dev";
 const AUTHOR_URL = "https://www.christianfindlay.com/";
 
 // ML flavor (.ospml) — offside layout, curry-by-default, whitespace application,
-// `\x => e` lambdas, `:=` mutation, `handler`/`handle … do`. Same token palette as
-// the Default grammar; only the keyword set differs (no `fn`, adds `handler`).
+// `\x => e` lambdas and `:=` mutation. Both flavors share effect keywords and
+// the token palette; ML omits the Default `fn` keyword.
 // See spec 0024 (ML Flavor Syntax) and 0023 (Language Flavors).
 const ospreyMlGrammar = {
   ...ospreyGrammar,
   keyword:
-    /\b(?:let|mut|match|type|effect|perform|handler|handle|do|in|extern|spawn|await|yield|if|else|import|module|true|false|where|Unit|Result|Option|Some|None|Ok|Err|Handler)\b/,
+    /\b(?:let|mut|match|type|effect|perform|handler|handle|static|control|abort|once|many|replayable|resume|return|in|extern|spawn|await|yield|if|else|import|module|true|false|where|Unit|Result|Option|Some|None|Ok|Err|Handler)\b/,
 };
 
 function ensureOsprey() {

@@ -1,5 +1,7 @@
 # Chapter 7 — Keep failure in the open
 
+**Chapter outline.** The teaching plan below has been checked against the current error and arithmetic contracts; the full lesson and checkpoint are still to be written.
+
 ## Reader outcome
 
 Use `Result` for expected failure, preserve error information, and recover only where the program has a real policy.
@@ -13,7 +15,7 @@ The reader parses a text estimate. Invalid input becomes data the caller must ha
 1. Expected failure belongs in the result
 2. `Success` carries a value; `Error` carries information
 3. Match both routes explicitly
-4. Checked integer arithmetic remains honest
+4. `checkedAdd`, `checkedSub`, and `checkedMul` return explicit results; ordinary arithmetic uses `Arith`, with handlers explained in Chapter 9
 5. Preserve the first failure while composing work
 6. Use `?:` only for an intentional fallback
 7. Why ordinary failure needs no exception or panic
@@ -34,5 +36,4 @@ Parse an estimate, show a successful duration, and retain the exact parser messa
 
 ## Source map
 
-`0001-Introduction`, `0007-PatternMatching`, `0013-ErrorHandling`
-
+`0001-Introduction`, `0007-PatternMatching`, `0013-ErrorHandling`, `0037-ArithmeticEffects`

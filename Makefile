@@ -355,7 +355,7 @@ clean:
 	cd $(EXT_DIR) && $(RM) out dist coverage test.log
 
 ## ci: lint + hawk + test + bank-test + bank-e2e + build (full CI simulation)
-ci: lint hawk test bank-test bank-e2e docs-html-test mobile-domain-test build
+ci: lint hawk test bank-test bank-e2e docs-html-test mobile-domain-test bank-mobile-domain-test build
 
 ## wasm: Build everything for the WebAssembly target, ready to go — the wasm
 ## runtime archive (compiler/bin/libosprey_runtime_wasm.a), the hello example,
@@ -1136,3 +1136,5 @@ _vsix_install:
 include scripts/ios.mk
 
 include scripts/android.mk
+
+include scripts/bank-mobile.mk

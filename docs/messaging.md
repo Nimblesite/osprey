@@ -1,249 +1,55 @@
-# Osprey — Project Messaging and Philosophy
+# Writing about Osprey
 
-This document is the source of truth for how Osprey explains itself. It is for
-contributors and AI agents writing the README, website, specifications,
-documentation, examples, release notes and code comments.
+Osprey is a functional language built around algebraic effects, inferred types, and native compilation. This document guides the README, website, examples, and contributor documentation.
 
-It is not a marketing campaign, a collection of slogans or a guide to promoting
-the project. Its purpose is consistency: every part of the repository should
-express the same language philosophy, emphasize the same features and distinguish
-what exists today from what is still being built.
+## Lead with effects
 
-## The central idea
+Show a small program that requests an operation and two handlers that provide different implementations. Explain the practical use: database access, logging, platform services, and deterministic tests without passing service objects through every helper.
 
-Osprey is a functional programming language for developers who want safe code,
-fast programs and less clutter.
+Use this feature order on introductory pages:
 
-Osprey is deliberately practical. It takes useful ideas from functional and
-systems programming and makes them work together without ceremony. Describe the
-language in terms of code people can understand, programs they can ship and
-problems the compiler or runtime helps them avoid. The tone should be
-no-nonsense: clear, confident and specific, without hype or invented conflict.
+1. **Algebraic effects:** declare an operation, request it with `perform`, and choose its implementation with a callable `handler` value or a block-scoped `handle`.
+2. **Inferred types and explicit data:** pattern matching covers every case; `Result` keeps expected failures visible.
+3. **Two syntax flavors:** Default braces and ML layout share the compiler and can coexist in a project.
+4. **Deployment:** LLVM native binaries, WebAssembly, and C ABI libraries for iOS and Android.
+5. **Concurrency and memory choices:** isolated fibers, tracing GC, and reference counting where the target supports them.
 
-It speaks to two communities:
+Not every page needs the full list. Give the reader code, its result, and a next step; avoid repeating the same feature summary across sections.
 
-- Mainstream developers coming from C#, Go, Rust, Java, Kotlin or Swift should
-  find code they can read straight away, native programs they can ship, and
-  practical ways to handle errors, concurrency and existing C libraries.
-- Functional programmers coming from ML, OCaml, F# or Haskell should find the
-  things they expect: inferred types, pattern matching, immutable data, currying
-  and first-class effects.
+## Describe the current effects implementation
 
-Do not present these as two different products. Osprey is one language that can
-be written in two styles. Both styles are checked, compiled and run in exactly
-the same way.
+- `handler E { ... }` creates a callable value. `h(work)` installs it while calling the zero-argument function `work`; creating the handler runs no work. Passing the function delays execution until its handler is active.
+- `handle E { ... }` installs a handler for the remaining statements and final expression in its block. The removed `handle ... in/do ...` forms are invalid.
+- A value operation returns a result to its caller. A declared `control` operation can use `resume` or answer without continuing. Operation declarations determine the mode, never a search for `resume` in handler arms.
+- Arms execute outside their own activation, so the same operation can forward to an outer handler. Resumption restores the handled scope.
+- Static handler selection removes runtime effect dispatch. Ordinary calls, allocations, and runtime values may remain; do not call it “no runtime cost.”
+- The compiler checks operation types and required handlers. The open-row callback prototype is not independently quantified effect rows in function types.
 
-## The short description
+The [effects specification](specs/0017-AlgebraicEffects.md) defines the contract. [Plan 0016](plans/0016-algebraic-effects-and-handlers.md) owns delivery status and limitations. [Runnable handler examples](../examples/handlers/README.md) demonstrate current behavior in both flavors and compare it with other languages. Keep intended semantics and demonstrated support distinct.
 
-> Osprey is a practical functional language for building safe, fast native
-> programs without the usual clutter. It combines strong inferred types,
-> first-class effects and lightweight concurrency with a choice of familiar
-> brace syntax or clean ML syntax.
+Use the [bank](../examples/projects/modules/README.md) and [mobile apps](../examples/mobile/README.md) to explain application boundaries. Mobile handlers describe SQL and HTTP commands; native hosts execute them and send completion events. This does not imply that mobile continuations or the planned staged reactive runtime are implemented.
 
-When less space is available:
+## Keep the copy concrete
 
-> Safe systems programming with functional elegance.
+- Lead with what the code does. Explain a specialist term when first used.
+- Prefer runnable examples and links to their source over slogans and repeated feature lists.
+- Keep limitations beside the claims they qualify. Do not describe a specified feature as shipped without compiler evidence.
+- Explain a callback's purpose when introducing it: the handler must be installed before the callback runs.
+- Present both flavors as ways to write Osprey. ML currying and Default flat calls differ; do not promise identical code generation for unrelated programs.
+- Compare Koka, OCaml, Eff, and Effekt through specific semantics or executed examples, without claiming a winner.
+- Keep compiler implementation details in reference material. Do not make the introduction a delivery log or a list of old defects.
+- Avoid unmeasured performance claims, “zero-cost,” “complete,” and claims that effects replace every framework.
+- Maintain a single source of truth for each contract; link to it instead of copying a support matrix everywhere.
 
-## What matters most
+## Qualifications to preserve
 
-Describe Osprey through four connected values. Features are evidence for these
-values, not an unrelated checklist.
+- Osprey is alpha software. Native dynamic resumption is deep and single-shot; reusable continuations, owned escaping resumptions, and full scoped row polymorphism remain delivery work in plan 0016.
+- WebAssembly and mobile C ABI targets support value effects and static discharge; unsupported dynamic control operations are rejected before linking.
+- Integer arithmetic uses explicit `Arith` policies. Wrapping/saturating helpers name their behavior; `checkedAdd`, `checkedSub`, and `checkedMul` return `Result`. See [arithmetic effects](specs/0037-ArithmeticEffects.md).
+- Native memory modes are default, GC, and ARC. The default allocator retains general allocations. Strict static-memory checking and tail-call optimization are not implemented.
+- Mobile C ABI targets use the default allocator and do not expose a stable returned-string release API. Platform networking belongs to the native host.
+- Project modules and cross-flavor imports work; the package manager remains roadmap work.
+- GPU kernels currently execute as host loops. Device code generation remains roadmap work in [plan 0023](plans/0023-gpu-computation.md).
+- Calling C crosses Osprey's memory-safety boundary.
 
-### Practicality
-
-- **Useful ideas without ceremony.** Strong types are inferred, effects remove
-  plumbing and concurrent functions do not need a separate colour.
-- **Failures are ordinary data.** Results make expected failure visible and let
-  the caller decide what to do.
-- **Deployment is direct.** Compile native binaries, WebAssembly, or C ABI application libraries for iOS and Android. Call existing C libraries when needed.
-- **Choices remain local.** Select syntax per file and memory management per
-  build instead of reshaping the whole application.
-
-### Safety
-
-- **Errors are part of the result.** Code must deal with failure instead of
-  hiding it behind null, exceptions or crashes.
-- **Arithmetic does not silently wrap.** Fallible operations require an explicit
-  `Arith` policy for the surrounding region; the compiler rejects an unhandled
-  overflow or zero divisor rather than producing a plausible wrong value.
-- **Side effects are easy to see and replace.** Code says when it needs to log,
-  load data or do other outside work. The application decides how that work is
-  done.
-- **Concurrency is isolated.** Fibers communicate by moving or copying values
-  through channels rather than sharing mutable state.
-- **Osprey code manages memory safely.** Calling C crosses that safety boundary,
-  so C integrations still need careful review.
-
-### Performance
-
-- **Osprey compiles through LLVM to native binaries.** There is no VM or JIT
-  warm-up.
-- **Fibers are lightweight.** Concurrent work does not require an operating
-  system thread per task.
-- **Immutable collections reuse unchanged data.** Updating a collection does not
-  mean copying the whole thing.
-- **Memory management is a build choice.** Choose reference counting, garbage
-  collection or a strict mode that refuses code needing runtime memory tracking.
-- **Existing C libraries are usable.** Declare the functions you need and link
-  the library into the program.
-
-Do not make broad benchmark claims unless the published benchmark data supports
-the exact wording. Native compilation is a fact. Relative performance is a
-measurement and must remain attached to reproducible results.
-
-### Elegance
-
-- **First-class effects remove plumbing.** Code can ask to log, load data or
-  retry work without carrying service objects through every function. Tests can
-  replace the real behavior without changing the code under test.
-- **Concurrent code remains direct.** There is no separate `async fn` kind and
-  no future type propagated through every intermediate call.
-- **The compiler works out the types.** You keep strong type checking without
-  writing obvious types everywhere.
-- **Data models list every possible case.** Pattern matching makes code handle
-  those cases directly and the compiler checks that none were forgotten.
-- **Syntax serves the reader.** Default flavor uses familiar braces and calls;
-  ML flavor uses offside layout, currying and whitespace application. Neither is
-  the secondary or compromised form.
-
-## The main feature list
-
-Use this order when a README or documentation page needs to explain Osprey
-quickly:
-
-- **One language, two first-class flavors** — familiar brace syntax or genuine
-  ML syntax, with the same behavior and performance.
-- **Strong types without noisy annotations** — the compiler works out types,
-  while pattern matching checks that every case is handled.
-- **First-class effects** — use logging, storage, retries and other outside work
-  without passing service objects through every layer of the program.
-- **Isolated fiber concurrency** — lightweight tasks and message passing without
-  shared mutable state or colored functions.
-- **Selectable memory management** — reference counting, garbage collection or
-  a strict static mode, without rewriting the application.
-- **Native LLVM, WebAssembly, and mobile C ABI output** — compile application logic for native iOS and Android hosts, with target-specific capability checks.
-
-Not every page needs every point. Preserve the order and select the features
-relevant to the page rather than inventing a new identity for Osprey.
-
-## Translating concepts for each audience
-
-The implementation is the same; only the point of reference changes.
-
-| Osprey concept | Mainstream systems vocabulary | Functional vocabulary |
-| --- | --- | --- |
-| First-class effects | Replace dependency injection, test doubles and retry wrappers with one language feature | Use effects without building transformer stacks or threading `IO` through everything |
-| Fibers | Lightweight concurrency without shared-state locking | Write concurrent code in direct style without wrapping every result in a future |
-| Data types and matching | List every valid state and make the compiler check every case | Sums, products and exhaustive pattern matching |
-| Immutable collections | Update data safely without copying the whole collection | Persistent collections with efficient structural sharing |
-| Memory modes | Choose reference counting, garbage collection or strict static memory | Change memory management without changing the meaning of the program |
-| Syntax flavors | Braces, `fn`, named arguments and familiar control flow | Layout, currying, whitespace application and partial application |
-
-Use the vocabulary that helps the reader recognize the idea, then introduce the
-precise Osprey term. Do not dumb down the Default flavor or bury the ML flavor in
-category-theory terminology.
-
-## How to write about effects
-
-Effects are central to Osprey, but they are not the entire language. Start with
-what they save developers from:
-
-> Your code needs to save something to a database. Normally you pass a database
-> object through several functions just so the last one can use it. In Osprey,
-> the last function simply asks to save the data. The application decides what
-> “save” means in production. A test can make it save to memory instead. The
-> functions in between do not need to know or change.
-
-This same idea works for logging, metrics, retries and other work that normally
-needs dependency injection, global state or wrapper libraries. These comparisons
-help explain effects; they do not mean every framework automatically disappears.
-
-The contract and delivery evidence live in [the effects spec](specs/0017-AlgebraicEffects.md)
-and [plan 0016](plans/0016-algebraic-effects-and-handlers.md). Describe effect
-management first: what an application needs to do, which handler supplies it,
-and where that choice applies. Distinguish demonstrated compiler behavior from
-specified targets; do not infer correctness from old examples alone.
-
-## How to write about the two flavors
-
-Default flavor is not a beginner mode, and ML flavor is not an experimental
-language layered on top. Both are intended to expose the full language.
-
-- Default (`.osp`) is familiar to developers from brace-based languages.
-- ML (`.ospml`) is layout-sensitive and curry-by-default.
-- Both become the same internal program before type checking and compilation.
-- Files may choose a flavor independently, and project modules can import files in either flavor. The [mobile example](../examples/mobile/README.md) combines ML application modules with a small Default C ABI entry file.
-
-Prefer “two flavors, one language.” Avoid “two tribes,” which suggests that the
-project is dividing people rather than giving them a readable surface.
-
-## Writing rules for contributors and agents
-
-- Lead with what Osprey enables, then name the mechanism.
-- Keep the overall picture balanced: practicality, safety, performance and
-  elegance should define the language. Syntax flavors are an important feature,
-  not the whole identity.
-- Connect features to safety, performance or elegance.
-- Write for technically literate developers. Be direct, specific and calm.
-- Prefer concrete behavior over superlatives such as “revolutionary,” “complete,”
-  “zero-cost” or “world-first.”
-- Explain specialist terms the first time they appear. Prefer the everyday
-  explanation when the specialist term adds nothing.
-- Internal compiler language belongs in specifications and implementation notes,
-  not in introductory documentation. Never copy phrases such as “effect-row
-  propagation,” “missing-handler rejection,” “canonical AST” or “reclamation
-  strategy” into reader-facing blurbs without explaining them in plain English.
-- Do not manufacture conflict with Rust, Go, Haskell, OCaml, Koka or Effekt.
-  Comparisons should clarify design choices, not declare winners.
-- Do not call ordinary documentation copy, positioning or philosophy “marketing.”
-- Do not turn repository documentation into promotional copy, social posts,
-  objection handling or calls to action.
-- Keep limitations beside the claims they qualify, not hidden in a distant note.
-- Use runnable examples and repository evidence whenever possible.
-- Maintain one source of truth. If another page disagrees with this document or
-  the implementation, investigate and correct the disagreement rather than
-  repeating it.
-
-## Current qualifications
-
-These constraints materially affect how the language must be described:
-
-- [Plan 0016](plans/0016-algebraic-effects-and-handlers.md) owns current effects
-  support, known failures and target limitations. Do not maintain a second
-  capability checklist here or present an unfinished contract as shipped.
-- Static interpretation removes effect dispatch; the resulting computation can
-  still make ordinary calls, allocate and read runtime values. Say “no runtime
-  effect dispatch,” not “no runtime cost.” Dependency analysis is a sound set
-  of possible reads, not a promise to know precisely which branch will run.
-- Editors and generated API pages show the operations a function requires through its helpers, distinguish host runtime operations and flag unresolved callback effects. These facts come from the existing whole-program checker; they do not imply that effect-row polymorphism in reusable function types is complete.
-- The [reactive mobile application](../examples/mobile/README.md) is implemented using ordinary Osprey modules and explicit event/state/command transitions. Osprey defines its screen tree, state, GitHub request and decoding logic, SQLite schema and statements, offline cache, search, bookmarks, notes, and priorities. Native hosts render the tree and execute platform services. This working application does not imply that the staged-effects reactive runtime is implemented.
-
-- Integer arithmetic returns plain `int`. Fallible `+`, `-`, `*`, `abs` and
-  `intDiv` request the compiler-declared `Arith` effect, which a named policy
-  handles for a region. An unhandled operation is rejected. The total wrapping
-  and saturating helpers state those policies directly when that behavior is
-  intended; `checkedAdd`/`checkedSub`/`checkedMul` retain explicit `Result`
-  forms for value-level error handling. See [Spec 0037](specs/0037-ArithmeticEffects.md).
-- Floating-point arithmetic follows IEEE-754: infinity and NaN are defined results, and underflow preserves subnormal values and signed zero. Float division and remainder by either signed zero still require an explicit `Arith` policy. Code that requires finite results must check that requirement explicitly. Float `abs` is total, preserves its numeric type and clears the sign of zero and infinity. Host GPU kernels follow the same rules.
-- Native debugging supports source breakpoints and primitive variable inspection in named functions and materialized lambdas, including immutable captures and live shared cells, in both flavors. Generic function values and C/runtime callback specializations retain their source names and parameters. Direct and resumable effect handlers expose primitive parameters and captures; extracted host GPU kernels retain source breakpoints and variable inspection. Match arms and ordinary nested blocks expose primitive bindings within their own scope and restore enclosing names on exit, including inside closures and direct/resumable handlers. Local bindings become visible only after initialization; a shadowing initializer still exposes the enclosing value, including when the new binding is a shared mutable cell. Native record expansion shows named, anonymous, generic and C ABI fields, including nested values, parameters, captures and current shared-cell contents. Union, Result, collection and closure rendering and optimized-away value reporting remain unfinished; see [the debugger plan](plans/0012-osprey-debugger.md).
-- Native debug builds offer explicit metadata, output and artifact controls. Editor launches can select a compiler and retain generated IR, and always select unoptimized code. Editor launches select the Debug Console or an integrated/external terminal; interactive terminal modes require LLDB-DAP 21 or newer. Optimized debugging and heap inspection remain unfinished.
-- Results remain complete values inside named, anonymous and generic records and union payloads. Updates preserve failures and untouched fields; matching, captures and conversion to `any` retain the success payload type and error message.
-- Tail-call optimisation is not implemented.
-- Multi-file project modules and cross-flavor imports are implemented. A package manager remains roadmap work; describe further module or generic features according to their individual implementation status.
-- Project warnings and generated documentation show where state is owned, its private cell count and exported effects. The inventory includes private owners without exposing cell names, initial values or private helper APIs. Editors check module repair suggestions against the current unsaved project. Opaque manifest aliases and separate checking against module signatures remain unfinished.
-- GPU computation is a typed language surface with a host execution backend:
-  `GpuBuffer` types, data-parallel kernels the compiler proves pure at compile
-  time, and dense buffers that run as native loops today. Admissible lambdas
-  and scalar builtins become standalone kernel functions; builtin integer
-  faults still use the application's arithmetic policy
-  (docs/specs/0034-GPUComputation.md). Device code generation (PTX, Metal,
-  WebGPU) is staged roadmap work — do not describe Osprey as executing on GPU
-  hardware yet.
-- WebAssembly memory behavior must be checked against what the browser runtime
-  currently supports rather than assumed from native builds.
-- Mobile C ABI targets currently support the default allocator, which retains general allocations for the process lifetime. They do not expose a stable library teardown or returned-string release API. Platform networking belongs to the native host; unsupported built-in native process, HTTP, WebSocket, and resumable-effect operations fail compilation.
-- The C FFI is outside Osprey's memory-safety guarantee.
-
-Update this section when implementation status changes. A claim becoming true in
-the compiler does not automatically update the README, website or generated
-documentation.
+Update claims when the implementation and its verification change. A feature appearing in a specification does not by itself establish support.

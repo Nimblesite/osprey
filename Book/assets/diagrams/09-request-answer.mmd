@@ -1,0 +1,7 @@
+flowchart TD
+    accTitle: Follow a value operation
+    accDescr: The installed handler answers a request from greeting. Its string becomes the value of perform, then greeting returns its completed message.
+    A["CALL<br/>mika runs greeting"] -->|calls| B["REQUEST<br/>perform Learner.name"]
+    B -. asks .-> C["HANDLER ARM<br/>name answers Mika"]
+    C -->|supplies a string| D["CONTINUE<br/>greeting builds its message"]
+    D -->|returns| E["RESULT<br/>Ready to learn, Mika?"]

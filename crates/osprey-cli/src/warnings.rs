@@ -22,6 +22,7 @@ type Listing = Vec<(String, String)>;
 /// Compiler warnings share one terminal listing and never affect exit status.
 pub(crate) fn collect(program: &osprey_ast::Program) -> Vec<TypeWarning> {
     let mut warnings = osprey_types::redundant_annotations(program);
+    warnings.extend(osprey_types::redundant_callbacks(program));
     warnings.extend(
         osprey_types::unused_symbols(program)
             .into_iter()
@@ -213,6 +214,20 @@ mod tests {
         let input = CompilationInput::script("mixed.osp", source.to_owned(), parsed.program);
         assert_eq!(render(&input, &warnings), Some(
             "\nmixed.osp\n  1:3  warning: unused parameter `ignored`\n  2:1  warning: redundant type annotation on `spare`: inference derives `int` without it\n  2:1  warning: unused variable `spare`\n\n3 warnings (redundant-annotation, unused-parameter, unused-variable)".to_owned()
+        ));
+    }
+
+    #[test]
+    fn compiler_collects_forwarding_callback_advice() {
+        let source =
+            "fn work() = 41\nfn relay(callback) = callback()\nlet answer = relay(fn() => work())\n";
+        let parsed = osprey_syntax::parse_program(source);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let warnings = super::collect(&parsed.program);
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        let input = CompilationInput::script("callback.osp", source.to_owned(), parsed.program);
+        assert_eq!(render(&input, &warnings), Some(
+            "\ncallback.osp\n  3:19  warning: redundant callback wrapper: pass `work` directly; it already takes no arguments\n\n1 warning (redundant-callback)".to_owned()
         ));
     }
 

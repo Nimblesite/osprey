@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <uses-library android:name="android.test.runner" android:required="true" />
+    </application>
+</manifest>

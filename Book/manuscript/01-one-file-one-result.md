@@ -226,11 +226,13 @@ Now run:
 osprey first-flight.osp --check
 ```
 
-The check must fail because `mission` has no binding. Diagnostic wording may change during alpha development, so this book does not freeze an invented error message. Read three pieces from the real output:
+The check fails because `mission` has no binding. The book keeps this mistake in `examples/chapter-01/failscompilation/unknown-name.osp`. Checking that file from `Book` with the verified compiler produces:
 
-1. the source location;
-2. the name or type the compiler could not resolve; and
-3. the smallest change that makes the code tell the truth again.
+```text
+examples/chapter-01/failscompilation/unknown-name.osp: unknown identifier `mission`
+```
+
+This diagnostic supplies the file and the unresolved name. It does not supply a line or column for this example. Find `mission` in the source, then look for the binding that the call should use. If you checked your own copy, its path appears in the message instead.
 
 Here the repair is either to use `project`, the name that already exists, or deliberately rename the binding and every use to `mission`. Guessing a new value would hide the mistake.
 
@@ -342,3 +344,4 @@ Chapter 2 keeps the program small and asks a deeper question: what makes a name 
 - Osprey [Iterators and Iteration](https://github.com/Nimblesite/osprey/blob/main/docs/specs/0010-LoopConstructsAndFunctionalIterators.md) for the pipe operator.
 - Osprey [Language Flavors](https://github.com/Nimblesite/osprey/blob/main/docs/specs/0023-LanguageFlavors.md) and [ML Flavor Syntax](https://github.com/Nimblesite/osprey/blob/main/docs/specs/0024-MLFlavorSyntax.md) for the optional comparison.
 - The maintained [installation guide](https://www.ospreylang.dev/docs/installation/) for local and no-install paths.
+- Executable examples, exact output, and the unknown-name rejection fixture in `examples/chapter-01/`, verified with the compiler recorded in `evidence.json`.

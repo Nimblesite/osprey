@@ -1,0 +1,8 @@
+flowchart TD
+    accTitle: Repair through evidence
+    accDescr: Write a behavior claim, check the program, run its tests, read a failure, and repair the behavior or a mistaken expectation before running the complete suite again.
+    A["WRITE<br/>One behavior claim"] --> B["CHECK<br/>Are the types compatible?"]
+    B --> C["RUN<br/>Does the claim hold?"]
+    C -->|inspect result| D["READ<br/>Expected value and actual value"]
+    D --> E["REPAIR IF NEEDED<br/>Use the requirement"]
+    E --> F["RERUN THE SUITE<br/>Keep the other promises"]

@@ -1,0 +1,22 @@
+OSPREY_PLATFORM = ios
+OSPREY_PLATFORM[sdk=iphonesimulator*] = ios-sim
+OSPREY_LIBRARY_DIR = $(SRCROOT)/build/$(OSPREY_PLATFORM)
+HEADER_SEARCH_PATHS = $(inherited) "$(OSPREY_LIBRARY_DIR)"
+LIBRARY_SEARCH_PATHS = $(inherited) "$(OSPREY_LIBRARY_DIR)"
+OTHER_LDFLAGS = $(inherited) -lOspreyApp -lsqlite3
+SWIFT_OBJC_BRIDGING_HEADER = TalonBank/Bridge.h
+PRODUCT_BUNDLE_IDENTIFIER = org.ospreylang.TalonBank
+PRODUCT_NAME = $(TARGET_NAME)
+MARKETING_VERSION = 1.0
+CURRENT_PROJECT_VERSION = 1
+CODE_SIGN_STYLE = Automatic
+GENERATE_INFOPLIST_FILE = YES
+INFOPLIST_FILE = TalonBank/Info.plist
+INFOPLIST_KEY_CFBundleDisplayName = Talon Bank
+INFOPLIST_KEY_LSRequiresIPhoneOS = YES
+INFOPLIST_KEY_UILaunchScreen_Generation = YES
+INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES
+INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+TARGETED_DEVICE_FAMILY = 1,2
+SUPPORTED_PLATFORMS = iphoneos iphonesimulator
+ENABLE_TESTABILITY = YES

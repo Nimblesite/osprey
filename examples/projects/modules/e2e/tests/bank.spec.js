@@ -84,7 +84,7 @@ async function expectBrowserHistory(page) {
 async function expectSecurityPage(page) {
   await page.locator('#nav-security').click();
   await expect(page.locator('.security-page h1')).toHaveText('Trust you can inspect');
-  await expect(page.locator('#architecture')).toContainText('Osprey Web App');
+  await expect(page.locator('#architecture')).toContainText('Shared Osprey app');
 }
 
 async function depositThroughForm(page) {
