@@ -9,7 +9,9 @@
 //
 // Path syntax: "a.b[0].c". Keys containing '.' or '[' are not addressable in v1.
 
+#ifndef __wasm__
 #include <pthread.h>
+#endif
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -32,7 +34,19 @@ typedef struct JVal {
 } JVal;
 
 static JVal *g_json_docs[MAX_JSON_DOCS];
+
+// Every fiber shares the document table, so each access holds this lock.
+// wasm32-wasip1 runs one thread — the fiber runtime is not in its archive —
+// and the WASI SDK that CI pins ships no pthread mutex, so a JSON program
+// could not link there. The lock compiles away on that target. [WASM-TARGET]
+#ifdef __wasm__
+static void json_table_lock(void) {}
+static void json_table_unlock(void) {}
+#else
 static pthread_mutex_t g_json_mutex = PTHREAD_MUTEX_INITIALIZER;
+static void json_table_lock(void) { pthread_mutex_lock(&g_json_mutex); }
+static void json_table_unlock(void) { pthread_mutex_unlock(&g_json_mutex); }
+#endif
 
 // ---- value construction / teardown ----------------------------------------
 
@@ -681,7 +695,7 @@ int64_t json_parse(char *s) {
     return -3; // trailing garbage
   }
 
-  pthread_mutex_lock(&g_json_mutex);
+  json_table_lock();
   int64_t handle = -1;
   for (int64_t i = 1; i < MAX_JSON_DOCS; i++) {
     if (!g_json_docs[i]) {
@@ -690,7 +704,7 @@ int64_t json_parse(char *s) {
       break;
     }
   }
-  pthread_mutex_unlock(&g_json_mutex);
+  json_table_unlock();
 
   if (handle < 0) {
     jval_free(root);
@@ -700,7 +714,7 @@ int64_t json_parse(char *s) {
 }
 
 char *json_get(int64_t handle, char *path) {
-  pthread_mutex_lock(&g_json_mutex);
+  json_table_lock();
   const JVal *v = lookup(handle, path ? path : "");
   char *out = NULL;
   if (v) {
@@ -720,12 +734,12 @@ char *json_get(int64_t handle, char *path) {
       break;
     }
   }
-  pthread_mutex_unlock(&g_json_mutex);
+  json_table_unlock();
   return out;
 }
 
 int64_t json_length(int64_t handle, char *path) {
-  pthread_mutex_lock(&g_json_mutex);
+  json_table_lock();
   const JVal *v = lookup(handle, path ? path : "");
   int64_t len = -1;
   if (v) {
@@ -735,7 +749,7 @@ int64_t json_length(int64_t handle, char *path) {
       len = (int64_t)v->nmemb;
     }
   }
-  pthread_mutex_unlock(&g_json_mutex);
+  json_table_unlock();
   return len;
 }
 
@@ -743,13 +757,13 @@ int64_t json_free(int64_t handle) {
   if (!valid_doc_handle(handle)) {
     return -1;
   }
-  pthread_mutex_lock(&g_json_mutex);
+  json_table_lock();
   int64_t rc = -1;
   if (g_json_docs[handle]) {
     jval_free(g_json_docs[handle]);
     g_json_docs[handle] = NULL;
     rc = 0;
   }
-  pthread_mutex_unlock(&g_json_mutex);
+  json_table_unlock();
   return rc;
 }
