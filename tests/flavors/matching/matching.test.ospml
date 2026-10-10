@@ -91,3 +91,178 @@ matchIntegerCase () =
 test "literal matching retains every printed arm" matchTourCase
 test "boolean matching covers thresholds and parity" matchBooleanCase
 test "integer matching covers literals and wildcard" matchIntegerCase
+
+(** [PATTERN-BINDING-SCOPE] Every pattern introduces names in its own arm. *)
+type Choice = Pick int | Other
+type Coordinates =
+    x : int
+    y : int
+
+resultScope input =
+    value = 100
+    message = "outer"
+    selected = match input
+        Success value => "${value}:${message}"
+        Error message => "${value}:${message}"
+    "${selected}:${value}:${message}"
+
+unionScope input =
+    value = 100
+    selected = match input
+        Pick value => value
+        Other => value
+    "${selected}:${value}"
+
+listScope input =
+    head = 100
+    tail = [8, 9]
+    selected = match input
+        [] => head
+        [head, ...tail] => wrapAdd (head, listLength tail)
+    "${selected}:${head}:${listLength tail}"
+
+structuralScope : Coordinates -> string
+structuralScope input =
+    x = 100
+    selected = match input
+        { x, .. } => wrapAdd (x, 1)
+    "${selected}:${x}"
+
+erasedScope : any -> string
+erasedScope input =
+    x = 100
+    selected = match input
+        { x, .. } => "${x}"
+        _ => "none"
+    "${selected}:${x}"
+
+bindingScope () =
+    value = 100
+    selected = match 2
+        value => value
+    checkAll ("a catch-all binding leaves its outer value intact", [
+        selected == 2, value == 100
+    ])
+
+siblingScopeCase () = checkAll ("pattern arms have independent bindings", [
+    resultScope (Success(value = 2)) == "2:outer:100:outer",
+    resultScope (Error(message = "bad")) == "100:bad:100:outer",
+    unionScope (Pick 2) == "2:100",
+    unionScope Other == "100:100",
+    listScope [2, 3] == "3:100:2",
+    listScope [] == "100:100:2",
+    structuralScope (Coordinates(x = 2, y = 3)) == "3:100",
+    erasedScope (Coordinates(x = 2, y = 3)) == "2:100",
+    erasedScope 0 == "none:100"
+])
+
+capturedPattern input =
+    value = 100
+    reader = match input
+        Pick value => \() => value
+        Other => \() => value
+    "${reader ()}:${value}"
+
+capturedPatternCase () = checkAll ("closures retain the selected arm's binding", [
+    capturedPattern (Pick 2) == "2:100",
+    capturedPattern Other == "100:100"
+])
+
+test ("catch-all bindings remain inside their arm", bindingScope)
+test ("pattern arms retain their own lexical bindings", siblingScopeCase)
+test ("escaping closures retain pattern bindings", capturedPatternCase)
+
+nestedPatternCase () =
+    value = 100
+    selected = match Pick 2
+        Pick value =>
+            inner = match Pick 3
+                Pick value => value
+                Other => value
+            "${inner}:${value}"
+        Other => "none"
+    checkAll ("nested matches restore the containing arm", [selected == "3:2", value == 100])
+
+effect PatternCounter
+    set : int => int
+mutablePatternCase () =
+    mut value = 100
+    handle PatternCounter
+        set next =>
+            value := next
+            value
+    readOuter = \() => value
+    selectedReader = match Pick 2
+        Pick value => \() => value
+        Other => \() => value
+    selected = selectedReader ()
+    updated = perform PatternCounter.set 101
+    checkAll ("pattern values shadow cell storage without changing it", [
+        selected == 2, selectedReader () == 2, updated == 101, value == 101, readOuter () == 101
+    ])
+
+test ("nested matches restore enclosing pattern bindings", nestedPatternCase)
+test ("pattern bindings shadow captured mutable cells", mutablePatternCase)
+
+type CallChoice = Apply (int -> int) | Absent
+type IntOperation =
+    run : int -> int
+
+callablePatternCase () =
+    apply = \n => wrapAdd (n, 100)
+    input = Apply (\n => wrapAdd (n, 1))
+    selected = match input
+        Apply apply => apply 2
+        Absent => apply 2
+    run = \n => wrapAdd (n, 200)
+    record = IntOperation(run = \n => wrapAdd (n, 2))
+    structural = match record
+        { run } => run 2
+    checkAll ("pattern bindings retain function signatures", [
+        selected == 3, apply 2 == 102, structural == 4, run 2 == 202
+    ])
+
+test ("callable pattern bindings retain their own signatures", callablePatternCase)
+
+callablePayloadCase () =
+    value = \n => wrapAdd (n, 100)
+    wrapped = Success(value = \n => wrapAdd (n, 1))
+    selected = match wrapped
+        Success value => value 2
+        Error message => length message
+    callbacks = [(\n => wrapAdd (n, 2))]
+    listed = match callbacks
+        [] => 0
+        [value, ...rest] => wrapAdd (value 2, listLength rest)
+    bound = match value
+        call => call 2
+    checkAll ("Result list and catch-all bindings retain callable signatures", [
+        selected == 3, listed == 4, bound == 102, value 2 == 102
+    ])
+
+test ("callable payload patterns preserve function values", callablePayloadCase)
+
+directCallablePatternCase () =
+    result = match Success(value = \n => wrapAdd (n, 1))
+        Success value => value 2
+        Error message => length message
+    listed = match [(\n => wrapAdd (n, 2))]
+        [] => 0
+        [value] => value 2
+    called = match (\n => wrapAdd (n, 3))
+        call => call 2
+    checkAll ("direct scrutinees keep their callable payloads", [result == 3, listed == 4, called == 5])
+
+test ("direct callable scrutinees preserve function types", directCallablePatternCase)
+
+joinedCallable flag = match flag
+    true => Success(value = \n => n * 2.0)
+    false => Success(value = \n => n * 3.0)
+applyJoined flag = match joinedCallable flag
+    Success value => value 1.25
+    Error message => toFloat (length message)
+joinedCallablePatternCase () = checkAll ("joined callable Results retain their float ABI", [
+    applyJoined true == 2.5, applyJoined false == 3.75
+])
+
+test ("joined callable Results retain their payload signatures", joinedCallablePatternCase)

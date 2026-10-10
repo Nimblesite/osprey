@@ -82,6 +82,58 @@ module Ids {
     }
 }
 
+module Tokens {
+    /// Manifest aliases kept abstract: inside `Tokens` a `Token` IS an `int`
+    /// and a `Label` IS a `string`, so the module computes with them freely.
+    /// A client can only hold one and hand it back ([MODULES-OPAQUE-TYPES]).
+    export opaque type Token = int
+    export opaque type Label = string
+
+    export fn issue(n) -> Token = n * 2
+
+    export fn next(token: Token) -> Token = token + 1
+
+    export fn raw(token: Token) -> int = token
+
+    export fn same(left: Token, right: Token) = left == right
+
+    export fn label(token: Token) -> Label = "t${token}"
+
+    export fn text(label: Label) -> string = label
+}
+
+module Sealed {
+    type Conn = { host: string, port: int }
+
+    /// Aliases of every shape stay abstract alike: a generic application, a
+    /// record, a `Result` and a function type. Inside the module each one is
+    /// the type it names, so list, field, `?:` and call rules all apply.
+    export opaque type Bag<T> = List<T>
+    export opaque type Link = Conn
+    export opaque type Attempt = Result<int, string>
+    export opaque type Step = fn(int) -> int
+
+    export fn bag(first, second) -> Bag<int> = [first, second]
+
+    export fn size(bag: Bag<int>) = listLength(bag)
+
+    export fn open(host, port) -> Link = Conn { host: host, port: port }
+
+    export fn moved(link, port) -> Link = link { port: port }
+
+    export fn describe(link: Link) = "${link.host}:${link.port}"
+
+    export fn tried(n: int) -> Attempt = n
+
+    export fn failed(why) -> Attempt = Error { message: why }
+
+    export fn orElse(attempt: Attempt, fallback) = attempt ?: fallback
+
+    export fn stepBy(n) -> Step = fn(x) => x + n
+
+    export fn run(step: Step, start) = step(start)
+}
+
 /// Constructors reached through exported factories keep their payloads.
 fn unionPayloadCase() = checkAll("module union payloads survive the boundary", [
     Geo::area(Geo::circle(3)) == 9,
@@ -117,9 +169,34 @@ fn opaqueCase() = checkAll("opaque records are reached through their module", [
     Ids::value(Ids::next(Ids::next(Ids::make(0)))) == 2
 ])
 
+/// An opaque alias is the bare representation at run time, yet it cannot be
+/// forged or inspected: it travels through bindings, generic functions and
+/// lists, and back into its module, unchanged.
+fn opaqueAliasCase() = {
+    let first = Tokens::issue(20)
+    let second = Tokens::next(first)
+    let held = [first, second]
+    checkAll("opaque aliases are reached through their module", [
+        Tokens::raw(first) == 40,
+        Tokens::raw(second) == 41,
+        Tokens::same(first, first),
+        !Tokens::same(first, second),
+        Tokens::text(Tokens::label(second)) == "t41",
+        Tokens::same(Boxes::held(Boxes::wrap(second)), second),
+        listLength(held) == 2,
+        Tokens::raw(listGet(held, 1) ?: first) == 41,
+        Sealed::size(Sealed::bag(4, 5)) == 2,
+        Sealed::describe(Sealed::moved(Sealed::open("host", 80), 81)) == "host:81",
+        Sealed::orElse(Sealed::tried(3), 9) == 3,
+        Sealed::orElse(Sealed::failed("no"), 9) == 9,
+        Sealed::run(Sealed::stepBy(5), 10) == 15
+    ])
+}
+
 exactArithmetic(fn() => print("${Geo::area(Geo::circle(3))} ${Geo::name(Geo::square(4))} ${Geo::perimeterOf(Geo::extent(Geo::square(5)))} ${Boxes::held(Boxes::wrap("seven"))}"))
 
 test("module unions keep their payloads", fn() => exactArithmetic(unionPayloadCase))
 test("module records keep their fields", fn() => exactArithmetic(recordFieldCase))
 test("module generics specialise per call site", fn() => exactArithmetic(genericModuleCase))
 test("module opaque records stay abstract", fn() => exactArithmetic(opaqueCase))
+test("module opaque aliases stay abstract", fn() => exactArithmetic(opaqueAliasCase))

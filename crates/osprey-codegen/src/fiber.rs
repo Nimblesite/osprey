@@ -56,7 +56,7 @@ pub(crate) fn gen_spawn(cg: &mut Codegen, e: &Expr) -> Result<Value> {
 /// uniform `i64` fiber-result ABI; returns the element type so the spawn site
 /// can tag the handle for `await` to unbox.
 fn thunk_body(cg: &mut Codegen, e: &Expr) -> Result<Value> {
-    let v = gen_expr(cg, e)?;
+    let v = crate::expr::gen_body(cg, e)?;
     // Await restores the runtime list ABI, so materialize an inlined generic
     // call's literal result before its pointer crosses the fiber boundary.
     let v = crate::listlit::escaping(cg, v);

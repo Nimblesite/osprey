@@ -23,6 +23,8 @@ The machine was an AMD Ryzen 9 3900X host running Linux under WSL2. Measurement 
 
 These three rows compare measurements made on this machine. `wordfreq` remains substantially slower in Osprey, even with ARC. Its persistent map and the mutable hash tables used by other implementations have different allocation and update costs. `fib` also shows a time gap. The tree result favors ARC in this sample, but the baseline variance prevents a precise speedup claim.
 
+`quicksort` and `mergesort` were added on **5 October 2026** and measured in every language in one run on a different machine: an Apple M4 Max laptop running macOS 26.6, with Clang 22.1.8, Rust 1.99.0, .NET 10.0.303, Dart 3.13.3, OCaml 5.4.1, GHC 9.14.1 and Wasmtime 46.0.1. All 22 programs produced the expected output. Their two rows compare with each other, not with the 3 October rows. Both sorts build each partition and merged run as a new persistent list, so the default allocator peaks at 474 MB and 848 MB where ARC stays near 2 MB, and Osprey takes 129 ms and 231 ms where Rust takes 4 ms.
+
 ## Full recorded results
 
 **The full tables combine this Osprey run and the six fresh C/Rust measurements with historical records.** The historical records do not identify their machine. Cross-language aggregate ratios and highlighted minimum cells in these tables are therefore descriptions of the stored data, not controlled performance comparisons. Use the three rows above for the current C/Rust sample.

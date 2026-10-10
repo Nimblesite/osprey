@@ -17,9 +17,7 @@ surface unless an ML example clarifies different call syntax.
 `Result<T, E>` when both payloads are printable. Concrete records, collections, functions,
 iterators, fibers, channels, and pointers are rejected. Results render as
 `Success(value)` or `Error(message)`; `Unit` renders as `0`; `print` appends a
-newline. An explicitly erased `any` value is a compatibility exception, not a
-dynamic formatter: if it hides an aggregate, the raw pointer-sized value is
-rendered rather than the aggregate's contents.
+newline. An explicitly erased `any` value renders through its shape descriptor: records show their named fields, unions their selected variant and Results their success/error case. Opaque runtime handles use kind labels; the underlying pointer word is never interpreted as a string or shown as the value. An explicit `any` local may retain a concrete backend representation until rendering, which must produce the same result as a boxed `any` parameter. See [TYPE-ANY](0004-TypeSystem.md#the-any-type--type-any).
 
 ```osprey
 print("Hello World")
@@ -72,10 +70,12 @@ editor integration are specified in [Testing Framework](0027-TestingFramework.md
 
 ## Numeric Functions
 
-The numeric builtins are inside the arithmetic totality guarantee: none may trap, panic, wrap silently, or return an unspecified value ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). `abs` and `intDiv` follow the operators: they return a plain `int`, and an unrepresentable result performs an `Arith` operation whose handler supplies the value ([ARITH-EFFECT](0037-ArithmeticEffects.md#the-model--arith-effect)). `checkedAdd`/`checkedSub`/`checkedMul` are the explicit value-level form for code that wants overflow as data, and keep the runtime's generic `Error` channel. The wrapping and saturating helpers are total and perform nothing.
+The numeric builtins are inside the arithmetic totality guarantee: none may trap, panic, wrap silently, or return an unspecified value ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). `abs` preserves the input numeric type and `intDiv` returns `int`; an unrepresentable integer result performs an `Arith` operation whose handler supplies the value ([ARITH-EFFECT](0037-ArithmeticEffects.md#the-model--arith-effect)). `checkedAdd`/`checkedSub`/`checkedMul` are the explicit value-level form for code that wants overflow as data, and keep the runtime's generic `Error` channel. The wrapping and saturating helpers are total and perform nothing.
 
-### `abs(n: int) -> int` — [BUILTIN-ABS]
-Returns the absolute value. Because `2^63` is not representable, `abs(-9223372036854775808)` performs `Arith.overflow` and the enclosing policy supplies the result; it never wraps or panics. A constant argument other than the minimum is total.
+### `abs(n: T) -> T`, where `T` is `int` or `float` — [BUILTIN-ABS]
+Returns the absolute value with the input's numeric type. Because `2^63` is not representable, `abs(-9223372036854775808)` performs `Arith.overflow` and the enclosing policy supplies the result; it never wraps or panics. A constant integer argument other than the minimum is total.
+
+For a float, `abs` clears the sign: `abs(-0.0)` is positive zero, either infinity becomes positive infinity, and NaN remains NaN. This overload is total and requires no `Arith` policy. Both overloads remain usable through function values, including aliases, callbacks and returned or stored functions. Numeric overload inference follows the existing arithmetic rule: a helper or alias with an unresolved numeric type retains one overload selected by its uses; separate builtin uses can select different numeric types. Nonnumeric arguments and Result wrappers are rejected. See [FLOAT-IEEE-RESULTS](0037-ArithmeticEffects.md#floating-point-results--float-ieee-results).
 
 ### `intDiv(a: int, b: int) -> int` — [BUILTIN-INTDIV]
 Truncates toward zero. A zero divisor performs `Arith.remainderByZero`, and `intDiv(-9223372036854775808, -1)` performs `Arith.overflow`; every other input yields the quotient. A literal divisor other than `0` and `-1` is total, so `half` below needs no handler, while `ratio` requires an `Arith` handler for both operations. The `/` operator instead returns `float`.
@@ -657,6 +657,8 @@ list, or map behavior for both common functions.
 ### `List<T>` — [BUILTIN-LIST]
 
 `List()` creates an empty list. List literals create populated lists.
+[`toList`](0010-LoopConstructsAndFunctionalIterators.md#tolistiterator-iteratort---listt--builtin-iter-tolist)
+collects an iterator pipeline into one ([BUILTIN-ITER-TOLIST]).
 
 #### `listGet(list: List<T>, index: int) -> Result<T, Error>` — [BUILTIN-LIST-GET]
 Equivalent to `list[index]`. An out-of-range index returns `Error`.
@@ -708,7 +710,7 @@ Returns all values in the same traversal order as `mapKeys`.
 
 ## Iterators and Pipe
 
-`range`, `forEach`, `map`, `filter`, `fold`, and `|>` are documented in
+`range`, `forEach`, `map`, `filter`, `fold`, `toList`, and `|>` are documented in
 [Iterators and Iteration](0010-LoopConstructsAndFunctionalIterators.md).
 
 ## HTTP

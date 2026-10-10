@@ -36,6 +36,10 @@ and exhaustiveness rules.
 - `!` negates a boolean.
 - `==`, `!=`, `<`, `>`, `<=`, and `>=` return a boolean.
 
+## Comparison operands [BOOL-COMPARE-OPERANDS]
+
+The two operands of a comparison have one type. Two unrelated types are rejected: ``cannot compare `bool` with `int`: `<` needs two operands of one type``. A `Result` operand is rejected as well; handle it with `match` or `?:` first.
+
 ```osprey
 let valid = age >= 18 && isAuthorized
 let fallback = isAdmin || hasInvite

@@ -9,11 +9,15 @@ struct NativeNode: View {
     var dark = false
     var fieldLabel = ""
     @Environment(\.bankViewportWidth) private var viewportWidth
+    @Environment(\.verticalSizeClass) private var verticalSize
 
     var body: some View { content.accessibilityHidden(node.props["aria-hidden"] == "true") }
 
+    // A phone on its side has no height for a page's title block, and the top bar already names the page.
+    private var isCollapsedTitle: Bool { verticalSize == .compact && node.tag == "div" && parent?.has("page-heading") == true }
+
     private var content: AnyView {
-        if node.props["hidden"] == "true" || node.has("hero-art") || node.has("sr-only") { return AnyView(EmptyView()) }
+        if node.props["hidden"] == "true" || node.has("hero-art") || node.has("sr-only") || isCollapsedTitle { return AnyView(EmptyView()) }
         if node.has("loading-page") { return AnyView(ProgressView("Loading bank data").frame(maxWidth: .infinity, minHeight: 220)) }
         if node.has("security-orbit") { return AnyView(BankMonogram().frame(maxWidth: .infinity).frame(height: 150)) }
         if node.has("brand-mark") {
@@ -21,7 +25,7 @@ struct NativeNode: View {
                 .frame(width: 38, height: 38).background(BankTheme.coral).clipShape(RoundedRectangle(cornerRadius: 12)))
         }
         switch node.tag {
-        case "input", "textarea": return AnyView(BankTextField(node: node, store: store, label: fieldLabel))
+        case "input", "textarea": return AnyView(BankTextField(node: node, store: store, label: fieldLabel).id(node.id))
         case "select": return AnyView(BankPicker(node: node, store: store, label: fieldLabel))
         case "button", "a": return AnyView(button)
         case "hr": return AnyView(Divider())
@@ -37,6 +41,9 @@ struct NativeNode: View {
         if viewportWidth >= 620, !node.classes.isDisjoint(with: ["account-grid", "stat-grid", "mini-stat-grid"]) {
             let columns = Array(repeating: GridItem(.flexible(), spacing: 14), count: viewportWidth >= 1180 ? 3 : 2)
             return AnyView(LazyVGrid(columns: columns, alignment: .leading, spacing: 14) { children })
+        }
+        if viewportWidth >= 620, node.has("paired-fields") {
+            return AnyView(HStack(alignment: .lastTextBaseline, spacing: 12) { children })
         }
         if node.has("hero-card") {
             return AnyView(ZStack(alignment: .trailing) {
@@ -158,9 +165,11 @@ struct BankTextField: View {
     @ObservedObject var store: BankStore
     let label: String
     @FocusState private var focused: Bool
+    // The field owns its text; the store only records it. Identity follows the node id.
+    @State private var text = ""
 
     var body: some View {
-        TextField(node.props["placeholder"] ?? "", text: store.field(node))
+        TextField(node.props["placeholder"] ?? "", text: Binding(get: { text }, set: { text = $0; store.edit(node, $0) }))
             .font(BankTheme.type(16)).foregroundColor(BankTheme.ink)
             .padding(14).frame(minHeight: 48).background(Color.white)
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(focused ? BankTheme.green : BankTheme.line))
@@ -171,7 +180,7 @@ struct BankTextField: View {
             .accessibilityLabel(label.isEmpty ? node.props["placeholder"] ?? node.id : label)
             .accessibilityIdentifier(node.id)
             .onChange(of: store.focusID) { value in focused = value == node.id }
-            .onAppear { focused = store.focusID == node.id }
+            .onAppear { text = store.value(node); focused = store.focusID == node.id }
     }
 }
 
@@ -180,12 +189,12 @@ struct BankPicker: View {
     @ObservedObject var store: BankStore
     let label: String
     private var selected: String {
-        node.nodes.first { $0.props["value"] == store.field(node).wrappedValue }?.label ?? "Choose account"
+        node.nodes.first { $0.props["value"] == store.value(node) }?.label ?? "Choose account"
     }
     var body: some View {
         Menu {
             ForEach(Array(node.nodes.enumerated()), id: \.offset) { _, option in
-                Button(option.label) { store.field(node).wrappedValue = option.props["value"] ?? "" }
+                Button(option.label) { store.choose(node, option.props["value"] ?? "") }
                     .accessibilityIdentifier("\(node.id)-option-\(option.props["value"] ?? "")")
             }
         } label: {

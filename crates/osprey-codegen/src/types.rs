@@ -107,11 +107,13 @@ pub(crate) fn owner_name(prog: &ProgramTypes, ty: &Type) -> Option<String> {
             let shape: Option<Vec<_>> = layout
                 .fields
                 .iter()
-                .map(|(field, _)| fields.get(field).map(|ty| ltype_of(ty).as_str()))
+                .map(|(field, _)| fields.get(field).map(|ty| record_slot_key(prog, ty)))
                 .collect();
             shape.map(|shape| format!("{name}#{}", shape.join(",")))
         }
-        Type::Record { name, .. } | Type::Union { name, .. } => Some(name.clone()),
+        Type::Record { name, .. } | Type::Union { name, .. } => {
+            (!name.is_empty()).then(|| name.clone())
+        }
         Type::Con { name, args } => match name.as_str() {
             names::INT
             | names::FLOAT
@@ -163,12 +165,24 @@ pub(crate) fn record_shape(prog: &ProgramTypes, name: &str, args: &[Type]) -> Op
     if !layout.owner_is_record || layout.type_params.is_empty() {
         return None;
     }
-    let shape: Vec<&str> = layout
+    let shape: Vec<String> = layout
         .fields
         .iter()
-        .map(|(_, t)| ltype_of(&substituted(t, args)).as_str())
+        .map(|(_, t)| record_slot_key(prog, &substituted(t, args)))
         .collect();
     Some(format!("{name}#{}", shape.join(",")))
+}
+
+fn record_slot_key(prog: &ProgramTypes, ty: &Type) -> String {
+    let mut value = crate::llty::Value::new("", ltype_of(ty));
+    value.result_inner = result_inner(ty);
+    value.payload_owner = match ty {
+        Type::Con { name, args } if name == names::RESULT => {
+            args.first().and_then(|inner| owner_name(prog, inner))
+        }
+        _ => None,
+    };
+    crate::llty::record_slot_key(&value)
 }
 
 /// Replace each erased type parameter with the type argument at its position

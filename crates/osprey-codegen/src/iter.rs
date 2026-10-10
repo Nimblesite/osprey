@@ -1,12 +1,13 @@
 //! Iterator builtins: integer `range`, the stream-fused higher-order operations
-//! (`map`/`filter`/`forEach`/`fold`) and the eager list operations
+//! (`map`/`filter`/`forEach`/`fold`/`toList`) and the eager list operations
 //! (`forEachList`/`mapList`/`filterList`/`foldList`). A range is a stack
-//! `{ i64, i64 }` (start, end); `map`/`filter` record a pending stage and pass
-//! the range through; the consuming `forEach`/`fold` emits one counted loop
-//! replaying those stages, so no intermediate collection is ever materialised.
+//! `{ i64, i64 }` (start, end); `map`/`filter` record a stage on the iterator
+//! they are applied to ([`stages`]); the consuming `forEach`/`fold`/`toList`
+//! emits one counted loop replaying those stages, so no intermediate
+//! collection is ever materialised.
 //! Implements [BUILTIN-ITER], [BUILTIN-ITER-RANGE], [BUILTIN-ITER-MAP],
-//! [BUILTIN-ITER-FILTER], [BUILTIN-ITER-FOREACH], [BUILTIN-ITER-FOLD], and
-//! [BUILTIN-ITER-FUSION] and [BUILTIN-LIST-FOREACH].
+//! [BUILTIN-ITER-FILTER], [BUILTIN-ITER-FOREACH], [BUILTIN-ITER-FOLD],
+//! [BUILTIN-ITER-TOLIST], [BUILTIN-ITER-FUSION] and [BUILTIN-LIST-FOREACH].
 
 use crate::builder::{Codegen, FnSig};
 use crate::conv::{as_i64, box_to_i64};
@@ -15,6 +16,10 @@ use crate::expr::{apply_lambda_values, call_with_values, gen_expr};
 use crate::llty::{LType, Value};
 use crate::loops::{close_list_loop, close_range_loop, open_list_loop, open_range_loop, ListLoop};
 use osprey_ast::{Expr, NamedArgument, Parameter, Position};
+
+mod stages;
+use stages::{branch_on_predicate, record};
+pub(crate) use stages::{reject_escape, replay, stage_aliases, stages_of};
 
 const RANGE_TY: &str = "{ i64, i64 }";
 pub(crate) const RANGE_OWNER: &str = "Range";
@@ -36,6 +41,16 @@ pub(crate) enum Callback {
     /// declared parameter types are published under, so a function-typed
     /// parameter still lowers to an indirect call ([`crate::expr`]).
     Lambda(Vec<Parameter>, Expr, Option<FnSig>, Option<Position>),
+    /// A lambda that reads the environment it was defined in, not the scope
+    /// applying it: a let-bound inline lambda, or a recorded stage, which may
+    /// run in a later statement ([`crate::closure::Environment`]).
+    Closed(
+        crate::closure::Environment,
+        Vec<Parameter>,
+        Expr,
+        Option<FnSig>,
+        Option<Position>,
+    ),
     /// A function-typed local (closure value) — called through its cell.
     Local(String, FnSig),
     /// A computed closure value (a call result like `makeAdder(1)` or a field
@@ -70,17 +85,16 @@ pub(crate) fn callback_of(cg: &mut Codegen, e: &Expr) -> Result<Callback> {
         Expr::Identifier(n) => {
             if let Some(sig) = cg.fn_ptr_locals.get(n) {
                 Ok(Callback::Local(n.clone(), sig.clone()))
-            } else if let Some((params, body, position)) = cg.lambda_def(n) {
-                let position = *position;
-                Ok(Callback::Lambda(
-                    params.clone(),
-                    body.clone(),
-                    cg.prog
-                        .lambda_type(position)
-                        .and_then(|t| Codegen::fn_value_sig(&cg.prog, t)),
-                    position,
-                ))
-            } else if let Some((params, body)) = cg.fn_defs.get(n) {
+            } else if let Some((params, body, position)) = cg.lambda_def(n).cloned() {
+                let sig = cg
+                    .prog
+                    .lambda_type(position)
+                    .and_then(|t| Codegen::fn_value_sig(&cg.prog, t));
+                Ok(match cg.lambda_envs.get(n).cloned() {
+                    Some(env) => Callback::Closed(env, params, body, sig, position),
+                    None => Callback::Lambda(params, body, sig, position),
+                })
+            } else if let Some((params, body, _)) = cg.fn_defs.get(n) {
                 // A generic (unannotated) user function has NO emitted `@name`
                 // symbol — it is specialised by inlining at each call site
                 // (lower.rs). As an iterator callback it must be beta-reduced
@@ -112,6 +126,11 @@ pub(crate) fn invoke(cg: &mut Codegen, cb: &Callback, args: Vec<Value>) -> Resul
         Callback::Lambda(params, body, sig, position) => {
             apply_lambda_values(cg, params, body, args, sig.as_ref(), *position)
         }
+        Callback::Closed(env, params, body, sig, position) => {
+            crate::closure::within_env(cg, env, body, |cg| {
+                apply_lambda_values(cg, params, body, args, sig.as_ref(), *position)
+            })
+        }
         Callback::Local(name, sig) => {
             let handle = cg.lookup(name).ok_or_else(|| CodegenError::unknown(name))?;
             let typed = crate::closure::coerce_closure_args(cg, sig, args)?;
@@ -138,6 +157,7 @@ pub(crate) fn gen(
         "filter" => record(cg, args, false)?,
         "forEach" => for_each(cg, args)?,
         "fold" => fold(cg, args)?,
+        "toList" => to_list(cg, args)?,
         "forEachList" => for_each_list(cg, args)?,
         "mapList" => list_builder(cg, args, false)?,
         "filterList" => list_builder(cg, args, true)?,
@@ -166,14 +186,6 @@ fn range(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     Ok(range)
 }
 
-/// `map`/`filter`: record a pending stage and return the iterator unchanged.
-fn record(cg: &mut Codegen, args: &[Expr], is_map: bool) -> Result<Value> {
-    let iter = gen_expr(cg, nth(args, 0)?)?;
-    let cb = callback_of(cg, nth(args, 1)?)?;
-    cg.pending_iter_ops.push(IterOp { map: is_map, cb });
-    Ok(iter)
-}
-
 /// Load a range block's `(start, end)` bounds.
 pub(crate) fn bounds(cg: &mut Codegen, range: &Value) -> (String, String) {
     let s = crate::aggregate::load_field(cg, RANGE_TY, &range.operand, 0, LType::I64);
@@ -181,43 +193,7 @@ pub(crate) fn bounds(cg: &mut Codegen, range: &Value) -> (String, String) {
     (s, e)
 }
 
-/// Emit `cb(elem)` as a truth test and branch on the result. Returns the
-/// `(taken, rejected)` labels; neither block is started, so the caller decides
-/// what each edge does. Every filtering combinator tests its predicate here.
-fn branch_on_predicate(cg: &mut Codegen, cb: &Callback, elem: Value) -> Result<(String, String)> {
-    let pred = invoke(cg, cb, vec![elem])?;
-    let pred = crate::cast::coerce_to(cg, pred, LType::I1)?;
-    let pb = as_i64(cg, pred)?;
-    let nz = cg.emit_reg(format!("icmp ne i64 {}, 0", pb.operand));
-    let taken = cg.fresh_label();
-    let rejected = cg.fresh_label();
-    cg.emit(format!("br i1 {nz}, label %{taken}, label %{rejected}"));
-    Ok((taken, rejected))
-}
-
-/// Replay the pending map/filter stages on element `v` in the current block,
-/// branching to `skip` when a filter rejects it. Returns the transformed value.
-pub(crate) fn replay(cg: &mut Codegen, v: Value, skip: &str) -> Result<Value> {
-    let ops = std::mem::take(&mut cg.pending_iter_ops);
-    let mut cur = v;
-    for op in &ops {
-        if op.map {
-            cur = invoke(cg, &op.cb, vec![cur])?;
-        } else {
-            let (pass, reject) = branch_on_predicate(cg, &op.cb, cur.clone())?;
-            // The reject edge jumps past the loop body's region close, so it
-            // drops the region itself — otherwise every value the preceding
-            // map stages owned this iteration leaks [GC-ARC-PERCEUS].
-            cg.start_block(&reject);
-            crate::arc::drop_frame_inline(cg);
-            cg.emit(format!("br label %{skip}"));
-            cg.start_block(&pass);
-        }
-    }
-    Ok(cur)
-}
-
-/// Run a counted loop over `range`, replaying the pending map/filter stages and
+/// Run a counted loop over `range`, replaying its map/filter stages and
 /// handing each surviving element to `body` inside its own ARC region: values
 /// the body owns drop before the back-edge, so slots are reusable next
 /// iteration [GC-ARC-PERCEUS]. Every consuming iterator combinator lands here.
@@ -226,10 +202,11 @@ fn each_range_elem(
     range: &Value,
     body: impl FnOnce(&mut Codegen, Value) -> Result<()>,
 ) -> Result<()> {
+    let stages = stages_of(cg, range);
     let (start, end) = bounds(cg, range);
     let lp = open_range_loop(cg, &start, &end);
     crate::arc::push_frame(cg);
-    let elem = replay(cg, Value::new(lp.i.clone(), LType::I64), &lp.incr)?;
+    let elem = replay(cg, &stages, Value::new(lp.i.clone(), LType::I64), &lp.incr)?;
     body(cg, elem)?;
     crate::arc::pop_frame(cg);
     close_range_loop(cg, &lp);
@@ -408,21 +385,40 @@ fn list_builder(cg: &mut Codegen, args: &[Expr], filter: bool) -> Result<Value> 
             return Ok(());
         }
         let mapped = invoke(cg, &f, vec![elem])?;
-        if mapped.result_inner.is_some() {
-            return Err(CodegenError::unsupported(
-                "mapList cannot store an unhandled Result element; handle it in the callback",
-            ));
-        }
-        // The callback's return type is what the built list holds, so the
-        // result is tagged with it ([`crate::collections::LIST_TAG`]).
-        out_elem = crate::llty::elem_spelling(&mapped);
-        // The built list stores the mapped element: dup it before the
-        // per-iteration region drop, and tell the builder its kind
-        // [GC-ARC-PERCEUS].
-        let managed = crate::collections::managed_flag(&mapped);
-        crate::arc::escape_retain(cg, &mapped);
-        let boxed = box_to_i64(cg, mapped);
-        crate::collections::list_builder_push(cg, &bld, &boxed.operand, managed);
+        out_elem = push_built(cg, &bld, mapped, "mapList")?;
+        Ok(())
+    })?;
+    let sealed = crate::collections::list_builder_seal(cg, &bld);
+    Ok(sealed.with_owner(Some(crate::collections::list_owner(out_elem.as_deref()))))
+}
+
+/// Store a freshly produced element in the list under construction. Answers
+/// its element type, which tags the built list
+/// ([`crate::collections::LIST_TAG`]).
+fn push_built(cg: &mut Codegen, bld: &str, elem: Value, builtin: &str) -> Result<Option<String>> {
+    if elem.result_inner.is_some() {
+        return Err(CodegenError::unsupported(format!(
+            "{builtin} cannot store an unhandled Result element; handle it in the callback"
+        )));
+    }
+    let spelling = crate::llty::elem_spelling(&elem);
+    // The built list stores the element: dup it before the per-iteration
+    // region drop, and tell the builder its kind [GC-ARC-PERCEUS].
+    let managed = crate::collections::managed_flag(&elem);
+    crate::arc::escape_retain(cg, &elem);
+    let boxed = box_to_i64(cg, elem);
+    crate::collections::list_builder_push(cg, bld, &boxed.operand, managed);
+    Ok(spelling)
+}
+
+/// `toList(iterator)` — run the fused pipeline once and keep every surviving
+/// element in a persistent list [BUILTIN-ITER-TOLIST].
+fn to_list(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
+    let range = gen_expr(cg, nth(args, 0)?)?;
+    let bld = crate::collections::list_builder_new(cg);
+    let mut out_elem = None;
+    each_range_elem(cg, &range, |cg, elem| {
+        out_elem = push_built(cg, &bld, elem, "toList")?;
         Ok(())
     })?;
     let sealed = crate::collections::list_builder_seal(cg, &bld);

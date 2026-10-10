@@ -143,6 +143,7 @@ pub(crate) fn keyword_items(flavor: Flavor, cursor: &Cursor) -> Vec<CompletionIt
             label: (*label).to_owned(),
             kind: CompletionKind::Keyword,
             detail: Some((*detail).to_owned()),
+            documentation: None,
             insert_text: Some((*snippet).to_owned()),
         })
         .collect()

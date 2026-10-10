@@ -1,3 +1,4 @@
+import Combine
 import XCTest
 @testable import TalonBank
 
@@ -66,6 +67,21 @@ final class BankProtocolTests: XCTestCase {
         let close = try node(#"{"tag":"button","props":{"id":"close-modal","className":"icon-button modal-close","event":"click","type":"button"},"children":[{"tag":"span","text":"×","props":{"className":"button-icon"}},{"tag":"span","text":"Close","props":{"className":"button-label"}}]}"#)
         XCTAssertEqual(close.label, "× Close")
         XCTAssertEqual(close.accessibleLabel, "Close")
+    }
+
+    @MainActor func testTypingKeepsTheStoreQuietAndAChoiceRepublishesIt() throws {
+        let store = BankStore()
+        let note = try node(#"{"tag":"input","props":{"id":"deposit-note","name":"note"}}"#)
+        let account = try node(#"{"tag":"select","props":{"id":"deposit-account","name":"account"},"children":[{"tag":"option","props":{"value":"7"},"text":"Seven"}]}"#)
+        var published = 0
+        let watch = store.objectWillChange.sink { published += 1 }
+        store.edit(note, "O'Reilly")
+        XCTAssertEqual(published, 0, "a keystroke must not re-render every node")
+        XCTAssertEqual([store.value(note), store.value(account)], ["O'Reilly", "7"])
+        store.choose(account, "9")
+        XCTAssertEqual(published, 1)
+        XCTAssertEqual(store.value(account), "9")
+        watch.cancel()
     }
 
     private func node(_ json: String) throws -> BankNode { try JSONDecoder().decode(BankNode.self, from: Data(json.utf8)) }

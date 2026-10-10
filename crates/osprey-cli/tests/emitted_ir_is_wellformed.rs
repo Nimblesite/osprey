@@ -15,6 +15,9 @@
 //! value, which is precisely why these assertions read the emitted IR.
 
 mod common;
+#[path = "common/debug_scope.rs"]
+mod debug_scope;
+use debug_scope::{scope_chain, scope_parent};
 
 use common::{bound_symbols, repo_root, sources, symbol_at, undefined_symbols};
 use std::fs;
@@ -224,4 +227,254 @@ fn no_corpus_program_emits_a_reference_to_an_undefined_symbol() {
         broken.len(),
         broken.join("\n")
     );
+}
+
+/// [DEBUGGER-SOURCE-MAP] A return-only block still has an executable body line.
+#[test]
+fn single_expression_blocks_keep_their_return_locations() -> Result<(), String> {
+    for (default, ml, scope, line) in RETURN_ONLY_BLOCKS {
+        for (source, extension) in [(default, "osp"), (ml, "ospml")] {
+            assert_return_location(&return_debug_ir(source, extension)?, scope, line)?;
+        }
+    }
+    Ok(())
+}
+
+fn return_debug_ir(source: &str, extension: &str) -> Result<String, String> {
+    let path = format!("return_location.{extension}");
+    let parsed = osprey_syntax::parse_program_for_path(&path, source);
+    assert!(parsed.errors.is_empty(), "{extension}: {:?}", parsed.errors);
+    let errors = osprey_types::check_program(&parsed.program);
+    assert!(errors.is_empty(), "{extension}: {errors:?}");
+    osprey_codegen::compile_program_debug(
+        &parsed.program,
+        osprey_codegen::DebugSource::from_path(&path),
+    )
+    .map_err(|error| format!("{extension}: {error}"))
+}
+
+fn assert_return_location(ir: &str, name: &str, line: usize) -> Result<(), String> {
+    let scope = ir
+        .lines()
+        .find(|line| line.contains(&format!("!DISubprogram(name: \"{name}")))
+        .and_then(|line| line.split_once(" = "))
+        .map(|(id, _)| id)
+        .ok_or_else(|| format!("missing scope {name}"))?;
+    let location = format!("!DILocation(line: {line},");
+    let locations = ir.lines().filter(|metadata| metadata.contains(&location));
+    let owners = locations
+        .map(|metadata| scope_parent(metadata).and_then(|owner| scope_chain(ir, owner)))
+        .collect::<Result<Vec<_>, _>>()?;
+    assert!(
+        owners.iter().any(|chain| chain.last() == Some(&scope)),
+        "missing return line in {name}: {ir}"
+    );
+    Ok(())
+}
+
+const RETURN_ONLY_BLOCKS: [(&str, &str, &str, usize); 3] = [
+    (
+        "let value = 42\nfn read() = {\n    value\n}\nfn main() = print(read())\n",
+        "value = 42\nread () =\n    value\nmain () = print (read ())\n",
+        "read", 3,
+    ),
+    (
+        "fn answer() = {\n    42\n}\nfn main() = print(answer())\n",
+        "answer () =\n    42\nmain () = print (answer ())\n",
+        "answer", 2,
+    ),
+    (
+        "fn make() = fn(x) => {\n    wrapAdd(x, 0)\n}\nfn main() = {\n let f = make()\n print(f(42))\n}\n",
+        "make () = \\x =>\n    wrapAdd x 0\nmain () =\n    f = make ()\n    print (f 42)\n",
+        "__closure_fn_", 2,
+    ),
+
+];
+
+/// [DEBUGGER-LAMBDA-SCOPES] A generic function value retains its real definition.
+#[test]
+fn generic_function_values_keep_their_source_scope() -> Result<(), String> {
+    for (source, extension) in [(GENERIC_RECORD.0, "osp"), (GENERIC_RECORD.1, "ospml")] {
+        let ir = return_debug_ir(source, extension)?;
+        assert_return_location(&ir, "identity", 5)?;
+        assert!(ir.contains("!DILocalVariable(name: \"x\", arg: 2,"));
+    }
+    Ok(())
+}
+
+const GENERIC_RECORD: (&str, &str) = (
+    "type IntFunction = { run: fn(int) -> int }\n\nfn identity(x) = {\n    let value = x\n    value\n}\nfn main() = {\n    let holder = IntFunction { run: identity }\n    print(holder.run(42))\n}\n",
+    "type IntFunction =\n    run : int -> int\nidentity x =\n    value = x\n    value\nmain () =\n    holder = IntFunction(run = identity)\n    print (holder.run 42)\n",
+);
+
+/// [FFI-CALLBACKS] Specializing a named function preserves its C ABI debug arguments.
+#[test]
+fn generic_c_callbacks_keep_their_source_scope() -> Result<(), String> {
+    for (source, extension) in GENERIC_C_CALLBACKS {
+        let ir = return_debug_ir(source, extension)?;
+        assert_return_location(&ir, "identity", 4)?;
+        assert!(ir.contains("!DILocalVariable(name: \"x\", arg: 1,"));
+    }
+    Ok(())
+}
+
+const GENERIC_C_CALLBACKS: [(&str, &str); 2] = [
+    ("extern fn invoke(f: (int) -> int, n: int) -> int\nfn identity(x) = {\n    let value = x\n    value\n}\nfn main() = print(invoke(identity, 42))\n", "osp"),
+    ("extern invoke (f : int -> int) (n : int) -> int\nidentity x =\n    value = x\n    value\nmain () = print (invoke (identity, 42))\n", "ospml"),
+];
+
+/// [DEBUGGER-SOURCE-MAP] Runtime callback instantiations keep the original definition.
+#[test]
+fn generic_runtime_callbacks_keep_their_source_scope() -> Result<(), String> {
+    for (source, extension) in [
+        (INFERRED.replace("handler", "respond"), "osp"),
+        (INFERRED_ML.to_owned(), "ospml"),
+    ] {
+        let ir = return_debug_ir(&source, extension)?;
+        assert_return_location(&ir, "respond", 1)?;
+        for (index, name) in ["method", "path", "headers", "body"].iter().enumerate() {
+            let arg = index + 1;
+            assert!(ir.contains(&format!("!DILocalVariable(name: \"{name}\", arg: {arg},")));
+        }
+    }
+    Ok(())
+}
+
+const INFERRED_ML: &str = "respond (method, path, headers, body) = HttpResponse(status = 200, headers = \"\", contentType = \"text/plain\", streamFd = 0, isComplete = true, partialBody = \"ok\")\nserver = httpCreateServer (18201, \"127.0.0.1\")\nlistening = httpListen (server, respond)\nprint \"${listening}\"\n";
+
+/// [TYPE-GENERICS-FN] Named C callbacks read their declaration's global bindings.
+#[test]
+fn generic_c_callbacks_do_not_capture_shadowing_callers() -> Result<(), String> {
+    for (source, extension) in [
+        ("extern fn invoke(f: (int) -> int, n: int) -> int\nlet anchor = 2\nfn declared(ignored) = anchor\nfn main() = {\n    let anchor = 100\n    print(invoke(declared, anchor))\n}\n", "osp"),
+        ("extern invoke (f : int -> int) (n : int) -> int\nanchor = 2\ndeclared ignored = anchor\nmain () =\n    anchor = 100\n    print (invoke (declared, anchor))\n", "ospml"),
+    ] {
+        let ir = return_debug_ir(source, extension)?;
+        assert!(ir.contains("load i64, i64* @osp.g.anchor"));
+        assert!(ir.contains("!DILocalVariable(name: \"ignored\", arg: 1,"));
+        assert!(undefined_symbols(&ir).is_empty());
+    }
+    Ok(())
+}
+
+type DebugTestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
+
+/// [DEBUGGER-BUILD-OPTIONS] Artifact controls work on both authoring surfaces.
+#[test]
+fn debug_build_controls_preserve_inspectable_ir_and_runnable_output() -> DebugTestResult {
+    for (extension, source) in [
+        ("osp", "fn main() = print(42)\n"),
+        ("ospml", "main () = print 42\n"),
+    ] {
+        for info in ["dwarf", "none"] {
+            assert_debug_artifacts(extension, source, info)?;
+        }
+    }
+    Ok(())
+}
+
+fn debug_fixture(
+    label: &str,
+    extension: &str,
+    source: &str,
+) -> DebugTestResult<(std::path::PathBuf, std::path::PathBuf)> {
+    let dir = std::env::temp_dir().join(format!(
+        "osprey-debug-{}-{label}-{extension}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&dir)?;
+    let input = dir.join(format!("source.{extension}"));
+    fs::write(&input, source)?;
+    Ok((input, dir.join("debug program.exe")))
+}
+
+fn debug_command(input: &Path, output: &Path) -> std::process::Command {
+    let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_osprey"));
+    let _ = command
+        .current_dir(repo_root())
+        .arg(input)
+        .arg("--debug-out")
+        .arg(output);
+    command
+}
+
+fn assert_debug_success(output: &std::process::Output) {
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn compile_debug_artifact(
+    input: &Path,
+    output: &Path,
+    info: &str,
+) -> DebugTestResult<std::process::Output> {
+    Ok(debug_command(input, output)
+        .args([
+            "--debug",
+            "--compile",
+            "--debug-preserve-ir",
+            "--debug-opt=none",
+            &format!("--debug-info={info}"),
+        ])
+        .env("OSPREY_DEBUG_OPT", "-O3")
+        .output()?)
+}
+
+fn assert_debug_artifacts(extension: &str, source: &str, info: &str) -> DebugTestResult {
+    let (input, output) = debug_fixture(info, extension, source)?;
+    let built = compile_debug_artifact(&input, &output, info)?;
+    assert_debug_success(&built);
+    let ir = fs::read_to_string(output.with_extension("exe.ll"))?;
+    assert_eq!(ir.contains("!DICompileUnit"), info == "dwarf");
+    assert_eq!(ir.contains("!DILocation"), info == "dwarf");
+    let run = std::process::Command::new(&output).output()?;
+    assert_debug_success(&run);
+    assert_eq!(run.stdout, b"42\n");
+    assert_debug_driver_failure(&input, &output)?;
+    if let Some(dir) = input.parent() {
+        fs::remove_dir_all(dir)?;
+    }
+    Ok(())
+}
+
+/// --run preserves explicitly named output and IR, with unchanged program stdout.
+#[test]
+fn debug_run_retains_requested_artifacts_in_both_flavors() -> DebugTestResult {
+    for extension in ["osp", "ospml"] {
+        let (input, output) = debug_fixture("run", extension, "print(42)\n")?;
+        let run = debug_command(&input, &output)
+            .args(["--run", "--debug-preserve-ir", "--debug-preserve-symbols"])
+            .output()?;
+        assert_debug_success(&run);
+        assert_eq!(run.stdout, b"42\n");
+        assert!(output.is_file());
+        assert!(output.with_extension("exe.ll").is_file());
+        if cfg!(target_os = "macos") {
+            assert!(output.with_extension("exe.dSYM").is_dir());
+        }
+        if let Some(dir) = input.parent() {
+            fs::remove_dir_all(dir)?;
+        }
+    }
+    Ok(())
+}
+
+fn assert_debug_driver_failure(input: &Path, output: &Path) -> DebugTestResult {
+    let failed_output = output.with_extension("missing.exe");
+    let failed = debug_command(input, &failed_output)
+        .args(["--compile", "--debug-preserve-ir"])
+        .env("OSPREY_CC", output.with_extension("missing-compiler"))
+        .output()?;
+    assert!(!failed.status.success());
+    assert!(String::from_utf8_lossy(&failed.stderr).contains("could not invoke"));
+    assert!(!failed_output.exists());
+    let ir = fs::read_to_string(failed_output.with_extension("exe.ll"))?;
+    assert!(
+        ir.contains("!DICompileUnit"),
+        "driver failures must retain the requested IR"
+    );
+    Ok(())
 }

@@ -33,6 +33,7 @@ fn project(entry: &str, library: &str) -> osprey_ast::Program {
         entry: Some("main.osp".into()),
         flavor: None,
         allow_wildcard_imports: false,
+        published_library: false,
     };
     let result = assemble(
         &config,

@@ -1,6 +1,5 @@
 // Real DAP launch and LSP/DAP separation [DEBUGGER-EDITOR-LAUNCH]
 // [DEBUGGER-PROTOCOLS].
-import * as path from "path";
 import {
   workspace,
   ExtensionContext,
@@ -9,14 +8,10 @@ import {
   debug,
   DebugAdapterExecutable,
   languages,
-  OutputChannel,
 } from "vscode";
-import { execFile, execFileSync } from "child_process";
 import * as fs from "fs";
 import {
-  CloseAction,
   CodeActionRequest,
-  ErrorAction,
   Executable,
   LanguageClient,
   LanguageClientOptions,
@@ -24,6 +19,7 @@ import {
   ServerOptions,
   TransportKind,
 } from "vscode-languageclient/node";
+import { registerDebugLaunch } from "./debug-launch";
 import { registerOspreyDebugPanel } from "./debug-panel";
 import { registerProfilerCommands } from "./profiler/profile-run";
 import { registerTestDocsCommand } from "./test-docs-panel";
@@ -32,373 +28,16 @@ import { registerTestDebugProfile } from "./test-debug";
 import { registerTestProfileProfile } from "./test-profile";
 import { registerWarningFixes, warningFixMiddleware } from "./warning-fixes";
 
+import { resolveServerCommand, makeClientFailureHandling, defaultOspreyDebugConfigForEditor, ospreyLanguageForFile } from "./client-config";
+import { resolveLldbDapExecutable, missingLldbDapMessage } from "./debug-config";
+import { compileCurrentFile, compileAndRunCurrentFile } from "./compile-commands";
+export * from "./client-config";
+export * from "./debug-config";
+
 // @nimblesite/shipwright-vscode is ESM-only; this extension is CommonJS, so it
 // is loaded via dynamic import() (never a static require) inside activate().
 
 let client: LanguageClient;
-
-// shipwrightPlatform maps the Node platform/arch to the Shipwright platform id
-// (e.g. darwin-arm64, win32-x64) used in the bundled binary path. Both inputs
-// are parameters rather than direct `process` reads so every arm of the mapping
-// is reachable from a unit test: a VSIX is staged for platforms CI never runs
-// on, and a mapping that is only ever exercised for the host's own triple is
-// the half of this function most likely to be wrong.
-export function shipwrightPlatform(
-  platform: NodeJS.Platform = process.platform,
-  arch: string = process.arch,
-): string {
-  const cpu = arch === "arm64" ? "arm64" : "x64";
-  const os =
-    platform === "win32" ? "win32" : platform === "darwin" ? "darwin" : "linux";
-  return `${os}-${cpu}`;
-}
-
-// resolveBundledCompiler returns the absolute path to the version-matched
-// osprey binary bundled in this VSIX for the current platform, or undefined
-// when running unbundled (e.g. a local dev install). The release pipeline
-// stages it at bin/<platform>/osprey[.exe]. [EDITOR-VERSIONING] Exported so
-// both the bundled-present and unbundled branches can be unit tested.
-export function resolveBundledCompiler(
-  context: ExtensionContext,
-): string | undefined {
-  const exe = process.platform === "win32" ? ".exe" : "";
-  const bundled = context.asAbsolutePath(
-    path.join("bin", shipwrightPlatform(), `osprey${exe}`),
-  );
-  return fs.existsSync(bundled) ? bundled : undefined;
-}
-
-// looksLikePath reports whether a configured compiler value is a filesystem
-// path (absolute or relative) rather than a bare command name resolved on PATH.
-// Only path-like values are existence-checked; a bare `osprey` is left for the
-// OS to resolve at spawn time.
-export function looksLikePath(value: string): boolean {
-  return value.includes("/") || value.includes("\\");
-}
-
-// resolveServerCommand picks the osprey binary that backs the language server:
-// an explicit user setting, then the version-matched bundled compiler, then a
-// plain `osprey` on PATH. The server is launched as `<command> lsp` over stdio.
-// A configured path that points at a MISSING file would make the language
-// client fail to spawn (ENOENT) and silently kill every feature — hover,
-// diagnostics, go-to-definition. Rather than die, fall back to the bundled/PATH
-// compiler and warn. `warn` is injectable so the fallback branch is unit
-// testable; it defaults to a no-op. Exported so each branch is unit tested
-// independently of a single live activation. [EDITOR-VSCODE],
-// [EDITOR-VERSIONING]
-export function resolveServerCommand(
-  context: ExtensionContext,
-  warn: (message: string) => void = () => undefined,
-): string {
-  const config = workspace.getConfiguration("osprey");
-  const userPath =
-    config.get<string>("server.compilerPath") ||
-    config.get<string>("server.path");
-  if (userPath) {
-    if (looksLikePath(userPath) && !fs.existsSync(userPath)) {
-      const fallback = resolveBundledCompiler(context) ?? "osprey";
-      warn(
-        `osprey.server.compilerPath "${userPath}" does not exist; ` +
-          `falling back to "${fallback}". Run \`make build\` to produce it.`,
-      );
-      return fallback;
-    }
-    return userPath;
-  }
-  return resolveBundledCompiler(context) ?? "osprey";
-}
-
-// makeClientFailureHandling builds the language client's failure callbacks: the
-// one-shot initialization-failed handler and the runtime error/closed handlers
-// that keep the server alive (Continue) or restart it (Restart). These fire only
-// on real LSP transport failures, which an integration test cannot reliably
-// induce — so they are extracted here and the side effects (`log`, `showError`)
-// are injected, letting each callback be unit-tested directly. Behaviour is
-// identical to the previous inline handlers.
-export function makeClientFailureHandling(
-  log: (message: string) => void,
-  showError: (message: string) => void,
-): Pick<LanguageClientOptions, "initializationFailedHandler" | "errorHandler"> {
-  return {
-    initializationFailedHandler: (error) => {
-      log(`Initialization failed: ${error}`);
-      showError(`Osprey language server initialization failed: ${error}`);
-      return false;
-    },
-    errorHandler: {
-      error: (error, message, count) => {
-        log(
-          `Language server error: ${error}, message: ${message}, count: ${count}`,
-        );
-        return { action: ErrorAction.Continue };
-      },
-      closed: () => {
-        log("Language server connection closed; restarting");
-        return { action: CloseAction.Restart };
-      },
-    },
-  };
-}
-
-// A minimal stand-in for the active editor the debug provider reads — just the
-// document fields the synthesis needs.
-export interface ActiveEditorLike {
-  document: { languageId: string; fileName: string };
-}
-
-// Osprey ships two surface flavors that share one compiler, language server,
-// and debug pipeline: the brace flavor (.osp, languageId "osprey") and the ML
-// layout flavor (.ospml, languageId "osprey-ml"). The CLI selects the flavor
-// from the file extension, so every editor-side filter must accept BOTH — never
-// hard-filter to ".osp"/"osprey" alone or ML files silently lose their UX.
-const OSPREY_LANGUAGE_IDS = ["osprey", "osprey-ml"];
-const OSPREY_FILE_EXTENSIONS = [".osp", ".ospml"];
-
-export function isOspreyFile(fileName: string): boolean {
-  return OSPREY_FILE_EXTENSIONS.some((ext) => fileName.endsWith(ext));
-}
-
-function isOspreyLanguageId(languageId: string): boolean {
-  return OSPREY_LANGUAGE_IDS.includes(languageId);
-}
-
-// ospreyLanguageForFile maps an Osprey source file to its VS Code language id —
-// the ML layout flavor (.ospml) to "osprey-ml", the brace flavor (.osp) to
-// "osprey" — or undefined for a non-Osprey file. ".ospml" is checked first
-// because it also ends with "osp". Exported so the mapping is unit-testable.
-export function ospreyLanguageForFile(fileName: string): string | undefined {
-  if (fileName.endsWith(".ospml")) {
-    return "osprey-ml";
-  }
-  if (fileName.endsWith(".osp")) {
-    return "osprey";
-  }
-  return undefined;
-}
-
-function isOspreyDocument(document: ActiveEditorLike["document"]): boolean {
-  return (
-    isOspreyLanguageId(document.languageId) || isOspreyFile(document.fileName)
-  );
-}
-
-// applyDefaultOspreyDebugConfig fills an otherwise-empty launch config from the
-// active osprey editor, so pressing Run with no `.vscode/launch.json` still
-// works ([EDITOR-VSCODE]). It mutates and returns `config`: synthesis happens
-// only when type/request/name are all absent AND an osprey document is focused;
-// any already-populated config is returned untouched. Pure (no VS Code globals)
-// so the debug provider's branches are unit-testable without a debug session.
-export function applyDefaultOspreyDebugConfig(
-  config: any,
-  activeEditor: ActiveEditorLike | undefined,
-): any {
-  if (!config.type && !config.request && !config.name) {
-    if (activeEditor && isOspreyDocument(activeEditor.document)) {
-      config.type = "osprey";
-      config.name = "Debug Osprey File";
-      config.request = "launch";
-      config.program = activeEditor.document.fileName;
-      config.cwd = path.dirname(activeEditor.document.fileName);
-    }
-  }
-  return config;
-}
-
-export function defaultOspreyDebugConfigForEditor(
-  activeEditor: ActiveEditorLike | undefined,
-): any {
-  return applyDefaultOspreyDebugConfig({}, activeEditor);
-}
-
-export function defaultDebugOutputPath(program: string): string {
-  const exe = process.platform === "win32" ? ".exe" : "";
-  return path.join(
-    path.dirname(program),
-    ".osprey-debug",
-    `${path.basename(program, path.extname(program))}${exe}`,
-  );
-}
-
-export interface LldbDapResolutionHost {
-  env?: NodeJS.ProcessEnv;
-  existsSync?: (filePath: string) => boolean;
-  readDir?: (directory: string) => string[];
-  execFileSync?: (
-    command: string,
-    args: readonly string[],
-    options: { encoding: BufferEncoding },
-  ) => string | Buffer;
-  getSetting?: () => string | undefined;
-  platform?: NodeJS.Platform;
-}
-
-function findExecutableOnPath(
-  command: string,
-  env: NodeJS.ProcessEnv,
-  existsSync: (filePath: string) => boolean,
-): string | undefined {
-  for (const dir of (env.PATH ?? "").split(path.delimiter)) {
-    if (!dir) {
-      continue;
-    }
-    const candidate = path.join(dir, command);
-    if (existsSync(candidate)) {
-      return candidate;
-    }
-  }
-  return undefined;
-}
-
-function versionedDap(
-  dir: string,
-  name: string,
-  existsSync: (filePath: string) => boolean,
-): [number, string] | undefined {
-  const version = /^lldb-dap-(\d+)$/.exec(name)?.[1];
-  const candidate = path.join(dir, name);
-  return version && existsSync(candidate) ? [Number(version), candidate] : undefined;
-}
-
-function findVersionedLldbDap(
-  env: NodeJS.ProcessEnv,
-  existsSync: (filePath: string) => boolean,
-  readDir: (directory: string) => string[],
-): string | undefined {
-  const candidates = (env.PATH ?? "").split(path.delimiter).filter(Boolean).flatMap((dir) => {
-    try {
-      return readDir(dir)
-        .map((name) => versionedDap(dir, name, existsSync))
-        .filter((item): item is [number, string] => item !== undefined);
-    } catch {
-      return [];
-    }
-  });
-  return candidates.sort((left, right) => right[0] - left[0])[0]?.[1];
-}
-
-export function resolveLldbDapCommand(
-  config: any = {},
-  host: LldbDapResolutionHost = {},
-): string {
-  const platform = host.platform ?? process.platform;
-  const lldbDapName = platform === "win32" ? "lldb-dap.exe" : "lldb-dap";
-  return resolveLldbDapExecutable(config, host) ?? lldbDapName;
-}
-
-export function resolveLldbDapExecutable(
-  config: any = {},
-  host: LldbDapResolutionHost = {},
-): string | undefined {
-  const setting = host.getSetting
-    ? host.getSetting()
-    : workspace.getConfiguration("osprey").get<string>("debug.lldbDapPath");
-  const configured = config.lldbDapPath || setting;
-  const platform = host.platform ?? process.platform;
-  const existsSync = host.existsSync ?? fs.existsSync;
-  const env = host.env ?? process.env;
-  const lldbDapName = platform === "win32" ? "lldb-dap.exe" : "lldb-dap";
-  const legacyName = platform === "win32" ? "lldb-vscode.exe" : "lldb-vscode";
-  if (configured) {
-    if (looksLikePath(configured)) {
-      return existsSync(configured) ? configured : undefined;
-    }
-    return findExecutableOnPath(configured, env, existsSync);
-  }
-
-  const onPath =
-    findExecutableOnPath(lldbDapName, env, existsSync) ??
-    findExecutableOnPath(legacyName, env, existsSync);
-  if (onPath) {
-    return onPath;
-  }
-  if (platform === "linux") {
-    const versioned = findVersionedLldbDap(env, existsSync, host.readDir ?? fs.readdirSync);
-    if (versioned) {
-      return versioned;
-    }
-  }
-
-  if (platform === "darwin") {
-    try {
-      const xcrun = host.execFileSync ?? execFileSync;
-      const resolved = String(
-        xcrun("xcrun", ["-f", "lldb-dap"], { encoding: "utf8" }),
-      ).trim();
-      if (resolved && existsSync(resolved)) {
-        return resolved;
-      }
-    } catch {
-      // Fall through to common install locations.
-    }
-  }
-
-  const commonCandidates =
-    platform === "win32"
-      ? [
-          "C:\\Program Files\\LLVM\\bin\\lldb-dap.exe",
-          "C:\\Program Files\\LLVM\\bin\\lldb-vscode.exe",
-        ]
-      : [
-          "/opt/homebrew/opt/llvm/bin/lldb-dap",
-          "/usr/local/opt/llvm/bin/lldb-dap",
-          "/usr/bin/lldb-dap",
-          "/opt/homebrew/opt/llvm/bin/lldb-vscode",
-          "/usr/local/opt/llvm/bin/lldb-vscode",
-          "/usr/bin/lldb-vscode",
-        ];
-  return commonCandidates.find(existsSync);
-}
-
-export function missingLldbDapMessage(config: any = {}): string {
-  const configured = config.lldbDapPath
-    ? ` Configured lldbDapPath: ${config.lldbDapPath}.`
-    : "";
-  return (
-    "lldb-dap was not found. Install LLVM/LLDB or set osprey.debug.lldbDapPath " +
-    "to an existing lldb-dap executable. Checked launch config, VS Code setting, PATH, " +
-    `xcrun, and common LLVM install paths.${configured}`
-  );
-}
-
-function compileDebugProgram(
-  compilerCommand: string,
-  sourceProgram: string,
-  debugOutput: string,
-  cwd: string,
-  log: (message: string) => void,
-): Promise<void> {
-  fs.mkdirSync(path.dirname(debugOutput), { recursive: true });
-  return new Promise((resolve, reject) => {
-    const build = execFile(
-      compilerCommand,
-      [sourceProgram, "--debug", "--compile", "-o", debugOutput],
-      { cwd },
-      (error: any, stdout: any, stderr: any) => {
-        if (stdout) {
-          log(stdout);
-        }
-        if (stderr) {
-          log(stderr);
-        }
-        if (error) {
-          reject(
-            new Error(
-              `Osprey debug build failed with exit code ${error.code || "unknown"}`,
-            ),
-          );
-          return;
-        }
-        resolve();
-      },
-    );
-    // The third of this extension's three spawn sites, and the one that used to
-    // forget: `execFile` OPENS a stdin pipe and never ends it, so a compiler
-    // that ever reads stdin parks on a descriptor that is neither data nor EOF.
-    // Nothing writes to a debug build's stdin, so EOF is the honest thing for
-    // it to see -- and "every caller must remember" is not a working contract.
-    build.stdin?.end();
-  });
-}
 
 export function activate(context: ExtensionContext) {
   console.log("Osprey extension is now active!");
@@ -520,7 +159,10 @@ export function activate(context: ExtensionContext) {
       { scheme: "untitled", language: "osprey-ml" },
     ],
     synchronize: {
-      fileEvents: workspace.createFileSystemWatcher("**/*.osp{,ml}"),
+      fileEvents: [
+        workspace.createFileSystemWatcher("**/*.osp{,ml}"),
+        workspace.createFileSystemWatcher("**/osprey.toml"),
+      ],
     },
     outputChannelName: "Osprey Language Server",
     revealOutputChannelOn: RevealOutputChannelOn.Error,
@@ -589,65 +231,7 @@ export function activate(context: ExtensionContext) {
   // refreshes on every stop.
   registerOspreyDebugPanel(context);
 
-  // Register debug configuration provider
-  context.subscriptions.push(
-    debug.registerDebugConfigurationProvider("osprey", {
-      async resolveDebugConfiguration(_folder: any, config: any, _token: any) {
-        // If no config is provided, synthesize one from the active osprey editor.
-        config = applyDefaultOspreyDebugConfig(config, window.activeTextEditor);
-
-        if (!config.program) {
-          return window
-            .showInformationMessage("Cannot find a program to run")
-            .then((_) => {
-              return undefined;
-            });
-        }
-
-        const sourceProgram = config.program;
-        const cwd = config.cwd || path.dirname(sourceProgram);
-        const debugOutput =
-          config.debugOutput || defaultDebugOutputPath(sourceProgram);
-        const document = workspace.textDocuments.find(
-          (d) => d.fileName === sourceProgram,
-        );
-        if (document && document.isDirty) {
-          const saved = await document.save();
-          if (!saved) {
-            window.showErrorMessage("Save the Osprey file before debugging.");
-            return undefined;
-          }
-        }
-
-        outputChannel.appendLine(
-          `Debug build: ${sourceProgram} -> ${debugOutput}`,
-        );
-        try {
-          await compileDebugProgram(
-            resolveServerCommand(context),
-            sourceProgram,
-            debugOutput,
-            cwd,
-            (message) => outputChannel.appendLine(message),
-          );
-        } catch (error: any) {
-          const msg = error?.message || String(error);
-          outputChannel.appendLine(msg);
-          window.showErrorMessage(msg);
-          return undefined;
-        }
-
-        return {
-          ...config,
-          type: "osprey",
-          request: "launch",
-          program: debugOutput,
-          sourceProgram,
-          cwd,
-        };
-      },
-    }),
-  );
+  registerDebugLaunch(context, () => resolveServerCommand(context), outputChannel);
 
   // Auto-detect and force language association for .osp and .ospml files. The
   // ML layout flavor (.ospml) binds to "osprey-ml"; the brace flavor (.osp) to
@@ -726,115 +310,6 @@ async function debugCurrentFile() {
     return;
   }
   await debug.startDebugging(undefined, config);
-}
-
-// The two "compile the active file" commands (compile, compile-and-run) differ
-// only in the compiler args and the strings they log; everything else — the
-// active-editor / .osp guards, save, output channel and the STDOUT/STDERR/ERROR
-// reporting — is one shared shape captured by `runCompileTask`.
-interface CompileTask {
-  fileVerb: string;
-  channelName: string;
-  startLine: (fileName: string) => string;
-  args: (fileName: string) => string[];
-  outputHeader: string;
-  failureMessage: string;
-  successHeader: string;
-  successMessage: string;
-}
-
-function reportCompileOutput(
-  channel: OutputChannel,
-  task: CompileTask,
-  error: any,
-  stdout: any,
-  stderr: any,
-) {
-  channel.appendLine(task.outputHeader);
-  if (stdout) {
-    channel.appendLine(`STDOUT:`);
-    channel.appendLine(stdout);
-  }
-  if (stderr) {
-    channel.appendLine(`STDERR:`);
-    channel.appendLine(stderr);
-  }
-  if (error) {
-    channel.appendLine(`ERROR:`);
-    channel.appendLine(`Exit code: ${error.code || "unknown"}`);
-    channel.appendLine(`Signal: ${error.signal || "none"}`);
-    channel.appendLine(`Error message: ${error.message}`);
-    window.showErrorMessage(task.failureMessage);
-  } else {
-    channel.appendLine(task.successHeader);
-    window.showInformationMessage(task.successMessage);
-  }
-  channel.appendLine(`=== END OUTPUT ===`);
-}
-
-function runCompileTask(compilerCommand: string, task: CompileTask) {
-  const activeEditor = window.activeTextEditor;
-  if (!activeEditor) {
-    window.showErrorMessage("No active Osprey file found");
-    return;
-  }
-  const document = activeEditor.document;
-  if (!isOspreyFile(document.fileName)) {
-    window.showErrorMessage(
-      `Please open a .osp or .ospml file to ${task.fileVerb}`,
-    );
-    return;
-  }
-  // Save the file first, then compile with the resolved osprey compiler (user
-  // setting → version-matched bundled binary → `osprey` on PATH — same
-  // resolution the language server uses).
-  document.save().then(() => {
-    const outputChannel = window.createOutputChannel(task.channelName);
-    outputChannel.show();
-    outputChannel.appendLine(task.startLine(document.fileName));
-    const fileDir = path.dirname(document.fileName);
-    const child = execFile(
-      compilerCommand,
-      task.args(document.fileName),
-      { cwd: fileDir },
-      (error: any, stdout: any, stderr: any) =>
-        reportCompileOutput(outputChannel, task, error, stdout, stderr),
-    );
-    // Close stdin at once, exactly as the test explorer's spawn does. execFile
-    // OPENS a stdin pipe and never ends it, so a program that reads stdin
-    // (`input()`) parks in `read` forever: the run never finishes, and the
-    // channel stays empty because stdout is block-buffered and never flushed.
-    // An output-channel run has no keyboard attached to it, so EOF — not an
-    // eternal wait — is the honest thing for the child to see.
-    child.stdin?.end();
-  });
-}
-
-function compileCurrentFile(compilerCommand: string) {
-  runCompileTask(compilerCommand, {
-    fileVerb: "compile",
-    channelName: "Osprey Compiler",
-    startLine: (fileName) => `Compiling ${fileName}...`,
-    args: (fileName) => [fileName],
-    outputHeader: `=== COMPILATION OUTPUT ===`,
-    failureMessage: "Compilation failed. Check output for details.",
-    successHeader: "=== COMPILATION SUCCESS ===",
-    successMessage: "Osprey file compiled successfully!",
-  });
-}
-
-function compileAndRunCurrentFile(compilerCommand: string) {
-  runCompileTask(compilerCommand, {
-    fileVerb: "run",
-    channelName: "Osprey Runner",
-    startLine: (fileName) => `Compiling and running ${fileName}...`,
-    args: (fileName) => [fileName, "--run"],
-    outputHeader: `=== COMPILE AND RUN OUTPUT ===`,
-    failureMessage:
-      "Compilation or execution failed. Check output for details.",
-    successHeader: "=== SUCCESS ===",
-    successMessage: "Osprey program executed successfully!",
-  });
 }
 
 export function deactivate(): Promise<void> | undefined {

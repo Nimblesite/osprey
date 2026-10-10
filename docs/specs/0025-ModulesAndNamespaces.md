@@ -75,6 +75,12 @@ The source path is used for discovery and diagnostics only. Moving
 `src/a.ospml` to `src/deep/b.ospml` does not change the namespace or symbol
 identity written in that source.
 
+### Project Style Advice `[MODULES-STYLE]`
+
+Style findings are warnings, never rejection criteria. `namespace-folder-drift` reports each contributing source when one namespace spans more than one physical parent folder; no folder-to-namespace naming convention is imposed. `module-deep-hierarchy` reports module declarations nested more than three levels. `namespace-reverse-domain` reports application namespace labels starting with `com.`, `org.`, `net.`, `io.`, `dev.` or `edu.` and containing at least three nonempty dot-separated components. Dots and slashes remain ordinary label characters, never namespace ancestry.
+
+`[modules].published_library = true` suppresses the application-only hierarchy and reverse-domain advice. It does not suppress folder drift or state ownership warnings. Omitted, it defaults to `false`; a non-boolean value is a manifest error. CLI and LSP consume the same sorted, source-located findings from project assembly.
+
 ## Modules `[MODULES-MODULE]`
 
 A plain module is a closed, stateless declaration boundary. It may contain
@@ -186,10 +192,13 @@ in, so it keeps its rights when it travels to a client's call. A module constant
 whose initializer reads an opaque field is inlined at each use and is therefore
 rejected in a client; export a function instead.
 
-A manifest opaque alias such as `export opaque type UserId = int`, including an
-implementation of an abstract signature type by such an alias, is rejected
-during flattening with `opaque alias ... unsupported`: the flat checker would
-expose `int` to clients, and rejecting is the truthful answer.
+A manifest opaque alias such as `export opaque type UserId = int`, including an implementation of an abstract signature type by such an alias, is its representation only inside the module that declares it. There a `UserId` is an `int`: arithmetic, comparison, interpolation, patterns, calls and field access on an aliased record all read through the alias, and a value annotated `UserId` keeps that name in the types the module exports. Generic aliases (`Bag<T> = List<T>`) and aliases of records, unions, `Result` and function types follow the same rule.
+
+Outside the module `UserId` is a name with no structure. It unifies only with itself, so a client cannot compute with one, compare it with an `int`, print it, pass an `int` where one is required or read a field of an aliased record: ``type mismatch: cannot unify int with `M::UserId`; `M::UserId` is opaque outside module `M` ``. Where the code is written decides, not where it is called from: a generic helper a client wrote keeps the client's view when the module calls it, and one the module wrote keeps the module's.
+
+A function converts only where its signature says so. `export fn make(n: int) -> UserId = n` turns an `int` into a `UserId`; `export fn bump(id) = id + 1` is `int -> int`. A module constant of an opaque type is inlined at each use, so a client receives a bare literal; export a function instead.
+
+An opaque alias costs nothing at run time. The checker enforces the boundary, and code generation lowers a copy of the program in which every opaque alias is expanded.
 
 ## Signatures `[MODULES-SIGNATURE]`
 
@@ -223,11 +232,23 @@ implementation. Non-exported implementation details remain private.
 In an ML signature, bare `type T` is abstract and `type T = R` is manifest;
 `opaque type T` is redundant and rejected.
 
+An importer is checked against the signature, not the implementation. Ascription gives every signature item exactly its declared type, so a parameter the implementation leaves general, or a helper the signature omits, is invisible outside the module, and replacing the implementation with another that satisfies the signature cannot change the types an importer sees. Effect obligations are still computed from the operations the program performs, within the row the signature declares ([MODULES-EFFECTS](#effects-and-capabilities-modules-effects)). A project is assembled from source and a signature item with no implementation is an error, so no mode checks an importer against a signature alone.
+
+Alias expansion preserves annotation provenance: a type inserted by an ascription remains a contract constraint and cannot produce a redundant-annotation warning or deletion action. A written annotation retains its own source identity through chained and generic aliases; separate uses remain separately removable under [TYPE-ANNOTATION-REDUNDANT](0004-TypeSystem.md#redundant-annotations--type-annotation-redundant). `alias_expansion_preserves_*` and the editor alias-action tests enforce both flavors.
+
+The runnable bank’s `MoneyApi` exposes manifest `Cents = int` and abstract `Amount`, implemented by a private record. Clients convert through `fromCents`/`toCents`; they cannot construct the record, read its fields or substitute a raw integer for an amount. `bank_money_signature_*` exercises the actual source from both syntax flavors under every native allocator. The same module supplies the Wasm browser application.
+
 ## State Ownership `[MODULES-STATE]`
 
 Local `mut` remains lexical. Durable module-owned cells may occur only in a
 state module and may be accessed only inside that module's own lexical effect
 handler arms.
+
+### State Boundary Inventory `[MODULES-STATE-INVENTORY]`
+
+Every resolved state module, including an empty or private owner, contributes one inventory entry: its qualified source name, declaration location, private cell count and sorted exported owned effect names. Cell names, initializers and private helper declarations are excluded. Every declaration receives a `state-boundary` warning describing that entry. This makes state ownership visible without changing acceptance or implying that importing a module installs a handler. Each installer still creates fresh cells.
+
+The CLI, LSP and generated project documentation consume this same inventory. Live editor changes replace it together with the checked project. Invalid syntax, assembly or types cannot justify a stale ownership report.
 
 ### Forbidden Top-level State `[MODULES-STATE-TOPLEVEL]`
 
@@ -248,6 +269,8 @@ containing a handler. Qualified aliases cannot bypass this check.
 
 Each namespace may contain at most one state module. Importing a state module
 allocates no cells; calling an installer creates a fresh instance.
+
+State cannot leave its module as a pointer or a reference. A cell's initializer must be pure and a `Ptr` comes only from an extern call, so a cell can neither be declared as a foreign pointer nor be assigned one later; Osprey has no address-of operator; and a lambda written in a handler arm cannot capture a cell.
 
 ### Cross-Module State Access `[MODULES-STATE-SOURCE-OF-TRUTH]`
 
@@ -321,7 +344,7 @@ exists only as a body each call site specialises
 to store. `let alias = identity` and `let idl = |x| => x` therefore resolve by
 NAME, and a function that calls one specialises the same body its own arguments
 fix. Every such call site is independent: the binding is not narrowed to
-whichever type the first caller used.
+whichever type the first caller used. Specialization retains the declaration’s lexical scope. A caller’s shadowing local cannot replace a free module binding, and a function value reading a mutable module binding continues to read its live storage. The paired `file_scope_generic_binding` suite checks these rules through direct calls, aliases, higher-order calls, iterators, records and nested curried applications.
 
 ```osprey
 fn identity(x) = x
@@ -348,6 +371,7 @@ entry = "src/main.ospml"
 
 [modules]
 allow_wildcard_imports = false
+published_library = false
 ```
 
 Files without a namespace contribute to `default_namespace`, or to the project
@@ -409,3 +433,5 @@ and byte-exact execution. `crates/osprey-project/tests/` covers graph,
 visibility, signature, state, entry, cycle, and opaque-boundary behavior.
 
 `mixed_flavor_project_graphs_emit_identical_ir` in `crates/osprey-cli/tests/cross_flavor_ir_equiv.rs` requires byte-identical IR for all eight flavor assignments to a three-file graph. It covers split namespace contributions, imported modules, abstract and manifest signature types, and caller-supplied effect and arithmetic handlers.
+
+The editor's incremental project support shares compiler discovery and parsing rules, overlays all open Default/ML sources, and reuses unchanged syntax and checked programs. Source creation/deletion, buffer closure and manifest changes invalidate the affected inputs. The normative editor contract and named transport tests are [LSP-WORKSPACE] and [LSP-PROJECT-BATCH] in [spec 0020](0020-LanguageServerAndEditors.md#project-wide-analysis-lsp-workspace).

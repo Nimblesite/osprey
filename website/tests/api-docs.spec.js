@@ -16,23 +16,31 @@ const test = base.extend({
   }, { scope: "worker" }],
 });
 
-test("documentation guide displays executable examples in both flavors", async ({ page }) => {
-  await page.goto("/docs/documentation/");
-  const blocks = page.locator("main pre code.language-osprey, main pre code.language-osprey-ml");
-  await expect(blocks).toHaveCount(2);
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-guide-"));
-  try {
-    for (const [index, extension] of ["osp", "ospml"].entries()) {
-      const source = await blocks.nth(index).textContent();
-      expect(source).toContain(index === 0 ? "/// Greets a reader" : "(** Greets a reader");
-      const filename = path.join(root, `greetings.${extension}`);
-      fs.writeFileSync(filename, source);
-      const compiler = path.resolve(__dirname, "../../target/release/osprey");
-      const stdout = execFileSync(compiler, ["--doctests", filename], { encoding: "utf8" });
-      expect(stdout).toBe("doctests: 1 passed, 0 failed\n");
-    }
-  } finally { fs.rmSync(root, { recursive: true, force: true }); }
-});
+for (const example of [
+  { title: "documentation guide displays executable examples in both flavors", url: "/docs/documentation/", args: ["--doctests"], expected: "doctests: 1 passed, 0 failed\n", markers: ["/// Greets a reader", "(** Greets a reader"] },
+  { title: "import reference examples execute the documented module semantics in both flavors", url: "/docs/keywords/import/", args: ["--run", "--quiet"], expected: "42 42\n", markers: ["import billing::Tax as T", "import billing::Tax as T"] },
+]) {
+  test(example.title, async ({ page }) => {
+    await page.goto(example.url);
+    const blocks = page.locator("main pre code.language-osprey, main pre code.language-osprey-ml");
+    await expect(blocks).toHaveCount(2);
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-guide-"));
+    try { await assertExecutableBlocks(blocks, root, example); }
+    finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
+}
+
+async function assertExecutableBlocks(blocks, root, example) {
+  for (const [index, extension] of ["osp", "ospml"].entries()) {
+    const source = await blocks.nth(index).textContent();
+    expect(source).toContain(example.markers[index]);
+    const filename = path.join(root, `example.${extension}`);
+    fs.writeFileSync(filename, source);
+    const compiler = path.resolve(__dirname, "../../target/release/osprey");
+    const stdout = execFileSync(compiler, [...example.args, filename], { encoding: "utf8", timeout: 30000 });
+    expect(stdout).toBe(example.expected);
+  }
+}
 
 for (const [theme, [background, accent]] of Object.entries(THEMES)) {
   for (const mode of ["file", "http"]) {

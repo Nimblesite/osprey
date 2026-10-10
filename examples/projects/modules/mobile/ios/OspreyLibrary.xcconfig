@@ -1,0 +1,7 @@
+// Where build.sh writes the Osprey archive and its generated C header.
+// The unit tests `@testable import TalonBank`, which re-reads the app's
+// bridging header, so they need the same header path the app has.
+OSPREY_PLATFORM = ios
+OSPREY_PLATFORM[sdk=iphonesimulator*] = ios-sim
+OSPREY_LIBRARY_DIR = $(SRCROOT)/build/$(OSPREY_PLATFORM)
+HEADER_SEARCH_PATHS = $(inherited) "$(OSPREY_LIBRARY_DIR)"

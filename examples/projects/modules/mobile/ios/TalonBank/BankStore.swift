@@ -30,7 +30,8 @@ final class BankStore: ObservableObject {
     @Published private(set) var serverAddress: String
     @Published private(set) var busy = false
     @Published private(set) var route = "overview"
-    @Published var drafts: [String: String] = [:]
+    // Not published: a keystroke that re-rendered every node lost the keystrokes that followed it.
+    private(set) var drafts: [String: String] = [:]
     private(set) var model = ""
     private var commands: [BankCommand] = []
     private var work: Task<Void, Never>?
@@ -75,14 +76,17 @@ final class BankStore: ObservableObject {
         catch { fail(error) }
     }
 
-    func field(_ node: BankNode) -> Binding<String> {
-        Binding(get: { self.drafts[node.id] ?? node.initialValue }, set: { value in
-            self.drafts[node.id] = value
-            if let event = node.props["event"] {
-                self.send(["kind": event, "id": node.id, "name": node.props["name"] ?? "", "value": value])
-            }
-        })
+    func value(_ node: BankNode) -> String { drafts[node.id] ?? node.initialValue }
+
+    func edit(_ node: BankNode, _ value: String) {
+        drafts[node.id] = value
+        if let event = node.props["event"] {
+            send(["kind": event, "id": node.id, "name": node.props["name"] ?? "", "value": value])
+        }
     }
+
+    // A picker shows the stored choice, so choosing is the one edit that republishes.
+    func choose(_ node: BankNode, _ value: String) { objectWillChange.send(); edit(node, value) }
 
     func waitUntilIdle() async { await work?.value }
 

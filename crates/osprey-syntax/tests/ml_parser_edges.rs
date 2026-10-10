@@ -363,3 +363,45 @@ fn resume_spans_its_unit_and_valued_forms() {
         "a bare `resume` is an owned continuation, which does not exist"
     );
 }
+
+/// [FLAVOR-ML-RECORD-ANON] Brace expressions retain fields, nesting and argument shape.
+#[test]
+fn anonymous_records_lower_to_objects_in_ml() -> Result<(), String> {
+    for source in [
+        "box = { x = 42, child = { active = true }, }",
+        "box = {\n x = 42,\n child = { active = true }\n}",
+    ] {
+        let Expr::Object(fields) = value(source) else {
+            return Err("expected anonymous object".into());
+        };
+        assert_eq!(
+            fields
+                .iter()
+                .map(|field| field.name.as_str())
+                .collect::<Vec<_>>(),
+            ["x", "child"]
+        );
+        assert!(matches!(fields[0].value, Expr::Integer(42)));
+        assert!(
+            matches!(&fields[1].value, Expr::Object(fields) if fields.len() == 1 && fields[0].name == "active" && matches!(fields[0].value, Expr::Bool(true)))
+        );
+    }
+    assert!(matches!(value("empty = {}"), Expr::Map(entries) if entries.is_empty()));
+    assert!(
+        matches!(value("answer = take { x = 42 }"), Expr::Call { arguments, .. } if matches!(arguments.first(), Some(Expr::Object(fields)) if fields.len() == 1))
+    );
+    Ok(())
+}
+
+/// [FLAVOR-ML-RECORD-ANON] A valid opener does not forgive malformed fields or closure.
+#[test]
+fn anonymous_records_reject_malformed_fields_and_delimiters() {
+    rejects("broken = { x: 1 }", &["expected '='"]);
+    rejects("broken = { x = 1", &["expected '}'"]);
+    rejects("broken = { 42, x = 2 }", &["expected an identifier"]);
+    rejects(
+        "broken = { x = }",
+        &["unexpected token RBrace in expression"],
+    );
+    rejects("broken = { x = 1 y = 2 }", &["expected '}'"]);
+}

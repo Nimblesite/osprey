@@ -298,7 +298,12 @@ fn offset_expr(expr: &mut Expr, offset: u32) {
             offset_expr(value, offset);
             offset_arms(arms, offset);
         }
-        Expr::Block { statements, value } => {
+        Expr::Block {
+            statements,
+            value,
+            position,
+        } => {
+            shift(position, offset);
             offset_stmts(statements, offset);
             if let Some(value) = value {
                 offset_expr(value, offset);

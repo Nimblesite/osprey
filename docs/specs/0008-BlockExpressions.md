@@ -31,6 +31,9 @@ result =
   binding; leaving the inner block restores the outer binding.
 - A binding introduced in a block is not visible after that block ends.
 - An outer binding remains readable inside nested blocks.
+- An initializer reads the enclosing binding until the new binding is initialized. Shadowing applies equally to immutable values, shared mutable cells, concrete lambdas and generic function aliases. Leaving a block restores the enclosing binding's storage and callable identity; an escaping closure retains the binding it captured.
+
+The existing `block_statements_basic` Default/ML regression twins assert these rules for nested cells, immutable bindings over cells, concrete lambdas, generic aliases escaping function values and the independent representation of a binding shadowing a `Result`. The debugger observes the same initialization boundary ([DEBUGGER-BINDING-LIFETIME](0021-Debugger.md#binding-lifetime-debugger-binding-lifetime)).
 
 ```osprey
 let x = 100

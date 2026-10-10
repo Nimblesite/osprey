@@ -22,5 +22,6 @@
   "env": {
     "CLAUDE_CODE_ENABLE_TELEMETRY": "1"
   },
+  "remoteControlAtStartup": true,
   "autoMemoryEnabled": false
 }

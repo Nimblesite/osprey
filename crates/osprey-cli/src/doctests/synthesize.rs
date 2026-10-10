@@ -6,13 +6,21 @@ use osprey_project::{ProjectConfig, SourceFile};
 
 const RUNNER_ROLE: &str = "documentation_example";
 
+/// One example as the checker reads it and as the backend lowers it. The two
+/// differ only where a project declares an opaque alias
+/// ([`osprey_project::AssembledProject::backend`]).
+pub(super) struct Example {
+    pub(super) checked: Program,
+    pub(super) backend: Program,
+}
+
 pub(super) fn program(
     sources: &[SourceFile],
     config: Option<&ProjectConfig>,
     source_index: usize,
     scope: &[usize],
     snippet: Program,
-) -> Result<Program, String> {
+) -> Result<Example, String> {
     let mut sources = sources.to_vec();
     let source = sources
         .get_mut(source_index)
@@ -62,12 +70,15 @@ fn assemble(
     sources: &[SourceFile],
     config: Option<&ProjectConfig>,
     index: usize,
-) -> Result<Program, String> {
+) -> Result<Example, String> {
     let source = sources
         .get(index)
         .ok_or("documentation source is missing")?;
     if config.is_none() && !osprey_project::needs_assembly(&source.program) {
-        return Ok(source.program.clone());
+        return Ok(Example {
+            checked: source.program.clone(),
+            backend: source.program.clone(),
+        });
     }
     let root = source
         .path
@@ -78,7 +89,10 @@ fn assemble(
         .unwrap_or_else(|| ProjectConfig::for_root(root));
     config.entry = Some(source.path.clone());
     osprey_project::assemble(&config, sources)
-        .map(|project| project.program)
+        .map(|project| Example {
+            backend: project.backend_program().clone(),
+            checked: project.program,
+        })
         .map_err(|errors| {
             errors
                 .iter()
@@ -169,6 +183,7 @@ fn install_snippet(statements: &mut Vec<Stmt>, snippet: Program) {
         }
     }
     statements.push(function(Expr::Block {
+        position: None,
         statements: executable,
         value: main.map(Box::new),
     }));

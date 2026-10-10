@@ -281,7 +281,10 @@ fn walk_expr(expression: &mut Expr, visit: Visit<'_>) {
             &mut *visit,
         );
     }
-    if let Expr::Block { statements, value } = expression {
+    if let Expr::Block {
+        statements, value, ..
+    } = expression
+    {
         walk_statements(statements, &mut *visit);
         if let Some(value) = value {
             walk_expr(value, &mut *visit);

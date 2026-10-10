@@ -49,7 +49,9 @@ fn walk(e: &Expr, bound: &mut Vec<String>, out: &mut BTreeSet<String>) {
             walk_arms(arms, bound, out);
         }
         Expr::Select { arms } => walk_arms(arms, bound, out),
-        Expr::Block { statements, value } => walk_block(statements, value.as_deref(), bound, out),
+        Expr::Block {
+            statements, value, ..
+        } => walk_block(statements, value.as_deref(), bound, out),
         // A constructor spelling can name a local record update. Consumers
         // filter actual type names against locals; an update's base is a read.
         Expr::TypeConstructor { name, fields, .. }

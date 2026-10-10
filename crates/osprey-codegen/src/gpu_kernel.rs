@@ -13,9 +13,10 @@
 //! `crates/run_test_corpus.sh` compiles `tests/core/gpu` both ways and requires
 //! byte-identical output.
 
+mod builtin;
+
 use crate::builder::{Codegen, FnSig, ParamSig};
 use crate::error::{CodegenError, Result};
-use crate::expr::gen_expr;
 use crate::iter::{callback_of, nth, Callback};
 use crate::llty::{LType, Value};
 use osprey_ast::{Expr, Parameter};
@@ -99,7 +100,7 @@ fn kernel_elem_ltype(
         .as_ref()
         .and_then(|t| Codegen::fn_value_sig(&cg.prog, t))
         .or_else(|| match kernel {
-            Callback::Lambda(_, _, sig, _) => sig.clone(),
+            Callback::Lambda(_, _, sig, _) | Callback::Closed(_, _, _, sig, _) => sig.clone(),
             Callback::Local(_, sig) | Callback::Value(_, sig) => Some(sig.clone()),
             Callback::Named(_) | Callback::Extracted(_) => None,
         });
@@ -137,7 +138,10 @@ pub(crate) fn kernel_of(
     slot: usize,
 ) -> Result<(Callback, Option<LType>)> {
     let expr = nth(args, arg_i)?;
-    let kernel = callback_of(cg, expr)?;
+    let kernel = match builtin::callback(cg, expr) {
+        Some(kernel) => kernel,
+        None => callback_of(cg, expr)?,
+    };
     let elem = kernel_elem(cg, expr, &kernel, src, slot);
     Ok((kernel, elem))
 }
@@ -156,8 +160,8 @@ pub(crate) fn slot(elem: Option<LType>) -> LType {
 /// A named kernel is left alone: it already has an emitted symbol with a
 /// concrete signature and the host loop already calls it
 /// ([`crate::expr::call_with_values`]), so re-lifting would emit a second copy
-/// of a body that exists — and a BUILTIN name (`gpuMap(toFloat)`) has no symbol
-/// at all, only a per-element value form. A closure cell (`Local`/`Value`) is
+/// of a body that exists. A scalar builtin receives a wrapper containing its
+/// intrinsic value form. A closure cell (`Local`/`Value`) is
 /// precisely the captured environment this ABI forbids, and its call already
 /// goes through the cell rather than the loop.
 pub(crate) fn extract(cg: &mut Codegen, cb: Callback, slots: &[LType]) -> Result<Callback> {
@@ -165,9 +169,18 @@ pub(crate) fn extract(cg: &mut Codegen, cb: Callback, slots: &[LType]) -> Result
         return Ok(cb);
     }
     match cb {
+        Callback::Named(name) if builtin::admissible(&name, slots) => {
+            builtin::lift(cg, name, slots)
+        }
         Callback::Named(_) | Callback::Local(..) | Callback::Value(..) | Callback::Extracted(_) => {
             Ok(cb)
         }
+        // A lambda closing over nothing lifts as it would written in place;
+        // one with an environment keeps the inlined lowering that reads it.
+        Callback::Closed(env, parameters, body, own, position) if env.is_empty() => {
+            lift(cg, parameters, body, own, position, slots)
+        }
+        Callback::Closed(..) => Ok(cb),
         Callback::Lambda(parameters, body, own, position) => {
             lift(cg, parameters, body, own, position, slots)
         }
@@ -196,6 +209,7 @@ fn lift(
         parameters: &parameters,
         body: &body,
         own: own.as_ref(),
+        position,
     };
     emit(cg, &kernel, params)
 }
@@ -207,6 +221,7 @@ struct Lifting<'a> {
     parameters: &'a [Parameter],
     body: &'a Expr,
     own: Option<&'a FnSig>,
+    position: Option<osprey_ast::Position>,
 }
 
 /// Whether this lambda's shape fits the extracted ABI.
@@ -286,6 +301,7 @@ fn emit(cg: &mut Codegen, k: &Lifting<'_>, params: Vec<ParamSig>) -> Result<Call
     let symbol = format!("{KERNEL_PREFIX}{}", cg.next_kernel_id());
     let uniforms: Vec<Value> = k.caps.iter().map(|c| c.val.clone()).collect();
     let saved = cg.enter_nested_fn();
+    crate::closure::begin_source(cg, &symbol, k.position);
     let plist = declare(cg, k, &params);
     let emitted = kernel_body(cg, k.body, k.own);
     let ret = emitted
@@ -320,6 +336,7 @@ fn declare(cg: &mut Codegen, k: &Lifting<'_>, params: &[ParamSig]) -> Vec<(LType
         params,
         k.caps.len(),
     ));
+    crate::closure::source_parameters(cg, k.parameters, k.caps.len());
     plist
 }
 
@@ -339,6 +356,7 @@ fn bind_uniforms(cg: &mut Codegen, caps: &[crate::closure::Capture]) -> Vec<(LTy
         // BORROWED for the call's duration, exactly as a top-level function's
         // parameters are [GC-ARC-PERCEUS].
         let value = crate::cast::incoming_param(cg, format!("%{reg}"), sig, c.val.osp_ty.clone());
+        cg.emit_debug_local(&c.name, &value);
         cg.bind(c.name.clone(), value);
         out.push((c.val.ty, reg));
     }
@@ -350,7 +368,8 @@ fn bind_uniforms(cg: &mut Codegen, caps: &[crate::closure::Capture]) -> Vec<(LTy
 /// statement was doing with the loop.
 fn kernel_body(cg: &mut Codegen, body: &Expr, own: Option<&FnSig>) -> Result<Value> {
     let outer = std::mem::replace(&mut cg.value_discarded, false);
-    let lowered = gen_expr(cg, body).and_then(|v| crate::expr::fit_lambda_return(cg, v, own));
+    let lowered =
+        crate::expr::gen_body(cg, body).and_then(|v| crate::expr::fit_lambda_return(cg, v, own));
     cg.value_discarded = outer;
     let value = lowered?;
     // Function epilogue: the return transfers +1, owned locals drop

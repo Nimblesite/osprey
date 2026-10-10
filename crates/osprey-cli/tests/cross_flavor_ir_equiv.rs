@@ -23,6 +23,12 @@
 //! has no twin to be IR-identical to. Those stems are listed in
 //! [`ML_ONLY_STEMS`] and skipped by both tests below.
 
+#[path = "cross_flavor_ir_equiv/debug.rs"]
+mod debug;
+
+#[path = "cross_flavor_ir_equiv/gpu.rs"]
+mod gpu;
+
 use std::path::{Path, PathBuf};
 
 use osprey_ast::Program;
@@ -76,7 +82,9 @@ fn flavor_roots() -> Vec<PathBuf> {
 fn ir_for(source: &str, flavor: Flavor, label: &str) -> Result<String, String> {
     let source_file = parsed_source(source, flavor, label)?;
     let program = assembled_if_module_aware(source_file)?;
-    compile_program(&program).map_err(|e| format!("{label}: codegen failed: {e:?}"))
+    let ir = compile_program(&program).map_err(|e| format!("{label}: codegen failed: {e:?}"))?;
+    gpu::check_extraction_floor(label, &ir)?;
+    Ok(ir)
 }
 
 fn parsed_source(source: &str, flavor: Flavor, label: &str) -> Result<SourceFile, String> {
@@ -100,12 +108,14 @@ fn parsed_source(source: &str, flavor: Flavor, label: &str) -> Result<SourceFile
 /// have no meaning before that. Lowering the raw parse would compare IR neither
 /// flavor ever runs, so this reproduces the CLI's own single-source path
 /// ([MODULES-MODEL]) for both flavors alike, leaving ordinary scripts untouched.
+/// The program answered is the one the backend lowers, with every opaque alias
+/// expanded ([MODULES-OPAQUE-TYPES]).
 fn assembled_if_module_aware(source: SourceFile) -> Result<Program, String> {
     if !osprey_project::needs_assembly(&source.program) {
         return Ok(source.program);
     }
     osprey_project::assemble_one(source)
-        .map(|assembled| assembled.program)
+        .map(|assembled| assembled.backend_program().clone())
         .map_err(|errors| format!("project assembly failed: {errors:?}"))
 }
 
@@ -308,7 +318,7 @@ fn project_ir(mask: usize) -> Result<String, String> {
     if !errors.is_empty() {
         return Err(format!("project {mask}: {errors:?}"));
     }
-    compile_program(&project.program).map_err(|error| format!("project {mask}: {error:?}"))
+    compile_program(project.backend_program()).map_err(|error| format!("project {mask}: {error:?}"))
 }
 
 /// [MODULES-FLAVOR-PROJECTION] [MODULES-ABI] [FLAVOR-IR-EQUIV]
@@ -344,4 +354,49 @@ fn module_debug_frames_keep_source_names_in_both_flavors() -> Result<(), String>
         assert!(ir.contains(&format!("define i64 @{linkage}(")), "preserve native ABI");
     }
     Ok(())
+}
+
+const RESULT_RECORD_ABI: [(&str, Flavor); 2] = [
+    ("type Packet = { number: Result<float, Error>, flag: Result<bool, Error> }\nfn make(n, b) = Packet { number: Success { value: n }, flag: Success { value: b } }\nlet packet = make(2.5, true)\nprint(\"${packet.number},${packet.flag}\")", Flavor::Default),
+    ("type Packet =\n    number: Result<float, Error>\n    flag: Result<bool, Error>\nmake (n, b) = Packet(number = Success(value = n), flag = Success(value = b))\npacket = make (2.5, true)\nprint \"${packet.number},${packet.flag}\"", Flavor::Ml),
+];
+
+/// [TYPE-RECORD-RESULT] Payload bits must not move the tag or error-message slots.
+#[test]
+fn result_record_fields_use_complete_pointer_slots_and_bit_preserving_payloads(
+) -> Result<(), String> {
+    let mut modules = Vec::new();
+    for (source, flavor) in RESULT_RECORD_ABI {
+        let ir = ir_for(source, flavor, "result-record.osp")?;
+        assert_result_record_storage(&ir);
+        modules.push(ir);
+    }
+    assert_eq!(
+        modules.first(),
+        modules.get(1),
+        "both flavors share the Result ABI"
+    );
+    Ok(())
+}
+
+fn assert_result_record_storage(ir: &str) {
+    for required in [
+        "getelementptr { i64, i8*, i8* }", // both fields point to whole Results
+        "getelementptr { i64, i8, i8* }",  // canonical Result block
+        "bitcast double",
+        "to i64",
+        "bitcast i64",
+        "to double",
+        "zext i1",
+        "trunc i64",
+        "to i1", // booleans use payload bits too
+    ] {
+        assert!(ir.contains(required), "missing {required}: {ir}");
+    }
+    for forbidden in ["{ double, i8, i8* }", "{ i1, i8, i8* }", "{ i8*, i8, i8* }"] {
+        assert!(
+            !ir.contains(forbidden),
+            "payload-dependent Result offsets: {forbidden}"
+        );
+    }
 }

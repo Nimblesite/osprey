@@ -18,7 +18,11 @@ pub(crate) fn to_string_value(cg: &mut Codegen, v: Value) -> Result<Value> {
         return result_to_string(cg, &v);
     }
     match v.ty {
-        LType::Str | LType::Ptr => Ok(Value::new(v.operand, LType::Str)),
+        LType::Str => Ok(v),
+        LType::Ptr => {
+            let boxed = crate::anybox::box_any(cg, v)?;
+            Ok(crate::anybox::any_to_string(cg, &boxed))
+        }
         LType::I1 => Ok(bool_to_string(cg, &v)),
         LType::Double => Ok(float_to_string(cg, &v)),
         LType::I64 | LType::I32 => int_to_string(cg, v),

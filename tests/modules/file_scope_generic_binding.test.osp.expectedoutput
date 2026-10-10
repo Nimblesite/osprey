@@ -2,5 +2,10 @@
 ok 1 - one generic binding specialises at every call site
 ok 2 - a generic binding resolves to the named body
 ok 3 - generic bindings specialise independently of each other
-1..3
-# tests=3 passed=3 failed=0 skipped=0
+ok 4 - generic calls preserve lexical bindings
+ok 5 - generic values preserve lexical bindings
+ok 6 - curried arguments preserve caller bindings
+ok 7 - curried effects preserve application order
+ok 8 - generic values preserve live global storage
+1..8
+# tests=8 passed=8 failed=0 skipped=0

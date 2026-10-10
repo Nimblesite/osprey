@@ -44,9 +44,14 @@ impl Resolver<'_> {
         }
         let alias = self.aliases.get(&key).cloned();
         if let Some(alias) = alias {
-            let visible_representation = !alias.opaque || context.module.starts_with(&alias.owner);
-            if visible_representation {
+            if !alias.opaque || self.transparent {
                 self.expand_alias(ty, &key, &alias, context);
+                return;
+            }
+            // An opaque alias keeps its name everywhere, its owner included:
+            // the checker reads through it where the representation is visible.
+            if let Some(message) = self.alias_problem(ty, &key, &alias) {
+                self.error(context.source, ty.position, message);
                 return;
             }
         }
@@ -154,28 +159,54 @@ impl Resolver<'_> {
         alias: &AliasInfo,
         use_context: &Context,
     ) {
-        if !self.alias_active.insert(key.clone()) {
-            self.error(
-                use_context.source,
-                target.position,
-                format!("type alias cycle involving `{}`", key.source_name()),
-            );
+        if !self.begin_alias_expansion(target, key, alias, use_context) {
             return;
         }
-        if alias.type_params.len() != target.generic_params.len() {
-            self.error(
-                use_context.source,
-                target.position,
-                format!(
-                    "type alias `{}` expects {} type argument(s), found {}",
-                    key.source_name(),
-                    alias.type_params.len(),
-                    target.generic_params.len()
-                ),
-            );
-            let _ = self.alias_active.remove(key);
-            return;
+        let mut representation = self.alias_representation(target, key, alias);
+        // [TYPE-ANNOTATION-REDUNDANT]: expansion must retain the use site's
+        // source identity, including the marker for compiler-inserted contracts.
+        representation.position = target.position;
+        let _ = self.alias_active.remove(key);
+        *target = representation;
+    }
+
+    fn begin_alias_expansion(
+        &mut self,
+        target: &TypeExpr,
+        key: &SymbolKey,
+        alias: &AliasInfo,
+        context: &Context,
+    ) -> bool {
+        if let Some(message) = self.alias_problem(target, key, alias) {
+            self.error(context.source, target.position, message);
+            return false;
         }
+        self.alias_active.insert(key.clone())
+    }
+
+    fn alias_problem(
+        &self,
+        target: &TypeExpr,
+        key: &SymbolKey,
+        alias: &AliasInfo,
+    ) -> Option<String> {
+        let name = key.source_name();
+        if self.alias_active.contains(key) {
+            return Some(format!("type alias cycle involving `{name}`"));
+        }
+        let expected = alias.type_params.len();
+        let actual = target.generic_params.len();
+        (expected != actual).then(|| {
+            format!("type alias `{name}` expects {expected} type argument(s), found {actual}")
+        })
+    }
+
+    fn alias_representation(
+        &mut self,
+        target: &TypeExpr,
+        key: &SymbolKey,
+        alias: &AliasInfo,
+    ) -> TypeExpr {
         let substitutions = alias
             .type_params
             .iter()
@@ -184,19 +215,14 @@ impl Resolver<'_> {
             .collect::<BTreeMap<_, _>>();
         let mut representation = alias.value.clone();
         substitute(&mut representation, &substitutions);
-        let definition_context = Context {
+        let context = Context {
             contribution: alias.contribution,
             source: alias.source,
             namespace: key.namespace.clone(),
             module: alias.owner.clone(),
         };
-        self.rewrite_type(
-            &mut representation,
-            &definition_context,
-            &mut Locals::default(),
-        );
-        let _ = self.alias_active.remove(key);
-        *target = representation;
+        self.rewrite_type(&mut representation, &context, &mut Locals::default());
+        representation
     }
 }
 

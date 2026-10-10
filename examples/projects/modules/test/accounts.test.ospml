@@ -5,7 +5,25 @@
 // rules (namable/movable), the Outcome union pattern-match, the JSON encoding
 // of an Account (escaping included), and the fixed-width TUI row.
 
-module Money
+signature MoneyApi
+    type Cents = int
+    type Amount
+    fromCents : Cents -> Amount
+    toCents : Amount -> Cents
+    show : Amount -> string
+    positive : Amount -> bool
+
+module Money : MoneyApi
+    type Cents = int
+    type Amount =
+        cents : Cents
+
+    fromCents cents = Amount(cents = cents)
+    toCents amount = amount.cents
+
+    (** "$4,250.05" — cents are zero-padded via the two-digit remainder and
+        dollars are thousands-grouped by recursion. `/` is float division, so
+        this runs on `intDiv` and `%` by nonzero literals: total, never faulting. *)
     pennies c =
         remainder = c % 100
         match remainder < 10
@@ -25,9 +43,15 @@ module Money
             remainder = dollars % 1000
             "${group next},${triple remainder}"
 
-    export show cents = "$${group (intDiv cents 100)}.${pennies cents}"
+    show amount =
+        cents = toCents amount
+        dollars = intDiv cents 100
+        // Divide before negating: both parts fit even when cents is INT64_MIN.
+        match cents < 0
+            true => "-$${group (wrapSub 0 dollars)}.${pennies (wrapSub 0 (cents % 100))}"
+            false => "$${group dollars}.${pennies cents}"
 
-    export positive cents = cents > 0
+    positive amount = toCents amount > 0
 
 module Json
     escape s =
@@ -42,8 +66,7 @@ module Json
 
     export strField key value = quoted key + ":" + quoted value
 
-    export numField : string -> int -> string
-    numField key value = quoted key + ":" + toString value
+    export numField key value = quoted key + ":" + toString value
 
     export obj members = "{" + members + "}"
 
@@ -59,18 +82,15 @@ type Outcome =
         why : string
 
 module Accounts
-    export namable : string -> bool
-    namable owner = length owner > 0
+    export namable owner = length owner > 0
 
-    export movable cents = Money::positive cents
+    export movable cents = Money::positive (Money::fromCents cents)
 
-    export json : Account -> string
-    json a = Json::obj (Json::numField "id" a.id + "," + Json::strField "owner" a.owner + "," + Json::numField "cents" a.balance + "," + Json::strField "balance" (Money::show a.balance))
+    export json a = Json::obj (Json::numField "id" a.id + "," + Json::strField "owner" a.owner + "," + Json::numField "cents" a.balance + "," + Json::strField "balance" (Money::show (Money::fromCents a.balance)))
 
-    export row : Account -> string
-    row a =
+    export row a =
         owner = padEnd a.owner 12 " " ?: a.owner
-        cash = padStart (Money::show a.balance) 9 " " ?: Money::show a.balance
+        cash = padStart (Money::show (Money::fromCents a.balance)) 9 " " ?: Money::show (Money::fromCents a.balance)
         id = padStart (toString a.id) 2 " " ?: toString a.id
         "│ ${id} │ ${owner} │ ${cash} │"
 

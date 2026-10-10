@@ -26,9 +26,17 @@ pub struct ProjectConfig {
     pub flavor: Option<Flavor>,
     /// Whether `::*` imports are permitted outside scripts and tests.
     pub allow_wildcard_imports: bool,
+    /// Suppress application-only hierarchy and reverse-domain style advice.
+    pub published_library: bool,
 }
 
 impl ProjectConfig {
+    /// Whether a saved or unsaved path belongs to the configured source roots.
+    #[must_use]
+    pub fn contains_source(&self, root: &Path, path: &Path) -> bool {
+        crate::source::contains(root, self, path)
+    }
+
     /// Defaults for a manifest-free directory project.
     #[must_use]
     pub fn for_root(root: &Path) -> Self {
@@ -49,6 +57,7 @@ impl ProjectConfig {
             entry: None,
             flavor: None,
             allow_wildcard_imports: false,
+            published_library: false,
         }
     }
 
@@ -117,6 +126,7 @@ fn apply_key(
         ("modules", "allow_wildcard_imports") => {
             parse_bool(value).map(|v| config.allow_wildcard_imports = v)
         }
+        ("modules", "published_library") => parse_bool(value).map(|v| config.published_library = v),
         _ => return,
     };
     if let Err(message) = result {

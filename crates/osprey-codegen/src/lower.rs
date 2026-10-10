@@ -5,7 +5,6 @@
 
 use crate::builder::{Codegen, CodegenOptions, ParamSig};
 use crate::error::Result;
-use crate::expr::gen_expr;
 use crate::llty::{LType, Value};
 use osprey_ast::{Expr, Parameter, Position, Program, Stmt};
 use osprey_debug::DebugSource;
@@ -78,7 +77,33 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
     compile_module(program, options, false)
 }
 
+/// An opaque alias is the checker's concept. The backend lowers the copy of an
+/// assembled project in which every alias is expanded; lowering one as written
+/// would take the `int` behind a name for a heap handle, so that mistake is
+/// refused instead of miscompiled ([MODULES-OPAQUE-TYPES]).
+fn reject_opaque_aliases(program: &Program) -> Result<()> {
+    let unexpanded = program
+        .statements
+        .iter()
+        .find_map(|statement| match statement {
+            Stmt::Type {
+                name,
+                opaque: true,
+                alias: Some(_),
+                ..
+            } => Some(name),
+            _ => None,
+        });
+    match unexpanded {
+        Some(name) => Err(crate::error::CodegenError::invalid(format!(
+            "opaque alias `{name}` reached code generation unexpanded; lower the project's backend program"
+        ))),
+        None => Ok(()),
+    }
+}
+
 fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> Result<String> {
+    reject_opaque_aliases(program)?;
     let options = with_kernel_mode(options)?;
     let lowered = osprey_types::lower_static_checked(program).map_err(|errors| {
         crate::error::CodegenError::invalid(
@@ -157,6 +182,9 @@ fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> 
     // reaches this loop in that case [MODULES-ENTRYPOINT].
     cg.cell_vars = top_level_cells;
     for (i, stmt) in top_level.iter().enumerate() {
+        // Publishing and releasing a file binding belong to that statement,
+        // not to main's first source line [DEBUGGER-BINDING-LIFETIME].
+        let _ = cg.set_debug_position(crate::stmt::stmt_position(stmt));
         crate::stmt::gen_local_stmt(&mut cg, stmt)?;
         crate::stmt::publish_binding(&mut cg, stmt)?;
         let rest = top_level.get(i + 1..).unwrap_or(&[]);
@@ -164,7 +192,7 @@ fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> 
     }
     if let Some((body, _)) = user_main {
         cg.cell_vars = crate::effects::captured_mut_vars(body);
-        let _ = gen_expr(&mut cg, body)?;
+        let _ = crate::expr::gen_body(&mut cg, body)?;
     }
     if !library {
         crate::globals::release_all(&mut cg);
@@ -220,7 +248,7 @@ fn record_declarations(cg: &mut Codegen, program: &Program) {
                 if cg.is_generic_fn(name) {
                     let _ = cg
                         .fn_defs
-                        .insert(name.clone(), (parameters.clone(), body.clone()));
+                        .insert(name.clone(), (parameters.clone(), body.clone(), *position));
                     cg.cov_note_inline_fn(name, *position);
                 }
             }
@@ -329,6 +357,7 @@ fn gen_function(
     // [TESTING-COVERAGE-CODEGEN].
     cg.cov_hit(position);
     let body_val = gen_fn_body(cg, name, body)?;
+    crate::iter::reject_escape(cg, &body_val)?;
     let ret = coerce_return(cg, name, body_val)?;
     // Returns transfer +1; everything else the function owned drops here
     // [GC-ARC-PERCEUS].
@@ -346,6 +375,7 @@ fn gen_fn_body(cg: &mut Codegen, name: &str, body: &Expr) -> Result<Value> {
     if let Expr::Lambda {
         parameters,
         body: lbody,
+        position,
         ..
     } = body
     {
@@ -354,10 +384,10 @@ fn gen_fn_body(cg: &mut Codegen, name: &str, body: &Expr) -> Result<Value> {
             .return_type(name)
             .and_then(|t| Codegen::fn_value_sig(&cg.prog, t))
         {
-            return crate::closure::emit_closure(cg, parameters, lbody, &sig);
+            return crate::closure::emit_closure(cg, parameters, lbody, &sig, *position);
         }
     }
-    gen_expr(cg, body)
+    crate::expr::gen_body(cg, body)
 }
 
 /// Coerce a function body value to its declared return type. A `Result<T, E>`

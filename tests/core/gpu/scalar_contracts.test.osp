@@ -1,18 +1,16 @@
-// Aspirational conformance for the scalar transfer contracts that the GPU
-// plan currently records as open defects. These cases intentionally require
-// the inferred List<T> element type to survive runtime list construction,
-// toGpu, fromGpu, and repeated crossings ([GPU-BUFFER-ELEM],
-// [GPU-BUFFER-FROM-LIST], [GPU-BUFFER-TO-LIST]).
+// Scalar transfer conformance: inferred element types survive runtime lists,
+// GPU buffers and repeated crossings [GPU-BUFFER-ELEM] [GPU-BUFFER-FROM-LIST]
+// [GPU-BUFFER-TO-LIST]. Host kernels retain [FLOAT-IEEE-RESULTS].
 
-fn addFloats(a: float, x: float) = a + x
+fn addFloats(a, x) = a + x
 
-fn countTrue(a: int, x: bool) = match x {
+fn countTrue(a, x) = match x {
     true => (a + 1) 
     false => a
 }
 
 /// listReverse forces the runtime-list copy path; a direct literal would take
-/// [GPU-BUFFER-LITERAL] and would not exercise the missing type metadata.
+/// [GPU-BUFFER-LITERAL] and would not exercise the runtime element metadata.
 fn floatListValue() = listReverse([2.5, 1.5])
 fn boolListValue() = listReverse([true, false, false])
 
@@ -99,3 +97,65 @@ test("runtime list values retain float and bool GPU element tags", fn() => exact
 test("fromGpu reads float and bool elements at their source types", fn() => exactArithmetic(fromGpuScalarCase))
 test("repeated List and GpuBuffer crossings preserve scalar types", fn() => exactArithmetic(repeatedCrossingCase))
 test("empty GPU literals retain contextual scalar types", fn() => exactArithmetic(emptyTypedLiteralCase))
+
+/// [FLOAT-IEEE-RESULTS]: host kernels obey the scalar arithmetic contract.
+fn squareScalar(value) = value * value
+fn subtractSelf(value) = value - value
+fn divideZero(value) = value / 0.0
+fn remainderZero(value) = value % -0.0
+
+fn gpuIeeeCase() = {
+    let seed = toGpu([10000000000000000.0])
+    let fourth = seed |> gpuMap(squareScalar) |> gpuMap(squareScalar)
+    let infinityBuffer = fourth |> gpuMap(squareScalar) |> gpuMap(squareScalar) |> gpuMap(squareScalar)
+    let infinity = gpuGet(infinityBuffer, 0) ?: 0.0
+    let nanBuffer = infinityBuffer |> gpuMap(subtractSelf)
+    let nan = gpuGet(nanBuffer, 0) ?: 0.0
+    let roundTrip = toGpu(listReverse(fromGpu(toGpu([infinity, nan, -0.0]))))
+    checkAll("host GPU kernels preserve non-finite values and signed zero", [
+        infinity > 10000000000000000.0, nan != nan,
+        (infinityBuffer |> gpuFold(0.0, addFloats)) == infinity,
+        (gpuGet(roundTrip, 2) ?: 0.0) == infinity,
+        (gpuGet(roundTrip, 1) ?: 0.0) != (gpuGet(roundTrip, 1) ?: 0.0),
+        toString(gpuGet(roundTrip, 0) ?: 1.0) == "-0.0"
+    ])
+}
+
+fn gpuFloatZeroCase() = {
+    mut faults = ""
+    handle Arith { divideByZero op _ => { faults = faults + op
+        0.25 } }
+    let input = toGpu([1.0, 0.0, -1.0])
+    let quotients = input |> gpuMap(divideZero)
+    let remainders = input |> gpuMap(remainderZero)
+    checkAll("host GPU zero divisors use the enclosing policy", [
+        (quotients |> gpuFold(0.0, addFloats)) == 0.75,
+        (remainders |> gpuFold(0.0, addFloats)) == 0.75,
+        faults == "///%%%"
+    ])
+}
+
+test("host GPU arithmetic preserves IEEE non-finite values", gpuIeeeCase)
+test("host GPU float zero divisors use explicit recovery", gpuFloatZeroCase)
+
+/// [BUILTIN-ABS]: builtin callbacks use their inferred scalar ABI and policy.
+fn gpuAbsoluteCase() = {
+    let floats = toGpu([-2.5, -0.0, 3.5]) |> gpuMap(abs)
+    mut faults = ""
+    handle Arith { overflow op lhs rhs wrapped => {
+        checkAll("GPU abs overflow payload", [lhs == -9223372036854775808, rhs == 0, wrapped == lhs])
+        faults = faults + op
+        17
+    } }
+    let integers = toGpu([-9223372036854775808, -3, 4]) |> gpuMap(abs)
+    checkAll("GPU abs keeps float and integer callback contracts", [
+        (gpuGet(floats, 0) ?: 0.0) == 2.5,
+        toString(gpuGet(floats, 1) ?: 1.0) == "0.0",
+        (gpuGet(floats, 2) ?: 0.0) == 3.5,
+        (gpuGet(integers, 0) ?: 0) == 17,
+        (gpuGet(integers, 1) ?: 0) == 3,
+        (gpuGet(integers, 2) ?: 0) == 4, faults == "abs"
+    ])
+}
+
+test("host GPU abs callbacks retain numeric types and recovery", gpuAbsoluteCase)

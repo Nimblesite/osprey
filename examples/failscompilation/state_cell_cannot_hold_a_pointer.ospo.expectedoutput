@@ -1,0 +1,2 @@
+9:4: let `conn`: type mismatch: cannot unify Ptr with int
+19:16: assignment to `slot`: type mismatch: cannot unify int with Ptr

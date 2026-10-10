@@ -37,6 +37,12 @@ pub(crate) fn is_numeric_scalar(ty: &Type) -> bool {
     ty.is_named(names::INT) || ty.is_named(names::FLOAT)
 }
 
+/// A known outer constructor cannot become numeric by resolving its arguments.
+/// Keep its obligation at the definition even when a Result error stays open.
+pub(crate) fn fixed_numeric_operand(name: &str, ty: &Type) -> bool {
+    operation_name(name).starts_with(NUMERIC_OPERAND_PREFIX) && !matches!(ty, Type::Var(_))
+}
+
 const SIZED_DISPLAY: &str = "string | List<T> | Map<string, V>";
 const PRINTABLE_DISPLAY: &str =
     "int | float | bool | string | Unit | any | Result<printable, printable>";
@@ -66,6 +72,7 @@ pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
         return (!is_numeric_scalar(ty) && !matches!(ty, Type::Var(_)))
             .then(|| format!("operator `{op}` requires int or float; got {ty}"));
     }
+    let name = operation_name(name);
     match name {
         "interpolation" if matches!(ty, Type::Fun { .. }) && crate::ty::has_type_var(ty) => Some(
             "a closure value with a still-generic type cannot be interpolated; apply it or give it a concrete function type".to_owned()

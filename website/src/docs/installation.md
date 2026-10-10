@@ -134,6 +134,22 @@ osprey hello.osp --run
 
 You should see `Osprey is installed`.
 
+## Debugging in VS Code
+
+Install the Osprey extension and LLDB, including its `lldb-dap` executable. Open an `.osp` or `.ospml` file, set a breakpoint and press **F5**. The extension builds a native debug executable and launches LLDB-DAP. If the adapter is outside your `PATH`, set `osprey.debug.lldbDapPath` to its full path in VS Code settings.
+
+Breakpoints inside a lambda can inspect its primitive parameters, captures and local bindings, including at the return line of a block containing just one expression. Functions stored in records retain their source names and inspectable arguments. Shared mutable cells show their current values as handlers update them. Effect handler arms expose their parameters and captures, including when they resume a continuation. Extracted GPU kernels running on the host support the same breakpoints and show their captured values. Within a match arm or nested block, the debugger shows its primitive bindings and initialized local values; leaving that scope restores enclosing names. This also works inside closures and effect handlers. A local appears after its initializer finishes. While initializing a shadowing binding, you can still inspect the enclosing value; later declarations stay hidden. This also applies to shared mutable cells. Expand a record to inspect its named fields and nested values. This covers anonymous records, concrete generic records and records replaced in shared cells by handlers. Collections, unions, Results and closures still need dedicated displays; optimized-away value reporting remains unfinished. See the [debugger contract](/spec/0021-debugger/) for the supported build and source-mapping behavior.
+
+To build a debug executable from the command line:
+
+```bash
+osprey hello.osp --debug --debug-opt=none --compile --debug-out hello-debug --debug-preserve-ir
+```
+
+This keeps the executable and its generated IR (`hello-debug.ll`) for inspection. Add `"preserveArtifacts": true` to a VS Code launch configuration to keep the IR from an editor build, or set `"compilerPath"` to select a compiler for that launch. Editor launches always build without optimization. Optimized debugging and heap inspection are still planned; unsupported CLI modes report an error.
+
+For programs that read input, add `"console": "integratedTerminal"` to the launch configuration. `"externalTerminal"` uses VS Code’s configured external terminal. Both terminal modes require LLDB-DAP 21 or newer; an older or unrecognised adapter produces a clear error. The default `"internalConsole"` displays output in the Debug Console and does not provide stdin.
+
 ## The `OSPREY_CC` override
 
 When several clangs coexist — for example a keg-only Homebrew LLVM, or the MinGW

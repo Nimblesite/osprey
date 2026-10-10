@@ -86,7 +86,9 @@ pub(crate) fn tagged_elem(v: &Value) -> Option<String> {
 /// what every consumer (a callback, a `?:` default, a `match` arm) must see
 /// instead of the storage word [`LIST_TAG`].
 pub(crate) fn elem_value(cg: &mut Codegen, list: &Value, raw: &str) -> Value {
-    crate::conv::from_word(cg, raw, tagged_elem(list).as_deref())
+    let mut value = crate::conv::from_word(cg, raw, tagged_elem(list).as_deref());
+    value.inferred_type = list.element_type(osprey_types::names::LIST);
+    value
 }
 
 /// A fresh list handle tagged with the element type of the list it derives

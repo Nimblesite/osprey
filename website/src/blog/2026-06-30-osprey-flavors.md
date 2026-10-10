@@ -41,14 +41,9 @@ classify n =
         _ => "many"
 ```
 
-Flavor selection works per file through `.osp` or `.ospml`, a leading source
-marker, or `--flavor` for a single-file build. Multi-file cross-flavor imports
-remain under development.
+Flavor selection works per file through `.osp` or `.ospml`, a leading source marker, or `--flavor` for a single-file build. A project can mix both flavors and import across them.
 
-Both flavors support lexical `effect`, `perform`, `handle` and `handler`
-syntax. Effect inputs and outputs are checked, and a program that performs an
-operation no handler discharges is rejected. Control operations — the ones
-whose handlers take a continuation — are native-only.
+Both flavors support `effect`, `perform`, `handle` and `handler`; see [Effect Handlers You Can Call](/blog/2026-10-05-effect-handlers-you-can-call/).
 
 See the [tested examples](https://github.com/Nimblesite/osprey/tree/main/tests/regressions)
 and [language-flavor specification](/spec/0023-languageflavors/).

@@ -91,7 +91,9 @@ pub fn children_mut(expression: &mut Expr, visit: &mut impl FnMut(&mut Expr)) {
 /// traversal exceeds one screen.
 fn effect_children_mut(expression: &mut Expr, visit: &mut impl FnMut(&mut Expr)) {
     match expression {
-        Expr::Block { statements, value } => {
+        Expr::Block {
+            statements, value, ..
+        } => {
             for statement in &mut *statements {
                 statement_children_mut(statement, visit);
             }

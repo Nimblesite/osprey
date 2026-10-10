@@ -7,11 +7,14 @@
 //! runtime's supported alternatives (`print`, `toString`, `length`,
 //! `isEmpty`); `builtin_constraints` checks their concrete call-site types.
 //! Result-returning runtime builtins return `Result<T, Error>` — the shape the C
-//! runtime actually returns. Arithmetic returns no `Result`: `abs` and `intDiv`
-//! follow the operators and return plain `int`, performing `Arith` operations
+//! runtime actually returns. Arithmetic returns no `Result`: `abs` preserves its numeric type and `intDiv`
+//! returns plain `int`, performing `Arith` operations
 //! on their faults ([ARITH-TOTAL]); `wrap*`/`sat*` are total. Only
 //! `checkedAdd`/`checkedSub`/`checkedMul` return overflow as data, through the
 //! generic `Error` channel.
+
+mod core;
+mod gpu;
 
 use crate::env::TypeEnv;
 use crate::ty::{Scheme, Type};
@@ -91,7 +94,7 @@ fn builtins() -> &'static TypeEnv {
 
 fn build_base_env() -> TypeEnv {
     let mut e = TypeEnv::new();
-    core(&mut e);
+    core::declare(&mut e);
     testing(&mut e);
     strings(&mut e);
     functional(&mut e);
@@ -102,7 +105,7 @@ fn build_base_env() -> TypeEnv {
     runtime_group(&mut e, concurrency);
     runtime_group(&mut e, websocket);
     runtime_group(&mut e, terminal);
-    gpu(&mut e);
+    gpu::declare(&mut e);
     e
 }
 
@@ -119,105 +122,6 @@ fn runtime_group(env: &mut TypeEnv, declare: fn(&mut TypeEnv)) {
 fn runtime_mono(env: &mut TypeEnv, name: &str, params: Vec<Type>, ret: Type) {
     mono(env, name, params, ret);
     env.mark_runtime_builtin(name);
-}
-
-/// The GPU computation surface (docs/specs/0034-GPUComputation.md). Element
-/// scalarity is a call-site representation constraint [GPU-BUFFER-ELEM]
-/// (`builtin_constraints`); kernel purity is proven by the effect checker
-/// [GPU-KERNEL-PURE] (`effect_rows`).
-fn gpu(e: &mut TypeEnv) {
-    let t = || Type::Var(0);
-    let v = || Type::Var(1);
-    let buf_t = || Type::gpu_buffer(t());
-    // [GPU-BUFFER-FROM-LIST] / [GPU-BUFFER-TO-LIST] / [GPU-BUFFER-LENGTH]
-    poly(e, "toGpu", vec![0], vec![Type::list(t())], buf_t());
-    poly(e, "fromGpu", vec![0], vec![buf_t()], Type::list(t()));
-    poly(e, "gpuLength", vec![0], vec![buf_t()], i());
-    // [GPU-MAP] / [GPU-FOLD]
-    poly(
-        e,
-        "gpuMap",
-        vec![0, 1],
-        vec![buf_t(), Type::fun(vec![t()], v())],
-        Type::gpu_buffer(v()),
-    );
-    poly(
-        e,
-        "gpuFold",
-        vec![0, 1],
-        vec![buf_t(), v(), Type::fun(vec![v(), t()], v())],
-        v(),
-    );
-    // [GPU-ZIPWITH] Elementwise binary combination of two buffers — the
-    // primitive every vector, tensor, and particle workload needs.
-    let w = || Type::Var(2);
-    poly(
-        e,
-        "gpuZipWith",
-        vec![0, 1, 2],
-        vec![
-            buf_t(),
-            Type::gpu_buffer(v()),
-            Type::fun(vec![t(), v()], w()),
-        ],
-        Type::gpu_buffer(w()),
-    );
-    // [GPU-IOTA] The index buffer: gather, stencil, and matrix addressing all
-    // start from element indices.
-    mono(e, "gpuIota", vec![i()], Type::gpu_buffer(i()));
-    // [GPU-GET] Bounds-checked indexed read, usable inside a kernel to gather.
-    poly(e, "gpuGet", vec![0], vec![buf_t(), i()], res(t()));
-    // [GPU-SCAN] Inclusive prefix scan — the classic parallel primitive.
-    poly(
-        e,
-        "gpuScan",
-        vec![0],
-        vec![buf_t(), t(), Type::fun(vec![t(), t()], t())],
-        buf_t(),
-    );
-    // [GPU-FILTER] Stream compaction.
-    poly(
-        e,
-        "gpuFilter",
-        vec![0],
-        vec![buf_t(), Type::fun(vec![t()], b())],
-        buf_t(),
-    );
-    // [GPU-DEVICE] The active execution backend's name. Selection between
-    // devices arrives with the `Gpu` effect at roadmap stage 5.
-    mono(e, "gpuDevice", vec![], s());
-}
-
-fn core(e: &mut TypeEnv) {
-    runtime_mono(e, "print", vec![any()], u());
-    runtime_mono(e, "input", vec![], s());
-    mono(e, "toString", vec![any()], s());
-    mono(e, "length", vec![any()], i());
-    // [CONCURRENCY-SLEEP] The native status is not part of the Unit surface.
-    runtime_mono(e, "sleep", vec![i()], u());
-    // A range is a fused iterator handle, not a materialized List [BUILTIN-ITER].
-    mono(e, "range", vec![i(), i()], Type::iterator(i()));
-    mono(e, "abs", vec![i()], i());
-    mono(e, "intDiv", vec![i(), i()], i());
-    for name in [
-        "wrapAdd", "wrapSub", "wrapMul", "satAdd", "satSub", "satMul",
-    ] {
-        mono(e, name, vec![i(), i()], i());
-    }
-    // Widening int → float. Total, so it is bare `float` rather than a Result:
-    // every i64 has a nearest double. Implements [BUILTIN-TOFLOAT] and the GPU
-    // surface's explicit element conversion [GPU-CONVERT].
-    mono(e, "toFloat", vec![i()], Type::float());
-    // Named equivalents of the overflow-checked integer operators. These retain
-    // the runtime builtins' generic Error channel for compatibility.
-    for checked in ["checkedAdd", "checkedSub", "checkedMul"] {
-        mono(e, checked, vec![i(), i()], res(i()));
-    }
-    // Cryptographically-secure randomness (random_runtime.c). `random` yields a
-    // uniform non-negative int; `randomBelow(n)` an unbiased int in [0, n),
-    // Error when n <= 0. Implements [BUILTIN-RANDOM], [BUILTIN-RANDOM-BELOW].
-    mono(e, "random", vec![], i());
-    mono(e, "randomBelow", vec![i()], res(i()));
 }
 
 /// The testing framework's built-ins. Implements [TESTING-BUILTINS]
@@ -320,6 +224,8 @@ fn functional(e: &mut TypeEnv) {
         vec![iter_t(), v(), Type::fun(vec![v(), t()], v())],
         v(),
     );
+    // The one bridge from a fused pipeline to a runtime list [BUILTIN-ITER-TOLIST].
+    poly(e, "toList", vec![0], vec![iter_t()], Type::list(t()));
 }
 
 fn lists(e: &mut TypeEnv) {
@@ -495,6 +401,12 @@ pub fn builtin_callback_type(name: &str, index: usize) -> Option<(Vec<Type>, Typ
     }
 }
 
+/// The authoritative builtin function type, before call-site substitution.
+#[must_use]
+pub fn builtin_function_type(name: &str) -> Option<Type> {
+    builtins().get(name).map(|scheme| scheme.ty.clone())
+}
+
 /// The rendered signature of a built-in (`name : type`), for editor hover.
 /// `None` when `name` is not a built-in.
 #[must_use]
@@ -558,126 +470,4 @@ pub(crate) fn builtin_effects() -> std::collections::HashMap<String, crate::chec
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn registers_core_and_polymorphic_builtins() {
-        let e = base_env();
-        assert!(e.get("print").is_some());
-        assert_eq!(e.get("map").unwrap().vars.len(), 2);
-        assert_eq!(e.get("await").unwrap().vars.len(), 1);
-        assert_eq!(
-            builtin_signature("fiberDone").as_deref(),
-            Some("fiberDone : (Fiber<t0>) -> int")
-        );
-        assert_eq!(
-            builtin_signature("abs").as_deref(),
-            Some("abs : (int) -> int")
-        );
-        assert_eq!(
-            builtin_signature("intDiv").as_deref(),
-            Some("intDiv : (int, int) -> int")
-        );
-        assert_eq!(
-            builtin_signature("wrapAdd").as_deref(),
-            Some("wrapAdd : (int, int) -> int")
-        );
-    }
-
-    #[test]
-    fn process_builtins_match_the_result_returning_runtime() {
-        assert_eq!(
-            builtin_signature("spawnProcess").as_deref(),
-            Some("spawnProcess : (string, (int, int, string) -> Unit) -> Result<int, Error>")
-        );
-        assert_eq!(
-            builtin_signature("awaitProcess").as_deref(),
-            Some("awaitProcess : (int) -> int")
-        );
-        assert_eq!(
-            builtin_signature("cleanupProcess").as_deref(),
-            Some("cleanupProcess : (int) -> Unit")
-        );
-    }
-
-    #[test]
-    fn network_builtins_match_the_runtime_status_abi() {
-        let expected = [
-            (
-                "writeFile",
-                "writeFile : (string, string) -> Result<int, Error>",
-            ),
-            ("httpCloseClient", "httpCloseClient : (int) -> int"),
-            ("httpGet", "httpGet : (int, string, string) -> int"),
-            (
-                "httpResponseFree",
-                "httpResponseFree : (int) -> Result<int, Error>",
-            ),
-            (
-                "httpPost",
-                "httpPost : (int, string, string, string) -> int",
-            ),
-            ("httpPut", "httpPut : (int, string, string, string) -> int"),
-            ("httpDelete", "httpDelete : (int, string, string) -> int"),
-            (
-                "httpListen",
-                "httpListen : (int, (string, string, string, string) -> HttpResponse) -> int",
-            ),
-            ("httpStopServer", "httpStopServer : (int) -> int"),
-            ("websocketClose", "websocketClose : (int) -> int"),
-            ("jsonFree", "jsonFree : (int) -> Result<int, Error>"),
-        ];
-        for (name, signature) in expected {
-            assert_eq!(
-                builtin_signature(name).as_deref(),
-                Some(signature),
-                "{name}"
-            );
-        }
-    }
-
-    #[test]
-    fn public_maps_use_the_runtime_string_key_abi() {
-        let expected = [
-            ("Map", "Map : () -> Map<string, t0>"),
-            (
-                "mapSet",
-                "mapSet : (Map<string, t0>, string, t0) -> Map<string, t0>",
-            ),
-            (
-                "mapGet",
-                "mapGet : (Map<string, t0>, string) -> Result<t0, Error>",
-            ),
-            ("mapKeys", "mapKeys : (Map<string, t0>) -> List<string>"),
-        ];
-        for (name, signature) in expected {
-            assert_eq!(
-                builtin_signature(name).as_deref(),
-                Some(signature),
-                "{name}"
-            );
-        }
-    }
-
-    #[test]
-    fn iterator_builtins_do_not_advertise_runtime_lists() {
-        let expected = [
-            ("range", "range : (int, int) -> Iterator<int>"),
-            ("map", "map : (Iterator<t0>, (t0) -> t1) -> Iterator<t1>"),
-            (
-                "filter",
-                "filter : (Iterator<t0>, (t0) -> bool) -> Iterator<t0>",
-            ),
-            ("forEach", "forEach : (Iterator<t0>, (t0) -> Unit) -> Unit"),
-            ("fold", "fold : (Iterator<t0>, t1, (t1, t0) -> t1) -> t1"),
-        ];
-        for (name, signature) in expected {
-            assert_eq!(
-                builtin_signature(name).as_deref(),
-                Some(signature),
-                "{name}"
-            );
-        }
-    }
-}
+mod tests;

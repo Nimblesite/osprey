@@ -60,6 +60,17 @@ module Counters : CounterApi {
     fn size(c) = c.count
 }
 
+/// The same contract implemented by a manifest alias: `Counter` is an `int`
+/// inside `Tallies` and stays abstract outside it, at no run-time cost
+/// ([MODULES-OPAQUE-TYPES]).
+module Tallies : CounterApi {
+    type Counter = int
+
+    fn empty() = 0
+    fn bump(c) = c + 1
+    fn size(c) = c
+}
+
 /// A signature may carry an effect declaration alongside its functions.
 module Clocks : ClockApi {
     effect Clock {
@@ -96,7 +107,9 @@ fn abstractTypeCase() = checkAll("abstract signature type round-trips", [
     Counters::size(Counters::empty()) == 0,
     Counters::size(Counters::bump(Counters::empty())) == 1,
     Counters::size(Counters::bump(Counters::bump(Counters::empty()))) == 2,
-    Counters::size(Counters::bump(Counters::bump(Counters::bump(Counters::empty())))) == 3
+    Counters::size(Counters::bump(Counters::bump(Counters::bump(Counters::empty())))) == 3,
+    Tallies::size(Tallies::empty()) == 0,
+    Tallies::size(Tallies::bump(Tallies::bump(Tallies::empty()))) == 2
 ])
 
 /// Reads the module's clock through a caller-installed handler.

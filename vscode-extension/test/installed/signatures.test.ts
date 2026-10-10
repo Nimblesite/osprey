@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { actions, assertAction, assertEdit, closeEditors, diagnostics, ExpectedDiagnostic,
-  invokeFix, openSource, rangeOf, replace, save, waitFor } from "./editor";
+  invokeFix, openSource, rangeOf, replace, requiredActions, save, waitFor } from "./editor";
 
 const signatureTitle = "Remove redundant type signature";
 const annotationTitle = "Remove redundant type annotation";
@@ -24,7 +24,7 @@ function inline(message: string, text: string, occurrence = 0): ExpectedDiagnost
 async function singleFix(name: string, source: string, expected: string, warning: ExpectedDiagnostic): Promise<vscode.TextEditor> {
   const editor = await openSource(name, source);
   const [diagnostic] = await diagnostics(editor.document, [warning]);
-  const fixes = await actions(editor.document, diagnostic.range);
+  const fixes = await requiredActions(editor.document, diagnostic.range);
   assert.strictEqual(fixes.length, 1);
   assertAction(fixes[0], signatureTitle, diagnostic);
   assertEdit(fixes[0], editor.document, expected);
@@ -115,7 +115,7 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
     const [diagnostic] = await diagnostics(editor.document, [inline(
       "redundant type annotation on parameter `value` of `<lambda>`: inference derives `string` without it", ": string")]);
     assert.strictEqual(diagnostic.range.start.character, source.indexOf(": string"));
-    const fixes = await actions(editor.document, diagnostic.range);
+    const fixes = await requiredActions(editor.document, diagnostic.range);
     assert.strictEqual(fixes.length, 1);
     assertAction(fixes[0], annotationTitle, diagnostic);
     assertEdit(fixes[0], editor.document, expected);
@@ -132,7 +132,7 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
     const raised = await diagnostics(editor.document, [inline(
       "redundant type annotation on parameter `value` of `<lambda>`: inference derives `int` without it", ": int"), unused]);
     assert.strictEqual(raised[0].range.start.line, 0, "The escaped newline does not create a source line");
-    const fixes = await actions(editor.document, raised[0].range);
+    const fixes = await requiredActions(editor.document, raised[0].range);
     assert.strictEqual(fixes.length, 1);
     assertAction(fixes[0], annotationTitle, raised[0]);
     assertEdit(fixes[0], editor.document, expected);
@@ -158,7 +158,7 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
     const source = `namespace warnings\nmodule M\n    export ${greetHeader}\n${body}`;
     const editor = await openSource("exported-header.ospml", source);
     const [diagnostic] = await diagnostics(editor.document, [signature("warnings::M::greet", "(string) -> string", greetHeader)]);
-    const fixes = await actions(editor.document, diagnostic.range);
+    const fixes = await requiredActions(editor.document, diagnostic.range);
     assert.strictEqual(fixes.length, 1);
     assertAction(fixes[0], signatureTitle, diagnostic);
     const expected = `namespace warnings\nmodule M\n    export ${body.trimStart()}`;
@@ -176,7 +176,7 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
     const warning = { ...signature("warnings::M::greet", "(string) -> string", greetHeader), occurrence: 1 };
     const [diagnostic] = await diagnostics(editor.document, [warning]);
     assert.deepStrictEqual(await actions(editor.document, rangeOf(editor.document, greetHeader, 0)), []);
-    const fixes = await actions(editor.document, diagnostic.range);
+    const fixes = await requiredActions(editor.document, diagnostic.range);
     assert.strictEqual(fixes.length, 1);
     assertAction(fixes[0], signatureTitle, diagnostic);
     assertEdit(fixes[0], editor.document, contract + body);
@@ -195,12 +195,12 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
     ];
     const raised = await diagnostics(editor.document, warnings);
     for (const [index, diagnostic] of raised.entries()) {
-      const fixes = await actions(editor.document, diagnostic.range);
+      const fixes = await requiredActions(editor.document, diagnostic.range);
       assert.strictEqual(fixes.length, 1);
       assertAction(fixes[0], annotationTitle, diagnostic);
       assertEdit(fixes[0], editor.document, source.replace(index === 0 ? ": string" : " -> string", ""));
     }
-    const fixes = await actions(editor.document, rangeOf(editor.document, "greet"), fixAllKind);
+    const fixes = await requiredActions(editor.document, rangeOf(editor.document, "greet"), fixAllKind);
     assert.strictEqual(fixes.length, 1);
     assert.strictEqual(fixes[0].title, "Remove all redundant type annotations");
     assert.strictEqual(fixes[0].kind?.value, fixAllKind.value);
@@ -220,7 +220,7 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
     const warnings = [signature("greet", "(string) -> string", greetHeader),
       signature("shout", "(string) -> string", secondHeader)];
     await diagnostics(editor.document, warnings);
-    const fixes = await actions(editor.document, rangeOf(editor.document, greetHeader), fixAllKind);
+    const fixes = await requiredActions(editor.document, rangeOf(editor.document, greetHeader), fixAllKind);
     assert.strictEqual(fixes.length, 1);
     assertEdit(fixes[0], editor.document, expected);
     await invokeFix(editor, rangeOf(editor.document, greetHeader), expected, fixAllKind.value);
@@ -240,7 +240,7 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
       inline("redundant type annotation on parameter `b` of `smaller`: inference derives `int` without it", ": int", 1),
     ]);
     assert.deepStrictEqual(await actions(editor.document, rangeOf(editor.document, "-> int")), []);
-    const fixes = await actions(editor.document, rangeOf(editor.document, "smaller"), fixAllKind);
+    const fixes = await requiredActions(editor.document, rangeOf(editor.document, "smaller"), fixAllKind);
     assert.strictEqual(fixes.length, 1);
     assert.strictEqual(fixes[0].command?.arguments?.[0].edits.length, 2, "Only the two parameter annotations are deleted");
     assertEdit(fixes[0], editor.document, expected);
@@ -264,7 +264,7 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
       unused,
     ];
     await diagnostics(editor.document, warnings);
-    const fixes = await actions(editor.document, rangeOf(editor.document, "greet"), fixAllKind);
+    const fixes = await requiredActions(editor.document, rangeOf(editor.document, "greet"), fixAllKind);
     assert.strictEqual(fixes.length, 1);
     assert.strictEqual(fixes[0].command?.arguments?.[0].edits.length, 4, "Fix-all deletes only the four removable annotations");
     assertEdit(fixes[0], editor.document, expected);
@@ -277,7 +277,7 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
   test("editing a redundant body into a load-bearing one withdraws the fix before invocation", async () => {
     const editor = await openSource("edited-signature.ospml", `${greetHeader}\n${greetBody}`);
     const [warning] = await diagnostics(editor.document, [signature("greet", "(string) -> string", greetHeader)]);
-    const cached = await actions(editor.document, warning.range);
+    const cached = await requiredActions(editor.document, warning.range);
     assert.strictEqual(cached.length, 1);
     await replace(editor, '"hi " + name', "name");
     await diagnostics(editor.document, []);
@@ -314,7 +314,7 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
     await diagnostics(sibling.document, []);
     const editor = await openSource("project/src/main.ospml", source);
     const [warning] = await diagnostics(editor.document, [signature("warning_project::greet", "(string) -> string", greetHeader)]);
-    const cached = await actions(editor.document, warning.range);
+    const cached = await requiredActions(editor.document, warning.range);
     assert.strictEqual(cached.length, 1);
     assert.ok(cached[0].command);
     const siblingEditor = await vscode.window.showTextDocument(sibling.document);
@@ -328,7 +328,7 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
     await vscode.commands.executeCommand("undo");
     await waitFor(() => sibling.document.getText(), (text) => text === helper, "Undo restores the sibling's concrete inference");
     await diagnostics(editor.document, [signature("warning_project::greet", "(string) -> string", greetHeader)]);
-    const refreshed = await actions(editor.document, warning.range);
+    const refreshed = await requiredActions(editor.document, warning.range);
     assert.strictEqual(refreshed.length, 1);
     await vscode.commands.executeCommand("redo");
     await waitFor(() => sibling.document.getText(), (text) => text === helper.replace('text + "!"', "text"), "Redo changes the sibling again");
@@ -364,7 +364,7 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
     const source = `${greetHeader}\ngreet name = decorate name\nmain () = print (greet "Ada")\n`;
     const editor = await openSource("closed-project/src/main.ospml", source);
     const [warning] = await diagnostics(editor.document, [signature("closed_project::greet", "(string) -> string", greetHeader)]);
-    const cached = await actions(editor.document, warning.range);
+    const cached = await requiredActions(editor.document, warning.range);
     assert.strictEqual(cached.length, 1);
     assert.ok(cached[0].command);
     const version = editor.document.version;
@@ -377,7 +377,7 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
     assert.deepStrictEqual(await actions(editor.document, warning.range), []);
     assert.deepStrictEqual(await actions(editor.document, warning.range, fixAllKind), []);
     fs.writeFileSync(helperPath, helper);
-    const refreshed = await actions(editor.document, warning.range);
+    const refreshed = await requiredActions(editor.document, warning.range);
     assert.strictEqual(refreshed.length, 1, "Restoring the dependency restores the compiler proof");
     assert.ok(refreshed[0].command);
     assert.strictEqual(await vscode.commands.executeCommand(refreshed[0].command.command, ...(refreshed[0].command.arguments ?? [])), true);
@@ -396,9 +396,12 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
     fs.writeFileSync(path.join(project, "generic", "helper.ospml"), "decorate text = text\n");
     const source = `${greetHeader}\ngreet name = decorate name\nmain () = print (greet "Ada")\n`;
     const editor = await openSource("manifest-project/src/main.ospml", source);
-    const [warning] = await diagnostics(editor.document, [signature("manifest_project::greet", "(string) -> string", greetHeader)]);
-    const quick = await actions(editor.document, warning.range);
-    const all = await actions(editor.document, warning.range, fixAllKind);
+    const layout = { code: "namespace-folder-drift", text: greetHeader,
+      message: "namespace `manifest_project` spans 2 folders; source paths do not change its identity" };
+    const [, warning] = await diagnostics(editor.document, [layout,
+      signature("manifest_project::greet", "(string) -> string", greetHeader)]);
+    const quick = await requiredActions(editor.document, warning.range);
+    const all = await requiredActions(editor.document, warning.range, fixAllKind);
     assert.strictEqual(quick.length, 1);
     assert.strictEqual(all.length, 1);
     const version = editor.document.version;
@@ -413,12 +416,13 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
     }
     assert.deepStrictEqual(await actions(editor.document, warning.range), []);
     assert.deepStrictEqual(await actions(editor.document, warning.range, fixAllKind), []);
+    await diagnostics(editor.document, [layout]);
     fs.writeFileSync(manifestPath, manifest);
-    const restored = await actions(editor.document, warning.range, fixAllKind);
+    const restored = await requiredActions(editor.document, warning.range, fixAllKind);
     assert.strictEqual(restored.length, 1);
     assertEdit(restored[0], editor.document, source.replace(`${greetHeader}\n`, ""));
     await invokeFix(editor, warning.range, source.replace(`${greetHeader}\n`, ""), fixAllKind.value);
-    await diagnostics(editor.document, []);
+    await diagnostics(editor.document, [{ ...layout, text: "greet name = decorate name" }]);
     await save(editor.document);
   });
 });

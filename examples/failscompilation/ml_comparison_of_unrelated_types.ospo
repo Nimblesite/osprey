@@ -1,0 +1,4 @@
+// osprey: flavor=ml
+// [BOOL-COMPARE-OPERANDS] The ML half of `comparison_of_unrelated_types.ospo`: the
+// two operands of a comparison must have one type.
+main () = print "${true < 1} ${"a" == 1} ${[1] == 1}"

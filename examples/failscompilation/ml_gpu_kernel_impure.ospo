@@ -1,0 +1,15 @@
+// osprey: flavor=ml
+// [GPU-KERNEL-PURE], [STAGE-GPU-LEGAL]: host handlers cannot discharge a kernel's dynamic effects.
+effect Log
+    write : string => Unit
+
+loud x =
+    perform Log.write "saw"
+    x
+
+main () =
+    n =
+        handle Log
+            write m => print m
+        toGpu [1, 2] |> gpuMap loud |> gpuLength ()
+    print n

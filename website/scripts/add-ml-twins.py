@@ -29,10 +29,6 @@ DOCS = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else (_HERE.parent / "src"
 # post-processor re-applies both auto and hand twins after generation.
 HAND_TWINS = {
     "keywords/fn.md": 'add (a, b) = a + b\n\ngreet name = print ("Hello, " + name)',
-    "keywords/match.md": (
-        'match value\n    Some x => x\n    None => 0\n\n'
-        'match status\n    Active => "User is active"\n    Inactive => "User is inactive"'
-    ),
     "keywords/type.md": (
         'type UserId =\n    int\n\n'
         'type Status =\n    Active\n    Inactive\n\n'

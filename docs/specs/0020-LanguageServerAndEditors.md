@@ -117,19 +117,24 @@ file does not parse, since an unparsable buffer reports its syntax error alone.
 
 ### One analysis per edit `[LSP-PROJECT-BATCH]`
 
-Editing one file of a project republishes every open file of that project, and
-each of those answers needs the project assembled, type-checked and its warnings
-proved. That work is done **once per edit** and shared by the files answering
-it, rather than once per open file: on `examples/projects/modules` a single
-answer takes about six seconds, so repeating it per open buffer made the editor
-unusable with more than one file open.
+Editing one file of a project republishes every open file of that project, and each of those answers needs the project assembled, type-checked and its warnings proved. That work is done **once per edit** and shared by the files answering it, rather than once per open file: on `examples/projects/modules` a single answer takes about six seconds, so repeating it per open buffer made the editor unusable with more than one file open.
 
-Each language-server engine owns the latest project analysis. Its key includes the complete project configuration and each source's path, syntax flavor and text, compared exactly. Siblings answering the same edit share that result, and later requests with identical inputs may reuse it. Separate server instances cannot evict each other's analysis.
+Each language-server engine owns the latest analysis for each manifest root, including nested projects. Its inputs include the complete project configuration and each source's path, syntax flavor and text, compared exactly. Siblings answering the same edit share that result, and later requests with identical inputs may reuse it. Separate projects and server instances cannot evict each other's analysis; syntax is retained while any loaded project includes its file. Code actions use the same analysis as diagnostics; requesting a quick fix does not repeat an unchanged project proof.
 
-A source or manifest change invalidates the analysis on the next diagnostics request, even when the buffer text is unchanged. Saving `osprey.toml` alone does not trigger diagnostics; this cache does not add a manifest file watcher.
+A source or manifest change invalidates the analysis on the next request, even when the requesting buffer is unchanged. `workspace/didChangeWatchedFiles` republishes diagnostics for open documents. The VS Code client watches both Osprey source flavors and `osprey.toml`, so saving a manifest, creating a source, or deleting a source refreshes the project without another keystroke. Loading failures in a closed sibling or manifest produce an open-document `project-error` identifying the failed input; an unanalyzable project must not appear healthy.
 
 A file's own diagnostics are then selected from that shared result by position:
 an error or warning is reported in the file its position lands in.
+
+## Module advice `[LSP-MODULE-ADVICE]`
+
+Project style and state-boundary warnings follow [MODULES-STYLE](0025-ModulesAndNamespaces.md#project-style-advice-modules-style) and [MODULES-STATE-INVENTORY](0025-ModulesAndNamespaces.md#state-boundary-inventory-modules-state-inventory). They have Warning severity, source `osprey`, their compiler rule code and the owning declaration's physical source range. They have no `Unnecessary` tag or deletion action. Unsaved source and manifest changes invalidate the same project snapshot used by every other editor feature; incomplete or invalid projects suppress these warnings.
+
+## Module repair actions `[LSP-CODE-ACTIONS-MODULES]`
+
+`quickfix` offers an explicit alias for an unaliased quoted namespace import, and replaces mistaken dot qualification such as `Store.read` with the module path `Store::read`. The alias is formed from the imported namespace label, capitalizing each alphanumeric component. Empty or digit-leading names receive an `Imported` prefix. An alias collision is not resolved by silently rebinding a name.
+
+A repair is offered only for a currently erroneous buffer and only when that single edit makes the complete live project parse, assemble and type-check. Private members, invalid siblings, incomplete syntax, unresolved alias collisions and remaining errors prevent the action. Correct record field access receives no action. Selection ranges and action-kind filtering apply; edits use the negotiated position encoding and current document version. Client-supplied diagnostics never authorize an edit. These alternatives are excluded from annotation `source.fixAll.osprey` because selecting a module or alias is an author decision.
 
 ## Annotation quick fixes `[LSP-CODE-ACTIONS-ANNOTATIONS]`
 
@@ -154,8 +159,17 @@ For a function with a written effect row, hover, signature help, completion
 detail and `--symbols` preserve that row after type inference fills unwritten
 parameter and return types. `declaredEffectRow` in symbol JSON is the written
 upper bound (`![]`, `!e`, or a fixed/open row), not an assertion that every
-permitted operation actually occurs. Inferring and displaying a function's
-transitive required operations remains part of [plan 0016](../plans/0016-algebraic-effects-and-handlers.md).
+permitted operation actually occurs. Inferred requirements are presented separately under [LSP-EFFECT-REQUIREMENTS].
+
+### Inferred effect requirements `[LSP-EFFECT-REQUIREMENTS]`
+
+Function hover, signature-help documentation, completion documentation, symbol JSON and generated API pages share the checker's final closed-program operation summary. The summary describes full application, including curried parameters. It follows transitive calls, callback provenance and arithmetic; a handler removes only the operations and generic instances it covers. Operations performed by a recovery arm remain requirements of the enclosing policy. A written row remains a separate upper bound and is never copied into the inferred requirements.
+
+`effectRequirements` in symbol JSON contains sorted `operations`, sorted `runtimeBuiltins`, `unresolvedCallbacks` and their shared Markdown `description`. Generic operation names retain concrete arguments (`Read<int>.get`); unresolved argument types use `_`, never private inference IDs. Host runtime builtins are listed separately. An unresolved callback or dynamic callable must produce an explicit uncertainty statement, even when the known operation list is empty. Absence of a report, including on externs, is not a purity guarantee. These summaries do not implement independently quantified rows in function types.
+
+The views must update when an unsaved source edit changes a helper's requirements. Both-flavor unit and LSP transport tests verify transitive requirements, discharge and removal of stale descriptions; checker tests additionally cover recursive calls, exact generic discharge, forwarding, arithmetic and unknown callbacks.
+
+### Symbol resolution
 
 Resolution order for the symbol under the cursor:
 
@@ -337,7 +351,7 @@ Both source surfaces lower to a flavor-blind `osprey_ast::Program`
 flavor.
 
 Every document-scoped feature resolves its flavor with the one
-`[FLAVOR-SELECT]` precedence chain — marker > extension > Default — the same
+`[FLAVOR-SELECT]` precedence chain — project override > marker > extension > Default — the same
 chain the CLI uses. There is exactly one resolver
 (`osprey_syntax::resolve_flavor`); a feature that sniffs the extension itself is
 a defect, because a `// osprey: flavor=ml` marker must outrank it.
@@ -412,21 +426,30 @@ holding an `osprey.toml` — hover, go-to-definition, find-implementations,
 find-references, completion, and signature help resolve against every source
 file linked by the manifest.
 
-Sibling files are loaded through `osprey_project::load`, the same loader used by
-the CLI and `[LSP-DIAGNOSTICS]`. URI/path resolution and project discovery are
-implemented in
-[`osprey-lsp/src/workspace.rs`](../../crates/osprey-lsp/src/workspace.rs).
+The server uses the compiler's `osprey_project::discover`, source-root membership and flavor-aware `parse_text` contracts. An engine-owned syntax cache keys each file by its path, configured flavor and exact text, including failed parses. The manifest's flavor override applies to both the active file and every sibling, including formatting and warning fixes. Unchanged sources reuse their syntax across diagnostics, navigation and code actions. The checked project cache described in [LSP-PROJECT-BATCH] reuses assembly and inference until any input changes. URI/path conversion lives in [`workspace.rs`](../../crates/osprey-lsp/src/workspace.rs); source snapshots live in [`project_sources.rs`](../../crates/osprey-lsp/src/project_sources.rs).
 
 Normative requirements:
 
 - **The open buffer is searched first.** A local declaration shadows an
   imported one, and the open buffer's *unsaved* text is authoritative for
-  itself.
+  itself. Every open sibling's unsaved text is also authoritative, including a
+  newly created buffer not yet saved inside a configured source root. Closing
+  a buffer restores its disk source, or removes it if it was never saved.
+  If outer and nested projects include the same source, opening, editing or
+  closing it refreshes every affected open project.
+- Incomplete sibling syntax may fall back to its saved source to preserve
+  known errors while editing. Such a snapshot cannot justify warning fixes;
+  warnings and code actions remain suppressed until the live project parses.
+  A valid unsaved repair takes precedence over invalid saved text.
+- Files outside configured source roots, hidden directories and `target`
+  directories do not join the project merely because they are open.
 - Without `osprey.toml`, only the open document is analyzed.
 - **Find-references reaches the declaration wherever it lives.** A declaring
   file spells the name unqualified (`openSql`) while its callers write the
   qualified path (`Ledger::openSql`), so a whole-word scan does not find the
   declaration; the sibling scan adds declaration sites by symbol identity.
+
+The transport tests `project_features_follow_unsaved_siblings_in_both_flavors`, `live_effect_declarations_and_handler_locations_follow_both_flavors`, `watched_sources_and_manifest_refresh_the_live_project`, `unsaved_mixed_flavor_files_join_and_leave_the_project`, `unsaved_repair_overrides_invalid_disk_and_actions_reuse_the_analysis`, `watched_invalid_project_inputs_report_their_source`, and `nested_project_edits_refresh_every_project_that_includes_the_source` pin these contracts. `nested_projects_do_not_share_the_first_sources_cache_slot` pins syntax and analysis reuse across overlapping roots. Existing incomplete-buffer and annotation-fix tests remain the safety oracle.
 
 ## Position encoding `[LSP-ENCODING]`
 

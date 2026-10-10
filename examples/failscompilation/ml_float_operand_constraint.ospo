@@ -7,3 +7,6 @@ badDivision =
     handle Arith
         divideByZero _ _ => 0.0
     divide true "text"
+
+absolute = abs
+badAbsolute = absolute "text"

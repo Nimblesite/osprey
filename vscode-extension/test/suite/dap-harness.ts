@@ -421,3 +421,36 @@ export function assertCurrentLine(
   }
   return top;
 }
+
+/** Expected primitive or expanded record fields. */
+export type DebugValue = number | string | { [name: string]: DebugValue };
+
+/** Assert the source frame and exact primitive/record values through DAP. */
+export async function assertFrameLocals(session: vscode.DebugSession, stop: DapStop, program: string, line: number, prefix: string, locals: Record<string, DebugValue | undefined>) {
+  const frame = assertCurrentLine(stop.stack, line, program);
+  assert.ok(frame.name.includes(prefix), frame.name);
+  for (const [name, value] of Object.entries(locals)) {
+    if (typeof value === "object") {
+      const variable = await assertLocalVariable(session, frame.id, name, /./);
+      await assertRecordFields(session, variable, value);
+    } else {
+      await assertLocalVariable(session, frame.id, name, new RegExp(`^${value}$`));
+    }
+  }
+  return frame.id;
+}
+
+async function assertRecordFields(session: vscode.DebugSession, variable: DapVariable, expected: Record<string, DebugValue>): Promise<void> {
+  assert.ok(variable.variablesReference > 0, `${variable.name} must expose record fields: ${JSON.stringify(variable)}`);
+  const { variables } = await getVariables(session, variable.variablesReference);
+  assert.deepStrictEqual(variables.map(field => field.name).sort(), Object.keys(expected).sort());
+  for (const field of variables) {
+    const value = expected[field.name];
+    if (typeof value === "object") await assertRecordFields(session, field, value);
+    else {
+      const rendered = typeof value === "string" && value.startsWith('"')
+        ? field.value.replace(/^0x[0-9a-f]+ (?=")/i, "") : field.value;
+      assert.strictEqual(rendered, String(value), field.name);
+    }
+  }
+}

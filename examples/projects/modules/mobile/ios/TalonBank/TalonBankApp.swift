@@ -32,7 +32,7 @@ struct BankScreen: View {
                 if menuOpen && !wide { drawer(width: min(geometry.size.width * 0.84, 300)) }
                 if let modal { modalOverlay(modal) }
             }
-            .overlay(alignment: modal != nil ? .top : .bottom) { notice }
+            .overlay(alignment: .bottom) { if modal == nil { notice } }
             .environment(\.bankViewportWidth, geometry.size.width)
         }
         .tint(BankTheme.green)
@@ -74,29 +74,39 @@ struct BankScreen: View {
     }
 
     private func drawer(width: CGFloat) -> some View {
-        ZStack(alignment: .leading) {
+        // The scrim sits beside the drawer, not under it: a close button spanning the whole
+        // screen takes the hit tests of the navigation buttons it overlaps.
+        HStack(spacing: 0) {
+            navigation.frame(width: width).shadow(radius: 20).zIndex(1)
             Color.black.opacity(0.35).ignoresSafeArea()
                 .onTapGesture { store.click("toggle-menu") }
                 .accessibilityLabel("Close navigation").accessibilityAddTraits(.isButton)
-            navigation.frame(width: width).shadow(radius: 20)
         }
         .accessibilityAction(.escape) { store.click("toggle-menu") }
     }
 
     @ViewBuilder private var notice: some View {
         if let toast = store.view?.first({ $0.has("toast") }) {
+            // A container element keeps the identifier on the notice itself. Without it SwiftUI
+            // stamps "bank-notice" over every child, and the dismiss button loses "dismiss-notice".
             NativeNode(node: toast, store: store, dark: true)
-                .frame(maxWidth: 430).padding(12).shadow(radius: 10).accessibilityIdentifier("bank-notice")
+                .frame(maxWidth: 430).padding(12).shadow(radius: 10)
+                .accessibilityElement(children: .contain).accessibilityIdentifier("bank-notice")
         }
     }
 
     private func modalOverlay(_ node: BankNode) -> some View {
         ZStack(alignment: .bottom) {
             Color.black.opacity(0.45).ignoresSafeArea().onTapGesture { store.click("close-modal") }
-            ScrollView { NativeNode(node: node, store: store) }
-                .frame(maxWidth: 540, maxHeight: 490)
-                .background(Color.white).clipShape(RoundedRectangle(cornerRadius: 26))
-                .accessibilityIdentifier("bank-modal")
+            // The notice stacks on the sheet. Laid over the screen it covered the sheet's title
+            // and close button once the keyboard pushed the sheet to the top.
+            VStack(spacing: 0) {
+                notice
+                ScrollView { NativeNode(node: node, store: store) }
+                    .frame(maxWidth: 540, maxHeight: 490)
+                    .background(Color.white).clipShape(RoundedRectangle(cornerRadius: 26))
+                    .accessibilityIdentifier("bank-modal")
+            }
         }
         .accessibilityAddTraits(.isModal)
         .accessibilityAction(.escape) { store.click("close-modal") }

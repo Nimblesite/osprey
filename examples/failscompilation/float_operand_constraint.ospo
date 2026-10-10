@@ -7,3 +7,6 @@ let badDivision = {
     handle Arith { divideByZero _ _ => 0.0 }
     divide(true, "text")
 }
+
+let absolute = abs
+let badAbsolute = absolute("text")

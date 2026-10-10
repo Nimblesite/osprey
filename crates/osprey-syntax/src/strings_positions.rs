@@ -26,9 +26,16 @@ pub(super) fn rebase_expr(expression: &mut Expr, map: &FragmentMap<'_>, flavor: 
             signature(parameters, return_type, map, flavor);
         }
         Expr::TypeConstructor { type_args, .. } => types(type_args, map, flavor),
-        Expr::Block { statements, .. } => statements
-            .iter_mut()
-            .for_each(|statement| rebase_stmt(statement, map, flavor)),
+        Expr::Block {
+            statements,
+            position,
+            ..
+        } => {
+            slot(position, map, flavor);
+            for statement in statements {
+                rebase_stmt(statement, map, flavor);
+            }
+        }
         Expr::Handler { position, arms, .. } => {
             slot(position, map, flavor);
             for arm in arms {

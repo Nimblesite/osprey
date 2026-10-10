@@ -6,6 +6,26 @@
 use super::api_docs::export;
 use super::{finish, osprey, read_text, temp_dir};
 
+/// [LSP-EFFECT-REQUIREMENTS] Published APIs retain transitive operation facts.
+#[test]
+fn extra_docs_publish_inferred_effect_requirements_in_both_flavors() {
+    for (extension, source) in [
+        ("osp", "effect Read { get: fn() -> int }\nfn leaf() = perform Read.get()\nfn relay() = leaf()\nfn safe() = {\n handle Read { get => 42 }\n relay()\n}\nfn invoke(f) = f()\n"),
+        ("ospml", "effect Read\n    get : Unit => int\nleaf () = perform Read.get ()\nrelay () = leaf ()\nsafe () =\n    handle Read\n        get => 42\n    relay ()\ninvoke f = f ()\n"),
+    ] {
+        let (result, output) = export(source, extension, &format!("effect_requirements_{extension}"));
+        assert_eq!(result.code, Some(0), "{}", result.stderr);
+        for name in ["leaf", "relay"] {
+            let page = read_text(&output.join(format!("api/{name}.md")));
+            assert!(page.contains("Requires on full application: `Read.get`."), "{page}");
+        }
+        let safe = read_text(&output.join("api/safe.md"));
+        assert!(!safe.contains("Requires on full application:"), "{safe}");
+        let unknown = read_text(&output.join("api/invoke.md"));
+        assert!(unknown.contains("Callback effects remain unresolved."), "{unknown}");
+    }
+}
+
 /// Exported nested modules recurse: every level's page is written, down to the
 /// leaf declaration.
 #[test]
@@ -48,6 +68,112 @@ fn extra_docs_state_module_exports_public_members_with_inferred_int() {
         "{page}"
     );
     assert!(!output.join("api/counter-internal.md").exists());
+    // [MODULES-STATE-INVENTORY] lists ownership, never private implementation.
+    let inventory = read_text(&output.join("api/project/state-boundaries.md"));
+    assert!(inventory.contains("Counter"), "{inventory}");
+    assert!(inventory.contains("0 private cells"), "{inventory}");
+    assert!(!inventory.contains("internal"), "{inventory}");
+}
+
+// [DOC-STATE-BOUNDARIES]: HTML, Markdown, privacy and regeneration agree.
+#[test]
+fn extra_docs_state_inventory_survives_both_flavors_and_regeneration(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for (extension, source) in [
+        ("osp", "namespace z;\nmodule Outer { state module Hidden { fn secret() = 0 } }\nnamespace a;\nstate module Empty {}\n"),
+        ("ospml", "namespace z\nmodule Outer\n    state Hidden\n        secret () = 0\nnamespace a\nstate Empty\n    privateSeed = 0\n"),
+    ] {
+        for format in ["html", "markdown"] { assert_state_inventory(extension, source, format)?; }
+    }
+    Ok(())
+}
+
+fn assert_state_inventory(
+    extension: &str,
+    source: &str,
+    format: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = temp_dir(&format!("state_inventory_{extension}_{format}"));
+    let file = root.join(format!("source.{extension}"));
+    let output = root.join("docs");
+    std::fs::write(&file, source)?;
+    let mut command = osprey();
+    let _ = command
+        .args(["--docs", "--source"])
+        .arg(&file)
+        .arg("--docs-dir")
+        .arg(&output)
+        .args(["--docs-format", format]);
+    let result = finish(command);
+    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    assert!(
+        result.stderr.contains("2 warnings (state-boundary)"),
+        "{}",
+        result.stderr
+    );
+    assert_inventory_pages(&output, format)?;
+    regenerate_without_state(&file, &output, extension, format)?;
+    Ok(())
+}
+
+fn assert_inventory_pages(
+    output: &std::path::Path,
+    format: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let extension = if format == "html" { "html" } else { "md" };
+    let page =
+        std::fs::read_to_string(output.join(format!("api/project/state-boundaries.{extension}")))?;
+    assert!(
+        page.contains("a::Empty") && page.contains("z::Outer::Hidden"),
+        "{page}"
+    );
+    assert!(
+        page.find("a::Empty") < page.find("z::Outer::Hidden"),
+        "{page}"
+    );
+    assert!(
+        !page.contains("secret") && !page.contains("privateSeed"),
+        "{page}"
+    );
+    let index = std::fs::read_to_string(output.join(format!("api/index.{extension}")))?;
+    assert!(
+        index.contains(&format!("project/state-boundaries.{extension}")),
+        "{index}"
+    );
+    if format == "html" {
+        let search = std::fs::read_to_string(output.join("assets/search-index.js"))?;
+        assert!(search.contains("api/project/state-boundaries"), "{search}");
+    }
+    Ok(())
+}
+
+fn regenerate_without_state(
+    file: &std::path::Path,
+    output: &std::path::Path,
+    extension: &str,
+    format: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let source = if extension == "osp" {
+        "fn identity(x) = x\n"
+    } else {
+        "identity x = x\n"
+    };
+    std::fs::write(file, source)?;
+    let mut command = osprey();
+    let _ = command
+        .args(["--docs", "--source"])
+        .arg(file)
+        .arg("--docs-dir")
+        .arg(output)
+        .args(["--docs-format", format]);
+    let result = finish(command);
+    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    let extension = if format == "html" { "html" } else { "md" };
+    assert!(!output
+        .join(format!("api/project/state-boundaries.{extension}"))
+        .exists());
+    assert!(!read_text(&output.join(format!("api/index.{extension}"))).contains("state-boundaries"));
+    Ok(())
 }
 
 #[test]

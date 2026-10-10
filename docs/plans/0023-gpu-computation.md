@@ -3,10 +3,10 @@
 **Subsystem:** `crates/osprey-types` + `crates/osprey-codegen` + `compiler/runtime` (+ CLI target drivers)
 **Status:** **NOT SHIPPED. No GPU execution exists.** Stages 1–2 (typed
 surface, purity checking, CPU host backend, eleven built-ins, differential
-corpus) are done bar two items delegated to other plans. Stage 3 (kernel
-extraction, `[GPU-KERNEL-EXTRACT]`) has **landed for lambda kernels** —
+corpus), including their previously delegated numeric typing cases, are complete. Stage 3 (kernel
+extraction, `[GPU-KERNEL-EXTRACT]`) has **landed for admissible lambda and scalar builtin kernels** —
 `crates/osprey-codegen/src/gpu_kernel.rs`, differentially gated against the
-retained inlined lowering — with three kernel shapes that still decline,
+retained inlined lowering — with two kernel shapes that still decline,
 listed below. Stages 4–7 — *every* device backend — are unstarted. Until
 stage 4 lands, this feature runs entirely on the CPU and nothing in it may be
 described as GPU-accelerated.
@@ -22,7 +22,7 @@ The GPU surface is a language feature, not a library: `GpuBuffer<T>` in the
 type system, kernel purity proven by the effect checker (fail-closed), and a
 host execution backend whose fused loops over dense unboxed buffers define
 the reference semantics device backends must reproduce byte-for-byte. Kernel
-extraction has since made each kernel a real, first-order, capture-free
+extraction makes each admissible kernel a real, first-order, capture-free
 function — the artifact a device emitter consumes. What remains is everything
 between an extracted kernel and a running device: an IR emitter, a launch and
 transfer path, effect-selected execution, portability backends, and the
@@ -121,8 +121,7 @@ backend is solved, the device half is stage 3 output plus an MSL emitter.
   `define double @__gpu_kernel_N(double %$p0, double %$p1)`; `mlkernels`'s
   `matVec` capture set becomes
   `@__gpu_kernel_3(i64 %$p0, i8* %$p1, i8* %$p2, i64 %$p3)`, buffer handles
-  included, ordered by identifier. Extracted-kernel counts per suite today:
-  buffers 21, combinators 9, gamedev 20, mlkernels 78, raster 11, stress 13.
+  included, ordered by identifier. Current extracted-kernel minima are asserted for both flavors in `cross_flavor_ir_equiv/gpu.rs`: buffers 7, combinators 2, gamedev 17, kernel_frontier 4, mlkernels 78, raster 5, stress 4. The older measured counts predated explicit arithmetic policies; host-bound arithmetic can decline extraction without changing output. These are structural floors, not performance measurements.
   Three kernel shapes still decline — see stage 3's checklist.
 - Every kernel FORM `[GPU-KERNEL-FORM]` names now compiles: named functions,
   inline lambdas, block-bodied lambdas, capturing closures, and recursive
@@ -208,7 +207,7 @@ Both closed. `tests/core/gpu/kernel_frontier` and
 default/GC/ARC and wasm32:
 
 - **A named context-free numeric function can now serve a float slot** (F10,
-  [plan 0022](0022-arithmetic-totality-audit.md)). No numeric class was
+  [the shipped scalar contract](../specs/0037-ArithmeticEffects.md#floating-point-results--float-ieee-results)). No numeric class was
   needed: the overload is left open and settled after unification, at the cost
   that one definition gets one overload (using a helper at both `int` and
   `float` is a type error, not a reinterpretation).
@@ -226,9 +225,7 @@ default/GC/ARC and wasm32:
   only failed in codegen with `match arms disagree on type`. A `Success`/
   `Error` pattern over an unresolved discriminant now pins it to a `Result`
   with an open payload instead of auto-wrapping it.
-- **ML cannot spell a block-bodied lambda**, so `kernel_frontier`'s Default
-  case has no twin: layout is suppressed inside brackets, and the body opens
-  inside `gpuMap (…)`.
+- **Block-bodied lambdas now work in ML combinator arguments.** The `kernel_frontier` twins execute identical local-binding and recursive-helper cases; compiler and debugger tests cover their source scopes.
 
 ## Spec statements the corpus falsified — now corrected
 
@@ -239,8 +236,7 @@ The corrections below have been applied to
   lambda with an internal `let` works as a kernel and always did — a `gpuMap`
   lambda whose block binds `let y = t * x` and returns `y + t`, over
   `[1.0, 2.0, 3.0]`, prints the correct `sum=18.0 g0=4.0`. The bullet is
-  deleted; the ML twin
-  limitation replaces it.
+  deleted; both flavors now exercise the case.
 - **`[GPU-KERNEL-FORM]`'s second gap is now implemented, not scoped.** A
   recursive unannotated helper is monomorphised per instantiation
   (`crates/osprey-codegen/src/monofn.rs`), so the annotations are optional.
@@ -253,7 +249,7 @@ The corrections below have been applied to
 ## Gaps delegated to other plans
 
 - ~~**Numeric defaulting for named context-free functions (F10)**~~ —
-  [plan 0022](0022-arithmetic-totality-audit.md) (spec
+  [the shipped scalar contract](../specs/0037-ArithmeticEffects.md#floating-point-results--float-ieee-results) (spec
   `[GPU-KERNEL-ELEM-TYPING]`). **Landed.** Both halves — lambda and named —
   now type from the consuming slot.
 - ~~**Positions on list literals**~~, so an empty literal's inferred element
@@ -263,9 +259,7 @@ The corrections below have been applied to
   table remains unavailable.) This used to keep
   `scalar_contracts`' empty-literal case red.
 
-The two cases above are the whole aspirational red set: they fail all four
-corpus lanes and `cross_flavor_ir_equiv` by design, as forward contracts. Do
-not delete or weaken the tests; land the language work.
+Both delegated cases are implemented and remain permanent conformance coverage under all four corpus lanes and cross-flavor IR comparison.
 
 ## Design decisions carried from the research foundation
 
@@ -421,32 +415,16 @@ accepted by earlier stages (`[GPU-ROADMAP]`).
 The branch review left a short list of gate work worth a session before
 stage 4 starts, in this order:
 
-1. **Ratchet extraction structure (review P1.3).** The per-suite
-   extracted-kernel counts published above are measured, not asserted: an
-   extraction regression to zero keeps the differential green because both
-   modes still agree. Add extracted-symbol minima per suite and exact-ABI IR
-   tests for zip, scan, and filter beside the existing map/fold ones.
-2. **IR structural gates for the literal/fusion claims (review P2.1).**
-   "Zero `osprey_list_*` calls" and one-allocation literal lowering are
-   semantic-test-only today; assert them in emitted IR. Note
-   `osprey_gpu_alloc` internally performs a header and a payload allocation
-   plus zero-fill — keep the claim precise.
-3. **Table-driven purity coverage (review P2.2).** Impure-kernel rejection is
-   tested for map/fold and an unprovable map; extend to filter/zip/scan, a
-   transitive helper chain, and an ML end-to-end rejection fixture.
+1. **Extraction structure is gated (review P1.3).** Both flavors enforce per-suite minima through the existing whole-corpus IR comparison. `zip_scan_and_filter_have_exact_scalar_abis` pins sorted, differently typed uniform parameters and element/accumulator slots alongside the existing map/fold checks. Disabling extraction must fail this gate even when runtime output still agrees.
+2. **Literal and fusion structure is gated (review P2.1).** `gpu_literals_make_one_buffer_with_constant_stores` requires one constructor, four constant-index stores and no list allocation or copy loop. `gpu_iterator_pipelines_do_not_materialize_intermediate_collections` requires one buffer, one counted loop, inline map/filter work and prefix publication. The range descriptor is separate from collection storage; the buffer constructor allocates a header and payload internally.
+3. **Every combinator has purity coverage (review P2.2).** Table-driven tests reject dynamic effects across a three-helper chain and unprovable callbacks for map/filter/zip/fold/scan, in both flavors. Each dynamic case has a pure accepted control with the same surrounding host handler. The ML rejection fixture now pairs the existing Default fixture and checks its exact diagnostic.
 4. **Measure what extraction bought (review P2.7).** Re-run the fps/per-op
    table under `OSPREY_GPU_KERNELS=extract` and `=inline`, and check in the
    benchmark artifact and environment metadata. The stage was justified by a
    host-backend speedup that has never been measured. If there is none, say
    so here and keep extraction anyway — its value is the device ABI.
-5. **Decide the wasm corpus gate (review P1.14).** The full wasm GPU
-   differential runs in a non-required job; either move it into the required
-   `ci` job or make the wasm job required. Until then a wasm-only regression
-   does not block a merge.
-6. **De-duplicate `gpu_kernel::returned`.** `deslop` cluster #48 pairs it with
-   the identical `sig.2`/`sig.3` reconstruction inside
-   `closure.rs::cell_call`. The repo sits at exactly 5.0% against a 5.00%
-   ceiling, so this is one of the cheapest ways to buy headroom.
+5. **Keep the wasm corpus gate required.** The WebAssembly job is required by the active branch rulesets and checked by `scripts/verify-branch-protection.mjs`. It runs the GPU differential through `make wasm`; no gate change remains here.
+6. **Keep return reconstruction shared.** Extracted kernels and closure calls now use `closure::returned`; the Stage 3 checklist records this completed refactor.
 
 **Then stage 4 or stage 6 — nothing else on this page reaches a GPU.** Stage 6
 (Metal) is closer on this hardware, because [plan
@@ -457,12 +435,7 @@ an MSL emitter over stage 3's extracted kernels plus a compute dispatch. Stage
 
 Landmines previous sessions hit:
 
-- Unannotated recursive functions fail closed **only when their signature is
-  not inferable** ("annotate its parameters and return type", `genfn.rs`
-  re-entry guard) — an unannotated recursive `fn triangular(n)` kernel is
-  fine; one taking a `GpuBuffer<int>` is not. Generic functions are inlined,
-  never emitted, so a recursive one with no inferred signature has no call
-  target.
+- Directly recursive generic helpers are emitted by `monofn.rs`, including buffer parameters, rather than recursively inlined. An unresolved return type still fails closed; mutual generic recursion remains subject to the re-entry guard. Do not reintroduce parameter annotations where the call site supplies the type.
 - Twins must emit identical IR (`cargo test -p osprey-cli --test
   cross_flavor_ir_equiv`), so a construct only one flavor's parser accepts
   cannot enter the corpus. Block-bodied lambda kernels cleared this bar when
@@ -472,7 +445,7 @@ Landmines previous sessions hit:
   under `make wasm`, not `make ci` — run both. `make wasm` also *builds*
   `libosprey_runtime_wasm.a`; without it every wasm golden fails at once and
   `TEST_CORPUS_WASM_SKIPPED` reads 0 instead of 53.
-- `GOLDEN_MIN` (179 native / 126 wasm) counts *programs*, not test cases —
+- `GOLDEN_MIN` (217 native / 151 wasm) counts *programs*, not test cases —
   adding a `test(...)` to an existing suite does not move it. Never lower it.
   `GPU_MODE_MIN` (18) counts the `tests/core/gpu` programs re-run under the
   opposite kernel lowering; adding a tenth suite raises it to 20.
@@ -494,9 +467,7 @@ Landmines previous sessions hit:
   `(d + 1)` no longer misparses as `5(d + 1)`
   ([LEX-STATEMENT-BREAK](../specs/0002-LexicalStructure.md#the-rule-lex-statement-break)).
   A callee and its argument list must still share one line.
-- Debug builds emit **no `DISubprogram`** for a lifted kernel, matching
-  `closure::emit_closure_fn`. Stepping into a kernel under lldb will not work
-  until [plan 0012](0012-osprey-debugger.md) closes the lambda-debug-info gap.
+- Lifted host kernels and materialized source lambdas emit their own `DISubprogram`, parameters and captured values. Both-flavor compiler and real LLDB-DAP tests now verify return-line breakpoints and primitive inspection; see [plan 0012](0012-osprey-debugger.md).
 
 ## TODO checklist
 
@@ -543,30 +514,8 @@ Landmines previous sessions hit:
       symbol never defined, failing at link time with no source location.
       `expr.rs::call_builtin_with_values` now lowers `print`, `toString`,
       `toFloat` and `abs` to value forms at the callback site.
-- [ ] Kernel-form gaps (plan 0002). Re-measured; the two halves differ:
-      - Block-bodied lambda kernels **already work in Default** —
-        a `gpuMap` lambda whose block binds `let d = x * 2 ?: 0` and returns
-        `d + 1 ?: d`, and `|x| => { … }`, both run. Only the brace-only
-        `fn(x) { … }` (no `=>`) is rejected.
-        The blocker is the ML parser, which has no multi-statement lambda body,
-        so the construct cannot enter the corpus without drifting
-        `cross_flavor_ir_equiv`. Next step is ML-parser support, not Default
-        grammar work.
-      - Recursive helpers need annotations **only when their signature is not
-        inferable** — `fn triangular(n)` as a kernel runs; `fn walk(src, w, i)`
-        taking a `GpuBuffer<int>` fails closed. Generic functions are lowered
-        by inlining (`genfn.rs::try_inline`), never emitted as symbols, so a
-        recursive generic with an uninferred signature has no call target and
-        the guard must fail. Closing it means real monomorphization — a
-        name-mangled copy per instantiation with the self-call bound to it.
-        Four annotations in `raster` and three in `stress` stay load-bearing
-        until then; the other 29 (raster) and 15 (stress) were redundant and
-        have been removed.
-      - Fixed meanwhile: nine builtin docs examples used the rejected
-        `fn(x) { … }` spelling, and four were also semantically wrong (`x * 2`
-        is checked arithmetic, so `map`/`forEach` printed `Success(2)` where
-        the comment claimed `2`; `filter`/`gpuZipWith` did not compile). All
-        nine now run and match their stated output.
+- [x] Block-bodied lambda kernels in both flavors. ML layout bodies inside callback brackets now lower with the Default twin. `every_extracting_combinator_preserves_its_source_arguments` checks all five extracting combinators; `extracted GPU kernel breakpoints expose uniforms and locals` executes a block-bodied kernel under LLDB-DAP in both flavors.
+- [x] Directly recursive generic helpers specialize from their call sites through `monofn.rs`; `kernel_frontier::recursiveHelperCase` asserts the matrix results 50 and 110, sum 160, in both flavors. Unresolved return types and mutual generic recursion remain explicit limits; parameter annotations are not required for the demonstrated forms.
 - [x] Kernel element typing (plan 0022 F10). Re-measured; narrower than "int
       defaulting". Let-polymorphism was always fine (`fn id(x) = x` instantiates
       at three types). `+` was the problem: in `fn add(a, x) = a + x` it
@@ -574,9 +523,7 @@ Landmines previous sessions hit:
       `gpuFold(0.0, add)` gave `cannot unify int with float`. **Fixed** by
       leaving the overload open at the definition and settling it after
       unification — no numeric class, and no GPU-surface change. `gpuFold(0,
-      add)` still needs the combine slot's `(v, t) -> v` to accept checked
-      integer `+`'s `Result`, which is the shape question the float-totality
-      decision owns.
+      add)` returns a plain integer under an explicit `Arith` policy, as required by [spec 0037](../specs/0037-ArithmeticEffects.md); the retired float-totality plan no longer owns an unresolved Result-shape decision.
 
 ### Stage 3 — kernel extraction
 
@@ -608,7 +555,9 @@ extracted paths cannot drift.
 - [x] Generic kernels are monomorphised rather than inlined: an unannotated
       `fn twice(x) = x * 2.0` passed to `gpuMap` emits
       `define double @__gpu_kernel_0(double %$p0)` and a call to it.
-- [ ] **Extract *every* combinator kernel.** Not done — three shapes still
+- [x] Propagate host GPU callback requirements through the ordinary effect solver. All five combinators reject unhandled arithmetic in both flavors, accept an explicit policy, and reject recovery-arm arithmetic without an outer policy. Stage legality alone cannot discharge an operation.
+- [x] Extract scalar builtins passed by name, including inferred `abs` instantiations, through the shared intrinsic lowering. The existing `kernel_frontier` twins pin all six total arithmetic helpers, float conversion and absolute values, integer overflow/zero-divisor dispatch, recovery order and callable shadowing. IR tests require real scalar definitions and calls without closure environments in both flavors.
+- [ ] **Extract *every* combinator kernel.** Not done — two shapes still
       take the inlined lowering, each for a stated reason, each safe (the
       pre-extraction lowering produces the same values):
       - **Closure cells** (`Callback::Local`/`Value`). A let-bound lambda that
@@ -619,9 +568,6 @@ extracted paths cannot drift.
         or teaching the ABI a uniform-pack — a real design decision, and the
         one that decides whether a device backend can offload such a kernel or
         must reject it.
-      - **Builtins passed by name** (`gpuMap(toFloat)` in `stress`). No symbol
-        exists to call; an intrinsic lowers to its per-element value form.
-        A device emitter must therefore know the intrinsics itself.
       - **Bodies reaching host-only state** — a free name in `cell_slots`,
         `lambdas`, `fn_ptr_locals` or `call_aliases`, a non-scalar/non-buffer
         capture, or a `Result`/Fiber parameter slot. `admissible` declines
@@ -633,12 +579,11 @@ extracted paths cannot drift.
       under both modes while its eleven lambda kernels are not.
 - [ ] Measure the host-backend payoff under `extract` versus `inline` and
       record it in "What that costs, measured". Unmeasured today.
-- [ ] Remove the `gpu_kernel::returned` / `closure::cell_call` clone
-      (`deslop` cluster #48, 31 nodes) — one shared helper for
-      `sig.2`/`sig.3` return reconstruction.
-- [ ] Lifted kernels carry no `DISubprogram`, so they are invisible to lldb.
-      Deliberate (it matches `closure::emit_closure_fn`) and owned by
-      [plan 0012](0012-osprey-debugger.md).
+- [x] Ratchet extracted-symbol counts and exact zip/scan/filter ABIs in both flavors through the existing IR-equivalence suite.
+- [x] Assert literal and fused-pipeline allocation/loop structure; no intermediate collections are permitted.
+- [x] Cover all five combinators with transitive dynamic-effect rejection, pure controls and fail-closed unknown callbacks in both flavors; add the missing ML rejection golden.
+- [x] Share return reconstruction: `gpu_kernel::extracted_call` and `closure::cell_call` both use `closure::returned`, preserving Result, Fiber and owner metadata. The duplicated implementation is gone; allocator and alternate-lowering goldens cover the shared path.
+- [x] Preserve debugger scopes for extracted host kernels. Source parameters follow captured uniforms in native argument numbering; captures and locals remain inspectable on the return line. Both-flavor compiler tests cover all five extracting combinators, and real LLDB-DAP editor tests assert `x = 40`, uniform `n = 2` and local `sum = 42`. Shares the source-lambda machinery owned by [plan 0012](0012-osprey-debugger.md).
 
 ### Stage 4 — first device target (NVPTX)
 

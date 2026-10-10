@@ -16,9 +16,9 @@ The key words `MUST`, `MUST NOT`, `SHOULD`, and `MAY` are to be interpreted as d
 - **No implicit self-reentry.** An arm executes outside its own installation. Fallible arithmetic in that arm requires a distinct enclosing `Arith` policy ([ARITH-EFFECT-ARMS-NO-REENTRY](#forwarding-recovery--arith-effect-arms-no-reentry)); without one, the program is rejected.
 - **No fabricated fallback.** A plain `int`/`float` is never a `?:` scrutinee (`` `?:` needs a Result on its left, found int ``), and there is no ambient or implicit default policy: a recovery value exists only inside a handler a region installed by name.
 
-Floating-point `+`, `-`, `*`, and unary `-` satisfy the same totality through IEEE-754 closure — `inf` and `NaN` are defined values of `float`, not failures. Whether they should *additionally* surface through `Arith` is [plan 0022](../plans/0022-arithmetic-totality-audit.md)'s open float decision, out of scope here.
+Floating-point `+`, `-`, `*`, and unary `-` satisfy the same totality through IEEE-754 closure — `inf` and `NaN` are defined values of `float`, not failures. They MUST NOT additionally request `Arith` for a non-finite result. The complete float contract is [FLOAT-IEEE-RESULTS] below.
 
-The numeric builtins are inside the guarantee: `abs` and `intDiv` follow the operators — plain `int` results, with `abs(-9223372036854775808)` and `intDiv(-9223372036854775808, -1)` performing `Arith.overflow` and `intDiv(_, 0)` performing `Arith.remainderByZero`. `checkedAdd`/`checkedSub`/`checkedMul` remain the explicit value-level spelling; an `Error` they return is ordinary data, produced totally.
+The numeric builtins are inside the guarantee: `abs` preserves the input numeric type and `intDiv` returns `int`, with `abs(-9223372036854775808)` and `intDiv(-9223372036854775808, -1)` performing `Arith.overflow` and `intDiv(_, 0)` performing `Arith.remainderByZero`. `checkedAdd`/`checkedSub`/`checkedMul` remain the explicit value-level spelling; an `Error` they return is ordinary data, produced totally.
 
 Conformance requires a rejection fixture or differential runtime test for every clause above, exercised on native under all three memory backends and on wasm32. The verification matrix below names those tests.
 
@@ -33,9 +33,30 @@ Integer arithmetic returns `int`. Failure is neither erased nor raised: an opera
 | `%` | `int`, MAY perform `Arith.remainderByZero` | `float`, MAY perform `Arith.divideByZero` | `float` (int promoted), MAY perform `Arith.divideByZero` |
 | unary `-`, `abs` | `int`, MAY perform `Arith.overflow` | `float` (total) | — |
 
-Outside the `Arith` channel: string, list and map `+` overloads; float `+ - *` and unary float `-` as plain IEEE-754 ([plan 0022](../plans/0022-arithmetic-totality-audit.md) owns the open float questions); the negated-literal fold [ARITH-NEG-LITERAL](0013-ErrorHandling.md#negated-literals--arith-neg-literal); and `checkedAdd`/`checkedSub`/`checkedMul`, which return `Result<int, Error>` for code that wants overflow as data.
+Outside the `Arith` channel: string, list and map `+` overloads; float `+ - *` and unary float `-` as plain IEEE-754 ([FLOAT-IEEE-RESULTS]); the negated-literal fold [ARITH-NEG-LITERAL](0013-ErrorHandling.md#negated-literals--arith-neg-literal); and `checkedAdd`/`checkedSub`/`checkedMul`, which return `Result<int, Error>` for code that wants overflow as data.
 
 No arithmetic type contains a `Result`, so [Result Preservation](0004-TypeSystem.md#result-preservation) governs arithmetic vacuously and has no arithmetic exception. `Result` is reserved for failures a value genuinely carries — indexing, HTTP, parsing, user functions.
+
+## Floating-point results — [FLOAT-IEEE-RESULTS]
+
+`float` is IEEE-754 binary64. Finite values, positive and negative infinity, NaN, and both signed zeros are ordinary values of this type. Arithmetic MUST retain IEEE behavior without fast-math assumptions that discard non-finite values, signed zero or subnormal results. Producing infinity or NaN MUST NOT request `Arith.overflow`, return a `Result`, trap or implicitly substitute a finite value. This also applies to float expressions in file-scope initializers; source literals themselves MUST be finite ([FLOAT-LITERAL-RANGE](0002-LexicalStructure.md#finite-float-literals--float-literal-range)).
+
+| Operands or result | Required behavior |
+| --- | --- |
+| Finite `+`, `-`, `*`, or division by a nonzero value exceeds the finite range | Signed infinity according to IEEE arithmetic |
+| Infinity supplied to `+`, `-`, `*`, `/` | IEEE result; for example, `inf + 1` is `inf`, `inf + -inf` and `inf / inf` are NaN, and `inf * 0` is NaN |
+| NaN supplied to either operand of `+`, `-`, `*`, or nonzero-divisor `/` and `%` | NaN; a NaN divisor is not zero and MUST NOT request zero-divisor recovery |
+| Unary `-` | Reverse the sign, including infinities and signed zero; NaN remains NaN |
+| Float `abs` | Clear the sign, including negative zero and negative infinity; NaN remains NaN. No arithmetic effect, including through aliases, callbacks and returned or stored function values |
+| Underflow | Gradual underflow into subnormal values, then signed zero when rounding requires it; no arithmetic effect |
+| Signed zeros | Compare equal; operations retain their IEEE signs, for example `-0.0 * 2.0`, `-0.0 / 2.0`, and `-0.0 % 2.0` produce negative zero |
+| `/` with divisor `0.0` or `-0.0` | Request `Arith.divideByZero("/", lhs)` before division, including when `lhs` is zero, infinity or NaN |
+| Float `%` with divisor `0.0` or `-0.0` | Request `Arith.divideByZero("%", lhs)` before remainder, including when `lhs` is zero, infinity or NaN |
+| Float `%` with a nonzero divisor | Remainder for a quotient truncated toward zero, with the dividend's sign; `-5.5 % 2.0` is `-1.5`. Infinite dividend or NaN operand gives NaN; finite dividend with infinite divisor returns the dividend |
+
+Integer operands are promoted to binary64 when paired with a float, and both operands of `/` are promoted. `toFloat` is the explicit integer conversion; rounding may lose precision outside the exactly representable integer range. Neither promotion nor `toFloat` overflows for an Osprey `int`. Float-to-int coercion is rejected; internal representation conversion uses saturating narrowing with defined NaN and boundary behavior ([FLOAT-CONVERT](0004-TypeSystem.md#internal-numeric-narrowing--float-convert)). The six comparison operators follow [FLOAT-COMPARE](0004-TypeSystem.md#floating-point-comparison--float-compare); in particular, NaN compares unequal to every value including itself. NaN payload bits and NaN's sign are not specified.
+
+Host GPU kernels MUST obey this same scalar contract, including the enclosing `Arith` policy for zero divisors. List/buffer transfers preserve non-finite values and signed zero. This specifies the shipped host backend; it does not claim a device backend is implemented. Programs needing finite-only results must explicitly test their results at the application boundary; arithmetic makes no implicit finite-only guarantee.
 
 ## The `Arith` effect — [ARITH-EFFECT-OPS]
 
@@ -60,6 +81,8 @@ An arithmetic operation that MAY perform an `Arith` operation seeds that require
 ```text
 unhandled effect operations at program entry: Arith.overflow; add a matching `handle`
 ```
+
+Host GPU combinators (`gpuMap`, `gpuFilter`, `gpuFold`, `gpuScan` and `gpuZipWith`) invoke their callbacks and therefore propagate the callbacks' arithmetic requirements. This applies to inline lambdas, named helpers and builtin function values. Kernel stage-legality checks do not discharge `Arith`; an integer `abs` or `intDiv` kernel still requires a matching surrounding policy. A recovery arm's own fallible arithmetic still requires an outer handler.
 
 ### Provably total sites — [ARITH-EFFECT-TOTAL-SITES]
 
@@ -186,6 +209,12 @@ Integer arithmetic produces plain numeric values. `MathError` and arithmetic Res
 | Direct handlers preserve complete integer/float `Result` operation payloads (#183) | `direct handler calls preserve Result operation values` in `effect_policies` |
 | Ordered overflow payloads, unary boundaries, integer remainder and float zero divisors | `result_chain_unary_stress` and `boundary_error_stress`, both flavors; each case checks the numeric answer and complete ordered fault trace |
 | No implicit policy, reserved `Arith`, value-mode arms, constant-overflow errors, file-scope restrictions and recovery requiring an outer policy | `arith_unhandled`, `arith_redeclared`, `arith_resume`, `arith_constant_overflow`, `arith_file_initializer`, `arith_recovery_needs_outer` in `examples/failscompilation/`, each with an `ml_` fixture and exact diagnostic golden |
+| IEEE closure, signed zero, subnormals, nonzero remainder and ordered zero-divisor recovery | `boolean_consolidated.test.osp` and its ML twin; ten cases with a shared golden, including float absolute values and integer recovery through function values |
+| Host GPU IEEE values, scalar transfers, numeric `abs` callbacks and ordered fault recovery | `scalar_contracts.test.osp` and its ML twin, under both inline and extracted kernel lowering |
+| GPU callback requirements, builtin extraction, lexical shadowing and ordered recovery | `effect_rows_tests::gpu`, `builtin_kernels_are_extracted_with_specialized_scalar_abis` and the existing `kernel_frontier` twins under both kernel modes |
+| Numeric operands through generic aliases and higher-order calls; finite source literals | `float_operand_constraint` and `float_literal_overflow` rejection fixtures in both flavors, plus type and frontend unit tests |
+| Defined internal float narrowing for NaNs, infinities, fractions and signed range boundaries | `float_coercions_use_defined_saturation_for_extreme_inputs` in `osprey-codegen::conv`; saturating LLVM intrinsic over twelve boundary operands |
+| Native float remainder links its platform math runtime | `native_float_remainder_links_its_platform_math_runtime` in the CLI driver tests, plus the float corpus on native and WASM |
 | Retired `MathError` cannot be named as a builtin | `explicit_arguments_validate_nested_types_and_enclosing_binders` in `crates/osprey-types/src/methods.rs` |
 
 `make ci` runs the Rust suites, coverage gates, exact rejection diagnostics, native default/GC/ARC goldens, editor tests and application acceptance tests. The ARC corpus also requires zero live objects at exit. `make wasm` runs the same target-supported corpus against the same goldens through WASI; unsupported capabilities are enumerated by the target manifest. ML twins share the Default golden; the standalone ML currying suite has its own golden because it has no Default twin. The arithmetic policy and stress suites participate in each supported target run.

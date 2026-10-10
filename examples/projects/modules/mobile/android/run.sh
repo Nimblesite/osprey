@@ -45,7 +45,7 @@ for path in pathlib.Path(sys.argv[1]).glob('*.png'):
     if not path.read_bytes().startswith(b'\x89PNG\r\n\x1a\n'):
         path.unlink()
 PY
-    if ! rg -q '^OK \([0-9]+ tests?\)' "$report" || rg -q 'FAILURES|INSTRUMENTATION_FAILED|shortMsg=' "$report"; then exit 1; fi
+    if ! grep -Eq '^OK \([0-9]+ tests?\)' "$report" || grep -Eq 'FAILURES|INSTRUMENTATION_FAILED|shortMsg=' "$report"; then exit 1; fi
 else
     "$adb" -s "$serial" shell am start -W -n org.ospreylang.talon/.MainActivity --es server_url "${TALON_SERVER_URL:-http://127.0.0.1:18790}"
 fi

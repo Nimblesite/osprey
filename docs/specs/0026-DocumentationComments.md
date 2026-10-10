@@ -210,6 +210,8 @@ effect row. The exporter replaces the editor's resolved row with the author's
 source-local row once. ML source signatures and example fences are
 presented in the ML flavor.
 
+Function pages also include the same inferred effect requirements as editor hover ([LSP-EFFECT-REQUIREMENTS](0020-LanguageServerAndEditors.md#inferred-effect-requirements-lsp-effect-requirements)). This includes transitive required operations, separate host runtime operations and explicit unresolved-callback status. It is distinct from a written upper bound and from the source operations listed elsewhere on the page. Only the compiler's summary supplies these facts; the documentation exporter must not infer a second answer by walking source calls.
+
 A declaration with no comment still states facts about itself, and its page
 carries them: the effects it performs, each linked to the effect's own page; the
 result type where one was written; and the file and line it is declared on. An
@@ -234,6 +236,10 @@ in the format's manifest, while the historical built-in `functions/*.md` tree
 remains wholly generated. Unrelated files outside that tree are preserved.
 Duplicate output paths, malformed manifests, and symlinks inside the destination
 are rejected before writing the output set.
+
+### State ownership `[DOC-STATE-BOUNDARIES]`
+
+Projects containing state modules generate `api/project/state-boundaries.md` (or `.html`) from the compiler's [state inventory](0025-ModulesAndNamespaces.md#state-boundary-inventory-modules-state-inventory). The page lists every state owner in deterministic qualified-name order, including private or empty modules, with private cell counts and exported owned effects. This architecture inventory intentionally names private owners but exposes no cell names, initializers or private helper APIs. It explains per-handler instance creation, appears in API navigation and offline search, and is removed on regeneration when the project no longer contains state modules. Public declaration filtering remains unchanged.
 
 ### HTML sites `[DOC-EXPORT-HTML]`
 

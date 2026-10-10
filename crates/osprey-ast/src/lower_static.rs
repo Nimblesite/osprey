@@ -471,5 +471,6 @@ fn bind_parameters(arm: &HandlerArm, arguments: &[Expr]) -> Expr {
             })
             .collect(),
         value: Some(Box::new(arm.body.clone())),
+        position: None,
     }
 }

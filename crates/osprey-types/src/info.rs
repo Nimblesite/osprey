@@ -6,6 +6,19 @@
 use crate::ty::{names, Type, VarId};
 use std::collections::HashMap;
 
+/// Closed-program requirements on full application, separate from written row bounds.
+/// Unknown callback effects are never represented as an empty proven row.
+/// Implements [LSP-EFFECT-REQUIREMENTS].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EffectRequirements {
+    /// Sorted operation identities, including generic effect instances.
+    pub operations: Vec<String>,
+    /// Host operations tracked separately from algebraic operations.
+    pub runtime_builtins: Vec<String>,
+    /// Symbolic callback uses or unresolved dynamic calls remain in the summary.
+    pub unresolved_callbacks: bool,
+}
+
 /// The declared shape of a record/variant constructor: ordered `(field, type)`
 /// pairs written as type names (`int`, `string`, `Point`, …) plus its owning
 /// type. Field type strings are kept verbatim so the backend maps them to its
@@ -48,6 +61,8 @@ pub struct OpType {
 pub struct ProgramTypes {
     /// Function/extern name → (resolved parameter types, resolved return type).
     pub functions: HashMap<String, (Vec<Type>, Type)>,
+    /// Qualified function name → the same requirements used by entry checking.
+    pub function_effects: HashMap<String, EffectRequirements>,
     /// Constructor name → its record/variant layout.
     pub ctors: HashMap<String, CtorLayout>,
     /// Union type name → ordered variant constructor names (tag order).

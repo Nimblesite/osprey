@@ -10,6 +10,15 @@ async function executeExample(source, file) {
   return execFileSync(path.resolve("../target/release/osprey"), [file, "--run", "--quiet"], { encoding: "utf8", timeout: 20_000 });
 }
 
+// stdout of a program that runs, or the compiler's diagnostic for one it rejects.
+async function exampleResult(source, file) {
+  try {
+    return await executeExample(source, file);
+  } catch (error) {
+    return error.stderr.replace(`${file}: `, "");
+  }
+}
+
 test.describe("homepage flight and source examples", () => {
   test("both syntax examples execute with the displayed output", async ({ page }, testInfo) => {
     await page.goto("/");
@@ -33,6 +42,29 @@ test.describe("homepage flight and source examples", () => {
       const extension = (await block.getAttribute('class')).includes('osprey-ml') ? 'ospml' : 'osp';
       const output = await executeExample(await block.textContent(), testInfo.outputPath(`effects-${i}.${extension}`));
       expect(output).toBe(outputs[i]);
+    }
+  });
+
+  test("the effect handlers post shows what every example prints or the error that rejects it", async ({ page }, testInfo) => {
+    await page.goto("/blog/2026-10-05-effect-handlers-you-can-call/");
+    const blocks = await page.locator("main pre > code").evaluateAll((codes) =>
+      codes.map((code) => ({ lang: code.className, text: code.textContent })));
+    const examples = blocks.flatMap((block, i) => (block.lang.includes("language-osprey") ? [{ ...block, shown: blocks[i + 1] }] : []));
+    expect(examples).toHaveLength(10);
+    for (const [i, { lang, text, shown }] of examples.entries()) {
+      expect(shown.lang).toContain("language-text");
+      const file = testInfo.outputPath(`handlers-post-${i}.${lang.includes("osprey-ml") ? "ospml" : "osp"}`);
+      expect(await exampleResult(text, file)).toBe(`${shown.text.trim()}\n`);
+    }
+  });
+
+  test("the match guide demonstrates binding scope in both flavors", async ({ page }, testInfo) => {
+    await page.goto("/docs/keywords/match/");
+    const blocks = page.locator('pre > code.language-osprey, pre > code.language-osprey-ml');
+    await expect(blocks).toHaveCount(2);
+    for (const [index, extension] of [[0, "osp"], [1, "ospml"]]) {
+      const source = await blocks.nth(index).textContent();
+      expect(await executeExample(source, testInfo.outputPath(`match.${extension}`))).toBe("2:100 / 100:100\n");
     }
   });
 

@@ -52,6 +52,8 @@ This is a whole-document protocol. Osprey does not call JavaScript once per comp
 | React | Element creation and reconciliation inside one root | The authoritative application model |
 | Native Osprey server in Talon Bank | HTTP routes, SQLite adapter, storage/audit handlers, embedded assets | Browser rendering |
 
+The server and Wasm client share the bank’s `Money` module. Its signature exposes an integer `Cents` alias and an abstract `Amount`: callers use `Money::fromCents`, `Money::show` and `Money::toCents` while the record representation stays private. The compiler rejects direct construction, field access and passing a raw integer where an amount is required. Native tests cover both source flavors and all three allocators; the browser journeys exercise the same module through WebAssembly.
+
 ## The complete startup and event loop
 
 The [client entry point](https://github.com/Nimblesite/osprey/blob/main/examples/projects/modules/client/src/main.ospml) defines the browser-facing dispatcher and `main`:
@@ -247,7 +249,7 @@ consoleAudit = handler Api::Audit
 consoleAudit (\() => storage (\() => serve db))
 ```
 
-Creating either handler installs nothing. Calling it with a callback installs it while that work runs. Tests supply an in-memory store, reuse it across operations, and create independent stores for separate scenarios. The surrounding `Metrics::track` block supplies the request counter.
+Calling a handler with a callback installs it while that work runs. Tests supply an in-memory store, reuse it across operations, and create independent stores for separate scenarios. The surrounding `Metrics::track` block supplies the request counter.
 
 The client uses the same handler model for its rendering boundary. In [`Bridge`](https://github.com/Nimblesite/osprey/blob/main/examples/projects/modules/client/src/bridge.ospml):
 
@@ -268,9 +270,7 @@ Browser commands such as `http`, `focus` and `navigate` remain JSON data inside 
 
 ### Target support
 
-Callable value handlers, rest-of-block `handle` and static interpretation work on WebAssembly. `handle static` removes effect dispatch during compilation; dynamic value handlers use the runtime handler stack. The compiler checks operation types and missing handlers before generating code.
-
-Dynamic `control` operations require native continuation support and are rejected for WebAssembly and mobile targets. General independently quantified effect rows remain unfinished; the current checker follows operation requirements through the closed program. See [feature status](/status/#algebraic-effects) and [plan 0016](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0016-algebraic-effects-and-handlers.md).
+Value handlers, rest-of-block `handle` and `handle static` work on WebAssembly. Dynamic `control` operations need native continuations and are rejected before linking. See [feature status](/status/#algebraic-effects).
 
 ## How an Osprey project becomes `.wasm`
 

@@ -186,6 +186,8 @@ polymorphic function is monomorphised independently at each call site.
 Variance markers are **not** permitted on function binders (variance is
 declaration-site on types and effects only — [TYPE-VARIANCE-DECL]).
 
+Specialization preserves lexical binding identity. A named function reads bindings from its declaration scope, including when it is passed as a callback or stored in a record; caller bindings with the same spelling cannot replace them. Arguments are evaluated exactly once in their caller scope, in application order. In a curried call, a function body runs before the arguments of the next application. Nested applications of the same generic function have independent type substitutions; nesting alone is not recursion. The Default/ML `tests/modules/file_scope_generic_binding.test` pair pins shadowing, ordinary closure captures, live global storage, nested instantiations and effect order. C callback lowering is also pinned by `generic_c_callbacks_do_not_capture_shadowing_callers`.
+
 ```osprey
 fn pick<T>(first: T, second: T) = first
 let n = pick(10, 20)
@@ -436,6 +438,8 @@ list, as specified in [Function Calls](0005-FunctionCalls.md).
 
 A lambda (`fn(...) => expr` or `|x| => expr`) captures every free identifier from its enclosing lexical scope by reference to its value at capture time. Captured bindings are immutable, so by-reference and by-value capture are observationally identical and the implementation MAY choose either. A captured binding outlives the surrounding stack frame: a closure returned from a function remains callable and continues to read the captured values.
 
+The same holds for a lambda whose type is still generic. It has no single closure value and is specialised at each call site, but it reads the bindings it captured where it was written, whether it is called there, from a nested lambda, from a handler arm or from a fiber, and it keeps them alive for as long as it can be called.
+
 ```osprey
 fn makeAdder(n: int) -> (int) -> int = fn(x: int) => x + n
 
@@ -519,6 +523,22 @@ accepted wherever a `Point` is expected. Field keys are **bare identifiers**;
 that is what separates a record from a map literal, whose keys are string or
 expression values (`{ "Dave": 28 }`). A brace literal with no fields is the
 empty map, not the empty record.
+
+ML writes the same nonempty anonymous row with `=` separators: `origin = { x = 0, y = 0 }`. Nested fields and captures retain the actual record layout through projection; an unnamed inferred row must not erase the concrete layout identity needed for a later field access. Both-flavor `record_update_basic` assertions pin this behavior.
+
+### Result fields — [TYPE-RECORD-RESULT]
+
+A record or union payload field of type `Result<T, E>` stores the complete `Success` or `Error` value. Named, anonymous and generic records obey the same rule. Construction and immutable updates may promote a bare `T` to `Success(T)`; they MUST preserve an existing failure and its message. A field read, constructor or structural pattern, function argument, closure capture, shared cell or permitted conversion to `any` ([TYPE-ANY](#the-any-type--type-any)) MUST retain the concrete success payload type and the discriminant. Updating another field preserves the stored Result and the source record.
+
+The native and wasm32 backends use one Result block shape: a 64-bit payload word, a byte discriminant and a message pointer, with target-specific alignment. Float payloads preserve their IEEE bits, booleans preserve their truth value, and pointer payloads retain their ownership and concrete type. An aggregate field holds a pointer to the whole block. Its static payload type cannot change the discriminant or message offsets.
+
+The `resultRecordCase`, `genericResultRecordCase`, `anonymousResultRecordCase`, `resultTransportCase` and `genericUnionResultCase` assertions in both `record_update_basic` twins pin failure preservation, promotion, nested payloads, erasure, pattern binding and live captures. The cross-flavor IR test pins the common block and bit-preserving float/boolean conversions.
+
+### C ABI record layout — [TYPE-RECORD-C-ABI]
+
+The built-in `HttpResponse` record uses the runtime's C layout, without an Osprey discriminant and with a byte-sized C boolean. Construction, field access, immutable updates, structural and constructor patterns, `any` boxing and native debug inspection must agree on that layout. Updating a field preserves the source and every untouched field. Layout differences cannot change a field's Osprey type or value.
+
+The `httpRecordLayout` assertions in both `record_update_basic` twins exercise reads, boolean and string updates, pattern bindings, preservation of the original and erased-row rendering. Native LLDB-DAP cases inspect every C ABI field by name and exact value.
 
 ### Tuples — [TYPE-TUPLE]
 
@@ -923,10 +943,10 @@ annotated `Int` is a type mismatch rather than a silent alias.
 
 ```osprey
 let xs: List<int> = []
-fn half(n: int) -> Result<int, Error> = intDiv(n, 2)
+fn doubled(n) -> Result<int, Error> = checkedAdd(n, n)
 ```
 
-Writing `-> int` for `half` would be a type error; a return annotation cannot
+Writing `-> int` for `doubled` would be a type error; a return annotation cannot
 erase the body's `Result` ([Result Preservation](#result-preservation)).
 
 ## Redundant Annotations — [TYPE-ANNOTATION-REDUNDANT]

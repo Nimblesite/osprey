@@ -65,9 +65,9 @@ pub(crate) static CORE: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "abs",
-        "Returns the absolute value as a plain int. INT64_MIN performs Arith.overflow because its positive magnitude is not representable; the enclosing Arith policy supplies the result.",
-        ["value" => "The integer whose magnitude to take"],
-        "let d = abs(0 - 5)  // 5",
+        "Returns the absolute value with the same numeric type as its input: t0 is int or float. Integer INT64_MIN performs Arith.overflow; the enclosing policy supplies the result. Float absolute value is total: negative zero becomes positive zero, infinities become positive infinity, and NaN remains NaN.",
+        ["value" => "The int or float whose magnitude to take"],
+        "let d = abs(0 - 5)  // int: 5\nlet f = abs(-2.5)   // float: 2.5",
     ),
     builtin_doc!(
         "intDiv",
@@ -414,6 +414,12 @@ pub(crate) static FUNCTIONAL: &[BuiltinDoc] = &[
         "Reduces an iterator to a single value by repeatedly applying a function.",
         ["iterator" => "The iterator to reduce", "initial" => "The initial value for the accumulator", "fn" => "The reduction function that takes (accumulator, current) and returns new accumulator"],
         "range(1, 5) |> fold(0, add)  // sum: 0+1+2+3+4 = 10",
+    ),
+    builtin_doc!(
+        "toList",
+        "Runs an iterator pipeline once and collects every element it yields into a list, in order.",
+        ["iterator" => "The iterator to collect"],
+        "range(1, 7) |> filter(fn(x) => x % 2 == 0) |> toList  // [2, 4, 6]",
     ),
 ];
 

@@ -442,6 +442,7 @@ mod tests {
     fn graph_of(source: &str) -> crate::model::ProjectGraph {
         let statements = parse_program(source).program.statements;
         let contributions = vec![Contribution {
+            position: None,
             source: 0,
             namespace: NamespaceName::Identifier("app".to_owned()),
             imports: Vec::new(),

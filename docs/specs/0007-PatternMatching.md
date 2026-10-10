@@ -17,11 +17,15 @@ let label = match value {
 }
 ```
 
+## Binding scope — [PATTERN-BINDING-SCOPE]
+
+Every pattern binding belongs to its own arm. It shadows an enclosing binding only while that arm is evaluated. Sibling arms and code following the match retain their original bindings, including mutable cells and function values. Nested matches restore the containing arm's bindings on exit. A closure returned from an arm retains the binding it captured there. A function-valued binder retains its complete parameter and return types, including when extracted from a union, record, Result or list. A Result join preserves its callable Success payload even when the error type remains polymorphic.
+
+This applies equally to literal catch-all bindings, Result and union payloads, list elements and tails, structural fields and erased structural matches. The paired `tests/flavors/matching/matching.test` suites assert isolation between arms, restoration after nested matches, escaping captures, shadowing of mutable cells and callable payloads (including float-returning functions through Result joins) in both flavors.
+
 ## Union patterns
 
-A nullary variant is matched by name. A payload has two destructuring forms, and
-the **form written** — not how the payload was declared — decides how binders map
-onto slots:
+A bare variant name matches that variant and binds nothing, whether or not the variant carries a payload. A payload has two destructuring forms, and the **form written** — not how the payload was declared — decides how binders map onto slots:
 
 - `Ctor { a, b }` binds each binder to the field of that same name, independent
   of their order in the pattern.
@@ -170,7 +174,7 @@ behavior is required, but the compiler does not prove scalar exhaustiveness.
 variants:
 
 ```osprey
-let calculation = intDiv(10, 0)
+let calculation = checkedAdd(9223372036854775807, 1)
 
 match calculation {
     Success { value }   => print("result=${value}")

@@ -3,6 +3,11 @@
 //! `mut` cells among them. Every one of these appears both inside a function
 //! and at file scope, so they lower through exactly one path.
 
+mod bindings;
+mod cells;
+use bindings::gen_bind;
+use cells::{gen_cell_define, gen_cell_store, gen_global_store};
+
 use crate::builder::{Codegen, FnSig};
 use crate::error::{CodegenError, Result};
 use crate::expr::gen_expr;
@@ -58,12 +63,19 @@ fn gen_stmt_kind(cg: &mut Codegen, stmt: &Stmt) -> Result<()> {
             value,
             position,
             ..
-        } => with_stmt_debug(cg, *position, |cg| gen_bind(cg, name, value, *position)),
+        } => with_stmt_debug(cg, *position, |cg| {
+            gen_bind(cg, name, value, *position, true)
+        }),
+        // Rebinding a name that has no binding here would create a local
+        // nobody reads: the write would vanish without a diagnostic.
+        Stmt::Assignment { name, .. } if !rebindable(cg, name) => Err(CodegenError::unknown(name)),
         Stmt::Assignment {
             name,
             value,
             position,
-        } => with_stmt_debug(cg, *position, |cg| gen_bind(cg, name, value, *position)),
+        } => with_stmt_debug(cg, *position, |cg| {
+            gen_bind(cg, name, value, *position, false)
+        }),
         // A statement's value is discarded, so a `match` used purely for its
         // side effects is allowed arms of differing LLVM type — there is no
         // `phi` to type. Everywhere else that disagreement is a hard error
@@ -78,6 +90,11 @@ fn gen_stmt_kind(cg: &mut Codegen, stmt: &Stmt) -> Result<()> {
         }),
         _ => Err(CodegenError::unsupported("statement in block/main")),
     }
+}
+
+/// Whether an assignment to `name` replaces a binding this scope can see.
+fn rebindable(cg: &Codegen, name: &str) -> bool {
+    cg.lookup(name).is_some() || cg.lambda_def(name).is_some() || cg.call_aliases.contains_key(name)
 }
 
 /// Copy a just-lowered file-scope `let` into its module global, so functions
@@ -109,6 +126,21 @@ pub(crate) fn stmt_position(stmt: &Stmt) -> Option<Position> {
     }
 }
 
+/// Preserve a block's final expression through its function's return sequence.
+/// Synthetic binding blocks inherit the real body's position when available.
+pub(crate) fn tail_position(body: &Expr) -> Option<Position> {
+    match body {
+        Expr::Block {
+            position: Some(position),
+            ..
+        } => Some(*position),
+        Expr::Block {
+            value: Some(value), ..
+        } => tail_position(value),
+        _ => None,
+    }
+}
+
 fn with_stmt_debug(
     cg: &mut Codegen,
     position: Option<Position>,
@@ -121,229 +153,6 @@ fn with_stmt_debug(
     let result = f(cg);
     cg.restore_debug_position(previous);
     result
-}
-
-/// Declare a handler-captured plain-value `mut` as a heap cell. Result-backed
-/// cells require a discriminant-bearing slot and are rejected instead of being
-/// silently unwrapped.
-fn gen_cell_define(cg: &mut Codegen, name: &str, value: &Expr) -> Result<()> {
-    let v = gen_expr(cg, value)?;
-    if v.result_inner.is_some() {
-        return Err(CodegenError::invalid(
-            "mutable Result state must be handled before storage",
-        ));
-    }
-    let fn_ty = fn_result_type(cg, value);
-    let pointee = v.ty;
-    let ty = pointee.as_str();
-    let meta = crate::meta::struct_meta(&[crate::meta::MetaField::of_lty(pointee)]);
-    let cell = cg.malloc_struct(&format!("{{ {ty} }}"), meta);
-    let ptr = cg.emit_reg(format!(
-        "getelementptr {{ {ty} }}, {{ {ty} }}* {cell}, i32 0, i32 0"
-    ));
-    // The cell holds its own reference to the stored value [GC-ARC-PERCEUS].
-    crate::arc::dup_store(cg, ty, &v.operand);
-    cg.emit(format!("store {ty} {}, {ty}* {ptr}", v.operand));
-    // The cell itself is a heap allocation owned by the region that declared
-    // the `mut`. A handler env capturing it only DUPs it (`build_env`), so
-    // without this the cell outlives every region and leaks — one per captured
-    // `mut`. [GC-ARC-PERCEUS].
-    let handle = if ty == "i8*" {
-        ptr.clone()
-    } else {
-        cg.emit_reg(format!("bitcast {ty}* {ptr} to i8*"))
-    };
-    crate::arc::own_beyond_stmt(cg, &Value::new(handle, LType::Ptr));
-    let _ = cg.cell_slots.insert(
-        name.to_string(),
-        crate::builder::CellSlot {
-            ptr,
-            pointee,
-            osp_ty: v.osp_ty,
-        },
-    );
-    if let Some(ty) = fn_ty {
-        cg.bind_fn_local(name, ty);
-    }
-    Ok(())
-}
-
-/// Reassign a cell-backed `mut`: the checker requires the exact plain cell type,
-/// then codegen coerces only within that representation and stores it.
-fn gen_cell_store(cg: &mut Codegen, name: &str, value: &Expr) -> Result<()> {
-    let Some(slot) = cg.cell_slots.get(name).cloned() else {
-        return Err(CodegenError::unsupported(
-            "reassignment of an unpromoted cell",
-        ));
-    };
-    let v = gen_expr(cg, value)?;
-    let v = crate::cast::coerce_to(cg, v, slot.pointee)?;
-    let ty = slot.pointee.as_str();
-    // Rebind order: dup the incoming value BEFORE dropping the old one, so a
-    // self-assignment never frees the value it stores [GC-ARC-PERCEUS].
-    crate::arc::dup_store(cg, ty, &v.operand);
-    if slot.pointee.is_managed_ptr() {
-        let old = cg.emit_reg(format!("load {ty}, {ty}* {}", slot.ptr));
-        crate::arc::release_operand(cg, &old);
-    }
-    cg.emit(format!("store {ty} {}, {ty}* {}", v.operand, slot.ptr));
-    Ok(())
-}
-
-/// Reassign a file-scope binding through its module global. The checker allows
-/// the write only inside a handler arm, which is exactly where the enclosing
-/// frame is out of reach.
-fn gen_global_store(cg: &mut Codegen, name: &str, value: &Expr) -> Result<()> {
-    let v = gen_expr(cg, value)?;
-    crate::globals::assign(cg, name, v)
-}
-
-/// Bind `name` to `value`. A lambda is recorded for inline application at its
-/// direct call sites (a beta-reduction fast path) AND materialized as a closure
-/// cell so the name is a first-class value.
-fn gen_bind(cg: &mut Codegen, name: &str, value: &Expr, position: Option<Position>) -> Result<()> {
-    let expected_result_inner = cg
-        .prog
-        .let_type(position)
-        .and_then(crate::types::result_inner)
-        .or_else(|| cg.lookup(name).and_then(|bound| bound.result_inner));
-    if let Expr::Lambda {
-        parameters,
-        body,
-        position,
-        ..
-    } = value
-    {
-        let _ = cg.lambdas.insert(
-            name.to_string(),
-            (parameters.clone(), (**body).clone(), *position),
-        );
-        // Materialize the closure value when its type resolved concretely; a
-        // still-generic lambda stays inline-only (its cell ABI would lose the
-        // per-instantiation types).
-        if let Some((ty, sig)) = lambda_cell(cg, *position) {
-            let v = crate::closure::emit_closure(cg, parameters, body, &sig)?;
-            cg.emit_debug_local(name, &v);
-            crate::arc::bind_owned(cg, name, &v);
-            cg.bind(name.to_string(), v);
-            cg.bind_fn_local(name, ty);
-        }
-        return Ok(());
-    }
-    // A generic function whose body IS a lambda hands back a value with no
-    // single cell ABI; record it for inline application instead of rejecting.
-    // Never fire for a name that already has module storage: that slot is
-    // declared for cross-function readers and this path fills nothing, so the
-    // reader would load a zeroed global.
-    if let Some((callee_params, parameters, body, lambda_position)) =
-        generic_returned_lambda(cg, value).filter(|_| !cg.module_globals.contains_key(name))
-    {
-        // The callee's arguments are evaluated exactly ONCE, here — the call
-        // in the source happens once, so its effects must too, however many
-        // instantiations the binding is later used at.
-        let mut prefix = Vec::new();
-        if let Expr::Call {
-            arguments,
-            named_arguments,
-            ..
-        } = value
-        {
-            for argument in arguments {
-                prefix.push(gen_expr(cg, argument)?);
-            }
-            for argument in named_arguments {
-                prefix.push(gen_expr(cg, &argument.value)?);
-            }
-        }
-        if let Some((_, slots)) = cg.file_lambda_prefix.get(name).cloned() {
-            for (slot, captured) in slots.iter().zip(prefix) {
-                crate::globals::publish(cg, slot, captured)?;
-            }
-        } else if prefix.len() == callee_params.len() {
-            let _ = cg
-                .lambda_prefix
-                .insert(name.to_string(), (callee_params, prefix));
-        } else {
-            let _ = cg.lambda_prefix.remove(name);
-        }
-        let _ = cg
-            .lambdas
-            .insert(name.to_string(), (parameters, body, lambda_position));
-        let _ = cg.call_aliases.remove(name);
-        return Ok(());
-    }
-    if let Some(target) = alias_target(cg, value) {
-        // `let g = identity` where the target is a GENERIC function: no
-        // single concrete cell ABI exists, so bind as a call alias — g's
-        // call sites specialise the target exactly as direct calls do,
-        // and a value use resolves the alias where a consuming slot fixes
-        // the ABI ([TYPE-GENERICS-FN]).
-        let _ = cg.call_aliases.insert(name.to_string(), target);
-        return Ok(());
-    }
-    let expected = factory_lambda_abi(cg, value, position);
-    let prior = std::mem::replace(&mut cg.expected_lambda, expected);
-    let generated = gen_expr(cg, value);
-    cg.expected_lambda = prior;
-    let v = generated?;
-    let v = match expected_result_inner {
-        Some(inner) => crate::result::fit_to_inner(cg, v, inner)?,
-        None => v,
-    };
-    // A bound `Fiber<T>`/`Channel<T>` carries its element ABI from INFERENCE,
-    // not from whatever the right-hand side happened to know. `Channel(2)` has
-    // no element yet, an alias copies whatever the original was tagged with,
-    // and a handle received before its first `send` was tagged with nothing at
-    // all — each of those made `recv` hand back the raw `i64` wire word, so a
-    // list element arrived as an integer ([CONCURRENCY-CHANNEL]).
-    let mut v = tag_handle_element(cg, position, v);
-    if let Some(ty) = cg
-        .prog
-        .let_type(position)
-        .filter(|ty| !osprey_types::has_type_var(ty))
-    {
-        v.inferred_type = Some(ty.clone());
-    }
-    // A non-lambda (re)binding invalidates any stale beta-reduction entry or
-    // call alias for the name — `mut f = fn(x) => …; f = makeAdder(10)` must
-    // call the new closure, not the old inline body.
-    let _ = cg.lambdas.remove(name);
-    let _ = cg.call_aliases.remove(name);
-    // A function-valued binding (`let add5 = makeAdder(5)`) registers its
-    // function type so `add5(3)` lowers as a closure call.
-    if let Some(ty) = v
-        .inferred_type
-        .as_ref()
-        .filter(|ty| matches!(ty, osprey_types::Type::Fun { .. }))
-        .cloned()
-        .or_else(|| fn_result_type(cg, value))
-    {
-        cg.bind_fn_local(name, ty);
-    }
-    cg.emit_debug_local(name, &v);
-    // The binding outlives the statement region: move the statement's
-    // ownership out, or retain a borrow [GC-ARC-PERCEUS].
-    crate::arc::bind_owned(cg, name, &v);
-    cg.bind(name.to_string(), v);
-    Ok(())
-}
-
-/// Re-tag a bound handle with the element ABI inference resolved for it. Not a
-/// handle, or a handle whose element is still polymorphic: unchanged.
-fn tag_handle_element(cg: &Codegen, position: Option<Position>, value: Value) -> Value {
-    let Some(ty) = cg.prog.let_type(position) else {
-        return value;
-    };
-    let Some(sig) = crate::builder::FiberSig::of(&cg.prog, ty) else {
-        return value;
-    };
-    let owner = match ty {
-        osprey_types::Type::Con { args, .. } => crate::types::elem_tag(&cg.prog, args.first()),
-        _ => None,
-    };
-    let mut tagged = sig.restore(value);
-    tagged.fiber_elem_owner = owner;
-    tagged
 }
 
 /// The lambda a call to a GENERIC function hands back, when that lambda can be
@@ -366,7 +175,7 @@ fn tag_handle_element(cg: &Codegen, position: Option<Position>, value: Value) ->
 /// 1. The callee's body must be syntactically the lambda, so calling it
 ///    performs no work of its own that inlining could duplicate or drop.
 /// 2. What the lambda reads from the callee's parameters is evaluated ONCE,
-///    here, and carried as values in [`Codegen::lambda_prefix`]. A body
+///    here, and carried as the binding's [`crate::closure::Environment`]. A body
 ///    inlined later would otherwise read those names from whatever scope it
 ///    landed in — a silently wrong answer — and re-evaluating the argument
 ///    expression per call site would duplicate its effects. `fn constly(v) =
@@ -387,7 +196,7 @@ fn generic_returned_lambda(cg: &Codegen, value: &Expr) -> Option<ReturnedLambda>
     if fn_result_type(cg, value).is_some_and(|t| crate::types::fn_value_concrete(&t)) {
         return None;
     }
-    let (params, body) = cg.fn_defs.get(callee)?;
+    let (params, body, _) = cg.fn_defs.get(callee)?;
     let Expr::Lambda {
         parameters,
         body: lambda_body,
@@ -416,7 +225,7 @@ fn factory_lambda_abi(
     let Expr::Identifier(callee) = crate::expr::unapplied(function) else {
         return None;
     };
-    let (_, body) = cg.fn_defs.get(callee)?;
+    let (_, body, _) = cg.fn_defs.get(callee)?;
     let mut lambdas = Vec::new();
     returned_lambda_positions(body, &mut lambdas);
     if lambdas.is_empty() {
@@ -446,7 +255,7 @@ fn returned_lambda_positions(body: &Expr, positions: &mut Vec<Position>) {
 
 /// Whether a generic returned lambda reads the producing call's parameters.
 ///
-/// Local bindings keep the values as SSA registers in [`Codegen::lambda_prefix`].
+/// Local bindings keep the values in their [`crate::closure::Environment`].
 /// A file-scope binding read from another function instead stores the captured
 /// arguments in module globals, evaluated once at the factory call.
 fn captures_callee_params(cg: &Codegen, value: &Expr) -> bool {

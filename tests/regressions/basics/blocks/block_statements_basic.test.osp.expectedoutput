@@ -7,5 +7,13 @@
 6 cond match block: 94
 === Done ===
 ok 1 - blocks preserve values and lexical scope
-1..1
-# tests=1 passed=1 failed=0 skipped=0
+ok 2 - nested cells leave their enclosing immutable binding intact
+ok 3 - nested cells restore the enclosing cell and handler
+ok 4 - immutable shadowing reads then hides an enclosing cell
+ok 5 - nested callable bindings restore their enclosing lambda
+ok 6 - nested generic aliases restore their enclosing function
+ok 7 - escaping block callables retain their own lexical binding
+ok 8 - a plain shadowing binding never inherits Result storage
+ok 9 - a generic alias hides an enclosing cell when passed as a value
+1..9
+# tests=9 passed=9 failed=0 skipped=0

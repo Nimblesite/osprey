@@ -69,6 +69,10 @@ search, and the built-in reference. Single `.osp` and `.ospml` files work too.
 Library projects can generate documentation without an application entry point.
 Module pages link directly to their public members.
 
+Function pages show which effect operations their callers must provide, including requests made through helpers. They also list runtime operations and explicitly flag callbacks whose effects remain unresolved. These are the same details shown in editor hover, signature help and completion. Written effect annotations remain visible as bounds; they are separate from the operations the compiler finds.
+
+Projects with state modules also get a **State boundaries** page at `api/project/state-boundaries.html`. It lists every state owner, its private cell count and exported effects, including owners inside private modules. Cell names, initial values and private helper APIs stay out of the reference. The same ownership information appears as a warning at each state declaration in the editor and CLI. Installing a handler creates fresh cells; importing its module does not share an instance.
+
 Choose a built-in theme:
 
 | Theme | Appearance |

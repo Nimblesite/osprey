@@ -121,9 +121,9 @@ impl Checker {
                 position,
             } => self.infer_lambda(parameters, return_type.as_ref(), body, *position, env),
             Expr::Match { value, arms } => self.infer_match(value, arms, env),
-            Expr::Block { statements, value } => {
-                self.infer_block(statements, value.as_deref(), env)
-            }
+            Expr::Block {
+                statements, value, ..
+            } => self.infer_block(statements, value.as_deref(), env),
             Expr::TypeConstructor {
                 name,
                 type_args,
@@ -162,7 +162,8 @@ impl Checker {
             if let InterpolatedPart::Expr(inner) = part {
                 // Preserve complete Results and validate the runtime representation.
                 let ty = self.infer_expr(inner, env);
-                self.builtin_uses.push(("interpolation".to_owned(), ty));
+                let name = self.sited_use("interpolation");
+                self.builtin_uses.push((name, ty));
             }
         }
         Type::string()
@@ -255,7 +256,7 @@ impl Checker {
     /// than delivered — both ends refuse it, differing only in which half of
     /// the transfer the advice names.
     fn reject_result_channel(&mut self, ty: &Type, detail: &str) {
-        if self.ctx.prune(ty).is_named(names::RESULT) {
+        if self.ctx.expose(ty).is_named(names::RESULT) {
             self.errors.push(TypeError::new(format!(
                 "Result-valued channels are not supported by this backend; {detail}"
             )));
@@ -562,9 +563,9 @@ impl Checker {
     /// which is the one place anything goes — except an unhandled `Result`,
     /// whose failure would vanish silently. Implements [EFFECTS-HANDLER-ARMS].
     fn check_value_arm(&mut self, op_ret: &Type, arm_ty: &Type) {
-        if !self.ctx.prune(op_ret).is_named(names::UNIT) {
+        if !self.ctx.expose(op_ret).is_named(names::UNIT) {
             self.push_assign(op_ret, arm_ty);
-        } else if self.ctx.prune(arm_ty).is_named(names::RESULT) {
+        } else if self.ctx.expose(arm_ty).is_named(names::RESULT) {
             self.errors.push(TypeError::new(
                 "an unhandled `Result` cannot be discarded by a Unit effect operation arm; use `match` or `?:`",
             ));
@@ -652,13 +653,10 @@ impl Checker {
                 type_args,
                 position,
             } => self.infer_type_application(function, type_args, *position, env),
-            Expr::Identifier(name) => (
-                Some(name.clone()),
-                self.lookup_ident_at(name, env, Some(function)),
-            ),
+            Expr::Identifier(name) => (Some(name.clone()), self.infer_expr(function, env)),
             Expr::Path(path) => {
                 let name = path.to_string();
-                let ty = self.lookup_ident_at(&name, env, Some(function));
+                let ty = self.infer_expr(function, env);
                 (Some(name), ty)
             }
             other => (None, self.infer_expr(other, env)),
@@ -821,11 +819,11 @@ impl Checker {
     ) -> Type {
         let receiver = self.infer_expr(parts.target, env);
         let field = crate::methods::field_name(parts.method);
-        if matches!(self.ctx.prune(&receiver), Type::Var(_)) && env.get(parts.method).is_some() {
+        if matches!(self.ctx.expose(&receiver), Type::Var(_)) && env.get(parts.method).is_some() {
             self.record_method_target(site, crate::methods::Target::Deferred(field.clone()));
             return self.infer_deferred_method(site, receiver, &field, &parts, env);
         }
-        let known_field = match self.ctx.prune(&receiver) {
+        let known_field = match self.ctx.expose(&receiver) {
             Type::Record { fields, .. } => fields.contains_key(&field),
             Type::Con { name, args } => self
                 .ctx
@@ -961,7 +959,7 @@ impl Checker {
             }
             None => self.lookup_ident_at(parts.method, env, Some(site)),
         };
-        let tail = match self.ctx.prune(&ft) {
+        let tail = match self.ctx.expose(&ft) {
             Type::Fun { params, ret } => Type::fun(params.into_iter().skip(1).collect(), *ret),
             other => other,
         };
@@ -1047,7 +1045,7 @@ impl Checker {
     /// arity, and any argument is a lambda whose body the parameter types can
     /// inform. Every other call keeps the plain left-to-right pass.
     fn callee_params(&mut self, ft: &Type, arity: usize) -> Option<Vec<Type>> {
-        match self.ctx.prune(ft) {
+        match self.ctx.expose(ft) {
             Type::Fun { params, .. } if params.len() == arity => Some(params),
             _ => None,
         }
@@ -1074,7 +1072,7 @@ impl Checker {
                 body,
                 position,
             } => {
-                let expected = self.ctx.prune(param);
+                let expected = self.ctx.expose(param);
                 self.infer_lambda_of(
                     parameters,
                     return_type.as_ref(),
@@ -1089,7 +1087,7 @@ impl Checker {
     }
 
     fn apply_fn(&mut self, ft: &Type, args: Vec<Type>, defer_any_binding: bool) -> Type {
-        match self.ctx.prune(ft) {
+        match self.ctx.expose(ft) {
             Type::Fun { params, ret } => {
                 if params.len() != args.len() {
                     self.errors.push(TypeError::new(format!(
@@ -1134,7 +1132,8 @@ impl Checker {
     /// Arith obligation. A constrained built-in defers the
     /// same way for the same reason, by name.
     fn absorbed_by_any(&mut self, param: &Type, argument: &Type, deferred: bool) -> bool {
-        param.is_named(names::ANY) && (deferred || matches!(self.ctx.prune(argument), Type::Var(_)))
+        param.is_named(names::ANY)
+            && (deferred || matches!(self.ctx.expose(argument), Type::Var(_)))
     }
 
     pub(crate) fn apply_named_fn(
@@ -1149,7 +1148,8 @@ impl Checker {
         });
         if let (Some(name), Some(receiver)) = (name, args.first()) {
             if constrained_builtin {
-                self.builtin_uses.push((name.to_string(), receiver.clone()));
+                let name = self.sited_use(name);
+                self.builtin_uses.push((name, receiver.clone()));
             }
         }
         let fused = self.fuse_gpu_source(name, ft, &args);
@@ -1168,7 +1168,7 @@ impl Checker {
         if name != Some("toGpu") {
             return None;
         }
-        let Type::Fun { params, ret } = self.ctx.prune(ft) else {
+        let Type::Fun { params, ret } = self.ctx.expose(ft) else {
             return None;
         };
         let [Type::Con {
@@ -1231,7 +1231,7 @@ impl Checker {
         if self.reject_erased_operand("index", &tt) {
             return self.ctx.fresh();
         }
-        match self.ctx.prune(&tt) {
+        match self.ctx.expose(&tt) {
             Type::Con { name, args } if name == names::LIST && !args.is_empty() => {
                 self.push_assign(&Type::int(), &it);
                 res_math_like(args.first().cloned().unwrap_or_else(|| self.ctx.fresh()))
@@ -1511,7 +1511,7 @@ impl Checker {
     /// happened to be the identity, and compared heap addresses otherwise
     /// ([TYPE-ANY]). Reports the error and returns whether it fired.
     fn reject_erased_operand(&mut self, what: &str, ty: &Type) -> bool {
-        let erased = self.ctx.prune(ty).is_named(names::ANY);
+        let erased = self.ctx.expose(ty).is_named(names::ANY);
         if erased {
             self.errors.push(TypeError::new(format!(
                 "cannot {what} an erased `any`: match its structure instead"
@@ -1544,14 +1544,21 @@ impl Checker {
                 Type::bool()
             }
             OpKind::Comparison => {
-                let l = self.ctx.prune(&lt);
-                let r = self.ctx.prune(&rt);
+                let l = self.ctx.expose(&lt);
+                let r = self.ctx.expose(&rt);
                 if is_result(&l) || is_result(&r) {
                     self.errors.push(TypeError::new(
                         "cannot compare a `Result` directly; handle it explicitly with `match` or `?:`",
                     ));
-                } else {
-                    let _ = unify(&mut self.ctx, &l, &r);
+                } else if unify(&mut self.ctx, &l, &r).is_err() {
+                    // Both operands lower to one machine comparison, so two
+                    // unrelated types would compare representations: `true < 1`
+                    // answered, and an opaque alias answered to an integer.
+                    // Implements [BOOL-COMPARE-OPERANDS].
+                    let (l, r) = (self.ctx.apply(&l), self.ctx.apply(&r));
+                    self.errors.push(TypeError::new(format!(
+                        "cannot compare `{l}` with `{r}`: `{op}` needs two operands of one type"
+                    )));
                 }
                 Type::bool()
             }
@@ -1566,8 +1573,8 @@ impl Checker {
         rt: &Type,
         position: Option<osprey_ast::Position>,
     ) -> Type {
-        let l = self.ctx.prune(lt);
-        let r = self.ctx.prune(rt);
+        let l = self.ctx.expose(lt);
+        let r = self.ctx.expose(rt);
         let string_concat = op == "+" && (l.is_named(names::STRING) || r.is_named(names::STRING));
         if !string_concat && (op == "/" || l.is_named(names::FLOAT) || r.is_named(names::FLOAT)) {
             self.constrain_numeric_operands(op, &l, &r, position);
@@ -1630,13 +1637,8 @@ impl Checker {
         use crate::builtin_constraints::{is_numeric_scalar, NUMERIC_OPERAND_PREFIX};
         for ty in [left, right] {
             if !is_numeric_scalar(ty) {
-                self.builtin_uses.push((
-                    crate::builtin_constraints::located_name(
-                        &format!("{NUMERIC_OPERAND_PREFIX}{op}"),
-                        position,
-                    ),
-                    ty.clone(),
-                ));
+                let name = self.located_use(&format!("{NUMERIC_OPERAND_PREFIX}{op}"), position);
+                self.builtin_uses.push((name, ty.clone()));
             }
         }
     }
@@ -1685,11 +1687,34 @@ impl Checker {
     ) -> Type {
         self.push_unify(l, r);
         let result = self.ctx.fresh();
-        self.builtin_uses.push((
-            crate::builtin_constraints::located_name(&deferred_arith_name(op), position),
-            Type::fun(vec![l.clone(), r.clone()], result.clone()),
-        ));
+        let name = self.located_use(&deferred_arith_name(op), position);
+        self.builtin_uses
+            .push((name, Type::fun(vec![l.clone(), r.clone()], result.clone())));
         result
+    }
+
+    /// The key of an arithmetic obligation written here. Where the function
+    /// reads through an opaque alias, the key remembers that function
+    /// ([`Checker::use_sites`]).
+    fn located_use(&mut self, name: &str, position: Option<osprey_ast::Position>) -> String {
+        let located = crate::builtin_constraints::located_name(name, position);
+        if self.ctx.sees_through_aliases() {
+            let _ = self.use_sites.insert(located.clone(), self.site.clone());
+        }
+        located
+    }
+
+    /// The key of a representation-sensitive use with no position of its own.
+    /// Inside a module that owns an opaque alias the key names the function, so
+    /// the late validation reads the operand as that function may
+    /// ([MODULES-OPAQUE-TYPES]).
+    fn sited_use(&mut self, name: &str) -> String {
+        if !self.ctx.sees_through_aliases() {
+            return name.to_owned();
+        }
+        let sited = format!("{name} @{}", self.site);
+        let _ = self.use_sites.insert(sited.clone(), self.site.clone());
+        sited
     }
 
     /// Settle one deferred site: re-run the ordinary overload selection over
@@ -1705,16 +1730,21 @@ impl Checker {
         let Type::Fun { params, ret } = self.ctx.apply(site) else {
             return;
         };
-        let [left, right] = params.as_slice() else {
-            return;
+        let position = crate::builtin_constraints::source_position(name);
+        // The operator reads its operands where it was written.
+        let written = self.use_sites.get(name).cloned().unwrap_or_default();
+        let outer = self.ctx.enter(written);
+        let answer = match params.as_slice() {
+            [operand] if op == "abs" && crate::arithmetic::absolute_operand(operand) => {
+                Some(self.infer_negation(operand))
+            }
+            [left, right] => Some(self.infer_arith(op, left, right, position)),
+            _ => None,
         };
-        let answer = self.infer_arith(
-            op,
-            left,
-            right,
-            crate::builtin_constraints::source_position(name),
-        );
-        self.push_unify(&answer, &ret);
+        if let Some(answer) = answer {
+            self.push_unify(&answer, &ret);
+        }
+        let _ = self.ctx.enter(outer);
     }
 
     /// Constrain both operands to integers. The result is a plain `int`: an
@@ -1728,7 +1758,7 @@ impl Checker {
     /// Float negation is total; integer negation is a plain `int` whose
     /// `INT64_MIN` case performs `Arith.overflow` ([ARITH-EFFECT]).
     fn infer_negation(&mut self, operand: &Type) -> Type {
-        let inner = self.ctx.prune(operand);
+        let inner = self.ctx.expose(operand);
         if inner.is_named(names::FLOAT) {
             Type::float()
         } else {

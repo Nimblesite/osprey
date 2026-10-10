@@ -212,6 +212,7 @@ fn take_kept(cg: &mut Codegen, out: &Value, kept: &str) {
 /// `List`. A filter stage makes the kept count dynamic, so this fills a
 /// span-length buffer and publishes the exact prefix, as `gpuFilter` does.
 fn fuse_iterator(cg: &mut Codegen, range: &Value) -> Result<Value> {
+    let stages = crate::iter::stages_of(cg, range);
     let (start, end) = crate::iter::bounds(cg, range);
     let span = cg.emit_reg(format!("sub i64 {end}, {start}"));
     // An inverted range yields no elements, so its buffer is empty, not a
@@ -222,7 +223,7 @@ fn fuse_iterator(cg: &mut Codegen, range: &Value) -> Result<Value> {
     let kept = kept_counter(cg);
     let lp = open_range_loop(cg, &start, &end);
     crate::arc::push_frame(cg);
-    let v = crate::iter::replay(cg, Value::new(lp.i.clone(), LType::I64), &lp.incr)?;
+    let v = crate::iter::replay(cg, &stages, Value::new(lp.i.clone(), LType::I64), &lp.incr)?;
     let elem = v.ty;
     let word = scalar_word(cg, v, "a toGpu element")?;
     push_kept(cg, &out, &kept, &word.operand);

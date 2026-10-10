@@ -1,5 +1,8 @@
 import * as assert from "assert";
 import * as path from "path";
+import * as fs from "fs";
+import { extensionRoot } from "./osprey-test-env";
+import { resolveDebugConsole } from "../../client/src/debug-console";
 import {
   shipwrightPlatform,
   resolveLldbDapCommand,
@@ -38,6 +41,53 @@ function hostFinding(
 }
 
 suite("Osprey lldb-dap Resolution Unit Tests", () => {
+  test("internal console is the default and requires no adapter probe", async () => {
+    const forbiddenProbe = async () => { throw new Error("internal launch must not probe"); };
+    for (const config of [{}, { console: "internalConsole" }]) {
+      assert.strictEqual(await resolveDebugConsole(config, "lldb", forbiddenProbe), "internalConsole");
+    }
+  });
+
+  test("terminal selection requires a verified compatible adapter", async () => {
+    for (const console of ["integratedTerminal", "externalTerminal"] as const) {
+      for (const version of ["lldb-dap: Ubuntu LLVM version 21.1.8", "lldb version 22.0.1"]) {
+        assert.strictEqual(await resolveDebugConsole({ console }, "selected-adapter", async command => {
+          assert.strictEqual(command, "selected-adapter");
+          return version;
+        }), console);
+      }
+      for (const version of ["lldb version 20.1.0", "lldb-1600.0.1", "unknown", ""]) {
+        await assert.rejects(resolveDebugConsole({ console }, "old-adapter", async () => version), /requires LLDB-DAP 21 or newer.*old-adapter/);
+      }
+    }
+  });
+
+  test("invalid or conflicting console options are rejected before probing", async () => {
+    const forbiddenProbe = async () => { throw new Error("invalid config must not probe"); };
+    for (const console of [null, "terminal", 21, false, { toString: () => "internalConsole" }]) {
+      await assert.rejects(resolveDebugConsole({ console }, "lldb", forbiddenProbe), /console must be/);
+    }
+    await assert.rejects(resolveDebugConsole({ runInTerminal: true }, "lldb", forbiddenProbe), /Use console: integratedTerminal/);
+    await assert.rejects(resolveDebugConsole({ console: "externalTerminal", launchCommands: ["run"] }, "lldb", forbiddenProbe), /cannot be combined/);
+    assert.strictEqual(await resolveDebugConsole({ console: "internalConsole", launchCommands: ["run"] }, "lldb", forbiddenProbe), "internalConsole");
+    assert.strictEqual(await resolveDebugConsole({ console: "integratedTerminal", launchCommands: [] }, "lldb", async () => "lldb version 21.1.8"), "integratedTerminal");
+  });
+
+  test("adapter probe failures reject the requested terminal", async () => {
+    await assert.rejects(resolveDebugConsole({ console: "integratedTerminal" }, "missing-adapter", async () => { throw new Error("probe failed"); }), /probe failed/);
+    await assert.rejects(resolveDebugConsole({ console: "externalTerminal" }, path.join(extensionRoot, "nonexistent-adapter")), /Cannot determine LLDB-DAP terminal support/);
+  });
+
+  test("debug launch schema exposes the three console policies", () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8"));
+    const launch = manifest.contributes.debuggers.find((item: { type: string }) => item.type === "osprey").configurationAttributes.launch;
+    assert.deepStrictEqual(launch.properties.console, {
+      type: "string",
+      enum: ["internalConsole", "integratedTerminal", "externalTerminal"],
+      default: "internalConsole",
+      description: "Program input/output destination. Terminal modes require LLDB-DAP 21 or newer; the Debug Console does not provide stdin.",
+    });
+  });
   test("shipwrightPlatform maps every supported platform and architecture", () => {
     const cases: Array<[NodeJS.Platform, string, string]> = [
       ["win32", "x64", "win32-x64"],

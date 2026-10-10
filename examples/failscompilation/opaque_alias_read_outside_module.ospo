@@ -1,0 +1,24 @@
+// [MODULES-OPAQUE-TYPES] An opaque manifest alias is its representation only
+// inside the declaring module. Outside it the type is a name: a client cannot
+// compute with a `Token`, compare it with an `int`, print it, read it as an
+// `int` or pass an `int` where one is required, whether directly or through
+// a helper of its own. `Tokens::raw` is the one way through, so only the last
+// use below is legal.
+namespace opq;
+
+module Tokens {
+    export opaque type Token = int
+    export fn issue(n) -> Token = satMul(n, 2)
+    export fn raw(token: Token) -> int = token
+}
+
+fn bump(x) = satAdd(x, 1)
+
+fn asInt(token: Tokens::Token) -> int = token
+
+fn forge(n: int) -> Tokens::Token = n
+
+fn main() = {
+    let token = Tokens::issue(5)
+    print("${satAdd(token, 1)} ${bump(token)} ${token == 10} ${token} ${Tokens::raw(41)} ${asInt(token)} ${Tokens::raw(forge(7))} ${Tokens::raw(token)}")
+}

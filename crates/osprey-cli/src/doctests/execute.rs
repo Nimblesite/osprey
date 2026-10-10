@@ -2,14 +2,17 @@
 //! Implements [DOC-DOCTEST-HARNESS].
 
 use crate::project::CompilationInput;
-use crate::{build_kind, native_executable, report_type_errors, sandbox, target_error, Cli};
+use crate::{native_executable, report_type_errors, sandbox, target_error, Cli};
 use osprey_ast::DocExample;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode, Output};
 
+/// Gate the example on the program the checker reads, then run the one the
+/// backend lowers.
 pub(super) fn check(
     cli: &Cli,
     input: &CompilationInput,
+    backend: osprey_ast::Program,
     example: &DocExample,
 ) -> Result<(), String> {
     if report_type_errors(input) != 0 {
@@ -18,7 +21,7 @@ pub(super) fn check(
     let input = CompilationInput::script(
         input.display_path(),
         input.source().to_string(),
-        super::synthesize::reachable(input.program().clone()),
+        super::synthesize::reachable(backend),
     );
     validate(cli, &input)?;
     if !example.run {
@@ -30,7 +33,7 @@ pub(super) fn check(
     }
     let output = super::process::capture(&mut command);
     if let Some(path) = temporary {
-        let _ = std::fs::remove_file(path);
+        crate::native::remove_temporary(&path);
     }
     compare(&output?, example, &cli.memory)
 }
@@ -57,7 +60,7 @@ fn executable(cli: &Cli, input: &CompilationInput) -> Result<(Command, Option<Pa
         ));
     }
     let (path, temporary) =
-        native_executable(input, &cli.memory, build_kind(cli)).map_err(failed)?;
+        native_executable(input, crate::native::NativeOptions::from_cli(cli)).map_err(failed)?;
     Ok((Command::new(&path), temporary.then_some(path)))
 }
 

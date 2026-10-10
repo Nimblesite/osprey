@@ -20,7 +20,7 @@ converts `Result<T, E>` to `T`. Callers must pattern-match the `Result` (see
 [Pattern Matching](0007-PatternMatching.md)) or use `?:` to supply a fallback
 ([Result Default](0007-PatternMatching.md#result-default---pattern-result-default)).
 Assignments, arguments, comparisons, interpolation, and declared plain return
-types do not erase the wrapper ([Result Preservation](0004-TypeSystem.md#result-preservation)).
+types do not erase the wrapper ([Result Preservation](0004-TypeSystem.md#result-preservation)). Record and union fields preserve the complete Result through construction, updates, pattern binding and erasure; a bare payload may be promoted to `Success` ([TYPE-RECORD-RESULT](0004-TypeSystem.md#result-fields--type-record-result)).
 
 ```osprey
 let result = someFunctionThatCanFail()
@@ -53,7 +53,7 @@ An operation whose mathematical result is unrepresentable — integer overflow, 
 | `/` | `float` | `float` | `float` |
 | `%` | `int` | `float` | `float` (int promoted) |
 
-`/` always yields `float`. Unary integer `-` has type `int -> int`; unary float `-` has type `float -> float`. Floating-point `+`, `-`, `*`, and unary `-` are plain IEEE-754 operations. Integer `-9223372036854775808 % -1` yields `0`; the representable remainder is produced without executing LLVM's faulting `srem` case. The builtins `checkedAdd`, `checkedSub`, and `checkedMul` return `Result<int, Error>` and are the explicit value-level spelling for code that wants overflow as data.
+`/` always yields `float`. Unary integer `-` has type `int -> int`; unary float `-` has type `float -> float`. Floating-point `+`, `-`, `*`, and unary `-` are plain IEEE-754 operations; infinity, NaN, signed zero and gradual underflow follow [FLOAT-IEEE-RESULTS](0037-ArithmeticEffects.md#floating-point-results--float-ieee-results). Float `/` and `%` request `Arith.divideByZero` for either signed zero divisor, even with a NaN numerator. Integer `-9223372036854775808 % -1` yields `0`; the representable remainder is produced without executing LLVM's faulting `srem` case. The builtins `checkedAdd`, `checkedSub`, and `checkedMul` return `Result<int, Error>` and are the explicit value-level spelling for code that wants overflow as data.
 
 ```osprey
 let sum       = 1 + 3      // int

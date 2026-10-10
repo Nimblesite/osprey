@@ -124,7 +124,7 @@ xcrun simctl get_app_container booted org.ospreylang.IssueInbox data
 
 Use the returned container path to read `Documents/inbox-state.json`. With multiple booted simulators, replace `booted` with the chosen UDID. Adding `--inbox-open-first` opens the first loaded issue automatically, which is how the Markdown detail screenshot is captured with `xcrun simctl io booted screenshot`. Diagnostic output is disabled in ordinary launches.
 
-The native C boundary currently uses the default memory runtime and retains general allocations for the process lifetime. Hosts copy strings but cannot release Osprey allocations through a stable public API yet. Mobile targets reject unsupported features such as resumable effects and built-in native HTTP; platform networking runs through the host command boundary. See the [iOS target](../../docs/specs/0038-iOSTarget.md), [Android target](../../docs/specs/0039-AndroidTarget.md), [application specification](../../docs/specs/0040-ReactiveMobileApplications.md), and [delivery plan](../../docs/plans/0030-reactive-mobile-apps.md).
+The native C boundary currently uses the default memory runtime and retains general allocations for the process lifetime. Hosts copy strings but cannot release Osprey allocations through a stable public API yet. Mobile targets reject unsupported features such as resumable effects and built-in native HTTP; platform networking runs through the host command boundary. See the [iOS target](../../docs/specs/0038-iOSTarget.md), [Android target](../../docs/specs/0039-AndroidTarget.md), and [application specification](../../docs/specs/0040-ReactiveMobileApplications.md).
 
 ## Validation
 

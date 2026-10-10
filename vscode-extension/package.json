@@ -292,9 +292,28 @@
                 "type": "string",
                 "description": "Optional output path for the compiled native debug binary."
               },
+              "compilerPath": {
+                "type": "string",
+                "description": "Optional compiler executable for this launch. Defaults to the extension's configured compiler."
+              },
+              "preserveArtifacts": {
+                "type": "boolean",
+                "default": false,
+                "description": "Keep the generated LLVM IR beside the debug binary, along with native debug symbols."
+              },
               "lldbDapPath": {
                 "type": "string",
                 "description": "Optional lldb-dap executable path. Defaults to osprey.debug.lldbDapPath or lldb-dap on PATH."
+              },
+              "console": {
+                "type": "string",
+                "enum": [
+                  "internalConsole",
+                  "integratedTerminal",
+                  "externalTerminal"
+                ],
+                "default": "internalConsole",
+                "description": "Program input/output destination. Terminal modes require LLDB-DAP 21 or newer; the Debug Console does not provide stdin."
               }
             }
           }
@@ -342,7 +361,7 @@
         "osprey.profiler.inlineHeat": {
           "type": "boolean",
           "default": true,
-          "description": "After profiling, show inline per-line heat annotations (NN.N% · M samples) and overview-ruler marks in the profiled source files."
+          "description": "After profiling, show inline per-line heat annotations (NN.N% \u00b7 M samples) and overview-ruler marks in the profiled source files."
         }
       }
     }

@@ -8,7 +8,7 @@ Osprey uses typed algebraic effects to separate application requests from their 
 
 ## Start here
 
-- **[Algebraic effects](/docs/effects/)** — declare an operation, call a reusable handler, replace it in a test, and select static interpretation.
+- **[Algebraic effects](/docs/effects/)** — declare an operation, call a reusable handler, replace it in a test, and choose an arithmetic policy.
 - **[Install Osprey](/docs/installation/)** — set up the compiler and LLVM/clang toolchain on macOS, Linux, or Windows.
 - **[Build My First App](/docs/my-first-app/)** — create a native CLI that models JSON as a recursive algebraic data type, reads a JSON file, and safely writes the next state.
 - **[Try the Playground](/playground/)** — run small programs in the browser before setting up a local toolchain.
@@ -17,13 +17,14 @@ Osprey uses typed algebraic effects to separate application requests from their 
 
 - **[Build an iOS and Android app](/docs/mobile-apps/)** — handle application requests as native commands for SQLite, GitHub and reactive controls.
 - **[Build a web app](/docs/web-apps/)** — follow Talon Bank from storage and audit handlers to shared web, Android and iOS clients.
-- **[Explore the WebAssembly studio](/wasm/)** — compare the currently available Default and ML flavors in a browser-hosted example.
+- **[Explore the WebAssembly studio](/wasm/)** — compare the Default and ML flavors in a browser-hosted example.
 - **[Browse working examples](https://github.com/Nimblesite/osprey/tree/main/examples)** — study native, HTTP, WebSocket, terminal, graphics, and WebAssembly programs.
 - **[Document your modules](/docs/documentation/)** — generate HTML API references, add Markdown guides and custom CSS, and test documentation examples.
 
 ## Language
 
 - **[Read the language specification](/spec/)** — the intended language contract; check feature status for current implementation limits.
+- **[Use dense computation buffers](/spec/0034-gpucomputation/)** — typed buffers and pure kernels; they run on the CPU today and device execution is planned.
 - **[Check feature status](/status/)** — see what is stable, partial, experimental, or planned.
 - **[Browse keywords](/docs/keywords/)** — declarations, bindings, matching, imports, and literals.
 

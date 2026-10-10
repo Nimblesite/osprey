@@ -7,6 +7,7 @@
 //! [MODULES-MODEL], [MODULES-PATH-INDEPENDENCE], [MODULES-PROJECT], and
 //! [FLAVOR-INTEROP].
 
+mod advice;
 mod annotation;
 mod assemble;
 mod collect;
@@ -29,6 +30,7 @@ mod state_support;
 mod symbol_rewrite;
 mod type_rewrite;
 
+pub use advice::{ProjectWarning, StateBoundary};
 pub use manifest::ProjectConfig;
 use osprey_syntax::Flavor;
 use std::collections::BTreeMap;
@@ -150,8 +152,18 @@ impl SourceMetadata {
 /// One fully assembled project ready for the shared checker and backend.
 #[derive(Debug, Clone)]
 pub struct AssembledProject {
+    /// Non-fatal style and ownership advice from the resolved project graph.
+    pub warnings: Vec<ProjectWarning>,
+    /// Every state owner, in deterministic source-name order.
+    pub state_boundaries: Vec<StateBoundary>,
     /// Flavor-neutral flat program with imports/modules removed and names resolved.
     pub program: osprey_ast::Program,
+    /// The same program with every opaque alias expanded to its representation,
+    /// which is what code generation lowers: the checker enforces the boundary
+    /// on [`Self::program`], and past it an opaque alias IS its representation.
+    /// `None` when the project declares none and one program serves both
+    /// ([MODULES-OPAQUE-TYPES]).
+    pub backend: Option<osprey_ast::Program>,
     /// Ordered executable statements contributed by the entry source.
     pub entry_prologue: Vec<osprey_ast::Stmt>,
     /// Index into [`Self::sources`] for the configured or inferred entry source.
@@ -170,6 +182,12 @@ pub struct AssembledProject {
 }
 
 impl AssembledProject {
+    /// The program code generation lowers.
+    #[must_use]
+    pub fn backend_program(&self) -> &osprey_ast::Program {
+        self.backend.as_ref().unwrap_or(&self.program)
+    }
+
     /// Metadata for the selected entry source, or `None` for a malformed value.
     #[must_use]
     pub fn entry(&self) -> Option<&SourceMetadata> {
@@ -191,10 +209,20 @@ impl AssembledProject {
 ///
 /// Returns discovery, I/O, flavor-selection, and syntax diagnostics.
 pub fn load(root: &Path) -> Result<(ProjectConfig, Vec<SourceFile>), Vec<ProjectError>> {
+    let (config, paths) = discover(root)?;
+    parse_sources(paths, config.flavor).map(|sources| (config, sources))
+}
+
+/// Discover the current manifest and source membership without parsing files.
+/// Editors reuse this CLI discovery contract while caching unchanged syntax.
+///
+/// # Errors
+/// Returns manifest and source-root discovery failures.
+pub fn discover(root: &Path) -> Result<(ProjectConfig, Vec<PathBuf>), Vec<ProjectError>> {
     let manifest_path = root.join("osprey.toml");
     let config = load_config(root, &manifest_path)?;
     let paths = source::discover(root, &config).map_err(|error| vec![error])?;
-    parse_sources(paths, config.flavor).map(|sources| (config, sources))
+    Ok((config, paths))
 }
 
 /// Assemble already-loaded sources into one resolved canonical program.
@@ -286,6 +314,18 @@ fn parse_source(
 ) -> Result<SourceFile, Vec<ProjectError>> {
     let source =
         std::fs::read_to_string(&path).map_err(|error| vec![ProjectError::io(&path, &error)])?;
+    parse_text(path, source, configured)
+}
+
+/// Parse disk or unsaved text using the project's flavor configuration.
+///
+/// # Errors
+/// Returns flavor-selection and syntax errors with physical source locations.
+pub fn parse_text(
+    path: PathBuf,
+    source: String,
+    configured: Option<Flavor>,
+) -> Result<SourceFile, Vec<ProjectError>> {
     let label = path.to_string_lossy();
     let flavor = osprey_syntax::resolve_flavor(configured, &label, &source).map_err(|message| {
         vec![ProjectError {
