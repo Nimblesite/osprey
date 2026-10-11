@@ -1,19 +1,8 @@
 # GPU Computation
 
-**Status: partially implemented.** The typed buffer surface, kernel purity
-checking, and the host execution backend exist today. Device code generation
-(PTX, Metal, WebGPU) is roadmap work; the staged plan and its detailed
-checklist live in [plan 0023](../plans/0023-gpu-computation.md). The
-scholarly work each design choice rests on is cited inline and collected in
-[References](#references--gpu-research) at the end of this document.
+**Status: partially implemented.** The typed buffer surface, kernel purity checking, and the host execution backend exist today. Device code generation (PTX, Metal, WebGPU) is roadmap work; the staged plan and its detailed checklist live in [plan 0023](../plans/0023-gpu-computation.md). The scholarly work each design choice rests on is cited inline and collected in [References](#references--gpu-research) at the end of this document.
 
-GPU computation in Osprey is a language surface, not a bound library. The
-type system separates host data from device-shaped data, and the compiler
-proves at compile time that every kernel is pure — a kernel that logs,
-performs an effect, or calls something the checker cannot see is a compile
-error, not a runtime fault. This is the same machinery that already rejects
-an unhandled effect ([0017](0017-AlgebraicEffects.md)), pointed at data
-parallelism: parallel-safe by construction, checked before anything runs.
+GPU computation in Osprey is a language surface, not a bound library. The type system separates host data from device-shaped data, and the compiler proves at compile time that every kernel is pure — a kernel that logs, performs an effect, or calls something the checker cannot see is a compile error, not a runtime fault. This is the same machinery that already rejects an unhandled effect ([0017](0017-AlgebraicEffects.md)), pointed at data parallelism: parallel-safe by construction, checked before anything runs.
 
 ```mermaid
 flowchart LR
@@ -25,45 +14,19 @@ flowchart LR
 
 ## Buffers — [GPU-BUFFER]
 
-`GpuBuffer<T>` is an opaque, immutable, densely-packed array — the
-device-transferable representation of a sequence. It is distinct from
-`List<T>`: a list is a persistent structure optimized for sharing; a buffer
-is contiguous unboxed storage laid out the way accelerator memcpy and
-coalesced access require. Buffers are values like any other — they obey the
-same ownership analysis and memory backends as every heap value
-([0018](0018-MemoryManagement.md)).
+`GpuBuffer<T>` is an opaque, immutable, densely-packed array — the device-transferable representation of a sequence. It is distinct from `List<T>`: a list is a persistent structure optimized for sharing; a buffer is contiguous unboxed storage laid out the way accelerator memcpy and coalesced access require. Buffers are values like any other — they obey the same ownership analysis and memory backends as every heap value ([0018](0018-MemoryManagement.md)).
 
-Buffer allocation is total: a negative length, a length whose byte count
-would overflow, and a failed data allocation all yield the **empty**
-buffer. Combinator loops bound their trip counts by allocated lengths and
-every store is bounds-checked, so a failed allocation is observably the
-empty buffer — never a partial result, an out-of-bounds write, or a trap.
+Buffer allocation is total: a negative length, a length whose byte count would overflow, and a failed data allocation all yield the **empty** buffer. Combinator loops bound their trip counts by allocated lengths and every store is bounds-checked, so a failed allocation is observably the empty buffer — never a partial result, an out-of-bounds write, or a trap.
 
 ### Element restriction — [GPU-BUFFER-ELEM]
 
-Buffer elements are scalars: `int`, `float`, or `bool`. This is the regular,
-first-order device sublanguage that every production functional GPU language
-restricts device data to — Futhark ([Henriksen et al., PLDI
-2017](https://doi.org/10.1145/3062341.3062354)) and Accelerate ([McDonell et
-al., ICFP 2013](https://doi.org/10.1145/2500365.2500595)) both make this
-restriction, because representing sum types and pointers on SIMT hardware is
-an open research problem (the flattening line of work: [Blelloch, CACM
-1996](https://doi.org/10.1145/227234.227246); [Bergstrom et al., PPoPP
-2013](https://doi.org/10.1145/2442516.2442525)). Strings, lists, records, and
-unions stay on the host side of the boundary; full ADTs and pattern matching
-remain available in host code, including the code that builds and consumes
-buffers. A non-scalar element is a compile error at the call that would
-create it.
+Buffer elements are scalars: `int`, `float`, or `bool`. This is the regular, first-order device sublanguage that every production functional GPU language restricts device data to — Futhark ([Henriksen et al., PLDI 2017](https://doi.org/10.1145/3062341.3062354)) and Accelerate ([McDonell et al., ICFP 2013](https://doi.org/10.1145/2500365.2500595)) both make this restriction, because representing sum types and pointers on SIMT hardware is an open research problem (the flattening line of work: [Blelloch, CACM 1996](https://doi.org/10.1145/227234.227246); [Bergstrom et al., PPoPP 2013](https://doi.org/10.1145/2442516.2442525)). Strings, lists, records, and unions stay on the host side of the boundary; full ADTs and pattern matching remain available in host code, including the code that builds and consumes buffers. A non-scalar element is a compile error at the call that would create it.
 
 ## Buffer built-ins
 
 ### `toGpu(source) -> GpuBuffer<T>` — [GPU-BUFFER-FROM-LIST]
 
-Produces a dense buffer from a host `List<T>` — or, per [GPU-BUFFER-FUSE],
-from an `Iterator<T>`. `T` must satisfy [GPU-BUFFER-ELEM]. The element type
-comes from the source, whether that source is a literal, a list value
-returned by a function, or a list built at runtime — a float list copies in
-as a float buffer, never as raw words.
+Produces a dense buffer from a host `List<T>` — or, per [GPU-BUFFER-FUSE], from an `Iterator<T>`. `T` must satisfy [GPU-BUFFER-ELEM]. The element type comes from the source, whether that source is a literal, a list value returned by a function, or a list built at runtime — a float list copies in as a float buffer, never as raw words.
 
 ```osprey
 let buf = toGpu([1, 2, 3, 4])
@@ -75,16 +38,11 @@ let buf = toGpu [1, 2, 3, 4]
 
 #### Buffer literals — [GPU-BUFFER-LITERAL]
 
-A **literal** argument to `toGpu` stores its elements straight into the dense
-buffer at constant indices. No list is built — neither the flat literal block
-nor an `OspreyList` — so the form above emits one `osprey_gpu_alloc` call and four indexed stores, with no intermediate list or copy loop. The runtime constructor allocates the buffer header and payload separately and zero-fills the payload. The result is identical to copying a list of the same elements; only the lowering differs.
+A **literal** argument to `toGpu` stores its elements straight into the dense buffer at constant indices. No list is built — neither the flat literal block nor an `OspreyList` — so the form above emits one `osprey_gpu_alloc` call and four indexed stores, with no intermediate list or copy loop. The runtime constructor allocates the buffer header and payload separately and zero-fills the payload. The result is identical to copying a list of the same elements; only the lowering differs.
 
 #### Iterator fusion — [GPU-BUFFER-FUSE]
 
-`toGpu` is also a **consuming stage of an iterator pipeline**, accepting an
-`Iterator<T>` wherever it accepts a `List<T>`. The pending `map`/`filter`
-stages replay inside the single counted loop that fills the buffer, so a chain
-never materializes an intermediate collection:
+`toGpu` is also a **consuming stage of an iterator pipeline**, accepting an `Iterator<T>` wherever it accepts a `List<T>`. The pending `map`/`filter` stages replay inside the single counted loop that fills the buffer, so a chain never materializes an intermediate collection:
 
 ```osprey
 let buf = range(0, 1000) |> filter(isEven) |> map(square) |> toGpu()
@@ -94,22 +52,13 @@ let buf = range(0, 1000) |> filter(isEven) |> map(square) |> toGpu()
 buf = range (0, 1000) |> filter isEven |> map square |> toGpu ()
 ```
 
-A `filter` stage leaves the kept count unknown until the loop has run, so the
-buffer is allocated at the range's span and the exact prefix is published on
-completion — the compaction `gpuFilter` performs. An inverted or empty range
-yields an empty buffer.
+A `filter` stage leaves the kept count unknown until the loop has run, so the buffer is allocated at the range's span and the exact prefix is published on completion — the compaction `gpuFilter` performs. An inverted or empty range yields an empty buffer.
 
-This is fusion in the [Futhark](https://futhark-lang.org)/Accelerate sense, and
-the reason the surface needs no separate buffer builder: the iterator pipeline
-is one.
+This is fusion in the [Futhark](https://futhark-lang.org)/Accelerate sense, and the reason the surface needs no separate buffer builder: the iterator pipeline is one.
 
 ### `fromGpu(buffer: GpuBuffer<T>) -> List<T>` — [GPU-BUFFER-TO-LIST]
 
-Materializes a buffer back into a host list. The element type crosses with
-the values: a `GpuBuffer<float>` becomes a `List<float>` whose elements read
-back as floats, not as the machine words the list runtime stores them in.
-Round-tripping is therefore lossless in both directions for every scalar
-[GPU-BUFFER-ELEM] admits.
+Materializes a buffer back into a host list. The element type crosses with the values: a `GpuBuffer<float>` becomes a `List<float>` whose elements read back as floats, not as the machine words the list runtime stores them in. Round-tripping is therefore lossless in both directions for every scalar [GPU-BUFFER-ELEM] admits.
 
 ### `gpuLength(buffer: GpuBuffer<T>) -> int` — [GPU-BUFFER-LENGTH]
 
@@ -117,17 +66,11 @@ The element count. Constant time.
 
 ## Kernels
 
-A *kernel* is the function value passed to a GPU combinator. Kernels are
-written as ordinary Osprey functions or lambdas — there is no separate
-kernel language, no annotation, and no restrictions beyond purity and the
-element restriction at the boundary.
+A *kernel* is the function value passed to a GPU combinator. Kernels are written as ordinary Osprey functions or lambdas — there is no separate kernel language, no annotation, and no restrictions beyond purity and the element restriction at the boundary.
 
 ### `gpuMap(buffer: GpuBuffer<T>, kernel: fn(T) -> U) -> GpuBuffer<U>` — [GPU-MAP]
 
-Applies `kernel` independently to every element. Because the checker proves
-`kernel` performs no effects, every application is independent by
-construction and the combinator is parallelizable without analysis. `U`
-must satisfy [GPU-BUFFER-ELEM].
+Applies `kernel` independently to every element. Because the checker proves `kernel` performs no effects, every application is independent by construction and the combinator is parallelizable without analysis. `U` must satisfy [GPU-BUFFER-ELEM].
 
 ```osprey
 fn square(x) = x * x
@@ -141,15 +84,7 @@ let squares = toGpu [1, 2, 3, 4] |> gpuMap square
 
 ### `gpuFold(buffer: GpuBuffer<T>, initial: U, combine: fn(U, T) -> U) -> U` — [GPU-FOLD]
 
-Reduces a buffer to one value. The accumulator must itself be a scalar
-([GPU-BUFFER-ELEM]) so the reduction can execute on device hardware; a
-record accumulator is a compile error at the `gpuFold` call. `combine` is
-applied left-to-right, and that order is the contract, not a host detail:
-[GPU-BACKEND-HOST] is the reference semantics and [GPU-ROADMAP] holds every
-later backend to the host's bytes, so a device backend may reassociate a
-reduction only where it produces the host's exact result and must otherwise
-run it in the host's order. A non-associative combine therefore means the
-same thing on every backend — it is slower to offload, never different.
+Reduces a buffer to one value. The accumulator must itself be a scalar ([GPU-BUFFER-ELEM]) so the reduction can execute on device hardware; a record accumulator is a compile error at the `gpuFold` call. `combine` is applied left-to-right, and that order is the contract, not a host detail: [GPU-BACKEND-HOST] is the reference semantics and [GPU-ROADMAP] holds every later backend to the host's bytes, so a device backend may reassociate a reduction only where it produces the host's exact result and must otherwise run it in the host's order. A non-associative combine therefore means the same thing on every backend — it is slower to offload, never different.
 
 ```osprey
 fn add(a, b) = a + b
@@ -163,10 +98,7 @@ total = toGpu [1, 2, 3, 4] |> gpuFold 0 add
 
 ### `gpuZipWith(a: GpuBuffer<T>, b: GpuBuffer<U>, kernel: fn(T, U) -> V) -> GpuBuffer<V>` — [GPU-ZIPWITH]
 
-Elementwise binary combination — the primitive every vector, tensor, and
-particle workload builds on. The result takes the shorter operand's length,
-so a ragged pair truncates rather than reading past the end. The kernel is
-held to [GPU-KERNEL-PURE] exactly as `gpuMap`'s is.
+Elementwise binary combination — the primitive every vector, tensor, and particle workload builds on. The result takes the shorter operand's length, so a ragged pair truncates rather than reading past the end. The kernel is held to [GPU-KERNEL-PURE] exactly as `gpuMap`'s is.
 
 ```osprey
 fn dot(xs, ys) = gpuZipWith(xs, ys, fn(x: float, y: float) => x * y)
@@ -179,11 +111,7 @@ dot (xs, ys) =
         |> gpuFold 0.0 (\(a : float, v : float) => a + v)
 ```
 
-The float slots are named here only because `dot`'s own parameters are
-unconstrained — nothing in this definition says which element type the
-buffers hold. Over a buffer whose type is known, a kernel needs no
-annotation at all: its parameters come from the buffer
-([GPU-KERNEL-ELEM-TYPING]).
+The float slots are named here only because `dot`'s own parameters are unconstrained — nothing in this definition says which element type the buffers hold. Over a buffer whose type is known, a kernel needs no annotation at all: its parameters come from the buffer ([GPU-KERNEL-ELEM-TYPING]).
 
 ```osprey
 let total = toGpu([1.5, 2.5]) |> gpuFold(0.0, fn(a, v) => a + v)
@@ -195,19 +123,11 @@ total = toGpu [1.5, 2.5] |> gpuFold 0.0 (\(a, v) => a + v)
 
 ### `gpuIota(n: int) -> GpuBuffer<int>` — [GPU-IOTA]
 
-The index buffer `[0, n)`. Kernels see element values, not positions, so
-gather, stencil, and matrix addressing all start from `gpuIota`: map over
-the indices and read neighbours with `gpuGet`. A non-positive `n` names an
-empty range, so it yields an empty buffer rather than an error — the
-half-open interval `[0, n)` is empty for every `n <= 0`.
+The index buffer `[0, n)`. Kernels see element values, not positions, so gather, stencil, and matrix addressing all start from `gpuIota`: map over the indices and read neighbours with `gpuGet`. A non-positive `n` names an empty range, so it yields an empty buffer rather than an error — the half-open interval `[0, n)` is empty for every `n <= 0`.
 
 ### `gpuGet(buffer: GpuBuffer<T>, index: int) -> Result<T, Error>` — [GPU-GET]
 
-Bounds-checked read of one element at the buffer's element type. An
-out-of-bounds index returns `Error` rather than a sentinel value, so a
-wrong gather is a visible failure, not silent zeros. Usable inside a kernel
-— reading a buffer is pure — which is how a `gpuIota`-driven kernel
-expresses matrix rows and stencils.
+Bounds-checked read of one element at the buffer's element type. An out-of-bounds index returns `Error` rather than a sentinel value, so a wrong gather is a visible failure, not silent zeros. Usable inside a kernel — reading a buffer is pure — which is how a `gpuIota`-driven kernel expresses matrix rows and stencils.
 
 ```osprey
 fn at(m, i) = gpuGet(m, i) ?: 0.0
@@ -221,65 +141,21 @@ rowSum (m, r) = at (m, r * 3) + at (m, r * 3 + 1)
 
 ### `gpuScan(buffer: GpuBuffer<T>, initial: T, combine: fn(T, T) -> T) -> GpuBuffer<T>` — [GPU-SCAN]
 
-Inclusive prefix scan: element `i` of the result is `combine` folded over
-the source through element `i`, seeded with `initial` — so the first
-element is `combine(initial, src[0])`, not `src[0]`, and the result always
-has the source's length. Scan is *the* classic parallel primitive —
-segmented scans and flag vectors are how nested data parallelism flattens
-onto flat hardware ([Blelloch, CACM
-1996](https://doi.org/10.1145/227234.227246); [NESL](https://www.cs.cmu.edu/~scandal/nesl.html)).
-The order contract is `gpuFold`'s: element `i` is the left-to-right fold
-through `i` on every backend. A device backend may substitute the
-work-efficient parallel scan only where it reproduces the host's exact
-bytes, and falls back to the sequential order where it cannot.
+Inclusive prefix scan: element `i` of the result is `combine` folded over the source through element `i`, seeded with `initial` — so the first element is `combine(initial, src[0])`, not `src[0]`, and the result always has the source's length. Scan is *the* classic parallel primitive — segmented scans and flag vectors are how nested data parallelism flattens onto flat hardware ([Blelloch, CACM 1996](https://doi.org/10.1145/227234.227246); [NESL](https://www.cs.cmu.edu/~scandal/nesl.html)). The order contract is `gpuFold`'s: element `i` is the left-to-right fold through `i` on every backend. A device backend may substitute the work-efficient parallel scan only where it reproduces the host's exact bytes, and falls back to the sequential order where it cannot.
 
 ### `gpuFilter(buffer: GpuBuffer<T>, predicate: fn(T) -> bool) -> GpuBuffer<T>` — [GPU-FILTER]
 
-Stream compaction: keeps the elements the pure predicate accepts,
-preserving source order. The host backend fills a source-length scratch
-buffer and publishes the kept prefix; a device backend implements the same
-contract with a scan-based compaction.
+Stream compaction: keeps the elements the pure predicate accepts, preserving source order. The host backend fills a source-length scratch buffer and publishes the kept prefix; a device backend implements the same contract with a scan-based compaction.
 
 ## Kernel purity — [GPU-KERNEL-PURE]
 
-The compiler rejects any GPU combinator call whose kernel performs an
-algebraic effect **that a handler must discharge at run time**, directly or
-through any chain of helpers and lambdas. An effect a *static* handler has
-already erased ([0017-AlgebraicEffects.md](0017-AlgebraicEffects.md)) is not
-present in the kernel by the time this gate runs, so it is not an effect the
-kernel performs — the rule is about what reaches the device, not about how
-the source was written. The
-proof reuses the static effect discharge machinery
-([EFFECTS-STATIC-DISCHARGE](0017-AlgebraicEffects.md)): the kernel's
-operation summary must be empty. Wrapping the call in a handler does not
-lift the restriction — a handler makes an effect *dischargeable*, but a
-kernel body still cannot leave the device to reach one, so the requirement
-is purity, not handledness.
+The compiler rejects any GPU combinator call whose kernel performs an algebraic effect **that a handler must discharge at run time**, directly or through any chain of helpers and lambdas. An effect a *static* handler has already erased ([0017-AlgebraicEffects.md](0017-AlgebraicEffects.md)) is not present in the kernel by the time this gate runs, so it is not an effect the kernel performs — the rule is about what reaches the device, not about how the source was written. The proof reuses the static effect discharge machinery ([EFFECTS-STATIC-DISCHARGE](0017-AlgebraicEffects.md)): the kernel's operation summary must be empty. Wrapping the call in a handler does not lift the restriction — a handler makes an effect *dischargeable*, but a kernel body still cannot leave the device to reach one, so the requirement is purity, not handledness.
 
-Effect-typed parallelism is the studied way to draw this line: Dex
-distinguishes the parallelism-destroying `State` effect from a
-parallelism-preserving accumulation effect ([Paszke et al., ICFP
-2021](https://arxiv.org/abs/2104.05372)), on effect-system foundations from
-Koka ([Leijen, 2014](https://arxiv.org/abs/1406.2061)); which handler
-shapes commute with parallel evaluation at all is formalized in "Parallel
-Algebraic Effect Handlers" ([Xie et al., ICFP
-2024](https://dl.acm.org/toc/pacmpl/2024/8/ICFP)) — the theory closest to
-Osprey's handlers. Today's rule is the sound conservative point on that
-spectrum: an empty effect row. A parallelism-preserving accumulation
-effect, if ever added, must be justified against that work.
+Effect-typed parallelism is the studied way to draw this line: Dex distinguishes the parallelism-destroying `State` effect from a parallelism-preserving accumulation effect ([Paszke et al., ICFP 2021](https://arxiv.org/abs/2104.05372)), on effect-system foundations from Koka ([Leijen, 2014](https://arxiv.org/abs/1406.2061)); which handler shapes commute with parallel evaluation at all is formalized in "Parallel Algebraic Effect Handlers" ([Xie et al., ICFP 2024](https://dl.acm.org/toc/pacmpl/2024/8/ICFP)) — the theory closest to Osprey's handlers. Today's rule is the sound conservative point on that spectrum: an empty effect row. A parallelism-preserving accumulation effect, if ever added, must be justified against that work.
 
-The check fails closed: a kernel whose effects the checker cannot prove
-(for example, a function value received as a parameter from an unknown call
-site, or a closure whose provenance analysis widens out) is rejected with a
-`cannot prove GPU kernel pure` error. Passing a named function or an inline
-lambda always gives the checker what it needs.
+The check fails closed: a kernel whose effects the checker cannot prove (for example, a function value received as a parameter from an unknown call site, or a closure whose provenance analysis widens out) is rejected with a `cannot prove GPU kernel pure` error. Passing a named function or an inline lambda always gives the checker what it needs.
 
-When the checker *can* see the kernel's provenance and the answer is no, it
-says so instead: the rejection names the dynamic operations the body still
-requires, because that is evidence of a dynamic row rather than an absence of
-evidence. That wording is normative in
-[STAGE-GPU-DIAG](0017-AlgebraicEffects.md#gpu-legality--stage-gpu-legal), which
-generalizes this section's empty-row rule to stage legality.
+When the checker *can* see the kernel's provenance and the answer is no, it says so instead: the rejection names the dynamic operations the body still requires, because that is evidence of a dynamic row rather than an absence of evidence. That wording is normative in [STAGE-GPU-DIAG](0017-AlgebraicEffects.md#gpu-legality--stage-gpu-legal), which generalizes this section's empty-row rule to stage legality.
 
 ```osprey
 effect Log { write: fn(string) -> Unit }
@@ -306,22 +182,9 @@ loud x =
 
 ### Kernel forms — [GPU-KERNEL-FORM]
 
-Every pure function form is a valid kernel. Normatively that means all of:
-a named top-level function, an inline lambda, a lambda with a **block body
-containing local bindings**, a closure capturing enclosing locals (a folded
-scalar piped back into a `gpuMap`), and helpers reached from the kernel —
-including **recursive** helpers such as a row walk over a flat matrix. The
-purity proof ([GPU-KERNEL-PURE]) is the only gate; syntax shape is never
-one.
+Every pure function form is a valid kernel. Normatively that means all of: a named top-level function, an inline lambda, a lambda with a **block body containing local bindings**, a closure capturing enclosing locals (a folded scalar piped back into a `gpuMap`), and helpers reached from the kernel — including **recursive** helpers such as a row walk over a flat matrix. The purity proof ([GPU-KERNEL-PURE]) is the only gate; syntax shape is never one.
 
-Every form above compiles and runs today, without annotations. A recursive
-helper is **monomorphised**: the call site's argument types fix one
-instantiation, which is emitted as a real function and called, and the
-self-call inside it becomes a direct recursive call to that same symbol
-(`crates/osprey-codegen/src/monofn.rs`). This is the one place polymorphism
-is resolved by emitting a definition rather than by inlining; the
-language-wide rule is unchanged, because inlining cannot specialise a body
-that calls itself.
+Every form above compiles and runs today, without annotations. A recursive helper is **monomorphised**: the call site's argument types fix one instantiation, which is emitted as a real function and called, and the self-call inside it becomes a direct recursive call to that same symbol (`crates/osprey-codegen/src/monofn.rs`). This is the one place polymorphism is resolved by emitting a definition rather than by inlining; the language-wide rule is unchanged, because inlining cannot specialise a body that calls itself.
 
 A recursive function whose **return type** inference cannot resolve has no signature to emit and is still rejected with `annotate its return type so it is emitted as a real function` (fail-closed). Parameter annotations are no longer required.
 
@@ -329,35 +192,17 @@ Block-bodied lambdas support local bindings in both flavors, including an indent
 
 ### Kernel element typing — [GPU-KERNEL-ELEM-TYPING]
 
-A kernel's parameter types flow **from the buffer**: in
-`gpuMap(buf, kernel)` with `buf: GpuBuffer<float>`, the kernel's parameter
-*is* `float`, and bare arithmetic inside the kernel (`a + b`) must type at
-`float` — never silently default to `int`. Defaulting is only permissible
-when a parameter is genuinely unconstrained by every consuming slot.
+A kernel's parameter types flow **from the buffer**: in `gpuMap(buf, kernel)` with `buf: GpuBuffer<float>`, the kernel's parameter *is* `float`, and bare arithmetic inside the kernel (`a + b`) must type at `float` — never silently default to `int`. Defaulting is only permissible when a parameter is genuinely unconstrained by every consuming slot.
 
-A lambda kernel gets this: call arguments are checked against the callee's
-signature, and a lambda argument is inferred **after** the slots its
-siblings pin, so `gpuFold(0.0, fn(a, v) => a + v)` over a float buffer
-types at `float` in either operand order
-(`crates/osprey-types/src/expr.rs::positional_arg_types`). No annotation is
-required, and the associativity of the arithmetic no longer decides.
+A lambda kernel gets this: call arguments are checked against the callee's signature, and a lambda argument is inferred **after** the slots its siblings pin, so `gpuFold(0.0, fn(a, v) => a + v)` over a float buffer types at `float` in either operand order (`crates/osprey-types/src/expr.rs::positional_arg_types`). No annotation is required, and the associativity of the arithmetic no longer decides.
 
 A **named** context-free function gets it too. `fn plus(a, b) = a + b` leaves its overload OPEN rather than defaulting at its own definition, and the choice is made once, after all unification, from whatever the operands finally became (`crates/osprey-types/src/expr.rs::deferred_arith`). Folded over a float buffer it is a float addition; used only on integers it is still the integer one. No annotation, no float literal, no rewrite of the call site. Kernels are inside the arithmetic totality guarantee like any other code ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)).
 
-The operand does **not** generalize, because there is no numeric class to
-quantify over: one definition gets one overload. A helper used at BOTH
-`int` and `float` in a single program is therefore a type error
-(`cannot unify int with float`) rather than a silent reinterpretation —
-write the two definitions, or annotate. A lambda is unaffected either way:
-it is a runtime value with one ABI, its parameters are already pinned by
-its slot, and its body never leaves an overload open.
+The operand does **not** generalize, because there is no numeric class to quantify over: one definition gets one overload. A helper used at BOTH `int` and `float` in a single program is therefore a type error (`cannot unify int with float`) rather than a silent reinterpretation — write the two definitions, or annotate. A lambda is unaffected either way: it is a runtime value with one ABI, its parameters are already pinned by its slot, and its body never leaves an overload open.
 
 ### Element conversion — [GPU-CONVERT]
 
-Scalar element types convert **explicitly, inside kernels** — never
-implicitly at buffer boundaries. The required primitive is
-`toFloat(n: int) -> float` (round-to-nearest-even; exact for
-`|n| <= 2^53`), which makes the canonical float-pipeline seed expressible:
+Scalar element types convert **explicitly, inside kernels** — never implicitly at buffer boundaries. The required primitive is `toFloat(n: int) -> float` (round-to-nearest-even; exact for `|n| <= 2^53`), which makes the canonical float-pipeline seed expressible:
 
 ```osprey
 let xs = gpuIota(100000) |> gpuMap(toFloat)
@@ -367,24 +212,11 @@ let xs = gpuIota(100000) |> gpuMap(toFloat)
 xs = gpuIota 100000 |> gpuMap toFloat
 ```
 
-`toFloat` is a total widening — every `int` has a nearest `double` — so it
-returns a bare `float` rather than a `Result`, and it registers in
-[0012-Built-InFunctions.md](0012-Built-InFunctions.md) with a docs entry
-like every builtin. It is usable both as a direct call and, as above, as a
-first-class kernel passed by name. The reverse direction already exists as
-checked truncation on the arithmetic side and is out of scope for buffers.
+`toFloat` is a total widening — every `int` has a nearest `double` — so it returns a bare `float` rather than a `Result`, and it registers in [0012-Built-InFunctions.md](0012-Built-InFunctions.md) with a docs entry like every builtin. It is usable both as a direct call and, as above, as a first-class kernel passed by name. The reverse direction already exists as checked truncation on the arithmetic side and is out of scope for buffers.
 
 ## Kernel extraction — [GPU-KERNEL-EXTRACT]
 
-Each **admissible** kernel a combinator runs is compiled **once**, as a
-standalone module-scope function with a flat scalar signature, and the loop
-over the buffer calls it per element. The forms that decline are listed
-under [Which kernels are extracted](#which-kernels-are-extracted); they run
-correctly on the host backend, and a device backend must reject them with a
-diagnostic rather than silently execute a host pointer. This is not an optimization detail: an extracted
-kernel with a first-order scalar ABI and no captured environment is exactly
-the artifact a PTX, AIR or SPIR-V emitter consumes, so [GPU-BACKEND-DEVICE]
-becomes a target driver rather than a rewrite.
+Each **admissible** kernel a combinator runs is compiled **once**, as a standalone module-scope function with a flat scalar signature, and the loop over the buffer calls it per element. The forms that decline are listed under [Which kernels are extracted](#which-kernels-are-extracted); they run correctly on the host backend, and a device backend must reject them with a diagnostic rather than silently execute a host pointer. This is not an optimization detail: an extracted kernel with a first-order scalar ABI and no captured environment is exactly the artifact a PTX, AIR or SPIR-V emitter consumes, so [GPU-BACKEND-DEVICE] becomes a target driver rather than a rewrite.
 
 ```mermaid
 flowchart LR
@@ -407,15 +239,9 @@ A kernel function takes, in this order:
    buffer's element type per [GPU-KERNEL-ELEM-TYPING]; `gpuFold` and
    `gpuScan` pass the accumulator first, then the element.
 
-There is **no environment pointer and no closure struct**. A capturing kernel
-compiles to a function whose captures are arguments, not to a heap cell with a
-hidden `env` parameter. The return is a scalar.
+There is **no environment pointer and no closure struct**. A capturing kernel compiles to a function whose captures are arguments, not to a heap cell with a hidden `env` parameter. The return is a scalar.
 
-A kernel that would return an unhandled `Result` is rejected before the
-program links, by the same scalar discipline that already guards the
-combinators: `gpuMap`/`gpuZipWith` reject the stored element, `gpuFold` and
-`gpuScan` reject the accumulator update, and `gpuFilter` rejects the verdict.
-Handle failure inside the kernel with `?:` or `match`.
+A kernel that would return an unhandled `Result` is rejected before the program links, by the same scalar discipline that already guards the combinators: `gpuMap`/`gpuZipWith` reject the stored element, `gpuFold` and `gpuScan` reject the accumulator update, and `gpuFilter` rejects the verdict. Handle failure inside the kernel with `?:` or `match`.
 
 Arithmetic keeps its policy contract at the kernel boundary: the compiler never silently replaces a region's chosen policy with trapping or wrapping ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). On the host backend a kernel's `Arith` operations are exempt from the stage-legality row ([STAGE-GPU-LEGAL](0017-AlgebraicEffects.md#gpu-legality--stage-gpu-legal)) and dispatch to the enclosing policy exactly as any lambda's do, so a kernel with fallible arithmetic compiles only where a region installs a policy; with none, the program is rejected at its entry. A device backend cannot call back into a runtime handler, so it will need a static `Arith` interpretation. `handle static Arith` does not provide one yet and is rejected.
 
@@ -427,11 +253,7 @@ Arithmetic keeps its policy contract at the kernel boundary: the compiler never 
 - An **inline lambda** is lifted to a fresh module-scope function, its free
   variables becoming leading uniform parameters.
 - An **unannotated (generic) function** kernel is specialised at its call site with the buffer's element type and lifted when its body fits the extracted ABI. A **recursive** function gets its own emitted definition per instantiation ([GPU-KERNEL-FORM]), because its body cannot be specialised by inlining.
-- A kernel that reaches the combinator as an **already-built function value**
-  (a closure held in a local, a record field, a call result) keeps its
-  closure-cell call. A cell *is* a captured environment, which this ABI has no
-  representation for; the host backend runs it correctly and a device backend
-  must reject it rather than silently offload a host pointer.
+- A **locally let-bound lambda with a known body** is lifted using its definition-time environment, including a concrete lambda that also has a closure cell for ordinary calls. Immutable scalar and buffer captures become uniforms; shadowing at the launch site must not replace them. An applied generic callback retains its type instantiation while selecting the body, so float slots remain floats. A module-stored lambda retains its ordinary storage and prefix ABI. An opaque computed function value (a record field or an unknown call result) keeps its closure-cell call because its body and environment cannot be recovered statically; a device backend must reject it rather than silently offload a host pointer.
 - A **scalar builtin passed by name** (`gpuMap(toFloat)`, `gpuMap(abs)`, or `gpuZipWith(..., wrapAdd)`) is lifted into a scalar function containing its ordinary intrinsic lowering. Its argument types come from the combinator slots, so float `abs` keeps a `double` ABI. The wrapper has no closure cell or environment pointer. The same rule covers total saturating arithmetic and `intDiv`; fallible integer builtins retain the enclosing `Arith` policy, operation arguments, recovery values and element order. Lexical bindings take precedence over builtin names. A builtin whose scheme requires host handles or a `Result` slot declines extraction.
 - A lambda whose body reads a name the lifted function cannot see — a
   let-bound lambda, a function-typed local, a handler-owned mutable cell —
@@ -440,16 +262,15 @@ Arithmetic keeps its policy contract at the kernel boundary: the compiler never 
 
 `builtin_kernels_are_extracted_with_specialized_scalar_abis` pins scalar definitions and intrinsic instructions in both flavors. `every_gpu_combinator_propagates_arithmetic_and_outer_recovery_requirements` checks missing, sufficient and insufficient policies for all five combinators in both flavors. The existing `kernel_frontier` twins assert conversion rounding, float and integer absolute values, all six total arithmetic builtins, accumulator boundaries, lexical shadowing and ordered handler recovery under both extraction modes.
 
-Declining to extract is always safe: it is the pre-extraction lowering, which
-produces the same values, and it never changes what a program prints.
+`closed_generic_kernels_extract_with_their_definition_environment` and its ML counterpart require all five combinators to emit scalar kernel definitions with leading captured uniforms, float element slots and source capture metadata. The `kernel_frontier` twins additionally pin launch-site shadowing, live mutable-cell identity, managed captures when extraction declines, and exact overflow arguments and recovery through the active arithmetic policy.
+
+The `file_scope_generic_binding` twins assert declaration-scope reads through ordinary and GPU callbacks despite launch-site shadowing, including module-stored generic lambdas.
+
+Declining to extract is always safe: it is the pre-extraction lowering, which produces the same values, and it never changes what a program prints.
 
 ### Determinism and flavor equivalence
 
-Generated kernel symbols are numbered by a per-module counter advanced only by
-extraction, in AST walk order. No part of a kernel's name comes from a source
-position, an identifier spelling, a file path or a source hash, so a
-Default/ML twin pair still emits byte-identical IR ([FLAVOR-IR-EQUIV],
-[0023-LanguageFlavors.md](0023-LanguageFlavors.md)).
+Generated kernel symbols are numbered by a per-module counter advanced only by extraction, in AST walk order. No part of a kernel's name comes from a source position, an identifier spelling, a file path or a source hash, so a Default/ML twin pair still emits byte-identical IR ([FLAVOR-IR-EQUIV], [0023-LanguageFlavors.md](0023-LanguageFlavors.md)).
 
 ### Native debugging
 
@@ -459,66 +280,23 @@ Extracted host kernels preserve the source lambda's declaration and body locatio
 
 ### Differential guarantee
 
-Extraction is a lowering choice, never a semantic one. The compiler retains
-the pre-extraction inlined lowering behind the `OSPREY_GPU_KERNELS`
-environment switch (`extract`, the default, or `inline`; any other value is
-an error, never a silent fallback), and `crates/run_test_corpus.sh` runs the
-whole `tests/core/gpu` corpus both ways and requires byte-identical output —
-under every memory backend and on wasm32. Two code generators for one
-semantics, held to one golden, exactly as [GPU-BACKEND-HOST] holds device
-backends to the host's.
+Extraction is a lowering choice, never a semantic one. The compiler retains the pre-extraction inlined lowering behind the `OSPREY_GPU_KERNELS` environment switch (`extract`, the default, or `inline`; any other value is an error, never a silent fallback), and `crates/run_test_corpus.sh` runs the whole `tests/core/gpu` corpus both ways and requires byte-identical output — under every memory backend and on wasm32. Two code generators for one semantics, held to one golden, exactly as [GPU-BACKEND-HOST] holds device backends to the host's.
 
 ## Execution backends
 
 ### Host baseline — [GPU-BACKEND-HOST]
 
-Every GPU program has defined, deterministic semantics with no GPU present:
-the host backend executes each combinator as a native counted loop over the
-dense buffer. The only fusion implemented today is the iterator pipeline
-into `toGpu` ([GPU-BUFFER-FUSE]); each combinator otherwise allocates its
-result buffer and runs its own loop. Combinator-to-combinator array fusion
-in the [Futhark](https://futhark-lang.org)/Accelerate sense (the
-load-bearing optimization: [McDonell et al., ICFP
-2013](https://doi.org/10.1145/2500365.2500595)) is planned alongside the
-device IR, not present. This is the reference semantics device backends
-must match, it is what the differential test harness verifies under every
-memory backend and on wasm32, and it is what runs today. The dense unboxed buffer layout is the
-same staging layout a device transfer uses, so adopting the surface now
-costs nothing when device codegen lands.
+Every GPU program has defined, deterministic semantics with no GPU present: the host backend executes each combinator as a native counted loop over the dense buffer. The only fusion implemented today is the iterator pipeline into `toGpu` ([GPU-BUFFER-FUSE]); each combinator otherwise allocates its result buffer and runs its own loop. Combinator-to-combinator array fusion in the [Futhark](https://futhark-lang.org)/Accelerate sense (the load-bearing optimization: [McDonell et al., ICFP 2013](https://doi.org/10.1145/2500365.2500595)) is planned alongside the device IR, not present. This is the reference semantics device backends must match, it is what the differential test harness verifies under every memory backend and on wasm32, and it is what runs today. The dense unboxed buffer layout is the same staging layout a device transfer uses, so adopting the surface now costs nothing when device codegen lands.
 
 ### Device backends — [GPU-BACKEND-DEVICE]
 
-Not implemented. The design (staged in [plan
-0023](../plans/0023-gpu-computation.md)): device code generation lowers the
-same checked combinator calls through a data-parallel pipeline to
-accelerator targets, selected at build time like the memory backends are.
-The compiler emits target-agnostic textual LLVM IR and hands it to clang
-today; the wasm32 target already works as a sibling link driver
-(`crates/osprey-cli/src/wasm.rs`), and a device target follows the same
-shape: a kernel-extraction pass plus a target driver (NVPTX via clang, then
-Metal, then WebGPU/WGSL pairing with the existing wasm target). The
-studied alternatives — an MLIR `gpu`/`nvgpu`/`nvvm` pipeline (the substrate
-[Mojo](https://arxiv.org/abs/2509.21039) is built on), tile-level IRs
-([Triton — Tillet et al., MAPL
-2019](https://doi.org/10.1145/3315508.3329973); NVIDIA's open-source
-[CUDA Tile IR](https://github.com/NVIDIA/cuda-tile)), and polyhedral
-compilation ([PPCG — Verdoolaege et al., TACO
-2013](https://doi.org/10.1145/2400682.2400713)) — are weighed in the plan,
-not fixed by this spec. Kernel purity and the element restriction exist
-precisely so that every program accepted today remains compilable unchanged
-when offload arrives.
+Not implemented. The design (staged in [plan 0023](../plans/0023-gpu-computation.md)): device code generation lowers the same checked combinator calls through a data-parallel pipeline to accelerator targets, selected at build time like the memory backends are. The compiler emits target-agnostic textual LLVM IR and hands it to clang today; the wasm32 target already works as a sibling link driver (`crates/osprey-cli/src/wasm.rs`), and a device target follows the same shape: a kernel-extraction pass plus a target driver (NVPTX via clang, then Metal, then WebGPU/WGSL pairing with the existing wasm target). The studied alternatives — an MLIR `gpu`/`nvgpu`/`nvvm` pipeline (the substrate [Mojo](https://arxiv.org/abs/2509.21039) is built on), tile-level IRs ([Triton — Tillet et al., MAPL 2019](https://doi.org/10.1145/3315508.3329973); NVIDIA's open-source [CUDA Tile IR](https://github.com/NVIDIA/cuda-tile)), and polyhedral compilation ([PPCG — Verdoolaege et al., TACO 2013](https://doi.org/10.1145/2400682.2400713)) — are weighed in the plan, not fixed by this spec. Kernel purity and the element restriction exist precisely so that every program accepted today remains compilable unchanged when offload arrives.
 
 ### Device selection — [GPU-DEVICE]
 
-`gpuDevice() -> string` names the active execution backend. The host
-backend reports `"host"`; device backends report device names
-(`"cuda:0"`, `"metal:0"`). A program can branch on it, and a benchmark can
-record which backend produced its numbers.
+`gpuDevice() -> string` names the active execution backend. The host backend reports `"host"`; device backends report device names (`"cuda:0"`, `"metal:0"`). A program can branch on it, and a benchmark can record which backend produced its numbers.
 
-Choosing a device is an *effect*, not a global switch — that is roadmap
-stage 5's `Gpu` effect, and it is the construct that makes Osprey's GPU
-story a language feature rather than a library. Selection becomes lexical,
-testable, and capability-checked exactly like every other effect:
+Choosing a device is an *effect*, not a global switch — that is roadmap stage 5's `Gpu` effect, and it is the construct that makes Osprey's GPU story a language feature rather than a library. Selection becomes lexical, testable, and capability-checked exactly like every other effect:
 
 ```osprey
 // Stage 5 surface (design, not yet implemented): the handler chooses the
@@ -541,32 +319,19 @@ scores () =
     embeddings |> gpuMap normalize |> gpuZipWith (query, dot)
 ```
 
-Until stage 5 lands, programs run on the host backend and `gpuDevice()`
-truthfully reports it; nothing in the surface changes when real devices
-arrive — a handler simply gains the power to pick one.
+Until stage 5 lands, programs run on the host backend and `gpuDevice()` truthfully reports it; nothing in the surface changes when real devices arrive — a handler simply gains the power to pick one.
 
 ## Roadmap invariant — [GPU-ROADMAP]
 
-*Non-normative on implementation:* this section constrains how the staged work
-proceeds, not what any code path does, so it has no implementing file. Its one
-requirement — that stages ratchet — is enforced by the harness gates the plan
-lists, not by a compiler behaviour.
+*Non-normative on implementation:* this section constrains how the staged work proceeds, not what any code path does, so it has no implementing file. Its one requirement — that stages ratchet — is enforced by the harness gates the plan lists, not by a compiler behaviour.
 
-Implementation is staged in [plan
-0023](../plans/0023-gpu-computation.md), which carries the stage
-descriptions and the detailed TODO checklist. The normative invariant this
-spec imposes on every stage: stages ratchet — each keeps `make ci` green
-and the differential harness byte-exact, and a later stage must not change
-the meaning of any program accepted by an earlier stage.
+Implementation is staged in [plan 0023](../plans/0023-gpu-computation.md), which carries the stage descriptions and the detailed TODO checklist. The normative invariant this spec imposes on every stage: stages ratchet — each keeps `make ci` green and the differential harness byte-exact, and a later stage must not change the meaning of any program accepted by an earlier stage.
 
 ## References — [GPU-RESEARCH]
 
-*Non-normative:* a bibliography, not a requirement. It has no implementing
-code and no test.
+*Non-normative:* a bibliography, not a requirement. It has no implementing code and no test.
 
-The scholarly work Osprey's GPU features are grounded in. Inline citations
-above point here; the design decisions these produced are recorded in
-[plan 0023](../plans/0023-gpu-computation.md).
+The scholarly work Osprey's GPU features are grounded in. Inline citations above point here; the design decisions these produced are recorded in [plan 0023](../plans/0023-gpu-computation.md).
 
 **The device sublanguage and functional GPU compilation**
 

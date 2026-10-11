@@ -161,9 +161,8 @@ pub(crate) fn slot(elem: Option<LType>) -> LType {
 /// concrete signature and the host loop already calls it
 /// ([`crate::expr::call_with_values`]), so re-lifting would emit a second copy
 /// of a body that exists. A scalar builtin receives a wrapper containing its
-/// intrinsic value form. A closure cell (`Local`/`Value`) is
-/// precisely the captured environment this ABI forbids, and its call already
-/// goes through the cell rather than the loop.
+/// intrinsic value form. A known local lambda lifts with the environment fixed
+/// at its binding; an opaque computed cell retains its ordinary indirect call.
 pub(crate) fn extract(cg: &mut Codegen, cb: Callback, slots: &[LType]) -> Result<Callback> {
     if cg.gpu_kernels() == GpuKernelMode::Inline {
         return Ok(cb);
@@ -172,19 +171,54 @@ pub(crate) fn extract(cg: &mut Codegen, cb: Callback, slots: &[LType]) -> Result
         Callback::Named(name) if builtin::admissible(&name, slots) => {
             builtin::lift(cg, name, slots)
         }
-        Callback::Named(_) | Callback::Local(..) | Callback::Value(..) | Callback::Extracted(_) => {
-            Ok(cb)
-        }
-        // A lambda closing over nothing lifts as it would written in place;
-        // one with an environment keeps the inlined lowering that reads it.
-        Callback::Closed(env, parameters, body, own, position) if env.is_empty() => {
-            lift(cg, parameters, body, own, position, slots)
-        }
-        Callback::Closed(..) => Ok(cb),
+        Callback::Local(..) => extract_local(cg, cb, slots),
+        Callback::Named(_) | Callback::Value(..) | Callback::Extracted(_) => Ok(cb),
+        Callback::Closed(..) => extract_closed(cg, cb, slots),
         Callback::Lambda(parameters, body, own, position) => {
-            lift(cg, parameters, body, own, position, slots)
+            lift(cg, (parameters, body, position), own, slots)
         }
     }
+}
+
+/// Lift a known cell's body using its definition's immutable capture snapshot.
+fn extract_local(cg: &mut Codegen, cb: Callback, slots: &[LType]) -> Result<Callback> {
+    let Callback::Local(name, own) = &cb else {
+        return Ok(cb);
+    };
+    match local_candidate(cg, name, own)
+        .map(|candidate| extract_closed(cg, candidate, slots))
+        .transpose()?
+    {
+        Some(lifted @ Callback::Extracted(_)) => Ok(lifted),
+        _ => Ok(cb),
+    }
+}
+
+fn local_candidate(cg: &Codegen, name: &str, own: &FnSig) -> Option<Callback> {
+    let (parameters, body, position) = cg.lambda_def(name)?.clone();
+    let env = cg.lambda_envs.get(name).cloned()?;
+    Some(Callback::Closed(
+        env,
+        parameters,
+        body,
+        Some(own.clone()),
+        position,
+    ))
+}
+
+/// Resolve lexical captures before lifting, and retain them if extraction declines.
+fn extract_closed(cg: &mut Codegen, cb: Callback, slots: &[LType]) -> Result<Callback> {
+    let Callback::Closed(env, parameters, body, own, position) = cb else {
+        return Ok(cb);
+    };
+    let definition = (parameters.clone(), body.clone(), position);
+    let lifted = crate::closure::within_env(cg, &env, &body, |cg| {
+        lift(cg, definition, own.clone(), slots)
+    })?;
+    Ok(match lifted {
+        Callback::Lambda(..) => Callback::Closed(env, parameters, body, own, position),
+        _ => lifted,
+    })
 }
 
 /// Lift a lambda kernel, or hand the callback back untouched when its shape
@@ -193,10 +227,8 @@ pub(crate) fn extract(cg: &mut Codegen, cb: Callback, slots: &[LType]) -> Result
 /// carry still runs as a kernel [GPU-KERNEL-FORM], it just runs inlined.
 fn lift(
     cg: &mut Codegen,
-    parameters: Vec<Parameter>,
-    body: Expr,
+    (parameters, body, position): crate::builder::LambdaDef,
     own: Option<FnSig>,
-    position: Option<osprey_ast::Position>,
     slots: &[LType],
 ) -> Result<Callback> {
     let caps = crate::closure::capture_list(cg, &parameters, &body);

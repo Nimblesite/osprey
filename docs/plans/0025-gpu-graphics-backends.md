@@ -309,14 +309,7 @@ at matched uniforms — the same A/B bar the grade refactor cleared.
 - [ ] **Nothing above has been compiled, linked or run.** Execute CI steps 1–5
       on Windows.
 - [ ] Steps 1–4 wired into CI on a Windows runner.
-- [ ] **Propagate frame-path failures (branch review P1.13).** In
-      `ospgfx_d3d12.c`, `Present`, the fence wait, frame reset/close, and the
-      final queue drain currently discard their status: draw still returns
-      success and close can release GPU-owned resources after an unsuccessful
-      drain. Return status from submit/frame, propagate through draw/close,
-      never reset or free after a failed drain, and add injected
-      `Present`/`Signal`/timeout failure tests before calling the bridge
-      implemented.
+- [x] **Propagate frame-path failures (branch review P1.13).** Submit/frame return status through draw/close. Failed frames stop drawing, including allocator reuse; presentation failure still drains the submitted queue. Signal, event, timeout, wait failure, device removal and fence exhaustion retain resources until a successful close retry. `graphics_scenes::direct3d_frame_failures_are_reported_and_resources_retained` compiles the actual frame functions with injected SDK failures and assertions for every path. This verifies control flow, not Windows SDK compatibility or rendering; the Windows checks above remain open.
 - [ ] **Make the drift guard structural and bidirectional (branch review
       P2.9).** `graphics_scenes.rs` compares export names/text fragments and
       shader constants Metal-to-HLSL only, so HLSL-only drift passes. Derive

@@ -38,7 +38,7 @@ ospgfx_d3d12.c             Windows bridge: the six exported symbols, frame path
 Both bridges export the same six symbols with the same semantics: values arrive
 in 4096ths (`osp_gfx_set`) or thousandths (`osp_gfx_set_milli`), out-of-range
 slots are ignored, `osp_gfx_draw` returns 1 while the window lives and 0 once it
-closes, and `osp_gfx_ticks` is milliseconds since the window opened.
+closes, and `osp_gfx_ticks` is milliseconds since the window opened. Direct3D also returns 0 on frame recording, presentation or queue-drain failure and stops further drawing. A failed `osp_gfx_close` returns 0 and retains resources for a close retry; it releases them only after the queue drains. Portable injected-failure tests verify these paths, while Windows compilation and rendering remain unverified.
 
 `base/base.osp` names `examples/graphics/base.metal` on every platform. The
 Windows bridge swaps the extension to `.hlsl`, which is why the scene never

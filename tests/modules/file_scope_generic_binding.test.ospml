@@ -56,6 +56,7 @@ secondBindingCase () = checkAll ("a second generic binding is independent", [
 
 (** [TYPE-GENERICS-FN] Specialization preserves declaration scope and caller arguments. *)
 anchor = 2
+fileLambda = \_ignored => anchor
 declared _ignored = anchor
 declaredAlias = declared
 apply (f, value) = f value
@@ -71,15 +72,11 @@ lexicalCallCase () =
     caller = \value => wrapAdd (anchor, value)
     captured = \value => "${anchor}:${value}"
     checkAll ("generic calls use declaration bindings", [
-        (range (1, 3) |> map declared |> fold (0, wrapAdd)) == 4,
-        declared anchor == 2,
-        declaredAlias "independent" == 2,
-        identity anchor == 100,
-        caller 1 == 101,
-        apply (declared, anchor) == 2,
-        relay (declaredAlias, "forwarded") == 2,
-        apply (captured, 1) == "100:1",
-        relay (captured, "a") == "100:a",
+        (range (1, 3) |> map declared |> fold (0, wrapAdd)) == 4, gpuFold (gpuMap (toGpu [1, 2], declared), 0, wrapAdd) == 4, (range (1, 3) |> map declaredAlias |> fold (0, wrapAdd)) == 4,
+        gpuFold (gpuMap (toGpu [1, 2], declaredAlias), 0, wrapAdd) == 4, fileLambda anchor == 2, (range (1, 3) |> map fileLambda |> fold (0, wrapAdd)) == 4,
+        gpuFold (gpuMap (toGpu [1, 2], fileLambda), 0, wrapAdd) == 4, declared anchor == 2, declaredAlias "independent" == 2,
+        identity anchor == 100, caller 1 == 101, apply (declared, anchor) == 2,
+        relay (declaredAlias, "forwarded") == 2, apply (captured, 1) == "100:1", relay (captured, "a") == "100:a",
         anchor == 100
     ])
 

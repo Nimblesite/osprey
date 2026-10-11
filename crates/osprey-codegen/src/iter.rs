@@ -63,61 +63,8 @@ pub(crate) enum Callback {
     Extracted(crate::gpu_kernel::Extracted),
 }
 
-/// Resolve an iterator callback argument to a [`Callback`]. A materialized
-/// closure value wins over the beta-reduction cache — the cell carries the
-/// captures snapshotted at creation. A computed callback (call result or field
-/// access) is evaluated once here to a closure handle.
-pub(crate) fn callback_of(cg: &mut Codegen, e: &Expr) -> Result<Callback> {
-    match e {
-        Expr::Lambda {
-            parameters,
-            body,
-            position,
-            ..
-        } => Ok(Callback::Lambda(
-            parameters.clone(),
-            (**body).clone(),
-            cg.prog
-                .lambda_type(*position)
-                .and_then(|t| Codegen::fn_value_sig(&cg.prog, t)),
-            *position,
-        )),
-        Expr::Identifier(n) => {
-            if let Some(sig) = cg.fn_ptr_locals.get(n) {
-                Ok(Callback::Local(n.clone(), sig.clone()))
-            } else if let Some((params, body, position)) = cg.lambda_def(n).cloned() {
-                let sig = cg
-                    .prog
-                    .lambda_type(position)
-                    .and_then(|t| Codegen::fn_value_sig(&cg.prog, t));
-                Ok(match cg.lambda_envs.get(n).cloned() {
-                    Some(env) => Callback::Closed(env, params, body, sig, position),
-                    None => Callback::Lambda(params, body, sig, position),
-                })
-            } else if let Some((params, body, _)) = cg.fn_defs.get(n) {
-                // A generic (unannotated) user function has NO emitted `@name`
-                // symbol — it is specialised by inlining at each call site
-                // (lower.rs). As an iterator callback it must be beta-reduced
-                // per element the same way, not dispatched through a
-                // `call @name` that was never defined. [BUILTIN-ITER-CALLBACK]
-                Ok(Callback::Lambda(params.clone(), body.clone(), None, None))
-            } else {
-                Ok(Callback::Named(n.clone()))
-            }
-        }
-        _ => {
-            let sig = cg
-                .callee_fn_type(e)
-                .as_ref()
-                .and_then(|t| Codegen::fn_value_sig(&cg.prog, t))
-                .ok_or_else(|| {
-                    CodegenError::unsupported("iterator callback must be a function name or lambda")
-                })?;
-            let handle = gen_expr(cg, e)?;
-            Ok(Callback::Value(handle.operand, sig))
-        }
-    }
-}
+mod callback;
+pub(crate) use callback::of as callback_of;
 
 /// Apply a callback to already-evaluated argument values.
 pub(crate) fn invoke(cg: &mut Codegen, cb: &Callback, args: Vec<Value>) -> Result<Value> {

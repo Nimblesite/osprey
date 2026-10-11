@@ -53,7 +53,7 @@ fn bind_lambda(cg: &mut Codegen, name: &str, value: &Expr, declaration: bool) ->
     };
     let definition = (parameters.clone(), (**body).clone(), *position);
     // A file-scope lambda other functions read resolves through module storage.
-    let env = (bound.is_none() && cg.file_lambdas.get(name) != Some(&definition))
+    let env = (cg.file_lambdas.get(name) != Some(&definition))
         .then(|| crate::closure::capture(cg, crate::closure::free_names(parameters, body)));
     cg.forget_binding(name);
     let _ = cg.lambdas.insert(name.to_string(), definition);

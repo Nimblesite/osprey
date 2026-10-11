@@ -183,3 +183,69 @@ fn builtinDivisionCase() = {
 }
 
 test("builtin integer division preserves ordered recovery", builtinDivisionCase)
+
+fn lexicalKernelCase() = {
+    let enabled = true
+    let keep = fn(_x) => enabled
+    let choose = fn(a, x) => match enabled { true => a false => x }
+    let identity = fn(x) => match enabled { true => x false => x }
+    let enabled = false
+    let source = toGpu([1.0, 2.0])
+    let zipped = gpuZipWith(source, toGpu([30.0, 40.0]), choose)
+    let scanned = gpuScan(source, 42.0, choose)
+    checkAll("closed kernels keep their definition environment", [
+        enabled == false, gpuLength(gpuFilter(source, keep)) == 2,
+        (gpuGet(gpuMap(source, identity), 1) ?: 0.0) == 2.0,
+        (gpuGet(zipped, 1) ?: 0.0) == 2.0, gpuFold(source, 42.0, choose) == 42.0,
+        (gpuGet(scanned, 0) ?: 0.0) == 42.0, (gpuGet(scanned, 1) ?: 0.0) == 42.0
+    ])
+}
+
+effect KernelSwitch { disable: fn() -> int }
+
+fn liveKernelCellCase() = {
+    mut enabled = true
+    let keep = fn(_x) => enabled
+    handle KernelSwitch { disable => {
+        enabled = false
+        0
+    } }
+    let changed = perform KernelSwitch.disable()
+    checkAll("host-bound kernels retain live cell identity", [
+        changed == 0, gpuLength(gpuFilter(toGpu([1, 2]), keep)) == 0
+    ])
+}
+
+test("closed GPU kernels retain lexical uniforms", lexicalKernelCase)
+test("host GPU kernels retain live cells", liveKernelCellCase)
+
+fn managedKernelCase() = {
+    let label = "kept"
+    let keep = fn(_x) => length(label) > 0
+    let label = ""
+    checkAll("declined extraction retains the captured managed value", [
+        label == "", gpuLength(gpuFilter(toGpu([1, 2]), keep)) == 2
+    ])
+}
+
+fn capturedArithmeticCase() = {
+    let limit = 9223372036854775807
+    let add = fn(x) => x + limit
+    let limit = 0
+    mut faults = 0
+    handle Arith {
+        overflow op left right wrapped => {
+            faults = wrapAdd(faults, 1)
+            checkAll("captured kernel overflow arguments", [op == "+", left == 1, right == 9223372036854775807, wrapped == -9223372036854775808])
+            42
+        }
+    }
+    let values = gpuMap(toGpu([1, 0]), add)
+    checkAll("captured kernel dispatches through the active policy", [
+        limit == 0, faults == 1, (gpuGet(values, 0) ?: 0) == 42,
+        (gpuGet(values, 1) ?: 0) == 9223372036854775807
+    ])
+}
+
+test("declined GPU extraction preserves managed captures", managedKernelCase)
+test("captured GPU kernels preserve arithmetic policy", capturedArithmeticCase)

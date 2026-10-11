@@ -73,5 +73,5 @@ pub(super) fn lift(cg: &mut Codegen, name: String, slots: &[LType]) -> Result<Ca
             .collect(),
         named_arguments: Vec::new(),
     };
-    super::lift(cg, parameters, body, None, None, slots)
+    super::lift(cg, (parameters, body, None), None, slots)
 }

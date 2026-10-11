@@ -11,6 +11,7 @@
 
 #include "ospgfx_d3d12.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 
 static const FLOAT OSP_GFX_CLEAR[4] = {0.0f, 0.0f, 0.0f, 1.0f};
@@ -166,56 +167,68 @@ static void osp_gfx_record(OspGfxContext *ctx, UINT index, const OspGfxUniforms 
 // per frame and expects it to mean "this frame is on screen", so one allocator
 // and a full sync is the honest shape — the same one-frame-at-a-time cadence
 // `nextDrawable` imposes on the Metal bridge.
+static int osp_gfx_await(OspGfxContext *ctx) {
+  if (!osp_gfx_ok(ID3D12Fence_SetEventOnCompletion(ctx->fence, ctx->fenceValue,
+                                                ctx->fenceEvent), "SetEventOnCompletion")) {
+    return 0;
+  }
+  DWORD waited = WaitForSingleObject(ctx->fenceEvent, OSP_GFX_FRAME_TIMEOUT_MS);
+  if (waited != WAIT_OBJECT_0) {
+    fprintf(stderr, "ospgfx: fence wait failed (%lu)\n", (unsigned long)waited);
+  }
+  return waited == WAIT_OBJECT_0;
+}
+
 static int osp_gfx_wait(OspGfxContext *ctx) {
-  HRESULT signalled;
+  if (ctx->fenceValue == UINT64_MAX) {
+    return 0;
+  }
   ctx->fenceValue++;
-  signalled = ID3D12CommandQueue_Signal(ctx->queue, ctx->fence, ctx->fenceValue);
-  if (!osp_gfx_ok(signalled, "Signal")) {
+  if (!osp_gfx_ok(ID3D12CommandQueue_Signal(ctx->queue, ctx->fence, ctx->fenceValue),
+                  "Signal")) {
     return 0;
   }
-  if (ID3D12Fence_GetCompletedValue(ctx->fence) >= ctx->fenceValue) {
-    return 1;
-  }
-  signalled = ID3D12Fence_SetEventOnCompletion(ctx->fence, ctx->fenceValue, ctx->fenceEvent);
-  if (!osp_gfx_ok(signalled, "SetEventOnCompletion")) {
+  uint64_t completed = ID3D12Fence_GetCompletedValue(ctx->fence);
+  if (completed == UINT64_MAX) {
+    fprintf(stderr, "ospgfx: device removed while awaiting frame\n");
     return 0;
   }
-  return WaitForSingleObject(ctx->fenceEvent, OSP_GFX_FRAME_TIMEOUT_MS) == WAIT_OBJECT_0;
+  return completed >= ctx->fenceValue || osp_gfx_await(ctx);
 }
 
-static void osp_gfx_submit(OspGfxContext *ctx) {
-  ID3D12CommandList *lists[1];
-  lists[0] = (ID3D12CommandList *)ctx->commands;
+static int osp_gfx_submit(OspGfxContext *ctx) {
+  ID3D12CommandList *lists[1] = {(ID3D12CommandList *)ctx->commands};
   ID3D12CommandQueue_ExecuteCommandLists(ctx->queue, 1, lists);
-  (void)osp_gfx_ok(IDXGISwapChain3_Present(ctx->swap, OSP_GFX_VSYNC_INTERVAL, 0), "Present");
-  (void)osp_gfx_wait(ctx);
+  int presented = osp_gfx_ok(
+      IDXGISwapChain3_Present(ctx->swap, OSP_GFX_VSYNC_INTERVAL, 0), "Present");
+  int completed = osp_gfx_wait(ctx);
+  return presented && completed;
 }
 
-// Reset this frame's recording, shade every pixel, and hand it to the queue. A
-// failure anywhere leaves the previous frame on screen instead of tearing the
-// process down, and has already printed which call refused.
-static void osp_gfx_frame(OspGfxContext *ctx, UINT index) {
+// A failed frame closes the draw path: an allocator cannot be reused while
+// its previous queue submission might still be in flight.
+static int osp_gfx_frame(OspGfxContext *ctx, UINT index) {
   OspGfxUniforms u = osp_gfx_frame_uniforms(ctx);
   if (!osp_gfx_ok(ID3D12CommandAllocator_Reset(ctx->allocator), "allocator Reset") ||
       !osp_gfx_ok(ID3D12GraphicsCommandList_Reset(ctx->commands, ctx->allocator,
-                                                  ctx->pipeline),
-                  "command list Reset")) {
-    return;
+                                                ctx->pipeline), "command list Reset")) {
+    return 0;
   }
   osp_gfx_record(ctx, index, &u);
-  if (osp_gfx_ok(ID3D12GraphicsCommandList_Close(ctx->commands), "Close")) {
-    osp_gfx_submit(ctx);
-  }
+  return osp_gfx_ok(ID3D12GraphicsCommandList_Close(ctx->commands), "Close") &&
+         osp_gfx_submit(ctx);
 }
 
-// Shade every pixel from the current slots and present. Returns 1 while the
-// window is open, 0 once the user has closed it.
+// Returns 0 when the window closes or recording, presentation or draining fails.
 OSP_GFX_API int64_t osp_gfx_draw(void *handle) {
   OspGfxContext *ctx = (OspGfxContext *)handle;
   if (!ctx || ctx->closed) {
     return 0;
   }
-  osp_gfx_frame(ctx, IDXGISwapChain3_GetCurrentBackBufferIndex(ctx->swap));
+  if (!osp_gfx_frame(ctx, IDXGISwapChain3_GetCurrentBackBufferIndex(ctx->swap))) {
+    ctx->closed = 1;
+    return 0;
+  }
   osp_gfx_pump_events(ctx);
   return ctx->closed ? 0 : 1;
 }
@@ -228,14 +241,18 @@ OSP_GFX_API int64_t osp_gfx_ticks(void *handle) {
 }
 
 // Every GPU object here is still referenced by work in flight, so the queue is
-// drained before anything is released — the Metal bridge gets that for free
+// drained before anything is released. A failed drain retains resources for
+// a subsequent close retry. The Metal bridge gets that for free
 // from ARC and from a command buffer's own retain of what it touched.
 OSP_GFX_API int64_t osp_gfx_close(void *handle) {
   OspGfxContext *ctx = (OspGfxContext *)handle;
   if (!ctx) {
     return 0;
   }
-  (void)osp_gfx_wait(ctx);
+  ctx->closed = 1;
+  if (!osp_gfx_wait(ctx)) {
+    return 0;
+  }
   osp_gfx_destroy(ctx);
   return 1;
 }
