@@ -58,8 +58,7 @@ impl Codegen {
     /// inferred value type), else a top-level function's resolved signature.
     pub(super) fn identifier_fn_type(&self, name: &str) -> Option<Type> {
         if let Some(t) = self.fn_value_types.get(name).or_else(|| {
-            self.lambdas
-                .get(name)
+            self.lambda_def(name)
                 .and_then(|(_, _, position)| self.prog.lambda_type(*position))
         }) {
             return Some(t.clone());

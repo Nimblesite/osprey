@@ -56,6 +56,7 @@ fn secondBindingCase() = checkAll("a second generic binding is independent", [
 
 /// [TYPE-GENERICS-FN] Specialization preserves declaration scope and caller arguments.
 let anchor = 2
+let fileLambda = |_ignored| => anchor
 fn declared(_ignored) = anchor
 let declaredAlias = declared
 fn apply(f, value) = f(value)
@@ -69,15 +70,11 @@ fn lexicalCallCase() = {
     let caller = |value| => wrapAdd(anchor, value)
     let captured = |value| => "${anchor}:${value}"
     checkAll("generic calls use declaration bindings", [
-        (range(1, 3) |> map(declared) |> fold(0, wrapAdd)) == 4,
-        declared(anchor) == 2,
-        declaredAlias("independent") == 2,
-        identity(anchor) == 100,
-        caller(1) == 101,
-        apply(declared, anchor) == 2,
-        relay(declaredAlias, "forwarded") == 2,
-        apply(captured, 1) == "100:1",
-        relay(captured, "a") == "100:a",
+        (range(1, 3) |> map(declared) |> fold(0, wrapAdd)) == 4, gpuFold(gpuMap(toGpu([1, 2]), declared), 0, wrapAdd) == 4, (range(1, 3) |> map(declaredAlias) |> fold(0, wrapAdd)) == 4,
+        gpuFold(gpuMap(toGpu([1, 2]), declaredAlias), 0, wrapAdd) == 4, fileLambda(anchor) == 2, (range(1, 3) |> map(fileLambda) |> fold(0, wrapAdd)) == 4,
+        gpuFold(gpuMap(toGpu([1, 2]), fileLambda), 0, wrapAdd) == 4, declared(anchor) == 2, declaredAlias("independent") == 2,
+        identity(anchor) == 100, caller(1) == 101, apply(declared, anchor) == 2,
+        relay(declaredAlias, "forwarded") == 2, apply(captured, 1) == "100:1", relay(captured, "a") == "100:a",
         anchor == 100
     ])
 }

@@ -26,14 +26,55 @@ pub(super) fn check_extraction_floor(label: &str, ir: &str) -> Result<(), String
     Ok(())
 }
 
-const EXTRACTION_FLOORS: [(&str, usize); 7] = [
-    ("buffers.test", 7),
-    ("combinators.test", 2),
+const EXTRACTION_FLOORS: [(&str, usize); 8] = [
+    ("buffers.test", 28),
+    ("combinators.test", 16),
     ("gamedev.test", 17),
-    ("kernel_frontier.test", 16),
-    ("mlkernels.test", 78),
+    ("kernel_frontier.test", 23),
+    ("mlkernels.test", 85),
     ("raster.test", 5),
-    ("stress.test", 9),
+    ("scalar_contracts.test", 4),
+    ("stress.test", 18),
+];
+
+/// [GPU-KERNEL-EXTRACT] Immutable lexical captures become explicit uniforms.
+#[test]
+fn closed_generic_kernels_extract_with_their_definition_environment() -> Result<(), String> {
+    assert_closed_kernel(CLOSED_KERNELS[0])
+}
+
+#[test]
+fn ml_closed_generic_kernels_extract_with_their_definition_environment() -> Result<(), String> {
+    assert_closed_kernel(CLOSED_KERNELS[1])
+}
+
+fn assert_closed_kernel((source, flavor): (&str, Flavor)) -> Result<(), String> {
+    let ir = lambda_debug_ir(source, flavor)?;
+    let definitions: Vec<_> = ir
+        .lines()
+        .filter(|line| line.starts_with("define ") && line.contains("@__gpu_kernel_"))
+        .collect();
+    assert_eq!(definitions.len(), 5, "{flavor:?}: {definitions:?}");
+    assert_closed_abi(&definitions);
+    assert!(ir.contains("!DILocalVariable(name: \"enabled\""));
+    assert_lambda_variables(&ir, "__gpu_kernel_", &["enabled"])?;
+    Ok(())
+}
+
+fn assert_closed_abi(definitions: &[&str]) {
+    assert!(
+        definitions.iter().all(|line| line.contains("i1 %$p0")),
+        "lexical boolean must be the leading uniform: {definitions:?}"
+    );
+    assert!(
+        definitions.iter().any(|line| line.contains("double %$p1")),
+        "float slots must remain floats: {definitions:?}"
+    );
+}
+
+const CLOSED_KERNELS: [(&str, Flavor); 2] = [
+    ("fn main() = {\n let enabled = true\n let keep = fn(x) => enabled\n let choose = fn(a, x) => match enabled { true => a false => x }\n let identity = fn(x) => match enabled { true => x false => x }\n let enabled = false\n let xs = toGpu([1.0, 2.0])\n let mapped = gpuMap(xs, identity)\n let filtered = gpuFilter(xs, keep)\n let zipped = gpuZipWith(xs, xs, choose)\n let folded = gpuFold(xs, 0.0, choose)\n let scanned = gpuScan(xs, 0.0, choose)\n print(folded)\n}\n", Flavor::Default),
+    ("main () =\n    enabled = true\n    keep = \\x => enabled\n    choose = \\(a, x) => match enabled\n        true => a\n        false => x\n    identity = \\x => match enabled\n        true => x\n        false => x\n    enabled = false\n    xs = toGpu [1.0, 2.0]\n    mapped = gpuMap xs identity\n    filtered = gpuFilter xs keep\n    zipped = gpuZipWith (xs, xs, choose)\n    folded = gpuFold (xs, 0.0, choose)\n    scanned = gpuScan (xs, 0.0, choose)\n    print folded\n", Flavor::Ml),
 ];
 
 #[test]

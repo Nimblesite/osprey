@@ -82,21 +82,29 @@ pub(crate) fn gen(
     args: &[Expr],
     _named: &[NamedArgument],
 ) -> Result<Option<Value>> {
-    let v = match name {
-        "toGpu" => to_gpu(cg, args)?,
-        "fromGpu" => from_gpu(cg, args)?,
-        "gpuLength" => gpu_length(cg, args)?,
-        "gpuMap" => gpu_map(cg, args)?,
-        "gpuFold" => gpu_fold(cg, args)?,
-        "gpuZipWith" => gpu_zip_with(cg, args)?,
-        "gpuIota" => gpu_iota(cg, args)?,
-        "gpuGet" => gpu_get(cg, args)?,
-        "gpuScan" => gpu_scan(cg, args)?,
-        "gpuFilter" => gpu_filter(cg, args)?,
-        "gpuDevice" => cg.string_constant(HOST_DEVICE),
-        _ => return Ok(None),
-    };
-    Ok(Some(v))
+    if name == "gpuDevice" {
+        return Ok(Some(cg.string_constant(HOST_DEVICE)));
+    }
+    operation(name).map(|lower| lower(cg, args)).transpose()
+}
+
+/// Resolve one lowering function; argument evaluation stays in that function.
+type Lowering = fn(&mut Codegen, &[Expr]) -> Result<Value>;
+
+fn operation(name: &str) -> Option<Lowering> {
+    Some(match name {
+        "toGpu" => to_gpu,
+        "fromGpu" => from_gpu,
+        "gpuLength" => gpu_length,
+        "gpuMap" => gpu_map,
+        "gpuFold" => gpu_fold,
+        "gpuZipWith" => gpu_zip_with,
+        "gpuIota" => gpu_iota,
+        "gpuGet" => gpu_get,
+        "gpuScan" => gpu_scan,
+        "gpuFilter" => gpu_filter,
+        _ => return None,
+    })
 }
 
 /// The `i`-th positional argument as an evaluated buffer handle.

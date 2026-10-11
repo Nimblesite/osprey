@@ -9,10 +9,8 @@
 //! in its bridge, and — the failure this file exists for now that there are two
 //! backends — Windows and macOS can quietly stop rendering the same thing.
 //!
-//! Only the macOS backend is built and observed on the machine that wrote the
-//! Windows one, so these are text assertions, not pixels. They catch drift.
-//! They do not catch a shader that will not compile; `examples/graphics/README.md`
-//! lists the Windows commands that do.
+//! Structural checks catch drift; injected SDK failures exercise the frame path.
+//! Real Windows shader compilation and rendering still require Windows.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -484,4 +482,13 @@ fn every_declaration_of_the_uniform_layout_agrees() {
             && host.contains(r#"fn shaderPath() = "examples/graphics/base.metal""#),
         "the host must name one shader path and the D3D12 bridge must resolve it"
     );
+}
+
+#[path = "graphics_scenes/frame.rs"]
+mod frame;
+
+#[test]
+fn direct3d_frame_failures_are_reported_and_resources_retained() {
+    let outcome = frame::verify(&repo_root());
+    assert!(outcome.is_ok(), "{outcome:?}");
 }

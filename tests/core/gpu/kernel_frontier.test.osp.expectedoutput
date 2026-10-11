@@ -7,5 +7,9 @@ ok 6 - builtin zip pins wrapping and saturation
 ok 7 - builtin folds and scans preserve accumulator policy
 ok 8 - builtin kernels preserve the active overflow policy
 ok 9 - builtin integer division preserves ordered recovery
-1..9
-# tests=9 passed=9 failed=0 skipped=0
+ok 10 - closed GPU kernels retain lexical uniforms
+ok 11 - host GPU kernels retain live cells
+ok 12 - declined GPU extraction preserves managed captures
+ok 13 - captured GPU kernels preserve arithmetic policy
+1..13
+# tests=13 passed=13 failed=0 skipped=0

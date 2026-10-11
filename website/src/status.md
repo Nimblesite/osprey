@@ -50,6 +50,7 @@ The release list was unavailable when this page was built. See
 - User-defined generics, declaration-site variance, generic effects and explicit
   call-site type arguments in both flavors.
 - Immutable persistent lists and maps
+- [Dense computation buffers](/spec/0034-gpucomputation/) with typed kernels and explicit arithmetic policies. Known let-bound kernels retain their original captures when extracted; execution currently uses CPU host loops.
 - Lightweight native fibers and channels
 - Native HTTP, WebSocket, file, process and C FFI runtime APIs
 - Default, tracing-GC and Perceus-ARC native memory backends
