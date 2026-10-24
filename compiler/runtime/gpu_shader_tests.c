@@ -24,6 +24,7 @@
 
 #define TRIALS 400000
 #define SPECIALS 12
+#define SOFT_BINARY_MAX_ULPS 64
 
 static uint64_t state = 0x9e3779b97f4a7c15;
 static unsigned long checks;
@@ -269,7 +270,7 @@ static void soft_binary_case(const char *what, device_binary device, host_binary
   checks++;
   if (same(got, want)) return;
   uint64_t distance = ulps(got, want);
-  if (distance > 64) {
+  if (distance > SOFT_BINARY_MAX_ULPS) {
     fprintf(stderr, "%s(%016llx, %016llx): device %016llx host %016llx\n", what,
         (unsigned long long)a, (unsigned long long)b, (unsigned long long)got, (unsigned long long)want);
     abort();
@@ -279,7 +280,7 @@ static void soft_binary_case(const char *what, device_binary device, host_binary
 static void check_soft_binary(const char *what, device_binary device, host_binary host, int xlow, int xrange, int ylow, int yrange) {
   for (unsigned i = 0; i < TRIALS; i++)
     soft_binary_case(what, device, host, word_in(xlow, xrange), word_in(ylow, yrange));
-  printf("[ok] %s: binary within 1 ulp of the host long double libm over %u trials\n", what, TRIALS);
+  printf("[ok] %s: binary within %d ulps of the host double libm over %u trials\n", what, SOFT_BINARY_MAX_ULPS, TRIALS);
 }
 
 static void check_binary_specials(void) {

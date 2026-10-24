@@ -26,7 +26,7 @@ scalar returns preserve the `Result` wrapper or are rejected. A caller obtains
 a `T` only by exhaustively matching the `Result` or by supplying an explicit
 fallback with `?:`.
 
-Arithmetic is total and carries no `Result`: an arithmetic expression always evaluates to a defined value of its static type. It can never trap, panic, wrap silently, or produce an unspecified value, and a fault that cannot be proven impossible is discharged by a handler the program installs, or the program is rejected at compile time ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)).
+Arithmetic uses plain numeric values. The required [totality contract](0037-ArithmeticEffects.md#the-guarantee--arith-total) forbids implicit traps and silent wraparound; the host runtime discharges faults through an installed `Arith` policy. Current device kernels instead abort on recorded arithmetic faults, even with a recovering host policy. [Device recovery](0037-ArithmeticEffects.md#device-recovery-arith-device-recovery) records that delivery gap and the explicit total helpers available to kernels.
 
 Raw foreign declarations may expose a C integer status as ABI data. Safe
 Osprey-facing APIs MUST translate a failing status into `Result` or a typed

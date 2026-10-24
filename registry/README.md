@@ -2,7 +2,7 @@
 
 The registry and package client are written in Osprey and built by the existing compiler. [Plan 0020](../docs/plans/0020-package-manager.md) tracks delivery against [specs 0029–0032](../docs/specs/ecosystem/README.md). The folder registry, source verification, deterministic resolution, locks, local overrides, folder publication and uv integration run today. Authenticated public publishing, the dedicated package website and trust services remain planned.
 
-The loopback consumer uses Default-flavor source. Recent Python-source manifest-path fixes have fixture coverage; real package-client build acceptance remains under verification. Frontend compilation and publication tests do not prove that path. See the [package guide](../website/src/docs/package-manager.md) for the exact current limitation.
+The loopback consumer uses Default-flavor source. Real compiler checks also pass for Python-flavor packages: bare `build`, `build --run`, and relative or absolute `--project` paths from another directory. Derived compiler manifests live under the selected project's `.osprey/build/`; see the [package guide](../website/src/docs/package-manager.md) for usage and remaining limits.
 
 ## Layout
 

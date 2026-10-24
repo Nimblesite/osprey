@@ -4,10 +4,9 @@ Osprey has no language-level exceptions. Every fallible language operation
 uses `Result` or a statically handled algebraic effect. A raw foreign status is
 ABI data and MUST be translated at the safe Osprey boundary.
 
-**Arithmetic cannot fail silently.** A total operation produces a defined value of its static type. A fallible operation transfers to a required `Arith` handler, whose value arm supplies the typed result on normal completion. The operation cannot trap, panic, wrap silently, or produce an unspecified value, and a fault that cannot be proven impossible MUST be discharged — or the program is rejected at compile time. The clauses and conformance obligations are [ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total).
+**Arithmetic cannot fail silently.** A total operation produces a defined value of its static type. A fallible operation transfers to a required `Arith` handler, whose value arm supplies the typed result on normal completion. The operation MUST NOT trap, panic, wrap silently, or produce an unspecified value, and a fault that cannot be proven impossible MUST be discharged — or the program is rejected at compile time. The clauses and conformance obligations are [ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total). Host execution invokes the policy; current Metal/OpenCL kernels abort on faults instead, an unfinished [device-recovery requirement](0037-ArithmeticEffects.md#device-recovery-arith-device-recovery).
 
-The two language flavors share these semantics. Examples show both surfaces
-where their syntax differs.
+Default, ML and Python flavors share these semantics. Examples below show Default and ML syntax.
 
 ## The Result Type
 

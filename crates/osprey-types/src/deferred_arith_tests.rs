@@ -99,3 +99,19 @@ fn collection_addition_rejects_incompatible_elements_and_depths() {
             "incompatible collection layouts must fail before codegen: {flavor:?} {source}: {errors:?}");
     }
 }
+
+#[test]
+fn collection_addition_accumulates_diagnostics_instead_of_panicking() {
+    let errors = typecheck(
+        Flavor::Default,
+        "let nested = [1] + [[2]]\nlet mapped = {\"a\": 1} + {\"b\": \"two\"}\n",
+    );
+    assert_eq!(
+        errors
+            .iter()
+            .filter(|error| error.message.contains("cannot unify"))
+            .count(),
+        2,
+        "both incompatible additions must return diagnostics: {errors:?}"
+    );
+}
