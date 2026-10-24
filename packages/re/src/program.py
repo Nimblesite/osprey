@@ -15,7 +15,7 @@ here so every parser module imports them from one place.
 __all__ = [
     "Ins", "Program", "GState", "PRes", "ins", "ins_a", "ins_ab", "ins_class",
     "ins_lit", "shift", "append_match", "groups_len", "range_piece", "cat_piece",
-    "at", "fail", "has", "add_bit", "drop_bits", "I_BIT", "M_BIT", "S_BIT", "X_BIT", "NameRead",
+    "at", "fail", "has", "concat", "add_bit", "drop_bits", "I_BIT", "M_BIT", "S_BIT", "X_BIT", "NameRead",
 ]
 
 I_BIT = 2
@@ -141,6 +141,11 @@ def shift_ins(i, delta):
         return Ins(op=i.op, a=i.a + delta, b=i.b, ranges=i.ranges)
     else:
         return i
+
+
+def concat(left, right):
+    """Concatenate fragments, rebasing every target in the right fragment."""
+    return listConcat(left, shift(right, len(left)))
 
 
 def append_match(frag):

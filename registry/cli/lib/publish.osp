@@ -10,6 +10,7 @@ import registry::Identity
 import registry::ManifestModel
 import registry::Maybe
 import registry::Names
+import registry::Paths
 import registry::Release
 import registry::ReleaseFiles
 import registry::ReleasePath
@@ -17,7 +18,7 @@ import registry::ReleasePath
 /// `osprey-pkg publish --folder <registry-root> [--breaking] [--project <dir>]`:
 /// place this project as the next release of a folder registry, in the layout
 /// of [PACKAGE-FOLDER-REGISTRY]. The manifest must declare `[package]`; the
-/// release tree is the manifest, every file under `source_roots`, every
+/// release tree is the manifest, supplied legal documents, every file under `source_roots`, every
 /// `python_sources` entry and every declared asset, and it is checked and
 /// digested exactly as the server will (`ReleaseFiles::assemble`, the source
 /// rules of [PACKAGE-PUBLISH]) before a byte is written. The ordinal is the
@@ -31,7 +32,6 @@ module Publish {
     let noPackageCode = "publish.no-package"
     let folderFlag = "--folder"
     let breakingFlag = "--breaking"
-    let manifestName = "osprey.toml"
     let usageText = ["usage: osprey-pkg publish --folder <registry-root> [--breaking] [--project <dir>]"]
 
     type CommandLine = { folder: string, project: string, breaking: bool }
@@ -53,11 +53,11 @@ module Publish {
 
     fn packageKey(mf: ManifestModel::Manifest) = Maybe::fold(mf.publication, Error { message: noPackageCode }, fn(p: ManifestModel::Publication) => Success { value: p.package })
 
-    // ---- the release tree: manifest, source roots, python sources, assets ----
+    // Implements [PACKAGE-LICENSE-DISTRIBUTION] alongside source and asset selection.
 
     fn underRoot(path, root) = startsWith(path, "${root}/")
 
-    fn selected(mf: ManifestModel::Manifest, path) = path == manifestName
+    fn selected(mf: ManifestModel::Manifest, path) = Paths::publicationMetadata(path)
         || foldList(mf.sourceRoots, false, fn(found, root) => found || underRoot(path, root))
         || listContains(mf.pythonSources, path)
         || listContains(mapList(mf.assets, assetPath), path)

@@ -52,7 +52,6 @@ if echo "$PROGRAM_OUTPUT" | grep -Fq 'ok 1 - mega showcase preserves effect, fib
     && echo "$PROGRAM_OUTPUT" | grep -Fq '1..1' \
     && echo "$PROGRAM_OUTPUT" | grep -Fq '# tests=1 passed=1 failed=0 skipped=0'; then
     echo "✅ Test PASSED: Mega showcase assertion suite passed"
-    exit 0
 else
     echo "❌ Test FAILED: Regression assertion result was not present"
     echo ""
@@ -65,3 +64,32 @@ else
     echo "$RESPONSE"
     exit 1
 fi
+
+# An unused forbidden capability must still be rejected before execution.
+# These functions are never called, so the RED run performs no host operation.
+check_capability_rejected() {
+    local endpoint="$1" code="$2" capability="$3"
+    local response status
+    response=$(curl -sS -w '\n%{http_code}' -X POST "http://localhost:3001/api/$endpoint" \
+      -H 'Content-Type: application/json' \
+      -d "$(jq -n --arg code "$code" '{code: $code}')")
+    status="${response##*$'\n'}"
+    response="${response%$'\n'*}"
+    if [ "$status" != 422 ] || ! jq -e --arg capability "$capability" \
+      '.success == false and (.error | contains("security:") and contains($capability))' <<< "$response" >/dev/null; then
+        echo "FAIL: /api/$endpoint did not reject $capability: $response"
+        return 1
+    fi
+}
+
+for endpoint in compile run; do
+    check_capability_rejected "$endpoint" 'fn unused() = readFile("osprey-missing-file")
+print("safe")' 'readFile' || exit 1
+    check_capability_rejected "$endpoint" 'extern fn abort() -> int
+print("safe")' 'extern' || exit 1
+    check_capability_rejected "$endpoint" 'fn unused() = httpGet(0, "http://127.0.0.1:1")
+print("safe")' 'httpGet' || exit 1
+    check_capability_rejected "$endpoint" 'fn unused() = cleanupProcess(0)
+print("safe")' 'cleanupProcess' || exit 1
+done
+echo "PASS: compile and run reject filesystem, FFI, HTTP and process capabilities"

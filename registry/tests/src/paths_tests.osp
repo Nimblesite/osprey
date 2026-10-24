@@ -115,6 +115,22 @@ module PathsTests {
         ])
     }
 
+    /// [PACKAGE-LICENSE-DISTRIBUTION] metadata is retained without asset declarations.
+    export fn legalMetadata() = checkAll("publication retains supplied license texts and notices", [
+        Paths::publicationMetadata("osprey.toml"),
+        Paths::publicationMetadata("LICENSE"),
+        Paths::publicationMetadata("license.txt"),
+        Paths::publicationMetadata("COPYING.md"),
+        Paths::publicationMetadata("NOTICE.md"),
+        Paths::publicationMetadata("AUTHORS"),
+        Paths::publicationMetadata("THIRD_PARTY_NOTICES.txt"),
+        Paths::publicationMetadata("LICENSES/Unicode.txt"),
+        Paths::publicationMetadata("licenses/nested/BSD.txt"),
+        !Paths::publicationMetadata("LICENSES-backup/private.txt"),
+        !Paths::publicationMetadata("docs/NOTICE.md"),
+        !Paths::publicationMetadata("notes.md")
+    ])
+
     export fn run() = {
         test("paths: grammar", grammar)
         test("source: tree digests", treeDigests)
@@ -122,5 +138,6 @@ module PathsTests {
         test("paths: sets and exclusions", setsAndExclusions)
         test("source: envelope bytes", envelopeBytes)
         test("source: envelope rejections", envelopeRejections)
+        test("paths: publication licenses", legalMetadata)
     }
 }

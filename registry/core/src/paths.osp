@@ -13,6 +13,9 @@ module Paths {
     let devices = ["CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"]
     let excludedFiles = ["osprey.lock", "osprey.local.toml", "osprey.local.lock"]
     let statePrefix = ".osprey/"
+    let manifestName = "osprey.toml"
+    let legalStems = ["license", "copying", "notice", "authors", "third_party_notices"]
+    let legalSuffixes = ["", ".txt", ".md"]
 
     fn alpha(b) = (b >= 65 && b <= 90) || (b >= 97 && b <= 122)
     fn digit(b) = b >= 48 && b <= 57
@@ -65,4 +68,14 @@ module Paths {
 
     /// True for the root control files and `.osprey/` state the digest excludes.
     export fn excluded(path) = listContains(excludedFiles, path) || startsWith(path, statePrefix)
+
+    fn legalDocument(path) = foldList(legalStems, false, fn(found, stem) => found
+        || foldList(legalSuffixes, false, fn(matched, suffix) => matched || path == "${stem}${suffix}"))
+
+    /// Retain supplied documents; never infer licenses from API references.
+    /// Implements [PACKAGE-LICENSE-DISTRIBUTION].
+    export fn publicationMetadata(path) = {
+        let folded = foldCase(path)
+        path == manifestName || legalDocument(folded) || startsWith(folded, "licenses/")
+    }
 }

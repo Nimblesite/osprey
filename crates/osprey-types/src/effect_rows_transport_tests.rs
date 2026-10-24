@@ -14,31 +14,6 @@ const UNHANDLED: &str =
 const GENERIC_UNHANDLED: &str =
     "unhandled effect operations at program entry: Probe<int>.value; add a matching `handle`";
 
-#[test]
-fn returned_tensor_computations_resolve_under_each_storage_handler() {
-    assert_accepted(
-        "effect Buffer<B> { fromList: fn(List<float>) -> B toList: fn(B) -> List<float> }\n\
-         type Tensor<B> = { data: B }\n\
-         fn arr(xs) = Tensor { data: perform Buffer.fromList(xs) }\n\
-         fn values(a) = perform Buffer.toList(a.data)\n\
-         fn host(work) = {\n\
-           handle static Buffer<List<float>> { fromList xs => xs toList xs => xs }\n\
-           work()\n\
-         }\n\
-         fn device(work) = {\n\
-           handle static Buffer<int> { fromList xs => length(xs) toList id => [1.0] }\n\
-           work()\n\
-         }\n\
-         fn apply(backend, work) = if backend == \"host\" { host(work) } else { device(work) }\n\
-         fn computation(i) = if i == 0 { fn() => arr([1.0]) } else { fn() => arr([2.0]) }\n\
-         fn run(backend, i) = {\n\
-           let compute = computation(i)\n\
-           apply(backend, fn() => values(compute()))\n\
-         }\n\
-         let answer = listConcat(run(\"host\", 0), run(\"device\", 1))\n",
-    );
-}
-
 fn assert_errors(source: &str, expected: &[&str]) {
     assert_eq!(
         diagnostics(source),

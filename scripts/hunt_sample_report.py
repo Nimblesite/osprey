@@ -6,8 +6,8 @@ from pathlib import Path
 
 
 def outcome(record):
-    if record.get('expectedCrash') and record.get('assertionsPassed'):
-        return 'Expected crash and benign input verified'
+    if record.get('expectedCrash'):
+        return 'Expected crash and benign input verified' if record.get('assertionsPassed') else 'Assertion failed: '+record.get('assertionError', 'unknown failure')
     if record['timedOut']:
         return 'Killed at 10-second deadline'
     if record['exitCode'] < 0:
@@ -16,7 +16,7 @@ def outcome(record):
         return 'Quick candidate'
     findings = record['report'].get('findings', [])
     if any(f.get('replay') == 'reproduced' for f in findings):
-        return 'Native crash reproduced'
+        return 'Expected planted crash reproduced' if record.get('planted') else 'Unexpected native crash reproduced'
     if findings:
         return 'Engine limitation / unconfirmed finding'
     if record['exitCode'] != 0:
@@ -27,7 +27,8 @@ def outcome(record):
 def links(record, out):
     folder = Path(record['directory'])
     files = [('HTML', 'engine/report.html'), ('JSON', 'engine/report.json'),
-             ('Output', 'stdout.log'), ('Log', 'stderr.log'), ('Command', 'command.json')]
+             ('Output', 'stdout.log'), ('Log', 'stderr.log'), ('Command', 'command.json'),
+             ('Benign output', 'benign/stdout.log')]
     return ' · '.join(f'<a href="{escape((folder/name).relative_to(out).as_posix())}">{label}</a>'
                       for label, name in files if (folder/name).is_file())
 
@@ -60,7 +61,19 @@ def write(out, records, proof=False):
     (out/'index.html').write_text(document(out, quick, excluded, counts, tokens, proof))
 
 
+def view(passed, total, proof):
+    if proof:
+        return (f'{passed}/{total} planted crash cases verified', 'Verified cases', 'Failing cases', '',
+                'Every planted input must produce the exact expected finding class, source location, input/file payload and native signal. Each program must also have a normal symbolic path, and benign input Z must finish natively with exact expected output. Every invocation has a ten-second deadline. These are intentionally planted faults, not newly discovered defects.',
+                'Every verified case has a benign/ folder containing its native control command, input and output.')
+    return (f'{passed} quick candidates from {total} programs', 'Quick candidates', 'Excluded programs',
+            '<a href="quick-corpus.txt">Candidate manifest</a> · ',
+            'A successful exit within 10 seconds, at least one explored path, every explored path finishing normally, no findings and no unfinished paths. These are fast Hunt candidates under two symbolic bytes per stream and an eight-second engine budget. They are not a general proof of safety, functional correctness or CI timing on another machine.',
+            'Libraries without an entry point, individual project modules and deliberate compilation-rejection examples are not runnable app candidates. Standalone Default/ML/Python-flavor files and Python-entry projects are included. The snapshot under toolchain/ identifies the exact compiler and runtime used.')
+
+
 def document(out, quick, excluded, counts, tokens, proof):
+    title, qualified, rejected, manifest, policy, footer = view(len(quick), len(quick)+len(excluded), proof)
     summary = ' · '.join(f'{escape(key)}: {count}' for key, count in sorted(counts.items()))
     return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'">

@@ -1,8 +1,6 @@
 # Contributing to Osprey
 
-Want to help build a programming language? You're in the right place. Building a language is a several year long process. Right now, the aims are building community, getting the first example apps deployed and shaping the ergonomics of the language.
-
-Even discussions are great at this point.
+Osprey is in stabilization mode. Contributions should harden existing behavior, improve diagnostics and tests, or correct documentation. Use the runnable applications and active plans to identify gaps before proposing new language features.
 
 **Compiler changes**: always create an issue before starting work on the compiler. Explain the issue and propose a solution for the issue. Please get approval before moving into the implementation phase. All contributions are appreciated but compiler work requires strict review and planning.
 
@@ -10,7 +8,8 @@ Start with the [repository map](docs/contributing/repository-map.md) to find the
 
 ## The Tech Stack
 
-Osprey is built on battle-tested tools:
+The compiler and runtime use:
+
 - **[Rust](https://www.rust-lang.org/)** - Compiler implementation (`crates/`)
 - **[tree-sitter](https://tree-sitter.github.io/)** - Grammar parsing (`tree-sitter-osprey/`)
 - **[LLVM](https://llvm.org/)** - Code generation (textual IR handed to clang)
@@ -47,14 +46,15 @@ Osprey is in stabilization mode. Prioritize reliability of existing features, tr
 
 1. **Check the contract** — Read the relevant spec, implementation status, tests, and active plan.
 2. **Understand the pattern** - Ask your AI: "How does pattern matching work in this codebase?"
-3. **Implement incrementally** - Start with parsing, then AST, then codegen
-4. **Test everything** - Add assertion suites to `tests/`
+3. **Pin the failure first** — Extend an existing acceptance or rejection test before changing implementation.
+4. **Follow the pipeline** — Parsing, AST, type/effect checking, code generation and runtime must agree; run the relevant crate tests and differential corpus.
 5. **Fix edge cases** - Let the AI help debug LLVM IR issues
 
 Example prompts:
-- "Add a new arithmetic operator to the tree-sitter grammar"
-- "Implement string interpolation in the AST builder"
-- "Generate LLVM IR for this pattern match"
+
+- "Add a regression for this incorrect arithmetic result before fixing it."
+- "Verify that this effect requirement survives a helper and callback."
+- "Check this guide against the current CLI and its acceptance tests."
 
 ## Code Guidelines
 
@@ -62,17 +62,12 @@ Example prompts:
 - Test new features thoroughly
 - Keep changes focused
 - Fix linter errors before submitting
-- **Never hard-code a version.** All version fields stay at `0.0.0-dev` in source;
-  releases stamp the real version from the git tag. See [docs/RELEASING.md](docs/RELEASING.md).
+- **Never hard-code release versions.** The release-managed compiler, extension and Shipwright version fields stay at `0.0.0-dev`; releases stamp them from the Git tag. See [docs/RELEASING.md](docs/RELEASING.md) for the exact fields.
 
 ## CI & Releases
 
-- **CI runs only on PRs to `main`** (`ci.yml` + `ci-windows.yml`). Merging to
-  `main` triggers nothing.
-- **Releases are tag-triggered**: push a tag `vX.Y.Z` and `release.yml` builds
-  every platform, cuts the GitHub Release, updates the Homebrew tap + Scoop
-  bucket, publishes the VS Code extension, and deploys the website. Full details
-  in [docs/RELEASING.md](docs/RELEASING.md).
+- **CI runs on PRs to `main`** (`ci.yml` and `ci-windows.yml`); Windows also supports manual dispatch. Merging to `main` does not trigger these workflows.
+- **Releases are tag-triggered.** `release.yml` uses the tag diff to choose artifact builds, package publication and website deployment. Website-only changes skip the binary matrix; every publishing path still depends on a fresh dependency audit. See [docs/RELEASING.md](docs/RELEASING.md).
 
 ## Getting Help
 

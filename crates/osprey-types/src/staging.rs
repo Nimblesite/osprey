@@ -1,5 +1,7 @@
 //! Validate staged data contracts before any operation or unused arm disappears.
 
+#[cfg(test)]
+mod factory_tests;
 mod forwarders;
 mod signals;
 use signals::materialize_signal_queries;

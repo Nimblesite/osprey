@@ -20,18 +20,22 @@ def check_case(record, case, root):
             return 'expected a bounded native crash (exit 1)'
         if actual_findings(report) != expected_findings(root/case['expected']):
             return 'finding class or source location does not match the planted fault'
-        if len(report['findings']) != len(case['cases']):
-            return 'one or more planted input cases were missed'
-        for finding in report['findings']:
-            expected = next((item for item in case['cases'] if item['stdin'] == finding.get('stdin')), None)
-            if expected is None:
-                return 'unexpected trigger input'
-            error = check_replay(finding, expected)
-            if error:
-                return error
-        return '' if report['findings'] else 'planted crash was missed'
+        return check_findings(report['findings'], case)
     except (KeyError, TypeError, ValueError, OSError) as error:
         return str(error)
+
+
+def check_findings(findings, case):
+    if len(findings) != len(case['cases']):
+        return 'one or more planted input cases were missed'
+    for finding in findings:
+        expected = next((item for item in case['cases'] if item['stdin'] == finding.get('stdin')), None)
+        if expected is None:
+            return 'unexpected trigger input'
+        error = check_replay(finding, expected)
+        if error:
+            return error
+    return '' if findings else 'planted crash was missed'
 
 
 def check_replay(finding, case):

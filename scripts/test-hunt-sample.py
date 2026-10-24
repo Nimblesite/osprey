@@ -109,5 +109,24 @@ class CrashGateTests(unittest.TestCase):
         self.assertIn('make _test_hunt_mock', workflow)
 
 
+class ReviewReportTests(unittest.TestCase):
+    def test_both_review_modes_render_escape_names_and_separate_counts(self):
+        from hunt_sample_report import write
+        for proof in [False, True]:
+            with tempfile.TemporaryDirectory() as directory:
+                out = Path(directory)
+                record = {'program': '<script>bad()</script>', 'directory': str(out/'case'),
+                          'exitCode': 0, 'timedOut': False, 'wallSeconds': 1, 'qualifies': not proof,
+                          'expectedCrash': proof, 'assertionsPassed': proof, 'report': {
+                              'explored': {'paths': 4, 'completed': 3}, 'findings': [], 'incomplete': []}}
+                write(out, [record], proof=proof)
+                text = (out/'index.html').read_text()
+                self.assertIn('Paths explored', text)
+                self.assertIn('Normal exits', text)
+                self.assertIn('&lt;script&gt;', text)
+                self.assertNotIn('<script>', text)
+                self.assertEqual((out/'quick-corpus.txt').exists(), not proof)
+
+
 if __name__ == '__main__':
     unittest.main()

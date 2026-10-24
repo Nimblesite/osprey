@@ -78,6 +78,7 @@ def run_one(program, options):
     record = {'program': program, 'directory': str(folder), 'exitCode': code,
               'timedOut': timed_out, 'wallSeconds': elapsed, 'report': read_report(folder)}
     record['qualifies'] = qualifies(record)
+    record['planted'] = program in getattr(options, 'expected_crashes', ())
     (folder/'run.json').write_text(json.dumps(record, indent=2)+'\n')
     return record
 
@@ -113,6 +114,8 @@ def snapshot(options):
 def main():
     options = parse()
     programs = options.programs or discover(options.root)
+    cases = json.loads((options.root/'tests/hunt/crash-cases.json').read_text())
+    options.expected_crashes = {case['program'] for case in cases}
     options.out.mkdir(parents=True, exist_ok=True)
     fingerprints = snapshot(options)
     metadata = {'programs': programs, 'roots': ROOTS, 'wallTime': options.wall_time,

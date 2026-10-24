@@ -10,30 +10,23 @@
 Language support for [Osprey](https://ospreylang.dev) — a functional programming
 language built around algebraic effects, inferred types, fibers, and pattern matching. The [effects guide](../website/src/docs/algebraic-effects.md) introduces callable handlers, block-scoped policies, and static selection.
 
-Osprey has two source flavors. Default (`.osp`) uses braces, `fn` and familiar
-function calls. ML (`.ospml`) uses layout, currying and whitespace application.
-Both lower to the same AST before type checking and compilation.
+The compiler accepts Default (`.osp`), ML (`.ospml`) and Python flavor (`.py` with `# osprey: flavor=python`). All three lower to the same AST. The extension currently registers Default and ML documents for its language server, commands, debugger and Test Explorer. Use the CLI for Python-flavor files while dedicated editor coverage remains unfinished; see [plan 0031](../docs/plans/0031-python-flavor.md).
 
-Select a flavor per file with its extension or a leading
-`// osprey: flavor=ml` marker. The compiler also accepts `--flavor ml` for a
-single-file build. Multi-file projects can import modules written in either flavor.
-
-Powered by a Rust language server (`osprey lsp`, built on
-[lspkit](https://github.com/Nimblesite/lspkit)) that runs the compiler front-end
-in-process — the same engine targeted at Neovim and Zed next.
+Select Default or ML per file using its extension or a leading `// osprey: flavor=ml` marker. Mixed-flavor project imports are supported. The Rust language server (`osprey lsp`, built on [lspkit](https://github.com/Nimblesite/lspkit)) runs the compiler frontend in-process.
 
 ## Features
 
 - **Syntax highlighting** — keywords, types, string interpolation
   (`"Hello ${name}!"`), operators, and comments. Default (`.osp`) is fully
-  supported; ML (`.ospml`) support follows the compiler's current ML parser.
+  supported alongside ML (`.ospml`); highlighting uses the bundled TextMate grammars.
 - **Live diagnostics** — errors and warnings from the Osprey compiler as you
   type, inline in the editor.
 - **Hover, go-to-definition, find-references, document symbols, signature help,
-  and completion** — driven by the compiler's own parser and type checker.
+  completion and formatting** — driven by the compiler's parser, type checker and project loader.
 - **Compile & run** from the editor:
   - `Osprey: Compile Osprey File` (`Ctrl/Cmd+Shift+B`)
-  - `Osprey: Compile and Run Osprey File` (`F5`)
+  - `Osprey: Compile and Run Osprey File` (Command Palette)
+  - `Osprey: Debug Osprey File` (`F5`) uses a native debug build and LLDB-DAP
 - **Test Explorer** — `*.test.osp` / `*.test.ospml` files and their cases appear
   in the Testing view, with four run profiles: **Run**, **Coverage**,
   **Profile** (runs the suite under the sampling CPU profiler and opens its
@@ -50,6 +43,8 @@ in-process — the same engine targeted at Neovim and Zed next.
   you hover the `test(...)` call, opens as Markdown via
   `Osprey: Show Test Documentation`, and leads the failure message when the case
   fails.
+- **Hunt for bugs** — `Osprey: Hunt for Bugs` runs KLEE, prints the report in the Osprey Hunt output channel and places findings at source locations. [Hunt prerequisites and limits](../website/src/docs/hunt.md) apply.
+- **CPU profiling** — run the current file or attach to a supported native process, then inspect samples in the shared profiler UI. Memory profiling and a Windows sampler remain unfinished.
 - **Bracket matching, auto-closing, and comment toggling.**
 
 ## Requirements
@@ -71,6 +66,8 @@ brew install nimblesite/tap/osprey            # macOS / Linux
 scoop bucket add nimblesite https://github.com/Nimblesite/scoop-bucket && scoop install osprey   # Windows
 ```
 
+Debugging also requires `lldb-dap`. Set `osprey.debug.lldbDapPath` when it is outside `PATH`. Integrated and external terminal consoles require LLDB-DAP 21 or newer; the default Debug Console has no stdin. See the [debugger contract](../docs/specs/tooling/0021-Debugger.md).
+
 ## Settings
 
 | Setting                      | Default | Description                                                                                                                                       |
@@ -78,6 +75,8 @@ scoop bucket add nimblesite https://github.com/Nimblesite/scoop-bucket && scoop 
 | `osprey.server.enabled`      | `true`  | Enable/disable the language server.                                                                                                               |
 | `osprey.diagnostics.enabled` | `true`  | Enable/disable inline diagnostics.                                                                                                                |
 | `osprey.server.compilerPath` | `""`    | Path to an Osprey compiler. **Leave empty** to use the version-matched compiler bundled with this extension (falling back to `osprey` on `PATH`). |
+| `osprey.debug.lldbDapPath` | `""` | LLDB-DAP executable; empty uses `lldb-dap` on `PATH`. |
+| `osprey.hunt.maxTime` | `60` | KLEE exploration budget in seconds; requires at least 1. |
 
 ## Links
 

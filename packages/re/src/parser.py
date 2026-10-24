@@ -161,7 +161,7 @@ def seq_after(cps, atom, n, flags):
         case Error(message=message):
             return Error(message=message)
         case Success(value=value):
-            return Success(value=Program.PRes(frag=listConcat(atom.frag, value.frag), next=value.next, gs=value.gs))
+            return Success(value=Program.PRes(frag=Program.concat(atom.frag, value.frag), next=value.next, gs=value.gs))
 
 
 def parse_quantified(cps, i, n, flags, gs):
@@ -316,7 +316,7 @@ def parse_capture(cps, i, j, n, flags, gs, name):
                 return Program.fail("missing ), unterminated subpattern", i)
             else:
                 idx = gs2.count
-                frag = listConcat([Program.ins_a("save", 2 * idx)], listConcat(value.frag, [Program.ins_a("save", 2 * idx + 1)]))
+                frag = Program.concat([Program.ins_a("save", 2 * idx)], listAppend(value.frag, Program.ins_a("save", 2 * idx + 1)))
                 return Success(value=Program.PRes(frag=frag, next=value.next + 1, gs=value.gs))
 
 
@@ -420,7 +420,7 @@ def parse_lookahead(cps, i, j, n, flags, gs, negate):
             if value.next >= n or Program.at(cps, value.next) != 41:
                 return Program.fail("missing ), unterminated subpattern", i)
             else:
-                frag = listConcat([Program.ins_ab("lookahead", 1, negate)], listConcat(Program.shift(value.frag, 1), [Program.ins("acc")]))
+                frag = listConcat([Program.ins_ab("lookahead", 2, negate), Program.ins_a("jmp", len(value.frag) + 3)], listConcat(Program.shift(value.frag, 2), [Program.ins("acc")]))
                 return Success(value=Program.PRes(frag=frag, next=value.next + 1, gs=value.gs))
 
 
@@ -453,7 +453,7 @@ def lookbehind_frag(cps, i, j, r, negate):
         return Program.fail("look-behind requires fixed-width pattern", i)
     else:
         op = "lookbehind_not" if negate == 1 else "lookbehind"
-        frag = listConcat([Program.ins_ab(op, 1, width)], listConcat(Program.shift(r.frag, 1), [Program.ins("acc")]))
+        frag = listConcat([Program.ins_ab(op, 2, width), Program.ins_a("jmp", len(r.frag) + 3)], listConcat(Program.shift(r.frag, 2), [Program.ins("acc")]))
         return Success(value=Program.PRes(frag=frag, next=r.next + 1, gs=r.gs))
 
 
