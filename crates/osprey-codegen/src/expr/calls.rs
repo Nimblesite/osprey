@@ -50,20 +50,29 @@ pub(crate) fn with_application<R>(
     position: Option<Position>,
     generate: impl FnOnce(&mut Codegen) -> R,
 ) -> R {
-    let Some(bindings) = position
-        .and_then(|p| cg.prog.applications.get(&(p.line, p.column)))
-        .cloned()
-    else {
+    let Some(specialized) = application_types(cg, function, position) else {
         return generate(cg);
     };
-    let scope = application_scope(cg, function);
-    let specialized = cg.prog.specialized(&bindings, scope);
     let original = std::mem::replace(&mut cg.prog, specialized);
-    let previous = cg.application_caller.replace(original.clone());
+    let previous = cg.application_caller.replace(original);
     let result = generate(cg);
-    cg.prog = original;
-    cg.application_caller = previous;
+    if let Some(original) = std::mem::replace(&mut cg.application_caller, previous) {
+        cg.prog = original;
+    }
     result
+}
+
+fn application_types(
+    cg: &Codegen,
+    function: &Expr,
+    position: Option<Position>,
+) -> Option<osprey_types::ProgramTypes> {
+    position
+        .and_then(|position| cg.prog.applications.get(&(position.line, position.column)))
+        .map(|bindings| {
+            cg.prog
+                .specialized(bindings, application_scope(cg, function))
+        })
 }
 
 /// A call specializes its own body; expanded bindings may also mention other
