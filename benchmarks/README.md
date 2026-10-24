@@ -221,11 +221,11 @@ These results do not establish general performance parity with Rust or C. Use th
 
 ## Not yet benchmarked (and why)
 
-Blocked on language features Osprey doesn't expose today (left out, not faked):
+These workloads are absent from the suite. Some need an agreed numeric oracle; others need language features that are not exposed today:
 
 | Benchmark | Blocked on |
 |-----------|-----------|
-| mandelbrot, n-body, spectral-norm | `sqrt`/trig support and a common numeric accuracy/output oracle; integer/float conversions already exist |
+| mandelbrot, n-body, spectral-norm | implementations and a common numeric accuracy/output oracle; `sqrt`, trigonometric builtins and numeric conversions already exist |
 | n-queens, fannkuch | no mutable arrays |
 | sieve of Eratosthenes, matrix-multiply, n-sieve | no mutable arrays |
 | pidigits | no arbitrary-precision integers (i64 only) |
@@ -236,9 +236,7 @@ float-only per spec; see [BUILTIN-INTDIV](../docs/specs/runtime/0012-Built-InFun
 The four data-structure cases (`wordfreq`, `textstats`, `listops`, `exprtree`)
 were unblocked by the persistent `Map`/`List`, string builtins, recursive unions,
 and the new cryptographically-secure `random`/`randomBelow` builtins
-([BUILTIN-RANDOM](../docs/specs/runtime/0012-Built-InFunctions.md)). As Osprey grows a
-math stdlib, numeric conversions, and mutable arrays, the remaining classics
-above become expressible and should be added here.
+([BUILTIN-RANDOM](../docs/specs/runtime/0012-Built-InFunctions.md)). Numeric workloads can now use the math builtins; add them only with comparable implementations and an agreed oracle. Array and arbitrary-precision workloads retain the blockers listed above.
 
 ## Adding a benchmark
 

@@ -118,7 +118,7 @@ The client reads one command line from standard input and prints `status: N` as 
 
 ## No SemVer
 
-Osprey releases have no version numbers. A package key such as `@osprey/http` has a sequence of releases, each identified by an **epoch** and an **ordinal**:
+Osprey releases use epochs and ordinals rather than SemVer strings. A package key such as `@osprey/http` has a sequence of releases, each identified by an **epoch** and an **ordinal**:
 
 - An **epoch** is a compatibility lineage. Every release inside an epoch is an additive contract over the ones before it: code written against `@osprey/http` epoch 2 release 17 keeps compiling and keeps its meaning on release 18. A breaking change starts a new epoch.
 - An **ordinal** counts releases inside an epoch. It only grows.
@@ -130,7 +130,7 @@ A dependency names one epoch and a floor:
 "@osprey/http" = { epoch = 2, min_release = 17 }
 ```
 
-`min_release = 0` accepts any release in the epoch. There are no upper bounds, no ranges, no caret or tilde, no pre-release tags and no version strings anywhere. Peer dependencies, optional features, Git URLs, branches and published path dependencies are rejected by the manifest rules with the line and column of the offending key. This keeps the resolver's job honest: for every package key exactly one release is selected, from exactly one epoch, and it is the one the whole graph can agree on.
+`min_release = 0` accepts any release in the epoch. There are no upper bounds, no ranges, no caret or tilde, no pre-release tags and no version strings in Osprey release identities. Python interop projects retain the separate version fields uv requires. Peer dependencies, optional features, Git URLs, branches and published path dependencies are rejected by the manifest rules with the line and column of the offending key. This keeps the resolver's job honest: for every package key exactly one release is selected, from exactly one epoch, and it is the one the whole graph can agree on.
 
 ## The manifest
 
@@ -235,7 +235,7 @@ Spec 0029 `[PACKAGE-THREATS]` defines the threat model. The folder registry impl
 | Tampered or substituted bytes | A release is its canonical `SourceDigest`. The client recomputes it before writing a single file; a lock pins it; `build` refuses a tree whose digest drifted. |
 | Floating versions | No SemVer, no ranges, no "latest". A dependency names an epoch and a floor; the lock pins exact releases; `build` and `run` never resolve. |
 | Dependency confusion and typosquatting | One canonical scoped key per package, exactly one source per key in every graph, published path and Git dependencies rejected, Unicode confusables and case-fold collisions refused by the name and path grammars. |
-| Native binaries and installers | Native needs are declared system capabilities. Osprey reports approved providers and never downloads a binary or invokes an installer. |
+| Native binaries and installers | Native needs are declared system capabilities; `doctor` reports guidance. Approved provider catalogs are planned. Osprey never downloads a native binary or invokes an OS package installer. |
 | Compromised registry, mirror or CDN | Milestone B: a TUF 1.0 trust root with 3-of-5 offline keys, 2-of-3 release roles, consistent snapshots, expiry and version floors, so no single online component can make a client accept unauthorized, rolled-back, frozen, expired or substituted source. |
 | Silent history rewriting | Milestone B: every publication, yank, revocation and build is an in-toto attestation in an append-only transparency log with inclusion and consistency proofs, witnessed by a 3-of-4 quorum. |
 | Unreproducible builds | Milestone B: two separately administered hermetic SLSA Build L3 platforms must produce bit-identical results before anything is published, with SPDX SBOMs and provenance attached. |
@@ -244,7 +244,7 @@ Spec 0029 `[PACKAGE-THREATS]` defines the threat model. The folder registry impl
 
 Today's folder registry verifies source integrity, pins releases, checks capability surfaces and enforces one source per key. It does not yet prove who published a release or how fresh the catalog is. The trust services in [spec 0030](/spec/0030-packageregistrytrustanddiscovery/), compromise simulations and independent security audit are delivery requirements, not completed assurances.
 
-## Hardened for the penetration test
+## Input validation and current limits
 
 Spec 0029 `[PACKAGE-HARDENING]` turns the threat model into gates with stable codes, each asserted by name in a registry test. These are the answers a tester gets today.
 

@@ -12,11 +12,16 @@ import subprocess
 import time
 
 from hunt_programs import ROOTS, discover
+from hunt_expect import validate
 
 
 def qualifies(record):
     report = record.get('report') or {}
-    explored = report.get('explored') or {}
+    try:
+        validate(report)
+    except (KeyError, ValueError, TypeError, AttributeError):
+        return False
+    explored = report['explored']
     paths, completed = explored.get('paths', 0), explored.get('completed', 0)
     return (record.get('exitCode') == 0 and not record.get('timedOut')
             and record.get('wallSeconds', 11) <= 10 and isinstance(paths, int) and paths > 0

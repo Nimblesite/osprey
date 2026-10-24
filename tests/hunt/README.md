@@ -29,3 +29,11 @@ To see actual crash detection, run:
 Open the printed `report.html` path for the explanation and **For AI** context. JSON is also saved by default under `target/hunt/<program-and-run-id>/`; `--out target/hunt-demo` keeps both reports and raw KLEE artifacts in a predictable directory. Disable saved files independently with `--no-html` and `--no-json`.
 
 `process.osp` is an unsupported-operation test, not a crash-detection demo.
+
+## Counts and deliberate failures
+
+Four explored paths, three normal exits, one reproduced crash and zero unfinished paths means Hunt found the failing execution. Paths are different possible executions, not repeated attempts or a detection success rate. Findings are deduplicated, so their count need not equal the number of failing paths. An unsupported operation is not a program crash; an unfinished path is not evidence of safety.
+
+`make hunt-crashes` runs the fifteen input cases pinned in `crash-cases.json`, using real KLEE and native replay. Each isolated program must report exactly the expected class and source location, the expected stdin/file payload and an allowed native signal. Tool errors, missing findings, incomplete exploration, KLEE-only results and skipped replay fail. The two `memory` cases intentionally misuse C `free`; the others intentionally abort at application invariants. Default, ML and Python-flavor projects are covered. CI requires this gate and uploads its HTML/JSON reports.
+
+`python3 scripts/hunt_sample.py --out target/my-hunt-sample` samples all runnable apps with a hard ten-second cutoff and writes an HTML summary plus `quick-corpus.txt`. Only complete, bounded, finding-free runs qualify. Source modules and non-entry libraries are not separate apps. Keep the generated reports local; review candidate timing on the CI host before promoting the manifest to a required gate.

@@ -40,6 +40,8 @@ class QualificationTests(unittest.TestCase):
         for patch in [{'exitCode': 1}, {'exitCode': -11}, {'timedOut': True}, {'wallSeconds': 11}, {'report': None}]:
             self.assertFalse(qualifies(self.clean() | patch), patch)
         for patch in [{'explored': {'paths': 3, 'completed': 2}}, {'explored': {'paths': 0, 'completed': 0}},
+                      {'explored': {'paths': True, 'completed': True}},
+                      {'explored': {'paths': 1, 'completed': True}},
                       {'findings': [{'class': 'unmodelled'}]}, {'incomplete': [{'reason': 'time'}]}]:
             value = self.clean()
             value['report'].update(patch)

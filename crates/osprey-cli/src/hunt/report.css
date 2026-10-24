@@ -72,7 +72,7 @@ p{
   overflow-wrap:anywhere}
 .stats{
   display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
+  grid-template-columns:repeat(4,minmax(0,1fr));
   gap:16px;
   margin:32px 0 0}
 .stats div{
@@ -214,4 +214,10 @@ a,.verdict,.program,.location,.lead,.stats dt,.stats dd span,.number{
   color:#333}
 details{
   break-inside:avoid}
+}
+.counts-note {
+  max-width:760px;
+  margin-top:20px;
+  color:var(--on-surface-variant);
+  font-size:14px;
 }

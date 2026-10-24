@@ -17,7 +17,7 @@ pub(super) fn render(report: &Report<'_>, json: &str) -> String {
 <a class="skip" href="#main">Skip to findings</a><main id="main">
 <header><a class="brand" href="https://ospreylang.dev/">Osprey <span>Hunt</span></a><a href="#for-ai">For AI ↓</a></header>
 <section class="hero" aria-labelledby="outcome"><p class="eyebrow">Analysis report</p>
-<h1 id="outcome">{title}</h1><p class="lead">{summary}</p><p class="program">{program}</p>{stats}</section>
+<h1 id="outcome">{title}</h1><p class="lead">{summary}</p><p class="program">{program}</p>{stats}<p class="counts-note">Paths are different possible executions. Normal exits exclude paths that reached a finding or were interrupted. A detected crash is a finding, not a missed test.</p></section>
 <section aria-labelledby="findings"><h2 id="findings">What happened</h2>{findings}{unfinished}</section>
 {ai}<footer>Symbolic execution by KLEE. <a href="{DOCS}">Osprey Hunt reference</a> · <a href="https://klee-se.org/docs/">KLEE documentation</a></footer>
 </main></body></html>"##,
@@ -29,6 +29,7 @@ pub(super) fn render(report: &Report<'_>, json: &str) -> String {
     )
 }
 
+/// Normal exits and explored paths are separate counts [SYMEX-REPORT-PATHS].
 fn stats(report: &Report<'_>) -> String {
     let confirmed = report
         .scan
@@ -46,8 +47,9 @@ fn stats(report: &Report<'_>) -> String {
     format!(
         r#"<dl class="stats"><div><dt>Crashes reproduced</dt><dd>{confirmed}</dd></div>
 <div><dt>Operations not supported</dt><dd>{blocked}</dd></div>
-<div><dt>Paths completed</dt><dd>{} <span>of {}</span></dd></div></dl>"#,
-        paths.completed, paths.paths
+<div><dt>Paths explored</dt><dd>{}</dd></div>
+<div><dt>Normal exits</dt><dd>{}</dd></div></dl>"#,
+        paths.paths, paths.completed
     )
 }
 

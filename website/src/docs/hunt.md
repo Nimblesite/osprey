@@ -46,6 +46,19 @@ Expand **For AI** to copy the full investigation context: findings, replay detai
 
 Reports normally live under `target/hunt/<program-and-run-id>/`. Use `--out ./hunt-results` for a predictable directory that also keeps raw KLEE artifacts.
 
+## Understand the path counts
+
+Paths are different possible executions, not repeated test attempts. The crash demo explores four paths: three finish normally and one reaches the abort that Hunt detects and reproduces. Zero are unfinished. **That is a successful crash detection, not a crash missed one time in four.**
+
+| Count | Meaning |
+| --- | --- |
+| Paths explored | Different executions reached by the symbolic engine, including paths that fail or stop early. |
+| Normal exits | Paths that reached ordinary program completion. A detected crash is excluded from this count. |
+| Crashes reproduced | Deduplicated findings that also caused a signal in a normal native run. |
+| Unfinished | Paths stopped by an analysis limit, solver failure or engine interruption. Their behavior beyond that point was not checked. |
+
+Findings are deduplicated by failure class and source location, so their count need not equal the number of failing paths. An unsupported operation is an engine limitation, not a demonstrated bug. Never calculate a detection success rate by dividing normal exits by explored paths.
+
 ## Read a finding
 
 Each finding includes its class, Osprey source location when available, runtime frame, concrete stdin and file bytes, and a replay verdict.
@@ -82,6 +95,30 @@ osprey hunt ./my-project --out ./hunt-results --input-bytes 4
 Exit status is `0` when there is no failing finding, `1` for a native reproduction, any finding with replay disabled, or a compilation failure, and `2` for usage or toolchain errors. Skipped findings and incomplete paths can coexist with status `0`; automation that needs full exploration must inspect the report as well as the exit code.
 
 From the repository, `make hunt FILE=tests/hunt/crash.osp HUNT_ARGS="--input-bytes 1 --max-time 10"` builds the prerequisites and wraps a single run. `make hunt-corpus` sweeps the test and example corpus; it is not currently a required CI check.
+
+## Qualify a quick corpus
+
+From a built checkout with KLEE installed:
+
+```sh
+python3 scripts/hunt_sample.py --out target/my-hunt-sample
+```
+
+This inventories runnable programs across tests, examples, book examples, package apps, registry apps and benchmarks. Projects are counted once; their individual modules and libraries without an entry point are excluded. Default and ML files and Python-entry projects are included. Known engine limitations are sampled rather than silently skipped.
+
+Each invocation gets a hard **10-second wall-clock deadline**, including compilation and replay. The sampler kills the whole process group on timeout. Its default engine budget is eight seconds with two symbolic bytes per stream. The ordinary Hunt `--max-time` flag limits the engine; it is not this whole-command deadline.
+
+Open the generated `index.html`. `quick-corpus.txt` lists only programs that exited successfully within ten seconds, explored at least one path, finished every explored path normally, and had no findings or unfinished paths. Logs, exact commands, source context and binary fingerprints accompany the results. Treat this list as candidate tests under those bounds, not a proof of general safety or of identical timing on CI. Use a fresh output directory for each sweep.
+
+## Verify deliberate crash detection
+
+```sh
+make hunt-crashes
+```
+
+The gate covers fifteen planted input cases: stdin, parsing, checked arithmetic, lists, maps, closures, recursion, unions, record invariants, JSON, file input, invalid C free, C double free, ML flavor and Python flavor. Each runs independently within ten seconds. Every expected class, source location, concrete input, file payload and native signal must match. Missing findings, unfinished analysis, tool errors, skipped replay and KLEE-only findings fail the gate.
+
+These tests deliberately violate application invariants or the unsafe C boundary. They demonstrate detection of known failures; they are not new compiler defects. CI runs the real KLEE/native-replay gate in the existing required macOS coverage job and the mock/runtime tooling tests in the required C-runtime job. Reports are uploaded as `hunt-crash-reports`. A missing engine fails the crash gate rather than skipping it.
 
 ## Use it in VSCode
 
