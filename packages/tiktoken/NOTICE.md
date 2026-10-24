@@ -24,11 +24,6 @@ Original source: [https://github.com/openai/tiktoken](https://files.pythonhosted
 Material: Derived Unicode 18.0.0 character-property tables, checked against the official UCD. Locations: `src/tables.py`.
 Original source: [https://github.com/unicode-org/icu](https://github.com/unicode-org/icu/blob/main/LICENSE). Retained required text: [LICENSES/Unicode-3.0.txt](LICENSES/Unicode-3.0.txt).
 
-### tiktoken-encoding-permission
-
-Material: Copied encoding-rank subsets and upstream explicit MIT permission. Locations: `tests/expected.py`.
-Original source: [https://github.com/openai/tiktoken](https://github.com/openai/tiktoken/issues/92#issuecomment-1497875652). Retained required text: [LICENSES/tiktoken-data-permission.txt](LICENSES/tiktoken-data-permission.txt).
-
 The copied GPT-2/cl100k encoding-rank subsets are test data. OpenAI's [explicit clarification](https://github.com/openai/tiktoken/issues/92#issuecomment-1497875652) applies its MIT license to encoding files. The complete upstream tokenizer package and vocabularies are not included.
 
 The Unicode notices cover derived property/case tables, not the regex or tokenizer engine. The table data matches Unicode 18.0.0; only the corresponding data license is retained. CPython's separate Unicode version does not determine the regex package's data version.
