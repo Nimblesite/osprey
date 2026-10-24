@@ -1,0 +1,23 @@
+(** A generic helper that reads its list's elements only through a field,
+    called with an empty list, used to fail in codegen with "a closure value
+    with a still-generic type": nothing at the call fixed the element type.
+    One record declares every field read, so the checker falls back to it, as
+    codegen already does for an untracked receiver. Implements
+    [TYPE-FIELD-ACCESS-NON-RECORD] and [TYPE-GENERICS-FN] (#290). *)
+
+type SliceWrite =
+    sliceKey : string
+    sliceText : string
+
+type Other =
+    label : string
+
+find (items, matches) = listGet (filterList (items, matches)) 0
+
+held (writes, key) = match find (writes, \write => write.sliceKey == key)
+    Success value => value.sliceText
+    Error _ => "host:${key}"
+
+print (held ([], "b"))
+print (held ([SliceWrite(sliceKey = "b", sliceText = "pending")], "b"))
+print (Other(label = "unrelated")).label

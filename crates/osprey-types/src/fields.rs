@@ -60,6 +60,43 @@ impl Checker {
         }
     }
 
+    /// The fallback [TYPE-FIELD-ACCESS-NON-RECORD] allows for an untracked
+    /// receiver: a field use whose receiver nothing in the program typed
+    /// takes the one record that declares the field. An empty list handed to
+    /// a generic helper that only reads its elements' fields leaves exactly
+    /// that receiver, and without a type the helper's closures have no ABI
+    /// (#290). It runs once inference has settled, so a receiver that any
+    /// use could still fix is never guessed, and a field two records declare
+    /// stays unresolved rather than picking one.
+    pub(crate) fn default_untracked_receivers(&mut self) {
+        while let Some((receiver, record)) = self.untracked_receiver() {
+            let before = self.ctx.bound_count();
+            self.push_unify(&receiver, &record);
+            self.resolve_field_uses();
+            if self.ctx.bound_count() == before {
+                return;
+            }
+        }
+    }
+
+    /// The first field use still waiting on an unbound receiver, with the
+    /// sole record that declares its field.
+    fn untracked_receiver(&mut self) -> Option<(Type, Type)> {
+        let uses = self.builtin_uses.clone();
+        uses.iter().find_map(|(name, relation)| {
+            let (_, _, field) = parse_obligation(name)?;
+            let Type::Fun { params, .. } = relation else {
+                return None;
+            };
+            let receiver = self.ctx.apply(params.first()?);
+            let unbound = matches!(receiver, Type::Var(_));
+            unbound
+                .then(|| self.ctx.sole_record_declaring(field))
+                .flatten()
+                .map(|record| (receiver, record))
+        })
+    }
+
     /// A read unifies the field with the relation's result; a write assigns
     /// the result (the value written) into the field, so an update keeps the
     /// one-way rules of an assignment — `any` erasure, implicit `Success` —
