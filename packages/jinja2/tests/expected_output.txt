@@ -1,0 +1,73 @@
+ok hello
+ok missing
+ok numeric
+ok concatenation
+ok truth
+ok loop
+ok empty loop
+ok set
+ok join
+ok case
+ok trim
+ok replace
+ok length
+ok endpoints
+ok method
+ok dict
+ok tests
+ok membership
+ok slice
+ok whitespace
+ok strip markers
+ok comment
+ok namespace
+ok value kinds
+ok value predicates
+ok truthiness
+ok numeric equality
+ok numeric ordering
+ok numeric view
+ok error propagation
+ok Value construction
+ok unicode characters
+ok unicode length
+ok unicode negative index
+ok character values
+ok reverse string
+ok reverse values
+ok whitespace split
+ok separator split
+ok capitalize
+ok repr text
+ok concat boolean
+ok dictionary get
+ok attribute get
+ok key lookup
+ok dictionary persistence
+ok membership
+ok compact json
+ok pretty json
+ok floor division
+ok modulo
+ok scope lookup
+ok outer binding
+ok scope persistence
+ok explicit frame binding
+ok expression evaluation
+ok filter
+ok keyword filter
+ok test
+ok method
+ok environment
+ok lexer
+ok parser
+ok blank node
+ok branch
+ok parser step
+ok tag head
+ok tag end
+ok consumed newline
+ok macro name
+ok macro parameters
+ok unsupported macro rendering
+72 passed, 0 failed

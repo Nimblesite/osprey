@@ -99,7 +99,7 @@ def parse(chunks) -> Result[list[Node], str]:
 def parse_nodes(chunks, i, n, stops, acc) -> Result[Step, str]:
     """Parse nodes until a block keyword in `stops` (which is left unconsumed)."""
     if i >= n:
-        return Error(message="unexpected end of template, expected 'end of statement block'")
+        return Success(value=Step(nodes=acc, next=i)) if len(stops) == 0 else Error(message="unexpected end of template, expected 'end of statement block'")
     else:
         chunk = unwrap_or(listGet(chunks, i), Chunk(kind="data", text=""))
         if chunk.kind == "data":

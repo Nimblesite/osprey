@@ -1,7 +1,7 @@
 [project]
 name = "jinja2-tests"
 source_roots = [".", "../src", "../../testing/src"]
-python_sources = ["../src/value.py", "../src/lexer.py", "../src/parser.py", "../src/expr.py", "../src/filters.py", "../src/render.py", "../../testing/src/check.py", "main.py"]
+python_sources = ["../src/value.py", "../src/lexer.py", "../src/parser.py", "../src/expr.py", "../src/filters.py", "../src/render.py", "../../testing/src/check.py", "main.py", "expected.py"]
 default_namespace = "jinja2_tests"
 entry = "main.py"
 

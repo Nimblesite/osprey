@@ -369,16 +369,16 @@ def math1_chain(toks, i, env, left):
 def eval_concat(toks, i, env):
     """`a ~ b`: string concatenation with coercion."""
     p = eval_math2(toks, i, env)
-    return concat_chain(toks, p.next, env, V.concat_text(p.value))
+    return concat_chain(toks, p.next, env, p.value)
 
 
 def concat_chain(toks, i, env, acc):
     """Collect `~` operands into one string."""
     if is_op(tok(toks, i), "~"):
         q = eval_math2(toks, i + 1, env)
-        return concat_chain(toks, q.next, env, acc + V.concat_text(q.value))
+        return concat_chain(toks, q.next, env, V.text(V.concat_text(acc) + V.concat_text(q.value)))
     else:
-        return P(value=V.text(acc), next=i)
+        return P(value=acc, next=i)
 
 
 def eval_math2(toks, i, env):
