@@ -1,9 +1,11 @@
 # Boolean Operations
 
-Boolean expressions use `true`, `false`, comparisons, `&&`, `||`, and `!`.
-Conditionals are expressions: both flavors support `match`, Default also
+Default and ML boolean expressions use `true`, `false`, comparisons, `&&`, `||`, and `!`.
+Conditionals are expressions: Default and ML support `match`, Default also
 supports `cond ? then : else` and `if ... else`, and each form lowers to a
 two-arm `Expr::Match`.
+
+[Python flavor](0041-PythonFlavorSyntax.md#expressions-and-iteration--flavor-python-expressions) spells booleans `True`/`False` and operators `and`/`or`/`not`. Its conditional expressions and `if`/`elif`/`else` suites lower to the same boolean matches; its `match`/`case` uses Osprey's exhaustive matching rules.
 
 ```osprey
 let status = match isValid {

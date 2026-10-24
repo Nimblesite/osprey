@@ -6,10 +6,9 @@ semantics live in the linked chapters.
 ## Flavors
 
 Default (`.osp`) uses braces, `fn`, and parenthesized calls. ML (`.ospml`) uses
-layout, whitespace application, and currying by default. Each frontend lowers
-to the same `osprey_ast::Program` before semantic analysis.
+layout, whitespace application, and currying by default. Python (`.py` with `# osprey: flavor=python`) uses `def`, indentation and flat calls; its supported subset is specified in [Python Flavor Syntax](0041-PythonFlavorSyntax.md). All three frontends lower to the same `osprey_ast::Program` before semantic analysis.
 
-Shared AST does not mean every surface form exists in both flavors. Default has
+Shared AST does not mean every surface form exists in every flavor. Default has
 `if` and structural ternary spellings that ML omits. The
 surface/core contract is [FLAVOR-BOUNDARY](0023-LanguageFlavors.md); complete ML
 grammar is in [ML Flavor Syntax](0024-MLFlavorSyntax.md). Multi-file and

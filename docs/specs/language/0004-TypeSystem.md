@@ -16,9 +16,7 @@
 
 ## Hindley-Milner Inference
 
-Osprey uses Hindley-Milner inference over the canonical AST produced by either
-surface syntax ([FLAVOR-BOUNDARY]). Examples show both surfaces where their
-spellings differ.
+Osprey uses Hindley-Milner inference over the canonical AST produced by Default, ML and Python frontends ([FLAVOR-BOUNDARY]). Examples below show Default and ML syntax. [Python Flavor Syntax](0041-PythonFlavorSyntax.md) specifies its supported annotation and declaration forms over the same type system.
 
 Type annotations are optional everywhere they can be inferred:
 

@@ -1,7 +1,6 @@
 # Iterators and Iteration
 
-Osprey has no `for`, `while`, or `loop` construct. Range pipelines provide the
-iteration surface in both language flavors.
+Default and ML use range pipelines rather than `for`, `while` or `loop`. [Python flavor](0041-PythonFlavorSyntax.md#expressions-and-iteration--flavor-python-expressions) also accepts `for name in iterator:` and list comprehensions, lowering them to the same iterator operations. It rejects `while`, loop `else`, `break` and `continue`.
 
 ## Core Iterator Functions — [BUILTIN-ITER]
 
