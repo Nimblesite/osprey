@@ -187,6 +187,17 @@ mod tests {
     use std::collections::BTreeSet;
 
     #[test]
+    fn documentation_examples_parse_in_default_flavor() {
+        let broken: Vec<_> = builtin_docs()
+            .filter_map(|doc| {
+                let parsed = osprey_syntax::parse_program(doc.example);
+                (!parsed.errors.is_empty()).then(|| (doc.name, parsed.errors))
+            })
+            .collect();
+        assert!(broken.is_empty(), "malformed builtin examples: {broken:?}");
+    }
+
+    #[test]
     fn every_builtin_is_documented_with_matching_arity() {
         // The drift guard: the documented set and the registered scheme set must
         // be identical, and each doc's parameter count must equal its real arity.
