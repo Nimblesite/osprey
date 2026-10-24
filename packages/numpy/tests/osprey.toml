@@ -1,6 +1,6 @@
 [project]
 name = "numpy-tests"
 source_roots = [".", "../src", "../../testing/src"]
-python_sources = ["../src/storage.py", "../src/host.py", "../src/device.py", "../src/errors.py", "../src/layout.py", "../src/math.py", "../src/ndarray.py", "../src/linalg.py", "../../testing/src/check.py", "expected.py", "main.py"]
+python_sources = ["../src/storage.py", "../src/host.py", "../src/device.py", "../src/errors.py", "../src/layout.py", "../src/math.py", "../src/ndarray.py", "../src/linalg.py", "../../testing/src/check.py", "expected.py", "support.py", "extra_cases.py", "main.py"]
 default_namespace = "numpy_tests"
 entry = "main.py"

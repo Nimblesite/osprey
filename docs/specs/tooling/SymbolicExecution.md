@@ -185,6 +185,10 @@ A stream is a `malloc`ed buffer of the cap's bytes made symbolic with `klee_make
 
 These are the only stateful mocks. Read-until-EOF loops (`osp_input`, `readFile`'s short-read loop in `file_runtime.c`) never terminate if reads don't track a cursor, so stateless reads would turn every input loop into path explosion. Files keep no state between opens: a file written and then reopened reads back as fresh symbolic content. That over-approximates, and replay filters out any false positive it causes.
 
+### Symbolic read buffers — `[SYMEX-MOCK-READ-BUFFER]`
+
+`readFile` uses the configured, clamped stream cap plus two bytes for its initial buffer in a symbolic build: one byte beyond the maximum possible read forces a short read, and one holds the terminator. Allocating the native 64 KiB buffer instead caused a symbolic terminator write to send a 64 KiB array to the solver even for a one-byte input. The cap does not reduce the modeled input beyond `--input-bytes`. Ordinary native builds retain their 64 KiB initial chunk and growth behavior. Mock tests cover negative, zero, small, maximum and oversized caps; the real file-input crash case must finish and reproduce within ten seconds.
+
 ### Stateless models — `[SYMEX-MOCK-STATELESS]`
 
 | Group | Functions | Model |
@@ -253,7 +257,7 @@ The expandable **For AI** section embeds the complete JSON, including every find
 
 ### Planted crash gate — `[SYMEX-CRASH-GATE]`
 
-`tests/hunt/crash-cases.json` pins fifteen input cases across Default, ML and Python flavor: stdin, parsing, checked arithmetic, lists, maps, closures, recursion, unions, record invariants, JSON, file input, invalid C free and C double free. `scripts/hunt_crashes.py` runs each program independently and asserts its exact expected finding set, source locations, concrete inputs and native signals. Every finding must reproduce; incomplete exploration, tool errors, missing findings, wrong inputs, KLEE-only results and skipped replay fail. Deliberate C-boundary misuse is labeled as planted, not mistaken for an unexpected compiler defect.
+`tests/hunt/crash-cases.json` pins fifteen input cases across Default, ML and Python flavor: stdin, parsing, checked arithmetic, lists, maps, closures, recursion, unions, record invariants, JSON, file input, invalid C free and C double free. `scripts/hunt_crashes.py` runs each program independently and asserts its exact expected finding set, source locations, concrete inputs and native signals. Every finding must reproduce, each case must include a normal symbolic path, and benign stdin `Z` must exit normally with exact expected output. Missing or corrupt KTEST inputs are reported as skipped and are never replaced with invented empty input. Incomplete exploration, tool errors, missing findings, wrong inputs, KLEE-only results and skipped replay fail. Deliberate C-boundary misuse is labeled as planted, not mistaken for an unexpected compiler defect.
 
 `make hunt-crashes` builds prerequisites and calls the strict `_test_hunt_crashes` target. CI installs KLEE and builds its runtime before this target in the existing required macOS coverage job. The required C-runtime job runs the mock and corpus tooling assertions through `_test_hunt_mock`. Missing KLEE fails the planted-crash gate; it has no skip path. Reports are uploaded as `hunt-crash-reports`.
 
@@ -263,7 +267,7 @@ The expandable **For AI** section embeds the complete JSON, including every find
 
 ### Quick corpus qualification — `[SYMEX-CORPUS-QUICK]`
 
-`scripts/hunt_sample.py` inventories runnable programs under `tests`, `examples`, `Book/examples`, `packages`, `registry` and `benchmarks`, using the shared `hunt_programs.py` inventory. Each manifest app is one program; its individual modules, libraries without an entry point and deliberate compilation-rejection examples are excluded. Default/ML standalone files and Python-entry projects are included. Known unportable programs are attempted and reported, rather than silently dropped.
+`scripts/hunt_sample.py` inventories runnable programs under `tests`, `examples`, `Book/examples`, `packages`, `registry` and `benchmarks`, using the shared `hunt_programs.py` inventory. Each manifest app is one program; its individual modules, libraries without an entry point and deliberate compilation-rejection examples are excluded. Standalone Default/ML files, Python files carrying the Osprey flavor header, and Python-entry projects are included. Known unportable programs are attempted and reported, rather than silently dropped.
 
 The whole CLI invocation, including compilation, engine execution and native replay, has a ten-second wall-clock deadline. The runner starts a separate process session and kills its process group on timeout. Default engine budget: eight seconds; symbolic input cap: two bytes per stream; concurrency: four. These are explicit sampling bounds, not an exhaustive check of arbitrary input sizes. The compiler and runtime are snapshotted and fingerprinted so concurrent rebuilds do not change a sweep's executable midway through.
 

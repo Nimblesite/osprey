@@ -7,9 +7,7 @@ Small programs with a known Hunt result, run by `make _test_hunt` (part of
 expectation; the findings are the same on every host [SYMEX-HOSTS].
 
 Osprey programs cannot index out of bounds or dereference null by
-construction. Apart from the deliberately planted C `abort()` in `crash.osp`,
-a `memory`, `abort` or `arith` finding here is a compiler,
-runtime or mock defect. `json_empty.osp` was added when the corpus sweep found
+construction. The cases pinned in `crash-cases.json` deliberately abort or violate C memory rules. Other `memory`, `abort` or `arith` findings in safe Osprey code indicate a compiler, runtime or mock defect. `json_empty.osp` was added when the corpus sweep found
 `close_container` in `json_runtime.c` forming `NULL + 0` for an empty
 container (a klee-only `memory` finding reported at the Osprey call).
 `record_update_list.osp` pins osprey#293: a record update whose new field
@@ -34,6 +32,6 @@ Open the printed `report.html` path for the explanation and **For AI** context. 
 
 Four explored paths, three normal exits, one reproduced crash and zero unfinished paths means Hunt found the failing execution. Paths are different possible executions, not repeated attempts or a detection success rate. Findings are deduplicated, so their count need not equal the number of failing paths. An unsupported operation is not a program crash; an unfinished path is not evidence of safety.
 
-`make hunt-crashes` runs the fifteen input cases pinned in `crash-cases.json`, using real KLEE and native replay. Each isolated program must report exactly the expected class and source location, the expected stdin/file payload and an allowed native signal. Tool errors, missing findings, incomplete exploration, KLEE-only results and skipped replay fail. The two `memory` cases intentionally misuse C `free`; the others intentionally abort at application invariants. Default, ML and Python-flavor projects are covered. CI requires this gate and uploads its HTML/JSON reports.
+`make hunt-crashes` runs the fifteen input cases pinned in `crash-cases.json`, using real KLEE and native replay. Each isolated program must have a normal symbolic path, pass a benign-input native check, and report exactly the expected class and source location, the expected stdin/file payload and an allowed native signal. Tool errors, missing findings, incomplete exploration, KLEE-only results and skipped replay fail. The two `memory` cases intentionally misuse C `free`; the others intentionally abort at application invariants. Default, ML and Python-flavor projects are covered. CI requires this gate and uploads its HTML/JSON reports.
 
 `python3 scripts/hunt_sample.py --out target/my-hunt-sample` samples all runnable apps with a hard ten-second cutoff and writes an HTML summary plus `quick-corpus.txt`. Only complete, bounded, finding-free runs qualify. Source modules and non-entry libraries are not separate apps. Keep the generated reports local; review candidate timing on the CI host before promoting the manifest to a required gate.

@@ -8,7 +8,7 @@ tags: [testing, hunt, symbolic-execution]
 
 `osprey hunt` explores your program with symbolic inputs and reports inputs that reach a failure. It uses KLEE to follow branches through stdin, file reads, entropy and clock values, then replays findings on a native build. You get source locations and concrete inputs to investigate.
 
-The command is `osprey hunt`, with no leading dash. It accepts a Default or ML source file, a project directory or an `osprey.toml` manifest. A project can include Python-flavor sources through its manifest.
+The command is `osprey hunt`, with no leading dash. It accepts a Default, ML or Python-flavor source file, a project directory or an `osprey.toml` manifest. Python-flavor files carry `# osprey: flavor=python`.
 
 ## Run your first hunt
 
@@ -71,7 +71,7 @@ Each finding includes its class, Osprey source location when available, runtime 
 | `skipped` or `not run` | Read the reason, or rerun with native replay enabled. There is no native reproduction verdict yet. |
 | `incomplete` | Some paths hit time, memory or solver limits. Adjust the budget or reduce the input bound. |
 
-A memory-safety failure in generated Osprey code points to a compiler, runtime or symbolic-model defect. Keep the reported source location and input when reporting it.
+A memory-safety failure outside deliberate or unsafe C-boundary misuse points to a compiler, runtime or symbolic-model defect. Keep the reported source location and input when reporting it.
 
 ## Options and automation
 
@@ -104,7 +104,7 @@ From a built checkout with KLEE installed:
 python3 scripts/hunt_sample.py --out target/my-hunt-sample
 ```
 
-This inventories runnable programs across tests, examples, book examples, package apps, registry apps and benchmarks. Projects are counted once; their individual modules and libraries without an entry point are excluded. Default and ML files and Python-entry projects are included. Known engine limitations are sampled rather than silently skipped.
+This inventories runnable programs across tests, examples, book examples, package apps, registry apps and benchmarks. Projects are counted once; their individual modules and libraries without an entry point are excluded. Default/ML files, standalone Python-flavor files and Python-entry projects are included. Known engine limitations are sampled rather than silently skipped.
 
 Each invocation gets a hard **10-second wall-clock deadline**, including compilation and replay. The sampler kills the whole process group on timeout. Its default engine budget is eight seconds with two symbolic bytes per stream. The ordinary Hunt `--max-time` flag limits the engine; it is not this whole-command deadline.
 
@@ -116,7 +116,7 @@ Open the generated `index.html`. `quick-corpus.txt` lists only programs that exi
 make hunt-crashes
 ```
 
-The gate covers fifteen planted input cases: stdin, parsing, checked arithmetic, lists, maps, closures, recursion, unions, record invariants, JSON, file input, invalid C free, C double free, ML flavor and Python flavor. Each runs independently within ten seconds. Every expected class, source location, concrete input, file payload and native signal must match. Missing findings, unfinished analysis, tool errors, skipped replay and KLEE-only findings fail the gate.
+The gate covers fifteen planted input cases: stdin, parsing, checked arithmetic, lists, maps, closures, recursion, unions, record invariants, JSON, file input, invalid C free, C double free, ML flavor and Python flavor. Each runs independently within ten seconds. Every expected class, source location, concrete input, file payload and native signal must match. Each case must also have a normal symbolic path, and benign stdin `Z` must finish normally with the exact expected output. Missing findings, unfinished analysis, tool errors, skipped replay and KLEE-only findings fail the gate.
 
 These tests deliberately violate application invariants or the unsafe C boundary. They demonstrate detection of known failures; they are not new compiler defects. CI runs the real KLEE/native-replay gate in the existing required macOS coverage job and the mock/runtime tooling tests in the required C-runtime job. Reports are uploaded as `hunt-crash-reports`. A missing engine fails the crash gate rather than skipping it.
 

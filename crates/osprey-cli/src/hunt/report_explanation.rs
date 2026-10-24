@@ -46,7 +46,7 @@ fn assessment(finding: &Finding) -> (&'static str, &'static str) {
         Replay::Reproduced(_) => ("Reproduced in a normal run", "Inspect this source location with the input below. A crash in safe Osprey code can indicate a compiler or runtime defect; include the For AI context when reporting it."),
         Replay::KleeOnly => ("Not reproduced in a normal run", "The normal program did not reproduce the failure. Investigate the engine model and input assumptions before changing your program."),
         Replay::NotRun => ("Not confirmed in a normal run", "Run Hunt again without --no-replay to check whether the same input also fails in a normal build."),
-        Replay::Skipped(_) => ("Normal-run check could not finish", "Read the replay reason in For AI. Run the program normally with the recorded input to investigate the result."),
+        Replay::Skipped(_) => ("Normal-run check unavailable", "Read the replay reason in For AI. Re-run Hunt to obtain valid recorded inputs, or check the program manually when native replay is unavailable."),
     }
 }
 

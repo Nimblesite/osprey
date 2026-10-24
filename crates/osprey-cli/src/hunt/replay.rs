@@ -21,7 +21,10 @@ const REPLAY_TIMEOUT: Duration = Duration::from_secs(30);
 pub(crate) fn replay(input: &CompilationInput, findings: &mut [Finding]) -> Result<(), String> {
     // An unmodelled finding is skipped whether or not anything else runs, so a
     // report with only unmodelled findings reads the same as a mixed one.
-    for finding in findings.iter_mut().filter(|finding| !replayable(finding)) {
+    for finding in findings
+        .iter_mut()
+        .filter(|finding| finding.class == Class::Unmodelled)
+    {
         finding.replay =
             Replay::Skipped("an unmodelled call stops the path under KLEE only".to_string());
     }
@@ -44,7 +47,7 @@ pub(crate) fn replay(input: &CompilationInput, findings: &mut [Finding]) -> Resu
 }
 
 fn replayable(finding: &Finding) -> bool {
-    finding.class != Class::Unmodelled
+    finding.class != Class::Unmodelled && matches!(finding.replay, Replay::NotRun)
 }
 
 fn replay_all(exe: &Path, workdir: &Path, findings: &mut [Finding]) -> Result<(), String> {

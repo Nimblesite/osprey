@@ -69,6 +69,18 @@ suite("hunt report", () => {
     );
   });
 
+  test("unfinished and unexplored runs are never described as clean", () => {
+    const bodies = [
+      report({ findings: [] }),
+      report({ findings: [], incomplete: [{ test: "cut", reason: "time budget" }] }),
+      report({ findings: [], explored: { paths: 0, completed: 0, instructions: 0, elapsed: "" } }),
+    ];
+    for (const body of bodies) {
+      assert.ok(huntSummary(body).includes("unfinished"), huntSummary(body));
+      assert.ok(!huntSummary(body).includes("found no bugs"), huntSummary(body));
+    }
+  });
+
   test("a reproduced finding is an error, klee-only a warning, unmodelled information", () => {
     const [memory, unmodelled] = report().findings;
     assert.strictEqual(findingSeverity(memory), DiagnosticSeverity.Error);

@@ -92,3 +92,44 @@ fn html_safely_explains_an_unsupported_operation_and_embeds_raw_ai_context() {
     );
     assert!(!html.contains("<script>"));
 }
+
+#[cfg(unix)]
+fn report_with_input_artifact(kind: &str) -> serde_json::Value {
+    let scene = Scene::new(&format!("input-artifact-{kind}"), "print(\"hello\")\n");
+    scene.canned_finding();
+    match kind {
+        "missing" => {
+            std::fs::remove_file(scene.root.join("canned/test000001.ktest")).expect("remove")
+        }
+        "corrupt" => scene.canned("test000001.ktest", b"not a KTEST"),
+        _ => scene.canned("test000001.ktest", &ktest::encode(&[])),
+    }
+    let out = scene.root.join("report").display().to_string();
+    let (stdout, code) = run_scene(&scene, 0, &["--out", &out, "--json"]).expect("hunt");
+    assert_eq!(code, ExitCode::SUCCESS);
+    json(&stdout)
+}
+
+#[test]
+#[cfg(unix)]
+fn missing_or_corrupt_inputs_are_not_replayed_as_invented_empty_stdin() {
+    for kind in ["missing", "corrupt", "empty"] {
+        let value = report_with_input_artifact(kind);
+        let finding = &value["findings"][0];
+        assert_eq!(finding["stdin"], "");
+        assert_eq!(
+            finding["replay"],
+            if kind == "empty" {
+                "klee-only"
+            } else {
+                "skipped"
+            },
+            "{kind}"
+        );
+        if kind != "empty" {
+            assert!(finding["replayDetail"]
+                .as_str()
+                .is_some_and(|s| s.contains("KTEST")));
+        }
+    }
+}

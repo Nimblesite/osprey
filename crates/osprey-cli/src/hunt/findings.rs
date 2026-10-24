@@ -163,6 +163,9 @@ fn record(
         Some(class) => {
             let inputs = inputs(directory, test);
             let mut found = finding(test, suffix, class, &report, inputs.as_ref());
+            if inputs.is_none() {
+                found.replay = Replay::Skipped("concrete KTEST input is missing or invalid; no input was invented for native replay".to_string());
+            }
             name_externals(&mut found, externals);
             scan.findings.push(found);
         }
