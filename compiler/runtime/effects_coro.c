@@ -49,6 +49,7 @@ typedef struct OspreyCoro {
     bool joined;
     bool suspended;
     bool done;
+    bool abandoned;
     bool abort;
     // One perform occupies the mailbox/resume_value channel at a time
     // [EFFECTS-FIBER-PERFORM]. Concurrent performers (fibers spawned inside
@@ -68,6 +69,19 @@ typedef struct CoroStartArgs {
     void *body_env;
     HandlerSnapshot *snapshot;
 } CoroStartArgs;
+
+static void abandon_body(void);
+void __osprey_coro_free(void *raw);
+
+static void finish_wait(OspreyCoro *coro) {
+    bool abandoned = coro->abandoned && coro->done;
+    pthread_mutex_unlock(&coro->lock);
+    if (abandoned) {
+        pthread_cleanup_push(__osprey_coro_free, coro);
+        abandon_body();
+        pthread_cleanup_pop(1);
+    }
+}
 
 static void *checked_malloc(size_t size, const char *what) {
     void *p = malloc(size);
@@ -141,6 +155,7 @@ void *__osprey_coro_new(void *env) {
     coro->joined = false;
     coro->suspended = false;
     coro->done = false;
+    coro->abandoned = true;
     coro->abort = false;
     coro->in_flight = false;
     coro->mail = NULL;
@@ -151,8 +166,16 @@ void *__osprey_coro_new(void *env) {
 }
 
 static void coro_thread_cleanup(void *raw) {
+    CoroStartArgs *args = raw;
     __osprey_handler_stack_cleanup();
     osp_prof_thread_unregister();
+    // Implements [EFFECTS-FINALIZATION]: abandonment must wake a nested
+    // continuation's waiter so the same unwind reaches every ancestor.
+    pthread_mutex_lock(&args->coro->lock);
+    args->coro->done = true;
+    args->coro->suspended = false;
+    pthread_cond_broadcast(&args->coro->cond);
+    pthread_mutex_unlock(&args->coro->lock);
     free(raw);
 }
 
@@ -171,14 +194,11 @@ static void *__osprey_coro_thread(void *raw) {
         args->snapshot = NULL;
     }
     result = args->body(args->body_env);
-    pthread_cleanup_pop(1);
-
     pthread_mutex_lock(&coro->lock);
     coro->result = result;
-    coro->done = true;
-    coro->suspended = false;
-    pthread_cond_broadcast(&coro->cond);
+    coro->abandoned = false;
     pthread_mutex_unlock(&coro->lock);
+    pthread_cleanup_pop(1);
     return NULL;
 }
 
@@ -214,7 +234,7 @@ void __osprey_coro_start(void *raw, int64_t (*body)(void *), void *body_env,
     while (!coro->suspended && !coro->done) {
         pthread_cond_wait(&coro->cond, &coro->lock);
     }
-    pthread_mutex_unlock(&coro->lock);
+    finish_wait(coro);
 }
 
 // The dropped continuation still owns its activations: finalize them inner to
@@ -345,7 +365,7 @@ int64_t __osprey_coro_resume(void *raw, int64_t value) {
         pthread_cond_wait(&coro->cond, &coro->lock);
     }
     int64_t result = coro->done ? coro->result : 0;
-    pthread_mutex_unlock(&coro->lock);
+    finish_wait(coro);
     return result;
 }
 

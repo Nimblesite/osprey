@@ -185,7 +185,7 @@ static void check_binary32(void) {
   }
   // floatBits/floatFromBits are the identity on words.
   for (unsigned i = 0; i < SPECIALS; i++) {
-    expect("floatBits", specials[i], 0, specials[i], word_of(truncated(of(specials[i]))) == 0 ? specials[i] : specials[i]);
+    expect("floatBits", specials[i], 0, bits(of(specials[i])), specials[i]);
     expect("floatFromBits", specials[i], 0, specials[i], specials[i]);
   }
 }

@@ -86,11 +86,56 @@ static void t_scope_coro_resume_and_abandon(void) {
   __osprey_coro_free(coro);
 }
 
+typedef struct {
+  void *outer;
+  void *inner;
+  int resume_inner;
+  int continued;
+} NestedAbort;
+
+static int64_t nested_abort_inner(void *raw) {
+  NestedAbort *env = raw;
+  if (env->resume_inner) {
+    (void)__osprey_coro_suspend(env->inner, OP_STATE_GET, NULL, NULL, 0);
+  }
+  return __osprey_coro_suspend(env->outer, OP_LOG_WRITE, NULL, NULL, 0);
+}
+
+static int64_t nested_abort_outer(void *raw) {
+  NestedAbort *env = raw;
+  __osprey_coro_start(env->inner, nested_abort_inner, env, NULL);
+  if (env->resume_inner) {
+    __osprey_coro_mail_free(__osprey_coro_take_args(env->inner));
+    (void)__osprey_coro_resume(env->inner, 1);
+  }
+  env->continued = 1;
+  return 0;
+}
+
+static void nested_abort_completes(void) {
+  for (int resume = 0; resume < 2; resume++) {
+    NestedAbort env = {.outer = __osprey_coro_new(NULL),
+                      .inner = __osprey_coro_new(NULL),
+                      .resume_inner = resume != 0, .continued = 0};
+    __osprey_coro_start(env.outer, nested_abort_outer, &env, NULL);
+    __osprey_coro_mail_free(__osprey_coro_take_args(env.outer));
+    __osprey_coro_abort(env.outer);
+    CHECK(__osprey_coro_done(env.outer));
+    CHECK(env.continued == 0);
+    __osprey_coro_free(env.outer);
+  }
+}
+
+static void t_nested_abort_unwinds_waiting_ancestors(void) {
+  CHECK(osp_death_signal_within(nested_abort_completes, 1) == 0);
+}
+
 static void t_handler_scope(void) {
   t_scope_forwarding();
   t_scope_nested_forwarding();
   t_scope_snapshot_preserves_activation();
   t_scope_coro_resume_and_abandon();
+  t_nested_abort_unwinds_waiting_ancestors();
   CHECK(__osprey_handler_push_scoped(OP_STATE_GET, (void *)fn_a, NULL, -1) == -1);
   CHECK(__osprey_handler_push_scoped(OP_STATE_GET, (void *)fn_a, NULL, 1) == -1);
   CHECK(__osprey_handler_depth() == 0);
