@@ -103,10 +103,8 @@ static bool double_is_integer(ulong y) {
 // case is exp(y ln x) at double precision; special bases and integer
 // exponents follow C's rules exactly.
 ulong pow64(ulong x, ulong y) {
-    if (is_nan(y)) return nan_result(x, y);
-    if (is_nan(x)) return (is_zero(y) || x == F64_ONE) ? F64_ONE : x | QUIET;
-    if (is_zero(y)) return F64_ONE;
-    if (x == F64_ONE) return F64_ONE;
+    if (is_zero(y) || x == F64_ONE) return F64_ONE;
+    if (is_nan(x) || is_nan(y)) return nan_result(x, y);
     bool y_neg = (y & SIGN) != 0;
     bool y_integer = double_is_integer(y);
     bool x_neg = (x & SIGN) != 0;
@@ -116,8 +114,7 @@ ulong pow64(ulong x, ulong y) {
         if (ax < F64_ONE) return y_neg ? INF : 0;
         return F64_ONE;
     }
-    if (x_neg && !y_integer) return nan_result(0, 0);
-    bool odd = x_neg && (to_long(y) & 1);
+    bool odd = x_neg && y_integer && parts(y).exponent < 53 && (to_long(y) & 1);
     if (is_zero(ax)) {
         if (y_neg) return odd ? (INF | SIGN) : INF;
         return odd ? x : 0;
@@ -126,6 +123,7 @@ ulong pow64(ulong x, ulong y) {
         if (y_neg) return odd ? (0x8000000000000000ul) : 0;
         return odd ? (INF | SIGN) : INF;
     }
+    if (x_neg && !y_integer) return nan_result(0, 0);
     // General: x^y = exp(y ln |x|); the sign is folded from the odd exponent.
     // exp64 itself returns the correct infinity/zero on overflow/underflow.
     ulong z = multiply64(y, ln64(ax));
@@ -135,10 +133,10 @@ ulong pow64(ulong x, ulong y) {
 
 // [BUILTIN-MATH-ROUNDING] hypot(x, y) = sqrt(x^2 + y^2) without overflow.
 ulong hypot64(ulong x, ulong y) {
-    if (is_nan(x) || is_nan(y)) return nan_result(x, y);
     if (is_inf(x) || is_inf(y)) return INF;
-    if (is_zero(x)) return y;
-    if (is_zero(y)) return x;
+    if (is_nan(x) || is_nan(y)) return nan_result(x, y);
+    if (is_zero(x)) return abs64(y);
+    if (is_zero(y)) return abs64(x);
     ulong ax = abs64(x), ay = abs64(y);
     ulong big = lt64(ax, ay) ? ay : ax;
     ulong small = lt64(ax, ay) ? ax : ay;
@@ -347,14 +345,13 @@ ulong acos64(ulong x) {
 
 ulong atan264(ulong y, ulong x) {
     if (is_nan(x) || is_nan(y)) return nan_result(x, y);
-    if (is_zero(x) && is_zero(y)) return (y & SIGN) ? (PI | SIGN) : 0;
+    if (is_zero(y)) return (x & SIGN) ? ((y & SIGN) | PI) : y;
     if (is_inf(x) && is_inf(y)) {
         ulong pi4 = 0x3fe921fb54442d18ul, pi34 = 0x4002d97c7f3321d2ul;
         if (x & SIGN) return (y & SIGN) ? (pi34 | SIGN) : pi34;
         return (y & SIGN) ? (pi4 | SIGN) : pi4;
     }
     if (is_zero(x)) return (y & SIGN) ? (PI2_HI | SIGN) : PI2_HI;
-    if (is_zero(y)) return (x & SIGN) ? ((y & SIGN) ? (PI | SIGN) : PI) : y;
     if (is_inf(x)) return (x & SIGN) ? ((y & SIGN) ? (PI | SIGN) : PI) : ((y & SIGN) ? (0x8000000000000000ul) : 0);
     if (is_inf(y)) return (y & SIGN) ? (PI2_HI | SIGN) : PI2_HI;
     ulong q = atan64(divide64(y & ~SIGN, x & ~SIGN));

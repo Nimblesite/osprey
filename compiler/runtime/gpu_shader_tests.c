@@ -282,6 +282,17 @@ static void check_soft_binary(const char *what, device_binary device, host_binar
   printf("[ok] %s: binary within 1 ulp of the host long double libm over %u trials\n", what, TRIALS);
 }
 
+static void check_binary_specials(void) {
+  const double values[] = {0.0, -0.0, 1.0, -1.0, 3.0, -3.0, 0.5, -0.5, INFINITY, -INFINITY, NAN};
+  for (unsigned i = 0; i < sizeof values / sizeof *values; i++)
+    for (unsigned j = 0; j < sizeof values / sizeof *values; j++) {
+      uint64_t a = bits(values[i]), b = bits(values[j]);
+      soft_binary_case("pow specials", pow64, pow, a, b);
+      soft_binary_case("hypot specials", hypot64, hypot, a, b);
+      soft_binary_case("atan2 specials", atan264, atan2, a, b);
+    }
+}
+
 static void check_transcendental(const char *what, device_unary device, host_unary host, int low, int range) {
   unsigned long exact = 0, trials = 0;
   uint64_t worst = 0;
@@ -335,6 +346,7 @@ static void check_matmul_kernel(void) {
 }
 
 int main(void) {
+  check_binary_specials();
   check_binary("add", add64, host_add);
   check_binary("sub", sub64, host_sub);
   check_binary("mul", multiply64, host_mul);
