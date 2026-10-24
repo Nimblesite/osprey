@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { test } from 'node:test'
 import { classify } from './ci-scope.mjs'
+import { targetsMainPullRequests } from './workflow-pr-target.mjs'
 
 const cases = [
   ['book chapter and runnable example', ['Book/manuscript/04.md', 'Book/examples/chapter-04/main.osp'], false, true, false],
@@ -76,4 +77,14 @@ test('Dependabot stages updates and keeps a consolidation PR flowing to main', (
   assert.doesNotMatch(sweep, /pull_request_target:/)
   assert.match(sweep, /--head dependabot-upgrades --base main/)
   assert.match(sweep, /git diff -z --name-only/)
+})
+
+test('branch protection distinguishes staging automation from main CI without exempting jobs', () => {
+  for (const branches of ['[main]', '[main, dependabot-upgrades]', '["m*"]']) {
+    assert.equal(targetsMainPullRequests(`on:\n  pull_request:\n    branches: ${branches}\n`), true)
+  }
+  assert.equal(targetsMainPullRequests('on:\n  pull_request:\n'), true)
+  assert.equal(targetsMainPullRequests('on:\n  pull_request:\n    branches:\n      - dependabot-upgrades\n'), false)
+  assert.equal(targetsMainPullRequests('on:\n  pull_request:\n    branches: [dependabot-upgrades]\n'), false)
+  assert.equal(targetsMainPullRequests('on:\n  workflow_call:\n'), false)
 })
