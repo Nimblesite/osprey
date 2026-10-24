@@ -41,6 +41,7 @@ impl Lowerer<'_> {
             ("static_effect", "class_definition") => {
                 self.effect(definition, osprey_ast::Stage::Static)
             }
+            ("union", "class_definition") => self.union(definition),
             (_, "function_definition") => self.required_function(definition, decorator),
             (_, "class_definition") => self.handler(definition, decorator),
             _ => self.unsupported(definition),
@@ -100,6 +101,36 @@ impl Lowerer<'_> {
                 })
             })
             .collect()
+    }
+
+    /// `@union class Shape:` declares an Osprey sum type: each immediately
+    /// nested, undecorated record class supplies one variant's fields
+    /// ([FLAVOR-PYTHON-CLASS]).
+    fn union(&mut self, node: Node<'_>) -> Result<Stmt> {
+        self.reject_field(node, "superclasses")?;
+        let name = self.declaration_name(node)?;
+        let variants = self
+            .body_nodes(Self::field(node, "body")?)
+            .into_iter()
+            .map(|variant| self.variant(variant))
+            .collect::<Result<_>>()?;
+        self.data_type(node, name, variants, None)
+    }
+
+    fn variant(&mut self, node: Node<'_>) -> Result<TypeVariant> {
+        self.reject_field(node, "superclasses")?;
+        self.reject_field(node, "type_parameters")?;
+        let name = self.field_name(Self::field(node, "name")?)?;
+        let fields = self
+            .body_nodes(Self::field(node, "body")?)
+            .into_iter()
+            .filter(|field| field.kind() != "pass_statement")
+            .map(|field| self.record_field(field))
+            .collect::<Result<_>>()?;
+        Ok(TypeVariant {
+            name: self.text(name).into(),
+            fields,
+        })
     }
 
     pub(super) fn record(&mut self, node: Node<'_>) -> Result<Stmt> {

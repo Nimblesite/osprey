@@ -1,6 +1,7 @@
 //! Python concrete syntax lowers directly to the shared Osprey AST.
 //! Implements [FLAVOR-PYTHON-BOUNDARY], [FLAVOR-PYTHON-SELECT],
 //! [FLAVOR-PYTHON-CST], and [FLAVOR-PYTHON-FUNCTIONS].
+use osprey_ast::{Expr, Stmt};
 use osprey_syntax::{parse_program_with_flavor, resolve_flavor, Flavor, Parsed};
 
 #[expect(
@@ -132,7 +133,7 @@ fn equal_with_handler_functions(default: &str, source: &str) {
     );
 }
 
-fn handler_lets_as_functions(statement: osprey_ast::Stmt) -> osprey_ast::Stmt {
+fn handler_lets_as_functions(statement: Stmt) -> Stmt {
     use osprey_ast::{Expr, Stmt};
     match statement {
         Stmt::Namespace {
@@ -476,6 +477,192 @@ fn typed_python_none_spells_unit_and_pep695_aliases_remain_osprey_types() {
         "fn noop() -> Unit = {}\ntype Label = string\n",
         "def noop() -> None:\n    return None\ntype Label = str\n",
     );
+}
+
+#[test]
+fn python_union_classes_declare_sum_type_variants() {
+    // [FLAVOR-PYTHON-CLASS]
+    equal(
+        "type Shape = Circle { r: float } | Square { side: float }\n",
+        "@union\nclass Shape:\n    class Circle:\n        r: float\n    class Square:\n        side: float\n",
+    );
+}
+
+#[test]
+fn python_variant_construction_and_patterns_equal_default_ast() {
+    // [FLAVOR-PYTHON-CLASS]
+    equal(
+        "type Shape = Circle { r: float } | Square { side: float }\nlet c = Circle { r: 1.0 }\nlet s = Square { side: 2.0 }\nfn area(shape) = match shape { Circle { r } => 3.0 * r * r\n Square { side } => side * side }\n",
+        "@union\nclass Shape:\n    class Circle:\n        r: float\n    class Square:\n        side: float\nc = Circle(r=1.0)\ns = Square(side=2.0)\ndef area(shape):\n    match shape:\n        case Circle(r=r):\n            return 3.0 * r * r\n        case Square(side=side):\n            return side * side\n",
+    );
+}
+
+#[test]
+fn python_variant_pattern_renames_bind_the_written_name() {
+    // A `field = binder` keyword pattern with a differing binder lowers to the
+    // field bound under its own name plus a `let binder = field` arm prefix.
+    equal(
+        "type Shape = Circle { r: float } | Square { side: float }\nfn area(shape) = match shape { Circle { r } => 3.0 * r * r\n Square { side } => { let x = side\n x * x } }\n",
+        "@union\nclass Shape:\n    class Circle:\n        r: float\n    class Square:\n        side: float\ndef area(shape):\n    match shape:\n        case Circle(r=r):\n            return 3.0 * r * r\n        case Square(side=x):\n            return x * x\n",
+    );
+}
+
+#[test]
+fn python_qualified_variant_patterns_across_imports_equal_default_ast() {
+    equal(
+        "import shapes as Shapes\nfn area(shape) = match shape { Shapes::Circle { r } => r }\n",
+        "import shapes as Shapes\ndef area(shape):\n    match shape:\n        case Shapes.Circle(r=r):\n            return r\n",
+    );
+}
+
+#[test]
+fn python_pep695_function_type_parameters_equal_default_ast() {
+    // [FLAVOR-PYTHON-TYPING]
+    equal(
+        "fn checked<T>(work) = work()\n",
+        "def checked[T](work):\n    return work()\n",
+    );
+}
+
+#[test]
+fn python_result_pattern_renames_bind_the_written_name() {
+    equal(
+        "fn read(text) = match parseInt(text) { Success { value } => { let v = value\n v }\n Error { message } => 0 }\n",
+        "def read(text):\n    match parseInt(text):\n        case Success(value=v):\n            return v\n        case Error(message=message):\n            return 0\n",
+    );
+}
+
+#[test]
+fn python_empty_variant_patterns_destructure_nothing() {
+    let arms = python_match_arms(
+        "@union\nclass Shape:\n    class Nothing:\n        pass\n    class Point:\n        x: int\ndef kind(shape):\n    match shape:\n        case Nothing():\n            return 0\n        case Point(x=x):\n            return x\n",
+    );
+    let Some(first_arm) = arms.first() else {
+        panic!("expected at least one arm")
+    };
+    assert!(matches!(
+        &first_arm.pattern,
+        osprey_ast::Pattern::Constructor { name, fields, sub_patterns }
+            if name == "Nothing" && fields.is_empty() && sub_patterns.is_empty()
+    ));
+}
+
+#[test]
+fn python_list_comprehensions_lower_to_the_iterator_pipeline() {
+    // [FLAVOR-PYTHON-EXPRESSIONS]
+    equal(
+        "let xs = toList(map(items, fn(x) => f(x)))\nlet ys = toList(map(filter(items, fn(x) => p(x)), fn(x) => f(x)))\nlet zs = toList(map(range(0, length(xs)), fn(i) => i))\n",
+        "xs = [f(x) for x in items]\nys = [f(x) for x in items if p(x)]\nzs = [i for i in range(len(xs))]\n",
+    );
+}
+
+#[test]
+fn python_nested_comprehensions_lower_to_nested_folds() {
+    let parsed = parse("ys = [x + y for x in xs for y in items if x > 0]\n");
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let Some(Stmt::Let { value, .. }) = parsed.program.statements.first() else {
+        panic!("expected a binding")
+    };
+    let Expr::Call {
+        function,
+        arguments,
+        ..
+    } = value
+    else {
+        panic!("expected the outer fold call")
+    };
+    assert_eq!(function.as_ref(), &Expr::Identifier("fold".into()));
+    let [_, seed, callback] = arguments.as_slice() else {
+        panic!("fold takes three arguments")
+    };
+    assert!(matches!(seed, Expr::List(..)), "outer seed is a list");
+    let Expr::Lambda {
+        parameters, body, ..
+    } = callback
+    else {
+        panic!("expected an accumulator callback")
+    };
+    assert_eq!(parameters.len(), 2);
+    let Expr::Call { function, .. } = body.as_ref() else {
+        panic!("expected the inner fold")
+    };
+    assert_eq!(function.as_ref(), &Expr::Identifier("fold".into()));
+}
+
+#[test]
+fn python_for_statements_lower_to_for_each() {
+    equal(
+        "fn total(items) = { mut result = 0\n forEach(items, fn(n) => { result = result + n })\n result }\n",
+        "def total(items):\n    result = 0\n    for n in items:\n        result = result + n\n    return result\n",
+    );
+}
+
+#[test]
+fn python_rejects_unsupported_comprehensions_and_loops() {
+    for source in [
+        "s = {x for x in xs}\n",
+        "d = {k: v for k, v in pairs}\n",
+        "g = (x for x in xs)\n",
+        "def f(xs):\n    for a, b in xs:\n        pass\n",
+        "def f(xs):\n    for x in xs:\n        pass\n    else:\n        pass\n",
+        "def f(xs):\n    async for x in xs:\n        pass\n",
+        "def f(xs):\n    while True:\n        pass\n",
+    ] {
+        let parsed = parse(source);
+        assert!(!parsed.errors.is_empty(), "silently accepted {source}");
+        assert!(parsed.errors.iter().all(|error| error.position.line > 0));
+    }
+}
+
+#[test]
+fn python_module_docstring_documents_the_module() {
+    // [FLAVOR-PYTHON-CST]: the leading triple-quoted string documents the
+    // module the file contributes, not the file alone.
+    equal(
+        "namespace gpt2;\nmodule Backends {\n//! Loads tensors.\nexport let WIDTH = 768\n}\n",
+        "# osprey: namespace=gpt2\n# osprey: module=Backends\n\"\"\"Loads tensors.\"\"\"\n__all__ = [\"WIDTH\"]\nWIDTH = 768\n",
+    );
+}
+
+#[test]
+fn python_attribute_docstrings_document_constants_and_aliases() {
+    // PEP 257 attribute docstrings ([FLAVOR-PYTHON-CST]).
+    equal(
+        "namespace gpt2;\nmodule Api {\n/// Model width.\nexport let WIDTH = 768\n/// A label.\nexport type Label = string\n}\n",
+        "# osprey: namespace=gpt2\n# osprey: module=Api\n__all__ = [\"WIDTH\", \"Label\"]\nWIDTH = 768\n\"\"\"Model width.\"\"\"\ntype Label = str\n\"\"\"A label.\"\"\"\n",
+    );
+}
+
+fn python_match_arms(source: &str) -> Vec<osprey_ast::MatchArm> {
+    let parsed = parse(source);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let arms = find_match_arms(&parsed.program);
+    assert!(arms.is_some(), "expected a match expression");
+    arms.unwrap_or_default()
+}
+
+fn find_match_arms(program: &osprey_ast::Program) -> Option<Vec<osprey_ast::MatchArm>> {
+    program.statements.iter().find_map(stmt_match)
+}
+
+fn stmt_match(stmt: &Stmt) -> Option<Vec<osprey_ast::MatchArm>> {
+    match stmt {
+        Stmt::Function { body, .. } | Stmt::Let { value: body, .. } => expr_match(body),
+        _ => None,
+    }
+}
+
+fn expr_match(expr: &Expr) -> Option<Vec<osprey_ast::MatchArm>> {
+    match expr {
+        Expr::Match { arms, .. } => Some(arms.clone()),
+        Expr::Block {
+            statements, value, ..
+        } => statements
+            .iter()
+            .find_map(stmt_match)
+            .or_else(|| value.as_ref().and_then(|v| expr_match(v))),
+        _ => None,
+    }
 }
 
 #[test]
