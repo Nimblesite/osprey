@@ -109,7 +109,7 @@ flowchart LR
   rtbc --> klee
   klee --> out["output dir: test*.ktest, test*.<type>.err, info"]
   out --> replay["native build, recorded stdin and files"]
-  replay --> report[report, JSON]
+  replay --> report[HTML and JSON reports]
 ```
 
 ## Installing KLEE — `[SYMEX-INSTALL]`
@@ -124,14 +124,15 @@ KLEE runs natively on the host; there is no container in this pipeline. The supp
 
 ## CLI
 
-### `osprey hunt <file> [--max-time <seconds>] [--max-memory <mb>] [--input-bytes <n>] [--out <dir>] [--json] [--no-replay] [--quiet]` — `[SYMEX-CLI]`
+### `osprey hunt <file> [--max-time <seconds>] [--max-memory <mb>] [--input-bytes <n>] [--out <dir>] [--json] [--no-html] [--no-json] [--no-replay] [--quiet]` — `[SYMEX-CLI]`
 
 - Explores the program from `main` with symbolic stdin and files. `<file>` is one `.osp`/`.ospml` program or a project root (a directory holding `osprey.toml`, or that manifest), loaded exactly as `osprey <file>` loads it.
 - `--input-bytes` caps every symbolic byte stream (stdin and each opened file). The default is 64; the maximum is 4096, the mock libc's stream cap. A parse of the input forks on every symbolic byte, so the cap decides whether a run can finish: measured on `tests/hunt/clean.osp` with a 30 s budget, 2 bytes explores 26 paths and completes them all, 4 bytes completes 18 of 122, and 8, 16 and 64 bytes complete about 17 of 347 before the budget cuts the rest. Use a small cap to finish a program's paths and the default to reach as much code as the budget allows.
 - `--max-time` is KLEE's `--max-time` budget for the run, in seconds, enforced with `--watchdog`. The default is 60. When the watchdog has to kill the engine (a solver query still running at the budget, reported as "WATCHDOG: time expired"), the states it dumped on the way out are read like any other run and the report carries one more "incomplete" entry naming the kill; only an engine failure with no such cause is a tool error (exit 2), reported with the head and tail of what KLEE said.
 - `--max-memory` is KLEE's `--max-memory` cap in megabytes (at least 256). The default is 2000; a whole test suite explored as one long path can need more (Vigil's `app/tests` exceeded 2000 MB after 60 s).
-- `--out <dir>` keeps KLEE's output directory; without it the run uses a temporary directory that is deleted afterwards. The tool refuses to clear a non-empty `--out` directory that is not a previous KLEE run (one without an `info` file).
-- `--json` prints the report as JSON on stdout. It takes no path.
+- `--out <dir>` saves the HTML and JSON reports alongside KLEE's output directory; without it the raw run directory is temporary and reports are saved under `target/hunt/<program-and-run-id>/`. The tool refuses to clear a non-empty `--out` directory that is not a previous KLEE run (one without an `info` file).
+- `--json` also prints the report as JSON on stdout, with no additional path messages on stdout. It takes no path.
+- HTML and JSON files are enabled by default. `--no-html` and `--no-json` independently disable the corresponding saved file; `--no-json` does not suppress explicitly requested JSON stdout.
 - `--no-replay` skips the native replay.
 - `--quiet` suppresses the progress line on stderr. `--help` prints the synopsis and exits `0`.
 - Exits `0` with no findings (or only `klee-only` findings after replay), `1` when a finding reproduced natively, when any finding exists with `--no-replay`, or when the program does not compile, and `2` for a usage or toolchain error.
@@ -219,7 +220,7 @@ Each finding is one `test<N>.<suffix>.err` file in KLEE's output directory, pair
 
 The `.early` files (interrupted, max depth, out of memory) and unknown suffixes such as `model.err` and `solver.err` are not findings; the report counts them under "incomplete", grouped by reason, and `--json` carries them so a corpus run can tell "clean" from "ran out of time".
 
-Findings are deduplicated by class and the top Osprey frame (or the top C frame, or the message when there is neither). The report lists the class, the Osprey `file:line` from the top Osprey frame in KLEE's stack, the top C runtime frame, the concrete stdin and file bytes, and the replay verdict. A project's modules share one flattened line numbering in the compiled module, so for a project the tool maps that line back to the module file it was written in and reports that file's own path and line, the same mapping the checker's diagnostics use; a single-file program keeps the name its debug metadata carries. `--json` writes the same data for CI and the editor: `program`, `engine` ("KLEE"), `budgetSeconds`, `inputBytes`, `explored{paths,completed,instructions,elapsed}`, `findings[{test,class,suffix,message,file,line,runtimeFrame,stdin,files[{path,bytes}],replay,replayDetail}]` and `incomplete[{test,reason}]`.
+Findings are deduplicated by class and the top Osprey frame (or the top C frame, or the message when there is neither). The report lists the class, the Osprey `file:line` from the top Osprey frame in KLEE's stack, the top C runtime frame, the concrete stdin and file bytes, and the replay verdict. A project's modules share one flattened line numbering in the compiled module, so for a project the tool maps that line back to the module file it was written in and reports that file's own path and line, the same mapping the checker's diagnostics use; a single-file program keeps the name its debug metadata carries. `--json` writes the same data for CI and the editor: `program`, `engine` ("KLEE"), `budgetSeconds`, `inputBytes`, `explored{paths,completed,instructions,elapsed}`, `findings[{test,class,suffix,message,file,line,runtimeFrame,stdin,files[{path,bytes}],replay,replayDetail}]`, `incomplete[{test,reason}]`, and `context` as described in [SYMEX-REPORT-HTML].
 
 Osprey programs cannot index out of bounds or dereference null by construction, so a `memory`, `abort` or `arith` finding on an Osprey program is a compiler, runtime or mock defect, never a user bug; `unmodelled` findings name where the mock stops being accurate.
 
@@ -236,6 +237,15 @@ A signal death is `reproduced`; a clean exit — including a non-zero `main` the
 ### Regression tests — `[SYMEX-REGRESSION]`
 
 **Not built.** Every `reproduced` finding will be written to `tests/regressions/klee/<file>_<fn-or-main>_<class>.osp`, with the concrete input as literals and an `.expectedoutput` holding the correct output. The tool can't know what the correct output is, so it will write a placeholder that fails until a human fills it in, and the test stays red until the bug is fixed (the test-first rule in AGENTS.md). Running the tool again never overwrites an existing test. The `.ktest` will be kept beside the test so `--seed-file` can start a later run from it.
+
+
+### Human and AI reports — `[SYMEX-REPORT-HTML]`
+
+Every completed analysis saves `report.html` and `report.json` by default, including analyses with findings or unfinished paths. Text mode prints their absolute paths. Open the HTML file directly in a browser; it embeds the Osprey design tokens and needs no network connection or JavaScript. Report write failures are explicit tool errors (exit 2). Compilation and engine failures before analysis completes retain their existing diagnostics and do not produce a findings report.
+
+The HTML explains each finding in plain English, identifies the source line, shows the relevant input and gives a next step. It distinguishes a reproduced native crash, an unconfirmed engine finding, an unsupported operation and unfinished exploration. An unsupported `pipe` operation means Hunt cannot simulate process spawning; increasing the time budget cannot add that support. No findings is not proof of correctness.
+
+The expandable **For AI** section embeds the complete JSON, including every finding, replay verdict and detail, input, incomplete path, exploration count and budget. The additional `context` object records compiler version, engine executable and arguments, runtime bitcode, memory cap, replay setting, working directory, engine stderr, raw error and early-stop reports, engine info/messages/warnings, available source text, and every named symbolic object and its exact bytes for each finding (including entropy and clock inputs). Missing source text is recorded explicitly. Source text and diagnostic strings are HTML-escaped. These local artifacts contain source contents and paths; review them before sharing. The report links to this reference and the [KLEE documentation](https://klee-se.org/docs/) for deeper explanation.
 
 ## Corpus — `[SYMEX-CORPUS]`
 

@@ -24,36 +24,7 @@ const EXECUTABLE_SCHEMES: [&str; 3] = ["javascript:", "data:", "vbscript:"];
 /// still read the text of, that does nothing when clicked.
 const INERT: &str = "#";
 
-/// Escape text for HTML element content.
-pub(super) fn text(raw: &str) -> String {
-    let mut out = String::with_capacity(raw.len());
-    for c in raw.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            _ => out.push(c),
-        }
-    }
-    out
-}
-
-/// Escape text for a double-quoted HTML attribute. Element escaping is not
-/// enough here: an unescaped quote closes the attribute early.
-pub(super) fn attr(raw: &str) -> String {
-    let mut out = String::with_capacity(raw.len());
-    for c in raw.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&#39;"),
-            _ => out.push(c),
-        }
-    }
-    out
-}
+pub(super) use crate::html_escape::{attr, text};
 
 /// Escape a string as a JSON string body (no surrounding quotes).
 ///

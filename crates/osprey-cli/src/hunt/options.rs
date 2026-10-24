@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 pub(crate) const HUNT_USAGE: &str =
     "usage: osprey hunt <file> [--max-time <seconds>] [--max-memory <mb>] \
-[--input-bytes <n>] [--out <dir>] [--json] [--no-replay] [--quiet]";
+[--input-bytes <n>] [--out <dir>] [--json] [--no-html] [--no-json] [--no-replay] [--quiet]";
 
 /// Largest symbolic byte stream the mock libc holds (`OSP_HUNT_STREAM_MAX`).
 const INPUT_BYTES_MAX: u64 = 4096;
@@ -24,10 +24,18 @@ pub(crate) struct Options {
     /// Where KLEE's output directory goes; a temporary directory when unset.
     pub(crate) out: Option<PathBuf>,
     pub(crate) json: bool,
+    pub(crate) reports: ReportFormats,
     /// Run each finding on the native build to tell `reproduced` from
     /// `klee-only` [SYMEX-REPLAY].
     pub(crate) replay: bool,
     pub(crate) quiet: bool,
+}
+
+/// Independently selected report files; stdout remains a separate option.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ReportFormats {
+    pub(crate) html: bool,
+    pub(crate) json: bool,
 }
 
 pub(crate) fn parse(args: &[String]) -> Result<Options, String> {
@@ -38,6 +46,10 @@ pub(crate) fn parse(args: &[String]) -> Result<Options, String> {
         input_bytes: 64,
         out: None,
         json: false,
+        reports: ReportFormats {
+            html: true,
+            json: true,
+        },
         replay: true,
         quiet: false,
     };
@@ -60,6 +72,8 @@ fn parse_one(
 ) -> Result<(), String> {
     match argument {
         "--json" => options.json = true,
+        "--no-html" => options.reports.html = false,
+        "--no-json" => options.reports.json = false,
         "--no-replay" => options.replay = false,
         "--quiet" => options.quiet = true,
         "--max-time" => options.max_time = number(argument, rest.next(), 1, u64::MAX)?,

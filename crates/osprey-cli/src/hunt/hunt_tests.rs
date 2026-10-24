@@ -494,3 +494,6 @@ fn an_unmodelled_finding_fails_only_without_replay() {
         shows(&rendered, &["unmodelled", "main.osp:1"]);
     }
 }
+
+#[path = "report_artifact_tests.rs"]
+mod report_artifact_tests;

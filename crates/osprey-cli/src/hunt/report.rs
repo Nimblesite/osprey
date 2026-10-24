@@ -16,6 +16,8 @@ pub(crate) struct Report<'a> {
     pub(crate) options: &'a Options,
     pub(crate) exploration: &'a Exploration,
     pub(crate) scan: &'a Scan,
+    /// Exact engine invocation, raw diagnostics and source context for investigation.
+    pub(crate) context: Option<Value>,
 }
 
 pub(crate) fn text(report: &Report<'_>) -> String {
@@ -129,6 +131,7 @@ fn describe_reason(reason: &str) -> &str {
 pub(crate) fn json(report: &Report<'_>) -> Value {
     json!({
         "program": report.program,
+        "context": report.context,
         "engine": "KLEE",
         "budgetSeconds": report.options.max_time,
         "inputBytes": report.options.input_bytes,
@@ -226,6 +229,7 @@ mod tests {
             options: &parts.0,
             exploration: &parts.1,
             scan: &parts.2,
+            context: None,
         }
     }
 

@@ -177,6 +177,10 @@ fn every_ordering_of_every_flag_reads_the_same() {
         input_bytes: 32,
         out: Some("runs dir".into()),
         json: true,
+        reports: options::ReportFormats {
+            html: true,
+            json: true,
+        },
         replay: false,
         quiet: true,
     };

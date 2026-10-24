@@ -10,8 +10,9 @@
 - **Never ask the user questions.** Use your judgement, record assumptions, act autonomously.
 - **Answer punctually, not at length.** A few sentences or a short list; no essays, recaps or restating the question. Mark the one point the user must not miss with an emoji — nothing else gets one.
 - **Zero duplicate code.** Edit in place, never create parallel versions. Use deslop: `find-similar` before writing code, `top-offenders` after modifying it.
-- **No git** — and never stamp yourself as co-author — unless explicitly requested.
+- **No git** — and never stamp yourself as co-author — unless explicitly requested. The user has authorized committing and pushing after every major edit; commit the completed task changes and push the current branch, preserving unrelated work.
 - **Token economics.** Check file size before reading, Grep over Read, smallest diff that solves the problem. Delete dead code, unused imports and stale comments.
+- **Feature entry points belong in these instructions.** Every new CLI feature must add its canonical example/test path, exact runnable command and expected result under Commands. Answer usage questions from that entry first. When demonstrating findings, start with a verified finding example; label clean controls and engine limitations explicitly.
 - **Never disable, weaken, bypass or narrow a CI gate to get a merge.** Not the rulesets, not a required-check list, not a job's `if:`, not a test's timeout. If a check is red, the code is wrong — fix the code.
 
 ## Testing
@@ -69,6 +70,8 @@ A panic is found in seconds; a silent failure never is. This quarantine is the o
 
 ## Commands
 - **Makefile** from the repo root: `make ci` (lint + test + build), `make test`, `make build`, `make fmt`, `make run FILE=<path>`. The compiler binary lands at `target/release/osprey`.
+- **Hunt — verified crash demo:** `./target/release/osprey hunt tests/hunt/crash.osp --input-bytes 1 --max-time 10`. This deliberately planted crash calls C `abort()` only for input `"9"`. Hunt discovers that input and reports `abort crash.osp:4`, `reproduced (SIGABRT)`. Source: [`tests/hunt/crash.osp`](tests/hunt/crash.osp); expected finding: [`tests/hunt/crash.expected`](tests/hunt/crash.expected). This is the first example to give anyone asking to see bug detection. HTML and JSON are saved under `target/hunt/<program-and-run-id>/`; their paths are printed. `--out target/hunt-demo` keeps both reports and raw engine artifacts in a predictable directory. `--no-html` / `--no-json` disable saved files independently.
+- **Hunt — controls and limitations:** [`tests/hunt/clean.osp`](tests/hunt/clean.osp) and the fixed [`tests/hunt/record_update_list.osp`](tests/hunt/record_update_list.osp) expect no findings. [`tests/hunt/process.osp`](tests/hunt/process.osp) demonstrates an unsupported engine operation, not bug detection; never offer it as the bug-finding demo. Hunt needs KLEE and `compiler/bin/libosprey_runtime_klee.bc`; `make hunt FILE=tests/hunt/crash.osp HUNT_ARGS="--input-bytes 1 --max-time 10"` builds prerequisites before running.
 - **VSCode extension**: `cd vscode-extension && npm install && npm run compile`; test with `npm test`.
 - **Website**: `cd website && npm install && npm run dev` (or `npm run build`). CSS hard budget 1.8k LOC; blogs, specs and docs are prose and share the `prose` CSS name prefix; zero Tailwind.
 - **WebCompiler**: `cd webcompiler && npm install && npm start`.

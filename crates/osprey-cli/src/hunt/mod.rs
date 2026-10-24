@@ -14,6 +14,9 @@ mod options;
 mod process;
 mod replay;
 mod report;
+mod report_explanation;
+mod report_files;
+mod report_html;
 mod toolchain;
 
 use crate::invocation::parse_args;
@@ -86,13 +89,27 @@ fn hunt(options: &Options) -> Result<(String, ExitCode), ExitCode> {
     if options.replay {
         replay::replay(&input, &mut scan.findings).map_err(|message| tool_error(&message))?;
     }
-    let report = report::Report {
+    let mut report = report::Report {
         program: input.display_path(),
         options,
         exploration: &exploration,
         scan: &scan,
+        context: None,
     };
-    let rendered = render(&report, &paths);
+    report.context = Some(
+        report_files::context(
+            &report,
+            &toolchain,
+            &arguments,
+            &paths.out_dir,
+            &paths.stderr,
+        )
+        .map_err(|message| tool_error(&message))?,
+    );
+    let json = serde_json::to_string_pretty(&report::json(&report))
+        .map_err(|error| tool_error(&error.to_string()))?;
+    let saved = report_files::write(&report, &json).map_err(|message| tool_error(&message))?;
+    let rendered = render(&report, &paths, &json, &saved);
     Ok((rendered, report::exit_code(&scan, options.replay)))
 }
 
@@ -141,15 +158,23 @@ fn announce(options: &Options, program: &str) {
     }
 }
 
-fn render(report: &report::Report<'_>, paths: &RunPaths) -> String {
+fn render(
+    report: &report::Report<'_>,
+    paths: &RunPaths,
+    json: &str,
+    saved: &report_files::Saved,
+) -> String {
     if report.options.json {
-        let mut text = serde_json::to_string_pretty(&report::json(report)).unwrap_or_default();
-        text.push('\n');
-        return text;
+        return format!("{json}\n");
     }
     let mut text = report::text(report);
     if paths.keep {
         let _ = writeln!(text, "KLEE output kept in {}", paths.out_dir.display());
+    }
+    for (label, path) in [("HTML report", &saved.html), ("JSON report", &saved.json)] {
+        if let Some(path) = path {
+            let _ = writeln!(text, "{label}: {}", path.display());
+        }
     }
     text
 }

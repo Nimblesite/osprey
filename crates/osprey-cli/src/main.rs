@@ -25,6 +25,7 @@ mod doctests;
 mod document_entries;
 mod document_source;
 mod fmt;
+mod html_escape;
 mod hunt;
 mod ios;
 mod ios_abi;

@@ -40,6 +40,7 @@ fn rendered(finding: Finding) -> (serde_json::Value, String) {
         options: &options,
         exploration: &exploration,
         scan: &scan,
+        context: None,
     };
     (report::json(&report), report::text(&report))
 }
@@ -75,6 +76,7 @@ fn the_json_report_has_exactly_the_spec_fields() {
         options: &options,
         exploration: &exploration,
         scan: &scan,
+        context: None,
     });
     assert_eq!(
         keys(&value),
@@ -85,7 +87,8 @@ fn the_json_report_has_exactly_the_spec_fields() {
             "inputBytes",
             "explored",
             "findings",
-            "incomplete"
+            "incomplete",
+            "context"
         ])
     );
     assert_eq!(
@@ -201,6 +204,7 @@ fn the_text_place_falls_back_like_the_dedupe_key() {
             options: &options,
             exploration: &exploration,
             scan: &scan,
+            context: None,
         });
         assert!(text.contains(&format!("  memory     {place}\n")), "{text}");
         assert_eq!(text.contains("runtime  "), runtime_line, "{text}");
@@ -249,4 +253,93 @@ fn the_exit_code_matches_the_spec_for_every_mix_of_verdicts() {
             );
         }
     }
+}
+
+#[test]
+fn html_verdicts_distinguish_reproduced_unconfirmed_and_engine_only_findings() {
+    for (class, verdict, expected) in [
+        (
+            Class::Memory,
+            Replay::Reproduced("SIGSEGV".into()),
+            "Reproduced in a normal run",
+        ),
+        (
+            Class::Memory,
+            Replay::KleeOnly,
+            "Not reproduced in a normal run",
+        ),
+        (
+            Class::Arith,
+            Replay::NotRun,
+            "Not confirmed in a normal run",
+        ),
+        (
+            Class::Unmodelled,
+            Replay::Skipped("unsupported".into()),
+            "no program bug demonstrated",
+        ),
+    ] {
+        let mut finding = sample(class, Some(("p.osp", 3)), None, "message");
+        finding.replay = verdict;
+        assert!(super::report_explanation::verdict(&finding).contains(expected));
+    }
+}
+
+#[test]
+fn saved_reports_fail_loudly_when_the_output_directory_is_not_writable() {
+    let dir = super::spec_findings_tests::Dir::new("report-write-error");
+    dir.write("blocked", b"this is a file, not a directory");
+    let path = dir.0.join("blocked").display().to_string();
+    let options = options::parse(&options::args(&["p.osp", "--out", &path])).expect("options");
+    let scan = Scan::default();
+    let report = Report {
+        program: "p.osp",
+        options: &options,
+        exploration: &Exploration::default(),
+        scan: &scan,
+        context: None,
+    };
+    let error =
+        super::report_files::write(&report, "{}").expect_err("must not swallow write error");
+    assert!(error.contains("cannot save Hunt report"), "{error}");
+}
+
+fn html_for_scan(scan: &Scan, completed: u64) -> String {
+    let mut options = options::parse(&options::args(&["p.osp"])).expect("options");
+    options.reports.json = false;
+    super::report_html::render(
+        &Report {
+            program: "p.osp",
+            options: &options,
+            exploration: &Exploration {
+                completed,
+                ..Exploration::default()
+            },
+            scan,
+            context: None,
+        },
+        "{}",
+    )
+}
+
+#[test]
+fn html_never_confuses_finished_unfinished_and_reproduced_results() {
+    let mut scan = Scan::default();
+    assert!(html_for_scan(&scan, 0).contains("No bugs found in an unfinished analysis"));
+    assert!(html_for_scan(&scan, 1).contains("No bugs found in the explored paths"));
+    scan.incomplete.push(Incomplete {
+        test: "cut".into(),
+        reason: "time".into(),
+    });
+    assert!(html_for_scan(&scan, 1).contains("1 paths were not completed"));
+    scan.findings
+        .push(sample(Class::Memory, None, None, "invalid"));
+    assert!(html_for_scan(&scan, 1).contains("Findings need investigation"));
+    if let Some(finding) = scan.findings.first_mut() {
+        finding.replay = Replay::Reproduced("SIGSEGV".into());
+    }
+    let html = html_for_scan(&scan, 1);
+    assert!(html.contains("A crash was reproduced"));
+    assert!(html.contains("could not identify an Osprey source line"));
+    assert!(!html.contains("Download JSON context"));
 }
