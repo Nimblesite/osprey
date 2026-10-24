@@ -74,9 +74,9 @@ Keep three jobs for yourself:
 
 Ask the agent to show a small diff and run a specific check. If it changes the design while translating syntax, ask it to revert to the smallest behavior-preserving change.
 
-## Alpha means honest edges
+## Build with clear expectations
 
-Osprey is alpha software. Syntax, tooling, and implementation details can change. This working edition records its development compiler's identity and checks in `evidence.json`; a release version still needs to be pinned before publication.
+Osprey is actively evolving. Syntax, tooling, and implementation details can change. This working edition records its development compiler's identity and checks in `evidence.json`; a release version still needs to be pinned before publication.
 
 Project modules and imports between Default and ML files already work. The package manager remains planned. The later chapters distinguish using code in your own project from downloading and distributing packages.
 

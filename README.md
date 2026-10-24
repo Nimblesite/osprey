@@ -6,7 +6,7 @@
 
 A functional language built around **algebraic effects**, inferred types and native compilation. Write your application logic once; handlers connect it to storage, platform services and deterministic tests.
 
-Osprey is alpha software. It compiles through LLVM to native binaries, WebAssembly and C ABI libraries for iOS and Android.
+Osprey is actively evolving. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production. It compiles through LLVM to native binaries, WebAssembly and C ABI libraries for iOS and Android.
 
 ## Save a draft. Test an offline failure.
 
@@ -64,6 +64,7 @@ See the [installation guide](https://www.ospreylang.dev/docs/installation/) for 
 | --- | --- |
 | [examples/](examples/README.md) | Runnable programs, Talon Bank, Issue Inbox and GPT-2 |
 | [crates/](crates) | Rust compiler, type checker, code generation, formatter, language server and debugger |
+| [registry/](registry/README.md) | Osprey package client, folder registry, resolver and verification suites |
 | [compiler/runtime/](compiler/runtime) | C runtime and GPU adapters |
 | [tree-sitter-osprey/](tree-sitter-osprey) | Default-flavor grammar |
 | [tests/](tests) | Default and ML language suites with shared golden output |
@@ -85,6 +86,8 @@ make ci
 ```
 
 Run these from the repository root. The compiler is written to `target/release/osprey`. The root Makefile defines every public target; their configuration and private steps live in `scripts/make/`.
+
+[Hunt](website/src/docs/hunt.md) explores symbolic inputs with KLEE: `make hunt FILE=tests/hunt/process.osp HUNT_ARGS="--max-time 10"` reports one `unmodelled` process operation, an engine limit rather than a reproduced bug. The [package guide](website/src/docs/package-manager.md) covers the working folder registry, locked builds and planned package website; `make registry-test` runs its separate suites.
 
 ## Language and applications
 

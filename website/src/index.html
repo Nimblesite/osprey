@@ -14,7 +14,7 @@ date: "git Last Modified"
   <button id="motion-toggle" type="button" hidden>Play motion</button>
   <div class="container hero-grid">
     <div class="hero-content">
-      <a class="home-eyebrow alpha-link" href="/status/"><span class="status-dot"></span> Open source. In alpha. <span>↗</span></a>
+      <a class="home-eyebrow status-link" href="/status/"><span class="status-dot"></span> Open source. Actively evolving. <span>↗</span></a>
       <h1 class="hero-title" id="hero-title">Osprey.<br>Logic, <em>in flight.</em></h1>
       <p class="hero-subtitle">Your logic. Your handlers.</p>
       <p class="hero-description">Declare what your code needs with <strong>algebraic effects</strong>. Choose the handler that makes it happen.</p>
@@ -26,10 +26,10 @@ date: "git Last Modified"
     </div>
     <div class="hero-code">
       <div class="flight-code">
-        <div class="code-toolbar"><span>save-draft<span id="source-extension">.py</span></span><div class="flavor-controls" aria-label="Example flavor"><button type="button" data-flavor="default" aria-pressed="false">Default</button><button type="button" data-flavor="ml" aria-pressed="false">ML</button><button type="button" data-flavor="python" aria-pressed="true">Python</button></div></div>
-        <pre id="example-default" data-source-flavor="default" class="language-osprey" hidden><code class="language-osprey">{{ draftExample.default | escape }}</code></pre>
+        <div class="code-toolbar"><span>save-draft<span id="source-extension">.osp</span></span><div class="flavor-controls" aria-label="Example flavor"><button type="button" data-flavor="default" aria-pressed="true">Default</button><button type="button" data-flavor="ml" aria-pressed="false">ML</button><button type="button" data-flavor="python" aria-pressed="false">Python</button></div></div>
+        <pre id="example-default" data-source-flavor="default" class="language-osprey"><code class="language-osprey">{{ draftExample.default | escape }}</code></pre>
         <pre id="example-ml" data-source-flavor="ml" class="language-osprey-ml" hidden><code class="language-osprey-ml">{{ draftExample.ml | escape }}</code></pre>
-        <pre id="example-python" data-source-flavor="python" class="language-python"><code class="language-python">{{ draftExample.python | escape }}</code></pre>
+        <pre id="example-python" data-source-flavor="python" class="language-python" hidden><code class="language-python">{{ draftExample.python | escape }}</code></pre>
         <div class="code-result"><span aria-hidden="true">↳</span><samp>{{ draftExample.output }}</samp><span class="result-label">OUTPUT</span></div>
       </div>
       <p class="hero-code-caption">Three uncompromising flavors. No lock-in.</p>
@@ -51,13 +51,13 @@ date: "git Last Modified"
         <figcaption>See the handler change. Hear the story. <a href="/docs/effects/">Explore the code →</a></figcaption>
       </figure>
     </div>
-    <p class="support-note">Osprey is alpha software. Native control effects support single-shot resumption; full scoped effect rows and reusable continuations remain in development. <a href="/status/#algebraic-effects">Current support →</a></p>
+    <p class="support-note">Osprey is actively evolving. Native control effects support single-shot resumption; full scoped effect rows and reusable continuations remain in development. <a href="/status/#algebraic-effects">Current support →</a></p>
   </div>
 </section>
 
 <section class="section language-section" aria-labelledby="language-title">
   <div class="container">
-    <div class="section-heading"><p class="home-eyebrow">02 / Less ceremony. More intent.</p><h2 id="language-title">A language that leaves<br>room for your thinking.</h2></div>
+    <div class="section-heading"><p class="home-eyebrow">02 / Less ceremony. More intent.</p><h2 id="language-title">Inferred types.<br>Checked effects.</h2></div>
     <div class="language-grid">
       <article><span class="feature-mark" aria-hidden="true">:τ</span><h3>Types that follow your thinking</h3><p>Inferred static types, immutable data, and exhaustive pattern matching. Expected failures remain visible as <code>Result</code> values.</p><a href="/spec/0004-typesystem/">Explore the type system ↗</a></article>
       <article><span class="feature-mark" aria-hidden="true">{ λ }</span><h3>Three flavors. No lock-in.</h3><p>Default, ML, Python. Each uncompromising. All share Osprey’s types, effects, and compiler. Choose per file; mix all three in one project.</p><a href="/blog/2026-06-30-osprey-flavors/">Find your syntax ↗</a></article>

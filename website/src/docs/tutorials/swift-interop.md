@@ -51,7 +51,7 @@ The app opens on your home folder. Choose a folder to rank it, click any folder 
 
 ## Read the walkthrough
 
-[Build a Mac and iPhone app with Osprey and Swift](/docs/mac-and-iphone-apps/) writes out the same steps with the full code. For an app that also handles SQLite and HTTP through effects, see [iOS and Android apps](/docs/mobile-apps/). Osprey is alpha software.
+[Build a Mac and iPhone app with Osprey and Swift](/docs/mac-and-iphone-apps/) writes out the same steps with the full code. For an app that also handles SQLite and HTTP through effects, see [iOS and Android apps](/docs/mobile-apps/). Osprey is actively evolving.
 
 ## Transcript
 

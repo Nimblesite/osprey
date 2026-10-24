@@ -30,16 +30,20 @@ Osprey uses typed algebraic effects to separate application requests from their 
 - **[Browse working examples](https://github.com/Nimblesite/osprey/tree/main/examples)** — study native, HTTP, WebSocket, terminal, graphics, and WebAssembly programs.
 - **[Document your modules](/docs/documentation/)** — generate HTML API references, add Markdown guides and custom CSS, and test documentation examples.
 
+## Test and investigate
+
+- **[Hunt for bugs](/docs/hunt/)** — explore symbolic inputs with KLEE, inspect source-level findings and replay them on a native build.
+
 ## Packages
 
-- **[Package manager](/docs/package-manager/)** — a registry that is a folder, a client that verifies every byte, epochs instead of SemVer, one deterministic resolver, and a lock that build and run obey offline. Written in Osprey from the HTTP server to the SHA-256.
+- **[Package manager](/docs/package-manager/)** — a registry that is a folder, a client that verifies every byte, epochs instead of SemVer, one deterministic resolver, and a lock that build and run obey offline. Includes a local quick start and the planned workflow for the dedicated package website. Written in Osprey from the HTTP server to the SHA-256.
 - **[Package specification](/spec/0029-packagemanagement/)** — the normative contract: folder registry, manifests, identity, resolution, locks, the REST API and the command surface.
 
 ## Language
 
 - **[Read the language specification](/spec/)** — the intended language contract; check feature status for current implementation limits.
 - **[Use dense computation buffers](/spec/0034-gpucomputation/)** — typed buffers and pure kernels, run on Metal or OpenCL when `OSPREY_GPU` selects a device and on the CPU otherwise.
-- **[Check feature status](/status/)** — see what is stable, partial, experimental, or planned.
+- **[Check feature status](/status/)** — see what works today, its current limits, and what is planned.
 - **[Browse keywords](/docs/keywords/)** — declarations, bindings, matching, imports, and literals.
 
 A flavor is a surface syntax: its concrete syntax tree lowers into one canonical AST, and everything after that is shared. Default files use `.osp`, braces, `fn`, and parenthesized calls. ML files use `.ospml`, indentation, currying by default, and whitespace application. Python-flavor files use `.py` with the `# osprey: flavor=python` marker, Python-style indentation and annotations, and decorators for effects; they are Osprey, not Python. See the [Python flavor guide](/docs/python-flavor/).

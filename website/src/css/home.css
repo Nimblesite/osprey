@@ -4,8 +4,8 @@
 .home-hero { position: relative; isolation: isolate; padding-block: 4.5rem 2rem; }
 .home-hero .hero-grid { position: relative; gap: 3rem 2rem; grid-template-columns: 1fr 1fr; }
 .home-eyebrow { color: var(--primary-container); font: 500 0.7rem var(--font-mono); letter-spacing: 0.13em; text-transform: uppercase; }
-.alpha-link { display: flex; align-items: center; gap: 0.6rem; width: fit-content; line-height: 1.7; }
-.alpha-link > span:last-child { margin-left: 0.4rem; }
+.status-link { display: flex; align-items: center; gap: 0.6rem; width: fit-content; line-height: 1.7; }
+.status-link > span:last-child { margin-left: 0.4rem; }
 .status-dot { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: var(--primary-container); box-shadow: 0 0 12px #77d7f470; }
 .home .hero-content { gap: 1.5rem; padding-block: 2rem; align-self: start; }
 .home .hero-title { font-size: clamp(3.7rem, 6vw, 5.4rem); font-weight: 600; letter-spacing: -0.065em; line-height: 1.02; }

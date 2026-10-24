@@ -7,7 +7,7 @@ tags: ["status", "features", "roadmap"]
 author: "Christian Findlay"
 ---
 
-Osprey is an alpha language. The compiler is written in Rust, emits LLVM IR and
+Osprey is actively evolving. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production. The compiler is written in Rust, emits LLVM IR and
 builds native executables, `wasm32-wasip1` modules, and app-logic libraries for
 iOS and Android. Each target has an explicit runtime boundary.
 
@@ -43,8 +43,8 @@ The release list was unavailable when this page was built. See
 
 ## Implemented foundations
 
-- Default (`.osp`) and ML (`.ospml`) source parsing, both lowering to the same
-  AST before semantic analysis
+- Default (`.osp`), ML (`.ospml`) and Python-flavor (`.py`, with the Osprey marker)
+  source parsing, all lowering to the same AST before semantic analysis
 - Hindley–Milner type inference, algebraic data types and exhaustive pattern
   matching for supported patterns
 - User-defined generics, declaration-site variance, generic effects and explicit
@@ -97,14 +97,14 @@ The current development build rejects these older forms:
 ## Current limits
 
 - Tail-call optimisation is not implemented.
-- The package manager remains roadmap work. Working project/module examples do not imply every module-system feature is complete.
+- The [package manager](/docs/package-manager/) runs a folder registry, dependency resolution, verified fetching, locked builds, local checkout overrides and folder publishing. Capability surfaces are checked against root grants; Python interop dependencies use uv. Crash-safe activation remains blocked on filesystem primitives. The hosted package website and public trust services remain planned. Working project/module examples do not imply every module-system feature is complete.
 - A project is assembled from source, so a signature item with no implementation is an error. A module constant of an opaque type reaches a client as a bare literal; export a function instead.
 - The strict static-memory mode described in the memory specification is not a current CLI option. Native builds accept `default`, `gc`, and `arc`; mobile and WebAssembly accept `default` only.
 - The initial mobile runtime retains general allocations for process lifetime and has no public library teardown or returned-string release API.
 - The mobile sample reads one public GitHub issue page. Authentication, pagination, background refresh, and posting changes to GitHub are not implemented.
 - GPU kernels run in software binary64 with no kernel fusion, so small kernels are launch-bound: GPT-2 trains about three times faster on an M4 Max GPU than on its CPU and generates no faster. `gpuScan` and `gpuFilter` have no device form; a selected device stops the run on them. Only Apple GPUs have been tested, and iOS, Android and WebAssembly run GPU code on the CPU.
 - C integrations are outside Osprey's memory-safety guarantee.
-- Symbolic bug hunting ships as `osprey hunt` (symbolic execution by KLEE) from `main` with symbolic stdin and files; the typed function harness, `libkleeRuntest` replay, regression-test generation, Windows and the comparison benchmarks are not built. See [plan 0034](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0034-symbolic-execution.md).
+- Symbolic bug hunting ships as [`osprey hunt`](/docs/hunt/) (symbolic execution by KLEE) from `main` with symbolic stdin and files; the typed function harness, `libkleeRuntest` replay, regression-test generation, Windows and the comparison benchmarks are not built. See [plan 0034](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0034-symbolic-execution.md).
 
 For detailed intended behavior and chapter-specific implementation notes, read
 the [specifications](/spec/). For compiler-generated built-in signatures, use

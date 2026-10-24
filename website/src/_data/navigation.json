@@ -35,7 +35,8 @@
         { "text": "iOS and Android apps", "url": "/docs/mobile-apps/" },
         { "text": "Mac and iPhone apps", "url": "/docs/mac-and-iphone-apps/" },
         { "text": "Playground", "url": "/playground/" },
-        { "text": "WebAssembly studio", "url": "/wasm/" }
+        { "text": "WebAssembly studio", "url": "/wasm/" },
+        { "text": "Hunt for bugs", "url": "/docs/hunt/" }
       ]
     },
     {

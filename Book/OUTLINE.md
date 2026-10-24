@@ -51,7 +51,7 @@ No chapter introduces more than four conceptual families. Every factual visual i
 - Why the book leads with Default flavor
 - How Flight Log checkpoints work
 - How to use a coding agent without outsourcing understanding
-- Alpha-software and edition boundaries
+- Language evolution and edition boundaries
 - Visual: the four-part reading journey
 
 ## Part I — Make the computer do something
@@ -279,7 +279,7 @@ No chapter introduces more than four conceptual families. Every factual visual i
 - Name outside work as effects or boundary calls
 - Add tests before expanding the surface
 - Measure performance before selecting a memory mode or optimizing
-- State alpha and roadmap constraints in a project README
+- State compatibility and roadmap constraints in a project README
 - Three capstone routes: command-line tool, supported browser app, small native service
 - Flight Log checkpoint: turn the running project into a one-page build plan
 - Visuals: capstone canvas; evidence path; next-step map

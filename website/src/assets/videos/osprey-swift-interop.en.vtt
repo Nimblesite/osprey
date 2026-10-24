@@ -79,4 +79,4 @@ Then it links the Osprey library built for that platform, and imports its header
 So the same Osprey code runs on iPhone, drawn with the phone's own controls, dark mode and larger text included.
 
 02:59.041 --> 03:12.424
-To try it, run make run-mac-hd for the Mac, and examples/macos/run.sh ios-sim for the simulator. Osprey is alpha software, and the full source is in the repository.
+To try it, run make run-mac-hd for the Mac, and examples/macos/run.sh ios-sim for the simulator. Osprey is actively evolving, and the full source is in the repository.

@@ -89,7 +89,7 @@ Osprey is a statically typed functional programming language compiled ahead of t
 - **Targets.** Native executables (default), WebAssembly (`--target=wasm32`), C ABI libraries for iOS and Android, and CPython extension modules (`--target=python`).
 - **Isolated fibers** for concurrency: lightweight threads that share no memory and communicate by message passing.
 
-Osprey is alpha software. Expect missing features; that is what the [Bug procedure](#report-every-failure-as-a-bug) is for.
+Osprey is actively evolving. Expect missing features; that is what the [Bug procedure](#report-every-failure-as-a-bug) is for.
 
 ### The Python flavor is not Python
 

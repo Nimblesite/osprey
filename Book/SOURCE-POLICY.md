@@ -34,7 +34,7 @@ ML twins are verification aids and optional comparisons. They do not replace the
 
 ## Product and roadmap boundary
 
-The book states that Osprey is alpha software and separates implemented features from specifications of future work.
+The book states that Osprey is actively evolving and separates implemented features from specifications of future work.
 
 Project modules, multi-file assembly, and imports across Default and ML flavors are implemented. The package registry and manager remain planned. Use the [module specification](../docs/specs/language/0025-ModulesAndNamespaces.md) and its executable project tests for module claims; a package-manager specification is not evidence of an available command.
 

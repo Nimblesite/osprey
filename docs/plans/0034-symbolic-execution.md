@@ -1,7 +1,7 @@
 # Plan 0034: Symbolic bug hunting with KLEE
 
 **Subsystem:** `crates/osprey-cli` (`osprey hunt`), `crates/osprey-codegen` (`compile_program_symbolic`, synthetic entry), `compiler/runtime/klee/` (mock libc), `scripts/make/runtime.mk` (`_runtime_klee`), `scripts/hunt_corpus.sh` + `scripts/hunt_summary.py`, `tests/hunt/`, `benchmarks/symex/`
-**Status:** Phases 1–3 delivered — `osprey hunt` runs KLEE over the mock-libc module and reports classified, deduplicated findings with native replay. Phases 4–6 remain: no typed harness, no `libkleeRuntest` replay, no regression writer, no Windows, no proof benchmarks. The corpus script and `tests/HUNT_UNPORTABLE.txt` exist, but the corpus is not green and not a required check.
+**Status:** Phases 1–3 delivered — `osprey hunt` runs KLEE over the mock-libc module and reports classified, deduplicated findings with native replay. Phases 4–6 remain: no typed harness, no `libkleeRuntest` replay, no regression writer, no Windows, no proof benchmarks. The corpus script and `tests/HUNT_UNPORTABLE.txt` exist, and the recorded sweeps below report no memory, abort or arithmetic findings; it is not a required check. Budget cuts and unmodelled programs remain explicit limits.
 **Specs:** [Symbolic bug hunting with KLEE](../specs/tooling/SymbolicExecution.md) (`[SYMEX-TOOL]`, `[SYMEX-INSTALL]`, `[SYMEX-CLI]`, `[SYMEX-KLEE-INVOCATION]`, `[SYMEX-MOCK-*]`, `[SYMEX-FINDINGS]`, `[SYMEX-REPLAY]`, `[SYMEX-REGRESSION]`, `[SYMEX-CORPUS]`, `[SYMEX-HOSTS]`, `[SYMEX-PROOF]`) and [KLEE code generation](../specs/compiler/KleeCodegen.md) (`[SYMEX-CODEGEN]`, `[SYMEX-HARNESS-TYPED]`, `[SYMEX-RUNTIME-BITCODE]`)
 
 ## Summary

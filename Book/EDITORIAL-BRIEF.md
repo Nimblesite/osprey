@@ -93,7 +93,7 @@ The project is intentionally ordinary. It provides enough domain to make types a
 - A compiler implementation textbook
 - Category theory as a prerequisite
 - A complete standard-library reference
-- A promise that alpha software will never change
+- A promise that an evolving language will never change
 - Treating ML syntax as mandatory for “real” functional programming
 - Pretending a coding agent makes checking and testing optional
 - Teaching the planned package manager, structured cancellation, or strict static memory as shipped features

@@ -19,9 +19,9 @@ and every client hardening gate, and Phase 3 holds the proven CDCL core and the
 package resolver over it, fixture-exact and oracle-agreeing; the end-to-end demo
 runs the real flow against the sample registry; `tree` and `why` read the lock,
 and a refutation is explained from a minimal conflict core. The `uv` plane and
-the capability surfaces from `registry::Conformance` are the open Phase 2 and 3
-items of Milestone A; Phase 4's transactional commands and Milestone B's trust
-plane are untouched. Everything is under
+capability-surface checks are implemented with fixture-driven tests. Phase 4's
+local commands, overlays and folder publishing run today; crash-safe activation
+and Milestone B's authenticated publishing and trust plane remain open. Everything is under
 [`registry/`](../../registry/README.md), whose README records exactly what runs,
 the security gates that are asserted today, and which host capabilities block
 the rest. The normative contracts are
@@ -60,9 +60,10 @@ binaries, runs lifecycle hooks, or invokes those installers.
 - Spec 0025 supplies logical modules and imports; spec 0027 supplies native TAP
   tests and coverage. Mutation, property/fuzz orchestration, affected-client
   tests, and deterministic package build plans do not exist.
-- Osprey has HTTP/WebSocket and WebAssembly targets, but there is no registry
-  service, browser package UI, Supabase schema, CAS, TUF client, transparency
-  log, provenance pipeline, sandbox fleet, or search index.
+- Osprey has HTTP/WebSocket and WebAssembly targets, and `registry/api` runs
+  the folder registry. The browser package UI, Supabase schema, CAS, TUF client,
+  transparency log, provenance pipeline, sandbox fleet and search index remain
+  delivery work.
 - The package system therefore starts with a running service: the folder
   registry serves digest-verified source over HTTP from day one. It proves
   integrity, not publisher authority, and says so in every response contract.
@@ -291,7 +292,7 @@ without the parser, 115 s (662 s CPU) with it. Only the parser-free
       (`ReleaseFiles::treeCode`); grants parse per the item above; and
       `fixtures/capabilities/sample-surfaces.json` records every sample
       release's surface, asserted by `surface_tests` over the real files.
-- [ ] Accept `[system.python]` with `capability = "python/interop"` and a
+- [x] Accept `[system.python]` with `capability = "python/interop"` and a
       CPython floor, and golden-test that a package's `pyproject.toml` and
       `uv.lock` are ordinary `SourceDigest` entries (`[PACKAGE-PYTHON-UV]`).
 
@@ -428,15 +429,16 @@ supported hosts, and every forbidden package input fails before hashing.
       `registry/cli/lib/{lockfile,install,verify,build,project}.osp`;
       `registry/cli/tests` 31/31, `registry/e2e` 30/30, `fixtures/lock/`
       (`[PACKAGE-FOLDER-REGISTRY]` "Folder lock").
-- [ ] Drive uv for the Python interop plane (`[PACKAGE-PYTHON-UV]`): `lock`
+- [x] Drive uv for the Python interop plane (`[PACKAGE-PYTHON-UV]`): `lock`
       composes `.osprey/python/pyproject.toml` from the root and every locked
       `python/interop` release by path source, runs `uv lock` and pins both
       digests under `root.python`; `fetch` runs `uv sync --frozen`;
       `verify --offline`, `build` and `run` regenerate, compare and run
       `uv lock --check --offline`, never syncing. Unit tests drive the uv
       invocations through a fixture `Process` handler; the end-to-end case
-      needs `uv` on the host and records `python/uv` as a system capability
-      when it is absent.
+      uses uv when available; without it, the end-to-end probe asserts
+      `python.uv-lock-failed status 127` and that no Osprey lock is written.
+      `doctor` reports uv's path or installation guidance.
 
 Exit gate: a fetched release graph rebuilds offline byte-for-byte with one node
 per key; local source can switch both directions without manifest edits; process
@@ -553,8 +555,10 @@ permutation changes a lock or explanation.
       Dependency deltas (`+`, `=`, `~`, `-` per package) and epoch deltas
       (`epoch @scope/name eN -> eM` from `update --breaking`) are printed;
       capability and vulnerability deltas wait for the surfaces and the
-      advisory feed. The update is atomic: `Transaction::commit` writes the
+      advisory feed. `Transaction::commit` writes the
       manifest, relocks, and writes the previous text back when the lock fails.
+      This is rollback on a reported failure; crash-safe atomicity remains
+      blocked on filesystem rename and fsync support.
 - [ ] Make `add`, `remove`, and `update` atomically recompute the registry-only
       base, rebase matching per-key baselines, validate the overlay graph, and
       write release/`publishedBaseLock` only for a complete registry solution.

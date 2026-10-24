@@ -10,7 +10,47 @@ Osprey's package manager is written in Osprey from the HTTP server down to the S
 
 The design is fixed by [spec 0029](/spec/0029-packagemanagement/), [spec 0030](/spec/0030-packageregistrytrustanddiscovery/), [spec 0031](/spec/0031-packagedomainmodel/) and [spec 0032](/spec/0032-packageevidenceanddiscovery/). This page is the working guide to what those specs mean in practice and what runs today.
 
-## One flow, one resolver, no network after the lock
+## Get started with the working registry
+
+The folder registry and package client run today. The public package website, hosted publishing and trust services are planned; you do not need them to try packages locally or run a private registry.
+
+From the Osprey repository root, build the toolchain and the package client:
+
+```sh
+make build
+./target/release/osprey build registry/cli -o target/osprey-pkg
+make registry-serve
+```
+
+Leave the server running. In another terminal at the repository root, resolve and build the sample consumer, which already declares its dependency on `@demo/report`:
+
+```sh
+echo "lock --project $PWD/registry/e2e/consumer --registry http://127.0.0.1:8787" | ./target/osprey-pkg
+echo "fetch --project $PWD/registry/e2e/consumer --registry http://127.0.0.1:8787" | ./target/osprey-pkg
+echo "verify --offline --project $PWD/registry/e2e/consumer" | ./target/osprey-pkg
+echo "build --run --project $PWD/registry/e2e/consumer" | ./target/osprey-pkg
+```
+
+Each command prints `status: N`; check that it is `0`. The frontend currently reads one command from stdin and cannot set a process exit status. For your own project, create an `osprey.toml`, declare dependencies as below, and use its absolute directory with `--project`. The command table describes `package init`, `add` and local checkout overrides.
+
+## How the package website will work
+
+The package manager has its own website in the planned public service. The language website keeps this guide: installation, manifests, commands and how dependencies become part of an Osprey build. The package website is where you will discover libraries and inspect a particular release before choosing it.
+
+| Surface | Responsibility |
+| --- | --- |
+| Language documentation | Teach the package workflow and link to package discovery. |
+| Package website (planned) | Search and package pages with source, dependencies, effects and capabilities, release history, advisories and verification evidence; authenticated publishing and ownership workflows. |
+| Registry API | Supply package metadata and digest-addressed source to the website and command-line client. Today's folder server implements the public-read subset listed below. |
+| Local client | Resolve dependencies, verify downloaded source, write locks and build from installed packages. |
+
+The intended workflow is: find a package on the package website, review its API and required capabilities, copy its scoped key and epoch into your project, then use the client to lock and fetch the exact releases. Browsing selects what you want; your manifest, lock and client verification determine what you build. Once the locked trees are installed, ordinary builds and runs work offline without the website.
+
+The browser application is planned as Osprey compiled to WebAssembly, using the same versioned Osprey API as the client. Supabase will provide hosted Postgres, authentication and storage behind that API; clients will verify releases and trust proofs rather than treating the database or website as the authority. The database-free folder registry remains supported for private networks and self-hosting.
+
+Public publishing is planned around a signed intent naming a forge repository and commit: the registry will assemble and verify the source itself. Today, use `publish --folder <registry-root>` and restart the folder server to expose the new release. Public `login`, signed publication, search, evidence pages and the hosted website are not available yet. [Plan 0020](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0020-package-manager.md) tracks those delivery stages.
+
+## Resolve, fetch, then build offline
 
 ```mermaid
 flowchart LR
@@ -22,7 +62,7 @@ flowchart LR
   V -->|build / run| C["Osprey compiler<br/>packages as source roots"]
 ```
 
-`lock` is the only step that talks to a registry or runs the solver. Everything to its right works offline from `osprey.lock`, and every step re-derives the digests it depends on rather than trusting a cache.
+`lock` selects exact releases through the solver. `fetch` downloads their source from the registry; after installation, `verify --offline`, `build` and `run` use the lock and installed trees without network access. Each verification step re-derives the digests it depends on rather than trusting a cache.
 
 ## A registry is a folder
 
@@ -117,15 +157,15 @@ min_revision = 3045000
 
 The parser is a strict TOML subset written in Osprey: tables, arrays of tables, dotted and quoted keys, inline tables, integers, strings and booleans. Floats, dates and non-ASCII text are rejected with located codes. Names are scoped ASCII, licenses are SPDX expressions, source roots are checked for duplicates and case-fold collisions, and every unknown table or key is an error before anything is hashed. A spec example round-trips to its canonical JSON and manifest digest byte for byte.
 
-A published package may be written in Osprey's **Python flavor**: `[project].python_sources` lists its `.py` files, each beginning with `# osprey: flavor=python`, inside a source root. The list is part of the canonical manifest, the marker is checked on every file of a release tree (`source.python-flavor-header`), and the Osprey compiler reads those files as Osprey source. Nothing in a release is ever run by CPython, so ports such as `@osprey/numpy` publish exactly like any other package.
+A published package may be written in Osprey's **Python flavor**: `[project].python_sources` lists its `.py` files, each beginning with `# osprey: flavor=python`, inside a source root. The list is part of the canonical manifest, the marker is checked on every file of a release tree (`source.python-flavor-header`), and the Osprey compiler reads those files as Osprey source. Python-flavor `.py` files are compiled by Osprey rather than run by CPython, so ports such as `@osprey/numpy` publish exactly like any other package.
 
-A **system capability** names something the operating system provides, such as SQLite's C API. The registry maps capabilities to approved providers and `osprey-pkg doctor` prints that guidance. Osprey never downloads a native component and never invokes Homebrew, apt or any installer.
+A **system capability** names something the operating system provides, such as SQLite's C API. The hosted design maps capabilities to signed, approved providers; that provider catalog is not implemented. Today, `osprey-pkg doctor` prints system-capability guidance and host blockers. Osprey never downloads a native component and never invokes Homebrew, apt or any installer.
 
 ## Resolution
 
 Resolution is one deterministic solver, with no greedy fallback and no "good enough" path. The engine is a conflict-driven clause-learning SAT solver written in Osprey: two watched literals per clause, first-unique-implication-point learning, deterministic decisions, a proof trace of every learned clause, and a core of the input clauses behind an unsatisfiable result. The package layer builds hard clauses for root requirements, each candidate's own edges, one release per key across all epochs, and an acyclic package graph, then minimises a lexicographic cost tuple exactly in the order the spec fixes: changed releases against the current lock first, then package count, then technical lag, with the canonical graph vector as the final tie-break.
 
-An unsatisfiable graph is explained deterministically, with a stable code and the package keys it concerns: `resolution.epoch-conflict` names the keys that demand two epochs, `resolution.cycle` names the ring, `resolution.missing-package` names the key no release satisfies, `resolution.capability` names the key whose ambient capability the root did not grant. The packages an explanation names come from the solver's own proof: every hard clause records the package keys it is about, the UNSAT core behind the refutation is minimised by deletion until no clause can be dropped, and the explanation is chosen, in the order the spec fixes, among the causes that hold for the keys that minimal core mentions. The same module explains for the exhaustive test oracle, and the two agree on all fourteen fixtures byte for byte. The same inputs in any order produce the same lock and the same explanation, and an independent exhaustive oracle in the test suite agrees with the solver on every bounded fixture.
+An unsatisfiable graph is explained deterministically, with a stable code and the package keys it concerns: `resolution.epoch-conflict` names the keys that demand two epochs, `resolution.cycle` names the ring, `resolution.missing-package` names the key no release satisfies, `resolution.capability` names the key whose ambient capability the root did not grant. The packages an explanation names come from the solver's own proof: every hard clause records the package keys it is about, the UNSAT core behind the refutation is minimised by deletion until no clause can be dropped, and the explanation is chosen, in the order the spec fixes, among the causes that hold for the keys that minimal core mentions. The exhaustive test oracle shares candidate and explanation helpers with the resolver; it checks the search and optimum independently, rather than independently deriving the conflict core. The same inputs in any order produce the same lock and the same explanation, and an independent exhaustive oracle in the test suite agrees with the solver on every bounded fixture.
 
 ## Locks
 
@@ -135,13 +175,15 @@ Until the trust plane exists, the client writes `osprey.lock` in folder-lock for
 {"format":0,"packages":[{"dependencies":[...],"release":{...}}],"root":{"dependencies":[...],"manifestDigest":"sha256:..."}}
 ```
 
-It pins the root manifest's digest and dependency edges, and for every selected release its identity (key, epoch, ordinal and `SourceDigest`) and its own edges. Three rules follow from it:
+It pins the root manifest's digest and dependency edges, and for every selected release its identity (key, epoch, ordinal and `SourceDigest`), edges and capability surface. Graphs declaring Python interop also pin the generated Python project and uv lock under `root.python`. Three rules follow from it:
 
-- `osprey-pkg lock` is the only command that resolves. It talks to the registry, runs the solver and prints what changed as `+`, `~` and `-` lines.
+- `osprey-pkg lock` consults the registry, runs the solver and prints `+`, `=`, `~` and `-` deltas. `add`, `remove`, `update` and `use` also invoke relocking.
 - `osprey-pkg fetch` installs every locked release, skipping a tree whose digest already matches.
-- `osprey-pkg verify --offline`, `osprey-pkg build` and `osprey-pkg run` never resolve and never touch the network. They fail when the manifest digest differs from the lock, when the dependency edges differ, when a locked release is not installed, or when an installed tree's digest no longer matches.
+- `osprey-pkg verify --offline` and build preparation never resolve or fetch. They fail when the manifest digest differs from the lock, when the dependency edges differ, when a locked release is not installed, or when an installed tree's digest no longer matches.
 
-`build` compiles the project through the existing compiler with every installed package's `src` as an extra source root. Nothing in a package is ever executed during fetch, install or build.
+`build` compiles the project through the existing compiler with the installed packages as source roots. `build --run` then executes your program, whose own effects may use the network; there is no standalone package-client `run` command. Osprey packages have no install hooks or build scripts. Packages declaring Python interop also use the separate uv environment described below.
+
+Local manifest/lock updates roll back on a reported relock failure. Crash-safe activation is still blocked on atomic rename and fsync support; rollback is not a durable filesystem transaction.
 
 ## Commands
 
@@ -151,7 +193,7 @@ It pins the root manifest's digest and dependency edges, and for every selected 
 | `--json <command> …` | any command's report as one canonical JSON line, `{"lines":[…],"status":N}`, for editors and automation |
 | `doctor` | the blocked host capabilities and system-capability guidance |
 | `package init [--name <project>]` | write the smallest accepted `osprey.toml` where none exists |
-| `add @scope/name [--epoch N]` | pick the key's newest epoch (or the lineage you name) and its newest release as the floor, write the dependency line and relock; manifest and lock change together or not at all |
+| `add @scope/name [--epoch N]` | pick the key's newest epoch (or the lineage you name) and its newest release as the floor, write the dependency line and relock; the previous manifest is restored if relocking fails |
 | `add <path> [--epoch N]` | declare the checkout's package key with its published baseline as the floor (zero when unpublished), relock the release lock when a baseline exists, then map the checkout and relock the development lock |
 | `remove @scope/name` | drop the dependency line and relock, printing the `-` lines |
 | `use <path> [--epoch N]`, `use @scope/name --published`, `use --list`, `use --clear` | develop against a local checkout: the mapping goes into `osprey.local.toml`, `osprey.local.lock` is relocked with the checkout in place of every published candidate of that key, and `[dependencies]` is never rewritten |
@@ -174,20 +216,20 @@ The Osprey resolver selects Osprey releases and nothing else. When an Osprey pro
 
 - A package that needs Python declares `[system.python]` with `capability = "python/interop"` and a CPython floor, and ships an ordinary `pyproject.toml` and `uv.lock` in its root. Both are part of its `SourceDigest` like any other file.
 - `osprey-pkg lock` generates one uv project under `.osprey/python/` that depends by path on the root and on every installed release that declares the capability, runs `uv lock` so uv resolves the union of their Python requirements, and pins the digests of the generated project and of `uv.lock` inside `osprey.lock`.
-- `osprey-pkg fetch` runs `uv sync --frozen` to create the environment. `verify`, `build` and `run` regenerate the project, compare digests and run `uv lock --check --offline`; they never sync and never go online. Their codes are `python.pyproject-missing`, `python.uv-lock-missing`, `python.workspace-digest`, `python.uv-lock-stale` and `python.environment-missing`; a uv command that fails is `python.uv-lock-failed` or `python.uv-sync-failed` with its exit status, and nothing is written.
+- `osprey-pkg fetch` runs `uv sync --frozen` to create the environment. `verify` and `build` (including `build --run`) regenerate the project, compare digests and run `uv lock --check --offline`; they never sync and never go online. Their codes are `python.pyproject-missing`, `python.uv-lock-missing`, `python.workspace-digest`, `python.uv-lock-stale` and `python.environment-missing`; a uv command that fails is `python.uv-lock-failed` or `python.uv-sync-failed` with its exit status. A failed uv operation prevents writing the new Osprey lock; generated Python workspace files may already exist.
 - A graph with no member declaring the capability has no `root.python` in its lock, gets no generated project and never runs uv.
 
 Osprey never installs uv or CPython; `osprey-pkg doctor` reports where uv is, or that it is missing and needed only by packages declaring `python/interop`. The [Python flavor](/docs/python-flavor/) needs none of this: it is Osprey source with no Python dependency.
 
-## Supply-chain security is the design, not a feature
+## Supply-chain controls and remaining work
 
-Every known class of package supply-chain attack is removed by construction rather than detected after the fact. The threat model is spec 0029 `[PACKAGE-THREATS]`; this is what each rule buys you.
+Spec 0029 `[PACKAGE-THREATS]` defines the threat model. The folder registry implements source validation, digest verification and capability checks; authenticated publication and public trust proofs remain Milestone B work. These controls do not establish that a dependency is benign.
 
-| Attack | How Osprey removes it |
+| Threat | Control and delivery status |
 | --- | --- |
 | Malicious code inside a dependency | **Capability confinement.** Osprey's effects already stop a library performing an effect its caller does not handle. The only other way to reach a file, process, network or terminal is one of the compiler's ambient builtins, and a published package may use none of them unless your manifest grants that capability on that dependency: `{ epoch = 1, min_release = 0, capabilities = ["io/process"] }`. `lock` recomputes every candidate's surface from its verified source (the ambient builtins it names, outside comments and strings, plus its `[system.*]` capabilities), drops any release whose surface your manifest does not grant on that key, and pins the surface of each locked package in `osprey.lock`; `fetch`, `verify --offline` and `build` recompute it from the installed tree and stop with `capability.surface` if it differs. Grants are never transitive: a dependency of a dependency needs your own grant on its key, and a published source that declares a builtin's name is refused at publication so no declaration can hide a call from the scan. |
-| Install-time code execution | Nothing in a package is ever executed during fetch, install, lock, build-plan creation or activation. There are no lifecycle hooks, no build scripts, no post-install step. |
-| Publisher-supplied archives | A release is derived from a bound forge commit by the registry itself; no upload, archive, generated file or native payload can enter the catalog. |
+| Install-time code execution | Osprey source packages have no lifecycle hooks, build scripts or post-install step. Python interop delegates environment creation to `uv sync --frozen`; the Osprey source-only guarantee does not cover Python dependency installation. |
+| Publisher-supplied archives | Milestone B: the registry will derive releases from bound forge commits. Today, `publish --folder` validates a local source tree and places it in the registry folder; it does not authenticate a forge commit. |
 | Tampered or substituted bytes | A release is its canonical `SourceDigest`. The client recomputes it before writing a single file; a lock pins it; `build` refuses a tree whose digest drifted. |
 | Floating versions | No SemVer, no ranges, no "latest". A dependency names an epoch and a floor; the lock pins exact releases; `build` and `run` never resolve. |
 | Dependency confusion and typosquatting | One canonical scoped key per package, exactly one source per key in every graph, published path and Git dependencies rejected, Unicode confusables and case-fold collisions refused by the name and path grammars. |
@@ -195,10 +237,10 @@ Every known class of package supply-chain attack is removed by construction rath
 | Compromised registry, mirror or CDN | Milestone B: a TUF 1.0 trust root with 3-of-5 offline keys, 2-of-3 release roles, consistent snapshots, expiry and version floors, so no single online component can make a client accept unauthorized, rolled-back, frozen, expired or substituted source. |
 | Silent history rewriting | Milestone B: every publication, yank, revocation and build is an in-toto attestation in an append-only transparency log with inclusion and consistency proofs, witnessed by a 3-of-4 quorum. |
 | Unreproducible builds | Milestone B: two separately administered hermetic SLSA Build L3 platforms must produce bit-identical results before anything is published, with SPDX SBOMs and provenance attached. |
-| Revoked or yanked releases | A monotonic signed status chain. Cached locks survive a yank; a known revocation blocks every build and activation except isolated audit reproduction. |
+| Revoked or yanked releases | Milestone B: a monotonic signed status chain. Cached locks will survive a yank; a known revocation will block every build and activation except isolated audit reproduction. |
 | Local overrides leaking into releases | Development overlays live in separate files and locks; `build --release` fails on any override, duplicate key or unpinned input. |
 
-Today's folder registry delivers the first six rows: integrity, no execution, no floating inputs, one source per key. It does not yet prove who published a release or how fresh the catalog is; those are the Milestone B rows, specified in full in [spec 0030](/spec/0030-packageregistrytrustanddiscovery/) and layered onto the same endpoints. Every rule has a conformance gate, every parser and protocol boundary is fuzzed, and general availability waits on compromise simulations of every role plus an independent security audit whose findings are published.
+Today's folder registry verifies source integrity, pins releases, checks capability surfaces and enforces one source per key. It does not yet prove who published a release or how fresh the catalog is. The trust services in [spec 0030](/spec/0030-packageregistrytrustanddiscovery/), compromise simulations and independent security audit are delivery requirements, not completed assurances.
 
 ## Hardened for the penetration test
 
@@ -206,7 +248,7 @@ Spec 0029 `[PACKAGE-HARDENING]` turns the threat model into gates with stable co
 
 **Server.** A response is a pure function of method, path and the catalog built at startup, so no request can reach the filesystem or a process. Anything but `GET` is `405` with `Allow: GET`; traversal, percent-encoded and malformed paths are `404` problems that never echo request bytes. Every response carries `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'` and `Referrer-Policy: no-referrer`; digest-addressed responses are `Cache-Control: public, max-age=31536000, immutable`, everything else `no-cache`. The runtime bounds a request to 1 MiB, its headers to 32 KiB and its arrival to 5 seconds. Beyond loopback, the registry sits behind a TLS-terminating, rate-limiting reverse proxy.
 
-**Client.** Every fetched body passes, in order: a 128 MiB size bound, strict JSON (depth 64, duplicate keys, bad surrogates, control bytes), the bundle shape, the path grammar of every entry (absolute paths, `..`, backslashes, device names, case collisions), the file-kind gate, the 10,000-file and 50 MiB limits, and finally the recomputed `SourceDigest` against both the bundle's claim and the digest that was asked for. Only then does a directory get created, and its name is built from the verified identity, never from a listing row, a lock line or a command-line word. The lock decoder applies the same name and digest grammars (`lock.shape`). `fetch`, `verify` and `build` never resolve or read a listing; a lock edited without its manifest stops `build` before the compiler starts. `lock` refuses a registry that serves a different digest for a locked release (`lock.release-replaced`) or drops one (`lock.release-vanished`). Printed lines are sanitized so no server string can carry a terminal escape. The client follows no redirects and reads no credentials from locks or manifests.
+**Client.** Every fetched body passes, in order: a 128 MiB size bound, strict JSON (depth 64, duplicate keys, bad surrogates, control bytes), the bundle shape, the path grammar of every entry (absolute paths, `..`, backslashes, device names, case collisions), the file-kind gate, the 10,000-file and 50 MiB limits, and finally the recomputed `SourceDigest` against both the bundle's claim and the digest that was asked for. Only then does a directory get created, and its name is built from the verified identity, never from a listing row, a lock line or a command-line word. The lock decoder applies the same name and digest grammars (`lock.shape`). Lock-based `fetch`, `verify` and `build` never resolve or read a listing; fetching a package by name consults the listing to select a release; a lock edited without its manifest stops `build` before the compiler starts. `lock` refuses a registry that serves a different digest for a locked release (`lock.release-replaced`) or drops one (`lock.release-vanished`). Printed lines are sanitized so no server string can carry a terminal escape. The client follows no redirects and reads no credentials from locks or manifests.
 
 **Python plane.** The generated `pyproject.toml` pins `index-strategy = "first-index"` and declares no index; an interop tree may not add indexes (`python.index-forbidden`) or `git`, `url` or outside-`path` sources (`python.source-forbidden`); `uv.lock` must carry a hash for every distribution or `lock` refuses it (`python.uv-lock-hashes`); sync is `uv sync --frozen`. Each rule stops `lock` before uv runs or before the folder lock is written.
 

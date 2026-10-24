@@ -143,13 +143,22 @@ for (const pg of PAGES) {
   });
 }
 
+const proseOffsets = (elements) => elements.map((element) => {
+  const { x, width } = element.getBoundingClientRect();
+  return Math.abs(x + width / 2 - window.innerWidth / 2);
+});
+
 for (const width of [1280, 1440, 1920]) {
   test(`benchmark columns fit desktop landscape at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/benchmarks/");
     await page.evaluate(() => document.fonts.ready);
+    const prose = page.locator(".prose > :is(h1, h2, h3, p, ul, ol, pre)");
+    const centers = await prose.evaluateAll(proseOffsets);
+    expect(Math.max(...centers), "benchmark prose must be centered in the viewport").toBeLessThanOrEqual(2);
     const tables = page.locator(".comparison-table table");
     await expect(tables).toHaveCount(2);
+    expect(await tables.first().evaluate((table) => table.clientWidth / table.closest("article").clientWidth)).toBeGreaterThan(0.95);
     const overflow = await tables.evaluateAll((elements) => elements.map((element) => element.scrollWidth - element.clientWidth));
     expect(overflow, "every benchmark column must fit without horizontal scrolling").toEqual([0, 0]);
     for (const table of await tables.all()) {

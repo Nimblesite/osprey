@@ -74,4 +74,4 @@ Run `make check-examples` from `Book` to check the completed examples against th
 
 ## Continue learning
 
-Use the live [Osprey documentation](https://www.ospreylang.dev/docs/), [specifications](https://github.com/Nimblesite/osprey/tree/main/docs/specs), [status page](https://www.ospreylang.dev/status/), and [Playground](https://www.ospreylang.dev/playground/) for behavior beyond this edition. Confirm alpha-era changes against the current compiler and tests before updating book claims.
+Use the live [Osprey documentation](https://www.ospreylang.dev/docs/), [specifications](https://github.com/Nimblesite/osprey/tree/main/docs/specs), [status page](https://www.ospreylang.dev/status/), and [Playground](https://www.ospreylang.dev/playground/) for behavior beyond this edition. Confirm language and tooling changes against the current compiler and tests before updating book claims.

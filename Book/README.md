@@ -63,7 +63,7 @@ make release        # run every check and produce both formats
 4. Keep examples runnable against the pinned Osprey edition and store their output where the chapter can verify it.
 5. Let code prove language behavior. Use generated illustration for mood, deterministic diagrams for explanation, and direct captures for product evidence.
 6. Never promise a roadmap feature as shipped behavior.
-7. Do not hide Osprey's alpha status, platform limits, or C safety boundary.
+7. Do not hide Osprey's evolving compatibility, platform limits, or C safety boundary.
 8. Run `make release` before publishing an edition artifact.
 
 See [OUTLINE.md](OUTLINE.md) for the complete journey and [GLOSSARY.md](GLOSSARY.md) for the shared teaching vocabulary.

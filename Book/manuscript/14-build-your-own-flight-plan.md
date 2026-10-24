@@ -18,7 +18,7 @@ The running project becomes a template. The reader keeps it or replaces its doma
 4. Keep outside work at named boundaries
 5. Add tests before widening the feature surface
 6. Measure before optimizing or changing memory mode
-7. State alpha and platform limits in the project README
+7. State compatibility and platform limits in the project README
 8. Choose a command-line, supported browser, native-service, or native-mobile route
 
 ## Current boundaries for a capstone
@@ -40,7 +40,7 @@ Mobile handlers may describe commands which their host executes, then receive co
 
 Keep the scope within current runtime capabilities. WebAssembly and mobile use the default memory backend and have host-service boundaries. Native fibers use pthreads; cancellation, scopes, and deadlines are planned. Measure performance on the actual target before making speed claims.
 
-Write these constraints next to the relevant feature in the project README. Osprey remains alpha software; record the compiler build and the checks actually run. A skipped platform build is an evidence gap to report, not a successful test.
+Write these constraints next to the relevant feature in the project README. Osprey continues to evolve; record the compiler build and the checks actually run. A skipped platform build is an evidence gap to report, not a successful test.
 
 ## Compiler-feedback exercise
 

@@ -740,7 +740,7 @@ table.data td.num {
 .prose-wide-layout { max-width: 1800px; grid-template-columns: minmax(0, 1fr); }
 .prose-wide-layout .toc-aside { display: none; }
 .prose-wide-layout .prose { max-width: none; }
-.prose-wide-layout .prose > :not(.comparison-table):not(.bench-summary) { max-width: var(--content-width); }
+.prose-wide-layout .prose > :not(.comparison-table):not(.bench-summary) { max-width: var(--content-width); margin-inline: auto; }
 @media (min-width: 1200px) {
   .prose-wide-layout .comparison-table table { display: table; font-size: clamp(0.8rem, 0.8vw, 0.95rem); }
   .prose-wide-layout .comparison-table :is(th, td) { padding-inline: clamp(0.35rem, 0.8vw, 1rem); }

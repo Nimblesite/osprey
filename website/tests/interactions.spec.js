@@ -34,6 +34,20 @@ async function exampleResult(source, file) {
 }
 
 test.describe("homepage flight and source examples", () => {
+  test("homepage opens in Default flavor with inactive examples out of the layout", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.locator('.flavor-controls [aria-pressed="true"]')).toHaveText("Default");
+    await expect(page.locator("#source-extension")).toHaveText(".osp");
+    await expect(page.locator("#example-default")).toBeVisible();
+    for (const flavor of ["ml", "python"]) {
+      const source = page.locator(`#example-${flavor}`);
+      await expect(source).toBeHidden();
+      expect(await source.evaluate(element => element.getBoundingClientRect().height)).toBe(0);
+    }
+    await page.reload();
+    await expect(page.locator('.flavor-controls [aria-pressed="true"]')).toHaveText("Default");
+  });
+
   test("all three flavor examples execute with the displayed output", async ({ page }, testInfo) => {
     await page.goto("/");
     for (const [flavor, extension] of [["default", "osp"], ["ml", "ospml"], ["python", "py"]]) {
@@ -365,6 +379,7 @@ test.describe("documentation sub-page navigation", () => {
       "Start here",
       "Tutorials",
       "Build applications",
+      "Packages",
       "Language",
       "Reference",
     ]);

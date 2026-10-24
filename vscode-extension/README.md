@@ -4,7 +4,7 @@
 
 # Osprey for VS Code
 
-> **Preview.** Osprey is an alpha language and the extension follows the
+> **Preview.** Osprey is an actively evolving language and the extension follows the
 > compiler's current feature set.
 
 Language support for [Osprey](https://ospreylang.dev) — a functional programming

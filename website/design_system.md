@@ -36,7 +36,7 @@ Use 150–250ms feedback for controls, a brief 8–12px entrance for a headline,
 
 ## Video and sound
 
-A homepage film is a short demonstration, not a feature inventory. Open with effects. Show real source, the handler choice, and its output; end with one next step and an alpha qualification. Use the same bird, navy surfaces, cyan focus, fonts, syntax colors, and thin code-panel outlines as the page. A change of handler can become a visual transition: the code stays anchored while the implementation and result change.
+A homepage film is a short demonstration, not a feature inventory. Open with effects. Show real source, the handler choice, and its output; end with one next step and a concrete maturity qualification. Use the same bird, navy surfaces, cyan focus, fonts, syntax colors, and thin code-panel outlines as the page. A change of handler can become a visual transition: the code stays anchored while the implementation and result change.
 
 Compose landscape films at 1920×1080 with at least 80px safe margins. Keep each headline to two short lines. Show one code idea at a time; captions sit in their own lower safe area. Produce H.264/AAC with fast start, a deliberate poster, English WebVTT captions, and a lightweight web encode.
 

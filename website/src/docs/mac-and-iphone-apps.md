@@ -190,4 +190,4 @@ The compiler lowers the Osprey project through LLVM into native code for the tar
 - An effect handler at the boundary is the only place those imports are called, so a test handler runs the same logic without Swift.
 - One Xcode target picks the Osprey library for the SDK being built.
 
-Osprey is alpha software. See [iOS and Android apps](/docs/mobile-apps/) for an app that also handles SQLite and HTTP through effects.
+Osprey is actively evolving. See [iOS and Android apps](/docs/mobile-apps/) for an app that also handles SQLite and HTTP through effects.

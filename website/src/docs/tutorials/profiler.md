@@ -40,7 +40,7 @@ OSPREY_ARC_DEBUG=1 ./words
 # [osp-arc] exit: 0 live objects, 0 KiB (+0 immortal)
 ```
 
-Osprey is alpha software.
+Osprey is actively evolving.
 
 ## Transcript
 
