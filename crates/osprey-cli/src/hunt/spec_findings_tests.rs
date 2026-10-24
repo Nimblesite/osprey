@@ -343,7 +343,7 @@ fn the_message_is_the_first_error_line_trimmed() {
     }
 }
 
-/// The Osprey location is the first `.osp`/`.ospml` frame not in the prelude;
+/// The Osprey location is the first `.osp`/`.ospml`/`.py` frame not in the prelude;
 /// the runtime frame is the first `.c` frame.
 #[test]
 fn the_location_is_the_top_user_frame_and_the_runtime_frame_the_top_c_frame() {
@@ -355,8 +355,9 @@ fn the_location_is_the_top_user_frame_and_the_runtime_frame_the_top_c_frame() {
         }
         lines
     };
-    let cases: [LocationCase<'_>; 9] = [
+    let cases: [LocationCase<'_>; 10] = [
         (&[("a.osp", 1)], Some(("a.osp", 1)), None),
+        (&[("main.py", 7)], Some(("main.py", 7)), None),
         (
             &[("r.c", 5), ("a.osp", 2), ("b.osp", 3)],
             Some(("a.osp", 2)),

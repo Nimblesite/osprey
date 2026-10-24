@@ -1,0 +1,6 @@
+// Deliberately planted ML-flavor crash [SYMEX-CRASH-GATE].
+extern abort -> int
+result = match input ()
+    "M" => abort ()
+    _ => 0
+print "result ${result}"

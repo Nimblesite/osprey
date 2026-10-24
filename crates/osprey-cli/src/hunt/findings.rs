@@ -257,7 +257,7 @@ pub(crate) fn finding(
 /// An Osprey frame in the user's own code: prelude functions carry prelude
 /// line numbers and are reported through their caller.
 fn is_user_source(frame: &Frame) -> bool {
-    matches!(extension(&frame.file), "osp" | "ospml") && !is_prelude_line(frame.line)
+    matches!(extension(&frame.file), "osp" | "ospml" | "py") && !is_prelude_line(frame.line)
 }
 
 fn extension(file: &str) -> &str {

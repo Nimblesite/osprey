@@ -1,0 +1,125 @@
+[
+  {
+    "name": "stdin sentinel",
+    "program": "tests/hunt/crash.osp",
+    "expected": "tests/hunt/crash.expected",
+    "cases": [
+      {
+        "stdin": "9",
+        "signals": [
+          "SIGABRT"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "12 application and C-memory failures",
+    "program": "tests/hunt/crash_use_cases.osp",
+    "expected": "tests/hunt/crash_use_cases.expected",
+    "cases": [
+      {
+        "stdin": "P",
+        "signals": [
+          "SIGABRT"
+        ]
+      },
+      {
+        "stdin": "A",
+        "signals": [
+          "SIGABRT"
+        ]
+      },
+      {
+        "stdin": "L",
+        "signals": [
+          "SIGABRT"
+        ]
+      },
+      {
+        "stdin": "K",
+        "signals": [
+          "SIGABRT"
+        ]
+      },
+      {
+        "stdin": "C",
+        "signals": [
+          "SIGABRT"
+        ]
+      },
+      {
+        "stdin": "R",
+        "signals": [
+          "SIGABRT"
+        ]
+      },
+      {
+        "stdin": "U",
+        "signals": [
+          "SIGABRT"
+        ]
+      },
+      {
+        "stdin": "B",
+        "signals": [
+          "SIGABRT"
+        ]
+      },
+      {
+        "stdin": "J",
+        "signals": [
+          "SIGABRT"
+        ]
+      },
+      {
+        "stdin": "F",
+        "signals": [
+          "SIGABRT"
+        ],
+        "file": {
+          "path": "hunt-payload.txt",
+          "bytes": "!"
+        }
+      },
+      {
+        "stdin": "G",
+        "signals": [
+          "SIGABRT"
+        ]
+      },
+      {
+        "stdin": "D",
+        "signals": [
+          "SIGABRT",
+          "SIGTRAP"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ML flavor",
+    "program": "tests/hunt/crash_ml.ospml",
+    "expected": "tests/hunt/crash_ml.expected",
+    "cases": [
+      {
+        "stdin": "M",
+        "signals": [
+          "SIGABRT"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Python flavor project",
+    "program": "tests/hunt/python",
+    "expected": "tests/hunt/crash_python.expected",
+    "cases": [
+      {
+        "stdin": "Y",
+        "signals": [
+          "SIGABRT"
+        ]
+      }
+    ]
+  }
+]

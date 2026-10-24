@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+"""Quick-corpus qualification must reject partial runs and kill whole process groups."""
+import argparse
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+
+from hunt_sample import qualifies, run_one
+from hunt_programs import discover
+
+
+class InventoryTests(unittest.TestCase):
+    def test_projects_are_one_program_and_libraries_and_rejections_are_not_apps(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            files = {'examples/app/osprey.toml': '[project]\nentry="main.py"',
+                     'examples/app/main.py': '# osprey: flavor=python\nprint(1)',
+                     'examples/app/helper.osp': 'print(2)', 'examples/library/osprey.toml': '[project]',
+                     'examples/library/lib.osp': 'fn id(x) = x', 'examples/one.osp': 'print(1)',
+                     'examples/one.ospml': 'print 1', 'examples/failscompilation/bad.osp': 'bad'}
+            for name, text in files.items():
+                path = root/name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(text)
+            self.assertEqual(discover(root, ['examples']), ['examples/app', 'examples/one.osp', 'examples/one.ospml'])
+
+
+class QualificationTests(unittest.TestCase):
+    def clean(self):
+        return {'exitCode': 0, 'timedOut': False, 'wallSeconds': 1,
+                'report': {'explored': {'paths': 3, 'completed': 3}, 'findings': [], 'incomplete': []}}
+
+    def test_only_completed_bounded_finding_free_runs_qualify(self):
+        self.assertTrue(qualifies(self.clean()))
+        for patch in [{'exitCode': 1}, {'exitCode': -11}, {'timedOut': True}, {'wallSeconds': 11}, {'report': None}]:
+            self.assertFalse(qualifies(self.clean() | patch), patch)
+        for patch in [{'explored': {'paths': 3, 'completed': 2}}, {'explored': {'paths': 0, 'completed': 0}},
+                      {'findings': [{'class': 'unmodelled'}]}, {'incomplete': [{'reason': 'time'}]}]:
+            value = self.clean()
+            value['report'].update(patch)
+            self.assertFalse(qualifies(value), patch)
+
+    @unittest.skipUnless(os.name == 'posix', 'process-group contract is POSIX')
+    def test_deadline_kills_the_child_group_and_preserves_logs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fake = root/'osprey'
+            fake.write_text('#!/bin/sh\nsleep 60 &\necho $!\nwait\n')
+            fake.chmod(0o755)
+            options = argparse.Namespace(root=root, out=root/'reports', osprey=fake, wall_time=1,
+                                         max_time=1, input_bytes=2)
+            result = run_one('slow.osp', options)
+            self.assertTrue(result['timedOut'])
+            self.assertLess(result['wallSeconds'], 3)
+            pid = int((Path(result['directory'])/'stdout.log').read_text())
+            time.sleep(0.1)
+            state = subprocess.run(['ps', '-o', 'stat=', '-p', str(pid)], capture_output=True, text=True).stdout.strip()
+            self.assertTrue(not state or state.startswith('Z'), state)
+
+
+class CrashGateTests(unittest.TestCase):
+    def test_unconfirmed_skipped_wrong_input_and_wrong_signal_cannot_pass(self):
+        from hunt_crashes import check_replay
+        case = {'signals': ['SIGABRT'], 'stdin': '9'}
+        base = {'replay': 'reproduced', 'replayDetail': 'SIGABRT', 'stdin': '9'}
+        self.assertEqual(check_replay(base, case), '')
+        for patch in [{'replay': 'klee-only'}, {'replay': 'skipped'}, {'replay': 'not-run'},
+                      {'replayDetail': 'SIGSEGV'}, {'stdin': '0'}]:
+            self.assertTrue(check_replay(base | patch, case), patch)
+
+    def test_real_engine_gate_is_required_by_existing_ci_contexts(self):
+        root = Path(__file__).resolve().parent.parent
+        workflow = (root/'.github/workflows/ci.yml').read_text()
+        self.assertIn('make _test_hunt_crashes', workflow)
+        self.assertIn('brew install klee', workflow)
+        self.assertIn('make _test_hunt_mock', workflow)
+
+
+if __name__ == '__main__':
+    unittest.main()
