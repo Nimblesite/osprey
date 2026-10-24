@@ -197,7 +197,7 @@ _test_gpu_device: $(GPU_DEVICE_NATIVE)
 # host against its own headers and linked with the runtime units it must
 # intercept (`osp_input`, `readFile`); the driver is compiled against the host
 # headers. Runs without KLEE installed: the mock carries its own klee/klee.h.
-# Deterministic Hunt runs [SYMEX-REGRESSION]: each tests/hunt/<name>.osp must
+# Deterministic Hunt runs [SYMEX-CLI]: each tests/hunt/<name>.osp must
 # report exactly the findings in <name>.expected (see tests/hunt/README.md).
 # Skipped loudly without KLEE, like the bitcode it needs.
 _test_hunt:
@@ -221,6 +221,8 @@ _test_hunt_mock:
 	    $(CC) -std=c11 -O1 -g $(WARN_MAX) -fno-builtin -I runtime/klee -c $$t -o bin/hunt_mock/driver_$$(basename $$t .c).o; \
 	  done && \
 	  $(CC) bin/hunt_mock/*.o -o bin/hunt_mock_tests && ./bin/hunt_mock_tests
+	@echo "==> [hunt] corpus scripts and the format oracle..."
+	@python3 scripts/test-hunt-scripts.py
 
 # Per-library C line-coverage gate. Rebuilds every table suite with gcov
 # instrumentation into compiler/bin/cov/<suite>/, reruns it there (a failing
