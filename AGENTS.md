@@ -4,6 +4,7 @@
 
 ## ⚠️ Invariants
 - **Subagents are illegal.**
+- **Linked worktrees are illegal.** Work only in the primary checkout; never create or recreate a linked worktree.
 - **External agents (pi) use only these models:** Kimi K3 (`moonshotai/kimi-k3`), GLM 5.3 (`zai/glm-5.3`, `zai/glm-5.3-flash`), DeepSeek V4.1 (`deepseek/deepseek-v4-pro`, `deepseek/deepseek-flash`) and their flash variants. No other model, ever. If credit is out, ***tell the user***.
 - ***You are responsible** for the work of the pi agents. You must review and fix all work that they create. Broken code created by pi is considered broken code created by you.
 - **Never ask the user questions.** Use your judgement, record assumptions, act autonomously.
@@ -33,6 +34,8 @@ On encountering code that fails silently:
 A panic is found in seconds; a silent failure never is. This quarantine is the one place a panic is mandated.
 
 ## CI gates
+- **Protect the Dependabot auto-merge process.** `dependabot-upgrades` is permanent staging, never a disposable feature branch. Never delete it during merged-branch cleanup, rename it, protect it against the sweep bot, retarget routine updates to main, disable the sweep or consolidation PR, or add CI to staging. Preserve `.github/dependabot.yml` and `.github/workflows/dependabot-automerge.yml`; follow AgentPMO/Shipwright and the Deslop implementation. Updates accumulate automatically in staging and reach main through a fully tested consolidation PR. Any process change requires explicit user authorization.
+- **Every release must pass a fresh dependency vulnerability audit of its exact SHA.** Every publishing/deployment job must depend on the unconditional `audit` job, including website-only releases and prereleases. Never skip, suppress, downgrade, or bypass this gate. Scanner/network failures fail the release. `make audit` is the shared local/release check.
 - **Never merge with a known failure.** Adjust github settings to prevent merges to main that are red
 - **Required checks are pinned** in [`scripts/verify-branch-protection.mjs`](scripts/verify-branch-protection.mjs) and asserted by the `changes` job on every PR. Changing the gate means changing that list and the ruleset together.
 - **A new required check skips via a job-level `if:`**, never `on: paths:`/`paths-ignore:`. A path-filtered job never reports, which blocks every merge forever.

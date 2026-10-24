@@ -1,0 +1,112 @@
+# Implements the AgentPMO/Shipwright dependabot-upgrades staging contract.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    target-branch: "dependabot-upgrades"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: ["dependencies"]
+    groups:
+      cargo:
+        applies-to: version-updates
+        patterns: ["*"]
+      cargo-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directories:
+      - "/vscode-extension"
+      - "/webcompiler"
+      - "/website"
+      - "/tree-sitter-osprey"
+      - "/scripts/carbon"
+      - "/examples/projects/modules/web"
+      - "/examples/projects/modules/e2e"
+    target-branch: "dependabot-upgrades"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: ["dependencies"]
+    groups:
+      npm:
+        applies-to: version-updates
+        patterns: ["*"]
+      npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: pip
+    directory: "/python"
+    target-branch: "dependabot-upgrades"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: ["dependencies"]
+    groups:
+      pip:
+        applies-to: version-updates
+        patterns: ["*"]
+      pip-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: gradle
+    directories:
+      - "/examples/mobile/android"
+      - "/examples/projects/modules/mobile/android"
+    target-branch: "dependabot-upgrades"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: ["dependencies"]
+    groups:
+      gradle:
+        applies-to: version-updates
+        patterns: ["*"]
+      gradle-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directories:
+      - "/.devcontainer"
+      - "/webcompiler"
+    target-branch: "dependabot-upgrades"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: ["dependencies"]
+    groups:
+      docker:
+        applies-to: version-updates
+        patterns: ["*"]
+      docker-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    target-branch: "dependabot-upgrades"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: ["dependencies"]
+    groups:
+      github-actions:
+        applies-to: version-updates
+        patterns: ["*"]
+
+  - package-ecosystem: gitsubmodule
+    directory: "/"
+    target-branch: "dependabot-upgrades"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels: ["dependencies"]
+    groups:
+      gitsubmodule:
+        applies-to: version-updates
+        patterns: ["*"]

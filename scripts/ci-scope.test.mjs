@@ -54,3 +54,26 @@ test('malformed detection input fails the gate instead of skipping required jobs
     assert.match(readFileSync(env.GITHUB_OUTPUT, 'utf8'), /^code=false\nwebsite=false\nbook=true\nbenchmarks=false\n$/)
   } finally { rmSync(temporary, { recursive: true }) }
 })
+
+const workflowJobs = (file) => readFileSync(file, 'utf8').split(/(?=^  [\w-]+:\s*$)/m)
+const job = (name) => workflowJobs('.github/workflows/release.yml').find((block) => block.startsWith(`  ${name}:`)) ?? ''
+
+test('every release publishes only after an unconditional dependency audit', () => {
+  assert.match(job('audit'), /uses: \.\/\.github\/workflows\/ci-audit\.yml/)
+  assert.doesNotMatch(job('audit'), /^    if:/m)
+  for (const name of ['github-release', 'brew', 'scoop', 'vsix', 'publish-marketplace',
+    'publish-openvsx', 'deploy-site', 'deploy-webcompiler']) {
+    assert.match(job(name), /needs:.*\baudit\b/, `${name} must wait for the audit`)
+  }
+})
+
+test('Dependabot stages updates and keeps a consolidation PR flowing to main', () => {
+  const config = readFileSync('.github/dependabot.yml', 'utf8')
+  assert.equal((config.match(/package-ecosystem:/g) ?? []).length,
+    (config.match(/target-branch: ["']?dependabot-upgrades/g) ?? []).length)
+  const sweep = readFileSync('.github/workflows/dependabot-automerge.yml', 'utf8')
+  assert.match(sweep, /github.actor == 'dependabot\[bot\]'/)
+  assert.doesNotMatch(sweep, /pull_request_target:/)
+  assert.match(sweep, /--head dependabot-upgrades --base main/)
+  assert.match(sweep, /git diff -z --name-only/)
+})

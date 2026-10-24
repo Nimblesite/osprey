@@ -34,7 +34,7 @@ JOBS = (
     "deploy-site",
     "deploy-webcompiler",
 )
-ALWAYS_RUN = ("scope", "version", "preflight")
+ALWAYS_RUN = ("scope", "version", "preflight", "audit")
 
 OK, SKIP, FAIL, CANCEL = "success", "skipped", "failure", "cancelled"
 
@@ -53,7 +53,12 @@ prerelease leaves the live site alone|pass|SSSSSSSKS|11111
 prerelease, Open VSX skipped|fail|SSSSSSKKS|11111
 vsix-only tag, extension published|pass|SKKKSSSKK|01100
 vsix-only tag, Marketplace skipped|fail|SKKKSKSKK|01100
-a job that should always run did not|fail|SSSSSSSSS|11110"""
+a job that should always run did not|fail|SSSSSSSSS|11110
+audit skipped on full release|fail|SSSSSSSSS|11110
+audit skipped on website release|fail|KKKKKKKSK|00010
+audit skipped on prerelease|fail|SSSSSSSKS|11111
+audit skipped on extension release|fail|SKKKSSSKK|01100
+audit failed on full release|fail|SSSSSSSSS|11110"""
 
 
 def case(row):
@@ -103,6 +108,10 @@ def main():
             # The last row drops an unconditional job to prove the gate notices.
             if label.startswith("a job that should always run"):
                 results["preflight"] = {"result": SKIP}
+            if label.startswith("audit skipped"):
+                results["audit"] = {"result": SKIP}
+            if label.startswith("audit failed"):
+                results["audit"] = {"result": FAIL}
             results.update({job: {"result": r} for job, r in zip(JOBS, outcomes)})
             passed, output = run(script, results, scope, summary.name)
             if passed != expect_pass:

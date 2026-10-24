@@ -35,6 +35,12 @@ env:
   DESCRIPTION: "Osprey — a functional language with algebraic effects, fibers, and compile-time safety"
 
 jobs:
+  audit:
+    name: Dependency audit release gate
+    uses: ./.github/workflows/ci-audit.yml
+    permissions:
+      contents: read
+
   # --------------------------------------------------------------------------
   # Release scope (COST GATE) — diff this tag against the previous release tag and
   # decide which surfaces must publish, so the expensive macOS/Windows build matrix
@@ -213,7 +219,7 @@ jobs:
   # --------------------------------------------------------------------------
   github-release:
     name: Publish GitHub Release
-    needs: [version, build, scope]
+    needs: [version, build, scope, audit]
     # The standalone binary GitHub Release (and the brew/scoop jobs that depend on
     # it) only ship on a full release.
     if: ${{ needs.scope.outputs.full == 'true' }}
@@ -266,7 +272,7 @@ jobs:
   # to install the runtime libs and depend on llvm (osprey shells out to it).
   brew:
     name: Publish Homebrew formula
-    needs: [version, github-release, preflight]
+    needs: [version, github-release, preflight, audit]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -340,7 +346,7 @@ jobs:
   # llc/clang/gcc at compile time.
   scoop:
     name: Publish Scoop manifest
-    needs: [version, github-release, preflight]
+    needs: [version, github-release, preflight, audit]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -408,7 +414,7 @@ jobs:
   # extension launches a version-matched compiler verified by @nimblesite/shipwright-vscode.
   vsix:
     name: Publish VSIX ${{ matrix.target }}
-    needs: [version, build, scope]
+    needs: [version, build, scope, audit]
     # Package the per-platform VSIX only when the extension changed (or a full
     # release). build_matrix is guaranteed true here, so the bundled binary is
     # rebuilt at the new tag version.
@@ -506,7 +512,7 @@ jobs:
   # Nimblesite/NimblesiteDeployment docs/vscode-marketplace-oidc.md.
   publish-marketplace:
     name: Publish VSIX to VS Code Marketplace
-    needs: [version, vsix]
+    needs: [version, vsix, audit]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: release
@@ -563,7 +569,7 @@ jobs:
   # publish so one registry hiccup never blocks the other. [EDITOR-VSCODE]
   publish-openvsx:
     name: Publish VSIX to Open VSX
-    needs: [version, vsix, preflight]
+    needs: [version, vsix, preflight, audit]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: release
@@ -612,7 +618,7 @@ jobs:
   # is skipped, so a prerelease never overwrites the live site.
   deploy-site:
     name: Deploy website to GitHub Pages
-    needs: [scope]
+    needs: [scope, audit]
     if: ${{ needs.scope.outputs.website == 'true' && !contains(github.ref_name, '-') }}
     uses: ./.github/workflows/deploy-pages.yml
     permissions:
@@ -622,7 +628,7 @@ jobs:
 
   deploy-webcompiler:
     name: Deploy web compiler
-    needs: [github-release]
+    needs: [github-release, audit]
     # Blocking, like every other channel. This deploy used to be non-fatal, and
     # the live playground consequently served a stale build for weeks behind a
     # green release. Nothing depends on this job, so failing it stops nothing —
@@ -646,6 +652,7 @@ jobs:
   release-complete:
     name: Release complete
     needs:
+      - audit
       - scope
       - version
       - build
@@ -687,7 +694,7 @@ jobs:
             | "\(.key)(\(.value.result))"' <<< "$RESULTS" | tr '\n' ' ')
 
           # These have no `if:` at all, so a skip means the run itself is broken.
-          required="scope version preflight"
+          required="scope version preflight audit"
           [ "$WANT_BUILD" != "true" ] || required="$required build"
           [ "$WANT_VSIX" != "true" ] || required="$required vsix publish-marketplace publish-openvsx"
           [ "$WANT_FULL" != "true" ] || required="$required github-release brew scoop deploy-webcompiler"

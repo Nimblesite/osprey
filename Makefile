@@ -24,6 +24,11 @@ build: _runtime $(EXT_NODE_DEPS) $(PROFILER_UI_BUILT)
 	cargo build --release --workspace
 	cd $(EXT_DIR) && npm run compile
 
+## audit: Full dependency vulnerability scan; scanner errors and advisories fail.
+.PHONY: audit
+audit:
+	osv-scanner scan source --recursive --all-vulns .
+
 ## test: Fail-fast tests + coverage + per-project threshold enforcement.
 ##       Projects listed in coverage-thresholds.json are each tested + checked.
 test: build
