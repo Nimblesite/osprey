@@ -40,6 +40,9 @@ jobs:
           fetch-depth: 0
           # The site's images and videos are Git LFS files.
           lfs: true
+          # `make wasm-site` builds the workspace, whose lsp-profiler crates
+          # live in the lspkit submodule.
+          submodules: true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
