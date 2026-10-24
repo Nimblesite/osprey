@@ -213,11 +213,13 @@ _test_hunt:
 
 _test_hunt_mock:
 	@echo "==> [hunt] mock C library unit tests..."
-	@cd compiler && set -e && $(MKDIR) bin/hunt_mock && \
+	@cd compiler && set -e && $(MKDIR) bin/hunt_mock && rm -f bin/hunt_mock/*.o && \
 	  for u in $(HUNT_MOCK_SRC) random_runtime file_runtime; do \
 	    $(CC) $(HUNT_MOCK_HOST_CFLAGS) -c runtime/$$u.c -o bin/hunt_mock/$$(basename $$u).o; \
 	  done && \
-	  $(CC) -std=c11 -O1 -g $(WARN_MAX) -fno-builtin -I runtime/klee -c runtime/klee/hunt_mock_tests.c -o bin/hunt_mock/driver.o && \
+	  for t in runtime/klee/hunt_mock*_tests.c; do \
+	    $(CC) -std=c11 -O1 -g $(WARN_MAX) -fno-builtin -I runtime/klee -c $$t -o bin/hunt_mock/driver_$$(basename $$t .c).o; \
+	  done && \
 	  $(CC) bin/hunt_mock/*.o -o bin/hunt_mock_tests && ./bin/hunt_mock_tests
 
 # Per-library C line-coverage gate. Rebuilds every table suite with gcov
