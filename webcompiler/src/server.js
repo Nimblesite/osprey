@@ -256,7 +256,7 @@ deleteAllTempFolders()
 
 // THREAD-SAFE Helper function to run Osprey compiler
 // Each request gets its own UUID-named folder for complete isolation
-// Always uses --sandbox flag for security (disables HTTP, WebSocket, file system, and FFI access)
+// Implements [SECURITY-CAPABILITY-GATES]: compile and run share one mandatory sandbox.
 function runOspreyCompiler(args, code = '', flavor = 'default') {
     return new Promise(async (resolve, reject) => {
         // Create a unique UUID folder for this request - THREAD SAFE!
