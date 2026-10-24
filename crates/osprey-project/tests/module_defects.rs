@@ -238,11 +238,13 @@ fn parent_python_entry_fixture() -> std::io::Result<(PathBuf, PathBuf)> {
     let project = root.join(".osprey/build");
     std::fs::create_dir_all(&project)?;
     std::fs::create_dir_all(root.join("src"))?;
+    std::fs::create_dir_all(root.join("lib"))?;
     std::fs::write(
         root.join("src/main.py"),
         "# osprey: flavor=python\ndef main():\n    return print(\"parent entry\")\n",
     )?;
-    std::fs::write(project.join("osprey.toml"), "[project]\nsource_roots = [\"../../src\"]\npython_sources = [\"../../src/main.py\"]\ndefault_namespace = \"app\"\nentry = \"../../src/main.py\"\n")?;
+    std::fs::write(root.join("lib/main.py"), "# osprey: flavor=python\n# osprey: namespace=app\n# osprey: module=Values\n__all__ = [\"answer\"]\ndef answer():\n    return 7\n")?;
+    std::fs::write(project.join("osprey.toml"), "[project]\nsource_roots = [\"../../src\", \"../../lib\"]\npython_sources = [\"../../src/main.py\", \"../../lib/main.py\"]\ndefault_namespace = \"app\"\nentry = \"../../src/main.py\"\n")?;
     Ok((root, project))
 }
 
@@ -250,7 +252,12 @@ fn parent_python_entry_fixture() -> std::io::Result<(PathBuf, PathBuf)> {
 fn python_entry_is_resolved_relative_to_a_derived_manifest() -> std::io::Result<()> {
     let (root, project) = parent_python_entry_fixture()?;
     let loaded = osprey_project::load_and_assemble(&project);
+    let expected = root.join("src/main.py").canonicalize()?;
     std::fs::remove_dir_all(root)?;
     assert!(loaded.is_ok(), "{loaded:#?}");
+    assert_eq!(
+        loaded.ok().and_then(|p| p.entry().map(|e| e.path.clone())),
+        Some(expected)
+    );
     Ok(())
 }
