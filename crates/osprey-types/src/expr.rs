@@ -1623,13 +1623,13 @@ impl Checker {
                 } else if l.is_named(names::FLOAT) || r.is_named(names::FLOAT) {
                     Type::float()
                 } else if l.is_named(names::LIST) {
-                    crate::arithmetic::quarantine_collection_addition(&mut self.ctx, &l, &r);
+                    self.push_unify(&l, &r);
                     l
                 } else if r.is_named(names::LIST) {
-                    crate::arithmetic::quarantine_collection_addition(&mut self.ctx, &l, &r);
+                    self.push_unify(&l, &r);
                     r
                 } else if l.is_named(names::MAP) || r.is_named(names::MAP) {
-                    crate::arithmetic::quarantine_collection_addition(&mut self.ctx, &l, &r);
+                    self.push_unify(&l, &r);
                     if l.is_named(names::MAP) {
                         l
                     } else {
