@@ -9,6 +9,8 @@ use std::path::{Path, PathBuf};
 /// Project assembly settings read from `osprey.toml`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectConfig {
+    /// Directory containing the manifest, used to resolve entry identity.
+    pub directory: PathBuf,
     /// Human-readable project name.
     pub name: String,
     /// Directories scanned for production sources, relative to the manifest.
@@ -53,6 +55,7 @@ impl ProjectConfig {
             "."
         };
         Self {
+            directory: root.to_path_buf(),
             default_namespace: Some(name.clone()),
             name,
             source_roots: vec![PathBuf::from(source)],

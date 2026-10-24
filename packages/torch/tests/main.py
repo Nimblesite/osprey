@@ -12,6 +12,7 @@ from numpy import Array, Device, Errors, Host
 from testing import Check
 from torch import Autograd, LR, Optim
 from torch_expected import Expected
+from torch_tests import Contracts
 
 TIGHT = 0.000000000001
 LOOSE = 0.000000001
@@ -132,230 +133,90 @@ def adagrad_3(lr, lr_decay, wd, eps):
     return Optim.adagrad(r2.params, grad_step(2), r2.state, lr, lr_decay, wd, eps)
 
 
-# SGD cases ---------------------------------------------------------------
+# Optimizer cases ---------------------------------------------------------
 
-def sgd_params(backend, i):
+def checked_rows(work):
+    with Errors.raising:
+        return Success(value=work())
+
+
+def optimizer_field(name, backend, i, j, value, want, suffixes):
+    suffix = unwrap_or(listGet(suffixes, j), "missing")
+    return Check.close_all(f"{name}.{suffix}.{i}.{backend}", atl(value, j), flat_expected(atl(want, j)), TIGHT, ATOL)
+
+
+def check_optimizer(name, backend, i, work, want, suffixes):
+    match apply(backend, lambda: checked_rows(work)):
+        case Success(value=value):
+            fields = mapList(toList(range(len(suffixes))), lambda j: optimizer_field(name, backend, i, j, value, want, suffixes))
+            return listAppend(fields, Check.equal(f"{name}.fields.{i}.{backend}", len(value), len(suffixes)))
+        case Error(message=message):
+            return [Check.failed(f"{name}.{i}.{backend}", message)]
+
+
+def sgd_rows(i):
     s = atl(SGD_SPECS, i)
-    momentum = atf(s, 0)
-    dampening = atf(s, 1)
-    nesterov = atf(s, 2) != 0.0
-    wd = atf(s, 3)
-    compute = lambda: flat_list(sgd_3(momentum, dampening, nesterov, wd).params)
-    work = lambda: Errors.checked_values(compute)
-    return check_list(f"sgd.params.{i}.{backend}", apply(backend, work), flat_expected(atl(Expected.SGD_PARAMS, i)), TIGHT)
+    r = sgd_3(atf(s, 0), atf(s, 1), atf(s, 2) != 0.0, atf(s, 3))
+    return [flat_list(r.params), flat_list(r.state.buffers)]
 
 
-def sgd_buffers(backend, i):
-    s = atl(SGD_SPECS, i)
-    momentum = atf(s, 0)
-    dampening = atf(s, 1)
-    nesterov = atf(s, 2) != 0.0
-    wd = atf(s, 3)
-    compute = lambda: flat_list(sgd_3(momentum, dampening, nesterov, wd).state.buffers)
-    work = lambda: Errors.checked_values(compute)
-    return check_list(f"sgd.buffers.{i}.{backend}", apply(backend, work), flat_expected(atl(Expected.SGD_BUFFERS, i)), TIGHT)
+def sgd_case(b, i):
+    want = [atl(Expected.SGD_PARAMS, i), atl(Expected.SGD_BUFFERS, i)]
+    return check_optimizer("sgd", b, i, lambda: sgd_rows(i), want, ["params", "buffers"])
 
 
 def sgd_cases():
-    return fold(range(5), [], lambda acc, i: listConcat(acc, both(lambda b: [sgd_params(b, i), sgd_buffers(b, i)])))
+    return fold(range(5), [], lambda acc, i: listConcat(acc, both(lambda b: sgd_case(b, i))))
 
 
-# Adam cases --------------------------------------------------------------
-
-def adam_params(backend, i):
-    s = atl(ADAM_SPECS, i)
-    lr = atf(s, 0)
-    b1 = atf(s, 1)
-    b2 = atf(s, 2)
-    eps = atf(s, 3)
-    wd = atf(s, 4)
-    amsgrad = atf(s, 5) != 0.0
-    compute = lambda: flat_list(adam_3(lr, b1, b2, eps, wd, amsgrad).params)
-    work = lambda: Errors.checked_values(compute)
-    return check_list(f"adam.params.{i}.{backend}", apply(backend, work), flat_expected(atl(Expected.ADAM_PARAMS, i)), TIGHT)
+def adam_rows(i, decoupled):
+    s = atl(ADAMW_SPECS if decoupled else ADAM_SPECS, i)
+    r = adamw_3(atf(s, 0), atf(s, 1), atf(s, 2), atf(s, 3), atf(s, 4), atf(s, 5) != 0.0) if decoupled else adam_3(atf(s, 0), atf(s, 1), atf(s, 2), atf(s, 3), atf(s, 4), atf(s, 5) != 0.0)
+    return [flat_list(r.params), flat_list(r.state.exp_avg), flat_list(r.state.exp_avg_sq), flat_list(r.state.max_exp_avg_sq)]
 
 
-def adam_exp_avg(backend, i):
-    s = atl(ADAM_SPECS, i)
-    lr = atf(s, 0)
-    b1 = atf(s, 1)
-    b2 = atf(s, 2)
-    eps = atf(s, 3)
-    wd = atf(s, 4)
-    amsgrad = atf(s, 5) != 0.0
-    compute = lambda: flat_list(adam_3(lr, b1, b2, eps, wd, amsgrad).state.exp_avg)
-    work = lambda: Errors.checked_values(compute)
-    return check_list(f"adam.exp_avg.{i}.{backend}", apply(backend, work), flat_expected(atl(Expected.ADAM_EXP_AVG, i)), TIGHT)
-
-
-def adam_exp_avg_sq(backend, i):
-    s = atl(ADAM_SPECS, i)
-    lr = atf(s, 0)
-    b1 = atf(s, 1)
-    b2 = atf(s, 2)
-    eps = atf(s, 3)
-    wd = atf(s, 4)
-    amsgrad = atf(s, 5) != 0.0
-    compute = lambda: flat_list(adam_3(lr, b1, b2, eps, wd, amsgrad).state.exp_avg_sq)
-    work = lambda: Errors.checked_values(compute)
-    return check_list(f"adam.exp_avg_sq.{i}.{backend}", apply(backend, work), flat_expected(atl(Expected.ADAM_EXP_AVG_SQ, i)), TIGHT)
-
-
-def adam_max(backend, i):
-    s = atl(ADAM_SPECS, i)
-    lr = atf(s, 0)
-    b1 = atf(s, 1)
-    b2 = atf(s, 2)
-    eps = atf(s, 3)
-    wd = atf(s, 4)
-    amsgrad = atf(s, 5) != 0.0
-    compute = lambda: flat_list(adam_3(lr, b1, b2, eps, wd, amsgrad).state.max_exp_avg_sq)
-    work = lambda: Errors.checked_values(compute)
-    return check_list(f"adam.max.{i}.{backend}", apply(backend, work), flat_expected(atl(Expected.ADAM_MAX, i)), TIGHT)
+def adam_case(b, i, decoupled):
+    tables = [Expected.ADAMW_PARAMS, Expected.ADAMW_EXP_AVG, Expected.ADAMW_EXP_AVG_SQ, Expected.ADAMW_MAX] if decoupled else [Expected.ADAM_PARAMS, Expected.ADAM_EXP_AVG, Expected.ADAM_EXP_AVG_SQ, Expected.ADAM_MAX]
+    want = mapList(tables, lambda xs: atl(xs, i))
+    return check_optimizer("adamw" if decoupled else "adam", b, i, lambda: adam_rows(i, decoupled), want, ["params", "exp_avg", "exp_avg_sq", "max"])
 
 
 def adam_cases():
-    return fold(range(3), [], lambda acc, i: listConcat(acc, both(lambda b: [adam_params(b, i), adam_exp_avg(b, i), adam_exp_avg_sq(b, i), adam_max(b, i)])))
-
-
-# AdamW cases -------------------------------------------------------------
-
-def adamw_params(backend, i):
-    s = atl(ADAMW_SPECS, i)
-    lr = atf(s, 0)
-    b1 = atf(s, 1)
-    b2 = atf(s, 2)
-    eps = atf(s, 3)
-    wd = atf(s, 4)
-    amsgrad = atf(s, 5) != 0.0
-    compute = lambda: flat_list(adamw_3(lr, b1, b2, eps, wd, amsgrad).params)
-    work = lambda: Errors.checked_values(compute)
-    return check_list(f"adamw.params.{i}.{backend}", apply(backend, work), flat_expected(atl(Expected.ADAMW_PARAMS, i)), TIGHT)
-
-
-def adamw_exp_avg(backend, i):
-    s = atl(ADAMW_SPECS, i)
-    lr = atf(s, 0)
-    b1 = atf(s, 1)
-    b2 = atf(s, 2)
-    eps = atf(s, 3)
-    wd = atf(s, 4)
-    amsgrad = atf(s, 5) != 0.0
-    compute = lambda: flat_list(adamw_3(lr, b1, b2, eps, wd, amsgrad).state.exp_avg)
-    work = lambda: Errors.checked_values(compute)
-    return check_list(f"adamw.exp_avg.{i}.{backend}", apply(backend, work), flat_expected(atl(Expected.ADAMW_EXP_AVG, i)), TIGHT)
-
-
-def adamw_exp_avg_sq(backend, i):
-    s = atl(ADAMW_SPECS, i)
-    lr = atf(s, 0)
-    b1 = atf(s, 1)
-    b2 = atf(s, 2)
-    eps = atf(s, 3)
-    wd = atf(s, 4)
-    amsgrad = atf(s, 5) != 0.0
-    compute = lambda: flat_list(adamw_3(lr, b1, b2, eps, wd, amsgrad).state.exp_avg_sq)
-    work = lambda: Errors.checked_values(compute)
-    return check_list(f"adamw.exp_avg_sq.{i}.{backend}", apply(backend, work), flat_expected(atl(Expected.ADAMW_EXP_AVG_SQ, i)), TIGHT)
-
-
-def adamw_max(backend, i):
-    s = atl(ADAMW_SPECS, i)
-    lr = atf(s, 0)
-    b1 = atf(s, 1)
-    b2 = atf(s, 2)
-    eps = atf(s, 3)
-    wd = atf(s, 4)
-    amsgrad = atf(s, 5) != 0.0
-    compute = lambda: flat_list(adamw_3(lr, b1, b2, eps, wd, amsgrad).state.max_exp_avg_sq)
-    work = lambda: Errors.checked_values(compute)
-    return check_list(f"adamw.max.{i}.{backend}", apply(backend, work), flat_expected(atl(Expected.ADAMW_MAX, i)), TIGHT)
+    return fold(range(3), [], lambda acc, i: listConcat(acc, both(lambda b: adam_case(b, i, False))))
 
 
 def adamw_cases():
-    return fold(range(2), [], lambda acc, i: listConcat(acc, both(lambda b: [adamw_params(b, i), adamw_exp_avg(b, i), adamw_exp_avg_sq(b, i), adamw_max(b, i)])))
+    return fold(range(2), [], lambda acc, i: listConcat(acc, both(lambda b: adam_case(b, i, True))))
 
 
-# RMSprop cases -----------------------------------------------------------
-
-def rmsprop_params(backend, i):
+def rmsprop_rows(i):
     s = atl(RMS_SPECS, i)
-    alpha = atf(s, 0)
-    eps = atf(s, 1)
-    wd = atf(s, 2)
-    momentum = atf(s, 3)
-    centered = atf(s, 4) != 0.0
-    compute = lambda: flat_list(rmsprop_3(alpha, eps, wd, momentum, centered).params)
-    work = lambda: Errors.checked_values(compute)
-    return check_list(f"rmsprop.params.{i}.{backend}", apply(backend, work), flat_expected(atl(Expected.RMSPROP_PARAMS, i)), TIGHT)
+    r = rmsprop_3(atf(s, 0), atf(s, 1), atf(s, 2), atf(s, 3), atf(s, 4) != 0.0)
+    return [flat_list(r.params), flat_list(r.state.square_avg), flat_list(r.state.grad_avg), flat_list(r.state.buffers)]
 
 
-def rmsprop_sq(backend, i):
-    s = atl(RMS_SPECS, i)
-    alpha = atf(s, 0)
-    eps = atf(s, 1)
-    wd = atf(s, 2)
-    momentum = atf(s, 3)
-    centered = atf(s, 4) != 0.0
-    compute = lambda: flat_list(rmsprop_3(alpha, eps, wd, momentum, centered).state.square_avg)
-    work = lambda: Errors.checked_values(compute)
-    return check_list(f"rmsprop.sq.{i}.{backend}", apply(backend, work), flat_expected(atl(Expected.RMSPROP_SQ, i)), TIGHT)
-
-
-def rmsprop_grad_avg(backend, i):
-    s = atl(RMS_SPECS, i)
-    alpha = atf(s, 0)
-    eps = atf(s, 1)
-    wd = atf(s, 2)
-    momentum = atf(s, 3)
-    centered = atf(s, 4) != 0.0
-    compute = lambda: flat_list(rmsprop_3(alpha, eps, wd, momentum, centered).state.grad_avg)
-    work = lambda: Errors.checked_values(compute)
-    return check_list(f"rmsprop.grad_avg.{i}.{backend}", apply(backend, work), flat_expected(atl(Expected.RMSPROP_GRAD_AVG, i)), TIGHT)
-
-
-def rmsprop_buffers(backend, i):
-    s = atl(RMS_SPECS, i)
-    alpha = atf(s, 0)
-    eps = atf(s, 1)
-    wd = atf(s, 2)
-    momentum = atf(s, 3)
-    centered = atf(s, 4) != 0.0
-    compute = lambda: flat_list(rmsprop_3(alpha, eps, wd, momentum, centered).state.buffers)
-    work = lambda: Errors.checked_values(compute)
-    return check_list(f"rmsprop.buffers.{i}.{backend}", apply(backend, work), flat_expected(atl(Expected.RMSPROP_BUFFERS, i)), TIGHT)
+def rmsprop_case(b, i):
+    want = mapList([Expected.RMSPROP_PARAMS, Expected.RMSPROP_SQ, Expected.RMSPROP_GRAD_AVG, Expected.RMSPROP_BUFFERS], lambda xs: atl(xs, i))
+    return check_optimizer("rmsprop", b, i, lambda: rmsprop_rows(i), want, ["params", "sq", "grad_avg", "buffers"])
 
 
 def rmsprop_cases():
-    return fold(range(3), [], lambda acc, i: listConcat(acc, both(lambda b: [rmsprop_params(b, i), rmsprop_sq(b, i), rmsprop_grad_avg(b, i), rmsprop_buffers(b, i)])))
+    return fold(range(3), [], lambda acc, i: listConcat(acc, both(lambda b: rmsprop_case(b, i))))
 
 
-# Adagrad cases -----------------------------------------------------------
-
-def adagrad_params(backend, i):
+def adagrad_rows(i):
     s = atl(ADA_SPECS, i)
-    lr = atf(s, 0)
-    lr_decay = atf(s, 1)
-    wd = atf(s, 2)
-    eps = atf(s, 3)
-    compute = lambda: flat_list(adagrad_3(lr, lr_decay, wd, eps).params)
-    work = lambda: Errors.checked_values(compute)
-    return check_list(f"adagrad.params.{i}.{backend}", apply(backend, work), flat_expected(atl(Expected.ADAGRAD_PARAMS, i)), TIGHT)
+    r = adagrad_3(atf(s, 0), atf(s, 1), atf(s, 2), atf(s, 3))
+    return [flat_list(r.params), flat_list(r.state.sum)]
 
 
-def adagrad_sum(backend, i):
-    s = atl(ADA_SPECS, i)
-    lr = atf(s, 0)
-    lr_decay = atf(s, 1)
-    wd = atf(s, 2)
-    eps = atf(s, 3)
-    compute = lambda: flat_list(adagrad_3(lr, lr_decay, wd, eps).state.sum)
-    work = lambda: Errors.checked_values(compute)
-    return check_list(f"adagrad.sum.{i}.{backend}", apply(backend, work), flat_expected(atl(Expected.ADAGRAD_SUM, i)), TIGHT)
+def adagrad_case(b, i):
+    want = [atl(Expected.ADAGRAD_PARAMS, i), atl(Expected.ADAGRAD_SUM, i)]
+    return check_optimizer("adagrad", b, i, lambda: adagrad_rows(i), want, ["params", "sum"])
 
 
 def adagrad_cases():
-    return fold(range(2), [], lambda acc, i: listConcat(acc, both(lambda b: [adagrad_params(b, i), adagrad_sum(b, i)])))
+    return fold(range(2), [], lambda acc, i: listConcat(acc, both(lambda b: adagrad_case(b, i))))
 
 
 # Learning-rate schedulers ------------------------------------------------
@@ -570,7 +431,7 @@ def auto_cases():
 # Suite -------------------------------------------------------------------
 
 def suite():
-    return foldList([sgd_cases(), adam_cases(), adamw_cases(), rmsprop_cases(), adagrad_cases(), lr_cases(), clip_cases(), auto_cases()], [], lambda acc, cases: listConcat(acc, cases))
+    return foldList([sgd_cases(), adam_cases(), adamw_cases(), rmsprop_cases(), adagrad_cases(), lr_cases(), clip_cases(), auto_cases(), both(lambda b: apply(b, Contracts.run))], [], lambda acc, cases: listConcat(acc, cases))
 
 
 def main():

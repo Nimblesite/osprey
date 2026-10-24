@@ -27,6 +27,7 @@ fn source(path: &str, text: &str) -> SourceFile {
 
 fn project(entry: &str, library: &str) -> osprey_ast::Program {
     let config = ProjectConfig {
+        directory: PathBuf::from("."),
         name: "app".into(),
         source_roots: vec![PathBuf::from("src")],
         python_sources: Vec::new(),

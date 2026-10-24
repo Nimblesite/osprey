@@ -13,6 +13,7 @@ use std::path::PathBuf;
 
 pub(crate) fn config(entry: &str) -> ProjectConfig {
     ProjectConfig {
+        directory: PathBuf::from("."),
         name: "app".to_string(),
         source_roots: vec![PathBuf::from("src")],
         python_sources: Vec::new(),

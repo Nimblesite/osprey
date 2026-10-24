@@ -231,3 +231,26 @@ fn alias_expansion_preserves_separate_written_annotation_sites() -> Result<(), S
     }
     Ok(())
 }
+
+fn parent_python_entry_fixture() -> std::io::Result<(PathBuf, PathBuf)> {
+    let root =
+        std::env::temp_dir().join(format!("osprey_parent_python_entry_{}", std::process::id()));
+    let project = root.join(".osprey/build");
+    std::fs::create_dir_all(&project)?;
+    std::fs::create_dir_all(root.join("src"))?;
+    std::fs::write(
+        root.join("src/main.py"),
+        "# osprey: flavor=python\ndef main():\n    return print(\"parent entry\")\n",
+    )?;
+    std::fs::write(project.join("osprey.toml"), "[project]\nsource_roots = [\"../../src\"]\npython_sources = [\"../../src/main.py\"]\ndefault_namespace = \"app\"\nentry = \"../../src/main.py\"\n")?;
+    Ok((root, project))
+}
+
+#[test]
+fn python_entry_is_resolved_relative_to_a_derived_manifest() -> std::io::Result<()> {
+    let (root, project) = parent_python_entry_fixture()?;
+    let loaded = osprey_project::load_and_assemble(&project);
+    std::fs::remove_dir_all(root)?;
+    assert!(loaded.is_ok(), "{loaded:#?}");
+    Ok(())
+}
