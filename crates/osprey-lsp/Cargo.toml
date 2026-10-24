@@ -1,6 +1,6 @@
 [package]
 name = "osprey-lsp"
-description = "The Osprey language server, built on the published lspkit crates"
+description = "The Osprey language server, built on the pinned lspkit crates"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -13,7 +13,7 @@ osprey-types = { workspace = true }
 osprey-fmt = { workspace = true }
 osprey-project = { workspace = true }
 
-# Reused lspkit building blocks (published on crates.io). [LSP-REUSE-LSPKIT]
+# Reused lspkit building blocks (from the pinned submodule). [LSP-REUSE-LSPKIT]
 lspkit = { workspace = true }
 lspkit-server = { workspace = true }
 lspkit-vfs = { workspace = true }

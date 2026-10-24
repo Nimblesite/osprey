@@ -15,7 +15,7 @@
 //! driver used to link the emitted IR is `clang`, overridable via `OSPREY_CC`.
 //!
 //! `osprey lsp` runs the Language Server Protocol over stdio (the `osprey-lsp`
-//! crate, built on the published lspkit crates); the `--symbols`/`--hover`
+//! crate, built on the pinned lspkit crates); the `--symbols`/`--hover`
 //! outline/signature helpers it shares now live there too.
 
 mod android;

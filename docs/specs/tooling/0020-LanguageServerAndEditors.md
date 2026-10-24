@@ -8,9 +8,7 @@ Compiler and language rules are separate from integration tooling. See [Editor i
 
 ## Architecture `[LSP-ENGINE]`
 
-The server uses the published [`lspkit`](https://github.com/Nimblesite/lspkit)
-crates. One `EngineApi` implementation owns the open-document state and supplies
-the analysis queries consumed by the stdio LSP server.
+The server uses the [`lspkit`](https://github.com/Nimblesite/lspkit) crates from the pinned `lspkit/` submodule, sharing its maintained file-watcher dependencies. One `EngineApi` implementation owns the open-document state and supplies the analysis queries consumed by the stdio LSP server.
 
 ```mermaid
 flowchart LR
