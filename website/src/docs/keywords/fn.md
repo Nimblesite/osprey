@@ -1,21 +1,22 @@
 ---
 layout: page
+mlTwins: manual
 title: "fn (Keyword)"
-description: "Function declaration keyword. Used to define functions with parameters and return types."
+description: "Declare a function in Default flavor; parameter and result types are inferred."
 ---
 
-**Description:** Function declaration keyword. Used to define functions with parameters and return types.
+`fn` declares a function in Default flavor. Omit parameter and return annotations when inference can derive them. ML declares functions without the `fn` keyword.
 
 ## Example
 
 ```osprey
-fn add(a, b) = a + b
-
-fn greet(name) = print("Hello, " + name)
+fn greet(name) = "Hello, ${name}!"
+print(greet("Alice"))
 ```
 
 ```osprey-ml
-add (a, b) = a + b
-
-greet name = print ("Hello, " + name)
+greet name = "Hello, ${name}!"
+print (greet "Alice")
 ```
+
+Both programs print `Hello, Alice!`.

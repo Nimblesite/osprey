@@ -1,10 +1,10 @@
 ---
 layout: page
 title: "Operators"
-description: "Complete reference for all operators in Osprey"
+description: "Reference for arithmetic, comparison and pipeline operators in Osprey"
 ---
 
-All operators available in Osprey.
+Arithmetic, comparison and pipeline operators are listed below. Boolean `&&`, `||` and `!` are covered by [boolean operations](/spec/0009-booleanoperations/#operators-bool-short-circuit); Result fallback `?:` is covered by [Result preservation](/spec/0004-typesystem/#result-preservation).
 
 ## [!=](not-equal/) - Inequality
 
@@ -52,5 +52,5 @@ Checks if the first value is greater than or equal to the second.
 
 ## [|>](pipe-operator/) - Pipe Operator
 
-Takes the result of the left expression and passes it as the first argument to the right function. Enables functional programming and method chaining.
+Passes the left value as the first argument of the call on the right.
 

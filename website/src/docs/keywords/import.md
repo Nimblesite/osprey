@@ -11,7 +11,9 @@ description: "Import declaration keyword. Used to bring modules and their export
 
 ```osprey
 namespace billing {
+    /// Tax calculation helpers.
     module Tax {
+        /// Double cents with explicit wrapping.
         export fn double(cents) = wrapMul(cents, 2)
     }
 }
@@ -24,7 +26,9 @@ namespace app {
 
 ```osprey-ml
 namespace billing
+    (** Tax calculation helpers. *)
     module Tax
+        (** Double cents with explicit wrapping. *)
         export double cents = wrapMul cents 2
 namespace app
     import billing::Tax as T
