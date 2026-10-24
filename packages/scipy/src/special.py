@@ -1,13 +1,11 @@
 # osprey: flavor=python
 # osprey: namespace=scipy
 # osprey: module=Special
-"""scipy.special's scalar functions, re-exported under one module.
+"""scipy.special's scalar functions under one module.
 
-The port is split across `scipy.Gamma`, `scipy.Zeta`, `scipy.Beta`,
-`scipy.Combinatorics`, `scipy.Logistic`, `scipy.Information` and `scipy.Boxcox`
-so each file stays small; this facade re-declares every public function under
-the single `scipy.Special` name scipy.special presents. Each wrapper delegates
-to the module that owns the algorithm. Implements [PORT-TEST-ORACLE].
+The algorithms live in Gamma, Zeta, Beta, Combinatorics, Logistic, Information
+and Boxcox. This facade exports their original callable values, preserving
+signatures and call-time effects. Implements [PORT-TEST-ORACLE], [MODULES-INIT].
 """
 from scipy import Boxcox, Beta, Combinatorics, Gamma, Information, Logistic, Zeta
 
@@ -19,187 +17,113 @@ __all__ = ["gamma", "gammaln", "loggamma", "digamma", "polygamma", "rgamma",
            "pseudo_huber", "logsumexp", "logsumexp_b", "softmax",
            "log_softmax", "boxcox", "inv_boxcox"]
 
+gamma = Gamma.gamma
+"""scipy.special.gamma(x)."""
 
-def gamma(x: float) -> float:
-    """scipy.special.gamma(x)."""
-    return Gamma.gamma(x)
+gammaln = Gamma.gammaln
+"""scipy.special.gammaln(x)."""
 
+loggamma = Gamma.loggamma
+"""scipy.special.loggamma(x)."""
 
-def gammaln(x: float) -> float:
-    """scipy.special.gammaln(x)."""
-    return Gamma.gammaln(x)
+digamma = Gamma.digamma
+"""scipy.special.digamma(x)."""
 
+polygamma = Gamma.polygamma
+"""scipy.special.polygamma(n, x)."""
 
-def loggamma(x: float) -> float:
-    """scipy.special.loggamma(x)."""
-    return Gamma.loggamma(x)
+rgamma = Gamma.rgamma
+"""scipy.special.rgamma(x)."""
 
+psi = Gamma.psi
+"""scipy.special.psi(x)."""
 
-def digamma(x: float) -> float:
-    """scipy.special.digamma(x)."""
-    return Gamma.digamma(x)
+zeta = Zeta.zeta
+"""scipy.special.zeta(x)."""
 
+zeta_q = Zeta.zeta_q
+"""scipy.special.zeta(x, q)."""
 
-def polygamma(n: int, x: float) -> float:
-    """scipy.special.polygamma(n, x)."""
-    return Gamma.polygamma(n, x)
+zetac = Zeta.zetac
+"""scipy.special.zetac(x)."""
 
+beta = Beta.beta
+"""scipy.special.beta(a, b)."""
 
-def rgamma(x: float) -> float:
-    """scipy.special.rgamma(x)."""
-    return Gamma.rgamma(x)
+betaln = Beta.betaln
+"""scipy.special.betaln(a, b)."""
 
+lbeta = Beta.lbeta
+"""scipy.special.betaln(a, b), the Cephes log-beta."""
 
-def psi(x: float) -> float:
-    """scipy.special.psi(x)."""
-    return Gamma.psi(x)
+factorial = Combinatorics.factorial
+"""scipy.special.factorial(n, exact=False)."""
 
+factorial_exact = Combinatorics.factorial_exact
+"""scipy.special.factorial(n, exact=True) as a 64-bit int."""
 
-def zeta(x: float) -> float:
-    """scipy.special.zeta(x)."""
-    return Zeta.zeta(x)
+comb = Combinatorics.comb
+"""scipy.special.comb(N, k, exact=False)."""
 
+comb_exact = Combinatorics.comb_exact
+"""scipy.special.comb(N, k, exact=True) as a 64-bit int."""
 
-def zeta_q(x: float, q: float) -> float:
-    """scipy.special.zeta(x, q)."""
-    return Zeta.zeta_q(x, q)
+perm = Combinatorics.perm
+"""scipy.special.perm(N, k, exact=False)."""
 
+perm_exact = Combinatorics.perm_exact
+"""scipy.special.perm(N, k, exact=True) as a 64-bit int."""
 
-def zetac(x: float) -> float:
-    """scipy.special.zetac(x)."""
-    return Zeta.zetac(x)
+binom = Combinatorics.binom
+"""scipy.special.binom(n, k)."""
 
+poch = Combinatorics.poch
+"""scipy.special.poch(a, m)."""
 
-def beta(a: float, b: float) -> float:
-    """scipy.special.beta(a, b)."""
-    return Beta.beta(a, b)
+expit = Logistic.expit
+"""scipy.special.expit(x)."""
 
+logit = Logistic.logit
+"""scipy.special.logit(x)."""
 
-def betaln(a: float, b: float) -> float:
-    """scipy.special.betaln(a, b)."""
-    return Beta.betaln(a, b)
+log_expit = Logistic.log_expit
+"""scipy.special.log_expit(x)."""
 
+xlogy = Information.xlogy
+"""scipy.special.xlogy(x, y)."""
 
-def lbeta(a: float, b: float) -> float:
-    """scipy.special.betaln(a, b), the Cephes log-beta."""
-    return Beta.lbeta(a, b)
+xlog1py = Information.xlog1py
+"""scipy.special.xlog1py(x, y)."""
 
+entr = Information.entr
+"""scipy.special.entr(x)."""
 
-def factorial(x: float) -> float:
-    """scipy.special.factorial(n, exact=False)."""
-    return Combinatorics.factorial(x)
+rel_entr = Information.rel_entr
+"""scipy.special.rel_entr(x, y)."""
 
+kl_div = Information.kl_div
+"""scipy.special.kl_div(x, y)."""
 
-def factorial_exact(n: int) -> int:
-    """scipy.special.factorial(n, exact=True) as a 64-bit int."""
-    return Combinatorics.factorial_exact(n)
+huber = Information.huber
+"""scipy.special.huber(delta, r)."""
 
+pseudo_huber = Information.pseudo_huber
+"""scipy.special.pseudo_huber(delta, r)."""
 
-def comb(n: float, k: float) -> float:
-    """scipy.special.comb(N, k, exact=False)."""
-    return Combinatorics.comb(n, k)
+logsumexp = Information.logsumexp
+"""scipy.special.logsumexp(a)."""
 
+logsumexp_b = Information.logsumexp_b
+"""scipy.special.logsumexp(a, b=b)."""
 
-def comb_exact(n: int, k: int) -> int:
-    """scipy.special.comb(N, k, exact=True) as a 64-bit int."""
-    return Combinatorics.comb_exact(n, k)
+softmax = Information.softmax
+"""scipy.special.softmax(x)."""
 
+log_softmax = Information.log_softmax
+"""scipy.special.log_softmax(x)."""
 
-def perm(n: float, k: float) -> float:
-    """scipy.special.perm(N, k, exact=False)."""
-    return Combinatorics.perm(n, k)
+boxcox = Boxcox.boxcox
+"""scipy.special.boxcox(x, lmbda)."""
 
-
-def perm_exact(n: int, k: int) -> int:
-    """scipy.special.perm(N, k, exact=True) as a 64-bit int."""
-    return Combinatorics.perm_exact(n, k)
-
-
-def binom(n: float, k: float) -> float:
-    """scipy.special.binom(n, k)."""
-    return Combinatorics.binom(n, k)
-
-
-def poch(a: float, m: float) -> float:
-    """scipy.special.poch(a, m)."""
-    return Combinatorics.poch(a, m)
-
-
-def expit(x: float) -> float:
-    """scipy.special.expit(x)."""
-    return Logistic.expit(x)
-
-
-def logit(x: float) -> float:
-    """scipy.special.logit(x)."""
-    return Logistic.logit(x)
-
-
-def log_expit(x: float) -> float:
-    """scipy.special.log_expit(x)."""
-    return Logistic.log_expit(x)
-
-
-def xlogy(x: float, y: float) -> float:
-    """scipy.special.xlogy(x, y)."""
-    return Information.xlogy(x, y)
-
-
-def xlog1py(x: float, y: float) -> float:
-    """scipy.special.xlog1py(x, y)."""
-    return Information.xlog1py(x, y)
-
-
-def entr(x: float) -> float:
-    """scipy.special.entr(x)."""
-    return Information.entr(x)
-
-
-def rel_entr(x: float, y: float) -> float:
-    """scipy.special.rel_entr(x, y)."""
-    return Information.rel_entr(x, y)
-
-
-def kl_div(x: float, y: float) -> float:
-    """scipy.special.kl_div(x, y)."""
-    return Information.kl_div(x, y)
-
-
-def huber(delta: float, r: float) -> float:
-    """scipy.special.huber(delta, r)."""
-    return Information.huber(delta, r)
-
-
-def pseudo_huber(delta: float, r: float) -> float:
-    """scipy.special.pseudo_huber(delta, r)."""
-    return Information.pseudo_huber(delta, r)
-
-
-def logsumexp(a) -> float:
-    """scipy.special.logsumexp(a)."""
-    return Information.logsumexp(a)
-
-
-def logsumexp_b(a, b) -> float:
-    """scipy.special.logsumexp(a, b=b)."""
-    return Information.logsumexp_b(a, b)
-
-
-def softmax(xs) -> list[float]:
-    """scipy.special.softmax(x)."""
-    return Information.softmax(xs)
-
-
-def log_softmax(xs) -> list[float]:
-    """scipy.special.log_softmax(x)."""
-    return Information.log_softmax(xs)
-
-
-def boxcox(x: float, lmbda: float) -> float:
-    """scipy.special.boxcox(x, lmbda)."""
-    return Boxcox.boxcox(x, lmbda)
-
-
-def inv_boxcox(x: float, lmbda: float) -> float:
-    """scipy.special.inv_boxcox(x, lmbda)."""
-    return Boxcox.inv_boxcox(x, lmbda)
+inv_boxcox = Boxcox.inv_boxcox
+"""scipy.special.inv_boxcox(x, lmbda)."""
