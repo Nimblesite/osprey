@@ -136,7 +136,23 @@ module PythonTests {
 
     fn venvWalk() = Fixture::walkRoute("${pythonDir}/.venv", ["pyvenv.cfg"])
 
-    fn verifyReads(uvLock) = listConcat([Fixture::readRoute(RegistryFixture::manifestPath, rootText()), Fixture::readRoute(RegistryFixture::lockPath, expectedLock()), Fixture::readRoute("${pythonDir}/uv.lock", uvLock)], installedReads())
+    fn planeReads(projectText, uvLock) = listConcat([Fixture::readRoute(RegistryFixture::manifestPath, rootText()), Fixture::readRoute(RegistryFixture::lockPath, expectedLock()), Fixture::readRoute(pyprojectPath(), projectText), uvLockRead(uvLock)], installedReads())
+
+    fn verifyReads(uvLock) = planeReads(expectedPyproject(), uvLock)
+
+    fn tamperedInput(command, projectText, uvLock, code) = {
+        let a = RegistryFixture::runWith(planeReads(projectText, uvLock), [installedWalk(), venvWalk()], [], [command, "--project", project])
+        checkAll("${command} rejects ${code} before running uv: ${observed(a)}", [
+            RegistryFixture::statusOf(a) == 1,
+            listContains(RegistryFixture::linesOf(a), code),
+            isEmpty(RegistryFixture::ranOf(a))
+        ])
+    }
+
+    fn tamperedInputs() = forEachList(["fetch", "verify"], fn(command) => {
+        tamperedInput(command, "# edited\n", uvLockText(), PythonPlane::workspaceDigest)
+        tamperedInput(command, expectedPyproject(), "# edited\n", PythonPlane::uvLockStale)
+    })
 
     /// `verify --offline` regenerates, compares, checks the environment and runs the offline check.
     fn verifyClean() = {
@@ -163,7 +179,7 @@ module PythonTests {
 
     /// Target-less `fetch` syncs the environment after installing.
     fn fetchSyncs() = {
-        let a = RegistryFixture::runWith(listConcat([Fixture::readRoute(RegistryFixture::lockPath, expectedLock())], installedReads()), [installedWalk()], [], ["fetch", "--project", project])
+        let a = RegistryFixture::runWith(verifyReads(uvLockText()), [installedWalk()], [], ["fetch", "--project", project])
         checkAll("fetch runs uv sync --frozen once the trees are present", [
             RegistryFixture::statusOf(a) == 0,
             RegistryFixture::lineOf(a, 0) == "= ${RegistryFixture::compact(py())}",
@@ -181,5 +197,6 @@ module PythonTests {
         test("python: verify a pinned plane", verifyClean)
         test("python: verify findings", verifyFindings)
         test("python: fetch syncs", fetchSyncs)
+        test("python: tampered generated inputs never run uv", tamperedInputs)
     }
 }

@@ -141,7 +141,7 @@ module Install {
     fn pythonOf(lock: Lockfile::Lock) = lock.python
 
     /// With the uv plane pinned, `uv sync --frozen` creates the environment ([PACKAGE-PYTHON-UV]).
-    fn synced(project, lock, tally) = Maybe::fold(pythonOf(lock), tally, fn(pins) => match PythonPlane::synced(project) {
+    fn synced(project, lock, tally) = Maybe::fold(pythonOf(lock), tally, fn(pins) => match PythonPlane::synced(project, pins) {
         Success { value } => line(tally, value)
         Error { message } => failedLine(tally, message)
     })

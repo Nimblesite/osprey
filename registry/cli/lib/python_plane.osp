@@ -12,8 +12,8 @@ import registry::Toml
 /// manifest that declares `[system.python]` with `capability = "python/interop"`
 /// and holds a PEP 621 `pyproject.toml`. `lock` composes one uv project under
 /// `.osprey/python` that depends by path on every member, runs `uv lock` and
-/// pins the digests of both generated files in the folder lock; `fetch` runs
-/// `uv sync --frozen`; `verify` regenerates the project, compares both digests,
+/// pins the digests of both generated files in the folder lock; `fetch` checks
+/// both inputs before `uv sync --frozen`; `verify` also recomposes the project,
 /// checks the environment and runs `uv lock --check --offline`. Osprey never
 /// installs uv or CPython; `doctor` reports whether uv is on the PATH. The
 /// Python plane rules P1–P3 of `[PACKAGE-HARDENING]` hold here: the generated
@@ -231,10 +231,16 @@ module PythonPlane {
 
     // ---- fetch ----
 
-    /// `fetch`: `uv sync --frozen` creates the one environment the project uses.
-    export fn synced(project) = {
+    fn syncVerified(project) = {
         let r = uv(project, "sync --frozen")
         if statusOf(r) == 0 { Success { value: "python: synced ${inDir(project)}" } } else { failedRun(uvSyncFailed, r) }
+    }
+
+    /// No uv process may consume generated files that differ from the folder lock.
+    export fn synced(project, pins) = {
+        let problems = inputFindings(project, pins)
+        if isEmpty(problems) { syncVerified(project) }
+        else { Error { message: listGet(problems, 0) ?: workspaceDigest } }
     }
 
     // ---- verify ----
@@ -249,17 +255,27 @@ module PythonPlane {
         if statusOf(r) == 0 { [] } else { [uvLockStale] }
     }
 
+    fn projectFindings(project, pins) = match perform Host::Files.read(pyprojectPath(project)) {
+        Error => [pyprojectMissing]
+        Success { value } => if digestOf(value) == pyprojectPin(pins) { [] } else { [workspaceDigest] }
+    }
+
     fn lockFindings(project, pins) = match perform Host::Files.read(uvLockPath(project)) {
         Error => [uvLockMissing]
-        Success { value } => if digestOf(value) != uvLockPin(pins) { [uvLockStale] } else { listConcat(hashFindings(value), checkFindings(project)) }
+        Success { value } => if digestOf(value) != uvLockPin(pins) { [uvLockStale] } else { hashFindings(value) }
     }
+
+    fn inputFindings(project, pins) = listConcat(projectFindings(project, pins), lockFindings(project, pins))
 
     fn environmentFindings(project) = match perform Host::Tree.walk(venvPath(project)) {
         Success => []
         Error => [environmentMissing]
     }
 
-    /// `verify`: the regenerated project against its pin, `uv.lock` against
-    /// its pin, its hashes and `uv lock --check --offline`, and the environment's presence.
-    export fn findings(project, members, pins) = listConcat(listConcat(workspaceFindings(members, pins), lockFindings(project, pins)), environmentFindings(project))
+    /// `verify`: compare actual inputs and the recomposed project with the pins
+    /// before the offline uv check, then require the installed environment.
+    export fn findings(project, members, pins) = {
+        let problems = listConcat(workspaceFindings(members, pins), inputFindings(project, pins))
+        listConcat(if isEmpty(problems) { checkFindings(project) } else { problems }, environmentFindings(project))
+    }
 }
