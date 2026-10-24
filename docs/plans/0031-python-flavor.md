@@ -14,26 +14,24 @@
 - Use grammar-compatible decorated classes for effects and handlers. `@effect`/`@static_effect`, `@handler(E)`/`@static_handler(E[T])`, `perform(E.op(...))`, and `resume(...)` lower to existing semantics. Decorators are compiler syntax, not executable Python functions.
 - Explicit tensor operations and existing handlers decide placement. A host result and a hardware device result are separate acceptance records.
 
-## Shared-checkout coordination
+## Scope and coordination
 
-Work in the existing checkout and existing active branch. No worktrees, additional branches, stashes, resets, or broad staging. The concurrent General Cleanup task owns the root/build reorganization, README, website effects examples, and its existing changes. The Python Flavor task owns this plan/spec/port, its syntax frontend and coordinated formatter/LSP/CLI presentation changes. Interop owns the Python host/ABI bridge and CLI target implementation. Structural/index changes remain with General Cleanup. Active compiler edits are not released for combined staging until their owner records passing checks.
-
-The local ownership note is `.git/agent-coordination/python-flavor.md`. Before implementation, re-read the working tree and coordinate overlapping file ownership; do not overwrite unrelated work. The existing Makefile is being split into `scripts/make/`, so locate rules by target name instead of copying stale paths. Run resource-heavy acceptance serially with the other task's full CI run. Whoever submits the shared branch must review the entire combined diff.
+This plan owns frontend syntax, source selection and authoring-tool integration. [Plan 0032](0032-python-interop.md) owns the CPython host bridge; [plan 0020](0020-package-manager.md) owns package resolution and build preparation. Follow [repository instructions](../../AGENTS.md), coordinate file ownership in the primary checkout and serialize resource-heavy validation with other active work.
 
 ## Existing seams and exact gaps
 
 | Area | Existing source to extend | Checkpoint and remaining work |
 | --- | --- | --- |
 | Selection/AST entry | `crates/osprey-syntax/src/lib.rs` | `.py`, explicit selection, leading markers and conflict tests implemented; complete recovery/position matrix remains |
-| Frontend | `crates/osprey-syntax/src/python/` | Direct Python CST lowering for the tested subset implemented; unions, iteration and remaining pattern/typing forms remain |
+| Frontend | `crates/osprey-syntax/src/python/` | Direct CST lowering includes records, `@union` variants, pattern matching, comprehensions and `for` lowering to `forEach`; unsupported pattern/typing forms and full coverage remain |
 | Source identities | `binding_ranges.rs`, `annotation_edits.rs`, `fragment_ranges.rs`, `strings.rs` | Python binding/annotation/f-string positions implemented; full editor position matrix remains |
-| Project graph | `crates/osprey-project/`; CLI `project.rs` | Opt-in discovery, imports/aliases, exports and qualified constructors implemented; 27 mixed graphs remain |
+| Project graph | `crates/osprey-project/`; CLI `project.rs` | Opt-in discovery, imports/aliases, exports and qualified constructors implemented; the complete 27-configuration graph acceptance gate remains |
 | Authoring tools | `crates/osprey-fmt/`, `osprey-lsp/`, `vscode-extension/` | Indentation formatting and signature rendering implemented; complete format/rename/debug coverage and explicit editor ownership remain |
 | Corpus | `crates/run_test_corpus.sh`, backend runners | Python triples with the same goldens and rejections |
 | Model | `examples/gpt2/python/` | Forward model and sampler execute on the host and on Metal/OpenCL hardware with the shared Tensor identity; the phase E edge-case checks remain; training is deferred |
 | Device validation | GPU runtime tests, [plan 0023](0023-gpu-computation.md) | Execute this exact new port on strict device backends; existing device evidence does not validate future frontend changes |
 
-`Flavor::Python` now routes `.py` and explicit selections to a pinned in-process Python CST lowerer. Project allowlisting is implemented; complete test/docs/editor discovery remains open. Adding this route does not by itself deliver the complete flavor. Existing `reference.py` has mutable arrays, Python classes, dictionaries, exceptions, slicing, tuples, stdlib imports, and ordinary loops; it cannot simply be renamed or silently accepted as Osprey.
+`Flavor::Python` now routes `.py` and explicit selections to a pinned in-process Python CST lowerer. Project allowlisting is implemented; complete test/docs/editor discovery remains open. Adding this route does not by itself deliver the complete flavor. Existing `reference.py` relies on Python mutation, object behavior, slicing, tuples and runtime library imports beyond this subset; it cannot simply be renamed or silently accepted as Osprey. Supported Osprey `for` loops do not imply arbitrary Python iterable behavior.
 
 ## Phase A — frontend boundary and routing
 
@@ -53,7 +51,7 @@ Reject Python truthiness, reassignment of Final bindings, arbitrary precision, i
 
 ## Phase C — effects, fibers and reactive signals
 
-Current evidence: `cargo test -p osprey-syntax --test python` passes 33 AST/routing/rejection cases. Five `osprey-types` Python generic tests prove inferred polymorphism, higher-order body checking, rejection of a still-generic closure value, annotation conflicts, and an explicit Callable constraint. `cargo test -p osprey-cli --test operation_modes --test cross_flavor_equiv` passes native handler/Result/inference/fiber cases under default, GC and ARC, including clean ARC exits. The existing GPU-combinator checker matrix now exercises Python alongside Default and ML for transitive dynamic-effect rejection, unknown callbacks and arithmetic-policy requirements. These checks do not establish device execution or the remaining phase exit criteria.
+The `osprey-syntax` Python integration suite (`cargo test -p osprey-syntax --test python`) covers AST/routing/rejection cases, including union classes and `for` lowering. The `osprey-types` Python generic tests cover inferred polymorphism, higher-order body checking, rejection of a still-generic closure value, annotation conflicts, and an explicit Callable constraint. `cargo test -p osprey-cli --test operation_modes --test cross_flavor_equiv` passes native handler/Result/inference/fiber cases under default, GC and ARC, including clean ARC exits. The existing GPU-combinator checker matrix now exercises Python alongside Default and ML for transitive dynamic-effect rejection, unknown callbacks and arithmetic-policy requirements. These checks do not establish device execution or the remaining phase exit criteria.
 
 A separate shared-backend regression is quarantined: a handler reached through a function can capture file-scope mutable state by value and lose its writes. Compilation rejects an assignment when that captured binding has no shared cell identity. Default/ML regression cases pin the diagnostic and local-shadowing checks preserve valid cell-backed handlers. The state semantics repair remains open.
 
@@ -74,11 +72,11 @@ Add Python twins to the existing handler/staged/reactive suites, mixing:
 
 Project discovery now implements the literal `python_sources` list and an explicitly selected `.py` entry. Six focused tests cover membership, reference/tool exclusion, duplicate/missing/wrong-extension selections, manifest-relative paths, conflicting overrides, and symlinks escaping source roots. Full `osprey-project` tests pass. Logical Python imports/directives/exports and imported constructor identity are implemented. Python import qualifiers become canonical paths in the frontend, preserving existing Default/ML field and module diagnostics. Editor ownership and the complete mixed graph matrix remain open.
 
-Implement the explicit `python_sources` manifest selection and namespace/module/import/export syntax. Extend mixed graph tests to every assignment of three flavors over the existing three-file graph (27 configurations), comparing canonical contracts and LLVM IR. Include a real `reference.py`/tool script beneath a source root and prove it is excluded unless opted in. A selected conflicting `.py` is a diagnostic, never executed as a Python helper.
+The explicit `python_sources` selection and namespace/module/import/export lowering exist. Complete mixed graph tests to every assignment of three flavors over the existing three-file graph (27 configurations), comparing canonical contracts and LLVM IR. Include a real `reference.py`/tool script beneath a source root and prove it is excluded unless opted in. A selected conflicting `.py` is a diagnostic, never executed as a Python helper.
 
 Wire test discovery, docs examples, formatter, annotation edits, LSP completion/hover/signature/rename, UTF-16 ranges, debugger locations, extension language configuration, web compiler selection, corpus backends, caches and CI/release classification. A Python helper edit must not masquerade as a language fixture, and Python-flavor sources must trigger their real compiler/test lanes. No required gate is weakened or made advisory.
 
-**Exit:** native/WASM/mobile supported cases pass, unsupported target cases reject, installed-extension tests preserve ordinary Python ownership, and `make ci` passes. Update the general flavor spec and public guides to three shipped flavors only after evidence supports it.
+**Exit:** native/WASM/mobile supported cases pass, unsupported target cases reject, installed-extension tests preserve ordinary Python ownership, and `make ci` passes. Keep public guides explicit about the implemented Python subset and remaining editor/target coverage; three frontend routes do not establish feature parity.
 
 ## Phase E — real GPT-2 generation port
 
@@ -108,7 +106,7 @@ Tiny deterministic cases compare complete gradients element-by-element and run f
 
 Publish only tested `.py` sources, a concise reference-to-Osprey change guide, and reproducible commands. Demonstrate an effect and both handlers before describing compiler internals. State that tokenizer, loading and host orchestration remain on the CPU, and describe actual transfer/dispatch behavior from spec 0034.
 
-Measure the exact full-recompute port separately from the existing KV-cached generator. Compare identical work/checkpoints/prompts/options, loading policy and precision. Record cold/warm timings, repeated samples, device/CPU details and failures. Do not infer a speedup from native compilation or a GPU banner, and do not compare languages without controlled measurements.
+Measure generation using the same KV-cache/full-recompute mode on both sides of a comparison; the current Python-flavor generator already implements a KV cache. Compare identical work/checkpoints/prompts/options, loading policy and precision. Record cold/warm timings, repeated samples, device/CPU details and failures. Do not infer a speedup from native compilation or a GPU banner, and do not compare languages without controlled measurements.
 
 ## Delivery test inventory
 
@@ -132,8 +130,8 @@ These are planned assertions, not existing passing tests. Extend the established
 
 - [x] Record `.py`, CST/AST boundary, restricted classes, effects and handler spelling in spec 0041.
 - [x] Publish compiled reference-shaped forward/sampling sources and record host execution evidence.
-- [ ] Phase A: failing routing/CST tests, direct frontend and source positions.
-- [ ] Phase B: core lowering, positive/rejection triples and LLVM equivalence.
+- [ ] Phase A: complete routing/recovery and source-position coverage around the implemented frontend.
+- [ ] Phase B: complete core-lowering positive/rejection triples and LLVM equivalence; unions and iterator loops already lower.
 - [ ] Phase C: effects, continuations, staged requirements, fibers and signals.
 - [ ] Phase D: project/editor/tooling/target integration and complete required CI.
 - [ ] Phase E: tiny and real GPT-2 generation on CPU and hardware GPU.

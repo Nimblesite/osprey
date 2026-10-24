@@ -4,7 +4,7 @@ against faiss-cpu 1.15.1's values (scripts/oracles/faiss.py). Search distances
 and labels compare exactly (dyadic inputs keep float32 == binary64);
 normalize_L2 compares at rtol 1e-6 because faiss normalizes with a float32
 square root."""
-from faiss.Flat import IndexFlat, IndexFlatL2, IndexFlatIP, SearchResult, RangeSearchResult, add, ntotal, search, range_search, reconstruct, reconstruct_n, remove_ids, reset
+from faiss.Flat import IndexFlat, IndexFlatL2, IndexFlatIP, SearchResult, RangeSearchResult, add, ntotal, search, search_rows, range_search, reconstruct, reconstruct_n, remove_ids, reset
 from faiss.IdMap import IndexIDMap, IndexIDMap2, add_with_ids, search as idmap_search, ntotal as idmap_ntotal, remove_ids as idmap_remove_ids, reconstruct as idmap_reconstruct
 from faiss.Kmeans import Kmeans, train, assign
 from faiss.Metrics import Topk, l2sqr, inner_product, topk
@@ -47,7 +47,10 @@ def search_scenario(metric, s):
     want_i = unwrap_or(listGet(si, s), [])
     idx = add(IndexFlatL2(d_of(xq)) if metric == "L2" else IndexFlatIP(d_of(xq)), xb)
     res = search(idx, xq, k)
-    return listConcat(close_rows(f"search.{metric}.{s}.D", res.distances, want_d, RTOL_EXACT, ATOL_EXACT), int_rows(f"search.{metric}.{s}.I", res.labels, want_i))
+    rows = search_rows(metric, xb, xq, k)
+    direct = listConcat(close_rows(f"search.{metric}.{s}.D", res.distances, want_d, RTOL_EXACT, ATOL_EXACT), int_rows(f"search.{metric}.{s}.I", res.labels, want_i))
+    materialized = listConcat(close_rows(f"search_rows.{metric}.{s}.D", rows.distances, want_d, RTOL_EXACT, ATOL_EXACT), int_rows(f"search_rows.{metric}.{s}.I", rows.labels, want_i))
+    return listConcat(direct, materialized)
 
 
 def search_cases():

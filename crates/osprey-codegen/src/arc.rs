@@ -15,7 +15,6 @@
 
 use crate::builder::Codegen;
 use crate::llty::Value;
-use osprey_ast::{Expr, Stmt};
 
 const RETAIN_DECL: &str = "declare void @osp_retain(i8*)";
 const RELEASE_DECL: &str = "declare void @osp_release(i8*)";
@@ -191,7 +190,6 @@ pub(crate) fn release_unique(cg: &mut Codegen, ptr: &str) {
     cg.add_extern(RELEASE_UNIQUE_DECL);
     cg.emit(format!("call void @osp_release_unique(i8* {ptr})"));
 }
-
 
 /// The innermost frame's current length — the mark a `match` captures BEFORE
 /// generating its arms, so [`move_phi_owners`] can tell arm-produced owners
@@ -472,7 +470,6 @@ pub(crate) fn epilogue(cg: &mut Codegen, ret: Option<&Value>) {
 pub(crate) fn escape_retain(cg: &mut Codegen, v: &Value) {
     retain_val(cg, v);
 }
-
 
 mod constructors;
 mod last_use;

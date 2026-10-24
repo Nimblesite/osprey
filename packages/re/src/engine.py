@@ -6,9 +6,9 @@
 `run` executes the instruction program against a code-point list with CPython's
 leftmost-first, greedy/lazy semantics. The matcher is a backtracking VM: `step`
 advances the program counter and `backtrack` resumes the most recent `split`
-alternative, both as tail calls so the native stack stays flat; the alternatives
-live in an explicit heap list (`frames`), which is why long inputs cannot blow
-the native stack (the README's recursion strategy). `endpos` constrains the
+alternative. Alternatives live in an explicit heap list (`frames`), while VM
+steps use native recursion; long inputs can exhaust the native stack because
+tail-call optimization is not implemented. `endpos` constrains the
 accept position: -1 for match/search, the string length for fullmatch, and the
 lookbehind position for its fixed-width sub-run. Captures are saved as code
 point spans in `saves` (slot 2*i is group i's start, 2*i+1 its end, -1 means
@@ -47,7 +47,7 @@ def code_at(code, pc):
 
 
 def step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, lastindex) -> Result[Hit, str]:
-    """Advance the VM; a tail call, so the native stack stays flat."""
+    """Advance the VM recursively, preserving the current capture state."""
     ins = code_at(prog.code, pc)
     op = ins.op
     if op == acc_op:

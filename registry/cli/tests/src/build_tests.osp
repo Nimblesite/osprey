@@ -15,7 +15,7 @@ import registry::ManifestJson
 /// with `build.manifest` before any compiler run. Implements
 /// [PACKAGE-FOLDER-REGISTRY] build tests.
 module BuildTests {
-    let compilerPath = "./target/release/osprey"
+    let compilerPath = "osprey"
     let project = "/abs"
     let derivedPath = ".osprey/build/osprey.toml"
     let otherDigest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -68,7 +68,7 @@ module BuildTests {
     fn one() = Fixture::served("@demo/one/1.1", [
         Fixture::file("osprey.toml", oneManifest()),
         Fixture::file("lib/one.osp", "fn one() = 1\n"),
-        Fixture::file("src/model.py", "# osprey: flavor=python\nfn model() = 1\n")
+        Fixture::file("src/model.py", "# osprey: flavor=python\ndef model():\n    return 1\n")
     ])
 
     fn two() = Fixture::served("@demo/two/1.1", [Fixture::file("osprey.toml", twoManifest()), Fixture::file("src/two.osp", "fn two() = 2\n")])

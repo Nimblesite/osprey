@@ -3,12 +3,15 @@ import registry::Digests
 import registry::Json
 import registry::JsonRead
 import registry::Names
+import registry::Manifest
+import registry::ManifestJson
 import registry::Release
 import registry_api::Loader
 import registry_api::Router
 import registry_cli::Dispatch
 import registry_cli::Build
 import registry_cli::Fetch
+import registry_cli::Lockfile
 import registry_host::Host
 
 /// What the end-to-end run observes, as expected/actual pairs: the live
@@ -100,28 +103,89 @@ module Probes {
         ensure path => perform Host::Tree.ensure(rooted(dir, path))
     }
 
-    fn consumerProcess(dir) = handler Host::Process {
-        run command => perform Host::Process.run("cd ${Host::shellWord(dir)} && ${command}")
+    fn consumerProcess(dir, compilerDir) = handler Host::Process {
+        run command => perform Host::Process.run("cd ${Host::shellWord(dir)} && PATH=${Host::shellWord(compilerDir)}:\"$PATH\" ${command}")
     }
 
-    fn defaultBuild(cwd, args) = {
-        let dir = consumerDir(cwd)
-        consumerFiles(dir)(fn() => consumerTree(dir)(fn() => consumerProcess(dir)(fn() =>
-            Build::run(listConcat(["--compiler", "${cwd}/target/release/osprey"], args)))))
+    fn defaultBuildAt(cwd, dir, args) = {
+        consumerFiles(dir)(fn() => consumerTree(dir)(fn() => consumerProcess(dir, "${cwd}/target/release")(fn() => Build::run(args))))
     }
+
+    fn defaultBuild(cwd, args) = defaultBuildAt(cwd, consumerDir(cwd), args)
 
     /// Actual compiler invocations cover both default forms and both project forms.
     export fn buildPaths(cwd) = {
         let bare = defaultBuild(cwd, [])
         let run = defaultBuild(cwd, ["--run"])
-        let relative = Build::run(["--run", "--project", "${work}/consumer"])
-        let absolute = Build::run(["--run", "--project", consumerDir(cwd)])
+        let relative = Build::run(["--compiler", "${cwd}/target/release/osprey", "--run", "--project", "${work}/consumer"])
+        let absolute = Build::run(["--compiler", "${cwd}/target/release/osprey", "--run", "--project", consumerDir(cwd)])
         [
             Probe { label: "bare build compiles the consumer", expected: "0", actual: "${bare.status}" },
             Probe { label: "bare build --run executes the consumer", expected: consumerLine, actual: firstLine(run) },
             Probe { label: "relative --project executes the consumer", expected: consumerLine, actual: firstLine(relative) },
             Probe { label: "absolute --project executes the consumer", expected: consumerLine, actual: firstLine(absolute) }
         ]
+    }
+
+    let pythonBuildLine = "Python build paths"
+    let pythonBuildDir = ".osprey/e2e/python-paths"
+    let pythonBuildManifest = "[project]\nname = \"python-paths\"\nsource_roots = [\"src\"]\npython_sources = [\"src/main.py\"]\ndefault_namespace = \"python_paths\"\nentry = \"src/main.py\"\n"
+    let pythonBuildMain = "# osprey: flavor=python\ndef main():\n    return print(\"Python build paths\")\n"
+
+    fn pythonBuildLock() = match Manifest::accepted(Manifest::parse(pythonBuildManifest)) {
+        Error { message } => Error { message: message }
+        Success { value } => match ManifestJson::digest(value) {
+            Error { message } => Error { message: message }
+            Success { value } => Lockfile::encode(Lockfile::release(Lockfile::Root { manifestDigest: value, dependencies: [] }, []))
+        }
+    }
+
+    fn pythonBuildFiles(lock) = [
+        Release::File { relPath: "osprey.toml", content: pythonBuildManifest },
+        Release::File { relPath: "osprey.lock", content: lock },
+        Release::File { relPath: "src/main.py", content: pythonBuildMain }
+    ]
+
+    fn writePythonBuild(dir, lock) = foldList(pythonBuildFiles(lock), Success { value: 0 }, fn(acc, f) => match acc {
+        Error => acc
+        Success => perform Host::Files.write("${dir}/${f.relPath}", f.content)
+    })
+
+    fn preparePythonBuild(dir) = match perform Host::Tree.ensure("${dir}/src") {
+        Error { message } => Error { message: message }
+        Success => match pythonBuildLock() {
+            Error { message } => Error { message: message }
+            Success { value } => writePythonBuild(dir, value)
+        }
+    }
+
+    fn setupResult(result) = match result { Success => "0" Error { message } => message }
+
+    fn pythonBuildRuns(cwd, outside) = {
+        let local = "${cwd}/${pythonBuildDir}"
+        let prepared = preparePythonBuild(local)
+        let external = preparePythonBuild(outside)
+        let bare = defaultBuildAt(cwd, local, [])
+        let run = defaultBuildAt(cwd, local, ["--run"])
+        let relative = Build::run(["--compiler", "${cwd}/target/release/osprey", "--run", "--project", pythonBuildDir])
+        let absolute = Build::run(["--compiler", "${cwd}/target/release/osprey", "--run", "--project", outside])
+        let cleaned = sh("rm -rf ${Host::shellWord(outside)}")
+        [
+            Probe { label: "Python project setup", expected: "0 0", actual: "${setupResult(prepared)} ${setupResult(external)}" },
+            Probe { label: "bare Python build", expected: "0", actual: "${bare.status}" },
+            Probe { label: "bare Python build --run", expected: pythonBuildLine, actual: firstLine(run) },
+            Probe { label: "relative Python --project", expected: pythonBuildLine, actual: firstLine(relative) },
+            Probe { label: "absolute Python project outside cwd", expected: pythonBuildLine, actual: firstLine(absolute) },
+            Probe { label: "temporary Python project cleanup", expected: "0", actual: "${cleaned.status}" }
+        ]
+    }
+
+    /// Compile Python entries through every project form, including a fresh external directory.
+    export fn pythonBuildPaths(cwd) = {
+        let created = sh("mktemp -d")
+        if created.status == 0 && startsWith(trim(created.stdout), "/") && trim(created.stdout) != "/" {
+            pythonBuildRuns(cwd, trim(created.stdout))
+        } else { [Probe { label: "temporary Python project", expected: "0", actual: "${created.status}: ${created.stderr}" }] }
     }
 
     /// The consumer flow of [PACKAGE-FOLDER-REGISTRY]: `lock` writes the
@@ -136,7 +200,7 @@ module Probes {
         let locked = Dispatch::run(["lock", "--registry", base, "--project", dir])
         let _fetched = Dispatch::run(["fetch", "--registry", base, "--project", dir])
         let verified = Dispatch::run(["verify", "--offline", "--project", dir])
-        let built = Dispatch::run(["build", "--run", "--project", dir])
+        let built = Dispatch::run(["build", "--compiler", "${cwd}/target/release/osprey", "--run", "--project", dir])
         [
             Probe { label: "consumer lock bytes match the fixture", expected: fixtureLockText(), actual: readFile("${dir}/osprey.lock") ?: "" },
             Probe { label: "consumer lock prints + lines", expected: expectedPlus(newest(catalog)), actual: joinedPlus(locked) },
@@ -215,7 +279,7 @@ module Probes {
         Probe { label: "server stops", expected: "false", actual: "${healthy()}" }
     }
 
-    fn projects(cwd, catalog) = listConcat(consumer(cwd, catalog), listConcat(buildPaths(cwd), listConcat(pythonConsumer(cwd), [doctorUv(), stop()])))
+    fn projects(cwd, catalog) = listConcat(consumer(cwd, catalog), listConcat(buildPaths(cwd), listConcat(pythonBuildPaths(cwd), listConcat(pythonConsumer(cwd), [doctorUv(), stop()]))))
 
     fn running(cwd, catalog) = {
         let endpoints = mapList(paths(catalog), fn(p) => exchange(catalog, p))

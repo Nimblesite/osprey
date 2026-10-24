@@ -157,13 +157,25 @@ def finditer_case(case):
 
 def iter_ok(matches, enc, n):
     """Assertions for each finditer Match's span and groups."""
-    return fold(range(n), [], lambda acc, i: listConcat(acc, iter_match(matches, enc, i)))
+    return iter_checks(matches, enc, n, 0, 1, [])
 
 
-def iter_match(matches, enc, i):
+def iter_checks(matches, enc, n, i, offset, acc):
+    """Consume each variable-length match from the oracle's flat field stream."""
+    if i == n:
+        return acc
+    else:
+        ng = int_of(f(enc, offset + 4))
+        nn = int_of(f(enc, offset + 5 + 2 * ng))
+        end = offset + 6 + 2 * ng + 3 * nn
+        checks = iter_match(matches, enc, i, offset, end)
+        return iter_checks(matches, enc, n, i + 1, end, listConcat(acc, checks))
+
+
+def iter_match(matches, enc, i, offset, end):
     """Assertions for one finditer Match against its encoded verdict."""
     m = unwrap_or(listGet(matches, i), Api.Match(start=0, end=0, text="", group_texts=[""], group_set=[False], names=[""], lastindex=0))
-    sub = fields(f(enc, 1 + i))
+    sub = toList(map(range(offset, end), lambda j: f(enc, j)))
     return match_body("finditer" + toString(i), m, sub)
 
 
@@ -184,7 +196,7 @@ def split_case(case):
 
 def split_ok(got, enc, n):
     """Assertions for each split element."""
-    return toList(map(range(n), lambda i: Check.equal("split" + toString(i), unwrap_or(listGet(got, i), ""), f(fields(f(enc, 1 + i)), 1))))
+    return toList(map(range(n), lambda i: Check.equal("split" + toString(i), unwrap_or(listGet(got, i), ""), f(unwrap_or(split(f(enc, 1 + i), SEP2), []), 1))))
 
 
 def sub_case(case):

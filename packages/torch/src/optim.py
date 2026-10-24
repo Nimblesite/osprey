@@ -112,11 +112,16 @@ def sgd_param(a, i, params, grads, state, lr, momentum, dampening, nesterov, wei
 def adam(params, grads, state, lr, beta1, beta2, eps, weight_decay, amsgrad):
     """torch.optim.Adam.step: L2 weight decay on the gradient, moment decay,
     bias correction, and `p -= (lr / bc1) * (m / denom)`."""
+    return adam_step(params, grads, state, lr, beta1, beta2, eps, weight_decay, amsgrad, False)
+
+
+def adam_step(params, grads, state, lr, beta1, beta2, eps, weight_decay, amsgrad, decoupled):
+    """Shared moment and bias-correction update; decay placement stays explicit."""
     t = state.step + 1
     bc1 = Tensor.one_minus(Tensor.pow_f(beta1, t))
     bc2 = Tensor.one_minus(Tensor.pow_f(beta2, t))
     step_size = lr / bc1
-    acc = fold(range(len(params)), AdamWork(params=[], exp_avg=[], exp_avg_sq=[], max_exp_avg_sq=[]), lambda a, i: adam_param(a, i, params, grads, state, beta1, beta2, eps, weight_decay, amsgrad, step_size, bc2))
+    acc = fold(range(len(params)), AdamWork(params=[], exp_avg=[], exp_avg_sq=[], max_exp_avg_sq=[]), lambda a, i: adam_param(a, i, params, grads, state, beta1, beta2, eps, weight_decay, amsgrad, step_size, bc2, lr, decoupled))
     return AdamResult(params=acc.params, state=AdamState(exp_avg=acc.exp_avg, exp_avg_sq=acc.exp_avg_sq, max_exp_avg_sq=acc.max_exp_avg_sq, step=t))
 
 
@@ -128,11 +133,11 @@ class AdamWork[B]:
     max_exp_avg_sq: list[Array.NDArray[B]]
 
 
-def adam_param(a, i, params, grads, state, beta1, beta2, eps, weight_decay, amsgrad, step_size, bc2):
-    """One Adam parameter update, in torch's element order."""
+def adam_param(a, i, params, grads, state, beta1, beta2, eps, weight_decay, amsgrad, step_size, bc2, lr, decoupled):
+    """One Adam/AdamW update, retaining each algorithm's decay placement."""
     p = unwrap_or(listGet(params, i), Array.empty())
     g0 = unwrap_or(listGet(grads, i), Array.empty())
-    g = Array.add(g0, Tensor.scale(p, weight_decay)) if weight_decay != 0.0 else g0
+    g = Array.add(g0, Tensor.scale(p, weight_decay)) if weight_decay != 0.0 and not decoupled else g0
     first = len(state.exp_avg) == 0
     e0 = Array.zeros_like(p) if first else unwrap_or(listGet(state.exp_avg, i), Array.empty())
     s0 = Array.zeros_like(p) if first else unwrap_or(listGet(state.exp_avg_sq, i), Array.empty())
@@ -141,36 +146,15 @@ def adam_param(a, i, params, grads, state, beta1, beta2, eps, weight_decay, amsg
     s = Array.add(Tensor.scale(s0, beta2), Tensor.scale(Array.multiply(g, g), Tensor.one_minus(beta2)))
     mx = Array.maximum(m0, s) if amsgrad else s
     denom = Tensor.add_scalar(Tensor.div_scalar(Array.sqrt(mx), sqrt(bc2)), eps)
-    p2 = Array.add(p, Tensor.scale(Array.divide(m, denom), 0.0 - step_size))
+    base = Tensor.scale(p, 1.0 - lr * weight_decay) if decoupled else p
+    p2 = Array.add(base, Tensor.scale(Array.divide(m, denom), 0.0 - step_size))
     return AdamWork(params=listAppend(a.params, p2), exp_avg=listAppend(a.exp_avg, m), exp_avg_sq=listAppend(a.exp_avg_sq, s), max_exp_avg_sq=listAppend(a.max_exp_avg_sq, mx) if amsgrad else a.max_exp_avg_sq)
 
 
 def adamw(params, grads, state, lr, beta1, beta2, eps, weight_decay, amsgrad):
     """torch.optim.AdamW.step: decoupled weight decay — `p *= 1 - lr * wd`
     before the Adam update, which uses the raw gradient."""
-    t = state.step + 1
-    bc1 = Tensor.one_minus(Tensor.pow_f(beta1, t))
-    bc2 = Tensor.one_minus(Tensor.pow_f(beta2, t))
-    step_size = lr / bc1
-    decay = 1.0 - lr * weight_decay
-    acc = fold(range(len(params)), AdamWork(params=[], exp_avg=[], exp_avg_sq=[], max_exp_avg_sq=[]), lambda a, i: adamw_param(a, i, params, grads, state, beta1, beta2, eps, amsgrad, step_size, bc2, decay))
-    return AdamResult(params=acc.params, state=AdamState(exp_avg=acc.exp_avg, exp_avg_sq=acc.exp_avg_sq, max_exp_avg_sq=acc.max_exp_avg_sq, step=t))
-
-
-def adamw_param(a, i, params, grads, state, beta1, beta2, eps, amsgrad, step_size, bc2, decay):
-    """One AdamW parameter update, in torch's element order."""
-    p = unwrap_or(listGet(params, i), Array.empty())
-    g = unwrap_or(listGet(grads, i), Array.empty())
-    first = len(state.exp_avg) == 0
-    e0 = Array.zeros_like(p) if first else unwrap_or(listGet(state.exp_avg, i), Array.empty())
-    s0 = Array.zeros_like(p) if first else unwrap_or(listGet(state.exp_avg_sq, i), Array.empty())
-    m0 = Array.zeros_like(p) if first else unwrap_or(listGet(state.max_exp_avg_sq, i), Array.empty())
-    m = Array.add(Tensor.scale(e0, beta1), Tensor.scale(g, Tensor.one_minus(beta1)))
-    s = Array.add(Tensor.scale(s0, beta2), Tensor.scale(Array.multiply(g, g), Tensor.one_minus(beta2)))
-    mx = Array.maximum(m0, s) if amsgrad else s
-    denom = Tensor.add_scalar(Tensor.div_scalar(Array.sqrt(mx), sqrt(bc2)), eps)
-    p2 = Array.add(Tensor.scale(p, decay), Tensor.scale(Array.divide(m, denom), 0.0 - step_size))
-    return AdamWork(params=listAppend(a.params, p2), exp_avg=listAppend(a.exp_avg, m), exp_avg_sq=listAppend(a.exp_avg_sq, s), max_exp_avg_sq=listAppend(a.max_exp_avg_sq, mx) if amsgrad else a.max_exp_avg_sq)
+    return adam_step(params, grads, state, lr, beta1, beta2, eps, weight_decay, amsgrad, True)
 
 
 def rmsprop(params, grads, state, lr, alpha, eps, weight_decay, momentum, centered):

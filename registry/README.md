@@ -1,88 +1,89 @@
 # Osprey package system
 
-The package manager and registry from [plan 0020](../docs/plans/0020-package-manager.md) and specs [0029](../docs/specs/ecosystem/0029-PackageManagement.md)–[0032](../docs/specs/ecosystem/0032-PackageEvidenceAndDiscovery.md), written entirely in Osprey and built by the existing compiler (`[PACKAGE-IMPLEMENTATION-LANGUAGE]`). **All Osprey, and a working API that serves working packages comes first.** The active work is plan 0020 Milestone 0: the database-free folder registry of spec 0029 `[PACKAGE-FOLDER-REGISTRY]`, served by `api/` and fetched by `cli/`. The sections below say exactly what runs today.
+The registry and package client are written in Osprey and built by the existing compiler. [Plan 0020](../docs/plans/0020-package-manager.md) tracks delivery against [specs 0029–0032](../docs/specs/ecosystem/README.md). The folder registry, source verification, deterministic resolution, locks, local overrides, folder publication and uv integration run today. Authenticated public publishing, the dedicated package website and trust services remain planned.
+
+The loopback consumer uses Default-flavor source. Package-client builds with declared `python_sources` still have a manifest-path integration gap; frontend compilation and publication tests do not prove that path. See the [package guide](../website/src/docs/package-manager.md) for the exact current limitation.
 
 ## Layout
 
-| Directory | Namespace | Contents |
-| --- | --- | --- |
-| `core/` | `registry` | Pure rules shared by every frontend: package names, release identities, digest envelopes and `H(d, x)`, the canonical source-tree grammar and `SourceDigest`, a pure-Osprey SHA-256, byte encodings, canonical ordering, the arithmetic policy, the language-conformance gate and the blocked-capability inventory. No I/O. |
-| `host/` | `registry_host` | The `Host` effects (`Files`, `Tree`, `Web`, `Process`, `Console`) and their native handlers built on Osprey builtins. Handlers carry no policy. |
-| `api/` | `registry_api` | The folder-registry HTTP server: configuration, catalog loading, the pure `Router`, and the listener. |
-| `cli/` | `registry_cli` | Command routing and the commands themselves: `help`, `doctor`, `package init`, `add @scope/name [--epoch N]`, `add <path> [--epoch N]` (the checkout's key at its published baseline, or floor 0 when unpublished, then mapped in the overlay), `remove @scope/name` and `update [--breaking]` (each an atomic manifest-plus-lock transaction through `Transaction::commit`: the new manifest text is written, `lock` relocks, and a failed relock writes back the previous text), `use <path> [--epoch N]` / `use @scope/name --published` / `use --list` / `use --clear` (the development overlay `osprey.local.toml` and the development lock `osprey.local.lock`, relocked together; `build --release` refuses any override), `publish --folder <registry-root> [--breaking]` (the release tree, checked and digested as the server will, placed at the next ordinal or epoch of a folder registry), `fetch <target>`, `lock [--local] [--accept-removals]` (one `GET /v1/packages`, every release fetched and verified, the resolver run, `osprey.lock` written with `+`/`=`/`~`/`-` lines), target-less `fetch` (install the lock), `verify --offline`, `build [--run]`, `tree` (the locked graph, indented, `(build)` on build edges, ` *` on a repeated key) and `why @scope/name` (every edge chain from the root to a pinned package); every command takes `--project <dir>` and parses its flags through the one `Flags` module, and `--json <command>` renders any report as one canonical JSON line (`Reports::json`). `src/main.osp` is the executable entry and sanitizes every printed line; `lib/` holds everything tests assemble. |
-| `cli/tests/` | `registry_tests` | The frontend suites (dispatch, fetch, lockfile, install, verify, build, lock, transactions, tree/why, reports) over the shared `Fixture` handlers and the `RegistryFixture` two-package registry, assembled apart from `tests/`; this program carries the manifest parser and the resolver, so it type-checks in ten to twenty minutes (6,000 s CPU) and runs 71 tests. |
-| `sample-registry/` | — | A registry root with four real releases of three packages; `@demo/report` uses the other two. |
-| `manifest/` | `registry` | The TOML parser and manifest validators, kept out of `core/` until the type checker handles the parser in seconds. |
-| `resolver/` | `registry` | The CDCL engine (`Sat`), the package resolver over it (`Resolution` types, `Candidates`, `Clauses` with the keys each clause mentions, `Optimize`, `Explain`, `Resolve::solve`) and the engine's own test project. A refutation is explained from the keys of a deletion-minimised UNSAT core (`Resolve::minimalCore`, one solve per core clause); `Resolve::solve` canonicalises the catalog and edge order first so no permutation changes a lock or an explanation. The resolver is proven against the 15 graph fixtures, 60 generated graphs (`tests/src/graph_gen.osp`: locks byte-exact against the exhaustive oracle, the same graphs refuted, outcomes permutation-invariant; a refutation's code is the cause the minimal core used, which the oracle, having no core, need not pick) and the oracle in `tests/`, which shares `Candidates` and `Explain` with it and checks the search and the optimum independently. |
-| `tests/` | `registry_tests` | The core, host and API suites, assembled into one program. `fixtures/` holds declarative JSON fixtures whose digest goldens were computed with an independent implementation (Python `hashlib`/`json`) and are asserted byte for byte. |
-| `fixture-check/` | `registry_fixture_check` | The fail-fast first stage of `make registry-test`: every fixture is data, parses strictly, cites a defined spec section and is listed by its folder's `index.json`; every typed fixture value named in `tests/fixtures/schema-map.json` is valid against `schemas/package-registry.td` and in canonical list order; every registry source cites only defined spec sections. |
-| `e2e/` | `registry_e2e` | The Milestone 0 demo, last stage of `make registry-test`: builds and starts the server over `sample-registry/` on `127.0.0.1:18797`, compares every endpoint with the pure `Router` byte for byte, fetches every release by name, epoch and digest, checks the installed bytes, then runs the real consumer flow through `Dispatch::run` (`lock`, target-less `fetch`, `verify --offline`, `build --run` on `e2e/consumer/`, whose manifest depends on `@demo/report`): the lock bytes equal `tests/fixtures/lock/consumer.json`, three packages verify, the built program prints its line; then stops the server. |
-| `blockers/` | `registry_blockers` | Probes for capabilities Osprey lacks; red by design until each lands. |
-| `../schemas/package-registry.td` | — | The canonical typeDiagram model. Spec 0031 renders the same bytes and a test keeps them identical. |
+| Directory | Responsibility |
+| --- | --- |
+| `core/` | Names, identities, canonical JSON/source rules, SHA-256, capability surfaces and the implementation-language gate |
+| `host/` | File, tree, HTTP, process and console effects with native handlers |
+| `api/` | Startup catalog, pure HTTP router and folder-registry listener |
+| `cli/` | Manifest/lock commands, verified installation, local overrides, folder publication, build preparation and reports |
+| `manifest/` | TOML parser and manifest validation |
+| `resolver/` | CDCL solver and deterministic package graph/objective selection |
+| `tests/`, `cli/tests/` | Core/API and client suites, including fixture-driven source, graph, lock, capability and Python-plane checks |
+| `fixture-check/` | Schema, canonical-order and specification-reference checks for declarative fixtures |
+| `sample-registry/` | Example release trees |
+| `e2e/` | Loopback server/client demo and Default-flavor consumer |
+| `blockers/` | Explicit probes for incomplete host capabilities |
+| `../schemas/package-registry.td` | Canonical domain model shared with spec 0031 |
 
-Projects share source through `source_roots` (for example `cli` lists `../core/src`), because Osprey has no cross-project dependency model yet. `osprey test` compiles each `*.test.osp` in isolation and cannot import project modules, so suites are ordinary modules with an `export fn run()` called from `tests/src/main.osp`, run with `osprey registry/tests --run`.
+These projects compose sibling modules through explicit `source_roots`. Registry suites are ordinary modules called by their project's `src/main.osp`; use the commands below rather than assuming test-file discovery selects them.
 
 ## Run a registry
 
-A registry is a folder. Each release is a directory `@scope/name/<epoch>.<ordinal>/` holding the package's source tree, as in `sample-registry/`. Nothing else is needed: no database, no account, no hosted service.
+From the repository root:
 
 ```sh
-make registry-serve          # serves registry/sample-registry on http://127.0.0.1:8787
-curl http://127.0.0.1:8787/v1/packages
-curl http://127.0.0.1:8787/v1/packages/demo/maths
+make build
+./target/release/osprey build registry/cli -o target/osprey-pkg
+make registry-serve
 ```
 
-To serve your own folder on your network, edit `api/registry-server.json`:
+The server reads `sample-registry/` and listens on `http://127.0.0.1:8787`. Leave it running. In another terminal:
+
+```sh
+curl http://127.0.0.1:8787/v1/packages
+echo "lock --project $PWD/registry/e2e/consumer --registry http://127.0.0.1:8787" | ./target/osprey-pkg
+echo "fetch --project $PWD/registry/e2e/consumer --registry http://127.0.0.1:8787" | ./target/osprey-pkg
+echo "verify --offline --project $PWD/registry/e2e/consumer" | ./target/osprey-pkg
+echo "build --run --project $PWD/registry/e2e/consumer" | ./target/osprey-pkg
+```
+
+Every client command prints `status: N`; require `0`. The frontend reads one command from stdin because argument-vector and process-exit-status builtins are unavailable. Prefix a command with `--json` for a structured report. The [command reference](../website/src/docs/package-manager.md#commands) covers local overrides, publication and update behavior.
+
+A release directory is `@scope/name/<epoch>.<ordinal>/`. To serve another root, change [api/registry-server.json](api/registry-server.json), for example:
 
 ```json
 { "root": "/srv/osprey-packages", "address": "0.0.0.0", "port": 8787 }
 ```
 
-Then run `osprey . --run` in `registry/api`. At startup the server walks the root, computes each release's `SourceDigest`, prints every release it serves and every directory it refuses with the reason, and answers the endpoints of spec 0029 `[PACKAGE-FOLDER-REGISTRY]`.
+The catalog is loaded at startup; restart the server after folder publication. Current filesystem handlers use POSIX `find`, `mkdir` and shell redirection, so an Osprey source implementation alone does not establish Windows host support. The second-machine acceptance probe is still open.
 
-Fetch from it with the package frontend, which verifies the digest before writing anything:
-
-```sh
-echo "fetch @demo/report --registry http://127.0.0.1:8787" | ./target/osprey-pkg
-```
-
-The release lands in `.osprey/packages/@demo/report/<digest>/`.
-
-## Running
+## Verification
 
 ```sh
-make registry-test                                   # fixture-check, manifest, CLI and core suites, then the e2e demo; TAP output
-make registry-blockers                               # capability probes, expected red
-./target/release/osprey build registry/cli -o target/osprey-pkg
-echo "doctor" | ./target/osprey-pkg                  # one command line on stdin
+make registry-test
+make registry-blockers
 ```
 
-The frontend reads its command line from standard input and prints `status: N` as its last line because Osprey has no argv or exit-status builtin yet. Both are blocked capabilities below, not design.
+`registry-test` runs fixture validation, manifest, client, core/API and loopback suites. `registry-blockers` deliberately asserts capabilities that are not delivered; it is expected to fail. `blockers/src/main.osp` includes binary reads and a historical million-element fallback/pipeline reproducer. A probe's current result must be measured before calling it a present compiler crash.
 
-## Host capability inventory (plan 0020, Phase 0)
+Source-digest fixtures contain independently computed goldens. The resolver is checked against bounded graph fixtures and an exhaustive search oracle; candidate and explanation helpers are shared, so that oracle independently checks search/optimal selection rather than every supporting rule. This is not the planned 100,000-release performance acceptance.
 
-Measured against the compiler at `target/release/osprey` on macOS. `registry/core/src/capabilities.osp` is the single source for the blocked list; `osprey-pkg doctor` prints it.
+## Host capabilities and current limits
 
-| Capability | State | Evidence |
-| --- | --- | --- |
-| Read and write whole text files with OS failure reasons | available | `readFile`/`writeFile`; `tests/src/dispatch_tests.osp` through `Host::Files` |
-| Run a shell command, capture stdout/stderr and exit code | available | `spawnProcess` + redirection in `host/src/native.osp` |
-| Standard input, one line at a time | available | `input()` in `cli/src/main.osp` |
-| HTTP client and server, JSON documents | available | `api/` serves and `cli/lib/fetch.osp` fetches over the runtime HTTP builtins; `e2e/` exercises both on loopback |
-| Byte-level string access, 64-bit integers, lists, maps | available | `core/src/bytes.osp`, `core/src/order.osp` |
-| Command-line arguments | blocked `process.argv` | no builtin; not probeable from inside a program |
-| Process exit status | blocked `process.exit-status` | `main`'s value is ignored |
-| Environment variables | blocked `process.environment` | no builtin |
-| Binary-safe file reads | blocked `files.binary-read` | `blockers/src/main.osp`: a 5-byte file with a NUL reads as 1 byte |
-| Directory listing, stat, mkdir, rename, unlink, fsync | blocked `files.directory` | no builtins; the host shells out, which Windows and atomicity rules will not accept. No atomic rename or fsync exists, so atomic activation (Phase 2) waits on this |
-| UTC clock | blocked `time.clock` | no builtin |
-| Bitwise operators | blocked `int.bitwise` | SHA-256 emulates them with arithmetic and lookup tables |
+[core/src/capabilities.osp](core/src/capabilities.osp) supplies `doctor`'s inventory. File text I/O, HTTP, process execution, stdin, lists/maps and byte-level string access are available. Remaining host gaps include argv, exit status, environment access, binary-safe file reads, directory/stat/atomic-rename/fsync builtins and a UTC clock. File-tree handlers currently shell out; rollback after a reported failure is not crash-safe activation.
 
-A blocked capability is resolved only by Osprey gaining it; no component is written in another language meanwhile (plan 0020, fixed risk controls).
+Bitwise builtins (`bitAnd`, `bitXor`, shifts and related operations) exist. The inventory's `int.bitwise` entry is stale. [core/src/sha256.osp](core/src/sha256.osp) still uses arithmetic/nibble lookup tables; that implementation choice no longer proves the language lacks bitwise operations.
+
+Verified language boundaries relevant to these suites:
+
+- `readFile` stops at the first NUL; a five-byte `a`, NUL, `b`, `0xff`, `c` probe currently has `byteLength` 1. Folder source bundles are text, not a binary asset format.
+- Default syntax rejects field renaming such as `Success { value: answer }` and qualified bare variant patterns such as `Shapes::Dot =>`. Existing helpers avoid those forms.
+- `checkAll`/`expectAll` require a list literal. A computed boolean list is rejected at code generation; assert its folded result explicitly instead.
+- `==` on lists is rejected rather than comparing identity. `structuralEquals([1, 2], [1, 2])` performs the explicit deep comparison and returns `true`.
+- Tail-call optimization is not implemented. Avoid treating an old stack-depth measurement as a stable recursion limit.
+- A test callback's return value is not an assertion; use the test framework's checks. Keep expected output and assertion results separate.
+
+Earlier construction notes about mandatory recursive return annotations, one specialization per recursive generic function, record-field ambiguity and unused handler parameters are not universal current limits. Native probes now execute inferred recursion, two generic instantiations, shared field names and an unused-argument handler returning another module's `Result`. Preserve targeted regressions and qualify any remaining failure by its actual source.
 
 ## Security gates that run today
 
-Spec 0029 `[PACKAGE-HARDENING]` lists the gates a penetration test meets; these are implemented and asserted by name. `SECURITY.md` at the repository root is the disclosure policy.
+The table links the implemented folder-registry checks to their tests. Runtime request bounds are separate from registry tests. These checks do not establish publisher identity or complete the hosted trust contract; [SECURITY.md](../SECURITY.md) is the disclosure policy.
 
 | Gate | Where | Test |
 | --- | --- | --- |
@@ -97,46 +98,11 @@ Spec 0029 `[PACKAGE-HARDENING]` lists the gates a penetration test meets; these 
 | Lock scopes, names and digests pass the name and digest grammars (`lock.shape`) | `Lockfile::keyOf`, `Lockfile::digestMember` | `tests/fixtures/lock/rejections.json` (traversal scope, bad name, traversal and short digests, non-sha256 manifest digest) |
 | Every printed line has control bytes replaced by `?` | `Reports::printable`, `cli/src/main.osp` | `cli/tests` reports suite |
 | Derived `osprey.toml` strings TOML-escaped; compiler invocation shell-quoted | `Build::quote`, `Host::shellWord` | `cli/tests` build suite |
-| `lock` is the only command that chooses releases; a re-served digest is `lock.release-replaced`, a dropped locked release is `lock.release-vanished` unless `--accept-removals` (which the refusal names), and a current lock that does not decode is its `lock.*` code; each refusal writes nothing | `Lock` | `cli/tests` lock suite: exact lock bytes, `+`/`=`/`~`/`-` lines, every refusal by name |
+| Locked builds never resolve; relocking checks registry continuity: a re-served digest is `lock.release-replaced`, a dropped locked release is `lock.release-vanished` unless `--accept-removals` (which the refusal names), and a current lock that does not decode is its `lock.*` code; each refusal writes nothing | `Lock` | `cli/tests` lock suite: exact lock bytes, `+`/`=`/`~`/`-` lines, every refusal by name |
 | A candidate whose manifest is rejected is excluded with `lock.invalid-manifest`; a locked package whose installed manifest is rejected stops `build` with `build.manifest` before the compiler runs | `Lock`, `Build` | `cli/tests` lock and build suites |
 | A published source that declares a builtin's name with `fn`, `let` or `mut` is refused with `source.shadowed-builtin`, so a declaration cannot hide a call from the surface scan | `Surface::declaredBuiltins`, `ReleaseFiles::treeCode` | `surface_tests` "shadowed builtin names" |
-| Capability confinement: each release's surface (the ambient builtins its source names, outside comments and strings, plus its `[system.*]` capabilities) is recomputed from the verified bundle; a release whose surface the root manifest does not grant on that key (`capabilities = [...]` on the dependency entry) is not a candidate (`resolution.capability`); the surface is pinned per package in `osprey.lock` and target-less `fetch`, `verify --offline` and `build` fail with `capability.surface` when an installed tree's recomputed surface differs | `core/src/surface.osp`, `Lock`, `Install`, `Verify`, `Candidates::capsOk` | `surface_tests` (table equals `fixtures/capabilities/builtins.json`), `graphs/grant.json`, `cli/tests` lock and verify suites, `fixtures/lock/rejections.json` surface cases |
+| Capability confinement: each release's surface (the ambient builtins its source names, outside comments and literal string text, including interpolation expressions, plus its `[system.*]` capabilities) is recomputed from the verified bundle; a release whose surface the root manifest does not grant on that key (`capabilities = [...]` on the dependency entry) is not a candidate (`resolution.capability`); the surface is pinned per package in `osprey.lock` and target-less `fetch`, `verify --offline` and `build` fail with `capability.surface` when an installed tree's recomputed surface differs | `core/src/surface.osp`, `Lock`, `Install`, `Verify`, `Candidates::capsOk` | `surface_tests` (table equals `fixtures/capabilities/builtins.json`), `graphs/grant.json`, `cli/tests` lock and verify suites, `fixtures/lock/rejections.json` surface cases |
 | Python plane (P1–P3): the generated `.osprey/python/pyproject.toml` names no index and pins `index-strategy = "first-index"`; a member's own `pyproject.toml` may name no `[[tool.uv.index]]` (`python.index-forbidden`) and no `git`, `url` or outside-tree `path` source (`python.source-forbidden`); every sdist and wheel in `uv.lock` carries a hash or `lock` refuses it (`python.uv-lock-hashes`); each refusal runs no uv and writes no lock; sync is `uv sync --frozen`, verification `uv lock --check --offline` | `PythonPlane` | `cli/tests` python suite |
 
-Every gate of the section's probe table is now asserted by a named test. Of the Python plane rules, P4 (PEP 751 attestation identities) waits on uv exposing them.
+Named tests above cover the folder-registry subset. Python publisher-attestation identity checks and the public trust plane remain unfinished.
 
-## Measured
-
-- The CDCL core refutes the pigeonhole formula php(4,3) in five conflicts; the resolver suite (eight tests including a 200-variable random 3-SAT instance solved three times) runs in 18 s and 1.0 GB. Before the asserting literal was placed at the backjump level the same formula relearned one clause until the process exceeded 9 GB.
-- `SourceDigest` of the fixture trees equals the independently computed goldens, including the digest-substitution case.
-- SHA-256 in Osprey hashes 64 KiB in about 1.6 s on an Apple Silicon laptop: bitwise operations are nibble-table lookups because the language has none. Correctness is complete; throughput is the `int.bitwise` blocker's cost.
-
-## Defects found while building (reported, not worked around in the compiler)
-
-| Probe in `registry/blockers` | Behavior today | Needed |
-| --- | --- | --- |
-| `files.binary-read` | `readFile` returns the bytes before the first NUL only. | Whole-file reads so declared PNG/JSON assets can be hashed. |
-| `runtime.default-operator-pipeline` | `byteAt(s, i) ?: 0` inside a `map` or `fold` over a million elements crashes (signal 11); the `match` form and a pipeline without `?:` both succeed. | `?:` must behave like the `match` it abbreviates at any iteration count. |
-
-## Known compiler limits that shape the code
-
-- No tail calls are guaranteed, and deep self-recursion dies with SIGBUS instead of a diagnostic. A scanner that recursed once per byte overflowed near 6,000 bytes, so `Json` and `Canonical` consume up to 256 plain bytes per call through `Bytes::runEnd` (`tests/src/json_tests.osp` parses and renders 100,000-byte strings).
-- A qualified payload-free variant pattern (`Json::Null =>`, `Shapes::Dot =>`) is a syntax error outside its defining module; code matches the payload variants and `_`, or calls `Json::isNull`.
-- In the assembled test program, a handler arm whose parameters go unused, or a handled body answering a `Result` from another module, is "a closure value with a still-generic type" at codegen. Fixture handlers use every parameter and answer concrete records (`tests/src/loader_tests.osp`).
-- Patterns cannot rename a bound field (`Success { value: v }`); helpers take the bound value as a parameter instead.
-
-- A recursive function with generic parameter types is instantiated once per program (issue #277). `Order::sortBy` therefore recurses over integer index lists only, and a second use of it at a different element type inside the `registry` namespace still fails to type-check (issue #278), so `Arithmetic::percentile` uses the builtin `listSort`.
-- Two records sharing a field name make an untracked receiver a codegen error (issue #273); functions that read such fields spell out the record type and say so in a comment.
-- `==` on lists compares identity, and lists are not assertion operands; tests compare rendered strings.
-- Imports live at file level, never inside a module, and constructors from another module are qualified (`Names::Key { ... }`).
-- The type checker's effect-row solver spends about 300 s of CPU on the 1,150-statement `registry/tests` program (430 s and 3.4 GB now that the resolver and its graph suites are in it: 335 tests in about five minutes wall) and 660 s once the TOML parser joins it (`--check`, Apple Silicon laptop). `manifest/`, `resolver/` and `cli/` therefore keep their own test projects, and only the parser-free `ManifestModel` types sit in `core/`.
-- A recursive function's return type must be written out (`codegen: … is recursive and its return type is not inferred`), as must the return type of a closure handed to `Maybe::fold`.
-- `?:` binds loosest, so `"a" + f() ?: ""` is a type error; the fallback expression is parenthesized.
-- A pattern binding named like a function shadows the function, and the diagnostic names the type (`cannot call non-function registry::ManifestModel::Requirement`) rather than the binding; `ManifestJson` names its helpers `requirementJson` and `kindJson` for that reason.
-- A written `-> Result<T, P>` return type does not check an `Error { message }` payload against `P`; the mismatch surfaces at the caller as `cannot access field … on non-struct type string`.
-- A qualified variant pattern without a binding (`Sat::Satisfiable =>`) is a syntax error outside its defining module even when the variant carries a payload; code binds the payload (`Sat::Satisfiable { model } =>`) or matches `_`.
-- `checkAll`/`expectAll` accept only a list literal at codegen, not a computed list; a computed list of booleans is folded and asserted with `expectTrue`.
-- `test(label, thunk)` ignores the thunk's return value: only `check`, `checkAll` and `expectTrue` assert. The graph suites were vacuous until each assertion was wrapped.
-- An effectful recursive function that constructs a record whose field name another record shares (`Source::Entry.path` and `ManifestModel::Asset.path`) is refused at codegen with `quarantined field access … on an untracked receiver` (issue #273 again). `Install` reads trees recursively as `Release::File` and maps to `Source::Entry` afterwards.
-- A builtin name (`compare`, `contains`) wins over a module's own function of the same name inside that module, with a type error at the call site rather than a shadowing diagnostic. `Names` keeps its order under a private `keyOrder` and exports `compare` as an alias, and its key-membership helper is `includes`.
-- A list literal whose elements are `Result` values is refused at codegen with `cannot coerce an unhandled Result to a plain value` and no location. `Explain::of` chains its cause checks through `pick` instead of folding a list of outcomes.

@@ -30,7 +30,7 @@ module Build {
     let overridesCode = "build.overrides-active"
     let noLocalLockCode = "build.no-local-lock"
     let remediation = "run `lock --local` to write osprey.local.lock"
-    let defaultCompiler = "./target/release/osprey"
+    let defaultCompiler = "osprey"
     let runFlag = "--run"
     let releaseFlag = "--release"
     let compilerFlag = "--compiler"

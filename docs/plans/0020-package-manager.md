@@ -1,38 +1,12 @@
 # Plan 0020 — Package Registry and Manager
 
-> **ALL OSPREY. A WORKING API THAT SERVES WORKING PACKAGES COMES FIRST.**
->
-> Milestone 0 below is the delivery priority of this whole plan. It stands up
-> an Osprey registry server that serves package source from a plain folder,
-> with no database, and an Osprey client that downloads and verifies it.
-> Anyone can run that server on any host or network and point a client at it.
-> No other phase may delay Milestone 0. Supabase is a later hosted data plane
-> (Phase 6) and is not needed to build, run, or use a registry. Every line of
-> executable code in this plan is Osprey: no Rust, no shim, no exceptions.
+**Status:** in progress. The folder registry, verified fetching, deterministic resolution, folder locks, local overrides, folder publication and uv integration are implemented under [`registry/`](../../registry/README.md). `make registry-test` exercises fixtures, manifests, the client, core/API suites and a loopback consumer. The second-machine probe remains open. The package-client build path for declared Python-flavor sources still emits absolute `python_sources` paths that the compiler rejects; a working Default-flavor consumer does not establish that integration.
 
-**Status:** in progress. Milestone 0 runs end to end (`make registry-test`:
-fixture-check, manifest, CLI, core/API suites and the loopback demo); only its
-second-machine probe is open. Milestone A Phase 0 is complete, Phase 1 holds the
-manifest parser, canonical identity and the Python-flavor rule, Phase 2 holds the
-whole folder-lock flow (`lock`, target-less `fetch`, `verify --offline`, `build`)
-and every client hardening gate, and Phase 3 holds the proven CDCL core and the
-package resolver over it, fixture-exact and oracle-agreeing; the end-to-end demo
-runs the real flow against the sample registry; `tree` and `why` read the lock,
-and a refutation is explained from a minimal conflict core. The `uv` plane and
-capability-surface checks are implemented with fixture-driven tests. Phase 4's
-local commands, overlays and folder publishing run today; crash-safe activation
-and Milestone B's authenticated publishing and trust plane remain open. Everything is under
-[`registry/`](../../registry/README.md), whose README records exactly what runs,
-the security gates that are asserted today, and which host capabilities block
-the rest. The normative contracts are
-[spec 0029](../specs/ecosystem/0029-PackageManagement.md) and
-[spec 0030](../specs/ecosystem/0030-PackageRegistryTrustAndDiscovery.md), with canonical
-types in [spec 0031](../specs/ecosystem/0031-PackageDomainModel.md) and score/ranking math
-in [spec 0032](../specs/ecosystem/0032-PackageEvidenceAndDiscovery.md); the cited evidence
-is [collected separately](../package-manager-research.md). This plan contains no
-product decision gates: phases validate the fixed design rather than reopening it.
+Crash-safe activation, canonical build-plan/release artifacts, authenticated public publishing, the hosted package website and the trust plane remain delivery work. Current filesystem handlers use POSIX shell commands; cross-platform acceptance remains open. Checked-off items below record specific delivered subsets, not completion of every requirement in their phase.
 
-## Outcome
+**Contracts:** [package management](../specs/ecosystem/0029-PackageManagement.md), [trust and discovery](../specs/ecosystem/0030-PackageRegistryTrustAndDiscovery.md), [domain types](../specs/ecosystem/0031-PackageDomainModel.md) and [evidence](../specs/ecosystem/0032-PackageEvidenceAndDiscovery.md). [Research references](../package-manager-research.md) support the fixed design; phases validate it rather than reopening product decisions.
+
+## Delivery target
 
 First, ship a working, self-hostable registry: an Osprey API that serves
 working packages from a folder, and an Osprey client that fetches and verifies
@@ -42,35 +16,21 @@ non-executable installation, evidence-based maintenance scoring, and fair
 discovery. Local development can replace any canonical package key globally with
 a checkout and switch it back in one command. Release builds reject those
 overlays, pin every input, and contain exactly one source for each package key.
-The entire package system is implemented in Osprey. This includes the CLI, manifest parser, domain model, resolver, locks, cache, cryptography, filesystem transactions, process isolation, HSM/forge adapters, registry API, publication pipeline, scoring, and WebAssembly frontend. Package tests, independent reference implementations, and operational tooling are also Osprey. There is no Rust host, CLI bridge, or other implementation-language exception. The binding contract is `[PACKAGE-IMPLEMENTATION-LANGUAGE]` in spec 0029.
+The complete package system MUST be implemented in Osprey, including the CLI, manifest parser, domain model, resolver, locks, cache, cryptography, filesystem transactions, process isolation, HSM/forge adapters, registry API, publication pipeline, scoring, and WebAssembly frontend. Package tests, independent reference implementations, and operational tooling are also Osprey. There is no Rust host, CLI bridge, or other implementation-language exception. The binding contract is `[PACKAGE-IMPLEMENTATION-LANGUAGE]` in spec 0029.
 
 The launch package format is Osprey source plus closed-format declared data. SQLite and
 other native components are explicit system capabilities installed separately
-through operating-system package managers. Osprey never downloads native
-binaries, runs lifecycle hooks, or invokes those installers.
+through operating-system package managers. Osprey package installation never downloads native provider binaries, runs lifecycle hooks or invokes operating-system installers. Declared CPython interop dependencies use the separate uv environment described in spec 0029.
 
 ## Current repository seams
 
-- `crates/osprey-project` already builds a deterministic mixed-flavor
-  `ProjectGraph`. Its dependency-free manifest reader understands only
-  `[project]` and `[modules]` and intentionally ignores `[package]`.
-- `crates/osprey-cli` already dispatches project `build`, test, docs, formatter,
-  native, and WebAssembly flows. It has no package commands, lock model, cache,
-  repository client, or authentication.
-- Spec 0025 supplies logical modules and imports; spec 0027 supplies native TAP
-  tests and coverage. Mutation, property/fuzz orchestration, affected-client
-  tests, and deterministic package build plans do not exist.
-- Osprey has HTTP/WebSocket and WebAssembly targets, and `registry/api` runs
-  the folder registry. The browser package UI, Supabase schema, CAS, TUF client,
-  transparency log, provenance pipeline, sandbox fleet and search index remain
-  delivery work.
-- The package system therefore starts with a running service: the folder
-  registry serves digest-verified source over HTTP from day one. It proves
-  integrity, not publisher authority, and says so in every response contract.
-  TUF, the transparency log, and provenance layer onto the same endpoints in
-  Milestone B.
+- `crates/osprey-project` assembles mixed-flavor source graphs. Its compiler manifest reader handles `[project]` and `[modules]`; package metadata and resolution belong to the Osprey package client.
+- `crates/osprey-cli` supplies the existing compiler, project build, tests, documentation, formatter and target drivers. `registry/cli` is the separate Osprey package frontend, including its folder-lock model, verified install and derived compiler project.
+- `registry/core`, `manifest` and `resolver` implement package identities, canonical manifests/source digests, capability surfaces and deterministic resolution. A derived compiler manifest is not the complete canonical build plan with toolchain/provenance inputs required below.
+- `registry/api` serves the database-free folder registry. The hosted browser UI, Supabase data plane, TUF client, transparency log, provenance builders and discovery index remain planned.
+- The folder registry proves source integrity, not publisher authority. Authenticated publication and trust proofs belong to Milestone B; source verification must remain usable without those services.
 
-These compiler crates are existing build tools, not implementation locations for this plan. Build the checked-in Osprey package application with the existing compiler. Do not add package commands, package-specific host code, or package semantics to compiler/runtime sources in another language. Missing Osprey capabilities are explicit delivery blockers with Osprey regression cases, never permission to implement a component elsewhere.
+These compiler crates are build tools for the Osprey package application, not implementation locations for package semantics. The binding language requirement is `[PACKAGE-IMPLEMENTATION-LANGUAGE]` in spec 0029. Missing host capabilities remain explicit blockers with regression probes.
 
 ## One-source architecture
 
@@ -184,7 +144,7 @@ of this plan, "Deferred — CI integration".
 ### Phase 0 — Schemas and adversarial fixtures
 
 - [x] Establish `registry/core`, `registry/cli`, `registry/host`, and `registry/tests` as ordinary Osprey projects built by the existing compiler; prove an Osprey command reaches the shared core and returns a tested result. Projects share source through `source_roots`; `osprey-pkg doctor` reaches `registry::Capabilities` and `registry/tests` covers it with fixture hosts.
-- [x] Inventory required argument, byte-buffer, filesystem, atomicity, process, cryptographic, and network capabilities. Exercise each through Osprey tests and record unavailable capabilities before depending on them. No substitute implementation in another language is permitted. Recorded in `registry/README.md` and `registry/core/src/capabilities.osp`; argv, exit status, environment, binary-safe reads, directory operations (including atomic rename and fsync), a clock and bitwise operators are blocked. The network is exercised by `registry/e2e` (server and client on loopback); SHA-256 runs in Osprey.
+- [x] Inventory required argument, byte-buffer, filesystem, atomicity, process, cryptographic, and network capabilities. Exercise each through Osprey tests and record unavailable capabilities before depending on them. No substitute implementation in another language is permitted. Recorded in `registry/README.md` and `registry/core/src/capabilities.osp`; argv, exit status, environment, binary-safe reads, directory operations (including atomic rename and fsync) and a UTC clock remain blocked. The inventory's `int.bitwise` entry is stale: bitwise builtins now exist, although the registry SHA-256 still uses lookup tables. The network is exercised by `registry/e2e` (server and client on loopback); SHA-256 runs in Osprey.
 - [x] Add an Osprey conformance gate that rejects non-Osprey executable source in the package system, including tests, host adapters, operational tools, and handwritten browser glue; validate declarative inputs separately. `registry::Conformance` plus the checked-in-tree suite.
 - [x] Extract the typeDiagram block from spec 0031 into
       `schemas/package-registry.td` and make documentation import/render it. The spec keeps the rendered block and a suite fails when the two differ.
@@ -274,8 +234,7 @@ without the parser, 115 s (662 s CPU) with it. Only the parser-free
       bounds, envelope bytes, `SourceDigest` and `H(d, x)` are in `registry::Paths`,
       `registry::Source`, `registry::Digests` and a pure-Osprey `registry::Sha256`,
       golden-tested against independently computed fixtures in
-      `registry/tests/fixtures/source`. Root selection and the manifest/build-plan
-      digests wait on the TOML and canonical-JSON modules.
+      `registry/tests/fixtures/source`. Canonical manifest parsing/digests and source-root selection now exist. The complete canonical build-plan and release-artifact contract remains open; the derived compiler manifest does not close it.
 - [ ] Generate a deterministic build plan from the project graph, toolchain,
       target, dependencies, and inferred type/effect/capability surface.
 - [ ] Add cross-platform golden vectors proving identical digests on Linux,

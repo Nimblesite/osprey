@@ -475,6 +475,7 @@ _lint: $(EXT_NODE_DEPS) $(PROFILER_UI_BUILT)
 	node scripts/verify-no-dead-code.mjs
 	node scripts/verify-release-gates.mjs
 	node scripts/verify-package-licenses.mjs
+	node --test scripts/test-package-licenses.mjs
 	python3 scripts/test-release-gate.py
 	cargo fmt --all --check
 	cargo clippy --workspace --all-targets -- -D warnings
