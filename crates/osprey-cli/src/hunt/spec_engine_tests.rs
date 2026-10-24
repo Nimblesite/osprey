@@ -1,0 +1,246 @@
+//! The fixed KLEE command, its `info` and stderr, and the module it loads,
+//! permuted against docs/specs/tooling/SymbolicExecution.md
+//! [SYMEX-KLEE-INVOCATION] [SYMEX-CODEGEN] [SYMEX-MOCK-STREAM].
+
+#![expect(
+    clippy::indexing_slicing,
+    reason = "test assertions: a missing element is a test failure, not a production panic"
+)]
+
+use super::engine::{self, Exploration};
+use super::module;
+use super::spec_tests::permutations;
+use std::collections::BTreeSet;
+use std::path::Path;
+
+// ---- [SYMEX-KLEE-INVOCATION] ----------------------------------------------
+
+/// The command in the spec, transcribed: nothing else reaches the engine.
+pub(super) fn spec_command(
+    runtime: &str,
+    out: &str,
+    budget: (u64, u64),
+    module: &str,
+) -> Vec<String> {
+    let (seconds, megabytes) = budget;
+    [
+        "--libc=klee",
+        "--ubsan-runtime",
+        "--external-calls=none",
+        "--external-call-warnings=all",
+        &format!("-link-llvm-lib={runtime}"),
+        "--optimize",
+        "--kdalloc",
+        "--rng-initial-seed=5489",
+        "--check-div-zero",
+        "--check-overshift",
+        "--emit-all-errors",
+        "--max-solver-time=30s",
+        &format!("--max-time={seconds}s"),
+        "--watchdog",
+        &format!("--max-memory={megabytes}"),
+        &format!("--output-dir={out}"),
+        module,
+    ]
+    .iter()
+    .map(ToString::to_string)
+    .collect()
+}
+
+#[test]
+fn the_engine_command_is_the_spec_command_for_every_budget_and_path() {
+    let budgets = [(1, 256), (60, 2000), (3600, 65_536), (u64::MAX, u64::MAX)];
+    let places = [
+        ("rt.bc", "out", "p.ll"),
+        (
+            "compiler/bin/libosprey_runtime_klee.bc",
+            "/tmp/x-hunt-klee",
+            "/tmp/x-hunt.ll",
+        ),
+        ("my rt/rt.bc", "out dir/run 1", "a b.ll"),
+        ("ünï/rt.bc", "-out", "--json.ll"),
+    ];
+    for budget in budgets {
+        for (runtime, out, module) in places {
+            let actual = engine::arguments(
+                Path::new(runtime),
+                Path::new(out),
+                budget,
+                Path::new(module),
+            );
+            assert_eq!(actual, spec_command(runtime, out, budget, module));
+            assert_eq!(actual.iter().collect::<BTreeSet<_>>().len(), actual.len());
+        }
+    }
+}
+
+/// The macOS package builds neither uclibc nor the POSIX runtime, and a
+/// fixed-size symbolic stdin is what the mock replaces [SYMEX-INSTALL].
+#[test]
+fn the_engine_never_gets_linux_only_or_user_options() {
+    let actual = engine::arguments(Path::new("r"), Path::new("o"), (1, 256), Path::new("m"));
+    for banned in [
+        "uclibc",
+        "posix-runtime",
+        "sym-stdin",
+        "sym-files",
+        "sym-arg",
+        "seed",
+    ] {
+        assert!(
+            actual.iter().all(|argument| !argument.contains(banned) || argument.contains("rng-initial-seed")),
+            "{banned}: {actual:?}"
+        );
+    }
+    assert_eq!(actual.len(), 17);
+    assert_eq!(
+        actual.last().map(String::as_str),
+        Some("m"),
+        "the module is last"
+    );
+}
+
+#[test]
+fn every_kind_of_target_noise_is_dropped_and_order_is_kept() {
+    let noise = [
+        "KLEE: WARNING: unable to select target: x86_64",
+        "warning: Linking two modules of different target triples",
+        "target triples do not match: 'arm64-apple-macosx' vs 'x86_64'",
+        "warning: Linking two modules of different data layouts",
+        "different data layouts!",
+    ];
+    for line in noise {
+        assert!(engine::is_noise(line), "{line}");
+    }
+    for line in ["KLEE: ERROR: real", "", "target", "Linking", "data layout"] {
+        assert!(!engine::is_noise(line), "{line}");
+    }
+    let real: Vec<String> = (0..20).map(|n| format!("KLEE: line {n}")).collect();
+    let mut mixed = Vec::new();
+    for (at, line) in real.iter().enumerate() {
+        mixed.push(line.as_str());
+        mixed.push(noise[at % noise.len()]);
+    }
+    let stderr = mixed.join("\r\n");
+    for count in [0, 1, 12, 20, 21, 1000] {
+        let tail = engine::tail(&stderr, count);
+        let keep = count.min(real.len());
+        let expected: Vec<&str> = real[real.len() - keep..]
+            .iter()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(tail, expected, "count {count}");
+    }
+    assert!(engine::tail("", 12).is_empty());
+}
+
+#[test]
+fn info_counts_read_in_any_order_and_bad_values_are_zero() {
+    let lines = [
+        "KLEE: done: explored paths = 488",
+        "KLEE: done: completed paths = 106",
+        "KLEE: done: total instructions = 650279",
+        "Elapsed: 00:01:00  ",
+        "KLEE: done: partially completed paths = 382",
+        "KLEE: done: generated tests = 9",
+    ];
+    let expected = Exploration {
+        paths: 488,
+        completed: 106,
+        instructions: 650_279,
+        elapsed: "00:01:00".into(),
+    };
+    for order in permutations(&lines) {
+        assert_eq!(
+            engine::exploration(&order.join("\n")),
+            expected,
+            "{order:?}"
+        );
+    }
+    for (info, paths) in [
+        ("KLEE: done: explored paths = abc", 0),
+        ("KLEE: done: explored paths = -4", 0),
+        ("KLEE: done: explored paths = 18446744073709551616", 0),
+        ("KLEE: done: explored paths =  5  ", 5),
+        ("KLEE: done: explored paths=5", 0),
+        ("explored paths = 5", 0),
+        ("  KLEE: done: explored paths = 5", 0),
+        (
+            "KLEE: done: explored paths = 1\nKLEE: done: explored paths = 2",
+            1,
+        ),
+        (
+            "KLEE: done: explored paths = 18446744073709551615",
+            u64::MAX,
+        ),
+    ] {
+        assert_eq!(engine::exploration(info).paths, paths, "{info:?}");
+    }
+}
+
+// ---- [SYMEX-CODEGEN] [SYMEX-MOCK-STREAM]: the module KLEE loads -------------
+
+#[test]
+fn the_module_is_x86_64_linux_with_one_strong_cap_for_every_cap() {
+    for cap in [0, 1, 64, 4095, 4096] {
+        for ir in [
+            "",
+            "define i32 @main() {\n  ret i32 0\n}",
+            "; only a comment\n",
+        ] {
+            let module = module::wrap(ir, cap);
+            let lines: Vec<&str> = module.lines().collect();
+            assert!(
+                lines[0].starts_with("target datalayout = \"e-m:e-"),
+                "{module}"
+            );
+            assert_eq!(lines[1], "target triple = \"x86_64-unknown-linux-gnu\"");
+            assert_eq!(
+                lines.last().copied(),
+                Some(format!("@osp_hunt_input_bytes = global i64 {cap}").as_str())
+            );
+            assert_eq!(module.matches("target triple").count(), 1);
+            assert_eq!(module.matches("@osp_hunt_input_bytes").count(), 1);
+            assert!(module.contains(ir));
+            for host in ["aarch64", "arm64", "apple", "windows", "msvc"] {
+                assert!(!module.contains(host), "{host}");
+            }
+            assert!(
+                !module.contains("weak"),
+                "the cap overrides the mock's weak default"
+            );
+        }
+    }
+}
+
+/// Every program in `tests/hunt/` lowers for the engine at every cap.
+#[test]
+fn the_hunt_corpus_lowers_symbolically_at_every_cap() {
+    let corpus = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/hunt");
+    let mut programs: Vec<String> = std::fs::read_dir(corpus)
+        .expect("tests/hunt")
+        .filter_map(Result::ok)
+        .map(|entry| entry.path().display().to_string())
+        .filter(|path| path.ends_with(".osp") || path.ends_with(".ospml"))
+        .collect();
+    programs.sort();
+    assert!(programs.len() >= 4, "{programs:?}");
+    for path in programs {
+        let cli = crate::invocation::parse_args(std::slice::from_ref(&path)).expect("args");
+        let input = crate::pipeline::load_input(&cli).expect("load");
+        let name = Path::new(&path)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned());
+        for cap in [0, 64, 4096] {
+            let module = module::symbolic_module(&input, cap).expect("symbolic build");
+            assert!(module.starts_with("target datalayout"), "{path}");
+            assert!(module.ends_with(&format!("@osp_hunt_input_bytes = global i64 {cap}\n")));
+            assert!(module.contains("!DILocation"), "{path}");
+            assert!(
+                module.contains(name.as_deref().unwrap_or_default()),
+                "{path}"
+            );
+            assert!(!module.contains("optnone"), "{path}");
+        }
+    }
+}

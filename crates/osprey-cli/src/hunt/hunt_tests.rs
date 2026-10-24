@@ -22,6 +22,7 @@ fn lock() -> MutexGuard<'static, ()> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
+#[cfg(unix)]
 const PTR_ERR: &str = "Error: memory error: out of bound pointer\n\
 File: list_runtime.c\nLine: 88\nassembly.ll line: 4012\nState: 7\nStack: \n\
 \t#000000031 in osp_list_get(ptr, i64) at list_runtime.c:88\n\
@@ -48,10 +49,12 @@ impl Scene {
         self.root.join("main.osp").display().to_string()
     }
 
+    #[cfg(unix)]
     fn canned(&self, name: &str, bytes: &[u8]) {
         std::fs::write(self.root.join("canned").join(name), bytes).expect("canned file");
     }
 
+    #[cfg(unix)]
     fn canned_finding(&self) {
         let err = PTR_ERR.replace("PROGRAM", &self.program());
         self.canned("test000001.ptr.err", err.as_bytes());
@@ -61,23 +64,33 @@ impl Scene {
         self.canned("info", b"Elapsed: 00:00:02\nKLEE: done: explored paths = 4\nKLEE: done: completed paths = 3\nKLEE: done: total instructions = 99\n");
     }
 
-    /// A `klee` that copies the canned directory to `--output-dir` and
-    /// exits with `code`.
+    /// A `klee` that records its arguments in `args.txt` and the module it
+    /// was given in `module.ll`, copies the canned directory to
+    /// `--output-dir` and exits with `code`.
+    #[cfg(unix)]
     fn fake_klee(&self, code: u8) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
         let script = self.root.join("klee");
         let body = format!(
-            "#!/bin/sh\nfor a in \"$@\"; do case \"$a\" in --output-dir=*) out=\"${{a#--output-dir=}}\";; esac; done\n\
-             mkdir -p \"$out\" && cp {}/canned/* \"$out\"/ 2>/dev/null\necho engine-said-this >&2\nexit {code}\n",
-            self.root.display()
+            "#!/bin/sh\nroot='{root}'\nprintf '%s\\n' \"$@\" > \"$root/args.txt\"\n\
+             for a in \"$@\"; do last=\"$a\"; case \"$a\" in --output-dir=*) out=\"${{a#--output-dir=}}\";; esac; done\n\
+             cp \"$last\" \"$root/module.ll\"\n\
+             mkdir -p \"$out\" && cp \"$root\"/canned/* \"$out\"/ 2>/dev/null\necho engine-said-this >&2\nexit {code}\n",
+            root = self.root.display()
         );
         std::fs::write(&script, body).expect("fake klee");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))
-                .expect("chmod");
-        }
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).expect("chmod");
         script
+    }
+
+    /// What the fake engine was invoked with, one argument per line.
+    #[cfg(unix)]
+    fn engine_args(&self) -> Vec<String> {
+        std::fs::read_to_string(self.root.join("args.txt"))
+            .unwrap_or_default()
+            .lines()
+            .map(ToString::to_string)
+            .collect()
     }
 
     fn with_toolchain<T>(&self, klee: &Path, run: impl FnOnce() -> T) -> T {
@@ -231,4 +244,205 @@ fn a_fiber_program_lowers_symbolically() {
     let symbolic = module::symbolic_module(&input, 64).expect("symbolic build");
     assert!(symbolic.contains("target triple = \"x86_64-unknown-linux-gnu\""));
     assert!(symbolic.contains("@osp_hunt_input_bytes = global i64 64"));
+}
+
+/// The value of `--output-dir=` the engine was given.
+#[cfg(unix)]
+fn output_dir(args: &[String]) -> PathBuf {
+    PathBuf::from(
+        args.iter()
+            .find_map(|argument| argument.strip_prefix("--output-dir="))
+            .unwrap_or_default(),
+    )
+}
+
+/// The engine is invoked with exactly the spec command, the toolchain's
+/// runtime and the run's own module, at every budget and stream cap; the
+/// module it loads is x86-64 Linux carrying the cap [SYMEX-KLEE-INVOCATION]
+/// [SYMEX-CODEGEN] [SYMEX-MOCK-STREAM].
+#[cfg(unix)]
+#[test]
+fn the_engine_receives_exactly_the_spec_command_and_module() {
+    let scene = Scene::new("command", "print(\"hi\")\n");
+    scene.canned("info", b"KLEE: done: explored paths = 1\n");
+    let klee = scene.fake_klee(0);
+    let out = scene.root.join("kout");
+    let runtime = scene.root.join("runtime.bc").display().to_string();
+    for (seconds, megabytes, cap) in [
+        (1u64, 256u64, 0u64),
+        (7, 300, 8),
+        (60, 2000, 64),
+        (3600, 65_536, 4096),
+    ] {
+        let flags = [
+            "--max-time".to_string(),
+            seconds.to_string(),
+            "--max-memory".into(),
+            megabytes.to_string(),
+            "--input-bytes".into(),
+            cap.to_string(),
+            "--out".into(),
+            out.display().to_string(),
+            "--quiet".into(),
+        ];
+        let flags: Vec<&str> = flags.iter().map(String::as_str).collect();
+        let opts = options(&scene, &flags);
+        let (_, code) = scene.with_toolchain(&klee, || hunt(&opts)).expect("hunt");
+        assert_eq!(code, ExitCode::SUCCESS);
+        let args = scene.engine_args();
+        let module = args.last().cloned().unwrap_or_default();
+        let expected = super::spec_engine_tests::spec_command(
+            &runtime,
+            &out.display().to_string(),
+            (seconds, megabytes),
+            &module,
+        );
+        assert_eq!(args, expected);
+        assert!(module.ends_with("-hunt.ll"), "{module}");
+        assert!(
+            !Path::new(&module).exists(),
+            "the module is removed after the run"
+        );
+        let loaded = std::fs::read_to_string(scene.root.join("module.ll")).expect("module copy");
+        assert!(loaded.contains("target triple = \"x86_64-unknown-linux-gnu\""));
+        assert!(
+            loaded.ends_with(&format!("@osp_hunt_input_bytes = global i64 {cap}\n")),
+            "{cap}"
+        );
+        assert!(
+            loaded.contains("main.osp"),
+            "debug locations name the program"
+        );
+    }
+}
+
+/// Without `--out` the run directory is temporary; with it, it is kept.
+#[cfg(unix)]
+#[test]
+fn the_run_directory_is_temporary_unless_out_is_given() {
+    let scene = Scene::new("tempdir", "print(\"hi\")\n");
+    scene.canned("info", b"KLEE: done: explored paths = 1\n");
+    let klee = scene.fake_klee(0);
+    let opts = options(&scene, &["--quiet"]);
+    let (rendered, _) = scene.with_toolchain(&klee, || hunt(&opts)).expect("hunt");
+    let temporary = output_dir(&scene.engine_args());
+    assert!(
+        temporary.starts_with(std::env::temp_dir()),
+        "{}",
+        temporary.display()
+    );
+    assert!(!temporary.exists(), "a temporary run directory is deleted");
+    assert!(!rendered.contains("KLEE output kept in"), "{rendered}");
+    let out = scene.root.join("kept");
+    let opts = options(&scene, &["--quiet", "--out", &out.display().to_string()]);
+    let (rendered, _) = scene.with_toolchain(&klee, || hunt(&opts)).expect("hunt");
+    assert_eq!(output_dir(&scene.engine_args()), out);
+    assert!(out.join("info").exists());
+    assert!(
+        rendered.contains(&format!("KLEE output kept in {}", out.display())),
+        "{rendered}"
+    );
+}
+
+/// A non-empty `--out` that is not a KLEE run is refused before the engine
+/// starts, and nothing in it is touched; a previous run is replaced.
+#[cfg(unix)]
+#[test]
+fn only_a_previous_run_is_cleared_from_out() {
+    let scene = Scene::new("outdir", "print(\"hi\")\n");
+    scene.canned("info", b"KLEE: done: explored paths = 1\n");
+    let klee = scene.fake_klee(0);
+    let out = scene.root.join("mine");
+    std::fs::create_dir_all(&out).expect("dir");
+    std::fs::write(out.join("precious.txt"), "keep").expect("file");
+    let opts = options(&scene, &["--quiet", "--out", &out.display().to_string()]);
+    let code = scene
+        .with_toolchain(&klee, || hunt(&opts))
+        .expect_err("refused");
+    assert_eq!(code, ExitCode::from(2));
+    assert!(out.join("precious.txt").exists());
+    assert!(scene.engine_args().is_empty(), "the engine never ran");
+    std::fs::write(out.join("info"), "a previous run").expect("info");
+    let (_, code) = scene.with_toolchain(&klee, || hunt(&opts)).expect("hunt");
+    assert_eq!(code, ExitCode::SUCCESS);
+    assert!(
+        !out.join("precious.txt").exists(),
+        "a previous run is cleared"
+    );
+    assert!(out.join("info").exists());
+}
+
+/// A failed engine is a tool error and still leaves no temporary files.
+#[cfg(unix)]
+#[test]
+fn a_failed_engine_cleans_up_after_itself() {
+    let scene = Scene::new("failclean", "print(\"hi\")\n");
+    for status in [1, 2, 3, 127, 255] {
+        let klee = scene.fake_klee(status);
+        let opts = options(&scene, &["--quiet"]);
+        let code = scene
+            .with_toolchain(&klee, || hunt(&opts))
+            .expect_err("engine failed");
+        assert_eq!(code, ExitCode::from(2), "klee exit {status}");
+        let args = scene.engine_args();
+        assert!(
+            !Path::new(args.last().map_or("", String::as_str)).exists(),
+            "module removed"
+        );
+        assert!(!output_dir(&args).exists(), "run directory removed");
+    }
+}
+
+/// `--json` reports the budget and cap it ran with, and incomplete paths
+/// alone never fail the command [SYMEX-CLI] [SYMEX-FINDINGS].
+#[cfg(unix)]
+#[test]
+fn incomplete_paths_alone_pass_with_or_without_replay() {
+    let scene = Scene::new("incomplete", "print(\"hi\")\n");
+    scene.canned("info", b"KLEE: done: explored paths = 9\n");
+    for n in 1..=5 {
+        scene.canned(&format!("test{n:06}.early"), b"Execution halting.\n");
+    }
+    scene.canned("test000006.solver.err", b"Error: Query timed out\n");
+    let klee = scene.fake_klee(0);
+    for extra in [&["--json"][..], &["--json", "--no-replay"][..]] {
+        let mut flags = vec!["--max-time", "9", "--input-bytes", "0"];
+        flags.extend_from_slice(extra);
+        let opts = options(&scene, &flags);
+        let (rendered, code) = scene.with_toolchain(&klee, || hunt(&opts)).expect("hunt");
+        assert_eq!(code, ExitCode::SUCCESS, "{rendered}");
+        let value: serde_json::Value = serde_json::from_str(&rendered).expect("json");
+        assert_eq!(value["budgetSeconds"], 9);
+        assert_eq!(value["inputBytes"], 0);
+        assert_eq!(value["findings"].as_array().map(Vec::len), Some(0));
+        assert_eq!(value["incomplete"].as_array().map(Vec::len), Some(6));
+        assert!(value["program"]
+            .as_str()
+            .is_some_and(|p| p.ends_with("main.osp")));
+    }
+}
+
+/// An unmodelled finding names where the mock stops; after replay it does
+/// not fail the command, without replay it does [SYMEX-MOCK-UNSUPPORTED].
+#[cfg(unix)]
+#[test]
+fn an_unmodelled_finding_fails_only_without_replay() {
+    let scene = Scene::new("unmodelled", "print(\"hi\")\n");
+    scene.canned("info", b"KLEE: done: explored paths = 1\n");
+    let stack = format!(
+        "Error: unmodelled: fork\nStack: \n\t#000000001 in fork() at hunt_unsupported.c:20\n\t#000000002 in main() at {}:1\n",
+        scene.program()
+    );
+    scene.canned("test000001.unmodelled.err", stack.as_bytes());
+    let klee = scene.fake_klee(0);
+    for (extra, expected) in [
+        (&["--quiet"][..], ExitCode::SUCCESS),
+        (&["--quiet", "--no-replay"][..], ExitCode::FAILURE),
+    ] {
+        let opts = options(&scene, extra);
+        let (rendered, code) = scene.with_toolchain(&klee, || hunt(&opts)).expect("hunt");
+        assert_eq!(code, expected, "{extra:?}: {rendered}");
+        assert!(rendered.contains("unmodelled"), "{rendered}");
+        assert!(rendered.contains("main.osp:1"), "{rendered}");
+    }
 }

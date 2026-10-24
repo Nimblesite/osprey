@@ -195,5 +195,23 @@ fn clear_run_directory(directory: &Path) -> Result<(), String> {
 }
 
 #[cfg(test)]
+#[path = "spec_engine_tests.rs"]
+mod spec_engine_tests;
+#[cfg(test)]
+#[path = "spec_findings_tests.rs"]
+mod spec_findings_tests;
+#[cfg(test)]
+#[path = "spec_ktest_tests.rs"]
+mod spec_ktest_tests;
+#[cfg(test)]
+#[path = "spec_replay_tests.rs"]
+mod spec_replay_tests;
+#[cfg(test)]
+#[path = "spec_report_tests.rs"]
+mod spec_report_tests;
+#[cfg(test)]
+#[path = "spec_tests.rs"]
+mod spec_tests;
+#[cfg(test)]
 #[path = "hunt_tests.rs"]
 mod tests;
