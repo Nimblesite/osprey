@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=sacrebleu
 # osprey: module=Chrf
 """chrF (Popović 2015) and chrF++ (Popović 2017) metrics.

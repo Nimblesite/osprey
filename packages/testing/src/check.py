@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=testing
 # osprey: module=Check
 """Assertions every ported package's suite reports through, and the arithmetic

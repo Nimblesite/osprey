@@ -7,6 +7,7 @@ import registry::Release
 import registry_api::Loader
 import registry_api::Router
 import registry_cli::Dispatch
+import registry_cli::Build
 import registry_cli::Fetch
 import registry_host::Host
 
@@ -86,6 +87,43 @@ module Probes {
 
     fn consumerDir(cwd) = "${cwd}/${work}/consumer"
 
+    fn rooted(dir, path) = if startsWith(path, "/") { path } else { "${dir}/${path}" }
+
+    /// Forward real filesystem operations as though invoked in the consumer.
+    fn consumerFiles(dir) = handler Host::Files {
+        read path => perform Host::Files.read(rooted(dir, path))
+        write path text => perform Host::Files.write(rooted(dir, path), text)
+    }
+
+    fn consumerTree(dir) = handler Host::Tree {
+        walk path => perform Host::Tree.walk(rooted(dir, path))
+        ensure path => perform Host::Tree.ensure(rooted(dir, path))
+    }
+
+    fn consumerProcess(dir) = handler Host::Process {
+        run command => perform Host::Process.run("cd ${Host::shellWord(dir)} && ${command}")
+    }
+
+    fn defaultBuild(cwd, args) = {
+        let dir = consumerDir(cwd)
+        consumerFiles(dir)(fn() => consumerTree(dir)(fn() => consumerProcess(dir)(fn() =>
+            Build::run(listConcat(["--compiler", "${cwd}/target/release/osprey"], args)))))
+    }
+
+    /// Actual compiler invocations cover both default forms and both project forms.
+    export fn buildPaths(cwd) = {
+        let bare = defaultBuild(cwd, [])
+        let run = defaultBuild(cwd, ["--run"])
+        let relative = Build::run(["--run", "--project", "${work}/consumer"])
+        let absolute = Build::run(["--run", "--project", consumerDir(cwd)])
+        [
+            Probe { label: "bare build compiles the consumer", expected: "0", actual: "${bare.status}" },
+            Probe { label: "bare build --run executes the consumer", expected: consumerLine, actual: firstLine(run) },
+            Probe { label: "relative --project executes the consumer", expected: consumerLine, actual: firstLine(relative) },
+            Probe { label: "absolute --project executes the consumer", expected: consumerLine, actual: firstLine(absolute) }
+        ]
+    }
+
     /// The consumer flow of [PACKAGE-FOLDER-REGISTRY]: `lock` writes the
     /// folder lock, `fetch` installs it, `verify --offline` audits it and
     /// `build --run` compiles and runs the consumer against the locked trees.
@@ -129,13 +167,15 @@ module Probes {
 
     fn lastLine(report) = listGet(report.lines, length(report.lines) - 1) ?: ""
 
+    fn pythonPinned(dir) = contains(readFile("${dir}/osprey.lock") ?: "", "\"python\":{\"pyprojectDigest\":\"sha256:")
+
     /// With uv on the host: `lock` pins the plane, `fetch` syncs it, `verify --offline` passes.
     fn withUv(dir, locked) = {
         let _fetched = Dispatch::run(["fetch", "--registry", base, "--project", dir])
         let verified = Dispatch::run(["verify", "--offline", "--project", dir])
         [
             Probe { label: "python consumer lock pins the uv plane", expected: "python: locked ${dir}/.osprey/python", actual: lastLine(locked) },
-            Probe { label: "python consumer lock carries root.python", expected: "true", actual: "${contains(readFile("${dir}/osprey.lock") ?: "", "\"python\":{\"pyprojectDigest\":\"sha256:")}" },
+            Probe { label: "python consumer lock carries root.python", expected: "true", actual: "${pythonPinned(dir)}" },
             Probe { label: "python consumer verifies offline", expected: "verified 1 packages", actual: firstLine(verified) }
         ]
     }
@@ -175,7 +215,7 @@ module Probes {
         Probe { label: "server stops", expected: "false", actual: "${healthy()}" }
     }
 
-    fn projects(cwd, catalog) = listConcat(consumer(cwd, catalog), listConcat(pythonConsumer(cwd), [doctorUv(), stop()]))
+    fn projects(cwd, catalog) = listConcat(consumer(cwd, catalog), listConcat(buildPaths(cwd), listConcat(pythonConsumer(cwd), [doctorUv(), stop()])))
 
     fn running(cwd, catalog) = {
         let endpoints = mapList(paths(catalog), fn(p) => exchange(catalog, p))

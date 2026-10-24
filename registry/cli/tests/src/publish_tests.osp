@@ -74,10 +74,31 @@ module PublishTests {
         ])
     }
 
+    fn legalFiles() = [
+        Fixture::file("LICENSE", "MIT: NIMBLESITE PTY LTD, Australia\n"),
+        Fixture::file("NOTICE.md", "Osprey port; upstream copyrights retained.\n"),
+        Fixture::file("LICENSES/upstream.txt", "Upstream BSD conditions and disclaimer.\n")
+    ]
+
+    /// License texts and attribution survive the publisher's file selection.
+    fn licenses() = {
+        let source = listConcat(files(), legalFiles())
+        let reads = mapList(source, fn(f) => Fixture::readRoute("${project}/${f.relPath}", f.content))
+        let paths = listConcat(mapList(source, fn(f) => f.relPath), ["LICENSES-backup/private.txt", "docs/notes.md"])
+        let a = RegistryFixture::runWith(reads, [Fixture::walkRoute(project, paths)], [], ["publish", "--folder", folder, "--project", project])
+        checkAll("publishing retains MIT, upstream licenses and modification notices", [
+            RegistryFixture::statusOf(a) == 0,
+            foldList(legalFiles(), true, fn(ok, f) => ok && RegistryFixture::writtenTo(a, "${folder}/@demo/one/1.1/${f.relPath}") == f.content),
+            RegistryFixture::lineOf(a, 0) == "published @demo/one e1.r1 ${Fixture::digestOf(Fixture::served("@demo/one/1.1", source))}",
+            RegistryFixture::writesTo(a, "${folder}/@demo/one/1.1/LICENSES-backup/private.txt") == 0
+        ])
+    }
+
     /// Every publish test.
     export fn run() = {
         test("publish: the next ordinal", nextOrdinal)
         test("publish: epochs", epochs)
         test("publish: refusals", refusals)
+        test("publish: licenses survive publication", licenses)
     }
 }

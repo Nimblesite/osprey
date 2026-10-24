@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=flash_attn
 # osprey: module=Core
 """Shared geometry and masking for @osprey/flash_attn.

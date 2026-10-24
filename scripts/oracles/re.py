@@ -71,6 +71,7 @@ def write_tables():
     upper = fold_table(True)
     lines = [
         "# osprey: flavor=python",
+        "# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.",
         "# osprey: namespace=re",
         "# osprey: module=Tables",
         '"""Unicode range tables the regex matcher classifies code points with.',

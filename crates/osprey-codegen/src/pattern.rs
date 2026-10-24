@@ -212,6 +212,13 @@ fn finish_phi(
         .map(|(v, blk)| format!("[ {}, %{blk} ]", v.operand))
         .collect::<Vec<_>>()
         .join(", ");
+    if cg
+        .source_function
+        .as_deref()
+        .is_some_and(|name| name.ends_with("3x61746c"))
+    {
+        eprintln!("TRACE atl join: {incoming_values:?}");
+    }
     let reg = cg.emit_reg(format!("phi {llvm_ty} {incoming}"));
     let common = |sel: fn(&Value) -> Option<String>| {
         let first = sel(first_val);
@@ -235,6 +242,7 @@ fn finish_phi(
         Some(inner) => Value::result(reg, inner),
         None => Value::new(reg, ty).with_owner(merged_owner(cg, &incoming_values)),
     };
+    out.inferred_type = merged_inference(&incoming_values);
     out.result_inner_is_placeholder = result_inner.is_some()
         && incoming_values
             .iter()
@@ -260,6 +268,18 @@ fn finish_phi(
         .collect::<Vec<_>>();
     crate::arc::move_phi_owners(cg, &incoming_ops, &out, mark);
     Ok(out)
+}
+
+/// A checked join retains the concrete type even when an empty literal has no
+/// inference of its own. Losing it erases nested list element layouts after a
+/// `?:` default. Conflicting known types never supply a guessed layout.
+fn merged_inference(incoming: &[(Value, String)]) -> Option<osprey_types::Type> {
+    let mut known = incoming
+        .iter()
+        .filter_map(|(value, _)| value.inferred_type.as_ref())
+        .filter(|ty| !osprey_types::has_type_var(ty));
+    let first = known.next()?;
+    known.all(|ty| ty == first).then(|| first.clone())
 }
 
 /// The owner of the merged handle. Arms naming one owner keep it; arms naming
@@ -355,4 +375,29 @@ fn bind_value(cg: &mut Codegen, name: String, value: Value) {
     }
     cg.emit_debug_local(&name, &value);
     cg.bind(name, value);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nested_list_join_keeps_concrete_inference_beside_an_untyped_empty_default() {
+        let mut cg = Codegen::new();
+        let mut row = Value::handle("%row", "List#List#i64");
+        let ints = osprey_types::Type::con("List", vec![osprey_types::Type::con("int", vec![])]);
+        row.inferred_type = Some(osprey_types::Type::con("List", vec![ints.clone()]));
+        let fallback = Value::handle("%empty", "List#List#i8*");
+        let joined = finish_phi(
+            &mut cg,
+            &[(row, "row".into()), (fallback, "empty".into())],
+            "end",
+            0,
+        )
+        .expect("both branches carry list pointers");
+        let element = crate::collections::elem_value(&mut cg, &joined, "%word");
+        assert_eq!(element.ty, LType::Ptr);
+        assert_eq!(element.osp_ty.as_deref(), Some("List#i64"));
+        assert_eq!(element.inferred_type, Some(ints));
+    }
 }

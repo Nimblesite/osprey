@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=numpy
 # osprey: module=Device
 """The GPU interpretation of `Storage.Buffer`: every operation is a kernel, a

@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=scipy
 # osprey: module=Logistic
 """scipy.special's logistic functions, the xsf log_exp.h formulas.

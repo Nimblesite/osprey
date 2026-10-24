@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=faiss
 # osprey: module=Metrics
 """Distances and the exact top-k selection faiss uses for flat search.

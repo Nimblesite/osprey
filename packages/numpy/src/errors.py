@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=numpy
 # osprey: module=Errors
 """numpy's ValueError as an Osprey effect, with numpy's exact message text.

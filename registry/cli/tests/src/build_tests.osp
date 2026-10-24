@@ -4,6 +4,7 @@ import registry_cli::Build
 import registry_cli::Fetch
 import registry_cli::Lockfile
 import registry_cli::Reports
+import registry_cli::Project
 import registry_tests::Fixture
 import registry::ManifestJson
 
@@ -138,6 +139,25 @@ module BuildTests {
         ])
     }
 
+    fn relativeBuildAt(dir, args) = {
+        let text = manifestText() + "python_sources = [\"src/model.py\"]\n"
+        let lock = lockText(ManifestJson::digest(Fixture::manifestOf(text)) ?: "", [])
+        let reads = [Fixture::readRoute(Project::manifestPathAt(dir), text), Fixture::readRoute(Project::lockPathAt(dir), lock)]
+        let a = runBuild(reads, [], args)
+        checkAll("relative project ${dir} is rebased from the derived manifest", [
+            a.report.status == 0,
+            contains(a.derived, "source_roots = [\"../../${dir}/src\"]"),
+            contains(a.derived, "python_sources = [\"../../${dir}/src/model.py\"]"),
+            contains(a.derived, "entry = \"../../${dir}/src/main.osp\"")
+        ])
+    }
+
+    fn relativeBuilds() = {
+        relativeBuildAt(".", [])
+        relativeBuildAt(".", ["--run"])
+        relativeBuildAt("some/project", ["--project", "some/project"])
+    }
+
     /// A failing verify runs no compiler and writes nothing.
     fn verifyFailure() = {
         let packages = [one(), two()]
@@ -167,6 +187,7 @@ module BuildTests {
     export fn run() = {
         test("build: derived project bytes and compiler invocation", derived)
         test("build: --run invokes the run form", runForm)
+        test("build: default and relative source paths", relativeBuilds)
         test("build: a verify failure compiles nothing", verifyFailure)
         test("build: a rejected package manifest is build.manifest", buildManifestRejected)
     }

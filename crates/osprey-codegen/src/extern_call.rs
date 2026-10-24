@@ -184,7 +184,7 @@ fn argument_value(
     match expr {
         Expr::TypeApply {
             function, position, ..
-        } => crate::expr::with_application(cg, *position, |cg| {
+        } => crate::expr::with_application(cg, function, *position, |cg| {
             argument_value(cg, function, want, name, index)
         }),
         Expr::Identifier(n)

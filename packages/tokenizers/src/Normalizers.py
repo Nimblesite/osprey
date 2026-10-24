@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=tokenizers
 # osprey: module=Normalizers
 """The BertNormalizer: clean_text, handle_chinese_chars, strip_accents and

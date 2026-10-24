@@ -51,6 +51,7 @@ module ReleaseFiles {
         else if foldList(files, false, fn(found, file) => found || Source::lfsPointer(file.content)) { "source.lfs-pointer" }
         else if badPython(files) { "source.python-flavor-header" }
         else if Surface::shadowsBuiltin(files) { "source.shadowed-builtin" }
+        else if listContains(Surface::ofFiles(files), "io/unknown") { "source.unclassified-builtin" }
         else { Source::limitCode(length(files), totalBytes(files), 0) }
 
     fn checked(id, files) = {

@@ -6,7 +6,7 @@ default_namespace = "sklearn"
 
 [package]
 name = "@osprey/sklearn"
-license = "MIT"
+license = "MIT AND BSD-3-Clause"
 summary = "scikit-learn metrics, preprocessing and model_selection over array-likes (lists)"
 keywords = ["scikit-learn", "metrics", "preprocessing", "model-selection", "python-flavor"]
 

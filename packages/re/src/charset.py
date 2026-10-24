@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=re
 # osprey: module=Charset
 """Character-class parsing and escape decoding, shared by the parser.
@@ -160,7 +161,7 @@ def octal_escape(cps, i, n):
     return octal_from(cps, i + 2, n, 2, 0)
 
 
-def octal_from(cps, i, n, left, acc):
+def octal_from(cps, i, n, left, acc) -> Result[list[int], str]:
     """Accumulate `left` octal digits from `i`."""
     if left == 0 or i >= n or not is_octal(at(cps, i)):
         return Success(value=[acc, i])
@@ -251,7 +252,7 @@ def parse_class(cps, i, n, icase):
         return parse_class_items(cps, i, i + 1, n, icase, 0, [])
 
 
-def parse_class_items(cps, i, j, n, icase, negate, pieces):
+def parse_class_items(cps, i, j, n, icase, negate, pieces) -> Result[ClassAtom, str]:
     """Accumulate class pieces until the closing `]`."""
     if j >= n:
         return fail("unterminated character set", i)

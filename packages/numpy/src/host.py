@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=numpy
 # osprey: module=Host
 """The host interpretation of `Storage.Buffer`: every operation answered with

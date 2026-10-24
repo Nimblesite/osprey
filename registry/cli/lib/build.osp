@@ -11,7 +11,7 @@ import registry::ManifestModel
 import registry::Maybe
 import registry::Names
 
-/// `osprey-pkg build [--run] [--release] [--compiler <path>] [--project <absolute dir>]`:
+/// `osprey-pkg build [--run] [--release] [--compiler <path>] [--project <dir>]`:
 /// run the offline verify first (its failure is the build's failure), then
 /// compile through the existing compiler with a derived project whose source
 /// roots are the root's own roots plus every locked package's own
@@ -41,7 +41,7 @@ module Build {
     /// One locked package's tree and its accepted manifest.
     type PackageManifest = { dir: string, manifest: ManifestModel::Manifest }
 
-    let usageText = ["usage: osprey-pkg build [--run] [--release] [--compiler <path>] [--project <absolute dir>]"]
+    let usageText = ["usage: osprey-pkg build [--run] [--release] [--compiler <path>] [--project <dir>]"]
 
     fn usageReport() = Reports::usage(listPrepend(usageText, usageCode))
     fn failed(lines) = Reports::Report { status: failStatus, lines: lines }
@@ -59,9 +59,10 @@ module Build {
     /// value can break out of the derived document ([PACKAGE-HARDENING] C6).
     fn quote(text) = "\"" + (replace(escaped(text), "\"", "\\\"") ?: escaped(text)) + "\""
 
-    /// Roots resolve against `--project`, which the caller passes as an
-    /// absolute directory so the derived manifest's roots stay absolute.
-    fn rootPath(project, root) = "${project}/${root}"
+    /// The derived manifest is two directories below the invocation directory.
+    fn derivedPath(path) = if startsWith(path, "/") || startsWith(path, "\\\\") || (byteAt(path, 1) ?: 0) == 58 { path } else { "../../${path}" }
+
+    fn rootPath(project, root) = derivedPath("${project}/${root}")
 
     // Shared field names need typed receivers (issue #273).
     fn dirOf(pm: PackageManifest) = pm.dir
@@ -94,13 +95,13 @@ module Build {
         Success { value } => appendManifest(value, project, lock, p)
     })
 
-    fn packageRootsOf(pm) = mapList(manifestOf(pm).sourceRoots, fn(r) => "${dirOf(pm)}/${r}")
+    fn packageRootsOf(pm) = mapList(manifestOf(pm).sourceRoots, fn(r) => rootPath(dirOf(pm), r))
 
     fn packageRoots(pms) = foldList(pms, [], fn(acc, pm) => listConcat(acc, packageRootsOf(pm)))
 
     fn derivedRoots(manifest, project, pms) = listConcat(mapList(manifest.sourceRoots, fn(r) => rootPath(project, r)), packageRoots(pms))
 
-    fn packagePythonSources(pms) = foldList(pms, [], fn(acc, pm) => listConcat(acc, mapList(manifestOf(pm).pythonSources, fn(p) => "${dirOf(pm)}/${p}")))
+    fn packagePythonSources(pms) = foldList(pms, [], fn(acc, pm) => listConcat(acc, mapList(manifestOf(pm).pythonSources, fn(p) => rootPath(dirOf(pm), p))))
 
     fn pythonSources(manifest, project, pms) = listConcat(mapList(manifest.pythonSources, fn(p) => rootPath(project, p)), packagePythonSources(pms))
 

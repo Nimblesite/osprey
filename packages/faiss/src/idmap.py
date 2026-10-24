@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=faiss
 # osprey: module=IdMap
 """faiss's ID-mapped indexes over a flat sub-index.

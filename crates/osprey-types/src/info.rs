@@ -166,15 +166,24 @@ impl ProgramTypes {
     /// Specialize inferred body metadata with one call's type substitution.
     /// Constructor and effect declarations retain their shared erased ABI.
     #[must_use]
-    pub fn specialized(&self, bindings: &HashMap<VarId, Type>) -> Self {
+    pub fn specialized(&self, bindings: &HashMap<VarId, Type>, function: Option<&str>) -> Self {
         let mut result = self.clone();
         let substitute = |ty: &mut Type| *ty = crate::env::subst_vars(ty, bindings);
-        for (params, ret) in result.functions.values_mut() {
+        for (_, (params, ret)) in result
+            .functions
+            .iter_mut()
+            .filter(|(name, _)| function.is_none_or(|f| f == name.as_str()))
+        {
             params.iter_mut().for_each(&substitute);
             substitute(ret);
         }
         for table in [&mut result.lambdas, &mut result.lets, &mut result.lists] {
-            table.values_mut().for_each(substitute);
+            table
+                .entries
+                .values_mut()
+                .flatten()
+                .filter(|(owner, _)| function.is_none_or(|f| owner.as_deref() == Some(f)))
+                .for_each(|(_, ty)| substitute(ty));
         }
         for site in result.performs.values_mut() {
             site.effect_args.iter_mut().for_each(&substitute);

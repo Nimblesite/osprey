@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=re
 # osprey: module=Engine
 """The backtracking matcher over a compiled program.
@@ -44,7 +45,7 @@ def code_at(code, pc):
     return unwrap_or(listGet(code, pc), Program.ins("match"))
 
 
-def step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames):
+def step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames) -> Result[Hit, str]:
     """Advance the VM; a tail call, so the native stack stays flat."""
     ins = code_at(prog.code, pc)
     op = ins.op

@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=sklearn
 # osprey: module=ModelSelection
 """scikit-learn dataset splitters over array-likes (lists).

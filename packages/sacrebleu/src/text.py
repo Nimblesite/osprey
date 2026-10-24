@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=sacrebleu
 # osprey: module=Text
 """Codepoint primitives shared by the sacrebleu and rouge_score tokenizers.

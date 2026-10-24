@@ -265,7 +265,9 @@ pub(super) fn eval_arg(
         function, position, ..
     } = expr
     {
-        return with_application(cg, *position, |cg| eval_arg(cg, function, sig, ffi));
+        return with_application(cg, function, *position, |cg| {
+            eval_arg(cg, function, sig, ffi)
+        });
     }
     match (expr, sig) {
         (

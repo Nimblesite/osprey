@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=einops
 # osprey: module=Reconstruct
 """The shape-inference resolution: a `Recipe.TransformRecipe` against a concrete
@@ -46,7 +47,7 @@ def take_list(xs, n) -> list[int]:
 
 def lookup_name(name2pos, name) -> int:
     """The elementary position a supplied axis name maps to, or -1."""
-    return fold(range(len(name2pos)), -1, lambda found, j: j if found == -1 and unwrap_or(listGet(name2pos, j), NamePos(name="", pos=0)).name == name else found)
+    return fold(range(len(name2pos)), -1, lambda found, j: unwrap_or(listGet(name2pos, j), NamePos(name="", pos=0)).pos if found == -1 and unwrap_or(listGet(name2pos, j), NamePos(name="", pos=0)).name == name else found)
 
 
 def bind_axes_go(axes_lengths, name2pos, lengths, i) -> list[int]:
@@ -124,7 +125,7 @@ def cook(recipe, lengths, need_init_reshape) -> CookedRecipe:
     need_final = len(filterList(recipe.output_composite_axes, lambda g: len(g) != 1)) > 0
     added = toList(map(range(len(recipe.added_axes)), lambda i: PosLen(pos=unwrap_or(listGet(recipe.added_axes, i), PosElem(pos=0, elementary=0)).pos, length=unwrap_or(listGet(lengths, unwrap_or(listGet(recipe.added_axes, i), PosElem(pos=0, elementary=0)).elementary), 0))))
     reduced = toList(map(range(recipe.first_reduced_axis, n_perm), lambda i: i))
-    reordering = recipe.axes_permutation if identity_perm(recipe.axes_permutation) else []
+    reordering = [] if identity_perm(recipe.axes_permutation) else recipe.axes_permutation
     return CookedRecipe(
         init_shapes=init_shapes,
         axes_reordering=reordering,

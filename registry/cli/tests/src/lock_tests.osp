@@ -120,8 +120,8 @@ module LockTests {
     }
 
     /// A release whose surface the root does not grant is not a candidate.
-    fn ungrantedSurface() = {
-        let served = [RegistryFixture::io()]
+    fn ungrantedSource(source) = {
+        let served = [source]
         let a = runLock(RegistryFixture::reads(RegistryFixture::rootManifest(1), served), served, [])
         let b = runLock(RegistryFixture::reads(manifestText("app") + "\n[dependencies]\n\"@demo/io\" = { epoch = 1, min_release = 1 }\n", served), served, [])
         checkAll("an ungranted io/files surface is resolution.capability and writes nothing", [
@@ -133,18 +133,28 @@ module LockTests {
         ])
     }
 
+    fn ungrantedSurface() = {
+        ungrantedSource(RegistryFixture::io())
+        ungrantedSource(RegistryFixture::interpolatedIo())
+    }
+
     fn manifestText(name) = RegistryFixture::manifestText(name)
 
     /// With the grant the release is locked and its surface is pinned.
-    fn grantedSurface() = {
-        let served = [RegistryFixture::io()]
+    fn grantedSource(source) = {
+        let served = [source]
         let rootText = RegistryFixture::rootManifestGranting("io", ["io/files"])
         let a = runLock(RegistryFixture::reads(rootText, served), served, [])
         checkAll("a granted surface is locked and pinned", [
             RegistryFixture::statusOf(a) == 0,
-            lockOf(a) == RegistryFixture::expectedLockOf(rootText, [RegistryFixture::pkgWith(RegistryFixture::io(), [], ["io/files"])]),
-            structuralEquals(RegistryFixture::linesOf(a), ["+ ${compact(RegistryFixture::io())}"])
+            lockOf(a) == RegistryFixture::expectedLockOf(rootText, [RegistryFixture::pkgWith(source, [], ["io/files"])]),
+            structuralEquals(RegistryFixture::linesOf(a), ["+ ${compact(source)}"])
         ])
+    }
+
+    fn grantedSurface() = {
+        grantedSource(RegistryFixture::io())
+        grantedSource(RegistryFixture::interpolatedIo())
     }
 
     /// An unknown word is the usage report.

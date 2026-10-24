@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=sacrebleu
 # osprey: module=Bleu
 """BLEU (Papineni et al., 2002) with sacreBLEU's smoothing and options.

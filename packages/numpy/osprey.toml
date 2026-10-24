@@ -6,6 +6,6 @@ default_namespace = "numpy"
 
 [package]
 name = "@osprey/numpy"
-license = "MIT"
+license = "MIT AND BSD-3-Clause"
 summary = "Row-major float64 ndarray with broadcasting, reductions and linalg, over a host or GPU storage effect"
 keywords = ["numpy", "ndarray", "linalg", "python-flavor"]

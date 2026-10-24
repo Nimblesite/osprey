@@ -6,6 +6,7 @@
     {"builtin": "awaitProcess", "capability": "io/process"},
     {"builtin": "cleanupProcess", "capability": "io/process"},
     {"builtin": "gpuLoad", "capability": "io/files"},
+    {"builtin": "gpuLoadTensor", "capability": "io/files"},
     {"builtin": "httpCloseClient", "capability": "io/network"},
     {"builtin": "httpDelete", "capability": "io/network"},
     {"builtin": "httpGet", "capability": "io/network"},
@@ -18,7 +19,14 @@
     {"builtin": "loadTensor", "capability": "io/files"},
     {"builtin": "readFile", "capability": "io/files"},
     {"builtin": "spawnProcess", "capability": "io/process"},
+    {"builtin": "termClear", "capability": "io/terminal"},
+    {"builtin": "termCols", "capability": "io/terminal"},
+    {"builtin": "termHideCursor", "capability": "io/terminal"},
+    {"builtin": "termMoveCursor", "capability": "io/terminal"},
     {"builtin": "termRawMode", "capability": "io/terminal"},
+    {"builtin": "termReadKey", "capability": "io/terminal"},
+    {"builtin": "termRows", "capability": "io/terminal"},
+    {"builtin": "termShowCursor", "capability": "io/terminal"},
     {"builtin": "websocketClose", "capability": "io/network"},
     {"builtin": "writeFile", "capability": "io/files"}
   ]

@@ -46,6 +46,7 @@ pub(crate) fn unapplied(mut expression: &Expr) -> &Expr {
 
 pub(crate) fn with_application<R>(
     cg: &mut Codegen,
+    function: &Expr,
     position: Option<Position>,
     generate: impl FnOnce(&mut Codegen) -> R,
 ) -> R {
@@ -55,7 +56,14 @@ pub(crate) fn with_application<R>(
     else {
         return generate(cg);
     };
-    let specialized = cg.prog.specialized(&bindings);
+    let scope = match unapplied(function) {
+        Expr::Identifier(name) => {
+            let name = cg.call_aliases.get(name).unwrap_or(name);
+            cg.fn_defs.contains_key(name).then_some(name.as_str())
+        }
+        _ => None,
+    };
+    let specialized = cg.prog.specialized(&bindings, scope);
     let original = std::mem::replace(&mut cg.prog, specialized);
     let previous = cg.application_caller.replace(original.clone());
     let result = generate(cg);
@@ -126,7 +134,9 @@ pub(super) fn gen_call(
         function, position, ..
     } = function
     {
-        return with_application(cg, *position, |cg| gen_call(cg, function, arguments, named));
+        return with_application(cg, function, *position, |cg| {
+            gen_call(cg, function, arguments, named)
+        });
     }
     // A directly-applied lambda (`x |> fn(y) => …`, `(fn(y) => …)(x)`) is
     // beta-reduced inline.

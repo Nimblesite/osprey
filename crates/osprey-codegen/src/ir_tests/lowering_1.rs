@@ -1,4 +1,43 @@
 use super::*;
+
+#[test]
+fn map_words_recover_nested_values_from_inference_when_join_erased_the_owner() {
+    let mut cg = builder::Codegen::new();
+    let mut map = Value::handle("%map", "Map");
+    let nested = osprey_types::Type::con("List", vec![osprey_types::Type::con("float", vec![])]);
+    map.inferred_type = Some(osprey_types::Type::con(
+        "Map",
+        vec![osprey_types::Type::con("string", vec![]), nested],
+    ));
+    let value = collections::runtime_map_get(&mut cg, &map, &Value::new("0", LType::I64))
+        .expect("a checked map lookup");
+    assert_eq!(value.result_inner, Some(LType::Ptr));
+    assert_eq!(value.payload_owner.as_deref(), Some("List#double"));
+}
+
+#[test]
+fn list_words_use_concrete_inference_over_an_empty_literal_element_tag() {
+    let mut cg = builder::Codegen::new();
+    let mut list = Value::handle("%list", "List#i8*");
+    let integer = osprey_types::Type::con("int", vec![]);
+    list.inferred_type = Some(osprey_types::Type::con("List", vec![integer.clone()]));
+    let value = collections::elem_value(&mut cg, &list, "%word");
+    assert_eq!(value.ty, LType::I64);
+    assert_eq!(value.inferred_type, Some(integer));
+}
+
+#[test]
+fn list_words_recover_nested_handles_from_inference_when_owner_is_untyped() {
+    let mut cg = builder::Codegen::new();
+    let mut rows = Value::handle("%rows", "List");
+    let nested = osprey_types::Type::con("List", vec![osprey_types::Type::con("int", vec![])]);
+    rows.inferred_type = Some(osprey_types::Type::con("List", vec![nested.clone()]));
+    let value = collections::elem_value(&mut cg, &rows, "%word");
+    assert_eq!(value.ty, LType::Ptr);
+    assert_eq!(value.osp_ty.as_deref(), Some("List#i64"));
+    assert_eq!(value.inferred_type, Some(nested));
+}
+
 #[test]
 fn emits_main_and_puts_for_hello() {
     let ir = module("print(\"hello\")\n");
@@ -251,6 +290,26 @@ fn a_breakpoint_inside_a_handler_arm_body_has_a_line_to_bind_to() {
     assert!(
         resuming.contains("!DILocation(line: 7,"),
         "a resuming arm's body lines must reach the line table too"
+    );
+}
+
+#[test]
+fn generic_list_default_keeps_each_call_sites_element_depth() {
+    let program = parsed(
+        "SPECS = [[0.0]]\nBATCHES = [[[1.0], [2.0]]]\n\
+         def atl(xs, i):\n    return unwrap_or(listGet(xs, i), [])\n\
+         def pair(xs):\n    return listConcat(atl(xs, 0), atl(xs, 1))\n\
+         def main():\n    row = atl(SPECS, 0)\n    return print(f\"{len(row)}:{len(pair(atl(BATCHES, 0)))}\")\n",
+        Flavor::Python,
+    );
+    eprintln!(
+        "TRACE inferred: {:#?}",
+        osprey_types::infer_program(&program)
+    );
+    let ir = compile_program(&program).expect("nested list defaults must compile");
+    assert!(
+        !ir.contains("call i64 @osp_strlen"),
+        "list lengths must use the list runtime"
     );
 }
 

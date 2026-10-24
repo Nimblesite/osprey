@@ -6,6 +6,6 @@ default_namespace = "testing"
 
 [package]
 name = "@osprey/testing"
-license = "MIT"
+license = "MIT AND BSD-3-Clause"
 summary = "Assertions with numpy allclose tolerances for Osprey test suites"
 keywords = ["testing", "assertions", "python-flavor"]

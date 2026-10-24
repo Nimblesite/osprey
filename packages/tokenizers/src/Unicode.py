@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=tokenizers
 # osprey: module=Unicode
 """Unicode character classes and case/accent tables used by the ported models.

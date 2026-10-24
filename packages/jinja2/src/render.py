@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=jinja2
 # osprey: module=Render
 """The renderer: walks the node tree over a scope chain of frames, evaluating

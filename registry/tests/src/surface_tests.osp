@@ -41,6 +41,19 @@ module SurfaceTests {
         structuralEquals(Surface::ofRelease([file("src/a.osp", "fn pure() = 1")], []), [])
     ])
 
+    fn interpolations() = {
+        let call = "$" + "{readFile(path)}"
+        checkAll("executable strings cannot hide ambient calls", [
+            structuralEquals(Surface::ofText("fn load(path) = \"" + call + "\""), ["io/files"]),
+            structuralEquals(Surface::ofText("load path = \"" + call + "\""), ["io/files"]),
+            structuralEquals(Surface::ofText("# osprey: flavor=python\ndef load(path):\n    return f\"{readFile(path)}\""), ["io/files"]),
+            structuralEquals(Surface::ofText("# osprey: flavor=python\ndef load(path):\n    return f'{readFile(path)}'"), ["io/files"]),
+            structuralEquals(Surface::ofText("fn load() = \"" + "$" + "{readFile(\"path\")}\" + input()"), ["io/files", "io/terminal"]),
+            structuralEquals(Surface::ofText("# osprey: flavor=python\n# a comment with an unmatched \"\ntermReadKey()"), ["io/terminal"]),
+            structuralEquals(Surface::ofText("termCols() + termRows() + termReadKey()"), ["io/terminal"])
+        ])
+    }
+
     /// A builtin's name declared with `fn`, `let` or `mut` is a shadowing
     /// declaration; a call is not, and the release rules refuse a tree that declares one.
     fn shadowing() = checkAll("declared builtin names are found and refused at publication", [
@@ -56,6 +69,14 @@ module SurfaceTests {
     ])
 
     fn sampleFile(release, path) = file(path, readFile("registry/sample-registry/${release}/${path}") ?: "<missing>")
+
+    fn unknownBuiltin() = checkAll("unclassified terminal operations block publication", [
+        structuralEquals(Surface::ofText("termUnclassified()"), ["io/unknown"]),
+        match ReleaseFiles::assemble("@a/b/1.1", [file("src/a.osp", "fn main() = termUnclassified()")]) {
+            Error { message } => message == "source.unclassified-builtin"
+            Success => false
+        }
+    ])
 
     fn sampleSurface(case) = {
         let release = Fixtures::text(Fixtures::field(case, "release"))
@@ -73,8 +94,10 @@ module SurfaceTests {
     export fn run() = {
         test("surface: table equals the fixture", tableMatchesFixture)
         test("surface: identifier scan", scans)
+        test("surface: executable interpolations and terminal input", interpolations)
         test("surface: trees and system capabilities", trees)
         test("surface: shadowed builtin names", shadowing)
+        test("surface: unclassified ambient builtins", unknownBuiltin)
         test("surface: sample-registry goldens", sampleSurfaces)
     }
 }

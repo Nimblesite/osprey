@@ -8,7 +8,7 @@ pub(crate) fn of(cg: &mut Codegen, expr: &Expr) -> Result<Callback> {
         Expr::TypeApply {
             function, position, ..
         } if !file_lambda(cg, function) => {
-            crate::expr::with_application(cg, *position, |cg| of(cg, function))
+            crate::expr::with_application(cg, function, *position, |cg| of(cg, function))
         }
         Expr::Identifier(_) if file_lambda(cg, expr) => value(cg, expr),
         Expr::Identifier(name) => identifier(cg, name),

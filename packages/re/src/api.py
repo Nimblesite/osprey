@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=re
 # osprey: module=Api
 """The `re` module's public API, over the compiled backtracking matcher.
@@ -323,7 +324,7 @@ def parse_template(tpl, prog):
     return parse_template_at(cps, len(cps), prog, 0, [])
 
 
-def parse_template_at(cps, n, prog, i, acc):
+def parse_template_at(cps, n, prog, i, acc) -> Result[list[TplPiece], str]:
     """Scan the template code points into pieces."""
     if i >= n:
         return Success(value=acc)

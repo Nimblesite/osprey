@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=rouge_score
 # osprey: module=RougeScorer
 """ROUGE scoring (rouge1, rouge2, rougeL, rougeLsum) as rouge_score computes it.

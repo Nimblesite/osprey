@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=re
 # osprey: module=Parser
 """The pattern parser: source text to a compiled instruction program.
@@ -116,7 +117,7 @@ def is_stop(cp):
     return cp == 41 or cp == 124
 
 
-def parse_alt(cps, i, n, flags, gs):
+def parse_alt(cps, i, n, flags, gs) -> Result[Program.PRes, str]:
     """Parse `seq (| seq)*`."""
     match parse_seq(cps, i, n, flags, gs):
         case Error(message=message):
@@ -137,7 +138,7 @@ def parse_alt_rest(cps, first, n, flags):
             return Success(value=Program.PRes(frag=Builder.alt_frag(first.frag, value.frag), next=value.next, gs=value.gs))
 
 
-def parse_seq(cps, i, n, flags, gs):
+def parse_seq(cps, i, n, flags, gs) -> Result[Program.PRes, str]:
     """Parse a run of quantified atoms."""
     j = skip_ws(cps, i, n) if Program.has(flags, Program.X_BIT) else i
     if j >= n or is_stop(Program.at(cps, j)):

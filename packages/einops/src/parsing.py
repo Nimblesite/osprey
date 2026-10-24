@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=einops
 # osprey: module=Parsing
 """The einops pattern language: one side of an expression such as `b c (h w)`.

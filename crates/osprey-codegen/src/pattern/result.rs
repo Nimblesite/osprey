@@ -131,7 +131,7 @@ pub(super) fn gen_list_get_match(
     if !builtin || !fusible {
         return Ok(None);
     }
-    within(cg, &applications, &mut |cg| {
+    within(cg, callee, &applications, &mut |cg| {
         fused_list_get(cg, arguments, arms)
     })
     .map(Some)
@@ -141,13 +141,14 @@ pub(super) fn gen_list_get_match(
 /// outermost first, exactly as an ordinary call would be generated.
 fn within(
     cg: &mut Codegen,
+    callee: &Expr,
     applications: &[Option<osprey_ast::Position>],
     generate: &mut dyn FnMut(&mut Codegen) -> Result<Value>,
 ) -> Result<Value> {
     match applications.split_first() {
-        Some((position, rest)) => {
-            crate::expr::with_application(cg, *position, |cg| within(cg, rest, generate))
-        }
+        Some((position, rest)) => crate::expr::with_application(cg, callee, *position, |cg| {
+            within(cg, callee, rest, generate)
+        }),
         None => generate(cg),
     }
 }

@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=torch
 # osprey: module=Optim
 """torch.optim: SGD, Adam, AdamW, RMSprop and Adagrad over parameter lists.

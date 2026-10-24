@@ -129,7 +129,12 @@ module RegistryFixture {
     export fn three() = Fixture::served("@demo/three/1.1", filesOf(manifestText("three")))
     export fn badOne() = Fixture::served("@demo/one/1.1", filesOf(manifestText("")))
     /// A release whose source names `readFile`: its surface is `io/files`.
-    export fn io() = Fixture::served("@demo/io/1.1", [Fixture::file("osprey.toml", manifestText("io")), Fixture::file("src/io.osp", "fn load(p) = readFile(p)\n")])
+    export fn ioSource(source) = Fixture::served("@demo/io/1.1", [Fixture::file("osprey.toml", manifestText("io")), Fixture::file("src/io.osp", source)])
+
+    export fn io() = ioSource("fn load(p) = readFile(p)\n")
+
+    /// An ambient call inside executable string interpolation.
+    export fn interpolatedIo() = ioSource("fn load(p) = \"" + "$" + "{readFile(p)}\"\n")
 
     fn quotedList(words) = join(mapList(words, fn(w) => "\"${w}\""), ", ")
 

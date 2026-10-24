@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=flash_attn
 # osprey: module=Naive
 """A naive reference attention that materialises the [seqlen_q, seqlen_k] score

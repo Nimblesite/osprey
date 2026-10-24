@@ -6,7 +6,7 @@ default_namespace = "scipy"
 
 [package]
 name = "@osprey/scipy"
-license = "MIT"
+license = "MIT AND BSD-3-Clause AND BSL-1.0"
 summary = "scipy.special scalar functions (gamma, zeta, beta, combinatorics, logistic, information, Box-Cox)"
 keywords = ["scipy", "special", "gamma", "zeta", "beta", "python-flavor"]
 

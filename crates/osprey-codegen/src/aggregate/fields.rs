@@ -12,11 +12,7 @@ pub(crate) fn field_type(cg: &Codegen, target: &Value, owner: &str, field: &str)
         .inferred_type
         .as_ref()
         .and_then(|ty| cg.prog.field_type(ty, field))
-        .filter(|ty| !osprey_types::has_type_var(ty))
-        .or_else(|| {
-            variant_field_type(cg, target, owner, field)
-                .filter(|ty| !osprey_types::has_type_var(ty))
-        })
+        .or_else(|| variant_field_type(cg, target, owner, field))
         .or_else(|| cg.ctor_field_ty(owner, field).cloned())
         .filter(|ty| !osprey_types::has_type_var(ty))
 }

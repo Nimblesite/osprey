@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=tokenizers
 # osprey: module=Tokenizer
 """The high-level Tokenizer: normalize, pre-tokenize, model-tokenize, then

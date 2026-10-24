@@ -447,11 +447,13 @@ At startup the server walks the root, validates each release, and computes its
 keyed by digest. A restart rebuilds it; there is no other state. The client's
 `publish --folder <registry-root> [--breaking]` places a project as the next
 release of that folder: the release tree is the manifest, every file under its
-`source_roots`, its `python_sources` and its declared assets, checked and
+`source_roots`, its `python_sources`, its declared assets and its legal documents, checked and
 digested exactly as the server will before a byte is written, at the next
 ordinal of the newest epoch, at the next epoch with `--breaking`, or at `1.1`
 for a new package. The authenticated `publish` of spec 0030 replaces this once
 the trust plane exists.
+
+**[PACKAGE-LICENSE-DISTRIBUTION]** Root `LICENSE`, `COPYING`, `NOTICE`, `AUTHORS` and `THIRD_PARTY_NOTICES` files, including `.txt` and `.md` forms, and the complete `LICENSES/` directory are included automatically, case-insensitively, without asset declarations. They participate in `SourceDigest` and remain in the source bundle and installed tree. Ports retain original copyrights, applicable conditions and modification notices; the original contribution license does not replace upstream terms. Applications redistributing compiled derivatives must supply the applicable documents with their distribution.
 
 ### Endpoints
 

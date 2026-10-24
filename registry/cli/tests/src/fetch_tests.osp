@@ -284,6 +284,22 @@ module FetchTests {
         ])
     }
 
+    /// Installing a digest-pinned bundle preserves notices; tampering refuses all writes.
+    fn licenseBundle() = {
+        let legal = [Fixture::file("LICENSE", "MIT NIMBLESITE PTY LTD\n"), Fixture::file("NOTICE.md", "upstream BSD conditions\n"), Fixture::file("LICENSES/BSD.txt", "copyright and disclaimer\n")]
+        let s = Fixture::served("@finch/ledger/1.1", listConcat(twoFiles("fn one() = 1\n"), legal))
+        let body = Bundle::encode(s) ?: ""
+        let a = attempt([route(localBase, sourcePathOf(s), 200, body)], [digestOf(s)])
+        let tampered = replace(body, "upstream BSD conditions", "removed upstream attribution") ?: ""
+        let bad = attempt([route(localBase, sourcePathOf(s), 200, tampered)], [digestOf(s)])
+        checkAll("fetch preserves legal files and rejects altered attribution", [
+            a.report.status == 0,
+            foldList(legal, true, fn(ok, f) => ok && (indexOf(a.writes, "/${f.relPath}=${f.content}|") ?: -1) >= 0),
+            failedOne(bad, "bundle.digest-mismatch"),
+            bad.writes == "" && bad.ensures == ""
+        ])
+    }
+
     export fn run() = {
         test("fetch: newest release by epoch then ordinal", newest)
         test("fetch: epoch and digest targets", selection)
@@ -296,5 +312,6 @@ module FetchTests {
         test("fetch: write failures", writeFailures)
         test("fetch: --registry overrides the base URL", registryFlag)
         test("fetch: dispatch routing", routing)
+        test("fetch: licenses and attribution are preserved", licenseBundle)
     }
 }

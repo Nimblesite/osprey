@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=torch
 # osprey: module=Autograd
 """torch.autograd as an explicit reverse-mode tape.

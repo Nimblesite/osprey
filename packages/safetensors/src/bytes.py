@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=safetensors
 # osprey: module=Bytes
 """Little-endian byte readers and exact float-from-bits decoding shared by the

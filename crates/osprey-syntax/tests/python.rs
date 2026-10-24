@@ -519,12 +519,12 @@ fn python_qualified_variant_patterns_across_imports_equal_default_ast() {
 #[test]
 fn python_qualified_pascal_case_calls_with_positional_arguments_stay_calls() {
     // A port's constructor functions carry the original library's class names.
-    // Positional arguments mark a call; only all-named arguments construct.
+    // Imported declaration identity is resolved after parsing.
     equal(
         "import logits_process as LogitsProcess\nlet w = LogitsProcess::TopKLogitsWarper(3, fv, 1)\n",
         "import logits_process as LogitsProcess\nw = LogitsProcess.TopKLogitsWarper(3, fv, 1)\n",
     );
-    // An all-named qualified call (here, none) constructs rather than calls.
+    // No arguments cannot distinguish an imported factory from a constructor.
     let parsed = parse("import shapes as Shapes\ne = Shapes.Empty()\n");
     assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
     let Some(Stmt::Let { value, .. }) = parsed
@@ -536,8 +536,10 @@ fn python_qualified_pascal_case_calls_with_positional_arguments_stay_calls() {
         panic!("expected the `e` binding");
     };
     assert!(
-        matches!(value, Expr::TypeConstructor { name, .. } if name == "Shapes::Empty"),
-        "expected a qualified construction, got {value:?}"
+        matches!(value, Expr::Call { function, arguments, named_arguments }
+            if matches!(function.as_ref(), Expr::Path(path) if path.to_string() == "Shapes::Empty")
+                && arguments.is_empty() && named_arguments.is_empty()),
+        "expected an unresolved qualified call, got {value:?}"
     );
 }
 

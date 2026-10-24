@@ -5,8 +5,8 @@ import registry::Release
 /// The capability surface of a release ([PACKAGE-CAPABILITY-CONFINEMENT]):
 /// the ambient capabilities whose builtins its source names, plus its
 /// `[system.*]` capabilities. Osprey has no reflection, string dispatch or
-/// evaluation, so a name scan over the source is exact; the scan skips
-/// comments and string literals and matches whole identifiers, and a
+/// evaluation. The scan skips comments and literal text, descends into
+/// executable interpolations and matches whole identifiers. A
 /// builtin's name declared or called anywhere counts, so shadowing cannot
 /// hide a call. `tests/fixtures/capabilities/builtins.json` carries the same
 /// builtin-to-capability table as data.
@@ -24,12 +24,14 @@ module Surface {
     /// The builtin-to-capability map of [PACKAGE-CAPABILITY-CONFINEMENT];
     /// every `http*` and `websocket*` builtin is `io/network` by prefix.
     export fn table() = [
-        named("readFile", files), named("writeFile", files), named("gpuLoad", files), named("loadTensor", files),
+        named("readFile", files), named("writeFile", files), named("gpuLoad", files), named("gpuLoadTensor", files), named("loadTensor", files),
         named("spawnProcess", process), named("awaitProcess", process), named("cleanupProcess", process),
         named("httpGet", network), named("httpPost", network), named("httpPut", network), named("httpDelete", network),
         named("httpListen", network), named("httpStopServer", network), named("httpCloseClient", network), named("httpResponseFree", network),
         named("websocketClose", network),
-        named("input", terminal), named("termRawMode", terminal)
+        named("input", terminal), named("termRawMode", terminal), named("termReadKey", terminal),
+        named("termCols", terminal), named("termRows", terminal), named("termClear", terminal),
+        named("termMoveCursor", terminal), named("termHideCursor", terminal), named("termShowCursor", terminal)
     ]
 
     fn builtinOf(n: Named) = n.builtin
@@ -40,85 +42,91 @@ module Surface {
     /// The capability an identifier names, or "" for an ordinary name.
     export fn capabilityOf(word) = {
         let found = listed(word)
-        if found != "" { found } else if startsWith(word, "http") || startsWith(word, "websocket") { network } else { "" }
+        if found != "" { found } else if startsWith(word, "http") || startsWith(word, "websocket") { network } else if startsWith(word, "term") && (byteAt(word, 4) ?: 0) >= 65 && (byteAt(word, 4) ?: 0) <= 90 { "io/unknown" } else { "" }
     }
 
-    // ---- the scan: identifiers outside comments and string literals ----
-
+    // Lex executable expressions, retaining the enclosing string on a stack
+    // while an interpolation (and any nested braces or strings) is scanned.
     let quote = 34
+    let apostrophe = 39
     let backslash = 92
     let slash = 47
     let newline = 10
-    let underscore = 95
     let codeMode = 0
     let commentMode = 1
-    let stringMode = 2
-    let escapeMode = 3
+    let tripleOffset = 100
+    let formattedOffset = 200
+    let declarers = ["fn", "let", "mut", "def"]
 
-    let declarers = ["fn", "let", "mut"]
+    type Scan = { mode: int, start: int, previous: string, found: List<string>, declared: List<string>, frames: List<int>, skip: int, python: bool }
 
-    /// Where the scan is (`mode`), where the current identifier began (-1
-    /// when none), whether the last code byte was `/`, the identifier closed
-    /// before the current one, the capabilities found, and the builtin names
-    /// declared with `fn`, `let` or `mut`.
-    type Scan = { mode: int, start: int, afterSlash: bool, previous: string, found: List<string>, declared: List<string> }
+    fn begin(text) = Scan { mode: codeMode, start: -1, previous: "", found: [], declared: [], frames: [], skip: 0, python: startsWith(text, "# osprey: flavor=python") }
 
-    fn begin() = Scan { mode: codeMode, start: -1, afterSlash: false, previous: "", found: [], declared: [] }
-
-    fn identByte(b) = (b >= 97 && b <= 122) || (b >= 65 && b <= 90) || (b >= 48 && b <= 57) || b == underscore
+    fn identByte(b) = (b >= 97 && b <= 122) || (b >= 65 && b <= 90) || (b >= 48 && b <= 57) || b == 95
 
     fn between(text, from, to) = take(drop(text, from), to - from)
 
-    /// A builtin's name right after `fn`, `let` or `mut` is a declaration that
-    /// would shadow the builtin: a publication error ([PACKAGE-CAPABILITY-CONFINEMENT]).
-    fn declares(s: Scan, word, capability) = capability != "" && listContains(declarers, s.previous)
+    fn declares(s: Scan, capability) = capability != "" && listContains(declarers, s.previous)
 
     fn closedWord(s: Scan, word) = {
         let capability = capabilityOf(word)
         Scan {
-            mode: s.mode,
-            start: -1,
-            afterSlash: s.afterSlash,
-            previous: word,
+            mode: s.mode, start: -1, previous: word, frames: s.frames, skip: s.skip, python: s.python,
             found: if capability == "" { s.found } else { listAppend(s.found, capability) },
-            declared: if declares(s, word, capability) { listAppend(s.declared, word) } else { s.declared }
+            declared: if declares(s, capability) { listAppend(s.declared, word) } else { s.declared }
         }
     }
 
-    /// Close the identifier that ended at `i`, recording its capability if any.
     fn closed(text, s: Scan, i) = if s.start < 0 { s } else { closedWord(s, between(text, s.start, i)) }
 
-    /// Close any identifier at `i` and continue in `mode`.
-    fn switched(text, s, i, mode, afterSlash) = {
-        let c = closed(text, s, i)
-        Scan { mode: mode, start: -1, afterSlash: afterSlash, previous: previousOf(c), found: foundIn(c), declared: declaredIn(c) }
+    fn moved(s: Scan, mode, start, frames, skip) = Scan {
+        mode: mode, start: start, previous: s.previous, found: s.found,
+        declared: s.declared, frames: frames, skip: skip, python: s.python
     }
 
-    fn previousOf(s: Scan) = s.previous
-    fn declaredIn(s: Scan) = s.declared
+    fn pushed(s: Scan, mode, skip) = moved(s, mode, -1, listPrepend(s.frames, s.mode), skip)
 
-    fn extended(s: Scan, i) = Scan { mode: codeMode, start: if s.start < 0 { i } else { s.start }, afterSlash: false, previous: s.previous, found: s.found, declared: s.declared }
+    fn popped(s: Scan, skip) = moved(s, listGet(s.frames, 0) ?: codeMode, -1, fold(range(1, length(s.frames)), [], fn(acc, j) => listAppend(acc, listGet(s.frames, j) ?: codeMode)), skip)
 
-    fn inCode(text, s: Scan, i, b) = if identByte(b) { extended(s, i) }
-        else if b == quote { switched(text, s, i, stringMode, false) }
-        else if b == slash && s.afterSlash { switched(text, s, i, commentMode, false) }
-        else { switched(text, s, i, codeMode, b == slash) }
+    fn byte(text, i) = byteAt(text, i) ?: 0
 
-    fn inMode(s: Scan, mode) = Scan { mode: mode, start: -1, afterSlash: false, previous: s.previous, found: s.found, declared: s.declared }
+    fn triple(text, i, delimiter) = byte(text, i + 1) == delimiter && byte(text, i + 2) == delimiter
 
-    fn inComment(s, b) = inMode(s, if b == newline { codeMode } else { commentMode })
+    fn stringStart(text, s: Scan, i, delimiter) = {
+        let c = closed(text, s, i)
+        let formatted = s.python && s.start >= 0 && listContains(["f", "F", "fr", "rf", "Fr", "fR", "FR", "rF", "Rf", "RF"], c.previous)
+        let wide = s.python && triple(text, i, delimiter)
+        pushed(c, delimiter + (if wide { tripleOffset } else { 0 }) + (if formatted { formattedOffset } else { 0 }), if wide { 2 } else { 0 })
+    }
 
-    fn inString(s, b) = inMode(s, if b == quote { codeMode } else if b == backslash { escapeMode } else { stringMode })
+    fn inCode(text, s: Scan, i, b) = if identByte(b) { moved(s, codeMode, if s.start < 0 { i } else { s.start }, s.frames, 0) }
+        else if b == quote || (s.python && b == apostrophe) { stringStart(text, s, i, b) }
+        else if (b == slash && byte(text, i + 1) == slash) || (s.python && b == 35) { pushed(closed(text, s, i), commentMode, 0) }
+        else if b == 123 { pushed(closed(text, s, i), codeMode, 0) }
+        else if b == 125 { popped(closed(text, s, i), 0) }
+        else { closed(text, s, i) }
 
-    fn afterEscape(s) = inMode(s, stringMode)
+    fn inString(text, s: Scan, i, b) = {
+        let delimiter = s.mode % tripleOffset
+        let wide = s.mode % formattedOffset >= tripleOffset
+        let formatted = s.mode >= formattedOffset
+        if b == delimiter && (!wide || triple(text, i, delimiter)) { popped(s, if wide { 2 } else { 0 }) }
+        else if b == backslash && !(formatted && byte(text, i + 1) == 123) { moved(s, s.mode, -1, s.frames, 1) }
+        else if formatted && b == 123 && byte(text, i + 1) == 123 { moved(s, s.mode, -1, s.frames, 1) }
+        else if formatted && b == 123 { pushed(s, codeMode, 0) }
+        else if !s.python && b == 36 && byte(text, i + 1) == 123 { pushed(s, codeMode, 1) }
+        else { s }
+    }
 
     fn step(text, s: Scan, i) = {
-        let b = byteAt(text, i) ?: 0
-        if s.mode == commentMode { inComment(s, b) }
-        else if s.mode == stringMode { inString(s, b) }
-        else if s.mode == escapeMode { afterEscape(s) }
-        else { inCode(text, s, i, b) }
+        let b = byte(text, i)
+        if s.skip > 0 { moved(s, s.mode, s.start, s.frames, s.skip - 1) }
+        else if s.mode == commentMode { if b == newline { popped(s, 0) } else { s } }
+        else if s.mode == codeMode { inCode(text, s, i, b) }
+        else { inString(text, s, i, b) }
     }
+
+    fn declaredIn(s: Scan) = s.declared
 
     fn foundIn(s: Scan) = s.found
 
@@ -129,7 +137,7 @@ module Surface {
 
     fn scanned(text) = {
         let n = byteLength(text)
-        closed(text, fold(range(0, n), begin(), fn(s, i) => step(text, s, i)), n)
+        closed(text, fold(range(0, n), begin(text), fn(s, i) => step(text, s, i)), n)
     }
 
     /// The capabilities one source text names, as a canonical set.

@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=flash_attn
 # osprey: module=Attention
 """flash_attn_func and flash_attn_varlen_func, as FlashAttention's online-softmax

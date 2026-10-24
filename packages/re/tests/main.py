@@ -80,10 +80,12 @@ def match_body(name, m, enc):
 def group_check(name, m, i, present, want):
     """One group's text against the oracle."""
     got = Api.group(m, i)
-    if present == "1":
-        return Check.equal(name + ".g" + toString(i), got, Success(value=want))
-    else:
-        return Check.equal(name + ".g" + toString(i) + ".none", got, Error(message=""))
+    label = name + ".g" + toString(i)
+    match got:
+        case Success(value=value):
+            return Check.equal(label, value, want) if present == "1" else Check.failed(label + ".none", "unexpected participating group")
+        case Error(message=message):
+            return Check.failed(label, "expected a participating group: " + message) if present == "1" else Check.equal(label + ".none", message, "")
 
 
 def named_check(name, m, enc, ng, j):
@@ -249,7 +251,7 @@ def all_cases():
     subns = cases_for(Expected.SUBN, subn_case)
     escapes = cases_for(Expected.ESCAPE, escape_case)
     errors = cases_for(Expected.ERRORS, error_case)
-    return listConcat(listConcat(listConcat(listConcat(matches, findalls), listConcat(finditers, splits)), listConcat(listConcat(subs, subns), listConcat(escapes, errors))))
+    return listConcat(listConcat(listConcat(matches, findalls), listConcat(finditers, splits)), listConcat(listConcat(subs, subns), listConcat(escapes, errors)))
 
 
 def main():

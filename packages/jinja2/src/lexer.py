@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=jinja2
 # osprey: module=Lexer
 """The template lexer: turns template text into data/variable/block chunks with

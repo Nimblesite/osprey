@@ -1,5 +1,22 @@
 use super::*;
 
+#[test]
+fn registry_classifies_the_compilers_ambient_builtin_inventory() {
+    let mut ambient = TypeEnv::new();
+    for declare in [files, terminal, http, websocket, tensors] {
+        declare(&mut ambient);
+    }
+    let surface = include_str!("../../../../registry/core/src/surface.osp");
+    for name in ambient.bound_names() {
+        assert!(
+            name.starts_with("http")
+                || name.starts_with("websocket")
+                || surface.contains(&format!("named(\"{name}\",")),
+            "registry leaves compiler ambient builtin {name} unclassified"
+        );
+    }
+}
+
 /// Assert each builtin `name` prints exactly `signature`.
 fn assert_signatures(expected: &[(&str, &str)]) {
     for &(name, signature) in expected {

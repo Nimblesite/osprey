@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=scipy
 # osprey: module=Support
 """Private numerical helpers every `scipy` module is built from.

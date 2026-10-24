@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=faiss
 # osprey: module=Kmeans
 """faiss's `Kmeans` clustering with explicit initial centroids.

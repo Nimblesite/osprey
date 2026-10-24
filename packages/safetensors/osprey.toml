@@ -6,7 +6,7 @@ default_namespace = "safetensors"
 
 [package]
 name = "@osprey/safetensors"
-license = "MIT"
+license = "MIT AND Apache-2.0"
 summary = "Read and write Hugging Face safetensors weight files (header, dtypes, decode, save)"
 keywords = ["safetensors", "weights", "formats", "python-flavor"]
 

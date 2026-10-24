@@ -6,7 +6,7 @@ default_namespace = "torch"
 
 [package]
 name = "@osprey/torch"
-license = "MIT"
+license = "MIT AND BSD-3-Clause"
 summary = "PyTorch's autograd tape, optimizers and learning-rate schedulers over numpy float64 tensors"
 keywords = ["torch", "pytorch", "autograd", "optim", "python-flavor"]
 

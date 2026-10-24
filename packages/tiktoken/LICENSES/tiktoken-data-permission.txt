@@ -1,0 +1,10 @@
+OpenAI tiktoken encoding data license clarification
+
+Source: https://github.com/openai/tiktoken/issues/92#issuecomment-1497875652
+Author: hauntsaninja (repository collaborator; Shantanu Jain is named in the tiktoken MIT copyright)
+Date: 2023-04-05T17:39:39Z
+
+The license in this repo applies to the encoding files as well. Thanks!
+
+Retain LICENSES/tiktoken.txt with the encoding-derived test data.
+

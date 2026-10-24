@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=re
 # osprey: module=Unicode
 """Code point decoding and Unicode classification for the regex matcher.

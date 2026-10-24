@@ -6,7 +6,7 @@ default_namespace = "tiktoken"
 
 [package]
 name = "@osprey/tiktoken"
-license = "MIT"
+license = "MIT AND Apache-2.0 AND CNRI-Python AND Unicode-DFS-2016 AND Unicode-3.0"
 summary = "Byte-level BPE tokenization: encodings, pre-tokenizers, decoding and training, ported from tiktoken"
 keywords = ["tiktoken", "tokenizer", "bpe", "python-flavor"]
 

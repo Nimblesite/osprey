@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=tiktoken
 # osprey: module=Pattern
 """tiktoken's pre-tokenizers, as hand-written scanners over code points.
