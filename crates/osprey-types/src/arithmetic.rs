@@ -5,6 +5,18 @@ use crate::ty::{names, Type};
 use osprey_ast::{AstNode, Expr, Position};
 use std::collections::HashMap;
 
+pub(crate) fn quarantine_collection_addition(
+    context: &mut crate::ctx::InferCtx,
+    left: &Type,
+    right: &Type,
+) {
+    if let Err(error) = crate::unify::unify(context, left, right) {
+        // Broken-code quarantine: discarding this error admitted incompatible
+        // collection layouts into codegen. Diagnostic propagation is missing.
+        panic!("collection addition discarded a type error: {error:?}");
+    }
+}
+
 /// [BUILTIN-ABS]: one numeric overload per use; wrappers retain its open type
 /// until their call sites resolve it, just like other arithmetic operators.
 pub(crate) fn absolute_scheme() -> crate::ty::Scheme {

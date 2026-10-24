@@ -5,7 +5,7 @@
 //! committed `expected_output.txt` — one `ok` line per assertion and a
 //! `N passed, 0 failed` total — under the default, GC and ARC memory backends,
 //! and an ARC run must exit with no live objects. The native ML framework also
-//! stays in this execution matrix; CPython provenance applies to Python ports.
+//! stays in this execution matrix; `CPython` provenance applies to Python ports.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -324,7 +324,9 @@ fn the_native_framework_remains_in_the_full_backend_execution_matrix() {
         manifest.contains("entry = \"main.ospml\""),
         "the native framework suite is ML, not a CPython port"
     );
-    assert!(!std::fs::read_to_string(native.join("expected_output.txt"))
-        .expect("native golden")
-        .is_empty());
+    assert_ne!(
+        std::fs::read_to_string(native.join("expected_output.txt")).expect("native golden"),
+        String::new(),
+        "the native framework needs an asserted output golden"
+    );
 }
