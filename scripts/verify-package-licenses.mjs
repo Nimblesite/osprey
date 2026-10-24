@@ -32,7 +32,7 @@ const verifySource = (dir, manifest, entry) => {
   }
 }
 
-const verifyUpstream = (dir, upstream) => {
+const verifyUpstream = (dir, upstream, notice) => {
   requireThat(upstream.file.startsWith('LICENSES/') && !upstream.file.includes('..'), 'Invalid upstream license path')
   const text = read(join(dir, upstream.file))
   requireThat(text.length > 20 && digest(text) === upstream.sha256, `${dir}/${upstream.file}: license text changed`)
@@ -40,6 +40,9 @@ const verifyUpstream = (dir, upstream) => {
     `${dir}: missing upstream provenance`)
   requireThat(upstream.basis && upstream.applies_to.length > 0, `${dir}: unsupported third-party license assignment`)
   for (const path of upstream.applies_to) requireThat(existsSync(join(dir, path)), `${dir}/${path}: material not found`)
+  for (const credit of upstream.notice_attribution ?? []) {
+    requireThat(notice.includes(credit), `${dir}: required original attribution missing: ${credit}`)
+  }
 }
 
 const verifyPackage = (name) => {
@@ -51,7 +54,7 @@ const verifyPackage = (name) => {
   requireThat(manifest.match(/^license = "([^"]+)"$/m)?.[1] === entry.license, `${name}: unreviewed license expression`)
   requireThat(license.includes(HOLDER) && digest(license) === entry.original_license_sha256, `${name}: MIT license changed`)
   requireThat(notice.includes(entry.license) && notice.includes(HOLDER), `${name}: attribution or license summary missing`)
-  for (const upstream of entry.upstreams) verifyUpstream(dir, upstream)
+  for (const upstream of entry.upstreams) verifyUpstream(dir, upstream, notice)
   const expected = [...new Set(entry.upstreams.map((upstream) => join(dir, upstream.file)))].sort()
   const actual = existsSync(join(dir, 'LICENSES')) ? filesIn(join(dir, 'LICENSES')).sort() : []
   requireThat(JSON.stringify(actual) === JSON.stringify(expected), `${name}: unreviewed or missing license files`)

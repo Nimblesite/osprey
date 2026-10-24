@@ -24,6 +24,7 @@ class Hit:
     """A successful match: the end position and the capture slots."""
     pos: int
     saves: list[int]
+    lastindex: int
 
 
 class Frame:
@@ -31,12 +32,13 @@ class Frame:
     pc: int
     pos: int
     saves: list[int]
+    lastindex: int
 
 
 def run(prog, cps, n, start, endpos):
     """Run the main program from `start`, requiring end at `endpos` (-1 = any)."""
     saves = toList(map(range(2 * prog.groups + 2), lambda _: -1))
-    return step(prog, cps, n, "match", endpos, 0, start, saves, [])
+    return step(prog, cps, n, "match", endpos, 0, start, saves, [], 0)
 
 
 def code_at(code, pc):
@@ -44,7 +46,7 @@ def code_at(code, pc):
     return unwrap_or(listGet(code, pc), Program.ins("match"))
 
 
-def step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames) -> Result[Hit, str]:
+def step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, lastindex) -> Result[Hit, str]:
     """Advance the VM; a tail call, so the native stack stays flat."""
     ins = code_at(prog.code, pc)
     op = ins.op
@@ -52,54 +54,54 @@ def step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames) -> Result[Hit, st
         if endpos >= 0 and pos != endpos:
             return backtrack(prog, cps, n, acc_op, endpos, frames)
         else:
-            return Success(value=Hit(pos=pos, saves=saves))
+            return Success(value=Hit(pos=pos, saves=saves, lastindex=lastindex))
     elif op == "lit":
         if pos < n and lit_hit(ins, Unicode.at(cps, pos)):
-            return step(prog, cps, n, acc_op, endpos, pc + 1, pos + 1, saves, frames)
+            return step(prog, cps, n, acc_op, endpos, pc + 1, pos + 1, saves, frames, lastindex)
         else:
             return backtrack(prog, cps, n, acc_op, endpos, frames)
     elif op == "any":
         if pos < n and any_hit(ins, Unicode.at(cps, pos)):
-            return step(prog, cps, n, acc_op, endpos, pc + 1, pos + 1, saves, frames)
+            return step(prog, cps, n, acc_op, endpos, pc + 1, pos + 1, saves, frames, lastindex)
         else:
             return backtrack(prog, cps, n, acc_op, endpos, frames)
     elif op == "class":
         if pos < n and class_hit(ins, Unicode.at(cps, pos)):
-            return step(prog, cps, n, acc_op, endpos, pc + 1, pos + 1, saves, frames)
+            return step(prog, cps, n, acc_op, endpos, pc + 1, pos + 1, saves, frames, lastindex)
         else:
             return backtrack(prog, cps, n, acc_op, endpos, frames)
     elif op == "split":
-        return step(prog, cps, n, acc_op, endpos, ins.a, pos, saves, listAppend(frames, Frame(pc=ins.b, pos=pos, saves=saves)))
+        return step(prog, cps, n, acc_op, endpos, ins.a, pos, saves, listAppend(frames, Frame(pc=ins.b, pos=pos, saves=saves, lastindex=lastindex)), lastindex)
     elif op == "jmp":
-        return step(prog, cps, n, acc_op, endpos, ins.a, pos, saves, frames)
+        return step(prog, cps, n, acc_op, endpos, ins.a, pos, saves, frames, lastindex)
     elif op == "save":
-        return step(prog, cps, n, acc_op, endpos, pc + 1, pos, set_slot(saves, ins.a, pos), frames)
+        return step(prog, cps, n, acc_op, endpos, pc + 1, pos, set_slot(saves, ins.a, pos), frames, intDiv(ins.a, 2) if ins.a % 2 == 1 else lastindex)
     elif op == "bol":
         if bol_hit(ins, cps, pos):
-            return step(prog, cps, n, acc_op, endpos, pc + 1, pos, saves, frames)
+            return step(prog, cps, n, acc_op, endpos, pc + 1, pos, saves, frames, lastindex)
         else:
             return backtrack(prog, cps, n, acc_op, endpos, frames)
     elif op == "eol":
         if eol_hit(ins, cps, n, pos):
-            return step(prog, cps, n, acc_op, endpos, pc + 1, pos, saves, frames)
+            return step(prog, cps, n, acc_op, endpos, pc + 1, pos, saves, frames, lastindex)
         else:
             return backtrack(prog, cps, n, acc_op, endpos, frames)
     elif op == "a_start":
         if pos == 0:
-            return step(prog, cps, n, acc_op, endpos, pc + 1, pos, saves, frames)
+            return step(prog, cps, n, acc_op, endpos, pc + 1, pos, saves, frames, lastindex)
         else:
             return backtrack(prog, cps, n, acc_op, endpos, frames)
     elif op == "wb":
         if wb_hit(ins, cps, n, pos):
-            return step(prog, cps, n, acc_op, endpos, pc + 1, pos, saves, frames)
+            return step(prog, cps, n, acc_op, endpos, pc + 1, pos, saves, frames, lastindex)
         else:
             return backtrack(prog, cps, n, acc_op, endpos, frames)
     elif op == "backref":
-        return backref_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, ins.a)
+        return backref_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, ins.a, lastindex)
     elif op == "lookahead":
-        return lookahead_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, ins)
+        return lookahead_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, ins, lastindex)
     elif op == "lookbehind" or op == "lookbehind_not":
-        return lookbehind_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, ins)
+        return lookbehind_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, ins, lastindex)
     else:
         return backtrack(prog, cps, n, acc_op, endpos, frames)
 
@@ -109,13 +111,13 @@ def backtrack(prog, cps, n, acc_op, endpos, frames):
     if len(frames) == 0:
         return Error(message="")
     else:
-        f = unwrap_or(listGet(frames, len(frames) - 1), Frame(pc=0, pos=0, saves=[]))
-        return step(prog, cps, n, acc_op, endpos, f.pc, f.pos, f.saves, drop_last(frames))
+        f = unwrap_or(listGet(frames, len(frames) - 1), Frame(pc=0, pos=0, saves=[], lastindex=0))
+        return step(prog, cps, n, acc_op, endpos, f.pc, f.pos, f.saves, drop_last(frames), f.lastindex)
 
 
 def drop_last(xs):
     """The list without its last element."""
-    return toList(map(range(len(xs) - 1), lambda i: unwrap_or(listGet(xs, i), Frame(pc=0, pos=0, saves=[]))))
+    return toList(map(range(len(xs) - 1), lambda i: unwrap_or(listGet(xs, i), Frame(pc=0, pos=0, saves=[], lastindex=0))))
 
 
 def set_slot(saves, k, v):
@@ -201,14 +203,14 @@ def wb_hit(ins, cps, n, pos):
     return boundary if ins.a == 1 else not boundary
 
 
-def backref_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, gid):
+def backref_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, gid, lastindex):
     """A `\\1`-style backreference."""
     start = Unicode.at(saves, 2 * gid)
     end = Unicode.at(saves, 2 * gid + 1)
     if start < 0:
-        return step(prog, cps, n, acc_op, endpos, pc + 1, pos, saves, frames)
+        return step(prog, cps, n, acc_op, endpos, pc + 1, pos, saves, frames, lastindex)
     elif compare_span(cps, n, pos, start, end - start):
-        return step(prog, cps, n, acc_op, endpos, pc + 1, pos + end - start, saves, frames)
+        return step(prog, cps, n, acc_op, endpos, pc + 1, pos + end - start, saves, frames, lastindex)
     else:
         return backtrack(prog, cps, n, acc_op, endpos, frames)
 
@@ -225,47 +227,47 @@ def compare_span(cps, n, pos, start, left):
         return False
 
 
-def lookahead_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, ins):
+def lookahead_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, ins, lastindex):
     """A `(?=...)` / `(?!...)` assertion (captures propagate)."""
-    sub = step(prog, cps, n, "acc", -1, ins.a, pos, saves, [])
+    sub = step(prog, cps, n, "acc", -1, ins.a, pos, saves, [], lastindex)
     if ins.b == 1:
         match sub:
             case Success():
                 return backtrack(prog, cps, n, acc_op, endpos, frames)
             case Error():
-                return step(prog, cps, n, acc_op, endpos, pc + 1, pos, saves, frames)
+                return step(prog, cps, n, acc_op, endpos, pc + 1, pos, saves, frames, lastindex)
     else:
         match sub:
             case Success(value=value):
-                return step(prog, cps, n, acc_op, endpos, pc + 1, pos, value.saves, frames)
+                return step(prog, cps, n, acc_op, endpos, pc + 1, pos, value.saves, frames, value.lastindex)
             case Error():
                 return backtrack(prog, cps, n, acc_op, endpos, frames)
 
 
-def lookbehind_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, ins):
+def lookbehind_step(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, ins, lastindex):
     """A `(?<=...)` / `(?<!...)` fixed-width assertion (captures dropped)."""
     negate = 1 if ins.op == "lookbehind_not" else 0
     if pos < ins.b:
         if negate == 1:
-            return step(prog, cps, n, acc_op, endpos, pc + 1, pos, saves, frames)
+            return step(prog, cps, n, acc_op, endpos, pc + 1, pos, saves, frames, lastindex)
         else:
             return backtrack(prog, cps, n, acc_op, endpos, frames)
     else:
-        return lookbehind_run(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, ins, negate)
+        return lookbehind_run(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, ins, negate, lastindex)
 
 
-def lookbehind_run(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, ins, negate):
+def lookbehind_run(prog, cps, n, acc_op, endpos, pc, pos, saves, frames, ins, negate, lastindex):
     """Run the lookbehind sub-pattern against the fixed-width prefix."""
-    sub = step(prog, cps, n, "acc", pos, ins.a, pos - ins.b, saves, [])
+    sub = step(prog, cps, n, "acc", pos, ins.a, pos - ins.b, saves, [], lastindex)
     if negate == 1:
         match sub:
             case Success():
                 return backtrack(prog, cps, n, acc_op, endpos, frames)
             case Error():
-                return step(prog, cps, n, acc_op, endpos, pc + 1, pos, saves, frames)
+                return step(prog, cps, n, acc_op, endpos, pc + 1, pos, saves, frames, lastindex)
     else:
         match sub:
             case Success():
-                return step(prog, cps, n, acc_op, endpos, pc + 1, pos, saves, frames)
+                return step(prog, cps, n, acc_op, endpos, pc + 1, pos, saves, frames, lastindex)
             case Error():
                 return backtrack(prog, cps, n, acc_op, endpos, frames)

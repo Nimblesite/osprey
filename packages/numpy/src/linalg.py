@@ -142,28 +142,25 @@ def outer(a, b):
 
 
 def inner(a, b):
-    """np.inner: contraction over the last axis of both, broadcasting the
-    leading dimensions."""
+    """np.inner contracts the last axes and combines the remaining dimensions."""
+    return Array.multiply(a, b) if len(a.shape) == 0 or len(b.shape) == 0 else inner_vectors(a, b)
+
+
+def inner_vectors(a, b):
     na = len(a.shape)
     nb = len(b.shape)
     ka = unwrap_or(listGet(a.shape, na - 1), 1)
     kb = unwrap_or(listGet(b.shape, nb - 1), 1)
     g = Errors.require(ka == kb, Errors.aligned_failed(a.shape, b.shape, ka, na - 1, kb, nb - 1))
-    if na == 1 and nb == 1:
-        return Array.NDArray(shape=[], data=perform(Storage.Buffer.build(1, lambda i: fold(range(ka), 0.0, lambda acc, t: acc + Storage.at(a.data, t) * Storage.at(b.data, t)))))
-    else:
-        a_head = drop_last(a.shape)
-        b_head = drop_last(b.shape)
-        out = Layout.broadcast_two(a_head, b_head)
-        sa = Layout.broadcast_strides(a_head, out)
-        sb = Layout.broadcast_strides(b_head, out)
-        return Array.NDArray(shape=out, data=perform(Storage.Buffer.build(Layout.flat_size(out), lambda i: inner_element(i, out, a, b, ka, sa, sb))))
+    out = listConcat(drop_last(a.shape), drop_last(b.shape))
+    b_rows = Layout.flat_size(drop_last(b.shape))
+    return Array.NDArray(shape=out, data=perform(Storage.Buffer.build(Layout.flat_size(out), lambda i: inner_element(i, a, b, ka, b_rows))))
 
 
-def inner_element(i, out, a, b, ka, sa, sb):
+def inner_element(i, a, b, ka, b_rows):
     """One inner output element."""
-    base_a = Layout.offset_of(i, out, sa) * ka
-    base_b = Layout.offset_of(i, out, sb) * ka
+    base_a = (i // b_rows) * ka
+    base_b = (i % b_rows) * ka
     return fold(range(ka), 0.0, lambda acc, t: acc + Storage.at(a.data, base_a + t) * Storage.at(b.data, base_b + t))
 
 
@@ -177,17 +174,18 @@ def vdot(a, b):
 
 
 def trace(a):
-    """np.trace: the sum of the diagonal over the last two axes (a rank-0
+    """np.trace: the sum of the diagonal over the first two axes (a rank-0
     array for 2-D input, numpy's scalar)."""
-    m = unwrap_or(listGet(a.shape, len(a.shape) - 2), 0)
-    n = unwrap_or(listGet(a.shape, len(a.shape) - 1), 0)
+    m = unwrap_or(listGet(a.shape, 0), 0)
+    n = unwrap_or(listGet(a.shape, 1), 0)
     k = m if m < n else n
-    head = drop_last_two(a.shape)
+    head = slice_coords(a.shape, 2, len(a.shape))
     return Array.NDArray(shape=head, data=perform(Storage.Buffer.build(Layout.flat_size(head), lambda i: trace_element(i, head, a, n, k))))
 
 
 def trace_element(i, head, a, n, k):
     """One trace output element over the head dimensions."""
     coords = Layout.coords_of(i, head)
-    base = Layout.ravel_index(listConcat(coords, [0, 0]), a.shape)
-    return fold(range(k), 0.0, lambda acc, t: acc + Storage.at(a.data, base + t * (n + 1)))
+    base = Layout.ravel_index(listConcat([0, 0], coords), a.shape)
+    stride = (n + 1) * Layout.flat_size(head)
+    return fold(range(k), 0.0, lambda acc, t: acc + Storage.at(a.data, base + t * stride))

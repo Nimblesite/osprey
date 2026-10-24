@@ -20,15 +20,25 @@ Original source: [https://github.com/scipy/xsf](https://github.com/scipy/xsf/blo
 
 ### cephes
 
-Material: Translated numerical kernels and copied approximation coefficients. Locations: `src/gamma.py`, `src/beta.py`, `src/zeta.py`, `src/support.py`, `src/boxcox.py`, `src/information.py`, `src/logistic.py`.
-Original source: [https://github.com/scipy/xsf](https://github.com/scipy/xsf/blob/main/LICENSES_bundled.txt). Retained required text: [LICENSES/Cephes.txt](LICENSES/Cephes.txt).
+Material: copied approximation coefficients and adapted Cephes gamma, beta, zeta, reciprocal-gamma, psi and polynomial-evaluation kernels. Locations: `src/gamma.py`, `src/beta.py`, `src/zeta.py`, `src/support.py`. Required BSD terms: [LICENSES/Cephes.txt](LICENSES/Cephes.txt).
+
+Retained source-header attribution:
+
+- [include/xsf/cephes/gamma.h](https://github.com/scipy/xsf/blob/473a8f81df855a1426d5148448babcbcb7696403/include/xsf/cephes/gamma.h): Copyright 1984, 1987, 1989, 1992 by Stephen L. Moshier.
+- [include/xsf/cephes/beta.h](https://github.com/scipy/xsf/blob/473a8f81df855a1426d5148448babcbcb7696403/include/xsf/cephes/beta.h): Copyright 1984, 1987 by Stephen L. Moshier.
+- [include/xsf/cephes/zeta.h](https://github.com/scipy/xsf/blob/473a8f81df855a1426d5148448babcbcb7696403/include/xsf/cephes/zeta.h): Copyright 1984, 1987 by Stephen L. Moshier.
+- [include/xsf/cephes/zetac.h](https://github.com/scipy/xsf/blob/473a8f81df855a1426d5148448babcbcb7696403/include/xsf/cephes/zetac.h): Copyright 1984, 1987, 1989 by Stephen L. Moshier.
+- [include/xsf/cephes/rgamma.h](https://github.com/scipy/xsf/blob/473a8f81df855a1426d5148448babcbcb7696403/include/xsf/cephes/rgamma.h): Copyright 1985, 1987 by Stephen L. Moshier.
+- [include/xsf/cephes/polevl.h](https://github.com/scipy/xsf/blob/473a8f81df855a1426d5148448babcbcb7696403/include/xsf/cephes/polevl.h): Copyright 1984, 1987, 1988 by Stephen L. Moshier.
+- [include/xsf/cephes/psi.h](https://github.com/scipy/xsf/blob/473a8f81df855a1426d5148448babcbcb7696403/include/xsf/cephes/psi.h): Copyright 1984, 1987, 1992, 2000 by Stephen L. Moshier.
 
 ### boost
 
-Material: Translated numerical kernels and copied approximation coefficients. Locations: `src/gamma.py`, `src/beta.py`, `src/zeta.py`, `src/support.py`, `src/boxcox.py`, `src/information.py`, `src/logistic.py`.
-Original source: [https://github.com/boostorg/boost](https://github.com/boostorg/boost/blob/master/LICENSE_1_0.txt). Retained required text: [LICENSES/Boost-1.0.txt](LICENSES/Boost-1.0.txt).
+Material: digamma rational coefficients (`psi_root1`, `psi_root2`, `psi_root3`, `psi_P`, `psi_Q`, `PSI_Y`) and `psi_imp_1_2` in `src/gamma.py` only. Original attribution: `(C) Copyright John Maddock 2006.` Required terms: [Boost Software License 1.0](LICENSES/Boost-1.0.txt).
 
-The Cephes coefficients and kernels retain Stephen L. Moshier's copyright and BSD conditions. The rational digamma approximation retains `(C) Copyright John Maddock 2006.` and the Boost Software License 1.0. Changes re-express the kernels in Osprey using immutable values, list operations and explicit result handling. The SciPy/xsf BSD notice is retained for the adapted numerical source.
+Original source: [the rational approximation on [1, 2]](https://github.com/scipy/xsf/blob/473a8f81df855a1426d5148448babcbcb7696403/include/xsf/cephes/psi.h). This notice does not assign Boost terms to the beta, zeta, Box-Cox, information or logistic implementations.
+
+Changes re-express the identified numerical code in Osprey using immutable values and list operations. All retained source ownership remains with its original authors.
 
 ## Distribution
 

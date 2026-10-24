@@ -13,7 +13,10 @@ pub(super) fn overview(report: &Report<'_>) -> (&'static str, &'static str) {
         ("Findings need investigation", "The analysis reported a possible failure. Read its normal-run check before treating it as a confirmed bug.")
     } else if !findings.is_empty() {
         ("Analysis blocked by an unsupported operation", "Hunt reached an operation it cannot simulate. No program bug was demonstrated, and analysis could not continue down that path.")
-    } else if !report.scan.incomplete.is_empty() || report.exploration.completed == 0 {
+    } else if !report.scan.incomplete.is_empty()
+        || report.exploration.completed == 0
+        || report.exploration.completed != report.exploration.paths
+    {
         ("No bugs found in an unfinished analysis", "Hunt stopped before completing the analysis. Unexplored behavior may still contain bugs.")
     } else {
         ("No bugs found in the explored paths", "The explored paths completed without a reported failure. This is limited to the chosen input size and the operations the engine can model; it is not proof of correctness.")

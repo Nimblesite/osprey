@@ -10,19 +10,14 @@ These repositories and releases are acknowledged as API, behavior and test-oracl
 
 ## Specifically retained third-party material
 
-The cumulative expression for the identified material is `MIT AND Unicode-DFS-2016 AND Unicode-3.0`. These additional terms apply to that material; they do not transfer ownership of the Osprey implementation or turn upstream API references into dependencies.
+The cumulative expression for the identified material is `MIT AND Unicode-DFS-2016`. These additional terms apply to that material; they do not transfer ownership of the Osprey implementation or turn upstream API references into dependencies.
 
 ### unicode15
 
-Material: Generated Unicode character-property tables. Locations: `src/Unicode.py`.
+Material: Derived Unicode 15.0.0 character-property tables, checked against the official UCD. Locations: `src/Unicode.py`.
 Original source: [https://github.com/unicode-org/icu/tree/release-73-2](https://github.com/unicode-org/icu/blob/release-73-2/icu4c/LICENSE). Retained required text: [LICENSES/Unicode-DFS-2016.txt](LICENSES/Unicode-DFS-2016.txt).
 
-### unicode3
-
-Material: Generated Unicode character-property tables. Locations: `src/Unicode.py`.
-Original source: [https://github.com/unicode-org/icu](https://github.com/unicode-org/icu/blob/main/LICENSE). Retained required text: [LICENSES/Unicode-3.0.txt](LICENSES/Unicode-3.0.txt).
-
-The Unicode notices cover derived property/case tables, not the regex or tokenizer engine. The older Unicode data permission and Unicode License v3 are retained because CPython and the regex library report their Unicode versions independently.
+The Unicode notices cover derived property/case tables, not the regex or tokenizer engine. The table data matches Unicode 15.0.0; only the corresponding data license is retained. CPython's separate Unicode version does not determine the regex package's data version.
 
 ## Distribution
 

@@ -6,6 +6,7 @@
 #include "hunt_mock_tests.h"
 
 #include <string.h>
+#include <stdlib.h>
 
 enum { EBADF_VALUE = 9, ENOENT_VALUE = 2, EINVAL_VALUE = 22, ENFILE_VALUE = 23 };
 enum { SEEK_SET_VALUE = 0, SEEK_CUR_VALUE = 1, SEEK_END_VALUE = 2 };
@@ -315,8 +316,37 @@ static void names_carry_their_suffix_and_index(void) {
   hunt_check(strlen(name) == OSP_HUNT_NAME_MAX - 1, "a long name is cut to the name limit and terminated");
 }
 
+// Runtime integration: the symbolic-sized buffer retains every byte and NUL.
+static void runtime_file_at_bound(long cap, long length) {
+  hunt_reset();
+  osp_hunt_input_bytes = cap;
+  long bounded = clamp_cap(cap);
+  long expected = length > bounded ? bounded : length;
+  hunt_queue_range(1);
+  queue_pattern(bounded);
+  hunt_queue_range((int)length);
+  char path[] = "boundary.txt";
+  char *text = read_file(path);
+  int copied = text != NULL && matches_pattern((const unsigned char *)text, expected, 0) && text[expected] == '\0';
+  hunt_check(copied, about("readFile preserves all bounded bytes and terminates", cap, length));
+  hunt_check(osp_hunt_calls[OSP_HUNT_CALL_FREAD] == 1, "readFile needs one bounded read");
+  free(text);
+}
+
+static void runtime_files_at_every_cap_and_length(void) {
+  static const long caps[] = {-5, 0, 1, 7, 64, OSP_HUNT_STREAM_MAX, OSP_HUNT_STREAM_MAX + 100};
+  for (size_t index = 0; index < sizeof(caps) / sizeof(caps[0]); index++) {
+    long cap = clamp_cap(caps[index]);
+    long lengths[] = {0, 1, cap / 2, cap, cap + 5};
+    for (size_t length = 0; length < sizeof(lengths) / sizeof(lengths[0]); length++) {
+      runtime_file_at_bound(caps[index], lengths[length]);
+    }
+  }
+}
+
 void hunt_mock_stream_tests(void) {
   stdin_reads_exactly_its_length_at_every_cap();
+  runtime_files_at_every_cap_and_length();
   read_returns_the_stream_in_any_chunk_size();
   fgets_reads_lines_at_every_buffer_size();
   files_read_and_seek_at_every_cap_and_length();

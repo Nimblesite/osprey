@@ -52,6 +52,7 @@ class Match:
     group_texts: list[str]
     group_set: list[bool]
     names: list[str]
+    lastindex: int
 
 
 class MatchResult:
@@ -93,7 +94,7 @@ def compile(pattern, flags):
 
 def none_match():
     """A `MatchResult` for "no match"."""
-    return MatchResult(kind="none", match=Match(start=0, end=0, text="", group_texts=[""], group_set=[False], names=[""]))
+    return MatchResult(kind="none", match=Match(start=0, end=0, text="", group_texts=[""], group_set=[False], names=[""], lastindex=0))
 
 
 def match_record(prog, cps, start, hit):
@@ -101,7 +102,7 @@ def match_record(prog, cps, start, hit):
     return Match(start=start, end=hit.pos, text=Unicode.text_of(cps, start, hit.pos),
                  group_texts=group_texts(prog, cps, hit.saves),
                  group_set=group_flags(prog, hit.saves),
-                 names=prog.group_names)
+                 names=prog.group_names, lastindex=hit.lastindex)
 
 
 def group_texts(prog, cps, saves):
@@ -484,8 +485,8 @@ def gd_add(acc, m, i, default):
 
 
 def lastindex(m):
-    """The index of the last participating group, or 0 when none."""
-    return fold(range(1, len(m.group_set)), 0, lambda acc, i: i if unwrap_or(listGet(m.group_set, i), False) else acc)
+    """The group whose capture closed last, or 0 when none."""
+    return m.lastindex
 
 
 def span(m):

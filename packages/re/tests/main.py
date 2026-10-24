@@ -162,7 +162,7 @@ def iter_ok(matches, enc, n):
 
 def iter_match(matches, enc, i):
     """Assertions for one finditer Match against its encoded verdict."""
-    m = unwrap_or(listGet(matches, i), Api.Match(start=0, end=0, text="", group_texts=[""], group_set=[False], names=[""]))
+    m = unwrap_or(listGet(matches, i), Api.Match(start=0, end=0, text="", group_texts=[""], group_set=[False], names=[""], lastindex=0))
     sub = fields(f(enc, 1 + i))
     return match_body("finditer" + toString(i), m, sub)
 

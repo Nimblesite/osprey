@@ -99,7 +99,7 @@ fn report_with_input_artifact(kind: &str) -> serde_json::Value {
     scene.canned_finding();
     match kind {
         "missing" => {
-            std::fs::remove_file(scene.root.join("canned/test000001.ktest")).expect("remove")
+            std::fs::remove_file(scene.root.join("canned/test000001.ktest")).expect("remove");
         }
         "corrupt" => scene.canned("test000001.ktest", b"not a KTEST"),
         _ => scene.canned("test000001.ktest", &ktest::encode(&[])),

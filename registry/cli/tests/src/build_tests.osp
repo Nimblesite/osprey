@@ -158,6 +158,15 @@ module BuildTests {
         relativeBuildAt("some/project", ["--project", "some/project"])
     }
 
+    fn relativePythonSources() = {
+        let packages = [one(), two()]
+        let a = runBuild(readsOf(matchingLock(mapList(packages, pkgOf)), packages), walksOf(packages), ["--project", project])
+        checkAll("derived Python sources obey the compiler's manifest-relative path contract", [
+            a.report.status == 0,
+            !contains(a.derived, "python_sources = [\"/")
+        ])
+    }
+
     /// A failing verify runs no compiler and writes nothing.
     fn verifyFailure() = {
         let packages = [one(), two()]
@@ -188,6 +197,7 @@ module BuildTests {
         test("build: derived project bytes and compiler invocation", derived)
         test("build: --run invokes the run form", runForm)
         test("build: default and relative source paths", relativeBuilds)
+        test("build: Python sources remain manifest-relative", relativePythonSources)
         test("build: a verify failure compiles nothing", verifyFailure)
         test("build: a rejected package manifest is build.manifest", buildManifestRejected)
     }

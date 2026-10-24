@@ -29,7 +29,7 @@ Each package's `NOTICE.md` acknowledges the original repositories and comparison
 
 SciPy's numerical implementation explicitly identifies its Cephes/xsf origin. The coefficient arrays match those kernels, and the digamma approximation contains John Maddock's Boost coefficients. The retained Cephes/xsf BSD and Boost licenses apply to those identified files. They are not assigned merely because the public API resembles SciPy.
 
-The regex/tokenizer Unicode tables are generated from character data. Their data notices apply to those tables, not to the independently expressed matching or tokenization engines. The older Unicode data permission and Unicode License v3 are retained because CPython and the separate regex library have independent Unicode versions.
+The regex/tokenizer Unicode tables are generated from character data. Their data notices apply to those tables, not to the independently expressed matching or tokenization engines. The `re` and `tokenizers` property tables match Unicode 15.0.0; the `tiktoken` tables match the regex package's Unicode 18.0.0 data within their documented coverage. Only the corresponding data license is retained for each package. CPython's `unicodedata` version does not identify regex's Unicode version.
 
 Tiktoken test fixtures contain actual encoding-rank subsets, unlike ordinary expected outputs computed by an oracle. The [upstream collaborator explicitly confirms that tiktoken's MIT license covers those encoding files](https://github.com/openai/tiktoken/issues/92#issuecomment-1497875652). Its MIT text and that clarification are retained for the copied data. No full tokenizer package, model weights or complete pretrained vocabulary is bundled.
 

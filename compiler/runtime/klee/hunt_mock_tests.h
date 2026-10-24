@@ -66,6 +66,9 @@ extern FILE_ *osp_hunt_stdout;
 extern FILE_ *osp_hunt_stdin;
 extern int osp_hunt_errno;
 
+// Runtime integration exercised by both suites.
+char *read_file(char *path);
+
 // ---- captured output -------------------------------------------------------
 
 // Routes the mock's sink into a buffer and empties it.

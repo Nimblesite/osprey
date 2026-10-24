@@ -12,21 +12,16 @@ These repositories and releases are acknowledged as API, behavior and test-oracl
 
 ## Specifically retained third-party material
 
-The cumulative expression for the identified material is `MIT AND Unicode-DFS-2016 AND Unicode-3.0`. These additional terms apply to that material; they do not transfer ownership of the Osprey implementation or turn upstream API references into dependencies.
+The cumulative expression for the identified material is `MIT AND Unicode-3.0`. These additional terms apply to that material; they do not transfer ownership of the Osprey implementation or turn upstream API references into dependencies.
 
 ### tiktoken
 
 Material: Copied encoding-rank subsets and upstream explicit MIT permission. Locations: `tests/expected.py`.
 Original source: [https://github.com/openai/tiktoken](https://files.pythonhosted.org/packages/66/62/167a842aa0429d45f5e797354fd4343a96f6043d67d0513c675c7b8d36e6/tiktoken-0.14.0.tar.gz). Retained required text: [LICENSES/tiktoken.txt](LICENSES/tiktoken.txt).
 
-### unicode15
-
-Material: Generated Unicode character-property tables. Locations: `src/tables.py`.
-Original source: [https://github.com/unicode-org/icu/tree/release-73-2](https://github.com/unicode-org/icu/blob/release-73-2/icu4c/LICENSE). Retained required text: [LICENSES/Unicode-DFS-2016.txt](LICENSES/Unicode-DFS-2016.txt).
-
 ### unicode3
 
-Material: Generated Unicode character-property tables. Locations: `src/tables.py`.
+Material: Derived Unicode 18.0.0 character-property tables, checked against the official UCD. Locations: `src/tables.py`.
 Original source: [https://github.com/unicode-org/icu](https://github.com/unicode-org/icu/blob/main/LICENSE). Retained required text: [LICENSES/Unicode-3.0.txt](LICENSES/Unicode-3.0.txt).
 
 ### tiktoken-encoding-permission
@@ -36,7 +31,7 @@ Original source: [https://github.com/openai/tiktoken](https://github.com/openai/
 
 The copied GPT-2/cl100k encoding-rank subsets are test data. OpenAI's [explicit clarification](https://github.com/openai/tiktoken/issues/92#issuecomment-1497875652) applies its MIT license to encoding files. The complete upstream tokenizer package and vocabularies are not included.
 
-The Unicode notices cover derived property/case tables, not the regex or tokenizer engine. The older Unicode data permission and Unicode License v3 are retained because CPython and the regex library report their Unicode versions independently.
+The Unicode notices cover derived property/case tables, not the regex or tokenizer engine. The table data matches Unicode 18.0.0; only the corresponding data license is retained. CPython's separate Unicode version does not determine the regex package's data version.
 
 ## Distribution
 
