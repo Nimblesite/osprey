@@ -6,7 +6,7 @@
 
 A functional language built around **algebraic effects**, inferred types and native compilation. Write your application logic once; handlers connect it to storage, platform services and deterministic tests.
 
-Osprey is actively evolving. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production. It compiles through LLVM to native binaries, WebAssembly and C ABI libraries for iOS and Android.
+Osprey is actively evolving. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production. It compiles through LLVM to native binaries, WebAssembly and C ABI libraries for iOS, macOS and Android.
 
 ## Save a draft. Test an offline failure.
 

@@ -6,7 +6,7 @@ This directory contains the Node.js API and WebSocket bridge used by the [websit
 | --- | --- |
 | `GET /api` | Health and service information |
 | `POST /api/compile` | Parse submitted source with `osprey --sandbox --ast` |
-| `POST /api/run` | Compile and execute submitted source with `osprey --run` |
+| `POST /api/run` | Compile and execute submitted source with `osprey --sandbox --run` |
 | WebSocket `/lsp` | Forward JSON-RPC to an `osprey lsp` child over stdio |
 
 POST bodies use `{"code":"print(\"Hello\")","flavor":"default"}`. The server names ML requests `.ospml` and other requests `.osp`; source markers still pass to the compiler. Responses separate `compilerOutput` and `programOutput`, with a `success` flag. Each compiler request gets a UUID-named temporary directory and a 20-second child-process timeout.
@@ -31,7 +31,7 @@ The website runs separately with `npm run dev` from `website/`. Its playground c
 
 ## Capability boundary
 
-The compile endpoint requests the compiler's capability sandbox. The run endpoint currently omits `--sandbox`, so the backend does not yet enforce the same policy for execution. The container's non-root user, memory limit and compiler timeout do not establish file, network or FFI confinement. This gap requires an API regression and implementation correction before the backend can claim sandboxed execution.
+The shared compiler runner adds `--sandbox` to every compile and run request. The compiler rejects disabled filesystem, HTTP/WebSocket, process and FFI capabilities before generating or executing a program. Container permissions, memory limits and child timeouts are separate controls; the capability gate does not prove complete operating-system isolation or descendant cleanup.
 
 ## Verification and ownership
 

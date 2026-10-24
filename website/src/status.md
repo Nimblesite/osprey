@@ -9,7 +9,7 @@ author: "Christian Findlay"
 
 Osprey is actively evolving. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production. The compiler is written in Rust, emits LLVM IR and
 builds native executables, `wasm32-wasip1` modules, and app-logic libraries for
-iOS and Android. Each target has an explicit runtime boundary.
+iOS, macOS and Android. Each target has an explicit runtime boundary.
 
 Current version: **{% if releases.latest %}{{ releases.latest.tag }}{% else %}development build{% endif %}**.
 
@@ -54,7 +54,7 @@ The release list was unavailable when this page was built. See
 - Isolated native fibers and channels; the current runtime uses one OS thread per fiber
 - Native HTTP, WebSocket, file, process and C FFI runtime APIs
 - Default, tracing-GC and ARC native memory backends
-- Native and `wasm32-wasip1` compilation, iOS and Android C ABI targets, and [Python-hosted native libraries](/spec/0042-pythoninterop/) with scalar calls, exception results and opaque object handles
+- Native and `wasm32-wasip1` compilation, iOS, macOS and Android C ABI targets, and [Python-hosted native libraries](/spec/0042-pythoninterop/) with scalar calls, exception results and opaque object handles
 - A shared modular mobile application with reactive native UI, SQLite cache, live GitHub requests, and local notes and priorities
 - Compiler-backed formatting, documentation generation, testing, profiling and
   language-server commands
@@ -76,9 +76,10 @@ are compiled and compared with checked-in expected output.
 | `python` | Shared library and C header on Linux/macOS | Loaded by CPython through `osprey-interop`; scalar ABI and opaque Python handles; no dynamic control continuations, fibers, HTTP/WebSocket or process spawning |
 | `wasm32` | WebAssembly module | WASI/browser host; default memory; unsupported features rejected before code generation |
 | `ios`, `ios-sim` | ARM64 static archive and C header | Swift host, iOS 15 minimum; default memory; no resumable effects |
+| `macos` | ARM64 static archive and C header | Swift host, macOS 12 minimum; same C ABI and default-memory restrictions as the iOS archive |
 | `android-arm64`, `android-x64` | ARM64 or x86-64 static archive and C header | Android host and JNI, API 26 minimum; default memory; no resumable effects |
 
-The compiler rejects unsupported target operations during `--check`, `--llvm`, and compilation. iOS and Android reject `resume` and unavailable built-in process, HTTP, and WebSocket operations. Their hosts provide platform networking through the C boundary. WebAssembly also rejects fibers, terminal control, and arbitrary C imports; approved browser imports and supported host filesystem operations remain available.
+The compiler rejects unsupported target operations during `--check`, `--llvm`, and compilation. The iOS, macOS and Android archive targets reject `resume` and unavailable built-in process, HTTP, and WebSocket operations. Their hosts provide platform networking through the C boundary. The `macos` archive target is separate from an ordinary native macOS executable; its [Swift host contract](/spec/0038-iostarget/#mac-host-ios-macos-host) applies. WebAssembly also rejects fibers, terminal control, and arbitrary C imports; approved browser imports and supported host filesystem operations remain available.
 
 [Issue Inbox](/docs/mobile-apps/) demonstrates the same Osprey project on iOS and Android, including ML modules and a small Default-flavor C entry point. Its screenshots come from actual simulator/emulator runs. Earlier builds were verified on a physical iPhone and through the shared C ABI on both Android ABIs. Those platform runs predate the callable handler migration; current checks cover shared domain behavior, LLVM/ABI generation, and native C entrypoints on Linux. Simulator, emulator, device, and hosted CI execution must be refreshed for the migrated sources; see the [validation record](https://github.com/Nimblesite/osprey/blob/main/examples/mobile/README.md#validation).
 

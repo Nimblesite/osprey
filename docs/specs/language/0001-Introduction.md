@@ -1,6 +1,6 @@
 # Introduction
 
-Osprey is a statically typed functional language built around algebraic effects. Application code requests typed operations; handlers supply their implementation. Osprey compiles through LLVM to native code, WebAssembly, and C ABI libraries for iOS and Android. Default (`.osp`), ML (`.ospml`) and [Python flavor](0041-PythonFlavorSyntax.md) (`.py` with the Osprey marker) lower to `osprey_ast::Program` before type checking and code generation. Their shared language and flavor-specific boundaries are defined in [Language Flavors](0023-LanguageFlavors.md). Python flavor implements a documented subset of Python syntax; CPython libraries use the separate [interop boundary](../platforms/0042-PythonInterop.md).
+Osprey is a statically typed functional language built around algebraic effects. Application code requests typed operations; handlers supply their implementation. Osprey compiles through LLVM to native code, WebAssembly, and C ABI libraries for iOS, macOS and Android. Default (`.osp`), ML (`.ospml`) and [Python flavor](0041-PythonFlavorSyntax.md) (`.py` with the Osprey marker) lower to `osprey_ast::Program` before type checking and code generation. Their shared language and flavor-specific boundaries are defined in [Language Flavors](0023-LanguageFlavors.md). Python flavor implements a documented subset of Python syntax; CPython libraries use the separate [interop boundary](../platforms/0042-PythonInterop.md).
 
 ## Language shape
 

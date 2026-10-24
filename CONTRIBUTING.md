@@ -21,7 +21,7 @@ The compiler and runtime use:
 
 ```bash
 # Fork and clone
-git clone https://github.com/Nimblesite/osprey.git
+git clone --recurse-submodules https://github.com/Nimblesite/osprey.git
 cd osprey
 
 # Build and test (from the repo root)
