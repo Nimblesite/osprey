@@ -2,11 +2,15 @@
 """@osprey/safetensors suite: load, decode every dtype, keys, metadata, slices
 and the Rust crate's validation errors, all against safetensors 0.8.0."""
 from testing import Check
-from safetensors import SafeTensors
+from safetensors import Bytes, Dtype, JsonParser, SafeTensors
 from safetensors_expected import Expected
 
 RTOL = 0.000000001
 ATOL = 0.00000000000001
+F16_WORD = [0, 62]
+BF16_WORD = [192, 63]
+F32_WORD = [0, 0, 192, 63]
+F64_WORD = [0, 0, 0, 0, 0, 0, 248, 63]
 
 
 def empty_file():
@@ -165,9 +169,76 @@ def notfound_cases():
             return [Check.equal("notfound", message, Expected.ERR_NOTFOUND)]
 
 
+def dtype_helper_cases():
+    order = Dtype.dtype_order()
+    return [
+        Check.ints_equal("dtype.sizes", mapList(order, Dtype.dtype_size), [1, 1, 1, 2, 2, 2, 2, 4, 4, 4, 8, 8, 8]),
+        Check.ints_equal("dtype.ranks", mapList(order, Dtype.dtype_rank), toList(range(13))),
+        Check.equal("dtype.unknown_size", Dtype.dtype_size("unknown"), 0),
+        Check.equal("dtype.unknown_rank", Dtype.dtype_rank("unknown"), -1),
+        Check.equal("dtype.float", Dtype.is_float_dtype("BF16"), True),
+        Check.equal("dtype.nonfloat", Dtype.is_float_dtype("I64"), False),
+        Check.equal("dtype.int", Dtype.is_int_dtype("BOOL"), True),
+        Check.equal("dtype.nonint", Dtype.is_int_dtype("F64"), False),
+    ]
+
+
+def byte_read_cases():
+    return [
+        Check.equal("bytes.pow2i", Bytes.pow2i(16), 65536),
+        Check.equal("bytes.pow2", Bytes.pow2(-2), 0.25),
+        Check.equal("bytes.le_bytes", Bytes.le_bytes([255, 1, 2], 1, 2), 513),
+        Check.equal("bytes.le16", Bytes.le16([255, 1, 2], 1), 513),
+        Check.equal("bytes.le32", Bytes.le32([1, 2, 3, 4], 0), 67305985),
+        Check.equal("bytes.le64", Bytes.le64([1, 2, 0, 0, 0, 0, 0, 0], 0), 513),
+        Check.ints_equal("bytes.read_bytes", unwrap_or(Bytes.read_bytes([1, 2, 3], 1, 2), []), [2, 3]),
+        Check.equal("bytes.read_u64", unwrap_or(Bytes.read_u64([1, 2, 0, 0, 0, 0, 0, 0], 0), -1), 513),
+        Check.equal("bytes.bytes_to_string", unwrap_or(Bytes.bytes_to_string([195, 169, 240, 159, 152, 128]), ""), "é😀"),
+        Check.ints_equal("bytes.int_bytes", Bytes.int_bytes(-2, 2), [254, 255]),
+    ]
+
+
+def float_byte_cases():
+    """IEEE words for 1.5 also match CPython struct.pack's little-endian bytes."""
+    return [
+        Check.equal("bytes.f16_from_bits", Bytes.f16_from_bits(15872), 1.5),
+        Check.equal("bytes.bf16_from_bits", Bytes.bf16_from_bits(16320), 1.5),
+        Check.equal("bytes.f32_from_bits", Bytes.f32_from_bits(1069547520), 1.5),
+        Check.equal("bytes.f64_from_parts", Bytes.f64_from_parts(0, 1023, 2251799813685248), 1.5),
+        Check.equal("bytes.decode_f16", Bytes.decode_f16(F16_WORD, 0), 1.5),
+        Check.equal("bytes.decode_bf16", Bytes.decode_bf16(BF16_WORD, 0), 1.5),
+        Check.equal("bytes.decode_f32", Bytes.decode_f32(F32_WORD, 0), 1.5),
+        Check.equal("bytes.decode_f64", Bytes.decode_f64(F64_WORD, 0), 1.5),
+        Check.ints_equal("bytes.f16_bytes", Bytes.f16_bytes(1.5), F16_WORD),
+        Check.ints_equal("bytes.bf16_bytes", Bytes.bf16_bytes(1.5), BF16_WORD),
+        Check.ints_equal("bytes.f32_bytes", Bytes.f32_bytes(1.5), F32_WORD),
+        Check.ints_equal("bytes.f64_bytes", Bytes.f64_bytes(1.5), F64_WORD),
+    ]
+
+
+def json_helper_cases():
+    number = JsonParser.JsonValue(kind="int", b=False, i=7, f=0.0, s="", items=[], members=[])
+    member = JsonParser.JsonMember(name="value", value=number)
+    match JsonParser.parse("{\"value\":7}"):
+        case Error(message=message):
+            return [Check.failed("json.parse", message)]
+        case Success(value=value):
+            got = unwrap_or(listGet(value.members, 0), member)
+            return [Check.equal("json.kind", value.kind, "obj"), Check.equal("json.members", len(value.members), 1), Check.equal("json.member", got.name, member.name), Check.equal("json.number", got.value.i, number.i)]
+
+
+def tensor_info_case():
+    info = SafeTensors.TensorInfo(name="x", dtype="F32", shape=[2], start=0, end=8)
+    return Check.equal("tensor_info.byte_extent", info.end - info.start, Dtype.dtype_size(info.dtype) * unwrap_or(listGet(info.shape, 0), 0))
+
+
+def helper_cases():
+    return concat_all([dtype_helper_cases(), byte_read_cases(), float_byte_cases(), json_helper_cases(), [tensor_info_case()]])
+
+
 def run_cases():
     """Build every case and report it, under the strict arithmetic policy."""
-    cases = concat_all([dtype_cases(), multi_cases(), meta_cases(), slice_cases(), special_cases(), error_cases(), notfound_cases()])
+    cases = concat_all([dtype_cases(), multi_cases(), meta_cases(), slice_cases(), special_cases(), error_cases(), notfound_cases(), helper_cases()])
     return Check.report(cases)
 
 

@@ -205,8 +205,7 @@ def kmeans_one(t):
     want_a = unwrap_or(listGet(Expected.KM_ASSIGN, t), [])
     match train(Kmeans(d, k, niter, seed), x, init):
         case Success(value=value):
-            return listConcat(
-                listConcat(
+            return listConcat(listConcat(
                     close_rows(f"kmeans.{t}.centroids", value.centroids, want_c, RTOL_EXACT, ATOL_EXACT),
                     [Check.close_all(f"kmeans.{t}.obj", value.obj, want_o, RTOL_EXACT, ATOL_EXACT)]),
                 [Check.ints_equal(f"kmeans.{t}.assign", assign(value, x), want_a)])
