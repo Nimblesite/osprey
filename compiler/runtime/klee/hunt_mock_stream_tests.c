@@ -114,8 +114,7 @@ static void fgets_reads_lines_at_every_buffer_size(void) {
     hunt_reset();
     osp_hunt_input_bytes = 5;
     hunt_queue_bytes("ab\ncd", 5);
-    hunt_queue_range(5);
-    char line[16];
+      char line[16];
     int first = fgets(line, cases[i].cap, osp_hunt_stdin) != NULL && strcmp(line, cases[i].first) == 0;
     int second = fgets(line, 8, osp_hunt_stdin) != NULL && strcmp(line, cases[i].second) == 0;
     hunt_check(first && second, about("fgets honours its buffer size, then continues", cases[i].cap, 0));

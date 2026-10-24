@@ -238,7 +238,9 @@ def analytic_grad(f, x):
     return g.reshape(-1).tolist()
 
 
-def fd_grad(f, x, h=1e-6):
+def fd_grad(f, x, h=2.0**-20):
+    # Dyadic increments are exact at these input magnitudes. A decimal step
+    # introduced cancellation noise even for a linear zero derivative.
     x = x.detach().clone()
     g = torch.zeros_like(x)
     n = x.numel()

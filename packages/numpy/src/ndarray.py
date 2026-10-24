@@ -449,52 +449,77 @@ def tile_read(i, out_shape, a, gap):
 
 # Elementwise -------------------------------------------------------------
 
-def add(a, b):
-    """np.add, broadcast."""
+def _arithmetic(op, x, y):
+    match op:
+        case 0:
+            return x + y
+        case 1:
+            return x - y
+        case 2:
+            return x * y
+        case 3:
+            return x / y
+        case 4:
+            return Storage.max_f(x, y)
+        case _:
+            return Storage.min_f(x, y)
+
+
+def _comparison(op, x, y):
+    match op:
+        case 6:
+            return x == y
+        case 7:
+            return x != y
+        case 8:
+            return x < y
+        case 9:
+            return x <= y
+        case 10:
+            return x > y
+        case _:
+            return x >= y
+
+
+def _binary_value(op, x, y):
+    return _arithmetic(op, x, y) if op < 6 else (1.0 if _comparison(op, x, y) else 0.0)
+
+
+def _binary(a, b, op):
     out = Layout.broadcast_two(a.shape, b.shape)
     sa = Layout.broadcast_strides(a.shape, out)
     sb = Layout.broadcast_strides(b.shape, out)
-    return NDArray(shape=out, data=perform(Storage.Buffer.build(Layout.flat_size(out), lambda i: Storage.add_f(Storage.at(a.data, Layout.offset_of(i, out, sa)), Storage.at(b.data, Layout.offset_of(i, out, sb))))))
+    return NDArray(shape=out, data=perform(Storage.Buffer.build(Layout.flat_size(out), lambda i: _binary_value(op, Storage.at(a.data, Layout.offset_of(i, out, sa)), Storage.at(b.data, Layout.offset_of(i, out, sb))))))
+
+
+def add(a, b):
+    """np.add, broadcast."""
+    return _binary(a, b, 0)
 
 
 def subtract(a, b):
     """np.subtract, broadcast."""
-    out = Layout.broadcast_two(a.shape, b.shape)
-    sa = Layout.broadcast_strides(a.shape, out)
-    sb = Layout.broadcast_strides(b.shape, out)
-    return NDArray(shape=out, data=perform(Storage.Buffer.build(Layout.flat_size(out), lambda i: Storage.at(a.data, Layout.offset_of(i, out, sa)) - Storage.at(b.data, Layout.offset_of(i, out, sb)))))
+    return _binary(a, b, 1)
 
 
 def multiply(a, b):
     """np.multiply, broadcast."""
-    out = Layout.broadcast_two(a.shape, b.shape)
-    sa = Layout.broadcast_strides(a.shape, out)
-    sb = Layout.broadcast_strides(b.shape, out)
-    return NDArray(shape=out, data=perform(Storage.Buffer.build(Layout.flat_size(out), lambda i: Storage.mul_f(Storage.at(a.data, Layout.offset_of(i, out, sa)), Storage.at(b.data, Layout.offset_of(i, out, sb))))))
+    return _binary(a, b, 2)
 
 
 def divide(a, b):
     """np.divide, broadcast. A zero divisor performs Arith.divideByZero."""
-    out = Layout.broadcast_two(a.shape, b.shape)
-    sa = Layout.broadcast_strides(a.shape, out)
-    sb = Layout.broadcast_strides(b.shape, out)
-    return NDArray(shape=out, data=perform(Storage.Buffer.build(Layout.flat_size(out), lambda i: Storage.at(a.data, Layout.offset_of(i, out, sa)) / Storage.at(b.data, Layout.offset_of(i, out, sb)))))
+    return _binary(a, b, 3)
 
 
 def maximum(a, b):
     """np.maximum, broadcast: NaN wins, else the larger."""
-    out = Layout.broadcast_two(a.shape, b.shape)
-    sa = Layout.broadcast_strides(a.shape, out)
-    sb = Layout.broadcast_strides(b.shape, out)
-    return NDArray(shape=out, data=perform(Storage.Buffer.build(Layout.flat_size(out), lambda i: Storage.max_f(Storage.at(a.data, Layout.offset_of(i, out, sa)), Storage.at(b.data, Layout.offset_of(i, out, sb))))))
+    return _binary(a, b, 4)
 
 
 def minimum(a, b):
     """np.minimum, broadcast: NaN wins, else the smaller."""
-    out = Layout.broadcast_two(a.shape, b.shape)
-    sa = Layout.broadcast_strides(a.shape, out)
-    sb = Layout.broadcast_strides(b.shape, out)
-    return NDArray(shape=out, data=perform(Storage.Buffer.build(Layout.flat_size(out), lambda i: Storage.min_f(Storage.at(a.data, Layout.offset_of(i, out, sa)), Storage.at(b.data, Layout.offset_of(i, out, sb))))))
+    return _binary(a, b, 5)
 
 
 def where(cond, a, b):
@@ -509,50 +534,32 @@ def where(cond, a, b):
 
 def equal(a, b):
     """np.equal as 0.0/1.0 floats, broadcast."""
-    out = Layout.broadcast_two(a.shape, b.shape)
-    sa = Layout.broadcast_strides(a.shape, out)
-    sb = Layout.broadcast_strides(b.shape, out)
-    return NDArray(shape=out, data=perform(Storage.Buffer.build(Layout.flat_size(out), lambda i: 1.0 if Storage.at(a.data, Layout.offset_of(i, out, sa)) == Storage.at(b.data, Layout.offset_of(i, out, sb)) else 0.0)))
+    return _binary(a, b, 6)
 
 
 def not_equal(a, b):
     """np.not_equal as 0.0/1.0 floats, broadcast."""
-    out = Layout.broadcast_two(a.shape, b.shape)
-    sa = Layout.broadcast_strides(a.shape, out)
-    sb = Layout.broadcast_strides(b.shape, out)
-    return NDArray(shape=out, data=perform(Storage.Buffer.build(Layout.flat_size(out), lambda i: 0.0 if Storage.at(a.data, Layout.offset_of(i, out, sa)) == Storage.at(b.data, Layout.offset_of(i, out, sb)) else 1.0)))
+    return _binary(a, b, 7)
 
 
 def less(a, b):
     """np.less as 0.0/1.0 floats, broadcast."""
-    out = Layout.broadcast_two(a.shape, b.shape)
-    sa = Layout.broadcast_strides(a.shape, out)
-    sb = Layout.broadcast_strides(b.shape, out)
-    return NDArray(shape=out, data=perform(Storage.Buffer.build(Layout.flat_size(out), lambda i: 1.0 if Storage.at(a.data, Layout.offset_of(i, out, sa)) < Storage.at(b.data, Layout.offset_of(i, out, sb)) else 0.0)))
+    return _binary(a, b, 8)
 
 
 def less_equal(a, b):
     """np.less_equal as 0.0/1.0 floats, broadcast."""
-    out = Layout.broadcast_two(a.shape, b.shape)
-    sa = Layout.broadcast_strides(a.shape, out)
-    sb = Layout.broadcast_strides(b.shape, out)
-    return NDArray(shape=out, data=perform(Storage.Buffer.build(Layout.flat_size(out), lambda i: 1.0 if Storage.at(a.data, Layout.offset_of(i, out, sa)) <= Storage.at(b.data, Layout.offset_of(i, out, sb)) else 0.0)))
+    return _binary(a, b, 9)
 
 
 def greater(a, b):
     """np.greater as 0.0/1.0 floats, broadcast."""
-    out = Layout.broadcast_two(a.shape, b.shape)
-    sa = Layout.broadcast_strides(a.shape, out)
-    sb = Layout.broadcast_strides(b.shape, out)
-    return NDArray(shape=out, data=perform(Storage.Buffer.build(Layout.flat_size(out), lambda i: 1.0 if Storage.at(a.data, Layout.offset_of(i, out, sa)) > Storage.at(b.data, Layout.offset_of(i, out, sb)) else 0.0)))
+    return _binary(a, b, 10)
 
 
 def greater_equal(a, b):
     """np.greater_equal as 0.0/1.0 floats, broadcast."""
-    out = Layout.broadcast_two(a.shape, b.shape)
-    sa = Layout.broadcast_strides(a.shape, out)
-    sb = Layout.broadcast_strides(b.shape, out)
-    return NDArray(shape=out, data=perform(Storage.Buffer.build(Layout.flat_size(out), lambda i: 1.0 if Storage.at(a.data, Layout.offset_of(i, out, sa)) >= Storage.at(b.data, Layout.offset_of(i, out, sb)) else 0.0)))
+    return _binary(a, b, 11)
 
 
 def clip(a, lo, hi):
