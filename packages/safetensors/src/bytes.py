@@ -72,55 +72,41 @@ def pow2(e):
         return fold(range(0 - e), 1.0, lambda acc, i: acc / 2.0)
 
 
+def float_from_fields(sign, exponent, fraction, exponent_limit, fraction_base, shift):
+    """Decode IEEE fields; `shift` includes the bias and stored fraction width."""
+    polarity = 1.0 if sign == 0 else -1.0
+    if exponent == exponent_limit:
+        return polarity * pow2(1024) if fraction == 0 else pow2(1024) - pow2(1024)
+    elif exponent == 0:
+        return polarity * toFloat(fraction) * pow2(1 - shift)
+    else:
+        return polarity * toFloat(fraction_base + fraction) * pow2(exponent - shift)
+
+
+def narrow_from_bits(bits, sign_bit, fraction_base, exponent_count, shift):
+    """Split a narrow IEEE word and decode the fields without rounding."""
+    return float_from_fields(intDiv(bits, sign_bit), intDiv(bits, fraction_base) % exponent_count, bits % fraction_base, exponent_count - 1, fraction_base, shift)
+
+
 def f16_from_bits(bits):
     """The binary64 the binary16 word `bits` holds, reconstructed exactly."""
-    sign = 1.0 if intDiv(bits, 32768) == 0 else -1.0
-    exp = intDiv(bits, 1024) % 32
-    frac = bits % 1024
-    if exp == 31:
-        return sign * pow2(1024) if frac == 0 else pow2(1024) - pow2(1024)
-    elif exp == 0:
-        return sign * toFloat(frac) * pow2(-24)
-    else:
-        return sign * toFloat(1024 + frac) * pow2(exp - 25)
+    return narrow_from_bits(bits, 32768, 1024, 32, 25)
 
 
 def bf16_from_bits(bits):
     """The binary64 the bfloat16 word `bits` holds, reconstructed exactly."""
-    sign = 1.0 if intDiv(bits, 32768) == 0 else -1.0
-    exp = intDiv(bits, 128) % 256
-    frac = bits % 128
-    if exp == 255:
-        return sign * pow2(1024) if frac == 0 else pow2(1024) - pow2(1024)
-    elif exp == 0:
-        return sign * toFloat(frac) * pow2(-133)
-    else:
-        return sign * toFloat(128 + frac) * pow2(exp - 134)
+    return narrow_from_bits(bits, 32768, 128, 256, 134)
 
 
 def f32_from_bits(bits):
     """The binary64 the binary32 word `bits` holds, reconstructed exactly."""
-    sign = 1.0 if intDiv(bits, 2147483648) == 0 else -1.0
-    exp = intDiv(bits, 8388608) % 256
-    frac = bits % 8388608
-    if exp == 255:
-        return sign * pow2(1024) if frac == 0 else pow2(1024) - pow2(1024)
-    elif exp == 0:
-        return sign * toFloat(frac) * pow2(-149)
-    else:
-        return sign * toFloat(8388608 + frac) * pow2(exp - 150)
+    return narrow_from_bits(bits, 2147483648, 8388608, 256, 150)
 
 
 def f64_from_parts(sign, exp, frac):
     """The binary64 with sign bit `sign`, 11-bit exponent `exp` and 52-bit
     fraction `frac`, reconstructed exactly."""
-    s = 1.0 if sign == 0 else -1.0
-    if exp == 2047:
-        return s * pow2(1024) if frac == 0 else pow2(1024) - pow2(1024)
-    elif exp == 0:
-        return s * toFloat(frac) * pow2(-1074)
-    else:
-        return s * toFloat(4503599627370496 + frac) * pow2(exp - 1075)
+    return float_from_fields(sign, exp, frac, 2047, 4503599627370496, 1075)
 
 
 def decode_f16(data, off):
