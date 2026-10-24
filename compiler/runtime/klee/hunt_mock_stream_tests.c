@@ -390,7 +390,26 @@ static void runtime_lines_at_every_bound(void) {
   }
 }
 
+static void runtime_line_preserves_embedded_nul_and_later_reads(void) {
+  static const char bytes[] = {'a', '\0', 'b', '\n', 'c'};
+  hunt_reset();
+  osp_hunt_input_bytes = sizeof(bytes);
+  hunt_queue_bytes(bytes, sizeof(bytes));
+  hunt_queue_range(sizeof(bytes));
+  char *line = osp_input();
+  hunt_check(line != NULL, "embedded NUL line allocates its result");
+  if (line != NULL) {
+    hunt_check(memcmp(line, bytes, 3) == 0 && line[3] == '\0', "embedded NUL does not end the input read");
+    hunt_check(osp_hunt_calls[OSP_HUNT_CALL_READ] == 4, "embedded NUL consumes through the newline");
+    free(line);
+  }
+  char *next = osp_input();
+  hunt_check(next != NULL && strcmp(next, "c") == 0, "later input starts after the newline");
+  free(next);
+}
+
 void hunt_mock_stream_tests(void) {
+  runtime_line_preserves_embedded_nul_and_later_reads();
   runtime_lines_at_every_bound();
   stdin_reads_exactly_its_length_at_every_cap();
   runtime_files_at_every_cap_and_length();

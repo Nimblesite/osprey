@@ -675,6 +675,27 @@ static void test_parse_int_signs(void) {
     printf("  ok  parse_int_signs (boundary + sign + leading zeros + rejection)\n");
 }
 
+static void test_parse_int_long_prefixes(void) {
+    const char *accepted[] = {"0000000000000000000000000000000000000",
+        "+000000000000000000009223372036854775807",
+        "-000000000000000000009223372036854775808"};
+    const int64_t expected[] = {0, INT64_MAX, INT64_MIN};
+    const char *rejected[] = {"000000000000000000009223372036854775808",
+        "-000000000000000000009223372036854775809",
+        "10000000000000000000", "-10000000000000000000",
+        "00000000000000000000x", "123456789012345678x", "-000+1"};
+    int64_t value = 0;
+    for (size_t i = 0; i < sizeof(accepted) / sizeof(*accepted); i++) {
+        assert(osp_parse_int_strict(accepted[i], &value) == 0);
+        assert(value == expected[i]);
+    }
+    for (size_t i = 0; i < sizeof(rejected) / sizeof(*rejected); i++) {
+        value = 71;
+        assert(osp_parse_int_strict(rejected[i], &value) != 0);
+        assert(value == 71);
+    }
+}
+
 /* ---------- O(1) byte / codepoint cursor (BUILTIN-STRING-CURSOR) ---------- */
 
 static void test_cursor_byte_length(void) {
@@ -1045,6 +1066,7 @@ int main(void) {
     test_split_pathological();
     test_pad_overflow_guards();
     test_parse_int_signs();
+    test_parse_int_long_prefixes();
     test_cursor_byte_length();
     test_cursor_byte_at();
     test_cursor_codepoint_at();

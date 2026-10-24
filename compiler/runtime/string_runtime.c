@@ -239,47 +239,32 @@ char *osp_string_pad_end(const char *s, int64_t target_length, const char *fill)
 
 /* ---------- parsing ---------- */
 
-/* Returns 0 on success, 1 on failure. Strict: no whitespace, optional sign.
- *
- * Accumulate in uint64_t so we never trigger signed overflow under
- * -ftrapv (the runtime is compiled with it). INT64_MIN's magnitude is
- * 9223372036854775808 — one past INT64_MAX — and computing it as a
- * signed `acc * 10 + 8` would trap before we get a chance to negate.
- */
+/* [BUILTIN-STRING-PARSING] Check the decimal cutoff before multiplying.
+ * Unsigned accumulation also represents the magnitude of INT64_MIN. */
+static int osp_int_magnitude(const char *digits, int negative, uint64_t *out) {
+    const uint64_t cutoff = 922337203685477580ULL;
+    const unsigned last_digit = negative ? 8 : 7;
+    uint64_t magnitude = 0;
+    if (!*digits) return 1;
+    for (const char *p = digits; *p; p++) {
+        const unsigned digit = (unsigned char)*p - (unsigned)'0';
+        if (digit > 9 || magnitude > cutoff ||
+            (magnitude == cutoff && digit > last_digit)) return 1;
+        magnitude = magnitude * 10 + digit;
+    }
+    *out = magnitude;
+    return 0;
+}
+
 int64_t osp_parse_int_strict(const char *s, int64_t *out) {
-    if (!s || s[0] == '\0' || !out) return 1;
-    const char *p = s;
-    int neg = 0;
-    if (*p == '-' || *p == '+') {
-        neg = (*p == '-');
-        p++;
-        if (*p == '\0') return 1;
-    }
-    /* limit = magnitude of representable value:
-     *   negative: 9223372036854775808 (INT64_MAX + 1)
-     *   positive: 9223372036854775807 (INT64_MAX) */
-    const uint64_t limit = neg ? 9223372036854775808ULL : 9223372036854775807ULL;
-    uint64_t acc = 0;
-    while (*p) {
-        if (*p < '0' || *p > '9') return 1;
-        unsigned d = (unsigned)(*p - '0');
-        /* overflow guard: acc*10 + d > limit ? */
-        if (acc > limit / 10) return 1;
-        acc *= 10;
-        if (acc > limit - d) return 1;
-        acc += d;
-        p++;
-    }
-    if (neg) {
-        if (acc == 9223372036854775808ULL) {
-            /* INT64_MIN: avoid -(int64_t)acc which overflows for INT64_MAX+1 */
-            *out = (-9223372036854775807LL) - 1;
-        } else {
-            *out = -(int64_t)acc;
-        }
-    } else {
-        *out = (int64_t)acc;
-    }
+    if (!s || !*s || !out) return 1;
+    const char *digits = s + (*s == '-' || *s == '+');
+    uint64_t magnitude = 0;
+    const int negative = *s == '-';
+    if (osp_int_magnitude(digits, negative, &magnitude)) return 1;
+    const int64_t minimum = (-9223372036854775807LL) - 1;
+    *out = negative ? (magnitude == 9223372036854775808ULL
+        ? minimum : -(int64_t)magnitude) : (int64_t)magnitude;
     return 0;
 }
 

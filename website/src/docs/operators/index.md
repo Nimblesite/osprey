@@ -20,7 +20,7 @@ Multiplies two numbers.
 
 ## [+](plus/) - Addition
 
-Adds two numbers together.
+Adds numbers, concatenates strings or lists, and merges maps.
 
 ## [-](minus/) - Subtraction
 
