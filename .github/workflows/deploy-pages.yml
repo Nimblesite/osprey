@@ -52,6 +52,11 @@ jobs:
           # before Node 24 — see the comment on the ci.yml wasm job.
           node-version: "24"
 
+      # lsp-profiler's build script generates its wire model with typeDiagram,
+      # so `make wasm-site` cannot compile the workspace without it on PATH.
+      - name: Install typeDiagram
+        uses: ./.github/actions/typediagram
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
