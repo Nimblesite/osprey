@@ -116,7 +116,6 @@ void hunt_reset(void) {
 }
 
 // The runtime units that must reach the doubles.
-char *osp_input(void);
 
 // ---- captured output -------------------------------------------------------
 

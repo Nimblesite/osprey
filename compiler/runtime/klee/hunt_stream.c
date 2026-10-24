@@ -86,6 +86,46 @@ static void materialise(struct osp_hunt_file *stream) {
   stream->len = stream->data == NULL ? 0 : klee_range(0, (int)cap + 1, name);
 }
 
+// Keep the first newline as a symbolic expression rather than splitting an
+// execution state at every byte. The bytes and EOF length are unchanged.
+static long first_line_end(const struct osp_hunt_file *stream, long cap) {
+  long end = stream->len;
+  for (long i = cap; i > 0; i--) {
+    long index = i - 1;
+    int newline = (index < stream->len) & (stream->data[index] == '\n');
+    end = newline ? index : end;
+  }
+  return end;
+}
+
+static char *initial_line(struct osp_hunt_file *stream, long cap) {
+  char *out = malloc((size_t)cap + 1);
+  if (out == NULL) {
+    return NULL;
+  }
+  long end = first_line_end(stream, cap);
+  for (long i = 0; i < cap; i++) {
+    out[i] = (char)(i < end ? stream->data[i] : 0);
+  }
+  out[cap] = '\0';
+  stream->pos = end + (end < stream->len);
+  stream->eof = (unsigned char)(end == stream->len);
+  osp_hunt_calls[OSP_HUNT_CALL_READ] += (unsigned)end + 1;
+  (void)fflush(osp_hunt_stdout);
+  return out;
+}
+
+// Later or interleaved reads keep the ordinary byte-stream implementation.
+int osp_hunt_initial_input(char **out) {
+  struct osp_hunt_file *stream = osp_hunt_stdin;
+  if (stream->pos != 0 || !stream->readable) {
+    return 0;
+  }
+  materialise(stream);
+  *out = initial_line(stream, stream_cap());
+  return 1;
+}
+
 // Copy up to `want` bytes from the cursor; a short copy marks end of stream.
 static long take(struct osp_hunt_file *stream, unsigned char *out, long want) {
   if (!stream->readable) {

@@ -27,6 +27,8 @@ const char *hunt_last_symbolic(void);
 
 // ---- the doubles under test, through their libc names ----------------------
 
+char *osp_input(void);
+
 typedef struct osp_hunt_file FILE_;
 FILE_ *fopen(const char *path, const char *mode);
 int fclose(FILE_ *stream);

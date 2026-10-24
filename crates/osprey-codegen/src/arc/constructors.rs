@@ -67,19 +67,29 @@ mod tests {
         assert_eq!(frame_mark(&cg), 0);
     }
 
-    #[test]
-    fn matching_cannot_move_a_temporary_only_on_the_success_path() {
+    fn temporary_constructor_module() -> crate::error::Result<String> {
         let source = "type Box<T> = { items: List<T> }\n\
             fn choose(items, ok) = if ok { Box { items: items } } else { Box { items: [] } }\n\
             let answer = choose(listAppend([], 1), false)\n";
         let parsed = osprey_syntax::parse_program(source);
         assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-        let ir = crate::compile_program(&parsed.program).expect("valid constructor match");
-        let allocation = ir
-            .lines()
-            .find(|line| line.contains(" = call i8* @osprey_list_append_of"));
+        crate::compile_program(&parsed.program)
+    }
+
+    fn appended_operand(ir: &str) -> Option<&str> {
+        ir.lines()
+            .find(|line| line.contains(" = call i8* @osprey_list_append_of"))
+            .and_then(|line| line.split_whitespace().next())
+    }
+
+    #[test]
+    fn matching_cannot_move_a_temporary_only_on_the_success_path() {
+        let emitted = temporary_constructor_module();
+        assert!(emitted.is_ok(), "{emitted:?}");
+        let Ok(ir) = emitted else { return };
+        let allocation = appended_operand(&ir);
         assert!(allocation.is_some(), "missing temporary list: {ir}");
-        let Some(operand) = allocation.and_then(|line| line.split_whitespace().next()) else {
+        let Some(operand) = allocation else {
             return;
         };
         assert!(
