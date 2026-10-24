@@ -381,9 +381,12 @@ termination at every write boundary leaves either the old graph or the new one.
       yanked-but-current, target, granted capabilities, with exclusion reasons)
       and `clauses.osp` (root edges, candidate Runtime/Build edges, per-key
       at-most-one, key-level acyclicity, and support clauses so no package
-      outside the closure is selected), each clause tagged with its origin.
-      Lives beside the engine in `registry/resolver/` rather than `core/` for
-      the type-check-cost reason recorded in the README.
+      outside the closure is selected). The clauses carry no origin tags yet
+      (see the explanation item below). Lives beside the engine in
+      `registry/resolver/` rather than `core/` for the type-check-cost reason
+      recorded in the README. Key and identity equality, ordering and the
+      blank fallbacks are the single `Names`/`Identity` definitions; the
+      first draft duplicated them in four modules.
 - [ ] Feed ambient capability surfaces and the root's per-dependency grants
       into the capability clauses, so an ungranted `io/network` release is not
       a candidate and `resolution.capability` names the key and capability;
@@ -412,8 +415,11 @@ termination at every write boundary leaves either the old graph or the new one.
       and the fixture decoder read the wrong JSON level); both fixed.
 - [ ] Derive minimal conflict cores and human explanations from learned
       incompatibilities; never synthesize explanations after the fact. Today
-      `Resolve` derives the explanation from reachability and exclusion
-      reasons (fixture-exact); the clause origins are tagged but not yet read.
+      `registry/resolver/src/explain.osp` derives the explanation from
+      reachability and exclusion reasons in the spec's cause order
+      (fixture-exact); the resolver and the test oracle share that one
+      module. The SAT core already returns assumption cores; the clauses
+      carry no origin tags yet, so no core is read.
 - [ ] Evaluate every time-dependent objective at the signed catalog `asOf`, not
       the host clock, and include it in deterministic inputs.
 - [ ] Property-test soundness, bounded completeness, determinism, safe
