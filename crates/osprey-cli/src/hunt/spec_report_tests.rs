@@ -327,6 +327,10 @@ fn html_never_confuses_finished_unfinished_and_reproduced_results() {
     let mut scan = Scan::default();
     assert!(html_for_scan(&scan, 0).contains("No bugs found in an unfinished analysis"));
     assert!(html_for_scan(&scan, 1).contains("No bugs found in the explored paths"));
+    let options = options::parse(&options::args(&["p.osp"])).expect("options");
+    let partial = Report { program: "p.osp", options: &options,
+        exploration: &Exploration { paths: 3, completed: 1, ..Exploration::default() }, scan: &scan, context: None };
+    assert!(super::report_html::render(&partial, "{}").contains("No bugs found in an unfinished analysis"));
     scan.incomplete.push(Incomplete {
         test: "cut".into(),
         reason: "time".into(),

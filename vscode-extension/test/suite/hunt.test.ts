@@ -61,11 +61,11 @@ suite("hunt report", () => {
   test("summarises findings, replay and exploration in one line", () => {
     assert.strictEqual(
       huntSummary(report()),
-      "Hunt: 2 findings (1 reproduced natively), 12 paths (10 complete) explored by KLEE.",
+      "Hunt: 2 findings (1 reproduced natively), 12 paths explored, 10 normal exits.",
     );
     assert.strictEqual(
       huntSummary(report({ findings: [] })),
-      "Hunt found no bugs: 12 paths (10 complete) explored by KLEE.",
+      "Hunt reported no findings; analysis unfinished (12 paths explored, 10 normal exits).",
     );
   });
 
@@ -79,6 +79,14 @@ suite("hunt report", () => {
       assert.ok(huntSummary(body).includes("unfinished"), huntSummary(body));
       assert.ok(!huntSummary(body).includes("found no bugs"), huntSummary(body));
     }
+  });
+
+  test("a fully completed empty report makes only a bounded no-findings claim", () => {
+    const explored = { paths: 1, completed: 1, instructions: 42, elapsed: "00:00:01" };
+    assert.strictEqual(huntSummary(report({ findings: [], explored })),
+      "Hunt reported no findings: 1 paths explored, 1 normal exits.");
+    const extra = { ...report(), context: { engineArguments: ["--max-time=8s"] } };
+    assert.strictEqual(parseHuntReport(JSON.stringify(extra))?.engine, "KLEE");
   });
 
   test("a reproduced finding is an error, klee-only a warning, unmodelled information", () => {
@@ -186,10 +194,10 @@ suite("hunt report permutations", () => {
   test("the summary counts findings and reproductions in every mix", () => {
     const at = (replay: string) => ({ ...base, replay });
     const cases: [HuntReport["findings"], string][] = [
-      [[at("klee-only")], "Hunt: 1 finding (0 reproduced natively), 12 paths (10 complete) explored by KLEE."],
-      [[at("reproduced")], "Hunt: 1 finding (1 reproduced natively), 12 paths (10 complete) explored by KLEE."],
-      [[at("reproduced"), at("reproduced"), at("skipped")], "Hunt: 3 findings (2 reproduced natively), 12 paths (10 complete) explored by KLEE."],
-      [[at("not-run"), at("not-run")], "Hunt: 2 findings (0 reproduced natively), 12 paths (10 complete) explored by KLEE."],
+      [[at("klee-only")], "Hunt: 1 finding (0 reproduced natively), 12 paths explored, 10 normal exits."],
+      [[at("reproduced")], "Hunt: 1 finding (1 reproduced natively), 12 paths explored, 10 normal exits."],
+      [[at("reproduced"), at("reproduced"), at("skipped")], "Hunt: 3 findings (2 reproduced natively), 12 paths explored, 10 normal exits."],
+      [[at("not-run"), at("not-run")], "Hunt: 2 findings (0 reproduced natively), 12 paths explored, 10 normal exits."],
     ];
     for (const [findings, summary] of cases) {
       assert.strictEqual(huntSummary(report({ findings })), summary);
@@ -197,7 +205,7 @@ suite("hunt report permutations", () => {
     const incomplete = [{ test: "t", reason: "Execution halting." }];
     assert.strictEqual(
       huntSummary(report({ findings: [], incomplete })),
-      "Hunt found no bugs: 12 paths (10 complete) explored by KLEE.",
+      "Hunt reported no findings; analysis unfinished (12 paths explored, 10 normal exits).",
       "incomplete paths are not findings",
     );
   });

@@ -129,7 +129,7 @@ def texts_ok(fr, enc, start, n, name):
 
 def rows_ok(fr, enc, start, n):
     """Assertions for a many-group findall result."""
-    return toList(map(range(n), lambda i: row_ok(fr, enc, start, i)))
+    return fold(range(n), [], lambda acc, i: listConcat(acc, row_ok(fr, enc, start, i)))
 
 
 def row_ok(fr, enc, start, i):
@@ -157,7 +157,7 @@ def finditer_case(case):
 
 def iter_ok(matches, enc, n):
     """Assertions for each finditer Match's span and groups."""
-    return toList(map(range(n), lambda i: iter_match(matches, enc, i)))
+    return fold(range(n), [], lambda acc, i: listConcat(acc, iter_match(matches, enc, i)))
 
 
 def iter_match(matches, enc, i):

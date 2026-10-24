@@ -18,9 +18,9 @@ class InventoryTests(unittest.TestCase):
     def test_projects_are_one_program_and_libraries_and_rejections_are_not_apps(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            files = {'examples/app/osprey.toml': '[project]\nentry="main.py"',
+            files = {'examples/app/osprey.toml': '[project]\nentry="main.py"\nsource_roots=[".","../shared"]',
                      'examples/app/main.py': '# osprey: flavor=python\nprint(1)',
-                     'examples/app/helper.osp': 'print(2)', 'examples/library/osprey.toml': '[project]',
+                     'examples/app/helper.osp': 'print(2)', 'examples/shared/lib.osp': 'fn id(x) = x', 'examples/library/osprey.toml': '[project]',
                      'examples/library/lib.osp': 'fn id(x) = x', 'examples/one.osp': 'print(1)',
                      'examples/one.ospml': 'print 1', 'examples/py.py': '# osprey: flavor=python\nprint(1)',
                      'examples/tool.py': 'print(3)', 'examples/failscompilation/bad.osp': 'bad'}

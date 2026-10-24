@@ -744,14 +744,15 @@ def var(a, ddof):
     """np.var over all elements with `ddof` degrees of freedom."""
     n = Layout.flat_size(a.shape)
     m = mean(a)
-    return sum(square(subtract(a, scalar(m)))) / toFloat(n - ddof)
+    return Math.variance(sum(square(subtract(a, scalar(m)))), n, ddof)
 
 
 def var_axis(a, axis, keepdims, ddof):
     """np.var along `axis` with `ddof` degrees of freedom."""
     m = mean_axis(a, axis, True)
     s = reduce_axis(square(subtract(a, m)), axis, keepdims, 0.0, SUM_OP)
-    return scale(s, 1.0 / toFloat(axis_size(a, axis) - ddof))
+    n = axis_size(a, axis)
+    return NDArray(shape=s.shape, data=perform(Storage.Buffer.build(Layout.flat_size(s.shape), lambda i: Math.variance(Storage.at(s.data, i), n, ddof))))
 
 
 def std(a, ddof):

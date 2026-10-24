@@ -15,7 +15,11 @@ them; this port works around the gap). Implements [BUILTIN-MATH],
 __all__ = [
     "exp_of", "sqrt_of", "tanh_of", "ln_of", "pow10", "trunc_int", "ceil_int",
     "floor_int",
+    "variance",
 ]
+
+NAN_WORD = 9221120237041090560
+INFINITY_WORD = 9218868437227405312
 
 
 def exp_of(x):
@@ -72,3 +76,11 @@ def floor_int(x):
     """Largest integer <= x, via truncation (no floor builtin yet)."""
     t = trunc_int(x)
     return t - (1 if x < toFloat(t) else 0)
+
+
+def variance(total, count, ddof):
+    """NumPy clamps nonpositive variance degrees of freedom to zero."""
+    if count <= ddof:
+        return floatFromBits(NAN_WORD) if total == 0.0 or total != total else floatFromBits(INFINITY_WORD)
+    else:
+        return total / toFloat(count - ddof)
