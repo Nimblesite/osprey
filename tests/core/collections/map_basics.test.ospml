@@ -201,7 +201,7 @@ viewsAndCrossCollectionCase () =
         mapLength mm2 == 4,
         listLength xs == 3,
         mapLength g3 == 3,
-        listLength (mapKeys g3 + xs) == 6
+            listLength (mapValues g3 + xs) == 6
     ]
 
     // Check view contents without assuming iteration order.

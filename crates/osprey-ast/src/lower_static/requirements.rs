@@ -9,27 +9,15 @@ pub(super) fn all_requirements(
     program: &Program,
     bindings: &BTreeMap<String, Expr>,
 ) -> BTreeMap<String, Vec<String>> {
-    let mut required = crate::stage_rows::requirements(program, Stage::Static);
-    for (name, operations) in crate::stage_rows::requirements(program, Stage::Dynamic) {
+    let mut required =
+        crate::stage_rows::requirements_with_bindings(program, Stage::Static, bindings);
+    for (name, operations) in
+        crate::stage_rows::requirements_with_bindings(program, Stage::Dynamic, bindings)
+    {
         let combined = required.entry(name).or_default();
         combined.extend(operations);
         combined.sort();
         combined.dedup();
-    }
-    factory_requirements(required, bindings)
-}
-
-fn factory_requirements(
-    mut required: BTreeMap<String, Vec<String>>,
-    bindings: &BTreeMap<String, Expr>,
-) -> BTreeMap<String, Vec<String>> {
-    for (name, value) in bindings {
-        if let Expr::Call { function, .. } = value {
-            if let Expr::Identifier(factory) = function.as_ref() {
-                let operations = required.get(factory).cloned().unwrap_or_default();
-                let _ = required.insert(name.clone(), operations);
-            }
-        }
     }
     required
 }

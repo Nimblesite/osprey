@@ -85,3 +85,19 @@ fn returned_tensor_computations_resolve_under_each_storage_handler() {
     let errors = crate::check_program(&lowered);
     assert!(errors.is_empty(), "residual diagnostics: {errors:#?}");
 }
+
+#[test]
+fn a_named_callback_keeps_the_requirements_of_its_factory_result() {
+    let source = STORAGE_BACKENDS
+        .replace(
+            "apply(backend, fn() => values(compute()))",
+            "let work = fn() => checked(compute)\napply(backend, work)",
+        )
+        .replace("fn() => arr([1.0])", "fn() => values(arr([1.0]))")
+        .replace("fn() => arr([2.0])", "fn() => values(arr([2.0]))")
+        .replace(
+            "fn run(backend, i)",
+            "fn checked(work) = work()\nfn run(backend, i)",
+        );
+    assert_accepted(&source);
+}

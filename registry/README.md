@@ -68,7 +68,7 @@ Source-digest fixtures contain independently computed goldens. The resolver is c
 
 [core/src/capabilities.osp](core/src/capabilities.osp) supplies `doctor`'s inventory. File text I/O, HTTP, process execution, stdin, lists/maps and byte-level string access are available. Remaining host gaps include argv, exit status, environment access, binary-safe file reads, directory/stat/atomic-rename/fsync builtins and a UTC clock. File-tree handlers currently shell out; rollback after a reported failure is not crash-safe activation.
 
-Bitwise builtins (`bitAnd`, `bitXor`, shifts and related operations) exist. The inventory regression checks that these are absent from the blocked list. [core/src/sha256.osp](core/src/sha256.osp) still uses arithmetic/nibble lookup tables; that implementation choice no longer proves the language lacks bitwise operations.
+Bitwise builtins (`bitAnd`, `bitXor`, shifts and related operations) exist. The [inventory regression](tests/src/conformance_tests.osp) checks that these are absent from the blocked list. [core/src/sha256.osp](core/src/sha256.osp) still uses arithmetic/nibble lookup tables; that implementation choice no longer proves the language lacks bitwise operations.
 
 Verified language boundaries relevant to these suites:
 

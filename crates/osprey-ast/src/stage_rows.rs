@@ -87,7 +87,17 @@ fn any_expression(body: &Expr, predicate: impl Fn(&Expr) -> bool) -> bool {
 /// ([STAGE-SIGNALS-DIRTY]), [`Stage::Dynamic`] is the residual runtime row a
 /// `kernel` boundary must find empty ([STAGE-GPU-LEGAL]).
 pub(crate) fn requirements(program: &Program, stage: Stage) -> BTreeMap<String, Vec<String>> {
-    let mut required = collect_requirements(program, stage, false);
+    requirements_with_bindings(program, stage, &BTreeMap::new())
+}
+
+/// Proven callable factories participate in the same transitive fixed point
+/// as functions and lexical closures, including wrappers passing them onward.
+pub(crate) fn requirements_with_bindings(
+    program: &Program,
+    stage: Stage,
+    bindings: &BTreeMap<String, Expr>,
+) -> BTreeMap<String, Vec<String>> {
+    let mut required = collect_requirements(program, stage, false, bindings);
     if stage == Stage::Dynamic {
         attach_unknown(program, &mut required);
     }
@@ -97,13 +107,14 @@ pub(crate) fn requirements(program: &Program, stage: Stage) -> BTreeMap<String, 
 /// Runtime dispatch remains runtime work even when a helper handles it locally.
 /// Static arm validation must inspect it separately from unhandled obligations.
 pub(crate) fn dispatch_requirements(program: &Program) -> BTreeMap<String, Vec<String>> {
-    collect_requirements(program, Stage::Dynamic, true)
+    collect_requirements(program, Stage::Dynamic, true, &BTreeMap::new())
 }
 
 fn collect_requirements(
     program: &Program,
     stage: Stage,
     dispatch: bool,
+    bindings: &BTreeMap<String, Expr>,
 ) -> BTreeMap<String, Vec<String>> {
     let (effects, callables) = (effect_declarations(program), Callables::of(program));
     let scan = Scan {
@@ -112,7 +123,13 @@ fn collect_requirements(
         stage,
         dispatch,
     };
-    let facts: BTreeMap<String, BodyFacts> = function_bodies(program)
+    let mut bodies = function_bodies(program);
+    bodies.extend(
+        bindings
+            .iter()
+            .map(|(name, body)| (name.clone(), body.clone())),
+    );
+    let facts: BTreeMap<String, BodyFacts> = bodies
         .iter()
         .map(|(name, body)| (name.clone(), body_facts(body, &scan)))
         .collect();

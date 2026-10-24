@@ -7,6 +7,7 @@ overlap, truncated real vocabularies, the educational codec and bpe_encode."""
 from testing import Check
 from tiktoken import Bpe, Core, Educational, Pattern, Unicode
 from tiktoken_expected import Expected
+from tiktoken_tests import Contracts
 
 ALL_SPECIALS = ["<|endoftext|>", "<|fim_prefix|>", "<|fim_middle|>"]
 
@@ -432,7 +433,7 @@ def suite():
         decode_cases(enc), single_cases(enc), enc_tail_cases(enc),
         cases(len(Expected.OVERLAP_TEXTS), overlap_case),
         trunc_cases(), simple_cases(),
-        cases(len(Expected.BPE_PIECES), bpe_case),
+        cases(len(Expected.BPE_PIECES), bpe_case), Contracts.cases(),
     ])
 
 def report_suite():
