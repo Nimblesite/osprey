@@ -11,6 +11,7 @@ import * as os from "os";
 import * as path from "path";
 import type { Readable } from "stream";
 import * as vscode from "vscode";
+import { coverageFiles } from "./coverage-files";
 import {
   failureMarkdown,
   testDescription,
@@ -649,9 +650,9 @@ async function reportCoverage(
   if (report === undefined) {
     return;
   }
-  for (const hits of report.values()) {
-    // `osprey test <file>` reports exactly the one suite it ran.
-    sink.addLineCoverage(uri, hits);
+  const ran = uri.fsPath;
+  for (const [file, hits] of coverageFiles(ran, path.dirname(ran), report)) {
+    sink.addLineCoverage(file === ran ? uri : vscode.Uri.file(file), hits);
   }
 }
 

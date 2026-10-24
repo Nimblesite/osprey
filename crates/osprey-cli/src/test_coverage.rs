@@ -12,8 +12,8 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-/// One suite's parsed coverage dump: flattened line → hit count
-/// [TESTING-COVERAGE-DUMP].
+/// One suite's parsed coverage dump, or one source file's share of it: line
+/// → hit count [TESTING-COVERAGE-DUMP].
 pub(crate) type LineHits = BTreeMap<u32, u64>;
 
 /// Where one suite's coverage dump lands (the scratch dir the compiled
@@ -25,7 +25,8 @@ pub(crate) fn coverage_dump_path(file: &Path) -> PathBuf {
     ))
 }
 
-/// Parse one suite's dump into the merged report and print its line rate.
+/// Parse one suite's dump into the merged report and print the line rate of
+/// each source file it measured.
 /// `false` when the suite produced no usable evidence — a missing, unreadable,
 /// malformed or EMPTY dump. Coverage that cannot be evidenced must fail the
 /// command rather than print to stderr and let the aggregate row stand in for
@@ -49,16 +50,48 @@ pub(crate) fn collect_suite_coverage(
         return false;
     }
     let _ = std::fs::remove_file(dump);
-    let (covered, total) = line_rate(&hits);
-    if !quiet {
-        println!(
-            "# coverage: {} ({covered}/{total} lines) {}",
-            percent(covered, total),
-            file.display()
-        );
+    for (source, hits) in attribute_lines(file, hits) {
+        if !quiet {
+            let (covered, total) = line_rate(&hits);
+            println!(
+                "# coverage: {} ({covered}/{total} lines) {source}",
+                percent(covered, total)
+            );
+        }
+        merge_hits(report.entry(source).or_default(), hits);
     }
-    let _ = report.insert(file.display().to_string(), hits);
     true
+}
+
+/// Two suites that measured the same file add their hits line by line.
+fn merge_hits(merged: &mut LineHits, hits: LineHits) {
+    for (line, count) in hits {
+        let slot = merged.entry(line).or_default();
+        *slot = slot.saturating_add(count);
+    }
+}
+
+/// Each source file's rows of one suite's dump. A project suite's dump is in
+/// the flattened program's line space, so every row goes back to the physical
+/// source that wrote it, at that file's own line ([TESTING-PROJECT-SUITE]). A
+/// file suite, and any row no source claims, stays under the suite's path.
+fn attribute_lines(suite: &Path, hits: LineHits) -> BTreeMap<String, LineHits> {
+    let project = suite
+        .is_dir()
+        .then(|| osprey_project::load_and_assemble(suite).ok())
+        .flatten();
+    let mut files = BTreeMap::<String, LineHits>::new();
+    for (line, count) in hits {
+        let (source, local) = project
+            .as_ref()
+            .and_then(|project| project.source_at_line(line))
+            .map_or_else(
+                || (suite.display().to_string(), line),
+                |(source, local)| (source.path.display().to_string(), local),
+            );
+        let _ = files.entry(source).or_default().insert(local, count);
+    }
+    files
 }
 
 /// The `[TESTING-COVERAGE-DUMP]` header and completion footer prefix. The

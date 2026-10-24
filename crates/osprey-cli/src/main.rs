@@ -32,6 +32,7 @@ mod sandbox;
 mod target_capabilities;
 mod test_cmd;
 mod test_coverage;
+mod test_discovery;
 mod test_skips;
 #[cfg(test)]
 #[path = "../../testkit.rs"]

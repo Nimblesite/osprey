@@ -650,7 +650,12 @@ a generic record the instantiation's layout follows from the declaration
 ([TYPE-GENERICS-DECL](#generics-and-variance)), wherever the value was constructed,
 so two records sharing a field name never make the read ambiguous. Choosing a
 record by field name alone is a fallback for an untracked receiver and fails
-loudly when two records declare the name.
+loudly when two records declare the name. The type checker applies the same
+fallback once inference has settled: a receiver that nothing in the program
+typed, such as the element of an empty list passed to a generic helper that only
+reads its elements' fields, takes the one record that declares the field, so the
+helper's closures get a concrete type. A field that several records declare
+leaves the receiver unresolved.
 
 ```osprey
 let n = person.name        // ok

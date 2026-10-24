@@ -78,6 +78,23 @@ impl InferCtx {
         )
     }
 
+    /// The one record that declares `field`, instantiated at fresh type
+    /// arguments; `None` when no record or several declare it.
+    pub(crate) fn sole_record_declaring(&mut self, field: &str) -> Option<Type> {
+        let mut owners = self
+            .records
+            .iter()
+            .filter(|(_, (_, fields))| fields.iter().any(|(name, _)| name == field));
+        let (name, (params, _)) = owners.next()?;
+        if owners.next().is_some() {
+            return None;
+        }
+        let (name, arity) = (name.clone(), params.len());
+        let args: Vec<Type> = (0..arity).map(|_| self.fresh()).collect();
+        let fields = self.record_fields(&name, &args)?;
+        Some(Type::Record { name, fields })
+    }
+
     /// Declare an opaque alias: a nominal type that only the declarations of
     /// its owning module may read through [MODULES-OPAQUE-TYPES].
     pub(crate) fn set_equation(&mut self, name: String, params: Vec<String>, alias: TypeExpr) {

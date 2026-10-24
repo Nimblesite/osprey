@@ -6,16 +6,26 @@ The corresponding TestingFramework contract is [here](../language/0027-TestingFr
 
 ### `osprey test [path] [--filter <name>] [--quiet] [--coverage] [--coverage-json <path>] [--memory=default|gc|arc]` — `[TESTING-CLI-RUN]`
 
-Runs test files and aggregates results. `path` (default `.`) is either a
-single file (run as-is, regardless of naming) or a directory searched
-recursively for `[TESTING-FILE-CONVENTION]` files in sorted order. Hidden,
-`target`, and `node_modules` directories are skipped; symlinks are not followed.
-Each file runs like `osprey <file> --run`, with its TAP output under a
+Runs test files and aggregates results. `path` (default `.`) is a single file
+(run as-is, regardless of naming), a project directory (see
+`[TESTING-PROJECT-SUITE]`), or a directory searched recursively for
+`[TESTING-FILE-CONVENTION]` files in sorted order. Hidden, `target`, and
+`node_modules` directories are skipped; symlinks are not followed. Each file
+runs like `osprey <file> --run`, with its TAP output under a
 `# file: <path>` header. `--filter` sets `OSPREY_TEST_FILTER` for child
 processes. The runner prints `# suites: X passed, Y failed` and exits `1` if a
 suite fails to compile, fails to run, or skips a case without naming a reason
 (`[TESTING-SKIP-REASON]`), otherwise `0`. An empty discovery set fails with
 `no test files found`.
+
+**`[TESTING-PROJECT-SUITE]`** A `path` that is a directory holding an
+`osprey.toml` is one project suite. It runs like `osprey <dir> --run`: the
+manifest's `entry` and `source_roots` are assembled into one program, so a
+suite's tests can live in one source root and the code they exercise in
+others. The directory is never walked, and its own `*.test.*` files are sources
+of that suite, not suites of their own. Only the `path` given is checked; a
+project directory found while walking another directory is walked like any
+other.
 
 One invocation runs every discovered suite under exactly one memory backend.
 `--memory=gc` selects tracing garbage collection, `--memory=arc` selects
@@ -114,8 +124,10 @@ named `test` keeps hovering as itself.
 
 **`[TESTING-COVERAGE-CLI]`** `osprey test --coverage` builds each suite with
 line-coverage instrumentation, runs it, and prints one
-`# coverage: P% (covered/total lines) <file>` row per suite (suppressed by
-`--quiet`) plus a final `# coverage total: P% (covered/total lines)` row.
+`# coverage: P% (covered/total lines) <file>` row per source file a suite
+measured (suppressed by `--quiet`) plus a final
+`# coverage total: P% (covered/total lines)` row. A file suite measures only
+itself; a project suite measures every source of its program.
 Coverage never changes a suite's OUTCOME — a passing suite passes whatever its
 dump says, and a low percentage is never a failure. Evidence that cannot be
 read is a different thing entirely: when a suite passed but its dump is absent,
@@ -124,8 +136,11 @@ that printed no percentage for a suite and exited green is indistinguishable
 from one that measured it.
 `--coverage-json <path>` (implies `--coverage`) also writes the merged
 machine-readable report **`[TESTING-COVERAGE-JSON]`**:
-`{"files":{"<suite path>":{"lines":{"<line>":hits}}}}` — 1-based source
-lines, every coverable line present (hit count `0` when unexecuted).
+`{"files":{"<source path>":{"lines":{"<line>":hits}}}}` — 1-based lines of
+that file, every coverable line present (hit count `0` when unexecuted). A
+file suite's entry is keyed by the suite path; a project suite has one entry
+per source, keyed by its path under the project directory as given. Two
+suites that measured the same file add their hits.
 
 **`[TESTING-COVERAGE-CODEGEN]`** With coverage on
 (`osprey_codegen::compile_program_coverage`,
@@ -171,8 +186,12 @@ always declares fewer rows than survived it and the count catches it — but a
 file that lost nothing except its final newline agrees with itself in every
 other respect, and only the missing terminator says the writer never finished.
 
-Lines are the compiled suite's own 1-based lines. Each suite compiles standalone
-and coverage measures that file (`[TESTING-CLI-RUN]`).
+Lines are the compiled program's 1-based lines. A file suite compiles
+standalone, so they are that file's own lines (`[TESTING-CLI-RUN]`). A project
+suite's program is its sources flattened into one line space, so the runner
+maps each row back to the source that wrote it, at that file's own line, using
+the same source map that places diagnostics (`[TESTING-PROJECT-SUITE]`). A row
+no source claims stays under the suite's path.
 
 ## VS Code Test Explorer
 
@@ -194,7 +213,9 @@ and coverage measures that file (`[TESTING-CLI-RUN]`).
 **`[TESTING-COVERAGE-VSCODE]`** Its coverage profile runs
 `osprey test <file> --coverage-json <tmp> --quiet`, adding `--filter <name>` for
 a single case. It maps `[TESTING-COVERAGE-JSON]` lines to VS Code
-`FileCoverage` and per-line `StatementCoverage` entries.
+`FileCoverage` and per-line `StatementCoverage` entries. A report's lone entry
+belongs to the file that ran; a report of several files maps each entry to the
+file at its own path, resolved against the directory the compiler ran in.
 
 **`[TESTING-DOC-VSCODE]`** Documentation `[TESTING-DOC]` reaches three
 surfaces, because VS Code's `TestItem` carries no tooltip of its own:

@@ -74,6 +74,7 @@ pub(super) fn inferred_data_contracts(program: &Program, source_validated: bool)
     checker.collect(program, &mut env);
     checker.check(program, &mut env);
     checker.resolve_deferred_arithmetic();
+    checker.default_untracked_receivers();
     checker
 }
 pub(super) fn finish_data_contracts(checker: &mut Checker, program: &Program) {
