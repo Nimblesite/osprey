@@ -1,5 +1,5 @@
 /// Deliberately planted input-triggered crash for Hunt [SYMEX-FINDINGS] [SYMEX-REPLAY].
 extern fn abort() -> int
 let line = input()
-let result = if line == "9" { abort() } else { 0 }
+let result = match line { "9" => abort()  _ => 0 }
 print("result ${result}")

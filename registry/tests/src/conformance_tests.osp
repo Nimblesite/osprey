@@ -1,5 +1,6 @@
 namespace registry_tests;
 import registry::Conformance
+import registry::Capabilities
 import registry_host::Host
 import registry_host::Native
 
@@ -14,6 +15,14 @@ module ConformanceTests {
         length(Conformance::violations(["registry/core/osprey.toml", "registry/tests/fixtures/manifest.json", "registry/README.md", "registry/sample-registry/@demo/pyadd/1.1/uv.lock"])) == 0,
         join(Conformance::violations(["registry/host/shim.c", "registry/cli/launch.sh", "registry/web/app.js", "registry/ops/migrate.py", "registry/core/src/lib.rs", "registry/web/index.html"]), ",") == "registry/host/shim.c,registry/cli/launch.sh,registry/web/app.js,registry/ops/migrate.py,registry/core/src/lib.rs,registry/web/index.html",
         join(Conformance::violations(["registry/tests/golden.ospx", "registry/Makefile", "registry/core/src/notes"]), ",") == "registry/tests/golden.ospx,registry/Makefile,registry/core/src/notes"
+    ])
+
+    /// Delivered word primitives must not be reported as missing. Implements [PACKAGE-CONFORMANCE].
+    fn bitwiseInventory() = checkAll("word builtins agree with the doctor inventory", [
+        bitAnd(12, 10) == 8,
+        bitXor(12, 10) == 6,
+        shiftRightLogical(-16, 2) == 4611686018427387900,
+        !contains(join(mapList(Capabilities::blocked(), fn(cap) => cap.id), ","), "int.bitwise")
     ])
 
     fn listed() = {
@@ -32,6 +41,7 @@ module ConformanceTests {
     }
 
     export fn run() = {
+        test("conformance: available word builtins are not blocked", bitwiseInventory)
         test("conformance: classification", classification)
         test("conformance: checked-in tree", fn() => Native::process()(checkedInTree))
     }

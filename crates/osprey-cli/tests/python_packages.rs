@@ -27,6 +27,19 @@ fn suites() -> Vec<PathBuf> {
     found
 }
 
+/// All existing Torch groups must discharge before the native oracle run.
+#[test]
+fn the_complete_torch_suite_discharges_its_storage_handlers() {
+    let assembled = osprey_project::load_and_assemble(&repo().join("packages/torch/tests"));
+    assert!(assembled.is_ok(), "{assembled:#?}");
+    let Ok(assembled) = assembled else { return };
+    let lowered = osprey_types::lower_static_checked(&assembled.program);
+    assert!(lowered.is_ok(), "source diagnostics: {lowered:#?}");
+    let Ok(lowered) = lowered else { return };
+    let errors = osprey_types::check_program(&lowered);
+    assert!(errors.is_empty(), "residual diagnostics: {errors:#?}");
+}
+
 /// `(succeeded, stdout, stderr)` of the suite run under `memory`.
 fn run(suite: &Path, memory: &str) -> (bool, String, String) {
     let output = Command::new(env!("CARGO_BIN_EXE_osprey"))

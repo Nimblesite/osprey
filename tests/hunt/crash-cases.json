@@ -175,11 +175,11 @@
   },
   {
     "name": "ML flavor",
-    "program": "tests/hunt/crash_ml.ospml",
+    "program": "tests/hunt/crash.ospml",
     "expected": "tests/hunt/crash_ml.expected",
     "cases": [
       {
-        "stdin": "M",
+        "stdin": "9",
         "signals": [
           "SIGABRT"
         ]

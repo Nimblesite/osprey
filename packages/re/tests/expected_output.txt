@@ -1,0 +1,7112 @@
+ok builder.plus.targets
+ok builder.alt.targets
+ok builder.count.targets
+ok unicode.code_points
+ok unicode.text_of
+ok unicode.at
+ok unicode.at_str
+ok unicode.utf8_of
+ok unicode.fold_lower
+ok unicode.fold_upper
+ok unicode.is_digit
+ok unicode.is_word
+ok unicode.is_space
+ok unicode.is_newline
+ok unicode.non_digit
+ok tables.DIGITS
+ok tables.WORDS
+ok tables.SPACES
+ok tables.LOWER
+ok tables.UPPER
+ok program.concat
+ok program.shift
+ok program.append_match
+ok program.ins_class
+ok program.range_piece
+ok program.cat_piece
+ok program.at
+ok program.has
+ok program.add_bit
+ok program.drop_bits
+ok api.flags
+ok program.flags
+ok flags.scan_global_flags
+ok flags.flag_bit
+ok flags.kind
+ok flags.next
+ok flags.add
+ok flags.dele
+ok escapes.fragment
+ok escapes.next
+ok escapes.groups
+ok escapes.lit_frag
+ok escapes.cat_frag
+ok parser.literal
+ok program.groups_len
+ok api.MatchResult
+ok api.SubnResult
+ok api.purge
+ok engine.Hit.pos
+ok engine.Hit.lastindex
+ok engine.Hit.saves
+ok charset.newline
+ok charset.class.next
+ok charset.class.code
+ok charset.parse_hex
+ok charset.single_cp
+ok width.sub_width
+ok match abc / abc.start
+ok match abc / abc.end
+ok match abc / abc.lastindex
+ok search abc / abc.start
+ok search abc / abc.end
+ok search abc / abc.lastindex
+ok fullmatch abc / abc.start
+ok fullmatch abc / abc.end
+ok fullmatch abc / abc.lastindex
+ok match abc / 
+ok search abc / 
+ok fullmatch abc / 
+ok match abc / a
+ok search abc / a
+ok fullmatch abc / a
+ok match abc / aaa
+ok search abc / aaa
+ok fullmatch abc / aaa
+ok match abc / aab
+ok search abc / aab
+ok fullmatch abc / aab
+ok match abc / b
+ok search abc / b
+ok fullmatch abc / b
+ok match abc / ac
+ok search abc / ac
+ok fullmatch abc / ac
+ok match abc / abcabc.start
+ok match abc / abcabc.end
+ok match abc / abcabc.lastindex
+ok search abc / abcabc.start
+ok search abc / abcabc.end
+ok search abc / abcabc.lastindex
+ok fullmatch abc / abcabc
+ok match abc / ab
+cd
+ok search abc / ab
+cd
+ok fullmatch abc / ab
+cd
+ok match abc / a
+b
+c
+ok search abc / a
+b
+c
+ok fullmatch abc / a
+b
+c
+ok match abc / hello world
+ok search abc / hello world
+ok fullmatch abc / hello world
+ok match abc / The quick brown fox
+ok search abc / The quick brown fox
+ok fullmatch abc / The quick brown fox
+ok match abc / éαβ
+ok search abc / éαβ
+ok fullmatch abc / éαβ
+ok match abc / 日本語
+ok search abc / 日本語
+ok fullmatch abc / 日本語
+ok match abc / 😀👍🏽
+ok search abc / 😀👍🏽
+ok fullmatch abc / 😀👍🏽
+ok match abc / éx
+ok search abc / éx
+ok fullmatch abc / éx
+ok match abc / a1b2c3
+ok search abc / a1b2c3
+ok fullmatch abc / a1b2c3
+ok match abc /    	
+
+ok search abc /    	
+
+ok fullmatch abc /    	
+
+ok match abc / word-
+ok search abc / word-
+ok fullmatch abc / word-
+ok match abc / _x9
+ok search abc / _x9
+ok fullmatch abc / _x9
+ok match abc / 12abc34
+ok search abc / 12abc34.start
+ok search abc / 12abc34.end
+ok search abc / 12abc34.lastindex
+ok fullmatch abc / 12abc34
+ok match abc / abc123.start
+ok match abc / abc123.end
+ok match abc / abc123.lastindex
+ok search abc / abc123.start
+ok search abc / abc123.end
+ok search abc / abc123.lastindex
+ok fullmatch abc / abc123
+ok match abc / A1 B2
+ok search abc / A1 B2
+ok fullmatch abc / A1 B2
+ok match  / abc.start
+ok match  / abc.end
+ok match  / abc.lastindex
+ok search  / abc.start
+ok search  / abc.end
+ok search  / abc.lastindex
+ok fullmatch  / abc
+ok match  / .start
+ok match  / .end
+ok match  / .lastindex
+ok search  / .start
+ok search  / .end
+ok search  / .lastindex
+ok fullmatch  / .start
+ok fullmatch  / .end
+ok fullmatch  / .lastindex
+ok match  / a.start
+ok match  / a.end
+ok match  / a.lastindex
+ok search  / a.start
+ok search  / a.end
+ok search  / a.lastindex
+ok fullmatch  / a
+ok match  / aaa.start
+ok match  / aaa.end
+ok match  / aaa.lastindex
+ok search  / aaa.start
+ok search  / aaa.end
+ok search  / aaa.lastindex
+ok fullmatch  / aaa
+ok match  / aab.start
+ok match  / aab.end
+ok match  / aab.lastindex
+ok search  / aab.start
+ok search  / aab.end
+ok search  / aab.lastindex
+ok fullmatch  / aab
+ok match  / b.start
+ok match  / b.end
+ok match  / b.lastindex
+ok search  / b.start
+ok search  / b.end
+ok search  / b.lastindex
+ok fullmatch  / b
+ok match  / ac.start
+ok match  / ac.end
+ok match  / ac.lastindex
+ok search  / ac.start
+ok search  / ac.end
+ok search  / ac.lastindex
+ok fullmatch  / ac
+ok match  / abcabc.start
+ok match  / abcabc.end
+ok match  / abcabc.lastindex
+ok search  / abcabc.start
+ok search  / abcabc.end
+ok search  / abcabc.lastindex
+ok fullmatch  / abcabc
+ok match  / ab
+cd.start
+ok match  / ab
+cd.end
+ok match  / ab
+cd.lastindex
+ok search  / ab
+cd.start
+ok search  / ab
+cd.end
+ok search  / ab
+cd.lastindex
+ok fullmatch  / ab
+cd
+ok match  / a
+b
+c.start
+ok match  / a
+b
+c.end
+ok match  / a
+b
+c.lastindex
+ok search  / a
+b
+c.start
+ok search  / a
+b
+c.end
+ok search  / a
+b
+c.lastindex
+ok fullmatch  / a
+b
+c
+ok match  / hello world.start
+ok match  / hello world.end
+ok match  / hello world.lastindex
+ok search  / hello world.start
+ok search  / hello world.end
+ok search  / hello world.lastindex
+ok fullmatch  / hello world
+ok match  / The quick brown fox.start
+ok match  / The quick brown fox.end
+ok match  / The quick brown fox.lastindex
+ok search  / The quick brown fox.start
+ok search  / The quick brown fox.end
+ok search  / The quick brown fox.lastindex
+ok fullmatch  / The quick brown fox
+ok match  / éαβ.start
+ok match  / éαβ.end
+ok match  / éαβ.lastindex
+ok search  / éαβ.start
+ok search  / éαβ.end
+ok search  / éαβ.lastindex
+ok fullmatch  / éαβ
+ok match  / 日本語.start
+ok match  / 日本語.end
+ok match  / 日本語.lastindex
+ok search  / 日本語.start
+ok search  / 日本語.end
+ok search  / 日本語.lastindex
+ok fullmatch  / 日本語
+ok match  / 😀👍🏽.start
+ok match  / 😀👍🏽.end
+ok match  / 😀👍🏽.lastindex
+ok search  / 😀👍🏽.start
+ok search  / 😀👍🏽.end
+ok search  / 😀👍🏽.lastindex
+ok fullmatch  / 😀👍🏽
+ok match  / éx.start
+ok match  / éx.end
+ok match  / éx.lastindex
+ok search  / éx.start
+ok search  / éx.end
+ok search  / éx.lastindex
+ok fullmatch  / éx
+ok match  / a1b2c3.start
+ok match  / a1b2c3.end
+ok match  / a1b2c3.lastindex
+ok search  / a1b2c3.start
+ok search  / a1b2c3.end
+ok search  / a1b2c3.lastindex
+ok fullmatch  / a1b2c3
+ok match  /    	
+.start
+ok match  /    	
+.end
+ok match  /    	
+.lastindex
+ok search  /    	
+.start
+ok search  /    	
+.end
+ok search  /    	
+.lastindex
+ok fullmatch  /    	
+
+ok match  / word-.start
+ok match  / word-.end
+ok match  / word-.lastindex
+ok search  / word-.start
+ok search  / word-.end
+ok search  / word-.lastindex
+ok fullmatch  / word-
+ok match  / _x9.start
+ok match  / _x9.end
+ok match  / _x9.lastindex
+ok search  / _x9.start
+ok search  / _x9.end
+ok search  / _x9.lastindex
+ok fullmatch  / _x9
+ok match  / 12abc34.start
+ok match  / 12abc34.end
+ok match  / 12abc34.lastindex
+ok search  / 12abc34.start
+ok search  / 12abc34.end
+ok search  / 12abc34.lastindex
+ok fullmatch  / 12abc34
+ok match  / abc123.start
+ok match  / abc123.end
+ok match  / abc123.lastindex
+ok search  / abc123.start
+ok search  / abc123.end
+ok search  / abc123.lastindex
+ok fullmatch  / abc123
+ok match  / A1 B2.start
+ok match  / A1 B2.end
+ok match  / A1 B2.lastindex
+ok search  / A1 B2.start
+ok search  / A1 B2.end
+ok search  / A1 B2.lastindex
+ok fullmatch  / A1 B2
+ok match a / abc.start
+ok match a / abc.end
+ok match a / abc.lastindex
+ok search a / abc.start
+ok search a / abc.end
+ok search a / abc.lastindex
+ok fullmatch a / abc
+ok match a / 
+ok search a / 
+ok fullmatch a / 
+ok match a / a.start
+ok match a / a.end
+ok match a / a.lastindex
+ok search a / a.start
+ok search a / a.end
+ok search a / a.lastindex
+ok fullmatch a / a.start
+ok fullmatch a / a.end
+ok fullmatch a / a.lastindex
+ok match a / aaa.start
+ok match a / aaa.end
+ok match a / aaa.lastindex
+ok search a / aaa.start
+ok search a / aaa.end
+ok search a / aaa.lastindex
+ok fullmatch a / aaa
+ok match a / aab.start
+ok match a / aab.end
+ok match a / aab.lastindex
+ok search a / aab.start
+ok search a / aab.end
+ok search a / aab.lastindex
+ok fullmatch a / aab
+ok match a / b
+ok search a / b
+ok fullmatch a / b
+ok match a / ac.start
+ok match a / ac.end
+ok match a / ac.lastindex
+ok search a / ac.start
+ok search a / ac.end
+ok search a / ac.lastindex
+ok fullmatch a / ac
+ok match a / abcabc.start
+ok match a / abcabc.end
+ok match a / abcabc.lastindex
+ok search a / abcabc.start
+ok search a / abcabc.end
+ok search a / abcabc.lastindex
+ok fullmatch a / abcabc
+ok match a / ab
+cd.start
+ok match a / ab
+cd.end
+ok match a / ab
+cd.lastindex
+ok search a / ab
+cd.start
+ok search a / ab
+cd.end
+ok search a / ab
+cd.lastindex
+ok fullmatch a / ab
+cd
+ok match a / a
+b
+c.start
+ok match a / a
+b
+c.end
+ok match a / a
+b
+c.lastindex
+ok search a / a
+b
+c.start
+ok search a / a
+b
+c.end
+ok search a / a
+b
+c.lastindex
+ok fullmatch a / a
+b
+c
+ok match a / hello world
+ok search a / hello world
+ok fullmatch a / hello world
+ok match a / The quick brown fox
+ok search a / The quick brown fox
+ok fullmatch a / The quick brown fox
+ok match a / éαβ
+ok search a / éαβ
+ok fullmatch a / éαβ
+ok match a / 日本語
+ok search a / 日本語
+ok fullmatch a / 日本語
+ok match a / 😀👍🏽
+ok search a / 😀👍🏽
+ok fullmatch a / 😀👍🏽
+ok match a / éx
+ok search a / éx
+ok fullmatch a / éx
+ok match a / a1b2c3.start
+ok match a / a1b2c3.end
+ok match a / a1b2c3.lastindex
+ok search a / a1b2c3.start
+ok search a / a1b2c3.end
+ok search a / a1b2c3.lastindex
+ok fullmatch a / a1b2c3
+ok match a /    	
+
+ok search a /    	
+
+ok fullmatch a /    	
+
+ok match a / word-
+ok search a / word-
+ok fullmatch a / word-
+ok match a / _x9
+ok search a / _x9
+ok fullmatch a / _x9
+ok match a / 12abc34
+ok search a / 12abc34.start
+ok search a / 12abc34.end
+ok search a / 12abc34.lastindex
+ok fullmatch a / 12abc34
+ok match a / abc123.start
+ok match a / abc123.end
+ok match a / abc123.lastindex
+ok search a / abc123.start
+ok search a / abc123.end
+ok search a / abc123.lastindex
+ok fullmatch a / abc123
+ok match a / A1 B2
+ok search a / A1 B2
+ok fullmatch a / A1 B2
+ok match a|b / abc.start
+ok match a|b / abc.end
+ok match a|b / abc.lastindex
+ok search a|b / abc.start
+ok search a|b / abc.end
+ok search a|b / abc.lastindex
+ok fullmatch a|b / abc
+ok match a|b / 
+ok search a|b / 
+ok fullmatch a|b / 
+ok match a|b / a.start
+ok match a|b / a.end
+ok match a|b / a.lastindex
+ok search a|b / a.start
+ok search a|b / a.end
+ok search a|b / a.lastindex
+ok fullmatch a|b / a.start
+ok fullmatch a|b / a.end
+ok fullmatch a|b / a.lastindex
+ok match a|b / aaa.start
+ok match a|b / aaa.end
+ok match a|b / aaa.lastindex
+ok search a|b / aaa.start
+ok search a|b / aaa.end
+ok search a|b / aaa.lastindex
+ok fullmatch a|b / aaa
+ok match a|b / aab.start
+ok match a|b / aab.end
+ok match a|b / aab.lastindex
+ok search a|b / aab.start
+ok search a|b / aab.end
+ok search a|b / aab.lastindex
+ok fullmatch a|b / aab
+ok match a|b / b.start
+ok match a|b / b.end
+ok match a|b / b.lastindex
+ok search a|b / b.start
+ok search a|b / b.end
+ok search a|b / b.lastindex
+ok fullmatch a|b / b.start
+ok fullmatch a|b / b.end
+ok fullmatch a|b / b.lastindex
+ok match a|b / ac.start
+ok match a|b / ac.end
+ok match a|b / ac.lastindex
+ok search a|b / ac.start
+ok search a|b / ac.end
+ok search a|b / ac.lastindex
+ok fullmatch a|b / ac
+ok match a|b / abcabc.start
+ok match a|b / abcabc.end
+ok match a|b / abcabc.lastindex
+ok search a|b / abcabc.start
+ok search a|b / abcabc.end
+ok search a|b / abcabc.lastindex
+ok fullmatch a|b / abcabc
+ok match a|b / ab
+cd.start
+ok match a|b / ab
+cd.end
+ok match a|b / ab
+cd.lastindex
+ok search a|b / ab
+cd.start
+ok search a|b / ab
+cd.end
+ok search a|b / ab
+cd.lastindex
+ok fullmatch a|b / ab
+cd
+ok match a|b / a
+b
+c.start
+ok match a|b / a
+b
+c.end
+ok match a|b / a
+b
+c.lastindex
+ok search a|b / a
+b
+c.start
+ok search a|b / a
+b
+c.end
+ok search a|b / a
+b
+c.lastindex
+ok fullmatch a|b / a
+b
+c
+ok match a|b / hello world
+ok search a|b / hello world
+ok fullmatch a|b / hello world
+ok match a|b / The quick brown fox
+ok search a|b / The quick brown fox.start
+ok search a|b / The quick brown fox.end
+ok search a|b / The quick brown fox.lastindex
+ok fullmatch a|b / The quick brown fox
+ok match a|b / éαβ
+ok search a|b / éαβ
+ok fullmatch a|b / éαβ
+ok match a|b / 日本語
+ok search a|b / 日本語
+ok fullmatch a|b / 日本語
+ok match a|b / 😀👍🏽
+ok search a|b / 😀👍🏽
+ok fullmatch a|b / 😀👍🏽
+ok match a|b / éx
+ok search a|b / éx
+ok fullmatch a|b / éx
+ok match a|b / a1b2c3.start
+ok match a|b / a1b2c3.end
+ok match a|b / a1b2c3.lastindex
+ok search a|b / a1b2c3.start
+ok search a|b / a1b2c3.end
+ok search a|b / a1b2c3.lastindex
+ok fullmatch a|b / a1b2c3
+ok match a|b /    	
+
+ok search a|b /    	
+
+ok fullmatch a|b /    	
+
+ok match a|b / word-
+ok search a|b / word-
+ok fullmatch a|b / word-
+ok match a|b / _x9
+ok search a|b / _x9
+ok fullmatch a|b / _x9
+ok match a|b / 12abc34
+ok search a|b / 12abc34.start
+ok search a|b / 12abc34.end
+ok search a|b / 12abc34.lastindex
+ok fullmatch a|b / 12abc34
+ok match a|b / abc123.start
+ok match a|b / abc123.end
+ok match a|b / abc123.lastindex
+ok search a|b / abc123.start
+ok search a|b / abc123.end
+ok search a|b / abc123.lastindex
+ok fullmatch a|b / abc123
+ok match a|b / A1 B2
+ok search a|b / A1 B2
+ok fullmatch a|b / A1 B2
+ok match (ab)+ / abc.start
+ok match (ab)+ / abc.end
+ok match (ab)+ / abc.lastindex
+ok match (ab)+ / abc.g1
+ok search (ab)+ / abc.start
+ok search (ab)+ / abc.end
+ok search (ab)+ / abc.lastindex
+ok search (ab)+ / abc.g1
+ok fullmatch (ab)+ / abc
+ok match (ab)+ / 
+ok search (ab)+ / 
+ok fullmatch (ab)+ / 
+ok match (ab)+ / a
+ok search (ab)+ / a
+ok fullmatch (ab)+ / a
+ok match (ab)+ / aaa
+ok search (ab)+ / aaa
+ok fullmatch (ab)+ / aaa
+ok match (ab)+ / aab
+ok search (ab)+ / aab.start
+ok search (ab)+ / aab.end
+ok search (ab)+ / aab.lastindex
+ok search (ab)+ / aab.g1
+ok fullmatch (ab)+ / aab
+ok match (ab)+ / b
+ok search (ab)+ / b
+ok fullmatch (ab)+ / b
+ok match (ab)+ / ac
+ok search (ab)+ / ac
+ok fullmatch (ab)+ / ac
+ok match (ab)+ / abcabc.start
+ok match (ab)+ / abcabc.end
+ok match (ab)+ / abcabc.lastindex
+ok match (ab)+ / abcabc.g1
+ok search (ab)+ / abcabc.start
+ok search (ab)+ / abcabc.end
+ok search (ab)+ / abcabc.lastindex
+ok search (ab)+ / abcabc.g1
+ok fullmatch (ab)+ / abcabc
+ok match (ab)+ / ab
+cd.start
+ok match (ab)+ / ab
+cd.end
+ok match (ab)+ / ab
+cd.lastindex
+ok match (ab)+ / ab
+cd.g1
+ok search (ab)+ / ab
+cd.start
+ok search (ab)+ / ab
+cd.end
+ok search (ab)+ / ab
+cd.lastindex
+ok search (ab)+ / ab
+cd.g1
+ok fullmatch (ab)+ / ab
+cd
+ok match (ab)+ / a
+b
+c
+ok search (ab)+ / a
+b
+c
+ok fullmatch (ab)+ / a
+b
+c
+ok match (ab)+ / hello world
+ok search (ab)+ / hello world
+ok fullmatch (ab)+ / hello world
+ok match (ab)+ / The quick brown fox
+ok search (ab)+ / The quick brown fox
+ok fullmatch (ab)+ / The quick brown fox
+ok match (ab)+ / éαβ
+ok search (ab)+ / éαβ
+ok fullmatch (ab)+ / éαβ
+ok match (ab)+ / 日本語
+ok search (ab)+ / 日本語
+ok fullmatch (ab)+ / 日本語
+ok match (ab)+ / 😀👍🏽
+ok search (ab)+ / 😀👍🏽
+ok fullmatch (ab)+ / 😀👍🏽
+ok match (ab)+ / éx
+ok search (ab)+ / éx
+ok fullmatch (ab)+ / éx
+ok match (ab)+ / a1b2c3
+ok search (ab)+ / a1b2c3
+ok fullmatch (ab)+ / a1b2c3
+ok match (ab)+ /    	
+
+ok search (ab)+ /    	
+
+ok fullmatch (ab)+ /    	
+
+ok match (ab)+ / word-
+ok search (ab)+ / word-
+ok fullmatch (ab)+ / word-
+ok match (ab)+ / _x9
+ok search (ab)+ / _x9
+ok fullmatch (ab)+ / _x9
+ok match (ab)+ / 12abc34
+ok search (ab)+ / 12abc34.start
+ok search (ab)+ / 12abc34.end
+ok search (ab)+ / 12abc34.lastindex
+ok search (ab)+ / 12abc34.g1
+ok fullmatch (ab)+ / 12abc34
+ok match (ab)+ / abc123.start
+ok match (ab)+ / abc123.end
+ok match (ab)+ / abc123.lastindex
+ok match (ab)+ / abc123.g1
+ok search (ab)+ / abc123.start
+ok search (ab)+ / abc123.end
+ok search (ab)+ / abc123.lastindex
+ok search (ab)+ / abc123.g1
+ok fullmatch (ab)+ / abc123
+ok match (ab)+ / A1 B2
+ok search (ab)+ / A1 B2
+ok fullmatch (ab)+ / A1 B2
+ok match a* / abc.start
+ok match a* / abc.end
+ok match a* / abc.lastindex
+ok search a* / abc.start
+ok search a* / abc.end
+ok search a* / abc.lastindex
+ok fullmatch a* / abc
+ok match a* / .start
+ok match a* / .end
+ok match a* / .lastindex
+ok search a* / .start
+ok search a* / .end
+ok search a* / .lastindex
+ok fullmatch a* / .start
+ok fullmatch a* / .end
+ok fullmatch a* / .lastindex
+ok match a* / a.start
+ok match a* / a.end
+ok match a* / a.lastindex
+ok search a* / a.start
+ok search a* / a.end
+ok search a* / a.lastindex
+ok fullmatch a* / a.start
+ok fullmatch a* / a.end
+ok fullmatch a* / a.lastindex
+ok match a* / aaa.start
+ok match a* / aaa.end
+ok match a* / aaa.lastindex
+ok search a* / aaa.start
+ok search a* / aaa.end
+ok search a* / aaa.lastindex
+ok fullmatch a* / aaa.start
+ok fullmatch a* / aaa.end
+ok fullmatch a* / aaa.lastindex
+ok match a* / aab.start
+ok match a* / aab.end
+ok match a* / aab.lastindex
+ok search a* / aab.start
+ok search a* / aab.end
+ok search a* / aab.lastindex
+ok fullmatch a* / aab
+ok match a* / b.start
+ok match a* / b.end
+ok match a* / b.lastindex
+ok search a* / b.start
+ok search a* / b.end
+ok search a* / b.lastindex
+ok fullmatch a* / b
+ok match a* / ac.start
+ok match a* / ac.end
+ok match a* / ac.lastindex
+ok search a* / ac.start
+ok search a* / ac.end
+ok search a* / ac.lastindex
+ok fullmatch a* / ac
+ok match a* / abcabc.start
+ok match a* / abcabc.end
+ok match a* / abcabc.lastindex
+ok search a* / abcabc.start
+ok search a* / abcabc.end
+ok search a* / abcabc.lastindex
+ok fullmatch a* / abcabc
+ok match a* / ab
+cd.start
+ok match a* / ab
+cd.end
+ok match a* / ab
+cd.lastindex
+ok search a* / ab
+cd.start
+ok search a* / ab
+cd.end
+ok search a* / ab
+cd.lastindex
+ok fullmatch a* / ab
+cd
+ok match a* / a
+b
+c.start
+ok match a* / a
+b
+c.end
+ok match a* / a
+b
+c.lastindex
+ok search a* / a
+b
+c.start
+ok search a* / a
+b
+c.end
+ok search a* / a
+b
+c.lastindex
+ok fullmatch a* / a
+b
+c
+ok match a* / hello world.start
+ok match a* / hello world.end
+ok match a* / hello world.lastindex
+ok search a* / hello world.start
+ok search a* / hello world.end
+ok search a* / hello world.lastindex
+ok fullmatch a* / hello world
+ok match a* / The quick brown fox.start
+ok match a* / The quick brown fox.end
+ok match a* / The quick brown fox.lastindex
+ok search a* / The quick brown fox.start
+ok search a* / The quick brown fox.end
+ok search a* / The quick brown fox.lastindex
+ok fullmatch a* / The quick brown fox
+ok match a* / éαβ.start
+ok match a* / éαβ.end
+ok match a* / éαβ.lastindex
+ok search a* / éαβ.start
+ok search a* / éαβ.end
+ok search a* / éαβ.lastindex
+ok fullmatch a* / éαβ
+ok match a* / 日本語.start
+ok match a* / 日本語.end
+ok match a* / 日本語.lastindex
+ok search a* / 日本語.start
+ok search a* / 日本語.end
+ok search a* / 日本語.lastindex
+ok fullmatch a* / 日本語
+ok match a* / 😀👍🏽.start
+ok match a* / 😀👍🏽.end
+ok match a* / 😀👍🏽.lastindex
+ok search a* / 😀👍🏽.start
+ok search a* / 😀👍🏽.end
+ok search a* / 😀👍🏽.lastindex
+ok fullmatch a* / 😀👍🏽
+ok match a* / éx.start
+ok match a* / éx.end
+ok match a* / éx.lastindex
+ok search a* / éx.start
+ok search a* / éx.end
+ok search a* / éx.lastindex
+ok fullmatch a* / éx
+ok match a* / a1b2c3.start
+ok match a* / a1b2c3.end
+ok match a* / a1b2c3.lastindex
+ok search a* / a1b2c3.start
+ok search a* / a1b2c3.end
+ok search a* / a1b2c3.lastindex
+ok fullmatch a* / a1b2c3
+ok match a* /    	
+.start
+ok match a* /    	
+.end
+ok match a* /    	
+.lastindex
+ok search a* /    	
+.start
+ok search a* /    	
+.end
+ok search a* /    	
+.lastindex
+ok fullmatch a* /    	
+
+ok match a* / word-.start
+ok match a* / word-.end
+ok match a* / word-.lastindex
+ok search a* / word-.start
+ok search a* / word-.end
+ok search a* / word-.lastindex
+ok fullmatch a* / word-
+ok match a* / _x9.start
+ok match a* / _x9.end
+ok match a* / _x9.lastindex
+ok search a* / _x9.start
+ok search a* / _x9.end
+ok search a* / _x9.lastindex
+ok fullmatch a* / _x9
+ok match a* / 12abc34.start
+ok match a* / 12abc34.end
+ok match a* / 12abc34.lastindex
+ok search a* / 12abc34.start
+ok search a* / 12abc34.end
+ok search a* / 12abc34.lastindex
+ok fullmatch a* / 12abc34
+ok match a* / abc123.start
+ok match a* / abc123.end
+ok match a* / abc123.lastindex
+ok search a* / abc123.start
+ok search a* / abc123.end
+ok search a* / abc123.lastindex
+ok fullmatch a* / abc123
+ok match a* / A1 B2.start
+ok match a* / A1 B2.end
+ok match a* / A1 B2.lastindex
+ok search a* / A1 B2.start
+ok search a* / A1 B2.end
+ok search a* / A1 B2.lastindex
+ok fullmatch a* / A1 B2
+ok match a+? / abc.start
+ok match a+? / abc.end
+ok match a+? / abc.lastindex
+ok search a+? / abc.start
+ok search a+? / abc.end
+ok search a+? / abc.lastindex
+ok fullmatch a+? / abc
+ok match a+? / 
+ok search a+? / 
+ok fullmatch a+? / 
+ok match a+? / a.start
+ok match a+? / a.end
+ok match a+? / a.lastindex
+ok search a+? / a.start
+ok search a+? / a.end
+ok search a+? / a.lastindex
+ok fullmatch a+? / a.start
+ok fullmatch a+? / a.end
+ok fullmatch a+? / a.lastindex
+ok match a+? / aaa.start
+ok match a+? / aaa.end
+ok match a+? / aaa.lastindex
+ok search a+? / aaa.start
+ok search a+? / aaa.end
+ok search a+? / aaa.lastindex
+ok fullmatch a+? / aaa.start
+ok fullmatch a+? / aaa.end
+ok fullmatch a+? / aaa.lastindex
+ok match a+? / aab.start
+ok match a+? / aab.end
+ok match a+? / aab.lastindex
+ok search a+? / aab.start
+ok search a+? / aab.end
+ok search a+? / aab.lastindex
+ok fullmatch a+? / aab
+ok match a+? / b
+ok search a+? / b
+ok fullmatch a+? / b
+ok match a+? / ac.start
+ok match a+? / ac.end
+ok match a+? / ac.lastindex
+ok search a+? / ac.start
+ok search a+? / ac.end
+ok search a+? / ac.lastindex
+ok fullmatch a+? / ac
+ok match a+? / abcabc.start
+ok match a+? / abcabc.end
+ok match a+? / abcabc.lastindex
+ok search a+? / abcabc.start
+ok search a+? / abcabc.end
+ok search a+? / abcabc.lastindex
+ok fullmatch a+? / abcabc
+ok match a+? / ab
+cd.start
+ok match a+? / ab
+cd.end
+ok match a+? / ab
+cd.lastindex
+ok search a+? / ab
+cd.start
+ok search a+? / ab
+cd.end
+ok search a+? / ab
+cd.lastindex
+ok fullmatch a+? / ab
+cd
+ok match a+? / a
+b
+c.start
+ok match a+? / a
+b
+c.end
+ok match a+? / a
+b
+c.lastindex
+ok search a+? / a
+b
+c.start
+ok search a+? / a
+b
+c.end
+ok search a+? / a
+b
+c.lastindex
+ok fullmatch a+? / a
+b
+c
+ok match a+? / hello world
+ok search a+? / hello world
+ok fullmatch a+? / hello world
+ok match a+? / The quick brown fox
+ok search a+? / The quick brown fox
+ok fullmatch a+? / The quick brown fox
+ok match a+? / éαβ
+ok search a+? / éαβ
+ok fullmatch a+? / éαβ
+ok match a+? / 日本語
+ok search a+? / 日本語
+ok fullmatch a+? / 日本語
+ok match a+? / 😀👍🏽
+ok search a+? / 😀👍🏽
+ok fullmatch a+? / 😀👍🏽
+ok match a+? / éx
+ok search a+? / éx
+ok fullmatch a+? / éx
+ok match a+? / a1b2c3.start
+ok match a+? / a1b2c3.end
+ok match a+? / a1b2c3.lastindex
+ok search a+? / a1b2c3.start
+ok search a+? / a1b2c3.end
+ok search a+? / a1b2c3.lastindex
+ok fullmatch a+? / a1b2c3
+ok match a+? /    	
+
+ok search a+? /    	
+
+ok fullmatch a+? /    	
+
+ok match a+? / word-
+ok search a+? / word-
+ok fullmatch a+? / word-
+ok match a+? / _x9
+ok search a+? / _x9
+ok fullmatch a+? / _x9
+ok match a+? / 12abc34
+ok search a+? / 12abc34.start
+ok search a+? / 12abc34.end
+ok search a+? / 12abc34.lastindex
+ok fullmatch a+? / 12abc34
+ok match a+? / abc123.start
+ok match a+? / abc123.end
+ok match a+? / abc123.lastindex
+ok search a+? / abc123.start
+ok search a+? / abc123.end
+ok search a+? / abc123.lastindex
+ok fullmatch a+? / abc123
+ok match a+? / A1 B2
+ok search a+? / A1 B2
+ok fullmatch a+? / A1 B2
+ok match \d+ / abc
+ok search \d+ / abc
+ok fullmatch \d+ / abc
+ok match \d+ / 
+ok search \d+ / 
+ok fullmatch \d+ / 
+ok match \d+ / a
+ok search \d+ / a
+ok fullmatch \d+ / a
+ok match \d+ / aaa
+ok search \d+ / aaa
+ok fullmatch \d+ / aaa
+ok match \d+ / aab
+ok search \d+ / aab
+ok fullmatch \d+ / aab
+ok match \d+ / b
+ok search \d+ / b
+ok fullmatch \d+ / b
+ok match \d+ / ac
+ok search \d+ / ac
+ok fullmatch \d+ / ac
+ok match \d+ / abcabc
+ok search \d+ / abcabc
+ok fullmatch \d+ / abcabc
+ok match \d+ / ab
+cd
+ok search \d+ / ab
+cd
+ok fullmatch \d+ / ab
+cd
+ok match \d+ / a
+b
+c
+ok search \d+ / a
+b
+c
+ok fullmatch \d+ / a
+b
+c
+ok match \d+ / hello world
+ok search \d+ / hello world
+ok fullmatch \d+ / hello world
+ok match \d+ / The quick brown fox
+ok search \d+ / The quick brown fox
+ok fullmatch \d+ / The quick brown fox
+ok match \d+ / éαβ
+ok search \d+ / éαβ
+ok fullmatch \d+ / éαβ
+ok match \d+ / 日本語
+ok search \d+ / 日本語
+ok fullmatch \d+ / 日本語
+ok match \d+ / 😀👍🏽
+ok search \d+ / 😀👍🏽
+ok fullmatch \d+ / 😀👍🏽
+ok match \d+ / éx
+ok search \d+ / éx
+ok fullmatch \d+ / éx
+ok match \d+ / a1b2c3
+ok search \d+ / a1b2c3.start
+ok search \d+ / a1b2c3.end
+ok search \d+ / a1b2c3.lastindex
+ok fullmatch \d+ / a1b2c3
+ok match \d+ /    	
+
+ok search \d+ /    	
+
+ok fullmatch \d+ /    	
+
+ok match \d+ / word-
+ok search \d+ / word-
+ok fullmatch \d+ / word-
+ok match \d+ / _x9
+ok search \d+ / _x9.start
+ok search \d+ / _x9.end
+ok search \d+ / _x9.lastindex
+ok fullmatch \d+ / _x9
+ok match \d+ / 12abc34.start
+ok match \d+ / 12abc34.end
+ok match \d+ / 12abc34.lastindex
+ok search \d+ / 12abc34.start
+ok search \d+ / 12abc34.end
+ok search \d+ / 12abc34.lastindex
+ok fullmatch \d+ / 12abc34
+ok match \d+ / abc123
+ok search \d+ / abc123.start
+ok search \d+ / abc123.end
+ok search \d+ / abc123.lastindex
+ok fullmatch \d+ / abc123
+ok match \d+ / A1 B2
+ok search \d+ / A1 B2.start
+ok search \d+ / A1 B2.end
+ok search \d+ / A1 B2.lastindex
+ok fullmatch \d+ / A1 B2
+ok match \w+ / abc.start
+ok match \w+ / abc.end
+ok match \w+ / abc.lastindex
+ok search \w+ / abc.start
+ok search \w+ / abc.end
+ok search \w+ / abc.lastindex
+ok fullmatch \w+ / abc.start
+ok fullmatch \w+ / abc.end
+ok fullmatch \w+ / abc.lastindex
+ok match \w+ / 
+ok search \w+ / 
+ok fullmatch \w+ / 
+ok match \w+ / a.start
+ok match \w+ / a.end
+ok match \w+ / a.lastindex
+ok search \w+ / a.start
+ok search \w+ / a.end
+ok search \w+ / a.lastindex
+ok fullmatch \w+ / a.start
+ok fullmatch \w+ / a.end
+ok fullmatch \w+ / a.lastindex
+ok match \w+ / aaa.start
+ok match \w+ / aaa.end
+ok match \w+ / aaa.lastindex
+ok search \w+ / aaa.start
+ok search \w+ / aaa.end
+ok search \w+ / aaa.lastindex
+ok fullmatch \w+ / aaa.start
+ok fullmatch \w+ / aaa.end
+ok fullmatch \w+ / aaa.lastindex
+ok match \w+ / aab.start
+ok match \w+ / aab.end
+ok match \w+ / aab.lastindex
+ok search \w+ / aab.start
+ok search \w+ / aab.end
+ok search \w+ / aab.lastindex
+ok fullmatch \w+ / aab.start
+ok fullmatch \w+ / aab.end
+ok fullmatch \w+ / aab.lastindex
+ok match \w+ / b.start
+ok match \w+ / b.end
+ok match \w+ / b.lastindex
+ok search \w+ / b.start
+ok search \w+ / b.end
+ok search \w+ / b.lastindex
+ok fullmatch \w+ / b.start
+ok fullmatch \w+ / b.end
+ok fullmatch \w+ / b.lastindex
+ok match \w+ / ac.start
+ok match \w+ / ac.end
+ok match \w+ / ac.lastindex
+ok search \w+ / ac.start
+ok search \w+ / ac.end
+ok search \w+ / ac.lastindex
+ok fullmatch \w+ / ac.start
+ok fullmatch \w+ / ac.end
+ok fullmatch \w+ / ac.lastindex
+ok match \w+ / abcabc.start
+ok match \w+ / abcabc.end
+ok match \w+ / abcabc.lastindex
+ok search \w+ / abcabc.start
+ok search \w+ / abcabc.end
+ok search \w+ / abcabc.lastindex
+ok fullmatch \w+ / abcabc.start
+ok fullmatch \w+ / abcabc.end
+ok fullmatch \w+ / abcabc.lastindex
+ok match \w+ / ab
+cd.start
+ok match \w+ / ab
+cd.end
+ok match \w+ / ab
+cd.lastindex
+ok search \w+ / ab
+cd.start
+ok search \w+ / ab
+cd.end
+ok search \w+ / ab
+cd.lastindex
+ok fullmatch \w+ / ab
+cd
+ok match \w+ / a
+b
+c.start
+ok match \w+ / a
+b
+c.end
+ok match \w+ / a
+b
+c.lastindex
+ok search \w+ / a
+b
+c.start
+ok search \w+ / a
+b
+c.end
+ok search \w+ / a
+b
+c.lastindex
+ok fullmatch \w+ / a
+b
+c
+ok match \w+ / hello world.start
+ok match \w+ / hello world.end
+ok match \w+ / hello world.lastindex
+ok search \w+ / hello world.start
+ok search \w+ / hello world.end
+ok search \w+ / hello world.lastindex
+ok fullmatch \w+ / hello world
+ok match \w+ / The quick brown fox.start
+ok match \w+ / The quick brown fox.end
+ok match \w+ / The quick brown fox.lastindex
+ok search \w+ / The quick brown fox.start
+ok search \w+ / The quick brown fox.end
+ok search \w+ / The quick brown fox.lastindex
+ok fullmatch \w+ / The quick brown fox
+ok match \w+ / éαβ.start
+ok match \w+ / éαβ.end
+ok match \w+ / éαβ.lastindex
+ok search \w+ / éαβ.start
+ok search \w+ / éαβ.end
+ok search \w+ / éαβ.lastindex
+ok fullmatch \w+ / éαβ.start
+ok fullmatch \w+ / éαβ.end
+ok fullmatch \w+ / éαβ.lastindex
+ok match \w+ / 日本語.start
+ok match \w+ / 日本語.end
+ok match \w+ / 日本語.lastindex
+ok search \w+ / 日本語.start
+ok search \w+ / 日本語.end
+ok search \w+ / 日本語.lastindex
+ok fullmatch \w+ / 日本語.start
+ok fullmatch \w+ / 日本語.end
+ok fullmatch \w+ / 日本語.lastindex
+ok match \w+ / 😀👍🏽
+ok search \w+ / 😀👍🏽
+ok fullmatch \w+ / 😀👍🏽
+ok match \w+ / éx.start
+ok match \w+ / éx.end
+ok match \w+ / éx.lastindex
+ok search \w+ / éx.start
+ok search \w+ / éx.end
+ok search \w+ / éx.lastindex
+ok fullmatch \w+ / éx
+ok match \w+ / a1b2c3.start
+ok match \w+ / a1b2c3.end
+ok match \w+ / a1b2c3.lastindex
+ok search \w+ / a1b2c3.start
+ok search \w+ / a1b2c3.end
+ok search \w+ / a1b2c3.lastindex
+ok fullmatch \w+ / a1b2c3.start
+ok fullmatch \w+ / a1b2c3.end
+ok fullmatch \w+ / a1b2c3.lastindex
+ok match \w+ /    	
+
+ok search \w+ /    	
+
+ok fullmatch \w+ /    	
+
+ok match \w+ / word-.start
+ok match \w+ / word-.end
+ok match \w+ / word-.lastindex
+ok search \w+ / word-.start
+ok search \w+ / word-.end
+ok search \w+ / word-.lastindex
+ok fullmatch \w+ / word-
+ok match \w+ / _x9.start
+ok match \w+ / _x9.end
+ok match \w+ / _x9.lastindex
+ok search \w+ / _x9.start
+ok search \w+ / _x9.end
+ok search \w+ / _x9.lastindex
+ok fullmatch \w+ / _x9.start
+ok fullmatch \w+ / _x9.end
+ok fullmatch \w+ / _x9.lastindex
+ok match \w+ / 12abc34.start
+ok match \w+ / 12abc34.end
+ok match \w+ / 12abc34.lastindex
+ok search \w+ / 12abc34.start
+ok search \w+ / 12abc34.end
+ok search \w+ / 12abc34.lastindex
+ok fullmatch \w+ / 12abc34.start
+ok fullmatch \w+ / 12abc34.end
+ok fullmatch \w+ / 12abc34.lastindex
+ok match \w+ / abc123.start
+ok match \w+ / abc123.end
+ok match \w+ / abc123.lastindex
+ok search \w+ / abc123.start
+ok search \w+ / abc123.end
+ok search \w+ / abc123.lastindex
+ok fullmatch \w+ / abc123.start
+ok fullmatch \w+ / abc123.end
+ok fullmatch \w+ / abc123.lastindex
+ok match \w+ / A1 B2.start
+ok match \w+ / A1 B2.end
+ok match \w+ / A1 B2.lastindex
+ok search \w+ / A1 B2.start
+ok search \w+ / A1 B2.end
+ok search \w+ / A1 B2.lastindex
+ok fullmatch \w+ / A1 B2
+ok match \s+ / abc
+ok search \s+ / abc
+ok fullmatch \s+ / abc
+ok match \s+ / 
+ok search \s+ / 
+ok fullmatch \s+ / 
+ok match \s+ / a
+ok search \s+ / a
+ok fullmatch \s+ / a
+ok match \s+ / aaa
+ok search \s+ / aaa
+ok fullmatch \s+ / aaa
+ok match \s+ / aab
+ok search \s+ / aab
+ok fullmatch \s+ / aab
+ok match \s+ / b
+ok search \s+ / b
+ok fullmatch \s+ / b
+ok match \s+ / ac
+ok search \s+ / ac
+ok fullmatch \s+ / ac
+ok match \s+ / abcabc
+ok search \s+ / abcabc
+ok fullmatch \s+ / abcabc
+ok match \s+ / ab
+cd
+ok search \s+ / ab
+cd.start
+ok search \s+ / ab
+cd.end
+ok search \s+ / ab
+cd.lastindex
+ok fullmatch \s+ / ab
+cd
+ok match \s+ / a
+b
+c
+ok search \s+ / a
+b
+c.start
+ok search \s+ / a
+b
+c.end
+ok search \s+ / a
+b
+c.lastindex
+ok fullmatch \s+ / a
+b
+c
+ok match \s+ / hello world
+ok search \s+ / hello world.start
+ok search \s+ / hello world.end
+ok search \s+ / hello world.lastindex
+ok fullmatch \s+ / hello world
+ok match \s+ / The quick brown fox
+ok search \s+ / The quick brown fox.start
+ok search \s+ / The quick brown fox.end
+ok search \s+ / The quick brown fox.lastindex
+ok fullmatch \s+ / The quick brown fox
+ok match \s+ / éαβ
+ok search \s+ / éαβ
+ok fullmatch \s+ / éαβ
+ok match \s+ / 日本語
+ok search \s+ / 日本語
+ok fullmatch \s+ / 日本語
+ok match \s+ / 😀👍🏽
+ok search \s+ / 😀👍🏽
+ok fullmatch \s+ / 😀👍🏽
+ok match \s+ / éx
+ok search \s+ / éx
+ok fullmatch \s+ / éx
+ok match \s+ / a1b2c3
+ok search \s+ / a1b2c3
+ok fullmatch \s+ / a1b2c3
+ok match \s+ /    	
+.start
+ok match \s+ /    	
+.end
+ok match \s+ /    	
+.lastindex
+ok search \s+ /    	
+.start
+ok search \s+ /    	
+.end
+ok search \s+ /    	
+.lastindex
+ok fullmatch \s+ /    	
+.start
+ok fullmatch \s+ /    	
+.end
+ok fullmatch \s+ /    	
+.lastindex
+ok match \s+ / word-
+ok search \s+ / word-
+ok fullmatch \s+ / word-
+ok match \s+ / _x9
+ok search \s+ / _x9
+ok fullmatch \s+ / _x9
+ok match \s+ / 12abc34
+ok search \s+ / 12abc34
+ok fullmatch \s+ / 12abc34
+ok match \s+ / abc123
+ok search \s+ / abc123
+ok fullmatch \s+ / abc123
+ok match \s+ / A1 B2
+ok search \s+ / A1 B2.start
+ok search \s+ / A1 B2.end
+ok search \s+ / A1 B2.lastindex
+ok fullmatch \s+ / A1 B2
+ok match ^a / abc.start
+ok match ^a / abc.end
+ok match ^a / abc.lastindex
+ok search ^a / abc.start
+ok search ^a / abc.end
+ok search ^a / abc.lastindex
+ok fullmatch ^a / abc
+ok match ^a / 
+ok search ^a / 
+ok fullmatch ^a / 
+ok match ^a / a.start
+ok match ^a / a.end
+ok match ^a / a.lastindex
+ok search ^a / a.start
+ok search ^a / a.end
+ok search ^a / a.lastindex
+ok fullmatch ^a / a.start
+ok fullmatch ^a / a.end
+ok fullmatch ^a / a.lastindex
+ok match ^a / aaa.start
+ok match ^a / aaa.end
+ok match ^a / aaa.lastindex
+ok search ^a / aaa.start
+ok search ^a / aaa.end
+ok search ^a / aaa.lastindex
+ok fullmatch ^a / aaa
+ok match ^a / aab.start
+ok match ^a / aab.end
+ok match ^a / aab.lastindex
+ok search ^a / aab.start
+ok search ^a / aab.end
+ok search ^a / aab.lastindex
+ok fullmatch ^a / aab
+ok match ^a / b
+ok search ^a / b
+ok fullmatch ^a / b
+ok match ^a / ac.start
+ok match ^a / ac.end
+ok match ^a / ac.lastindex
+ok search ^a / ac.start
+ok search ^a / ac.end
+ok search ^a / ac.lastindex
+ok fullmatch ^a / ac
+ok match ^a / abcabc.start
+ok match ^a / abcabc.end
+ok match ^a / abcabc.lastindex
+ok search ^a / abcabc.start
+ok search ^a / abcabc.end
+ok search ^a / abcabc.lastindex
+ok fullmatch ^a / abcabc
+ok match ^a / ab
+cd.start
+ok match ^a / ab
+cd.end
+ok match ^a / ab
+cd.lastindex
+ok search ^a / ab
+cd.start
+ok search ^a / ab
+cd.end
+ok search ^a / ab
+cd.lastindex
+ok fullmatch ^a / ab
+cd
+ok match ^a / a
+b
+c.start
+ok match ^a / a
+b
+c.end
+ok match ^a / a
+b
+c.lastindex
+ok search ^a / a
+b
+c.start
+ok search ^a / a
+b
+c.end
+ok search ^a / a
+b
+c.lastindex
+ok fullmatch ^a / a
+b
+c
+ok match ^a / hello world
+ok search ^a / hello world
+ok fullmatch ^a / hello world
+ok match ^a / The quick brown fox
+ok search ^a / The quick brown fox
+ok fullmatch ^a / The quick brown fox
+ok match ^a / éαβ
+ok search ^a / éαβ
+ok fullmatch ^a / éαβ
+ok match ^a / 日本語
+ok search ^a / 日本語
+ok fullmatch ^a / 日本語
+ok match ^a / 😀👍🏽
+ok search ^a / 😀👍🏽
+ok fullmatch ^a / 😀👍🏽
+ok match ^a / éx
+ok search ^a / éx
+ok fullmatch ^a / éx
+ok match ^a / a1b2c3.start
+ok match ^a / a1b2c3.end
+ok match ^a / a1b2c3.lastindex
+ok search ^a / a1b2c3.start
+ok search ^a / a1b2c3.end
+ok search ^a / a1b2c3.lastindex
+ok fullmatch ^a / a1b2c3
+ok match ^a /    	
+
+ok search ^a /    	
+
+ok fullmatch ^a /    	
+
+ok match ^a / word-
+ok search ^a / word-
+ok fullmatch ^a / word-
+ok match ^a / _x9
+ok search ^a / _x9
+ok fullmatch ^a / _x9
+ok match ^a / 12abc34
+ok search ^a / 12abc34
+ok fullmatch ^a / 12abc34
+ok match ^a / abc123.start
+ok match ^a / abc123.end
+ok match ^a / abc123.lastindex
+ok search ^a / abc123.start
+ok search ^a / abc123.end
+ok search ^a / abc123.lastindex
+ok fullmatch ^a / abc123
+ok match ^a / A1 B2
+ok search ^a / A1 B2
+ok fullmatch ^a / A1 B2
+ok match a$ / abc
+ok search a$ / abc
+ok fullmatch a$ / abc
+ok match a$ / 
+ok search a$ / 
+ok fullmatch a$ / 
+ok match a$ / a.start
+ok match a$ / a.end
+ok match a$ / a.lastindex
+ok search a$ / a.start
+ok search a$ / a.end
+ok search a$ / a.lastindex
+ok fullmatch a$ / a.start
+ok fullmatch a$ / a.end
+ok fullmatch a$ / a.lastindex
+ok match a$ / aaa
+ok search a$ / aaa.start
+ok search a$ / aaa.end
+ok search a$ / aaa.lastindex
+ok fullmatch a$ / aaa
+ok match a$ / aab
+ok search a$ / aab
+ok fullmatch a$ / aab
+ok match a$ / b
+ok search a$ / b
+ok fullmatch a$ / b
+ok match a$ / ac
+ok search a$ / ac
+ok fullmatch a$ / ac
+ok match a$ / abcabc
+ok search a$ / abcabc
+ok fullmatch a$ / abcabc
+ok match a$ / ab
+cd
+ok search a$ / ab
+cd
+ok fullmatch a$ / ab
+cd
+ok match a$ / a
+b
+c
+ok search a$ / a
+b
+c
+ok fullmatch a$ / a
+b
+c
+ok match a$ / hello world
+ok search a$ / hello world
+ok fullmatch a$ / hello world
+ok match a$ / The quick brown fox
+ok search a$ / The quick brown fox
+ok fullmatch a$ / The quick brown fox
+ok match a$ / éαβ
+ok search a$ / éαβ
+ok fullmatch a$ / éαβ
+ok match a$ / 日本語
+ok search a$ / 日本語
+ok fullmatch a$ / 日本語
+ok match a$ / 😀👍🏽
+ok search a$ / 😀👍🏽
+ok fullmatch a$ / 😀👍🏽
+ok match a$ / éx
+ok search a$ / éx
+ok fullmatch a$ / éx
+ok match a$ / a1b2c3
+ok search a$ / a1b2c3
+ok fullmatch a$ / a1b2c3
+ok match a$ /    	
+
+ok search a$ /    	
+
+ok fullmatch a$ /    	
+
+ok match a$ / word-
+ok search a$ / word-
+ok fullmatch a$ / word-
+ok match a$ / _x9
+ok search a$ / _x9
+ok fullmatch a$ / _x9
+ok match a$ / 12abc34
+ok search a$ / 12abc34
+ok fullmatch a$ / 12abc34
+ok match a$ / abc123
+ok search a$ / abc123
+ok fullmatch a$ / abc123
+ok match a$ / A1 B2
+ok search a$ / A1 B2
+ok fullmatch a$ / A1 B2
+ok match \Aa / abc.start
+ok match \Aa / abc.end
+ok match \Aa / abc.lastindex
+ok search \Aa / abc.start
+ok search \Aa / abc.end
+ok search \Aa / abc.lastindex
+ok fullmatch \Aa / abc
+ok match \Aa / 
+ok search \Aa / 
+ok fullmatch \Aa / 
+ok match \Aa / a.start
+ok match \Aa / a.end
+ok match \Aa / a.lastindex
+ok search \Aa / a.start
+ok search \Aa / a.end
+ok search \Aa / a.lastindex
+ok fullmatch \Aa / a.start
+ok fullmatch \Aa / a.end
+ok fullmatch \Aa / a.lastindex
+ok match \Aa / aaa.start
+ok match \Aa / aaa.end
+ok match \Aa / aaa.lastindex
+ok search \Aa / aaa.start
+ok search \Aa / aaa.end
+ok search \Aa / aaa.lastindex
+ok fullmatch \Aa / aaa
+ok match \Aa / aab.start
+ok match \Aa / aab.end
+ok match \Aa / aab.lastindex
+ok search \Aa / aab.start
+ok search \Aa / aab.end
+ok search \Aa / aab.lastindex
+ok fullmatch \Aa / aab
+ok match \Aa / b
+ok search \Aa / b
+ok fullmatch \Aa / b
+ok match \Aa / ac.start
+ok match \Aa / ac.end
+ok match \Aa / ac.lastindex
+ok search \Aa / ac.start
+ok search \Aa / ac.end
+ok search \Aa / ac.lastindex
+ok fullmatch \Aa / ac
+ok match \Aa / abcabc.start
+ok match \Aa / abcabc.end
+ok match \Aa / abcabc.lastindex
+ok search \Aa / abcabc.start
+ok search \Aa / abcabc.end
+ok search \Aa / abcabc.lastindex
+ok fullmatch \Aa / abcabc
+ok match \Aa / ab
+cd.start
+ok match \Aa / ab
+cd.end
+ok match \Aa / ab
+cd.lastindex
+ok search \Aa / ab
+cd.start
+ok search \Aa / ab
+cd.end
+ok search \Aa / ab
+cd.lastindex
+ok fullmatch \Aa / ab
+cd
+ok match \Aa / a
+b
+c.start
+ok match \Aa / a
+b
+c.end
+ok match \Aa / a
+b
+c.lastindex
+ok search \Aa / a
+b
+c.start
+ok search \Aa / a
+b
+c.end
+ok search \Aa / a
+b
+c.lastindex
+ok fullmatch \Aa / a
+b
+c
+ok match \Aa / hello world
+ok search \Aa / hello world
+ok fullmatch \Aa / hello world
+ok match \Aa / The quick brown fox
+ok search \Aa / The quick brown fox
+ok fullmatch \Aa / The quick brown fox
+ok match \Aa / éαβ
+ok search \Aa / éαβ
+ok fullmatch \Aa / éαβ
+ok match \Aa / 日本語
+ok search \Aa / 日本語
+ok fullmatch \Aa / 日本語
+ok match \Aa / 😀👍🏽
+ok search \Aa / 😀👍🏽
+ok fullmatch \Aa / 😀👍🏽
+ok match \Aa / éx
+ok search \Aa / éx
+ok fullmatch \Aa / éx
+ok match \Aa / a1b2c3.start
+ok match \Aa / a1b2c3.end
+ok match \Aa / a1b2c3.lastindex
+ok search \Aa / a1b2c3.start
+ok search \Aa / a1b2c3.end
+ok search \Aa / a1b2c3.lastindex
+ok fullmatch \Aa / a1b2c3
+ok match \Aa /    	
+
+ok search \Aa /    	
+
+ok fullmatch \Aa /    	
+
+ok match \Aa / word-
+ok search \Aa / word-
+ok fullmatch \Aa / word-
+ok match \Aa / _x9
+ok search \Aa / _x9
+ok fullmatch \Aa / _x9
+ok match \Aa / 12abc34
+ok search \Aa / 12abc34
+ok fullmatch \Aa / 12abc34
+ok match \Aa / abc123.start
+ok match \Aa / abc123.end
+ok match \Aa / abc123.lastindex
+ok search \Aa / abc123.start
+ok search \Aa / abc123.end
+ok search \Aa / abc123.lastindex
+ok fullmatch \Aa / abc123
+ok match \Aa / A1 B2
+ok search \Aa / A1 B2
+ok fullmatch \Aa / A1 B2
+ok match a\Z / abc
+ok search a\Z / abc
+ok fullmatch a\Z / abc
+ok match a\Z / 
+ok search a\Z / 
+ok fullmatch a\Z / 
+ok match a\Z / a.start
+ok match a\Z / a.end
+ok match a\Z / a.lastindex
+ok search a\Z / a.start
+ok search a\Z / a.end
+ok search a\Z / a.lastindex
+ok fullmatch a\Z / a.start
+ok fullmatch a\Z / a.end
+ok fullmatch a\Z / a.lastindex
+ok match a\Z / aaa
+ok search a\Z / aaa.start
+ok search a\Z / aaa.end
+ok search a\Z / aaa.lastindex
+ok fullmatch a\Z / aaa
+ok match a\Z / aab
+ok search a\Z / aab
+ok fullmatch a\Z / aab
+ok match a\Z / b
+ok search a\Z / b
+ok fullmatch a\Z / b
+ok match a\Z / ac
+ok search a\Z / ac
+ok fullmatch a\Z / ac
+ok match a\Z / abcabc
+ok search a\Z / abcabc
+ok fullmatch a\Z / abcabc
+ok match a\Z / ab
+cd
+ok search a\Z / ab
+cd
+ok fullmatch a\Z / ab
+cd
+ok match a\Z / a
+b
+c
+ok search a\Z / a
+b
+c
+ok fullmatch a\Z / a
+b
+c
+ok match a\Z / hello world
+ok search a\Z / hello world
+ok fullmatch a\Z / hello world
+ok match a\Z / The quick brown fox
+ok search a\Z / The quick brown fox
+ok fullmatch a\Z / The quick brown fox
+ok match a\Z / éαβ
+ok search a\Z / éαβ
+ok fullmatch a\Z / éαβ
+ok match a\Z / 日本語
+ok search a\Z / 日本語
+ok fullmatch a\Z / 日本語
+ok match a\Z / 😀👍🏽
+ok search a\Z / 😀👍🏽
+ok fullmatch a\Z / 😀👍🏽
+ok match a\Z / éx
+ok search a\Z / éx
+ok fullmatch a\Z / éx
+ok match a\Z / a1b2c3
+ok search a\Z / a1b2c3
+ok fullmatch a\Z / a1b2c3
+ok match a\Z /    	
+
+ok search a\Z /    	
+
+ok fullmatch a\Z /    	
+
+ok match a\Z / word-
+ok search a\Z / word-
+ok fullmatch a\Z / word-
+ok match a\Z / _x9
+ok search a\Z / _x9
+ok fullmatch a\Z / _x9
+ok match a\Z / 12abc34
+ok search a\Z / 12abc34
+ok fullmatch a\Z / 12abc34
+ok match a\Z / abc123
+ok search a\Z / abc123
+ok fullmatch a\Z / abc123
+ok match a\Z / A1 B2
+ok search a\Z / A1 B2
+ok fullmatch a\Z / A1 B2
+ok match \bword / abc
+ok search \bword / abc
+ok fullmatch \bword / abc
+ok match \bword / 
+ok search \bword / 
+ok fullmatch \bword / 
+ok match \bword / a
+ok search \bword / a
+ok fullmatch \bword / a
+ok match \bword / aaa
+ok search \bword / aaa
+ok fullmatch \bword / aaa
+ok match \bword / aab
+ok search \bword / aab
+ok fullmatch \bword / aab
+ok match \bword / b
+ok search \bword / b
+ok fullmatch \bword / b
+ok match \bword / ac
+ok search \bword / ac
+ok fullmatch \bword / ac
+ok match \bword / abcabc
+ok search \bword / abcabc
+ok fullmatch \bword / abcabc
+ok match \bword / ab
+cd
+ok search \bword / ab
+cd
+ok fullmatch \bword / ab
+cd
+ok match \bword / a
+b
+c
+ok search \bword / a
+b
+c
+ok fullmatch \bword / a
+b
+c
+ok match \bword / hello world
+ok search \bword / hello world
+ok fullmatch \bword / hello world
+ok match \bword / The quick brown fox
+ok search \bword / The quick brown fox
+ok fullmatch \bword / The quick brown fox
+ok match \bword / éαβ
+ok search \bword / éαβ
+ok fullmatch \bword / éαβ
+ok match \bword / 日本語
+ok search \bword / 日本語
+ok fullmatch \bword / 日本語
+ok match \bword / 😀👍🏽
+ok search \bword / 😀👍🏽
+ok fullmatch \bword / 😀👍🏽
+ok match \bword / éx
+ok search \bword / éx
+ok fullmatch \bword / éx
+ok match \bword / a1b2c3
+ok search \bword / a1b2c3
+ok fullmatch \bword / a1b2c3
+ok match \bword /    	
+
+ok search \bword /    	
+
+ok fullmatch \bword /    	
+
+ok match \bword / word-.start
+ok match \bword / word-.end
+ok match \bword / word-.lastindex
+ok search \bword / word-.start
+ok search \bword / word-.end
+ok search \bword / word-.lastindex
+ok fullmatch \bword / word-
+ok match \bword / _x9
+ok search \bword / _x9
+ok fullmatch \bword / _x9
+ok match \bword / 12abc34
+ok search \bword / 12abc34
+ok fullmatch \bword / 12abc34
+ok match \bword / abc123
+ok search \bword / abc123
+ok fullmatch \bword / abc123
+ok match \bword / A1 B2
+ok search \bword / A1 B2
+ok fullmatch \bword / A1 B2
+ok match a.c / abc.start
+ok match a.c / abc.end
+ok match a.c / abc.lastindex
+ok search a.c / abc.start
+ok search a.c / abc.end
+ok search a.c / abc.lastindex
+ok fullmatch a.c / abc.start
+ok fullmatch a.c / abc.end
+ok fullmatch a.c / abc.lastindex
+ok match a.c / 
+ok search a.c / 
+ok fullmatch a.c / 
+ok match a.c / a
+ok search a.c / a
+ok fullmatch a.c / a
+ok match a.c / aaa
+ok search a.c / aaa
+ok fullmatch a.c / aaa
+ok match a.c / aab
+ok search a.c / aab
+ok fullmatch a.c / aab
+ok match a.c / b
+ok search a.c / b
+ok fullmatch a.c / b
+ok match a.c / ac
+ok search a.c / ac
+ok fullmatch a.c / ac
+ok match a.c / abcabc.start
+ok match a.c / abcabc.end
+ok match a.c / abcabc.lastindex
+ok search a.c / abcabc.start
+ok search a.c / abcabc.end
+ok search a.c / abcabc.lastindex
+ok fullmatch a.c / abcabc
+ok match a.c / ab
+cd
+ok search a.c / ab
+cd
+ok fullmatch a.c / ab
+cd
+ok match a.c / a
+b
+c
+ok search a.c / a
+b
+c
+ok fullmatch a.c / a
+b
+c
+ok match a.c / hello world
+ok search a.c / hello world
+ok fullmatch a.c / hello world
+ok match a.c / The quick brown fox
+ok search a.c / The quick brown fox
+ok fullmatch a.c / The quick brown fox
+ok match a.c / éαβ
+ok search a.c / éαβ
+ok fullmatch a.c / éαβ
+ok match a.c / 日本語
+ok search a.c / 日本語
+ok fullmatch a.c / 日本語
+ok match a.c / 😀👍🏽
+ok search a.c / 😀👍🏽
+ok fullmatch a.c / 😀👍🏽
+ok match a.c / éx
+ok search a.c / éx
+ok fullmatch a.c / éx
+ok match a.c / a1b2c3
+ok search a.c / a1b2c3
+ok fullmatch a.c / a1b2c3
+ok match a.c /    	
+
+ok search a.c /    	
+
+ok fullmatch a.c /    	
+
+ok match a.c / word-
+ok search a.c / word-
+ok fullmatch a.c / word-
+ok match a.c / _x9
+ok search a.c / _x9
+ok fullmatch a.c / _x9
+ok match a.c / 12abc34
+ok search a.c / 12abc34.start
+ok search a.c / 12abc34.end
+ok search a.c / 12abc34.lastindex
+ok fullmatch a.c / 12abc34
+ok match a.c / abc123.start
+ok match a.c / abc123.end
+ok match a.c / abc123.lastindex
+ok search a.c / abc123.start
+ok search a.c / abc123.end
+ok search a.c / abc123.lastindex
+ok fullmatch a.c / abc123
+ok match a.c / A1 B2
+ok search a.c / A1 B2
+ok fullmatch a.c / A1 B2
+ok match a.c / abc.start
+ok match a.c / abc.end
+ok match a.c / abc.lastindex
+ok search a.c / abc.start
+ok search a.c / abc.end
+ok search a.c / abc.lastindex
+ok fullmatch a.c / abc.start
+ok fullmatch a.c / abc.end
+ok fullmatch a.c / abc.lastindex
+ok match a.c / 
+ok search a.c / 
+ok fullmatch a.c / 
+ok match a.c / a
+ok search a.c / a
+ok fullmatch a.c / a
+ok match a.c / aaa
+ok search a.c / aaa
+ok fullmatch a.c / aaa
+ok match a.c / aab
+ok search a.c / aab
+ok fullmatch a.c / aab
+ok match a.c / b
+ok search a.c / b
+ok fullmatch a.c / b
+ok match a.c / ac
+ok search a.c / ac
+ok fullmatch a.c / ac
+ok match a.c / abcabc.start
+ok match a.c / abcabc.end
+ok match a.c / abcabc.lastindex
+ok search a.c / abcabc.start
+ok search a.c / abcabc.end
+ok search a.c / abcabc.lastindex
+ok fullmatch a.c / abcabc
+ok match a.c / ab
+cd
+ok search a.c / ab
+cd
+ok fullmatch a.c / ab
+cd
+ok match a.c / a
+b
+c
+ok search a.c / a
+b
+c
+ok fullmatch a.c / a
+b
+c
+ok match a.c / hello world
+ok search a.c / hello world
+ok fullmatch a.c / hello world
+ok match a.c / The quick brown fox
+ok search a.c / The quick brown fox
+ok fullmatch a.c / The quick brown fox
+ok match a.c / éαβ
+ok search a.c / éαβ
+ok fullmatch a.c / éαβ
+ok match a.c / 日本語
+ok search a.c / 日本語
+ok fullmatch a.c / 日本語
+ok match a.c / 😀👍🏽
+ok search a.c / 😀👍🏽
+ok fullmatch a.c / 😀👍🏽
+ok match a.c / éx
+ok search a.c / éx
+ok fullmatch a.c / éx
+ok match a.c / a1b2c3
+ok search a.c / a1b2c3
+ok fullmatch a.c / a1b2c3
+ok match a.c /    	
+
+ok search a.c /    	
+
+ok fullmatch a.c /    	
+
+ok match a.c / word-
+ok search a.c / word-
+ok fullmatch a.c / word-
+ok match a.c / _x9
+ok search a.c / _x9
+ok fullmatch a.c / _x9
+ok match a.c / 12abc34
+ok search a.c / 12abc34.start
+ok search a.c / 12abc34.end
+ok search a.c / 12abc34.lastindex
+ok fullmatch a.c / 12abc34
+ok match a.c / abc123.start
+ok match a.c / abc123.end
+ok match a.c / abc123.lastindex
+ok search a.c / abc123.start
+ok search a.c / abc123.end
+ok search a.c / abc123.lastindex
+ok fullmatch a.c / abc123
+ok match a.c / A1 B2
+ok search a.c / A1 B2
+ok fullmatch a.c / A1 B2
+ok match (?P<w>a)(b)? / abc.start
+ok match (?P<w>a)(b)? / abc.end
+ok match (?P<w>a)(b)? / abc.lastindex
+ok match (?P<w>a)(b)? / abc.g1
+ok match (?P<w>a)(b)? / abc.g2
+ok match (?P<w>a)(b)? / abc.w
+ok search (?P<w>a)(b)? / abc.start
+ok search (?P<w>a)(b)? / abc.end
+ok search (?P<w>a)(b)? / abc.lastindex
+ok search (?P<w>a)(b)? / abc.g1
+ok search (?P<w>a)(b)? / abc.g2
+ok search (?P<w>a)(b)? / abc.w
+ok fullmatch (?P<w>a)(b)? / abc
+ok match (?P<w>a)(b)? / 
+ok search (?P<w>a)(b)? / 
+ok fullmatch (?P<w>a)(b)? / 
+ok match (?P<w>a)(b)? / a.start
+ok match (?P<w>a)(b)? / a.end
+ok match (?P<w>a)(b)? / a.lastindex
+ok match (?P<w>a)(b)? / a.g1
+ok match (?P<w>a)(b)? / a.g2.none
+ok match (?P<w>a)(b)? / a.w
+ok search (?P<w>a)(b)? / a.start
+ok search (?P<w>a)(b)? / a.end
+ok search (?P<w>a)(b)? / a.lastindex
+ok search (?P<w>a)(b)? / a.g1
+ok search (?P<w>a)(b)? / a.g2.none
+ok search (?P<w>a)(b)? / a.w
+ok fullmatch (?P<w>a)(b)? / a.start
+ok fullmatch (?P<w>a)(b)? / a.end
+ok fullmatch (?P<w>a)(b)? / a.lastindex
+ok fullmatch (?P<w>a)(b)? / a.g1
+ok fullmatch (?P<w>a)(b)? / a.g2.none
+ok fullmatch (?P<w>a)(b)? / a.w
+ok match (?P<w>a)(b)? / aaa.start
+ok match (?P<w>a)(b)? / aaa.end
+ok match (?P<w>a)(b)? / aaa.lastindex
+ok match (?P<w>a)(b)? / aaa.g1
+ok match (?P<w>a)(b)? / aaa.g2.none
+ok match (?P<w>a)(b)? / aaa.w
+ok search (?P<w>a)(b)? / aaa.start
+ok search (?P<w>a)(b)? / aaa.end
+ok search (?P<w>a)(b)? / aaa.lastindex
+ok search (?P<w>a)(b)? / aaa.g1
+ok search (?P<w>a)(b)? / aaa.g2.none
+ok search (?P<w>a)(b)? / aaa.w
+ok fullmatch (?P<w>a)(b)? / aaa
+ok match (?P<w>a)(b)? / aab.start
+ok match (?P<w>a)(b)? / aab.end
+ok match (?P<w>a)(b)? / aab.lastindex
+ok match (?P<w>a)(b)? / aab.g1
+ok match (?P<w>a)(b)? / aab.g2.none
+ok match (?P<w>a)(b)? / aab.w
+ok search (?P<w>a)(b)? / aab.start
+ok search (?P<w>a)(b)? / aab.end
+ok search (?P<w>a)(b)? / aab.lastindex
+ok search (?P<w>a)(b)? / aab.g1
+ok search (?P<w>a)(b)? / aab.g2.none
+ok search (?P<w>a)(b)? / aab.w
+ok fullmatch (?P<w>a)(b)? / aab
+ok match (?P<w>a)(b)? / b
+ok search (?P<w>a)(b)? / b
+ok fullmatch (?P<w>a)(b)? / b
+ok match (?P<w>a)(b)? / ac.start
+ok match (?P<w>a)(b)? / ac.end
+ok match (?P<w>a)(b)? / ac.lastindex
+ok match (?P<w>a)(b)? / ac.g1
+ok match (?P<w>a)(b)? / ac.g2.none
+ok match (?P<w>a)(b)? / ac.w
+ok search (?P<w>a)(b)? / ac.start
+ok search (?P<w>a)(b)? / ac.end
+ok search (?P<w>a)(b)? / ac.lastindex
+ok search (?P<w>a)(b)? / ac.g1
+ok search (?P<w>a)(b)? / ac.g2.none
+ok search (?P<w>a)(b)? / ac.w
+ok fullmatch (?P<w>a)(b)? / ac
+ok match (?P<w>a)(b)? / abcabc.start
+ok match (?P<w>a)(b)? / abcabc.end
+ok match (?P<w>a)(b)? / abcabc.lastindex
+ok match (?P<w>a)(b)? / abcabc.g1
+ok match (?P<w>a)(b)? / abcabc.g2
+ok match (?P<w>a)(b)? / abcabc.w
+ok search (?P<w>a)(b)? / abcabc.start
+ok search (?P<w>a)(b)? / abcabc.end
+ok search (?P<w>a)(b)? / abcabc.lastindex
+ok search (?P<w>a)(b)? / abcabc.g1
+ok search (?P<w>a)(b)? / abcabc.g2
+ok search (?P<w>a)(b)? / abcabc.w
+ok fullmatch (?P<w>a)(b)? / abcabc
+ok match (?P<w>a)(b)? / ab
+cd.start
+ok match (?P<w>a)(b)? / ab
+cd.end
+ok match (?P<w>a)(b)? / ab
+cd.lastindex
+ok match (?P<w>a)(b)? / ab
+cd.g1
+ok match (?P<w>a)(b)? / ab
+cd.g2
+ok match (?P<w>a)(b)? / ab
+cd.w
+ok search (?P<w>a)(b)? / ab
+cd.start
+ok search (?P<w>a)(b)? / ab
+cd.end
+ok search (?P<w>a)(b)? / ab
+cd.lastindex
+ok search (?P<w>a)(b)? / ab
+cd.g1
+ok search (?P<w>a)(b)? / ab
+cd.g2
+ok search (?P<w>a)(b)? / ab
+cd.w
+ok fullmatch (?P<w>a)(b)? / ab
+cd
+ok match (?P<w>a)(b)? / a
+b
+c.start
+ok match (?P<w>a)(b)? / a
+b
+c.end
+ok match (?P<w>a)(b)? / a
+b
+c.lastindex
+ok match (?P<w>a)(b)? / a
+b
+c.g1
+ok match (?P<w>a)(b)? / a
+b
+c.g2.none
+ok match (?P<w>a)(b)? / a
+b
+c.w
+ok search (?P<w>a)(b)? / a
+b
+c.start
+ok search (?P<w>a)(b)? / a
+b
+c.end
+ok search (?P<w>a)(b)? / a
+b
+c.lastindex
+ok search (?P<w>a)(b)? / a
+b
+c.g1
+ok search (?P<w>a)(b)? / a
+b
+c.g2.none
+ok search (?P<w>a)(b)? / a
+b
+c.w
+ok fullmatch (?P<w>a)(b)? / a
+b
+c
+ok match (?P<w>a)(b)? / hello world
+ok search (?P<w>a)(b)? / hello world
+ok fullmatch (?P<w>a)(b)? / hello world
+ok match (?P<w>a)(b)? / The quick brown fox
+ok search (?P<w>a)(b)? / The quick brown fox
+ok fullmatch (?P<w>a)(b)? / The quick brown fox
+ok match (?P<w>a)(b)? / éαβ
+ok search (?P<w>a)(b)? / éαβ
+ok fullmatch (?P<w>a)(b)? / éαβ
+ok match (?P<w>a)(b)? / 日本語
+ok search (?P<w>a)(b)? / 日本語
+ok fullmatch (?P<w>a)(b)? / 日本語
+ok match (?P<w>a)(b)? / 😀👍🏽
+ok search (?P<w>a)(b)? / 😀👍🏽
+ok fullmatch (?P<w>a)(b)? / 😀👍🏽
+ok match (?P<w>a)(b)? / éx
+ok search (?P<w>a)(b)? / éx
+ok fullmatch (?P<w>a)(b)? / éx
+ok match (?P<w>a)(b)? / a1b2c3.start
+ok match (?P<w>a)(b)? / a1b2c3.end
+ok match (?P<w>a)(b)? / a1b2c3.lastindex
+ok match (?P<w>a)(b)? / a1b2c3.g1
+ok match (?P<w>a)(b)? / a1b2c3.g2.none
+ok match (?P<w>a)(b)? / a1b2c3.w
+ok search (?P<w>a)(b)? / a1b2c3.start
+ok search (?P<w>a)(b)? / a1b2c3.end
+ok search (?P<w>a)(b)? / a1b2c3.lastindex
+ok search (?P<w>a)(b)? / a1b2c3.g1
+ok search (?P<w>a)(b)? / a1b2c3.g2.none
+ok search (?P<w>a)(b)? / a1b2c3.w
+ok fullmatch (?P<w>a)(b)? / a1b2c3
+ok match (?P<w>a)(b)? /    	
+
+ok search (?P<w>a)(b)? /    	
+
+ok fullmatch (?P<w>a)(b)? /    	
+
+ok match (?P<w>a)(b)? / word-
+ok search (?P<w>a)(b)? / word-
+ok fullmatch (?P<w>a)(b)? / word-
+ok match (?P<w>a)(b)? / _x9
+ok search (?P<w>a)(b)? / _x9
+ok fullmatch (?P<w>a)(b)? / _x9
+ok match (?P<w>a)(b)? / 12abc34
+ok search (?P<w>a)(b)? / 12abc34.start
+ok search (?P<w>a)(b)? / 12abc34.end
+ok search (?P<w>a)(b)? / 12abc34.lastindex
+ok search (?P<w>a)(b)? / 12abc34.g1
+ok search (?P<w>a)(b)? / 12abc34.g2
+ok search (?P<w>a)(b)? / 12abc34.w
+ok fullmatch (?P<w>a)(b)? / 12abc34
+ok match (?P<w>a)(b)? / abc123.start
+ok match (?P<w>a)(b)? / abc123.end
+ok match (?P<w>a)(b)? / abc123.lastindex
+ok match (?P<w>a)(b)? / abc123.g1
+ok match (?P<w>a)(b)? / abc123.g2
+ok match (?P<w>a)(b)? / abc123.w
+ok search (?P<w>a)(b)? / abc123.start
+ok search (?P<w>a)(b)? / abc123.end
+ok search (?P<w>a)(b)? / abc123.lastindex
+ok search (?P<w>a)(b)? / abc123.g1
+ok search (?P<w>a)(b)? / abc123.g2
+ok search (?P<w>a)(b)? / abc123.w
+ok fullmatch (?P<w>a)(b)? / abc123
+ok match (?P<w>a)(b)? / A1 B2
+ok search (?P<w>a)(b)? / A1 B2
+ok fullmatch (?P<w>a)(b)? / A1 B2
+ok match (a|b)(c)? / abc.start
+ok match (a|b)(c)? / abc.end
+ok match (a|b)(c)? / abc.lastindex
+ok match (a|b)(c)? / abc.g1
+ok match (a|b)(c)? / abc.g2.none
+ok search (a|b)(c)? / abc.start
+ok search (a|b)(c)? / abc.end
+ok search (a|b)(c)? / abc.lastindex
+ok search (a|b)(c)? / abc.g1
+ok search (a|b)(c)? / abc.g2.none
+ok fullmatch (a|b)(c)? / abc
+ok match (a|b)(c)? / 
+ok search (a|b)(c)? / 
+ok fullmatch (a|b)(c)? / 
+ok match (a|b)(c)? / a.start
+ok match (a|b)(c)? / a.end
+ok match (a|b)(c)? / a.lastindex
+ok match (a|b)(c)? / a.g1
+ok match (a|b)(c)? / a.g2.none
+ok search (a|b)(c)? / a.start
+ok search (a|b)(c)? / a.end
+ok search (a|b)(c)? / a.lastindex
+ok search (a|b)(c)? / a.g1
+ok search (a|b)(c)? / a.g2.none
+ok fullmatch (a|b)(c)? / a.start
+ok fullmatch (a|b)(c)? / a.end
+ok fullmatch (a|b)(c)? / a.lastindex
+ok fullmatch (a|b)(c)? / a.g1
+ok fullmatch (a|b)(c)? / a.g2.none
+ok match (a|b)(c)? / aaa.start
+ok match (a|b)(c)? / aaa.end
+ok match (a|b)(c)? / aaa.lastindex
+ok match (a|b)(c)? / aaa.g1
+ok match (a|b)(c)? / aaa.g2.none
+ok search (a|b)(c)? / aaa.start
+ok search (a|b)(c)? / aaa.end
+ok search (a|b)(c)? / aaa.lastindex
+ok search (a|b)(c)? / aaa.g1
+ok search (a|b)(c)? / aaa.g2.none
+ok fullmatch (a|b)(c)? / aaa
+ok match (a|b)(c)? / aab.start
+ok match (a|b)(c)? / aab.end
+ok match (a|b)(c)? / aab.lastindex
+ok match (a|b)(c)? / aab.g1
+ok match (a|b)(c)? / aab.g2.none
+ok search (a|b)(c)? / aab.start
+ok search (a|b)(c)? / aab.end
+ok search (a|b)(c)? / aab.lastindex
+ok search (a|b)(c)? / aab.g1
+ok search (a|b)(c)? / aab.g2.none
+ok fullmatch (a|b)(c)? / aab
+ok match (a|b)(c)? / b.start
+ok match (a|b)(c)? / b.end
+ok match (a|b)(c)? / b.lastindex
+ok match (a|b)(c)? / b.g1
+ok match (a|b)(c)? / b.g2.none
+ok search (a|b)(c)? / b.start
+ok search (a|b)(c)? / b.end
+ok search (a|b)(c)? / b.lastindex
+ok search (a|b)(c)? / b.g1
+ok search (a|b)(c)? / b.g2.none
+ok fullmatch (a|b)(c)? / b.start
+ok fullmatch (a|b)(c)? / b.end
+ok fullmatch (a|b)(c)? / b.lastindex
+ok fullmatch (a|b)(c)? / b.g1
+ok fullmatch (a|b)(c)? / b.g2.none
+ok match (a|b)(c)? / ac.start
+ok match (a|b)(c)? / ac.end
+ok match (a|b)(c)? / ac.lastindex
+ok match (a|b)(c)? / ac.g1
+ok match (a|b)(c)? / ac.g2
+ok search (a|b)(c)? / ac.start
+ok search (a|b)(c)? / ac.end
+ok search (a|b)(c)? / ac.lastindex
+ok search (a|b)(c)? / ac.g1
+ok search (a|b)(c)? / ac.g2
+ok fullmatch (a|b)(c)? / ac.start
+ok fullmatch (a|b)(c)? / ac.end
+ok fullmatch (a|b)(c)? / ac.lastindex
+ok fullmatch (a|b)(c)? / ac.g1
+ok fullmatch (a|b)(c)? / ac.g2
+ok match (a|b)(c)? / abcabc.start
+ok match (a|b)(c)? / abcabc.end
+ok match (a|b)(c)? / abcabc.lastindex
+ok match (a|b)(c)? / abcabc.g1
+ok match (a|b)(c)? / abcabc.g2.none
+ok search (a|b)(c)? / abcabc.start
+ok search (a|b)(c)? / abcabc.end
+ok search (a|b)(c)? / abcabc.lastindex
+ok search (a|b)(c)? / abcabc.g1
+ok search (a|b)(c)? / abcabc.g2.none
+ok fullmatch (a|b)(c)? / abcabc
+ok match (a|b)(c)? / ab
+cd.start
+ok match (a|b)(c)? / ab
+cd.end
+ok match (a|b)(c)? / ab
+cd.lastindex
+ok match (a|b)(c)? / ab
+cd.g1
+ok match (a|b)(c)? / ab
+cd.g2.none
+ok search (a|b)(c)? / ab
+cd.start
+ok search (a|b)(c)? / ab
+cd.end
+ok search (a|b)(c)? / ab
+cd.lastindex
+ok search (a|b)(c)? / ab
+cd.g1
+ok search (a|b)(c)? / ab
+cd.g2.none
+ok fullmatch (a|b)(c)? / ab
+cd
+ok match (a|b)(c)? / a
+b
+c.start
+ok match (a|b)(c)? / a
+b
+c.end
+ok match (a|b)(c)? / a
+b
+c.lastindex
+ok match (a|b)(c)? / a
+b
+c.g1
+ok match (a|b)(c)? / a
+b
+c.g2.none
+ok search (a|b)(c)? / a
+b
+c.start
+ok search (a|b)(c)? / a
+b
+c.end
+ok search (a|b)(c)? / a
+b
+c.lastindex
+ok search (a|b)(c)? / a
+b
+c.g1
+ok search (a|b)(c)? / a
+b
+c.g2.none
+ok fullmatch (a|b)(c)? / a
+b
+c
+ok match (a|b)(c)? / hello world
+ok search (a|b)(c)? / hello world
+ok fullmatch (a|b)(c)? / hello world
+ok match (a|b)(c)? / The quick brown fox
+ok search (a|b)(c)? / The quick brown fox.start
+ok search (a|b)(c)? / The quick brown fox.end
+ok search (a|b)(c)? / The quick brown fox.lastindex
+ok search (a|b)(c)? / The quick brown fox.g1
+ok search (a|b)(c)? / The quick brown fox.g2.none
+ok fullmatch (a|b)(c)? / The quick brown fox
+ok match (a|b)(c)? / éαβ
+ok search (a|b)(c)? / éαβ
+ok fullmatch (a|b)(c)? / éαβ
+ok match (a|b)(c)? / 日本語
+ok search (a|b)(c)? / 日本語
+ok fullmatch (a|b)(c)? / 日本語
+ok match (a|b)(c)? / 😀👍🏽
+ok search (a|b)(c)? / 😀👍🏽
+ok fullmatch (a|b)(c)? / 😀👍🏽
+ok match (a|b)(c)? / éx
+ok search (a|b)(c)? / éx
+ok fullmatch (a|b)(c)? / éx
+ok match (a|b)(c)? / a1b2c3.start
+ok match (a|b)(c)? / a1b2c3.end
+ok match (a|b)(c)? / a1b2c3.lastindex
+ok match (a|b)(c)? / a1b2c3.g1
+ok match (a|b)(c)? / a1b2c3.g2.none
+ok search (a|b)(c)? / a1b2c3.start
+ok search (a|b)(c)? / a1b2c3.end
+ok search (a|b)(c)? / a1b2c3.lastindex
+ok search (a|b)(c)? / a1b2c3.g1
+ok search (a|b)(c)? / a1b2c3.g2.none
+ok fullmatch (a|b)(c)? / a1b2c3
+ok match (a|b)(c)? /    	
+
+ok search (a|b)(c)? /    	
+
+ok fullmatch (a|b)(c)? /    	
+
+ok match (a|b)(c)? / word-
+ok search (a|b)(c)? / word-
+ok fullmatch (a|b)(c)? / word-
+ok match (a|b)(c)? / _x9
+ok search (a|b)(c)? / _x9
+ok fullmatch (a|b)(c)? / _x9
+ok match (a|b)(c)? / 12abc34
+ok search (a|b)(c)? / 12abc34.start
+ok search (a|b)(c)? / 12abc34.end
+ok search (a|b)(c)? / 12abc34.lastindex
+ok search (a|b)(c)? / 12abc34.g1
+ok search (a|b)(c)? / 12abc34.g2.none
+ok fullmatch (a|b)(c)? / 12abc34
+ok match (a|b)(c)? / abc123.start
+ok match (a|b)(c)? / abc123.end
+ok match (a|b)(c)? / abc123.lastindex
+ok match (a|b)(c)? / abc123.g1
+ok match (a|b)(c)? / abc123.g2.none
+ok search (a|b)(c)? / abc123.start
+ok search (a|b)(c)? / abc123.end
+ok search (a|b)(c)? / abc123.lastindex
+ok search (a|b)(c)? / abc123.g1
+ok search (a|b)(c)? / abc123.g2.none
+ok fullmatch (a|b)(c)? / abc123
+ok match (a|b)(c)? / A1 B2
+ok search (a|b)(c)? / A1 B2
+ok fullmatch (a|b)(c)? / A1 B2
+ok match (abc|def) / abc.start
+ok match (abc|def) / abc.end
+ok match (abc|def) / abc.lastindex
+ok match (abc|def) / abc.g1
+ok search (abc|def) / abc.start
+ok search (abc|def) / abc.end
+ok search (abc|def) / abc.lastindex
+ok search (abc|def) / abc.g1
+ok fullmatch (abc|def) / abc.start
+ok fullmatch (abc|def) / abc.end
+ok fullmatch (abc|def) / abc.lastindex
+ok fullmatch (abc|def) / abc.g1
+ok match (abc|def) / 
+ok search (abc|def) / 
+ok fullmatch (abc|def) / 
+ok match (abc|def) / a
+ok search (abc|def) / a
+ok fullmatch (abc|def) / a
+ok match (abc|def) / aaa
+ok search (abc|def) / aaa
+ok fullmatch (abc|def) / aaa
+ok match (abc|def) / aab
+ok search (abc|def) / aab
+ok fullmatch (abc|def) / aab
+ok match (abc|def) / b
+ok search (abc|def) / b
+ok fullmatch (abc|def) / b
+ok match (abc|def) / ac
+ok search (abc|def) / ac
+ok fullmatch (abc|def) / ac
+ok match (abc|def) / abcabc.start
+ok match (abc|def) / abcabc.end
+ok match (abc|def) / abcabc.lastindex
+ok match (abc|def) / abcabc.g1
+ok search (abc|def) / abcabc.start
+ok search (abc|def) / abcabc.end
+ok search (abc|def) / abcabc.lastindex
+ok search (abc|def) / abcabc.g1
+ok fullmatch (abc|def) / abcabc
+ok match (abc|def) / ab
+cd
+ok search (abc|def) / ab
+cd
+ok fullmatch (abc|def) / ab
+cd
+ok match (abc|def) / a
+b
+c
+ok search (abc|def) / a
+b
+c
+ok fullmatch (abc|def) / a
+b
+c
+ok match (abc|def) / hello world
+ok search (abc|def) / hello world
+ok fullmatch (abc|def) / hello world
+ok match (abc|def) / The quick brown fox
+ok search (abc|def) / The quick brown fox
+ok fullmatch (abc|def) / The quick brown fox
+ok match (abc|def) / éαβ
+ok search (abc|def) / éαβ
+ok fullmatch (abc|def) / éαβ
+ok match (abc|def) / 日本語
+ok search (abc|def) / 日本語
+ok fullmatch (abc|def) / 日本語
+ok match (abc|def) / 😀👍🏽
+ok search (abc|def) / 😀👍🏽
+ok fullmatch (abc|def) / 😀👍🏽
+ok match (abc|def) / éx
+ok search (abc|def) / éx
+ok fullmatch (abc|def) / éx
+ok match (abc|def) / a1b2c3
+ok search (abc|def) / a1b2c3
+ok fullmatch (abc|def) / a1b2c3
+ok match (abc|def) /    	
+
+ok search (abc|def) /    	
+
+ok fullmatch (abc|def) /    	
+
+ok match (abc|def) / word-
+ok search (abc|def) / word-
+ok fullmatch (abc|def) / word-
+ok match (abc|def) / _x9
+ok search (abc|def) / _x9
+ok fullmatch (abc|def) / _x9
+ok match (abc|def) / 12abc34
+ok search (abc|def) / 12abc34.start
+ok search (abc|def) / 12abc34.end
+ok search (abc|def) / 12abc34.lastindex
+ok search (abc|def) / 12abc34.g1
+ok fullmatch (abc|def) / 12abc34
+ok match (abc|def) / abc123.start
+ok match (abc|def) / abc123.end
+ok match (abc|def) / abc123.lastindex
+ok match (abc|def) / abc123.g1
+ok search (abc|def) / abc123.start
+ok search (abc|def) / abc123.end
+ok search (abc|def) / abc123.lastindex
+ok search (abc|def) / abc123.g1
+ok fullmatch (abc|def) / abc123
+ok match (abc|def) / A1 B2
+ok search (abc|def) / A1 B2
+ok fullmatch (abc|def) / A1 B2
+ok match a{2} / abc
+ok search a{2} / abc
+ok fullmatch a{2} / abc
+ok match a{2} / 
+ok search a{2} / 
+ok fullmatch a{2} / 
+ok match a{2} / a
+ok search a{2} / a
+ok fullmatch a{2} / a
+ok match a{2} / aaa.start
+ok match a{2} / aaa.end
+ok match a{2} / aaa.lastindex
+ok search a{2} / aaa.start
+ok search a{2} / aaa.end
+ok search a{2} / aaa.lastindex
+ok fullmatch a{2} / aaa
+ok match a{2} / aab.start
+ok match a{2} / aab.end
+ok match a{2} / aab.lastindex
+ok search a{2} / aab.start
+ok search a{2} / aab.end
+ok search a{2} / aab.lastindex
+ok fullmatch a{2} / aab
+ok match a{2} / b
+ok search a{2} / b
+ok fullmatch a{2} / b
+ok match a{2} / ac
+ok search a{2} / ac
+ok fullmatch a{2} / ac
+ok match a{2} / abcabc
+ok search a{2} / abcabc
+ok fullmatch a{2} / abcabc
+ok match a{2} / ab
+cd
+ok search a{2} / ab
+cd
+ok fullmatch a{2} / ab
+cd
+ok match a{2} / a
+b
+c
+ok search a{2} / a
+b
+c
+ok fullmatch a{2} / a
+b
+c
+ok match a{2} / hello world
+ok search a{2} / hello world
+ok fullmatch a{2} / hello world
+ok match a{2} / The quick brown fox
+ok search a{2} / The quick brown fox
+ok fullmatch a{2} / The quick brown fox
+ok match a{2} / éαβ
+ok search a{2} / éαβ
+ok fullmatch a{2} / éαβ
+ok match a{2} / 日本語
+ok search a{2} / 日本語
+ok fullmatch a{2} / 日本語
+ok match a{2} / 😀👍🏽
+ok search a{2} / 😀👍🏽
+ok fullmatch a{2} / 😀👍🏽
+ok match a{2} / éx
+ok search a{2} / éx
+ok fullmatch a{2} / éx
+ok match a{2} / a1b2c3
+ok search a{2} / a1b2c3
+ok fullmatch a{2} / a1b2c3
+ok match a{2} /    	
+
+ok search a{2} /    	
+
+ok fullmatch a{2} /    	
+
+ok match a{2} / word-
+ok search a{2} / word-
+ok fullmatch a{2} / word-
+ok match a{2} / _x9
+ok search a{2} / _x9
+ok fullmatch a{2} / _x9
+ok match a{2} / 12abc34
+ok search a{2} / 12abc34
+ok fullmatch a{2} / 12abc34
+ok match a{2} / abc123
+ok search a{2} / abc123
+ok fullmatch a{2} / abc123
+ok match a{2} / A1 B2
+ok search a{2} / A1 B2
+ok fullmatch a{2} / A1 B2
+ok match a{2,} / abc
+ok search a{2,} / abc
+ok fullmatch a{2,} / abc
+ok match a{2,} / 
+ok search a{2,} / 
+ok fullmatch a{2,} / 
+ok match a{2,} / a
+ok search a{2,} / a
+ok fullmatch a{2,} / a
+ok match a{2,} / aaa.start
+ok match a{2,} / aaa.end
+ok match a{2,} / aaa.lastindex
+ok search a{2,} / aaa.start
+ok search a{2,} / aaa.end
+ok search a{2,} / aaa.lastindex
+ok fullmatch a{2,} / aaa.start
+ok fullmatch a{2,} / aaa.end
+ok fullmatch a{2,} / aaa.lastindex
+ok match a{2,} / aab.start
+ok match a{2,} / aab.end
+ok match a{2,} / aab.lastindex
+ok search a{2,} / aab.start
+ok search a{2,} / aab.end
+ok search a{2,} / aab.lastindex
+ok fullmatch a{2,} / aab
+ok match a{2,} / b
+ok search a{2,} / b
+ok fullmatch a{2,} / b
+ok match a{2,} / ac
+ok search a{2,} / ac
+ok fullmatch a{2,} / ac
+ok match a{2,} / abcabc
+ok search a{2,} / abcabc
+ok fullmatch a{2,} / abcabc
+ok match a{2,} / ab
+cd
+ok search a{2,} / ab
+cd
+ok fullmatch a{2,} / ab
+cd
+ok match a{2,} / a
+b
+c
+ok search a{2,} / a
+b
+c
+ok fullmatch a{2,} / a
+b
+c
+ok match a{2,} / hello world
+ok search a{2,} / hello world
+ok fullmatch a{2,} / hello world
+ok match a{2,} / The quick brown fox
+ok search a{2,} / The quick brown fox
+ok fullmatch a{2,} / The quick brown fox
+ok match a{2,} / éαβ
+ok search a{2,} / éαβ
+ok fullmatch a{2,} / éαβ
+ok match a{2,} / 日本語
+ok search a{2,} / 日本語
+ok fullmatch a{2,} / 日本語
+ok match a{2,} / 😀👍🏽
+ok search a{2,} / 😀👍🏽
+ok fullmatch a{2,} / 😀👍🏽
+ok match a{2,} / éx
+ok search a{2,} / éx
+ok fullmatch a{2,} / éx
+ok match a{2,} / a1b2c3
+ok search a{2,} / a1b2c3
+ok fullmatch a{2,} / a1b2c3
+ok match a{2,} /    	
+
+ok search a{2,} /    	
+
+ok fullmatch a{2,} /    	
+
+ok match a{2,} / word-
+ok search a{2,} / word-
+ok fullmatch a{2,} / word-
+ok match a{2,} / _x9
+ok search a{2,} / _x9
+ok fullmatch a{2,} / _x9
+ok match a{2,} / 12abc34
+ok search a{2,} / 12abc34
+ok fullmatch a{2,} / 12abc34
+ok match a{2,} / abc123
+ok search a{2,} / abc123
+ok fullmatch a{2,} / abc123
+ok match a{2,} / A1 B2
+ok search a{2,} / A1 B2
+ok fullmatch a{2,} / A1 B2
+ok match a{2,3}? / abc
+ok search a{2,3}? / abc
+ok fullmatch a{2,3}? / abc
+ok match a{2,3}? / 
+ok search a{2,3}? / 
+ok fullmatch a{2,3}? / 
+ok match a{2,3}? / a
+ok search a{2,3}? / a
+ok fullmatch a{2,3}? / a
+ok match a{2,3}? / aaa.start
+ok match a{2,3}? / aaa.end
+ok match a{2,3}? / aaa.lastindex
+ok search a{2,3}? / aaa.start
+ok search a{2,3}? / aaa.end
+ok search a{2,3}? / aaa.lastindex
+ok fullmatch a{2,3}? / aaa.start
+ok fullmatch a{2,3}? / aaa.end
+ok fullmatch a{2,3}? / aaa.lastindex
+ok match a{2,3}? / aab.start
+ok match a{2,3}? / aab.end
+ok match a{2,3}? / aab.lastindex
+ok search a{2,3}? / aab.start
+ok search a{2,3}? / aab.end
+ok search a{2,3}? / aab.lastindex
+ok fullmatch a{2,3}? / aab
+ok match a{2,3}? / b
+ok search a{2,3}? / b
+ok fullmatch a{2,3}? / b
+ok match a{2,3}? / ac
+ok search a{2,3}? / ac
+ok fullmatch a{2,3}? / ac
+ok match a{2,3}? / abcabc
+ok search a{2,3}? / abcabc
+ok fullmatch a{2,3}? / abcabc
+ok match a{2,3}? / ab
+cd
+ok search a{2,3}? / ab
+cd
+ok fullmatch a{2,3}? / ab
+cd
+ok match a{2,3}? / a
+b
+c
+ok search a{2,3}? / a
+b
+c
+ok fullmatch a{2,3}? / a
+b
+c
+ok match a{2,3}? / hello world
+ok search a{2,3}? / hello world
+ok fullmatch a{2,3}? / hello world
+ok match a{2,3}? / The quick brown fox
+ok search a{2,3}? / The quick brown fox
+ok fullmatch a{2,3}? / The quick brown fox
+ok match a{2,3}? / éαβ
+ok search a{2,3}? / éαβ
+ok fullmatch a{2,3}? / éαβ
+ok match a{2,3}? / 日本語
+ok search a{2,3}? / 日本語
+ok fullmatch a{2,3}? / 日本語
+ok match a{2,3}? / 😀👍🏽
+ok search a{2,3}? / 😀👍🏽
+ok fullmatch a{2,3}? / 😀👍🏽
+ok match a{2,3}? / éx
+ok search a{2,3}? / éx
+ok fullmatch a{2,3}? / éx
+ok match a{2,3}? / a1b2c3
+ok search a{2,3}? / a1b2c3
+ok fullmatch a{2,3}? / a1b2c3
+ok match a{2,3}? /    	
+
+ok search a{2,3}? /    	
+
+ok fullmatch a{2,3}? /    	
+
+ok match a{2,3}? / word-
+ok search a{2,3}? / word-
+ok fullmatch a{2,3}? / word-
+ok match a{2,3}? / _x9
+ok search a{2,3}? / _x9
+ok fullmatch a{2,3}? / _x9
+ok match a{2,3}? / 12abc34
+ok search a{2,3}? / 12abc34
+ok fullmatch a{2,3}? / 12abc34
+ok match a{2,3}? / abc123
+ok search a{2,3}? / abc123
+ok fullmatch a{2,3}? / abc123
+ok match a{2,3}? / A1 B2
+ok search a{2,3}? / A1 B2
+ok fullmatch a{2,3}? / A1 B2
+ok match [a-c]+ / abc.start
+ok match [a-c]+ / abc.end
+ok match [a-c]+ / abc.lastindex
+ok search [a-c]+ / abc.start
+ok search [a-c]+ / abc.end
+ok search [a-c]+ / abc.lastindex
+ok fullmatch [a-c]+ / abc.start
+ok fullmatch [a-c]+ / abc.end
+ok fullmatch [a-c]+ / abc.lastindex
+ok match [a-c]+ / 
+ok search [a-c]+ / 
+ok fullmatch [a-c]+ / 
+ok match [a-c]+ / a.start
+ok match [a-c]+ / a.end
+ok match [a-c]+ / a.lastindex
+ok search [a-c]+ / a.start
+ok search [a-c]+ / a.end
+ok search [a-c]+ / a.lastindex
+ok fullmatch [a-c]+ / a.start
+ok fullmatch [a-c]+ / a.end
+ok fullmatch [a-c]+ / a.lastindex
+ok match [a-c]+ / aaa.start
+ok match [a-c]+ / aaa.end
+ok match [a-c]+ / aaa.lastindex
+ok search [a-c]+ / aaa.start
+ok search [a-c]+ / aaa.end
+ok search [a-c]+ / aaa.lastindex
+ok fullmatch [a-c]+ / aaa.start
+ok fullmatch [a-c]+ / aaa.end
+ok fullmatch [a-c]+ / aaa.lastindex
+ok match [a-c]+ / aab.start
+ok match [a-c]+ / aab.end
+ok match [a-c]+ / aab.lastindex
+ok search [a-c]+ / aab.start
+ok search [a-c]+ / aab.end
+ok search [a-c]+ / aab.lastindex
+ok fullmatch [a-c]+ / aab.start
+ok fullmatch [a-c]+ / aab.end
+ok fullmatch [a-c]+ / aab.lastindex
+ok match [a-c]+ / b.start
+ok match [a-c]+ / b.end
+ok match [a-c]+ / b.lastindex
+ok search [a-c]+ / b.start
+ok search [a-c]+ / b.end
+ok search [a-c]+ / b.lastindex
+ok fullmatch [a-c]+ / b.start
+ok fullmatch [a-c]+ / b.end
+ok fullmatch [a-c]+ / b.lastindex
+ok match [a-c]+ / ac.start
+ok match [a-c]+ / ac.end
+ok match [a-c]+ / ac.lastindex
+ok search [a-c]+ / ac.start
+ok search [a-c]+ / ac.end
+ok search [a-c]+ / ac.lastindex
+ok fullmatch [a-c]+ / ac.start
+ok fullmatch [a-c]+ / ac.end
+ok fullmatch [a-c]+ / ac.lastindex
+ok match [a-c]+ / abcabc.start
+ok match [a-c]+ / abcabc.end
+ok match [a-c]+ / abcabc.lastindex
+ok search [a-c]+ / abcabc.start
+ok search [a-c]+ / abcabc.end
+ok search [a-c]+ / abcabc.lastindex
+ok fullmatch [a-c]+ / abcabc.start
+ok fullmatch [a-c]+ / abcabc.end
+ok fullmatch [a-c]+ / abcabc.lastindex
+ok match [a-c]+ / ab
+cd.start
+ok match [a-c]+ / ab
+cd.end
+ok match [a-c]+ / ab
+cd.lastindex
+ok search [a-c]+ / ab
+cd.start
+ok search [a-c]+ / ab
+cd.end
+ok search [a-c]+ / ab
+cd.lastindex
+ok fullmatch [a-c]+ / ab
+cd
+ok match [a-c]+ / a
+b
+c.start
+ok match [a-c]+ / a
+b
+c.end
+ok match [a-c]+ / a
+b
+c.lastindex
+ok search [a-c]+ / a
+b
+c.start
+ok search [a-c]+ / a
+b
+c.end
+ok search [a-c]+ / a
+b
+c.lastindex
+ok fullmatch [a-c]+ / a
+b
+c
+ok match [a-c]+ / hello world
+ok search [a-c]+ / hello world
+ok fullmatch [a-c]+ / hello world
+ok match [a-c]+ / The quick brown fox
+ok search [a-c]+ / The quick brown fox.start
+ok search [a-c]+ / The quick brown fox.end
+ok search [a-c]+ / The quick brown fox.lastindex
+ok fullmatch [a-c]+ / The quick brown fox
+ok match [a-c]+ / éαβ
+ok search [a-c]+ / éαβ
+ok fullmatch [a-c]+ / éαβ
+ok match [a-c]+ / 日本語
+ok search [a-c]+ / 日本語
+ok fullmatch [a-c]+ / 日本語
+ok match [a-c]+ / 😀👍🏽
+ok search [a-c]+ / 😀👍🏽
+ok fullmatch [a-c]+ / 😀👍🏽
+ok match [a-c]+ / éx
+ok search [a-c]+ / éx
+ok fullmatch [a-c]+ / éx
+ok match [a-c]+ / a1b2c3.start
+ok match [a-c]+ / a1b2c3.end
+ok match [a-c]+ / a1b2c3.lastindex
+ok search [a-c]+ / a1b2c3.start
+ok search [a-c]+ / a1b2c3.end
+ok search [a-c]+ / a1b2c3.lastindex
+ok fullmatch [a-c]+ / a1b2c3
+ok match [a-c]+ /    	
+
+ok search [a-c]+ /    	
+
+ok fullmatch [a-c]+ /    	
+
+ok match [a-c]+ / word-
+ok search [a-c]+ / word-
+ok fullmatch [a-c]+ / word-
+ok match [a-c]+ / _x9
+ok search [a-c]+ / _x9
+ok fullmatch [a-c]+ / _x9
+ok match [a-c]+ / 12abc34
+ok search [a-c]+ / 12abc34.start
+ok search [a-c]+ / 12abc34.end
+ok search [a-c]+ / 12abc34.lastindex
+ok fullmatch [a-c]+ / 12abc34
+ok match [a-c]+ / abc123.start
+ok match [a-c]+ / abc123.end
+ok match [a-c]+ / abc123.lastindex
+ok search [a-c]+ / abc123.start
+ok search [a-c]+ / abc123.end
+ok search [a-c]+ / abc123.lastindex
+ok fullmatch [a-c]+ / abc123
+ok match [a-c]+ / A1 B2
+ok search [a-c]+ / A1 B2
+ok fullmatch [a-c]+ / A1 B2
+ok match [^a-c]+ / abc
+ok search [^a-c]+ / abc
+ok fullmatch [^a-c]+ / abc
+ok match [^a-c]+ / 
+ok search [^a-c]+ / 
+ok fullmatch [^a-c]+ / 
+ok match [^a-c]+ / a
+ok search [^a-c]+ / a
+ok fullmatch [^a-c]+ / a
+ok match [^a-c]+ / aaa
+ok search [^a-c]+ / aaa
+ok fullmatch [^a-c]+ / aaa
+ok match [^a-c]+ / aab
+ok search [^a-c]+ / aab
+ok fullmatch [^a-c]+ / aab
+ok match [^a-c]+ / b
+ok search [^a-c]+ / b
+ok fullmatch [^a-c]+ / b
+ok match [^a-c]+ / ac
+ok search [^a-c]+ / ac
+ok fullmatch [^a-c]+ / ac
+ok match [^a-c]+ / abcabc
+ok search [^a-c]+ / abcabc
+ok fullmatch [^a-c]+ / abcabc
+ok match [^a-c]+ / ab
+cd
+ok search [^a-c]+ / ab
+cd.start
+ok search [^a-c]+ / ab
+cd.end
+ok search [^a-c]+ / ab
+cd.lastindex
+ok fullmatch [^a-c]+ / ab
+cd
+ok match [^a-c]+ / a
+b
+c
+ok search [^a-c]+ / a
+b
+c.start
+ok search [^a-c]+ / a
+b
+c.end
+ok search [^a-c]+ / a
+b
+c.lastindex
+ok fullmatch [^a-c]+ / a
+b
+c
+ok match [^a-c]+ / hello world.start
+ok match [^a-c]+ / hello world.end
+ok match [^a-c]+ / hello world.lastindex
+ok search [^a-c]+ / hello world.start
+ok search [^a-c]+ / hello world.end
+ok search [^a-c]+ / hello world.lastindex
+ok fullmatch [^a-c]+ / hello world.start
+ok fullmatch [^a-c]+ / hello world.end
+ok fullmatch [^a-c]+ / hello world.lastindex
+ok match [^a-c]+ / The quick brown fox.start
+ok match [^a-c]+ / The quick brown fox.end
+ok match [^a-c]+ / The quick brown fox.lastindex
+ok search [^a-c]+ / The quick brown fox.start
+ok search [^a-c]+ / The quick brown fox.end
+ok search [^a-c]+ / The quick brown fox.lastindex
+ok fullmatch [^a-c]+ / The quick brown fox
+ok match [^a-c]+ / éαβ.start
+ok match [^a-c]+ / éαβ.end
+ok match [^a-c]+ / éαβ.lastindex
+ok search [^a-c]+ / éαβ.start
+ok search [^a-c]+ / éαβ.end
+ok search [^a-c]+ / éαβ.lastindex
+ok fullmatch [^a-c]+ / éαβ.start
+ok fullmatch [^a-c]+ / éαβ.end
+ok fullmatch [^a-c]+ / éαβ.lastindex
+ok match [^a-c]+ / 日本語.start
+ok match [^a-c]+ / 日本語.end
+ok match [^a-c]+ / 日本語.lastindex
+ok search [^a-c]+ / 日本語.start
+ok search [^a-c]+ / 日本語.end
+ok search [^a-c]+ / 日本語.lastindex
+ok fullmatch [^a-c]+ / 日本語.start
+ok fullmatch [^a-c]+ / 日本語.end
+ok fullmatch [^a-c]+ / 日本語.lastindex
+ok match [^a-c]+ / 😀👍🏽.start
+ok match [^a-c]+ / 😀👍🏽.end
+ok match [^a-c]+ / 😀👍🏽.lastindex
+ok search [^a-c]+ / 😀👍🏽.start
+ok search [^a-c]+ / 😀👍🏽.end
+ok search [^a-c]+ / 😀👍🏽.lastindex
+ok fullmatch [^a-c]+ / 😀👍🏽.start
+ok fullmatch [^a-c]+ / 😀👍🏽.end
+ok fullmatch [^a-c]+ / 😀👍🏽.lastindex
+ok match [^a-c]+ / éx.start
+ok match [^a-c]+ / éx.end
+ok match [^a-c]+ / éx.lastindex
+ok search [^a-c]+ / éx.start
+ok search [^a-c]+ / éx.end
+ok search [^a-c]+ / éx.lastindex
+ok fullmatch [^a-c]+ / éx.start
+ok fullmatch [^a-c]+ / éx.end
+ok fullmatch [^a-c]+ / éx.lastindex
+ok match [^a-c]+ / a1b2c3
+ok search [^a-c]+ / a1b2c3.start
+ok search [^a-c]+ / a1b2c3.end
+ok search [^a-c]+ / a1b2c3.lastindex
+ok fullmatch [^a-c]+ / a1b2c3
+ok match [^a-c]+ /    	
+.start
+ok match [^a-c]+ /    	
+.end
+ok match [^a-c]+ /    	
+.lastindex
+ok search [^a-c]+ /    	
+.start
+ok search [^a-c]+ /    	
+.end
+ok search [^a-c]+ /    	
+.lastindex
+ok fullmatch [^a-c]+ /    	
+.start
+ok fullmatch [^a-c]+ /    	
+.end
+ok fullmatch [^a-c]+ /    	
+.lastindex
+ok match [^a-c]+ / word-.start
+ok match [^a-c]+ / word-.end
+ok match [^a-c]+ / word-.lastindex
+ok search [^a-c]+ / word-.start
+ok search [^a-c]+ / word-.end
+ok search [^a-c]+ / word-.lastindex
+ok fullmatch [^a-c]+ / word-.start
+ok fullmatch [^a-c]+ / word-.end
+ok fullmatch [^a-c]+ / word-.lastindex
+ok match [^a-c]+ / _x9.start
+ok match [^a-c]+ / _x9.end
+ok match [^a-c]+ / _x9.lastindex
+ok search [^a-c]+ / _x9.start
+ok search [^a-c]+ / _x9.end
+ok search [^a-c]+ / _x9.lastindex
+ok fullmatch [^a-c]+ / _x9.start
+ok fullmatch [^a-c]+ / _x9.end
+ok fullmatch [^a-c]+ / _x9.lastindex
+ok match [^a-c]+ / 12abc34.start
+ok match [^a-c]+ / 12abc34.end
+ok match [^a-c]+ / 12abc34.lastindex
+ok search [^a-c]+ / 12abc34.start
+ok search [^a-c]+ / 12abc34.end
+ok search [^a-c]+ / 12abc34.lastindex
+ok fullmatch [^a-c]+ / 12abc34
+ok match [^a-c]+ / abc123
+ok search [^a-c]+ / abc123.start
+ok search [^a-c]+ / abc123.end
+ok search [^a-c]+ / abc123.lastindex
+ok fullmatch [^a-c]+ / abc123
+ok match [^a-c]+ / A1 B2.start
+ok match [^a-c]+ / A1 B2.end
+ok match [^a-c]+ / A1 B2.lastindex
+ok search [^a-c]+ / A1 B2.start
+ok search [^a-c]+ / A1 B2.end
+ok search [^a-c]+ / A1 B2.lastindex
+ok fullmatch [^a-c]+ / A1 B2.start
+ok fullmatch [^a-c]+ / A1 B2.end
+ok fullmatch [^a-c]+ / A1 B2.lastindex
+ok match [a-z0-9_]+ / abc.start
+ok match [a-z0-9_]+ / abc.end
+ok match [a-z0-9_]+ / abc.lastindex
+ok search [a-z0-9_]+ / abc.start
+ok search [a-z0-9_]+ / abc.end
+ok search [a-z0-9_]+ / abc.lastindex
+ok fullmatch [a-z0-9_]+ / abc.start
+ok fullmatch [a-z0-9_]+ / abc.end
+ok fullmatch [a-z0-9_]+ / abc.lastindex
+ok match [a-z0-9_]+ / 
+ok search [a-z0-9_]+ / 
+ok fullmatch [a-z0-9_]+ / 
+ok match [a-z0-9_]+ / a.start
+ok match [a-z0-9_]+ / a.end
+ok match [a-z0-9_]+ / a.lastindex
+ok search [a-z0-9_]+ / a.start
+ok search [a-z0-9_]+ / a.end
+ok search [a-z0-9_]+ / a.lastindex
+ok fullmatch [a-z0-9_]+ / a.start
+ok fullmatch [a-z0-9_]+ / a.end
+ok fullmatch [a-z0-9_]+ / a.lastindex
+ok match [a-z0-9_]+ / aaa.start
+ok match [a-z0-9_]+ / aaa.end
+ok match [a-z0-9_]+ / aaa.lastindex
+ok search [a-z0-9_]+ / aaa.start
+ok search [a-z0-9_]+ / aaa.end
+ok search [a-z0-9_]+ / aaa.lastindex
+ok fullmatch [a-z0-9_]+ / aaa.start
+ok fullmatch [a-z0-9_]+ / aaa.end
+ok fullmatch [a-z0-9_]+ / aaa.lastindex
+ok match [a-z0-9_]+ / aab.start
+ok match [a-z0-9_]+ / aab.end
+ok match [a-z0-9_]+ / aab.lastindex
+ok search [a-z0-9_]+ / aab.start
+ok search [a-z0-9_]+ / aab.end
+ok search [a-z0-9_]+ / aab.lastindex
+ok fullmatch [a-z0-9_]+ / aab.start
+ok fullmatch [a-z0-9_]+ / aab.end
+ok fullmatch [a-z0-9_]+ / aab.lastindex
+ok match [a-z0-9_]+ / b.start
+ok match [a-z0-9_]+ / b.end
+ok match [a-z0-9_]+ / b.lastindex
+ok search [a-z0-9_]+ / b.start
+ok search [a-z0-9_]+ / b.end
+ok search [a-z0-9_]+ / b.lastindex
+ok fullmatch [a-z0-9_]+ / b.start
+ok fullmatch [a-z0-9_]+ / b.end
+ok fullmatch [a-z0-9_]+ / b.lastindex
+ok match [a-z0-9_]+ / ac.start
+ok match [a-z0-9_]+ / ac.end
+ok match [a-z0-9_]+ / ac.lastindex
+ok search [a-z0-9_]+ / ac.start
+ok search [a-z0-9_]+ / ac.end
+ok search [a-z0-9_]+ / ac.lastindex
+ok fullmatch [a-z0-9_]+ / ac.start
+ok fullmatch [a-z0-9_]+ / ac.end
+ok fullmatch [a-z0-9_]+ / ac.lastindex
+ok match [a-z0-9_]+ / abcabc.start
+ok match [a-z0-9_]+ / abcabc.end
+ok match [a-z0-9_]+ / abcabc.lastindex
+ok search [a-z0-9_]+ / abcabc.start
+ok search [a-z0-9_]+ / abcabc.end
+ok search [a-z0-9_]+ / abcabc.lastindex
+ok fullmatch [a-z0-9_]+ / abcabc.start
+ok fullmatch [a-z0-9_]+ / abcabc.end
+ok fullmatch [a-z0-9_]+ / abcabc.lastindex
+ok match [a-z0-9_]+ / ab
+cd.start
+ok match [a-z0-9_]+ / ab
+cd.end
+ok match [a-z0-9_]+ / ab
+cd.lastindex
+ok search [a-z0-9_]+ / ab
+cd.start
+ok search [a-z0-9_]+ / ab
+cd.end
+ok search [a-z0-9_]+ / ab
+cd.lastindex
+ok fullmatch [a-z0-9_]+ / ab
+cd
+ok match [a-z0-9_]+ / a
+b
+c.start
+ok match [a-z0-9_]+ / a
+b
+c.end
+ok match [a-z0-9_]+ / a
+b
+c.lastindex
+ok search [a-z0-9_]+ / a
+b
+c.start
+ok search [a-z0-9_]+ / a
+b
+c.end
+ok search [a-z0-9_]+ / a
+b
+c.lastindex
+ok fullmatch [a-z0-9_]+ / a
+b
+c
+ok match [a-z0-9_]+ / hello world.start
+ok match [a-z0-9_]+ / hello world.end
+ok match [a-z0-9_]+ / hello world.lastindex
+ok search [a-z0-9_]+ / hello world.start
+ok search [a-z0-9_]+ / hello world.end
+ok search [a-z0-9_]+ / hello world.lastindex
+ok fullmatch [a-z0-9_]+ / hello world
+ok match [a-z0-9_]+ / The quick brown fox
+ok search [a-z0-9_]+ / The quick brown fox.start
+ok search [a-z0-9_]+ / The quick brown fox.end
+ok search [a-z0-9_]+ / The quick brown fox.lastindex
+ok fullmatch [a-z0-9_]+ / The quick brown fox
+ok match [a-z0-9_]+ / éαβ
+ok search [a-z0-9_]+ / éαβ
+ok fullmatch [a-z0-9_]+ / éαβ
+ok match [a-z0-9_]+ / 日本語
+ok search [a-z0-9_]+ / 日本語
+ok fullmatch [a-z0-9_]+ / 日本語
+ok match [a-z0-9_]+ / 😀👍🏽
+ok search [a-z0-9_]+ / 😀👍🏽
+ok fullmatch [a-z0-9_]+ / 😀👍🏽
+ok match [a-z0-9_]+ / éx.start
+ok match [a-z0-9_]+ / éx.end
+ok match [a-z0-9_]+ / éx.lastindex
+ok search [a-z0-9_]+ / éx.start
+ok search [a-z0-9_]+ / éx.end
+ok search [a-z0-9_]+ / éx.lastindex
+ok fullmatch [a-z0-9_]+ / éx
+ok match [a-z0-9_]+ / a1b2c3.start
+ok match [a-z0-9_]+ / a1b2c3.end
+ok match [a-z0-9_]+ / a1b2c3.lastindex
+ok search [a-z0-9_]+ / a1b2c3.start
+ok search [a-z0-9_]+ / a1b2c3.end
+ok search [a-z0-9_]+ / a1b2c3.lastindex
+ok fullmatch [a-z0-9_]+ / a1b2c3.start
+ok fullmatch [a-z0-9_]+ / a1b2c3.end
+ok fullmatch [a-z0-9_]+ / a1b2c3.lastindex
+ok match [a-z0-9_]+ /    	
+
+ok search [a-z0-9_]+ /    	
+
+ok fullmatch [a-z0-9_]+ /    	
+
+ok match [a-z0-9_]+ / word-.start
+ok match [a-z0-9_]+ / word-.end
+ok match [a-z0-9_]+ / word-.lastindex
+ok search [a-z0-9_]+ / word-.start
+ok search [a-z0-9_]+ / word-.end
+ok search [a-z0-9_]+ / word-.lastindex
+ok fullmatch [a-z0-9_]+ / word-
+ok match [a-z0-9_]+ / _x9.start
+ok match [a-z0-9_]+ / _x9.end
+ok match [a-z0-9_]+ / _x9.lastindex
+ok search [a-z0-9_]+ / _x9.start
+ok search [a-z0-9_]+ / _x9.end
+ok search [a-z0-9_]+ / _x9.lastindex
+ok fullmatch [a-z0-9_]+ / _x9.start
+ok fullmatch [a-z0-9_]+ / _x9.end
+ok fullmatch [a-z0-9_]+ / _x9.lastindex
+ok match [a-z0-9_]+ / 12abc34.start
+ok match [a-z0-9_]+ / 12abc34.end
+ok match [a-z0-9_]+ / 12abc34.lastindex
+ok search [a-z0-9_]+ / 12abc34.start
+ok search [a-z0-9_]+ / 12abc34.end
+ok search [a-z0-9_]+ / 12abc34.lastindex
+ok fullmatch [a-z0-9_]+ / 12abc34.start
+ok fullmatch [a-z0-9_]+ / 12abc34.end
+ok fullmatch [a-z0-9_]+ / 12abc34.lastindex
+ok match [a-z0-9_]+ / abc123.start
+ok match [a-z0-9_]+ / abc123.end
+ok match [a-z0-9_]+ / abc123.lastindex
+ok search [a-z0-9_]+ / abc123.start
+ok search [a-z0-9_]+ / abc123.end
+ok search [a-z0-9_]+ / abc123.lastindex
+ok fullmatch [a-z0-9_]+ / abc123.start
+ok fullmatch [a-z0-9_]+ / abc123.end
+ok fullmatch [a-z0-9_]+ / abc123.lastindex
+ok match [a-z0-9_]+ / A1 B2
+ok search [a-z0-9_]+ / A1 B2.start
+ok search [a-z0-9_]+ / A1 B2.end
+ok search [a-z0-9_]+ / A1 B2.lastindex
+ok fullmatch [a-z0-9_]+ / A1 B2
+ok match é+ / abc
+ok search é+ / abc
+ok fullmatch é+ / abc
+ok match é+ / 
+ok search é+ / 
+ok fullmatch é+ / 
+ok match é+ / a
+ok search é+ / a
+ok fullmatch é+ / a
+ok match é+ / aaa
+ok search é+ / aaa
+ok fullmatch é+ / aaa
+ok match é+ / aab
+ok search é+ / aab
+ok fullmatch é+ / aab
+ok match é+ / b
+ok search é+ / b
+ok fullmatch é+ / b
+ok match é+ / ac
+ok search é+ / ac
+ok fullmatch é+ / ac
+ok match é+ / abcabc
+ok search é+ / abcabc
+ok fullmatch é+ / abcabc
+ok match é+ / ab
+cd
+ok search é+ / ab
+cd
+ok fullmatch é+ / ab
+cd
+ok match é+ / a
+b
+c
+ok search é+ / a
+b
+c
+ok fullmatch é+ / a
+b
+c
+ok match é+ / hello world
+ok search é+ / hello world
+ok fullmatch é+ / hello world
+ok match é+ / The quick brown fox
+ok search é+ / The quick brown fox
+ok fullmatch é+ / The quick brown fox
+ok match é+ / éαβ.start
+ok match é+ / éαβ.end
+ok match é+ / éαβ.lastindex
+ok search é+ / éαβ.start
+ok search é+ / éαβ.end
+ok search é+ / éαβ.lastindex
+ok fullmatch é+ / éαβ
+ok match é+ / 日本語
+ok search é+ / 日本語
+ok fullmatch é+ / 日本語
+ok match é+ / 😀👍🏽
+ok search é+ / 😀👍🏽
+ok fullmatch é+ / 😀👍🏽
+ok match é+ / éx
+ok search é+ / éx
+ok fullmatch é+ / éx
+ok match é+ / a1b2c3
+ok search é+ / a1b2c3
+ok fullmatch é+ / a1b2c3
+ok match é+ /    	
+
+ok search é+ /    	
+
+ok fullmatch é+ /    	
+
+ok match é+ / word-
+ok search é+ / word-
+ok fullmatch é+ / word-
+ok match é+ / _x9
+ok search é+ / _x9
+ok fullmatch é+ / _x9
+ok match é+ / 12abc34
+ok search é+ / 12abc34
+ok fullmatch é+ / 12abc34
+ok match é+ / abc123
+ok search é+ / abc123
+ok fullmatch é+ / abc123
+ok match é+ / A1 B2
+ok search é+ / A1 B2
+ok fullmatch é+ / A1 B2
+ok match αβ / abc
+ok search αβ / abc
+ok fullmatch αβ / abc
+ok match αβ / 
+ok search αβ / 
+ok fullmatch αβ / 
+ok match αβ / a
+ok search αβ / a
+ok fullmatch αβ / a
+ok match αβ / aaa
+ok search αβ / aaa
+ok fullmatch αβ / aaa
+ok match αβ / aab
+ok search αβ / aab
+ok fullmatch αβ / aab
+ok match αβ / b
+ok search αβ / b
+ok fullmatch αβ / b
+ok match αβ / ac
+ok search αβ / ac
+ok fullmatch αβ / ac
+ok match αβ / abcabc
+ok search αβ / abcabc
+ok fullmatch αβ / abcabc
+ok match αβ / ab
+cd
+ok search αβ / ab
+cd
+ok fullmatch αβ / ab
+cd
+ok match αβ / a
+b
+c
+ok search αβ / a
+b
+c
+ok fullmatch αβ / a
+b
+c
+ok match αβ / hello world
+ok search αβ / hello world
+ok fullmatch αβ / hello world
+ok match αβ / The quick brown fox
+ok search αβ / The quick brown fox
+ok fullmatch αβ / The quick brown fox
+ok match αβ / éαβ
+ok search αβ / éαβ.start
+ok search αβ / éαβ.end
+ok search αβ / éαβ.lastindex
+ok fullmatch αβ / éαβ
+ok match αβ / 日本語
+ok search αβ / 日本語
+ok fullmatch αβ / 日本語
+ok match αβ / 😀👍🏽
+ok search αβ / 😀👍🏽
+ok fullmatch αβ / 😀👍🏽
+ok match αβ / éx
+ok search αβ / éx
+ok fullmatch αβ / éx
+ok match αβ / a1b2c3
+ok search αβ / a1b2c3
+ok fullmatch αβ / a1b2c3
+ok match αβ /    	
+
+ok search αβ /    	
+
+ok fullmatch αβ /    	
+
+ok match αβ / word-
+ok search αβ / word-
+ok fullmatch αβ / word-
+ok match αβ / _x9
+ok search αβ / _x9
+ok fullmatch αβ / _x9
+ok match αβ / 12abc34
+ok search αβ / 12abc34
+ok fullmatch αβ / 12abc34
+ok match αβ / abc123
+ok search αβ / abc123
+ok fullmatch αβ / abc123
+ok match αβ / A1 B2
+ok search αβ / A1 B2
+ok fullmatch αβ / A1 B2
+ok match 日本語 / abc
+ok search 日本語 / abc
+ok fullmatch 日本語 / abc
+ok match 日本語 / 
+ok search 日本語 / 
+ok fullmatch 日本語 / 
+ok match 日本語 / a
+ok search 日本語 / a
+ok fullmatch 日本語 / a
+ok match 日本語 / aaa
+ok search 日本語 / aaa
+ok fullmatch 日本語 / aaa
+ok match 日本語 / aab
+ok search 日本語 / aab
+ok fullmatch 日本語 / aab
+ok match 日本語 / b
+ok search 日本語 / b
+ok fullmatch 日本語 / b
+ok match 日本語 / ac
+ok search 日本語 / ac
+ok fullmatch 日本語 / ac
+ok match 日本語 / abcabc
+ok search 日本語 / abcabc
+ok fullmatch 日本語 / abcabc
+ok match 日本語 / ab
+cd
+ok search 日本語 / ab
+cd
+ok fullmatch 日本語 / ab
+cd
+ok match 日本語 / a
+b
+c
+ok search 日本語 / a
+b
+c
+ok fullmatch 日本語 / a
+b
+c
+ok match 日本語 / hello world
+ok search 日本語 / hello world
+ok fullmatch 日本語 / hello world
+ok match 日本語 / The quick brown fox
+ok search 日本語 / The quick brown fox
+ok fullmatch 日本語 / The quick brown fox
+ok match 日本語 / éαβ
+ok search 日本語 / éαβ
+ok fullmatch 日本語 / éαβ
+ok match 日本語 / 日本語.start
+ok match 日本語 / 日本語.end
+ok match 日本語 / 日本語.lastindex
+ok search 日本語 / 日本語.start
+ok search 日本語 / 日本語.end
+ok search 日本語 / 日本語.lastindex
+ok fullmatch 日本語 / 日本語.start
+ok fullmatch 日本語 / 日本語.end
+ok fullmatch 日本語 / 日本語.lastindex
+ok match 日本語 / 😀👍🏽
+ok search 日本語 / 😀👍🏽
+ok fullmatch 日本語 / 😀👍🏽
+ok match 日本語 / éx
+ok search 日本語 / éx
+ok fullmatch 日本語 / éx
+ok match 日本語 / a1b2c3
+ok search 日本語 / a1b2c3
+ok fullmatch 日本語 / a1b2c3
+ok match 日本語 /    	
+
+ok search 日本語 /    	
+
+ok fullmatch 日本語 /    	
+
+ok match 日本語 / word-
+ok search 日本語 / word-
+ok fullmatch 日本語 / word-
+ok match 日本語 / _x9
+ok search 日本語 / _x9
+ok fullmatch 日本語 / _x9
+ok match 日本語 / 12abc34
+ok search 日本語 / 12abc34
+ok fullmatch 日本語 / 12abc34
+ok match 日本語 / abc123
+ok search 日本語 / abc123
+ok fullmatch 日本語 / abc123
+ok match 日本語 / A1 B2
+ok search 日本語 / A1 B2
+ok fullmatch 日本語 / A1 B2
+ok match 😀+ / abc
+ok search 😀+ / abc
+ok fullmatch 😀+ / abc
+ok match 😀+ / 
+ok search 😀+ / 
+ok fullmatch 😀+ / 
+ok match 😀+ / a
+ok search 😀+ / a
+ok fullmatch 😀+ / a
+ok match 😀+ / aaa
+ok search 😀+ / aaa
+ok fullmatch 😀+ / aaa
+ok match 😀+ / aab
+ok search 😀+ / aab
+ok fullmatch 😀+ / aab
+ok match 😀+ / b
+ok search 😀+ / b
+ok fullmatch 😀+ / b
+ok match 😀+ / ac
+ok search 😀+ / ac
+ok fullmatch 😀+ / ac
+ok match 😀+ / abcabc
+ok search 😀+ / abcabc
+ok fullmatch 😀+ / abcabc
+ok match 😀+ / ab
+cd
+ok search 😀+ / ab
+cd
+ok fullmatch 😀+ / ab
+cd
+ok match 😀+ / a
+b
+c
+ok search 😀+ / a
+b
+c
+ok fullmatch 😀+ / a
+b
+c
+ok match 😀+ / hello world
+ok search 😀+ / hello world
+ok fullmatch 😀+ / hello world
+ok match 😀+ / The quick brown fox
+ok search 😀+ / The quick brown fox
+ok fullmatch 😀+ / The quick brown fox
+ok match 😀+ / éαβ
+ok search 😀+ / éαβ
+ok fullmatch 😀+ / éαβ
+ok match 😀+ / 日本語
+ok search 😀+ / 日本語
+ok fullmatch 😀+ / 日本語
+ok match 😀+ / 😀👍🏽.start
+ok match 😀+ / 😀👍🏽.end
+ok match 😀+ / 😀👍🏽.lastindex
+ok search 😀+ / 😀👍🏽.start
+ok search 😀+ / 😀👍🏽.end
+ok search 😀+ / 😀👍🏽.lastindex
+ok fullmatch 😀+ / 😀👍🏽
+ok match 😀+ / éx
+ok search 😀+ / éx
+ok fullmatch 😀+ / éx
+ok match 😀+ / a1b2c3
+ok search 😀+ / a1b2c3
+ok fullmatch 😀+ / a1b2c3
+ok match 😀+ /    	
+
+ok search 😀+ /    	
+
+ok fullmatch 😀+ /    	
+
+ok match 😀+ / word-
+ok search 😀+ / word-
+ok fullmatch 😀+ / word-
+ok match 😀+ / _x9
+ok search 😀+ / _x9
+ok fullmatch 😀+ / _x9
+ok match 😀+ / 12abc34
+ok search 😀+ / 12abc34
+ok fullmatch 😀+ / 12abc34
+ok match 😀+ / abc123
+ok search 😀+ / abc123
+ok fullmatch 😀+ / abc123
+ok match 😀+ / A1 B2
+ok search 😀+ / A1 B2
+ok fullmatch 😀+ / A1 B2
+ok match \D+ / abc.start
+ok match \D+ / abc.end
+ok match \D+ / abc.lastindex
+ok search \D+ / abc.start
+ok search \D+ / abc.end
+ok search \D+ / abc.lastindex
+ok fullmatch \D+ / abc.start
+ok fullmatch \D+ / abc.end
+ok fullmatch \D+ / abc.lastindex
+ok match \D+ / 
+ok search \D+ / 
+ok fullmatch \D+ / 
+ok match \D+ / a.start
+ok match \D+ / a.end
+ok match \D+ / a.lastindex
+ok search \D+ / a.start
+ok search \D+ / a.end
+ok search \D+ / a.lastindex
+ok fullmatch \D+ / a.start
+ok fullmatch \D+ / a.end
+ok fullmatch \D+ / a.lastindex
+ok match \D+ / aaa.start
+ok match \D+ / aaa.end
+ok match \D+ / aaa.lastindex
+ok search \D+ / aaa.start
+ok search \D+ / aaa.end
+ok search \D+ / aaa.lastindex
+ok fullmatch \D+ / aaa.start
+ok fullmatch \D+ / aaa.end
+ok fullmatch \D+ / aaa.lastindex
+ok match \D+ / aab.start
+ok match \D+ / aab.end
+ok match \D+ / aab.lastindex
+ok search \D+ / aab.start
+ok search \D+ / aab.end
+ok search \D+ / aab.lastindex
+ok fullmatch \D+ / aab.start
+ok fullmatch \D+ / aab.end
+ok fullmatch \D+ / aab.lastindex
+ok match \D+ / b.start
+ok match \D+ / b.end
+ok match \D+ / b.lastindex
+ok search \D+ / b.start
+ok search \D+ / b.end
+ok search \D+ / b.lastindex
+ok fullmatch \D+ / b.start
+ok fullmatch \D+ / b.end
+ok fullmatch \D+ / b.lastindex
+ok match \D+ / ac.start
+ok match \D+ / ac.end
+ok match \D+ / ac.lastindex
+ok search \D+ / ac.start
+ok search \D+ / ac.end
+ok search \D+ / ac.lastindex
+ok fullmatch \D+ / ac.start
+ok fullmatch \D+ / ac.end
+ok fullmatch \D+ / ac.lastindex
+ok match \D+ / abcabc.start
+ok match \D+ / abcabc.end
+ok match \D+ / abcabc.lastindex
+ok search \D+ / abcabc.start
+ok search \D+ / abcabc.end
+ok search \D+ / abcabc.lastindex
+ok fullmatch \D+ / abcabc.start
+ok fullmatch \D+ / abcabc.end
+ok fullmatch \D+ / abcabc.lastindex
+ok match \D+ / ab
+cd.start
+ok match \D+ / ab
+cd.end
+ok match \D+ / ab
+cd.lastindex
+ok search \D+ / ab
+cd.start
+ok search \D+ / ab
+cd.end
+ok search \D+ / ab
+cd.lastindex
+ok fullmatch \D+ / ab
+cd.start
+ok fullmatch \D+ / ab
+cd.end
+ok fullmatch \D+ / ab
+cd.lastindex
+ok match \D+ / a
+b
+c.start
+ok match \D+ / a
+b
+c.end
+ok match \D+ / a
+b
+c.lastindex
+ok search \D+ / a
+b
+c.start
+ok search \D+ / a
+b
+c.end
+ok search \D+ / a
+b
+c.lastindex
+ok fullmatch \D+ / a
+b
+c.start
+ok fullmatch \D+ / a
+b
+c.end
+ok fullmatch \D+ / a
+b
+c.lastindex
+ok match \D+ / hello world.start
+ok match \D+ / hello world.end
+ok match \D+ / hello world.lastindex
+ok search \D+ / hello world.start
+ok search \D+ / hello world.end
+ok search \D+ / hello world.lastindex
+ok fullmatch \D+ / hello world.start
+ok fullmatch \D+ / hello world.end
+ok fullmatch \D+ / hello world.lastindex
+ok match \D+ / The quick brown fox.start
+ok match \D+ / The quick brown fox.end
+ok match \D+ / The quick brown fox.lastindex
+ok search \D+ / The quick brown fox.start
+ok search \D+ / The quick brown fox.end
+ok search \D+ / The quick brown fox.lastindex
+ok fullmatch \D+ / The quick brown fox.start
+ok fullmatch \D+ / The quick brown fox.end
+ok fullmatch \D+ / The quick brown fox.lastindex
+ok match \D+ / éαβ.start
+ok match \D+ / éαβ.end
+ok match \D+ / éαβ.lastindex
+ok search \D+ / éαβ.start
+ok search \D+ / éαβ.end
+ok search \D+ / éαβ.lastindex
+ok fullmatch \D+ / éαβ.start
+ok fullmatch \D+ / éαβ.end
+ok fullmatch \D+ / éαβ.lastindex
+ok match \D+ / 日本語.start
+ok match \D+ / 日本語.end
+ok match \D+ / 日本語.lastindex
+ok search \D+ / 日本語.start
+ok search \D+ / 日本語.end
+ok search \D+ / 日本語.lastindex
+ok fullmatch \D+ / 日本語.start
+ok fullmatch \D+ / 日本語.end
+ok fullmatch \D+ / 日本語.lastindex
+ok match \D+ / 😀👍🏽.start
+ok match \D+ / 😀👍🏽.end
+ok match \D+ / 😀👍🏽.lastindex
+ok search \D+ / 😀👍🏽.start
+ok search \D+ / 😀👍🏽.end
+ok search \D+ / 😀👍🏽.lastindex
+ok fullmatch \D+ / 😀👍🏽.start
+ok fullmatch \D+ / 😀👍🏽.end
+ok fullmatch \D+ / 😀👍🏽.lastindex
+ok match \D+ / éx.start
+ok match \D+ / éx.end
+ok match \D+ / éx.lastindex
+ok search \D+ / éx.start
+ok search \D+ / éx.end
+ok search \D+ / éx.lastindex
+ok fullmatch \D+ / éx.start
+ok fullmatch \D+ / éx.end
+ok fullmatch \D+ / éx.lastindex
+ok match \D+ / a1b2c3.start
+ok match \D+ / a1b2c3.end
+ok match \D+ / a1b2c3.lastindex
+ok search \D+ / a1b2c3.start
+ok search \D+ / a1b2c3.end
+ok search \D+ / a1b2c3.lastindex
+ok fullmatch \D+ / a1b2c3
+ok match \D+ /    	
+.start
+ok match \D+ /    	
+.end
+ok match \D+ /    	
+.lastindex
+ok search \D+ /    	
+.start
+ok search \D+ /    	
+.end
+ok search \D+ /    	
+.lastindex
+ok fullmatch \D+ /    	
+.start
+ok fullmatch \D+ /    	
+.end
+ok fullmatch \D+ /    	
+.lastindex
+ok match \D+ / word-.start
+ok match \D+ / word-.end
+ok match \D+ / word-.lastindex
+ok search \D+ / word-.start
+ok search \D+ / word-.end
+ok search \D+ / word-.lastindex
+ok fullmatch \D+ / word-.start
+ok fullmatch \D+ / word-.end
+ok fullmatch \D+ / word-.lastindex
+ok match \D+ / _x9.start
+ok match \D+ / _x9.end
+ok match \D+ / _x9.lastindex
+ok search \D+ / _x9.start
+ok search \D+ / _x9.end
+ok search \D+ / _x9.lastindex
+ok fullmatch \D+ / _x9
+ok match \D+ / 12abc34
+ok search \D+ / 12abc34.start
+ok search \D+ / 12abc34.end
+ok search \D+ / 12abc34.lastindex
+ok fullmatch \D+ / 12abc34
+ok match \D+ / abc123.start
+ok match \D+ / abc123.end
+ok match \D+ / abc123.lastindex
+ok search \D+ / abc123.start
+ok search \D+ / abc123.end
+ok search \D+ / abc123.lastindex
+ok fullmatch \D+ / abc123
+ok match \D+ / A1 B2.start
+ok match \D+ / A1 B2.end
+ok match \D+ / A1 B2.lastindex
+ok search \D+ / A1 B2.start
+ok search \D+ / A1 B2.end
+ok search \D+ / A1 B2.lastindex
+ok fullmatch \D+ / A1 B2
+ok match \W+ / abc
+ok search \W+ / abc
+ok fullmatch \W+ / abc
+ok match \W+ / 
+ok search \W+ / 
+ok fullmatch \W+ / 
+ok match \W+ / a
+ok search \W+ / a
+ok fullmatch \W+ / a
+ok match \W+ / aaa
+ok search \W+ / aaa
+ok fullmatch \W+ / aaa
+ok match \W+ / aab
+ok search \W+ / aab
+ok fullmatch \W+ / aab
+ok match \W+ / b
+ok search \W+ / b
+ok fullmatch \W+ / b
+ok match \W+ / ac
+ok search \W+ / ac
+ok fullmatch \W+ / ac
+ok match \W+ / abcabc
+ok search \W+ / abcabc
+ok fullmatch \W+ / abcabc
+ok match \W+ / ab
+cd
+ok search \W+ / ab
+cd.start
+ok search \W+ / ab
+cd.end
+ok search \W+ / ab
+cd.lastindex
+ok fullmatch \W+ / ab
+cd
+ok match \W+ / a
+b
+c
+ok search \W+ / a
+b
+c.start
+ok search \W+ / a
+b
+c.end
+ok search \W+ / a
+b
+c.lastindex
+ok fullmatch \W+ / a
+b
+c
+ok match \W+ / hello world
+ok search \W+ / hello world.start
+ok search \W+ / hello world.end
+ok search \W+ / hello world.lastindex
+ok fullmatch \W+ / hello world
+ok match \W+ / The quick brown fox
+ok search \W+ / The quick brown fox.start
+ok search \W+ / The quick brown fox.end
+ok search \W+ / The quick brown fox.lastindex
+ok fullmatch \W+ / The quick brown fox
+ok match \W+ / éαβ
+ok search \W+ / éαβ
+ok fullmatch \W+ / éαβ
+ok match \W+ / 日本語
+ok search \W+ / 日本語
+ok fullmatch \W+ / 日本語
+ok match \W+ / 😀👍🏽.start
+ok match \W+ / 😀👍🏽.end
+ok match \W+ / 😀👍🏽.lastindex
+ok search \W+ / 😀👍🏽.start
+ok search \W+ / 😀👍🏽.end
+ok search \W+ / 😀👍🏽.lastindex
+ok fullmatch \W+ / 😀👍🏽.start
+ok fullmatch \W+ / 😀👍🏽.end
+ok fullmatch \W+ / 😀👍🏽.lastindex
+ok match \W+ / éx
+ok search \W+ / éx.start
+ok search \W+ / éx.end
+ok search \W+ / éx.lastindex
+ok fullmatch \W+ / éx
+ok match \W+ / a1b2c3
+ok search \W+ / a1b2c3
+ok fullmatch \W+ / a1b2c3
+ok match \W+ /    	
+.start
+ok match \W+ /    	
+.end
+ok match \W+ /    	
+.lastindex
+ok search \W+ /    	
+.start
+ok search \W+ /    	
+.end
+ok search \W+ /    	
+.lastindex
+ok fullmatch \W+ /    	
+.start
+ok fullmatch \W+ /    	
+.end
+ok fullmatch \W+ /    	
+.lastindex
+ok match \W+ / word-
+ok search \W+ / word-.start
+ok search \W+ / word-.end
+ok search \W+ / word-.lastindex
+ok fullmatch \W+ / word-
+ok match \W+ / _x9
+ok search \W+ / _x9
+ok fullmatch \W+ / _x9
+ok match \W+ / 12abc34
+ok search \W+ / 12abc34
+ok fullmatch \W+ / 12abc34
+ok match \W+ / abc123
+ok search \W+ / abc123
+ok fullmatch \W+ / abc123
+ok match \W+ / A1 B2
+ok search \W+ / A1 B2.start
+ok search \W+ / A1 B2.end
+ok search \W+ / A1 B2.lastindex
+ok fullmatch \W+ / A1 B2
+ok match \S+ / abc.start
+ok match \S+ / abc.end
+ok match \S+ / abc.lastindex
+ok search \S+ / abc.start
+ok search \S+ / abc.end
+ok search \S+ / abc.lastindex
+ok fullmatch \S+ / abc.start
+ok fullmatch \S+ / abc.end
+ok fullmatch \S+ / abc.lastindex
+ok match \S+ / 
+ok search \S+ / 
+ok fullmatch \S+ / 
+ok match \S+ / a.start
+ok match \S+ / a.end
+ok match \S+ / a.lastindex
+ok search \S+ / a.start
+ok search \S+ / a.end
+ok search \S+ / a.lastindex
+ok fullmatch \S+ / a.start
+ok fullmatch \S+ / a.end
+ok fullmatch \S+ / a.lastindex
+ok match \S+ / aaa.start
+ok match \S+ / aaa.end
+ok match \S+ / aaa.lastindex
+ok search \S+ / aaa.start
+ok search \S+ / aaa.end
+ok search \S+ / aaa.lastindex
+ok fullmatch \S+ / aaa.start
+ok fullmatch \S+ / aaa.end
+ok fullmatch \S+ / aaa.lastindex
+ok match \S+ / aab.start
+ok match \S+ / aab.end
+ok match \S+ / aab.lastindex
+ok search \S+ / aab.start
+ok search \S+ / aab.end
+ok search \S+ / aab.lastindex
+ok fullmatch \S+ / aab.start
+ok fullmatch \S+ / aab.end
+ok fullmatch \S+ / aab.lastindex
+ok match \S+ / b.start
+ok match \S+ / b.end
+ok match \S+ / b.lastindex
+ok search \S+ / b.start
+ok search \S+ / b.end
+ok search \S+ / b.lastindex
+ok fullmatch \S+ / b.start
+ok fullmatch \S+ / b.end
+ok fullmatch \S+ / b.lastindex
+ok match \S+ / ac.start
+ok match \S+ / ac.end
+ok match \S+ / ac.lastindex
+ok search \S+ / ac.start
+ok search \S+ / ac.end
+ok search \S+ / ac.lastindex
+ok fullmatch \S+ / ac.start
+ok fullmatch \S+ / ac.end
+ok fullmatch \S+ / ac.lastindex
+ok match \S+ / abcabc.start
+ok match \S+ / abcabc.end
+ok match \S+ / abcabc.lastindex
+ok search \S+ / abcabc.start
+ok search \S+ / abcabc.end
+ok search \S+ / abcabc.lastindex
+ok fullmatch \S+ / abcabc.start
+ok fullmatch \S+ / abcabc.end
+ok fullmatch \S+ / abcabc.lastindex
+ok match \S+ / ab
+cd.start
+ok match \S+ / ab
+cd.end
+ok match \S+ / ab
+cd.lastindex
+ok search \S+ / ab
+cd.start
+ok search \S+ / ab
+cd.end
+ok search \S+ / ab
+cd.lastindex
+ok fullmatch \S+ / ab
+cd
+ok match \S+ / a
+b
+c.start
+ok match \S+ / a
+b
+c.end
+ok match \S+ / a
+b
+c.lastindex
+ok search \S+ / a
+b
+c.start
+ok search \S+ / a
+b
+c.end
+ok search \S+ / a
+b
+c.lastindex
+ok fullmatch \S+ / a
+b
+c
+ok match \S+ / hello world.start
+ok match \S+ / hello world.end
+ok match \S+ / hello world.lastindex
+ok search \S+ / hello world.start
+ok search \S+ / hello world.end
+ok search \S+ / hello world.lastindex
+ok fullmatch \S+ / hello world
+ok match \S+ / The quick brown fox.start
+ok match \S+ / The quick brown fox.end
+ok match \S+ / The quick brown fox.lastindex
+ok search \S+ / The quick brown fox.start
+ok search \S+ / The quick brown fox.end
+ok search \S+ / The quick brown fox.lastindex
+ok fullmatch \S+ / The quick brown fox
+ok match \S+ / éαβ.start
+ok match \S+ / éαβ.end
+ok match \S+ / éαβ.lastindex
+ok search \S+ / éαβ.start
+ok search \S+ / éαβ.end
+ok search \S+ / éαβ.lastindex
+ok fullmatch \S+ / éαβ.start
+ok fullmatch \S+ / éαβ.end
+ok fullmatch \S+ / éαβ.lastindex
+ok match \S+ / 日本語.start
+ok match \S+ / 日本語.end
+ok match \S+ / 日本語.lastindex
+ok search \S+ / 日本語.start
+ok search \S+ / 日本語.end
+ok search \S+ / 日本語.lastindex
+ok fullmatch \S+ / 日本語.start
+ok fullmatch \S+ / 日本語.end
+ok fullmatch \S+ / 日本語.lastindex
+ok match \S+ / 😀👍🏽.start
+ok match \S+ / 😀👍🏽.end
+ok match \S+ / 😀👍🏽.lastindex
+ok search \S+ / 😀👍🏽.start
+ok search \S+ / 😀👍🏽.end
+ok search \S+ / 😀👍🏽.lastindex
+ok fullmatch \S+ / 😀👍🏽.start
+ok fullmatch \S+ / 😀👍🏽.end
+ok fullmatch \S+ / 😀👍🏽.lastindex
+ok match \S+ / éx.start
+ok match \S+ / éx.end
+ok match \S+ / éx.lastindex
+ok search \S+ / éx.start
+ok search \S+ / éx.end
+ok search \S+ / éx.lastindex
+ok fullmatch \S+ / éx.start
+ok fullmatch \S+ / éx.end
+ok fullmatch \S+ / éx.lastindex
+ok match \S+ / a1b2c3.start
+ok match \S+ / a1b2c3.end
+ok match \S+ / a1b2c3.lastindex
+ok search \S+ / a1b2c3.start
+ok search \S+ / a1b2c3.end
+ok search \S+ / a1b2c3.lastindex
+ok fullmatch \S+ / a1b2c3.start
+ok fullmatch \S+ / a1b2c3.end
+ok fullmatch \S+ / a1b2c3.lastindex
+ok match \S+ /    	
+
+ok search \S+ /    	
+
+ok fullmatch \S+ /    	
+
+ok match \S+ / word-.start
+ok match \S+ / word-.end
+ok match \S+ / word-.lastindex
+ok search \S+ / word-.start
+ok search \S+ / word-.end
+ok search \S+ / word-.lastindex
+ok fullmatch \S+ / word-.start
+ok fullmatch \S+ / word-.end
+ok fullmatch \S+ / word-.lastindex
+ok match \S+ / _x9.start
+ok match \S+ / _x9.end
+ok match \S+ / _x9.lastindex
+ok search \S+ / _x9.start
+ok search \S+ / _x9.end
+ok search \S+ / _x9.lastindex
+ok fullmatch \S+ / _x9.start
+ok fullmatch \S+ / _x9.end
+ok fullmatch \S+ / _x9.lastindex
+ok match \S+ / 12abc34.start
+ok match \S+ / 12abc34.end
+ok match \S+ / 12abc34.lastindex
+ok search \S+ / 12abc34.start
+ok search \S+ / 12abc34.end
+ok search \S+ / 12abc34.lastindex
+ok fullmatch \S+ / 12abc34.start
+ok fullmatch \S+ / 12abc34.end
+ok fullmatch \S+ / 12abc34.lastindex
+ok match \S+ / abc123.start
+ok match \S+ / abc123.end
+ok match \S+ / abc123.lastindex
+ok search \S+ / abc123.start
+ok search \S+ / abc123.end
+ok search \S+ / abc123.lastindex
+ok fullmatch \S+ / abc123.start
+ok fullmatch \S+ / abc123.end
+ok fullmatch \S+ / abc123.lastindex
+ok match \S+ / A1 B2.start
+ok match \S+ / A1 B2.end
+ok match \S+ / A1 B2.lastindex
+ok search \S+ / A1 B2.start
+ok search \S+ / A1 B2.end
+ok search \S+ / A1 B2.lastindex
+ok fullmatch \S+ / A1 B2
+ok match \Bx / abc
+ok search \Bx / abc
+ok fullmatch \Bx / abc
+ok match \Bx / 
+ok search \Bx / 
+ok fullmatch \Bx / 
+ok match \Bx / a
+ok search \Bx / a
+ok fullmatch \Bx / a
+ok match \Bx / aaa
+ok search \Bx / aaa
+ok fullmatch \Bx / aaa
+ok match \Bx / aab
+ok search \Bx / aab
+ok fullmatch \Bx / aab
+ok match \Bx / b
+ok search \Bx / b
+ok fullmatch \Bx / b
+ok match \Bx / ac
+ok search \Bx / ac
+ok fullmatch \Bx / ac
+ok match \Bx / abcabc
+ok search \Bx / abcabc
+ok fullmatch \Bx / abcabc
+ok match \Bx / ab
+cd
+ok search \Bx / ab
+cd
+ok fullmatch \Bx / ab
+cd
+ok match \Bx / a
+b
+c
+ok search \Bx / a
+b
+c
+ok fullmatch \Bx / a
+b
+c
+ok match \Bx / hello world
+ok search \Bx / hello world
+ok fullmatch \Bx / hello world
+ok match \Bx / The quick brown fox
+ok search \Bx / The quick brown fox.start
+ok search \Bx / The quick brown fox.end
+ok search \Bx / The quick brown fox.lastindex
+ok fullmatch \Bx / The quick brown fox
+ok match \Bx / éαβ
+ok search \Bx / éαβ
+ok fullmatch \Bx / éαβ
+ok match \Bx / 日本語
+ok search \Bx / 日本語
+ok fullmatch \Bx / 日本語
+ok match \Bx / 😀👍🏽
+ok search \Bx / 😀👍🏽
+ok fullmatch \Bx / 😀👍🏽
+ok match \Bx / éx
+ok search \Bx / éx
+ok fullmatch \Bx / éx
+ok match \Bx / a1b2c3
+ok search \Bx / a1b2c3
+ok fullmatch \Bx / a1b2c3
+ok match \Bx /    	
+
+ok search \Bx /    	
+
+ok fullmatch \Bx /    	
+
+ok match \Bx / word-
+ok search \Bx / word-
+ok fullmatch \Bx / word-
+ok match \Bx / _x9
+ok search \Bx / _x9.start
+ok search \Bx / _x9.end
+ok search \Bx / _x9.lastindex
+ok fullmatch \Bx / _x9
+ok match \Bx / 12abc34
+ok search \Bx / 12abc34
+ok fullmatch \Bx / 12abc34
+ok match \Bx / abc123
+ok search \Bx / abc123
+ok fullmatch \Bx / abc123
+ok match \Bx / A1 B2
+ok search \Bx / A1 B2
+ok fullmatch \Bx / A1 B2
+ok match (?i)abc / abc.start
+ok match (?i)abc / abc.end
+ok match (?i)abc / abc.lastindex
+ok search (?i)abc / abc.start
+ok search (?i)abc / abc.end
+ok search (?i)abc / abc.lastindex
+ok fullmatch (?i)abc / abc.start
+ok fullmatch (?i)abc / abc.end
+ok fullmatch (?i)abc / abc.lastindex
+ok match (?i)abc / 
+ok search (?i)abc / 
+ok fullmatch (?i)abc / 
+ok match (?i)abc / a
+ok search (?i)abc / a
+ok fullmatch (?i)abc / a
+ok match (?i)abc / aaa
+ok search (?i)abc / aaa
+ok fullmatch (?i)abc / aaa
+ok match (?i)abc / aab
+ok search (?i)abc / aab
+ok fullmatch (?i)abc / aab
+ok match (?i)abc / b
+ok search (?i)abc / b
+ok fullmatch (?i)abc / b
+ok match (?i)abc / ac
+ok search (?i)abc / ac
+ok fullmatch (?i)abc / ac
+ok match (?i)abc / abcabc.start
+ok match (?i)abc / abcabc.end
+ok match (?i)abc / abcabc.lastindex
+ok search (?i)abc / abcabc.start
+ok search (?i)abc / abcabc.end
+ok search (?i)abc / abcabc.lastindex
+ok fullmatch (?i)abc / abcabc
+ok match (?i)abc / ab
+cd
+ok search (?i)abc / ab
+cd
+ok fullmatch (?i)abc / ab
+cd
+ok match (?i)abc / a
+b
+c
+ok search (?i)abc / a
+b
+c
+ok fullmatch (?i)abc / a
+b
+c
+ok match (?i)abc / hello world
+ok search (?i)abc / hello world
+ok fullmatch (?i)abc / hello world
+ok match (?i)abc / The quick brown fox
+ok search (?i)abc / The quick brown fox
+ok fullmatch (?i)abc / The quick brown fox
+ok match (?i)abc / éαβ
+ok search (?i)abc / éαβ
+ok fullmatch (?i)abc / éαβ
+ok match (?i)abc / 日本語
+ok search (?i)abc / 日本語
+ok fullmatch (?i)abc / 日本語
+ok match (?i)abc / 😀👍🏽
+ok search (?i)abc / 😀👍🏽
+ok fullmatch (?i)abc / 😀👍🏽
+ok match (?i)abc / éx
+ok search (?i)abc / éx
+ok fullmatch (?i)abc / éx
+ok match (?i)abc / a1b2c3
+ok search (?i)abc / a1b2c3
+ok fullmatch (?i)abc / a1b2c3
+ok match (?i)abc /    	
+
+ok search (?i)abc /    	
+
+ok fullmatch (?i)abc /    	
+
+ok match (?i)abc / word-
+ok search (?i)abc / word-
+ok fullmatch (?i)abc / word-
+ok match (?i)abc / _x9
+ok search (?i)abc / _x9
+ok fullmatch (?i)abc / _x9
+ok match (?i)abc / 12abc34
+ok search (?i)abc / 12abc34.start
+ok search (?i)abc / 12abc34.end
+ok search (?i)abc / 12abc34.lastindex
+ok fullmatch (?i)abc / 12abc34
+ok match (?i)abc / abc123.start
+ok match (?i)abc / abc123.end
+ok match (?i)abc / abc123.lastindex
+ok search (?i)abc / abc123.start
+ok search (?i)abc / abc123.end
+ok search (?i)abc / abc123.lastindex
+ok fullmatch (?i)abc / abc123
+ok match (?i)abc / A1 B2
+ok search (?i)abc / A1 B2
+ok fullmatch (?i)abc / A1 B2
+ok match abc / abc.start
+ok match abc / abc.end
+ok match abc / abc.lastindex
+ok search abc / abc.start
+ok search abc / abc.end
+ok search abc / abc.lastindex
+ok fullmatch abc / abc.start
+ok fullmatch abc / abc.end
+ok fullmatch abc / abc.lastindex
+ok match abc / 
+ok search abc / 
+ok fullmatch abc / 
+ok match abc / a
+ok search abc / a
+ok fullmatch abc / a
+ok match abc / aaa
+ok search abc / aaa
+ok fullmatch abc / aaa
+ok match abc / aab
+ok search abc / aab
+ok fullmatch abc / aab
+ok match abc / b
+ok search abc / b
+ok fullmatch abc / b
+ok match abc / ac
+ok search abc / ac
+ok fullmatch abc / ac
+ok match abc / abcabc.start
+ok match abc / abcabc.end
+ok match abc / abcabc.lastindex
+ok search abc / abcabc.start
+ok search abc / abcabc.end
+ok search abc / abcabc.lastindex
+ok fullmatch abc / abcabc
+ok match abc / ab
+cd
+ok search abc / ab
+cd
+ok fullmatch abc / ab
+cd
+ok match abc / a
+b
+c
+ok search abc / a
+b
+c
+ok fullmatch abc / a
+b
+c
+ok match abc / hello world
+ok search abc / hello world
+ok fullmatch abc / hello world
+ok match abc / The quick brown fox
+ok search abc / The quick brown fox
+ok fullmatch abc / The quick brown fox
+ok match abc / éαβ
+ok search abc / éαβ
+ok fullmatch abc / éαβ
+ok match abc / 日本語
+ok search abc / 日本語
+ok fullmatch abc / 日本語
+ok match abc / 😀👍🏽
+ok search abc / 😀👍🏽
+ok fullmatch abc / 😀👍🏽
+ok match abc / éx
+ok search abc / éx
+ok fullmatch abc / éx
+ok match abc / a1b2c3
+ok search abc / a1b2c3
+ok fullmatch abc / a1b2c3
+ok match abc /    	
+
+ok search abc /    	
+
+ok fullmatch abc /    	
+
+ok match abc / word-
+ok search abc / word-
+ok fullmatch abc / word-
+ok match abc / _x9
+ok search abc / _x9
+ok fullmatch abc / _x9
+ok match abc / 12abc34
+ok search abc / 12abc34.start
+ok search abc / 12abc34.end
+ok search abc / 12abc34.lastindex
+ok fullmatch abc / 12abc34
+ok match abc / abc123.start
+ok match abc / abc123.end
+ok match abc / abc123.lastindex
+ok search abc / abc123.start
+ok search abc / abc123.end
+ok search abc / abc123.lastindex
+ok fullmatch abc / abc123
+ok match abc / A1 B2
+ok search abc / A1 B2
+ok fullmatch abc / A1 B2
+ok match ^b / abc
+ok search ^b / abc
+ok fullmatch ^b / abc
+ok match ^b / 
+ok search ^b / 
+ok fullmatch ^b / 
+ok match ^b / a
+ok search ^b / a
+ok fullmatch ^b / a
+ok match ^b / aaa
+ok search ^b / aaa
+ok fullmatch ^b / aaa
+ok match ^b / aab
+ok search ^b / aab
+ok fullmatch ^b / aab
+ok match ^b / b.start
+ok match ^b / b.end
+ok match ^b / b.lastindex
+ok search ^b / b.start
+ok search ^b / b.end
+ok search ^b / b.lastindex
+ok fullmatch ^b / b.start
+ok fullmatch ^b / b.end
+ok fullmatch ^b / b.lastindex
+ok match ^b / ac
+ok search ^b / ac
+ok fullmatch ^b / ac
+ok match ^b / abcabc
+ok search ^b / abcabc
+ok fullmatch ^b / abcabc
+ok match ^b / ab
+cd
+ok search ^b / ab
+cd
+ok fullmatch ^b / ab
+cd
+ok match ^b / a
+b
+c
+ok search ^b / a
+b
+c.start
+ok search ^b / a
+b
+c.end
+ok search ^b / a
+b
+c.lastindex
+ok fullmatch ^b / a
+b
+c
+ok match ^b / hello world
+ok search ^b / hello world
+ok fullmatch ^b / hello world
+ok match ^b / The quick brown fox
+ok search ^b / The quick brown fox
+ok fullmatch ^b / The quick brown fox
+ok match ^b / éαβ
+ok search ^b / éαβ
+ok fullmatch ^b / éαβ
+ok match ^b / 日本語
+ok search ^b / 日本語
+ok fullmatch ^b / 日本語
+ok match ^b / 😀👍🏽
+ok search ^b / 😀👍🏽
+ok fullmatch ^b / 😀👍🏽
+ok match ^b / éx
+ok search ^b / éx
+ok fullmatch ^b / éx
+ok match ^b / a1b2c3
+ok search ^b / a1b2c3
+ok fullmatch ^b / a1b2c3
+ok match ^b /    	
+
+ok search ^b /    	
+
+ok fullmatch ^b /    	
+
+ok match ^b / word-
+ok search ^b / word-
+ok fullmatch ^b / word-
+ok match ^b / _x9
+ok search ^b / _x9
+ok fullmatch ^b / _x9
+ok match ^b / 12abc34
+ok search ^b / 12abc34
+ok fullmatch ^b / 12abc34
+ok match ^b / abc123
+ok search ^b / abc123
+ok fullmatch ^b / abc123
+ok match ^b / A1 B2
+ok search ^b / A1 B2
+ok fullmatch ^b / A1 B2
+ok match c$ / abc
+ok search c$ / abc.start
+ok search c$ / abc.end
+ok search c$ / abc.lastindex
+ok fullmatch c$ / abc
+ok match c$ / 
+ok search c$ / 
+ok fullmatch c$ / 
+ok match c$ / a
+ok search c$ / a
+ok fullmatch c$ / a
+ok match c$ / aaa
+ok search c$ / aaa
+ok fullmatch c$ / aaa
+ok match c$ / aab
+ok search c$ / aab
+ok fullmatch c$ / aab
+ok match c$ / b
+ok search c$ / b
+ok fullmatch c$ / b
+ok match c$ / ac
+ok search c$ / ac.start
+ok search c$ / ac.end
+ok search c$ / ac.lastindex
+ok fullmatch c$ / ac
+ok match c$ / abcabc
+ok search c$ / abcabc.start
+ok search c$ / abcabc.end
+ok search c$ / abcabc.lastindex
+ok fullmatch c$ / abcabc
+ok match c$ / ab
+cd
+ok search c$ / ab
+cd
+ok fullmatch c$ / ab
+cd
+ok match c$ / a
+b
+c
+ok search c$ / a
+b
+c.start
+ok search c$ / a
+b
+c.end
+ok search c$ / a
+b
+c.lastindex
+ok fullmatch c$ / a
+b
+c
+ok match c$ / hello world
+ok search c$ / hello world
+ok fullmatch c$ / hello world
+ok match c$ / The quick brown fox
+ok search c$ / The quick brown fox
+ok fullmatch c$ / The quick brown fox
+ok match c$ / éαβ
+ok search c$ / éαβ
+ok fullmatch c$ / éαβ
+ok match c$ / 日本語
+ok search c$ / 日本語
+ok fullmatch c$ / 日本語
+ok match c$ / 😀👍🏽
+ok search c$ / 😀👍🏽
+ok fullmatch c$ / 😀👍🏽
+ok match c$ / éx
+ok search c$ / éx
+ok fullmatch c$ / éx
+ok match c$ / a1b2c3
+ok search c$ / a1b2c3
+ok fullmatch c$ / a1b2c3
+ok match c$ /    	
+
+ok search c$ /    	
+
+ok fullmatch c$ /    	
+
+ok match c$ / word-
+ok search c$ / word-
+ok fullmatch c$ / word-
+ok match c$ / _x9
+ok search c$ / _x9
+ok fullmatch c$ / _x9
+ok match c$ / 12abc34
+ok search c$ / 12abc34
+ok fullmatch c$ / 12abc34
+ok match c$ / abc123
+ok search c$ / abc123
+ok fullmatch c$ / abc123
+ok match c$ / A1 B2
+ok search c$ / A1 B2
+ok fullmatch c$ / A1 B2
+ok match (?:ab)+ / abc.start
+ok match (?:ab)+ / abc.end
+ok match (?:ab)+ / abc.lastindex
+ok search (?:ab)+ / abc.start
+ok search (?:ab)+ / abc.end
+ok search (?:ab)+ / abc.lastindex
+ok fullmatch (?:ab)+ / abc
+ok match (?:ab)+ / 
+ok search (?:ab)+ / 
+ok fullmatch (?:ab)+ / 
+ok match (?:ab)+ / a
+ok search (?:ab)+ / a
+ok fullmatch (?:ab)+ / a
+ok match (?:ab)+ / aaa
+ok search (?:ab)+ / aaa
+ok fullmatch (?:ab)+ / aaa
+ok match (?:ab)+ / aab
+ok search (?:ab)+ / aab.start
+ok search (?:ab)+ / aab.end
+ok search (?:ab)+ / aab.lastindex
+ok fullmatch (?:ab)+ / aab
+ok match (?:ab)+ / b
+ok search (?:ab)+ / b
+ok fullmatch (?:ab)+ / b
+ok match (?:ab)+ / ac
+ok search (?:ab)+ / ac
+ok fullmatch (?:ab)+ / ac
+ok match (?:ab)+ / abcabc.start
+ok match (?:ab)+ / abcabc.end
+ok match (?:ab)+ / abcabc.lastindex
+ok search (?:ab)+ / abcabc.start
+ok search (?:ab)+ / abcabc.end
+ok search (?:ab)+ / abcabc.lastindex
+ok fullmatch (?:ab)+ / abcabc
+ok match (?:ab)+ / ab
+cd.start
+ok match (?:ab)+ / ab
+cd.end
+ok match (?:ab)+ / ab
+cd.lastindex
+ok search (?:ab)+ / ab
+cd.start
+ok search (?:ab)+ / ab
+cd.end
+ok search (?:ab)+ / ab
+cd.lastindex
+ok fullmatch (?:ab)+ / ab
+cd
+ok match (?:ab)+ / a
+b
+c
+ok search (?:ab)+ / a
+b
+c
+ok fullmatch (?:ab)+ / a
+b
+c
+ok match (?:ab)+ / hello world
+ok search (?:ab)+ / hello world
+ok fullmatch (?:ab)+ / hello world
+ok match (?:ab)+ / The quick brown fox
+ok search (?:ab)+ / The quick brown fox
+ok fullmatch (?:ab)+ / The quick brown fox
+ok match (?:ab)+ / éαβ
+ok search (?:ab)+ / éαβ
+ok fullmatch (?:ab)+ / éαβ
+ok match (?:ab)+ / 日本語
+ok search (?:ab)+ / 日本語
+ok fullmatch (?:ab)+ / 日本語
+ok match (?:ab)+ / 😀👍🏽
+ok search (?:ab)+ / 😀👍🏽
+ok fullmatch (?:ab)+ / 😀👍🏽
+ok match (?:ab)+ / éx
+ok search (?:ab)+ / éx
+ok fullmatch (?:ab)+ / éx
+ok match (?:ab)+ / a1b2c3
+ok search (?:ab)+ / a1b2c3
+ok fullmatch (?:ab)+ / a1b2c3
+ok match (?:ab)+ /    	
+
+ok search (?:ab)+ /    	
+
+ok fullmatch (?:ab)+ /    	
+
+ok match (?:ab)+ / word-
+ok search (?:ab)+ / word-
+ok fullmatch (?:ab)+ / word-
+ok match (?:ab)+ / _x9
+ok search (?:ab)+ / _x9
+ok fullmatch (?:ab)+ / _x9
+ok match (?:ab)+ / 12abc34
+ok search (?:ab)+ / 12abc34.start
+ok search (?:ab)+ / 12abc34.end
+ok search (?:ab)+ / 12abc34.lastindex
+ok fullmatch (?:ab)+ / 12abc34
+ok match (?:ab)+ / abc123.start
+ok match (?:ab)+ / abc123.end
+ok match (?:ab)+ / abc123.lastindex
+ok search (?:ab)+ / abc123.start
+ok search (?:ab)+ / abc123.end
+ok search (?:ab)+ / abc123.lastindex
+ok fullmatch (?:ab)+ / abc123
+ok match (?:ab)+ / A1 B2
+ok search (?:ab)+ / A1 B2
+ok fullmatch (?:ab)+ / A1 B2
+ok match (a)(b)(c) / abc.start
+ok match (a)(b)(c) / abc.end
+ok match (a)(b)(c) / abc.lastindex
+ok match (a)(b)(c) / abc.g1
+ok match (a)(b)(c) / abc.g2
+ok match (a)(b)(c) / abc.g3
+ok search (a)(b)(c) / abc.start
+ok search (a)(b)(c) / abc.end
+ok search (a)(b)(c) / abc.lastindex
+ok search (a)(b)(c) / abc.g1
+ok search (a)(b)(c) / abc.g2
+ok search (a)(b)(c) / abc.g3
+ok fullmatch (a)(b)(c) / abc.start
+ok fullmatch (a)(b)(c) / abc.end
+ok fullmatch (a)(b)(c) / abc.lastindex
+ok fullmatch (a)(b)(c) / abc.g1
+ok fullmatch (a)(b)(c) / abc.g2
+ok fullmatch (a)(b)(c) / abc.g3
+ok match (a)(b)(c) / 
+ok search (a)(b)(c) / 
+ok fullmatch (a)(b)(c) / 
+ok match (a)(b)(c) / a
+ok search (a)(b)(c) / a
+ok fullmatch (a)(b)(c) / a
+ok match (a)(b)(c) / aaa
+ok search (a)(b)(c) / aaa
+ok fullmatch (a)(b)(c) / aaa
+ok match (a)(b)(c) / aab
+ok search (a)(b)(c) / aab
+ok fullmatch (a)(b)(c) / aab
+ok match (a)(b)(c) / b
+ok search (a)(b)(c) / b
+ok fullmatch (a)(b)(c) / b
+ok match (a)(b)(c) / ac
+ok search (a)(b)(c) / ac
+ok fullmatch (a)(b)(c) / ac
+ok match (a)(b)(c) / abcabc.start
+ok match (a)(b)(c) / abcabc.end
+ok match (a)(b)(c) / abcabc.lastindex
+ok match (a)(b)(c) / abcabc.g1
+ok match (a)(b)(c) / abcabc.g2
+ok match (a)(b)(c) / abcabc.g3
+ok search (a)(b)(c) / abcabc.start
+ok search (a)(b)(c) / abcabc.end
+ok search (a)(b)(c) / abcabc.lastindex
+ok search (a)(b)(c) / abcabc.g1
+ok search (a)(b)(c) / abcabc.g2
+ok search (a)(b)(c) / abcabc.g3
+ok fullmatch (a)(b)(c) / abcabc
+ok match (a)(b)(c) / ab
+cd
+ok search (a)(b)(c) / ab
+cd
+ok fullmatch (a)(b)(c) / ab
+cd
+ok match (a)(b)(c) / a
+b
+c
+ok search (a)(b)(c) / a
+b
+c
+ok fullmatch (a)(b)(c) / a
+b
+c
+ok match (a)(b)(c) / hello world
+ok search (a)(b)(c) / hello world
+ok fullmatch (a)(b)(c) / hello world
+ok match (a)(b)(c) / The quick brown fox
+ok search (a)(b)(c) / The quick brown fox
+ok fullmatch (a)(b)(c) / The quick brown fox
+ok match (a)(b)(c) / éαβ
+ok search (a)(b)(c) / éαβ
+ok fullmatch (a)(b)(c) / éαβ
+ok match (a)(b)(c) / 日本語
+ok search (a)(b)(c) / 日本語
+ok fullmatch (a)(b)(c) / 日本語
+ok match (a)(b)(c) / 😀👍🏽
+ok search (a)(b)(c) / 😀👍🏽
+ok fullmatch (a)(b)(c) / 😀👍🏽
+ok match (a)(b)(c) / éx
+ok search (a)(b)(c) / éx
+ok fullmatch (a)(b)(c) / éx
+ok match (a)(b)(c) / a1b2c3
+ok search (a)(b)(c) / a1b2c3
+ok fullmatch (a)(b)(c) / a1b2c3
+ok match (a)(b)(c) /    	
+
+ok search (a)(b)(c) /    	
+
+ok fullmatch (a)(b)(c) /    	
+
+ok match (a)(b)(c) / word-
+ok search (a)(b)(c) / word-
+ok fullmatch (a)(b)(c) / word-
+ok match (a)(b)(c) / _x9
+ok search (a)(b)(c) / _x9
+ok fullmatch (a)(b)(c) / _x9
+ok match (a)(b)(c) / 12abc34
+ok search (a)(b)(c) / 12abc34.start
+ok search (a)(b)(c) / 12abc34.end
+ok search (a)(b)(c) / 12abc34.lastindex
+ok search (a)(b)(c) / 12abc34.g1
+ok search (a)(b)(c) / 12abc34.g2
+ok search (a)(b)(c) / 12abc34.g3
+ok fullmatch (a)(b)(c) / 12abc34
+ok match (a)(b)(c) / abc123.start
+ok match (a)(b)(c) / abc123.end
+ok match (a)(b)(c) / abc123.lastindex
+ok match (a)(b)(c) / abc123.g1
+ok match (a)(b)(c) / abc123.g2
+ok match (a)(b)(c) / abc123.g3
+ok search (a)(b)(c) / abc123.start
+ok search (a)(b)(c) / abc123.end
+ok search (a)(b)(c) / abc123.lastindex
+ok search (a)(b)(c) / abc123.g1
+ok search (a)(b)(c) / abc123.g2
+ok search (a)(b)(c) / abc123.g3
+ok fullmatch (a)(b)(c) / abc123
+ok match (a)(b)(c) / A1 B2
+ok search (a)(b)(c) / A1 B2
+ok fullmatch (a)(b)(c) / A1 B2
+ok match a(b(c)) / abc.start
+ok match a(b(c)) / abc.end
+ok match a(b(c)) / abc.lastindex
+ok match a(b(c)) / abc.g1
+ok match a(b(c)) / abc.g2
+ok search a(b(c)) / abc.start
+ok search a(b(c)) / abc.end
+ok search a(b(c)) / abc.lastindex
+ok search a(b(c)) / abc.g1
+ok search a(b(c)) / abc.g2
+ok fullmatch a(b(c)) / abc.start
+ok fullmatch a(b(c)) / abc.end
+ok fullmatch a(b(c)) / abc.lastindex
+ok fullmatch a(b(c)) / abc.g1
+ok fullmatch a(b(c)) / abc.g2
+ok match a(b(c)) / 
+ok search a(b(c)) / 
+ok fullmatch a(b(c)) / 
+ok match a(b(c)) / a
+ok search a(b(c)) / a
+ok fullmatch a(b(c)) / a
+ok match a(b(c)) / aaa
+ok search a(b(c)) / aaa
+ok fullmatch a(b(c)) / aaa
+ok match a(b(c)) / aab
+ok search a(b(c)) / aab
+ok fullmatch a(b(c)) / aab
+ok match a(b(c)) / b
+ok search a(b(c)) / b
+ok fullmatch a(b(c)) / b
+ok match a(b(c)) / ac
+ok search a(b(c)) / ac
+ok fullmatch a(b(c)) / ac
+ok match a(b(c)) / abcabc.start
+ok match a(b(c)) / abcabc.end
+ok match a(b(c)) / abcabc.lastindex
+ok match a(b(c)) / abcabc.g1
+ok match a(b(c)) / abcabc.g2
+ok search a(b(c)) / abcabc.start
+ok search a(b(c)) / abcabc.end
+ok search a(b(c)) / abcabc.lastindex
+ok search a(b(c)) / abcabc.g1
+ok search a(b(c)) / abcabc.g2
+ok fullmatch a(b(c)) / abcabc
+ok match a(b(c)) / ab
+cd
+ok search a(b(c)) / ab
+cd
+ok fullmatch a(b(c)) / ab
+cd
+ok match a(b(c)) / a
+b
+c
+ok search a(b(c)) / a
+b
+c
+ok fullmatch a(b(c)) / a
+b
+c
+ok match a(b(c)) / hello world
+ok search a(b(c)) / hello world
+ok fullmatch a(b(c)) / hello world
+ok match a(b(c)) / The quick brown fox
+ok search a(b(c)) / The quick brown fox
+ok fullmatch a(b(c)) / The quick brown fox
+ok match a(b(c)) / éαβ
+ok search a(b(c)) / éαβ
+ok fullmatch a(b(c)) / éαβ
+ok match a(b(c)) / 日本語
+ok search a(b(c)) / 日本語
+ok fullmatch a(b(c)) / 日本語
+ok match a(b(c)) / 😀👍🏽
+ok search a(b(c)) / 😀👍🏽
+ok fullmatch a(b(c)) / 😀👍🏽
+ok match a(b(c)) / éx
+ok search a(b(c)) / éx
+ok fullmatch a(b(c)) / éx
+ok match a(b(c)) / a1b2c3
+ok search a(b(c)) / a1b2c3
+ok fullmatch a(b(c)) / a1b2c3
+ok match a(b(c)) /    	
+
+ok search a(b(c)) /    	
+
+ok fullmatch a(b(c)) /    	
+
+ok match a(b(c)) / word-
+ok search a(b(c)) / word-
+ok fullmatch a(b(c)) / word-
+ok match a(b(c)) / _x9
+ok search a(b(c)) / _x9
+ok fullmatch a(b(c)) / _x9
+ok match a(b(c)) / 12abc34
+ok search a(b(c)) / 12abc34.start
+ok search a(b(c)) / 12abc34.end
+ok search a(b(c)) / 12abc34.lastindex
+ok search a(b(c)) / 12abc34.g1
+ok search a(b(c)) / 12abc34.g2
+ok fullmatch a(b(c)) / 12abc34
+ok match a(b(c)) / abc123.start
+ok match a(b(c)) / abc123.end
+ok match a(b(c)) / abc123.lastindex
+ok match a(b(c)) / abc123.g1
+ok match a(b(c)) / abc123.g2
+ok search a(b(c)) / abc123.start
+ok search a(b(c)) / abc123.end
+ok search a(b(c)) / abc123.lastindex
+ok search a(b(c)) / abc123.g1
+ok search a(b(c)) / abc123.g2
+ok fullmatch a(b(c)) / abc123
+ok match a(b(c)) / A1 B2
+ok search a(b(c)) / A1 B2
+ok fullmatch a(b(c)) / A1 B2
+ok match (a)?(b)? / abc.start
+ok match (a)?(b)? / abc.end
+ok match (a)?(b)? / abc.lastindex
+ok match (a)?(b)? / abc.g1
+ok match (a)?(b)? / abc.g2
+ok search (a)?(b)? / abc.start
+ok search (a)?(b)? / abc.end
+ok search (a)?(b)? / abc.lastindex
+ok search (a)?(b)? / abc.g1
+ok search (a)?(b)? / abc.g2
+ok fullmatch (a)?(b)? / abc
+ok match (a)?(b)? / .start
+ok match (a)?(b)? / .end
+ok match (a)?(b)? / .lastindex
+ok match (a)?(b)? / .g1.none
+ok match (a)?(b)? / .g2.none
+ok search (a)?(b)? / .start
+ok search (a)?(b)? / .end
+ok search (a)?(b)? / .lastindex
+ok search (a)?(b)? / .g1.none
+ok search (a)?(b)? / .g2.none
+ok fullmatch (a)?(b)? / .start
+ok fullmatch (a)?(b)? / .end
+ok fullmatch (a)?(b)? / .lastindex
+ok fullmatch (a)?(b)? / .g1.none
+ok fullmatch (a)?(b)? / .g2.none
+ok match (a)?(b)? / a.start
+ok match (a)?(b)? / a.end
+ok match (a)?(b)? / a.lastindex
+ok match (a)?(b)? / a.g1
+ok match (a)?(b)? / a.g2.none
+ok search (a)?(b)? / a.start
+ok search (a)?(b)? / a.end
+ok search (a)?(b)? / a.lastindex
+ok search (a)?(b)? / a.g1
+ok search (a)?(b)? / a.g2.none
+ok fullmatch (a)?(b)? / a.start
+ok fullmatch (a)?(b)? / a.end
+ok fullmatch (a)?(b)? / a.lastindex
+ok fullmatch (a)?(b)? / a.g1
+ok fullmatch (a)?(b)? / a.g2.none
+ok match (a)?(b)? / aaa.start
+ok match (a)?(b)? / aaa.end
+ok match (a)?(b)? / aaa.lastindex
+ok match (a)?(b)? / aaa.g1
+ok match (a)?(b)? / aaa.g2.none
+ok search (a)?(b)? / aaa.start
+ok search (a)?(b)? / aaa.end
+ok search (a)?(b)? / aaa.lastindex
+ok search (a)?(b)? / aaa.g1
+ok search (a)?(b)? / aaa.g2.none
+ok fullmatch (a)?(b)? / aaa
+ok match (a)?(b)? / aab.start
+ok match (a)?(b)? / aab.end
+ok match (a)?(b)? / aab.lastindex
+ok match (a)?(b)? / aab.g1
+ok match (a)?(b)? / aab.g2.none
+ok search (a)?(b)? / aab.start
+ok search (a)?(b)? / aab.end
+ok search (a)?(b)? / aab.lastindex
+ok search (a)?(b)? / aab.g1
+ok search (a)?(b)? / aab.g2.none
+ok fullmatch (a)?(b)? / aab
+ok match (a)?(b)? / b.start
+ok match (a)?(b)? / b.end
+ok match (a)?(b)? / b.lastindex
+ok match (a)?(b)? / b.g1.none
+ok match (a)?(b)? / b.g2
+ok search (a)?(b)? / b.start
+ok search (a)?(b)? / b.end
+ok search (a)?(b)? / b.lastindex
+ok search (a)?(b)? / b.g1.none
+ok search (a)?(b)? / b.g2
+ok fullmatch (a)?(b)? / b.start
+ok fullmatch (a)?(b)? / b.end
+ok fullmatch (a)?(b)? / b.lastindex
+ok fullmatch (a)?(b)? / b.g1.none
+ok fullmatch (a)?(b)? / b.g2
+ok match (a)?(b)? / ac.start
+ok match (a)?(b)? / ac.end
+ok match (a)?(b)? / ac.lastindex
+ok match (a)?(b)? / ac.g1
+ok match (a)?(b)? / ac.g2.none
+ok search (a)?(b)? / ac.start
+ok search (a)?(b)? / ac.end
+ok search (a)?(b)? / ac.lastindex
+ok search (a)?(b)? / ac.g1
+ok search (a)?(b)? / ac.g2.none
+ok fullmatch (a)?(b)? / ac
+ok match (a)?(b)? / abcabc.start
+ok match (a)?(b)? / abcabc.end
+ok match (a)?(b)? / abcabc.lastindex
+ok match (a)?(b)? / abcabc.g1
+ok match (a)?(b)? / abcabc.g2
+ok search (a)?(b)? / abcabc.start
+ok search (a)?(b)? / abcabc.end
+ok search (a)?(b)? / abcabc.lastindex
+ok search (a)?(b)? / abcabc.g1
+ok search (a)?(b)? / abcabc.g2
+ok fullmatch (a)?(b)? / abcabc
+ok match (a)?(b)? / ab
+cd.start
+ok match (a)?(b)? / ab
+cd.end
+ok match (a)?(b)? / ab
+cd.lastindex
+ok match (a)?(b)? / ab
+cd.g1
+ok match (a)?(b)? / ab
+cd.g2
+ok search (a)?(b)? / ab
+cd.start
+ok search (a)?(b)? / ab
+cd.end
+ok search (a)?(b)? / ab
+cd.lastindex
+ok search (a)?(b)? / ab
+cd.g1
+ok search (a)?(b)? / ab
+cd.g2
+ok fullmatch (a)?(b)? / ab
+cd
+ok match (a)?(b)? / a
+b
+c.start
+ok match (a)?(b)? / a
+b
+c.end
+ok match (a)?(b)? / a
+b
+c.lastindex
+ok match (a)?(b)? / a
+b
+c.g1
+ok match (a)?(b)? / a
+b
+c.g2.none
+ok search (a)?(b)? / a
+b
+c.start
+ok search (a)?(b)? / a
+b
+c.end
+ok search (a)?(b)? / a
+b
+c.lastindex
+ok search (a)?(b)? / a
+b
+c.g1
+ok search (a)?(b)? / a
+b
+c.g2.none
+ok fullmatch (a)?(b)? / a
+b
+c
+ok match (a)?(b)? / hello world.start
+ok match (a)?(b)? / hello world.end
+ok match (a)?(b)? / hello world.lastindex
+ok match (a)?(b)? / hello world.g1.none
+ok match (a)?(b)? / hello world.g2.none
+ok search (a)?(b)? / hello world.start
+ok search (a)?(b)? / hello world.end
+ok search (a)?(b)? / hello world.lastindex
+ok search (a)?(b)? / hello world.g1.none
+ok search (a)?(b)? / hello world.g2.none
+ok fullmatch (a)?(b)? / hello world
+ok match (a)?(b)? / The quick brown fox.start
+ok match (a)?(b)? / The quick brown fox.end
+ok match (a)?(b)? / The quick brown fox.lastindex
+ok match (a)?(b)? / The quick brown fox.g1.none
+ok match (a)?(b)? / The quick brown fox.g2.none
+ok search (a)?(b)? / The quick brown fox.start
+ok search (a)?(b)? / The quick brown fox.end
+ok search (a)?(b)? / The quick brown fox.lastindex
+ok search (a)?(b)? / The quick brown fox.g1.none
+ok search (a)?(b)? / The quick brown fox.g2.none
+ok fullmatch (a)?(b)? / The quick brown fox
+ok match (a)?(b)? / éαβ.start
+ok match (a)?(b)? / éαβ.end
+ok match (a)?(b)? / éαβ.lastindex
+ok match (a)?(b)? / éαβ.g1.none
+ok match (a)?(b)? / éαβ.g2.none
+ok search (a)?(b)? / éαβ.start
+ok search (a)?(b)? / éαβ.end
+ok search (a)?(b)? / éαβ.lastindex
+ok search (a)?(b)? / éαβ.g1.none
+ok search (a)?(b)? / éαβ.g2.none
+ok fullmatch (a)?(b)? / éαβ
+ok match (a)?(b)? / 日本語.start
+ok match (a)?(b)? / 日本語.end
+ok match (a)?(b)? / 日本語.lastindex
+ok match (a)?(b)? / 日本語.g1.none
+ok match (a)?(b)? / 日本語.g2.none
+ok search (a)?(b)? / 日本語.start
+ok search (a)?(b)? / 日本語.end
+ok search (a)?(b)? / 日本語.lastindex
+ok search (a)?(b)? / 日本語.g1.none
+ok search (a)?(b)? / 日本語.g2.none
+ok fullmatch (a)?(b)? / 日本語
+ok match (a)?(b)? / 😀👍🏽.start
+ok match (a)?(b)? / 😀👍🏽.end
+ok match (a)?(b)? / 😀👍🏽.lastindex
+ok match (a)?(b)? / 😀👍🏽.g1.none
+ok match (a)?(b)? / 😀👍🏽.g2.none
+ok search (a)?(b)? / 😀👍🏽.start
+ok search (a)?(b)? / 😀👍🏽.end
+ok search (a)?(b)? / 😀👍🏽.lastindex
+ok search (a)?(b)? / 😀👍🏽.g1.none
+ok search (a)?(b)? / 😀👍🏽.g2.none
+ok fullmatch (a)?(b)? / 😀👍🏽
+ok match (a)?(b)? / éx.start
+ok match (a)?(b)? / éx.end
+ok match (a)?(b)? / éx.lastindex
+ok match (a)?(b)? / éx.g1.none
+ok match (a)?(b)? / éx.g2.none
+ok search (a)?(b)? / éx.start
+ok search (a)?(b)? / éx.end
+ok search (a)?(b)? / éx.lastindex
+ok search (a)?(b)? / éx.g1.none
+ok search (a)?(b)? / éx.g2.none
+ok fullmatch (a)?(b)? / éx
+ok match (a)?(b)? / a1b2c3.start
+ok match (a)?(b)? / a1b2c3.end
+ok match (a)?(b)? / a1b2c3.lastindex
+ok match (a)?(b)? / a1b2c3.g1
+ok match (a)?(b)? / a1b2c3.g2.none
+ok search (a)?(b)? / a1b2c3.start
+ok search (a)?(b)? / a1b2c3.end
+ok search (a)?(b)? / a1b2c3.lastindex
+ok search (a)?(b)? / a1b2c3.g1
+ok search (a)?(b)? / a1b2c3.g2.none
+ok fullmatch (a)?(b)? / a1b2c3
+ok match (a)?(b)? /    	
+.start
+ok match (a)?(b)? /    	
+.end
+ok match (a)?(b)? /    	
+.lastindex
+ok match (a)?(b)? /    	
+.g1.none
+ok match (a)?(b)? /    	
+.g2.none
+ok search (a)?(b)? /    	
+.start
+ok search (a)?(b)? /    	
+.end
+ok search (a)?(b)? /    	
+.lastindex
+ok search (a)?(b)? /    	
+.g1.none
+ok search (a)?(b)? /    	
+.g2.none
+ok fullmatch (a)?(b)? /    	
+
+ok match (a)?(b)? / word-.start
+ok match (a)?(b)? / word-.end
+ok match (a)?(b)? / word-.lastindex
+ok match (a)?(b)? / word-.g1.none
+ok match (a)?(b)? / word-.g2.none
+ok search (a)?(b)? / word-.start
+ok search (a)?(b)? / word-.end
+ok search (a)?(b)? / word-.lastindex
+ok search (a)?(b)? / word-.g1.none
+ok search (a)?(b)? / word-.g2.none
+ok fullmatch (a)?(b)? / word-
+ok match (a)?(b)? / _x9.start
+ok match (a)?(b)? / _x9.end
+ok match (a)?(b)? / _x9.lastindex
+ok match (a)?(b)? / _x9.g1.none
+ok match (a)?(b)? / _x9.g2.none
+ok search (a)?(b)? / _x9.start
+ok search (a)?(b)? / _x9.end
+ok search (a)?(b)? / _x9.lastindex
+ok search (a)?(b)? / _x9.g1.none
+ok search (a)?(b)? / _x9.g2.none
+ok fullmatch (a)?(b)? / _x9
+ok match (a)?(b)? / 12abc34.start
+ok match (a)?(b)? / 12abc34.end
+ok match (a)?(b)? / 12abc34.lastindex
+ok match (a)?(b)? / 12abc34.g1.none
+ok match (a)?(b)? / 12abc34.g2.none
+ok search (a)?(b)? / 12abc34.start
+ok search (a)?(b)? / 12abc34.end
+ok search (a)?(b)? / 12abc34.lastindex
+ok search (a)?(b)? / 12abc34.g1.none
+ok search (a)?(b)? / 12abc34.g2.none
+ok fullmatch (a)?(b)? / 12abc34
+ok match (a)?(b)? / abc123.start
+ok match (a)?(b)? / abc123.end
+ok match (a)?(b)? / abc123.lastindex
+ok match (a)?(b)? / abc123.g1
+ok match (a)?(b)? / abc123.g2
+ok search (a)?(b)? / abc123.start
+ok search (a)?(b)? / abc123.end
+ok search (a)?(b)? / abc123.lastindex
+ok search (a)?(b)? / abc123.g1
+ok search (a)?(b)? / abc123.g2
+ok fullmatch (a)?(b)? / abc123
+ok match (a)?(b)? / A1 B2.start
+ok match (a)?(b)? / A1 B2.end
+ok match (a)?(b)? / A1 B2.lastindex
+ok match (a)?(b)? / A1 B2.g1.none
+ok match (a)?(b)? / A1 B2.g2.none
+ok search (a)?(b)? / A1 B2.start
+ok search (a)?(b)? / A1 B2.end
+ok search (a)?(b)? / A1 B2.lastindex
+ok search (a)?(b)? / A1 B2.g1.none
+ok search (a)?(b)? / A1 B2.g2.none
+ok fullmatch (a)?(b)? / A1 B2
+ok match (?P<d>\d)(?P=d) / abc
+ok search (?P<d>\d)(?P=d) / abc
+ok fullmatch (?P<d>\d)(?P=d) / abc
+ok match (?P<d>\d)(?P=d) / 
+ok search (?P<d>\d)(?P=d) / 
+ok fullmatch (?P<d>\d)(?P=d) / 
+ok match (?P<d>\d)(?P=d) / a
+ok search (?P<d>\d)(?P=d) / a
+ok fullmatch (?P<d>\d)(?P=d) / a
+ok match (?P<d>\d)(?P=d) / aaa
+ok search (?P<d>\d)(?P=d) / aaa
+ok fullmatch (?P<d>\d)(?P=d) / aaa
+ok match (?P<d>\d)(?P=d) / aab
+ok search (?P<d>\d)(?P=d) / aab
+ok fullmatch (?P<d>\d)(?P=d) / aab
+ok match (?P<d>\d)(?P=d) / b
+ok search (?P<d>\d)(?P=d) / b
+ok fullmatch (?P<d>\d)(?P=d) / b
+ok match (?P<d>\d)(?P=d) / ac
+ok search (?P<d>\d)(?P=d) / ac
+ok fullmatch (?P<d>\d)(?P=d) / ac
+ok match (?P<d>\d)(?P=d) / abcabc
+ok search (?P<d>\d)(?P=d) / abcabc
+ok fullmatch (?P<d>\d)(?P=d) / abcabc
+ok match (?P<d>\d)(?P=d) / ab
+cd
+ok search (?P<d>\d)(?P=d) / ab
+cd
+ok fullmatch (?P<d>\d)(?P=d) / ab
+cd
+ok match (?P<d>\d)(?P=d) / a
+b
+c
+ok search (?P<d>\d)(?P=d) / a
+b
+c
+ok fullmatch (?P<d>\d)(?P=d) / a
+b
+c
+ok match (?P<d>\d)(?P=d) / hello world
+ok search (?P<d>\d)(?P=d) / hello world
+ok fullmatch (?P<d>\d)(?P=d) / hello world
+ok match (?P<d>\d)(?P=d) / The quick brown fox
+ok search (?P<d>\d)(?P=d) / The quick brown fox
+ok fullmatch (?P<d>\d)(?P=d) / The quick brown fox
+ok match (?P<d>\d)(?P=d) / éαβ
+ok search (?P<d>\d)(?P=d) / éαβ
+ok fullmatch (?P<d>\d)(?P=d) / éαβ
+ok match (?P<d>\d)(?P=d) / 日本語
+ok search (?P<d>\d)(?P=d) / 日本語
+ok fullmatch (?P<d>\d)(?P=d) / 日本語
+ok match (?P<d>\d)(?P=d) / 😀👍🏽
+ok search (?P<d>\d)(?P=d) / 😀👍🏽
+ok fullmatch (?P<d>\d)(?P=d) / 😀👍🏽
+ok match (?P<d>\d)(?P=d) / éx
+ok search (?P<d>\d)(?P=d) / éx
+ok fullmatch (?P<d>\d)(?P=d) / éx
+ok match (?P<d>\d)(?P=d) / a1b2c3
+ok search (?P<d>\d)(?P=d) / a1b2c3
+ok fullmatch (?P<d>\d)(?P=d) / a1b2c3
+ok match (?P<d>\d)(?P=d) /    	
+
+ok search (?P<d>\d)(?P=d) /    	
+
+ok fullmatch (?P<d>\d)(?P=d) /    	
+
+ok match (?P<d>\d)(?P=d) / word-
+ok search (?P<d>\d)(?P=d) / word-
+ok fullmatch (?P<d>\d)(?P=d) / word-
+ok match (?P<d>\d)(?P=d) / _x9
+ok search (?P<d>\d)(?P=d) / _x9
+ok fullmatch (?P<d>\d)(?P=d) / _x9
+ok match (?P<d>\d)(?P=d) / 12abc34
+ok search (?P<d>\d)(?P=d) / 12abc34
+ok fullmatch (?P<d>\d)(?P=d) / 12abc34
+ok match (?P<d>\d)(?P=d) / abc123
+ok search (?P<d>\d)(?P=d) / abc123
+ok fullmatch (?P<d>\d)(?P=d) / abc123
+ok match (?P<d>\d)(?P=d) / A1 B2
+ok search (?P<d>\d)(?P=d) / A1 B2
+ok fullmatch (?P<d>\d)(?P=d) / A1 B2
+ok match (\w)\1 / abc
+ok search (\w)\1 / abc
+ok fullmatch (\w)\1 / abc
+ok match (\w)\1 / 
+ok search (\w)\1 / 
+ok fullmatch (\w)\1 / 
+ok match (\w)\1 / a
+ok search (\w)\1 / a
+ok fullmatch (\w)\1 / a
+ok match (\w)\1 / aaa.start
+ok match (\w)\1 / aaa.end
+ok match (\w)\1 / aaa.lastindex
+ok match (\w)\1 / aaa.g1
+ok search (\w)\1 / aaa.start
+ok search (\w)\1 / aaa.end
+ok search (\w)\1 / aaa.lastindex
+ok search (\w)\1 / aaa.g1
+ok fullmatch (\w)\1 / aaa
+ok match (\w)\1 / aab.start
+ok match (\w)\1 / aab.end
+ok match (\w)\1 / aab.lastindex
+ok match (\w)\1 / aab.g1
+ok search (\w)\1 / aab.start
+ok search (\w)\1 / aab.end
+ok search (\w)\1 / aab.lastindex
+ok search (\w)\1 / aab.g1
+ok fullmatch (\w)\1 / aab
+ok match (\w)\1 / b
+ok search (\w)\1 / b
+ok fullmatch (\w)\1 / b
+ok match (\w)\1 / ac
+ok search (\w)\1 / ac
+ok fullmatch (\w)\1 / ac
+ok match (\w)\1 / abcabc
+ok search (\w)\1 / abcabc
+ok fullmatch (\w)\1 / abcabc
+ok match (\w)\1 / ab
+cd
+ok search (\w)\1 / ab
+cd
+ok fullmatch (\w)\1 / ab
+cd
+ok match (\w)\1 / a
+b
+c
+ok search (\w)\1 / a
+b
+c
+ok fullmatch (\w)\1 / a
+b
+c
+ok match (\w)\1 / hello world
+ok search (\w)\1 / hello world.start
+ok search (\w)\1 / hello world.end
+ok search (\w)\1 / hello world.lastindex
+ok search (\w)\1 / hello world.g1
+ok fullmatch (\w)\1 / hello world
+ok match (\w)\1 / The quick brown fox
+ok search (\w)\1 / The quick brown fox
+ok fullmatch (\w)\1 / The quick brown fox
+ok match (\w)\1 / éαβ
+ok search (\w)\1 / éαβ
+ok fullmatch (\w)\1 / éαβ
+ok match (\w)\1 / 日本語
+ok search (\w)\1 / 日本語
+ok fullmatch (\w)\1 / 日本語
+ok match (\w)\1 / 😀👍🏽
+ok search (\w)\1 / 😀👍🏽
+ok fullmatch (\w)\1 / 😀👍🏽
+ok match (\w)\1 / éx
+ok search (\w)\1 / éx
+ok fullmatch (\w)\1 / éx
+ok match (\w)\1 / a1b2c3
+ok search (\w)\1 / a1b2c3
+ok fullmatch (\w)\1 / a1b2c3
+ok match (\w)\1 /    	
+
+ok search (\w)\1 /    	
+
+ok fullmatch (\w)\1 /    	
+
+ok match (\w)\1 / word-
+ok search (\w)\1 / word-
+ok fullmatch (\w)\1 / word-
+ok match (\w)\1 / _x9
+ok search (\w)\1 / _x9
+ok fullmatch (\w)\1 / _x9
+ok match (\w)\1 / 12abc34
+ok search (\w)\1 / 12abc34
+ok fullmatch (\w)\1 / 12abc34
+ok match (\w)\1 / abc123
+ok search (\w)\1 / abc123
+ok fullmatch (\w)\1 / abc123
+ok match (\w)\1 / A1 B2
+ok search (\w)\1 / A1 B2
+ok fullmatch (\w)\1 / A1 B2
+ok match (?=ab) / abc.start
+ok match (?=ab) / abc.end
+ok match (?=ab) / abc.lastindex
+ok search (?=ab) / abc.start
+ok search (?=ab) / abc.end
+ok search (?=ab) / abc.lastindex
+ok fullmatch (?=ab) / abc
+ok match (?=ab) / 
+ok search (?=ab) / 
+ok fullmatch (?=ab) / 
+ok match (?=ab) / a
+ok search (?=ab) / a
+ok fullmatch (?=ab) / a
+ok match (?=ab) / aaa
+ok search (?=ab) / aaa
+ok fullmatch (?=ab) / aaa
+ok match (?=ab) / aab
+ok search (?=ab) / aab.start
+ok search (?=ab) / aab.end
+ok search (?=ab) / aab.lastindex
+ok fullmatch (?=ab) / aab
+ok match (?=ab) / b
+ok search (?=ab) / b
+ok fullmatch (?=ab) / b
+ok match (?=ab) / ac
+ok search (?=ab) / ac
+ok fullmatch (?=ab) / ac
+ok match (?=ab) / abcabc.start
+ok match (?=ab) / abcabc.end
+ok match (?=ab) / abcabc.lastindex
+ok search (?=ab) / abcabc.start
+ok search (?=ab) / abcabc.end
+ok search (?=ab) / abcabc.lastindex
+ok fullmatch (?=ab) / abcabc
+ok match (?=ab) / ab
+cd.start
+ok match (?=ab) / ab
+cd.end
+ok match (?=ab) / ab
+cd.lastindex
+ok search (?=ab) / ab
+cd.start
+ok search (?=ab) / ab
+cd.end
+ok search (?=ab) / ab
+cd.lastindex
+ok fullmatch (?=ab) / ab
+cd
+ok match (?=ab) / a
+b
+c
+ok search (?=ab) / a
+b
+c
+ok fullmatch (?=ab) / a
+b
+c
+ok match (?=ab) / hello world
+ok search (?=ab) / hello world
+ok fullmatch (?=ab) / hello world
+ok match (?=ab) / The quick brown fox
+ok search (?=ab) / The quick brown fox
+ok fullmatch (?=ab) / The quick brown fox
+ok match (?=ab) / éαβ
+ok search (?=ab) / éαβ
+ok fullmatch (?=ab) / éαβ
+ok match (?=ab) / 日本語
+ok search (?=ab) / 日本語
+ok fullmatch (?=ab) / 日本語
+ok match (?=ab) / 😀👍🏽
+ok search (?=ab) / 😀👍🏽
+ok fullmatch (?=ab) / 😀👍🏽
+ok match (?=ab) / éx
+ok search (?=ab) / éx
+ok fullmatch (?=ab) / éx
+ok match (?=ab) / a1b2c3
+ok search (?=ab) / a1b2c3
+ok fullmatch (?=ab) / a1b2c3
+ok match (?=ab) /    	
+
+ok search (?=ab) /    	
+
+ok fullmatch (?=ab) /    	
+
+ok match (?=ab) / word-
+ok search (?=ab) / word-
+ok fullmatch (?=ab) / word-
+ok match (?=ab) / _x9
+ok search (?=ab) / _x9
+ok fullmatch (?=ab) / _x9
+ok match (?=ab) / 12abc34
+ok search (?=ab) / 12abc34.start
+ok search (?=ab) / 12abc34.end
+ok search (?=ab) / 12abc34.lastindex
+ok fullmatch (?=ab) / 12abc34
+ok match (?=ab) / abc123.start
+ok match (?=ab) / abc123.end
+ok match (?=ab) / abc123.lastindex
+ok search (?=ab) / abc123.start
+ok search (?=ab) / abc123.end
+ok search (?=ab) / abc123.lastindex
+ok fullmatch (?=ab) / abc123
+ok match (?=ab) / A1 B2
+ok search (?=ab) / A1 B2
+ok fullmatch (?=ab) / A1 B2
+ok match (?!ab) / abc
+ok search (?!ab) / abc.start
+ok search (?!ab) / abc.end
+ok search (?!ab) / abc.lastindex
+ok fullmatch (?!ab) / abc
+ok match (?!ab) / .start
+ok match (?!ab) / .end
+ok match (?!ab) / .lastindex
+ok search (?!ab) / .start
+ok search (?!ab) / .end
+ok search (?!ab) / .lastindex
+ok fullmatch (?!ab) / .start
+ok fullmatch (?!ab) / .end
+ok fullmatch (?!ab) / .lastindex
+ok match (?!ab) / a.start
+ok match (?!ab) / a.end
+ok match (?!ab) / a.lastindex
+ok search (?!ab) / a.start
+ok search (?!ab) / a.end
+ok search (?!ab) / a.lastindex
+ok fullmatch (?!ab) / a
+ok match (?!ab) / aaa.start
+ok match (?!ab) / aaa.end
+ok match (?!ab) / aaa.lastindex
+ok search (?!ab) / aaa.start
+ok search (?!ab) / aaa.end
+ok search (?!ab) / aaa.lastindex
+ok fullmatch (?!ab) / aaa
+ok match (?!ab) / aab.start
+ok match (?!ab) / aab.end
+ok match (?!ab) / aab.lastindex
+ok search (?!ab) / aab.start
+ok search (?!ab) / aab.end
+ok search (?!ab) / aab.lastindex
+ok fullmatch (?!ab) / aab
+ok match (?!ab) / b.start
+ok match (?!ab) / b.end
+ok match (?!ab) / b.lastindex
+ok search (?!ab) / b.start
+ok search (?!ab) / b.end
+ok search (?!ab) / b.lastindex
+ok fullmatch (?!ab) / b
+ok match (?!ab) / ac.start
+ok match (?!ab) / ac.end
+ok match (?!ab) / ac.lastindex
+ok search (?!ab) / ac.start
+ok search (?!ab) / ac.end
+ok search (?!ab) / ac.lastindex
+ok fullmatch (?!ab) / ac
+ok match (?!ab) / abcabc
+ok search (?!ab) / abcabc.start
+ok search (?!ab) / abcabc.end
+ok search (?!ab) / abcabc.lastindex
+ok fullmatch (?!ab) / abcabc
+ok match (?!ab) / ab
+cd
+ok search (?!ab) / ab
+cd.start
+ok search (?!ab) / ab
+cd.end
+ok search (?!ab) / ab
+cd.lastindex
+ok fullmatch (?!ab) / ab
+cd
+ok match (?!ab) / a
+b
+c.start
+ok match (?!ab) / a
+b
+c.end
+ok match (?!ab) / a
+b
+c.lastindex
+ok search (?!ab) / a
+b
+c.start
+ok search (?!ab) / a
+b
+c.end
+ok search (?!ab) / a
+b
+c.lastindex
+ok fullmatch (?!ab) / a
+b
+c
+ok match (?!ab) / hello world.start
+ok match (?!ab) / hello world.end
+ok match (?!ab) / hello world.lastindex
+ok search (?!ab) / hello world.start
+ok search (?!ab) / hello world.end
+ok search (?!ab) / hello world.lastindex
+ok fullmatch (?!ab) / hello world
+ok match (?!ab) / The quick brown fox.start
+ok match (?!ab) / The quick brown fox.end
+ok match (?!ab) / The quick brown fox.lastindex
+ok search (?!ab) / The quick brown fox.start
+ok search (?!ab) / The quick brown fox.end
+ok search (?!ab) / The quick brown fox.lastindex
+ok fullmatch (?!ab) / The quick brown fox
+ok match (?!ab) / éαβ.start
+ok match (?!ab) / éαβ.end
+ok match (?!ab) / éαβ.lastindex
+ok search (?!ab) / éαβ.start
+ok search (?!ab) / éαβ.end
+ok search (?!ab) / éαβ.lastindex
+ok fullmatch (?!ab) / éαβ
+ok match (?!ab) / 日本語.start
+ok match (?!ab) / 日本語.end
+ok match (?!ab) / 日本語.lastindex
+ok search (?!ab) / 日本語.start
+ok search (?!ab) / 日本語.end
+ok search (?!ab) / 日本語.lastindex
+ok fullmatch (?!ab) / 日本語
+ok match (?!ab) / 😀👍🏽.start
+ok match (?!ab) / 😀👍🏽.end
+ok match (?!ab) / 😀👍🏽.lastindex
+ok search (?!ab) / 😀👍🏽.start
+ok search (?!ab) / 😀👍🏽.end
+ok search (?!ab) / 😀👍🏽.lastindex
+ok fullmatch (?!ab) / 😀👍🏽
+ok match (?!ab) / éx.start
+ok match (?!ab) / éx.end
+ok match (?!ab) / éx.lastindex
+ok search (?!ab) / éx.start
+ok search (?!ab) / éx.end
+ok search (?!ab) / éx.lastindex
+ok fullmatch (?!ab) / éx
+ok match (?!ab) / a1b2c3.start
+ok match (?!ab) / a1b2c3.end
+ok match (?!ab) / a1b2c3.lastindex
+ok search (?!ab) / a1b2c3.start
+ok search (?!ab) / a1b2c3.end
+ok search (?!ab) / a1b2c3.lastindex
+ok fullmatch (?!ab) / a1b2c3
+ok match (?!ab) /    	
+.start
+ok match (?!ab) /    	
+.end
+ok match (?!ab) /    	
+.lastindex
+ok search (?!ab) /    	
+.start
+ok search (?!ab) /    	
+.end
+ok search (?!ab) /    	
+.lastindex
+ok fullmatch (?!ab) /    	
+
+ok match (?!ab) / word-.start
+ok match (?!ab) / word-.end
+ok match (?!ab) / word-.lastindex
+ok search (?!ab) / word-.start
+ok search (?!ab) / word-.end
+ok search (?!ab) / word-.lastindex
+ok fullmatch (?!ab) / word-
+ok match (?!ab) / _x9.start
+ok match (?!ab) / _x9.end
+ok match (?!ab) / _x9.lastindex
+ok search (?!ab) / _x9.start
+ok search (?!ab) / _x9.end
+ok search (?!ab) / _x9.lastindex
+ok fullmatch (?!ab) / _x9
+ok match (?!ab) / 12abc34.start
+ok match (?!ab) / 12abc34.end
+ok match (?!ab) / 12abc34.lastindex
+ok search (?!ab) / 12abc34.start
+ok search (?!ab) / 12abc34.end
+ok search (?!ab) / 12abc34.lastindex
+ok fullmatch (?!ab) / 12abc34
+ok match (?!ab) / abc123
+ok search (?!ab) / abc123.start
+ok search (?!ab) / abc123.end
+ok search (?!ab) / abc123.lastindex
+ok fullmatch (?!ab) / abc123
+ok match (?!ab) / A1 B2.start
+ok match (?!ab) / A1 B2.end
+ok match (?!ab) / A1 B2.lastindex
+ok search (?!ab) / A1 B2.start
+ok search (?!ab) / A1 B2.end
+ok search (?!ab) / A1 B2.lastindex
+ok fullmatch (?!ab) / A1 B2
+ok match (?<=ab) / abc
+ok search (?<=ab) / abc.start
+ok search (?<=ab) / abc.end
+ok search (?<=ab) / abc.lastindex
+ok fullmatch (?<=ab) / abc
+ok match (?<=ab) / 
+ok search (?<=ab) / 
+ok fullmatch (?<=ab) / 
+ok match (?<=ab) / a
+ok search (?<=ab) / a
+ok fullmatch (?<=ab) / a
+ok match (?<=ab) / aaa
+ok search (?<=ab) / aaa
+ok fullmatch (?<=ab) / aaa
+ok match (?<=ab) / aab
+ok search (?<=ab) / aab.start
+ok search (?<=ab) / aab.end
+ok search (?<=ab) / aab.lastindex
+ok fullmatch (?<=ab) / aab
+ok match (?<=ab) / b
+ok search (?<=ab) / b
+ok fullmatch (?<=ab) / b
+ok match (?<=ab) / ac
+ok search (?<=ab) / ac
+ok fullmatch (?<=ab) / ac
+ok match (?<=ab) / abcabc
+ok search (?<=ab) / abcabc.start
+ok search (?<=ab) / abcabc.end
+ok search (?<=ab) / abcabc.lastindex
+ok fullmatch (?<=ab) / abcabc
+ok match (?<=ab) / ab
+cd
+ok search (?<=ab) / ab
+cd.start
+ok search (?<=ab) / ab
+cd.end
+ok search (?<=ab) / ab
+cd.lastindex
+ok fullmatch (?<=ab) / ab
+cd
+ok match (?<=ab) / a
+b
+c
+ok search (?<=ab) / a
+b
+c
+ok fullmatch (?<=ab) / a
+b
+c
+ok match (?<=ab) / hello world
+ok search (?<=ab) / hello world
+ok fullmatch (?<=ab) / hello world
+ok match (?<=ab) / The quick brown fox
+ok search (?<=ab) / The quick brown fox
+ok fullmatch (?<=ab) / The quick brown fox
+ok match (?<=ab) / éαβ
+ok search (?<=ab) / éαβ
+ok fullmatch (?<=ab) / éαβ
+ok match (?<=ab) / 日本語
+ok search (?<=ab) / 日本語
+ok fullmatch (?<=ab) / 日本語
+ok match (?<=ab) / 😀👍🏽
+ok search (?<=ab) / 😀👍🏽
+ok fullmatch (?<=ab) / 😀👍🏽
+ok match (?<=ab) / éx
+ok search (?<=ab) / éx
+ok fullmatch (?<=ab) / éx
+ok match (?<=ab) / a1b2c3
+ok search (?<=ab) / a1b2c3
+ok fullmatch (?<=ab) / a1b2c3
+ok match (?<=ab) /    	
+
+ok search (?<=ab) /    	
+
+ok fullmatch (?<=ab) /    	
+
+ok match (?<=ab) / word-
+ok search (?<=ab) / word-
+ok fullmatch (?<=ab) / word-
+ok match (?<=ab) / _x9
+ok search (?<=ab) / _x9
+ok fullmatch (?<=ab) / _x9
+ok match (?<=ab) / 12abc34
+ok search (?<=ab) / 12abc34.start
+ok search (?<=ab) / 12abc34.end
+ok search (?<=ab) / 12abc34.lastindex
+ok fullmatch (?<=ab) / 12abc34
+ok match (?<=ab) / abc123
+ok search (?<=ab) / abc123.start
+ok search (?<=ab) / abc123.end
+ok search (?<=ab) / abc123.lastindex
+ok fullmatch (?<=ab) / abc123
+ok match (?<=ab) / A1 B2
+ok search (?<=ab) / A1 B2
+ok fullmatch (?<=ab) / A1 B2
+ok match (?<!ab) / abc.start
+ok match (?<!ab) / abc.end
+ok match (?<!ab) / abc.lastindex
+ok search (?<!ab) / abc.start
+ok search (?<!ab) / abc.end
+ok search (?<!ab) / abc.lastindex
+ok fullmatch (?<!ab) / abc
+ok match (?<!ab) / .start
+ok match (?<!ab) / .end
+ok match (?<!ab) / .lastindex
+ok search (?<!ab) / .start
+ok search (?<!ab) / .end
+ok search (?<!ab) / .lastindex
+ok fullmatch (?<!ab) / .start
+ok fullmatch (?<!ab) / .end
+ok fullmatch (?<!ab) / .lastindex
+ok match (?<!ab) / a.start
+ok match (?<!ab) / a.end
+ok match (?<!ab) / a.lastindex
+ok search (?<!ab) / a.start
+ok search (?<!ab) / a.end
+ok search (?<!ab) / a.lastindex
+ok fullmatch (?<!ab) / a
+ok match (?<!ab) / aaa.start
+ok match (?<!ab) / aaa.end
+ok match (?<!ab) / aaa.lastindex
+ok search (?<!ab) / aaa.start
+ok search (?<!ab) / aaa.end
+ok search (?<!ab) / aaa.lastindex
+ok fullmatch (?<!ab) / aaa
+ok match (?<!ab) / aab.start
+ok match (?<!ab) / aab.end
+ok match (?<!ab) / aab.lastindex
+ok search (?<!ab) / aab.start
+ok search (?<!ab) / aab.end
+ok search (?<!ab) / aab.lastindex
+ok fullmatch (?<!ab) / aab
+ok match (?<!ab) / b.start
+ok match (?<!ab) / b.end
+ok match (?<!ab) / b.lastindex
+ok search (?<!ab) / b.start
+ok search (?<!ab) / b.end
+ok search (?<!ab) / b.lastindex
+ok fullmatch (?<!ab) / b
+ok match (?<!ab) / ac.start
+ok match (?<!ab) / ac.end
+ok match (?<!ab) / ac.lastindex
+ok search (?<!ab) / ac.start
+ok search (?<!ab) / ac.end
+ok search (?<!ab) / ac.lastindex
+ok fullmatch (?<!ab) / ac
+ok match (?<!ab) / abcabc.start
+ok match (?<!ab) / abcabc.end
+ok match (?<!ab) / abcabc.lastindex
+ok search (?<!ab) / abcabc.start
+ok search (?<!ab) / abcabc.end
+ok search (?<!ab) / abcabc.lastindex
+ok fullmatch (?<!ab) / abcabc
+ok match (?<!ab) / ab
+cd.start
+ok match (?<!ab) / ab
+cd.end
+ok match (?<!ab) / ab
+cd.lastindex
+ok search (?<!ab) / ab
+cd.start
+ok search (?<!ab) / ab
+cd.end
+ok search (?<!ab) / ab
+cd.lastindex
+ok fullmatch (?<!ab) / ab
+cd
+ok match (?<!ab) / a
+b
+c.start
+ok match (?<!ab) / a
+b
+c.end
+ok match (?<!ab) / a
+b
+c.lastindex
+ok search (?<!ab) / a
+b
+c.start
+ok search (?<!ab) / a
+b
+c.end
+ok search (?<!ab) / a
+b
+c.lastindex
+ok fullmatch (?<!ab) / a
+b
+c
+ok match (?<!ab) / hello world.start
+ok match (?<!ab) / hello world.end
+ok match (?<!ab) / hello world.lastindex
+ok search (?<!ab) / hello world.start
+ok search (?<!ab) / hello world.end
+ok search (?<!ab) / hello world.lastindex
+ok fullmatch (?<!ab) / hello world
+ok match (?<!ab) / The quick brown fox.start
+ok match (?<!ab) / The quick brown fox.end
+ok match (?<!ab) / The quick brown fox.lastindex
+ok search (?<!ab) / The quick brown fox.start
+ok search (?<!ab) / The quick brown fox.end
+ok search (?<!ab) / The quick brown fox.lastindex
+ok fullmatch (?<!ab) / The quick brown fox
+ok match (?<!ab) / éαβ.start
+ok match (?<!ab) / éαβ.end
+ok match (?<!ab) / éαβ.lastindex
+ok search (?<!ab) / éαβ.start
+ok search (?<!ab) / éαβ.end
+ok search (?<!ab) / éαβ.lastindex
+ok fullmatch (?<!ab) / éαβ
+ok match (?<!ab) / 日本語.start
+ok match (?<!ab) / 日本語.end
+ok match (?<!ab) / 日本語.lastindex
+ok search (?<!ab) / 日本語.start
+ok search (?<!ab) / 日本語.end
+ok search (?<!ab) / 日本語.lastindex
+ok fullmatch (?<!ab) / 日本語
+ok match (?<!ab) / 😀👍🏽.start
+ok match (?<!ab) / 😀👍🏽.end
+ok match (?<!ab) / 😀👍🏽.lastindex
+ok search (?<!ab) / 😀👍🏽.start
+ok search (?<!ab) / 😀👍🏽.end
+ok search (?<!ab) / 😀👍🏽.lastindex
+ok fullmatch (?<!ab) / 😀👍🏽
+ok match (?<!ab) / éx.start
+ok match (?<!ab) / éx.end
+ok match (?<!ab) / éx.lastindex
+ok search (?<!ab) / éx.start
+ok search (?<!ab) / éx.end
+ok search (?<!ab) / éx.lastindex
+ok fullmatch (?<!ab) / éx
+ok match (?<!ab) / a1b2c3.start
+ok match (?<!ab) / a1b2c3.end
+ok match (?<!ab) / a1b2c3.lastindex
+ok search (?<!ab) / a1b2c3.start
+ok search (?<!ab) / a1b2c3.end
+ok search (?<!ab) / a1b2c3.lastindex
+ok fullmatch (?<!ab) / a1b2c3
+ok match (?<!ab) /    	
+.start
+ok match (?<!ab) /    	
+.end
+ok match (?<!ab) /    	
+.lastindex
+ok search (?<!ab) /    	
+.start
+ok search (?<!ab) /    	
+.end
+ok search (?<!ab) /    	
+.lastindex
+ok fullmatch (?<!ab) /    	
+
+ok match (?<!ab) / word-.start
+ok match (?<!ab) / word-.end
+ok match (?<!ab) / word-.lastindex
+ok search (?<!ab) / word-.start
+ok search (?<!ab) / word-.end
+ok search (?<!ab) / word-.lastindex
+ok fullmatch (?<!ab) / word-
+ok match (?<!ab) / _x9.start
+ok match (?<!ab) / _x9.end
+ok match (?<!ab) / _x9.lastindex
+ok search (?<!ab) / _x9.start
+ok search (?<!ab) / _x9.end
+ok search (?<!ab) / _x9.lastindex
+ok fullmatch (?<!ab) / _x9
+ok match (?<!ab) / 12abc34.start
+ok match (?<!ab) / 12abc34.end
+ok match (?<!ab) / 12abc34.lastindex
+ok search (?<!ab) / 12abc34.start
+ok search (?<!ab) / 12abc34.end
+ok search (?<!ab) / 12abc34.lastindex
+ok fullmatch (?<!ab) / 12abc34
+ok match (?<!ab) / abc123.start
+ok match (?<!ab) / abc123.end
+ok match (?<!ab) / abc123.lastindex
+ok search (?<!ab) / abc123.start
+ok search (?<!ab) / abc123.end
+ok search (?<!ab) / abc123.lastindex
+ok fullmatch (?<!ab) / abc123
+ok match (?<!ab) / A1 B2.start
+ok match (?<!ab) / A1 B2.end
+ok match (?<!ab) / A1 B2.lastindex
+ok search (?<!ab) / A1 B2.start
+ok search (?<!ab) / A1 B2.end
+ok search (?<!ab) / A1 B2.lastindex
+ok fullmatch (?<!ab) / A1 B2
+ok match (?i:AB)c / abc.start
+ok match (?i:AB)c / abc.end
+ok match (?i:AB)c / abc.lastindex
+ok search (?i:AB)c / abc.start
+ok search (?i:AB)c / abc.end
+ok search (?i:AB)c / abc.lastindex
+ok fullmatch (?i:AB)c / abc.start
+ok fullmatch (?i:AB)c / abc.end
+ok fullmatch (?i:AB)c / abc.lastindex
+ok match (?i:AB)c / 
+ok search (?i:AB)c / 
+ok fullmatch (?i:AB)c / 
+ok match (?i:AB)c / a
+ok search (?i:AB)c / a
+ok fullmatch (?i:AB)c / a
+ok match (?i:AB)c / aaa
+ok search (?i:AB)c / aaa
+ok fullmatch (?i:AB)c / aaa
+ok match (?i:AB)c / aab
+ok search (?i:AB)c / aab
+ok fullmatch (?i:AB)c / aab
+ok match (?i:AB)c / b
+ok search (?i:AB)c / b
+ok fullmatch (?i:AB)c / b
+ok match (?i:AB)c / ac
+ok search (?i:AB)c / ac
+ok fullmatch (?i:AB)c / ac
+ok match (?i:AB)c / abcabc.start
+ok match (?i:AB)c / abcabc.end
+ok match (?i:AB)c / abcabc.lastindex
+ok search (?i:AB)c / abcabc.start
+ok search (?i:AB)c / abcabc.end
+ok search (?i:AB)c / abcabc.lastindex
+ok fullmatch (?i:AB)c / abcabc
+ok match (?i:AB)c / ab
+cd
+ok search (?i:AB)c / ab
+cd
+ok fullmatch (?i:AB)c / ab
+cd
+ok match (?i:AB)c / a
+b
+c
+ok search (?i:AB)c / a
+b
+c
+ok fullmatch (?i:AB)c / a
+b
+c
+ok match (?i:AB)c / hello world
+ok search (?i:AB)c / hello world
+ok fullmatch (?i:AB)c / hello world
+ok match (?i:AB)c / The quick brown fox
+ok search (?i:AB)c / The quick brown fox
+ok fullmatch (?i:AB)c / The quick brown fox
+ok match (?i:AB)c / éαβ
+ok search (?i:AB)c / éαβ
+ok fullmatch (?i:AB)c / éαβ
+ok match (?i:AB)c / 日本語
+ok search (?i:AB)c / 日本語
+ok fullmatch (?i:AB)c / 日本語
+ok match (?i:AB)c / 😀👍🏽
+ok search (?i:AB)c / 😀👍🏽
+ok fullmatch (?i:AB)c / 😀👍🏽
+ok match (?i:AB)c / éx
+ok search (?i:AB)c / éx
+ok fullmatch (?i:AB)c / éx
+ok match (?i:AB)c / a1b2c3
+ok search (?i:AB)c / a1b2c3
+ok fullmatch (?i:AB)c / a1b2c3
+ok match (?i:AB)c /    	
+
+ok search (?i:AB)c /    	
+
+ok fullmatch (?i:AB)c /    	
+
+ok match (?i:AB)c / word-
+ok search (?i:AB)c / word-
+ok fullmatch (?i:AB)c / word-
+ok match (?i:AB)c / _x9
+ok search (?i:AB)c / _x9
+ok fullmatch (?i:AB)c / _x9
+ok match (?i:AB)c / 12abc34
+ok search (?i:AB)c / 12abc34.start
+ok search (?i:AB)c / 12abc34.end
+ok search (?i:AB)c / 12abc34.lastindex
+ok fullmatch (?i:AB)c / 12abc34
+ok match (?i:AB)c / abc123.start
+ok match (?i:AB)c / abc123.end
+ok match (?i:AB)c / abc123.lastindex
+ok search (?i:AB)c / abc123.start
+ok search (?i:AB)c / abc123.end
+ok search (?i:AB)c / abc123.lastindex
+ok fullmatch (?i:AB)c / abc123
+ok match (?i:AB)c / A1 B2
+ok search (?i:AB)c / A1 B2
+ok fullmatch (?i:AB)c / A1 B2
+ok match \x41 / abc
+ok search \x41 / abc
+ok fullmatch \x41 / abc
+ok match \x41 / 
+ok search \x41 / 
+ok fullmatch \x41 / 
+ok match \x41 / a
+ok search \x41 / a
+ok fullmatch \x41 / a
+ok match \x41 / aaa
+ok search \x41 / aaa
+ok fullmatch \x41 / aaa
+ok match \x41 / aab
+ok search \x41 / aab
+ok fullmatch \x41 / aab
+ok match \x41 / b
+ok search \x41 / b
+ok fullmatch \x41 / b
+ok match \x41 / ac
+ok search \x41 / ac
+ok fullmatch \x41 / ac
+ok match \x41 / abcabc
+ok search \x41 / abcabc
+ok fullmatch \x41 / abcabc
+ok match \x41 / ab
+cd
+ok search \x41 / ab
+cd
+ok fullmatch \x41 / ab
+cd
+ok match \x41 / a
+b
+c
+ok search \x41 / a
+b
+c
+ok fullmatch \x41 / a
+b
+c
+ok match \x41 / hello world
+ok search \x41 / hello world
+ok fullmatch \x41 / hello world
+ok match \x41 / The quick brown fox
+ok search \x41 / The quick brown fox
+ok fullmatch \x41 / The quick brown fox
+ok match \x41 / éαβ
+ok search \x41 / éαβ
+ok fullmatch \x41 / éαβ
+ok match \x41 / 日本語
+ok search \x41 / 日本語
+ok fullmatch \x41 / 日本語
+ok match \x41 / 😀👍🏽
+ok search \x41 / 😀👍🏽
+ok fullmatch \x41 / 😀👍🏽
+ok match \x41 / éx
+ok search \x41 / éx
+ok fullmatch \x41 / éx
+ok match \x41 / a1b2c3
+ok search \x41 / a1b2c3
+ok fullmatch \x41 / a1b2c3
+ok match \x41 /    	
+
+ok search \x41 /    	
+
+ok fullmatch \x41 /    	
+
+ok match \x41 / word-
+ok search \x41 / word-
+ok fullmatch \x41 / word-
+ok match \x41 / _x9
+ok search \x41 / _x9
+ok fullmatch \x41 / _x9
+ok match \x41 / 12abc34
+ok search \x41 / 12abc34
+ok fullmatch \x41 / 12abc34
+ok match \x41 / abc123
+ok search \x41 / abc123
+ok fullmatch \x41 / abc123
+ok match \x41 / A1 B2.start
+ok match \x41 / A1 B2.end
+ok match \x41 / A1 B2.lastindex
+ok search \x41 / A1 B2.start
+ok search \x41 / A1 B2.end
+ok search \x41 / A1 B2.lastindex
+ok fullmatch \x41 / A1 B2
+ok match \u0041 / abc
+ok search \u0041 / abc
+ok fullmatch \u0041 / abc
+ok match \u0041 / 
+ok search \u0041 / 
+ok fullmatch \u0041 / 
+ok match \u0041 / a
+ok search \u0041 / a
+ok fullmatch \u0041 / a
+ok match \u0041 / aaa
+ok search \u0041 / aaa
+ok fullmatch \u0041 / aaa
+ok match \u0041 / aab
+ok search \u0041 / aab
+ok fullmatch \u0041 / aab
+ok match \u0041 / b
+ok search \u0041 / b
+ok fullmatch \u0041 / b
+ok match \u0041 / ac
+ok search \u0041 / ac
+ok fullmatch \u0041 / ac
+ok match \u0041 / abcabc
+ok search \u0041 / abcabc
+ok fullmatch \u0041 / abcabc
+ok match \u0041 / ab
+cd
+ok search \u0041 / ab
+cd
+ok fullmatch \u0041 / ab
+cd
+ok match \u0041 / a
+b
+c
+ok search \u0041 / a
+b
+c
+ok fullmatch \u0041 / a
+b
+c
+ok match \u0041 / hello world
+ok search \u0041 / hello world
+ok fullmatch \u0041 / hello world
+ok match \u0041 / The quick brown fox
+ok search \u0041 / The quick brown fox
+ok fullmatch \u0041 / The quick brown fox
+ok match \u0041 / éαβ
+ok search \u0041 / éαβ
+ok fullmatch \u0041 / éαβ
+ok match \u0041 / 日本語
+ok search \u0041 / 日本語
+ok fullmatch \u0041 / 日本語
+ok match \u0041 / 😀👍🏽
+ok search \u0041 / 😀👍🏽
+ok fullmatch \u0041 / 😀👍🏽
+ok match \u0041 / éx
+ok search \u0041 / éx
+ok fullmatch \u0041 / éx
+ok match \u0041 / a1b2c3
+ok search \u0041 / a1b2c3
+ok fullmatch \u0041 / a1b2c3
+ok match \u0041 /    	
+
+ok search \u0041 /    	
+
+ok fullmatch \u0041 /    	
+
+ok match \u0041 / word-
+ok search \u0041 / word-
+ok fullmatch \u0041 / word-
+ok match \u0041 / _x9
+ok search \u0041 / _x9
+ok fullmatch \u0041 / _x9
+ok match \u0041 / 12abc34
+ok search \u0041 / 12abc34
+ok fullmatch \u0041 / 12abc34
+ok match \u0041 / abc123
+ok search \u0041 / abc123
+ok fullmatch \u0041 / abc123
+ok match \u0041 / A1 B2.start
+ok match \u0041 / A1 B2.end
+ok match \u0041 / A1 B2.lastindex
+ok search \u0041 / A1 B2.start
+ok search \u0041 / A1 B2.end
+ok search \u0041 / A1 B2.lastindex
+ok fullmatch \u0041 / A1 B2
+ok match \U0001F600 / abc
+ok search \U0001F600 / abc
+ok fullmatch \U0001F600 / abc
+ok match \U0001F600 / 
+ok search \U0001F600 / 
+ok fullmatch \U0001F600 / 
+ok match \U0001F600 / a
+ok search \U0001F600 / a
+ok fullmatch \U0001F600 / a
+ok match \U0001F600 / aaa
+ok search \U0001F600 / aaa
+ok fullmatch \U0001F600 / aaa
+ok match \U0001F600 / aab
+ok search \U0001F600 / aab
+ok fullmatch \U0001F600 / aab
+ok match \U0001F600 / b
+ok search \U0001F600 / b
+ok fullmatch \U0001F600 / b
+ok match \U0001F600 / ac
+ok search \U0001F600 / ac
+ok fullmatch \U0001F600 / ac
+ok match \U0001F600 / abcabc
+ok search \U0001F600 / abcabc
+ok fullmatch \U0001F600 / abcabc
+ok match \U0001F600 / ab
+cd
+ok search \U0001F600 / ab
+cd
+ok fullmatch \U0001F600 / ab
+cd
+ok match \U0001F600 / a
+b
+c
+ok search \U0001F600 / a
+b
+c
+ok fullmatch \U0001F600 / a
+b
+c
+ok match \U0001F600 / hello world
+ok search \U0001F600 / hello world
+ok fullmatch \U0001F600 / hello world
+ok match \U0001F600 / The quick brown fox
+ok search \U0001F600 / The quick brown fox
+ok fullmatch \U0001F600 / The quick brown fox
+ok match \U0001F600 / éαβ
+ok search \U0001F600 / éαβ
+ok fullmatch \U0001F600 / éαβ
+ok match \U0001F600 / 日本語
+ok search \U0001F600 / 日本語
+ok fullmatch \U0001F600 / 日本語
+ok match \U0001F600 / 😀👍🏽.start
+ok match \U0001F600 / 😀👍🏽.end
+ok match \U0001F600 / 😀👍🏽.lastindex
+ok search \U0001F600 / 😀👍🏽.start
+ok search \U0001F600 / 😀👍🏽.end
+ok search \U0001F600 / 😀👍🏽.lastindex
+ok fullmatch \U0001F600 / 😀👍🏽
+ok match \U0001F600 / éx
+ok search \U0001F600 / éx
+ok fullmatch \U0001F600 / éx
+ok match \U0001F600 / a1b2c3
+ok search \U0001F600 / a1b2c3
+ok fullmatch \U0001F600 / a1b2c3
+ok match \U0001F600 /    	
+
+ok search \U0001F600 /    	
+
+ok fullmatch \U0001F600 /    	
+
+ok match \U0001F600 / word-
+ok search \U0001F600 / word-
+ok fullmatch \U0001F600 / word-
+ok match \U0001F600 / _x9
+ok search \U0001F600 / _x9
+ok fullmatch \U0001F600 / _x9
+ok match \U0001F600 / 12abc34
+ok search \U0001F600 / 12abc34
+ok fullmatch \U0001F600 / 12abc34
+ok match \U0001F600 / abc123
+ok search \U0001F600 / abc123
+ok fullmatch \U0001F600 / abc123
+ok match \U0001F600 / A1 B2
+ok search \U0001F600 / A1 B2
+ok fullmatch \U0001F600 / A1 B2
+ok match \t / abc
+ok search \t / abc
+ok fullmatch \t / abc
+ok match \t / 
+ok search \t / 
+ok fullmatch \t / 
+ok match \t / a
+ok search \t / a
+ok fullmatch \t / a
+ok match \t / aaa
+ok search \t / aaa
+ok fullmatch \t / aaa
+ok match \t / aab
+ok search \t / aab
+ok fullmatch \t / aab
+ok match \t / b
+ok search \t / b
+ok fullmatch \t / b
+ok match \t / ac
+ok search \t / ac
+ok fullmatch \t / ac
+ok match \t / abcabc
+ok search \t / abcabc
+ok fullmatch \t / abcabc
+ok match \t / ab
+cd
+ok search \t / ab
+cd
+ok fullmatch \t / ab
+cd
+ok match \t / a
+b
+c
+ok search \t / a
+b
+c
+ok fullmatch \t / a
+b
+c
+ok match \t / hello world
+ok search \t / hello world
+ok fullmatch \t / hello world
+ok match \t / The quick brown fox
+ok search \t / The quick brown fox
+ok fullmatch \t / The quick brown fox
+ok match \t / éαβ
+ok search \t / éαβ
+ok fullmatch \t / éαβ
+ok match \t / 日本語
+ok search \t / 日本語
+ok fullmatch \t / 日本語
+ok match \t / 😀👍🏽
+ok search \t / 😀👍🏽
+ok fullmatch \t / 😀👍🏽
+ok match \t / éx
+ok search \t / éx
+ok fullmatch \t / éx
+ok match \t / a1b2c3
+ok search \t / a1b2c3
+ok fullmatch \t / a1b2c3
+ok match \t /    	
+
+ok search \t /    	
+.start
+ok search \t /    	
+.end
+ok search \t /    	
+.lastindex
+ok fullmatch \t /    	
+
+ok match \t / word-
+ok search \t / word-
+ok fullmatch \t / word-
+ok match \t / _x9
+ok search \t / _x9
+ok fullmatch \t / _x9
+ok match \t / 12abc34
+ok search \t / 12abc34
+ok fullmatch \t / 12abc34
+ok match \t / abc123
+ok search \t / abc123
+ok fullmatch \t / abc123
+ok match \t / A1 B2
+ok search \t / A1 B2
+ok fullmatch \t / A1 B2
+ok match \n / abc
+ok search \n / abc
+ok fullmatch \n / abc
+ok match \n / 
+ok search \n / 
+ok fullmatch \n / 
+ok match \n / a
+ok search \n / a
+ok fullmatch \n / a
+ok match \n / aaa
+ok search \n / aaa
+ok fullmatch \n / aaa
+ok match \n / aab
+ok search \n / aab
+ok fullmatch \n / aab
+ok match \n / b
+ok search \n / b
+ok fullmatch \n / b
+ok match \n / ac
+ok search \n / ac
+ok fullmatch \n / ac
+ok match \n / abcabc
+ok search \n / abcabc
+ok fullmatch \n / abcabc
+ok match \n / ab
+cd
+ok search \n / ab
+cd.start
+ok search \n / ab
+cd.end
+ok search \n / ab
+cd.lastindex
+ok fullmatch \n / ab
+cd
+ok match \n / a
+b
+c
+ok search \n / a
+b
+c.start
+ok search \n / a
+b
+c.end
+ok search \n / a
+b
+c.lastindex
+ok fullmatch \n / a
+b
+c
+ok match \n / hello world
+ok search \n / hello world
+ok fullmatch \n / hello world
+ok match \n / The quick brown fox
+ok search \n / The quick brown fox
+ok fullmatch \n / The quick brown fox
+ok match \n / éαβ
+ok search \n / éαβ
+ok fullmatch \n / éαβ
+ok match \n / 日本語
+ok search \n / 日本語
+ok fullmatch \n / 日本語
+ok match \n / 😀👍🏽
+ok search \n / 😀👍🏽
+ok fullmatch \n / 😀👍🏽
+ok match \n / éx
+ok search \n / éx
+ok fullmatch \n / éx
+ok match \n / a1b2c3
+ok search \n / a1b2c3
+ok fullmatch \n / a1b2c3
+ok match \n /    	
+
+ok search \n /    	
+.start
+ok search \n /    	
+.end
+ok search \n /    	
+.lastindex
+ok fullmatch \n /    	
+
+ok match \n / word-
+ok search \n / word-
+ok fullmatch \n / word-
+ok match \n / _x9
+ok search \n / _x9
+ok fullmatch \n / _x9
+ok match \n / 12abc34
+ok search \n / 12abc34
+ok fullmatch \n / 12abc34
+ok match \n / abc123
+ok search \n / abc123
+ok fullmatch \n / abc123
+ok match \n / A1 B2
+ok search \n / A1 B2
+ok fullmatch \n / A1 B2
+ok match \\ / abc
+ok search \\ / abc
+ok fullmatch \\ / abc
+ok match \\ / 
+ok search \\ / 
+ok fullmatch \\ / 
+ok match \\ / a
+ok search \\ / a
+ok fullmatch \\ / a
+ok match \\ / aaa
+ok search \\ / aaa
+ok fullmatch \\ / aaa
+ok match \\ / aab
+ok search \\ / aab
+ok fullmatch \\ / aab
+ok match \\ / b
+ok search \\ / b
+ok fullmatch \\ / b
+ok match \\ / ac
+ok search \\ / ac
+ok fullmatch \\ / ac
+ok match \\ / abcabc
+ok search \\ / abcabc
+ok fullmatch \\ / abcabc
+ok match \\ / ab
+cd
+ok search \\ / ab
+cd
+ok fullmatch \\ / ab
+cd
+ok match \\ / a
+b
+c
+ok search \\ / a
+b
+c
+ok fullmatch \\ / a
+b
+c
+ok match \\ / hello world
+ok search \\ / hello world
+ok fullmatch \\ / hello world
+ok match \\ / The quick brown fox
+ok search \\ / The quick brown fox
+ok fullmatch \\ / The quick brown fox
+ok match \\ / éαβ
+ok search \\ / éαβ
+ok fullmatch \\ / éαβ
+ok match \\ / 日本語
+ok search \\ / 日本語
+ok fullmatch \\ / 日本語
+ok match \\ / 😀👍🏽
+ok search \\ / 😀👍🏽
+ok fullmatch \\ / 😀👍🏽
+ok match \\ / éx
+ok search \\ / éx
+ok fullmatch \\ / éx
+ok match \\ / a1b2c3
+ok search \\ / a1b2c3
+ok fullmatch \\ / a1b2c3
+ok match \\ /    	
+
+ok search \\ /    	
+
+ok fullmatch \\ /    	
+
+ok match \\ / word-
+ok search \\ / word-
+ok fullmatch \\ / word-
+ok match \\ / _x9
+ok search \\ / _x9
+ok fullmatch \\ / _x9
+ok match \\ / 12abc34
+ok search \\ / 12abc34
+ok fullmatch \\ / 12abc34
+ok match \\ / abc123
+ok search \\ / abc123
+ok fullmatch \\ / abc123
+ok match \\ / A1 B2
+ok search \\ / A1 B2
+ok fullmatch \\ / A1 B2
+ok findall a / banana.kind
+ok findall a / banana.count
+ok findall a / banana.t0
+ok findall a / banana.t1
+ok findall a / banana.t2
+ok findall (a) / banana.kind
+ok findall (a) / banana.count
+ok findall (a) / banana.t0
+ok findall (a) / banana.t1
+ok findall (a) / banana.t2
+ok findall (a)(b)? / ab a.kind
+ok findall (a)(b)? / ab a.count
+ok row0g0
+ok row0g1
+ok row1g0
+ok row1g1
+ok findall (a)|b / b.kind
+ok findall (a)|b / b.count
+ok findall (a)|b / b.t0
+ok findall () / x.kind
+ok findall () / x.count
+ok findall () / x.t0
+ok findall () / x.t1
+ok findall \d+ / a1b22.kind
+ok findall \d+ / a1b22.count
+ok findall \d+ / a1b22.t0
+ok findall \d+ / a1b22.t1
+ok findall (a)? / b.kind
+ok findall (a)? / b.count
+ok findall (a)? / b.t0
+ok findall (a)? / b.t1
+ok findall [^ ]+ / a b c.kind
+ok findall [^ ]+ / a b c.count
+ok findall [^ ]+ / a b c.t0
+ok findall [^ ]+ / a b c.t1
+ok findall [^ ]+ / a b c.t2
+ok findall x* / abc.kind
+ok findall x* / abc.count
+ok findall x* / abc.t0
+ok findall x* / abc.t1
+ok findall x* / abc.t2
+ok findall x* / abc.t3
+ok findall (?P<w>\w+)- / foo- bar-.kind
+ok findall (?P<w>\w+)- / foo- bar-.count
+ok findall (?P<w>\w+)- / foo- bar-.t0
+ok findall (?P<w>\w+)- / foo- bar-.t1
+ok findall (.)\1 / aabb.kind
+ok findall (.)\1 / aabb.count
+ok findall (.)\1 / aabb.t0
+ok findall (.)\1 / aabb.t1
+ok findall  / .kind
+ok findall  / .count
+ok findall  / .t0
+ok findall  / a.kind
+ok findall  / a.count
+ok findall  / a.t0
+ok findall  / a.t1
+ok finditer a / banana.count
+ok finditer0.start
+ok finditer0.end
+ok finditer0.lastindex
+ok finditer1.start
+ok finditer1.end
+ok finditer1.lastindex
+ok finditer2.start
+ok finditer2.end
+ok finditer2.lastindex
+ok finditer (a) / banana.count
+ok finditer0.start
+ok finditer0.end
+ok finditer0.lastindex
+ok finditer0.g1
+ok finditer1.start
+ok finditer1.end
+ok finditer1.lastindex
+ok finditer1.g1
+ok finditer2.start
+ok finditer2.end
+ok finditer2.lastindex
+ok finditer2.g1
+ok finditer \w+ / a b.count
+ok finditer0.start
+ok finditer0.end
+ok finditer0.lastindex
+ok finditer1.start
+ok finditer1.end
+ok finditer1.lastindex
+ok finditer x* / abc.count
+ok finditer0.start
+ok finditer0.end
+ok finditer0.lastindex
+ok finditer1.start
+ok finditer1.end
+ok finditer1.lastindex
+ok finditer2.start
+ok finditer2.end
+ok finditer2.lastindex
+ok finditer3.start
+ok finditer3.end
+ok finditer3.lastindex
+ok finditer (?P<d>\d)(?P=d) / 11 22 12.count
+ok finditer0.start
+ok finditer0.end
+ok finditer0.lastindex
+ok finditer0.g1
+ok finditer0.d
+ok finditer1.start
+ok finditer1.end
+ok finditer1.lastindex
+ok finditer1.g1
+ok finditer1.d
+ok finditer a / AaA.count
+ok finditer0.start
+ok finditer0.end
+ok finditer0.lastindex
+ok finditer1.start
+ok finditer1.end
+ok finditer1.lastindex
+ok finditer2.start
+ok finditer2.end
+ok finditer2.lastindex
+ok finditer ^ / a
+b.count
+ok finditer0.start
+ok finditer0.end
+ok finditer0.lastindex
+ok finditer1.start
+ok finditer1.end
+ok finditer1.lastindex
+ok split a / banana.count
+ok split0
+ok split1
+ok split2
+ok split3
+ok split (a) / banana.count
+ok split0
+ok split1
+ok split2
+ok split3
+ok split4
+ok split5
+ok split6
+ok split a / banana.count
+ok split0
+ok split1
+ok split2
+ok split \s+ / a b  c.count
+ok split0
+ok split1
+ok split2
+ok split x* / abc.count
+ok split0
+ok split1
+ok split2
+ok split3
+ok split4
+ok split  / abc.count
+ok split0
+ok split1
+ok split2
+ok split3
+ok split4
+ok split  / abc.count
+ok split0
+ok split1
+ok split , / a,b,c.count
+ok split0
+ok split1
+ok split2
+ok split (,) / a,b,c.count
+ok split0
+ok split1
+ok split2
+ok split3
+ok split4
+ok split \d+ / a1b22c333.count
+ok split0
+ok split1
+ok split2
+ok split3
+ok split e / é.count
+ok split0
+ok sub a / banana
+ok sub a / banana
+ok sub (a)(b) / ab cd
+ok sub (?P<x>\w+) / foo bar
+ok sub \s+ / a b  c
+ok sub x* / abc
+ok sub  / abc
+ok sub \. / a.b
+ok subn a / banana
+ok subn a.n
+ok subn a / banana
+ok subn a.n
+ok subn (a) / bac
+ok subn (a).n
+ok subn \d / a1b2c3
+ok subn \d.n
+ok escape 
+ok escape abc
+ok escape a.b*c
+ok escape ()[]{}
+ok escape \
+ok escape a+b?c
+ok escape é日本語
+ok escape -
+ok error *a
+ok error a**
+ok error a{2,1}
+ok error (abc
+ok error abc)
+ok error \q
+ok error [abc
+ok error [z-a]
+ok error [a-\d]
+ok error (?P<x>a)(?P<x>b)
+ok error (?P=unknown)
+ok error \8
+ok error (?P<1>a)
+ok error (?P<x
+ok error (?P=
+ok error (?<x>a)
+ok error (?i
+ok error \1
+ok error \x4
+ok error a{3,2}
+6100 passed, 0 failed

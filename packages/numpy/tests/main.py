@@ -13,7 +13,7 @@ from numpy_expected import Expected
 from testing import Check
 
 from numpy_tests.Support import TIGHT, LOOSE, ATOL, atl, atf, ati, ats, atb, f, it, arr, finish_list, finish_float, finish_int, finish_ints, finish_bool, red_arr
-from numpy_tests import ExtraCases
+from numpy_tests import ExtraCases, Contracts
 
 
 def creation_cases(b):
@@ -287,7 +287,7 @@ def cases(backend):
     offsets = layout_cases(backend)
     a = listConcat(creation_cases(backend), shape_cases(backend))
     b = elementwise_cases(backend)
-    return listConcat(offsets, listConcat(a, listConcat(b, listConcat(reduction_cases(backend), ExtraCases.run(backend)))))
+    return listConcat(offsets, listConcat(a, listConcat(b, listConcat(reduction_cases(backend), listConcat(ExtraCases.run(backend), Contracts.run(backend))))))
 
 
 def main():

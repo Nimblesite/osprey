@@ -1,6 +1,5 @@
 namespace registry_blockers;
 import registry::Policy
-import registry::Capabilities
 
 /// Probes for host capabilities the package system needs and Osprey lacks
 /// (`registry/core/src/capabilities.osp`). Each asserts the behavior the
@@ -8,7 +7,7 @@ import registry::Capabilities
 /// means the matching `Capabilities` entry can go. Capabilities with no
 /// builtin at all (argv, exit status, environment, clock, directory
 /// operations) cannot be probed from inside a program and are listed only.
-/// Delivered bitwise primitives are a positive inventory control. Run with `make registry-blockers`; never part of `test`.
+/// Delivered bitwise primitives are checked by the core conformance suite. Run with `make registry-blockers`; never part of `test`.
 let scratch = ".osprey/scratch"
 let binary = "${scratch}/nul-probe.bin"
 
@@ -20,14 +19,6 @@ fn written() = match spawnProcess("mkdir -p ${scratch} && printf 'a\\0b\\377c' >
     Success { value } => awaitProcess(value) == 0
     Error => false
 }
-
-/// Delivered word primitives must never be reported as a missing capability.
-fn bitwiseInventory() = checkAll("word builtins agree with the doctor inventory", [
-    bitAnd(12, 10) == 8,
-    bitXor(12, 10) == 6,
-    shiftRightLogical(-16, 2) == 4611686018427387900,
-    !contains(join(mapList(Capabilities::blocked(), fn(cap) => cap.id), ","), "int.bitwise")
-])
 
 /// files.binary-read: a 5-byte file with a NUL and a 0xFF byte reads back whole.
 fn binaryRead() = {
@@ -51,7 +42,6 @@ fn defaultOperatorPipeline() = {
 }
 
 fn probes() = {
-    test("available bitwise primitives are absent from blocked capabilities", bitwiseInventory)
     test("blocked capability files.binary-read", binaryRead)
     test("runtime defect runtime.default-operator-pipeline", defaultOperatorPipeline)
     0
