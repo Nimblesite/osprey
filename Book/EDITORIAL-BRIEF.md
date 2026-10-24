@@ -84,7 +84,7 @@ The project is intentionally ordinary. It provides enough domain to make types a
 - A generated illustration never contains product output, syntax, diagnostics, or labels.
 - Future work is visibly labelled as future work.
 - Native, WebAssembly, effect-resumption, module, package, GPU, and C-FFI limits remain beside the relevant claim.
-- Teach implemented project modules and cross-flavor imports separately from the planned package manager.
+- Teach project modules and cross-flavor imports separately from package resolution. The package client supports folder registries, verified downloads and locked builds; hosted authenticated publishing, the package website and public trust services remain planned.
 - Explain the default allocator, GC, and ARC as distinct choices with target limits. Do not imply that default builds reclaim general allocations automatically.
 - Describe the current thread-backed fiber runtime accurately; reserve structured scopes and cancellation for explicitly labelled future work.
 
@@ -96,4 +96,4 @@ The project is intentionally ordinary. It provides enough domain to make types a
 - A promise that an evolving language will never change
 - Treating ML syntax as mandatory for “real” functional programming
 - Pretending a coding agent makes checking and testing optional
-- Teaching the planned package manager, structured cancellation, or strict static memory as shipped features
+- Presenting the hosted package service, structured cancellation or strict static memory as shipped features

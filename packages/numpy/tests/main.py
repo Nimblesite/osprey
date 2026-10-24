@@ -1,7 +1,7 @@
 # osprey: flavor=python
-"""@osprey/numpy's suite: every value computed by the real numpy in
-scripts/oracles/numpy.py, compared against the port through @osprey/testing,
-and run under BOTH the host and the GPU storage handlers.
+"""@osprey/numpy's suite: CPython oracle cases from scripts/oracles/numpy.py
+and exact helper contracts, compared through @osprey/testing and run under
+BOTH the host and the GPU storage handlers.
 
 Floats compare with numpy's isclose rule: rtol 1e-12 for results built only
 from + - * / and sqrt, rtol 1e-9 for results downstream of exp/ln/tanh (libm

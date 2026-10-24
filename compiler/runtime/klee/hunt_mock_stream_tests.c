@@ -344,7 +344,54 @@ static void runtime_files_at_every_cap_and_length(void) {
   }
 }
 
+static char line_bytes[OSP_HUNT_STREAM_MAX];
+
+static void prepare_runtime_line(long cap, long length, long newline) {
+  hunt_reset();
+  osp_hunt_input_bytes = cap;
+  long bound = clamp_cap(cap);
+  memset(line_bytes, 'x', (size_t)bound);
+  if (newline >= 0 && newline < bound) {
+    line_bytes[newline] = '\n';
+  }
+  hunt_queue_bytes(line_bytes, (size_t)bound);
+  hunt_queue_range((int)length);
+}
+
+static void runtime_line_at_bound(long cap, long length, long newline) {
+  prepare_runtime_line(cap, length, newline);
+  long end = newline >= 0 && newline < length ? newline : length;
+  char *line = osp_input();
+  hunt_check(line != NULL, about("runtime line allocates its result", cap, length));
+  if (line == NULL) {
+    return;
+  }
+  hunt_check(memcmp(line, line_bytes, (size_t)end) == 0 && line[end] == '\0',
+             about("runtime line keeps all bytes before the first newline", length, newline));
+  hunt_check(osp_hunt_calls[OSP_HUNT_CALL_READ] == (unsigned)end + 1,
+             about("runtime line consumes exactly its bytes and delimiter or EOF", length, newline));
+  int next = newline >= 0 && newline + 1 < length ? 'x' : -1;
+  hunt_check(getchar() == next, about("runtime line leaves the next unread byte", length, newline));
+  free(line);
+}
+
+static void runtime_lines_at_every_bound(void) {
+  static const long caps[] = {-5, 0, 1, 7, 64, OSP_HUNT_STREAM_MAX, OSP_HUNT_STREAM_MAX + 100};
+  for (size_t c = 0; c < sizeof(caps) / sizeof(caps[0]); c++) {
+    long bound = clamp_cap(caps[c]);
+    long lengths[] = {0, bound / 2, bound};
+    for (size_t l = 0; l < sizeof(lengths) / sizeof(lengths[0]); l++) {
+      long length = lengths[l];
+      long newlines[] = {-1, 0, length / 2, length - 1};
+      for (size_t n = 0; n < sizeof(newlines) / sizeof(newlines[0]); n++) {
+        runtime_line_at_bound(caps[c], length, newlines[n]);
+      }
+    }
+  }
+}
+
 void hunt_mock_stream_tests(void) {
+  runtime_lines_at_every_bound();
   stdin_reads_exactly_its_length_at_every_cap();
   runtime_files_at_every_cap_and_length();
   read_returns_the_stream_in_any_chunk_size();
