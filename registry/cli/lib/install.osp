@@ -1,0 +1,121 @@
+namespace registry_cli;
+import registry_host::Host
+import registry_cli::Reports
+import registry_cli::Project
+import registry_cli::Lockfile
+import registry_cli::Fetch
+import registry::Bytes
+import registry::Identity
+import registry::Names
+import registry::Release
+import registry::Source
+
+/// `osprey-pkg fetch` with no target: install every release the folder lock
+/// names through the same verified download as `fetch <digest>`. A tree whose
+/// `SourceDigest` already equals its release digest is skipped (`=`); anything
+/// else is fetched (`+`); one failed package is its stable code line, the rest
+/// still run, and the status is 1 at the end. Implements the lock-consuming
+/// half of [PACKAGE-FOLDER-REGISTRY].
+module Install {
+    let failStatus = 1
+    let usageCode = "install.usage"
+    let noLockCode = "install.no-lock"
+
+    type Tally = { lines: List<string>, failed: bool }
+    type CommandLine = { base: string, project: string }
+
+    let usageText = ["usage: osprey-pkg fetch [--registry <base-url>] [--project <dir>]"]
+
+    fn usageReport() = Reports::usage(listPrepend(usageText, usageCode))
+
+    fn withBase(cmd, base) = CommandLine { base: base, project: cmd.project }
+    fn withProject(cmd, dir) = CommandLine { base: cmd.base, project: dir }
+
+    fn parseArgs(args, i, cmd) -> Result<CommandLine, string> = match i >= length(args) {
+        true => Success { value: cmd }
+        false => match listGet(args, i) ?: "" {
+            "--registry" => if i + 1 >= length(args) { Error { message: usageCode } } else { parseArgs(args, i + 2, withBase(cmd, listGet(args, i + 1) ?: "")) }
+            "--project" => if i + 1 >= length(args) { Error { message: usageCode } } else { parseArgs(args, i + 2, withProject(cmd, listGet(args, i + 1) ?: "")) }
+            _ => Error { message: usageCode }
+        }
+    }
+
+    fn compact(id: Identity::ReleaseId) = "${Names::display(id.key)} e${id.epoch}.r${id.ordinal} ${id.digest}"
+
+    // Reading builds `Release::File` (whose fields no other record shares),
+    // then `Source::entryOf` maps them non-recursively exactly as
+    // `ReleaseFiles::assemble` does: an effectful recursive function that
+    // constructs `Source::Entry` (whose `path` is shared with `Asset`) trips
+    // the issue-#273 codegen quarantine.
+    fn readNext(dir, relPaths, i, files, rel) = match perform Host::Files.read("${dir}/${rel}") {
+        Success { value } => readFiles(dir, relPaths, i + 1, listAppend(files, Release::File { relPath: rel, content: value }))
+        Error { message } => Error { message: message }
+    }
+
+    fn readFiles(dir, relPaths, i, files) -> Result<List<Release::File>, string> = if i >= length(relPaths) {
+        Success { value: files }
+    } else {
+        readNext(dir, relPaths, i, files, listGet(relPaths, i) ?: "")
+    }
+
+    fn entriesOf(files) = mapList(files, fn(file: Release::File) => Source::entryOf(file.relPath, Bytes::ofString(file.content)))
+
+    /// `SourceDigest` of the files a walk found, recomputed exactly as the
+    /// server computed the release digest ([PACKAGE-SOURCE-CANONICAL]); a
+    /// non-regular entry or an unreadable file is its stable code.
+    export fn digestOfWalked(walk: Host::Walk, dir) = {
+        let kind = if !isEmpty(walk.executable) { Source::kindCode("executable") }
+            else if !isEmpty(walk.special) { Source::kindCode("special") }
+            else { "" }
+        if kind != "" { Error { message: kind } }
+        else { match readFiles(dir, walk.regular, 0, []) {
+            Success { value } => Source::digest(entriesOf(value))
+            Error { message } => Error { message: message }
+        } }
+    }
+
+    /// `SourceDigest` of the installed tree at `dir`, or the reason it cannot
+    /// be read.
+    export fn installedDigest(dir) = match perform Host::Tree.walk(dir) {
+        Error { message } => Error { message: message }
+        Success { value } => digestOfWalked(value, dir)
+    }
+
+    fn matches(pkg, project) = match installedDigest(Fetch::installDirAt(project, pkg.release)) {
+        Success { value } => value == pkg.release.digest
+        Error => false
+    }
+
+    fn installOne(base, project, tally, pkg) = if matches(pkg, project) {
+        Tally { lines: listAppend(tally.lines, "= ${compact(pkg.release)}"), failed: tally.failed }
+    } else {
+        fetched(base, project, tally, pkg)
+    }
+
+    fn fetched(base, project, tally, pkg: Lockfile::Package) = {
+        let report = Fetch::installAt(project, base, pkg.release.digest)
+        if report.status == 0 {
+            Tally { lines: listAppend(tally.lines, "+ ${compact(pkg.release)}"), failed: tally.failed }
+        } else {
+            Tally { lines: listConcat(tally.lines, report.lines), failed: true }
+        }
+    }
+
+    fn installLock(base, project, lock) = {
+        let tally = foldList(lock.packages, Tally { lines: [], failed: false }, fn(t, p) => installOne(base, project, t, p))
+        if tally.failed { Reports::Report { status: failStatus, lines: tally.lines } }
+        else { Reports::success(tally.lines) }
+    }
+
+    /// The whole command: parse `[--registry <base-url>] [--project <dir>]`,
+    /// read `<dir>/osprey.lock`, and install each locked release in lock order.
+    export fn run(args) = match parseArgs(args, 0, CommandLine { base: Fetch::defaultRegistry, project: "" }) {
+        Error => usageReport()
+        Success { value } => withArgs(value)
+    }
+
+    fn withArgs(cmd) = match Project::readLockAt(cmd.project) {
+        Error { message } => Reports::Report { status: failStatus, lines: ["${noLockCode} ${message}"] }
+        Success { value } => installLock(cmd.base, cmd.project, value)
+    }
+}

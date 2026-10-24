@@ -1,0 +1,5 @@
+{
+  "spec": "[PACKAGE-FOLDER-REGISTRY]",
+  "description": "The exact RFC 8785 bytes of a format-0 folder lock with one Runtime root edge and one Build package edge; decode then encode reproduces these bytes.",
+  "text": "{\"format\":0,\"packages\":[{\"dependencies\":[{\"Build\":{\"requirement\":{\"epoch\":1,\"minimumOrdinal\":3,\"package\":{\"name\":\"std\",\"scope\":\"osprey\"}}}}],\"release\":{\"digest\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"epoch\":2,\"ordinal\":17,\"package\":{\"name\":\"http\",\"scope\":\"finch\"}}}],\"root\":{\"dependencies\":[{\"Runtime\":{\"requirement\":{\"epoch\":2,\"minimumOrdinal\":17,\"package\":{\"name\":\"http\",\"scope\":\"finch\"}}}}],\"manifestDigest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}}"
+}

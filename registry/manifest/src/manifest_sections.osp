@@ -13,7 +13,7 @@ import registry::ManifestModel
 /// failure is a stable reason code at the offending pair's span, encoded as
 /// `code at line:column` inside `Error` until `Manifest` decodes it.
 module ManifestSections {
-    export type Project = { name: string, sourceRoots: List<string>, defaultNamespace: Maybe::Maybe<string>, entry: Maybe::Maybe<string>, flavor: Maybe::Maybe<ManifestModel::Flavor>, testRoots: List<string>, pythonSources: bool }
+    export type Project = { name: string, sourceRoots: List<string>, defaultNamespace: Maybe::Maybe<string>, entry: Maybe::Maybe<string>, flavor: Maybe::Maybe<ManifestModel::Flavor>, testRoots: List<string>, pythonSources: List<string> }
 
     let projectKeys = ["name", "source_roots", "default_namespace", "entry", "flavor", "test_roots", "python_sources"]
     let modulesKeys = ["allow_wildcard_imports", "published_library"]
@@ -35,12 +35,18 @@ module ManifestSections {
         _ => []
     }
 
+    // `span` and `value` are shared field names (issue #273): the pair
+    // receiver is spelled out once here.
+    fn spanOfPair(pair: Toml::Pair) = pair.span
+
+    fn valueOf(pair: Toml::Pair) = pair.value
+
     /// The pair named `key`, if present.
     export fn find(pairs, key) = foldList(pairs, Error { message: "absent" }, fn(found, pair: Toml::Pair) => if pair.key == key { Success { value: pair } } else { found })
 
     /// The span of pair `key`, or `fallback`.
     export fn spanOf(pairs, key, fallback) = match find(pairs, key) {
-        Success { value } => value.span
+        Success { value } => spanOfPair(value)
         Error => fallback
     }
 
@@ -90,9 +96,9 @@ module ManifestSections {
     /// A string array pair, `fallback` when absent.
     export fn stringList(pairs, key, fallback, code) = match find(pairs, key) {
         Error => Success { value: fallback }
-        Success { value } => match value.value {
-            Toml::Arr { items } => stringItems(items, value.span, code)
-            _ => fail(code, value.span)
+        Success { value } => match valueOf(value) {
+            Toml::Arr { items } => stringItems(items, spanOfPair(value), code)
+            _ => fail(code, spanOfPair(value))
         }
     }
 
@@ -101,7 +107,9 @@ module ManifestSections {
         Error => false
     })
 
-    fn uniqueStrings(xs) = match Order::canonicalSet(xs) {
+    // Roots follow path rules: exact duplicates and case-fold collisions
+    // both fail ([PACKAGE-SOURCE-CANONICAL]).
+    fn uniqueStrings(xs) = match Paths::canonicalSet(xs) {
         Success => true
         Error => false
     }
@@ -113,7 +121,9 @@ module ManifestSections {
 
     fn flavorOf(pairs) = match optionalString(pairs, "flavor", "manifest.project.flavor") {
         Error { message } => Error { message: message }
-        Success { value } => Maybe::fold(value, Success { value: Maybe::none() }, fn(text) => flavorNamed(text, spanOf(pairs, "flavor", rootSpan())))
+        // The closure's return type is written so codegen sees a concrete
+        // function type (issue: a still-generic closure value is refused).
+        Success { value } => Maybe::fold(value, Success { value: Maybe::none() }, fn(text) -> Result<Maybe::Maybe<ManifestModel::Flavor>, string> => flavorNamed(text, spanOf(pairs, "flavor", rootSpan())))
     }
 
     fn flavorNamed(text, span) = match ManifestModel::flavorOf(text) {
@@ -123,7 +133,9 @@ module ManifestSections {
 
     fn entryOf(pairs) = match optionalString(pairs, "entry", "manifest.project.entry") {
         Error { message } => Error { message: message }
-        Success { value } => Maybe::fold(value, Success { value: Maybe::none() }, fn(text) => entryNamed(text, spanOf(pairs, "entry", rootSpan())))
+        // The closure's return type is written so codegen sees a concrete
+        // function type (issue: a still-generic closure value is refused).
+        Success { value } => Maybe::fold(value, Success { value: Maybe::none() }, fn(text) -> Result<Maybe::Maybe<string>, string> => entryNamed(text, spanOf(pairs, "entry", rootSpan())))
     }
 
     fn entryNamed(text, span) = match Paths::validate(text) {
@@ -131,8 +143,8 @@ module ManifestSections {
         Error => fail("manifest.project.entry", span)
     }
 
-    fn assembleProject(name, sourceRoots, ns, entry, flavor, testRoots, python) = Project {
-        name: name, sourceRoots: sourceRoots, defaultNamespace: ns, entry: entry, flavor: flavor, testRoots: testRoots, pythonSources: python
+    fn assembleProject(name, sourceRoots, ns, entry, flavor, testRoots, pythonSources) = Project {
+        name: name, sourceRoots: sourceRoots, defaultNamespace: ns, entry: entry, flavor: flavor, testRoots: testRoots, pythonSources: pythonSources
     }
 
     fn projectBody(pairs, span) = match requiredString(pairs, "name", "manifest.project.name", span) {
@@ -160,34 +172,43 @@ module ManifestSections {
         Success { value } => projectEnd(pairs, span, name, sourceRoots, ns, entry, value)
     }
 
+    // Python-flavor sources are root-confined relative paths ending in `.py`
+    // ([PACKAGE-MANIFEST]); the `.py` rule shares the roots failure's code and span.
+    fn allEndInPy(paths) = foldList(paths, true, fn(ok, path) => ok && endsWith(path, ".py"))
+
+    fn pythonSourcesOf(pairs, span, name, sourceRoots, ns, entry, flavor, testRoots) = match roots(pairs, "python_sources", [], "manifest.project.python-sources", span) {
+        Error { message } => Error { message: message }
+        Success { value } => if allEndInPy(value) { Success { value: assembleProject(name, sourceRoots, ns, entry, flavor, testRoots, value) } } else { fail("manifest.project.python-sources", spanOf(pairs, "python_sources", span)) }
+    }
+
     fn projectEnd(pairs, span, name, sourceRoots, ns, entry, flavor) = match roots(pairs, "test_roots", [], "manifest.project.test-roots", span) {
         Error { message } => Error { message: message }
-        Success { value } => Success { value: assembleProject(name, sourceRoots, ns, entry, flavor, value, has(pairs, "python_sources")) }
+        Success { value } => pythonSourcesOf(pairs, span, name, sourceRoots, ns, entry, flavor, value)
     }
 
     /// `[project]`: required, with validated roots, entry and flavor.
     export fn project(root) = match find(pairsOf(root), "project") {
         Error => fail("manifest.project.missing", rootSpan())
-        Success { value } => match unknownKeys(pairsOf(value.value), projectKeys, "manifest.project.unknown-key") {
+        Success { value } => match unknownKeys(pairsOf(valueOf(value)), projectKeys, "manifest.project.unknown-key") {
             Error { message } => Error { message: message }
-            Success => projectBody(pairsOf(value.value), value.span)
+            Success => projectBody(pairsOf(valueOf(value)), spanOfPair(value))
         }
     }
 
     fn boolOf(pairs, key, fallback, code) = match find(pairs, key) {
         Error => Success { value: fallback }
-        Success { value } => match value.value {
+        Success { value } => match valueOf(value) {
             Toml::Bool { flag } => Success { value: flag }
-            _ => fail(code, value.span)
+            _ => fail(code, spanOfPair(value))
         }
     }
 
     /// `[modules]`: the wildcard-import policy; `published_library` is advice only.
     export fn modules(root) = match find(pairsOf(root), "modules") {
         Error => Success { value: false }
-        Success { value } => match unknownKeys(pairsOf(value.value), modulesKeys, "manifest.modules.unknown-key") {
+        Success { value } => match unknownKeys(pairsOf(valueOf(value)), modulesKeys, "manifest.modules.unknown-key") {
             Error { message } => Error { message: message }
-            Success => modulesBody(pairsOf(value.value))
+            Success => modulesBody(pairsOf(valueOf(value)))
         }
     }
 
@@ -264,9 +285,9 @@ module ManifestSections {
     /// `[package]`: optional for application roots; complete when present.
     export fn publication(root) = match find(pairsOf(root), "package") {
         Error => Success { value: Maybe::none() }
-        Success { value } => match unknownKeys(pairsOf(value.value), packageKeys, "manifest.package.unknown-key") {
+        Success { value } => match unknownKeys(pairsOf(valueOf(value)), packageKeys, "manifest.package.unknown-key") {
             Error { message } => Error { message: message }
-            Success => packageBody(pairsOf(value.value), value.span)
+            Success => packageBody(pairsOf(valueOf(value)), spanOfPair(value))
         }
     }
 }

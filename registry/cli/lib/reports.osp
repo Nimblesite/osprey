@@ -16,4 +16,28 @@ module Reports {
 
     /// One line per entry of `label: value`.
     export fn field(label, value) = "${label}: ${value}"
+
+    let replacement = "?"
+    let space = 32
+    let delete = 127
+
+    fn control(b) = b < space || b == delete
+
+    type Scan = { out: string, start: int }
+
+    fn between(line, from, to) = take(drop(line, from), to - from)
+
+    fn scanByte(line, acc: Scan, i) = if control(byteAt(line, i) ?: space) {
+        Scan { out: acc.out + between(line, acc.start, i) + replacement, start: i + 1 }
+    } else { acc }
+
+    /// `line` with every byte below 0x20 and the byte 0x7F replaced by `?`, so
+    /// a registry- or lock-supplied string cannot carry a terminal escape
+    /// sequence to the console ([PACKAGE-HARDENING] C7). Every line the
+    /// frontend prints passes through here.
+    export fn printable(line) = {
+        let n = byteLength(line)
+        let scanned = fold(range(0, n), Scan { out: "", start: 0 }, fn(acc, i) => scanByte(line, acc, i))
+        scanned.out + between(line, scanned.start, n)
+    }
 }

@@ -1,0 +1,74 @@
+namespace registry_fixture_check;
+import registry::Json
+import registry::JsonRead
+import registry::SchemaCheck
+import registry::SchemaOrder
+
+/// fixtures/schema-map.json names which values inside which fixtures are
+/// model objects and of which type. Each entry selects files by path prefix,
+/// the rows of each file by an `each` path, the value inside each row by a
+/// `value` path (`*` steps into every array item), and the type by a fixed
+/// `type` or a `typeField` of the row; `order` also checks list order.
+/// Implements the schema half of the fixture gate in [PACKAGE-CONFORMANCE].
+module SchemaMap {
+    /// A JSON value and the pointer that reached it.
+    type Located = { json: Json::Value, pointer: string }
+
+    /// One value to validate: where it is, its model type, and whether its
+    /// lists must be canonically ordered.
+    export type Target = { label: string, typeName: string, json: Json::Value, order: bool }
+
+    fn present(value) = !Json::isNull(value)
+
+    fn itemsOf(at) = range(0, length(JsonRead::items(at.json))) |> map(fn(i) =>
+        Located { json: listGet(JsonRead::items(at.json), i) ?: Json::Null, pointer: "${at.pointer}/${i}" }) |> toList
+
+    fn memberOf(at, token) = filterList([Located { json: JsonRead::field(at.json, token), pointer: "${at.pointer}/${token}" }], fn(l) => present(l.json))
+
+    fn stepAll(located, token) = foldList(located, [], fn(out, at) => listConcat(out, if token == "*" { itemsOf(at) } else { memberOf(at, token) }))
+
+    fn expandPath(start, path) = foldList(JsonRead::tokens(path), [start], stepAll)
+
+    fn flag(entry, key) = match JsonRead::field(entry, key) {
+        Json::Bool { flag } => flag
+        _ => false
+    }
+
+    fn typeOf(entry, row) = {
+        let fixed = JsonRead::text(JsonRead::field(entry, "type"))
+        if fixed != "" { fixed } else { JsonRead::text(JsonRead::field(row.json, JsonRead::text(JsonRead::field(entry, "typeField")))) }
+    }
+
+    fn rowTargets(entry, file, row) = {
+        let typeName = typeOf(entry, row)
+        let values = if typeName == "" { [] } else { expandPath(row, JsonRead::text(JsonRead::field(entry, "value"))) }
+        mapList(values, fn(v) => Target { label: "${file}#${v.pointer}", typeName: typeName, json: v.json, order: flag(entry, "order") })
+    }
+
+    fn fileTargets(entry, file, load) = {
+        let rows = expandPath(Located { json: load(file), pointer: "" }, JsonRead::text(JsonRead::field(entry, "each")))
+        foldList(rows, [], fn(out, row) => listConcat(out, rowTargets(entry, file, row)))
+    }
+
+    fn entryTargets(entry, files, load) = {
+        let prefix = JsonRead::text(JsonRead::field(entry, "files"))
+        foldList(filterList(files, fn(f) => startsWith(f, prefix)), [], fn(out, f) => listConcat(out, fileTargets(entry, f, load)))
+    }
+
+    /// Every target every entry selects among `files`, read through `load`.
+    export fn expand(entries, files, load) = foldList(entries, [], fn(out, e) => listConcat(out, entryTargets(e, files, load)))
+
+    fn orderCode(model, target) = if target.order { SchemaOrder::listsCode(model, target.typeName, target.json) } else { "" }
+
+    fn orderProblem(model, target) = {
+        let code = orderCode(model, target)
+        if code == "" { "" } else { "${target.label}: ${code}" }
+    }
+
+    /// "" when the target is schema-valid (and ordered, when asked), else
+    /// the first problem with its location.
+    export fn problem(model, target) = match SchemaCheck::validate(model, target.typeName, target.json) {
+        Error { message } => "${target.label} (${target.typeName}): ${message}"
+        Success => orderProblem(model, target)
+    }
+}

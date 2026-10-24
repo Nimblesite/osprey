@@ -1,0 +1,28 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "Eligible to Yanked: previousStatus chains the preceding record.",
+  "type": "ReleaseStatus",
+  "value": {
+    "release": {
+      "package": {
+        "scope": "demo",
+        "name": "maths"
+      },
+      "epoch": 1,
+      "ordinal": 2,
+      "digest": "sha256:bece9638d8acc5271e28944cba06dac6a161621592faf6bca5e3a48c7350b39f"
+    },
+    "sequence": 2,
+    "state": {
+      "Yanked": {}
+    },
+    "effectiveAt": "2026-10-02T12:30:45.123Z",
+    "reasonDigest": "sha256:b292c581bfd4ecbb9c8271a9580867ffea6bf448cb9a257198f305dabd180e10",
+    "previousStatus": "sha256:fbadf7e020946fd9a984c3945d685d2054ee5232ae9e18074ce1f143b494e831",
+    "roleMetadataVersion": 12
+  },
+  "canonical": "{\"effectiveAt\":\"2026-10-02T12:30:45.123Z\",\"previousStatus\":\"sha256:fbadf7e020946fd9a984c3945d685d2054ee5232ae9e18074ce1f143b494e831\",\"reasonDigest\":\"sha256:b292c581bfd4ecbb9c8271a9580867ffea6bf448cb9a257198f305dabd180e10\",\"release\":{\"digest\":\"sha256:bece9638d8acc5271e28944cba06dac6a161621592faf6bca5e3a48c7350b39f\",\"epoch\":1,\"ordinal\":2,\"package\":{\"name\":\"maths\",\"scope\":\"demo\"}},\"roleMetadataVersion\":12,\"sequence\":2,\"state\":{\"Yanked\":{}}}",
+  "canonicalLength": 441,
+  "domain": "osprey.release-status.v1",
+  "digest": "sha256:eda1c7f5596369aeb421b0893c4340acb6bd3370500a692358cc3dbdd065013f"
+}

@@ -1,0 +1,18 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "Inclusion proof; hashes keep protocol position.",
+  "type": "MerkleInclusionProof",
+  "value": {
+    "logId": "osprey-log-1",
+    "leafDigest": "sha256:8a09bf7d56f4da14eb90e075102fda465e30b11740a65326084e4cb9c924bfd4",
+    "leafIndex": 5,
+    "treeSize": 8,
+    "hashes": [
+      "sha256:e404e8bc2b3931194c4e9808fa8c6dd3ea6a48dcd006a59db7f2bc609dc20610",
+      "sha256:0094e0aa3bac2d0d30ecdc2da84855f1c5f7d8ae2d19fca71fe3ea7c202c9f5b",
+      "sha256:31695c2717beb1aa6062af994f5874d2ae6c6a718f3d99060baba2fbd054d8b4"
+    ]
+  },
+  "canonical": "{\"hashes\":[\"sha256:e404e8bc2b3931194c4e9808fa8c6dd3ea6a48dcd006a59db7f2bc609dc20610\",\"sha256:0094e0aa3bac2d0d30ecdc2da84855f1c5f7d8ae2d19fca71fe3ea7c202c9f5b\",\"sha256:31695c2717beb1aa6062af994f5874d2ae6c6a718f3d99060baba2fbd054d8b4\"],\"leafDigest\":\"sha256:8a09bf7d56f4da14eb90e075102fda465e30b11740a65326084e4cb9c924bfd4\",\"leafIndex\":5,\"logId\":\"osprey-log-1\",\"treeSize\":8}",
+  "canonicalLength": 371
+}

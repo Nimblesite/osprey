@@ -14,6 +14,8 @@ import registry::ReleasePath
 /// Implements [PACKAGE-FOLDER-REGISTRY].
 module Bundle {
     let shapeError = "bundle.shape"
+    let tooLarge = "bundle.too-large"
+    let maxBytes = 134217728
 
     fn fileValue(file) = Json::Obj { members: [
         Json::Member { key: "path", value: Json::Str { text: file.relPath } },
@@ -127,11 +129,21 @@ module Bundle {
         }
     }
 
-    /// Decode, recompute the digest from the files and return the release only
-    /// when the recomputed digest equals both the bundle's claim and the
-    /// digest the client requested.
-    export fn verify(text, expectedDigest) = match decode(text) {
+    /// Why a body of `byteCount` bytes is refused before it is parsed: no
+    /// valid release exceeds 128 MiB of bundle text (C1 of
+    /// [PACKAGE-HARDENING]); `""` within the bound.
+    export fn sizeCode(byteCount) = if byteCount > maxBytes { tooLarge } else { "" }
+
+    fn verifyParsed(text, expectedDigest) = match decode(text) {
         Error { message } => Error { message: message }
         Success { value } => checkClaim(value, expectedDigest)
+    }
+
+    /// Bound the body, decode, recompute the digest from the files and return
+    /// the release only when the recomputed digest equals both the bundle's
+    /// claim and the digest the client requested.
+    export fn verify(text, expectedDigest) = match sizeCode(byteLength(text)) == "" {
+        false => Error { message: tooLarge }
+        true => verifyParsed(text, expectedDigest)
     }
 }

@@ -1,0 +1,124 @@
+namespace registry;
+import registry::Names
+import registry::ManifestModel
+import registry::Candidates
+import registry::Resolution
+
+/// The stable explanation of a refuted graph under [PACKAGE-RESOLUTION]. The
+/// causes are checked in the spec order over the keys reachable from the root
+/// through state-viable candidates' edges, and the first cause that holds
+/// names its packages, so an input permutation never changes the answer. The
+/// resolver and the test oracle both call `of`, which is why a refutation is
+/// explained in exactly one place. The clause origins of `Clauses` are not
+/// read yet (plan 0020 Phase 3, open).
+module Explain {
+    let missing = "resolution.missing-package"
+    let epochConflict = "resolution.epoch-conflict"
+    let cycle = "resolution.cycle"
+    let revoked = "resolution.revoked"
+    let noTarget = "resolution.no-target"
+    let capability = "resolution.capability"
+    let floor = "resolution.unsatisfiable-floor"
+
+    fn none() = Error { message: "none" }
+    fn found(code, packages) = Success { value: Resolution::Explain { code: code, packages: packages } }
+
+    // ---- reachability ----
+
+    /// The Runtime/Build targets of every state-viable candidate of `key`.
+    fn unionTargets(graph, key) = foldList(Candidates::viableOfKey(graph, key), [], fn(acc, e) => listConcat(acc, ManifestModel::activeTargets(e.dependencies)))
+
+    fn tailKeys(xs) = range(1, length(xs)) |> map(fn(i) => listGet(xs, i) ?: Names::blank()) |> toList
+
+    fn bfs(graph, frontier, seen) -> List<Names::Key> = match isEmpty(frontier) {
+        true => seen
+        false => {
+            let key = listGet(frontier, 0) ?: Names::blank()
+            if Names::includes(seen, key) { bfs(graph, tailKeys(frontier), seen) }
+            else { bfs(graph, listConcat(tailKeys(frontier), unionTargets(graph, key)), listAppend(seen, key)) }
+        }
+    }
+
+    /// The keys reachable from the root's edges, in canonical order.
+    fn reachableKeys(graph) = Names::sorted(bfs(graph, ManifestModel::targets(graph.rootDeps), []))
+
+    fn reachesVia(graph, next, to, visited) -> bool = if Names::same(next, to) { true }
+        else if listContains(visited, Names::display(next)) { false }
+        else { unionReaches(graph, next, to, listAppend(visited, Names::display(next))) }
+
+    /// Whether `to` is reachable from `from` through viable candidates' edges.
+    fn unionReaches(graph, from, to, visited) -> bool = foldList(unionTargets(graph, from), false, fn(found, t) => found || reachesVia(graph, t, to, visited))
+
+    // ---- requirements on one key ----
+
+    fn requirementsOf(edges) = mapList(edges, ManifestModel::requirementOf)
+
+    fn catalogRequirements(graph) = foldList(graph.catalog, [], fn(acc, e) => listConcat(acc, requirementsOf(ManifestModel::activeEdges(e.dependencies))))
+
+    /// Every requirement on `key`: the root's, then every release's active edges.
+    fn edgesTo(graph, key) = filterList(listConcat(requirementsOf(graph.rootDeps), catalogRequirements(graph)), fn(r) => Names::same(r.package, key))
+
+    fn distinctInts(xs) = foldList(xs, [], fn(acc, x) => if listContains(acc, x) { acc } else { listAppend(acc, x) })
+
+    fn reqEpochOf(graph, key) = match listGet(edgesTo(graph, key), 0) {
+        Success { value } => value.epoch
+        Error => 0
+    }
+
+    fn floorOf(graph, key) = foldList(edgesTo(graph, key), 0, fn(m, r) => if r.minimumOrdinal > m { r.minimumOrdinal } else { m })
+
+    // ---- the causes, one predicate per key ----
+
+    fn missingAt(graph, k) = isEmpty(Candidates::ofKey(graph, k))
+
+    fn epochConflictAt(graph, k) = length(distinctInts(mapList(edgesTo(graph, k), fn(r) => r.epoch))) >= 2
+
+    fn anyRevoked(graph, k) = foldList(Candidates::ofKey(graph, k), false, fn(f, e) => f || e.activation == "Revoked")
+
+    fn revokedAt(graph, k) = isEmpty(Candidates::viableOfKey(graph, k)) && anyRevoked(graph, k)
+
+    fn onTarget(graph, k) = filterList(Candidates::viableOfKey(graph, k), fn(e) => Candidates::targetOk(graph, e))
+
+    fn noTargetAt(graph, k) = !isEmpty(Candidates::viableOfKey(graph, k)) && isEmpty(onTarget(graph, k))
+
+    /// Viable, on-target candidates of the required epoch.
+    fn inEpoch(graph, k) = filterList(onTarget(graph, k), fn(e) => e.release.epoch == reqEpochOf(graph, k))
+
+    fn allOf(xs, holds) = !isEmpty(xs) && foldList(xs, true, fn(all, x) => all && holds(x))
+
+    fn capabilityAt(graph, k) = allOf(filterList(inEpoch(graph, k), fn(e) => e.release.ordinal >= floorOf(graph, k)), fn(e) => !Candidates::capsOk(graph, e))
+
+    fn floorAt(graph, k) = allOf(filterList(inEpoch(graph, k), fn(e) => Candidates::capsOk(graph, e)), fn(e) => e.release.ordinal < floorOf(graph, k))
+
+    /// `code` naming the first key for which `cause` holds, else none.
+    fn firstKey(keys, code, cause) = {
+        let hits = filterList(keys, cause)
+        if isEmpty(hits) { none() } else { found(code, [listGet(hits, 0) ?: Names::blank()]) }
+    }
+
+    /// Every key that reaches itself, as one cycle explanation.
+    fn cycleOutcome(graph, keys) = {
+        let cyc = filterList(keys, fn(k) => unionReaches(graph, k, k, []))
+        if isEmpty(cyc) { none() } else { found(cycle, cyc) }
+    }
+
+    /// The found explanation, or `fallback` when the cause did not hold.
+    fn pick(result, fallback) = match result {
+        Success { value } => value
+        Error => fallback
+    }
+
+    /// The explanation of a refuted graph: the first cause, in the spec
+    /// order, that holds for a reachable key; the floor code over every
+    /// reachable key when none does.
+    export fn of(graph) = {
+        let keys = reachableKeys(graph)
+        pick(firstKey(keys, missing, fn(k) => missingAt(graph, k)),
+            pick(firstKey(keys, epochConflict, fn(k) => epochConflictAt(graph, k)),
+                pick(cycleOutcome(graph, keys),
+                    pick(firstKey(keys, revoked, fn(k) => revokedAt(graph, k)),
+                        pick(firstKey(keys, noTarget, fn(k) => noTargetAt(graph, k)),
+                            pick(firstKey(keys, capability, fn(k) => capabilityAt(graph, k)),
+                                pick(firstKey(keys, floor, fn(k) => floorAt(graph, k)), Resolution::Explain { code: floor, packages: keys })))))))
+    }
+}

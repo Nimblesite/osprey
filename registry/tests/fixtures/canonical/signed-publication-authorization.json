@@ -1,0 +1,49 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "Two publisher proofs sorted by principal; authorizationSetDigest is this whole envelope's digest.",
+  "type": "SignedPublicationAuthorization",
+  "value": {
+    "payload": {
+      "challengeEnvelopeDigest": "sha256:f1ed39feaf9fae50d9e8c629d5d62d78d11db05bd469bc35e30c2f3c8ebc2f42"
+    },
+    "proofs": [
+      {
+        "principal": "principal-alice",
+        "proof": {
+          "Publisher": {
+            "credential": {
+              "WebAuthnPasskey": {
+                "credentialId": "cred-QmFzZTY0",
+                "relyingPartyId": "registry.osprey-lang.org",
+                "origin": "https://registry.osprey-lang.org",
+                "userVerified": true,
+                "assertionDigest": "sha256:1595875098558912e881ce0b2122a8a061123f2eccfc0ccce8381af89c79f435"
+              }
+            }
+          }
+        }
+      },
+      {
+        "principal": "principal-ci",
+        "proof": {
+          "Publisher": {
+            "credential": {
+              "SigstoreCi": {
+                "issuer": "https://token.actions.githubusercontent.com",
+                "subject": "repo:demo/report:ref:refs/heads/main",
+                "repository": "demo/report",
+                "workflow": ".github/workflows/release.yml",
+                "gitRef": "refs/heads/main",
+                "certificateDigest": "sha256:c151f796273f3f580db3ae3340572fdef1bea9ddc9d3835339a4b9cc5338205f",
+                "transparencyBundleDigest": "sha256:4a47639cc3fc54d01ae14c7110aaf3b6f673ab619f5bd6b0f85503a1b81b630b",
+                "signatureDigest": "sha256:97f3b2d67cf3b2839eed976f28a4b83c00f7249835528adb867b49242dfa6104"
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "canonical": "{\"payload\":{\"challengeEnvelopeDigest\":\"sha256:f1ed39feaf9fae50d9e8c629d5d62d78d11db05bd469bc35e30c2f3c8ebc2f42\"},\"proofs\":[{\"principal\":\"principal-alice\",\"proof\":{\"Publisher\":{\"credential\":{\"WebAuthnPasskey\":{\"assertionDigest\":\"sha256:1595875098558912e881ce0b2122a8a061123f2eccfc0ccce8381af89c79f435\",\"credentialId\":\"cred-QmFzZTY0\",\"origin\":\"https://registry.osprey-lang.org\",\"relyingPartyId\":\"registry.osprey-lang.org\",\"userVerified\":true}}}}},{\"principal\":\"principal-ci\",\"proof\":{\"Publisher\":{\"credential\":{\"SigstoreCi\":{\"certificateDigest\":\"sha256:c151f796273f3f580db3ae3340572fdef1bea9ddc9d3835339a4b9cc5338205f\",\"gitRef\":\"refs/heads/main\",\"issuer\":\"https://token.actions.githubusercontent.com\",\"repository\":\"demo/report\",\"signatureDigest\":\"sha256:97f3b2d67cf3b2839eed976f28a4b83c00f7249835528adb867b49242dfa6104\",\"subject\":\"repo:demo/report:ref:refs/heads/main\",\"transparencyBundleDigest\":\"sha256:4a47639cc3fc54d01ae14c7110aaf3b6f673ab619f5bd6b0f85503a1b81b630b\",\"workflow\":\".github/workflows/release.yml\"}}}}}]}",
+  "canonicalLength": 1017
+}

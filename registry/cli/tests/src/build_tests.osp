@@ -1,0 +1,192 @@
+namespace registry_tests;
+import registry_host::Host
+import registry_cli::Build
+import registry_cli::Fetch
+import registry_cli::Lockfile
+import registry_cli::Reports
+import registry::Identity
+import registry::Manifest
+import registry::ManifestJson
+import registry::ManifestModel
+import registry::Maybe
+import registry::Names
+import registry::Release
+import registry::ReleaseFiles
+
+/// `build [--run]` against fixture hosts: the offline verify must pass before
+/// the derived project is written and the compiler invoked; the derived
+/// `osprey.toml` bytes and the exact compiler command are asserted. Implements
+/// [PACKAGE-FOLDER-REGISTRY] build tests.
+module BuildTests {
+    let compilerPath = "./target/release/osprey"
+
+    type ReadRoute = { path: string, content: string }
+    type WalkRoute = { dir: string, files: List<string> }
+    type Attempt = { report: Reports::Report, derived: string, ensures: string, commands: string }
+
+    fn line(report, i) = listGet(report.lines, i) ?: ""
+
+    fn readRoute(path, content) = ReadRoute { path: path, content: content }
+    fn walkRoute(dir, files) = WalkRoute { dir: dir, files: files }
+
+    fn readPath(r: ReadRoute) = r.path
+
+    fn readFor(reads, path) = foldList(reads, Error { message: "fixture: no read ${path}" }, fn(answer, r) => match answer {
+        Success => answer
+        Error => if readPath(r) == path { Success { value: r.content } } else { answer }
+    })
+
+    fn walkFor(walks, dir) = foldList(walks, Error { message: "fixture: no tree ${dir}" }, fn(answer, w: WalkRoute) => match answer {
+        Success => answer
+        Error => if w.dir == dir { Success { value: Host::Walk { regular: w.files, executable: [], special: [] } } } else { answer }
+    })
+
+    fn runBuild(reads, walks, args) = {
+        mut derived = ""
+        mut ensures = ""
+        mut commands = ""
+        let files = handler Host::Files {
+            read path => readFor(reads, path)
+            write path content => {
+                derived = if path == ".osprey/build/osprey.toml" { content } else { derived }
+                Success { value: byteLength(content) }
+            }
+        }
+        let tree = handler Host::Tree {
+            walk dir => walkFor(walks, dir)
+            ensure dir => {
+                ensures = "${ensures}${dir}|"
+                Success { value: 0 }
+            }
+        }
+        let web = handler Host::Web {
+            get base path => Error { message: "fixture: build never fetches ${base}${path}" }
+        }
+        let process = handler Host::Process {
+            run command => {
+                commands = "${commands}${command}|"
+                Host::Run { status: 0, stdout: "built\n", stderr: "" }
+            }
+        }
+        let report = process(fn() => files(fn() => tree(fn() => web(fn() => Build::run(args)))))
+        Attempt { report: report, derived: derived, ensures: ensures, commands: commands }
+    }
+
+    fn missingServed() = Release::Served {
+        id: Identity::ReleaseId { key: Names::Key { scope: "", name: "" }, epoch: 0, ordinal: 0, digest: "" },
+        files: []
+    }
+
+    fn manifestText() = "[project]\nname = \"app\"\nsource_roots = [\"src\"]\ndefault_namespace = \"app\"\nentry = \"src/main.osp\"\n"
+
+    fn manifestOf() = match Manifest::accepted(Manifest::parse(manifestText())) {
+        Success { value } => value
+        Error => emptyManifest()
+    }
+
+    fn emptyManifest() = ManifestModel::Manifest {
+        projectName: "app",
+        sourceRoots: ["src"],
+        defaultNamespace: Maybe::none(),
+        entry: Maybe::none(),
+        flavor: Maybe::none(),
+        allowWildcardImports: false,
+        publication: Maybe::none(),
+        testRoots: [],
+        pythonSources: [],
+        dependencies: [],
+        systemRequirements: [],
+        assets: []
+    }
+
+    fn filesOf(text) = [
+        Release::File { relPath: "osprey.toml", content: "key = one\n" },
+        Release::File { relPath: "src/main.osp", content: text }
+    ]
+
+    fn one() = ReleaseFiles::assemble("@demo/one/1.1", filesOf("fn one() = 1\n")) ?: missingServed()
+    fn two() = ReleaseFiles::assemble("@demo/two/1.1", filesOf("fn two() = 2\n")) ?: missingServed()
+
+    fn pkgOf(s: Release::Served) = Lockfile::Package { release: s.id, dependencies: [] }
+
+    fn lockOf(digest) = Lockfile::Lock {
+        root: Lockfile::Root { manifestDigest: digest, dependencies: [] },
+        packages: [pkgOf(one()), pkgOf(two())]
+    }
+
+    fn lockText(lock) = Lockfile::encode(lock) ?: ""
+
+    fn installDir(s: Release::Served) = Fetch::installDir(s.id)
+
+    fn readsFor(s) = mapList(s.files, fn(f) => readRoute("${installDir(s)}/${f.relPath}", f.content))
+
+    fn walkOf(s: Release::Served) = walkRoute(installDir(s), mapList(s.files, fn(f: Release::File) => f.relPath))
+
+    fn baseReads(lockText) = [readRoute("osprey.toml", manifestText()), readRoute("osprey.lock", lockText)]
+
+    fn allReads(lockText) = listConcat(baseReads(lockText), listConcat(readsFor(one()), readsFor(two())))
+
+    fn allWalks() = [walkOf(one()), walkOf(two())]
+
+    fn sourceRootText(project, s) = "\"${project}/${installDir(s)}/src\""
+
+    /// The derived project: root's own roots first, then each package's src in lock order.
+    fn derivedText(project) = {
+        let roots = ["\"${project}/src\"", sourceRootText(project, one()), sourceRootText(project, two())]
+        join([
+            "[project]",
+            "name = \"app\"",
+            "source_roots = [${join(roots, ", ")}]",
+            "default_namespace = \"app\"",
+            "entry = \"${project}/src/main.osp\"",
+            "[modules]",
+            "allow_wildcard_imports = false"
+        ], "\n")
+    }
+
+    /// A passing verify writes the exact derived project and runs the compiler.
+    fn derived() = {
+        let m = manifestOf()
+        let lock = lockOf(ManifestJson::digest(m) ?: "")
+        let text = lockText(lock)
+        let a = runBuild(allReads(text), allWalks(), ["--project", "/abs"])
+        checkAll("the derived osprey.toml is exact and the compiler runs", [
+            a.report.status == 0,
+            a.derived == derivedText("/abs"),
+            a.ensures == ".osprey/build|",
+            a.commands == "'${compilerPath}' build .osprey/build -o '.osprey/build/app'|",
+            line(a.report, 0) == "built"
+        ])
+    }
+
+    /// `build --run` compiles through the run form.
+    fn runForm() = {
+        let m = manifestOf()
+        let lock = lockOf(ManifestJson::digest(m) ?: "")
+        let a = runBuild(allReads(lockText(lock)), allWalks(), ["--run", "--project", "/abs"])
+        checkAll("build --run invokes the compiler run form", [
+            a.report.status == 0,
+            a.commands == "'${compilerPath}' .osprey/build --run|"
+        ])
+    }
+
+    /// A failing verify runs no compiler and writes nothing.
+    fn verifyFailure() = {
+        let lock = lockOf("sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+        let a = runBuild(allReads(lockText(lock)), allWalks(), ["--project", "/abs"])
+        checkAll("a verify failure is the build's failure and compiles nothing", [
+            a.report.status == 1,
+            line(a.report, 0) == "verify.manifest-digest",
+            a.derived == "",
+            a.ensures == "",
+            a.commands == ""
+        ])
+    }
+
+    /// Every build test.
+    export fn run() = {
+        test("build: derived project bytes and compiler invocation", derived)
+        test("build: --run invokes the run form", runForm)
+        test("build: a verify failure compiles nothing", verifyFailure)
+    }
+}

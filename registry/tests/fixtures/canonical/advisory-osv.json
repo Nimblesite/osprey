@@ -1,0 +1,24 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "An OSV-schema advisory, the external record a revocation reason digest names.",
+  "value": {
+    "schema_version": "1.6.0",
+    "id": "OSV-2026-0001",
+    "modified": "2026-10-02T12:30:45.123Z",
+    "published": "2026-10-02T12:30:45.123Z",
+    "summary": "Fixture advisory against @demo/maths 1.2",
+    "affected": [
+      {
+        "package": {
+          "ecosystem": "Osprey",
+          "name": "@demo/maths"
+        },
+        "versions": [
+          "1.2"
+        ]
+      }
+    ]
+  },
+  "canonical": "{\"affected\":[{\"package\":{\"ecosystem\":\"Osprey\",\"name\":\"@demo/maths\"},\"versions\":[\"1.2\"]}],\"id\":\"OSV-2026-0001\",\"modified\":\"2026-10-02T12:30:45.123Z\",\"published\":\"2026-10-02T12:30:45.123Z\",\"schema_version\":\"1.6.0\",\"summary\":\"Fixture advisory against @demo/maths 1.2\"}",
+  "canonicalLength": 265
+}

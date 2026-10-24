@@ -18,6 +18,12 @@ module Identity {
     /// The display form.
     export fn display(id: ReleaseId) = "${Names::display(id.key)}@e${id.epoch}.r${id.ordinal}#${id.digest}"
 
+    /// Identity equality: same key, epoch, ordinal and digest.
+    export fn same(a: ReleaseId, b: ReleaseId) = Names::same(a.key, b.key) && a.epoch == b.epoch && a.ordinal == b.ordinal && a.digest == b.digest
+
+    /// The identity no release has: the `?:` fallback of every release lookup.
+    export fn blank() = ReleaseId { key: Names::blank(), epoch: 0, ordinal: 0, digest: "" }
+
     fn positive(text, floor, code) = match parseInt(text) {
         Success { value } => if value >= floor && !startsWith(text, "+") && !startsWith(text, "0") { Success { value: value } } else { Error { message: code } }
         Error => Error { message: code }

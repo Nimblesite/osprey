@@ -1,6 +1,6 @@
 {
   "spec": "[PACKAGE-TYPE-INVARIANTS]",
   "domain": "osprey.manifest.v1",
-  "canonicalLength": 485,
-  "manifestDigest": "sha256:3cf016f2487aa8d04ac269e524f976a10f083a49a128aa339626e1e63652c4d7"
+  "canonicalLength": 504,
+  "manifestDigest": "sha256:351b1baf6c7a8f1fd411226b83d3f5e22abc546c5bd7bda26e7beabac6375eb7"
 }

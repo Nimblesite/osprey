@@ -16,7 +16,9 @@ module Source {
 
     let regularFile = 0
     let regularKind = "regular"
-    let forbiddenKinds = ["symlink", "submodule", "device", "fifo", "socket", "executable", "hardlink"]
+    // `special` is what a directory walk reports when it cannot tell a
+    // symlink, device, FIFO or socket apart; every one of them rejects.
+    let forbiddenKinds = ["symlink", "submodule", "device", "fifo", "socket", "executable", "hardlink", "special"]
     let lfsPrefix = "version https://git-lfs.github.com/spec/v1"
     let maxFiles = 10000
     let maxTotalBytes = 52428800

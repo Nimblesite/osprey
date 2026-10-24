@@ -126,6 +126,7 @@ type PackageManifest {
   allowWildcardImports: Bool
   publication: Option<PublishedPackageMetadata>
   testRoots: List<RelativePath>
+  pythonSources: List<RelativePath>
   dependencies: List<DependencyEdge>
   systemRequirements: List<SystemRequirement>
   assets: List<PackageAsset>
@@ -492,9 +493,15 @@ type ReleaseAssessment { release: ReleaseId verdict: ScanVerdict maintenance: Ma
   `role`, `kind`, `byte_length`, `digest`, and only for runtime data
   `required_capability`. Role strings are `documentation`/`runtime-data`; kind
   strings are `text`/`json`/`png`, with a text format derived from its extension.
-  `[project].python_sources` is accepted for an application root, is not part of
-  the canonical manifest, and rejects any manifest that declares `[package]`:
-  published packages contain Osprey source only ([PACKAGE-PUBLISH]).
+  `[project].python_sources` lists the Osprey Python-flavor files of the
+  project as root-confined `RelativePath`s ending in `.py`; it is part of the
+  canonical manifest (`pythonSources`). A manifest that declares `[package]`
+  must keep every listed path inside one of its `sourceRoots`
+  (`manifest.python-source-unrooted`), and every `.py` file in a release tree
+  begins with the line `# osprey: flavor=python` or the release is refused
+  (`source.python-flavor-header`): published packages contain Osprey source
+  only, and a Python-flavor file is Osprey source that the Osprey compiler
+  reads, never a CPython module ([PACKAGE-PUBLISH]).
 - `RelativePath` is root-confined, normalized, and rejects absolute paths,
   traversal and symlinks. `LocalPath` is development-only: `use` resolves it
   once against the selected workspace root to a canonical physical path,

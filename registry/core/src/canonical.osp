@@ -7,7 +7,7 @@ import registry::Order
 /// object members ordered by their keys' UTF-16 code unit sequences, and only
 /// the escapes section 3.2.2.2 names. Recursion is monomorphic over the
 /// concrete Json::Value tree, strings and ints (issue #277). Implements
-/// [REGISTRY-CANONICAL-JCS].
+/// [PACKAGE-TYPE-INVARIANTS].
 module Canonical {
     let duplicateKey = "canonical.duplicate-key"
     let dquote = 34
@@ -23,7 +23,7 @@ module Canonical {
     let highBase = 55296
     let lowBase = 56320
 
-    /// The RFC 8785 3.2.2.2 escape of one code point, or "" to emit it as-is.
+    /// The RFC 8785 3.2.2.2 escape of a quote, backslash or C0 control.
     fn escapeCodePoint(cp) = {
         if cp == dquote { "\\\"" }
         else if cp == backslashCp { "\\\\" }
@@ -32,24 +32,24 @@ module Canonical {
         else if cp == lineFeed { "\\n" }
         else if cp == formFeed { "\\f" }
         else if cp == carriageReturn { "\\r" }
-        else if cp < controlLimit { "\\u00" + Bytes::hexByte(cp) }
-        else { "" }
+        else { "\\u00" + Bytes::hexByte(cp) }
     }
+
+    /// A byte copied to the output unchanged: anything but the quote, the
+    /// backslash and C0 controls, so non-ASCII UTF-8 bytes pass through.
+    fn literalByte(b) = b >= controlLimit && b != dquote && b != backslashCp
 
     /// Escape one string; `/`, non-ASCII and U+2028/U+2029 stay literal.
     fn renderEscaped(s, i, out) = match i >= byteLength(s) {
         true => out
         false => {
-            let cp = codePointAt(s, i) ?: 63
-            let w = codePointWidth(cp) ?: 1
-            let esc = escapeCodePoint(cp)
-            if esc != "" {
-                renderEscaped(s, i + w, out + esc)
-            } else {
-                renderEscaped(s, i + w, out + (substring(s, i, i + w) ?: ""))
-            }
+            let end = Bytes::runEnd(s, i, literalByte)
+            if end > i { renderEscaped(s, end, out + (substring(s, i, end) ?: "")) } else { renderSpecial(s, i, out) }
         }
     }
+
+    /// A quote, backslash or C0 control: always one byte, always escaped.
+    fn renderSpecial(s, i, out) = renderEscaped(s, i + 1, out + escapeCodePoint(byteAt(s, i) ?: 0))
 
     fn renderString(s) = "\"" + renderEscaped(s, 0, "") + "\""
 
@@ -107,14 +107,14 @@ module Canonical {
     }
 
     /// The RFC 8785 canonical form of `value`, or `"canonical.duplicate-key"`.
-    /// Implements [REGISTRY-CANONICAL-JCS].
+    /// Implements [PACKAGE-TYPE-INVARIANTS].
     export fn serialize(value) = match wellFormed(value) {
         true => Success { value: render(value) }
         false => Error { message: duplicateKey }
     }
 
     /// Parse strict JSON, then serialize canonically; a parse problem maps to
-    /// its described form. Implements [REGISTRY-CANONICAL-JCS].
+    /// its described form. Implements [PACKAGE-TYPE-INVARIANTS].
     export fn canonicalize(text) = match Json::parse(text) {
         Success { value } => serialize(value)
         Error { message } => Error { message: Json::describe(message) }

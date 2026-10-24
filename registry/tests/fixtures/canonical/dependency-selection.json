@@ -1,0 +1,158 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "Stage 1: the selection a release plan binds before any lock exists.",
+  "type": "ReleaseDependencySelection",
+  "value": {
+    "format": 1,
+    "root": {
+      "package": {
+        "scope": "demo",
+        "name": "report"
+      },
+      "relativePath": "packages/report",
+      "sourceDigest": "sha256:a7a65655016bb7bff859bbd5f5a6561e6f231508ffccefa7bb4f5bdaf0aa5bdf",
+      "manifestDigest": "sha256:e79f867f038054cb369a62aba515a9c0aa5c0e9951f8ef86514a3d5739fb0d4c",
+      "dependencies": [
+        {
+          "Runtime": {
+            "requirement": {
+              "package": {
+                "scope": "demo",
+                "name": "maths"
+              },
+              "epoch": 1,
+              "minimumOrdinal": 1
+            }
+          }
+        },
+        {
+          "Test": {
+            "requirement": {
+              "package": {
+                "scope": "demo",
+                "name": "greeting"
+              },
+              "epoch": 1,
+              "minimumOrdinal": 1
+            }
+          }
+        }
+      ],
+      "inferredCapabilities": [
+        "net.http"
+      ]
+    },
+    "context": {
+      "catalogSnapshot": "sha256:d8522cfbd81aba700a9eb44fff517542c55a83f135862f8239b3dea5f1a2c0ad",
+      "catalogAsOf": "2026-10-02T12:30:45.123Z",
+      "providerCatalogDigest": "sha256:cfda255f996f50a65b755e256ea39a180b051bf74378cdca1eecc78c699c1ffe",
+      "tufRootVersion": 3,
+      "tufRootDigest": "sha256:5eed3a30587de1bc9440b60971aeec6fe860c2304d6bfc8fd02db06b7848edab",
+      "tufSnapshotDigest": "sha256:3112424f430a80e412c214f751a50d7e65e0b394bf9b87bed92f07d856fea43d",
+      "tufTimestampDigest": "sha256:62f886b2bb31d7a6eef3a8872c38104ab60bca54252ebf8d2a9ab87382abc2fc",
+      "releaseStatusMetadataDigest": "sha256:8a94be078eb98d7c521e6bc2a570129f0dba51dc144bad69d1fe467ba67879a7",
+      "logCheckpointDigest": "sha256:92d39bde1bbbae25aa8a76acec24787aa40ace591b09449b001d216330adcf0d",
+      "verificationBundleDigest": "sha256:b5d91112ac09dfc75375deed0eabbc7d7b687097d5a66dfd95521590e1f5fe78",
+      "solverPolicy": "sha256:dcce9c2576be8892582edda4b3bedc924909a3ee20e1dc0fced970eee3f7f49a",
+      "buildEnvironment": {
+        "compilerDigest": "sha256:d4def25990df497bc7a2bdc0082348d659ae81962b208ac36314fc57c9451a83",
+        "runtimeDigest": "sha256:40f139ce85d0e2b3a4919d31795eb27bfdd1fb39930201f72fe825c429ba010b",
+        "targetSpecDigest": "sha256:a356e8996f1b54ab2f0b05bcf4429117e5cb82f5e576a1c7992f17a9f7373cdb",
+        "cpuFeatureSetDigest": "sha256:3e11098c224482334c45d482734d95255df856b42a3bd0a883df92b1556cb987",
+        "flagsDigest": "sha256:c1ec781f2b0ab136e6a9171e19d5c830cb8874ec2d34aa7071fbaadb7caa8f13",
+        "sandboxPolicyDigest": "sha256:52eef155ce9e397e2de37a732bedb5788514f00bca95c29944f470502d332282",
+        "sandboxImageDigest": "sha256:ad460aaac512db91ebf55204eaf233e0cd67e6e2d1612c9ca57ec546bfadbfcc",
+        "normalizedEnvironmentDigest": "sha256:19e15c332909a1ae2f348f915f66986c7f0541aedab1385f61ea5746d526b603",
+        "clockPolicyDigest": "sha256:9ed577da95a861c91a275880938420145f65d05e6d47b03e1538aff3e40bdfbf",
+        "randomnessPolicyDigest": "sha256:6414a12946167bbb9520d99904e80653c296147f1128d4731d4a1e5d8400b349",
+        "randomSeedDigest": "sha256:4712bfaf38d7b17423467b24f2fcc961c8024b45c3f1b7623d784583255a286e",
+        "localePolicyDigest": "sha256:e209791d511c2969f17f11cb3a92d5bbea7e97d2c52063677425131f723cc44c",
+        "timezonePolicyDigest": "sha256:8270d2390e0d9da25b5b942541abc2648ce0806a80161f77ae518d7902b4a3c8",
+        "filesystemOrderPolicyDigest": "sha256:be99f25cc4c926b3b6ed5940b2896544479f854906702f54674e92a72c3685b6",
+        "kernelAbiDigest": "sha256:7481905f2d7df9309362ead3260f40fe16cf5f120c8cb6c2bb0a4b06c70e422a",
+        "toolchainClosure": [
+          "sha256:37e20d6717c6ec468754389d2dbbe6f943bd82808d11f533b2eea7bac1f710d5",
+          "sha256:acf49428c0eed35acd56f2d2379e6c12c726fc8ee69a7c360b77ba654477381b"
+        ],
+        "sdkSysrootClosure": [
+          "sha256:5822da0dd420a1caeb190003b4da24d3fb3bd20a464ce52e5f226651251a9c85"
+        ]
+      },
+      "providerEntries": [
+        {
+          "capability": "net.http",
+          "targetSpecDigest": "sha256:a356e8996f1b54ab2f0b05bcf4429117e5cb82f5e576a1c7992f17a9f7373cdb",
+          "provider": "libcurl",
+          "revision": 4,
+          "artifactDigest": "sha256:f6378fb256e3b12452bffcd6371f8d51352b8165c054da62e81d6ff97855b55f",
+          "closureDigests": [
+            "sha256:3933f1d945957a6d40512ca3afe7f1e68f4dc793af44aada2330a262bf8c3dc2",
+            "sha256:e089ef523b4599f948c5dfdc77f3fc6d650d4cd35c47e66455914b1b8e7d4757"
+          ],
+          "provenanceDigest": "sha256:b4c90134fe020fc6e3f9e5a10826f1f6a08a65ca481a25b7fbd5bcae506693d4"
+        }
+      ],
+      "systemInputs": [
+        {
+          "capability": "net.http",
+          "provider": "libcurl",
+          "revision": 4,
+          "artifactDigest": "sha256:f6378fb256e3b12452bffcd6371f8d51352b8165c054da62e81d6ff97855b55f",
+          "closureDigests": [
+            "sha256:3933f1d945957a6d40512ca3afe7f1e68f4dc793af44aada2330a262bf8c3dc2",
+            "sha256:e089ef523b4599f948c5dfdc77f3fc6d650d4cd35c47e66455914b1b8e7d4757"
+          ],
+          "provenanceDigest": "sha256:b4c90134fe020fc6e3f9e5a10826f1f6a08a65ca481a25b7fbd5bcae506693d4"
+        }
+      ]
+    },
+    "packages": [
+      {
+        "release": {
+          "package": {
+            "scope": "demo",
+            "name": "maths"
+          },
+          "epoch": 1,
+          "ordinal": 2,
+          "digest": "sha256:bece9638d8acc5271e28944cba06dac6a161621592faf6bca5e3a48c7350b39f"
+        },
+        "sourceDigest": "sha256:8cad48375ce3a850639c3b94aeb9ee61e6a123926f1ed60e66081248d2cf1d12",
+        "manifestDigest": "sha256:94b73481640df98e2eef4576bf625ba2101792540b32c323634a1b9a1a658cfe",
+        "buildPlanDigest": "sha256:7efed15475a4032b13ec4e412ddf9501268a1921a3ca2e40270606659f5b29c6",
+        "dependencies": [],
+        "authorizationSetDigest": "sha256:538c2ab31e9598c3bdf98a4d29b4b4f97262ca222b9af9bb8814d52f15828706",
+        "provenanceDigest": "sha256:ad25b4b3940874e6027befeccffbb4431d106953e95c1cf3dc29ce9ee5365403",
+        "sbomDigest": "sha256:a334bf329e77502a9b8163f4ea6b0b5bd199f5d90013cd56eb55cf5e3c9d34b6",
+        "inferredCapabilities": []
+      }
+    ],
+    "proof": {
+      "policyDigest": "sha256:dcce9c2576be8892582edda4b3bedc924909a3ee20e1dc0fced970eee3f7f49a",
+      "decisions": [
+        {
+          "package": {
+            "scope": "demo",
+            "name": "maths"
+          },
+          "selectedDigest": "sha256:bece9638d8acc5271e28944cba06dac6a161621592faf6bca5e3a48c7350b39f",
+          "reasonCodes": [
+            "resolution.floor",
+            "resolution.newest-eligible"
+          ],
+          "antecedents": [
+            {
+              "scope": "demo",
+              "name": "report"
+            }
+          ]
+        }
+      ],
+      "proofDigest": "sha256:9afb515d44a7a67e7c296f994daf95a0c0621cf64dd197665e3da6c69137d5ac"
+    }
+  },
+  "canonical": "{\"context\":{\"buildEnvironment\":{\"clockPolicyDigest\":\"sha256:9ed577da95a861c91a275880938420145f65d05e6d47b03e1538aff3e40bdfbf\",\"compilerDigest\":\"sha256:d4def25990df497bc7a2bdc0082348d659ae81962b208ac36314fc57c9451a83\",\"cpuFeatureSetDigest\":\"sha256:3e11098c224482334c45d482734d95255df856b42a3bd0a883df92b1556cb987\",\"filesystemOrderPolicyDigest\":\"sha256:be99f25cc4c926b3b6ed5940b2896544479f854906702f54674e92a72c3685b6\",\"flagsDigest\":\"sha256:c1ec781f2b0ab136e6a9171e19d5c830cb8874ec2d34aa7071fbaadb7caa8f13\",\"kernelAbiDigest\":\"sha256:7481905f2d7df9309362ead3260f40fe16cf5f120c8cb6c2bb0a4b06c70e422a\",\"localePolicyDigest\":\"sha256:e209791d511c2969f17f11cb3a92d5bbea7e97d2c52063677425131f723cc44c\",\"normalizedEnvironmentDigest\":\"sha256:19e15c332909a1ae2f348f915f66986c7f0541aedab1385f61ea5746d526b603\",\"randomSeedDigest\":\"sha256:4712bfaf38d7b17423467b24f2fcc961c8024b45c3f1b7623d784583255a286e\",\"randomnessPolicyDigest\":\"sha256:6414a12946167bbb9520d99904e80653c296147f1128d4731d4a1e5d8400b349\",\"runtimeDigest\":\"sha256:40f139ce85d0e2b3a4919d31795eb27bfdd1fb39930201f72fe825c429ba010b\",\"sandboxImageDigest\":\"sha256:ad460aaac512db91ebf55204eaf233e0cd67e6e2d1612c9ca57ec546bfadbfcc\",\"sandboxPolicyDigest\":\"sha256:52eef155ce9e397e2de37a732bedb5788514f00bca95c29944f470502d332282\",\"sdkSysrootClosure\":[\"sha256:5822da0dd420a1caeb190003b4da24d3fb3bd20a464ce52e5f226651251a9c85\"],\"targetSpecDigest\":\"sha256:a356e8996f1b54ab2f0b05bcf4429117e5cb82f5e576a1c7992f17a9f7373cdb\",\"timezonePolicyDigest\":\"sha256:8270d2390e0d9da25b5b942541abc2648ce0806a80161f77ae518d7902b4a3c8\",\"toolchainClosure\":[\"sha256:37e20d6717c6ec468754389d2dbbe6f943bd82808d11f533b2eea7bac1f710d5\",\"sha256:acf49428c0eed35acd56f2d2379e6c12c726fc8ee69a7c360b77ba654477381b\"]},\"catalogAsOf\":\"2026-10-02T12:30:45.123Z\",\"catalogSnapshot\":\"sha256:d8522cfbd81aba700a9eb44fff517542c55a83f135862f8239b3dea5f1a2c0ad\",\"logCheckpointDigest\":\"sha256:92d39bde1bbbae25aa8a76acec24787aa40ace591b09449b001d216330adcf0d\",\"providerCatalogDigest\":\"sha256:cfda255f996f50a65b755e256ea39a180b051bf74378cdca1eecc78c699c1ffe\",\"providerEntries\":[{\"artifactDigest\":\"sha256:f6378fb256e3b12452bffcd6371f8d51352b8165c054da62e81d6ff97855b55f\",\"capability\":\"net.http\",\"closureDigests\":[\"sha256:3933f1d945957a6d40512ca3afe7f1e68f4dc793af44aada2330a262bf8c3dc2\",\"sha256:e089ef523b4599f948c5dfdc77f3fc6d650d4cd35c47e66455914b1b8e7d4757\"],\"provenanceDigest\":\"sha256:b4c90134fe020fc6e3f9e5a10826f1f6a08a65ca481a25b7fbd5bcae506693d4\",\"provider\":\"libcurl\",\"revision\":4,\"targetSpecDigest\":\"sha256:a356e8996f1b54ab2f0b05bcf4429117e5cb82f5e576a1c7992f17a9f7373cdb\"}],\"releaseStatusMetadataDigest\":\"sha256:8a94be078eb98d7c521e6bc2a570129f0dba51dc144bad69d1fe467ba67879a7\",\"solverPolicy\":\"sha256:dcce9c2576be8892582edda4b3bedc924909a3ee20e1dc0fced970eee3f7f49a\",\"systemInputs\":[{\"artifactDigest\":\"sha256:f6378fb256e3b12452bffcd6371f8d51352b8165c054da62e81d6ff97855b55f\",\"capability\":\"net.http\",\"closureDigests\":[\"sha256:3933f1d945957a6d40512ca3afe7f1e68f4dc793af44aada2330a262bf8c3dc2\",\"sha256:e089ef523b4599f948c5dfdc77f3fc6d650d4cd35c47e66455914b1b8e7d4757\"],\"provenanceDigest\":\"sha256:b4c90134fe020fc6e3f9e5a10826f1f6a08a65ca481a25b7fbd5bcae506693d4\",\"provider\":\"libcurl\",\"revision\":4}],\"tufRootDigest\":\"sha256:5eed3a30587de1bc9440b60971aeec6fe860c2304d6bfc8fd02db06b7848edab\",\"tufRootVersion\":3,\"tufSnapshotDigest\":\"sha256:3112424f430a80e412c214f751a50d7e65e0b394bf9b87bed92f07d856fea43d\",\"tufTimestampDigest\":\"sha256:62f886b2bb31d7a6eef3a8872c38104ab60bca54252ebf8d2a9ab87382abc2fc\",\"verificationBundleDigest\":\"sha256:b5d91112ac09dfc75375deed0eabbc7d7b687097d5a66dfd95521590e1f5fe78\"},\"format\":1,\"packages\":[{\"authorizationSetDigest\":\"sha256:538c2ab31e9598c3bdf98a4d29b4b4f97262ca222b9af9bb8814d52f15828706\",\"buildPlanDigest\":\"sha256:7efed15475a4032b13ec4e412ddf9501268a1921a3ca2e40270606659f5b29c6\",\"dependencies\":[],\"inferredCapabilities\":[],\"manifestDigest\":\"sha256:94b73481640df98e2eef4576bf625ba2101792540b32c323634a1b9a1a658cfe\",\"provenanceDigest\":\"sha256:ad25b4b3940874e6027befeccffbb4431d106953e95c1cf3dc29ce9ee5365403\",\"release\":{\"digest\":\"sha256:bece9638d8acc5271e28944cba06dac6a161621592faf6bca5e3a48c7350b39f\",\"epoch\":1,\"ordinal\":2,\"package\":{\"name\":\"maths\",\"scope\":\"demo\"}},\"sbomDigest\":\"sha256:a334bf329e77502a9b8163f4ea6b0b5bd199f5d90013cd56eb55cf5e3c9d34b6\",\"sourceDigest\":\"sha256:8cad48375ce3a850639c3b94aeb9ee61e6a123926f1ed60e66081248d2cf1d12\"}],\"proof\":{\"decisions\":[{\"antecedents\":[{\"name\":\"report\",\"scope\":\"demo\"}],\"package\":{\"name\":\"maths\",\"scope\":\"demo\"},\"reasonCodes\":[\"resolution.floor\",\"resolution.newest-eligible\"],\"selectedDigest\":\"sha256:bece9638d8acc5271e28944cba06dac6a161621592faf6bca5e3a48c7350b39f\"}],\"policyDigest\":\"sha256:dcce9c2576be8892582edda4b3bedc924909a3ee20e1dc0fced970eee3f7f49a\",\"proofDigest\":\"sha256:9afb515d44a7a67e7c296f994daf95a0c0621cf64dd197665e3da6c69137d5ac\"},\"root\":{\"dependencies\":[{\"Runtime\":{\"requirement\":{\"epoch\":1,\"minimumOrdinal\":1,\"package\":{\"name\":\"maths\",\"scope\":\"demo\"}}}},{\"Test\":{\"requirement\":{\"epoch\":1,\"minimumOrdinal\":1,\"package\":{\"name\":\"greeting\",\"scope\":\"demo\"}}}}],\"inferredCapabilities\":[\"net.http\"],\"manifestDigest\":\"sha256:e79f867f038054cb369a62aba515a9c0aa5c0e9951f8ef86514a3d5739fb0d4c\",\"package\":{\"name\":\"report\",\"scope\":\"demo\"},\"relativePath\":\"packages/report\",\"sourceDigest\":\"sha256:a7a65655016bb7bff859bbd5f5a6561e6f231508ffccefa7bb4f5bdaf0aa5bdf\"}}",
+  "canonicalLength": 5346,
+  "domain": "osprey.dependency-selection.v1",
+  "digest": "sha256:fe6103d2f4c515f2587923afe454d03bd0ff4d6e014b7fb7d2bb5a39eeafd3c0"
+}

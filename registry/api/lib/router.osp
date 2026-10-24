@@ -22,6 +22,12 @@ module Router {
     let methodCode = "api.method-not-allowed"
     let unknownReleaseCode = "catalog.unknown-release"
     let unknownPackageCode = "catalog.unknown-package"
+    let nosniff = "X-Content-Type-Options: nosniff"
+    let csp = "Content-Security-Policy: default-src 'none'"
+    let referrer = "Referrer-Policy: no-referrer"
+    let immutableCache = "Cache-Control: public, max-age=31536000, immutable"
+    let noCache = "Cache-Control: no-cache"
+    let allowGet = "Allow: GET"
 
     fn member(key, value) = Json::Member { key: key, value: value }
     fn str(text) = Json::Str { text: text }
@@ -43,6 +49,16 @@ module Router {
     fn notFound() = problemResponse(notFoundCode, notFoundStatus, "Not found")
 
     fn methodNotAllowed() = problemResponse(methodCode, methodStatus, "Method not allowed")
+
+    fn cacheHeader(response: Response) = if response.etag == "" { noCache } else { immutableCache }
+
+    fn allowHeaders(response: Response) -> List<string> = if response.status == methodStatus { [allowGet] } else { [] }
+
+    /// The hardening headers beyond `Content-Type` and `ETag`, in a fixed
+    /// order: a digest-addressed response is immutable, every other response
+    /// is revalidated, and a 405 names the one allowed method. Implements S2
+    /// and S3 of [PACKAGE-HARDENING].
+    export fn hardeningHeaders(response: Response) = listConcat([nosniff, csp, referrer, cacheHeader(response)], allowHeaders(response))
 
     /// A reason code from the catalog, as its problem response.
     fn problemOf(code) = match code {

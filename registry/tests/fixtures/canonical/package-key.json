@@ -1,0 +1,11 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "A package key: scope then name.",
+  "type": "PackageKey",
+  "value": {
+    "scope": "demo",
+    "name": "report"
+  },
+  "canonical": "{\"name\":\"report\",\"scope\":\"demo\"}",
+  "canonicalLength": 32
+}

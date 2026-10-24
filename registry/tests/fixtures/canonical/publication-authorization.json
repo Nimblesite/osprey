@@ -1,0 +1,10 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "Proof-free final authorization over the signed challenge envelope.",
+  "type": "PublicationAuthorization",
+  "value": {
+    "challengeEnvelopeDigest": "sha256:f1ed39feaf9fae50d9e8c629d5d62d78d11db05bd469bc35e30c2f3c8ebc2f42"
+  },
+  "canonical": "{\"challengeEnvelopeDigest\":\"sha256:f1ed39feaf9fae50d9e8c629d5d62d78d11db05bd469bc35e30c2f3c8ebc2f42\"}",
+  "canonicalLength": 101
+}

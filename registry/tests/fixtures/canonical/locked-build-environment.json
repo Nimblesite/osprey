@@ -1,0 +1,31 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "Every pinned build input; closure lists sorted and duplicate-free.",
+  "type": "LockedBuildEnvironment",
+  "value": {
+    "compilerDigest": "sha256:d4def25990df497bc7a2bdc0082348d659ae81962b208ac36314fc57c9451a83",
+    "runtimeDigest": "sha256:40f139ce85d0e2b3a4919d31795eb27bfdd1fb39930201f72fe825c429ba010b",
+    "targetSpecDigest": "sha256:a356e8996f1b54ab2f0b05bcf4429117e5cb82f5e576a1c7992f17a9f7373cdb",
+    "cpuFeatureSetDigest": "sha256:3e11098c224482334c45d482734d95255df856b42a3bd0a883df92b1556cb987",
+    "flagsDigest": "sha256:c1ec781f2b0ab136e6a9171e19d5c830cb8874ec2d34aa7071fbaadb7caa8f13",
+    "sandboxPolicyDigest": "sha256:52eef155ce9e397e2de37a732bedb5788514f00bca95c29944f470502d332282",
+    "sandboxImageDigest": "sha256:ad460aaac512db91ebf55204eaf233e0cd67e6e2d1612c9ca57ec546bfadbfcc",
+    "normalizedEnvironmentDigest": "sha256:19e15c332909a1ae2f348f915f66986c7f0541aedab1385f61ea5746d526b603",
+    "clockPolicyDigest": "sha256:9ed577da95a861c91a275880938420145f65d05e6d47b03e1538aff3e40bdfbf",
+    "randomnessPolicyDigest": "sha256:6414a12946167bbb9520d99904e80653c296147f1128d4731d4a1e5d8400b349",
+    "randomSeedDigest": "sha256:4712bfaf38d7b17423467b24f2fcc961c8024b45c3f1b7623d784583255a286e",
+    "localePolicyDigest": "sha256:e209791d511c2969f17f11cb3a92d5bbea7e97d2c52063677425131f723cc44c",
+    "timezonePolicyDigest": "sha256:8270d2390e0d9da25b5b942541abc2648ce0806a80161f77ae518d7902b4a3c8",
+    "filesystemOrderPolicyDigest": "sha256:be99f25cc4c926b3b6ed5940b2896544479f854906702f54674e92a72c3685b6",
+    "kernelAbiDigest": "sha256:7481905f2d7df9309362ead3260f40fe16cf5f120c8cb6c2bb0a4b06c70e422a",
+    "toolchainClosure": [
+      "sha256:37e20d6717c6ec468754389d2dbbe6f943bd82808d11f533b2eea7bac1f710d5",
+      "sha256:acf49428c0eed35acd56f2d2379e6c12c726fc8ee69a7c360b77ba654477381b"
+    ],
+    "sdkSysrootClosure": [
+      "sha256:5822da0dd420a1caeb190003b4da24d3fb3bd20a464ce52e5f226651251a9c85"
+    ]
+  },
+  "canonical": "{\"clockPolicyDigest\":\"sha256:9ed577da95a861c91a275880938420145f65d05e6d47b03e1538aff3e40bdfbf\",\"compilerDigest\":\"sha256:d4def25990df497bc7a2bdc0082348d659ae81962b208ac36314fc57c9451a83\",\"cpuFeatureSetDigest\":\"sha256:3e11098c224482334c45d482734d95255df856b42a3bd0a883df92b1556cb987\",\"filesystemOrderPolicyDigest\":\"sha256:be99f25cc4c926b3b6ed5940b2896544479f854906702f54674e92a72c3685b6\",\"flagsDigest\":\"sha256:c1ec781f2b0ab136e6a9171e19d5c830cb8874ec2d34aa7071fbaadb7caa8f13\",\"kernelAbiDigest\":\"sha256:7481905f2d7df9309362ead3260f40fe16cf5f120c8cb6c2bb0a4b06c70e422a\",\"localePolicyDigest\":\"sha256:e209791d511c2969f17f11cb3a92d5bbea7e97d2c52063677425131f723cc44c\",\"normalizedEnvironmentDigest\":\"sha256:19e15c332909a1ae2f348f915f66986c7f0541aedab1385f61ea5746d526b603\",\"randomSeedDigest\":\"sha256:4712bfaf38d7b17423467b24f2fcc961c8024b45c3f1b7623d784583255a286e\",\"randomnessPolicyDigest\":\"sha256:6414a12946167bbb9520d99904e80653c296147f1128d4731d4a1e5d8400b349\",\"runtimeDigest\":\"sha256:40f139ce85d0e2b3a4919d31795eb27bfdd1fb39930201f72fe825c429ba010b\",\"sandboxImageDigest\":\"sha256:ad460aaac512db91ebf55204eaf233e0cd67e6e2d1612c9ca57ec546bfadbfcc\",\"sandboxPolicyDigest\":\"sha256:52eef155ce9e397e2de37a732bedb5788514f00bca95c29944f470502d332282\",\"sdkSysrootClosure\":[\"sha256:5822da0dd420a1caeb190003b4da24d3fb3bd20a464ce52e5f226651251a9c85\"],\"targetSpecDigest\":\"sha256:a356e8996f1b54ab2f0b05bcf4429117e5cb82f5e576a1c7992f17a9f7373cdb\",\"timezonePolicyDigest\":\"sha256:8270d2390e0d9da25b5b942541abc2648ce0806a80161f77ae518d7902b4a3c8\",\"toolchainClosure\":[\"sha256:37e20d6717c6ec468754389d2dbbe6f943bd82808d11f533b2eea7bac1f710d5\",\"sha256:acf49428c0eed35acd56f2d2379e6c12c726fc8ee69a7c360b77ba654477381b\"]}",
+  "canonicalLength": 1693
+}

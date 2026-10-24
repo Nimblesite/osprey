@@ -1,0 +1,16 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "ReleaseId.digest equals H(osprey.release.v1, its identity envelope).",
+  "type": "ReleaseId",
+  "value": {
+    "package": {
+      "scope": "demo",
+      "name": "maths"
+    },
+    "epoch": 1,
+    "ordinal": 2,
+    "digest": "sha256:bece9638d8acc5271e28944cba06dac6a161621592faf6bca5e3a48c7350b39f"
+  },
+  "canonical": "{\"digest\":\"sha256:bece9638d8acc5271e28944cba06dac6a161621592faf6bca5e3a48c7350b39f\",\"epoch\":1,\"ordinal\":2,\"package\":{\"name\":\"maths\",\"scope\":\"demo\"}}",
+  "canonicalLength": 148
+}

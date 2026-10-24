@@ -1,0 +1,61 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "Finding UUIDs and attestation digests sorted.",
+  "type": "ReleaseAssessment",
+  "value": {
+    "release": {
+      "package": {
+        "scope": "demo",
+        "name": "report"
+      },
+      "epoch": 1,
+      "ordinal": 1,
+      "digest": "sha256:ac86feff5aaabe6d40aeadd8dba484dbfa499c33bc33fd4235944a124f727b51"
+    },
+    "verdict": {
+      "NeedsReview": {
+        "findingIds": [
+          "0f8fad5b-d9cb-469f-a165-70867728950e",
+          "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+        ]
+      }
+    },
+    "maintenance": {
+      "score": 7350,
+      "confidence": 8200,
+      "adjustedScore": 6027,
+      "vulnerabilityResponse": 9000,
+      "vulnerabilityResponseConfidence": 9500,
+      "continuity": 6000,
+      "continuityConfidence": 7000,
+      "testEffectiveness": 8100,
+      "testEffectivenessConfidence": 9000,
+      "reviewAndStaticHygiene": 7000,
+      "reviewAndStaticHygieneConfidence": 8000,
+      "communityResponsiveness": 5500,
+      "communityResponsivenessConfidence": 6000,
+      "methodology": "sha256:9098d59452e0719e57de06aaa21a47f05ed6923b398f3a6a6b0dd8613301f899",
+      "evidence": [
+        {
+          "kind": "advisory",
+          "source": "osv",
+          "digest": "sha256:f5c4275cbde8d427049dd276ea49e69c12e955e14d1ca364ac531497da32a8b2",
+          "observedAt": "2026-10-01T00:00:00.000Z",
+          "expiresAt": "2026-11-01T00:00:00.000Z"
+        },
+        {
+          "kind": "test-run",
+          "source": "builder-a",
+          "digest": "sha256:6723ad4024f5a17f19403e7a1ff25625f4dd2777d4d8bf63cb1925016cc6f79f",
+          "observedAt": "2026-10-02T12:30:45.123Z"
+        }
+      ]
+    },
+    "attestations": [
+      "sha256:ce1a8ed90263fc987cffdb3a28f58af8b09f183ebf0a15d9f105d9037de5bb4a",
+      "sha256:dee8e6ad007533af99c7639f74bf3cb44cf1be0de65484b8e1cf3bce19779501"
+    ]
+  },
+  "canonical": "{\"attestations\":[\"sha256:ce1a8ed90263fc987cffdb3a28f58af8b09f183ebf0a15d9f105d9037de5bb4a\",\"sha256:dee8e6ad007533af99c7639f74bf3cb44cf1be0de65484b8e1cf3bce19779501\"],\"maintenance\":{\"adjustedScore\":6027,\"communityResponsiveness\":5500,\"communityResponsivenessConfidence\":6000,\"confidence\":8200,\"continuity\":6000,\"continuityConfidence\":7000,\"evidence\":[{\"digest\":\"sha256:f5c4275cbde8d427049dd276ea49e69c12e955e14d1ca364ac531497da32a8b2\",\"expiresAt\":\"2026-11-01T00:00:00.000Z\",\"kind\":\"advisory\",\"observedAt\":\"2026-10-01T00:00:00.000Z\",\"source\":\"osv\"},{\"digest\":\"sha256:6723ad4024f5a17f19403e7a1ff25625f4dd2777d4d8bf63cb1925016cc6f79f\",\"kind\":\"test-run\",\"observedAt\":\"2026-10-02T12:30:45.123Z\",\"source\":\"builder-a\"}],\"methodology\":\"sha256:9098d59452e0719e57de06aaa21a47f05ed6923b398f3a6a6b0dd8613301f899\",\"reviewAndStaticHygiene\":7000,\"reviewAndStaticHygieneConfidence\":8000,\"score\":7350,\"testEffectiveness\":8100,\"testEffectivenessConfidence\":9000,\"vulnerabilityResponse\":9000,\"vulnerabilityResponseConfidence\":9500},\"release\":{\"digest\":\"sha256:ac86feff5aaabe6d40aeadd8dba484dbfa499c33bc33fd4235944a124f727b51\",\"epoch\":1,\"ordinal\":1,\"package\":{\"name\":\"report\",\"scope\":\"demo\"}},\"verdict\":{\"NeedsReview\":{\"findingIds\":[\"0f8fad5b-d9cb-469f-a165-70867728950e\",\"7c9e6679-7425-40de-944b-e07fc1f90ae7\"]}}}",
+  "canonicalLength": 1293
+}

@@ -1,0 +1,298 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "JSON values that SchemaCheck must accept for the named type; digests are 64 lowercase hex, the datetime is 2024-01-02T03:04:05.006Z, and the uuid is 123e4567-e89b-12d3-a456-426614174000.",
+  "cases": [
+    {
+      "type": "PackageKey",
+      "value": { "scope": "finch", "name": "ledger" }
+    },
+    {
+      "type": "SourceRef",
+      "value": { "forge": "github", "repositoryId": "finch/ledger", "subdirectory": "src", "commit": "deadbeef" }
+    },
+    {
+      "type": "ReleaseId",
+      "value": { "package": { "scope": "finch", "name": "ledger" }, "epoch": 1, "ordinal": 2, "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+    },
+    {
+      "type": "RepositoryBinding",
+      "value": {
+        "package": { "scope": "finch", "name": "ledger" },
+        "forge": "github",
+        "repositoryId": "finch/ledger",
+        "subdirectory": "src",
+        "releaseBranch": "main",
+        "authorizationExpiresAt": "2024-01-02T03:04:05.006Z",
+        "nonce": "n"
+      }
+    },
+    {
+      "type": "CredentialProof",
+      "value": {
+        "SigstoreCi": {
+          "issuer": "issuer",
+          "subject": "subject",
+          "repository": "repo",
+          "workflow": "workflow",
+          "gitRef": "ref",
+          "certificateDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "transparencyBundleDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "signatureDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "type": "CredentialProof",
+      "value": {
+        "WebAuthnPasskey": {
+          "credentialId": "cred",
+          "relyingPartyId": "rp",
+          "origin": "https://example.test",
+          "userVerified": true,
+          "assertionDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "type": "EnvelopeProof",
+      "value": {
+        "Publisher": {
+          "credential": {
+            "SigstoreCi": {
+              "issuer": "issuer",
+              "subject": "subject",
+              "repository": "repo",
+              "workflow": "workflow",
+              "gitRef": "ref",
+              "certificateDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "transparencyBundleDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "signatureDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "EnvelopeProof",
+      "value": { "ForgeAdmin": { "installationId": "i", "repositoryId": "r", "attestationDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } }
+    },
+    {
+      "type": "EnvelopeProof",
+      "value": { "RegistryRole": { "role": "r", "keyId": "k", "signatureDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } }
+    },
+    {
+      "type": "CompatibilityClaim",
+      "value": { "Compatible": { "previous": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } }
+    },
+    {
+      "type": "CompatibilityClaim",
+      "value": { "Breaking": { "previousEpoch": 1 } }
+    },
+    {
+      "type": "CompatibilityClaim",
+      "value": { "Initial": { "package": { "scope": "finch", "name": "ledger" } } }
+    },
+    {
+      "type": "ReleaseState",
+      "value": { "Submitted": { "submittedAt": "2024-01-02T03:04:05.006Z" } }
+    },
+    {
+      "type": "ReleaseState",
+      "value": { "Quarantined": { "reason": "review" } }
+    },
+    {
+      "type": "ReleaseState",
+      "value": { "Published": { "publishedAt": "2024-01-02T03:04:05.006Z" } }
+    },
+    {
+      "type": "ActivationState",
+      "value": { "Eligible": {} }
+    },
+    {
+      "type": "ActivationState",
+      "value": { "Yanked": {} }
+    },
+    {
+      "type": "ActivationState",
+      "value": { "Revoked": {} }
+    },
+    {
+      "type": "PackageAssetKind",
+      "value": { "Utf8Text": {} }
+    },
+    {
+      "type": "PackageAssetKind",
+      "value": { "Json": {} }
+    },
+    {
+      "type": "PackageAssetKind",
+      "value": { "Png": {} }
+    },
+    {
+      "type": "PackageAssetRole",
+      "value": { "Documentation": { "kind": { "Utf8Text": {} } } }
+    },
+    {
+      "type": "PackageAssetRole",
+      "value": { "RuntimeData": { "kind": { "Json": {} }, "requiredCapability": "asset.read" } }
+    },
+    {
+      "type": "DependencyEdge",
+      "value": { "Runtime": { "requirement": { "package": { "scope": "finch", "name": "ledger" }, "epoch": 1, "minimumOrdinal": 0 } } }
+    },
+    {
+      "type": "DependencyEdge",
+      "value": { "Build": { "requirement": { "package": { "scope": "finch", "name": "ledger" }, "epoch": 1, "minimumOrdinal": 0 } } }
+    },
+    {
+      "type": "DependencyEdge",
+      "value": { "Test": { "requirement": { "package": { "scope": "finch", "name": "ledger" }, "epoch": 1, "minimumOrdinal": 0 } } }
+    },
+    {
+      "type": "SourceFlavor",
+      "value": { "Default": {} }
+    },
+    {
+      "type": "SourceFlavor",
+      "value": { "Ml": {} }
+    },
+    {
+      "type": "DependencySelectionRef",
+      "value": { "Release": { "selectionDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } }
+    },
+    {
+      "type": "DependencySelectionRef",
+      "value": { "Development": { "developmentLockDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } }
+    },
+    {
+      "type": "OutputArtifactKind",
+      "value": { "Library": {} }
+    },
+    {
+      "type": "OutputArtifactKind",
+      "value": { "Executable": {} }
+    },
+    {
+      "type": "OutputArtifactKind",
+      "value": { "TestReport": {} }
+    },
+    {
+      "type": "OutputArtifactKind",
+      "value": { "Sbom": {} }
+    },
+    {
+      "type": "ScanVerdict",
+      "value": { "NoBlockingFinding": { "observedAt": "2024-01-02T03:04:05.006Z" } }
+    },
+    {
+      "type": "ScanVerdict",
+      "value": { "NeedsReview": { "findingIds": ["123e4567-e89b-12d3-a456-426614174000"] } }
+    },
+    {
+      "type": "ScanVerdict",
+      "value": { "Blocked": { "findingIds": [] } }
+    },
+    {
+      "type": "VerificationStatus",
+      "value": { "Revoked": { "advisory": "adv" } }
+    },
+    {
+      "type": "VerificationStatus",
+      "value": { "Incomplete": { "reason": "r" } }
+    },
+    {
+      "type": "VerificationStatus",
+      "value": { "Invalid": { "reason": "r" } }
+    },
+    {
+      "type": "VerificationStatus",
+      "value": { "ReproducibleAsOf": { "catalogAsOf": "2024-01-02T03:04:05.006Z", "checkpointDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bundleDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } }
+    },
+    {
+      "type": "VerificationStatus",
+      "value": {
+        "Current": {
+          "verifiedAt": "2024-01-02T03:04:05.006Z",
+          "bundle": {
+            "tufRootVersion": 1,
+            "roles": [],
+            "releaseStatuses": [],
+            "checkpoint": { "logId": "log", "treeSize": 0, "rootHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "issuedAt": "2024-01-02T03:04:05.006Z", "operatorSignatureDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+            "inclusionProofs": [],
+            "consistencyProof": { "logId": "log", "fromSize": 0, "toSize": 0, "hashes": [] },
+            "witnesses": [],
+            "crossLogReceiptDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "catalogSnapshot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "catalogAsOf": "2024-01-02T03:04:05.006Z",
+            "timestampExpiresAt": "2024-01-02T03:04:05.006Z",
+            "policyDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      }
+    },
+    {
+      "type": "LockedDevelopmentPackage",
+      "value": {
+        "Published": {
+          "release": {
+            "release": { "package": { "scope": "finch", "name": "ledger" }, "epoch": 1, "ordinal": 1, "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+            "sourceDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "manifestDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "buildPlanDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "dependencies": [],
+            "authorizationSetDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "provenanceDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "sbomDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "inferredCapabilities": []
+          }
+        }
+      }
+    },
+    {
+      "type": "LockedDevelopmentPackage",
+      "value": {
+        "Local": {
+          "package": { "scope": "finch", "name": "ledger" },
+          "epoch": 1,
+          "path": "src",
+          "manifestDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "dependencies": []
+        }
+      }
+    },
+    {
+      "type": "PackageManifest",
+      "value": {
+        "projectName": "p",
+        "sourceRoots": [],
+        "allowWildcardImports": false,
+        "testRoots": [],
+        "pythonSources": [],
+        "dependencies": [],
+        "systemRequirements": [],
+        "assets": []
+      }
+    },
+    {
+      "type": "PackageManifest",
+      "value": {
+        "projectName": "p",
+        "sourceRoots": ["src"],
+        "defaultNamespace": "ns",
+        "entry": "main.osp",
+        "flavor": { "Default": {} },
+        "allowWildcardImports": true,
+        "publication": { "package": { "scope": "finch", "name": "ledger" }, "licenseExpression": "MIT", "discovery": { "summary": "s", "keywords": ["a", "b"] } },
+        "testRoots": ["t"],
+        "pythonSources": ["src/model.py"],
+        "dependencies": [],
+        "systemRequirements": [],
+        "assets": []
+      }
+    },
+    {
+      "type": "PackageDiscoveryMetadata",
+      "value": { "summary": "s", "keywords": [] }
+    }
+  ]
+}

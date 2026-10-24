@@ -1,0 +1,22 @@
+namespace registry_tests;
+import registry_cli::Reports
+
+/// The console sanitizer of [PACKAGE-HARDENING] C7: every byte below 0x20
+/// and the byte 0x7F becomes `?`, everything else passes byte for byte.
+module ReportsTests {
+    fn cp(n) = fromCodePoint(n) ?: ""
+
+    fn escapes() = checkAll("reports: control bytes become ?", [
+        Reports::printable("plain line") == "plain line",
+        Reports::printable("") == "",
+        Reports::printable("a\e[2Jb") == "a?[2Jb",
+        Reports::printable("tab\there") == "tab?here",
+        Reports::printable("cr\rlf\n") == "cr?lf?",
+        Reports::printable(cp(127) + "x" + cp(1)) == "?x?",
+        Reports::printable("caf" + cp(233) + " " + cp(128512)) == "caf" + cp(233) + " " + cp(128512)
+    ])
+
+    export fn run() = {
+        test("reports: control bytes become ?", escapes)
+    }
+}

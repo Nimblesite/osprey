@@ -1,0 +1,177 @@
+namespace registry_tests;
+import registry::Identity
+import registry::Names
+import registry::Order
+import registry::Objective
+import registry::ManifestModel
+import registry::Candidates
+import registry::Explain
+import registry::Resolution
+
+/// A bounded exhaustive reference resolver used only as a test oracle. It is
+/// NOT the real CDCL resolver (that is `registry::Resolve`): it enumerates
+/// every assignment of one candidate release per activated package key, keeps
+/// those meeting every hard constraint of [PACKAGE-RESOLUTION], and picks the
+/// optimum by the objective restricted to what the fixtures carry —
+/// `(changedIdentities, nonRootPackageCount, sum L)` lexicographically, then
+/// the package tuple tie-break. The gates (`Candidates`) and the refutation
+/// explanation (`Explain`) are the shared definitions; what the oracle checks
+/// independently is the search and the optimum. Implements [PACKAGE-RESOLUTION].
+module GraphOracle {
+    // Entry/Requirement field accessors keep issue #273 receivers spelled out.
+    fn eRelease(e: Resolution::Entry) = e.release
+    fn eState(e: Resolution::Entry) = e.activation
+    fn eDeps(e: Resolution::Entry) = e.dependencies
+    fn rKey(r: Identity::ReleaseId) = r.key
+    fn rEpoch(r: Identity::ReleaseId) = r.epoch
+    fn rOrdinal(r: Identity::ReleaseId) = r.ordinal
+    fn reqKey(r: ManifestModel::Requirement) = r.package
+    fn reqEpoch(r: ManifestModel::Requirement) = r.epoch
+    fn reqFloor(r: ManifestModel::Requirement) = r.minimumOrdinal
+
+    fn emptyAssignment() = {
+        let none: List<Resolution::Entry> = []
+        none
+    }
+
+    fn emptyAssignments() = {
+        let none: List<List<Resolution::Entry>> = []
+        none
+    }
+
+    fn keySelected(selected, key) = foldList(selected, false, fn(found, e) => found || Names::same(rKey(eRelease(e)), key))
+
+    /// Exhaustive search: one release per reached key, then leaf validation.
+    fn search(graph, selected, pending, i, acc) -> List<List<Resolution::Entry>> = match i >= length(pending) {
+        true => if valid(graph, selected) { listAppend(acc, selected) } else { acc }
+        false => {
+            let key = listGet(pending, i) ?: Names::blank()
+            if keySelected(selected, key) {
+                search(graph, selected, pending, i + 1, acc)
+            } else {
+                foldList(Candidates::ofKey(graph, key), acc, fn(acc2, e) => search(graph, listAppend(selected, e), listConcat(pending, ManifestModel::activeTargets(eDeps(e))), i + 1, acc2))
+            }
+        }
+    }
+
+    fn entryFor(selected, key) = foldList(selected, Error { message: "missing" }, fn(acc, e) => match acc {
+        Success => acc
+        Error => if Names::same(rKey(eRelease(e)), key) { Success { value: e } } else { acc }
+    })
+
+    /// The root's requirements plus every selected release's active ones.
+    fn activeReqs(graph, selected) = listConcat(
+        mapList(graph.rootDeps, ManifestModel::requirementOf),
+        foldList(selected, [], fn(acc, e) => listConcat(acc, mapList(ManifestModel::activeEdges(eDeps(e)), ManifestModel::requirementOf)))
+    )
+
+    fn reaches(selected, from, to, visited) -> bool = {
+        let targets = ManifestModel::activeTargets(eDeps(entryFor(selected, from) ?: Resolution::blankEntry()))
+        foldList(targets, false, fn(found, t) => found || if Names::same(t, to) {
+            true
+        } else if listContains(visited, Names::display(t)) {
+            false
+        } else {
+            reaches(selected, t, to, listAppend(visited, Names::display(t)))
+        })
+    }
+
+    fn acyclic(selected) = foldList(selected, true, fn(ok, e) => ok && !reaches(selected, rKey(eRelease(e)), rKey(eRelease(e)), []))
+
+    fn edgeOk(selected, req) = {
+        let r = eRelease(entryFor(selected, reqKey(req)) ?: Resolution::blankEntry())
+        reqEpoch(req) == rEpoch(r) && rOrdinal(r) >= reqFloor(req)
+    }
+
+    fn nodeOk(graph, e) = Candidates::stateOk(graph, e) && Candidates::targetOk(graph, e) && Candidates::capsOk(graph, e)
+
+    /// Every hard constraint of [PACKAGE-RESOLUTION] the fixtures carry.
+    fn valid(graph, selected) = {
+        let edgesOk = foldList(activeReqs(graph, selected), true, fn(ok, req) => ok && edgeOk(selected, req))
+        let nodesOk = foldList(selected, true, fn(ok, e) => ok && nodeOk(graph, e))
+        edgesOk && nodesOk && acyclic(selected)
+    }
+
+    fn selectedReleases(selected) = mapList(selected, eRelease)
+
+    fn findByKey(releases, key) = foldList(releases, Error { message: "missing" }, fn(acc, r) => match acc {
+        Success => acc
+        Error => if Names::same(rKey(r), key) { Success { value: r } } else { acc }
+    })
+
+    /// Package keys whose selected identity is added, removed, or differs.
+    fn changedCount(graph, selected) = {
+        let sel = selectedReleases(selected)
+        let removedChanged = foldList(graph.current, 0, fn(acc, c) => match findByKey(sel, rKey(c)) {
+            Success { value } => acc + (if Identity::same(value, c) { 0 } else { 1 })
+            Error => acc + 1
+        })
+        let added = foldList(sel, 0, fn(acc, s) => match findByKey(graph.current, rKey(s)) {
+            Success => acc
+            Error => acc + 1
+        })
+        removedChanged + added
+    }
+
+    /// `M`: greatest eligible ordinal, plus a captured yank's own ordinal.
+    fn greatestOrdinal(graph, key, e) = {
+        let eligibles = filterList(Candidates::ofKey(graph, key), fn(c) => eState(c) == "Eligible")
+        let m = foldList(eligibles, 0, fn(acc, c) => if rOrdinal(eRelease(c)) > acc { rOrdinal(eRelease(c)) } else { acc })
+        match eState(e) == "Yanked" && Candidates::inCurrent(graph, eRelease(e)) {
+            true => if rOrdinal(eRelease(e)) > m { rOrdinal(eRelease(e)) } else { m }
+            false => m
+        }
+    }
+
+    fn lagOf(graph, e) = Objective::lag(greatestOrdinal(graph, rKey(eRelease(e)), e), rOrdinal(eRelease(e)))
+
+    fn sumLag(graph, selected) = foldList(selected, 0, fn(acc, e) => acc + lagOf(graph, e))
+
+    /// The objective restricted to fixture-carried facts; V/D/U/E are absent.
+    fn cost(graph, selected) = Objective::Cost {
+        vulnerability: 0,
+        overdue: 0,
+        unknown: 0,
+        evidence: 0,
+        changed: changedCount(graph, selected),
+        size: length(selected),
+        lag: sumLag(graph, selected)
+    }
+
+    fn sortedBy(releases, order) = {
+        let at = fn(i) => listGet(releases, i) ?: Identity::blank()
+        mapList(Order::permutation(length(releases), fn(i, j) => order(at(i), at(j))), fn(i) => at(i))
+    }
+
+    fn tailReleases(xs) = range(1, length(xs)) |> map(fn(i) => listGet(xs, i) ?: Identity::blank()) |> toList
+
+    fn compareReleaseLists(a, b) -> int = match isEmpty(a) || isEmpty(b) {
+        true => Order::compareInts(length(a), length(b))
+        false => {
+            let head = Objective::comparePackageTie(listGet(a, 0) ?: Identity::blank(), listGet(b, 0) ?: Identity::blank())
+            if head == 0 { compareReleaseLists(tailReleases(a), tailReleases(b)) } else { head }
+        }
+    }
+
+    fn tieOrder(selected) = sortedBy(selectedReleases(selected), Objective::comparePackageTie)
+
+    fn better(graph, a, b) = {
+        let cmp = Objective::compare(cost(graph, a), cost(graph, b))
+        if cmp < 0 { true }
+        else if cmp > 0 { false }
+        else { compareReleaseLists(tieOrder(a), tieOrder(b)) < 0 }
+    }
+
+    fn tailEntries(xs) = range(1, length(xs)) |> map(fn(i) => listGet(xs, i) ?: emptyAssignment()) |> toList
+
+    fn bestOf(graph, all) = foldList(tailEntries(all), listGet(all, 0) ?: emptyAssignment(), fn(best, a) => if better(graph, a, best) { a } else { best })
+
+    /// Solve one graph: the optimal lock, or its stable explanation.
+    export fn solve(graph: Resolution::Graph) = {
+        let all = search(graph, emptyAssignment(), ManifestModel::targets(graph.rootDeps), 0, emptyAssignments())
+        match isEmpty(all) {
+            true => Explain::of(graph)
+            false => Resolution::Lock { releases: sortedBy(selectedReleases(bestOf(graph, all)), Identity::compare) }
+        }
+    }
+}

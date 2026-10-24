@@ -288,8 +288,8 @@ module FetchTests {
         checkAll("dispatch routes fetch and passes the remaining words", [
             d.report.status == 0,
             line(d.report, 0) == "fetched: @finch/ledger@e2.r2#${digestOf(listGet(rs, 3) ?: missingServed())}",
-            bare.report.status == 2,
-            line(bare.report, 0) == "fetch.usage"
+            bare.report.status == 1,
+            line(bare.report, 0) == "install.no-lock fixture: fetch never reads"
         ])
     }
 

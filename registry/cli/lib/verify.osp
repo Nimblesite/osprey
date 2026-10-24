@@ -1,0 +1,92 @@
+namespace registry_cli;
+import registry_host::Host
+import registry_cli::Reports
+import registry_cli::Project
+import registry_cli::Lockfile
+import registry_cli::Fetch
+import registry_cli::Install
+import registry::ManifestJson
+import registry::Names
+
+/// `osprey-pkg verify --offline` (bare `verify` is the same): check
+/// `osprey.lock` against the manifest and the installed trees without touching
+/// the network. Every finding is printed and the status is 1; a clean lock
+/// prints `verified N packages` and the status is 0. Implements the offline
+/// audit of [PACKAGE-FOLDER-REGISTRY].
+module Verify {
+    let failStatus = 1
+    let usageCode = "verify.usage"
+    let noLockCode = "verify.no-lock"
+    let manifestDigestCode = "verify.manifest-digest"
+    let dependenciesCode = "verify.dependencies"
+    let missingCode = "verify.missing"
+    let digestCode = "verify.digest"
+
+    type CommandLine = { project: string }
+
+    let usageText = ["usage: osprey-pkg verify [--offline] [--project <dir>]"]
+
+    fn usageReport() = Reports::usage(listPrepend(usageText, usageCode))
+
+    fn parseArgs(args, i, cmd) -> Result<CommandLine, string> = match i >= length(args) {
+        true => Success { value: cmd }
+        false => match listGet(args, i) ?: "" {
+            "--offline" => parseArgs(args, i + 1, cmd)
+            "--project" => if i + 1 >= length(args) { Error { message: usageCode } } else { parseArgs(args, i + 2, CommandLine { project: listGet(args, i + 1) ?: "" }) }
+            _ => Error { message: usageCode }
+        }
+    }
+
+    fn oneLine(ok, line) = if ok { [] } else { [line] }
+
+    fn manifestLines(lock, manifest, digest) = listConcat(
+        oneLine(digest == lock.root.manifestDigest, manifestDigestCode),
+        oneLine(Lockfile::dependenciesCanonical(lock.root.dependencies) == Lockfile::dependenciesCanonical(manifest.dependencies), dependenciesCode))
+
+    fn digestMatches(pkg, walk, dir) = match Install::digestOfWalked(walk, dir) {
+        Success { value } => value == pkg.release.digest
+        Error => false
+    }
+
+    fn packageFindings(project, pkg: Lockfile::Package) = {
+        let dir = Fetch::installDirAt(project, pkg.release)
+        let name = Names::display(pkg.release.key)
+        match perform Host::Tree.walk(dir) {
+            Error => ["${missingCode} ${name}"]
+            Success { value } => oneLine(digestMatches(pkg, value, dir), "${digestCode} ${name}")
+        }
+    }
+
+    fn packageLines(project, packages) = foldList(packages, [], fn(lines, p) => listConcat(lines, packageFindings(project, p)))
+
+    fn findings(project, lock, manifest, digest) = {
+        let lines = listConcat(manifestLines(lock, manifest, digest), packageLines(project, lock.packages))
+        if isEmpty(lines) { Reports::success(["verified ${length(lock.packages)} packages"]) }
+        else { Reports::Report { status: failStatus, lines: lines } }
+    }
+
+    fn checked(project, lock) = match Project::readAt(project) {
+        Error { message } => Reports::Report { status: failStatus, lines: [message] }
+        Success { value } => digested(project, lock, value)
+    }
+
+    fn digested(project, lock, manifest) = match ManifestJson::digest(manifest) {
+        Error { message } => Reports::Report { status: failStatus, lines: [message] }
+        Success { value } => findings(project, lock, manifest, value)
+    }
+
+    /// The whole offline check at `project`; `Build` runs this before compiling.
+    export fn verifyOfflineAt(project) = match Project::readLockAt(project) {
+        Error { message } => Reports::Report { status: failStatus, lines: ["${noLockCode} ${message}"] }
+        Success { value } => checked(project, value)
+    }
+
+    /// The whole offline check; `Build` runs this before compiling.
+    export fn verifyOffline() = verifyOfflineAt("")
+
+    /// The command: `verify`, `verify --offline` and `verify --project <dir>`.
+    export fn run(args) = match parseArgs(args, 0, CommandLine { project: "" }) {
+        Error => usageReport()
+        Success { value } => verifyOfflineAt(value.project)
+    }
+}

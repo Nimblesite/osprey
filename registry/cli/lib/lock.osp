@@ -1,0 +1,291 @@
+namespace registry_cli;
+import registry_host::Host
+import registry_cli::Reports
+import registry_cli::Project
+import registry_cli::Lockfile
+import registry_cli::Fetch
+import registry::Identity
+import registry::Json
+import registry::JsonRead
+import registry::Manifest
+import registry::ManifestJson
+import registry::ManifestModel
+import registry::Names
+import registry::Resolve
+import registry::Resolution
+
+/// `osprey-pkg lock [--registry <base-url>] [--project <dir>] [--accept-removals]`:
+/// the only command that chooses releases ([PACKAGE-HARDENING] C5). It lists
+/// every key with GET /v1/packages and every release of each key with
+/// GET /v1/packages/{scope}/{name}, fetches and verifies each release, parses
+/// each candidate's manifest, runs the one resolver of [PACKAGE-RESOLUTION],
+/// and writes `<dir>/osprey.lock` ([PACKAGE-FOLDER-REGISTRY]). It fails closed
+/// on `lock.release-replaced` and `lock.release-vanished`, writing nothing.
+module Lock {
+    let failStatus = 1
+    let usageCode = "lock.usage"
+    let listingCode = "fetch.package-shape"
+
+    type CommandLine = { base: string, project: string, acceptRemovals: bool }
+    type CatalogResult = { entries: List<Resolution::Entry>, warnings: List<string> }
+    type Previous = { releases: List<Identity::ReleaseId>, packages: List<Lockfile::Package> }
+
+    let usageText = ["usage: osprey-pkg lock [--registry <base-url>] [--project <dir>] [--accept-removals]"]
+
+    fn usageReport() = Reports::usage(listPrepend(usageText, usageCode))
+
+    fn withBase(cmd, base) = CommandLine { base: base, project: cmd.project, acceptRemovals: cmd.acceptRemovals }
+    fn withProject(cmd, dir) = CommandLine { base: cmd.base, project: dir, acceptRemovals: cmd.acceptRemovals }
+    fn withRemovals(cmd) = CommandLine { base: cmd.base, project: cmd.project, acceptRemovals: true }
+
+    fn parseArgs(args, i, cmd) -> Result<CommandLine, string> = match i >= length(args) {
+        true => Success { value: cmd }
+        false => match listGet(args, i) ?: "" {
+            "--registry" => if i + 1 >= length(args) { Error { message: usageCode } } else { parseArgs(args, i + 2, withBase(cmd, listGet(args, i + 1) ?: "")) }
+            "--project" => if i + 1 >= length(args) { Error { message: usageCode } } else { parseArgs(args, i + 2, withProject(cmd, listGet(args, i + 1) ?: "")) }
+            "--accept-removals" => parseArgs(args, i + 1, withRemovals(cmd))
+            _ => Error { message: usageCode }
+        }
+    }
+
+    fn failed(lines) = Reports::Report { status: failStatus, lines: lines }
+
+    // `Identity::ReleaseId` fields are shared with other records; issue #273
+    // needs every read spelled through a typed receiver.
+    fn keyOf(id: Identity::ReleaseId) = id.key
+    fn epochOf(id: Identity::ReleaseId) = id.epoch
+    fn ordinalOf(id: Identity::ReleaseId) = id.ordinal
+    fn digestOf(id: Identity::ReleaseId) = id.digest
+
+    fn keyEq(a: Names::Key, b: Names::Key) = a.scope == b.scope && a.name == b.name
+
+    fn spot(id) = "${Names::display(keyOf(id))} e${epochOf(id)}.r${ordinalOf(id)}"
+    fn compact(id) = "${spot(id)} ${digestOf(id)}"
+
+    fn sameSpot(a: Identity::ReleaseId, b: Identity::ReleaseId) = keyEq(keyOf(a), keyOf(b)) && epochOf(a) == epochOf(b) && ordinalOf(a) == ordinalOf(b)
+    fn relEq(a: Identity::ReleaseId, b: Identity::ReleaseId) = sameSpot(a, b) && digestOf(a) == digestOf(b)
+
+    fn missingRelease() = Identity::ReleaseId { key: Names::Key { scope: "", name: "" }, epoch: 0, ordinal: 0, digest: "" }
+
+    // ---- listing ----
+
+    fn keyOfPackage(item) = match JsonRead::field(item, "key") {
+        Json::Str { text } => match Names::parse(text) {
+            Success { value } => Success { value: value }
+            Error { message } => Error { message: message }
+        }
+        _ => Error { message: listingCode }
+    }
+
+    fn keysAt(items, i, acc) -> Result<List<Names::Key>, string> = match i >= length(items) {
+        true => Success { value: acc }
+        false => match keyOfPackage(listGet(items, i) ?: Json::Null) {
+            Error { message } => Error { message: message }
+            Success { value } => keysAt(items, i + 1, listAppend(acc, value))
+        }
+    }
+
+    fn keysOf(text) = match Json::parse(text) {
+        Error => Error { message: listingCode }
+        Success { value } => match JsonRead::field(value, "packages") {
+            Json::Arr { items } => keysAt(items, 0, [])
+            _ => Error { message: listingCode }
+        }
+    }
+
+    fn releaseOf(key, row: Fetch::Row) = Identity::ReleaseId { key: key, epoch: row.epoch, ordinal: row.ordinal, digest: row.digest }
+
+    fn releasesOfKey(base, key) = match Fetch::getBody(base, Fetch::listingPath(key)) {
+        Error { message } => Error { message: message }
+        Success { value } => match Fetch::parseListing(value) {
+            Error { message } => Error { message: message }
+            Success { value } => Success { value: mapList(value, fn(row: Fetch::Row) => releaseOf(key, row)) }
+        }
+    }
+
+    fn releasesAt(base, keys, i, acc) -> Result<List<Identity::ReleaseId>, string> = match i >= length(keys) {
+        true => Success { value: acc }
+        false => match releasesOfKey(base, listGet(keys, i) ?: Names::Key { scope: "", name: "" }) {
+            Error { message } => Error { message: message }
+            Success { value } => releasesAt(base, keys, i + 1, listConcat(acc, value))
+        }
+    }
+
+    fn fetchListing(base) = match Fetch::getBody(base, Fetch::packagesListingPath) {
+        Error { message } => Error { message: message }
+        Success { value } => match keysOf(value) {
+            Error { message } => Error { message: message }
+            Success { value } => releasesAt(base, value, 0, [])
+        }
+    }
+
+    // ---- hardening checks ([PACKAGE-HARDENING] C5) ----
+
+    fn replacedWith(current, l) = foldList(current, "", fn(found, c: Identity::ReleaseId) =>
+        if found != "" || !sameSpot(c, l) || digestOf(c) == digestOf(l) {
+            found
+        } else {
+            "lock.release-replaced ${spot(l)} ${digestOf(c)} ${digestOf(l)}"
+        })
+
+    fn replacementLine(current, listing, i) = match i >= length(listing) {
+        true => ""
+        false => {
+            let line = replacedWith(current, listGet(listing, i) ?: missingRelease())
+            if line == "" { replacementLine(current, listing, i + 1) } else { line }
+        }
+    }
+
+    fn inListing(listing, c) = foldList(listing, false, fn(found, l: Identity::ReleaseId) => found || sameSpot(l, c))
+
+    fn vanishedLines(current, listing) = mapList(filterList(current, fn(c: Identity::ReleaseId) => !inListing(listing, c)), fn(c) => "lock.release-vanished ${compact(c)}")
+
+    // ---- catalog ----
+
+    fn entryOf(release, manifest) = Resolution::Entry {
+        release: release,
+        activation: "Eligible",
+        targets: [""],
+        capabilities: [],
+        dependencies: manifest.dependencies
+    }
+
+    fn classifyManifest(release, text, acc) = match Manifest::accepted(Manifest::parse(text)) {
+        Error { message } => Success { value: CatalogResult { entries: acc.entries, warnings: listAppend(acc.warnings, "lock.invalid-manifest ${compact(release)} ${message}") } }
+        Success { value } => Success { value: CatalogResult { entries: listAppend(acc.entries, entryOf(release, value)), warnings: acc.warnings } }
+    }
+
+    fn addEntry(base, project, release, acc) = {
+        let installed = Fetch::installAt(project, base, digestOf(release))
+        if installed.status != 0 {
+            Error { message: listGet(installed.lines, 0) ?: "fetch failed" }
+        } else {
+            match perform Host::Files.read("${Fetch::installDirAt(project, release)}/osprey.toml") {
+                Error { message } => Error { message: message }
+                Success { value } => classifyManifest(release, value, acc)
+            }
+        }
+    }
+
+    fn catalogAt(base, project, releases, i, acc) -> Result<CatalogResult, string> = match i >= length(releases) {
+        true => Success { value: acc }
+        false => match addEntry(base, project, listGet(releases, i) ?: missingRelease(), acc) {
+            Error { message } => Error { message: message }
+            Success { value } => catalogAt(base, project, releases, i + 1, value)
+        }
+    }
+
+    // ---- lock writing and delta ----
+
+    fn buildEdges(deps) = filterList(deps, fn(d) => ManifestModel::edgeRank(d) != 2)
+
+    fn entryForRelease(entries, release) = foldList(entries, Error { message: "none" }, fn(acc, e: Resolution::Entry) => match acc {
+        Success => acc
+        Error => if relEq(e.release, release) { Success { value: e } } else { acc }
+    })
+
+    fn packageOf(entries, release) = match entryForRelease(entries, release) {
+        Success { value } => Lockfile::Package { release: value.release, dependencies: buildEdges(value.dependencies) }
+        Error => Lockfile::Package { release: release, dependencies: [] }
+    }
+
+    fn packagesOf(entries, releases) = mapList(releases, fn(r) => packageOf(entries, r))
+
+    fn keyInPackages(packages, key) = foldList(packages, false, fn(found, p: Lockfile::Package) => found || keyEq(keyOf(p.release), key))
+
+    fn packageWithKey(packages, key) = foldList(packages, Error { message: "none" }, fn(acc, p: Lockfile::Package) => match acc {
+        Success => acc
+        Error => if keyEq(keyOf(p.release), key) { Success { value: p } } else { acc }
+    })
+
+    fn deltaOf(next, previous, pkg: Lockfile::Package) = match packageWithKey(previous, keyOf(pkg.release)) {
+        Error => "+ ${compact(pkg.release)}"
+        Success { value } => if relEq(value.release, pkg.release) { "= ${compact(pkg.release)}" } else { "~ ${compact(pkg.release)}" }
+    }
+
+    fn removedLines(previous, next) = mapList(filterList(previous, fn(p: Lockfile::Package) => !keyInPackages(next, keyOf(p.release))), fn(p: Lockfile::Package) => "- ${compact(p.release)}")
+
+    fn deltaLines(next, previous) = listConcat(mapList(next, fn(p: Lockfile::Package) => deltaOf(next, previous, p)), removedLines(previous, next))
+
+    fn lockPathAt(project) = if isEmpty(project) || project == "." { "osprey.lock" } else { "${project}/osprey.lock" }
+
+    fn writeLock(project, lock) = match Lockfile::encode(lock) {
+        Error { message } => Error { message: message }
+        Success { value } => match perform Host::Files.write(lockPathAt(project), value) {
+            Error { message } => Error { message: message }
+            Success => Success { value: 0 }
+        }
+    }
+
+    // ---- outcomes ----
+
+    fn graphOf(manifest, current, entries) = Resolution::Graph {
+        target: "",
+        granted: [],
+        rootDeps: manifest.dependencies,
+        current: current,
+        catalog: entries
+    }
+
+    fn lockDigest(project, manifest, digest, previous, entries, releases, warnings) = {
+        let packages = packagesOf(entries, releases)
+        let lock = Lockfile::Lock { root: Lockfile::Root { manifestDigest: digest, dependencies: manifest.dependencies }, packages: packages }
+        match writeLock(project, lock) {
+            Error { message } => failed([message])
+            Success => Reports::Report { status: 0, lines: listConcat(warnings, deltaLines(packages, previous)) }
+        }
+    }
+
+    fn lockReport(project, manifest, previous, entries, releases, warnings) = match ManifestJson::digest(manifest) {
+        Error { message } => failed([message])
+        Success { value } => lockDigest(project, manifest, value, previous, entries, releases, warnings)
+    }
+
+    fn explainReport(warnings, code, packages) = failed(listConcat(warnings, listPrepend(mapList(packages, Names::display), code)))
+
+    // ---- the command ----
+
+    fn currentOf(project) = match Project::readLockAt(project) {
+        Error => Previous { releases: [], packages: [] }
+        Success { value } => Previous { releases: mapList(value.packages, fn(p: Lockfile::Package) => p.release), packages: value.packages }
+    }
+
+    fn solved(cmd, manifest, prev, catalog) = match Resolve::solve(graphOf(manifest, prev.releases, catalog.entries)) {
+        Resolution::Lock { releases } => lockReport(cmd.project, manifest, prev.packages, catalog.entries, releases, catalog.warnings)
+        Resolution::Explain { code, packages } => explainReport(catalog.warnings, code, packages)
+    }
+
+    fn withCatalog(cmd, manifest, prev, listing, warnings) = match catalogAt(cmd.base, cmd.project, listing, 0, CatalogResult { entries: [], warnings: warnings }) {
+        Error { message } => failed([message])
+        Success { value } => solved(cmd, manifest, prev, value)
+    }
+
+    fn withChecks(cmd, manifest, prev, listing) = {
+        let replaced = replacementLine(prev.releases, listing, 0)
+        if replaced != "" { failed([replaced]) } else { withVanished(cmd, manifest, prev, listing) }
+    }
+
+    fn withVanished(cmd, manifest, prev, listing) = {
+        let vanished = vanishedLines(prev.releases, listing)
+        if !isEmpty(vanished) && !cmd.acceptRemovals { failed([listGet(vanished, 0) ?: ""]) }
+        else { withCatalog(cmd, manifest, prev, listing, if cmd.acceptRemovals { vanished } else { [] }) }
+    }
+
+    fn withListing(cmd, manifest, prev) = match fetchListing(cmd.base) {
+        Error { message } => failed([message])
+        Success { value } => withChecks(cmd, manifest, prev, value)
+    }
+
+    fn withManifest(cmd, manifest) = withListing(cmd, manifest, currentOf(cmd.project))
+
+    fn withArgs(cmd) = match Project::readAt(cmd.project) {
+        Error { message } => failed([message])
+        Success { value } => withManifest(cmd, value)
+    }
+
+    /// The whole command. Implements [PACKAGE-FOLDER-REGISTRY].
+    export fn run(args) = match parseArgs(args, 0, CommandLine { base: Fetch::defaultRegistry, project: ".", acceptRemovals: false }) {
+        Error => usageReport()
+        Success { value } => withArgs(value)
+    }
+}

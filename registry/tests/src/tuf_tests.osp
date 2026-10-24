@@ -1,0 +1,116 @@
+namespace registry_tests;
+import registry::Json
+import registry::Canonical
+import registry::Digests
+import registry::Domains
+import registry::TufCheck
+import registry::SchemaCheck
+import registry::TypeDiagram
+import registry_tests::Fixtures
+
+/// The TUF 1.0 client-workflow vector tables and the release-status state
+/// machine, asserted through the pure decisions of TufCheck. Fixtures carry
+/// goldens computed independently (python hashlib): expiry boundaries at
+/// exact milliseconds, target lengths and digests, and every previousStatus
+/// chain digest. Implements [PACKAGE-TRUST].
+module TufTests {
+    fn flagOf(value) = match value {
+        Json::Bool { flag } => flag
+        _ => false
+    }
+
+    fn roleState(value) = TufCheck::RoleState {
+        version: Fixtures::number(Fixtures::field(value, "version")),
+        expiresAt: Fixtures::text(Fixtures::field(value, "expiresAt")),
+        metadataDigest: Fixtures::text(Fixtures::field(value, "metadataDigest"))
+    }
+
+    fn rootCode(case) = TufCheck::rootUpdate(
+        Fixtures::number(Fixtures::field(case, "trustedVersion")),
+        Fixtures::number(Fixtures::field(case, "candidateVersion")),
+        Fixtures::number(Fixtures::field(case, "oldSigs")),
+        Fixtures::number(Fixtures::field(case, "newSigs")),
+        Fixtures::number(Fixtures::field(case, "oldThreshold")),
+        Fixtures::number(Fixtures::field(case, "newThreshold")))
+
+    fn roleCode(case) = TufCheck::roleUpdate(
+        roleState(Fixtures::field(case, "trusted")),
+        roleState(Fixtures::field(case, "served")),
+        Fixtures::text(Fixtures::field(case, "now")),
+        flagOf(Fixtures::field(case, "thresholdMet")),
+        Fixtures::number(Fixtures::field(case, "metaVersion")),
+        Fixtures::text(Fixtures::field(case, "metaDigest")))
+
+    fn targetCode(case) = TufCheck::targetCheck(
+        Fixtures::number(Fixtures::field(case, "expectedLength")),
+        Fixtures::text(Fixtures::field(case, "expectedDigest")),
+        Fixtures::number(Fixtures::field(case, "servedLength")),
+        Fixtures::text(Fixtures::field(case, "servedDigest")))
+
+    /// One vector row: dispatch on its `kind` and answer the decision code.
+    fn vectorCode(case) = {
+        let kind = Fixtures::text(Fixtures::field(case, "kind"))
+        if kind == "rootUpdate" { rootCode(case) }
+        else if kind == "roleUpdate" { roleCode(case) }
+        else { targetCode(case) }
+    }
+
+    fn vectorTable(name, label) = Fixtures::report(label,
+        Fixtures::items(Fixtures::field(Fixtures::load(name), "cases")), fn(case) =>
+            vectorCode(case) == Fixtures::text(Fixtures::field(case, "expect")))
+
+    fn chains() = Fixtures::items(Fixtures::field(Fixtures::load("transitions/release-status.json"), "chains"))
+
+    fn chainSteps(chains) = foldList(chains, [], fn(steps, chain) =>
+        listConcat(steps, Fixtures::items(Fixtures::field(chain, "steps"))))
+
+    fn transitionTable() = Fixtures::report("release-status transitions", chainSteps(chains()), fn(step) =>
+        TufCheck::statusTransition(Fixtures::field(step, "previous"), Fixtures::field(step, "next"))
+            == Fixtures::text(Fixtures::field(step, "expect")))
+
+    /// The later steps of the valid chains, whose previousStatus goldens
+    /// Osprey must reproduce from its own canonical form.
+    fn goldenSteps(chain) = if flagOf(Fixtures::field(chain, "goldenPreviousStatus")) {
+        filterList(Fixtures::items(Fixtures::field(chain, "steps")), fn(step) =>
+            Fixtures::text(Fixtures::field(step, "expect")) == ""
+            && Fixtures::text(Fixtures::field(Fixtures::field(step, "next"), "previousStatus")) != "")
+    } else {
+        []
+    }
+
+    fn goldenHolds(step) = Digests::hashText(Domains::releaseStatusDomain(),
+        Canonical::serialize(Fixtures::field(step, "previous")) ?: "")
+        == Fixtures::text(Fixtures::field(Fixtures::field(step, "next"), "previousStatus"))
+
+    fn goldenTable() = {
+        let steps = foldList(chains(), [], fn(all, chain) => listConcat(all, goldenSteps(chain)))
+        check("release-status golden steps", 3, length(steps))
+        Fixtures::report("release-status chain goldens", steps, goldenHolds)
+    }
+
+    fn stepRecords(step) = filterList([Fixtures::field(step, "previous"), Fixtures::field(step, "next")], fn(r) => !Json::isNull(r))
+
+    fn records() = foldList(chainSteps(chains()), [], fn(all, step) => listConcat(all, stepRecords(step)))
+
+    fn schemaValid(model, record) = match SchemaCheck::validate(model, "ReleaseStatus", record) {
+        Success => true
+        Error => false
+    }
+
+    /// Every record in every chain, valid or not as a transition, is a
+    /// schema-valid `ReleaseStatus`: transition rules are tested on
+    /// well-formed records only.
+    fn shapeTable() = match TypeDiagram::parse(readFile("schemas/package-registry.td") ?: "") {
+        Success { value } => Fixtures::report("release-status records are schema-valid", records(), fn(r) => schemaValid(value, r))
+        Error { message } => check("typeDiagram parses", "", message)
+    }
+
+    /// Every TUF and release-status table, one assertion per fixture row.
+    export fn run() = {
+        test("tuf: client-workflow vectors", fn() => vectorTable("vectors/tuf.json", "TUF client-workflow vectors"))
+        test("tuf: compromised-mirror vectors", fn() => vectorTable("vectors/mirror.json", "compromised-mirror vectors"))
+        test("tuf: release-status transitions", transitionTable)
+        test("tuf: release-status chain goldens", goldenTable)
+        test("tuf: release-status record shapes", shapeTable)
+    }
+}

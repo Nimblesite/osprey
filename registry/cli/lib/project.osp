@@ -1,0 +1,36 @@
+namespace registry_cli;
+import registry_host::Host
+import registry_cli::Lockfile
+import registry::Manifest
+
+/// The local project files a command consumes: `./osprey.toml` through
+/// `Manifest::parse` and `./osprey.lock` through `Lockfile::decode`. Every
+/// failure is a string a report can print as-is (the OS reason, or
+/// `Manifest::describe` of a rejected manifest). Implements the client side
+/// of [PACKAGE-FOLDER-REGISTRY] and the manifest rule of [PACKAGE-MANIFEST].
+module Project {
+    let manifestPath = "osprey.toml"
+    let lockPath = "osprey.lock"
+
+    // `dir`-relative path; the cwd spellings "" and "." keep the bare name so
+    // fixture handlers that answer the bare paths keep matching.
+    fn pathAt(dir, name) = if isEmpty(dir) || dir == "." { name } else { "${dir}/${name}" }
+
+    /// The parsed manifest at `dir`, or the OS reason / `Manifest::describe(problem)`.
+    export fn readAt(dir) = match perform Host::Files.read(pathAt(dir, manifestPath)) {
+        Error { message } => Error { message: message }
+        Success { value } => Manifest::accepted(Manifest::parse(value))
+    }
+
+    /// The decoded folder lock at `dir`, or the OS reason / its first rejection code.
+    export fn readLockAt(dir) = match perform Host::Files.read(pathAt(dir, lockPath)) {
+        Error { message } => Error { message: message }
+        Success { value } => Lockfile::decode(value)
+    }
+
+    /// The parsed manifest, or the OS reason / `Manifest::describe(problem)`.
+    export fn read() = readAt("")
+
+    /// The decoded folder lock, or the OS reason / its first rejection code.
+    export fn readLock() = readLockAt("")
+}

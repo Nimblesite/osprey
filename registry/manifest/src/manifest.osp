@@ -49,6 +49,7 @@ module Manifest {
         allowWildcardImports: wildcard,
         publication: publication,
         testRoots: project.testRoots,
+        pythonSources: project.pythonSources,
         dependencies: dependencies,
         systemRequirements: systems,
         assets: assets
@@ -56,9 +57,14 @@ module Manifest {
 
     fn rejected(message) = Rejected { problem: problemOf(message) }
 
-    /// `python_sources` never ships: a publishable manifest cannot carry it.
-    fn publishable(project: ManifestSections::Project, publication, root) = if project.pythonSources && Maybe::isPresent(publication) {
-        rejected("manifest.python-sources-unpublishable at ${ManifestSections::spanOf(ManifestSections::pairsOf(root), "project", ManifestSections::rootSpan()).line}:1")
+    /// A published manifest keeps every `python_sources` entry inside one of
+    /// its `source_roots` so the capability scan covers it ([PACKAGE-MANIFEST]).
+    fn rooted(entry, roots) = foldList(roots, false, fn(found, root) => found || startsWith(entry, root + "/"))
+
+    fn anyUnrooted(project) = foldList(project.pythonSources, false, fn(found, entry) => found || !rooted(entry, project.sourceRoots))
+
+    fn publishable(project: ManifestSections::Project, publication, root) = if Maybe::isPresent(publication) && anyUnrooted(project) {
+        rejected("manifest.python-source-unrooted at ${ManifestSections::spanOf(ManifestSections::pairsOf(root), "project", ManifestSections::rootSpan()).line}:1")
     } else { withDependencies(project, publication, root) }
 
     fn withDependencies(project, publication, root) = match ManifestDeps::dependencies(root) {

@@ -2,7 +2,6 @@ namespace registry_tests;
 import registry::Policy
 import registry_tests::BytesTests
 import registry_tests::NamesTests
-import registry_tests::DispatchTests
 import registry_tests::SchemaTests
 import registry_tests::IdentityTests
 import registry_tests::PathsTests
@@ -14,13 +13,19 @@ import registry_tests::ReleasePathTests
 import registry_tests::BundleTests
 import registry_tests::CatalogTests
 import registry_tests::RouterTests
-import registry_tests::FetchTests
+import registry_tests::FixtureTests
+import registry_tests::SchemaCheckTests
+import registry_tests::CanonicalFixtureTests
+import registry_tests::VectorTests
+import registry_tests::GraphTests
+import registry_tests::TufTests
+import registry_tests::OrderTests
+import registry_tests::LoaderTests
 
-/// Every registry suite, in one process, under one arithmetic policy.
-fn suites() = {
+/// The suites over the shared core, the host and the API.
+fn behaviourSuites() = {
     BytesTests::run()
     NamesTests::run()
-    DispatchTests::run()
     SchemaTests::run()
     IdentityTests::run()
     PathsTests::run()
@@ -32,7 +37,24 @@ fn suites() = {
     BundleTests::run()
     CatalogTests::run()
     RouterTests::run()
-    FetchTests::run()
+}
+
+/// The suites that interpret the declarative fixtures.
+fn fixtureSuites() = {
+    FixtureTests::run()
+    SchemaCheckTests::run()
+    CanonicalFixtureTests::run()
+    VectorTests::run()
+    GraphTests::run()
+    TufTests::run()
+    OrderTests::run()
+    LoaderTests::run()
+}
+
+/// Every registry suite, in one process, under one arithmetic policy.
+fn suites() = {
+    behaviourSuites()
+    fixtureSuites()
     0
 }
 

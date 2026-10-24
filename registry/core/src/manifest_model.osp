@@ -25,6 +25,7 @@ module ManifestModel {
         allowWildcardImports: bool,
         publication: Maybe::Maybe<Publication>,
         testRoots: List<string>,
+        pythonSources: List<string>,
         dependencies: List<Edge>,
         systemRequirements: List<SystemRequirement>,
         assets: List<Asset>
@@ -43,6 +44,16 @@ module ManifestModel {
         Build => 1
         Test => 2
     }
+
+    /// The Runtime and Build edges: the ones a non-root release activates,
+    /// since a Test edge fires only at the root ([PACKAGE-RESOLUTION]).
+    export fn activeEdges(edges) = filterList(edges, fn(edge) => edgeRank(edge) != 2)
+
+    /// The package keys the edges require.
+    export fn targets(edges) = mapList(edges, fn(edge) => requirementOf(edge).package)
+
+    /// The package keys the Runtime and Build edges require.
+    export fn activeTargets(edges) = targets(activeEdges(edges))
 
     /// The variant name of an asset kind, for the JSON projection.
     export fn kindName(kind) = match kind {

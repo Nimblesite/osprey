@@ -1,0 +1,31 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "Stage 2: the plan binds the selection digest, never a lock digest.",
+  "type": "BuildPlan",
+  "value": {
+    "format": 1,
+    "package": {
+      "scope": "demo",
+      "name": "report"
+    },
+    "sourceDigest": "sha256:a7a65655016bb7bff859bbd5f5a6561e6f231508ffccefa7bb4f5bdaf0aa5bdf",
+    "manifestDigest": "sha256:e79f867f038054cb369a62aba515a9c0aa5c0e9951f8ef86514a3d5739fb0d4c",
+    "resolutionContextDigest": "sha256:1f8b5f586f66d4dcab357b0e03e0e9b4020bda1f4e71358b0dea9816f04d3126",
+    "dependencySelection": {
+      "Release": {
+        "selectionDigest": "sha256:fe6103d2f4c515f2587923afe454d03bd0ff4d6e014b7fb7d2bb5a39eeafd3c0"
+      }
+    },
+    "moduleGraphDigest": "sha256:8dcdd504197676e0eef9a33e161a69e4481834253e7adb3cdd683652d050c02c",
+    "compilerInvocationDigest": "sha256:2aac7d77cd3914931c3fdafe05b3d7f1096c34db36aac11f8f3615c386012963",
+    "testPlanDigest": "sha256:99252a839000b3851b0d0cfe8ceca97c9f5defb907902badf0c7588dc080f9f7",
+    "outputLayoutDigest": "sha256:4ba1f526fd9e2e4ebe274e562660205d789d19cdaf2b42825cd3f6de9b52191e",
+    "inferredCapabilities": [
+      "net.http"
+    ]
+  },
+  "canonical": "{\"compilerInvocationDigest\":\"sha256:2aac7d77cd3914931c3fdafe05b3d7f1096c34db36aac11f8f3615c386012963\",\"dependencySelection\":{\"Release\":{\"selectionDigest\":\"sha256:fe6103d2f4c515f2587923afe454d03bd0ff4d6e014b7fb7d2bb5a39eeafd3c0\"}},\"format\":1,\"inferredCapabilities\":[\"net.http\"],\"manifestDigest\":\"sha256:e79f867f038054cb369a62aba515a9c0aa5c0e9951f8ef86514a3d5739fb0d4c\",\"moduleGraphDigest\":\"sha256:8dcdd504197676e0eef9a33e161a69e4481834253e7adb3cdd683652d050c02c\",\"outputLayoutDigest\":\"sha256:4ba1f526fd9e2e4ebe274e562660205d789d19cdaf2b42825cd3f6de9b52191e\",\"package\":{\"name\":\"report\",\"scope\":\"demo\"},\"resolutionContextDigest\":\"sha256:1f8b5f586f66d4dcab357b0e03e0e9b4020bda1f4e71358b0dea9816f04d3126\",\"sourceDigest\":\"sha256:a7a65655016bb7bff859bbd5f5a6561e6f231508ffccefa7bb4f5bdaf0aa5bdf\",\"testPlanDigest\":\"sha256:99252a839000b3851b0d0cfe8ceca97c9f5defb907902badf0c7588dc080f9f7\"}",
+  "canonicalLength": 880,
+  "domain": "osprey.build-plan.v1",
+  "digest": "sha256:d1afda20893f49e392dd51488f49bd1ea3bc77a89b11ec662c76d39343ed095a"
+}

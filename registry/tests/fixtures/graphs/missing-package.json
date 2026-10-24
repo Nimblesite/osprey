@@ -1,0 +1,35 @@
+{
+  "spec": "[PACKAGE-RESOLUTION]",
+  "description": "The root requires A but the catalog has no release for A, so the explanation is missing-package.",
+  "target": "x86_64-linux",
+  "grantedCapabilities": [],
+  "root": {
+    "dependencies": [
+      {
+        "Runtime": {
+          "requirement": {
+            "package": {
+              "scope": "a",
+              "name": "app"
+            },
+            "epoch": 1,
+            "minimumOrdinal": 1
+          }
+        }
+      }
+    ]
+  },
+  "current": [],
+  "catalog": [],
+  "expect": {
+    "explanation": {
+      "code": "resolution.missing-package",
+      "packages": [
+        {
+          "scope": "a",
+          "name": "app"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "in-toto Statement v1: its only subject is H(osprey.development-build-receipt.v1, payload).",
+  "value": {
+    "_type": "https://in-toto.io/Statement/v1",
+    "subject": [
+      {
+        "name": "osprey.development-build-receipt.v1",
+        "digest": {
+          "sha256": "d42e2ba756104f5bce026a277b4d4e9db6ce6e63c80d1a532a7730df169d9de5"
+        }
+      }
+    ],
+    "predicateType": "https://osprey-lang.org/attestation/development-build/v1",
+    "predicate": {
+      "builder": "principal-alice",
+      "observedAt": "2026-10-02T12:30:45.123Z"
+    }
+  },
+  "canonical": "{\"_type\":\"https://in-toto.io/Statement/v1\",\"predicate\":{\"builder\":\"principal-alice\",\"observedAt\":\"2026-10-02T12:30:45.123Z\"},\"predicateType\":\"https://osprey-lang.org/attestation/development-build/v1\",\"subject\":[{\"digest\":{\"sha256\":\"d42e2ba756104f5bce026a277b4d4e9db6ce6e63c80d1a532a7730df169d9de5\"},\"name\":\"osprey.development-build-receipt.v1\"}]}",
+  "canonicalLength": 346
+}

@@ -21,21 +21,24 @@ module ManifestJson {
 
     fn key(k) = obj([member("name", str(k.name)), member("scope", str(k.scope))])
 
-    fn requirement(r) = obj([member("epoch", num(r.epoch)), member("minimumOrdinal", num(r.minimumOrdinal)), member("package", key(r.package))])
+    // `requirementJson` avoids shadowing the `requirement` field bound by the
+    // edge patterns below (a bound value is not a function).
+    fn requirementJson(r) = obj([member("epoch", num(r.epoch)), member("minimumOrdinal", num(r.minimumOrdinal)), member("package", key(r.package))])
 
     fn edge(e) = match e {
-        ManifestModel::Runtime { requirement } => variant("Runtime", obj([member("requirement", requirement(requirement))]))
-        ManifestModel::Build { requirement } => variant("Build", obj([member("requirement", requirement(requirement))]))
-        ManifestModel::Test { requirement } => variant("Test", obj([member("requirement", requirement(requirement))]))
+        ManifestModel::Runtime { requirement } => variant("Runtime", obj([member("requirement", requirementJson(requirement))]))
+        ManifestModel::Build { requirement } => variant("Build", obj([member("requirement", requirementJson(requirement))]))
+        ManifestModel::Test { requirement } => variant("Test", obj([member("requirement", requirementJson(requirement))]))
     }
 
     fn system(s) = obj([member("capability", str(s.capability)), member("minimumRevision", num(s.minimumRevision))])
 
-    fn kind(k) = variant(ManifestModel::kindName(k), empty())
+    // `kindJson` avoids shadowing the `kind` field bound by the role patterns below.
+    fn kindJson(k) = variant(ManifestModel::kindName(k), empty())
 
     fn role(r) = match r {
-        ManifestModel::Documentation { kind } => variant("Documentation", obj([member("kind", kind(kind))]))
-        ManifestModel::RuntimeData { kind, requiredCapability } => variant("RuntimeData", obj([member("kind", kind(kind)), member("requiredCapability", str(requiredCapability))]))
+        ManifestModel::Documentation { kind } => variant("Documentation", obj([member("kind", kindJson(kind))]))
+        ManifestModel::RuntimeData { kind, requiredCapability } => variant("RuntimeData", obj([member("kind", kindJson(kind)), member("requiredCapability", str(requiredCapability))]))
     }
 
     fn asset(a: ManifestModel::Asset) = obj([member("byteLength", num(a.byteLength)), member("digest", str(a.digest)), member("path", str(a.path)), member("role", role(a.role))])
@@ -55,7 +58,8 @@ module ManifestJson {
         member("projectName", str(m.projectName)),
         member("sourceRoots", strings(m.sourceRoots)),
         member("systemRequirements", Json::Arr { items: mapList(m.systemRequirements, system) }),
-        member("testRoots", strings(m.testRoots))
+        member("testRoots", strings(m.testRoots)),
+        member("pythonSources", strings(m.pythonSources))
     ]
 
     fn optionals(m: ManifestModel::Manifest) = listConcat(listConcat(listConcat(

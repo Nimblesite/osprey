@@ -55,7 +55,9 @@ module BundleTests {
             codeOf(ReleaseFiles::assemble("@finch/ledger", twoFiles())) == "release-path.segments",
             codeOf(ReleaseFiles::assemble("@Finch/ledger/1.3", twoFiles())) == "name.scope.chars",
             codeOf(ReleaseFiles::assemble("@finch/ledger/1.3", empty)) == "release.empty",
-            codeOf(ReleaseFiles::assemble("@finch/ledger/1.3", [Release::File { relPath: "../evil", content: "x" }])) == "path.dot-segment"
+            codeOf(ReleaseFiles::assemble("@finch/ledger/1.3", [Release::File { relPath: "../evil", content: "x" }])) == "path.dot-segment",
+            codeOf(ReleaseFiles::assemble("@finch/ledger/1.3", [Release::File { relPath: "src/model.py", content: "import os\n" }])) == "source.python-flavor-header",
+            codeOf(ReleaseFiles::assemble("@finch/ledger/1.3", [Release::File { relPath: "src/model.py", content: "# osprey: flavor=python\n" }])) == ""
         ])
     }
 
@@ -107,7 +109,9 @@ module BundleTests {
         codeOf(Bundle::verify(tamperedDigestBundle(), goldenDigest)) == "bundle.digest-mismatch",
         codeOf(Bundle::verify(goodBundle(), wrongDigest)) == "bundle.unexpected-digest",
         codeOf(Bundle::verify("not json", goldenDigest)) == "json.unexpected-token at byte 0",
-        codeOf(Bundle::verify(missingFieldBundle(), goldenDigest)) == "bundle.shape"
+        codeOf(Bundle::verify(missingFieldBundle(), goldenDigest)) == "bundle.shape",
+        Bundle::sizeCode(134217728) == "",
+        Bundle::sizeCode(134217729) == "bundle.too-large"
     ])
 
     export fn run() = {

@@ -1,0 +1,26 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "Tests sorted by (path, namespace, symbol).",
+  "type": "TestPlanProjection",
+  "value": {
+    "tests": [
+      {
+        "path": "test/report_test.osp",
+        "namespace": "demo",
+        "symbol": "rendersRows"
+      },
+      {
+        "path": "test/report_test.osp",
+        "namespace": "demo",
+        "symbol": "rendersTotals"
+      }
+    ],
+    "timeoutMilliseconds": 60000,
+    "randomSeedDigest": "sha256:8d8f723ad9fc1707aaac47677a6adc50f80e0bf4753c6e08d239a14b38730484",
+    "policyDigest": "sha256:3ed94166610790cd2a1d240bb9c09275644e96ac87860dfc2c5f0018f16f1e3f"
+  },
+  "canonical": "{\"policyDigest\":\"sha256:3ed94166610790cd2a1d240bb9c09275644e96ac87860dfc2c5f0018f16f1e3f\",\"randomSeedDigest\":\"sha256:8d8f723ad9fc1707aaac47677a6adc50f80e0bf4753c6e08d239a14b38730484\",\"tests\":[{\"namespace\":\"demo\",\"path\":\"test/report_test.osp\",\"symbol\":\"rendersRows\"},{\"namespace\":\"demo\",\"path\":\"test/report_test.osp\",\"symbol\":\"rendersTotals\"}],\"timeoutMilliseconds\":60000}",
+  "canonicalLength": 371,
+  "domain": "osprey.test-plan.v1",
+  "digest": "sha256:99252a839000b3851b0d0cfe8ceca97c9f5defb907902badf0c7588dc080f9f7"
+}

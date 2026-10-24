@@ -1,0 +1,321 @@
+namespace registry_cli;
+import registry::Canonical
+import registry::Digests
+import registry::Identity
+import registry::Json
+import registry::JsonRead
+import registry::ManifestModel
+import registry::Names
+import registry::Order
+
+/// The folder-lock document `osprey.lock` in format `0`: RFC 8785 canonical
+/// JSON pinning the root's manifest digest and dependency edges plus every
+/// selected release and its Runtime/Build edges, ordered by `ReleaseId`.
+/// A folder registry cannot sign a `ReleaseLockfile` ([PACKAGE-FOLDER-REGISTRY]),
+/// so this lock is integrity-only. The edge projection is byte-identical to
+/// `ManifestJson` ([PACKAGE-MANIFEST]); the `ReleaseId` JSON is the
+/// `package`/`epoch`/`ordinal`/`digest` record of
+/// `schemas/package-registry.td`.
+module Lockfile {
+    /// The root's manifest digest and its dependency edges.
+    export type Root = { manifestDigest: string, dependencies: List<ManifestModel::Edge> }
+    /// One selected release and its Runtime/Build edges.
+    export type Package = { release: Identity::ReleaseId, dependencies: List<ManifestModel::Edge> }
+    /// A format-0 folder lock: the root's manifest pin plus every selected release.
+    export type Lock = { root: Root, packages: List<Package> }
+
+    let formatValue = 0
+    let formatCode = "lock.format"
+    let shapeCode = "lock.shape"
+    let duplicateCode = "lock.duplicate-key"
+    let orderCode = "lock.order"
+
+    fn member(key, value) = Json::Member { key: key, value: value }
+    fn str(text) = Json::Str { text: text }
+    fn num(value) = Json::Num { value: value }
+    fn obj(members) = Json::Obj { members: members }
+    fn arr(items) = Json::Arr { items: items }
+
+    // The edge/requirement/key projection matches `ManifestJson` member for
+    // member; the canonical serializer sorts members, so spelling order below
+    // is irrelevant to the bytes.
+    fn keyJson(k: Names::Key) = obj([member("name", str(k.name)), member("scope", str(k.scope))])
+
+    fn requirementJson(r) = obj([
+        member("epoch", num(r.epoch)),
+        member("minimumOrdinal", num(r.minimumOrdinal)),
+        member("package", keyJson(r.package))
+    ])
+
+    fn edgeJson(e) = match e {
+        ManifestModel::Runtime { requirement } => obj([member("Runtime", obj([member("requirement", requirementJson(requirement))]))])
+        ManifestModel::Build { requirement } => obj([member("Build", obj([member("requirement", requirementJson(requirement))]))])
+        ManifestModel::Test { requirement } => obj([member("Test", obj([member("requirement", requirementJson(requirement))]))])
+    }
+
+    fn dependenciesJson(edges) = arr(mapList(edges, edgeJson))
+
+    /// The RFC 8785 bytes of an edge list, for the lock and for comparing the
+    /// lock's root edges against a manifest's. Implements [PACKAGE-MANIFEST].
+    export fn dependenciesCanonical(edges) = Canonical::serialize(dependenciesJson(edges)) ?: ""
+
+    fn releaseJson(id: Identity::ReleaseId) = obj([
+        member("package", keyJson(id.key)),
+        member("epoch", num(id.epoch)),
+        member("ordinal", num(id.ordinal)),
+        member("digest", str(id.digest))
+    ])
+
+    fn packageJson(p: Package) = obj([
+        member("dependencies", dependenciesJson(p.dependencies)),
+        member("release", releaseJson(p.release))
+    ])
+
+    fn rootJson(root: Root) = obj([
+        member("dependencies", dependenciesJson(root.dependencies)),
+        member("manifestDigest", str(root.manifestDigest))
+    ])
+
+    fn missingPackage() = Package {
+        release: Identity::ReleaseId { key: Names::Key { scope: "", name: "" }, epoch: 0, ordinal: 0, digest: "" },
+        dependencies: []
+    }
+
+    // `Package` shares `dependencies` with `Root` and `ManifestModel::Manifest`;
+    // issue #273 needs the receiver spelled out.
+    fn releaseOfPackage(p: Package) = p.release
+
+    fn packageAt(packages, i) = listGet(packages, i) ?: missingPackage()
+
+    fn packageRelease(packages, i) = releaseOfPackage(packageAt(packages, i))
+
+    /// `packages` written sorted by `Identity::compare`.
+    fn sortedPackages(packages) = mapList(
+        Order::permutation(length(packages), fn(i, j) => Identity::compare(packageRelease(packages, i), packageRelease(packages, j))),
+        fn(i) => packageAt(packages, i))
+
+    fn encodeValue(lock: Lock) = obj([
+        member("format", num(formatValue)),
+        member("packages", arr(mapList(sortedPackages(lock.packages), packageJson))),
+        member("root", rootJson(lock.root))
+    ])
+
+    /// The RFC 8785 bytes of `lock`.
+    export fn encode(lock) = Canonical::serialize(encodeValue(lock))
+
+    fn textMember(object, key) = match JsonRead::field(object, key) {
+        Json::Str { text } => Success { value: text }
+        _ => Error { message: shapeCode }
+    }
+
+    fn intMember(object, key) = match JsonRead::field(object, key) {
+        Json::Num { value } => Success { value: value }
+        _ => Error { message: shapeCode }
+    }
+
+    fn objMember(object, key) = match JsonRead::field(object, key) {
+        Json::Obj { members } => Success { value: Json::Obj { members: members } }
+        _ => Error { message: shapeCode }
+    }
+
+    fn arrMember(object, key) = match JsonRead::field(object, key) {
+        Json::Arr { items } => Success { value: items }
+        _ => Error { message: shapeCode }
+    }
+
+    fn formatOf(root) = match JsonRead::field(root, "format") {
+        Json::Num { value } => if value == formatValue { Success { value: 0 } } else { Error { message: formatCode } }
+        _ => Error { message: formatCode }
+    }
+
+    fn readKey(object) = match textMember(object, "scope") {
+        Error { message } => Error { message: message }
+        Success { value } => readName(object, value)
+    }
+
+    /// A key only when scope and name pass [PACKAGE-NAMES]; anything else is
+    /// `lock.shape`, so no lock string reaches a filesystem path
+    /// ([PACKAGE-HARDENING] C3).
+    fn keyOf(scope, name) = if Names::scopeCode(scope) == "" && Names::nameCode(name) == "" {
+        Success { value: Names::Key { scope: scope, name: name } }
+    } else { Error { message: shapeCode } }
+
+    fn readName(object, scope) = match textMember(object, "name") {
+        Error { message } => Error { message: message }
+        Success { value } => keyOf(scope, value)
+    }
+
+    fn parsedDigest(text) = match Digests::parse(text) {
+        Success { value } => Success { value: value }
+        Error => Error { message: shapeCode }
+    }
+
+    /// A member that must be a well-formed `sha256:` envelope ([PACKAGE-HARDENING] C3).
+    fn digestMember(object, key) = match textMember(object, key) {
+        Error { message } => Error { message: message }
+        Success { value } => parsedDigest(value)
+    }
+
+    fn readRelease(object) = match objMember(object, "package") {
+        Error { message } => Error { message: message }
+        Success { value } => readReleaseWithKey(object, readKey(value))
+    }
+
+    fn readReleaseWithKey(object, key) = match key {
+        Error { message } => Error { message: message }
+        Success { value } => readEpoch(object, value)
+    }
+
+    fn readEpoch(object, key) = match intMember(object, "epoch") {
+        Error { message } => Error { message: message }
+        Success { value } => readOrdinal(object, key, value)
+    }
+
+    fn readOrdinal(object, key, epoch) = match intMember(object, "ordinal") {
+        Error { message } => Error { message: message }
+        Success { value } => readDigest(object, key, epoch, value)
+    }
+
+    fn readDigest(object, key, epoch, ordinal) = match digestMember(object, "digest") {
+        Error { message } => Error { message: message }
+        Success { value } => Success { value: Identity::ReleaseId { key: key, epoch: epoch, ordinal: ordinal, digest: value } }
+    }
+
+    fn readRequirement(object) = match objMember(object, "package") {
+        Error { message } => Error { message: message }
+        Success { value } => readRequirementWithKey(object, readKey(value))
+    }
+
+    fn readRequirementWithKey(object, key) = match key {
+        Error { message } => Error { message: message }
+        Success { value } => readReqEpoch(object, value)
+    }
+
+    fn readReqEpoch(object, key) = match intMember(object, "epoch") {
+        Error { message } => Error { message: message }
+        Success { value } => readReqFloor(object, key, value)
+    }
+
+    fn readReqFloor(object, key, epoch) = match intMember(object, "minimumOrdinal") {
+        Error { message } => Error { message: message }
+        Success { value } => Success { value: ManifestModel::Requirement { package: key, epoch: epoch, minimumOrdinal: value } }
+    }
+
+    // The variant is chosen by the union member key; any other name is `lock.shape`.
+    fn readEdgeNamed(kind, requirement) = match kind {
+        "Runtime" => Success { value: ManifestModel::Runtime { requirement: requirement } }
+        "Build" => Success { value: ManifestModel::Build { requirement: requirement } }
+        "Test" => Success { value: ManifestModel::Test { requirement: requirement } }
+        _ => Error { message: shapeCode }
+    }
+
+    fn firstMember(object) = match object {
+        Json::Obj { members } => listGet(members, 0) ?: Json::Member { key: "", value: Json::Null }
+        _ => Json::Member { key: "", value: Json::Null }
+    }
+
+    // `Json::Member` shares `key`/`value` with other records; the member is
+    // spelled out by `firstMember`.
+    fn edgeOfValue(object) = {
+        let m = firstMember(object)
+        match objMember(m.value, "requirement") {
+            Error { message } => Error { message: message }
+            Success { value } => edgeFromRequirement(m, value)
+        }
+    }
+
+    fn edgeFromRequirement(m, reqObj) = match readRequirement(reqObj) {
+        Error { message } => Error { message: message }
+        Success { value } => readEdgeNamed(m.key, value)
+    }
+
+    // A recursive accumulator avoids `foldList` over a `Result<List<…>>`.
+    fn edgesAt(items, i, acc) -> Result<List<ManifestModel::Edge>, string> = match i >= length(items) {
+        true => Success { value: acc }
+        false => match edgeOfValue(listGet(items, i) ?: Json::Null) {
+            Error { message } => Error { message: message }
+            Success { value } => edgesAt(items, i + 1, listAppend(acc, value))
+        }
+    }
+
+    fn edgesOf(object) = match arrMember(object, "dependencies") {
+        Error { message } => Error { message: message }
+        Success { value } => edgesAt(value, 0, [])
+    }
+
+    fn readRoot(object) = match digestMember(object, "manifestDigest") {
+        Error { message } => Error { message: message }
+        Success { value } => readRootWithDeps(object, value)
+    }
+
+    fn readRootWithDeps(object, digest) = match edgesOf(object) {
+        Error { message } => Error { message: message }
+        Success { value } => Success { value: Root { manifestDigest: digest, dependencies: value } }
+    }
+
+    fn packageOf(pkg) = match objMember(pkg, "release") {
+        Error { message } => Error { message: message }
+        Success { value } => packageWithRelease(pkg, readRelease(value))
+    }
+
+    fn packageWithRelease(pkg, release) = match release {
+        Error { message } => Error { message: message }
+        Success { value } => packageWithDeps(pkg, value)
+    }
+
+    fn packageWithDeps(pkg, release) = match edgesOf(pkg) {
+        Error { message } => Error { message: message }
+        Success { value } => Success { value: Package { release: release, dependencies: value } }
+    }
+
+    fn packagesAt(items, i, acc) -> Result<List<Package>, string> = match i >= length(items) {
+        true => Success { value: acc }
+        false => match packageOf(listGet(items, i) ?: Json::Null) {
+            Error { message } => Error { message: message }
+            Success { value } => packagesAt(items, i + 1, listAppend(acc, value))
+        }
+    }
+
+    fn packageKeyText(p: Package) = Names::display(p.release.key)
+
+    fn keysUnique(packages) = Order::strictlyAscending(listSort(mapList(packages, packageKeyText)))
+
+    fn inOrder(packages) = fold(range(1, length(packages)), true, fn(ok, i) =>
+        ok && Identity::compare(packageRelease(packages, i - 1), packageRelease(packages, i)) < 0)
+
+    fn finish(packages, root) = if !keysUnique(packages) { Error { message: duplicateCode } }
+        else if !inOrder(packages) { Error { message: orderCode } }
+        else { Success { value: Lock { root: root, packages: packages } } }
+
+    /// Strictly parse a folder-lock document; the first problem is one of
+    /// `lock.format`, `lock.shape`, `lock.duplicate-key` or `lock.order`.
+    export fn decode(text) = match Json::parse(text) {
+        Error => Error { message: shapeCode }
+        Success { value } => decodeValue(value)
+    }
+
+    fn decodeValue(root) = match formatOf(root) {
+        Error { message } => Error { message: message }
+        Success => decodePackages(root)
+    }
+
+    fn decodePackages(root) = match arrMember(root, "packages") {
+        Error { message } => Error { message: message }
+        Success { value } => decodePackageItems(root, value)
+    }
+
+    fn decodePackageItems(root, items) = match packagesAt(items, 0, []) {
+        Error { message } => Error { message: message }
+        Success { value } => decodeRoot(root, value)
+    }
+
+    fn decodeRoot(root, packages) = match objMember(root, "root") {
+        Error { message } => Error { message: message }
+        Success { value } => decodeRootValue(packages, value)
+    }
+
+    fn decodeRootValue(packages, rootValue) = match readRoot(rootValue) {
+        Error { message } => Error { message: message }
+        Success { value } => finish(packages, value)
+    }
+}

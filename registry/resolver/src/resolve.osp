@@ -1,0 +1,27 @@
+namespace registry;
+import registry::Sat
+import registry::Clauses
+import registry::Optimize
+import registry::Explain
+import registry::Resolution
+
+/// The package resolver of [PACKAGE-RESOLUTION]: hard clauses from
+/// `Clauses`, CDCL from `Sat`, lexicographic optimisation from `Optimize`,
+/// and, on a refutation, the stable explanation of `Explain`, never a
+/// re-enumeration of assignments. The lock releases come back sorted by
+/// `Identity::compare`.
+module Resolve {
+    fn outcome(graph, problem, verdict) = match verdict {
+        Sat::Satisfiable { model } => Resolution::Lock { releases: Optimize::select(graph, problem) }
+        _ => Explain::of(graph)
+    }
+
+    /// Solve one graph: the optimal lock, or its stable explanation.
+    export fn solve(graph) -> Resolution::Outcome = {
+        let problem = Clauses::build(graph)
+        match Sat::solve(problem.vars, problem.clauses) {
+            Success { value } => outcome(graph, problem, value)
+            Error => Explain::of(graph)
+        }
+    }
+}

@@ -102,6 +102,7 @@ type PackageManifest {
   allowWildcardImports: Bool
   publication: Option<PublishedPackageMetadata>
   testRoots: List<RelativePath>
+  pythonSources: List<RelativePath>
   dependencies: List<DependencyEdge>
   systemRequirements: List<SystemRequirement>
   assets: List<PackageAsset>

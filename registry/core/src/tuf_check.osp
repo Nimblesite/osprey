@@ -1,0 +1,146 @@
+namespace registry;
+import registry::Canonical
+import registry::Digests
+import registry::Domains
+import registry::Json
+
+/// The TUF 1.0 detailed client workflow (spec section 5) as pure decisions
+/// over already-verified inputs: signatures arrive as counts of valid
+/// distinct key IDs, times as fixed-width UTC strings whose byte order is
+/// time order, and metadata digests as envelope strings. Every export
+/// answers `""` when the client may proceed, or the stable dotted code
+/// naming the attack it stops. Slow retrieval stays outside these checks:
+/// the attacker withholds bytes instead of lying about them. Implements
+/// [PACKAGE-TRUST].
+module TufCheck {
+    /// The persisted and the served metadata state of one top-level role.
+    export type RoleState = { version: int, expiresAt: string, metadataDigest: string }
+
+    let rollbackCode = "tuf.rollback"
+    let expiredCode = "tuf.expired"
+    let mixAndMatchCode = "tuf.mix-and-match"
+    let thresholdCode = "tuf.threshold"
+    let endlessCode = "tuf.endless-data"
+    let arbitraryCode = "tuf.arbitrary-software"
+    let wrongLengthCode = "tuf.wrong-length"
+    let rootSkipCode = "tuf.root-skip"
+    let rootOldCode = "tuf.root-threshold-old"
+    let rootNewCode = "tuf.root-threshold-new"
+    let sequenceCode = "status.sequence"
+    let transitionCode = "status.transition"
+    let chainCode = "status.chain"
+    let reasonCode = "status.reason"
+    let releaseCode = "status.release"
+    fn emptyMember() = Json::Member { key: "", value: Json::Null }
+
+    /// TUF 1.0 5.3.4-5.3.5: the candidate root satisfies the old root's
+    /// threshold, then its own. Implements [PACKAGE-TRUST].
+    fn rootThresholds(oldSigs, newSigs, oldThreshold, newThreshold) =
+        if oldSigs < oldThreshold { rootOldCode }
+        else if newSigs < newThreshold { rootNewCode }
+        else { "" }
+
+    /// TUF 1.0 5.3 root update: one version at a time, verified at both the
+    /// old and the new threshold. A candidate at or below the trusted
+    /// version is the rollback attack; one further ahead refuses spec 0030's
+    /// one-version-at-a-time rule. Implements [PACKAGE-TRUST].
+    export fn rootUpdate(trustedVersion, candidateVersion, oldSigs, newSigs, oldThreshold, newThreshold) =
+        if candidateVersion <= trustedVersion { rollbackCode }
+        else if candidateVersion != trustedVersion + 1 { rootSkipCode }
+        else { rootThresholds(oldSigs, newSigs, oldThreshold, newThreshold) }
+
+    /// TUF 1.0 5.4-5.6 over one top-level role: the served version never
+    /// rolls back the persisted highest-seen version, the metadata is
+    /// unexpired at `now`, its version and digest are exactly what the
+    /// parent role lists, and its signature count meets threshold.
+    /// Implements [PACKAGE-TRUST].
+    export fn roleUpdate(trusted, served, now, thresholdMet, metaVersion, metaDigest) =
+        if served.version < trusted.version { rollbackCode }
+        else if served.expiresAt <= now { expiredCode }
+        else if served.version != metaVersion || served.metadataDigest != metaDigest { mixAndMatchCode }
+        else if !thresholdMet { thresholdCode }
+        else { "" }
+
+    /// TUF 1.0 5.6.3 over one target: the pinned length bounds the download
+    /// before any digest comparison, so endless data, a wrong length and
+    /// substituted software each name their own attack. Implements
+    /// [PACKAGE-TRUST].
+    export fn targetCheck(expectedLength, expectedDigest, servedLength, servedDigest) =
+        if servedLength > expectedLength { endlessCode }
+        else if servedLength < expectedLength { wrongLengthCode }
+        else if servedDigest != expectedDigest { arbitraryCode }
+        else { "" }
+
+    fn fieldInt(record, key) = Json::intAt(record, key) ?: -1
+
+    fn fieldText(record, key) = Json::textAt(record, key) ?: ""
+
+    fn hasField(record, key) = match Json::get(record, key) {
+        Success => true
+        Error => false
+    }
+
+    /// The sole member key of a union object such as `{"Eligible":{}}`, or
+    /// "" when it does not hold exactly one member.
+    fn soleKey(members) = {
+        let first = listGet(members, 0) ?: emptyMember()
+        if length(members) == 1 { first.key } else { "" }
+    }
+
+    fn objectKey(value) = match value {
+        Json::Obj { members } => soleKey(members)
+        _ => ""
+    }
+
+    /// The activation state a ReleaseStatus record carries, or "".
+    fn stateOf(record) = match Json::get(record, "state") {
+        Success { value } => objectKey(value)
+        Error => ""
+    }
+
+    fn releaseKey(record) = Canonical::serialize(Json::get(record, "release") ?: Json::Null) ?: ""
+
+    /// `H("osprey.release-status.v1", canonical preceding record)`: the
+    /// previousStatus binding of spec 0031. Implements
+    /// [PACKAGE-TYPE-INVARIANTS].
+    fn recordDigest(previous) = Digests::hashText(Domains::releaseStatusDomain(), Canonical::serialize(previous) ?: "")
+
+    /// Only Eligible-to-Yanked, Eligible-to-Revoked and Yanked-to-Revoked;
+    /// never reverse. Implements [PACKAGE-TRUST].
+    fn allowedMove(fromState, toState) = match fromState {
+        "Eligible" => toState == "Yanked" || toState == "Revoked"
+        "Yanked" => toState == "Revoked"
+        _ => false
+    }
+
+    /// Spec 0031 for the first record of a sequence: Eligible at sequence 1,
+    /// with no previousStatus and no reasonDigest. Implements
+    /// [PACKAGE-TYPE-INVARIANTS].
+    fn initialStatus(next) =
+        if fieldInt(next, "sequence") != 1 { sequenceCode }
+        else if stateOf(next) != "Eligible" { transitionCode }
+        else if hasField(next, "previousStatus") { chainCode }
+        else if hasField(next, "reasonDigest") { reasonCode }
+        else { "" }
+
+    /// Spec 0031 for every later record: sequence grows by exactly one, the
+    /// move is allowed, previousStatus is the digest of the exact preceding
+    /// record, a reason is carried, and the release never changes.
+    /// Implements [PACKAGE-TYPE-INVARIANTS].
+    fn laterStatus(previous, next) =
+        if fieldInt(next, "sequence") != fieldInt(previous, "sequence") + 1 { sequenceCode }
+        else if !allowedMove(stateOf(previous), stateOf(next)) { transitionCode }
+        else if fieldText(next, "previousStatus") != recordDigest(previous) { chainCode }
+        else if !hasField(next, "reasonDigest") { reasonCode }
+        else if releaseKey(previous) != releaseKey(next) { releaseCode }
+        else { "" }
+
+    /// The release-status state machine over two full ReleaseStatus records
+    /// (schemas/package-registry.td); `previous` is `Json::Null` for the
+    /// first record of a sequence. Answers "" or the first rule the pair
+    /// breaks. Implements [PACKAGE-TRUST].
+    export fn statusTransition(previous, next) = match previous {
+        Json::Obj { _ } => laterStatus(previous, next)
+        _ => initialStatus(next)
+    }
+}

@@ -60,8 +60,8 @@ module DispatchTests {
             line(unknown, 1) == "usage: osprey-pkg <command>",
             planned.status == 3,
             line(planned, 0) == "not implemented: add (plan 0020, Milestone A)",
-            release.status == 3,
-            line(release, 0) == "not implemented: build (plan 0020, Milestone A)"
+            release.status == 2,
+            line(release, 0) == "build.usage"
         ])
     }
 

@@ -1,0 +1,58 @@
+namespace registry;
+import registry::Bytes
+
+/// The structural gate of the v1 `Png` asset kind: signature, a first IHDR
+/// of exactly 13 bytes, at most 4,096 by 4,096 and 16 million pixels, only
+/// IHDR/PLTE/tRNS/IDAT/IEND chunks, at least one IDAT, nothing after IEND,
+/// and at most 8 MiB. Every bound is read from headers before any inflation,
+/// so a dimension bomb is refused from its 33-byte header and no chunk length
+/// is trusted past the end of the file. CRC and inflated-size checks belong
+/// to the decoder. Implements the `Png` limits of [PACKAGE-PUBLISH].
+module Png {
+    let maxSide = 4096
+    let maxPixels = 16000000
+    let maxBytes = 8388608
+    let ihdrLength = 13
+    let chunkOverhead = 12
+    let firstChunk = 8
+
+    fn byteAt(bytes, i) = listGet(bytes, i) ?: 0
+
+    fn u32(bytes, i) = ((byteAt(bytes, i) * 256 + byteAt(bytes, i + 1)) * 256 + byteAt(bytes, i + 2)) * 256 + byteAt(bytes, i + 3)
+
+    fn hexAt(bytes, from, to) = Bytes::hex(range(from, to) |> map(fn(i) => byteAt(bytes, i)) |> toList)
+
+    fn kindAt(bytes, at) = hexAt(bytes, at + 4, at + 8)
+
+    fn kindHex(name) = Bytes::hex(Bytes::ofString(name))
+
+    fn allowed(kind) = foldList(["IHDR", "PLTE", "tRNS", "IDAT", "IEND"], false, fn(ok, name) => ok || kind == kindHex(name))
+
+    fn dimensionCode(width, height) = if width == 0 || height == 0 || width > maxSide || height > maxSide { "asset.png-dimensions" }
+        else if width * height > maxPixels { "asset.png-pixels" }
+        else { "" }
+
+    fn endCode(bytes, next, idat) = if next != length(bytes) { "asset.png-trailing" }
+        else if !idat { "asset.png-idat" }
+        else { "" }
+
+    /// One chunk at `at`: its length field must fit the file before it is used.
+    fn walk(bytes, at, idat) = {
+        let next = at + chunkOverhead + u32(bytes, at)
+        let kind = kindAt(bytes, at)
+        if at + chunkOverhead > length(bytes) || next > length(bytes) { "asset.png-truncated" }
+        else if !allowed(kind) { "asset.png-chunk" }
+        else if kind == kindHex("IEND") { endCode(bytes, next, idat) }
+        else { walk(bytes, next, idat || kind == kindHex("IDAT")) }
+    }
+
+    fn headerCode(bytes) = if hexAt(bytes, 0, firstChunk) != "89504e470d0a1a0a" { "asset.png-signature" }
+        else if u32(bytes, firstChunk) != ihdrLength || kindAt(bytes, firstChunk) != kindHex("IHDR") { "asset.png-ihdr" }
+        else { dimensionCode(u32(bytes, 16), u32(bytes, 20)) }
+
+    /// "" for a structurally valid PNG, else the first refusal code.
+    export fn structureCode(bytes) = {
+        let header = if length(bytes) > maxBytes { "asset.png-too-large" } else { headerCode(bytes) }
+        if header != "" { header } else { walk(bytes, firstChunk, false) }
+    }
+}

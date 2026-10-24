@@ -13,8 +13,7 @@ module Digests {
     let hexLength = 64
     let digestBytes = 32
 
-    fn lowerHexByte(b) = (b >= 48 && b <= 57) || (b >= 97 && b <= 102)
-    fn allLowerHex(s) = fold(range(0, byteLength(s)), true, fn(ok, i) => ok && lowerHexByte(byteAt(s, i) ?: 0))
+    fn allLowerHex(s) = Bytes::lowerHexBetween(s, 0, byteLength(s))
 
     /// The envelope of raw digest bytes.
     export fn format(bytes) = prefix + Bytes::hex(bytes)

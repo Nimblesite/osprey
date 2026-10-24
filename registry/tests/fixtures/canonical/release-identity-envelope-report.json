@@ -1,0 +1,19 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "The report release's identity envelope.",
+  "type": "ReleaseIdentityEnvelope",
+  "value": {
+    "package": {
+      "scope": "demo",
+      "name": "report"
+    },
+    "epoch": 1,
+    "sourceDigest": "sha256:a7a65655016bb7bff859bbd5f5a6561e6f231508ffccefa7bb4f5bdaf0aa5bdf",
+    "manifestDigest": "sha256:e79f867f038054cb369a62aba515a9c0aa5c0e9951f8ef86514a3d5739fb0d4c",
+    "buildPlanDigest": "sha256:d1afda20893f49e392dd51488f49bd1ea3bc77a89b11ec662c76d39343ed095a"
+  },
+  "canonical": "{\"buildPlanDigest\":\"sha256:d1afda20893f49e392dd51488f49bd1ea3bc77a89b11ec662c76d39343ed095a\",\"epoch\":1,\"manifestDigest\":\"sha256:e79f867f038054cb369a62aba515a9c0aa5c0e9951f8ef86514a3d5739fb0d4c\",\"package\":{\"name\":\"report\",\"scope\":\"demo\"},\"sourceDigest\":\"sha256:a7a65655016bb7bff859bbd5f5a6561e6f231508ffccefa7bb4f5bdaf0aa5bdf\"}",
+  "canonicalLength": 326,
+  "domain": "osprey.release.v1",
+  "digest": "sha256:ac86feff5aaabe6d40aeadd8dba484dbfa499c33bc33fd4235944a124f727b51"
+}

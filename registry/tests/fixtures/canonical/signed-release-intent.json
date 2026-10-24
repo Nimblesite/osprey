@@ -1,0 +1,53 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "Intent envelopes carry publisher proofs only.",
+  "type": "SignedReleaseIntent",
+  "value": {
+    "payload": {
+      "package": {
+        "scope": "demo",
+        "name": "report"
+      },
+      "source": {
+        "forge": "github",
+        "repositoryId": "R_kgDOfixture1",
+        "subdirectory": "packages/report",
+        "commit": "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+      },
+      "repositoryBindingDigest": "sha256:7381b42de3770a62a8e02adfc3db00183c515a69fae41f4746d69a8cc6f38ef9",
+      "forgeHashAlgorithm": "sha1",
+      "expectedSourceDigest": "sha256:a7a65655016bb7bff859bbd5f5a6561e6f231508ffccefa7bb4f5bdaf0aa5bdf",
+      "expectedManifestDigest": "sha256:e79f867f038054cb369a62aba515a9c0aa5c0e9951f8ef86514a3d5739fb0d4c",
+      "compatibility": {
+        "Initial": {
+          "package": {
+            "scope": "demo",
+            "name": "report"
+          }
+        }
+      },
+      "expiresAt": "2026-10-08T00:00:00.000Z",
+      "nonce": "ri-2b81"
+    },
+    "proofs": [
+      {
+        "principal": "principal-alice",
+        "proof": {
+          "Publisher": {
+            "credential": {
+              "WebAuthnPasskey": {
+                "credentialId": "cred-QmFzZTY0",
+                "relyingPartyId": "registry.osprey-lang.org",
+                "origin": "https://registry.osprey-lang.org",
+                "userVerified": true,
+                "assertionDigest": "sha256:1595875098558912e881ce0b2122a8a061123f2eccfc0ccce8381af89c79f435"
+              }
+            }
+          }
+        }
+      }
+    ]
+  },
+  "canonical": "{\"payload\":{\"compatibility\":{\"Initial\":{\"package\":{\"name\":\"report\",\"scope\":\"demo\"}}},\"expectedManifestDigest\":\"sha256:e79f867f038054cb369a62aba515a9c0aa5c0e9951f8ef86514a3d5739fb0d4c\",\"expectedSourceDigest\":\"sha256:a7a65655016bb7bff859bbd5f5a6561e6f231508ffccefa7bb4f5bdaf0aa5bdf\",\"expiresAt\":\"2026-10-08T00:00:00.000Z\",\"forgeHashAlgorithm\":\"sha1\",\"nonce\":\"ri-2b81\",\"package\":{\"name\":\"report\",\"scope\":\"demo\"},\"repositoryBindingDigest\":\"sha256:7381b42de3770a62a8e02adfc3db00183c515a69fae41f4746d69a8cc6f38ef9\",\"source\":{\"commit\":\"4b825dc642cb6eb9a060e54bf8d69288fbee4904\",\"forge\":\"github\",\"repositoryId\":\"R_kgDOfixture1\",\"subdirectory\":\"packages/report\"}},\"proofs\":[{\"principal\":\"principal-alice\",\"proof\":{\"Publisher\":{\"credential\":{\"WebAuthnPasskey\":{\"assertionDigest\":\"sha256:1595875098558912e881ce0b2122a8a061123f2eccfc0ccce8381af89c79f435\",\"credentialId\":\"cred-QmFzZTY0\",\"origin\":\"https://registry.osprey-lang.org\",\"relyingPartyId\":\"registry.osprey-lang.org\",\"userVerified\":true}}}}}]}",
+  "canonicalLength": 988
+}

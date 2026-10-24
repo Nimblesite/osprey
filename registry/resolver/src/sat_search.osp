@@ -45,7 +45,18 @@ module SatSearch {
 
     // ---- assignment helpers ----
 
-    fn slotOf(s, v) = mapGet(s.track.slots, "${v}") ?: blank
+    /// Field accessor for `Slot.value`, whose name is shared with the
+    /// `Success` payload of `Result`, so the receiver is typed (issue #273).
+    fn valueOf(slot: Slot) = slot.value
+
+    /// The assignment slot for a variable. Rebuilt through a match so the
+    /// result is a tracked record literal, never a bare match arm
+    /// (issue #273); field accesses on the old `?:` result made the backend
+    /// disagree on arm types in `litValue` callers.
+    fn slotOf(s, v) = match mapGet(s.track.slots, "${v}") {
+        Success { slot } => Slot { value: valueOf(slot), level: slot.level, reason: slot.reason }
+        Error => blank
+    }
 
     fn signOf(l) = if l > 0 { 1 } else { -1 }
 
@@ -72,8 +83,11 @@ module SatSearch {
 
     fn slice(xs, from, to) = range(from, to) |> map(fn(i) => listGet(xs, i) ?: 0) |> toList
 
-    /// Trail length when `level` was the deepest open level.
-    fn trailLimit(s, level) = if level <= 0 { 0 } else { listGet(s.track.trailLim, level - 1) ?: 0 }
+    /// Trail length at the end of `level` (the prefix `backtrack` keeps when
+    /// undoing every assignment above it). `trailLim[i]` records the trail
+    /// length when level `i + 1` was opened, so the end of level `i` is
+    /// `trailLim[i]`; the current, still-open level ends at the trail length.
+    fn trailLimit(s, level) = listGet(s.track.trailLim, level) ?: length(s.track.trail)
 
     /// Undo every assignment above `level`, keeping the propagation queue
     /// consistent with the surviving trail prefix.
@@ -87,7 +101,17 @@ module SatSearch {
 
     // ---- clause database ----
 
-    fn watchersOf(db, l) = mapGet(db.watchers, "${l}") ?: []
+    /// Map value or an empty list. The return annotation is required: an
+    /// untyped `mapGet(…) ?: []` reads the stored list back as an integer word
+    /// and the backend disagrees on the arm types (issue #273).
+    fn listOrEmpty(db, k) -> List<int> = mapGet(db, k) ?: []
+
+    /// List element or an empty list, with the element type pinned by the
+    /// return annotation: an untyped `listGet(…) ?: []` reads the stored
+    /// clause back as an integer word and `length` misreads it (issue #273).
+    fn clauseOrEmpty(xs, i) -> List<int> = listGet(xs, i) ?: []
+
+    fn watchersOf(db, l) = listOrEmpty(db.watchers, "${l}")
 
     /// Point the two watched literals of clause `ci` at its first two entries.
     fn attachWatches(db, ci, c) = {
@@ -105,7 +129,7 @@ module SatSearch {
     /// antecedent set for a learned clause.
     fn rootIdsOf(s, ci) = if ci < s.inputCount { [ci] }
         else if ci < s.inputCount + s.pseudoCount { [SatClauses::neg(ci - s.inputCount + 1)] }
-        else { listGet(s.db.learnedRoots, ci - s.inputCount - s.pseudoCount) ?: [] }
+        else { clauseOrEmpty(s.db.learnedRoots, ci - s.inputCount - s.pseudoCount) }
 
     fn fresh(vars, clauses, pseudos) = State {
         vars: vars,
@@ -139,7 +163,7 @@ module SatSearch {
     }
 
     fn setupStep(s, ci) = {
-        let c = listGet(s.db.clauses, ci) ?: []
+        let c = clauseOrEmpty(s.db.clauses, ci)
         match length(c) {
             0 => Clash { at: s, ci: ci }
             1 => enqueueUnit(s, ci, listGet(c, 0) ?: 0)
@@ -164,8 +188,8 @@ module SatSearch {
     }
 
     fn visit(s, ci, f) = {
-        let c = listGet(s.db.clauses, ci) ?: []
-        let watched = mapGet(s.db.watches, "${ci}") ?: []
+        let c = clauseOrEmpty(s.db.clauses, ci)
+        let watched = listOrEmpty(s.db.watches, "${ci}")
         let w1 = listGet(watched, 0) ?: 0
         let other = if w1 == f { listGet(watched, 1) ?: 0 } else { w1 }
         match listGet(replacements(s, c, other), 0) {
@@ -237,7 +261,7 @@ module SatSearch {
                 true => Progress { m: acc.m, roots: acc.roots, uip: SatClauses::litOf(v, SatClauses::neg(slotOf(s, v).value)) }
                 false => {
                     let r = reasonOf(s, v)
-                    let m2 = absorb(s, cur, acc.m, listGet(s.db.clauses, r) ?: [], v)
+                    let m2 = absorb(s, cur, acc.m, clauseOrEmpty(s.db.clauses, r), v)
                     Progress { m: Marks { seen: m2.seen, pathC: m2.pathC - 1, lower: m2.lower }, roots: listConcat(acc.roots, rootIdsOf(s, r)), uip: 0 }
                 }
             }
@@ -247,7 +271,7 @@ module SatSearch {
     fn analyze(s, ci) = {
         let cur = currentLevel(s)
         let len = length(s.track.trail)
-        let m0 = absorb(s, cur, Marks { seen: Map(), pathC: 0, lower: [] }, listGet(s.db.clauses, ci) ?: [], 0)
+        let m0 = absorb(s, cur, Marks { seen: Map(), pathC: 0, lower: [] }, clauseOrEmpty(s.db.clauses, ci), 0)
         let p = fold(range(0, len), Progress { m: m0, roots: rootIdsOf(s, ci), uip: 0 }, fn(acc, iRev) => resolveStep(s, cur, len, acc, iRev))
         Analysis { uip: p.uip, lower: p.m.lower, roots: p.roots }
     }
@@ -255,26 +279,36 @@ module SatSearch {
     /// Backjump level: the deepest level below the learned clause's UIP.
     fn targetOf(s, lower) = foldList(lower, 0, fn(best, l) => if varLevel(s, SatClauses::absLit(l)) > best { varLevel(s, SatClauses::absLit(l)) } else { best })
 
+    /// The literal of `lower` falsified most recently: the one at the backjump level.
+    fn deepest(s, lower) = foldList(lower, 0, fn(best, l) =>
+        if best == 0 || varLevel(s, SatClauses::absLit(l)) > varLevel(s, SatClauses::absLit(best)) { l } else { best })
+
     /// Record the learned clause, its antecedent roots and the proof trace.
+    /// The stored clause is canonical, but its watches are the asserting
+    /// literal and the deepest `lower` literal: after the backjump one is
+    /// unassigned and the other the last falsified, which is the invariant the
+    /// two-watched-literal scheme needs. Watching the two smallest literals
+    /// instead left clauses whose watches were both false and invisible to
+    /// propagation, so the same conflicts were relearned without bound.
     fn record(s, a, ci) = {
         let clause = SatClauses::canonical(listPrepend(a.lower, a.uip))
         let db = Db { clauses: listAppend(s.db.clauses, clause), watches: s.db.watches, watchers: s.db.watchers, learned: listAppend(s.db.learned, clause), learnedRoots: listAppend(s.db.learnedRoots, SatClauses::canonicalInts(a.roots)) }
-        if length(clause) < 2 { withDb(s, db) } else { withDb(s, attachWatches(db, ci, clause)) }
+        if length(clause) < 2 { withDb(s, db) } else { withDb(s, attachWatches(db, ci, [a.uip, deepest(s, a.lower)])) }
     }
 
     // ---- the flat search loop ----
 
     /// A clash at level 0 is the refutation; deeper, learn the 1-UIP clause,
-    /// backjump and assert it. The asserting literal opens the next level.
+    /// backjump and assert it. The asserting literal belongs to the backjump
+    /// level itself, as in every CDCL engine: assigned one level deeper it was
+    /// discarded by the next backjump to that level, an older learned clause
+    /// turned unit without being propagated, and the identical clause was
+    /// relearned without bound (php(4,3) exhausted memory).
     fn meetClash(s, ci) = {
         let a = analyze(s, ci)
         let t = targetOf(s, a.lower)
         let ci2 = length(s.db.clauses)
-        let s2 = backtrack(record(s, a, ci2), t)
-        match t {
-            0 => Live { at: assign(s2, a.uip, 0, ci2) }
-            _ => Live { at: assign(openLevel(s2), a.uip, t + 1, ci2) }
-        }
+        Live { at: assign(backtrack(record(s, a, ci2), t), a.uip, t, ci2) }
     }
 
     fn oneStep(s) = match propagate(s) {
@@ -305,8 +339,8 @@ module SatSearch {
     fn openClause(s, pool, ci) = Pool {
         seen: mapSet(pool.seen, "${ci}", 1),
         ids: listConcat(pool.ids, rootIdsOf(s, ci)),
-        pending: listConcat(pool.pending, falseVars(s, listGet(s.db.clauses, ci) ?: [])),
-        vars: pool.vars
+        pending: pool.pending,
+        vars: listConcat(pool.vars, falseVars(s, clauseOrEmpty(s.db.clauses, ci)))
     }
 
     fn explainVar(s, pool) = {
@@ -356,10 +390,10 @@ module SatSearch {
             Clash { at, ci } => unsatVerdict(at, ci)
             Clear { at } => finish(fold(range(0, roundCapBase + roundCapScale * vars), Live { at: at }, fn(acc, _r) =>
                 match acc {
-                    Ended { verdict } => acc
+                    Ended { _ } => acc
                     Live { at } => fold(range(0, roundBase + roundScale * at.vars), acc, fn(step, _i) =>
                         match step {
-                            Ended { verdict } => step
+                            Ended { _ } => step
                             Live { at } => oneStep(at)
                         })
                 }))

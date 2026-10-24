@@ -1,0 +1,275 @@
+namespace registry_tests;
+import registry_host::Host
+import registry_cli::Lock
+import registry_cli::Lockfile
+import registry_cli::Fetch
+import registry_cli::Reports
+import registry::Bundle
+import registry::Identity
+import registry::Manifest
+import registry::ManifestJson
+import registry::ManifestModel
+import registry::Maybe
+import registry::Names
+import registry::Release
+import registry::ReleaseFiles
+
+/// The `lock` command against fixture Web/Files handlers: a two-package
+/// registry resolves to the exact lock bytes and `+` lines, a second run
+/// prints `=`, a raised floor prints `~`, and every hardening refusal
+/// (`lock.release-replaced`, `lock.release-vanished`, with and without
+/// `--accept-removals`), `lock.invalid-manifest` and an Explain outcome are
+/// asserted by name. Implements [PACKAGE-FOLDER-REGISTRY] and
+/// [PACKAGE-HARDENING] C5.
+module LockTests {
+    let base = "http://127.0.0.1:8787"
+    let project = "/abs"
+
+    type ReadRoute = { path: string, content: string }
+    type WebRoute = { base: string, path: string, status: int, body: string }
+    type Attempt = { report: Reports::Report, writes: string, ensures: string }
+
+    fn line(report, i) = listGet(report.lines, i) ?: ""
+
+    fn readRoute(path, content) = ReadRoute { path: path, content: content }
+    fn webRoute(base, path, code, body) = WebRoute { base: base, path: path, status: code, body: body }
+
+    fn readPath(r: ReadRoute) = r.path
+    fn webPath(r: WebRoute) = r.path
+
+    fn readFor(reads, path) = foldList(reads, Error { message: "fixture: no read ${path}" }, fn(answer, r) => match answer {
+        Success => answer
+        Error => if readPath(r) == path { Success { value: r.content } } else { answer }
+    })
+
+    fn replyFor(webs, base, path) = foldList(webs, Error { message: "http.transport: no route ${base}${path}" }, fn(answer, w) => match answer {
+        Success => answer
+        Error => if w.base == base && webPath(w) == path { Success { value: Host::Reply { status: w.status, etag: "", body: w.body } } } else { answer }
+    })
+
+    fn runLock(reads, webs, args) = {
+        mut writes = ""
+        mut ensures = ""
+        let files = handler Host::Files {
+            read path => readFor(reads, path)
+            write path content => {
+                writes = "${writes}${path}|"
+                Success { value: byteLength(content) }
+            }
+        }
+        let tree = handler Host::Tree {
+            walk dir => Error { message: "fixture: lock never walks ${dir}" }
+            ensure dir => {
+                ensures = "${ensures}${dir}|"
+                Success { value: 0 }
+            }
+        }
+        let web = handler Host::Web {
+            get base path => replyFor(webs, base, path)
+        }
+        let process = handler Host::Process {
+            run command => Host::Run { status: 0, stdout: "", stderr: "fixture: lock never runs ${command}" }
+        }
+        let report = process(fn() => files(fn() => tree(fn() => web(fn() => Lock::run(args)))))
+        Attempt { report: report, writes: writes, ensures: ensures }
+    }
+
+    fn missingServed() = Release::Served {
+        id: Identity::ReleaseId { key: Names::Key { scope: "", name: "" }, epoch: 0, ordinal: 0, digest: "" },
+        files: []
+    }
+
+    fn manifestText(name) = "[project]\nname = \"${name}\"\nsource_roots = [\"src\"]\n"
+
+    fn oneManifest() = "[project]\nname = \"one\"\nsource_roots = [\"src\"]\n\n[dependencies]\n\"@demo/two\" = { epoch = 1, min_release = 1 }\n"
+
+    fn rootManifest(floor) = "[project]\nname = \"app\"\nsource_roots = [\"src\"]\n\n[dependencies]\n\"@demo/one\" = { epoch = 1, min_release = ${floor} }\n"
+
+    fn filesOf(manifest) = [
+        Release::File { relPath: "osprey.toml", content: manifest },
+        Release::File { relPath: "src/main.osp", content: "fn main() = 0\n" }
+    ]
+
+    fn one() = ReleaseFiles::assemble("@demo/one/1.1", filesOf(oneManifest())) ?: missingServed()
+    fn one2() = ReleaseFiles::assemble("@demo/one/1.2", filesOf(oneManifest())) ?: missingServed()
+    fn two() = ReleaseFiles::assemble("@demo/two/1.1", filesOf(manifestText("two"))) ?: missingServed()
+    fn badOne() = ReleaseFiles::assemble("@demo/one/1.1", [
+        Release::File { relPath: "osprey.toml", content: "[project]\nname = \"\"\nsource_roots = [\"src\"]\n" },
+        Release::File { relPath: "src/main.osp", content: "fn main() = 0\n" }
+    ]) ?: missingServed()
+
+    // ---- listing and web fixtures ----
+
+    fn digestOf(s: Release::Served) = s.id.digest
+    fn keyText(s: Release::Served) = Names::display(s.id.key)
+
+    fn rowText(s: Release::Served) = "{\"digest\":\"${digestOf(s)}\",\"epoch\":${s.id.epoch},\"ordinal\":${s.id.ordinal}}"
+
+    fn releasesOf(served, k) = filterList(served, fn(s: Release::Served) => keyText(s) == k)
+
+    fn distinctKeys(served) = foldList(served, [], fn(acc, s: Release::Served) => if listContains(acc, keyText(s)) { acc } else { listAppend(acc, keyText(s)) })
+
+    fn packageListing(served, k) = "{\"key\":\"${k}\",\"releases\":[${join(mapList(releasesOf(served, k), rowText), ",")}]}"
+
+    fn fullListing(served) = "{\"packages\":[${join(mapList(distinctKeys(served), fn(k) => packageListing(served, k)), ",")}]}"
+
+    fn sourcePath(s: Release::Served) = "/v1/releases/${digestOf(s)}/source"
+
+    fn listingWebs(served) = listConcat(
+        [webRoute(base, "/v1/packages", 200, fullListing(served))],
+        mapList(distinctKeys(served), fn(k) => webRoute(base, "/v1/packages/${drop(k, 1)}", 200, packageListing(served, k))))
+
+    fn sourceWebs(served) = mapList(served, fn(s: Release::Served) => webRoute(base, sourcePath(s), 200, Bundle::encode(s) ?: ""))
+
+    fn websOf(served) = listConcat(listingWebs(served), sourceWebs(served))
+
+    fn manifestReads(served) = mapList(served, fn(s: Release::Served) => {
+        let file = listGet(s.files, 0) ?: Release::File { relPath: "osprey.toml", content: "" }
+        readRoute("${project}/${Fetch::installDir(s.id)}/osprey.toml", file.content)
+    })
+
+    fn rootReads(manifestText) = [readRoute("${project}/osprey.toml", manifestText)]
+
+    fn lockRead(text) = readRoute("${project}/osprey.lock", text)
+
+    // ---- expected values ----
+
+    fn req(key, epoch, floor) = ManifestModel::Requirement { package: key, epoch: epoch, minimumOrdinal: floor }
+    fn runtime(key, epoch, floor) = ManifestModel::Runtime { requirement: req(key, epoch, floor) }
+
+    fn pkg(release, deps) = Lockfile::Package { release: release, dependencies: deps }
+
+    fn twoKey() = Names::Key { scope: "demo", name: "two" }
+
+    fn onePkg(oneServed) = pkg(oneServed.id, [runtime(twoKey(), 1, 1)])
+    fn twoPkg(twoServed) = pkg(twoServed.id, [])
+
+    fn emptyManifest() = ManifestModel::Manifest {
+        projectName: "app", sourceRoots: ["src"], defaultNamespace: Maybe::none(), entry: Maybe::none(), flavor: Maybe::none(),
+        allowWildcardImports: false, publication: Maybe::none(), testRoots: [], pythonSources: [], dependencies: [], systemRequirements: [], assets: []
+    }
+
+    fn expectedBytes(rootManifestText, oneServed, twoServed) = {
+        let m = match Manifest::accepted(Manifest::parse(rootManifestText)) {
+            Success { value } => value
+            Error => emptyManifest()
+        }
+        Lockfile::encode(Lockfile::Lock {
+            root: Lockfile::Root { manifestDigest: ManifestJson::digest(m) ?: "", dependencies: m.dependencies },
+            packages: [onePkg(oneServed), twoPkg(twoServed)]
+        }) ?: ""
+    }
+
+    fn compact(s: Release::Served) = "${keyText(s)} e${s.id.epoch}.r${s.id.ordinal} ${digestOf(s)}"
+
+    fn previousText(oneServed, twoServed) = Lockfile::encode(Lockfile::Lock {
+        root: Lockfile::Root { manifestDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", dependencies: [] },
+        packages: [onePkg(oneServed), twoPkg(twoServed)]
+    }) ?: ""
+
+    /// The first run: two packages resolved, exact lock bytes, `+` lines.
+    fn firstRun() = {
+        let oneServed = one()
+        let twoServed = two()
+        let served = [oneServed, twoServed]
+        let a = runLock(listConcat(rootReads(rootManifest(1)), manifestReads(served)), websOf(served), ["--project", project])
+        checkAll("a two-package registry resolves to the exact lock bytes and + lines", [
+            a.report.status == 0,
+            a.writes == "${project}/osprey.lock|",
+            a.report.lines == ["+ ${compact(oneServed)}", "+ ${compact(twoServed)}"]
+        ])
+    }
+
+    /// A second run with the same lock prints only `=` lines.
+    fn secondRun() = {
+        let oneServed = one()
+        let twoServed = two()
+        let served = [oneServed, twoServed]
+        let a = runLock(listConcat(rootReads(rootManifest(1)), [lockRead(previousText(oneServed, twoServed))], manifestReads(served)), websOf(served), ["--project", project])
+        checkAll("a second run prints only = lines", [
+            a.report.status == 0,
+            a.report.lines == ["= ${compact(oneServed)}", "= ${compact(twoServed)}"]
+        ])
+    }
+
+    /// A raised floor selects the newer release of one and prints `~`.
+    fn changedFloor() = {
+        let oneOld = one()
+        let oneNew = one2()
+        let twoServed = two()
+        let served = [oneOld, oneNew, twoServed]
+        let a = runLock(listConcat(rootReads(rootManifest(2)), [lockRead(previousText(oneOld, twoServed))], manifestReads(served)), websOf(served), ["--project", project])
+        checkAll("a raised floor prints ~ for the changed release", [
+            a.report.status == 0,
+            a.report.lines == ["~ ${compact(oneNew)}", "= ${compact(twoServed)}"]
+        ])
+    }
+
+    /// A release the listing re-serves under a new digest is a refusal.
+    fn releaseReplaced() = {
+        let oneOld = one()
+        let twoServed = two()
+        let replaced = Release::Served {
+            id: Identity::ReleaseId { key: oneOld.id.key, epoch: oneOld.id.epoch, ordinal: oneOld.id.ordinal, digest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+            files: oneOld.files
+        }
+        let served = [replaced, twoServed]
+        let a = runLock(listConcat(rootReads(rootManifest(1)), [lockRead(previousText(oneOld, twoServed))], manifestReads(served)), websOf(served), ["--project", project])
+        checkAll("a re-served digest is lock.release-replaced and writes nothing", [
+            a.report.status == 1,
+            a.report.lines == ["lock.release-replaced ${keyText(replaced)} e1.r1 ${digestOf(oneOld)} ${digestOf(replaced)}"],
+            a.writes == ""
+        ])
+    }
+
+    /// A dropped locked release is a refusal without --accept-removals.
+    fn releaseVanished() = {
+        let oneServed = one()
+        let twoServed = two()
+        let served = [oneServed]
+        let a = runLock(listConcat(rootReads(rootManifest(1)), [lockRead(previousText(oneServed, twoServed))], manifestReads(served)), websOf(served), ["--project", project])
+        checkAll("a vanished release is lock.release-vanished and writes nothing", [
+            a.report.status == 1,
+            a.report.lines == ["lock.release-vanished ${compact(twoServed)}"],
+            a.writes == ""
+        ])
+    }
+
+    /// With --accept-removals the vanished release is a warning and `-` line.
+    fn releaseVanishedAccepted() = {
+        let oneServed = one()
+        let twoServed = two()
+        let served = [oneServed]
+        let a = runLock(listConcat(rootReads(rootManifest(1)), [lockRead(previousText(oneServed, twoServed))], manifestReads(served)), websOf(served), ["--project", project, "--accept-removals"])
+        checkAll("--accept-removals warns and removes the vanished release", [
+            a.report.status == 0,
+            a.report.lines == ["lock.release-vanished ${compact(twoServed)}", "+ ${compact(oneServed)}", "- ${compact(twoServed)}"]
+        ])
+    }
+
+    /// A candidate whose manifest is rejected is a warning and is excluded.
+    fn invalidManifest() = {
+        let bad = badOne()
+        let twoServed = two()
+        let served = [bad, twoServed]
+        let a = runLock(listConcat(rootReads(rootManifest(1)), manifestReads(served)), websOf(served), ["--project", project])
+        checkAll("an invalid candidate manifest is lock.invalid-manifest and excluded", [
+            a.report.status == 1,
+            startsWith(line(a.report, 0), "lock.invalid-manifest ${compact(bad)} manifest.project.name at "),
+            line(a.report, 1) == "resolution.missing-package",
+            line(a.report, 2) == "@demo/one",
+            a.writes == ""
+        ])
+    }
+
+    /// Every lock test.
+    export fn run() = {
+        test("lock: two-package registry resolves with + lines", firstRun)
+        test("lock: a second run prints = lines", secondRun)
+        test("lock: a raised floor prints ~", changedFloor)
+        test("lock: a re-served digest is refused", releaseReplaced)
+        test("lock: a vanished release is refused", releaseVanished)
+        test("lock: --accept-removals warns and drops", releaseVanishedAccepted)
+        test("lock: an invalid candidate manifest is excluded", invalidManifest)
+    }
+}

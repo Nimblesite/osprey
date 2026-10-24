@@ -1,0 +1,2200 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "Every list order and duplicate rule of spec 0031. `element` is the list's element type, `field` its field name; `code` is \"\" for canonical order, else the verdict at the first adjacent pair that is not strictly ascending.",
+  "cases": [
+    {
+      "element": "PackageKey",
+      "field": "antecedents",
+      "items": [
+        {
+          "scope": "a",
+          "name": "z"
+        },
+        {
+          "scope": "b",
+          "name": "a"
+        }
+      ],
+      "code": "",
+      "why": "package keys by (scope, name): ascending"
+    },
+    {
+      "element": "PackageKey",
+      "field": "antecedents",
+      "items": [
+        {
+          "scope": "b",
+          "name": "a"
+        },
+        {
+          "scope": "a",
+          "name": "z"
+        }
+      ],
+      "code": "order.unsorted",
+      "why": "package keys by (scope, name): swapped"
+    },
+    {
+      "element": "PackageKey",
+      "field": "antecedents",
+      "items": [
+        {
+          "scope": "a",
+          "name": "z"
+        },
+        {
+          "scope": "a",
+          "name": "z"
+        }
+      ],
+      "code": "order.duplicate",
+      "why": "package keys by (scope, name): same key twice"
+    },
+    {
+      "element": "DependencyEdge",
+      "field": "dependencies",
+      "items": [
+        {
+          "Runtime": {
+            "requirement": {
+              "package": {
+                "scope": "z",
+                "name": "z"
+              },
+              "epoch": 1,
+              "minimumOrdinal": 1
+            }
+          }
+        },
+        {
+          "Build": {
+            "requirement": {
+              "package": {
+                "scope": "a",
+                "name": "a"
+              },
+              "epoch": 1,
+              "minimumOrdinal": 1
+            }
+          }
+        }
+      ],
+      "code": "",
+      "why": "dependency variant Runtime before Build regardless of package: ascending"
+    },
+    {
+      "element": "DependencyEdge",
+      "field": "dependencies",
+      "items": [
+        {
+          "Build": {
+            "requirement": {
+              "package": {
+                "scope": "a",
+                "name": "a"
+              },
+              "epoch": 1,
+              "minimumOrdinal": 1
+            }
+          }
+        },
+        {
+          "Runtime": {
+            "requirement": {
+              "package": {
+                "scope": "z",
+                "name": "z"
+              },
+              "epoch": 1,
+              "minimumOrdinal": 1
+            }
+          }
+        }
+      ],
+      "code": "order.unsorted",
+      "why": "dependency variant Runtime before Build regardless of package: swapped"
+    },
+    {
+      "element": "DependencyEdge",
+      "field": "dependencies",
+      "items": [
+        {
+          "Runtime": {
+            "requirement": {
+              "package": {
+                "scope": "z",
+                "name": "z"
+              },
+              "epoch": 1,
+              "minimumOrdinal": 1
+            }
+          }
+        },
+        {
+          "Runtime": {
+            "requirement": {
+              "package": {
+                "scope": "z",
+                "name": "z"
+              },
+              "epoch": 1,
+              "minimumOrdinal": 1
+            }
+          }
+        }
+      ],
+      "code": "order.duplicate",
+      "why": "dependency variant Runtime before Build regardless of package: same key twice"
+    },
+    {
+      "element": "DependencyEdge",
+      "field": "dependencies",
+      "items": [
+        {
+          "Test": {
+            "requirement": {
+              "package": {
+                "scope": "a",
+                "name": "a"
+              },
+              "epoch": 1,
+              "minimumOrdinal": 2
+            }
+          }
+        },
+        {
+          "Test": {
+            "requirement": {
+              "package": {
+                "scope": "a",
+                "name": "a"
+              },
+              "epoch": 1,
+              "minimumOrdinal": 10
+            }
+          }
+        }
+      ],
+      "code": "",
+      "why": "same variant and package: minimumOrdinal numerically, 2 before 10: ascending"
+    },
+    {
+      "element": "DependencyEdge",
+      "field": "dependencies",
+      "items": [
+        {
+          "Test": {
+            "requirement": {
+              "package": {
+                "scope": "a",
+                "name": "a"
+              },
+              "epoch": 1,
+              "minimumOrdinal": 10
+            }
+          }
+        },
+        {
+          "Test": {
+            "requirement": {
+              "package": {
+                "scope": "a",
+                "name": "a"
+              },
+              "epoch": 1,
+              "minimumOrdinal": 2
+            }
+          }
+        }
+      ],
+      "code": "order.unsorted",
+      "why": "same variant and package: minimumOrdinal numerically, 2 before 10: swapped"
+    },
+    {
+      "element": "DependencyEdge",
+      "field": "dependencies",
+      "items": [
+        {
+          "Test": {
+            "requirement": {
+              "package": {
+                "scope": "a",
+                "name": "a"
+              },
+              "epoch": 1,
+              "minimumOrdinal": 2
+            }
+          }
+        },
+        {
+          "Test": {
+            "requirement": {
+              "package": {
+                "scope": "a",
+                "name": "a"
+              },
+              "epoch": 1,
+              "minimumOrdinal": 2
+            }
+          }
+        }
+      ],
+      "code": "order.duplicate",
+      "why": "same variant and package: minimumOrdinal numerically, 2 before 10: same key twice"
+    },
+    {
+      "element": "DependencyEdge",
+      "field": "dependencies",
+      "items": [
+        {
+          "Test": {
+            "requirement": {
+              "package": {
+                "scope": "a",
+                "name": "a"
+              },
+              "epoch": 1,
+              "minimumOrdinal": 1
+            }
+          }
+        },
+        {
+          "Runtime": {
+            "requirement": {
+              "package": {
+                "scope": "a",
+                "name": "a"
+              },
+              "epoch": 1,
+              "minimumOrdinal": 1
+            }
+          }
+        }
+      ],
+      "code": "order.unsorted",
+      "why": "Test after Runtime"
+    },
+    {
+      "element": "PackageAsset",
+      "field": "assets",
+      "items": [
+        {
+          "path": "data/a.json",
+          "byteLength": 2,
+          "digest": "sha256:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+          "role": {
+            "Documentation": {
+              "kind": {
+                "Json": {}
+              }
+            }
+          }
+        },
+        {
+          "path": "data/b.json",
+          "byteLength": 2,
+          "digest": "sha256:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+          "role": {
+            "Documentation": {
+              "kind": {
+                "Json": {}
+              }
+            }
+          }
+        }
+      ],
+      "code": "",
+      "why": "assets by (path, digest): ascending"
+    },
+    {
+      "element": "PackageAsset",
+      "field": "assets",
+      "items": [
+        {
+          "path": "data/b.json",
+          "byteLength": 2,
+          "digest": "sha256:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+          "role": {
+            "Documentation": {
+              "kind": {
+                "Json": {}
+              }
+            }
+          }
+        },
+        {
+          "path": "data/a.json",
+          "byteLength": 2,
+          "digest": "sha256:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+          "role": {
+            "Documentation": {
+              "kind": {
+                "Json": {}
+              }
+            }
+          }
+        }
+      ],
+      "code": "order.unsorted",
+      "why": "assets by (path, digest): swapped"
+    },
+    {
+      "element": "PackageAsset",
+      "field": "assets",
+      "items": [
+        {
+          "path": "data/a.json",
+          "byteLength": 2,
+          "digest": "sha256:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+          "role": {
+            "Documentation": {
+              "kind": {
+                "Json": {}
+              }
+            }
+          }
+        },
+        {
+          "path": "data/a.json",
+          "byteLength": 9,
+          "digest": "sha256:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+          "role": {
+            "Documentation": {
+              "kind": {
+                "Json": {}
+              }
+            }
+          }
+        }
+      ],
+      "code": "order.duplicate",
+      "why": "assets by (path, digest): same key twice"
+    },
+    {
+      "element": "SystemRequirement",
+      "field": "systemRequirements",
+      "items": [
+        {
+          "capability": "net.http",
+          "minimumRevision": 9
+        },
+        {
+          "capability": "net.http",
+          "minimumRevision": 10
+        }
+      ],
+      "code": "",
+      "why": "system requirements by (capability, minimumRevision): ascending"
+    },
+    {
+      "element": "SystemRequirement",
+      "field": "systemRequirements",
+      "items": [
+        {
+          "capability": "net.http",
+          "minimumRevision": 10
+        },
+        {
+          "capability": "net.http",
+          "minimumRevision": 9
+        }
+      ],
+      "code": "order.unsorted",
+      "why": "system requirements by (capability, minimumRevision): swapped"
+    },
+    {
+      "element": "SystemRequirement",
+      "field": "systemRequirements",
+      "items": [
+        {
+          "capability": "net.http",
+          "minimumRevision": 9
+        },
+        {
+          "capability": "net.http",
+          "minimumRevision": 9
+        }
+      ],
+      "code": "order.duplicate",
+      "why": "system requirements by (capability, minimumRevision): same key twice"
+    },
+    {
+      "element": "ProviderCatalogEntry",
+      "field": "providerEntries",
+      "items": [
+        {
+          "capability": "net.http",
+          "targetSpecDigest": "sha256:e3b98a4da31a127d4bde6e43033f66ba274cab0eb7eb1c70ec41402bf6273dd8",
+          "provider": "libcurl",
+          "revision": 3,
+          "artifactDigest": "sha256:3c72bec4646c256835656a01a3666d406bc2ff02b0dafe675a578fe585a3fa85",
+          "closureDigests": [],
+          "provenanceDigest": "sha256:148de9c5a7a44d19e56cd9ae1a554bf67847afb0c58f6e12fa29ac7ddfca9940"
+        },
+        {
+          "capability": "net.http",
+          "targetSpecDigest": "sha256:e3b98a4da31a127d4bde6e43033f66ba274cab0eb7eb1c70ec41402bf6273dd8",
+          "provider": "libcurl",
+          "revision": 4,
+          "artifactDigest": "sha256:3c72bec4646c256835656a01a3666d406bc2ff02b0dafe675a578fe585a3fa85",
+          "closureDigests": [],
+          "provenanceDigest": "sha256:148de9c5a7a44d19e56cd9ae1a554bf67847afb0c58f6e12fa29ac7ddfca9940"
+        }
+      ],
+      "code": "",
+      "why": "provider entries by (capability, targetSpecDigest, provider, revision, digest): ascending"
+    },
+    {
+      "element": "ProviderCatalogEntry",
+      "field": "providerEntries",
+      "items": [
+        {
+          "capability": "net.http",
+          "targetSpecDigest": "sha256:e3b98a4da31a127d4bde6e43033f66ba274cab0eb7eb1c70ec41402bf6273dd8",
+          "provider": "libcurl",
+          "revision": 4,
+          "artifactDigest": "sha256:3c72bec4646c256835656a01a3666d406bc2ff02b0dafe675a578fe585a3fa85",
+          "closureDigests": [],
+          "provenanceDigest": "sha256:148de9c5a7a44d19e56cd9ae1a554bf67847afb0c58f6e12fa29ac7ddfca9940"
+        },
+        {
+          "capability": "net.http",
+          "targetSpecDigest": "sha256:e3b98a4da31a127d4bde6e43033f66ba274cab0eb7eb1c70ec41402bf6273dd8",
+          "provider": "libcurl",
+          "revision": 3,
+          "artifactDigest": "sha256:3c72bec4646c256835656a01a3666d406bc2ff02b0dafe675a578fe585a3fa85",
+          "closureDigests": [],
+          "provenanceDigest": "sha256:148de9c5a7a44d19e56cd9ae1a554bf67847afb0c58f6e12fa29ac7ddfca9940"
+        }
+      ],
+      "code": "order.unsorted",
+      "why": "provider entries by (capability, targetSpecDigest, provider, revision, digest): swapped"
+    },
+    {
+      "element": "ProviderCatalogEntry",
+      "field": "providerEntries",
+      "items": [
+        {
+          "capability": "net.http",
+          "targetSpecDigest": "sha256:e3b98a4da31a127d4bde6e43033f66ba274cab0eb7eb1c70ec41402bf6273dd8",
+          "provider": "libcurl",
+          "revision": 3,
+          "artifactDigest": "sha256:3c72bec4646c256835656a01a3666d406bc2ff02b0dafe675a578fe585a3fa85",
+          "closureDigests": [],
+          "provenanceDigest": "sha256:148de9c5a7a44d19e56cd9ae1a554bf67847afb0c58f6e12fa29ac7ddfca9940"
+        },
+        {
+          "capability": "net.http",
+          "targetSpecDigest": "sha256:e3b98a4da31a127d4bde6e43033f66ba274cab0eb7eb1c70ec41402bf6273dd8",
+          "provider": "libcurl",
+          "revision": 3,
+          "artifactDigest": "sha256:3c72bec4646c256835656a01a3666d406bc2ff02b0dafe675a578fe585a3fa85",
+          "closureDigests": [],
+          "provenanceDigest": "sha256:148de9c5a7a44d19e56cd9ae1a554bf67847afb0c58f6e12fa29ac7ddfca9940"
+        }
+      ],
+      "code": "order.duplicate",
+      "why": "provider entries by (capability, targetSpecDigest, provider, revision, digest): same key twice"
+    },
+    {
+      "element": "LockedSystemInput",
+      "field": "systemInputs",
+      "items": [
+        {
+          "capability": "crypto",
+          "provider": "openssl",
+          "revision": 1,
+          "artifactDigest": "sha256:41ffca929b95c49690ab8815d1d1a134a5bcdd86bde407c0f46b90eabf556b05",
+          "closureDigests": [],
+          "provenanceDigest": "sha256:148de9c5a7a44d19e56cd9ae1a554bf67847afb0c58f6e12fa29ac7ddfca9940"
+        },
+        {
+          "capability": "net.http",
+          "provider": "libcurl",
+          "revision": 1,
+          "artifactDigest": "sha256:3c72bec4646c256835656a01a3666d406bc2ff02b0dafe675a578fe585a3fa85",
+          "closureDigests": [],
+          "provenanceDigest": "sha256:148de9c5a7a44d19e56cd9ae1a554bf67847afb0c58f6e12fa29ac7ddfca9940"
+        }
+      ],
+      "code": "",
+      "why": "system inputs by (capability, provider, revision, digest): ascending"
+    },
+    {
+      "element": "LockedSystemInput",
+      "field": "systemInputs",
+      "items": [
+        {
+          "capability": "net.http",
+          "provider": "libcurl",
+          "revision": 1,
+          "artifactDigest": "sha256:3c72bec4646c256835656a01a3666d406bc2ff02b0dafe675a578fe585a3fa85",
+          "closureDigests": [],
+          "provenanceDigest": "sha256:148de9c5a7a44d19e56cd9ae1a554bf67847afb0c58f6e12fa29ac7ddfca9940"
+        },
+        {
+          "capability": "crypto",
+          "provider": "openssl",
+          "revision": 1,
+          "artifactDigest": "sha256:41ffca929b95c49690ab8815d1d1a134a5bcdd86bde407c0f46b90eabf556b05",
+          "closureDigests": [],
+          "provenanceDigest": "sha256:148de9c5a7a44d19e56cd9ae1a554bf67847afb0c58f6e12fa29ac7ddfca9940"
+        }
+      ],
+      "code": "order.unsorted",
+      "why": "system inputs by (capability, provider, revision, digest): swapped"
+    },
+    {
+      "element": "LockedSystemInput",
+      "field": "systemInputs",
+      "items": [
+        {
+          "capability": "crypto",
+          "provider": "openssl",
+          "revision": 1,
+          "artifactDigest": "sha256:41ffca929b95c49690ab8815d1d1a134a5bcdd86bde407c0f46b90eabf556b05",
+          "closureDigests": [],
+          "provenanceDigest": "sha256:148de9c5a7a44d19e56cd9ae1a554bf67847afb0c58f6e12fa29ac7ddfca9940"
+        },
+        {
+          "capability": "crypto",
+          "provider": "openssl",
+          "revision": 1,
+          "artifactDigest": "sha256:41ffca929b95c49690ab8815d1d1a134a5bcdd86bde407c0f46b90eabf556b05",
+          "closureDigests": [],
+          "provenanceDigest": "sha256:148de9c5a7a44d19e56cd9ae1a554bf67847afb0c58f6e12fa29ac7ddfca9940"
+        }
+      ],
+      "code": "order.duplicate",
+      "why": "system inputs by (capability, provider, revision, digest): same key twice"
+    },
+    {
+      "element": "LocalOverride",
+      "field": "overrides",
+      "items": [
+        {
+          "package": {
+            "scope": "a",
+            "name": "x"
+          },
+          "path": "../x",
+          "epoch": 1
+        },
+        {
+          "package": {
+            "scope": "a",
+            "name": "y"
+          },
+          "path": "../a",
+          "epoch": 1
+        }
+      ],
+      "code": "",
+      "why": "overrides by package key: ascending"
+    },
+    {
+      "element": "LocalOverride",
+      "field": "overrides",
+      "items": [
+        {
+          "package": {
+            "scope": "a",
+            "name": "y"
+          },
+          "path": "../a",
+          "epoch": 1
+        },
+        {
+          "package": {
+            "scope": "a",
+            "name": "x"
+          },
+          "path": "../x",
+          "epoch": 1
+        }
+      ],
+      "code": "order.unsorted",
+      "why": "overrides by package key: swapped"
+    },
+    {
+      "element": "LocalOverride",
+      "field": "overrides",
+      "items": [
+        {
+          "package": {
+            "scope": "a",
+            "name": "x"
+          },
+          "path": "../x",
+          "epoch": 1
+        },
+        {
+          "package": {
+            "scope": "a",
+            "name": "x"
+          },
+          "path": "../other",
+          "epoch": 1
+        }
+      ],
+      "code": "order.duplicate",
+      "why": "overrides by package key: same key twice"
+    },
+    {
+      "element": "LockedReleasePackage",
+      "field": "packages",
+      "items": [
+        {
+          "release": {
+            "package": {
+              "scope": "demo",
+              "name": "maths"
+            },
+            "epoch": 1,
+            "ordinal": 2,
+            "digest": "sha256:56f9bfa8af7d491640821d46113dbee2af6cc99cf2f02a8ff18e6c242304a902"
+          },
+          "sourceDigest": "sha256:043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89",
+          "manifestDigest": "sha256:62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "buildPlanDigest": "sha256:3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+          "dependencies": [],
+          "authorizationSetDigest": "sha256:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+          "provenanceDigest": "sha256:148de9c5a7a44d19e56cd9ae1a554bf67847afb0c58f6e12fa29ac7ddfca9940",
+          "sbomDigest": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+          "inferredCapabilities": []
+        },
+        {
+          "release": {
+            "package": {
+              "scope": "demo",
+              "name": "report"
+            },
+            "epoch": 1,
+            "ordinal": 1,
+            "digest": "sha256:5b20204fff3e3af9f20f3f9141ce1eb26fb687aad894d951290f8f211b615678"
+          },
+          "sourceDigest": "sha256:043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89",
+          "manifestDigest": "sha256:62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "buildPlanDigest": "sha256:3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+          "dependencies": [],
+          "authorizationSetDigest": "sha256:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+          "provenanceDigest": "sha256:148de9c5a7a44d19e56cd9ae1a554bf67847afb0c58f6e12fa29ac7ddfca9940",
+          "sbomDigest": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+          "inferredCapabilities": []
+        }
+      ],
+      "code": "",
+      "why": "release lock nodes by package key; two releases of one key are a duplicate: ascending"
+    },
+    {
+      "element": "LockedReleasePackage",
+      "field": "packages",
+      "items": [
+        {
+          "release": {
+            "package": {
+              "scope": "demo",
+              "name": "report"
+            },
+            "epoch": 1,
+            "ordinal": 1,
+            "digest": "sha256:5b20204fff3e3af9f20f3f9141ce1eb26fb687aad894d951290f8f211b615678"
+          },
+          "sourceDigest": "sha256:043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89",
+          "manifestDigest": "sha256:62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "buildPlanDigest": "sha256:3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+          "dependencies": [],
+          "authorizationSetDigest": "sha256:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+          "provenanceDigest": "sha256:148de9c5a7a44d19e56cd9ae1a554bf67847afb0c58f6e12fa29ac7ddfca9940",
+          "sbomDigest": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+          "inferredCapabilities": []
+        },
+        {
+          "release": {
+            "package": {
+              "scope": "demo",
+              "name": "maths"
+            },
+            "epoch": 1,
+            "ordinal": 2,
+            "digest": "sha256:56f9bfa8af7d491640821d46113dbee2af6cc99cf2f02a8ff18e6c242304a902"
+          },
+          "sourceDigest": "sha256:043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89",
+          "manifestDigest": "sha256:62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "buildPlanDigest": "sha256:3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+          "dependencies": [],
+          "authorizationSetDigest": "sha256:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+          "provenanceDigest": "sha256:148de9c5a7a44d19e56cd9ae1a554bf67847afb0c58f6e12fa29ac7ddfca9940",
+          "sbomDigest": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+          "inferredCapabilities": []
+        }
+      ],
+      "code": "order.unsorted",
+      "why": "release lock nodes by package key; two releases of one key are a duplicate: swapped"
+    },
+    {
+      "element": "LockedReleasePackage",
+      "field": "packages",
+      "items": [
+        {
+          "release": {
+            "package": {
+              "scope": "demo",
+              "name": "maths"
+            },
+            "epoch": 1,
+            "ordinal": 2,
+            "digest": "sha256:56f9bfa8af7d491640821d46113dbee2af6cc99cf2f02a8ff18e6c242304a902"
+          },
+          "sourceDigest": "sha256:043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89",
+          "manifestDigest": "sha256:62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "buildPlanDigest": "sha256:3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+          "dependencies": [],
+          "authorizationSetDigest": "sha256:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+          "provenanceDigest": "sha256:148de9c5a7a44d19e56cd9ae1a554bf67847afb0c58f6e12fa29ac7ddfca9940",
+          "sbomDigest": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+          "inferredCapabilities": []
+        },
+        {
+          "release": {
+            "package": {
+              "scope": "demo",
+              "name": "maths"
+            },
+            "epoch": 1,
+            "ordinal": 3,
+            "digest": "sha256:4730fb3b012cad1fa7e9d0bd15c9aba72c7351e8a0f2e1ddafea2b16e3753e5d"
+          },
+          "sourceDigest": "sha256:043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89",
+          "manifestDigest": "sha256:62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "buildPlanDigest": "sha256:3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+          "dependencies": [],
+          "authorizationSetDigest": "sha256:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+          "provenanceDigest": "sha256:148de9c5a7a44d19e56cd9ae1a554bf67847afb0c58f6e12fa29ac7ddfca9940",
+          "sbomDigest": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+          "inferredCapabilities": []
+        }
+      ],
+      "code": "order.duplicate",
+      "why": "release lock nodes by package key; two releases of one key are a duplicate: same key twice"
+    },
+    {
+      "element": "LockedDevelopmentPackage",
+      "field": "packages",
+      "items": [
+        {
+          "Published": {
+            "release": {
+              "release": {
+                "package": {
+                  "scope": "demo",
+                  "name": "maths"
+                },
+                "epoch": 1,
+                "ordinal": 1,
+                "digest": "sha256:26d710b10786fdb95ac557965ebd83a3ea6087759e13a9942e5d2aef678fcb97"
+              },
+              "sourceDigest": "sha256:043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89",
+              "manifestDigest": "sha256:62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+              "buildPlanDigest": "sha256:3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+              "dependencies": [],
+              "authorizationSetDigest": "sha256:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+              "provenanceDigest": "sha256:148de9c5a7a44d19e56cd9ae1a554bf67847afb0c58f6e12fa29ac7ddfca9940",
+              "sbomDigest": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+              "inferredCapabilities": []
+            }
+          }
+        },
+        {
+          "Local": {
+            "package": {
+              "scope": "demo",
+              "name": "report"
+            },
+            "epoch": 1,
+            "path": "../report",
+            "manifestDigest": "sha256:845e91831319e89c4d656bdb80c278ac09a7230d61e5dfd2e1b1fbb436ac8917",
+            "dependencies": []
+          }
+        }
+      ],
+      "code": "",
+      "why": "development nodes by package key whether Published or Local: ascending"
+    },
+    {
+      "element": "LockedDevelopmentPackage",
+      "field": "packages",
+      "items": [
+        {
+          "Local": {
+            "package": {
+              "scope": "demo",
+              "name": "report"
+            },
+            "epoch": 1,
+            "path": "../report",
+            "manifestDigest": "sha256:845e91831319e89c4d656bdb80c278ac09a7230d61e5dfd2e1b1fbb436ac8917",
+            "dependencies": []
+          }
+        },
+        {
+          "Published": {
+            "release": {
+              "release": {
+                "package": {
+                  "scope": "demo",
+                  "name": "maths"
+                },
+                "epoch": 1,
+                "ordinal": 1,
+                "digest": "sha256:26d710b10786fdb95ac557965ebd83a3ea6087759e13a9942e5d2aef678fcb97"
+              },
+              "sourceDigest": "sha256:043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89",
+              "manifestDigest": "sha256:62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+              "buildPlanDigest": "sha256:3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+              "dependencies": [],
+              "authorizationSetDigest": "sha256:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+              "provenanceDigest": "sha256:148de9c5a7a44d19e56cd9ae1a554bf67847afb0c58f6e12fa29ac7ddfca9940",
+              "sbomDigest": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+              "inferredCapabilities": []
+            }
+          }
+        }
+      ],
+      "code": "order.unsorted",
+      "why": "development nodes by package key whether Published or Local: swapped"
+    },
+    {
+      "element": "LockedDevelopmentPackage",
+      "field": "packages",
+      "items": [
+        {
+          "Published": {
+            "release": {
+              "release": {
+                "package": {
+                  "scope": "demo",
+                  "name": "maths"
+                },
+                "epoch": 1,
+                "ordinal": 1,
+                "digest": "sha256:26d710b10786fdb95ac557965ebd83a3ea6087759e13a9942e5d2aef678fcb97"
+              },
+              "sourceDigest": "sha256:043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89",
+              "manifestDigest": "sha256:62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+              "buildPlanDigest": "sha256:3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+              "dependencies": [],
+              "authorizationSetDigest": "sha256:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+              "provenanceDigest": "sha256:148de9c5a7a44d19e56cd9ae1a554bf67847afb0c58f6e12fa29ac7ddfca9940",
+              "sbomDigest": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+              "inferredCapabilities": []
+            }
+          }
+        },
+        {
+          "Local": {
+            "package": {
+              "scope": "demo",
+              "name": "maths"
+            },
+            "epoch": 1,
+            "path": "../maths",
+            "manifestDigest": "sha256:acc017392425439be5e3f6409aa1ad2684f4b0c36054c644ca6dd255e8d40162",
+            "dependencies": []
+          }
+        }
+      ],
+      "code": "order.duplicate",
+      "why": "development nodes by package key whether Published or Local: same key twice"
+    },
+    {
+      "element": "DevelopmentBuildInput",
+      "field": "inputs",
+      "items": [
+        {
+          "sourceDigest": "sha256:043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89",
+          "manifestDigest": "sha256:62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "buildPlanDigest": "sha256:3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+          "sbomDigest": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+          "inferredCapabilities": []
+        },
+        {
+          "package": {
+            "scope": "a",
+            "name": "a"
+          },
+          "sourceDigest": "sha256:043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89",
+          "manifestDigest": "sha256:62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "buildPlanDigest": "sha256:3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+          "sbomDigest": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+          "inferredCapabilities": []
+        }
+      ],
+      "code": "",
+      "why": "build inputs: absent key before present key: ascending"
+    },
+    {
+      "element": "DevelopmentBuildInput",
+      "field": "inputs",
+      "items": [
+        {
+          "package": {
+            "scope": "a",
+            "name": "a"
+          },
+          "sourceDigest": "sha256:043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89",
+          "manifestDigest": "sha256:62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "buildPlanDigest": "sha256:3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+          "sbomDigest": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+          "inferredCapabilities": []
+        },
+        {
+          "sourceDigest": "sha256:043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89",
+          "manifestDigest": "sha256:62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "buildPlanDigest": "sha256:3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+          "sbomDigest": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+          "inferredCapabilities": []
+        }
+      ],
+      "code": "order.unsorted",
+      "why": "build inputs: absent key before present key: swapped"
+    },
+    {
+      "element": "DevelopmentBuildInput",
+      "field": "inputs",
+      "items": [
+        {
+          "sourceDigest": "sha256:043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89",
+          "manifestDigest": "sha256:62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "buildPlanDigest": "sha256:3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+          "sbomDigest": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+          "inferredCapabilities": []
+        },
+        {
+          "sourceDigest": "sha256:043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89",
+          "manifestDigest": "sha256:62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "buildPlanDigest": "sha256:3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+          "sbomDigest": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+          "inferredCapabilities": []
+        }
+      ],
+      "code": "order.duplicate",
+      "why": "build inputs: absent key before present key: same key twice"
+    },
+    {
+      "element": "DevelopmentBuildInput",
+      "field": "inputs",
+      "items": [
+        {
+          "package": {
+            "scope": "a",
+            "name": "a"
+          },
+          "sourceDigest": "sha256:043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89",
+          "manifestDigest": "sha256:62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "buildPlanDigest": "sha256:3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+          "sbomDigest": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+          "inferredCapabilities": []
+        },
+        {
+          "package": {
+            "scope": "a",
+            "name": "b"
+          },
+          "sourceDigest": "sha256:043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89",
+          "manifestDigest": "sha256:62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "buildPlanDigest": "sha256:3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+          "sbomDigest": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+          "inferredCapabilities": []
+        }
+      ],
+      "code": "",
+      "why": "build inputs then by package key: ascending"
+    },
+    {
+      "element": "DevelopmentBuildInput",
+      "field": "inputs",
+      "items": [
+        {
+          "package": {
+            "scope": "a",
+            "name": "b"
+          },
+          "sourceDigest": "sha256:043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89",
+          "manifestDigest": "sha256:62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "buildPlanDigest": "sha256:3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+          "sbomDigest": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+          "inferredCapabilities": []
+        },
+        {
+          "package": {
+            "scope": "a",
+            "name": "a"
+          },
+          "sourceDigest": "sha256:043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89",
+          "manifestDigest": "sha256:62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "buildPlanDigest": "sha256:3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+          "sbomDigest": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+          "inferredCapabilities": []
+        }
+      ],
+      "code": "order.unsorted",
+      "why": "build inputs then by package key: swapped"
+    },
+    {
+      "element": "DevelopmentBuildInput",
+      "field": "inputs",
+      "items": [
+        {
+          "package": {
+            "scope": "a",
+            "name": "a"
+          },
+          "sourceDigest": "sha256:043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89",
+          "manifestDigest": "sha256:62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "buildPlanDigest": "sha256:3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+          "sbomDigest": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+          "inferredCapabilities": []
+        },
+        {
+          "package": {
+            "scope": "a",
+            "name": "a"
+          },
+          "sourceDigest": "sha256:043a718774c572bd8a25adbeb1bfcd5c0256ae11cecf9f9c3f925d0e52beaf89",
+          "manifestDigest": "sha256:62c66a7a5dd70c3146618063c344e531e6d4b59e379808443ce962b3abd63c5a",
+          "buildPlanDigest": "sha256:3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+          "sbomDigest": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+          "inferredCapabilities": []
+        }
+      ],
+      "code": "order.duplicate",
+      "why": "build inputs then by package key: same key twice"
+    },
+    {
+      "element": "ResolutionDecision",
+      "field": "decisions",
+      "items": [
+        {
+          "package": {
+            "scope": "a",
+            "name": "a"
+          },
+          "selectedDigest": "sha256:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+          "reasonCodes": [],
+          "antecedents": []
+        },
+        {
+          "package": {
+            "scope": "a",
+            "name": "b"
+          },
+          "selectedDigest": "sha256:3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+          "reasonCodes": [],
+          "antecedents": []
+        }
+      ],
+      "code": "",
+      "why": "decisions by package key: ascending"
+    },
+    {
+      "element": "ResolutionDecision",
+      "field": "decisions",
+      "items": [
+        {
+          "package": {
+            "scope": "a",
+            "name": "b"
+          },
+          "selectedDigest": "sha256:3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+          "reasonCodes": [],
+          "antecedents": []
+        },
+        {
+          "package": {
+            "scope": "a",
+            "name": "a"
+          },
+          "selectedDigest": "sha256:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+          "reasonCodes": [],
+          "antecedents": []
+        }
+      ],
+      "code": "order.unsorted",
+      "why": "decisions by package key: swapped"
+    },
+    {
+      "element": "ResolutionDecision",
+      "field": "decisions",
+      "items": [
+        {
+          "package": {
+            "scope": "a",
+            "name": "a"
+          },
+          "selectedDigest": "sha256:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+          "reasonCodes": [],
+          "antecedents": []
+        },
+        {
+          "package": {
+            "scope": "a",
+            "name": "a"
+          },
+          "selectedDigest": "sha256:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+          "reasonCodes": [],
+          "antecedents": []
+        }
+      ],
+      "code": "order.duplicate",
+      "why": "decisions by package key: same key twice"
+    },
+    {
+      "element": "AuthorizationProof",
+      "field": "proofs",
+      "items": [
+        {
+          "principal": "principal-a",
+          "proof": {
+            "RegistryRole": {
+              "role": "challenge",
+              "keyId": "k",
+              "signatureDigest": "sha256:6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b"
+            }
+          }
+        },
+        {
+          "principal": "principal-b",
+          "proof": {
+            "RegistryRole": {
+              "role": "challenge",
+              "keyId": "k",
+              "signatureDigest": "sha256:5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9"
+            }
+          }
+        }
+      ],
+      "code": "",
+      "why": "proofs by principal; a principal may appear once: ascending"
+    },
+    {
+      "element": "AuthorizationProof",
+      "field": "proofs",
+      "items": [
+        {
+          "principal": "principal-b",
+          "proof": {
+            "RegistryRole": {
+              "role": "challenge",
+              "keyId": "k",
+              "signatureDigest": "sha256:5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9"
+            }
+          }
+        },
+        {
+          "principal": "principal-a",
+          "proof": {
+            "RegistryRole": {
+              "role": "challenge",
+              "keyId": "k",
+              "signatureDigest": "sha256:6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b"
+            }
+          }
+        }
+      ],
+      "code": "order.unsorted",
+      "why": "proofs by principal; a principal may appear once: swapped"
+    },
+    {
+      "element": "AuthorizationProof",
+      "field": "proofs",
+      "items": [
+        {
+          "principal": "principal-a",
+          "proof": {
+            "RegistryRole": {
+              "role": "challenge",
+              "keyId": "k",
+              "signatureDigest": "sha256:6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b"
+            }
+          }
+        },
+        {
+          "principal": "principal-a",
+          "proof": {
+            "RegistryRole": {
+              "role": "challenge",
+              "keyId": "k",
+              "signatureDigest": "sha256:d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35"
+            }
+          }
+        }
+      ],
+      "code": "order.duplicate",
+      "why": "proofs by principal; a principal may appear once: same key twice"
+    },
+    {
+      "element": "TufRoleState",
+      "field": "roles",
+      "items": [
+        {
+          "role": "root",
+          "version": 2,
+          "expiresAt": "2026-10-03T00:00:00.000Z",
+          "metadataDigest": "sha256:bf59d6a4564f9f49964ef377f398e35c7da2413e9d792c97dfdbbc9687ce8abc"
+        },
+        {
+          "role": "root",
+          "version": 10,
+          "expiresAt": "2026-10-03T00:00:00.000Z",
+          "metadataDigest": "sha256:a088f35f7b6ece42055a26f19b6bacbbb9d2db2f03f513399a74c319eb9d37d1"
+        }
+      ],
+      "code": "",
+      "why": "TUF roles by (role, version), version numerically: ascending"
+    },
+    {
+      "element": "TufRoleState",
+      "field": "roles",
+      "items": [
+        {
+          "role": "root",
+          "version": 10,
+          "expiresAt": "2026-10-03T00:00:00.000Z",
+          "metadataDigest": "sha256:a088f35f7b6ece42055a26f19b6bacbbb9d2db2f03f513399a74c319eb9d37d1"
+        },
+        {
+          "role": "root",
+          "version": 2,
+          "expiresAt": "2026-10-03T00:00:00.000Z",
+          "metadataDigest": "sha256:bf59d6a4564f9f49964ef377f398e35c7da2413e9d792c97dfdbbc9687ce8abc"
+        }
+      ],
+      "code": "order.unsorted",
+      "why": "TUF roles by (role, version), version numerically: swapped"
+    },
+    {
+      "element": "TufRoleState",
+      "field": "roles",
+      "items": [
+        {
+          "role": "root",
+          "version": 2,
+          "expiresAt": "2026-10-03T00:00:00.000Z",
+          "metadataDigest": "sha256:bf59d6a4564f9f49964ef377f398e35c7da2413e9d792c97dfdbbc9687ce8abc"
+        },
+        {
+          "role": "root",
+          "version": 2,
+          "expiresAt": "2026-10-03T00:00:00.000Z",
+          "metadataDigest": "sha256:bf59d6a4564f9f49964ef377f398e35c7da2413e9d792c97dfdbbc9687ce8abc"
+        }
+      ],
+      "code": "order.duplicate",
+      "why": "TUF roles by (role, version), version numerically: same key twice"
+    },
+    {
+      "element": "TufRoleState",
+      "field": "roles",
+      "items": [
+        {
+          "role": "release-status",
+          "version": 9,
+          "expiresAt": "2026-10-03T00:00:00.000Z",
+          "metadataDigest": "sha256:a7dce1b7654981730e71a05efe3c8e2f7000829ec9931ec9afd51a31d8a49e34"
+        },
+        {
+          "role": "root",
+          "version": 1,
+          "expiresAt": "2026-10-03T00:00:00.000Z",
+          "metadataDigest": "sha256:3de0c6d1959ece558ec030f37292e383a9c95f497e8235b89701b914be9bd1fb"
+        }
+      ],
+      "code": "",
+      "why": "role names by unsigned bytes: ascending"
+    },
+    {
+      "element": "TufRoleState",
+      "field": "roles",
+      "items": [
+        {
+          "role": "root",
+          "version": 1,
+          "expiresAt": "2026-10-03T00:00:00.000Z",
+          "metadataDigest": "sha256:3de0c6d1959ece558ec030f37292e383a9c95f497e8235b89701b914be9bd1fb"
+        },
+        {
+          "role": "release-status",
+          "version": 9,
+          "expiresAt": "2026-10-03T00:00:00.000Z",
+          "metadataDigest": "sha256:a7dce1b7654981730e71a05efe3c8e2f7000829ec9931ec9afd51a31d8a49e34"
+        }
+      ],
+      "code": "order.unsorted",
+      "why": "role names by unsigned bytes: swapped"
+    },
+    {
+      "element": "TufRoleState",
+      "field": "roles",
+      "items": [
+        {
+          "role": "release-status",
+          "version": 9,
+          "expiresAt": "2026-10-03T00:00:00.000Z",
+          "metadataDigest": "sha256:a7dce1b7654981730e71a05efe3c8e2f7000829ec9931ec9afd51a31d8a49e34"
+        },
+        {
+          "role": "release-status",
+          "version": 9,
+          "expiresAt": "2026-10-03T00:00:00.000Z",
+          "metadataDigest": "sha256:a7dce1b7654981730e71a05efe3c8e2f7000829ec9931ec9afd51a31d8a49e34"
+        }
+      ],
+      "code": "order.duplicate",
+      "why": "role names by unsigned bytes: same key twice"
+    },
+    {
+      "element": "ReleaseStatus",
+      "field": "releaseStatuses",
+      "items": [
+        {
+          "release": {
+            "package": {
+              "scope": "demo",
+              "name": "maths"
+            },
+            "epoch": 1,
+            "ordinal": 9,
+            "digest": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+          },
+          "sequence": 1,
+          "state": {
+            "Eligible": {}
+          },
+          "effectiveAt": "2026-10-01T00:00:00.000Z",
+          "roleMetadataVersion": 1
+        },
+        {
+          "release": {
+            "package": {
+              "scope": "demo",
+              "name": "maths"
+            },
+            "epoch": 1,
+            "ordinal": 10,
+            "digest": "sha256:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+          },
+          "sequence": 1,
+          "state": {
+            "Eligible": {}
+          },
+          "effectiveAt": "2026-10-01T00:00:00.000Z",
+          "roleMetadataVersion": 1
+        }
+      ],
+      "code": "",
+      "why": "statuses by release (package, epoch, ordinal, digest): ascending"
+    },
+    {
+      "element": "ReleaseStatus",
+      "field": "releaseStatuses",
+      "items": [
+        {
+          "release": {
+            "package": {
+              "scope": "demo",
+              "name": "maths"
+            },
+            "epoch": 1,
+            "ordinal": 10,
+            "digest": "sha256:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+          },
+          "sequence": 1,
+          "state": {
+            "Eligible": {}
+          },
+          "effectiveAt": "2026-10-01T00:00:00.000Z",
+          "roleMetadataVersion": 1
+        },
+        {
+          "release": {
+            "package": {
+              "scope": "demo",
+              "name": "maths"
+            },
+            "epoch": 1,
+            "ordinal": 9,
+            "digest": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+          },
+          "sequence": 1,
+          "state": {
+            "Eligible": {}
+          },
+          "effectiveAt": "2026-10-01T00:00:00.000Z",
+          "roleMetadataVersion": 1
+        }
+      ],
+      "code": "order.unsorted",
+      "why": "statuses by release (package, epoch, ordinal, digest): swapped"
+    },
+    {
+      "element": "ReleaseStatus",
+      "field": "releaseStatuses",
+      "items": [
+        {
+          "release": {
+            "package": {
+              "scope": "demo",
+              "name": "maths"
+            },
+            "epoch": 1,
+            "ordinal": 9,
+            "digest": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+          },
+          "sequence": 1,
+          "state": {
+            "Eligible": {}
+          },
+          "effectiveAt": "2026-10-01T00:00:00.000Z",
+          "roleMetadataVersion": 1
+        },
+        {
+          "release": {
+            "package": {
+              "scope": "demo",
+              "name": "maths"
+            },
+            "epoch": 1,
+            "ordinal": 9,
+            "digest": "sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"
+          },
+          "sequence": 1,
+          "state": {
+            "Eligible": {}
+          },
+          "effectiveAt": "2026-10-01T00:00:00.000Z",
+          "roleMetadataVersion": 1
+        }
+      ],
+      "code": "order.duplicate",
+      "why": "statuses by release (package, epoch, ordinal, digest): same key twice"
+    },
+    {
+      "element": "MerkleInclusionProof",
+      "field": "inclusionProofs",
+      "items": [
+        {
+          "logId": "log-a",
+          "leafDigest": "sha256:7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+          "leafIndex": 7,
+          "treeSize": 100,
+          "hashes": []
+        },
+        {
+          "logId": "log-a",
+          "leafDigest": "sha256:6b51d431df5d7f141cbececcf79edf3dd861c3b4069f0b11661a3eefacbba918",
+          "leafIndex": 12,
+          "treeSize": 100,
+          "hashes": []
+        }
+      ],
+      "code": "",
+      "why": "inclusion proofs by (logId, leafIndex): ascending"
+    },
+    {
+      "element": "MerkleInclusionProof",
+      "field": "inclusionProofs",
+      "items": [
+        {
+          "logId": "log-a",
+          "leafDigest": "sha256:6b51d431df5d7f141cbececcf79edf3dd861c3b4069f0b11661a3eefacbba918",
+          "leafIndex": 12,
+          "treeSize": 100,
+          "hashes": []
+        },
+        {
+          "logId": "log-a",
+          "leafDigest": "sha256:7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+          "leafIndex": 7,
+          "treeSize": 100,
+          "hashes": []
+        }
+      ],
+      "code": "order.unsorted",
+      "why": "inclusion proofs by (logId, leafIndex): swapped"
+    },
+    {
+      "element": "MerkleInclusionProof",
+      "field": "inclusionProofs",
+      "items": [
+        {
+          "logId": "log-a",
+          "leafDigest": "sha256:7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+          "leafIndex": 7,
+          "treeSize": 100,
+          "hashes": []
+        },
+        {
+          "logId": "log-a",
+          "leafDigest": "sha256:7902699be42c8a8e46fbbb4501726517e86b22c56a189f7625a6da49081b2451",
+          "leafIndex": 7,
+          "treeSize": 100,
+          "hashes": []
+        }
+      ],
+      "code": "order.duplicate",
+      "why": "inclusion proofs by (logId, leafIndex): same key twice"
+    },
+    {
+      "element": "WitnessReceipt",
+      "field": "witnesses",
+      "items": [
+        {
+          "witnessId": "witness-a",
+          "checkpointDigest": "sha256:2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6",
+          "signatureDigest": "sha256:663f0e4ac18672d5b303fa8a92bb77529079b29c3fd2960e3edc33bab6a8c3bb"
+        },
+        {
+          "witnessId": "witness-b",
+          "checkpointDigest": "sha256:2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6",
+          "signatureDigest": "sha256:b4a409c8f5406593d6849a302de31ce7972c3d2e9ce90c2ee0dffed5e8036a6e"
+        }
+      ],
+      "code": "",
+      "why": "witness receipts by witnessId: ascending"
+    },
+    {
+      "element": "WitnessReceipt",
+      "field": "witnesses",
+      "items": [
+        {
+          "witnessId": "witness-b",
+          "checkpointDigest": "sha256:2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6",
+          "signatureDigest": "sha256:b4a409c8f5406593d6849a302de31ce7972c3d2e9ce90c2ee0dffed5e8036a6e"
+        },
+        {
+          "witnessId": "witness-a",
+          "checkpointDigest": "sha256:2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6",
+          "signatureDigest": "sha256:663f0e4ac18672d5b303fa8a92bb77529079b29c3fd2960e3edc33bab6a8c3bb"
+        }
+      ],
+      "code": "order.unsorted",
+      "why": "witness receipts by witnessId: swapped"
+    },
+    {
+      "element": "WitnessReceipt",
+      "field": "witnesses",
+      "items": [
+        {
+          "witnessId": "witness-a",
+          "checkpointDigest": "sha256:2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6",
+          "signatureDigest": "sha256:663f0e4ac18672d5b303fa8a92bb77529079b29c3fd2960e3edc33bab6a8c3bb"
+        },
+        {
+          "witnessId": "witness-a",
+          "checkpointDigest": "sha256:2e7d2c03a9507ae265ecf5b5356885a53393a2029d241394997265a1a25aefc6",
+          "signatureDigest": "sha256:663f0e4ac18672d5b303fa8a92bb77529079b29c3fd2960e3edc33bab6a8c3bb"
+        }
+      ],
+      "code": "order.duplicate",
+      "why": "witness receipts by witnessId: same key twice"
+    },
+    {
+      "element": "Evidence",
+      "field": "evidence",
+      "items": [
+        {
+          "kind": "Zebra",
+          "source": "osv",
+          "digest": "sha256:459bed2926d04bcded44a8afc5be9567aafd72d7e865775c5f386a72d7ee7c7f",
+          "observedAt": "2026-10-01T00:00:00.000Z"
+        },
+        {
+          "kind": "advisory",
+          "source": "osv",
+          "digest": "sha256:644c4a77ffa6df24068f109ef2582ea1a76cc24b42eef9ed6b9efef0af0db69d",
+          "observedAt": "2026-01-01T00:00:00.000Z"
+        }
+      ],
+      "code": "",
+      "why": "evidence by (kind, source, digest, observedAt); 'Z' (0x5A) sorts before 'a' (0x61): ascending"
+    },
+    {
+      "element": "Evidence",
+      "field": "evidence",
+      "items": [
+        {
+          "kind": "advisory",
+          "source": "osv",
+          "digest": "sha256:644c4a77ffa6df24068f109ef2582ea1a76cc24b42eef9ed6b9efef0af0db69d",
+          "observedAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+          "kind": "Zebra",
+          "source": "osv",
+          "digest": "sha256:459bed2926d04bcded44a8afc5be9567aafd72d7e865775c5f386a72d7ee7c7f",
+          "observedAt": "2026-10-01T00:00:00.000Z"
+        }
+      ],
+      "code": "order.unsorted",
+      "why": "evidence by (kind, source, digest, observedAt); 'Z' (0x5A) sorts before 'a' (0x61): swapped"
+    },
+    {
+      "element": "Evidence",
+      "field": "evidence",
+      "items": [
+        {
+          "kind": "Zebra",
+          "source": "osv",
+          "digest": "sha256:459bed2926d04bcded44a8afc5be9567aafd72d7e865775c5f386a72d7ee7c7f",
+          "observedAt": "2026-10-01T00:00:00.000Z"
+        },
+        {
+          "kind": "Zebra",
+          "source": "osv",
+          "digest": "sha256:459bed2926d04bcded44a8afc5be9567aafd72d7e865775c5f386a72d7ee7c7f",
+          "observedAt": "2026-10-01T00:00:00.000Z"
+        }
+      ],
+      "code": "order.duplicate",
+      "why": "evidence by (kind, source, digest, observedAt); 'Z' (0x5A) sorts before 'a' (0x61): same key twice"
+    },
+    {
+      "element": "ModulePlanEntry",
+      "field": "modules",
+      "items": [
+        {
+          "path": "src/a.osp",
+          "flavor": {
+            "Default": {}
+          },
+          "sourceBytesDigest": "sha256:4ea8dbd0e4b41a557fc72c14dfa5e53e89ae6766b1a051686cb6fc12995da294",
+          "imports": [],
+          "publicInterfaceDigest": "sha256:ac2700417558216185c9417ce3a496f919e34954cb3c39af898773a0aa2b5fdc"
+        },
+        {
+          "path": "src/b.osp",
+          "flavor": {
+            "Default": {}
+          },
+          "sourceBytesDigest": "sha256:50588998e1041a2ef40d298dfdeed1b85f31cfb6f25ed822a54f7e3afe85cd90",
+          "imports": [],
+          "publicInterfaceDigest": "sha256:339628d5ca888ca427132ade44633636abc291b1a777c5af234a25e3bffeda81"
+        }
+      ],
+      "code": "",
+      "why": "modules by path: ascending"
+    },
+    {
+      "element": "ModulePlanEntry",
+      "field": "modules",
+      "items": [
+        {
+          "path": "src/b.osp",
+          "flavor": {
+            "Default": {}
+          },
+          "sourceBytesDigest": "sha256:50588998e1041a2ef40d298dfdeed1b85f31cfb6f25ed822a54f7e3afe85cd90",
+          "imports": [],
+          "publicInterfaceDigest": "sha256:339628d5ca888ca427132ade44633636abc291b1a777c5af234a25e3bffeda81"
+        },
+        {
+          "path": "src/a.osp",
+          "flavor": {
+            "Default": {}
+          },
+          "sourceBytesDigest": "sha256:4ea8dbd0e4b41a557fc72c14dfa5e53e89ae6766b1a051686cb6fc12995da294",
+          "imports": [],
+          "publicInterfaceDigest": "sha256:ac2700417558216185c9417ce3a496f919e34954cb3c39af898773a0aa2b5fdc"
+        }
+      ],
+      "code": "order.unsorted",
+      "why": "modules by path: swapped"
+    },
+    {
+      "element": "ModulePlanEntry",
+      "field": "modules",
+      "items": [
+        {
+          "path": "src/a.osp",
+          "flavor": {
+            "Default": {}
+          },
+          "sourceBytesDigest": "sha256:4ea8dbd0e4b41a557fc72c14dfa5e53e89ae6766b1a051686cb6fc12995da294",
+          "imports": [],
+          "publicInterfaceDigest": "sha256:ac2700417558216185c9417ce3a496f919e34954cb3c39af898773a0aa2b5fdc"
+        },
+        {
+          "path": "src/a.osp",
+          "flavor": {
+            "Default": {}
+          },
+          "sourceBytesDigest": "sha256:4ea8dbd0e4b41a557fc72c14dfa5e53e89ae6766b1a051686cb6fc12995da294",
+          "imports": [],
+          "publicInterfaceDigest": "sha256:ac2700417558216185c9417ce3a496f919e34954cb3c39af898773a0aa2b5fdc"
+        }
+      ],
+      "code": "order.duplicate",
+      "why": "modules by path: same key twice"
+    },
+    {
+      "element": "TestPlanEntry",
+      "field": "tests",
+      "items": [
+        {
+          "path": "t.osp",
+          "namespace": "demo",
+          "symbol": "a"
+        },
+        {
+          "path": "t.osp",
+          "namespace": "demo",
+          "symbol": "b"
+        }
+      ],
+      "code": "",
+      "why": "tests by (path, namespace, symbol): ascending"
+    },
+    {
+      "element": "TestPlanEntry",
+      "field": "tests",
+      "items": [
+        {
+          "path": "t.osp",
+          "namespace": "demo",
+          "symbol": "b"
+        },
+        {
+          "path": "t.osp",
+          "namespace": "demo",
+          "symbol": "a"
+        }
+      ],
+      "code": "order.unsorted",
+      "why": "tests by (path, namespace, symbol): swapped"
+    },
+    {
+      "element": "TestPlanEntry",
+      "field": "tests",
+      "items": [
+        {
+          "path": "t.osp",
+          "namespace": "demo",
+          "symbol": "a"
+        },
+        {
+          "path": "t.osp",
+          "namespace": "demo",
+          "symbol": "a"
+        }
+      ],
+      "code": "order.duplicate",
+      "why": "tests by (path, namespace, symbol): same key twice"
+    },
+    {
+      "element": "OutputArtifact",
+      "field": "artifacts",
+      "items": [
+        {
+          "path": "out/a",
+          "kind": {
+            "Library": {}
+          },
+          "executable": false
+        },
+        {
+          "path": "out/b",
+          "kind": {
+            "Library": {}
+          },
+          "executable": false
+        }
+      ],
+      "code": "",
+      "why": "artifacts by path: ascending"
+    },
+    {
+      "element": "OutputArtifact",
+      "field": "artifacts",
+      "items": [
+        {
+          "path": "out/b",
+          "kind": {
+            "Library": {}
+          },
+          "executable": false
+        },
+        {
+          "path": "out/a",
+          "kind": {
+            "Library": {}
+          },
+          "executable": false
+        }
+      ],
+      "code": "order.unsorted",
+      "why": "artifacts by path: swapped"
+    },
+    {
+      "element": "OutputArtifact",
+      "field": "artifacts",
+      "items": [
+        {
+          "path": "out/a",
+          "kind": {
+            "Library": {}
+          },
+          "executable": false
+        },
+        {
+          "path": "out/a",
+          "kind": {
+            "Library": {}
+          },
+          "executable": false
+        }
+      ],
+      "code": "order.duplicate",
+      "why": "artifacts by path: same key twice"
+    },
+    {
+      "element": "String",
+      "field": "keywords",
+      "items": [
+        "a.b",
+        "a.c"
+      ],
+      "code": "",
+      "why": "scalar set keywords by unsigned bytes: ascending"
+    },
+    {
+      "element": "String",
+      "field": "keywords",
+      "items": [
+        "a.c",
+        "a.b"
+      ],
+      "code": "order.unsorted",
+      "why": "scalar set keywords by unsigned bytes: swapped"
+    },
+    {
+      "element": "String",
+      "field": "keywords",
+      "items": [
+        "a.b",
+        "a.b"
+      ],
+      "code": "order.duplicate",
+      "why": "scalar set keywords by unsigned bytes: same key twice"
+    },
+    {
+      "element": "String",
+      "field": "inferredCapabilities",
+      "items": [
+        "a.b",
+        "a.c"
+      ],
+      "code": "",
+      "why": "scalar set inferredCapabilities by unsigned bytes: ascending"
+    },
+    {
+      "element": "String",
+      "field": "inferredCapabilities",
+      "items": [
+        "a.c",
+        "a.b"
+      ],
+      "code": "order.unsorted",
+      "why": "scalar set inferredCapabilities by unsigned bytes: swapped"
+    },
+    {
+      "element": "String",
+      "field": "inferredCapabilities",
+      "items": [
+        "a.b",
+        "a.b"
+      ],
+      "code": "order.duplicate",
+      "why": "scalar set inferredCapabilities by unsigned bytes: same key twice"
+    },
+    {
+      "element": "String",
+      "field": "reasonCodes",
+      "items": [
+        "a.b",
+        "a.c"
+      ],
+      "code": "",
+      "why": "scalar set reasonCodes by unsigned bytes: ascending"
+    },
+    {
+      "element": "String",
+      "field": "reasonCodes",
+      "items": [
+        "a.c",
+        "a.b"
+      ],
+      "code": "order.unsorted",
+      "why": "scalar set reasonCodes by unsigned bytes: swapped"
+    },
+    {
+      "element": "String",
+      "field": "reasonCodes",
+      "items": [
+        "a.b",
+        "a.b"
+      ],
+      "code": "order.duplicate",
+      "why": "scalar set reasonCodes by unsigned bytes: same key twice"
+    },
+    {
+      "element": "String",
+      "field": "imports",
+      "items": [
+        "a.b",
+        "a.c"
+      ],
+      "code": "",
+      "why": "scalar set imports by unsigned bytes: ascending"
+    },
+    {
+      "element": "String",
+      "field": "imports",
+      "items": [
+        "a.c",
+        "a.b"
+      ],
+      "code": "order.unsorted",
+      "why": "scalar set imports by unsigned bytes: swapped"
+    },
+    {
+      "element": "String",
+      "field": "imports",
+      "items": [
+        "a.b",
+        "a.b"
+      ],
+      "code": "order.duplicate",
+      "why": "scalar set imports by unsigned bytes: same key twice"
+    },
+    {
+      "element": "String",
+      "field": "attestations",
+      "items": [
+        "a.b",
+        "a.c"
+      ],
+      "code": "",
+      "why": "scalar set attestations by unsigned bytes: ascending"
+    },
+    {
+      "element": "String",
+      "field": "attestations",
+      "items": [
+        "a.c",
+        "a.b"
+      ],
+      "code": "order.unsorted",
+      "why": "scalar set attestations by unsigned bytes: swapped"
+    },
+    {
+      "element": "String",
+      "field": "attestations",
+      "items": [
+        "a.b",
+        "a.b"
+      ],
+      "code": "order.duplicate",
+      "why": "scalar set attestations by unsigned bytes: same key twice"
+    },
+    {
+      "element": "String",
+      "field": "closureDigests",
+      "items": [
+        "a.b",
+        "a.c"
+      ],
+      "code": "",
+      "why": "scalar set closureDigests by unsigned bytes: ascending"
+    },
+    {
+      "element": "String",
+      "field": "closureDigests",
+      "items": [
+        "a.c",
+        "a.b"
+      ],
+      "code": "order.unsorted",
+      "why": "scalar set closureDigests by unsigned bytes: swapped"
+    },
+    {
+      "element": "String",
+      "field": "closureDigests",
+      "items": [
+        "a.b",
+        "a.b"
+      ],
+      "code": "order.duplicate",
+      "why": "scalar set closureDigests by unsigned bytes: same key twice"
+    },
+    {
+      "element": "String",
+      "field": "toolchainClosure",
+      "items": [
+        "a.b",
+        "a.c"
+      ],
+      "code": "",
+      "why": "scalar set toolchainClosure by unsigned bytes: ascending"
+    },
+    {
+      "element": "String",
+      "field": "toolchainClosure",
+      "items": [
+        "a.c",
+        "a.b"
+      ],
+      "code": "order.unsorted",
+      "why": "scalar set toolchainClosure by unsigned bytes: swapped"
+    },
+    {
+      "element": "String",
+      "field": "toolchainClosure",
+      "items": [
+        "a.b",
+        "a.b"
+      ],
+      "code": "order.duplicate",
+      "why": "scalar set toolchainClosure by unsigned bytes: same key twice"
+    },
+    {
+      "element": "String",
+      "field": "sdkSysrootClosure",
+      "items": [
+        "a.b",
+        "a.c"
+      ],
+      "code": "",
+      "why": "scalar set sdkSysrootClosure by unsigned bytes: ascending"
+    },
+    {
+      "element": "String",
+      "field": "sdkSysrootClosure",
+      "items": [
+        "a.c",
+        "a.b"
+      ],
+      "code": "order.unsorted",
+      "why": "scalar set sdkSysrootClosure by unsigned bytes: swapped"
+    },
+    {
+      "element": "String",
+      "field": "sdkSysrootClosure",
+      "items": [
+        "a.b",
+        "a.b"
+      ],
+      "code": "order.duplicate",
+      "why": "scalar set sdkSysrootClosure by unsigned bytes: same key twice"
+    },
+    {
+      "element": "Uuid",
+      "field": "findingIds",
+      "items": [
+        "0f8fad5b-d9cb-469f-a165-70867728950e",
+        "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+      ],
+      "code": "",
+      "why": "finding UUIDs: ascending"
+    },
+    {
+      "element": "Uuid",
+      "field": "findingIds",
+      "items": [
+        "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+        "0f8fad5b-d9cb-469f-a165-70867728950e"
+      ],
+      "code": "order.unsorted",
+      "why": "finding UUIDs: swapped"
+    },
+    {
+      "element": "Uuid",
+      "field": "findingIds",
+      "items": [
+        "0f8fad5b-d9cb-469f-a165-70867728950e",
+        "0f8fad5b-d9cb-469f-a165-70867728950e"
+      ],
+      "code": "order.duplicate",
+      "why": "finding UUIDs: same key twice"
+    },
+    {
+      "element": "String",
+      "field": "flags",
+      "items": [
+        "--opt=3",
+        "--deterministic",
+        "--opt=3"
+      ],
+      "code": "",
+      "why": "compiler flags keep semantic order and may repeat"
+    },
+    {
+      "element": "Digest",
+      "field": "hashes",
+      "items": [
+        "sha256:3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d",
+        "sha256:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+        "sha256:3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d"
+      ],
+      "code": "",
+      "why": "Merkle proof hashes keep protocol position and may repeat"
+    },
+    {
+      "element": "RelativePath",
+      "field": "sourceRoots",
+      "items": [
+        "src",
+        "lib"
+      ],
+      "code": "",
+      "why": "source roots are unique, not sorted"
+    },
+    {
+      "element": "RelativePath",
+      "field": "testRoots",
+      "items": [
+        "test",
+        "test"
+      ],
+      "code": "order.duplicate",
+      "why": "test roots are unique"
+    },
+    {
+      "element": "String",
+      "field": "keywords",
+      "items": [],
+      "code": "",
+      "why": "an empty set"
+    },
+    {
+      "element": "String",
+      "field": "keywords",
+      "items": [
+        "one"
+      ],
+      "code": "",
+      "why": "a single element"
+    },
+    {
+      "element": "String",
+      "field": "keywords",
+      "items": [
+        "a",
+        "b",
+        "a"
+      ],
+      "code": "order.unsorted",
+      "why": "the first offending pair decides: b then a"
+    }
+  ]
+}

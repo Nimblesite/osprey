@@ -1,0 +1,133 @@
+namespace registry_tests;
+import registry::Json
+import registry::TypeDiagram
+import registry::SchemaCheck
+import registry_tests::Fixtures
+
+/// The typeDiagram schema validator, exercised through the declarative
+/// fixtures under registry/tests/fixtures/schema and .../time. `SchemaCheck`
+/// pins the JSON encoding rules of [PACKAGE-TYPE-INVARIANTS] against the
+/// canonical schemas/package-registry.td, which is parsed once per test.
+module SchemaCheckTests {
+    let schemaPath = "schemas/package-registry.td"
+
+    fn isAlias(decl) = match decl {
+        TypeDiagram::Alias { _ } => true
+        _ => false
+    }
+
+    fn isStruct(decl) = match decl {
+        TypeDiagram::Struct { _ } => true
+        _ => false
+    }
+
+    fn isUnion(decl) = match decl {
+        TypeDiagram::Union { _ } => true
+        _ => false
+    }
+
+    fn nameResolves(model, name) = match TypeDiagram::lookup(model, name) {
+        Success => true
+        Error => false
+    }
+
+    fn everyNameResolves(model) = foldList(declaredNames, true, fn(ok, name) => ok && nameResolves(model, name))
+
+    let declaredNames = [
+        "ScopeName", "PackageName", "CommitId", "Digest", "RelativePath", "LocalPath",
+        "CompatibilityEpoch", "ReleaseOrdinal", "PrincipalId", "PackageKey", "SourceRef",
+        "RepositoryBinding", "CredentialProof", "EnvelopeProof", "AuthorizationProof",
+        "SignedRepositoryBinding", "ReleaseId", "CompatibilityClaim", "ReleaseIntent",
+        "SignedReleaseIntent", "ReleaseChallenge", "SignedReleaseChallenge",
+        "PublicationAuthorization", "SignedPublicationAuthorization", "ReleaseState",
+        "ActivationState", "ReleaseStatus", "DependencyRequirement", "SystemRequirement",
+        "PackageAssetKind", "PackageAssetRole", "PackageAsset", "DependencyEdge",
+        "PackageDiscoveryMetadata", "SourceFlavor", "PublishedPackageMetadata",
+        "PackageManifest", "DependencySelectionRef", "ModulePlanEntry",
+        "ModuleGraphProjection", "CompilerInvocationProjection", "TestPlanEntry",
+        "TestPlanProjection", "OutputArtifactKind", "OutputArtifact", "OutputLayoutProjection",
+        "BuildPlan", "ReleaseIdentityEnvelope", "Release", "LocalOverride",
+        "DevelopmentOverlay", "ProviderCatalogEntry", "LockedSystemInput",
+        "LockedBuildEnvironment", "ResolutionContext", "TufRoleState", "LogCheckpoint",
+        "MerkleInclusionProof", "MerkleConsistencyProof", "WitnessReceipt",
+        "VerificationBundle", "VerificationStatus", "LockedRoot", "DevelopmentRoot",
+        "LockedReleasePackage", "LockedDevelopmentPackage", "DevelopmentBuildInput",
+        "DevelopmentBuildReceipt", "SignedDevelopmentBuildReceipt", "ResolutionDecision",
+        "ResolutionProof", "DependencySelectionRoot", "ReleaseDependencySelection",
+        "ReleaseLockfile", "DevelopmentLockfile", "DevelopmentStateGeneration",
+        "WorkspaceTransaction", "ScanVerdict", "Evidence", "MaintenanceAssessment",
+        "DiscoveryAssessment", "ReleaseAssessment"
+    ]
+
+    fn modelLoads() = {
+        let result = TypeDiagram::parse(readFile(schemaPath) ?: "")
+        match result {
+            Success { value } => checkAll("schema model declares every type exactly once", [
+                length(value.decls) == 82,
+                length(filterList(value.decls, isAlias)) == 9,
+                length(filterList(value.decls, isStruct)) == 59,
+                length(filterList(value.decls, isUnion)) == 14,
+                everyNameResolves(value)
+            ])
+            Error { message } => check("typeDiagram parses", "ok", message)
+        }
+    }
+
+    fn validated(model, typeName, value) = match SchemaCheck::validate(model, typeName, value) {
+        Success => true
+        Error => false
+    }
+
+    fn rejectionOk(model, case) = match SchemaCheck::validate(model, Fixtures::text(Fixtures::field(case, "type")), Fixtures::field(case, "value")) {
+        Error { message } => message == "${Fixtures::text(Fixtures::field(case, "code"))} at ${Fixtures::text(Fixtures::field(case, "at"))}"
+        Success => false
+    }
+
+    fn accepts() = {
+        let result = TypeDiagram::parse(readFile(schemaPath) ?: "")
+        match result {
+            Success { value } => {
+                let fx = Fixtures::load("schema/accepts.json")
+                Fixtures::report("schema accepts", Fixtures::items(Fixtures::field(fx, "cases")), fn(c) => validated(value, Fixtures::text(Fixtures::field(c, "type")), Fixtures::field(c, "value")))
+            }
+            Error { message } => check("typeDiagram parses", "ok", message)
+        }
+    }
+
+    fn rejections() = {
+        let result = TypeDiagram::parse(readFile(schemaPath) ?: "")
+        match result {
+            Success { value } => {
+                let fx = Fixtures::load("schema/rejections.json")
+                Fixtures::report("schema rejections", Fixtures::items(Fixtures::field(fx, "cases")), fn(c) => rejectionOk(value, c))
+            }
+            Error { message } => check("typeDiagram parses", "ok", message)
+        }
+    }
+
+    fn datetimes() = {
+        let fx = Fixtures::load("time/datetimes.json")
+        Fixtures::report("datetimes valid", Fixtures::items(Fixtures::field(fx, "valid")), fn(c) => SchemaCheck::dateTimeCode(Fixtures::text(Fixtures::field(c, "text"))) == "")
+        Fixtures::report("datetimes invalid", Fixtures::items(Fixtures::field(fx, "invalid")), fn(c) => SchemaCheck::dateTimeCode(Fixtures::text(Fixtures::field(c, "text"))) == "schema.datetime")
+    }
+
+    fn floatProblem(text) = match Json::parse(text) {
+        Error { message } => message
+        Success => "ok"
+    }
+
+    fn floats() = checkAll("non-integer numbers are parse-level rejections", [
+        floatProblem("1.5") == "json.non-integer@0",
+        floatProblem("1e3") == "json.non-integer@0",
+        floatProblem("0.0") == "json.non-integer@0"
+    ])
+
+    /// Every schema-check case, run from the shared registry test entry.
+    export fn run() = {
+        test("schema-check: model declarations", modelLoads)
+        test("schema-check: accepted values", accepts)
+        test("schema-check: rejected values", rejections)
+        test("schema-check: datetime grammar", datetimes)
+        test("schema-check: floats are parse-level", floats)
+    }
+}

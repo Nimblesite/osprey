@@ -1,0 +1,12 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "A witness receipt binds the identical checkpoint digest.",
+  "type": "WitnessReceipt",
+  "value": {
+    "witnessId": "witness-a",
+    "checkpointDigest": "sha256:92d39bde1bbbae25aa8a76acec24787aa40ace591b09449b001d216330adcf0d",
+    "signatureDigest": "sha256:30735457a0143258d6104d8f566815eed9a8b75771cfc750738cc7ef1b0756db"
+  },
+  "canonical": "{\"checkpointDigest\":\"sha256:92d39bde1bbbae25aa8a76acec24787aa40ace591b09449b001d216330adcf0d\",\"signatureDigest\":\"sha256:30735457a0143258d6104d8f566815eed9a8b75771cfc750738cc7ef1b0756db\",\"witnessId\":\"witness-a\"}",
+  "canonicalLength": 210
+}

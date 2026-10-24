@@ -1,0 +1,38 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "Scores in basis points; evidence sorted by (kind, source, digest, observedAt).",
+  "type": "MaintenanceAssessment",
+  "value": {
+    "score": 7350,
+    "confidence": 8200,
+    "adjustedScore": 6027,
+    "vulnerabilityResponse": 9000,
+    "vulnerabilityResponseConfidence": 9500,
+    "continuity": 6000,
+    "continuityConfidence": 7000,
+    "testEffectiveness": 8100,
+    "testEffectivenessConfidence": 9000,
+    "reviewAndStaticHygiene": 7000,
+    "reviewAndStaticHygieneConfidence": 8000,
+    "communityResponsiveness": 5500,
+    "communityResponsivenessConfidence": 6000,
+    "methodology": "sha256:9098d59452e0719e57de06aaa21a47f05ed6923b398f3a6a6b0dd8613301f899",
+    "evidence": [
+      {
+        "kind": "advisory",
+        "source": "osv",
+        "digest": "sha256:f5c4275cbde8d427049dd276ea49e69c12e955e14d1ca364ac531497da32a8b2",
+        "observedAt": "2026-10-01T00:00:00.000Z",
+        "expiresAt": "2026-11-01T00:00:00.000Z"
+      },
+      {
+        "kind": "test-run",
+        "source": "builder-a",
+        "digest": "sha256:6723ad4024f5a17f19403e7a1ff25625f4dd2777d4d8bf63cb1925016cc6f79f",
+        "observedAt": "2026-10-02T12:30:45.123Z"
+      }
+    ]
+  },
+  "canonical": "{\"adjustedScore\":6027,\"communityResponsiveness\":5500,\"communityResponsivenessConfidence\":6000,\"confidence\":8200,\"continuity\":6000,\"continuityConfidence\":7000,\"evidence\":[{\"digest\":\"sha256:f5c4275cbde8d427049dd276ea49e69c12e955e14d1ca364ac531497da32a8b2\",\"expiresAt\":\"2026-11-01T00:00:00.000Z\",\"kind\":\"advisory\",\"observedAt\":\"2026-10-01T00:00:00.000Z\",\"source\":\"osv\"},{\"digest\":\"sha256:6723ad4024f5a17f19403e7a1ff25625f4dd2777d4d8bf63cb1925016cc6f79f\",\"kind\":\"test-run\",\"observedAt\":\"2026-10-02T12:30:45.123Z\",\"source\":\"builder-a\"}],\"methodology\":\"sha256:9098d59452e0719e57de06aaa21a47f05ed6923b398f3a6a6b0dd8613301f899\",\"reviewAndStaticHygiene\":7000,\"reviewAndStaticHygieneConfidence\":8000,\"score\":7350,\"testEffectiveness\":8100,\"testEffectivenessConfidence\":9000,\"vulnerabilityResponse\":9000,\"vulnerabilityResponseConfidence\":9500}",
+  "canonicalLength": 831
+}

@@ -3,15 +3,17 @@ import registry::Policy
 import registry_host::Host
 import registry_host::Native
 import registry_cli::Dispatch
+import registry_cli::Reports
 
 /// Osprey has no argv builtin yet (`process.argv` in `Capabilities`), so the
 /// frontend reads one command line from standard input:
 /// `echo "doctor" | osprey-pkg`. The exit status is reported on the last line
-/// because `process.exit-status` is blocked too.
+/// because `process.exit-status` is blocked too. Every line is sanitized
+/// before it reaches the console ([PACKAGE-HARDENING] C7).
 fn arguments() = words(input())
 
 fn emit(report) = {
-    forEachList(report.lines, fn(text) => perform Host::Console.line(text))
+    forEachList(report.lines, fn(text) => perform Host::Console.line(Reports::printable(text)))
     report.status
 }
 

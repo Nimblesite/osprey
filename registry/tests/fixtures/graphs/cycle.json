@@ -1,0 +1,104 @@
+{
+  "spec": "[PACKAGE-RESOLUTION]",
+  "description": "A depends on B and B depends on A; the package graph is cyclic, so the explanation is cycle.",
+  "target": "x86_64-linux",
+  "grantedCapabilities": [],
+  "root": {
+    "dependencies": [
+      {
+        "Runtime": {
+          "requirement": {
+            "package": {
+              "scope": "a",
+              "name": "app"
+            },
+            "epoch": 1,
+            "minimumOrdinal": 1
+          }
+        }
+      }
+    ]
+  },
+  "current": [],
+  "catalog": [
+    {
+      "release": {
+        "package": {
+          "scope": "a",
+          "name": "app"
+        },
+        "epoch": 1,
+        "ordinal": 1,
+        "digest": "sha256:0000000000000001000000000000000100000000000000010000000000000001"
+      },
+      "state": {
+        "Eligible": {}
+      },
+      "targets": [
+        "x86_64-linux"
+      ],
+      "capabilities": [],
+      "dependencies": [
+        {
+          "Runtime": {
+            "requirement": {
+              "package": {
+                "scope": "b",
+                "name": "lib"
+              },
+              "epoch": 1,
+              "minimumOrdinal": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "release": {
+        "package": {
+          "scope": "b",
+          "name": "lib"
+        },
+        "epoch": 1,
+        "ordinal": 1,
+        "digest": "sha256:0000000000000002000000000000000200000000000000020000000000000002"
+      },
+      "state": {
+        "Eligible": {}
+      },
+      "targets": [
+        "x86_64-linux"
+      ],
+      "capabilities": [],
+      "dependencies": [
+        {
+          "Runtime": {
+            "requirement": {
+              "package": {
+                "scope": "a",
+                "name": "app"
+              },
+              "epoch": 1,
+              "minimumOrdinal": 1
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "explanation": {
+      "code": "resolution.cycle",
+      "packages": [
+        {
+          "scope": "a",
+          "name": "app"
+        },
+        {
+          "scope": "b",
+          "name": "lib"
+        }
+      ]
+    }
+  }
+}
