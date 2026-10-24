@@ -8,7 +8,7 @@ The compiler pipeline follows these directories in order:
 
 | Stage | Source | Responsibility |
 | --- | --- | --- |
-| Parse | `tree-sitter-osprey/`, `crates/osprey-syntax/` | Default grammar and both syntax front ends |
+| Parse | `tree-sitter-osprey/`, `crates/osprey-syntax/` | Default grammar and Default, ML and Python front ends |
 | Lower | `crates/osprey-ast/` | Shared AST and static interpretation |
 | Check | `crates/osprey-types/` | Type inference and effect requirements |
 | Generate | `crates/osprey-codegen/` | LLVM IR, closures, effects and GPU kernels |
@@ -42,7 +42,9 @@ The root Makefile defines every public target, so `make` and editor task panels,
 
 The homepage, effects guide and handler post share their runnable draft-saving example through `website/src/_data/draftExample.json`. Browser tests execute both syntax versions, verify the displayed output and actual file contents, and assert that the offline handler writes no file. The README shows the same source and is checked against that data.
 
-`vscode-extension/` and `webcompiler/` remain separate Node projects with their own dependency locks. `Book/` and `benchmarks/` contain independent verification and publishing tools.
+`registry/` contains the Osprey package server, client, resolver and verification suites. `packages/` contains Osprey source packages, including Python-flavor ports; `python/` contains the CPython interoperability bridge.
+
+`vscode-extension/` and `webcompiler/` are separate Node projects with their own dependency locks. `Book/` and `benchmarks/` contain verification and publishing tools.
 
 ## Generated files and test isolation
 

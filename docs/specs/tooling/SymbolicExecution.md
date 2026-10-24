@@ -2,13 +2,13 @@
 
 **Status: `osprey hunt` ships — mock C library, runtime bitcode, findings, native replay and the corpus scripts. The typed function harness ([SYMEX-HARNESS-TYPED](../compiler/KleeCodegen.md#synthetic-entry-point-symex-harness-typed)), `libkleeRuntest` replay, regression-test generation ([SYMEX-REGRESSION](#regression-tests--symex-regression)), Windows and the proof benchmarks ([SYMEX-PROOF](#proof-of-the-comparison--symex-proof)) are not built.** [Plan 0034](../../plans/0034-symbolic-execution.md) tracks delivery. The compiler's side (symbolic codegen, the synthetic entry point, the runtime bitcode) is specified in [KLEE code generation](../compiler/KleeCodegen.md).
 
-`osprey hunt` compiles an Osprey program to a textual LLVM module, links a mock C library in place of the system libc, and runs [KLEE](https://klee-se.org) on the result — symbolic execution by KLEE. Input bytes, file contents, entropy and clock readings are symbolic, so KLEE explores every path they can drive. Each finding comes back with the Osprey source line, the input that triggers it, and whether it reproduces on the real native binary.
+`osprey hunt` compiles an Osprey program to a textual LLVM module, links a mock C library in place of the system libc, and runs [KLEE](https://klee-se.org) on the result — symbolic execution by KLEE. Input bytes, file contents, entropy and clock readings are symbolic, so KLEE explores the paths they drive within the input, runtime-model and execution budgets. Findings include source locations, concrete inputs and a native replay verdict; unsupported operations and unfinished paths remain explicit limits.
 
 Programs need no annotations. A program that reads `input()` or `readFile` is explored as written, from `main` with symbolic stdin and files. Exploring a function that takes arguments, by building symbolic arguments from its inferred type, is designed but not built ([SYMEX-HARNESS-TYPED](../compiler/KleeCodegen.md#synthetic-entry-point-symex-harness-typed)).
 
 ## Tool selection — `[SYMEX-TOOL]`
 
-KLEE is the engine because it is the most used, best documented symbolic executor for LLVM IR, it is maintained, its license is permissive, and it is packaged for the hosts Osprey builds on. Checked on 2026-10-24 against primary sources:
+Hunt uses KLEE to interpret the LLVM IR Osprey already emits. The supported setup uses a separate engine installation and Osprey's symbolic runtime bitcode. Checked on 2026-10-24 against primary sources:
 
 | Fact | Source |
 |---|---|
@@ -96,7 +96,7 @@ The table above is a claim until it is measured; this section is a contract for 
 
 If any row fails, the README reports it as it is, and the delivery checklist stays open. The results run on a documented machine, with the versions of KLEE, Kani, GHC and QuickCheck recorded in `results.json`.
 
-**What is not claimed.** Kani proves the absence of a defect up to its unwind bound; `osprey hunt` only finds defects, and the README says so beside the table. Osprey programs cannot index out of bounds or dereference null by construction, so the Osprey side of a `memory`, `abort` or `arith` case pins a compiler, runtime or mock defect, never a user bug. QuickCheck's `shrink` gives small counterexamples that KLEE's solver outputs don't always match; `seconds` and `found` are the comparison, not counterexample size.
+**What is not claimed.** Kani proves the absence of a defect up to its unwind bound; `osprey hunt` only finds defects, and the README says so beside the table. For code that stays within Osprey's managed operations, memory failures point to compiler, runtime or model defects. Explicit C calls cross that boundary and can deliberately abort, as the crash demo does; classify a finding from its source and replay evidence. QuickCheck's `shrink` gives small counterexamples that KLEE's solver outputs don't always match; `seconds` and `found` are the comparison, not counterexample size.
 
 ## Pipeline
 
@@ -222,7 +222,7 @@ The `.early` files (interrupted, max depth, out of memory) and unknown suffixes 
 
 Findings are deduplicated by class and the top Osprey frame (or the top C frame, or the message when there is neither). The report lists the class, the Osprey `file:line` from the top Osprey frame in KLEE's stack, the top C runtime frame, the concrete stdin and file bytes, and the replay verdict. A project's modules share one flattened line numbering in the compiled module, so for a project the tool maps that line back to the module file it was written in and reports that file's own path and line, the same mapping the checker's diagnostics use; a single-file program keeps the name its debug metadata carries. `--json` writes the same data for CI and the editor: `program`, `engine` ("KLEE"), `budgetSeconds`, `inputBytes`, `explored{paths,completed,instructions,elapsed}`, `findings[{test,class,suffix,message,file,line,runtimeFrame,stdin,files[{path,bytes}],replay,replayDetail}]`, `incomplete[{test,reason}]`, and `context` as described in [SYMEX-REPORT-HTML].
 
-Osprey programs cannot index out of bounds or dereference null by construction, so a `memory`, `abort` or `arith` finding on an Osprey program is a compiler, runtime or mock defect, never a user bug; `unmodelled` findings name where the mock stops being accurate.
+Managed Osprey operations do not expose unchecked indexing or null dereferences. A memory failure on those paths points to the compiler, runtime or symbolic model. Explicit C calls can introduce failures outside that boundary: `tests/hunt/crash.osp` intentionally aborts on `"9"`. An `abort` finding alone therefore does not establish a compiler defect. `unmodelled` findings identify operations the model cannot execute.
 
 ### Native replay — `[SYMEX-REPLAY]`
 
@@ -273,7 +273,7 @@ Tests are written first at each step. The compiler items are specified in [KLEE 
 - [x] **Mock library:** headers, the stream model, stateless models and unsupported stubs, with native unit tests (`make _test_hunt_mock`, part of `make test`) and the `[SYMEX-MOCK-CLOSED]` undefined-symbol check inside `_runtime_klee` (part of `make build`).
 - [x] **`_runtime_klee`** builds the runtime bitcode from the shared `WASM_RT_SRC` list (minus `web_runtime` and `wasm_builtins_runtime`) plus the mock, with KLEE's clang.
 - [x] **Symbolic codegen** (`compile_program_symbolic`; there is no `--klee` CLI flag): `abort()` on fatal paths, debug metadata on, no `optnone`. The planned `llvm-as` parse check over the corpus is not built; KLEE itself parses the module on every hunt.
-- [x] **`osprey hunt` main mode:** deterministic programs under `tests/hunt/`, each with an `.expected` file, run by `make _test_hunt` (part of `make test` when KLEE is installed) — a clean program produces no findings, and a program whose process builtin yields one deterministic `unmodelled` finding at the right Osprey line. The originally planned planted off-by-one is withdrawn: Osprey programs cannot index out of bounds or dereference null by construction, so a `memory` finding would be a compiler, runtime or mock defect.
+- [x] **`osprey hunt` main mode:** deterministic programs under `tests/hunt/`, each with an `.expected` file, run by `make _test_hunt` (part of `make test` when KLEE is installed) — `crash.osp` finds input `"9"` and reproduces its planted C abort at line 4; `clean.osp` expects no findings; `process.osp` expects one unsupported-operation finding. Fixed compiler/runtime regressions remain separate controls. The harness rejects incomplete exploration rather than treating it as a passing control.
 - [ ] **`libkleeRuntest` replay**, including the entropy/clock provider, on top of the native stdin/file replay that ships today; tested by a planted bug that only fires on one symbolic random byte.
 - [ ] **`[SYMEX-HARNESS-TYPED]`:** a planted bug in a function taking `List<int>` and a union must be found with `--fn`; `--all-fns` lists skips with reasons. Not built.
 - [ ] **`[SYMEX-REGRESSION]`** test generation. Not built.

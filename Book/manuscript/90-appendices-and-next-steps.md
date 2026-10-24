@@ -49,7 +49,7 @@ The following qualifications describe the current implementation. A future desig
 | Portable/mobile memory | WebAssembly, iOS, and Android currently accept only `default`. Mobile returned strings have no stable host release API. Strict static-memory checking is not implemented. |
 | WebAssembly | Emits a WASI command module; browser execution needs the supported host bridge. Files depend on host access. Native HTTP/WebSocket, process, terminal, fiber, and arbitrary-FFI facilities are unavailable. |
 | Mobile | iOS device/simulator and Android ARM64/x86-64 targets emit archives and headers for native hosts. The host supplies UI, networking, lifecycle, and asynchronous completion events. |
-| Modules and packages | Project discovery, namespaces, modules, and cross-flavor imports work. The package manager and registry remain design work. |
+| Modules and packages | Project discovery, namespaces and cross-flavor imports work. The package manager supports folder registries, verified source downloads, local overrides and locked builds. Hosted publishing and public trust services remain planned. |
 | Flavors | Default and ML are available; the Python flavor implements a subset of its specified surface. One source selects one flavor; a project may mix them. Formatting does not convert flavors. |
 | Optimization and GPU | Tail-call optimization is not implemented. Supported GPU kernels can execute on Metal or OpenCL. Check kernel and device support before choosing this path; a GPU API call alone does not prove acceleration. |
 | Foreign resources | C integration crosses Osprey's memory-safety boundary. Files, response handles, sockets, and other external resources still need their explicit cleanup APIs. |

@@ -186,24 +186,12 @@
 <div class="w-3 h-3 rounded-full bg-tertiary-container/40"></div>
 <div class="w-3 h-3 rounded-full bg-primary/40"></div>
 </div>
-<span class="font-label-caps text-[10px] text-on-surface-variant">main.os</span>
+<span class="font-label-caps text-[10px] text-on-surface-variant">main.osp</span>
 </div>
 <div class="p-6 font-code-sm text-code-sm bg-surface-container-lowest/50 code-glow">
-<pre class="text-on-surface"><code><span class="text-tertiary">import</span> std.io;
-<span class="text-tertiary">import</span> std.concurrency;
-
-<span class="text-primary">pub func</span> main() {
-    <span class="text-on-surface-variant">// Talon concurrency in action</span>
-    <span class="text-primary-container">spawn</span> {
-        io.println(<span class="text-tertiary-fixed-dim">"Hello from a light-weight talon!"</span>);
-    }
-    
-    <span class="text-primary">let</span> buffer = std.mem.alloc(<span class="text-primary-container">1024</span>);
-    <span class="text-on-surface-variant">// Zero-tax safety checks</span>
-    <span class="text-primary">defer</span> buffer.free();
-    
-    io.println(<span class="text-tertiary-fixed-dim">"Osprey is ready."</span>);
-}</code></pre>
+<pre class="text-on-surface"><code>fn work() = &quot;Hello from a fiber&quot;
+let worker = spawn work()
+print(await(worker))</code></pre>
 </div>
 </div>
 </div>
@@ -211,9 +199,9 @@
 <!-- Features Bento Grid -->
 <section class="py-24 px-margin-desktop max-w-container-max mx-auto">
 <div class="text-center mb-16">
-<h2 class="font-headline-lg text-headline-lg mb-4">Engineered for Precision</h2>
+<h2 class="font-headline-lg text-headline-lg mb-4">Types, effects and fibers</h2>
 <p class="font-body-lg text-body-lg text-on-surface-variant max-w-2xl mx-auto">
-                    Three core pillars that define the Osprey experience.
+                    Inferred types, explicit handlers and message passing.
                 </p>
 </div>
 <div class="grid grid-cols-1 md:grid-cols-3 gap-gutter">
@@ -222,9 +210,9 @@
 <div class="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-background transition-all">
 <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">security</span>
 </div>
-<h3 class="font-headline-md text-headline-md">Invisible Ownership</h3>
+<h3 class="font-headline-md text-headline-md">Memory backends</h3>
 <p class="text-on-surface-variant leading-relaxed">
-                        Say goodbye to the borrow checker complexity. Osprey uses static analysis to track resource lifetimes without forcing you to annotate every variable.
+                        Native builds select the default allocator, tracing GC or reference counting. WebAssembly and mobile currently use the default allocator.
                     </p>
 <a class="mt-auto text-primary font-bold flex items-center gap-2 group-hover:underline" href="#">
                         Read the spec <span class="material-symbols-outlined text-sm">arrow_forward</span>
@@ -235,9 +223,9 @@
 <div class="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-background transition-all">
 <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
 </div>
-<h3 class="font-headline-md text-headline-md">Wings Effect System</h3>
+<h3 class="font-headline-md text-headline-md">Algebraic effects</h3>
 <p class="text-on-surface-variant leading-relaxed">
-                        A robust, type-safe effect system that manages side effects explicitly. Track IO, State, and Network calls through the type system for fearless refactoring.
+                        Declare operations with effects and provide their implementations with handlers. The compiler rejects unhandled operations.
                     </p>
 <a class="mt-auto text-primary font-bold flex items-center gap-2 group-hover:underline" href="#">
                         Explore effects <span class="material-symbols-outlined text-sm">arrow_forward</span>
@@ -248,12 +236,12 @@
 <div class="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-background transition-all">
 <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">bolt</span>
 </div>
-<h3 class="font-headline-md text-headline-md">Talon Concurrency</h3>
+<h3 class="font-headline-md text-headline-md">Native fibers and channels</h3>
 <p class="text-on-surface-variant leading-relaxed">
-                        Scale to millions of concurrent tasks with Talons—Osprey's M:N scheduler. Minimal overhead, maximum throughput, and built-in data race prevention.
+                        Native fibers communicate through typed channels. The current runtime uses one pthread per fiber.
                     </p>
 <a class="mt-auto text-primary font-bold flex items-center gap-2 group-hover:underline" href="#">
-                        Benchmark Talon <span class="material-symbols-outlined text-sm">arrow_forward</span>
+                        Read about fibers <span class="material-symbols-outlined text-sm">arrow_forward</span>
 </a>
 </div>
 </div>
@@ -267,40 +255,32 @@
 <div class="order-2 lg:order-1">
 <div class="glass-panel rounded-xl overflow-hidden shadow-xl border-outline-variant/10">
 <div class="bg-surface-container-highest/60 px-4 py-2 border-b border-outline-variant/30">
-<span class="font-label-caps text-xs text-on-surface-variant">Header Importer v2.0</span>
+<span class="font-label-caps text-xs text-on-surface-variant">Explicit C declarations</span>
 </div>
 <div class="p-6 font-code-sm text-code-sm bg-surface-container-lowest/80">
-<pre class="text-on-surface"><code><span class="text-on-surface-variant">// Native Performance, Zero Tax</span>
-<span class="text-primary">#import</span> <span class="text-tertiary-container">&lt;vector&gt;</span>
-<span class="text-primary">#import</span> <span class="text-tertiary-container">"engine_core.h"</span>
-
-<span class="text-primary">pub func</span> process_data(input: <span class="text-primary-container">[]u8</span>) {
-    <span class="text-primary">let</span> engine = Engine::init();
-    <span class="text-on-surface-variant">// Bridge to C++ zero-copy</span>
-    engine.load_raw_ptr(input.ptr, input.len);
-    engine.run();
-}</code></pre>
+<pre class="text-on-surface"><code>extern fn llabs(value: int) -&gt; int
+print(&quot;absolute value: ${llabs(-7)}&quot;)</code></pre>
 </div>
 </div>
 </div>
 <div class="flex flex-col gap-6 order-1 lg:order-2">
-<h2 class="font-headline-lg text-headline-lg">Native Performance, <span class="text-primary">Zero Tax</span></h2>
+<h2 class="font-headline-lg text-headline-lg">Call native libraries through the <span class="text-primary">C ABI</span></h2>
 <p class="text-body-lg text-on-surface-variant">
-                        Osprey's Header Importer allows you to use your existing C and C++ libraries directly without writing fragile FFI wrappers.
+                        Declare C functions with extern fn and link their library. C calls cross the managed memory-safety boundary; C++ libraries need a C-compatible wrapper.
                     </p>
 <ul class="flex flex-col gap-4">
 <li class="flex gap-3 items-start">
 <span class="material-symbols-outlined text-primary mt-1">check_circle</span>
 <div>
-<strong class="text-on-surface block">Zero-Copy Interop</strong>
-<span class="text-on-surface-variant">Direct memory mapping between Osprey and native libraries.</span>
+<strong class="text-on-surface block">Explicit C ABI</strong>
+<span class="text-on-surface-variant">Declare and validate the boundary types; manage foreign memory according to the library contract.</span>
 </div>
 </li>
 <li class="flex gap-3 items-start">
 <span class="material-symbols-outlined text-primary mt-1">check_circle</span>
 <div>
 <strong class="text-on-surface block">LLVM Optimization</strong>
-<span class="text-on-surface-variant">Benefit from the world-class LLVM backend for machine-specific tuning.</span>
+<span class="text-on-surface-variant">LLVM optimizes native builds; measure complete workloads on the target hardware.</span>
 </div>
 </li>
 </ul>
@@ -314,14 +294,11 @@
 </div>
 <div class="max-w-2xl mx-auto relative z-10 flex flex-col items-center gap-8">
 <img alt="Osprey Icon" class="w-24 h-24 mb-4 drop-shadow-[0_0_30px_rgba(119,215,244,0.3)]" src="https://lh3.googleusercontent.com/aida/AP1WRLs0BrQar7DLUDQVGGiiE2wNsw_xy1UrdjKumk5ln3t5xNzAIutDdUF01HqBffhl_oYWlmZpgGdl0WSB-h2zv-A4BXA6lK2zEjnSsygRs1D53eOHrnhMfWxonm4sloQBLD--7tkrOEuvNfw52JM27q35F0Glg0c_cT2loV669GZHsKb8sGD6VulI_02oalrYASOyHX_V5VIOY5UjEGM9qtrJ5i-uBCH7qy105s7sAuWnpwphHXlIFe5DmQY"/>
-<h2 class="font-headline-lg text-headline-lg">Join the Osprey Revolution</h2>
+<h2 class="font-headline-lg text-headline-lg">Build with Osprey</h2>
 <p class="text-body-lg text-on-surface-variant">
-                    Experience the next generation of performance engineering. Lightweight, safe, and ready for the cloud.
+                    Try the compiler, run the examples and check current feature support.
                 </p>
-<div class="flex gap-4 w-full justify-center">
-<input class="bg-surface-container-low border border-outline-variant/30 rounded-lg px-6 py-4 w-full max-w-xs focus:ring-2 focus:ring-primary focus:outline-none transition-all" placeholder="Enter your email for early access" type="email"/>
-<button class="bg-primary text-background px-8 py-4 rounded-lg font-bold hover:scale-105 transition-transform">Notify Me</button>
-</div>
+<div class="flex gap-4 w-full justify-center"><a href="https://www.ospreylang.dev/docs/installation/">Install Osprey</a><a href="https://www.ospreylang.dev/playground/">Try the Playground</a></div>
 </div>
 </section>
 </main>
@@ -334,7 +311,7 @@
 <span class="font-headline-md text-headline-md font-bold text-primary dark:text-primary">Osprey</span>
 </div>
 <p class="text-on-surface-variant text-sm pr-8">
-                    © 2024 Osprey Systems. Built for performance. High-concurrency systems language for the next generation of software.
+                    Osprey is a functional language with algebraic effects, inferred types and native compilation.
                 </p>
 </div>
 <div class="flex flex-col gap-4">

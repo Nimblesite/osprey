@@ -25,7 +25,7 @@ The running project becomes a template. The reader keeps it or replaces its doma
 
 Begin with an observable result and a testable pure model. Name the outside operations as effects, choose callable handlers at application entry points, and keep expected failures in `Result`. Install a handler before its callback runs. A browser event or native host callback is a later entry point and must handle its own effect requirements; a handler installed only during startup is not still active afterwards.
 
-Project modules and cross-flavor imports are available. Use logical namespaces and exported module members to separate the model, operation declarations, adapters, and entry points. Do not make the plan depend on the package manager or registry: their specification describes intended behavior, not available install or publish commands.
+Project modules and cross-flavor imports are available. Use logical namespaces and exported module members to separate the model, operation declarations, adapters, and entry points. Use checked-in source roots or the [folder-registry workflow](https://www.ospreylang.dev/docs/package-manager/) for dependencies. Pin releases in `osprey.lock`; do not assume the planned public package website or authenticated publishing is available.
 
 Choose the deployment route with its host and test environment:
 

@@ -433,16 +433,16 @@ as scheduling/runtime primitives rather than as the semantics of effects.
 
 Local Osprey context:
 
-- [README.md](../../README.md)
+- [README.md](../README.md)
 - [Algebraic Effects spec](specs/language/0017-AlgebraicEffects.md)
 - [Fibers and Concurrency spec](specs/language/0011-LightweightFibersAndConcurrency.md)
 - [WebAssembly target spec](specs/compiler/0022-WebAssemblyTarget.md)
-- [Algebraic effects roadmap](../plans/0016-algebraic-effects-and-handlers.md)
-- [`crates/osprey-codegen/src/effects.rs`](../../crates/osprey-codegen/src/effects.rs)
-- [`crates/osprey-codegen/src/fiber.rs`](../../crates/osprey-codegen/src/fiber.rs)
-- [`compiler/runtime/effects_runtime.c`](../../compiler/runtime/effects_runtime.c)
-- [`compiler/runtime/effects_coro.c`](../../compiler/runtime/effects_coro.c)
-- [`compiler/runtime/fiber_runtime.c`](../../compiler/runtime/fiber_runtime.c)
+- [Algebraic effects roadmap](plans/0016-algebraic-effects-and-handlers.md)
+- [`crates/osprey-codegen/src/effects.rs`](../crates/osprey-codegen/src/effects.rs)
+- [`crates/osprey-codegen/src/fiber.rs`](../crates/osprey-codegen/src/fiber.rs)
+- [`compiler/runtime/effects_runtime.c`](../compiler/runtime/effects_runtime.c)
+- [`compiler/runtime/effects_coro.c`](../compiler/runtime/effects_coro.c)
+- [`compiler/runtime/fiber_runtime.c`](../compiler/runtime/fiber_runtime.c)
 
 External references:
 

@@ -78,7 +78,7 @@ Ask the agent to show a small diff and run a specific check. If it changes the d
 
 Osprey is actively evolving. Syntax, tooling, and implementation details can change. This working edition records its development compiler's identity and checks in `evidence.json`; a release version still needs to be pinned before publication.
 
-Project modules and imports between Default and ML files already work. The package manager remains planned. The later chapters distinguish using code in your own project from downloading and distributing packages.
+Projects can mix Default, ML and Python-flavor modules. The [package manager](https://www.ospreylang.dev/docs/package-manager/) supports a folder registry, verified downloads and locked builds; the hosted package website and public trust services remain planned. This book's examples use checked-in source roots.
 
 Examples identify their target when it matters. Native executables support dynamic control handlers with single-shot resumption; WebAssembly and mobile libraries currently support value handlers and static discharge, but reject dynamic control operations. Chapter 9 explains those terms beside runnable examples.
 

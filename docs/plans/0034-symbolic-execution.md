@@ -10,7 +10,7 @@ Run KLEE on the LLVM IR the compiler already emits, with no annotations in the p
 
 **Status (verified):** what runs today —
 
-- `osprey hunt <file> [--max-time] [--input-bytes] [--out] [--json] [--no-replay] [--quiet]`: the fixed KLEE command, findings classified and deduplicated with Osprey `file:line` and the recorded inputs, native replay telling `reproduced` from `klee-only`, exit codes 0/1/2 ([SYMEX-CLI](../specs/tooling/SymbolicExecution.md)).
+- `osprey hunt <file> [--max-time] [--max-memory] [--input-bytes] [--out] [--json] [--no-html] [--no-json] [--no-replay] [--quiet]`: the fixed KLEE command, findings classified and deduplicated with Osprey `file:line` and the recorded inputs, native replay telling `reproduced` from `klee-only`, exit codes 0/1/2 ([SYMEX-CLI](../specs/tooling/SymbolicExecution.md)).
 - The mock C library in `compiler/runtime/klee/` and the runtime bitcode `_runtime_klee` (part of `make build`, with the `[SYMEX-MOCK-CLOSED]` check inside it).
 - `compile_program_symbolic` codegen: debug metadata forced on, `abort()` on fatal paths.
 - Mock unit tests `make _test_hunt_mock` (45 checks, part of `make test`); deterministic engine tests under `tests/hunt/` (`make _test_hunt`).
@@ -42,7 +42,7 @@ Checked against the tree and against KLEE's sources on 2026-10-24.
 
 ### Phase 3: `osprey hunt` main mode
 
-The subcommand in `osprey-cli`: compile, link, run the fixed KLEE command line, parse `test*.<suffix>.err` and the `.ktest` objects into findings, replay stdin and files natively, print the report, write `--json`. **Delivered.** The deterministic tests under `tests/hunt/` are a clean program, a program whose process builtin yields one `unmodelled` finding at its line, and `json_empty.osp`, added when the corpus sweep found `close_container` in `json_runtime.c` forming `NULL + 0`: Osprey programs cannot index out of bounds or dereference null by construction, so the originally planned planted off-by-one would have pinned a compiler, runtime or mock defect, not a user bug.
+The subcommand in `osprey-cli`: compile, link, run the fixed KLEE command line, parse `test*.<suffix>.err` and the `.ktest` objects into findings, replay stdin and files natively, print the report and save HTML/JSON artifacts by default. **Delivered.** `tests/hunt/crash.osp` deliberately calls C `abort()` for input `"9"` and must reproduce `SIGABRT`. `clean.osp` is a no-finding control; `process.osp` pins an unsupported operation. `json_empty.osp` pins the fixed runtime defect that formed `NULL + 0` when closing an empty JSON container. A planted C failure demonstrates detection; it is not evidence of a new compiler defect.
 
 ### Phase 4: typed harness and `libkleeRuntest` replay
 
@@ -97,7 +97,7 @@ A driver that installs a `control` effect handler stops at the handler region's 
 
 - [x] Phase 1: mock library with unit tests (`make _test_hunt_mock`, part of `make test`); `_runtime_klee` with the `[SYMEX-MOCK-CLOSED]` check inside it (part of `make build`).
 - [x] Phase 2: symbolic codegen (`compile_program_symbolic`) with the IR tests in `crates/osprey-codegen/src/ir_tests/symbolic.rs`; the planned `llvm-as` corpus parse check is not built.
-- [x] Phase 3: `osprey hunt` main mode; deterministic programs under `tests/hunt/` with an `.expected` file each, run by `make _test_hunt` — a clean program, one whose process builtin yields a single `unmodelled` finding at the right line, and `json_empty.osp` pinning the `NULL + 0` the corpus sweep found in `close_container`.
+- [x] Phase 3: `osprey hunt` main mode; deterministic programs under `tests/hunt/` with an `.expected` file each, run by `make _test_hunt` — the planted C-abort demo, a clean control, an unsupported process operation, and regressions for fixed compiler/runtime defects. HTML/JSON report artifacts are covered by the CLI tests.
 - [ ] Phase 4: `--fn` / `--all-fns`; `libkleeRuntest` replay with the entropy/clock provider (native stdin/file replay ships without it); planted single-random-byte bug.
 - [ ] Phase 5: regression writer; green corpus made a required check (`scripts/hunt_corpus.sh` and `tests/HUNT_UNPORTABLE.txt` exist and the corpus is green — 224 programs, 0 findings — but it is not yet a required check); WSL2 and `--replay-host=windows`.
 - [ ] Phase 6: `benchmarks/symex/` results meeting all four `[SYMEX-PROOF]` conditions; README rendered from JSON in `make ci`.
