@@ -1,5 +1,5 @@
 //! Result pattern lowering.
-use super::{bind_catch_all, bind_value, emit_arm, finish_phi};
+use super::{bind_catch_all, bind_value, emit_arm, finish_phi, match_mark};
 use crate::builder::Codegen;
 use crate::error::Result;
 use crate::llty::{LType, Value};
@@ -74,7 +74,7 @@ pub(super) fn gen_result_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]
 
     let (sl, el, end) = cg.diamond(&cond);
 
-    let mark = crate::arc::frame_mark(cg);
+    let mark = match_mark(cg);
     let mut phi_in: Vec<(Value, String)> = Vec::new();
     emit_result_arm(cg, &sl, success, succ_val, disc, &mut phi_in)?;
     emit_result_arm(cg, &el, error, err_val, disc, &mut phi_in)?;
@@ -159,7 +159,7 @@ fn fused_list_get(cg: &mut Codegen, arguments: &[Expr], arms: &[MatchArm]) -> Re
     let in_bounds = cg.call("i32", "osprey_list_in_bounds", "i8*, i64", &operands);
     let cond = cg.emit_reg(format!("icmp ne i32 {in_bounds}, 0"));
     let (sl, el, end) = cg.diamond(&cond);
-    let mark = crate::arc::frame_mark(cg);
+    let mark = match_mark(cg);
     let mut phi_in: Vec<(Value, String)> = Vec::new();
     cg.start_block(&sl);
     let raw = cg.call("i64", "osprey_list_get", "i8*, i64", &operands);

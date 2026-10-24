@@ -85,13 +85,21 @@ fn match_state(
     cg: &mut Codegen,
     arms: &[MatchArm],
 ) -> (String, Vec<(Value, String)>, usize, usize) {
-    let mark = crate::arc::frame_mark(cg);
+    let mark = match_mark(cg);
     (
         cg.fresh_label(),
         Vec::new(),
         arms.len().saturating_sub(1),
         mark,
     )
+}
+
+/// Stores in an arm cannot consume owners live before the match: a sibling
+/// may return another value without performing that ownership transfer.
+fn match_mark(cg: &mut Codegen) -> usize {
+    let mark = crate::arc::frame_mark(cg);
+    crate::arc::open_conditional(cg, mark);
+    mark
 }
 
 /// Generate a successful match arm and branch to the common result block.
@@ -179,6 +187,7 @@ fn finish_phi(
         incoming_values.push((adapted, pred));
     }
     cg.start_block(end);
+    crate::arc::close_conditional(cg);
 
     let Some((first_val, _)) = incoming_values.first() else {
         return Ok(Value::unit());

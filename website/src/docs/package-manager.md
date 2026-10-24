@@ -31,7 +31,7 @@ echo "verify --offline --project $PWD/registry/e2e/consumer" | ./target/osprey-p
 echo "build --run --project $PWD/registry/e2e/consumer" | ./target/osprey-pkg
 ```
 
-Each command prints `status: N`; check that it is `0`. The frontend currently reads one command from stdin and cannot set a process exit status. For your own project, create an `osprey.toml`, declare dependencies as below, and use its absolute directory with `--project`. The command table describes `package init`, `add` and local checkout overrides.
+Each command prints `status: N`; check that it is `0`. The frontend currently reads one command from stdin and cannot set a process exit status. It splits the command on whitespace; paths containing spaces are not supported by this entry point. For your own project, create an `osprey.toml`, declare dependencies as below, and use its absolute directory with `--project`. The command table describes `package init`, `add` and local checkout overrides.
 
 ## How the package website will work
 
@@ -159,7 +159,7 @@ The parser is a strict TOML subset written in Osprey: tables, arrays of tables, 
 
 A published package may be written in Osprey's **Python flavor**: `[project].python_sources` lists its `.py` files, each beginning with `# osprey: flavor=python`, inside a source root. The list is part of the canonical manifest, the marker is checked on every file of a release tree (`source.python-flavor-header`), and the Osprey compiler reads those files as Osprey source. Python-flavor `.py` files are compiled by Osprey rather than run by CPython, so ports such as `@osprey/numpy` publish exactly like any other package.
 
-The package-client build integration for `python_sources` is still incomplete: its generated project can contain absolute Python source paths, which the compiler rejects with `Python source must be a manifest-relative .py file inside a declared source root`. Frontend compilation and folder-publication tests do not prove this build path. The Default-flavor consumer above exercises the working registry flow.
+Python-flavor package-client builds remain under end-to-end verification. Recent project-local manifest-path changes have targeted fixture coverage; frontend compilation and folder-publication tests do not establish the complete build path. The Default-flavor consumer above exercises the working registry flow.
 
 Package publication automatically retains root `LICENSE`, `COPYING`, `NOTICE`, `AUTHORS` and `THIRD_PARTY_NOTICES` files (including `.txt`/`.md` forms) and the complete `LICENSES/` directory. These documents are included in the release digest and remain after fetch/install. The [package license audit](https://github.com/Nimblesite/osprey/tree/main/packages) distinguishes API-only Osprey implementations from specifically copied or adapted source and data. Original Osprey contributions carry MIT; identified reused material retains its applicable terms and notices. Compiled application distributions must supply the applicable documents too.
 

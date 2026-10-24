@@ -2,7 +2,7 @@
 
 The registry and package client are written in Osprey and built by the existing compiler. [Plan 0020](../docs/plans/0020-package-manager.md) tracks delivery against [specs 0029–0032](../docs/specs/ecosystem/README.md). The folder registry, source verification, deterministic resolution, locks, local overrides, folder publication and uv integration run today. Authenticated public publishing, the dedicated package website and trust services remain planned.
 
-The loopback consumer uses Default-flavor source. Package-client builds with declared `python_sources` still have a manifest-path integration gap; frontend compilation and publication tests do not prove that path. See the [package guide](../website/src/docs/package-manager.md) for the exact current limitation.
+The loopback consumer uses Default-flavor source. Recent Python-source manifest-path fixes have fixture coverage; real package-client build acceptance remains under verification. Frontend compilation and publication tests do not prove that path. See the [package guide](../website/src/docs/package-manager.md) for the exact current limitation.
 
 ## Layout
 
@@ -43,7 +43,7 @@ echo "verify --offline --project $PWD/registry/e2e/consumer" | ./target/osprey-p
 echo "build --run --project $PWD/registry/e2e/consumer" | ./target/osprey-pkg
 ```
 
-Every client command prints `status: N`; require `0`. The frontend reads one command from stdin because argument-vector and process-exit-status builtins are unavailable. Prefix a command with `--json` for a structured report. The [command reference](../website/src/docs/package-manager.md#commands) covers local overrides, publication and update behavior.
+Every client command prints `status: N`; require `0`. The frontend reads one command from stdin because argument-vector and process-exit-status builtins are unavailable. The stdin entry splits on whitespace, so paths containing spaces are not supported there. Prefix a command with `--json` for a structured report. The [command reference](../website/src/docs/package-manager.md#commands) covers local overrides, publication and update behavior.
 
 A release directory is `@scope/name/<epoch>.<ordinal>/`. To serve another root, change [api/registry-server.json](api/registry-server.json), for example:
 

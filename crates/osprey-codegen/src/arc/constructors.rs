@@ -66,4 +66,25 @@ mod tests {
         assert!(consume_into_store(&mut cg, &owner.operand));
         assert_eq!(frame_mark(&cg), 0);
     }
+
+    #[test]
+    fn matching_cannot_move_a_temporary_only_on_the_success_path() {
+        let source = "type Box<T> = { items: List<T> }\n\
+            fn choose(items, ok) = if ok { Box { items: items } } else { Box { items: [] } }\n\
+            let answer = choose(listAppend([], 1), false)\n";
+        let parsed = osprey_syntax::parse_program(source);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let ir = crate::compile_program(&parsed.program).expect("valid constructor match");
+        let allocation = ir
+            .lines()
+            .find(|line| line.contains(" = call i8* @osprey_list_append_of"));
+        assert!(allocation.is_some(), "missing temporary list: {ir}");
+        let Some(operand) = allocation.and_then(|line| line.split_whitespace().next()) else {
+            return;
+        };
+        assert!(
+            ir.contains(&format!("@osp_retain(i8* {operand})")),
+            "a conditional store must retain the outer owner: {ir}"
+        );
+    }
 }

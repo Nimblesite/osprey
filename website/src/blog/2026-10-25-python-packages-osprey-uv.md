@@ -92,7 +92,7 @@ echo "build --run --project $PWD/registry/e2e/consumer" | ./target/osprey-pkg
 
 That consumer demonstrates the registry flow with `@demo/report`; it does not install NumPy or PyTorch. The client currently reads commands from stdin and prints `status: N`. Check for `status: 0`; its process exit status does not yet carry the command's result.
 
-This sample consumer uses Default-flavor source. The package-client build path for declared Python-flavor files still has a manifest-path integration gap; direct frontend and publication checks do not establish that path.
+This sample consumer uses Default-flavor source. Recent Python-source manifest-path fixes have fixture coverage; real package-client build acceptance is still being verified. Direct frontend and publication checks do not establish that path.
 
 For your own packages, the same client supports `publish --folder`, local checkout overrides and release updates. A folder server reads its catalog at startup, so restart it after publishing. The [package manager guide](/docs/package-manager/) covers those commands and their current limits.
 
