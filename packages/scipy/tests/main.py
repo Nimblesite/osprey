@@ -10,7 +10,7 @@ reflection and beta to ~1e-12, and gammaln near its zeros at x=1,2 needs the
 absolute term."""
 from testing import Check
 from scipy_expected import Expected
-from scipy import Special
+from scipy import Beta, Gamma, Special, Support, Zeta
 
 PURE_R = 1e-12
 PURE_A = 0.0
@@ -254,6 +254,79 @@ def log_softmax_cases():
         unwrap_or(listGet(Expected.LOGSOFT_Y, i), []), LIST_R, LIST_A)))
 
 
+def constant_cases():
+    return [
+        Check.equal("support.MACHEP", Support.MACHEP, 1.1102230246251565e-16),
+        Check.close("support.PI", Support.PI, 3.141592653589793, PURE_R, PURE_A),
+        Check.close("support.LOGPI_CEPHES", Support.LOGPI_CEPHES, ln(Support.PI), PURE_R, PURE_A),
+        Check.close("support.SQRT2PI", Support.SQRT2PI, sqrt(2.0 * Support.PI), PURE_R, PURE_A),
+        Check.close("support.LS2PI", Support.LS2PI, ln(2.0 * Support.PI) * 0.5, PURE_R, PURE_A),
+        Check.equal("support.MAXGAM", Support.MAXGAM, 171.624376956302725),
+        Check.equal("support.MAXLOG", Support.MAXLOG, 709.7827128933839730962063185871),
+        Check.equal("support.MAXLGM", Support.MAXLGM, 2.556348e305),
+        Check.equal("support.MAXSTIR", Support.MAXSTIR, 143.01608),
+        Check.equal("support.BETA_ASYMP_FACTOR", Support.BETA_ASYMP_FACTOR, 1000000.0),
+        Check.close("support.SCIPY_EULER", Support.SCIPY_EULER, 0.5772156649015329, PURE_R, PURE_A),
+        Check.close("support.EULER16", Support.EULER16, 0.5772156649015329, PURE_R, PURE_A),
+    ]
+
+
+def nonfinite_cases():
+    return [
+        Check.equal("support.nan", Support.is_nan(Support.nan()), True),
+        Check.equal("support.pos_inf", Support.is_inf(Support.pos_inf()), True),
+        Check.equal("support.neg_inf", Support.neg_inf() < 0.0 and Support.is_inf(Support.neg_inf()), True),
+        Check.equal("support.is_neg_zero", Support.is_neg_zero(Check.float_of("-0.0")), True),
+        Check.equal("support.positive_zero", Support.is_neg_zero(0.0), False),
+        Check.equal("support.exp_s.overflow", Support.exp_s(1000.0), Support.pos_inf()),
+        Check.equal("support.log_s.zero", Support.log_s(0.0), Support.neg_inf()),
+        Check.equal("support.log_s.domain", Support.is_nan(Support.log_s(-1.0)), True),
+    ]
+
+
+def arithmetic_helper_cases():
+    return [
+        Check.equal("support.floor", Support.floor(-1.25), -2.0),
+        Check.equal("support.sign_f", Support.sign_f(-3.0), -1.0),
+        Check.close("support.pow_pos", Support.pow_pos(4.0, 0.5), 2.0, PURE_R, PURE_A),
+        Check.close("support.pow_int_signed", Support.pow_int_signed(-2.0, 3.0), -8.0, PURE_R, PURE_A),
+        Check.equal("support.even_f", Support.even_f(4.0) and not Support.even_f(3.0), True),
+        Check.equal("support.float_to_int", Support.float_to_int(7.0), 7),
+        Check.equal("support.polevl", Support.polevl(2.0, [2.0, 3.0, 4.0]), 18.0),
+        Check.equal("support.p1evl", Support.p1evl(2.0, [3.0, 4.0]), 14.0),
+        Check.equal("support.chbevl", Support.chbevl(2.0, [2.0, 3.0], 2), 3.5),
+        Check.equal("support.list_max", Support.list_max([-1.0, 2.0, 1.0]), 2.0),
+    ]
+
+
+def transcendental_helper_cases():
+    return [
+        Check.close("support.sinpi", Support.sinpi(0.5), 1.0, PURE_R, PURE_A),
+        Check.close("support.cot_pi", Support.cot_pi(-0.25), -1.0, PURE_R, PURE_A),
+        Check.close("support.log1p", Support.log1p(0.25), 0.22314355131420976, PURE_R, PURE_A),
+        Check.close("support.expm1", Support.expm1(ln(2.0)), 1.0, PURE_R, PURE_A),
+    ]
+
+
+def alias_cases():
+    signed = Gamma.lgam_sgn(-0.5)
+    want = Support.Signed(value=1.2655121234846454, sign=-1.0)
+    return [
+        Check.close("gamma.lgam_sgn.value", signed.value, want.value, PURE_R, PURE_A),
+        Check.equal("gamma.lgam_sgn.sign", signed.sign, want.sign),
+        Check.close("gamma.psi", Gamma.psi(1.0), -0.5772156649015329, PURE_R, PURE_A),
+        Check.close("special.psi", Special.psi(1.0), -0.5772156649015329, PURE_R, PURE_A),
+        Check.close("zeta.zetac", Zeta.zetac(2.0), 0.6449340668482264, PURE_R, PURE_A),
+        Check.close("special.zetac", Special.zetac(2.0), 0.6449340668482264, PURE_R, PURE_A),
+        Check.close("beta.lbeta", Beta.lbeta(2.0, 3.0), -2.4849066497880004, PURE_R, PURE_A),
+        Check.close("special.lbeta", Special.lbeta(2.0, 3.0), -2.4849066497880004, PURE_R, PURE_A),
+    ]
+
+
+def helper_cases():
+    return foldList([constant_cases(), nonfinite_cases(), arithmetic_helper_cases(), transcendental_helper_cases(), alias_cases()], [], listConcat)
+
+
 def all_cases():
     groups = [gamma_cases(), gammaln_cases(), loggamma_cases(), rgamma_cases(),
               digamma_cases(), poly_cases(False), poly_cases(True), zeta_cases(),
@@ -264,7 +337,7 @@ def all_cases():
               xlog1py_cases(), entr_cases(), rel_entr_cases(), kl_div_cases(),
               huber_cases(), pseudo_huber_cases(), boxcox_cases(),
               inv_boxcox_cases(), lse_cases(), lse_b_cases(), softmax_cases(),
-              log_softmax_cases()]
+              log_softmax_cases(), helper_cases()]
     return foldList(groups, [], lambda acc, g: listConcat(acc, g))
 
 
