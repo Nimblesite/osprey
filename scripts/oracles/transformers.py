@@ -163,82 +163,30 @@ def add_temperature(C):
     C["TEMP_EXPECTED"] = [e for _, _, _, e in cases]
 
 
-def add_top_k(C):
-    cases = []
-    for k, m in ((3, 1), (1, 1), (5, 1), (1, 2), (2, 2), (10, 1)):
-        for r in (R0, R1, R2, R3, R7):
-            p = TopKLogitsWarper(top_k=k, min_tokens_to_keep=m)
-            cases.append((k, m, [], r, run1(p, [], r)))
-    C["TOPK_K"] = [k for k, _, _, _, _ in cases]
-    C["TOPK_MIN"] = [m for _, m, _, _, _ in cases]
-    C["TOPK_IDS"] = [[] for _ in cases]
-    C["TOPK_SCORES"] = [r for _, _, _, r, _ in cases]
-    C["TOPK_EXPECTED"] = [e for _, _, _, _, e in cases]
+def add_warper(C, prefix, name, make, settings, rows):
+    """Cases for a warper taking one setting plus min_tokens_to_keep, over `rows`:
+    the setting under `<prefix>_<name>`, the keep count, empty ids, inputs, outputs."""
+    cases = [(x, m, r, run1(make(x, m), [], r)) for x, m in settings for r in rows]
+    C[f"{prefix}_{name}"] = [x for x, _, _, _ in cases]
+    C[f"{prefix}_MIN"] = [m for _, m, _, _ in cases]
+    C[f"{prefix}_IDS"] = [[] for _ in cases]
+    C[f"{prefix}_SCORES"] = [r for _, _, r, _ in cases]
+    C[f"{prefix}_EXPECTED"] = [e for _, _, _, e in cases]
 
 
-def add_top_p(C):
-    cases = []
-    for p, m in ((0.9, 1), (0.5, 1), (1.0, 1), (0.0, 1), (0.6, 2), (0.95, 3)):
-        for r in (R0, R1, R2, R4, R6, R7):
-            proc = TopPLogitsWarper(top_p=p, min_tokens_to_keep=m)
-            cases.append((p, m, [], r, run1(proc, [], r)))
-    C["TOPP_P"] = [p for p, _, _, _, _ in cases]
-    C["TOPP_MIN"] = [m for _, m, _, _, _ in cases]
-    C["TOPP_IDS"] = [[] for _ in cases]
-    C["TOPP_SCORES"] = [r for _, _, _, r, _ in cases]
-    C["TOPP_EXPECTED"] = [e for _, _, _, _, e in cases]
-
-
-def add_min_p(C):
-    cases = []
-    for p, m in ((0.0, 1), (0.5, 1), (0.2, 1), (1.0, 1), (0.1, 2), (0.3, 3)):
-        for r in (R0, R4, R6, R7, R8):
-            proc = MinPLogitsWarper(min_p=p, min_tokens_to_keep=m)
-            cases.append((p, m, [], r, run1(proc, [], r)))
-    C["MINP_P"] = [p for p, _, _, _, _ in cases]
-    C["MINP_MIN"] = [m for _, m, _, _, _ in cases]
-    C["MINP_IDS"] = [[] for _ in cases]
-    C["MINP_SCORES"] = [r for _, _, _, r, _ in cases]
-    C["MINP_EXPECTED"] = [e for _, _, _, _, e in cases]
-
-
-def add_typical(C):
-    cases = []
-    for mass, m in ((0.9, 1), (0.5, 1), (0.1, 1), (0.9, 2)):
-        for r in (R0, R2, R4, R6, R7):
-            proc = TypicalLogitsWarper(mass=mass, min_tokens_to_keep=m)
-            cases.append((mass, m, [], r, run1(proc, [], r)))
-    C["TYP_MASS"] = [x for x, _, _, _, _ in cases]
-    C["TYP_MIN"] = [m for _, m, _, _, _ in cases]
-    C["TYP_IDS"] = [[] for _ in cases]
-    C["TYP_SCORES"] = [r for _, _, _, r, _ in cases]
-    C["TYP_EXPECTED"] = [e for _, _, _, _, e in cases]
-
-
-def add_epsilon(C):
-    cases = []
-    for eps, m in ((0.1, 1), (0.01, 1), (0.5, 1), (0.3, 2)):
-        for r in (R0, R4, R6, R7, R8):
-            proc = EpsilonLogitsWarper(epsilon=eps, min_tokens_to_keep=m)
-            cases.append((eps, m, [], r, run1(proc, [], r)))
-    C["EPS_EPS"] = [x for x, _, _, _, _ in cases]
-    C["EPS_MIN"] = [m for _, m, _, _, _ in cases]
-    C["EPS_IDS"] = [[] for _ in cases]
-    C["EPS_SCORES"] = [r for _, _, _, r, _ in cases]
-    C["EPS_EXPECTED"] = [e for _, _, _, _, e in cases]
-
-
-def add_eta(C):
-    cases = []
-    for eps, m in ((0.05, 1), (0.001, 1), (0.05, 2)):
-        for r in (R0, R4, R3, R6, R7):
-            proc = EtaLogitsWarper(epsilon=eps, min_tokens_to_keep=m)
-            cases.append((eps, m, [], r, run1(proc, [], r)))
-    C["ETA_EPS"] = [x for x, _, _, _, _ in cases]
-    C["ETA_MIN"] = [m for _, m, _, _, _ in cases]
-    C["ETA_IDS"] = [[] for _ in cases]
-    C["ETA_SCORES"] = [r for _, _, _, r, _ in cases]
-    C["ETA_EXPECTED"] = [e for _, _, _, _, e in cases]
+def add_warpers(C):
+    add_warper(C, "TOPK", "K", lambda k, m: TopKLogitsWarper(top_k=k, min_tokens_to_keep=m),
+               ((3, 1), (1, 1), (5, 1), (1, 2), (2, 2), (10, 1)), (R0, R1, R2, R3, R7))
+    add_warper(C, "TOPP", "P", lambda p, m: TopPLogitsWarper(top_p=p, min_tokens_to_keep=m),
+               ((0.9, 1), (0.5, 1), (1.0, 1), (0.0, 1), (0.6, 2), (0.95, 3)), (R0, R1, R2, R4, R6, R7))
+    add_warper(C, "MINP", "P", lambda p, m: MinPLogitsWarper(min_p=p, min_tokens_to_keep=m),
+               ((0.0, 1), (0.5, 1), (0.2, 1), (1.0, 1), (0.1, 2), (0.3, 3)), (R0, R4, R6, R7, R8))
+    add_warper(C, "TYP", "MASS", lambda x, m: TypicalLogitsWarper(mass=x, min_tokens_to_keep=m),
+               ((0.9, 1), (0.5, 1), (0.1, 1), (0.9, 2)), (R0, R2, R4, R6, R7))
+    add_warper(C, "EPS", "EPS", lambda e, m: EpsilonLogitsWarper(epsilon=e, min_tokens_to_keep=m),
+               ((0.1, 1), (0.01, 1), (0.5, 1), (0.3, 2)), (R0, R4, R6, R7, R8))
+    add_warper(C, "ETA", "EPS", lambda e, m: EtaLogitsWarper(epsilon=e, min_tokens_to_keep=m),
+               ((0.05, 1), (0.001, 1), (0.05, 2)), (R0, R4, R3, R6, R7))
 
 
 def add_repetition_penalty(C):
@@ -520,12 +468,7 @@ def main():
     C = {}
     add_math(C)
     add_temperature(C)
-    add_top_k(C)
-    add_top_p(C)
-    add_min_p(C)
-    add_typical(C)
-    add_epsilon(C)
-    add_eta(C)
+    add_warpers(C)
     add_repetition_penalty(C)
     add_no_repeat_ngram(C)
     add_min_length(C)
