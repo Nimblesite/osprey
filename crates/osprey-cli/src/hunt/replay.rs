@@ -141,7 +141,8 @@ fn signal_name(signal: u8) -> String {
 
 /// A raw wait status for tests: the exit code in the high byte, a signal in
 /// the low seven bits.
-#[cfg(all(test, unix))]
+#[cfg(test)]
+#[cfg(unix)]
 pub(super) fn raw_status(exit_code: i32, signal: i32) -> ExitStatus {
     use std::os::unix::process::ExitStatusExt;
     ExitStatus::from_raw((exit_code << 8) | signal)

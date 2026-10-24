@@ -202,6 +202,25 @@ def scale_up_by(v, n):
     return fold(range(n), v, lambda acc, i: acc * 2.0)
 
 
+class FloatUnit:
+    """A normalized floating-point mantissa and its binary exponent."""
+    exponent: int
+    mantissa: float
+
+
+class DoubleFields:
+    """The integer significand and exponent of a finite binary64 value."""
+    sign: int
+    significand: int
+    exponent: int
+
+
+class NarrowFields:
+    """Exponent and fraction fields after narrowing a significand."""
+    exponent: int
+    fraction: int
+
+
 def to_unit(m):
     """(e, u) with u = m / 2^e in [1, 2) for m > 0."""
     if m >= 1.0:
@@ -213,7 +232,7 @@ def to_unit(m):
 def unit_up(m, e):
     """Scale m down to [1, 2), counting doublings."""
     if m < 2.0:
-        return (e, m)
+        return FloatUnit(exponent=e, mantissa=m)
     else:
         return unit_up(m / 2.0, e + 1)
 
@@ -221,7 +240,7 @@ def unit_up(m, e):
 def unit_down(m, e):
     """Scale m up to [1, 2), counting halvings."""
     if m >= 1.0:
-        return (e, m)
+        return FloatUnit(exponent=e, mantissa=m)
     else:
         return unit_down(m * 2.0, e - 1)
 
@@ -231,14 +250,14 @@ def split_double(x):
     sign = 0 if x > 0.0 else 1
     m = abs(x)
     if m == 0.0:
-        return (sign, 0, 0)
+        return DoubleFields(sign=sign, significand=0, exponent=0)
     elif m * pow2(1022) >= 1.0:
-        (e, mm) = to_unit(m)
-        F = unwrap_or(floatToInt(mm * pow2(52)), 0)
-        return (sign, F, e - 52)
+        unit = to_unit(m)
+        F = unwrap_or(floatToInt(unit.mantissa * pow2(52)), 0)
+        return DoubleFields(sign=sign, significand=F, exponent=unit.exponent - 52)
     else:
         F = unwrap_or(floatToInt(scale_up_by(m, 1074)), 0)
-        return (sign, F, -1074)
+        return DoubleFields(sign=sign, significand=F, exponent=-1074)
 
 
 def round_shift(M, k):
@@ -262,9 +281,9 @@ def narrow_normal(F, E, frac_bits, bias):
     N = round_shift(F, 52 - frac_bits)
     sig = pow2i(frac_bits + 1)
     if N >= sig:
-        return (E + 52 + bias + 1, 0)
+        return NarrowFields(exponent=E + 52 + bias + 1, fraction=0)
     else:
-        return (E + 52 + bias, N - pow2i(frac_bits))
+        return NarrowFields(exponent=E + 52 + bias, fraction=N - pow2i(frac_bits))
 
 
 def narrow_subnormal(F, E, frac_bits, bias):
@@ -272,9 +291,9 @@ def narrow_subnormal(F, E, frac_bits, bias):
     shift = 1 - bias - frac_bits - E
     N = round_shift(F, shift) if shift > 0 else F
     if N >= pow2i(frac_bits):
-        return (1, 0)
+        return NarrowFields(exponent=1, fraction=0)
     else:
-        return (0, N)
+        return NarrowFields(exponent=0, fraction=N)
 
 
 def narrow_fields(F, E, frac_bits, bias):
@@ -303,12 +322,12 @@ def narrow_float_bytes(x, exp_bits, frac_bits, bias):
     elif is_inf(x):
         return pack_float(1 if x < 0.0 else 0, max_exp, 0, exp_bits, frac_bits)
     else:
-        (sign, F, E) = split_double(x)
-        (exp, frac) = narrow_fields(F, E, frac_bits, bias)
-        if exp >= max_exp:
-            return pack_float(sign, max_exp, 0, exp_bits, frac_bits)
+        fields = split_double(x)
+        narrowed = narrow_fields(fields.significand, fields.exponent, frac_bits, bias)
+        if narrowed.exponent >= max_exp:
+            return pack_float(fields.sign, max_exp, 0, exp_bits, frac_bits)
         else:
-            return pack_float(sign, exp, frac, exp_bits, frac_bits)
+            return pack_float(fields.sign, narrowed.exponent, narrowed.fraction, exp_bits, frac_bits)
 
 
 def f64_fields_bytes(sign, exp, frac):
@@ -334,11 +353,11 @@ def f64_bytes(x):
         sign = 1 if x < 0.0 else 0
         return [0, 0, 0, 0, 0, 0, 240, 127 + sign * 128]
     else:
-        (sign, F, E) = split_double(x)
-        if F >= pow2i(52):
-            return f64_fields_bytes(sign, E + 1075, F - pow2i(52))
+        fields = split_double(x)
+        if fields.significand >= pow2i(52):
+            return f64_fields_bytes(fields.sign, fields.exponent + 1075, fields.significand - pow2i(52))
         else:
-            return f64_fields_bytes(sign, 0, F)
+            return f64_fields_bytes(fields.sign, 0, fields.significand)
 
 
 def f32_bytes(x):

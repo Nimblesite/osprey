@@ -15,8 +15,8 @@ use support::config;
 #[test]
 fn imported_record_calls_use_declaration_identity_instead_of_capitalization(
 ) -> Result<(), Vec<osprey_project::ProjectError>> {
-    let library = support::parsed("values.osp", Flavor::Default, "namespace ledger;\nmodule Values { export type Box<T> = { amount: T }\nexport fn Upper(work) = work() }\n");
-    let main = support::parsed("main.py", Flavor::Python, "# osprey: namespace=app\nfrom ledger import Values as V\nfrom ledger.Values import Box, Upper\ndef main():\n    one = V.Box[int](amount=41)\n    two = Box(amount=\"two\")\n    print(f\"{one.amount}:{two.amount}:{Upper(lambda: 42)}\")\n");
+    let library = support::parsed("values.osp", Flavor::Default, "namespace ledger;\nmodule Values { export type Box<T> = { amount: T }\nexport fn Upper(work) = work()\nexport fn Empty() = 42 }\n");
+    let main = support::parsed("main.py", Flavor::Python, "# osprey: namespace=app\nfrom ledger import Values as V\nfrom ledger.Values import Box, Upper\ndef main():\n    one = V.Box[int](amount=41)\n    two = Box(amount=\"two\")\n    print(f\"{one.amount}:{two.amount}:{Upper(lambda: 42)}:{V.Empty()}\")\n");
     let project = assemble(&config("main.py"), &[main, library])?;
     let errors = osprey_types::check_program(&project.program);
     assert!(errors.is_empty(), "{errors:?}");

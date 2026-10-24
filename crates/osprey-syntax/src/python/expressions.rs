@@ -204,7 +204,7 @@ impl Lowerer<'_> {
         // stays a call so assembly folds it against the declaring unit (the
         // built-in `Json` prelude) ([TYPE-UNION-POSITIONAL]). A call with no
         // positional argument — named fields or none — is a construction.
-        let head = self.constructor_head(&callee, arguments.is_empty());
+        let head = self.constructor_head(&callee);
         let Some((name, type_args)) = head.filter(|_| arguments.is_empty()) else {
             return Ok(Expr::Call {
                 function: Box::new(callee),
@@ -227,16 +227,10 @@ impl Lowerer<'_> {
     }
 
     /// The type a call constructs, if it constructs one. A name declared as a
-    /// class here always constructs. A qualified head constructs only when its
-    /// final segment is uppercase and every argument is named
-    /// (`Module.Variant(field=v)`, `Module.Empty()`): a `PascalCase` function
-    /// called with positional arguments, such as a port's
-    /// `LogitsProcess.TopKLogitsWarper(k, fv, m)`, stays a call.
-    fn constructor_head(
-        &self,
-        callee: &Expr,
-        all_named: bool,
-    ) -> Option<(String, Vec<osprey_ast::TypeExpr>)> {
+    /// class here always constructs. Imported names remain calls until the
+    /// project resolver distinguishes their declarations: capitalization alone
+    /// cannot distinguish a nullary factory from a record constructor.
+    fn constructor_head(&self, callee: &Expr) -> Option<(String, Vec<osprey_ast::TypeExpr>)> {
         let (head, type_args) = match callee {
             Expr::TypeApply {
                 function,
@@ -247,9 +241,6 @@ impl Lowerer<'_> {
         };
         match head {
             Expr::Identifier(name) if self.is_constructor(name) => Some((name.clone(), type_args)),
-            Expr::Path(path) if all_named => path.last().and_then(|last| {
-                osprey_ast::is_constructor_name(last).then(|| (path.to_string(), type_args))
-            }),
             _ => None,
         }
     }

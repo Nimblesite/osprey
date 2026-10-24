@@ -39,7 +39,8 @@ def offset_of(i, shape, strides):
     """The flat offset of output index `i` over `shape`, given strides that
     may be permuted or zero (broadcast): the sum of each dimension's
     coordinate times its stride."""
-    return fold(range(len(shape)), 0, lambda acc, d: acc + (i // unwrap_or(listGet(strides, d), 1)) % unwrap_or(listGet(shape, d), 1) * unwrap_or(listGet(strides, d), 0))
+    coordinates = coords_of(i, shape)
+    return fold(range(len(shape)), 0, lambda acc, d: acc + unwrap_or(listGet(coordinates, d), 0) * unwrap_or(listGet(strides, d), 0))
 
 
 def coords_of(i, shape):

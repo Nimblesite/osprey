@@ -8,7 +8,7 @@ from + - * / and sqrt, rtol 1e-9 for results downstream of exp/ln/tanh (libm
 last-digit differences), and rtol 1e-9 for var/std (numpy's compensated mean
 differs in the last ulp). Error cases compare the ValueError message with
 str(exception) from the real numpy."""
-from numpy import Array, Device, Errors, Host, Linalg
+from numpy import Array, Device, Errors, Host, Layout, Linalg
 from numpy_expected import Expected
 from testing import Check
 
@@ -356,10 +356,15 @@ def reduction_cases(b):
 
 
 
+def layout_cases(backend):
+    return [Check.equal(f"offset.broadcast.{backend}", Layout.offset_of(4, [2, 3], [0, 1]), 1), Check.equal(f"offset.permuted.{backend}", Layout.offset_of(3, [3, 2], [1, 3]), 4)]
+
+
 def cases(backend):
+    offsets = layout_cases(backend)
     a = listConcat(creation_cases(backend), shape_cases(backend))
     b = elementwise_cases(backend)
-    return listConcat(a, listConcat(b, reduction_cases(backend)))
+    return listConcat(offsets, listConcat(a, listConcat(b, reduction_cases(backend))))
 
 
 def main():

@@ -14,7 +14,7 @@ from scipy.Support import (MAXGAM, MAXLOG, BETA_ASYMP_FACTOR, pos_inf, is_inf,
                            exp_s, log_s, floor, even_f, Signed)
 from scipy.Gamma import gamma, rgamma, lgam_sgn
 
-__all__ = ["beta", "betaln"]
+__all__ = ["beta", "betaln", "lbeta"]
 
 INT_OK_MAX = 9.223372036854775e18
 
