@@ -38,7 +38,6 @@ __all__ = [
     "ForcedBOSTokenLogitsProcessor",
     "ForcedEOSTokenLogitsProcessor",
     "SuppressTokensLogitsProcessor",
-    "BadWordsLogitsProcessor",
     "NoBadWordsLogitsProcessor",
     "apply",
     "apply_list",
@@ -163,18 +162,11 @@ def SuppressTokensLogitsProcessor(suppress_ids: list[int]) -> Processor:
     return Processor(kind="suppress_tokens", temperature=1.0, top_k=1, filter_value=neg_inf(), min_tokens_to_keep=1, top_p=1.0, min_p=0.0, mass=0.9, epsilon=0.1, penalty=1.0, prompt_ignore_length=0, ngram_size=2, min_length=0, eos_ids=[], prompt_length_to_skip=0, min_new_tokens=0, bos_token_id=0, max_length=0, suppress_ids=suppress_ids, bad_words_ids=[])
 
 
-def BadWordsLogitsProcessor(bad_words_ids: list[list[int]], eos_ids: list[int]) -> Processor:
-    """`BadWordsLogitsProcessor(bad_words_ids, eos_ids)`: mask with -inf the last
-    token of any bad word the history is about to complete, and every single-token
-    bad word; single-token bad words equal to an eos id are ignored, as in
-    transformers' `NoBadWordsLogitsProcessor`."""
-    return Processor(kind="bad_words", temperature=1.0, top_k=1, filter_value=neg_inf(), min_tokens_to_keep=1, top_p=1.0, min_p=0.0, mass=0.9, epsilon=0.1, penalty=1.0, prompt_ignore_length=0, ngram_size=2, min_length=0, eos_ids=eos_ids, prompt_length_to_skip=0, min_new_tokens=0, bos_token_id=0, max_length=0, suppress_ids=[], bad_words_ids=bad_words_ids)
-
-
 def NoBadWordsLogitsProcessor(bad_words_ids: list[list[int]], eos_ids: list[int]) -> Processor:
-    """Alias for `BadWordsLogitsProcessor`, named after transformers 5.20.2's
-    `NoBadWordsLogitsProcessor`."""
-    return BadWordsLogitsProcessor(bad_words_ids, eos_ids)
+    """`NoBadWordsLogitsProcessor(bad_words_ids, eos_token_id)`: mask with -inf the
+    last token of any bad word the history is about to complete, and every
+    single-token bad word; single-token bad words equal to an eos id are ignored."""
+    return Processor(kind="bad_words", temperature=1.0, top_k=1, filter_value=neg_inf(), min_tokens_to_keep=1, top_p=1.0, min_p=0.0, mass=0.9, epsilon=0.1, penalty=1.0, prompt_ignore_length=0, ngram_size=2, min_length=0, eos_ids=eos_ids, prompt_length_to_skip=0, min_new_tokens=0, bos_token_id=0, max_length=0, suppress_ids=[], bad_words_ids=bad_words_ids)
 
 
 def apply_list(processors, input_ids, scores):

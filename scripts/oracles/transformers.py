@@ -440,6 +440,22 @@ def add_stopping(C):
     C["STOP_EOS_DONE"] = eos_cases
 
 
+def add_helpers(C):
+    """`Lists` helpers against Python's own `in` and tail slicing, and the port's
+    `stopped_any` against a StoppingCriteriaList over the stopping rows."""
+    xs_rows = [[4, 7, 9], [4, 7, 9], [], [7], [1, 1, 2]]
+    xs_x = [7, 5, 5, 7, 1]
+    C["HELP_CONTAINS_XS"] = xs_rows
+    C["HELP_CONTAINS_X"] = xs_x
+    C["HELP_CONTAINS_OUT"] = [x in xs for xs, x in zip(xs_rows, xs_x)]
+    tails = [([1, 2, 3, 4], 2), ([1, 2, 3], 5), ([1, 2, 3], 0), ([], 3), ([9], 1)]
+    C["HELP_LASTN_XS"] = [xs for xs, _ in tails]
+    C["HELP_LASTN_N"] = [n for _, n in tails]
+    C["HELP_LASTN_OUT"] = [xs[len(xs) - min(n, len(xs)):] for xs, n in tails]
+    crits = StoppingCriteriaList([MaxLengthCriteria(max_length=5), EosTokenCriteria(eos_token_id=[4])])
+    C["STOPANY_DONE"] = [bool(crits(torch.tensor([ids]), None)[0].item()) for ids in C["STOP_IDS"]]
+
+
 def add_generate(C):
     # A synthetic model: at each step it returns the next row of logits. The
     # driver must use the real processors and torch.argmax, not a Python loop
@@ -520,6 +536,7 @@ def main():
     add_bad_words(C)
     add_composition(C)
     add_stopping(C)
+    add_helpers(C)
     add_stop_string(C)
     add_generate(C)
 

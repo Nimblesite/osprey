@@ -8,7 +8,7 @@ constant as a float literal; a constant holding a `-inf` or NaN is written with
 all its floats as repr strings, decoded here with `Check.float_of`."""
 from testing import Check
 from transformers_expected import Expected
-from transformers import Generation, LogitsProcess, StoppingCriteria
+from transformers import Generation, Lists, LogitsProcess, StoppingCriteria
 from transformers.Math import argmax, log_softmax, multinomial, neg_inf, softmax
 
 ARITH = 1e-12
@@ -30,9 +30,19 @@ def min_i(a, b):
     return a if a < b else b
 
 
+def applied(processor: LogitsProcess.Processor, ids, scores):
+    """One `Processor` record over one row, as generate applies it."""
+    return LogitsProcess.apply(processor, ids, scores)
+
+
+def stops(criterion: StoppingCriteria.Criterion, tokens) -> bool:
+    """One `Criterion` record's verdict on a token history."""
+    return StoppingCriteria.stopped(criterion, tokens)
+
+
 def row_case(name, build, i, ids_rows, scores, expected, rtol, atol):
     ids = unwrap_or(listGet(ids_rows, i), [])
-    got = LogitsProcess.apply(build(i), ids, unwrap_or(listGet(scores, i), []))
+    got = applied(build(i), ids, unwrap_or(listGet(scores, i), []))
     want = unwrap_or(listGet(expected, i), [])
     return Check.close_all(f"{name}[{i}]", got, want, rtol, atol)
 
@@ -106,7 +116,7 @@ def build_supp(i):
 
 
 def build_bad(i):
-    return LogitsProcess.BadWordsLogitsProcessor(unwrap_or(listGet(Expected.BAD_BADWORDS, i), []), [5])
+    return LogitsProcess.NoBadWordsLogitsProcessor(unwrap_or(listGet(Expected.BAD_BADWORDS, i), []), [5])
 
 
 def processor_cases():
@@ -145,10 +155,20 @@ def composition_cases():
 
 
 def stopping_cases():
-    ml = toList(map(range(len(Expected.STOP_MAXLEN_DONE)), lambda i: Check.equal(f"max_length[{i}]", StoppingCriteria.stopped(StoppingCriteria.MaxLengthCriteria(unwrap_or(listGet(Expected.STOP_MAXLEN_MAX, i), 0)), unwrap_or(listGet(Expected.STOP_IDS, i % len(Expected.STOP_IDS)), [])), unwrap_or(listGet(Expected.STOP_MAXLEN_DONE, i), False))))
-    eos = toList(map(range(len(Expected.STOP_EOS_DONE)), lambda i: Check.equal(f"eos[{i}]", StoppingCriteria.stopped(StoppingCriteria.EosTokenCriteria(unwrap_or(listGet(Expected.STOP_EOS_EOS, i), [])), unwrap_or(listGet(Expected.STOP_IDS, i % len(Expected.STOP_IDS)), [])), unwrap_or(listGet(Expected.STOP_EOS_DONE, i), False))))
+    ml = toList(map(range(len(Expected.STOP_MAXLEN_DONE)), lambda i: Check.equal(f"max_length[{i}]", stops(StoppingCriteria.MaxLengthCriteria(unwrap_or(listGet(Expected.STOP_MAXLEN_MAX, i), 0)), unwrap_or(listGet(Expected.STOP_IDS, i % len(Expected.STOP_IDS)), [])), unwrap_or(listGet(Expected.STOP_MAXLEN_DONE, i), False))))
+    eos = toList(map(range(len(Expected.STOP_EOS_DONE)), lambda i: Check.equal(f"eos[{i}]", stops(StoppingCriteria.EosTokenCriteria(unwrap_or(listGet(Expected.STOP_EOS_EOS, i), [])), unwrap_or(listGet(Expected.STOP_IDS, i % len(Expected.STOP_IDS)), [])), unwrap_or(listGet(Expected.STOP_EOS_DONE, i), False))))
     ss = toList(map(range(len(Expected.STOPSTR_DONE)), lambda i: Check.equal(f"stop_string[{i}]", StoppingCriteria.ends_with_any(unwrap_or(listGet(Expected.STOPSTR_TEXTS, i), ""), unwrap_or(listGet(Expected.STOPSTR_STRS, i), [])), unwrap_or(listGet(Expected.STOPSTR_DONE, i), False))))
     return listConcat(ml, listConcat(eos, ss))
+
+
+def helper_cases():
+    """`Lists.contains_int`/`last_n` against Python's `in` and tail slice, and
+    `stopped_any` against a StoppingCriteriaList of both criteria."""
+    contains = toList(map(range(len(Expected.HELP_CONTAINS_OUT)), lambda i: Check.equal(f"contains_int[{i}]", Lists.contains_int(unwrap_or(listGet(Expected.HELP_CONTAINS_XS, i), []), unwrap_or(listGet(Expected.HELP_CONTAINS_X, i), 0)), unwrap_or(listGet(Expected.HELP_CONTAINS_OUT, i), False))))
+    tails = toList(map(range(len(Expected.HELP_LASTN_OUT)), lambda i: Check.ints_equal(f"last_n[{i}]", Lists.last_n(unwrap_or(listGet(Expected.HELP_LASTN_XS, i), []), unwrap_or(listGet(Expected.HELP_LASTN_N, i), 0)), unwrap_or(listGet(Expected.HELP_LASTN_OUT, i), []))))
+    stoppers = [StoppingCriteria.MaxLengthCriteria(5), StoppingCriteria.EosTokenCriteria([4])]
+    any_done = toList(map(range(len(Expected.STOPANY_DONE)), lambda i: Check.equal(f"stopped_any[{i}]", StoppingCriteria.stopped_any(stoppers, unwrap_or(listGet(Expected.STOP_IDS, i), [])), unwrap_or(listGet(Expected.STOPANY_DONE, i), False))))
+    return listConcat(contains, listConcat(tails, any_done))
 
 
 def model_logits(tokens):
@@ -170,7 +190,7 @@ def generate_case():
 
 
 def all_cases():
-    return listConcat(math_cases(), listConcat(processor_cases(), listConcat(composition_cases(), listConcat(stopping_cases(), [generate_case()]))))
+    return listConcat(math_cases(), listConcat(processor_cases(), listConcat(composition_cases(), listConcat(stopping_cases(), listConcat(helper_cases(), [generate_case()])))))
 
 
 def main():

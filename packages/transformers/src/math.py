@@ -15,17 +15,12 @@ own RNG stream is not reproduced, so callers pass an explicit draw. Values from
 the usual libm last-digit spread. Implements [PORT-TEST-ORACLE].
 """
 
-__all__ = ["softmax", "log_softmax", "argmax", "multinomial", "neg_inf", "pos_inf"]
+__all__ = ["softmax", "log_softmax", "argmax", "multinomial", "neg_inf"]
 
 
 def neg_inf():
     """Negative infinity, the value every warper's filter lands on."""
     return 0.0 - exp(1000.0)
-
-
-def pos_inf():
-    """Positive infinity."""
-    return exp(1000.0)
 
 
 def list_max(xs):

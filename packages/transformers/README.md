@@ -8,7 +8,7 @@ The port owns the generation layer only — logits processors/warpers, the sampl
 
 | Module | Contents |
 | --- | --- |
-| `transformers.Math` | stable `softmax`, `log_softmax`, `argmax`, `multinomial`, `neg_inf`, `pos_inf` |
+| `transformers.Math` | stable `softmax`, `log_softmax`, `argmax`, `multinomial`, `neg_inf` |
 | `transformers.Lists` | shared `contains_int`, `last_n` over `list[int]` |
 | `transformers.LogitsProcess` | every processor/warper constructor, `Processor`, `apply`, `apply_list` |
 | `transformers.StoppingCriteria` | `MaxLengthCriteria`, `EosTokenCriteria`, `ends_with_any`, `Criterion`, `stopped`, `stopped_any` |
@@ -34,7 +34,7 @@ Each Hugging Face class becomes a constructor function returning a tagged `Proce
 | `ForcedBOSTokenLogitsProcessor(bos_token_id)` | `ForcedBOSTokenLogitsProcessor` |
 | `ForcedEOSTokenLogitsProcessor(max_length, eos_ids)` | `ForcedEOSTokenLogitsProcessor` |
 | `SuppressTokensLogitsProcessor(suppress_ids)` | `SuppressTokensLogitsProcessor` |
-| `BadWordsLogitsProcessor(bad_words_ids, eos_ids)` / `NoBadWordsLogitsProcessor` | `NoBadWordsLogitsProcessor` |
+| `NoBadWordsLogitsProcessor(bad_words_ids, eos_ids)` | `NoBadWordsLogitsProcessor(bad_words_ids, eos_token_id)` |
 | `apply_list(processors, input_ids, scores)` | `LogitsProcessorList.__call__` |
 | `MaxLengthCriteria(max_length)` | `MaxLengthCriteria` |
 | `EosTokenCriteria(eos_ids)` | `EosTokenCriteria` |
