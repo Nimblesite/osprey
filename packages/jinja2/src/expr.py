@@ -349,61 +349,54 @@ def compare_op(t, a, b):
 
 def eval_math1(toks, i, env):
     """`a + b`, `a - b`."""
-    p = eval_concat(toks, i, env)
-    return math1_chain(toks, p.next, env, p.value)
-
-
-def math1_chain(toks, i, env, left):
-    """Collect `+`/`-` operands."""
-    t = tok(toks, i)
-    if is_op(t, "+"):
-        q = eval_concat(toks, i + 1, env)
-        return math1_chain(toks, q.next, env, add(left, q.value))
-    elif is_op(t, "-"):
-        q = eval_concat(toks, i + 1, env)
-        return math1_chain(toks, q.next, env, sub(left, q.value))
-    else:
-        return P(value=left, next=i)
+    return eval_binary(toks, i, env, eval_concat, lambda t: is_op(t, "+") or is_op(t, "-"))
 
 
 def eval_concat(toks, i, env):
     """`a ~ b`: string concatenation with coercion."""
-    p = eval_math2(toks, i, env)
-    return concat_chain(toks, p.next, env, p.value)
-
-
-def concat_chain(toks, i, env, acc):
-    """Collect `~` operands into one string."""
-    if is_op(tok(toks, i), "~"):
-        q = eval_math2(toks, i + 1, env)
-        return concat_chain(toks, q.next, env, V.text(V.concat_text(acc) + V.concat_text(q.value)))
-    else:
-        return P(value=acc, next=i)
+    return eval_binary(toks, i, env, eval_math2, lambda t: is_op(t, "~"))
 
 
 def eval_math2(toks, i, env):
     """`a * b`, `a / b`, `a // b`, `a % b`."""
-    p = eval_unary(toks, i, env)
-    return math2_chain(toks, p.next, env, p.value)
+    return eval_binary(toks, i, env, eval_unary, lambda t: is_op(t, "*") or is_op(t, "/") or is_op(t, "//") or is_op(t, "%"))
 
 
-def math2_chain(toks, i, env, left):
-    """Collect `*`/`/`/`//`/`%` operands."""
+def eval_binary(toks, i, env, operand, accepts):
+    """Parse the first operand and fold one left-associative precedence level."""
+    p = operand(toks, i, env)
+    return binary_chain(toks, p.next, env, p.value, operand, accepts)
+
+
+def binary_chain(toks, i, env, left, operand, accepts):
+    """Every arithmetic level advances through exactly the operand it parsed."""
     t = tok(toks, i)
-    if is_op(t, "*"):
-        q = eval_unary(toks, i + 1, env)
-        return math2_chain(toks, q.next, env, mul(left, q.value))
-    elif is_op(t, "/"):
-        q = eval_unary(toks, i + 1, env)
-        return math2_chain(toks, q.next, env, truediv(left, q.value))
-    elif is_op(t, "//"):
-        q = eval_unary(toks, i + 1, env)
-        return math2_chain(toks, q.next, env, floordiv(left, q.value))
-    elif is_op(t, "%"):
-        q = eval_unary(toks, i + 1, env)
-        return math2_chain(toks, q.next, env, mod(left, q.value))
+    if accepts(t):
+        q = operand(toks, i + 1, env)
+        return binary_chain(toks, q.next, env, arithmetic_value(t.sval, left, q.value), operand, accepts)
     else:
         return P(value=left, next=i)
+
+
+def arithmetic_value(op, a, b):
+    """Apply one already accepted arithmetic or concatenation operator."""
+    match op:
+        case "+":
+            return add(a, b)
+        case "-":
+            return sub(a, b)
+        case "*":
+            return mul(a, b)
+        case "/":
+            return truediv(a, b)
+        case "//":
+            return floordiv(a, b)
+        case "%":
+            return mod(a, b)
+        case "~":
+            return V.text(V.concat_text(a) + V.concat_text(b))
+        case _:
+            return halt("unsupported arithmetic operator")
 
 
 def eval_unary(toks, i, env):
