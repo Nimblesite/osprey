@@ -9,15 +9,15 @@ type Box =
     items : List<Item>
     note : string
 
-shown box = match listGet box.items 0
+shown (box : Box) = match listGet box.items 0
     Success item => "${item.name}:${item.size}"
     Error _ => "none"
 
-store box = box(items = [Item(name = "notes", size = 3)])
+store (box : Box) = box(items = [Item(name = "notes", size = 3)])
 
-held = Item(name = "held", size = 4)
-
-storeHeld box = box(items = [held])
+storeHeld (box : Box) =
+    item = Item(name = "held", size = 4)
+    box(items = [item])
 
 empty = Box(items = [], note = "")
 print (shown empty)
