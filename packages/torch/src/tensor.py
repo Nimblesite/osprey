@@ -201,15 +201,17 @@ def sum_axes(a, axes):
 
 def sum_to_size(g, shape):
     """torch's broadcast reduction: sum `g` down to `shape` exactly as
-    `torch.autograd.grad` does over broadcast axes. Extra leading dimensions
-    are added, every axis where `shape` has size 1 but `g` does not is summed
+    `torch.autograd.grad` does over broadcast axes. Extra leading gradient
+    dimensions are reduced, every axis where `shape` has size 1 but `g` does not is summed
     (keeping the axis), and the result is reshaped to `shape`."""
     gs = g.shape
     if structuralEquals(gs, shape):
         return g
     else:
-        gap = len(shape) - len(gs)
-        padded = fold(range(gap), g, lambda acc, _: Array.expand_dims(acc, 0))
+        extra = len(gs) - len(shape)
+        reduced = fold(range(extra), g, lambda acc, _: Array.sum_axis(acc, 0, False))
+        gap = len(shape) - len(reduced.shape)
+        padded = fold(range(gap), reduced, lambda acc, _: Array.expand_dims(acc, 0))
         ps = padded.shape
         axes = filterList(toList(map(range(len(shape)), lambda i: i)), lambda i: unwrap_or(listGet(shape, i), 1) == 1 and unwrap_or(listGet(ps, i), 1) != 1)
         return Array.reshape(sum_axes(padded, axes), shape)

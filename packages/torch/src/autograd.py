@@ -14,7 +14,7 @@ semantics. `grad` and `vjp` wrap a tape-style function `(tape, id) -> Step`.
 """
 from typing import Callable
 
-from numpy import Array, Linalg
+from numpy import Array, Linalg, Storage
 from torch import Tensor
 
 __all__ = [
@@ -24,9 +24,8 @@ __all__ = [
     "mean_all", "mean_axis", "matmul", "softmax", "log_softmax",
 ]
 
-KALPHA = 0.7978845608028654
-KBETA = 0.044715
-KBETA3 = 0.134145
+INV_SQRT_TWO = 0.7071067811865476
+INV_SQRT_TWO_PI = 0.3989422804014327
 
 
 class Tape[B]:
@@ -326,7 +325,7 @@ def leaky_relu(tape, a, slope):
 
 
 def gelu(tape, a):
-    """Tape GELU (tanh approximation), torch's exact backward."""
+    """Tape GELU with torch's default exact forward and backward formulas."""
     av = value_of(tape, a)
     out = gelu_forward(av)
     return append(tape, Node(op="gelu", inputs=[a], saved=[av], shape=out.shape, value=out, axis=0, param=0.0, keep=False))
@@ -407,25 +406,19 @@ def sigmoid_forward(x):
 
 
 def gelu_forward(x):
-    """torch's tanh-approximation GELU, in torch's element order."""
-    x2 = Array.multiply(x, x)
-    x3 = Array.multiply(x2, x)
-    inner = Array.add(Tensor.scale(x3, KBETA), x)
-    right = Tensor.add_scalar(Array.tanh(Tensor.scale(inner, KALPHA)), 1.0)
-    return Array.multiply(Tensor.scale(x, 0.5), right)
+    """torch's default exact GELU: x times the standard normal CDF."""
+    return Array.multiply(x, normal_cdf(x))
+
+
+def normal_cdf(x):
+    """Standard normal probabilities through the scalar erf builtin."""
+    return Array.NDArray(shape=x.shape, data=perform(Storage.Buffer.build(Tensor.flat(x.shape), lambda i: 0.5 * (1.0 + erf(Storage.at(x.data, i) * INV_SQRT_TWO)))))
 
 
 def gelu_deriv(x):
-    """torch's tanh-approximation GELU backward formula, element order."""
-    x2 = Array.multiply(x, x)
-    x3 = Array.multiply(x2, x)
-    inner = Array.add(Tensor.scale(x3, KBETA), x)
-    tanh_inner = Array.tanh(Tensor.scale(inner, KALPHA))
-    left = Tensor.scale(x, 0.5)
-    left_deriv = Tensor.scale(Tensor.add_scalar(tanh_inner, 1.0), 0.5)
-    tanh_deriv = Tensor.sub_from(1.0, Array.multiply(tanh_inner, tanh_inner))
-    inner_deriv = Tensor.scale(Tensor.add_scalar(Tensor.scale(x2, KBETA3), 1.0), KALPHA)
-    return Array.add(left_deriv, Array.multiply(Array.multiply(left, tanh_deriv), inner_deriv))
+    """The exact GELU derivative: normal CDF plus x times normal density."""
+    density = Tensor.scale(Array.exp(Tensor.scale(Array.square(x), -0.5)), INV_SQRT_TWO_PI)
+    return Array.add(normal_cdf(x), Array.multiply(x, density))
 
 
 def silu_deriv(x):
