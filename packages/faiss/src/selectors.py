@@ -1,5 +1,4 @@
 # osprey: flavor=python
-# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=faiss
 # osprey: module=Selectors
 """ID selectors used by `IndexFlat.remove_ids` and the ID-mapped indexes.

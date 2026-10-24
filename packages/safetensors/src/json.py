@@ -1,5 +1,4 @@
 # osprey: flavor=python
-# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=safetensors
 # osprey: module=JsonParser
 """A small RFC 8259 JSON parser for the safetensors header.

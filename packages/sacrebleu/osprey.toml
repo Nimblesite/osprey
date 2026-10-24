@@ -6,6 +6,6 @@ default_namespace = "sacrebleu"
 
 [package]
 name = "@osprey/sacrebleu"
-license = "MIT AND Apache-2.0"
+license = "MIT"
 summary = "BLEU and chrF evaluation metrics with sacrebleu's 13a tokenizer"
 keywords = ["bleu", "chrf", "metrics", "evaluation", "nmt", "python-flavor"]

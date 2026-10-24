@@ -1,5 +1,4 @@
 # osprey: flavor=python
-# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=einops
 # osprey: module=Recipe
 """The shape-inference recipe behind `rearrange`, `reduce` and `repeat`.

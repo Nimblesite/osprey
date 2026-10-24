@@ -1,5 +1,4 @@
 # osprey: flavor=python
-# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=micrograd
 # osprey: module=Engine
 """micrograd's autograd engine as an immutable graph arena.

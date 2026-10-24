@@ -22,12 +22,13 @@ class InventoryTests(unittest.TestCase):
                      'examples/app/main.py': '# osprey: flavor=python\nprint(1)',
                      'examples/app/helper.osp': 'print(2)', 'examples/library/osprey.toml': '[project]',
                      'examples/library/lib.osp': 'fn id(x) = x', 'examples/one.osp': 'print(1)',
-                     'examples/one.ospml': 'print 1', 'examples/failscompilation/bad.osp': 'bad'}
+                     'examples/one.ospml': 'print 1', 'examples/py.py': '# osprey: flavor=python\nprint(1)',
+                     'examples/tool.py': 'print(3)', 'examples/failscompilation/bad.osp': 'bad'}
             for name, text in files.items():
                 path = root/name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(text)
-            self.assertEqual(discover(root, ['examples']), ['examples/app', 'examples/one.osp', 'examples/one.ospml'])
+            self.assertEqual(discover(root, ['examples']), ['examples/app', 'examples/one.osp', 'examples/one.ospml', 'examples/py.py'])
 
 
 class QualificationTests(unittest.TestCase):
@@ -74,6 +75,20 @@ class CrashGateTests(unittest.TestCase):
         for patch in [{'replay': 'klee-only'}, {'replay': 'skipped'}, {'replay': 'not-run'},
                       {'replayDetail': 'SIGSEGV'}, {'stdin': '0'}]:
             self.assertTrue(check_replay(base | patch, case), patch)
+
+    def test_a_planted_case_must_also_have_a_normal_path(self):
+        from hunt_crashes import check_case
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root/'case.expected').write_text('abort main.osp:4\n')
+            finding = {'class': 'abort', 'file': 'main.osp', 'line': 4, 'stdin': '9',
+                       'replay': 'reproduced', 'replayDetail': 'SIGABRT'}
+            case = {'expected': 'case.expected', 'cases': [{'stdin': '9', 'signals': ['SIGABRT']}]}
+            record = {'exitCode': 1, 'timedOut': False, 'report': {
+                'explored': {'paths': 4, 'completed': 3}, 'findings': [finding], 'incomplete': []}}
+            self.assertEqual(check_case(record, case, root), '')
+            record['report']['explored']['completed'] = 0
+            self.assertIn('normal path', check_case(record, case, root))
 
     def test_every_planted_input_is_pinned_and_has_a_real_program(self):
         root = Path(__file__).resolve().parent.parent

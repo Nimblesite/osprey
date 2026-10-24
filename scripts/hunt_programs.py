@@ -19,7 +19,8 @@ def standalone(path, root):
         return False
     if any((parent/'osprey.toml').exists() for parent in path.parents if parent != root):
         return False
-    return path.suffix in ('.osp', '.ospml')
+    return path.suffix in ('.osp', '.ospml') or (
+        path.suffix == '.py' and '# osprey: flavor=python' in path.read_text()[:256])
 
 
 def discover(root, roots=ROOTS, libraries=False):
@@ -29,7 +30,7 @@ def discover(root, roots=ROOTS, libraries=False):
         for manifest in directory.rglob('osprey.toml'):
             if 'failscompilation' not in manifest.parts and (libraries or is_app(manifest)):
                 programs.add(manifest.parent.relative_to(root).as_posix())
-        for extension in ('*.osp', '*.ospml'):
+        for extension in ('*.osp', '*.ospml', '*.py'):
             programs.update(p.relative_to(root).as_posix() for p in directory.rglob(extension) if standalone(p, root))
     return sorted(programs)
 

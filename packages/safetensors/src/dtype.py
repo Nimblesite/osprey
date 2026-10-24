@@ -1,5 +1,4 @@
 # osprey: flavor=python
-# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=safetensors
 # osprey: module=Dtype
 """The safetensors element dtypes this port decodes and encodes, their byte

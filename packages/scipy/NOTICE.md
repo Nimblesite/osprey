@@ -1,38 +1,35 @@
-# @osprey/scipy: licensing and attribution
+# @osprey/scipy: licensing and upstream acknowledgement
 
-Original Osprey contributions are licensed under the MIT license in [LICENSE](LICENSE), Copyright (c) 2026 NIMBLESITE PTY LTD, Australia. The pre-existing Christian Findlay copyright is retained there. This grant covers our original contributions; it does not replace third-party ownership or terms.
+The Osprey implementation is provided under the normal [MIT license](LICENSE), Copyright (c) 2026 NIMBLESITE PTY LTD, Australia, retaining the earlier Christian Findlay notice. This does not claim ownership of any third-party material identified below.
 
-The cumulative package license expression is `MIT AND BSD-3-Clause AND BSL-1.0`. `AND` requires compliance with every applicable license; it is not a choice of licenses. Upstream names identify provenance and do not imply endorsement.
+## Upstream API and behavior references
 
-These files are Osprey adaptations of the components below. Changes include translation into Osprey's Python flavor, immutable data structures, explicit handlers where used, and the documented API subset. Generated character tables are derived data. Preserve this change summary, the license texts and the applicable copyright notices in source distributions and in the documentation/materials supplied with compiled distributions.
+These repositories and releases are acknowledged as API, behavior and test-oracle references. Their licenses are not assigned to this implementation merely because the API is reimplemented. The port does not bundle or link the upstream Python package.
 
-## scipy
+- [scipy](https://github.com/scipy/scipy): 1.18.1.
+- [xsf](https://github.com/scipy/xsf): upstream audit snapshot.
 
-Upstream: [scipy/scipy](https://github.com/scipy/scipy). Reference: 1.18.1. Retained text: [LICENSES/scipy.txt](LICENSES/scipy.txt). [License source](https://files.pythonhosted.org/packages/7e/74/66de6258867beb2ef08f35f9f2ac017a52cacd5081714d239ff1a442d458/scipy-1.18.1.tar.gz).
+## Specifically retained third-party material
 
-## xsf
+The cumulative expression for the identified material is `MIT AND BSD-3-Clause AND BSL-1.0`. These additional terms apply to that material; they do not transfer ownership of the Osprey implementation or turn upstream API references into dependencies.
 
-Upstream: [scipy/xsf](https://github.com/scipy/xsf). Reference: upstream audit snapshot. Retained text: [LICENSES/xsf.txt](LICENSES/xsf.txt). [License source](https://github.com/scipy/xsf/blob/main/LICENSE).
+### xsf
 
-## Cephes
+Material: Translated numerical kernels and copied approximation coefficients. Locations: `src/gamma.py`, `src/beta.py`, `src/zeta.py`, `src/support.py`, `src/boxcox.py`, `src/information.py`, `src/logistic.py`.
+Original source: [https://github.com/scipy/xsf](https://github.com/scipy/xsf/blob/main/LICENSE). Retained required text: [LICENSES/xsf.txt](LICENSES/xsf.txt).
 
-Upstream: [scipy/xsf](https://github.com/scipy/xsf). Reference: upstream audit snapshot. Retained text: [LICENSES/Cephes.txt](LICENSES/Cephes.txt). [License source](https://github.com/scipy/xsf/blob/main/LICENSES_bundled.txt).
+### cephes
 
-## Boost-1.0
+Material: Translated numerical kernels and copied approximation coefficients. Locations: `src/gamma.py`, `src/beta.py`, `src/zeta.py`, `src/support.py`, `src/boxcox.py`, `src/information.py`, `src/logistic.py`.
+Original source: [https://github.com/scipy/xsf](https://github.com/scipy/xsf/blob/main/LICENSES_bundled.txt). Retained required text: [LICENSES/Cephes.txt](LICENSES/Cephes.txt).
 
-Upstream: [boostorg/boost](https://github.com/boostorg/boost). Reference: upstream audit snapshot. Retained text: [LICENSES/Boost-1.0.txt](LICENSES/Boost-1.0.txt). [License source](https://github.com/boostorg/boost/blob/master/LICENSE_1_0.txt).
+### boost
 
-## Retained source attribution
+Material: Translated numerical kernels and copied approximation coefficients. Locations: `src/gamma.py`, `src/beta.py`, `src/zeta.py`, `src/support.py`, `src/boxcox.py`, `src/information.py`, `src/logistic.py`.
+Original source: [https://github.com/boostorg/boost](https://github.com/boostorg/boost/blob/master/LICENSE_1_0.txt). Retained required text: [LICENSES/Boost-1.0.txt](LICENSES/Boost-1.0.txt).
 
-- (C) Copyright John Maddock 2006.
-- Copyright 1984, 1987 by Stephen L. Moshier
-- Copyright 1984, 1987, 1989 by Stephen L. Moshier
-- Copyright 1984, 1987, 1989, 1992 by Stephen L. Moshier
-- Copyright 1984, 1987, 1992, 2000 by Stephen L. Moshier
-- Copyright 1985, 1987 by Stephen L. Moshier
-
-The Cephes numerical coefficients and kernels retain Stephen L. Moshier's BSD terms as documented by SciPy/xsf. The digamma rational approximation retains John Maddock's Boost Software License 1.0; it is not MIT-only.
+The Cephes coefficients and kernels retain Stephen L. Moshier's copyright and BSD conditions. The rational digamma approximation retains `(C) Copyright John Maddock 2006.` and the Boost Software License 1.0. Changes re-express the kernels in Osprey using immutable values, list operations and explicit result handling. The SciPy/xsf BSD notice is retained for the adapted numerical source.
 
 ## Distribution
 
-The package publisher includes `LICENSE`, `NOTICE.md` and the full `LICENSES/` tree in the digest-pinned release. Fetch/install retain those files. Applications distributing compiled code must also ship the applicable license and notice files; compilation does not carry these documents into an executable automatically.
+The publisher carries `LICENSE`, this acknowledgement and any required `LICENSES/` files in the digest-pinned release. Source or compiled redistributions containing the specifically retained material must carry its applicable notices. Upstream project names provide acknowledgement and imply no endorsement.

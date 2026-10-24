@@ -1,5 +1,4 @@
 # osprey: flavor=python
-# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=numpy
 # osprey: module=Math
 """Pure float helpers the flavor does not expose as builtins yet.

@@ -6,7 +6,7 @@ default_namespace = "transformers"
 
 [package]
 name = "@osprey/transformers"
-license = "MIT AND Apache-2.0"
+license = "MIT"
 summary = "Hugging Face generation utilities: logits processors, warpers, sampling and stopping criteria"
 keywords = ["transformers", "generation", "sampling", "logits", "python-flavor"]
 

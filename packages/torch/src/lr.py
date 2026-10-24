@@ -1,5 +1,4 @@
 # osprey: flavor=python
-# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=torch
 # osprey: module=LR
 """torch.optim.lr_scheduler: StepLR, MultiStepLR, ExponentialLR, LambdaLR and

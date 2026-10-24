@@ -6,7 +6,7 @@ default_namespace = "flash_attn"
 
 [package]
 name = "@osprey/flash_attn"
-license = "MIT AND BSD-3-Clause"
+license = "MIT"
 summary = "FlashAttention's online-softmax tiled attention, flash_attn_func and varlen, as pure Osprey over flat float lists"
 keywords = ["flash-attn", "attention", "transformer", "python-flavor"]
 

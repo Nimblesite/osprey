@@ -1,48 +1,52 @@
-# Package license audit
+# Package licensing and provenance audit
 
-Audited on 25 October 2026. Every package carries the normal MIT grant for original Osprey contributions, **Copyright (c) 2026 NIMBLESITE PTY LTD, Australia**, retaining the earlier Christian Findlay notice. Each package's `NOTICE.md` identifies the original repositories and authors, adaptations and additional terms. Upstream ownership and conditions remain intact.
+Reviewed on 25 October 2026. Each package carries the normal MIT grant from **NIMBLESITE PTY LTD, Australia**, retaining the earlier Christian Findlay notice. The packages reimplement selected APIs and behavior in Osprey; they do not bundle, link or redistribute the corresponding Python packages. An API reference, oracle output or the word “port” does not by itself import an upstream license.
 
-| Package | Upstream/reference | Terms retained alongside our MIT grant |
+Each package's `NOTICE.md` acknowledges the original repositories and comparison releases. Upstream license copies are retained only for the specific reused implementation or derived data identified below. The original authors retain ownership of that material; the Nimblesite MIT grant does not reassign it.
+
+| Package | Original API/behavior reference | Specifically retained third-party material |
 | --- | --- | --- |
-| [einops](einops/NOTICE.md) | Alex Rogozhnikov, einops 0.8.2 | Upstream MIT |
-| [faiss](faiss/NOTICE.md) | Meta/Facebook, Faiss 1.15.1 | Upstream MIT |
-| [flash_attn](flash_attn/NOTICE.md) | Dao-AILab FlashAttention, documented 2.1+ semantics | BSD-3-Clause, AUTHORS |
-| [jinja2](jinja2/NOTICE.md) | Pallets Jinja 3.1.6 | BSD-3-Clause |
-| [micrograd](micrograd/NOTICE.md) | Andrej Karpathy, micrograd 0.1.0 and nn-zero-to-hero | Both upstream MIT copyrights |
-| [native](native/NOTICE.md) | Original Osprey framework | MIT; no third-party port identified |
-| [numpy](numpy/NOTICE.md) | NumPy 2.5.4 | BSD-3-Clause |
-| [re](re/NOTICE.md) | CPython 3.12.13, Secret Labs SRE, Unicode | Complete Python license history, CNRI-Python, Unicode terms |
-| [rouge_score](rouge_score/NOTICE.md) | Google rouge-score 0.1.2, NLTK 3.10.4 Porter stemmer | Apache-2.0, both projects' attribution |
-| [sacrebleu](sacrebleu/NOTICE.md) | Matt Post and SacreBLEU contributors, 2.6.0 | Apache-2.0 |
-| [safetensors](safetensors/NOTICE.md) | Hugging Face / safetensors contributors, 0.8.0 | Apache-2.0 |
-| [scipy](scipy/NOTICE.md) | SciPy 1.18.1, xsf, Stephen L. Moshier's Cephes, John Maddock's digamma approximation | BSD-3-Clause, Boost Software License 1.0 |
-| [sklearn](sklearn/NOTICE.md) | scikit-learn 1.9.1 | BSD-3-Clause |
-| [testing](testing/NOTICE.md) | Original Osprey assertions; NumPy comparison semantics | NumPy BSD-3-Clause retained conservatively |
-| [tiktoken](tiktoken/NOTICE.md) | OpenAI tiktoken 0.14.0, regex 2026.9.29, SRE, Unicode | MIT, Apache-2.0, CNRI-Python, Unicode; historical GPT-2 notice for test data |
-| [tokenizers](tokenizers/NOTICE.md) | Hugging Face tokenizers 0.23.3, Unicode | Apache-2.0, Unicode terms |
-| [torch](torch/NOTICE.md) | PyTorch 2.14.1 | BSD-3-Clause, complete upstream NOTICE |
-| [transformers](transformers/NOTICE.md) | Hugging Face Transformers 5.20.2 generation utilities | Apache-2.0; relevant Hugging Face, Google/DeepMind, Facebook and NVIDIA notices |
+| [einops](einops/NOTICE.md) | Alex Rogozhnikov, einops 0.8.2 | None identified; MIT Osprey implementation |
+| [faiss](faiss/NOTICE.md) | Meta/Facebook, Faiss 1.15.1 | None identified; MIT Osprey implementation |
+| [flash_attn](flash_attn/NOTICE.md) | Dao-AILab FlashAttention conventions | None identified; MIT Osprey implementation |
+| [jinja2](jinja2/NOTICE.md) | Pallets Jinja 3.1.6 | None identified; MIT Osprey implementation |
+| [micrograd](micrograd/NOTICE.md) | Andrej Karpathy, micrograd 0.1.0 and nn-zero-to-hero | None identified; MIT Osprey implementation |
+| [native](native/NOTICE.md) | Original Osprey framework | MIT |
+| [numpy](numpy/NOTICE.md) | NumPy 2.5.4 | None identified; MIT Osprey implementation |
+| [re](re/NOTICE.md) | CPython 3.12.13 re behavior | Derived Unicode property/case tables in `src/tables.py` |
+| [rouge_score](rouge_score/NOTICE.md) | Google rouge-score 0.1.2 and NLTK Porter behavior | None identified; MIT Osprey implementation |
+| [sacrebleu](sacrebleu/NOTICE.md) | SacreBLEU 2.6.0 | None identified; MIT Osprey implementation |
+| [safetensors](safetensors/NOTICE.md) | Safetensors 0.8.0 format and behavior | None identified; MIT Osprey implementation |
+| [scipy](scipy/NOTICE.md) | SciPy special-function behavior | Adapted Cephes/xsf numerical kernels and copied coefficients; Boost-derived digamma approximation |
+| [sklearn](sklearn/NOTICE.md) | scikit-learn 1.9.1 | None identified; MIT Osprey implementation |
+| [testing](testing/NOTICE.md) | NumPy closeness-comparison formula | None identified; MIT Osprey assertions |
+| [tiktoken](tiktoken/NOTICE.md) | OpenAI tiktoken 0.14.0 | Derived Unicode tables; copied encoding-rank subsets in test fixtures |
+| [tokenizers](tokenizers/NOTICE.md) | Hugging Face tokenizers 0.23.3 | Derived Unicode tables in `src/Unicode.py` |
+| [torch](torch/NOTICE.md) | PyTorch 2.14.1 | None identified; MIT Osprey implementation |
+| [transformers](transformers/NOTICE.md) | Transformers 5.20.2 generation behavior | None identified; MIT Osprey implementation |
 
-Manifest expressions use `MIT AND ...`, requiring applicable terms together. They offer no MIT-only alternative for upstream material. A CPython oracle using a wheel does not mean its CUDA, BLAS or other binary dependencies are shipped by these source ports. Re-audit future vendoring, datasets, model weights and native binaries.
+## Why the remaining license texts are present
 
-## Corrections and evidence
+SciPy's numerical implementation explicitly identifies its Cephes/xsf origin. The coefficient arrays match those kernels, and the digamma approximation contains John Maddock's Boost coefficients. The retained Cephes/xsf BSD and Boost licenses apply to those identified files. They are not assigned merely because the public API resembles SciPy.
 
-All 18 manifests previously declared MIT alone, and none of these package directories contained an upstream license bundle. The audit added standalone MIT licenses, original repository acknowledgements, full applicable upstream terms, source modification notices, cumulative SPDX expressions and automatic publication of legal files. The `re` and `tiktoken` table generators preserve the modification notice when regenerated.
+The regex/tokenizer Unicode tables are generated from character data. Their data notices apply to those tables, not to the independently expressed matching or tokenization engines. The older Unicode data permission and Unicode License v3 are retained because CPython and the separate regex library have independent Unicode versions.
 
-SciPy's Cephes coefficients and Boost-derived digamma approximation retain their original authors and conditions. Generated Unicode tables retain both the older Unicode data permission and Unicode License v3: a Python `unicodedata` version label does not establish the separate regex library's Unicode version.
+Tiktoken test fixtures contain actual encoding-rank subsets, unlike ordinary expected outputs computed by an oracle. The [upstream collaborator explicitly confirms that tiktoken's MIT license covers those encoding files](https://github.com/openai/tiktoken/issues/92#issuecomment-1497875652). Its MIT text and that clarification are retained for the copied data. No full tokenizer package, model weights or complete pretrained vocabulary is bundled.
 
-Tiktoken's [upstream collaborator explicitly confirms that its MIT license covers externally hosted encoding files](https://github.com/openai/tiktoken/issues/92#issuecomment-1497875652). A local copy of that clarification accompanies the retained MIT license for truncated encoding data in test fixtures. The historical GPT-2 modified MIT notice is retained too. Complete model weights and pretrained vocabularies are not included in these package releases.
+No BSD/Apache/Python license is assigned solely because NumPy, PyTorch, Jinja, CPython, Hugging Face or another package supplied an API or test oracle. Ordinary output from a program is not automatically a copy of its implementation. Future source or data incorporation needs its own review.
 
-The review inspected port source, manifests, oracle generators and generated fixtures; checked the exact source distributions named by the oracles where available; and compared port source against 80 relevant upstream implementation files. [source-audit.json](source-audit.json) records those references and fingerprints. Exact fragments and numerical coefficients exist, including einops fragments and SciPy numerical material. Their identified licenses allow copying and adaptation when their conditions are retained. Translations are treated conservatively as adaptations, without relying on them escaping upstream copyright.
+## Evidence and limits
 
-The exact historical commit used to write every port was not recorded. Reference versions are oracle comparison versions, not claims of derivation from particular commits. This is a bounded technical audit, not proof of independent authorship of every line or a legal opinion. No identified upstream license prohibits the reuse reviewed here; no upstream ownership was reassigned to Nimblesite.
+[source-audit.json](source-audit.json) records 80 reference comparisons, including 42 files from the exact source distributions named by the oracles. The lexical comparison found short einops compatibility strings/constants and SciPy coefficient sequences. Token matches are candidates for inspection, not proof that a port is a derivative work. The einops matches do not identify a substantive shared implementation block. This audit does not assert clean-room authorship from the absence of matches.
 
-## Distribution and continuing checks
+The exact historical commit used while writing every implementation was not recorded. Comparison versions are reference versions, not asserted derivation commits. This bounded technical review is not a legal opinion or a guarantee against unidentified copying. No identified license prohibits the specific reuse retained here when its stated conditions are met.
 
-The publisher includes root `LICENSE`, `COPYING`, `NOTICE`, `AUTHORS` and `THIRD_PARTY_NOTICES` files, including `.txt`/`.md` forms, and the complete `LICENSES/` tree without asset declarations. They participate in `SourceDigest`, survive bundle/fetch/install, and tampering invalidates the bundle. Consumers distributing compiled programs must supply the applicable documents too; compilation does not embed them automatically.
+[license-audit.json](license-audit.json) separates informational `references` from specifically retained `upstreams`. Every retained item names the actual files, evidence basis, source and SHA-256 of its required notice. Whole upstream NOTICE collections and unrelated bundled dependency licenses are not included. Identical standard text within a package is stored once.
 
-[license-audit.json](license-audit.json) pins retained text SHA-256 hashes and upstream sources. Git blob hashes identify source documents; `source_selection` identifies complete license sections extracted from larger documents. Archive hashes identify downloaded releases. Identical standard license text within a package is stored once and referenced by every applicable component.
+## Package distribution and checks
 
-Run `node scripts/verify-package-licenses.mjs` from the repository root. It checks every package is inventoried, the Nimblesite MIT grant, upstream texts, SPDX expressions and modification notices. It also runs under `make lint` and `make ci`. Update the inventory and notices when incorporating upstream material; changing a hash alone does not establish permission.
+The publisher retains root `LICENSE`, `COPYING`, `NOTICE`, `AUTHORS` and `THIRD_PARTY_NOTICES` files, including `.txt`/`.md` forms, and a `LICENSES/` directory when one is present. It does not infer upstream dependencies or add license texts from a package's name. Legal files participate in `SourceDigest`, survive fetch/install, and tampering invalidates a bundle. Applications distributing compiled code that contains the specifically identified reused material must supply its applicable documents; compiling does not embed them automatically.
 
-Regression tests are in [publish_tests.osp](../registry/cli/tests/src/publish_tests.osp) and [fetch_tests.osp](../registry/cli/tests/src/fetch_tests.osp): `target/release/osprey test registry/cli/tests --filter licenses` must pass. They check legal-file retention, the published digest and rejection of altered attribution.
+Run `node scripts/verify-package-licenses.mjs` from the repository root. It checks Nimblesite's MIT grant, the reviewed metadata, evidence for retained material and only the modification/data notices required for that material. It rejects unreviewed license files. This also runs under `make lint` and `make ci`.
+
+Regression cases in [publish_tests.osp](../registry/cli/tests/src/publish_tests.osp) and [fetch_tests.osp](../registry/cli/tests/src/fetch_tests.osp) check legal-file retention and rejection of altered attribution: `target/release/osprey test registry/cli/tests --filter licenses`.

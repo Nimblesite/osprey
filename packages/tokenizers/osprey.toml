@@ -6,7 +6,7 @@ default_namespace = "tokenizers"
 
 [package]
 name = "@osprey/tokenizers"
-license = "MIT AND Apache-2.0 AND Unicode-DFS-2016 AND Unicode-3.0"
+license = "MIT AND Unicode-DFS-2016 AND Unicode-3.0"
 summary = "WordPiece, Unigram and WordLevel tokenizers with BERT normalizers, pre-tokenizers and post-processors"
 keywords = ["tokenizers", "wordpiece", "unigram", "bert", "python-flavor"]
 

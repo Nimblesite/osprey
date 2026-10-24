@@ -61,6 +61,8 @@ static void stdin_reads_exactly_its_length_at_every_cap(void) {
   static const long caps[] = {-5, 0, 1, 7, 64, OSP_HUNT_STREAM_MAX, OSP_HUNT_STREAM_MAX + 100};
   for (size_t c = 0; c < sizeof(caps) / sizeof(caps[0]); c++) {
     long cap = clamp_cap(caps[c]);
+    osp_hunt_input_bytes = caps[c];
+    hunt_check(osp_hunt_file_buffer_capacity() == (size_t)cap + 2, about("file buffer follows the symbolic cap plus short-read/NUL slack", caps[c], cap));
     long lengths[] = {0, 1, cap / 2, cap, cap + 5};
     for (size_t l = 0; l < sizeof(lengths) / sizeof(lengths[0]); l++) {
       long expected = lengths[l] > cap ? cap : lengths[l];

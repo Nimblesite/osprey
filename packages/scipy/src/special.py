@@ -1,5 +1,4 @@
 # osprey: flavor=python
-# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=scipy
 # osprey: module=Special
 """scipy.special's scalar functions, re-exported under one module.

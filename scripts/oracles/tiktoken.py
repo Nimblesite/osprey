@@ -218,7 +218,7 @@ def write_tables() -> dict[str, list[list[int]]]:
 
 
 TABLES_TEMPLATE = '''# osprey: flavor=python
-# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
+# Derived Unicode data; required attribution and terms: ../NOTICE.md.
 # osprey: namespace=tiktoken
 # osprey: module=Tables
 """The Unicode character class range tables tiktoken's pre-tokenizers need.

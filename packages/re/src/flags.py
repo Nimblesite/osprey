@@ -1,5 +1,4 @@
 # osprey: flavor=python
-# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=re
 # osprey: module=Flags
 """Inline flag groups `(?i)`, `(?im)`, `(?i:...)`, `(?-i:...)`, `(?i-m:...)`.

@@ -1,5 +1,4 @@
 # osprey: flavor=python
-# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=sacrebleu
 # osprey: module=Tokenizer
 """The `none`, `13a` and `char` tokenizers of sacrebleu.

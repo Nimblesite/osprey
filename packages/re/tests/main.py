@@ -7,7 +7,7 @@ Every case in `re_expected.Expected` was computed by CPython 3.12's own `re`
 port's answer with the oracle's, through `testing.Check.strictly` so an
 integer fault stops the suite.
 """
-from re import Api
+from re import Api, Builder, Program
 from re_expected import Expected
 from testing import Check
 
@@ -241,9 +241,23 @@ def cases_for(constant, check):
     return fold(range(len(constant)), [], lambda acc, i: listConcat(acc, check(unwrap_or(listGet(constant, i), []))))
 
 
+def instruction_text(code):
+    """Instruction addresses pin fragment relocation independently of matching."""
+    return join(mapList(code, lambda ins: f"{ins.op}:{ins.a}:{ins.b}"), ";")
+
+
+def builder_cases():
+    body = [Program.ins_lit(97, 0)]
+    return [
+        Check.equal("builder.plus.targets", instruction_text(Builder.repeat_frag(body, 1, -1, True)), "lit:97:0;split:2:4;lit:97:0;jmp:1:0"),
+        Check.equal("builder.alt.targets", instruction_text(Builder.alt_frag(body, body)), "split:1:3;lit:97:0;jmp:4:0;lit:97:0"),
+        Check.equal("builder.count.targets", instruction_text(Builder.repeat_frag(body, 2, 3, True)), "lit:97:0;lit:97:0;split:3:4;lit:97:0"),
+    ]
+
+
 def all_cases():
     """Every assertion, grouped by operation."""
-    matches = cases_for(Expected.MATCH, match_case)
+    matches = listConcat(builder_cases(), cases_for(Expected.MATCH, match_case))
     findalls = cases_for(Expected.FINDALL, findall_case)
     finditers = cases_for(Expected.FINDITER, finditer_case)
     splits = cases_for(Expected.SPLIT, split_case)

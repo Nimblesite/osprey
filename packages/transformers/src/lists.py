@@ -1,5 +1,4 @@
 # osprey: flavor=python
-# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=transformers
 # osprey: module=Lists
 """Small shared helpers over `list[int]` used by the logits processors and the

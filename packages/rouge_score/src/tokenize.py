@@ -1,5 +1,4 @@
 # osprey: flavor=python
-# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=rouge_score
 # osprey: module=Tokenize
 """rouge_score's default tokenizer (`tokenize.tokenize`).

@@ -1,39 +1,43 @@
-# @osprey/tiktoken: licensing and attribution
+# @osprey/tiktoken: licensing and upstream acknowledgement
 
-Original Osprey contributions are licensed under the MIT license in [LICENSE](LICENSE), Copyright (c) 2026 NIMBLESITE PTY LTD, Australia. The pre-existing Christian Findlay copyright is retained there. This grant covers our original contributions; it does not replace third-party ownership or terms.
+The Osprey implementation is provided under the normal [MIT license](LICENSE), Copyright (c) 2026 NIMBLESITE PTY LTD, Australia, retaining the earlier Christian Findlay notice. This does not claim ownership of any third-party material identified below.
 
-The cumulative package license expression is `MIT AND Apache-2.0 AND CNRI-Python AND Unicode-DFS-2016 AND Unicode-3.0`. `AND` requires compliance with every applicable license; it is not a choice of licenses. Upstream names identify provenance and do not imply endorsement.
+## Upstream API and behavior references
 
-These files are Osprey adaptations of the components below. Changes include translation into Osprey's Python flavor, immutable data structures, explicit handlers where used, and the documented API subset. Generated character tables are derived data. Preserve this change summary, the license texts and the applicable copyright notices in source distributions and in the documentation/materials supplied with compiled distributions.
+These repositories and releases are acknowledged as API, behavior and test-oracle references. Their licenses are not assigned to this implementation merely because the API is reimplemented. The port does not bundle or link the upstream Python package.
 
-## tiktoken
+- [tiktoken](https://github.com/openai/tiktoken): 0.14.0.
+- [regex](https://github.com/mrabarnett/mrab-regex): 2026.9.29.
+- [re](https://github.com/python/cpython): 3.12.13.
 
-Upstream: [openai/tiktoken](https://github.com/openai/tiktoken). Reference: 0.14.0. Retained text: [LICENSES/tiktoken.txt](LICENSES/tiktoken.txt). [License source](https://files.pythonhosted.org/packages/66/62/167a842aa0429d45f5e797354fd4343a96f6043d67d0513c675c7b8d36e6/tiktoken-0.14.0.tar.gz).
+## Specifically retained third-party material
 
-## regex
+The cumulative expression for the identified material is `MIT AND Unicode-DFS-2016 AND Unicode-3.0`. These additional terms apply to that material; they do not transfer ownership of the Osprey implementation or turn upstream API references into dependencies.
 
-Upstream: [mrabarnett/mrab-regex](https://github.com/mrabarnett/mrab-regex). Reference: 2026.9.29. Retained text: [LICENSES/regex.txt](LICENSES/regex.txt). [License source](https://files.pythonhosted.org/packages/fc/f2/af1da9d3ceed77bfcdce40427d49ba0be94e4fe84245e3bfef68c10e75b6/regex-2026.9.29.tar.gz).
+### tiktoken
 
-## CPython
+Material: Copied encoding-rank subsets and upstream explicit MIT permission. Locations: `tests/expected.py`.
+Original source: [https://github.com/openai/tiktoken](https://files.pythonhosted.org/packages/66/62/167a842aa0429d45f5e797354fd4343a96f6043d67d0513c675c7b8d36e6/tiktoken-0.14.0.tar.gz). Retained required text: [LICENSES/tiktoken.txt](LICENSES/tiktoken.txt).
 
-Upstream: [python/cpython](https://github.com/python/cpython). Reference: 3.12.13. Retained text: [LICENSES/CPython.txt](LICENSES/CPython.txt). [License source](https://github.com/python/cpython/blob/v3.12.13/LICENSE).
+### unicode15
 
-## Unicode-DFS-2016
+Material: Generated Unicode character-property tables. Locations: `src/tables.py`.
+Original source: [https://github.com/unicode-org/icu/tree/release-73-2](https://github.com/unicode-org/icu/blob/release-73-2/icu4c/LICENSE). Retained required text: [LICENSES/Unicode-DFS-2016.txt](LICENSES/Unicode-DFS-2016.txt).
 
-Upstream: [unicode-org/icu/tree/release-73-2](https://github.com/unicode-org/icu/tree/release-73-2). Reference: upstream audit snapshot. Retained text: [LICENSES/Unicode-DFS-2016.txt](LICENSES/Unicode-DFS-2016.txt). [License source](https://github.com/unicode-org/icu/blob/release-73-2/icu4c/LICENSE).
+### unicode3
 
-## gpt2
+Material: Generated Unicode character-property tables. Locations: `src/tables.py`.
+Original source: [https://github.com/unicode-org/icu](https://github.com/unicode-org/icu/blob/main/LICENSE). Retained required text: [LICENSES/Unicode-3.0.txt](LICENSES/Unicode-3.0.txt).
 
-Upstream: [openai/gpt-2](https://github.com/openai/gpt-2). Reference: upstream audit snapshot. Retained text: [LICENSES/gpt2.txt](LICENSES/gpt2.txt). [License source](https://github.com/openai/gpt-2/blob/master/LICENSE).
+### tiktoken-encoding-permission
 
-Secret Labs' SRE copyright and the CNRI Python 1.6 terms are retained through the complete CPython license. This is a modified Osprey implementation, not CPython.
+Material: Copied encoding-rank subsets and upstream explicit MIT permission. Locations: `tests/expected.py`.
+Original source: [https://github.com/openai/tiktoken](https://github.com/openai/tiktoken/issues/92#issuecomment-1497875652). Retained required text: [LICENSES/tiktoken-data-permission.txt](LICENSES/tiktoken-data-permission.txt).
 
-The regex package's license includes Apache-2.0 additions and the original CNRI-Python/SRE lineage. Unicode data terms are retained separately. GPT-2 vocabulary subsets in the test fixtures originate in OpenAI's GPT-2 data and carry its modified MIT notice; that notice is retained as attribution to test data and does not change the license of unrelated port source. The cl100k fixture records reference outputs and a truncated rank table from tiktoken's publicly downloaded data. The [upstream collaborator's clarification](https://github.com/openai/tiktoken/issues/92#issuecomment-1497875652) explicitly applies tiktoken's MIT license to those encoding files; a [local copy](LICENSES/tiktoken-data-permission.txt) travels with this package. Neither complete pretrained vocabularies nor model weights are included in package releases; any future model/data redistribution needs its own license review.
+The copied GPT-2/cl100k encoding-rank subsets are test data. OpenAI's [explicit clarification](https://github.com/openai/tiktoken/issues/92#issuecomment-1497875652) applies its MIT license to encoding files. The complete upstream tokenizer package and vocabularies are not included.
 
-## Unicode data versions
-
-The bundled [Unicode License v3](LICENSES/Unicode-3.0.txt) is retained alongside the older Unicode data license. Oracle labels can report CPython's Unicode version independently of the regex package's own tables; the labels alone do not establish that both use the same Unicode release. Preserve both notices.
+The Unicode notices cover derived property/case tables, not the regex or tokenizer engine. The older Unicode data permission and Unicode License v3 are retained because CPython and the regex library report their Unicode versions independently.
 
 ## Distribution
 
-The package publisher includes `LICENSE`, `NOTICE.md` and the full `LICENSES/` tree in the digest-pinned release. Fetch/install retain those files. Applications distributing compiled code must also ship the applicable license and notice files; compilation does not carry these documents into an executable automatically.
+The publisher carries `LICENSE`, this acknowledgement and any required `LICENSES/` files in the digest-pinned release. Source or compiled redistributions containing the specifically retained material must carry its applicable notices. Upstream project names provide acknowledgement and imply no endorsement.

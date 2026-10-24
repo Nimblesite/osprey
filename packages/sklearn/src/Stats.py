@@ -1,5 +1,4 @@
 # osprey: flavor=python
-# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=sklearn
 # osprey: module=Stats
 """Small pure list/float helpers shared by the port's modules.

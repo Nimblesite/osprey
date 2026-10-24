@@ -7,13 +7,15 @@ import sys
 import time
 
 from hunt_expect import actual_findings, expected_findings, validate
-from hunt_sample import run_one
+from hunt_sample import execute, run_one
 
 
 def check_case(record, case, root):
     try:
         report = record['report']
         validate(report)
+        if report['explored']['completed'] < 1:
+            return 'planted input case must also have a normal path'
         if record['timedOut'] or record['exitCode'] != 1:
             return 'expected a bounded native crash (exit 1)'
         if actual_findings(report) != expected_findings(root/case['expected']):
@@ -52,15 +54,35 @@ def main():
                                  wall_time=10, max_time=8, input_bytes=1)
     print(f'Crash reports: {options.out}', flush=True)
     results = [verify(case, options) for case in cases]
-    print(f'{sum(results)}/{len(results)} programs passed; {sum(len(case["cases"]) for case in cases)} planted input cases')
-    return 0 if all(results) else 1
+    passed = sum(record['assertionsPassed'] for record in results)
+    print(f'{passed}/{len(results)} programs passed; {sum(len(case["cases"]) for case in cases)} planted input cases')
+    (options.out/'results.json').write_text(json.dumps(results, indent=2)+'\n')
+    from hunt_sample_report import write
+    write(options.out, results, proof=True)
+    return 0 if passed == len(results) else 1
+
+
+def benign(case, record, options):
+    folder = Path(record['directory'])/'benign'
+    folder.mkdir()
+    source = folder/'stdin.bin'
+    source.write_bytes(b'Z')
+    command = [str(options.osprey), case['program'], '--run']
+    (folder/'command.json').write_text(json.dumps(command, indent=2)+'\n')
+    code, timed_out, elapsed = execute(command, options, folder, stdin=source)
+    record['benign'] = {'exitCode': code, 'timedOut': timed_out, 'wallSeconds': elapsed, 'stdin': 'Z'}
+    expected = 'safe\n' if case['name'] in ('invalid_free', 'double_free') else 'result 0\n'
+    return '' if code == 0 and not timed_out and (folder/'stdout.log').read_text() == expected else 'benign input Z did not finish with the expected output'
 
 
 def verify(case, options):
     record = run_one(case['program'], options)
     error = check_case(record, case, options.root)
+    error = error or benign(case, record, options)
+    record.update(expectedCrash=True, assertionsPassed=not error, assertionError=error, case=case['name'])
+    (Path(record['directory'])/'run.json').write_text(json.dumps(record, indent=2)+'\n')
     print(f"{case['name']}: {'FAIL: '+error if error else 'PASS'}", flush=True)
-    return not error
+    return record
 
 
 if __name__ == '__main__':

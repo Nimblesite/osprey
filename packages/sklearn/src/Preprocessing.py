@@ -1,5 +1,4 @@
 # osprey: flavor=python
-# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=sklearn
 # osprey: module=Preprocessing
 """scikit-learn scalers, normalizers and encoders over array-likes (lists).

@@ -67,6 +67,9 @@ static long stream_cap(void) {
   return cap > OSP_HUNT_STREAM_MAX ? OSP_HUNT_STREAM_MAX : cap;
 }
 
+// Implements [SYMEX-MOCK-READ-BUFFER]. Reuse the stream's clamped bound.
+size_t osp_hunt_file_buffer_capacity(void) { return (size_t)stream_cap() + 2; }
+
 // First use of a readable stream: its bytes and length become symbolic. The
 // bytes are their own allocation because KLEE makes whole objects symbolic.
 static void materialise(struct osp_hunt_file *stream) {

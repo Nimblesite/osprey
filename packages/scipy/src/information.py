@@ -1,5 +1,5 @@
 # osprey: flavor=python
-# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
+# Adapted Cephes/xsf numerical code; Osprey changes and required terms: ../NOTICE.md.
 # osprey: namespace=scipy
 # osprey: module=Information
 """scipy.special's information-theoretic functions and list reductions.

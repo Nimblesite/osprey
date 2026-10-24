@@ -1,5 +1,4 @@
 # osprey: flavor=python
-# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=numpy
 # osprey: module=Array
 """Row-major float64 ndarray: creation, shape, broadcasting, reductions.

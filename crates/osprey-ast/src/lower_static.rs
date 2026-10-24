@@ -23,6 +23,7 @@ use std::collections::{BTreeMap, BTreeSet};
 const ENTRY_POINT: &str = "main";
 
 mod bindings;
+mod factories;
 mod forwarding;
 mod handlers;
 mod hygiene;
@@ -73,13 +74,15 @@ pub(crate) fn run(program: &Program) -> Result<Program, Vec<StageError>> {
         return Ok(program.clone());
     }
     let program = hygiene::resolve(program);
-    let (definitions, bindings) = (function_definitions(&program), bindings::collect(&program));
+    let definitions = function_definitions(&program);
+    let bindings = bindings::collect(&program, &definitions);
+    let requirements = all_requirements(&program, &bindings);
     let mut lowering = Lowering {
         forwarders: forwarding::collect(&definitions, &bindings),
         definitions,
         bindings,
         effects: effect_declarations(&program),
-        requirements: all_requirements(&program),
+        requirements,
         dispatches: crate::stage_rows::dispatch_requirements(&program),
         callables: crate::stage_rows::Callables::of(&program),
         produced: Vec::new(),

@@ -1,5 +1,4 @@
 # osprey: flavor=python
-# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=jinja2
 # osprey: module=Expr
 """The expression engine: tokenizes a Jinja expression and evaluates it over an

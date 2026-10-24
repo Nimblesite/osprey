@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Retain the reviewed license bundle when package source or metadata changes.
 import { createHash } from 'node:crypto'
-import { readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -9,7 +9,6 @@ const ROOT = fileURLToPath(new URL('../packages/', import.meta.url))
 const AUDIT = JSON.parse(readFileSync(join(ROOT, 'license-audit.json'), 'utf8'))
 const HOLDER = 'NIMBLESITE PTY LTD, Australia'
 const MARKER = '# osprey: flavor=python'
-const CHANGE_NOTICE = '# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.'
 const read = (path) => readFileSync(path, 'utf8')
 const digest = (text) => createHash('sha256').update(text).digest('hex')
 const requireThat = (ok, message) => { if (!ok) throw new Error(message) }
@@ -23,11 +22,13 @@ requireThat(JSON.stringify(packageNames) === JSON.stringify(Object.keys(AUDIT.pa
   'Every package needs an entry in packages/license-audit.json')
 requireThat(AUDIT.copyright_holder === HOLDER, 'Unexpected Osprey copyright holder')
 
-const verifySource = (dir, manifest) => {
+const verifySource = (dir, manifest, entry) => {
   const sources = manifest.match(/^python_sources = \[(.*)\]$/m)?.[1] ?? ''
   for (const path of [...sources.matchAll(/"([^"]+)"/g)].map((match) => match[1])) {
     const source = read(join(dir, path))
-    requireThat(source.startsWith(`${MARKER}\n${CHANGE_NOTICE}\n`), `${dir}/${path}: missing port change notice`)
+    requireThat(source.startsWith(`${MARKER}\n`), `${dir}/${path}: missing Osprey marker`)
+    const requiredNotice = entry.source_notices[path]
+    requireThat(!requiredNotice || source.startsWith(`${MARKER}\n${requiredNotice}\n`), `${dir}/${path}: missing material notice`)
   }
 }
 
@@ -37,6 +38,8 @@ const verifyUpstream = (dir, upstream) => {
   requireThat(text.length > 20 && digest(text) === upstream.sha256, `${dir}/${upstream.file}: license text changed`)
   requireThat(upstream.repository.startsWith('https://github.com/') && upstream.source.startsWith('https://'),
     `${dir}: missing upstream provenance`)
+  requireThat(upstream.basis && upstream.applies_to.length > 0, `${dir}: unsupported third-party license assignment`)
+  for (const path of upstream.applies_to) requireThat(existsSync(join(dir, path)), `${dir}/${path}: material not found`)
 }
 
 const verifyPackage = (name) => {
@@ -50,10 +53,10 @@ const verifyPackage = (name) => {
   requireThat(notice.includes(entry.license) && notice.includes(HOLDER), `${name}: attribution or license summary missing`)
   for (const upstream of entry.upstreams) verifyUpstream(dir, upstream)
   const expected = [...new Set(entry.upstreams.map((upstream) => join(dir, upstream.file)))].sort()
-  const actual = expected.length ? filesIn(join(dir, 'LICENSES')).sort() : []
+  const actual = existsSync(join(dir, 'LICENSES')) ? filesIn(join(dir, 'LICENSES')).sort() : []
   requireThat(JSON.stringify(actual) === JSON.stringify(expected), `${name}: unreviewed or missing license files`)
-  verifySource(dir, manifest)
+  verifySource(dir, manifest, entry)
 }
 
 for (const name of packageNames) verifyPackage(name)
-console.log(`Package licenses: ${packageNames.length} reviewed packages; MIT holder, upstream texts, SPDX metadata and change notices verified.`)
+console.log(`Package licenses: ${packageNames.length} reviewed packages; MIT holder, scoped material notices and metadata verified.`)

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Measure a bounded Hunt corpus; complete runs qualify, never merely exit 0 [SYMEX-CORPUS-QUICK]."""
 import argparse
+from contextlib import ExitStack
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import json
@@ -36,17 +37,24 @@ def stop_group(child):
     child.wait()
 
 
-def execute(command, options, folder):
+def wait(child, options, start):
+    try:
+        code = child.wait(timeout=max(0, options.wall_time-(time.monotonic()-start)))
+        return code, False
+    except subprocess.TimeoutExpired:
+        stop_group(child)
+        return 124, True
+
+
+def execute(command, options, folder, stdin=None):
     start = time.monotonic()
-    with (folder/'stdout.log').open('w') as stdout, (folder/'stderr.log').open('w') as stderr:
-        child = subprocess.Popen(command, cwd=options.root, stdin=subprocess.DEVNULL,
+    with ExitStack() as stack:
+        stdout = stack.enter_context((folder/'stdout.log').open('w'))
+        stderr = stack.enter_context((folder/'stderr.log').open('w'))
+        source = stack.enter_context(stdin.open('rb')) if stdin else subprocess.DEVNULL
+        child = subprocess.Popen(command, cwd=options.root, stdin=source,
                                  stdout=stdout, stderr=stderr, start_new_session=True)
-        try:
-            code = child.wait(timeout=max(0, options.wall_time-(time.monotonic()-start)))
-            timed_out = False
-        except subprocess.TimeoutExpired:
-            stop_group(child)
-            code, timed_out = 124, True
+        code, timed_out = wait(child, options, start)
     return code, timed_out, round(time.monotonic()-start, 3)
 
 

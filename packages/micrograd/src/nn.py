@@ -1,5 +1,4 @@
 # osprey: flavor=python
-# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=micrograd
 # osprey: module=NN
 """micrograd's neural network library over the graph arena.

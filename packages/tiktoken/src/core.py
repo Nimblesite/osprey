@@ -1,5 +1,4 @@
 # osprey: flavor=python
-# Osprey adaptation; files changed for Osprey. Upstream attribution and terms: ../NOTICE.md.
 # osprey: namespace=tiktoken
 # osprey: module=Core
 """`tiktoken.Encoding`: the byte-level BPE codec with special tokens.

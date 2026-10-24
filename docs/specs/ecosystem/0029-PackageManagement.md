@@ -453,7 +453,7 @@ ordinal of the newest epoch, at the next epoch with `--breaking`, or at `1.1`
 for a new package. The authenticated `publish` of spec 0030 replaces this once
 the trust plane exists.
 
-**[PACKAGE-LICENSE-DISTRIBUTION]** Root `LICENSE`, `COPYING`, `NOTICE`, `AUTHORS` and `THIRD_PARTY_NOTICES` files, including `.txt` and `.md` forms, and the complete `LICENSES/` directory are included automatically, case-insensitively, without asset declarations. They participate in `SourceDigest` and remain in the source bundle and installed tree. Ports retain original copyrights, applicable conditions and modification notices; the original contribution license does not replace upstream terms. Applications redistributing compiled derivatives must supply the applicable documents with their distribution.
+**[PACKAGE-LICENSE-DISTRIBUTION]** Root `LICENSE`, `COPYING`, `NOTICE`, `AUTHORS` and `THIRD_PARTY_NOTICES` files, including `.txt` and `.md` forms, and the complete `LICENSES/` directory are included automatically, case-insensitively, without asset declarations. They participate in `SourceDigest` and remain in the source bundle and installed tree. When copied source, adapted implementation or licensed data is incorporated, its applicable ownership, conditions and modification notices are retained. Reimplementing an API or using an oracle does not by itself impose the reference package's license. Applications redistributing compiled derivatives must supply the applicable documents with their distribution.
 
 ### Endpoints
 
