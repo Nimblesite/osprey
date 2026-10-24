@@ -14,10 +14,10 @@ The running backend is [server.js](server.js), launched by the package's `server
 ## Remaining verification
 
 - [x] Apply the compiler capability sandbox to both compile and run requests through the shared runner.
-- [ ] Retain forbidden filesystem, FFI, HTTP and process probes in the checked-in API harness; `test.sh` currently checks a successful showcase only.
+- [x] [The API harness](../test.sh) checks forbidden filesystem, FFI, HTTP and process operations on both endpoints, requiring HTTP 422 and the capability-specific security diagnostic after the showcase succeeds.
 - [ ] Assert compiler-child and descendant cleanup on timeout and container shutdown, including concurrent requests.
 - [ ] Exercise request/output bounds, malformed bodies, compiler failures and browser-origin handling through the actual API.
 
-[The backend README](../README.md) documents setup and the capability boundary. [test.sh](../test.sh) verifies a successful showcase response; it does not prove all of these hardening requirements.
+[The backend README](../README.md) documents setup and the capability boundary. [test.sh](../test.sh) verifies the showcase and forbidden-capability probes; timeout, concurrency and full request-bound coverage remain separate requirements.
 
 A replacement backend written in Osprey would need its own delivery plan, tests and explicit migration. The prototype is not an alternative implementation of today's service.
