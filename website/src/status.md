@@ -51,10 +51,10 @@ The release list was unavailable when this page was built. See
   call-site type arguments in Default and ML.
 - Immutable persistent lists and maps
 - [Dense computation buffers](/spec/0034-gpucomputation/) with typed kernels and explicit arithmetic policies. Kernels and matrix products run on Metal or OpenCL when `OSPREY_GPU` selects a device, and on the CPU otherwise; buffers stay on the device between kernels. Known let-bound kernels retain their original captures when extracted.
-- Lightweight native fibers and channels
+- Isolated native fibers and channels; the current runtime uses one OS thread per fiber
 - Native HTTP, WebSocket, file, process and C FFI runtime APIs
-- Default, tracing-GC and Perceus-ARC native memory backends
-- Native and `wasm32-wasip1` compilation, plus iOS and Android C ABI targets
+- Default, tracing-GC and ARC native memory backends
+- Native and `wasm32-wasip1` compilation, iOS and Android C ABI targets, and [Python-hosted native libraries](/spec/0042-pythoninterop/) with scalar calls, exception results and opaque object handles
 - A shared modular mobile application with reactive native UI, SQLite cache, live GitHub requests, and local notes and priorities
 - Compiler-backed formatting, documentation generation, testing, profiling and
   language-server commands
@@ -73,6 +73,7 @@ are compiled and compared with checked-in expected output.
 | Target | Output | Runtime boundary |
 | --- | --- | --- |
 | `native` | Executable for the host platform | Native runtime, including resumable effects; default, GC, or ARC memory |
+| `python` | Shared library and C header on Linux/macOS | Loaded by CPython through `osprey-interop`; scalar ABI and opaque Python handles; no dynamic control continuations, fibers, HTTP/WebSocket or process spawning |
 | `wasm32` | WebAssembly module | WASI/browser host; default memory; unsupported features rejected before code generation |
 | `ios`, `ios-sim` | ARM64 static archive and C header | Swift host, iOS 15 minimum; default memory; no resumable effects |
 | `android-arm64`, `android-x64` | ARM64 or x86-64 static archive and C header | Android host and JNI, API 26 minimum; default memory; no resumable effects |
@@ -102,9 +103,9 @@ The current development build rejects these older forms:
 - The strict static-memory mode described in the memory specification is not a current CLI option. Native builds accept `default`, `gc`, and `arc`; mobile and WebAssembly accept `default` only.
 - The initial mobile runtime retains general allocations for process lifetime and has no public library teardown or returned-string release API.
 - The mobile sample reads one public GitHub issue page. Authentication, pagination, background refresh, and posting changes to GitHub are not implemented.
-- GPU kernels run in software binary64 with no kernel fusion, so small kernels are launch-bound: GPT-2 trains about three times faster on an M4 Max GPU than on its CPU and generates no faster. `gpuScan` and `gpuFilter` have no device form; a selected device stops the run on them. Only Apple GPUs have been tested, and iOS, Android and WebAssembly run GPU code on the CPU.
+- GPU kernels run in software binary64 with no kernel fusion, so small kernels are launch-bound: GPT-2 trains about three times faster on an M4 Max GPU than on its CPU and generates no faster. `gpuScan` and `gpuFilter` have no device form; a selected device stops the run on them. Recorded hardware acceptance covers Apple GPUs. iOS, Android and WebAssembly support the CPU buffer backend; an explicit device selection fails because these targets carry no GPU adapter.
 - C integrations are outside Osprey's memory-safety guarantee.
-- Symbolic bug hunting ships as [`osprey hunt`](/docs/hunt/) (symbolic execution by KLEE) from `main` with symbolic stdin and files; the typed function harness, `libkleeRuntest` replay, regression-test generation, Windows and the comparison benchmarks are not built. See [plan 0034](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0034-symbolic-execution.md).
+- Symbolic bug hunting ships as [`osprey hunt`](/docs/hunt/) (symbolic execution by KLEE) with symbolic stdin and files and native replay; the typed function harness, `libkleeRuntest` replay, regression-test generation, Windows and the comparison benchmarks are not built. See [plan 0034](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0034-symbolic-execution.md).
 
 For detailed intended behavior and chapter-specific implementation notes, read
 the [specifications](/spec/). For compiler-generated built-in signatures, use
