@@ -25,6 +25,8 @@ COPY compiler/runtime /workspace/compiler/runtime
 COPY lspkit /workspace/lspkit
 # The compiler embeds this shared grammar in generated HTML documentation.
 COPY website/src/js/osprey-grammar.mjs /workspace/website/src/js/osprey-grammar.mjs
+# Hunt reports embed the same design tokens as the website.
+COPY website/src/css/variables.css /workspace/website/src/css/variables.css
 WORKDIR /workspace
 
 # The language server inside `osprey` mounts lspkit's profiler, whose build
