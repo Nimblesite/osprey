@@ -1,7 +1,7 @@
 //! Lexically aware value, declaration, and constructor rewriting.
 
 use crate::model::SymbolKey;
-use crate::purity::is_pure;
+use crate::purity::{is_function_reference, is_pure};
 use crate::resolve::{symbol_key, Context, Locals, Resolver};
 use osprey_ast::{Expr, Stmt, TypeParam};
 
@@ -60,7 +60,9 @@ impl Resolver<'_> {
         let mut value = constant.value;
         self.rewrite_expr(&mut value, &context, &mut Locals::default());
         let _ = self.constant_active.remove(key);
-        if is_pure(&value) && !self.invalid_constants.contains(key) {
+        if (is_pure(&value) || is_function_reference(&value, self.graph))
+            && !self.invalid_constants.contains(key)
+        {
             let _ = self.constant_cache.insert(key.clone(), value.clone());
             Some(value)
         } else {
