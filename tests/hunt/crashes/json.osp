@@ -1,0 +1,5 @@
+/// Deliberately planted: Malformed JSON result mishandled [SYMEX-CRASH-GATE].
+extern fn abort() -> int
+let line = input()
+let result = if line == "J" { match jsonParse("{") { Success { value } => jsonFree(value) ?: 0  Error => abort() } } else { 0 }
+print("result ${result}")

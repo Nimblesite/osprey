@@ -12,7 +12,7 @@ Upstream: [pytorch/pytorch](https://github.com/pytorch/pytorch). Reference: upst
 
 ## PyTorch-NOTICE
 
-Upstream: [pytorch/pytorch](https://github.com/pytorch/pytorch). Reference: upstream audit snapshot. Retained text: [LICENSES/PyTorch-NOTICE.txt](LICENSES/PyTorch-NOTICE.txt). [License source](https://github.com/pytorch/pytorch/blob/main/NOTICE).
+Upstream: [pytorch/pytorch](https://github.com/pytorch/pytorch). Reference: upstream audit snapshot. Retained text: [LICENSES/PyTorch-NOTICE.txt](LICENSES/PyTorch-NOTICE.txt). [License source](https://github.com/pytorch/pytorch/blob/v2.14.1/NOTICE).
 
 The complete upstream PyTorch NOTICE is preserved. References there to bundled native libraries describe upstream PyTorch; those binaries and third_party submodules are not shipped by this Osprey port.
 

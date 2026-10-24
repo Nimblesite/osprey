@@ -39,6 +39,7 @@ test: build
 	$(MAKE) _test_c_runtime
 	$(MAKE) _test_hunt_mock
 	$(MAKE) _test_hunt
+	$(MAKE) _test_hunt_crashes
 	$(MAKE) _coverage_check_c_runtime
 # _test_language_corpus is deliberately NOT here. It runs every program in
 # tests/ through the TAP subcommand, and _test_goldens then runs every one of
@@ -59,6 +60,15 @@ test: build
 ##       make hunt FILE=path/to/program.osp [HUNT_ARGS="--max-time 120"]
 hunt: build
 	./target/release/osprey hunt $(FILE) $(HUNT_ARGS)
+
+## hunt-sample: Qualify all runnable apps for a fast corpus; hard 10-second cutoff.
+.PHONY: hunt-sample hunt-crashes
+hunt-sample: build
+	python3 scripts/hunt_sample.py $(HUNT_ARGS)
+
+## hunt-crashes: Detect and natively reproduce every deliberately planted crash.
+hunt-crashes: build
+	$(MAKE) _test_hunt_crashes
 
 ## hunt-corpus: Hunt every program under tests/ and examples/ not listed in
 ##              tests/HUNT_UNPORTABLE.txt, then print the table [SYMEX-CORPUS].

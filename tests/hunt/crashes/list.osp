@@ -1,0 +1,5 @@
+/// Deliberately planted: Out-of-range list result mishandled [SYMEX-CRASH-GATE].
+extern fn abort() -> int
+let line = input()
+let result = if line == "L" { match listGet([10], 3) { Success { value } => value  Error => abort() } } else { 0 }
+print("result ${result}")

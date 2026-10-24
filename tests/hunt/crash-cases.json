@@ -13,64 +13,127 @@
     ]
   },
   {
-    "name": "12 application and C-memory failures",
-    "program": "tests/hunt/crash_use_cases.osp",
-    "expected": "tests/hunt/crash_use_cases.expected",
+    "name": "Parser error mishandled",
+    "program": "tests/hunt/crashes/parse.osp",
+    "expected": "tests/hunt/crashes/parse.expected",
     "cases": [
       {
         "stdin": "P",
         "signals": [
           "SIGABRT"
         ]
-      },
+      }
+    ]
+  },
+  {
+    "name": "Checked arithmetic overflow mishandled",
+    "program": "tests/hunt/crashes/arithmetic.osp",
+    "expected": "tests/hunt/crashes/arithmetic.expected",
+    "cases": [
       {
         "stdin": "A",
         "signals": [
           "SIGABRT"
         ]
-      },
+      }
+    ]
+  },
+  {
+    "name": "Out-of-range list result mishandled",
+    "program": "tests/hunt/crashes/list.osp",
+    "expected": "tests/hunt/crashes/list.expected",
+    "cases": [
       {
         "stdin": "L",
         "signals": [
           "SIGABRT"
         ]
-      },
+      }
+    ]
+  },
+  {
+    "name": "Missing map key mishandled",
+    "program": "tests/hunt/crashes/map.osp",
+    "expected": "tests/hunt/crashes/map.expected",
+    "cases": [
       {
         "stdin": "K",
         "signals": [
           "SIGABRT"
         ]
-      },
+      }
+    ]
+  },
+  {
+    "name": "Captured closure invariant",
+    "program": "tests/hunt/crashes/closure.osp",
+    "expected": "tests/hunt/crashes/closure.expected",
+    "cases": [
       {
         "stdin": "C",
         "signals": [
           "SIGABRT"
         ]
-      },
+      }
+    ]
+  },
+  {
+    "name": "Recursive base-case invariant",
+    "program": "tests/hunt/crashes/recursion.osp",
+    "expected": "tests/hunt/crashes/recursion.expected",
+    "cases": [
       {
         "stdin": "R",
         "signals": [
           "SIGABRT"
         ]
-      },
+      }
+    ]
+  },
+  {
+    "name": "Union case invariant",
+    "program": "tests/hunt/crashes/union.osp",
+    "expected": "tests/hunt/crashes/union.expected",
+    "cases": [
       {
         "stdin": "U",
         "signals": [
           "SIGABRT"
         ]
-      },
+      }
+    ]
+  },
+  {
+    "name": "Record range invariant",
+    "program": "tests/hunt/crashes/record.osp",
+    "expected": "tests/hunt/crashes/record.expected",
+    "cases": [
       {
         "stdin": "B",
         "signals": [
           "SIGABRT"
         ]
-      },
+      }
+    ]
+  },
+  {
+    "name": "Malformed JSON result mishandled",
+    "program": "tests/hunt/crashes/json.osp",
+    "expected": "tests/hunt/crashes/json.expected",
+    "cases": [
       {
         "stdin": "J",
         "signals": [
           "SIGABRT"
         ]
-      },
+      }
+    ]
+  },
+  {
+    "name": "File-driven invariant",
+    "program": "tests/hunt/crashes/file.osp",
+    "expected": "tests/hunt/crashes/file.expected",
+    "cases": [
       {
         "stdin": "F",
         "signals": [
@@ -80,13 +143,27 @@
           "path": "hunt-payload.txt",
           "bytes": "!"
         }
-      },
+      }
+    ]
+  },
+  {
+    "name": "invalid_free",
+    "program": "tests/hunt/crashes/invalid_free.osp",
+    "expected": "tests/hunt/crashes/invalid_free.expected",
+    "cases": [
       {
         "stdin": "G",
         "signals": [
           "SIGABRT"
         ]
-      },
+      }
+    ]
+  },
+  {
+    "name": "double_free",
+    "program": "tests/hunt/crashes/double_free.osp",
+    "expected": "tests/hunt/crashes/double_free.expected",
+    "cases": [
       {
         "stdin": "D",
         "signals": [

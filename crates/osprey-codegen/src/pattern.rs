@@ -212,13 +212,6 @@ fn finish_phi(
         .map(|(v, blk)| format!("[ {}, %{blk} ]", v.operand))
         .collect::<Vec<_>>()
         .join(", ");
-    if cg
-        .source_function
-        .as_deref()
-        .is_some_and(|name| name.ends_with("3x61746c"))
-    {
-        eprintln!("TRACE atl join: {incoming_values:?}");
-    }
     let reg = cg.emit_reg(format!("phi {llvm_ty} {incoming}"));
     let common = |sel: fn(&Value) -> Option<String>| {
         let first = sel(first_val);

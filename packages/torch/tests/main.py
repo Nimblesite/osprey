@@ -570,7 +570,7 @@ def auto_cases():
 # Suite -------------------------------------------------------------------
 
 def suite():
-    return sgd_cases()
+    return foldList([sgd_cases(), adam_cases(), adamw_cases(), rmsprop_cases(), adagrad_cases(), lr_cases(), clip_cases(), auto_cases()], [], lambda acc, cases: listConcat(acc, cases))
 
 
 def main():

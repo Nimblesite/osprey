@@ -1,0 +1,5 @@
+/// Deliberately planted: Checked arithmetic overflow mishandled [SYMEX-CRASH-GATE].
+extern fn abort() -> int
+let line = input()
+let result = if line == "A" { match checkedAdd(9223372036854775807, 1) { Success { value } => value  Error => abort() } } else { 0 }
+print("result ${result}")

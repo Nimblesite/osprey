@@ -1,0 +1,9 @@
+/// Deliberately frees one C allocation twice [SYMEX-CRASH-GATE].
+extern fn malloc(bytes: int) -> string
+extern fn free(value: string) -> Unit
+fn released(value) = {
+    free(value)
+    value
+}
+let value = malloc(8)
+if input() == "D" { free(released(value)) } else { print("safe") }

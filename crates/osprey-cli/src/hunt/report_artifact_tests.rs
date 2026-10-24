@@ -28,6 +28,8 @@ fn hunt_saves_both_reports_by_default_and_keeps_json_stdout_parseable() {
         &html,
         &[
             "For AI",
+            "Paths explored",
+            "Normal exits",
             "Not confirmed in a normal run",
             "9\\n",
             "main.osp",

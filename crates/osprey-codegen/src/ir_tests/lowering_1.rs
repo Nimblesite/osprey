@@ -302,10 +302,6 @@ fn generic_list_default_keeps_each_call_sites_element_depth() {
          def main():\n    row = atl(SPECS, 0)\n    return print(f\"{len(row)}:{len(pair(atl(BATCHES, 0)))}\")\n",
         Flavor::Python,
     );
-    eprintln!(
-        "TRACE inferred: {:#?}",
-        osprey_types::infer_program(&program)
-    );
     let ir = compile_program(&program).expect("nested list defaults must compile");
     assert!(
         !ir.contains("call i64 @osp_strlen"),

@@ -56,13 +56,7 @@ pub(crate) fn with_application<R>(
     else {
         return generate(cg);
     };
-    let scope = match unapplied(function) {
-        Expr::Identifier(name) => {
-            let name = cg.call_aliases.get(name).unwrap_or(name);
-            cg.fn_defs.contains_key(name).then_some(name.as_str())
-        }
-        _ => None,
-    };
+    let scope = application_scope(cg, function);
     let specialized = cg.prog.specialized(&bindings, scope);
     let original = std::mem::replace(&mut cg.prog, specialized);
     let previous = cg.application_caller.replace(original.clone());
@@ -70,6 +64,18 @@ pub(crate) fn with_application<R>(
     cg.prog = original;
     cg.application_caller = previous;
     result
+}
+
+/// A call specializes its own body; expanded bindings may also mention other
+/// generic functions that must remain free for their later instantiations.
+fn application_scope<'a>(cg: &'a Codegen, function: &'a Expr) -> Option<&'a str> {
+    match unapplied(function) {
+        Expr::Identifier(name) => {
+            let name = cg.call_aliases.get(name).unwrap_or(name);
+            cg.fn_defs.contains_key(name).then_some(name.as_str())
+        }
+        _ => None,
+    }
 }
 
 /// Deferred generic dotted calls select against the instantiated receiver.

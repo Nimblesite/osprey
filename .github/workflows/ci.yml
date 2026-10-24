@@ -443,6 +443,9 @@ jobs:
       - name: C runtime suites with coverage
         run: make _test_c_runtime
 
+      - name: Hunt mock runtime and corpus tooling assertions
+        run: make _test_hunt_mock
+
       - name: C runtime coverage thresholds
         run: make _coverage_check_c_runtime
 
@@ -888,6 +891,25 @@ jobs:
 
       - name: iOS and macOS builds, ABI, goldens and app persistence
         run: make ios-test macos-test mobile-ios-test bank-ios-test
+
+      # [SYMEX-CRASH-GATE] A real engine and native replay are mandatory.
+      # Uses the compiler/native runtime built by the macOS step above.
+      - name: Install KLEE for planted crash tests
+        run: brew install klee
+
+      - name: Build symbolic runtime and prove planted crash detection
+        run: |
+          make _runtime_klee
+          make _test_hunt_crashes
+
+      - name: Upload Hunt crash reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hunt-crash-reports
+          path: target/hunt-crashes/
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Native bank simulator results
         if: always()

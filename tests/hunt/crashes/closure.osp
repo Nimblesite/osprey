@@ -1,0 +1,6 @@
+/// Deliberately planted: Captured closure invariant [SYMEX-CRASH-GATE].
+extern fn abort() -> int
+fn validate(expected, actual) = if actual == expected { abort() } else { 0 }
+let line = input()
+let result = if line == "C" { validate(line, "C") } else { 0 }
+print("result ${result}")

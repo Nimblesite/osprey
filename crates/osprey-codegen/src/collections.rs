@@ -100,13 +100,6 @@ fn element_word(
     container: &str,
     tag: &str,
 ) -> Value {
-    if cg
-        .source_function
-        .as_deref()
-        .is_some_and(|name| name.ends_with("3x61746c"))
-    {
-        eprintln!("TRACE atl element: {collection:?}");
-    }
     let inferred = collection.element_type(container);
     let descriptor = crate::types::elem_tag(&cg.prog, inferred.as_ref())
         .or_else(|| crate::llty::elem_of_tag(collection, tag));

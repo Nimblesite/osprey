@@ -211,6 +211,13 @@ _test_hunt:
 	  python3 scripts/hunt_expect.py "$$out" "$$e" "$$status" || fail=1; \
 	done; exit $$fail
 
+# No skip path: CI must detect and natively reproduce every planted failure.
+.PHONY: _test_hunt_crashes
+_test_hunt_crashes:
+	@command -v klee >/dev/null || { echo "FAIL: KLEE is required for planted crash tests"; exit 1; }
+	@test -f compiler/bin/libosprey_runtime_klee.bc
+	python3 scripts/hunt_crashes.py
+
 _test_hunt_mock:
 	@echo "==> [hunt] mock C library unit tests..."
 	@cd compiler && set -e && $(MKDIR) bin/hunt_mock && rm -f bin/hunt_mock/*.o && \
@@ -223,6 +230,7 @@ _test_hunt_mock:
 	  $(CC) bin/hunt_mock/*.o -o bin/hunt_mock_tests && ./bin/hunt_mock_tests
 	@echo "==> [hunt] corpus scripts and the format oracle..."
 	@python3 scripts/test-hunt-scripts.py
+	@python3 scripts/test-hunt-sample.py
 
 # Per-library C line-coverage gate. Rebuilds every table suite with gcov
 # instrumentation into compiler/bin/cov/<suite>/, reruns it there (a failing

@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 import sys
+import time
 
 from hunt_expect import actual_findings, expected_findings, validate
 from hunt_sample import run_one
@@ -47,8 +48,9 @@ def main():
     parser.add_argument('--osprey', type=Path, default=Path('target/release/osprey'))
     args = parser.parse_args()
     cases = json.loads(Path('tests/hunt/crash-cases.json').read_text())
-    options = argparse.Namespace(root=Path.cwd(), out=args.out.resolve(), osprey=args.osprey.resolve(),
+    options = argparse.Namespace(root=Path.cwd(), out=args.out.resolve()/f"run-{time.time_ns()}", osprey=args.osprey.resolve(),
                                  wall_time=10, max_time=8, input_bytes=1)
+    print(f'Crash reports: {options.out}', flush=True)
     results = [verify(case, options) for case in cases]
     print(f'{sum(results)}/{len(results)} programs passed; {sum(len(case["cases"]) for case in cases)} planted input cases')
     return 0 if all(results) else 1

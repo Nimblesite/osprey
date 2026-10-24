@@ -73,6 +73,17 @@ class CrashGateTests(unittest.TestCase):
                       {'replayDetail': 'SIGSEGV'}, {'stdin': '0'}]:
             self.assertTrue(check_replay(base | patch, case), patch)
 
+    def test_every_planted_input_is_pinned_and_has_a_real_program(self):
+        root = Path(__file__).resolve().parent.parent
+        cases = json.loads((root/'tests/hunt/crash-cases.json').read_text())
+        self.assertEqual(sum(len(case['cases']) for case in cases), 15)
+        inputs = {item['stdin'] for case in cases for item in case['cases']}
+        self.assertEqual(inputs, set('9PALKCRUBJFGDMY'))
+        for case in cases:
+            self.assertTrue((root/case['program']).exists(), case)
+            self.assertTrue((root/case['expected']).is_file(), case)
+            self.assertTrue(all(item['signals'] for item in case['cases']), case)
+
     def test_real_engine_gate_is_required_by_existing_ci_contexts(self):
         root = Path(__file__).resolve().parent.parent
         workflow = (root/'.github/workflows/ci.yml').read_text()

@@ -1,0 +1,5 @@
+/// Deliberately planted: Missing map key mishandled [SYMEX-CRASH-GATE].
+extern fn abort() -> int
+let line = input()
+let result = if line == "K" { match mapGet(mapSet(Map(), "known", 7), "missing") { Success { value } => value  Error => abort() } } else { 0 }
+print("result ${result}")

@@ -1,0 +1,5 @@
+/// Deliberately planted: Parser error mishandled [SYMEX-CRASH-GATE].
+extern fn abort() -> int
+let line = input()
+let result = if line == "P" { match parseInt("not-a-number") { Success { value } => value  Error => abort() } } else { 0 }
+print("result ${result}")
