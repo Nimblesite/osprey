@@ -242,7 +242,11 @@ def lazy_after(cps, r, after, n, mn, mx):
 
 def lazy_done(cps, r, after, mn, mx, greedy):
     """Build the quantified fragment with its greediness decided."""
-    return Success(value=Program.PRes(frag=Builder.repeat_frag(r.frag, mn, mx, greedy), next=after, gs=r.gs))
+    c = Program.at(cps, after)
+    if c == 42 or c == 43 or c == 63 or (c == 123 and len(parse_braces(cps, after, len(cps))) > 0):
+        return Program.fail("multiple repeat", after)
+    else:
+        return Success(value=Program.PRes(frag=Builder.repeat_frag(r.frag, mn, mx, greedy), next=after, gs=r.gs))
 
 
 def brace_quantifier(cps, r, j, n):
@@ -260,7 +264,7 @@ def brace_spec(cps, r, j, n, spec):
     mx = unwrap_or(listGet(spec, 1), 0)
     after = unwrap_or(listGet(spec, 2), j)
     if mx >= 0 and mn > mx:
-        return Program.fail("min repeat greater than max repeat", j)
+        return Program.fail("min repeat greater than max repeat", j + 1)
     else:
         return lazy_after(cps, r, after, n, mn, mx)
 

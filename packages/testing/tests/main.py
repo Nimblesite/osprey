@@ -33,8 +33,17 @@ def plus(a, b):
     return a + b
 
 
+def explicit_fault_case():
+    match Check.strictly(lambda: print(toString(perform(Check.Fault.halt("explicit test fault"))))):
+        case Error(message=message):
+            return Check.equal("strictly.explicit_fault", message, "explicit test fault")
+        case Success():
+            return Check.failed("strictly.explicit_fault", "the fault did not abort its region")
+
+
 def helper_cases():
     return [
+        explicit_fault_case(),
         Check.close("close.pair", 1.0, 1.0000001, RTOL, ATOL),
         Check.equal("outcome.detail", Check.Outcome(name="o", ok=False, detail="why").detail, "why"),
         Check.equal("lenient.remainder", Check.lenient(lambda: remainder(7, 0)), 0),

@@ -68,7 +68,7 @@ Source-digest fixtures contain independently computed goldens. The resolver is c
 
 [core/src/capabilities.osp](core/src/capabilities.osp) supplies `doctor`'s inventory. File text I/O, HTTP, process execution, stdin, lists/maps and byte-level string access are available. Remaining host gaps include argv, exit status, environment access, binary-safe file reads, directory/stat/atomic-rename/fsync builtins and a UTC clock. File-tree handlers currently shell out; rollback after a reported failure is not crash-safe activation.
 
-Bitwise builtins (`bitAnd`, `bitXor`, shifts and related operations) exist. The inventory's `int.bitwise` entry is stale. [core/src/sha256.osp](core/src/sha256.osp) still uses arithmetic/nibble lookup tables; that implementation choice no longer proves the language lacks bitwise operations.
+Bitwise builtins (`bitAnd`, `bitXor`, shifts and related operations) exist. The inventory regression checks that these are absent from the blocked list. [core/src/sha256.osp](core/src/sha256.osp) still uses arithmetic/nibble lookup tables; that implementation choice no longer proves the language lacks bitwise operations.
 
 Verified language boundaries relevant to these suites:
 
@@ -78,8 +78,6 @@ Verified language boundaries relevant to these suites:
 - `==` on lists is rejected rather than comparing identity. `structuralEquals([1, 2], [1, 2])` performs the explicit deep comparison and returns `true`.
 - Tail-call optimization is not implemented. Avoid treating an old stack-depth measurement as a stable recursion limit.
 - A test callback's return value is not an assertion; use the test framework's checks. Keep expected output and assertion results separate.
-
-Earlier construction notes about mandatory recursive return annotations, one specialization per recursive generic function, record-field ambiguity and unused handler parameters are not universal current limits. Native probes now execute inferred recursion, two generic instantiations, shared field names and an unused-argument handler returning another module's `Result`. Preserve targeted regressions and qualify any remaining failure by its actual source.
 
 ## Security gates that run today
 
@@ -105,4 +103,3 @@ The table links the implemented folder-registry checks to their tests. Runtime r
 | Python plane (P1–P3): the generated `.osprey/python/pyproject.toml` names no index and pins `index-strategy = "first-index"`; a member's own `pyproject.toml` may name no `[[tool.uv.index]]` (`python.index-forbidden`) and no `git`, `url` or outside-tree `path` source (`python.source-forbidden`); every sdist and wheel in `uv.lock` carries a hash or `lock` refuses it (`python.uv-lock-hashes`); each refusal runs no uv and writes no lock; sync is `uv sync --frozen`, verification `uv lock --check --offline` | `PythonPlane` | `cli/tests` python suite |
 
 Named tests above cover the folder-registry subset. Python publisher-attestation identity checks and the public trust plane remain unfinished.
-

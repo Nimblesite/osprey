@@ -78,4 +78,10 @@ const STORAGE_BACKENDS: &str =
 #[test]
 fn returned_tensor_computations_resolve_under_each_storage_handler() {
     assert_accepted(STORAGE_BACKENDS);
+    let parsed = osprey_syntax::parse_program(STORAGE_BACKENDS);
+    let lowered = crate::staging::lower_static_checked(&parsed.program);
+    assert!(lowered.is_ok(), "{lowered:#?}");
+    let Ok(lowered) = lowered else { return };
+    let errors = crate::check_program(&lowered);
+    assert!(errors.is_empty(), "residual diagnostics: {errors:#?}");
 }

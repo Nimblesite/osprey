@@ -268,20 +268,20 @@ def parse_class_item(cps, i, j, n, icase, negate, pieces):
             return Error(message=message)
         case Success(value=value):
             if value.next < n and at(cps, value.next) == 45:
-                return parse_range(cps, i, value.next, n, icase, negate, pieces, value.pieces, value.src)
+                return parse_range(cps, i, value.next, n, icase, negate, pieces, value.pieces, value.src, j)
             else:
                 return parse_class_items(cps, i, value.next, n, icase, negate, listConcat(pieces, value.pieces))
 
 
-def parse_range(cps, i, j, n, icase, negate, pieces, lo_pieces, lo_src):
+def parse_range(cps, i, j, n, icase, negate, pieces, lo_pieces, lo_src, lo_start):
     """Parse a `lo-hi` range (or a trailing literal `-`) after a class item."""
     if j + 1 < n and at(cps, j + 1) == 93:
         return parse_class_items(cps, i, j + 1, n, icase, negate, listConcat(pieces, listConcat(lo_pieces, [Program.range_piece(45, 45)])))
     else:
-        return parse_range_hi(cps, i, j, n, icase, negate, pieces, lo_pieces, lo_src)
+        return parse_range_hi(cps, i, j, n, icase, negate, pieces, lo_pieces, lo_src, lo_start)
 
 
-def parse_range_hi(cps, i, j, n, icase, negate, pieces, lo_pieces, lo_src):
+def parse_range_hi(cps, i, j, n, icase, negate, pieces, lo_pieces, lo_src, lo_start):
     """Parse the high endpoint of a class range and emit it."""
     match class_item(cps, j + 1, n):
         case Error(message=message):
@@ -290,6 +290,6 @@ def parse_range_hi(cps, i, j, n, icase, negate, pieces, lo_pieces, lo_src):
             lo = single_cp(lo_pieces)
             hi = single_cp(value.pieces)
             if lo < 0 or hi < 0 or hi < lo:
-                return fail("bad character range " + lo_src + "-" + value.src, j)
+                return fail("bad character range " + lo_src + "-" + value.src, lo_start)
             else:
                 return parse_class_items(cps, i, value.next, n, icase, negate, listAppend(pieces, Program.range_piece(lo, hi)))
