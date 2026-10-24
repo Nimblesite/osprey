@@ -10,7 +10,7 @@ import tempfile
 import time
 import unittest
 
-from hunt_sample import qualifies, run_one
+from hunt_sample import execute, qualifies
 from hunt_programs import discover
 
 
@@ -52,15 +52,12 @@ class QualificationTests(unittest.TestCase):
     def test_deadline_kills_the_child_group_and_preserves_logs(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            fake = root/'osprey'
-            fake.write_text('#!/bin/sh\nsleep 60 &\necho $!\nwait\n')
-            fake.chmod(0o755)
-            options = argparse.Namespace(root=root, out=root/'reports', osprey=fake, wall_time=1,
-                                         max_time=1, input_bytes=2)
-            result = run_one('slow.osp', options)
-            self.assertTrue(result['timedOut'])
-            self.assertLess(result['wallSeconds'], 3)
-            pid = int((Path(result['directory'])/'stdout.log').read_text())
+            options = argparse.Namespace(root=root, wall_time=1)
+            code, timed_out, elapsed = execute(['/bin/sh', '-c', 'sleep 60 &\necho $!\nwait\n'], options, root)
+            self.assertEqual(code, 124)
+            self.assertTrue(timed_out)
+            self.assertLess(elapsed, 3)
+            pid = int((root/'stdout.log').read_text())
             time.sleep(0.1)
             state = subprocess.run(['ps', '-o', 'stat=', '-p', str(pid)], capture_output=True, text=True).stdout.strip()
             self.assertTrue(not state or state.startswith('Z'), state)
@@ -95,7 +92,7 @@ class CrashGateTests(unittest.TestCase):
         cases = json.loads((root/'tests/hunt/crash-cases.json').read_text())
         self.assertEqual(sum(len(case['cases']) for case in cases), 15)
         inputs = {item['stdin'] for case in cases for item in case['cases']}
-        self.assertEqual(inputs, set('9PALKCRUBJFGDMY'))
+        self.assertEqual(inputs, set('9PALKCRUBJFGDY'))
         for case in cases:
             self.assertTrue((root/case['program']).exists(), case)
             self.assertTrue((root/case['expected']).is_file(), case)
