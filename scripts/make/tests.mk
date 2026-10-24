@@ -207,8 +207,8 @@ _test_hunt:
 	set -e; fail=0; for p in tests/hunt/*.osp; do \
 	  e="$${p%.osp}.expected"; out="target/hunt-tests/$$(basename "$${p%.osp}").json"; \
 	  $(MKDIR) target/hunt-tests; \
-	  ./target/release/osprey hunt "$$p" --json --quiet --no-replay --max-time 30 > "$$out" || true; \
-	  python3 scripts/hunt_expect.py "$$out" "$$e" || fail=1; \
+	  status=0; ./target/release/osprey hunt "$$p" --json --quiet --no-replay --max-time 30 > "$$out" || status=$$?; \
+	  python3 scripts/hunt_expect.py "$$out" "$$e" "$$status" || fail=1; \
 	done; exit $$fail
 
 _test_hunt_mock:
