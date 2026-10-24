@@ -17,7 +17,7 @@ The compiler and runtime use:
 
 ## Getting Started
 
-**Use VS Code Dev Containers** - strongly recommended. Open in VS Code and hit "Reopen in Container". Everything's already configured.
+Start with the [installation guide](website/src/docs/installation.md) for host toolchain prerequisites. The [development-container guide](.devcontainer/README.md) records its configured environment and current LLVM/setup limits.
 
 ```bash
 # Fork and clone
