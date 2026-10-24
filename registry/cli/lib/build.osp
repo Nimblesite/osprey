@@ -59,10 +59,9 @@ module Build {
     /// value can break out of the derived document ([PACKAGE-HARDENING] C6).
     fn quote(text) = "\"" + (replace(escaped(text), "\"", "\\\"") ?: escaped(text)) + "\""
 
-    /// The derived manifest is two directories below the invocation directory.
-    fn derivedPath(path) = if startsWith(path, "/") || startsWith(path, "\\\\") || (byteAt(path, 1) ?: 0) == 58 { path } else { "../../${path}" }
-
-    fn rootPath(project, root) = derivedPath("${project}/${root}")
+    /// The derived manifest lives two directories below the selected project.
+    /// Python source paths must remain manifest-relative, even for an absolute project.
+    fn rootPath(root) = "../../${root}"
 
     // Shared field names need typed receivers (issue #273).
     fn dirOf(pm: PackageManifest) = pm.dir
@@ -80,7 +79,7 @@ module Build {
         let dir = Project::treeDirAt(project, lock, p)
         match perform Host::Files.read("${dir}/osprey.toml") {
             Error { message } => Error { message: "${manifestCode} ${keyText(p)} ${message}" }
-            Success { value } => packageManifestAt(dir, p, value)
+            Success { value } => packageManifestAt(Project::treeDirAt(".", lock, p), p, value)
         }
     }
 
@@ -95,15 +94,15 @@ module Build {
         Success { value } => appendManifest(value, project, lock, p)
     })
 
-    fn packageRootsOf(pm) = mapList(manifestOf(pm).sourceRoots, fn(r) => rootPath(dirOf(pm), r))
+    fn packageRootsOf(pm) = mapList(manifestOf(pm).sourceRoots, fn(r) => rootPath("${dirOf(pm)}/${r}"))
 
     fn packageRoots(pms) = foldList(pms, [], fn(acc, pm) => listConcat(acc, packageRootsOf(pm)))
 
-    fn derivedRoots(manifest, project, pms) = listConcat(mapList(manifest.sourceRoots, fn(r) => rootPath(project, r)), packageRoots(pms))
+    fn derivedRoots(manifest, pms) = listConcat(mapList(manifest.sourceRoots, rootPath), packageRoots(pms))
 
-    fn packagePythonSources(pms) = foldList(pms, [], fn(acc, pm) => listConcat(acc, mapList(manifestOf(pm).pythonSources, fn(p) => rootPath(dirOf(pm), p))))
+    fn packagePythonSources(pms) = foldList(pms, [], fn(acc, pm) => listConcat(acc, mapList(manifestOf(pm).pythonSources, fn(p) => rootPath("${dirOf(pm)}/${p}"))))
 
-    fn pythonSources(manifest, project, pms) = listConcat(mapList(manifest.pythonSources, fn(p) => rootPath(project, p)), packagePythonSources(pms))
+    fn pythonSources(manifest, pms) = listConcat(mapList(manifest.pythonSources, rootPath), packagePythonSources(pms))
 
     fn rootsLine(roots) = "source_roots = [${join(mapList(roots, quote), ", ")}]"
 
@@ -111,7 +110,7 @@ module Build {
 
     fn namespaceLine(manifest) = Maybe::fold(manifest.defaultNamespace, [], fn(ns) => ["default_namespace = ${quote(ns)}"])
 
-    fn entryLine(manifest, project) = Maybe::fold(manifest.entry, [], fn(e) => ["entry = ${quote(rootPath(project, e))}"])
+    fn entryLine(manifest) = Maybe::fold(manifest.entry, [], fn(e) => ["entry = ${quote(rootPath(e))}"])
 
     fn flavorText(flavor) = toLowerCase(ManifestModel::flavorName(flavor))
 
@@ -119,18 +118,18 @@ module Build {
 
     fn boolText(flag) = if flag { "true" } else { "false" }
 
-    fn projectLines(manifest, project, pms) = {
-        let header = ["[project]", "name = ${quote(manifest.projectName)}", rootsLine(derivedRoots(manifest, project, pms)), pythonLine(pythonSources(manifest, project, pms))]
-        let options = listConcat(namespaceLine(manifest), listConcat(entryLine(manifest, project), flavorLine(manifest)))
+    fn projectLines(manifest, pms) = {
+        let header = ["[project]", "name = ${quote(manifest.projectName)}", rootsLine(derivedRoots(manifest, pms)), pythonLine(pythonSources(manifest, pms))]
+        let options = listConcat(namespaceLine(manifest), listConcat(entryLine(manifest), flavorLine(manifest)))
         let modules = ["[modules]", "allow_wildcard_imports = ${boolText(manifest.allowWildcardImports)}"]
         listConcat(listConcat(header, options), modules)
     }
 
-    fn derivedText(manifest, project, pms) = join(projectLines(manifest, project, pms), "\n")
+    fn derivedText(manifest, pms) = join(projectLines(manifest, pms), "\n")
 
-    fn writeDerived(cmd: CommandLine, manifest, pms) = match perform Host::Tree.ensure(buildDir) {
+    fn writeDerived(cmd: CommandLine, manifest, pms) = match perform Host::Tree.ensure(Project::pathAt(cmd.project, buildDir)) {
         Error { message } => Error { message: message }
-        Success => match perform Host::Files.write(buildManifest, derivedText(manifest, cmd.project, pms)) {
+        Success => match perform Host::Files.write(Project::pathAt(cmd.project, buildManifest), derivedText(manifest, pms)) {
             Error { message } => Error { message: message }
             Success => Success { value: 0 }
         }
@@ -138,9 +137,9 @@ module Build {
 
     /// The compiler invocation, every variable word shell-quoted ([PACKAGE-HARDENING] C6).
     fn command(cmd: CommandLine, manifest) = if cmd.run {
-        "${Host::shellWord(cmd.compiler)} ${buildDir} --run"
+        "${Host::shellWord(cmd.compiler)} ${Host::shellWord(Project::pathAt(cmd.project, buildDir))} --run"
     } else {
-        "${Host::shellWord(cmd.compiler)} build ${buildDir} -o ${Host::shellWord(buildDir + "/" + manifest.projectName)}"
+        "${Host::shellWord(cmd.compiler)} build ${Host::shellWord(Project::pathAt(cmd.project, buildDir))} -o ${Host::shellWord(Project::pathAt(cmd.project, buildDir + "/" + manifest.projectName))}"
     }
 
     fn stdoutLines(stdout) = filterList(split(stdout, "\n") ?: [], fn(l) => l != "")

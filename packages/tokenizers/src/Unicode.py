@@ -4,8 +4,8 @@
 # osprey: module=Unicode
 """Unicode character classes and case/accent tables used by the ported models.
 
-The range tables are generated from the Unicode Character Database (the same
-data the tokenizers 0.23.3 unicode crates use). PUNCT_RANGES covers the P*
+The range tables use Unicode Character Database 15.0.0 category data.
+PUNCT_RANGES covers the P*
 general categories (Pc Pd Ps Pe Pi Pf Po), NUMERIC_RANGES the Nd Nl No
 categories, and WORD_RANGES the regex `\\w` classes (letters, marks, decimal
 digits, connector punctuation and join controls). is_whitespace follows the

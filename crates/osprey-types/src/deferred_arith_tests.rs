@@ -82,3 +82,17 @@ fn one_helper_still_gets_one_overload() {
         "{errors:?}"
     );
 }
+
+#[test]
+fn collection_addition_rejects_incompatible_elements_and_depths() {
+    for (flavor, source) in [
+        (Flavor::Default, "let mixed = [1] + [[2]]\n"),
+        (Flavor::Default, "let mixed = {\"a\": 1} + {\"b\": \"two\"}\n"),
+        (Flavor::Python, "mixed = [1] + [[2]]\n"),
+        (Flavor::Python, "mixed = {\"a\": 1} + {\"b\": \"two\"}\n"),
+    ] {
+        let errors = typecheck(flavor, source);
+        assert!(errors.iter().any(|error| error.message.contains("cannot unify")),
+            "incompatible collection layouts must fail before codegen: {flavor:?} {source}: {errors:?}");
+    }
+}

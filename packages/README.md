@@ -49,4 +49,11 @@ The publisher retains root `LICENSE`, `COPYING`, `NOTICE`, `AUTHORS` and `THIRD_
 
 Run `node scripts/verify-package-licenses.mjs` from the repository root. It checks Nimblesite's MIT grant, the reviewed metadata, evidence for retained material and only the modification/data notices required for that material. It rejects unreviewed license files. This also runs under `make lint` and `make ci`.
 
-Regression cases in [publish_tests.osp](../registry/cli/tests/src/publish_tests.osp) and [fetch_tests.osp](../registry/cli/tests/src/fetch_tests.osp) check legal-file retention and rejection of altered attribution: `target/release/osprey test registry/cli/tests --filter licenses`.
+Regression cases in [publish_tests.osp](../registry/cli/tests/src/publish_tests.osp) and [fetch_tests.osp](../registry/cli/tests/src/fetch_tests.osp) check legal-file retention and rejection of altered attribution. Filters are exact test names; each command must execute one passing case:
+
+```sh
+target/release/osprey test registry/cli/tests --filter "publish: licenses survive publication"
+target/release/osprey test registry/cli/tests --filter "fetch: licenses and attribution are preserved"
+```
+
+`node --test scripts/test-package-licenses.mjs` checks the reviewed bundles, rejection of missing required original attribution, and rejection of unnecessary upstream license copies; expect three passing tests.

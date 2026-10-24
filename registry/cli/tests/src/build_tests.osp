@@ -22,16 +22,18 @@ module BuildTests {
 
     /// What one run observed: the report, the derived manifest, the ensured
     /// directories and the compiler commands, each "" when none.
-    type Attempt = { report: Reports::Report, derived: string, ensures: string, commands: string }
+    type Attempt = { report: Reports::Report, derived: string, derivedAt: string, ensures: string, commands: string }
 
     fn runBuild(reads, walks, args) = {
         mut derived = ""
+        mut derivedAt = ""
         mut ensures = ""
         mut commands = ""
         let files = handler Host::Files {
             read path => Fixture::readFor(reads, path)
             write path content => {
-                derived = if path == derivedPath { content } else { derived }
+                derived = content
+                derivedAt = path
                 Success { value: byteLength(content) }
             }
         }
@@ -52,7 +54,7 @@ module BuildTests {
             }
         }
         let report = process(fn() => files(fn() => tree(fn() => web(fn() => Build::run(args)))))
-        Attempt { report: report, derived: derived, ensures: ensures, commands: commands }
+        Attempt { report: report, derived: derived, derivedAt: derivedAt, ensures: ensures, commands: commands }
     }
 
     // ---- the project and its two packages ----
@@ -100,15 +102,15 @@ module BuildTests {
     /// The derived project: the root's own roots first, then each package's
     /// own roots in lock order; the python sources likewise.
     fn derivedText() = {
-        let roots = [quoted("${project}/src"), quoted("${installDir(one())}/lib"), quoted("${installDir(one())}/src"), quoted("${installDir(two())}/src")]
-        let python = [quoted("${installDir(one())}/src/model.py")]
+        let roots = [quoted("../../src"), quoted("../../${Fetch::installDir(Fixture::idOf(one()))}/lib"), quoted("../../${Fetch::installDir(Fixture::idOf(one()))}/src"), quoted("../../${Fetch::installDir(Fixture::idOf(two()))}/src")]
+        let python = [quoted("../../${Fetch::installDir(Fixture::idOf(one()))}/src/model.py")]
         join([
             "[project]",
             "name = \"app\"",
             "source_roots = [${join(roots, ", ")}]",
             "python_sources = [${join(python, ", ")}]",
             "default_namespace = \"app\"",
-            "entry = " + quoted("${project}/src/main.osp"),
+            "entry = " + quoted("../../src/main.osp"),
             "[modules]",
             "allow_wildcard_imports = false"
         ], "\n")
@@ -123,8 +125,9 @@ module BuildTests {
         checkAll("the derived osprey.toml is exact and the compiler runs", [
             a.report.status == 0,
             a.derived == derivedText(),
-            a.ensures == ".osprey/build|",
-            a.commands == "'${compilerPath}' build .osprey/build -o '.osprey/build/app'|",
+            a.derivedAt == "${project}/${derivedPath}",
+            a.ensures == "${project}/.osprey/build|",
+            a.commands == "'${compilerPath}' build '${project}/.osprey/build' -o '${project}/.osprey/build/app'|",
             Fixture::line(a.report, 0) == "built"
         ])
     }
@@ -135,7 +138,7 @@ module BuildTests {
         let a = runBuild(readsOf(matchingLock(mapList(packages, pkgOf)), packages), walksOf(packages), ["--run", "--project", project])
         checkAll("build --run invokes the compiler run form", [
             a.report.status == 0,
-            a.commands == "'${compilerPath}' .osprey/build --run|"
+            a.commands == "'${compilerPath}' '${project}/.osprey/build' --run|"
         ])
     }
 
@@ -146,9 +149,10 @@ module BuildTests {
         let a = runBuild(reads, [], args)
         checkAll("relative project ${dir} is rebased from the derived manifest", [
             a.report.status == 0,
-            contains(a.derived, "source_roots = [\"../../${dir}/src\"]"),
-            contains(a.derived, "python_sources = [\"../../${dir}/src/model.py\"]"),
-            contains(a.derived, "entry = \"../../${dir}/src/main.osp\"")
+            a.derivedAt == Project::pathAt(dir, derivedPath),
+            contains(a.derived, "source_roots = [\"../../src\"]"),
+            contains(a.derived, "python_sources = [\"../../src/model.py\"]"),
+            contains(a.derived, "entry = \"../../src/main.osp\"")
         ])
     }
 
