@@ -5,6 +5,7 @@ import registry::Bundle
 import registry::Digests
 import registry::Identity
 import registry::Json
+import registry::JsonRead
 import registry::Names
 import registry::Order
 import registry::Release
@@ -15,10 +16,15 @@ import registry::Release
 /// every failure is a stable dotted reason code. Implements the client half
 /// of [PACKAGE-FOLDER-REGISTRY] (plan 0020, Milestone 0 Phase F3).
 module Fetch {
-    let defaultRegistry = "http://127.0.0.1:8787"
-    let registryFlag = "--registry"
-    let packagesRoot = ".osprey/packages"
+    /// The folder-registry base URL when no `--registry` flag is given.
+    export let defaultRegistry = "http://127.0.0.1:8787"
+    /// The flag that names a non-default registry base URL.
+    export let registryFlag = "--registry"
+    /// The root under which every fetched release tree is installed.
+    export let packagesRoot = ".osprey/packages"
     let packagesPrefix = "/v1/packages/"
+    /// The GET path that lists every package key with its releases.
+    export let packagesListingPath = "/v1/packages"
     let sourcePrefix = "/v1/releases/"
     let sourceSuffix = "/source"
     let okStatus = 200
@@ -39,7 +45,7 @@ module Fetch {
     ]
 
     /// One `{"digest","epoch","ordinal"}` row of a package listing.
-    type Row = { digest: string, epoch: int, ordinal: int }
+    export type Row = { digest: string, epoch: int, ordinal: int }
 
     /// What the target word asks for: the newest release, the newest ordinal
     /// of one epoch, or the release of one digest.
@@ -111,31 +117,31 @@ module Fetch {
         Error { message: "${statusPrefix}: ${reply.status}" }
     }
 
-    fn getBody(base, path) = match perform Host::Web.get(base, path) {
+    /// One GET body, or the stable code of a non-200/404 status; `lock`
+    /// reuses this for the listing endpoints.
+    export fn getBody(base, path) = match perform Host::Web.get(base, path) {
         Error { message } => Error { message: message }
         Success { value } => bodyOf(value)
     }
 
     // `Names::Key` shares no field, but the receiver is annotated to match
     // the other shared-field readers below.
-    fn listingPath(key: Names::Key) = "${packagesPrefix}${key.scope}/${key.name}"
+    /// The GET path of one key's releases.
+    export fn listingPath(key: Names::Key) = "${packagesPrefix}${key.scope}/${key.name}"
 
     fn sourcePath(digest) = "${sourcePrefix}${digest}${sourceSuffix}"
 
-    fn stringField(value, field) = match Json::get(value, field) {
-        Error => Error { message: shapeCode }
-        Success { value } => match value {
-            Json::Str { text } => Success { value: text }
-            _ => Error { message: shapeCode }
-        }
+    // `JsonRead::field` reads a missing member as `Json::Null` and a
+    // mistyped one as its empty value; matching the concrete value keeps the
+    // strict `fetch.package-shape` refusal without re-implementing a JSON reader.
+    fn stringField(value, field) = match JsonRead::field(value, field) {
+        Json::Str { text } => Success { value: text }
+        _ => Error { message: shapeCode }
     }
 
-    fn intField(value, field) = match Json::get(value, field) {
-        Error => Error { message: shapeCode }
-        Success { value } => match value {
-            Json::Num { value } => Success { value: value }
-            _ => Error { message: shapeCode }
-        }
+    fn intField(value, field) = match JsonRead::field(value, field) {
+        Json::Num { value } => Success { value: value }
+        _ => Error { message: shapeCode }
     }
 
     fn rowWith(item, digest, epoch) = match intField(item, "ordinal") {
@@ -165,19 +171,58 @@ module Fetch {
 
     fn rowsOf(items) = foldList(items, Success { value: [] }, appendRow)
 
-    fn releasesOf(root) = match Json::get(root, "releases") {
-        Error => Error { message: shapeCode }
-        Success { value } => match value {
-            Json::Arr { items } => rowsOf(items)
-            _ => Error { message: shapeCode }
-        }
+    fn releasesOf(root) = match JsonRead::field(root, "releases") {
+        Json::Arr { items } => rowsOf(items)
+        _ => Error { message: shapeCode }
     }
 
     /// `{"key":"@s/n","releases":[{"digest","epoch","ordinal"}]}`; any other
     /// shape is `"fetch.package-shape"`.
-    fn parseListing(text) = match Json::parse(text) {
+    export fn parseListing(text) = match Json::parse(text) {
         Error => Error { message: shapeCode }
         Success { value } => releasesOf(value)
+    }
+
+    fn releaseOf(key, row: Row) = Identity::ReleaseId { key: key, epoch: row.epoch, ordinal: row.ordinal, digest: row.digest }
+
+    fn keyedRows(key, rows) = match rows {
+        Error { message } => Error { message: message }
+        Success { value } => Success { value: mapList(value, fn(row: Row) => releaseOf(key, row)) }
+    }
+
+    fn keyOfItem(item) = match stringField(item, "key") {
+        Error { message } => Error { message: message }
+        Success { value } => match Names::parse(value) {
+            Error => Error { message: shapeCode }
+            Success { value } => Success { value: value }
+        }
+    }
+
+    /// The releases of one `{"key","releases"}` package item as identities.
+    fn packageReleases(item) = match keyOfItem(item) {
+        Error { message } => Error { message: message }
+        Success { value } => keyedRows(value, releasesOf(item))
+    }
+
+    fn concatPackage(done, item) = match packageReleases(item) {
+        Error { message } => Error { message: message }
+        Success { value } => Success { value: listConcat(done, value) }
+    }
+
+    fn appendPackage(acc, item) = match acc {
+        Error => acc
+        Success { value } => concatPackage(value, item)
+    }
+
+    /// Every release of `{"packages":[{"key","releases":[…]}]}` as identities
+    /// in listing order, so `lock` reads the whole registry in one request;
+    /// any other shape is `"fetch.package-shape"`.
+    export fn parsePackages(text) = match Json::parse(text) {
+        Error => Error { message: shapeCode }
+        Success { value } => match JsonRead::field(value, "packages") {
+            Json::Arr { items } => foldList(items, Success { value: [] }, appendPackage)
+            _ => Error { message: shapeCode }
+        }
     }
 
     // `Row` shares `digest`/`epoch`/`ordinal` with `Identity::ReleaseId`;
@@ -202,7 +247,12 @@ module Fetch {
 
     // `Identity::ReleaseId` shares `key` with `Json::Member` and `digest`
     // with `Source::Entry`; issue #273 needs the receiver spelled out.
-    fn installDir(id: Identity::ReleaseId) = "${packagesRoot}/${Names::display(id.key)}/${Digests::hexOf(id.digest)}"
+    /// `.osprey/packages/@scope/name/<hex>` for one release identity.
+    export fn installDir(id: Identity::ReleaseId) = "${packagesRoot}/${Names::display(id.key)}/${Digests::hexOf(id.digest)}"
+
+    /// `installDir` under `project`, or the bare cwd path when `project` is
+    /// `""` or `"."` ([PACKAGE-HARDENING] C2).
+    export fn installDirAt(project, id) = if isEmpty(project) || project == "." { installDir(id) } else { "${project}/${installDir(id)}" }
 
     fn lastSlash(path) = fold(range(0, byteLength(path)), -1, fn(best, i) => if (byteAt(path, i) ?: 0) == slashByte { i } else { best })
 
@@ -229,33 +279,47 @@ module Fetch {
         Success => writeOne(dir, file)
     })
 
-    fn writeFiles(dir, files) = match perform Host::Tree.ensure(dir) {
+    /// Write every file of a tree under `dir`, creating directories first;
+    /// `fetch` installs with it and `publish` places a release with it.
+    export fn writeFiles(dir, files) = match perform Host::Tree.ensure(dir) {
         Error { message } => Error { message: message }
         Success => writeFileList(dir, files)
     }
 
     // `Release::Served` shares `id` with `Capabilities::Blocked`; issue #273
     // needs the receiver spelled out.
-    fn writeAll(served: Release::Served) = {
-        let dir = installDir(served.id)
-        match writeFiles(dir, served.files) {
-            Error { message } => failed("${writePrefix}: ${message}")
-            Success => Reports::success([
-                Reports::field("fetched", Identity::display(served.id)),
-                Reports::field("into", dir),
-                Reports::field("files", "${length(served.files)}")
-            ])
-        }
+    fn written(project, served: Release::Served) = match writeFiles(installDirAt(project, served.id), served.files) {
+        Error { message } => Error { message: "${writePrefix}: ${message}" }
+        Success => Success { value: served }
     }
 
-    fn verified(body, digest) = match Bundle::verify(body, digest) {
-        Error { message } => failed(message)
-        Success { value } => writeAll(value)
+    fn verifiedAt(project, body, digest) = match Bundle::verify(body, digest) {
+        Error { message } => Error { message: message }
+        Success { value } => written(project, value)
     }
 
-    fn install(base, digest) = match getBody(base, sourcePath(digest)) {
+    /// Download, verify and install one release by digest under
+    /// `<project>/.osprey/packages`, answering the verified release so `lock`
+    /// and `Install` can read its files without touching the disk again
+    /// ([PACKAGE-HARDENING] C2).
+    export fn fetched(project, base, digest) = match getBody(base, sourcePath(digest)) {
+        Error { message } => Error { message: message }
+        Success { value } => verifiedAt(project, value, digest)
+    }
+
+    fn fetchedReport(project, served: Release::Served) = Reports::success([
+        Reports::field("fetched", Identity::display(served.id)),
+        Reports::field("into", installDirAt(project, served.id)),
+        Reports::field("files", "${length(served.files)}")
+    ])
+
+    /// Download, verify and install one release by digest under `.osprey/packages`.
+    export fn install(base, digest) = installAt("", base, digest)
+
+    /// `fetched` as a report: the `fetch <target>` outcome.
+    export fn installAt(project, base, digest) = match fetched(project, base, digest) {
         Error { message } => failed(message)
-        Success { value } => verified(value, digest)
+        Success { value } => fetchedReport(project, value)
     }
 
     fn installRow(base, row: Row) = install(base, row.digest)

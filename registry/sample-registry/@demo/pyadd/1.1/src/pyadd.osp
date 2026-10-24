@@ -1,0 +1,10 @@
+namespace demo_pyadd;
+
+/// A sample package whose manifest declares `[system.python]` with
+/// `capability = "python/interop"`, so a project that locks it gets a uv
+/// project under `.osprey/python` ([PACKAGE-PYTHON-UV]). Its Osprey code
+/// needs nothing from Python; the plane is what the sample exercises.
+module PyAdd {
+    /// `a + b`.
+    export fn add(a, b) = a + b
+}

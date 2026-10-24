@@ -1,0 +1,14 @@
+[project]
+name = "transformers"
+source_roots = ["src"]
+python_sources = ["src/math.py", "src/lists.py", "src/logits_process.py", "src/stopping_criteria.py", "src/generation.py"]
+default_namespace = "transformers"
+
+[package]
+name = "@osprey/transformers"
+license = "MIT"
+summary = "Hugging Face generation utilities: logits processors, warpers, sampling and stopping criteria"
+keywords = ["transformers", "generation", "sampling", "logits", "python-flavor"]
+
+[test-dependencies]
+"@osprey/testing" = { epoch = 1, min_release = 1 }

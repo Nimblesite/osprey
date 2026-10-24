@@ -1,0 +1,33 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "Module plan entries sorted by path; imports sorted.",
+  "type": "ModuleGraphProjection",
+  "value": {
+    "modules": [
+      {
+        "path": "src/report.osp",
+        "flavor": {
+          "Default": {}
+        },
+        "sourceBytesDigest": "sha256:7c894fc3e093a7ea86acfeeeb489243637765c28c9f383e996018a355e321862",
+        "imports": [
+          "demo::Maths"
+        ],
+        "publicInterfaceDigest": "sha256:e9a990786ead8287a1e5f83963a5028e5c781165a69a8ee33aa71db46ff3c187"
+      },
+      {
+        "path": "src/table.osp",
+        "flavor": {
+          "Ml": {}
+        },
+        "sourceBytesDigest": "sha256:37fad8f903b495d693c780c39d005b9d57696dc0b9dcc2f9eca98cf13f0ff5e6",
+        "imports": [],
+        "publicInterfaceDigest": "sha256:373718c3489e7fb861442519bc4b60b3d878ab0e2dc056f2c5c294e6afb58652"
+      }
+    ]
+  },
+  "canonical": "{\"modules\":[{\"flavor\":{\"Default\":{}},\"imports\":[\"demo::Maths\"],\"path\":\"src/report.osp\",\"publicInterfaceDigest\":\"sha256:e9a990786ead8287a1e5f83963a5028e5c781165a69a8ee33aa71db46ff3c187\",\"sourceBytesDigest\":\"sha256:7c894fc3e093a7ea86acfeeeb489243637765c28c9f383e996018a355e321862\"},{\"flavor\":{\"Ml\":{}},\"imports\":[],\"path\":\"src/table.osp\",\"publicInterfaceDigest\":\"sha256:373718c3489e7fb861442519bc4b60b3d878ab0e2dc056f2c5c294e6afb58652\",\"sourceBytesDigest\":\"sha256:37fad8f903b495d693c780c39d005b9d57696dc0b9dcc2f9eca98cf13f0ff5e6\"}]}",
+  "canonicalLength": 530,
+  "domain": "osprey.module-graph.v1",
+  "digest": "sha256:8dcdd504197676e0eef9a33e161a69e4481834253e7adb3cdd683652d050c02c"
+}

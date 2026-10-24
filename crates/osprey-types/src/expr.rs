@@ -38,7 +38,13 @@ fn applied_type_parameter<'a>(
 
 impl Checker {
     pub(crate) fn infer_expr(&mut self, e: &Expr, env: &TypeEnv) -> Type {
-        osprey_ast::with_stack(|| {
+        // The innermost expression carrying a position anchors every unify
+        // failure recorded while inferring it or its children.
+        let outer = self.expr_position;
+        if let Some(position) = expression_position(e) {
+            self.expr_position = Some(position);
+        }
+        let ty = osprey_ast::with_stack(|| {
             if let Some(error) = crate::arithmetic::constant_overflow(e) {
                 self.errors.push(error);
             }
@@ -47,7 +53,9 @@ impl Checker {
                 .expression_types
                 .insert(std::ptr::from_ref(e).addr(), ty.clone());
             ty
-        })
+        });
+        self.expr_position = outer;
+        ty
     }
 
     fn infer_expr_raw(&mut self, e: &Expr, env: &TypeEnv) -> Type {
@@ -588,8 +596,10 @@ impl Checker {
             // Re-state the scheme's built-in obligations against this site's
             // fresh variables, so a generalized wrapper's constraint is checked
             // against the types this call actually supplies
-            // ([`crate::ty::Scheme::obligations`]).
-            self.builtin_uses.extend(applied.obligations);
+            // ([`crate::ty::Scheme::obligations`]). A key with no location of
+            // its own is located HERE, so its diagnostic names this use.
+            let obligations = self.located_obligations(applied.obligations, self.expr_position);
+            self.builtin_uses.extend(obligations);
             if let Some(site) = site {
                 let _ = self
                     .instantiations
@@ -661,6 +671,7 @@ impl Checker {
             params,
             bindings,
         } = applied;
+        let obligations = self.located_obligations(obligations, position.or(self.expr_position));
         self.builtin_uses.extend(obligations);
         if let Some(position) = position {
             self.application_tys.push((position, bindings.clone()));
@@ -1114,12 +1125,7 @@ impl Checker {
         ft: &Type,
         args: Vec<Type>,
     ) -> Type {
-        let constrained_builtin = name.is_some_and(|name| {
-            matches!(
-                name,
-                "length" | "isEmpty" | "print" | "toString" | "toGpu" | "listSort"
-            ) || crate::builtin_constraints::is_gpu_buffer_builtin(name)
-        });
+        let constrained_builtin = name.is_some_and(constrained_builtin);
         if let (Some(name), Some(receiver)) = (name, args.first()) {
             if constrained_builtin {
                 let name = self.sited_use(name);
@@ -1444,6 +1450,52 @@ fn both_vars(l: &Type, r: &Type) -> bool {
     matches!(l, Type::Var(_)) && matches!(r, Type::Var(_))
 }
 
+/// The built-ins whose first argument's runtime representation the checker
+/// must see: their scheme says `any`, so each call site is checked against
+/// the concrete type it supplies ([BUILTIN-PRINT], [BUILTIN-TOSTRING],
+/// [BUILTIN-COLLECTION-LENGTH], [BUILTIN-COLLECTION-ISEMPTY]).
+fn constrained_builtin(name: &str) -> bool {
+    matches!(
+        name,
+        "length" | "isEmpty" | "print" | "toString" | "toGpu" | "listSort"
+    ) || crate::builtin_constraints::is_gpu_buffer_builtin(name)
+}
+
+/// The source position an expression itself carries, when it has one. Calls,
+/// identifiers and literals have none — their diagnostics anchor to the
+/// innermost enclosing expression that does, or the statement.
+fn expression_position(e: &Expr) -> Option<osprey_ast::Position> {
+    match e {
+        Expr::List(_, position)
+        | Expr::Binary { position, .. }
+        | Expr::TypeApply { position, .. }
+        | Expr::Lambda { position, .. }
+        | Expr::Block { position, .. }
+        | Expr::Perform { position, .. }
+        | Expr::Handler { position, .. }
+        | Expr::Mask { position, .. }
+        | Expr::Instance { position, .. } => *position,
+        _ => None,
+    }
+}
+
+/// Whether an obligation key names a diagnostic a use site may locate. The
+/// deferred-arithmetic, numeric-operand and comparison families, the
+/// interpolation and structural-equality operands, and a constrained
+/// built-in's receiver qualify; a field or method relation encodes its own
+/// site, and an already-located or sited key keeps the location it has.
+fn locatable_obligation(name: &str) -> bool {
+    if name.contains(" @") {
+        return false;
+    }
+    is_deferred_arith(name)
+        || name.starts_with(crate::builtin_constraints::NUMERIC_OPERAND_PREFIX)
+        || name.starts_with(crate::comparison::COMPARED_OPERAND_PREFIX)
+        || name == "interpolation"
+        || name == "structuralEquals"
+        || constrained_builtin(name)
+}
+
 /// Marks a pending arithmetic overload in the obligation list
 /// ([`Checker::deferred_arith`]). Obligations already carry per-site types
 /// through generalization and instantiation, and an operator can never collide
@@ -1687,6 +1739,30 @@ impl Checker {
         located
     }
 
+    /// A scheme's built-in obligations restated for the use reading them now:
+    /// a key that already carries a location keeps it (it was located where
+    /// the use was written, inside the wrapper's body), and a structural key
+    /// — a field or method relation, which encodes its own site — keeps its
+    /// spelling. A bare one — `abs`'s scheme obligations, a constrained
+    /// built-in — is located at this use, so its diagnostics name the
+    /// expression that triggered them.
+    fn located_obligations(
+        &mut self,
+        obligations: Vec<(String, Type)>,
+        position: Option<osprey_ast::Position>,
+    ) -> Vec<(String, Type)> {
+        obligations
+            .into_iter()
+            .map(|(name, ty)| {
+                if locatable_obligation(&name) {
+                    (self.located_use(&name, position), ty)
+                } else {
+                    (name, ty)
+                }
+            })
+            .collect()
+    }
+
     /// The key of a representation-sensitive use with no position of its own.
     /// Inside a module that owns an opaque alias the key names the function, so
     /// the late validation reads the operand as that function may
@@ -1705,7 +1781,9 @@ impl Checker {
     /// result to the answer. Re-running rather than restating the rules is what
     /// keeps `p.x * p.x + p.y * p.y` right — by the time the outer `+` resolves,
     /// its operands have become `int`, and the ordinary selection seeds each
-    /// fallible operator's Arith requirement.
+    /// fallible operator's Arith requirement. A result another use already
+    /// pinned decides still-open operands first: `(a - b) <= 1.0` unified the
+    /// result with float, so the operands are float, not the integer default.
     pub(crate) fn resolve_deferred_arith(&mut self, name: &str, site: &Type) {
         let Some(op) = parse_deferred_arith(name) else {
             return;
@@ -1714,9 +1792,19 @@ impl Checker {
             return;
         };
         let position = crate::builtin_constraints::source_position(name);
-        // The operator reads its operands where it was written.
+        // The operator reads its operands where it was written, and its
+        // diagnostics say so too.
         let written = self.use_sites.get(name).cloned().unwrap_or_default();
         let outer = self.ctx.enter(written);
+        let outer_position = self.expr_position;
+        self.expr_position = position;
+        if !matches!(self.ctx.apply(&ret), Type::Var(_)) {
+            for operand in &params {
+                if matches!(self.ctx.apply(operand), Type::Var(_)) {
+                    self.push_unify(&ret, operand);
+                }
+            }
+        }
         let answer = match params.as_slice() {
             [operand] if op == "abs" && crate::arithmetic::absolute_operand(operand) => {
                 Some(self.infer_negation(operand))
@@ -1727,6 +1815,7 @@ impl Checker {
         if let Some(answer) = answer {
             self.push_unify(&answer, &ret);
         }
+        self.expr_position = outer_position;
         let _ = self.ctx.enter(outer);
     }
 

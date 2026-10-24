@@ -271,6 +271,11 @@ pub(crate) struct Checker {
     /// resolution pass, which re-enters the same selection to settle every
     /// pending site against its operands' final types.
     pub(crate) defer_arith: bool,
+    /// The source position of the expression currently being inferred — the
+    /// innermost enclosing expression that carries one. Unify failures record
+    /// it, so a "cannot unify" diagnostic names the expression that failed
+    /// instead of the file alone.
+    pub(crate) expr_position: Option<Position>,
 }
 
 /// The binding name that means "throw this away" — the one spelling that opts

@@ -1,0 +1,7 @@
+/// A correct program reading symbolic stdin: Hunt must report no findings.
+/// [SYMEX-CLI] every path through parse, index and print is explored.
+let xs = [10, 20, 30]
+let line = input()
+let i = parseInt(line) ?: 0
+let v = xs[i] ?: -1
+print("picked ${v} at ${i}")

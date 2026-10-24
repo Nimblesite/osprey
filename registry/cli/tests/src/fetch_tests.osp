@@ -1,0 +1,300 @@
+namespace registry_tests;
+import registry_host::Host
+import registry::Bundle
+import registry::Digests
+import registry::Release
+import registry_cli::Dispatch
+import registry_cli::Fetch
+import registry_cli::Reports
+import registry_tests::Fixture
+
+/// The `fetch` client against fixture hosts: no network, no disk. The web
+/// fixture answers the folder-registry endpoints from hand-made releases, the
+/// files and tree fixtures record everything the command would write.
+/// Implements [PACKAGE-FOLDER-REGISTRY] client tests (plan 0020, Phase F3).
+module FetchTests {
+    let localBase = "http://127.0.0.1:8787"
+    let altBase = "http://10.1.2.3:9999"
+    let packagesPath = "/v1/packages/finch/ledger"
+    let zeroDigest = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    let allowMode = "ok"
+    let routedMode = "routed"
+    let denyWrites = "deny-writes"
+    let denyTree = "deny-tree"
+    let manifestText = "key = ledger\n"
+
+    /// One answered HTTP route; a request no route matches is a transport
+    /// failure, which is how the fixtures say the registry is unreachable.
+    type Route = { base: string, path: string, status: int, body: string }
+
+    /// One `fetch` run: its report plus everything the command wrote.
+    type Attempt = { report: Reports::Report, writes: string, ensures: string }
+
+    fn route(base, path, code, body) = Route { base: base, path: path, status: code, body: body }
+
+    // `Route` shares `status`/`body` with `Host::Reply`; issue #273 needs the
+    // receiver spelled out.
+    fn hits(route: Route, base, path) = route.base == base && route.path == path
+
+    fn replyOf(route: Route) = Host::Reply { status: route.status, etag: "", body: route.body }
+
+    fn replyFor(routes, base, path) = foldList(routes, Error { message: "http.transport: no route ${base}${path}" }, fn(answer, route) => match answer {
+        Success => answer
+        Error => if hits(route, base, path) { Success { value: replyOf(route) } } else { answer }
+    })
+
+    /// One run under fixtures; `routedMode` sends the words through
+    /// `Dispatch::run` instead, exactly as the CLI binary would.
+    fn runUnder(mode, routes, args) = {
+        mut writes = ""
+        mut ensures = ""
+        let files = handler Host::Files {
+            read _path => Error { message: "fixture: fetch never reads" }
+            write path content => match mode {
+                "deny-writes" => Error { message: "no space left on device" }
+                _ => {
+                    writes = "${writes}${path}=${content}|"
+                    Success { value: byteLength(content) }
+                }
+            }
+        }
+        let tree = handler Host::Tree {
+            walk _root => Error { message: "fixture: fetch never walks" }
+            ensure dir => match mode {
+                "deny-tree" => Error { message: "read-only file system" }
+                _ => {
+                    ensures = "${ensures}${dir}|"
+                    Success { value: 0 }
+                }
+            }
+        }
+        let web = handler Host::Web { get base path => replyFor(routes, base, path) }
+        let report = healthyProcess()(fn() => files(fn() => tree(fn() => web(fn() => runCommand(mode, args)))))
+        Attempt { report: report, writes: writes, ensures: ensures }
+    }
+
+    fn runCommand(mode, args) = if mode == routedMode { Dispatch::run(listPrepend(args, "fetch")) } else { Fetch::run(args) }
+
+    fn attemptWith(mode, routes, args) = runUnder(mode, routes, args)
+
+    fn attempt(routes, args) = runUnder(allowMode, routes, args)
+
+    fn healthyProcess() = handler Host::Process {
+        run _command => Host::Run { status: 0, stdout: "", stderr: "" }
+    }
+
+    /// The routed command, as the CLI binary would invoke it.
+    fn dispatched(routes, args) = runUnder(routedMode, routes, args)
+
+    fn twoFiles(text) = [
+        Release::File { relPath: "osprey.toml", content: manifestText },
+        Release::File { relPath: "src/main.osp", content: text }
+    ]
+
+    fn release(dir, text) = Fixture::served(dir, twoFiles(text))
+
+    /// Four real releases of `@finch/ledger`: epochs 1 and 2, two ordinals each.
+    fn releases() = [
+        release("@finch/ledger/1.1", "fn one() = 1\n"),
+        release("@finch/ledger/1.2", "fn one() = 2\n"),
+        release("@finch/ledger/2.1", "fn two() = 3\n"),
+        release("@finch/ledger/2.2", "fn two() = 4\n")
+    ]
+
+    // `Release::Served` shares `id` with `Capabilities::Blocked` and `id`'s
+    // fields with `Source::Entry`/`Json::Member`; issue #273 needs the
+    // receivers spelled out.
+    fn digestOf(s: Release::Served) = s.id.digest
+    fn epochOf(s: Release::Served) = s.id.epoch
+    fn ordinalOf(s: Release::Served) = s.id.ordinal
+
+    fn rowText(s) = "{\"digest\":\"${digestOf(s)}\",\"epoch\":${epochOf(s)},\"ordinal\":${ordinalOf(s)}}"
+
+    fn listing(served) = "{\"key\":\"@finch/ledger\",\"releases\":[${join(mapList(served, rowText), ",")}]}"
+
+    fn sourcePathOf(s) = "/v1/releases/${digestOf(s)}/source"
+
+    fn sourceRoute(base, s) = route(base, sourcePathOf(s), 200, Bundle::encode(s) ?: "")
+
+    /// The endpoints a folder registry serves for these releases.
+    fn catalogRoutes(base, served) = listConcat([route(base, packagesPath, 200, listing(served))], mapList(served, fn(s) => sourceRoute(base, s)))
+
+    fn installRoot(s) = ".osprey/packages/@finch/ledger/${Digests::hexOf(digestOf(s))}"
+
+    // `Attempt.report` reaches `Reports::Report.status`, which `Host::Run`
+    // and `Host::Reply` also declare; issue #273 needs the receiver spelled out.
+    fn failedOne(a: Attempt, code) = a.report.status == 1 && length(a.report.lines) == 1 && Fixture::line(a.report, 0) == code
+
+    /// The newest release wins on epoch first, then ordinal; the report and
+    /// every written path and byte are exact.
+    fn newest() = {
+        let rs = releases()
+        let newest = listGet(rs, 3) ?: Fixture::missingServed()
+        let root = installRoot(newest)
+        let a = attempt(catalogRoutes(localBase, rs), ["@finch/ledger"])
+        checkAll("newest release by epoch then ordinal, exact report and writes", [
+            a.report.status == 0,
+            length(a.report.lines) == 3,
+            Fixture::line(a.report, 0) == "fetched: @finch/ledger@e2.r2#${digestOf(newest)}",
+            Fixture::line(a.report, 1) == "into: ${root}",
+            Fixture::line(a.report, 2) == "files: 2",
+            a.writes == "${root}/osprey.toml=${manifestText}|${root}/src/main.osp=fn two() = 4\n|",
+            a.ensures == "${root}|${root}/src|"
+        ])
+    }
+
+    /// `@e<epoch>` picks the newest ordinal inside that epoch, a digest target
+    /// picks that exact release even when it is not the newest.
+    fn selection() = {
+        let rs = releases()
+        let routes = catalogRoutes(localBase, rs)
+        let inEpoch = attempt(routes, ["@finch/ledger@e1"])
+        let byDigest = attempt(routes, [digestOf(listGet(rs, 2) ?: Fixture::missingServed())])
+        checkAll("epoch and digest targets select the right release", [
+            inEpoch.report.status == 0,
+            Fixture::line(inEpoch.report, 0) == "fetched: @finch/ledger@e1.r2#${digestOf(listGet(rs, 1) ?: Fixture::missingServed())}",
+            Fixture::line(inEpoch.report, 2) == "files: 2",
+            byDigest.report.status == 0,
+            Fixture::line(byDigest.report, 0) == "fetched: @finch/ledger@e2.r1#${digestOf(listGet(rs, 2) ?: Fixture::missingServed())}",
+            Fixture::line(byDigest.report, 1) == "into: ${installRoot(listGet(rs, 2) ?: Fixture::missingServed())}"
+        ])
+    }
+
+    fn usageCase(routes, args) = {
+        let a = attempt(routes, args)
+        a.report.status == 2 && Fixture::line(a.report, 0) == "fetch.usage" && length(a.report.lines) == 3
+    }
+
+    fn usage() = {
+        let cases = [
+            [],
+            ["finch/ledger"],
+            ["@finch/ledger", "--registry"],
+            ["@finch/ledger", "--registry", "http://a", "extra"],
+            ["@finch/ledger@ex"],
+            ["@finch/ledger@e01"],
+            ["@finch/ledger@e"],
+            ["sha256:short"],
+            ["@finch/ledger", "@finch/other"]
+        ]
+        let routes = catalogRoutes(localBase, releases())
+        let first = attempt(routes, [])
+        checkAll("every malformed command line is fetch.usage", [
+            foldList(cases, true, fn(ok, args) => ok && usageCase(routes, args)),
+            Fixture::line(first.report, 1) == "usage: osprey-pkg fetch <target> [--registry <base-url>]"
+        ])
+    }
+
+    /// A 404, any other non-200, an unreachable registry, and a 404 on the
+    /// source endpoint of a digest target.
+    fn registryFailures() = {
+        let missing = attempt([route(localBase, packagesPath, 404, "")], ["@finch/ledger"])
+        let broken = attempt([route(localBase, packagesPath, 500, "")], ["@finch/ledger"])
+        let offline = attempt([], ["@finch/ledger"])
+        let missingSource = attempt([route(localBase, "/v1/releases/${zeroDigest}/source", 404, "")], [zeroDigest])
+        checkAll("not-found, registry-status and transport failures", [
+            failedOne(missing, "fetch.not-found"),
+            failedOne(broken, "fetch.registry-status: 500"),
+            failedOne(offline, "http.transport: no route ${localBase}${packagesPath}"),
+            failedOne(missingSource, "fetch.not-found")
+        ])
+    }
+
+    fn noRelease() = {
+        let routes = [route(localBase, packagesPath, 200, "{\"key\":\"@finch/ledger\",\"releases\":[{\"digest\":\"${zeroDigest}\",\"epoch\":1,\"ordinal\":1}]}")]
+        checkAll("a target epoch with no release is fetch.no-release", [
+            failedOne(attempt(routes, ["@finch/ledger@e3"]), "fetch.no-release")
+        ])
+    }
+
+    fn packageShape() = {
+        let unparseable = [route(localBase, packagesPath, 200, "{{{")]
+        let rowMissingOrdinal = [route(localBase, packagesPath, 200, "{\"key\":\"@finch/ledger\",\"releases\":[{\"digest\":\"${zeroDigest}\",\"epoch\":1}]}")]
+        checkAll("an unparseable package listing is fetch.package-shape", [
+            failedOne(attempt(unparseable, ["@finch/ledger"]), "fetch.package-shape"),
+            failedOne(attempt(rowMissingOrdinal, ["@finch/ledger"]), "fetch.package-shape")
+        ])
+    }
+
+    fn tamperedBundle(s) = replace(Bundle::encode(s) ?: "", "fn two() = 3", "fn two() = 9") ?: ""
+
+    /// A tampered bundle is rejected by digest and nothing is written — not
+    /// even the package directory is created.
+    fn tampered() = {
+        let rs = releases()
+        let r21 = listGet(rs, 2) ?: Fixture::missingServed()
+        let routes = [route(localBase, sourcePathOf(r21), 200, tamperedBundle(r21))]
+        let a = attempt(routes, [digestOf(r21)])
+        checkAll("a tampered bundle is bundle.digest-mismatch and writes nothing", [
+            failedOne(a, "bundle.digest-mismatch"),
+            a.writes == "",
+            a.ensures == ""
+        ])
+    }
+
+    /// A genuine bundle whose digest is not the one requested is rejected the
+    /// same way, and a source body that is not a bundle is bundle.shape.
+    fn wrongBundle() = {
+        let rs = releases()
+        let r21 = listGet(rs, 2) ?: Fixture::missingServed()
+        let r22 = listGet(rs, 3) ?: Fixture::missingServed()
+        let swapped = [route(localBase, sourcePathOf(r22), 200, Bundle::encode(r21) ?: "")]
+        let notABundle = [route(localBase, "/v1/releases/${zeroDigest}/source", 200, "{\"digest\":\"${zeroDigest}\"}")]
+        checkAll("unexpected digest and non-bundle source bodies", [
+            failedOne(attempt(swapped, [digestOf(r22)]), "bundle.unexpected-digest"),
+            failedOne(attempt(notABundle, [zeroDigest]), "bundle.shape")
+        ])
+    }
+
+    fn writeFailures() = {
+        let rs = releases()
+        let routes = catalogRoutes(localBase, rs)
+        let denied = attemptWith(denyWrites, routes, ["@finch/ledger"])
+        let readOnly = attemptWith(denyTree, routes, ["@finch/ledger"])
+        checkAll("file and directory failures are fetch.write with the OS reason", [
+            failedOne(denied, "fetch.write: no space left on device"),
+            denied.writes == "",
+            failedOne(readOnly, "fetch.write: read-only file system"),
+            readOnly.writes == "",
+            readOnly.ensures == ""
+        ])
+    }
+
+    /// `--registry` replaces the default base URL in every request.
+    fn registryFlag() = {
+        let rs = releases()
+        let elsewhere = attempt(catalogRoutes(altBase, rs), ["@finch/ledger", "--registry", altBase])
+        let unreachable = attempt(catalogRoutes(localBase, rs), ["@finch/ledger", "--registry", altBase])
+        checkAll("--registry overrides the default base URL", [
+            elsewhere.report.status == 0,
+            Fixture::line(elsewhere.report, 2) == "files: 2",
+            failedOne(unreachable, "http.transport: no route ${altBase}${packagesPath}")
+        ])
+    }
+
+    fn routing() = {
+        let rs = releases()
+        let d = dispatched(catalogRoutes(localBase, rs), ["@finch/ledger"])
+        let bare = dispatched(catalogRoutes(localBase, rs), [])
+        checkAll("dispatch routes fetch and passes the remaining words", [
+            d.report.status == 0,
+            Fixture::line(d.report, 0) == "fetched: @finch/ledger@e2.r2#${digestOf(listGet(rs, 3) ?: Fixture::missingServed())}",
+            bare.report.status == 1,
+            Fixture::line(bare.report, 0) == "install.no-lock fixture: fetch never reads"
+        ])
+    }
+
+    export fn run() = {
+        test("fetch: newest release by epoch then ordinal", newest)
+        test("fetch: epoch and digest targets", selection)
+        test("fetch: usage errors", usage)
+        test("fetch: registry failures", registryFailures)
+        test("fetch: no release in the requested epoch", noRelease)
+        test("fetch: unparseable package listing", packageShape)
+        test("fetch: tampered bundle writes nothing", tampered)
+        test("fetch: wrong or malformed source bundle", wrongBundle)
+        test("fetch: write failures", writeFailures)
+        test("fetch: --registry overrides the base URL", registryFlag)
+        test("fetch: dispatch routing", routing)
+    }
+}

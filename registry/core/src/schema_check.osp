@@ -1,0 +1,269 @@
+namespace registry;
+import registry::Json
+import registry::Bytes
+import registry::Digests
+import registry::JsonRead
+import registry::Names
+import registry::Paths
+import registry::TypeDiagram
+
+/// Validates a parsed JSON value against a named type in a parsed typeDiagram
+/// model, implementing the JSON encoding rules of [PACKAGE-TYPE-INVARIANTS]:
+/// a `type` is an object with exactly its fields; an `Option<T>` field is
+/// omitted when absent and never `null`; a `union` value is an object with
+/// exactly one member naming a variant; `Bool` is a JSON boolean, `Int` a JSON
+/// integer, and `DateTime`/`Digest`/`Uuid`/string aliases are JSON strings.
+/// Failures carry a stable code and the JSON pointer of the offending value.
+module SchemaCheck {
+    let unknownType = "schema.unknown-type"
+    let notObject = "schema.not-object"
+    let missingField = "schema.missing-field"
+    let unknownField = "schema.unknown-field"
+    let nullCode = "schema.null"
+    let notInteger = "schema.not-integer"
+    let notString = "schema.not-string"
+    let notBool = "schema.not-bool"
+    let notArray = "schema.not-array"
+    let variantCount = "schema.variant-count"
+    let unknownVariant = "schema.unknown-variant"
+    let digestCode = "schema.digest"
+    let dateTimeFailure = "schema.datetime"
+    let uuidFailure = "schema.uuid"
+
+    fn err(code, pointer) = Error { message: "${code} at ${pointer}" }
+
+    fn escapeSegment(key) = replace(replace(key, "~", "~0") ?: key, "/", "~1") ?: key
+    fn child(pointer, key) = pointer + "/" + escapeSegment(key)
+    fn itemAt(pointer, i) = pointer + "/" + "${i}"
+
+    fn stringCode(value) = match value {
+        Json::Str { _ } => ""
+        _ => notString
+    }
+
+    fn intCode(value) = match value {
+        Json::Num { _ } => ""
+        _ => notInteger
+    }
+
+    fn boolCode(value) = match value {
+        Json::Bool { _ } => ""
+        _ => notBool
+    }
+
+    fn digitByte(b) = b >= 48 && b <= 57
+    fn digitsOk(text, from, to) = fold(range(from, to), true, fn(ok, i) => ok && digitByte(byteAt(text, i) ?: 0))
+    fn fixedAt(text, i, b) = (byteAt(text, i) ?: 0) == b
+    fn numAt(text, from, to) = parseInt(substring(text, from, to) ?: "") ?: -1
+
+    fn isLeap(year) = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
+
+    fn daysInMonth(year, month) = if month == 2 { if isLeap(year) { 29 } else { 28 } }
+        else if month == 4 || month == 6 || month == 9 || month == 11 { 30 }
+        else { 31 }
+
+    fn dateTimeShape(text) = byteLength(text) == 24
+        && digitsOk(text, 0, 4) && fixedAt(text, 4, 45)
+        && digitsOk(text, 5, 7) && fixedAt(text, 7, 45)
+        && digitsOk(text, 8, 10) && fixedAt(text, 10, 84)
+        && digitsOk(text, 11, 13) && fixedAt(text, 13, 58)
+        && digitsOk(text, 14, 16) && fixedAt(text, 16, 58)
+        && digitsOk(text, 17, 19) && fixedAt(text, 19, 46)
+        && digitsOk(text, 20, 23) && fixedAt(text, 23, 90)
+
+    fn dateTimeRange(text) = {
+        let year = numAt(text, 0, 4)
+        let month = numAt(text, 5, 7)
+        let day = numAt(text, 8, 10)
+        let hour = numAt(text, 11, 13)
+        let minute = numAt(text, 14, 16)
+        let second = numAt(text, 17, 19)
+        if year < 1 || year > 9999 { dateTimeFailure }
+        else if month < 1 || month > 12 { dateTimeFailure }
+        else if day < 1 || day > daysInMonth(year, month) { dateTimeFailure }
+        else if hour > 23 || minute > 59 || second > 59 { dateTimeFailure }
+        else { "" }
+    }
+
+    /// `""` for a valid Gregorian UTC instant in exactly
+    /// `YYYY-MM-DDTHH:mm:ss.SSSZ`, years 0001-9999, no leap second; else
+    /// `schema.datetime`. Implements [PACKAGE-TYPE-INVARIANTS].
+    export fn dateTimeCode(text) = if dateTimeShape(text) { dateTimeRange(text) } else { dateTimeFailure }
+
+    fn hexOk(text, from, to) = Bytes::lowerHexBetween(text, from, to)
+
+    fn uuidCode(text) = if byteLength(text) == 36
+        && hexOk(text, 0, 8) && fixedAt(text, 8, 45)
+        && hexOk(text, 9, 13) && fixedAt(text, 13, 45)
+        && hexOk(text, 14, 18) && fixedAt(text, 18, 45)
+        && hexOk(text, 19, 23) && fixedAt(text, 23, 45)
+        && hexOk(text, 24, 36) { "" } else { uuidFailure }
+
+    fn dateTimeOk(value) = match value {
+        Json::Str { text } => dateTimeCode(text) == ""
+        _ => false
+    }
+
+    fn uuidOk(value) = match value {
+        Json::Str { text } => uuidCode(text) == ""
+        _ => false
+    }
+
+    fn digestOk(value) = match value {
+        Json::Str { text } => match Digests::parse(text) {
+            Success => true
+            Error => false
+        }
+        _ => false
+    }
+
+    fn scalarCode(name, value) = if name == "String" { stringCode(value) }
+        else if name == "Int" { intCode(value) }
+        else if name == "Bool" { boolCode(value) }
+        else if name == "DateTime" { if dateTimeOk(value) { "" } else { dateTimeFailure } }
+        else { if uuidOk(value) { "" } else { uuidFailure } }
+
+    fn validateScalar(name, value, pointer) = {
+        let code = scalarCode(name, value)
+        if code == "" { Success { value: value } } else { err(code, pointer) }
+    }
+
+    fn isBuiltinScalar(name) = name == "String" || name == "Int" || name == "Bool" || name == "DateTime" || name == "Uuid"
+
+    fn pathCode(text) = match Paths::validate(text) {
+        Success => ""
+        Error { message } => message
+    }
+
+    /// The grammar an alias adds to its underlying string: digests, package
+    /// key components ([PACKAGE-NAMES]) and root-confined relative paths
+    /// ([PACKAGE-SOURCE-CANONICAL]); "" when it adds none or the text obeys it.
+    fn aliasCode(aliasName, value) = if aliasName == "Digest" { if digestOk(value) { "" } else { digestCode } }
+        else if aliasName == "ScopeName" { Names::scopeCode(JsonRead::text(value)) }
+        else if aliasName == "PackageName" { Names::nameCode(JsonRead::text(value)) }
+        else if aliasName == "RelativePath" { pathCode(JsonRead::text(value)) }
+        else { "" }
+
+    fn validateAlias(model, aliasName, target, value, pointer) = match validateRef(model, target, value, pointer) {
+        Error { message } => Error { message: message }
+        Success => {
+            let code = aliasCode(aliasName, value)
+            if code == "" { Success { value: value } } else { err(code, pointer) }
+        }
+    }
+
+    fn validateNamed(model, name, v, pointer) = if isBuiltinScalar(name) {
+        validateScalar(name, v, pointer)
+    } else {
+        match TypeDiagram::lookup(model, name) {
+            Error { message } => err(message, pointer)
+            Success { value } => match value {
+                TypeDiagram::Alias { name, target } => validateAlias(model, name, target, v, pointer)
+                TypeDiagram::Struct { fields } => validateStruct(model, fields, v, pointer)
+                TypeDiagram::Union { variants } => validateUnion(model, variants, v, pointer)
+            }
+        }
+    }
+
+    fn isField(fields, name) = foldList(fields, false, fn(found, f) => found || f.name == name)
+    fn isMember(members, name) = foldList(members, false, fn(found, m) => found || m.key == name)
+
+    fn memberValue(members, name) = foldList(members, Error { message: missingField }, fn(acc, m) => match acc {
+        Success => acc
+        Error => if m.key == name { Success { value: m.value } } else { acc }
+    })
+
+    fn isOption(typ) = match typ {
+        TypeDiagram::OptionOf { _ } => true
+        _ => false
+    }
+
+    fn checkUnknown(members, fields, pointer) = foldList(members, Success { value: members }, fn(acc, m) => match acc {
+        Error => acc
+        Success => if isField(fields, m.key) { acc } else { err(unknownField, child(pointer, m.key)) }
+    })
+
+    fn checkField(model, f, members, pointer) = if !isMember(members, f.name) {
+        if isOption(f.typ) { Success { value: members } } else { err(missingField, child(pointer, f.name)) }
+    } else {
+        match memberValue(members, f.name) {
+            Error { message } => Error { message: message }
+            Success { value } => match validateRef(model, f.typ, value, child(pointer, f.name)) {
+                Success => Success { value: members }
+                Error { message } => Error { message: message }
+            }
+        }
+    }
+
+    fn checkMissing(model, fields, members, pointer) = foldList(fields, Success { value: members }, fn(acc, f) => match acc {
+        Error => acc
+        Success => checkField(model, f, members, pointer)
+    })
+
+    fn validateFields(model, fields, members, pointer) = match checkUnknown(members, fields, pointer) {
+        Error { message } => Error { message: message }
+        Success => checkMissing(model, fields, members, pointer)
+    }
+
+    fn validateStruct(model, fields, value, pointer) = match value {
+        Json::Obj { members } => match validateFields(model, fields, members, pointer) {
+            Success => Success { value: value }
+            Error { message } => Error { message: message }
+        }
+        _ => err(notObject, pointer)
+    }
+
+    fn variantNamed(variants, name) = foldList(variants, Error { message: unknownVariant }, fn(acc, v) => match acc {
+        Success => acc
+        Error => if v.name == name { Success { value: v } } else { acc }
+    })
+
+    fn validateVariantMember(model, variants, members, pointer) = {
+        let member = listGet(members, 0) ?: Json::Member { key: "", value: Json::Null }
+        match variantNamed(variants, member.key) {
+            Error => err(unknownVariant, child(pointer, member.key))
+            Success { value } => validateStruct(model, value.payload, member.value, child(pointer, member.key))
+        }
+    }
+
+    fn validateVariantObject(model, variants, members, pointer) = if length(members) != 1 {
+        err(variantCount, pointer)
+    } else {
+        validateVariantMember(model, variants, members, pointer)
+    }
+
+    fn validateUnion(model, variants, value, pointer) = match value {
+        Json::Obj { members } => validateVariantObject(model, variants, members, pointer)
+        _ => err(notObject, pointer)
+    }
+
+    fn validateList(model, element, value, pointer) = match value {
+        Json::Arr { items } => match validateItems(model, element, items, pointer, 0) {
+            Success => Success { value: value }
+            Error { message } => Error { message: message }
+        }
+        _ => err(notArray, pointer)
+    }
+
+    fn validateItems(model, element, items, pointer, i) -> Result<List<Json::Value>, string> = match i >= length(items) {
+        true => Success { value: items }
+        false => match validateRef(model, element, listGet(items, i) ?: Json::Null, itemAt(pointer, i)) {
+            Success => validateItems(model, element, items, pointer, i + 1)
+            Error { message } => Error { message: message }
+        }
+    }
+
+    fn validateRef(model, ref, value, pointer) -> Result<Json::Value, string> = if Json::isNull(value) {
+        err(nullCode, pointer)
+    } else {
+        match ref {
+            TypeDiagram::Named { name } => validateNamed(model, name, value, pointer)
+            TypeDiagram::ListOf { element } => validateList(model, element, value, pointer)
+            TypeDiagram::OptionOf { element } => validateRef(model, element, value, pointer)
+        }
+    }
+
+    /// `Success` of the validated value, or `"<code> at <json-pointer>"`.
+    /// Implements [PACKAGE-TYPE-INVARIANTS].
+    export fn validate(model, typeName, json) = validateRef(model, TypeDiagram::Named { name: typeName }, json, "")
+}

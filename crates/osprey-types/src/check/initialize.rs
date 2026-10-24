@@ -40,6 +40,7 @@ impl Checker {
             current_fn_typarams: HashMap::new(),
             current_fn: None,
             defer_arith: true,
+            expr_position: None,
         };
         c.register_result_ctors();
         c.register_builtin_variances();

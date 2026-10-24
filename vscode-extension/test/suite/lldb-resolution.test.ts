@@ -85,6 +85,29 @@ suite("Osprey lldb-dap Resolution Unit Tests", () => {
     }
   });
 
+  test("a terminal console is refused under Xcode's adapter before probing", async () => {
+    const forbiddenProbe = async () => {
+      throw new Error("Xcode's adapter must be refused without a probe");
+    };
+    for (const adapter of [
+      "/Applications/Xcode.app/Contents/Developer/usr/bin/lldb-dap",
+      "/Applications/Xcode-beta.app/Contents/Developer/usr/bin/lldb-dap",
+      "/Library/Developer/CommandLineTools/usr/bin/lldb-dap",
+    ]) {
+      for (const console of ["integratedTerminal", "externalTerminal"] as const) {
+        await assert.rejects(
+          resolveDebugConsole({ console }, adapter, forbiddenProbe),
+          /cannot run under Xcode's lldb-dap.*brew install lldb/,
+        );
+      }
+      assert.strictEqual(
+        await resolveDebugConsole({}, adapter, forbiddenProbe),
+        "internalConsole",
+        "the Debug Console still works under Xcode's adapter",
+      );
+    }
+  });
+
   test("invalid or conflicting console options are rejected before probing", async () => {
     const forbiddenProbe = async () => {
       throw new Error("invalid config must not probe");
@@ -242,6 +265,33 @@ suite("Osprey lldb-dap Resolution Unit Tests", () => {
       platform: "linux",
     };
     assert.strictEqual(resolveLldbDapExecutable({}, host), undefined);
+  });
+
+  // Xcode's adapter never completes a terminal launch [DEBUGGER-CONSOLE], so
+  // a Homebrew adapter outranks it whenever one is installed.
+  test("darwin prefers Homebrew's keg-only lldb over xcrun", () => {
+    for (const found of [
+      "/opt/homebrew/opt/lldb/bin/lldb-dap",
+      "/usr/local/opt/lldb/bin/lldb-dap",
+    ]) {
+      const host = hostFinding("darwin", "", [found], {
+        execFileSync: () => {
+          throw new Error("xcrun must not run when Homebrew answers");
+        },
+      });
+      assert.strictEqual(resolveLldbDapExecutable({}, host), found);
+    }
+  });
+
+  test("darwin searches the versioned llvm kegs newest first", () => {
+    const kegs = "/opt/homebrew/opt";
+    const found = `${kegs}/llvm@21/bin/lldb-dap`;
+    const host = hostFinding("darwin", "", [found, `${kegs}/llvm@19/bin/lldb-dap`], {
+      readDir: (directory) =>
+        directory === kegs ? ["llvm@19", "llvm@21", "llvm@x", "lldb-tools"] : [],
+      execFileSync: () => "/Applications/Xcode.app/Contents/Developer/usr/bin/lldb-dap\n",
+    });
+    assert.strictEqual(resolveLldbDapExecutable({}, host), found);
   });
 
   test("xcrun answers on darwin when it names a real file", () => {

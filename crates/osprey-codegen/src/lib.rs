@@ -64,6 +64,7 @@ pub use gpu_kernel::{GpuKernelMode, GPU_KERNELS_ENV};
 pub use llty::{LType, Value};
 pub use lower::{
     compile_library, compile_program, compile_program_coverage, compile_program_debug,
+    compile_program_symbolic,
 };
 pub use osprey_debug::DebugSource;
 

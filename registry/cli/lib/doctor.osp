@@ -30,8 +30,15 @@ module Doctor {
         Reports::field("compiler", if found.status == 0 { trim(found.stdout) } else { "missing (osprey is not on PATH)" })
     }
 
+    /// uv is the provider of the one system capability Osprey invokes,
+    /// `python/interop`; it is reported as guidance, never installed ([PACKAGE-PYTHON-UV]).
+    fn uvLine() = {
+        let found = perform Host::Process.run("command -v uv")
+        Reports::field("uv", if found.status == 0 { trim(found.stdout) } else { "missing (python/uv: needed only by packages declaring python/interop)" })
+    }
+
     fn blockedLines() = mapList(Capabilities::blocked(), fn(c) => Reports::field("blocked", "${c.id} (${c.summary})"))
 
     /// The whole report; the scratch directory exists once `process` has run.
-    export fn report() = Reports::success(listConcat([processLine(), filesLine(), compilerLine()], blockedLines()))
+    export fn report() = Reports::success(listConcat([processLine(), filesLine(), compilerLine(), uvLine()], blockedLines()))
 }

@@ -16,12 +16,21 @@ impl Lowerer<'_> {
     ) -> Result<Program> {
         let header = Header::read(self, node)?;
         let doc = self.docstring(node, DocScope::Inner)?;
-        let statements = self.module_contribution(&header, statements)?;
+        let has_module = header.module.is_some();
+        let statements = self.module_contribution(&header, statements, doc.clone())?;
         let statements = header.namespace_contribution(statements);
-        Ok(Program { statements, doc })
+        Ok(Program {
+            statements,
+            doc: (!has_module).then_some(doc).flatten(),
+        })
     }
 
-    fn module_contribution(&self, header: &Header, statements: Vec<Stmt>) -> Result<Vec<Stmt>> {
+    fn module_contribution(
+        &self,
+        header: &Header,
+        statements: Vec<Stmt>,
+        doc: Option<osprey_ast::DocComment>,
+    ) -> Result<Vec<Stmt>> {
         self.check_export_context(header)?;
         let Some((path, position)) = &header.module else {
             return Ok(statements);
@@ -31,7 +40,7 @@ impl Lowerer<'_> {
             .partition(|statement| matches!(statement, Stmt::Import(_)));
         let body = self.module_items(declarations)?;
         let mut result = imports;
-        result.push(module_statement(path, *position, body));
+        result.push(module_statement(path, *position, body, doc));
         Ok(result)
     }
 
@@ -311,14 +320,19 @@ fn flavor_directive(node: Node<'_>, value: &str) -> Result<()> {
         .map_err(|message| Lowerer::error(node, message))
 }
 
-fn module_statement(path: &str, position: Position, body: Vec<ModuleItem>) -> Stmt {
+fn module_statement(
+    path: &str,
+    position: Position,
+    body: Vec<ModuleItem>,
+    inner_doc: Option<osprey_ast::DocComment>,
+) -> Stmt {
     Stmt::Module {
         path: SymbolPath::new(path.split('.')),
         kind: ModuleKind::Plain,
         signature: None,
         body,
         doc: None,
-        inner_doc: None,
+        inner_doc,
         position: Some(position),
     }
 }

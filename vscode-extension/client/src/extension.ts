@@ -43,6 +43,7 @@ import {
   compileCurrentFile,
   compileAndRunCurrentFile,
 } from "./compile-commands";
+import { huntCurrentFile } from "./hunt";
 export * from "./client-config";
 export * from "./debug-config";
 
@@ -300,12 +301,17 @@ export function activate(context: ExtensionContext): OspreyExtensionApi {
   });
 
   // Register commands
+  const huntDiagnostics = languages.createDiagnosticCollection("osprey-hunt");
+  context.subscriptions.push(huntDiagnostics);
   context.subscriptions.push(
     commands.registerCommand("osprey.compile", () => {
       compileCurrentFile(resolveServerCommand(context));
     }),
     commands.registerCommand("osprey.run", () => {
       compileAndRunCurrentFile(resolveServerCommand(context));
+    }),
+    commands.registerCommand("osprey.hunt", () => {
+      huntCurrentFile(resolveServerCommand(context), huntDiagnostics);
     }),
     commands.registerCommand("osprey.debug", () => {
       void debugCurrentFile();

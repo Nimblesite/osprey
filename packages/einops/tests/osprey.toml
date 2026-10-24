@@ -1,0 +1,6 @@
+[project]
+name = "einops-tests"
+source_roots = [".", "../src", "../../testing/src"]
+python_sources = ["../src/parsing.py", "../src/recipe.py", "../src/reconstruct.py", "../../testing/src/check.py", "expected.py", "main.py"]
+default_namespace = "einops_tests"
+entry = "main.py"

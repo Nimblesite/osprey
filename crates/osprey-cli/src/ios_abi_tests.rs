@@ -198,18 +198,14 @@ fn imports_use_c_bool_attributes_and_adapt_unit_returns() {
     let source = "extern fn host_flag(b: bool) -> bool\nextern fn host_log(b: bool) -> Unit\nfn flag(b) = host_flag(b)\nfn log(b) = host_log(b)\n";
     let (abi, ir) = abi_of(source);
     let out = with_host_abi(&ir, &abi).expect("adapted imports");
-    assert!(
-        out.contains("declare zeroext i1 @host_flag(i1 zeroext)"),
-        "{out}"
-    );
-    assert!(
-        out.contains("call zeroext i1 @host_flag(i1 zeroext %p0)"),
-        "{out}"
-    );
-    assert!(out.contains("declare void @host_log(i1 zeroext)"), "{out}");
-    assert!(
-        out.contains("call void @host_log(i1 zeroext %p0)\n  ret i64 0"),
-        "{out}"
+    shows(
+        &out,
+        &[
+            "declare zeroext i1 @host_flag(i1 zeroext)",
+            "call zeroext i1 @host_flag(i1 zeroext %p0)",
+            "declare void @host_log(i1 zeroext)",
+            "call void @host_log(i1 zeroext %p0)\n  ret i64 0",
+        ],
     );
     assert!(!out.contains("call i64 @host_log("), "{out}");
 }
@@ -377,10 +373,9 @@ fn exports_with_their_own_handler_are_supported() {
     );
 }
 
-#[test]
-fn generated_header_and_ir_compile_with_clang() -> Result<(), Box<dyn std::error::Error>> {
-    let source = "extern fn host_flag(b: bool) -> bool\nextern fn host_log(n: int) -> Unit\nextern fn host_handle(n: int) -> Ptr\nfn flag(b) = host_flag(b)\nfn log(n) = host_log(n)\nfn handle(n) = host_handle(n)\nfn score(n) = toFloat(n)\nfn text() = \"hello\"\n";
-    let (abi, ir) = abi_of(source);
+/// Clang accepts `abi`'s iOS header as freestanding C and as C++, warnings
+/// as errors.
+fn headers_compile(abi: &HostAbi) -> Result<(), Box<dyn std::error::Error>> {
     for language in ["c-header", "c++-header"] {
         clang_accepts(
             &[
@@ -391,9 +386,17 @@ fn generated_header_and_ir_compile_with_clang() -> Result<(), Box<dyn std::error
                 "-fsyntax-only",
                 "-",
             ],
-            &header_for_target(&abi, "demo.osp", "ios"),
+            &header_for_target(abi, "demo.osp", "ios"),
         )?;
     }
+    Ok(())
+}
+
+#[test]
+fn generated_header_and_ir_compile_with_clang() -> Result<(), Box<dyn std::error::Error>> {
+    let source = "extern fn host_flag(b: bool) -> bool\nextern fn host_log(n: int) -> Unit\nextern fn host_handle(n: int) -> Ptr\nfn flag(b) = host_flag(b)\nfn log(n) = host_log(n)\nfn handle(n) = host_handle(n)\nfn score(n) = toFloat(n)\nfn text() = \"hello\"\n";
+    let (abi, ir) = abi_of(source);
+    headers_compile(&abi)?;
     clang_accepts(
         &[
             "-target",
@@ -447,19 +450,7 @@ fn headers_accept_standard_c_macros_and_typedefs_as_parameters(
         )],
         imports: vec![],
     };
-    for language in ["c-header", "c++-header"] {
-        clang_accepts(
-            &[
-                "-ffreestanding",
-                "-Werror",
-                "-x",
-                language,
-                "-fsyntax-only",
-                "-",
-            ],
-            &header_for_target(&abi, "demo.osp", "ios"),
-        )?;
-    }
+    headers_compile(&abi)?;
     Ok(())
 }
 

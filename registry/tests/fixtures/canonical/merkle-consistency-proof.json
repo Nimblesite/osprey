@@ -1,0 +1,17 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "Consistency proof; hashes keep protocol position and may repeat.",
+  "type": "MerkleConsistencyProof",
+  "value": {
+    "logId": "osprey-log-1",
+    "fromSize": 6,
+    "toSize": 8,
+    "hashes": [
+      "sha256:4b1e59ad8ba1a5415999a3d517099165054dcc739a282e57ea2639fb40d67857",
+      "sha256:0094e0aa3bac2d0d30ecdc2da84855f1c5f7d8ae2d19fca71fe3ea7c202c9f5b",
+      "sha256:4b1e59ad8ba1a5415999a3d517099165054dcc739a282e57ea2639fb40d67857"
+    ]
+  },
+  "canonical": "{\"fromSize\":6,\"hashes\":[\"sha256:4b1e59ad8ba1a5415999a3d517099165054dcc739a282e57ea2639fb40d67857\",\"sha256:0094e0aa3bac2d0d30ecdc2da84855f1c5f7d8ae2d19fca71fe3ea7c202c9f5b\",\"sha256:4b1e59ad8ba1a5415999a3d517099165054dcc739a282e57ea2639fb40d67857\"],\"logId\":\"osprey-log-1\",\"toSize\":8}",
+  "canonicalLength": 281
+}

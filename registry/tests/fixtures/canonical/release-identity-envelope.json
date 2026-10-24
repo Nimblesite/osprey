@@ -1,0 +1,19 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "The only preimage of a release digest: no ordinal, proof or mutable state.",
+  "type": "ReleaseIdentityEnvelope",
+  "value": {
+    "package": {
+      "scope": "demo",
+      "name": "maths"
+    },
+    "epoch": 1,
+    "sourceDigest": "sha256:8cad48375ce3a850639c3b94aeb9ee61e6a123926f1ed60e66081248d2cf1d12",
+    "manifestDigest": "sha256:94b73481640df98e2eef4576bf625ba2101792540b32c323634a1b9a1a658cfe",
+    "buildPlanDigest": "sha256:7efed15475a4032b13ec4e412ddf9501268a1921a3ca2e40270606659f5b29c6"
+  },
+  "canonical": "{\"buildPlanDigest\":\"sha256:7efed15475a4032b13ec4e412ddf9501268a1921a3ca2e40270606659f5b29c6\",\"epoch\":1,\"manifestDigest\":\"sha256:94b73481640df98e2eef4576bf625ba2101792540b32c323634a1b9a1a658cfe\",\"package\":{\"name\":\"maths\",\"scope\":\"demo\"},\"sourceDigest\":\"sha256:8cad48375ce3a850639c3b94aeb9ee61e6a123926f1ed60e66081248d2cf1d12\"}",
+  "canonicalLength": 325,
+  "domain": "osprey.release.v1",
+  "digest": "sha256:bece9638d8acc5271e28944cba06dac6a161621592faf6bca5e3a48c7350b39f"
+}

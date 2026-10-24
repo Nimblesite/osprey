@@ -62,10 +62,7 @@ fn constructor_field(
         .iter()
         .find(|f| f.name == field)
         .ok_or_else(|| CodegenError::invalid(format!("missing field `{field}` for `{owner}`")))?;
-    let value = crate::expr::gen_expr(cg, &assignment.value)?;
-    let value = crate::listlit::escaping(cg, value);
-    let value = super::fields::coerce_field(cg, value, owner, field, None)?;
-    let stored = crate::cast::erase_result(cg, value);
+    let stored = super::settled_field_value(cg, &assignment.value, owner, field, None)?;
     if ty == LType::I64 {
         Ok(crate::conv::box_to_i64(cg, stored))
     } else {

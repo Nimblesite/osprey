@@ -21,15 +21,48 @@ impl Lowerer<'_> {
 
     fn file_statements(&mut self, node: Node<'_>) -> Vec<Stmt> {
         self.plan_bindings(node);
+        let nodes = self.body_nodes(node);
         let mut statements = Vec::new();
-        for child in self.body_nodes(node) {
+        let mut index = 0;
+        while let Some(child) = nodes.get(index).copied() {
             match self.statement(child) {
-                Ok(Some(statement)) => statements.push(statement),
+                Ok(Some(statement)) => {
+                    let next = nodes.get(index + 1).copied();
+                    let (statement, skip) = self.with_attribute_doc(statement, next);
+                    if skip {
+                        index += 1;
+                    }
+                    statements.push(statement);
+                }
                 Ok(None) => (),
                 Err(error) => self.errors.push(error),
             }
+            index += 1;
         }
         statements
+    }
+
+    /// PEP 257 attribute docstrings: a string-literal statement directly after
+    /// a module constant or a `type X = ...` alias documents that declaration
+    /// ([FLAVOR-PYTHON-CST]). Returns whether the docstring was consumed.
+    fn with_attribute_doc(&mut self, statement: Stmt, next: Option<Node<'_>>) -> (Stmt, bool) {
+        let Some(next) = next else {
+            return (statement, false);
+        };
+        let Some(doc) = self.attribute_doc_or_error(next) else {
+            return (statement, false);
+        };
+        attach_attribute_doc(statement, doc)
+    }
+
+    fn attribute_doc_or_error(&mut self, next: Node<'_>) -> Option<osprey_ast::DocComment> {
+        match self.attribute_docstring(next) {
+            Ok(doc) => doc,
+            Err(error) => {
+                self.errors.push(error);
+                None
+            }
+        }
     }
 
     fn statement(&mut self, node: Node<'_>) -> Result<Option<Stmt>> {
@@ -44,6 +77,7 @@ impl Lowerer<'_> {
             "if_statement" => Self::expression_statement_value(self.if_expression(node, false)?),
             "with_statement" => Self::expression_statement_value(self.with_handler(node, false)?),
             "match_statement" => Self::expression_statement_value(self.matching(node, false)?),
+            "for_statement" => Self::expression_statement_value(self.for_statement(node)?),
             _ => return self.unsupported(node),
         };
         Ok(Some(statement))
@@ -105,6 +139,12 @@ impl Lowerer<'_> {
 
     pub(super) fn function(&mut self, node: Node<'_>) -> Result<Stmt> {
         Self::synchronous(node)?;
+        if !self.file_scope() {
+            return Err(Self::error(
+                node,
+                "nested `def` has no Osprey lowering; bind a lambda to a name instead",
+            ));
+        }
         let _ = self.declaration_name(node)?;
         self.scoped(true, |lowerer| lowerer.function_body(node))
     }
@@ -178,6 +218,42 @@ impl Lowerer<'_> {
         value.map_or_else(|| Ok(unit()), |value| self.expr(value))
     }
 
+    /// `for name in iterator:` lowers to `forEach(iterator, callback)`; the
+    /// iteration variable is local to the callback ([FLAVOR-PYTHON-EXPRESSIONS]).
+    fn for_statement(&mut self, node: Node<'_>) -> Result<Expr> {
+        Self::reject_async_for(node)?;
+        let left = Self::field(node, "left")?;
+        let name = self.loop_target(left)?;
+        let iter = self.expr(Self::field(node, "right")?)?;
+        let body = self.scoped(false, |lowerer| {
+            lowerer.bind(left, false)?;
+            lowerer.suite(Self::field(node, "body")?, false)
+        })?;
+        Ok(super::context::apply(
+            Expr::Identifier("forEach".into()),
+            vec![iter, loop_callback(&name, body, node)],
+        ))
+    }
+
+    fn reject_async_for(node: Node<'_>) -> Result<()> {
+        if node
+            .children(&mut node.walk())
+            .any(|child| child.kind() == "async")
+        {
+            return Err(Self::error(
+                node,
+                "async `for` has no Osprey lowering; use fibers or forEach",
+            ));
+        }
+        if node.child_by_field_name("alternative").is_some() {
+            return Err(Self::error(
+                node,
+                "`for ... else` has no Osprey lowering; track completion with an explicit flag",
+            ));
+        }
+        Ok(())
+    }
+
     fn if_expression(&mut self, node: Node<'_>, tail: bool) -> Result<Expr> {
         let condition = self.expr(Self::field(node, "condition")?)?;
         let then = self.scoped(false, |lowerer| {
@@ -214,4 +290,34 @@ impl Lowerer<'_> {
 
 fn suite_block(node: Node<'_>, statements: Vec<Stmt>, value: Option<Expr>) -> Expr {
     crate::desugar::block(statements, value.map(Box::new), Some(position(node)))
+}
+
+/// The callback a `for` statement hands to `forEach`: one iteration variable,
+/// the loop body, and no explicit return type.
+fn loop_callback(name: &str, body: Expr, node: Node<'_>) -> Expr {
+    Expr::Lambda {
+        parameters: vec![osprey_ast::Parameter {
+            name: name.into(),
+            ty: None,
+            inline_constraint: false,
+        }],
+        return_type: None,
+        body: Box::new(body),
+        position: Some(position(node)),
+    }
+}
+
+/// Attach an attribute docstring to the preceding declaration, reporting
+/// whether it was consumed (so the string statement is not a value).
+fn attach_attribute_doc(mut statement: Stmt, doc: osprey_ast::DocComment) -> (Stmt, bool) {
+    match &mut statement {
+        Stmt::Let { doc: slot, .. }
+        | Stmt::Type {
+            alias: Some(_),
+            doc: slot,
+            ..
+        } => *slot = Some(doc),
+        _ => return (statement, false),
+    }
+    (statement, true)
 }

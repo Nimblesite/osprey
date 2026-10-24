@@ -78,25 +78,40 @@ pub(crate) fn gen_await(cg: &mut Codegen, e: &Expr) -> Result<Value> {
     let f = gen_expr(cg, e)?;
     // Same rule as `recv`, and for the same reason: see `gen_recv` below. A
     // fiber whose result type did not reach here cannot be unboxed, and
-    // guessing the wire word answers a wrong value in silence.
-    let Some(elem) = f.fiber_elem else {
-        return Err(CodegenError::invalid(
-            "this fiber's result type did not reach `await`: it was read out of \
-             a field or structure whose declared type is a type variable, which \
-             carries no result type. Give the field the fiber's concrete type",
-        ));
+    // guessing the wire word answers a wrong value in silence. The runtime
+    // retains a fresh caller reference on every await and keeps, then later
+    // drops, its separate completed-result root.
+    adopt_from_runtime(
+        cg,
+        f,
+        "fiber_await",
+        "this fiber's result type did not reach `await`: it was read out of \
+         a field or structure whose declared type is a type variable, which \
+         carries no result type. Give the field the fiber's concrete type",
+    )
+}
+
+/// The `i64` word the runtime call `runtime` answers for the handle `handle`,
+/// unboxed back to the element type the handle carries, with the +1 reference
+/// the runtime hands over registered in this ARC region like an ordinary
+/// function return [GC-ARC-PERCEUS] [MEM-FIBER-ISOLATION]. A handle whose
+/// element type did not travel here is the hard error `missing`.
+fn adopt_from_runtime(
+    cg: &mut Codegen,
+    handle: Value,
+    runtime: &str,
+    missing: &str,
+) -> Result<Value> {
+    let Some(elem) = handle.fiber_elem else {
+        return Err(CodegenError::invalid(missing));
     };
-    let owner = f.fiber_elem_owner.clone();
-    let result_inner = f.fiber_elem_result_inner;
-    let payload_owner = f.fiber_elem_payload_owner.clone();
-    let id = as_i64(cg, f)?;
-    let r = cg.call("i64", "fiber_await", "i64", &[&id.operand]);
+    let owner = handle.fiber_elem_owner.clone();
+    let result_inner = handle.fiber_elem_result_inner;
+    let payload_owner = handle.fiber_elem_payload_owner.clone();
+    let id = as_i64(cg, handle)?;
+    let r = cg.call("i64", runtime, "i64", &[&id.operand]);
     let mut out = crate::effects::unbox_coro_value(cg, &r, elem, result_inner).with_owner(owner);
     out.payload_owner = payload_owner;
-    // The runtime retains a fresh caller reference on every await. Register
-    // that +1 in this ARC region just like an ordinary function return; the
-    // runtime keeps and later drops its separate completed-result root.
-    // [GC-ARC-PERCEUS] [MEM-FIBER-ISOLATION]
     crate::arc::own(cg, &out);
     Ok(out)
 }
@@ -175,25 +190,17 @@ pub(crate) fn gen_recv(cg: &mut Codegen, channel: &Expr) -> Result<Value> {
     // VARIABLE (`type Box<t> = Box { slot: t }`), because the declaration is
     // all the field read has to go on. Rejecting is the honest answer until it
     // does travel [CONCURRENCY-CHANNEL].
-    let Some(elem) = ch.fiber_elem else {
-        return Err(CodegenError::invalid(
-            "this channel's element type did not reach `recv`: it was read out \
-             of a field or structure whose declared type is a type variable, \
-             which carries no element type. Give the field the channel's \
-             concrete type",
-        ));
-    };
-    let owner = ch.fiber_elem_owner.clone();
-    let result_inner = ch.fiber_elem_result_inner;
-    let payload_owner = ch.fiber_elem_payload_owner.clone();
-    let id = as_i64(cg, ch)?;
-    let r = cg.call("i64", "channel_recv", "i64", &[&id.operand]);
-    let mut out = crate::effects::unbox_coro_value(cg, &r, elem, result_inner).with_owner(owner);
-    out.payload_owner = payload_owner;
-    // `send` retained a reference for the receiver; register it here so this
-    // region drops it [GC-ARC-PERCEUS] [MEM-FIBER-ISOLATION].
-    crate::arc::own(cg, &out);
-    Ok(out)
+    // `send` retained a reference for the receiver; adopting it here makes
+    // this region drop it.
+    adopt_from_runtime(
+        cg,
+        ch,
+        "channel_recv",
+        "this channel's element type did not reach `recv`: it was read out \
+         of a field or structure whose declared type is a type variable, \
+         which carries no element type. Give the field the channel's \
+         concrete type",
+    )
 }
 
 /// `select` reaching code generation is a hard error, not a silent choice.

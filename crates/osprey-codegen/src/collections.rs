@@ -348,23 +348,27 @@ pub(crate) fn list_get_operands(cg: &mut Codegen, args: &[Expr]) -> Result<(Valu
     Ok((l, i))
 }
 
+/// The `i32` answer of the runtime predicate `gate` and the `i64` word `read`
+/// returns, both called on the collection `handle` and the boxed `key`.
+fn gated_read(
+    cg: &mut Codegen,
+    handle: &Value,
+    key: &Value,
+    gate: &str,
+    read: &str,
+) -> (String, String) {
+    let args = [handle.operand.as_str(), key.operand.as_str()];
+    let open = cg.call("i32", gate, "i8*, i64", &args);
+    let word = cg.call("i64", read, "i8*, i64", &args);
+    (open, word)
+}
+
 /// Shared runtime list read → `Result<T, _>`, gated on `osprey_list_in_bounds`.
 /// Both spellings of [BUILTIN-LIST-GET] land here — `listGet(xs, i)` and the
 /// `xs[i]` form once its target turns out to be a runtime handle rather than a
 /// flat literal — so the two cannot drift apart.
 pub(crate) fn runtime_list_get(cg: &mut Codegen, l: &Value, i: &Value) -> Result<Value> {
-    let inb = cg.call(
-        "i32",
-        "osprey_list_in_bounds",
-        "i8*, i64",
-        &[&l.operand, &i.operand],
-    );
-    let raw = cg.call(
-        "i64",
-        "osprey_list_get",
-        "i8*, i64",
-        &[&l.operand, &i.operand],
-    );
+    let (inb, raw) = gated_read(cg, l, i, "osprey_list_in_bounds", "osprey_list_get");
     // The success payload is the ELEMENT's type, not the storage word's, so a
     // `List<float>` yields `Result<float, _>` [`LIST_TAG`].
     let value = elem_value(cg, l, &raw);
@@ -634,18 +638,7 @@ pub(crate) fn gen_map_literal(cg: &mut Codegen, entries: &[osprey_ast::MapEntry]
 
 /// Shared runtime map lookup → `Result<V, _>` (also used by `m[key]` indexing).
 pub(crate) fn runtime_map_get(cg: &mut Codegen, m: &Value, k: &Value) -> Result<Value> {
-    let has = cg.call(
-        "i32",
-        "osprey_map_contains",
-        "i8*, i64",
-        &[&m.operand, &k.operand],
-    );
-    let got = cg.call(
-        "i64",
-        "osprey_map_get",
-        "i8*, i64",
-        &[&m.operand, &k.operand],
-    );
+    let (has, got) = gated_read(cg, m, k, "osprey_map_contains", "osprey_map_get");
     // The success payload is the VALUE's type, not the storage word's, so a
     // `Map<string, string>` yields `Result<string, _>` [`MAP_TAG`].
     let value = crate::conv::from_word(cg, &got, tagged_map_elem(m).as_deref());

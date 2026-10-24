@@ -213,10 +213,7 @@ fn ensure_to_string(cg: &mut Codegen) {
     cg.start_block(&body_lbl);
     let (desc, payload) = load_box(cg, "%box");
     let dt = cg.emit_reg(format!("bitcast i8* {desc} to {DESC_TY}*"));
-    let rp = cg.emit_reg(format!(
-        "getelementptr {DESC_TY}, {DESC_TY}* {dt}, i32 0, i32 1"
-    ));
-    let raw = cg.emit_reg(format!("load i8*, i8** {rp}"));
+    let raw = crate::aggregate::load_field(cg, DESC_TY, &dt, 1, LType::Str);
     let f = cg.emit_reg(format!("bitcast i8* {raw} to {RENDER_SIG}*"));
     let s = cg.emit_reg(format!("call i8* {f}(i8* {desc}, i64 {payload})"));
     cg.emit(format!("ret i8* {s}"));
@@ -226,14 +223,8 @@ fn ensure_to_string(cg: &mut Codegen) {
 /// Load a box's `(desc, payload)` pair from its `i8*` operand.
 fn load_box(cg: &mut Codegen, operand: &str) -> (String, String) {
     let bt = cg.emit_reg(format!("bitcast i8* {operand} to {BOX_TY}*"));
-    let dp = cg.emit_reg(format!(
-        "getelementptr {BOX_TY}, {BOX_TY}* {bt}, i32 0, i32 0"
-    ));
-    let desc = cg.emit_reg(format!("load i8*, i8** {dp}"));
-    let pp = cg.emit_reg(format!(
-        "getelementptr {BOX_TY}, {BOX_TY}* {bt}, i32 0, i32 1"
-    ));
-    let payload = cg.emit_reg(format!("load i64, i64* {pp}"));
+    let desc = crate::aggregate::load_field(cg, BOX_TY, &bt, 0, LType::Str);
+    let payload = crate::aggregate::load_field(cg, BOX_TY, &bt, 1, LType::I64);
     (desc, payload)
 }
 

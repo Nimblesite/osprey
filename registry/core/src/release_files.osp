@@ -5,6 +5,7 @@ import registry::Order
 import registry::Release
 import registry::ReleasePath
 import registry::Source
+import registry::Surface
 
 /// Assembles a release directory into the served, digest-pinned form the
 /// catalog and source bundle share. Files arrive in any order; the digest is
@@ -28,12 +29,39 @@ module ReleaseFiles {
         Error { message } => Error { message: message }
     }
 
-    /// Parse the directory, then hash and sort; the first failure wins.
+    fn totalBytes(files) = foldList(files, 0, fn(sum, file) => sum + byteLength(file.content))
+
+    // A `.py` file is Osprey source only when it carries the Python-flavor
+    // marker line first ([PACKAGE-SOURCE-CANONICAL]).
+    let pyMarker = "# osprey: flavor=python"
+
+    fn hasMarker(content) = content == pyMarker || startsWith(content, pyMarker + "\n")
+
+    fn pythonOk(file) = if endsWith(file.relPath, ".py") { hasMarker(file.content) } else { true }
+
+    fn badPython(files) = foldList(files, false, fn(found, file) => found || !pythonOk(file))
+
+    /// The tree-level source rules a path check cannot see: no Git LFS
+    /// pointer stands in for a file, every `.py` file carries the
+    /// Python-flavor marker, no source declares an ambient builtin's name
+    /// (which could hide a call from the capability scan,
+    /// [PACKAGE-CAPABILITY-CONFINEMENT]), and the file count and byte total
+    /// stay within the submission bounds. A folder release declares no assets yet.
+    fn treeCode(files) = if isEmpty(files) { "release.empty" }
+        else if foldList(files, false, fn(found, file) => found || Source::lfsPointer(file.content)) { "source.lfs-pointer" }
+        else if badPython(files) { "source.python-flavor-header" }
+        else if Surface::shadowsBuiltin(files) { "source.shadowed-builtin" }
+        else { Source::limitCode(length(files), totalBytes(files), 0) }
+
+    fn checked(id, files) = {
+        let code = treeCode(files)
+        if code == "" { digested(id, files) } else { Error { message: code } }
+    }
+
+    /// Parse the directory, apply the shared source rules, then hash and
+    /// sort; the first failure wins. Implements [PACKAGE-SOURCE-CANONICAL].
     export fn assemble(dir, files) = match ReleasePath::parse(dir) {
         Error { message } => Error { message: message }
-        Success { value } => match isEmpty(files) {
-            true => Error { message: "release.empty" }
-            false => digested(value, files)
-        }
+        Success { value } => checked(value, files)
     }
 }

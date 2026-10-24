@@ -40,7 +40,10 @@ module Manifest {
     /// `code at line:column`.
     export fn describe(problem) = "${problem.code} at ${problem.line}:${problem.column}"
 
-    fn assemble(project: ManifestSections::Project, wildcard, publication, dependencies, systems, assets) = ManifestModel::Manifest {
+    /// The dependency edges and the root's grants, parsed from the same tables.
+    type Edges = { edges: List<ManifestModel::Edge>, grants: List<ManifestModel::Grant> }
+
+    fn assemble(project: ManifestSections::Project, wildcard, publication, deps: Edges, systems, assets) = ManifestModel::Manifest {
         projectName: project.name,
         sourceRoots: project.sourceRoots,
         defaultNamespace: project.defaultNamespace,
@@ -49,21 +52,33 @@ module Manifest {
         allowWildcardImports: wildcard,
         publication: publication,
         testRoots: project.testRoots,
-        dependencies: dependencies,
+        pythonSources: project.pythonSources,
+        dependencies: deps.edges,
+        grants: deps.grants,
         systemRequirements: systems,
         assets: assets
     }
 
     fn rejected(message) = Rejected { problem: problemOf(message) }
 
-    /// `python_sources` never ships: a publishable manifest cannot carry it.
-    fn publishable(project: ManifestSections::Project, publication, root) = if project.pythonSources && Maybe::isPresent(publication) {
-        rejected("manifest.python-sources-unpublishable at ${ManifestSections::spanOf(ManifestSections::pairsOf(root), "project", ManifestSections::rootSpan()).line}:1")
+    /// A published manifest keeps every `python_sources` entry inside one of
+    /// its `source_roots` so the capability scan covers it ([PACKAGE-MANIFEST]).
+    fn rooted(entry, roots) = foldList(roots, false, fn(found, root) => found || startsWith(entry, root + "/"))
+
+    fn anyUnrooted(project) = foldList(project.pythonSources, false, fn(found, entry) => found || !rooted(entry, project.sourceRoots))
+
+    fn publishable(project: ManifestSections::Project, publication, root) = if Maybe::isPresent(publication) && anyUnrooted(project) {
+        rejected("manifest.python-source-unrooted at ${ManifestSections::spanOf(ManifestSections::pairsOf(root), "project", ManifestSections::rootSpan()).line}:1")
     } else { withDependencies(project, publication, root) }
 
     fn withDependencies(project, publication, root) = match ManifestDeps::dependencies(root) {
         Error { message } => rejected(message)
-        Success { value } => withSystems(project, publication, root, value)
+        Success { value } => withGrants(project, publication, root, value)
+    }
+
+    fn withGrants(project, publication, root, edges) = match ManifestDeps::grants(root) {
+        Error { message } => rejected(message)
+        Success { value } => withSystems(project, publication, root, Edges { edges: edges, grants: value })
     }
 
     fn withSystems(project, publication, root, dependencies) = match ManifestDeps::systems(root) {

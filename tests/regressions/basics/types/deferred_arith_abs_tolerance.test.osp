@@ -1,0 +1,24 @@
+/// A tolerance helper whose body mixes `abs`, `-`, `*` and `+` under one
+/// comparison used to be rejected with "cannot unify float with int": the
+/// `abs` overload settled before the subtraction feeding it, defaulting the
+/// shared operand to int. A deferred site now waits for whatever decides it.
+/// Implements [ARITH-EFFECT] and [FLOAT-OPERANDS].
+
+fn near(got, want, rtol, atol) = abs(got - want) <= atol + rtol * abs(want)
+
+print(toString(near(1.0, 1.0, 0.1, 0.1)))
+print(toString(near(1.0, 1.2, 0.2, 0.05)))
+print(toString(near(-3.0, 3.0, 0.0, 6.0)))
+print(toString(near(0.5, 0.5, 0.0, 0.0)))
+
+fn scaledGap(a, b, d) = abs(a - b) <= d * b
+
+print(toString(scaledGap(10.0, 3.0, 2.0)))
+print(toString(scaledGap(10.0, 3.0, 1.0)))
+
+/// A float literal the comparison reads decides open operands even with no
+/// call to pin them, so this one is float, not the integer default.
+fn band(a, b) = (a - b) <= 1.0
+
+print(toString(band(2.5, 2.0)))
+print(toString(band(2.5, 0.5)))

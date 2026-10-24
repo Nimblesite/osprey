@@ -1,0 +1,168 @@
+namespace registry_cli;
+import registry_host::Host
+import registry_cli::Project
+import registry::Identity
+import registry::ManifestSections
+import registry::Maybe
+import registry::Names
+import registry::Order
+import registry::Toml
+
+/// `osprey.local.toml`, the root's development overlay ([PACKAGE-LOCAL-OVERRIDE]):
+/// an `[overrides]` table with one
+/// `"@scope/name" = { path = "../dir", epoch = N, baseline = "<ReleaseId>" }`
+/// entry per key taken from a local checkout. Only the selected root's overlay
+/// participates, and the file is non-portable development state.
+module Overlay {
+    /// The overlay file beside the manifest.
+    export let fileName = "osprey.local.toml"
+    let header = "[overrides]"
+    let shapeCode = "overlay.shape"
+    let pathCode = "overlay.path"
+    let epochCode = "overlay.epoch"
+    let baselineCode = "overlay.baseline"
+
+    /// One overridden key: its local checkout, its epoch and the published
+    /// release it replaces, when one exists.
+    export type Mapping = { package: Names::Key, path: string, epoch: int, baseline: Maybe::Maybe<Identity::ReleaseId> }
+
+    /// The overlay path at `dir`.
+    export fn pathAt(dir) = Project::pathAt(dir, fileName)
+
+    // `Mapping` shares `package`, `path` and `epoch`; issue #273 needs typed receivers.
+    export fn keyOf(m: Mapping) = m.package
+    export fn pathOf(m: Mapping) = m.path
+    export fn epochOf(m: Mapping) = m.epoch
+    export fn baselineOf(m: Mapping) = m.baseline
+
+    fn blank() = Mapping { package: Names::blank(), path: "", epoch: 1, baseline: Maybe::none() }
+
+    // ---- parsing ----
+
+    fn pairValue(p: Toml::Pair) = p.value
+    fn pairKey(p: Toml::Pair) = p.key
+
+    fn pathIn(pairs) = match ManifestSections::find(pairs, "path") {
+        Error => Error { message: pathCode }
+        Success { value } => match ManifestSections::stringOf(value, pathCode) {
+            Error { message } => Error { message: message }
+            Success { value } => if value == "" { Error { message: pathCode } } else { Success { value: value } }
+        }
+    }
+
+    fn epochIn(pairs) = match ManifestSections::find(pairs, "epoch") {
+        Error => Error { message: epochCode }
+        Success { value } => match ManifestSections::intOf(value, epochCode) {
+            Error { message } => Error { message: message }
+            Success { value } => if value < 1 { Error { message: epochCode } } else { Success { value: value } }
+        }
+    }
+
+    fn parsedBaseline(text) = match Identity::parse(text) {
+        Error => Error { message: baselineCode }
+        Success { value } => Success { value: Maybe::some(value) }
+    }
+
+    fn baselineIn(pairs) = match ManifestSections::find(pairs, "baseline") {
+        Error => Success { value: Maybe::none() }
+        Success { value } => match ManifestSections::stringOf(value, baselineCode) {
+            Error { message } => Error { message: message }
+            Success { value } => parsedBaseline(value)
+        }
+    }
+
+    fn assembled(key, path, epoch, baseline) = match baseline {
+        Error { message } => Error { message: message }
+        Success { value } => Success { value: Mapping { package: key, path: path, epoch: epoch, baseline: value } }
+    }
+
+    fn withEpoch(key, path, epoch, pairs) = match epoch {
+        Error { message } => Error { message: message }
+        Success { value } => assembled(key, path, value, baselineIn(pairs))
+    }
+
+    fn withPath(key, path, pairs) = match path {
+        Error { message } => Error { message: message }
+        Success { value } => withEpoch(key, value, epochIn(pairs), pairs)
+    }
+
+    fn mappingIn(key, value) = match value {
+        Toml::Table { pairs } => withPath(key, pathIn(pairs), pairs)
+        _ => Error { message: shapeCode }
+    }
+
+    fn mappingOf(p) = match Names::parse(pairKey(p)) {
+        Error => Error { message: shapeCode }
+        Success { value } => mappingIn(value, pairValue(p))
+    }
+
+    fn appendMapping(done, p) = match mappingOf(p) {
+        Error { message } => Error { message: message }
+        Success { value } => Success { value: listAppend(done, value) }
+    }
+
+    fn mappingsOf(pairs) = foldList(pairs, Success { value: [] }, fn(acc, p) => match acc {
+        Error => acc
+        Success { value } => appendMapping(value, p)
+    })
+
+    fn parsed(text) = match Toml::parse(text) {
+        Error { message } => Error { message: "${shapeCode} ${message}" }
+        Success { value } => match ManifestSections::find(ManifestSections::pairsOf(value), "overrides") {
+            Error => Success { value: [] }
+            Success { value } => mappingsOf(ManifestSections::pairsOf(pairValue(value)))
+        }
+    }
+
+    /// The overlay at `dir`: no file means no overrides; a file that does
+    /// not parse is its `overlay.*` code.
+    export fn readAt(dir) = match perform Host::Files.read(pathAt(dir)) {
+        Error => Success { value: [] }
+        Success { value } => parsed(value)
+    }
+
+    /// The overlay text at `dir`, "" when there is none.
+    export fn textAt(dir) = perform Host::Files.read(pathAt(dir)) ?: ""
+
+    /// Whether any key is overridden.
+    export fn active(mappings) = !isEmpty(mappings)
+
+    /// The mapping of `key`, if overridden.
+    export fn mappingFor(mappings, key) -> Result<Mapping, string> = foldList(mappings, Error { message: "none" }, fn(acc, m) => match acc {
+        Success => acc
+        Error => if Names::same(keyOf(m), key) { Success { value: m } } else { acc }
+    })
+
+    /// Whether `key` is overridden.
+    export fn overridden(mappings, key) = match mappingFor(mappings, key) {
+        Success => true
+        Error => false
+    }
+
+    /// `mappings` with `m` replacing any mapping of the same key.
+    export fn withMapping(mappings, m) = listAppend(without(mappings, keyOf(m)), m)
+
+    /// `mappings` without the mapping of `key`.
+    export fn without(mappings, key) = filterList(mappings, fn(m) => !Names::same(keyOf(m), key))
+
+    // ---- rendering ----
+
+    fn baselineText(m) = Maybe::fold(baselineOf(m), "", fn(id) => ", baseline = \"${Identity::display(id)}\"")
+
+    fn line(m) = "\"${Names::display(keyOf(m))}\" = { path = \"${pathOf(m)}\", epoch = ${epochOf(m)}${baselineText(m)} }"
+
+    fn sorted(mappings) = {
+        let at = fn(i) => listGet(mappings, i) ?: blank()
+        mapList(Order::permutation(length(mappings), fn(i, j) => Names::compare(keyOf(at(i)), keyOf(at(j)))), fn(i) => at(i))
+    }
+
+    /// The overlay text for `mappings`, sorted by key; the bare header when none remain.
+    export fn render(mappings) = join(listPrepend(mapList(sorted(mappings), line), header), "\n") + "\n"
+
+    /// The lock a bare command consumes: the development lock while the
+    /// overlay is active, else the release lock ([PACKAGE-LOCAL-OVERRIDE]).
+    export fn activeLockAt(dir) = match readAt(dir) {
+        Error { message } => Error { message: message }
+        Success { value } => if active(value) { Project::readLocalLockAt(dir) } else { Project::readLockAt(dir) }
+    }
+}

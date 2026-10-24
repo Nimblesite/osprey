@@ -25,6 +25,7 @@ mod doctests;
 mod document_entries;
 mod document_source;
 mod fmt;
+mod hunt;
 mod ios;
 mod ios_abi;
 mod project;
@@ -71,6 +72,7 @@ fn main() -> ExitCode {
         Some(("lsp", _)) => run_lsp(),
         Some(("fmt", rest)) => fmt::run(rest),
         Some(("test", rest)) => test_cmd::run(rest),
+        Some(("hunt", rest)) => hunt::run(rest),
         _ if args.iter().any(|arg| arg == "--docs") => docs::run(&args),
         _ => run_arguments(&args),
     }

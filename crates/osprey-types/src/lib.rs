@@ -31,6 +31,8 @@ mod check;
 mod comparison;
 mod convert;
 mod ctx;
+#[cfg(test)]
+mod deferred_arith_tests;
 mod effect_rows;
 #[cfg(test)]
 mod effect_rows_exports_tests;
@@ -90,6 +92,8 @@ mod undocumented;
 #[cfg(test)]
 mod undocumented_tests;
 mod unify;
+#[cfg(test)]
+mod unify_position_tests;
 mod unused;
 #[cfg(test)]
 mod unused_tests;

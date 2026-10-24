@@ -53,8 +53,19 @@ pub(super) fn binary_integer_builtin(
 /// already-evaluated values. Any other builtin named as a callback is
 /// eta-expanded into an ordinary call instead ([`crate::iter`]).
 pub(crate) fn has_value_form(name: &str) -> bool {
-    matches!(name, "print" | "toString" | "toFloat" | "abs")
+    matches!(name, "print" | "toString" | "toFloat" | "abs" | "bitNot")
         || crate::arithmetic::is_float_function(name)
+        || crate::arithmetic::is_binary_float_function(name)
+        || crate::arithmetic::is_word_builtin(name)
+        || matches!(
+            name,
+            "float32"
+                | "floatBits"
+                | "floatFromBits"
+                | "float32Bits"
+                | "float32FromBits"
+                | "floatToInt"
+        )
         || is_binary_integer_builtin(name)
 }
 
@@ -62,11 +73,20 @@ pub(crate) fn has_value_form(name: &str) -> bool {
 /// print)`, `gpuMap(toFloat)`. Each arm has a value form needing no argument
 /// expressions, so it lowers once per element. `None` means `name` has no such
 /// form. Implements [BUILTIN-ITER-CALLBACK].
-fn call_builtin_with_values(cg: &mut Codegen, name: &str, args: &[Value]) -> Option<Result<Value>> {
+pub(super) fn call_builtin_with_values(
+    cg: &mut Codegen,
+    name: &str,
+    args: &[Value],
+) -> Option<Result<Value>> {
     if !has_value_form(name) {
         return None;
     }
     let arg = || args.first().cloned().unwrap_or_else(Value::unit);
+    let pair = || -> Option<(Value, Value)> {
+        let left = args.first().cloned()?;
+        let right = args.get(1).cloned()?;
+        Some((left, right))
+    };
     Some(match name {
         "print" => gen_print(cg, arg()),
         "toString" => to_string_value(cg, arg()),
@@ -78,6 +98,24 @@ fn call_builtin_with_values(cg: &mut Codegen, name: &str, args: &[Value]) -> Opt
         name if crate::arithmetic::is_float_function(name) => {
             crate::arithmetic::float_function(cg, name, arg())
         }
+        name if crate::arithmetic::is_binary_float_function(name) => match pair() {
+            Some((left, right)) => crate::arithmetic::binary_float_function(cg, name, left, right),
+            None => Err(CodegenError::invalid(format!("{name} needs two arguments"))),
+        },
+        // [BUILTIN-FLOAT32] [BUILTIN-FLOAT-BITS] [BUILTIN-FLOATTOINT] the
+        // conversions named as kernels: `gpuMap(float32)` and friends.
+        "float32" => crate::arithmetic::float32_round(cg, arg()),
+        "floatBits" => crate::arithmetic::float_bits(cg, arg()),
+        "floatFromBits" => crate::arithmetic::float_from_bits(cg, arg()),
+        "float32Bits" => crate::arithmetic::float32_bits(cg, arg()),
+        "float32FromBits" => crate::arithmetic::float32_from_bits(cg, arg()),
+        "floatToInt" => crate::arithmetic::float_to_int(cg, arg()),
+        // [BUILTIN-BITWISE]
+        "bitNot" => crate::arithmetic::bit_not(cg, arg()),
+        name if crate::arithmetic::is_word_builtin(name) => match pair() {
+            Some((left, right)) => crate::arithmetic::bitwise(cg, name, left, right),
+            None => Err(CodegenError::invalid(format!("{name} needs two arguments"))),
+        },
         _ => match args {
             [left, right] => binary_integer_builtin(cg, name, left.clone(), right.clone()),
             _ => Err(CodegenError::invalid(format!("{name} needs two arguments"))),

@@ -1,0 +1,33 @@
+name: Dependency vulnerability audit
+on:
+  workflow_call:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 6 * * 1'
+permissions:
+  contents: read
+jobs:
+  audit:
+    name: Vulnerable Dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+          persist-credentials: false
+      - name: Install the pinned vulnerability scanner
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/osv-scanner"
+          cd "${RUNNER_TEMP}/osv-scanner"
+          gh release download v2.6.0 --repo google/osv-scanner \
+            --pattern osv-scanner_linux_amd64 --pattern osv-scanner_SHA256SUMS
+          grep ' osv-scanner_linux_amd64$' osv-scanner_SHA256SUMS | sha256sum --check --strict
+          chmod +x osv-scanner_linux_amd64
+          mv osv-scanner_linux_amd64 osv-scanner
+          echo "${RUNNER_TEMP}/osv-scanner" >> "${GITHUB_PATH}"
+      - name: Audit the complete release dependency tree
+        run: make audit

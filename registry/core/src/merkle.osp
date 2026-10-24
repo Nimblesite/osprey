@@ -1,0 +1,160 @@
+namespace registry;
+import registry::Bytes
+import registry::Sha256
+
+/// The RFC 9162 Merkle Tree Hash over SHA-256 — MTH({}) = SHA256(""),
+/// leaf = SHA256(0x00 || d), node = SHA256(0x01 || left || right), split at
+/// the largest power of two below the size — plus the section 2.1.3
+/// inclusion proofs and section 2.1.4 consistency proofs of the append-only
+/// log behind `[PACKAGE-TRUST]`. Everything is byte lists in, raw digest
+/// byte lists out. Verification tiles the tree with complete-subtree spans
+/// derived from (index, size) itself, so a wrong length, index or tree size
+/// rejects before any hash is trusted. Implements [PACKAGE-TRUST].
+module Merkle {
+    let leafPrefix = 0
+    let nodePrefix = 1
+
+    type Span = { start: int, width: int, shared: bool, hash: List<int> }
+
+    /// SHA256(0x00 || leaf), the RFC 9162 section 2.1.1 leaf hash.
+    export fn leafHash(leaf) = Sha256::digest(listConcat([leafPrefix], leaf))
+
+    fn nodeHash(left, right) = Sha256::digest(listConcat([nodePrefix], listConcat(left, right)))
+
+    /// The largest power of two smaller than `n` (n >= 2), the 2.1.1 split.
+    fn splitAt(k, n) = if wrapMul(k, 2) >= n { k } else { splitAt(wrapMul(k, 2), n) }
+
+    fn splitOf(n) = splitAt(1, n)
+
+    fn sub(leaves, from, to) = range(from, to) |> map(fn(i) => listGet(leaves, i) ?: []) |> toList
+
+    /// MTH(D) of RFC 9162 section 2.1.1 over raw leaves. Implements
+    /// [PACKAGE-TRUST].
+    export fn root(leaves) = match length(leaves) {
+        0 => Sha256::digest([])
+        1 => leafHash(listGet(leaves, 0) ?: [])
+        count => {
+            let k = splitOf(count)
+            nodeHash(root(sub(leaves, 0, k)), root(sub(leaves, k, count)))
+        }
+    }
+
+    /// PATH(m, D) of RFC 9162 section 2.1.3.1: sibling digests of leaf
+    /// `index`, deepest first.
+    export fn inclusionProof(index, leaves) = match length(leaves) <= 1 {
+        true => []
+        false => inclusionStep(index, leaves, splitOf(length(leaves)))
+    }
+
+    fn inclusionStep(index, leaves, k) = if index < k {
+        listConcat(inclusionProof(index, sub(leaves, 0, k)), [root(sub(leaves, k, length(leaves)))])
+    } else {
+        listConcat(inclusionProof(wrapSub(index, k), sub(leaves, k, length(leaves))), [root(sub(leaves, 0, k))])
+    }
+
+    /// PROOF(m, D) of RFC 9162 section 2.1.4.1 for prefix size `first`.
+    export fn consistencyProof(first, leaves) = subProof(first, leaves, true)
+
+    fn subProof(m, leaves, exact) = match m == length(leaves) || m < 1 {
+        true => if m == length(leaves) && !exact { [root(leaves)] } else { [] }
+        false => proofStep(m, leaves, exact, splitOf(length(leaves)))
+    }
+
+    fn proofStep(m, leaves, exact, k) = if m <= k {
+        listConcat(subProof(m, sub(leaves, 0, k), exact), [root(sub(leaves, k, length(leaves)))])
+    } else {
+        listConcat(subProof(wrapSub(m, k), sub(leaves, k, length(leaves)), false), [root(sub(leaves, 0, k))])
+    }
+
+    fn span(start, width, hash) = Span { start: start, width: width, shared: false, hash: hash }
+
+    fn cspan(start, width, shared) = Span { start: start, width: width, shared: shared, hash: [] }
+
+    /// Sibling spans of the 2.1.3.1 walk, deepest first, at absolute offsets.
+    fn pathSpans(index, size, base) = match size <= 1 {
+        true => []
+        false => spanStep(index, size, base, splitOf(size))
+    }
+
+    fn spanStep(index, size, base, k) = if index < k {
+        listConcat(pathSpans(index, k, base), [span(wrapAdd(base, k), wrapSub(size, k), [])])
+    } else {
+        listConcat(pathSpans(wrapSub(index, k), wrapSub(size, k), wrapAdd(base, k)), [span(base, k, [])])
+    }
+
+    /// The 2.1.4.1 layout as complete-subtree spans: shared spans tile
+    /// D[0:first], the rest tile D[first:second]. Deepest first.
+    fn consSpans(m, n, base, exact) = match m == n || m < 1 {
+        true => if m == n && !exact { [cspan(base, n, true)] } else { [] }
+        false => consStep(m, n, base, exact, splitOf(n))
+    }
+
+    fn consStep(m, n, base, exact, k) = if m <= k {
+        listConcat(consSpans(m, k, base, exact), [cspan(wrapAdd(base, k), wrapSub(n, k), false)])
+    } else {
+        listConcat(consSpans(wrapSub(m, k), wrapSub(n, k), wrapAdd(base, k), false), [cspan(base, k, true)])
+    }
+
+    fn withHash(s, hash) = Span { start: s.start, width: s.width, shared: s.shared, hash: hash }
+
+    fn zipped(spans, proof) = range(0, length(spans)) |> map(fn(i) =>
+        withHash(listGet(spans, i) ?: span(0, 0, []), listGet(proof, i) ?: [])) |> toList
+
+    fn within(s, from, to) = s.start >= from && s.start < to
+
+    fn part(spans, from, to) = foldList(spans, [], fn(acc, s) => if within(s, from, to) { listAppend(acc, s) } else { acc })
+
+    /// The root of a tree already tiled by complete subtrees, folded at the
+    /// 2.1.1 split; a single span is its own root.
+    fn treeRoot(base, size, spans) = match listGet(spans, 0) {
+        Success { value } => match length(spans) {
+            1 => value.hash
+            _ => foldNode(base, size, spans)
+        }
+        Error => []
+    }
+
+    fn foldNode(base, size, spans) = {
+        let k = splitOf(size)
+        let mid = wrapAdd(base, k)
+        nodeHash(treeRoot(base, k, part(spans, base, mid)), treeRoot(mid, wrapSub(size, k), part(spans, mid, wrapAdd(base, size))))
+    }
+
+    /// RFC 9162 section 2.1.3.2: does `proof` tie the already-hashed `leaf`
+    /// at `index` to `expected` in a tree of `size` leaves? Implements
+    /// [PACKAGE-TRUST].
+    export fn verifyInclusion(index, size, leaf, proof, expected) = {
+        let spans = pathSpans(index, size, 0)
+        match index < 0 || index >= size || length(proof) != length(spans) {
+            true => false
+            false => structuralEquals(treeRoot(0, size, listConcat([span(index, 1, leaf)], zipped(spans, proof))), expected)
+        }
+    }
+
+    /// RFC 9162 section 2.1.4.2: does `proof` tie `firstHash` at size
+    /// `first` to `secondHash` at size `second`? A power-of-two prefix
+    /// contributes no proof element; its hash seeds both trees. Implements
+    /// [PACKAGE-TRUST].
+    export fn verifyConsistency(first, second, firstHash, secondHash, proof) = {
+        let spans = consSpans(first, second, 0, true)
+        match first < 1 || first >= second || length(proof) != length(spans) {
+            true => false
+            false => consistent(spans, first, second, firstHash, secondHash, proof)
+        }
+    }
+
+    fn consistent(spans, first, second, firstHash, secondHash, proof) = {
+        let seed = pow2Seed(first, firstHash)
+        let tiled = listConcat(seed, zipped(spans, proof))
+        structuralEquals(treeRoot(0, second, tiled), secondHash) && structuralEquals(treeRoot(0, first, listConcat(seed, sharedOnly(tiled))), firstHash)
+    }
+
+    fn pow2Seed(first, firstHash) = match powerOfTwo(first) {
+        true => [span(0, first, firstHash)]
+        false => []
+    }
+
+    fn powerOfTwo(n) = n == 1 || (n > 0 && n % 2 == 0 && powerOfTwo(intDiv(n, 2)))
+
+    fn sharedOnly(spans) = foldList(spans, [], fn(acc, s) => if s.shared { listAppend(acc, s) } else { acc })
+}

@@ -298,6 +298,7 @@ fn yaml(s: &str) -> String {
 )]
 mod tests {
     use super::*;
+    use crate::testkit::shows;
     use std::path::PathBuf;
 
     #[test]
@@ -305,15 +306,14 @@ mod tests {
         let view = builtin_doc_view("sleep").expect("sleep documented");
         let md = page(&view);
         // The signature follows the scheme (`-> Unit`), not the old prose `-> int`.
-        assert!(
-            md.contains("**Signature:** `sleep(milliseconds: int) -> Unit`"),
-            "{md}"
+        shows(
+            &md,
+            &[
+                "**Signature:** `sleep(milliseconds: int) -> Unit`",
+                "- **milliseconds** (int): Number of milliseconds",
+                "**Returns:** Unit",
+            ],
         );
-        assert!(
-            md.contains("- **milliseconds** (int): Number of milliseconds"),
-            "{md}"
-        );
-        assert!(md.contains("**Returns:** Unit"), "{md}");
         // A zero-arg builtin renders no Parameters section.
         let input = page(&builtin_doc_view("input").expect("input documented"));
         assert!(!input.contains("## Parameters"), "{input}");

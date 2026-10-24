@@ -1,0 +1,27 @@
+/// A record update whose new field value is a list literal holding a record
+/// used to segfault at runtime: the literal's element representation was not
+/// the field's `List<Item>`, so reading the element back dereferenced a wrong
+/// slot. The same literal in a constructor, and `listAppend`, worked (#293).
+/// Found by `osprey hunt` as a reproduced `memory` finding.
+
+type Item = { name: string, size: int }
+
+type Box = { items: List<Item>, note: string }
+
+fn shown(box: Box) = match listGet(box.items, 0) {
+    Success { value } => "${value.name}:${value.size}"
+    Error(_) => "none"
+}
+
+fn store(box: Box) = box { items: [Item { name: "notes", size: 3 }] }
+
+fn storeHeld(box: Box) = {
+    let item = Item { name: "held", size: 4 }
+    box { items: [item] }
+}
+
+let empty = Box { items: [], note: "" }
+print(shown(empty))
+print(shown(store(empty)))
+print(shown(storeHeld(empty)))
+print(shown(Box { items: [Item { name: "ctor", size: 5 }], note: "" }))

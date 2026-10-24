@@ -193,6 +193,37 @@ _test_c_runtime: $(GPU_DEVICE_NATIVE)
 _test_gpu_device: $(GPU_DEVICE_NATIVE)
 	@cd compiler && $(call C_SUITE_CMD,gpu_device_tests)
 
+# [SYMEX-MOCK-TESTS] the mock C library behind `osprey hunt`, compiled for the
+# host against its own headers and linked with the runtime units it must
+# intercept (`osp_input`, `readFile`); the driver is compiled against the host
+# headers. Runs without KLEE installed: the mock carries its own klee/klee.h.
+# Deterministic Hunt runs [SYMEX-CLI]: each tests/hunt/<name>.osp must
+# report exactly the findings in <name>.expected (see tests/hunt/README.md).
+# Skipped loudly without KLEE, like the bitcode it needs.
+_test_hunt:
+	@if [ -z "$(KLEE_PREFIX)" ] || [ ! -f compiler/bin/libosprey_runtime_klee.bc ]; then \
+	  echo "(KLEE not installed — tests/hunt skipped)"; exit 0; fi; \
+	echo "==> [hunt] tests/hunt expectations..."; \
+	set -e; fail=0; for p in tests/hunt/*.osp; do \
+	  e="$${p%.osp}.expected"; out="target/hunt-tests/$$(basename "$${p%.osp}").json"; \
+	  $(MKDIR) target/hunt-tests; \
+	  ./target/release/osprey hunt "$$p" --json --quiet --no-replay --max-time 30 > "$$out" || true; \
+	  python3 scripts/hunt_expect.py "$$out" "$$e" || fail=1; \
+	done; exit $$fail
+
+_test_hunt_mock:
+	@echo "==> [hunt] mock C library unit tests..."
+	@cd compiler && set -e && $(MKDIR) bin/hunt_mock && rm -f bin/hunt_mock/*.o && \
+	  for u in $(HUNT_MOCK_SRC) random_runtime file_runtime; do \
+	    $(CC) $(HUNT_MOCK_HOST_CFLAGS) -c runtime/$$u.c -o bin/hunt_mock/$$(basename $$u).o; \
+	  done && \
+	  for t in runtime/klee/hunt_mock*_tests.c; do \
+	    $(CC) -std=c11 -O1 -g $(WARN_MAX) -fno-builtin -I runtime/klee -c $$t -o bin/hunt_mock/driver_$$(basename $$t .c).o; \
+	  done && \
+	  $(CC) bin/hunt_mock/*.o -o bin/hunt_mock_tests && ./bin/hunt_mock_tests
+	@echo "==> [hunt] corpus scripts and the format oracle..."
+	@python3 scripts/test-hunt-scripts.py
+
 # Per-library C line-coverage gate. Rebuilds every table suite with gcov
 # instrumentation into compiler/bin/cov/<suite>/, reruns it there (a failing
 # suite still contributes whatever it covered before aborting), reduces each
@@ -395,12 +426,28 @@ _bank_test:
 # Osprey package system (registry/): one process runs every suite from the
 # registry/tests project with core, host and CLI sources assembled together,
 # because `osprey test` compiles suites in isolation and cannot import them.
-# The build-plan/lock/resolver fixtures under registry/tests/fixtures are read
-# by those suites. Run only through `make registry-test`: excluded from
-# `make test` and CI until the package system stabilises.
+# registry/fixture-check runs first and fails fast: every fixture is data,
+# parses strictly, cites a defined spec section and is indexed, every typed
+# fixture value is schema-valid and canonically ordered, and every registry
+# source cites only defined sections. registry/manifest/tests is the TOML
+# parser and manifest-rule suite, a separate program until that code joins
+# core. registry/e2e runs last: it starts the
+# server over registry/sample-registry on 127.0.0.1:18797, compares every
+# endpoint with the pure router, fetches every release, and builds and runs a
+# consumer project against the fetched sources. Run only through
+# `make registry-test`: excluded from `make test` and CI until the package
+# system stabilises.
 _test_registry:
+	@echo "==> Registry fixture and schema validation (fail-fast)..."
+	./$(BIN) registry/fixture-check --run
+	@echo "==> Registry manifest (TOML parser and manifest rules) tests..."
+	./$(BIN) registry/manifest/tests --run
+	@echo "==> Registry CLI (package frontend) tests..."
+	./$(BIN) registry/cli/tests --run
 	@echo "==> Registry (Osprey package system) tests..."
 	./$(BIN) registry/tests --run
+	@echo "==> Registry end-to-end: server, fetch and consumer build..."
+	./$(BIN) registry/e2e --run
 
 # Blocked host capabilities, each asserted as the behavior the package system
 # needs. Red is the documented state until the capability lands in Osprey;

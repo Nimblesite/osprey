@@ -128,6 +128,12 @@
         "category": "Osprey"
       },
       {
+        "command": "osprey.hunt",
+        "title": "Hunt for Bugs",
+        "category": "Osprey",
+        "icon": "$(bug)"
+      },
+      {
         "command": "osprey.setLanguage",
         "title": "Set Language to Osprey",
         "category": "Osprey"
@@ -263,6 +269,11 @@
           "when": "resourceLangId == osprey || resourceLangId == osprey-ml",
           "command": "osprey.showTestDocumentation",
           "group": "navigation@5"
+        },
+        {
+          "when": "resourceLangId == osprey || resourceLangId == osprey-ml",
+          "command": "osprey.hunt",
+          "group": "navigation@6"
         }
       ],
       "commandPalette": [
@@ -284,6 +295,10 @@
         },
         {
           "command": "osprey.showTestDocumentation",
+          "when": "resourceLangId == osprey || resourceLangId == osprey-ml"
+        },
+        {
+          "command": "osprey.hunt",
           "when": "resourceLangId == osprey || resourceLangId == osprey-ml"
         },
         {
@@ -549,6 +564,12 @@
           "type": "boolean",
           "default": true,
           "description": "Enable/disable diagnostic messages"
+        },
+        "osprey.hunt.maxTime": {
+          "type": "number",
+          "default": 60,
+          "minimum": 1,
+          "description": "Seconds KLEE explores a program when you run Osprey: Hunt for Bugs. Longer budgets finish more paths."
         },
         "osprey.server.compilerPath": {
           "type": "string",

@@ -205,18 +205,18 @@ fn a_channel_payload_keeps_the_provenance_of_what_was_sent() {
 
 #[test]
 fn an_element_mapped_into_one_callback_and_invoked_in_another_fails_closed() {
-    // `map` projects its callback's returned provenance onto the element, but
-    // that element then crosses into a SEPARATE eager callback slot, where it
-    // is no longer a statically tracked value path. Discharge refuses instead
-    // of assuming the invocation is pure — the fail-closed direction is the
-    // one that matters, since guessing wrong here would silently drop an
-    // unhandled effect.
+    // `map` projects its callback's returned provenance onto the element, and
+    // that element then crosses into a SEPARATE eager callback slot. The slot
+    // now hands the callback the element it will receive, so the invocation
+    // resolves to the stored callee and is rejected for the operation it
+    // actually performs — the fail-closed direction is the one that matters,
+    // since guessing wrong here would silently drop an unhandled effect.
     assert_rejected_with(
         "effect Alarm { ring: fn() -> Unit }\n\
          fn ring() = perform Alarm.ring()\n\
          let armed = map(range(0, 3), |n| => ring)\n\
          let done = forEach(armed, |armedRing| => armedRing())\n",
-        &["effect provenance cannot be proven"],
+        &["unhandled effect operations at program entry: Alarm.ring"],
     );
 }
 

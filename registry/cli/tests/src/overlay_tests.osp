@@ -1,0 +1,242 @@
+namespace registry_tests;
+import registry_cli::Fetch
+import registry_cli::Install
+import registry_cli::Lockfile
+import registry_cli::Overlay
+import registry_tests::Fixture
+import registry_tests::RegistryFixture
+import registry::Identity
+import registry::ManifestJson
+import registry::ManifestModel
+import registry::Maybe
+import registry::Names
+
+/// The development overlay against the fixture registry ([PACKAGE-LOCAL-OVERRIDE]):
+/// `use <path>` writes `osprey.local.toml` with the key, path, epoch and
+/// baseline and relocks `osprey.local.lock` with the checkout in place of the
+/// published candidates; `use --list` prints the mapping; `--published`
+/// removes it; a bare `build` compiles the checkout's roots from the
+/// development lock while `build --release` refuses any override; a
+/// checkout whose manifest is rejected or names another key is refused; a
+/// malformed overlay is its `overlay.*` code.
+module OverlayTests {
+    let project = "/abs"
+    let overlayPath = "/abs/osprey.local.toml"
+    let localLockPath = "/abs/osprey.local.lock"
+    let localPath = "../local-one"
+    let localDir = "/abs/../local-one"
+    let derivedPath = ".osprey/build/osprey.toml"
+
+    fn one() = RegistryFixture::one()
+    fn two() = RegistryFixture::two()
+    fn compact(s) = RegistryFixture::compact(s)
+    fn rootText() = RegistryFixture::rootManifest(1)
+
+    // ---- the checkout ----
+
+    fn localManifest() = "[project]\nname = \"one\"\nsource_roots = [\"src\"]\n\n[package]\nname = \"@demo/one\"\nlicense = \"MIT\"\nsummary = \"local one\"\nkeywords = [\"one\"]\n\n[dependencies]\n\"@demo/two\" = { epoch = 1, min_release = 1 }\n"
+
+    fn localFiles(manifest) = [Fixture::file("osprey.toml", manifest), Fixture::file("src/main.osp", "fn main() = 0\n")]
+
+    fn localReads(manifest) = mapList(localFiles(manifest), fn(f) => Fixture::readRoute("${localDir}/${f.relPath}", f.content))
+
+    fn localWalk() = Fixture::walkRoute(localDir, ["osprey.toml", "src/main.osp"])
+
+    fn localDigest() = Install::digestOfFiles(localFiles(localManifest())) ?: "digest failed"
+
+    fn localManifestDigest() = ManifestJson::digest(Fixture::manifestOf(localManifest())) ?: "digest failed"
+
+    fn oneKey() = Names::Key { scope: "demo", name: "one" }
+
+    fn localRelease() = Identity::ReleaseId { key: oneKey(), epoch: 1, ordinal: 1, digest: localDigest() }
+
+    fn runtimeTwo() = ManifestModel::Runtime { requirement: ManifestModel::Requirement { package: Names::Key { scope: "demo", name: "two" }, epoch: 1, minimumOrdinal: 1 } }
+
+    fn localPackage() = Lockfile::Package { release: localRelease(), dependencies: [runtimeTwo()], surface: [] }
+
+    fn override() = Lockfile::Override { package: oneKey(), path: localPath, epoch: 1, manifestDigest: localManifestDigest() }
+
+    fn mapping() = Overlay::Mapping { package: oneKey(), path: localPath, epoch: 1, baseline: Maybe::some(Fixture::idOf(one())) }
+
+    fn overlayText() = Overlay::render([mapping()])
+
+    /// The development lock `use` must write: the checkout for one, the registry's two.
+    fn expectedDevLock() = RegistryFixture::devLockText(rootText(), [localPackage(), RegistryFixture::pkg(two(), [])], [override()])
+
+    fn served() = [one(), two()]
+
+    fn registryReads() = RegistryFixture::reads(rootText(), served())
+
+    // ---- cases ----
+
+    /// `use <path>` writes the overlay with a baseline from the listing and relocks locally.
+    fn useLocal() = {
+        let a = RegistryFixture::runWith(listConcat(registryReads(), localReads(localManifest())), [localWalk()], RegistryFixture::websOf(served()), ["use", localPath, "--project", project])
+        checkAll("use writes the mapping and the development lock with the checkout in place", [
+            RegistryFixture::statusOf(a) == 0,
+            RegistryFixture::writtenTo(a, overlayPath) == overlayText(),
+            RegistryFixture::writtenTo(a, localLockPath) == expectedDevLock(),
+            RegistryFixture::writtenTo(a, RegistryFixture::lockPath) == "",
+            structuralEquals(RegistryFixture::linesOf(a), [
+                "use @demo/one ${localPath} e1 baseline ${Identity::display(Fixture::idOf(one()))}",
+                "+ ${Lockfile::compact(localRelease())} (local ${localPath})",
+                "+ ${compact(two())}"
+            ])
+        ])
+    }
+
+    /// `use --list` prints the mapping with the checkout's current source digest.
+    fn listMappings() = {
+        let a = RegistryFixture::runWith(listConcat(registryReads(), listPrepend(localReads(localManifest()), Fixture::readRoute(overlayPath, overlayText()))), [localWalk()], [], ["use", "--list", "--project", project])
+        checkAll("use --list shows key, path, epoch, baseline and source digest", [
+            RegistryFixture::statusOf(a) == 0,
+            structuralEquals(RegistryFixture::linesOf(a), ["@demo/one ${localPath} e1 baseline ${Identity::display(Fixture::idOf(one()))} ${localDigest()}"])
+        ])
+    }
+
+    /// `use @k --published` removes the mapping and relocks from the registry.
+    fn publishedAgain() = {
+        let a = RegistryFixture::runWith(listPrepend(registryReads(), Fixture::readRoute(overlayPath, overlayText())), [], RegistryFixture::websOf(served()), ["use", "@demo/one", "--published", "--project", project])
+        checkAll("--published removes the mapping and the development lock returns to the registry", [
+            RegistryFixture::statusOf(a) == 0,
+            RegistryFixture::writtenTo(a, overlayPath) == "[overrides]\n",
+            RegistryFixture::writtenTo(a, localLockPath) == RegistryFixture::expectedLock(rootText(), one(), two()),
+            RegistryFixture::lineOf(a, 0) == "published @demo/one"
+        ])
+    }
+
+    fn installedTwoDir() = "${project}/${Fetch::installDir(Fixture::idOf(two()))}"
+
+    fn twoReads() = mapList(Fixture::filesOf(two()), fn(f) => Fixture::readRoute("${installedTwoDir()}/${f.relPath}", f.content))
+
+    fn twoWalk() = Fixture::walkRoute(installedTwoDir(), mapList(Fixture::filesOf(two()), fn(f) => f.relPath))
+
+    fn devReads() = listConcat(listConcat(registryReads(), localReads(localManifest())), listConcat(twoReads(), [Fixture::readRoute(overlayPath, overlayText()), Fixture::readRoute(localLockPath, expectedDevLock())]))
+
+    /// A bare `build` selects the development lock and the checkout's roots.
+    fn buildLocal() = {
+        let a = RegistryFixture::runWith(devReads(), [localWalk(), twoWalk()], [], ["build", "--project", project])
+        let derived = RegistryFixture::writtenTo(a, derivedPath)
+        checkAll("a bare build compiles the checkout from the development lock", [
+            RegistryFixture::statusOf(a) == 0,
+            contains(derived, "\"${localDir}/src\""),
+            contains(derived, "\"${installedTwoDir()}/src\""),
+            length(RegistryFixture::ranOf(a)) == 1
+        ])
+    }
+
+    /// `build --release` refuses while any override is active.
+    fn buildRelease() = {
+        let a = RegistryFixture::runWith(devReads(), [localWalk(), twoWalk()], [], ["build", "--release", "--project", project])
+        checkAll("build --release is build.overrides-active and runs nothing", [
+            RegistryFixture::statusOf(a) == 1,
+            RegistryFixture::lineOf(a, 0) == "build.overrides-active @demo/one",
+            RegistryFixture::writtenTo(a, derivedPath) == "",
+            isEmpty(RegistryFixture::ranOf(a))
+        ])
+    }
+
+    /// A checkout that is not a declared or locked key, and one whose manifest is rejected.
+    fn refusals() = {
+        let otherManifest = "[project]\nname = \"three\"\nsource_roots = [\"src\"]\n\n[package]\nname = \"@demo/three\"\nlicense = \"MIT\"\nsummary = \"s\"\nkeywords = [\"a\"]\n"
+        let notDependency = RegistryFixture::runWith(listConcat(registryReads(), localReads(otherManifest)), [localWalk()], RegistryFixture::websOf(served()), ["use", localPath, "--project", project])
+        let badLocal = RegistryFixture::runWith(listConcat(registryReads(), listPrepend(localReads("[project]\nname = \"\"\n"), Fixture::readRoute(overlayPath, overlayText()))), [localWalk()], RegistryFixture::websOf(served()), ["lock", "--local", "--project", project])
+        let malformed = RegistryFixture::runWith([Fixture::readRoute(overlayPath, "[overrides]\n\"@demo/one\" = { epoch = 1 }\n")], [], [], ["use", "--list", "--project", project])
+        checkAll("use.not-a-dependency, lock.local-manifest and overlay.path", [
+            RegistryFixture::statusOf(notDependency) == 1,
+            RegistryFixture::lineOf(notDependency, 0) == "use.not-a-dependency @demo/three",
+            RegistryFixture::writtenTo(notDependency, overlayPath) == "",
+            RegistryFixture::statusOf(badLocal) == 1,
+            startsWith(RegistryFixture::lineOf(badLocal, 0), "lock.local-manifest @demo/one "),
+            RegistryFixture::writtenTo(badLocal, localLockPath) == "",
+            RegistryFixture::statusOf(malformed) == 1,
+            startsWith(RegistryFixture::lineOf(malformed, 0), "overlay.path")
+        ])
+    }
+
+    fn localRelease2() = Identity::ReleaseId { key: oneKey(), epoch: 1, ordinal: 2, digest: localDigest() }
+
+    fn localPackage2() = Lockfile::Package { release: localRelease2(), dependencies: [runtimeTwo()], surface: [] }
+
+    fn mapping2() = Overlay::Mapping { package: oneKey(), path: localPath, epoch: 1, baseline: Maybe::some(Fixture::idOf(RegistryFixture::one2())) }
+
+    /// `update` while the overlay is active: the published base moves to the
+    /// newest release, the mapping's baseline follows it, and the development
+    /// lock is relocked with the checkout at the new baseline's ordinal.
+    fn updateOverOverlay() = {
+        let one2 = RegistryFixture::one2()
+        let served = [one(), one2, two()]
+        let reads = listConcat(RegistryFixture::readsWithLock(rootText(), RegistryFixture::previousLock(one(), two()), served), listPrepend(localReads(localManifest()), Fixture::readRoute(overlayPath, overlayText())))
+        let a = RegistryFixture::runWith(reads, [localWalk()], RegistryFixture::websOf(served), ["update", "--project", project])
+        checkAll("update rebases the overlay onto the new published base", [
+            RegistryFixture::statusOf(a) == 0,
+            RegistryFixture::writtenTo(a, RegistryFixture::lockPath) == RegistryFixture::expectedLock(rootText(), one2, two()),
+            RegistryFixture::writtenTo(a, overlayPath) == Overlay::render([mapping2()]),
+            RegistryFixture::writtenTo(a, localLockPath) == RegistryFixture::devLockText(rootText(), [localPackage2(), RegistryFixture::pkg(two(), [])], [override()]),
+            structuralEquals(RegistryFixture::linesOf(a), [
+                "~ ${compact(one2)}",
+                "= ${compact(two())}",
+                "baseline @demo/one ${Identity::display(Fixture::idOf(one()))} -> ${Identity::display(Fixture::idOf(one2))}",
+                "~ ${Lockfile::compact(localRelease2())} (local ${localPath})",
+                "= ${compact(two())}"
+            ])
+        ])
+    }
+
+    fn plain() = RegistryFixture::manifestText("app")
+
+    /// `add <path>` for a published key: the dependency line takes the
+    /// baseline's ordinal as the floor, the release lock is recomputed, the
+    /// checkout is mapped and the development lock relocked.
+    fn addLocalPublished() = {
+        let served = [one(), two()]
+        let a = RegistryFixture::runWith(listConcat(RegistryFixture::reads(plain(), served), localReads(localManifest())), [localWalk()], RegistryFixture::websOf(served), ["add", localPath, "--project", project])
+        checkAll("add <path> declares the key at its baseline, locks the base and maps the checkout", [
+            RegistryFixture::statusOf(a) == 0,
+            RegistryFixture::writtenTo(a, RegistryFixture::manifestPath) == rootText(),
+            RegistryFixture::writtenTo(a, RegistryFixture::lockPath) == RegistryFixture::expectedLock(rootText(), one(), two()),
+            RegistryFixture::writtenTo(a, overlayPath) == overlayText(),
+            RegistryFixture::writtenTo(a, localLockPath) == expectedDevLock(),
+            RegistryFixture::lineOf(a, 0) == "added @demo/one e1.r1 from ${localPath}"
+        ])
+    }
+
+    fn threeManifest() = "[project]\nname = \"three\"\nsource_roots = [\"src\"]\n\n[package]\nname = \"@demo/three\"\nlicense = \"MIT\"\nsummary = \"three\"\nkeywords = [\"three\"]\n"
+
+    fn threeKey() = Names::Key { scope: "demo", name: "three" }
+
+    /// `add <path>` for an unpublished key: floor zero, epoch 1, no release
+    /// lock, a mapping without a baseline, and a development lock with the
+    /// checkout at ordinal zero.
+    fn addLocalUnpublished() = {
+        let served = [one(), two()]
+        let localThree = [Fixture::file("osprey.toml", threeManifest()), Fixture::file("src/main.osp", "fn main() = 0\n")]
+        let reads = listConcat(RegistryFixture::reads(plain(), served), mapList(localThree, fn(f) => Fixture::readRoute("${localDir}/${f.relPath}", f.content)))
+        let a = RegistryFixture::runWith(reads, [localWalk()], RegistryFixture::websOf(served), ["add", localPath, "--project", project])
+        let expectedManifest = plain() + "\n[dependencies]\n\"@demo/three\" = { epoch = 1, min_release = 0 }\n"
+        let threeRelease = Identity::ReleaseId { key: threeKey(), epoch: 1, ordinal: 0, digest: Install::digestOfFiles(localThree) ?: "digest failed" }
+        let threeOverride = Lockfile::Override { package: threeKey(), path: localPath, epoch: 1, manifestDigest: ManifestJson::digest(Fixture::manifestOf(threeManifest())) ?: "" }
+        checkAll("add <path> of an unpublished key is development-only", [
+            RegistryFixture::statusOf(a) == 0,
+            RegistryFixture::writtenTo(a, RegistryFixture::manifestPath) == expectedManifest,
+            RegistryFixture::writtenTo(a, RegistryFixture::lockPath) == "",
+            RegistryFixture::writtenTo(a, overlayPath) == Overlay::render([Overlay::Mapping { package: threeKey(), path: localPath, epoch: 1, baseline: Maybe::none() }]),
+            RegistryFixture::writtenTo(a, localLockPath) == RegistryFixture::devLockText(expectedManifest, [Lockfile::Package { release: threeRelease, dependencies: [], surface: [] }], [threeOverride]),
+            RegistryFixture::lineOf(a, 0) == "added @demo/three e1.r0 from ${localPath}",
+            RegistryFixture::lineOf(a, 1) == "development-only: nothing published for this key"
+        ])
+    }
+
+    /// Every overlay test.
+    export fn run() = {
+        test("add <path>: a published key", addLocalPublished)
+        test("add <path>: an unpublished key", addLocalUnpublished)
+        test("update: rebases an active overlay", updateOverOverlay)
+        test("use: a local checkout replaces the published key", useLocal)
+        test("use: --list", listMappings)
+        test("use: --published", publishedAgain)
+        test("build: the development lock compiles the checkout", buildLocal)
+        test("build --release: overrides are fatal", buildRelease)
+        test("overlay: refusals", refusals)
+    }
+}

@@ -1,0 +1,100 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "Which values inside which fixtures are model objects, and of which schemas/package-registry.td type. `files` is a path prefix under registry/tests/fixtures; `each` selects rows; `value` selects the typed value inside a row (`*` is every array item); the type is `type` or the row's `typeField`; `order` also checks every list's canonical order. `rawGoldens` are byte-exact canonical outputs that cannot carry a `spec` member.",
+  "rawGoldens": [
+    "manifests/ledger/canonical.json"
+  ],
+  "entries": [
+    {
+      "files": "canonical/",
+      "each": "",
+      "value": "value",
+      "typeField": "type",
+      "order": true
+    },
+    {
+      "files": "manifests/ledger/canonical.json",
+      "each": "",
+      "value": "",
+      "type": "PackageManifest",
+      "order": true
+    },
+    {
+      "files": "order/lists.json",
+      "each": "cases/*",
+      "value": "items/*",
+      "typeField": "element",
+      "order": true
+    },
+    {
+      "files": "schema/accepts.json",
+      "each": "cases/*",
+      "value": "value",
+      "typeField": "type",
+      "order": true
+    },
+    {
+      "files": "transitions/release-status.json",
+      "each": "chains/*/steps/*",
+      "value": "previous",
+      "type": "ReleaseStatus",
+      "order": true
+    },
+    {
+      "files": "transitions/release-status.json",
+      "each": "chains/*/steps/*",
+      "value": "next",
+      "type": "ReleaseStatus",
+      "order": true
+    },
+    {
+      "files": "graphs/",
+      "each": "catalog/*",
+      "value": "release",
+      "type": "ReleaseId",
+      "order": true
+    },
+    {
+      "files": "graphs/",
+      "each": "catalog/*",
+      "value": "state",
+      "type": "ActivationState",
+      "order": true
+    },
+    {
+      "files": "graphs/",
+      "each": "catalog/*",
+      "value": "dependencies/*",
+      "type": "DependencyEdge",
+      "order": true
+    },
+    {
+      "files": "graphs/",
+      "each": "root",
+      "value": "dependencies/*",
+      "type": "DependencyEdge",
+      "order": true
+    },
+    {
+      "files": "graphs/",
+      "each": "",
+      "value": "current/*",
+      "type": "ReleaseId",
+      "order": true
+    },
+    {
+      "files": "graphs/",
+      "each": "expect",
+      "value": "lock/*",
+      "type": "ReleaseId",
+      "order": true
+    },
+    {
+      "files": "graphs/",
+      "each": "expect/explanation",
+      "value": "packages/*",
+      "type": "PackageKey",
+      "order": true
+    }
+  ]
+}

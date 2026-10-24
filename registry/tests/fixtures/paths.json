@@ -167,8 +167,16 @@
       "code": "source.kind.hardlink"
     },
     {
+      "kind": "special",
+      "code": "source.kind.special"
+    },
+    {
       "kind": "regular",
       "code": ""
+    },
+    {
+      "kind": "whiteout",
+      "code": "source.kind.unknown"
     }
   ],
   "lfsPointer": {

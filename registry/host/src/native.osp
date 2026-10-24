@@ -41,14 +41,11 @@ module Native {
         run command => capture(command)
     }
 
-    /// `text` as one single-quoted shell word.
-    fn quoted(text) = "'" + (replace(text, "'", "'\\''") ?: text) + "'"
-
     fn relative(line) = if startsWith(line, "./") { drop(line, 2) } else { line }
 
     fn listed(run) = listSort(mapList(filterList(split(run.stdout, "\n") ?: [], fn(l) => l != ""), relative))
 
-    fn found(root, test) = capture("cd ${quoted(root)} && find . ${test}")
+    fn found(root, test) = capture("cd ${Host::shellWord(root)} && find . ${test}")
 
     /// The walk, or `host.tree.unreadable` with the OS reason. Osprey has no
     /// directory builtin yet (`files.directory`), so `find` lists the entries.
@@ -61,7 +58,7 @@ module Native {
     }
 
     fn ensured(dir) = {
-        let made = capture("mkdir -p ${quoted(dir)}")
+        let made = capture("mkdir -p ${Host::shellWord(dir)}")
         if made.status == 0 { Success { value: 0 } } else { Error { message: "host.mkdir: ${trim(made.stderr)}" } }
     }
 

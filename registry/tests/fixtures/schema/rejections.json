@@ -1,0 +1,265 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "JSON values that SchemaCheck must reject; code and at pin the exact failure. The at value is the JSON pointer of the offending value (empty for the root).",
+  "cases": [
+    {
+      "type": "Bogus",
+      "value": {},
+      "code": "schema.unknown-type",
+      "at": ""
+    },
+    {
+      "type": "AlsoBogus",
+      "value": 1,
+      "code": "schema.unknown-type",
+      "at": ""
+    },
+    {
+      "type": "PackageKey",
+      "value": "x",
+      "code": "schema.not-object",
+      "at": ""
+    },
+    {
+      "type": "PackageKey",
+      "value": [1],
+      "code": "schema.not-object",
+      "at": ""
+    },
+    {
+      "type": "ReleaseState",
+      "value": { "Submitted": 5 },
+      "code": "schema.not-object",
+      "at": "/Submitted"
+    },
+    {
+      "type": "ReleaseId",
+      "value": { "package": "x", "epoch": 1, "ordinal": 1, "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+      "code": "schema.not-object",
+      "at": "/package"
+    },
+    {
+      "type": "EnvelopeProof",
+      "value": { "Publisher": { "credential": "x" } },
+      "code": "schema.not-object",
+      "at": "/Publisher/credential"
+    },
+    {
+      "type": "PackageKey",
+      "value": { "scope": "a" },
+      "code": "schema.missing-field",
+      "at": "/name"
+    },
+    {
+      "type": "ReleaseId",
+      "value": { "package": { "scope": "a", "name": "b" }, "epoch": 1, "ordinal": 1 },
+      "code": "schema.missing-field",
+      "at": "/digest"
+    },
+    {
+      "type": "CompatibilityClaim",
+      "value": { "Initial": { "package": { "scope": "a" } } },
+      "code": "schema.missing-field",
+      "at": "/Initial/package/name"
+    },
+    {
+      "type": "PackageKey",
+      "value": { "scope": "a", "name": "b", "extra": 1 },
+      "code": "schema.unknown-field",
+      "at": "/extra"
+    },
+    {
+      "type": "ActivationState",
+      "value": { "Eligible": { "extra": 1 } },
+      "code": "schema.unknown-field",
+      "at": "/Eligible/extra"
+    },
+    {
+      "type": "String",
+      "value": null,
+      "code": "schema.null",
+      "at": ""
+    },
+    {
+      "type": "PackageKey",
+      "value": { "scope": "a", "name": null },
+      "code": "schema.null",
+      "at": "/name"
+    },
+    {
+      "type": "ReleaseStatus",
+      "value": {
+        "release": { "package": { "scope": "a", "name": "b" }, "epoch": 1, "ordinal": 1, "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        "sequence": 1,
+        "state": { "Eligible": {} },
+        "effectiveAt": "2024-01-02T03:04:05.006Z",
+        "reasonDigest": null,
+        "roleMetadataVersion": 1
+      },
+      "code": "schema.null",
+      "at": "/reasonDigest"
+    },
+    {
+      "type": "PackageDiscoveryMetadata",
+      "value": { "summary": "s", "keywords": ["a", null] },
+      "code": "schema.null",
+      "at": "/keywords/1"
+    },
+    {
+      "type": "Int",
+      "value": "1",
+      "code": "schema.not-integer",
+      "at": ""
+    },
+    {
+      "type": "CompatibilityEpoch",
+      "value": true,
+      "code": "schema.not-integer",
+      "at": ""
+    },
+    {
+      "type": "ReleaseId",
+      "value": { "package": { "scope": "a", "name": "b" }, "epoch": "1", "ordinal": 1, "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+      "code": "schema.not-integer",
+      "at": "/epoch"
+    },
+    {
+      "type": "DependencyRequirement",
+      "value": { "package": { "scope": "a", "name": "b" }, "epoch": 1, "minimumOrdinal": false },
+      "code": "schema.not-integer",
+      "at": "/minimumOrdinal"
+    },
+    {
+      "type": "String",
+      "value": 5,
+      "code": "schema.not-string",
+      "at": ""
+    },
+    {
+      "type": "ScopeName",
+      "value": false,
+      "code": "schema.not-string",
+      "at": ""
+    },
+    {
+      "type": "PackageKey",
+      "value": { "scope": 5, "name": "b" },
+      "code": "schema.not-string",
+      "at": "/scope"
+    },
+    {
+      "type": "PackageDiscoveryMetadata",
+      "value": { "summary": "s", "keywords": ["a", 5] },
+      "code": "schema.not-string",
+      "at": "/keywords/1"
+    },
+    {
+      "type": "Bool",
+      "value": 1,
+      "code": "schema.not-bool",
+      "at": ""
+    },
+    {
+      "type": "CredentialProof",
+      "value": { "WebAuthnPasskey": { "credentialId": "c", "relyingPartyId": "r", "origin": "o", "userVerified": 1, "assertionDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } },
+      "code": "schema.not-bool",
+      "at": "/WebAuthnPasskey/userVerified"
+    },
+    {
+      "type": "PackageDiscoveryMetadata",
+      "value": { "summary": "s", "keywords": "x" },
+      "code": "schema.not-array",
+      "at": "/keywords"
+    },
+    {
+      "type": "ScanVerdict",
+      "value": { "NeedsReview": { "findingIds": "x" } },
+      "code": "schema.not-array",
+      "at": "/NeedsReview/findingIds"
+    },
+    {
+      "type": "ActivationState",
+      "value": {},
+      "code": "schema.variant-count",
+      "at": ""
+    },
+    {
+      "type": "ActivationState",
+      "value": { "Eligible": {}, "Yanked": {} },
+      "code": "schema.variant-count",
+      "at": ""
+    },
+    {
+      "type": "ActivationState",
+      "value": { "Bogus": {} },
+      "code": "schema.unknown-variant",
+      "at": "/Bogus"
+    },
+    {
+      "type": "ReleaseState",
+      "value": { "Bogus": { "submittedAt": "2024-01-02T03:04:05.006Z" } },
+      "code": "schema.unknown-variant",
+      "at": "/Bogus"
+    },
+    {
+      "type": "Digest",
+      "value": "sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "code": "schema.digest",
+      "at": ""
+    },
+    {
+      "type": "Digest",
+      "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "code": "schema.digest",
+      "at": ""
+    },
+    {
+      "type": "Digest",
+      "value": "sha512:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "code": "schema.digest",
+      "at": ""
+    },
+    {
+      "type": "Digest",
+      "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "code": "schema.digest",
+      "at": ""
+    },
+    {
+      "type": "ReleaseId",
+      "value": { "package": { "scope": "a", "name": "b" }, "epoch": 1, "ordinal": 1, "digest": "bad" },
+      "code": "schema.digest",
+      "at": "/digest"
+    },
+    {
+      "type": "DateTime",
+      "value": "2023-02-29T00:00:00.000Z",
+      "code": "schema.datetime",
+      "at": ""
+    },
+    {
+      "type": "ReleaseState",
+      "value": { "Submitted": { "submittedAt": "2024-01-01T00:00:00Z" } },
+      "code": "schema.datetime",
+      "at": "/Submitted/submittedAt"
+    },
+    {
+      "type": "Uuid",
+      "value": "123E4567-E89B-12D3-A456-426614174000",
+      "code": "schema.uuid",
+      "at": ""
+    },
+    {
+      "type": "Uuid",
+      "value": "123e4567e89b12d3a456426614174000",
+      "code": "schema.uuid",
+      "at": ""
+    },
+    {
+      "type": "ScanVerdict",
+      "value": { "NeedsReview": { "findingIds": ["xyz"] } },
+      "code": "schema.uuid",
+      "at": "/NeedsReview/findingIds/0"
+    }
+  ]
+}

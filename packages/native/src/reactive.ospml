@@ -1,0 +1,23 @@
+// Implements [UI-SIGNALS] and [UI-REGIONS]: slices are Osprey's built-in
+// `Signal<T>`, and a region is a `signalRefreshKeyed` snapshot whose
+// dependencies the compiler derives (Nimblesite/osprey#285). Between
+// dispatches only each region's `SignalFrame` is kept.
+namespace ui
+
+(** Host-held slices by key; the native build answers with the `*_slice` import. *)
+effect Slices
+    fetch : string => string
+
+(** Keyed regions: each rebuilds only when a signal it read changed, and is otherwise retained with its revision ([UI-REGIONS]). *)
+module Keyed
+    (** Region `key`: rebuilt by `view` when a signal it read is in `changed`, else retained. A retained region's node is never re-sent, so `Brand` stands in for it. *)
+    export region<A> : (List<SignalFrame>, string, List<string>, Unit -> Node<A>) -> KeyedSnapshot<Node<A>>
+    region (frames, key, changed, view) = signalRefreshKeyed frames key changed Brand view
+
+(** Signal identities for host-held slices, which change by being written rather than by comparison ([UI-SIGNALS]). *)
+module Signals
+    (** `identities` when this update wrote the host-held slice `key`. *)
+    export written : (List<SliceWrite>, string, List<string>) -> List<string>
+    written (writes, key, identities) = match Lists::any (writes, \write => write.sliceKey == key)
+        true => identities
+        false => []

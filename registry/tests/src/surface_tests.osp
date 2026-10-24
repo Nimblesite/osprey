@@ -1,0 +1,80 @@
+namespace registry_tests;
+import registry::Release
+import registry::ReleaseFiles
+import registry::Surface
+import registry_tests::Fixtures
+
+/// The capability surface scan of [PACKAGE-CAPABILITY-CONFINEMENT]: the
+/// builtin-to-capability table equals the fixture, whole identifiers match
+/// while comments and string literals do not, every `http*`/`websocket*`
+/// name is `io/network`, a declaration counts like a call, non-source files
+/// are skipped, and `[system.*]` capabilities join the set canonically.
+module SurfaceTests {
+    fn file(path, content) = Release::File { relPath: path, content: content }
+
+    fn pair(n: Surface::Named) = "${n.builtin}=${n.capability}"
+
+    fn fixturePairs() = mapList(Fixtures::items(Fixtures::field(Fixtures::load("capabilities/builtins.json"), "builtins")), fn(v) =>
+        "${Fixtures::text(Fixtures::field(v, "builtin"))}=${Fixtures::text(Fixtures::field(v, "capability"))}")
+
+    fn tableMatchesFixture() = checkAll("the builtin table is the capabilities fixture", [
+        structuralEquals(listSort(mapList(Surface::table(), pair)), listSort(fixturePairs())),
+        length(Surface::table()) == length(fixturePairs())
+    ])
+
+    fn scans() = checkAll("whole identifiers outside comments and strings", [
+        structuralEquals(Surface::ofText("fn main() = readFile(\"x\")"), ["io/files"]),
+        structuralEquals(Surface::ofText("fn readFileX() = 1\nlet x = myreadFile\n"), []),
+        structuralEquals(Surface::ofText("// readFile in a comment\nfn f() = 1\n"), []),
+        structuralEquals(Surface::ofText("fn f() = \"readFile \\\" writeFile\"\n"), []),
+        structuralEquals(Surface::ofText("fn f() = \"a\" + input()\n"), ["io/terminal"]),
+        structuralEquals(Surface::ofText("fn readFile(p) = 1\n"), ["io/files"]),
+        structuralEquals(Surface::ofText("httpFetchLater(1)\nwebsocketOpen(2)\n"), ["io/network"]),
+        structuralEquals(Surface::ofText("spawnProcess(\"ls\")\nwriteFile(\"a\", \"b\")\nreadFile(\"a\")\n"), ["io/files", "io/process"]),
+        structuralEquals(Surface::ofText("x / y // readFile\nz\n"), []),
+        structuralEquals(Surface::ofText(""), [])
+    ])
+
+    fn trees() = checkAll("source files are scanned, other files are not, systems join canonically", [
+        structuralEquals(Surface::ofFiles([file("src/a.osp", "input()"), file("README.md", "readFile"), file("src/m.py", "# osprey: flavor=python\nwriteFile(1)")]), ["io/files", "io/terminal"]),
+        structuralEquals(Surface::ofRelease([file("src/a.osp", "input()")], ["zlib", "io/terminal"]), ["io/terminal", "zlib"]),
+        structuralEquals(Surface::ofRelease([file("src/a.osp", "fn pure() = 1")], []), [])
+    ])
+
+    /// A builtin's name declared with `fn`, `let` or `mut` is a shadowing
+    /// declaration; a call is not, and the release rules refuse a tree that declares one.
+    fn shadowing() = checkAll("declared builtin names are found and refused at publication", [
+        structuralEquals(Surface::declaredBuiltins("fn readFile(p) = 1\nlet input = 2\nmut httpGet = 3\n"), ["httpGet", "input", "readFile"]),
+        structuralEquals(Surface::declaredBuiltins("fn load(p) = readFile(p)\nlet x = input()\n"), []),
+        structuralEquals(Surface::declaredBuiltins("// fn readFile\nfn f() = \"let input\"\n"), []),
+        !Surface::shadowsBuiltin([file("src/a.osp", "fn load(p) = readFile(p)\n")]),
+        Surface::shadowsBuiltin([file("src/a.osp", "fn readFile(p) = 1\n")]),
+        match ReleaseFiles::assemble("@a/b/1.1", [file("osprey.toml", "[project]\nname = \"b\"\n"), file("src/a.osp", "fn writeFile(p, c) = 0\n")]) {
+            Error { message } => message == "source.shadowed-builtin"
+            Success => false
+        }
+    ])
+
+    fn sampleFile(release, path) = file(path, readFile("registry/sample-registry/${release}/${path}") ?: "<missing>")
+
+    fn sampleSurface(case) = {
+        let release = Fixtures::text(Fixtures::field(case, "release"))
+        let files = mapList(Fixtures::texts(Fixtures::field(case, "files")), fn(p) => sampleFile(release, p))
+        structuralEquals(Surface::ofRelease(files, []), Fixtures::texts(Fixtures::field(case, "surface")))
+    }
+
+    /// Every sample-registry release has the surface the fixture records.
+    fn sampleSurfaces() = {
+        let cases = Fixtures::items(Fixtures::field(Fixtures::load("capabilities/sample-surfaces.json"), "cases"))
+        Fixtures::report("sample-registry surfaces", cases, sampleSurface)
+    }
+
+    /// Every surface test.
+    export fn run() = {
+        test("surface: table equals the fixture", tableMatchesFixture)
+        test("surface: identifier scan", scans)
+        test("surface: trees and system capabilities", trees)
+        test("surface: shadowed builtin names", shadowing)
+        test("surface: sample-registry goldens", sampleSurfaces)
+    }
+}

@@ -1,0 +1,113 @@
+namespace registry_fixture_check;
+import registry::Json
+import registry::JsonRead
+import registry::SchemaCheck
+import registry::SchemaOrder
+import registry::TypeDiagram
+import registry_fixture_check::Citations
+import registry_fixture_check::SchemaMap
+
+/// Fixture and citation audit. Fixtures are data only, parse as strict JSON,
+/// cite spec sections that exist, are listed by their folder's index, and
+/// every typed value the schema map names is schema-valid and in canonical
+/// list order. Registry sources cite only spec sections that exist.
+/// Implements the fixture-validation gate of [PACKAGE-CONFORMANCE] over the
+/// encoding and list rules of [PACKAGE-TYPE-INVARIANTS].
+module Audit {
+    let fixtureRoot = "registry/tests/fixtures"
+    let schemaPath = "schemas/package-registry.td"
+
+    fn regular(walked) = match walked {
+        Success { value } => value.regular
+        Error => []
+    }
+
+    fn walkProblem(walked) = match walked {
+        Success { value } => if isEmpty(value.executable) && isEmpty(value.special) { "" } else { "executable or special entry present" }
+        Error { message } => message
+    }
+
+    fn parsed(path) = Json::parse(readFile("${fixtureRoot}/${path}") ?: "")
+
+    fn load(path) = parsed(path) ?: Json::Null
+
+    fn jsonFiles(walked) = filterList(regular(walked), fn(p) => endsWith(p, ".json"))
+
+    fn dataFile(path) = endsWith(path, ".json") || endsWith(path, ".md") || endsWith(path, ".toml")
+
+    /// Every name in `cases` paired with the problems found, so one failure
+    /// line names every bad row.
+    fn audit(label, cases, problem) = {
+        let bad = filterList(mapList(cases, fn(c) => problem(c)), fn(p) => p != "")
+        check("${label}: ${length(bad)} of ${length(cases)} failed${firstLine(bad)}", 0, length(bad))
+    }
+
+    fn firstLine(bad) = match listGet(bad, 0) {
+        Success { value } => "; first: ${value}"
+        Error => ""
+    }
+
+    fn treeIsData(walked) = {
+        check("fixture tree walk", "", walkProblem(walked))
+        audit("fixtures are declarative data", regular(walked), fn(p) => if dataFile(p) { "" } else { p })
+    }
+
+    fn rawGoldens() = JsonRead::texts(JsonRead::field(load("schema-map.json"), "rawGoldens"))
+
+    fn specProblem(specs, path) = if listContains(rawGoldens(), path) { strictProblem(path) } else { citedProblem(specs, path) }
+
+    fn strictProblem(path) = match parsed(path) {
+        Error { message } => "${path}: ${Json::describe(message)}"
+        Success => ""
+    }
+
+    fn citedProblem(specs, path) = match parsed(path) {
+        Error { message } => "${path}: ${Json::describe(message)}"
+        Success { value } => Citations::problem(specs, JsonRead::text(JsonRead::field(value, "spec")), "${path}: spec")
+    }
+
+    fn parsesAndCites(walked, specs) = audit("fixtures parse strictly and cite defined sections", jsonFiles(walked), fn(p) => specProblem(specs, p))
+
+    fn directory(path) = {
+        let parts = split(path, "/") ?: [path]
+        join(range(0, length(parts) - 1) |> map(fn(i) => listGet(parts, i) ?: "") |> toList, "/")
+    }
+
+    fn siblingCases(walked, dir) = listSort(mapList(filterList(jsonFiles(walked), fn(p) =>
+        directory(p) == dir && !endsWith(p, "/index.json") && !endsWith(p, "/relations.json")), fn(p) => drop(take(p, byteLength(p) - 5), byteLength(dir) + 1)))
+
+    fn indexProblem(walked, path) = {
+        let listed = listSort(mapList(JsonRead::items(JsonRead::field(load(path), "cases")), JsonRead::text))
+        if join(listed, ",") == join(siblingCases(walked, directory(path)), ",") { "" } else { "${path} does not list exactly its folder" }
+    }
+
+    fn indexesComplete(walked) = audit("indexes list exactly their folders", filterList(jsonFiles(walked), fn(p) => endsWith(p, "/index.json")), fn(p) => indexProblem(walked, p))
+
+    fn model() = TypeDiagram::parse(readFile(schemaPath) ?: "")
+
+    fn typedValues(model, walked) = {
+        let entries = JsonRead::items(JsonRead::field(load("schema-map.json"), "entries"))
+        check("schema map has entries", true, length(entries) > 0)
+        audit("typed fixture values are schema-valid and canonically ordered", SchemaMap::expand(entries, jsonFiles(walked), load), fn(t) => SchemaMap::problem(model, t))
+    }
+
+    fn sourcesCite(sources, specs) = audit("registry sources cite defined spec sections", filterList(regular(sources), fn(p) => endsWith(p, ".osp")), fn(p) =>
+        Citations::undefined(specs, readFile("registry/${p}") ?: "", "registry/${p}"))
+
+    fn specText(specs) = join(mapList(filterList(regular(specs), fn(p) => endsWith(p, ".md")), fn(p) => readFile("docs/specs/${p}") ?: ""), "\n")
+
+    fn schemaStage(walked) = match model() {
+        Success { value } => test("fixture-check: typed values", fn() => typedValues(value, walked))
+        Error { message } => test("fixture-check: schema parses", fn() => check("schema", "", message))
+    }
+
+    /// Every audit, one test each, over the walked fixture, registry and spec trees.
+    export fn run(fixtures, sources, specs) = {
+        let defined = specText(specs)
+        test("fixture-check: data only", fn() => treeIsData(fixtures))
+        test("fixture-check: strict JSON and spec citations", fn() => parsesAndCites(fixtures, defined))
+        test("fixture-check: indexes", fn() => indexesComplete(fixtures))
+        test("fixture-check: registry source citations", fn() => sourcesCite(sources, defined))
+        schemaStage(fixtures)
+    }
+}

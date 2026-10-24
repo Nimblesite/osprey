@@ -1,0 +1,34 @@
+{
+  "spec": "[PACKAGE-PUBLISH]",
+  "description": "DSSE Pre-authentication Encoding vectors, including the protocol's own example, byte-length counting for multi-byte UTF-8, and the detached WebAuthn challenge and EnvelopeDigest of a ReleaseIntent.",
+  "source": "DSSE Protocol v1 PAE definition; spec 0030 [PACKAGE-PUBLISH] WebAuthn challenge and EnvelopeDigest; base64url without padding per RFC 4648 section 5.",
+  "pae": [
+    {
+      "type": "http://example.com/HelloWorld",
+      "payloadHex": "68656c6c6f20776f726c64",
+      "paeHex": "44535345763120323920687474703a2f2f6578616d706c652e636f6d2f48656c6c6f576f726c642031312068656c6c6f20776f726c64",
+      "paeText": "DSSEv1 29 http://example.com/HelloWorld 11 hello world"
+    },
+    {
+      "type": "t",
+      "payloadHex": "",
+      "paeHex": "44535345763120312074203020",
+      "paeText": "DSSEv1 1 t 0 "
+    },
+    {
+      "type": "tëst/€xample",
+      "payloadHex": "68c3a96c6c6f2077c3b6726c64",
+      "paeHex": "4453534576312031352074c3ab73742fe282ac78616d706c652031332068c3a96c6c6f2077c3b6726c64",
+      "paeText": "DSSEv1 15 tëst/€xample 13 héllo wörld"
+    }
+  ],
+  "releaseIntent": {
+    "payloadType": "application/vnd.osprey.release-intent.v1+json",
+    "payloadInput": "{\n  \"commit\": \"a94a8fe5ccb19ba61c4c0873d391e987982fbbd3\",\n  \"compatibility\": \"Compatible\",\n  \"expiry\": \"2027-01-01T00:00:00Z\",\n  \"forgeRepositoryId\": 987654321,\n  \"manifestDigest\": \"sha256:c1d950b58a2f050bf29b1e4b966796787a675fff878c47c4fbe3c9e5ab60213d\",\n  \"nonce\": \"7dd961a9ac010cc3f6e8566e05727d85\",\n  \"packageKey\": \"@demo/maths\",\n  \"sourceDigest\": \"sha256:a9d090fde0d30aa01225ef79d424ab8d032d8d47ac58843b8e15bb08e614e727\",\n  \"subdirectory\": \"maths\"\n}",
+    "payloadCanonical": "{\"commit\":\"a94a8fe5ccb19ba61c4c0873d391e987982fbbd3\",\"compatibility\":\"Compatible\",\"expiry\":\"2027-01-01T00:00:00Z\",\"forgeRepositoryId\":987654321,\"manifestDigest\":\"sha256:c1d950b58a2f050bf29b1e4b966796787a675fff878c47c4fbe3c9e5ab60213d\",\"nonce\":\"7dd961a9ac010cc3f6e8566e05727d85\",\"packageKey\":\"@demo/maths\",\"sourceDigest\":\"sha256:a9d090fde0d30aa01225ef79d424ab8d032d8d47ac58843b8e15bb08e614e727\",\"subdirectory\":\"maths\"}",
+    "paeHex": "445353457631203435206170706c69636174696f6e2f766e642e6f73707265792e72656c656173652d696e74656e742e76312b6a736f6e20343137207b22636f6d6d6974223a2261393461386665356363623139626136316334633038373364333931653938373938326662626433222c22636f6d7061746962696c697479223a22436f6d70617469626c65222c22657870697279223a22323032372d30312d30315430303a30303a30305a222c22666f7267655265706f7369746f72794964223a3938373635343332312c226d616e6966657374446967657374223a227368613235363a63316439353062353861326630353062663239623165346239363637393637383761363735666666383738633437633466626533633965356162363032313364222c226e6f6e6365223a223764643936316139616330313063633366366538353636653035373237643835222c227061636b6167654b6579223a224064656d6f2f6d61746873222c22736f75726365446967657374223a227368613235363a61396430393066646530643330616130313232356566373964343234616238643033326438643437616335383834336238653135626230386536313465373237222c227375626469726563746f7279223a226d61746873227d",
+    "challenge": "u1bnM7FcS2MbIgyBUmRVe5GV1Ed0KaxKYnBEWM05zc4",
+    "envelopeCanonical": "{\"payload\":\"{\\\"commit\\\":\\\"a94a8fe5ccb19ba61c4c0873d391e987982fbbd3\\\",\\\"compatibility\\\":\\\"Compatible\\\",\\\"expiry\\\":\\\"2027-01-01T00:00:00Z\\\",\\\"forgeRepositoryId\\\":987654321,\\\"manifestDigest\\\":\\\"sha256:c1d950b58a2f050bf29b1e4b966796787a675fff878c47c4fbe3c9e5ab60213d\\\",\\\"nonce\\\":\\\"7dd961a9ac010cc3f6e8566e05727d85\\\",\\\"packageKey\\\":\\\"@demo/maths\\\",\\\"sourceDigest\\\":\\\"sha256:a9d090fde0d30aa01225ef79d424ab8d032d8d47ac58843b8e15bb08e614e727\\\",\\\"subdirectory\\\":\\\"maths\\\"}\",\"payloadType\":\"application/vnd.osprey.release-intent.v1+json\"}",
+    "envelopeDigest": "sha256:26f7eac6e266551ca95dc42722dbba0feb28269a4af0cedc76d5ac87a2963895"
+  }
+}

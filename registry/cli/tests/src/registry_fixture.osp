@@ -1,0 +1,209 @@
+namespace registry_tests;
+import registry_host::Host
+import registry_cli::Dispatch
+import registry_cli::Lockfile
+import registry_cli::Fetch
+import registry_cli::Reports
+import registry_tests::Fixture
+import registry::Bundle
+import registry::Identity
+import registry::ManifestJson
+import registry::ManifestModel
+import registry::Maybe
+import registry::Names
+import registry::Release
+
+/// A small folder registry (`@demo/one` depends on `@demo/two`; `@demo/three`
+/// depends on nothing) served through fixture Web/Files handlers, and one
+/// routed command run over it that records every write, so a command that
+/// rewrites the manifest and relocks reads its own write back. The lock,
+/// add, remove and update suites share it ([PACKAGE-FOLDER-REGISTRY] tests).
+module RegistryFixture {
+    export let base = "http://127.0.0.1:8787"
+    export let project = "/abs"
+    export let lockPath = "/abs/osprey.lock"
+    export let manifestPath = "/abs/osprey.toml"
+    export let otherDigest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+    type WebRoute = { base: string, path: string, status: int, body: string }
+    /// One `Host::Files.write` a command performed.
+    export type Written = { at: string, text: string }
+    /// What one run observed: the report, every write in order and every command run.
+    export type Attempt = { report: Reports::Report, written: List<Written>, ran: List<string> }
+
+    // ---- handlers ----
+
+    fn webRoute(path, body) = WebRoute { base: base, path: path, status: 200, body: body }
+    fn webPath(r: WebRoute) = r.path
+    fn replyOf(r: WebRoute) = Host::Reply { status: r.status, etag: "", body: r.body }
+
+    fn replyFor(webs, b, path) = foldList(webs, Error { message: "http.transport: no route ${b}${path}" }, fn(answer, w: WebRoute) => match answer {
+        Success => answer
+        Error => if w.base == b && webPath(w) == path { Success { value: replyOf(w) } } else { answer }
+    })
+
+    fn writtenAt(w: Written) = w.at
+    fn writtenText(w: Written) = w.text
+
+    /// The last text written to `path`, if any.
+    fn latest(written, path) = foldList(written, Error { message: "none" }, fn(acc, w) => if writtenAt(w) == path { Success { value: writtenText(w) } } else { acc })
+
+    fn readOf(written, reads, path) = match latest(written, path) {
+        Success { value } => Success { value: value }
+        Error => Fixture::readFor(reads, path)
+    }
+
+    /// Run `args` through `Dispatch::run` over `reads`, `walks` and `webs`,
+    /// recording every write and every command run; a read of a path written
+    /// earlier in the run answers the written text.
+    export fn runWith(reads, walks, webs, args) = {
+        mut written: List<Written> = []
+        mut ran: List<string> = []
+        let files = handler Host::Files {
+            read path => readOf(written, reads, path)
+            write path content => {
+                written = listAppend(written, Written { at: path, text: content })
+                Success { value: byteLength(content) }
+            }
+        }
+        let tree = handler Host::Tree {
+            walk dir => Fixture::walkFor(walks, dir)
+            ensure dir => Success { value: byteLength(dir) }
+        }
+        let web = handler Host::Web {
+            get b path => replyFor(webs, b, path)
+        }
+        let process = handler Host::Process {
+            run command => {
+                ran = listAppend(ran, command)
+                Host::Run { status: 0, stdout: "built\n", stderr: "" }
+            }
+        }
+        let report = process(fn() => files(fn() => tree(fn() => web(fn() => Dispatch::run(args)))))
+        Attempt { report: report, written: written, ran: ran }
+    }
+
+    /// `runWith` with no tree to walk.
+    export fn run(reads, webs, args) = runWith(reads, [], webs, args)
+
+    /// The commands the run executed, in order.
+    export fn ranOf(a: Attempt) = a.ran
+
+    /// The last text written to `path` during the run, "" when none.
+    export fn writtenTo(a: Attempt, path) = match latest(a.written, path) {
+        Success { value } => value
+        Error => ""
+    }
+
+    /// How many writes hit `path`.
+    export fn writesTo(a: Attempt, path) = length(filterList(a.written, fn(w) => writtenAt(w) == path))
+
+    export fn statusOf(a: Attempt) = a.report.status
+    export fn linesOf(a: Attempt) = a.report.lines
+    export fn lineOf(a: Attempt, i) = Fixture::line(a.report, i)
+
+    // ---- the registry ----
+
+    /// A manifest with no dependencies.
+    export fn manifestText(name) = "[project]\nname = \"${name}\"\nsource_roots = [\"src\"]\n"
+
+    fn depLine(name, epoch, floor) = "\"@demo/${name}\" = { epoch = ${epoch}, min_release = ${floor} }\n"
+
+    fn oneManifest() = manifestText("one") + "\n[dependencies]\n" + depLine("two", 1, 1)
+
+    /// The root manifest depending on `@demo/one` e1 at `floor`.
+    export fn rootManifest(floor) = manifestText("app") + "\n[dependencies]\n" + depLine("one", 1, floor)
+
+    /// The root manifest depending on `@demo/one` at `epoch` e`.r1`.
+    export fn rootManifestAt(epoch) = manifestText("app") + "\n[dependencies]\n" + depLine("one", epoch, 1)
+
+    fn filesOf(manifest) = [Fixture::file("osprey.toml", manifest), Fixture::file("src/main.osp", "fn main() = 0\n")]
+
+    export fn one() = Fixture::served("@demo/one/1.1", filesOf(oneManifest()))
+    export fn one2() = Fixture::served("@demo/one/1.2", filesOf(oneManifest()))
+    /// `@demo/one` in a second epoch: what `update --breaking` moves to.
+    export fn oneNextEpoch() = Fixture::served("@demo/one/2.1", filesOf(oneManifest()))
+    export fn two() = Fixture::served("@demo/two/1.1", filesOf(manifestText("two")))
+    /// A release nothing depends on: the one a registry can drop without
+    /// breaking the graph, which is what `--accept-removals` is for.
+    export fn three() = Fixture::served("@demo/three/1.1", filesOf(manifestText("three")))
+    export fn badOne() = Fixture::served("@demo/one/1.1", filesOf(manifestText("")))
+    /// A release whose source names `readFile`: its surface is `io/files`.
+    export fn io() = Fixture::served("@demo/io/1.1", [Fixture::file("osprey.toml", manifestText("io")), Fixture::file("src/io.osp", "fn load(p) = readFile(p)\n")])
+
+    fn quotedList(words) = join(mapList(words, fn(w) => "\"${w}\""), ", ")
+
+    /// The root manifest depending on `@demo/<name>` e1.r1 with a capability grant.
+    export fn rootManifestGranting(name, capabilities) = manifestText("app") + "\n[dependencies]\n\"@demo/${name}\" = { epoch = 1, min_release = 1, capabilities = [${quotedList(capabilities)}] }\n"
+
+    fn rowText(s) = "{\"digest\":\"${Fixture::digestOf(s)}\",\"epoch\":${Fixture::idOf(s).epoch},\"ordinal\":${Fixture::idOf(s).ordinal}}"
+
+    fn releasesOf(served, k) = filterList(served, fn(s) => Fixture::keyText(s) == k)
+
+    fn distinctKeys(served) = foldList(served, [], fn(acc, s) => if listContains(acc, Fixture::keyText(s)) { acc } else { listAppend(acc, Fixture::keyText(s)) })
+
+    fn packageListing(served, k) = "{\"key\":\"${k}\",\"releases\":[${join(mapList(releasesOf(served, k), rowText), ",")}]}"
+
+    fn fullListing(served) = "{\"packages\":[${join(mapList(distinctKeys(served), fn(k) => packageListing(served, k)), ",")}]}"
+
+    fn sourceWeb(s) = webRoute("/v1/releases/${Fixture::digestOf(s)}/source", Bundle::encode(s) ?: "")
+
+    /// The one listing request plus every release's source bundle.
+    export fn websOf(served) = listPrepend(mapList(served, sourceWeb), webRoute(Fetch::packagesListingPath, fullListing(served)))
+
+    fn manifestRead(s) = {
+        let first = listGet(Fixture::filesOf(s), 0) ?: Fixture::file("osprey.toml", "")
+        Fixture::readRoute("${project}/${Fetch::installDir(Fixture::idOf(s))}/osprey.toml", first.content)
+    }
+
+    /// The root manifest plus every served release's installed manifest.
+    export fn reads(rootText, served) = listPrepend(mapList(served, manifestRead), Fixture::readRoute(manifestPath, rootText))
+
+    /// `reads` plus a current lock.
+    export fn readsWithLock(rootText, lockText, served) = listPrepend(reads(rootText, served), Fixture::readRoute(lockPath, lockText))
+
+    // ---- expected values ----
+
+    fn runtime(key, epoch, floor) = ManifestModel::Runtime { requirement: ManifestModel::Requirement { package: key, epoch: epoch, minimumOrdinal: floor } }
+
+    export fn pkg(s, deps) = Lockfile::Package { release: Fixture::idOf(s), dependencies: deps, surface: [] }
+
+    /// A lock package with a pinned capability surface.
+    export fn pkgWith(s, deps, surface) = Lockfile::Package { release: Fixture::idOf(s), dependencies: deps, surface: surface }
+
+    /// `@demo/one`'s lock package: its Runtime edge on `@demo/two`.
+    export fn onePkg(s) = pkg(s, [runtime(Names::Key { scope: "demo", name: "two" }, 1, 1)])
+
+    export fn lockText(digest, deps, packages) = Lockfile::encode(Lockfile::release(Lockfile::Root { manifestDigest: digest, dependencies: deps }, packages)) ?: ""
+
+    fn edgesOf(m: ManifestModel::Manifest) = m.dependencies
+
+    /// The lock `lock` must write for `rootText` over `packages`.
+    export fn expectedLockOf(rootText, packages) = {
+        let m = Fixture::manifestOf(rootText)
+        lockText(ManifestJson::digest(m) ?: "", edgesOf(m), packages)
+    }
+
+    /// The development lock `lock --local` must write for `rootText`.
+    export fn devLockText(rootText, packages, overrides) = {
+        let m = Fixture::manifestOf(rootText)
+        Lockfile::encode(Lockfile::Lock { root: Lockfile::Root { manifestDigest: ManifestJson::digest(m) ?: "", dependencies: edgesOf(m) }, packages: packages, overrides: overrides, python: Maybe::none() }) ?: ""
+    }
+
+    /// The lock `lock` must write for `rootText` over `packages` with the uv plane pinned.
+    export fn pythonLockText(rootText, packages, pins) = {
+        let m = Fixture::manifestOf(rootText)
+        Lockfile::encode(Lockfile::Lock { root: Lockfile::Root { manifestDigest: ManifestJson::digest(m) ?: "", dependencies: edgesOf(m) }, packages: packages, overrides: [], python: Maybe::some(pins) }) ?: ""
+    }
+
+    /// The lock `lock` must write for `rootText` over `one` and `two`.
+    export fn expectedLock(rootText, oneServed, twoServed) = expectedLockOf(rootText, [onePkg(oneServed), pkg(twoServed, [])])
+
+    /// A current lock written by an earlier run over `one` and `two`.
+    export fn previousLock(oneServed, twoServed) = lockText(otherDigest, [], [onePkg(oneServed), pkg(twoServed, [])])
+
+    /// An earlier lock that also pinned `three`, which the registry since dropped.
+    export fn previousLockWithThree() = lockText(otherDigest, [], [onePkg(one()), pkg(three(), []), pkg(two(), [])])
+
+    export fn compact(s) = Lockfile::compact(Fixture::idOf(s))
+}

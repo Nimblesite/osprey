@@ -1,0 +1,175 @@
+// Implements [UI-PROTOCOL] and [UI-EVENTS]: one depth-first walk encodes a
+// region and collects its bindings, so an event ordinal always names the
+// control that was drawn with it. The walk is mutually recursive, so a
+// program instantiates it at one action type (Nimblesite/osprey#278).
+namespace ui
+
+
+(** Encoded nodes and the bindings collected while encoding them, in ordinal order. *)
+type Walked A =
+    bindings : List<Binding<A>>
+    nodes : List<Json>
+
+(** Encodes a region's node tree for the protocol and collects its bindings in one depth-first walk, so an event ordinal always names the control drawn with it ([UI-PROTOCOL], [UI-EVENTS]). *)
+module Encode
+    (** The protocol name of a tone. *)
+    export tone value = match value
+        Primary => "primary"
+        Secondary => "secondary"
+        Accent => "accent"
+        Good => "good"
+        Caution => "caution"
+        Danger => "danger"
+
+    role value = match value
+        Display => "display"
+        Large => "large"
+        Title => "title"
+        Heading => "heading"
+        Lead => "lead"
+        Headline => "headline"
+        Body => "body"
+        Callout => "callout"
+        Caption => "caption"
+        Eyebrow => "eyebrow"
+        Mono => "mono"
+
+    buttonRole value = match value
+        Prominent => "prominent"
+        Plain => "plain"
+        Destructive => "destructive"
+
+    axis value = match value
+        Vertical => "vertical"
+        Horizontal => "horizontal"
+
+    side value = match value
+        Leading => "leading"
+        Trailing => "trailing"
+
+    commit value = match value
+        OnEdit => "edit"
+        OnSubmit => "submit"
+
+    str key value = Doc::str (key, value)
+
+    num key value = Doc::num (key, value)
+
+    bit key value = Doc::bit (key, value)
+
+    kind name members = JsonObject (listPrepend members (str "kind" name))
+
+    one<A> : (List<Binding<A>>, Json) -> Walked<A>
+    one (bindings, json) = Walked(bindings = bindings, nodes = [json])
+
+    // A control: its binding takes the next ordinal.
+    bound<A> : (List<Binding<A>>, Binding<A>, string, List<JsonMember>) -> Walked<A>
+    bound (bindings, binding, name, members) = one (listAppend bindings binding, kind name (listAppend members (num "event" (length bindings))))
+
+    childAt<A> : (Walked<A>, List<Node<A>>, int) -> Walked<A>
+    childAt (walked, children, index) = match listGet children index
+        Success child =>
+            next = walk (walked.bindings, child)
+            Walked(bindings = next.bindings, nodes = listConcat walked.nodes next.nodes)
+        Error _ => walked
+
+    (** Encodes `children` in order; their bindings continue after `bindings`, so ordinals follow drawing order. *)
+    export all<A> : (List<Binding<A>>, List<Node<A>>) -> Walked<A>
+    all (bindings, children) = range (0, length children) |> fold (Walked(bindings = bindings, nodes = [])) (\(walked, index) => childAt (walked, children, index))
+
+    // A container: its children continue the parent's ordinals.
+    nested<A> : (List<Binding<A>>, string, List<JsonMember>, List<Node<A>>) -> Walked<A>
+    nested (bindings, name, members, children) =
+        inner = all (bindings, children)
+        one (inner.bindings, kind name (listAppend members (JsonMember "children" (JsonArray inner.nodes))))
+
+    first<A> : Walked<A> -> Json
+    first walked = listGet walked.nodes 0 ?: JsonNull
+
+    entryAt<A> : (Walked<A>, List<Tab<A>>, int) -> Walked<A>
+    entryAt (walked, tabs, index) = match listGet tabs index
+        Success tab =>
+            inner = walk (walked.bindings, tab.page)
+            json = JsonObject [str "key" tab.tabKey, str "label" tab.tabLabel, str "symbol" tab.tabSymbol, JsonMember "child" (first inner)]
+            Walked(bindings = inner.bindings, nodes = listAppend walked.nodes json)
+        Error _ => walked
+
+    rowAt<A> : (Walked<A>, List<Row<A>>, int) -> Walked<A>
+    rowAt (walked, rows, index) = match listGet rows index
+        Success item =>
+            inner = walk (walked.bindings, item.cell)
+            json = JsonObject [str "key" item.rowKey, str "symbol" item.rowSymbol, str "group" item.rowGroup, JsonMember "child" (first inner)]
+            Walked(bindings = inner.bindings, nodes = listAppend walked.nodes json)
+        Error _ => walked
+
+    tabs<A> : (List<Binding<A>>, List<Tab<A>>, string, A) -> Walked<A>
+    tabs (bindings, entries, selected, action) =
+        inner = range (0, length entries) |> fold (Walked(bindings = bindings, nodes = [])) (\(walked, index) => entryAt (walked, entries, index))
+        bound (inner.bindings, ChoiceInput(action = action), "tabs", [str "selected" selected, JsonMember "tabs" (JsonArray inner.nodes)])
+
+    rows<A> : (List<Binding<A>>, List<Row<A>>, string, A) -> Walked<A>
+    rows (bindings, entries, selected, action) =
+        inner = range (0, length entries) |> fold (Walked(bindings = bindings, nodes = [])) (\(walked, index) => rowAt (walked, entries, index))
+        bound (inner.bindings, ChoiceInput(action = action), "rows", [str "selected" selected, JsonMember "rows" (JsonArray inner.nodes)])
+
+    choiceJson item = JsonObject [str "key" item.choiceKey, str "label" item.choiceLabel]
+
+    choices items = JsonArray (mapList (items, \item => choiceJson item))
+
+    toneList values = JsonArray (mapList (values, \value => JsonString (tone value)))
+
+    screen<A> : (List<Binding<A>>, string, string, List<Node<A>>, List<Node<A>>) -> Walked<A>
+    screen (bindings, title, subtitle, toolbar, children) =
+        tools = all (bindings, toolbar)
+        body = all (tools.bindings, children)
+        one (body.bindings, kind "screen" [str "title" title, str "subtitle" subtitle, JsonMember "toolbar" (JsonArray tools.nodes), JsonMember "children" (JsonArray body.nodes)])
+
+    // A control with content: its binding takes the next ordinal, then its children continue.
+    disclosure<A> : (List<Binding<A>>, string, bool, A, List<Node<A>>) -> Walked<A>
+    disclosure (bindings, title, expanded, action, children) =
+        inner = all (listAppend bindings (FlagInput(action = action)), children)
+        one (inner.bindings, kind "disclosure" [str "title" title, bit "expanded" expanded, num "event" (length bindings), JsonMember "children" (JsonArray inner.nodes)])
+
+    // Two columns: the pane's controls take ordinals before the aside's, and the splitter between them takes the next.
+    aside<A> : (List<Binding<A>>, Side, Node<A>, Node<A>, int, A) -> Walked<A>
+    aside (bindings, place, column, pane, width, action) =
+        content = walk (bindings, pane)
+        beside = walk (content.bindings, column)
+        limits = [num "width" width, num "least" Splitters::least, num "most" Splitters::most, num "keep" Splitters::keep]
+        bound (beside.bindings, SizeInput(action = action), "aside", listConcat [str "side" (side place), JsonMember "pane" (first content), JsonMember "aside" (first beside)] limits)
+
+    leaf<A> : (List<Binding<A>>, string, List<JsonMember>) -> Walked<A>
+    leaf (bindings, name, members) = one (bindings, kind name members)
+
+    // Exhaustive: a new component cannot be encoded by accident as something else.
+    (** Encodes `node` and collects its bindings after `bindings`, depth first, so each control's ordinal is the index of its binding. *)
+    export walk<A> : (List<Binding<A>>, Node<A>) -> Walked<A>
+    walk (bindings, node) = match node
+        Text value textRole textTone => leaf (bindings, "text", [str "text" value, str "role" (role textRole), str "tone" (tone textTone)])
+        Evidence label value => leaf (bindings, "evidence", [str "label" label, str "value" value])
+        Badge label symbol badgeTone => leaf (bindings, "badge", [str "label" label, str "symbol" symbol, str "tone" (tone badgeTone)])
+        Label label symbol => leaf (bindings, "label", [str "label" label, str "symbol" symbol])
+        Icon symbol => leaf (bindings, "icon", [str "symbol" symbol])
+        Link label address => leaf (bindings, "link", [str "label" label, str "url" address])
+        Spacer => leaf (bindings, "spacer", [])
+        Divider => leaf (bindings, "divider", [])
+        Segments values label => leaf (bindings, "segments", [JsonMember "tones" (toneList values), str "label" label])
+        Empty symbol title detail => leaf (bindings, "empty", [str "symbol" symbol, str "title" title, str "detail" detail])
+        Progress label detail => leaf (bindings, "progress", [str "label" label, str "detail" detail])
+        Swatch name light dark => leaf (bindings, "swatch", [str "name" name, str "light" light, str "dark" dark])
+        Slot key => leaf (bindings, "slot", [str "key" key])
+        Brand => leaf (bindings, "brand", [])
+        Button label symbol buttonKind enabled action => bound (bindings, Tap(action = action), "button", [str "label" label, str "symbol" symbol, str "role" (buttonRole buttonKind), bit "enabled" enabled])
+        Field label value prompt secure multiline policy action => bound (bindings, TextInput(action = action), "field", [str "label" label, str "value" value, str "prompt" prompt, bit "secure" secure, bit "multiline" multiline, str "commit" (commit policy)])
+        Toggle label on action => bound (bindings, FlagInput(action = action), "toggle", [str "label" label, bit "on" on])
+        Picker label items selected action => bound (bindings, ChoiceInput(action = action), "picker", [str "label" label, JsonMember "choices" (choices items), str "selected" selected])
+        Disclosure title expanded action children => disclosure (bindings, title, expanded, action, children)
+        Alert title message visible action => bound (bindings, Tap(action = action), "alert", [str "title" title, str "message" message, bit "visible" visible])
+        Stack direction children => nested (bindings, "stack", [str "axis" (axis direction)], children)
+        Section title footer children => nested (bindings, "section", [str "title" title, str "footer" footer], children)
+        Screen title subtitle toolbar children => screen (bindings, title, subtitle, toolbar, children)
+        Split panes => nested (bindings, "split", [], panes)
+        Layer children => nested (bindings, "layer", [], children)
+        Aside place column pane width action => aside (bindings, place, column, pane, width, action)
+        Tabs entries selected action => tabs (bindings, entries, selected, action)
+        Rows entries selected action => rows (bindings, entries, selected, action)

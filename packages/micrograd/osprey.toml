@@ -1,0 +1,14 @@
+[project]
+name = "micrograd"
+source_roots = ["src"]
+python_sources = ["src/libm.py", "src/engine.py", "src/nn.py"]
+default_namespace = "micrograd"
+
+[package]
+name = "@osprey/micrograd"
+license = "MIT"
+summary = "Karpathy's micrograd scalar autograd engine and nn library, as an immutable graph arena"
+keywords = ["micrograd", "autograd", "neural-networks", "python-flavor"]
+
+[test-dependencies]
+"@osprey/testing" = { epoch = 1, min_release = 1 }

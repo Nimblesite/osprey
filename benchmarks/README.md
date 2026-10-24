@@ -248,3 +248,7 @@ above become expressible and should be added here.
 4. Add `<name>.rs`, `<name>.c`, `<name>.ml`, `<name>.hs` — identical algorithm
    and parameters, each printing only the integer result.
 5. `BENCH_FILTER=<name> make bench` and confirm every language reports `ok`.
+
+## Symbolic-execution comparison (planned)
+
+`benchmarks/symex/` will hold the planted-bug suite that measures `osprey hunt` against stock KLEE, Kani and QuickCheck: eight cases in four languages, `run.sh`, `report.py` and tracked `results/`. It does not exist yet; the contract is `[SYMEX-PROOF]` in [the symbolic execution spec](../docs/specs/tooling/SymbolicExecution.md) and delivery is [plan 0034](../docs/plans/0034-symbolic-execution.md).

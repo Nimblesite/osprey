@@ -210,23 +210,8 @@ impl Analyzer<'_> {
                 Some(parts) => self.method_value(expression, &parts, scope, env),
                 None => self.call_value(function, arguments, named_arguments, scope, env),
             },
-            Expr::MethodCall {
-                target,
-                method,
-                arguments,
-                named_arguments,
-            } => self.method_value(
-                expression,
-                &crate::methods::Parts {
-                    target,
-                    method,
-                    arguments,
-                    named: named_arguments,
-                    application: None,
-                },
-                scope,
-                env,
-            ),
+            Expr::MethodCall { .. } => crate::methods::parts(expression)
+                .and_then(|parts| self.method_value(expression, &parts, scope, env)),
             Expr::Pipe { left, right } => self.pipe_value(left, right, scope, env),
             Expr::Perform {
                 effect,

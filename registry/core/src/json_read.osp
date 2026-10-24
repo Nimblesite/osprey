@@ -1,0 +1,56 @@
+namespace registry;
+import registry::Json
+
+/// Total readers over trusted, already-validated Json values: a missing
+/// member reads as `Json::Null`, and a value of the wrong kind reads as the
+/// kind's empty value. Fixture suites and audits read tables through these;
+/// untrusted input goes through `Json::textAt` and friends, which report
+/// why a read failed. Implements [PACKAGE-TYPE-INVARIANTS] JSON access.
+module JsonRead {
+    /// The member `key` of an object, or `Json::Null`.
+    export fn field(value, key) = Json::get(value, key) ?: Json::Null
+
+    /// The text of a string value, or "".
+    export fn text(value) = match value {
+        Json::Str { text } => text
+        _ => ""
+    }
+
+    /// The integer of a number value, or -1.
+    export fn number(value) = match value {
+        Json::Num { value } => value
+        _ => -1
+    }
+
+    /// The items of an array value, or [].
+    export fn items(value) = match value {
+        Json::Arr { items } => items
+        _ => []
+    }
+
+    /// The texts of an array of strings.
+    export fn texts(value) = mapList(items(value), text)
+
+    /// The non-empty `/`-separated tokens of a path.
+    export fn tokens(path) = filterList(split(path, "/") ?: [path], fn(t) => t != "")
+
+    fn soleMember(value) = match value {
+        Json::Obj { members } => match listGet(members, 0) {
+            Success { value } => value.value
+            Error => Json::Null
+        }
+        _ => Json::Null
+    }
+
+    fn element(items, token) = listGet(items, parseInt(token) ?: -1) ?: Json::Null
+
+    /// One path step: an array index, `*` for a union's single variant
+    /// payload, or an object member; anything missing reads as `Json::Null`.
+    export fn step(value, token) = match value {
+        Json::Arr { items } => element(items, token)
+        _ => if token == "*" { soleMember(value) } else { field(value, token) }
+    }
+
+    /// The value at a `/`-separated path, `""` being the value itself.
+    export fn at(value, path) = foldList(tokens(path), value, step)
+}

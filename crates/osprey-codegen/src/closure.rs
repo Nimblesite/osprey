@@ -256,10 +256,7 @@ pub(crate) fn cell_call(
 ) -> Value {
     let (ret_spelling, plist) = spelling_with_env(sig);
     let cellp = cg.emit_reg(format!("bitcast i8* {handle} to {{ i8* }}*"));
-    let fpp = cg.emit_reg(format!(
-        "getelementptr {{ i8* }}, {{ i8* }}* {cellp}, i32 0, i32 0"
-    ));
-    let fp8 = cg.emit_reg(format!("load i8*, i8** {fpp}"));
+    let fp8 = crate::aggregate::load_field(cg, "{ i8* }", &cellp, 0, LType::Str);
     let fp = cg.emit_reg(format!("bitcast i8* {fp8} to {ret_spelling} ({plist})*"));
     let mut args = vec![format!("i8* {handle}")];
     args.extend_from_slice(typed_args);

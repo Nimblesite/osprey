@@ -1,0 +1,22 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "Compiler flags keep semantic order and may repeat.",
+  "type": "CompilerInvocationProjection",
+  "value": {
+    "compilerDigest": "sha256:9489132a394cfc27b058afeb214da546d54e92a9c221ffa7a744aa25180b8d33",
+    "runtimeDigest": "sha256:9f35507baab89b9be0ea5fe4cb1357ccbd9a639ac55e23242bd7070a8a680cf0",
+    "targetSpecDigest": "sha256:cb1fb0728778fc5cf16739f0f2c10242be85233d388a95f5f0156fba5667f4af",
+    "cpuFeatureSetDigest": "sha256:4f7b96e41d1a13005e7dbf5ddad04d153e73e4a04b30082db36cc4b0c1888936",
+    "flags": [
+      "--opt=2",
+      "--deterministic",
+      "--opt=3"
+    ],
+    "normalizedEnvironmentDigest": "sha256:f592ca413715bd61b86843a69afd818be0d4a32c5bb00a1d396b06541c5ba239",
+    "sandboxPolicyDigest": "sha256:f0d310cf81669db10ee80ff1a54c8ba6b6d01c6c4b1ce64ffe9998c1db7f816e"
+  },
+  "canonical": "{\"compilerDigest\":\"sha256:9489132a394cfc27b058afeb214da546d54e92a9c221ffa7a744aa25180b8d33\",\"cpuFeatureSetDigest\":\"sha256:4f7b96e41d1a13005e7dbf5ddad04d153e73e4a04b30082db36cc4b0c1888936\",\"flags\":[\"--opt=2\",\"--deterministic\",\"--opt=3\"],\"normalizedEnvironmentDigest\":\"sha256:f592ca413715bd61b86843a69afd818be0d4a32c5bb00a1d396b06541c5ba239\",\"runtimeDigest\":\"sha256:9f35507baab89b9be0ea5fe4cb1357ccbd9a639ac55e23242bd7070a8a680cf0\",\"sandboxPolicyDigest\":\"sha256:f0d310cf81669db10ee80ff1a54c8ba6b6d01c6c4b1ce64ffe9998c1db7f816e\",\"targetSpecDigest\":\"sha256:cb1fb0728778fc5cf16739f0f2c10242be85233d388a95f5f0156fba5667f4af\"}",
+  "canonicalLength": 619,
+  "domain": "osprey.compiler-invocation.v1",
+  "digest": "sha256:2aac7d77cd3914931c3fdafe05b3d7f1096c34db36aac11f8f3615c386012963"
+}

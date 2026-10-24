@@ -37,9 +37,40 @@ fn runtime_archive(http: bool, memory: &str) -> Option<String> {
 }
 
 /// The IR spellings that reach libm: `frem` may lower to `fmod`
-/// [FLOAT-IEEE-RESULTS], and the float functions [BUILTIN-MATH] are libm
-/// calls — the `exp`/`ln` intrinsics lower to them, `tanh` is called by name.
-const LIBM_SPELLINGS: [&str; 4] = ["frem ", "@llvm.exp.f64", "@llvm.log.f64", "@tanh("];
+/// [FLOAT-IEEE-RESULTS], and the float functions [BUILTIN-MATH] and its
+/// sections are libm calls — the trig/log/pow intrinsics lower to them and
+/// the rest are called by name. `llvm.sqrt.f64` is deliberately absent: sqrt
+/// lives in libc on every target the compiler links against.
+const LIBM_SPELLINGS: [&str; 28] = [
+    "frem ",
+    "@llvm.exp.f64",
+    "@llvm.log.f64",
+    "@llvm.sin.f64",
+    "@llvm.cos.f64",
+    "@llvm.log2.f64",
+    "@llvm.log10.f64",
+    "@llvm.pow.f64",
+    "@llvm.copysign.f64",
+    "@llvm.floor.f64",
+    "@llvm.ceil.f64",
+    "@llvm.trunc.f64",
+    "@llvm.roundeven.f64",
+    "@tanh(",
+    "@asin(",
+    "@acos(",
+    "@atan(",
+    "@atan2(",
+    "@sinh(",
+    "@cosh(",
+    "@asinh(",
+    "@acosh(",
+    "@atanh(",
+    "@log1p(",
+    "@expm1(",
+    "@erf(",
+    "@erfc(",
+    "@hypot(",
+];
 
 fn needs_libm(ir: &str) -> bool {
     LIBM_SPELLINGS.iter().any(|spelling| ir.contains(spelling))
@@ -263,13 +294,37 @@ mod tests {
 
     #[test]
     fn libm_is_linked_for_each_spelling_that_reaches_it_and_nothing_else() {
-        // [BUILTIN-MATH] / [FLOAT-IEEE-RESULTS]: the four IR spellings whose
+        // [BUILTIN-MATH] / [FLOAT-IEEE-RESULTS]: every IR spelling whose
         // lowering needs libm, and near misses that must not drag it in.
         for ir in [
             "%r = frem double %a, %b",
             "call double @llvm.exp.f64(double 1.0)",
             "call double @llvm.log.f64(double 1.0)",
             "call double @tanh(double 1.0)",
+            "call double @llvm.sin.f64(double 1.0)",
+            "call double @llvm.cos.f64(double 1.0)",
+            "call double @llvm.log2.f64(double 1.0)",
+            "call double @llvm.log10.f64(double 1.0)",
+            "call double @llvm.pow.f64(double 1.0, double 2.0)",
+            "call double @llvm.copysign.f64(double 1.0, double -1.0)",
+            "call double @llvm.floor.f64(double 1.0)",
+            "call double @llvm.ceil.f64(double 1.0)",
+            "call double @llvm.trunc.f64(double 1.0)",
+            "call double @llvm.roundeven.f64(double 1.0)",
+            "call double @asin(double 1.0)",
+            "call double @acos(double 1.0)",
+            "call double @atan(double 1.0)",
+            "call double @atan2(double 1.0, double 2.0)",
+            "call double @sinh(double 1.0)",
+            "call double @cosh(double 1.0)",
+            "call double @asinh(double 1.0)",
+            "call double @acosh(double 1.0)",
+            "call double @atanh(double 1.0)",
+            "call double @log1p(double 1.0)",
+            "call double @expm1(double 1.0)",
+            "call double @erf(double 1.0)",
+            "call double @erfc(double 1.0)",
+            "call double @hypot(double 1.0, double 2.0)",
         ] {
             assert!(needs_libm(ir), "{ir}");
         }
@@ -279,6 +334,8 @@ mod tests {
             "%r = fadd double %a, %b",
             "call float @tanhf(float 1.0)",
             "declare double @tanh2(double)",
+            "call double @sinf(float 1.0)",
+            "call double @powf(float 1.0, float 2.0)",
         ] {
             assert!(!needs_libm(ir), "{ir}");
         }

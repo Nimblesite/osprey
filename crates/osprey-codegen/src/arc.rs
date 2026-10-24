@@ -44,6 +44,8 @@ struct Entry {
 /// statements, loop bodies). Swapped wholesale across `enter_nested_fn`.
 pub(crate) struct ArcLedger {
     frames: Vec<Vec<Entry>>,
+    /// What each frame in `frames` delimits, kept in step with it.
+    kinds: Vec<FrameKind>,
     /// Open conditional regions as (frame depth, ledger length at the branch).
     /// [`consume_fresh`] retires an owner AT ITS USE and removes its ledger
     /// entry, which is only sound when that use is on every path out of the
@@ -58,6 +60,7 @@ impl ArcLedger {
     pub(crate) fn new() -> ArcLedger {
         ArcLedger {
             frames: vec![Vec::new()],
+            kinds: vec![FrameKind::Scope],
             cond_floors: Vec::new(),
         }
     }
@@ -313,13 +316,24 @@ fn incoming_all_pure(cg: &Codegen, incoming: &[String], mark: usize) -> bool {
     })
 }
 
-/// Open a region: statement, loop body.
-pub(crate) fn push_frame(cg: &mut Codegen) {
+/// What a ledger frame delimits. A statement's owners die when the statement
+/// closes; a scope — the function body, a loop body, a kernel or comparator
+/// body — is where a binding made inside it lives. [GC-ARC-PERCEUS]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FrameKind {
+    Statement,
+    Scope,
+}
+
+/// Open a region of the given kind.
+pub(crate) fn push_frame(cg: &mut Codegen, kind: FrameKind) {
     cg.arc.frames.push(Vec::new());
+    cg.arc.kinds.push(kind);
 }
 
 /// Close the innermost region: drop every owner it still holds.
 pub(crate) fn pop_frame(cg: &mut Codegen) {
+    let _ = cg.arc.kinds.pop();
     if let Some(frame) = cg.arc.frames.pop() {
         release_entries(cg, &frame);
     }
@@ -403,11 +417,19 @@ fn take_entry(cg: &mut Codegen, operand: &str) -> Option<Entry> {
     Some(frame.remove(at))
 }
 
-/// Push `entry` into the frame beneath the innermost (the region that
-/// outlives the closing statement); the innermost when it is the only one.
+/// Push `entry` into the innermost scope frame: the region that outlives the
+/// closing statement. A binding made in a loop body belongs to the iteration,
+/// not the whole function: with frames `[function, loop]` and no statement
+/// frame between them, choosing "the frame beneath the innermost" put a record
+/// captured by the loop body's closure in the FUNCTION frame, where the loop
+/// overwrote its slot each iteration and leaked every value but the last.
 fn push_parent(cg: &mut Codegen, entry: Entry) {
-    let n = cg.arc.frames.len();
-    let at = if n >= 2 { n - 2 } else { n - 1 };
+    let at = cg
+        .arc
+        .kinds
+        .iter()
+        .rposition(|kind| *kind == FrameKind::Scope)
+        .unwrap_or(0);
     if let Some(frame) = cg.arc.frames.get_mut(at) {
         frame.push(entry);
     }
@@ -472,6 +494,7 @@ pub(crate) fn epilogue(cg: &mut Codegen, ret: Option<&Value>) {
         release_entries(cg, frame);
     }
     cg.arc.frames = vec![Vec::new()];
+    cg.arc.kinds = vec![FrameKind::Scope];
 }
 
 /// A candidate value is about to escape boxed as an `i64` across a fiber /

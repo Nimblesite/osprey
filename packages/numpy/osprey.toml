@@ -1,0 +1,11 @@
+[project]
+name = "numpy"
+source_roots = ["src"]
+python_sources = ["src/storage.py", "src/host.py", "src/device.py", "src/errors.py", "src/layout.py", "src/math.py", "src/ndarray.py", "src/linalg.py"]
+default_namespace = "numpy"
+
+[package]
+name = "@osprey/numpy"
+license = "MIT"
+summary = "Row-major float64 ndarray with broadcasting, reductions and linalg, over a host or GPU storage effect"
+keywords = ["numpy", "ndarray", "linalg", "python-flavor"]

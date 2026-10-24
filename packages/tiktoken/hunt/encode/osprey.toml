@@ -1,0 +1,6 @@
+[project]
+name = "tiktoken-hunt-encode"
+source_roots = ["../..", "../../../testing/src", "."]
+python_sources = ["../../../testing/src/check.py", "../../src/tables.py", "../../src/unicode.py", "../../src/pattern.py", "../../src/bpe.py", "../../src/core.py", "../../src/educational.py", "encode.py"]
+default_namespace = "tiktoken_hunt"
+entry = "encode.py"

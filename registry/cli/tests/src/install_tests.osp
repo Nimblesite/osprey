@@ -1,0 +1,178 @@
+namespace registry_tests;
+import registry_host::Host
+import registry_cli::Install
+import registry_cli::Fetch
+import registry_cli::Lockfile
+import registry_cli::Reports
+import registry_tests::Fixture
+import registry::Bundle
+import registry::Release
+
+/// The lock-consuming `fetch` (no target) against fixture hosts: installed
+/// trees are answered by the files/tree fixtures, missing or corrupt trees are
+/// fetched through the web fixture, and every line is exact. Implements
+/// [PACKAGE-FOLDER-REGISTRY] client tests.
+module InstallTests {
+    let localBase = "http://127.0.0.1:8787"
+    let rootDigest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+    type WebRoute = { base: string, path: string, status: int, body: string }
+    type Attempt = { report: Reports::Report, writes: string, ensures: string, fetched: string }
+
+    fn webRoute(base, path, code, body) = WebRoute { base: base, path: path, status: code, body: body }
+
+    fn webPath(r: WebRoute) = r.path
+
+    fn replyFor(webs, base, path) = foldList(webs, Error { message: "http.transport: no route ${base}${path}" }, fn(answer, w) => match answer {
+        Success => answer
+        Error => if w.base == base && webPath(w) == path { Success { value: Host::Reply { status: w.status, etag: "", body: w.body } } } else { answer }
+    })
+
+    fn runInstall(reads, walks, webs, args) = {
+        mut writes = ""
+        mut ensures = ""
+        mut fetched = ""
+        let files = handler Host::Files {
+            read path => Fixture::readFor(reads, path)
+            write path content => {
+                writes = "${writes}${path}=${content}|"
+                Success { value: byteLength(content) }
+            }
+        }
+        let tree = handler Host::Tree {
+            walk dir => Fixture::walkFor(walks, dir)
+            ensure dir => {
+                ensures = "${ensures}${dir}|"
+                Success { value: 0 }
+            }
+        }
+        let web = handler Host::Web {
+            get base path => {
+                fetched = "${fetched}${path}|"
+                replyFor(webs, base, path)
+            }
+        }
+        let process = handler Host::Process {
+            run command => Host::Run { status: 0, stdout: "", stderr: "fixture: install never runs ${command}" }
+        }
+        let report = process(fn() => files(fn() => tree(fn() => web(fn() => Install::run(args)))))
+        Attempt { report: report, writes: writes, ensures: ensures, fetched: fetched }
+    }
+
+    fn filesOf(text) = [
+        Release::File { relPath: "osprey.toml", content: "key = one\n" },
+        Release::File { relPath: "src/main.osp", content: text }
+    ]
+
+    fn served(dir, text) = Fixture::served(dir, filesOf(text))
+
+    fn one() = served("@demo/one/1.1", "fn one() = 1\n")
+    fn two() = served("@demo/two/1.1", "fn two() = 2\n")
+
+    fn pkgOf(s: Release::Served) = Lockfile::Package { release: s.id, dependencies: [], surface: [] }
+
+    fn lockText(served) = Lockfile::encode(Lockfile::release(Lockfile::Root { manifestDigest: rootDigest, dependencies: [] }, mapList(served, pkgOf))) ?: ""
+
+    fn installDir(s: Release::Served) = Fetch::installDir(s.id)
+
+    fn readsOf(s: Release::Served) = mapList(s.files, fn(f: Release::File) => Fixture::readRoute("${installDir(s)}/${f.relPath}", f.content))
+
+    fn lockRead(served) = Fixture::readRoute("osprey.lock", lockText(served))
+
+    fn walkOf(s: Release::Served) = Fixture::walkRoute(installDir(s), mapList(s.files, fn(f: Release::File) => f.relPath))
+
+    fn sourcePath(s: Release::Served) = "/v1/releases/${s.id.digest}/source"
+
+    fn sourceWeb(s: Release::Served) = webRoute(localBase, sourcePath(s), 200, Bundle::encode(s) ?: "")
+
+    /// Both trees installed and matching: two `=` lines, no fetch, nothing written.
+    fn allPresent() = {
+        let os = [one(), two()]
+        let a = runInstall(listConcat([lockRead(os)], listConcat(readsOf(listGet(os, 0) ?: Fixture::missingServed()), readsOf(listGet(os, 1) ?: Fixture::missingServed()))),
+            [walkOf(listGet(os, 0) ?: Fixture::missingServed()), walkOf(listGet(os, 1) ?: Fixture::missingServed())], [], [])
+        checkAll("installed trees are skipped with = lines and no writes", [
+            a.report.status == 0,
+            length(a.report.lines) == 2,
+            startsWith(Fixture::line(a.report, 0), "= @demo/one"),
+            startsWith(Fixture::line(a.report, 1), "= @demo/two"),
+            a.writes == "",
+            a.ensures == "",
+            a.fetched == ""
+        ])
+    }
+
+    /// One installed, one missing: the missing one is fetched through the web fixture.
+    fn oneMissing() = {
+        let os = [one(), two()]
+        let first = listGet(os, 0) ?: Fixture::missingServed()
+        let second = listGet(os, 1) ?: Fixture::missingServed()
+        let a = runInstall(
+            listConcat([lockRead(os)], readsOf(first)),
+            [walkOf(first)],
+            [sourceWeb(second)],
+            [])
+        checkAll("a missing tree is fetched with a + line", [
+            a.report.status == 0,
+            length(a.report.lines) == 2,
+            startsWith(Fixture::line(a.report, 0), "= @demo/one"),
+            startsWith(Fixture::line(a.report, 1), "+ @demo/two"),
+            a.fetched == "${sourcePath(second)}|"
+        ])
+    }
+
+    /// An installed tree whose bytes differ is re-fetched, not trusted.
+    fn corrupt() = {
+        let os = [one(), two()]
+        let first = listGet(os, 0) ?: Fixture::missingServed()
+        let second = listGet(os, 1) ?: Fixture::missingServed()
+        let corruptReads = mapList(second.files, fn(f: Release::File) => Fixture::readRoute("${installDir(second)}/${f.relPath}", "${f.content} tampered"))
+        let a = runInstall(
+            listConcat([lockRead(os)], listConcat(readsOf(first), corruptReads)),
+            [walkOf(first), walkOf(second)],
+            [sourceWeb(second)],
+            [])
+        checkAll("a corrupt installed tree is re-fetched", [
+            a.report.status == 0,
+            startsWith(Fixture::line(a.report, 0), "= @demo/one"),
+            startsWith(Fixture::line(a.report, 1), "+ @demo/two"),
+            a.fetched == "${sourcePath(second)}|"
+        ])
+    }
+
+    /// A failed fetch is that package's code line; the next package still runs.
+    fn fetchFailure() = {
+        let os = [one(), two()]
+        let first = listGet(os, 0) ?: Fixture::missingServed()
+        let second = listGet(os, 1) ?: Fixture::missingServed()
+        let broken = webRoute(localBase, sourcePath(first), 404, "")
+        let a = runInstall([lockRead(os)], [], [broken, sourceWeb(second)], [])
+        checkAll("one failed fetch keeps the run going and ends status 1", [
+            a.report.status == 1,
+            length(a.report.lines) == 2,
+            Fixture::line(a.report, 0) == "fetch.not-found",
+            startsWith(Fixture::line(a.report, 1), "+ @demo/two"),
+            a.fetched == "${sourcePath(first)}|${sourcePath(second)}|"
+        ])
+    }
+
+    /// A missing or invalid lock is `install.no-lock` with the reason.
+    fn noLock() = {
+        let missing = runInstall([], [], [], [])
+        let invalid = runInstall([Fixture::readRoute("osprey.lock", "not json")], [], [], [])
+        checkAll("a missing or invalid lock is install.no-lock", [
+            missing.report.status == 1,
+            startsWith(Fixture::line(missing.report, 0), "install.no-lock "),
+            invalid.report.status == 1,
+            Fixture::line(invalid.report, 0) == "install.no-lock lock.shape"
+        ])
+    }
+
+    /// Every install test.
+    export fn run() = {
+        test("install: all present skips every tree", allPresent)
+        test("install: one missing tree is fetched", oneMissing)
+        test("install: a corrupt tree is re-fetched", corrupt)
+        test("install: a fetch failure keeps the rest running", fetchFailure)
+        test("install: missing or invalid lock", noLock)
+    }
+}

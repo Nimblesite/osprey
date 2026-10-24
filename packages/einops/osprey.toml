@@ -1,0 +1,14 @@
+[project]
+name = "einops"
+source_roots = ["src"]
+python_sources = ["src/parsing.py", "src/recipe.py", "src/reconstruct.py"]
+default_namespace = "einops"
+
+[package]
+name = "@osprey/einops"
+license = "MIT"
+summary = "einops pattern parsing and transformation recipes, pure Osprey"
+keywords = ["einops", "rearrange", "reduce", "repeat", "tensor", "python-flavor"]
+
+[test-dependencies]
+"@osprey/testing" = { epoch = 1, min_release = 1 }

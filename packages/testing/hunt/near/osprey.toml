@@ -1,0 +1,6 @@
+[project]
+name = "testing-hunt-near"
+source_roots = ["../..", "."]
+python_sources = ["../../src/check.py", "near.py"]
+default_namespace = "testing_hunt"
+entry = "near.py"

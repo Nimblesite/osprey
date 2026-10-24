@@ -1,1 +1,1 @@
-type mismatch: cannot unify string with int
+3:2: type mismatch: cannot unify string with int

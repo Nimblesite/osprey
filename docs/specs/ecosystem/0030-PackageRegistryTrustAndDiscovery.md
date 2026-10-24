@@ -118,9 +118,11 @@ structure containing themselves.
 
 Publishers cannot upload tarballs or substitute files. The registry fetches the
 revision, stores a forge-independent source snapshot, and performs canonical
-assembly. Accepted roles are Osprey source, `osprey.toml`, UTF-8 Markdown/plain
-documentation, SPDX license text, typeDiagram source, and manifest-declared
-data. Format v1 has three closed asset kinds: `Utf8Text` (`.txt`, `.md`, `.csv`,
+assembly. Accepted roles are Osprey source (`.osp`, `.ospml`, and `.py` files
+whose first line is the Python-flavor marker `# osprey: flavor=python`; any
+other `.py` file refuses the release with `source.python-flavor-header`),
+`osprey.toml`, UTF-8 Markdown/plain documentation, SPDX license text,
+typeDiagram source, and manifest-declared data. Format v1 has three closed asset kinds: `Utf8Text` (`.txt`, `.md`, `.csv`,
 or `.tsv`, valid UTF-8 without NUL, at most 1 MiB); `Json` (`.json`, strict RFC
 8259 without duplicate keys, depth at most 64, at most 1 MiB); and `Png` (`.png`,
 valid CRCs, only IHDR/PLTE/tRNS/IDAT/IEND chunks, at most 4,096 by 4,096 and 16

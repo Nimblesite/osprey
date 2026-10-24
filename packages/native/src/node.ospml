@@ -1,0 +1,292 @@
+// Implements [UI-COMPONENTS]: the semantic component vocabulary. `A` is the
+// application's action union; controls carry typed actions, never callbacks
+// or event dictionaries ([UI-EVENTS], [UI-CLOSURE-BLOCKER]).
+namespace ui
+
+(** A semantic colour the theme resolves; meaning never rests on colour alone. *)
+type Tone = Primary | Secondary | Accent | Good | Caution | Danger
+
+(** A semantic text style the host resolves to its platform's type scale. *)
+type TextRole = Display | Large | Title | Heading | Lead | Headline | Body | Callout | Caption | Eyebrow | Mono
+
+(** The side an aside column takes beside its pane. *)
+type Side = Leading | Trailing
+
+(** How strongly a button reads: the page's main action, a plain one or a destructive one. *)
+type ButtonRole = Prominent | Plain | Destructive
+
+(** The direction a stack lays out its children. *)
+type Axis = Vertical | Horizontal
+
+(** When an edited value reaches the store: every edit, or on submit. *)
+type Commit = OnEdit | OnSubmit
+
+// Record field names are unique across the framework until
+// Nimblesite/osprey#273 lets codegen track receivers of shared field names.
+(** One option of a picker. *)
+type Choice =
+    choiceKey : string
+    choiceLabel : string
+
+(** A semantic component tree; `A` is the application's action union, so every control carries a typed action, never a callback ([UI-COMPONENTS]). *)
+type Node A =
+    Text
+        content : string
+        role : TextRole
+        tone : Tone
+    Stack
+        axis : Axis
+        children : List<Node<A>>
+    Section
+        title : string
+        footer : string
+        children : List<Node<A>>
+    Screen
+        title : string
+        subtitle : string
+        toolbar : List<Node<A>>
+        children : List<Node<A>>
+    Split
+        panes : List<Node<A>>
+    Layer
+        children : List<Node<A>>
+    Aside
+        side : Side
+        aside : Node<A>
+        pane : Node<A>
+        extent : int
+        resize : A
+    Tabs
+        tabs : List<Tab<A>>
+        selected : string
+        bind : A
+    Slot
+        key : string
+    Evidence
+        label : string
+        value : string
+    Badge
+        label : string
+        symbol : string
+        tone : Tone
+    Label
+        label : string
+        symbol : string
+    Icon
+        symbol : string
+    Link
+        label : string
+        address : string
+    Spacer
+    Divider
+    Segments
+        tones : List<Tone>
+        label : string
+    Empty
+        symbol : string
+        title : string
+        detail : string
+    Progress
+        label : string
+        detail : string
+    Brand
+    Swatch
+        name : string
+        light : string
+        dark : string
+    Rows
+        rows : List<Row<A>>
+        selected : string
+        bind : A
+    Button
+        label : string
+        symbol : string
+        role : ButtonRole
+        enabled : bool
+        action : A
+    Field
+        label : string
+        value : string
+        prompt : string
+        secure : bool
+        multiline : bool
+        commit : Commit
+        bind : A
+    Toggle
+        label : string
+        on : bool
+        bind : A
+    Picker
+        label : string
+        choices : List<Choice>
+        selected : string
+        bind : A
+    Disclosure
+        title : string
+        expanded : bool
+        bind : A
+        children : List<Node<A>>
+    Alert
+        title : string
+        message : string
+        visible : bool
+        dismiss : A
+
+(** One tab: its key, label, symbol and page. *)
+type Tab A =
+    tabKey : string
+    tabLabel : string
+    tabSymbol : string
+    page : Node<A>
+
+(** A selectable row. Consecutive rows naming one `rowGroup` share its heading; an empty symbol or group draws none. *)
+type Row A =
+    rowKey : string
+    rowSymbol : string
+    rowGroup : string
+    cell : Node<A>
+
+(** What a control's binding delivers; checked against the event's value kind. *)
+type Binding A =
+    Tap
+        action : A
+    TextInput
+        action : A
+    FlagInput
+        action : A
+    ChoiceInput
+        action : A
+    SizeInput
+        action : A
+
+(** [UI-COMPONENTS-SPLITTER] The limits of an aside's splitter in points: a column starts `initial` wide and stays between `least` and `most`, and the host never narrows the pane beside it below `keep`. *)
+module Splitters
+    (** The width in points a column starts at before anyone drags its splitter. *)
+    export initial = 340
+
+    (** The narrowest a column can be dragged, in points. *)
+    export least = 260
+
+    (** The widest a column can be dragged, in points. *)
+    export most = 640
+
+    (** The least width in points the host leaves the pane beside a dragged column. *)
+    export keep = 340
+
+    (** `width` within the splitter's limits. *)
+    export clamp width = Pick::either (width < least, least, Pick::either (width > most, most, width))
+
+(** Typed constructors for the component vocabulary; applications build trees with these and never write protocol JSON ([UI-COMPONENTS]). *)
+module Ui
+    // Explicit generic signatures: an unannotated helper is instantiated once
+    // for every caller in a later file (Nimblesite/osprey#277).
+    (** Body text in the primary tone. *)
+    export text<A> : string -> Node<A>
+    text content = Text(content = content, role = Body, tone = Primary)
+
+    (** Text with an explicit role and tone. *)
+    export styled<A> : (string, TextRole, Tone) -> Node<A>
+    styled (content, role, tone) = Text(content = content, role = role, tone = tone)
+
+    (** Caption text in the secondary tone. *)
+    export caption<A> : string -> Node<A>
+    caption content = Text(content = content, role = Caption, tone = Secondary)
+
+    (** Children stacked vertically. *)
+    export column<A> : List<Node<A>> -> Node<A>
+    column children = Stack(axis = Vertical, children = children)
+
+    (** Children laid out horizontally. *)
+    export row<A> : List<Node<A>> -> Node<A>
+    row children = Stack(axis = Horizontal, children = children)
+
+    (** A bordered surface headed by `title`, with `footer` as explanatory text beneath its children; an empty title or footer draws none. *)
+    export section<A> : (string, string, List<Node<A>>) -> Node<A>
+    section (title, footer, children) = Section(title = title, footer = footer, children = children)
+
+    (** A plain, enabled button with a label and symbol that delivers `action` when pressed. *)
+    export button<A> : (string, string, A) -> Node<A>
+    button (label, symbol, action) = Button(label = label, symbol = symbol, role = Plain, enabled = true, action = action)
+
+    (** A button with an explicit role and enabled state that delivers `act` when pressed. *)
+    export action<A> : (string, string, ButtonRole, bool, A) -> Node<A>
+    action (label, symbol, role, enabled, act) = Button(label = label, symbol = symbol, role = role, enabled = enabled, action = act)
+
+    (** A label and its value on one line, such as an observed fact. *)
+    export evidence<A> : (string, string) -> Node<A>
+    evidence (label, value) = Evidence(label = label, value = value)
+
+    (** A status badge; its label and symbol carry the meaning, so colour is never the only signal. *)
+    export badge<A> : (string, string, Tone) -> Node<A>
+    badge (label, symbol, tone) = Badge(label = label, symbol = symbol, tone = tone)
+
+    (** An empty state: a symbol, a title and a line of detail saying why there is nothing to show. *)
+    export empty<A> : (string, string, string) -> Node<A>
+    empty (symbol, title, detail) = Empty(symbol = symbol, title = title, detail = detail)
+
+    (** Text led by a symbol. *)
+    export label<A> : (string, string) -> Node<A>
+    label (content, symbol) = Label(label = content, symbol = symbol)
+
+    (** A large decorative symbol, hidden from accessibility. *)
+    export icon<A> : string -> Node<A>
+    icon symbol = Icon(symbol = symbol)
+
+    (** A labelled `https` web page the host opens in the browser; nothing is sent until a person follows it. *)
+    export link<A> : (string, string) -> Node<A>
+    link (label, address) = Link(label = label, address = address)
+
+    (** Children drawn over one another; a zero-size child such as an alert takes no room. *)
+    export layer<A> : List<Node<A>> -> Node<A>
+    layer children = Layer(children = children)
+
+    (** Content revealed while `expanded` holds; toggling delivers a flag to `bind`. *)
+    export disclosure<A> : (string, bool, A, List<Node<A>>) -> Node<A>
+    disclosure (title, expanded, bind, children) = Disclosure(title = title, expanded = expanded, bind = bind, children = children)
+
+    (** A placeholder the host fills with the region named `key`, so that region refreshes on its own. *)
+    export slot<A> : string -> Node<A>
+    slot key = Slot(key = key)
+
+    (** Navigation columns: sidebar, content and detail, or a list and its detail. *)
+    export split<A> : List<Node<A>> -> Node<A>
+    split panes = Split(panes = panes)
+
+    (** `pane` with an `aside` column `width` points wide on `side`, such as a list and its inspector, divided by a splitter ([UI-COMPONENTS-SPLITTER]). Dragging the splitter delivers the column's new width to `resize`, within `Splitters` limits. As a page's child the two fill the page and scroll on their own; elsewhere they take their natural height. *)
+    export aside<A> : (Node<A>, Side, Node<A>, int, A) -> Node<A>
+    aside (pane, side, column, width, resize) = Aside(side = side, aside = column, pane = pane, extent = Splitters::clamp width, resize = resize)
+
+    (** A navigable page on the theme's canvas. Toolbar buttons join the window toolbar and a toolbar field searches the page. A page whose child is a list, an empty state, a region or an aside fits the window and lets that child fill it; any other page scrolls. In a split's first pane a screen is the navigation sidebar. *)
+    export screen<A> : (string, string, List<Node<A>>, List<Node<A>>) -> Node<A>
+    screen (title, subtitle, toolbar, children) = Screen(title = title, subtitle = subtitle, toolbar = toolbar, children = children)
+
+    (** Selectable rows; choosing one delivers its key to `bind`, and `selected` names the chosen row. *)
+    export rows<A> : (List<Row<A>>, string, A) -> Node<A>
+    rows (items, selected, bind) = Rows(rows = items, selected = selected, bind = bind)
+
+    (** A text field that commits every edit. *)
+    export field<A> : (string, string, string, A) -> Node<A>
+    field (label, value, prompt, bind) = Field(label = label, value = value, prompt = prompt, secure = false, multiline = false, commit = OnEdit, bind = bind)
+
+    (** A switch; turning it delivers the new state to `bind`. *)
+    export toggle<A> : (string, bool, A) -> Node<A>
+    toggle (label, on, bind) = Toggle(label = label, on = on, bind = bind)
+
+    (** A choice among `choices`; choosing one delivers its key to `bind`. *)
+    export picker<A> : (string, List<Choice>, string, A) -> Node<A>
+    picker (label, choices, selected, bind) = Picker(label = label, choices = choices, selected = selected, bind = bind)
+
+    (** One option of a picker: the key it delivers and the label it shows. *)
+    export choice (key, label) = Choice(choiceKey = key, choiceLabel = label)
+
+    (** A tab named `key` with a label, a symbol and the page it shows. *)
+    export tab<A> : (string, string, string, Node<A>) -> Tab<A>
+    tab (key, label, symbol, page) = Tab(tabKey = key, tabLabel = label, tabSymbol = symbol, page = page)
+
+    (** A row with no symbol or group. *)
+    export item<A> : (string, Node<A>) -> Row<A>
+    item (key, cell) = Row(rowKey = key, rowSymbol = "", rowGroup = "", cell = cell)
+
+    (** A row led by `symbol` under the heading `group`; consecutive rows of one group share that heading. *)
+    export entry<A> : (string, string, string, Node<A>) -> Row<A>
+    entry (key, symbol, group, cell) = Row(rowKey = key, rowSymbol = symbol, rowGroup = group, cell = cell)

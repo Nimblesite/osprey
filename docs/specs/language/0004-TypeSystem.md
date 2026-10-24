@@ -463,6 +463,8 @@ A lambda (`fn(...) => expr` or `|x| => expr`) captures every free identifier fro
 
 The same holds for a lambda whose type is still generic. It has no single closure value and is specialised at each call site, but it reads the bindings it captured where it was written, whether it is called there, from a nested lambda, from a handler arm or from a fiber, and it keeps them alive for as long as it can be called.
 
+A `Result<T, E>`'s error channel is phantom: the `Error` variant stores a string message, so `E` never shapes the value representation. A closure whose only open variable is a `Result` error channel therefore has a concrete ABI — the success channel `T` decides it — and materializes like any concrete closure, so a generic `with`-suite handler value needs no `Result` annotation to compile.
+
 ```osprey
 fn makeAdder(n: int) -> (int) -> int = fn(x: int) => x + n
 

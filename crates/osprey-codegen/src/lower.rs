@@ -46,6 +46,24 @@ pub fn compile_program_debug(program: &Program, source: DebugSource) -> Result<S
     )
 }
 
+/// Compile a whole program for symbolic execution [SYMEX-CODEGEN]: debug
+/// metadata rooted at `source` so the engine names Osprey lines, and fatal
+/// paths that `abort` so it reports them.
+///
+/// # Errors
+///
+/// Returns `Err` under the same conditions as [`compile_program`].
+pub fn compile_program_symbolic(program: &Program, source: DebugSource) -> Result<String> {
+    compile_program_with_options(
+        program,
+        CodegenOptions {
+            debug_source: Some(source),
+            symbolic: true,
+            ..CodegenOptions::default()
+        },
+    )
+}
+
 /// Compile a whole program with line-coverage instrumentation
 /// [TESTING-COVERAGE-CODEGEN].
 ///
@@ -325,7 +343,22 @@ fn gen_function(
     });
 
     cg.begin_function(name, position);
-    cg.source_function = Some(name.to_owned());
+    // The function's own name scopes every position-keyed type lookup inside
+    // it, and only inside it: file-scope statements lowered afterwards look
+    // their types up at file scope again.
+    cg.within_source_function(name, |cg| {
+        emit_function_body(cg, name, parameters, body, position, &param_sig)
+    })
+}
+
+fn emit_function_body(
+    cg: &mut Codegen,
+    name: &str,
+    parameters: &[Parameter],
+    body: &Expr,
+    position: Option<Position>,
+    param_sig: &[(ParamSig, Option<String>)],
+) -> Result<()> {
     // Record any function-typed parameters so a call through one lowers to an
     // indirect call (the higher-order `f(x)` in `fn apply(f, x) = f(x)`).
     let fn_ptr_params: Vec<(String, osprey_types::Type)> = cg

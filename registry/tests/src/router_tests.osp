@@ -99,7 +99,37 @@ module RouterTests {
         ])
     }
 
+    fn headersText(method, path) = join(Router::hardeningHeaders(respond(method, path)), "|")
+
+    let fixedHeaders = "X-Content-Type-Options: nosniff|Content-Security-Policy: default-src 'none'|Referrer-Policy: no-referrer"
+
+    /// [PACKAGE-HARDENING] S2 and S3: the fixed headers on every response,
+    /// immutable caching only where the body is digest-addressed, `Allow` on 405.
+    fn hardeningHeaders() = checkAll("router: hardening headers", [
+        headersText("GET", "/v1/packages") == fixedHeaders + "|Cache-Control: no-cache",
+        headersText("GET", "/v1/health") == fixedHeaders + "|Cache-Control: no-cache",
+        headersText("GET", "/v1/releases/${CatalogTests::digestA()}") == fixedHeaders + "|Cache-Control: public, max-age=31536000, immutable",
+        headersText("GET", "/v1/releases/${CatalogTests::digestA()}/source") == fixedHeaders + "|Cache-Control: public, max-age=31536000, immutable",
+        headersText("GET", "/v1/releases/sha256:zz") == fixedHeaders + "|Cache-Control: no-cache",
+        headersText("POST", "/v1/health") == fixedHeaders + "|Cache-Control: no-cache|Allow: GET"
+    ])
+
+    /// [PACKAGE-HARDENING] S1 and S2: traversal, encoding and method probes
+    /// are answered from the catalog alone, as 404 or 405 problems.
+    fn hostileProbes() = checkAll("router: hostile probes", [
+        respond("GET", "/v1/releases/../../etc/passwd/source").status == 404,
+        respond("GET", "/v1/releases/%2e%2e/source").body == "{\"code\":\"catalog.unknown-release\",\"status\":404,\"title\":\"Unknown release\"}",
+        respond("GET", "/v1/packages/%40finch/util").status == 404,
+        respond("GET", "/v1/packages/finch/util/../ledger").status == 404,
+        respond("GET", "//v1/packages").status == 404,
+        respond("HEAD", "/v1/health").status == 405,
+        respond("DELETE", "/v1/packages").status == 405,
+        respond("PUT", "/v1/releases/${CatalogTests::digestA()}/source").status == 405
+    ])
+
     export fn run() = {
+        test("router: hardening headers", hardeningHeaders)
+        test("router: hostile probes", hostileProbes)
         test("router: health route", healthRoute)
         test("router: packages route", packagesRoute)
         test("router: package route", packageRoute)

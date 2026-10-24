@@ -25,6 +25,12 @@ module Names {
         }
     }
 
+    /// `""` for a valid scope component (no `@`), else its `name.scope.*` code.
+    export fn scopeCode(s) = component(s, scopeMax, "name.scope")
+
+    /// `""` for a valid name component, else its `name.name.*` code.
+    export fn nameCode(s) = component(s, nameMax, "name.name")
+
     fn split(body) = match indexOf(body, "/") {
         Success { value } => Success { value: Key { scope: take(body, value), name: drop(body, value + 1) } }
         Error => Error { message: "name.unscoped-or-missing-slash" }
@@ -32,7 +38,7 @@ module Names {
 
     fn validate(key) = match contains(key.name, "/") {
         true => Error { message: "name.extra-slash" }
-        false => match component(key.scope, scopeMax, "name.scope") + component(key.name, nameMax, "name.name") {
+        false => match scopeCode(key.scope) + nameCode(key.name) {
             "" => Success { value: key }
             code => Error { message: code }
         }
@@ -50,9 +56,34 @@ module Names {
     /// The display form `@scope/name`.
     export fn display(key) = "@${key.scope}/${key.name}"
 
-    /// Canonical `(scope, name)` byte order: negative, zero or positive.
-    export fn compare(a, b) = match a.scope == b.scope {
+    // `compare` is also a builtin name, which wins over a module's own
+    // function inside the module; the order lives under `keyOrder` so
+    // `sorted` can call it.
+    fn keyOrder(a, b) = match a.scope == b.scope {
         true => Order::compareStrings(a.name, b.name)
         false => Order::compareStrings(a.scope, b.scope)
+    }
+
+    /// Canonical `(scope, name)` byte order: negative, zero or positive.
+    export fn compare(a, b) = keyOrder(a, b)
+
+    // `scope` and `name` are shared field names; issue #273 needs the
+    // receivers spelled out.
+    /// Key equality: the one definition every module compares keys with.
+    export fn same(a: Key, b: Key) = a.scope == b.scope && a.name == b.name
+
+    /// The key no package has: the `?:` fallback of every key lookup.
+    export fn blank() = Key { scope: "", name: "" }
+
+    /// Whether `key` is among `keys`.
+    export fn includes(keys, key) = foldList(keys, false, fn(found, k) => found || same(k, key))
+
+    /// The distinct keys in first-seen order.
+    export fn distinct(keys) = foldList(keys, [], fn(acc, k) => if includes(acc, k) { acc } else { listAppend(acc, k) })
+
+    /// The keys in canonical order.
+    export fn sorted(keys) = {
+        let at = fn(i) => listGet(keys, i) ?: blank()
+        mapList(Order::permutation(length(keys), fn(i, j) => keyOrder(at(i), at(j))), fn(i) => at(i))
     }
 }

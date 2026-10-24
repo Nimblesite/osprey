@@ -1,0 +1,6 @@
+[project]
+name = "einops-hunt-pattern"
+source_roots = ["../..", "../../../testing/src", "."]
+python_sources = ["../../../testing/src/check.py", "../../src/parsing.py", "../../src/recipe.py", "pattern.py"]
+default_namespace = "einops_hunt"
+entry = "pattern.py"

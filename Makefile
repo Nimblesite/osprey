@@ -19,10 +19,15 @@ include scripts/android.mk
 # =============================================================================
 
 ## build: C runtime archives + Rust workspace (release) + VSCode extension
-build: _runtime $(EXT_NODE_DEPS) $(PROFILER_UI_BUILT)
+build: _runtime _runtime_klee $(EXT_NODE_DEPS) $(PROFILER_UI_BUILT)
 	@echo "==> Building..."
 	cargo build --release --workspace
 	cd $(EXT_DIR) && npm run compile
+
+## audit: Full dependency vulnerability scan; scanner errors and advisories fail.
+.PHONY: audit
+audit:
+	osv-scanner scan source --recursive --all-vulns .
 
 ## test: Fail-fast tests + coverage + per-project threshold enforcement.
 ##       Projects listed in coverage-thresholds.json are each tested + checked.
@@ -32,6 +37,8 @@ test: build
 	$(MAKE) _test_rust
 	$(MAKE) _coverage_check_rust
 	$(MAKE) _test_c_runtime
+	$(MAKE) _test_hunt_mock
+	$(MAKE) _test_hunt
 	$(MAKE) _coverage_check_c_runtime
 # _test_language_corpus is deliberately NOT here. It runs every program in
 # tests/ through the TAP subcommand, and _test_goldens then runs every one of
@@ -47,6 +54,17 @@ test: build
 	$(MAKE) _test_vscode_extension
 	$(MAKE) _coverage_check_vscode_extension
 	$(MAKE) _test_bench_tools
+
+## hunt: Symbolic bug hunting with KLEE on one program [SYMEX-CLI]:
+##       make hunt FILE=path/to/program.osp [HUNT_ARGS="--max-time 120"]
+hunt: build
+	./target/release/osprey hunt $(FILE) $(HUNT_ARGS)
+
+## hunt-corpus: Hunt every program under tests/ and examples/ not listed in
+##              tests/HUNT_UNPORTABLE.txt, then print the table [SYMEX-CORPUS].
+hunt-corpus: build
+	scripts/hunt_corpus.sh $(HUNT_ARGS)
+	python3 scripts/hunt_summary.py target/hunt-corpus --findings-only
 
 ## registry-test: Osprey package-system suites (registry/tests) under the
 ##                registry/core arithmetic policy. Excluded from `test` and

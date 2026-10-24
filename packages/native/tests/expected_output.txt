@@ -1,0 +1,23 @@
+ok 1 - a disclosure takes its ordinal before the controls it reveals
+ok 2 - a screen's toolbar controls take ordinals before its children
+ok 3 - an aside's pane takes ordinals before its column and rows keep their symbol and group
+ok 4 - an aside's splitter carries the column width and its limits and binds after both columns
+ok 5 - a splitter delivers its dragged width clamped to its limits
+ok 6 - a link carries its label and web address and takes no ordinal
+ok 7 - controls take depth-first ordinals in drawing order
+ok 8 - an encoded region decodes with its components and text intact
+ok 9 - a control carries the ordinal of its binding
+ok 10 - start sends every region once with the theme
+ok 11 - a tap refreshes only the region whose signal changed
+ok 12 - text input reaches update through its binding and patches its own region
+ok 13 - stale, unknown and mismatched events are rejected without change
+ok 14 - capability requests carry tickets and completions return to update
+ok 15 - malformed events are diagnosed, never guessed
+ok 16 - contrast follows WCAG relative luminance
+ok 17 - sorting is stable and lists stay total
+ok 18 - tabs carry their pages and bind after the pages' controls, and segments carry their tones
+ok 19 - every constructor encodes as the component it names
+ok 20 - run and http requests encode their bounds, headers and slices
+ok 21 - documents, lists, themes and slice writes are read totally
+1..21
+# tests=21 passed=21 failed=0 skipped=0

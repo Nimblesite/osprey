@@ -1,0 +1,169 @@
+namespace registry;
+import registry::Names
+import registry::Order
+import registry::Identity
+import registry::Objective
+import registry::Sat
+import registry::SatClauses
+import registry::Candidates
+import registry::Clauses
+import registry::Resolution
+
+/// Lexicographic minimisation of the objective components the fixtures and
+/// the folder registry carry — V, D, U and E are zero, so the search freezes
+/// `changedIdentities`, then `nonRootPackageCount`, then `sum L`, reusing
+/// `Objective::Cost`'s order without redefining it. Each component is
+/// minimised with a sequential-counter "at most k" encoding and linear search;
+/// weighted lag is unrolled into repeated literals. The final tie-break walks
+/// candidates in package-tuple order (`Objective::comparePackageTie`) and
+/// keeps each one selected while the frozen costs stay satisfiable, yielding
+/// the canonical smallest graph vector. Implements [PACKAGE-RESOLUTION].
+module Optimize {
+    type Acc = { clauses: List<List<int>>, next: int, forced: List<int> }
+    type Enc = { clauses: List<List<int>>, used: int }
+    type Changed = { lits: List<int>, acc: Acc }
+
+    // Field accessors with the receiver spelled out (issue #273).
+    fn entryAt(xs, i) -> Resolution::Entry = listGet(xs, i) ?: Resolution::blankEntry()
+    fn releaseAt(xs, i) -> Identity::ReleaseId = listGet(xs, i) ?: Identity::blank()
+    fn litAt(xs, i) = listGet(xs, i) ?: 0
+
+    // ---- SAT verdicts ----
+
+    fn satisfiable(vars, clauses) = match Sat::solve(vars, clauses) {
+        Success { value } => match value {
+            Sat::Satisfiable { model } => true
+            _ => false
+        }
+        Error => false
+    }
+
+    fn satisfiableWith(vars, clauses, assumptions) = match Sat::assume(vars, clauses, assumptions) {
+        Success { value } => match value {
+            Sat::Satisfiable { model } => true
+            _ => false
+        }
+        Error => false
+    }
+
+    // ---- sequential-counter cardinality ----
+
+    fn sVar(base, width, i, j) = base + (i - 1) * width + (j - 1)
+
+    /// The Sinz encoding for the non-trivial case k < length(lits).
+    fn encodeAtMost(lits, k, base, m) = {
+        let width = k + 1
+        let c1 = range(1, m + 1) |> map(fn(i) => [SatClauses::neg(litAt(lits, i - 1)), sVar(base, width, i, 1)]) |> toList
+        let c2 = foldList(range(2, m + 1) |> toList, [], fn(acc, i) =>
+            listConcat(acc, range(1, width + 1) |> map(fn(j) => [SatClauses::neg(sVar(base, width, i - 1, j)), sVar(base, width, i, j)]) |> toList))
+        let c3 = foldList(range(2, m + 1) |> toList, [], fn(acc, i) =>
+            listConcat(acc, range(1, k + 1) |> map(fn(j) => [SatClauses::neg(litAt(lits, i - 1)), SatClauses::neg(sVar(base, width, i - 1, j)), sVar(base, width, i, j + 1)]) |> toList))
+        let c4 = [[SatClauses::neg(sVar(base, width, m, width))]]
+        Enc { clauses: listConcat(listConcat(c1, c2), listConcat(c3, c4)), used: m * width }
+    }
+
+    /// Sinz "at most k" over a sequence of literals (repeats allowed), with
+    /// fresh auxiliary variables from `base` upward.
+    fn atMost(lits, k, base) = {
+        let m = length(lits)
+        if k >= m { Enc { clauses: [], used: 0 } } else { encodeAtMost(lits, k, base, m) }
+    }
+
+    /// Freeze a component at its minimal feasible k.
+    fn firstFeasible(acc, lits, k) -> Acc = {
+        let t = atMost(lits, k, acc.next)
+        if satisfiable(acc.next + t.used - 1, listConcat(acc.clauses, t.clauses)) {
+            Acc { clauses: listConcat(acc.clauses, t.clauses), next: acc.next + t.used, forced: acc.forced }
+        } else {
+            firstFeasible(acc, lits, k + 1)
+        }
+    }
+
+    // ---- objective components ----
+
+    fn candidateVars(entries) = range(0, length(entries)) |> map(fn(i) => i + 1) |> toList
+
+    fn candVarsOf(entries, key) = foldList(range(0, length(entries)) |> toList, [], fn(acc, i) =>
+        if Names::same(Candidates::releaseOf(entryAt(entries, i)).key, key) { listAppend(acc, i + 1) } else { acc })
+
+    fn currentRelease(graph, key) = foldList(graph.current, Error { message: "none" }, fn(acc, r: Identity::ReleaseId) => match acc {
+        Success => acc
+        Error => if Names::same(r.key, key) { Success { value: r } } else { acc }
+    })
+
+    fn entryIndexOf(entries, r) = foldList(range(0, length(entries)) |> toList, -1, fn(acc, i) =>
+        if acc >= 0 { acc } else if Identity::same(Candidates::releaseOf(entryAt(entries, i)), r) { i } else { acc })
+
+    fn changedStep(graph, entries, st, key) = {
+        let candVars = candVarsOf(entries, key)
+        match candVars {
+            [] => st
+            _ => match currentRelease(graph, key) {
+                Success { value } => {
+                    let idx = entryIndexOf(entries, value)
+                    if idx >= 0 { Changed { lits: listAppend(st.lits, SatClauses::neg(idx + 1)), acc: st.acc } } else { st }
+                }
+                Error => {
+                    let ch = st.acc.next
+                    let defining = foldList(candVars, [listPrepend(candVars, SatClauses::neg(ch))], fn(cs, v) => listAppend(cs, [SatClauses::neg(v), ch]))
+                    Changed { lits: listAppend(st.lits, ch), acc: Acc { clauses: listConcat(st.acc.clauses, defining), next: st.acc.next + 1, forced: st.acc.forced } }
+                }
+            }
+        }
+    }
+
+    /// `changedIdentities` against `current`, as one Boolean per changed key.
+    fn changedPlan(graph, entries, acc) = {
+        let keys = Names::sorted(Names::distinct(listConcat(mapList(graph.current, fn(r: Identity::ReleaseId) => r.key), mapList(entries, fn(e: Resolution::Entry) => e.release.key))))
+        foldList(keys, Changed { lits: [], acc: acc }, fn(st, k) => changedStep(graph, entries, st, k))
+    }
+
+    fn eligibleMax(graph, key) = foldList(graph.catalog, 0, fn(acc, e: Resolution::Entry) =>
+        if Names::same(e.release.key, key) && e.activation == "Eligible" && e.release.ordinal > acc { e.release.ordinal } else { acc })
+
+    /// `L(r) = M - ordinal` via `Objective::lag`, with a captured yank's own
+    /// ordinal admitted into `M`.
+    fn weightOf(graph, entry: Resolution::Entry) = {
+        let m = eligibleMax(graph, entry.release.key)
+        let own = entry.release.ordinal
+        let m2 = if entry.activation == "Yanked" && Candidates::inCurrent(graph, entry.release) && own > m { own } else { m }
+        Objective::lag(m2, own)
+    }
+
+    fn repeatLit(l, n) = range(0, n) |> map(fn(_i) => l) |> toList
+
+    fn lagLiterals(graph, entries) = foldList(range(0, length(entries)) |> toList, [], fn(acc, i) =>
+        listConcat(acc, repeatLit(i + 1, weightOf(graph, entryAt(entries, i)))))
+
+    // ---- tie-break ----
+
+    fn tieBreak(entries, acc) = {
+        let perm = Order::permutation(length(entries), fn(i, j) => Objective::comparePackageTie(Candidates::releaseOf(entryAt(entries, i)), Candidates::releaseOf(entryAt(entries, j))))
+        foldList(perm, acc, fn(a, i) => {
+            let v = i + 1
+            if satisfiableWith(a.next - 1, a.clauses, listAppend(a.forced, v)) {
+                Acc { clauses: a.clauses, next: a.next, forced: listAppend(a.forced, v) }
+            } else { a }
+        })
+    }
+
+    fn selected(entries, forced) = foldList(forced, [], fn(acc, v) => listAppend(acc, Candidates::releaseOf(entryAt(entries, v - 1))))
+
+    fn sortedReleases(entries, forced) = {
+        let rs = selected(entries, forced)
+        let at = fn(i) => releaseAt(rs, i)
+        let perm = Order::permutation(length(rs), fn(i, j) => Identity::compare(at(i), at(j)))
+        mapList(perm, fn(i) => releaseAt(rs, i))
+    }
+
+    /// Solve the optimisation: freeze each cost component, then the tie-break.
+    export fn select(graph, problem) = {
+        let entries = problem.entries
+        let acc0 = Acc { clauses: problem.clauses, next: problem.vars + 1, forced: [] }
+        let ch = changedPlan(graph, entries, acc0)
+        let acc1 = firstFeasible(ch.acc, ch.lits, 0)
+        let acc2 = firstFeasible(acc1, candidateVars(entries), 0)
+        let acc3 = firstFeasible(acc2, lagLiterals(graph, entries), 0)
+        sortedReleases(entries, tieBreak(entries, acc3).forced)
+    }
+}

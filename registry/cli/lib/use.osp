@@ -1,0 +1,230 @@
+namespace registry_cli;
+import registry_host::Host
+import registry_cli::Flags
+import registry_cli::Reports
+import registry_cli::Project
+import registry_cli::Lockfile
+import registry_cli::Fetch
+import registry_cli::Listing
+import registry_cli::Install
+import registry_cli::Overlay
+import registry_cli::Transaction
+import registry::Identity
+import registry::Manifest
+import registry::ManifestModel
+import registry::Maybe
+import registry::Names
+
+/// `osprey-pkg use <path> [--epoch N]`, `use @scope/name --published`,
+/// `use --list` and `use --clear` ([PACKAGE-LOCAL-OVERRIDE]). `use <path>`
+/// takes the key from the checkout's `[package]`, requires that key to be in
+/// the graph already (a new dependency goes through `add`), records a
+/// baseline (the development lock's published node, else the release lock's,
+/// else the newest listed release of the required epoch), writes the mapping
+/// into `osprey.local.toml` and relocks the development lock; the overlay and
+/// the lock change together or not at all. `--published` removes a mapping,
+/// `--clear` removes them all, `--list` prints each with its current source
+/// digest. `[dependencies]` is never rewritten.
+module Use {
+    let failStatus = 1
+    let usageCode = "use.usage"
+    let noPackageCode = "use.no-package"
+    let notDependencyCode = "use.not-a-dependency"
+    let notOverriddenCode = "use.not-overridden"
+    let epochFlag = "--epoch"
+    let publishedFlag = "--published"
+    let listFlag = "--list"
+    let clearFlag = "--clear"
+    let usageText = [
+        "usage: osprey-pkg use <path> [--epoch N] [--registry <base-url>] [--project <dir>]",
+        "       osprey-pkg use @scope/name --published | use --list | use --clear  [--project <dir>]"
+    ]
+
+    fn usageReport() = Reports::usage(listPrepend(usageText, usageCode))
+    fn failed(lines) = Reports::Report { status: failStatus, lines: lines }
+
+    fn settingsOf(parsed) = Transaction::Settings {
+        base: Flags::given(parsed, Fetch::registryFlag, Fetch::defaultRegistry),
+        project: Flags::project(parsed),
+        acceptRemovals: false,
+        fresh: false,
+        local: true
+    }
+
+    fn projectOf(s: Transaction::Settings) = s.project
+    fn baseOf(s: Transaction::Settings) = s.base
+    fn edgesOf(m: ManifestModel::Manifest) = m.dependencies
+    fn releaseOf(p: Lockfile::Package) = p.release
+    fn packagesOf(lock: Lockfile::Lock) = lock.packages
+    fn overridesOf(lock: Lockfile::Lock) = lock.overrides
+    fn epochOfId(id: Identity::ReleaseId) = id.epoch
+
+    // ---- the key of a checkout and its place in the graph ----
+
+    fn keyOfLocal(mf: ManifestModel::Manifest) = Maybe::fold(mf.publication, Error { message: noPackageCode }, fn(p: ManifestModel::Publication) => Success { value: p.package })
+
+    /// The package key a checkout's `[package]` declares, or `use.no-package`.
+    export fn localKey(project, path) = match perform Host::Files.read("${Project::localDirAt(project, path)}/osprey.toml") {
+        Error { message } => Error { message: message }
+        Success { value } => match Manifest::accepted(Manifest::parse(value)) {
+            Error { message } => Error { message: message }
+            Success { value } => keyOfLocal(value)
+        }
+    }
+
+    fn lockKeys(project) = match Overlay::activeLockAt(project) {
+        Success { value } => mapList(packagesOf(value), fn(p) => Identity::blank().key)
+        Error => []
+    }
+
+    fn lockedKeys(project) = match Overlay::activeLockAt(project) {
+        Success { value } => mapList(mapList(packagesOf(value), releaseOf), fn(id: Identity::ReleaseId) => id.key)
+        Error => []
+    }
+
+    /// The keys the graph knows: the root's dependencies and the current lock's packages.
+    fn inGraph(project, manifest, key) = Names::includes(listConcat(ManifestModel::targets(edgesOf(manifest)), lockedKeys(project)), key)
+
+    // ---- the baseline ----
+
+    /// The lock's published node for `key`, if the lock has one that is not itself local.
+    fn publishedIn(lock, key) = match Lockfile::packageFor(packagesOf(lock), key) {
+        Error => Maybe::none()
+        Success { value } => match Lockfile::overrideFor(overridesOf(lock), key) {
+            Success => Maybe::none()
+            Error => Maybe::some(releaseOf(value))
+        }
+    }
+
+    fn baselineFromLock(read, key) = match read {
+        Success { value } => publishedIn(value, key)
+        Error => Maybe::none()
+    }
+
+    fn baselineFromLocks(project, key) = {
+        let dev = baselineFromLock(Project::readLocalLockAt(project), key)
+        if Maybe::isPresent(dev) { dev } else { baselineFromLock(Project::readLockAt(project), key) }
+    }
+
+    /// The epoch the root requires of `key`, 0 when the root has no edge to it.
+    fn requiredEpoch(manifest, key) = foldList(mapList(edgesOf(manifest), ManifestModel::requirementOf), 0, fn(acc, r: ManifestModel::Requirement) => if Names::same(r.package, key) { r.epoch } else { acc })
+
+    fn releaseIn(listing, key, epoch, ordinal) = foldList(listing, Identity::blank(), fn(found, r: Identity::ReleaseId) => if Names::same(r.key, key) && r.epoch == epoch && r.ordinal == ordinal { r } else { found })
+
+    fn newestIn(listing, key, epoch) = match Listing::newestOrdinal(listing, key, epoch) {
+        Error => Maybe::none()
+        Success { value } => Maybe::some(releaseIn(listing, key, epoch, value))
+    }
+
+    fn baselineFromListing(base, key, epoch) = match Listing::fetch(base) {
+        Error => Maybe::none()
+        Success { value } => newestIn(value, key, epoch)
+    }
+
+    fn parsedEpoch(word, fallback) = if word == "" { fallback } else { parseInt(word) ?: fallback }
+
+    fn fallbackEpoch(manifest, key) = {
+        let required = requiredEpoch(manifest, key)
+        if required == 0 { 1 } else { required }
+    }
+
+    /// The baseline: the development lock's published node, else the release
+    /// lock's, else the newest listed release of the epoch in force.
+    fn baselineOf(s, manifest, key, epochWord) = {
+        let fromLocks = baselineFromLocks(projectOf(s), key)
+        if Maybe::isPresent(fromLocks) { fromLocks } else { baselineFromListing(baseOf(s), key, parsedEpoch(epochWord, fallbackEpoch(manifest, key))) }
+    }
+
+    fn epochOf(epochWord, baseline, manifest, key) = parsedEpoch(epochWord, Maybe::fold(baseline, fallbackEpoch(manifest, key), epochOfId))
+
+    fn baselineNote(baseline) = Maybe::fold(baseline, "no baseline", fn(id) => "baseline ${Identity::display(id)}")
+
+    // ---- the transactions ----
+
+    fn committed(s, mappings, mapping, note) = Transaction::commitOverlay(s, Overlay::textAt(projectOf(s)), Overlay::render(Overlay::withMapping(mappings, mapping)), [note])
+
+    fn mapped(s, manifest, mappings, key, path, epochWord) = {
+        let baseline = baselineOf(s, manifest, key, epochWord)
+        let epoch = epochOf(epochWord, baseline, manifest, key)
+        committed(s, mappings, Overlay::Mapping { package: key, path: path, epoch: epoch, baseline: baseline }, "use ${Names::display(key)} ${path} e${epoch} ${baselineNote(baseline)}")
+    }
+
+    /// Map `key` to the checkout at `path` and relock the development lock;
+    /// `add <path>` calls this after writing the dependency line.
+    export fn mapLocal(base, project, key, path, epochWord) = match Overlay::readAt(project) {
+        Error { message } => failed([message])
+        Success { value } => mapLocalWith(base, project, value, key, path, epochWord)
+    }
+
+    fn mapLocalWith(base, project, mappings, key, path, epochWord) = match Project::readAt(project) {
+        Error { message } => failed([message])
+        Success { value } => mapped(settingsFor(base, project), value, mappings, key, path, epochWord)
+    }
+
+    fn settingsFor(base, project) = Transaction::Settings { base: base, project: project, acceptRemovals: false, fresh: false, local: true }
+
+    fn placed(s, manifest, mappings, key, path, epochWord) = if inGraph(projectOf(s), manifest, key) { mapped(s, manifest, mappings, key, path, epochWord) } else { failed(["${notDependencyCode} ${Names::display(key)}"]) }
+
+    fn withKey(s, mappings, path, epochWord, key) = match Project::readAt(projectOf(s)) {
+        Error { message } => failed([message])
+        Success { value } => placed(s, value, mappings, key, path, epochWord)
+    }
+
+    fn usePath(s, mappings, path, epochWord) = match localKey(projectOf(s), path) {
+        Error { message } => failed([message])
+        Success { value } => withKey(s, mappings, path, epochWord, value)
+    }
+
+    fn published(s, mappings, key) = if Overlay::overridden(mappings, key) {
+        Transaction::commitOverlay(s, Overlay::textAt(projectOf(s)), Overlay::render(Overlay::without(mappings, key)), ["published ${Names::display(key)}"])
+    } else {
+        failed(["${notOverriddenCode} ${Names::display(key)}"])
+    }
+
+    fn cleared(s, mappings) = Transaction::commitOverlay(s, Overlay::textAt(projectOf(s)), Overlay::render([]), ["cleared ${length(mappings)} overrides"])
+
+    // ---- the listing ----
+
+    fn sourceDigest(project, m) = match perform Host::Tree.walk(Project::localDirAt(project, Overlay::pathOf(m))) {
+        Error { message } => message
+        Success { value } => match Install::filesOfWalked(value, Project::localDirAt(project, Overlay::pathOf(m))) {
+            Error { message } => message
+            Success { value } => Install::digestOfFiles(value) ?: "digest failed"
+        }
+    }
+
+    fn listLine(project, m) = "${Names::display(Overlay::keyOf(m))} ${Overlay::pathOf(m)} e${Overlay::epochOf(m)} ${baselineNote(Overlay::baselineOf(m))} ${sourceDigest(project, m)}"
+
+    fn listed(project, mappings) = Reports::success(if isEmpty(mappings) { ["no overrides"] } else { mapList(mappings, fn(m) => listLine(project, m)) })
+
+    // ---- routing ----
+
+    fn withOverlay(s, parsed, word, mappings) = if Flags::has(parsed, listFlag) { listed(projectOf(s), mappings) }
+        else if Flags::has(parsed, clearFlag) { cleared(s, mappings) }
+        else if word == "" { usageReport() }
+        else if startsWith(word, "@") { useKey(s, parsed, word, mappings) }
+        else { usePath(s, mappings, word, Flags::given(parsed, epochFlag, "")) }
+
+    fn useKey(s, parsed, word, mappings) = match Names::parse(word) {
+        Error => usageReport()
+        Success { value } => if Flags::has(parsed, publishedFlag) { published(s, mappings, value) } else { usageReport() }
+    }
+
+    fn withParsed(parsed, word) = match Overlay::readAt(Flags::project(parsed)) {
+        Error { message } => failed([message])
+        Success { value } => withOverlay(settingsOf(parsed), parsed, word, value)
+    }
+
+    fn positional(args) = {
+        let first = listGet(args, 0) ?: ""
+        if startsWith(first, "--") { "" } else { first }
+    }
+
+    fn flagsOf(args) = if positional(args) == "" { args } else { Flags::tail(args) }
+
+    /// The whole command: an optional positional word (a path or a key), then the flags.
+    export fn run(args) = match Flags::parse(flagsOf(args), [epochFlag, Fetch::registryFlag, Flags::projectFlag], [publishedFlag, listFlag, clearFlag]) {
+        Error => usageReport()
+        Success { value } => withParsed(value, positional(args))
+    }
+}

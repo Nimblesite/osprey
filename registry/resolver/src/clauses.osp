@@ -1,0 +1,140 @@
+namespace registry;
+import registry::Names
+import registry::SatClauses
+import registry::ManifestModel
+import registry::Candidates
+import registry::Resolution
+
+/// The hard clauses of [PACKAGE-RESOLUTION] over one Boolean variable per
+/// candidate. Candidates are variables 1..n in catalog order; key-level
+/// reachability variables follow for the acyclicity encoding. Every clause
+/// records the package keys it is about, so the UNSAT core of a refutation
+/// maps back to the keys an explanation names (`Resolve`, `Explain`).
+module Clauses {
+    /// The hard formula: candidates as variables 1..n in catalog order, the
+    /// sorted distinct package keys, the clauses, the keys each clause
+    /// mentions (parallel to `clauses`), and the variable count including the
+    /// key-level reachability grid.
+    export type Problem = {
+        entries: List<Resolution::Entry>,
+        keys: List<Names::Key>,
+        clauses: List<List<int>>,
+        mentions: List<List<Names::Key>>,
+        vars: int
+    }
+
+    /// One clause and the package keys it is about.
+    type Tagged = { literals: List<int>, mentions: List<Names::Key> }
+
+    fn tagged(literals, mentions) = Tagged { literals: literals, mentions: mentions }
+    fn literalsOf(t: Tagged) = t.literals
+    fn mentionsOf(t: Tagged) = t.mentions
+
+    // Field accessors for records whose field names are shared across types
+    // (issue #273): the receivers are spelled out.
+    fn entryAt(xs, i) -> Resolution::Entry = listGet(xs, i) ?: Resolution::blankEntry()
+    fn keyAt(xs, i) -> Names::Key = listGet(xs, i) ?: Names::blank()
+    fn keyOf(e: Resolution::Entry) = e.release.key
+    fn activeOf(e: Resolution::Entry) = ManifestModel::activeEdges(e.dependencies)
+    fn mentionsAt(problem: Problem, i) -> List<Names::Key> = listGet(problem.mentions, i) ?: []
+
+    fn reqOf(edge) = ManifestModel::requirementOf(edge)
+    fn reqKeyOf(edge) = ManifestModel::requirementOf(edge).package
+
+    fn indexes(xs) = range(0, length(xs)) |> toList
+
+    /// Distinct keys of the root deps, catalog releases and their deps,
+    /// sorted by canonical key order.
+    fn collectKeys(graph) = {
+        let roots = ManifestModel::targets(graph.rootDeps)
+        let catalogKeys = mapList(graph.catalog, keyOf)
+        let depKeys = foldList(graph.catalog, [], fn(acc, e) => listConcat(acc, ManifestModel::targets(Candidates::edgesOf(e))))
+        Names::sorted(Names::distinct(listConcat(listConcat(roots, catalogKeys), depKeys)))
+    }
+
+    fn keyIndexOf(keys, k) = foldList(indexes(keys), -1, fn(acc, i) => if acc >= 0 { acc } else if Names::same(keyAt(keys, i), k) { i } else { acc })
+
+    fn matches(entry: Resolution::Entry, req: ManifestModel::Requirement) = Names::same(entry.release.key, req.package) && entry.release.epoch == req.epoch && entry.release.ordinal >= req.minimumOrdinal
+
+    /// Candidate variables whose release satisfies `req`.
+    fn matchingVars(entries, req) = foldList(indexes(entries), [], fn(acc, i) => if matches(entryAt(entries, i), req) { listAppend(acc, i + 1) } else { acc })
+
+    /// Root edge clauses: OR of matching candidates per root edge, about the required key.
+    fn rootClauses(graph, entries) = mapList(graph.rootDeps, fn(e) => tagged(matchingVars(entries, reqOf(e)), [reqKeyOf(e)]))
+
+    /// Candidate edge clauses: -x OR (matching candidates) per Runtime/Build
+    /// edge, about the candidate's key and the required key; non-root Test
+    /// edges are never activated.
+    fn edgeClauses(entries) = foldList(indexes(entries), [], fn(acc, i) => {
+        let entry = entryAt(entries, i)
+        listConcat(acc, mapList(activeOf(entry), fn(d) => tagged(listPrepend(matchingVars(entries, reqOf(d)), SatClauses::neg(i + 1)), [keyOf(entry), reqKeyOf(d)])))
+    })
+
+    /// One release per package key across all epochs: pairwise at-most-one.
+    fn uniquenessClauses(entries) = foldList(indexes(entries), [], fn(acc, i) =>
+        foldList(range(i + 1, length(entries)) |> toList, acc, fn(acc2, j) =>
+            if Names::same(keyOf(entryAt(entries, i)), keyOf(entryAt(entries, j))) {
+                listAppend(acc2, tagged([SatClauses::neg(i + 1), SatClauses::neg(j + 1)], [keyOf(entryAt(entries, i))]))
+            } else { acc2 }))
+
+    fn requires(entry, key) = Names::includes(ManifestModel::targets(activeOf(entry)), key)
+
+    /// Candidates of a key that carry a Runtime/Build edge to it; a selected
+    /// release must be supported by a root edge or one of these.
+    fn supportersOf(entries, key) = foldList(indexes(entries), [], fn(acc, i) =>
+        if requires(entryAt(entries, i), key) { listAppend(acc, i + 1) } else { acc })
+
+    fn rootSupports(graph, key) = Names::includes(ManifestModel::targets(graph.rootDeps), key)
+
+    /// Anti-spurious closure clauses: a candidate with no root edge and no
+    /// selected supporter may not be selected.
+    fn supportClauses(graph, entries) = foldList(indexes(entries), [], fn(acc, i) => {
+        let key = keyOf(entryAt(entries, i))
+        if rootSupports(graph, key) { acc } else { listAppend(acc, tagged(listPrepend(supportersOf(entries, key), SatClauses::neg(i + 1)), [key])) }
+    })
+
+    fn reachVar(n, k, u, v) = n + u * k + v + 1
+
+    /// Edge clauses of the reachability grid: a selected candidate reaches
+    /// every key its active edges require.
+    fn reachEdges(entries, keys) = {
+        let n = length(entries)
+        let k = length(keys)
+        foldList(indexes(entries), [], fn(acc, i) => {
+            let entry = entryAt(entries, i)
+            let u = keyIndexOf(keys, keyOf(entry))
+            listConcat(acc, mapList(activeOf(entry), fn(d) => tagged([SatClauses::neg(i + 1), reachVar(n, k, u, keyIndexOf(keys, reqKeyOf(d)))], [keyOf(entry), reqKeyOf(d)])))
+        })
+    }
+
+    fn transitive(n, keys, a, b, c) = {
+        let k = length(keys)
+        tagged([SatClauses::neg(reachVar(n, k, a, b)), SatClauses::neg(reachVar(n, k, b, c)), reachVar(n, k, a, c)], [keyAt(keys, a), keyAt(keys, b), keyAt(keys, c)])
+    }
+
+    /// Transitivity clauses of the reachability grid.
+    fn reachTransitive(n, keys) = foldList(indexes(keys), [], fn(acc, a) =>
+        foldList(indexes(keys), acc, fn(acc2, b) =>
+            foldList(indexes(keys), acc2, fn(acc3, c) =>
+                if a == b || b == c { acc3 } else { listAppend(acc3, transitive(n, keys, a, b, c)) })))
+
+    /// Irreflexivity: no key reaches itself.
+    fn irreflexive(n, keys) = mapList(indexes(keys), fn(a) => tagged([SatClauses::neg(reachVar(n, length(keys), a, a))], [keyAt(keys, a)]))
+
+    /// Acyclicity: key-level reachability variables with edge, transitivity
+    /// and irreflexivity clauses.
+    fn acyclicClauses(entries, keys) = listConcat(listConcat(reachEdges(entries, keys), reachTransitive(length(entries), keys)), irreflexive(length(entries), keys))
+
+    /// Build the hard formula for one graph.
+    export fn build(graph) = {
+        let entries = Candidates::all(graph)
+        let keys = collectKeys(graph)
+        let all = listConcat(listConcat(rootClauses(graph, entries), edgeClauses(entries)),
+            listConcat(listConcat(uniquenessClauses(entries), supportClauses(graph, entries)), acyclicClauses(entries, keys)))
+        Problem { entries: entries, keys: keys, clauses: mapList(all, literalsOf), mentions: mapList(all, mentionsOf), vars: length(entries) + length(keys) * length(keys) }
+    }
+
+    /// The distinct keys the clauses at `indexes` mention, in canonical order:
+    /// what an UNSAT core is about.
+    export fn mentioned(problem, indexes) = Names::sorted(Names::distinct(foldList(indexes, [], fn(acc, i) => listConcat(acc, mentionsAt(problem, i)))))
+}

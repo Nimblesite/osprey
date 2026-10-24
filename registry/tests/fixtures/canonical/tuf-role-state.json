@@ -1,0 +1,13 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "One TUF role record: role, version, expiry, metadata digest.",
+  "type": "TufRoleState",
+  "value": {
+    "role": "root",
+    "version": 3,
+    "expiresAt": "2027-09-01T00:00:00.000Z",
+    "metadataDigest": "sha256:5eed3a30587de1bc9440b60971aeec6fe860c2304d6bfc8fd02db06b7848edab"
+  },
+  "canonical": "{\"expiresAt\":\"2027-09-01T00:00:00.000Z\",\"metadataDigest\":\"sha256:5eed3a30587de1bc9440b60971aeec6fe860c2304d6bfc8fd02db06b7848edab\",\"role\":\"root\",\"version\":3}",
+  "canonicalLength": 157
+}

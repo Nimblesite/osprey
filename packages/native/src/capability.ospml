@@ -1,0 +1,122 @@
+// Implements [UI-EFFECTS]: platform work is a typed, bounded request. Bulk
+// results land in host-held slices named by the request, so large outputs
+// never travel back through an event.
+namespace ui
+
+(** One HTTP request header. *)
+type Header =
+    headerName : string
+    headerValue : string
+
+(** A bounded, mechanical operation only the host can perform: every one states its limits, and its result returns as a completion ([UI-EFFECTS]). *)
+type Capability =
+    Run
+        executable : string
+        arguments : List<string>
+        timeout : int
+        outputLimit : int
+        plist : bool
+        runSlice : string
+    ListDirectories
+        directories : List<string>
+        entryLimit : int
+        listSlice : string
+    ReadPropertyLists
+        plists : List<string>
+        plistKeys : List<string>
+        plistSuffixes : List<string>
+        plistLimit : int
+        plistSlice : string
+    ReadTexts
+        texts : List<string>
+        textLimit : int
+        textSlice : string
+    Fingerprint
+        file : string
+        fileLimit : int
+    StoreRead
+        readName : string
+        readLimit : int
+        readSlice : string
+    StoreWrite
+        writeName : string
+        writeSlice : string
+    StoreList
+        folder : string
+    StoreDelete
+        deleteName : string
+    Http
+        method : string
+        url : string
+        headers : List<Header>
+        body : string
+        responseLimit : int
+        deadline : int
+        httpSlice : string
+    RunningApplications
+    ChooseFile
+        types : List<string>
+        chosenLimit : int
+        chosenSlice : string
+    ChooseFolder
+    SaveFile
+        suggested : string
+        exportSlice : string
+    Reveal
+        revealPath : string
+    OpenSettings
+        pane : string
+    Cancel
+        cancelled : string
+
+(** A capability with the ticket its completion will carry. Put a generation in the ticket to recognise stale completions. *)
+type Request =
+    ticket : string
+    capability : Capability
+
+(** Text the host holds under `sliceKey` for later fetches, so large slices need not travel in the opaque state. *)
+type SliceWrite =
+    sliceKey : string
+    sliceText : string
+
+(** Builds capability requests and host slice writes, and encodes requests for the protocol ([UI-EFFECTS]). *)
+module Requests
+    str key value = Doc::str (key, value)
+
+    num key value = Doc::num (key, value)
+
+    strings key values = JsonMember key (Doc::strings values)
+
+    header item = JsonObject [str "name" item.headerName, str "value" item.headerValue]
+
+    run executable arguments timeout limit plist slice = [str "kind" "run", str "executable" executable, strings "arguments" arguments, num "timeout" timeout, num "limit" limit, Doc::bit ("plist", plist), str "slice" slice]
+
+    http method url headers body limit deadline slice = [str "kind" "http", str "method" method, str "url" url, JsonMember "headers" (JsonArray (mapList (headers, \item => header item))), str "body" body, num "limit" limit, num "timeout" deadline, str "slice" slice]
+
+    members capability = match capability
+        Run executable arguments timeout limit plist slice => run executable arguments timeout limit plist slice
+        ListDirectories paths limit slice => [str "kind" "list-directories", strings "paths" paths, num "limit" limit, str "slice" slice]
+        ReadPropertyLists paths keys suffixes limit slice => [str "kind" "read-plists", strings "paths" paths, strings "keys" keys, strings "suffixes" suffixes, num "limit" limit, str "slice" slice]
+        ReadTexts paths limit slice => [str "kind" "read-texts", strings "paths" paths, num "limit" limit, str "slice" slice]
+        Fingerprint path limit => [str "kind" "fingerprint", str "path" path, num "limit" limit]
+        StoreRead name limit slice => [str "kind" "store-read", str "name" name, num "limit" limit, str "slice" slice]
+        StoreWrite name slice => [str "kind" "store-write", str "name" name, str "slice" slice]
+        StoreList name => [str "kind" "store-list", str "name" name]
+        StoreDelete name => [str "kind" "store-delete", str "name" name]
+        Http method url headers body limit deadline slice => http method url headers body limit deadline slice
+        RunningApplications => [str "kind" "running-applications"]
+        ChooseFile types limit slice => [str "kind" "choose-file", strings "types" types, num "limit" limit, str "slice" slice]
+        ChooseFolder => [str "kind" "choose-folder"]
+        SaveFile name slice => [str "kind" "save-file", str "name" name, str "slice" slice]
+        Reveal path => [str "kind" "reveal", str "path" path]
+        OpenSettings pane => [str "kind" "open-settings", str "pane" pane]
+        Cancel target => [str "kind" "cancel", str "target" target]
+
+    (** The protocol form of `request`: its ticket beside the capability's kind and arguments. *)
+    export encode request = JsonObject (listPrepend (members request.capability) (str "ticket" request.ticket))
+
+    (** A request for `capability` whose completion returns to `update` under `ticket`. *)
+    export ask (ticket, capability) = Request(ticket = ticket, capability = capability)
+
+    (** A host-held slice write: the host keeps `text` under `key` until it is written again. *)
+    export write (key, text) = SliceWrite(sliceKey = key, sliceText = text)

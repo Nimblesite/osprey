@@ -50,10 +50,9 @@ fn copy_fields(
     for (index, (name, ty)) in block.fields.iter().enumerate() {
         let value = match overrides.iter().find(|field| &field.name == name) {
             Some(field) => {
-                let value = gen_expr(cg, &field.value)?;
                 let inferred = super::field_type(cg, base, owner, name);
-                let value = super::fields::coerce_field(cg, value, owner, name, inferred.as_ref())?;
-                crate::cast::erase_result(cg, value).operand
+                super::settled_field_value(cg, &field.value, owner, name, inferred.as_ref())?
+                    .operand
             }
             None => load_record_field(cg, owner, &block.struct_ty, source, index, *ty),
         };

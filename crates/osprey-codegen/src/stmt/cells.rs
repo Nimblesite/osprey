@@ -6,7 +6,11 @@ use crate::expr::gen_expr;
 /// cells require a discriminant-bearing slot and are rejected instead of being
 /// silently unwrapped.
 pub(super) fn gen_cell_define(cg: &mut Codegen, name: &str, value: &Expr) -> Result<()> {
+    // The cell is typed storage every arm reads through its declared type, so
+    // a list literal is settled into a runtime list before it is stored
+    // [TYPE-LIST-LITERAL]; the flat literal layout must never escape into it.
     let v = gen_expr(cg, value)?;
+    let v = crate::listlit::escaping(cg, v);
     if v.result_inner.is_some() {
         return Err(CodegenError::invalid(
             "mutable Result state must be handled before storage",
@@ -59,6 +63,7 @@ pub(super) fn gen_cell_store(cg: &mut Codegen, name: &str, value: &Expr) -> Resu
         ));
     };
     let v = gen_expr(cg, value)?;
+    let v = crate::listlit::escaping(cg, v);
     let v = crate::cast::coerce_to(cg, v, slot.pointee)?;
     let ty = slot.pointee.as_str();
     // Rebind order: dup the incoming value BEFORE dropping the old one, so a

@@ -1,0 +1,6 @@
+[project]
+name = "sklearn-tests"
+source_roots = [".", "../src", "../../testing/src"]
+python_sources = ["../src/Stats.py", "../src/Metrics.py", "../src/Preprocessing.py", "../src/ModelSelection.py", "../../testing/src/check.py", "expected.py", "main.py"]
+default_namespace = "sklearn_tests"
+entry = "main.py"

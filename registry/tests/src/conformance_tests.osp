@@ -11,7 +11,7 @@ module ConformanceTests {
 
     fn classification() = checkAll("only Osprey source and declarative inputs pass", [
         length(Conformance::violations(["registry/core/src/names.osp", "registry/x.ospml", "schemas/package-registry.td"])) == 0,
-        length(Conformance::violations(["registry/core/osprey.toml", "registry/tests/fixtures/manifest.json", "registry/README.md"])) == 0,
+        length(Conformance::violations(["registry/core/osprey.toml", "registry/tests/fixtures/manifest.json", "registry/README.md", "registry/sample-registry/@demo/pyadd/1.1/uv.lock"])) == 0,
         join(Conformance::violations(["registry/host/shim.c", "registry/cli/launch.sh", "registry/web/app.js", "registry/ops/migrate.py", "registry/core/src/lib.rs", "registry/web/index.html"]), ",") == "registry/host/shim.c,registry/cli/launch.sh,registry/web/app.js,registry/ops/migrate.py,registry/core/src/lib.rs,registry/web/index.html",
         join(Conformance::violations(["registry/tests/golden.ospx", "registry/Makefile", "registry/core/src/notes"]), ",") == "registry/tests/golden.ospx,registry/Makefile,registry/core/src/notes"
     ])

@@ -1,0 +1,74 @@
+{
+  "spec": "[PACKAGE-RESOLUTION]",
+  "description": "Every release of A is revoked, so no candidate can activate and the explanation is revoked.",
+  "target": "x86_64-linux",
+  "grantedCapabilities": [],
+  "root": {
+    "dependencies": [
+      {
+        "Runtime": {
+          "requirement": {
+            "package": {
+              "scope": "a",
+              "name": "app"
+            },
+            "epoch": 1,
+            "minimumOrdinal": 1
+          }
+        }
+      }
+    ]
+  },
+  "current": [],
+  "catalog": [
+    {
+      "release": {
+        "package": {
+          "scope": "a",
+          "name": "app"
+        },
+        "epoch": 1,
+        "ordinal": 1,
+        "digest": "sha256:0000000000000001000000000000000100000000000000010000000000000001"
+      },
+      "state": {
+        "Revoked": {}
+      },
+      "targets": [
+        "x86_64-linux"
+      ],
+      "capabilities": [],
+      "dependencies": []
+    },
+    {
+      "release": {
+        "package": {
+          "scope": "a",
+          "name": "app"
+        },
+        "epoch": 1,
+        "ordinal": 2,
+        "digest": "sha256:0000000000000002000000000000000200000000000000020000000000000002"
+      },
+      "state": {
+        "Revoked": {}
+      },
+      "targets": [
+        "x86_64-linux"
+      ],
+      "capabilities": [],
+      "dependencies": []
+    }
+  ],
+  "expect": {
+    "explanation": {
+      "code": "resolution.revoked",
+      "packages": [
+        {
+          "scope": "a",
+          "name": "app"
+        }
+      ]
+    }
+  }
+}

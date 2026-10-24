@@ -1,0 +1,61 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "RFC 8785 vectors expressible in the integer-only model: UTF-16 key ordering, minimal string escaping, whitespace removal and integer serialization.",
+  "source": "RFC 8785 sections 3.2.2.2 (escaping), 3.2.2.3 (numbers), 3.2.3 (sorting example); non-integer JSON numbers are outside the model and rejected.",
+  "cases": [
+    {
+      "input": "{\r\n  \"\\u20ac\": \"Euro Sign\",\r\n  \"\\r\": \"Carriage Return\",\r\n  \"\\ufb33\": \"Hebrew Letter Dalet With Dagesh\",\r\n  \"1\": \"One\",\r\n  \"\\ud83d\\ude00\": \"Emoji: grinning face\",\r\n  \"\\u0080\": \"Control\",\r\n  \"\\u00f6\": \"Latin Small Letter O With Diaeresis\"\r\n}",
+      "canonical": "{\"\\r\":\"Carriage Return\",\"1\":\"One\",\"\":\"Control\",\"ö\":\"Latin Small Letter O With Diaeresis\",\"€\":\"Euro Sign\",\"😀\":\"Emoji: grinning face\",\"דּ\":\"Hebrew Letter Dalet With Dagesh\"}"
+    },
+    {
+      "input": "{\"message\": \"a\\\"b\\\\c/d e\\tf\\ng\\rh\\fi\\bj\\u0001k\"}",
+      "canonical": "{\"message\":\"a\\\"b\\\\c/d e\\tf\\ng\\rh\\fi\\bj\\u0001k\"}"
+    },
+    {
+      "input": "{\"message\": \"a\\/b\"}",
+      "canonical": "{\"message\":\"a/b\"}"
+    },
+    {
+      "input": "{\"message\": \"a\\\\b\"}",
+      "canonical": "{\"message\":\"a\\\\b\"}"
+    },
+    {
+      "input": "{\"message\": \"x y\"}",
+      "canonical": "{\"message\":\"x y\"}"
+    },
+    {
+      "input": "{ \"n\" : [ 0 , -1 , 9007199254740991 ] , \"z\" : { } }",
+      "canonical": "{\"n\":[0,-1,9007199254740991],\"z\":{}}"
+    },
+    {
+      "input": "  [ 1 , { \"b\" : 2 , \"a\" : [ 3 ] } ]  ",
+      "canonical": "[1,{\"a\":[3],\"b\":2}]"
+    }
+  ],
+  "rejected": [
+    {
+      "input": "{\"n\":1.5}",
+      "code": "json.non-integer"
+    },
+    {
+      "input": "{\"n\":1e2}",
+      "code": "json.non-integer"
+    },
+    {
+      "input": "{\"n\":-0}",
+      "code": "json.non-integer"
+    },
+    {
+      "input": "{\"n\":9223372036854775808}",
+      "code": "json.integer-range"
+    },
+    {
+      "input": "{\"a\":1,\"a\":2}",
+      "code": "json.duplicate-key"
+    },
+    {
+      "input": "{\"a\":\"\\u0000\"}",
+      "code": "json.control-character"
+    }
+  ]
+}

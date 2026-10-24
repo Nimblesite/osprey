@@ -100,7 +100,7 @@ fn fuse_iterator(cg: &mut Codegen, range: &Value) -> Result<Value> {
     let out = buffer_alloc(cg, &span, GPU_OWNER.to_string());
     let kept = kept_counter(cg);
     let lp = open_range_loop(cg, &start, &end);
-    crate::arc::push_frame(cg);
+    crate::arc::push_frame(cg, crate::arc::FrameKind::Scope);
     let v = crate::iter::replay(cg, &stages, Value::new(lp.i.clone(), LType::I64), &lp.incr)?;
     let elem = v.ty;
     let word = scalar_word(cg, v, "a toGpu element")?;

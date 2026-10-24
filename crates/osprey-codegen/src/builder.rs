@@ -44,6 +44,9 @@ pub(crate) struct CodegenOptions {
     pub gpu_kernels: crate::gpu_kernel::GpuKernelMode,
     /// Which functions the module exposes to the linker [CODEGEN-LINKAGE].
     pub linkage: Linkage,
+    /// Emit for symbolic execution [SYMEX-CODEGEN]: fatal paths `abort`
+    /// instead of `exit`, so the engine reports them as errors.
+    pub symbolic: bool,
 }
 
 /// A lambda kept for inline application at its direct call sites: its
@@ -248,6 +251,8 @@ pub(crate) struct Codegen {
     /// Coverage instrumentation state, when coverage was requested
     /// [TESTING-COVERAGE-CODEGEN].
     pub(crate) coverage: Option<crate::coverage::CoverageState>,
+    /// Emitting for symbolic execution [SYMEX-CODEGEN].
+    pub(crate) symbolic: bool,
     /// The Perceus ownership ledger for the in-progress function
     /// [GC-ARC-PERCEUS] (see `crate::arc`).
     pub(crate) arc: crate::arc::ArcLedger,
@@ -384,6 +389,7 @@ impl Codegen {
             coverage: options
                 .coverage
                 .then(crate::coverage::CoverageState::default),
+            symbolic: options.symbolic,
             arc: crate::arc::ArcLedger::new(),
             device: crate::gpu_device::DeviceState::default(),
             arc_slot_count: 0,

@@ -1,0 +1,265 @@
+namespace registry_cli;
+import registry_host::Host
+import registry_cli::Lockfile
+import registry::Bytes
+import registry::Digests
+import registry::ManifestModel
+import registry::Maybe
+import registry::Sha256
+import registry::Toml
+
+/// The Python interop plane through uv ([PACKAGE-PYTHON-UV]). A member is a
+/// manifest that declares `[system.python]` with `capability = "python/interop"`
+/// and holds a PEP 621 `pyproject.toml`. `lock` composes one uv project under
+/// `.osprey/python` that depends by path on every member, runs `uv lock` and
+/// pins the digests of both generated files in the folder lock; `fetch` runs
+/// `uv sync --frozen`; `verify` regenerates the project, compares both digests,
+/// checks the environment and runs `uv lock --check --offline`. Osprey never
+/// installs uv or CPython; `doctor` reports whether uv is on the PATH. The
+/// Python plane rules P1–P3 of `[PACKAGE-HARDENING]` hold here: the generated
+/// project names no index and pins `first-index`, a member may name no index
+/// and no `git`, `url` or outside-tree `path` source, and every distribution
+/// in `uv.lock` carries a hash.
+module PythonPlane {
+    /// The one system capability whose provider Osprey invokes.
+    export let capability = "python/interop"
+    /// The uv project directory, relative to the project root.
+    export let dir = ".osprey/python"
+    let pyprojectName = "pyproject.toml"
+    let uvLockName = "uv.lock"
+    let venvName = ".venv"
+    let projectName = "osprey-python"
+    export let pyprojectMissing = "python.pyproject-missing"
+    export let uvLockMissing = "python.uv-lock-missing"
+    export let workspaceDigest = "python.workspace-digest"
+    export let uvLockStale = "python.uv-lock-stale"
+    export let environmentMissing = "python.environment-missing"
+    export let uvLockFailed = "python.uv-lock-failed"
+    export let uvSyncFailed = "python.uv-sync-failed"
+    export let indexForbidden = "python.index-forbidden"
+    export let sourceForbidden = "python.source-forbidden"
+    export let uvLockHashes = "python.uv-lock-hashes"
+
+    /// One member of the composed uv project: its PEP 621 name, its path
+    /// relative to `.osprey/python`, and its CPython floor as `MMmmpp`.
+    export type Member = { name: string, path: string, floor: int }
+
+    // Shared field names need typed receivers (issue #273).
+    fn nameOf(m: Member) = m.name
+    fn pathOf(m: Member) = m.path
+    fn floorOf(m: Member) = m.floor
+    fn statusOf(r: Host::Run) = r.status
+
+    fn declaring(s: ManifestModel::SystemRequirement) = s.capability == capability
+
+    fn declaredFloor(m: ManifestModel::Manifest) = foldList(m.systemRequirements, -1, fn(best, s: ManifestModel::SystemRequirement) => if declaring(s) && s.minimumRevision > best { s.minimumRevision } else { best })
+
+    /// Whether a manifest declares the plane.
+    export fn declares(m) = declaredFloor(m) >= 0
+
+    // ---- the PEP 621 name ----
+
+    fn nameIn(project) = match Toml::get(project, "name") {
+        Error => Error { message: pyprojectMissing }
+        Success { value } => match value {
+            Toml::Str { text } => Success { value: text }
+            _ => Error { message: pyprojectMissing }
+        }
+    }
+
+    fn projectIn(root) = match Toml::get(root, "project") {
+        Error => Error { message: pyprojectMissing }
+        Success { value } => nameIn(value)
+    }
+
+    // ---- P2: a member's own pyproject names no index and no outside source ----
+
+    fn has(table, key) = match Toml::get(table, key) {
+        Success => true
+        Error => false
+    }
+
+    fn valueAt(table, key) -> Toml::Value = Toml::get(table, key) ?: Toml::emptyTable
+
+    fn uvTable(root) -> Toml::Value = match Toml::get(root, "tool") {
+        Error => Toml::emptyTable
+        Success { value } => valueAt(value, "uv")
+    }
+
+    /// A path source stays inside the member's tree: relative and never climbing.
+    fn insideTree(path) = !startsWith(path, "/") && !contains(path, "..")
+
+    fn pathOk(entry) = match Toml::get(entry, "path") {
+        Error => true
+        Success { value } => match value {
+            Toml::Str { text } => insideTree(text)
+            _ => false
+        }
+    }
+
+    fn entryOk(entry) = pathOk(entry) && !has(entry, "git") && !has(entry, "url")
+
+    /// One `[tool.uv.sources]` value: a table, or a list of them with markers.
+    fn sourceOk(source) = match source {
+        Toml::Arr { items } => foldList(items, true, fn(ok, item) => ok && entryOk(item))
+        _ => entryOk(source)
+    }
+
+    fn sourcesOk(uv) = match Toml::get(uv, "sources") {
+        Error => true
+        Success { value } => foldList(Toml::keys(value), true, fn(ok, k) => ok && sourceOk(valueAt(value, k)))
+    }
+
+    /// The member's name once its tree passes P2 of `[PACKAGE-HARDENING]`.
+    fn named(root) = if has(uvTable(root), "index") { Error { message: indexForbidden } }
+        else if !sourcesOk(uvTable(root)) { Error { message: sourceForbidden } }
+        else { projectIn(root) }
+
+    fn pep621Name(pyprojectText) = match Toml::parse(pyprojectText) {
+        Error => Error { message: pyprojectMissing }
+        Success { value } => named(value)
+    }
+
+    /// The member a manifest contributes at `path`: none when it does not
+    /// declare the plane; `python.pyproject-missing <path>` when it does but
+    /// `pyprojectText` is not a PEP 621 project.
+    export fn memberOf(m, path, pyprojectText) = if !declares(m) { Success { value: Maybe::none() } } else { match pep621Name(pyprojectText) {
+        Error { message } => Error { message: "${message} ${path}" }
+        Success { value } => Success { value: Maybe::some(Member { name: value, path: path, floor: declaredFloor(m) }) }
+    } }
+
+    // ---- composition ----
+
+    fn versionText(floor) = {
+        let patch = floor % 100
+        if patch == 0 { "${floor / 10000}.${(floor / 100) % 100}" } else { "${floor / 10000}.${(floor / 100) % 100}.${patch}" }
+    }
+
+    fn maxFloor(members) = foldList(members, 0, fn(best, m) => if floorOf(m) > best { floorOf(m) } else { best })
+
+    fn quoted(m) = "\"" + nameOf(m) + "\""
+
+    fn sourceLine(m) = nameOf(m) + " = { path = \"" + pathOf(m) + "\" }"
+
+    /// The composed `.osprey/python/pyproject.toml`: one project depending by
+    /// path on every member, `requires-python` at the highest declared floor
+    /// (each member's own `requires-python` binds through its path dependency),
+    /// no index and `index-strategy = "first-index"` (P1 of `[PACKAGE-HARDENING]`).
+    export fn compose(members) = {
+        let names = join(mapList(members, quoted), ", ")
+        let header = ["[project]", "name = \"${projectName}\"", "version = \"0.0.0\"", "requires-python = \">=${versionText(maxFloor(members))}\"", "dependencies = [${names}]", "", "[tool.uv]", "index-strategy = \"first-index\"", "", "[tool.uv.sources]"]
+        join(listConcat(header, mapList(members, sourceLine)), "\n") + "\n"
+    }
+
+    // ---- P3: every distribution in uv.lock carries a hash ----
+
+    fn hashed(dist) = match Toml::get(dist, "hash") {
+        Error => false
+        Success { value } => match value {
+            Toml::Str { text } => !isEmpty(text)
+            _ => false
+        }
+    }
+
+    fn wheelsHashed(pkg) = match Toml::get(pkg, "wheels") {
+        Error => true
+        Success { value } => match value {
+            Toml::Arr { items } => foldList(items, true, fn(ok, w) => ok && hashed(w))
+            _ => false
+        }
+    }
+
+    fn sdistHashed(pkg) = match Toml::get(pkg, "sdist") {
+        Error => true
+        Success { value } => hashed(value)
+    }
+
+    fn packagesHashed(root) = match Toml::get(root, "package") {
+        Error => true
+        Success { value } => match value {
+            Toml::Arr { items } => foldList(items, true, fn(ok, p) => ok && sdistHashed(p) && wheelsHashed(p))
+            _ => false
+        }
+    }
+
+    /// `python.uv-lock-hashes` when `uv.lock` is unreadable or any sdist or
+    /// wheel lacks a hash; nothing otherwise.
+    fn hashFindings(uvLockText) = match Toml::parse(uvLockText) {
+        Error => [uvLockHashes]
+        Success { value } => if packagesHashed(value) { [] } else { [uvLockHashes] }
+    }
+
+    /// The plain `sha256:` digest of a generated file.
+    export fn digestOf(text) = Digests::format(Sha256::digest(Bytes::ofString(text)))
+
+    fn inDir(project) = if project == "." || project == "" { dir } else { "${project}/${dir}" }
+
+    export fn pyprojectPath(project) = "${inDir(project)}/${pyprojectName}"
+    export fn uvLockPath(project) = "${inDir(project)}/${uvLockName}"
+    fn venvPath(project) = "${inDir(project)}/${venvName}"
+
+    fn uv(project, words) = perform Host::Process.run("cd ${Host::shellWord(inDir(project))} && uv ${words}")
+
+    fn failedRun(code, r) = Error { message: "${code} status ${statusOf(r)}" }
+
+    // ---- lock ----
+
+    fn pinned(text, uvLockText) = if !isEmpty(hashFindings(uvLockText)) { Error { message: uvLockHashes } }
+        else { Success { value: Lockfile::PythonPins { pyprojectDigest: digestOf(text), uvLockDigest: digestOf(uvLockText) } } }
+
+    fn uvLocked(project, text) = {
+        let r = uv(project, "lock")
+        if statusOf(r) != 0 { failedRun(uvLockFailed, r) } else { match perform Host::Files.read(uvLockPath(project)) {
+            Error => Error { message: uvLockMissing }
+            Success { value } => pinned(text, value)
+        } }
+    }
+
+    fn writtenProject(project, text) = match perform Host::Files.write(pyprojectPath(project), text) {
+        Error { message } => Error { message: message }
+        Success => uvLocked(project, text)
+    }
+
+    /// `lock`: write the composed project, run `uv lock`, read `uv.lock` and pin both digests.
+    export fn locked(project, members) = match perform Host::Tree.ensure(inDir(project)) {
+        Error { message } => Error { message: message }
+        Success => writtenProject(project, compose(members))
+    }
+
+    /// The line `lock` prints for a pinned plane.
+    export fn lockedLine(project) = "python: locked ${inDir(project)}"
+
+    // ---- fetch ----
+
+    /// `fetch`: `uv sync --frozen` creates the one environment the project uses.
+    export fn synced(project) = {
+        let r = uv(project, "sync --frozen")
+        if statusOf(r) == 0 { Success { value: "python: synced ${inDir(project)}" } } else { failedRun(uvSyncFailed, r) }
+    }
+
+    // ---- verify ----
+
+    fn pyprojectPin(p: Lockfile::PythonPins) = p.pyprojectDigest
+    fn uvLockPin(p: Lockfile::PythonPins) = p.uvLockDigest
+
+    fn workspaceFindings(members, pins) = if digestOf(compose(members)) == pyprojectPin(pins) { [] } else { [workspaceDigest] }
+
+    fn checkFindings(project) = {
+        let r = uv(project, "lock --check --offline")
+        if statusOf(r) == 0 { [] } else { [uvLockStale] }
+    }
+
+    fn lockFindings(project, pins) = match perform Host::Files.read(uvLockPath(project)) {
+        Error => [uvLockMissing]
+        Success { value } => if digestOf(value) != uvLockPin(pins) { [uvLockStale] } else { listConcat(hashFindings(value), checkFindings(project)) }
+    }
+
+    fn environmentFindings(project) = match perform Host::Tree.walk(venvPath(project)) {
+        Success => []
+        Error => [environmentMissing]
+    }
+
+    /// `verify`: the regenerated project against its pin, `uv.lock` against
+    /// its pin, its hashes and `uv lock --check --offline`, and the environment's presence.
+    export fn findings(project, members, pins) = listConcat(listConcat(workspaceFindings(members, pins), lockFindings(project, pins)), environmentFindings(project))
+}

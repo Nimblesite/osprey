@@ -8,7 +8,9 @@ module Conformance {
     export type Kind = OspreySource | Declarative | Forbidden
 
     let ospreyExtensions = [".osp", ".ospml"]
-    let declarativeExtensions = [".toml", ".json", ".md", ".td", ".txt", ".sql", ".expectedoutput"]
+    // `.lock` is a uv lock (TOML data) in a sample package or an `osprey.lock`
+    // fixture: pins, never executable source ([PACKAGE-PYTHON-UV]).
+    let declarativeExtensions = [".toml", ".json", ".md", ".td", ".txt", ".sql", ".expectedoutput", ".lock"]
 
     fn hasAny(path, extensions) = foldList(extensions, false, fn(found, ext) => found || endsWith(path, ext))
 

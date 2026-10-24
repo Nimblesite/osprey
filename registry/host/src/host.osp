@@ -7,6 +7,12 @@ module Host {
     /// One finished child process.
     export type Run = { status: int, stdout: string, stderr: string }
 
+    /// `text` as one single-quoted shell word. Every path or name a handler
+    /// or a command places in a shell command goes through here, so no
+    /// manifest, lock or command-line string reaches the shell unquoted
+    /// ([PACKAGE-HARDENING] C6).
+    export fn shellWord(text) = "'" + (replace(text, "'", "'\\''") ?: text) + "'"
+
     /// Whole-file reads and writes; failures carry the OS reason.
     export effect Files {
         read: fn(string) -> Result<string, string>

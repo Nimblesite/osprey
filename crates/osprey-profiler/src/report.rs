@@ -260,10 +260,12 @@ mod tests {
             "{report}"
         );
         // tick keeps its runtime location; main has self 0 and an empty bar.
-        assert!(report.contains("tick  loop.c:7"), "{report}");
-        assert!(
-            report.contains("         0.0%   51.0%    0.00s    0.10s  main  app.osp:3"),
-            "{report}"
+        shows(
+            &report,
+            &[
+                "tick  loop.c:7",
+                "         0.0%   51.0%    0.00s    0.10s  main  app.osp:3",
+            ],
         );
         assert!(!report.contains('\x1b'));
     }

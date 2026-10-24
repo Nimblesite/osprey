@@ -161,6 +161,195 @@ gelu x = 0.5 * x * (1.0 + tanh (0.7978845608 * (x + 0.044715 * x * x * x)))
 probabilities = scores |> gpuMap exp
 ```
 
+### Trigonometric functions — [BUILTIN-MATH-TRIG]
+`sin`, `cos`, `tan`, `asin`, `acos`, `atan` and the two-argument `atan2`
+extend [BUILTIN-MATH] with the elementary trigonometric functions. Each
+unary one has signature `(x: float) -> float`; `atan2` is
+`(y: float, x: float) -> float`. All are total over IEEE doubles and return a
+bare `float`, never an `Arith` operation ([FLOAT-IEEE-RESULTS]): `asin` and
+`acos` of an argument outside `[-1.0, 1.0]` yield NaN, `tan` at a pole yields
+the large finite neighbour (the argument is an approximation of π/2, so the
+exact pole is unreachable), `atan2(0.0, 0.0)` is NaN and `atan2(y, x)` is the
+angle of the point `(x, y)` in `(-π, π]`, quadrant-aware. `atan2` does not
+exist to paper over signed zeros: `atan2(±0.0, -1.0)` is `±π` and
+`atan2(±0.0, 1.0)` is `±0.0`, so a program can tell the signs apart. Every
+function is pure, so a kernel may call it or *be* it: `gpuMap(sin)` extracts
+a kernel whose body is the function call ([GPU-KERNEL-FORM]).
+
+Lowering: `sin` and `cos` are the LLVM `llvm.sin.f64` and `llvm.cos.f64`
+intrinsics; `tan`, `asin`, `acos`, `atan` and `atan2` are the C library's
+symbols, like `tanh`. A program whose IR references any of them is linked
+against `libm`.
+
+```osprey
+sin(1.0)     // 0.8414709848078965
+cos(1.0)     // 0.5403023058681398
+atan2(1.0, -1.0)  // 2.356194490192345
+```
+
+### Hyperbolic functions — [BUILTIN-MATH-HYPERBOLIC]
+`sinh`, `cosh`, `asinh`, `acosh` and `atanh` complete the hyperbolic family
+started by `tanh` in [BUILTIN-MATH]. Each has signature
+`(x: float) -> float`, is total over IEEE doubles and returns a bare `float`:
+`sinh` and `cosh` of a large argument yield infinity, `acosh` of an argument
+below `1.0` yields NaN, `atanh` of a magnitude above `1.0` yields NaN and
+`atanh(±1.0)` yields `±infinity`. Pure, so a kernel may call or name them.
+
+Lowering: all five are the C library's symbols. Their IR references link the
+program against `libm`.
+
+```osprey
+sinh(1.0)    // 1.1752011936438014
+cosh(1.0)    // 1.5430806348152437
+asinh(1.0)   // 0.881373587019543
+```
+
+### Logarithmic and exponential families — [BUILTIN-MATH-LOG]
+`log2`, `log10`, `log1p` and `expm1` extend [BUILTIN-MATH] with the base-2
+and base-10 logarithms and the cancellation-avoiding companions of `ln` and
+`exp`. Each has signature `(x: float) -> float` and is total: `log2(0.0)` and
+`log10(0.0)` are negative infinity, `log2`/`log10` of a negative argument are
+NaN, `log1p(-1.0)` is negative infinity, `log1p` below `-1.0` is NaN, and
+`expm1` of a large argument is infinity. `log1p(x)` is `ln(1.0 + x)` computed
+without the cancellation that makes `ln(1.0 + 1e-16)` equal `0.0`;
+`expm1(x)` is `e^x - 1.0` computed without the cancellation that makes
+`exp(1e-16) - 1.0` equal `0.0`. Pure, so a kernel may call or name them.
+
+Lowering: `log2` and `log10` are the LLVM `llvm.log2.f64` and
+`llvm.log10.f64` intrinsics; `log1p` and `expm1` are the C library's symbols.
+Their IR references link the program against `libm`.
+
+```osprey
+log2(8.0)     // 3.0
+log10(1000.0) // 3.0
+log1p(1e-16)  // 1e-16
+```
+
+### Error functions — [BUILTIN-MATH-SPECIAL]
+`erf` and `erfc` are the Gaussian error function and its complement. Each has
+signature `(x: float) -> float` and is total: `erf(±infinity)` is `±1.0`,
+`erfc(+infinity)` is `0.0`, `erfc(-infinity)` is `2.0`. `erfc` is computed
+as `1.0 - erf(x)` without cancellation, so the tail keeps its relative
+precision. Pure, so a kernel may call or name them. Both are the C library's
+symbols; their IR references link the program against `libm`.
+
+```osprey
+erf(1.0)   // 0.8427007929497148
+erfc(1.0)  // 0.15729920705028516
+```
+
+### Rounding and floating-point classification — [BUILTIN-MATH-ROUNDING]
+`floor`, `ceil`, `trunc` and `round` have signature `(x: float) -> float`;
+`pow`, `atan2` (see [BUILTIN-MATH-TRIG]), `hypot`, `fmod` and `copysign`
+have signature `(x: float, y: float) -> float`. All are total and pure, so a
+kernel may call or name them.
+
+- `floor` is the greatest integer `<= x`, `ceil` the least `>= x`, `trunc`
+  the integer part toward zero. Each returns a `float`, so
+  `floor(-2.7)` is `-3.0`. `floor`/`ceil`/`trunc` of an infinity or NaN is
+  that value itself; a signed zero is preserved.
+- `round` rounds to the nearest integer, with **halfway cases rounded to
+  even** — Python's `round` and numpy's rounding, never C's
+  half-away-from-zero. `round(2.5)` is `2.0`, `round(3.5)` is `4.0`,
+  `round(-2.5)` is `-2.0`.
+- `pow(x, y)` is C `pow`: `pow(0.0, 0.0)` is `1.0`, a negative base needs an
+  integer exponent (else NaN), overflow is infinity, underflow is zero. The
+  total contract means it never performs the `Arith` division/overflow
+  policies; the result is an IEEE value.
+- `hypot(x, y)` is `sqrt(x*x + y*y)` without intermediate overflow or
+  underflow: `hypot(3.0, 4.0)` is `5.0`, `hypot(1e308, 1e308)` is about
+  `1.414e308` rather than infinity.
+- `fmod(x, y)` is C `fmod`: the remainder of `x/y` truncated toward zero,
+  with `x`'s sign. `fmod(-7.5, 2.0)` is `-1.5`. A zero divisor yields NaN —
+  unlike the `%` operator, which performs `Arith.divideByZero`.
+- `copysign(x, y)` is `x`'s magnitude with `y`'s sign: `copysign(3.0, -1.0)`
+  is `-3.0`. A NaN keeps its payload and takes `y`'s sign bit.
+
+Like every builtin, `round` is a reserved name: a program may not define its
+own function under it (`cannot redefine built-in function`).
+
+Lowering: `floor`, `ceil`, `trunc` and `round` are the LLVM `llvm.floor.f64`,
+`llvm.ceil.f64`, `llvm.trunc.f64` and `llvm.roundeven.f64` intrinsics
+(`roundeven` is what makes halfway cases round to even); `pow` and `copysign`
+are the LLVM `llvm.pow.f64` and `llvm.copysign.f64` intrinsics; `hypot` is the
+C library's symbol; `fmod` is the `frem` instruction itself, which for doubles
+*is* C `fmod`. Their IR references link the program against `libm`.
+
+```osprey
+floor(-2.7)      // -3.0
+round(2.5)       // 2.0
+pow(2.0, 10.0)   // 1024.0
+fmod(-7.5, 2.0)  // -1.5
+copysign(3.0, -1.0)  // -3.0
+```
+
+### `float32(x: float) -> float` — [BUILTIN-FLOAT32]
+Rounds a double to the nearest binary32 (ties to even) and widens back, so the
+result is exactly the value a float32 pipeline holds: `float32(0.1)` is
+`0.10000000149011612`. Total and pure, so a kernel may call or name it.
+
+Adding, subtracting, multiplying, dividing or taking the square root of
+float32-rounded inputs and re-rounding the result with `float32` is exact
+binary32 arithmetic (the innocuous double rounding that a correctly rounded
+double result of a correctly rounded binary32 result is the correctly rounded
+binary32 result), which lets a port of a float32 pipeline match float32
+results bit for bit while computing in the double type the compiler already
+has. Lowering is one `fptrunc double … to float` and one `fpext float … to
+double`.
+
+### `floatBits` / `floatFromBits` / `float32Bits` / `float32FromBits` — [BUILTIN-FLOAT-BITS]
+Bit-level views of the two float formats, as `int` words. All are total and
+pure.
+
+- `floatBits(x: float) -> int` is the binary64 word of `x`: a bitcast, so it
+  preserves NaN payloads, signed zeros and infinities exactly.
+  `floatBits(1.0)` is `4607182418800017408`.
+- `floatFromBits(bits: int) -> float` is the binary64 the word `bits` holds.
+  It is the exact inverse of `floatBits`.
+- `float32Bits(x: float) -> int` is the binary32 pattern of the nearest
+  float32 to `x` (the low 32 bits of the float32 word), as an int.
+  `float32Bits(0.1)` is `1036831949`.
+- `float32FromBits(bits: int) -> float` is the double the binary32 pattern
+  `bits` holds, widened exactly — the inverse of `float32Bits` on float32
+  values.
+
+### `floatToInt(x: float) -> Result<int, Error>` — [BUILTIN-FLOATTOINT]
+Checked truncation toward zero. `Success(n)` when `x` is finite and `n` fits
+in the `int` range (`-2^63 <= n < 2^63`); `Error` with a clear message when
+`x` is NaN, an infinity, or a finite value whose truncation falls outside the
+range. `floatToInt(-2.9)` is `Success(-2)`, `floatToInt(0.0 / 0.0)` is
+`Error`. Because it returns a `Result`, it is not a kernel (a combinator's
+scalar slot rejects the `Error` channel) — a kernel that needs truncation
+rounds first and converts with `toFloat`'s inverse path or stays on the host.
+
+### Bitwise integer builtins — [BUILTIN-BITWISE]
+`bitAnd`, `bitOr`, `bitXor` (`(a: int, b: int) -> int`), `bitNot`
+(`(a: int) -> int`), and the three shifts `shiftLeft`, `shiftRight`,
+`shiftRightLogical` (`(a: int, n: int) -> int`) are the two's-complement word
+operations. None of them performs an `Arith` operation and none of them can
+fault; the shifts are **total** over every shift count, defined as the limit
+of repeated shifting:
+
+- `shiftLeft(a, n)` and `shiftRightLogical(a, n)` are `0` for a count outside
+  `0..63`.
+- `shiftRight(a, n)` is the arithmetic shift: `0` for `a >= 0` and `-1` for
+  `a < 0` when the count is outside `0..63`.
+
+`shiftRightLogical(-16, 2)` is `4611686018427387900` (the bits move, the sign
+is not copied); `shiftRight(-16, 2)` is `-4` (the sign is copied). All are
+pure, so a kernel may call or name them; the device forms are the Metal/OpenCL
+long operations with the same total-clamp contract.
+
+```osprey
+bitAnd(12, 10)             // 8
+bitOr(12, 10)              // 14
+bitXor(12, 10)             // 6
+bitNot(12)                 // -13
+shiftLeft(1, 40)           // 1099511627776
+shiftRight(-16, 2)         // -4
+shiftRightLogical(-16, 2)  // 4611686018427387900
+```
+
 ### `checkedAdd` / `checkedSub` / `checkedMul` — [BUILTIN-CHECKED-ARITH]
 Each has signature `(a: int, b: int) -> Result<int, Error>`. Overflow-checked
 integer addition, subtraction, and multiplication, lowering to

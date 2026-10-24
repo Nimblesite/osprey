@@ -1,0 +1,102 @@
+# Programs `scripts/hunt_corpus.sh` skips, with the exact reason, in the format
+# of tests/WASM_UNPORTABLE.txt [SYMEX-CORPUS]. Each hunt of these ends on its
+# first path with an `unmodelled` finding: the call named has no model in the
+# mock C library, or the path reaches native code that is not in the module
+# KLEE explores (the fiber runtime, GPU, HTTP, database and platform
+# libraries). `--all` hunts them anyway, which is how this list was produced
+# from the corpus sweeps of 2026-10-24.
+#
+examples/db_postgres/pg_smoke.osp `PQlibVersion` is native code outside the module (not in the portable runtime)
+examples/gpt2/generate fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+examples/gpt2/model/backends.osp a module of the gpt2 example, not a program of its own
+examples/gpt2/model/cpu.osp a module of the gpt2 example, not a program of its own
+examples/gpt2/model/gpu.osp a module of the gpt2 example, not a program of its own
+examples/gpt2/model/model.osp a module of the gpt2 example, not a program of its own
+examples/gpt2/python/generate fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+examples/gpt2/train fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+examples/graphics/character `osp_gfx_open` is native code outside the module (not in the portable runtime)
+examples/graphics/kali `osp_gfx_open` is native code outside the module (not in the portable runtime)
+examples/graphics/opal `osp_gfx_open` is native code outside the module (not in the portable runtime)
+examples/handlers/returns.osp fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+examples/handlers/returns.ospml fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+examples/handlers/semantics.osp fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+examples/handlers/semantics.ospml fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+examples/handlers/staging-type.osp a deliberate type error, kept as a diagnostics example
+examples/ios/app.osp `ios_host_log` is native code outside the module (not in the portable runtime)
+examples/projects/modules `osprey_ffi_cell` is native code outside the module (not in the portable runtime)
+examples/projects/modules/client `osprey_web_render` is native code outside the module (not in the portable runtime)
+examples/python/interop.osp `osprey_python_call` is native code outside the module (not in the portable runtime)
+examples/statefulhttp/server.osp HTTP needs sockets: `http_create_server` is outside the module
+examples/statefulhttp/tui.osp `term_raw_mode` is native code outside the module (not in the portable runtime)
+examples/tui/api_browser.osp does not compile: recursive generic `awaitSpinning` has no inferred return type (open compiler bug, plan 0034)
+examples/websocketserver/osprey_websocket_server.osp `websocket_create_server` is native code outside the module (not in the portable runtime)
+tests/core/collections/nested_generic_collections_fibers.test.osp fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module
+tests/core/collections/nested_generic_collections_fibers.test.ospml fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module
+tests/effects/multiplicity/multiplicity.test.osp fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/effects/multiplicity/multiplicity.test.ospml fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/effects/resume/answer_transform.test.osp fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/effects/resume/answer_transform.test.ospml fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/effects/resume/resume_abort_early_exit.test.osp fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/effects/resume/resume_abort_early_exit.test.ospml fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/effects/resume/resume_error_policies.test.osp fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/effects/resume/resume_error_policies.test.ospml fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/effects/resume/resume_lifo_audit.test.osp fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/effects/resume/resume_lifo_audit.test.ospml fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/effects/resume/resume_outer_handler_bridge.test.osp fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/effects/resume/resume_outer_handler_bridge.test.ospml fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/effects/resume/resume_unit_markers.test.osp fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/effects/resume/resume_unit_markers.test.ospml fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/effects/resume/resume_value_rewrite.test.osp fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/effects/resume/resume_value_rewrite.test.ospml fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/effects/scope/finalizers_masks_instances.test.osp fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/effects/scope/finalizers_masks_instances.test.ospml fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/modules/ml_layout_depth.test.osp fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/modules/ml_layout_depth.test.ospml fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/modules/module_composition.test.osp fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module
+tests/modules/module_composition.test.ospml fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module
+tests/modules/module_effects_rows.test.osp fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/modules/module_effects_rows.test.ospml fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/modules/signature_ascription.test.osp fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/modules/signature_ascription.test.ospml fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/regressions/basics/osprey_mega_showcase.test.osp fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module
+tests/regressions/basics/osprey_mega_showcase.test.ospml fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module
+tests/regressions/basics/processes/async_process_management.test.osp process spawning needs `pipe`, which has no model
+tests/regressions/basics/processes/async_process_management.test.ospml process spawning needs `pipe`, which has no model
+tests/regressions/basics/processes/callback_stdout_demo.test.osp process spawning needs `pipe`, which has no model
+tests/regressions/basics/processes/callback_stdout_demo.test.ospml process spawning needs `pipe`, which has no model
+tests/regressions/basics/types/channel_element_type_in_generic_field.test.osp `channel_create_checked` is native code outside the module (not in the portable runtime)
+tests/regressions/basics/website/website_examples.test.osp fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module
+tests/regressions/basics/website/website_examples.test.ospml fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module
+tests/regressions/db/database_effect.test.osp `osprey_ffi_cell` is native code outside the module (not in the portable runtime)
+tests/regressions/db/database_effect.test.ospml `osprey_ffi_cell` is native code outside the module (not in the portable runtime)
+tests/regressions/db/sqlite_basics.test.osp `osprey_ffi_cell` is native code outside the module (not in the portable runtime)
+tests/regressions/db/sqlite_basics.test.ospml `osprey_ffi_cell` is native code outside the module (not in the portable runtime)
+tests/regressions/effects/abort_vs_resume.test.osp fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/regressions/effects/abort_vs_resume.test.ospml fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/regressions/effects/algebraic_effects_comprehensive.test.osp fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module
+tests/regressions/effects/algebraic_effects_comprehensive.test.ospml fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module
+tests/regressions/effects/fiber_effects.test.osp fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module
+tests/regressions/effects/fiber_effects.test.ospml fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module
+tests/regressions/effects/handler_scoping.test.osp fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/regressions/effects/handler_scoping.test.ospml fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/regressions/effects/http_state_levels.test.osp HTTP needs sockets: `http_create_server` is outside the module
+tests/regressions/effects/http_state_levels.test.ospml HTTP needs sockets: `http_create_server` is outside the module
+tests/regressions/effects/retry_until_valid.test.osp fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/regressions/effects/retry_until_valid.test.ospml fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/regressions/effects/staged_shared.test.osp fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/regressions/effects/staged_shared.test.ospml fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/regressions/fiber/cpu_profiling_demo.test.osp fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+tests/regressions/fiber/fiber_determinism.test.osp fibers and continuations: `fiber_set_deterministic_mode` is the native fiber runtime, outside the module
+tests/regressions/fiber/fiber_exact_replica.test.osp fibers and continuations: `fiber_set_deterministic_mode` is the native fiber runtime, outside the module
+tests/regressions/fiber/fiber_showcase.test.osp fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module
+tests/regressions/fiber/fiber_showcase.test.ospml fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module
+tests/regressions/http/http_client_example.test.osp HTTP needs sockets: `http_create_server` is outside the module
+tests/regressions/http/http_client_example.test.ospml HTTP needs sockets: `http_create_server` is outside the module
+tests/regressions/http/http_create_client.test.osp HTTP needs sockets: `http_create_client` is outside the module
+tests/regressions/http/http_create_client.test.ospml HTTP needs sockets: `http_create_client` is outside the module
+tests/regressions/http/http_response_handle.test.osp HTTP needs sockets: `http_create_server` is outside the module
+tests/regressions/http/http_response_handle.test.ospml HTTP needs sockets: `http_create_server` is outside the module
+tests/regressions/http/http_server_example.test.osp HTTP needs sockets: `http_create_server` is outside the module
+tests/regressions/http/http_server_example.test.ospml HTTP needs sockets: `http_create_server` is outside the module
+tests/regressions/http/tui_repo_table.test.osp HTTP needs sockets: `http_create_server` is outside the module
+tests/regressions/http/tui_repo_table.test.ospml HTTP needs sockets: `http_create_server` is outside the module

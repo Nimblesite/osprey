@@ -1,0 +1,17 @@
+[project]
+name = "torch"
+source_roots = ["src"]
+python_sources = ["src/tensor.py", "src/autograd.py", "src/optim.py", "src/lr.py"]
+default_namespace = "torch"
+
+[package]
+name = "@osprey/torch"
+license = "MIT"
+summary = "PyTorch's autograd tape, optimizers and learning-rate schedulers over numpy float64 tensors"
+keywords = ["torch", "pytorch", "autograd", "optim", "python-flavor"]
+
+[dependencies]
+"@osprey/numpy" = { epoch = 1, min_release = 1 }
+
+[test-dependencies]
+"@osprey/testing" = { epoch = 1, min_release = 1 }

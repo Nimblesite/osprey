@@ -1,0 +1,19 @@
+(** A generic handler VALUE invoked with a callback whose result type is still
+    generic is specialised at each call site, like any generic function. The
+    `with`-suite closure's Result error channel is phantom — the Error variant
+    stores a string message — so a still-open error variable no longer keeps
+    the closure generic, and one `checked` serves every result type. Implements
+    [TYPE-FN-CLOSURE] and [EFFECTS-HANDLER-VALUE]. *)
+
+effect Fault
+    control halt : string => int
+
+halting = handler Fault
+    halt fault => Error(message = fault)
+
+checked work = halting (\() => Success(value = work ()))
+
+print (toString (checked (\() => "ok")))
+print (toString (checked (\() => 7)))
+print (toString (checked (\() => 1.5)))
+print (toString (checked (\() => perform Fault.halt ("boom"))))

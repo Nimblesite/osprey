@@ -1,5 +1,16 @@
 use super::*;
 
+/// Assert each builtin `name` prints exactly `signature`.
+fn assert_signatures(expected: &[(&str, &str)]) {
+    for &(name, signature) in expected {
+        assert_eq!(
+            builtin_signature(name).as_deref(),
+            Some(signature),
+            "{name}"
+        );
+    }
+}
+
 #[test]
 fn registers_core_and_polymorphic_builtins() {
     let e = base_env();
@@ -77,13 +88,7 @@ fn network_builtins_match_the_runtime_status_abi() {
         ("websocketClose", "websocketClose : (int) -> int"),
         ("jsonFree", "jsonFree : (int) -> Result<int, Error>"),
     ];
-    for (name, signature) in expected {
-        assert_eq!(
-            builtin_signature(name).as_deref(),
-            Some(signature),
-            "{name}"
-        );
-    }
+    assert_signatures(&expected);
 }
 
 #[test]
@@ -100,13 +105,7 @@ fn public_maps_use_the_runtime_string_key_abi() {
         ),
         ("mapKeys", "mapKeys : (Map<string, t0>) -> List<string>"),
     ];
-    for (name, signature) in expected {
-        assert_eq!(
-            builtin_signature(name).as_deref(),
-            Some(signature),
-            "{name}"
-        );
-    }
+    assert_signatures(&expected);
 }
 
 #[test]
@@ -121,13 +120,7 @@ fn iterator_builtins_do_not_advertise_runtime_lists() {
         ("forEach", "forEach : (Iterator<t0>, (t0) -> Unit) -> Unit"),
         ("fold", "fold : (Iterator<t0>, t1, (t1, t0) -> t1) -> t1"),
     ];
-    for (name, signature) in expected {
-        assert_eq!(
-            builtin_signature(name).as_deref(),
-            Some(signature),
-            "{name}"
-        );
-    }
+    assert_signatures(&expected);
 }
 
 #[test]
@@ -149,11 +142,5 @@ fn list_combinators_and_sort_match_the_runtime_list_surface() {
             "listSort : (List<int> | List<string>) -> List<t0>",
         ),
     ];
-    for (name, signature) in expected {
-        assert_eq!(
-            builtin_signature(name).as_deref(),
-            Some(signature),
-            "{name}"
-        );
-    }
+    assert_signatures(&expected);
 }

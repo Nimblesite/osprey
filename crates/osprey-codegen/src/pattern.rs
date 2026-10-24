@@ -24,6 +24,12 @@ use structural::gen_structural_match;
 use union::{gen_union_match, union_owner};
 
 pub(crate) fn gen_match(cg: &mut Codegen, value: &Expr, arms: &[MatchArm]) -> Result<Value> {
+    if std::env::var("OSPREY_DBG_MATCH").is_ok() {
+        eprintln!(
+            "DBG gen_match in {:?}: scrutinee {:?}  arms {:?}",
+            cg.source_function, value, arms
+        );
+    }
     if let Some(fused) = result::gen_list_get_match(cg, value, arms)? {
         return Ok(fused);
     }
@@ -181,6 +187,18 @@ fn finish_phi(
     let llvm_ty = first_val.llvm_ty();
     if let Some((odd, _)) = incoming_values.iter().find(|(v, _)| v.llvm_ty() != llvm_ty) {
         if !cg.value_discarded {
+            for (v, blk) in &incoming_values {
+                eprintln!(
+                    "DBG arm blk {blk}: llvm {:?} ty {:?} osp_ty {:?} result_inner {:?} inferred {:?} operand {}",
+                    v.llvm_ty(), v.ty, v.osp_ty, v.result_inner, v.inferred_type, v.operand
+                );
+            }
+            eprintln!(
+                "DBG match arms disagree in {:?}: `{}` vs `{}`",
+                cg.source_function,
+                llvm_ty,
+                odd.llvm_ty()
+            );
             return Err(CodegenError::invalid(format!(
                 "match arms disagree on type: `{}` and `{}`",
                 llvm_ty,

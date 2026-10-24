@@ -746,6 +746,7 @@ Acceptance:
 - [x] Add extension tests for configuration synthesis and missing-tool errors.
 - [x] Add per-launch compiler selection and artifact preservation; force unoptimized editor builds and inspect preserved IR through both-flavor LLDB-DAP tests.
 - [x] Implement explicit internal, integrated and external console selection. Terminal modes require verified LLDB-DAP 21+ support and fail before compilation if unavailable. Both-flavor tests exercise integrated stdin, internal output, source breakpoints and the real external-terminal reverse request; unit tests pin invalid options and bounded probe failures.
+- [x] Terminal consoles with Xcode's lldb-dap (`lldb-2103`), which reports LLVM 21 yet times out on every `runInTerminal` launch, outside VS Code too. The macOS search tries Homebrew's `lldb`, `llvm` and `llvm@NN` kegs before `xcrun`, and a terminal console under an Xcode-installed adapter is refused before compilation with the `brew install lldb` remedy. Unit cases pin the keg order and the refusal; the integrated-terminal e2e tests pass in both flavors against Homebrew's LLVM 23 adapter.
 - [x] Add a DAP smoke test that launches, hits a source breakpoint, reads stack
       and primitive locals, steps over, continues, and terminates.
 - [ ] Upstream/import generic VS Code debugger glue and the DAP test harness

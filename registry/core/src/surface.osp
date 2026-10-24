@@ -1,0 +1,158 @@
+namespace registry;
+import registry::Order
+import registry::Release
+
+/// The capability surface of a release ([PACKAGE-CAPABILITY-CONFINEMENT]):
+/// the ambient capabilities whose builtins its source names, plus its
+/// `[system.*]` capabilities. Osprey has no reflection, string dispatch or
+/// evaluation, so a name scan over the source is exact; the scan skips
+/// comments and string literals and matches whole identifiers, and a
+/// builtin's name declared or called anywhere counts, so shadowing cannot
+/// hide a call. `tests/fixtures/capabilities/builtins.json` carries the same
+/// builtin-to-capability table as data.
+module Surface {
+    export let files = "io/files"
+    export let process = "io/process"
+    export let network = "io/network"
+    export let terminal = "io/terminal"
+
+    /// One ambient builtin and the capability it belongs to.
+    export type Named = { builtin: string, capability: string }
+
+    fn named(builtin, capability) = Named { builtin: builtin, capability: capability }
+
+    /// The builtin-to-capability map of [PACKAGE-CAPABILITY-CONFINEMENT];
+    /// every `http*` and `websocket*` builtin is `io/network` by prefix.
+    export fn table() = [
+        named("readFile", files), named("writeFile", files), named("gpuLoad", files), named("loadTensor", files),
+        named("spawnProcess", process), named("awaitProcess", process), named("cleanupProcess", process),
+        named("httpGet", network), named("httpPost", network), named("httpPut", network), named("httpDelete", network),
+        named("httpListen", network), named("httpStopServer", network), named("httpCloseClient", network), named("httpResponseFree", network),
+        named("websocketClose", network),
+        named("input", terminal), named("termRawMode", terminal)
+    ]
+
+    fn builtinOf(n: Named) = n.builtin
+    fn capabilityIn(n: Named) = n.capability
+
+    fn listed(word) = foldList(table(), "", fn(found, n) => if found == "" && builtinOf(n) == word { capabilityIn(n) } else { found })
+
+    /// The capability an identifier names, or "" for an ordinary name.
+    export fn capabilityOf(word) = {
+        let found = listed(word)
+        if found != "" { found } else if startsWith(word, "http") || startsWith(word, "websocket") { network } else { "" }
+    }
+
+    // ---- the scan: identifiers outside comments and string literals ----
+
+    let quote = 34
+    let backslash = 92
+    let slash = 47
+    let newline = 10
+    let underscore = 95
+    let codeMode = 0
+    let commentMode = 1
+    let stringMode = 2
+    let escapeMode = 3
+
+    let declarers = ["fn", "let", "mut"]
+
+    /// Where the scan is (`mode`), where the current identifier began (-1
+    /// when none), whether the last code byte was `/`, the identifier closed
+    /// before the current one, the capabilities found, and the builtin names
+    /// declared with `fn`, `let` or `mut`.
+    type Scan = { mode: int, start: int, afterSlash: bool, previous: string, found: List<string>, declared: List<string> }
+
+    fn begin() = Scan { mode: codeMode, start: -1, afterSlash: false, previous: "", found: [], declared: [] }
+
+    fn identByte(b) = (b >= 97 && b <= 122) || (b >= 65 && b <= 90) || (b >= 48 && b <= 57) || b == underscore
+
+    fn between(text, from, to) = take(drop(text, from), to - from)
+
+    /// A builtin's name right after `fn`, `let` or `mut` is a declaration that
+    /// would shadow the builtin: a publication error ([PACKAGE-CAPABILITY-CONFINEMENT]).
+    fn declares(s: Scan, word, capability) = capability != "" && listContains(declarers, s.previous)
+
+    fn closedWord(s: Scan, word) = {
+        let capability = capabilityOf(word)
+        Scan {
+            mode: s.mode,
+            start: -1,
+            afterSlash: s.afterSlash,
+            previous: word,
+            found: if capability == "" { s.found } else { listAppend(s.found, capability) },
+            declared: if declares(s, word, capability) { listAppend(s.declared, word) } else { s.declared }
+        }
+    }
+
+    /// Close the identifier that ended at `i`, recording its capability if any.
+    fn closed(text, s: Scan, i) = if s.start < 0 { s } else { closedWord(s, between(text, s.start, i)) }
+
+    /// Close any identifier at `i` and continue in `mode`.
+    fn switched(text, s, i, mode, afterSlash) = {
+        let c = closed(text, s, i)
+        Scan { mode: mode, start: -1, afterSlash: afterSlash, previous: previousOf(c), found: foundIn(c), declared: declaredIn(c) }
+    }
+
+    fn previousOf(s: Scan) = s.previous
+    fn declaredIn(s: Scan) = s.declared
+
+    fn extended(s: Scan, i) = Scan { mode: codeMode, start: if s.start < 0 { i } else { s.start }, afterSlash: false, previous: s.previous, found: s.found, declared: s.declared }
+
+    fn inCode(text, s: Scan, i, b) = if identByte(b) { extended(s, i) }
+        else if b == quote { switched(text, s, i, stringMode, false) }
+        else if b == slash && s.afterSlash { switched(text, s, i, commentMode, false) }
+        else { switched(text, s, i, codeMode, b == slash) }
+
+    fn inMode(s: Scan, mode) = Scan { mode: mode, start: -1, afterSlash: false, previous: s.previous, found: s.found, declared: s.declared }
+
+    fn inComment(s, b) = inMode(s, if b == newline { codeMode } else { commentMode })
+
+    fn inString(s, b) = inMode(s, if b == quote { codeMode } else if b == backslash { escapeMode } else { stringMode })
+
+    fn afterEscape(s) = inMode(s, stringMode)
+
+    fn step(text, s: Scan, i) = {
+        let b = byteAt(text, i) ?: 0
+        if s.mode == commentMode { inComment(s, b) }
+        else if s.mode == stringMode { inString(s, b) }
+        else if s.mode == escapeMode { afterEscape(s) }
+        else { inCode(text, s, i, b) }
+    }
+
+    fn foundIn(s: Scan) = s.found
+
+    fn distinct(capabilities) = foldList(capabilities, [], fn(acc, c) => if listContains(acc, c) { acc } else { listAppend(acc, c) })
+
+    /// Sorted and duplicate-free: a surface is a set.
+    fn canonicalOrEmpty(capabilities) = listSort(distinct(capabilities))
+
+    fn scanned(text) = {
+        let n = byteLength(text)
+        closed(text, fold(range(0, n), begin(), fn(s, i) => step(text, s, i)), n)
+    }
+
+    /// The capabilities one source text names, as a canonical set.
+    export fn ofText(text) = canonicalOrEmpty(foundIn(scanned(text)))
+
+    /// The builtin names one source text declares with `fn`, `let` or `mut`,
+    /// as a canonical set; a published package may declare none.
+    export fn declaredBuiltins(text) = canonicalOrEmpty(declaredIn(scanned(text)))
+
+    /// Whether any source file of a tree declares a builtin's name.
+    export fn shadowsBuiltin(fileList) = foldList(fileList, false, fn(found, f) => found || (isSource(pathOf(f)) && !isEmpty(declaredBuiltins(contentOf(f)))))
+
+    fn isSource(path) = endsWith(path, ".osp") || endsWith(path, ".ospml") || endsWith(path, ".py")
+
+    // `Release::File` shares no field name, but the receiver is typed like the
+    // other readers (issue #273).
+    fn pathOf(f: Release::File) = f.relPath
+    fn contentOf(f: Release::File) = f.content
+
+    /// The capabilities a tree's source files name, as a canonical set.
+    export fn ofFiles(fileList) = canonicalOrEmpty(foldList(fileList, [], fn(acc, f) => if isSource(pathOf(f)) { listConcat(acc, ofText(contentOf(f))) } else { acc }))
+
+    /// The surface of a release: its source scan plus its `[system.*]`
+    /// capabilities, as a canonical set.
+    export fn ofRelease(fileList, systemCapabilities) = canonicalOrEmpty(listConcat(ofFiles(fileList), systemCapabilities))
+}

@@ -1,0 +1,37 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "Binds the exact release, frozen CAS, context, lock, plan and both nonces.",
+  "type": "ReleaseChallenge",
+  "value": {
+    "intentEnvelopeDigest": "sha256:63329865d548c54b11fe591309fa5cad6579c7a74d524ceba720b55ccadbd0ce",
+    "release": {
+      "package": {
+        "scope": "demo",
+        "name": "report"
+      },
+      "epoch": 1,
+      "ordinal": 1,
+      "digest": "sha256:ac86feff5aaabe6d40aeadd8dba484dbfa499c33bc33fd4235944a124f727b51"
+    },
+    "casDigest": "sha256:a3f3fb10b363e117afe12c4d66e3a9eac027bfeca6d775f93fc91ffd5c62aae4",
+    "sourceDigest": "sha256:a7a65655016bb7bff859bbd5f5a6561e6f231508ffccefa7bb4f5bdaf0aa5bdf",
+    "manifestDigest": "sha256:e79f867f038054cb369a62aba515a9c0aa5c0e9951f8ef86514a3d5739fb0d4c",
+    "resolutionContextDigest": "sha256:1f8b5f586f66d4dcab357b0e03e0e9b4020bda1f4e71358b0dea9816f04d3126",
+    "dependencyLockDigest": "sha256:68876afbe6ee379a46145a4a1bce3abcafbcae930f683b640c376a84c365127f",
+    "buildPlanDigest": "sha256:d1afda20893f49e392dd51488f49bd1ea3bc77a89b11ec662c76d39343ed095a",
+    "releaseDigest": "sha256:ac86feff5aaabe6d40aeadd8dba484dbfa499c33bc33fd4235944a124f727b51",
+    "compatibility": {
+      "Initial": {
+        "package": {
+          "scope": "demo",
+          "name": "report"
+        }
+      }
+    },
+    "expiresAt": "2026-10-08T00:00:00.000Z",
+    "intentNonce": "ri-2b81",
+    "challengeNonce": "rc-91d0"
+  },
+  "canonical": "{\"buildPlanDigest\":\"sha256:d1afda20893f49e392dd51488f49bd1ea3bc77a89b11ec662c76d39343ed095a\",\"casDigest\":\"sha256:a3f3fb10b363e117afe12c4d66e3a9eac027bfeca6d775f93fc91ffd5c62aae4\",\"challengeNonce\":\"rc-91d0\",\"compatibility\":{\"Initial\":{\"package\":{\"name\":\"report\",\"scope\":\"demo\"}}},\"dependencyLockDigest\":\"sha256:68876afbe6ee379a46145a4a1bce3abcafbcae930f683b640c376a84c365127f\",\"expiresAt\":\"2026-10-08T00:00:00.000Z\",\"intentEnvelopeDigest\":\"sha256:63329865d548c54b11fe591309fa5cad6579c7a74d524ceba720b55ccadbd0ce\",\"intentNonce\":\"ri-2b81\",\"manifestDigest\":\"sha256:e79f867f038054cb369a62aba515a9c0aa5c0e9951f8ef86514a3d5739fb0d4c\",\"release\":{\"digest\":\"sha256:ac86feff5aaabe6d40aeadd8dba484dbfa499c33bc33fd4235944a124f727b51\",\"epoch\":1,\"ordinal\":1,\"package\":{\"name\":\"report\",\"scope\":\"demo\"}},\"releaseDigest\":\"sha256:ac86feff5aaabe6d40aeadd8dba484dbfa499c33bc33fd4235944a124f727b51\",\"resolutionContextDigest\":\"sha256:1f8b5f586f66d4dcab357b0e03e0e9b4020bda1f4e71358b0dea9816f04d3126\",\"sourceDigest\":\"sha256:a7a65655016bb7bff859bbd5f5a6561e6f231508ffccefa7bb4f5bdaf0aa5bdf\"}",
+  "canonicalLength": 1066
+}

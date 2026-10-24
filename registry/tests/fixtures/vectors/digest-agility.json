@@ -1,0 +1,58 @@
+{
+  "spec": "[PACKAGE-TRUST]",
+  "description": "Algorithm agility of the sha256:<64 lowercase hex> digest envelope: unknown algorithms, wrong prefixes, bad lengths and non-lowercase hex are rejected.",
+  "source": "Spec 0030 [PACKAGE-TRUST] trust metadata; envelope form of spec 0031 [PACKAGE-TYPE-INVARIANTS]; expected codes per registry/core/src/digests.osp.",
+  "valid": [
+    "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+  ],
+  "invalid": [
+    {
+      "text": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+      "code": "digest.algorithm"
+    },
+    {
+      "text": "SHA256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+      "code": "digest.algorithm"
+    },
+    {
+      "text": "sha-256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+      "code": "digest.algorithm"
+    },
+    {
+      "text": "sha512:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015adba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+      "code": "digest.algorithm"
+    },
+    {
+      "text": " sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+      "code": "digest.algorithm"
+    },
+    {
+      "text": "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015a",
+      "code": "digest.length"
+    },
+    {
+      "text": "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad0",
+      "code": "digest.length"
+    },
+    {
+      "text": "sha256:",
+      "code": "digest.length"
+    },
+    {
+      "text": "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad ",
+      "code": "digest.length"
+    },
+    {
+      "text": "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015a ",
+      "code": "digest.hex"
+    },
+    {
+      "text": "sha256:BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD",
+      "code": "digest.hex"
+    },
+    {
+      "text": "sha256:gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg",
+      "code": "digest.hex"
+    }
+  ]
+}

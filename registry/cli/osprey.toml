@@ -1,6 +1,6 @@
 [project]
 name = "registry-cli"
-source_roots = ["src", "lib", "../core/src", "../host/src"]
+source_roots = ["src", "lib", "../core/src", "../host/src", "../manifest/src", "../resolver/src"]
 default_namespace = "osprey_pkg"
 entry = "src/main.osp"
 

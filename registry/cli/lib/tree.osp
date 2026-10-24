@@ -1,0 +1,94 @@
+namespace registry_cli;
+import registry_cli::Flags
+import registry_cli::Reports
+import registry_cli::Project
+import registry_cli::Lockfile
+import registry::Identity
+import registry::ManifestModel
+import registry::Names
+
+/// `osprey-pkg tree [--project <dir>]`: the locked dependency graph as an
+/// indented tree, from the root manifest through every pinned package's
+/// Runtime/Build edges, read from `osprey.toml` and `osprey.lock` alone and
+/// never from the network ([PACKAGE-API], [PACKAGE-FOLDER-REGISTRY]). A key
+/// printed once already prints again with ` *` and no children, so a shared
+/// dependency is visible without repeating its subtree.
+module Tree {
+    let failStatus = 1
+    let usageCode = "tree.usage"
+    let noLockCode = "tree.no-lock"
+    let usageText = ["usage: osprey-pkg tree [--project <dir>]"]
+    let indent = "  "
+    let repeatMark = " *"
+    let unlocked = " (not locked)"
+
+    /// The lines printed so far and the keys already expanded.
+    type Walk = { printed: List<string>, visited: List<Names::Key> }
+
+    fn usageReport() = Reports::usage(listPrepend(usageText, usageCode))
+    fn failed(lines) = Reports::Report { status: failStatus, lines: lines }
+
+    // Shared field names need typed receivers (issue #273).
+    fn releaseOf(p: Lockfile::Package) = p.release
+    fn edgesOf(p: Lockfile::Package) = p.dependencies
+    fn packagesOf(lock: Lockfile::Lock) = lock.packages
+    fn rootEdges(lock: Lockfile::Lock) = lock.root.dependencies
+    fn nameOf(m: ManifestModel::Manifest) = m.projectName
+    fn keyOf(id: Identity::ReleaseId) = id.key
+    fn reqKey(edge) = ManifestModel::requirementOf(edge).package
+
+    /// ` (build)` or ` (test)` after a non-Runtime edge.
+    export fn kindSuffix(edge) = match ManifestModel::edgeRank(edge) {
+        0 => ""
+        1 => " (build)"
+        _ => " (test)"
+    }
+
+    fn pad(depth) = repeat(indent, depth) ?: ""
+    fn mark(repeated) = if repeated { repeatMark } else { "" }
+
+    fn lineOf(depth, pkg, edge, repeated) = pad(depth) + Lockfile::compact(releaseOf(pkg)) + kindSuffix(edge) + mark(repeated)
+
+    fn unlockedLine(depth, edge) = pad(depth) + Names::display(reqKey(edge)) + kindSuffix(edge) + unlocked
+
+    fn withLine(w: Walk, line) = Walk { printed: listAppend(w.printed, line), visited: w.visited }
+    fn withVisited(w: Walk, key) = Walk { printed: w.printed, visited: listAppend(w.visited, key) }
+    fn seen(w: Walk, key) = Names::includes(w.visited, key)
+
+    /// One edge: the pinned package's line and, the first time, its subtree.
+    fn edgeLines(lock, depth, w, edge) -> Walk = match Lockfile::packageFor(packagesOf(lock), reqKey(edge)) {
+        Error => withLine(w, unlockedLine(depth, edge))
+        Success { value } => packageLines(lock, depth, w, edge, value)
+    }
+
+    fn packageLines(lock, depth, w, edge, pkg) -> Walk = {
+        let key = keyOf(releaseOf(pkg))
+        let repeated = seen(w, key)
+        let printed = withLine(w, lineOf(depth, pkg, edge, repeated))
+        if repeated { printed } else { childLines(lock, depth + 1, withVisited(printed, key), edgesOf(pkg)) }
+    }
+
+    fn childLines(lock, depth, w, edges) -> Walk = foldList(edges, w, fn(acc, edge) => edgeLines(lock, depth, acc, edge))
+
+    fn printedOf(w: Walk) = w.printed
+
+    /// The tree: the project name, then the root edges and their subtrees.
+    fn treeOf(manifest, lock) = Reports::success(listPrepend(printedOf(childLines(lock, 1, Walk { printed: [], visited: [] }, rootEdges(lock))), nameOf(manifest)))
+
+    fn withLock(project, lock) = match Project::readAt(project) {
+        Error { message } => failed([message])
+        Success { value } => treeOf(value, lock)
+    }
+
+    /// The tree of the project at `project`, or `tree.no-lock` with the reason.
+    fn at(project) = match Project::readLockAt(project) {
+        Error { message } => failed(["${noLockCode} ${message}"])
+        Success { value } => withLock(project, value)
+    }
+
+    /// The whole command.
+    export fn run(args) = match Flags::parse(args, [Flags::projectFlag], []) {
+        Error => usageReport()
+        Success { value } => at(Flags::project(value))
+    }
+}

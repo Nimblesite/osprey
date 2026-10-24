@@ -9,6 +9,7 @@ pub(super) type Result<T> = std::result::Result<T, SyntaxError>;
 pub(super) struct Lowerer<'s> {
     source: &'s str,
     scopes: Vec<Scope>,
+    generated: usize,
     pub(super) errors: Vec<SyntaxError>,
     pub(super) bindings: Vec<BindingRange>,
     pub(super) annotations: Vec<crate::AnnotationEdit>,
@@ -69,6 +70,7 @@ impl<'s> Lowerer<'s> {
         Self {
             source,
             scopes: vec![Scope::new(true)],
+            generated: 0,
             errors: Vec::new(),
             bindings: Vec::new(),
             annotations: Vec::new(),
@@ -119,6 +121,13 @@ impl<'s> Lowerer<'s> {
         let result = action(self);
         let _ = self.scopes.pop();
         result
+    }
+
+    /// A fresh compiler-generated binding name, unspellable in source.
+    pub(super) fn fresh(&mut self, role: &str) -> String {
+        let name = osprey_ast::generated_name(role, self.generated);
+        self.generated += 1;
+        name
     }
 
     pub(super) fn lookup(&self, name: &str) -> Option<bool> {
@@ -234,14 +243,27 @@ impl<'s> Lowerer<'s> {
         }
     }
 
-    pub(super) fn bind(&mut self, node: Node<'_>, mutable: bool) -> Result<()> {
-        let name = self.text(node).to_owned();
-        if reserved(&name) {
+    /// A name no binding may take: an Osprey intrinsic, or the builtin a
+    /// Python spelling lowers onto (`length` for `len`, `intDiv` for `//`).
+    fn bindable(node: Node<'_>, name: &str) -> Result<()> {
+        if reserved(name) {
             return Err(Self::error(
                 node,
                 format!("`{name}` is a reserved Osprey intrinsic"),
             ));
         }
+        if let Some(python) = python_lowering_target(name) {
+            return Err(Self::error(
+                node,
+                format!("binding `{name}` shadows the builtin that `{python}` lowers onto"),
+            ));
+        }
+        Ok(())
+    }
+
+    pub(super) fn bind(&mut self, node: Node<'_>, mutable: bool) -> Result<()> {
+        let name = self.text(node).to_owned();
+        Self::bindable(node, &name)?;
         let Some(scope) = self.scopes.last_mut() else {
             return self.unsupported(node);
         };
@@ -325,4 +347,16 @@ fn reserved(name: &str) -> bool {
         name,
         "perform" | "resume" | "update" | "spawn" | "await_fiber" | "yield_fiber" | "send" | "recv"
     )
+}
+
+/// The Python spelling whose lowering lands on this Osprey name. Binding the
+/// Osprey name would silently redirect that lowering — `len` onto a local
+/// `length`, `//` onto a local `intDiv` — so the binding is rejected with a
+/// diagnostic naming both names ([FLAVOR-PYTHON-EXPRESSIONS]).
+fn python_lowering_target(name: &str) -> Option<&'static str> {
+    match name {
+        "length" => Some("len"),
+        "intDiv" => Some("//"),
+        _ => None,
+    }
 }

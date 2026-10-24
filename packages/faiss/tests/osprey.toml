@@ -1,0 +1,6 @@
+[project]
+name = "faiss-tests"
+source_roots = [".", "../src", "../../testing/src"]
+python_sources = ["../src/metrics.py", "../src/selectors.py", "../src/flat.py", "../src/idmap.py", "../src/normalize.py", "../src/kmeans.py", "../src/scalar.py", "../src/pq.py", "../../testing/src/check.py", "expected.py", "main.py"]
+default_namespace = "faiss_tests"
+entry = "main.py"

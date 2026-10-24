@@ -1,0 +1,340 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "Cross-fixture digest and equality bindings: the acyclic selection, plan and lock staging, every self-omitting digest, and every envelope digest. A pointer is <fixture>#<JSON pointer into value>.",
+  "relations": [
+    {
+      "name": "release id digest",
+      "kind": "digest",
+      "form": "H",
+      "target": "release-id#/digest",
+      "source": "release-identity-envelope#",
+      "domain": "osprey.release.v1"
+    },
+    {
+      "name": "status chain",
+      "kind": "digest",
+      "form": "H",
+      "target": "release-status-yanked#/previousStatus",
+      "source": "release-status-eligible#",
+      "domain": "osprey.release-status.v1"
+    },
+    {
+      "name": "witness witness-a binds checkpoint",
+      "kind": "digest",
+      "form": "H",
+      "target": "verification-bundle#/witnesses/0/checkpointDigest",
+      "source": "log-checkpoint#",
+      "domain": "osprey.log-checkpoint-record.v1"
+    },
+    {
+      "name": "witness witness-b binds checkpoint",
+      "kind": "digest",
+      "form": "H",
+      "target": "verification-bundle#/witnesses/1/checkpointDigest",
+      "source": "log-checkpoint#",
+      "domain": "osprey.log-checkpoint-record.v1"
+    },
+    {
+      "name": "witness witness-d binds checkpoint",
+      "kind": "digest",
+      "form": "H",
+      "target": "verification-bundle#/witnesses/2/checkpointDigest",
+      "source": "log-checkpoint#",
+      "domain": "osprey.log-checkpoint-record.v1"
+    },
+    {
+      "name": "bundle root version is root role version",
+      "kind": "equal",
+      "left": "verification-bundle#/tufRootVersion",
+      "right": "verification-bundle#/roles/1/version"
+    },
+    {
+      "name": "bundle timestamp expiry is timestamp role expiry",
+      "kind": "equal",
+      "left": "verification-bundle#/timestampExpiresAt",
+      "right": "verification-bundle#/roles/4/expiresAt"
+    },
+    {
+      "name": "bundle checkpoint is the checkpoint record",
+      "kind": "equal",
+      "left": "verification-bundle#/checkpoint",
+      "right": "log-checkpoint#"
+    },
+    {
+      "name": "context binds bundle",
+      "kind": "digest",
+      "form": "H",
+      "target": "resolution-context#/verificationBundleDigest",
+      "source": "verification-bundle#",
+      "domain": "osprey.verification-bundle.v1"
+    },
+    {
+      "name": "context binds checkpoint",
+      "kind": "digest",
+      "form": "H",
+      "target": "resolution-context#/logCheckpointDigest",
+      "source": "verification-bundle#/checkpoint",
+      "domain": "osprey.log-checkpoint-record.v1"
+    },
+    {
+      "name": "context catalogSnapshot equals bundle",
+      "kind": "equal",
+      "left": "resolution-context#/catalogSnapshot",
+      "right": "verification-bundle#/catalogSnapshot"
+    },
+    {
+      "name": "context catalogAsOf equals bundle",
+      "kind": "equal",
+      "left": "resolution-context#/catalogAsOf",
+      "right": "verification-bundle#/catalogAsOf"
+    },
+    {
+      "name": "context solverPolicy equals bundle",
+      "kind": "equal",
+      "left": "resolution-context#/solverPolicy",
+      "right": "verification-bundle#/policyDigest"
+    },
+    {
+      "name": "context tufRootVersion equals bundle",
+      "kind": "equal",
+      "left": "resolution-context#/tufRootVersion",
+      "right": "verification-bundle#/tufRootVersion"
+    },
+    {
+      "name": "context tufRootDigest equals bundle",
+      "kind": "equal",
+      "left": "resolution-context#/tufRootDigest",
+      "right": "verification-bundle#/roles/1/metadataDigest"
+    },
+    {
+      "name": "context tufSnapshotDigest equals bundle",
+      "kind": "equal",
+      "left": "resolution-context#/tufSnapshotDigest",
+      "right": "verification-bundle#/roles/2/metadataDigest"
+    },
+    {
+      "name": "context tufTimestampDigest equals bundle",
+      "kind": "equal",
+      "left": "resolution-context#/tufTimestampDigest",
+      "right": "verification-bundle#/roles/4/metadataDigest"
+    },
+    {
+      "name": "context releaseStatusMetadataDigest equals bundle",
+      "kind": "equal",
+      "left": "resolution-context#/releaseStatusMetadataDigest",
+      "right": "verification-bundle#/roles/0/metadataDigest"
+    },
+    {
+      "name": "proof digest omits itself",
+      "kind": "digest",
+      "form": "H",
+      "target": "resolution-proof#/proofDigest",
+      "source": "resolution-proof#",
+      "domain": "osprey.resolution-proof.v1",
+      "omit": "proofDigest"
+    },
+    {
+      "name": "proof policy is context solver policy",
+      "kind": "equal",
+      "left": "resolution-proof#/policyDigest",
+      "right": "resolution-context#/solverPolicy"
+    },
+    {
+      "name": "plan binds selection",
+      "kind": "digest",
+      "form": "H",
+      "target": "build-plan#/dependencySelection/Release/selectionDigest",
+      "source": "dependency-selection#",
+      "domain": "osprey.dependency-selection.v1"
+    },
+    {
+      "name": "plan binds context",
+      "kind": "digest",
+      "form": "H",
+      "target": "build-plan#/resolutionContextDigest",
+      "source": "resolution-context#",
+      "domain": "osprey.resolution-context.v1"
+    },
+    {
+      "name": "plan binds module-graph",
+      "kind": "digest",
+      "form": "H",
+      "target": "build-plan#/moduleGraphDigest",
+      "source": "module-graph#",
+      "domain": "osprey.module-graph.v1"
+    },
+    {
+      "name": "plan binds compiler-invocation",
+      "kind": "digest",
+      "form": "H",
+      "target": "build-plan#/compilerInvocationDigest",
+      "source": "compiler-invocation#",
+      "domain": "osprey.compiler-invocation.v1"
+    },
+    {
+      "name": "plan binds test-plan",
+      "kind": "digest",
+      "form": "H",
+      "target": "build-plan#/testPlanDigest",
+      "source": "test-plan#",
+      "domain": "osprey.test-plan.v1"
+    },
+    {
+      "name": "plan binds output-layout",
+      "kind": "digest",
+      "form": "H",
+      "target": "build-plan#/outputLayoutDigest",
+      "source": "output-layout#",
+      "domain": "osprey.output-layout.v1"
+    },
+    {
+      "name": "lock root binds plan",
+      "kind": "digest",
+      "form": "H",
+      "target": "release-lock#/root/buildPlanDigest",
+      "source": "build-plan#",
+      "domain": "osprey.build-plan.v1"
+    },
+    {
+      "name": "lock packages are the selection packages",
+      "kind": "equal",
+      "left": "release-lock#/packages",
+      "right": "dependency-selection#/packages"
+    },
+    {
+      "name": "intent binds binding envelope",
+      "kind": "digest",
+      "form": "envelope",
+      "target": "release-intent#/repositoryBindingDigest",
+      "source": "signed-repository-binding#"
+    },
+    {
+      "name": "challenge binds intent envelope",
+      "kind": "digest",
+      "form": "envelope",
+      "target": "release-challenge#/intentEnvelopeDigest",
+      "source": "signed-release-intent#"
+    },
+    {
+      "name": "challenge binds lock",
+      "kind": "digest",
+      "form": "H",
+      "target": "release-challenge#/dependencyLockDigest",
+      "source": "release-lock#",
+      "domain": "osprey.release-lock.v1"
+    },
+    {
+      "name": "challenge binds plan",
+      "kind": "digest",
+      "form": "H",
+      "target": "release-challenge#/buildPlanDigest",
+      "source": "build-plan#",
+      "domain": "osprey.build-plan.v1"
+    },
+    {
+      "name": "challenge binds context",
+      "kind": "digest",
+      "form": "H",
+      "target": "release-challenge#/resolutionContextDigest",
+      "source": "resolution-context#",
+      "domain": "osprey.resolution-context.v1"
+    },
+    {
+      "name": "challenge release digest is the release id digest",
+      "kind": "equal",
+      "left": "release-challenge#/releaseDigest",
+      "right": "release-challenge#/release/digest"
+    },
+    {
+      "name": "challenge intent nonce",
+      "kind": "equal",
+      "left": "release-challenge#/intentNonce",
+      "right": "release-intent#/nonce"
+    },
+    {
+      "name": "authorization binds challenge envelope",
+      "kind": "digest",
+      "form": "envelope",
+      "target": "publication-authorization#/challengeEnvelopeDigest",
+      "source": "signed-release-challenge#"
+    },
+    {
+      "name": "release authorization set",
+      "kind": "digest",
+      "form": "envelope",
+      "target": "release#/authorizationSetDigest",
+      "source": "signed-publication-authorization#"
+    },
+    {
+      "name": "release id digest binds identity envelope",
+      "kind": "digest",
+      "form": "H",
+      "target": "release#/id/digest",
+      "source": "release-identity-envelope-report#",
+      "domain": "osprey.release.v1"
+    },
+    {
+      "name": "dev lock overlay digest",
+      "kind": "digest",
+      "form": "H",
+      "target": "development-lock#/overlayDigest",
+      "source": "development-overlay#",
+      "domain": "osprey.development-overlay.v1"
+    },
+    {
+      "name": "dev lock published base",
+      "kind": "digest",
+      "form": "H",
+      "target": "development-lock#/publishedBaseLock",
+      "source": "release-lock#",
+      "domain": "osprey.release-lock.v1"
+    },
+    {
+      "name": "generation digest omits itself",
+      "kind": "digest",
+      "form": "H",
+      "target": "development-state-generation#/generationDigest",
+      "source": "development-state-generation#",
+      "domain": "osprey.development-generation.v1",
+      "omit": "generationDigest"
+    },
+    {
+      "name": "journal digest omits itself",
+      "kind": "digest",
+      "form": "H",
+      "target": "workspace-transaction#/journalDigest",
+      "source": "workspace-transaction#",
+      "domain": "osprey.workspace-transaction.v1",
+      "omit": "journalDigest"
+    },
+    {
+      "name": "transaction commits the generation",
+      "kind": "equal",
+      "left": "workspace-transaction#/nextGeneration",
+      "right": "development-state-generation#/generationDigest"
+    },
+    {
+      "name": "receipt binds dev lock",
+      "kind": "digest",
+      "form": "H",
+      "target": "development-build-receipt#/developmentLockDigest",
+      "source": "development-lock#",
+      "domain": "osprey.development-lock.v1"
+    },
+    {
+      "name": "statement subject is the receipt",
+      "kind": "digest",
+      "form": "hex",
+      "target": "in-toto-statement#/subject/0/digest/sha256",
+      "source": "development-build-receipt#",
+      "domain": "osprey.development-build-receipt.v1"
+    },
+    {
+      "name": "receipt attestation",
+      "kind": "digest",
+      "form": "envelope",
+      "target": "signed-development-build-receipt#/attestationDigest",
+      "source": "dsse-envelope#"
+    }
+  ]
+}

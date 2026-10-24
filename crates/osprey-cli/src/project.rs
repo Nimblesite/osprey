@@ -126,6 +126,12 @@ impl CompilationInput {
         }
     }
 
+    /// Whether this input is a directory project, whose modules share one
+    /// flattened line numbering that [`Self::location`] maps back per file.
+    pub(crate) fn is_project(&self) -> bool {
+        matches!(self.unit, CompilationUnit::Project(_))
+    }
+
     /// The flavor-neutral program the checker and every source-level tool read.
     pub(crate) fn program(&self) -> &Program {
         match &self.unit {

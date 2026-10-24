@@ -39,7 +39,7 @@ _runtime:
 	  done
 	@$(MAKE) --no-print-directory -s $(NATIVE_RUNTIME_STAMP)
 
-GPU_SHADER_SRC := compiler/runtime/gpu_f64.metal compiler/runtime/gpu_math64.metal compiler/runtime/gpu_device_lib.metal
+GPU_SHADER_SRC := compiler/runtime/gpu_f64.metal compiler/runtime/gpu_math64.metal compiler/runtime/gpu_math_ext.metal compiler/runtime/gpu_device_lib.metal
 compiler/bin/gpu_shader_source.h: $(GPU_SHADER_SRC) scripts/embed_gpu_shader.awk
 	@$(MKDIR) compiler/bin
 	awk -f scripts/embed_gpu_shader.awk $(GPU_SHADER_SRC) > $@
@@ -134,3 +134,23 @@ _runtime_wasm:
 	  done && \
 	  $(WASM_AR) rcs bin/libosprey_runtime_wasm.a $(addprefix bin/wasm/,$(addsuffix .o,$(WASM_RT_SRC))) && \
 	  cp bin/libosprey_runtime_wasm.a lib/
+
+# The runtime bitcode `osprey hunt` links under KLEE [SYMEX-RUNTIME-BITCODE]:
+# the portable runtime subset plus the mock C library, compiled with KLEE's
+# clang and linked into one module. Skips loudly without the toolchain, so
+# `make build` stays green on a machine without KLEE. The closed-module check
+# [SYMEX-MOCK-CLOSED] fails the build on any undefined symbol KLEE does not
+# itself provide: that is a libc call the mock forgot.
+_runtime_klee:
+	@if [ -z "$(KLEE_PREFIX)" ] || [ ! -x "$(KLEE_CC)" ]; then \
+	  echo "(KLEE toolchain not found — $(KLEE_RUNTIME_BC) not built; 'brew install klee' to enable 'osprey hunt')"; \
+	  exit 0; fi; \
+	echo "==> building symbolic runtime bitcode ($(KLEE_RUNTIME_BC))"; \
+	cd compiler && set -e && $(MKDIR) bin/klee && \
+	  for u in $(KLEE_RT_SRC); do \
+	    $(KLEE_CC) $(KLEE_CFLAGS) runtime/$$u.c -o bin/klee/$$(basename $$u).bc || exit 1; \
+	  done && \
+	  $(KLEE_LINK) $(foreach u,$(KLEE_RT_SRC),bin/klee/$(notdir $(u)).bc) -o bin/libosprey_runtime_klee.bc && \
+	  open="$$($(KLEE_NM) --undefined-only bin/libosprey_runtime_klee.bc | awk '{print $$2}' | grep -Ev '$(KLEE_PROVIDED)' || true)"; \
+	  if [ -n "$$open" ]; then \
+	    echo "ERROR: symbolic runtime is not closed; the mock C library lacks:"; echo "$$open"; exit 1; fi

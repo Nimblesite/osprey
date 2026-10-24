@@ -211,57 +211,37 @@ fn fn_typed_field_renders_with_parenthesised_arg() {
     }
 }
 
+/// The body `src`'s one `r = spawn ...` statement spawns; any other lowering
+/// fails the test.
+fn spawned_body(src: &str) -> Expr {
+    match ml_one_stmt(src) {
+        Stmt::Let {
+            value: Expr::Spawn(inner),
+            ..
+        } => *inner,
+        s => panic!("expected spawn, got {s:?}"),
+    }
+}
+
 #[test]
 fn spawn_inline_expr_lowers_to_spawn() {
     // `spawn f x` lowers to `Expr::Spawn` wrapping the call, byte-identical
     // to the Default `spawn f(x)` ([FLAVOR-ML-SPAWN]).
-    let s = ml_one_stmt("r = spawn task 1\n");
+    let inner = spawned_body("r = spawn task 1\n");
     assert!(
-        matches!(
-            s,
-            Stmt::Let {
-                value: Expr::Spawn(_),
-                ..
-            }
-        ),
-        "expected spawn, got {s:?}"
+        matches!(inner, Expr::Call { .. }),
+        "spawn body should be the call, got {inner:?}"
     );
-    if let Stmt::Let {
-        value: Expr::Spawn(inner),
-        ..
-    } = s
-    {
-        assert!(
-            matches!(*inner, Expr::Call { .. }),
-            "spawn body should be the call, got {inner:?}"
-        );
-    }
 }
 
 #[test]
 fn spawn_block_lowers_to_spawn_block() {
     // `spawn` + an indented block lowers to `Expr::Spawn` wrapping the block.
-    let s = ml_one_stmt("r = spawn\n    x = 1\n    task x\n");
+    let inner = spawned_body("r = spawn\n    x = 1\n    task x\n");
     assert!(
-        matches!(
-            s,
-            Stmt::Let {
-                value: Expr::Spawn(_),
-                ..
-            }
-        ),
-        "expected spawn, got {s:?}"
+        matches!(inner, Expr::Block { .. }),
+        "spawn block body should be a Block, got {inner:?}"
     );
-    if let Stmt::Let {
-        value: Expr::Spawn(inner),
-        ..
-    } = s
-    {
-        assert!(
-            matches!(*inner, Expr::Block { .. }),
-            "spawn block body should be a Block, got {inner:?}"
-        );
-    }
 }
 
 #[test]

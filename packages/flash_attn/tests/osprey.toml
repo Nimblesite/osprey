@@ -1,0 +1,6 @@
+[project]
+name = "flash_attn-tests"
+source_roots = [".", "../src", "../../testing/src"]
+python_sources = ["../src/core.py", "../src/attention.py", "../src/naive.py", "../../testing/src/check.py", "expected.py", "main.py"]
+default_namespace = "flash_attn_tests"
+entry = "main.py"

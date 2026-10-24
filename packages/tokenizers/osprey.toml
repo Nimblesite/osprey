@@ -1,0 +1,14 @@
+[project]
+name = "tokenizers"
+source_roots = ["src"]
+python_sources = ["src/Unicode.py", "src/Normalizers.py", "src/PreTokenizers.py", "src/Models.py", "src/Decoders.py", "src/Processors.py", "src/Tokenizer.py"]
+default_namespace = "tokenizers"
+
+[package]
+name = "@osprey/tokenizers"
+license = "MIT"
+summary = "WordPiece, Unigram and WordLevel tokenizers with BERT normalizers, pre-tokenizers and post-processors"
+keywords = ["tokenizers", "wordpiece", "unigram", "bert", "python-flavor"]
+
+[test-dependencies]
+"@osprey/testing" = { epoch = 1, min_release = 1 }

@@ -85,6 +85,7 @@ union ReleaseState { Submitted { submittedAt: DateTime } Quarantined { reason: S
 union ActivationState { Eligible {} Yanked {} Revoked {} }
 type ReleaseStatus { release: ReleaseId sequence: Int state: ActivationState effectiveAt: DateTime reasonDigest: Option<Digest> previousStatus: Option<Digest> roleMetadataVersion: Int }
 type DependencyRequirement { package: PackageKey epoch: CompatibilityEpoch minimumOrdinal: ReleaseOrdinal }
+type DependencyGrant { package: PackageKey capabilities: List<String> }
 type SystemRequirement { capability: String minimumRevision: Int }
 union PackageAssetKind { Utf8Text {} Json {} Png {} }
 union PackageAssetRole { Documentation { kind: PackageAssetKind } RuntimeData { kind: PackageAssetKind requiredCapability: String } }
@@ -102,7 +103,9 @@ type PackageManifest {
   allowWildcardImports: Bool
   publication: Option<PublishedPackageMetadata>
   testRoots: List<RelativePath>
+  pythonSources: List<RelativePath>
   dependencies: List<DependencyEdge>
+  grants: List<DependencyGrant>
   systemRequirements: List<SystemRequirement>
   assets: List<PackageAsset>
 }

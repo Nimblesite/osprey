@@ -1,0 +1,6 @@
+[project]
+name = "tokenizers-hunt-unigram"
+source_roots = ["../..", "../../../testing/src", "."]
+python_sources = ["../../../testing/src/check.py", "../../src/Unicode.py", "../../src/Normalizers.py", "../../src/PreTokenizers.py", "../../src/Models.py", "../../src/Decoders.py", "../../src/Processors.py", "../../src/Tokenizer.py", "unigram.py"]
+default_namespace = "tokenizers_hunt"
+entry = "unigram.py"

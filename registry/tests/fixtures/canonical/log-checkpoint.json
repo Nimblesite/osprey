@@ -1,0 +1,16 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "Checkpoint record; logCheckpointDigest hashes it with osprey.log-checkpoint-record.v1.",
+  "type": "LogCheckpoint",
+  "value": {
+    "logId": "osprey-log-1",
+    "treeSize": 8,
+    "rootHash": "sha256:af718524bffebd6cfa33a52c3b617101ac3c17fd0e72e4812f5548a468a9f403",
+    "issuedAt": "2026-10-02T12:30:45.123Z",
+    "operatorSignatureDigest": "sha256:4954df6ea2ac284ae9ebdba6a83663908f0de78918a1be78e0bba290b757226a"
+  },
+  "canonical": "{\"issuedAt\":\"2026-10-02T12:30:45.123Z\",\"logId\":\"osprey-log-1\",\"operatorSignatureDigest\":\"sha256:4954df6ea2ac284ae9ebdba6a83663908f0de78918a1be78e0bba290b757226a\",\"rootHash\":\"sha256:af718524bffebd6cfa33a52c3b617101ac3c17fd0e72e4812f5548a468a9f403\",\"treeSize\":8}",
+  "canonicalLength": 260,
+  "domain": "osprey.log-checkpoint-record.v1",
+  "digest": "sha256:92d39bde1bbbae25aa8a76acec24787aa40ace591b09449b001d216330adcf0d"
+}

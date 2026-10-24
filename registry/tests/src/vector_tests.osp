@@ -1,0 +1,157 @@
+namespace registry_tests;
+import registry::Bytes
+import registry::Sha256
+import registry::Digests
+import registry::Canonical
+import registry::Merkle
+import registry::Dsse
+import registry::Json
+import registry_tests::Fixtures
+
+/// Primary-specification vectors — FIPS 180-4 SHA-256, RFC 8785 JCS, DSSE
+/// PAE with the spec 0030 WebAuthn challenge and EnvelopeDigest, digest
+/// algorithm agility, and RFC 9162 Merkle inclusion/consistency proofs —
+/// read from registry/tests/fixtures/vectors and asserted against the core
+/// helpers. Every golden was computed independently of the code under test.
+module VectorTests {
+
+    fn shaCases() = {
+        let fx = Fixtures::load("vectors/sha256.json")
+        Fixtures::report("sha256 FIPS 180-4 vectors", Fixtures::items(Fixtures::field(fx, "cases")), fn(c) =>
+            Sha256::ofString(Fixtures::text(Fixtures::field(c, "text"))) == Fixtures::text(Fixtures::field(c, "sha256")))
+    }
+
+    fn parseOk(t) = match Digests::parse(t) {
+        Success { value } => value == t
+        Error => false
+    }
+
+    fn parseCode(c) = match Digests::parse(Fixtures::text(Fixtures::field(c, "text"))) {
+        Error { message } => message == Fixtures::text(Fixtures::field(c, "code"))
+        Success => false
+    }
+
+    fn agilityCases() = {
+        let fx = Fixtures::load("vectors/digest-agility.json")
+        Fixtures::report("digest agility accepted", Fixtures::texts(Fixtures::field(fx, "valid")), parseOk)
+        Fixtures::report("digest agility rejected", Fixtures::items(Fixtures::field(fx, "invalid")), parseCode)
+    }
+
+    fn canonOk(c) = match Canonical::canonicalize(Fixtures::text(Fixtures::field(c, "input"))) {
+        Success { value } => value == Fixtures::text(Fixtures::field(c, "canonical"))
+        Error => false
+    }
+
+    fn canonRejected(c) = match Canonical::canonicalize(Fixtures::text(Fixtures::field(c, "input"))) {
+        Error { message } => startsWith(message, Fixtures::text(Fixtures::field(c, "code")))
+        Success => false
+    }
+
+    fn canonCases() = {
+        let fx = Fixtures::load("vectors/rfc8785.json")
+        Fixtures::report("rfc8785 canonical form", Fixtures::items(Fixtures::field(fx, "cases")), canonOk)
+        Fixtures::report("rfc8785 rejected inputs", Fixtures::items(Fixtures::field(fx, "rejected")), canonRejected)
+    }
+
+    fn paeOk(c) = Bytes::hex(Dsse::pae(Fixtures::text(Fixtures::field(c, "type")), Bytes::fromHex(Fixtures::text(Fixtures::field(c, "payloadHex"))))) == Fixtures::text(Fixtures::field(c, "paeHex"))
+
+    fn intentPae(intent) = Bytes::hex(Dsse::pae(Fixtures::text(Fixtures::field(intent, "payloadType")), Bytes::ofString(Fixtures::text(Fixtures::field(intent, "payloadCanonical"))))) == Fixtures::text(Fixtures::field(intent, "paeHex"))
+
+    fn intentCanonical(intent) = match Canonical::canonicalize(Fixtures::text(Fixtures::field(intent, "payloadInput"))) {
+        Success { value } => value == Fixtures::text(Fixtures::field(intent, "payloadCanonical"))
+        Error => false
+    }
+
+    fn intentChallenge(intent) = Dsse::webAuthnChallenge(Bytes::fromHex(Fixtures::text(Fixtures::field(intent, "paeHex")))) == Fixtures::text(Fixtures::field(intent, "challenge"))
+
+    fn intentEnvelope(intent) = Dsse::envelopeDigest(Bytes::ofString(Fixtures::text(Fixtures::field(intent, "envelopeCanonical")))) == Fixtures::text(Fixtures::field(intent, "envelopeDigest"))
+
+    fn dsseCases() = {
+        let fx = Fixtures::load("vectors/dsse.json")
+        let intent = Fixtures::field(fx, "releaseIntent")
+        Fixtures::report("dsse PAE bytes", Fixtures::items(Fixtures::field(fx, "pae")), paeOk)
+        checkAll("dsse release intent detached forms", [
+            intentPae(intent),
+            intentCanonical(intent),
+            intentChallenge(intent),
+            intentEnvelope(intent)
+        ])
+    }
+
+    fn merkleLeaves() = mapList(Fixtures::texts(Fixtures::field(Fixtures::load("vectors/merkle.json"), "leaves")), Bytes::fromHex)
+
+    fn merkleRoots() = Fixtures::texts(Fixtures::field(Fixtures::load("vectors/merkle.json"), "roots"))
+
+    fn rootAt(size) = listGet(merkleRoots(), size) ?: ""
+
+    fn firstLeaves(leaves, n) = range(0, n) |> map(fn(i) => listGet(leaves, i) ?: []) |> toList
+
+    fn rootMatches(i) = Bytes::hex(Merkle::root(firstLeaves(merkleLeaves(), i))) == rootAt(i)
+
+    fn hexProof(c) = mapList(Fixtures::texts(Fixtures::field(c, "proof")), Bytes::fromHex)
+
+    fn hexes(hashes) = join(mapList(hashes, Bytes::hex), ",")
+
+    fn inclusionOk(c) = {
+        let index = Fixtures::number(Fixtures::field(c, "index"))
+        let size = Fixtures::number(Fixtures::field(c, "size"))
+        let proof = hexProof(c)
+        let leaf = Merkle::leafHash(listGet(merkleLeaves(), index) ?: [])
+        match Merkle::verifyInclusion(index, size, leaf, proof, Bytes::fromHex(rootAt(size))) {
+            true => hexes(Merkle::inclusionProof(index, firstLeaves(merkleLeaves(), size))) == hexes(proof)
+            false => false
+        }
+    }
+
+    fn consistencyOk(c) = {
+        let first = Fixtures::number(Fixtures::field(c, "first"))
+        let second = Fixtures::number(Fixtures::field(c, "second"))
+        let proof = hexProof(c)
+        let verified = Merkle::verifyConsistency(first, second, Bytes::fromHex(rootAt(first)), Bytes::fromHex(rootAt(second)), proof)
+        match verified {
+            true => hexes(Merkle::consistencyProof(first, firstLeaves(merkleLeaves(), second))) == hexes(proof)
+            false => false
+        }
+    }
+
+    fn negativeRoot(c, size) = match Json::get(c, "root") {
+        Success { value } => rootAt(Fixtures::number(value))
+        Error => rootAt(size)
+    }
+
+    fn inclusionRejected(c) = {
+        let index = Fixtures::number(Fixtures::field(c, "index"))
+        let size = Fixtures::number(Fixtures::field(c, "size"))
+        let leaf = Merkle::leafHash(listGet(merkleLeaves(), index) ?: [])
+        !Merkle::verifyInclusion(index, size, leaf, hexProof(c), Bytes::fromHex(negativeRoot(c, size)))
+    }
+
+    fn consistencyRejected(c) = {
+        let first = Fixtures::number(Fixtures::field(c, "first"))
+        let second = Fixtures::number(Fixtures::field(c, "second"))
+        let proof = hexProof(c)
+        match Fixtures::text(Fixtures::field(c, "label")) == "swapped roots" {
+            true => !Merkle::verifyConsistency(first, second, Bytes::fromHex(rootAt(second)), Bytes::fromHex(rootAt(first)), proof)
+            false => !Merkle::verifyConsistency(first, second, Bytes::fromHex(rootAt(first)), Bytes::fromHex(rootAt(second)), proof)
+        }
+    }
+
+    fn merkleCases(kind, run) = Fixtures::report("merkle ${kind}", foldList(Fixtures::items(Fixtures::field(Fixtures::load("vectors/merkle.json"), "negative")), [],
+        fn(acc, c) => if Fixtures::text(Fixtures::field(c, "kind")) == kind { listAppend(acc, c) } else { acc }), run)
+
+    /// Every primary-specification vector group, in one run.
+    export fn run() = {
+        let fx = Fixtures::load("vectors/merkle.json")
+        test("vector: sha256", shaCases)
+        test("vector: digest agility", agilityCases)
+        test("vector: rfc8785", canonCases)
+        test("vector: dsse", dsseCases)
+        test("vector: merkle roots", fn() => Fixtures::report("merkle roots 0..8", range(0, 9) |> toList, rootMatches))
+        test("vector: merkle inclusion", fn() => Fixtures::report("merkle inclusion proofs", Fixtures::items(Fixtures::field(fx, "inclusion")), inclusionOk))
+        test("vector: merkle consistency", fn() => Fixtures::report("merkle consistency proofs", Fixtures::items(Fixtures::field(fx, "consistency")), consistencyOk))
+        test("vector: merkle rejection", fn() => {
+            merkleCases("inclusion", inclusionRejected)
+            merkleCases("consistency", consistencyRejected)
+        })
+    }
+}

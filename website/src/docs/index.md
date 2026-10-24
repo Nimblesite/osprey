@@ -30,6 +30,11 @@ Osprey uses typed algebraic effects to separate application requests from their 
 - **[Browse working examples](https://github.com/Nimblesite/osprey/tree/main/examples)** — study native, HTTP, WebSocket, terminal, graphics, and WebAssembly programs.
 - **[Document your modules](/docs/documentation/)** — generate HTML API references, add Markdown guides and custom CSS, and test documentation examples.
 
+## Packages
+
+- **[Package manager](/docs/package-manager/)** — a registry that is a folder, a client that verifies every byte, epochs instead of SemVer, one deterministic resolver, and a lock that build and run obey offline. Written in Osprey from the HTTP server to the SHA-256.
+- **[Package specification](/spec/0029-packagemanagement/)** — the normative contract: folder registry, manifests, identity, resolution, locks, the REST API and the command surface.
+
 ## Language
 
 - **[Read the language specification](/spec/)** — the intended language contract; check feature status for current implementation limits.

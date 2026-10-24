@@ -1,0 +1,67 @@
+namespace registry_tests;
+import registry::Identity
+import registry::ManifestModel
+import registry::Names
+import registry::Resolution
+
+/// Deterministic random dependency graphs for the resolver's property tests
+/// ([PACKAGE-RESOLUTION]): a linear congruential generator seeds small
+/// graphs (one to three keys, one or two releases each, random Runtime edges
+/// that may form cycles, random root floors), so the resolver and the
+/// exhaustive oracle can be compared on inputs nobody wrote by hand, and the
+/// same graph can be handed over with its lists permuted.
+module GraphGen {
+    let modulus = 2147483647
+    let multiplier = 48271
+    let keyNames = ["app", "lib", "util"]
+    let target = "x86_64-linux"
+
+    /// The generator state: the last value drawn.
+    type Rng = { seed: int }
+
+    fn next(r: Rng) = Rng { seed: (r.seed * multiplier) % modulus }
+    fn draw(r: Rng, bound) = r.seed % bound
+
+    /// `count` draws below `bound`, with the state after them.
+    fn draws(r, count, bound) -> List<int> = if count <= 0 { [] } else { listPrepend(draws(next(r), count - 1, bound), draw(next(r), bound)) }
+
+    fn stateAfter(r, count) -> Rng = if count <= 0 { r } else { stateAfter(next(r), count - 1) }
+
+    fn keyAt(i) = Names::Key { scope: "g", name: listGet(keyNames, i) ?: "app" }
+
+    fn digestOf(k, ordinal) = "sha256:${repeat("0", 60) ?: ""}${k}00${ordinal}"
+
+    fn release(k, ordinal) = Identity::ReleaseId { key: keyAt(k), epoch: 1, ordinal: ordinal, digest: digestOf(k, ordinal) }
+
+    fn edge(toKey, floor) = ManifestModel::Runtime { requirement: ManifestModel::Requirement { package: keyAt(toKey), epoch: 1, minimumOrdinal: floor } }
+
+    /// Edges of one release: each other key with probability one half, floors 0..2.
+    fn edgesOf(keys, k, choices) = foldList(range(0, keys) |> toList, [], fn(acc, other) =>
+        if other == k || (listGet(choices, other * 2) ?: 0) % 2 == 0 { acc } else { listAppend(acc, edge(other, (listGet(choices, other * 2 + 1) ?: 0) % 3)) })
+
+    fn entry(keys, k, ordinal, choices) = Resolution::Entry {
+        release: release(k, ordinal),
+        activation: "Eligible",
+        targets: [target],
+        capabilities: [],
+        dependencies: edgesOf(keys, k, choices)
+    }
+
+    fn entriesOf(keys, k, releases, r) = mapList(range(1, releases + 1) |> toList, fn(ordinal) => entry(keys, k, ordinal, draws(stateAfter(r, ordinal * 7), keys * 2, 6)))
+
+    fn catalogOf(keys, r) = foldList(range(0, keys) |> toList, [], fn(acc, k) => listConcat(acc, entriesOf(keys, k, 1 + draw(stateAfter(r, k + 1), 2), stateAfter(r, k * 13))))
+
+    fn rootDeps(keys, r) = foldList(range(0, keys) |> toList, [], fn(acc, k) => if draw(stateAfter(r, k + 3), 3) == 0 && k > 0 { acc } else { listAppend(acc, edge(k, draw(stateAfter(r, k + 5), 3))) })
+
+    /// The `n`th graph: deterministic in `n`.
+    export fn graph(n) = {
+        let r = stateAfter(Rng { seed: 1 + n * 7919 }, 3)
+        let keys = 1 + draw(r, 3)
+        Resolution::Graph { target: target, granted: [], grants: [], rootDeps: rootDeps(keys, r), current: [], catalog: catalogOf(keys, r) }
+    }
+
+    fn reversed(xs) = foldList(xs, [], fn(acc, x) => listPrepend(acc, x))
+
+    /// The same graph with its catalog and root edges in reverse order.
+    export fn permuted(g: Resolution::Graph) = Resolution::Graph { target: g.target, granted: g.granted, grants: g.grants, rootDeps: reversed(g.rootDeps), current: g.current, catalog: reversed(g.catalog) }
+}

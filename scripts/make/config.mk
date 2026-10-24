@@ -11,6 +11,7 @@
 	registry-test registry-serve registry-blockers vsix-rebuild-reinstall \
 	_language-test _deslop _gpu-demo _graphics-shader \
 	_test_gc_stack_root _test_c_runtime _test_gpu_device _coverage_check_c_runtime _bank_test _test_bench_tools _test_registry _test_registry_blockers \
+	_runtime_klee _test_hunt_mock \
 	_vsix_clean _vsix_bundle _vsix_package _vsix_install _graphics _graphics-smoke
 
 # ---------------------------------------------------------------------------
@@ -242,6 +243,31 @@ endef
 # `#ifndef __wasm__`, so adding them unskips file and random programs on wasm32
 # without pretending fork/exec or pthreads exist.
 WASM_RT_SRC  ?= memory_runtime gpu_runtime gpu_host tensor_file tensor_list string_runtime string_runtime_list float_spelling list_runtime map_runtime map_runtime_hamt json_runtime json_text json_codec effects_runtime test_runtime coverage_runtime web_runtime profiler_runtime wasm_builtins_runtime system_runtime file_runtime random_runtime
+
+# Symbolic execution with KLEE [SYMEX-RUNTIME-BITCODE]. The portable runtime
+# subset plus the mock C library compile to one bitcode module with the pinned
+# KLEE's own clang (Homebrew's llvm@19), so the module parses in KLEE's LLVM.
+# x86_64-unknown-linux-gnu on every host: KLEE's va_arg lowering is x86-64
+# only, and the mock's own headers make the triple carry no libc. The build is
+# skipped loudly when KLEE's toolchain is absent; `osprey hunt` then says so.
+KLEE_PREFIX   ?= $(shell for d in "$$OSPREY_KLEE_PREFIX" /opt/homebrew/opt/klee /usr/local/opt/klee /home/linuxbrew/.linuxbrew/opt/klee; do [ -n "$$d" ] && [ -x "$$d/bin/klee" ] && { echo "$$d"; break; }; done)
+KLEE_LLVM_BIN ?= $(shell for d in "$$OSPREY_KLEE_LLVM" /opt/homebrew/opt/llvm@19/bin /usr/local/opt/llvm@19/bin /home/linuxbrew/.linuxbrew/opt/llvm@19/bin /usr/lib/llvm-19/bin; do [ -n "$$d" ] && [ -x "$$d/clang" ] && { echo "$$d"; break; }; done)
+KLEE_CC       ?= $(KLEE_LLVM_BIN)/clang
+KLEE_LINK     ?= $(KLEE_LLVM_BIN)/llvm-link
+KLEE_NM       ?= $(KLEE_LLVM_BIN)/llvm-nm
+KLEE_RT_SRC   ?= $(filter-out web_runtime wasm_builtins_runtime,$(WASM_RT_SRC)) $(patsubst compiler/runtime/%.c,%,$(filter-out %_tests.c,$(wildcard compiler/runtime/klee/*.c)))
+KLEE_CFLAGS   ?= --target=x86_64-unknown-linux-gnu -nostdlibinc -isystem runtime/klee/include \
+  -emit-llvm -c -g -O0 -Xclang -disable-O0-optnone -std=c11 $(WARN_MAX) -U_FORTIFY_SOURCE -fno-stack-protector \
+  -fsanitize=undefined -fno-sanitize=function -DOSP_SYMBOLIC -DOSP_FLOAT_SPELLING_PORTABLE -D_GNU_SOURCE '-D__thread=' '-D_Thread_local='
+KLEE_RUNTIME_BC ?= compiler/bin/libosprey_runtime_klee.bc
+# The mock C library built for the HOST, so its unit tests can run on any
+# machine (the mock's own klee/klee.h stands in for KLEE's) [SYMEX-MOCK-TESTS].
+HUNT_MOCK_SRC   := $(patsubst compiler/runtime/%.c,%,$(filter-out %_tests.c,$(wildcard compiler/runtime/klee/*.c)))
+HUNT_MOCK_HOST_CFLAGS ?= -nostdlibinc -isystem runtime/klee/include -fno-builtin -std=c11 -O1 -g $(WARN_MAX) \
+  -U_FORTIFY_SOURCE -fno-stack-protector -DOSP_SYMBOLIC -DOSP_FLOAT_SPELLING_PORTABLE -D_GNU_SOURCE '-D__thread=' '-D_Thread_local='
+# Symbols KLEE itself defines, so the closed-module check [SYMEX-MOCK-CLOSED]
+# accepts them: its intrinsics, UBSan handlers, allocator and `--libc=klee`.
+KLEE_PROVIDED := ^(klee_|__ubsan_handle_|__assert_fail$$|abort$$|atexit$$|exit$$|_exit$$|calloc$$|free$$|malloc$$|realloc$$|mem(cmp|cpy|move|set|chr)$$|str(len|cmp|ncmp|chr|rchr|cpy|ncpy|cat|tol|toul)$$|to(lower|upper)$$|atoi$$)
 # `make wasm-serve` static-host dir + port for the in-browser example.
 WASM_SERVE_DIR  ?= examples/wasm
 WASM_SERVE_PORT ?= 8080

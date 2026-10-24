@@ -1,0 +1,168 @@
+namespace registry_cli;
+import registry_host::Host
+import registry_cli::Flags
+import registry_cli::Reports
+import registry_cli::Project
+import registry_cli::Lockfile
+import registry_cli::Fetch
+import registry_cli::Overlay
+import registry_cli::PythonPlane
+import registry::Bytes
+import registry::Manifest
+import registry::ManifestJson
+import registry::ManifestModel
+import registry::Maybe
+import registry::Names
+import registry::Release
+import registry::Source
+import registry::Surface
+
+/// `osprey-pkg fetch` with no target: install every release the folder lock
+/// names through the same verified download as `fetch <digest>`. A tree whose
+/// `SourceDigest` already equals its release digest is skipped (`=`); anything
+/// else is fetched (`+`); one failed package is its stable code line, the rest
+/// still run, and the status is 1 at the end. Implements the lock-consuming
+/// half of [PACKAGE-FOLDER-REGISTRY].
+module Install {
+    let failStatus = 1
+    let usageCode = "install.usage"
+    let noLockCode = "install.no-lock"
+    let surfaceCode = "capability.surface"
+
+    type Tally = { lines: List<string>, failed: bool }
+    type CommandLine = { base: string, project: string }
+
+    let usageText = ["usage: osprey-pkg fetch [--registry <base-url>] [--project <dir>]"]
+
+    fn usageReport() = Reports::usage(listPrepend(usageText, usageCode))
+
+    fn commandLine(parsed) = CommandLine { base: Flags::given(parsed, Fetch::registryFlag, Fetch::defaultRegistry), project: Flags::project(parsed) }
+
+    // Reading builds `Release::File` (whose fields no other record shares),
+    // then `Source::entryOf` maps them non-recursively exactly as
+    // `ReleaseFiles::assemble` does: an effectful recursive function that
+    // constructs `Source::Entry` (whose `path` is shared with `Asset`) trips
+    // the issue-#273 codegen quarantine.
+    fn readNext(dir, relPaths, i, files, rel) = match perform Host::Files.read("${dir}/${rel}") {
+        Success { value } => readFiles(dir, relPaths, i + 1, listAppend(files, Release::File { relPath: rel, content: value }))
+        Error { message } => Error { message: message }
+    }
+
+    fn readFiles(dir, relPaths, i, files) -> Result<List<Release::File>, string> = if i >= length(relPaths) {
+        Success { value: files }
+    } else {
+        readNext(dir, relPaths, i, files, listGet(relPaths, i) ?: "")
+    }
+
+    fn entriesOf(files) = mapList(files, fn(file: Release::File) => Source::entryOf(file.relPath, Bytes::ofString(file.content)))
+
+    fn kindOf(walk: Host::Walk) = if !isEmpty(walk.executable) { Source::kindCode("executable") }
+        else if !isEmpty(walk.special) { Source::kindCode("special") }
+        else { "" }
+
+    /// The files a walk found, read in walk order; a non-regular entry or an
+    /// unreadable file is its stable code.
+    export fn filesOfWalked(walk: Host::Walk, dir) = {
+        let kind = kindOf(walk)
+        if kind != "" { Error { message: kind } } else { readFiles(dir, walk.regular, 0, []) }
+    }
+
+    /// `SourceDigest` of a file list, recomputed exactly as the server computed
+    /// the release digest ([PACKAGE-SOURCE-CANONICAL]).
+    export fn digestOfFiles(fileList) = Source::digest(entriesOf(fileList))
+
+    /// The manifest text among a tree's files, "" when the tree has none.
+    export fn manifestTextIn(fileList) = foldList(fileList, "", fn(found, f: Release::File) => if f.relPath == "osprey.toml" { f.content } else { found })
+
+    /// The canonical manifest digest of a tree's manifest, or its rejection.
+    export fn manifestDigestOf(fileList) = match Manifest::accepted(Manifest::parse(manifestTextIn(fileList))) {
+        Error { message } => Error { message: message }
+        Success { value } => ManifestJson::digest(value)
+    }
+
+    fn systemCapabilities(fileList) = match Manifest::accepted(Manifest::parse(manifestTextIn(fileList))) {
+        Success { value } => mapList(value.systemRequirements, fn(s: ManifestModel::SystemRequirement) => s.capability)
+        Error => []
+    }
+
+    /// The capability surface of an installed tree's files, recomputed as
+    /// `lock` computed it ([PACKAGE-CAPABILITY-CONFINEMENT]).
+    export fn surfaceOfFiles(fileList) = Surface::ofRelease(fileList, systemCapabilities(fileList))
+
+    /// Whether the recomputed surface is the one the lock pins.
+    export fn surfaceMatches(pkg: Lockfile::Package, fileList) = join(surfaceOfFiles(fileList), "\n") == join(pkg.surface, "\n")
+
+    fn installedFiles(dir) = match perform Host::Tree.walk(dir) {
+        Error { message } => Error { message: message }
+        Success { value } => filesOfWalked(value, dir)
+    }
+
+    fn digestMatches(pkg: Lockfile::Package, fileList) = match digestOfFiles(fileList) {
+        Success { value } => value == pkg.release.digest
+        Error => false
+    }
+
+    fn line(tally: Tally, text) = Tally { lines: listAppend(tally.lines, text), failed: tally.failed }
+    fn failedLine(tally: Tally, text) = Tally { lines: listAppend(tally.lines, text), failed: true }
+
+    /// A tree with the right bytes prints `mark`; one whose surface is not the
+    /// pinned one is `capability.surface` ([PACKAGE-CAPABILITY-CONFINEMENT]).
+    fn checkedSurface(tally, pkg: Lockfile::Package, fileList, mark) = if surfaceMatches(pkg, fileList) {
+        line(tally, "${mark} ${Lockfile::compact(pkg.release)}")
+    } else {
+        failedLine(tally, "${surfaceCode} ${Names::display(pkg.release.key)}")
+    }
+
+    fn present(base, project, tally, pkg, fileList) = if digestMatches(pkg, fileList) { checkedSurface(tally, pkg, fileList, "=") } else { fetched(base, project, tally, pkg) }
+
+    fn installOne(base, project, tally, pkg: Lockfile::Package) = match installedFiles(Fetch::installDirAt(project, pkg.release)) {
+        Success { value } => present(base, project, tally, pkg, value)
+        Error => fetched(base, project, tally, pkg)
+    }
+
+    fn servedFiles(s: Release::Served) = s.files
+
+    fn fetched(base, project, tally, pkg: Lockfile::Package) = match Fetch::fetched(project, base, pkg.release.digest) {
+        Success { value } => checkedSurface(tally, pkg, servedFiles(value), "+")
+        Error { message } => failedLine(tally, message)
+    }
+
+    fn packagesOf(lock: Lockfile::Lock) = lock.packages
+    fn overridesOf(lock: Lockfile::Lock) = lock.overrides
+
+    /// An overridden key lives in its checkout: nothing to install.
+    fn localLine(tally, pkg: Lockfile::Package, o: Lockfile::Override) = line(tally, "local ${Lockfile::compact(pkg.release)} (${o.path})")
+
+    fn installPackage(base, project, lock, tally, pkg: Lockfile::Package) = match Lockfile::overrideFor(overridesOf(lock), pkg.release.key) {
+        Success { value } => localLine(tally, pkg, value)
+        Error => installOne(base, project, tally, pkg)
+    }
+
+    fn pythonOf(lock: Lockfile::Lock) = lock.python
+
+    /// With the uv plane pinned, `uv sync --frozen` creates the environment ([PACKAGE-PYTHON-UV]).
+    fn synced(project, lock, tally) = Maybe::fold(pythonOf(lock), tally, fn(pins) => match PythonPlane::synced(project) {
+        Success { value } => line(tally, value)
+        Error { message } => failedLine(tally, message)
+    })
+
+    fn installLock(base, project, lock) = {
+        let installed = foldList(packagesOf(lock), Tally { lines: [], failed: false }, fn(t, p) => installPackage(base, project, lock, t, p))
+        let tally = if installed.failed { installed } else { synced(project, lock, installed) }
+        if tally.failed { Reports::Report { status: failStatus, lines: tally.lines } }
+        else { Reports::success(tally.lines) }
+    }
+
+    /// The whole command: parse `[--registry <base-url>] [--project <dir>]`,
+    /// read the lock the overlay selects, and install each locked release in
+    /// lock order ([PACKAGE-LOCAL-OVERRIDE]: overridden keys are skipped).
+    export fn run(args) = match Flags::parse(args, [Fetch::registryFlag, Flags::projectFlag], []) {
+        Error => usageReport()
+        Success { value } => withArgs(commandLine(value))
+    }
+
+    fn withArgs(cmd: CommandLine) = match Overlay::activeLockAt(cmd.project) {
+        Error { message } => Reports::Report { status: failStatus, lines: ["${noLockCode} ${message}"] }
+        Success { value } => installLock(cmd.base, cmd.project, value)
+    }
+}

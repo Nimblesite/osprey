@@ -44,7 +44,7 @@ module TomlTests {
     let manifest = "[project]\nname = \"ledger\"\nsource_roots = [\"src\"]\n[package]\nname = \"@finch/ledger\"\nlicense = \"Apache-2.0\"\nsummary = \"Immutable ledger primitives\"\nkeywords = [\"ledger\", \"transactions\"]\n[dependencies]\n\"@osprey/http\" = { epoch = 2, min_release = 17 }\n[system.sqlite]\ncapability = \"sqlite/c-api\"\nmin_revision = 3045000\n"
 
     fn manifestDoc() = checkAll("the [PACKAGE-MANIFEST] example parses into the typed tree", [
-        renderRoot(Toml::parse(manifest)) == "{project={name=\"ledger\",source_roots=[\"src\"]},package={name=\"@finch/ledger\",license=\"Apache-2.0\",summary=\"Immutable ledger primitives\",keywords=[\"ledger\",\"transactions\"]},dependencies={\"@osprey/http\"={epoch=2,min_release=17}},system={sqlite={capability=\"sqlite/c-api\",min_revision=3045000}}}",
+        renderRoot(Toml::parse(manifest)) == "{project={name=\"ledger\",source_roots=[\"src\"]},package={name=\"@finch/ledger\",license=\"Apache-2.0\",summary=\"Immutable ledger primitives\",keywords=[\"ledger\",\"transactions\"]},dependencies={@osprey/http={epoch=2,min_release=17}},system={sqlite={capability=\"sqlite/c-api\",min_revision=3045000}}}",
         join(Toml::keys(Toml::parse(manifest) ?: Toml::Table { pairs: [] }), ",") == "project,package,dependencies,system"
     ])
 
@@ -115,7 +115,7 @@ module TomlTests {
         codeAt(Toml::parse("a = 1_")) == "toml.bad-integer at 1:5",
         codeAt(Toml::parse("a = {b = 1\nc = 2}")) == "toml.inline-table-newline at 1:11",
         codeAt(Toml::parse("a = {b = 1, }")) == "toml.inline-table-trailing-comma at 1:13",
-        codeAt(Toml::parse("a = " + fromCodePoint(233) ?: "")) == "toml.non-ascii at 1:5",
+        codeAt(Toml::parse("a = " + (fromCodePoint(233) ?: ""))) == "toml.non-ascii at 1:5",
         codeAt(Toml::parse("a = @")) == "toml.unexpected-token at 1:5"
     ])
 

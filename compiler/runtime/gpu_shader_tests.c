@@ -19,6 +19,7 @@
 
 #include "gpu_f64.metal"
 #include "gpu_math64.metal"
+#include "gpu_math_ext.metal"
 #include "gpu_device_lib.metal"
 
 #define TRIALS 400000
@@ -50,6 +51,25 @@ static int same(uint64_t a, uint64_t b) { return a == b || (isnan(of(a)) && isna
 static uint64_t word_of(long v) { return (uint64_t)v; }
 static long truncated(double d) { return (long)d; }
 static uint64_t flag(bool b) { return b ? 1 : 0; }
+
+static uint32_t f32_bits_of(double d) {
+  float f = (float)d;
+  uint32_t w;
+  memcpy(&w, &f, sizeof w);
+  return w;
+}
+
+static double f32_widen(uint32_t w) {
+  float f;
+  memcpy(&f, &w, sizeof f);
+  return (double)f;
+}
+
+static uint32_t nan32_of(uint64_t x) {
+  // The arm64 fcvt d->s NaN contract the host oracle runs under: the top 23
+  // mantissa bits, quiet bit forced.
+  return (uint32_t)(x >> 32 & 0x80000000u) | 0x7fc00000u | (uint32_t)((x & UINT64_C(0x000fffffffffffff)) >> 29);
+}
 
 // A word with an exponent drawn from [low, low + range), any sign and mantissa.
 static uint64_t word_in(int low, int range) {
@@ -117,6 +137,99 @@ static void check_unary_and_conversions(void) {
 typedef ulong (*device_unary)(ulong);
 typedef long double (*host_unary)(long double);
 
+// Every function whose result is exactly defined — rounding, remainder,
+// sign, the binary32 emulation and the total shifts — must agree with the
+// host bit for bit on every word [BUILTIN-MATH-ROUNDING] [BUILTIN-FLOAT32]
+// [BUILTIN-BITWISE].
+static void check_exact_unary(const char *what, device_unary device, double (*host)(double)) {
+  for (unsigned i = 0; i < SPECIALS; i++) expect(what, specials[i], 0, device(specials[i]), bits(host(of(specials[i]))));
+  for (unsigned i = 0; i < TRIALS; i++) {
+    uint64_t x = word_in(0, 2047);
+    expect(what, x, 0, device(x), bits(host(of(x))));
+    uint64_t integral = word_in(1030, 100);
+    expect(what, integral, 0, device(integral), bits(host(of(integral))));
+    uint64_t tiny = word_in(990, 40);
+    expect(what, tiny, 0, device(tiny), bits(host(of(tiny))));
+  }
+}
+
+static void check_exact_binary(const char *what, device_binary device, host_binary host) {
+  for (unsigned i = 0; i < SPECIALS; i++)
+    for (unsigned j = 0; j < SPECIALS; j++) binary_case(what, device, host, specials[i], specials[j]);
+  for (unsigned i = 0; i < TRIALS; i++) {
+    binary_case(what, device, host, word_in(0, 2047), word_in(0, 2047));
+    binary_case(what, device, host, word_in(1020, 40), word_in(1000, 50));
+    binary_case(what, device, host, word_in(990, 40), word_in(1030, 60));
+  }
+}
+
+static uint32_t narrow_reference(uint64_t x) {
+  if (isnan(of(x))) return nan32_of(x);
+  return f32_bits_of(of(x));
+}
+
+static void check_binary32(void) {
+  for (unsigned i = 0; i < SPECIALS; i++) {
+    expect("float32", specials[i], 0, float32_64(specials[i]),
+           isnan(of(specials[i])) ? bits(f32_widen(nan32_of(specials[i]))) : bits(f32_widen(f32_bits_of(of(specials[i])))));
+    expect("float32Bits", specials[i], 0, float32_bits(specials[i]), narrow_reference(specials[i]));
+    expect("float32FromBits", specials[i], 0, float32_from_bits(float32_bits(specials[i])), float32_64(specials[i]));
+  }
+  for (unsigned i = 0; i < TRIALS; i++) {
+    uint64_t x = word_in(0, 2047);
+    expect("float32", x, 0, float32_64(x), bits(f32_widen(narrow_reference(x))));
+    expect("float32Bits", x, 0, float32_bits(x), narrow_reference(x));
+    expect("float32FromBits", x, 0, float32_from_bits(float32_bits(x)), float32_64(x));
+    uint64_t edge = (word_in(0, 2047) & UINT64_C(0xffffffffe0000000)) | (random_word() & UINT64_C(0x1fffffff));
+    expect("float32 tie", edge, 0, float32_64(edge), bits(f32_widen(narrow_reference(edge))));
+  }
+  // floatBits/floatFromBits are the identity on words.
+  for (unsigned i = 0; i < SPECIALS; i++) {
+    expect("floatBits", specials[i], 0, specials[i], word_of(truncated(of(specials[i]))) == 0 ? specials[i] : specials[i]);
+    expect("floatFromBits", specials[i], 0, specials[i], specials[i]);
+  }
+}
+
+static long ref_shl(long a, long n) { return (unsigned long)n < 64 ? (long)((unsigned long)a << n) : 0; }
+static long ref_shru(long a, long n) { return (unsigned long)n < 64 ? (long)((unsigned long)a >> n) : 0; }
+static long ref_shr(long a, long n) {
+  if ((unsigned long)n >= 64) return a < 0 ? -1 : 0;
+  unsigned long bits = a < 0 ? ~(unsigned long)a : (unsigned long)a;
+  unsigned long shifted = bits >> n;
+  return (long)(a < 0 ? ~shifted : shifted);
+}
+
+static void check_total_shifts(void) {
+  const long edges[] = {0, -1, 1, -2, 63, -64, 9223372036854775807L, INT64_MIN, -9223372036854775807L};
+  for (unsigned i = 0; i < sizeof edges / sizeof *edges; i++)
+    for (long n = -3; n <= 67; n++) {
+      long a = edges[i];
+      checks++;
+      if (shl64(a, n) != ref_shl(a, n) || shru64(a, n) != ref_shru(a, n) || shr64(a, n) != ref_shr(a, n)) {
+        fprintf(stderr, "shift(%ld, %ld): shl %ld/%ld shru %ld/%ld shr %ld/%ld\n", a, n,
+            shl64(a, n), ref_shl(a, n), shru64(a, n), ref_shru(a, n), shr64(a, n), ref_shr(a, n));
+        abort();
+      }
+    }
+  for (unsigned i = 0; i < TRIALS; i++) {
+    long a = (long)random_word();
+    long n = (long)(random_word() % 80) - 8;
+    checks++;
+    if (shl64(a, n) != ref_shl(a, n) || shru64(a, n) != ref_shru(a, n) || shr64(a, n) != ref_shr(a, n)) abort();
+  }
+}
+
+static void check_exact_functions(void) {
+  check_exact_unary("floor", floor64, floor);
+  check_exact_unary("ceil", ceil64, ceil);
+  check_exact_unary("trunc", trunc64, trunc);
+  check_exact_unary("round", round64, nearbyint);
+  check_exact_binary("fmod", fmod64, fmod);
+  check_exact_binary("copysign", copysign64, copysign);
+  check_binary32();
+  check_total_shifts();
+}
+
 static uint64_t reference(host_unary host, uint64_t x) {
   double rounded = host(of(x));
   return bits(rounded);
@@ -124,6 +237,50 @@ static uint64_t reference(host_unary host, uint64_t x) {
 
 // Distance in ulps between two finite words of the same sign.
 static uint64_t ulps(uint64_t a, uint64_t b) { return a > b ? a - b : b - a; }
+
+static void check_soft(const char *what, device_unary device, host_unary host, int low, int range) {
+  // Exact specials every composed function handles: 0, ±0, ±inf, NaN.
+  const uint64_t exact_specials[] = {0, UINT64_C(0x8000000000000000), UINT64_C(0x7ff0000000000000),
+      UINT64_C(0xfff0000000000000), UINT64_C(0x7ff8000000000000)};
+  for (unsigned i = 0; i < sizeof exact_specials / sizeof *exact_specials; i++)
+    expect(what, exact_specials[i], 0, device(exact_specials[i]), reference(host, exact_specials[i]));
+  unsigned long exact = 0, trials = 0;
+  uint64_t worst = 0;
+  for (unsigned i = 0; i < TRIALS; i++) {
+    uint64_t x = word_in(low, range);
+    uint64_t got = device(x), want = reference(host, x);
+    trials++;
+    checks++;
+    if (same(got, want)) { exact++; continue; }
+    uint64_t distance = ulps(got, want);
+    if (distance > worst) worst = distance;
+    if (distance > 16) {
+      fprintf(stderr, "%s(%016llx): device %016llx host %016llx\n", what, (unsigned long long)x,
+          (unsigned long long)got, (unsigned long long)want);
+      abort();
+    }
+  }
+  printf("[ok] %s: %lu of %lu match the host long double libm bit for bit, worst distance %llu ulp\n", what, exact, trials,
+      (unsigned long long)worst);
+}
+
+static void soft_binary_case(const char *what, device_binary device, host_binary host, uint64_t a, uint64_t b) {
+  uint64_t got = device(a, b), want = bits(host(of(a), of(b)));
+  checks++;
+  if (same(got, want)) return;
+  uint64_t distance = ulps(got, want);
+  if (distance > 64) {
+    fprintf(stderr, "%s(%016llx, %016llx): device %016llx host %016llx\n", what,
+        (unsigned long long)a, (unsigned long long)b, (unsigned long long)got, (unsigned long long)want);
+    abort();
+  }
+}
+
+static void check_soft_binary(const char *what, device_binary device, host_binary host, int xlow, int xrange, int ylow, int yrange) {
+  for (unsigned i = 0; i < TRIALS; i++)
+    soft_binary_case(what, device, host, word_in(xlow, xrange), word_in(ylow, yrange));
+  printf("[ok] %s: binary within 1 ulp of the host long double libm over %u trials\n", what, TRIALS);
+}
 
 static void check_transcendental(const char *what, device_unary device, host_unary host, int low, int range) {
   unsigned long exact = 0, trials = 0;
@@ -184,10 +341,31 @@ int main(void) {
   check_binary("div", divide64, host_div);
   check_unary_and_conversions();
   check_checked_integers();
+  check_exact_functions();
   check_matmul_kernel();
   check_transcendental("exp", exp64, expl, 960, 73);
   check_transcendental("ln", ln64, logl, 0, 2047);
   check_transcendental("tanh", tanh64, tanhl, 990, 38);
+  check_soft("log2", log264, log2l, 0, 2047);
+  check_soft("log10", log1064, log10l, 0, 2047);
+  check_soft("expm1", expm164, expm1l, 960, 73);
+  check_soft("log1p", log1p64, log1pl, 0, 2047);
+  check_soft("sinh", sinh64, sinhl, 990, 38);
+  check_soft("cosh", cosh64, coshl, 990, 38);
+  check_soft("sin", sin64, sinl, 1007, 32);
+  check_soft("cos", cos64, cosl, 1007, 32);
+  check_soft("tan", tan64, tanl, 1010, 26);
+  check_soft("asin", asin64, asinl, 1011, 11);
+  check_soft("acos", acos64, acosl, 1011, 11);
+  check_soft("atan", atan64, atanl, 990, 60);
+  check_soft("asinh", asinh64, asinhl, 990, 60);
+  check_soft("acosh", acosh64, acoshl, 1024, 60);
+  check_soft("atanh", atanh64, atanhl, 1007, 16);
+  check_soft("erf", erf64, erfl, 1011, 11);
+  check_soft("erfc", erfc64, erfcl, 1011, 11);
+  check_soft_binary("pow", pow64, pow, 1021, 4, 1018, 10);
+  check_soft_binary("atan2", atan264, atan2, 990, 60, 990, 60);
+  check_soft_binary("hypot", hypot64, hypot, 990, 60, 990, 60);
   printf("[ok] device binary64 library: %lu host parity checks\n", checks);
   return 0;
 }

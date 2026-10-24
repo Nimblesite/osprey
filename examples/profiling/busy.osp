@@ -24,12 +24,12 @@ fn longest(n, best) = match n {
     _ => longest(n - 1, longer(collatz(n, 0), best))
 }
 
-fn round(k) -> int = {
+fn roundTo(k) -> int = {
     print("round ${k}: fib ${fib(30)}, longest chain ${longest(20000, 0)}")
-    round(k + 1)
+    roundTo(k + 1)
 }
 
 fn main() = {
     handle Arith { overflow _ _ _ wrapped => wrapped }
-    round(1)
+    roundTo(1)
 }

@@ -1,0 +1,110 @@
+// PiMath regression: the math and bitwise builtins [BUILTIN-MATH] and its
+// sections [BUILTIN-MATH-TRIG] [BUILTIN-MATH-HYPERBOLIC] [BUILTIN-MATH-LOG]
+// [BUILTIN-MATH-SPECIAL] [BUILTIN-MATH-ROUNDING] [BUILTIN-FLOAT32]
+// [BUILTIN-FLOAT-BITS] [BUILTIN-FLOATTOINT] [BUILTIN-BITWISE]. The exact
+// families print their byte-exact values (identical on every host and device);
+// the transcendental families compare within 1e-12, which every host libm
+// agrees on, so the golden holds across the default, gc, arc and wasm32 lanes.
+
+/// |a - b| < 1e-12: libm last digits differ between hosts, but never by more
+/// than a couple of ulps — 1e-12 is far above that.
+fn close(a, b) = abs(a - b) < 0.000000000001
+
+/// floatToInt renders deterministically without pinning the error message.
+fn showFloatToInt(x) = match floatToInt(x) {
+    Success { value } => "Success(" + toString(value) + ")"
+    Error => "Error"
+}
+
+fn exactCase() = {
+    print("floor(-2.7)=" + toString(floor(-2.7)))
+    print("ceil(2.3)=" + toString(ceil(2.3)))
+    print("trunc(-2.7)=" + toString(trunc(-2.7)))
+    print("round(2.5)=" + toString(round(2.5)))
+    print("round(3.5)=" + toString(round(3.5)))
+    print("round(-2.5)=" + toString(round(-2.5)))
+    print("fmod(-7.5,2)=" + toString(fmod(-7.5, 2.0)))
+    print("copysign(3,-1)=" + toString(copysign(3.0, -1.0)))
+    print("float32(0.1)=" + toString(float32(0.1)))
+    print("floatBits(1)=" + toString(floatBits(1.0)))
+    print("floatFromBits=" + toString(floatFromBits(4607182418800017408)))
+    print("float32Bits(0.1)=" + toString(float32Bits(0.1)))
+    print("float32FromBits=" + toString(float32FromBits(1036831949)))
+    print("floatToInt(-2.9)=" + showFloatToInt(-2.9))
+    print("floatToInt(2.9)=" + showFloatToInt(2.9))
+    print("floatToInt(nan)=" + showFloatToInt(sqrt(-1.0)))
+    print("floatToInt(inf)=" + showFloatToInt(exp(1000.0)))
+    print("floatToInt(1e300)=" + showFloatToInt(exp(100.0)))
+    print("bitAnd=" + toString(bitAnd(12, 10)))
+    print("bitOr=" + toString(bitOr(12, 10)))
+    print("bitXor=" + toString(bitXor(12, 10)))
+    print("bitNot=" + toString(bitNot(12)))
+    print("shiftLeft=" + toString(shiftLeft(1, 40)))
+    print("shiftLeft(64)=" + toString(shiftLeft(1, 64)))
+    print("shiftRight=" + toString(shiftRight(-16, 2)))
+    print("shiftRightLogical=" + toString(shiftRightLogical(-16, 2)))
+    print("shiftRight(64)=" + toString(shiftRight(-1, 64)))
+    print("shiftRightLogical(64)=" + toString(shiftRightLogical(1, 64)))
+    checkAll("exact families are byte-exact", [
+        floor(-2.7) == -3.0,
+        ceil(2.3) == 3.0,
+        trunc(-2.7) == -2.0,
+        round(2.5) == 2.0,
+        round(3.5) == 4.0,
+        round(-2.5) == -2.0,
+        fmod(-7.5, 2.0) == -1.5,
+        copysign(3.0, -1.0) == -3.0,
+        float32(0.1) == 0.10000000149011612,
+        floatBits(1.0) == 4607182418800017408,
+        floatFromBits(4607182418800017408) == 1.0,
+        float32Bits(0.1) == 1036831949,
+        float32FromBits(1036831949) == 0.10000000149011612,
+        bitAnd(12, 10) == 8,
+        bitOr(12, 10) == 14,
+        bitXor(12, 10) == 6,
+        bitNot(12) == -13,
+        shiftLeft(1, 40) == 1099511627776,
+        shiftLeft(1, 64) == 0,
+        shiftRight(-16, 2) == -4,
+        shiftRightLogical(-16, 2) == 4611686018427387900,
+        shiftRight(-1, 64) == -1,
+        shiftRightLogical(1, 64) == 0
+    ])
+}
+
+fn transcendentalCase() = checkAll("transcendental families within 1e-12", [
+    close(sin(1.0), 0.8414709848078965),
+    close(cos(1.0), 0.5403023058681398),
+    close(tan(0.5), 0.5463024898437905),
+    close(asin(0.5), 0.5235987755982988),
+    close(acos(0.5), 1.0471975511965976),
+    close(atan(0.5), 0.46364760900080615),
+    close(atan2(1.0, -1.0), 2.356194490192345),
+    close(sinh(1.0), 1.1752011936438014),
+    close(cosh(1.0), 1.5430806348152437),
+    close(asinh(1.0), 0.881373587019543),
+    close(acosh(2.0), 1.3169578969248166),
+    close(atanh(0.5), 0.5493061443340549),
+    close(log2(8.0), 3.0),
+    close(log10(1000.0), 3.0),
+    close(log1p(0.1), 0.09531017980432487),
+    close(expm1(0.1), 0.10517091807564763),
+    close(erf(1.0), 0.8427007929497148),
+    close(erfc(1.0), 0.15729920705028516),
+    close(pow(2.0, 10.0), 1024.0),
+    close(hypot(3.0, 4.0), 5.0),
+    // Exact special values of the transcendental families.
+    sin(0.0) == 0.0,
+    cos(0.0) == 1.0,
+    pow(0.0, 0.0) == 1.0,
+    pow(2.0, 0.0) == 1.0,
+    atan2(0.0, 1.0) == 0.0,
+    hypot(0.0, 0.0) == 0.0,
+    log2(1.0) == 0.0,
+    log10(1.0) == 0.0,
+    log1p(0.0) == 0.0,
+    expm1(0.0) == 0.0
+])
+
+test("math builtins: exact families are byte-exact", exactCase)
+test("math builtins: transcendental families within 1e-12", transcendentalCase)

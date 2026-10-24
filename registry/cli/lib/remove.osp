@@ -1,0 +1,54 @@
+namespace registry_cli;
+import registry_cli::Flags
+import registry_cli::Reports
+import registry_cli::Project
+import registry_cli::Fetch
+import registry_cli::ManifestEdit
+import registry_cli::Transaction
+import registry::Names
+
+/// `osprey-pkg remove @scope/name [--registry <base-url>] [--project <dir>]`:
+/// drop the key's dependency line from `osprey.toml` and relock atomically,
+/// so the lock loses the package and whatever only it required
+/// ([PACKAGE-API], plan 0020 Phase 4). A key not declared is `remove.missing`.
+module Remove {
+    let failStatus = 1
+    let usageCode = "remove.usage"
+    let missingCode = "remove.missing"
+    let usageText = ["usage: osprey-pkg remove @scope/name [--registry <base-url>] [--project <dir>]"]
+
+    fn usageReport() = Reports::usage(listPrepend(usageText, usageCode))
+    fn failed(lines) = Reports::Report { status: failStatus, lines: lines }
+
+    fn settingsOf(parsed) = Transaction::Settings {
+        base: Flags::given(parsed, Fetch::registryFlag, Fetch::defaultRegistry),
+        project: Flags::project(parsed),
+        acceptRemovals: false,
+        fresh: false,
+        local: false
+    }
+
+    fn projectOf(s: Transaction::Settings) = s.project
+
+    fn withText(s, key, text) = if ManifestEdit::hasEdge(text, key) {
+        Transaction::commit(s, text, ManifestEdit::withoutEdge(text, key), ["removed ${Names::display(key)}"])
+    } else {
+        failed(["${missingCode} ${Names::display(key)}"])
+    }
+
+    fn withSettings(s, key) = match Project::manifestTextAt(projectOf(s)) {
+        Error { message } => failed([message])
+        Success { value } => withText(s, key, value)
+    }
+
+    fn withKey(key, flags) = match Flags::parse(flags, [Fetch::registryFlag, Flags::projectFlag], []) {
+        Error => usageReport()
+        Success { value } => withSettings(settingsOf(value), key)
+    }
+
+    /// The whole command: the key word first, then the flags.
+    export fn run(args) = match Names::parse(listGet(args, 0) ?: "") {
+        Error => usageReport()
+        Success { value } => withKey(value, Flags::tail(args))
+    }
+}

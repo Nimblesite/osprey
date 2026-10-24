@@ -1,0 +1,6 @@
+[project]
+name = "testing-tests"
+source_roots = [".", "../src"]
+python_sources = ["../src/check.py", "expected.py", "main.py"]
+default_namespace = "testing_tests"
+entry = "main.py"

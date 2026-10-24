@@ -1,0 +1,125 @@
+{
+  "spec": "[PACKAGE-FOLDER-REGISTRY]",
+  "description": "One folder-registry walk with two good releases and one of every refusal: a stray root file, a malformed version, a file where a release directory belongs, an invalid path, an ASCII case collision, a Git LFS pointer, an executable, a special entry and an unreadable file. The loader serves the good releases and reports every refused directory with its stable reason code.",
+  "regular": [
+    "@demo/bad/0.1/src/main.osp",
+    "@demo/case/1.1/src/A.osp",
+    "@demo/case/1.1/src/a.osp",
+    "@demo/exec/1.1/src/main.osp",
+    "@demo/lfs/1.1/data.txt",
+    "@demo/lfs/1.1/src/main.osp",
+    "@demo/link/1.1/src/main.osp",
+    "@demo/locked/1.1/src/main.osp",
+    "@demo/ok/1.1/osprey.toml",
+    "@demo/ok/1.1/src/main.osp",
+    "@demo/ok/1.2/src/main.osp",
+    "@demo/spaced/1.1/src/ma in.osp",
+    "@demo/stray/1.1",
+    "README.md"
+  ],
+  "executable": [
+    "@demo/exec/1.1/run"
+  ],
+  "special": [
+    "@demo/link/1.1/current"
+  ],
+  "contents": [
+    {
+      "path": "@demo/bad/0.1/src/main.osp",
+      "text": "print(1)\n"
+    },
+    {
+      "path": "@demo/case/1.1/src/A.osp",
+      "text": "print(1)\n"
+    },
+    {
+      "path": "@demo/case/1.1/src/a.osp",
+      "text": "print(2)\n"
+    },
+    {
+      "path": "@demo/exec/1.1/src/main.osp",
+      "text": "print(1)\n"
+    },
+    {
+      "path": "@demo/lfs/1.1/data.txt",
+      "text": "version https://git-lfs.github.com/spec/v1\noid sha256:4d7a214614ab2935c943f9e0ff69d22eadbb8f32b1258daaa5e2ca24d17e2393\nsize 12345\n"
+    },
+    {
+      "path": "@demo/lfs/1.1/src/main.osp",
+      "text": "print(1)\n"
+    },
+    {
+      "path": "@demo/link/1.1/src/main.osp",
+      "text": "print(1)\n"
+    },
+    {
+      "path": "@demo/ok/1.1/osprey.toml",
+      "text": "[project]\nname = \"ok\"\n"
+    },
+    {
+      "path": "@demo/ok/1.1/src/main.osp",
+      "text": "print(\"ok\")\n"
+    },
+    {
+      "path": "@demo/ok/1.2/src/main.osp",
+      "text": "print(\"ok 1.2\")\n"
+    },
+    {
+      "path": "@demo/spaced/1.1/src/ma in.osp",
+      "text": "print(1)\n"
+    },
+    {
+      "path": "@demo/stray/1.1",
+      "text": "not a directory\n"
+    },
+    {
+      "path": "README.md",
+      "text": "# registry\n"
+    }
+  ],
+  "unreadable": [
+    "@demo/locked/1.1/src/main.osp"
+  ],
+  "served": [
+    "@demo/ok/1.1",
+    "@demo/ok/1.2"
+  ],
+  "refused": [
+    {
+      "dir": "@demo/bad/0.1",
+      "code": "release.epoch"
+    },
+    {
+      "dir": "@demo/case/1.1",
+      "code": "path.case-collision"
+    },
+    {
+      "dir": "@demo/exec/1.1",
+      "code": "source.kind.executable"
+    },
+    {
+      "dir": "@demo/lfs/1.1",
+      "code": "source.lfs-pointer"
+    },
+    {
+      "dir": "@demo/link/1.1",
+      "code": "source.kind.special"
+    },
+    {
+      "dir": "@demo/locked/1.1",
+      "code": "host.read: src/main.osp: permission denied"
+    },
+    {
+      "dir": "@demo/spaced/1.1",
+      "code": "path.segment-chars"
+    },
+    {
+      "dir": "@demo/stray/1.1",
+      "code": "release-path.segments"
+    },
+    {
+      "dir": "README.md",
+      "code": "release-path.segments"
+    }
+  ]
+}

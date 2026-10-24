@@ -12,14 +12,12 @@ import registry::Maybe
 module ManifestTests {
     let ledger = "registry/tests/fixtures/manifests/ledger/osprey.toml"
     let canonicalFixture = "registry/tests/fixtures/manifests/ledger/canonical.json"
-    let digestFixture = "sha256:3cf016f2487aa8d04ac269e524f976a10f083a49a128aa339626e1e63652c4d7"
+    let digestFixture = "sha256:d444ec8ab0f46d728369d5487bf5618adafbe7d64beb9778107d69ea1ea0fce2"
 
     fn verdict(text) = match Manifest::accepted(Manifest::parse(text)) {
         Success => "accepted"
         Error { message } => message
     }
-
-    fn code(text) = take(verdict(text), indexOf(verdict(text), " at ") ?: byteLength(verdict(text)))
 
     fn manifestOf(text) = Manifest::accepted(Manifest::parse(text))
 
@@ -51,7 +49,7 @@ module ManifestTests {
         }
         checkAll("the spec 0029 manifest is accepted and hashes like the fixture", [
             verdict(text) == "accepted",
-            canonical == readFile(canonicalFixture) ?: "",
+            canonical == (readFile(canonicalFixture) ?: ""),
             digest == digestFixture,
             edges(text) == "0:@osprey/http@e2.r17",
             match parsed {
@@ -67,7 +65,7 @@ module ManifestTests {
             Success { value } => join(value.sourceRoots, ",") == "src" && !value.allowWildcardImports && !Maybe::isPresent(value.publication) && length(value.testRoots) == 0
             Error => false
         },
-        verdict(project("source_roots = [\"src\", \"lib\"]\nentry = \"src/main.osp\"\nflavor = \"ml\"\ndefault_namespace = \"app\"\ntest_roots = [\"test\"]\npython_sources = [\"py\"]\n[modules]\nallow_wildcard_imports = true\npublished_library = true\n")) == "accepted",
+        verdict(project("source_roots = [\"src\", \"lib\"]\nentry = \"src/main.osp\"\nflavor = \"ml\"\ndefault_namespace = \"app\"\ntest_roots = [\"test\"]\npython_sources = [\"src/model.py\"]\n[modules]\nallow_wildcard_imports = true\npublished_library = true\n")) == "accepted",
         edges(project("[dependencies]\n\"@b/b\" = { epoch = 1 }\n\"@a/a\" = { epoch = 2, min_release = 3 }\n[test-dependencies]\n\"@a/a\" = { epoch = 2, min_release = 9 }\n[build-dependencies]\n\"@c/c\" = { epoch = 1, min_release = 0 }\n")) == "0:@a/a@e2.r3 0:@b/b@e1.r0 1:@c/c@e1.r0 2:@a/a@e2.r9",
         match manifestOf(project("[system.sqlite]\ncapability = \"sqlite/c-api\"\nmin_revision = 3045000\n[system.zlib]\ncapability = \"zlib\"\nmin_revision = 0\n")) {
             Success { value } => join(mapList(value.systemRequirements, fn(r) => "${r.capability}:${r.minimumRevision}"), " ") == "sqlite/c-api:3045000 zlib:0"
@@ -75,6 +73,14 @@ module ManifestTests {
         },
         match manifestOf(project("[[assets]]\npath = \"docs/intro.md\"\nrole = \"documentation\"\nkind = \"text\"\nbyte_length = 12\ndigest = \"sha256:7c4a8d09ca3762af61e59520943dc26494f8941b7c4a8d09ca3762af61e59520\"\n[[assets]]\npath = \"data/seed.json\"\nrole = \"runtime-data\"\nkind = \"json\"\nbyte_length = 0\ndigest = \"sha256:7c4a8d09ca3762af61e59520943dc26494f8941b7c4a8d09ca3762af61e59520\"\nrequired_capability = \"asset.read\"\n")) {
             Success { value } => join(mapList(value.assets, fn(a: ManifestModel::Asset) => a.path), " ") == "data/seed.json docs/intro.md"
+            Error => false
+        },
+        verdict(project("source_roots = [\"src\"]\npython_sources = [\"src/model.py\"]\n[package]\nname = \"@finch/ledger\"\nlicense = \"MIT\"\nsummary = \"s\"\nkeywords = [\"a\"]\n")) == "accepted",
+        match manifestOf(project("python_sources = [\"src/model.py\"]\n")) {
+            Success { value } => match indexOf(ManifestJson::canonical(value) ?: "", "\"pythonSources\":[\"src/model.py\"]") {
+                Success => true
+                Error => false
+            }
             Error => false
         }
     ])
@@ -95,7 +101,9 @@ module ManifestTests {
         verdict(project("test_roots = [\"test\", \"TEST\"]\n")) == "manifest.project.test-roots at 3:1",
         verdict(project("[modules]\nallow_wildcard_imports = \"yes\"\n")) == "manifest.modules.allow-wildcard-imports at 4:1",
         verdict(project("[modules]\nstrict = true\n")) == "manifest.modules.unknown-key at 4:1",
-        code(project("python_sources = [\"py\"]\n[package]\nname = \"@finch/ledger\"\nlicense = \"MIT\"\nsummary = \"s\"\nkeywords = [\"a\"]\n")) == "manifest.python-sources-unpublishable"
+        verdict(project("source_roots = [\"src\"]\npython_sources = [\"lib/model.py\"]\n[package]\nname = \"@finch/ledger\"\nlicense = \"MIT\"\nsummary = \"s\"\nkeywords = [\"a\"]\n")) == "manifest.python-source-unrooted at 1:1",
+        verdict(project("python_sources = [\"py\"]\n")) == "manifest.project.python-sources at 3:1",
+        verdict(project("python_sources = \"src/model.py\"\n")) == "manifest.project.python-sources at 3:1"
     ])
 
     fn rejectsPackage() = checkAll("[package]: names, licenses, summaries, keywords", [
@@ -155,7 +163,33 @@ module ManifestTests {
         verdict(project("[[assets]]\npath = \"x.md\"\nrole = \"documentation\"\nkind = \"text\"\nbyte_length = 1\ndigest = \"sha256:${repeat("a", 64) ?: ""}\"\n[[assets]]\npath = \"X.md\"\nrole = \"documentation\"\nkind = \"text\"\nbyte_length = 1\ndigest = \"sha256:${repeat("a", 64) ?: ""}\"\n")) == "path.case-collision at 3:1"
     ])
 
+    fn grantText(g: ManifestModel::Grant) = "${Names::display(g.package)}:${join(g.capabilities, ",")}"
+
+    fn grants(text) = match manifestOf(text) {
+        Success { value } => join(mapList(value.grants, grantText), " ")
+        Error { message } => message
+    }
+
+    /// `capabilities = [...]` on a dependency entry is a per-key grant
+    /// ([PACKAGE-CAPABILITY-CONFINEMENT]): merged across the three tables into
+    /// one canonical set per key, absent when empty, projected as `grants`,
+    /// and refused when a name fails the capability grammar.
+    fn grantsParse() = checkAll("dependency grants merge per key and project as grants", [
+        grants(project("[dependencies]\n\"@b/b\" = { epoch = 1, capabilities = [\"io/process\", \"io/files\", \"io/files\"] }\n\"@a/a\" = { epoch = 1 }\n[build-dependencies]\n\"@b/b\" = { epoch = 1, capabilities = [\"io/network\"] }\n")) == "@b/b:io/files,io/network,io/process",
+        grants(project("[dependencies]\n\"@a/a\" = { epoch = 1, capabilities = [] }\n")) == "",
+        startsWith(verdict(project("[dependencies]\n\"@a/a\" = { epoch = 1, capabilities = [\"Bad Cap\"] }\n")), "manifest.dependency.capability at "),
+        startsWith(verdict(project("[dependencies]\n\"@a/a\" = { epoch = 1, capabilities = \"io/files\" }\n")), "manifest.dependency.capability at "),
+        match manifestOf(project("[dependencies]\n\"@a/a\" = { epoch = 1, capabilities = [\"io/files\"] }\n")) {
+            Success { value } => match indexOf(ManifestJson::canonical(value) ?: "", "\"grants\":[{\"capabilities\":[\"io/files\"],\"package\":{\"name\":\"a\",\"scope\":\"a\"}}]") {
+                Success => true
+                Error => false
+            }
+            Error => false
+        }
+    ])
+
     export fn run() = {
+        test("manifest: dependency grants", grantsParse)
         test("manifest: accepts the spec example", acceptsLedger)
         test("manifest: accepts application roots", acceptsApplications)
         test("manifest: rejects structure", rejectsStructure)

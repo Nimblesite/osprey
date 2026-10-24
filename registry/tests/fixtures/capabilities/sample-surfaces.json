@@ -1,0 +1,48 @@
+{
+  "spec": "[PACKAGE-CAPABILITY-CONFINEMENT]",
+  "description": "The capability surface of every sample-registry release, as the surface scan computes it over the release's files: the sample packages name no ambient builtin, so every scanned surface is empty. The scan covers source files only; a declared [system.*] capability such as @demo/pyadd's python/interop joins the surface in the lock (cli/tests python suite), not here. A sample package that starts using an ambient builtin must declare it here.",
+  "cases": [
+    {
+      "release": "@demo/greeting/1.1",
+      "files": [
+        "osprey.toml",
+        "src/greeting.osp"
+      ],
+      "surface": []
+    },
+    {
+      "release": "@demo/maths/1.1",
+      "files": [
+        "osprey.toml",
+        "src/maths.osp"
+      ],
+      "surface": []
+    },
+    {
+      "release": "@demo/maths/1.2",
+      "files": [
+        "osprey.toml",
+        "src/maths.osp"
+      ],
+      "surface": []
+    },
+    {
+      "release": "@demo/pyadd/1.1",
+      "files": [
+        "osprey.toml",
+        "pyproject.toml",
+        "src/pyadd.osp",
+        "uv.lock"
+      ],
+      "surface": []
+    },
+    {
+      "release": "@demo/report/1.1",
+      "files": [
+        "osprey.toml",
+        "src/report.osp"
+      ],
+      "surface": []
+    }
+  ]
+}

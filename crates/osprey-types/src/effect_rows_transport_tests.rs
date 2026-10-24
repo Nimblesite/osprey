@@ -355,10 +355,13 @@ fn an_opaque_iterator_element_cannot_select_a_pure_method_fallback() {
         "{PROBE}{ACTION}{DISPATCH}\n\
          let items=map(range(0,1),fn(n)=>Action{{m:fetch}})\n"
     );
+    // The element now crosses `map` into `forEach` with its provenance, so
+    // the call resolves to the stored `fetch` — never the pure fallback — and
+    // is reported for the operation it actually performs.
     for invocation in ["item.m()", "dispatch(item)"] {
         assert_errors(
             &format!("{declarations}forEach(items,fn(item)=>print({invocation}))\n"),
-            &["program entry invokes a dynamic callable whose effect provenance cannot be proven; preserve the callable through a statically tracked value path"],
+            &[UNHANDLED],
         );
     }
     probe_call(

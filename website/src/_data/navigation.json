@@ -39,6 +39,13 @@
       ]
     },
     {
+      "title": "Packages",
+      "items": [
+        { "text": "Package manager", "url": "/docs/package-manager/" },
+        { "text": "Package specification", "url": "/spec/0029-packagemanagement/" }
+      ]
+    },
+    {
       "title": "Language",
       "items": [
         { "text": "Language specification", "url": "/spec/language/" },
@@ -71,6 +78,7 @@
         { "text": "Video Tutorials", "url": "/docs/tutorials/" },
         { "text": "Algebraic Effects", "url": "/docs/effects/" },
         { "text": "Python Flavor", "url": "/docs/python-flavor/" },
+        { "text": "Package Manager", "url": "/docs/package-manager/" },
         { "text": "Web Apps Guide", "url": "/docs/web-apps/" },
         { "text": "Mobile Apps Guide", "url": "/docs/mobile-apps/" },
         { "text": "Feature Status", "url": "/status/" },

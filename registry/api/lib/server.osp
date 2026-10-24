@@ -18,7 +18,11 @@ module Server {
 
     let hour = 3600000
 
-    fn headersOf(response: Router::Response) = "Content-Type: ${response.contentType}\r\n" + (if response.etag == "" { "" } else { "ETag: ${response.etag}\r\n" })
+    fn crlfLines(lines) = join(mapList(lines, fn(l) => l + "\r\n"), "")
+
+    /// `Content-Type`, the `ETag` when there is one, then the hardening
+    /// headers of [PACKAGE-HARDENING] S3.
+    fn headersOf(response: Router::Response) = "Content-Type: ${response.contentType}\r\n" + (if response.etag == "" { "" } else { "ETag: ${response.etag}\r\n" }) + crlfLines(Router::hardeningHeaders(response))
 
     fn toHttp(response: Router::Response) = HttpResponse {
         status: response.status,

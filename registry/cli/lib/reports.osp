@@ -1,4 +1,6 @@
 namespace registry_cli;
+import registry::Canonical
+import registry::Json
 
 /// What a command answers: a process status and the lines to show. Rendering
 /// stays outside the command so tests inspect the same value a terminal gets.
@@ -16,4 +18,38 @@ module Reports {
 
     /// One line per entry of `label: value`.
     export fn field(label, value) = "${label}: ${value}"
+
+    fn member(key, value) = Json::Member { key: key, value: value }
+
+    /// The report as one canonical JSON line, `{"lines":[…],"status":N}`, for
+    /// editors and automation ([PACKAGE-API]): the very value the terminal
+    /// rendering shows, so there is no second semantic API to keep in step.
+    export fn json(report: Report) = Canonical::serialize(Json::Obj { members: [
+        member("lines", Json::Arr { items: mapList(report.lines, fn(text) => Json::Str { text: text }) }),
+        member("status", Json::Num { value: report.status })
+    ] }) ?: "{}"
+
+    let replacement = "?"
+    let space = 32
+    let delete = 127
+
+    fn control(b) = b < space || b == delete
+
+    type Scan = { out: string, start: int }
+
+    fn between(line, from, to) = take(drop(line, from), to - from)
+
+    fn scanByte(line, acc: Scan, i) = if control(byteAt(line, i) ?: space) {
+        Scan { out: acc.out + between(line, acc.start, i) + replacement, start: i + 1 }
+    } else { acc }
+
+    /// `line` with every byte below 0x20 and the byte 0x7F replaced by `?`, so
+    /// a registry- or lock-supplied string cannot carry a terminal escape
+    /// sequence to the console ([PACKAGE-HARDENING] C7). Every line the
+    /// frontend prints passes through here.
+    export fn printable(line) = {
+        let n = byteLength(line)
+        let scanned = fold(range(0, n), Scan { out: "", start: 0 }, fn(acc, i) => scanByte(line, acc, i))
+        scanned.out + between(line, scanned.start, n)
+    }
 }

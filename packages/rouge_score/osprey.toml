@@ -1,0 +1,17 @@
+[project]
+name = "rouge_score"
+source_roots = ["src"]
+python_sources = ["src/stemmer.py", "src/tokenize.py", "src/scorer.py"]
+default_namespace = "rouge_score"
+
+[package]
+name = "@osprey/rouge_score"
+license = "MIT"
+summary = "ROUGE evaluation metrics (rouge1/2/L/Lsum) with the NLTK Porter stemmer"
+keywords = ["rouge", "metrics", "evaluation", "summarization", "python-flavor"]
+
+[dependencies]
+"@osprey/sacrebleu" = { epoch = 1, min_release = 1 }
+
+[test-dependencies]
+"@osprey/testing" = { epoch = 1, min_release = 1 }

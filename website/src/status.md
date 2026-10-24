@@ -104,6 +104,7 @@ The current development build rejects these older forms:
 - The mobile sample reads one public GitHub issue page. Authentication, pagination, background refresh, and posting changes to GitHub are not implemented.
 - GPU kernels run in software binary64 with no kernel fusion, so small kernels are launch-bound: GPT-2 trains about three times faster on an M4 Max GPU than on its CPU and generates no faster. `gpuScan` and `gpuFilter` have no device form; a selected device stops the run on them. Only Apple GPUs have been tested, and iOS, Android and WebAssembly run GPU code on the CPU.
 - C integrations are outside Osprey's memory-safety guarantee.
+- Symbolic bug hunting ships as `osprey hunt` (symbolic execution by KLEE) from `main` with symbolic stdin and files; the typed function harness, `libkleeRuntest` replay, regression-test generation, Windows and the comparison benchmarks are not built. See [plan 0034](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0034-symbolic-execution.md).
 
 For detailed intended behavior and chapter-specific implementation notes, read
 the [specifications](/spec/). For compiler-generated built-in signatures, use

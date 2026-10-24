@@ -4,7 +4,7 @@ import registry::Json
 
 /// Strict RFC 8259 parsing and RFC 8785 canonical serialization: reason codes
 /// at exact byte offsets, UTF-16 key ordering, escaping and idempotence.
-/// Implements [REGISTRY-JSON-STRICT] and [REGISTRY-CANONICAL-JCS].
+/// Implements [PACKAGE-PUBLISH] and [PACKAGE-TYPE-INVARIANTS].
 module JsonTests {
     fn cp(n) = fromCodePoint(n) ?: ""
 
@@ -205,6 +205,30 @@ module JsonTests {
         Json::problemOffset("json.missing-key") == -1
     ])
 
+    let longRun = 100000
+
+    fn longText() = repeat("a", longRun) ?: ""
+
+    fn parsedLength(text) = match Json::parse(text) {
+        Success { value } => match value {
+            Json::Str { text } => byteLength(text)
+            _ => -1
+        }
+        Error => -1
+    }
+
+    fn canonicalLength(text) = byteLength(Canonical::serialize(Json::Str { text: text }) ?: "")
+
+    /// Strings and whitespace far longer than one stack frame per byte
+    /// allows: a scanner that recursed per byte overflowed near 6,000 bytes.
+    fn longInputs() = checkAll("long strings parse and render", [
+        parsedLength("\"" + longText() + "\"") == longRun,
+        parsedLength((repeat(" ", longRun) ?: "") + "\"x\"" + (repeat("\n", longRun) ?: "")) == 1,
+        parsedLength("\"" + longText() + "\\n" + longText() + "\"") == 2 * longRun + 1,
+        canonicalLength(longText()) == longRun + 2,
+        canonicalLength(longText() + "\n" + longText()) == 2 * longRun + 4
+    ])
+
     export fn run() = {
         test("json: values and whitespace", values)
         test("json: integer edges", integers)
@@ -217,5 +241,6 @@ module JsonTests {
         test("canonical: escaping", escaping)
         test("canonical: key ordering", ordering)
         test("canonical: duplicates and idempotence", roundTrip)
+        test("json: 100,000-byte strings and whitespace", longInputs)
     }
 }

@@ -1,0 +1,55 @@
+{
+  "spec": "[PACKAGE-RESOLUTION]",
+  "description": "The only release of A supports aarch64-linux, not the requested x86_64-linux target, so the explanation is no-target.",
+  "target": "x86_64-linux",
+  "grantedCapabilities": [],
+  "root": {
+    "dependencies": [
+      {
+        "Runtime": {
+          "requirement": {
+            "package": {
+              "scope": "a",
+              "name": "app"
+            },
+            "epoch": 1,
+            "minimumOrdinal": 1
+          }
+        }
+      }
+    ]
+  },
+  "current": [],
+  "catalog": [
+    {
+      "release": {
+        "package": {
+          "scope": "a",
+          "name": "app"
+        },
+        "epoch": 1,
+        "ordinal": 1,
+        "digest": "sha256:0000000000000001000000000000000100000000000000010000000000000001"
+      },
+      "state": {
+        "Eligible": {}
+      },
+      "targets": [
+        "aarch64-linux"
+      ],
+      "capabilities": [],
+      "dependencies": []
+    }
+  ],
+  "expect": {
+    "explanation": {
+      "code": "resolution.no-target",
+      "packages": [
+        {
+          "scope": "a",
+          "name": "app"
+        }
+      ]
+    }
+  }
+}

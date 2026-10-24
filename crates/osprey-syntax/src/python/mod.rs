@@ -4,6 +4,7 @@ use crate::{Flavor, Parsed, SyntaxError};
 use osprey_ast::{Position, Program};
 use tree_sitter::{Node, Parser, Tree};
 
+mod comprehensions;
 mod context;
 mod declarations;
 mod documents;

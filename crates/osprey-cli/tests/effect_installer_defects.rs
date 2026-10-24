@@ -186,9 +186,9 @@ fn a_file_scope_handler_and_a_generic_binding_coexist() {
         "fn identity(x) = x\n",
         "let alias = identity\n",
         "\n",
-        "fn round(n) = alias(n)\n",
+        "fn roundTo(n) = alias(n)\n",
         "\n",
-        "print(\"${total} ${round(1)}\")\n",
+        "print(\"${total} ${roundTo(1)}\")\n",
     );
     let (code, transcript) = run_source("handler_beside_generic_binding", "osp", source);
     assert_eq!(code, Some(0), "run did not complete: {transcript}");

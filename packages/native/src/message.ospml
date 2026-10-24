@@ -1,0 +1,106 @@
+// Implements [UI-EVENTS] and [UI-PROTOCOL]: host events become typed
+// messages only through a binding the framework issued. The host cannot
+// construct an action.
+namespace ui
+
+(** Host facts for one dispatch: Unix seconds, the local UTC offset in seconds, `macos` or `ios`, the person's home folder and the launch arguments. *)
+type Context =
+    now : int
+    offset : int
+    platform : string
+    home : string
+    arguments : List<string>
+
+(** What reaches the application's `update`: a control's action and value, a capability's completion or a lifecycle phase. *)
+type Message A =
+    Act
+        act : A
+    Entered
+        entry : A
+        entered : string
+    Switched
+        toggle : A
+        switched : bool
+    Chose
+        chooser : A
+        chosen : string
+    Resized
+        resizer : A
+        resized : int
+    Completed
+        ticket : string
+        outcome : Result<Json, Error>
+    Phase
+        phase : string
+
+(** A host event before it is resolved: a control's ordinal and value, a completion or a lifecycle phase. *)
+type Incoming =
+    Control
+        eventRegion : string
+        eventRevision : int
+        eventOrdinal : int
+        eventValue : Json
+    Finished
+        doneTicket : string
+        doneOutcome : Result<Json, Error>
+    Lifecycle
+        lifecyclePhase : string
+
+(** A decoded host event and the host's clock when it happened. *)
+type Event =
+    eventNow : int
+    eventBody : Incoming
+
+(** Decodes host events and resolves a control's value through the binding the framework issued; the host can never construct an action ([UI-EVENTS]). *)
+module Events
+    outcome doc = match Doc::flag (doc, "ok")
+        true => Success(value = Doc::field (doc, "result"))
+        false => Error(message = Doc::text (doc, "error"))
+
+    body (doc, kind) = match kind
+        "ui" => Success(value = Control(eventRegion = Doc::text (doc, "region"), eventRevision = Doc::number (doc, "revision"), eventOrdinal = Doc::number (doc, "ordinal"), eventValue = Doc::field (doc, "value")))
+        "completed" => Success(value = Finished(doneTicket = Doc::text (doc, "ticket"), doneOutcome = outcome doc))
+        "lifecycle" => Success(value = Lifecycle(lifecyclePhase = Doc::text (doc, "phase")))
+        _ => Error(message = "Unknown event kind: ${kind}")
+
+    // The host bounds event size before the call; malformed text is rejected, never guessed.
+    (** One host event from its JSON text: a control's value, a capability's completion or a lifecycle phase. Text that is not JSON or names an unknown kind is refused. *)
+    export decode source = match jsonDecode source
+        Error _ => Error(message = "The host sent an event that is not JSON")
+        Success doc => match body (doc, Doc::text (doc, "kind"))
+            Error problem => Error(message = problem)
+            Success incoming => Success(value = Event(eventNow = Doc::number (doc, "now"), eventBody = incoming))
+
+    mismatch kind = Error(message = "A ${kind} control sent a value of the wrong kind")
+
+    (** The typed message for a value delivered to `binding`; the value kind must match. *)
+    export bind<A> : (Binding<A>, Json) -> Result<Message<A>, Error>
+    bind (binding, value) = match binding
+        Tap action => match value
+            JsonNull => Success(value = Act(act = action))
+            _ => mismatch "tap"
+        TextInput action => match value
+            JsonString text => Success(value = Entered(entry = action, entered = text))
+            _ => mismatch "text"
+        FlagInput action => match value
+            JsonBool flag => Success(value = Switched(toggle = action, switched = flag))
+            _ => mismatch "toggle"
+        ChoiceInput action => match value
+            JsonString key => Success(value = Chose(chooser = action, chosen = key))
+            _ => mismatch "choice"
+        SizeInput action => match value
+            JsonInt points => Success(value = Resized(resizer = action, resized = Splitters::clamp points))
+            _ => mismatch "splitter"
+
+(** Takes a message apart for the application's `update`. Osprey cannot yet match a constructor declared in another namespace, so applications fold over messages here. *)
+module Messages
+    (** Calls the handler for `message`: a tap, a text or choice value, a toggle, a splitter's width, a completion or a lifecycle phase. *)
+    export route<A, R> : (Message<A>, (A) -> R, (A, string) -> R, (A, bool) -> R, (A, int) -> R, (string, Result<Json, Error>) -> R, (string) -> R) -> R !e
+    route (message, tapped, typed, toggled, sized, completed, phased) = match message
+        Act action => tapped action
+        Entered action text => typed (action, text)
+        Chose action key => typed (action, key)
+        Switched action flag => toggled (action, flag)
+        Resized action points => sized (action, points)
+        Completed ticket outcome => completed (ticket, outcome)
+        Phase phase => phased phase

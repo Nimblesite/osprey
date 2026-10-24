@@ -1,1 +1,1 @@
-type mismatch: cannot unify int with float
+4:4: type mismatch: cannot unify int with float

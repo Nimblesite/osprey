@@ -24,6 +24,24 @@ use osprey_ast::{Expr, FieldAssignment};
 mod construct;
 pub(crate) use construct::gen_constructor;
 
+/// A field's value as a record stores it: a list literal takes the runtime
+/// layout first, because the field's declared `List<T>` promises an
+/// `OspreyList` to every later read; then the value is coerced to the field
+/// and its `Result` wrapper erased. Construction and update share this so a
+/// literal stored by either reads back the same way (#293) [TYPE-RECORD-UPDATE].
+fn settled_field_value(
+    cg: &mut Codegen,
+    expr: &Expr,
+    owner: &str,
+    field: &str,
+    inferred: Option<&osprey_types::Type>,
+) -> Result<Value> {
+    let value = gen_expr(cg, expr)?;
+    let value = crate::listlit::escaping(cg, value);
+    let value = fields::coerce_field(cg, value, owner, field, inferred)?;
+    Ok(crate::cast::erase_result(cg, value))
+}
+
 /// `{ field: value, … }` — an anonymous object literal: the same `{ i64 tag,
 /// fields… }` heap block as a named record, with a synthetic layout registered so
 /// field access can recover the slots.

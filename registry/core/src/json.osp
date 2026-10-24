@@ -1,4 +1,5 @@
 namespace registry;
+import registry::Bytes
 
 /// Strict RFC 8259 parsing into the registry's integer-only JSON model:
 /// integers, strings, booleans, null, arrays and objects. Every failure is a
@@ -8,7 +9,7 @@ namespace registry;
 /// (`describe` renders it, `problemCode`/`problemOffset` take it apart).
 /// Recursion stays monomorphic — string/int cursors and this module's concrete
 /// Value tree only — because a recursive generic function is instantiated
-/// once per program (issue #277). Implements [REGISTRY-JSON-STRICT].
+/// once per program (issue #277). Implements [PACKAGE-PUBLISH].
 module Json {
     export type Value = Null | Bool { flag: bool } | Num { value: int } | Str { text: string } | Arr { items: List<Value> } | Obj { members: List<Member> }
     export type Member = { key: string, value: Value }
@@ -65,7 +66,14 @@ module Json {
     fn isDigit(b) = b >= digitZero && b <= digitNine
     fn inRange(b, lo, hi) = b >= lo && b <= hi
 
-    fn skipWs(text, i) = if i < byteLength(text) && isWs(byteAt(text, i) ?: 0) { skipWs(text, i + 1) } else { i }
+    fn skipWs(text, i) = {
+        let end = Bytes::runEnd(text, i, isWs)
+        if end == i { i } else { skipWs(text, end) }
+    }
+
+    /// A string byte that needs no decoding: printable ASCII other than the
+    /// quote and backslash.
+    fn plainByte(b) = b >= 32 && b < 128 && b != quote && b != backslash
 
     fn cont(text, i) = i < byteLength(text) && inRange((byteAt(text, i) ?: 0), 128, 191)
 
@@ -98,8 +106,13 @@ module Json {
         } else if value < 32 {
             err(controlCode, i)
         } else {
-            scanChunk(text, i, out)
+            scanRun(text, i, out)
         }
+    }
+
+    fn scanRun(text, i, out) = {
+        let end = Bytes::runEnd(text, i, plainByte)
+        if end == i { scanChunk(text, i, out) } else { scanString(text, end, out + (substring(text, i, end) ?: "")) }
     }
 
     fn scanChunk(text, i, out) = {
@@ -394,7 +407,7 @@ module Json {
     }
 
     /// The strict RFC 8259 parse of `text`, or the code and byte offset of
-    /// its first problem. Implements [REGISTRY-JSON-STRICT].
+    /// its first problem. Implements [PACKAGE-PUBLISH].
     export fn parse(text) = match parseValue(text, 0, 0) {
         Error { message } => Error { message: message }
         Success { value } => {
@@ -406,13 +419,19 @@ module Json {
         }
     }
 
+    /// True for the JSON `null` value.
+    export fn isNull(value) = match value {
+        Null => true
+        _ => false
+    }
+
     fn findMember(members, key) = foldList(members, Error { message: missingKey }, fn(acc, m) => match acc {
         Success => acc
         Error => if m.key == key { Success { value: m.value } } else { acc }
     })
 
     /// The value at `key`, or `"json.missing-key"` / `"json.not-an-object"`.
-    /// Implements [REGISTRY-JSON-STRICT].
+    /// Implements [PACKAGE-PUBLISH].
     export fn get(object, key) = match object {
         Obj { members } => findMember(members, key)
         _ => Error { message: notObject }
@@ -454,7 +473,7 @@ module Json {
     }
 
     /// `"${code} at byte ${offset}"` — the one human-facing rendering of a
-    /// parse problem. Implements [REGISTRY-JSON-STRICT].
+    /// parse problem. Implements [PACKAGE-PUBLISH].
     export fn describe(problem) = "${problemCode(problem)} at byte ${problemOffset(problem)}"
 
     /// The dotted reason code of an encoded problem.

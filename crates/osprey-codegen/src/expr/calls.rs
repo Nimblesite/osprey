@@ -1,8 +1,8 @@
 //! Expression calls lowering.
+use super::arguments::call_builtin_with_values;
 use super::{
-    apply_bound_lambda, apply_lambda, arg_exprs, as_double, as_i64, binary_integer_builtin,
-    eval_arg, first_arg, gen_expr, gen_print, gen_user_call, is_binary_integer_builtin,
-    to_string_value, two_int_args, Codegen, CodegenError, Expr, FnSig, NamedArgument, Position,
+    apply_bound_lambda, apply_lambda, arg_exprs, eval_arg, gen_expr, gen_user_call, has_value_form,
+    is_binary_integer_builtin, Codegen, CodegenError, Expr, FnSig, LType, NamedArgument, Position,
     Result, Value,
 };
 
@@ -192,44 +192,10 @@ pub(super) fn gen_call(
         return apply_bound_lambda(cg, name, &params, &body, position, &slots);
     }
     match name {
-        "print" => {
-            let arg = first_arg(arguments, named)
-                .ok_or_else(|| CodegenError::invalid("print needs one argument"))?;
-            let v = gen_expr(cg, arg)?;
-            gen_print(cg, v)
-        }
-        "toString" => {
-            let arg = first_arg(arguments, named)
-                .ok_or_else(|| CodegenError::invalid("toString needs one argument"))?;
-            let v = gen_expr(cg, arg)?;
-            to_string_value(cg, v)
-        }
-        "abs" => {
-            let arg = first_arg(arguments, named)
-                .ok_or_else(|| CodegenError::invalid("abs needs one argument"))?;
-            let value = gen_expr(cg, arg)?;
-            crate::arithmetic::absolute(cg, value)
-        }
-        // [BUILTIN-TOFLOAT] [GPU-CONVERT] Widening int → float: one `sitofp`,
-        // round-to-nearest-even, exact for |n| <= 2^53. Total, so no Result.
-        "toFloat" => {
-            let arg = first_arg(arguments, named)
-                .ok_or_else(|| CodegenError::invalid("toFloat needs one argument"))?;
-            let v = gen_expr(cg, arg)?;
-            let n = as_i64(cg, v)?;
-            as_double(cg, n)
-        }
-        // [BUILTIN-MATH] sqrt/exp/log/tanh: one float call, total.
-        name if crate::arithmetic::is_float_function(name) => {
-            let arg = first_arg(arguments, named)
-                .ok_or_else(|| CodegenError::invalid(format!("{name} needs one argument")))?;
-            let v = gen_expr(cg, arg)?;
-            crate::arithmetic::float_function(cg, name, v)
-        }
-        name if is_binary_integer_builtin(name) => {
-            let (left, right) = two_int_args(cg, name, arguments, named)?;
-            binary_integer_builtin(cg, name, left, right)
-        }
+        // Every intrinsic with a value form — print, toString, the float and
+        // integer builtins — lowers through the one table the iterator
+        // callbacks use, so a direct call and `gpuMap(toFloat)` agree.
+        name if has_value_form(name) => gen_value_form_builtin(cg, name, arguments, named),
         // Runtime builtins take precedence over a same-named user function: the
         // names below are reserved. Each dispatcher returns `None` when the name
         // is not its builtin, so the chain falls through to a user call.
@@ -247,6 +213,29 @@ pub(super) fn gen_call(
             gen_user_call(cg, name, arguments, named)
         }
     }
+}
+
+/// A value-form builtin called with argument expressions: the operands are
+/// evaluated in call order, an integer builtin's operands are coerced to `i64`
+/// [BUILTIN-BITWISE], and the shared value form does the lowering.
+fn gen_value_form_builtin(
+    cg: &mut Codegen,
+    name: &str,
+    arguments: &[Expr],
+    named: &[NamedArgument],
+) -> Result<Value> {
+    let integer = crate::arithmetic::is_word_builtin(name) || is_binary_integer_builtin(name);
+    let mut values = Vec::new();
+    for argument in arg_exprs(arguments, named) {
+        let value = gen_expr(cg, argument)?;
+        values.push(if integer {
+            crate::cast::coerce_to(cg, value, LType::I64)?
+        } else {
+            value
+        });
+    }
+    call_builtin_with_values(cg, name, &values)
+        .unwrap_or_else(|| Err(CodegenError::invalid(format!("{name} has no value form"))))
 }
 
 /// Normalize a value call before an inlining alias exposes a declaration's

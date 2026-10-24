@@ -26,7 +26,7 @@ void osp_prof_thread_register(int64_t fiber_id, const char *label);
 // Remove the calling thread from the sampling registry (call before exit).
 void osp_prof_thread_unregister(void);
 
-#if !defined(_WIN32) && !defined(__wasm__)
+#if !defined(_WIN32) && !defined(__wasm__) && !defined(OSP_SYMBOLIC)
 
 #include <pthread.h>
 #include <stddef.h>

@@ -1,5 +1,6 @@
 //! Python expressions lower directly to canonical expression nodes.
-use super::context::{children, position, Lowerer, Result};
+use super::context::{apply, children, position, Lowerer, Result};
+use crate::SyntaxError;
 use osprey_ast::{Expr, FieldAssignment, MapEntry, NamedArgument, Parameter};
 use tree_sitter::Node;
 
@@ -13,11 +14,30 @@ impl Lowerer<'_> {
             "lambda" => self.lambda(node),
             "conditional_expression" => self.conditional(node),
             "list" => Ok(Expr::List(self.exprs(node)?, Some(position(node)))),
+            "list_comprehension" => self.list_comprehension(node),
+            "set_comprehension" | "dictionary_comprehension" | "generator_expression" => {
+                Err(Self::unsupported_comprehension(node))
+            }
             "dictionary" => self.map(node),
             "attribute" => self.attribute(node),
             "subscript" => self.index(node),
             _ => self.atom(node),
         }
+    }
+
+    /// The diagnostic for a comprehension form that has no Osprey lowering,
+    /// naming the explicit construction to write instead.
+    fn unsupported_comprehension(node: Node<'_>) -> SyntaxError {
+        let advice = match node.kind() {
+            "set_comprehension" => {
+                "set comprehensions have no Osprey lowering; build the set explicitly"
+            }
+            "dictionary_comprehension" => {
+                "dictionary comprehensions have no Osprey lowering; build a Map with mapSet"
+            }
+            _ => "generator expressions have no Osprey lowering; write toList(map(...)) or fold",
+        };
+        Self::error(node, advice)
     }
 
     fn atom(&mut self, node: Node<'_>) -> Result<Expr> {
@@ -179,15 +199,21 @@ impl Lowerer<'_> {
         arguments: Vec<Expr>,
         named: Vec<NamedArgument>,
     ) -> Result<Expr> {
-        if let Some((name, type_args)) = self.constructor_head(&callee) {
-            Self::named_fields_only(node, &arguments)?;
-            return Ok(construct(name, type_args, named));
-        }
-        Ok(Expr::Call {
-            function: Box::new(callee),
-            arguments,
-            named_arguments: named,
-        })
+        // A positional payload has no field names to supply: `JsonString("x")`
+        // is a saturated application of a positionally-declared constructor and
+        // stays a call so assembly folds it against the declaring unit (the
+        // built-in `Json` prelude) ([TYPE-UNION-POSITIONAL]). A call with no
+        // positional argument — named fields or none — is a construction.
+        let head = self.constructor_head(&callee, arguments.is_empty());
+        let Some((name, type_args)) = head.filter(|_| arguments.is_empty()) else {
+            return Ok(Expr::Call {
+                function: Box::new(callee),
+                arguments,
+                named_arguments: named,
+            });
+        };
+        Self::named_fields_only(node, &arguments)?;
+        Ok(construct(name, type_args, named))
     }
 
     fn named_fields_only(node: Node<'_>, arguments: &[Expr]) -> Result<()> {
@@ -200,7 +226,17 @@ impl Lowerer<'_> {
         Ok(())
     }
 
-    fn constructor_head(&self, callee: &Expr) -> Option<(String, Vec<osprey_ast::TypeExpr>)> {
+    /// The type a call constructs, if it constructs one. A name declared as a
+    /// class here always constructs. A qualified head constructs only when its
+    /// final segment is uppercase and every argument is named
+    /// (`Module.Variant(field=v)`, `Module.Empty()`): a `PascalCase` function
+    /// called with positional arguments, such as a port's
+    /// `LogitsProcess.TopKLogitsWarper(k, fv, m)`, stays a call.
+    fn constructor_head(
+        &self,
+        callee: &Expr,
+        all_named: bool,
+    ) -> Option<(String, Vec<osprey_ast::TypeExpr>)> {
         let (head, type_args) = match callee {
             Expr::TypeApply {
                 function,
@@ -211,6 +247,9 @@ impl Lowerer<'_> {
         };
         match head {
             Expr::Identifier(name) if self.is_constructor(name) => Some((name.clone(), type_args)),
+            Expr::Path(path) if all_named => path.last().and_then(|last| {
+                osprey_ast::is_constructor_name(last).then(|| (path.to_string(), type_args))
+            }),
             _ => None,
         }
     }
@@ -331,5 +370,5 @@ pub(super) fn fields(named: Vec<NamedArgument>) -> Vec<FieldAssignment> {
 }
 
 pub(super) fn invoke(name: &str, arguments: Vec<Expr>) -> Expr {
-    super::context::apply(Expr::Identifier(name.into()), arguments)
+    apply(Expr::Identifier(name.into()), arguments)
 }
