@@ -389,7 +389,7 @@ pub(crate) static LISTS: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "listSort",
-        "Returns a new list sorted in ascending order by the elements' natural order: integers by value, strings by byte content. The sort is stable. Only List<int> and List<string> are supported; any other element type is a compile-time error.",
+        "Returns a new list sorted in ascending order by the elements' natural order: integers by value, strings by byte content. The sort is stable. Only `List<int>` and `List<string>` are supported; any other element type is a compile-time error.",
         ["list" => "The list to sort"],
         "let sorted = listSort([3, 1, 2])  // [1, 2, 3]",
     ),

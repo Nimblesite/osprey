@@ -43,19 +43,19 @@ macro_rules! http_response_example {
 pub(crate) static FILES: &[BuiltinDoc] = &[
     builtin_doc!(
         "readFile",
-        "Reads a text file into a Result<string, Error>. The NUL-terminated string ABI is not a binary-buffer interface.",
+        "Reads a text file into a `Result<string, Error>`. The NUL-terminated string ABI is not a binary-buffer interface.",
         ["filename" => "Path to the file to read"],
         "match readFile(\"input.txt\") {\n    Success { value } => print(value)\n    Error { message } => print(message)\n}",
     ),
     builtin_doc!(
         "writeFile",
-        "Writes text, creating the file if needed. Returns Result<int, Error> containing the number of bytes written.",
+        "Writes text, creating the file if needed. Returns `Result<int, Error>` containing the number of bytes written.",
         ["filename" => "Path to the file to write", "content" => "Content to write to the file"],
         "match writeFile(\"output.txt\", \"Hello, World!\") {\n    Success { value } => print(\"${value} bytes written\")\n    Error { message } => print(message)\n}",
     ),
     builtin_doc!(
         "loadTensor",
-        "Reads one named F64, F32, F16 or BF16 tensor out of a safetensors file as a List<float>, every element widened exactly. Nothing touches the GPU surface.",
+        "Reads one named F64, F32, F16 or BF16 tensor out of a safetensors file as a `List<float>`, every element widened exactly. Nothing touches the GPU surface. The current reader requires compact JSON header fields; whitespace around their colons can cause rejection.",
         ["path" => "Path to the .safetensors file", "name" => "Tensor name in its header, e.g. \"wte.weight\""],
         "// Supply a safetensors file containing the named tensor.\nmatch loadTensor(\"model.safetensors\", \"wte.weight\") {\n  Success { value } => print(\"${listLength(value)} floats\")\n  Error { message } => print(message)\n}",
     ),
@@ -90,7 +90,7 @@ pub(crate) static HTTP: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "httpResponseBody",
-        "Returns the body of a response handle as a string.",
+        "Returns a copy of the response body as `Result<string, Error>`. An invalid or released handle returns Error; the copied body survives httpResponseFree.",
         ["responseID" => "Handle returned by httpGetResponse"],
         http_response_example!(),
     ),
@@ -102,13 +102,13 @@ pub(crate) static HTTP: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "httpResponseStatus",
-        "Returns the HTTP status code of a response handle.",
+        "Returns the HTTP status code, or -1 for an invalid or released response handle.",
         ["responseID" => "Handle returned by httpGetResponse"],
         http_response_example!(),
     ),
     builtin_doc!(
         "httpResponseHeader",
-        "Returns the value of the named header from a response handle.",
+        "Returns the named header as `Result<string, Error>`, matching its name without case sensitivity. A missing header or invalid handle returns Error.",
         ["responseID" => "Handle returned by httpGetResponse", "name" => "Header name, e.g. \"Content-Type\""],
         http_response_example!(),
     ),
@@ -345,7 +345,7 @@ pub(crate) static WEBSOCKET: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "websocketConnect",
-        "Connects to a WebSocket server at the given URL and returns a connection id.",
+        "Connects to a ws:// URL and returns a connection handle, or a negative error. wss:// is rejected; incoming frames have no receive callback.",
         ["url" => "WebSocket URL, e.g. \"ws://localhost:8080/chat\""],
         WEBSOCKET_EXAMPLE,
     ),
@@ -380,13 +380,13 @@ pub(crate) static TERMINAL: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "termCols",
-        "Returns the terminal width in columns.",
+        "Returns the terminal width in columns, or -1 when unavailable.",
         [],
         "let width = termCols()",
     ),
     builtin_doc!(
         "termRows",
-        "Returns the terminal height in rows.",
+        "Returns the terminal height in rows, or -1 when unavailable.",
         [],
         "let height = termRows()",
     ),

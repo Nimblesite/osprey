@@ -301,6 +301,31 @@ mod tests {
     use crate::testkit::shows;
     use std::path::PathBuf;
 
+    const TYPED_SUMMARIES: [&str; 5] = [
+        "fromGpu",
+        "gpuLoadTensor",
+        "loadTensor",
+        "listSort",
+        "signalDependencies",
+    ];
+
+    #[test]
+    fn generic_types_in_summaries_are_text() -> Result<(), Box<dyn std::error::Error>> {
+        for name in TYPED_SUMMARIES {
+            let view = builtin_doc_view(name).ok_or("builtin documentation missing")?;
+            assert!(
+                !pulldown_cmark::Parser::new(&view.summary).any(|event| matches!(
+                    event,
+                    pulldown_cmark::Event::Html(_) | pulldown_cmark::Event::InlineHtml(_)
+                )),
+                "{}: {}",
+                name,
+                view.summary
+            );
+        }
+        Ok(())
+    }
+
     #[test]
     fn page_quotes_generic_types_in_markdown() -> Result<(), Box<dyn std::error::Error>> {
         for name in ["gpuMatMul", "map", "mapGet"] {

@@ -7,7 +7,7 @@ const SIGNAL_EXAMPLE: &str = "static effect Signal<T> { read: fn() -> T }\ntype 
 pub(crate) static SIGNALS: &[BuiltinDoc] = &[
     builtin_doc!(
         "signalDependencies",
-        "Returns the checked static signal operations a callback may read, without invoking it. An unresolved remainder is <unknown>.",
+        "Returns the checked static signal operations a callback may read, without invoking it. An unresolved remainder is `<unknown>`.",
         ["work" => "A zero-argument computation"],
         SIGNAL_EXAMPLE,
     ),
