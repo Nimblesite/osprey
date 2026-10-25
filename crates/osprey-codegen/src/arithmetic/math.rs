@@ -7,7 +7,7 @@
 //! [BUILTIN-FLOAT-BITS], [BUILTIN-FLOATTOINT] and [BUILTIN-BITWISE].
 
 use crate::builder::Codegen;
-use crate::conv::{as_double, as_i64};
+use crate::conv::{as_double, as_i64, box_to_i64, unbox_from_i64};
 use crate::error::{CodegenError, Result};
 use crate::llty::{LType, Value};
 use crate::result::make_result_if_err;
@@ -80,19 +80,13 @@ pub(crate) fn float32_round(cg: &mut Codegen, value: Value) -> Result<Value> {
 /// payloads, signed zeros and infinities exactly.
 pub(crate) fn float_bits(cg: &mut Codegen, value: Value) -> Result<Value> {
     let x = as_double(cg, value)?;
-    Ok(Value::new(
-        cg.emit_reg(format!("bitcast double {} to i64", x.operand)),
-        LType::I64,
-    ))
+    Ok(box_to_i64(cg, x))
 }
 
 /// [BUILTIN-FLOAT-BITS] The binary64 the word `bits` holds.
 pub(crate) fn float_from_bits(cg: &mut Codegen, value: Value) -> Result<Value> {
     let b = as_i64(cg, value)?;
-    Ok(Value::new(
-        cg.emit_reg(format!("bitcast i64 {} to double", b.operand)),
-        LType::Double,
-    ))
+    Ok(unbox_from_i64(cg, &b.operand, LType::Double))
 }
 
 /// [BUILTIN-FLOAT-BITS] The binary32 pattern of the nearest float32 to `x`
