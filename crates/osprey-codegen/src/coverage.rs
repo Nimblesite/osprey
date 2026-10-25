@@ -18,14 +18,13 @@ use std::collections::BTreeSet;
 pub(crate) fn instrumented(program: &Program) -> Program {
     let mut instrumented = program.clone();
     for statement in &mut instrumented.statements {
-        mutate::statement_children_mut(statement, &mut mark_source_entries);
+        mutate::statement_children_mut(statement, &mut mark_handler_entries);
     }
     instrumented
 }
 
-fn mark_source_entries(expression: &mut Expr) {
-    mutate::children_mut(expression, &mut mark_source_entries);
-    mark_expression_entry(expression);
+fn mark_handler_entries(expression: &mut Expr) {
+    mutate::children_mut(expression, &mut mark_handler_entries);
     if let Expr::Handler {
         stage,
         arms,
@@ -39,6 +38,17 @@ fn mark_source_entries(expression: &mut Expr) {
             **body = arm_entry((**body).clone(), *position);
         }
     }
+}
+
+pub(crate) fn instrument_expressions(program: &mut Program) {
+    for statement in &mut program.statements {
+        mutate::statement_children_mut(statement, &mut mark_expression_entries);
+    }
+}
+
+fn mark_expression_entries(expression: &mut Expr) {
+    mutate::children_mut(expression, &mut mark_expression_entries);
+    mark_expression_entry(expression);
 }
 
 fn mark_expression_entry(expression: &mut Expr) {
@@ -103,6 +113,14 @@ fn coverable_lines(program: &Program) -> BTreeSet<u32> {
 struct CoverableLines(BTreeSet<u32>);
 
 impl AstVisitor for CoverableLines {
+    fn expression(&mut self, expression: &Expr) {
+        if let Expr::Block { statements, value: Some(_), position } = expression {
+            if statements.is_empty() {
+                mark(*position, &mut self.0);
+            }
+        }
+    }
+
     fn statement(&mut self, statement: &Stmt) {
         let position = match statement {
             Stmt::Function { position, .. }
@@ -354,7 +372,7 @@ mod tests {
         assert!(parsed.errors.is_empty(), "syntax: {:?}", parsed.errors);
         // Namespace/module/function lines, then the handled region: the arm's
         // own statement (line 19) and the statement the handler governs (23).
-        let expected = std::collections::BTreeSet::from([3, 4, 5, 6, 15, 16, 19, 23, 26]);
+        let expected = std::collections::BTreeSet::from([3, 4, 5, 6, 7, 8, 15, 16, 19, 23, 26]);
         assert_eq!(coverable_lines(&parsed.program), expected);
         let mut cg = coverage_codegen();
         cg.cov_seed(&parsed.program);
@@ -363,7 +381,7 @@ mod tests {
             let global = format!("@__osp_cov_hits.{line} = internal global i64 0");
             assert!(module.contains(&global), "missing line {line}:\n{module}");
         }
-        assert_eq!(module.matches("internal global i64 0").count(), 9);
+        assert_eq!(module.matches("internal global i64 0").count(), 11);
     }
 
     #[test]
@@ -384,7 +402,7 @@ mod tests {
         assert!(parsed.errors.is_empty(), "syntax: {:?}", parsed.errors);
         assert_eq!(
             coverable_lines(&parsed.program),
-            std::collections::BTreeSet::from([1, 4, 8])
+            std::collections::BTreeSet::from([1, 3, 4, 7, 8])
         );
     }
 

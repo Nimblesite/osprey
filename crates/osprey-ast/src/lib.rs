@@ -24,6 +24,7 @@ pub mod span;
 mod stack;
 pub mod stage;
 mod stage_rows;
+pub mod stmt_meta;
 pub mod symbol;
 mod visit;
 pub use doc::{DocComment, DocExample, DocScope};

@@ -132,7 +132,7 @@ fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> 
         .coverage
         .then(|| crate::coverage::instrumented(program));
     let original = instrumented.as_ref().unwrap_or(program);
-    let lowered = osprey_types::lower_static_checked(original).map_err(|errors| {
+    let mut lowered = osprey_types::lower_static_checked(original).map_err(|errors| {
         crate::error::CodegenError::invalid(
             errors
                 .into_iter()
@@ -141,6 +141,10 @@ fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> 
                 .join("; "),
         )
     })?;
+    if options.coverage {
+        // Source counters must not hide pure closure selection from staging.
+        crate::coverage::instrument_expressions(&mut lowered);
+    }
     let program = &lowered;
     let mut prog = osprey_types::infer_program(program);
     let elaborated = prog.elaborate_calls(program);

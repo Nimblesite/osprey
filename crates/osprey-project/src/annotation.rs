@@ -70,13 +70,4 @@ impl Resolver<'_> {
     }
 }
 
-pub(crate) fn declaration_name(statement: &Stmt) -> Option<&str> {
-    match statement {
-        Stmt::Let { name, .. }
-        | Stmt::Function { name, .. }
-        | Stmt::Extern { name, .. }
-        | Stmt::Type { name, .. }
-        | Stmt::Effect { name, .. } => Some(name),
-        _ => None,
-    }
-}
+pub(crate) use osprey_ast::stmt_meta::declaration_name;

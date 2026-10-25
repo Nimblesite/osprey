@@ -68,13 +68,14 @@ LINE_KEY_RE = re.compile(r"^[1-9][0-9]*$")
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    selection = parser.add_mutually_exclusive_group()
     parser.add_argument("--collect", action="store_true", help="rerun suites")
-    parser.add_argument("--record-measurements", action="store_true", help="save verified measurements separately from required thresholds")
+    selection.add_argument("--record-measurements", action="store_true", help="save verified measurements separately from required thresholds")
     parser.add_argument("--compiler", help="compiler binary for --collect")
     parser.add_argument("--reports", help="per-package evidence directory")
     parser.add_argument("--thresholds", help="coverage-thresholds.json path")
     parser.add_argument("--root", help="checkout root (default: repo root)")
-    parser.add_argument("--package", help="gate one package (inventory still checked)")
+    selection.add_argument("--package", help="gate one package (inventory still checked)")
     return parser
 
 

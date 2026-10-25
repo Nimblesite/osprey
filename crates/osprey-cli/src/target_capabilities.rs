@@ -1,6 +1,8 @@
 //! Reject target facilities before code generation or toolchain discovery.
 //! Implements [IOS-TARGET-CAPABILITIES], [ANDROID-TARGET-CAPABILITIES] and [WASM-TARGET-CAPABILITIES].
-use osprey_ast::{walk_program, AstVisitor, Expr, OperationTable, Position, Program, Stmt};
+use osprey_ast::{
+    stmt_meta, walk_program, AstVisitor, Expr, OperationTable, Position, Program, Stmt,
+};
 use std::collections::BTreeSet;
 
 const FIBER_FNS: &[&str] = &[
@@ -291,7 +293,7 @@ fn wasm_builtin(name: &str) -> Option<&'static str> {
 
 impl AstVisitor for Capabilities<'_> {
     fn statement(&mut self, statement: &Stmt) {
-        self.position = statement_position(statement);
+        self.position = stmt_meta::statement_position(statement);
         if let Stmt::Extern { name, .. } = statement {
             if self.target == "wasm32" && !WEB_IMPORTS.contains(&name.as_str()) {
                 self.reject(&format!("foreign C import `{name}`"));
@@ -337,21 +339,5 @@ impl AstVisitor for Capabilities<'_> {
             Expr::MethodCall { method, .. } => self.builtin(method),
             _ => {}
         }
-    }
-}
-
-fn statement_position(statement: &Stmt) -> Option<Position> {
-    match statement {
-        Stmt::Let { position, .. }
-        | Stmt::Assignment { position, .. }
-        | Stmt::Function { position, .. }
-        | Stmt::Extern { position, .. }
-        | Stmt::Type { position, .. }
-        | Stmt::Effect { position, .. }
-        | Stmt::Module { position, .. }
-        | Stmt::Namespace { position, .. }
-        | Stmt::Signature { position, .. }
-        | Stmt::Expr { position, .. } => *position,
-        Stmt::Import(import) => import.position,
     }
 }

@@ -2,10 +2,12 @@
 import ast
 import hashlib
 import json
+import os
 import re
 import tomllib
 import tempfile
 from datetime import datetime, timezone
+from contextlib import contextmanager
 from pathlib import Path
 
 SOURCE_SUFFIXES = frozenset({".py", ".osp", ".ospml"})
@@ -192,6 +194,18 @@ def measurement_snapshot(root, reports, basis, results):
             "packages": {name: measurement_row(root, result) for name, result in sorted(results.items())}}
 
 
+@contextmanager
+def configuration_lock(path):
+    lock = path.with_name(f".{path.name}.lock")
+    descriptor = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    try:
+        os.write(descriptor, f"{os.getpid()}\n".encode())
+        yield
+    finally:
+        os.close(descriptor)
+        lock.unlink()
+
+
 def replace_measurements(path, config, snapshot):
     temporary = None
     try:
@@ -199,10 +213,11 @@ def replace_measurements(path, config, snapshot):
             temporary = Path(output.name)
             json.dump({**config, "package_measurements": snapshot}, output, indent=2)
             output.write("\n")
-        if json.loads(path.read_text(), object_pairs_hook=unique_object) != config:
-            raise ValueError("threshold configuration changed during measurement; retry")
-        temporary.chmod(path.stat().st_mode)
-        temporary.replace(path)
+        with configuration_lock(path):
+            if json.loads(path.read_text(), object_pairs_hook=unique_object) != config:
+                raise ValueError("threshold configuration changed during measurement; retry")
+            temporary.chmod(path.stat().st_mode)
+            temporary.replace(path)
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)

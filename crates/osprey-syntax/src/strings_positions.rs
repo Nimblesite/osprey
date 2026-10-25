@@ -1,7 +1,9 @@
 //! Rebase every executable and annotation coordinate through decoded strings.
 use super::FragmentMap;
 use crate::Flavor;
-use osprey_ast::{mutate::children_mut, Expr, Parameter, Pattern, Position, Stmt, TypeExpr};
+use osprey_ast::{
+    mutate::children_mut, stmt_meta, Expr, Parameter, Pattern, Position, Stmt, TypeExpr,
+};
 
 pub(super) fn rebase_expr(expression: &mut Expr, map: &FragmentMap<'_>, flavor: Flavor) {
     match expression {
@@ -110,18 +112,8 @@ fn pattern(pat: &mut Pattern, map: &FragmentMap<'_>, flavor: Flavor) {
 }
 
 fn rebase_stmt(statement: &mut Stmt, map: &FragmentMap<'_>, flavor: Flavor) {
-    match statement {
-        Stmt::Namespace { position, .. }
-        | Stmt::Let { position, .. }
-        | Stmt::Assignment { position, .. }
-        | Stmt::Function { position, .. }
-        | Stmt::Extern { position, .. }
-        | Stmt::Type { position, .. }
-        | Stmt::Effect { position, .. }
-        | Stmt::Module { position, .. }
-        | Stmt::Signature { position, .. }
-        | Stmt::Expr { position, .. } => slot(position, map, flavor),
-        Stmt::Import(_) => {}
+    if let Some(position) = stmt_meta::position_mut(statement) {
+        slot(position, map, flavor);
     }
     statement_annotations(statement, map, flavor);
 }
