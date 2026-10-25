@@ -240,8 +240,8 @@ fn allocator_runs_share_codegen_but_link_and_execute_each_runtime(
     }
     assert_eq!(
         artifact_counts(&root)?,
-        [1, 1, 3],
-        "one IR/object, three separately linked executables"
+        [1, 1, 2],
+        "one IR/object, separately linked GC and ARC executables"
     );
     std::fs::remove_dir_all(root)?;
     Ok(())
@@ -251,7 +251,7 @@ fn allocator_runs_share_codegen_but_link_and_execute_each_runtime(
 fn shared_codegen_cannot_replay_a_stale_success_after_source_changes(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let root = project("shared_codegen_invalidation");
-    cached_coverage(&root, "default")?;
+    cached_coverage(&root, "arc")?;
     write(
         &root.join("framework/src/calc.ospml"),
         &CALC.replace("hi ${name}", "bye ${name}"),

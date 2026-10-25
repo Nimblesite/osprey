@@ -17,6 +17,9 @@ mod doctest_harness;
 #[path = "cases/memory_backend.rs"]
 mod memory_backend;
 
+#[path = "cases/suite_scratch.rs"]
+mod suite_scratch;
+
 /// Repo root: `crates/osprey-cli` -> `../..`. The C runtime archives `osprey`
 /// links at `--run`/`--compile` time live under `compiler/bin/` there, and
 /// `find_runtime_lib` resolves them relative to the process cwd — so every

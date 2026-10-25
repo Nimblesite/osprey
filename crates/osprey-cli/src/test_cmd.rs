@@ -232,13 +232,7 @@ fn execute_suite(file: &Path, opts: &Opts, index: usize) -> SuiteOutput {
     if let Some(stale) = dump.as_deref() {
         let _ = std::fs::remove_file(stale);
     }
-    let result = suite_command(
-        file,
-        opts.filter.as_deref(),
-        dump.as_deref(),
-        opts.memory.as_deref(),
-    )
-    .and_then(|mut command| command.output());
+    let result = run_suite(file, opts, dump.as_deref());
     match result {
         Ok(output) => SuiteOutput {
             index,
@@ -255,6 +249,29 @@ fn execute_suite(file: &Path, opts: &Opts, index: usize) -> SuiteOutput {
     }
 }
 
+fn run_suite(
+    file: &Path,
+    opts: &Opts,
+    dump: Option<&Path>,
+) -> std::io::Result<std::process::Output> {
+    let source = std::fs::canonicalize(file)?;
+    let scratch = source
+        .is_file()
+        .then(|| crate::toolchain::Scratch::new(&source.to_string_lossy(), "test-suite"))
+        .transpose()
+        .map_err(|_| std::io::Error::other("cannot create suite working directory"))?;
+    let mut command = suite_command(
+        &source,
+        opts.filter.as_deref(),
+        dump,
+        opts.memory.as_deref(),
+    )?;
+    if let Some(directory) = &scratch {
+        let _ = command.current_dir(&directory.path);
+    }
+    command.output()
+}
+
 fn suite_command(
     file: &Path,
     filter: Option<&str>,
@@ -268,7 +285,7 @@ fn suite_command(
     let _ = command
         .arg(file)
         .args(["--run", "--quiet"])
-        .env(TEST_CACHE_DIR_ENV, cache_dir);
+        .env(TEST_CACHE_DIR_ENV, std::path::absolute(cache_dir)?);
     if let Some(memory) = memory {
         let _ = command.arg(format!("--memory={memory}"));
     }

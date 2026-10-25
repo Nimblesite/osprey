@@ -1,7 +1,6 @@
 #include "http_client_internal.h"
 #include "http_shared.h"
 
-#include <arpa/inet.h> // inet_pton
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 #include <openssl/x509_vfy.h> // X509_VERIFY_PARAM
