@@ -148,6 +148,10 @@ const proseOffsets = (elements) => elements.map((element) => {
   return Math.abs(x + width / 2 - window.innerWidth / 2);
 });
 
+async function expectNavigationFits(links) {
+  for (const link of await links.all()) await expect(link).toBeInViewport({ ratio: 1 });
+}
+
 for (const width of [1280, 1440, 1920]) {
   test(`benchmark columns fit desktop landscape at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -197,8 +201,12 @@ test.describe("mobile interactions", () => {
       await page.setViewportSize(viewport);
       await page.goto("/docs/");
       await page.locator("#mobile-menu-toggle").click();
-      for (const link of await page.locator("#site-navigation > li > :is(a, details > summary)").all()) {
-        await expect(link).toBeInViewport({ ratio: 1 });
+      const controls = page.locator("#site-navigation > li > a, #site-navigation > li > details > summary");
+      await expect(controls).toHaveCount(4);
+      await expectNavigationFits(controls);
+      for (const group of await page.locator(".nav-group").all()) {
+        await group.locator("summary").click();
+        await expectNavigationFits(group.getByRole("link"));
       }
     });
   }

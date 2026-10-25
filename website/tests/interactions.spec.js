@@ -206,6 +206,19 @@ test.describe("desktop interactions", () => {
     await expect(tools.locator("summary")).toBeFocused();
   });
 
+  test("header submenus remain usable without JavaScript", async ({ browser }) => {
+    for (const width of [1440, 390]) {
+      const context = await browser.newContext({ javaScriptEnabled: false, viewport: { width, height: 900 } });
+      const page = await context.newPage();
+      await page.goto("/");
+      const nav = page.locator("#site-navigation");
+      await nav.locator("summary", { hasText: "Tools" }).click();
+      await nav.getByRole("link", { name: "Install Osprey", exact: true }).click();
+      await expect(page).toHaveURL(/\/docs\/installation\/$/);
+      await context.close();
+    }
+  });
+
   test("logo returns to home", async ({ page }) => {
     await page.goto("/spec/0001-introduction/");
     await page.locator(".logo").click();

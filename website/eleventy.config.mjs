@@ -14,6 +14,7 @@ import { renderToString as renderTypeDiagram } from "typediagram-core";
 // studio page — one grammar, one colour scheme for the language.
 import { ospreyGrammar } from "./src/js/osprey-grammar.mjs";
 import videos from "./lib/videos.mjs";
+import { renderNavigation } from "./lib/navigation.mjs";
 
 const SITE_URL = "https://www.ospreylang.dev";
 const AUTHOR_URL = "https://www.christianfindlay.com/";
@@ -223,8 +224,7 @@ export default function (eleventyConfig) {
   // Keep the dependency's shell, but use one site-owned menu controller.
   eleventyConfig.addTransform("site-navigation", function (content, outputPath) {
     if (!outputPath?.endsWith(".html")) return content;
-    return content
-      .replace('<ul class="nav-links">', '<ul class="nav-links" id="site-navigation">')
+    return renderNavigation(content, this.page.url)
       .replace('aria-label="Toggle menu"', 'aria-label="Open menu" aria-expanded="false" aria-controls="site-navigation"')
       .replace('src="/techdoc/js/main.js"', 'src="/js/main.js"');
   });

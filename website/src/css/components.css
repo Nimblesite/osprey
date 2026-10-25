@@ -48,7 +48,15 @@
   font-weight: 600;
   border-bottom-color: var(--primary);
 }
-.site-header :is(a, button):focus-visible { outline: 2px solid var(--primary-container); outline-offset: 4px; }
+.site-header :is(a, button, summary):focus-visible { outline: 2px solid var(--primary-container); outline-offset: 4px; }
+.nav-group { position: relative; }
+.nav-group > summary { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; list-style: none; }
+.nav-group > summary::-webkit-details-marker { display: none; }
+.nav-group > summary::after { content: ""; width: 5px; height: 5px; border: solid currentColor; border-width: 0 1px 1px 0; transform: rotate(45deg); }
+.nav-group[open] > summary::after { transform: rotate(225deg); }
+.nav-submenu { position: absolute; right: -0.5rem; top: calc(100% + 0.75rem); z-index: 1; min-width: 15rem; list-style: none; margin: 0; padding: 0.4rem; background: var(--surface-container); border: 1px solid var(--outline-variant); border-radius: var(--radius-sm); box-shadow: 0 12px 32px #0004; }
+.nav-submenu .nav-link { display: block; min-height: 44px; padding: 0.6rem 0.75rem; font-size: 0.875rem; white-space: nowrap; border: 0; border-radius: 4px; }
+.nav-submenu .nav-link:hover, .nav-submenu .nav-link.active { background: #77d7f40d; }
 
 /* Dark-only design — the theme toggle has no second theme to switch to. */
 .theme-toggle { display: none; }

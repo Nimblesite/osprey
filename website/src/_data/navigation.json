@@ -1,11 +1,11 @@
 {
   "main": [
-    { "text": "Install", "url": "/docs/installation/" },
-    { "text": "Effects", "url": "/docs/effects/" },
-    { "text": "Spec", "url": "/spec/" },
-    { "text": "Playground", "url": "/playground/" },
-    { "text": "Docs", "url": "/docs/" },
-    { "text": "Benchmarks", "url": "/benchmarks/" },
+    { "text": "Documentation home", "url": "/docs/", "group": "Docs" },
+    { "text": "Algebraic effects", "url": "/docs/effects/", "group": "Docs" },
+    { "text": "Language specification", "url": "/spec/", "group": "Docs" },
+    { "text": "Install Osprey", "url": "/docs/installation/", "group": "Tools" },
+    { "text": "Playground", "url": "/playground/", "group": "Tools" },
+    { "text": "Benchmarks", "url": "/benchmarks/", "group": "Tools" },
     { "text": "Blog", "url": "/blog/" },
     { "text": "GitHub", "url": "https://github.com/Nimblesite/osprey", "external": true }
   ],
