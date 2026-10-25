@@ -33,6 +33,7 @@ import re
 import subprocess
 import sys
 from decimal import Decimal
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from package_coverage_evidence import (
     SOURCE_SUFFIXES, evidence_path, evidence_problems, golden_problems,
@@ -452,12 +453,10 @@ def evaluate(root: Path, reports: Path, compiler: Path, configured: dict, names:
     if collect:
         reports.mkdir(parents=True, exist_ok=True)
         remove_if_exists(reports / SUMMARY_NAME)
-    return [
-        collect_package(root, compiler, reports, name, configured[name])
-        if collect
-        else gate_package(root, reports, name, configured[name])
-        for name in names
-    ]
+    with ThreadPoolExecutor(max_workers=len(names)) as pool:
+        return list(pool.map(
+            lambda name: collect_package(root, compiler, reports, name, configured[name])
+            if collect else gate_package(root, reports, name, configured[name]), names))
 
 
 def finish(results: list[dict], reports: Path, mode: str, thresholds_path: Path, record=None) -> int:

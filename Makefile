@@ -69,7 +69,7 @@ package-coverage: build
 	$(MAKE) _coverage_check_packages
 
 # [PKG-COVERAGE-GATE] One report per package, never averaged. _test_packages
-# reruns every packages/<name>/tests suite with `osprey test --coverage-json`
+# reruns all packages/<name>/tests suites concurrently with --coverage-json
 # into $(COVERAGE_DIR)/packages; _coverage_check_packages gates the collected
 # reports alone — no suite is re-run to check what it already measured — and
 # fails on a package below its projects.packages threshold or on missing,
