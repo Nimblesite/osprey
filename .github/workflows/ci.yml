@@ -185,6 +185,9 @@ jobs:
           node scripts/verify-release-gates.mjs
           python3 scripts/test-release-gate.py
 
+      - name: Package coverage wiring contracts
+        run: python3 scripts/test-package-coverage.py
+
       - name: Format check
         run: cargo fmt --all --check
 
@@ -321,6 +324,22 @@ jobs:
         with:
           name: coverage-rust
           path: target/coverage/lcov.info
+          retention-days: 7
+          if-no-files-found: error
+
+      # [PKG-COVERAGE-GATE] Package coverage collection: reruns every
+      # packages/<name>/tests suite with `osprey test --coverage-json`. This
+      # job already needs `build`, so the compiler artifact is on disk; the
+      # coverage job enforces the thresholds from the uploaded reports without
+      # re-running any suite.
+      - name: Package coverage collection
+        run: make _test_packages
+
+      - name: Upload package coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-packages
+          path: target/coverage/packages/
           retention-days: 7
           if-no-files-found: error
 
@@ -882,12 +901,19 @@ jobs:
         with:
           name: coverage-extension
           path: vscode-extension/coverage/
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-packages
+          path: target/coverage/packages/
 
       - name: Rust per-crate thresholds
         run: make _coverage_check_rust
 
       - name: VS Code extension thresholds
         run: make _coverage_check_vscode_extension
+
+      - name: Package thresholds
+        run: make _coverage_check_packages
 
       - name: iOS and macOS builds, ABI, goldens and app persistence
         run: make ios-test macos-test mobile-ios-test bank-ios-test
@@ -903,13 +929,16 @@ jobs:
           make _test_hunt
           python3 scripts/test-hunt-default-budget.py
           make _test_hunt_crashes
+          python3 scripts/hunt_sample.py --manifest tests/hunt/safe-runs.json --out target/hunt-safe-ci --jobs 2
 
       - name: Upload Hunt crash reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: hunt-crash-reports
-          path: target/hunt-crashes/
+          path: |
+            target/hunt-crashes/
+            target/hunt-safe-ci/
           if-no-files-found: error
           retention-days: 7
 
@@ -928,5 +957,6 @@ jobs:
           name: coverage-report
           path: |
             target/coverage/lcov.info
+            target/coverage/packages/
             vscode-extension/coverage/
           retention-days: 7

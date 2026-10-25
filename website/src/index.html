@@ -26,13 +26,13 @@ date: "git Last Modified"
     </div>
     <div class="hero-code">
       <div class="flight-code">
-        <div class="code-toolbar"><span>save-draft<span id="source-extension">.osp</span></span><div class="flavor-controls" aria-label="Example flavor"><button type="button" data-flavor="default" aria-pressed="true">Default</button><button type="button" data-flavor="ml" aria-pressed="false">ML</button><button type="button" data-flavor="python" aria-pressed="false">Python</button></div></div>
+        <div class="code-toolbar"><span>save-draft<span id="source-extension">.osp</span></span><div class="flavor-controls" aria-label="Example syntax flavor"><button type="button" data-flavor="default" aria-pressed="true">Default</button><button type="button" data-flavor="ml" aria-pressed="false">ML</button><button type="button" data-flavor="python" aria-pressed="false">Python</button></div></div>
         <pre id="example-default" data-source-flavor="default" class="language-osprey" tabindex="0"><code class="language-osprey">{{ draftExample.default | escape }}</code></pre>
         <pre id="example-ml" data-source-flavor="ml" class="language-osprey-ml" tabindex="0" hidden><code class="language-osprey-ml">{{ draftExample.ml | escape }}</code></pre>
         <pre id="example-python" data-source-flavor="python" class="language-python" tabindex="0" hidden><code class="language-python">{{ draftExample.python | escape }}</code></pre>
         <div class="code-result"><span aria-hidden="true">↳</span><samp>{{ draftExample.output }}</samp><span class="result-label">OUTPUT</span></div>
       </div>
-      <p class="hero-code-caption">Three uncompromising flavors. No lock-in.</p>
+      <p class="hero-code-caption">Three syntax flavors: three ways to write Osprey.</p>
     </div>
     <div class="hero-footnote"><span>INFERRED TYPES</span><span>EXPLICIT EFFECTS</span><span>COMPILED WITH LLVM</span><a href="https://github.com/Nimblesite/osprey">Open source. MIT licensed. ↗</a></div>
   </div>
@@ -60,7 +60,7 @@ date: "git Last Modified"
     <div class="section-heading"><p class="home-eyebrow">02 / Types and effects</p><h2 id="language-title">Inferred types.<br>Checked effects.</h2></div>
     <div class="language-grid">
       <article><span class="feature-mark" aria-hidden="true">:τ</span><h3>Inferred static types</h3><p>Inferred static types, immutable data, and exhaustive pattern matching. Expected failures remain visible as <code>Result</code> values.</p><a href="/spec/0004-typesystem/">Explore the type system ↗</a></article>
-      <article><span class="feature-mark" aria-hidden="true">{ λ }</span><h3>Three flavors. No lock-in.</h3><p>Use Default braces, ML layout or Python-style syntax. Choose per file and mix all three in a project; they share Osprey’s types, effects and compiler.</p><a href="/blog/2026-06-30-osprey-flavors/">Find your syntax ↗</a></article>
+      <article><span class="feature-mark" aria-hidden="true">{ λ }</span><h3>Three syntax flavors. One language.</h3><p>A syntax flavor is a way to write the same Osprey language: Default uses braces, ML uses indentation, and Python flavor uses Python-style syntax. Choose per file and import across flavors; all share one type system, effects and compiler.</p><a href="/blog/2026-06-30-osprey-flavors/">Compare the syntax flavors ↗</a></article>
       <article><span class="feature-mark" aria-hidden="true">⇄</span><h3>Native fibers and channels</h3><p>Native fibers and channels keep concurrent work in ordinary functions. Choose the default allocator, tracing GC, or reference counting for your native build.</p><a href="/spec/0011-lightweightfibersandconcurrency/">Follow the fibers ↗</a></article>
       <article><span class="feature-mark" aria-hidden="true">+ !</span><h3>Arithmetic with a stated policy</h3><p>On the host, an <code>Arith</code> handler supplies the integer overflow policy. Wrapping and saturating helpers state their behavior in the call.</p><a href="/spec/0037-arithmeticeffects/">See arithmetic effects ↗</a></article>
     </div>
@@ -83,7 +83,7 @@ date: "git Last Modified"
   <div class="container">
     <div class="section-heading"><p class="home-eyebrow">04 / Python flavor and tensor handlers</p><h2 id="model-title">Port your Python.<br><span class="muted-heading">Choose CPU or GPU handlers.</span></h2></div>
     <div class="effect-layout">
-      <div class="effect-intro"><p>Keep <code>def</code>, <code>lambda</code>, and f-strings. Port computation into Osprey’s Python flavor with inferred types and checked effects. Keep Python libraries through <a href="/spec/0042-pythoninterop/">explicit interop</a>.</p><p>GPT-2 is the worked port: one <code>Tensor</code> effect, a CPU handler, and a GPU handler using Metal or OpenCL. The handler decides where the arithmetic runs.</p><a class="text-link" href="/docs/python-flavor/">Port with Python flavor <span>↗</span></a></div>
+      <div class="effect-intro"><p>Keep <code>def</code>, <code>lambda</code>, and f-strings. Port computation into Osprey’s Python syntax flavor with inferred types and checked effects. Keep Python libraries through <a href="/spec/0042-pythoninterop/">explicit interop</a>.</p><p>GPT-2 is the worked port: one <code>Tensor</code> effect, a CPU handler, and a GPU handler using Metal or OpenCL. The handler decides where the arithmetic runs.</p><a class="text-link" href="/docs/python-flavor/">Port with Python flavor <span>↗</span></a></div>
       <div class="flight-code">
         <div class="code-toolbar"><span>examples/gpt2/python/model.py</span><span>Python flavor</span></div>
         <pre class="language-python"><code class="language-python"># osprey: flavor=python

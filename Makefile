@@ -36,6 +36,8 @@ test: build
 	$(MAKE) _test_runtime_incremental
 	$(MAKE) _test_rust
 	$(MAKE) _coverage_check_rust
+	$(MAKE) _test_packages
+	$(MAKE) _coverage_check_packages
 	$(MAKE) _test_c_runtime
 	$(MAKE) _test_hunt_mock
 	$(MAKE) _test_hunt
@@ -43,6 +45,29 @@ test: build
 	$(MAKE) _coverage_check_c_runtime
 # _test_language_corpus is deliberately NOT here. It runs every program in
 # tests/ through the TAP subcommand, and _test_goldens then runs every one of
+
+## package-coverage: per-package source coverage — collect, then gate all 18.
+##                   Reruns each packages/<name>/tests suite with `osprey test
+##                   --coverage-json` and enforces every threshold under
+##                   projects.packages (90% floor, one report per package).
+.PHONY: package-coverage _test_packages _coverage_check_packages
+package-coverage: build
+	$(MAKE) _test_packages
+	$(MAKE) _coverage_check_packages
+
+# [PKG-COVERAGE-GATE] One report per package, never averaged. _test_packages
+# reruns every packages/<name>/tests suite with `osprey test --coverage-json`
+# into $(COVERAGE_DIR)/packages; _coverage_check_packages gates the collected
+# reports alone — no suite is re-run to check what it already measured — and
+# fails on a package below its projects.packages threshold or on missing,
+# empty, malformed or incomplete evidence.
+_test_packages:
+	python3 scripts/package_coverage.py --collect --compiler $(BIN) --reports $(COVERAGE_DIR)/packages --thresholds $(COVERAGE_THRESHOLDS_FILE)
+
+_coverage_check_packages:
+	python3 scripts/package_coverage.py --compiler $(BIN) --reports $(COVERAGE_DIR)/packages --thresholds $(COVERAGE_THRESHOLDS_FILE)
+
+## hunt: Symbolic bug hunting with KLEE on one program [SYMEX-CLI]:
 # them AGAIN — `run_test_corpus.sh` checks the in-language assertions AND the
 # byte-exact golden in a single pass (see its header), so the golden run is
 # strictly the stronger of the two observations. Executing the same assertions

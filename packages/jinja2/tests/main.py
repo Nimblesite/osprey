@@ -97,6 +97,7 @@ def scope_cases():
         same("expression evaluation", E.eval_expr("x + y", bound), V.int_(3)),
         same("filter", F.apply_filter("upper", V.text("hello"), [], []), V.text("HELLO")),
         same("keyword filter", F.apply_filter("tojson", V.dict_(["x"], [V.int_(2)]), [], [V.KwVal(name="indent", value=V.int_(2))]), V.text(Expected.PRETTY_JSON)),
+        same("pretty list JSON", V.json_text(V.list_([V.int_(1), V.int_(2)]), 2), Expected.PRETTY_LIST_JSON),
         same("test", F.apply_test("integer", V.int_(1), []), V.bool_(True)),
         same("method", F.call_method(V.text("hello"), "startswith", [V.text("he")]), V.bool_(True)),
     ]

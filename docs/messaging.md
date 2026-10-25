@@ -8,7 +8,7 @@ Osprey is a functional language with algebraic effects, inferred types, and nati
 
 1. **Effects:** declare a need with `effect`, request it with `perform`, choose its implementation with a callable `handler` or block-scoped `handle`. Explain the benefit through storage, logging, platform services, or deterministic tests.
 2. **Types:** inference removes repeated annotations; exhaustive matching and `Result` keep cases and failures visible.
-3. **Three uncompromising flavors. No lock-in:** Default, ML, and Python each keep their own idioms and share the whole Osprey compiler. Choose per file and mix all three in one project. Show all three in introductory code controls; Python flavor belongs on the homepage; the initial selection is Default (.osp).
+3. **Three syntax flavors. One language:** A syntax flavor is a way to write Osprey: Default braces, ML indentation or Python-style syntax. Say **syntax flavor** on first mention and define it; do not assume “flavor” explains itself. Each keeps its idioms while sharing Osprey’s types, effects and compiler. Choose per file and import across flavors in one project. Show all three in introductory code controls; Python flavor belongs on the homepage; the initial selection is Default (.osp).
 4. **Deployment:** LLVM native programs, WebAssembly, and C ABI libraries for native mobile hosts.
 5. **Concurrency and memory:** isolated fibers, tracing GC, and reference counting where supported.
 

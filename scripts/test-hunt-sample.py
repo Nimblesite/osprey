@@ -104,6 +104,12 @@ class CrashGateTests(unittest.TestCase):
         self.assertIn('make _test_hunt_crashes', workflow)
         self.assertIn('brew install klee', workflow)
         self.assertIn('make _test_hunt_mock', workflow)
+        self.assertIn('--manifest tests/hunt/safe-runs.json', workflow)
+        manifest = json.loads((root/'tests/hunt/safe-runs.json').read_text())
+        self.assertGreaterEqual(len(manifest['programs']), 215)
+        self.assertEqual(len(manifest['programs']), len(set(manifest['programs'])))
+        self.assertTrue(all((root/program).is_file() or (root/program/'osprey.toml').is_file() for program in manifest['programs']))
+        self.assertEqual(manifest['limits'], {'wallTimeSeconds': 10, 'engineTimeSeconds': 8, 'inputBytesPerStream': 2})
 
 
 class ReviewReportTests(unittest.TestCase):
