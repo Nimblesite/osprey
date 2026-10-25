@@ -46,6 +46,19 @@ test: build
 # _test_language_corpus is deliberately NOT here. It runs every program in
 # tests/ through the TAP subcommand, and _test_goldens then runs every one of
 
+# them AGAIN — `run_test_corpus.sh` checks the in-language assertions AND the
+# byte-exact golden in a single pass (see its header), so the golden run is
+# strictly the stronger of the two observations. Executing the same assertions
+# twice buys nothing and doubles the slowest stage in the build. The `osprey
+# test` subcommand itself stays covered by bank-test and the CLI e2e suite.
+	$(MAKE) _test_goldens
+	$(MAKE) _conformance-gc
+	$(MAKE) _conformance-arc
+	$(MAKE) _test_profiler
+	$(MAKE) _test_vscode_extension
+	$(MAKE) _coverage_check_vscode_extension
+	$(MAKE) _test_bench_tools
+
 ## package-coverage: per-package source coverage — collect, then gate all 18.
 ##                   Reruns each packages/<name>/tests suite with `osprey test
 ##                   --coverage-json` and enforces every threshold under
@@ -67,19 +80,6 @@ _test_packages:
 _coverage_check_packages:
 	python3 scripts/package_coverage.py --compiler $(BIN) --reports $(COVERAGE_DIR)/packages --thresholds $(COVERAGE_THRESHOLDS_FILE)
 
-## hunt: Symbolic bug hunting with KLEE on one program [SYMEX-CLI]:
-# them AGAIN — `run_test_corpus.sh` checks the in-language assertions AND the
-# byte-exact golden in a single pass (see its header), so the golden run is
-# strictly the stronger of the two observations. Executing the same assertions
-# twice buys nothing and doubles the slowest stage in the build. The `osprey
-# test` subcommand itself stays covered by bank-test and the CLI e2e suite.
-	$(MAKE) _test_goldens
-	$(MAKE) _conformance-gc
-	$(MAKE) _conformance-arc
-	$(MAKE) _test_profiler
-	$(MAKE) _test_vscode_extension
-	$(MAKE) _coverage_check_vscode_extension
-	$(MAKE) _test_bench_tools
 
 ## hunt: Symbolic bug hunting with KLEE on one program [SYMEX-CLI]:
 ##       make hunt FILE=path/to/program.osp [HUNT_ARGS="--max-time 120"]

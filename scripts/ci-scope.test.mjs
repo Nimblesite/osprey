@@ -63,6 +63,29 @@ test('malformed detection input fails the gate instead of skipping required jobs
 const workflowJobs = (file) => readFileSync(file, 'utf8').split(/(?=^  [\w-]+:\s*$)/m)
 const job = (name, file = '.github/workflows/release.yml') => workflowJobs(file).find((block) => block.startsWith(`  ${name}:`)) ?? ''
 
+const makeRecipe = (name) => {
+  const commands = []
+  let active = false
+  for (const line of readFileSync('Makefile', 'utf8').split('\n')) {
+    if (line.startsWith(`${name}:`)) { active = true; continue }
+    if (active && /^[^\s#][^:]*:/.test(line)) break
+    if (active && line.startsWith('\t')) commands.push(line.trim())
+  }
+  return commands
+}
+
+test('package coverage preserves the complete test recipe and checks without rerunning suites', () => {
+  const commands = makeRecipe('test')
+  for (const target of ['_test_packages', '_coverage_check_packages', '_test_goldens', '_conformance-gc',
+    '_conformance-arc', '_test_profiler', '_test_vscode_extension', '_coverage_check_vscode_extension', '_test_bench_tools']) {
+    assert.equal(commands.filter((line) => line === `$(MAKE) ${target}`).length, 1, target)
+  }
+  const check = makeRecipe('_coverage_check_packages')
+  assert.equal(check.length, 1, 'checking collected coverage must not run unrelated suites')
+  assert.match(check[0], /^python3 scripts\/package_coverage\.py /)
+  assert.doesNotMatch(check[0], /--collect/)
+})
+
 test('required coverage runs the real Hunt expectations and default-budget regression', () => {
   const coverage = job('coverage', '.github/workflows/ci.yml')
   assert.match(coverage, /make _runtime_klee\s+make _test_hunt\s+python3 scripts\/test-hunt-default-budget\.py\s+make _test_hunt_crashes/)
