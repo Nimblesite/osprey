@@ -8,7 +8,7 @@ import registry_host::Native
 /// capability (`files.directory`), so the live walk goes through the native
 /// `Process` handler; the classification itself is tested without it.
 module ConformanceTests {
-    let roots = "registry schemas"
+    let roots = "packages/manager schemas"
 
     fn classification() = checkAll("only Osprey source and declarative inputs pass", [
         length(Conformance::violations(["packages/manager/core/src/names.osp", "packages/manager/x.ospml", "schemas/package-registry.td"])) == 0,
