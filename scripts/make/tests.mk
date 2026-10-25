@@ -285,7 +285,7 @@ _coverage_check_c_runtime:
 	  thr=$$(jq -r --arg l "$$lib" '.projects.c_runtime[$$l].threshold' "$(COVERAGE_THRESHOLDS_FILE)"); \
 	  best=$$(for f in compiler/bin/cov/*/summary.txt; do \
 	    [ -f "$$f" ] || continue; \
-      sed -n "\#File '.*/runtime/$$lib\.[cm]'#{n;s/Lines executed:\([0-9.]*\)% of .*/\1/p;}" "$$f"; \
+      sed -n "\#File '.*/runtime/$$lib\.[cmh]'#{n;s/Lines executed:\([0-9.]*\)% of .*/\1/p;}" "$$f"; \
 	  done | sort -rn | head -1); \
 	  if [ -z "$$best" ]; then echo "[c] $$lib FAIL: no coverage data (no suite links it, or its suite died before dumping)"; fail=1; continue; fi; \
 	  best_int=$${best%.*}; \

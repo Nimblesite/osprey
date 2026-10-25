@@ -225,6 +225,9 @@ module JsonTests {
         parsedLength("\"" + longText() + "\"") == longRun,
         parsedLength((repeat(" ", longRun) ?: "") + "\"x\"" + (repeat("\n", longRun) ?: "")) == 1,
         parsedLength("\"" + longText() + "\\n" + longText() + "\"") == 2 * longRun + 1,
+        parsedLength("\"" + (repeat("é", longRun) ?: "") + "\"") == 2 * longRun,
+        parsedLength("\"" + (repeat("\\n", longRun) ?: "") + "\"") == longRun,
+        problem("\"" + (repeat("\\n", longRun) ?: "") + "\\q\"") == "json.bad-escape@${2 * longRun + 1}",
         canonicalLength(longText()) == longRun + 2,
         canonicalLength(longText() + "\n" + longText()) == 2 * longRun + 4
     ])

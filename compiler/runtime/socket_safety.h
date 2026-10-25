@@ -24,9 +24,11 @@ static inline bool osp_socket_configure_no_sigpipe(int socket_fd) {
 }
 
 static inline int osp_socket_send(int socket_fd, const char *data, size_t length) {
+#if !defined(MSG_NOSIGNAL) && !defined(_WIN32)
   if (!osp_socket_configure_no_sigpipe(socket_fd)) {
     return -1;
   }
+#endif
   int chunk = length > (size_t)INT_MAX ? INT_MAX : (int)length;
   return (int)send(socket_fd, data, chunk, OSPREY_SOCKET_SEND_FLAGS);
 }

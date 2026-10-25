@@ -8,7 +8,7 @@ These guides cover common values and runtime handles. The [type-system reference
 
 ## [Any](any/)
 
-An explicitly dynamic value that must be type-matched before concrete operations.
+An erased value. Match its structure to access fields; primitive runtime type tests are not supported.
 
 ## [Bool](bool/)
 
@@ -20,7 +20,7 @@ A 64-bit IEEE-754 floating-point number. Arithmetic can produce infinity, NaN, s
 
 ## [HttpResponse](httpresponse/)
 
-A built-in type representing an HTTP response with status code, headers, content type, body, and streaming capabilities. Used by HTTP server handlers to return structured responses to clients.
+The record returned by a native HTTP server handler. The runtime sends its status, raw headers and complete text body; streaming is not implemented.
 
 ## [Int](int/)
 

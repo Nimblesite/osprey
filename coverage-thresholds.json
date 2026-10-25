@@ -209,6 +209,10 @@
         "threshold": 85,
         "language": "c"
       },
+      "socket_safety": {
+        "threshold": 100,
+        "language": "c"
+      },
       "http_client_runtime": {
         "threshold": 85,
         "language": "c"
