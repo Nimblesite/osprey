@@ -11,10 +11,11 @@ fn string_cursor_and_parse_out_slots_are_entry_allocas() {
     for function in ir.split("define ").skip(1) {
         let mut entry = true;
         for line in function.lines() {
-            if line.ends_with(':') && line != "entry:" {
-                entry = false;
-            }
-            assert!(!line.contains(" = alloca ") || entry, "loop-local slot: {line}");
+            entry &= !line.ends_with(':') || line == "entry:";
+            assert!(
+                !line.contains(" = alloca ") || entry,
+                "loop-local slot: {line}"
+            );
         }
     }
 }

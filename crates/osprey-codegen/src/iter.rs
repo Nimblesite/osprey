@@ -191,7 +191,7 @@ pub(crate) fn acc_init(cg: &mut Codegen, args: &[Expr]) -> Result<(String, Value
     crate::arc::escape_retain(cg, &initial);
     let tmpl = initial.clone();
     let boxed = box_to_i64(cg, initial);
-    let acc = cg.emit_reg("alloca i64");
+    let acc = cg.hoist_slot("i64");
     cg.emit(format!("store i64 {}, i64* {acc}", boxed.operand));
     Ok((acc, tmpl))
 }

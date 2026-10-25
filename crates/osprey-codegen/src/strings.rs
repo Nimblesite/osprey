@@ -310,7 +310,7 @@ fn parse_strict(
     _named: &[NamedArgument],
 ) -> Result<Value> {
     let s = arg(cg, args, 0, LType::Str)?;
-    let slot = cg.emit_reg(format!("alloca {inner}"));
+    let slot = cg.hoist_slot(&inner.to_string());
     let zero = crate::llty::zero_literal(inner);
     cg.emit(format!("store {inner} {zero}, {inner}* {slot}"));
     let rc = cg.call(
@@ -362,7 +362,7 @@ fn split(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 /// errmsg slot. `argtys` lists the leading argument types before the out-slot.
 fn cursor_int(cg: &mut Codegen, cname: &str, argtys: &[LType], args: &[Expr]) -> Result<Value> {
     let (mut ops, params) = typed_args_for_types(cg, argtys, args)?;
-    let slot = cg.emit_reg("alloca i64");
+    let slot = cg.hoist_slot("i64");
     cg.emit(format!("store i64 0, i64* {slot}"));
     ops.push(slot.clone());
     let full_params = format!("{params}, i64*");
