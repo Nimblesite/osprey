@@ -78,7 +78,8 @@ fn hunt(options: &Options) -> Result<(String, ExitCode), ExitCode> {
         .map_err(|message| tool_error(&message))?;
     let info = std::fs::read_to_string(paths.out_dir.join("info")).unwrap_or_default();
     let exploration = engine::exploration(&info);
-    let mut scan = findings::scan(&paths.out_dir).map_err(|message| tool_error(&message))?;
+    let scanner = if options.replay { findings::scan_all } else { findings::scan };
+    let mut scan = scanner(&paths.out_dir).map_err(|message| tool_error(&message))?;
     relocate(&input, &mut scan.findings);
     if ending == engine::Ending::Halted {
         scan.incomplete.push(findings::Incomplete {
@@ -89,6 +90,7 @@ fn hunt(options: &Options) -> Result<(String, ExitCode), ExitCode> {
     if options.replay {
         replay::replay(&input, &mut scan.findings).map_err(|message| tool_error(&message))?;
     }
+    scan.findings = findings::dedupe(scan.findings);
     let mut report = report::Report {
         program: input.display_path(),
         options,

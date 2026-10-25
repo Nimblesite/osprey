@@ -188,6 +188,9 @@ jobs:
       - name: Package coverage wiring contracts
         run: python3 scripts/test-package-coverage.py
 
+      - name: Python application runner contracts
+        run: python3 scripts/test-python-app-ports-contracts.py
+
       - name: Format check
         run: cargo fmt --all --check
 
@@ -359,6 +362,8 @@ jobs:
         run: chmod +x target/release/osprey
       - name: Package coverage collection
         run: make _test_packages
+      - name: Python application ports under every memory backend
+        run: make _test_python_app_ports
       - name: Upload package coverage
         if: always()
         uses: actions/upload-artifact@v4

@@ -51,8 +51,16 @@ fn replayable(finding: &Finding) -> bool {
 }
 
 fn replay_all(exe: &Path, workdir: &Path, findings: &mut [Finding]) -> Result<(), String> {
+    let mut reproduced = std::collections::BTreeSet::new();
     for finding in findings.iter_mut().filter(|finding| replayable(finding)) {
+        let key = (finding.class, super::findings::place(finding, &finding.message));
+        if reproduced.contains(&key) {
+            continue;
+        }
         finding.replay = run_one(exe, workdir, finding)?;
+        if matches!(finding.replay, Replay::Reproduced(_)) {
+            reproduced.insert(key);
+        }
     }
     Ok(())
 }

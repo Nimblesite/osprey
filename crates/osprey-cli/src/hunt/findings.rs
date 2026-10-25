@@ -104,6 +104,12 @@ pub(crate) struct Frame {
 }
 
 pub(crate) fn scan(directory: &Path) -> Result<Scan, String> {
+    let mut scan = scan_all(directory)?;
+    scan.findings = dedupe(scan.findings);
+    Ok(scan)
+}
+
+pub(crate) fn scan_all(directory: &Path) -> Result<Scan, String> {
     let mut names = std::fs::read_dir(directory)
         .map_err(|error| format!("cannot read {}: {error}", directory.display()))?
         .filter_map(Result::ok)
@@ -119,7 +125,6 @@ pub(crate) fn scan(directory: &Path) -> Result<Scan, String> {
     for name in names {
         record(&mut scan, directory, &name, &externals)?;
     }
-    scan.findings = dedupe(scan.findings);
     Ok(scan)
 }
 
@@ -268,8 +273,9 @@ fn extension(file: &str) -> &str {
 }
 
 /// One finding per class and top Osprey frame (or top C frame, or message,
-/// when there is none), keeping the first path that reached it.
-pub(crate) fn dedupe(findings: Vec<Finding>) -> Vec<Finding> {
+/// when there is none), preferring a natively reproduced witness.
+pub(crate) fn dedupe(mut findings: Vec<Finding>) -> Vec<Finding> {
+    findings.sort_by_key(|finding| !matches!(finding.replay, Replay::Reproduced(_)));
     let mut seen = std::collections::BTreeSet::new();
     findings
         .into_iter()

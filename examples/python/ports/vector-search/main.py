@@ -2,9 +2,9 @@
 """FAISS's flat-index tutorial as a runnable vector-search application.
 
 The original 1-Flat.py builds 100,000 random float32 vectors, adds them to
-`IndexFlatL2`, prints the first five and last five neighbour rows, then repeats
-the search with `IndexFlatIP`. This port keeps the flat L2 and inner-product
-indexes, the `ntotal`/`search` flow and the sanity search; it uses a deterministic
+`IndexFlatL2` and prints the first five and last five neighbour rows. This port
+keeps the add/search flow and sanity search, and adds inner-product search.
+It uses a deterministic
 24-vector corpus in eight dimensions, replaces the random database, prints labels
 and distances instead of raw arrays, checks the FAISS result against numpy, and
 saves/reloads the corpus through a safetensors checkpoint. No approximate index
@@ -149,20 +149,24 @@ def run():
     l2_results = Flat.search(l2, queries, K)
     ip = Flat.add(Flat.IndexFlatIP(DIM), Normalize.normalize_L2(restored))
     ip_results = Flat.search(ip, Normalize.normalize_L2(queries), K)
-    ip_scores = ip_results.distances
+    return report_of(saved, queries, l2_results, ip_results)
+
+
+def report_of(saved, queries, l2_results, ip_results):
+    confidence = confidence_of(unwrap_or(listGet(ip_results.distances, 0), []))
     return Report(
-        corpus=restored,
+        corpus=saved.rows,
         queries=queries,
         l2_distances=l2_results.distances,
         l2_labels=l2_results.labels,
         ip_labels=ip_results.labels,
-        ip_scores=ip_scores,
-        confidence=confidence_of(unwrap_or(listGet(ip_scores, 0), [])),
-        confidence_sum=Array.sum(Array.array1(confidence_of(unwrap_or(listGet(ip_scores, 0), [])))),
+        ip_scores=ip_results.distances,
+        confidence=confidence,
+        confidence_sum=Array.sum(Array.array1(confidence)),
         recall=recall_at_k(l2_results.labels),
-        checkpoint=restored,
+        checkpoint=saved.rows,
         checkpoint_size=len(saved.data),
-        numpy_ok=numpy_matches(restored, queries, l2_results),
+        numpy_ok=numpy_matches(saved.rows, queries, l2_results),
     )
 
 

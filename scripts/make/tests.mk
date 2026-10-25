@@ -478,6 +478,7 @@ _lint: $(EXT_NODE_DEPS) $(PROFILER_UI_BUILT)
 	node --test scripts/test-package-licenses.mjs
 	python3 scripts/test-release-gate.py
 	python3 scripts/test-package-coverage.py
+	python3 scripts/test-python-app-ports-contracts.py
 	cargo fmt --all --check
 	cargo clippy --workspace --all-targets -- -D warnings
 	cd $(EXT_DIR) && npm run lint

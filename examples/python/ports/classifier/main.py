@@ -3,8 +3,8 @@
 
 The original notebook trains a 2->16->16->1 MLP with the max-margin loss plus L2
 regularization on `make_moons`, then plots the decision boundary. This port keeps
-the model, the hinge loss, the coefficient-1 accuracy check and the learning-rate
-schedule; it replaces random `make_moons` with sixteen fixed XOR points, reports
+the hinge loss and learning-rate schedule, with a smaller 2->8->8->1 model.
+It replaces random `make_moons` with sixteen fixed XOR points, reports
 metrics instead of plotting, and round-trips the trained weights through a
 safetensors checkpoint. `micrograd` supplies the graph, forward pass, backward
 pass and SGD step; `sklearn` supplies the split, scaler and metrics.

@@ -198,6 +198,19 @@ mod tests {
     }
 
     #[test]
+    fn core_and_testing_documentation_examples_typecheck() {
+        let broken: Vec<_> = crate::builtin_docs_core::CORE
+            .iter()
+            .chain(crate::builtin_docs_lang::TESTING)
+            .filter_map(|doc| {
+                let errors = crate::testutil::check(doc.example);
+                (!errors.is_empty()).then_some((doc.name, errors))
+            })
+            .collect();
+        assert!(broken.is_empty(), "invalid builtin examples: {broken:?}");
+    }
+
+    #[test]
     fn every_builtin_is_documented_with_matching_arity() {
         // The drift guard: the documented set and the registered scheme set must
         // be identical, and each doc's parameter count must equal its real arity.

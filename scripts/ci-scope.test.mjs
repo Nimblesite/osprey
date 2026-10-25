@@ -76,7 +76,7 @@ const makeRecipe = (name) => {
 
 test('package coverage preserves the complete test recipe and checks without rerunning suites', () => {
   const commands = makeRecipe('test')
-  for (const target of ['_test_packages', '_coverage_check_packages', '_test_goldens', '_conformance-gc',
+  for (const target of ['_test_packages', '_coverage_check_packages', '_test_python_app_ports', '_test_goldens', '_conformance-gc',
     '_conformance-arc', '_test_profiler', '_test_vscode_extension', '_coverage_check_vscode_extension', '_test_bench_tools']) {
     assert.equal(commands.filter((line) => line === `$(MAKE) ${target}`).length, 1, target)
   }
@@ -103,6 +103,7 @@ test('package source coverage runs independently and blocks the required coverag
   assert.match(packages, /needs: \[changes, build\]/)
   assert.match(packages, /if:.*needs\.changes\.outputs\.code/)
   assert.match(packages, /run: make _test_packages/)
+  assert.match(packages, /run: make _test_python_app_ports/)
   assert.match(packages, /name: Upload package coverage\n\s+if: always\(\)/)
   assert.match(packages, /name: coverage-packages/)
   assert.match(packages, /if-no-files-found: error/)

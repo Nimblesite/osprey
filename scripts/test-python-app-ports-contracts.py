@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """The app runner must reject empty tests and preserve exact output bytes."""
 import runpy
+import json
 import subprocess
 import tempfile
 import unittest
@@ -49,6 +50,18 @@ class AppRunnerContracts(unittest.TestCase):
         compiler.chmod(0o755)
         result = RUNNER["run_app"](compiler, self.app, "default")
         self.assertEqual(result.stdout, "report\r\n")
+
+    def test_examples_ship_their_mit_grant_and_complete_provenance(self):
+        repo = Path(__file__).resolve().parents[1]
+        examples = repo / "examples/python/ports"
+        audit = json.loads((examples / "source-audit.json").read_text())
+        self.assertEqual(audit["copyright_holder"], "NIMBLESITE PTY LTD, Australia")
+        self.assertEqual((examples / "LICENSE").read_bytes(), (repo / "packages/testing/LICENSE").read_bytes())
+        self.assertEqual(set(audit["applications"]), set(RUNNER["APPS"]))
+        for entry in audit["applications"].values():
+            self.assertIn("/blob/" + entry["commit"] + "/", entry["source"])
+            self.assertRegex(entry["source_sha256"], r"^[0-9a-f]{64}$")
+            self.assertEqual(entry["reused_material"], [])
 
 
 if __name__ == "__main__":

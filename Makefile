@@ -38,6 +38,7 @@ test: build
 	$(MAKE) _coverage_check_rust
 	$(MAKE) _test_packages
 	$(MAKE) _coverage_check_packages
+	$(MAKE) _test_python_app_ports
 	$(MAKE) _test_c_runtime
 	$(MAKE) _test_hunt_mock
 	$(MAKE) _test_hunt
@@ -78,6 +79,14 @@ _test_packages:
 
 _coverage_check_packages:
 	python3 scripts/package_coverage.py --compiler $(BIN) --reports $(COVERAGE_DIR)/packages --thresholds $(COVERAGE_THRESHOLDS_FILE)
+
+## python-app-ports: Verify the classifier, vector search and text evaluation ports.
+.PHONY: python-app-ports _test_python_app_ports
+python-app-ports: build
+	$(MAKE) _test_python_app_ports
+
+_test_python_app_ports:
+	python3 scripts/test-python-app-ports.py --compiler $(BIN)
 
 
 ## hunt: Symbolic bug hunting with KLEE on one program [SYMEX-CLI]:

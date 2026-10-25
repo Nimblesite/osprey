@@ -44,19 +44,19 @@ pub(crate) static TESTING: &[BuiltinDoc] = &[
         "expectAll",
         "Runs every boolean in a list literal as an independent soft assertion. All conditions run even when an earlier one fails.",
         ["conditions" => "A non-empty list literal of boolean conditions"],
-        "expectAll([total == 42, name == \"Ada\", ready])",
+        "test(\"order total\", fn() => expectAll([wrapMul(6, 7) == 42, length(\"Ada\") == 3]))",
     ),
     builtin_doc!(
         "expectTrue",
         "Asserts that a boolean expression is true.",
         ["actual" => "The boolean condition being asserted"],
-        "expectTrue(total > 0)",
+        "test(\"positive length\", fn() => expectTrue(length(\"Ada\") > 0))",
     ),
     builtin_doc!(
         "expectFalse",
         "Asserts that a boolean expression is false.",
         ["actual" => "The boolean condition being asserted"],
-        "expectFalse(isEmpty(items))",
+        "test(\"non-empty list\", fn() => expectFalse(isEmpty([1])))",
     ),
     builtin_doc!(
         "check",
@@ -68,19 +68,19 @@ pub(crate) static TESTING: &[BuiltinDoc] = &[
         "checkAll",
         "Runs every boolean in a list literal as an independent labeled soft assertion. All conditions run even when an earlier one fails.",
         ["label" => "A short label shared by the group", "conditions" => "A non-empty list literal of boolean conditions"],
-        "checkAll(\"order state\", [total == 42, itemCount == 3, paid])",
+        "test(\"order state\", fn() => checkAll(\"order totals\", [wrapMul(6, 7) == 42, listLength([1, 2, 3]) == 3]))",
     ),
     builtin_doc!(
         "checkTrue",
         "Labeled assertion that a boolean expression is true.",
         ["label" => "A short description", "actual" => "The boolean condition being asserted"],
-        "checkTrue(\"positive total\", total > 0)",
+        "test(\"positive length\", fn() => checkTrue(\"name length\", length(\"Ada\") > 0))",
     ),
     builtin_doc!(
         "checkFalse",
         "Labeled assertion that a boolean expression is false.",
         ["label" => "A short description", "actual" => "The boolean condition being asserted"],
-        "checkFalse(\"cart is empty\", isEmpty(items))",
+        "test(\"non-empty list\", fn() => checkFalse(\"has item\", isEmpty([1])))",
     ),
 ];
 

@@ -659,7 +659,7 @@ run by CPython.
 A system capability name is one or more segments of `[a-z0-9][a-z0-9.-]{0,63}`
 joined by single `/` characters, at most 128 bytes in all, such as
 `sqlite/c-api`; `min_revision` is a non-negative integer and each capability
-appears once per manifest. A threshold-signed packages/manager/enterprise catalog—not
+appears once per manifest. A threshold-signed registry or enterprise catalog—not
 the publisher—maps a system capability to approved providers, artifacts, native
 closures and provenance.
 `osprey doctor` uses an authorized read-only host effect and prints that guidance;
