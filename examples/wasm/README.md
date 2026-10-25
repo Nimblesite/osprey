@@ -14,29 +14,13 @@ for the design.
 
 ## Osprey Data Studio — Osprey × SQLite, both on WebAssembly
 
-A real, sophisticated single-page app that does not just print to the console:
+1. **Osprey prepares the data.** `studio.osp` models sales with a `Sale` record and `Region`/`Grade` unions. Its `Db` effect handler builds SQL inserts and computes totals in one pass. The module emits a manifest containing the schema, seed data, analytics queries and expected results over WASI `fd_write`.
+2. **SQLite executes the queries.** The page loads [`sql.js`](https://sql.js.org) from a CDN, creates an in-browser database from the schema and seed, and runs the analytics queries.
+3. **The page checks the results.** It compares Osprey's computed metrics with SQLite's query results.
 
-1. **Osprey is the brain.** `studio.osp` models a sales dataset with a `Sale`
-   record and `Region`/`Grade` union types, then replays each row through an
-   **algebraic-effect handler** (`effect Db`). That one handler *is* the database
-   writer and the accountant: it appends an `INSERT` to a seed script and folds
-   the row into running totals in the same pass. The module prints a delimited
-   **manifest** — schema (DDL), seed (DML), named analytics queries, and Osprey's
-   own **gold-standard answers** — over the WASI `fd_write` shim.
-2. **SQLite is the engine.** The page loads [`sql.js`](https://sql.js.org)
-   (SQLite compiled to WebAssembly) from a CDN, executes Osprey's DDL + seed into
-   a live in-browser database, and runs the analytics queries.
-3. **The page reconciles them.** Every gold-standard metric Osprey computed in
-   pure functions is checked against the same number computed by SQLite over the
-   relational data. They agree — two independent WebAssembly engines, one truth.
+The page includes a SQL console (⌘/Ctrl-Enter to execute), query result tables, syntax-highlighted source for both flavors and the raw manifest.
 
-On top of that: a **live SQL console** (run arbitrary SQL against the seeded
-database, ⌘/Ctrl-Enter to execute), result tables for every shipped query, the
-**syntax-highlighted source** for both flavors, and the raw manifest.
-
-The headline is the **flavor toggle**: switch between the `studio.osp` (Default)
-and `studio.ospml` (ML) WebAssembly builds and the dashboard is identical, because
-both lower to the same canonical AST and emit the same bytes
+The flavor toggle switches between `studio.osp` (Default) and `studio.ospml` (ML). Both builds emit the same manifest, so the dashboard stays the same
 ([`docs/specs/language/0023-LanguageFlavors.md`](../../docs/specs/language/0023-LanguageFlavors.md),
 [`0024-MLFlavorSyntax.md`](../../docs/specs/language/0024-MLFlavorSyntax.md)).
 

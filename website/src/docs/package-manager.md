@@ -216,7 +216,7 @@ Local manifest/lock updates roll back on a reported relock failure. Crash-safe a
 
 ## Python and uv
 
-The Osprey resolver selects Osprey releases and nothing else. When an Osprey program calls real Python through [Python interop](/spec/0042-pythoninterop/), its Python packages belong to a plane that already has an excellent resolver and lock: [uv](https://docs.astral.sh/uv/). Osprey drives uv instead of modelling Python packages twice.
+The Osprey resolver selects Osprey releases. Programs using [Python interop](/spec/0042-pythoninterop/) resolve and lock their CPython dependencies through [uv](https://docs.astral.sh/uv/):
 
 - A package that needs Python declares `[system.python]` with `capability = "python/interop"` and a CPython floor, and ships an ordinary `pyproject.toml` and `uv.lock` in its root. Both are part of its `SourceDigest` like any other file.
 - `osprey-pkg lock` generates one uv project under `.osprey/python/` that depends by path on the root and on every installed release that declares the capability, runs `uv lock` so uv resolves the union of their Python requirements, and pins the digests of the generated project and of `uv.lock` inside `osprey.lock`.
@@ -248,7 +248,7 @@ Today's folder registry verifies source integrity, pins releases, checks capabil
 
 ## Input validation and current limits
 
-Spec 0029 `[PACKAGE-HARDENING]` turns the threat model into gates with stable codes, each asserted by name in a registry test. These are the answers a tester gets today.
+Spec 0029 `[PACKAGE-HARDENING]` defines validation gates with stable diagnostic codes, asserted by name in registry tests.
 
 **Server.** A response is a pure function of method, path and the catalog built at startup, so no request can reach the filesystem or a process. Anything but `GET` is `405` with `Allow: GET`; traversal, percent-encoded and malformed paths are `404` problems that never echo request bytes. Every response carries `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'` and `Referrer-Policy: no-referrer`; digest-addressed responses are `Cache-Control: public, max-age=31536000, immutable`, everything else `no-cache`. The runtime bounds a request to 1 MiB, its headers to 32 KiB and its arrival to 5 seconds. Beyond loopback, the registry sits behind a TLS-terminating, rate-limiting reverse proxy.
 

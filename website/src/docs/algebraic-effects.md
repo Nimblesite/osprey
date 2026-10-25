@@ -11,7 +11,7 @@ An algebraic effect is a typed request for work: read configuration, save an acc
 
 ## Save a draft, even when storage fails
 
-An editor must show whether a draft was saved and offer a retry when storage is unavailable. The save logic requests storage; the handler chooses how that request reaches the outside world.
+The save logic requests storage; a handler writes the draft or simulates a failure so the editor can offer a retry.
 
 ```osprey
 {{ draftExample.default | safe }}
@@ -29,7 +29,7 @@ The same example in ML flavor:
 {{ draftExample.ml | safe }}
 ```
 
-On a mobile app, a value handler can describe a save command for the native host; its completion arrives as another event. This small native example writes synchronously. It does not pretend that a synchronous return awaits a browser or mobile operation.
+This native example writes synchronously. In a mobile app, a value handler can describe a save command for the native host; completion arrives as another event.
 
 ## Handle the rest of a block
 

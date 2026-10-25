@@ -10,8 +10,8 @@ Osprey uses typed algebraic effects to separate application requests from their 
 
 - **[Algebraic effects](/docs/effects/)** — declare an operation, call a reusable handler, replace it in a test, and choose an arithmetic policy.
 - **[One model, two backends](/docs/one-model-two-backends/)** — write GPT-2 once against a static `Tensor` effect, then run it over host lists or on the GPU surface by choosing a handler.
-- **[Write Osprey in the Python flavor](/docs/python-flavor/)** — Osprey source that looks like typed Python and lowers into the same AST, with effects as decorated classes. It is not Python: CPython never runs it. GPT-2 is ported to it byte for byte.
-- **[Python flavor for AI agents](/docs/python-flavor-for-ai/)** — the operating manual for coding agents: every loose `.py` script is Osprey, how to run it, the effect decorators, the rejected Python constructs, and filing a Bug issue when a script fails.
+- **[Write Osprey in the Python flavor](/docs/python-flavor/)** — use Python-style syntax and decorated effects, compiled by Osprey. Includes the GPT-2 port and explains the boundary with CPython.
+- **[Python flavor for AI agents](/docs/python-flavor-for-ai/)** — commands, effect decorators, supported syntax and bug-reporting instructions for coding agents.
 - **[Install Osprey](/docs/installation/)** — set up the compiler and LLVM/clang toolchain on macOS, Linux, or Windows.
 - **[Build My First App](/docs/my-first-app/)** — create a native CLI that models JSON as a recursive algebraic data type, reads a JSON file, and safely writes the next state.
 - **[Try the Playground](/playground/)** — run small programs in the browser before setting up a local toolchain.
@@ -36,7 +36,7 @@ Osprey uses typed algebraic effects to separate application requests from their 
 
 ## Packages
 
-- **[Package manager](/docs/package-manager/)** — a registry that is a folder, a client that verifies every byte, epochs instead of SemVer, one deterministic resolver, and a lock that build and run obey offline. Includes a local quick start and the planned workflow for the dedicated package website. Written in Osprey from the HTTP server to the SHA-256.
+- **[Package manager](/docs/package-manager/)** — folder registry, verified downloads, epoch-based resolution and offline locked builds. Includes a quick start and the planned package website workflow. The client and server are written in Osprey.
 - **[Package specification](/spec/0029-packagemanagement/)** — the normative contract: folder registry, manifests, identity, resolution, locks, the REST API and the command surface.
 
 ## Language

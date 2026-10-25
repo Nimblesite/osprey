@@ -7,9 +7,9 @@ permalink: /docs/one-model-two-backends/
 tags: [algebraic-effects, handlers, gpu, static-effects]
 ---
 
-A program that has to run in two places is usually written twice. The CPU version and the GPU version start as copies, then one gains a fix the other never sees, and the test that would have caught it is the one nobody wrote because it needed both. Osprey removes the second copy. The model is written once, against an effect that names the operations it needs. Two handlers answer those operations: one with plain lists, one with the GPU surface. The handler a program installs is the only place the choice is made, and the compiler discharges it before the program runs, so there is no dispatch, no trait object and no `if gpu` left in the code.
+Write the model against an effect that declares its tensor operations. Two handlers implement those operations: one with host lists, one with GPU buffers. The caller chooses a handler, and the compiler specialises the model for it, removing runtime effect dispatch.
 
-The worked example is the 124M-parameter GPT-2 model in [`examples/gpt2`](https://github.com/Nimblesite/osprey/tree/main/examples/gpt2): the forward pass, greedy generation, a training step. One source. Two backends. Byte-identical output on the CPU.
+The 124M-parameter GPT-2 model in [`examples/gpt2`](https://github.com/Nimblesite/osprey/tree/main/examples/gpt2) includes a forward pass, greedy generation and a training step. Both handlers produce byte-identical output on the CPU.
 
 ```bash
 make gpt2 PROMPT="The capital of France is" TOKENS=20 BACKEND=gpu
@@ -20,7 +20,7 @@ The first line of each run names which handler answered: `gpt2 (124M) on host` o
 
 ## Declare the operations
 
-A tensor program needs a handful of operations: build a buffer from an index function, read an element, measure a buffer, combine two, reduce one, find the first index holding a value, multiply two matrices, lift a host list, load a tensor from a checkpoint, and say who is answering. That list is the effect. `B` is the representation the handler picks; the model never names it. The two kernel shapes a model hands over get names of their own, so the signatures read as what they mean.
+`Tensor<B>` declares buffer construction, access, length, combination, reduction, lookup, matrix products, list conversion, checkpoint loading and device identification. The handler chooses `B`; the model uses it without naming a concrete representation. Type aliases describe the two callback shapes:
 
 ```osprey
 export type Kernel = fn(int) -> float
@@ -118,7 +118,7 @@ linear (x, rows, inner, cols, w, bias) =
     perform Backends::Tensor.build (rows * cols) (\i => at (value, i) + at (bias, i % cols))
 ```
 
-Nothing in the model mentions a list or a buffer. Hindley-Milner inference carries `B` through every record and every helper, so there is nothing to annotate and nothing to keep in step.
+Hindley-Milner inference carries `B` through the model's records and helpers without repeating type annotations.
 
 ## Answer with lists
 
@@ -267,7 +267,7 @@ export under (name, work) = match name
 
 [`tests/effects/staged/tensor_backends.test.osp`](https://github.com/Nimblesite/osprey/blob/main/tests/effects/staged/tensor_backends.test.osp) runs a width-4 transformer block under both handlers and checks every element against values an independent oracle computed, then checks that the two handlers print the same doubles. Its ML twin shares the golden and must emit identical LLVM IR. The differential harness runs both under the default, GC and ARC memory backends and on wasm32.
 
-The full model is the stronger proof. On the default prompt, both handlers print the same tokens and the same continuation. One training step prints the same loss, the same sum for every one of the 148 gradient tensors and the same loss after the step. The GPU surface is faster because its buffers are dense doubles and its kernels are lifted functions; the list handler boxes every element. Both columns ran on the CPU (`OSPREY_GPU=host`); the [GPT-2 README](https://github.com/Nimblesite/osprey/tree/main/examples/gpt2) has the Metal and OpenCL timings.
+For the full model's default prompt, both handlers print identical tokens and continuation, training loss, 148 gradient-tensor sums and updated loss. The GPU surface uses dense doubles and lifted kernel functions; the list handler boxes every element. Both columns below ran on the CPU (`OSPREY_GPU=host`); the [GPT-2 README](https://github.com/Nimblesite/osprey/tree/main/examples/gpt2) has the Metal and OpenCL timings.
 
 | Measured 2026-10-13, AMD Ryzen 9 3900X, Linux 6.18 (WSL2), release build, `--memory=arc` | `BACKEND=gpu` | `BACKEND=lists` |
 | --- | --- | --- |
