@@ -378,7 +378,7 @@ Float arithmetic on the device uses the library's software binary64 implementati
 
 `exp`, `ln` and `tanh` use 128-bit fixed-point evaluation before rounding to binary64. Their sampled tests allow one ulp against the host's rounded `long double` reference and require at least 99% exact agreement. The extended unary functions allow 16 ulps; `pow`, `atan2` and `hypot` allow 64 ulps. These bounds describe the current tests, not a proof of correct rounding for every input. Host and device transcendental results may differ; code requiring the host's exact libm output must use the host backend ([FLOAT-IEEE-RESULTS]).
 
-The rounding, bit-view and shift families retain their exact-result contract. The C suite checks rounding, binary32 conversion, remainder, sign copying and shifts against host references. Its `floatFromBits` row compares a word with itself; it does not establish compiler lowering or a hardware round trip for that builtin.
+The rounding, bit-view and shift families retain their exact-result contract. The C suite checks rounding, binary32 conversion, remainder, sign copying and shifts against host references. The `scalar_contracts` corpus twins run `floatFromBits` followed by `floatBits` through emitted kernels over 12 words covering signed zeros, finite values, infinities, NaN payloads and subnormals. Both twins passed under Default, GC and ARC (zero live objects), and WebAssembly on 2026-10-25. A forced Metal run on Apple M4 Max also dispatched all 12 words and preserved them exactly; this does not establish OpenCL hardware coverage.
 
 #### Faults — [GPU-DEVICE-FAULT]
 

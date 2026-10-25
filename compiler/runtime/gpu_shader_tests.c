@@ -8,8 +8,8 @@
 // is the binary64 libm itself. glibc's binary64 tanh is up to two ulps off (tanh of
 // 0xbfd8b6b048dce522: 1.69 ulps, where the device is 0.31 against an
 // 80-digit reference), so a binary64 reference would test glibc, not the
-// device. The device must land within one ulp everywhere and agree on at
-// least 99% of arguments.
+// device. These three functions must land within one ulp on every sampled
+// argument and agree exactly on at least 99%; extended bounds are below.
 #include <assert.h>
 #include <math.h>
 #include <stdint.h>
