@@ -101,9 +101,25 @@ fn hash_toolchain_identity<H: std::hash::Hasher>(state: &mut H) {
     use std::hash::Hash;
     let compiler = c_compiler();
     compiler.hash(state);
-    hash_file_identity(Some(Path::new(&compiler)), state);
+    hash_file_identity(compiler_path(&compiler).as_deref(), state);
     std::env::var_os("PATH").hash(state);
     hash_file_identity(std::env::current_exe().ok().as_deref(), state);
+}
+
+fn compiler_path(compiler: &str) -> Option<PathBuf> {
+    let requested = Path::new(compiler);
+    if requested.is_absolute() || requested.components().count() > 1 {
+        return Some(requested.to_path_buf());
+    }
+    let search = std::env::var_os("PATH")?;
+    let suffix = if cfg!(windows) && requested.extension().is_none() {
+        std::env::consts::EXE_SUFFIX
+    } else {
+        ""
+    };
+    std::env::split_paths(&search)
+        .map(|directory| directory.join(format!("{compiler}{suffix}")))
+        .find(|path| path.is_file())
 }
 
 pub(super) fn hash_runtime_identity<H: std::hash::Hasher>(memory: &str, state: &mut H) {

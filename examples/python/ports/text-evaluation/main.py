@@ -71,12 +71,12 @@ def wordpiece_model():
 
 
 def metric_bleu():
-    """Sentence BLEU with sacrebleu's effective order, as the CLI defaults."""
+    """Lowercased 13a sentence BLEU, exponential smoothing and effective order."""
     return Bleu.BLEU(lowercase=True, force=False, tokenize="13a", smooth_method="exp", smooth_value=0.0, max_ngram_order=4, effective_order=True)
 
 
 def metric_chrf():
-    """chrF2 without whitespace, matching sacrebleu's sentence defaults."""
+    """Character-only chrF2 over lowercased text, without whitespace."""
     return Chrf.CHRF(char_order=6, word_order=0, beta=2, lowercase=True, whitespace=False, eps_smoothing=False)
 
 

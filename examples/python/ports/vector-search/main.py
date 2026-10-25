@@ -47,6 +47,7 @@ class Report:
     checkpoint: list[list[float]]
     checkpoint_size: int
     numpy_ok: bool
+    bad_distance_rejected: bool
 
 
 def row_at(rows, i):
@@ -167,6 +168,7 @@ def report_of(saved, queries, l2_results, ip_results):
         checkpoint=saved.rows,
         checkpoint_size=len(saved.data),
         numpy_ok=numpy_matches(saved.rows, queries, l2_results),
+        bad_distance_rejected=not local_match([[0.0], [1.0], [2.0]], [0.0], [0, 1, 2], [0.0, 1.0, 99.0]),
     )
 
 
@@ -215,6 +217,7 @@ def report_checks(report):
         len(report.queries) == QUERY_COUNT,
         len(report.l2_labels) == QUERY_COUNT,
         report.numpy_ok,
+        report.bad_distance_rejected,
         report.recall == 1.0,
         abs(report.confidence_sum - 1.0) < 0.000000001,
         len(report.confidence) == K,

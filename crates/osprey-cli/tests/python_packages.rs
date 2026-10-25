@@ -68,12 +68,13 @@ fn the_complete_torch_suite_discharges_its_storage_handlers() {
 }
 
 /// `(succeeded, stdout, stderr)` of the suite run under `memory`.
-fn run(suite: &Path, memory: &str) -> (bool, String, String) {
+fn run(suite: &Path, memory: &str, cache: &Path) -> (bool, String, String) {
     let output = Command::new(env!("CARGO_BIN_EXE_osprey"))
         .current_dir(repo())
         .arg(suite)
         .args(["--run", "--quiet", &format!("--memory={memory}")])
         .env("OSPREY_ARC_DEBUG", "1")
+        .env("OSPREY_TEST_CACHE_DIR", cache)
         .output();
     output.map_or_else(
         |error| (false, String::new(), error.to_string()),
@@ -155,10 +156,10 @@ fn every_python_oracle_golden_records_nonzero_successful_assertions() -> std::io
 }
 
 /// The failures of one suite under one backend, as readable lines.
-fn failures(suite: &Path, memory: &str) -> Vec<String> {
+fn failures(suite: &Path, memory: &str, cache: &Path) -> Vec<String> {
     let name = suite.display();
     let golden = std::fs::read_to_string(suite.join("expected_output.txt")).unwrap_or_default();
-    let (ok, stdout, stderr) = run(suite, memory);
+    let (ok, stdout, stderr) = run(suite, memory, cache);
     let mut problems = Vec::new();
     if !ok {
         problems.push(format!(
@@ -177,18 +178,36 @@ fn failures(suite: &Path, memory: &str) -> Vec<String> {
 }
 
 #[test]
-fn every_ported_package_matches_its_cpython_oracle_under_every_memory_backend() {
+fn every_ported_package_matches_its_cpython_oracle_under_every_memory_backend(
+) -> std::io::Result<()> {
     let suites = suites();
     assert!(!suites.is_empty(), "no packages/*/tests suites were found");
+    let cache = package_cache()?;
     let problems: Vec<String> = suites
         .iter()
         .flat_map(|suite| {
+            let cache = &cache;
             ["default", "gc", "arc"]
                 .into_iter()
-                .flat_map(move |memory| failures(suite, memory))
+                .flat_map(move |memory| failures(suite, memory, cache))
         })
         .collect();
+    std::fs::remove_dir_all(cache)?;
     assert!(problems.is_empty(), "{}", problems.join("\n"));
+    Ok(())
+}
+
+fn package_cache() -> std::io::Result<PathBuf> {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(std::io::Error::other)?
+        .as_nanos();
+    let directory = std::env::temp_dir().join(format!(
+        "osprey-package-cache-{}-{stamp}",
+        std::process::id()
+    ));
+    std::fs::create_dir(&directory)?;
+    Ok(directory)
 }
 
 /// The quoted strings of a comma-separated list body.

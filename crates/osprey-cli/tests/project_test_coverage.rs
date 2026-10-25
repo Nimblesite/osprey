@@ -161,38 +161,61 @@ fn assert_alias_coverage(name: &str, entry: &str) -> Result<(), Box<dyn std::err
     Ok(())
 }
 
-fn cached_coverage(root: &Path, memory: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let output = Command::new(env!("CARGO_BIN_EXE_osprey"))
+fn cached_command(root: &Path, memory: &str) -> Command {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_osprey"));
+    let _ = command
         .current_dir(repo_root())
         .arg("test")
         .arg(root)
-        .args([
-            "--coverage-json",
-            root.join("cov.json")
-                .to_str()
-                .ok_or("invalid fixture path")?,
-            &format!("--memory={memory}"),
-        ])
+        .arg("--coverage-json")
+        .arg(root.join("cov.json"))
+        .arg(format!("--memory={memory}"))
         .env("OSPREY_TEST_CACHE_DIR", root.join("cache"))
-        .env("OSPREY_ARC_DEBUG", "1")
-        .output()?;
+        .env("OSPREY_ARC_DEBUG", "1");
+    command
+}
+
+fn cached_run(root: &Path, memory: &str) -> std::io::Result<std::process::Output> {
+    cached_command(root, memory).output()
+}
+
+fn assert_arc_exit(stderr: &[u8]) {
+    let stderr = String::from_utf8_lossy(stderr);
+    let sentinels: Vec<_> = stderr
+        .lines()
+        .filter(|line| line.starts_with("[osp-arc] exit:"))
+        .collect();
+    assert_eq!(sentinels.len(), 1, "{stderr}");
+    assert!(
+        sentinels
+            .iter()
+            .all(|line| line.starts_with("[osp-arc] exit: 0 live objects,")),
+        "{stderr}"
+    );
+}
+
+fn cached_coverage(root: &Path, memory: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let output = cached_run(root, memory)?;
     assert!(output.status.success(), "{output:?}");
     assert!(String::from_utf8_lossy(&output.stdout).contains("# suites: 1 passed, 0 failed"));
+    let report = serde_json::from_slice(&std::fs::read(root.join("cov.json"))?)?;
+    assert_eq!(file_lines(&report, "calc.ospml"), vec![(7, 1), (11, 0)]);
     if memory == "arc" {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let sentinels: Vec<_> = stderr
-            .lines()
-            .filter(|line| line.starts_with("[osp-arc] exit:"))
-            .collect();
-        assert_eq!(sentinels.len(), 1, "{stderr}");
-        assert!(
-            sentinels
-                .iter()
-                .all(|line| line.starts_with("[osp-arc] exit: 0 live objects,")),
-            "{stderr}"
-        );
+        assert_arc_exit(&output.stderr);
     }
     Ok(())
+}
+
+fn artifact_counts(root: &Path) -> Result<[usize; 3], std::io::Error> {
+    let artifacts: Vec<_> = std::fs::read_dir(root.join("cache"))?
+        .map(|entry| entry.map(|entry| entry.path()))
+        .collect::<Result<_, _>>()?;
+    Ok(["ll", "o", "out"].map(|suffix| {
+        artifacts
+            .iter()
+            .filter(|path| path.extension().is_some_and(|ext| ext == suffix))
+            .count()
+    }))
 }
 
 #[test]
@@ -202,30 +225,76 @@ fn allocator_runs_share_codegen_but_link_and_execute_each_runtime(
     for memory in ["default", "gc", "arc"] {
         cached_coverage(&root, memory)?;
     }
-    let artifacts: Vec<_> = std::fs::read_dir(root.join("cache"))?
-        .map(|entry| entry.map(|entry| entry.path()))
-        .collect::<Result<_, _>>()?;
-    let count = |suffix| {
-        artifacts
-            .iter()
-            .filter(|path| path.extension().is_some_and(|ext| ext == suffix))
-            .count()
-    };
     assert_eq!(
-        count("ll"),
-        1,
-        "allocator-independent IR must be generated once: {artifacts:?}"
+        artifact_counts(&root)?,
+        [1, 1, 3],
+        "one IR/object, three separately linked executables"
     );
-    assert_eq!(
-        count("o"),
-        1,
-        "allocator-independent object must be compiled once: {artifacts:?}"
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn shared_codegen_cannot_replay_a_stale_success_after_source_changes(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = project("shared_codegen_invalidation");
+    cached_coverage(&root, "default")?;
+    write(
+        &root.join("framework/src/calc.ospml"),
+        &CALC.replace("hi ${name}", "bye ${name}"),
     );
-    assert_eq!(
-        count("out"),
-        3,
-        "each allocator must still link and execute: {artifacts:?}"
+    let failed = cached_run(&root, "default")?;
+    assert!(!failed.status.success(), "stale success: {failed:?}");
+    assert!(
+        String::from_utf8_lossy(&failed.stdout).contains("not ok 1 - greets"),
+        "{failed:?}"
     );
+    assert_eq!(artifact_counts(&root)?, [2, 2, 2]);
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[cfg(unix)]
+fn install_driver(root: &Path, generation: usize) -> std::io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let path = root.join("cache-cc");
+    std::fs::write(
+        &path,
+        format!(
+            "#!/bin/sh\nexec clang \"$@\"\n# {}\n",
+            "x".repeat(generation)
+        ),
+    )?;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+}
+
+#[cfg(unix)]
+fn run_driver(root: &Path) -> Result<std::process::Output, Box<dyn std::error::Error>> {
+    let search = std::env::var_os("PATH").unwrap_or_default();
+    let path = std::env::join_paths(
+        std::iter::once(root.to_path_buf()).chain(std::env::split_paths(&search)),
+    )?;
+    Ok(cached_command(root, "default")
+        .env("PATH", path)
+        .env("OSPREY_CC", "cache-cc")
+        .output()?)
+}
+
+#[cfg(unix)]
+#[test]
+fn a_compiler_resolved_from_path_invalidates_all_cached_artifacts_when_changed(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = project("compiler_identity");
+    for generation in [1, 2] {
+        install_driver(&root, generation)?;
+        let output = run_driver(&root)?;
+        assert!(output.status.success(), "{output:?}");
+        assert_eq!(
+            artifact_counts(&root)?,
+            [generation; 3],
+            "changed compiler must invalidate every stage"
+        );
+    }
     std::fs::remove_dir_all(root)?;
     Ok(())
 }
