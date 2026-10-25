@@ -13,25 +13,35 @@ use crate::builder::Codegen;
 use osprey_ast::{mutate, walk_program, AstVisitor, Expr, Position, Program, Stmt};
 use std::collections::BTreeSet;
 
-/// Keep static arms' source entries attached to the code discharge substitutes.
+/// Keep handler entries attached to the code that executes their bodies.
 /// Implements [TESTING-COVERAGE-CODEGEN]; unused arms retain zero counters.
 pub(crate) fn instrumented(program: &Program) -> Program {
     let mut instrumented = program.clone();
     for statement in &mut instrumented.statements {
-        mutate::statement_children_mut(statement, &mut mark_static_arms);
+        mutate::statement_children_mut(statement, &mut mark_handler_entries);
     }
     instrumented
 }
 
-fn mark_static_arms(expression: &mut Expr) {
-    if let Expr::Handler { stage, arms, .. } = expression {
+fn mark_handler_entries(expression: &mut Expr) {
+    if let Expr::Handler {
+        stage,
+        arms,
+        body,
+        position,
+        ..
+    } = expression
+    {
+        arms.iter_mut().for_each(mark_arm_entry);
         if stage.is_compile_time() {
-            for arm in arms {
-                arm.body = arm_entry(arm.body.clone(), arm.position);
-            }
+            **body = arm_entry((**body).clone(), *position);
         }
     }
-    mutate::children_mut(expression, &mut mark_static_arms);
+    mutate::children_mut(expression, &mut mark_handler_entries);
+}
+
+fn mark_arm_entry(arm: &mut osprey_ast::HandlerArm) {
+    arm.body = arm_entry(arm.body.clone(), arm.position);
 }
 
 fn arm_entry(body: Expr, position: Option<Position>) -> Expr {

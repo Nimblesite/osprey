@@ -331,8 +331,8 @@ fn a_compiler_resolved_from_path_invalidates_all_cached_artifacts_when_changed(
     Ok(())
 }
 
-fn static_handler_project() -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let root = project("static_handler_coverage");
+fn handler_project(name: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let root = project(name);
     std::fs::remove_file(root.join("framework/src/calc.ospml"))?;
     std::fs::remove_file(root.join("tests/main.ospml"))?;
     write(&root.join("osprey.toml"), "[project]\nname = \"static-covered\"\nsource_roots = [\"framework/src\", \"tests\"]\npython_sources = [\"framework/src/caps.py\", \"framework/src/reader.py\", \"tests/main.py\"]\ndefault_namespace = \"fixture\"\nentry = \"tests/main.py\"\n");
@@ -342,11 +342,8 @@ fn static_handler_project() -> Result<PathBuf, Box<dyn std::error::Error>> {
     Ok(root)
 }
 
-#[test]
-fn static_handler_arm_coverage_records_execution_and_retains_unused_arms(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let root = static_handler_project()?;
-    let output = cached_run(&root, "default")?;
+fn assert_handler_coverage(root: &Path, memory: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let output = cached_run(root, memory)?;
     assert!(output.status.success(), "{output:?}");
     assert!(
         String::from_utf8_lossy(&output.stdout)
@@ -361,6 +358,38 @@ fn static_handler_arm_coverage_records_execution_and_retains_unused_arms(
             lines.contains(&row),
             "missing or incorrect handler coverage {row:?}: {lines:?}"
         );
+    }
+    if memory == "arc" {
+        assert_arc_exit(&output.stderr);
+    }
+    Ok(())
+}
+
+#[test]
+fn static_handler_arm_coverage_records_execution_and_retains_unused_arms(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = handler_project("static_handler_coverage");
+    let root = root?;
+    for memory in ["default", "gc", "arc"] {
+        assert_handler_coverage(&root, memory)?;
+    }
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn dynamic_handler_coverage_counts_execution_instead_of_registration(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = handler_project("dynamic_handler_coverage")?;
+    for (file, old, new) in [
+        ("caps.py", "@static_effect", "@effect"),
+        ("reader.py", "@static_handler", "@handler"),
+    ] {
+        let path = root.join("framework/src").join(file);
+        std::fs::write(&path, std::fs::read_to_string(&path)?.replace(old, new))?;
+    }
+    for memory in ["default", "gc", "arc"] {
+        assert_handler_coverage(&root, memory)?;
     }
     std::fs::remove_dir_all(root)?;
     Ok(())

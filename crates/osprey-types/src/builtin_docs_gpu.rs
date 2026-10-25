@@ -32,7 +32,7 @@ pub(crate) static GPU: &[BuiltinDoc] = &[
         "gpuMap",
         "Applies a pure kernel to every buffer element independently, one thread per element when OSPREY_GPU selects Metal or OpenCL. The compiler rejects a kernel that performs any effect a handler must discharge at runtime; an effect a static handler has already erased is gone before the check.",
         ["buffer" => "The source buffer", "kernel" => "The pure per-element function"],
-        "let squared = toGpu([1, 2, 3]) |> gpuMap(fn(x) => satMul(x, x))\nprint(gpuGet(squared, 2) ?: 0)  // 9",
+        "let squared = toGpu([1, 2, 3]) |> gpuMap(fn(x) => wrapMul(x, x))\nprint(gpuGet(squared, 2) ?: 0)  // 9",
     ),
     builtin_doc!(
         "gpuFold",
@@ -44,7 +44,7 @@ pub(crate) static GPU: &[BuiltinDoc] = &[
         "gpuZipWith",
         "Combines two buffers elementwise with a pure binary kernel. The result takes the shorter operand's length.",
         ["a" => "The left buffer", "b" => "The right buffer", "kernel" => "The pure (a, b) element function"],
-        "let products = gpuZipWith(toGpu([2, 3]), toGpu([4, 5]), satMul)\nprint(gpuGet(products, 1) ?: 0)  // 15",
+        "let products = gpuZipWith(toGpu([2, 3]), toGpu([4, 5]), wrapMul)\nprint(gpuGet(products, 1) ?: 0)  // 15",
     ),
     builtin_doc!(
         "gpuIota",

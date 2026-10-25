@@ -394,7 +394,7 @@ Builtins need no import. The shared [function reference](/docs/functions/) and [
 
 `len`, one-argument `range`, `update`, `unwrap_or` and the fiber intrinsics have Python-flavor lowering. `perform`, `resume`, `update`, `unwrap_or`, `spawn`, `await_fiber`, `yield_fiber`, `send` and `recv` are reserved and cannot be rebound.
 
-Handle fallible results explicitly: match `readFile(path)` as `Success(value=text)` or `Error(message=reason)`. `writeFile`, parsing, indexing, HTTP and WebSocket calls also return Result; their exact payloads are in the reference.
+Handle fallible results explicitly: match `readFile(path)` as `Success(value=text)` or `Error(message=reason)`. File writes, parsing and indexing also return `Result`. Networking has a mixed interface: legacy HTTP/WebSocket handle and status builtins return integers, with negative values indicating errors; HTTP response acquisition, body/header access and release return `Result`. Check each function's reference signature.
 
 ## Fibers
 

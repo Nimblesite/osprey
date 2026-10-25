@@ -95,6 +95,6 @@ A panic is found in seconds; a silent failure never is. This quarantine is the o
 ### Language invariants
 - Effects are declared with `effect` and discharged by `handler` values or rest-of-block `handle` statements. The compiler rejects a program that performs an effect no handler discharges — ``unhandled effect operations at program entry: E.op; add a matching `handle` `` — reaching through helpers, lambdas passed to HOFs, and fibers (`crates/osprey-types/src/effect_rows.rs`). The remaining limit is representational: closed-program operation summaries, not an effect-row variable in `Type::Fun`.
 - Pattern matching is mandatory for `any` and union types.
-- All HTTP/WebSocket operations return `Result<T, String>`.
+- The target HTTP/WebSocket contract is `Result<T, Error>`, but legacy handle and status builtins still return `int` with negative error codes. `httpGetResponse`, `httpResponseBody`, `httpResponseHeader` and `httpResponseFree` return `Result`; `httpResponseStatus` returns `int`. Follow the actual builtin signature and check its failure form; do not claim uniform Result coverage.
 - Fibers are isolated — message passing, no shared memory.
 - Effects provide capability-based security; file, HTTP and process sandboxing is configurable.
