@@ -163,18 +163,34 @@ fn assert_alias_coverage(name: &str, entry: &str) -> Result<(), Box<dyn std::err
 
 fn cached_coverage(root: &Path, memory: &str) -> Result<(), Box<dyn std::error::Error>> {
     let output = Command::new(env!("CARGO_BIN_EXE_osprey"))
-        .current_dir(repo_root()).arg("test").arg(root)
-        .args(["--coverage-json", root.join("cov.json").to_str().ok_or("invalid fixture path")?,
-            &format!("--memory={memory}")])
+        .current_dir(repo_root())
+        .arg("test")
+        .arg(root)
+        .args([
+            "--coverage-json",
+            root.join("cov.json")
+                .to_str()
+                .ok_or("invalid fixture path")?,
+            &format!("--memory={memory}"),
+        ])
         .env("OSPREY_TEST_CACHE_DIR", root.join("cache"))
-        .env("OSPREY_ARC_DEBUG", "1").output()?;
+        .env("OSPREY_ARC_DEBUG", "1")
+        .output()?;
     assert!(output.status.success(), "{output:?}");
     assert!(String::from_utf8_lossy(&output.stdout).contains("# suites: 1 passed, 0 failed"));
     if memory == "arc" {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        let sentinels: Vec<_> = stderr.lines().filter(|line| line.starts_with("[osp-arc] exit:")).collect();
+        let sentinels: Vec<_> = stderr
+            .lines()
+            .filter(|line| line.starts_with("[osp-arc] exit:"))
+            .collect();
         assert_eq!(sentinels.len(), 1, "{stderr}");
-        assert!(sentinels.iter().all(|line| line.starts_with("[osp-arc] exit: 0 live objects,")), "{stderr}");
+        assert!(
+            sentinels
+                .iter()
+                .all(|line| line.starts_with("[osp-arc] exit: 0 live objects,")),
+            "{stderr}"
+        );
     }
     Ok(())
 }
@@ -187,11 +203,29 @@ fn allocator_runs_share_codegen_but_link_and_execute_each_runtime(
         cached_coverage(&root, memory)?;
     }
     let artifacts: Vec<_> = std::fs::read_dir(root.join("cache"))?
-        .map(|entry| entry.map(|entry| entry.path())).collect::<Result<_, _>>()?;
-    let count = |suffix| artifacts.iter().filter(|path| path.extension().is_some_and(|ext| ext == suffix)).count();
-    assert_eq!(count("ll"), 1, "allocator-independent IR must be generated once: {artifacts:?}");
-    assert_eq!(count("o"), 1, "allocator-independent object must be compiled once: {artifacts:?}");
-    assert_eq!(count("out"), 3, "each allocator must still link and execute: {artifacts:?}");
+        .map(|entry| entry.map(|entry| entry.path()))
+        .collect::<Result<_, _>>()?;
+    let count = |suffix| {
+        artifacts
+            .iter()
+            .filter(|path| path.extension().is_some_and(|ext| ext == suffix))
+            .count()
+    };
+    assert_eq!(
+        count("ll"),
+        1,
+        "allocator-independent IR must be generated once: {artifacts:?}"
+    );
+    assert_eq!(
+        count("o"),
+        1,
+        "allocator-independent object must be compiled once: {artifacts:?}"
+    );
+    assert_eq!(
+        count("out"),
+        3,
+        "each allocator must still link and execute: {artifacts:?}"
+    );
     std::fs::remove_dir_all(root)?;
     Ok(())
 }

@@ -1332,7 +1332,8 @@ fn conformance_corpus_parallel_default_has_serial_escape_hatch() {
 #[cfg(unix)]
 #[test]
 fn test_subcommand_reuses_unchanged_compiled_suites() {
-    // [TESTING-NATIVE-CACHE] the second identical run never invokes clang.
+    // [TESTING-NATIVE-CACHE] cached suites reuse compilation and linking;
+    // untracked link directories still rebuild on every invocation.
     let dir = temp_dir("suite_cache");
     let _ = write_in(&dir, "cached.test.osp", PASSING_TESTS);
     let _ = write_in(
@@ -1354,9 +1355,11 @@ fn test_subcommand_reuses_unchanged_compiled_suites() {
 
     let first = run_cache_probe(&dir, &driver);
     assert_eq!(first.code, Some(0), "{}", first.stderr);
+    // Three cached object/link pairs, plus one uncached combined invocation.
+    assert_eq!(read_text(&dir.join("cc-count")), "xxxxxxx");
     let second = run_cache_probe(&dir, &driver);
     assert_eq!(second.code, Some(0), "{}", second.stderr);
-    assert_eq!(read_text(&dir.join("cc-count")), "xxxxx");
+    assert_eq!(read_text(&dir.join("cc-count")), "xxxxxxxx");
 }
 
 #[cfg(unix)]

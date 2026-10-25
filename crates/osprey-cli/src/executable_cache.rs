@@ -11,6 +11,14 @@ pub(super) fn test_cache_path(
     memory: &str,
     kind: osprey_debug::BuildKind,
 ) -> Option<PathBuf> {
+    let dir = cache_directory(input)?;
+    Some(dir.join(format!(
+        "suite-{:016x}.out",
+        test_cache_key(input, memory, kind)
+    )))
+}
+
+fn cache_directory(input: &CompilationInput) -> Option<PathBuf> {
     // [TESTING-NATIVE-CACHE] every input affecting the native artifact is
     // represented by the cache key; untracked external links bypass caching.
     let dir = std::env::var_os(TEST_CACHE_DIR_ENV).map(PathBuf::from)?;
@@ -20,9 +28,18 @@ pub(super) fn test_cache_path(
     if std::fs::create_dir_all(&dir).is_err() || !directory_is_safe(&dir) {
         return None;
     }
+    Some(dir)
+}
+
+pub(super) fn codegen_cache_path(
+    input: &CompilationInput,
+    kind: osprey_debug::BuildKind,
+) -> Option<PathBuf> {
+    use std::hash::Hasher;
+    let dir = cache_directory(input)?;
     Some(dir.join(format!(
-        "suite-{:016x}.out",
-        test_cache_key(input, memory, kind)
+        "module-{:016x}.ll",
+        codegen_key(input, kind).finish()
     )))
 }
 
@@ -57,18 +74,27 @@ pub(super) fn test_cache_key(
     kind: osprey_debug::BuildKind,
 ) -> u64 {
     use std::hash::{Hash, Hasher};
+    let mut state = codegen_key(input, kind);
+    memory.hash(&mut state);
+    hash_runtime_identity(memory, &mut state);
+    state.finish()
+}
+
+fn codegen_key(
+    input: &CompilationInput,
+    kind: osprey_debug::BuildKind,
+) -> std::collections::hash_map::DefaultHasher {
+    use std::hash::Hash;
     let mut state = std::collections::hash_map::DefaultHasher::new();
-    "osprey-test-cache-v1".hash(&mut state);
+    "osprey-test-cache-v2".hash(&mut state);
     input.source().hash(&mut state);
     input.debug_path().hash(&mut state);
-    memory.hash(&mut state);
     // Both lowerings must produce distinct cached artifacts [GPU-KERNEL-EXTRACT].
     std::env::var_os(osprey_codegen::GPU_KERNELS_ENV).hash(&mut state);
     std::mem::discriminant(&kind).hash(&mut state);
     opt_flag(kind).hash(&mut state);
     hash_toolchain_identity(&mut state);
-    hash_runtime_identity(memory, &mut state);
-    state.finish()
+    state
 }
 
 fn hash_toolchain_identity<H: std::hash::Hasher>(state: &mut H) {
@@ -122,7 +148,7 @@ pub(super) fn ensure_cached_executable(
         let _ = std::fs::remove_file(&staging);
         return Err(code);
     }
-    publish_cached_executable(&staging, cached)
+    publish_cached_artifact(&staging, cached)
 }
 
 pub(super) fn is_nonempty_file(path: &Path) -> bool {
@@ -130,7 +156,7 @@ pub(super) fn is_nonempty_file(path: &Path) -> bool {
         .is_ok_and(|metadata| metadata.file_type().is_file() && metadata.len() > 0)
 }
 
-pub(super) fn publish_cached_executable(staging: &Path, cached: &Path) -> Result<(), ExitCode> {
+pub(super) fn publish_cached_artifact(staging: &Path, cached: &Path) -> Result<(), ExitCode> {
     match std::fs::rename(staging, cached) {
         Ok(()) => Ok(()),
         Err(_) if is_nonempty_file(cached) => {
@@ -139,7 +165,7 @@ pub(super) fn publish_cached_executable(staging: &Path, cached: &Path) -> Result
         }
         Err(error) => {
             eprintln!(
-                "error: cannot publish test executable {}: {error}",
+                "error: cannot publish cached artifact {}: {error}",
                 cached.display()
             );
             let _ = std::fs::remove_file(staging);

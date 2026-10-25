@@ -6,6 +6,7 @@ use crate::project::CompilationInput;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
+mod cached;
 mod options;
 mod symbols;
 pub(crate) use options::NativeOptions;
@@ -69,13 +70,9 @@ pub(super) fn build_input(
     exe: &Path,
     options: NativeOptions<'_>,
 ) -> Result<(), ExitCode> {
-    let program = input.codegen_program(options.kind == osprey_debug::BuildKind::Coverage);
-    let ir = compile_ir(input.debug_path(), &program, options.kind).map_err(|error| {
-        eprintln!("{}: {error}", input.display_path());
-        ExitCode::FAILURE
-    })?;
+    let ir = cached::ir(input, options)?;
     let ll = write_ir(input.debug_path(), exe, &ir, options.debug.preserve_ir)?;
-    let result = build_ir(&ll, &ir, input.source(), exe, options);
+    let result = build_ir(&ll, &ir, input, exe, options);
     if !options.debug.preserve_ir {
         let _ = std::fs::remove_file(&ll);
     }
@@ -85,15 +82,16 @@ pub(super) fn build_input(
 fn build_ir(
     ll: &Path,
     ir: &str,
-    source: &str,
+    input: &CompilationInput,
     exe: &Path,
     options: NativeOptions<'_>,
 ) -> Result<(), ExitCode> {
     if options.kind.wants_debug_info() {
-        return symbols::build(ll, ir, source, exe, options);
+        return symbols::build(ll, ir, input.source(), exe, options);
     }
-    let mut command = ir_driver(ll, exe, options);
-    let _ = command.args(link_args(ir, source, options.memory));
+    let object = cached::object(input, ll, options)?;
+    let mut command = ir_driver(object.as_deref().unwrap_or(ll), exe, options);
+    let _ = command.args(link_args(ir, input.source(), options.memory));
     run_build_step(command, ll)
 }
 

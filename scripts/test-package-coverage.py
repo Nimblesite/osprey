@@ -324,6 +324,22 @@ class CheckerTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 1, "Omitted runtime source cannot pass: " + result.stdout)
                 self.assertIn("missing source evidence: src/facade.py", result.stdout)
 
+    def test_missing_function_rows_cannot_shrink_the_denominator(self):
+        source = "def covered(value):\n    return value\n\ndef omitted(value):\n    return value\n"
+        fixture = self.fixture({"demo": {"sources": {"src/lib.py": source}}})
+        fixture.write_report("demo", own_report("demo", 2, 2))
+        result = fixture.check()
+        self.assertEqual(result.returncode, 1, "Missing function rows must fail: " + result.stdout)
+        self.assertIn("missing function definition counter: lib.py:4", result.stdout)
+
+    def test_abstract_effect_declarations_have_no_body_to_cover(self):
+        source = "@effect\nclass Buffer:\n    def length(buffer) -> int: ...\n\n" + py_source(4)
+        fixture = self.fixture({"demo": {"sources": {"src/lib.py": source}}})
+        fixture.write_report("demo", {"files": {"packages/demo/src/lib.py": {
+            "lines": {str(line): 1 for line in range(5, 9)},
+        }}})
+        self.assert_exit(fixture.check(), 0)
+
     def test_ml_and_default_flavor_functions_need_evidence(self):
         fixture = self.fixture({
             "mldemo": {"sources": {"src/base.ospml": "namespace demo\n\nexport find (items, matches) = listGet items 0\n"}},

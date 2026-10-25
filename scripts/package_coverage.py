@@ -35,7 +35,7 @@ import sys
 from pathlib import Path
 from package_coverage_evidence import (
     SOURCE_SUFFIXES, evidence_path, evidence_problems, golden_problems,
-    python_coverable, seal_evidence, source_inputs,
+    definition_problems, python_coverable, seal_evidence, source_inputs,
 )
 
 EXIT_OK = 0
@@ -223,6 +223,7 @@ def validate_own_file(root: Path, name: str, key: str, rel: tuple[str, ...], bod
     if not isinstance(lines, dict) or not lines:
         return None, [f"no line counters for {key}"]
     hits, problems = validated_hits(lines, len(local.read_text().splitlines()), key)
+    problems += definition_problems(local, hits)
     if problems:
         return None, problems
     covered = sum(1 for count in hits.values() if count > 0)

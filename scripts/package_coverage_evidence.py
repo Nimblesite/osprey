@@ -30,6 +30,21 @@ def python_coverable(text):
         return True
 
 
+def definition_problems(path, hits):
+    if path.suffix != ".py":
+        return []
+    try:
+        nodes = ast.walk(ast.parse(path.read_text()))
+        definitions = {node.lineno for node in nodes if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                       and not (len(node.body) == 1 and isinstance(node.body[0], ast.Expr)
+                                and isinstance(node.body[0].value, ast.Constant)
+                                and node.body[0].value.value is Ellipsis)}
+        return [f"missing function definition counter: {path.name}:{line}"
+                for line in sorted(definitions - set(hits))]
+    except (SyntaxError, OSError) as error:
+        return [f"cannot verify function counters: {path}: {error}"]
+
+
 def oracle_problems(text):
     summary = re.search(r"^([1-9][0-9]*) passed, 0 failed\n?\Z", text, re.MULTILINE)
     tap = re.search(r"^# tests=([1-9][0-9]*) passed=([1-9][0-9]*) failed=0 skipped=0\n?\Z", text, re.MULTILINE)
