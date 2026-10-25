@@ -183,10 +183,27 @@ test.describe("desktop interactions", () => {
 
   test("nav links navigate to the right pages", async ({ page }) => {
     await page.goto("/");
-    await page.locator(".nav-link", { hasText: "Spec" }).click();
+    await expect(page.locator("#site-navigation > li")).toHaveCount(4);
+    await page.locator(".nav-group > summary", { hasText: "Docs" }).click();
+    await page.getByRole("link", { name: "Language specification", exact: true }).click();
     await expect(page).toHaveURL(/\/spec\/$/);
-    await page.locator(".nav-link", { hasText: "Docs" }).click();
+    await page.locator(".nav-group > summary", { hasText: "Docs" }).click();
+    await page.getByRole("link", { name: "Documentation home", exact: true }).first().click();
     await expect(page).toHaveURL(/\/docs\/$/);
+  });
+
+  test("header submenus support keyboard dismissal and one open group", async ({ page }) => {
+    await page.goto("/");
+    const docs = page.locator(".nav-group").filter({ has: page.locator("summary", { hasText: "Docs" }) });
+    const tools = page.locator(".nav-group").filter({ has: page.locator("summary", { hasText: "Tools" }) });
+    await docs.locator("summary").focus();
+    await page.keyboard.press("Enter");
+    await expect(docs.getByRole("link").first()).toBeVisible();
+    await tools.locator("summary").click();
+    await expect(docs).not.toHaveAttribute("open", "");
+    await page.keyboard.press("Escape");
+    await expect(tools).not.toHaveAttribute("open", "");
+    await expect(tools.locator("summary")).toBeFocused();
   });
 
   test("logo returns to home", async ({ page }) => {

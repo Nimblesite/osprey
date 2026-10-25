@@ -375,7 +375,9 @@ class CheckerTests(unittest.TestCase):
 
     def test_ml_and_default_match_arms_cannot_disappear_from_reports(self):
         for suffix, source in (("ospml", "choose flag =\n    match flag\n        true => 1\n        false => 2\n"),
-                               ("osp", "fn choose(flag) = match flag {\n    true => 1\n    false => 2\n}\n")):
+                               ("osp", "fn choose(flag) = match flag {\n    true => 1\n    false => 2\n}\n"),
+                               ("ospml", "choose value = match value\n    Success(value=item) => item\n    Error(message=message) => 0\n"),
+                               ("osp", "fn choose(value) = match value {\n    Success(value=item) => item\n    Error(message=message) => 0\n}\n")):
             with self.subTest(flavor=suffix):
                 fixture = self.fixture({"demo": {"sources": {f"src/lib.{suffix}": source}}})
                 fixture.write_report("demo", own_report("demo", 1, 1, f"src/lib.{suffix}"))

@@ -180,7 +180,7 @@ test.describe("mobile interactions", () => {
     await expect(links).toBeHidden();
     await toggle.click();
     await expect(links).toBeVisible();
-    await expect(page.locator(".nav-link", { hasText: "Docs" })).toBeVisible();
+    await expect(links.locator("summary", { hasText: "Docs" })).toBeVisible();
     await toggle.click();
     await expect(links).toBeHidden();
   });
@@ -197,7 +197,7 @@ test.describe("mobile interactions", () => {
       await page.setViewportSize(viewport);
       await page.goto("/docs/");
       await page.locator("#mobile-menu-toggle").click();
-      for (const link of await page.locator(".nav-link").all()) {
+      for (const link of await page.locator("#site-navigation > li > :is(a, details > summary)").all()) {
         await expect(link).toBeInViewport({ ratio: 1 });
       }
     });
@@ -226,7 +226,7 @@ test.describe("mobile interactions", () => {
     await expect(toggle).toHaveAttribute("aria-controls", await links.getAttribute("id"));
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await expect(links.getByRole("link").first()).toBeFocused();
+    await expect(links.locator("summary").first()).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(links).toBeHidden();
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
