@@ -69,49 +69,54 @@ class KwVal:
     value: Value
 
 
+def make_value(kind, bval, ival, fval, sval, elems, keys, vals):
+    """Build the shared typed layout of every template value."""
+    return Value(kind=kind, bval=bval, ival=ival, fval=fval, sval=sval, elems=elems, keys=keys, vals=vals)
+
+
 def none():
     """The `None` value."""
-    return Value(kind=K_NONE, bval=False, ival=0, fval=0.0, sval="", elems=[], keys=[], vals=[])
+    return make_value(K_NONE, False, 0, 0.0, "", [], [], [])
 
 
 def bool_(b):
     """A boolean value."""
-    return Value(kind=K_BOOL, bval=b, ival=0, fval=0.0, sval="", elems=[], keys=[], vals=[])
+    return make_value(K_BOOL, b, 0, 0.0, "", [], [], [])
 
 
 def int_(n):
     """An integer value."""
-    return Value(kind=K_INT, bval=False, ival=n, fval=0.0, sval="", elems=[], keys=[], vals=[])
+    return make_value(K_INT, False, n, 0.0, "", [], [], [])
 
 
 def float_(x):
     """A float value."""
-    return Value(kind=K_FLOAT, bval=False, ival=0, fval=x, sval="", elems=[], keys=[], vals=[])
+    return make_value(K_FLOAT, False, 0, x, "", [], [], [])
 
 
 def text(s):
     """A string value."""
-    return Value(kind=K_STRING, bval=False, ival=0, fval=0.0, sval=s, elems=[], keys=[], vals=[])
+    return make_value(K_STRING, False, 0, 0.0, s, [], [], [])
 
 
 def list_(elems):
     """A list value."""
-    return Value(kind=K_LIST, bval=False, ival=0, fval=0.0, sval="", elems=elems, keys=[], vals=[])
+    return make_value(K_LIST, False, 0, 0.0, "", elems, [], [])
 
 
 def dict_(keys, vals):
     """A dict value; keys stay in insertion order."""
-    return Value(kind=K_DICT, bval=False, ival=0, fval=0.0, sval="", elems=[], keys=keys, vals=vals)
+    return make_value(K_DICT, False, 0, 0.0, "", [], keys, vals)
 
 
 def undefined(name):
     """An undefined value naming the variable or attribute that was missing."""
-    return Value(kind=K_UNDEFINED, bval=False, ival=0, fval=0.0, sval=name, elems=[], keys=[], vals=[])
+    return make_value(K_UNDEFINED, False, 0, 0.0, name, [], [], [])
 
 
 def pair(key, value):
     """One `dict.items()` element."""
-    return Value(kind=K_PAIR, bval=False, ival=0, fval=0.0, sval=key, elems=[], keys=[], vals=[value])
+    return make_value(K_PAIR, False, 0, 0.0, key, [], [], [value])
 
 
 def is_undefined(v):
@@ -711,7 +716,7 @@ def dict_of(pairs):
 
 def dict_add(v, p):
     """`v` with one (key, value) pair appended."""
-    return Value(kind=K_DICT, bval=False, ival=0, fval=0.0, sval="", elems=[], keys=listAppend(v.keys, p.sval), vals=listAppend(v.vals, unwrap_or(listGet(p.vals, 0), none())))
+    return make_value(K_DICT, False, 0, 0.0, "", [], listAppend(v.keys, p.sval), listAppend(v.vals, unwrap_or(listGet(p.vals, 0), none())))
 
 
 def dict_set(v, key, value):
@@ -722,22 +727,22 @@ def dict_set(v, key, value):
 def dict_set_at(v, key, value, i):
     """Walk `v`'s keys: replace `key` at its position, else append at the end."""
     if i >= len(v.keys):
-        return Value(kind=K_DICT, bval=False, ival=0, fval=0.0, sval="", elems=[], keys=listAppend(v.keys, key), vals=listAppend(v.vals, value))
+        return make_value(K_DICT, False, 0, 0.0, "", [], listAppend(v.keys, key), listAppend(v.vals, value))
     elif unwrap_or(listGet(v.keys, i), "") == key:
-        return Value(kind=K_DICT, bval=False, ival=0, fval=0.0, sval="", elems=[], keys=replace_at(v.keys, i, key), vals=replace_at(v.vals, i, value))
+        return make_value(K_DICT, False, 0, 0.0, "", [], replace_at(v.keys, i, key), replace_at(v.vals, i, value))
     else:
         return dict_set_at(v, key, value, i + 1)
 
 
 def func(name):
     """A global/macro function reference, called by the evaluator."""
-    return Value(kind=K_FUNC, bval=False, ival=0, fval=0.0, sval=name, elems=[], keys=[], vals=[])
+    return make_value(K_FUNC, False, 0, 0.0, name, [], [], [])
 
 
 def halt(message):
     """An error value carrying `message`, propagated up through the evaluator and
     turned into the render `Result`'s `Error` payload by the renderer."""
-    return Value(kind=K_ERROR, bval=False, ival=0, fval=0.0, sval=message, elems=[], keys=[], vals=[])
+    return make_value(K_ERROR, False, 0, 0.0, message, [], [], [])
 
 
 def is_error(v):

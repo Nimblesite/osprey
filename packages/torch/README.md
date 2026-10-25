@@ -4,7 +4,7 @@ An Osprey Python-flavor port of torch: float64 tensor operations, autograd, opti
 
 Tensors use the Osprey NumPy storage capability. This is not a binding to the PyTorch runtime or its complete dtype/operator catalogue.
 
-Autograd uses an explicit immutable tape: operations return the grown tape and a node ID, and `backward` accumulates gradients over that graph. GELU uses the erf formula corresponding to PyTorch's default `approximate="none"` behavior. Gradient-norm clipping implements L2 (`norm_type = 2.0`) and infinity norms. Other orders currently take the L2 path instead of failing; that unsupported-order validation remains a correctness gap.
+Autograd uses an explicit immutable tape: operations return the grown tape and a node ID, and `backward` accumulates gradients over that graph. GELU uses the erf formula corresponding to PyTorch's default `approximate="none"` behavior. Gradient-norm clipping implements L2 (`norm_type = 2.0`) and infinity norms. Other orders fail through the NumPy error effect instead of silently using L2.
 
 The [Python-flavor ports contract](../../docs/specs/ecosystem/0043-PythonFlavorPorts.md) defines [PORT-SUITE] and [PORT-TEST-ORACLE]. The [CPython oracle](../../scripts/oracles/torch.py) computes the reference values in `tests/expected.py`. `src/` is Osprey source, not CPython; run it with the Osprey compiler.
 

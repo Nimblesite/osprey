@@ -11,8 +11,6 @@
 void klee_make_symbolic(void *address, size_t count, const char *name);
 int klee_range(int begin, int end, const char *name);
 void klee_assume(uintptr_t condition);
-void klee_open_merge(void);
-void klee_close_merge(void);
 __attribute__((noreturn)) void klee_report_error(const char *file, int line,
                                                  const char *message,
                                                  const char *suffix);

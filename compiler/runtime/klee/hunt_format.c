@@ -128,10 +128,10 @@ static void emit_field(sink *out, const spec *s, const char *prefix, const char 
 
 // Digits of `value` in `base`, written backwards from the end of `digits`.
 static int unsigned_digits(unsigned long long value, unsigned base, int upper, char *digits) {
+  const char *alphabet = upper ? "0123456789ABCDEF" : "0123456789abcdef";
   int length = 0;
   do {
-    unsigned digit = (unsigned)(value % base);
-    digits[DIGITS_MAX - 1 - length] = (char)(digit < 10 ? '0' + digit : (upper ? 'A' : 'a') + digit - 10);
+    digits[DIGITS_MAX - 1 - length] = alphabet[value % base];
     value /= base;
     length++;
   } while (value != 0);

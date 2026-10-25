@@ -239,10 +239,6 @@ char *osp_string_pad_end(const char *s, int64_t target_length, const char *fill)
 
 /* ---------- parsing ---------- */
 
-#ifdef OSP_SYMBOLIC
-#include <klee/klee.h>
-#endif
-
 /* Returns 0 on success, 1 on failure. Strict: no whitespace, optional sign.
  *
  * Accumulate in uint64_t so we never trigger signed overflow under
@@ -250,7 +246,7 @@ char *osp_string_pad_end(const char *s, int64_t target_length, const char *fill)
  * 9223372036854775808 — one past INT64_MAX — and computing it as a
  * signed `acc * 10 + 8` would trap before we get a chance to negate.
  */
-static int64_t osp_parse_int_impl(const char *s, int64_t *out) {
+int64_t osp_parse_int_strict(const char *s, int64_t *out) {
     if (!s || s[0] == '\0' || !out) return 1;
     const char *p = s;
     int neg = 0;
@@ -285,17 +281,6 @@ static int64_t osp_parse_int_impl(const char *s, int64_t *out) {
         *out = (int64_t)acc;
     }
     return 0;
-}
-
-int64_t osp_parse_int_strict(const char *s, int64_t *out) {
-#ifdef OSP_SYMBOLIC
-    klee_open_merge();
-#endif
-    int64_t result = osp_parse_int_impl(s, out);
-#ifdef OSP_SYMBOLIC
-    klee_close_merge();
-#endif
-    return result;
 }
 
 /* [BUILTIN-STRING-PARSEFLOAT] decimal grammar:

@@ -107,6 +107,22 @@ class CrashGateTests(unittest.TestCase):
 
 
 class ReviewReportTests(unittest.TestCase):
+    def test_concise_report_exports_only_complete_clean_runs_as_json(self):
+        from hunt_sample_report import write
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            good = QualificationTests().clean() | {'program': 'safe.osp', 'qualifies': True, 'directory': str(out/'safe')}
+            bad = good | {'program': 'unfinished.osp', 'report': good['report'] | {'incomplete': [{'reason': 'time'}]}}
+            write(out, [good, bad])
+            manifest = json.loads((out/'safe-runs.json').read_text())
+            self.assertEqual(manifest['programs'], ['safe.osp'])
+            self.assertIn('limits', manifest)
+            text = (out/'index.html').read_text()
+            self.assertIn('<th scope="col">Run</th>', text)
+            self.assertIn('<th scope="col">Issues</th>', text)
+            self.assertNotIn('What is asserted', text)
+            self.assertNotIn('How to read the counts', text)
+
     def test_both_review_modes_render_escape_names_and_separate_counts(self):
         from hunt_sample_report import write
         for proof in [False, True]:

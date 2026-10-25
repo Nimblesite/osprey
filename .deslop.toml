@@ -82,7 +82,7 @@ exclude = [
   # blow past the ceiling. They duplicate by design and we don't own them.
   "website/src/assets/vendor/**",
   # Built-in documentation DATA tables: `builtin_doc!(name, description,
-  # [params], example)` rows — one per builtin — fill these two files. deslop
+  # [params], example)` rows — one per builtin — fill these files. deslop
   # counts them as Type-1 clones because every row is the same macro shape, but
   # the repetition is DATA enumeration, not duplicated logic: each row is unique
   # doc content in an identical container, and the macro is already the DRY
@@ -91,4 +91,7 @@ exclude = [
   # benchmark baselines and generator scripts above.
   "**/builtin_docs_sys.rs",
   "**/builtin_docs_lang.rs",
+  # These are the same previously exempt rows, split out of builtin_docs_lang.rs.
+  "**/builtin_docs_core.rs",
+  "**/builtin_docs_gpu.rs",
 ]
