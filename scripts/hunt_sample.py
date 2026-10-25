@@ -91,13 +91,35 @@ def parse():
     parser.add_argument('--max-time', type=int, default=8)
     parser.add_argument('--input-bytes', type=int, default=2)
     parser.add_argument('--jobs', type=int, default=4)
+    parser.add_argument('--manifest', type=Path, help='rerun a safe-runs.json; fail if any program no longer qualifies')
     parser.add_argument('programs', nargs='*')
     options = parser.parse_args()
+    apply_manifest(options, parser)
     if not 0 < options.wall_time <= 10 or options.jobs < 1 or options.max_time < 1:
         parser.error('wall time must be positive and at most 10 seconds; jobs and engine budget must be positive')
     options.root, options.out = Path.cwd(), options.out.resolve()
     options.osprey = options.osprey.resolve()
     return options
+
+
+def apply_manifest(options, parser):
+    if not options.manifest:
+        return
+    try:
+        manifest = json.loads(options.manifest.read_text())
+        programs, limits = manifest['programs'], manifest['limits']
+        if type(manifest['version']) is not int or manifest['version'] != 1 or not isinstance(programs, list) or not programs or options.programs:
+            raise ValueError('expected version 1, a nonempty manifest, and no extra programs')
+        if not all(isinstance(p, str) and p for p in programs) or len(set(programs)) != len(programs):
+            raise ValueError('manifest programs must be unique nonempty paths')
+        options.programs = programs
+        options.wall_time, options.max_time, options.input_bytes = (limits['wallTimeSeconds'], limits['engineTimeSeconds'], limits['inputBytesPerStream'])
+        if type(options.wall_time) not in (int, float) or not 0 < options.wall_time <= 10:
+            raise ValueError('wall deadline must be positive and at most 10 seconds')
+        if any(type(v) is not int for v in (options.max_time, options.input_bytes)) or not 0 <= options.input_bytes <= 4096:
+            raise ValueError('invalid engine budget or input bound')
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        parser.error(f'invalid safe-run manifest: {error}')
 
 
 def snapshot(options):
@@ -126,6 +148,7 @@ def main():
     (options.out/'results.json').write_text(json.dumps({'metadata': metadata, 'runs': records}, indent=2)+'\n')
     from hunt_sample_report import write
     write(options.out, records)
+    return int(bool(options.manifest) and not all(record['qualifies'] for record in records))
 
 
 def collect(programs, options):
@@ -141,4 +164,4 @@ def collect(programs, options):
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())

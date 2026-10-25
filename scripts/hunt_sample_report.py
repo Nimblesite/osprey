@@ -92,10 +92,10 @@ def write(out, records, proof=False):
     counts = Counter(outcome(record) for record in records)
     (out/'SUMMARY.txt').write_text('\n'.join(f'{key}: {value}' for key, value in sorted(counts.items()))+'\n')
     tokens = (Path(__file__).resolve().parent.parent/'website/src/css/variables.css').read_text()
-    (out/'index.html').write_text(document(out, quick, excluded, counts, tokens, proof))
+    (out/'index.html').write_text(document(out, quick, excluded, tokens, proof))
 
 
-def document(out, quick, excluded, counts, tokens, proof):
+def document(out, quick, excluded, tokens, proof):
     records = quick + excluded
     bugs = sum(issues(r) == 'BUG: crash reproduced' for r in records)
     title = f'{len(quick)}/{len(records)} planted crash tests passed' if proof else 'Hunt results'

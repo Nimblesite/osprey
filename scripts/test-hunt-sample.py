@@ -107,6 +107,19 @@ class CrashGateTests(unittest.TestCase):
 
 
 class ReviewReportTests(unittest.TestCase):
+    def test_manifest_gate_rejects_a_run_that_becomes_incomplete(self):
+        sampler = Path(__file__).resolve().parent/'hunt_sample.py'
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fake_sampler_root(root)
+            manifest = {'version': 1, 'limits': {'wallTimeSeconds': 10, 'engineTimeSeconds': 8, 'inputBytesPerStream': 2}, 'programs': ['safe.osp']}
+            for program, expected in [('safe.osp', 0), ('partial.osp', 1)]:
+                manifest['programs'] = [program]
+                (root/'manifest.json').write_text(json.dumps(manifest))
+                result = subprocess.run([sys.executable, str(sampler), '--manifest', str(root/'manifest.json'),
+                    '--osprey', str(root/'osprey'), '--out', str(root/program)], cwd=root, capture_output=True, text=True)
+                self.assertEqual(result.returncode, expected, result.stderr)
+
     def test_concise_report_exports_only_complete_clean_runs_as_json(self):
         from hunt_sample_report import write
         with tempfile.TemporaryDirectory() as directory:
@@ -122,6 +135,17 @@ class ReviewReportTests(unittest.TestCase):
             self.assertIn('<th scope="col">Issues</th>', text)
             self.assertNotIn('What is asserted', text)
             self.assertNotIn('How to read the counts', text)
+
+    def test_report_separates_program_bugs_from_engine_limitations(self):
+        from hunt_sample_report import issues, run_status
+        base = QualificationTests().clean()
+        limited = base | {'report': base['report'] | {'findings': [{'class': 'unmodelled'}]}}
+        crash = base | {'exitCode': 1, 'report': base['report'] | {'findings': [{'class': 'abort', 'replay': 'reproduced'}]}}
+        self.assertEqual(issues(base), 'None found')
+        self.assertEqual(issues(limited), 'Not fully checked')
+        self.assertEqual(issues(crash), 'BUG: crash reproduced')
+        self.assertEqual(issues(crash | {'planted': True}), 'Expected planted crash')
+        self.assertEqual(run_status(base | {'timedOut': True}), 'Timed out')
 
     def test_both_review_modes_render_escape_names_and_separate_counts(self):
         from hunt_sample_report import write
@@ -139,6 +163,23 @@ class ReviewReportTests(unittest.TestCase):
                 self.assertIn('&lt;script&gt;', text)
                 self.assertNotIn('<script>', text)
                 self.assertEqual((out/'quick-corpus.txt').exists(), not proof)
+
+
+def fake_sampler_root(root):
+    (root/'compiler/bin').mkdir(parents=True)
+    (root/'compiler/bin/libosprey_runtime_klee.bc').write_bytes(b'fake runtime')
+    (root/'tests/hunt').mkdir(parents=True)
+    (root/'tests/hunt/crash-cases.json').write_text('[]')
+    script = root/'osprey'
+    script.write_text(f'''#!{sys.executable}
+import json, pathlib, sys
+out = pathlib.Path(sys.argv[sys.argv.index('--out')+1])
+out.mkdir()
+partial = sys.argv[2] == 'partial.osp'
+report = {{'program': sys.argv[2], 'explored': {{'paths': 1, 'completed': int(not partial)}}, 'findings': [], 'incomplete': [{{'reason':'time'}}] if partial else []}}
+(out/'report.json').write_text(json.dumps(report))
+''')
+    script.chmod(0o755)
 
 
 if __name__ == '__main__':

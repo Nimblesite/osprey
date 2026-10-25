@@ -108,7 +108,15 @@ This inventories runnable programs across tests, examples, book examples, packag
 
 Each invocation gets a hard **10-second wall-clock deadline**, including compilation and replay. The sampler kills the whole process group on timeout. Its default engine budget is eight seconds with two symbolic bytes per stream. The ordinary Hunt `--max-time` flag limits the engine; it is not this whole-command deadline.
 
-Open the generated `index.html`. `quick-corpus.txt` lists only programs that exited successfully within ten seconds, explored at least one path, finished every explored path normally, and had no findings or unfinished paths. Logs, exact commands, source context and binary fingerprints accompany the results. Treat this list as candidate tests under those bounds, not a proof of general safety or of identical timing on CI. Use a fresh output directory for each sweep.
+Open `index.html` for each program's run status and issues. Logs and path counts are under Details. `safe-runs.json` lists complete, finding-free runs with their recorded input and time limits; `quick-corpus.txt` contains the same program paths.
+
+To gate the JSON list in CI, use a fresh output directory:
+
+```sh
+python3 scripts/hunt_sample.py --manifest target/my-hunt-sample/safe-runs.json --out target/hunt-ci
+```
+
+This reruns every listed program under the recorded limits and returns a nonzero exit if any run times out, reports a finding, remains incomplete, or fails. Passing applies to those limits; it does not prove safety for every input.
 
 ## Verify deliberate crash detection
 
