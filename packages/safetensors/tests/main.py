@@ -232,8 +232,29 @@ def tensor_info_case():
     return Check.equal("tensor_info.byte_extent", info.end - info.start, Dtype.dtype_size(info.dtype) * unwrap_or(listGet(info.shape, 0), 0))
 
 
+def json_value_cases():
+    """RFC 8259 literals, exponent numbers and escaped Unicode are header values."""
+    match JsonParser.parse('[true,false,null,1.25e2,"\\u4e2d\\n\\t\\b\\f\\r\\/\\\\\\\""]'):
+        case Error(message=message):
+            return [Check.failed("json.values", message)]
+        case Success(value=value):
+            fallback = JsonParser.JsonValue(kind="missing", b=False, i=0, f=0.0, s="", items=[], members=[])
+            items = value.items
+            return [Check.equal("json.array_count", len(items), 5), Check.equal("json.true", unwrap_or(listGet(items, 0), fallback).b, True), Check.equal("json.false", unwrap_or(listGet(items, 1), fallback).b, False), Check.equal("json.null", unwrap_or(listGet(items, 2), fallback).kind, "null"), Check.equal("json.exponent", unwrap_or(listGet(items, 3), fallback).f, 125.0), Check.equal("json.escaped_unicode", unwrap_or(listGet(items, 4), fallback).s, "中\n\t\b\f\r/\\\"")]
+
+
+def binary_edge_cases():
+    """IEEE little-endian signed zero and smallest subnormals; a UTF-8 BMP word."""
+    return [
+        Check.ints_equal("bytes.negative_zero", Bytes.f64_bytes(-0.0), [0, 0, 0, 0, 0, 0, 0, 128]),
+        Check.ints_equal("bytes.f64_subnormal", Bytes.f64_bytes(Check.float_of("5e-324")), [1, 0, 0, 0, 0, 0, 0, 0]),
+        Check.ints_equal("bytes.f16_subnormal", Bytes.f16_bytes(Bytes.pow2(-24)), [1, 0]),
+        Check.equal("bytes.utf8_bmp", unwrap_or(Bytes.bytes_to_string([228, 184, 173]), ""), "中"),
+    ]
+
+
 def helper_cases():
-    return concat_all([dtype_helper_cases(), byte_read_cases(), float_byte_cases(), json_helper_cases(), [tensor_info_case()]])
+    return concat_all([dtype_helper_cases(), byte_read_cases(), float_byte_cases(), json_helper_cases(), json_value_cases(), binary_edge_cases(), [tensor_info_case()]])
 
 
 def run_cases():

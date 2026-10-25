@@ -84,5 +84,15 @@ ok json.kind
 ok json.members
 ok json.member
 ok json.number
+ok json.array_count
+ok json.true
+ok json.false
+ok json.null
+ok json.exponent
+ok json.escaped_unicode
+ok bytes.negative_zero
+ok bytes.f64_subnormal
+ok bytes.f16_subnormal
+ok bytes.utf8_bmp
 ok tensor_info.byte_extent
-87 passed, 0 failed
+97 passed, 0 failed

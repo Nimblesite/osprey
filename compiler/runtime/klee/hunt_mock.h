@@ -81,6 +81,8 @@ void osp_hunt_name_indexed(char *out, const char *base, unsigned index);
 void osp_hunt_unsupported(const char *file, int line, const char *name)
     __attribute__((noreturn));
 
+void osp_hunt_cache_decimal(uint64_t value, const char *digits, size_t count);
+
 // The printf engine: formats into `emit(target, byte)` and returns the
 // length the output would have, as snprintf does.
 int osp_hunt_vformat(void (*emit)(void *target, char byte), void *target,
