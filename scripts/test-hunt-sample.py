@@ -107,6 +107,17 @@ class CrashGateTests(unittest.TestCase):
 
 
 class ReviewReportTests(unittest.TestCase):
+    def test_manifest_gate_rejects_empty_lists_and_widened_deadlines(self):
+        sampler = Path(__file__).resolve().parent/'hunt_sample.py'
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)/'manifest.json'
+            manifest = {'version': 1, 'programs': ['safe.osp'], 'limits': {'wallTimeSeconds': 10, 'engineTimeSeconds': 8, 'inputBytesPerStream': 2}}
+            for patch in [{'programs': []}, {'programs': ['safe.osp', 'safe.osp']},
+                          {'limits': manifest['limits'] | {'wallTimeSeconds': 11}}]:
+                path.write_text(json.dumps(manifest | patch))
+                result = subprocess.run([sys.executable, str(sampler), '--manifest', str(path)], capture_output=True, text=True)
+                self.assertEqual(result.returncode, 2, result.stderr)
+
     def test_manifest_gate_rejects_a_run_that_becomes_incomplete(self):
         sampler = Path(__file__).resolve().parent/'hunt_sample.py'
         with tempfile.TemporaryDirectory() as directory:

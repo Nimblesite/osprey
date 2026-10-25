@@ -36,8 +36,8 @@ _coverage_check_rust:
 	@if [ ! -f "$(COVERAGE_THRESHOLDS_FILE)" ]; then echo "FAIL: $(COVERAGE_THRESHOLDS_FILE) not found"; exit 1; fi; \
 	if [ ! -f $(RUST_LCOV) ]; then echo "[rust] FAIL: $(RUST_LCOV) not produced"; exit 1; fi; \
 	fail=0; \
-	for crate in $$(jq -r '.projects | to_entries[] | select(.value.language=="rust") | .key' "$(COVERAGE_THRESHOLDS_FILE)"); do \
-	  threshold=$$(jq -r --arg c "$$crate" '.projects[$$c].threshold' "$(COVERAGE_THRESHOLDS_FILE)"); \
+	for crate in $$(jq -r '.projects.rust | keys[]' "$(COVERAGE_THRESHOLDS_FILE)"); do \
+	  threshold=$$(jq -r --arg c "$$crate" '.projects.rust[$$c].threshold' "$(COVERAGE_THRESHOLDS_FILE)"); \
 	  set -- $$(awk -F: -v c="$$crate" 'index($$0,"SF:")==1{in_c=index($$2,"/crates/" c "/")>0} in_c&&/^LH:/{h+=$$2} in_c&&/^LF:/{f+=$$2} END{printf "%d %d",h+0,f+0}' $(RUST_LCOV)); \
 	  lh=$$1; lf=$$2; \
 	  if [ "$$lf" -eq 0 ]; then echo "[rust] $$crate FAIL: no lines found in $(RUST_LCOV)"; fail=1; continue; fi; \
@@ -274,7 +274,7 @@ _coverage_check_c_runtime:
 	@set -e; cd compiler/bin && mkdir -p cov && cd cov; \
 	$(foreach s,$(C_TEST_SUITES),mkdir -p $(s) && (cd $(s) && $(CC) $(or $(C_PROFILE_$(s)),$(T)) --coverage -DOSP_COVERAGE_DUMP $(C_FLAGS_$(s)) $(addprefix ../../../,$(C_SRC_$(s))) $(C_LIBS_$(s)) -o $(s) && { ./$(s) >/dev/null 2>&1 || true; } && { $(GCOV_TOOL) *.gcda > summary.txt 2>/dev/null || true; }) && ) true
 	@command -v jq >/dev/null || { echo "[c] FAIL: jq is required to read $(COVERAGE_THRESHOLDS_FILE); a gate that cannot run must not report success"; exit 1; }
-	@libs=$$(jq -r --arg platform "$(if $(filter Darwin,$(UNAME_S)),darwin,$(if $(filter Linux,$(UNAME_S)),linux,windows))" '.projects | to_entries[] | select(.value.language=="c" and ((.value.platform // $$platform)==$$platform)) | .key' "$(COVERAGE_THRESHOLDS_FILE)"); \
+	@libs=$$(jq -r --arg platform "$(if $(filter Darwin,$(UNAME_S)),darwin,$(if $(filter Linux,$(UNAME_S)),linux,windows))" '.projects.c_runtime | to_entries[] | select((.value.platform // $$platform)==$$platform) | .key' "$(COVERAGE_THRESHOLDS_FILE)"); \
 	if [ -z "$$libs" ]; then echo "[c] FAIL: no C entries in $(COVERAGE_THRESHOLDS_FILE) -- the gate would pass vacuously"; exit 1; fi; \
 	fail=0; \
 	for n in $(C_SHIPPED_UNITS); do \
@@ -282,7 +282,7 @@ _coverage_check_c_runtime:
 	    echo "[c] FAIL: runtime/$$n.c ships in a native archive but is neither gated in $(COVERAGE_THRESHOLDS_FILE) nor in C_COV_EXEMPT -- an ungated library cannot regress visibly"; fail=1; }; \
 	done; \
 	for lib in $$libs; do \
-	  thr=$$(jq -r --arg l "$$lib" '.projects[$$l].threshold' "$(COVERAGE_THRESHOLDS_FILE)"); \
+	  thr=$$(jq -r --arg l "$$lib" '.projects.c_runtime[$$l].threshold' "$(COVERAGE_THRESHOLDS_FILE)"); \
 	  best=$$(for f in compiler/bin/cov/*/summary.txt; do \
 	    [ -f "$$f" ] || continue; \
       sed -n "\#File '.*/runtime/$$lib\.[cm]'#{n;s/Lines executed:\([0-9.]*\)% of .*/\1/p;}" "$$f"; \
@@ -383,7 +383,7 @@ _test_vscode_extension: _vsix_bundle $(EXT_NODE_DEPS) $(PROFILER_UI_BUILT)
 # gate reads. All four are held to the one threshold the project declares.
 _coverage_check_vscode_extension:
 	@if [ ! -f "$(COVERAGE_THRESHOLDS_FILE)" ]; then echo "FAIL: $(COVERAGE_THRESHOLDS_FILE) not found"; exit 1; fi; \
-	THRESHOLD=$$(jq -r '.projects["vscode-extension"].threshold' "$(COVERAGE_THRESHOLDS_FILE)"); \
+	THRESHOLD=$$(jq -r '.projects.editor["vscode-extension"].threshold' "$(COVERAGE_THRESHOLDS_FILE)"); \
 	SUMMARY="$(EXT_DIR)/coverage/coverage-summary.json"; \
 	if [ ! -f "$$SUMMARY" ]; then \
 	  echo "[vscode-extension] FAIL: coverage-summary.json not produced"; exit 1; \

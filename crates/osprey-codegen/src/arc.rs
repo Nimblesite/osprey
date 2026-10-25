@@ -262,9 +262,19 @@ pub(crate) fn move_phi_owners(cg: &mut Codegen, incoming: &[String], out: &Value
     // the region end, which is past any tail call in the same expression and
     // costs the callee its tail position. [GC-ARC-PERCEUS]
     let all_pure = incoming_all_pure(cg, incoming, mark);
+    let mut moved = Vec::new();
     if let Some(f) = cg.arc.frames.last_mut() {
         let tail = f.split_off(mark.min(f.len()));
-        f.extend(tail.into_iter().filter(|e| !consumable(e)));
+        for entry in tail {
+            if consumable(&entry) {
+                moved.push(entry.slot);
+            } else {
+                f.push(entry);
+            }
+        }
+    }
+    for slot in moved {
+        cg.emit(format!("store i8* null, i8** {slot}"));
     }
     own(cg, out);
     if all_pure {
@@ -473,5 +483,7 @@ pub(crate) fn escape_retain(cg: &mut Codegen, v: &Value) {
 
 mod constructors;
 mod last_use;
+mod unwind;
 pub(crate) use constructors::consume_into_store;
 pub(crate) use last_use::release_dead_after;
+pub(crate) use unwind::instrument as instrument_unwind;

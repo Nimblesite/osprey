@@ -142,10 +142,11 @@ static int digit_length(unsigned long long value, unsigned base) {
 // Digits of `value` in `base`, written backwards from the end of `digits`.
 static int unsigned_digits(unsigned long long value, unsigned base, int upper, char *digits) {
   int length = digit_length(value, base);
+  unsigned long long divisor = 1;
   for (int i = 0; i < length; i++) {
-    unsigned digit = (unsigned)(value % base);
+    unsigned digit = (unsigned)((value / divisor) % base);
     digits[DIGITS_MAX - 1 - i] = (char)(digit < 10 ? '0' + digit : (upper ? 'A' : 'a') + digit - 10);
-    value /= base;
+    divisor *= base;
   }
   return length;
 }

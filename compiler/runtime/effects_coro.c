@@ -243,6 +243,7 @@ void __osprey_coro_start(void *raw, int64_t (*body)(void *), void *body_env,
 // Implements [MULTI-COST-ABORT] and [EFFECTS-FINALIZATION].
 static void abandon_body(void) {
     __osprey_finalizer_unwind();
+    __osprey_owner_frames_unwind();
     pthread_exit(NULL);
 }
 

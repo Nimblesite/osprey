@@ -235,6 +235,8 @@ impl Codegen {
     /// Render the in-progress function and append it to the module. `ret` is the
     /// already-rendered LLVM return type (`i64`, `{ i1, i8 }*`, …).
     pub(crate) fn finish_function(&mut self, ret: &str, name: &str, params: &[(LType, String)]) {
+        let lines = std::mem::take(&mut self.cur_lines);
+        self.cur_lines = crate::arc::instrument_unwind(self, self.arc_slot_count, lines);
         let param_list = params
             .iter()
             .map(|(ty, n)| format!("{ty} %{n}"))

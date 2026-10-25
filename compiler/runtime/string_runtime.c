@@ -250,11 +250,12 @@ enum { OSP_INT_DIGITS_MAX = 19, OSP_DECIMAL_BLOCK_DIGITS = 9 };
 
 static int osp_decimal_size(const char *s) {
     int count = 0;
-    while (s[count]) {
-        if (count == OSP_INT_DIGITS_MAX || s[count] < '0' || s[count] > '9') return -1;
+    for (;;) {
+        unsigned char byte = (unsigned char)s[count];
+        if (byte == 0) return count;
+        if (count == OSP_INT_DIGITS_MAX || (unsigned)(byte - '0') > 9) return -1;
         count++;
     }
-    return count;
 }
 
 static uint32_t osp_decimal_block(const char *s, int count) {
