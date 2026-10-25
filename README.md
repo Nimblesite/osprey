@@ -64,7 +64,7 @@ See the [installation guide](https://www.ospreylang.dev/docs/installation/) for 
 | --- | --- |
 | [examples/](examples/README.md) | Runnable programs, Talon Bank, Issue Inbox and GPT-2 |
 | [crates/](crates) | Rust compiler, type checker, code generation, formatter, language server and debugger |
-| [registry/](registry/README.md) | Osprey package client, folder registry, resolver and verification suites |
+| [packages/](packages/README.md) | Package manager, registry server and Osprey libraries in every syntax flavor |
 | [compiler/runtime/](compiler/runtime) | C runtime and GPU adapters |
 | [tree-sitter-osprey/](tree-sitter-osprey) | Default-flavor grammar |
 | [tests/](tests) | Default and ML language suites with shared golden output |

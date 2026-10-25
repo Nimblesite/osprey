@@ -1,0 +1,319 @@
+/* ============================ Prose (docs / spec / blog post / status) ==== */
+/* Two-column docs layout: sticky TOC sidebar + left-aligned article, matching
+   docs/designs/prose. Article is width-capped; TOC is built by js/toc.js. */
+.prose-layout {
+  max-width: var(--max-width);
+  margin-inline: auto;
+  padding: clamp(2.5rem, 6vw, 4rem) var(--pad-x) clamp(3rem, 8vw, 5rem);
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  gap: clamp(1.5rem, 4vw, 3.5rem);
+  align-items: start;
+}
+.prose { max-width: var(--content-width); min-width: 0; }
+.prose-wide-layout { max-width: 1800px; grid-template-columns: minmax(0, 1fr); }
+.prose-wide-layout .toc-aside { display: none; }
+.prose-wide-layout .prose { max-width: none; }
+.prose-wide-layout .prose > :not(.comparison-table):not(.bench-summary) { max-width: var(--content-width); margin-inline: auto; }
+@media (min-width: 1200px) {
+  .prose-wide-layout .comparison-table table { display: table; font-size: clamp(0.8rem, 0.8vw, 0.95rem); }
+  .prose-wide-layout .comparison-table :is(th, td) { padding-inline: clamp(0.35rem, 0.8vw, 1rem); }
+}
+
+.toc {
+  position: sticky;
+  top: calc(var(--header-height) + var(--space-4));
+  max-height: calc(100vh - var(--header-height) - (2 * var(--space-4)));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid var(--outline-variant);
+  border-radius: 0;
+  padding: var(--space-2) 0 var(--space-2) var(--space-4);
+}
+.toc-title {
+  font-family: var(--font-sans);
+  font-size: var(--fs-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+  margin: 0 0 var(--space-3);
+}
+.toc-list { list-style: none; margin: 0; padding: 0; }
+.toc-list li { margin: 0; }
+.toc-link {
+  display: block;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--on-surface-variant);
+  padding: 0.3rem 0 0.3rem 0.8rem;
+  border-left: 2px solid transparent;
+}
+.toc-link:hover { color: var(--primary); }
+.toc-link.active {
+  color: var(--primary-container);
+  border-left-color: var(--primary-container);
+  font-weight: 500;
+}
+.toc-h3 .toc-link { padding-left: 1.6rem; font-size: 0.8rem; }
+
+/* Documentation pages keep the shared prose shell while replacing the local
+   heading list with a real, site-wide hierarchy. */
+.docs-nav {
+  padding: var(--space-4);
+}
+.docs-nav-home {
+  display: block;
+  margin: calc(-1 * var(--space-1)) 0 var(--space-5);
+  color: var(--on-surface);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+.docs-nav-section + .docs-nav-section { margin-top: var(--space-5); }
+.docs-nav-section-title {
+  margin: 0 0 var(--space-2);
+  color: var(--on-surface-variant);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.docs-nav-list { margin: 0; padding: 0; list-style: none; }
+.docs-nav-list li { margin: 0; }
+.docs-nav-list a {
+  display: block;
+  padding: 0.42rem 0.65rem;
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius) / 2);
+  color: var(--on-surface-variant);
+  font-size: 0.84rem;
+  line-height: 1.3;
+  text-decoration: none;
+  transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+}
+.docs-nav-list a:hover {
+  color: var(--primary);
+  background: rgba(110, 213, 255, 0.06);
+}
+.docs-nav-list a.active {
+  color: var(--primary-container);
+  background: rgba(110, 213, 255, 0.1);
+  border-color: rgba(110, 213, 255, 0.24);
+  box-shadow: inset 3px 0 0 var(--primary-container);
+  font-weight: 650;
+}
+.docs-nav-mobile { display: none; }
+
+/* No TOC (short page) → single, centred column. */
+.prose-layout.toc-empty { grid-template-columns: minmax(0, 1fr); }
+.prose-layout.toc-empty .prose { margin-inline: auto; }
+/* Below the docs breakpoint: drop the grid entirely (block flow) so the article
+   fills the width and nothing can land in an auto-sized implicit column. */
+@media (max-width: 1024px) {
+  .prose-layout { display: block; }
+  .toc-aside { display: none; }
+  .prose { margin-inline: auto; }
+  .docs-prose-layout .toc-aside {
+    display: block;
+    max-width: var(--content-width);
+    margin: 0 auto var(--space-6);
+  }
+  .docs-nav-desktop { display: none; }
+  .docs-nav-mobile {
+    display: block;
+    border: 1px solid rgba(110, 213, 255, 0.22);
+    border-radius: var(--radius);
+    background: var(--surface-container);
+    overflow: hidden;
+  }
+  .docs-nav-mobile > summary {
+    padding: var(--space-4) var(--space-5);
+    color: var(--primary-container);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: var(--fs-label);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .docs-nav-mobile[open] > summary { border-bottom: 1px solid var(--outline-variant); }
+  .docs-nav-mobile-list {
+    position: static;
+    max-height: none;
+    border: 0;
+    border-radius: 0;
+  }
+}
+
+.prose > :first-child { margin-top: 0; }
+.prose :is(h1, h2, h3) { font-weight: 500; letter-spacing: -0.025em; }
+.prose h1 {
+  font-size: var(--fs-h1);
+  line-height: 1.16;
+  letter-spacing: -0.035em;
+  margin-bottom: var(--space-5);
+}
+.prose h1 + p:not(.prose-meta) {
+  font-size: var(--fs-body-lg);
+  color: var(--on-surface);
+}
+.prose h2 {
+  font-size: var(--fs-h2);
+  margin-top: var(--space-12);
+  margin-bottom: var(--space-4);
+  scroll-margin-top: calc(var(--header-height) + var(--space-4));
+}
+.prose h3 {
+  margin-top: var(--space-8);
+  scroll-margin-top: calc(var(--header-height) + var(--space-4));
+}
+.prose p,
+.prose li { color: var(--on-surface-variant); line-height: 1.75; }
+/* Blog-post header image. */
+.prose-hero {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 1600 / 840;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-8);
+}
+.prose p { margin-bottom: var(--space-6); }
+.prose ul,
+.prose ol { margin-bottom: var(--space-6); }
+.prose li::marker { color: var(--primary-container); }
+.prose a { text-decoration: underline; text-underline-offset: 2px; }
+.prose strong { color: var(--on-surface); }
+/* Heading text is wrapped in a markdown anchor link — keep headings plain. */
+.prose :is(h1, h2, h3, h4, h5, h6) .header-anchor {
+  color: inherit;
+  text-decoration: none;
+  font-weight: inherit;
+}
+.prose :is(h1, h2, h3, h4, h5, h6) .header-anchor:hover { color: var(--primary-container); }
+/* Generated docs embed type params like "Iterator<U>"; the browser parses <U>
+   as <u> and HTML reconstruction leaks the underline into following headings
+   and code. Neutralise stray <u> so it can never break the prose layout. */
+.prose u { text-decoration: none; }
+
+/* Prose code blocks carry an editor-style header bar. */
+.prose pre,
+.prose pre[class*="language-"] {
+  position: relative;
+  padding-top: 2.9rem;
+  max-width: 100%;
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+}
+/* Long inline tokens — file paths, generic type names, URLs — must wrap so they
+   never leak past their box and force horizontal page overflow on narrow or
+   font-fallback environments (e.g. CI Linux without the bundled mono font). */
+.prose p,
+.prose li { overflow-wrap: break-word; }
+.prose :not(pre) > code { overflow-wrap: anywhere; }
+.prose pre[data-language]::before {
+  content: attr(data-language);
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2.1rem;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-4);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+  background: var(--surface-high);
+  border-bottom: 1px solid var(--outline-variant);
+}
+/* Flavor badge — every Osprey code block states its flavor so a reader always
+   knows which surface (Default `.osp` vs ML `.ospml`) a snippet is written in.
+   Left accent + tinted label: Default = primary, ML = tertiary/accent. */
+.prose pre[data-flavor]::before {
+  padding-left: calc(var(--space-4) + 3px);
+  border-left: 3px solid transparent;
+}
+.prose pre[data-flavor="default"]::before {
+  border-left-color: var(--primary);
+  color: var(--primary);
+}
+.prose pre[data-flavor="ml"]::before {
+  border-left-color: var(--tertiary-dim, #ffb86c);
+  color: var(--tertiary-dim, #ffb86c);
+}
+/* Diagrams — mermaid (client-rendered) and typeDiagram (build-time SVG). Both
+   land in <figure class="diagram">, so they share one frame; the header bar and
+   padding the code-block rules add to <pre> would frame the mermaid source, not
+   the picture, so they are undone here. */
+.prose .diagram {
+  margin: var(--space-6) 0;
+  padding: var(--space-4);
+  overflow-x: auto;
+  text-align: center;
+  background: var(--surface-high);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-md, 8px);
+}
+.prose .diagram pre.mermaid {
+  padding: 0;
+  margin: 0;
+  background: none;
+  border: 0;
+  overflow: visible;
+}
+.prose .diagram pre.mermaid::before { content: none; }
+.prose .diagram svg { max-width: 100%; height: auto; }
+
+.prose blockquote {
+  margin: var(--space-6) 0;
+  padding: var(--space-2) var(--space-5);
+  border-left: 4px solid var(--primary-container);
+  color: var(--on-surface-variant);
+  font-style: italic;
+}
+.prose blockquote p:last-child { margin-bottom: 0; }
+.prose-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-4);
+  margin: 0 0 var(--space-8);
+  color: var(--on-surface-variant);
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+}
+.prose-author { display: inline-flex; align-items: center; gap: var(--space-2); padding: 0.3rem 0.65rem; border: 1px solid var(--outline-variant); border-radius: var(--radius-pill); background: var(--surface-low); color: var(--on-surface); font-weight: 500; }
+.prose-author-label { color: var(--on-surface-variant); font-weight: 400; }
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--space-6) 0;
+  font-size: 0.95rem;
+  border: 1px solid var(--outline-variant);
+}
+.prose th,
+.prose td {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  border-bottom: 1px solid var(--outline-variant);
+}
+.prose thead th {
+  background: var(--surface-high);
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+/* Wide tables scroll instead of forcing horizontal page overflow on mobile. */
+.prose table { display: block; max-width: 100%; overflow-x: auto; }
+.prose td { color: var(--on-surface-variant); }
+.prose hr { border: 0; border-top: 1px solid var(--outline-variant); margin: var(--space-8) 0; }
+.prose img { max-width: 100%; height: auto; border-radius: var(--radius); border: 1px solid var(--outline-variant); }
+

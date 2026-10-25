@@ -77,17 +77,17 @@ From the repository root:
 
 ```sh
 make build
-./target/release/osprey build registry/cli -o target/osprey-pkg
+./target/release/osprey build packages/manager/cli -o target/osprey-pkg
 make registry-serve
 ```
 
 Leave the server running. In another terminal, use the checked-in consumer to exercise resolution, installation and a locked build:
 
 ```sh
-echo "lock --project $PWD/registry/e2e/consumer --registry http://127.0.0.1:8787" | ./target/osprey-pkg
-echo "fetch --project $PWD/registry/e2e/consumer --registry http://127.0.0.1:8787" | ./target/osprey-pkg
-echo "verify --offline --project $PWD/registry/e2e/consumer" | ./target/osprey-pkg
-echo "build --run --project $PWD/registry/e2e/consumer" | ./target/osprey-pkg
+echo "lock --project $PWD/packages/manager/e2e/consumer --registry http://127.0.0.1:8787" | ./target/osprey-pkg
+echo "fetch --project $PWD/packages/manager/e2e/consumer --registry http://127.0.0.1:8787" | ./target/osprey-pkg
+echo "verify --offline --project $PWD/packages/manager/e2e/consumer" | ./target/osprey-pkg
+echo "build --run --project $PWD/packages/manager/e2e/consumer" | ./target/osprey-pkg
 ```
 
 That consumer demonstrates the registry flow with `@demo/report`; it does not install NumPy or PyTorch. The client currently reads commands from stdin and prints `status: N`. Check for `status: 0`; its process exit status does not yet carry the command's result.

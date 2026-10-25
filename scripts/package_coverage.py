@@ -320,16 +320,22 @@ def write_log(path: Path, command: list[str], completed: subprocess.CompletedPro
     try:
         path.write_text("".join(parts))
     except OSError:
-        pass
+        return False
+    return True
 
 
-def remove_if_exists(path: Path) -> None:
+def remove_if_exists(path: Path) -> bool:
     try:
         path.unlink()
     except FileNotFoundError:
-        pass
+        return True
     except OSError:
-        pass
+        return False
+    return True
+
+
+def clear_stale(report: Path, log: Path) -> bool:
+    return all(remove_if_exists(path) for path in (report, log))
 
 
 def collection_failure(name: str, configured: dict, problems: list[str]) -> dict:
@@ -350,13 +356,20 @@ def collect_package(root: Path, compiler: Path, reports: Path, name: str, config
     report = (reports / f"{name}{REPORT_SUFFIX}").resolve()
     log = reports / f"{name}{LOG_SUFFIX}"
     suite = root / PACKAGES_DIR / name / "tests"
-    for stale in (report, log):
-        remove_if_exists(stale)
+    if not clear_stale(report, log):
+        return collection_failure(name, configured, [f"cannot remove stale evidence in {reports}"])
     command, completed, error = run_collector(root, compiler, report, suite)
     if error is not None:
         write_log(log, command, None, f"cannot run collector: {error}")
         return collection_failure(name, configured, [f"cannot run collector: {error}"])
-    write_log(log, command, completed, None)
+    if not write_log(log, command, completed, None):
+        remove_if_exists(report)
+        return collection_failure(name, configured, [f"cannot write log {log}"])
+    return collected_evidence(root, reports, name, configured, report, log, completed, suite)
+
+
+def collected_evidence(root: Path, reports: Path, name: str, configured: dict,
+                       report: Path, log: Path, completed, suite: Path) -> dict:
     if completed.returncode != 0:
         remove_if_exists(report)
         return collection_failure(name, configured, [f"collection failed with exit {completed.returncode}; log {log}"])

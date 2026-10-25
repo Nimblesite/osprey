@@ -42,7 +42,7 @@ The root Makefile defines every public target, so `make` and editor task panels,
 
 The homepage, effects guide and handler post share their runnable draft-saving example through `website/src/_data/draftExample.json`. Browser tests execute both syntax versions, verify the displayed output and actual file contents, and assert that the offline handler writes no file. The README shows the same source and is checked against that data.
 
-`registry/` contains the Osprey package server, client, resolver and verification suites. `packages/` contains Osprey source packages, including Python-flavor ports; `python/` contains the CPython interoperability bridge.
+`packages/` is the single package tree. `manager/` contains the server, client, resolver and verification suites; its sibling directories contain libraries. Default, ML and Python flavor use the same package system. Some libraries port APIs from Python projects; their implementation syntax does not make them a different package kind. `python/` contains the separate CPython interoperability bridge.
 
 `vscode-extension/` and `webcompiler/` are separate Node projects with their own dependency locks. `Book/` and `benchmarks/` contain verification and publishing tools.
 

@@ -1,0 +1,143 @@
+namespace registry_tests;
+import registry::Paths
+import registry::Source
+import registry::Bytes
+
+/// [PACKAGE-SOURCE-CANONICAL] path grammar, collisions, exclusions and the
+/// exact envelope bytes.
+module PathsTests {
+    fn code(result) = match result {
+        Success => ""
+        Error { message } => message
+    }
+
+    fn ints(xs) = join(mapList(xs, fn(b) => "${b}"), ",")
+    fn long(n) = repeat("a", n) ?: ""
+    fn ctrl() = fromCodePoint(7) ?: ""
+
+    fn grammar() = checkAll("every rule of the ASCII relative path grammar has a reason code", [
+        code(Paths::validate("src/main.osp")) == "",
+        code(Paths::validate("osprey.toml")) == "",
+        code(Paths::validate("docs/a-b_c.d/README.md")) == "",
+        code(Paths::validate("${long(128)}/${long(128)}")) == "",
+        code(Paths::validate("")) == "path.empty",
+        code(Paths::validate("/src/main.osp")) == "path.absolute",
+        code(Paths::validate("src\\main.osp")) == "path.backslash",
+        code(Paths::validate("src/ma${ctrl()}in.osp")) == "path.control",
+        code(Paths::validate("src/mäin.osp")) == "path.non-ascii",
+        code(Paths::validate("src/")) == "path.trailing-separator",
+        code(Paths::validate("src//main.osp")) == "path.empty-segment",
+        code(Paths::validate("./main.osp")) == "path.dot-segment",
+        code(Paths::validate("src/../main.osp")) == "path.dot-segment",
+        code(Paths::validate("${long(129)}")) == "path.segment-length",
+        code(Paths::validate("src/ma in.osp")) == "path.segment-chars",
+        code(Paths::validate("src/main:osp")) == "path.segment-chars",
+        code(Paths::validate("src/CON")) == "path.device-stem",
+        code(Paths::validate("nul.txt")) == "path.device-stem",
+        code(Paths::validate("docs/com9.md")) == "path.device-stem",
+        code(Paths::validate("lpt0.md")) == "",
+        code(Paths::validate("console.osp")) == "",
+        code(Paths::validate("${long(100)}/${long(100)}/${long(100)}/${long(100)}/${long(100)}/${long(100)}/${long(100)}/${long(100)}/${long(100)}/${long(100)}/${long(16)}")) == "path.length"
+    ])
+
+    fn setsAndExclusions() = checkAll("collisions and excluded control paths", [
+        join(Paths::canonicalSet(["src/b.osp", "src/a.osp"]) ?: [], ",") == "src/a.osp,src/b.osp",
+        code(Paths::canonicalSet(["src/a.osp", "src/a.osp"])) == "path.duplicate",
+        code(Paths::canonicalSet(["src/a.osp", "src/A.osp"])) == "path.case-collision",
+        code(Paths::canonicalSet(["README.md", "readme.MD"])) == "path.case-collision",
+        Paths::excluded("osprey.lock"),
+        Paths::excluded("osprey.local.toml"),
+        Paths::excluded("osprey.local.lock"),
+        Paths::excluded(".osprey/scratch/x"),
+        !Paths::excluded("osprey.toml"),
+        !Paths::excluded("src/osprey.lock"),
+        !Paths::excluded(".ospreyrc")
+    ])
+
+    fn zeros(n) = range(0, n) |> map(fn(_i) => 0) |> toList
+    fn entry(path, size, digest) = Source::Entry { path: path, byteLength: size, digest: digest }
+
+    fn envelopeBytes() = {
+        let one = Source::envelope([entry("src/main.osp", 5, zeros(32))]) ?: []
+        let two = Source::envelope([entry("src/b.osp", 1, zeros(32)), entry("src/a.osp", 2, zeros(32))]) ?: []
+        checkAll("the envelope is domain, count, then sorted entries", [
+            length(one) == 78,
+            ints(range(0, 21) |> map(fn(i) => listGet(one, i) ?: -1) |> toList) == "111,115,112,114,101,121,46,115,111,117,114,99,101,46,118,49,0,0,0,0,1",
+            ints(range(21, 46) |> map(fn(i) => listGet(one, i) ?: -1) |> toList) == "0,0,0,12,115,114,99,47,109,97,105,110,46,111,115,112,0,0,0,0,0,0,0,0,5",
+            length(two) == 21 + 2 * (4 + 9 + 1 + 8 + 32),
+            (listGet(two, 21 + 3) ?: -1) == 9,
+            (listGet(two, 21 + 4 + 4) ?: -1) == 97,
+            (listGet(two, 21 + 4 + 9 + 1 + 7) ?: -1) == 2,
+            length(Source::envelope([]) ?: []) == 21
+        ])
+    }
+
+    fn envelopeRejections() = checkAll("an invalid tree never hashes", [
+        code(Source::envelope([entry("src/../x.osp", 1, zeros(32))])) == "path.dot-segment",
+        code(Source::envelope([entry("osprey.local.lock", 1, zeros(32))])) == "source.excluded-path",
+        code(Source::envelope([entry(".osprey/state", 1, zeros(32))])) == "source.excluded-path",
+        code(Source::envelope([entry("a.osp", -1, zeros(32))])) == "source.negative-length",
+        code(Source::envelope([entry("a.osp", 1, zeros(31))])) == "source.digest-length",
+        code(Source::envelope([entry("a.osp", 1, zeros(32)), entry("A.osp", 1, zeros(32))])) == "path.case-collision",
+        code(Source::envelope([entry("a.osp", 1, zeros(32)), entry("a.osp", 2, zeros(32))])) == "path.duplicate"
+    ])
+
+    fn collection() = checkAll("forbidden kinds, LFS pointers and submission bounds", [
+        Source::kindCode("regular") == "",
+        Source::kindCode("symlink") == "source.kind.symlink",
+        Source::kindCode("submodule") == "source.kind.submodule",
+        Source::kindCode("executable") == "source.kind.executable",
+        Source::kindCode("hardlink") == "source.kind.hardlink",
+        Source::kindCode("socket") == "source.kind.socket",
+        Source::kindCode("fifo") == "source.kind.fifo",
+        Source::kindCode("device") == "source.kind.device",
+        Source::kindCode("sparse") == "source.kind.unknown",
+        Source::lfsPointer("version https://git-lfs.github.com/spec/v1\noid sha256:4d7a\nsize 12345\n"),
+        !Source::lfsPointer("fn main() = print(\"version\")\n"),
+        Source::limitCode(10000, 52428800, 26214400) == "",
+        Source::limitCode(10001, 1, 0) == "source.too-many-files",
+        Source::limitCode(1, 52428801, 0) == "source.too-large",
+        Source::limitCode(1, 1, 26214401) == "source.assets-too-large"
+    ])
+
+    fn file(path, text) = Source::entryOf(path, Bytes::ofString(text))
+
+    /// Goldens from packages/manager/tests/fixtures/source/*.json, computed independently.
+    fn treeDigests() = {
+        let manifest = file("osprey.toml", "[project]\nname = \"ledger\"\nsource_roots = [\"src\"]\n")
+        let program = file("src/main.osp", "fn main() = print(\"ledger\")\n")
+        let tampered = Source::Entry { path: "src/main.osp", byteLength: program.byteLength, digest: zeros(32) }
+        checkAll("SourceDigest matches the fixture trees and changes under digest substitution", [
+            (Source::digest([]) ?: "") == "sha256:cc0dd61db3bb1b7fd165e5a83cfa2819c241038e830ba14e5ce287481f2eb1e7",
+            (Source::digest([program, manifest]) ?: "") == "sha256:18c999dea56029b5d76cc9a44eba947ea93548c695f6d5202d0730b7abf4f394",
+            (Source::digest([manifest, program]) ?: "") == "sha256:18c999dea56029b5d76cc9a44eba947ea93548c695f6d5202d0730b7abf4f394",
+            (Source::digest([manifest, tampered]) ?: "") == "sha256:4122590ebc89b7bb9510e57a382f3c6bc6e9d86effacb2cb6878c8ef3a41657f"
+        ])
+    }
+
+    /// [PACKAGE-LICENSE-DISTRIBUTION] metadata is retained without asset declarations.
+    export fn legalMetadata() = checkAll("publication retains supplied license texts and notices", [
+        Paths::publicationMetadata("osprey.toml"),
+        Paths::publicationMetadata("LICENSE"),
+        Paths::publicationMetadata("license.txt"),
+        Paths::publicationMetadata("COPYING.md"),
+        Paths::publicationMetadata("NOTICE.md"),
+        Paths::publicationMetadata("AUTHORS"),
+        Paths::publicationMetadata("THIRD_PARTY_NOTICES.txt"),
+        Paths::publicationMetadata("LICENSES/Unicode.txt"),
+        Paths::publicationMetadata("licenses/nested/BSD.txt"),
+        !Paths::publicationMetadata("LICENSES-backup/private.txt"),
+        !Paths::publicationMetadata("docs/NOTICE.md"),
+        !Paths::publicationMetadata("notes.md")
+    ])
+
+    export fn run() = {
+        test("paths: grammar", grammar)
+        test("source: tree digests", treeDigests)
+        test("source: collection rules", collection)
+        test("paths: sets and exclusions", setsAndExclusions)
+        test("source: envelope bytes", envelopeBytes)
+        test("source: envelope rejections", envelopeRejections)
+        test("paths: publication licenses", legalMetadata)
+    }
+}

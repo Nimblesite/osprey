@@ -18,17 +18,17 @@ From the Osprey repository root, build the toolchain and the package client:
 
 ```sh
 make build
-./target/release/osprey build registry/cli -o target/osprey-pkg
+./target/release/osprey build packages/manager/cli -o target/osprey-pkg
 make registry-serve
 ```
 
 Leave the server running. In another terminal at the repository root, resolve and build the sample consumer, which already declares its dependency on `@demo/report`:
 
 ```sh
-echo "lock --project $PWD/registry/e2e/consumer --registry http://127.0.0.1:8787" | ./target/osprey-pkg
-echo "fetch --project $PWD/registry/e2e/consumer --registry http://127.0.0.1:8787" | ./target/osprey-pkg
-echo "verify --offline --project $PWD/registry/e2e/consumer" | ./target/osprey-pkg
-echo "build --run --project $PWD/registry/e2e/consumer" | ./target/osprey-pkg
+echo "lock --project $PWD/packages/manager/e2e/consumer --registry http://127.0.0.1:8787" | ./target/osprey-pkg
+echo "fetch --project $PWD/packages/manager/e2e/consumer --registry http://127.0.0.1:8787" | ./target/osprey-pkg
+echo "verify --offline --project $PWD/packages/manager/e2e/consumer" | ./target/osprey-pkg
+echo "build --run --project $PWD/packages/manager/e2e/consumer" | ./target/osprey-pkg
 ```
 
 Each command prints `status: N`; check that it is `0`. The frontend currently reads one command from stdin and cannot set a process exit status. It splits the command on whitespace; paths containing spaces are not supported by this entry point. For your own project, create an `osprey.toml`, declare dependencies as below, and use its absolute directory with `--project`. The command table describes `package init`, `add` and local checkout overrides.
@@ -83,7 +83,7 @@ my-registry/
 The Osprey server walks that root, validates every release against the canonical source rules, computes each release's `SourceDigest`, and serves the catalog over HTTP:
 
 ```sh
-make registry-serve          # serves registry/sample-registry on http://127.0.0.1:8787
+make registry-serve          # serves packages/manager/sample-registry on http://127.0.0.1:8787
 curl http://127.0.0.1:8787/v1/packages
 curl http://127.0.0.1:8787/v1/packages/demo/maths
 ```
@@ -98,7 +98,7 @@ curl http://127.0.0.1:8787/v1/packages/demo/maths
 
 Every response carries a digest `ETag`; errors are `application/problem+json`. A release directory that breaks a rule (a symlink, an executable bit, a case-fold collision, an LFS pointer, a path outside the ASCII grammar) is refused at startup with a stable reason code and never served.
 
-To serve your own folder on your network, edit `registry/api/registry-server.json` and run the server:
+To serve your own folder on your network, edit `packages/manager/api/registry-server.json` and run the server:
 
 ```json
 { "root": "/srv/osprey-packages", "address": "0.0.0.0", "port": 8787 }
@@ -274,14 +274,14 @@ Spec 0029 `[PACKAGE-HARDENING]` defines validation gates with stable diagnostic 
 
 | Directory | Contents |
 | --- | --- |
-| `registry/core/` | names, identities, digests, canonical JSON, SHA-256, the source grammar, the manifest model, the objective |
-| `registry/manifest/` | the TOML parser and manifest rules, with their own test project |
-| `registry/resolver/` | the CDCL engine and the package resolver |
-| `registry/api/` | the folder-registry server and its pure router |
-| `registry/cli/` | the command frontend: package init, add, remove, update, lock, fetch, verify, build, tree, why |
-| `registry/host/` | the host effects: files, tree, web, process, console |
-| `registry/tests/` | the suites and the declarative fixtures with independently computed goldens |
-| `registry/e2e/` | the end-to-end demo: server, fetch, lock, verify, build |
+| `packages/manager/core/` | names, identities, digests, canonical JSON, SHA-256, the source grammar, the manifest model, the objective |
+| `packages/manager/manifest/` | the TOML parser and manifest rules, with their own test project |
+| `packages/manager/resolver/` | the CDCL engine and the package resolver |
+| `packages/manager/api/` | the folder-registry server and its pure router |
+| `packages/manager/cli/` | the command frontend: package init, add, remove, update, lock, fetch, verify, build, tree, why |
+| `packages/manager/host/` | the host effects: files, tree, web, process, console |
+| `packages/manager/tests/` | the suites and the declarative fixtures with independently computed goldens |
+| `packages/manager/e2e/` | the end-to-end demo: server, fetch, lock, verify, build |
 | `schemas/package-registry.td` | the canonical typeDiagram model shared with spec 0031 |
 
 Run everything with `make registry-test`. The registry README in the repository records the measured host-capability blockers and the compiler limits the code works around. Plan 0020 tracks delivery phase by phase.

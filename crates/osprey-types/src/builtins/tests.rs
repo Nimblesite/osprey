@@ -6,7 +6,7 @@ fn registry_classifies_the_compilers_ambient_builtin_inventory() {
     for declare in [files, terminal, http, websocket, tensors] {
         declare(&mut ambient);
     }
-    let surface = include_str!("../../../../registry/core/src/surface.osp");
+    let surface = include_str!("../../../../packages/manager/core/src/surface.osp");
     for name in ambient.bound_names() {
         assert!(
             name.starts_with("http")

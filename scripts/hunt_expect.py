@@ -40,7 +40,7 @@ def validate(report):
         raise ValueError("invalid or empty exploration")
     if not isinstance(report["findings"], list) or not isinstance(report["incomplete"], list):
         raise ValueError("invalid findings or incompleteness")
-    if report["incomplete"] or (not report["findings"] and completed == 0):
+    if report["incomplete"] or (not report["findings"] and completed != paths):
         raise ValueError("incomplete exploration")
 
 

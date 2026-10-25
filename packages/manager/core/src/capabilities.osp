@@ -1,0 +1,21 @@
+namespace registry;
+
+/// Host capabilities the package system needs but Osprey does not yet
+/// provide. Each entry is a delivery blocker from plan 0020 Phase 0; the
+/// probe that must pass once it lands lives in `packages/manager/blockers`. Nothing
+/// here is implemented in another language instead.
+module Capabilities {
+    export type Blocked = { id: string, summary: string }
+
+    fn entry(id, summary) = Blocked { id: id, summary: summary }
+
+    /// Every blocked capability, in stable order.
+    export fn blocked() = [
+        entry("process.argv", "no builtin exposes command-line arguments; the frontend reads one command line from stdin"),
+        entry("process.exit-status", "a program cannot set its exit status; `main`'s value is ignored"),
+        entry("process.environment", "no builtin reads environment variables such as HOME or OSPREY_CACHE"),
+        entry("files.binary-read", "readFile stops at the first NUL byte, so PNG and other binary assets cannot be hashed"),
+        entry("files.directory", "no list/stat/mkdir/rename/unlink/fsync builtins; the host shells out through spawnProcess"),
+        entry("time.clock", "no UTC clock; receipts and freshness checks cannot read the host time")
+    ]
+}

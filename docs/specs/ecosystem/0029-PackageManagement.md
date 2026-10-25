@@ -16,7 +16,7 @@
 > data plane. It is not needed to build, run, or use a registry, and it never
 > replaces the folder registry.
 
-**Status:** normative target; implementation is in progress under [`registry/`](../../../registry/README.md), whose README states what runs. Delivery is fixed by [plan 0020](../../plans/0020-package-manager.md); evidence is in [Package-manager research](../../package-manager-research.md).
+**Status:** normative target; implementation is in progress under [`packages/manager/`](../../../packages/manager/README.md), whose README states what runs. Delivery is fixed by [plan 0020](../../plans/0020-package-manager.md); evidence is in [Package-manager research](../../package-manager-research.md).
 
 This specification defines a source-derived, content-addressed package system.
 It deliberately rejects uploaded archives, publisher binaries, lifecycle hooks,
@@ -453,7 +453,7 @@ ordinal of the newest epoch, at the next epoch with `--breaking`, or at `1.1`
 for a new package. The authenticated `publish` of spec 0030 replaces this once
 the trust plane exists.
 
-**[PACKAGE-LICENSE-DISTRIBUTION]** Root `LICENSE`, `COPYING`, `NOTICE`, `AUTHORS` and `THIRD_PARTY_NOTICES` files, including `.txt` and `.md` forms, and the complete `LICENSES/` directory are included automatically, case-insensitively, without asset declarations. They participate in `SourceDigest` and remain in the source bundle and installed tree. When copied source, adapted implementation or licensed data is incorporated, its applicable ownership, conditions and modification notices are retained. Reimplementing an API or using an oracle does not by itself impose the reference package's license. Applications redistributing compiled derivatives must supply the applicable documents with their distribution.
+**`[PACKAGE-LICENSE-DISTRIBUTION]`** Root `LICENSE`, `COPYING`, `NOTICE`, `AUTHORS` and `THIRD_PARTY_NOTICES` files, including `.txt` and `.md` forms, and the complete `LICENSES/` directory are included automatically, case-insensitively, without asset declarations. They participate in `SourceDigest` and remain in the source bundle and installed tree. When copied source, adapted implementation or licensed data is incorporated, its applicable ownership, conditions and modification notices are retained. Reimplementing an API or using an oracle does not by itself impose the reference package's license. Applications redistributing compiled derivatives must supply the applicable documents with their distribution.
 
 ### Endpoints
 
@@ -660,7 +660,7 @@ run by CPython.
 A system capability name is one or more segments of `[a-z0-9][a-z0-9.-]{0,63}`
 joined by single `/` characters, at most 128 bytes in all, such as
 `sqlite/c-api`; `min_revision` is a non-negative integer and each capability
-appears once per manifest. A threshold-signed registry/enterprise catalog—not
+appears once per manifest. A threshold-signed packages/manager/enterprise catalog—not
 the publisher—maps a system capability to approved providers, artifacts, native
 closures and provenance.
 `osprey doctor` uses an authorized read-only host effect and prints that guidance;

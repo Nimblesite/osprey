@@ -98,7 +98,7 @@ class ExpectMainTests(unittest.TestCase):
     def check(self, findings, expected_text, raw=None):
         with tempfile.TemporaryDirectory() as tmp:
             report_path, expected_path = Path(tmp) / "r.json", Path(tmp) / "case.expected"
-            report_path.write_text(raw if raw is not None else json.dumps(report(findings)))
+            report_path.write_text(raw if raw is not None else json.dumps(report(findings, completed=2 if findings else 3)))
             expected_path.write_text(expected_text)
             return run_main(hunt_expect, ["hunt_expect.py", str(report_path), str(expected_path)])
 
@@ -116,7 +116,7 @@ class ExpectMainTests(unittest.TestCase):
         self.assertIn("case: unexpected  memory main.osp:4", out)
 
     def test_unexplored_incomplete_or_malformed_reports_fail(self):
-        for body in [report(paths=0, completed=0), report(completed=0),
+        for body in [report(paths=0, completed=0), report(completed=0), report(paths=3, completed=2),
                      report(incomplete=[{"reason": "solver timeout"}]),
                      {}, [], report(paths=-1), report(paths="3")]:
             with self.subTest(body=body):

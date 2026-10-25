@@ -55,6 +55,19 @@ ok charset.class.code
 ok charset.parse_hex
 ok charset.single_cp
 ok width.sub_width
+ok width.alternatives.kind
+ok width.alternatives.span
+ok width.escape.kind
+ok width.escape.span
+ok width.named_lookahead.kind
+ok width.named_lookahead.span
+ok flags.verbose_octal.kind
+ok flags.verbose_octal.span
+ok charset.literal_escape.kind
+ok charset.literal_escape.span
+ok api.optional_match
+ok api.groups_default
+ok api.numeric_template
 ok match abc / abc.start
 ok match abc / abc.end
 ok match abc / abc.lastindex
@@ -7109,4 +7122,4 @@ ok error (?i
 ok error \1
 ok error \x4
 ok error a{3,2}
-6100 passed, 0 failed
+6113 passed, 0 failed

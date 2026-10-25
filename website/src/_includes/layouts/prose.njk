@@ -17,7 +17,7 @@ layout: layouts/base.njk
     </nav>
 {% endmacro %}
 {# Shared layout for every long-form page (docs, spec, blog posts, status).
-   One prose design for all of them — see src/css/components.css `.prose`.
+   One prose design for all of them — see src/css/prose.css `.prose`.
    The TOC is built client-side from the article's own headings (toc.js), so
    it adds no content — just navigation derived from what's already on the page. #}
 {% set isDocs = page.url.startsWith('/docs/') %}
@@ -51,7 +51,7 @@ layout: layouts/base.njk
 {% endif %}
 {% if author and not authorInContent %}
     <p class="prose-meta">
-      <span>By {{ author }}</span>
+      <span class="prose-author"><span class="prose-author-label">By</span> {{ author }}</span>
       {# `page.date` is the resolved Date. Front matter `date` may be one of
          Eleventy's directives (e.g. "git Last Modified"), which is still a raw
          string here — only `page.date` has been turned into a real date. #}

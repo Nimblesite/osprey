@@ -1,0 +1,38 @@
+namespace registry_tests;
+import registry::Policy
+import registry_tests::DispatchTests
+import registry_tests::FetchTests
+import registry_tests::LockfileTests
+import registry_tests::InstallTests
+import registry_tests::VerifyTests
+import registry_tests::BuildTests
+import registry_tests::LockTests
+import registry_tests::TransactionTests
+import registry_tests::OverlayTests
+import registry_tests::PublishTests
+import registry_tests::PythonTests
+import registry_tests::TreeTests
+import registry_tests::ReportsTests
+
+/// The suites over the package frontend (`packages/manager/cli/lib`), assembled apart
+/// from `packages/manager/tests` so the frontend can depend on the manifest parser
+/// without that program paying the parser's type-check cost (plan 0020,
+/// Phase 1).
+fn suites() = {
+    DispatchTests::run()
+    FetchTests::run()
+    LockfileTests::run()
+    InstallTests::run()
+    VerifyTests::run()
+    BuildTests::run()
+    LockTests::run()
+    TransactionTests::run()
+    OverlayTests::run()
+    PublishTests::run()
+    PythonTests::run()
+    TreeTests::run()
+    ReportsTests::run()
+    0
+}
+
+fn main() = Policy::guarded(suites)

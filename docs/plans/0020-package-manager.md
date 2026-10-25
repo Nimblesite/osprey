@@ -1,6 +1,6 @@
 # Plan 0020 — Package Registry and Manager
 
-**Status:** in progress. The folder registry, verified fetching, deterministic resolution, folder locks, local overrides, folder publication and uv integration are implemented under [`registry/`](../../registry/README.md). `make registry-test` exercises fixtures, manifests, the client, core/API suites and a loopback consumer. Real compiler checks on 25 October 2026 passed all eight build forms across Default and Python flavors: bare build, run, relative project path and absolute project path from another directory. Derived manifests now live in the selected project's `.osprey/build/` with manifest-relative source paths. The second-machine probe remains open.
+**Status:** in progress. The folder registry, verified fetching, deterministic resolution, folder locks, local overrides, folder publication and uv integration are implemented under [`packages/manager/`](../../packages/manager/README.md). `make registry-test` exercises fixtures, manifests, the client, core/API suites and a loopback consumer. Real compiler checks on 25 October 2026 passed all eight build forms across Default and Python flavors: bare build, run, relative project path and absolute project path from another directory. Derived manifests now live in the selected project's `.osprey/build/` with manifest-relative source paths. The second-machine probe remains open.
 
 Crash-safe activation, canonical build-plan/release artifacts, authenticated public publishing, the hosted package website and the trust plane remain delivery work. Current filesystem handlers use POSIX shell commands; cross-platform acceptance remains open. Checked-off items below record specific delivered subsets, not completion of every requirement in their phase.
 
@@ -25,9 +25,9 @@ through operating-system package managers. Osprey package installation never dow
 ## Current repository seams
 
 - `crates/osprey-project` assembles mixed-flavor source graphs. Its compiler manifest reader handles `[project]` and `[modules]`; package metadata and resolution belong to the Osprey package client.
-- `crates/osprey-cli` supplies the existing compiler, project build, tests, documentation, formatter and target drivers. `registry/cli` is the separate Osprey package frontend, including its folder-lock model, verified install and derived compiler project.
-- `registry/core`, `manifest` and `resolver` implement package identities, canonical manifests/source digests, capability surfaces and deterministic resolution. A derived compiler manifest is not the complete canonical build plan with toolchain/provenance inputs required below.
-- `registry/api` serves the database-free folder registry. The hosted browser UI, Supabase data plane, TUF client, transparency log, provenance builders and discovery index remain planned.
+- `crates/osprey-cli` supplies the existing compiler, project build, tests, documentation, formatter and target drivers. `packages/manager/cli` is the separate Osprey package frontend, including its folder-lock model, verified install and derived compiler project.
+- `packages/manager/core`, `manifest` and `resolver` implement package identities, canonical manifests/source digests, capability surfaces and deterministic resolution. A derived compiler manifest is not the complete canonical build plan with toolchain/provenance inputs required below.
+- `packages/manager/api` serves the database-free folder registry. The hosted browser UI, Supabase data plane, TUF client, transparency log, provenance builders and discovery index remain planned.
 - The folder registry proves source integrity, not publisher authority. Authenticated publication and trust proofs belong to Milestone B; source verification must remain usable without those services.
 
 These compiler crates are build tools for the Osprey package application, not implementation locations for package semantics. The binding language requirement is `[PACKAGE-IMPLEMENTATION-LANGUAGE]` in spec 0029. Missing host capabilities remain explicit blockers with regression probes.
@@ -38,16 +38,16 @@ The implementation is placed deliberately:
 
 ```text
 schemas/package-registry.td       canonical typeDiagram model
-registry/core/                    Osprey manifests, domain, policy, resolver, scoring
-registry/cli/                     Osprey command parsing, presentation, compiler invocation
-registry/host/                    Osprey effect handlers, crypto, filesystem and process adapters
-registry/api/                     Osprey REST server: folder registry first, hosted data plane later
-registry/sample-registry/         a folder of real packages the server serves and the tests fetch
-registry/web/                     Osprey browser application -> WebAssembly
-registry/tests/                   Osprey conformance tests, independent oracles, fuzz drivers
-registry/blockers/                Osprey probes for host capabilities Osprey lacks (red by design)
-registry/ops/                     Osprey publication, migration and operational tooling
-registry/supabase/migrations/     declarative PostgreSQL schema and RLS data (Phase 6, after Milestone 0)
+packages/manager/core/                    Osprey manifests, domain, policy, resolver, scoring
+packages/manager/cli/                     Osprey command parsing, presentation, compiler invocation
+packages/manager/host/                    Osprey effect handlers, crypto, filesystem and process adapters
+packages/manager/api/                     Osprey REST server: folder registry first, hosted data plane later
+packages/manager/sample-registry/         a folder of real packages the server serves and the tests fetch
+packages/manager/web/                     Osprey browser application -> WebAssembly
+packages/manager/tests/                   Osprey conformance tests, independent oracles, fuzz drivers
+packages/manager/blockers/                Osprey probes for host capabilities Osprey lacks (red by design)
+packages/manager/ops/                     Osprey publication, migration and operational tooling
+packages/manager/supabase/migrations/     declarative PostgreSQL schema and RLS data (Phase 6, after Milestone 0)
 ```
 
 `schemas/package-registry.td` is the source of generated Osprey domain types as
@@ -55,9 +55,9 @@ soon as typeDiagram's Osprey target lands. Handwritten copies are forbidden.
 Until generation is available, implementation uses serialized conformance
 fixtures directly and does not duplicate the model in service code.
 
-`registry/core` owns every rule shared by CLI, API, and web: identities,
+`packages/manager/core` owns every rule shared by CLI, API, and web: identities,
 manifest semantics, catalog projection, solver clauses/objectives, score
-methodology, and ranking policy. `registry/host` implements effect handlers in Osprey and cannot choose policy. API preview resolution and local lock resolution run the same compiled core and policy digest. Schema, manifest, fixture, and deployment data are declarative inputs; they cannot hide executable package logic in another language.
+methodology, and ranking policy. `packages/manager/host` implements effect handlers in Osprey and cannot choose policy. API preview resolution and local lock resolution run the same compiled core and policy digest. Schema, manifest, fixture, and deployment data are declarative inputs; they cannot hide executable package logic in another language.
 
 The Osprey command frontend owns the planned `osprey package`, `add`, `use`, `lock`, and other package commands. It invokes the existing compiler for compilation through Osprey process effects. Bootstrap and command routing must not require edits to the existing Rust CLI or a non-Osprey launcher.
 
@@ -91,16 +91,16 @@ every item lands with tests.
 
 - [x] Serve `GET /v1/health`, `/v1/packages`, `/v1/packages/{scope}/{name}`,
       `/v1/releases/{digest}`, and `/v1/releases/{digest}/source` from
-      `registry/api/`, with `ETag`s and `application/problem+json` errors.
+      `packages/manager/api/`, with `ETag`s and `application/problem+json` errors.
 - [x] Route through one pure function from request to response, tested for
       every endpoint and every error without opening a socket.
 - [x] Read root, bind address, and port from a JSON config file, because
       Osprey has no argv or environment builtin yet.
-- [x] Ship `registry/sample-registry/` with at least three real packages, one
+- [x] Ship `packages/manager/sample-registry/` with at least three real packages, one
       depending on another, each compiling with the existing compiler.
 - [x] End-to-end test: start the server on a loopback port, request every
       endpoint with the Osprey HTTP client, and assert the bodies byte for byte.
-      `registry/e2e` builds and starts the server on `127.0.0.1:18797` and
+      `packages/manager/e2e` builds and starts the server on `127.0.0.1:18797` and
       compares status, ETag and body of every endpoint with the pure `Router`.
 - [x] `make registry-serve` starts the server over the sample registry.
 - [x] Harden the server to `[PACKAGE-HARDENING]` S1–S3: `405` carries
@@ -122,14 +122,14 @@ every item lands with tests.
       unreachable registry, each with a stable code and a test.
 - [x] A consumer project builds against a fetched package: the end-to-end
       demo of the exit criterion, run on loopback by `make registry-test`.
-      `registry/e2e` fetches every release by name, epoch and digest, checks the
+      `packages/manager/e2e` fetches every release by name, epoch and digest, checks the
       installed bytes, then builds and runs `e2e/consumer/` against the fetched
       `@demo/report`, `@demo/maths` and `@demo/greeting` sources.
 
 ### Phase F4 — Stand it up anywhere
 
 - [x] Document running a registry on any host, port, and folder, and pointing
-      a client at it, in `registry/README.md`.
+      a client at it, in `packages/manager/README.md`.
 - [ ] Bind to a non-loopback address and serve a second machine on the same
       network; record the measured result. Needs a second machine; binding
       `0.0.0.0` from an automated session was refused by its permission policy,
@@ -143,8 +143,8 @@ of this plan, "Deferred — CI integration".
 
 ### Phase 0 — Schemas and adversarial fixtures
 
-- [x] Establish `registry/core`, `registry/cli`, `registry/host`, and `registry/tests` as ordinary Osprey projects built by the existing compiler; prove an Osprey command reaches the shared core and returns a tested result. Projects share source through `source_roots`; `osprey-pkg doctor` reaches `registry::Capabilities` and `registry/tests` covers it with fixture hosts.
-- [x] Inventory required argument, byte-buffer, filesystem, atomicity, process, cryptographic, and network capabilities. Exercise each through Osprey tests and record unavailable capabilities before depending on them. No substitute implementation in another language is permitted. Recorded in `registry/README.md` and `registry/core/src/capabilities.osp`; argv, exit status, environment, binary-safe reads, directory operations (including atomic rename and fsync) and a UTC clock remain blocked. Bitwise builtins now exist and are covered by an inventory regression; the registry SHA-256 still uses lookup tables. The network is exercised by `registry/e2e` (server and client on loopback); SHA-256 runs in Osprey.
+- [x] Establish `packages/manager/core`, `packages/manager/cli`, `packages/manager/host`, and `packages/manager/tests` as ordinary Osprey projects built by the existing compiler; prove an Osprey command reaches the shared core and returns a tested result. Projects share source through `source_roots`; `osprey-pkg doctor` reaches `registry::Capabilities` and `packages/manager/tests` covers it with fixture hosts.
+- [x] Inventory required argument, byte-buffer, filesystem, atomicity, process, cryptographic, and network capabilities. Exercise each through Osprey tests and record unavailable capabilities before depending on them. No substitute implementation in another language is permitted. Recorded in `packages/manager/README.md` and `packages/manager/core/src/capabilities.osp`; argv, exit status, environment, binary-safe reads, directory operations (including atomic rename and fsync) and a UTC clock remain blocked. Bitwise builtins now exist and are covered by an inventory regression; the registry SHA-256 still uses lookup tables. The network is exercised by `packages/manager/e2e` (server and client on loopback); SHA-256 runs in Osprey.
 - [x] Add an Osprey conformance gate that rejects non-Osprey executable source in the package system, including tests, host adapters, operational tools, and handwritten browser glue; validate declarative inputs separately. `registry::Conformance` plus the checked-in-tree suite.
 - [x] Extract the typeDiagram block from spec 0031 into
       `schemas/package-registry.td` and make documentation import/render it. The spec keeps the rendered block and a suite fails when the two differ.
@@ -179,21 +179,21 @@ of this plan, "Deferred — CI integration".
       `fixtures/time/datetimes.json`, `fixtures/order/lists.json` (104 cases over
       `registry::SetOrder`), `vectors/dsse.json`, and
       `fixtures/canonical/relations.json` for omissions and staging.
-- [x] Run schema/fixture validation as a fail-fast stage of `make registry-test`, covering every suite and fixture. Joining `make test` is deferred to "Deferred — CI integration". `registry/fixture-check` runs first: data-only fixtures, strict JSON, defined spec citations, complete indexes, and every value named in `fixtures/schema-map.json` valid against `schemas/package-registry.td` and in canonical list order; it also rejects undefined spec citations in registry source.
+- [x] Run schema/fixture validation as a fail-fast stage of `make registry-test`, covering every suite and fixture. Joining `make test` is deferred to "Deferred — CI integration". `packages/manager/fixture-check` runs first: data-only fixtures, strict JSON, defined spec citations, complete indexes, and every value named in `fixtures/schema-map.json` valid against `schemas/package-registry.td` and in canonical list order; it also rejects undefined spec citations in registry source.
 
 Exit gate: the package application and test harness compile from Osprey source without a package-specific host or launcher in another language, and every serialized form and security state transition has a reviewed, byte-exact fixture before storage or API code exists.
 
 ### Phase 1 — Manifest and canonical identity
 
-The TOML parser and manifest validators live in `registry/manifest/` with
-their own test project, `registry/manifest/tests` (`make registry-test` runs
+The TOML parser and manifest validators live in `packages/manager/manifest/` with
+their own test project, `packages/manager/manifest/tests` (`make registry-test` runs
 it). They stay out of the shared core because of type-check cost, measured
-with `--check` on the assembled `registry/tests` program: 38 s wall (307 s CPU)
+with `--check` on the assembled `packages/manager/tests` program: 38 s wall (307 s CPU)
 without the parser, 115 s (662 s CPU) with it. Only the parser-free
 `ManifestModel` types are in `core/`; projects that parse manifests add
 `../manifest/src` themselves. The `doctor` manifest verdict waits on that cost.
 
-- [x] Implement one typed TOML parser in `registry/core`, written in Osprey, that preserves current `[project]`/`[modules]` behavior and adds
+- [x] Implement one typed TOML parser in `packages/manager/core`, written in Osprey, that preserves current `[project]`/`[modules]` behavior and adds
       `[package]`, bounded discovery metadata, all three dependency tables,
       `[[assets]]`, and `[system.*]` from `[PACKAGE-MANIFEST]`.
       `registry::Toml` (strict TOML subset: tables, arrays of tables, dotted
@@ -202,7 +202,7 @@ without the parser, 115 s (662 s CPU) with it. Only the parser-free
       `registry::Manifest` with `ManifestSections`/`ManifestDeps` project
       `osprey.toml` onto the canonical `PackageManifest`; the spec example
       round-trips to `fixtures/manifests/ledger/canonical.json` and its digest.
-      Lives in `registry/manifest/` for now (see above).
+      Lives in `packages/manager/manifest/` for now (see above).
 - [x] Have the Osprey frontend validate manifests and prepare deterministic compiler inputs through the existing compiler interface. Keep package parsing and resolution out of the compiler's Rust project loader. `build` parses `osprey.toml` with `Manifest::parse`, verifies the lock, writes the derived project `.osprey/build/osprey.toml` (absolute roots, TOML-escaped strings; exact bytes asserted in `cli/tests` build suite) and invokes the compiler on it; the compiler's loader reads only that derived file and knows nothing of packages.
 - [x] Accept `[project].python_sources` in published manifests as part of the
       canonical manifest (`pythonSources`), keep every listed path inside a
@@ -234,7 +234,7 @@ without the parser, 115 s (662 s CPU) with it. Only the parser-free
       bounds, envelope bytes, `SourceDigest` and `H(d, x)` are in `registry::Paths`,
       `registry::Source`, `registry::Digests` and a pure-Osprey `registry::Sha256`,
       golden-tested against independently computed fixtures in
-      `registry/tests/fixtures/source`. Canonical manifest parsing/digests and source-root selection now exist. The complete canonical build-plan and release-artifact contract remains open; the derived compiler manifest does not close it.
+      `packages/manager/tests/fixtures/source`. Canonical manifest parsing/digests and source-root selection now exist. The complete canonical build-plan and release-artifact contract remains open; the derived compiler manifest does not close it.
 - [ ] Generate a deterministic build plan from the project graph, toolchain,
       target, dependencies, and inferred type/effect/capability surface.
 - [ ] Add cross-platform golden vectors proving identical digests on Linux,
@@ -277,7 +277,7 @@ supported hosts, and every forbidden package input fails before hashing.
 - [x] Implement `osprey.local.toml` as a package-key overlay and
       `osprey.local.lock` as its graph selection. Apply an override globally to
       every active edge; never retain a published candidate for the same key.
-      `registry/cli/lib/overlay.osp` reads and renders the `[overrides]` table
+      `packages/manager/cli/lib/overlay.osp` reads and renders the `[overrides]` table
       (`path`, `epoch`, optional `baseline`); `lock --local` removes every
       published candidate of an overridden key, adds the checkout as the one
       candidate (its source digest, overlay epoch, baseline ordinal, surface and
@@ -333,17 +333,17 @@ supported hosts, and every forbidden package input fails before hashing.
       recovery, garbage collection from lock roots, and corruption self-healing.
 - [x] Add `fetch`, `verify --offline`, `tree`, `why`, and `doctor` in Osprey with Osprey host-effect handlers
       with stable machine-readable output beneath concise terminal rendering.
-      `registry/cli/lib/{fetch,install,verify,tree,why,doctor}.osp` over
+      `packages/manager/cli/lib/{fetch,install,verify,tree,why,doctor}.osp` over
       `registry_host::Host`; `tree` prints the locked graph indented with
       `(build)` and ` *` marks, `why @scope/name` every edge chain from the
       root, both from `osprey.toml` and `osprey.lock` alone
       (`tree.no-lock`, `why.not-locked`, `why.no-path`). The machine-readable
       layer is the stable code-first lines every command prints; a JSON
-      rendering is the Phase 4 "stable JSON" item. `registry/cli/tests` 56/56.
+      rendering is the Phase 4 "stable JSON" item. `packages/manager/cli/tests` 56/56.
 - [x] Pin every locked release's capability surface in `osprey.lock` and fail
       `fetch` and `build` with `capability.surface` when an installed tree's
       recomputed surface differs (`[PACKAGE-CAPABILITY-CONFINEMENT]`).
-      `registry/core/src/surface.osp` scans the verified bundle's source for
+      `packages/manager/core/src/surface.osp` scans the verified bundle's source for
       the ambient builtins (outside comments and string literals, whole
       identifiers, `http*`/`websocket*` by prefix; the table equals
       `fixtures/capabilities/builtins.json`) and adds the `[system.*]`
@@ -363,7 +363,7 @@ supported hosts, and every forbidden package input fails before hashing.
       `fixtures/lock/rejections.json`); the sanitizer (`Reports::printable`,
       wired in `cli/src/main.osp`, `reports_tests`); TOML escaping
       (`Build::quote`) and shell quoting (`Host::shellWord`, `build_tests`);
-      the lock refusals (`registry/cli/lib/lock.osp`, `lock_tests`).
+      the lock refusals (`packages/manager/cli/lib/lock.osp`, `lock_tests`).
 - [x] The `lock` command of the folder registry (`[PACKAGE-FOLDER-REGISTRY]`
       "Folder lock", `[PACKAGE-RESOLUTION]`): one `GET /v1/packages`, every
       listed release fetched and verified through the same path as `fetch`,
@@ -376,7 +376,7 @@ supported hosts, and every forbidden package input fails before hashing.
       parses `--registry`/`--project`/switches through one `Flags` module and
       the suites share one `Fixture` module (the first draft duplicated the
       argument loop in four commands and the fixture handlers in five suites).
-      `registry/cli/tests` 56/56; `registry/e2e` runs the real flow
+      `packages/manager/cli/tests` 56/56; `packages/manager/e2e` runs the real flow
       (`lock`, `fetch`, `verify --offline`, `build --run` on `e2e/consumer/`,
       lock bytes pinned in `fixtures/lock/consumer.json`).
 - [x] Consume the folder lock: target-less `fetch` installs every locked
@@ -385,8 +385,8 @@ supported hosts, and every forbidden package input fails before hashing.
       `verify.manifest-digest`, `verify.dependencies`, `verify.missing`,
       `verify.digest` or `verified N packages`; `build [--run]` verifies, writes
       the derived project under `.osprey/build/` and runs the compiler.
-      `registry/cli/lib/{lockfile,install,verify,build,project}.osp`;
-      `registry/cli/tests` 31/31, `registry/e2e` 30/30, `fixtures/lock/`
+      `packages/manager/cli/lib/{lockfile,install,verify,build,project}.osp`;
+      `packages/manager/cli/tests` 31/31, `packages/manager/e2e` 30/30, `fixtures/lock/`
       (`[PACKAGE-FOLDER-REGISTRY]` "Folder lock").
 - [x] Drive uv for the Python interop plane (`[PACKAGE-PYTHON-UV]`): `lock`
       composes `.osprey/python/pyproject.toml` from the root and every locked
@@ -407,13 +407,13 @@ termination at every write boundary leaves either the old graph or the new one.
 
 - [x] Implement candidate normalization and hard-clause generation for
       closure, epoch/minimum ordinal, target, capabilities, trust state and
-      release uniqueness: `registry/resolver/src/candidates.osp` (eligible,
+      release uniqueness: `packages/manager/resolver/src/candidates.osp` (eligible,
       yanked-but-current, target, granted capabilities, with exclusion reasons)
       and `clauses.osp` (root edges, candidate Runtime/Build edges, per-key
       at-most-one, key-level acyclicity, and support clauses so no package
       outside the closure is selected). The clauses carry no origin tags yet
       (see the explanation item below). Lives beside the engine in
-      `registry/resolver/` rather than `core/` for the type-check-cost reason
+      `packages/manager/resolver/` rather than `core/` for the type-check-cost reason
       recorded in the README. Key and identity equality, ordering and the
       blank fallbacks are the single `Names`/`Identity` definitions; the
       first draft duplicated them in four modules.
@@ -432,7 +432,7 @@ termination at every write boundary leaves either the old graph or the new one.
       release that names `readFile`.
 - [x] Implement deterministic CDCL with two watched literals, first-UIP
       learned clauses, backjumping, assumption cores and proof tracing:
-      `registry/resolver/src/sat*.osp`, `registry/resolver/tests` 8/8 in 18 s
+      `packages/manager/resolver/src/sat*.osp`, `packages/manager/resolver/tests` 8/8 in 18 s
       and 1.0 GB (trivial, oracle, pigeonhole php(3,2)/php(4,3) with core and
       implied-learned-clause checks, learning, assumptions, determinism,
       rejects, 200-variable random 3-SAT). Restarts and clause minimization are
@@ -442,12 +442,12 @@ termination at every write boundary leaves either the old graph or the new one.
 - [x] Implement lexicographic partial-MaxSAT optimization in the exact order in
       `[PACKAGE-RESOLUTION]`, including its integer cost tuple and canonical final
       graph vector; freeze every earlier component before optimizing the next.
-      `registry/resolver/src/optimize.osp`: sequential-counter "at most k" with
+      `packages/manager/resolver/src/optimize.osp`: sequential-counter "at most k" with
       linear search over the components the folder registry has (changed
       identities, package count, lag; `V`, `D`, `U`, `E` are zero without a
       trust plane), then the package-tuple tie-break through `Sat::assume`.
       `Resolve::solve` matches all 14 graph fixtures byte for byte and agrees
-      with the exhaustive oracle on each (`registry/tests` 335/335). The graph
+      with the exhaustive oracle on each (`packages/manager/tests` 335/335). The graph
       suites were vacuous before this work (`test` ignores its thunk's result
       and the fixture decoder read the wrong JSON level); both fixed.
 - [x] Derive minimal conflict cores and human explanations from learned
@@ -460,7 +460,7 @@ termination at every write boundary leaves either the old graph or the new one.
       an explanation names come from the proof; the stable code is the first
       of the spec's causes that holds for one of those keys. The oracle keeps
       the reachability path (`Explain::of`); both agree on all 14 fixtures
-      (`registry/tests` 335/335). Open: a `why` for a refutation that prints
+      (`packages/manager/tests` 335/335). Open: a `why` for a refutation that prints
       the core's clauses themselves rather than the keys.
 - [ ] Evaluate every time-dependent objective at the signed catalog `asOf`, not
       the host clock, and include it in deterministic inputs. The folder
@@ -471,7 +471,7 @@ termination at every write boundary leaves either the old graph or the new one.
 - [x] Property-test soundness, bounded completeness, determinism, safe
       downgrade, global one-key/one-source uniqueness, overlay replacement, and
       objective ordering; differentially test against an independent exhaustive
-      Osprey oracle on small graphs. `registry/tests/src/graph_gen.osp` seeds 60
+      Osprey oracle on small graphs. `packages/manager/tests/src/graph_gen.osp` seeds 60
       small graphs deterministically (one to three keys, one or two releases
       each, random Runtime edges including cycles, random floors);
       `graph_tests` asserts the resolver's lock equals the exhaustive oracle's
@@ -499,8 +499,8 @@ permutation changes a lock or explanation.
 
 - [ ] Add `login`, `package init`, `add`, `remove`, `lock`, `update`, `use`,
       `fetch`, `tree`, `why`, `audit`, `verify`, `doctor`, `publish`, and `yank`
-      as Osprey modules in `registry/cli`, sharing `registry/core` and `registry/host`.
-      Done as Osprey modules under `registry/cli/lib`: `package init`, `add`,
+      as Osprey modules in `packages/manager/cli`, sharing `packages/manager/core` and `packages/manager/host`.
+      Done as Osprey modules under `packages/manager/cli/lib`: `package init`, `add`,
       `remove`, `lock`, `update`, `use`, `fetch`, `tree`, `why`, `verify`,
       `build`, `doctor`, and `publish --folder <registry-root> [--breaking]`,
       the folder-registry publish: the release tree (manifest, source roots,
@@ -523,7 +523,7 @@ permutation changes a lock or explanation.
       write release/`publishedBaseLock` only for a complete registry solution.
       Retain an override while its key remains transitively reachable.
       The registry-only recompute and the complete-solution-only write are
-      done (`registry/cli/lib/{transaction,add,remove,update}.osp`,
+      done (`packages/manager/cli/lib/{transaction,add,remove,update}.osp`,
       `transaction_tests`); baselines and overlays do not exist yet.
 - [x] Make `add @scope/name` choose the current eligible epoch and
       `--epoch N` choose an older contract lineage; write exact digest pins only
@@ -564,7 +564,7 @@ permutation changes a lock or explanation.
 - [x] Make `use <path>` infer the package key/current epoch/baseline, apply it
       globally, and resolve a local lock; make `use <key> --published` remove it
       and `use --list` expose replacements; `use --clear` restores all or none.
-      `registry/cli/lib/use.osp`: the key comes from the checkout's
+      `packages/manager/cli/lib/use.osp`: the key comes from the checkout's
       `[package]` (`use.no-package`) and must already be in the graph
       (`use.not-a-dependency`; a new key goes through `add`); the baseline is
       the development lock's published node, else the release lock's, else the
@@ -739,7 +739,7 @@ or exercise authority unsupported by measured evidence.
 ### Phase 10 — Maintenance evidence and scoring
 
 - [ ] Implement the fixed five-component, 24-month methodology and neutral
-      confidence prior from spec 0032 in integer-only `registry/core`; version
+      confidence prior from spec 0032 in integer-only `packages/manager/core`; version
       and sign every calculation. `registry::Arithmetic` holds the canonical
       `roundDiv`/`higher`/`lower`/`ratio`/`weighted`/percentile primitives with
       fault-on-domain-violation; the methodology itself is not started.

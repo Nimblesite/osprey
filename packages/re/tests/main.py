@@ -383,9 +383,36 @@ def helper_cases():
     return listConcat(listConcat(unicode_cases(), table_cases()), listConcat(listConcat(program_cases(), flag_cases()), listConcat(parser_cases(), charset_cases())))
 
 
+def semantic_span(name, pattern, text, start, end):
+    """The CPython reference matches these patterns at the stated spans."""
+    return success_checks(name, Api.search(pattern, text, 0), lambda result: [Check.equal(name + ".kind", result.kind, "some"), Check.ints_equal(name + ".span", Api.span(result.match), [start, end])])
+
+
+def lookbehind_cases():
+    """Fixed-width alternatives, escapes, named groups and zero-width assertions."""
+    return foldList([
+        semantic_span("width.alternatives", "(?<=([a-b]{2}|cd))x", "abx", 2, 3),
+        semantic_span("width.escape", "(?<=\\d{2})x", "12x", 2, 3),
+        semantic_span("width.named_lookahead", "(?<=(?P<p>a)(?:b)(?=x)(?#width))x", "abx", 2, 3),
+        semantic_span("flags.verbose_octal", "(?x) [\\101-\\103] # comment\n (?#inline) (?i:a) (?-i:b)", "AAb", 0, 3),
+        semantic_span("charset.literal_escape", "[\\t\\n]", "\t", 0, 1),
+    ], [], listConcat)
+
+
+def group_default_checks(result):
+    return [Check.equal("api.optional_match", result.kind, "some"), Check.equal("api.groups_default", join(Api.groups(result.match, "missing"), ","), "a,missing")]
+
+
+def capture_api_cases():
+    groups = success_checks("api.groups", Api.search("(a)(b)?", "a", 0), group_default_checks)
+    replacement = success_checks("api.numeric_template", Api.sub("(a)", "[\\g<1>]", "a a", 0, 0), lambda value: [Check.equal("api.numeric_template", value, "[a] [a]")])
+    return listConcat(groups, replacement)
+
+
 def all_cases():
     """Every assertion, grouped by operation."""
-    matches = listConcat(listConcat(builder_cases(), helper_cases()), cases_for(Expected.MATCH, match_case))
+    helpers = listConcat(helper_cases(), listConcat(lookbehind_cases(), capture_api_cases()))
+    matches = listConcat(listConcat(builder_cases(), helpers), cases_for(Expected.MATCH, match_case))
     findalls = cases_for(Expected.FINDALL, findall_case)
     finditers = cases_for(Expected.FINDITER, finditer_case)
     splits = cases_for(Expected.SPLIT, split_case)

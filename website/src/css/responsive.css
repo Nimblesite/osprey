@@ -1,0 +1,60 @@
+/* ============================ Responsive ================================= */
+@media (max-width: 900px) {
+  .hero .container { grid-template-columns: 1fr; }
+  /* Code stays left-aligned even though the hero copy centers on mobile. */
+  .hero-code, .hero-code-caption { text-align: left; }
+  .wasm-hero-grid { grid-template-columns: 1fr; }
+  .wasm-copy h1 { max-width: 14ch; }
+  .hero-subtitle { max-width: none; }
+  .blog-posts { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 768px) {
+  .two-column { grid-template-columns: 1fr; }
+  /* Keep the prose/code first on stacked feature rows, text after. */
+  .two-column .visual { order: -1; }
+  /* Featured post: drop the side-by-side split, stack image over text. */
+  .blog-posts .card:first-child {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .blog-posts .card:first-child .card-media {
+    order: 0;
+    aspect-ratio: 16 / 9;
+    height: auto;
+    border-left: 0;
+  }
+  .blog-posts .card:first-child .card-content { order: 0; }
+  .nav-links {
+    background: var(--surface-container);
+    border-bottom: 1px solid var(--outline-variant);
+    gap: var(--space-2);
+  }
+  .nav-link {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 48px;
+  }
+  .nav-link.active { border-bottom-color: transparent; }
+}
+@media (max-width: 640px) {
+  /* Mobile hero: centred text, full-width stacked actions (per mobile design). */
+  .hero-content { text-align: center; align-items: center; }
+  .hero-actions, .mobile-actions { width: 100%; flex-direction: column; }
+  .hero-actions .btn, .mobile-actions .btn { width: 100%; }
+  .wasm-hero h1 { max-width: none; }
+  /* Three tabs stay in one row on phones: compact labels, no sub-caption. */
+  .wasm-tab { padding: var(--space-3); align-items: center; text-align: center; }
+  .wasm-tab-k { font-size: var(--fs-body); }
+  .wasm-tab-sub { display: none; }
+  .wasm-studio .container { min-height: 70vh; }
+  .console-bar { width: 100%; }
+  .console-bar .btn { width: 100%; }
+  .add-form { flex-direction: column; align-items: stretch; }
+  .add-form input,
+  .add-form select { width: 100%; }
+  /* Blog cards stack in one dark column (docs/designs/blog-grid-mobile). */
+  .blog-posts { grid-template-columns: 1fr; }
+  .blog-posts .card:first-child .card-title { font-size: var(--fs-h3); }
+}

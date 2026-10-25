@@ -90,6 +90,57 @@ fn arc_live(stderr: &str) -> Option<String> {
     }
 }
 
+fn successful_oracle(output: &str) -> bool {
+    let mut lines = output.lines();
+    let Some(summary) = lines.next_back() else {
+        return false;
+    };
+    let Some(count) = summary
+        .strip_suffix(" passed, 0 failed")
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|count| *count > 0)
+    else {
+        return false;
+    };
+    let outcomes: Vec<_> = lines.collect();
+    outcomes.len() == count
+        && outcomes.iter().all(|line| {
+            line.strip_prefix("ok ")
+                .is_some_and(|name| !name.is_empty())
+        })
+}
+
+#[test]
+fn oracle_success_requires_real_passing_assertions() {
+    assert!(successful_oracle("ok one\nok two\n2 passed, 0 failed\n"));
+    for bad in [
+        "",
+        "0 passed, 0 failed\n",
+        "FAIL one\n1 passed, 0 failed\n",
+        "ok one\n1 passed, 1 failed\n",
+        "ok one\n2 passed, 0 failed\n",
+        "ok \n1 passed, 0 failed\n",
+    ] {
+        assert!(!successful_oracle(bad), "accepted invalid oracle: {bad}");
+    }
+}
+
+#[test]
+fn every_python_oracle_golden_records_nonzero_successful_assertions() -> std::io::Result<()> {
+    for suite in suites() {
+        let manifest = std::fs::read_to_string(suite.join("osprey.toml"))?;
+        if manifest.contains("entry = \"main.py\"") {
+            let output = std::fs::read_to_string(suite.join("expected_output.txt"))?;
+            assert!(
+                successful_oracle(&output),
+                "invalid passing oracle: {}",
+                suite.display()
+            );
+        }
+    }
+    Ok(())
+}
+
 /// The failures of one suite under one backend, as readable lines.
 fn failures(suite: &Path, memory: &str) -> Vec<String> {
     let name = suite.display();

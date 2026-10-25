@@ -1,0 +1,18 @@
+namespace registry_fixture_check;
+import registry::Policy
+import registry_host::Host
+import registry_host::Native
+import registry_fixture_check::Audit
+
+/// The fail-fast stage of `make registry-test`: every fixture and every
+/// registry source is audited before any suite runs. Walks the trees once
+/// through the native host, then audits the listings as pure data.
+/// Implements the fixture-validation gate of [PACKAGE-CONFORMANCE].
+fn walk(root) = Native::session(fn() => perform Host::Tree.walk(root))
+
+fn stage() = {
+    Audit::run(walk("packages/manager/tests/fixtures"), walk("packages/manager"), walk("docs/specs"))
+    0
+}
+
+fn main() = Policy::guarded(stage)

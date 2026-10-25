@@ -140,26 +140,7 @@ static int digit_length(unsigned long long value, unsigned base) {
 }
 
 // Digits of `value` in `base`, written backwards from the end of `digits`.
-static struct { unsigned long long value; char digits[20]; size_t count; } decimal_cache;
-
-void osp_hunt_cache_decimal(uint64_t value, const char *digits, size_t count) {
-  decimal_cache.count = 0;
-  if (count > 19) return;
-  decimal_cache.value = value;
-  decimal_cache.count = count == 0 ? 1 : count;
-  if (count == 0) decimal_cache.digits[0] = '0';
-  else memcpy(decimal_cache.digits, digits, count);
-}
-
-static int cached_decimal(unsigned long long value, char *digits) {
-  if (decimal_cache.count == 0 || value != decimal_cache.value) return 0;
-  memcpy(digits + DIGITS_MAX - decimal_cache.count, decimal_cache.digits, decimal_cache.count);
-  return (int)decimal_cache.count;
-}
-
 static int unsigned_digits(unsigned long long value, unsigned base, int upper, char *digits) {
-  int cached = base == 10 ? cached_decimal(value, digits) : 0;
-  if (cached != 0) return cached;
   int length = digit_length(value, base);
   unsigned long long divisor = 1;
   for (int i = 0; i < length; i++) {

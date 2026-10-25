@@ -15,9 +15,9 @@ from sklearn import Metrics, ModelSelection, Preprocessing
 
 from port_common import Checkpoint, Policy
 
-HIDDEN = [16, 16, 1]
+HIDDEN = [8, 8, 1]
 INPUTS = [-1.0, 1.0]
-STEPS = 60
+STEPS = 1
 LEARNING_RATE = 1.0
 DECAY = 0.9
 ALPHA = 0.0001
@@ -157,16 +157,19 @@ def hinge_step(state, i, outs, ys):
     product = Engine.mul_const(state.graph, score, toFloat(y))
     margin = Engine.rsub_const(product, Engine.top(product), 1.0)
     term = Engine.relu(margin, Engine.top(margin))
-    return Engine.add(term, state.id, Engine.top(term))
+    added = Engine.add(term, state.id, Engine.top(term))
+    return Engine.Cursor(graph=added, id=Engine.top(added))
 
 
 def total_loss(graph, outs, ys, ids):
     """Mean hinge loss plus `ALPHA * sum(p*p)`, as the notebook computes it."""
-    seed = Engine.add_const(graph, unwrap_or(listGet(outs, 0), 0), 0.0)
-    summed = fold(range(len(outs)), Engine.Cursor(graph=seed, id=Engine.top(seed)), lambda state, i: hinge_step(state, i, outs, ys))
+    seed_graph = Engine.add_const(graph, unwrap_or(listGet(outs, 0), 0), 0.0)
+    seed = Engine.Cursor(graph=seed_graph, id=Engine.top(seed_graph))
+    summed = fold(range(len(outs)), seed, lambda state, i: hinge_step(state, i, outs, ys))
     mean = Engine.truediv_const(summed.graph, summed.id, toFloat(len(outs)))
-    reg_seed = Engine.add_const(mean, Engine.top(mean), 0.0)
-    reg = fold(range(len(ids)), Engine.Cursor(graph=reg_seed, id=Engine.top(reg_seed)), lambda state, i: reg_add(state, i, ids))
+    reg_graph = Engine.add_const(mean, Engine.top(mean), 0.0)
+    reg_seed = Engine.Cursor(graph=reg_graph, id=Engine.top(reg_graph))
+    reg = fold(range(len(ids)), reg_seed, lambda state, i: reg_add(state, i, ids))
     scaled = Engine.mul_const(reg.graph, reg.id, ALPHA)
     return LossResult(graph=scaled, id=Engine.top(scaled))
 
@@ -198,14 +201,13 @@ def count_params(nin, nouts):
 def predict_all(xs, params):
     """Binary predictions for every row, using the notebook's `score > 0` rule."""
     graph = NN.init_mlp(Engine.empty(), len(INPUTS), HIDDEN, params)
-    model = NN.mlp_of(len(INPUTS), HIDDEN)
     forward = forward_all(graph, xs)
     return mapList(forward.ids, lambda node: 1 if Engine.data(forward.graph, node) > 0.0 else 0)
 
 
 def grid_values():
     """The nine coordinates of the notebook's decision-boundary grid."""
-    return mapList(range(GRID_RADIUS * 2 + 1), lambda i: GRID_START + toFloat(i) * GRID_STEP)
+    return toList(map(range(GRID_RADIUS * 2 + 1), lambda i: GRID_START + toFloat(i) * GRID_STEP))
 
 
 def grid_rows():
@@ -250,7 +252,7 @@ def fmt_matrix(matrix):
 
 def fmt_report(report):
     """One consolidated report, replacing the notebook's plot."""
-    return "classifier: micrograd MLP 2->16->16->1, hinge loss + L2\n" +
+    return "classifier: micrograd MLP 2->8->8->1, hinge loss + L2\n" +
         "data: 16 fixed XOR points, train=12 test=4, standardised\n" +
         f"params={len(report.params)} steps={STEPS} loss {fmt(report.first_loss)} -> {fmt(report.last_loss)}\n" +
         f"test accuracy={fmt(report.accuracy)} precision={fmt(report.precision)} recall={fmt(report.recall)} f1={fmt(report.f1)}\n" +
@@ -259,27 +261,28 @@ def fmt_report(report):
         f"decision grid: positive={report.grid_positive}/{report.grid_total}"
 
 
-def assertions(data, report):
-    """Source-level checks: real metrics, a shrinking loss and an exact reload."""
-    return [
-        report.first_loss > report.last_loss,
-        report.accuracy >= 0.75,
-        report.accuracy == 1.0,
-        len(report.checkpoint) == len(report.params),
-        structuralEquals(report.checkpoint, report.params),
-        report.checkpoint_size > len(report.params) * 8,
-        report.grid_total == 81,
-        report.grid_positive > 0,
-        report.grid_positive < report.grid_total,
-        len(data.test_y) == TEST_SIZE,
-    ]
-
-
 def main():
     with Policy.arithmetic:
+        print("stage main")
         data = prepare()
+        print("stage prepare")
         trained = fold(range(STEPS), TrainState(params=initial_params(count_params(len(INPUTS), HIDDEN)), losses=[]), lambda state, step: train_step_with(state, step, data))
+        print("stage trained")
+        print("stage trained")
         report = report_of(data, trained)
+        print("stage report")
+        print("stage report")
         print(fmt_report(report))
-        checkAll("classifier", assertions(data, report))
+        checkAll("classifier", [
+            report.first_loss > report.last_loss,
+            report.accuracy >= 0.75,
+            report.accuracy == 1.0,
+            len(report.checkpoint) == len(report.params),
+            structuralEquals(report.checkpoint, report.params),
+            report.checkpoint_size > len(report.params) * 8,
+            report.grid_total == 81,
+            report.grid_positive > 0,
+            report.grid_positive < report.grid_total,
+            len(data.test_y) == TEST_SIZE,
+        ])
 

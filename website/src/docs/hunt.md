@@ -116,7 +116,7 @@ To gate the JSON list in CI, use a fresh output directory:
 python3 scripts/hunt_sample.py --manifest target/my-hunt-sample/safe-runs.json --out target/hunt-ci
 ```
 
-This reruns every listed program under the recorded limits and returns a nonzero exit if any run times out, reports a finding, remains incomplete, or fails. Passing applies to those limits; it does not prove safety for every input.
+This reruns every listed program under the recorded limits and returns a nonzero exit if any run times out, reports a finding, remains incomplete, or fails. Passing applies to those limits; it does not prove safety for every input. The required CI job runs the pinned 215-program `tests/hunt/safe-runs.json` corpus at those same limits and uploads its reports.
 
 ## Verify deliberate crash detection
 

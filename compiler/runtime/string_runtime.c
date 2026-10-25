@@ -21,9 +21,6 @@
 
 #include "float_spelling.h"
 #include "string_runtime.h"
-#ifdef OSP_SYMBOLIC
-#include "klee/hunt_mock.h"
-#endif
 
 char *osp_string_dup_internal(const char *s, size_t n) {
     char *out = (char *)malloc(n + 1);
@@ -270,8 +267,6 @@ static uint32_t osp_decimal_block(const char *s, int count) {
 static int osp_decimal_magnitude(const char *s, const char *limit, uint64_t *out) {
     while (*s == '0') s++;
     int count = osp_decimal_size(s);
-    const char *digits = s;
-    int digit_count = count;
     if (count < 0 || (count == OSP_INT_DIGITS_MAX && strcmp(s, limit) > 0)) return 1;
     uint64_t acc = 0;
     int size = count % OSP_DECIMAL_BLOCK_DIGITS;
@@ -283,12 +278,6 @@ static int osp_decimal_magnitude(const char *s, const char *limit, uint64_t *out
         size = OSP_DECIMAL_BLOCK_DIGITS;
     }
     *out = acc;
-#ifdef OSP_SYMBOLIC
-    osp_hunt_cache_decimal(acc, digits, (size_t)digit_count);
-#else
-    (void)digits;
-    (void)digit_count;
-#endif
     return 0;
 }
 
