@@ -46,7 +46,8 @@ async function scrollSource(source) {
 }
 
 async function openInstallation(page) {
-  await page.getByRole("link", { name: "Install Osprey", exact: true }).click();
+  const action = page.locator(".hero-actions").getByRole("link", { name: "Install Osprey", exact: true });
+  await action.click();
   await expect(page).toHaveURL(/\/#install$/);
   await expect(page.locator("#install .section-title")).toBeInViewport();
 }

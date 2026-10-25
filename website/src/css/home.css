@@ -1,5 +1,6 @@
 /* Flight, intent and explicit boundaries. The homepage shares the site tokens. */
 .home { overflow: clip; }
+html:has(.home) { scroll-behavior: auto; }
 .home [hidden] { display: none !important; }
 .home-hero { position: relative; isolation: isolate; padding-block: 4.5rem 2rem; }
 .home-hero .hero-grid { position: relative; gap: 3rem 2rem; grid-template-columns: 1fr 1fr; }
@@ -92,7 +93,7 @@
   .deployment-note a { margin-top: 1rem; }
 }
 @media (max-width: 600px) {
-  .home-hero { padding-block: 2rem; }
+  .home-hero { padding-block: 1.5rem 2rem; }
   .home .hero-content { padding-top: 1rem; }
   .home-eyebrow { font-size: 0.6rem; letter-spacing: 0.07em; }
   .home .hero-title { font-size: clamp(3.25rem, 14vw, 4.7rem); }
@@ -122,6 +123,7 @@
 .home .hero-title em { display: inline-block; }
 .home .hero-code [class*="language-"], .home .flight-code .language-python { white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: no-preference) {
+  html:has(.home.motion-ready) { scroll-behavior: smooth; }
   .home.motion-ready :is(.hero-content > *, .hero-code, .hero-footnote, .is-revealed) { animation: arrive 650ms cubic-bezier(0.22, 1, 0.36, 1) var(--arrive-delay, 0ms) both; }
   .home .hero-content > :nth-child(2) { --arrive-delay: 60ms; }
   .home .hero-content > :nth-child(3) { --arrive-delay: 120ms; }
