@@ -20,6 +20,9 @@ from package_coverage_test_support import (
 
 
 class PackageThresholdTests(unittest.TestCase):
+    def test_threshold_configuration_has_no_measurements(self):
+        self.assertNotIn("package_measurements", json.loads((ROOT / "coverage-thresholds.json").read_text()))
+
     def test_oracle_literals_roundtrip_every_control_character_and_unicode(self):
         runner = runpy.run_path(str(ROOT / "scripts/oracles/oracle.py"))
         writer = runner["checked_writer"]()
@@ -78,7 +81,7 @@ class CheckerTests(unittest.TestCase):
         self.assertIsNone(fixture.result("demo")["percentage"])
 
     def assert_measurement(self, fixture, name, counts):
-        row = fixture.config()["package_measurements"]["packages"][name]
+        row = fixture.measurements()["packages"][name]
         self.assertEqual(tuple(row[key] for key in ("covered", "total", "percentage")), counts)
         self.assertEqual(fixture.config()["projects"]["packages"][name]["threshold"], 90)
 
@@ -98,7 +101,7 @@ class CheckerTests(unittest.TestCase):
                 self.assertEqual(fixture.result("demo")["percentage"], covered * 10)
                 self.assertNotIn("threshold", fixture.result("demo"))
                 self.assertNotIn("(threshold 90%)", result.stdout)
-                self.assertEqual(fixture.config()["package_measurements"]["packages"]["demo"]["covered"], covered)
+                self.assertEqual(fixture.measurements()["packages"]["demo"]["covered"], covered)
                 self.assertNotIn("threshold", fixture.config()["projects"]["packages"]["demo"])
 
     def test_higher_package_threshold_still_rejects_90_percent(self):
@@ -169,6 +172,17 @@ class CheckerTests(unittest.TestCase):
         self.assert_problem(result, "cannot record measurements", stderr=True)
         self.assertEqual(fixture.config(), config)
         self.assertTrue(lock.exists(), "A competing writer must not remove the owner's lock")
+
+    def test_recording_writes_a_separate_report_without_mutating_thresholds(self):
+        fixture = self.simple_fixture()
+        fixture.write_report("demo", own_report("demo", 4, 4))
+        path = fixture.root / "coverage-thresholds.json"
+        original = path.read_bytes()
+        self.assert_exit(fixture.check("--record-measurements"), 0)
+        self.assertEqual(path.read_bytes(), original)
+        self.assertEqual(fixture.measurements()["packages"]["demo"], {"covered": 4, "total": 4, "percentage": 100.0})
+        self.assertIn("recorded_at", fixture.measurements())
+        self.assertNotIn("package_measurements", fixture.config())
 
     def test_matching_a_zero_or_failing_golden_is_not_success(self):
         for expected in ("0 passed, 0 failed\n", "FAIL demo\n1 passed, 0 failed\n", "1 passed, 0 failed\n"):
@@ -366,6 +380,10 @@ class CheckerTests(unittest.TestCase):
         }}})
         fixture.write_report("demo", own_report("demo", 1, 1, "src/covered.osp"))
         self.assert_invalid(fixture, "missing source evidence: src/exported.osp")
+        covered = own_report("demo", 1, 1, "src/covered.osp")["files"]
+        exported = own_report("demo", 1, 1, "src/exported.osp")["files"]
+        fixture.write_report("demo", {"files": {**covered, **exported}})
+        self.assert_exit(fixture.check(), 0)
 
     def test_ml_and_default_match_arms_cannot_disappear_from_reports(self):
         for suffix, source in (("ospml", "choose flag =\n    match flag\n        true => 1\n        false => 2\n"),

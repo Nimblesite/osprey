@@ -74,21 +74,21 @@ fn escapeJson(source) = {
 
 fn quoteJson(source) = "\"${escapeJson(source)}\""
 
-fn encodeArray(values: List<JsonValue>) -> string = match values {
+fn encodeArray(values) = match values {
     [] => ""
     [only] => encodeJson(only)
     [head, ...tail] => "${encodeJson(head)},${encodeArray(tail)}"
 }
 
-fn encodeFields(fields: Map<string, JsonValue>, keys: List<string>) -> string = match keys {
+fn encodeFields(fields, keys) = match keys {
     [] => ""
     [only] => "${quoteJson(only)}:${encodeJson(mapGet(fields, only) ?: JsonNull)}"
     [head, ...tail] => "${quoteJson(head)}:${encodeJson(mapGet(fields, head) ?: JsonNull)},${encodeFields(fields, tail)}"
 }
 
-fn encodeObject(fields: Map<string, JsonValue>) -> string = encodeFields(fields, mapKeys(fields))
+fn encodeObject(fields) = encodeFields(fields, mapKeys(fields))
 
-fn encodeJson(value: JsonValue) -> string = match value {
+fn encodeJson(value) = match value {
     JsonNull => "null"
     JsonBoolean { value } => match value { true => "true" false => "false" }
     JsonNumber { value } => toString(value)
@@ -98,7 +98,7 @@ fn encodeJson(value: JsonValue) -> string = match value {
 }
 ```
 
-The recursive encoder's annotations give the compiler a fixed boundary for mutual recursion. Ordinary non-recursive functions rely on inference.
+The compiler infers the encoder's parameter and return types, including the mutually recursive calls.
 
 `mapKeys` does not promise object-field order. That is fine because JSON object order has no meaning; two runs may produce semantically identical objects with a different field order.
 
@@ -188,7 +188,7 @@ fn decodeTagsFrom(documentId, index, count, decoded) -> Result<JsonValue, Error>
         Error { message } => Error { message: message }
         Success { value } => decodeTagsFrom(
             documentId,
-            index + 1 ?: count,
+            checkedAdd(index, 1) ?: count,
             count,
             listAppend(decoded, value)
         )

@@ -86,29 +86,24 @@ fn regions(program: &Program) -> Vec<Region> {
         .map(|statement| (AstNode::Statement(statement), BTreeSet::new()))
         .collect();
     while let Some((node, mut unresolved)) = pending.pop() {
-        match node {
+        let callable = match node {
             AstNode::Statement(Stmt::Function {
                 parameters, body, ..
-            }) => {
-                unresolved.extend(parameters.iter().map(|parameter| parameter.name.clone()));
-                unresolved = crate::stage_rows::parameter_aliases(body, &unresolved);
-            }
+            }) => Some((parameters, body)),
             AstNode::Statement(Stmt::Let {
                 value: Expr::Lambda {
                     parameters, body, ..
                 },
                 ..
-            }) => {
-                unresolved.extend(parameters.iter().map(|parameter| parameter.name.clone()));
-                unresolved = crate::stage_rows::parameter_aliases(body, &unresolved);
-            }
-            AstNode::Expression(Expr::Lambda {
+            })
+            | AstNode::Expression(Expr::Lambda {
                 parameters, body, ..
-            }) => {
-                unresolved.extend(parameters.iter().map(|parameter| parameter.name.clone()));
-                unresolved = crate::stage_rows::parameter_aliases(body, &unresolved);
-            }
-            _ => {}
+            }) => Some((parameters, body.as_ref())),
+            _ => None,
+        };
+        if let Some((parameters, body)) = callable {
+            unresolved.extend(parameters.iter().map(|parameter| parameter.name.clone()));
+            unresolved = crate::stage_rows::parameter_aliases(body, &unresolved);
         }
         if let AstNode::Expression(
             expression @ Expr::Handler {

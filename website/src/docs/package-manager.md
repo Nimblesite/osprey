@@ -114,7 +114,7 @@ The client downloads a release's canonical source bundle, recomputes its `Source
 echo "fetch @demo/report --registry http://127.0.0.1:8787" | ./target/osprey-pkg
 ```
 
-The release lands in `.osprey/packages/@demo/report/<digest>/`. You can also fetch by epoch (`fetch @demo/report@1`) or directly by digest (`fetch sha256:…`). The folder registry proves integrity: the bytes you build are the bytes the server holds. It does not yet prove who published them; that is the trust plane of Milestone B, described below.
+The release lands in `.osprey/packages/@demo/report/<digest>/`. You can also fetch by epoch (`fetch @demo/report@e1`) or directly by digest (`fetch sha256:…`). The folder registry proves integrity: the bytes you build are the bytes the server holds. It does not yet prove who published them; that is the trust plane of Milestone B, described below.
 
 The client reads one command line from standard input and prints `status: N` as its last line, because Osprey has no argument-vector or exit-status builtin yet. Those are recorded as blocked host capabilities, not design choices.
 
@@ -206,7 +206,7 @@ Local manifest/lock updates roll back on a reported relock failure. Crash-safe a
 | `lock --local` | relock the development lock after a local manifest change; plain `lock` never sees the overlay |
 | `build --release` | refuse while any override is active, then build from `osprey.lock` |
 | `update [--breaking]` | relock without the current choices being sticky, so every key moves to its epoch's newest release; `--breaking` first moves each dependency with a newer epoch to it and prints one `epoch @scope/name eN -> eM` line per change |
-| `fetch @scope/name[@epoch]`, `fetch <digest>` | download, verify and install one release |
+| `fetch @scope/name[@e<epoch>]`, `fetch <digest>` | download, verify and install one release |
 | `fetch` | install every release in `osprey.lock` |
 | `lock [--registry <url>] [--accept-removals]` | list the registry once, fetch and verify every release, resolve `[dependencies]` and write `osprey.lock`, printing `+`, `=`, `~` and `-` per package; refuses, writing nothing, a re-served digest (`lock.release-replaced`), a dropped locked release (`lock.release-vanished`, unless `--accept-removals`) and a current lock that does not decode |
 | `verify --offline` | check manifest, lock and installed trees without the network |

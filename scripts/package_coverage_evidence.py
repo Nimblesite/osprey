@@ -206,18 +206,18 @@ def configuration_lock(path):
         lock.unlink()
 
 
-def replace_measurements(path, config, snapshot):
+def replace_measurements(path, config, snapshot, destination):
     temporary = None
     try:
-        with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, prefix=f".{path.name}.", delete=False) as output:
+        with tempfile.NamedTemporaryFile(mode="w", dir=destination.parent, prefix=f".{destination.name}.", delete=False) as output:
             temporary = Path(output.name)
-            json.dump({**config, "package_measurements": snapshot}, output, indent=2)
+            json.dump(snapshot, output, indent=2)
             output.write("\n")
-        with configuration_lock(path):
+        with configuration_lock(path), configuration_lock(destination):
             if json.loads(path.read_text(), object_pairs_hook=unique_object) != config:
                 raise ValueError("threshold configuration changed during measurement; retry")
             temporary.chmod(path.stat().st_mode)
-            temporary.replace(path)
+            temporary.replace(destination)
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
@@ -231,7 +231,8 @@ def record_measurements(root, path, reports, config, gate):
         snapshot = measurement_snapshot(root, reports, before, results)
         if measurement_basis(root, reports, entries) != before:
             raise ValueError("measurement inputs changed during validation; retry")
-        replace_measurements(path, config, snapshot)
+        reports.mkdir(parents=True, exist_ok=True)
+        replace_measurements(path, config, snapshot, reports / "measurements.json")
         return None
     except (OSError, ValueError) as error:
         return f"cannot record measurements: {error}"

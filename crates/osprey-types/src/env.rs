@@ -208,27 +208,10 @@ impl TypeEnv {
     fn flattened(&self) -> TypeEnv {
         let mut merged = Frame::default();
         for frame in self.frames() {
-            for (name, value) in &frame.vars {
-                let _ = merged
-                    .vars
-                    .entry(name.clone())
-                    .or_insert_with(|| value.clone());
-            }
-            for (name, value) in &frame.type_params {
-                let _ = merged
-                    .type_params
-                    .entry(name.clone())
-                    .or_insert_with(|| value.clone());
-            }
-            for (name, value) in &frame.mutables {
-                let _ = merged.mutables.entry(name.clone()).or_insert(*value);
-            }
-            for (name, value) in &frame.runtime_builtins {
-                let _ = merged
-                    .runtime_builtins
-                    .entry(name.clone())
-                    .or_insert(*value);
-            }
+            merge_missing(&mut merged.vars, &frame.vars);
+            merge_missing(&mut merged.type_params, &frame.type_params);
+            merge_missing(&mut merged.mutables, &frame.mutables);
+            merge_missing(&mut merged.runtime_builtins, &frame.runtime_builtins);
         }
         TypeEnv {
             local: Arc::new(merged),
@@ -274,6 +257,13 @@ fn scheme_free_vars(ctx: &mut InferCtx, scheme: &Scheme, out: &mut BTreeSet<VarI
         let _ = fv.remove(q);
     }
     out.extend(fv);
+}
+
+/// Keep the first visible binding, including an explicit shadowing marker.
+fn merge_missing<T: Clone>(target: &mut HashMap<String, T>, source: &HashMap<String, T>) {
+    for (name, value) in source {
+        let _ = target.entry(name.clone()).or_insert_with(|| value.clone());
+    }
 }
 
 /// A scheme's built-in obligations restated against the substitution `map` —

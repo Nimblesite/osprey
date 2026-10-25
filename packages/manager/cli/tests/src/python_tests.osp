@@ -52,6 +52,14 @@ module PythonTests {
     /// floor, no index and `first-index` (P1).
     fn expectedPyproject() = "[project]\nname = \"osprey-python\"\nversion = \"0.0.0\"\nrequires-python = \">=3.12\"\ndependencies = [\"demo-py\"]\n\n[tool.uv]\nindex-strategy = \"first-index\"\n\n[tool.uv.sources]\ndemo-py = { path = \"${pyPath()}\" }\n"
 
+    fn composesVersion(floor, version) = contains(PythonPlane::compose([PythonPlane::Member { name: "demo-py", path: "./demo", floor: floor }]), "requires-python = \">=${version}\"\n")
+
+    fn floorComposition() = checkAll("Python version floors use integer components", [
+        composesVersion(31200, "3.12"),
+        composesVersion(31307, "3.13.7"),
+        composesVersion(10000, "1.0")
+    ])
+
     fn pins() = Lockfile::PythonPins { pyprojectDigest: PythonPlane::digestOf(expectedPyproject()), uvLockDigest: PythonPlane::digestOf(uvLockText()) }
 
     fn pyPackage() = RegistryFixture::pkgWith(py(), [], ["python/interop"])
@@ -190,6 +198,7 @@ module PythonTests {
 
     /// Every Python-plane test.
     export fn run() = {
+        test("python: version floor components", floorComposition)
         test("python: lock composes and pins the uv project", lockPins)
         test("python: forbidden indexes and sources", forbiddenMembers)
         test("python: unhashed uv.lock", unhashedLock)

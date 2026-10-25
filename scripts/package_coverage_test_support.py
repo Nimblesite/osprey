@@ -88,6 +88,9 @@ class Fixture:
     def config(self):
         return json.loads((self.root / "coverage-thresholds.json").read_text())
 
+    def measurements(self):
+        return json.loads((self.reports / "measurements.json").read_text())
+
     def result(self, name):
         return next(entry for entry in self.summary()["packages"] if entry["name"] == name)
 
