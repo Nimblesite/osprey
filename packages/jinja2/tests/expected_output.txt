@@ -21,6 +21,34 @@ ok whitespace
 ok strip markers
 ok comment
 ok namespace
+ok lower filter
+ok string filter
+ok list filter
+ok items filter
+ok mapped filter
+ok mapped attribute
+ok mapped default
+ok select truth
+ok select test
+ok reject test
+ok select attribute
+ok reject attribute
+ok dict methods
+ok dict iteration
+ok filtered loop
+ok conditional
+ok boolean operators
+ok group and subtraction
+ok exponent literal
+ok escaped string
+ok dict literal
+ok stepped slices
+ok range function
+ok list equality
+ok dict equality
+ok repr containers
+ok string membership
+ok list subscript
 ok value kinds
 ok value predicates
 ok truthiness
@@ -56,6 +84,7 @@ ok explicit frame binding
 ok expression evaluation
 ok filter
 ok keyword filter
+ok pretty list JSON
 ok test
 ok method
 ok environment
@@ -70,4 +99,4 @@ ok consumed newline
 ok macro name
 ok macro parameters
 ok unsupported macro rendering
-72 passed, 0 failed
+101 passed, 0 failed

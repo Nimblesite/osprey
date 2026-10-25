@@ -14,6 +14,9 @@ from jinja2 import Filters as F
 
 __all__ = ["eval_expr"]
 
+@extern
+def abort() -> None: ...
+
 
 class Tok:
     """One lexed expression token."""
@@ -928,12 +931,20 @@ def kwargs_dict(kwargs):
 
 def range_value(args):
     """`range(stop)` or `range(start, stop)` as a list of ints."""
+    quarantine_range_step(args)
     if len(args) >= 2:
         start = arg0(args).ival
         stop = unwrap_or(listGet(args, 1), V.int_(start)).ival
         return V.list_(range_from(start, stop, []))
     else:
         return V.list_(range_from(0, arg0(args).ival, []))
+
+
+def quarantine_range_step(args):
+    # Broken-code quarantine: ignoring a supplied step silently changes values.
+    if len(args) > 2:
+        print("Jinja range step is not implemented; refusing incorrect output")
+        abort()
 
 
 def range_from(i, stop, acc):
