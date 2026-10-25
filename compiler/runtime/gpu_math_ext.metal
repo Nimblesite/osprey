@@ -2,11 +2,9 @@
 // [BUILTIN-MATH-HYPERBOLIC] and [BUILTIN-MATH-SPECIAL] on the device
 // [GPU-BACKEND-DEVICE]: the binary float functions and the remaining unary
 // families over binary64 words, built on the 128-bit fixed-point core of
-// gpu_math64.metal in the same discipline as exp/ln/tanh. The log, exp and
-// hyperbolic families are correctly rounded (evaluated with ~115 significant
-// bits and rounded once); the trigonometric and error functions compose the
-// already-verified double operations and are accurate to about one ulp over
-// the ranges the test harness exercises (see the divergence note).
+// gpu_math64.metal. Extended unary tests allow 16 ulps against the rounded
+// host long-double reference; pow, atan2 and hypot allow 64 against host
+// double libm. These sampled bounds do not prove universal correct rounding.
 
 // ---- Constants ----
 

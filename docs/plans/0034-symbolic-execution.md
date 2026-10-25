@@ -1,7 +1,7 @@
 # Plan 0034: Symbolic bug hunting with KLEE
 
 **Subsystem:** `crates/osprey-cli` (`osprey hunt`), `crates/osprey-codegen` (`compile_program_symbolic`, synthetic entry), `compiler/runtime/klee/` (mock libc), `scripts/make/runtime.mk` (`_runtime_klee`), `scripts/hunt_corpus.sh` + `scripts/hunt_summary.py`, `tests/hunt/`, `benchmarks/symex/`
-**Status:** Phases 1–3 delivered — `osprey hunt` runs KLEE over the mock-libc module and reports classified, deduplicated findings with native replay. Phases 4–6 remain: no typed harness, no `libkleeRuntest` replay, no regression writer, no Windows, no proof benchmarks. The corpus script and `tests/HUNT_UNPORTABLE.txt` exist, and the recorded sweeps below report no memory, abort or arithmetic findings; it is not a required check. Budget cuts and unmodelled programs remain explicit limits.
+**Status:** Phases 1–2 delivered; Phase 3 is implemented with completion proof pending. `osprey hunt` runs KLEE over the mock-libc module and reports classified, deduplicated findings with native replay. The real planted-crash gate passes 15/15 cases, but the required clean regression still reports incomplete exploration at its unchanged 64-byte, 30-second settings (`target/hunt-profiler-2026-10-25/current-red.log`, verified 2026-10-25). Phases 4–6 remain: no typed harness, no `libkleeRuntest` replay, no regression writer, no Windows, no proof benchmarks. The corpus script and `tests/HUNT_UNPORTABLE.txt` exist; recorded budget-limited sweeps are not proof of complete exploration or a passing required corpus check.
 **Specs:** [Symbolic bug hunting with KLEE](../specs/tooling/SymbolicExecution.md) (`[SYMEX-TOOL]`, `[SYMEX-INSTALL]`, `[SYMEX-CLI]`, `[SYMEX-KLEE-INVOCATION]`, `[SYMEX-MOCK-*]`, `[SYMEX-FINDINGS]`, `[SYMEX-REPLAY]`, `[SYMEX-REGRESSION]`, `[SYMEX-CORPUS]`, `[SYMEX-HOSTS]`, `[SYMEX-PROOF]`) and [KLEE code generation](../specs/compiler/KleeCodegen.md) (`[SYMEX-CODEGEN]`, `[SYMEX-HARNESS-TYPED]`, `[SYMEX-RUNTIME-BITCODE]`)
 
 ## Summary
@@ -42,7 +42,7 @@ Checked against the tree and against KLEE's sources on 2026-10-24.
 
 ### Phase 3: `osprey hunt` main mode
 
-The subcommand in `osprey-cli`: compile, link, run the fixed KLEE command line, parse `test*.<suffix>.err` and the `.ktest` objects into findings, replay stdin and files natively, print the report and save HTML/JSON artifacts by default. **Delivered.** `tests/hunt/crash.osp` deliberately calls C `abort()` for input `"9"` and must reproduce `SIGABRT`. `clean.osp` is a no-finding control; `process.osp` pins an unsupported operation. `json_empty.osp` pins the fixed runtime defect that formed `NULL + 0` when closing an empty JSON container. A planted C failure demonstrates detection; it is not evidence of a new compiler defect.
+The subcommand in `osprey-cli`: compile, link, run the fixed KLEE command line, parse `test*.<suffix>.err` and the `.ktest` objects into findings, replay stdin and files natively, print the report and save HTML/JSON artifacts by default. **Implemented; the required deterministic completion gate remains red.** `tests/hunt/crash.osp` deliberately calls C `abort()` for input `"9"` and must reproduce `SIGABRT`. `clean.osp` is a no-finding control; `process.osp` pins an unsupported operation. `json_empty.osp` pins the fixed runtime defect that formed `NULL + 0` when closing an empty JSON container. A planted C failure demonstrates detection; it is not evidence of a new compiler defect.
 
 ### Phase 4: typed harness and `libkleeRuntest` replay
 
@@ -50,7 +50,7 @@ The subcommand in `osprey-cli`: compile, link, run the fixed KLEE command line, 
 
 ### Phase 5: regression generation, corpus, Windows
 
-`tests/regressions/klee/` writer; `make hunt-corpus` triaged to green (done: 224 programs, 0 findings, with `scripts/hunt_corpus.sh`, `scripts/hunt_summary.py` and `tests/HUNT_UNPORTABLE.txt`) and then a required check in `scripts/verify-branch-protection.mjs` (not done); WSL2 execution with `--replay-host=windows`.
+`tests/regressions/klee/` writer; a fully completed `make hunt-corpus` run and a required check in `scripts/verify-branch-protection.mjs` (not done); WSL2 execution with `--replay-host=windows`. The recorded 224-program run found no findings, but 20 programs hit the budget. The corpus scripts exist; that bounded result does not complete this phase.
 
 ### Phase 6: proof
 
@@ -68,7 +68,7 @@ The subcommand in `osprey-cli`: compile, link, run the fixed KLEE command line, 
 - **Compiler bug, open:** `examples/tui/api_browser.osp` does not compile natively or symbolically (also on `main` before this work): `awaitSpinning(fib: Fiber, frame: int)` is a recursive generic whose return type inference stays a variable, so its instantiation cannot be emitted ("recursive and its return type is not inferred"); the example runs only through the manual `_tui` target. Minimal reproduction: `fn work() -> int = 42` / `fn awaitSpinning(fib: Fiber, frame: int) = match fiberDone(fib) { 1 => await(fib) _ => awaitSpinning(fib: fib, frame: frame) }` / `print("${awaitSpinning(fib: spawn work(), frame: 0)}")`.
 - **Performance, observed:** interpretation cost on string-heavy tests is dominated by the byte loops of `strcpy`/`strcat`/`strlen` the string-concatenation lowering calls (about half of 367 M instructions on `list_basics.test.osp`, whose single path needs 86 s); the whole-program inlining codegen takes about 48 s on an 800-statement project before KLEE starts. Neither is a defect; both bound what a budget can explore.
 - **Unportable by design:** 94 programs end their first path as `unmodelled` — process builtins (`pipe`), resumable effects and fibers (`__osprey_coro_new`, `fiber_spawn_env_owned`: the native fiber runtime is outside the module), HTTP (`http_create_server`), graphics, database, Python interop and platform examples — and are listed with the function named in `tests/HUNT_UNPORTABLE.txt`, together with the gpt2 modules, the deliberate type-error example and `api_browser.osp`.
-- **The corpus is green:** after the fixes above, `scripts/hunt_corpus.sh` over the 224 remaining programs reports 0 findings; 204 are explored completely within 20 s and 20 hit the budget on a long single path (string-heavy tests). It is not yet a required CI check.
+- **Recorded corpus result:** after the fixes above, `scripts/hunt_corpus.sh` over the 224 remaining programs reports 0 findings; 204 are explored completely within 20 s and 20 hit the budget on a long single path (string-heavy tests). This is a bounded no-findings result, not a complete passing corpus gate. It is not yet a required CI check.
 
 ## What the second sweep found (2026-10-25)
 
@@ -82,7 +82,7 @@ The whole corpus again (343 programs: tests/, examples/, every registry and pack
 - **Invalid IR, caught (ARC frame slots, in-progress work):** on one stress program KLEE refused the module: `store i8** %arc.s0, i8*** %arc.fs0` precedes `%arc.s0 = alloca`, "Instruction does not dominate all uses!". The native pipeline never runs LLVM's verifier, so `--run` happened to work; `opt -passes=verify` on the native IR fails the same way. Reported to the session owning the uncommitted `arc.rs` change. Hunt's error excerpt now shows the head of KLEE's stderr too, where LLVM prints the fatal error, not only the stack-trace tail.
 - **Engine ending, handled:** when a solver query is still running at the budget, KLEE's watchdog kills the engine and it exits non-zero; the tool reported that as a tool error and threw the run away. It now reads the states KLEE dumped on the way out and adds one "incomplete" entry naming the kill, so the run is cut, not failed (`engine::Ending`).
 - **Stress corpus re-hunted with the fix, 4-byte input, 30 s:** 69 programs, 16,436 paths, 4,039 complete; 63 clean, 6 `unmodelled` by design (fibers, channels, `control` handlers), the two engine cases above. No other finding.
-- **The corpus stays green:** no `memory`, `abort` or `arith` finding in any of the 343 programs or the 67 other stress programs; the 95 programs that stop `unmodelled` are the fiber, process, HTTP, graphics and `control`-handler programs already listed, plus the registry projects that install `control` handlers.
+- **Recorded finding classes:** no `memory`, `abort` or `arith` finding in any of the 343 programs or the 67 other stress programs; the 95 programs that stop `unmodelled` are the fiber, process, HTTP, graphics and `control`-handler programs already listed, plus the registry projects that install `control` handlers. Unsupported operations and budget exhaustion prevent this from establishing complete corpus coverage.
 
 ## Known limitation: dynamic `control` handlers (reported 2026-10-25)
 
@@ -97,7 +97,7 @@ A driver that installs a `control` effect handler stops at the handler region's 
 
 - [x] Phase 1: mock library with unit tests (`make _test_hunt_mock`, part of `make test`); `_runtime_klee` with the `[SYMEX-MOCK-CLOSED]` check inside it (part of `make build`).
 - [x] Phase 2: symbolic codegen (`compile_program_symbolic`) with the IR tests in `crates/osprey-codegen/src/ir_tests/symbolic.rs`; the planned `llvm-as` corpus parse check is not built.
-- [x] Phase 3: `osprey hunt` main mode; deterministic programs under `tests/hunt/` with an `.expected` file each, run by `make _test_hunt` — the planted C-abort demo, a clean control, an unsupported process operation, and regressions for fixed compiler/runtime defects. HTML/JSON report artifacts are covered by the CLI tests.
+- [ ] Phase 3 completion proof: main mode and HTML/JSON artifacts are implemented, and planted-crash/native-replay tests pass. The deterministic `make _test_hunt` and default-budget regression must pass without incomplete exploration at their unchanged settings before this phase is complete.
 - [ ] Phase 4: `--fn` / `--all-fns`; `libkleeRuntest` replay with the entropy/clock provider (native stdin/file replay ships without it); planted single-random-byte bug.
-- [ ] Phase 5: regression writer; green corpus made a required check (`scripts/hunt_corpus.sh` and `tests/HUNT_UNPORTABLE.txt` exist and the corpus is green — 224 programs, 0 findings — but it is not yet a required check); WSL2 and `--replay-host=windows`.
+- [ ] Phase 5: regression writer; fully completed corpus made a required check (the scripts and recorded budget-limited sweeps exist, but that proof and gate do not); WSL2 and `--replay-host=windows`.
 - [ ] Phase 6: `benchmarks/symex/` results meeting all four `[SYMEX-PROOF]` conditions; README rendered from JSON in `make ci`.
