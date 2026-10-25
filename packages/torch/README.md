@@ -14,4 +14,4 @@ target/release/osprey packages/torch/tests --run --memory=gc
 OSPREY_ARC_DEBUG=1 target/release/osprey packages/torch/tests --run --memory=arc
 ```
 
-The Rust integration harness discovers `tests/osprey.toml`, compares stdout with `tests/expected_output.txt` under all three memory backends, and requires ARC to exit without live objects. Full runtime verification of the current port is still pending; compiler diagnostics, assertion failures and missing golden files remain failures.
+The Rust integration harness discovers `tests/osprey.toml`, compares stdout with `tests/expected_output.txt` under all three memory backends, and requires ARC to exit without live objects. On 2026-10-25, all 354 checks passed under Default, GC and ARC with byte-identical output and zero live ARC objects. The committed golden was captured from that execution; compiler diagnostics, assertion failures and missing golden files remain failures.
