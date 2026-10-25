@@ -115,6 +115,16 @@ suite("package workspace capabilities", () => {
     });
   });
 
+  test("nested workspace projects run despite unrelated unsaved files with missing parents", async () => {
+    await withRoot(async (root) => {
+      const nested = path.join(root, "nested");
+      fs.mkdirSync(nested);
+      const execute = createRequestExecutor(hostFor(root, [path.join(root, "missing", "note.osp")]));
+      const result = await execute(processFields(nested, { argv: ["-e", "process.stdout.write(process.cwd())"], stdin: undefined }));
+      assert.deepStrictEqual(result, { code: 0, stdout: fs.realpathSync(nested), stderr: "" });
+    });
+  });
+
   test("malformed HTTP headers, methods and URLs fail before sending a request", async () => {
     await withRoot(async (root) => {
       const execute = createRequestExecutor(hostFor(root));
