@@ -327,22 +327,6 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-      # [PKG-COVERAGE-GATE] Package coverage collection: reruns every
-      # packages/<name>/tests suite with `osprey test --coverage-json`. This
-      # job already needs `build`, so the compiler artifact is on disk; the
-      # coverage job enforces the thresholds from the uploaded reports without
-      # re-running any suite.
-      - name: Package coverage collection
-        run: make _test_packages
-
-      - name: Upload package coverage
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-packages
-          path: target/coverage/packages/
-          retention-days: 7
-          if-no-files-found: error
-
       - name: Upload test log on failure
         uses: actions/upload-artifact@v4
         if: failure()
@@ -351,6 +335,38 @@ jobs:
           path: target/logs/rust-test.log
           if-no-files-found: ignore
           retention-days: 7
+
+  # [PKG-COVERAGE-GATE] Each package has its own source threshold. Keep this
+  # collection independent of the Rust workspace's existing time budget.
+  test-packages:
+    name: "Tests: package source coverage"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
+      - uses: actions/download-artifact@v4
+        with:
+          name: osprey-build
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey
+      - name: Package coverage collection
+        run: make _test_packages
+      - name: Upload package coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-packages
+          path: target/coverage/packages/
+          retention-days: 7
+          if-no-files-found: error
 
   # The assertion corpus, once per memory backend. `run_test_corpus.sh` checks
   # BOTH the in-language assertions and the byte-exact stdout golden in a
@@ -871,7 +887,7 @@ jobs:
   # and simulator tests. macos-15 is ARM64, matching the simulator archive.
   coverage:
     name: Coverage thresholds
-    needs: [changes, test-rust, test-extension]
+    needs: [changes, test-rust, test-extension, test-packages]
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: macos-15
     timeout-minutes: 45

@@ -32,7 +32,7 @@
   flex-shrink: 0;
 }
 
-.nav-links { gap: var(--space-6); align-items: center; }
+.nav-links { gap: clamp(0.75rem, 2vw, 1.5rem); align-items: center; }
 .nav-link {
   color: var(--on-surface-variant);
   font-size: 0.95rem;
@@ -44,21 +44,27 @@
 .nav-link:hover { color: var(--primary); }
 .nav-link.active {
   color: var(--primary);
-  font-weight: 700;
+  font-weight: 600;
   border-bottom-color: var(--primary);
 }
+.site-header :is(a, button):focus-visible { outline: 2px solid var(--primary-container); outline-offset: 4px; }
 
 /* Dark-only design — the theme toggle has no second theme to switch to. */
 .theme-toggle { display: none; }
 
 .mobile-menu-toggle {
   color: var(--on-surface);
-  min-width: 48px;
-  min-height: 48px;
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-sm);
   align-items: center;
   justify-content: center;
 }
-.mobile-menu-toggle span { background: currentColor; }
+.mobile-menu-toggle span { width: 20px; background: currentColor; }
+.mobile-menu-toggle[aria-expanded="true"] span:first-child { transform: translateY(6px) rotate(45deg); }
+.mobile-menu-toggle[aria-expanded="true"] span:nth-child(2) { opacity: 0; }
+.mobile-menu-toggle[aria-expanded="true"] span:last-child { transform: translateY(-6px) rotate(-45deg); }
 
 /* ---- Footer ---- */
 .site-footer {

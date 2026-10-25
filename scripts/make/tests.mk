@@ -431,39 +431,39 @@ _bank_test:
 	@echo "==> Bank native tests (osprey test)..."
 	./$(BIN) test examples/projects/modules/test
 
-# Osprey package system (registry/): one process runs every suite from the
-# registry/tests project with core, host and CLI sources assembled together,
+# Osprey package system (packages/manager/): one process runs every suite from the
+# packages/manager/tests project with core, host and CLI sources assembled together,
 # because `osprey test` compiles suites in isolation and cannot import them.
-# registry/fixture-check runs first and fails fast: every fixture is data,
+# packages/manager/fixture-check runs first and fails fast: every fixture is data,
 # parses strictly, cites a defined spec section and is indexed, every typed
 # fixture value is schema-valid and canonically ordered, and every registry
-# source cites only defined sections. registry/manifest/tests is the TOML
+# source cites only defined sections. packages/manager/manifest/tests is the TOML
 # parser and manifest-rule suite, a separate program until that code joins
-# core. registry/e2e runs last: it starts the
-# server over registry/sample-registry on 127.0.0.1:18797, compares every
+# core. packages/manager/e2e runs last: it starts the
+# server over packages/manager/sample-registry on 127.0.0.1:18797, compares every
 # endpoint with the pure router, fetches every release, and builds and runs a
 # consumer project against the fetched sources. Run only through
 # `make registry-test`: excluded from `make test` and CI until the package
 # system stabilises.
 _test_registry:
 	@echo "==> Registry fixture and schema validation (fail-fast)..."
-	./$(BIN) registry/fixture-check --run
+	./$(BIN) packages/manager/fixture-check --run
 	@echo "==> Registry manifest (TOML parser and manifest rules) tests..."
-	./$(BIN) registry/manifest/tests --run
+	./$(BIN) packages/manager/manifest/tests --run
 	@echo "==> Registry CLI (package frontend) tests..."
-	./$(BIN) registry/cli/tests --run
+	./$(BIN) packages/manager/cli/tests --run
 	@echo "==> Registry (Osprey package system) tests..."
-	./$(BIN) registry/tests --run
+	./$(BIN) packages/manager/tests --run
 	@echo "==> Registry end-to-end: server, fetch and consumer build..."
-	./$(BIN) registry/e2e --run
+	./$(BIN) packages/manager/e2e --run
 
 # Blocked host capabilities, each asserted as the behavior the package system
 # needs. Red is the documented state until the capability lands in Osprey;
 # a probe turning green is the signal to delete its entry from
-# registry/core/src/capabilities.osp.
+# packages/manager/core/src/capabilities.osp.
 _test_registry_blockers:
 	@echo "==> Registry blocked-capability probes (expected red until each lands)..."
-	./$(BIN) registry/blockers --run
+	./$(BIN) packages/manager/blockers --run
 
 # _language-test: Run the assertion-driven Default + ML core language corpus.
 _language-test: build

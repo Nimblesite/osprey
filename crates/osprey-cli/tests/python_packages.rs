@@ -14,13 +14,15 @@ fn repo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
-/// Every package directory that holds a `tests/osprey.toml`, sorted.
+/// Every published package with a test manifest, sorted; tooling stays separate.
 fn suites() -> Vec<PathBuf> {
     let mut found: Vec<PathBuf> = std::fs::read_dir(repo().join("packages"))
         .into_iter()
         .flatten()
         .flatten()
-        .map(|entry| entry.path().join("tests"))
+        .map(|entry| entry.path())
+        .filter(|package| package.join("osprey.toml").is_file())
+        .map(|package| package.join("tests"))
         .filter(|tests| tests.join("osprey.toml").is_file())
         .collect();
     found.sort();
@@ -41,6 +43,15 @@ fn every_shipped_package_registers_an_execution_suite() -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+#[test]
+fn package_tooling_containers_do_not_enter_the_library_matrix() {
+    let registered = suites();
+    assert!(!registered.contains(&repo().join("packages/manager/tests")));
+    assert!(registered.iter().all(|suite| suite
+        .parent()
+        .is_some_and(|package| package.join("osprey.toml").is_file())));
 }
 
 /// All existing Torch groups must discharge before the native oracle run.

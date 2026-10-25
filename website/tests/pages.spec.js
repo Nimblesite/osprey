@@ -168,3 +168,139 @@ for (const width of [1280, 1440, 1920]) {
     }
   });
 }
+
+test.describe("mobile interactions", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test("mobile menu opens and closes", async ({ page }) => {
+    await page.goto("/");
+    const toggle = page.locator("#mobile-menu-toggle");
+    const links = page.locator(".nav-links");
+    await expect(toggle).toBeVisible();
+    await expect(links).toBeHidden();
+    await toggle.click();
+    await expect(links).toBeVisible();
+    await expect(page.locator(".nav-link", { hasText: "Docs" })).toBeVisible();
+    await toggle.click();
+    await expect(links).toBeHidden();
+  });
+
+  test("mobile menu link navigates", async ({ page }) => {
+    await page.goto("/");
+    await page.locator("#mobile-menu-toggle").click();
+    await page.locator(".nav-link", { hasText: "Blog" }).click();
+    await expect(page).toHaveURL(/\/blog\/$/);
+  });
+
+  test("hero actions stack full-width on mobile", async ({ page }) => {
+    await page.goto("/");
+    const widths = await page.evaluate(() => {
+      const btns = [...document.querySelectorAll(".hero-actions .btn")];
+      return { btn: btns[0].getBoundingClientRect().width, actions: document.querySelector(".hero-actions").getBoundingClientRect().width };
+    });
+    // Each button should span (nearly) the full actions row.
+    expect(widths.btn).toBeGreaterThan(widths.actions * 0.9);
+  });
+
+  test("TOC sidebar is hidden on mobile", async ({ page }) => {
+    await page.goto("/spec/0001-introduction/");
+    await expect(page.locator(".toc-aside")).toBeHidden();
+  });
+
+  test("mobile menu supports keyboard dismissal and restores focus", async ({ page }) => {
+    await page.goto("/");
+    const toggle = page.locator("#mobile-menu-toggle");
+    const links = page.locator(".nav-links");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(toggle).toHaveAttribute("aria-controls", await links.getAttribute("id"));
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(links.getByRole("link").first()).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(links).toBeHidden();
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(toggle).toBeFocused();
+  });
+
+  test("mobile menu closes outside the header and resets on resize", async ({ page }) => {
+    await page.goto("/docs/");
+    const toggle = page.locator("#mobile-menu-toggle");
+    const links = page.locator(".nav-links");
+    await toggle.click();
+    await page.mouse.click(10, 800);
+    await expect(links).toBeHidden();
+    await toggle.click();
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect(links).toBeVisible();
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(links).toBeHidden();
+  });
+});
+
+const DOC_SECTIONS = ["Start here", "Tutorials", "Build applications", "Packages", "Language", "Reference"];
+
+test.describe("documentation sub-page navigation", () => {
+  test("groups subpages and identifies the current desktop page", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/docs/web-apps/");
+    await expect(page.locator(".prose-layout .prose")).toBeVisible();
+    const navigation = page.locator(".toc-aside .docs-nav-desktop");
+    await expect(navigation).toBeVisible();
+    await expect(navigation.locator(".docs-nav-section-title")).toHaveText(DOC_SECTIONS);
+    await expect(navigation.getByRole("link", { name: "Web apps", exact: true })).toHaveClass(/active/);
+  });
+
+  for (const height of [600, 900]) {
+    test(`desktop docs navigation scrolls with the document at ${height}px`, async ({ page }) => {
+      await page.setViewportSize({ width: 1440, height });
+      await page.goto("/docs/web-apps/");
+      const navigation = page.locator(".docs-nav-desktop");
+      await navigation.getByRole("link").first().hover();
+      await page.mouse.wheel(0, 400);
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(100);
+      expect(await navigation.evaluate((nav) => nav.scrollTop)).toBe(0);
+      const lastLink = navigation.getByRole("link", { name: "Operators", exact: true });
+      await lastLink.scrollIntoViewIfNeeded();
+      await expect(lastLink).toBeInViewport();
+      expect(await navigation.evaluate((nav) => nav.scrollHeight - nav.clientHeight)).toBe(0);
+    });
+  }
+
+  test("mobile docs groups expose the current section and expand on demand", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/docs/web-apps/");
+    const navigation = page.locator(".docs-nav-mobile");
+    await expect(navigation).toBeVisible();
+    await navigation.locator(":scope > summary").click();
+    await expect(navigation.locator(".docs-nav-section-title")).toHaveText(DOC_SECTIONS);
+    await expect(navigation.getByRole("link", { name: "Web apps", exact: true })).toBeVisible();
+    const firstApp = navigation.getByRole("link", { name: "My First App", exact: true });
+    await expect(firstApp).toBeHidden();
+    await navigation.locator("summary", { hasText: "Start here" }).click();
+    await expect(firstApp).toBeVisible();
+    await firstApp.click();
+    await expect(page).toHaveURL(/\/docs\/my-first-app\/$/);
+  });
+
+  test("mobile reference navigation works without JavaScript", async ({ browser }) => {
+    const context = await browser.newContext({ javaScriptEnabled: false, viewport: { width: 390, height: 844 } });
+    const page = await context.newPage();
+    await page.goto("/docs/functions/map/");
+    const navigation = page.locator(".docs-nav-mobile");
+    await navigation.locator(":scope > summary").click();
+    const functions = navigation.getByRole("link", { name: "Functions", exact: true });
+    await expect(functions).toBeVisible();
+    await expect(functions).toHaveAttribute("aria-current", "location");
+    await navigation.locator("summary", { hasText: "Packages" }).click();
+    await navigation.getByRole("link", { name: "Package manager", exact: true }).click();
+    await expect(page).toHaveURL(/\/docs\/package-manager\/$/);
+    await context.close();
+  });
+
+  test("keeps the single-file first app tutorial in Default flavor", async ({ page }) => {
+    await page.goto("/docs/my-first-app/");
+    await expect(page.locator('.prose pre[data-flavor="default"]')).not.toHaveCount(0);
+    await expect(page.locator('.prose pre[data-flavor="ml"]')).toHaveCount(0);
+  });
+});

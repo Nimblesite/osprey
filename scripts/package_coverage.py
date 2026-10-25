@@ -90,7 +90,15 @@ def package_dirs(root: Path) -> set[str]:
     return {path.name for path in base.iterdir() if path.is_dir() and (path / "osprey.toml").is_file()}
 
 
-def validate_entry(root: Path, name: str, entry: object) -> list[str]:
+def suite_problems(tests: Path, verify_golden: bool) -> list[str]:
+    problems = [f"missing tests/{name}" for name in ("osprey.toml", "expected_output.txt")
+                if not (tests / name).is_file()]
+    if verify_golden and (tests / "expected_output.txt").is_file():
+        problems += golden_problems(tests / "expected_output.txt")
+    return problems
+
+
+def validate_entry(root: Path, name: str, entry: object, verify_golden: bool) -> list[str]:
     if not isinstance(entry, dict):
         return [f"{name}: gate entry must be an object"]
     threshold = entry.get("threshold")
@@ -102,16 +110,11 @@ def validate_entry(root: Path, name: str, entry: object) -> list[str]:
     if entry.get("language") != DEFAULT_LANGUAGE:
         problems.append(f"{name}: language must be {DEFAULT_LANGUAGE!r}")
     tests = root / PACKAGES_DIR / name / "tests"
-    if not (tests / "osprey.toml").is_file():
-        problems.append(f"{name}: missing tests/osprey.toml")
-    if not (tests / "expected_output.txt").is_file():
-        problems.append(f"{name}: missing tests/expected_output.txt")
-    else:
-        problems += [f"{name}: {problem}" for problem in golden_problems(tests / "expected_output.txt")]
+    problems += [f"{name}: {problem}" for problem in suite_problems(tests, verify_golden)]
     return problems
 
 
-def validate_inventory(root: Path, config: object) -> tuple[dict, list[str]]:
+def validate_inventory(root: Path, config: object, verify_golden: bool) -> tuple[dict, list[str]]:
     projects = config.get("projects") if isinstance(config, dict) else None
     packages = projects.get("packages") if isinstance(projects, dict) else None
     if not isinstance(packages, dict) or not packages:
@@ -121,7 +124,7 @@ def validate_inventory(root: Path, config: object) -> tuple[dict, list[str]]:
     problems += [f"{name}: package has no coverage gate entry" for name in sorted(shipped - set(packages))]
     problems += [f"{name}: gate entry has no packages/{name}/osprey.toml" for name in sorted(set(packages) - shipped)]
     for name in sorted(shipped & set(packages)):
-        problems += validate_entry(root, name, packages[name])
+        problems += validate_entry(root, name, packages[name], verify_golden)
     return packages, problems
 
 
@@ -261,9 +264,18 @@ def result_template(name: str, configured: dict) -> dict:
     }
 
 
+def threshold_problems(result: dict) -> list[str]:
+    if result["total"] == 0:
+        return ["no own source lines in report"]
+    if result["covered"] * HUNDRED < result["threshold"] * result["total"]:
+        return [f"{result['percentage']:.1f}% is below the {result['threshold']}% threshold"]
+    return []
+
+
 def gate_package(root: Path, reports: Path, name: str, configured: dict) -> dict:
     result = result_template(name, configured)
     files, problems = read_report(reports / f"{name}{REPORT_SUFFIX}")
+    problems += golden_problems(root / PACKAGES_DIR / name / "tests" / "expected_output.txt")
     if files is not None:
         entries, issues, present = own_entries(files, root, name)
         problems += issues
@@ -274,10 +286,8 @@ def gate_package(root: Path, reports: Path, name: str, configured: dict) -> dict
         result["total"] = sum(entry["total"] for entry in entries)
         result["percentage"] = percentage(result["covered"], result["total"])
         problems += evidence_problems(root, name, reports / f"{name}{REPORT_SUFFIX}")
-    if not problems and result["total"] == 0:
-        problems = ["no own source lines in report"]
-    if not problems and result["covered"] * HUNDRED < result["threshold"] * result["total"]:
-        problems = [f"{result['percentage']:.1f}% is below the {result['threshold']}% threshold"]
+    if not problems:
+        problems = threshold_problems(result)
     result["missing_evidence"] = problems
     result["pass"] = not problems
     return result
@@ -456,7 +466,7 @@ def main(argv: list[str] | None = None) -> int:
     config, error = load_config(thresholds_path)
     if error is not None:
         return fail(error)
-    configured, problems = validate_inventory(root, config)
+    configured, problems = validate_inventory(root, config, args.collect)
     if problems:
         for problem in problems:
             fail(problem)

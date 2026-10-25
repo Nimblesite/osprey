@@ -1,0 +1,11 @@
+vector-search: faiss IndexFlatL2/IndexFlatIP, d=8 corpus=24 queries=4 k=3
+checkpoint: safetensors bytes=1608 vectors=24 exact=true
+q0 L2 labels=[0, 15, 13] distances=[0.0, 1.1834, 1.394] IP labels=[0, 15, 13] scores=[1.0, 0.9408, 0.9267]
+q1 L2 labels=[6, 19, 21] distances=[0.0, 0.6896, 1.3307] IP labels=[6, 19, 21] scores=[1.0, 0.9599, 0.9173]
+q2 L2 labels=[12, 10, 14] distances=[0.0, 0.5708, 2.2176] IP labels=[12, 10, 14] scores=[1.0, 0.9797, 0.8914]
+q3 L2 labels=[18, 16, 3] distances=[0.0, 0.3935, 0.871] IP labels=[18, 16, 3] scores=[1.0, 0.9971, 0.9574]
+numpy distance check=true
+softmax confidence q0=[0.3482, 0.3282, 0.3236] sum=1.0
+recall@3=1.0 (4.0/4 queries)
+1..0
+# tests=0 passed=0 failed=0 skipped=0

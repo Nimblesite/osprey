@@ -10,7 +10,7 @@
 //! at exit when `OSPREY_COVERAGE=<path>` is set [TESTING-COVERAGE-ENV].
 
 use crate::builder::Codegen;
-use osprey_ast::{Expr, Position, Program, Stmt};
+use osprey_ast::{walk_program, AstVisitor, Position, Program, Stmt};
 use std::collections::BTreeSet;
 
 /// Per-module coverage state: the coverable lines. Seeded from the whole AST
@@ -27,17 +27,26 @@ pub(crate) struct CoverageState {
 }
 
 /// All coverable lines in `program`: function definitions plus positioned
-/// statements, recursing through nested blocks, lambdas, match/handler arms,
-/// and module/namespace bodies.
+/// statements anywhere in the shared AST traversal.
 fn coverable_lines(program: &Program) -> BTreeSet<u32> {
-    let mut lines = BTreeSet::new();
-    collect_stmts(&program.statements, &mut lines);
-    lines
+    let mut collector = CoverableLines::default();
+    walk_program(program, &mut collector);
+    collector.0
 }
 
-fn collect_stmts(stmts: &[Stmt], lines: &mut BTreeSet<u32>) {
-    for stmt in stmts {
-        collect_stmt(stmt, lines);
+#[derive(Default)]
+struct CoverableLines(BTreeSet<u32>);
+
+impl AstVisitor for CoverableLines {
+    fn statement(&mut self, statement: &Stmt) {
+        let position = match statement {
+            Stmt::Function { position, .. }
+            | Stmt::Let { position, .. }
+            | Stmt::Assignment { position, .. }
+            | Stmt::Expr { position, .. } => *position,
+            _ => None,
+        };
+        mark(position, &mut self.0);
     }
 }
 
@@ -52,82 +61,6 @@ fn coverable_line(position: Option<Position>) -> Option<u32> {
 fn mark(position: Option<Position>, lines: &mut BTreeSet<u32>) {
     if let Some(line) = coverable_line(position) {
         let _ = lines.insert(line);
-    }
-}
-
-fn collect_stmt(stmt: &Stmt, lines: &mut BTreeSet<u32>) {
-    match stmt {
-        Stmt::Function { body, position, .. } => {
-            mark(*position, lines);
-            collect_expr(body, lines);
-        }
-        Stmt::Let {
-            value, position, ..
-        }
-        | Stmt::Assignment {
-            value, position, ..
-        }
-        | Stmt::Expr {
-            value, position, ..
-        } => {
-            mark(*position, lines);
-            collect_expr(value, lines);
-        }
-        Stmt::Namespace { body, .. } => collect_stmts(body, lines),
-        Stmt::Module { body, .. } => {
-            for item in body {
-                collect_stmt(&item.declaration, lines);
-            }
-        }
-        _ => {}
-    }
-}
-
-/// Recurse only into the expression forms that carry statements or arm bodies
-/// — the places nested coverable statements live.
-fn collect_expr(expr: &Expr, lines: &mut BTreeSet<u32>) {
-    match expr {
-        Expr::Block {
-            statements, value, ..
-        } => {
-            collect_stmts(statements, lines);
-            if let Some(v) = value {
-                collect_expr(v, lines);
-            }
-        }
-        Expr::Lambda { body, .. } => collect_expr(body, lines),
-        Expr::Match { value, arms } => {
-            collect_expr(value, lines);
-            for arm in arms {
-                collect_expr(&arm.body, lines);
-            }
-        }
-        Expr::Handler {
-            arms,
-            body,
-            return_clause,
-            finally,
-            ..
-        } => {
-            for arm in arms {
-                collect_expr(&arm.body, lines);
-            }
-            collect_expr(body, lines);
-            for clause in return_clause.iter().chain(finally) {
-                collect_expr(clause, lines);
-            }
-        }
-        Expr::Call {
-            function,
-            arguments,
-            ..
-        } => {
-            collect_expr(function, lines);
-            for a in arguments {
-                collect_expr(a, lines);
-            }
-        }
-        _ => {}
     }
 }
 
@@ -352,6 +285,28 @@ mod tests {
             assert!(module.contains(&global), "missing line {line}:\n{module}");
         }
         assert_eq!(module.matches("internal global i64 0").count(), 9);
+    }
+
+    #[test]
+    fn cov_seed_includes_uncalled_generic_branches_nested_in_containers() {
+        let source = "fn unused<T>(flag) = [\n\
+            match flag {\n\
+                true => {\n\
+                    let selected = 1\n\
+                    selected\n\
+                }\n\
+                false => {\n\
+                    let selected = 2\n\
+                    selected\n\
+                }\n\
+            }\n\
+        ]\n";
+        let parsed = osprey_syntax::parse_program(source);
+        assert!(parsed.errors.is_empty(), "syntax: {:?}", parsed.errors);
+        assert_eq!(
+            coverable_lines(&parsed.program),
+            std::collections::BTreeSet::from([1, 4, 8])
+        );
     }
 
     #[test]

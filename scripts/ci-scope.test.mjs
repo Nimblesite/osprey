@@ -98,6 +98,17 @@ test('ported packages remain in the unfiltered Rust workspace gate', () => {
   assert.doesNotMatch(make, /cargo llvm-cov[^\n]*(?:--exclude|--skip)/)
 })
 
+test('package source coverage runs independently and blocks the required coverage gate', () => {
+  const packages = job('test-packages', '.github/workflows/ci.yml')
+  assert.match(packages, /needs: \[changes, build\]/)
+  assert.match(packages, /if:.*needs\.changes\.outputs\.code/)
+  assert.match(packages, /run: make _test_packages/)
+  assert.match(packages, /name: Upload package coverage\n\s+if: always\(\)/)
+  assert.match(packages, /name: coverage-packages/)
+  assert.match(packages, /if-no-files-found: error/)
+  assert.match(job('coverage', '.github/workflows/ci.yml'), /needs:.*\btest-packages\b/)
+})
+
 test('every release publishes only after an unconditional dependency audit', () => {
   assert.match(job('audit'), /uses: \.\/\.github\/workflows\/ci-audit\.yml/)
   assert.doesNotMatch(job('audit'), /^    if:/m)

@@ -45,7 +45,6 @@ test: build
 	$(MAKE) _coverage_check_c_runtime
 # _test_language_corpus is deliberately NOT here. It runs every program in
 # tests/ through the TAP subcommand, and _test_goldens then runs every one of
-
 # them AGAIN — `run_test_corpus.sh` checks the in-language assertions AND the
 # byte-exact golden in a single pass (see its header), so the golden run is
 # strictly the stronger of the two observations. Executing the same assertions
@@ -101,17 +100,17 @@ hunt-corpus: build
 	scripts/hunt_corpus.sh $(HUNT_ARGS)
 	python3 scripts/hunt_summary.py target/hunt-corpus --findings-only
 
-## registry-test: Osprey package-system suites (registry/tests) under the
-##                registry/core arithmetic policy. Excluded from `test` and
+## registry-test: Osprey package-system suites (packages/manager/tests) under the
+##                packages/manager/core arithmetic policy. Excluded from `test` and
 ##                CI until the package system stabilises (maintainer decision).
 registry-test: build
 	$(MAKE) _test_registry
 
-## registry-serve: Serve registry/sample-registry over HTTP on
+## registry-serve: Serve packages/manager/sample-registry over HTTP on
 ##                 127.0.0.1:8787 with the Osprey folder-registry server
-##                 (settings in registry/api/registry-server.json).
+##                 (settings in packages/manager/api/registry-server.json).
 registry-serve: build
-	cd registry/api && ../../$(BIN) . --run
+	cd packages/manager/api && $(abspath $(BIN)) . --run
 
 ## registry-blockers: Probe the host capabilities plan 0020 still needs
 ##                    (argv, exit status, binary-safe reads, ...). Expected to

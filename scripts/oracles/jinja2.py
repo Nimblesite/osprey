@@ -49,7 +49,7 @@ TEMPLATES = [
     ("escaped string", "{{ 'a\\nb'|replace('\\n', '-') }}"),
     ("dict literal", "{{ {'x': 1, 'y': 2}['y'] }}"),
     ("stepped slices", "{{ nums[::-1]|join(',') }}:{{ name[::2] }}"),
-    ("range function", "{{ range(1, 6, 2)|join(',') }}"),
+    ("range function", "{{ range(1, 6, 2)|join(',') }}:{{ range(5, 0, -2)|join(',') }}:{{ range(1, 5, -1)|join(',') }}:{{ range(5, 1, 1)|join(',') }}:{{ range(1, 1, 2)|join(',') }}"),
     ("list equality", "{{ [1, 2] == [1, 2] }}:{{ [1] == [2] }}"),
     ("dict equality", "{{ {'x': 1} == {'x': 1} }}:{{ {'x': 1} == {'x': 2} }}"),
     ("repr containers", "{{ [1, 'x'] }}:{{ {'x': 1} }}"),

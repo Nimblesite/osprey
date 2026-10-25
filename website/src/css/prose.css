@@ -1,6 +1,5 @@
 /* ============================ Prose (docs / spec / blog post / status) ==== */
-/* Two-column docs layout: sticky TOC sidebar + left-aligned article, matching
-   docs/designs/prose. Article is width-capped; TOC is built by js/toc.js. */
+/* Docs navigation scrolls with the page; article TOCs remain sticky. */
 .prose-layout {
   max-width: var(--max-width);
   margin-inline: auto;
@@ -61,11 +60,12 @@
 /* Documentation pages keep the shared prose shell while replacing the local
    heading list with a real, site-wide hierarchy. */
 .docs-nav {
-  padding: var(--space-4);
+  border-left: 1px solid var(--outline-variant);
+  padding-left: var(--space-3);
 }
 .docs-nav-home {
   display: block;
-  margin: calc(-1 * var(--space-1)) 0 var(--space-5);
+  margin: 0 0 var(--space-6);
   color: var(--on-surface);
   font-size: 1rem;
   font-weight: 600;
@@ -76,24 +76,24 @@
 .docs-nav-section-title {
   margin: 0 0 var(--space-2);
   color: var(--on-surface-variant);
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 .docs-nav-list { margin: 0; padding: 0; list-style: none; }
 .docs-nav-list li { margin: 0; }
 .docs-nav-list a {
-  display: block;
-  padding: 0.42rem 0.65rem;
-  border: 1px solid transparent;
-  border-radius: calc(var(--radius) / 2);
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0.4rem 0.65rem;
+  border-radius: 4px;
   color: var(--on-surface-variant);
-  font-size: 0.84rem;
+  font-size: 0.875rem;
   line-height: 1.3;
   text-decoration: none;
-  transition: color var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+  transition: color var(--transition-fast), background var(--transition-fast);
 }
 .docs-nav-list a:hover {
   color: var(--primary);
@@ -102,10 +102,10 @@
 .docs-nav-list a.active {
   color: var(--primary-container);
   background: rgba(110, 213, 255, 0.1);
-  border-color: rgba(110, 213, 255, 0.24);
-  box-shadow: inset 3px 0 0 var(--primary-container);
-  font-weight: 650;
+  box-shadow: inset 2px 0 0 var(--primary-container);
+  font-weight: 500;
 }
+.docs-nav :is(a, summary):focus-visible { outline: 2px solid var(--primary-container); outline-offset: 2px; }
 .docs-nav-mobile { display: none; }
 
 /* No TOC (short page) → single, centred column. */
@@ -125,28 +125,32 @@
   .docs-nav-desktop { display: none; }
   .docs-nav-mobile {
     display: block;
-    border: 1px solid rgba(110, 213, 255, 0.22);
-    border-radius: var(--radius);
-    background: var(--surface-container);
-    overflow: hidden;
+    border-block: 1px solid var(--outline-variant);
   }
-  .docs-nav-mobile > summary {
-    padding: var(--space-4) var(--space-5);
-    color: var(--primary-container);
+  .docs-nav-mobile summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 48px;
+    padding: var(--space-3) var(--space-2);
+    color: var(--on-surface);
     cursor: pointer;
-    font-family: var(--font-mono);
-    font-size: var(--fs-label);
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    font-size: 0.875rem;
+    font-weight: 500;
+    letter-spacing: normal;
+    text-transform: none;
+    list-style: none;
   }
+  .docs-nav-mobile summary::-webkit-details-marker { display: none; }
+  .docs-nav-mobile summary::after { content: ""; width: 6px; height: 6px; margin-right: 4px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); }
+  .docs-nav-mobile[open] > summary::after, .docs-nav-mobile details[open] > summary::after { transform: rotate(225deg); }
   .docs-nav-mobile[open] > summary { border-bottom: 1px solid var(--outline-variant); }
-  .docs-nav-mobile-list {
-    position: static;
-    max-height: none;
-    border: 0;
-    border-radius: 0;
-  }
+  .docs-nav-mobile-list { padding: 0 var(--space-2); border: 0; }
+  .docs-nav-mobile .docs-nav-section + .docs-nav-section { margin-top: 0; border-top: 1px solid var(--glass-border); }
+  .docs-nav-mobile .docs-nav-section-title { margin: 0; }
+  .docs-nav-mobile .docs-nav-current > summary { color: var(--primary-container); }
+  .docs-nav-mobile .docs-nav-list { margin-bottom: var(--space-2); }
+  .docs-nav-mobile .docs-nav-list a { min-height: 44px; }
 }
 
 .prose > :first-child { margin-top: 0; }

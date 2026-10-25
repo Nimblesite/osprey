@@ -220,6 +220,15 @@ export default function (eleventyConfig) {
     i18n: { defaultLanguage: "en", languages: ["en"] },
   });
 
+  // Keep the dependency's shell, but use one site-owned menu controller.
+  eleventyConfig.addTransform("site-navigation", function (content, outputPath) {
+    if (!outputPath?.endsWith(".html")) return content;
+    return content
+      .replace('<ul class="nav-links">', '<ul class="nav-links" id="site-navigation">')
+      .replace('aria-label="Toggle menu"', 'aria-label="Open menu" aria-expanded="false" aria-controls="site-navigation"')
+      .replace('src="/techdoc/js/main.js"', 'src="/js/main.js"');
+  });
+
   // Register the Osprey grammar so the theme's bundled syntaxhighlight (and the
   // transform below) can colour `.osp` snippets.
   ensureOsprey();
