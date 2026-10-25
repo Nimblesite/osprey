@@ -26,7 +26,7 @@ _profiler_ui: $(PROFILER_UI_BUILT)
 # root manifest is the truthful local copy. [EDITOR-VERSIONING]
 # The editor ships a compiled Osprey package client; installations never compile
 # package-manager application sources on the user's machine. [PACKAGE-API]
-REGISTRY_CLIENT_SOURCES := $(shell rg --files packages/manager -g '*.osp' -g 'osprey.toml')
+REGISTRY_CLIENT_SOURCES := $(shell find packages/manager -type f \( -name '*.osp' -o -name 'osprey.toml' \))
 target/osprey-pkg: $(BIN) $(REGISTRY_CLIENT_SOURCES)
 	$(BIN) build packages/manager/cli -o $@
 
