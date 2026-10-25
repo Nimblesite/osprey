@@ -46,6 +46,13 @@ class QualificationTests(unittest.TestCase):
         record['report']['program'] = str(Path('requested.osp').resolve())
         self.assertTrue(qualifies(record))
 
+    def test_requested_program_requires_a_valid_report_identity(self):
+        for identity in (None, '', [], {}, 'bad\0path'):
+            with self.subTest(identity=identity):
+                record = self.clean() | {'program': 'requested.osp'}
+                record['report']['program'] = identity
+                self.assertFalse(qualifies(record))
+
     def test_only_completed_bounded_finding_free_runs_qualify(self):
         self.assertTrue(qualifies(self.clean()))
         for patch in [{'exitCode': 1}, {'exitCode': -11}, {'timedOut': True}, {'wallSeconds': 11}, {'report': None}]:

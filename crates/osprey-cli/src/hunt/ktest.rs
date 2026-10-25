@@ -103,10 +103,9 @@ impl Ktest {
     /// Every opened file's bytes by path: the objects that are not stdin, a
     /// length, an open flag, or an entropy, clock or errno draw.
     pub(crate) fn files(&self) -> Vec<(String, Vec<u8>)> {
-        self.quarantine_hidden_file_streams();
         self.objects
             .iter()
-            .filter(|object| is_file_stream(&object.name))
+            .filter(|object| self.is_file_stream(&object.name))
             .filter_map(|object| {
                 self.stream(&object.name)
                     .map(|bytes| (object.name.clone(), bytes))
@@ -114,22 +113,10 @@ impl Ktest {
             .collect()
     }
 
-    #[expect(clippy::panic, reason = "AGENTS.md mandates broken-code quarantine")]
-    fn quarantine_hidden_file_streams(&self) {
-        if let Some(object) = self.objects.iter().find(|object| {
-            !is_file_stream(&object.name)
-                && self
-                    .objects
-                    .iter()
-                    .any(|marker| marker.name == format!("{}.ok", object.name))
-        }) {
-            // Quarantine: names are not type tags. The suffix filter silently
-            // drops real file bytes; an unambiguous object decoder is missing.
-            panic!(
-                "Hunt cannot decode file {:?}: its name collides with symbolic metadata",
-                object.name
-            );
-        }
+    fn is_file_stream(&self, name: &str) -> bool {
+        is_file_stream(name)
+            || (self.object(&format!("{name}.ok")).and_then(host_int) == Some(1)
+                && self.object(&format!("{name}.len")).and_then(host_int).is_some())
     }
 }
 

@@ -21,6 +21,39 @@ mod tests {
         assert!(!tree.root_node().has_error());
     }
 
+    fn parse(source: &str) -> tree_sitter::Tree {
+        let mut parser = tree_sitter::Parser::new();
+        parser.set_language(&super::LANGUAGE.into()).expect("grammar loads");
+        let tree = parser.parse(source, None).expect("source parses");
+        assert!(!tree.root_node().has_error(), "{source}: {}", tree.root_node().to_sexp());
+        tree
+    }
+
+    fn binary_expressions<'a>(node: tree_sitter::Node<'_>, source: &'a str, out: &mut Vec<(&'a str, &'a str)>) {
+        if node.kind() == "binary_expression" {
+            let operator = node.child_by_field_name("operator").expect("operator field");
+            out.push((&source[node.byte_range()], &source[operator.byte_range()]));
+        }
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            binary_expressions(child, source, out);
+        }
+    }
+
+    #[test]
+    fn interpolation_exposes_binary_expression_operators_and_byte_ranges() {
+        let source = r#"fn describe(value) = "${if value > 0 { value + 1 } else { value - 1 }}""#;
+        let tree = parse(source);
+        let mut found = Vec::new();
+        binary_expressions(tree.root_node(), source, &mut found);
+        assert_eq!(found, [("value > 0", ">"), ("value + 1", "+"), ("value - 1", "-")]);
+        let unicode = r#"let s = "ππ${1 + 2}""#;
+        let tree = parse(unicode);
+        let mut found = Vec::new();
+        binary_expressions(tree.root_node(), unicode, &mut found);
+        assert_eq!(found, [("1 + 2", "+")]);
+    }
+
     /// Every comment the grammar produces must reach a highlight capture. `//!`
     /// became its own `inner_doc_comment` node, and without a capture it
     /// rendered as plain text in every tree-sitter consumer.

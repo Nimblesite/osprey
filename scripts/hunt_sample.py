@@ -18,19 +18,23 @@ from hunt_expect import validate
 
 def qualifies(record):
     report = record.get('report') or {}
-    if (isinstance(report, dict) and isinstance(report.get('program'), str) and isinstance(record.get('program'), str)
-            and Path(report['program']).resolve() != Path(record['program']).resolve()):
-        # Quarantine: ignoring report identity silently certifies the wrong program.
-        raise RuntimeError('Hunt corpus report names a different program; identity validation is missing')
     try:
+        if 'program' in record and not same_program(record['program'], report.get('program')):
+            return False
         validate(report)
-    except (KeyError, ValueError, TypeError, AttributeError):
+    except (KeyError, ValueError, TypeError, AttributeError, OSError, RuntimeError):
         return False
     explored = report['explored']
     paths, completed = explored.get('paths', 0), explored.get('completed', 0)
     return (record.get('exitCode') == 0 and not record.get('timedOut')
             and record.get('wallSeconds', 11) <= 10 and isinstance(paths, int) and paths > 0
             and completed == paths and report.get('findings') == [] and report.get('incomplete') == [])
+
+
+def same_program(requested, reported):
+    return (isinstance(requested, str) and bool(requested)
+            and isinstance(reported, str) and bool(reported)
+            and Path(requested).resolve() == Path(reported).resolve())
 
 
 def stop_group(child):

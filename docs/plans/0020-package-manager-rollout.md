@@ -6,7 +6,7 @@ The launch target is a Cloudflare-fronted package website and Osprey API, Supaba
 
 ## Repository evidence and reference pattern
 
-The current implementation is the folder registry: `packages/manager/api/lib/server.osp` routes method/path through a startup catalog; its callback deliberately does not use request headers/body. `api/lib/config.osp` reads folder/bind/port from JSON. Neither is a hosted authentication/ownership implementation. `packages/manager/README.md` lists missing host primitives, and `packages/manager/blockers/` holds probes. Supabase migrations, the dedicated website and hosted release services remain planned in parent plan phases 6–12.
+The current implementation is the folder registry: `packages/manager/api/lib/server.osp` routes method/path through a startup catalog; its callback deliberately does not use request headers/body. `api/lib/config.osp` reads folder/bind/port from JSON. Neither is a hosted authentication/ownership implementation. `packages/manager/README.md` lists missing host primitives, and `packages/manager/blockers/` holds probes. The eleven-table ownership migration and typeDiagram now exist; the migration intentionally grants no runtime access and its tool verification is blocked below. The dedicated website, hosted authentication/permission handlers, allow policies and release services remain planned in parent plan phases 6–12.
 
 The following sibling repository paths were inspected as source references, not as proof of their current production configuration. They are external local references, not dependencies of an Osprey checkout; the chosen Osprey requirements live in spec 0044.
 
@@ -34,6 +34,39 @@ Keep website, API, schemas and jobs in the existing parent-plan seams. Planned d
 
 Every stage has a named accountable owner and retained evidence manifest before execution. The implementer owns code/tests, the deployment owner owns account/secret provisioning and rollback, independent key custodians own trust ceremonies, and an independent security reviewer owns adversarial acceptance. A blank owner or missing credential/capability is a blocker, not a reason to skip a gate.
 
+The committed language-site configuration (`website/src/CNAME`, `website/src/_data/site.json`) uses `www.ospreylang.dev`. Proposed registry hostnames are `packages.ospreylang.dev` (website), `packages-api.ospreylang.dev` (API) and `package-content.ospreylang.dev` (cookieless content), with separate `-staging` counterparts. These are planning defaults, not claims of DNS ownership/provisioning. Confirm zone access and collision-free records during inventory before creating them. Pin the environment API callback to `/v1/auth/github/callback`; GitHub still returns first to that environment's Supabase callback. Pages preview/default hostnames never join the credentialed CORS/OAuth allowlist.
+
+Use GitHub CI federation into the narrowly scoped GCP deploy identity; provider API tokens that cannot be exchanged this way are separate project/zone-scoped Secret Manager entries with pinned versions, rotation and revocation tests. This includes the Cloudflare Pages/rules credential; federation does not make that credential disappear. The DataProvider migration role, website deploy role, API runtime role and incident operator remain distinct.
+
+## Execution dependencies and blocker ownership
+
+The stage letters group deliverables; they are not a reason to expose callbacks before ingress is secured. Split Stage E into infrastructure preparation (`E-infra`, started immediately after A) and completed website acceptance (`E-web`, after C/D). Implement every website flow against `[PACKAGE-HOSTED-ROUTES]`; that table is the authoritative API/actor inventory for the Stage F rehearsal.
+
+```mermaid
+flowchart LR
+    K[Start trust procurement and key custody] --> D[Stage D publication and trust]
+    A[Stage A capabilities and contracts] --> B[Stage B ownership and RLS]
+    A --> EI[Stage E-infra protected staging ingress]
+    B --> C[Stage C auth and GitHub]
+    EI --> C
+    C --> D
+    C --> EW[Stage E-web website acceptance]
+    D --> EW
+    EI --> F[Stage F CI, incident and recovery rehearsal]
+    EW --> F
+    D --> F
+    F --> G[Stage G production waves]
+```
+
+Start supplier/operator engagement at Stage A kickoff, not after publication code is finished. Record actual supplier lead times and committed ready dates in the inventory; no production launch date is credible until they are known. Independent builders, HSM/root custody and witness/cross-log agreements must be ready before Stage D integration can exit. If a supplier slips, continue local adversarial development with explicitly labelled fixtures and retain a public-write hold; fixtures and same-operator substitutes cannot pass independence gates. The deployment owner re-plans the milestone rather than reducing quorum or trust requirements.
+
+| Execution blocker | Accountable role and concrete next action | Evidence required to clear it |
+| --- | --- | --- |
+| DataProvider 0.9.11-beta custom-schema inspection | Dependency maintainer, coordinated by deployment owner: track a DataProvider fix deriving all inspected schemas from the desired YAML for both diff and post-apply verification; add an upstream CLI regression for a precreated non-`public` schema; release/review and pin the fixed tool version | Fresh creation, existing-schema upgrade, actual eleven-table constraint/RLS probes, and rerun yielding zero operations all pass through the unmodified verifier. A new version invalidates the earlier migration receipt: rerun and bind the replacement evidence to that exact tool/artifact version and audit its dependencies |
+| `schema-check: long whitespace and identifiers` SIGBUS | Compiler/runtime maintainer: retain the exact failing case and 100,000-character bounds; isolate and correct the parser/runtime defect without weakening the assertion, limits or gate | The original case and the full registry schema/fixture suites pass with recorded compiler/runtime digests and applicable backend results; then repeat the Stage F exact-SHA checks |
+| Missing hosted Osprey capabilities, handlers or allow policies | Package implementation owner: close Stage A probes and Stage B–E contracts with test-first changes; readiness remains `ownership.not-ready` | Positive and negative route/RLS/publication tests prove working authorized flows, not only denial from the closed bootstrap |
+| Missing independent trust operators or real deployment inventory | Deployment owner and named trust custodians: obtain provider commitments, account access, secret custody and actual environment assignments | Complete inventory and independent ceremonies/rehearsals before Stage D/F exits; no borrowed NAP/TradiSite credentials or invented resource IDs |
+
 ## Stage A — Prove capabilities and contracts
 
 - [ ] Map spec 0044 IDs to the existing packages and add named failing Osprey regressions before each implementation change.
@@ -54,6 +87,7 @@ Measured blocker on 25 October 2026: pinned DataProviderMigrate 0.9.11-beta appl
 - [ ] Provision restricted runtime logins with no owner/BYPASSRLS/elevated role membership; separate migration/collector/eligibility/audit permissions. Remove default grants and unused Data API/GraphQL/Realtime exposure.
 - [ ] Implement one transaction/context boundary and the exact RLS predicates/column permissions for organization memberships and package permissions. Prove pooled request isolation across success, cancellation and rollback.
 - [ ] Implement spec 0045: organization-only ownership, organization custodians/members, one package administrator, explicit per-package permissions, targeted invitations, admin handover, maintenance responsibility and 30-day exceptional recovery. Organization custodians cannot grant package permissions unless they hold that package's sole administrator reference. All mutations produce atomic audit/outbox evidence.
+- [ ] Implement durable rollout-mode/version checks from `[PACKAGE-HOSTED-CONTROL]`, including deny-on-store-failure and epoch invalidation of queued writes; package permissions cannot change deployment modes.
 - [ ] Test two orgs, multiple packages and an outsider against every CRUD/join/view/storage path using actual production-shaped roles, including direct Supabase requests. Include positive controls, row/column escalation attempts, stale sessions, same-connection reuse and concurrent removal/finalization.
 - [ ] Prove the anti-name-sitting requirement end to end: reserving, publishing, tombstoning or moderating `@org-a/helper-functions` cannot block `@org-b/helper-functions`. Database uniqueness and website/API availability checks use `(organization_id, name)`; no global leaf-name claim or reservation exists.
 - [ ] Audit actual `pg_roles`, memberships, schema/column/default grants, policies, function execution, exposed schemas and storage policies. A textual policy-name check alone is insufficient.
@@ -93,6 +127,7 @@ Exit: an authorized publisher can produce exactly one independently verifiable s
 - [ ] Verify registrar lock, zone DNSSEC/DS, individual administrator MFA/recovery and least-privilege ruleset edits. Validate Cloud Run's isolated probe port without a public health bypass; serverless NEGs need no load-balancer health check.
 - [ ] Block direct run.app/revision/LB-IP traffic and traffic via a different Cloudflare tenant; test public success through the intended hostname, including OPTIONS and CLI requests.
 - [ ] Implement the Osprey WASM website's login, organization/membership/package-admin/permission controls, repository binding, publication progress and rejection reasons. Escape/sanitize hostile content and never expose credentials or quarantined source.
+- [ ] Wire and test every flow in `[PACKAGE-HOSTED-ROUTES]`, including org-scoped name availability, existing warnings, targeted invitation acceptance, exact single-admin handover, operational grants, maintenance and pending/rejected publication states. Incomplete screens stay hidden.
 - [ ] Prove private/cookie/Authorization responses never enter CDN caches; immutable source caches verify digests and mutable signed status remains fresh. Load-test numeric API/worker/instance limits and set cost alerts.
 - [ ] Cut over GitHub OAuth/App webhooks only through the tested protected ingress. Test invitation/owner/recovery notifications, SPF/DKIM/DMARC, failure alerts and the authenticated inbox; complete private-data retention/deletion handling before public enrollment.
 
@@ -104,6 +139,7 @@ Exit: the staged website supports the full flows, read-only public delivery work
 - [ ] Add dedicated registry build/deploy workflows; every staging/production/frontend/manual deployment depends on a fresh unconditional exact-SHA `audit` job. Run `make audit`, `make ci`, `make registry-test` and all hosted conformance checks. Do not reuse a passing audit from another SHA.
 - [ ] Build the native image/static artifacts once, record immutable digests, apply reviewed additive schema changes separately, verify RLS drift/tests, deploy a no-traffic revision and run release smoke checks through an operator-restricted candidate route retaining the ingress/edge controls. Prove it reaches the candidate revision without public run.app/tag access; unavailable safe routing blocks promotion. Never migrate at build/startup.
 - [ ] Rehearse traffic/artifact rollback to the exact prior release, checking schema compatibility and preserving consumed nonces, authority epochs, revocations and log history.
+- [ ] Provision and rehearse `[PACKAGE-HOSTED-CONTROL]`: named mode-promotion authority, narrow independent incident job/credentials, freeze under edge/API outage, and jointly approved unfreeze. Prove neither operator mode changes nor the independent incident path can grant package permissions or eligibility.
 - [ ] Restore off-provider database/CAS/ownership/trust backups into an isolated replacement project. Measure RPO ≤ five minutes and RTO ≤ four hours, reconcile all acknowledged security state with the signed log, and keep writes frozen until reconciliation passes.
 - [ ] Rehearse from an empty account: GitHub login → create org → invite member → explicit publishing-permission grant → selected-repo binding → publish → fresh-client fetch/build → remove maintainer → reject queued/replayed publish → yank/revoke → transfer/recovery → restore. Retain positive results and every expected denial.
 - [ ] Obtain an independent application/RLS/crypto/infrastructure audit and close all critical/high findings, including review of provider identity linking and pooler behavior.
@@ -132,3 +168,21 @@ Alert on denied cross-scope attempts, privilege/policy drift, identity/owner cha
 ## Completion evidence
 
 Completion requires spec `[PACKAGE-HOSTED-CONFORMANCE]` plus parent-plan public registry conformance, not just a successful deploy. Record actual hostnames, account inventory, exact deployed digests, named test results, independent review, observed wave metrics, recovery/rollback timings and incident ownership. Until that evidence exists, status stays planned/in progress and public publication remains disabled.
+
+## Planning completion audit
+
+The requested deliverable is the rollout design and its ownership/data contracts. That design can be complete while the execution checklist remains open. None of the unchecked implementation, procurement, audit or deployment items above is marked shipped by this audit.
+
+| Requested requirement | Authoritative design/artifact evidence | Current conclusion |
+| --- | --- | --- |
+| Learn from NAP and TradiSite | Reference comparison above names the inspected gateway, Cloud Run, pooling/RLS and immutable-deploy source paths and records rejected insecure assumptions | Pattern investigated and decisions documented; no claim of live inspection of those deployments |
+| Cloudflare in front of website/API | Spec 0044 `[PACKAGE-HOSTED-TOPOLOGY]`/`[PACKAGE-HOSTED-EDGE]`, proposed environment hostnames and Stage E-infra | Selected topology, origin bypass controls, caching/TLS and provisioning prerequisites mapped |
+| Authentication and GitHub | Spec 0044 `[PACKAGE-HOSTED-AUTH]`/`[PACKAGE-HOSTED-ROUTES]`, Stage C | OAuth vs GitHub App, PKCE/session flow, identity linking, WebAuthn and credential/route authority mapped |
+| Organization responsibility, one package admin, multiple permission holders | Spec 0045, the single active-human-admin composite FK, permission enum and scoped API actor table | Contract and structural schema defined; live transition/RLS policies remain closed and unimplemented |
+| Prevent global package-name sitting | `[PACKAGE-NAMES-NO-SITTING]`, `(organization_id, name)` uniqueness, org-scoped availability route and Stage B acceptance | Same leaf name is legal in different orgs; a registration/tombstone cannot reserve it globally; 36 recorded local probes include the structural positive controls |
+| DataProvider-defined tables | `.config/dotnet-tools.json` and `packages/manager/supabase/migrations/schema.yaml` | Eleven-table source and constraints exist; failed private-schema verification is an explicit execution blocker with an owner/remediation/acceptance path |
+| typeDiagram model and consistency | `schemas/package-registry.td`, spec 0031's byte-identical projection and its parity/schema fixtures | Governance types exist and render; recorded schema checks passed except the separately retained long-input SIGBUS stress failure |
+| Whole publication and ownership lifecycle | Specs 0030/0045, route inventory and Stages B–D | Source-derived publication, permission changes, admin handover, maintenance, yank/revoke, succession and recovery mapped; no unsigned file-upload shortcut |
+| Safe execution and production rollout | Dependency graph, blocker/procurement ownership, `[PACKAGE-HOSTED-CONTROL]`, Stages F/G | Ordered implementation, separate control authorities, exact-SHA audit, rehearsals, waves, stop conditions, rollback and recovery mapped |
+
+Planning is complete when these linked artifacts and contracts are present, mutually consistent and checked. Deployment readiness requires the stronger execution exits above, including both recorded defects being fixed, actual runtime policy/handler tests, independent trust operators and the independent audit. The next implementation action is Stage A capability triage in parallel with the named DataProvider/parser remediation and Stage E-infra preparation; public writes stay off.

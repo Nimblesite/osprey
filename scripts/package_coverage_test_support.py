@@ -11,12 +11,22 @@ CHECKER = ROOT / "scripts" / "package_coverage.py"
 FOOTER = "# coverage total: 90.0% (9/10 lines)\n# suites: 1 passed, 0 failed\n"
 GOLDEN = "ok demo\n1 passed, 0 failed\n"
 FAKE_COMPILER = '''#!/usr/bin/env python3
-import json, os, sys
+import json, os, sys, time
 from pathlib import Path
 args = sys.argv[1:]
 report = Path(args[args.index("--coverage-json") + 1])
 suite = Path(args[args.index("test") + 1])
 spec = json.loads(Path(os.environ["FAKE_PACKAGE_SPEC"]).read_text()).get(suite.parent.name, {})
+if spec.get("barrier"):
+    started = Path(os.environ["FAKE_PACKAGE_SPEC"]).parent / "started"
+    started.mkdir(exist_ok=True)
+    (started / suite.parent.name).touch()
+    deadline = time.monotonic() + 5
+    while not all((started / name).exists() for name in spec["barrier"]):
+        if (started / "failed").exists() or time.monotonic() >= deadline:
+            (started / "failed").touch()
+            raise RuntimeError("package suites did not overlap")
+        time.sleep(0.01)
 if spec.get("report") is not None:
     report.parent.mkdir(parents=True, exist_ok=True)
     report.write_text(json.dumps(spec["report"]))

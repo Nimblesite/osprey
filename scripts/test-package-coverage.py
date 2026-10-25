@@ -446,9 +446,10 @@ class CheckerTests(unittest.TestCase):
         fixture.write_spec({"demo": {"report": own_report("demo", 4, 4)}})
         self.assertEqual(fixture.collect().returncode, 0)
 
-    def test_collection_writes_report_log_and_summary(self):
-        fixture = self.simple_fixture("demo", 10)
-        fixture.write_spec({"demo": {"report": own_report("demo", 9, 10)}})
+    def test_all_package_suites_overlap_and_write_isolated_reports(self):
+        names = ["demo", *(f"peer{i}" for i in range(17))]
+        fixture = self.fixture({name: {"sources": {"src/lib.py": py_source(10)}} for name in names})
+        fixture.write_spec({name: {"report": own_report(name, 9, 10), "barrier": names} for name in names})
         result = fixture.collect()
         self.assert_exit(result, 0)
         self.assertTrue((fixture.reports / "demo.json").is_file())
@@ -460,6 +461,8 @@ class CheckerTests(unittest.TestCase):
         self.assertEqual((demo["covered"], demo["total"], demo["percentage"]), (9, 10, 90.0))
         self.assertEqual(demo["files"][0]["path"], "lib.py")
         self.assertTrue(demo["pass"])
+        self.assertEqual({row["name"] for row in fixture.summary()["packages"]}, set(names))
+        self.assertTrue(all(row["pass"] for row in fixture.summary()["packages"]))
 
     def test_ungated_package_fails_even_for_a_focused_package(self):
         fixture = self.simple_fixture()
