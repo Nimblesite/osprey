@@ -11,7 +11,7 @@ float64 element order exactly — the same scalar products, divisions and
 additions in the same sequence — so parameters match torch's after any number
 of steps at rtol 1e-12.
 """
-from numpy import Array
+from numpy import Array, Errors
 from torch import Tensor
 
 __all__ = [
@@ -229,8 +229,9 @@ def clip_grad_norm_(grads, max_norm, norm_type):
 
 
 def total_norm(grads, norm_type):
-    """torch's total gradient norm: the Lp norm of the per-parameter norms."""
+    """The supported L2 and infinity gradient norms; reject other orders."""
     inf = exp(1000.0)
+    _ = Errors.require(norm_type == 2.0 or norm_type == inf, "only L2 and infinity gradient norms are implemented")
     if norm_type == inf:
         return foldList(grads, 0.0 - inf, lambda acc, g: acc if acc >= max_abs(g) else max_abs(g))
     else:

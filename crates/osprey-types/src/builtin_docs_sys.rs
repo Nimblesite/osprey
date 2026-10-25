@@ -127,7 +127,7 @@ pub(crate) static JSON: &[BuiltinDoc] = &[
         "jsonParse",
         "Parses a JSON string and returns an opaque document handle for querying, or an error on malformed input.",
         ["text" => "The JSON text to parse"],
-        "match jsonParse(\"{\\\"name\\\": \\\"osprey\\\"}\") {\n  Success { value } => print(\"parsed\")\n  Error { message } => print(message)\n}",
+        "match jsonParse(\"{\\\"name\\\": \\\"osprey\\\"}\") {\n    Success { value } => print(\"parsed; release: ${jsonFree(value)}\")\n    Error { message } => print(message)\n}",
     ),
     builtin_doc!(
         "jsonGet",
@@ -388,7 +388,7 @@ pub(crate) static TERMINAL: &[BuiltinDoc] = &[
         "spawnProcess",
         "Spawns a process and reports stdout, stderr and exit events through the required callback. Returns a handle for the running process.",
         ["command" => "The command to execute", "callback" => "Required callback receiving (processID, eventType, data); event types are stdout (1), stderr (2) and exit (3)"],
-        "fn processEventHandler(processID: int, eventType: int, data: string) -> Unit = {\n    match eventType {\n        1 => print(\"STDOUT: ${data}\")\n        2 => print(\"STDERR: ${data}\")\n        3 => print(\"EXIT: ${data}\")\n        _ => print(\"Unknown event\")\n    }\n}\nlet result = spawnProcess(\"echo hello\", processEventHandler)\nmatch result {\n    Success { value } => {\n        let exitCode = awaitProcess(value)\n        cleanupProcess(value)\n    }\n    Error { message } => print(\"Failed\")\n}",
+        "fn onEvent(_pid, kind, data) = print(\"${kind}: ${trim(data)}\")\nmatch spawnProcess(\"echo hello\", onEvent) {\n    Success { value } => {\n        let exitCode = awaitProcess(value)\n        cleanupProcess(value)\n        print(\"exit: ${exitCode}\")\n    }\n    Error { message } => print(\"Process failed: ${message}\")\n}",
     ),
     builtin_doc!(
         "awaitProcess",

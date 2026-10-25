@@ -126,28 +126,12 @@ static void emit_field(sink *out, const spec *s, const char *prefix, const char 
   }
 }
 
-static unsigned long long cached_integer;
-static unsigned cached_digits;
-static char cached_decimal[DIGITS_MAX];
-
-void osp_hunt_remember_integer(unsigned long long value, const char *digits, unsigned length) {
-  cached_integer = value;
-  cached_digits = length == 0 ? 1 : length;
-  for (unsigned i = 0; i < cached_digits; i++) {
-    cached_decimal[i] = length == 0 ? '0' : digits[i];
-  }
-}
-
 // Digits of `value` in `base`, written backwards from the end of `digits`.
 static int unsigned_digits(unsigned long long value, unsigned base, int upper, char *digits) {
-  if (base == 10 && cached_digits != 0 && value == cached_integer) {
-    memcpy(digits + DIGITS_MAX - cached_digits, cached_decimal, cached_digits);
-    return (int)cached_digits;
-  }
-  const char *alphabet = upper ? "0123456789ABCDEF" : "0123456789abcdef";
   int length = 0;
   do {
-    digits[DIGITS_MAX - 1 - length] = alphabet[value % base];
+    unsigned digit = (unsigned)(value % base);
+    digits[DIGITS_MAX - 1 - length] = (char)(digit < 10 ? '0' + digit : (upper ? 'A' : 'a') + digit - 10);
     value /= base;
     length++;
   } while (value != 0);

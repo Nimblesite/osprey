@@ -2,7 +2,7 @@
 # Deterministically add an osprey-ml twin after every osprey block in the
 # website reference docs. Idempotent: never inserts a twin if one already follows.
 #
-# ML translation rules (verified against the paired tests/flavors/*.ospml corpus):
+# Reference translation rules; complex examples supply an explicit ML rendering:
 #   let x = v        -> x = v
 #   mut c = 0        -> mut c = 0 ; reassign c = e -> c := e
 #   fn f(a, b) = e   -> f (a, b) = e     ; fn f(x) = e -> f x = e
@@ -22,102 +22,7 @@ import pathlib
 _HERE = pathlib.Path(__file__).resolve().parent
 DOCS = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else (_HERE.parent / "src" / "docs")
 
-# Hand-authored ML twins for blocks the automatic translator can't safely do
-# (multi-construct blocks, brace-body fns, multi-match, comment-embedded records).
-# Keyed by path relative to DOCS. These OVERRIDE the auto-translation. Because
-# `osprey --docs` regenerates function docs on every build and strips twins, this
-# post-processor re-applies both auto and hand twins after generation.
-HAND_TWINS = {
-    "keywords/fn.md": 'add (a, b) = a + b\n\ngreet name = print ("Hello, " + name)',
-    "keywords/type.md": (
-        'type UserId =\n    int\n\n'
-        'type Status =\n    Active\n    Inactive\n\n'
-        'type User =\n    name : string\n    age : int'
-    ),
-    "functions/jsonparse.md": (
-        'match jsonParse "{\\"name\\": \\"osprey\\"}"\n'
-        '    Success value => print "parsed"\n    Error message => print message'
-    ),
-    "functions/spawnprocess.md": (
-        'processEventHandler (processID, eventType, data) =\n'
-        '    match eventType\n        1 => print "STDOUT: ${data}"\n'
-        '        2 => print "STDERR: ${data}"\n        3 => print "EXIT: ${data}"\n'
-        '        _ => print "Unknown event"\n\n'
-        'result = spawnProcess ("echo hello", processEventHandler)\n'
-        'match result\n    Success value =>\n        exitCode = awaitProcess value\n'
-        '        cleanupProcess value\n    Error message => print "Failed"'
-    ),
-    # spawnProcess is arity-2 (command + mandatory callback) per builtins.rs;
-    # a 1-arg call is a type error, so the twin passes the callback `onEvent`.
-    "types/processhandle.md": (
-        'result = spawnProcess ("echo hello", onEvent)\n'
-        'match result\n    Success value =>\n        exitCode = awaitProcess value\n'
-        '        cleanupProcess value\n    Error message => print "Process failed"'
-    ),
-    "types/httpresponse.md": (
-        'HttpResponse\n    status = 200\n'
-        '    headers = "Content-Type: application/json"\n'
-        '    contentType = "application/json"\n    streamFd = -1\n'
-        '    isComplete = true\n    partialBody = "{\\"message\\": \\"Hello\\"}"'
-    ),
-    # `if (c) { e }` block form is Default-only; ML has no `if` — bool `match`.
-    "keywords/false.md": (
-        'isComplete = false\nmatch isComplete\n'
-        '    false => print "Not done yet"\n    true => print "done"'
-    ),
-    "keywords/true.md": (
-        'isReady = true\nmatch isReady\n'
-        '    true => print "Ready!"\n    false => print "Wait"'
-    ),
-    # Elvis `?:` has no ML surface; the AST-equivalent form is a match on Result.
-    "functions/randombelow.md": (
-        'd =\n    match randomBelow 6\n'
-        '        Success value => value  // a fair die face 0..5\n'
-        '        Error message => 0'
-    ),
-    # Default block was an illustrative fragment with `...`; give a real ML match.
-    "functions/indexof.md": (
-        'match indexOf ("foo=bar", "=")\n'
-        '    Success value => print value\n'
-        '    Error message => print "not found"'
-    ),
-    # ML value bindings carry no `Any` annotation (a `value : Any` signature
-    # type-errors against the inferred int); the equivalent ML binds directly.
-    "types/any.md": 'value : Any\nvalue = 42\n\ntext : Any\ntext = "Hello"',
-    "functions/yield.md": 'yield',
-    "functions/padend.md": 'padEnd ("7", 3, ".")  // Success { value: "7.." }',
-    "functions/padstart.md": 'padStart ("7", 3, "0")  // Success { value: "007" }',
-    "functions/repeat.md": 'repeat ("ab", 3)  // Success { value: "ababab" }',
-    "functions/replace.md": 'replace ("a-b-c", "-", "_")  // Success { value: "a_b_c" }',
-    "functions/substring.md": 'substring ("hello", 1, 4)  // Success { value: "ell" }',
-    "functions/lines.md": 'lines "a\\\nb\\\nc"  // ["a","b","c"]',
-    # WebSocket builtins return raw handles/statuses; ML uses whitespace application.
-    "functions/websocketclose.md": (
-        'status = websocketClose wsId\nprint status'
-    ),
-    "functions/websocketcreateserver.md": (
-        'serverId = websocketCreateServer 8080 "127.0.0.1" "/chat"\nprint serverId'
-    ),
-    "functions/websocketsend.md": (
-        'status = websocketSend wsId "Hello, WebSocket!"\nprint status'
-    ),
-    "functions/websocketserverbroadcast.md": (
-        'sent = websocketServerBroadcast serverId "Welcome!"\nprint sent'
-    ),
-    "functions/websocketserverlisten.md": (
-        'status = websocketServerListen serverId\nprint status'
-    ),
-    # map-literal pages: generator emits `["k" => v]` ([FLAVOR-ML-MAP]); no hand twin.
-    # parsefloat/parseint/split: generator comment-preserve handles them; no hand twin.
-    # send/recv: generator emits curried `send ch 42` (AST-equal to Default); no hand twin.
-    "index.md": (
-        'type Shape =\n    Circle\n    Square\n\n'
-        'area (s, size) =\n    match s\n'
-        '        Circle => size * size * 3\n        Square => size * size\n\n'
-        'total = area (Circle, 4) + area (Square, 2)\n'
-        'print "total: ${total}"'
-    ),
-}
+from ml_twins_examples import HAND_TWINS
 
 # ---- token-level helpers -------------------------------------------------
 

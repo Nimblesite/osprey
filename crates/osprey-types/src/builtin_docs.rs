@@ -35,14 +35,14 @@ fn builtin_docs() -> impl Iterator<Item = &'static BuiltinDoc> {
     use crate::builtin_docs_lang as lang;
     use crate::builtin_docs_sys as sys;
     [
-        lang::CORE,
+        crate::builtin_docs_core::CORE,
         crate::builtin_docs_signals::SIGNALS,
         lang::TESTING,
         lang::STRINGS,
         lang::FUNCTIONAL,
         lang::LISTS,
         lang::MAPS,
-        lang::GPU,
+        crate::builtin_docs_gpu::GPU,
         sys::FILES,
         sys::HTTP,
         sys::JSON,
@@ -191,7 +191,7 @@ mod tests {
         let broken: Vec<_> = builtin_docs()
             .filter_map(|doc| {
                 let parsed = osprey_syntax::parse_program(doc.example);
-                (!parsed.errors.is_empty()).then(|| (doc.name, parsed.errors))
+                (!parsed.errors.is_empty()).then_some((doc.name, parsed.errors))
             })
             .collect();
         assert!(broken.is_empty(), "malformed builtin examples: {broken:?}");
