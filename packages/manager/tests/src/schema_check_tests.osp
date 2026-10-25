@@ -56,17 +56,24 @@ module SchemaCheckTests {
         "ResolutionProof", "DependencySelectionRoot", "ReleaseDependencySelection",
         "ReleaseLockfile", "DevelopmentLockfile", "DevelopmentStateGeneration",
         "WorkspaceTransaction", "ScanVerdict", "Evidence", "MaintenanceAssessment",
-        "DiscoveryAssessment", "ReleaseAssessment"
+        "DiscoveryAssessment", "ReleaseAssessment",
+        "OrganizationId", "MembershipId", "PackageId", "GovernanceId", "AuthorityEpoch",
+        "PrincipalKind", "PrincipalState", "OrganizationState", "OrganizationRole",
+        "MembershipState", "ActiveMembershipState", "OrganizationRecoveryAuthority", "RegistryPackageState", "PackagePermission", "PermissionState",
+        "AdminTransferState", "InvitationState", "MaintenanceReportState", "RegistryPrincipal",
+        "RegistryAuthBinding", "Organization", "OrganizationMembership", "RegistryPackage",
+        "PackagePermissionGrant", "PackageAdminTransfer", "OrganizationInvitation",
+        "PackageMaintenanceReport", "GovernanceEventKind", "GovernanceEvent"
     ]
 
     fn modelLoads() = {
         let result = TypeDiagram::parse(readFile(schemaPath) ?: "")
         match result {
             Success { value } => checkAll("schema model declares every type exactly once", [
-                length(value.decls) == 83,
-                length(filterList(value.decls, isAlias)) == 9,
-                length(filterList(value.decls, isStruct)) == 60,
-                length(filterList(value.decls, isUnion)) == 14,
+                length(value.decls) == 112,
+                length(filterList(value.decls, isAlias)) == 14,
+                length(filterList(value.decls, isStruct)) == 71,
+                length(filterList(value.decls, isUnion)) == 27,
                 everyNameResolves(value)
             ])
             Error { message } => check("typeDiagram parses", "ok", message)

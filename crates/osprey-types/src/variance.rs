@@ -217,15 +217,31 @@ mod tests {
         }
     }
 
+    fn fields(
+        ctx: &InferCtx,
+        owner: &str,
+        params: &[TypeParam],
+        fields: &[(&str, &str)],
+    ) -> Vec<TypeError> {
+        validate_type_decl(ctx, owner, params, &[variant(fields)])
+    }
+
+    fn rejected(errors: &[TypeError], needle: &str) {
+        assert!(
+            errors.iter().any(|error| error.message.contains(needle)),
+            "{errors:?}"
+        );
+    }
+
     #[test]
     fn covariant_param_is_legal_in_field_and_return_positions() {
         let ctx = InferCtx::new();
         let params = [tp("T", Variance::Covariant)];
-        let ok = validate_type_decl(
+        let ok = fields(
             &ctx,
             "Source",
             &params,
-            &[variant(&[("produce", "T"), ("gen", "(int) -> T")])],
+            &[("produce", "T"), ("gen", "(int) -> T")],
         );
         assert!(ok.is_empty(), "unexpected: {ok:?}");
     }
@@ -234,8 +250,8 @@ mod tests {
     fn covariant_param_in_fn_parameter_position_is_rejected() {
         let ctx = InferCtx::new();
         let params = [tp("T", Variance::Covariant)];
-        let errs = validate_type_decl(&ctx, "Bad", &params, &[variant(&[("f", "(T) -> int")])]);
-        assert!(errs.iter().any(|e| e.message.contains("input position")));
+        let errs = fields(&ctx, "Bad", &params, &[("f", "(T) -> int")]);
+        rejected(&errs, "input position");
     }
 
     #[test]
@@ -243,24 +259,14 @@ mod tests {
         let ctx = InferCtx::new();
         let params = [tp("T", Variance::Contravariant)];
         // Legal: T as a function parameter (input).
-        let ok = validate_type_decl(
-            &ctx,
-            "Sink",
-            &params,
-            &[variant(&[("accept", "(T) -> Unit")])],
-        );
+        let ok = fields(&ctx, "Sink", &params, &[("accept", "(T) -> Unit")]);
         assert!(ok.is_empty(), "unexpected: {ok:?}");
         // Illegal: T as a plain field (output).
-        let errs = validate_type_decl(&ctx, "Bad", &params, &[variant(&[("held", "T")])]);
-        assert!(errs.iter().any(|e| e.message.contains("output position")));
+        let errs = fields(&ctx, "Bad", &params, &[("held", "T")]);
+        rejected(&errs, "output position");
         // Double flip: T in the parameter of a parameter-function is output again.
-        let errs = validate_type_decl(
-            &ctx,
-            "Bad2",
-            &params,
-            &[variant(&[("g", "((T) -> int) -> int")])],
-        );
-        assert!(errs.iter().any(|e| e.message.contains("output position")));
+        let errs = fields(&ctx, "Bad2", &params, &[("g", "((T) -> int) -> int")]);
+        rejected(&errs, "output position");
     }
 
     #[test]
@@ -269,26 +275,21 @@ mod tests {
         ctx.set_variance("List", vec![Variance::Covariant]);
         let co = [tp("T", Variance::Covariant)];
         // T inside a covariant List keeps its polarity: legal.
-        let ok = validate_type_decl(&ctx, "Ok", &co, &[variant(&[("items", "List<T>")])]);
+        let ok = fields(&ctx, "Ok", &co, &[("items", "List<T>")]);
         assert!(ok.is_empty(), "unexpected: {ok:?}");
         // An unregistered constructor's args are invariant positions: illegal
         // for an `out` param.
-        let errs = validate_type_decl(&ctx, "Bad", &co, &[variant(&[("cell", "Cell<T>")])]);
-        assert!(errs
-            .iter()
-            .any(|e| e.message.contains("invariant position")));
+        let errs = fields(&ctx, "Bad", &co, &[("cell", "Cell<T>")]);
+        rejected(&errs, "invariant position");
         // A contravariant constructor argument flips the polarity, so an `out T`
         // inside a `Sink` lands in input position after all.
         ctx.set_variance("Sink", vec![Variance::Contravariant]);
-        let errs = validate_type_decl(&ctx, "Bad2", &co, &[variant(&[("s", "Sink<T>")])]);
-        assert!(
-            errs.iter().any(|e| e.message.contains("input position")),
-            "{errs:?}"
-        );
+        let errs = fields(&ctx, "Bad2", &co, &[("s", "Sink<T>")]);
+        rejected(&errs, "input position");
         // An invariant parameter carries no constraint, so every position suits
         // it — including the one that rejected `out T` above.
         let inv = [tp("T", Variance::Invariant)];
-        let ok = validate_type_decl(&ctx, "Cell", &inv, &[variant(&[("s", "Sink<T>")])]);
+        let ok = fields(&ctx, "Cell", &inv, &[("s", "Sink<T>")]);
         assert!(ok.is_empty(), "unexpected: {ok:?}");
     }
 
@@ -314,7 +315,7 @@ mod tests {
         );
         // `out T` in an operation parameter: rejected.
         let errs = validate_effect_decl(&ctx, "Bad", &out_t, &[op("fn(T) -> Unit")]);
-        assert!(errs.iter().any(|e| e.message.contains("input position")));
+        rejected(&errs, "input position");
         // `in T` flips: parameter legal, result rejected.
         let in_t = [tp("T", Variance::Contravariant)];
         assert_eq!(
@@ -322,7 +323,7 @@ mod tests {
             Vec::<TypeError>::new()
         );
         let errs = validate_effect_decl(&ctx, "Bad2", &in_t, &[op("fn() -> T")]);
-        assert!(errs.iter().any(|e| e.message.contains("output position")));
+        rejected(&errs, "output position");
     }
 
     #[test]
@@ -368,9 +369,7 @@ mod tests {
     #[test]
     fn fn_type_params_reject_variance_markers() {
         let errs = reject_fn_variance("map", &[tp("T", Variance::Covariant)]);
-        assert!(errs
-            .iter()
-            .any(|e| e.message.contains("only valid on type")));
+        rejected(&errs, "only valid on type");
         assert_eq!(
             reject_fn_variance("map", &[tp("T", Variance::Invariant)]),
             Vec::<TypeError>::new()

@@ -105,3 +105,9 @@ The table links the implemented folder-registry checks to their tests. Runtime r
 | Python plane (P1–P3): the generated `.osprey/python/pyproject.toml` names no index and pins `index-strategy = "first-index"`; a member's own `pyproject.toml` may name no `[[tool.uv.index]]` (`python.index-forbidden`) and no `git`, `url` or outside-tree `path` source (`python.source-forbidden`); every sdist and wheel in `uv.lock` carries a hash or `lock` refuses it (`python.uv-lock-hashes`); each refusal runs no uv and writes no lock; sync is `uv sync --frozen`, verification `uv lock --check --offline` | `PythonPlane` | `cli/tests` python suite |
 
 Named tests above cover the folder-registry subset. Python publisher-attestation identity checks and the public trust plane remain unfinished.
+
+## Hosted ownership model
+
+[Organization governance](../../docs/specs/ecosystem/0045-OrganizationPackageGovernance.md) prevents package-name sitting: `@org-a/helper-functions` and `@org-b/helper-functions` are independent valid keys. Every hosted package belongs to an organization, has one package administrator and permits multiple explicit publishing/maintenance permission holders. Personal ownership and global leaf-name reservations do not exist.
+
+The [typeDiagram](../../schemas/package-registry.td) defines the model and [DataProvider YAML](supabase/migrations/schema.yaml) defines eleven ownership tables and their constraints. Bootstrap forces RLS with no allow policies or runtime grants; hosted flows remain unavailable until narrow policies and Osprey handlers/tests ship. The pinned DataProvider CLI currently fails private-schema integrity verification after applying tables, so deployment and convergence remain blocked; see the measured blocker in the [rollout plan](../../docs/plans/0020-package-manager-rollout.md).

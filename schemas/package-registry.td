@@ -19,6 +19,7 @@ union PrincipalState { Active {} Suspended {} }
 union OrganizationState { Active {} Frozen {} Tombstoned {} }
 union OrganizationRole { Custodian {} Member {} }
 union MembershipState { Active {} Revoked {} }
+union ActiveMembershipState { Active {} }
 union RegistryPackageState { Draft {} Active {} WriteFrozen {} Deprecated {} Tombstoned {} }
 union PackagePermission { PublishRelease {} YankRelease {} EditMetadata {} ManageMaintenance {} ManageSecurity {} }
 union PermissionState { Active {} Revoked {} }
@@ -37,12 +38,13 @@ type OrganizationMembership {
   authorityEpoch: AuthorityEpoch
   acceptedAt: DateTime
 }
+type OrganizationRecoveryAuthority { id: GovernanceId organizationId: OrganizationId principalId: PrincipalId state: PermissionState governanceEpoch: AuthorityEpoch enrollmentDigest: Digest enrolledAt: DateTime }
 type RegistryPackage {
   id: PackageId
   organizationId: OrganizationId
   name: PackageName
   adminMembershipId: MembershipId
-  adminMembershipState: MembershipState
+  adminMembershipState: ActiveMembershipState
   authorityEpoch: AuthorityEpoch
   state: RegistryPackageState
   createdAt: DateTime
@@ -65,6 +67,7 @@ type PackageAdminTransfer {
   packageId: PackageId
   fromMembershipId: MembershipId
   toMembershipId: MembershipId
+  toMembershipState: ActiveMembershipState
   expectedAuthorityEpoch: AuthorityEpoch
   state: AdminTransferState
   proposalDigest: Digest
@@ -72,6 +75,7 @@ type PackageAdminTransfer {
   createdAt: DateTime
   notBefore: DateTime
   expiresAt: DateTime
+  decidedAt: Option<DateTime>
 }
 type OrganizationInvitation { id: GovernanceId organizationId: OrganizationId targetPrincipalId: PrincipalId issuerMembershipId: MembershipId role: OrganizationRole tokenDigest: Digest state: InvitationState expectedGovernanceEpoch: AuthorityEpoch createdAt: DateTime expiresAt: DateTime }
 type PackageMaintenanceReport { id: GovernanceId organizationId: OrganizationId packageId: PackageId reporterMembershipId: MembershipId summary: String evidenceDigest: Digest state: MaintenanceReportState createdAt: DateTime }

@@ -120,6 +120,26 @@ static void test_boot_and_clocks(void) {
   osp_prof_note_drop(); // inactive: safe, just a counter
 }
 
+// [PROF-COLLECT-REGISTRY] Threads registered before a session must retain
+// their identity when that session assigns its sample rows.
+static void test_threads_registered_between_sessions_retain_identity(void) {
+  enum { FIBER_ID = 73 };
+  osp_prof_registry_enable();
+  osp_prof_thread_register(FIBER_ID, "waiting");
+  OspProfSlot *self = osp_prof_self_slot();
+  assert(self != NULL && self->index == OSP_PROF_ROW_NONE);
+  OspProfSnap snap;
+  assert(osp_prof_snapshot(&snap, 1) == 0);
+  assert(osp_prof_session_start(TEST_RATE_HZ));
+  assert(osp_prof_snapshot(&snap, 1) == 1 && snap.slot == self);
+  assert(self->index < osp_prof_row_count());
+  assert(osp_prof_row_fiber(self->index) == FIBER_ID);
+  assert(strcmp(osp_prof_row_label(self->index), "waiting") == 0);
+  osp_prof_session_stop();
+  osp_prof_thread_unregister();
+  assert(!osp_prof_is_active() && osp_prof_self_slot() == NULL);
+}
+
 // Registered-slot introspection and generation validation: the self slot
 // carries the exact fiber id/label and sane stack bounds; a snapshot entry is
 // live until unregister and DEAD after; record_repeat appends against a stack
@@ -257,6 +277,13 @@ static void test_churn_under_max_rate_sampling(void) {
   unlink(out);
 }
 
+static void test_registry_and_capture(void) {
+  test_threads_registered_between_sessions_retain_identity();
+  test_slot_snapshot_generation();
+  test_end_to_end_capture();
+  test_churn_under_max_rate_sampling();
+}
+
 int main(void) {
   // This suite tests the OSPREY_PROFILE session and the registry; the endpoint
   // has its own suite. A forked body _exits without running atexit, so an
@@ -268,9 +295,7 @@ int main(void) {
   test_record_drop_returns_sentinel();
   test_interning_survives_table_growth();
   test_boot_and_clocks();
-  test_slot_snapshot_generation();
-  test_end_to_end_capture();
-  test_churn_under_max_rate_sampling();
+  test_registry_and_capture();
   printf("profiler_runtime_tests: all tests passed (sink=%f)\n", g_sink);
   return 0;
 }

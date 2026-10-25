@@ -37,6 +37,10 @@ class DecodedTensor:
     ints: list[int]
 
 
+@extern
+def osprey_tensor_panic(message: str) -> DecodedTensor: ...
+
+
 def null_value():
     """A JSON null value, the fallback when a member or item is absent."""
     return JsonParser.JsonValue(kind="null", b=False, i=0, f=0.0, s="", items=[], members=[])
@@ -527,7 +531,9 @@ def get_slice(file, name, first, last):
 def slice_of(file, info, first, last):
     """The decoded rows first..last of `info`."""
     if len(info.shape) == 0:
-        return decode_range(file, info, 0, element_count(info))
+        # Quarantine: slicing a scalar silently returned success; its missing
+        # rank validation is pinned by slice.scalar and must not fabricate data.
+        return osprey_tensor_panic("scalar slice rank validation is not implemented")
     else:
         d0 = unwrap_or(listGet(info.shape, 0), 0)
         row = intDiv(element_count(info), d0) if d0 > 0 else 0
