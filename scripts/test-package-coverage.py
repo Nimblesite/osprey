@@ -15,7 +15,7 @@ from pathlib import Path
 from package_coverage_evidence import record_measurements, seal_evidence, source_inputs
 from package_coverage_test_support import (
     ROOT, FOOTER, GOLDEN, add_package, bad_report_cases, file_report,
-    make_fixture, own_report, py_source, write_gates, write_json,
+    check_c_runtime, make_fixture, own_report, py_source, write_gates, write_json,
 )
 
 
@@ -31,12 +31,20 @@ class PackageThresholdTests(unittest.TestCase):
         shipped = {p.name for p in (ROOT / "packages").iterdir() if (p / "osprey.toml").is_file()}
         self.assertEqual(set(packages), shipped, "Every package must have its own coverage gate")
         for name, entry in packages.items():
-            self.assertGreaterEqual(entry["threshold"], 90, name)
-            self.assertIsInstance(entry["threshold"], int, f"{name}: threshold must be an integer")
-            self.assertLessEqual(entry["threshold"], 100, name)
+            threshold = entry.get("threshold", 90)
+            self.assertGreaterEqual(threshold, 90, name)
+            self.assertIsInstance(threshold, int, f"{name}: threshold must be an integer")
+            self.assertLessEqual(threshold, 100, name)
             self.assertEqual(entry["language"], "osprey", name)
             self.assertTrue((ROOT / "packages" / name / "tests" / "osprey.toml").is_file(), name)
             self.assertTrue((ROOT / "packages" / name / "tests" / "expected_output.txt").is_file(), name)
+
+    def test_only_thresholds_above_the_minimum_are_explicit(self):
+        config = json.loads((ROOT / "coverage-thresholds.json").read_text())
+        for group in config["projects"].values():
+            for name, entry in group.items():
+                if "threshold" in entry:
+                    self.assertGreater(entry["threshold"], 90, name)
 
 
 class CheckerTests(unittest.TestCase):
@@ -68,6 +76,43 @@ class CheckerTests(unittest.TestCase):
     def assert_problem(self, result, message, stderr=False):
         self.assert_exit(result, 1)
         self.assertIn(message, result.stderr if stderr else result.stdout)
+
+    def test_omitted_threshold_enforces_90_and_preserves_failing_measurements(self):
+        for covered, exit_code in ((9, 0), (8, 1)):
+            with self.subTest(covered=covered):
+                fixture = self.simple_fixture(lines=10)
+                write_json(fixture.root / "coverage-thresholds.json", {
+                    "projects": {"packages": {"demo": {"language": "osprey"}}}})
+                fixture.write_report("demo", own_report("demo", covered, 10))
+                result = fixture.check("--record-measurements")
+                self.assert_exit(result, exit_code)
+                self.assertEqual(fixture.result("demo")["percentage"], covered * 10)
+                self.assertNotIn("threshold", fixture.result("demo"))
+                self.assertNotIn("(threshold 90%)", result.stdout)
+                self.assertEqual(fixture.config()["package_measurements"]["packages"]["demo"]["covered"], covered)
+                self.assertNotIn("threshold", fixture.config()["projects"]["packages"]["demo"])
+
+    def test_higher_package_threshold_still_rejects_90_percent(self):
+        fixture = self.fixture({"demo": {"sources": {"src/lib.py": py_source(100)}}}, {"demo": 95})
+        fixture.write_report("demo", own_report("demo", 94, 100))
+        self.assert_exit(fixture.check(), 1)
+        self.assertIn("95%", fixture.check().stdout)
+        self.assertEqual(fixture.result("demo")["threshold"], 95)
+        fixture.write_report("demo", own_report("demo", 95, 100))
+        self.assert_exit(fixture.check(), 0)
+
+    def test_c_runtime_omitted_threshold_enforces_90_and_keeps_higher_overrides(self):
+        for percentage, entry, code in ((89, {}, 2), (90, {}, 0), (94, {"threshold": 95}, 2), (95, {"threshold": 95}, 0)):
+            with self.subTest(percentage=percentage, entry=entry):
+                result = check_c_runtime(Path(tempfile.mkdtemp(dir=self.base)), percentage, entry)
+                self.assert_exit(result, code)
+
+    def test_c_runtime_invalid_thresholds_fail_closed(self):
+        for value in (89, 101, 90.5, "90", True, None):
+            with self.subTest(threshold=value):
+                result = check_c_runtime(Path(tempfile.mkdtemp(dir=self.base)), 100, {"threshold": value})
+                self.assert_exit(result, 2)
+                self.assertNotIn("probe OK", result.stdout)
 
     def test_check_only_requires_a_successfully_verified_collection(self):
         fixture = self.simple_fixture()

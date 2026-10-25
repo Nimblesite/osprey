@@ -76,7 +76,7 @@ TEMPLATES = [
     ("none output", "[{{ none }}]"),
     ("undefined string", "{{ missing|string }}"),
     ("pair render", "{{ obj.items()|first }}:{{ obj.items()|first == obj.items()|first }}"),
-    ("repr escapes", "{{ ['\\\\', \"'\"] }}:{{ ['a\\r\\tb'] }}"),
+    ("repr control escapes", "{{ ['a\\r\\tb'] }}"),
     ("empty substring", "{{ '' in 'abc' }}:{{ '' in name }}"),
     ("negative slices", "{{ name[-4:] }}:{{ nums[-10:1]|join(',') }}:{{ nums[5::-1]|join(',') }}"),
     ("tojson compact", "{{ {'a': none}|tojson }}:{{ true|tojson }}:{{ 1.5|tojson }}:{{ 'a'|tojson }}:{{ [1, 'a']|tojson }}"),

@@ -5,7 +5,9 @@
     "@osprey/http",
     "@a1/b-2",
     "@a/a--b",
-    "@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    "@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "@my-org/helper-functions",
+    "@another-org/helper-functions"
   ],
   "invalid": [
     {
@@ -67,6 +69,18 @@
     {
       "text": "@finch/ledger@e1.r1",
       "code": "name.name.chars"
+    },
+    {
+      "text": "HelperFunctions",
+      "code": "name.missing-at"
+    },
+    {
+      "text": "helper-functions",
+      "code": "name.missing-at"
+    },
+    {
+      "text": "my-org/helper-functions",
+      "code": "name.missing-at"
     }
   ]
 }

@@ -72,13 +72,15 @@ A registry needs no account, no database and no hosted service. It is a director
 my-registry/
   @demo/
     maths/
-      1.0/        osprey.toml, src/...
-      1.1/
+      1.1/        osprey.toml, src/...
+      1.2/
     greeting/
-      1.0/
+      1.1/
     report/
-      1.0/        depends on @demo/maths and @demo/greeting
+      1.1/        depends on @demo/maths and @demo/greeting
 ```
+
+Epochs and release ordinals both start at 1.
 
 The Osprey server walks that root, validates every release against the canonical source rules, computes each release's `SourceDigest`, and serves the catalog over HTTP:
 

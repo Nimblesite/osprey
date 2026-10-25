@@ -97,6 +97,18 @@ def write_gates(root, entries):
     write_json(root / "coverage-thresholds.json", {"projects": {"packages": gates}})
 
 
+def check_c_runtime(root, percentage, entry):
+    write_json(root / "coverage-thresholds.json", {"projects": {"c_runtime": {"probe": entry}}})
+    summary = root / "compiler/bin/cov/probe/summary.txt"
+    summary.parent.mkdir(parents=True)
+    summary.write_text(f"File '../../../runtime/probe.c'\nLines executed:{percentage}% of 100\n")
+    source = (ROOT / "scripts/make/tests.mk").read_text()
+    recipe = source.split("_coverage_check_c_runtime:\n", 1)[1].split("\n\n", 1)[0]
+    gate = recipe[recipe.index("\t@command -v jq"):]
+    makefile = f"COVERAGE_THRESHOLDS_FILE := coverage-thresholds.json\ncheck:\n{gate}\n"
+    return subprocess.run(["make", "-s", "-f", "-", "check"], input=makefile, cwd=root, capture_output=True, text=True)
+
+
 def bad_report_cases():
     good = "packages/bad/src/lib.py"
     return {
