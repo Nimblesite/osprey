@@ -43,3 +43,18 @@ test('an API reference does not authorize an unreviewed upstream license copy', 
   writeFileSync(join(dir, 'unrequired.txt'), 'Unreviewed upstream license text')
   assert.notEqual(verify(root).status, 0)
 }))
+
+test('package tooling containers do not become published libraries', () => inFixture((root) => {
+  const dir = join(root, 'packages/manager/core')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'osprey.toml'), '[project]\nname = "package-core"\n')
+  const result = verify(root)
+  assert.equal(result.status, 0, result.stderr)
+}))
+
+test('a new package manifest still requires a reviewed license entry', () => inFixture((root) => {
+  const dir = join(root, 'packages/new-library')
+  mkdirSync(dir)
+  writeFileSync(join(dir, 'osprey.toml'), '[package]\nname = "@osprey/new-library"\n')
+  assert.notEqual(verify(root).status, 0)
+}))

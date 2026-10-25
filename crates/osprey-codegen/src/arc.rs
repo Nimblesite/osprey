@@ -237,43 +237,14 @@ fn conditional_floor(cg: &Codegen) -> usize {
 /// the arms — the scrutinee, an outer temporary — and lives on EVERY path, so
 /// consuming it through the phi would leak it on the arms that yield something
 /// else. Borrows (parameters, field loads) were never registered and fail the
-/// gate, keeping the caller's dup/drop. Pure ledger bookkeeping: it emits no
-/// code, and the dup/drop calls it repositions are no-ops off ARC — the one IR
-/// still serves every backend. [GC-ARC-PERCEUS]
+/// gate, keeping the caller's dup/drop. Clear transferred slots so abandonment
+/// cannot release both an incoming owner and its phi. [GC-ARC-PERCEUS]
 pub(crate) fn move_phi_owners(cg: &mut Codegen, incoming: &[String], out: &Value, mark: usize) {
-    if !managed(cg, out) {
+    if !managed(cg, out) || !incoming_owners_match(cg, incoming, mark, |_| true) {
         return;
     }
-    let consumable = |e: &Entry| e.name.is_none() && incoming.contains(&e.operand);
-    let all_fresh = cg.arc.frames.last().is_some_and(|f| {
-        incoming.iter().all(|op| {
-            f.iter()
-                .skip(mark)
-                .any(|e| e.operand == *op && e.name.is_none())
-        })
-    });
-    if !all_fresh {
-        return;
-    }
-    // Exactly one arm runs, so the phi holds no managed references whenever
-    // EVERY arm it selects from held none. Without carrying the flag across the
-    // join, `own` below re-registers the merged owner as impure and
-    // `consume_fresh` can no longer retire it at its unwrap — the drop sinks to
-    // the region end, which is past any tail call in the same expression and
-    // costs the callee its tail position. [GC-ARC-PERCEUS]
-    let all_pure = incoming_all_pure(cg, incoming, mark);
-    let mut moved = Vec::new();
-    if let Some(f) = cg.arc.frames.last_mut() {
-        let tail = f.split_off(mark.min(f.len()));
-        for entry in tail {
-            if consumable(&entry) {
-                moved.push(entry.slot);
-            } else {
-                f.push(entry);
-            }
-        }
-    }
-    for slot in moved {
+    let all_pure = incoming_owners_match(cg, incoming, mark, |e| e.pure_scalar);
+    for slot in take_phi_slots(cg, incoming, mark) {
         cg.emit(format!("store i8* null, i8** {slot}"));
     }
     own(cg, out);
@@ -282,13 +253,29 @@ pub(crate) fn move_phi_owners(cg: &mut Codegen, incoming: &[String], out: &Value
     }
 }
 
-/// Whether every arm-produced owner feeding a phi was proved pure-scalar.
-fn incoming_all_pure(cg: &Codegen, incoming: &[String], mark: usize) -> bool {
+fn take_phi_slots(cg: &mut Codegen, incoming: &[String], mark: usize) -> Vec<String> {
+    let Some(frame) = cg.arc.frames.last_mut() else {
+        return Vec::new();
+    };
+    let (moved, kept): (Vec<_>, Vec<_>) = frame
+        .split_off(mark.min(frame.len()))
+        .into_iter()
+        .partition(|e| e.name.is_none() && incoming.contains(&e.operand));
+    frame.extend(kept);
+    moved.into_iter().map(|e| e.slot).collect()
+}
+
+fn incoming_owners_match(
+    cg: &Codegen,
+    incoming: &[String],
+    mark: usize,
+    accepts: impl Fn(&Entry) -> bool,
+) -> bool {
     cg.arc.frames.last().is_some_and(|f| {
         incoming.iter().all(|op| {
             f.iter()
                 .skip(mark)
-                .any(|e| e.operand == *op && e.name.is_none() && e.pure_scalar)
+                .any(|e| e.operand == *op && e.name.is_none() && accepts(e))
         })
     })
 }

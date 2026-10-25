@@ -26,7 +26,7 @@ fn attach(lines: Vec<String>, prologue: &[String]) -> Vec<String> {
     let mut result = Vec::new();
     let mut registered = false;
     for line in lines {
-        if line.trim_start().starts_with("ret ") {
+        if needs_pop(&line, &result) {
             result.push("  call void @__osprey_owner_frame_pop(i8* %arc.unwind.raw)".into());
         }
         let initialize = !registered && line == "  store i8* null, i8** %arc.s0";
@@ -37,6 +37,14 @@ fn attach(lines: Vec<String>, prologue: &[String]) -> Vec<String> {
         }
     }
     result
+}
+
+fn needs_pop(line: &str, previous: &[String]) -> bool {
+    line.contains("musttail call ")
+        || (line.trim_start().starts_with("ret ")
+            && !previous
+                .last()
+                .is_some_and(|line| line.contains("musttail call ")))
 }
 
 fn prologue(count: usize) -> Vec<String> {
@@ -57,4 +65,26 @@ fn prologue(count: usize) -> Vec<String> {
     }
     result.push(format!("  call void @__osprey_owner_frame_push(i8* %arc.unwind.raw, i8*** %arc.unwind.first, i64 {count})"));
     result
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn owner_frame_pop_preserves_llvm_musttail_return_adjacency() {
+        let call = "  %answer = musttail call i64 @drive(i8* %env, i8* %coro)";
+        let lines = vec![
+            "  store i8* null, i8** %arc.s0".into(),
+            call.into(),
+            "  ret i64 %answer".into(),
+        ];
+        let actual = super::attach(lines, &["  register".into()]);
+        assert_eq!(
+            &actual[actual.len() - 3..],
+            &[
+                "  call void @__osprey_owner_frame_pop(i8* %arc.unwind.raw)",
+                call,
+                "  ret i64 %answer"
+            ]
+        );
+    }
 }

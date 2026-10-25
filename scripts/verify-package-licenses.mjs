@@ -16,7 +16,7 @@ const filesIn = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((entr
   entry.isDirectory() ? filesIn(join(dir, entry.name)) : [join(dir, entry.name)])
 
 const packageNames = readdirSync(ROOT, { withFileTypes: true })
-  .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+  .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.') && existsSync(join(ROOT, entry.name, 'osprey.toml')))
   .map((entry) => entry.name).sort()
 requireThat(JSON.stringify(packageNames) === JSON.stringify(Object.keys(AUDIT.packages).sort()),
   'Every package needs an entry in packages/license-audit.json')

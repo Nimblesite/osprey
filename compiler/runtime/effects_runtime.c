@@ -363,16 +363,10 @@ void __osprey_finalizer_unwind(void) {
 
 // Implements [GC-ARC-PERCEUS] and [MULTI-COST-ABORT]: ordinary function
 // epilogues cannot run after pthread_exit abandons their suspended stack.
-typedef struct OwnerFrame {
-    struct OwnerFrame *previous;
-    void ***slots;
-    int64_t count;
-} OwnerFrame;
-
-static __thread OwnerFrame *g_owner_frames = NULL;
+static __thread OspOwnerFrame *g_owner_frames = NULL;
 
 void __osprey_owner_frame_push(void *raw, void ***slots, int64_t count) {
-    OwnerFrame *frame = raw;
+    OspOwnerFrame *frame = raw;
     frame->previous = g_owner_frames;
     frame->slots = slots;
     frame->count = count;
@@ -380,7 +374,7 @@ void __osprey_owner_frame_push(void *raw, void ***slots, int64_t count) {
 }
 
 void __osprey_owner_frame_pop(void *raw) {
-    if (g_owner_frames != raw) {
+    if (g_owner_frames == NULL || g_owner_frames != raw) {
         fprintf(stderr, "FATAL: ARC owner frames returned out of order\n");
         abort();
     }
@@ -389,7 +383,7 @@ void __osprey_owner_frame_pop(void *raw) {
 
 void __osprey_owner_frames_unwind(void) {
     while (g_owner_frames != NULL) {
-        OwnerFrame *frame = g_owner_frames;
+        OspOwnerFrame *frame = g_owner_frames;
         g_owner_frames = frame->previous;
         for (int64_t i = frame->count; i > 0; i--) {
             void **slot = frame->slots[i - 1];

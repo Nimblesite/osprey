@@ -49,6 +49,11 @@ void __osprey_finalizer_unwind(void);
 
 // Stack-resident owner frames mirror codegen's null-initialized ARC slots.
 // Abandonment runs user finalizers before releasing the remaining owners.
+typedef struct OspOwnerFrame {
+    struct OspOwnerFrame *previous;
+    void ***slots;
+    int64_t count;
+} OspOwnerFrame;
 void __osprey_owner_frame_push(void *frame, void ***slots, int64_t count);
 void __osprey_owner_frame_pop(void *frame);
 void __osprey_owner_frames_unwind(void);
