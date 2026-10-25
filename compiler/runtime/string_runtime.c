@@ -248,42 +248,36 @@ char *osp_string_pad_end(const char *s, int64_t target_length, const char *fill)
  */
 enum { OSP_INT_DIGITS_MAX = 19, OSP_DECIMAL_BLOCK_DIGITS = 9 };
 
-static unsigned osp_decimal_prefix(const char *s, size_t count) {
-    unsigned invalid = 0;
-    for (size_t i = 0; i < count; i++) invalid |= s[i] != '0';
-    return invalid;
+static int osp_decimal_size(const char *s) {
+    int count = 0;
+    for (;;) {
+        unsigned char byte = (unsigned char)s[count];
+        if (byte == 0) return count;
+        if (count == OSP_INT_DIGITS_MAX || (unsigned char)(byte - '0') > 9) return -1;
+        count++;
+    }
 }
 
-static uint32_t osp_decimal_block(const char *s, size_t count, unsigned *invalid) {
+static uint32_t osp_decimal_block(const char *s, int count) {
     uint32_t value = 0;
-    for (size_t i = 0; i < count; i++) {
-        unsigned digit = (unsigned)((unsigned char)s[i] - '0');
-        *invalid |= digit > 9;
-        value = value * 10 + digit;
-    }
+    for (int i = 0; i < count; i++) value = value * 10 + ((unsigned char)s[i] & 15U);
     return value;
 }
 
-static uint64_t osp_decimal_value(const char *s, size_t count, unsigned *invalid) {
-    uint64_t value = 0;
-    size_t size = count % OSP_DECIMAL_BLOCK_DIGITS;
+static int osp_decimal_magnitude(const char *s, const char *limit, uint64_t *out) {
+    while (*s == '0') s++;
+    int count = osp_decimal_size(s);
+    if (count < 0 || (count == OSP_INT_DIGITS_MAX && strcmp(s, limit) > 0)) return 1;
+    uint64_t acc = 0;
+    int size = count % OSP_DECIMAL_BLOCK_DIGITS;
     if (size == 0) size = OSP_DECIMAL_BLOCK_DIGITS;
     while (count > 0) {
-        value = value * 1000000000ULL + osp_decimal_block(s, size, invalid);
+        acc = acc * 1000000000ULL + osp_decimal_block(s, size);
         s += size;
         count -= size;
         size = OSP_DECIMAL_BLOCK_DIGITS;
     }
-    return value;
-}
-
-static int osp_decimal_magnitude(const char *s, uint64_t limit, uint64_t *out) {
-    size_t count = strlen(s);
-    size_t prefix = count > OSP_INT_DIGITS_MAX ? count - OSP_INT_DIGITS_MAX : 0;
-    unsigned invalid = osp_decimal_prefix(s, prefix);
-    uint64_t value = osp_decimal_value(s + prefix, count - prefix, &invalid);
-    if (invalid | (value > limit)) return 1;
-    *out = value;
+    *out = acc;
     return 0;
 }
 
@@ -293,7 +287,7 @@ int64_t osp_parse_int_strict(const char *s, int64_t *out) {
     const char *p = s + (*s == '-' || *s == '+');
     if (*p == '\0') return 1;
     uint64_t acc = 0;
-    if (osp_decimal_magnitude(p, neg ? 9223372036854775808ULL : 9223372036854775807ULL, &acc)) return 1;
+    if (osp_decimal_magnitude(p, neg ? "9223372036854775808" : "9223372036854775807", &acc)) return 1;
     if (neg && acc == 9223372036854775808ULL) {
         *out = (-9223372036854775807LL) - 1;
     } else {

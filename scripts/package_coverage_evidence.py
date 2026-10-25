@@ -1,10 +1,24 @@
 """Bind coverage reports to the source and suite whose golden output passed."""
 import hashlib
 import json
+import re
 import tomllib
 from pathlib import Path
 
 SOURCE_SUFFIXES = frozenset({".py", ".osp", ".ospml"})
+
+
+def golden_problems(path):
+    try:
+        text = path.read_bytes().decode("utf-8")
+        summary = re.search(r"^([1-9][0-9]*) passed, 0 failed\n?\Z", text, re.MULTILINE)
+        tap = re.search(r"^# tests=([1-9][0-9]*) passed=([1-9][0-9]*) failed=0 skipped=0\n?\Z", text, re.MULTILINE)
+        count = len(re.findall(r"^ok ", text, re.MULTILINE))
+        passed = int(summary[1]) if summary else int(tap[1]) if tap and tap[1] == tap[2] else 0
+        bad_rows = re.search(r"^(?:FAIL(?: |$)|not ok(?: |$))", text, re.MULTILINE)
+        return [] if passed > 0 and passed == count and not bad_rows else ["suite golden must prove positive passing assertions and zero failures"]
+    except (OSError, UnicodeError):
+        return ["cannot read suite golden"]
 
 
 def digest(path):

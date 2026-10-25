@@ -33,7 +33,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from package_coverage_evidence import SOURCE_SUFFIXES, evidence_path, evidence_problems, seal_evidence, source_inputs
+from package_coverage_evidence import SOURCE_SUFFIXES, evidence_path, evidence_problems, golden_problems, seal_evidence, source_inputs
 
 EXIT_OK = 0
 EXIT_GATE = 1
@@ -106,6 +106,8 @@ def validate_entry(root: Path, name: str, entry: object) -> list[str]:
         problems.append(f"{name}: missing tests/osprey.toml")
     if not (tests / "expected_output.txt").is_file():
         problems.append(f"{name}: missing tests/expected_output.txt")
+    else:
+        problems += [f"{name}: {problem}" for problem in golden_problems(tests / "expected_output.txt")]
     return problems
 
 

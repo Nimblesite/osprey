@@ -19,6 +19,7 @@ from package_coverage_evidence import seal_evidence, source_inputs
 ROOT = Path(__file__).resolve().parents[1]
 CHECKER = ROOT / "scripts" / "package_coverage.py"
 FOOTER = "# coverage total: 90.0% (9/10 lines)\n# suites: 1 passed, 0 failed\n"
+GOLDEN = "ok demo\n1 passed, 0 failed\n"
 FAKE_COMPILER = '''#!/usr/bin/env python3
 import json, os, sys
 from pathlib import Path
@@ -125,7 +126,7 @@ def add_package(root, name):
     (package / "tests" / "osprey.toml").write_text(f'[project]\nname = "{name}-tests"\n')
 
 
-def add_sources(root, name, sources, expected="ok demo\n"):
+def add_sources(root, name, sources, expected=GOLDEN):
     package = root / "packages" / name
     (package / "tests" / "expected_output.txt").write_text(expected)
     for relative, text in sources.items():
@@ -139,7 +140,7 @@ def make_fixture(base, packages, thresholds=None):
     write_gates(root, thresholds if thresholds is not None else {name: 90 for name in packages})
     for name, spec in packages.items():
         add_package(root, name)
-        add_sources(root, name, spec.get("sources", {}), spec.get("expected", "ok demo\n"))
+        add_sources(root, name, spec.get("sources", {}), spec.get("expected", GOLDEN))
     compiler = root / "fake-compiler.py"
     compiler.write_text(FAKE_COMPILER)
     compiler.chmod(0o755)
@@ -176,6 +177,14 @@ class CheckerTests(unittest.TestCase):
         result = fixture.check()
         self.assertEqual(result.returncode, 1, "A raw report does not prove its suite passed: " + result.stdout)
 
+    def test_matching_a_zero_or_failing_golden_is_not_success(self):
+        for expected in ("0 passed, 0 failed\n", "FAIL demo\n1 passed, 0 failed\n", "1 passed, 0 failed\n"):
+            with self.subTest(expected=expected):
+                fixture = self.fixture({"demo": {"sources": {"src/lib.py": py_source(4)}, "expected": expected}})
+                fixture.write_spec({"demo": {"report": own_report("demo", 4, 4)}})
+                result = fixture.collect()
+                self.assertEqual(result.returncode, 2, "Matching invalid oracle output cannot pass: " + result.stdout)
+
     def test_changed_source_or_golden_invalidates_collected_evidence(self):
         for relative in ("src/lib.py", "tests/expected_output.txt", "tests/osprey.toml"):
             with self.subTest(relative=relative):
@@ -189,7 +198,7 @@ class CheckerTests(unittest.TestCase):
 
     def test_zero_suites_and_changed_line_endings_cannot_replay_as_success(self):
         fixture = self.fixture({"demo": {"sources": {"src/lib.py": py_source(4)}}})
-        for stdout in ("ok demo\r\n" + FOOTER, "ok demo\n" + FOOTER.replace("1 passed", "0 passed")):
+        for stdout in (GOLDEN.replace("\n", "\r\n") + FOOTER, GOLDEN + FOOTER.replace("1 passed", "0 passed")):
             with self.subTest(stdout=stdout):
                 fixture.write_spec({"demo": {"report": own_report("demo", 4, 4), "stdout": stdout}})
                 result = fixture.collect()

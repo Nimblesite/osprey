@@ -8,6 +8,8 @@
 #include "hunt_mock_tests.h"
 
 #include <string.h>
+#include <stdlib.h>
+#include <errno.h>
 
 enum { OUT_MAX = 512, MESSAGE_MAX = 1200 };
 
@@ -250,7 +252,29 @@ static void every_printer_agrees(void) {
   (void)fclose(input);
 }
 
+static void decimal_roundtrip(unsigned long long value) {
+  char text[32], *end = NULL;
+  int count = snprintf(text, sizeof(text), "%llu", value);
+  hunt_check(count > 0 && count <= 20 && (size_t)count == strlen(text), "decimal length matches its bytes");
+  hunt_check(text[0] >= '0' && text[0] <= '9' && (count == 1 || text[0] != '0'), "decimal spelling is canonical");
+  errno = 0;
+  unsigned long long restored = strtoull(text, &end, 10);
+  hunt_check(errno == 0 && end != text && *end == 0 && restored == value, "host libc recovers the exact unsigned integer");
+}
+
+static void decimal_roundtrip_oracle(void) {
+  const unsigned count = 65536;
+  const unsigned long long multiplier = 6364136223846793005ULL, increment = 1442695040888963407ULL;
+  unsigned long long state = UINT64_MAX;
+  for (unsigned i = 0; i < count; i++) {
+    decimal_roundtrip(i);
+    decimal_roundtrip(state);
+    state = state * multiplier + increment;
+  }
+}
+
 void hunt_mock_format_tests(void) {
+  decimal_roundtrip_oracle();
   integer_rows();
   string_and_float_rows();
   star_rows();
