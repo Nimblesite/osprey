@@ -122,9 +122,12 @@ def numpy_matches(rows, queries, results):
 
 
 def local_match(rows, query, labels, distances):
-    """One query: recheck its first neighbour's distance."""
-    label = unwrap_or(listGet(labels, 0), 0)
-    got = unwrap_or(listGet(distances, 0), 0.0)
+    """Independently validate every returned neighbour, including its shape."""
+    checks = toList(map(range(len(labels)), lambda i: distance_matches(rows, query, unwrap_or(listGet(labels, i), 0), unwrap_or(listGet(distances, i), 0.0))))
+    return len(labels) == K and len(distances) == K and foldList(checks, True, lambda ok, value: ok and value)
+
+
+def distance_matches(rows, query, label, got):
     want = nearest_l2_distance(query, row_at(rows, label))
     return abs(got - want) < 0.000000001
 
