@@ -9,6 +9,7 @@ float in it written as its repr string ("inf", "-inf", "nan", "1.5"); its type i
 list of strings throughout, and the suite decodes each with `testing.Check.float_of`.
 """
 import math
+import json
 import pathlib
 import platform
 
@@ -33,7 +34,7 @@ def literal(value, floats_as_text=False):
     if isinstance(value, int):
         return str(value)
     if isinstance(value, str):
-        return '"' + value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n") + '"'
+        return json.dumps(value, ensure_ascii=False)
     if isinstance(value, (list, tuple)):
         return "[" + ", ".join(literal(v, floats_as_text) for v in value) + "]"
     raise TypeError(f"no Python-flavor literal for {type(value).__name__}")

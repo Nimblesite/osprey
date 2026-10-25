@@ -8,6 +8,7 @@ accounting, cross-host paths, malformed rows, oracle replay, stale evidence and
 ungated packages — is proven by behaviour rather than by mirroring the code.
 """
 import json
+import runpy
 import tempfile
 import unittest
 from pathlib import Path
@@ -19,6 +20,11 @@ from package_coverage_test_support import (
 
 
 class PackageThresholdTests(unittest.TestCase):
+    def test_oracle_literals_roundtrip_every_control_character_and_unicode(self):
+        runner = runpy.run_path(str(ROOT / "scripts/oracles/oracle.py"))
+        writer = runner["checked_writer"]()
+        self.assertEqual(writer.literal("\r"), '"\\r"')
+
     def test_every_shipped_package_has_an_individual_threshold_of_at_least_90(self):
         config = json.loads((ROOT / "coverage-thresholds.json").read_text())
         packages = config["projects"].get("packages", {})
