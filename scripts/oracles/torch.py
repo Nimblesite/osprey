@@ -3,12 +3,9 @@ gradient clipping and the autograd tape, all against real torch in float64.
 
 Writes packages/torch/tests/expected.py, which the suite compares the port
 against ([PORT-TEST-ORACLE], spec 0043). Run with the oracle virtualenv:
-`$ORACLE scripts/oracles/torch.py`. Every value here is computed by torch (or
+`python -I scripts/oracles/oracle.py torch`. Every value here is computed by torch (or
 by finite differences of torch's forward), never hand-typed.
 """
-import os
-import sys
-
 from expected_module import write
 
 import torch
@@ -275,40 +272,44 @@ def autograd_cases():
     return rows
 
 
-if __name__ == "__main__":
-    sgd = sgd_cases()
-    adam = adam_cases()
-    adamw = adamw_cases()
-    rms = rmsprop_cases()
-    ada = adagrad_cases()
+def case_values(prefix, cases, fields):
+    return {f"{prefix}_{suffix}": [case[field] for case in cases] for suffix, field in fields.items()}
+
+
+def optimizer_constants():
+    moments = {"PARAMS": "params", "EXP_AVG": "exp_avg", "EXP_AVG_SQ": "exp_avg_sq", "MAX": "max_exp_avg_sq"}
+    return {
+        **case_values("SGD", sgd_cases(), {"PARAMS": "params", "BUFFERS": "momentum_buffer"}),
+        **case_values("ADAM", adam_cases(), moments),
+        **case_values("ADAMW", adamw_cases(), moments),
+        **case_values("RMSPROP", rmsprop_cases(), {"PARAMS": "params", "SQ": "square_avg", "GRAD_AVG": "grad_avg", "BUFFERS": "momentum_buffer"}),
+        **case_values("ADAGRAD", adagrad_cases(), {"PARAMS": "params", "SUM": "sum"}),
+    }
+
+
+def scheduler_constants():
     lrs = scheduler_lrs()
+    return {f"{name.upper()}_LRS": values for name, values in lrs.items()}
+
+
+def clipping_constants():
     clip = clip_cases()
-    auto = autograd_cases()
-    write("torch", "torch optimizers, LR schedulers, gradient clipping and autograd gradients (float64).", {"torch": torch.__version__}, {
-        "SGD_PARAMS": [c["params"] for c in sgd],
-        "SGD_BUFFERS": [c["momentum_buffer"] for c in sgd],
-        "ADAM_PARAMS": [c["params"] for c in adam],
-        "ADAM_EXP_AVG": [c["exp_avg"] for c in adam],
-        "ADAM_EXP_AVG_SQ": [c["exp_avg_sq"] for c in adam],
-        "ADAM_MAX": [c["max_exp_avg_sq"] for c in adam],
-        "ADAMW_PARAMS": [c["params"] for c in adamw],
-        "ADAMW_EXP_AVG": [c["exp_avg"] for c in adamw],
-        "ADAMW_EXP_AVG_SQ": [c["exp_avg_sq"] for c in adamw],
-        "ADAMW_MAX": [c["max_exp_avg_sq"] for c in adamw],
-        "RMSPROP_PARAMS": [c["params"] for c in rms],
-        "RMSPROP_SQ": [c["square_avg"] for c in rms],
-        "RMSPROP_GRAD_AVG": [c["grad_avg"] for c in rms],
-        "RMSPROP_BUFFERS": [c["momentum_buffer"] for c in rms],
-        "ADAGRAD_PARAMS": [c["params"] for c in ada],
-        "ADAGRAD_SUM": [c["sum"] for c in ada],
-        "STEP_LRS": lrs["step"],
-        "MULTI_LRS": lrs["multi"],
-        "EXPONENTIAL_LRS": lrs["exponential"],
-        "LAMBDA_LRS": lrs["lambda"],
-        "LINEAR_LRS": lrs["linear"],
+    return {
         "CLIP_NORM_GRADS": [c["grads"] for c in clip[:3]],
         "CLIP_NORM_TOTAL": [c["total_norm"] for c in clip[:3]],
         "CLIP_VALUE_GRADS": clip[3]["value_grads"],
-        "AUTO_ANALYTIC": [c["analytic"] for c in auto],
-        "AUTO_FD": [c["fd"] for c in auto],
-    })
+    }
+
+
+def autograd_constants():
+    auto = autograd_cases()
+    return {"AUTO_ANALYTIC": [c["analytic"] for c in auto], "AUTO_FD": [c["fd"] for c in auto]}
+
+
+def main():
+    constants = {**optimizer_constants(), **scheduler_constants(), **clipping_constants(), **autograd_constants()}
+    write("torch", "torch optimizers, LR schedulers, gradient clipping and autograd gradients (float64).", {"torch": torch.__version__}, constants)
+
+
+if __name__ == "__main__":
+    main()

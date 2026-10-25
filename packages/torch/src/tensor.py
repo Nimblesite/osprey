@@ -6,15 +6,11 @@
 A torch tensor is a `numpy.Array.NDArray[B]` — a float64 array over the buffer
 representation `B` the installed numpy handler picks — so one body computes on
 host lists or the GPU by handler [PORT-DEVICE]. This module adds the pieces
-numpy does not provide: float powers (the flavor has no pow builtin yet), a
-scalar scale, correct broadcasting, and `sum_to_size`, the broadcast reduction
-torch's autograd applies to every incoming gradient.
-
-The `b*` elementwise helpers and `broadcast_to` reimplement broadcasting here
-because numpy's `Layout.offset_of` divides by zero on a zero (broadcast)
-stride; see the report's `## Needs from numpy`.
+numpy does not provide: integer powers, scalar transforms, and `sum_to_size`,
+the broadcast reduction torch's autograd applies to every incoming gradient.
+Shape, stride and broadcast operations use the shared NumPy implementation.
 """
-from numpy import Array, Storage
+from numpy import Array, Layout, Storage
 
 __all__ = [
     "pow_f", "scale", "add_scalar", "sub_scalar", "sub_from", "div_scalar", "max_scalar",
@@ -23,70 +19,31 @@ __all__ = [
     "sum_axes", "sum_to_size",
 ]
 
-ADD_TAG = 0
-SUB_TAG = 1
-MUL_TAG = 2
-DIV_TAG = 3
-MAX_TAG = 4
-MIN_TAG = 5
-
 
 def pow_f(base, n):
     """`base` raised to a non-negative integer power, by repeated
-    multiplication (the flavor has no pow builtin; a compiler pi is adding
-    one). Matches CPython's `base ** n` to within a few ulps, well inside the
+    multiplication. Matches CPython's `base ** n` to within a few ulps, well inside the
     1e-12 rtol the optimizers compare at."""
     return fold(range(n), 1.0, lambda acc, _: acc * base)
 
 
-def flat(shape):
-    """The number of elements a shape holds (1 for rank 0), the product of
-    its dimensions."""
-    return fold(range(len(shape)), 1, lambda acc, d: acc * unwrap_or(listGet(shape, d), 1))
+flat = Layout.flat_size
+"""The number of elements a shape holds (1 for rank 0), the product of
+its dimensions."""
 
 
-def strides(shape):
-    """Row-major strides of a shape."""
-    return toList(map(range(len(shape)), lambda d: fold(range(d + 1, len(shape)), 1, lambda acc, k: acc * unwrap_or(listGet(shape, k), 1))))
+strides = Layout.strides_of
+"""Row-major strides of a shape."""
 
 
 def src_offset(i, out_shape, src_shape):
-    """The flat source offset for output index `i`, with `src_shape`
-    right-aligned and broadcast inside `out_shape` (a broadcast dimension
-    contributes 0, so there is no division by a zero stride)."""
-    gap = len(out_shape) - len(src_shape)
-    out_strides = strides(out_shape)
-    src_strides = strides(src_shape)
-    return fold(range(len(out_shape)), 0, lambda acc, d: acc + broadcast_step(d, i, gap, out_shape, out_strides, src_shape, src_strides))
+    """A broadcast element's source offset using the shared NumPy layout."""
+    return Layout.offset_of(i, out_shape, Layout.broadcast_strides(src_shape, out_shape))
 
 
-def broadcast_step(d, i, gap, out_shape, out_strides, src_shape, src_strides):
-    """One dimension's contribution to a broadcast source offset."""
-    if d < gap or unwrap_or(listGet(src_shape, d - gap), 1) == 1:
-        return 0
-    else:
-        coord = (i // unwrap_or(listGet(out_strides, d), 1)) % unwrap_or(listGet(out_shape, d), 1)
-        return coord * unwrap_or(listGet(src_strides, d - gap), 0)
-
-
-def bcast_shapes2(a, b):
-    """The broadcast of two shapes (right-aligned; assumes they are
-    compatible, as the port's ops keep them)."""
-    rank = len(a) if len(a) > len(b) else len(b)
-    return toList(map(range(rank), lambda d: bcast_dim(d, rank, a, b)))
-
-
-def bcast_dim(d, rank, a, b):
-    """One dimension of a two-shape broadcast, right-aligned."""
-    x = dim_right(a, rank - 1 - d)
-    y = dim_right(b, rank - 1 - d)
-    return y if x == 1 else x
-
-
-def dim_right(shape, k):
-    """The k-th dimension from the right, 1 past the rank (a broadcast
-    operand's missing dimensions)."""
-    return unwrap_or(listGet(shape, len(shape) - 1 - k), 1)
+bcast_shapes2 = Layout.broadcast_two
+"""The broadcast of two shapes (right-aligned; assumes they are
+compatible, as the port's ops keep them)."""
 
 
 def combine_op(op, x, y):
@@ -108,47 +65,32 @@ def combine_op(op, x, y):
             return x + y
 
 
-def bcast(a, b, op):
-    """One elementwise binary operation with broadcasting, computed through
-    the buffer effect with a correct source offset."""
-    out_shape = bcast_shapes2(a.shape, b.shape)
-    return Array.NDArray(shape=out_shape, data=perform(Storage.Buffer.build(flat(out_shape), lambda i: combine_op(op, Storage.at(a.data, src_offset(i, out_shape, a.shape)), Storage.at(b.data, src_offset(i, out_shape, b.shape))))))
+broadcast_to = Array.broadcast_to
+"""Broadcast an array through the shared NumPy shape and stride rules."""
 
 
-def broadcast_to(a, shape):
-    """`a` read through broadcast offsets over `shape` (the port's own, since
-    numpy's divides by a zero stride)."""
-    return Array.NDArray(shape=shape, data=perform(Storage.Buffer.build(flat(shape), lambda i: Storage.at(a.data, src_offset(i, shape, a.shape)))))
+badd = Array.add
+"""Broadcast add."""
 
 
-def badd(a, b):
-    """Broadcast add."""
-    return bcast(a, b, ADD_TAG)
+bsub = Array.subtract
+"""Broadcast subtract."""
 
 
-def bsub(a, b):
-    """Broadcast subtract."""
-    return bcast(a, b, SUB_TAG)
+bmul = Array.multiply
+"""Broadcast multiply."""
 
 
-def bmul(a, b):
-    """Broadcast multiply."""
-    return bcast(a, b, MUL_TAG)
+bdiv = Array.divide
+"""Broadcast divide."""
 
 
-def bdiv(a, b):
-    """Broadcast divide."""
-    return bcast(a, b, DIV_TAG)
+bmax = Array.maximum
+"""Broadcast maximum (NaN wins, as numpy's maximum)."""
 
 
-def bmax(a, b):
-    """Broadcast maximum (NaN wins, as numpy's maximum)."""
-    return bcast(a, b, MAX_TAG)
-
-
-def bmin(a, b):
-    """Broadcast minimum (NaN wins, as numpy's minimum)."""
-    return bcast(a, b, MIN_TAG)
+bmin = Array.minimum
+"""Broadcast minimum (NaN wins, as numpy's minimum)."""
 
 
 def scale(a, c):

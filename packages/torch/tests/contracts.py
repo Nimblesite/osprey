@@ -119,9 +119,20 @@ def optimizer_records():
     ]
 
 
+def unsupported_norm(order):
+    grads = [Array.array1([3.0, 4.0])]
+    result = Errors.checked_float(lambda: Optim.clip_grad_norm_(grads, 1.0, order).total_norm)
+    name = f"optim.unsupported_norm.{order}"
+    match result:
+        case Error(message=message):
+            return Check.equal(name, message, "only L2 and infinity gradient norms are implemented")
+        case Success(value=value):
+            return Check.failed(name, f"accepted unsupported norm order: {value}")
+
+
 def checked_cases():
     with Errors.raising:
-        groups = [tensor_binary_cases(), tensor_scalar_cases(), tensor_layout_cases(), tape_cases(), grad_cases(), optimizer_records()]
+        groups = [tensor_binary_cases(), tensor_scalar_cases(), tensor_layout_cases(), tape_cases(), grad_cases(), optimizer_records(), mapList([-1.0, 0.0, 1.0], unsupported_norm)]
         return Success(value=foldList(groups, [], listConcat))
 
 
