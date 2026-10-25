@@ -362,8 +362,6 @@ jobs:
         run: chmod +x target/release/osprey
       - name: Package coverage collection
         run: make _test_packages
-      - name: Python application ports under every memory backend
-        run: make _test_python_app_ports
       - name: Upload package coverage
         if: always()
         uses: actions/upload-artifact@v4
@@ -372,6 +370,28 @@ jobs:
           path: target/coverage/packages/
           retention-days: 7
           if-no-files-found: error
+
+  test-python-app-ports:
+    name: "Tests: Python application ports"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
+      - uses: actions/download-artifact@v4
+        with:
+          name: osprey-build
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey
+      - name: Python application ports under every memory backend
+        run: make _test_python_app_ports
 
   # The assertion corpus, once per memory backend. `run_test_corpus.sh` checks
   # BOTH the in-language assertions and the byte-exact stdout golden in a

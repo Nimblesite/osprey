@@ -198,10 +198,14 @@ mod tests {
     }
 
     #[test]
-    fn core_and_testing_documentation_examples_typecheck() {
+    fn core_and_language_documentation_examples_typecheck() {
         let broken: Vec<_> = crate::builtin_docs_core::CORE
             .iter()
             .chain(crate::builtin_docs_lang::TESTING)
+            .chain(crate::builtin_docs_lang::STRINGS)
+            .chain(crate::builtin_docs_lang::FUNCTIONAL)
+            .chain(crate::builtin_docs_lang::LISTS)
+            .chain(crate::builtin_docs_lang::MAPS)
             .filter_map(|doc| {
                 let errors = crate::testutil::check(doc.example);
                 (!errors.is_empty()).then_some((doc.name, errors))

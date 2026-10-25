@@ -103,11 +103,17 @@ test('package source coverage runs independently and blocks the required coverag
   assert.match(packages, /needs: \[changes, build\]/)
   assert.match(packages, /if:.*needs\.changes\.outputs\.code/)
   assert.match(packages, /run: make _test_packages/)
-  assert.match(packages, /run: make _test_python_app_ports/)
   assert.match(packages, /name: Upload package coverage\n\s+if: always\(\)/)
   assert.match(packages, /name: coverage-packages/)
   assert.match(packages, /if-no-files-found: error/)
   assert.match(job('coverage', '.github/workflows/ci.yml'), /needs:.*\btest-packages\b/)
+})
+
+test('application ports have an independent complete backend gate', () => {
+  const apps = job('test-python-app-ports', '.github/workflows/ci.yml')
+  assert.match(apps, /needs: \[changes, build\]/)
+  assert.match(apps, /if:.*needs\.changes\.outputs\.code/)
+  assert.match(apps, /run: make _test_python_app_ports/)
 })
 
 test('every release publishes only after an unconditional dependency audit', () => {
