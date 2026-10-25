@@ -230,16 +230,21 @@ def skip_name(cps, i, n):
 
 def skip_group(cps, i, n):
     """The index just past the `)` closing the group at `i`."""
+    return skip_group_body(cps, i + 1, n)
+
+
+def skip_group_body(cps, i, n):
+    """Scan inside a group, stopping after its matching closing parenthesis."""
     if i >= n:
         return n
     elif at(cps, i) == 92:
-        return skip_group(cps, i + 2, n)
+        return skip_group_body(cps, i + 2, n)
     elif at(cps, i) == 40:
-        return skip_group(cps, skip_group(cps, i + 1, n), n)
+        return skip_group_body(cps, skip_group(cps, i, n), n)
     elif at(cps, i) == 41:
         return i + 1
     else:
-        return skip_group(cps, i + 1, n)
+        return skip_group_body(cps, i + 1, n)
 
 
 def skip_comment_group(cps, i, n):

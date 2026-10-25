@@ -163,7 +163,7 @@ def hinge_step(state, i, outs, ys):
 
 def total_loss(graph, outs, ys, ids):
     """Mean hinge loss plus `ALPHA * sum(p*p)`, as the notebook computes it."""
-    seed_graph = Engine.add_const(graph, unwrap_or(listGet(outs, 0), 0), 0.0)
+    seed_graph = Engine.value(graph, 0.0)
     seed = Engine.Cursor(graph=seed_graph, id=Engine.top(seed_graph))
     summed = fold(range(len(outs)), seed, lambda state, i: hinge_step(state, i, outs, ys))
     mean = Engine.truediv_const(summed.graph, summed.id, toFloat(len(outs)))
@@ -218,13 +218,11 @@ def grid_rows():
 
 
 def report_of(data, trained):
-    """Compute every reported number from the trained parameters."""
     test_predictions = predict_all(data.test_x, trained.params)
     test_labels = as_binary(data.test_y)
     checkpoint = Checkpoint.encode_f64("weights", trained.params)
     decoded = unwrap_or(Checkpoint.decode_f64(checkpoint, "weights"), [])
-    grid = Preprocessing.standard_scaler_transform(data.fitted, grid_rows())
-    grid_predictions = predict_all(grid, trained.params)
+    grid_predictions = predict_all(Preprocessing.standard_scaler_transform(data.fitted, grid_rows()), trained.params)
     return Report(
         first_loss=unwrap_or(listGet(trained.losses, 0), 0.0),
         last_loss=unwrap_or(listGet(trained.losses, len(trained.losses) - 1), 0.0),
@@ -264,22 +262,34 @@ def fmt_report(report):
     ], "\n")
 
 
-def main():
-    with Policy.arithmetic:
-        data = prepare()
-        trained = fold(range(STEPS), TrainState(params=initial_params(count_params(len(INPUTS), HIDDEN)), losses=[]), lambda state, step: train_step_with(state, step, data))
-        report = report_of(data, trained)
-        print(fmt_report(report))
-        checkAll("classifier", [
-            report.first_loss > report.last_loss,
-            report.accuracy >= 0.75,
-            report.accuracy == 1.0,
-            len(report.checkpoint) == len(report.params),
-            structuralEquals(report.checkpoint, report.params),
-            report.checkpoint_size > len(report.params) * 8,
-            report.grid_total == 81,
-            report.grid_positive > 0,
-            report.grid_positive < report.grid_total,
-            len(data.test_y) == TEST_SIZE,
-        ])
+def report_checks(report, test_count):
+    return checkAll("classifier", [
+        report.first_loss > report.last_loss,
+        report.accuracy >= 0.75,
+        report.accuracy == 1.0,
+        len(report.checkpoint) == len(report.params),
+        structuralEquals(report.checkpoint, report.params),
+        report.checkpoint_size > len(report.params) * 8,
+        report.grid_total == 81,
+        report.grid_positive > 0,
+        report.grid_positive < report.grid_total,
+        test_count == TEST_SIZE,
+    ])
 
+def loss_reference():
+    graph = Engine.value(Engine.empty(), 2.0)
+    loss = total_loss(graph, [Engine.top(graph)], [1], [])
+    return checkAll("positive margin has zero hinge loss", [Engine.data(loss.graph, loss.id) == 0.0])
+
+
+def application():
+    test("hinge objective", loss_reference)
+    data = prepare()
+    trained = fold(range(STEPS), TrainState(params=initial_params(count_params(len(INPUTS), HIDDEN)), losses=[]), lambda state, step: train_step_with(state, step, data))
+    report = report_of(data, trained)
+    print(fmt_report(report))
+    test("classifier", lambda: report_checks(report, len(data.test_y)))
+
+
+def main():
+    return Policy.execute("classifier", application)

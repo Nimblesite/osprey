@@ -77,7 +77,7 @@ def metric_bleu():
 
 def metric_chrf():
     """chrF2 without whitespace, matching sacrebleu's sentence defaults."""
-    return Chrf.CHRF(char_order=6, word_order=0, beta=3, lowercase=True, whitespace=True, eps_smoothing=False)
+    return Chrf.CHRF(char_order=6, word_order=0, beta=2, lowercase=True, whitespace=False, eps_smoothing=False)
 
 
 def rouge_fmeasures(scorer, text):
@@ -175,25 +175,30 @@ def score_of(run, index, metric):
     return unwrap_or(listGet(eval_at(run, index).scores, metric), 0.0)
 
 
-def main():
-    with Policy.arithmetic:
-        run_value = run()
-        print(run_value.report)
-        checkAll("text-evaluation", [
-            len(run_value.evaluations) == len(CANDIDATES),
-            score_of(run_value, 0, 0) > score_of(run_value, 2, 0),
-            score_of(run_value, 0, 3) > score_of(run_value, 2, 3),
-            eval_at(run_value, 0).bleu > eval_at(run_value, 2).bleu,
-            eval_at(run_value, 0).chrf > eval_at(run_value, 2).chrf,
-            eval_at(run_value, 0).tokens > 0,
-            eval_at(run_value, 2).unknown > 0,
-            run_value.corpus_bleu >= 0.0,
-            run_value.corpus_bleu <= 100.0,
-            run_value.corpus_chrf >= 0.0,
-            run_value.corpus_chrf <= 100.0,
-            contains(run_value.report, "# Evaluation report"),
-            contains(run_value.report, "| strong |"),
-            contains(run_value.report, "Corpus BLEU"),
-            not contains(run_value.report, "report failed"),
-        ])
+def report_checks(run_value):
+    return checkAll("text-evaluation", [
+        len(run_value.evaluations) == len(CANDIDATES),
+        score_of(run_value, 0, 0) > score_of(run_value, 2, 0),
+        score_of(run_value, 0, 3) > score_of(run_value, 2, 3),
+        eval_at(run_value, 0).bleu > eval_at(run_value, 2).bleu,
+        eval_at(run_value, 0).chrf > eval_at(run_value, 2).chrf,
+        eval_at(run_value, 0).tokens > 0,
+        eval_at(run_value, 2).unknown > 0,
+        run_value.corpus_bleu >= 0.0,
+        run_value.corpus_bleu <= 100.0,
+        run_value.corpus_chrf >= 0.0,
+        run_value.corpus_chrf <= 100.0,
+        contains(run_value.report, "# Evaluation report"),
+        contains(run_value.report, "| strong |"),
+        contains(run_value.report, "Corpus BLEU"),
+        not contains(run_value.report, "report failed"),
+    ])
 
+def application():
+    run_value = run()
+    print(run_value.report)
+    test("text-evaluation", lambda: report_checks(run_value))
+
+
+def main():
+    return Policy.execute("text-evaluation", application)

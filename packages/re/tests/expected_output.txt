@@ -65,6 +65,12 @@ ok flags.verbose_octal.kind
 ok flags.verbose_octal.span
 ok charset.literal_escape.kind
 ok charset.literal_escape.span
+ok width.nested_lookahead.kind
+ok width.nested_lookahead.span
+ok charset.octal_range.kind
+ok charset.octal_range.span
+ok charset.single_octal.kind
+ok charset.single_octal.span
 ok api.optional_match
 ok api.groups_default
 ok api.numeric_template
@@ -7122,4 +7128,6 @@ ok error (?i
 ok error \1
 ok error \x4
 ok error a{3,2}
-6113 passed, 0 failed
+ok error [\400]
+ok error [\777]
+6121 passed, 0 failed

@@ -313,8 +313,8 @@ class CheckerTests(unittest.TestCase):
         self.assert_exit(result, 1)
         self.assertIn("missing source evidence: src/lib.py", result.stdout)
 
-    def test_runtime_initializers_and_lambdas_need_source_evidence(self):
-        for body in ("value = Lib.entry(1)\n", "entry = lambda value: value + 1\n"):
+    def test_runtime_initializers_aliases_and_lambdas_need_source_evidence(self):
+        for body in ("value = Lib.entry(1)\n", "entry = lambda value: value + 1\n", "entry = Lib.entry\n"):
             with self.subTest(body=body):
                 fixture = self.fixture({"demo": {"sources": {
                     "src/lib.py": py_source(4), "src/facade.py": "from demo import Lib\n" + body,

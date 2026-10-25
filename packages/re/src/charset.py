@@ -118,7 +118,7 @@ def escape_body(cps, i, n):
         return hex_escape(cps, i, n, 4)
     elif c == 85:
         return u_escape(cps, i, n)
-    elif c == 48:
+    elif is_octal(c):
         return octal_escape(cps, i, n)
     elif is_letter(c):
         return fail("bad escape " + "\\" + Unicode.utf8_of(c), i)
@@ -156,8 +156,15 @@ def u_escape_cp(cps, i, n, got):
 
 
 def octal_escape(cps, i, n):
-    """Decode `\\0` followed by up to two octal digits."""
-    return octal_from(cps, i + 2, n, 2, 0)
+    """Decode up to three octal digits, bounded by CPython's byte limit."""
+    match octal_from(cps, i + 1, n, 3, 0):
+        case Error(message=message):
+            return Error(message=message)
+        case Success(value=value):
+            if unwrap_or(listGet(value, 0), 0) > 255:
+                return fail("octal escape value \\" + hex_digits_text(cps, i + 1, 3) + " outside of range 0-0o377", i)
+            else:
+                return Success(value=value)
 
 
 def octal_from(cps, i, n, left, acc) -> Result[list[int], str]:

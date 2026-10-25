@@ -225,3 +225,23 @@ fn a_program_that_ignores_a_large_stdin_still_replays() {
         Replay::KleeOnly
     );
 }
+
+#[cfg(unix)]
+#[test]
+fn a_later_reproduced_witness_survives_deduplication() {
+    let dir = Dir::new("later-witness");
+    let exe = script(&dir, "replay", "read -r value; [ \"$value\" = crash ] && kill -ABRT $$; exit 0");
+    let mut first = sample(Class::Memory, Some(("same.osp", 4)), None, "same fault");
+    first.stdin = b"quiet\n".to_vec();
+    let mut second = first.clone();
+    second.stdin = b"crash\n".to_vec();
+    for finding in [&mut first, &mut second] {
+        finding.replay = replay::run_one(&exe, &dir.0.join("work"), finding).expect("replay");
+    }
+    assert_eq!(first.replay, Replay::KleeOnly);
+    assert_eq!(second.replay, Replay::Reproduced("SIGABRT".into()));
+    let kept = super::findings::dedupe(vec![first, second]);
+    assert_eq!(kept.len(), 1);
+    assert_eq!(kept[0].stdin, b"crash\n");
+    assert_eq!(kept[0].replay, Replay::Reproduced("SIGABRT".into()));
+}

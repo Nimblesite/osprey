@@ -184,8 +184,8 @@ def fmt_floats(xs):
 def query_line(report, q):
     """One query's L2 and inner-product results plus its confidence."""
     scores = unwrap_or(listGet(report.ip_scores, q), [])
-    return f"q{q} L2 labels={fmt_ints(unwrap_or(listGet(report.l2_labels, q), []))} distances={fmt_floats(unwrap_or(listGet(report.l2_distances, q), []))} " +
-        f"IP labels={fmt_ints(unwrap_or(listGet(report.ip_labels, q), []))} scores={fmt_floats(scores)}"
+    return (f"q{q} L2 labels={fmt_ints(unwrap_or(listGet(report.l2_labels, q), []))} distances={fmt_floats(unwrap_or(listGet(report.l2_distances, q), []))} " +
+        f"IP labels={fmt_ints(unwrap_or(listGet(report.ip_labels, q), []))} scores={fmt_floats(scores)}")
 
 
 def report_text(report):
@@ -201,24 +201,31 @@ def report_text(report):
     ])), "\n")
 
 
-def main():
-    with Policy.arithmetic:
-        match Host.on_host(lambda: guarded(run)):
-            case Success(value=report):
-                print(report_text(report))
-                checkAll("vector-search", [
-                len(report.corpus) == CORPUS,
-                len(report.queries) == QUERY_COUNT,
-                len(report.l2_labels) == QUERY_COUNT,
-                report.numpy_ok,
-                report.recall == 1.0,
-                abs(report.confidence_sum - 1.0) < 0.000000001,
-                len(report.confidence) == K,
-                structuralEquals(report.checkpoint, report.corpus),
-                report.checkpoint_size > CORPUS * DIM * 8,
-                cell(row_at(report.l2_distances, 0), 0) >= 0.0,
-                ])
-            case Error(message=message):
-                print("vector-search failed: " + message)
-                checkAll("vector-search", [False])
+def report_checks(report):
+    return checkAll("vector-search", [
+        len(report.corpus) == CORPUS,
+        len(report.queries) == QUERY_COUNT,
+        len(report.l2_labels) == QUERY_COUNT,
+        report.numpy_ok,
+        report.recall == 1.0,
+        abs(report.confidence_sum - 1.0) < 0.000000001,
+        len(report.confidence) == K,
+        structuralEquals(report.checkpoint, report.corpus),
+        report.checkpoint_size > CORPUS * DIM * 8,
+        cell(row_at(report.l2_distances, 0), 0) >= 0.0,
+    ])
 
+
+def application():
+    match Host.on_host(lambda: guarded(run)):
+        case Success(value=report):
+            print(report_text(report))
+            test("vector-search", lambda: report_checks(report))
+        case Error(message=message):
+            print("vector-search failed: " + message)
+            test("vector-search", lambda: checkAll("computation error", [False]))
+
+
+
+def main():
+    return Policy.execute("vector-search", application)

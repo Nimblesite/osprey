@@ -396,7 +396,15 @@ def lookbehind_cases():
         semantic_span("width.named_lookahead", "(?<=(?P<p>a)(?:b)(?=x)(?#width))x", "abx", 2, 3),
         semantic_span("flags.verbose_octal", "(?x) [\\101-\\103] # comment\n (?#inline) (?i:a) (?-i:b)", "AAb", 0, 3),
         semantic_span("charset.literal_escape", "[\\t\\n]", "\t", 0, 1),
+        semantic_span("width.nested_lookahead", "(?<=ab(?=x))x", "abx", 2, 3),
+        semantic_span("charset.octal_range", "[\\101-\\103]", "B", 0, 1),
+        semantic_span("charset.single_octal", "[\\7]", Unicode.utf8_of(7), 0, 1),
     ], [], listConcat)
+
+
+def octal_errors():
+    cases = [["[\\400]", "0", "octal escape value \\400 outside of range 0-0o377 at position 1"], ["[\\777]", "0", "octal escape value \\777 outside of range 0-0o377 at position 1"]]
+    return cases_for(cases, error_case)
 
 
 def group_default_checks(result):
@@ -419,7 +427,7 @@ def all_cases():
     subs = cases_for(Expected.SUB, sub_case)
     subns = cases_for(Expected.SUBN, subn_case)
     escapes = cases_for(Expected.ESCAPE, escape_case)
-    errors = cases_for(Expected.ERRORS, error_case)
+    errors = listConcat(cases_for(Expected.ERRORS, error_case), octal_errors())
     return listConcat(listConcat(listConcat(matches, findalls), listConcat(finditers, splits)), listConcat(listConcat(subs, subns), listConcat(escapes, errors)))
 
 

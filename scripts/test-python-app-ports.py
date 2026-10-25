@@ -28,6 +28,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from package_coverage_evidence import oracle_problems
 
 APPS = ("classifier", "vector-search", "text-evaluation")
 MEMORIES = ("default", "gc", "arc")
@@ -53,7 +54,10 @@ def run_app(compiler: Path, directory: Path, memory: str) -> subprocess.Complete
     if memory == "arc":
         env["OSPREY_ARC_DEBUG"] = "1"
     command = [str(compiler), str(directory), "--run", f"--memory={memory}"]
-    return subprocess.run(command, cwd=directory.parents[3], env=env, capture_output=True, text=True, timeout=TIMEOUT_SECONDS)
+    result = subprocess.run(command, cwd=directory.parents[3], env=env, capture_output=True, timeout=TIMEOUT_SECONDS)
+    result.stdout = result.stdout.decode("utf-8")
+    result.stderr = result.stderr.decode("utf-8")
+    return result
 
 
 def arc_live_count(stderr: str) -> int | None:
@@ -67,26 +71,41 @@ def diff_text(got: str, want: str, name: str) -> str:
     return "".join(difflib.unified_diff(want.splitlines(keepends=True), got.splitlines(keepends=True), fromfile=f"{name}/expected_output.txt", tofile=f"{name}/actual"))
 
 
-def check_one(compiler: Path, root: Path, name: str, memory: str, write_expected: bool) -> list[str]:
-    directory = app_dir(root, name)
-    result = run_app(compiler, directory, memory)
-    expected_path = directory / "expected_output.txt"
-    if write_expected:
-        if result.returncode != 0:
-            return [f"{name}/{memory}: refusing to write expected output for exit {result.returncode}\n{result.stderr.strip()}"]
-        expected_path.write_text(result.stdout, encoding="utf-8")
-        return [f"{name}/{memory}: wrote {expected_path} (exit {result.returncode})"]
-    failures: list[str] = []
+def result_problems(result, name, memory):
+    failures = [f"{name}/{memory}: {problem}" for problem in oracle_problems(result.stdout)]
     if result.returncode != 0:
         failures.append(f"{name}/{memory}: exit {result.returncode}\n{result.stderr.strip()}")
-    want = expected_path.read_text(encoding="utf-8")
-    if result.stdout != want:
-        failures.append(f"{name}/{memory}: stdout differs\n{diff_text(result.stdout, want, name)}")
     if memory == "arc":
         live = arc_live_count(result.stderr)
         if live != 0:
             failures.append(f"{name}/{memory}: expected one '[osp-arc] exit: 0 live objects' sentinel, got {live!r}\n{result.stderr.strip()}")
     return failures
+
+
+def check_one(compiler: Path, root: Path, name: str, memory: str, write_expected: bool) -> list[str]:
+    result = run_app(compiler, app_dir(root, name), memory)
+    failures = result_problems(result, name, memory)
+    expected_path = app_dir(root, name) / "expected_output.txt"
+    if write_expected:
+        if not failures:
+            expected_path.write_bytes(result.stdout.encode("utf-8"))
+        return failures
+    want = expected_path.read_bytes().decode("utf-8")
+    if result.stdout != want:
+        failures.append(f"{name}/{memory}: stdout differs\n{diff_text(result.stdout, want, name)}")
+    return failures
+
+
+def check_safely(compiler, root, name, memory, write_expected):
+    try:
+        failures = check_one(compiler, root, name, memory, write_expected)
+        if not failures:
+            print(f"PASS {name}/{memory}")
+        return failures
+    except subprocess.TimeoutExpired:
+        return [f"{name}/{memory}: timed out after {TIMEOUT_SECONDS}s"]
+    except (OSError, UnicodeError) as error:
+        return [f"{name}/{memory}: cannot verify output: {error}"]
 
 
 def main() -> int:
@@ -96,20 +115,13 @@ def main() -> int:
     if not compiler.is_file():
         print(f"compiler not found: {compiler}", file=sys.stderr)
         return 2
+    if args.write_expected and args.memory != "default":
+        print("Refresh goldens with --memory default; verify other backends against that golden.", file=sys.stderr)
+        return 2
     apps = tuple(args.app) if args.app else APPS
     memories = MEMORIES if args.memory == "all" else (args.memory,)
-    failures: list[str] = []
-    for name in apps:
-        for memory in memories:
-            try:
-                reported = check_one(compiler, root, name, memory, args.write_expected)
-            except subprocess.TimeoutExpired:
-                failures.append(f"{name}/{memory}: timed out after {TIMEOUT_SECONDS}s")
-                continue
-            if reported:
-                failures.extend(reported)
-            elif not args.write_expected:
-                print(f"PASS {name}/{memory}")
+    failures = [problem for name in apps for memory in memories
+                for problem in check_safely(compiler, root, name, memory, args.write_expected)]
     if failures:
         print("\n".join(failures), file=sys.stderr)
         return 1

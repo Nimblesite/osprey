@@ -1,9 +1,11 @@
+ok 1 - hinge objective
 classifier: micrograd MLP 2->8->8->1, hinge loss + L2
 data: 16 fixed XOR points, train=12 test=4, standardised
-params=105 steps=30 loss 0.9868 -> 0.0862
+params=105 steps=30 loss 0.9596 -> 0.0014
 test accuracy=1.0 precision=1.0 recall=1.0 f1=1.0
 confusion=[2,0] [0,2]
 checkpoint: safetensors bytes=912 decoded=105 exact=true
-decision grid: positive=37/81
-1..0
-# tests=0 passed=0 failed=0 skipped=0
+decision grid: positive=36/81
+ok 2 - classifier
+1..2
+# tests=2 passed=2 failed=0 skipped=0

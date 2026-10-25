@@ -10,24 +10,38 @@ SOURCE_SUFFIXES = frozenset({".py", ".osp", ".ospml"})
 GENERATED_DIRS = frozenset({"target", "__pycache__", "node_modules"})
 
 
+def executable_assignment(node):
+    if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
+        return False
+    try:
+        ast.literal_eval(node.value)
+        return False
+    except (ValueError, TypeError, SyntaxError):
+        return True
+
+
 def python_coverable(text):
     try:
         nodes = ast.walk(ast.parse(text))
         return any(isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda,
-                                    ast.Call, ast.Await, ast.Raise, ast.Assert)) for node in nodes)
+                                    ast.Call, ast.Await, ast.Raise, ast.Assert))
+                   or executable_assignment(node) for node in nodes)
     except SyntaxError:
         return True
 
 
+def oracle_problems(text):
+    summary = re.search(r"^([1-9][0-9]*) passed, 0 failed\n?\Z", text, re.MULTILINE)
+    tap = re.search(r"^# tests=([1-9][0-9]*) passed=([1-9][0-9]*) failed=0 skipped=0\n?\Z", text, re.MULTILINE)
+    count = len(re.findall(r"^ok ", text, re.MULTILINE))
+    passed = int(summary[1]) if summary else int(tap[1]) if tap and tap[1] == tap[2] else 0
+    bad_rows = re.search(r"^(?:FAIL(?: |$)|not ok(?: |$))", text, re.MULTILINE)
+    return [] if passed > 0 and passed == count and not bad_rows else ["suite golden must prove positive passing assertions and zero failures"]
+
+
 def golden_problems(path):
     try:
-        text = path.read_bytes().decode("utf-8")
-        summary = re.search(r"^([1-9][0-9]*) passed, 0 failed\n?\Z", text, re.MULTILINE)
-        tap = re.search(r"^# tests=([1-9][0-9]*) passed=([1-9][0-9]*) failed=0 skipped=0\n?\Z", text, re.MULTILINE)
-        count = len(re.findall(r"^ok ", text, re.MULTILINE))
-        passed = int(summary[1]) if summary else int(tap[1]) if tap and tap[1] == tap[2] else 0
-        bad_rows = re.search(r"^(?:FAIL(?: |$)|not ok(?: |$))", text, re.MULTILINE)
-        return [] if passed > 0 and passed == count and not bad_rows else ["suite golden must prove positive passing assertions and zero failures"]
+        return oracle_problems(path.read_bytes().decode("utf-8"))
     except (OSError, UnicodeError):
         return ["cannot read suite golden"]
 

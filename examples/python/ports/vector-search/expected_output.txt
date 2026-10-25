@@ -7,5 +7,6 @@ q3 L2 labels=[18, 16, 3] distances=[0.0, 0.3935, 0.871] IP labels=[18, 16, 3] sc
 numpy distance check=true
 softmax confidence q0=[0.3482, 0.3282, 0.3236] sum=1.0
 recall@3=1.0 (4.0/4 queries)
-1..0
-# tests=0 passed=0 failed=0 skipped=0
+ok 1 - vector-search
+1..1
+# tests=1 passed=1 failed=0 skipped=0
