@@ -184,11 +184,8 @@ static void check_binary32(void) {
     uint64_t edge = (word_in(0, 2047) & UINT64_C(0xffffffffe0000000)) | (random_word() & UINT64_C(0x1fffffff));
     expect("float32 tie", edge, 0, float32_64(edge), bits(f32_widen(narrow_reference(edge))));
   }
-  // floatBits/floatFromBits are the identity on words.
-  for (unsigned i = 0; i < SPECIALS; i++) {
-    expect("floatBits", specials[i], 0, bits(of(specials[i])), specials[i]);
-    expect("floatFromBits", specials[i], 0, specials[i], specials[i]);
-  }
+  // Emitted floatBits/floatFromBits kernels are exercised by
+  // tests/core/gpu/scalar_contracts.test.osp and its ML twin.
 }
 
 static long ref_shl(long a, long n) { return (unsigned long)n < 64 ? (long)((unsigned long)a << n) : 0; }

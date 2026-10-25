@@ -166,9 +166,10 @@ fn gpuBitRoundTripCase() = {
         9218868437227405312, -4503599627370496, 9221120237041090851, -2251799813684957,
         9218868437227405603, -4503599627370205, 1, -9223372036854775807]
     let restored = toGpu(words) |> gpuMap(floatFromBits) |> gpuMap(floatBits)
-    checkAll("GPU bit conversions retain every payload bit", listConcat(
-        [gpuLength(restored) == listLength(words)],
-        toList(map(range(listLength(words)), fn(i) => (gpuGet(restored, i) ?: 0) == (listGet(words, i) ?: 1)))))
+    checkAll("GPU bit conversions retain every payload bit", [
+        gpuLength(restored) == listLength(words),
+        fold(range(0, listLength(words)), true, fn(ok, i) => ok && (gpuGet(restored, i) ?: 0) == (listGet(words, i) ?: 1))
+    ])
 }
 
 test("GPU bit conversion kernels preserve exact words", gpuBitRoundTripCase)
