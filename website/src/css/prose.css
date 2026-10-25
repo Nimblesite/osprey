@@ -316,4 +316,3 @@
 .prose td { color: var(--on-surface-variant); }
 .prose hr { border: 0; border-top: 1px solid var(--outline-variant); margin: var(--space-8) 0; }
 .prose img { max-width: 100%; height: auto; border-radius: var(--radius); border: 1px solid var(--outline-variant); }
-

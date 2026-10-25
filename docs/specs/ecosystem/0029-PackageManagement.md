@@ -140,8 +140,7 @@ whole security boundary.
   `writeFile`, `gpuLoad`, `loadTensor`), `io/process` (`spawnProcess`,
   `awaitProcess`, `cleanupProcess`), `io/network` (every `http*` and
   `websocket*` builtin) and `io/terminal` (`input`, `termRawMode`). The map is a
-  fixture derived from the compiler's builtin list; a builtin the map does not
-  name is `io/unknown` and rejects publication until the map is updated.
+  fixture validated against the compiler's declared ambient builtin groups; adding an unclassified builtin to those groups fails the inventory regression. At publication, unknown `term` names followed by an uppercase letter become `io/unknown` and reject publication. The current source scan does not automatically identify arbitrary new ambient builtin names.
 - A release's **capability surface** is the set of ambient capabilities whose
   builtins its canonical source tree names, plus its `[system.*]` capabilities.
   The conformance scan of `[PACKAGE-CONFORMANCE]` computes it over the tree and

@@ -14,6 +14,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from package_coverage_evidence import seal_evidence, source_inputs
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKER = ROOT / "scripts" / "package_coverage.py"
@@ -83,7 +84,9 @@ class Fixture:
         )
 
     def write_report(self, name, report):
-        write_json(self.reports / f"{name}.json", report)
+        path = self.reports / f"{name}.json"
+        write_json(path, report)
+        seal_evidence(self.root, name, path, source_inputs(self.root, name))
 
     def write_spec(self, spec):
         write_json(self.root / "spec.json", spec)
@@ -166,6 +169,31 @@ class CheckerTests(unittest.TestCase):
 
     def fixture(self, packages, thresholds=None):
         return make_fixture(tempfile.mkdtemp(dir=self.base), packages, thresholds)
+
+    def test_check_only_requires_a_successfully_verified_collection(self):
+        fixture = self.fixture({"demo": {"sources": {"src/lib.py": py_source(4)}}})
+        write_json(fixture.reports / "demo.json", own_report("demo", 4, 4))
+        result = fixture.check()
+        self.assertEqual(result.returncode, 1, "A raw report does not prove its suite passed: " + result.stdout)
+
+    def test_changed_source_or_golden_invalidates_collected_evidence(self):
+        for relative in ("src/lib.py", "tests/expected_output.txt", "tests/osprey.toml"):
+            with self.subTest(relative=relative):
+                fixture = self.fixture({"demo": {"sources": {"src/lib.py": py_source(4)}}})
+                fixture.write_spec({"demo": {"report": own_report("demo", 4, 4)}})
+                self.assertEqual(fixture.collect().returncode, 0)
+                path = fixture.root / "packages" / "demo" / relative
+                path.write_text(path.read_text() + "\n# changed after collection\n")
+                result = fixture.check()
+                self.assertEqual(result.returncode, 1, "Changed inputs need fresh evidence: " + result.stdout)
+
+    def test_zero_suites_and_changed_line_endings_cannot_replay_as_success(self):
+        fixture = self.fixture({"demo": {"sources": {"src/lib.py": py_source(4)}}})
+        for stdout in ("ok demo\r\n" + FOOTER, "ok demo\n" + FOOTER.replace("1 passed", "0 passed")):
+            with self.subTest(stdout=stdout):
+                fixture.write_spec({"demo": {"report": own_report("demo", 4, 4), "stdout": stdout}})
+                result = fixture.collect()
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
 
     def test_threshold_boundary_passes_at_90_and_fails_below(self):
         fixture = self.fixture({

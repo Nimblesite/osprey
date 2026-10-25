@@ -82,7 +82,7 @@ def has(flags, bit):
 
 def add_bit(flags, bit):
     """`flags | bit` without bitwise operators."""
-    return flags if has(flags, bit) else flags + bit
+    return flags if bit == 0 or has(flags, bit) else flags + bit
 
 
 def drop_bits(flags, dele):

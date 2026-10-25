@@ -17,7 +17,7 @@ from port_common import Checkpoint, Policy
 
 HIDDEN = [8, 8, 1]
 INPUTS = [-1.0, 1.0]
-STEPS = 1
+STEPS = 30
 LEARNING_RATE = 1.0
 DECAY = 0.9
 ALPHA = 0.0001
@@ -167,11 +167,12 @@ def total_loss(graph, outs, ys, ids):
     seed = Engine.Cursor(graph=seed_graph, id=Engine.top(seed_graph))
     summed = fold(range(len(outs)), seed, lambda state, i: hinge_step(state, i, outs, ys))
     mean = Engine.truediv_const(summed.graph, summed.id, toFloat(len(outs)))
-    reg_graph = Engine.add_const(mean, Engine.top(mean), 0.0)
-    reg_seed = Engine.Cursor(graph=reg_graph, id=Engine.top(reg_graph))
+    zero = Engine.value(mean, 0.0)
+    reg_seed = Engine.Cursor(graph=zero, id=Engine.top(zero))
     reg = fold(range(len(ids)), reg_seed, lambda state, i: reg_add(state, i, ids))
     scaled = Engine.mul_const(reg.graph, reg.id, ALPHA)
-    return LossResult(graph=scaled, id=Engine.top(scaled))
+    total = Engine.add(scaled, Engine.top(scaled), Engine.top(mean))
+    return LossResult(graph=total, id=Engine.top(total))
 
 
 def reg_add(state, i, ids):
@@ -247,31 +248,27 @@ def fmt(value):
 
 def fmt_matrix(matrix):
     """A compact one-line confusion matrix."""
-    return join(mapList(matrix, lambda row: "[" + join(mapList(row, toString), ",") + "]"), " ")
+    return join(mapList(matrix, lambda row: "[" + join(mapList(row, lambda value: toString(value)), ",") + "]"), " ")
 
 
 def fmt_report(report):
     """One consolidated report, replacing the notebook's plot."""
-    return "classifier: micrograd MLP 2->8->8->1, hinge loss + L2\n" +
-        "data: 16 fixed XOR points, train=12 test=4, standardised\n" +
-        f"params={len(report.params)} steps={STEPS} loss {fmt(report.first_loss)} -> {fmt(report.last_loss)}\n" +
-        f"test accuracy={fmt(report.accuracy)} precision={fmt(report.precision)} recall={fmt(report.recall)} f1={fmt(report.f1)}\n" +
-        f"confusion={fmt_matrix(report.matrix)}\n" +
-        f"checkpoint: safetensors bytes={report.checkpoint_size} decoded={len(report.checkpoint)} exact={structuralEquals(report.checkpoint, report.params)}\n" +
-        f"decision grid: positive={report.grid_positive}/{report.grid_total}"
+    return join([
+        "classifier: micrograd MLP 2->8->8->1, hinge loss + L2",
+        "data: 16 fixed XOR points, train=12 test=4, standardised",
+        f"params={len(report.params)} steps={STEPS} loss {fmt(report.first_loss)} -> {fmt(report.last_loss)}",
+        f"test accuracy={fmt(report.accuracy)} precision={fmt(report.precision)} recall={fmt(report.recall)} f1={fmt(report.f1)}",
+        "confusion=" + fmt_matrix(report.matrix),
+        f"checkpoint: safetensors bytes={report.checkpoint_size} decoded={len(report.checkpoint)} exact={structuralEquals(report.checkpoint, report.params)}",
+        f"decision grid: positive={report.grid_positive}/{report.grid_total}",
+    ], "\n")
 
 
 def main():
     with Policy.arithmetic:
-        print("stage main")
         data = prepare()
-        print("stage prepare")
         trained = fold(range(STEPS), TrainState(params=initial_params(count_params(len(INPUTS), HIDDEN)), losses=[]), lambda state, step: train_step_with(state, step, data))
-        print("stage trained")
-        print("stage trained")
         report = report_of(data, trained)
-        print("stage report")
-        print("stage report")
         print(fmt_report(report))
         checkAll("classifier", [
             report.first_loss > report.last_loss,

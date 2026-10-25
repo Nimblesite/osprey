@@ -33,6 +33,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from package_coverage_evidence import SOURCE_SUFFIXES, evidence_path, evidence_problems, seal_evidence, source_inputs
 
 EXIT_OK = 0
 EXIT_GATE = 1
@@ -44,13 +45,12 @@ SUMMARY_NAME = "summary.json"
 MIN_THRESHOLD = 90
 MAX_THRESHOLD = 100
 HUNDRED = 100
-SOURCE_SUFFIXES = frozenset({".py", ".osp", ".ospml"})
 DEFAULT_LANGUAGE = "osprey"
 
 COVERAGE_TOTAL_RE = re.compile(
     r"^# coverage total: (?:\d+\.\d%|n/a) \(\d+/\d+ lines\)$"
 )
-SUITES_RE = re.compile(r"^# suites: \d+ passed, \d+ failed$")
+SUITES_RE = re.compile(r"^# suites: 1 passed, 0 failed$")
 PY_DEF_RE = re.compile(r"(?m)^[ \t]*def[ \t]+\w+")
 DEFAULT_DEF_RE = re.compile(r"(?m)^[ \t]*fn[ \t]+\w+")
 ML_DEF_RE = re.compile(
@@ -271,6 +271,7 @@ def gate_package(root: Path, reports: Path, name: str, configured: dict) -> dict
         result["covered"] = sum(entry["covered"] for entry in entries)
         result["total"] = sum(entry["total"] for entry in entries)
         result["percentage"] = percentage(result["covered"], result["total"])
+        problems += evidence_problems(root, name, reports / f"{name}{REPORT_SUFFIX}")
     if not problems and result["total"] == 0:
         problems = ["no own source lines in report"]
     if not problems and result["covered"] * HUNDRED < result["threshold"] * result["total"]:
@@ -305,13 +306,13 @@ def compare_oracle(stdout: str, expected_path: Path) -> list[str]:
     if raw is None:
         return ["missing runner summary lines; cannot verify the suite oracle"]
     try:
-        expected = expected_path.read_text()
+        expected = expected_path.read_bytes().decode("utf-8")
     except OSError as error:
         return [f"cannot read expected output: {error}"]
     return [] if raw == expected else [first_mismatch(raw, expected)]
 
 
-def write_log(path: Path, command: list[str], completed: subprocess.CompletedProcess | None, error: str | None) -> None:
+def write_log(path: Path, command: list[str], completed: subprocess.CompletedProcess | None, error: str | None) -> bool:
     parts = ["$ " + " ".join(command) + "\n"]
     if completed is not None:
         parts += ["--- stdout ---\n", completed.stdout, "--- stderr ---\n", completed.stderr]
@@ -335,7 +336,7 @@ def remove_if_exists(path: Path) -> bool:
 
 
 def clear_stale(report: Path, log: Path) -> bool:
-    return all(remove_if_exists(path) for path in (report, log))
+    return all(remove_if_exists(path) for path in (report, log, evidence_path(report)))
 
 
 def collection_failure(name: str, configured: dict, problems: list[str]) -> dict:
@@ -347,7 +348,10 @@ def collection_failure(name: str, configured: dict, problems: list[str]) -> dict
 def run_collector(root: Path, compiler: Path, report: Path, suite: Path):
     command = [str(compiler), "test", str(suite), "--coverage-json", str(report), "--quiet"]
     try:
-        return command, subprocess.run(command, capture_output=True, text=True, cwd=root, check=False), None
+        completed = subprocess.run(command, capture_output=True, cwd=root, check=False)
+        completed.stdout = completed.stdout.decode("utf-8")
+        completed.stderr = completed.stderr.decode("utf-8")
+        return command, completed, None
     except OSError as error:
         return command, None, error
 
@@ -358,6 +362,7 @@ def collect_package(root: Path, compiler: Path, reports: Path, name: str, config
     suite = root / PACKAGES_DIR / name / "tests"
     if not clear_stale(report, log):
         return collection_failure(name, configured, [f"cannot remove stale evidence in {reports}"])
+    before = source_inputs(root, name)
     command, completed, error = run_collector(root, compiler, report, suite)
     if error is not None:
         write_log(log, command, None, f"cannot run collector: {error}")
@@ -365,11 +370,11 @@ def collect_package(root: Path, compiler: Path, reports: Path, name: str, config
     if not write_log(log, command, completed, None):
         remove_if_exists(report)
         return collection_failure(name, configured, [f"cannot write log {log}"])
-    return collected_evidence(root, reports, name, configured, report, log, completed, suite)
+    return collected_evidence(root, reports, name, configured, report, log, completed, suite, before)
 
 
 def collected_evidence(root: Path, reports: Path, name: str, configured: dict,
-                       report: Path, log: Path, completed, suite: Path) -> dict:
+                       report: Path, log: Path, completed, suite: Path, before: dict) -> dict:
     if completed.returncode != 0:
         remove_if_exists(report)
         return collection_failure(name, configured, [f"collection failed with exit {completed.returncode}; log {log}"])
@@ -377,6 +382,11 @@ def collected_evidence(root: Path, reports: Path, name: str, configured: dict,
     if problems:
         remove_if_exists(report)
         return collection_failure(name, configured, [f"{problem}; log {log}" for problem in problems])
+    try:
+        seal_evidence(root, name, report, before)
+    except (OSError, ValueError) as error:
+        remove_if_exists(report)
+        return collection_failure(name, configured, [f"cannot verify collection: {error}"])
     return gate_package(root, reports, name, configured)
 
 

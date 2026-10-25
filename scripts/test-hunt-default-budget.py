@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import time
 import unittest
 
 from hunt_expect import actual_findings, expected_findings, validate
@@ -28,7 +29,7 @@ class DefaultBudgetTests(unittest.TestCase):
 
     def test_safe_manifest_gate_rejects_a_real_reproduced_crash(self):
         root = Path(__file__).resolve().parent.parent
-        out = root/'target/hunt-manifest-regression'
+        out = root/'target/hunt-manifest-regression'/f'run-{time.time_ns()}'
         out.mkdir(parents=True, exist_ok=True)
         programs = ['tests/hunt/json_empty.osp', 'tests/hunt/crash.osp']
         manifest = {'version': 1, 'programs': programs, 'limits': {'wallTimeSeconds': 10, 'engineTimeSeconds': 8, 'inputBytesPerStream': 2}}
@@ -40,6 +41,8 @@ class DefaultBudgetTests(unittest.TestCase):
         finding = records[programs[1]]['report']['findings']
         self.assertEqual(len(finding), 1)
         self.assertEqual(finding[0]['replay'], 'reproduced')
+        self.assertEqual(finding[0]['stdin'], '9')
+        self.assertEqual(actual_findings(records[programs[1]]['report']), expected_findings(root/'tests/hunt/crash.expected'))
         self.assertEqual(json.loads((out/'runs/safe-runs.json').read_text())['programs'], [programs[0]])
         self.assertTrue((out/'runs/index.html').is_file())
 

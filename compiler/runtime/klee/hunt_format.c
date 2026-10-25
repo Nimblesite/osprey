@@ -145,7 +145,7 @@ static int unsigned_digits(unsigned long long value, unsigned base, int upper, c
   unsigned long long divisor = 1;
   for (int i = 0; i < length; i++) {
     unsigned digit = (unsigned)((value / divisor) % base);
-    digits[DIGITS_MAX - 1 - i] = (char)(digit < 10 ? '0' + digit : (upper ? 'A' : 'a') + digit - 10);
+    digits[DIGITS_MAX - 1 - i] = (char)(base <= 10 || digit < 10 ? ('0' | digit) : (upper ? 'A' : 'a') + digit - 10);
     divisor *= base;
   }
   return length;

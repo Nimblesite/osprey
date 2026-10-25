@@ -939,6 +939,7 @@ jobs:
           path: |
             target/hunt-crashes/
             target/hunt-safe-ci/
+            target/hunt-manifest-regression/
           if-no-files-found: error
           retention-days: 7
 
