@@ -32,6 +32,7 @@ import json
 import re
 import subprocess
 import sys
+from decimal import Decimal
 from pathlib import Path
 from package_coverage_evidence import (
     SOURCE_SUFFIXES, evidence_path, evidence_problems, golden_problems,
@@ -54,7 +55,7 @@ COVERAGE_TOTAL_RE = re.compile(
     r"^# coverage total: (?:\d+\.\d%|n/a) \(\d+/\d+ lines\)$"
 )
 SUITES_RE = re.compile(r"^# suites: 1 passed, 0 failed$")
-DEFAULT_DEF_RE = re.compile(r"(?m)^[ \t]*fn[ \t]+\w+")
+DEFAULT_DEF_RE = re.compile(r"(?m)^[ \t]*(?:export[ \t]+)?fn[ \t]+\w+")
 ML_DEF_RE = re.compile(
     r"(?m)^[ \t]*(?:export[ \t]+)?(?P<name>[A-Za-z][\w']*)"
     r"(?:[ \t]*<[^>\n]*>)?[ \t]*(?:\([^)\n]*\))?"
@@ -107,8 +108,8 @@ def validate_entry(root: Path, name: str, entry: object, verify_golden: bool) ->
         return [f"{name}: gate entry must be an object"]
     threshold = entry.get("threshold", MIN_THRESHOLD)
     problems = []
-    if isinstance(threshold, bool) or not isinstance(threshold, int):
-        problems.append(f"{name}: threshold must be an integer")
+    if isinstance(threshold, bool) or not isinstance(threshold, (int, float)):
+        problems.append(f"{name}: threshold must be numeric")
     elif not MIN_THRESHOLD <= threshold <= MAX_THRESHOLD:
         problems.append(f"{name}: threshold {threshold} must be {MIN_THRESHOLD}..{MAX_THRESHOLD}")
     if entry.get("language") != DEFAULT_LANGUAGE:
@@ -273,7 +274,7 @@ def result_template(name: str, configured: dict) -> dict:
 def threshold_problems(result: dict) -> list[str]:
     if result["total"] == 0:
         return ["no own source lines in report"]
-    if result["covered"] * HUNDRED < result["threshold"] * result["total"]:
+    if result["covered"] * HUNDRED < Decimal(str(result["threshold"])) * result["total"]:
         return [f"{result['percentage']:.1f}% is below the {result['threshold']}% threshold"]
     return []
 

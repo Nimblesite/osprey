@@ -310,6 +310,28 @@ mod tests {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
+    struct EnvVar {
+        name: &'static str,
+        previous: Option<std::ffi::OsString>,
+    }
+
+    impl EnvVar {
+        fn set(name: &'static str, value: impl AsRef<std::ffi::OsStr>) -> Self {
+            let previous = std::env::var_os(name);
+            std::env::set_var(name, value);
+            Self { name, previous }
+        }
+    }
+
+    impl Drop for EnvVar {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(value) => std::env::set_var(self.name, value),
+                None => std::env::remove_var(self.name),
+            }
+        }
+    }
+
     fn assemble_web_program(source: &str, root: &str) -> osprey_ast::Program {
         osprey_project::assemble(
             &osprey_project::ProjectConfig::for_root(Path::new(root)),
@@ -507,9 +529,8 @@ mod tests {
     #[test]
     fn link_invokes_the_linker_and_maps_its_exit_code() {
         let _g = lock_env();
-        let prev = std::env::var("OSPREY_WASM_LD").ok();
         // A stand-in "linker" that ignores its args and exits 0 → link succeeds.
-        std::env::set_var("OSPREY_WASM_LD", "true");
+        let _env = EnvVar::set("OSPREY_WASM_LD", "true");
         let ok = link(
             Path::new("/tmp/o.o"),
             "/tmp/rt.a",
@@ -526,10 +547,6 @@ mod tests {
             Path::new("/tmp/out.wasm"),
             None,
         );
-        match prev {
-            Some(v) => std::env::set_var("OSPREY_WASM_LD", v),
-            None => std::env::remove_var("OSPREY_WASM_LD"),
-        }
         assert!(ok.is_ok(), "linker exit 0 => ok");
         assert!(err.is_err(), "linker non-zero => failure");
     }
@@ -537,31 +554,21 @@ mod tests {
     #[test]
     fn run_host_uses_the_configured_runner_and_handles_a_missing_one() {
         let _g = lock_env();
-        let prev = std::env::var("OSPREY_WASM_RUN").ok();
         let wasm = std::env::temp_dir().join("osprey_run_host_unit.wasm");
         let _ = std::fs::write(&wasm, b"\0asm");
         // A present runner that ignores args and exits 0 → success-code path.
-        std::env::set_var("OSPREY_WASM_RUN", "true");
+        let _env = EnvVar::set("OSPREY_WASM_RUN", "true");
         let _ok = run_host(&wasm);
         // A missing runner → the spawn-error hint path.
         std::env::set_var("OSPREY_WASM_RUN", "/no/such/runner/osprey_xyz");
         let _err = run_host(&wasm);
-        match prev {
-            Some(v) => std::env::set_var("OSPREY_WASM_RUN", v),
-            None => std::env::remove_var("OSPREY_WASM_RUN"),
-        }
     }
 
     #[test]
     fn sysroot_candidates_includes_wasi_sdk_path_when_set() {
         let _g = lock_env();
-        let prev = std::env::var("WASI_SDK_PATH").ok();
-        std::env::set_var("WASI_SDK_PATH", "/opt/osprey-test-wasi-sdk");
+        let _env = EnvVar::set("WASI_SDK_PATH", "/opt/osprey-test-wasi-sdk");
         let cands = sysroot_candidates();
-        match prev {
-            Some(v) => std::env::set_var("WASI_SDK_PATH", v),
-            None => std::env::remove_var("WASI_SDK_PATH"),
-        }
         assert!(
             cands.iter().any(|p| p.ends_with("wasi-sysroot")
                 && p.to_string_lossy().contains("osprey-test-wasi-sdk")),
@@ -572,15 +579,10 @@ mod tests {
     #[test]
     fn build_fails_cleanly_when_the_sysroot_override_is_bogus() {
         let _g = lock_env();
-        let prev = std::env::var("OSPREY_WASI_SYSROOT").ok();
-        std::env::set_var("OSPREY_WASI_SYSROOT", "/no/such/wasi/sysroot/xyz");
+        let _env = EnvVar::set("OSPREY_WASI_SYSROOT", "/no/such/wasi/sysroot/xyz");
         let program = osprey_syntax::parse_program("let n = 1\nprint(\"${n}\")\n").program;
         let out = std::env::temp_dir().join("osprey_build_err_unit.wasm");
         let res = build("unit.osp", &program, &out);
-        match prev {
-            Some(v) => std::env::set_var("OSPREY_WASI_SYSROOT", v),
-            None => std::env::remove_var("OSPREY_WASI_SYSROOT"),
-        }
         assert!(res.is_err(), "a bogus sysroot override must fail the build");
     }
 
@@ -594,16 +596,6 @@ mod tests {
     fn build_and_run_drive_the_full_driver_with_stub_tools() {
         // [WASM-TARGET] [WASM-TARGET-RUNTIME]
         let _g = lock_env();
-        let prev = [
-            (
-                "OSPREY_WASI_SYSROOT",
-                std::env::var("OSPREY_WASI_SYSROOT").ok(),
-            ),
-            ("OSPREY_WASM_CC", std::env::var("OSPREY_WASM_CC").ok()),
-            ("OSPREY_WASM_LD", std::env::var("OSPREY_WASM_LD").ok()),
-            ("OSPREY_WASM_RUN", std::env::var("OSPREY_WASM_RUN").ok()),
-        ];
-
         // A fake sysroot whose lib dir exists so `lib_dir` resolves.
         let sysroot = unique_dir("full_sysroot");
         std::fs::create_dir_all(sysroot.join("lib").join("wasm32-wasip1")).expect("mk libdir");
@@ -615,10 +607,9 @@ mod tests {
         if let Some(a) = &archive {
             std::fs::write(a, b"").expect("write stub archive");
         }
-        std::env::set_var("OSPREY_WASI_SYSROOT", sysroot.display().to_string());
-        for k in ["OSPREY_WASM_CC", "OSPREY_WASM_LD", "OSPREY_WASM_RUN"] {
-            std::env::set_var(k, "true");
-        }
+        let _sysroot = EnvVar::set("OSPREY_WASI_SYSROOT", &sysroot);
+        let _tools = ["OSPREY_WASM_CC", "OSPREY_WASM_LD", "OSPREY_WASM_RUN"]
+            .map(|name| EnvVar::set(name, "true"));
 
         let program = osprey_syntax::parse_program("let n = 1\nprint(\"${n}\")\n").program;
         let out = std::env::temp_dir().join("osprey_full_driver_unit.wasm");
@@ -627,12 +618,6 @@ mod tests {
 
         if let Some(a) = &archive {
             let _ = std::fs::remove_file(a);
-        }
-        for (k, v) in prev {
-            match v {
-                Some(val) => std::env::set_var(k, val),
-                None => std::env::remove_var(k),
-            }
         }
         assert!(built.is_ok(), "stubbed toolchain drives a clean build");
     }

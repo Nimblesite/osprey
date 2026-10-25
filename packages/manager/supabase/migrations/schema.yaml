@@ -13,6 +13,8 @@ tables:
       - { name: credential_epoch, type: BigInt, isNullable: false, checkConstraint: "credential_epoch > 0" }
       - { name: created_at, type: DateTimeOffset, isNullable: false }
     primaryKey: { columns: [id] }
+    uniqueConstraints:
+      - { name: uq_principals_id_kind, columns: [id, kind] }
     rowLevelSecurity: { enabled: true, forced: true, policies: [] }
 
   - name: auth_bindings
@@ -53,18 +55,21 @@ tables:
       - { name: organization_id, type: Uuid, isNullable: false }
       - { name: principal_id, type: Uuid, isNullable: false }
       - { name: role, type: Text, isNullable: false, checkConstraint: "role IN ('custodian', 'member')" }
+      - { name: principal_kind, type: Text, isNullable: false, checkConstraint: "principal_kind IN ('human', 'workflow')" }
       - { name: state, type: Text, isNullable: false, checkConstraint: "state IN ('active', 'revoked')" }
       - { name: authority_epoch, type: BigInt, isNullable: false, checkConstraint: "authority_epoch > 0" }
       - { name: accepted_at, type: DateTimeOffset, isNullable: false }
     primaryKey: { columns: [id] }
     uniqueConstraints:
       - { name: uq_memberships_org_id, columns: [organization_id, id] }
-      - { name: uq_memberships_org_id_state, columns: [organization_id, id, state] }
+      - { name: uq_memberships_org_id_state_kind, columns: [organization_id, id, state, principal_kind] }
+    checkConstraints:
+      - { name: ck_custodian_human, expression: "role <> 'custodian' OR principal_kind = 'human'" }
     indexes:
       - { name: uq_memberships_org_principal_active, columns: [organization_id, principal_id], isUnique: true, filter: "state = 'active'" }
     foreignKeys:
       - { columns: [organization_id], referencedSchema: registry, referencedTable: organizations, referencedColumns: [id], onDelete: Restrict, onUpdate: Restrict }
-      - { columns: [principal_id], referencedSchema: registry, referencedTable: principals, referencedColumns: [id], onDelete: Restrict, onUpdate: Restrict }
+      - { columns: [principal_id, principal_kind], referencedSchema: registry, referencedTable: principals, referencedColumns: [id, kind], onDelete: Restrict, onUpdate: Restrict }
     rowLevelSecurity: { enabled: true, forced: true, policies: [] }
 
   - name: recovery_authorities
@@ -73,6 +78,7 @@ tables:
       - { name: id, type: Uuid, isNullable: false }
       - { name: organization_id, type: Uuid, isNullable: false }
       - { name: principal_id, type: Uuid, isNullable: false }
+      - { name: principal_kind, type: Text, isNullable: false, checkConstraint: "principal_kind = 'human'" }
       - { name: state, type: Text, isNullable: false, checkConstraint: "state IN ('active', 'revoked')" }
       - { name: governance_epoch, type: BigInt, isNullable: false, checkConstraint: "governance_epoch > 0" }
       - { name: enrollment_digest, type: Text, isNullable: false, checkConstraint: "enrollment_digest ~ '^sha256:[0-9a-f]{64}$'" }
@@ -82,7 +88,7 @@ tables:
       - { name: uq_recovery_authorities_active, columns: [organization_id, principal_id], isUnique: true, filter: "state = 'active'" }
     foreignKeys:
       - { columns: [organization_id], referencedSchema: registry, referencedTable: organizations, referencedColumns: [id], onDelete: Restrict, onUpdate: Restrict }
-      - { columns: [principal_id], referencedSchema: registry, referencedTable: principals, referencedColumns: [id], onDelete: Restrict, onUpdate: Restrict }
+      - { columns: [principal_id, principal_kind], referencedSchema: registry, referencedTable: principals, referencedColumns: [id, kind], onDelete: Restrict, onUpdate: Restrict }
     rowLevelSecurity: { enabled: true, forced: true, policies: [] }
 
   - name: packages
@@ -93,6 +99,7 @@ tables:
       - { name: name, type: Text, isNullable: false, checkConstraint: "length(name) BETWEEN 1 AND 63 AND name ~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$'" }
       - { name: admin_membership_id, type: Uuid, isNullable: false }
       - { name: admin_membership_state, type: Text, isNullable: false, checkConstraint: "admin_membership_state = 'active'" }
+      - { name: admin_principal_kind, type: Text, isNullable: false, checkConstraint: "admin_principal_kind = 'human'" }
       - { name: authority_epoch, type: BigInt, isNullable: false, checkConstraint: "authority_epoch > 0" }
       - { name: state, type: Text, isNullable: false, checkConstraint: "state IN ('draft', 'active', 'write-frozen', 'deprecated', 'tombstoned')" }
       - { name: created_at, type: DateTimeOffset, isNullable: false }
@@ -102,7 +109,7 @@ tables:
       - { name: uq_packages_org_id, columns: [organization_id, id] }
     foreignKeys:
       - { columns: [organization_id], referencedSchema: registry, referencedTable: organizations, referencedColumns: [id], onDelete: Restrict, onUpdate: Restrict }
-      - { columns: [organization_id, admin_membership_id, admin_membership_state], referencedSchema: registry, referencedTable: memberships, referencedColumns: [organization_id, id, state], onDelete: Restrict, onUpdate: Restrict }
+      - { columns: [organization_id, admin_membership_id, admin_membership_state, admin_principal_kind], referencedSchema: registry, referencedTable: memberships, referencedColumns: [organization_id, id, state, principal_kind], onDelete: Restrict, onUpdate: Restrict }
     rowLevelSecurity: { enabled: true, forced: true, policies: [] }
 
   - name: package_permissions
@@ -138,6 +145,7 @@ tables:
       - { name: from_membership_id, type: Uuid, isNullable: false }
       - { name: to_membership_id, type: Uuid, isNullable: false }
       - { name: to_membership_state, type: Text, isNullable: false, checkConstraint: "to_membership_state = 'active'" }
+      - { name: to_principal_kind, type: Text, isNullable: false, checkConstraint: "to_principal_kind = 'human'" }
       - { name: expected_authority_epoch, type: BigInt, isNullable: false, checkConstraint: "expected_authority_epoch > 0" }
       - { name: state, type: Text, isNullable: false, checkConstraint: "state IN ('pending', 'completed', 'cancelled', 'declined', 'expired')" }
       - { name: proposal_digest, type: Text, isNullable: false, checkConstraint: "proposal_digest ~ '^sha256:[0-9a-f]{64}$'" }
@@ -152,12 +160,13 @@ tables:
       - { name: ck_admin_transfer_time, expression: "not_before >= created_at + INTERVAL '24 hours' AND expires_at > not_before" }
       - { name: ck_admin_transfer_acceptance, expression: "state <> 'completed' OR acceptance_digest IS NOT NULL" }
       - { name: ck_admin_transfer_decision, expression: "(state = 'pending' AND decided_at IS NULL) OR (state <> 'pending' AND decided_at IS NOT NULL AND decided_at >= created_at)" }
+      - { name: ck_admin_transfer_completed_hold, expression: "state <> 'completed' OR (decided_at >= not_before AND decided_at < expires_at)" }
     indexes:
       - { name: uq_admin_transfer_pending, columns: [organization_id, package_id], isUnique: true, filter: "state = 'pending'" }
     foreignKeys:
       - { columns: [organization_id, package_id], referencedSchema: registry, referencedTable: packages, referencedColumns: [organization_id, id], onDelete: Restrict, onUpdate: Restrict }
       - { columns: [organization_id, from_membership_id], referencedSchema: registry, referencedTable: memberships, referencedColumns: [organization_id, id], onDelete: Restrict, onUpdate: Restrict }
-      - { columns: [organization_id, to_membership_id, to_membership_state], referencedSchema: registry, referencedTable: memberships, referencedColumns: [organization_id, id, state], onDelete: Restrict, onUpdate: Restrict }
+      - { columns: [organization_id, to_membership_id, to_membership_state, to_principal_kind], referencedSchema: registry, referencedTable: memberships, referencedColumns: [organization_id, id, state, principal_kind], onDelete: Restrict, onUpdate: Restrict }
     rowLevelSecurity: { enabled: true, forced: true, policies: [] }
 
   - name: invitations
@@ -176,6 +185,8 @@ tables:
     primaryKey: { columns: [id] }
     uniqueConstraints:
       - { name: uq_invitation_token, columns: [token_digest] }
+    indexes:
+      - { name: uq_invitation_pending_subject, columns: [organization_id, target_principal_id], isUnique: true, filter: "state = 'pending'" }
     checkConstraints:
       - { name: ck_invitation_expiry, expression: "expires_at > created_at" }
     foreignKeys:

@@ -58,7 +58,7 @@ module SchemaCheckTests {
         "WorkspaceTransaction", "ScanVerdict", "Evidence", "MaintenanceAssessment",
         "DiscoveryAssessment", "ReleaseAssessment",
         "OrganizationId", "MembershipId", "PackageId", "GovernanceId", "AuthorityEpoch",
-        "PrincipalKind", "PrincipalState", "OrganizationState", "OrganizationRole",
+        "PrincipalKind", "HumanPrincipalKind", "PrincipalState", "OrganizationState", "OrganizationRole",
         "MembershipState", "ActiveMembershipState", "OrganizationRecoveryAuthority", "RegistryPackageState", "PackagePermission", "PermissionState",
         "AdminTransferState", "InvitationState", "MaintenanceReportState", "RegistryPrincipal",
         "RegistryAuthBinding", "Organization", "OrganizationMembership", "RegistryPackage",
@@ -70,11 +70,11 @@ module SchemaCheckTests {
         let result = TypeDiagram::parse(readFile(schemaPath) ?: "")
         match result {
             Success { value } => checkAll("schema model declares every type exactly once", [
-                length(value.decls) == 112,
-                length(filterList(value.decls, isAlias)) == 14,
-                length(filterList(value.decls, isStruct)) == 71,
-                length(filterList(value.decls, isUnion)) == 27,
-                everyNameResolves(value)
+                    length(value.decls) == 113,
+                    length(filterList(value.decls, isAlias)) == 14,
+                    length(filterList(value.decls, isStruct)) == 71,
+                    length(filterList(value.decls, isUnion)) == 28,
+                    everyNameResolves(value)
             ])
             Error { message } => check("typeDiagram parses", "ok", message)
         }
@@ -124,9 +124,9 @@ module SchemaCheckTests {
     }
 
     fn floats() = checkAll("non-integer numbers are parse-level rejections", [
-        floatProblem("1.5") == "json.non-integer@0",
-        floatProblem("1e3") == "json.non-integer@0",
-        floatProblem("0.0") == "json.non-integer@0"
+            floatProblem("1.5") == "json.non-integer@0",
+            floatProblem("1e3") == "json.non-integer@0",
+            floatProblem("0.0") == "json.non-integer@0"
     ])
 
     fn declarationCount(text) = match TypeDiagram::parse(text) {
@@ -135,9 +135,9 @@ module SchemaCheckTests {
     }
 
     fn tokenizerBounds() = checkAll("tokenization has bounded stack depth", [
-        declarationCount((repeat(" ", 100000) ?: "") + "typeDiagram alias A = String") == 1,
-        declarationCount("typeDiagram alias " + (repeat("a", 100000) ?: "") + " = String") == 1,
-        declarationCount("typeDiagram type Box{items:List<Option<String>>}") == 1
+            declarationCount((repeat(" ", 100000) ?: "") + "typeDiagram alias A = String") == 1,
+            declarationCount("typeDiagram alias " + (repeat("a", 100000) ?: "") + " = String") == 1,
+            declarationCount("typeDiagram type Box{items:List<Option<String>>}") == 1
     ])
 
     /// Every schema-check case, run from the shared registry test entry.

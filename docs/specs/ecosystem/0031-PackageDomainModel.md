@@ -41,6 +41,7 @@ alias PackageId = String
 alias GovernanceId = String
 alias AuthorityEpoch = Int
 union PrincipalKind { Human {} Workflow {} }
+union HumanPrincipalKind { Human {} }
 union PrincipalState { Active {} Suspended {} }
 union OrganizationState { Active {} Frozen {} Tombstoned {} }
 union OrganizationRole { Custodian {} Member {} }
@@ -60,17 +61,19 @@ type OrganizationMembership {
   organizationId: OrganizationId
   principalId: PrincipalId
   role: OrganizationRole
+  principalKind: PrincipalKind
   state: MembershipState
   authorityEpoch: AuthorityEpoch
   acceptedAt: DateTime
 }
-type OrganizationRecoveryAuthority { id: GovernanceId organizationId: OrganizationId principalId: PrincipalId state: PermissionState governanceEpoch: AuthorityEpoch enrollmentDigest: Digest enrolledAt: DateTime }
+type OrganizationRecoveryAuthority { id: GovernanceId organizationId: OrganizationId principalId: PrincipalId principalKind: HumanPrincipalKind state: PermissionState governanceEpoch: AuthorityEpoch enrollmentDigest: Digest enrolledAt: DateTime }
 type RegistryPackage {
   id: PackageId
   organizationId: OrganizationId
   name: PackageName
   adminMembershipId: MembershipId
   adminMembershipState: ActiveMembershipState
+  adminPrincipalKind: HumanPrincipalKind
   authorityEpoch: AuthorityEpoch
   state: RegistryPackageState
   createdAt: DateTime
@@ -94,6 +97,7 @@ type PackageAdminTransfer {
   fromMembershipId: MembershipId
   toMembershipId: MembershipId
   toMembershipState: ActiveMembershipState
+  toPrincipalKind: HumanPrincipalKind
   expectedAuthorityEpoch: AuthorityEpoch
   state: AdminTransferState
   proposalDigest: Digest

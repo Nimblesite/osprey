@@ -7,6 +7,31 @@ use crate::conv::{as_double, as_i1, as_i64};
 use crate::error::Result;
 use crate::llty::{LType, Value};
 
+/// Bind borrowed incoming registers, retaining each semantic type and owner.
+pub(crate) fn bind_params(
+    cg: &mut Codegen,
+    parameters: &[osprey_ast::Parameter],
+    params: &[ParamSig],
+    owners: impl Iterator<Item = Option<String>>,
+    first: usize,
+) -> Vec<(LType, String)> {
+    parameters
+        .iter()
+        .zip(params)
+        .zip(owners)
+        .enumerate()
+        .map(|(i, ((p, sig), owner))| {
+            let reg = crate::llty::param_register(first + i);
+            let value = incoming_param(cg, format!("%{reg}"), sig.clone(), owner);
+            if let Some(ty) = &value.inferred_type {
+                cg.bind_fn_local(&p.name, ty.clone());
+            }
+            cg.bind(p.name.clone(), value);
+            (sig.ty, reg)
+        })
+        .collect()
+}
+
 /// Coerce a plain value to the wanted type, preserving its aggregate owner tag.
 /// Result is never a coercion source: callers must preserve it or handle it —
 /// there is no implicit `Result<T, E>` → `T`. Implements [FAILURE-EXPLICIT].

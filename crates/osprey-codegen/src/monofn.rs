@@ -174,7 +174,7 @@ fn emit_at(
     let position = cg.fn_defs.get(name).and_then(|(_, _, position)| *position);
     let (plist, emitted) = cg.within_source_function(name, |cg| {
         crate::closure::begin_source(cg, name, position);
-        let plist = bind_params(cg, parameters, owners, params);
+        let plist = crate::cast::bind_params(cg, parameters, params, owners.iter().cloned(), 0);
         crate::closure::source_parameters(cg, parameters, 0);
         // Inside the body, so the definition line is credited when the
         // instantiation RUNS rather than when it is emitted or handed to a C
@@ -270,31 +270,6 @@ fn param_of(v: &Value) -> ParamSig {
         fiber: None,
         inferred_type: v.inferred_type.clone(),
     }
-}
-
-/// Bind each parameter to its incoming register, carrying its owner tag in so
-/// the body sees the same typed handle the caller passed (a `Gpu#double` buffer
-/// stays element-typed inside the specialisation).
-fn bind_params(
-    cg: &mut Codegen,
-    parameters: &[Parameter],
-    owners: &[Option<String>],
-    params: &[ParamSig],
-) -> Vec<(LType, String)> {
-    let mut out = Vec::with_capacity(parameters.len());
-    for (i, ((p, sig), owner)) in parameters.iter().zip(params).zip(owners).enumerate() {
-        let reg = crate::llty::param_register(i);
-        // `incoming_param` registers no ownership: parameters are BORROWED for
-        // the call's duration, exactly as a top-level function's are
-        // [GC-ARC-PERCEUS].
-        let value = crate::cast::incoming_param(cg, format!("%{reg}"), sig.clone(), owner.clone());
-        if let Some(ty) = &value.inferred_type {
-            cg.bind_fn_local(&p.name, ty.clone());
-        }
-        cg.bind(p.name.clone(), value);
-        out.push((sig.ty, reg));
-    }
-    out
 }
 
 /// Lower the instantiation's body and emit its `ret`, fitted to the declared

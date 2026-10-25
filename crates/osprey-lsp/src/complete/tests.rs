@@ -1,5 +1,6 @@
 use super::*;
 use crate::test_support::completion;
+use crate::test_support::mentions_inference_name;
 const U16: PositionEncoding = PositionEncoding::Utf16;
 
 /// Complete at the end of `src` — where an author's cursor actually is.
@@ -270,19 +271,6 @@ fn assert_member(items: &[CompletionItem], expected: &[(&str, &str)], why: &str)
             "{name}: a private inference name reached a reader"
         );
     }
-}
-
-/// Whether `s` mentions an inference name (`t0`, `t42`) — a `t` starting an
-/// identifier and followed by a digit.
-fn mentions_inference_name(s: &str) -> bool {
-    let is_ident = |c: char| c.is_alphanumeric() || c == '_';
-    s.match_indices('t').any(|(at, _)| {
-        s[..at].chars().next_back().is_none_or(|c| !is_ident(c))
-            && s[at + 1..]
-                .chars()
-                .next()
-                .is_some_and(|c| c.is_ascii_digit())
-    })
 }
 
 #[test]

@@ -15,6 +15,7 @@
 
 #[cfg(test)]
 mod tests {
+    use crate::test_support::mentions_inference_name;
     use crate::test_support::symbols as symbols_of;
     use lspkit_vfs::PositionEncoding;
 
@@ -156,7 +157,7 @@ mod tests {
             ("completion detail", &completion_detail),
         ] {
             assert!(
-                !regex_like_type_var(rendered),
+                !mentions_inference_name(rendered),
                 "{view} leaked a private inference name: {rendered}"
             );
             crate::testkit::contents(rendered, &[], &["Unit"]);
@@ -272,7 +273,7 @@ mod tests {
         let decl =
             crate::test_support::hover(src, "file:///id.osp", 0, 4, U16).expect("hover over `id`");
         crate::testkit::contents(&decl, &[], &["Unit"]);
-        assert!(!regex_like_type_var(&decl), "{decl}");
+        assert!(!mentions_inference_name(&decl), "{decl}");
     }
 
     #[test]
@@ -281,27 +282,10 @@ mod tests {
         // disagree and an edit elsewhere would churn the tooltip.
         let src = "fn pair(a, b) = [a, b]\nlet p = pair(1, 2)\n";
         let symbols = symbols_of(src);
-        assert!(!regex_like_type_var(&symbols), "{symbols}");
+        assert!(!mentions_inference_name(&symbols), "{symbols}");
         // Rendering the same program twice is byte-identical: nothing in the
         // spelling depends on inference-run state.
         assert_eq!(symbols, symbols_of(src));
-    }
-
-    /// Whether `s` mentions an inference name (`t5`, `t42`): a `t` that starts
-    /// an identifier and is followed by a digit. Anchoring on the identifier
-    /// boundary is what keeps `int5` or a field named `total2` from matching,
-    /// while still catching every position a type is rendered into — `<t5>`,
-    /// `(t5)`, `-> t5`, ` t5,`.
-    fn regex_like_type_var(s: &str) -> bool {
-        let is_ident = |c: char| c.is_alphanumeric() || c == '_';
-        s.match_indices('t').any(|(at, _)| {
-            let starts_identifier = s[..at].chars().next_back().is_none_or(|c| !is_ident(c));
-            let then_digit = s[at + 1..]
-                .chars()
-                .next()
-                .is_some_and(|c| c.is_ascii_digit());
-            starts_identifier && then_digit
-        })
     }
 
     #[test]
@@ -314,14 +298,14 @@ mod tests {
             "(t5) -> List<t6>",
             "-> t42",
         ] {
-            assert!(regex_like_type_var(leaked), "must catch {leaked}");
+            assert!(mentions_inference_name(leaked), "must catch {leaked}");
         }
         for clean in [
             "fn twice(n: int) -> int",
             "fn classify(xs: List<_>) -> string",
             "{ total2: int }",
         ] {
-            assert!(!regex_like_type_var(clean), "must not flag {clean}");
+            assert!(!mentions_inference_name(clean), "must not flag {clean}");
         }
     }
 
@@ -425,7 +409,7 @@ mod tests {
             ("completion", &detail),
         ] {
             assert!(
-                !regex_like_type_var(rendered),
+                !mentions_inference_name(rendered),
                 "{view} leaked an inference name: {rendered}"
             );
             assert!(

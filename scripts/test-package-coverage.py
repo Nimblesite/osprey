@@ -33,7 +33,7 @@ class PackageThresholdTests(unittest.TestCase):
         for name, entry in packages.items():
             threshold = entry.get("threshold", 90)
             self.assertGreaterEqual(threshold, 90, name)
-            self.assertIsInstance(threshold, int, f"{name}: threshold must be an integer")
+            self.assertIsInstance(threshold, (int, float), f"{name}: threshold must be numeric")
             self.assertLessEqual(threshold, 100, name)
             self.assertEqual(entry["language"], "osprey", name)
             self.assertTrue((ROOT / "packages" / name / "tests" / "osprey.toml").is_file(), name)
@@ -101,6 +101,29 @@ class CheckerTests(unittest.TestCase):
                 self.assert_exit(result, code)
                 self.assertIn("95%", result.stdout)
                 self.assertEqual(fixture.result("demo")["threshold"], 95)
+
+    def test_fractional_ratchet_enforces_exact_counts(self):
+        fixture = self.fixture({"demo": {"sources": {"src/lib.py": py_source(1000)}}}, {"demo": 90.2})
+        for covered, code in ((900, 1), (901, 1), (902, 0)):
+            with self.subTest(covered=covered):
+                fixture.write_report("demo", own_report("demo", covered, 1000))
+                result = fixture.check()
+                self.assert_exit(result, code)
+                self.assertEqual(fixture.result("demo")["threshold"], 90.2)
+
+    def test_nonfinite_package_thresholds_fail_closed(self):
+        fixture = self.simple_fixture()
+        for threshold in (float("nan"), float("inf"), -float("inf")):
+            with self.subTest(threshold=threshold):
+                write_gates(fixture.root, {"demo": threshold})
+                self.assert_exit(fixture.check(), 2)
+
+    def test_decimal_threshold_does_not_falsely_reject_exact_boundary(self):
+        fixture = self.fixture({"demo": {"sources": {"src/lib.py": py_source(1375)}}}, {"demo": 90.4})
+        for covered, code in ((1242, 1), (1243, 0)):
+            with self.subTest(covered=covered):
+                fixture.write_report("demo", own_report("demo", covered, 1375))
+                self.assert_exit(fixture.check(), code)
 
     def test_c_runtime_omitted_threshold_enforces_90_and_keeps_higher_overrides(self):
         for percentage, entry, code in ((89, {}, 2), (90, {}, 0), (94, {"threshold": 95}, 2), (95, {"threshold": 95}, 0)):
@@ -331,6 +354,14 @@ class CheckerTests(unittest.TestCase):
         result = fixture.check()
         self.assert_exit(result, 1)
         self.assertIn("missing source evidence: src/base.ospml", result.stdout)
+
+    def test_exported_default_functions_cannot_disappear_from_source_inventory(self):
+        fixture = self.fixture({"demo": {"sources": {
+            "src/covered.osp": "fn covered(value) = value\n",
+            "src/exported.osp": "export fn uncovered(value) = value\n",
+        }}})
+        fixture.write_report("demo", own_report("demo", 1, 1, "src/covered.osp"))
+        self.assert_invalid(fixture, "missing source evidence: src/exported.osp")
 
     def test_ml_and_default_match_arms_cannot_disappear_from_reports(self):
         for suffix, source in (("ospml", "choose flag =\n    match flag\n        true => 1\n        false => 2\n"),

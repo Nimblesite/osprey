@@ -81,17 +81,7 @@ pub(crate) fn bind_params_from(
     param_tys: &[ParamSig],
     first: usize,
 ) -> Vec<(LType, String)> {
-    let mut out = Vec::with_capacity(parameters.len());
-    for (i, (p, pty)) in parameters.iter().zip(param_tys).enumerate() {
-        let reg = crate::llty::param_register(first + i);
-        let value = crate::cast::incoming_param(cg, format!("%{reg}"), pty.clone(), None);
-        if let Some(ty) = &value.inferred_type {
-            cg.bind_fn_local(&p.name, ty.clone());
-        }
-        cg.bind(p.name.clone(), value);
-        out.push((pty.ty, reg));
-    }
-    out
+    crate::cast::bind_params(cg, parameters, param_tys, std::iter::repeat(None), first)
 }
 
 /// Build the cell and hand back its `i8*` handle. Capture-free closures share

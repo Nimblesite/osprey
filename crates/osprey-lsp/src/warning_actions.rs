@@ -387,32 +387,31 @@ mod tests {
         let vfs = lspkit_vfs::Vfs::new(PositionEncoding::Utf16);
         let analyze = || crate::diagnostics::analyze_live(main, &uri, vfs.encoding(), Some(&vfs));
         assert_eq!(analyze().fixes.len(), 1, "{:?}", analyze());
-        vfs.open(
-            sibling.clone(),
+        // Each live-sibling state must forbid the speculative erasure. The
+        // open-and-recheck pair is one named operation so a future state
+        // cannot drift into checking something else.
+        let live_sibling_forbids = |version: i32, text: &str, why: &str| {
+            vfs.open(
+                sibling.clone(),
+                text,
+                lspkit_vfs::DocumentVersion::new(version),
+            );
+            assert!(analyze().fixes.is_empty(), "{why}");
+        };
+        live_sibling_forbids(
+            1,
             "module Helper\n    export suffix text = text\n",
-            lspkit_vfs::DocumentVersion::new(1),
+            "the signature becomes necessary with the live generic helper",
         );
-        assert!(
-            analyze().fixes.is_empty(),
-            "the signature becomes necessary with the live generic helper"
-        );
-        vfs.open(
-            sibling.clone(),
+        live_sibling_forbids(
+            2,
             "module Helper\n    export suffix text = unknown\n",
-            lspkit_vfs::DocumentVersion::new(2),
+            "invalid live sibling forbids speculative erasure",
         );
-        assert!(
-            analyze().fixes.is_empty(),
-            "invalid live sibling forbids speculative erasure"
-        );
-        vfs.open(
-            sibling.clone(),
+        live_sibling_forbids(
+            3,
             "module Helper\n    export suffix text = (\n",
-            lspkit_vfs::DocumentVersion::new(3),
-        );
-        assert!(
-            analyze().fixes.is_empty(),
-            "unparseable live sibling forbids speculative erasure"
+            "unparseable live sibling forbids speculative erasure",
         );
         vfs.close(&sibling);
         assert_eq!(
