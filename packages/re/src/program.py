@@ -120,11 +120,6 @@ def ins_lit(cp, icase):
     return Ins(op="lit", a=cp, b=icase, ranges=[])
 
 
-def is_target(op):
-    """Whether the instruction carries a pc address to rebase."""
-    return op == "split" or op == "jmp" or op == "lookahead" or op == "lookbehind" or op == "lookbehind_not"
-
-
 def shift(frag, delta):
     """Rebase a fragment's internal pc targets by `delta`."""
     if delta == 0:
