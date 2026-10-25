@@ -263,7 +263,7 @@ KLEE_RUNTIME_BC ?= compiler/bin/libosprey_runtime_klee.bc
 # The mock C library built for the HOST, so its unit tests can run on any
 # machine (the mock's own klee/klee.h stands in for KLEE's) [SYMEX-MOCK-TESTS].
 HUNT_MOCK_SRC   := $(patsubst compiler/runtime/%.c,%,$(filter-out %_tests.c,$(wildcard compiler/runtime/klee/*.c)))
-HUNT_MOCK_HOST_CFLAGS ?= -nostdlibinc -isystem runtime/klee/include -fno-builtin -std=c11 -O1 -g $(WARN_MAX) \
+HUNT_MOCK_HOST_CFLAGS ?= -nostdinc -isystem $(shell $(CC) -print-file-name=include) -isystem runtime/klee/include -ffreestanding -fno-builtin -std=c11 -O1 -g $(WARN_MAX) \
   -U_FORTIFY_SOURCE -fno-stack-protector -DOSP_SYMBOLIC -DOSP_FLOAT_SPELLING_PORTABLE -D_GNU_SOURCE '-D__thread=' '-D_Thread_local='
 # Symbols KLEE itself defines, so the closed-module check [SYMEX-MOCK-CLOSED]
 # accepts them: its intrinsics, UBSan handlers, allocator and `--libc=klee`.
