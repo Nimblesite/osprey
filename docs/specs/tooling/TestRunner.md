@@ -18,6 +18,8 @@ suite fails to compile, fails to run, or skips a case without naming a reason
 (`[TESTING-SKIP-REASON]`), otherwise `0`. An empty discovery set fails with
 `no test files found`.
 
+Standalone file suites run in separate temporary working directories, removed after each suite finishes, including failures. Source paths and the selected cache directory are resolved before changing directories. Relative output files therefore stay out of the caller's directory. Project suites retain the caller's working directory.
+
 **`[TESTING-PROJECT-SUITE]`** A `path` that is a directory holding an
 `osprey.toml` is one project suite. It runs like `osprey <dir> --run`: the
 manifest's `entry` and `source_roots` are assembled into one program, so a
