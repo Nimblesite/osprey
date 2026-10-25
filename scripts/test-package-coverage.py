@@ -171,8 +171,14 @@ class CheckerTests(unittest.TestCase):
     def fixture(self, packages, thresholds=None):
         return make_fixture(tempfile.mkdtemp(dir=self.base), packages, thresholds)
 
+    def simple_fixture(self, name="demo", lines=4, expected=GOLDEN):
+        return self.fixture({name: {"sources": {"src/lib.py": py_source(lines)}, "expected": expected}})
+
+    def assert_exit(self, result, code, context=""):
+        self.assertEqual(result.returncode, code, context + result.stdout + result.stderr)
+
     def test_check_only_requires_a_successfully_verified_collection(self):
-        fixture = self.fixture({"demo": {"sources": {"src/lib.py": py_source(4)}}})
+        fixture = self.simple_fixture()
         write_json(fixture.reports / "demo.json", own_report("demo", 4, 4))
         result = fixture.check()
         self.assertEqual(result.returncode, 1, "A raw report does not prove its suite passed: " + result.stdout)
@@ -180,7 +186,7 @@ class CheckerTests(unittest.TestCase):
     def test_matching_a_zero_or_failing_golden_is_not_success(self):
         for expected in ("0 passed, 0 failed\n", "FAIL demo\n1 passed, 0 failed\n", "1 passed, 0 failed\n"):
             with self.subTest(expected=expected):
-                fixture = self.fixture({"demo": {"sources": {"src/lib.py": py_source(4)}, "expected": expected}})
+                fixture = self.simple_fixture(expected=expected)
                 fixture.write_spec({"demo": {"report": own_report("demo", 4, 4)}})
                 result = fixture.collect()
                 self.assertEqual(result.returncode, 2, "Matching invalid oracle output cannot pass: " + result.stdout)
@@ -188,7 +194,7 @@ class CheckerTests(unittest.TestCase):
     def test_changed_source_or_golden_invalidates_collected_evidence(self):
         for relative in ("src/lib.py", "tests/expected_output.txt", "tests/osprey.toml"):
             with self.subTest(relative=relative):
-                fixture = self.fixture({"demo": {"sources": {"src/lib.py": py_source(4)}}})
+                fixture = self.simple_fixture()
                 fixture.write_spec({"demo": {"report": own_report("demo", 4, 4)}})
                 self.assertEqual(fixture.collect().returncode, 0)
                 path = fixture.root / "packages" / "demo" / relative
@@ -197,12 +203,22 @@ class CheckerTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 1, "Changed inputs need fresh evidence: " + result.stdout)
 
     def test_zero_suites_and_changed_line_endings_cannot_replay_as_success(self):
-        fixture = self.fixture({"demo": {"sources": {"src/lib.py": py_source(4)}}})
+        fixture = self.simple_fixture()
         for stdout in (GOLDEN.replace("\n", "\r\n") + FOOTER, GOLDEN + FOOTER.replace("1 passed", "0 passed")):
             with self.subTest(stdout=stdout):
                 fixture.write_spec({"demo": {"report": own_report("demo", 4, 4), "stdout": stdout}})
                 result = fixture.collect()
-                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assert_exit(result, 1)
+
+    def test_changed_data_fixtures_invalidate_collected_evidence(self):
+        fixture = self.simple_fixture()
+        data = fixture.root / "packages/demo/tests/fixtures/input.json"
+        write_json(data, {"value": 1})
+        fixture.write_spec({"demo": {"report": own_report("demo", 4, 4)}})
+        self.assertEqual(fixture.collect().returncode, 0)
+        write_json(data, {"value": 2})
+        result = fixture.check()
+        self.assertEqual(result.returncode, 1, "Changed fixture needs fresh evidence: " + result.stdout)
 
     def test_threshold_boundary_passes_at_90_and_fails_below(self):
         fixture = self.fixture({
@@ -212,27 +228,27 @@ class CheckerTests(unittest.TestCase):
         fixture.write_report("edge", own_report("edge", 9, 10))
         fixture.write_report("below", own_report("below", 8, 10))
         result = fixture.check()
-        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assert_exit(result, 1)
         self.assertTrue(fixture.result("edge")["pass"], fixture.result("edge"))
         self.assertEqual(fixture.result("edge")["percentage"], 90.0)
         self.assertFalse(fixture.result("below")["pass"])
         self.assertEqual(fixture.result("below")["percentage"], 80.0)
 
     def test_perfect_test_and_helper_lines_cannot_mask_uncovered_source(self):
-        fixture = self.fixture({"mask": {"sources": {"src/lib.py": py_source(10)}}})
+        fixture = self.simple_fixture("mask", 10)
         fixture.write_report("mask", {"files": {
             "packages/mask/src/lib.py": {"lines": {str(i): 0 for i in range(1, 11)}},
             "packages/mask/tests/main.py": {"lines": {str(i): 90 for i in range(1, 101)}},
             "packages/testing/src/check.py": {"lines": {str(i): 90 for i in range(1, 51)}},
         }})
         result = fixture.check()
-        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assert_exit(result, 1)
         mask = fixture.result("mask")
         self.assertEqual((mask["covered"], mask["total"]), (0, 10))
         self.assertEqual(mask["percentage"], 0.0)
 
     def test_cross_host_and_relative_paths_map_to_local_source(self):
-        fixture = self.fixture({"demo": {"sources": {"src/lib.py": py_source(4)}}})
+        fixture = self.simple_fixture()
         cases = {
             "ubuntu": file_report("/home/runner/work/osprey/osprey/packages/demo/src/lib.py", 4, 4),
             "relative": file_report("packages/demo/tests/../src/lib.py", 4, 4),
@@ -241,7 +257,7 @@ class CheckerTests(unittest.TestCase):
             with self.subTest(label):
                 fixture.write_report("demo", report)
                 result = fixture.check()
-                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assert_exit(result, 0)
                 self.assertEqual(fixture.result("demo")["covered"], 4)
         duplicate = {"files": {
             "/home/runner/work/osprey/osprey/packages/demo/src/lib.py": {"lines": {"1": 1}},
@@ -249,18 +265,18 @@ class CheckerTests(unittest.TestCase):
         }}
         fixture.write_report("demo", duplicate)
         result = fixture.check()
-        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assert_exit(result, 1)
         self.assertIn("duplicate source path", result.stdout)
 
     def assert_bad_report(self, fixture, label, report):
         fixture.write_report("bad", report)
         result = fixture.check()
-        self.assertEqual(result.returncode, 1, label + result.stdout + result.stderr)
+        self.assert_exit(result, 1, label)
         self.assertFalse(fixture.result("bad")["pass"], label)
         self.assertTrue(fixture.result("bad")["missing_evidence"], label)
 
     def test_untrustworthy_reports_fail(self):
-        fixture = self.fixture({"bad": {"sources": {"src/lib.py": py_source(5)}}})
+        fixture = self.simple_fixture("bad", 5)
         for label, report in bad_report_cases().items():
             with self.subTest(label):
                 self.assert_bad_report(fixture, label, report)
@@ -268,7 +284,7 @@ class CheckerTests(unittest.TestCase):
             with self.subTest(label):
                 (fixture.reports / "bad.json").write_text(raw)
                 result = fixture.check()
-                self.assertEqual(result.returncode, 1, label + result.stdout + result.stderr)
+                self.assert_exit(result, 1, label)
                 self.assertIn("malformed coverage report", result.stdout)
 
     def test_missing_report_and_missing_required_source_evidence_fail(self):
@@ -276,11 +292,11 @@ class CheckerTests(unittest.TestCase):
             "gone": {"sources": {"src/lib.py": py_source(4), "src/only.py": py_source(3)}},
         })
         result = fixture.check()
-        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assert_exit(result, 1)
         self.assertIn("missing coverage report", result.stdout)
         fixture.write_report("gone", own_report("gone", 4, 4))
         result = fixture.check()
-        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assert_exit(result, 1)
         self.assertIn("missing source evidence: src/only.py", result.stdout)
 
     def test_data_only_tables_are_not_required_but_real_source_is(self):
@@ -294,8 +310,19 @@ class CheckerTests(unittest.TestCase):
             "packages/tabled/src/table.py": {"lines": {"1": 1}},
         }})
         result = fixture.check()
-        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assert_exit(result, 1)
         self.assertIn("missing source evidence: src/lib.py", result.stdout)
+
+    def test_runtime_initializers_and_lambdas_need_source_evidence(self):
+        for body in ("value = Lib.entry(1)\n", "entry = lambda value: value + 1\n"):
+            with self.subTest(body=body):
+                fixture = self.fixture({"demo": {"sources": {
+                    "src/lib.py": py_source(4), "src/facade.py": "from demo import Lib\n" + body,
+                }}})
+                fixture.write_report("demo", own_report("demo", 4, 4))
+                result = fixture.check()
+                self.assertEqual(result.returncode, 1, "Omitted runtime source cannot pass: " + result.stdout)
+                self.assertIn("missing source evidence: src/facade.py", result.stdout)
 
     def test_ml_and_default_flavor_functions_need_evidence(self):
         fixture = self.fixture({
@@ -307,22 +334,22 @@ class CheckerTests(unittest.TestCase):
         self.assertEqual(fixture.check().returncode, 0)
         fixture.write_report("mldemo", {"files": {}})
         result = fixture.check()
-        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assert_exit(result, 1)
         self.assertIn("missing source evidence: src/base.ospml", result.stdout)
 
     def test_failed_collection_invalidates_a_stale_report(self):
-        fixture = self.fixture({"demo": {"sources": {"src/lib.py": py_source(4)}}})
+        fixture = self.simple_fixture()
         fixture.write_report("demo", own_report("demo", 4, 4))
         fixture.write_spec({"demo": {"exit": 1, "report": own_report("demo", 4, 4)}})
         result = fixture.collect()
-        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assert_exit(result, 1)
         self.assertFalse((fixture.reports / "demo.json").exists(), "failed collection must invalidate evidence")
         self.assertTrue((fixture.reports / "demo.log").is_file())
         self.assertFalse(fixture.result("demo")["pass"])
         self.assertIn("collection failed with exit 1", fixture.result("demo")["missing_evidence"][0])
 
     def test_oracle_replay_catches_printed_failures_and_missing_tests(self):
-        fixture = self.fixture({"demo": {"sources": {"src/lib.py": py_source(4)}}})
+        fixture = self.simple_fixture()
         cases = {
             "printed-failure": "FAIL demo.one\n" + FOOTER,
             "missing-tests": FOOTER,
@@ -333,17 +360,17 @@ class CheckerTests(unittest.TestCase):
             with self.subTest(label):
                 fixture.write_spec({"demo": {"report": own_report("demo", 4, 4), "stdout": stdout}})
                 result = fixture.collect()
-                self.assertEqual(result.returncode, 1, label + result.stdout + result.stderr)
+                self.assert_exit(result, 1, label)
                 self.assertFalse((fixture.reports / "demo.json").exists(), label)
                 self.assertTrue(fixture.result("demo")["missing_evidence"], label)
         fixture.write_spec({"demo": {"report": own_report("demo", 4, 4)}})
         self.assertEqual(fixture.collect().returncode, 0)
 
     def test_collection_writes_report_log_and_summary(self):
-        fixture = self.fixture({"demo": {"sources": {"src/lib.py": py_source(10)}}})
+        fixture = self.simple_fixture("demo", 10)
         fixture.write_spec({"demo": {"report": own_report("demo", 9, 10)}})
         result = fixture.collect()
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assert_exit(result, 0)
         self.assertTrue((fixture.reports / "demo.json").is_file())
         log = (fixture.reports / "demo.log").read_text()
         self.assertIn("--coverage-json", log)
@@ -355,29 +382,29 @@ class CheckerTests(unittest.TestCase):
         self.assertTrue(demo["pass"])
 
     def test_ungated_package_fails_even_for_a_focused_package(self):
-        fixture = self.fixture({"demo": {"sources": {"src/lib.py": py_source(4)}}})
+        fixture = self.simple_fixture()
         add_package(fixture.root, "extra")
         fixture.write_spec({"demo": {"report": own_report("demo", 4, 4)}})
         result = fixture.collect("--package", "demo")
-        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assert_exit(result, 2)
         self.assertIn("extra: package has no coverage gate entry", result.stderr)
         self.assertFalse((fixture.reports / "demo.json").exists(), "inventory errors must run nothing")
 
     def test_bad_inventory_and_unknown_package_fail(self):
-        fixture = self.fixture({"demo": {"sources": {"src/lib.py": py_source(4)}}})
+        fixture = self.simple_fixture()
         cases = [{"demo": 90, "ghost": 90}, {"demo": 89}, {"demo": 101}, {"demo": "90"}, {"demo": True}]
         for entries in cases:
             with self.subTest(entries=entries):
                 write_gates(fixture.root, entries)
                 result = fixture.check()
-                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assert_exit(result, 2)
         write_gates(fixture.root, {"demo": 90})
         result = fixture.check("--package", "unknown")
-        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assert_exit(result, 2)
         self.assertIn("unknown package", result.stderr)
         (fixture.root / "packages" / "demo" / "tests" / "osprey.toml").unlink()
         result = fixture.check()
-        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assert_exit(result, 2)
         self.assertIn("missing tests/osprey.toml", result.stderr)
 
 if __name__ == "__main__":

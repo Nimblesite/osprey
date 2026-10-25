@@ -62,4 +62,4 @@ target/release/osprey test packages/manager/cli/tests --filter "publish: license
 target/release/osprey test packages/manager/cli/tests --filter "fetch: licenses and attribution are preserved"
 ```
 
-`node --test scripts/test-package-licenses.mjs` checks the reviewed bundles, rejection of missing required original attribution, and rejection of unnecessary upstream license copies; expect three passing tests.
+`node --test scripts/test-package-licenses.mjs` checks the reviewed bundles, required original attribution, unnecessary upstream license copies and the distinction between libraries and manager tooling; expect five passing tests.

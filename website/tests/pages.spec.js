@@ -192,6 +192,17 @@ test.describe("mobile interactions", () => {
     await expect(page).toHaveURL(/\/blog\/$/);
   });
 
+  for (const viewport of [{ width: 320, height: 568 }, { width: 768, height: 320 }]) {
+    test(`mobile menu links fit within ${viewport.width}x${viewport.height}`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await page.goto("/docs/");
+      await page.locator("#mobile-menu-toggle").click();
+      for (const link of await page.locator(".nav-link").all()) {
+        await expect(link).toBeInViewport({ ratio: 1 });
+      }
+    });
+  }
+
   test("hero actions stack full-width on mobile", async ({ page }) => {
     await page.goto("/");
     const widths = await page.evaluate(() => {

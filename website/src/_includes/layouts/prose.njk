@@ -1,26 +1,29 @@
 ---
 layout: layouts/base.njk
 ---
-{% macro documentationNavigation(extraClass, mobile=false) %}
-    <nav class="docs-nav {{ extraClass }}" aria-label="Documentation pages">
-{% if not mobile %}
-      <a class="docs-nav-home" href="/docs/">Documentation</a>
-{% endif %}
-{% for section in navigation.docs %}
+{% macro documentationSection(section, id, mobile) %}
 {% set currentSection = false %}
 {% for item in section.items %}
 {% if page.url == item.url or (item.url != '/docs/' and page.url.startsWith(item.url)) %}{% set currentSection = true %}{% endif %}
 {% endfor %}
 {% set groupTag = 'details' if mobile else 'section' %}
 {% set headingTag = 'summary' if mobile else 'h2' %}
-      <{{ groupTag }} class="docs-nav-section{% if currentSection %} docs-nav-current{% endif %}"{% if mobile %}{% if currentSection %} open{% endif %}{% else %} aria-labelledby="docs-nav-{{ loop.index }}-{{ extraClass }}"{% endif %}>
-        <{{ headingTag }} class="docs-nav-section-title" id="docs-nav-{{ loop.index }}-{{ extraClass }}">{{ section.title }}</{{ headingTag }}>
+      <{{ groupTag }} class="docs-nav-section{% if currentSection %} docs-nav-current{% endif %}"{% if mobile %}{% if currentSection %} open{% endif %}{% else %} aria-labelledby="docs-nav-{{ id }}"{% endif %}>
+        <{{ headingTag }} class="docs-nav-section-title" id="docs-nav-{{ id }}">{{ section.title }}</{{ headingTag }}>
         <ul class="docs-nav-list">
 {% for item in section.items %}
           <li><a href="{{ item.url }}"{% if page.url == item.url %} class="active" aria-current="page"{% elif item.url != '/docs/' and page.url.startsWith(item.url) %} class="active" aria-current="location"{% endif %}>{{ item.text }}</a></li>
 {% endfor %}
         </ul>
       </{{ groupTag }}>
+{% endmacro %}
+{% macro documentationNavigation(extraClass, mobile=false) %}
+    <nav class="docs-nav {{ extraClass }}" aria-label="Documentation pages">
+{% if not mobile %}
+      <a class="docs-nav-home" href="/docs/">Documentation</a>
+{% endif %}
+{% for section in navigation.docs %}
+{{ documentationSection(section, loop.index ~ '-' ~ extraClass, mobile) }}
 {% endfor %}
     </nav>
 {% endmacro %}

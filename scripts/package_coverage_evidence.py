@@ -1,4 +1,5 @@
 """Bind coverage reports to the source and suite whose golden output passed."""
+import ast
 import hashlib
 import json
 import re
@@ -6,6 +7,16 @@ import tomllib
 from pathlib import Path
 
 SOURCE_SUFFIXES = frozenset({".py", ".osp", ".ospml"})
+GENERATED_DIRS = frozenset({"target", "__pycache__", "node_modules"})
+
+
+def python_coverable(text):
+    try:
+        nodes = ast.walk(ast.parse(text))
+        return any(isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda,
+                                    ast.Call, ast.Await, ast.Raise, ast.Assert)) for node in nodes)
+    except SyntaxError:
+        return True
 
 
 def golden_problems(path):
@@ -35,8 +46,8 @@ def source_inputs(root, name):
     files = {package / "osprey.toml", suite / "osprey.toml", suite / "expected_output.txt"}
     for base in roots:
         files.update(path.resolve() for path in base.rglob("*") if path.is_file()
-                     and path.suffix in SOURCE_SUFFIXES
-                     and not any(part.startswith(".") for part in path.relative_to(base).parts))
+                     and not any(part.startswith(".") or part in GENERATED_DIRS
+                                 for part in path.relative_to(base).parts))
     return {path.relative_to(root).as_posix(): digest(path) for path in sorted(files)}
 
 

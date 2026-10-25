@@ -105,7 +105,7 @@
   box-shadow: inset 2px 0 0 var(--primary-container);
   font-weight: 500;
 }
-.docs-nav :is(a, summary):focus-visible { outline: 2px solid var(--primary-container); outline-offset: 2px; }
+.docs-nav :is(a, summary):focus-visible, .docs-nav-mobile > summary:focus-visible { outline: 2px solid var(--primary-container); outline-offset: 2px; }
 .docs-nav-mobile { display: none; }
 
 /* No TOC (short page) → single, centred column. */

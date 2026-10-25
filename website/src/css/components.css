@@ -33,6 +33,7 @@
 }
 
 .nav-links { gap: clamp(0.75rem, 2vw, 1.5rem); align-items: center; }
+.nav-links li { margin: 0; min-width: 0; }
 .nav-link {
   color: var(--on-surface-variant);
   font-size: 0.95rem;

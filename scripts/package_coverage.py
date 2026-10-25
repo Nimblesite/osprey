@@ -33,7 +33,10 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from package_coverage_evidence import SOURCE_SUFFIXES, evidence_path, evidence_problems, golden_problems, seal_evidence, source_inputs
+from package_coverage_evidence import (
+    SOURCE_SUFFIXES, evidence_path, evidence_problems, golden_problems,
+    python_coverable, seal_evidence, source_inputs,
+)
 
 EXIT_OK = 0
 EXIT_GATE = 1
@@ -51,7 +54,6 @@ COVERAGE_TOTAL_RE = re.compile(
     r"^# coverage total: (?:\d+\.\d%|n/a) \(\d+/\d+ lines\)$"
 )
 SUITES_RE = re.compile(r"^# suites: 1 passed, 0 failed$")
-PY_DEF_RE = re.compile(r"(?m)^[ \t]*def[ \t]+\w+")
 DEFAULT_DEF_RE = re.compile(r"(?m)^[ \t]*fn[ \t]+\w+")
 ML_DEF_RE = re.compile(
     r"(?m)^[ \t]*(?:export[ \t]+)?(?P<name>[A-Za-z][\w']*)"
@@ -161,7 +163,7 @@ def has_definitions(path: Path) -> bool:
     except OSError:
         return False
     if path.suffix == ".py":
-        return PY_DEF_RE.search(text) is not None
+        return python_coverable(text)
     if path.suffix == ".ospml":
         return any(match.group("name") not in ML_KEYWORDS for match in ML_DEF_RE.finditer(text))
     if path.suffix == ".osp":
