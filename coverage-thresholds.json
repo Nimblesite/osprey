@@ -321,7 +321,7 @@
   },
   "package_measurements": {
     "_doc": "Historical verified measurements, not required minimums or CI inputs. Null means unavailable. Refresh after source or test changes.",
-    "recorded_at": "2026-10-25T03:32:05.182738+00:00",
+    "recorded_at": "2026-10-25T03:43:46.705712+00:00",
     "metric": "executed statement lines; not branch or path coverage",
     "reports": "target/coverage/packages",
     "basis_sha256": "d69d4fd0f2e82b467cd6c048a42ee42c655529bcc9b3f27a255f32445559d76d",
