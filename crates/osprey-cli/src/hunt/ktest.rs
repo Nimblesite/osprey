@@ -116,7 +116,10 @@ impl Ktest {
     fn is_file_stream(&self, name: &str) -> bool {
         is_file_stream(name)
             || (self.object(&format!("{name}.ok")).and_then(host_int) == Some(1)
-                && self.object(&format!("{name}.len")).and_then(host_int).is_some())
+                && self
+                    .object(&format!("{name}.len"))
+                    .and_then(host_int)
+                    .is_some())
     }
 }
 

@@ -89,7 +89,10 @@ static bool push_scope(Scanner *scanner, unsigned value) {
   return true;
 }
 
-static void advance(TSLexer *lexer) { lexer->advance(lexer, false); }
+static void advance(TSLexer *lexer) {
+  lexer->advance(lexer, false);
+  lexer->mark_end(lexer);
+}
 
 // Read one source character after the enclosing string's escape decoding.
 static int32_t decoded_character(TSLexer *lexer) {

@@ -78,7 +78,7 @@ Provision the private `registry` PostgreSQL schema as a platform resource before
 | `packages` | Non-null org and single admin reference; unique `(organization_id, name)`; immutable identity, state and authority epoch |
 | `package_permissions` | Unique active `(organization_id, package_id, membership_id, permission)`; same-org composite FKs for subject and grantor; no admin permission |
 | `admin_transfers` | Current/proposed same-org admins, active-recipient composite FK, expected authority epoch, one pending proposal per package, signed-proof digests, expiry, acceptance and decision time |
-| `invitations` | Exact target principal/org, member/custodian role, issuer, hashed one-use token, expiry and consumed state; role approval rules still apply |
+| `invitations` | Exact target principal/org, member/custodian role, issuer, hashed one-use token, expiry and pending/accepted/revoked/expired state; acceptance consumes the token and role approval rules still apply |
 | `maintenance_reports` | Same-org package/reporter references, public summary, bounded evidence digest and explicit report state; private security evidence stays separate |
 | `governance_events` | Append-only org/package/principal context, operation/epoch/proof commitment and previous-event digest; no PII in public event projections |
 

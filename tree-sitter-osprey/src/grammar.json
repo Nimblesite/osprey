@@ -5525,8 +5525,13 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "SYMBOL",
-          "name": "_string_start"
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_string_start"
+          },
+          "named": false,
+          "value": "\""
         },
         {
           "type": "REPEAT",
@@ -5536,8 +5541,13 @@
           }
         },
         {
-          "type": "SYMBOL",
-          "name": "_string_end"
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_string_end"
+          },
+          "named": false,
+          "value": "\""
         }
       ]
     },
@@ -5545,8 +5555,13 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "SYMBOL",
-          "name": "_string_start"
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_string_start"
+          },
+          "named": false,
+          "value": "\""
         },
         {
           "type": "REPEAT",
@@ -5576,8 +5591,13 @@
           }
         },
         {
-          "type": "SYMBOL",
-          "name": "_string_end"
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_string_end"
+          },
+          "named": false,
+          "value": "\""
         }
       ]
     },
@@ -5585,8 +5605,13 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "SYMBOL",
-          "name": "_interpolation_start"
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_interpolation_start"
+          },
+          "named": false,
+          "value": "${"
         },
         {
           "type": "FIELD",
@@ -5597,8 +5622,13 @@
           }
         },
         {
-          "type": "SYMBOL",
-          "name": "_interpolation_end"
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_interpolation_end"
+          },
+          "named": false,
+          "value": "}"
         }
       ]
     },

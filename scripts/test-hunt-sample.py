@@ -159,6 +159,7 @@ class ReviewReportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             out = Path(directory)
             good = QualificationTests().clean() | {'program': 'safe.osp', 'qualifies': True, 'directory': str(out/'safe')}
+            good['report']['program'] = 'safe.osp'
             bad = good | {'program': 'unfinished.osp', 'report': good['report'] | {'incomplete': [{'reason': 'time'}]}}
             write(out, [good, bad])
             manifest = json.loads((out/'safe-runs.json').read_text())

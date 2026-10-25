@@ -242,7 +242,8 @@
         "language": "osprey"
       },
       "numpy": {
-        "language": "osprey"
+        "language": "osprey",
+        "threshold": 97.9
       },
       "re": {
         "threshold": 90.2,
@@ -260,10 +261,12 @@
         "language": "osprey"
       },
       "scipy": {
-        "language": "osprey"
+        "language": "osprey",
+        "threshold": 92.5
       },
       "sklearn": {
-        "language": "osprey"
+        "language": "osprey",
+        "threshold": 98.6
       },
       "testing": {
         "threshold": 98.6,

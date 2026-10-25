@@ -140,7 +140,7 @@
           "SIGABRT"
         ],
         "file": {
-          "path": "hunt-payload.txt",
+          "path": "input.len",
           "bytes": "!"
         }
       }

@@ -827,12 +827,12 @@ module.exports = grammar({
     float: ($) => /[0-9]+\.[0-9]+/,
     integer: ($) => /[0-9]+/,
     // Implements [STRING-INTERPOLATION]: embedded code uses ordinary expressions.
-    string: ($) => seq($._string_start, repeat($._string_text), $._string_end),
+    string: ($) => seq(alias($._string_start, '"'), repeat($._string_text), alias($._string_end, '"')),
     interpolated_string: ($) =>
-      seq($._string_start, repeat($._string_text), $.interpolation,
-        repeat(choice($._string_text, $.interpolation)), $._string_end),
+      seq(alias($._string_start, '"'), repeat($._string_text), $.interpolation,
+        repeat(choice($._string_text, $.interpolation)), alias($._string_end, '"')),
     interpolation: ($) =>
-      seq($._interpolation_start, field('expression', $.expression), $._interpolation_end),
+      seq(alias($._interpolation_start, '${'), field('expression', $.expression), alias($._interpolation_end, '}')),
     _string_text: ($) => choice($.string_content, $.escape_sequence),
 
     identifier: ($) => /[a-zA-Z_][a-zA-Z0-9_]*/,
