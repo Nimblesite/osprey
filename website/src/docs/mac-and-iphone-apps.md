@@ -7,21 +7,11 @@ permalink: /docs/mac-and-iphone-apps/
 tags: [macos, ios, swift, applications, interop]
 ---
 
-Osprey Storage is a native disk browser for the Mac and the iPhone. It measures a folder, hidden files included, ranks what takes the space, and opens any folder to rank what is inside. Its logic is Osprey and its platform code is Swift. This tutorial follows the boundary between them.
+Osprey Storage is a native disk browser for the Mac and iPhone. The Mac app starts at the whole disk, with hidden files included. On iPhone it measures its own container and, with permission, the photo library. Osprey owns the state, ranking and screens; Swift draws them and calls the platform APIs.
 
 {% videoCard "swift-interop", "/docs/tutorials/swift-interop/" %}
 
-Prefer to watch? The [video tutorial](/docs/tutorials/swift-interop/) shows the real app and every step below in three minutes, with chapters and a transcript.
-
 The source is in [`examples/macos/`](https://github.com/Nimblesite/osprey/tree/main/examples/macos). You need an Apple silicon Mac with Xcode and the [Osprey toolchain](/docs/installation/).
-
-## What you will learn
-
-- What Osprey owns and what Swift owns in one app.
-- How Osprey exports become C functions that Swift calls.
-- How Swift functions become imports that Osprey calls.
-- How an effect handler keeps those imports at the edge, so the logic is testable without Swift.
-- How one Xcode target links the right Osprey library for the Mac, the iPhone and the simulator.
 
 ## 1. Run it
 
@@ -36,20 +26,21 @@ examples/macos/run.sh ios-sim      # build and launch it in the iPhone simulator
 | --- | --- |
 | The browser's state and events | The window and the toolbar |
 | The ranking and the hidden-file rule | The folder picker |
-| Size and count formatting | The walk over the disk |
+| Size and count formatting | The disk walk and PhotoKit measurements |
 | Every screen, as a tree of native nodes | Drawing that tree with SwiftUI |
 
-## 3. Osprey exports two functions
+## 3. Export the app entry points
 
-[`storage/src/main.ospml`](https://github.com/Nimblesite/osprey/blob/main/examples/macos/storage/src/main.ospml) exposes the app. `start` returns the first screen for a home folder; `dispatch` takes the state the last screen came with and one event, and returns the next screen:
+[`storage/src/main.ospml`](https://github.com/Nimblesite/osprey/blob/main/examples/macos/storage/src/main.ospml) exports `start` and `dispatch` for the browser, plus the formatting helpers `formatBytes`, `formatCount` and `percent`. `start` returns the first screen and requests a disk walk; `dispatch` takes the previous state and one event, then returns the next screen:
 
 ```osprey-ml
-(** The first screen for `home` on `platform` (`macos` or `ios`), with its walk requested. *)
-start (home, platform) = envelope (Browse::start home platform)
+start (home, platform, full) = envelope (Browse::start home platform full)
 
 (** The next screen after one host event, given the browser the last screen returned. *)
 dispatch (model, event) = envelope (Browse::dispatch (Browse::decode model) event)
 ```
+
+`platform` is `"macos"` or `"ios"`. `full` reports whether the Mac has Full Disk Access; the iPhone host passes `false`.
 
 ## 4. The compiler writes a C header
 
@@ -62,8 +53,8 @@ osprey examples/macos/storage --compile --target=macos -o examples/macos/build/m
 Every export gets a plain C prototype. An Osprey `string` is a `const char *`, an `int` is an `int64_t`, and a `bool` is a C `bool`:
 
 ```c
-// fn storage::start(home: string, platform: string) -> string
-const char *osprey_storage_start(const char *home, const char *platform);
+// fn storage::start(home: string, platform: string, full: bool) -> string
+const char *osprey_storage_start(const char *home, const char *platform, bool full);
 // fn storage::dispatch(model: string, event: string) -> string
 const char *osprey_storage_dispatch(const char *model, const char *event);
 ```
@@ -77,7 +68,7 @@ A returned string belongs to the Osprey runtime: copy it before the next call in
 ```swift
 let status = osprey_main()
 guard status == 0 else { return fail("Osprey initialization failed: \(status)") }
-accept(osprey_storage_start(canonical(NSHomeDirectory()), StorageStore.platform))
+accept(osprey_storage_start(canonical(NSHomeDirectory()), StorageStore.platform, fullDiskAccess()))
 // ...
 accept(osprey_storage_dispatch(model, json))
 ```
@@ -116,6 +107,7 @@ screen model =
     handle Disk::Facts
         volume path => Volume(name = storage_volume_name path, total = storage_volume path "total", available = storage_volume path "available", important = storage_volume path "important")
         listing folder => listed (storage_scan folder)
+        photos => Photos(status = storage_photos_status (), items = storage_photos_items (), bytes = storage_photos_bytes (), cloud = storage_photos_cloud (), kinds = photoKinds ())
     View::render model
 ```
 
@@ -128,6 +120,7 @@ screen model =
     handle Disk::Facts
         volume _ => ssd
         listing path => listingFor path
+        photos => storage::Photos(status = "unavailable", items = 0, bytes = 0, cloud = 0, kinds = [])
     View::render model
 ```
 
@@ -182,12 +175,5 @@ SWIFT_OBJC_BRIDGING_HEADER = OspreyStorage/Bridge.h
 ## What happens underneath
 
 The compiler lowers the Osprey project through LLVM into native code for the target, then archives it into `libOspreyApp.a` with a generated `libOspreyApp.h`. Swift links that archive like any C library. All calls into the library come from one host thread, and `osprey_main` runs first. The [iOS target specification](https://github.com/Nimblesite/osprey/blob/main/docs/specs/platforms/0038-iOSTarget.md) states the boundary contract and how it is verified.
-
-## Recap
-
-- Osprey exports become C prototypes in a generated header; Swift calls them through a bridging header.
-- Osprey `extern` declarations become imports; Swift defines them with `@_cdecl`.
-- An effect handler at the boundary is the only place those imports are called, so a test handler runs the same logic without Swift.
-- One Xcode target picks the Osprey library for the SDK being built.
 
 Osprey is actively evolving. See [iOS and Android apps](/docs/mobile-apps/) for an app that also handles SQLite and HTTP through effects.
