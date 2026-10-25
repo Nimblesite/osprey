@@ -1,10 +1,10 @@
 ---
 layout: page
 title: "let (Keyword)"
-description: "Variable declaration keyword. Used to bind values to identifiers. Variables are immutable by default in Osprey."
+description: "Bind an immutable value in Default syntax; its type is inferred."
 ---
 
-**Description:** Variable declaration keyword. Used to bind values to identifiers. Variables are immutable by default in Osprey.
+`let` binds an immutable value in Default syntax. Its type is inferred from the expression. ML and Python syntax omit `let` for ordinary bindings. Mutable cells use `mut`, with reassignment restricted to effect handlers; see [bindings](/spec/0003-syntax/#bindings).
 
 ## Example
 

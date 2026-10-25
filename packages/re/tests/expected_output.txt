@@ -7092,6 +7092,8 @@ ok sub \s+ / a b  c
 ok sub x* / abc
 ok sub  / abc
 ok sub \. / a.b
+ok sub (z) / z z
+ok sub (?P<item>z) / z-z
 ok subn a / banana
 ok subn a.n
 ok subn a / banana
@@ -7100,6 +7102,8 @@ ok subn (a) / bac
 ok subn (a).n
 ok subn \d / a1b2c3
 ok subn \d.n
+ok subn z / z z
+ok subn z.n
 ok escape 
 ok escape abc
 ok escape a.b*c
@@ -7130,4 +7134,4 @@ ok error \x4
 ok error a{3,2}
 ok error [\400]
 ok error [\777]
-6121 passed, 0 failed
+6125 passed, 0 failed

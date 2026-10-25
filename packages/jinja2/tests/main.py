@@ -34,7 +34,8 @@ def run(case, context):
 def all_cases():
     context = {"name": V.text("world"), "nums": V.list_([V.int_(1), V.int_(2), V.int_(3)]), "enabled": V.bool_(True), "nothing": V.none(), "obj": V.dict_(["x"], [V.int_(4)])}
     renders = toList(map(range(len(Expected.RENDERS)), lambda i: run(unwrap_or(listGet(Expected.RENDERS, i), []), context)))
-    return listConcat(renders, listConcat(kind_cases(), listConcat(string_cases(), listConcat(value_cases(), listConcat(scope_cases(), listConcat(syntax_cases(), macro_cases()))))))
+    rest = listConcat(kind_cases(), listConcat(string_cases(), listConcat(value_cases(), listConcat(scope_cases(), listConcat(syntax_cases(), macro_cases())))))
+    return listConcat(renders, listConcat(rest, expanded_cases(context)))
 
 
 def kind_cases():
@@ -145,6 +146,161 @@ def macro_rejected():
 
 def macro_cases():
     return listAppend(macro_parse(), macro_rejected())
+
+
+# Port-documented expression diagnostics. CPython Jinja 3.1.6 rejects every
+# template here as well (probe: target/logs/jinja-coverage-work/probe2.py); the
+# wording is the port's own, from packages/jinja2/src/expr.py.
+EXPR_ERRORS = [
+    ["unexpected token", "{{ ) }}", "unexpected token `)` in expression"],
+    ["unclosed paren", "{{ (1 + 2 }}", "expected ')' in expression"],
+    ["unclosed list", "{{ [1, 2 }}", "expected ',' or ']' in list"],
+    ["dict missing colon", "{{ {1} }}", "expected ':' in dict literal"],
+    ["dict pair missing colon", "{{ {'x': 1, 'y'} }}", "expected ':' in dict literal"],
+    ["dict missing comma", "{{ {'x': 1 'y': 2} }}", "expected ',' or '}' in dict"],
+    ["method arg missing comma", "{{ name.upper(1 2) }}", "expected ',' in argument list"],
+    ["call arg missing comma", "{{ range(1 2) }}", "expected ',' in argument list"],
+    ["attribute name", "{{ obj.+ }}", "expected attribute name after '.'"],
+    ["subscript close", "{{ nums[1 2] }}", "expected ']' or ':' after subscript"],
+    ["slice close", "{{ nums[1:2 3] }}", "expected ':' or ']' in slice"],
+    ["slice step close", "{{ nums[::2 3] }}", "expected ']' after slice step"],
+    ["filter name", "{{ 1|2 }}", "expected filter name after '|'"],
+    ["filter args", "{{ nums|join(1 2) }}", "expected ',' in argument list"],
+    ["test name", "{{ 1 is }}", "expected test name after 'is'"],
+    ["test args", "{{ 1 is divisibleby(2 3) }}", "expected ',' in argument list"],
+]
+
+
+# Port-documented statement and lexer diagnostics (packages/jinja2/src/parser.py
+# and lexer.py). CPython Jinja 3.1.6 fails every template too, with its own
+# 'Encountered unknown tag' / 'unexpected end of template' wording.
+STATEMENT_ERRORS = [
+    ["unknown statement", "{% bogus %}", "unknown statement `bogus`"],
+    ["unknown in if body", "{% if enabled %}{% bogus %}{% endif %}", "unknown statement `bogus`"],
+    ["endfor closes if", "{% if enabled %}{% endfor %}", "unknown statement `endfor`"],
+    ["unknown in elif body", "{% if enabled %}{% elif nothing %}{% bogus %}{% endif %}", "unknown statement `bogus`"],
+    ["unknown in else body", "{% if enabled %}{% else %}{% bogus %}{% endif %}", "unknown statement `bogus`"],
+    ["unknown in for body", "{% for n in nums %}{% bogus %}{% endfor %}", "unknown statement `bogus`"],
+    ["unknown in for else", "{% for n in nums %}{% else %}{% bogus %}{% endfor %}", "unknown statement `bogus`"],
+    ["unknown in macro body", "{% macro m() %}{% bogus %}{% endmacro %}", "unknown statement `bogus`"],
+    ["unterminated tag", "{{ name", "unexpected end of template, expected 'end of print statement'"],
+    ["unterminated string", "{{ 'abc", "unexpected end of template, expected 'end of print statement'"],
+]
+
+
+# Port-documented name-lookup and block diagnostics (packages/jinja2/src/
+# filters.py, expr.py, render.py). CPython fails each template too (Template
+# Assertion/Runtime/SyntaxError); the port wording names its own subset limit.
+LOOKUP_ERRORS = [
+    ["unknown filter", "{{ 1|nosuchfilter }}", "No filter named 'nosuchfilter'"],
+    ["unknown test", "{{ 1 is nosuchtest }}", "No test named 'nosuchtest'"],
+    ["unknown string method", "{{ 'a'.foo() }}", "method `foo` is not supported on strings"],
+    ["unknown dict method", "{{ obj.foo() }}", "method `foo` is not supported on dicts"],
+    ["raise exception", "{{ raise_exception('boom') }}", "boom"],
+    ["strftime_now", "{{ strftime_now('%Y') }}", "strftime_now is not available in the Osprey port"],
+    ["unknown global", "{{ unknown_global() }}", "Unknown function 'unknown_global'"],
+    ["loop cond error", "{% for n in nums if ) %}{% endfor %}", "unexpected token `)` in expression"],
+    ["loop iterable error", "{% for n in ) %}{% endfor %}", "unexpected token `)` in expression"],
+    ["loop body error", "{% for n in nums %}{{ ) }}{% endfor %}", "unexpected token `)` in expression"],
+    ["set expression error", "{% set x = ) %}", "unexpected token `)` in expression"],
+    ["branch cond error", "{% if ) %}a{% endif %}", "unexpected token `)` in expression"],
+]
+
+
+# Templates both implementations reject with different wordings (CPython raises
+# TypeError with its own operand text); only the rejection itself is asserted.
+DIVERGENT_ERRORS = [
+    ["int plus string", "{{ 1 + 'a' }}"],
+    ["string times string", "{{ 'a' * 'b' }}"],
+    ["list plus int", "{{ [1] + 1 }}"],
+    ["call non function", "{{ 1(2) }}"],
+    ["string divided", "{{ 'a' / 'b' }}"],
+    ["string floordiv", "{{ 'a' // 2 }}"],
+    ["string modulo", "{{ 'a' % 2 }}"],
+    ["pair concatenated", "{{ 'a' + (obj|items|first) }}"],
+]
+
+
+def error_run(context, entry):
+    name = unwrap_or(listGet(entry, 0), "")
+    template = unwrap_or(listGet(entry, 1), "")
+    want = unwrap_or(listGet(entry, 2), "")
+    match R.render(R.chat_environment(), template, context):
+        case Error(message=message):
+            return same(name, message, want)
+        case Success(value=value):
+            return Check.failed(name, value)
+
+
+def error_table(context, table):
+    return toList(map(range(len(table)), lambda i: error_run(context, unwrap_or(listGet(table, i), []))))
+
+
+def oracle_errors(context):
+    return error_table(context, Expected.ERRORS)
+
+
+def rejects_like_python(context, entry):
+    name = unwrap_or(listGet(entry, 0), "")
+    template = unwrap_or(listGet(entry, 1), "")
+    match R.render(R.chat_environment(), template, context):
+        case Error(message=message):
+            return Check.truth(name, len(message) > 0, "rejected with a diagnostic")
+        case Success(value=value):
+            return Check.failed(name, value)
+
+
+def divergent_errors(context):
+    return toList(map(range(len(DIVERGENT_ERRORS)), lambda i: rejects_like_python(context, unwrap_or(listGet(DIVERGENT_ERRORS, i), []))))
+
+
+def error_cases(context):
+    return listConcat(error_table(context, EXPR_ERRORS), listConcat(error_table(context, STATEMENT_ERRORS), listConcat(error_table(context, LOOKUP_ERRORS), listConcat(oracle_errors(context), divergent_errors(context)))))
+
+
+def fallback_cases():
+    return [
+        same("chars of empty", V.chars(""), []),
+        same("length of undefined", F.apply_filter("length", V.undefined("x"), [], []), V.int_(0)),
+        same("items of string", F.apply_filter("items", V.text("ab"), [], []), V.list_([])),
+        same("first of none", V.is_undefined(F.apply_filter("first", V.none(), [], [])), True),
+        same("last of none", V.is_undefined(F.apply_filter("last", V.none(), [], [])), True),
+        same("method on int", V.is_error(F.call_method(V.int_(1), "upper", [])), True),
+        same("bind fallback innermost", V.lookup(V.bind_found(V.Env(frames=[{}, {}]), "x", V.int_(1)), "x"), V.int_(1)),
+    ]
+
+
+def dict_write_cases():
+    d = V.dict_(["a", "b", "c"], [V.int_(1), V.int_(2), V.int_(3)])
+    appended = V.dict_set(d, "d", V.int_(4))
+    replaced = V.dict_set(d, "b", V.int_(9))
+    return [
+        same("dict append key", V.dict_get(appended, V.text("d")), V.int_(4)),
+        same("dict append count", len(appended.keys), 4),
+        same("dict replace key", V.dict_get(replaced, V.text("b")), V.int_(9)),
+        same("dict replace persistence", [V.dict_get(replaced, V.text("a")), V.dict_get(replaced, V.text("c"))], [V.int_(1), V.int_(3)]),
+    ]
+
+
+def empty_macro_node(nodes):
+    node = unwrap_or(listGet(nodes, 0), P.blank("missing"))
+    return [same("empty macro name", node.name, "m"), same("empty macro params", node.params, [])]
+
+
+def empty_macro_cases():
+    match L.scan("{% macro m() %}Hi{% endmacro %}", True, True):
+        case Success(value=value):
+            match P.parse(value):
+                case Success(value=parsed):
+                    return empty_macro_node(parsed)
+                case Error(message=message):
+                    return [Check.failed("empty macro parse", message)]
+        case Error(message=message):
+            return [Check.failed("empty macro lex", message)]
+
+
+def expanded_cases(context):
+    return listConcat(error_cases(context), listConcat(fallback_cases(), listConcat(dict_write_cases(), empty_macro_cases())))
 
 
 def main():

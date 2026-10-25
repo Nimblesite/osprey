@@ -112,13 +112,38 @@ TEMPLATES = [
 ]
 
 
+# Templates whose CPython failure message the port mirrors verbatim (TypeError/
+# ValueError/UndefinedError texts), asserted as the render `Error` payload.
+ERROR_TEMPLATES = [
+    ("str concat int", "{{ 'a' + 1 }}"),
+    ("str concat float", "{{ 'a' + 1.5 }}"),
+    ("str concat list", "{{ 'a' + [1] }}"),
+    ("str concat dict", "{{ 'a' + obj }}"),
+    ("str concat none", "{{ 'a' + none }}"),
+    ("str concat bool", "{{ 'a' + true }}"),
+    ("add undefined left", "{{ missing + 'a' }}"),
+    ("add undefined right", "{{ 'a' + missing }}"),
+    ("arith undefined attr", "{{ missing.x + 1 }}"),
+    ("sub undefined attr", "{{ missing.x - 1 }}"),
+    ("mul undefined attr", "{{ missing.x * 2 }}"),
+    ("div undefined attr", "{{ missing.x / 2 }}"),
+    ("floordiv undefined attr", "{{ missing.x // 2 }}"),
+    ("mod undefined attr", "{{ missing.x % 2 }}"),
+    ("neg undefined", "{{ -missing }}"),
+    ("neg undefined attr", "{{ -missing.x }}"),
+    ("neg string", "{{ -'a' }}"),
+    ("range zero step", "{{ range(1, 5, 0) }}"),
+]
+
+
 def main():
     env = jinja2.Environment(trim_blocks=True, lstrip_blocks=True)
     context = dict(name="world", nums=[1, 2, 3], enabled=True, nothing=None, obj={"x": 4})
     cases = [[name, template, env.from_string(template).render(context)] for name, template in TEMPLATES]
+    errors = [[name, template, error_message(env, template, context)] for name, template in ERROR_TEMPLATES]
     macro_source = "{% macro hi(x) %}Hi {{ x }}{% endmacro %}"
     macro = env.parse(macro_source).body[0]
-    write("jinja2", "Jinja2 chat-environment renders over a fixed JSON-like context.",
+    write("jinja2", "Jinja2 chat-environment renders and failure messages over a fixed JSON-like context.",
           {"jinja2": jinja2.__version__}, {
               "RENDERS": cases, "CHARS": list("aé🙂"), "REVERSED": "aé🙂"[::-1],
               "SPLIT": " a\t b\n c ".split(), "SEP_SPLIT": "a,,b,".split(","),
@@ -127,7 +152,17 @@ def main():
               "PRETTY_LIST_JSON": json.dumps([1, 2], indent=2),
               "FLOORDIV": -7 // 3, "MODULO": -7 % 3,
               "MACRO_SOURCE": macro_source, "MACRO_NAME": macro.name, "MACRO_PARAMS": [arg.name for arg in macro.args],
+              "ERRORS": errors,
           })
+
+
+def error_message(env, template, context):
+    """CPython's exception text for a template the port also rejects."""
+    try:
+        env.from_string(template).render(context)
+    except Exception as error:
+        return str(error)
+    raise AssertionError(f"oracle template unexpectedly rendered: {template}")
 
 
 if __name__ == "__main__":

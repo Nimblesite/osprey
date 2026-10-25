@@ -335,10 +335,20 @@ def closure_slices():
         "VECTOR_SLICE": slice_rows(v, "v", 1, 3),
         "SCALAR_BYTES": dump_bytes(s),
         "SCALAR_VALUE": open_numpy(s, lambda f: f.get_tensor("x").reshape(-1).tolist()),
+        "SCALAR_SLICE_ERROR": scalar_slice_error(s),
         "ZERO_BYTES": dump_bytes(z),
         "ZERO_KEYS": open_numpy(z, lambda f: sorted(f.keys())),
         "SLICE_NOTFOUND": slice_error(MULTI, "missing"),
     }
+
+
+def scalar_slice_error(buf):
+    """The upstream rejection for slicing a tensor with no dimensions."""
+    try:
+        slice_rows(buf, "x", 0, 1)
+    except safetensors.SafetensorError as error:
+        return str(error)
+    raise AssertionError("the scalar slice unexpectedly succeeded")
 
 
 def closure_float_encodings():

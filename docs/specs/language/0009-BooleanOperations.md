@@ -50,8 +50,7 @@ let blocked = !isActive
 
 ## What `==` and `!=` compare [BOOL-EQUALITY]
 
-`==` and `!=` are defined for exactly these operands. Each answer is a
-constant-time check on the value itself:
+`==` and `!=` are defined for these operands. Numeric, boolean and variant-tag checks take constant time. String comparisons scan bytes and can take time proportional to the string length.
 
 | Operand type | `==` is true when |
 | --- | --- |
@@ -65,25 +64,13 @@ constant-time check on the value itself:
 The last row is a variant test. It reads only the variant, never a payload,
 so it is defined even when other variants of the union carry payloads.
 
-**Everything else is a compile error, because its meaning is not decided.**
-This covers records, tuples, lists, maps, union values that may carry a
-payload (`Circle { r: 2 } == Circle { r: 2 }`), functions, runtime handles
-such as fibers and channels, and `Unit`. Until this rule, these operands
-compared references, so two values with equal contents compared unequal,
-silently. The error names the operand type and points at the alternatives:
+Other operands are compile errors: records, tuples, lists, maps, union values that may carry a payload (`Circle { r: 2 } == Circle { r: 2 }`), functions, runtime handles such as fibers and channels, and `Unit`. The error names the operand type and suggests alternatives:
 
 ```
 cannot compare `Route` with `==`: equality is decided only for int, float, string, bool and payload-free union variants; compare a key, id or revision field, or call `structuralEquals(a, b)` for a deliberate deep comparison
 ```
 
-Whether `==` should ever compare the contents of an aggregate is **not
-decided**. Rejecting those comparisons keeps every possible decision open,
-because no program can come to depend on an answer the language has not
-given. Comparing contents walks both values completely, so it is deliberately
-not something an operator does implicitly. When a program really needs it, it
-calls [`structuralEquals`](../runtime/0012-Built-InFunctions.md#structural-comparison--builtin-structural-equals),
-and the cost is visible at the call. Most programs need neither: comparing a
-key, an id or a revision field answers the same question in constant time.
+Use [`structuralEquals`](../runtime/0012-Built-InFunctions.md#structural-comparison--builtin-structural-equals) for a supported deep content comparison. It traverses the values being compared. Comparing an integer ID or revision field is a constant-time alternative when that field defines the identity you need.
 
 A generic function may compare values of a type parameter. The requirement
 travels with the function's type, and each call site is checked at its own

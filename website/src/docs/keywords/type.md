@@ -4,7 +4,7 @@ title: "type (Keyword)"
 description: "Type declaration keyword. Used to define custom types and type aliases."
 ---
 
-**Description:** Type declaration keyword. Used to define custom types and type aliases.
+`type` declares an alias, tagged union or record type. Here `UserId` names `int`, `Status` has two variants, and `User` has named fields.
 
 ## Example
 

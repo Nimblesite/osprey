@@ -302,15 +302,22 @@ def slice_edge_cases():
     row = unwrap_or(SafeTensors.get_slice(m, "m", 2, 3), empty_tensor())
     none = unwrap_or(SafeTensors.get_slice(m, "m", 1, 1), empty_tensor())
     part = unwrap_or(SafeTensors.get_slice(v, "v", 1, 3), empty_tensor())
-    scalar = unwrap_or(SafeTensors.get_slice(s, "x", 0, 1), empty_tensor())
     whole = unwrap_or(SafeTensors.get_tensor(s, "x"), empty_tensor())
     return [
         Check.close_all("slice.one_row", row.floats, Expected.SLICE_ONE_ROW, RTOL, ATOL),
         Check.close_all("slice.empty_rows", none.floats, Expected.SLICE_EMPTY_ROWS, RTOL, ATOL),
         Check.close_all("slice.vector", part.floats, Expected.VECTOR_SLICE, RTOL, ATOL),
-        Check.close_all("slice.scalar", scalar.floats, Expected.SCALAR_VALUE, RTOL, ATOL),
+        slice_error_check("slice.scalar", SafeTensors.get_slice(s, "x", 0, 1), Expected.SCALAR_SLICE_ERROR),
         Check.close_all("slice.scalar_whole", whole.floats, Expected.SCALAR_VALUE, RTOL, ATOL),
     ]
+
+
+def slice_error_check(tag, result, want):
+    match result:
+        case Success():
+            return Check.failed(tag, "get_slice succeeded instead of rejecting the scalar")
+        case Error(message=message):
+            return Check.equal(tag, message, want)
 
 
 def zero_shape_cases():

@@ -1,14 +1,14 @@
 ---
 layout: page
 title: Package manager
-description: Osprey's package manager is Osprey end to end. A registry is a folder, the client verifies every byte it installs, releases are epochs and ordinals instead of SemVer, one deterministic solver resolves a graph, and build and run obey the lock offline.
+description: Resolve, verify and build Osprey source packages from a folder registry, with exact release locks, local overrides and Python dependencies through uv.
 permalink: /docs/package-manager/
 tags: [packages, registry, resolution]
 ---
 
-Osprey's package manager is written in Osprey from the HTTP server down to the SHA-256. The registry API, the client, the TOML parser, the manifest rules, the canonical digests, the CDCL resolver, the lock and the tests are Osprey source compiled by the Osprey compiler. There is no Rust host, no shell bridge, no JavaScript service and no database behind the first registry. The binding contract is spec 0029's [`[PACKAGE-IMPLEMENTATION-LANGUAGE]`](/spec/0029-packagemanagement/), and a conformance gate in the test suite rejects any executable file in the package system that is not Osprey.
+The package client, folder-registry server, manifest parser, resolver, digests and tests are written in Osprey. Platform operations use the existing runtime builtins; the current filesystem and process handlers invoke POSIX `find`, `mkdir` and shell redirection. Windows host support is not established. The [implementation contract](/spec/0029-packagemanagement/) requires the package-system logic to remain Osprey source.
 
-The design is fixed by [spec 0029](/spec/0029-packagemanagement/), [spec 0030](/spec/0030-packageregistrytrustanddiscovery/), [spec 0031](/spec/0031-packagedomainmodel/) and [spec 0032](/spec/0032-packageevidenceanddiscovery/). This page is the working guide to what those specs mean in practice and what runs today.
+The contracts cover [manifests and commands](/spec/0029-packagemanagement/), [trust services](/spec/0030-packageregistrytrustanddiscovery/), the [domain model](/spec/0031-packagedomainmodel/) and [verification evidence](/spec/0032-packageevidenceanddiscovery/).
 
 ## Get started with the working registry
 
@@ -59,10 +59,10 @@ flowchart LR
   S -->|writes| L["osprey.lock<br/>RFC 8785 canonical JSON"]
   L -->|fetch| P["installed trees<br/>verified by SourceDigest"]
   P -->|verify --offline| V["manifest, edges and<br/>every digest agree"]
-  V -->|build / run| C["Osprey compiler<br/>packages as source roots"]
+  V -->|build --run| C["Osprey compiler<br/>packages as source roots"]
 ```
 
-`lock` selects exact releases through the solver. `fetch` downloads their source from the registry; after installation, `verify --offline`, `build` and `run` use the lock and installed trees without network access. Each verification step re-derives the digests it depends on rather than trusting a cache.
+`lock` selects exact releases through the solver. `fetch` downloads their source. After installation, `verify --offline`, `build` and `build --run` verify the lock and installed trees without registry access. The application started by `build --run` may still use the network. Each verification step re-derives its digests.
 
 ## A registry is a folder
 
@@ -235,7 +235,7 @@ Spec 0029 `[PACKAGE-THREATS]` defines the threat model. The folder registry impl
 | Install-time code execution | Osprey source packages have no lifecycle hooks, build scripts or post-install step. Python interop delegates environment creation to `uv sync --frozen`; the Osprey source-only guarantee does not cover Python dependency installation. |
 | Publisher-supplied archives | Milestone B: the registry will derive releases from bound forge commits. Today, `publish --folder` validates a local source tree and places it in the registry folder; it does not authenticate a forge commit. |
 | Tampered or substituted bytes | A release is its canonical `SourceDigest`. The client recomputes it before writing a single file; a lock pins it; `build` refuses a tree whose digest drifted. |
-| Floating versions | No SemVer, no ranges, no "latest". A dependency names an epoch and a floor; the lock pins exact releases; `build` and `run` never resolve. |
+| Floating versions | A dependency names an epoch and a floor; the lock pins exact releases. `build`, including `build --run`, never resolves dependencies. |
 | Dependency confusion and typosquatting | One canonical scoped key per package, exactly one source per key in every graph, published path and Git dependencies rejected, Unicode confusables and case-fold collisions refused by the name and path grammars. |
 | Native binaries and installers | Native needs are declared system capabilities; `doctor` reports guidance. Approved provider catalogs are planned. Osprey never downloads a native binary or invokes an OS package installer. |
 | Compromised registry, mirror or CDN | Milestone B: a TUF 1.0 trust root with 3-of-5 offline keys, 2-of-3 release roles, consistent snapshots, expiry and version floors, so no single online component can make a client accept unauthorized, rolled-back, frozen, expired or substituted source. |
