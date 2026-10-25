@@ -125,13 +125,7 @@ fn emit_arm(
 /// Open a guarded arm: branch on `cond` into a fresh body block, make that
 /// block current, and hand back the fall-through label the next arm starts at.
 fn open_guarded_arm(cg: &mut Codegen, cond: &str) -> String {
-    let body_lbl = cg.fresh_label();
-    let next_lbl = cg.fresh_label();
-    cg.emit(format!(
-        "br i1 {cond}, label %{body_lbl}, label %{next_lbl}"
-    ));
-    cg.start_block(&body_lbl);
-    next_lbl
+    cg.open_guard(cond)
 }
 
 /// Complete a guarded arm after its shape-specific bindings have been emitted.

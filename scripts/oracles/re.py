@@ -254,11 +254,14 @@ def main():
         (r"(?P<x>\w+)", r"[\g<x>]", "foo bar", 0, 0),
         (r"\s+", "_", "a b  c", 0, 0), ("x*", "-", "abc", 0, 0),
         ("", "-", "abc", 0, 0), (r"\.", r"\.", "a.b", 0, 0),
+        (r"(z)", r"\n\t\r\\", "z z", 0, 0),
+        (r"(?P<item>z)", r"\g<item>\n", "z-z", 0, 0),
     ]]
 
     subn_cases = [subncase(p, r, t, c, f) for p, r, t, c, f in [
         ("a", "X", "banana", 0, 0), ("a", "X", "banana", 2, 0),
         (r"(a)", r"<\1>", "bac", 0, 0), (r"\d", "#", "a1b2c3", 0, 0),
+        ("z", r"\r\t\n\\", "z z", 1, 0),
     ]]
 
     escape_cases = [[t, re.escape(t)] for t in [

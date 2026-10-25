@@ -12,6 +12,7 @@ pub mod effect_name;
 pub mod freevars;
 mod generics;
 mod handler_value;
+pub mod json;
 mod kernel;
 mod lower_static;
 pub mod multiplicity;

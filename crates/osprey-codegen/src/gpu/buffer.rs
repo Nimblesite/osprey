@@ -72,10 +72,7 @@ pub(super) fn push_kept(cg: &mut Codegen, out: &Value, kept: &str, word: &str) {
 /// Append `word` only when `verdict` (an `i1` operand) holds — one compaction
 /// step of `gpuFilter` [GPU-FILTER].
 pub(super) fn push_if_kept(cg: &mut Codegen, verdict: &str, out: &Value, kept: &str, word: &str) {
-    let keep = cg.fresh_label();
-    let skip = cg.fresh_label();
-    cg.emit(format!("br i1 {verdict}, label %{keep}, label %{skip}"));
-    cg.start_block(&keep);
+    let skip = cg.open_guard(verdict);
     push_kept(cg, out, kept, word);
     cg.emit(format!("br label %{skip}"));
     cg.start_block(&skip);

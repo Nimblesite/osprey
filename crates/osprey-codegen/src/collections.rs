@@ -411,10 +411,7 @@ fn list_contains(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 
     let lp = open_list_loop(cg, &l.operand);
     let eq = element_equals(cg, &lp.elem, &needle, &boxed.operand);
-    let found = cg.fresh_label();
-    let cont = cg.fresh_label();
-    cg.emit(format!("br i1 {eq}, label %{found}, label %{cont}"));
-    cg.start_block(&found);
+    let cont = cg.open_guard(&eq);
     cg.emit(format!("store i1 1, i1* {res}"));
     cg.emit(format!("br label %{cont}"));
     cg.start_block(&cont);

@@ -9,7 +9,6 @@
 //! HIGHER percentage over a smaller universe, and reads exactly like success.
 
 use std::collections::BTreeMap;
-use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 /// One suite's parsed coverage dump, or one source file's share of it: line
@@ -248,29 +247,7 @@ pub(crate) fn write_coverage_json(out: &str, report: &BTreeMap<String, LineHits>
 /// invalid JSON and then report that it had successfully produced the
 /// machine-readable artifact the caller asked for.
 fn json_string(text: &str) -> String {
-    let mut out = String::with_capacity(text.len() + 2);
-    out.push('"');
-    for ch in text.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            '\u{8}' => out.push_str("\\b"),
-            '\u{c}' => out.push_str("\\f"),
-            // Everything else below U+0020 has no short form and must go out as
-            // a \u escape; above it, the character is legal JSON as written.
-            // Writing into a String cannot fail; the Result exists because the
-            // same trait also serves sinks that can.
-            control if control < ' ' => {
-                let _ = write!(out, "\\u{:04x}", u32::from(control));
-            }
-            plain => out.push(plain),
-        }
-    }
-    out.push('"');
-    out
+    osprey_ast::json::quoted(text, osprey_ast::json::Escaping::Standard)
 }
 
 #[cfg(test)]

@@ -1,9 +1,9 @@
 ---
 layout: page.njk
 title: "GPT-2 Runs on Osprey’s GPU Backend, in the Python Flavor Too"
-excerpt: "A real language model, written in Osprey’s Default flavor and again in its Python flavor, generating identical text on the CPU and the GPU. An algebraic effect handler chooses where the arithmetic runs, and a training step on Metal or OpenCL is 3.3× faster than on the CPU on an Apple M4 Max."
+excerpt: "GPT-2 generation in Osprey’s Default and Python syntax flavors, with CPU and GPU handlers. Recorded Apple M4 Max measurements include a 3.3× training-step speedup on Metal."
 description: "How Osprey runs the published GPT-2 model on CPUs and GPUs from Default and Python-flavor source, what Metal and OpenCL support today, and where performance is improving."
-modified: 2026-10-17
+modified: 2026-10-25
 tags: ["blog", "gpu", "gpt2", "machine-learning", "python-flavor"]
 author: "Christian Findlay"
 readingTime: 4
@@ -14,13 +14,13 @@ imageAlt: "A cyan wireframe osprey above a GPU chip and layered grids of glowing
 
 Osprey can run **GPT-2, the 124-million-parameter language model, on a GPU**. It loads the weights [exactly as Hugging Face publishes them](https://huggingface.co/openai-community/gpt2), generates text and runs a training step. The model itself is Osprey code: attention, matrix multiplication, predictions and weight updates.
 
-**The model is also written in Osprey’s [Python flavor](/docs/python-flavor/).** Python-flavor source looks like typed Python, with `def`, annotations and decorated classes, but it is Osprey, not Python: the `osprey` compiler turns it into a native program, and CPython never runs it. The Python-flavor GPT-2 imports no Default-flavor code and prints exactly the same bytes as the Default version on host lists, Metal and OpenCL.
+**The model is also written in Osprey’s [Python syntax flavor](/docs/python-flavor/).** A syntax flavor is a way to write Osprey: this one uses `def`, indentation, f-strings and decorated effect declarations. The Osprey compiler builds it as a native program. The Python-flavor GPT-2 imports no Default-flavor code and matches the Default version’s generated text on host lists, Metal and OpenCL in the recorded runs.
 
 On an Apple M4 Max, the training step takes **7.6 seconds on Metal versus 25.2 seconds on the CPU**: about **3.3× faster**. Metal and OpenCL run the same model source.
 
 ## Written in the Python flavor
 
-Osprey reads source through flavors. Each flavor parses its own syntax tree and lowers it into one shared AST, so inference, effects, modules and code generation are the same whichever syntax you write. The Python flavor is one of these flavors. Here is the GPT-2 effect and its GPU handler, from [the Python-flavor port](https://github.com/Nimblesite/osprey/tree/main/examples/gpt2/python). The marker on the first line is what makes a `.py` file Osprey:
+Default, ML and Python syntax flavors lower into one shared AST, with the same type inference, effects, modules and code generation. Here is the GPT-2 effect and GPU handler from [the Python-flavor port](https://github.com/Nimblesite/osprey/tree/main/examples/gpt2/python). The first-line marker tells the compiler to parse these Osprey source files using Python-style syntax:
 
 ```python
 # osprey: flavor=python
@@ -43,7 +43,7 @@ def product(a, b, rows, inner, cols):
     return perform(Tensor.mat_mul(a, b, rows, inner, cols))
 ```
 
-The [Python flavor guide](/docs/python-flavor/) covers the rest of the syntax: functions, records, `match`, effects, handlers, modules and mixed-flavor projects. It also explains how the Python flavor differs from Python itself: there is no interpreter, no Python packages and no exceptions, and so far only generation has been ported; training is still Default-only.
+The [Python flavor guide](/docs/python-flavor/) covers functions, records, `match`, effects, handlers and mixed-flavor projects. Calls to CPython libraries use an explicit [Python-hosted bridge](/spec/0042-pythoninterop/); this GPT-2 port runs natively without CPython. Generation is available in both syntax flavors; the training example is currently Default-only.
 
 ## Write the model once
 
