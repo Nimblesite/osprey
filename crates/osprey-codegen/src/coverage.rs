@@ -279,7 +279,10 @@ mod tests {
         cg.finish_function("i64", "f", &[]);
         cg.cov_emit_boot(); // extern must land even without a real main here
         let init = cg.cov_render_init().expect("coverage active");
-        assert!(init.contains("call void @osp_cov_register_line(i64 4, i64* @__osp_cov_hits.4)"));
+        crate::testkit::shows(
+            &init,
+            &["call void @osp_cov_register_line(i64 4, i64* @__osp_cov_hits.4)"],
+        );
         let module = cg.render();
         assert_eq!(
             module
@@ -315,7 +318,7 @@ mod tests {
         };
         cg.cov_seed(&program);
         let init = cg.cov_render_init().unwrap_or_default();
-        assert!(init.contains("i64 3,"), "{init}");
+        crate::testkit::shows(&init, &["i64 3,"]);
         assert!(!init.contains(&format!("i64 {},", prelude.line)), "{init}");
         assert!(!cg
             .render()
@@ -384,7 +387,7 @@ mod tests {
         cg.emit("ret i64 0");
         cg.finish_function("i64", "caller", &[]);
         let module = cg.render();
-        assert!(module.contains("@__osp_cov_hits.8 = internal global i64 0"));
+        crate::testkit::shows(&module, &["@__osp_cov_hits.8 = internal global i64 0"]);
         assert_eq!(module.matches("store i64").count(), 1);
     }
 }

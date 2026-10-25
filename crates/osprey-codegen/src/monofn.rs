@@ -388,10 +388,7 @@ print("${listening}${alsoListening}")
             "a second registration must reuse the instantiation, not emit \
              another:\n{module}"
         );
-        assert!(
-            !module.contains("@handler("),
-            "the generic stem must never be referenced:\n{module}"
-        );
+        crate::testkit::contents(&module, &[], &["@handler("]);
 
         // The ABI is the builtin's declared callback type — four strings in,
         // one response pointer out — because that is the one signature the C
@@ -434,9 +431,6 @@ print("${listening}${alsoListening}")
 
         // And the counter still EXISTS — a bump that moved nowhere would pass
         // both assertions above.
-        assert!(
-            module.contains("@__osp_cov_hits.1 = internal global i64 0"),
-            "line 1 must still be a registered coverable line:\n{module}"
-        );
+        crate::testkit::shows(&module, &["@__osp_cov_hits.1 = internal global i64 0"]);
     }
 }

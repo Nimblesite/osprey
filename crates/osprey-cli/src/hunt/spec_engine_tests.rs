@@ -205,10 +205,7 @@ fn the_module_is_x86_64_linux_with_one_strong_cap_for_every_cap() {
             for host in ["aarch64", "arm64", "apple", "windows", "msvc"] {
                 assert!(!module.contains(host), "{host}");
             }
-            assert!(
-                !module.contains("weak"),
-                "the cap overrides the mock's weak default"
-            );
+            crate::testkit::contents(&module, &[], &["weak"]);
         }
     }
 }
@@ -239,12 +236,12 @@ fn the_hunt_corpus_lowers_symbolically_at_every_cap() {
             let module = module::symbolic_module(&input, cap).expect("symbolic build");
             assert!(module.starts_with("target datalayout"), "{path}");
             assert!(module.ends_with(&format!("@osp_hunt_input_bytes = global i64 {cap}\n")));
-            assert!(module.contains("!DILocation"), "{path}");
+            crate::testkit::shows(&module, &["!DILocation"]);
             assert!(
                 module.contains(name.as_deref().unwrap_or_default()),
                 "{path}"
             );
-            assert!(!module.contains("optnone"), "{path}");
+            crate::testkit::contents(&module, &[], &["optnone"]);
         }
     }
 }

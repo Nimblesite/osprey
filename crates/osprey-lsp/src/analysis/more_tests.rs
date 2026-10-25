@@ -92,7 +92,7 @@ fn structured_sections_render_in_hover() {
                    /// the quotient\n\
                    fn div(a, b) = intDiv(a, b)\n";
     let d = doc_for(src, "div").expect("div doc");
-    assert!(d.contains("Divides two numbers."), "{d}");
+    crate::testkit::shows(&d, &["Divides two numbers."]);
     assert!(d.contains("**Parameters**") && d.contains("`a`"), "{d}");
     assert!(
         d.contains("**Returns**") && d.contains("the quotient"),

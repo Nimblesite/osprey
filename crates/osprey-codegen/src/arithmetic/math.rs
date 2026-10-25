@@ -298,7 +298,7 @@ mod tests {
         let ir = render(&mut |cg| {
             let _ = bit_not(cg, Value::new("12", LType::I64)).unwrap();
         });
-        assert!(ir.contains("xor i64 12, -1"), "{ir}");
+        shows(&ir, &["xor i64 12, -1"]);
     }
 
     #[test]

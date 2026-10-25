@@ -254,18 +254,18 @@ mod tests {
     #[test]
     fn hover_shows_constrained_builtin_receiver_types() {
         let length = builtin_hover_markdown("length").expect("length is documented");
-        assert!(
-            length.contains("length(s: string | List<T> | Map<string, V>) -> int"),
-            "{length}"
+        shows(
+            &length,
+            &["length(s: string | List<T> | Map<string, V>) -> int"],
         );
         let print = builtin_hover_markdown("print").expect("print is documented");
-        assert!(print.contains("Result<printable, printable>"), "{print}");
+        shows(&print, &["Result<printable, printable>"]);
     }
 
     #[test]
     fn zero_arg_builtin_omits_the_parameters_section() {
         let md = builtin_hover_markdown("input").expect("input is documented");
-        assert!(md.contains("input() -> string"), "{md}");
-        assert!(!md.contains("**Parameters**"), "{md}");
+        shows(&md, &["input() -> string"]);
+        crate::testkit::contents(&md, &[], &["**Parameters**"]);
     }
 }

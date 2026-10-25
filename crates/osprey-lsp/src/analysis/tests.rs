@@ -142,20 +142,11 @@ print(describeAny(42) + "!")
         lspkit_vfs::PositionEncoding::Utf16,
     )
     .expect("hover over `describeAny`");
-    assert!(
-        hovered.contains("-> string"),
-        "hover already knows the return type is string; got {hovered}"
-    );
+    crate::testkit::shows(&hovered, &["-> string"]);
 
     // The bug, asserted three ways so a partial fix cannot pass.
-    assert!(
-        !json.contains("\"returnType\":\"Unit\""),
-        "an inferred return type must not be reported as Unit; got {json}"
-    );
-    assert!(
-        !json.contains("-> Unit"),
-        "the rendered signature must not claim `-> Unit`; got {json}"
-    );
+    crate::testkit::contents(&json, &[], &["\"returnType\":\"Unit\""]);
+    crate::testkit::contents(&json, &[], &["-> Unit"]);
     for frag in [
         "\"returnType\":\"string\"",
         "\"signature\":\"fn describeAny(v: any) -> string\"",
@@ -222,14 +213,8 @@ fn a_partially_resolved_return_type_reports_its_proven_part_never_unit() {
     let parsed = osprey_syntax::parse_program(src);
     assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
     let json = symbols_json(&parsed.program);
-    assert!(
-        !json.contains("Unit"),
-        "the checker refutes `Unit` for this body; got {json}"
-    );
-    assert!(
-        json.contains("\"returnType\":\"Result<int, _>\""),
-        "the proven payload must survive with a hole for the free side; got {json}"
-    );
+    crate::testkit::contents(&json, &[], &["Unit"]);
+    crate::testkit::shows(&json, &["\"returnType\":\"Result<int, _>\""]);
     assert!(
         !json.contains(">\"t") && !json.contains(", t6"),
         "a private inference name must never reach a reader; got {json}"

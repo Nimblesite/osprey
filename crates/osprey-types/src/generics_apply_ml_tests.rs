@@ -20,7 +20,7 @@ fn ml_binding(prefix: &str, binding: &str, value: &str) -> String {
 spec_cases! {
     /// "Call-site type arguments attach to the callee name and precede the
     /// juxtaposed argument: `identity<int> 5`."
-    ml_type_application_pins_a_binder: accepts(Ml, ml_binding(ML_IDENTITY, "pinned", r#"identity<int> 5"#));
+    ml_type_application_pins_a_binder: accepts(Ml, ml_binding(ML_IDENTITY, "pinned", r"identity<int> 5"));
 
     /// The ML twin of the no-parameter-position case.
     ml_type_application_pins_a_binder_no_argument_mentions: accepts(Ml, r#"empty<T> : Unit -> List<T>
@@ -36,7 +36,7 @@ print "${length held}""#);
 
     /// The arity contract lives in the shared core, so ML reports the same
     /// sentence as Default ([FLAVOR-BOUNDARY]).
-    ml_type_application_arity_is_checked: rejects_with(Ml, ml_binding(ML_IDENTITY, "pinned", r#"identity<int, string> 5"#), fn_arity_message("identity", 1, 2));
+    ml_type_application_arity_is_checked: rejects_with(Ml, ml_binding(ML_IDENTITY, "pinned", r"identity<int, string> 5"), fn_arity_message("identity", 1, 2));
 
     /// "A binding without a signature cannot declare function type parameters" —
     /// and so cannot be applied at a call site either.
@@ -56,10 +56,10 @@ flag = lower (1, 2)
 print "${toString flag}""#);
 
     /// The ML gap rule matches Default's: `identity <int> 5` is not application.
-    ml_a_gap_before_the_angle_is_not_type_application: rejected_somehow(Ml, ml_binding(ML_IDENTITY, "pinned", r#"identity <int> 5"#));
+    ml_a_gap_before_the_angle_is_not_type_application: rejected_somehow(Ml, ml_binding(ML_IDENTITY, "pinned", r"identity <int> 5"));
 
     /// ML variance markers are declaration-site only, at the call site as well.
-    ml_a_variance_marker_at_a_call_site_is_rejected: rejected_somehow(Ml, ml_binding(ML_IDENTITY, "pinned", r#"identity<out int> 5"#));
+    ml_a_variance_marker_at_a_call_site_is_rejected: rejected_somehow(Ml, ml_binding(ML_IDENTITY, "pinned", r"identity<out int> 5"));
 
     /// Curry-by-default: the written arguments attach to the callee name, so a
     /// curried application takes them exactly once, at the front.
@@ -112,16 +112,16 @@ print "${{n}} ${{s}}""#
     /// where `int` was pinned still fails. The layer that catches it is not pinned
     /// — under curry-by-default this reads as either an arity or a unification
     /// failure, and both are truthful rejections.
-    ml_writing_type_arguments_does_not_excuse_the_value_argument: rejected_somehow(Ml, ml_binding(ML_IDENTITY, "pinned", r#"identity<int> ()"#));
+    ml_writing_type_arguments_does_not_excuse_the_value_argument: rejected_somehow(Ml, ml_binding(ML_IDENTITY, "pinned", r"identity<int> ()"));
 
     /// A pipe target has no juxtaposed argument, so it is not an application site.
-    ml_type_arguments_in_a_pipe_target_are_rejected: rejected_somehow(Ml, ml_binding(ML_IDENTITY, "pinned", r#"5 |> identity<int>"#));
+    ml_type_arguments_in_a_pipe_target_are_rejected: rejected_somehow(Ml, ml_binding(ML_IDENTITY, "pinned", r"5 |> identity<int>"));
 
     /// An undeclared type name is not a type argument.
-    ml_an_undeclared_type_argument_is_rejected: rejected_somehow(Ml, ml_binding(ML_IDENTITY, "pinned", r#"identity<Nope> 5"#));
+    ml_an_undeclared_type_argument_is_rejected: rejected_somehow(Ml, ml_binding(ML_IDENTITY, "pinned", r"identity<Nope> 5"));
 
     /// An empty argument list is not a type list in ML either.
-    ml_an_empty_type_argument_list_is_rejected: rejected_somehow(Ml, ml_binding(ML_IDENTITY, "pinned", r#"identity<> 5"#));
+    ml_an_empty_type_argument_list_is_rejected: rejected_somehow(Ml, ml_binding(ML_IDENTITY, "pinned", r"identity<> 5"));
 
     /// Type application inside a lambda body and a match arm.
     ml_type_application_works_inside_lambdas_and_match_arms: accepts(Ml, format!(

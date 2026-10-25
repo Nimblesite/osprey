@@ -34,7 +34,7 @@ mod tests {
     fn wrapped_module_targets_x86_64_and_sets_the_stream_cap() {
         let module = wrap("define i32 @main() {\n  ret i32 0\n}", 8);
         assert!(module.starts_with("target datalayout"));
-        assert!(module.contains("target triple = \"x86_64-unknown-linux-gnu\""));
+        crate::testkit::shows(&module, &["target triple = \"x86_64-unknown-linux-gnu\""]);
         assert!(module.ends_with("@osp_hunt_input_bytes = global i64 8\n"));
     }
 
@@ -45,6 +45,6 @@ mod tests {
         let input = CompilationInput::script("hunt.osp", source.to_string(), parsed.program);
         let module = symbolic_module(&input, 16).expect("symbolic module");
         assert!(module.contains("!DILocation") && module.contains("hunt.osp"));
-        assert!(module.contains("@osp_hunt_input_bytes = global i64 16"));
+        crate::testkit::shows(&module, &["@osp_hunt_input_bytes = global i64 16"]);
     }
 }

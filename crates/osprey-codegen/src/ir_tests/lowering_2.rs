@@ -7,12 +7,9 @@ use super::*;
 #[test]
 fn erased_values_render_through_their_descriptor() {
     let ir = module("fn dynamic() -> any = \"a\" + \"b\"\nprint(\"${dynamic()}\")\n");
-    assert!(ir.contains("call i8* @osp.any.to_string(i8* "));
+    shows(&ir, &["call i8* @osp.any.to_string(i8* "]);
     let renderer = function_body(&ir, "define internal i8* @osp.any.to_string(i8* %box)");
-    assert!(
-        renderer.contains("call i8* %r"),
-        "the shared entry must dispatch through the descriptor's render slot:\n{renderer}"
-    );
+    shows(&renderer, &["call i8* %r"]);
 }
 
 /// A structural arm over an erased scrutinee narrows by descriptor
@@ -42,10 +39,7 @@ fn structural_narrowing_compares_descriptors() {
     );
     // The erasure deep-boxes through the per-layout boxer, whose slots
     // hold one child box per field.
-    assert!(
-        ir.contains("call i8* @osp.any.boxrow.Point"),
-        "a record erasure must deep-box:\n{ir}"
-    );
+    shows(&ir, &["call i8* @osp.any.boxrow.Point"]);
 }
 
 /// Over a CONCRETE record scrutinee the same structural arm selects
@@ -78,7 +72,7 @@ fn named_arguments_are_ordered_by_declaration() {
     // Call sites pass b before a; the emitted call must follow declared order.
     // The total helper keeps this fixture focused on argument order.
     let ir = module("fn sub(a, b) = wrapSub(a, b)\nlet r = sub(b: 1, a: 9)\n");
-    assert!(ir.contains("@sub(i64 9, i64 1)"));
+    shows(&ir, &["@sub(i64 9, i64 1)"]);
     let external = module(
         "extern fn takeFirst(first: int, second: int) -> int\n\
              fn namedWitness() -> int = takeFirst(second: 22, first: 11)\n",
@@ -192,7 +186,7 @@ fn iterator_lambda_callbacks_inline_and_let_bound() {
                range(0, 3) |> map(f) |> forEach(fn(x: int) => print(\"v=${x}\"))\n\
              }\n",
     );
-    assert!(ir.contains("call"));
+    shows(&ir, &["call"]);
 }
 
 #[test]
@@ -242,7 +236,7 @@ fn nested_closure_returns_closure_value_in_block_tail() {
                print(\"${a()} ${b()}\")\n\
              }\n",
     );
-    assert!(ir.contains("private unnamed_addr constant { i8* }"));
+    shows(&ir, &["private unnamed_addr constant { i8* }"]);
 }
 
 #[test]
@@ -340,14 +334,8 @@ fn positional_binders_ignore_field_names_even_when_they_collide() {
     // pointer `ptrtoint`-cast to i64 out of an `-> int` function, so the
     // program printed a raw heap address that changed between runs.
     let body = function_body(&ir, "define internal i64 @secondSlot");
-    assert!(
-        !body.contains("ptrtoint"),
-        "an `-> int` arm must not return a payload pointer as an int:\n{body}"
-    );
-    assert!(
-        body.contains("phi i64"),
-        "the column-1 binder must carry slot 1's int type:\n{body}"
-    );
+    testkit::contents(&body, &[], &["ptrtoint"]);
+    shows(&body, &["phi i64"]);
 }
 
 #[test]
@@ -370,10 +358,7 @@ fn a_positional_declaration_binds_by_column_through_the_named_form() {
     // Slot 0 is payload field 1; loading it as an i8* is the only way the
     // binder could have resolved to a column rather than to a name.
     let body = function_body(&ir, "define internal i8* @why");
-    assert!(
-        body.contains("load i8*, i8**"),
-        "the column-0 binder must load the positional payload slot:\n{body}"
-    );
+    shows(&body, &["load i8*, i8**"]);
 }
 
 #[test]
@@ -438,5 +423,5 @@ fn result_match_success_and_error_arms() {
                }\n\
              }\n",
     );
-    assert!(ir.contains("icmp eq i8"));
+    shows(&ir, &["icmp eq i8"]);
 }

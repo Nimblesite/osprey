@@ -102,7 +102,7 @@ mod tests {
         let inlined = script();
         assert!(inlined.is_ok(), "{inlined:?}");
         let inlined = inlined.unwrap_or_default();
-        assert!(inlined.contains("const ospreyGrammar ="), "{inlined}");
+        crate::testkit::shows(&inlined, &["const ospreyGrammar ="]);
         assert!(
             inlined
                 .lines()

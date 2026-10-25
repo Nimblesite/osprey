@@ -275,8 +275,8 @@ mod tests {
             reason: "solver timeout".into(),
         });
         let text = incomplete_text(&items);
-        assert!(text.contains("incomplete: 8 path(s)"), "{text}");
-        assert!(text.contains("     7  cut at the time budget"), "{text}");
-        assert!(text.contains("     1  solver timeout"), "{text}");
+        crate::testkit::shows(&text, &["incomplete: 8 path(s)"]);
+        crate::testkit::shows(&text, &["     7  cut at the time budget"]);
+        crate::testkit::shows(&text, &["     1  solver timeout"]);
     }
 }

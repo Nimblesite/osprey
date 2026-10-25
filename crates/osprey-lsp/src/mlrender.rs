@@ -464,10 +464,7 @@ mod tests {
             ml.starts_with("```osprey-ml\nputs : string -> int\n```"),
             "{ml}"
         );
-        assert!(
-            ml.contains("**Example**\n```osprey\nputs(\"hi\")\n```"),
-            "{ml}"
-        );
+        crate::testkit::shows(&ml, &["**Example**\n```osprey\nputs(\"hi\")\n```"]);
         assert_eq!(ml.matches("```").count(), 4, "fences stay balanced:\n{ml}");
         // Default documents are handed back byte-for-byte.
         assert_eq!(hover_markdown(Flavor::Default, md), md);

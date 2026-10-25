@@ -354,7 +354,7 @@ mod tests {
         );
         // A zero-arg builtin renders no Parameters section.
         let input = page(&builtin_doc_view("input").expect("input documented"));
-        assert!(!input.contains("## Parameters"), "{input}");
+        crate::testkit::contents(&input, &[], &["## Parameters"]);
     }
 
     #[test]
@@ -418,14 +418,8 @@ mod tests {
             "a known builtin page written"
         );
         let index = fs::read_to_string(functions.join("index.md")).expect("index readable");
-        assert!(
-            index.contains("Built-in Functions"),
-            "index carries its heading"
-        );
-        assert!(
-            index.contains("sleep"),
-            "index lists each builtin: {index:.80}"
-        );
+        crate::testkit::shows(&index, &["Built-in Functions"]);
+        crate::testkit::shows(&index, &["sleep"]);
         let _ = fs::remove_dir_all(&dir);
     }
 

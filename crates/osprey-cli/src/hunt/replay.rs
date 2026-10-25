@@ -252,7 +252,7 @@ mod tests {
             &finding(Vec::new()),
         )
         .expect_err("missing");
-        assert!(error.contains("could not run"));
+        crate::testkit::shows(&error, &["could not run"]);
         let _ = std::fs::remove_dir_all(&workdir);
     }
 }

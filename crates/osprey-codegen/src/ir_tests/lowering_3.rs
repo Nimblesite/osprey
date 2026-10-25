@@ -18,7 +18,7 @@ fn match_result_constructor_arms_share_the_contextual_success_layout() {
             "fn find(key: string) -> Result<int, string> = match key {{\n{body}\n}}\n\
                  fn main() -> Unit = print(\"${{find(\"known\")}}\")\n"
         ));
-        assert!(ir.contains("phi { i64, i8, i8* }*"), "unexpected IR:\n{ir}");
+        shows(&ir, &["phi { i64, i8, i8* }*"]);
     }
 }
 
@@ -35,11 +35,8 @@ fn result_parameters_preserve_the_wrapper_for_named_functions_and_closures() {
              let wrapped = choose(7)\n\
              print(\"${failed}:${wrapped}\")\n",
     );
-    assert!(
-        named.contains("define internal i64 @choose(i8* %$p0)"),
-        "unexpected named-function IR:\n{named}"
-    );
-    assert!(named.contains("bitcast i8* %$p0 to { i64, i8, i8* }*"));
+    shows(&named, &["define internal i64 @choose(i8* %$p0)"]);
+    shows(&named, &["bitcast i8* %$p0 to { i64, i8, i8* }*"]);
 
     let closure = module(
         "let choose = fn(r: Result<int, Error>) => match r {\n\
@@ -79,14 +76,8 @@ fn result_match_on_a_scalar_discriminant_always_takes_success() {
                    }}\n\
                  }}\n"
         ));
-        assert!(
-            !ir.contains("icmp sge i64"),
-            "the sign of {scrutinee} must not select the arm:\n{ir}"
-        );
-        assert!(
-            ir.contains("br i1 true"),
-            "Success arm is unconditional for {scrutinee}:\n{ir}"
-        );
+        testkit::contents(&ir, &[], &["icmp sge i64"]);
+        shows(&ir, &["br i1 true"]);
     }
 }
 
@@ -102,7 +93,7 @@ fn union_match_with_named_catch_all_binds_the_scrutinee() {
              }\n\
              fn main() -> Unit = print(\"${name(Blank)}\")\n",
     );
-    assert!(ir.contains("load i64, i64*"));
+    shows(&ir, &["load i64, i64*"]);
 }
 
 #[test]
@@ -117,7 +108,7 @@ fn string_literal_match_chain() {
              }\n\
              fn main() -> Unit = print(route(\"/a\"))\n",
     );
-    assert!(ir.contains("@strcmp"));
+    shows(&ir, &["@strcmp"]);
 }
 
 // ---- strings ----
@@ -207,18 +198,9 @@ fn bare_length_and_is_empty_dispatch_on_the_receiver_type() {
                print(\"${length(xs)} ${isEmpty(xs)} ${length(m)} ${isEmpty(m)} ${length(lit)} ${isEmpty(lit)} ${length(\"ab\")}\")\n\
              }\n",
         );
-    assert!(
-        ir.contains("osprey_list_length"),
-        "List length must use the list runtime"
-    );
-    assert!(
-        ir.contains("osprey_map_length"),
-        "Map length must use the map runtime"
-    );
-    assert!(
-        ir.contains("osp_strlen"),
-        "string length must still use the string runtime"
-    );
+    shows(&ir, &["osprey_list_length"]);
+    shows(&ir, &["osprey_map_length"]);
+    shows(&ir, &["osp_strlen"]);
     // Exactly one `osp_strlen` call site: the sole string receiver.
     assert_eq!(
         ir.matches("call i64 @osp_strlen").count(),
@@ -285,10 +267,7 @@ fn a_list_literal_argument_is_rebuilt_before_it_crosses_into_a_callee() {
         1,
         "exactly the literal argument is rebuilt"
     );
-    assert!(
-        ir.contains("osprey_list_get"),
-        "the arm still binds its head from the list runtime"
-    );
+    shows(&ir, &["osprey_list_get"]);
 }
 
 #[test]
@@ -464,10 +443,7 @@ fn effect_result_parameters_preserve_shape_in_direct_and_resuming_abis() {
             definition.contains("i8* %__arm0") && definition.contains("i64 %__arm1"),
             "effect parameters must use their complete ParamSig ABI:\n{definition}\n{ir}"
         );
-        assert!(
-            ir.contains("bitcast i8* %__arm0 to { i64, i8, i8* }*"),
-            "the handler must reconstruct the incoming Result block:\n{ir}"
-        );
+        shows(&ir, &["bitcast i8* %__arm0 to { i64, i8, i8* }*"]);
         assert!(
             ir.lines()
                 .collect::<Vec<_>>()

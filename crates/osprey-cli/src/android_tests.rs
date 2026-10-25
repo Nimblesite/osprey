@@ -26,7 +26,7 @@ fn target_slices_match_ndk_and_bool_abi() -> Result<(), String> {
             "{ir}"
         );
         assert!(header.contains(&format!("--target={name}")));
-        assert!(header.contains("bool osprey_flag(bool value)"));
+        crate::testkit::shows(&header, &["bool osprey_flag(bool value)"]);
         assert!(compile_args(target, Path::new("a.ll"), Path::new("a.o"))
             .contains(&"-fPIC".to_string()));
     }

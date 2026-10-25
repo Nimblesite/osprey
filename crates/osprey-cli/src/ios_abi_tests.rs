@@ -66,8 +66,8 @@ fn thunks_rename_the_entry_and_forward_with_the_c_bool_convention() {
     // [IOS-TARGET-ENTRY] [IOS-HOST-ABI]
     let (abi, ir) = abi_of(SOURCE);
     let out = with_host_abi(&ir, &abi).expect("thunked");
-    assert!(out.contains("define i32 @osprey_main() "), "entry renamed");
-    assert!(!out.contains("@main("), "no `main` symbol survives");
+    crate::testkit::shows(&out, &["define i32 @osprey_main() "]);
+    crate::testkit::contents(&out, &[], &["@main("]);
     shows(
         &out,
         &[
@@ -149,7 +149,7 @@ fn a_boundary_name_clash_is_refused() {
     let source = "extern fn osprey_greet(s: string) -> int\nfn greet(s: string) -> int = osprey_greet(s)\nfn main() = print(\"${greet(\\\"x\\\")}\")\n";
     let (program, types, ir) = checked(source);
     let err = host_abi(&program, &types, &ir).expect_err("clash");
-    assert!(err.contains("osprey_greet"), "{err}");
+    crate::testkit::shows(&err, &["osprey_greet"]);
 }
 
 #[test]
@@ -207,7 +207,7 @@ fn imports_use_c_bool_attributes_and_adapt_unit_returns() {
             "call void @host_log(i1 zeroext %p0)\n  ret i64 0",
         ],
     );
-    assert!(!out.contains("call i64 @host_log("), "{out}");
+    crate::testkit::contents(&out, &[], &["call i64 @host_log("]);
 }
 
 #[test]
@@ -260,7 +260,7 @@ fn duplicate_namespace_export_names_are_rejected() {
     let source = format!("fn {name_a}() = 1\nfn {name_b}() = 2\n");
     let (program, types, ir) = checked(&source);
     let error = host_abi(&program, &types, &ir).expect_err("flattened names collide");
-    assert!(error.contains("osprey_app_x_y"), "{error}");
+    crate::testkit::shows(&error, &["osprey_app_x_y"]);
 }
 
 #[test]
@@ -274,9 +274,9 @@ fn header_parameter_names_do_not_collide_with_c_keywords_or_macros() {
         imports: vec![],
     };
     let h = header_for_target(&abi, "demo.osp", "ios");
-    assert!(
-        h.contains("void osprey_run(bool osprey_arg0, int64_t osprey_arg1);"),
-        "{h}"
+    crate::testkit::shows(
+        &h,
+        &["void osprey_run(bool osprey_arg0, int64_t osprey_arg1);"],
     );
 }
 
@@ -326,7 +326,7 @@ fn imported_or_defined_adapter_names_are_rejected() {
     ] {
         let (program, types, ir) = checked(source);
         let error = host_abi(&program, &types, &ir).expect_err("adapter name collision");
-        assert!(error.contains("__osprey_host_flag"), "{error}");
+        crate::testkit::shows(&error, &["__osprey_host_flag"]);
     }
 }
 

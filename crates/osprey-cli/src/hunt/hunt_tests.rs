@@ -291,7 +291,7 @@ fn only_a_klee_output_directory_is_cleared() {
     std::fs::create_dir_all(&dir).expect("dir");
     std::fs::write(dir.join("precious.txt"), "x").expect("file");
     let error = clear_run_directory(&dir).expect_err("unrelated directory");
-    assert!(error.contains("refusing to clear"));
+    crate::testkit::shows(&error, &["refusing to clear"]);
     std::fs::write(dir.join("info"), "KLEE").expect("info");
     assert!(clear_run_directory(&dir).is_ok() && !dir.exists());
 }
@@ -308,8 +308,8 @@ fn a_fiber_program_lowers_symbolically() {
     let cli = parse_args(std::slice::from_ref(&path)).expect("args");
     let input = load_input(&cli).expect("load");
     let symbolic = module::symbolic_module(&input, 64).expect("symbolic build");
-    assert!(symbolic.contains("target triple = \"x86_64-unknown-linux-gnu\""));
-    assert!(symbolic.contains("@osp_hunt_input_bytes = global i64 64"));
+    crate::testkit::shows(&symbolic, &["target triple = \"x86_64-unknown-linux-gnu\""]);
+    crate::testkit::shows(&symbolic, &["@osp_hunt_input_bytes = global i64 64"]);
 }
 
 /// The value of `--output-dir=` the engine was given.
@@ -393,7 +393,7 @@ fn the_run_directory_is_temporary_unless_out_is_given() {
         temporary.display()
     );
     assert!(!temporary.exists(), "a temporary run directory is deleted");
-    assert!(!rendered.contains("KLEE output kept in"), "{rendered}");
+    crate::testkit::contents(&rendered, &[], &["KLEE output kept in"]);
     let out = scene.root.join("kept");
     let flags = ["--quiet", "--out", &out.display().to_string()];
     let (rendered, _) = run_scene(&scene, 0, &flags).expect("hunt");

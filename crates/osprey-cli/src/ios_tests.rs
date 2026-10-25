@@ -120,17 +120,11 @@ fn app_globals_remain_initialized_after_the_host_calls_entry() {
         &ExportScope::EntrySource(None),
     )
     .expect("library source");
-    assert!(header.contains("osprey_greet(void)"));
-    assert!(
-        !ir.contains("store i8* null, i8** @"),
-        "entry must keep globals live:\n{ir}"
-    );
-    assert!(ir.contains("define i32 @osprey_main()"));
+    crate::testkit::shows(&header, &["osprey_greet(void)"]);
+    crate::testkit::contents(&ir, &[], &["store i8* null, i8** @"]);
+    crate::testkit::shows(&ir, &["define i32 @osprey_main()"]);
     let executable = osprey_codegen::compile_program(&parsed.program).expect("native source");
-    assert!(
-        executable.contains("store i8* null, i8** @"),
-        "executables still release globals at exit"
-    );
+    crate::testkit::shows(&executable, &["store i8* null, i8** @"]);
 }
 
 #[test]
@@ -152,7 +146,7 @@ fn each_slice_names_itself_in_its_header_and_diagnostics() {
             header.contains(&format!("--target={name}")),
             "{name} header must name its own slice:\n{header}"
         );
-        assert!(header.contains("[IOS-HOST-ABI]"), "{header}");
+        crate::testkit::shows(&header, &["[IOS-HOST-ABI]"]);
     }
 
     // The same slice name must appear in a rejection, so a diagnostic never

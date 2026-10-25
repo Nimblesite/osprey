@@ -39,7 +39,7 @@ fn klee_mode_carries_debug_metadata_without_debug_flag() {
         symbolic.contains("!DICompileUnit") && symbolic.contains("!DILocation"),
         "{symbolic}"
     );
-    assert!(!symbolic.contains("optnone"));
+    testkit::contents(&symbolic, &[], &["optnone"]);
 }
 
 /// Programs whose symbolic and `--debug` builds are compared line for line:
@@ -81,10 +81,10 @@ fn klee_mode_is_the_debug_build_with_abort_for_exit() {
 fn every_klee_module_has_metadata_no_optnone_and_no_fatal_exit() {
     for src in PROGRAMS {
         let symbolic = symbolic_module(src);
-        assert!(symbolic.contains("!DICompileUnit"), "{src}");
-        assert!(symbolic.contains("debug.osp"), "{src}");
-        assert!(!symbolic.contains("optnone"), "{src}");
-        assert!(!symbolic.contains("call void @exit(i32 1)"), "{src}");
+        shows(&symbolic, &["!DICompileUnit"]);
+        shows(&symbolic, &["debug.osp"]);
+        testkit::contents(&symbolic, &[], &["optnone"]);
+        testkit::contents(&symbolic, &[], &["call void @exit(i32 1)"]);
         assert_eq!(symbolic, symbolic_module(src), "deterministic: {src}");
     }
 }
@@ -104,12 +104,12 @@ fn every_abort_follows_its_message_and_ends_the_block() {
     for at in aborts {
         let before = lines.get(at.wrapping_sub(1)).copied().unwrap_or_default();
         let after = lines.get(at + 1).copied().unwrap_or_default();
-        assert!(before.contains("call i32 @puts("), "{before}");
+        shows(before, &["call i32 @puts("]);
         assert!(after.starts_with("unreachable"), "{after}");
     }
-    assert!(symbolic.contains("unhandled effect: Wide.op"), "{symbolic}");
-    assert!(symbolic.contains("declare void @abort()"));
-    assert!(!symbolic.contains("declare void @exit(i32)"));
+    shows(&symbolic, &["unhandled effect: Wide.op"]);
+    shows(&symbolic, &["declare void @abort()"]);
+    testkit::contents(&symbolic, &[], &["declare void @exit(i32)"]);
 }
 
 /// The plain build is untouched by the switch: same guard count, `exit`.

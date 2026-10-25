@@ -333,10 +333,7 @@ mod tests {
             Vec::<osprey_types::TypeError>::new()
         );
         let ir = program_ir(&parsed.program).expect("browser module");
-        assert!(
-            !ir.contains("store i8* null, i8** @"),
-            "browser globals cleared at startup:\n{ir}"
-        );
+        crate::testkit::contents(&ir, &[], &["store i8* null, i8** @"]);
     }
 
     #[test]

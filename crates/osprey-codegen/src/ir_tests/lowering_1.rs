@@ -52,7 +52,7 @@ fn emits_main_and_puts_for_hello() {
     );
     // Every function keeps frame pointers so the sampling profiler's
     // FP-chain walk is valid from any pc [PROF-CODEGEN-FP].
-    assert!(ir.contains("attributes #0 = { \"frame-pointer\"=\"all\" }"));
+    shows(&ir, &["attributes #0 = { \"frame-pointer\"=\"all\" }"]);
     assert!(ir.trim_end().ends_with('}'));
 }
 
@@ -70,12 +70,12 @@ fn emits_arithmetic_function() {
     // Parameters are named positionally, not after their source
     // identifier, so an ML/Default twin pair stays byte-identical
     // ([FLAVOR-IR-EQUIV]).
-    assert!(ir.contains("define internal i64 @add(i64 %$p0, i64 %$p1)"));
-    assert!(
-        ir.contains("call { i64, i1 } @llvm.sadd.with.overflow.i64(i64 %$p0, i64 %$p1)"),
-        "integer addition must lower through LLVM's checked intrinsic:\n{ir}"
+    shows(&ir, &["define internal i64 @add(i64 %$p0, i64 %$p1)"]);
+    shows(
+        &ir,
+        &["call { i64, i1 } @llvm.sadd.with.overflow.i64(i64 %$p0, i64 %$p1)"],
     );
-    assert!(ir.contains("call i64 @add(i64 2, i64 3)"));
+    shows(&ir, &["call i64 @add(i64 2, i64 3)"]);
 }
 
 // Testing built-ins lower to the TAP runtime and re-route main's exit
@@ -99,9 +99,9 @@ fn testing_builtins_lower_to_tap_runtime_calls() {
 fn check_lowers_with_label_and_named_body_calls_through() {
     let ir = module("fn body() = check(\"sum\", 4, 2 + 2)\ntest(\"named\", body)\n");
     // The label operand is a real string pointer, not the expect null.
-    assert!(ir.contains("@osp_test_assert(i8* %"));
-    assert!(!ir.contains("@osp_test_assert(i8* null"));
-    assert!(ir.contains("call i32 @osp_test_begin(i8*"));
+    shows(&ir, &["@osp_test_assert(i8* %"]);
+    testkit::contents(&ir, &[], &["@osp_test_assert(i8* null"]);
+    shows(&ir, &["call i32 @osp_test_begin(i8*"]);
 }
 
 #[test]
@@ -139,21 +139,21 @@ fn grouped_assertions_emit_one_soft_assertion_per_condition() {
 #[test]
 fn programs_without_tests_keep_the_plain_exit_path() {
     let ir = module("print(\"hi\")\n");
-    assert!(!ir.contains("osp_test_finalize"));
-    assert!(ir.contains("ret i32 0"));
+    testkit::contents(&ir, &[], &["osp_test_finalize"]);
+    shows(&ir, &["ret i32 0"]);
 }
 
 #[test]
 fn user_functions_shadow_testing_builtins() {
     // [TESTING-SHADOWING] a user `check` compiles as an ordinary call.
     let ir = module("fn check(t: int) -> int = satAdd(t, 1)\nlet r = check(4)\nprint(r)\n");
-    assert!(!ir.contains("osp_test_assert"));
-    assert!(ir.contains("call i64 @check(i64 4)"));
+    testkit::contents(&ir, &[], &["osp_test_assert"]);
+    shows(&ir, &["call i64 @check(i64 4)"]);
     // …and so does an extern declaration of the same name.
     let ir = module(
         "extern fn check(a: int, b: int, c: int) -> int\nlet r = check(1, 2, 3)\nprint(r)\n",
     );
-    assert!(!ir.contains("osp_test_assert"));
+    testkit::contents(&ir, &[], &["osp_test_assert"]);
 }
 
 #[test]
@@ -178,7 +178,7 @@ fn assertion_operands_render_success_payloads_without_hiding_errors() {
     // compares a Success payload canonically, while the sibling test proves
     // Error remains visible rather than being read as a fabricated payload.
     let ir = module("expect(checkedAdd(1, 1), 2)\n");
-    assert!(ir.contains("call void @osp_test_assert(i8* null, i32"));
+    shows(&ir, &["call void @osp_test_assert(i8* null, i32"]);
 }
 
 #[test]
@@ -258,15 +258,9 @@ fn a_breakpoint_inside_a_handler_arm_body_has_a_line_to_bind_to() {
              0 }\n",
     );
 
-    assert!(
-        ir.contains("!DISubprogram(name: \"__handler_State_get_"),
-        "the arm function needs its own subprogram to be a debuggable scope"
-    );
+    shows(&ir, &["!DISubprogram(name: \"__handler_State_get_"]);
     // `let inner = 41` is line 7, inside the arm.
-    assert!(
-        ir.contains("!DILocation(line: 7,"),
-        "the arm body's own statement lines must reach the line table"
-    );
+    shows(&ir, &["!DILocation(line: 7,"]);
 
     // A `resume`-using arm is emitted down a separate path, and it is the
     // same construct to the author — so it must be just as debuggable.
@@ -287,10 +281,7 @@ fn a_breakpoint_inside_a_handler_arm_body_has_a_line_to_bind_to() {
              0 }\n",
     );
 
-    assert!(
-        resuming.contains("!DILocation(line: 7,"),
-        "a resuming arm's body lines must reach the line table too"
-    );
+    shows(&resuming, &["!DILocation(line: 7,"]);
 }
 
 #[test]
@@ -303,10 +294,7 @@ fn generic_list_default_keeps_each_call_sites_element_depth() {
         Flavor::Python,
     );
     let ir = compile_program(&program).expect("nested list defaults must compile");
-    assert!(
-        !ir.contains("call i64 @osp_strlen"),
-        "list lengths must use the list runtime"
-    );
+    testkit::contents(&ir, &[], &["call i64 @osp_strlen"]);
 }
 
 #[test]
@@ -314,7 +302,7 @@ fn generic_function_inlines_at_call_site() {
     // A polymorphic function is specialised by inlining, so no monomorphic
     // definition is emitted; the call computes directly at the use site.
     let ir = module("fn identity(x) = x\nlet a = identity(7)\nprint(\"v=${a}\")\n");
-    assert!(!ir.contains("@identity"));
+    testkit::contents(&ir, &[], &["@identity"]);
 }
 
 #[test]
@@ -328,10 +316,7 @@ fn generic_function_as_an_iterator_callback_inlines_not_calls_a_missing_symbol()
              let t = range(1, 4) |> fold(0, choose)\n\
              print(\"t=${t}\")\n",
     );
-    assert!(
-        !ir.contains("@choose"),
-        "generic reducer must inline, not call @choose:\n{ir}"
-    );
+    testkit::contents(&ir, &[], &["@choose"]);
     assert!(
         ir.contains("icmp eq i64") && ir.contains("phi i64"),
         "the reducer body must be emitted inline"
@@ -351,14 +336,8 @@ fn fold_with_a_record_accumulator_lowers_and_recovers_the_pointer() {
              let r = range(1, 3) |> fold(Box { n: 7 }, bump)\n\
              print(\"n=${r.n}\")\n",
     );
-    assert!(
-        ir.contains("inttoptr i64"),
-        "record fold result must be unboxed to a pointer:\n{ir}"
-    );
-    assert!(
-        !ir.contains("@bump"),
-        "generic combine must inline, not call @bump"
-    );
+    shows(&ir, &["inttoptr i64"]);
+    testkit::contents(&ir, &[], &["@bump"]);
 }
 
 #[test]
@@ -375,15 +354,18 @@ fn spawn_lowers_to_a_per_instance_closure_cell() {
                print(\"got ${await(f)}\")\n\
              }\n",
     );
-    assert!(ir.contains("call i64 @fiber_spawn_env_owned(i64 (i8*)* @__fiber_thunk_"));
+    shows(
+        &ir,
+        &["call i64 @fiber_spawn_env_owned(i64 (i8*)* @__fiber_thunk_"],
+    );
     assert!(
         ir.lines()
             .any(|line| line.contains("@fiber_spawn_env_owned") && line.ends_with(", i64 0)")),
         "an erased scalar fiber result must not be probed as a managed pointer:\n{ir}"
     );
-    assert!(ir.contains("define internal i64 @__fiber_thunk_0(i8* %__env)"));
-    assert!(!ir.contains("@__fiber_cap_"));
-    assert!(ir.contains("call i64 @fiber_await(i64"));
+    shows(&ir, &["define internal i64 @__fiber_thunk_0(i8* %__env)"]);
+    testkit::contents(&ir, &[], &["@__fiber_cap_"]);
+    shows(&ir, &["call i64 @fiber_await(i64"]);
 }
 
 #[test]
@@ -461,24 +443,12 @@ fn erasure_boxes_with_one_way_ownership() {
         producer.contains("@osp_alloc_tagged_noinit(") && producer.contains(", i64 513)"),
         "an erasing return must box its referent with a managed payload:\n{producer}"
     );
-    assert!(
-        producer.contains("store i8* null, i8** %arc.s0"),
-        "the fresh referent must MOVE into the box, not gain a second owner:\n{producer}"
-    );
-    assert!(
-        producer.contains("@osp.any.desc.string"),
-        "the box must carry the string shape descriptor:\n{producer}"
-    );
+    shows(&producer, &["store i8* null, i8** %arc.s0"]);
+    shows(&producer, &["@osp.any.desc.string"]);
     // The pass-through function receives and returns the box UNTOUCHED:
     // no new box, no descriptor reference — and the borrowed return is
     // retained (+1) rather than entered in the ledger as a fresh owner.
     let pass = function_body(&ir, "define internal i8* @identity(i8* %$p0)");
-    assert!(
-        !pass.contains("@osp.any.desc"),
-        "an `any` -> `any` pass-through must not re-box:\n{pass}"
-    );
-    assert!(
-        pass.contains("@osp_retain"),
-        "a borrowed erased return must be retained for the caller:\n{pass}"
-    );
+    testkit::contents(&pass, &[], &["@osp.any.desc"]);
+    shows(&pass, &["@osp_retain"]);
 }

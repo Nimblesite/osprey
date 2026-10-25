@@ -234,7 +234,7 @@ mod tests {
     fn a_missing_engine_is_an_error_naming_it() {
         let path = stderr_path("missing");
         let error = run(Path::new("/nonexistent/klee"), &[], &path, 1).expect_err("missing klee");
-        assert!(error.contains("could not run /nonexistent/klee"));
+        crate::testkit::shows(&error, &["could not run /nonexistent/klee"]);
         let _ = std::fs::remove_file(&path);
     }
 

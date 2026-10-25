@@ -262,7 +262,7 @@ fn one_program_only_and_it_is_required() {
         vec!["-q", "a.osp"],
     ] {
         let error = parsed(&list).expect_err("second path");
-        assert!(error.contains("unexpected argument"), "{list:?}: {error}");
+        crate::testkit::shows(&error, &["unexpected argument"]);
     }
     for list in [
         vec![],
@@ -270,7 +270,7 @@ fn one_program_only_and_it_is_required() {
         vec!["--quiet", "--no-replay", "--max-time", "3"],
     ] {
         let error = parsed(&list).expect_err("no path");
-        assert!(error.contains("a source file is required"), "{error}");
+        crate::testkit::shows(&error, &["a source file is required"]);
     }
 }
 

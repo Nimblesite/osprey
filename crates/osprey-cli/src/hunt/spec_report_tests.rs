@@ -208,7 +208,7 @@ fn the_text_place_falls_back_like_the_dedupe_key() {
         });
         assert!(text.contains(&format!("  memory     {place}\n")), "{text}");
         assert_eq!(text.contains("runtime  "), runtime_line, "{text}");
-        assert!(text.contains("findings: 1\n"), "{text}");
+        crate::testkit::shows(&text, &["findings: 1\n"]);
     }
 }
 
@@ -301,7 +301,7 @@ fn saved_reports_fail_loudly_when_the_output_directory_is_not_writable() {
     };
     let error =
         super::report_files::write(&report, "{}").expect_err("must not swallow write error");
-    assert!(error.contains("cannot save Hunt report"), "{error}");
+    crate::testkit::shows(&error, &["cannot save Hunt report"]);
 }
 
 fn html_for_scan(scan: &Scan, completed: u64) -> String {
@@ -354,7 +354,7 @@ fn html_never_confuses_finished_unfinished_and_reproduced_results() {
         finding.replay = Replay::Reproduced("SIGSEGV".into());
     }
     let html = html_for_scan(&scan, 1);
-    assert!(html.contains("A crash was reproduced"));
-    assert!(html.contains("could not identify an Osprey source line"));
-    assert!(!html.contains("Download JSON context"));
+    crate::testkit::shows(&html, &["A crash was reproduced"]);
+    crate::testkit::shows(&html, &["could not identify an Osprey source line"]);
+    crate::testkit::contents(&html, &[], &["Download JSON context"]);
 }

@@ -111,9 +111,9 @@ fn a_resumable_operation_sends_every_argument_with_its_ownership_kind() {
                print(\"r=${toString(r)}\")\n\
                0 }\n",
         );
-    assert!(
-        ir.contains("declare i64 @__osprey_coro_suspend(i8*, i64, i64*, i8*, i64)"),
-        "suspend must take a kinds array beside the words:\n{ir}"
+    shows(
+        &ir,
+        &["declare i64 @__osprey_coro_suspend(i8*, i64, i64*, i8*, i64)"],
     );
     // Both arrays are sized by the REAL arity — never a fixed capacity.
     assert!(
@@ -169,9 +169,9 @@ fn handler_owned_mutable_state_threads_through_a_heap_cell() {
         ],
     );
     // the captured `mut` became a heap cell (malloc'd, stored, loaded)
-    assert!(ir.contains("@osp_alloc"));
+    shows(&ir, &["@osp_alloc"]);
     // each arm is emitted with the hidden leading env parameter
-    assert!(ir.contains("i8* %__env"));
+    shows(&ir, &["i8* %__env"]);
 }
 
 #[test]
@@ -194,14 +194,8 @@ fn handler_rebound_function_cell_calls_latest_closure_indirectly() {
         .lines()
         .find(|line| line.contains("call i32 @__osprey_handler_push"))
         .expect("handler push");
-    assert!(
-        !push.contains("i8* null"),
-        "the assignment target must be captured as a shared function cell:\n{ir}"
-    );
-    assert!(
-            !ir.contains("@rb"),
-            "a handler-rebound function cell must load and call its latest closure, not emit a direct call to an undefined/stale `rb` symbol:\n{ir}"
-        );
+    testkit::contents(push, &[], &["i8* null"]);
+    testkit::contents(&ir, &[], &["@rb"]);
 }
 
 #[test]
@@ -383,7 +377,7 @@ card doc index selected =
         false => ""
 "#,
     );
-    assert!(ir.contains("call i32 @strcmp(i8*"));
+    shows(&ir, &["call i32 @strcmp(i8*"]);
 }
 
 // ---- fibers (fiber.rs) ----

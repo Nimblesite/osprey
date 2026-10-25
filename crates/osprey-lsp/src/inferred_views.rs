@@ -159,27 +159,18 @@ mod tests {
                 !regex_like_type_var(rendered),
                 "{view} leaked a private inference name: {rendered}"
             );
-            assert!(
-                !rendered.contains("Unit"),
-                "{view} fabricated Unit for a return the checker proved: {rendered}"
-            );
+            crate::testkit::contents(rendered, &[], &["Unit"]);
         }
         // Every view keeps the PROVEN half — `xs` is a list — and holes only
         // the element the checker genuinely left open.
-        assert!(
-            symbols.contains("fn classify(xs: List<_>) -> int"),
-            "{symbols}"
-        );
-        for (view, rendered) in [
+        crate::testkit::shows(&symbols, &["fn classify(xs: List<_>) -> int"]);
+        for (_view, rendered) in [
             ("hover decl", &decl),
             ("hover body", &body),
             ("signature help label", &sig.label),
             ("completion detail", &completion_detail),
         ] {
-            assert!(
-                rendered.contains("List<_>"),
-                "{view} keeps the proven `List` with a hole for its element: {rendered}"
-            );
+            crate::testkit::shows(rendered, &["List<_>"]);
         }
         assert_eq!(sig.parameters, vec!["xs: List<_>".to_owned()]);
     }
@@ -272,25 +263,13 @@ mod tests {
         // the only honest answer once there is nothing to say.
         let src = "fn id(x) = x\nlet a = id(1)\n";
         let symbols = symbols_of(src);
-        assert!(
-            symbols.contains("\"signature\":\"fn id(x)\""),
-            "an unprovable return drops the arrow entirely: {symbols}"
-        );
-        assert!(
-            !symbols.contains("Unit"),
-            "`Unit` is a claim the checker refutes, not a placeholder: {symbols}"
-        );
-        assert!(
-            !symbols.contains("\"returnType\""),
-            "an absent return type is absent, not empty-stringed: {symbols}"
-        );
+        crate::testkit::shows(&symbols, &["\"signature\":\"fn id(x)\""]);
+        crate::testkit::contents(&symbols, &[], &["Unit"]);
+        crate::testkit::contents(&symbols, &[], &["\"returnType\""]);
         // Hover must agree with the outline — same slot, same silence.
         let decl =
             crate::test_support::hover(src, "file:///id.osp", 0, 4, U16).expect("hover over `id`");
-        assert!(
-            !decl.contains("Unit"),
-            "hover must not claim Unit either: {decl}"
-        );
+        crate::testkit::contents(&decl, &[], &["Unit"]);
         assert!(!regex_like_type_var(&decl), "{decl}");
     }
 
@@ -457,10 +436,7 @@ mod tests {
             );
             // Both functions return a record, so `Unit` here would be the old
             // display fallback reappearing on a return the checker proved.
-            assert!(
-                !rendered.contains("Unit"),
-                "{view} fabricated `Unit` for a proven return: {rendered}"
-            );
+            crate::testkit::contents(rendered, &[], &["Unit"]);
         }
     }
 }

@@ -90,7 +90,7 @@ fn html_safely_explains_an_unsupported_operation_and_embeds_raw_ai_context() {
             "line selected",
         ],
     );
-    assert!(!html.contains("<script>"));
+    crate::testkit::contents(&html, &[], &["<script>"]);
 }
 
 #[cfg(unix)]
