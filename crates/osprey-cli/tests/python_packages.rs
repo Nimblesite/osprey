@@ -27,6 +27,22 @@ fn suites() -> Vec<PathBuf> {
     found
 }
 
+#[test]
+fn every_shipped_package_registers_an_execution_suite() -> std::io::Result<()> {
+    let registered = suites();
+    for entry in std::fs::read_dir(repo().join("packages"))? {
+        let package = entry?.path();
+        if package.join("osprey.toml").is_file() {
+            assert!(
+                registered.contains(&package.join("tests")),
+                "{} must register tests/osprey.toml in the backend matrix",
+                package.display()
+            );
+        }
+    }
+    Ok(())
+}
+
 /// All existing Torch groups must discharge before the native oracle run.
 #[test]
 fn the_complete_torch_suite_discharges_its_storage_handlers() {
