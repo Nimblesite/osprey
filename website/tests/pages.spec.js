@@ -150,6 +150,10 @@ const proseOffsets = (elements) => elements.map((element) => {
 
 async function expectNavigationFits(links) {
   for (const link of await links.all()) await expect(link).toBeInViewport({ ratio: 1 });
+  const overflowing = await links.evaluateAll((elements) => elements
+    .filter((element) => element.scrollWidth > element.clientWidth)
+    .map((element) => element.textContent.trim()));
+  expect(overflowing, "navigation text must fit inside each link's target").toEqual([]);
 }
 
 for (const width of [1280, 1440, 1920]) {
@@ -196,10 +200,11 @@ test.describe("mobile interactions", () => {
     await expect(page).toHaveURL(/\/blog\/$/);
   });
 
-  for (const viewport of [{ width: 320, height: 568 }, { width: 768, height: 320 }]) {
-    test(`mobile menu links fit within ${viewport.width}x${viewport.height}`, async ({ page }) => {
-      await page.setViewportSize(viewport);
+  for (const viewport of [{ width: 320, height: 568 }, { width: 768, height: 320 }, { width: 768, height: 320, font: "monospace" }]) {
+    test(`mobile menu links fit within ${viewport.width}x${viewport.height}${viewport.font ? " with fallback font" : ""}`, async ({ page }) => {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await page.goto("/docs/");
+      if (viewport.font) await page.addStyleTag({ content: `:root { --font-sans: ${viewport.font}; }` });
       await page.locator("#mobile-menu-toggle").click();
       const controls = page.locator("#site-navigation > li > a, #site-navigation > li > details > summary");
       await expect(controls).toHaveCount(5);
@@ -207,6 +212,7 @@ test.describe("mobile interactions", () => {
       for (const group of await page.locator(".nav-group").all()) {
         await group.locator("summary").click();
         await expectNavigationFits(group.getByRole("link"));
+        await expectNavigationFits(controls);
       }
     });
   }
