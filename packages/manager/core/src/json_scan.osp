@@ -1,0 +1,220 @@
+namespace registry;
+import registry::Bytes
+
+/// JSON string decoding with balanced scan budgets and chunk concatenation. The traversal stops at the first closing quote or error without relying on tail calls. Implements [PACKAGE-PUBLISH].
+module JsonScan {
+    /// One decoded string and the byte following its closing quote.
+    export type Scan = { text: string, next: int }
+    type Chunk = { piece: string, cursor: int, complete: bool }
+
+    let nulCp = 0
+    let quote = 34
+    let backslash = 92
+    let slash = 47
+    let letterU = 117
+    let digitZero = 48
+    let digitNine = 57
+    let highSurrogateLo = 55296
+    let highSurrogateHi = 56319
+    let lowSurrogateLo = 56320
+    let lowSurrogateHi = 57343
+    let planeBase = 65536
+    let planeShift = 1024
+    let controlCode = "json.control-character"
+    let badEscape = "json.bad-escape"
+    let badSurrogate = "json.bad-surrogate"
+    let utf8Code = "json.utf8"
+    let unexpectedEnd = "json.unexpected-end"
+
+    /// One stable parse reason and its byte offset, shared with structural parsing.
+    export fn failure(code, offset) = Error { message: "${code}@${offset}" }
+
+    fn inRange(b, lo, hi) = b >= lo && b <= hi
+    fn nextString(i, out) = Success { value: Scan { text: out, next: i } }
+
+    /// Decode a string body while keeping call depth logarithmic in input size.
+    export fn scan(text, i) = match scanBlock(text, i, byteLength(text) - i + 1) {
+        Error { message } => Error { message: message }
+        Success { value } => if value.complete {
+            Success { value: Scan { text: value.piece, next: value.cursor } }
+        } else { failure(unexpectedEnd, byteLength(text)) }
+    }
+
+    fn readChunk(text, i) = match scanByte(text, i, "") {
+        Error { message } => Error { message: message }
+        Success { value } => Success { value: Chunk {
+            piece: value.text, cursor: value.next, complete: (byteAt(text, i) ?: 0) == quote
+        } }
+    }
+
+    fn scanBlock(text, i, budget) = if budget <= 1 { readChunk(text, i) } else {
+        let half = intDiv(budget, 2)
+        match scanBlock(text, i, half) {
+            Error { message } => Error { message: message }
+            Success { value } => appendBlock(text, value, budget - half)
+        }
+    }
+
+    fn appendBlock(text, first, rest) = if first.complete { Success { value: first } } else {
+        match scanBlock(text, first.cursor, rest) {
+            Error { message } => Error { message: message }
+            Success { value } => Success { value: Chunk {
+                piece: first.piece + value.piece, cursor: value.cursor, complete: value.complete
+            } }
+        }
+    }
+
+    /// A string byte that needs no decoding: printable ASCII other than the
+    /// quote and backslash.
+    fn plainByte(b) = b >= 32 && b < 128 && b != quote && b != backslash
+
+    fn cont(text, i) = i < byteLength(text) && inRange((byteAt(text, i) ?: 0), 128, 191)
+
+    /// Continuation test for a 2+/3+-byte lead, with its second byte bounded.
+    fn tail2(text, i, lo, hi) = inRange((byteAt(text, i + 1) ?: 0), lo, hi) && cont(text, i + 2)
+    fn tail3(text, i, lo, hi) = tail2(text, i, lo, hi) && cont(text, i + 3)
+
+    /// UTF-8 bytes of a valid sequence at `i`, or 0 when the bytes are not
+    /// well-formed UTF-8 (overlongs, surrogates and C0/C1 leads included).
+    fn leadWidth(text, i) = {
+        let b = byteAt(text, i) ?: 0
+        if b < 128 { 1 }
+        else if inRange(b, 194, 223) { if cont(text, i + 1) { 2 } else { 0 } }
+        else if b == 224 { if tail2(text, i, 160, 191) { 3 } else { 0 } }
+        else if inRange(b, 225, 236) || inRange(b, 238, 239) { if cont(text, i + 1) && cont(text, i + 2) { 3 } else { 0 } }
+        else if b == 237 { if tail2(text, i, 128, 159) { 3 } else { 0 } }
+        else if b == 240 { if tail3(text, i, 144, 191) { 4 } else { 0 } }
+        else if inRange(b, 241, 243) { if cont(text, i + 1) && cont(text, i + 2) && cont(text, i + 3) { 4 } else { 0 } }
+        else if b == 244 { if tail3(text, i, 128, 143) { 4 } else { 0 } }
+        else { 0 }
+    }
+
+    /// Decode one run, code point or escape without recursing into its successor.
+    fn scanByte(text, i, out) = match byteAt(text, i) {
+        Error => failure(unexpectedEnd, byteLength(text))
+        Success { value } => if value == quote {
+            Success { value: Scan { text: out, next: i + 1 } }
+        } else if value == backslash {
+            scanEscape(text, i, out)
+        } else if value < 32 {
+            failure(controlCode, i)
+        } else {
+            scanRun(text, i, out)
+        }
+    }
+
+    fn scanRun(text, i, out) = {
+        let end = Bytes::runEnd(text, i, plainByte)
+        if end == i { scanChunk(text, i, out) } else { nextString(end, out + (substring(text, i, end) ?: "")) }
+    }
+
+    fn scanChunk(text, i, out) = {
+        let w = leadWidth(text, i)
+        if w == 0 {
+            failure(utf8Code, i)
+        } else {
+            nextString(i + w, out + (substring(text, i, i + w) ?: ""))
+        }
+    }
+
+    fn scanEscape(text, i, out) = match byteAt(text, i + 1) {
+        Error => failure(unexpectedEnd, byteLength(text))
+        Success { value } => if value == quote || value == backslash || value == slash {
+            nextString(i + 2, out + (substring(text, i + 1, i + 2) ?: ""))
+        } else {
+            scanNamed(text, i, out, value)
+        }
+    }
+
+    /// The two-character escapes \\b \\t \\n \\f \\r, or "" when not one of them.
+    fn shortEscape(b) = {
+        if b == 98 { fromCodePoint(8) ?: "" }
+        else if b == 116 { "\t" }
+        else if b == 110 { "\n" }
+        else if b == 102 { fromCodePoint(12) ?: "" }
+        else if b == 114 { "\r" }
+        else { "" }
+    }
+
+    fn scanNamed(text, i, out, b) = {
+        let esc = shortEscape(b)
+        if esc != "" {
+            nextString(i + 2, out + esc)
+        } else if b == letterU {
+            scanUnicode(text, i, out)
+        } else {
+            failure(badEscape, i)
+        }
+    }
+
+    fn hexVal(b) = {
+        if inRange(b, digitZero, digitNine) { b - digitZero }
+        else if inRange(b, 97, 102) { b - 87 }
+        else if inRange(b, 65, 70) { b - 55 }
+        else { -1 }
+    }
+
+    fn hexAt(text, k) = hexVal(byteAt(text, k) ?: -1)
+
+    /// Four hex digits at `i` as one value in 0..65535, or -1.
+    fn unit4(text, i) = {
+        let a = hexAt(text, i)
+        let b = hexAt(text, i + 1)
+        let c = hexAt(text, i + 2)
+        let d = hexAt(text, i + 3)
+        if a < 0 || b < 0 || c < 0 || d < 0 { -1 } else { ((a * 16 + b) * 16 + c) * 16 + d }
+    }
+
+    /// End of the hex-digit run in [k, stop): the first non-hex or missing byte.
+    fn hexRunEnd(text, k, stop) = if k >= stop || hexAt(text, k) < 0 { k } else { hexRunEnd(text, k + 1, stop) }
+
+    /// A short hex run is either truncated input or a non-hex byte.
+    fn shortHexRun(text, i, end) = if end >= byteLength(text) {
+        failure(unexpectedEnd, byteLength(text))
+    } else {
+        failure(badEscape, i)
+    }
+
+    fn scanUnicode(text, i, out) = {
+        let end = hexRunEnd(text, i + 2, i + 6)
+        if end < i + 6 {
+            shortHexRun(text, i, end)
+        } else {
+            scanUnit(text, i, out, unit4(text, i + 2))
+        }
+    }
+
+    /// U+0000 cannot inhabit this runtime's NUL-terminated strings, so it is
+    /// rejected like the raw control byte it would decode to.
+    fn scanUnit(text, i, out, cp) = if cp == nulCp {
+        failure(controlCode, i)
+    } else if inRange(cp, highSurrogateLo, highSurrogateHi) {
+        scanPair(text, i, out, cp)
+    } else if inRange(cp, lowSurrogateLo, lowSurrogateHi) {
+        failure(badSurrogate, i)
+    } else {
+        nextString(i + 6, out + (fromCodePoint(cp) ?: ""))
+    }
+
+    /// A high surrogate must be followed by a \\u escape or the pair is bad.
+    fn scanPair(text, i, out, high) = {
+        let after = byteAt(text, i + 6) ?: 0
+        let u = byteAt(text, i + 7) ?: 0
+        if after == backslash && u == letterU { joinPair(text, i, out, high) } else { failure(badSurrogate, i) }
+    }
+
+    fn pairText(high, low) = fromCodePoint(planeBase + (high - highSurrogateLo) * planeShift + (low - lowSurrogateLo)) ?: ""
+
+    fn joinPair(text, i, out, high) = {
+        let end = hexRunEnd(text, i + 8, i + 12)
+        let low = unit4(text, i + 8)
+        if end < i + 12 {
+            shortHexRun(text, i, end)
+        } else if inRange(low, lowSurrogateLo, lowSurrogateHi) {
+            nextString(i + 12, out + pairText(high, low))
+        } else {
+            failure(badSurrogate, i)
+        }
+    }
+
+}
