@@ -408,7 +408,45 @@ static void runtime_line_preserves_embedded_nul_and_later_reads(void) {
   free(next);
 }
 
+static void runtime_line_matches_bytes(const char *bytes, long length, long *cursor) {
+  long start = *cursor;
+  while (*cursor < length && bytes[*cursor] != '\n') (*cursor)++;
+  long count = *cursor - start;
+  unsigned reads = osp_hunt_calls[OSP_HUNT_CALL_READ];
+  char *line = osp_input();
+  hunt_check(line != NULL, "every byte pattern allocates an input line");
+  if (line != NULL) {
+    hunt_check(memcmp(line, bytes + start, (size_t)count) == 0 && line[count] == '\0',
+               "input preserves raw bytes through the first newline or EOF");
+    free(line);
+  }
+  hunt_check(osp_hunt_calls[OSP_HUNT_CALL_READ] - reads == (unsigned)count + 1,
+             "each input consumes exactly the line and delimiter or EOF read");
+  if (*cursor < length) (*cursor)++;
+}
+
+static void runtime_lines_cover_every_byte_position_and_eof(void) {
+  char bytes[] = {'a', 'b', '\n', 'c', 'd', '\n', 'e', 'f'};
+  for (unsigned byte = 0; byte < 256; byte++) {
+    for (size_t at = 0; at < sizeof(bytes); at++) {
+      char original = bytes[at];
+      bytes[at] = (char)byte;
+      for (long length = 0; length <= (long)sizeof(bytes); length++) {
+        hunt_reset();
+        osp_hunt_input_bytes = sizeof(bytes);
+        hunt_queue_bytes(bytes, sizeof(bytes));
+        hunt_queue_range((int)length);
+        long cursor = 0;
+        for (int line = 0; line < 5; line++) runtime_line_matches_bytes(bytes, length, &cursor);
+        hunt_check(cursor == length && feof(osp_hunt_stdin), "repeated input exhausts the exact symbolic length");
+      }
+      bytes[at] = original;
+    }
+  }
+}
+
 void hunt_mock_stream_tests(void) {
+  runtime_lines_cover_every_byte_position_and_eof();
   runtime_line_preserves_embedded_nul_and_later_reads();
   runtime_lines_at_every_bound();
   stdin_reads_exactly_its_length_at_every_cap();
