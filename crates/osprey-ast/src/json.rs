@@ -1,5 +1,7 @@
 //! Exact JSON escaping shared by compiler artifacts and editor output.
 
+use std::fmt::Write as _;
+
 /// The escape spelling required by each existing artifact format.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Escaping {
@@ -19,7 +21,7 @@ pub fn content(raw: &str, style: Escaping) -> String {
             if let Some(escaped) = escape(ch, style) {
                 out.push_str(escaped);
             } else if ch < ' ' {
-                out.push_str(&format!("\\u{:04x}", u32::from(ch)));
+                let _ = write!(out, "\\u{:04x}", u32::from(ch));
             } else {
                 out.push(ch);
             }
