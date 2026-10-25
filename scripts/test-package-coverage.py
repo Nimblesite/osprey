@@ -59,6 +59,15 @@ class CheckerTests(unittest.TestCase):
     def simple_fixture(self, name="demo", lines=4, expected=GOLDEN, source=None, relative="src/lib.py"):
         return self.fixture({name: {"sources": {relative: py_source(lines) if source is None else source}, "expected": expected}})
 
+    def threshold_fixture(self, threshold, total):
+        return self.fixture({"demo": {"sources": {"src/lib.py": py_source(total)}}}, {"demo": threshold})
+
+    def assert_coverage(self, fixture, covered, total, code):
+        fixture.write_report("demo", own_report("demo", covered, total))
+        result = fixture.check()
+        self.assert_exit(result, code)
+        return result
+
     def assert_exit(self, result, code, context=""):
         self.assertEqual(result.returncode, code, context + result.stdout + result.stderr)
 
@@ -93,22 +102,18 @@ class CheckerTests(unittest.TestCase):
                 self.assertNotIn("threshold", fixture.config()["projects"]["packages"]["demo"])
 
     def test_higher_package_threshold_still_rejects_90_percent(self):
-        fixture = self.fixture({"demo": {"sources": {"src/lib.py": py_source(100)}}}, {"demo": 95})
+        fixture = self.threshold_fixture(95, 100)
         for covered, code in ((90, 1), (94, 1), (95, 0)):
             with self.subTest(covered=covered):
-                fixture.write_report("demo", own_report("demo", covered, 100))
-                result = fixture.check()
-                self.assert_exit(result, code)
+                result = self.assert_coverage(fixture, covered, 100, code)
                 self.assertIn("95%", result.stdout)
                 self.assertEqual(fixture.result("demo")["threshold"], 95)
 
     def test_fractional_ratchet_enforces_exact_counts(self):
-        fixture = self.fixture({"demo": {"sources": {"src/lib.py": py_source(1000)}}}, {"demo": 90.2})
+        fixture = self.threshold_fixture(90.2, 1000)
         for covered, code in ((900, 1), (901, 1), (902, 0)):
             with self.subTest(covered=covered):
-                fixture.write_report("demo", own_report("demo", covered, 1000))
-                result = fixture.check()
-                self.assert_exit(result, code)
+                self.assert_coverage(fixture, covered, 1000, code)
                 self.assertEqual(fixture.result("demo")["threshold"], 90.2)
 
     def test_nonfinite_package_thresholds_fail_closed(self):
@@ -119,11 +124,10 @@ class CheckerTests(unittest.TestCase):
                 self.assert_exit(fixture.check(), 2)
 
     def test_decimal_threshold_does_not_falsely_reject_exact_boundary(self):
-        fixture = self.fixture({"demo": {"sources": {"src/lib.py": py_source(1375)}}}, {"demo": 90.4})
+        fixture = self.threshold_fixture(90.4, 1375)
         for covered, code in ((1242, 1), (1243, 0)):
             with self.subTest(covered=covered):
-                fixture.write_report("demo", own_report("demo", covered, 1375))
-                self.assert_exit(fixture.check(), code)
+                self.assert_coverage(fixture, covered, 1375, code)
 
     def test_c_runtime_omitted_threshold_enforces_90_and_keeps_higher_overrides(self):
         for percentage, entry, code in ((89, {}, 2), (90, {}, 0), (94, {"threshold": 95}, 2), (95, {"threshold": 95}, 0)):
