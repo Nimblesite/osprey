@@ -386,6 +386,12 @@ class CheckerTests(unittest.TestCase):
         self.assert_exit(result, 1, "A duplicate counter cannot overwrite the uncovered row: ")
         self.assertIn("duplicate JSON key", result.stdout)
 
+    def test_documentation_match_examples_are_not_executable_arms(self):
+        source = '(**\n    true => ignored\n    (* nested " quotation *)\n*)\nchoose x = x\n'
+        fixture = self.fixture({"demo": {"sources": {"src/lib.ospml": source}}})
+        fixture.write_report("demo", {"files": {"packages/demo/src/lib.ospml": {"lines": {"5": 1}}}})
+        self.assert_exit(fixture.check(), 0)
+
     def test_failed_collection_invalidates_a_stale_report(self):
         fixture = self.simple_fixture()
         fixture.write_report("demo", own_report("demo", 4, 4))

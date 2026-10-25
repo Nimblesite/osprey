@@ -29,7 +29,10 @@ impl Lowerer<'_> {
             let body = lowerer.suite(Self::field(node, "consequence")?, tail)?;
             Ok(MatchArm {
                 pattern,
-                body: crate::desugar::positioned(with_renames(body, &renames), Some(position(node))),
+                body: crate::desugar::positioned(
+                    with_renames(body, &renames),
+                    Some(position(node)),
+                ),
             })
         })
     }

@@ -19,7 +19,7 @@ date: "git Last Modified"
       <p class="hero-description">Declare what your code needs with <strong>algebraic effects</strong>. Choose the handler that makes it happen.</p>
       <div class="hero-actions">
         <a href="/playground/" class="btn btn-primary btn-lg">Try Osprey Online <span aria-hidden="true">↗</span></a>
-        <a href="/docs/effects/" class="btn btn-secondary btn-lg">Explore effects <span aria-hidden="true">→</span></a>
+        <a href="#install" class="btn btn-secondary btn-lg">Install Osprey <span aria-hidden="true">→</span></a>
       </div>
       <nav class="target-links" aria-label="Compilation targets"><a href="#targets">Native</a><a href="/docs/web-apps/">WebAssembly</a><a href="/docs/mobile-apps/#run-on-ios">iOS</a><a href="/docs/mobile-apps/#run-on-android">Android</a></nav>
     </div>
@@ -37,9 +37,22 @@ date: "git Last Modified"
   </div>
 </section>
 
+<section class="blue-box-installation home-install" id="install" aria-labelledby="install-title">
+  <div class="container">
+    <p class="home-eyebrow">01 / Get started</p><h2 class="section-title" id="install-title">Install Osprey.</h2><p class="section-subtitle">Run a program locally, or try the hosted Playground.</p>
+    <div class="install-grid">
+      <div class="install-card"><h3>Start in your browser</h3><p>Explore the language without installing anything.</p><a href="/playground/" class="btn btn-primary">Open Playground ↗</a></div>
+      <div class="install-card"><h3>macOS / Linux</h3><div class="install-code"><pre class="language-bash"><code class="language-bash">brew install nimblesite/tap/osprey</code></pre></div></div>
+      <div class="install-card"><h3>Windows</h3><div class="install-code"><pre class="language-bash"><code class="language-bash">scoop bucket add nimblesite https://github.com/Nimblesite/scoop-bucket
+scoop install osprey</code></pre></div></div>
+    </div>
+    <p class="support-note">Native compilation requires clang (LLVM 15+). <a href="/docs/installation/">Installation guide →</a> · <a href="https://github.com/Nimblesite/osprey">Contribute on GitHub ↗</a></p>
+  </div>
+</section>
+
 <section class="section effect-story" id="effects" aria-labelledby="effects-title">
   <div class="container">
-    <div class="section-heading"><p class="home-eyebrow">01 / Operations and handlers</p><h2 id="effects-title">Effects<br><span class="muted-heading">with typed handlers.</span></h2></div>
+    <div class="section-heading"><p class="home-eyebrow">02 / Operations and handlers</p><h2 id="effects-title">Effects<br><span class="muted-heading">with typed handlers.</span></h2></div>
     <div class="effect-layout">
       <div class="effect-intro"><p><code>effect</code> declares an operation’s arguments and result type. <code>perform</code> requests the operation; a <code>handler</code> supplies the implementation.</p><p>In the example above, <code>Drafts.save</code> returns a <code>Result</code>. Run <code>disk(saveDraft)</code> to write <code>draft.txt</code>, or <code>offline(saveDraft)</code> to test the failure path without writing a file.</p><p>The compiler checks operation types and rejects requests without a matching handler, including requests made through helper functions.</p><a class="text-link" href="/docs/effects/">See effect and handler syntax <span>↗</span></a></div>
       <figure class="overview-film">
@@ -56,7 +69,7 @@ date: "git Last Modified"
 
 <section class="section language-section" aria-labelledby="language-title">
   <div class="container">
-    <div class="section-heading"><p class="home-eyebrow">02 / Types and effects</p><h2 id="language-title">Inferred types.<br>Checked effects.</h2></div>
+    <div class="section-heading"><p class="home-eyebrow">03 / Types and effects</p><h2 id="language-title">Inferred types.<br>Checked effects.</h2></div>
     <div class="language-grid">
       <article><span class="feature-mark" aria-hidden="true">:τ</span><h3>Inferred static types</h3><p>Inferred static types, immutable data, and exhaustive pattern matching. Expected failures remain visible as <code>Result</code> values.</p><a href="/spec/0004-typesystem/">Explore the type system ↗</a></article>
       <article><span class="feature-mark" aria-hidden="true">{ λ }</span><h3>Three syntax flavors. One language.</h3><p>A syntax flavor is a way to write the same Osprey language: Default uses braces, ML uses indentation, and Python flavor uses Python-style syntax. Choose per file and import across flavors; all share one type system, effects and compiler.</p><a href="/blog/2026-06-30-osprey-flavors/">Compare the syntax flavors ↗</a></article>
@@ -68,7 +81,7 @@ date: "git Last Modified"
 
 <section class="section deployment-section" id="targets" aria-labelledby="targets-title">
   <div class="container">
-    <div class="section-heading"><p class="home-eyebrow">03 / Deployment targets</p><h2 id="targets-title">Deploy to desktop,<br><span class="muted-heading">web and mobile.</span></h2><p>Compile native programs for macOS, Linux and Windows, WebAssembly for browsers and WASI, or shared application logic for iOS and Android.</p></div>
+    <div class="section-heading"><p class="home-eyebrow">04 / Deployment targets</p><h2 id="targets-title">Deploy to desktop,<br><span class="muted-heading">web and mobile.</span></h2><p>Compile native programs for macOS, Linux and Windows, WebAssembly for browsers and WASI, or shared application logic for iOS and Android.</p></div>
     <div class="deployment-grid">
       <a class="deployment-target" href="/docs/my-first-app/"><span class="target-index">01 / HOST</span><h3>Native<span>↗</span></h3><p>Direct executables. C interop. A choice of memory backends.</p><code>--target=native</code></a>
       <a class="deployment-target" href="/docs/web-apps/"><span class="target-index">02 / BROWSER &amp; WASI</span><h3>WebAssembly<span>↗</span></h3><p>Shared application logic, connected to the browser through a host.</p><code>--target=wasm32</code></a>
@@ -80,7 +93,7 @@ date: "git Last Modified"
 
 <section class="section effect-story model-section" id="gpt2" aria-labelledby="model-title">
   <div class="container">
-    <div class="section-heading"><p class="home-eyebrow">04 / Python flavor and tensor handlers</p><h2 id="model-title">Port your Python.<br><span class="muted-heading">Choose CPU or GPU handlers.</span></h2></div>
+    <div class="section-heading"><p class="home-eyebrow">05 / Python flavor and tensor handlers</p><h2 id="model-title">Port your Python.<br><span class="muted-heading">Choose CPU or GPU handlers.</span></h2></div>
     <div class="effect-layout">
       <div class="effect-intro"><p>Keep <code>def</code>, <code>lambda</code>, and f-strings. Port computation into Osprey’s Python syntax flavor with inferred types and checked effects. Keep Python libraries through <a href="/spec/0042-pythoninterop/">explicit interop</a>.</p><p>GPT-2 is the worked port: one <code>Tensor</code> effect, a CPU handler, and a GPU handler using Metal or OpenCL. The handler decides where the arithmetic runs.</p><a class="text-link" href="/docs/python-flavor/">Port with Python flavor <span>↗</span></a></div>
       <div class="flight-code">
@@ -96,21 +109,8 @@ date: "git Last Modified"
 
 <section class="section mobile-showcase" id="mobile-apps" aria-labelledby="mobile-title">
   <div class="container">
-    <div class="mobile-intro"><p class="home-eyebrow">05 / Shared modules, native hosts</p><h2 id="mobile-title">Shared Osprey modules.<br>Native UI.</h2><p>Issue Inbox puts its model, updates, UI layout, GitHub decoding, and SQLite commands in shared Osprey modules. SwiftUI and Android widgets render the application.</p><ul class="mobile-capabilities"><li>Browse and search GitHub issues</li><li>Save issues, notes, and priorities</li><li>Restore your inbox from SQLite</li></ul><div class="mobile-actions"><a class="btn btn-primary" href="/docs/mobile-apps/">Build the mobile app ↗</a><a class="text-link" href="https://github.com/Nimblesite/osprey/tree/main/examples/mobile">Read the source →</a></div><p class="mobile-proof">Actual simulator and emulator captures. Also verified on a physical iPhone. Native hosts provide rendering, SQLite, HTTPS, and lifecycle services.</p></div>
+    <div class="mobile-intro"><p class="home-eyebrow">06 / Shared modules, native hosts</p><h2 id="mobile-title">Shared Osprey modules.<br>Native UI.</h2><p>Issue Inbox puts its model, updates, UI layout, GitHub decoding, and SQLite commands in shared Osprey modules. SwiftUI and Android widgets render the application.</p><ul class="mobile-capabilities"><li>Browse and search GitHub issues</li><li>Save issues, notes, and priorities</li><li>Restore your inbox from SQLite</li></ul><div class="mobile-actions"><a class="btn btn-primary" href="/docs/mobile-apps/">Build the mobile app ↗</a><a class="text-link" href="https://github.com/Nimblesite/osprey/tree/main/examples/mobile">Read the source →</a></div><p class="mobile-proof">Actual simulator and emulator captures. Also verified on a physical iPhone. Native hosts provide rendering, SQLite, HTTPS, and lifecycle services.</p></div>
     {{ gallery(mobile.screenshots) }}
-  </div>
-</section>
-
-<section class="blue-box-installation home-install">
-  <div class="container">
-    <p class="home-eyebrow">06 / Get started</p><h2 class="section-title">Install Osprey.</h2><p class="section-subtitle">Run a program locally, or try the hosted Playground.</p>
-    <div class="install-grid">
-      <div class="install-card"><h3>Start in your browser</h3><p>Explore the language without installing anything.</p><a href="/playground/" class="btn btn-primary">Open Playground ↗</a></div>
-      <div class="install-card"><h3>macOS / Linux</h3><div class="install-code"><pre class="language-bash"><code class="language-bash">brew install nimblesite/tap/osprey</code></pre></div></div>
-      <div class="install-card"><h3>Windows</h3><div class="install-code"><pre class="language-bash"><code class="language-bash">scoop bucket add nimblesite https://github.com/Nimblesite/scoop-bucket
-scoop install osprey</code></pre></div></div>
-    </div>
-    <p class="support-note">Native compilation requires clang (LLVM 15+). <a href="/docs/installation/">Installation guide →</a> · <a href="https://github.com/Nimblesite/osprey">Contribute on GitHub ↗</a></p>
   </div>
 </section>
 </div>

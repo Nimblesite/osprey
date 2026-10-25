@@ -309,7 +309,16 @@ fn clause_set_renames_divergent_columns_in_the_arm_body() {
         other => panic!("expected a curried lambda, got {other:?}"),
     };
     let renamed = arms.iter().any(|arm| {
-        matches!(&arm.body, Expr::Block { statements, .. }
+        let Expr::Block {
+            statements,
+            value: Some(body),
+            position: Some(_),
+        } = &arm.body
+        else {
+            panic!("clause arm lost its source position: {:?}", arm.body);
+        };
+        assert!(statements.is_empty());
+        matches!(body.as_ref(), Expr::Block { statements, .. }
             if statements.iter().any(|s| matches!(s, Stmt::Let { name, .. } if name == "other")))
     });
     assert!(renamed, "expected an `other = fallback` rename: {arms:#?}");

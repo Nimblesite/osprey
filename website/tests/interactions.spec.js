@@ -45,6 +45,12 @@ async function scrollSource(source) {
   await expect.poll(() => source.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
 }
 
+async function openInstallation(page) {
+  await page.getByRole("link", { name: "Install Osprey", exact: true }).click();
+  await expect(page).toHaveURL(/\/#install$/);
+  await expect(page.locator("#install .section-title")).toBeInViewport();
+}
+
 test.describe("homepage flight and source examples", () => {
   for (const viewport of VIEWPORTS) {
     test(`homepage keeps a fixed code box when switching flavors @ ${viewport.name}`, async ({ page }) => {
@@ -164,8 +170,9 @@ test.describe("homepage flight and source examples", () => {
     await expect(page.locator(".hero-title")).toBeVisible();
     await expect(page.locator("#example-default")).toContainText("handler Drafts");
     await expect(page.locator("#motion-toggle")).toBeHidden();
-    await page.getByRole("link", { name: "Explore effects" }).click();
-    await expect(page).toHaveURL(/\/docs\/effects\/$/);
+    await openInstallation(page);
+    await page.locator("#install").getByRole("link", { name: "Installation guide" }).click();
+    await expect(page).toHaveURL(/\/docs\/installation\/$/);
     await context.close();
   });
 });
@@ -207,6 +214,9 @@ test.describe("desktop interactions", () => {
     await page.goto("/");
     await expect(page.locator(".hero-title")).toContainText("Osprey");
     await expect(page.locator(".hero-actions .btn")).toHaveCount(2);
+    await expect(page.locator(".home > section").nth(1)).toHaveClass(/home-install/);
+    await openInstallation(page);
+    await page.goto("/");
     await page.locator(".hero-actions .btn", { hasText: "Try Osprey Online" }).click();
     await expect(page).toHaveURL(/\/playground\/$/);
   });

@@ -1,6 +1,25 @@
 use super::*;
 
 #[test]
+fn string_cursor_and_parse_out_slots_are_entry_allocas() {
+    let ir = module(
+        r#"fn scan(s) = fold(range(0, 3), 0, fn(acc, i) => satAdd(acc, byteAt(s, i) ?: 0))
+        fn parsed(s) = fold(range(0, 2), 0, fn(acc, i) => satAdd(acc, satAdd(parseInt(s) ?: 0, byteLength(toString(parseFloat(s) ?: 0.0)))))
+        fn nested(s) = fold(range(0, 2), 0, fn(acc, i) => fold(range(0, 2), acc, fn(n, j) => satAdd(n, codePointAt(s, j) ?: 0)))
+        print("${scan("123")} ${parsed("12")} ${nested("abc")}")"#,
+    );
+    for function in ir.split("define ").skip(1) {
+        let mut entry = true;
+        for line in function.lines() {
+            if line.ends_with(':') && line != "entry:" {
+                entry = false;
+            }
+            assert!(!line.contains(" = alloca ") || entry, "loop-local slot: {line}");
+        }
+    }
+}
+
+#[test]
 fn higher_order_calls_through_computed_and_field_callees() {
     // A chained 3-deep application (the outer callee is itself a call
     // result), an iterator callback that is a computed call result

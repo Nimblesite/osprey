@@ -74,9 +74,15 @@ impl Lowerer<'_> {
             "import_from_statement" | "import_statement" => return self.imported(node),
             "expression_statement" => return self.expression_statement(Self::first(node)?),
             "pass_statement" => return Ok(None),
-            "if_statement" => Self::expression_statement_value(self.if_expression(node, false)?, node),
-            "with_statement" => Self::expression_statement_value(self.with_handler(node, false)?, node),
-            "match_statement" => Self::expression_statement_value(self.matching(node, false)?, node),
+            "if_statement" => {
+                Self::expression_statement_value(self.if_expression(node, false)?, node)
+            }
+            "with_statement" => {
+                Self::expression_statement_value(self.with_handler(node, false)?, node)
+            }
+            "match_statement" => {
+                Self::expression_statement_value(self.matching(node, false)?, node)
+            }
             "for_statement" => Self::expression_statement_value(self.for_statement(node)?, node),
             _ => return self.unsupported(node),
         };
@@ -288,11 +294,9 @@ impl Lowerer<'_> {
 }
 
 fn suite_block(node: Node<'_>, statements: Vec<Stmt>, value: Option<Expr>) -> Expr {
-    Expr::Block {
-        statements,
-        value: value.map(Box::new),
-        position: Some(position(node)),
-    }
+    let position = Some(position(node));
+    let value = value.map(|value| Box::new(crate::desugar::positioned(value, position)));
+    crate::desugar::block(statements, value, position)
 }
 
 /// The callback a `for` statement hands to `forEach`: one iteration variable,

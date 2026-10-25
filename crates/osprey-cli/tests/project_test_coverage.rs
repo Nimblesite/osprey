@@ -89,6 +89,23 @@ fn file_lines(report: &serde_json::Value, suffix: &str) -> Vec<(u32, u64)> {
     rows
 }
 
+fn coverage_report(root: &Path) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    let bytes = std::fs::read(root.join("cov.json"))?;
+    Ok(serde_json::from_slice(&bytes)?)
+}
+
+fn covered_run(
+    root: &Path,
+    memory: &str,
+) -> Result<(std::process::Output, serde_json::Value), Box<dyn std::error::Error>> {
+    let output = cached_run(root, memory)?;
+    assert!(output.status.success(), "{output:?}");
+    if memory == "arc" {
+        assert_arc_exit(&output.stderr);
+    }
+    Ok((output, coverage_report(root)?))
+}
+
 #[test]
 fn a_project_suite_reports_coverage_for_each_source_file() {
     let root = project("per_file");
@@ -111,9 +128,7 @@ fn a_project_suite_reports_coverage_for_each_source_file() {
     }
     assert!(stdout.contains("# coverage total: "), "{stdout}");
 
-    let report: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&json).expect("coverage json"))
-            .expect("valid coverage json");
+    let report = coverage_report(&root).expect("valid coverage json");
     // `greet` is defined on calc.ospml's own line 7 and runs once; `shout`,
     // on line 11, never runs. Flattened lines would land past the entry's.
     assert_eq!(file_lines(&report, "calc.ospml"), vec![(7, 1), (11, 0)]);
@@ -198,14 +213,9 @@ fn assert_arc_exit(stderr: &[u8]) {
 }
 
 fn cached_coverage(root: &Path, memory: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let output = cached_run(root, memory)?;
-    assert!(output.status.success(), "{output:?}");
+    let (output, report) = covered_run(root, memory)?;
     assert!(String::from_utf8_lossy(&output.stdout).contains("# suites: 1 passed, 0 failed"));
-    let report = serde_json::from_slice(&std::fs::read(root.join("cov.json"))?)?;
     assert_eq!(file_lines(&report, "calc.ospml"), vec![(7, 1), (11, 0)]);
-    if memory == "arc" {
-        assert_arc_exit(&output.stderr);
-    }
     Ok(())
 }
 
@@ -361,17 +371,15 @@ fn branch_project() -> Result<PathBuf, Box<dyn std::error::Error>> {
 }
 
 fn assert_branch_rows(root: &Path, memory: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let output = cached_run(root, memory)?;
-    assert!(output.status.success(), "{output:?}");
-    let report = serde_json::from_slice(&std::fs::read(root.join("cov.json"))?)?;
+    let (_, report) = covered_run(root, memory)?;
     let lines = file_lines(&report, "reader.py");
     for row in [(5, 1), (6, 1), (7, 1), (9, 0), (10, 0), (11, 0)] {
-        assert!(lines.contains(&row), "missing branch/return {row:?}: {lines:?}");
+        assert!(
+            lines.contains(&row),
+            "missing branch/return {row:?}: {lines:?}"
+        );
     }
     assert!(file_lines(&report, "main.py").contains(&(3, 1)));
-    if memory == "arc" {
-        assert_arc_exit(&output.stderr);
-    }
     Ok(())
 }
 
@@ -387,15 +395,10 @@ fn python_coverage_counts_selected_returns_and_retains_untaken_branches(
 }
 
 fn assert_handler_coverage(root: &Path, memory: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let output = cached_run(root, memory)?;
-    assert!(output.status.success(), "{output:?}");
+    let (output, report) = covered_run(root, memory)?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.lines().any(|line| line == "7"), "{output:?}");
-    let report = serde_json::from_slice(&std::fs::read(root.join("cov.json"))?)?;
     assert_handler_rows(&report);
-    if memory == "arc" {
-        assert_arc_exit(&output.stderr);
-    }
     Ok(())
 }
 
@@ -462,5 +465,35 @@ fn manifest_namespace_changes_invalidate_codegen_even_when_source_text_is_unchan
         assert_eq!(artifact_counts(&root)?, [generation; 3]);
     }
     std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+fn assert_native_arm_rows(
+    root: &Path,
+    memory: &str,
+    flavor: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (_, report) = covered_run(root, memory)?;
+    let lines = file_lines(&report, &format!("calc.{flavor}"));
+    let selected = if flavor == "osp" { 4 } else { 5 };
+    for row in [(selected, 1), (selected + 1, 0)] {
+        assert!(lines.contains(&row), "missing match arm {row:?}: {lines:?}");
+    }
+    Ok(())
+}
+
+#[test]
+fn native_match_coverage_keeps_untaken_arms_in_both_flavors(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for (flavor, source) in [
+        ("osp", "namespace calc;\nmodule Words {\nexport fn greet(name) = match name {\n\"ann\" => \"hi ${name}\"\n_ => \"unused\"\n}\n}\n"),
+        ("ospml", "namespace calc\nmodule Words\n    export greet name =\n        match name\n            \"ann\" => \"hi ${name}\"\n            _ => \"unused\"\n"),
+    ] {
+        let root = project(&format!("match_arm_{flavor}"));
+        std::fs::remove_file(root.join("framework/src/calc.ospml"))?;
+        write(&root.join(format!("framework/src/calc.{flavor}")), source);
+        for memory in ["default", "gc", "arc"] { assert_native_arm_rows(&root, memory, flavor)?; }
+        std::fs::remove_dir_all(root)?;
+    }
     Ok(())
 }

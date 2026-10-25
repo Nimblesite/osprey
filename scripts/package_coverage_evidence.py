@@ -8,6 +8,7 @@ from pathlib import Path
 
 SOURCE_SUFFIXES = frozenset({".py", ".osp", ".ospml"})
 GENERATED_DIRS = frozenset({"target", "__pycache__", "node_modules"})
+COMMENT_OR_STRING = re.compile(r'''"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|//[^\n]*|/\*|\(\*''')
 
 
 def unique_object(pairs):
@@ -73,10 +74,34 @@ def definition_problems(path, hits):
 def match_arm_problems(path, hits):
     # Cross-check ordinary arm entries independently of compiler-emitted rows.
     # Bindings, type arrows and lambdas are not match arm declarations.
-    lines = {index for index, line in enumerate(path.read_text().splitlines(), 1)
+    lines = {index for index, line in enumerate(without_comments(path.read_text()).splitlines(), 1)
              if re.match(r"^\s+(?![/#])[^=\\:\n]+=>", line)}
     return [f"missing match arm counter: {path.name}:{line}"
             for line in sorted(lines - set(hits))]
+
+
+def block_comment_end(text, start):
+    opening = text[start:start + 2]
+    closing = "*)" if opening == "(*" else "*/"
+    cursor, depth = start + 2, 1
+    while cursor < len(text) and depth:
+        pair = text[cursor:cursor + 2]
+        depth += int(pair == opening) - int(pair == closing)
+        cursor += 2 if pair in (opening, closing) else 1
+    return cursor
+
+
+def without_comments(text):
+    cursor, parts = 0, []
+    while token := COMMENT_OR_STRING.search(text, cursor):
+        if token[0].startswith(('"', "'")):
+            parts.append(text[cursor:token.end()])
+            cursor = token.end()
+        else:
+            end = token.end() if token[0].startswith("//") else block_comment_end(text, token.start())
+            parts.append(text[cursor:token.start()] + re.sub(r"[^\n]", " ", text[token.start():end]))
+            cursor = end
+    return "".join(parts) + text[cursor:]
 
 
 def oracle_problems(text):

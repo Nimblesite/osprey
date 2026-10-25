@@ -55,7 +55,10 @@ pub fn without_positions(program: &Program) -> String {
 
 fn erase_source_blocks(expression: &mut crate::Expr) {
     crate::mutate::children_mut(expression, &mut erase_source_blocks);
-    if let crate::Expr::Block { statements, value, .. } = expression {
+    if let crate::Expr::Block {
+        statements, value, ..
+    } = expression
+    {
         if statements.is_empty() {
             if let Some(value) = value.take() {
                 *expression = *value;

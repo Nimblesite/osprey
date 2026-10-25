@@ -25,9 +25,7 @@ pub(crate) fn instrumented(program: &Program) -> Program {
 
 fn mark_source_entries(expression: &mut Expr) {
     mutate::children_mut(expression, &mut mark_source_entries);
-    if let Expr::Block { statements, value: Some(_), position: Some(position) } = expression {
-        statements.push(entry_statement(Some(*position)));
-    }
+    mark_expression_entry(expression);
     if let Expr::Handler {
         stage,
         arms,
@@ -39,6 +37,19 @@ fn mark_source_entries(expression: &mut Expr) {
         arms.iter_mut().for_each(mark_arm_entry);
         if stage.is_compile_time() {
             **body = arm_entry((**body).clone(), *position);
+        }
+    }
+}
+
+fn mark_expression_entry(expression: &mut Expr) {
+    if let Expr::Block {
+        statements,
+        value: Some(_),
+        position: Some(position),
+    } = expression
+    {
+        if statements.is_empty() {
+            statements.push(entry_statement(Some(*position)));
         }
     }
 }
@@ -57,7 +68,11 @@ fn arm_entry(body: Expr, position: Option<Position>) -> Expr {
 
 fn entry_statement(position: Option<Position>) -> Stmt {
     Stmt::Expr {
-        value: Expr::Block { statements: Vec::new(), value: None, position: None },
+        value: Expr::Block {
+            statements: Vec::new(),
+            value: None,
+            position: None,
+        },
         doc: None,
         position,
     }

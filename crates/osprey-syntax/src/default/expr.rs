@@ -957,8 +957,18 @@ mod tests {
             Expr::Match { arms, .. } => {
                 assert_eq!(arms.len(), 2, "got {arms:?}");
                 // The first arm's body kept its spaced call ...
+                let Expr::Block {
+                    statements,
+                    value: Some(body),
+                    position,
+                } = &arms[0].body
+                else {
+                    panic!("arm 0 lost its source anchor: {:?}", arms[0].body);
+                };
+                assert!(statements.is_empty());
+                assert_eq!(*position, Some(osprey_ast::Position { line: 2, column: 4 }));
                 assert!(
-                    matches!(arms[0].body, Expr::Call { .. }),
+                    matches!(body.as_ref(), Expr::Call { .. }),
                     "arm 0 body: {:?}",
                     arms[0].body
                 );

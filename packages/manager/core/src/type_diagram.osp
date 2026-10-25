@@ -22,25 +22,31 @@ module TypeDiagram {
     type RefStep = { ref: TypeRef, next: int }
     type FieldsStep = { parsed: List<Field>, next: int }
     type VariantsStep = { variants: List<Variant>, next: int }
+    type TokenState = { tokens: List<string>, wordStart: int }
 
     let unknownType = "schema.unknown-type"
 
-    fn isSpace(b) = b == 32 || b == 9 || b == 13 || b == 10
     fn isWordByte(b) = (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || b == 95
     fn isPunct(b) = b == 123 || b == 125 || b == 58 || b == 61 || b == 60 || b == 62
 
-    fn scanWord(text, i) = if i < byteLength(text) && isWordByte(byteAt(text, i) ?: 0) { scanWord(text, i + 1) } else { i }
-
-    fn wordToken(text, i, out) = {
-        let end = scanWord(text, i)
-        tokenize(text, end, listAppend(out, substring(text, i, end) ?: ""))
+    fn finishWord(text, i, acc) = if acc.wordStart < 0 { acc.tokens } else {
+        listAppend(acc.tokens, substring(text, acc.wordStart, i) ?: "")
     }
 
-    fn tokenize(text, i, out) = if i >= byteLength(text) { out }
-        else if isSpace(byteAt(text, i) ?: 0) { tokenize(text, i + 1, out) }
-        else if isPunct(byteAt(text, i) ?: 0) { tokenize(text, i + 1, listAppend(out, substring(text, i, i + 1) ?: "")) }
-        else if isWordByte(byteAt(text, i) ?: 0) { wordToken(text, i, out) }
-        else { tokenize(text, i + 1, out) }
+    fn tokenBoundary(text, i, acc, b) = {
+        let words = finishWord(text, i, acc)
+        TokenState { tokens: if isPunct(b) { listAppend(words, substring(text, i, i + 1) ?: "") } else { words }, wordStart: -1 }
+    }
+
+    fn tokenStep(text, acc, i) = match byteAt(text, i) {
+        Error => tokenBoundary(text, i, acc, 0)
+        Success { value } => if isWordByte(value) {
+            TokenState { tokens: acc.tokens, wordStart: if acc.wordStart < 0 { i } else { acc.wordStart } }
+        } else { tokenBoundary(text, i, acc, value) }
+    }
+
+    /// Visit each byte and one final boundary without accumulating native call frames.
+    fn tokenize(text) = fold(range(0, byteLength(text) + 1), TokenState { tokens: [], wordStart: -1 }, fn(acc, i) => tokenStep(text, acc, i)).tokens
 
     fn peek(tokens, i) = listGet(tokens, i) ?: ""
 
@@ -134,7 +140,7 @@ module TypeDiagram {
     /// The parsed model, or `schema.unknown-type` when any declaration
     /// references a name that is neither builtin nor declared.
     export fn parse(text) = {
-        let tokens = tokenize(text, 0, [])
+        let tokens = tokenize(text)
         let decls = parseDecls(tokens, 1, [])
         let names = mapList(decls, declName)
         match foldList(decls, true, fn(ok, d) => ok && declKnown(names, d)) {
