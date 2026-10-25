@@ -48,3 +48,4 @@ const reveal = new IntersectionObserver((entries) => {
   }
 }, { threshold: 0.08 });
 for (const section of sections) reveal.observe(section);
+document.querySelector('.home').classList.add('motion-ready');

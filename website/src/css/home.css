@@ -122,7 +122,7 @@
 .home .hero-title em { display: inline-block; }
 .home .hero-code [class*="language-"], .home .flight-code .language-python { white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: no-preference) {
-  .home :is(.hero-content > *, .hero-code, .hero-footnote, .is-revealed) { animation: arrive 650ms cubic-bezier(0.22, 1, 0.36, 1) var(--arrive-delay, 0ms) both; }
+  .home.motion-ready :is(.hero-content > *, .hero-code, .hero-footnote, .is-revealed) { animation: arrive 650ms cubic-bezier(0.22, 1, 0.36, 1) var(--arrive-delay, 0ms) both; }
   .home .hero-content > :nth-child(2) { --arrive-delay: 60ms; }
   .home .hero-content > :nth-child(3) { --arrive-delay: 120ms; }
   .home .hero-content > :nth-child(4) { --arrive-delay: 180ms; }
@@ -130,8 +130,8 @@
   .home .hero-content > :nth-child(6) { --arrive-delay: 300ms; }
   .home .hero-code { --arrive-delay: 180ms; }
   .home .hero-footnote { --arrive-delay: 360ms; }
-  .flight-film video { animation: film-in 1100ms ease-out both; }
-  .home .hero-code [data-source-flavor]:not([hidden]) { animation: film-in 180ms ease-out; }
+  .home.motion-ready .flight-film video { animation: film-in 1100ms ease-out both; }
+  .home.motion-ready .hero-code [data-source-flavor]:not([hidden]) { animation: film-in 180ms ease-out; }
   .home :is(.hero-actions .btn, .text-link, .deployment-target h3) > span { transition: transform 180ms ease; }
   .home :is(.hero-actions .btn, .text-link):focus-visible > span { transform: translateX(3px); }
   @media (hover: hover) {
