@@ -133,3 +133,28 @@ fn a_project_suite_runs_without_coverage() {
     assert!(stdout.contains("ok 1 - greets"), "{stdout}");
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn folded_module_alias_initialization_remains_in_source_coverage(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = project("alias_initialization");
+    write(
+        &root.join("framework/src/facade.ospml"),
+        "namespace calc\nimport calc::Words\nmodule Facade\n    export greet = Words::greet\n",
+    );
+    write(
+        &root.join("tests/main.ospml"),
+        &MAIN.replace("Words", "Facade"),
+    );
+    let json = root.join("cov.json");
+    let (code, stdout, stderr) = osprey_test(&[
+        root.to_string_lossy().as_ref(),
+        "--coverage-json",
+        json.to_string_lossy().as_ref(),
+    ]);
+    assert_eq!(code, Some(0), "stdout={stdout}\nstderr={stderr}");
+    let report = serde_json::from_slice(&std::fs::read(&json)?)?;
+    assert_eq!(file_lines(&report, "facade.ospml"), vec![(4, 1)]);
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}

@@ -1,8 +1,9 @@
 //! CLI-facing project input and source-location handling.
 
-use osprey_ast::{Position, Program};
+use osprey_ast::{Expr, Position, Program, Stmt};
 use osprey_project::{AssembledProject, ProjectConfig, ProjectError, SourceFile};
 use osprey_syntax::Flavor;
+use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 
 /// A parsed script or an assembled multi-file project ready for dispatch.
@@ -149,6 +150,25 @@ impl CompilationInput {
         }
     }
 
+    /// Retain source initialization locations erased by constant folding.
+    /// Coverage executes these counters at startup, without rebuilding aliases
+    /// or their values. Implements [TESTING-PROJECT-SUITE].
+    pub(crate) fn codegen_program(&self, coverage: bool) -> Cow<'_, Program> {
+        let CompilationUnit::Project(project) = &self.unit else {
+            return Cow::Borrowed(self.backend_program());
+        };
+        if !coverage || project.documentation_bindings.is_empty() {
+            return Cow::Borrowed(self.backend_program());
+        }
+        let mut program = self.backend_program().clone();
+        let markers = project
+            .documentation_bindings
+            .iter()
+            .filter_map(coverage_initializer);
+        let _ = program.statements.splice(0..0, markers);
+        Cow::Owned(program)
+    }
+
     /// Every undocumented export, read from each source as written: project
     /// assembly flattens modules away, so the flattened program cannot say
     /// what was exported. Positions land in the flattened space, like every
@@ -288,6 +308,20 @@ impl CompilationInput {
             OutputDefault::Source(path) => artifact(Path::new(path), target, false),
             OutputDefault::Project { root, name } => artifact(&root.join(name), target, true),
         }
+    }
+}
+
+fn coverage_initializer(statement: &Stmt) -> Option<Stmt> {
+    match statement {
+        Stmt::Let {
+            position: Some(position),
+            ..
+        } => Some(Stmt::Expr {
+            value: Expr::Integer(0),
+            doc: None,
+            position: Some(*position),
+        }),
+        _ => None,
     }
 }
 
