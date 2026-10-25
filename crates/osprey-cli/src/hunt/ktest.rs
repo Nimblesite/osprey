@@ -103,6 +103,7 @@ impl Ktest {
     /// Every opened file's bytes by path: the objects that are not stdin, a
     /// length, an open flag, or an entropy, clock or errno draw.
     pub(crate) fn files(&self) -> Vec<(String, Vec<u8>)> {
+        self.quarantine_hidden_file_streams();
         self.objects
             .iter()
             .filter(|object| is_file_stream(&object.name))
@@ -111,6 +112,24 @@ impl Ktest {
                     .map(|bytes| (object.name.clone(), bytes))
             })
             .collect()
+    }
+
+    #[expect(clippy::panic, reason = "AGENTS.md mandates broken-code quarantine")]
+    fn quarantine_hidden_file_streams(&self) {
+        if let Some(object) = self.objects.iter().find(|object| {
+            !is_file_stream(&object.name)
+                && self
+                    .objects
+                    .iter()
+                    .any(|marker| marker.name == format!("{}.ok", object.name))
+        }) {
+            // Quarantine: names are not type tags. The suffix filter silently
+            // drops real file bytes; an unambiguous object decoder is missing.
+            panic!(
+                "Hunt cannot decode file {:?}: its name collides with symbolic metadata",
+                object.name
+            );
+        }
     }
 }
 
@@ -174,19 +193,33 @@ mod tests {
         assert_eq!(ktest.stream("missing"), None);
     }
 
+    fn file_with_metadata_name(name: &str) -> Ktest {
+        let length = format!("{name}.len");
+        let opened = format!("{name}.ok");
+        parse(&encode(&[
+            (name, b"9trailing"),
+            (&length, &1i32.to_le_bytes()),
+            (&opened, &1i32.to_le_bytes()),
+        ]))
+        .expect("valid file stream")
+    }
+
     #[test]
     fn real_files_with_metadata_like_names_keep_their_replay_bytes() {
-        for name in ["input.len", "input.ok", "entropy.data", "clock.data", "errno.data"] {
-            let length = format!("{name}.len");
-            let opened = format!("{name}.ok");
-            let bytes = encode(&[
-                (name, b"9trailing"),
-                (&length, &1i32.to_le_bytes()),
-                (&opened, &1i32.to_le_bytes()),
-            ]);
-            let ktest = parse(&bytes).expect("valid file stream");
+        for name in [
+            "input.len",
+            "input.ok",
+            "entropy.data",
+            "clock.data",
+            "errno.data",
+        ] {
+            let ktest = file_with_metadata_name(name);
             assert_eq!(ktest.stream(name), Some(b"9".to_vec()), "{name}");
-            assert_eq!(ktest.files(), vec![(name.to_string(), b"9".to_vec())], "{name}");
+            assert_eq!(
+                ktest.files(),
+                vec![(name.to_string(), b"9".to_vec())],
+                "{name}"
+            );
         }
     }
 
