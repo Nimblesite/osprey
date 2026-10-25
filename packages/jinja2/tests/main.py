@@ -205,6 +205,7 @@ LOOKUP_ERRORS = [
     ["raise exception", "{{ raise_exception('boom') }}", "boom"],
     ["strftime_now", "{{ strftime_now('%Y') }}", "strftime_now is not available in the Osprey port"],
     ["loop cond error", "{% for n in nums if ) %}{% endfor %}", "unexpected token `)` in expression"],
+    ["loop filtered body error", "{% for n in nums if true %}{{ ) }}{% endfor %}", "unexpected token `)` in expression"],
     ["loop iterable error", "{% for n in ) %}{% endfor %}", "unexpected token `)` in expression"],
     ["loop body error", "{% for n in nums %}{{ ) }}{% endfor %}", "unexpected token `)` in expression"],
     ["set expression error", "{% set x = ) %}", "unexpected token `)` in expression"],

@@ -61,55 +61,11 @@ Recheck installation status, stable repository owner/ID, configured branch reach
 
 CLI login uses a one-use browser handoff bound to CLI PKCE, explicit confirmation and an exact loopback redirect; never send a bearer token through a URL. Store API-access credentials in the OS credential store; they cannot sign publications. Every human CLI publication invokes the browser's enrolled WebAuthn ceremony over the exact spec 0030 payload. CI authentication uses short-lived, audience-bound workflow identity mapped to an explicit package grant; its publication signature still follows spec 0030. Delegated CI authority means a scoped workflow identity, never a third signature mechanism. Long-lived personal tokens and a generic service key are not publishing credentials.
 
-## Ownership model `[PACKAGE-OWNERSHIP-MODEL]`
+## Organization ownership and package authority
 
-Every package key belongs to exactly one immutable scope ID; each scope belongs to exactly one personal principal or registry organization. Both use the same authorization predicates. Personal scope owners exercise ownership administration but require the same explicit, audited package maintainer grant before publishing. Public handles map to immutable IDs and are never reused after tombstoning. Package deletion, account deletion or a GitHub rename cannot free a previously used key.
+[Organization Package Governance](0045-OrganizationPackageGovernance.md) is the authoritative ownership/maintenance contract. Every package belongs to one organization and retains the canonical `@organization/package` key. Personal ownership and global leaf names do not exist. Each package has one non-null administrator drawn from that org's active memberships; only that administrator manages explicit per-package permissions. Multiple users may hold publishing and other permissions concurrently. Organization custodianship grants no implicit package authority.
 
-Initial scope allocation is an atomic enrollment, not an arbitrary owner-ID insert: verify the requesting principal's fresh credential, reserve the canonical handle, create its ownership and audit records together, and reject reserved/tombstoned/conflicting handles. A scope presented as a GitHub organization additionally binds its numeric org ID and requires live organization-admin proof over the enrollment nonce; use a separate verification label for an unlinked registry organization and never imply GitHub affiliation from a matching name. Unverified accounts cannot reserve official namespaces; `@osprey` is reserved to its existing custodians. Record stable provider ownership independently of the display handle, and do not release handles after a provider rename/deletion.
-
-The schema MUST represent these relationships without parallel user/organization ownership implementations:
-
-| Relation | Required identity and constraints |
-| --- | --- |
-| principals / auth bindings | Stable principal; unique verified provider tuple; active/suspended state; credential and revocation epochs; three distinct pre-enrolled recovery principals and two-of-three recovery policy; no authority from profile metadata |
-| organizations / memberships | Stable org ID; unique `(org_id, principal_id)`; owner/admin/member roles; active/revoked state; grantor and accepted invitation |
-| scopes | Unique canonical handle; one owner principal XOR one owner organization; immutable scope ID; ownership epoch; frozen/tombstoned state |
-| packages | Unique `(scope_id, canonical_name)`; immutable package ID and scope ID; current binding and authority epoch |
-| package grants | Unique `(package_id, principal_id)`; maintainer role, active/revoked state and granting authority; organization grants additionally require current org membership |
-| invitations / transfer requests | Hash of one-use secret, exact target IDs and role, initiating authority, expiry, acceptance and epoch; secrets never readable in ordinary queries |
-| publication credentials / bindings | Stable principal and scope/package IDs; credential key/workflow identity; revocation; repository and installation IDs; binding epoch |
-| intents / challenges / jobs | Exact actor, scope, package, frozen digests, credential/membership/binding epochs, idempotency key, expiry and consumed state |
-| releases / status / audit outbox | Immutable release identity/digests, append-only status/events, actor and policy/proof digests; no mutable ownership reassignment |
-
-All child ownership references MUST use foreign keys and composite constraints so a package, grant, job or release cannot name one organization's ID with another scope's package. Canonicalization happens before uniqueness checks; accept ASCII lowercase handles with one documented grammar, reject alternate normalization/encoding rather than creating lookalike ownership keys. Key fields and grantor fields are server-derived, excluded from generic PATCH and protected by column grants. No cascading principal/org deletion may destroy release or ownership history.
-
-### Permission matrix `[PACKAGE-OWNERSHIP-PERMISSIONS]`
-
-| Actor | Public reads | Organization/ownership administration | Package publication |
-| --- | --- | --- | --- |
-| Anonymous | Published catalog and verified public source only | None | None |
-| Authenticated outsider | Same public reads; own profile | Create their own scope/org through guarded enrollment only | None until enrolled and authorized |
-| Organization member | Public reads plus permitted organization membership view | No membership, role, grant or transfer writes | None without explicit package grant |
-| Package maintainer | Public reads plus own package intents/results | No org roles, maintainer grants, bindings or ownership transfer | Intent/final authorization/yank for that package only, with enrolled proof |
-| Organization admin | Organization management view; invite/remove ordinary members; grant/revoke package maintainers | Cannot create owners/admins, demote owners, transfer scope or recover credentials | Requires the same explicit package maintainer grant |
-| Organization owner | Administrative changes, owners/admins, bindings, freeze and transfer through guarded ceremonies | Cannot remove the last active owner; independent acceptance required for sensitive changes | Requires the same explicit package maintainer grant |
-| Collector / builder / signer | Only assigned immutable inputs and operation-specific result writes | No memberships, credentials or ownership edits | No human impersonation; release acceptance requires independent proofs/gates |
-
-An owner may grant themselves maintainer rights only through the audited, fresh-proof grant operation; ownership does not silently imply publication rights. Creating a package requires an owner/admin package-creation operation and an explicit initial maintainer. Ordinary maintainers cannot create arbitrary siblings or delegate access. Invitation acceptance, role changes, credential enrollment/recovery, grants, repository rebinding and transfers require fresh WebAuthn proof, current active authority and audit evidence; adding another owner additionally requires their explicit credential-backed acceptance. `@osprey` keeps its two-of-three distinct publication-principal threshold.
-
-Adding/removing an owner, changing recovery authority or transferring an organization scope requires approvals from two distinct existing active owners. If there is only one owner, require that owner's approval plus one distinct pre-enrolled recovery principal and a logged 24-hour hold; the proposed recipient cannot supply the independent approval. Personal scope transfers use the personal owner plus one distinct pre-enrolled recovery principal and the same hold. Every owner/role/recovery change notifies all existing owners through the tested independent notification channel. Creating the first owner is permitted only within the atomic initial enrollment; it cannot bypass these rules on an existing scope.
-
-### Removal, transfer and recovery `[PACKAGE-OWNERSHIP-LIFECYCLE]`
-
-Invitation acceptance binds to the authenticated immutable principal and intended org/package; email is a notification locator only. Accepting twice, accepting as another principal, accepting expired invitations or accepting after the issuer loses authority fails. Granting a role higher than the inviter's permitted ceiling fails.
-
-Revoking membership or a package grant increments the affected authority epoch and invalidates unconsumed challenges, pending jobs and delegated credentials for that authority. A queued job must recheck live authority before collection, signing and release eligibility. A release that became eligible before revocation remains governed by the signed yank/revoke protocol; membership removal does not rewrite history. Deleting the last owner or racing two owner removals MUST fail atomically.
-
-Scope control transfers preserve scope/package IDs and release history. Require fresh signed approval from the precise existing-owner/recovery set above, explicit acceptance by the new owner, a 24-hour logged hold and a freeze of publication and publisher-initiated yanks. Independent threshold-authorized security revocation remains available. Finalization revokes existing package grants/delegated credentials and challenges; the new owner explicitly re-enrolls maintainers and bindings. Moving a package to a different scope creates a new key with an audited migration pointer; never mutate the original release identity. Recovery cannot rename or recycle a scope.
-
-Before a scope can publish, enroll three distinct independent recovery principals with credential-backed acceptance and a two-of-three quorum, separate from the recovering owner. Lost-credential recovery is a separately logged state machine using that pre-enrolled quorum, a minimum 24-hour hold, notifications to all existing owners and publication freeze. No support operator, GitHub email, provider rename or Supabase service key can grant ownership as a shortcut. Failure to meet the pre-enrolled quorum leaves writes frozen with an appeal path that cannot waive the quorum; database restoration alone does not prove authority.
-
-Publisher-initiated yank requests recheck live grant/credential epochs when executed, even if signed before removal; a pending request from a removed maintainer fails. Security revocation instead follows the independent signed advisory/status threshold in spec 0030 and must not depend on the compromised publisher's cooperation.
+The canonical typeDiagram and DataProvider migration define organization/membership identities, the single administrator FK, same-org permission grants, handovers, invitations, maintenance reports and governance events. Package administrator handover preserves org ownership; cross-org succession uses a new key and the existing 30-day ownership notice/recovery rules. The older personal-scope/multiple-package-owner matrix is superseded in full. All `[PACKAGE-OWNERSHIP-*]` governance sections live in spec 0045.
 
 ## RLS enforcement `[PACKAGE-OWNERSHIP-RLS]`
 
@@ -157,8 +113,8 @@ Every row below requires a named Osprey test, positive control, retained result 
 | Authentication | GitHub login/refresh/logout succeeds; state/PKCE replay, wrong issuer/audience/key/algorithm, expired JWT, revoked session, cross-environment callback, CSRF and open redirect fail |
 | Identity | GitHub rename/email collision/recycled handle and Supabase auto-link do not inherit authority or private reads; unapproved link/recovery cannot use existing signing credentials |
 | Tenant isolation | A/B orgs plus outsider: enumerate every read/write/join/view/function/storage path; guessed IDs, new-row tenant substitution, cross-scope foreign keys and role mass assignment fail |
-| Grants | Forged initial owner/org enrollment, reserved-name claim and GitHub-org impersonation fail; member/admin/owner without package grant cannot publish; maintainer cannot delegate/administer or publish a sibling; one-use targeted invitations and role ceilings enforced |
-| Lifecycle | Removed member retains a valid JWT and queued job but loses private access/writes; single-owner collusion with a proposed new owner, last-owner removals, simultaneous transfers, pre-signed yanks, expired invitations and credential revocation races fail atomically; recovery quorum/notifications/holds proven |
+| Grants | Unscoped/personal ownership, reserved-name claim and GitHub-org impersonation fail; org custodians and the single package admin need explicit publishing grants; publishers cannot delegate/administer or publish a sibling; invitation role ceilings enforced |
+| Lifecycle | Removed member retains a valid JWT and queued job but loses private access/writes; a second package admin, revoked-admin membership, custodian takeover, simultaneous handovers, pre-signed yanks, expired invitations and credential revocation races fail atomically; recovery quorum/notifications/holds proven |
 | Pooling/RLS | Alternate A/B/anonymous requests on the same pool connection after success/error/cancel/rollback; no identity leak; missing context/transaction errors; role cannot elevate, alter policies or exploit definer/default grants |
 | Publication | Happy path produces exactly one verified release; replay, stale epochs, forged workflow, missing WebAuthn quorum, changed commit/challenge, upload bypass, forged job/result and concurrent finalizations fail |
 | Forge/storage | Bad webhook signature/replay, uninstall/transfer with delayed webhook, SSRF/redirects, archive bombs/path escape, overwrite/upsert/list/sign-upload and quarantined-source reads fail |

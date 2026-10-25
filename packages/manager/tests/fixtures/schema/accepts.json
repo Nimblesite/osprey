@@ -49,6 +49,10 @@
     {"type": "PackageManifest", "value": {"projectName": "p", "sourceRoots": [], "allowWildcardImports": false, "testRoots": [], "pythonSources": [], "dependencies": [], "grants": [], "systemRequirements": [], "assets": []}},
     {"type": "PackageManifest", "value": {"projectName": "p", "sourceRoots": ["src"], "defaultNamespace": "ns", "entry": "main.osp", "flavor": {"Default": {}}, "allowWildcardImports": true, "publication": {"package": {"scope": "finch", "name": "ledger"}, "licenseExpression": "MIT", "discovery": {"summary": "s", "keywords": ["a", "b"]}}, "testRoots": ["t"], "pythonSources": ["src/model.py"], "dependencies": [], "grants": [], "systemRequirements": [], "assets": []}},
     {"type": "PackageDiscoveryMetadata", "value": {"summary": "s", "keywords": []}},
-    {"type": "PackagePermission", "value": {"PublishRelease": {}}}
+    {"type": "PackagePermission", "value": {"PublishRelease": {}}},
+    {"type": "Organization", "value": {"id": "00000000-0000-0000-0000-00000000000b", "handle": "my-org", "displayName": "My Org", "state": {"Active": {}}, "governanceEpoch": 1, "createdAt": "2026-10-25T00:00:00.000Z"}},
+    {"type": "OrganizationMembership", "value": {"id": "00000000-0000-0000-0000-000000000015", "organizationId": "00000000-0000-0000-0000-00000000000b", "principalId": "00000000-0000-0000-0000-000000000001", "role": {"Member": {}}, "state": {"Active": {}}, "authorityEpoch": 1, "acceptedAt": "2026-10-25T00:00:00.000Z"}},
+    {"type": "RegistryPackage", "value": {"id": "00000000-0000-0000-0000-00000000001f", "organizationId": "00000000-0000-0000-0000-00000000000b", "name": "helper-functions", "adminMembershipId": "00000000-0000-0000-0000-000000000015", "adminMembershipState": {"Active": {}}, "authorityEpoch": 1, "state": {"Active": {}}, "createdAt": "2026-10-25T00:00:00.000Z"}},
+    {"type": "PackagePermissionGrant", "value": {"id": "00000000-0000-0000-0000-000000000029", "organizationId": "00000000-0000-0000-0000-00000000000b", "packageId": "00000000-0000-0000-0000-00000000001f", "membershipId": "00000000-0000-0000-0000-000000000016", "permission": {"PublishRelease": {}}, "state": {"Active": {}}, "grantedByMembershipId": "00000000-0000-0000-0000-000000000015", "authorityEpoch": 1, "grantedAt": "2026-10-25T00:00:00.000Z", "expiresAt": null}}
   ]
 }

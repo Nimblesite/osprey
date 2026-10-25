@@ -22,55 +22,91 @@
     },
     {
       "type": "PackageKey",
-      "value": [1],
+      "value": [
+        1
+      ],
       "code": "schema.not-object",
       "at": ""
     },
     {
       "type": "ReleaseState",
-      "value": { "Submitted": 5 },
+      "value": {
+        "Submitted": 5
+      },
       "code": "schema.not-object",
       "at": "/Submitted"
     },
     {
       "type": "ReleaseId",
-      "value": { "package": "x", "epoch": 1, "ordinal": 1, "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+      "value": {
+        "package": "x",
+        "epoch": 1,
+        "ordinal": 1,
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
       "code": "schema.not-object",
       "at": "/package"
     },
     {
       "type": "EnvelopeProof",
-      "value": { "Publisher": { "credential": "x" } },
+      "value": {
+        "Publisher": {
+          "credential": "x"
+        }
+      },
       "code": "schema.not-object",
       "at": "/Publisher/credential"
     },
     {
       "type": "PackageKey",
-      "value": { "scope": "a" },
+      "value": {
+        "scope": "a"
+      },
       "code": "schema.missing-field",
       "at": "/name"
     },
     {
       "type": "ReleaseId",
-      "value": { "package": { "scope": "a", "name": "b" }, "epoch": 1, "ordinal": 1 },
+      "value": {
+        "package": {
+          "scope": "a",
+          "name": "b"
+        },
+        "epoch": 1,
+        "ordinal": 1
+      },
       "code": "schema.missing-field",
       "at": "/digest"
     },
     {
       "type": "CompatibilityClaim",
-      "value": { "Initial": { "package": { "scope": "a" } } },
+      "value": {
+        "Initial": {
+          "package": {
+            "scope": "a"
+          }
+        }
+      },
       "code": "schema.missing-field",
       "at": "/Initial/package/name"
     },
     {
       "type": "PackageKey",
-      "value": { "scope": "a", "name": "b", "extra": 1 },
+      "value": {
+        "scope": "a",
+        "name": "b",
+        "extra": 1
+      },
       "code": "schema.unknown-field",
       "at": "/extra"
     },
     {
       "type": "ActivationState",
-      "value": { "Eligible": { "extra": 1 } },
+      "value": {
+        "Eligible": {
+          "extra": 1
+        }
+      },
       "code": "schema.unknown-field",
       "at": "/Eligible/extra"
     },
@@ -82,16 +118,29 @@
     },
     {
       "type": "PackageKey",
-      "value": { "scope": "a", "name": null },
+      "value": {
+        "scope": "a",
+        "name": null
+      },
       "code": "schema.null",
       "at": "/name"
     },
     {
       "type": "ReleaseStatus",
       "value": {
-        "release": { "package": { "scope": "a", "name": "b" }, "epoch": 1, "ordinal": 1, "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        "release": {
+          "package": {
+            "scope": "a",
+            "name": "b"
+          },
+          "epoch": 1,
+          "ordinal": 1,
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
         "sequence": 1,
-        "state": { "Eligible": {} },
+        "state": {
+          "Eligible": {}
+        },
         "effectiveAt": "2024-01-02T03:04:05.006Z",
         "reasonDigest": null,
         "roleMetadataVersion": 1
@@ -101,7 +150,13 @@
     },
     {
       "type": "PackageDiscoveryMetadata",
-      "value": { "summary": "s", "keywords": ["a", null] },
+      "value": {
+        "summary": "s",
+        "keywords": [
+          "a",
+          null
+        ]
+      },
       "code": "schema.null",
       "at": "/keywords/1"
     },
@@ -119,13 +174,28 @@
     },
     {
       "type": "ReleaseId",
-      "value": { "package": { "scope": "a", "name": "b" }, "epoch": "1", "ordinal": 1, "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+      "value": {
+        "package": {
+          "scope": "a",
+          "name": "b"
+        },
+        "epoch": "1",
+        "ordinal": 1,
+        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
       "code": "schema.not-integer",
       "at": "/epoch"
     },
     {
       "type": "DependencyRequirement",
-      "value": { "package": { "scope": "a", "name": "b" }, "epoch": 1, "minimumOrdinal": false },
+      "value": {
+        "package": {
+          "scope": "a",
+          "name": "b"
+        },
+        "epoch": 1,
+        "minimumOrdinal": false
+      },
       "code": "schema.not-integer",
       "at": "/minimumOrdinal"
     },
@@ -143,13 +213,22 @@
     },
     {
       "type": "PackageKey",
-      "value": { "scope": 5, "name": "b" },
+      "value": {
+        "scope": 5,
+        "name": "b"
+      },
       "code": "schema.not-string",
       "at": "/scope"
     },
     {
       "type": "PackageDiscoveryMetadata",
-      "value": { "summary": "s", "keywords": ["a", 5] },
+      "value": {
+        "summary": "s",
+        "keywords": [
+          "a",
+          5
+        ]
+      },
       "code": "schema.not-string",
       "at": "/keywords/1"
     },
@@ -161,19 +240,34 @@
     },
     {
       "type": "CredentialProof",
-      "value": { "WebAuthnPasskey": { "credentialId": "c", "relyingPartyId": "r", "origin": "o", "userVerified": 1, "assertionDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } },
+      "value": {
+        "WebAuthnPasskey": {
+          "credentialId": "c",
+          "relyingPartyId": "r",
+          "origin": "o",
+          "userVerified": 1,
+          "assertionDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
       "code": "schema.not-bool",
       "at": "/WebAuthnPasskey/userVerified"
     },
     {
       "type": "PackageDiscoveryMetadata",
-      "value": { "summary": "s", "keywords": "x" },
+      "value": {
+        "summary": "s",
+        "keywords": "x"
+      },
       "code": "schema.not-array",
       "at": "/keywords"
     },
     {
       "type": "ScanVerdict",
-      "value": { "NeedsReview": { "findingIds": "x" } },
+      "value": {
+        "NeedsReview": {
+          "findingIds": "x"
+        }
+      },
       "code": "schema.not-array",
       "at": "/NeedsReview/findingIds"
     },
@@ -185,19 +279,28 @@
     },
     {
       "type": "ActivationState",
-      "value": { "Eligible": {}, "Yanked": {} },
+      "value": {
+        "Eligible": {},
+        "Yanked": {}
+      },
       "code": "schema.variant-count",
       "at": ""
     },
     {
       "type": "ActivationState",
-      "value": { "Bogus": {} },
+      "value": {
+        "Bogus": {}
+      },
       "code": "schema.unknown-variant",
       "at": "/Bogus"
     },
     {
       "type": "ReleaseState",
-      "value": { "Bogus": { "submittedAt": "2024-01-02T03:04:05.006Z" } },
+      "value": {
+        "Bogus": {
+          "submittedAt": "2024-01-02T03:04:05.006Z"
+        }
+      },
       "code": "schema.unknown-variant",
       "at": "/Bogus"
     },
@@ -227,7 +330,15 @@
     },
     {
       "type": "ReleaseId",
-      "value": { "package": { "scope": "a", "name": "b" }, "epoch": 1, "ordinal": 1, "digest": "bad" },
+      "value": {
+        "package": {
+          "scope": "a",
+          "name": "b"
+        },
+        "epoch": 1,
+        "ordinal": 1,
+        "digest": "bad"
+      },
       "code": "schema.digest",
       "at": "/digest"
     },
@@ -239,7 +350,11 @@
     },
     {
       "type": "ReleaseState",
-      "value": { "Submitted": { "submittedAt": "2024-01-01T00:00:00Z" } },
+      "value": {
+        "Submitted": {
+          "submittedAt": "2024-01-01T00:00:00Z"
+        }
+      },
       "code": "schema.datetime",
       "at": "/Submitted/submittedAt"
     },
@@ -257,9 +372,31 @@
     },
     {
       "type": "ScanVerdict",
-      "value": { "NeedsReview": { "findingIds": ["xyz"] } },
+      "value": {
+        "NeedsReview": {
+          "findingIds": [
+            "xyz"
+          ]
+        }
+      },
       "code": "schema.uuid",
       "at": "/NeedsReview/findingIds/0"
+    },
+    {
+      "type": "PackagePermission",
+      "value": {
+        "Admin": {}
+      },
+      "code": "schema.unknown-variant",
+      "at": "/Admin"
+    },
+    {
+      "type": "PackagePermission",
+      "value": {
+        "Owner": {}
+      },
+      "code": "schema.unknown-variant",
+      "at": "/Owner"
     }
   ]
 }

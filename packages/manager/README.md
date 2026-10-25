@@ -83,6 +83,8 @@ Verified language boundaries relevant to these suites:
 
 The table links the implemented folder-registry checks to their tests. Runtime request bounds are separate from registry tests. These checks do not establish publisher identity or complete the hosted trust contract; [SECURITY.md](../../SECURITY.md) is the disclosure policy.
 
+**Confinement gap:** the current scanner and source-bundle validator accept raw native `extern` declarations with no ambient capability assigned. A harmless `puts` probe can therefore have an empty surface and still write to the terminal. Full publication-path validation remains unverified; the existing ambient-builtin tests do not prove complete confinement of untrusted dependencies.
+
 | Gate | Where | Test |
 | --- | --- | --- |
 | A response is a pure function of method, path and the startup catalog; no request touches the filesystem | `api/lib/router.osp` | `router_tests` "hostile probes": traversal, `%2e%2e`, `%40scope`, `//v1` all 404; `HEAD`/`PUT`/`DELETE` 405 |

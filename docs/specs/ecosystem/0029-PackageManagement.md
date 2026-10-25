@@ -127,13 +127,9 @@ instead of detecting the attack:
 
 ## Capability confinement `[PACKAGE-CAPABILITY-CONFINEMENT]`
 
-Algebraic effects already make an Osprey library unable to perform an effect its
-caller does not handle. The one remaining door is the set of ambient builtins
-that any function may call without declaring anything: `readFile`, `writeFile`,
-`gpuLoad`, `loadTensor`, `spawnProcess`, `awaitProcess`, `cleanupProcess`,
-`input`, `termRawMode`, and every `http*` and `websocket*` builtin. Confinement
-closes that door for every published package, so the effect system becomes the
-whole security boundary.
+Confinement requires every published package's file, process, network and terminal access to pass through consumer-handled effects or explicitly granted capabilities. Ambient builtins such as `readFile`, `writeFile`, `gpuLoad`, `loadTensor`, process operations, terminal operations and HTTP/WebSocket operations need checks beyond effect declarations.
+
+**Delivery gap:** the current source scanner records named ambient builtins and declared system capabilities, but it does not assign an ambient capability to raw native `extern` declarations. Source-bundle assembly accepts such declarations; a harmless native `puts` probe executes while its scanned surface is empty. Full publication-path validation remains unverified. The complete confinement requirement below is not a delivered assurance.
 
 - Each ambient builtin belongs to exactly one **ambient capability**, named in
   the capability grammar of `[PACKAGE-MANIFEST]`: `io/files` (`readFile`,
@@ -163,8 +159,8 @@ whole security boundary.
   and `resolution.capability` names the key and the capability.
 - `fetch` and `build` recompute the surface of every installed tree and fail
   with `capability.surface` when it differs from the lock. The folder registry
-  enforces all of this today, because its client holds every candidate's
-  verified source; Milestone B adds the signed surface to catalog metadata so
+  applies these surface checks to every candidate's verified source; native
+  extern coverage remains the delivery gap above. Milestone B adds the signed surface to catalog metadata so
   an excluded candidate is never fetched.
 - Plan 0020 records a compiler request so the type level repeats the proof:
   refuse an ambient builtin in a dependency source root unless the root grants
@@ -385,11 +381,13 @@ Osprey implements every package-system component. Osprey effect handlers provide
 
 ## Implementation language `[PACKAGE-IMPLEMENTATION-LANGUAGE]`
 
-The package manager and registry MUST be implemented 100% in Osprey. All executable source delivered for this system MUST be `.osp` or `.ospml`, including command parsing and routing, manifest parsing, domain rules, resolution, canonical serialization, hashing and signature handling, locks, caches, filesystem atomicity, process isolation, authentication, network protocols, HSM/forge adapters, API services, publication and verification pipelines, scoring, discovery, browser behavior, tests, independent reference implementations, migration runners, and operational tooling.
+The package manager and registry MUST be implemented 100% in Osprey. All executable source delivered for this system MUST be `.osp` or `.ospml`, including command parsing and routing, manifest parsing, domain rules, resolution, canonical serialization, hashing and signature handling, locks, caches, filesystem atomicity, process isolation, authentication, network protocols, HSM/forge adapters, API services, publication and verification pipelines, scoring, discovery, browser behavior, tests, independent reference implementations and operational tooling.
 
 A Rust host, Rust CLI bridge, native shim, shell launcher, or implementation in any other language MUST NOT be introduced for the package system. Calling a non-Osprey package implementation through an Osprey wrapper does not satisfy this requirement. The browser application MUST be compiled from Osprey to WebAssembly; handwritten application JavaScript is not permitted.
 
 The existing compiler and runtime are build and execution infrastructure, not locations for package-system implementation. The Osprey frontend MUST invoke the existing compiler through Osprey process effects; this work MUST NOT add package-specific code to the compiler or runtime in another language. Existing operating-system interfaces, installed libraries, and external services remain platform dependencies. Their use does not authorize new non-Osprey adapters, wrappers, or package logic. Osprey bindings and effect handlers own every package interaction with those dependencies.
+
+Database provisioning explicitly uses the external DataProviderMigrate deployment tool and the checked-in declarative migration YAML required by spec 0045. This is the sole schema executor, not an alternative package-service implementation; do not add handwritten SQL migrations, C# runtime code, alternate ORM models or a custom migration runner. Authorization, proof verification and package state machines remain Osprey.
 
 The canonical typeDiagram model, TOML manifests, JSON fixtures, declarative database schemas/RLS policies, uv lock files, styles, and deployment configuration are data, not alternative implementation languages. They MUST NOT contain executable package behavior. Generated machine code, WebAssembly, and compiler-generated interop are build artifacts, not handwritten source exceptions.
 
@@ -557,15 +555,13 @@ letters, digits, and interior hyphens; a scope is 1-39 characters and a name is
 1-63. Unicode display names are allowed but never resolve. Unscoped names are
 invalid, and only the project governance role can publish under `@osprey`.
 
-Scopes are backed by stable principal IDs, not mutable email domains. The
-registry warns on skeleton/confusable similarity and quarantines evidence of
-impersonation, but similarity alone cannot suppress a legitimate package.
-Package names and scopes are permanent tombstones after deletion.
+Preventing name sitting is a primary requirement: a package leaf name is never globally claimable. Reserving/publishing/tombstoning `@org-a/helper-functions` cannot prevent `@org-b/helper-functions`; all availability and uniqueness decisions include the organization. The website must never describe a leaf name as globally taken. See `[PACKAGE-NAMES-NO-SITTING]` in [spec 0045](0045-OrganizationPackageGovernance.md).
 
-Normal transfer requires signatures from old and new owners, a 30-day public
-notice, and a logged finalization. Recovery without the old owner requires a
-30-day quarantine plus approval by two of three independent registry-security
-custodians. Every ownership and recovery event is transparent and appealable.
+Every scope represents a registry organization with a stable organization ID and accepted memberships, never a personal account. Every package belongs to that organization and has exactly one active-member administrator; only that administrator grants explicit package permissions, including publication, to any number of accepted members. Organization governance roles do not implicitly publish or administer packages. The detailed binding contract is [organization package governance](0045-OrganizationPackageGovernance.md). Identical leaf names may exist in different organizations; there is no global leaf-name reservation or fallback.
+
+The registry warns on skeleton/confusable similarity and quarantines evidence of impersonation, but similarity alone cannot suppress a legitimate package. Package names and organization handles are permanent tombstones after deletion.
+
+Changing package administrator is an audited handover that preserves its owning organization and key. Moving responsibility between organizations requires signatures from old and new organizational authorities, a 30-day public notice and logged finalization, creating a new canonical key with a migration pointer rather than reparenting old releases. Recovery without the old authority requires a 30-day quarantine plus approval by two of three independent registry-security custodians. Every ownership and recovery event is transparent and appealable.
 
 ## Release identity and compatibility `[PACKAGE-IDENTITY]`
 

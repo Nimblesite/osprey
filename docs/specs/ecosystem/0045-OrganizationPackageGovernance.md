@@ -2,6 +2,12 @@
 
 **Status:** normative model and DataProvider structural migration; hosted permission endpoints and mutation policies remain delivery work. This refines [names and ownership](0029-PackageManagement.md#names-and-ownership-package-names), [deployment security](0044-PackageRegistryDeploymentAndOwnership.md) and [rollout](../../plans/0020-package-manager-rollout.md). The canonical typeDiagram is [package-registry.td](../../../schemas/package-registry.td); the database source is [DataProvider schema.yaml](../../../packages/manager/supabase/migrations/schema.yaml). Neither a diagram nor an applied structural migration proves working authenticated publication.
 
+## Prevent name sitting `[PACKAGE-NAMES-NO-SITTING]`
+
+Preventing package-name sitting is a primary design goal. A package leaf name is not a globally ownable resource. Publishing or reserving `@org-a/helper-functions` MUST have no effect on `@org-b/helper-functions`, now or later. There is no global name-registration endpoint, first-come claim, reservation ledger, alias, search promotion right or exclusivity check for `helper-functions` alone. An organization is responsible for its fully qualified packages; a person cannot acquire a portable monopoly over a useful word by arriving first.
+
+Every uniqueness query, availability check, reservation, publication, moderation action and tombstone MUST use the owning organization plus package name. “Already taken” means taken **within this organization**; the website must say so and must never report the leaf name globally unavailable. Search can find matching names across organizations and must display the organization beside every result. Security action against one organization's package must not reserve or silently disable that name in other organizations. Organization enrollment proof and reservation quotas address abuse of the organization namespace separately; they must not reintroduce a global package-name market.
+
 ## Organization identity `[PACKAGE-OWNERSHIP-MODEL]`
 
 Every hosted package MUST belong to exactly one registry organization. A user creates an organization or accepts membership in an existing one before creating or administering any package. There are no personal scopes, personally owned packages, unowned packages, global package names or implicit default organizations. A one-member organization is valid but has the same governance, recovery and accountability requirements as a larger organization.
@@ -58,7 +64,7 @@ Changing administrator is not changing owning organization. Moving responsibilit
 
 ## Database contract `[PACKAGE-OWNERSHIP-DATABASE]`
 
-Use DataProviderMigrate and only checked-in declarative YAML for these tables; do not introduce handwritten SQL migrations, ad-hoc bootstrap scripts or a parallel ORM schema. DataProvider is an explicitly requested deployment dependency, not a C# package-service implementation. Its runner may apply the schema; application authorization, proof verification, state machines and tests remain Osprey. Pin the deployment tool independently of the package runtime. Missing DataProvider features are migration blockers, not justification to weaken integrity.
+Provision the private `registry` PostgreSQL schema as a platform resource before table migration. Use DataProviderMigrate and only checked-in declarative YAML for these tables; do not introduce handwritten SQL migrations, ad-hoc bootstrap scripts or a parallel ORM schema. DataProvider is an explicitly requested deployment dependency, not a C# package-service implementation. Its runner may apply the schema; application authorization, proof verification, state machines and tests remain Osprey. Pin the deployment tool independently of the package runtime. Missing DataProvider features are migration blockers, not justification to weaken integrity. The installed 0.9.11-beta CLI currently applies these custom-schema tables but inspects `public` during integrity verification, so the migration returns failure and convergence is blocked. This failure is retained in the rollout plan; no hosted deployment may treat the structural probe as a successful migration. The CLI also logs its connection argument: credentials must use a mounted passfile/provider secret mechanism, never a password in that argument.
 
 | Table in private `registry` schema | Purpose and critical constraint |
 | --- | --- |
@@ -81,7 +87,7 @@ Runtime enforcement must independently distinguish package-admin control operati
 
 ## Acceptance `[PACKAGE-OWNERSHIP-CONFORMANCE]`
 
-- Prove two organizations can use the same package leaf name and each can have several publishers. Reject global/unscoped names, personal ownership, another org's admin/member/grant, null admin, `admin`/wildcard permission and expired grants.
+- Prove two organizations can use the same package leaf name and each can have several publishers. Register, reserve, tombstone and moderate the first organization's key, then prove the second organization's same-named package remains available and publishable. Assert no global leaf-name unique constraint, availability query, reserved-name list or registration endpoint exists. Reject global/unscoped names, personal ownership, another org's admin/member/grant, null admin, `admin`/wildcard permission and expired grants.
 - Prove exactly one admin exists before/during/after handover, concurrent acceptance, cancellation, retry, suspension and recovery. Reject a second pending transfer, stale admin/epoch, self-issued permission escalation and revocation/deletion of the referenced admin membership.
 - Prove org custodians/members and a publisher cannot administer permissions without being the current package admin. Prove the admin cannot publish/yank/read restricted reports without an explicit corresponding grant. Package creation needs an accepted admin, not just membership.
 - Prove handover invalidates old grants, workflows and queued authorizations; departure/rejoin does not revive grants. A change of admin preserves the owning organization, package key, old releases, reports and security history.

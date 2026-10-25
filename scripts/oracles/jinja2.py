@@ -79,7 +79,7 @@ TEMPLATES = [
     ("repr control escapes", "{{ ['a\\r\\tb'] }}"),
     ("empty substring", "{{ '' in 'abc' }}:{{ '' in name }}"),
     ("negative slices", "{{ name[-4:] }}:{{ nums[-10:1]|join(',') }}:{{ nums[5::-1]|join(',') }}"),
-    ("tojson compact", "{{ {'a': none}|tojson }}:{{ true|tojson }}:{{ 1.5|tojson }}:{{ 'a'|tojson }}:{{ [1, 'a']|tojson }}"),
+    ("tojson compact", "{{ {'a': none}|tojson }}:{{ true|tojson }}:{{ false|tojson }}:{{ 1.5|tojson }}:{{ 'a'|tojson }}:{{ [1, 'a']|tojson }}"),
     ("tojson pretty scalars", "{{ [none]|tojson(indent=2) }}:{{ true|tojson(indent=2) }}:{{ 1.5|tojson(indent=2) }}:{{ 'a'|tojson(indent=2) }}"),
     ("tojson pretty empty", "{{ []|tojson(indent=2) }}:{{ {}|tojson(indent=2) }}"),
     ("tojson escapes", "{{ ['\"', '\\\\', '\\n', '\\r', '\\t', '\\b', '\\f']|tojson }}"),
@@ -98,7 +98,7 @@ TEMPLATES = [
     ("default boolean", "{{ 0|default('x', true) }}:{{ 1|default('x', true) }}:{{ ''|default('e', true) }}:{{ nothing|default('n', true) }}"),
     ("string methods", "{{ '  ab  '.strip() }}:{{ '  ab  '.lstrip() }}:{{ '  ab  '.rstrip() }}:{{ 'a b  c'.split()|join(',') }}:{{ 'a,b,,c'.split(',')|join('|') }}"),
     ("string methods 2", "{{ name.endswith('ld') }}:{{ 'AbC'.lower() }}:{{ 'ab'.upper() }}:{{ 'hELLO'.capitalize() }}:{{ 'aXbXc'.replace('X', '-') }}:{{ 'ab'.startswith('a') }}"),
-    ("string subscript", "{{ name[0] }}:{{ name[-1] }}:{{ name[10] }}:{{ nums['x'] }}"),
+    ("string subscript", "{{ name[0] }}:{{ name[-1] }}:{{ name[10] }}:{{ nums['x'] }}:{{ name['x'] }}"),
     ("string attribute", "{{ 'abc'.foo }}|{{ name.bar }}|"),
     ("out of range list", "{{ nums[10] }}|{{ nums[-10] }}|"),
     ("if elif else", "{% if nothing %}a{% elif enabled %}b{% else %}c{% endif %}"),
@@ -109,6 +109,11 @@ TEMPLATES = [
     ("lstrip start", "  {{- name -}}!"),
     ("trim end eof", "x {{ name -}}"),
     ("brace in string", "{{ '}' }}:{{ '}}' }}"),
+    ("test predicates", "{{ missing is undefined }}:{{ 1 is number }}:{{ 1.5 is float }}:{{ 2 is eq 2 }}:{{ 2 is ne 3 }}:{{ 2 is in nums }}:{{ obj is mapping }}:{{ name is iterable }}:{{ name is sequence }}:{{ nums is sequence }}:{{ nothing is sameas none }}"),
+    ("float equality", "{{ 1.5 == 1.5 }}:{{ 2.5 == 2.0 }}"),
+    ("repr backslash", "{{ ['a\\\\b'] }}"),
+    ("tojson pretty list", "{{ [1, 'a']|tojson(indent=2) }}"),
+    ("default no arg", "{{ missing|default }}:{{ name|default }}"),
 ]
 
 
@@ -133,6 +138,8 @@ ERROR_TEMPLATES = [
     ("neg undefined attr", "{{ -missing.x }}"),
     ("neg string", "{{ -'a' }}"),
     ("range zero step", "{{ range(1, 5, 0) }}"),
+    ("subscript undefined", "{{ missing[0] }}"),
+    ("add undefined attr right", "{{ 1 + missing.x }}"),
 ]
 
 

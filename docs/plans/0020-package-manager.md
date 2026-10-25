@@ -6,6 +6,8 @@ Crash-safe activation, canonical build-plan/release artifacts, authenticated pub
 
 **Contracts:** [package management](../specs/ecosystem/0029-PackageManagement.md), [trust and discovery](../specs/ecosystem/0030-PackageRegistryTrustAndDiscovery.md), [domain types](../specs/ecosystem/0031-PackageDomainModel.md) and [evidence](../specs/ecosystem/0032-PackageEvidenceAndDiscovery.md). [Research references](../package-manager-research.md) support the fixed design; phases validate it rather than reopening product decisions.
 
+**Ownership:** [organization-only packages, one package admin and explicit permissions](../specs/ecosystem/0045-OrganizationPackageGovernance.md); tables are defined by DataProvider migration YAML and the canonical typeDiagram. No personal scopes or global package leaf names.
+
 **Hosted rollout:** [deployment and ownership spec 0044](../specs/ecosystem/0044-PackageRegistryDeploymentAndOwnership.md) and the [staged rollout plan](0020-package-manager-rollout.md) govern Cloudflare ingress, website/API deployment, Supabase GitHub authentication, organization/package RLS, maintainer grants, source-derived publication, recovery and launch gates. They extend phases 6–12; hosted writes stay disabled until their conformance and independent review pass. The deferred local-only registry CI arrangement below ends before hosted deployment.
 
 ## Delivery target
@@ -49,7 +51,7 @@ packages/manager/web/                     Osprey browser application -> WebAssem
 packages/manager/tests/                   Osprey conformance tests, independent oracles, fuzz drivers
 packages/manager/blockers/                Osprey probes for host capabilities Osprey lacks (red by design)
 packages/manager/ops/                     Osprey publication, migration and operational tooling
-packages/manager/supabase/migrations/     declarative PostgreSQL schema and RLS data (Phase 6, after Milestone 0)
+packages/manager/supabase/migrations/     DataProvider migration YAML for PostgreSQL schema/RLS (Phase 6)
 ```
 
 `schemas/package-registry.td` is the source of generated Osprey domain types as
