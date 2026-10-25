@@ -332,6 +332,15 @@ class CheckerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1, "Missing function rows must fail: " + result.stdout)
         self.assertIn("missing function definition counter: lib.py:4", result.stdout)
 
+    def test_missing_return_and_branch_rows_cannot_report_full_coverage(self):
+        source = "def choose(flag):\n    if flag:\n        return 1\n    else:\n        return 2\n"
+        fixture = self.fixture({"demo": {"sources": {"src/lib.py": source}}})
+        fixture.write_report("demo", own_report("demo", 1, 1))
+        result = fixture.check()
+        self.assert_exit(result, 1, "Only the function entry was measured: ")
+        for line in (2, 3, 5):
+            self.assertIn(f"missing executable statement counter: lib.py:{line}", result.stdout)
+
     def test_abstract_effect_declarations_have_no_body_to_cover(self):
         source = "@effect\nclass Buffer:\n    def length(buffer) -> int: ...\n\n" + py_source(4)
         fixture = self.fixture({"demo": {"sources": {"src/lib.py": source}}})

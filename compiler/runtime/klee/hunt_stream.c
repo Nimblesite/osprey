@@ -105,10 +105,10 @@ static char *initial_line(struct osp_hunt_file *stream, long cap) {
   }
   long end = first_line_end(stream, cap);
   for (long i = 0; i < cap; i++) {
-    int stop = (i >= stream->len) | (stream->data[i] == '\n');
-    out[i] = stop ? '\0' : (char)stream->data[i];
+    out[i] = (char)stream->data[i];
   }
   out[cap] = '\0';
+  out[end] = '\0';
   stream->pos = end + (end < stream->len);
   stream->eof = (unsigned char)(end == stream->len);
   osp_hunt_calls[OSP_HUNT_CALL_READ] += (unsigned)end + 1;

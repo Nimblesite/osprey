@@ -47,7 +47,7 @@ module JsonScan {
         } }
     }
 
-    fn scanBlock(text, i, budget) = if budget <= 1 { readChunk(text, i) } else {
+    fn scanBlock(text, i, budget) -> Result<Chunk, string> = if budget <= 1 { readChunk(text, i) } else {
         splitBlock(text, i, budget, intDiv(budget, 2))
     }
 

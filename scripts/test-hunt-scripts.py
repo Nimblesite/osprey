@@ -10,6 +10,7 @@ import importlib.util
 import io
 import json
 import os
+import shlex
 from pathlib import Path
 import subprocess
 import tempfile
@@ -262,6 +263,19 @@ class CorpusScriptTests(unittest.TestCase):
         self.assertTrue((ROOT / project / "osprey.toml").exists() or (ROOT / project).is_dir())
         _, _, codes = self.sweep("--all", project)
         self.assertEqual(list(codes), ["examples_gpt2_generate.project"])
+
+
+class HostCompilerTests(unittest.TestCase):
+    def test_mock_headers_compile_with_the_configured_host_compiler(self):
+        target = "hunt-host-flags:;@echo $(HUNT_MOCK_HOST_CFLAGS)"
+        flags = subprocess.check_output([
+            "make", "--no-print-directory", "-s", "--eval=" + target, "hunt-host-flags",
+        ], cwd=ROOT, text=True)
+        source = "#include <stdint.h>\n#include <stdarg.h>\n#include <stdio.h>\nint64_t mock_header_probe(FILE *f) { return f->readable; }\n"
+        compiler = shlex.split(os.environ.get("CC", "cc"))
+        process = subprocess.run(compiler + shlex.split(flags) + ["-fsyntax-only", "-x", "c", "-"],
+                                 cwd=ROOT / "compiler", input=source, text=True, capture_output=True)
+        self.assertEqual(process.returncode, 0, process.stderr)
 
 
 class FormatOracleTests(unittest.TestCase):

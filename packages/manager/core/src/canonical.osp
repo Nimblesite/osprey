@@ -39,19 +39,19 @@ module Canonical {
     /// backslash and C0 controls, so non-ASCII UTF-8 bytes pass through.
     fn literalByte(b) = b >= controlLimit && b != dquote && b != backslashCp
 
-    /// Escape one string; `/`, non-ASCII and U+2028/U+2029 stay literal.
-    fn renderEscaped(s, i, out) = match i >= byteLength(s) {
-        true => out
-        false => {
-            let end = Bytes::runEnd(s, i, literalByte)
-            if end > i { renderEscaped(s, end, out + (substring(s, i, end) ?: "")) } else { renderSpecial(s, i, out) }
-        }
+    /// Indices come from the string's byte range; literal UTF-8 bytes are copied unchanged.
+    fn renderByte(s, i) = match byteAt(s, i) {
+        Error => ""
+        Success { value } => if literalByte(value) {
+            match substring(s, i, i + 1) {
+                Success { value } => value
+                Error => ""
+            }
+        } else { escapeCodePoint(value) }
     }
 
-    /// A quote, backslash or C0 control: always one byte, always escaped.
-    fn renderSpecial(s, i, out) = renderEscaped(s, i + 1, out + escapeCodePoint(byteAt(s, i) ?: 0))
-
-    fn renderString(s) = "\"" + renderEscaped(s, 0, "") + "\""
+    /// Join once instead of recursing and repeatedly copying a growing prefix.
+    fn renderString(s) = "\"" + join(range(0, byteLength(s)) |> map(fn(i) => renderByte(s, i)) |> toList, "") + "\""
 
     /// Infallible rendering; `serialize` proves the tree has no duplicate keys.
     fn render(value) = match value {
