@@ -129,7 +129,7 @@ instead of detecting the attack:
 
 Confinement requires every published package's file, process, network and terminal access to pass through consumer-handled effects or explicitly granted capabilities. Ambient builtins such as `readFile`, `writeFile`, `gpuLoad`, `loadTensor`, process operations, terminal operations and HTTP/WebSocket operations need checks beyond effect declarations.
 
-**Delivery gap:** the current source scanner records named ambient builtins and declared system capabilities, but it does not assign an ambient capability to raw native `extern` declarations. Source-bundle assembly accepts such declarations; a harmless native `puts` probe executes while its scanned surface is empty. Full publication-path validation remains unverified. The complete confinement requirement below is not a delivered assurance.
+**Delivery gap:** the current source scanner records named ambient builtins and declared system capabilities, but it does not assign an ambient capability to raw native `extern` declarations. Source-bundle assembly and local `publish --folder` accept such declarations; a harmless native `puts` probe executes while its scanned surface is empty. Installed-dependency execution remains unverified. The complete confinement requirement below is not a delivered assurance.
 
 - Each ambient builtin belongs to exactly one **ambient capability**, named in
   the capability grammar of `[PACKAGE-MANIFEST]`: `io/files` (`readFile`,

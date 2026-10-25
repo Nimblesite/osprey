@@ -21,7 +21,11 @@ from package_coverage_test_support import (
 
 class PackageThresholdTests(unittest.TestCase):
     def test_threshold_configuration_has_no_measurements(self):
-        self.assertNotIn("package_measurements", json.loads((ROOT / "coverage-thresholds.json").read_text()))
+        config = json.loads((ROOT / "coverage-thresholds.json").read_text())
+        self.assertNotIn("package_measurements", config)
+        for group in config["projects"].values():
+            for entry in group.values():
+                self.assertTrue(set(entry).isdisjoint({"covered", "total", "percentage"}))
 
     def test_oracle_literals_roundtrip_every_control_character_and_unicode(self):
         runner = runpy.run_path(str(ROOT / "scripts/oracles/oracle.py"))
@@ -166,12 +170,16 @@ class CheckerTests(unittest.TestCase):
         fixture = self.simple_fixture()
         fixture.write_report("demo", own_report("demo", 4, 4))
         config = fixture.config()
-        lock = fixture.root / ".coverage-thresholds.json.lock"
-        lock.write_text("active recorder\n")
-        result = fixture.check("--record-measurements")
-        self.assert_problem(result, "cannot record measurements", stderr=True)
-        self.assertEqual(fixture.config(), config)
-        self.assertTrue(lock.exists(), "A competing writer must not remove the owner's lock")
+        record = fixture.reports / "measurements.json"
+        record.write_text("previous record\n")
+        for lock in (fixture.root / ".coverage-thresholds.json.lock", fixture.reports / ".measurements.json.lock"):
+            lock.write_text("active recorder\n")
+            result = fixture.check("--record-measurements")
+            self.assert_problem(result, "cannot record measurements", stderr=True)
+            self.assertEqual(fixture.config(), config)
+            self.assertEqual(record.read_text(), "previous record\n")
+            self.assertTrue(lock.exists(), "A competing writer must not remove the owner's lock")
+            lock.unlink()
 
     def test_recording_writes_a_separate_report_without_mutating_thresholds(self):
         fixture = self.simple_fixture()

@@ -58,6 +58,8 @@ Measured blocker on 25 October 2026: pinned DataProviderMigrate 0.9.11-beta appl
 - [ ] Prove the anti-name-sitting requirement end to end: reserving, publishing, tombstoning or moderating `@org-a/helper-functions` cannot block `@org-b/helper-functions`. Database uniqueness and website/API availability checks use `(organization_id, name)`; no global leaf-name claim or reservation exists.
 - [ ] Audit actual `pg_roles`, memberships, schema/column/default grants, policies, function execution, exposed schemas and storage policies. A textual policy-name check alone is insufficient.
 
+Measured local evidence on 25 October 2026: eleven tables from the YAML were applied to disposable PostgreSQL; 36 structural/default-denial assertions passed, including same leaf names across two orgs, multiple publishers, single-human-admin enforcement, handover bounds, rejoin/renewal history and same-org FKs. Name fixtures and five fixture-audit groups passed. Six native schema cases passed (parity, declarations, accepted/rejected values, datetime and floats), but the unchanged `schema-check: long whitespace and identifiers` stress case terminated with SIGBUS. Keep that exact failing case and close the parser/stress failure before the conformance gate can pass; these observations do not establish hosted authorization or a successful DataProvider migration.
+
 Exit: denied operations leave state unchanged; the API role cannot escape RLS, impersonate a worker through role switching, or mutate ownership keys through ordinary updates. No service-role fallback.
 
 ## Stage C — GitHub login and publication authority

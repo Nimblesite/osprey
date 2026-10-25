@@ -116,7 +116,10 @@ def f_default(v, args):
 def f_first(v):
     """`|first`: the first element or character; undefined when empty."""
     elems = iterable_elements(v)
-    if len(elems) == 0:
+    if v.kind == V.K_NONE:
+        # Quarantine: None was silently treated as an empty sequence.
+        return V.quarantine("Jinja first filter accepts a non-iterable None")
+    elif len(elems) == 0:
         return V.undefined("No first item, sequence was empty.")
     else:
         return unwrap_or(listGet(elems, 0), V.none())
@@ -125,7 +128,10 @@ def f_first(v):
 def f_last(v):
     """`|last`: the last element or character; undefined when empty."""
     elems = iterable_elements(v)
-    if len(elems) == 0:
+    if v.kind == V.K_NONE:
+        # Quarantine: None was silently treated as an empty sequence.
+        return V.quarantine("Jinja last filter accepts a non-reversible None")
+    elif len(elems) == 0:
         return V.undefined("No last item, sequence was empty.")
     else:
         return unwrap_or(listGet(elems, len(elems) - 1), V.none())
@@ -143,7 +149,10 @@ def f_string(v):
 
 def f_items(v):
     """`|items`: a dict's (key, value) pairs; undefined yields an empty list."""
-    if v.kind == "dict":
+    if v.kind == V.K_STRING:
+        # Quarantine: a string silently produced no mapping pairs.
+        return V.quarantine("Jinja items filter accepts a non-mapping string")
+    elif v.kind == "dict":
         return V.list_(pairs_of(v))
     else:
         return V.list_([])

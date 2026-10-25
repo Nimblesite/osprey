@@ -19,8 +19,18 @@ __all__ = [
     "truthy", "equal", "less", "concat_text", "repr_text", "contains", "dict_get", "attr_get", "key_of", "chars",
     "str_len", "str_get", "slice_list", "slice_str", "json_text", "str_split", "str_split_sep",
     "py_mod", "py_floordiv", "capitalize", "lookup", "bind", "bind_found", "bind_at", "dict_of", "dict_set",
-    "is_undefined", "is_none", "is_string", "is_number", "func", "num_of", "char_values", "halt", "is_error",
+    "is_undefined", "is_none", "is_string", "is_number", "func", "num_of", "char_values", "halt", "is_error", "quarantine",
 ]
+
+
+@extern
+def osprey_tensor_panic(message: str) -> str: ...
+
+
+def quarantine(message):
+    """Abort a proven silent failure through the existing fatal runtime channel.
+    The panic never returns; `text` only fits this channel to a Value result."""
+    return text(osprey_tensor_panic(message))
 
 
 K_NONE = "none"
@@ -301,7 +311,11 @@ def repr_text(v):
 
 def quote(s):
     """A string as Python's repr prints it (single quotes, backslash escapes)."""
-    return "'" + escape(s) + "'"
+    # Quarantine: the fixed delimiter silently disagrees with CPython's repr.
+    if contains_text(s, "'") and not contains_text(s, '"'):
+        return osprey_tensor_panic("Jinja string repr delimiter selection is not implemented")
+    else:
+        return "'" + escape(s) + "'"
 
 
 def escape(s):
@@ -353,7 +367,8 @@ def dict_get(v, key):
     missing key is undefined; a subscript on undefined faults."""
     match v.kind:
         case "dict":
-            return key_of(v, key.sval)
+            # Quarantine: integer keys lose their identity through `sval`.
+            return quarantine("Jinja integer dictionary keys are not implemented") if key.kind == K_INT else key_of(v, key.sval)
         case "list":
             return list_get(v.elems, key)
         case "string":

@@ -125,6 +125,17 @@ test('every release publishes only after an unconditional dependency audit', () 
   }
 })
 
+test('standalone deployment dispatch runs the mandatory dependency audit first', () => {
+  for (const file of ['.github/workflows/deploy-pages.yml', '.github/workflows/deploy-webcompiler.yml']) {
+    const audit = job('audit', file)
+    assert.match(audit, /uses: \.\/\.github\/workflows\/ci-audit\.yml/)
+    assert.doesNotMatch(audit, /^    if:/m)
+    assert.match(audit, /^    permissions:\n      contents: read$/m)
+  }
+  assert.match(job('build-and-deploy', '.github/workflows/deploy-pages.yml'), /needs:.*\baudit\b/)
+  assert.match(job('deploy', '.github/workflows/deploy-webcompiler.yml'), /needs:.*\baudit\b/)
+})
+
 test('Dependabot stages updates and keeps a consolidation PR flowing to main', () => {
   const config = readFileSync('.github/dependabot.yml', 'utf8')
   assert.equal((config.match(/package-ecosystem:/g) ?? []).length,

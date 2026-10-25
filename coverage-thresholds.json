@@ -223,16 +223,19 @@
         "language": "osprey"
       },
       "faiss": {
-        "language": "osprey"
+        "language": "osprey",
+        "threshold": 95.6
       },
       "flash_attn": {
-        "language": "osprey"
+        "language": "osprey",
+        "threshold": 100.0
       },
       "jinja2": {
         "language": "osprey"
       },
       "micrograd": {
-        "language": "osprey"
+        "language": "osprey",
+        "threshold": 97.4
       },
       "native": {
         "threshold": 91.6,
@@ -246,10 +249,12 @@
         "language": "osprey"
       },
       "rouge_score": {
-        "language": "osprey"
+        "language": "osprey",
+        "threshold": 96.8
       },
       "sacrebleu": {
-        "language": "osprey"
+        "language": "osprey",
+        "threshold": 99.6
       },
       "safetensors": {
         "language": "osprey"
@@ -265,16 +270,19 @@
         "language": "osprey"
       },
       "tiktoken": {
-        "language": "osprey"
+        "language": "osprey",
+        "threshold": 95.1
       },
       "tokenizers": {
-        "language": "osprey"
+        "language": "osprey",
+        "threshold": 97.5
       },
       "torch": {
         "language": "osprey"
       },
       "transformers": {
-        "language": "osprey"
+        "language": "osprey",
+        "threshold": 97.5
       }
     }
   }
