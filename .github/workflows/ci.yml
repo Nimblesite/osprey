@@ -897,9 +897,11 @@ jobs:
       - name: Install KLEE for planted crash tests
         run: brew install klee
 
-      - name: Build symbolic runtime and prove planted crash detection
+      - name: Prove Hunt expectations, default budget and planted crash detection
         run: |
           make _runtime_klee
+          make _test_hunt
+          python3 scripts/test-hunt-default-budget.py
           make _test_hunt_crashes
 
       - name: Upload Hunt crash reports

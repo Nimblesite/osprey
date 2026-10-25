@@ -21,6 +21,9 @@ const cases = [
   ['unknown future component', ['new-compiler/main.py'], true, false, false],
   ['embedded compiler documentation', ['crates/osprey-cli/assets/help.md'], true, false, false],
   ['ported package documentation the package suite checks', ['packages/testing/README.md'], true, false, false],
+  ['Python-flavor package regression', ['packages/faiss/tests/main.py'], true, false, false],
+  ['symbolic execution regression', ['scripts/test-hunt-default-budget.py'], true, false, false],
+  ['GPU regression in both flavors', ['tests/core/gpu/scalar_contracts.test.osp', 'tests/core/gpu/scalar_contracts.test.ospml'], true, false, false],
 ]
 for (const [label, files, code, book, benchmarks] of cases) {
   test(label, () => assert.deepEqual(classify(files), { code, website: false, book, benchmarks }))
@@ -58,7 +61,19 @@ test('malformed detection input fails the gate instead of skipping required jobs
 })
 
 const workflowJobs = (file) => readFileSync(file, 'utf8').split(/(?=^  [\w-]+:\s*$)/m)
-const job = (name) => workflowJobs('.github/workflows/release.yml').find((block) => block.startsWith(`  ${name}:`)) ?? ''
+const job = (name, file = '.github/workflows/release.yml') => workflowJobs(file).find((block) => block.startsWith(`  ${name}:`)) ?? ''
+
+test('required coverage runs the real Hunt expectations and default-budget regression', () => {
+  const coverage = job('coverage', '.github/workflows/ci.yml')
+  assert.match(coverage, /make _runtime_klee\s+make _test_hunt\s+python3 scripts\/test-hunt-default-budget\.py\s+make _test_hunt_crashes/)
+})
+
+test('ported packages remain in the unfiltered Rust workspace gate', () => {
+  assert.match(job('test-rust', '.github/workflows/ci.yml'), /run: make _test_rust/)
+  const make = readFileSync('scripts/make/tests.mk', 'utf8')
+  assert.match(make, /cargo llvm-cov --workspace --profile ci --lcov/)
+  assert.doesNotMatch(make, /cargo llvm-cov[^\n]*(?:--exclude|--skip)/)
+})
 
 test('every release publishes only after an unconditional dependency audit', () => {
   assert.match(job('audit'), /uses: \.\/\.github\/workflows\/ci-audit\.yml/)
