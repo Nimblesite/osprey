@@ -6,6 +6,8 @@ Base: `40115ff09310c7f688638999351ad1845b8795c6`. Reviewed snapshot: `c6a12df3c9
 
 This replaces the previous closure diary with a fresh review of the diff. The review is static: no builds, test suites, CI jobs or live ruleset checks were started for it. Earlier execution artifacts are identified separately. The review concentrates on compiler semantics and ownership, new Hunt code, package enforcement, coverage/oracle guards, CI wiring and completion claims. It is not an assertion that every changed line or every spec has been exhaustively verified.
 
+External pi reviewers used `zai/glm-5.3` for compiler changes and `deepseek/deepseek-v4-pro` for package/CI checks. They received separate lanes and candidate leads. The parent verified accepted findings against the pinned source, corrected inaccurate path calculations and line references, and excluded an unproved factory-selector concern. Their reports are legwork, not closure approval.
+
 ## Actionable findings
 
 ### [P1] Split Python version floors with integer division
@@ -32,7 +34,7 @@ Location: [hunt/mod.rs:241–253](https://github.com/Nimblesite/osprey/blob/c6a1
 
 Use an owned run directory or refuse to clear an unverified existing destination. The current test adds `info` to a directory containing `precious.txt` and then expects the whole directory to disappear; it does not prove the advertised protection. Add a preservation regression for unrelated contents plus an arbitrary `info` entry.
 
-### [P2] Register comprehension bindings before lowering builtin aliases
+### [P1] Register comprehension bindings before lowering builtin aliases
 
 Location: [comprehensions.rs:12–16](https://github.com/Nimblesite/osprey/blob/c6a12df3c9134d3c76f77d19da7a6450fe595e48/crates/osprey-syntax/src/python/comprehensions.rs#L12), [comprehensions.rs:144–148](https://github.com/Nimblesite/osprey/blob/c6a12df3c9134d3c76f77d19da7a6450fe595e48/crates/osprey-syntax/src/python/comprehensions.rs#L144).
 
@@ -67,7 +69,7 @@ These manual entry points predate the base; the finding is an incomplete impleme
 | Area | Source and evidence | Review conclusion |
 |---|---|---|
 | Hunt default completion | CI explicitly runs `make _test_hunt` and `scripts/test-hunt-default-budget.py` at 64 bytes/30 seconds. Retained `target/hunt-profiler-2026-10-25/current-red.log` reports `ValueError: incomplete exploration` for `clean`. | An actual required gate is red. Preserve its width, budget, completeness requirement and assertions. The checker fix and planted-crash successes do not close it. |
-| Hunt file replay | `ktest.rs::quarantine_hidden_file_streams` panics for real files named `input.len`, `input.ok`, `entropy.data`, `clock.data`, or `errno.data`. `real_files_with_metadata_like_names_keep_their_replay_bytes` requires successful decoding and necessarily reaches that panic. | This is an explicit broken-code quarantine with an unresolved regression, not a completed decoder. Keep the desired test and the quarantine visible until an unambiguous decoder is proved. |
+| Hunt file replay | [ktest.rs:118](https://github.com/Nimblesite/osprey/blob/c6a12df3c9134d3c76f77d19da7a6450fe595e48/crates/osprey-cli/src/hunt/ktest.rs#L118) panics for real files named `input.len`, `input.ok`, `entropy.data`, `clock.data`, or `errno.data`. `real_files_with_metadata_like_names_keep_their_replay_bytes` requires successful decoding and necessarily reaches that panic. | This is an explicit broken-code quarantine with an unresolved regression, not a completed decoder. Keep the desired test and the quarantine visible until an unambiguous decoder is proved. |
 | Hunt delivery checklist | `docs/plans/0034-symbolic-execution.md` keeps Phase 3 completion open, but `docs/specs/tooling/SymbolicExecution.md:300` checks main mode as delivered; line 304 calls a budget-limited corpus “green”. | Align the spec checklist with the plan and actual retained outcomes. No-findings runs with unfinished paths do not prove corpus completion. |
 | Development-overlay build test | `overlay_tests.osp:28,117–124` reads `.osprey/build/osprey.toml`, although the command uses `--project /abs` and `Build::writeDerived` writes `/abs/.osprey/build/osprey.toml`. It also expects the old absolute roots after the manifest-relative-path correction. | The retained full CLI suite fails this case. Update the lookup and assert correct path resolution and the compiler invocation; do not remove the path assertions or blame this stale fixture alone for a production path failure. |
 | Manager full suites | Prior frozen-compiler evidence proves core 341/341 under Default/GC/ARC. The full CLI transcript ends `tests=83 passed=79 failed=4 skipped=0`; three failures are explained by version-floor arithmetic above and one by the stale overlay fixture. | Full manager closure is not established. Core-only results cannot stand in for the CLI, API, fixture, manifest and end-to-end suites. `registry-test` remains explicitly outside ordinary CI by maintainer decision. |
