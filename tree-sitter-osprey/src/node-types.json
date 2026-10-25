@@ -1364,6 +1364,45 @@
     }
   },
   {
+    "type": "interpolated_string",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "escape_sequence",
+          "named": true
+        },
+        {
+          "type": "interpolation",
+          "named": true
+        },
+        {
+          "type": "string_content",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "interpolation",
+    "named": true,
+    "fields": {
+      "expression": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "kernel_arm",
     "named": true,
     "fields": {
@@ -2957,6 +2996,25 @@
     }
   },
   {
+    "type": "string",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "escape_sequence",
+          "named": true
+        },
+        {
+          "type": "string_content",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "structural_pattern",
     "named": true,
     "fields": {},
@@ -3582,6 +3640,10 @@
     "named": false
   },
   {
+    "type": "escape_sequence",
+    "named": true
+  },
+  {
     "type": "export",
     "named": false
   },
@@ -3635,10 +3697,6 @@
   },
   {
     "type": "integer",
-    "named": true
-  },
-  {
-    "type": "interpolated_string",
     "named": true
   },
   {
@@ -3738,7 +3796,7 @@
     "named": true
   },
   {
-    "type": "string",
+    "type": "string_content",
     "named": true
   },
   {

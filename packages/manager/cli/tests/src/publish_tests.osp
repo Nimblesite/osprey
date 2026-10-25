@@ -74,6 +74,19 @@ module PublishTests {
         ])
     }
 
+    // Regression for [PACKAGE-CAPABILITY-CONFINEMENT]: raw native calls
+    // bypass the named-builtin surface and must not enter a registry.
+    fn rejectsRawExtern() = {
+        let source = "extern fn puts(text: string) -> int\nfn hello() = puts(\"harmless FFI probe\")\n"
+        let reads = [Fixture::readRoute("${project}/osprey.toml", manifestText()), Fixture::readRoute("${project}/src/main.osp", source)]
+        let a = RegistryFixture::runWith(reads, [projectWalk()], [], ["publish", "--folder", folder, "--project", project])
+        checkAll("unclassified native externs are refused before registry writes", [
+            RegistryFixture::statusOf(a) == 1,
+            RegistryFixture::writesTo(a, "${folder}/@demo/one/1.1/osprey.toml") == 0,
+            RegistryFixture::writesTo(a, "${folder}/@demo/one/1.1/src/main.osp") == 0
+        ])
+    }
+
     fn legalFiles() = [
         Fixture::file("LICENSE", "MIT: NIMBLESITE PTY LTD, Australia\n"),
         Fixture::file("NOTICE.md", "Osprey port; upstream copyrights retained.\n"),
@@ -99,6 +112,7 @@ module PublishTests {
         test("publish: the next ordinal", nextOrdinal)
         test("publish: epochs", epochs)
         test("publish: refusals", refusals)
+        test("publish: rejects unclassified raw native externs", rejectsRawExtern)
         test("publish: licenses survive publication", licenses)
     }
 }
