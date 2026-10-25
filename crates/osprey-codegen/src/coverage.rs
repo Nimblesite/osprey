@@ -13,17 +13,21 @@ use crate::builder::Codegen;
 use osprey_ast::{mutate, walk_program, AstVisitor, Expr, Position, Program, Stmt};
 use std::collections::BTreeSet;
 
-/// Keep handler entries attached to the code that executes their bodies.
+/// Keep source entries attached to the code that executes their bodies.
 /// Implements [TESTING-COVERAGE-CODEGEN]; unused arms retain zero counters.
 pub(crate) fn instrumented(program: &Program) -> Program {
     let mut instrumented = program.clone();
     for statement in &mut instrumented.statements {
-        mutate::statement_children_mut(statement, &mut mark_handler_entries);
+        mutate::statement_children_mut(statement, &mut mark_source_entries);
     }
     instrumented
 }
 
-fn mark_handler_entries(expression: &mut Expr) {
+fn mark_source_entries(expression: &mut Expr) {
+    mutate::children_mut(expression, &mut mark_source_entries);
+    if let Expr::Block { statements, value: Some(_), position: Some(position) } = expression {
+        statements.push(entry_statement(Some(*position)));
+    }
     if let Expr::Handler {
         stage,
         arms,
@@ -37,7 +41,6 @@ fn mark_handler_entries(expression: &mut Expr) {
             **body = arm_entry((**body).clone(), *position);
         }
     }
-    mutate::children_mut(expression, &mut mark_handler_entries);
 }
 
 fn mark_arm_entry(arm: &mut osprey_ast::HandlerArm) {
@@ -46,17 +49,17 @@ fn mark_arm_entry(arm: &mut osprey_ast::HandlerArm) {
 
 fn arm_entry(body: Expr, position: Option<Position>) -> Expr {
     Expr::Block {
-        statements: vec![Stmt::Expr {
-            value: Expr::Block {
-                statements: Vec::new(),
-                value: None,
-                position: None,
-            },
-            doc: None,
-            position,
-        }],
+        statements: vec![entry_statement(position)],
         value: Some(Box::new(body)),
         position: None,
+    }
+}
+
+fn entry_statement(position: Option<Position>) -> Stmt {
+    Stmt::Expr {
+        value: Expr::Block { statements: Vec::new(), value: None, position: None },
+        doc: None,
+        position,
     }
 }
 

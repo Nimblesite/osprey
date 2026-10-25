@@ -35,7 +35,7 @@ import sys
 from pathlib import Path
 from package_coverage_evidence import (
     SOURCE_SUFFIXES, evidence_path, evidence_problems, golden_problems,
-    definition_problems, python_coverable, seal_evidence, source_inputs,
+    definition_problems, python_coverable, seal_evidence, source_inputs, unique_object,
 )
 
 EXIT_OK = 0
@@ -187,11 +187,11 @@ def required_source_files(root: Path, name: str) -> set[str]:
 
 def read_report(path: Path) -> tuple[dict | None, list[str]]:
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(), object_pairs_hook=unique_object)
     except OSError:
         return None, [f"missing coverage report: {path}"]
-    except json.JSONDecodeError as error:
-        return None, [f"malformed coverage report: {error.msg} at line {error.lineno}"]
+    except ValueError as error:
+        return None, [f"malformed coverage report: {error}"]
     files = data.get("files") if isinstance(data, dict) else None
     if not isinstance(files, dict):
         return None, ["malformed coverage report: no files object"]
@@ -426,8 +426,8 @@ def write_summary(reports: Path, results: list[dict], mode: str) -> str | None:
 
 def load_config(path: Path) -> tuple[object, str | None]:
     try:
-        return json.loads(path.read_text()), None
-    except (OSError, json.JSONDecodeError) as error:
+        return json.loads(path.read_text(), object_pairs_hook=unique_object), None
+    except (OSError, ValueError) as error:
         return None, f"cannot read {path}: {error}"
 
 

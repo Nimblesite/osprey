@@ -280,24 +280,19 @@ impl Lowerer<'_> {
         let then = self.scoped(false, |lowerer| {
             lowerer.suite(Lowerer::field(*node, "consequence")?, tail)
         })?;
-        Ok(crate::desugar::bool_match(
-            condition,
-            then,
-            self.alternatives(rest, tail)?,
+        Ok(crate::desugar::positioned(
+            crate::desugar::bool_match(condition, then, self.alternatives(rest, tail)?),
+            Some(position(*node)),
         ))
     }
 }
 
-fn suite_block(node: Node<'_>, mut statements: Vec<Stmt>, value: Option<Expr>) -> Expr {
-    // Retain executable tail statements for [TESTING-COVERAGE-CODEGEN].
-    if value.is_some() {
-        statements.push(Stmt::Expr {
-            value: unit(),
-            doc: None,
-            position: Some(position(node)),
-        });
+fn suite_block(node: Node<'_>, statements: Vec<Stmt>, value: Option<Expr>) -> Expr {
+    Expr::Block {
+        statements,
+        value: value.map(Box::new),
+        position: Some(position(node)),
     }
-    crate::desugar::block(statements, value.map(Box::new), Some(position(node)))
 }
 
 /// The callback a `for` statement hands to `forEach`: one iteration variable,

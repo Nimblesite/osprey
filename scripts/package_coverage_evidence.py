@@ -10,6 +10,15 @@ SOURCE_SUFFIXES = frozenset({".py", ".osp", ".ospml"})
 GENERATED_DIRS = frozenset({"target", "__pycache__", "node_modules"})
 
 
+def unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
 def executable_assignment(node):
     if not isinstance(node, (ast.Assign, ast.AnnAssign)) or node.value is None:
         return False
@@ -118,7 +127,7 @@ def seal_evidence(root, name, report, before):
 
 def evidence_problems(root, name, report):
     try:
-        evidence = json.loads(evidence_path(report).read_text())
+        evidence = json.loads(evidence_path(report).read_text(), object_pairs_hook=unique_object)
         valid = (evidence.get("package") == name and evidence.get("inputs") == source_inputs(root, name)
                  and evidence.get("report_sha256") == digest(report))
         return [] if valid else ["stale or altered coverage evidence; recollect this package"]

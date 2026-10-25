@@ -24,7 +24,7 @@
 .flight-code { border: 1px solid #77d7f430; border-radius: 12px; background: #070d1fe8; box-shadow: 0 25px 75px #0005, 0 0 60px #77d7f407; overflow: hidden; }
 .code-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 0.85rem 1.15rem; border-bottom: 1px solid #77d7f420; color: var(--on-surface-variant); font: 0.72rem var(--font-mono); }
 .flavor-controls { display: flex; gap: 0.25rem; }
-.flavor-controls button { background: transparent; border: 0; border-radius: 4px; color: var(--on-surface-variant); padding: 0.4rem 0.65rem; font: inherit; cursor: pointer; }
+.flavor-controls button { background: transparent; border: 0; border-radius: 4px; color: var(--on-surface-variant); padding: 0.4rem 0.65rem; font: inherit; cursor: pointer; transition: background-color 180ms ease, color 180ms ease; }
 .flavor-controls [aria-pressed="true"] { background: #77d7f41c; color: var(--primary); }
 .home .flight-code pre[class*="language-"] { background: transparent; border: 0; padding: 1.4rem 1.15rem; margin: 0; font-size: 0.73rem; line-height: 1.8; min-height: 14.4rem; }
 .home .hero-code pre[class*="language-"] { height: 22rem; overflow: auto; scrollbar-gutter: stable; overscroll-behavior: contain; }
@@ -119,12 +119,27 @@
 .overview-film video { display: block; width: 100%; height: auto; border: 1px solid var(--outline-variant); border-radius: var(--radius-lg); background: var(--surface-lowest); }
 .overview-film figcaption { margin-top: var(--space-3); color: var(--on-surface-variant); font-size: 0.78rem; }
 .overview-film figcaption a { white-space: nowrap; }
-.home .is-revealed { animation: arrive 650ms ease-out both; }
 .home .hero-title em { display: inline-block; }
 .home .hero-code [class*="language-"], .home .flight-code .language-python { white-space: pre-wrap; overflow-wrap: anywhere; }
-.home .hero-actions .btn:hover { transform: translateY(-2px); }
-.home .hero-actions .btn { transition: transform var(--transition-fast), background var(--transition-fast); }
-@keyframes arrive { from { opacity: 0.35; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: no-preference) {
+  .home :is(.hero-content > *, .hero-code, .hero-footnote, .is-revealed) { animation: arrive 650ms cubic-bezier(0.22, 1, 0.36, 1) var(--arrive-delay, 0ms) both; }
+  .home .hero-content > :nth-child(2) { --arrive-delay: 60ms; }
+  .home .hero-content > :nth-child(3) { --arrive-delay: 120ms; }
+  .home .hero-content > :nth-child(4) { --arrive-delay: 180ms; }
+  .home .hero-content > :nth-child(5) { --arrive-delay: 240ms; }
+  .home .hero-content > :nth-child(6) { --arrive-delay: 300ms; }
+  .home .hero-code { --arrive-delay: 180ms; }
+  .home .hero-footnote { --arrive-delay: 360ms; }
+  .flight-film video { animation: film-in 1100ms ease-out both; }
+  .home .hero-code [data-source-flavor]:not([hidden]) { animation: film-in 180ms ease-out; }
+  .home :is(.hero-actions .btn, .text-link, .deployment-target h3) > span { transition: transform 180ms ease; }
+  .home :is(.hero-actions .btn, .text-link):focus-visible > span { transform: translateX(3px); }
+  @media (hover: hover) {
+    .home :is(.hero-actions .btn, .text-link, .deployment-target):hover span { transform: translateX(3px); }
+  }
+  @keyframes arrive { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes film-in { from { opacity: 0.35; } to { opacity: 1; } }
+}
 @media (prefers-reduced-motion: reduce) {
   .home *, .home *::before, .home *::after { animation: none !important; transition: none !important; }
 }

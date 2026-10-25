@@ -376,6 +376,16 @@ class CheckerTests(unittest.TestCase):
                 self.assertIn("missing match arm counter", result.stdout)
                 self.assertIsNone(fixture.result("demo")["percentage"])
 
+    def test_repeated_json_counters_cannot_replace_uncovered_lines(self):
+        fixture = self.simple_fixture()
+        report = fixture.reports / "demo.json"
+        report.parent.mkdir(parents=True)
+        report.write_text('{"files":{"packages/demo/src/lib.py":{"lines":{"1":1,"2":1,"3":1,"4":0,"4":1}}}}')
+        seal_evidence(fixture.root, "demo", report, source_inputs(fixture.root, "demo"))
+        result = fixture.check()
+        self.assert_exit(result, 1, "A duplicate counter cannot overwrite the uncovered row: ")
+        self.assertIn("duplicate JSON key", result.stdout)
+
     def test_failed_collection_invalidates_a_stale_report(self):
         fixture = self.simple_fixture()
         fixture.write_report("demo", own_report("demo", 4, 4))

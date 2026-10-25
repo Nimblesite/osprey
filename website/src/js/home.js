@@ -39,7 +39,7 @@ for (const button of flavorControls) {
   button.addEventListener('click', () => selectFlavor(button));
 }
 
-const sections = document.querySelectorAll('.home .hero-content, .home .section-heading, .home .language-grid article');
+const sections = document.querySelectorAll('.home .section-heading, .home .language-grid article');
 const reveal = new IntersectionObserver((entries) => {
   for (const entry of entries) {
     if (!entry.isIntersecting) continue;

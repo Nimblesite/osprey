@@ -288,7 +288,10 @@ impl Lowerer<'_> {
                 pattern: arm
                     .child_by_field_name("pattern")
                     .map_or(Pattern::Wildcard, |p| self.lower_pattern(p)),
-                body: self.lower_expr_field(*arm, "body"),
+                body: crate::desugar::positioned(
+                    self.lower_expr_field(*arm, "body"),
+                    Some(self.pos(*arm)),
+                ),
             })
             .collect()
     }

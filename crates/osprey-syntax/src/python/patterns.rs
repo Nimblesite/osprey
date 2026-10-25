@@ -1,7 +1,7 @@
 //! Python patterns share Osprey's exhaustive matcher and binding rules.
 //! Implements [FLAVOR-PYTHON-EXPRESSIONS], [FLAVOR-PYTHON-TYPING],
 //! [FLAVOR-PYTHON-CLASS].
-use super::context::{children, Lowerer, Result};
+use super::context::{children, position, Lowerer, Result};
 use osprey_ast::{Expr, MatchArm, Pattern, Stmt};
 use tree_sitter::Node;
 
@@ -29,7 +29,7 @@ impl Lowerer<'_> {
             let body = lowerer.suite(Self::field(node, "consequence")?, tail)?;
             Ok(MatchArm {
                 pattern,
-                body: with_renames(body, &renames),
+                body: crate::desugar::positioned(with_renames(body, &renames), Some(position(node))),
             })
         })
     }
