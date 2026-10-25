@@ -36,7 +36,7 @@
     "luxon": "^3.7.2",
     "markdown-it": "^14.3.2",
     "markdown-it-anchor": "^9.2.1",
-    "mermaid": "^11.17.2",
+    "mermaid": "^12.2.0",
     "prismjs": "^1.30.0",
     "sql.js": "^1.15.0",
     "typediagram-core": "^0.13.0"
