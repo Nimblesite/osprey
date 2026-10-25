@@ -69,7 +69,7 @@ class Processor:
     bad_words_ids: list[list[int]]
 
 
-def blank() -> Processor:
+def blank():
     """A processor with every setting at its neutral value: temperature 1, -inf
     filter, one token kept, full nucleus, no penalties, no ids. Each constructor
     updates only the fields its processor reads."""
@@ -92,14 +92,14 @@ def warper(kind, setting, filter_value, min_tokens_to_keep):
             return update(common, epsilon=setting)
 
 
-def TemperatureLogitsWarper(temperature: float) -> Processor:
+def TemperatureLogitsWarper(temperature):
     """`TemperatureLogitsWarper(temperature)`: divide every logit by the
     strictly positive temperature."""
     base = blank()
     return update(base, kind="temperature", temperature=temperature)
 
 
-def TopKLogitsWarper(top_k: int, filter_value: float, min_tokens_to_keep: int) -> Processor:
+def TopKLogitsWarper(top_k, filter_value, min_tokens_to_keep):
     """`TopKLogitsWarper(top_k, filter_value, min_tokens_to_keep)`: keep the
     top-k scores, masking the rest with `filter_value`; the kept count is at
     least `min_tokens_to_keep`."""
@@ -107,42 +107,42 @@ def TopKLogitsWarper(top_k: int, filter_value: float, min_tokens_to_keep: int) -
     return update(base, kind="top_k", top_k=top_k, filter_value=filter_value, min_tokens_to_keep=min_tokens_to_keep)
 
 
-def TopPLogitsWarper(top_p: float, filter_value: float, min_tokens_to_keep: int) -> Processor:
+def TopPLogitsWarper(top_p, filter_value, min_tokens_to_keep):
     """`TopPLogitsWarper(top_p, filter_value, min_tokens_to_keep)`: keep the
     smallest set of tokens whose ascending cumulative softmax exceeds
     `1 - top_p`, masking the rest with `filter_value`."""
     return warper("top_p", top_p, filter_value, min_tokens_to_keep)
 
 
-def MinPLogitsWarper(min_p: float, filter_value: float, min_tokens_to_keep: int) -> Processor:
+def MinPLogitsWarper(min_p, filter_value, min_tokens_to_keep):
     """`MinPLogitsWarper(min_p, filter_value, min_tokens_to_keep)`: keep tokens
     whose probability is at least `min_p` times the top probability, masking the
     rest with `filter_value`; the top `min_tokens_to_keep` always survive."""
     return warper("min_p", min_p, filter_value, min_tokens_to_keep)
 
 
-def TypicalLogitsWarper(mass: float, filter_value: float, min_tokens_to_keep: int) -> Processor:
+def TypicalLogitsWarper(mass, filter_value, min_tokens_to_keep):
     """`TypicalLogitsWarper(mass, filter_value, min_tokens_to_keep)`: keep the
     tokens whose distance from the entropy is below the boundary implied by
     `mass`, masking the rest with `filter_value`."""
     return warper("typical", mass, filter_value, min_tokens_to_keep)
 
 
-def EpsilonLogitsWarper(epsilon: float, filter_value: float, min_tokens_to_keep: int) -> Processor:
+def EpsilonLogitsWarper(epsilon, filter_value, min_tokens_to_keep):
     """`EpsilonLogitsWarper(epsilon, filter_value, min_tokens_to_keep)`: keep
     tokens whose probability is at least `epsilon`, masking the rest with
     `filter_value`; the top `min_tokens_to_keep` always survive."""
     return warper("epsilon", epsilon, filter_value, min_tokens_to_keep)
 
 
-def EtaLogitsWarper(epsilon: float, filter_value: float, min_tokens_to_keep: int) -> Processor:
+def EtaLogitsWarper(epsilon, filter_value, min_tokens_to_keep):
     """`EtaLogitsWarper(epsilon, filter_value, min_tokens_to_keep)`: keep tokens
     whose probability is at least `min(epsilon, sqrt(epsilon) * exp(-entropy))`,
     masking the rest with `filter_value`."""
     return warper("eta", epsilon, filter_value, min_tokens_to_keep)
 
 
-def RepetitionPenaltyLogitsProcessor(penalty: float, prompt_ignore_length: int) -> Processor:
+def RepetitionPenaltyLogitsProcessor(penalty, prompt_ignore_length):
     """`RepetitionPenaltyLogitsProcessor(penalty, prompt_ignore_length)`: divide
     positive scores and multiply negative scores of each token already present
     (after skipping the first `prompt_ignore_length` history tokens) by
@@ -151,21 +151,21 @@ def RepetitionPenaltyLogitsProcessor(penalty: float, prompt_ignore_length: int) 
     return update(base, kind="repetition_penalty", penalty=penalty, prompt_ignore_length=prompt_ignore_length)
 
 
-def NoRepeatNGramLogitsProcessor(ngram_size: int) -> Processor:
+def NoRepeatNGramLogitsProcessor(ngram_size):
     """`NoRepeatNGramLogitsProcessor(ngram_size)`: mask with -inf every token
     that would complete an n-gram that already appears in the history."""
     base = blank()
     return update(base, kind="no_repeat_ngram", ngram_size=ngram_size)
 
 
-def MinLengthLogitsProcessor(min_length: int, eos_ids: list[int]) -> Processor:
+def MinLengthLogitsProcessor(min_length, eos_ids):
     """`MinLengthLogitsProcessor(min_length, eos_ids)`: mask every eos id with
     -inf while the sequence is shorter than `min_length`."""
     base = blank()
     return update(base, kind="min_length", min_length=min_length, eos_ids=eos_ids)
 
 
-def MinNewTokensLengthLogitsProcessor(prompt_length_to_skip: int, min_new_tokens: int, eos_ids: list[int]) -> Processor:
+def MinNewTokensLengthLogitsProcessor(prompt_length_to_skip, min_new_tokens, eos_ids):
     """`MinNewTokensLengthLogitsProcessor(prompt_length_to_skip, min_new_tokens,
     eos_ids)`: mask every eos id with -inf while fewer than `min_new_tokens`
     tokens follow the skipped prompt."""
@@ -173,28 +173,28 @@ def MinNewTokensLengthLogitsProcessor(prompt_length_to_skip: int, min_new_tokens
     return update(base, kind="min_new_tokens", eos_ids=eos_ids, prompt_length_to_skip=prompt_length_to_skip, min_new_tokens=min_new_tokens)
 
 
-def ForcedBOSTokenLogitsProcessor(bos_token_id: int) -> Processor:
+def ForcedBOSTokenLogitsProcessor(bos_token_id):
     """`ForcedBOSTokenLogitsProcessor(bos_token_id)`: when the history is one
     token long, force `bos_token_id` (everything else -inf)."""
     base = blank()
     return update(base, kind="forced_bos", bos_token_id=bos_token_id)
 
 
-def ForcedEOSTokenLogitsProcessor(max_length: int, eos_ids: list[int]) -> Processor:
+def ForcedEOSTokenLogitsProcessor(max_length, eos_ids):
     """`ForcedEOSTokenLogitsProcessor(max_length, eos_ids)`: when the history is
     `max_length - 1` tokens long, force the eos ids (everything else -inf)."""
     base = blank()
     return update(base, kind="forced_eos", eos_ids=eos_ids, max_length=max_length)
 
 
-def SuppressTokensLogitsProcessor(suppress_ids: list[int]) -> Processor:
+def SuppressTokensLogitsProcessor(suppress_ids):
     """`SuppressTokensLogitsProcessor(suppress_ids)`: mask every listed token
     with -inf."""
     base = blank()
     return update(base, kind="suppress_tokens", suppress_ids=suppress_ids)
 
 
-def NoBadWordsLogitsProcessor(bad_words_ids: list[list[int]], eos_ids: list[int]) -> Processor:
+def NoBadWordsLogitsProcessor(bad_words_ids, eos_ids):
     """`NoBadWordsLogitsProcessor(bad_words_ids, eos_token_id)`: mask with -inf the
     last token of any bad word the history is about to complete, and every
     single-token bad word; single-token bad words equal to an eos id are ignored."""
