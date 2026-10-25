@@ -1,21 +1,21 @@
 ---
 layout: page
 title: "String (Type)"
-description: "A sequence of characters representing text. Supports string interpolation and escape sequences."
+description: "UTF-8 text with interpolation, escape sequences and byte-based offsets."
 ---
 
-**Description:** A sequence of characters representing text. Supports string interpolation and escape sequences.
+String literals use UTF-8. Interpolate values with `${...}` and use escapes such as `\n` for a newline.
 
 ## Example
 
 ```osprey
-let greeting = "Hello, World!"
-let name = "Alice"
-let message = "Hello, ${name}!"
+let name = "Zoë"
+print("Hello, ${name}! ${byteLength(name)} bytes")
 ```
 
 ```osprey-ml
-greeting = "Hello, World!"
-name = "Alice"
-message = "Hello, ${name}!"
+name = "Zoë"
+print "Hello, ${name}! ${byteLength name} bytes"
 ```
+
+Both programs print `Hello, Zoë! 4 bytes`: `ë` occupies two bytes. [`byteLength`](/docs/functions/bytelength/) counts bytes, and [`substring`](/docs/functions/substring/) and [`indexOf`](/docs/functions/indexof/) use byte offsets. Choose code-point boundaries when slicing; [`codePointAt`](/docs/functions/codepointat/) decodes a Unicode code point at a byte offset and returns `Error` for malformed UTF-8.

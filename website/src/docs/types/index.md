@@ -32,4 +32,4 @@ A 64-bit signed integer type. Can represent whole numbers from -9,223,372,036,85
 
 ## [String](string/)
 
-A sequence of characters representing text. Supports string interpolation and escape sequences.
+UTF-8 text with interpolation and byte-based length and slicing operations.
