@@ -16,6 +16,13 @@
 - **Feature entry points belong in these instructions.** Every new CLI feature must add its canonical example/test path, exact runnable command and expected result under Commands. Answer usage questions from that entry first. When demonstrating findings, start with a verified finding example; label clean controls and engine limitations explicitly.
 - **Never disable, weaken, bypass or narrow a CI gate to get a merge.** Not the rulesets, not a required-check list, not a job's `if:`, not a test's timeout. If a check is red, the code is wrong — fix the code.
 
+## App Logic
+
+- **Accuracy above all else**
+- False negatives or positives are considered showstoppers. Upon encountering a false negative or positive, you must 🛑 stop and tell the user what is wrong
+- A screen that lists items but doesn't have any ability to report security warnings for those items is considered the worst kind of false negative.
+- If functionality is incomplete and doesn't report security warnings, hide the entire screen
+
 ## Testing
 **A failing test that pins a compiler bug is worth more than a speculative fix.** Code you *believe* is correct is a liability until an assertion proves it.
 

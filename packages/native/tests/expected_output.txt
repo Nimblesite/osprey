@@ -19,5 +19,8 @@ ok 18 - tabs carry their pages and bind after the pages' controls, and segments 
 ok 19 - every constructor encodes as the component it names
 ok 20 - run and http requests encode their bounds, headers and slices
 ok 21 - documents, lists, themes and slice writes are read totally
-1..21
-# tests=21 passed=21 failed=0 skipped=0
+ok 22 - filesystem and store requests preserve paths bounds and slices
+ok 23 - desktop requests preserve picker export and cancellation payloads
+ok 24 - semantic text roles preserve every protocol spelling
+1..24
+# tests=24 passed=24 failed=0 skipped=0

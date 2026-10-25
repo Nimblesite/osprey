@@ -258,3 +258,35 @@ test ("documents, lists, themes and slice writes are read totally", \() =>
     expect (named "ink", "none")
     expect (join (Signals::written ([Requests::write ("echo", "x")], "echo", ["Memo"])) ",", "Memo")
     expect (length (Signals::written ([], "echo", ["Memo"])), 0))
+
+
+requestText capability = jsonEncode (Requests::encode (Requests::ask ("job:7", capability))) ?: "encode failed"
+
+// [UI-EFFECTS]: the complete host payload retains the ticket and every requested argument.
+test ("filesystem and store requests preserve paths bounds and slices", \() =>
+    expect (requestText (ui::ListDirectories(directories = ["/tmp", "/Users/me"], entryLimit = 12, listSlice = "listing")), "{\"ticket\":\"job:7\",\"kind\":\"list-directories\",\"paths\":[\"/tmp\",\"/Users/me\"],\"limit\":12,\"slice\":\"listing\"}")
+    expect (requestText (ui::ReadPropertyLists(plists = ["app.plist"], plistKeys = ["CFBundleName"], plistSuffixes = [".plist"], plistLimit = 128, plistSlice = "prefs")), "{\"ticket\":\"job:7\",\"kind\":\"read-plists\",\"paths\":[\"app.plist\"],\"keys\":[\"CFBundleName\"],\"suffixes\":[\".plist\"],\"limit\":128,\"slice\":\"prefs\"}")
+    expect (requestText (ui::ReadTexts(texts = ["a.txt", "b.txt"], textLimit = 256, textSlice = "text")), "{\"ticket\":\"job:7\",\"kind\":\"read-texts\",\"paths\":[\"a.txt\",\"b.txt\"],\"limit\":256,\"slice\":\"text\"}")
+    expect (requestText (ui::Fingerprint(file = "a.txt", fileLimit = 64)), "{\"ticket\":\"job:7\",\"kind\":\"fingerprint\",\"path\":\"a.txt\",\"limit\":64}")
+    expect (requestText (ui::StoreWrite(writeName = "note.txt", writeSlice = "draft")), "{\"ticket\":\"job:7\",\"kind\":\"store-write\",\"name\":\"note.txt\",\"slice\":\"draft\"}")
+    expect (requestText (ui::StoreList(folder = "notes")), "{\"ticket\":\"job:7\",\"kind\":\"store-list\",\"name\":\"notes\"}")
+    expect (requestText (ui::StoreDelete(deleteName = "old.txt")), "{\"ticket\":\"job:7\",\"kind\":\"store-delete\",\"name\":\"old.txt\"}"))
+
+// [UI-EFFECTS]: the complete host payload retains the ticket and every requested argument.
+test ("desktop requests preserve picker export and cancellation payloads", \() =>
+    expect (requestText (ui::RunningApplications), "{\"ticket\":\"job:7\",\"kind\":\"running-applications\"}")
+    expect (requestText (ui::ChooseFile(types = ["txt", "md"], chosenLimit = 2, chosenSlice = "picked")), "{\"ticket\":\"job:7\",\"kind\":\"choose-file\",\"types\":[\"txt\",\"md\"],\"limit\":2,\"slice\":\"picked\"}")
+    expect (requestText (ui::ChooseFolder), "{\"ticket\":\"job:7\",\"kind\":\"choose-folder\"}")
+    expect (requestText (ui::SaveFile(suggested = "report.txt", exportSlice = "export")), "{\"ticket\":\"job:7\",\"kind\":\"save-file\",\"name\":\"report.txt\",\"slice\":\"export\"}")
+    expect (requestText (ui::Reveal(revealPath = "/tmp/report.txt")), "{\"ticket\":\"job:7\",\"kind\":\"reveal\",\"path\":\"/tmp/report.txt\"}")
+    expect (requestText (ui::OpenSettings(pane = "privacy")), "{\"ticket\":\"job:7\",\"kind\":\"open-settings\",\"pane\":\"privacy\"}")
+    expect (requestText (ui::Cancel(cancelled = "old:7")), "{\"ticket\":\"job:7\",\"kind\":\"cancel\",\"target\":\"old:7\"}"))
+
+roleText role =
+    doc = listGet (Encode::walk ([], Ui::column [ui::Text(content = "sample", role = role, tone = ui::Primary), Ui::button ("Go", "play", Increment)])).nodes 0 ?: JsonNull
+    Doc::text (listGet (Doc::items (Doc::field (doc, "children"))) 0 ?: JsonNull, "role")
+
+// [UI-COMPONENTS]: every semantic text role keeps its protocol spelling.
+test ("semantic text roles preserve every protocol spelling", \() =>
+    roles = [ui::Display, ui::Large, ui::Title, ui::Heading, ui::Lead, ui::Headline, ui::Body, ui::Callout, ui::Caption, ui::Eyebrow, ui::Mono]
+    expect (join (mapList (roles, roleText)) ",", "display,large,title,heading,lead,headline,body,callout,caption,eyebrow,mono"))
