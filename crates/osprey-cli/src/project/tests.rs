@@ -164,6 +164,31 @@ fn empty_project(
     }
 }
 
+fn folded_initializer_input() -> CompilationInput {
+    let parsed = osprey_syntax::parse_program("let alias = 7\nfn main() = print(\"ok\")\n");
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let mut project = empty_project(std::collections::BTreeMap::new());
+    let mut statements = parsed.program.statements.into_iter();
+    project.documentation_bindings = statements.by_ref().take(1).collect();
+    project.program.statements = statements.collect();
+    CompilationInput::assembled(
+        project,
+        String::new(),
+        "main.osp".into(),
+        OutputDefault::Source("main.osp".into()),
+    )
+}
+
+#[test]
+fn coverage_initializers_preserve_main_and_discard_contracts() {
+    let input = folded_initializer_input();
+    for covered in [false, true] {
+        let program = input.codegen_program(covered);
+        let errors = osprey_types::check_program(&program);
+        assert!(errors.is_empty(), "coverage={covered}: {errors:#?}");
+    }
+}
+
 #[test]
 fn an_entryless_project_falls_back_to_its_display_path() {
     let input = CompilationInput::assembled(

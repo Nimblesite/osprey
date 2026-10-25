@@ -157,8 +157,7 @@ def hinge_step(state, i, outs, ys):
     product = Engine.mul_const(state.graph, score, toFloat(y))
     margin = Engine.rsub_const(product, Engine.top(product), 1.0)
     term = Engine.relu(margin, Engine.top(margin))
-    added = Engine.add(term, state.id, Engine.top(term))
-    return Engine.Cursor(graph=added, id=Engine.top(added))
+    return add_loss(term, state.id, Engine.top(term))
 
 
 def total_loss(graph, outs, ys, ids):
@@ -179,7 +178,11 @@ def reg_add(state, i, ids):
     """Add one parameter square to the running regularization sum."""
     node = unwrap_or(listGet(ids, i), 0)
     square = Engine.mul(state.graph, node, node)
-    added = Engine.add(square, state.id, Engine.top(square))
+    return add_loss(square, state.id, Engine.top(square))
+
+
+def add_loss(graph, total, term):
+    added = Engine.add(graph, total, term)
     return Engine.Cursor(graph=added, id=Engine.top(added))
 
 

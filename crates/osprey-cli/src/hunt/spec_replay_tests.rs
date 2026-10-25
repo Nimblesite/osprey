@@ -227,10 +227,22 @@ fn a_program_that_ignores_a_large_stdin_still_replays() {
 }
 
 #[cfg(unix)]
+fn crash_replay_script(dir: &Dir) -> PathBuf {
+    script(dir, "replay", "read -r value; printf '%s\\n' \"$value\" >> \"$0.calls\"; [ \"$value\" = crash ] && kill -ABRT $$; exit 0")
+}
+
+#[cfg(unix)]
+fn assert_confirmed_witness(kept: &[super::findings::Finding]) {
+    assert_eq!(kept.len(), 1);
+    assert_eq!(kept[0].stdin, b"crash\n");
+    assert_eq!(kept[0].replay, Replay::Reproduced("SIGABRT".into()));
+}
+
+#[cfg(unix)]
 #[test]
 fn a_later_reproduced_witness_survives_deduplication() {
     let dir = Dir::new("later-witness");
-    let exe = script(&dir, "replay", "read -r value; [ \"$value\" = crash ] && kill -ABRT $$; exit 0");
+    let exe = crash_replay_script(&dir);
     let mut first = sample(Class::Memory, Some(("same.osp", 4)), None, "same fault");
     first.stdin = b"quiet\n".to_vec();
     let mut second = first.clone();
@@ -241,7 +253,43 @@ fn a_later_reproduced_witness_survives_deduplication() {
     assert_eq!(first.replay, Replay::KleeOnly);
     assert_eq!(second.replay, Replay::Reproduced("SIGABRT".into()));
     let kept = super::findings::dedupe(vec![first, second]);
-    assert_eq!(kept.len(), 1);
-    assert_eq!(kept[0].stdin, b"crash\n");
-    assert_eq!(kept[0].replay, Replay::Reproduced("SIGABRT".into()));
+    assert_confirmed_witness(&kept);
+}
+
+#[cfg(unix)]
+fn same_site_witnesses(dir: &Dir) -> Vec<super::findings::Finding> {
+    let report = b"Error: same fault\nStack: \n\t#0 in main() at same.osp:4\n";
+    for (n, input) in [b"quiet\n".as_slice(), b"crash\n", b"unneeded\n"]
+        .iter()
+        .enumerate()
+    {
+        dir.write(&format!("test{n:06}.ptr.err"), report);
+        dir.write(
+            &format!("test{n:06}.ktest"),
+            &super::ktest::encode(&[("stdin", input)]),
+        );
+    }
+    super::findings::scan_all(&dir.0)
+        .expect("all witnesses")
+        .findings
+}
+
+#[cfg(unix)]
+#[test]
+fn scan_replays_until_a_witness_reproduces_and_keeps_its_exact_input() {
+    let dir = Dir::new("scan-witnesses");
+    let exe = crash_replay_script(&dir);
+    let mut witnesses = same_site_witnesses(&dir);
+    assert_eq!(witnesses.len(), 3);
+    let no_replay = super::findings::scan(&dir.0).expect("no replay");
+    assert_eq!(no_replay.findings.len(), 1);
+    replay::replay_all(&exe, &dir.0.join("work"), &mut witnesses).expect("replay all");
+    assert_eq!(witnesses[0].replay, Replay::KleeOnly);
+    assert_eq!(witnesses[1].replay, Replay::Reproduced("SIGABRT".into()));
+    assert_eq!(witnesses[2].replay, Replay::NotRun);
+    let calls = std::fs::read(exe.with_file_name("replay.calls")).expect("calls");
+    assert_eq!(calls, b"quiet\ncrash\n");
+    let kept = super::findings::dedupe(witnesses);
+    assert_confirmed_witness(&kept);
+    assert_eq!(kept[0].test, "test000001");
 }

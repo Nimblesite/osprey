@@ -50,6 +50,7 @@ const EXPECTED_CONTEXTS = [
   'Detect changed areas',
   'Build, Format & Analyse',
   'Tests: Rust workspace (coverage)',
+  'Tests: package source coverage',
   'Tests: language corpus (default)',
   'Tests: language corpus (gc)',
   'Tests: language corpus (arc)',

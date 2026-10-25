@@ -137,15 +137,17 @@ fn a_project_suite_runs_without_coverage() {
 #[test]
 fn folded_module_alias_initialization_remains_in_source_coverage(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let root = project("alias_initialization");
+    assert_alias_coverage("alias_top_level", &MAIN.replace("Words", "Facade"))?;
+    assert_alias_coverage("alias_main", "namespace app\nimport calc::Facade\nmain () = test \"greets\" (\\() => expect (Facade::greet \"ann\", \"hi ann\"))\n")
+}
+
+fn assert_alias_coverage(name: &str, entry: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let root = project(name);
     write(
         &root.join("framework/src/facade.ospml"),
         "namespace calc\nimport calc::Words\nmodule Facade\n    export greet = Words::greet\n",
     );
-    write(
-        &root.join("tests/main.ospml"),
-        &MAIN.replace("Words", "Facade"),
-    );
+    write(&root.join("tests/main.ospml"), entry);
     let json = root.join("cov.json");
     let (code, stdout, stderr) = osprey_test(&[
         root.to_string_lossy().as_ref(),

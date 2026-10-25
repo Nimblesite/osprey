@@ -177,12 +177,16 @@ def fmt(value):
 
 def fmt_ints(xs):
     """A compact int list."""
-    return "[" + join(mapList(xs, lambda value: toString(value)), ", ") + "]"
+    return fmt_list(xs, lambda value: toString(value))
 
 
 def fmt_floats(xs):
     """A compact float list."""
-    return "[" + join(mapList(xs, lambda value: fmt(value)), ", ") + "]"
+    return fmt_list(xs, fmt)
+
+
+def fmt_list(xs, render):
+    return "[" + join(mapList(xs, render), ", ") + "]"
 
 
 def query_line(report, q):

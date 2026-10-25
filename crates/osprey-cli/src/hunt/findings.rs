@@ -109,6 +109,7 @@ pub(crate) fn scan(directory: &Path) -> Result<Scan, String> {
     Ok(scan)
 }
 
+/// Preserve alternate inputs until native replay can confirm a witness [SYMEX-REPLAY].
 pub(crate) fn scan_all(directory: &Path) -> Result<Scan, String> {
     let mut names = std::fs::read_dir(directory)
         .map_err(|error| format!("cannot read {}: {error}", directory.display()))?

@@ -1,6 +1,10 @@
 """Explicit ML renderings for reference examples requiring layout or patterns."""
 
-HAND_TWINS = {'functions/indexof.md': 'match indexOf ("foo=bar", "=")\n'
+HAND_TWINS = {'functions/floattoint.md': 'describe x = match floatToInt x\n'
+                                     '    Success value => toString value\n'
+                                     '    Error message => message\n'
+                                     'print "${describe (-2.9)}\\n${describe (sqrt (-1.0))}"',
+ 'functions/indexof.md': 'match indexOf ("foo=bar", "=")\n'
                          '    Success value => print value\n'
                          '    Error message => print message',
  'functions/jsonparse.md': 'match jsonParse "{\\"name\\": \\"osprey\\"}"\n'

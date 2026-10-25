@@ -236,6 +236,8 @@ Each finding is run again on the normal native build — a release build of the 
 - each recorded file is written at its relative path inside a scratch working directory; a path outside that directory is refused and the finding is skipped with the reason;
 - `unmodelled` findings are skipped: they only exist under KLEE.
 
+Keep every recorded witness until replay. For each class and source location, try later inputs when an earlier input does not reproduce; stop redundant replay once a witness reproduces. Deduplicate the final report after replay, retaining a reproduced witness and its exact stdin and file bytes in preference to a KLEE-only or skipped witness. With `--no-replay`, retain the first witness per class and location.
+
 A signal death is `reproduced`; a clean exit — including a non-zero `main` the program chose itself, even one at or above 128 — is `klee-only`. The verdict reads the process's signal status, not a folded exit byte, so `exit(139)` is the program's choice and `SIGSEGV` is a reproduction. `unmodelled` findings are marked skipped whether or not any other finding was run. A native run that has not exited after 30 seconds (a server, a prompt loop) is killed and the finding is skipped with that reason. `klee-only` findings are reported but don't fail the command; they are usually mock over-approximation. Replay through KLEE's `libkleeRuntest` — harness arguments rebuilt by the entry point, entropy and clock served from a provider over the same recorded objects — is not implemented.
 
 ### Regression tests — `[SYMEX-REGRESSION]`

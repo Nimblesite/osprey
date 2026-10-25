@@ -169,12 +169,7 @@ unary one has signature `(x: float) -> float`; `atan2` is
 bare `float`, never an `Arith` operation ([FLOAT-IEEE-RESULTS]): `asin` and
 `acos` of an argument outside `[-1.0, 1.0]` yield NaN, `tan` at a pole yields
 the large finite neighbour (the argument is an approximation of π/2, so the
-exact pole is unreachable), `atan2(0.0, 0.0)` is NaN and `atan2(y, x)` is the
-angle of the point `(x, y)` in `(-π, π]`, quadrant-aware. `atan2` does not
-exist to paper over signed zeros: `atan2(±0.0, -1.0)` is `±π` and
-`atan2(±0.0, 1.0)` is `±0.0`, so a program can tell the signs apart. Every
-function is pure, so a kernel may call it or *be* it: `gpuMap(sin)` extracts
-a kernel whose body is the function call ([GPU-KERNEL-FORM]).
+exact pole is unreachable). `atan2(y, x)` returns the angle of `(x, y)` in `[-π, π]`, including signed-zero quadrants: `atan2(0.0, 0.0)` is `0.0`, `atan2(±0.0, -1.0)` is `±π`, and `atan2(±0.0, 1.0)` is `±0.0`. Each function can be called inside a GPU kernel or passed by name, as in `gpuMap(sin)` ([GPU-KERNEL-FORM]).
 
 Lowering: `sin` and `cos` are the LLVM `llvm.sin.f64` and `llvm.cos.f64`
 intrinsics; `tan`, `asin`, `acos`, `atan` and `atan2` are the C library's
@@ -261,7 +256,7 @@ kernel may call or name them.
   `1.414e308` rather than infinity.
 - `fmod(x, y)` is C `fmod`: the remainder of `x/y` truncated toward zero,
   with `x`'s sign. `fmod(-7.5, 2.0)` is `-1.5`. A zero divisor yields NaN —
-  unlike the `%` operator, which performs `Arith.divideByZero`.
+  unlike integer `%`, which performs `Arith.remainderByZero`.
 - `copysign(x, y)` is `x`'s magnitude with `y`'s sign: `copysign(3.0, -1.0)`
   is `-3.0`. A NaN keeps its payload and takes `y`'s sign bit.
 
@@ -288,14 +283,7 @@ Rounds a double to the nearest binary32 (ties to even) and widens back, so the
 result is exactly the value a float32 pipeline holds: `float32(0.1)` is
 `0.10000000149011612`. Total and pure, so a kernel may call or name it.
 
-Adding, subtracting, multiplying, dividing or taking the square root of
-float32-rounded inputs and re-rounding the result with `float32` is exact
-binary32 arithmetic (the innocuous double rounding that a correctly rounded
-double result of a correctly rounded binary32 result is the correctly rounded
-binary32 result), which lets a port of a float32 pipeline match float32
-results bit for bit while computing in the double type the compiler already
-has. Lowering is one `fptrunc double … to float` and one `fpext float … to
-double`.
+Arithmetic outside the conversion still uses binary64. When porting a float32 pipeline, apply `float32` at its rounding boundaries and compare the results with the original implementation; the conversion alone does not establish bit-for-bit agreement for the complete calculation. Lowering is one `fptrunc double … to float` and one `fpext float … to double`.
 
 ### `floatBits` / `floatFromBits` / `float32Bits` / `float32FromBits` — [BUILTIN-FLOAT-BITS]
 Bit-level views of the two float formats, as `int` words. All are total and
@@ -317,10 +305,7 @@ pure.
 Checked truncation toward zero. `Success(n)` when `x` is finite and `n` fits
 in the `int` range (`-2^63 <= n < 2^63`); `Error` with a clear message when
 `x` is NaN, an infinity, or a finite value whose truncation falls outside the
-range. `floatToInt(-2.9)` is `Success(-2)`, `floatToInt(0.0 / 0.0)` is
-`Error`. Because it returns a `Result`, it is not a kernel (a combinator's
-scalar slot rejects the `Error` channel) — a kernel that needs truncation
-rounds first and converts with `toFloat`'s inverse path or stays on the host.
+range. `floatToInt(-2.9)` is `Success(-2)`; `floatToInt(sqrt(-1.0))` is `Error`. Because it returns a `Result`, it cannot occupy a GPU combinator's scalar return slot. Convert on the host before creating a buffer, or keep a rounded value as a float with `trunc`.
 
 ### Bitwise integer builtins — [BUILTIN-BITWISE]
 `bitAnd`, `bitOr`, `bitXor` (`(a: int, b: int) -> int`), `bitNot`

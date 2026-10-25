@@ -50,16 +50,23 @@ fn replayable(finding: &Finding) -> bool {
     finding.class != Class::Unmodelled && matches!(finding.replay, Replay::NotRun)
 }
 
-fn replay_all(exe: &Path, workdir: &Path, findings: &mut [Finding]) -> Result<(), String> {
+pub(super) fn replay_all(
+    exe: &Path,
+    workdir: &Path,
+    findings: &mut [Finding],
+) -> Result<(), String> {
     let mut reproduced = std::collections::BTreeSet::new();
     for finding in findings.iter_mut().filter(|finding| replayable(finding)) {
-        let key = (finding.class, super::findings::place(finding, &finding.message));
+        let key = (
+            finding.class,
+            super::findings::place(finding, &finding.message),
+        );
         if reproduced.contains(&key) {
             continue;
         }
         finding.replay = run_one(exe, workdir, finding)?;
         if matches!(finding.replay, Replay::Reproduced(_)) {
-            reproduced.insert(key);
+            let _ = reproduced.insert(key);
         }
     }
     Ok(())
