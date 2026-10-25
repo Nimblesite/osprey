@@ -51,17 +51,12 @@ class Kw:
 
 def blank(kind):
     """A node with no fields set."""
-    return Node(kind=kind, text="", name="", attr="", var="", var2="", cond="", iterable="", branches=[], body=[], else_body=[], params=[])
+    return leaf(kind, "")
 
 
-def text_node(t):
-    """A literal-text node."""
-    return Node(kind="text", text=t, name="", attr="", var="", var2="", cond="", iterable="", branches=[], body=[], else_body=[], params=[])
-
-
-def output_node(t):
-    """A `{{ ... }}` node."""
-    return Node(kind="output", text=t, name="", attr="", var="", var2="", cond="", iterable="", branches=[], body=[], else_body=[], params=[])
+def leaf(kind, text):
+    """A literal-text, expression-output or empty node."""
+    return Node(kind=kind, text=text, name="", attr="", var="", var2="", cond="", iterable="", branches=[], body=[], else_body=[], params=[])
 
 
 def step_node(s):
@@ -103,46 +98,28 @@ def parse_nodes(chunks, i, n, stops, acc) -> Result[Step, str]:
     else:
         chunk = unwrap_or(listGet(chunks, i), Chunk(kind="data", text=""))
         if chunk.kind == "data":
-            return parse_nodes(chunks, i + 1, n, stops, listAppend(acc, text_node(chunk.text)))
+            return parse_nodes(chunks, i + 1, n, stops, listAppend(acc, leaf("text", chunk.text)))
         elif chunk.kind == "variable":
-            return parse_nodes(chunks, i + 1, n, stops, listAppend(acc, output_node(chunk.text)))
+            return parse_nodes(chunks, i + 1, n, stops, listAppend(acc, leaf("output", chunk.text)))
         else:
             k = split_kw(chunk.text)
             if kw_in(stops, k.word):
                 return Success(value=Step(nodes=acc, next=i))
             elif k.word == "if":
-                return parse_if_then(chunks, i, n, stops, acc, k.rest)
+                return parse_block_then(chunks, n, stops, acc, parse_if(chunks, i, n, k.rest))
             elif k.word == "for":
-                return parse_for_then(chunks, i, n, stops, acc, k.rest)
+                return parse_block_then(chunks, n, stops, acc, parse_for(chunks, i, n, k.rest))
             elif k.word == "set":
                 return parse_nodes(chunks, i + 1, n, stops, listAppend(acc, set_node(k.rest)))
             elif k.word == "macro":
-                return parse_macro_then(chunks, i, n, stops, acc, k.rest)
+                return parse_block_then(chunks, n, stops, acc, parse_macro(chunks, i, n, k.rest))
             else:
                 return Error(message="unknown statement `" + k.word + "`")
 
 
-def parse_if_then(chunks, i, n, stops, acc, cond) -> Result[Step, str]:
-    """Parse an `if` block, then continue `parse_nodes`."""
-    match parse_if(chunks, i, n, cond):
-        case Success(value=value):
-            return parse_nodes(chunks, value.next, n, stops, listAppend(acc, step_node(value)))
-        case Error(message=message):
-            return Error(message=message)
-
-
-def parse_for_then(chunks, i, n, stops, acc, rest) -> Result[Step, str]:
-    """Parse a `for` block, then continue `parse_nodes`."""
-    match parse_for(chunks, i, n, rest):
-        case Success(value=value):
-            return parse_nodes(chunks, value.next, n, stops, listAppend(acc, step_node(value)))
-        case Error(message=message):
-            return Error(message=message)
-
-
-def parse_macro_then(chunks, i, n, stops, acc, rest) -> Result[Step, str]:
-    """Parse a `macro` block, then continue `parse_nodes`."""
-    match parse_macro(chunks, i, n, rest):
+def parse_block_then(chunks, n, stops, acc, parsed) -> Result[Step, str]:
+    """Append a parsed block and resume its enclosing node sequence."""
+    match parsed:
         case Success(value=value):
             return parse_nodes(chunks, value.next, n, stops, listAppend(acc, step_node(value)))
         case Error(message=message):
