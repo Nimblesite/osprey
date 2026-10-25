@@ -1,4 +1,4 @@
-"""Bind coverage reports to the source and suite whose golden output passed."""
+"""Bind reports and recorded measurements to verified inputs. Implements [PKG-COVERAGE-GATE]."""
 import ast
 import hashlib
 import json

@@ -56,6 +56,8 @@ Every library has its own entry in `coverage-thresholds.json` under `projects.pa
 
 `scripts/package_coverage.py` requires a successful suite execution, a positive assertion count, zero failures and byte-for-byte matching `tests/expected_output.txt`. It rejects missing reports, omitted executable source files, malformed counts and results below the package's threshold. Collection binds the report to hashes of its source, suite, manifests and golden, so changed inputs or altered evidence require a new run. A failing suite remains a failure even when its measured coverage exceeds 90%.
 
+`projects.packages` contains required minimums, not measured percentages. `python3 scripts/package_coverage.py --record-measurements` records a dated, verified snapshot in the separate `package_measurements` section of the same file, including the measurement basis fingerprint. Unavailable or stale evidence is recorded as `null`; measured results below a threshold retain their actual counts. Recording never changes the minimums or turns a failing gate into a pass. CI always checks the collected reports rather than the recorded snapshot.
+
 `make test` runs collection and checks locally. CI collects in its package source coverage job and the required coverage job checks the uploaded evidence. `python3 scripts/test-package-coverage.py` exercises the gate's failure cases without compiling packages.
 
 ## Bug hunts — [PORT-HUNT]

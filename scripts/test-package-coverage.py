@@ -14,7 +14,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from package_coverage_evidence import seal_evidence, source_inputs
+from package_coverage_evidence import record_measurements, seal_evidence, source_inputs
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKER = ROOT / "scripts" / "package_coverage.py"
@@ -196,6 +196,17 @@ class CheckerTests(unittest.TestCase):
         write_json(fixture.reports / "demo.json", own_report("demo", 4, 4))
         result = fixture.check()
         self.assertEqual(result.returncode, 1, "A raw report does not prove its suite passed: " + result.stdout)
+
+    def test_recording_rejects_inputs_changed_by_the_gate(self):
+        fixture = self.simple_fixture()
+        config = fixture.config()
+        def changing_gate(*_args):
+            path = fixture.root / "packages/demo/src/lib.py"
+            path.write_text(path.read_text() + "\n")
+            return {"covered": 4, "total": 4, "percentage": 100.0, "missing_evidence": []}
+        problem = record_measurements(fixture.root, fixture.root / "coverage-thresholds.json", fixture.reports, config, changing_gate)
+        self.assertIn("inputs changed", problem)
+        self.assertEqual(fixture.config(), config)
 
     def test_matching_a_zero_or_failing_golden_is_not_success(self):
         for expected in ("0 passed, 0 failed\n", "FAIL demo\n1 passed, 0 failed\n", "1 passed, 0 failed\n"):

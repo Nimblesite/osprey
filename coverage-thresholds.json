@@ -1,6 +1,6 @@
 {
   "_agent_pmo": "b636503",
-  "_doc": "Independent coverage gates. make test and CI fail if any component misses its threshold. Thresholds only increase.",
+  "_doc": "Required minimums, not measured percentages. make test and CI gate fresh coverage evidence. package_measurements records a dated verified snapshot; unavailable measurements are null. Thresholds only increase.",
   "policy": {
     "rust": [
       "Per-crate line coverage from cargo-llvm-cov lcov.info. Floor: 95%."
@@ -316,6 +316,106 @@
       "transformers": {
         "threshold": 90,
         "language": "osprey"
+      }
+    }
+  },
+  "package_measurements": {
+    "_doc": "Historical verified measurements, not required minimums or CI inputs. Null means unavailable. Refresh after source or test changes.",
+    "recorded_at": "2026-10-25T03:32:05.182738+00:00",
+    "metric": "executed statement lines; not branch or path coverage",
+    "reports": "target/coverage/packages",
+    "basis_sha256": "d69d4fd0f2e82b467cd6c048a42ee42c655529bcc9b3f27a255f32445559d76d",
+    "packages": {
+      "einops": {
+        "covered": 427,
+        "total": 448,
+        "percentage": 95.3
+      },
+      "faiss": {
+        "covered": 330,
+        "total": 345,
+        "percentage": 95.7
+      },
+      "flash_attn": {
+        "covered": 110,
+        "total": 110,
+        "percentage": 100.0
+      },
+      "jinja2": {
+        "covered": 1265,
+        "total": 1622,
+        "percentage": 78.0
+      },
+      "micrograd": {
+        "covered": 154,
+        "total": 158,
+        "percentage": 97.5
+      },
+      "native": {
+        "covered": 273,
+        "total": 322,
+        "percentage": 84.8
+      },
+      "numpy": {
+        "covered": 793,
+        "total": 810,
+        "percentage": 97.9
+      },
+      "re": {
+        "covered": 1141,
+        "total": 1270,
+        "percentage": 89.8
+      },
+      "rouge_score": {
+        "covered": 274,
+        "total": 283,
+        "percentage": 96.8
+      },
+      "sacrebleu": {
+        "covered": 309,
+        "total": 310,
+        "percentage": 99.7
+      },
+      "safetensors": {
+        "covered": 691,
+        "total": 793,
+        "percentage": 87.1
+      },
+      "scipy": {
+        "covered": 811,
+        "total": 876,
+        "percentage": 92.6
+      },
+      "sklearn": {
+        "covered": 372,
+        "total": 377,
+        "percentage": 98.7
+      },
+      "testing": {
+        "covered": 74,
+        "total": 75,
+        "percentage": 98.7
+      },
+      "tiktoken": {
+        "covered": 507,
+        "total": 533,
+        "percentage": 95.1
+      },
+      "tokenizers": {
+        "covered": 511,
+        "total": 524,
+        "percentage": 97.5
+      },
+      "torch": {
+        "covered": null,
+        "total": null,
+        "percentage": null,
+        "error": "missing coverage report: target/coverage/packages/torch.json"
+      },
+      "transformers": {
+        "covered": 279,
+        "total": 286,
+        "percentage": 97.6
       }
     }
   }

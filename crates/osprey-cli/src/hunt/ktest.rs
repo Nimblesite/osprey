@@ -175,6 +175,22 @@ mod tests {
     }
 
     #[test]
+    fn real_files_with_metadata_like_names_keep_their_replay_bytes() {
+        for name in ["input.len", "input.ok", "entropy.data", "clock.data", "errno.data"] {
+            let length = format!("{name}.len");
+            let opened = format!("{name}.ok");
+            let bytes = encode(&[
+                (name, b"9trailing"),
+                (&length, &1i32.to_le_bytes()),
+                (&opened, &1i32.to_le_bytes()),
+            ]);
+            let ktest = parse(&bytes).expect("valid file stream");
+            assert_eq!(ktest.stream(name), Some(b"9".to_vec()), "{name}");
+            assert_eq!(ktest.files(), vec![(name.to_string(), b"9".to_vec())], "{name}");
+        }
+    }
+
+    #[test]
     fn a_stream_without_a_length_is_whole() {
         let ktest = parse(&encode(&[("stdin", b"abc")])).expect("ktest");
         assert_eq!(ktest.stream("stdin"), Some(b"abc".to_vec()));

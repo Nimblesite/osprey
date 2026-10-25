@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn coverage_preserves_static_specialization_of_selected_closure_factories() {
-        let source = "static effect Read<B> {\nmake: fn() -> B\nvalue: fn() -> int\n}\nfn choose(flag) = if flag { fn() => perform Read.value() } else { fn() => perform Read.value() }\nfn run(flag) = {\nlet work = choose(flag)\nhandle static Read {\nmake => 0\nvalue => 7\n}\nprint(work())\n}\nfn main() = run(true)\n";
+        let source = "static effect Read<B> {\nmake: fn() -> B\nvalue: fn() -> int\n}\nfn choose(flag) = if flag { fn() => perform Read.value() } else { fn() => perform Read.value() }\nfn run(flag) = {\nlet work = choose(flag)\nhandle static Read {\nmake => 0\nvalue => 7\n}\nprint(work())\n}\nfn other(flag) = {\nlet work = choose(flag)\nhandle static Read {\nmake => \"buffer\"\nvalue => 9\n}\nprint(work())\n}\nfn main() = {\nrun(true)\nother(false)\n}\n";
         let parsed = osprey_syntax::parse_program(source);
         assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
         let plain = crate::compile_program(&parsed.program);
