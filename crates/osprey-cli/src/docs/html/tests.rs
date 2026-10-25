@@ -142,10 +142,15 @@ fn a_generated_site_is_self_contained_and_navigable() {
     let custom_at = math.find("custom-0-brand.css").unwrap_or(0);
     assert!(theme_at < custom_at, "user css must load after the theme");
     // Accessibility scaffolding a keyboard user depends on.
-    crate::testkit::shows(&math, &["class=\"skip\""]);
-    crate::testkit::shows(&math, &["aria-current=\"page\""]);
-    crate::testkit::shows(&math, &["aria-live"]);
-    crate::testkit::shows(&math, &["width=device-width"]);
+    crate::testkit::shows(
+        &math,
+        &[
+            "class=\"skip\"",
+            "aria-current=\"page\"",
+            "aria-live",
+            "width=device-width",
+        ],
+    );
     // Nothing is fetched from the network.
     crate::testkit::contents(&math, &[], &["https://"]);
 
@@ -191,8 +196,7 @@ fn hostile_documentation_text_cannot_break_out_of_any_context() {
     };
     generate(&dir, std::slice::from_ref(&hostile), "osprey", &[]).expect("generates");
     let html = read(&dir, "api/evil.html");
-    crate::testkit::contents(&html, &[], &["<script>alert(1)"]);
-    crate::testkit::contents(&html, &[], &["<script>alert(2)"]);
+    crate::testkit::contents(&html, &[], &["<script>alert(1)", "<script>alert(2)"]);
     // The index stays parseable even with `</script>` in the text, and cannot
     // close a `<script>` element if it is ever inlined into one.
     let raw = read(&dir, "assets/search-index.js");
@@ -256,8 +260,7 @@ fn summaries_reach_plain_text_contexts_without_markdown_markers() {
     with_summary.summary = "**Bold** summary".into();
     generate(&dir, std::slice::from_ref(&with_summary), "osprey", &[]).expect("generates");
     let html = read(&dir, "api/m.html");
-    crate::testkit::shows(&html, &["Bold summary"]);
-    crate::testkit::contents(&html, &[], &["**Bold**"]);
+    crate::testkit::contents(&html, &["Bold summary"], &["**Bold**"]);
     let index = read(&dir, "assets/search-index.js");
     crate::testkit::contents(&index, &[], &["**Bold**"]);
 }
@@ -273,8 +276,7 @@ fn search_works_from_the_filesystem_without_fetching_anything() {
     generate(&dir, &pages, "osprey", &[]).expect("generates");
 
     let html = read(&dir, "api/math.html");
-    crate::testkit::contents(&html, &[], &["fetch("]);
-    crate::testkit::shows(&html, &["src=\"../assets/search-index.js\""]);
+    crate::testkit::contents(&html, &["src=\"../assets/search-index.js\""], &["fetch("]);
     let index = read(&dir, "assets/search-index.js");
     assert!(
         index.starts_with("window.OSPREY_SEARCH="),
@@ -379,8 +381,11 @@ fn a_symbol_link_resolves_in_its_own_scope_before_anywhere_else() {
     generate(&dir, &pages, "osprey", &[]).expect("generates");
 
     let a = article(&read(&dir, "api/a-read.html"));
-    crate::testkit::shows(&a, &["href=\"../api/a-helper.html\""]);
-    crate::testkit::contents(&a, &[], &["b-helper.html\">helper"]);
+    crate::testkit::contents(
+        &a,
+        &["href=\"../api/a-helper.html\""],
+        &["b-helper.html\">helper"],
+    );
     // The same spelling in the sibling module resolves to the sibling's own.
     let b = article(&read(&dir, "api/b-read.html"));
     crate::testkit::shows(&b, &["href=\"../api/b-helper.html\""]);
@@ -404,11 +409,18 @@ fn navigation_collapses_on_a_phone_and_opens_from_the_keyboard() {
     // `<details>`/`<summary>` is operable by keyboard with no script of ours,
     // and `open` in the markup means the links are all still there when
     // scripting is off.
-    crate::testkit::shows(&html, &["<details id=\"menu\" open>"]);
-    crate::testkit::shows(&html, &["<summary>Browse documentation</summary>"]);
+    crate::testkit::shows(
+        &html,
+        &[
+            "<details id=\"menu\" open>",
+            "<summary>Browse documentation</summary>",
+        ],
+    );
     let css = theme::css("osprey");
-    crate::testkit::shows(&css, &["#menu>summary{display:none}"]);
-    crate::testkit::shows(&css, &["#menu>summary{display:block"]);
+    crate::testkit::shows(
+        &css,
+        &["#menu>summary{display:none}", "#menu>summary{display:block"],
+    );
     // The script closes it where the layout is narrow.
     crate::testkit::shows(&html, &["menu.open=!narrow.matches"]);
 }

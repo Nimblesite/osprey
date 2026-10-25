@@ -81,8 +81,7 @@ fn klee_mode_is_the_debug_build_with_abort_for_exit() {
 fn every_klee_module_has_metadata_no_optnone_and_no_fatal_exit() {
     for src in PROGRAMS {
         let symbolic = symbolic_module(src);
-        shows(&symbolic, &["!DICompileUnit"]);
-        shows(&symbolic, &["debug.osp"]);
+        shows(&symbolic, &["!DICompileUnit", "debug.osp"]);
         testkit::contents(&symbolic, &[], &["optnone"]);
         testkit::contents(&symbolic, &[], &["call void @exit(i32 1)"]);
         assert_eq!(symbolic, symbolic_module(src), "deterministic: {src}");
@@ -107,8 +106,10 @@ fn every_abort_follows_its_message_and_ends_the_block() {
         shows(before, &["call i32 @puts("]);
         assert!(after.starts_with("unreachable"), "{after}");
     }
-    shows(&symbolic, &["unhandled effect: Wide.op"]);
-    shows(&symbolic, &["declare void @abort()"]);
+    shows(
+        &symbolic,
+        &["unhandled effect: Wide.op", "declare void @abort()"],
+    );
     testkit::contents(&symbolic, &[], &["declare void @exit(i32)"]);
 }
 

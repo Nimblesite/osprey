@@ -275,8 +275,13 @@ mod tests {
             reason: "solver timeout".into(),
         });
         let text = incomplete_text(&items);
-        crate::testkit::shows(&text, &["incomplete: 8 path(s)"]);
-        crate::testkit::shows(&text, &["     7  cut at the time budget"]);
-        crate::testkit::shows(&text, &["     1  solver timeout"]);
+        crate::testkit::shows(
+            &text,
+            &[
+                "incomplete: 8 path(s)",
+                "     7  cut at the time budget",
+                "     1  solver timeout",
+            ],
+        );
     }
 }

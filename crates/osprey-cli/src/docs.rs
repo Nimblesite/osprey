@@ -418,8 +418,7 @@ mod tests {
             "a known builtin page written"
         );
         let index = fs::read_to_string(functions.join("index.md")).expect("index readable");
-        shows(&index, &["Built-in Functions"]);
-        shows(&index, &["sleep"]);
+        shows(&index, &["Built-in Functions", "sleep"]);
         let _ = fs::remove_dir_all(&dir);
     }
 

@@ -354,7 +354,12 @@ fn html_never_confuses_finished_unfinished_and_reproduced_results() {
         finding.replay = Replay::Reproduced("SIGSEGV".into());
     }
     let html = html_for_scan(&scan, 1);
-    crate::testkit::shows(&html, &["A crash was reproduced"]);
-    crate::testkit::shows(&html, &["could not identify an Osprey source line"]);
-    crate::testkit::contents(&html, &[], &["Download JSON context"]);
+    crate::testkit::contents(
+        &html,
+        &[
+            "A crash was reproduced",
+            "could not identify an Osprey source line",
+        ],
+        &["Download JSON context"],
+    );
 }

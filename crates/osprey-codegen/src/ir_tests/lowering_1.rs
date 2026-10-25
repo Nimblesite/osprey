@@ -70,12 +70,14 @@ fn emits_arithmetic_function() {
     // Parameters are named positionally, not after their source
     // identifier, so an ML/Default twin pair stays byte-identical
     // ([FLAVOR-IR-EQUIV]).
-    shows(&ir, &["define internal i64 @add(i64 %$p0, i64 %$p1)"]);
     shows(
         &ir,
-        &["call { i64, i1 } @llvm.sadd.with.overflow.i64(i64 %$p0, i64 %$p1)"],
+        &[
+            "define internal i64 @add(i64 %$p0, i64 %$p1)",
+            "call { i64, i1 } @llvm.sadd.with.overflow.i64(i64 %$p0, i64 %$p1)",
+            "call i64 @add(i64 2, i64 3)",
+        ],
     );
-    shows(&ir, &["call i64 @add(i64 2, i64 3)"]);
 }
 
 // Testing built-ins lower to the TAP runtime and re-route main's exit
@@ -443,8 +445,10 @@ fn erasure_boxes_with_one_way_ownership() {
         producer.contains("@osp_alloc_tagged_noinit(") && producer.contains(", i64 513)"),
         "an erasing return must box its referent with a managed payload:\n{producer}"
     );
-    shows(&producer, &["store i8* null, i8** %arc.s0"]);
-    shows(&producer, &["@osp.any.desc.string"]);
+    shows(
+        &producer,
+        &["store i8* null, i8** %arc.s0", "@osp.any.desc.string"],
+    );
     // The pass-through function receives and returns the box UNTOUCHED:
     // no new box, no descriptor reference — and the borrowed return is
     // retained (+1) rather than entered in the ledger as a fresh owner.

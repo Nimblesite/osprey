@@ -265,7 +265,6 @@ mod tests {
     #[test]
     fn zero_arg_builtin_omits_the_parameters_section() {
         let md = builtin_hover_markdown("input").expect("input is documented");
-        shows(&md, &["input() -> string"]);
-        crate::testkit::contents(&md, &[], &["**Parameters**"]);
+        crate::testkit::contents(&md, &["input() -> string"], &["**Parameters**"]);
     }
 }

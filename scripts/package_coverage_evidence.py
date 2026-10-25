@@ -4,6 +4,8 @@ import hashlib
 import json
 import re
 import tomllib
+import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 SOURCE_SUFFIXES = frozenset({".py", ".osp", ".ospml"})
@@ -159,3 +161,62 @@ def evidence_problems(root, name, report):
         return [] if valid else ["stale or altered coverage evidence; recollect this package"]
     except (OSError, ValueError, AttributeError):
         return ["missing verified collection evidence; recollect this package"]
+
+
+def optional_digest(path):
+    return digest(path) if path.is_file() else None
+
+
+def measurement_basis(root, reports, names):
+    return {name: {"inputs": source_inputs(root, name),
+                   "report": optional_digest(reports / f"{name}.json"),
+                   "evidence": optional_digest(evidence_path(reports / f"{name}.json")),
+                   "log": optional_digest(reports / f"{name}.log")}
+            for name in sorted(names)}
+
+
+def measurement_row(root, result):
+    valid = result["percentage"] is not None
+    counts = {"covered": result["covered"] if valid else None,
+              "total": result["total"] if valid else None, "percentage": result["percentage"]}
+    problems = "; ".join(result["missing_evidence"]).replace(str(root) + "/", "")
+    return counts if valid else {**counts, "error": problems}
+
+
+def measurement_snapshot(root, reports, basis, results):
+    return {"_doc": "Historical verified measurements, not required minimums or CI inputs. Null means unavailable. Refresh after source or test changes.",
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+            "metric": "executed statement lines; not branch or path coverage",
+            "reports": reports.relative_to(root).as_posix() if reports.is_relative_to(root) else str(reports),
+            "basis_sha256": hashlib.sha256(json.dumps(basis, sort_keys=True).encode()).hexdigest(),
+            "packages": {name: measurement_row(root, result) for name, result in sorted(results.items())}}
+
+
+def replace_measurements(path, config, snapshot):
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, prefix=f".{path.name}.", delete=False) as output:
+            temporary = Path(output.name)
+            json.dump({**config, "package_measurements": snapshot}, output, indent=2)
+            output.write("\n")
+        if json.loads(path.read_text(), object_pairs_hook=unique_object) != config:
+            raise ValueError("threshold configuration changed during measurement; retry")
+        temporary.chmod(path.stat().st_mode)
+        temporary.replace(path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def record_measurements(root, path, reports, config, gate):
+    try:
+        entries = config["projects"]["packages"]
+        before = measurement_basis(root, reports, entries)
+        results = {name: gate(root, reports, name, entry) for name, entry in entries.items()}
+        snapshot = measurement_snapshot(root, reports, before, results)
+        if measurement_basis(root, reports, entries) != before:
+            raise ValueError("measurement inputs changed during validation; retry")
+        replace_measurements(path, config, snapshot)
+        return None
+    except (OSError, ValueError) as error:
+        return f"cannot record measurements: {error}"

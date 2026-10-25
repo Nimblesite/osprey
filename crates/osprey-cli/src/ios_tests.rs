@@ -121,8 +121,11 @@ fn app_globals_remain_initialized_after_the_host_calls_entry() {
     )
     .expect("library source");
     crate::testkit::shows(&header, &["osprey_greet(void)"]);
-    crate::testkit::contents(&ir, &[], &["store i8* null, i8** @"]);
-    crate::testkit::shows(&ir, &["define i32 @osprey_main()"]);
+    crate::testkit::contents(
+        &ir,
+        &["define i32 @osprey_main()"],
+        &["store i8* null, i8** @"],
+    );
     let executable = osprey_codegen::compile_program(&parsed.program).expect("native source");
     crate::testkit::shows(&executable, &["store i8* null, i8** @"]);
 }

@@ -66,14 +66,14 @@ fn thunks_rename_the_entry_and_forward_with_the_c_bool_convention() {
     // [IOS-TARGET-ENTRY] [IOS-HOST-ABI]
     let (abi, ir) = abi_of(SOURCE);
     let out = with_host_abi(&ir, &abi).expect("thunked");
-    shows(&out, &["define i32 @osprey_main() "]);
-    crate::testkit::contents(&out, &[], &["@main("]);
-    shows(
+    crate::testkit::contents(
         &out,
         &[
+            "define i32 @osprey_main() ",
             "define zeroext i1 @osprey_flag(i1 zeroext %p0) {",
             "  %r = call i1 @flag(i1 %p0)\n  ret i1 %r",
         ],
+        &["@main("],
     );
     assert!(out
         .contains("define void @osprey_shout(i8* %p0) {\n  call i64 @shout(i8* %p0)\n  ret void"));
@@ -198,7 +198,7 @@ fn imports_use_c_bool_attributes_and_adapt_unit_returns() {
     let source = "extern fn host_flag(b: bool) -> bool\nextern fn host_log(b: bool) -> Unit\nfn flag(b) = host_flag(b)\nfn log(b) = host_log(b)\n";
     let (abi, ir) = abi_of(source);
     let out = with_host_abi(&ir, &abi).expect("adapted imports");
-    shows(
+    crate::testkit::contents(
         &out,
         &[
             "declare zeroext i1 @host_flag(i1 zeroext)",
@@ -206,8 +206,8 @@ fn imports_use_c_bool_attributes_and_adapt_unit_returns() {
             "declare void @host_log(i1 zeroext)",
             "call void @host_log(i1 zeroext %p0)\n  ret i64 0",
         ],
+        &["call i64 @host_log("],
     );
-    crate::testkit::contents(&out, &[], &["call i64 @host_log("]);
 }
 
 #[test]

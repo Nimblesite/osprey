@@ -365,8 +365,13 @@ mod tests {
             parsed.errors
         );
         let ir = crate::compile_program(&parsed.program).expect("file builtin codegen");
-        crate::testkit::shows(&ir, &["declare void @osp_io_error_clear()"]);
-        crate::testkit::shows(&ir, &["declare i8* @osp_io_error_take()"]);
+        crate::testkit::shows(
+            &ir,
+            &[
+                "declare void @osp_io_error_clear()",
+                "declare i8* @osp_io_error_take()",
+            ],
+        );
         for (callee, ret) in [("write_file", "i64"), ("read_file", "i8*")] {
             let call = format!("call {ret} @{callee}(");
             let at = ir.find(&call).unwrap_or_else(|| panic!("missing {callee}"));
@@ -380,8 +385,7 @@ mod tests {
         }
         // The reason outranks the static fallback, so a producer that recorded
         // one is never reported as the placeholder.
-        crate::testkit::shows(&ir, &["File read error"]);
-        crate::testkit::shows(&ir, &["icmp ne i8* "]);
+        crate::testkit::shows(&ir, &["File read error", "icmp ne i8* "]);
     }
 
     #[test]

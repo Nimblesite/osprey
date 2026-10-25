@@ -76,8 +76,7 @@ fn an_ml_document_is_answered_in_the_ml_flavor_end_to_end() {
     // does not highlight. Re-apply the flavor at the presentation edge.
     let ml = "inc : int -> int\ninc x = x + 1\n";
     let hov = hover(ml, "file:///tour.ospml", 1, 0, U16).expect("hover");
-    shows(&hov, &["```osprey-ml", "inc : int -> int"]);
-    crate::testkit::contents(&hov, &[], &["fn inc("]);
+    crate::testkit::contents(&hov, &["```osprey-ml", "inc : int -> int"], &["fn inc("]);
     // The identical program under a `.osp` path keeps the Default spelling,
     // proving the flavor — not the content — drives the rendering.
     let default_src = "fn inc(x: int) -> int = x + 1\n";
@@ -226,10 +225,12 @@ fn ml_effect_operations_hover_with_their_own_docs() {
     let tell = hover(src, "file:///p.ospml", 5, col_of(src, 5, "tell"), U16)
         .expect("hover over `tell` declaration");
 
-    shows(&ask, &["Ask the operator a question"]);
-    crate::testkit::contents(&ask, &[], &["Announce a result"]);
-    shows(&tell, &["Announce a result"]);
-    crate::testkit::contents(&tell, &[], &["Ask the operator"]);
+    crate::testkit::contents(
+        &ask,
+        &["Ask the operator a question"],
+        &["Announce a result"],
+    );
+    crate::testkit::contents(&tell, &["Announce a result"], &["Ask the operator"]);
 }
 
 /// The Default flavor's `///` operation docs lower to the same model.
@@ -249,8 +250,11 @@ fn default_effect_operations_hover_with_their_own_docs() {
     let tell = hover(src, "file:///p.osp", 5, col_of(src, 5, "tell"), U16)
         .expect("hover over `tell` declaration");
 
-    shows(&ask, &["Ask the operator a question"]);
-    crate::testkit::contents(&ask, &[], &["Announce a result"]);
+    crate::testkit::contents(
+        &ask,
+        &["Ask the operator a question"],
+        &["Announce a result"],
+    );
     shows(&tell, &["Announce a result"]);
 }
 
@@ -277,10 +281,12 @@ fn ml_pipeline_hover_shows_its_native_documentation() {
     let md = hover(src, "file:///resume_lifo_audit.test.ospml", line, col, U16)
         .expect("hover over documented ML pipeline");
 
-    shows(&md, &["pipeline : Unit -> int"]);
     shows(
         &md,
-        &["This helper performs two ordered steps and combines their supplied values."],
+        &[
+            "pipeline : Unit -> int",
+            "This helper performs two ordered steps and combines their supplied values.",
+        ],
     );
 }
 
@@ -297,8 +303,10 @@ fn hover_on_a_doc_link_resolves_to_the_referenced_element() {
     // `helper` annotates nothing, so both slots come from the checker:
     // `n: int`, returning the `Result` that `checkedAdd` produces
     // ([ARITH-CHECKED], [LSP-HOVER-INFERRED-SIGNATURE]).
-    shows(&md, &["fn helper(n: int) -> Result<int, Error>"]);
-    shows(&md, &["A helper."]);
+    shows(
+        &md,
+        &["fn helper(n: int) -> Result<int, Error>", "A helper."],
+    );
 }
 
 /// The annotation-free house style must still hover with real types: both
@@ -427,8 +435,11 @@ test(\"identity\", fn() => expect(add(5, 0), 5))
     // The SECOND case's hover shows the second case's docs, not the first's.
     let second = hover(src, "file:///suite.test.osp", 12, 1, U16).expect("hover over `test`");
     assert!(second.starts_with("**Test:** identity"), "{second}");
-    shows(&second, &["Zero is the additive identity."]);
-    crate::testkit::contents(&second, &[], &["Addition is commutative."]);
+    crate::testkit::contents(
+        &second,
+        &["Zero is the additive identity."],
+        &["Addition is commutative."],
+    );
 }
 
 #[test]
@@ -459,8 +470,7 @@ fn hovering_test_away_from_a_case_falls_back_to_the_builtin() {
     // user-declared `test` binding keeps hovering as itself.
     let src = "/// A local shadow.\nlet test = 1\nprint(\"${test}\")\n";
     let md = hover(src, "file:///a.osp", 1, 5, U16).expect("hover over the binding");
-    shows(&md, &["test: int", "A local shadow."]);
-    crate::testkit::contents(&md, &[], &["**Test:**"]);
+    crate::testkit::contents(&md, &["test: int", "A local shadow."], &["**Test:**"]);
 }
 
 /// The 0-based (line, column) of a cursor sitting inside the declaration

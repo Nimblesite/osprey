@@ -308,8 +308,13 @@ fn a_fiber_program_lowers_symbolically() {
     let cli = parse_args(std::slice::from_ref(&path)).expect("args");
     let input = load_input(&cli).expect("load");
     let symbolic = module::symbolic_module(&input, 64).expect("symbolic build");
-    shows(&symbolic, &["target triple = \"x86_64-unknown-linux-gnu\""]);
-    shows(&symbolic, &["@osp_hunt_input_bytes = global i64 64"]);
+    shows(
+        &symbolic,
+        &[
+            "target triple = \"x86_64-unknown-linux-gnu\"",
+            "@osp_hunt_input_bytes = global i64 64",
+        ],
+    );
 }
 
 /// The value of `--output-dir=` the engine was given.

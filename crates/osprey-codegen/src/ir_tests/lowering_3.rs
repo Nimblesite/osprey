@@ -35,8 +35,13 @@ fn result_parameters_preserve_the_wrapper_for_named_functions_and_closures() {
              let wrapped = choose(7)\n\
              print(\"${failed}:${wrapped}\")\n",
     );
-    shows(&named, &["define internal i64 @choose(i8* %$p0)"]);
-    shows(&named, &["bitcast i8* %$p0 to { i64, i8, i8* }*"]);
+    shows(
+        &named,
+        &[
+            "define internal i64 @choose(i8* %$p0)",
+            "bitcast i8* %$p0 to { i64, i8, i8* }*",
+        ],
+    );
 
     let closure = module(
         "let choose = fn(r: Result<int, Error>) => match r {\n\
@@ -198,9 +203,10 @@ fn bare_length_and_is_empty_dispatch_on_the_receiver_type() {
                print(\"${length(xs)} ${isEmpty(xs)} ${length(m)} ${isEmpty(m)} ${length(lit)} ${isEmpty(lit)} ${length(\"ab\")}\")\n\
              }\n",
         );
-    shows(&ir, &["osprey_list_length"]);
-    shows(&ir, &["osprey_map_length"]);
-    shows(&ir, &["osp_strlen"]);
+    shows(
+        &ir,
+        &["osprey_list_length", "osprey_map_length", "osp_strlen"],
+    );
     // Exactly one `osp_strlen` call site: the sole string receiver.
     assert_eq!(
         ir.matches("call i64 @osp_strlen").count(),

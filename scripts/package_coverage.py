@@ -35,7 +35,7 @@ import sys
 from pathlib import Path
 from package_coverage_evidence import (
     SOURCE_SUFFIXES, evidence_path, evidence_problems, golden_problems,
-    definition_problems, python_coverable, seal_evidence, source_inputs, unique_object,
+    definition_problems, python_coverable, record_measurements, seal_evidence, source_inputs, unique_object,
 )
 
 EXIT_OK = 0
@@ -69,6 +69,7 @@ LINE_KEY_RE = re.compile(r"^[1-9][0-9]*$")
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--collect", action="store_true", help="rerun suites")
+    parser.add_argument("--record-measurements", action="store_true", help="save verified measurements separately from required thresholds")
     parser.add_argument("--compiler", help="compiler binary for --collect")
     parser.add_argument("--reports", help="per-package evidence directory")
     parser.add_argument("--thresholds", help="coverage-thresholds.json path")
@@ -455,8 +456,10 @@ def evaluate(root: Path, reports: Path, compiler: Path, configured: dict, names:
     ]
 
 
-def finish(results: list[dict], reports: Path, mode: str, thresholds_path: Path) -> int:
+def finish(results: list[dict], reports: Path, mode: str, thresholds_path: Path, record=None) -> int:
     error = write_summary(reports, results, mode)
+    if error is None and record is not None:
+        error = record()
     if error is not None:
         return fail(error, EXIT_GATE)
     failed = sum(0 if result["pass"] else 1 for result in results)
@@ -481,7 +484,8 @@ def main(argv: list[str] | None = None) -> int:
     results = evaluate(root, reports, compiler, configured, names, args.collect)
     for result in results:
         print_result(result)
-    return finish(results, reports, "collect" if args.collect else "check", thresholds_path)
+    return finish(results, reports, "collect" if args.collect else "check", thresholds_path,
+                  (lambda: record_measurements(root, thresholds_path, reports, config, gate_package)) if args.record_measurements else None)
 
 
 if __name__ == "__main__":

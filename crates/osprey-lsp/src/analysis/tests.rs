@@ -145,8 +145,7 @@ print(describeAny(42) + "!")
     crate::testkit::shows(&hovered, &["-> string"]);
 
     // The bug, asserted three ways so a partial fix cannot pass.
-    crate::testkit::contents(&json, &[], &["\"returnType\":\"Unit\""]);
-    crate::testkit::contents(&json, &[], &["-> Unit"]);
+    crate::testkit::contents(&json, &[], &["\"returnType\":\"Unit\"", "-> Unit"]);
     for frag in [
         "\"returnType\":\"string\"",
         "\"signature\":\"fn describeAny(v: any) -> string\"",
@@ -213,8 +212,7 @@ fn a_partially_resolved_return_type_reports_its_proven_part_never_unit() {
     let parsed = osprey_syntax::parse_program(src);
     assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
     let json = symbols_json(&parsed.program);
-    crate::testkit::contents(&json, &[], &["Unit"]);
-    crate::testkit::shows(&json, &["\"returnType\":\"Result<int, _>\""]);
+    crate::testkit::contents(&json, &["\"returnType\":\"Result<int, _>\""], &["Unit"]);
     assert!(
         !json.contains(">\"t") && !json.contains(", t6"),
         "a private inference name must never reach a reader; got {json}"

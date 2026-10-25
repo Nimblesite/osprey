@@ -79,7 +79,7 @@ fn html_safely_explains_an_unsupported_operation_and_embeds_raw_ai_context() {
             .is_some_and(|s| s.contains("unmodelled: pipe"))
     );
     let html = std::fs::read_to_string(Path::new(&out).join("report.html")).expect("HTML");
-    shows(
+    crate::testkit::contents(
         &html,
         &[
             "Analysis blocked by an unsupported operation",
@@ -89,8 +89,8 @@ fn html_safely_explains_an_unsupported_operation_and_embeds_raw_ai_context() {
             "&lt;script&gt;",
             "line selected",
         ],
+        &["<script>"],
     );
-    crate::testkit::contents(&html, &[], &["<script>"]);
 }
 
 #[cfg(unix)]

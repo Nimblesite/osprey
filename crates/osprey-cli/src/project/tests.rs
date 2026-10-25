@@ -89,8 +89,7 @@ fn aggregate_sources_keeps_link_directives_from_every_file() {
         documentation_bindings: Vec::new(),
     };
     let aggregated = aggregate_sources(&project);
-    crate::testkit::shows(&aggregated, &["// @link: sqlite3"]);
-    crate::testkit::shows(&aggregated, &["// @linkdir: /opt/lib"]);
+    crate::testkit::shows(&aggregated, &["// @link: sqlite3", "// @linkdir: /opt/lib"]);
 
     let input = CompilationInput::assembled(
         project,
@@ -138,10 +137,15 @@ fn project_symbol_mapping_changes_exact_names_and_localizes_positions() {
         documentation_bindings: Vec::new(),
     };
     let json = project_symbols_json(osprey_lsp::symbols_json(&project.program), &project);
-    crate::testkit::shows(&json, &["\"name\":\"app::main\""]);
-    crate::testkit::shows(&json, &["\"name\":\"remaining\""]);
-    crate::testkit::contents(&json, &[], &["reapp::maining"]);
-    crate::testkit::shows(&json, &["\"path\":\"src/main.osp\""]);
+    crate::testkit::contents(
+        &json,
+        &[
+            "\"name\":\"app::main\"",
+            "\"name\":\"remaining\"",
+            "\"path\":\"src/main.osp\"",
+        ],
+        &["reapp::maining"],
+    );
 }
 
 fn empty_project(
@@ -302,8 +306,7 @@ fn a_library_exports_only_the_functions_its_entry_source_declares() {
     );
     std::fs::remove_dir_all(&root).expect("cleanup");
     let (_, header) = built.expect("entry-only exports");
-    crate::testkit::shows(&header, &["osprey_app_start("]);
-    crate::testkit::contents(&header, &[], &["osprey_lib_"]);
+    crate::testkit::contents(&header, &["osprey_app_start("], &["osprey_lib_"]);
 }
 
 /// A project under the system temp directory holding `files`.

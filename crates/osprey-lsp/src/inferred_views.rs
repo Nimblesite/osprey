@@ -263,9 +263,11 @@ mod tests {
         // the only honest answer once there is nothing to say.
         let src = "fn id(x) = x\nlet a = id(1)\n";
         let symbols = symbols_of(src);
-        crate::testkit::shows(&symbols, &["\"signature\":\"fn id(x)\""]);
-        crate::testkit::contents(&symbols, &[], &["Unit"]);
-        crate::testkit::contents(&symbols, &[], &["\"returnType\""]);
+        crate::testkit::contents(
+            &symbols,
+            &["\"signature\":\"fn id(x)\""],
+            &["Unit", "\"returnType\""],
+        );
         // Hover must agree with the outline — same slot, same silence.
         let decl =
             crate::test_support::hover(src, "file:///id.osp", 0, 4, U16).expect("hover over `id`");

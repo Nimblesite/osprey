@@ -95,6 +95,9 @@ class Fixture:
     def summary(self):
         return json.loads((self.reports / "summary.json").read_text())
 
+    def config(self):
+        return json.loads((self.root / "coverage-thresholds.json").read_text())
+
     def result(self, name):
         return next(entry for entry in self.summary()["packages"] if entry["name"] == name)
 
@@ -183,6 +186,11 @@ class CheckerTests(unittest.TestCase):
         self.assertIn(problem, result.stdout)
         self.assertIsNone(fixture.result("demo")["percentage"])
 
+    def assert_measurement(self, fixture, name, counts):
+        row = fixture.config()["package_measurements"]["packages"][name]
+        self.assertEqual(tuple(row[key] for key in ("covered", "total", "percentage")), counts)
+        self.assertEqual(fixture.config()["projects"]["packages"][name]["threshold"], 90)
+
     def test_check_only_requires_a_successfully_verified_collection(self):
         fixture = self.simple_fixture()
         write_json(fixture.reports / "demo.json", own_report("demo", 4, 4))
@@ -202,11 +210,12 @@ class CheckerTests(unittest.TestCase):
             with self.subTest(relative=relative):
                 fixture = self.simple_fixture()
                 fixture.write_spec({"demo": {"report": own_report("demo", 4, 4)}})
-                self.assertEqual(fixture.collect().returncode, 0)
+                self.assertEqual(fixture.collect("--record-measurements").returncode, 0)
                 path = fixture.root / "packages" / "demo" / relative
                 path.write_text(path.read_text() + "\n# changed after collection\n")
-                result = fixture.check()
+                result = fixture.check("--record-measurements")
                 self.assertEqual(result.returncode, 1, "Changed inputs need fresh evidence: " + result.stdout)
+                self.assert_measurement(fixture, "demo", (None, None, None))
 
     def test_zero_suites_and_changed_line_endings_cannot_replay_as_success(self):
         fixture = self.simple_fixture()
@@ -233,7 +242,7 @@ class CheckerTests(unittest.TestCase):
         })
         fixture.write_report("edge", own_report("edge", 9, 10))
         fixture.write_report("below", own_report("below", 8, 10))
-        result = fixture.check()
+        result = fixture.check("--record-measurements")
         self.assert_exit(result, 1)
         self.assertTrue(fixture.result("edge")["pass"], fixture.result("edge"))
         self.assertEqual(fixture.result("edge")["percentage"], 90.0)
@@ -241,6 +250,8 @@ class CheckerTests(unittest.TestCase):
         self.assertEqual(fixture.result("below")["percentage"], 80.0)
         self.assertEqual(fixture.result("edge")["files"][0]["uncovered_lines"], [10])
         self.assertEqual(fixture.result("below")["files"][0]["uncovered_lines"], [9, 10])
+        self.assert_measurement(fixture, "edge", (9, 10, 90.0))
+        self.assert_measurement(fixture, "below", (8, 10, 80.0))
 
     def test_perfect_test_and_helper_lines_cannot_mask_uncovered_source(self):
         fixture = self.simple_fixture("mask", 10)
@@ -249,6 +260,8 @@ class CheckerTests(unittest.TestCase):
             "packages/mask/tests/main.py": {"lines": {str(i): 90 for i in range(1, 101)}},
             "packages/testing/src/check.py": {"lines": {str(i): 90 for i in range(1, 51)}},
         }})
+        write_json(fixture.root / "coverage-thresholds.json", {**fixture.config(),
+                   "package_measurements": {"packages": {"mask": {"percentage": 100}}}})
         result = fixture.check()
         self.assert_exit(result, 1)
         mask = fixture.result("mask")
@@ -299,9 +312,10 @@ class CheckerTests(unittest.TestCase):
         fixture = self.fixture({
             "gone": {"sources": {"src/lib.py": py_source(4), "src/only.py": py_source(3)}},
         })
-        result = fixture.check()
+        result = fixture.check("--record-measurements")
         self.assert_exit(result, 1)
         self.assertIn("missing coverage report", result.stdout)
+        self.assert_measurement(fixture, "gone", (None, None, None))
         fixture.write_report("gone", own_report("gone", 4, 4))
         result = fixture.check()
         self.assert_exit(result, 1)

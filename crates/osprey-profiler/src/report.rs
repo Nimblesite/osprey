@@ -270,8 +270,7 @@ mod tests {
     #[test]
     fn color_thresholds_wrap_rows() {
         let report = render(true);
-        shows(&report, &["\x1b[1;31m"]);
-        shows(&report, &["\x1b[33m"]);
+        shows(&report, &["\x1b[1;31m", "\x1b[33m"]);
         shows(&report, &["\x1b[2m", RESET]);
     }
 
