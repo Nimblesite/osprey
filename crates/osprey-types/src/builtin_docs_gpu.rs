@@ -84,7 +84,7 @@ pub(crate) static GPU: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "gpuLoadTensor",
-        "Reads one named tensor out of a safetensors file into a `GpuBuffer<float>`, widening F64, F32, F16 or BF16 storage exactly. An unknown name, another dtype or a truncated file returns Error. The current reader requires compact JSON header fields; whitespace around their colons can cause rejection.",
+        "Reads one named tensor out of a safetensors file into a `GpuBuffer<float>`, widening F64, F32, F16 or BF16 storage exactly. An unknown name, another dtype or a truncated file returns Error.",
         ["path" => "The safetensors file", "name" => "The tensor's name in the header"],
         "// Supply a safetensors file containing the named tensor.\nmatch gpuLoadTensor(\"model.safetensors\", \"wte.weight\") {\n    Success { value } => print(\"${gpuLength(value)} values\")\n    Error { message } => print(message)\n}",
     ),

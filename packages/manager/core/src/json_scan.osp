@@ -48,11 +48,12 @@ module JsonScan {
     }
 
     fn scanBlock(text, i, budget) = if budget <= 1 { readChunk(text, i) } else {
-        let half = intDiv(budget, 2)
-        match scanBlock(text, i, half) {
-            Error { message } => Error { message: message }
-            Success { value } => appendBlock(text, value, budget - half)
-        }
+        splitBlock(text, i, budget, intDiv(budget, 2))
+    }
+
+    fn splitBlock(text, i, budget, leftBudget) = match scanBlock(text, i, leftBudget) {
+        Error { message } => Error { message: message }
+        Success { value } => appendBlock(text, value, budget - leftBudget)
     }
 
     fn appendBlock(text, first, rest) = if first.complete { Success { value: first } } else {

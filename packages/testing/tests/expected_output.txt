@@ -35,4 +35,8 @@ ok ints_text.empty
 ok float_of.number
 ok float_of.unparseable_is_nan
 ok summary
-37 passed, 0 failed
+ok strictly.overflow
+ok strictly.division
+ok strictly.remainder
+ok lenient.division
+41 passed, 0 failed

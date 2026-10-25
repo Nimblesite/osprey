@@ -33,12 +33,29 @@ def plus(a, b):
     return a + b
 
 
-def explicit_fault_case():
-    match Check.strictly(lambda: print(toString(perform(Check.Fault.halt("explicit test fault"))))):
+def strict_fault(name, work, expected):
+    match Check.strictly(work):
         case Error(message=message):
-            return Check.equal("strictly.explicit_fault", message, "explicit test fault")
+            return Check.equal(name, message, expected)
         case Success():
-            return Check.failed("strictly.explicit_fault", "the fault did not abort its region")
+            return Check.failed(name, "the fault did not abort its region")
+
+
+def explicit_fault_case():
+    return strict_fault("strictly.explicit_fault", lambda: print(toString(perform(Check.Fault.halt("explicit test fault")))), "explicit test fault")
+
+
+def quotient(a, b):
+    return a / b
+
+
+def arithmetic_fault_cases():
+    return [
+        strict_fault("strictly.overflow", lambda: print(toString(plus(9223372036854775807, 1))), "integer overflow: 9223372036854775807 + 1"),
+        strict_fault("strictly.division", lambda: print(toString(quotient(3.0, 0.0))), "division by zero: 3.0 / 0"),
+        strict_fault("strictly.remainder", lambda: print(toString(remainder(7, 0))), "remainder by zero: 7 % 0"),
+        Check.equal("lenient.division", Check.lenient(lambda: quotient(3.0, 0.0)), 0.0),
+    ]
 
 
 def helper_cases():
@@ -63,7 +80,7 @@ def helper_cases():
 
 
 def main():
-    match Check.strictly(lambda: Check.report(listConcat(oracle_cases(), helper_cases()))):
+    match Check.strictly(lambda: Check.report(listConcat(listConcat(oracle_cases(), helper_cases()), arithmetic_fault_cases()))):
         case Success(value=value):
             return value
         case Error(message=message):

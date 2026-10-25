@@ -50,6 +50,8 @@ The homepage, effects guide and handler post share their runnable draft-saving e
 
 Each native corpus worker runs in a private directory under the harness's temporary result directory. WASI and mobile runners also isolate file writes. The harness compares the same goldens and preserves failure output and exit status. Its cleanup removes the temporary run directory when the harness exits.
 
+Native test runs cache compiled artifacts, then execute the program again on every run. LLVM IR and object code can be shared across memory backends; executables are linked separately for default, GC and ARC. Source, compiler/toolchain, build settings and runtime archive identities affect cache reuse. `OSPREY_TEST_CACHE_DIR` selects the cache directory; point it at a new private directory when reproducing a compilation or linking problem. See the [native cache contract](../specs/tooling/TestRunner.md#cli).
+
 Manual `osprey program.osp --run` retains normal application semantics: relative paths resolve against the caller's directory. Tests executed directly, outside the corpus harness, can still leave their own files there.
 
 ## Supporting material
