@@ -73,6 +73,29 @@ suite("package workspace renderer", () => {
     assert.throws(() => renderWorkspace({ regions: regions({ kind: "mystery" }) }), /Unknown native component/);
   });
 
+  test("malformed or excessive trees fail explicitly instead of rendering a partial screen", () => {
+    for (const node of [null, [], {}, { kind: 1 }]) {
+      assert.throws(() => renderWorkspace({ regions: regions(node) }), /not an object with a kind/);
+    }
+    let deep: unknown = { kind: "text", text: "leaf" };
+    for (let depth = 0; depth < 66; depth++) deep = { kind: "stack", children: [deep] };
+    assert.throws(() => renderWorkspace({ regions: regions(deep) }), /too deep/);
+    assert.throws(() => renderWorkspace({ regions: regions(screen, rows), maxNodes: 2 }), /too large/);
+  });
+
+  test("invalid control addresses stay inert and malformed list entries cannot create actions", () => {
+    for (const event of [undefined, "1", -1, 0.5, Number.MAX_SAFE_INTEGER + 1]) {
+      const html = renderWorkspace({ regions: regions({ kind: "field", event }) });
+      assert.ok(!html.includes("data-event-region="), html);
+    }
+    const html = renderWorkspace({ regions: regions({ kind: "stack", children: [
+      { kind: "rows", rows: [null] }, { kind: "picker", choices: [null] }, { kind: "tabs", tabs: [null] },
+      { kind: "stack", children: "invalid" }, { kind: "alert", visible: false },
+      { kind: "text", role: "invalid", tone: "invalid" },
+    ] }) });
+    assert.ok(!html.includes("<option") && !html.includes("osp-row-button"), html);
+  });
+
   test("a context menu keeps its secondary actions out of the body until opened", () => {
     const menu = { kind: "context-menu", body: { kind: "text", text: "Package", role: "body", tone: "primary" }, items: [{ kind: "button", label: "Add", symbol: "plus", role: "plain", enabled: true, event: 2 }] };
     const html = renderWorkspace({ regions: regions(menu) });
@@ -130,6 +153,12 @@ suite("package workspace renderer", () => {
     assert.ok(!html.includes("99999"), html);
     assert.ok(!html.includes("<img src=x>"), html);
     assert.ok(html.includes('data-side="trailing&quot;&gt;&lt;img src=x&gt;"'), html);
+    for (const width of [undefined, "bad", 0.5]) {
+      const fallback = renderWorkspace({ regions: regions({ kind: "aside", width,
+        pane: { kind: "text" }, aside: { kind: "text" }, least: 0, most: 0 }) });
+      assert.ok(fallback.includes('data-min="240" data-max="720"'), fallback);
+      assert.ok(fallback.includes("--osp-aside-width:240px"), fallback);
+    }
   });
 });
 

@@ -62,6 +62,35 @@ suite("package workspace protocol", () => {
     }
   });
 
+  test("malformed envelopes fail explicitly at the wire boundary", () => {
+    for (const fields of [
+      { state: 1 }, { diagnostics: [1] }, { removed: [false] },
+      { patches: null }, { requests: null },
+      { slices: Array.from({ length: 257 }, (_, index) => ({ key: String(index), text: "" })) },
+      { slices: [null] }, { slices: [{ key: 1, text: "" }] },
+      { slices: [{ key: "s", text: false }] }, { slices: [{ key: "s".repeat(257), text: "" }] },
+      { slices: [{ key: "s", text: "x".repeat(8 * 1024 * 1024 + 1) }] },
+    ]) assert.throws(() => parseEnvelope(JSON.stringify({ ...JSON.parse(envelope), ...fields })), /envelope|slice/);
+    for (const source of ["null", "[]", "false"]) assert.throws(() => parseEnvelope(source), /not a JSON object/);
+  });
+
+  test("optional wire fields default safely and diagnostic output does not hide the envelope", () => {
+    const parsed = parseEnvelope('runtime log\n' + JSON.stringify({ version: 1, state: "s", patches: [], requests: [] }) + '\ntrailing diagnostic\n');
+    assert.deepStrictEqual(parsed, { version: 1, state: "s", patches: [], requests: [], slices: [], removed: [], diagnostics: [], theme: null });
+    assert.deepStrictEqual(JSON.parse(completionFrame("s", 1, "ticket", { ok: true, result: { ready: true } })).event,
+      { kind: "completed", now: 1, ticket: "ticket", ok: true, result: { ready: true } });
+  });
+
+  test("malformed control addresses and messages cannot dispatch", () => {
+    const regions = applyEnvelope(new Map(), parseEnvelope(envelope));
+    for (const message of [null, [], { type: "other" },
+      { type: "event", region: 1, revision: 2, ordinal: 0, value: null },
+      { type: "event", region: "root", revision: -1, ordinal: 0, value: null },
+      { type: "event", region: "root", revision: 2, ordinal: 0.5, value: null },
+      { type: "event", region: "missing", revision: 2, ordinal: 0, value: null },
+    ]) assert.strictEqual(parseUiEvent(message, regions, 1), undefined);
+  });
+
   test("only a current region revision produces a control event", () => {
     const regions = applyEnvelope(new Map(), parseEnvelope(envelope));
     const good = parseUiEvent({ type: "event", region: "root", revision: 2, ordinal: 1, value: "query" }, regions, 10);

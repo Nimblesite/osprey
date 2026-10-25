@@ -118,14 +118,24 @@ module Surface {
 
     fn bomAt(text, i) = byte(text, i) == byte(bom, 0) && byte(text, i + 1) == byte(bom, 1) && byte(text, i + 2) == byte(bom, 2)
 
+    // The vendored Python lexer also accepts U+200B and U+2060 between tokens.
+    fn pythonSpaceAt(text, i) = bomAt(text, i) || (byte(text, i) == 226 &&
+        ((byte(text, i + 1) == 128 && byte(text, i + 2) == 139) || (byte(text, i + 1) == 129 && byte(text, i + 2) == 160)))
+
+    fn formattedPrefix(word) = {
+        let prefix = toLowerCase(word)
+        fold(range(0, byteLength(prefix)), false, fn(found, i) => found || byte(prefix, i) == 102) &&
+            fold(range(0, byteLength(prefix)), true, fn(valid, i) => valid && listContains([102, 114, 117], byte(prefix, i)))
+    }
+
     fn stringStart(text, s, i, delimiter) = {
         let c = separated(text, s, i, delimiter)
-        let formatted = s.python && s.start >= 0 && listContains(["f", "F", "fr", "rf", "Fr", "fR", "FR", "rF", "Rf", "RF"], c.previous)
+        let formatted = s.python && s.start >= 0 && formattedPrefix(c.previous)
         let wide = s.python && triple(text, i, delimiter)
         pushed(c, delimiter + (if wide { tripleOffset } else { 0 }) + (if formatted { formattedOffset } else { 0 }), if wide { 2 } else { 0 })
     }
 
-    fn inCode(text, s, i, b) = if s.python && bomAt(text, i) { moved(closed(text, s, i), codeMode, -1, s.frames, 2) }
+    fn inCode(text, s, i, b) = if s.python && pythonSpaceAt(text, i) { moved(closed(text, s, i), codeMode, -1, s.frames, 2) }
         else if identByte(s, b) { moved(s, codeMode, if s.start < 0 { i } else { s.start }, s.frames, 0) }
         else if s.python && b == 64 { closedWord(closed(text, s, i), "@") }
         else if s.ml && b == 40 && byte(text, i + 1) == 42 { pushed(closed(text, s, i), blockCommentMode, 1) }

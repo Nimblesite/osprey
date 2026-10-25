@@ -63,7 +63,20 @@ module SurfaceTests {
         structuralEquals(Surface::ofFiles([file("src/a.py", "# osprey: flavor=python\nreadFileﻴ = 1\nprint(readFileﻴ)")]), []),
         !Surface::shadowsBuiltin([file("src/a.py", "# osprey: flavor=python\nreadFileé = 1\nprint(readFileé)")]),
         !Surface::shadowsBuiltin([file("src/a.ospml", "(* fn readFile(p) = p *)\nmain () = print \"done\"")]),
-        !Surface::shadowsBuiltin([file("src/a.ospml", "readFileé = 1\nmain () = print readFileé")]),
+        !Surface::shadowsBuiltin([file("src/a.ospml", "readFileé = 1\nmain () = print readFileé")])
+    ])
+
+    fn pythonTokens() = checkAll("Python token separators and formatted prefixes retain capabilities", [
+        structuralEquals(Surface::ofFiles([file("src/a.py", "def load(p):\n    return readFile" + (fromCodePoint(8203) ?: "") + "(p)")]), ["io/files"]),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "def load():\n    return input" + (fromCodePoint(8288) ?: "") + "()")]), ["io/terminal"]),
+        Surface::shadowsBuiltin([file("src/a.py", "def" + (fromCodePoint(8288) ?: "") + "readFile(p):\n    return p")]),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "@" + (fromCodePoint(8203) ?: "") + "extern\ndef puts(text: str) -> int: ...")]), ["io/unknown"]),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "def load(p):\n    return uf\"{readFile(p)}\"")]), ["io/files"]),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "def load(p):\n    return fu\"{readFile(p)}\"")]), ["io/files"]),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "def load(p):\n    return urf\"{readFile(p)}\"")]), ["io/files"]),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "value = u\"readFile(p)\"")]), []),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "value = uf\"{{readFile(p)}}\"")]), []),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "value = \"readFile" + (fromCodePoint(8203) ?: "") + "(p)\"")]), []),
         structuralEquals(Surface::ofFiles([file("src/a.py", "# readFile note\ninput()")]), ["io/terminal"]),
         structuralEquals(Surface::ofFiles([file("src/a.py", "x = 'readFile'")]), []),
         structuralEquals(Surface::ofFiles([file("src/a.py", "@extern\ndef puts(text: str) -> int: ...")]), ["io/unknown"]),
@@ -148,6 +161,7 @@ module SurfaceTests {
         test("surface: identifier scan", scans)
         test("surface: executable interpolations and terminal input", interpolations)
         test("surface: source file flavors", flavorFiles)
+        test("surface: Python token boundaries", pythonTokens)
         test("surface: trees and system capabilities", trees)
         test("surface: shadowed builtin names", shadowing)
         test("surface: unclassified ambient builtins", unknownBuiltin)

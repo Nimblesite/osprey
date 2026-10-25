@@ -40,6 +40,8 @@ pub(crate) fn arguments(
         "--kdalloc",
         "--rng-initial-seed=5489",
         "--search=dfs",
+        "--solver-backend=z3",
+        "--solver-optimize-divides",
         "--check-div-zero",
         "--check-overshift",
         "--emit-all-errors",

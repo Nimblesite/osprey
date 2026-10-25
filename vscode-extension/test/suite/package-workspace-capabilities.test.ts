@@ -33,7 +33,104 @@ function processRequest(root: string, script: string): NativeRequest {
   };
 }
 
+async function withRoot(action: (root: string) => Promise<void>): Promise<void> {
+  const root = temporary();
+  try { await action(root); } finally { fs.rmSync(root, { recursive: true, force: true }); }
+}
+
+function processFields(root: string, args: Record<string, unknown> = {}, fields: Record<string, unknown> = {}): NativeRequest {
+  const request = processRequest(root, "unused");
+  return { ...request, ...fields, arguments: { ...(request.arguments as object), ...args } };
+}
+
+function httpFixture(request: http.IncomingMessage, response: http.ServerResponse): void {
+  if (request.url === "/stall") return;
+  response.writeHead(200, { "content-type": "application/json" });
+  if (request.url === "/interrupt") {
+    response.write("partial");
+    setImmediate(() => response.destroy());
+  } else response.end(JSON.stringify({ ok: true }));
+}
+
+async function withServer(action: (url: string, headers: () => http.IncomingHttpHeaders) => Promise<void>): Promise<void> {
+  let received: http.IncomingHttpHeaders = {};
+  const server = http.createServer((request, response) => { received = request.headers; httpFixture(request, response); });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  try { await action(`http://127.0.0.1:${address.port}/`, () => received); } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}
+
 suite("package workspace capabilities", () => {
+  test("untrusted, relative, missing and absent executables are refused before launch", async () => {
+    await withRoot(async (root) => {
+      const cases: [Partial<CapabilityHost>, RegExp][] = [
+        [{ trusted: false }, /Trust this workspace/], [{ configuredExecutable: "relative" }, /absolute path/],
+        [{ configuredExecutable: path.join(root, "missing") }, /does not exist/],
+        [{ configuredExecutable: "", bundledExecutable: "" }, /not bundled or configured/],
+      ];
+      for (const [fields, expected] of cases) {
+        await assert.rejects(createRequestExecutor({ ...hostFor(root), ...fields })(processFields(root)), expected);
+      }
+    });
+  });
+
+  test("malformed and non-directory workspace addresses cannot launch commands", async () => {
+    await withRoot(async (root) => {
+      const file = path.join(root, "file");
+      fs.writeFileSync(file, "file");
+      for (const [workspace, error] of [
+        ["invalid", /not a URI/], ["https://example.test/", /plain file URI/],
+        [pathToFileURL(path.join(root, "missing")).toString(), /does not exist/],
+        [pathToFileURL(file).toString(), /not a directory/],
+      ] as const) await assert.rejects(createRequestExecutor(hostFor(root))(processFields(root, { workspace })), error);
+    });
+  });
+
+  test("process bounds reject malformed arguments, input and limits", async () => {
+    await withRoot(async (root) => {
+      for (const args of [{ argv: "bad" }, { argv: [42] }, { argv: Array(65).fill("x") },
+        { argv: ["x".repeat(8193)] }, { stdin: 42 }, { stdin: "x".repeat(1024 * 1024 + 1) }]) {
+        await assert.rejects(createRequestExecutor(hostFor(root))(processFields(root, args)), /Request field/);
+      }
+      for (const fields of [{ timeout: 0 }, { timeout: 0.5 }, { timeout: "1" }, { limit: 16 * 1024 * 1024 + 1 }]) {
+        await assert.rejects(createRequestExecutor(hostFor(root))(processFields(root, {}, fields)), /between 1 and/);
+      }
+      await assert.rejects(createRequestExecutor(hostFor(root))({ ticket: "t", kind: "host-call", namespace: "vscode", operation: "process.input" }), /missing its arguments/);
+    });
+  });
+
+  test("bundled executables and omitted process options preserve real output and numeric exits", async () => {
+    await withRoot(async (root) => {
+      const execute = createRequestExecutor({ ...hostFor(root), configuredExecutable: "", bundledExecutable: process.execPath });
+      const result = await execute(processFields(root, { argv: undefined, stdin: 'process.stdout.write("default input")' },
+        { timeout: undefined, limit: undefined }));
+      assert.deepStrictEqual(result, { code: 0, stdout: "default input", stderr: "" });
+      const failed = await execute(processFields(root, { argv: ["-e", 'process.stderr.write("boom");process.exit(3)'], stdin: undefined }));
+      assert.deepStrictEqual(failed, { code: 3, stdout: "", stderr: "boom" });
+      await assert.rejects(execute(processFields(root, { argv: ["-e", "setTimeout(()=>{},9999)"], stdin: undefined }, { timeout: 100 })), /Package command failed/);
+    });
+  });
+
+  test("malformed HTTP headers, methods and URLs fail before sending a request", async () => {
+    await withRoot(async (root) => {
+      const execute = createRequestExecutor(hostFor(root));
+      const request = { ticket: "h", kind: "http", method: "GET", url: "http://127.0.0.1:1/" };
+      for (const headers of ["bad", Array(65).fill({ name: "x", value: "y" }), [null],
+        [{ name: 1, value: "v" }], [{ name: "X", value: 5 }], [{ name: "", value: "v" }],
+        [{ name: "X", value: "x".repeat(8193) }]]) {
+        await assert.rejects(execute({ ...request, headers }), /HTTP header/);
+      }
+      await assert.rejects(execute({ ...request, method: "POST" }), /Unsupported package HTTP method/);
+      await assert.rejects(execute({ ...request, url: "" }), /non-empty string/);
+      await assert.rejects(execute({ ...request, url: "x".repeat(8193) }), /too long/);
+    });
+  });
+
+
   test("process.input runs a bounded executable without a shell and returns raw stdout", async () => {
     const root = temporary();
     const script = path.join(root, "echo.cjs");
@@ -118,26 +215,19 @@ suite("package workspace capabilities", () => {
   });
 
   test("loopback HTTP is bounded and returns its status and body", async () => {
-    const root = temporary();
-    const server = http.createServer((_request, response) => {
-      response.writeHead(200, { "content-type": "application/json" });
-      response.end(JSON.stringify({ ok: true }));
-    });
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-    const address = server.address();
-    const port = typeof address === "object" && address ? address.port : 0;
-    try {
-      const result = await createRequestExecutor(hostFor(root))({
-        ticket: "h", kind: "http", method: "GET", url: `http://127.0.0.1:${port}/`, headers: [], limit: 1024, timeout: 5000,
-      }) as { status: number; body: string };
+    await withRoot(async (root) => withServer(async (url, headers) => {
+      const execute = createRequestExecutor(hostFor(root));
+      const request = { ticket: "h", kind: "http", method: "GET", url, headers: [], limit: 1024, timeout: 5000 };
+      const result = await execute(request) as { status: number; body: string };
       assert.strictEqual(result.status, 200);
       assert.deepStrictEqual(JSON.parse(result.body), { ok: true });
-      await assert.rejects(createRequestExecutor(hostFor(root))({
-        ticket: "h", kind: "http", method: "GET", url: `http://127.0.0.1:${port}/`, headers: [], limit: 2, timeout: 5000,
-      }), /exceeded its bound/);
-    } finally {
-      await new Promise<void>((resolve) => server.close(() => resolve()));
-      fs.rmSync(root, { recursive: true, force: true });
-    }
+      await assert.rejects(execute({ ...request, limit: 2 }), /exceeded its bound/);
+      assert.deepStrictEqual(await execute({ ...request, method: "HEAD", headers: undefined }), { status: 200, body: "" });
+      assert.strictEqual(headers().accept, "application/json");
+      await execute({ ...request, headers: [{ name: "X-Probe", value: "forwarded" }] });
+      assert.strictEqual(headers()["x-probe"], "forwarded");
+      await assert.rejects(execute({ ...request, url: url + "interrupt" }), /interrupted|aborted/);
+      await assert.rejects(execute({ ...request, url: url + "stall", timeout: 100 }), /timed out/);
+    }));
   });
 });
