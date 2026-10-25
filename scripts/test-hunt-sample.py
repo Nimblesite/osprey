@@ -36,6 +36,16 @@ class QualificationTests(unittest.TestCase):
         return {'exitCode': 0, 'timedOut': False, 'wallSeconds': 1,
                 'report': {'explored': {'paths': 3, 'completed': 3}, 'findings': [], 'incomplete': []}}
 
+    def test_report_for_another_program_cannot_qualify(self):
+        record = self.clean() | {'program': 'requested.osp'}
+        record['report']['program'] = 'another.osp'
+        self.assertFalse(qualifies(record))
+
+    def test_relative_and_absolute_names_for_same_program_qualify(self):
+        record = self.clean() | {'program': 'requested.osp'}
+        record['report']['program'] = str(Path('requested.osp').resolve())
+        self.assertTrue(qualifies(record))
+
     def test_only_completed_bounded_finding_free_runs_qualify(self):
         self.assertTrue(qualifies(self.clean()))
         for patch in [{'exitCode': 1}, {'exitCode': -11}, {'timedOut': True}, {'wallSeconds': 11}, {'report': None}]:

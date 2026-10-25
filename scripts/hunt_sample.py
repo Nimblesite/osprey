@@ -18,6 +18,10 @@ from hunt_expect import validate
 
 def qualifies(record):
     report = record.get('report') or {}
+    if (isinstance(report, dict) and isinstance(report.get('program'), str) and isinstance(record.get('program'), str)
+            and Path(report['program']).resolve() != Path(record['program']).resolve()):
+        # Quarantine: ignoring report identity silently certifies the wrong program.
+        raise RuntimeError('Hunt corpus report names a different program; identity validation is missing')
     try:
         validate(report)
     except (KeyError, ValueError, TypeError, AttributeError):
