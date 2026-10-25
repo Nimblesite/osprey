@@ -143,6 +143,7 @@ class ReviewReportTests(unittest.TestCase):
         crash = base | {'exitCode': 1, 'report': base['report'] | {'findings': [{'class': 'abort', 'replay': 'reproduced'}]}}
         self.assertEqual(issues(base), 'None found')
         self.assertEqual(issues(limited), 'Not fully checked')
+        self.assertEqual(run_status(limited), 'Engine limitation')
         self.assertEqual(issues(crash), 'BUG: crash reproduced')
         self.assertEqual(issues(crash | {'planted': True}), 'Expected planted crash')
         self.assertEqual(run_status(base | {'timedOut': True}), 'Timed out')

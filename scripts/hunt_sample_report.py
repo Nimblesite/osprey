@@ -41,6 +41,8 @@ def run_status(record):
         return 'Timed out'
     if report.get('incomplete'):
         return 'Incomplete'
+    if any(f.get('class') == 'unmodelled' for f in report.get('findings', [])):
+        return 'Engine limitation'
     if record.get('exitCode', 1) < 0 or (record.get('exitCode', 1) != 0 and not report.get('findings')):
         return 'Failed'
     return 'Completed' if report.get('explored', {}).get('paths', 0) > 0 else 'Not checked'
@@ -103,13 +105,19 @@ def document(out, quick, excluded, tokens, proof):
     if proof:
         summary = f'{len(records)} programs · {len(quick)} passed · {len(excluded)} failed'
     manifest = '' if proof else '<a href="safe-runs.json">Safe runs JSON for CI</a> · '
-    ordered = sorted(records, key=lambda r: (issues(r) != 'BUG: crash reproduced', r['program']))
+    ordered = sorted(records, key=priority)
     return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'">
 <title>Osprey Hunt · {title}</title><style>{tokens}{STYLE}</style></head><body><main>
 <header>Osprey Hunt</header><h1>{title}</h1><p class="lead">{summary}</p>
 <nav>{manifest}<a href="results.json">All results JSON</a></nav>
 {table(ordered, out)}</main></body></html>'''
+
+
+def priority(record):
+    findings = (record.get('report') or {}).get('findings', [])
+    reproduced = any(f.get('replay') == 'reproduced' for f in findings)
+    return (not reproduced, bool(record.get('planted') or record.get('expectedCrash')), record['program'])
 
 
 STYLE = '''*{box-sizing:border-box}body{margin:0;background:var(--surface);color:var(--on-surface);font:16px/1.65 var(--font-sans)}main{max-width:1400px;padding:40px 24px 64px;margin:auto}header{color:var(--primary-container);border-bottom:1px solid var(--outline-variant);padding-bottom:24px}h1{font-size:clamp(32px,5vw,52px);line-height:1.15;letter-spacing:-1px;font-weight:550}h2{font-weight:500;margin-top:32px}.lead,footer{color:var(--on-surface-variant)}a{color:var(--primary);text-underline-offset:3px}a:focus-visible{outline:2px solid var(--primary-container);outline-offset:3px}.card,.table-wrap{border:1px solid var(--outline-variant);border-radius:12px;background:var(--surface-container);margin:24px 0;padding:24px}.table-wrap{overflow-x:auto;padding:0}table{border-collapse:collapse;width:100%;font-size:13px}th,td{text-align:left;padding:14px 16px;vertical-align:top;border-bottom:1px solid var(--outline-variant)}td:first-child{font:12px/1.6 var(--font-mono);overflow-wrap:anywhere;min-width:280px}td:last-child{min-width:180px}footer{margin-top:32px;font-size:13px}@media(max-width:640px){main{padding:24px 16px}.card{padding:20px}}'''

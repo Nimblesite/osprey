@@ -4,6 +4,42 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+#[path = "common/effect_execution.rs"]
+mod effect_execution;
+
+const ABANDONED_OWNERS: &str = r#"
+effect Stop { control halt: fn(string) -> int }
+type Payload = { items: List<string> }
+
+fn abandoned(outer) = {
+    let owned = mapList([1, 2, 3], fn(n) => "item:${n}")
+    let owner = Payload { items: owned }
+    let capture = fn() => join(owner.items, ",")
+    let message = "${capture()}:${listLength(outer)}"
+    let answer = perform Stop.halt(message)
+    print("unreachable:${capture()}:${message}")
+    answer
+}
+
+let outer = mapList(["a", "b"], fn(s) => "${s}!")
+let stopping = handler Stop {
+    halt message => length(message)
+    finally => print("finalized:${join(outer, ",")}")
+}
+let answer = stopping(fn() => abandoned(outer))
+print("${answer}:${join(outer, ",")}")
+"#;
+
+#[test]
+fn abandoning_control_releases_body_owners_and_preserves_outer_captures() {
+    effect_execution::assert_flavored_output(
+        "abandoned_owners",
+        "osp",
+        ABANDONED_OWNERS,
+        "finalized:a!,b!\n22:a!,b!\n",
+    );
+}
+
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
 }
