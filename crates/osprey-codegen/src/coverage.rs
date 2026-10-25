@@ -114,7 +114,12 @@ struct CoverableLines(BTreeSet<u32>);
 
 impl AstVisitor for CoverableLines {
     fn expression(&mut self, expression: &Expr) {
-        if let Expr::Block { statements, value: Some(_), position } = expression {
+        if let Expr::Block {
+            statements,
+            value: Some(_),
+            position,
+        } = expression
+        {
             if statements.is_empty() {
                 mark(*position, &mut self.0);
             }

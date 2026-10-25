@@ -125,14 +125,8 @@ fn reject_opaque_aliases(program: &Program) -> Result<()> {
     }
 }
 
-fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> Result<String> {
-    reject_opaque_aliases(program)?;
-    let options = with_kernel_mode(options)?;
-    let instrumented = options
-        .coverage
-        .then(|| crate::coverage::instrumented(program));
-    let original = instrumented.as_ref().unwrap_or(program);
-    let mut lowered = osprey_types::lower_static_checked(original).map_err(|errors| {
+fn lower_static_program(program: &Program) -> Result<Program> {
+    osprey_types::lower_static_checked(program).map_err(|errors| {
         crate::error::CodegenError::invalid(
             errors
                 .into_iter()
@@ -140,7 +134,17 @@ fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> 
                 .collect::<Vec<_>>()
                 .join("; "),
         )
-    })?;
+    })
+}
+
+fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> Result<String> {
+    reject_opaque_aliases(program)?;
+    let options = with_kernel_mode(options)?;
+    let instrumented = options
+        .coverage
+        .then(|| crate::coverage::instrumented(program));
+    let original = instrumented.as_ref().unwrap_or(program);
+    let mut lowered = lower_static_program(original)?;
     if options.coverage {
         // Source counters must not hide pure closure selection from staging.
         crate::coverage::instrument_expressions(&mut lowered);
