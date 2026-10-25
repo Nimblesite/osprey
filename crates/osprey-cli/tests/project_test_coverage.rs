@@ -343,23 +343,23 @@ fn handler_project(name: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
     Ok(root)
 }
 
-fn assert_handler_coverage(root: &Path, memory: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let output = cached_run(root, memory)?;
-    assert!(output.status.success(), "{output:?}");
-    assert!(
-        String::from_utf8_lossy(&output.stdout)
-            .lines()
-            .any(|line| line == "7"),
-        "{output:?}"
-    );
-    let report = serde_json::from_slice(&std::fs::read(root.join("cov.json"))?)?;
-    let lines = file_lines(&report, "reader.py");
+fn assert_handler_rows(report: &serde_json::Value) {
+    let lines = file_lines(report, "reader.py");
     for row in [(8, 1), (9, 1), (11, 0)] {
         assert!(
             lines.contains(&row),
             "missing or incorrect handler coverage {row:?}: {lines:?}"
         );
     }
+}
+
+fn assert_handler_coverage(root: &Path, memory: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let output = cached_run(root, memory)?;
+    assert!(output.status.success(), "{output:?}");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.lines().any(|line| line == "7"), "{output:?}");
+    let report = serde_json::from_slice(&std::fs::read(root.join("cov.json"))?)?;
+    assert_handler_rows(&report);
     if memory == "arc" {
         assert_arc_exit(&output.stderr);
     }
@@ -369,8 +369,7 @@ fn assert_handler_coverage(root: &Path, memory: &str) -> Result<(), Box<dyn std:
 #[test]
 fn static_handler_arm_coverage_records_execution_and_retains_unused_arms(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let root = handler_project("static_handler_coverage");
-    let root = root?;
+    let root = handler_project("static_handler_coverage")?;
     for memory in ["default", "gc", "arc"] {
         assert_handler_coverage(&root, memory)?;
     }
@@ -396,9 +395,7 @@ fn dynamic_handler_coverage_counts_execution_instead_of_registration(
     Ok(())
 }
 
-#[test]
-fn manifest_namespace_changes_invalidate_codegen_even_when_source_text_is_unchanged(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn namespace_project() -> PathBuf {
     let root = project("manifest_cache_identity");
     write(
         &root.join("framework/src/calc.ospml"),
@@ -410,21 +407,26 @@ fn manifest_namespace_changes_invalidate_codegen_even_when_source_text_is_unchan
             .replace("namespace app\n", "")
             .replace("import calc::Words\n", ""),
     );
+    root
+}
+
+fn select_namespace(root: &Path, namespace: &str) {
+    let declaration = format!("default_namespace = \"{namespace}\"");
+    write(
+        &root.join("osprey.toml"),
+        &MANIFEST.replace("default_namespace = \"app\"", &declaration),
+    );
+}
+
+#[test]
+fn manifest_namespace_changes_invalidate_codegen_even_when_source_text_is_unchanged(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = namespace_project();
     for (generation, namespace) in [(1, "app"), (2, "alternate")] {
-        write(
-            &root.join("osprey.toml"),
-            &MANIFEST.replace(
-                "default_namespace = \"app\"",
-                &format!("default_namespace = \"{namespace}\""),
-            ),
-        );
+        select_namespace(&root, namespace);
         let output = cached_run(&root, "default")?;
         assert!(output.status.success(), "{output:?}");
-        assert_eq!(
-            artifact_counts(&root)?,
-            [generation; 3],
-            "assembled namespaces are codegen inputs"
-        );
+        assert_eq!(artifact_counts(&root)?, [generation; 3]);
     }
     std::fs::remove_dir_all(root)?;
     Ok(())

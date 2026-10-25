@@ -88,6 +88,8 @@ fn codegen_key(
     let mut state = std::collections::hash_map::DefaultHasher::new();
     "osprey-test-cache-v2".hash(&mut state);
     input.source().hash(&mut state);
+    // Assembly options can change qualified symbols without changing source text.
+    format!("{:?}", input.backend_program()).hash(&mut state);
     input.debug_path().hash(&mut state);
     // Both lowerings must produce distinct cached artifacts [GPU-KERNEL-EXTRACT].
     std::env::var_os(osprey_codegen::GPU_KERNELS_ENV).hash(&mut state);
