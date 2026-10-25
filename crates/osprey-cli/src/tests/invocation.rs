@@ -1,5 +1,16 @@
 use super::*;
 
+const MANAGED_TARGETS: [&str; 8] = [
+    "native",
+    "wasm32",
+    "python",
+    "macos",
+    "ios",
+    "ios-sim",
+    "android-arm64",
+    "android-x64",
+];
+
 #[test]
 fn parse_args_defaults_to_check_with_full_capabilities() {
     let cli = parse_args(&args(&["prog.osp"])).expect("parses");
@@ -7,6 +18,29 @@ fn parse_args_defaults_to_check_with_full_capabilities() {
     assert_eq!(cli.mode, "--check");
     assert!(!cli.quiet);
     assert!(cli.policy.http && cli.policy.websocket && cli.policy.fs && cli.policy.ffi);
+}
+
+#[test]
+fn compile_defaults_to_managed_memory_for_each_target() {
+    for target in MANAGED_TARGETS {
+        let flag = format!("--target={target}");
+        let cli = parse_args(&args(&["app.osp", &flag, "--compile"])).expect("target parses");
+        assert_eq!(
+            cli.memory,
+            if target == "native" { "gc" } else { "arc" },
+            "{target}"
+        );
+    }
+}
+
+#[test]
+fn wasm_compile_preserves_explicit_memory_for_target_validation() {
+    for memory in ["gc", "arc"] {
+        let flag = format!("--memory={memory}");
+        let cli = parse_args(&args(&["app.osp", "--target=wasm32", "--compile", &flag]))
+            .expect("memory parses before target validation");
+        assert_eq!(cli.memory, memory);
+    }
 }
 
 #[test]
@@ -168,10 +202,10 @@ fn debug_wasm_rejection_is_centralized() {
 }
 
 #[test]
-fn wasm_rejects_native_only_options_in_ir_and_check_modes() {
+fn wasm_rejects_native_only_options_in_compile_ir_and_check_modes() {
     let parsed = osprey_syntax::parse_program("print(1)\n");
     let input = CompilationInput::script("app.osp", "print(1)\n".to_string(), parsed.program);
-    for mode in ["--llvm", "--check"] {
+    for mode in ["--compile", "--llvm", "--check"] {
         let args = ["app.osp", "--target=wasm32", mode, "--memory=arc"].map(str::to_string);
         let cli = parse_args(&args).expect("valid arguments");
         assert_eq!(cli.memory, "arc");
