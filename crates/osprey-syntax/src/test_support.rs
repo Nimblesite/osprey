@@ -100,3 +100,18 @@ pub(crate) fn assert_doc_pair(all: &[Stmt], first: &str, second: &str) {
     assert!(matches!(declaration, Stmt::Function { .. }));
     assert_summary(declaration, Some(second));
 }
+
+/// Find the first node of `kind` in the same preorder used by CST lowering.
+pub(crate) fn find_kind<'t>(
+    node: tree_sitter::Node<'t>,
+    kind: &str,
+) -> Option<tree_sitter::Node<'t>> {
+    if node.kind() == kind {
+        return Some(node);
+    }
+    let mut cursor = node.walk();
+    let children: Vec<_> = node.children(&mut cursor).collect();
+    children
+        .into_iter()
+        .find_map(|child| find_kind(child, kind))
+}

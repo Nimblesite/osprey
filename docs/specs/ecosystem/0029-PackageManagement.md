@@ -473,7 +473,7 @@ a strong `ETag`. Errors are `application/problem+json` with a stable `code`.
 The download format is one canonical JSON document:
 
 ```json
-{"digest":"<SourceDigest hex>","epoch":0,"files":[{"path":"osprey.toml","text":"..."}],"key":"@scope/name","ordinal":3}
+{"digest":"<SourceDigest hex>","epoch":1,"files":[{"path":"osprey.toml","text":"..."}],"key":"@scope/name","ordinal":3}
 ```
 
 `files` is sorted by unsigned path bytes and holds every file of the release

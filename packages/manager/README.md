@@ -40,7 +40,7 @@ curl http://127.0.0.1:8787/v1/packages
 echo "lock --project $PWD/packages/manager/e2e/consumer --registry http://127.0.0.1:8787" | ./target/osprey-pkg
 echo "fetch --project $PWD/packages/manager/e2e/consumer --registry http://127.0.0.1:8787" | ./target/osprey-pkg
 echo "verify --offline --project $PWD/packages/manager/e2e/consumer" | ./target/osprey-pkg
-echo "build --run --project $PWD/packages/manager/e2e/consumer" | ./target/osprey-pkg
+echo "build --run --compiler $PWD/target/release/osprey --project $PWD/packages/manager/e2e/consumer" | ./target/osprey-pkg
 ```
 
 Every client command prints `status: N`; require `0`. The frontend reads one command from stdin because argument-vector and process-exit-status builtins are unavailable. The stdin entry splits on whitespace, so paths containing spaces are not supported there. Prefix a command with `--json` for a structured report. The [command reference](../../website/src/docs/package-manager.md#commands) covers local overrides, publication and update behavior.

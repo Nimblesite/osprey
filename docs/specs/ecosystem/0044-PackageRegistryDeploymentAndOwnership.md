@@ -65,7 +65,7 @@ CLI login uses a one-use browser handoff bound to CLI PKCE, explicit confirmatio
 
 [Organization Package Governance](0045-OrganizationPackageGovernance.md) is the authoritative ownership/maintenance contract. Every package belongs to one organization and retains the canonical `@organization/package` key. Personal ownership and global leaf names do not exist. Each package has one non-null administrator drawn from that org's active memberships; only that administrator manages explicit per-package permissions. Multiple users may hold publishing and other permissions concurrently. Organization custodianship grants no implicit package authority.
 
-The canonical typeDiagram and DataProvider migration define organization/membership identities, the single administrator FK, same-org permission grants, handovers, invitations, maintenance reports and governance events. Package administrator handover preserves org ownership; cross-org succession uses a new key and the existing 30-day ownership notice/recovery rules. The older personal-scope/multiple-package-owner matrix is superseded in full. All `[PACKAGE-OWNERSHIP-*]` governance sections live in spec 0045.
+The canonical typeDiagram and DataProvider migration define organization/membership identities, the single administrator FK, same-org permission grants, handovers, invitations, maintenance reports and governance events. Package administrator handover preserves org ownership; cross-org succession uses a new key and the existing 30-day ownership notice/recovery rules. Organization ownership, administrator permissions and maintenance rules live in spec 0045.
 
 ## RLS enforcement `[PACKAGE-OWNERSHIP-RLS]`
 

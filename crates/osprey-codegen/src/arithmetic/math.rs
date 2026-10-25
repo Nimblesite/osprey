@@ -304,27 +304,19 @@ mod tests {
     #[test]
     fn binary_float_functions_declare_their_symbol() {
         let ir = render(&mut |cg| {
-            let _ = binary_float_function(
-                cg,
-                "atan2",
-                Value::new("1.0", LType::Double),
-                Value::new("-1.0", LType::Double),
-            )
-            .unwrap();
-            let _ = binary_float_function(
-                cg,
-                "pow",
-                Value::new("2.0", LType::Double),
-                Value::new("10.0", LType::Double),
-            )
-            .unwrap();
-            let _ = binary_float_function(
-                cg,
-                "fmod",
-                Value::new("-7.5", LType::Double),
-                Value::new("2.0", LType::Double),
-            )
-            .unwrap();
+            for (name, left, right) in [
+                ("atan2", "1.0", "-1.0"),
+                ("pow", "2.0", "10.0"),
+                ("fmod", "-7.5", "2.0"),
+            ] {
+                let _ = binary_float_function(
+                    cg,
+                    name,
+                    Value::new(left, LType::Double),
+                    Value::new(right, LType::Double),
+                )
+                .unwrap();
+            }
         });
         shows(
             &ir,

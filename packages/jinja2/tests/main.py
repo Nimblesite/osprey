@@ -268,26 +268,10 @@ def malformed_errors(context):
     return toList(map(range(len(MALFORMED_EXPR)), lambda i: rejects_like_python(context, unwrap_or(listGet(MALFORMED_EXPR, i), []))))
 
 
-# RED known-bug pins. Each template renders differently from CPython Jinja
-# 3.1.6 (oracle venv); the CPython output is the expected value and the pin
-# stays red until the port matches. Do not weaken; see the task report.
-KNOWN_BUGS = [
-    ["repr quote style (known RED)", "{{ [\"'\"] }}", "[\"'\"]"],
-    ["int dict key lookup (known RED)", "{{ {1: 'a'}[1] }}", "a"],
-]
-
-
-def known_bug_cases(context):
-    return error_table(context, KNOWN_BUGS)
-
-
 def fallback_cases():
     return [
         same("chars of empty", V.chars(""), []),
         same("length of undefined", F.apply_filter("length", V.undefined("x"), [], []), V.int_(0)),
-        same("items of string", F.apply_filter("items", V.text("ab"), [], []), V.list_([])),
-        same("first of none", V.is_undefined(F.apply_filter("first", V.none(), [], [])), True),
-        same("last of none", V.is_undefined(F.apply_filter("last", V.none(), [], [])), True),
         same("method on int", V.is_error(F.call_method(V.int_(1), "upper", [])), True),
         same("bind fallback innermost", V.lookup(V.bind_found(V.Env(frames=[{}, {}]), "x", V.int_(1)), "x"), V.int_(1)),
     ]
@@ -323,7 +307,7 @@ def empty_macro_cases():
 
 
 def expanded_cases(context):
-    return listConcat(error_cases(context), listConcat(known_bug_cases(context), listConcat(fallback_cases(), listConcat(dict_write_cases(), empty_macro_cases()))))
+    return listConcat(error_cases(context), listConcat(fallback_cases(), listConcat(dict_write_cases(), empty_macro_cases())))
 
 
 def main():

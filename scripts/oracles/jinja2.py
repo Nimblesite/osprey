@@ -5,6 +5,8 @@ from expected_module import write
 
 TEMPLATES = [
     ("hello", "Hello {{ name }}!"),
+    ("repr quote style (known RED)", "{{ [\"'\"] }}"),
+    ("int dict key lookup (known RED)", "{{ {1: 'a'}[1] }}"),
     ("missing", "{{ missing|default('fallback') }}"),
     ("numeric", "{{ 7 // 3 }}:{{ -7 % 3 }}:{{ 2 + 3 * 4 }}"),
     ("concatenation", "{{ 2 ~ 3 }}"),
@@ -120,6 +122,9 @@ TEMPLATES = [
 # Templates whose CPython failure message the port mirrors verbatim (TypeError/
 # ValueError/UndefinedError texts), asserted as the render `Error` payload.
 ERROR_TEMPLATES = [
+    ("items of string", "{{ 'ab'|items|list }}"),
+    ("first of none", "{{ none|first }}"),
+    ("last of none", "{{ none|last }}"),
     ("str concat int", "{{ 'a' + 1 }}"),
     ("str concat float", "{{ 'a' + 1.5 }}"),
     ("str concat list", "{{ 'a' + [1] }}"),

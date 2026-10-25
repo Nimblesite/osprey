@@ -28,10 +28,10 @@ Leave the server running. In another terminal at the repository root, resolve an
 echo "lock --project $PWD/packages/manager/e2e/consumer --registry http://127.0.0.1:8787" | ./target/osprey-pkg
 echo "fetch --project $PWD/packages/manager/e2e/consumer --registry http://127.0.0.1:8787" | ./target/osprey-pkg
 echo "verify --offline --project $PWD/packages/manager/e2e/consumer" | ./target/osprey-pkg
-echo "build --run --project $PWD/packages/manager/e2e/consumer" | ./target/osprey-pkg
+echo "build --run --compiler $PWD/target/release/osprey --project $PWD/packages/manager/e2e/consumer" | ./target/osprey-pkg
 ```
 
-Each command prints `status: N`; check that it is `0`. The frontend currently reads one command from stdin and cannot set a process exit status. It splits the command on whitespace; paths containing spaces are not supported by this entry point. For your own project, create an `osprey.toml`, declare dependencies as below, and use its absolute directory with `--project`. The command table describes `package init`, `add` and local checkout overrides.
+`--compiler` selects the compiler just built; otherwise `build` uses `osprey` on PATH. Each command prints `status: N`; check that it is `0`. The frontend currently reads one command from stdin and cannot set a process exit status. It splits the command on whitespace; paths containing spaces are not supported by this entry point. For your own project, create an `osprey.toml`, declare dependencies as below, and use its absolute directory with `--project`. The command table describes `package init`, `add` and local checkout overrides.
 
 ## How the package website will work
 
@@ -210,7 +210,7 @@ Local manifest/lock updates roll back on a reported relock failure. Crash-safe a
 | `fetch` | install every release in `osprey.lock` |
 | `lock [--registry <url>] [--accept-removals]` | list the registry once, fetch and verify every release, resolve `[dependencies]` and write `osprey.lock`, printing `+`, `=`, `~` and `-` per package; refuses, writing nothing, a re-served digest (`lock.release-replaced`), a dropped locked release (`lock.release-vanished`, unless `--accept-removals`) and a current lock that does not decode |
 | `verify --offline` | check manifest, lock and installed trees without the network |
-| `build [--run]` | verify, then compile (and run) through the compiler |
+| `build [--run] [--compiler <path>]` | verify, then compile (and run) through the selected compiler; defaults to `osprey` on PATH |
 | `tree` | the locked graph as an indented tree, `(build)` on build edges, ` *` on a key already shown |
 | `why @scope/name` | every chain of edges from your project to that locked package, one line each |
 | `publish --folder <registry-root> [--breaking]` | place this project as the next release of a folder registry, checked and digested exactly as the server will; the server reads the folder at startup |

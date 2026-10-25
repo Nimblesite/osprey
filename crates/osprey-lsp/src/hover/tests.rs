@@ -140,13 +140,7 @@ fn hover_on_performed_effect_operation_shows_type_and_effect_docs() {
         "        mark label => resume ()\n",
         "    traced ()\n",
     );
-    let md = hover_at(
-        src,
-        "file:///trace.ospml",
-        4,
-        "mark",
-        "hover over performed effect operation",
-    );
+    let md = hover_at(src, "file:///trace.ospml", 4, "mark");
 
     shows(&md, &["Trace.mark"]);
     assert!(
@@ -155,13 +149,7 @@ fn hover_on_performed_effect_operation_shows_type_and_effect_docs() {
     );
     shows(&md, &["Records trace markers."]);
     for line in [2usize, 7] {
-        let site = hover_at(
-            src,
-            "file:///trace.ospml",
-            line,
-            "mark",
-            &format!("hover over effect-operation site on line {line}"),
-        );
+        let site = hover_at(src, "file:///trace.ospml", line, "mark");
         shows(
             &site,
             &["Trace.mark : string => Unit", "Records trace markers."],
@@ -190,13 +178,7 @@ fn static_effect_names_hover_at_declaration_handler_and_perform() {
         "fn make() = perform Backends::Tensor.build(1)\n",
     );
     for line in [2usize, 6, 12] {
-        let md = hover_at(
-            src,
-            "file:///t.osp",
-            line,
-            "Tensor",
-            &format!("hover over `Tensor` on line {line}"),
-        );
+        let md = hover_at(src, "file:///t.osp", line, "Tensor");
         shows(
             &md,
             &[
@@ -206,13 +188,7 @@ fn static_effect_names_hover_at_declaration_handler_and_perform() {
         );
     }
     let ml = "(** Tensor operations a handler answers. *)\nstatic effect Tensor B\n    build : int => B\n";
-    let md = hover_at(
-        ml,
-        "file:///t.ospml",
-        1,
-        "Tensor",
-        "hover over the ML `Tensor` declaration",
-    );
+    let md = hover_at(ml, "file:///t.ospml", 1, "Tensor");
     shows(
         &md,
         &[
@@ -236,20 +212,8 @@ fn ml_effect_operations_hover_with_their_own_docs() {
         "    (** Announce a result without expecting a reply. *)\n",
         "    tell : string => Unit\n",
     );
-    let ask = hover_at(
-        src,
-        "file:///p.ospml",
-        3,
-        "ask",
-        "hover over `ask` declaration",
-    );
-    let tell = hover_at(
-        src,
-        "file:///p.ospml",
-        5,
-        "tell",
-        "hover over `tell` declaration",
-    );
+    let ask = hover_at(src, "file:///p.ospml", 3, "ask");
+    let tell = hover_at(src, "file:///p.ospml", 5, "tell");
 
     crate::testkit::contents(
         &ask,
@@ -271,20 +235,8 @@ fn default_effect_operations_hover_with_their_own_docs() {
         "    tell: fn(string) -> Unit\n",
         "}\n",
     );
-    let ask = hover_at(
-        src,
-        "file:///p.osp",
-        3,
-        "ask",
-        "hover over `ask` declaration",
-    );
-    let tell = hover_at(
-        src,
-        "file:///p.osp",
-        5,
-        "tell",
-        "hover over `tell` declaration",
-    );
+    let ask = hover_at(src, "file:///p.osp", 3, "ask");
+    let tell = hover_at(src, "file:///p.osp", 5, "tell");
 
     crate::testkit::contents(
         &ask,
@@ -303,13 +255,7 @@ fn undocumented_operation_falls_back_to_the_effect_doc() {
         "effect Trace\n",
         "    mark : string => Unit\n",
     );
-    let md = hover_at(
-        src,
-        "file:///t.ospml",
-        2,
-        "mark",
-        "hover over undocumented operation",
-    );
+    let md = hover_at(src, "file:///t.ospml", 2, "mark");
     shows(&md, &["Records trace markers."]);
 }
 
@@ -339,7 +285,7 @@ fn hover_on_a_doc_link_resolves_to_the_referenced_element() {
                    fn helper(n) = checkedAdd(n, 1)\n\
                    /// Calls [helper] to do the work.\n\
                    fn main() = helper(1)\n";
-    let md = hover_at(src, "file:///a.osp", 2, "helper", "hover over [helper]");
+    let md = hover_at(src, "file:///a.osp", 2, "helper");
     // `helper` annotates nothing, so both slots come from the checker:
     // `n: int`, returning the `Result` that `checkedAdd` produces
     // ([ARITH-CHECKED], [LSP-HOVER-INFERRED-SIGNATURE]).
@@ -354,23 +300,11 @@ fn hover_on_a_doc_link_resolves_to_the_referenced_element() {
 #[test]
 fn unannotated_functions_hover_with_inferred_types() {
     let osp = "fn double(n) = n * 2\n";
-    let md = hover_at(
-        osp,
-        "file:///d.osp",
-        0,
-        "double",
-        "hover over unannotated Default function",
-    );
+    let md = hover_at(osp, "file:///d.osp", 0, "double");
     shows(&md, &["fn double(n: int) -> int"]);
 
     let ml = "double n = n * 2\n";
-    let md = hover_at(
-        ml,
-        "file:///d.ospml",
-        0,
-        "double",
-        "hover over unannotated ML function",
-    );
+    let md = hover_at(ml, "file:///d.ospml", 0, "double");
     shows(&md, &["double : int -> int"]);
 }
 
@@ -381,13 +315,7 @@ fn hover_on_a_dotted_doc_link_resolves_the_owner() {
                    effect Console { emit: fn(string) -> Unit }\n\
                    /// Uses [Console.emit] to print.\n\
                    fn go() = 1\n";
-    let md = hover_at(
-        src,
-        "file:///a.osp",
-        2,
-        "Console",
-        "hover over [Console.emit]",
-    );
+    let md = hover_at(src, "file:///a.osp", 2, "Console");
     assert!(
         md.contains("Console") && md.contains("Emits lines."),
         "{md}"
@@ -399,7 +327,7 @@ fn hover_on_a_parameter_shows_its_type_inside_its_own_body() {
     // A parameter is not a `let`, so the binding table never held it and
     // hovering one — the most common hover in any typed body — returned
     // nothing at all. Implements [LSP-HOVER-WRITTEN].
-    let annotated = hover_at(SRC, "file:///a.osp", 0, "(a, b)", "hover over `a`");
+    let annotated = hover_at(SRC, "file:///a.osp", 0, "(a, b)");
     shows(&annotated, &["a: int"]);
 
     // With no annotation the type still comes from the checker, which is
@@ -419,7 +347,7 @@ fn hover_on_a_parameter_shows_its_type_inside_its_own_body() {
         ("file:///a.osp", "/// Runs work.\n///\n/// # Parameters\n/// - work: what runs under the handler.\nfn under(work) = work()\n", "work()"),
         ("file:///a.ospml", "(** Runs work.\n\n    # Parameters\n    - work: what runs under the handler. *)\nunder work = work ()\n", "work ()"),
     ] {
-        let md = hover_at(src, uri, 4, call, "hover over `work`");
+        let md = hover_at(src, uri, 4, call);
         shows(&md, &["what runs under the handler."]);
     }
 }
@@ -446,13 +374,7 @@ fn hover_on_a_keyword_explains_it() {
                    handle Log { emit msg => resume msg }\n\
                    in match 1 { _ => 0 }\n";
     for (line, kw) in [(1usize, "handle"), (2, "in"), (2, "match")] {
-        let md = hover_at(
-            src,
-            "file:///a.osp",
-            line,
-            kw,
-            &format!("no hover for keyword `{kw}`"),
-        );
+        let md = hover_at(src, "file:///a.osp", line, kw);
         assert!(md.contains(kw), "hover for `{kw}` names it: {md}");
     }
 }
@@ -530,11 +452,13 @@ fn hovering_test_away_from_a_case_falls_back_to_the_builtin() {
     crate::testkit::contents(&md, &["test: int", "A local shadow."], &["**Test:**"]);
 }
 
-/// Hover at the first `needle` on 0-based `line`, panicking with `why` when
-/// nothing answers — the cursor placement every doc-hover test repeats.
-fn hover_at(src: &str, uri: &str, line: usize, needle: &str, why: &str) -> String {
-    let row = u32::try_from(line).expect("line fits");
-    hover(src, uri, row, col_of(src, line, needle), U16).unwrap_or_else(|| panic!("{why}"))
+/// Hover at the first `needle` on 0-based `line`, failing with a message
+/// naming the needle and line when nothing answers — the cursor placement
+/// every doc-hover test repeats.
+fn hover_at(src: &str, uri: &str, line: usize, needle: &str) -> String {
+    let row = u32::try_from(line).unwrap_or_else(|_| panic!("line {line} does not fit"));
+    hover(src, uri, row, col_of(src, line, needle), U16)
+        .unwrap_or_else(|| panic!("no hover for `{needle}` on line {line} of {uri}"))
 }
 
 /// The 0-based (line, column) of a cursor sitting inside the declaration

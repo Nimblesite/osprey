@@ -593,24 +593,15 @@ fn pipe_into(left: Expr, right: Expr) -> Expr {
 )]
 mod tests {
     use crate::parse_tree;
+    use crate::test_support::find_kind;
     use crate::test_support::stmts;
     use osprey_ast::{Expr, InterpolatedPart, Pattern, Stmt};
-    use tree_sitter::Node;
 
     fn let_value(src: &str) -> Expr {
         match stmts(src).into_iter().next() {
             Some(Stmt::Let { value, .. }) => value,
             other => panic!("expected let, got {other:?}"),
         }
-    }
-
-    fn find_kind<'t>(node: Node<'t>, kind: &str) -> Option<Node<'t>> {
-        if node.kind() == kind {
-            return Some(node);
-        }
-        let mut cursor = node.walk();
-        let kids: Vec<Node<'t>> = node.children(&mut cursor).collect();
-        kids.into_iter().find_map(|c| find_kind(c, kind))
     }
 
     #[test]

@@ -37,37 +37,42 @@ checker therefore permits reassignment only in an effect handler arm. A free
 procedural `x = x + 1` in ordinary statement position is a type error.
 
 ```osprey
+effect Counter { tick: fn() -> int }
+fn run() = perform Counter.tick()
+
 let name = "Alice"
 
-// A `mut` cell owned by a handler: it changes only as the effect is performed
-// and this arm interprets it — the sanctioned form of mutation.
+// Only the handler arm changes the cell.
 mut count = 0
 let counter = handler Counter {
     tick => {
-        count = count + 1 ?: count
+        count = checkedAdd(count, 1) ?: count
         count
     }
 }
 let total = counter(run)
+print(total)
 ```
 
 ML omits `let`; its reassignment operator is `:=` and follows the same rule.
 
 ```osprey-ml
+effect Counter
+    tick : Unit => int
+run () = perform Counter.tick ()
+
 name = "Alice"
 
 mut count = 0
 counter = handler Counter
     tick =>
-        count := count + 1 ?: count
+        count := checkedAdd count 1 ?: count
         count
 total = counter run
+print total
 ```
 
-The mutable cell may be declared in an enclosing lexical scope so the handler
-can capture it, but every assignment must occur in an arm that interprets an
-effect operation. The handled computation is client code, not a handler arm, and
-does not gain mutation authority.
+Both examples print `1`. The mutable cell may be declared in an enclosing lexical scope so the handler can capture it, but every assignment must occur in an arm that interprets an effect operation. The handled computation is client code, not a handler arm, and does not gain mutation authority.
 
 A binding may include a type annotation after `:`. The annotation constrains
 inference; it is not required when inference already fixes the type.
