@@ -22,7 +22,11 @@ const RAW_KEY_EXAMPLE: &str = "// Run in an interactive terminal; raw mode is re
 
 const CURSOR_EXAMPLE: &str = "let hidden = termHideCursor()\nlet moved = termMoveCursor(1, 1)\nlet shown = termShowCursor()\nprint(\"hide=${hidden}; move=${moved}; show=${shown}\")";
 
-const WEBSOCKET_EXAMPLE: &str = "fn communicate(server, connection) = {\n    let sent = websocketSend(connection, \"Hello\")\n    let broadcast = websocketServerBroadcast(server, \"Welcome\")\n    let closed = websocketClose(connection)\n    \"sent=${sent}; broadcast=${broadcast}; closed=${closed}\"\n}\nfn exchange(server) = {\n    let connection = websocketConnect(\"ws://127.0.0.1:18899/chat\")\n    if connection > 0 { communicate(server, connection) } else { \"connection error: ${connection}\" }\n}\nlet server = websocketCreateServer(18899, \"127.0.0.1\", \"/chat\")\nlet listening = if server > 0 { websocketServerListen(server) } else { server }\nprint(if listening == 0 { exchange(server) } else { \"server error: ${listening}\" })";
+const WEBSOCKET_EXAMPLE: &str = "// Known POSIX defect: a peer closing during a send can terminate the process with SIGPIPE.\nfn communicate(server, connection) = {\n    let sent = websocketSend(connection, \"Hello\")\n    let broadcast = websocketServerBroadcast(server, \"Welcome\")\n    let closed = websocketClose(connection)\n    \"sent=${sent}; broadcast=${broadcast}; closed=${closed}\"\n}\nfn exchange(server) = {\n    let connection = websocketConnect(\"ws://127.0.0.1:18899/chat\")\n    if connection > 0 { communicate(server, connection) } else { \"connection error: ${connection}\" }\n}\nlet server = websocketCreateServer(18899, \"127.0.0.1\", \"/chat\")\nlet listening = if server > 0 { websocketServerListen(server) } else { server }\nprint(if listening == 0 { exchange(server) } else { \"server error: ${listening}\" })";
+
+const FIBER_EXAMPLE: &str = "fn work() = \"done\"\nlet worker = spawn work()\nlet result = await(worker)\nprint(\"${result}; finished=${fiberDone(worker)}\")";
+
+const CHANNEL_EXAMPLE: &str = "fn receive(channel) = recv(channel)\nlet channel = Channel(1)\nlet worker = spawn receive(channel)\nsend(channel, 42)\nprint(await(worker))";
 
 macro_rules! http_example {
     ($action:literal) => { http_example!("", $action) };
@@ -53,7 +57,7 @@ pub(crate) static FILES: &[BuiltinDoc] = &[
         "loadTensor",
         "Reads one named F64, F32, F16 or BF16 tensor out of a safetensors file as a List<float>, every element widened exactly. Nothing touches the GPU surface.",
         ["path" => "Path to the .safetensors file", "name" => "Tensor name in its header, e.g. \"wte.weight\""],
-        "match loadTensor(\"model.safetensors\", \"wte.weight\") {\n  Success { value } => print(\"${listLength(value)} floats\")\n  Error { message } => print(message)\n}",
+        "// Supply a safetensors file containing the named tensor.\nmatch loadTensor(\"model.safetensors\", \"wte.weight\") {\n  Success { value } => print(\"${listLength(value)} floats\")\n  Error { message } => print(message)\n}",
     ),
 ];
 
@@ -272,13 +276,13 @@ pub(crate) static CONCURRENCY: &[BuiltinDoc] = &[
         "await",
         "Waits for a fiber to finish and returns its result, suspending the current fiber until then.",
         ["fiber" => "The fiber to await"],
-        "fn work() = \"done\"\nlet worker = spawn work()\nlet result = await(worker)\nprint(\"${result}; finished=${fiberDone(worker)}\")",
+        FIBER_EXAMPLE,
     ),
     builtin_doc!(
         "fiberDone",
         "Returns 1 if the given fiber has finished, 0 otherwise.",
         ["fiber" => "The fiber to test"],
-        "fn work() = \"done\"\nlet worker = spawn work()\nlet result = await(worker)\nprint(\"${result}; finished=${fiberDone(worker)}\")",
+        FIBER_EXAMPLE,
     ),
     builtin_doc!(
         "yield",
@@ -296,19 +300,19 @@ pub(crate) static CONCURRENCY: &[BuiltinDoc] = &[
         "Channel",
         "Creates a buffered channel with a positive capacity.",
         ["capacity" => "Positive number of buffered values"],
-        "fn receive(channel) = recv(channel)\nlet channel = Channel(1)\nlet worker = spawn receive(channel)\nsend(channel, 42)\nprint(await(worker))",
+        CHANNEL_EXAMPLE,
     ),
     builtin_doc!(
         "send",
         "Blocks while the channel is full, then sends a value and returns Unit.",
         ["channel" => "The channel to send to", "value" => "The value to send"],
-        "fn receive(channel) = recv(channel)\nlet channel = Channel(1)\nlet worker = spawn receive(channel)\nsend(channel, 42)\nprint(await(worker))",
+        CHANNEL_EXAMPLE,
     ),
     builtin_doc!(
         "recv",
         "Blocks while the channel is empty, then receives its oldest value.",
         ["channel" => "The channel to receive from"],
-        "fn receive(channel) = recv(channel)\nlet channel = Channel(1)\nlet worker = spawn receive(channel)\nsend(channel, 42)\nprint(await(worker))",
+        CHANNEL_EXAMPLE,
     ),
 ];
 
@@ -329,7 +333,7 @@ pub(crate) static WEBSOCKET: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "websocketServerBroadcast",
-        "Broadcasts one text frame and returns the number of connections written.",
+        "Broadcasts one text frame and returns the number of connections written, or a negative error. On POSIX, a closing peer can currently terminate the process with SIGPIPE before an error returns.",
         ["serverID" => "Server identifier", "message" => "Message to broadcast to all clients"],
         WEBSOCKET_EXAMPLE,
     ),
@@ -347,7 +351,7 @@ pub(crate) static WEBSOCKET: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "websocketSend",
-        "Sends one text frame and returns 0 or a negative runtime error.",
+        "Sends one text frame and returns 0 or a negative runtime error. On POSIX, a closing peer can currently terminate the process with SIGPIPE before an error returns.",
         ["wsID" => "WebSocket identifier from websocketConnect", "message" => "Message to send"],
         WEBSOCKET_EXAMPLE,
     ),

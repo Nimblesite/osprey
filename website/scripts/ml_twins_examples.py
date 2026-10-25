@@ -60,7 +60,8 @@ match client > 0
     true => print "closed: ${httpCloseClient client}"
     false => print "client error: ${client}"'''
 
-WEBSOCKET = '''communicate (server, connection) =
+WEBSOCKET = '''// Known POSIX defect: a peer closing during a send can terminate the process with SIGPIPE.
+communicate (server, connection) =
     sent = websocketSend (connection, "Hello")
     broadcast = websocketServerBroadcast (server, "Welcome")
     closed = websocketClose connection

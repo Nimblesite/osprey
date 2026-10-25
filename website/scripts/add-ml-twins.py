@@ -412,7 +412,8 @@ def translate_match_block(lines):
         # brace payload: Success { value } -> Success value ; fields juxtaposed
         pat = re.sub(r'(\b[A-Z]\w*)\s*\{([^}]*)\}', lambda mm: (f"{mm.group(1)} " + " ".join(f.strip() for f in mm.group(2).split(",") if f.strip())).strip(), pat)
         arms.append(f"    {pat} => {translate_expr(res)}")
-    return [f"match {translate_expr(scrut)}"] + arms
+    prefix = [translate_line(line) for line in text[:m.start()].splitlines()]
+    return prefix + [f"match {translate_expr(scrut)}"] + arms
 
 
 # ---- file rewriting ------------------------------------------------------

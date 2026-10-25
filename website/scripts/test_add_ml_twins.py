@@ -21,7 +21,7 @@ BUILTIN_CASES = {
     "lines": (None, "a,b,c\n"),
     "words": (None, "a,b,c\n"),
     "structuralequals": ('"${same} ${differ}"', "true false\n"),
-    "jsonparse": (None, "parsed; release: Success(0)\n"),
+    "jsonparse": (None, "name=Success(osprey); items=2; released=Success(0)\n"),
     "spawnprocess": (None, "1: hello\n3: 0\nexit: 0\n"),
 }
 
@@ -74,7 +74,14 @@ def test_match_arm_brace_pattern_binds_by_juxtaposition():
         assert "{" not in pat and "}" not in pat, f"braces leaked into ML pattern:\n{arm}"
 
 
+def test_match_preserves_prerequisite_comment():
+    source = '// Supply weights.bin before running.\nmatch gpuLoad("weights.bin", 0, 3) {\n    Success { value } => print(gpuLength(value))\n    Error { message } => print(message)\n}'
+    ml = add_ml_twins.translate_block(source)
+    assert ml.startswith('// Supply weights.bin before running.\nmatch gpuLoad '), ml
+
+
 if __name__ == "__main__":
+    test_match_preserves_prerequisite_comment()
     test_match_arm_brace_pattern_binds_by_juxtaposition()
     print("PASS: match-arm brace pattern binds by juxtaposition")
     test_generated_builtin_examples_execute_in_both_flavors()
