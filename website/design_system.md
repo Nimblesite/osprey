@@ -30,7 +30,7 @@ Use an 8px spacing rhythm, a 1200px website container, and 24px gutters. Give ea
 
 ## Motion
 
-The bird starts automatically, muted and looping. Pause it when it leaves the viewport or the tab is hidden; keep a pause control and preserve the visitor's choice. Reduced-motion and data-saving preferences show the poster until the visitor opts in.
+The decorative bird starts automatically, muted and looping, without a playback button. Pause it when it leaves the viewport or the tab is hidden. Reduced-motion and data-saving preferences show the poster instead.
 
 Use 150–250ms feedback for controls, a brief 8–12px entrance for a headline, and a slow, low-amplitude drift for atmospheric light. Reveal a section once as it enters view. Animate opacity and transforms; avoid perpetual page-wide repainting. Reduced motion shows the final state immediately. Content and navigation must remain usable without JavaScript.
 
@@ -44,4 +44,4 @@ Narration explains what the viewer sees in concrete language. Use the TikTok fac
 
 ## Review
 
-Read [messaging](../docs/messaging.md) before writing a frame. Check every code excerpt against its source and every claim against demonstrated behavior. Inspect the poster and representative frames; watch the encoded film with sound. Check the homepage at desktop and phone widths, automatic bird playback, pause/resume, reduced motion, captions, keyboard focus, and overflow. Build and run the website tests before handoff.
+Read [messaging](../docs/messaging.md) before writing a frame. Check every code excerpt against its source and every claim against demonstrated behavior. Inspect the poster and representative frames; watch the encoded film with sound. Check the homepage at desktop and phone widths, automatic bird playback, offscreen pause/resume, reduced motion, captions, keyboard focus, and overflow. Build and run the website tests before handoff.

@@ -11,7 +11,6 @@ date: "git Last Modified"
   <figure class="flight-film" aria-label="Luminous threads form an osprey in flight">
     <video id="flight-video" autoplay muted loop playsinline preload="none" poster="/assets/motion/osprey-flight.png" data-src="/assets/motion/osprey-flight.mp4" aria-hidden="true"></video>
   </figure>
-  <button id="motion-toggle" type="button" hidden>Play motion</button>
   <div class="container hero-grid">
     <div class="hero-content">
       <a class="home-eyebrow status-link" href="/status/"><span class="status-dot"></span> Open source. Actively evolving. <span>↗</span></a>
@@ -40,7 +39,7 @@ date: "git Last Modified"
 
 <section class="section effect-story" id="effects" aria-labelledby="effects-title">
   <div class="container">
-    <div class="section-heading"><p class="home-eyebrow">01 / Operations and handlers</p><h2 id="effects-title">Algebraic effects<br><span class="muted-heading">with typed handlers.</span></h2></div>
+    <div class="section-heading"><p class="home-eyebrow">01 / Operations and handlers</p><h2 id="effects-title">Effects<br><span class="muted-heading">with typed handlers.</span></h2></div>
     <div class="effect-layout">
       <div class="effect-intro"><p><code>effect</code> declares an operation’s arguments and result type. <code>perform</code> requests the operation; a <code>handler</code> supplies the implementation.</p><p>In the example above, <code>Drafts.save</code> returns a <code>Result</code>. Run <code>disk(saveDraft)</code> to write <code>draft.txt</code>, or <code>offline(saveDraft)</code> to test the failure path without writing a file.</p><p>The compiler checks operation types and rejects requests without a matching handler, including requests made through helper functions.</p><a class="text-link" href="/docs/effects/">See effect and handler syntax <span>↗</span></a></div>
       <figure class="overview-film">

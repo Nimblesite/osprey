@@ -132,22 +132,18 @@ test.describe("homepage flight and source examples", () => {
     }
   });
 
-  test("motion plays, pauses on demand and stays paused after scrolling", async ({ page }) => {
+  test("motion starts automatically without a button and resumes when visible", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.goto("/");
     const video = page.locator("#flight-video");
+    await expect(page.locator("#motion-toggle")).toHaveCount(0);
     await expect(video).toHaveAttribute("autoplay", "");
     await expect.poll(() => video.evaluate((el) => el.currentTime)).toBeGreaterThan(2);
     expect(await video.evaluate((el) => el.getVideoPlaybackQuality().totalVideoFrames)).toBeGreaterThan(15);
-    await page.getByRole("button", { name: "Pause motion", exact: true }).click();
-    await expect.poll(() => video.evaluate((el) => el.paused)).toBe(true);
     await page.locator(".home-install").scrollIntoViewIfNeeded();
+    await expect.poll(() => video.evaluate((el) => el.paused)).toBe(true);
     await page.locator(".hero-title").scrollIntoViewIfNeeded();
-    await expect.poll(() => video.evaluate((el) => el.paused)).toBe(true);
-    await page.getByRole("button", { name: "Play motion", exact: true }).click();
     await expect.poll(() => video.evaluate((el) => el.paused)).toBe(false);
-    await page.locator(".home-install").scrollIntoViewIfNeeded();
-    await expect.poll(() => video.evaluate((el) => el.paused)).toBe(true);
   });
 
   test("reduced motion loads the poster without fetching the film", async ({ page }) => {
@@ -155,7 +151,7 @@ test.describe("homepage flight and source examples", () => {
     const requests = [];
     page.on("request", (request) => { if (/osprey-flight\.(webm|mp4)$/.test(request.url())) requests.push(request.url()); });
     await page.goto("/", { waitUntil: "networkidle" });
-    await expect(page.getByRole("button", { name: "Play motion", exact: true })).toBeVisible();
+    await expect(page.locator("#motion-toggle")).toHaveCount(0);
     expect(requests).toEqual([]);
     expect(await page.locator("#flight-video").evaluate((el) => el.paused)).toBe(true);
     await expect(page.locator("#flight-video")).toHaveAttribute("poster", /osprey-flight\.png$/);

@@ -20,7 +20,6 @@
 .home .target-links a:hover { color: var(--primary); }
 .flight-film { position: absolute; z-index: -1; margin: 0; width: min(900px, 75vw); right: -7%; top: -3rem; }
 .flight-film video { display: block; width: 100%; aspect-ratio: 3 / 2; object-fit: cover; mask-image: linear-gradient(90deg, transparent, #000 20%, #000 85%, transparent); }
-#motion-toggle { position: absolute; z-index: 2; top: 1rem; right: 1rem; background: var(--surface-lowest); color: var(--primary); border: 1px solid var(--outline-variant); border-radius: var(--radius-pill); padding: 0.5rem 0.8rem; font: 0.65rem var(--font-mono); cursor: pointer; }
 .home .hero-code { margin-top: 16rem; position: relative; }
 .flight-code { border: 1px solid #77d7f430; border-radius: 12px; background: #070d1fe8; box-shadow: 0 25px 75px #0005, 0 0 60px #77d7f407; overflow: hidden; }
 .code-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 0.85rem 1.15rem; border-bottom: 1px solid #77d7f420; color: var(--on-surface-variant); font: 0.72rem var(--font-mono); }
