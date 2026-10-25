@@ -132,6 +132,23 @@ static void refuses(const TensorLoader *t, const char *path, const char *name, c
   expect_reason(t, subject, reason);
 }
 
+// JSON permits whitespace around punctuation in names, dtypes and offsets.
+static void t_whitespace_header(const TensorLoader *t) {
+  const char *header = "{ \"w\" : { \"dtype\" : \"F32\", \"shape\" : [1], \"data_offsets\" : [0, 4] } }";
+  unsigned char image[256] = {0};
+  size_t n = ((strlen(header) + 7) / 8) * 8;
+  put_u64(image, (uint64_t)n);
+  memset(image + 8, ' ', n);
+  memcpy(image + 8, header, strlen(header));
+  put_f32(image + 8 + n, 2.5f);
+  const char *path = temp_file(image, 8 + n + 4);
+  void *tensor = t->load(path, "w");
+  CHECK(unlink(path) == 0);
+  CHECK(tensor != NULL);
+  CHECK(t->length(tensor) == 1);
+  CHECK(t->at(tensor, 0) == 2.5);
+}
+
 // Each admitted dtype widens exactly and the scanner matches whole quoted
 // names regardless of entry order.
 static void t_tensor_widens(const TensorLoader *t, const char *path) {
@@ -193,6 +210,7 @@ static void t_tensor_malformed_files(const TensorLoader *t) {
 
 // The whole contract, over one loader.
 static void t_tensor_loader(const TensorLoader *t) {
+  t_whitespace_header(t);
   unsigned char image[1024];
   const char *path = temp_file(image, safetensors_image(image, sizeof image));
   t_tensor_widens(t, path);

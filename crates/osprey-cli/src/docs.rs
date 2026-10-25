@@ -208,7 +208,7 @@ fn page(v: &BuiltinDocView) -> String {
         v.signature, v.summary
     );
     push_parameters(&mut out, v);
-    let _ = writeln!(out, "**Returns:** {}", v.return_type);
+    let _ = writeln!(out, "**Returns:** `{}`", v.return_type);
     push_example(&mut out, v);
     out
 }
@@ -219,7 +219,7 @@ fn push_parameters(out: &mut String, v: &BuiltinDocView) {
     }
     out.push_str("## Parameters\n\n");
     for p in &v.params {
-        let _ = writeln!(out, "- **{}** ({}): {}", p.name, p.ty, p.description);
+        let _ = writeln!(out, "- **{}** (`{}`): {}", p.name, p.ty, p.description);
     }
     out.push('\n');
 }
@@ -302,6 +302,19 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
+    fn page_quotes_generic_types_in_markdown() -> Result<(), Box<dyn std::error::Error>> {
+        for name in ["gpuMatMul", "map", "mapGet"] {
+            let view = builtin_doc_view(name).ok_or("builtin documentation missing")?;
+            let md = page(&view);
+            assert!(md.contains(&format!("**Returns:** `{}`", view.return_type)));
+            for param in view.params {
+                assert!(md.contains(&format!("**{}** (`{}`)", param.name, param.ty)));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
     fn page_uses_scheme_types_and_omits_empty_sections() {
         let view = builtin_doc_view("sleep").expect("sleep documented");
         let md = page(&view);
@@ -310,8 +323,8 @@ mod tests {
             &md,
             &[
                 "**Signature:** `sleep(milliseconds: int) -> Unit`",
-                "- **milliseconds** (int): Number of milliseconds",
-                "**Returns:** Unit",
+                "- **milliseconds** (`int`): Number of milliseconds",
+                "**Returns:** `Unit`",
             ],
         );
         // A zero-arg builtin renders no Parameters section.

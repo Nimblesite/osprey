@@ -26,7 +26,7 @@ BUILTIN_CASES = {
 }
 
 
-def verify_builtin_pair(compiler, root, name, probe, expected):
+def builtin_programs(root, name, probe=None):
     page = root / "functions" / f"{name}.md"
     add_ml_twins.process(page, add_ml_twins.HAND_TWINS.get(f"functions/{name}.md"))
     blocks = re.findall(r"^```(osprey(?:-ml)?)\n(.*?)^```", page.read_text(), re.M | re.S)
@@ -36,10 +36,21 @@ def verify_builtin_pair(compiler, root, name, probe, expected):
         path = root / f"{name}.{extension}"
         suffix = f"\nprint({probe})\n" if probe else ""
         path.write_text(source + suffix)
+        yield path
+
+
+def verify_builtin_pair(compiler, root, name, probe, expected):
+    for path in builtin_programs(root, name, probe):
         result = subprocess.run([str(compiler), str(path), "--run"], capture_output=True, text=True, timeout=30)
         assert result.returncode == 0, f"{path.name}: {result.stderr}"
         assert not result.stderr, f"{path.name}: {result.stderr}"
         assert result.stdout == expected, f"{path.name}: {result.stdout!r} != {expected!r}"
+
+
+def verify_builtin_types(compiler, root, name):
+    for path in builtin_programs(root, name):
+        result = subprocess.run([str(compiler), str(path), "--check"], capture_output=True, text=True, timeout=30)
+        assert result.returncode == 0, f"{path.name}: {result.stderr}"
 
 
 def test_generated_builtin_examples_execute_in_both_flavors():
@@ -50,6 +61,9 @@ def test_generated_builtin_examples_execute_in_both_flavors():
         subprocess.run([str(compiler), "--docs", "--docs-dir", str(root)], check=True, capture_output=True, text=True)
         for name, (probe, expected) in BUILTIN_CASES.items():
             verify_builtin_pair(compiler, root, name, probe, expected)
+        for page in sorted((root / "functions").glob("*.md")):
+            if page.stem != "index":
+                verify_builtin_types(compiler, root, page.stem)
 
 
 def test_match_arm_brace_pattern_binds_by_juxtaposition():
