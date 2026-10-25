@@ -253,11 +253,11 @@ pub(crate) fn box_any(cg: &mut Codegen, v: Value) -> Result<Value> {
 /// [GC-ARC-PERCEUS].
 fn build_box(cg: &mut Codegen, desc: &str, payload: Value, managed: bool) -> Value {
     let payload_meta = if managed {
-        crate::meta::MetaField::PtrManaged
+        crate::meta::MetaField::ManagedWord
     } else {
         crate::meta::MetaField::Word
     };
-    let meta = crate::meta::struct_meta(&[crate::meta::MetaField::PtrOpaque, payload_meta]);
+    let meta = cg.struct_meta(&[crate::meta::MetaField::PtrOpaque, payload_meta]);
     let obj = cg.malloc_struct_noinit(BOX_TY, meta);
     let dp = cg.emit_reg(format!(
         "getelementptr {BOX_TY}, {BOX_TY}* {obj}, i32 0, i32 0"
@@ -412,7 +412,7 @@ fn boxed_row_payload(
     fields: &[(String, LType)],
 ) -> Result<Value> {
     let row_ty = row_block_ty(fields.len());
-    let meta = crate::meta::struct_meta(&field_metas(fields.len()));
+    let meta = cg.struct_meta(&field_metas(fields.len()));
     let block = cg.malloc_struct_noinit(&row_ty, meta);
     let src = cg.emit_reg(format!("bitcast i8* %src to {src_ty}*"));
     for (i, (fname, fty)) in fields.iter().enumerate() {

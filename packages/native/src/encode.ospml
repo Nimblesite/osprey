@@ -138,6 +138,12 @@ module Encode
         limits = [num "width" width, num "least" Splitters::least, num "most" Splitters::most, num "keep" Splitters::keep]
         bound (beside.bindings, SizeInput(action = action), "aside", listConcat [str "side" (side place), JsonMember "pane" (first content), JsonMember "aside" (first beside)] limits)
 
+    contextMenu<A> : (List<Binding<A>>, Node<A>, List<Node<A>>) -> Walked<A>
+    contextMenu (bindings, content, actions) =
+        body = walk (bindings, content)
+        menu = all (body.bindings, actions)
+        one (menu.bindings, kind "context-menu" [JsonMember "body" (first body), JsonMember "items" (JsonArray menu.nodes)])
+
     leaf<A> : (List<Binding<A>>, string, List<JsonMember>) -> Walked<A>
     leaf (bindings, name, members) = one (bindings, kind name members)
 
@@ -170,6 +176,7 @@ module Encode
         Screen title subtitle toolbar children => screen (bindings, title, subtitle, toolbar, children)
         Split panes => nested (bindings, "split", [], panes)
         Layer children => nested (bindings, "layer", [], children)
+        ContextMenu content actions => contextMenu (bindings, content, actions)
         Aside place column pane width action => aside (bindings, place, column, pane, width, action)
         Tabs entries selected action => tabs (bindings, entries, selected, action)
         Rows entries selected action => rows (bindings, entries, selected, action)

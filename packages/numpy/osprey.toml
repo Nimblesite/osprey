@@ -8,4 +8,4 @@ default_namespace = "numpy"
 name = "@osprey/numpy"
 license = "MIT"
 summary = "Row-major float64 ndarray with broadcasting, reductions and linalg, over a host or GPU storage effect"
-keywords = ["numpy", "ndarray", "linalg", "python-flavor"]
+keywords = ["linalg", "ndarray", "numpy", "python-flavor"]

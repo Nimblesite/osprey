@@ -29,9 +29,16 @@ tallied () = (perform Signal<Tally>.read ()).tally
 
 memoed () = (perform Signal<Memo>.read ()).memo
 
-rootView () = Ui::column [Ui::text "Count ${tallied ()}", Ui::button ("Add", "plus", Increment), ui::Slot(key = "note")]
+// The Go buttons deliberately look identical while changing meaning with the
+// count: at 0 the first tap increments, at 1 the increment is withdrawn and
+// Load shifts to the first ordinal.
+goButtons () = match tallied ()
+    1 => [Ui::button ("Go", "play", Load)]
+    _ => [Ui::button ("Go", "play", Increment), Ui::button ("Go", "play", Load)]
 
-noteView () = Ui::column [ui::Field(label = "Note", value = memoed (), prompt = "", secure = false, multiline = false, commit = ui::OnEdit, bind = Typed), Ui::button ("Load", "tray", Load)]
+rootView () = Ui::column (listConcat [Ui::text "Count ${tallied ()}"] (goButtons ()))
+
+noteView () = Ui::column [ui::Field(label = "Note", value = memoed (), prompt = "", secure = false, multiline = false, commit = ui::OnEdit, bind = Typed), Ui::button ("Load", "tray", Load), Ui::button ("Load", "tray", Load)]
 
 tallySlice () = perform Signal<Tally>.read ()
 
@@ -89,6 +96,15 @@ module Probes
 
     (** Text typed into the note field as drawn at `revision`. *)
     export typed (revision, text) = "{\"kind\":\"ui\",\"region\":\"note\",\"revision\":${revision},\"ordinal\":0,\"value\":${jsonQuote text ?: "null"},\"now\":6}"
+
+    (** The opaque state of `envelope`, quoted for embedding in an event document. *)
+    export saved envelope = jsonQuote (Doc::text (envelope, "state")) ?: "\"\""
+
+    (** A trusted-host edit of the control `ordinal` as it was drawn in `prior` at `revision`, with `value` as JSON text. *)
+    export edit (prior, region, revision, ordinal, value) = "{\"kind\":\"ui-edit\",\"prior\":${prior},\"region\":\"${region}\",\"revision\":${revision},\"ordinal\":${ordinal},\"value\":${value},\"now\":7}"
+
+    (** The restored store of `envelope`'s session. *)
+    export stored envelope = Doc::field (Doc::parse (Doc::text (envelope, "state")), "store")
 
     (** An envelope's diagnostics, joined by `;`. *)
     export problems envelope = join (Doc::texts (envelope, "diagnostics")) ";"

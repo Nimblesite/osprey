@@ -9,19 +9,21 @@ tags: [algebraic-effects, handlers, applications]
 
 An algebraic effect is a typed request for work: read configuration, save an account, write a log. A handler supplies the implementation while a function runs. Application code can make those requests without passing service objects through every intermediate function.
 
-## Save a draft, even when storage fails
+## Choose storage at the application boundary
 
-The save logic requests storage; a handler writes the draft or simulates a failure so the editor can offer a retry.
+A save callback calls application logic, which requests storage. Supply the implementation once around the callback:
 
 ```osprey
 {{ draftExample.default | safe }}
 ```
 
-This prints `{{ draftExample.output }}`. `disk` really writes `Ship it.` to `draft.txt`. `offline` returns a predictable failure without accessing the file system. Both run exactly the same `saveDraft` function. The `Result` says whether this request succeeded; the effect says which storage capability the surrounding application must provide.
+This prints `{{ draftExample.output }}` and writes `Ship it.` to `draft.txt` once. The call chain is `onSave` → `saveDraft` → `Drafts.save`. Neither intermediate function accepts or passes a storage object. A handler supplies the capability wherever it is requested during the call.
 
-`Drafts.save` declares the operation's arguments and result. `perform` requests it. Creating a `handler` runs no work. `disk(saveDraft)` installs the disk implementation before calling `saveDraft`. Calling `saveDraft()` without a matching handler is a compile error, even through intermediate helpers.
+`Drafts.save` declares the operation's arguments and result. `perform` requests it. `disk(onSave)` installs the disk implementation before calling `onSave`. Calling `onSave()` without a matching handler is a compile error, even though the request happens inside a helper.
 
-Pass the function, not its result: `saveDraft()` would run before `disk` could answer. Wrap work that takes arguments, such as `disk(|| => saveCustomerDraft(customer))`. A real editor can install its storage handler once around an event loop, so its UI and validation helpers need no storage parameters.
+To test a storage failure, replace the handler's `writeFile(path, text)` with `Error { message: "offline" }`. The same callback then returns `Retry: offline` without writing a file. Choose the handler at the boundary; application code keeps the same calls and failure handling.
+
+Pass the function, not its result: `onSave()` would run before `disk` could answer. A real editor can install its storage handler once around an event loop.
 
 The same example in ML flavor:
 

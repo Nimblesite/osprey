@@ -410,6 +410,7 @@ static void runtime_line_preserves_embedded_nul_and_later_reads(void) {
   hunt_check(line != NULL, "embedded NUL line allocates its result");
   if (line != NULL) {
     hunt_check(memcmp(line, bytes, 3) == 0 && line[3] == '\0', "embedded NUL does not end the input read");
+    hunt_check(line[4] == bytes[4], "fixed-address termination preserves bytes after the delimiter");
     hunt_check(osp_hunt_calls[OSP_HUNT_CALL_READ] == 4, "embedded NUL consumes through the newline");
     free(line);
   }
@@ -435,6 +436,15 @@ static void runtime_line_matches_bytes(const char *bytes, long length, long *cur
   if (*cursor < length) (*cursor)++;
 }
 
+static void line_constraints_have_one_exact_solution(const char *bytes, long length, long cap) {
+  long expected = 0;
+  while (expected < length && bytes[expected] != '\n') expected++;
+  for (long candidate = -1; candidate <= cap + 1; candidate++) {
+    int valid = osp_hunt_valid_line_end((const unsigned char *)bytes, length, candidate, cap);
+    hunt_check(valid == (candidate == expected), "line constraints preserve exactly the first newline or EOF");
+  }
+}
+
 static void runtime_lines_cover_every_byte_position_and_eof(void) {
   char bytes[] = {'a', 'b', '\n', 'c', 'd', '\n', 'e', 'f'};
   for (unsigned byte = 0; byte < 256; byte++) {
@@ -447,6 +457,7 @@ static void runtime_lines_cover_every_byte_position_and_eof(void) {
         hunt_queue_bytes(bytes, sizeof(bytes));
         hunt_queue_range((int)length);
         long cursor = 0;
+        line_constraints_have_one_exact_solution(bytes, length, sizeof(bytes));
         for (int line = 0; line < 5; line++) runtime_line_matches_bytes(bytes, length, &cursor);
         hunt_check(cursor == length && feof(osp_hunt_stdin), "repeated input exhausts the exact symbolic length");
       }

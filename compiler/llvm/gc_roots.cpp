@@ -14,7 +14,9 @@
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Transforms/Scalar/DCE.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
+#include "gc_call_effects.h"
 
 using namespace llvm;
 
@@ -98,19 +100,6 @@ GlobalVariable *getOrCreateHeadGlobal(Module &M, ModuleTypes &T, StringRef Name)
 
 // The collector's own frames must never be instrumented: its stack layout and
 // its internal scanning code are the trusted base of the runtime.
-bool isCollectorImplementation(const Function &F) {
-  const auto *Annotations = F.getParent()->getNamedGlobal("llvm.global.annotations");
-  const auto *Entries = Annotations && Annotations->hasInitializer()
-      ? dyn_cast<ConstantArray>(Annotations->getInitializer()) : nullptr;
-  if (!Entries) return false;
-  for (const Use &Entry : Entries->operands()) {
-    const auto *Fields = dyn_cast<ConstantStruct>(Entry.get());
-    if (!Fields || Fields->getOperand(0)->stripPointerCasts() != &F) continue;
-    StringRef Tag;
-    if (getConstantStringInfo(Fields->getOperand(1), Tag) && Tag == "osprey.gc.collector") return true;
-  }
-  return false;
-}
 
 // --- Function instrumentation plan (data only) -----------------------------
 
@@ -178,18 +167,20 @@ SmallVector<Instruction *, 128> snapshotBody(const Function &F) {
   return Original;
 }
 
-void noteSlot(SlotPlan &P, Value *V) {
-  if (!isRootWordType(V->getType()) || P.index.count(V)) return;
+void noteSlot(SlotPlan &P, Value *V, const DataLayout &DL) {
+  if (V->use_empty() || !isRootWordType(V->getType()) || P.index.count(V)) return;
+  if (DL.getTypeAllocSize(V->getType()).getKnownMinValue() < DL.getPointerSize()) return;
   P.index[V] = P.values.size();
   P.values.push_back(V);
 }
 
 SlotPlan planSlots(Function &F, ArrayRef<Instruction *> Original) {
   SlotPlan P;
+  const DataLayout &DL = F.getParent()->getDataLayout();
   for (Argument &A : F.args())
-    noteSlot(P, &A);
+    noteSlot(P, &A, DL);
   for (Instruction *I : Original)
-    if (!I->getType()->isVoidTy()) noteSlot(P, I);
+    if (!I->getType()->isVoidTy()) noteSlot(P, I, DL);
   return P;
 }
 
@@ -327,13 +318,14 @@ void emitReturns(Function &F, GlobalVariable *Head, Value *Previous) {
     }
 }
 
-bool instrumentFunction(Function &F, ModuleTypes &T, const DataLayout &DL, GlobalVariable *Head) {
+bool instrumentFunction(Function &F, ModuleTypes &T, const DataLayout &DL, GlobalVariable *Head, bool NeedsRoots) {
   if (!validateBody(F)) return false;
-  F.removeFnAttr(Attribute::Memory);
-  F.removeFnAttr(Attribute::Speculatable);
   FunctionPlan P{F, T, DL, Head, snapshotBody(F), SlotPlan(), AllocaPlan(), FrameLayout()};
   P.slots = planSlots(F, P.original);
   if (!planAllocas(F, P.DL, P.slots.values.size(), P.original, P.allocas)) return false;
+  if (!NeedsRoots) return true;
+  F.removeFnAttr(Attribute::Memory);
+  F.removeFnAttr(Attribute::Speculatable);
   emitPrologue(P);
   spillDefinitions(P.original, P);
   emitReturns(F, Head, P.layout.previous);
@@ -342,7 +334,7 @@ bool instrumentFunction(Function &F, ModuleTypes &T, const DataLayout &DL, Globa
 
 // --- Module globals --------------------------------------------------------
 
-// Register every module global definition in its own private Table, pushed by
+// Register the module's global definitions in one table, pushed by
 // one priority-0 constructor. Heap tables are intentionally not walked here:
 // only global values are collected explicitly.
 bool validateGlobal(const GlobalVariable &GV, ModuleTypes &T, const DataLayout &DL) {
@@ -350,16 +342,18 @@ bool validateGlobal(const GlobalVariable &GV, ModuleTypes &T, const DataLayout &
          fail(T.Ctx, "scalable global '" + GV.getName() + "' has no fixed byte size");
 }
 
-GlobalVariable *emitRangeArray(Module &M, const ModuleTypes &T, const DataLayout &DL, GlobalVariable *GV) {
-  Constant *Element = ConstantStruct::get(T.Range, {ConstantExpr::getPtrToInt(GV, T.I64), fixedBytes(T, DL, GV->getValueType())});
-  ArrayType *Ty = ArrayType::get(T.Range, 1);
-  auto *RangeGV = new GlobalVariable(M, Ty, /*isConstant=*/true, GlobalValue::PrivateLinkage, ConstantArray::get(Ty, {Element}), kRangeName);
+GlobalVariable *emitRangeArray(Module &M, const ModuleTypes &T, const DataLayout &DL, ArrayRef<GlobalVariable *> Globals) {
+  SmallVector<Constant *, 32> Elements;
+  for (GlobalVariable *GV : Globals)
+    Elements.push_back(ConstantStruct::get(T.Range, {ConstantExpr::getPtrToInt(GV, T.I64), fixedBytes(T, DL, GV->getValueType())}));
+  ArrayType *Ty = ArrayType::get(T.Range, Elements.size());
+  auto *RangeGV = new GlobalVariable(M, Ty, /*isConstant=*/true, GlobalValue::PrivateLinkage, ConstantArray::get(Ty, Elements), kRangeName);
   RangeGV->setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
   return RangeGV;
 }
 
-GlobalVariable *emitTable(Module &M, const ModuleTypes &T, Constant *RangeGV) {
-  Constant *Init = ConstantStruct::get(T.Table, {ConstantPointerNull::get(T.Ptr), ConstantInt::get(T.I64, 1), RangeGV});
+GlobalVariable *emitTable(Module &M, const ModuleTypes &T, Constant *RangeGV, size_t Count) {
+  Constant *Init = ConstantStruct::get(T.Table, {ConstantPointerNull::get(T.Ptr), ConstantInt::get(T.I64, Count), RangeGV});
   auto *TableGV = new GlobalVariable(M, T.Table, /*isConstant=*/false, GlobalValue::PrivateLinkage, Init, kTableName);
   TableGV->setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
   return TableGV;
@@ -379,32 +373,16 @@ void emitGlobalCtor(Module &M, const ModuleTypes &T, ArrayRef<GlobalVariable *> 
 }
 
 bool registerGlobals(Module &M, ModuleTypes &T, ArrayRef<GlobalVariable *> Globals, GlobalVariable *TableHead) {
-  SmallVector<GlobalVariable *, 16> Tables;
-  for (GlobalVariable *GV : Globals) {
-    const DataLayout &DL = M.getDataLayout();
+  if (Globals.empty()) return true;
+  const DataLayout &DL = M.getDataLayout();
+  for (GlobalVariable *GV : Globals)
     if (!validateGlobal(*GV, T, DL)) return false;
-    GlobalVariable *Table = emitTable(M, T, emitRangeArray(M, T, DL, GV));
-    Tables.push_back(Table);
-  }
-  if (!Tables.empty()) emitGlobalCtor(M, T, Tables, TableHead);
+  GlobalVariable *Table = emitTable(M, T, emitRangeArray(M, T, DL, Globals), Globals.size());
+  emitGlobalCtor(M, T, {Table}, TableHead);
   return true;
 }
 
 // --- Pass entry ------------------------------------------------------------
-
-SmallVector<Function *, 64> definedFunctions(Module &M) {
-  SmallVector<Function *, 64> Functions;
-  for (Function &F : M)
-    if (!F.isDeclaration() && !F.isIntrinsic()) Functions.push_back(&F);
-  return Functions;
-}
-
-SmallVector<GlobalVariable *, 32> definingGlobals(Module &M) {
-  SmallVector<GlobalVariable *, 32> Globals;
-  for (GlobalVariable &GV : M.globals())
-    if (!GV.isDeclarationForLinker() && !GV.isThreadLocal() && !GV.isConstant() && !GV.getName().starts_with("llvm.")) Globals.push_back(&GV);
-  return Globals;
-}
 
 // Snapshot both inventories before the pass adds instrumentation globals and
 // its constructor.
@@ -414,13 +392,14 @@ struct ModulePlan {
   GlobalVariable *tableHead;
   SmallVector<Function *, 64> functions;
   SmallVector<GlobalVariable *, 32> globals;
+  SmallPtrSet<const Function *, 32> nonCollecting;
   unsigned instrumented = 0;
   unsigned collectors = 0;
 
   explicit ModulePlan(Module &M)
       : T(M.getContext()), frameHead(getOrCreateHeadGlobal(M, T, kFrameHeadName)),
         tableHead(getOrCreateHeadGlobal(M, T, kTableHeadName)), functions(definedFunctions(M)),
-        globals(definingGlobals(M)) {}
+        globals(definingGlobals(M)), nonCollecting(nonCollectingFunctions(functions)) {}
 };
 
 bool instrumentModule(Module &M, ModulePlan &P) {
@@ -431,8 +410,9 @@ bool instrumentModule(Module &M, ModulePlan &P) {
       continue;
     }
     if (F->hasFnAttribute(Attribute::Naked)) return fail(M.getContext(), "naked function has no root lifetime");
-    if (!instrumentFunction(*F, P.T, DL, P.frameHead)) return false;
-    ++P.instrumented;
+    bool NeedsRoots = !P.nonCollecting.contains(F);
+    if (!instrumentFunction(*F, P.T, DL, P.frameHead, NeedsRoots)) return false;
+    P.instrumented += NeedsRoots;
   }
   return true;
 }
@@ -460,14 +440,30 @@ struct OspreyGcRootsPass : PassInfoMixin<OspreyGcRootsPass> {
   }
 };
 
+// The runtime was optimized before rooting; KLEE should optimize the application.
+struct OspreyPreparedRuntimePass : PassInfoMixin<OspreyPreparedRuntimePass> {
+  PreservedAnalyses run(Module &M, ModuleAnalysisManager &) {
+    for (Function &F : M) if (!F.isDeclaration()) {
+      F.removeFnAttr(Attribute::AlwaysInline);
+      F.addFnAttr(Attribute::NoInline);
+      F.addFnAttr(Attribute::OptimizeNone);
+    }
+    return PreservedAnalyses::none();
+  }
+};
+
 } // namespace
 
 llvm::PassPluginLibraryInfo getOspreyGcRootsPluginInfo() {
   auto Register = [](PassBuilder &PB) {
     PB.registerPipelineParsingCallback(
         [](StringRef Name, ModulePassManager &MPM, ArrayRef<PassBuilder::PipelineElement>) {
-          if (Name != "osprey-gc-roots") return false;
-          MPM.addPass(OspreyGcRootsPass());
+          if (Name == "osprey-gc-roots") {
+            MPM.addPass(createModuleToFunctionPassAdaptor(DCEPass()));
+            MPM.addPass(OspreyGcRootsPass());
+          }
+          else if (Name == "osprey-runtime-prepared") MPM.addPass(OspreyPreparedRuntimePass());
+          else return false;
           return true;
         });
   };

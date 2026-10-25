@@ -1,6 +1,26 @@
 use super::*;
 
 #[test]
+fn allocation_masks_follow_the_targets_mixed_record_layout() {
+    let program = parsed(
+        "type Mixed = { a: string, b: string, scalar: int, c: string }\n\
+         fn inspect(value) = print(\"${value.a}${value.b}${value.scalar}${value.c}\")\n\
+         inspect(Mixed { a: \"a\", b: \"b\", scalar: 42, c: \"c\" })\n",
+        Flavor::Default,
+    );
+    for (result, expected) in [
+        (compile_program(&program), "i64 5633)"),
+        (compile_wasm_program(&program), "i64 19457)"),
+    ] {
+        let ir = result.expect("mixed record compiles");
+        assert!(
+            ir.contains(expected),
+            "missing target pointer mask {expected}: {ir}"
+        );
+    }
+}
+
+#[test]
 fn match_result_constructor_arms_share_the_contextual_success_layout() {
     // A bare Error constructor initially has a string-shaped placeholder
     // success slot.  The match join must re-layout it to the Success arm's

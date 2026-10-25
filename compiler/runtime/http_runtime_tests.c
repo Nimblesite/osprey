@@ -166,7 +166,27 @@ static HttpResponse *live_handler(char *method, char *path, char *headers,
 #define LIVE_PORT 18085
 #define LIVE_TRIES 50
 
+// Allocation rejection must precede handle exhaustion; the following live
+// loopback exchange also proves both services recover after rejection.
+static void check_http_creation_allocation_failures(void) {
+  long live = osp_alloc_live();
+  osp_alloc_fail_next();
+  assert(http_create_client("http://127.0.0.1:1", 1) == -3);
+  assert(osp_alloc_live() == live);
+  osp_alloc_fail_next(); // the server record itself
+  assert(http_create_server(SERVER_TEST_PORT,
+                            (char *)(uintptr_t) "127.0.0.1") == -3);
+  assert(osp_alloc_live() == live);
+  osp_alloc_fail_after(1); // the record succeeds; its address copy does not
+  assert(http_create_server(SERVER_TEST_PORT,
+                            (char *)(uintptr_t) "127.0.0.1") == -3);
+  assert(osp_alloc_live() == live &&
+         "the half-built record must be released, not abandoned");
+  osp_alloc_fail_off();
+}
+
 void test_live_loopback_exchange(void) {
+  check_http_creation_allocation_failures();
   printf("Testing live loopback HTTP exchange...\n");
   int64_t server_id = http_create_server(LIVE_PORT, (char *)(uintptr_t) "127.0.0.1");
   assert(server_id > 0);
@@ -293,28 +313,10 @@ void test_client_handle_exhaustion(void) {
 // shared with clients, so by this point it is already past the table -- and a
 // create that answered with an out-of-range id would write servers[id] outside
 // the array, which is exactly the defect the client handles carried.
-//
-// The same -3 also covers a create that cannot allocate, and that arm has an
-// ownership obligation the return value cannot show: the record is built in two
-// steps, and a failure at the second must release the first. A server record
-// leaked per failed create is invisible to every caller [HTTP-SERVER].
 void test_server_handle_exhaustion(void) {
   assert(http_create_server(SERVER_TEST_PORT,
                             (char *)(uintptr_t) "127.0.0.1") == -3);
   assert(http_create_server(1, (char *)(uintptr_t) "127.0.0.1") == -3);
-
-  // Back inside the table, so the id is no longer what is being refused.
-  long live = osp_alloc_live();
-  osp_alloc_fail_next(); // the record itself
-  assert(http_create_server(SERVER_TEST_PORT,
-                            (char *)(uintptr_t) "127.0.0.1") == -3);
-  assert(osp_alloc_live() == live);
-  osp_alloc_fail_after(1); // the record succeeds; its address copy does not
-  assert(http_create_server(SERVER_TEST_PORT,
-                            (char *)(uintptr_t) "127.0.0.1") == -3);
-  assert(osp_alloc_live() == live &&
-         "the half-built record must be released, not abandoned");
-  osp_alloc_fail_off();
 }
 
 void run_all_http_tests(void) {

@@ -1,0 +1,16 @@
+[project]
+name = "vscode"
+source_roots = ["src"]
+default_namespace = "vscode"
+
+[package]
+name = "@osprey/vscode"
+license = "MIT"
+summary = "Typed VS Code host capabilities for Osprey Native applications"
+keywords = ["editor", "ui", "vscode", "wasm"]
+
+[dependencies]
+"@osprey/native" = { epoch = 1, min_release = 1 }
+
+[modules]
+allow_wildcard_imports = false

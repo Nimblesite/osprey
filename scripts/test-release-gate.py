@@ -72,19 +72,64 @@ def case(row):
 TABLE = tuple(case(row) for row in ROWS.splitlines())
 
 
-def gate_script(text):
-    """The `run:` body of the backstop step, de-indented into a runnable script."""
-    at = text.find(STEP)
+def step_script(text, step):
+    """Read the actual workflow shell body, never a copy of its implementation."""
+    at = text.find(f"- name: {step}\n")
     if at == -1:
-        sys.exit(f"{WORKFLOW}: no step named {STEP!r} — the backstop is gone or renamed")
+        sys.exit(f"{WORKFLOW}: no step named {step!r}")
     block = RUN_BLOCK.search(text, at)
     if block is None:
-        sys.exit(f"{WORKFLOW}: found {STEP!r} but no `run: |` body under it")
-    body = "".join(line[10:] if line.startswith(" " * 10) else line
+        sys.exit(f"{WORKFLOW}: found {step!r} but no `run: |` body under it")
+    return "".join(line[10:] if line.startswith(" " * 10) else line
                    for line in block.group("body").splitlines(keepends=True))
+
+
+def gate_script(text):
+    body = step_script(text, STEP)
     if "release-complete" not in text or "required=" not in body:
         sys.exit(f"{WORKFLOW}: the extracted body is not the backstop — the parser is broken")
     return body
+
+
+NATIVE_ARCHIVES = tuple(f"lib{name}{mode}.a" for name in ("fiber_runtime", "http_runtime")
+                        for mode in ("", "_gc", "_arc"))
+APPLE_ARCHIVES = tuple(f"libosprey_runtime_{target}{mode}.a" for target in ("ios", "ios_sim", "macos")
+                       for mode in ("", "_arc"))
+
+
+def package_result(text, platform, archives):
+    script = step_script(text, "Package")
+    for key, value in {"needs.version.outputs.version": "0.0.0-test", "matrix.platform": platform,
+                       "runner.os": "macOS" if platform.startswith("darwin") else "Linux"}.items():
+        script = script.replace("${{ " + key + " }}", value)
+    with tempfile.TemporaryDirectory(prefix="osprey-release-") as directory:
+        root = pathlib.Path(directory)
+        for folder in ("target/release", "compiler/lib"):
+            (root/folder).mkdir(parents=True)
+        for name in ("target/release/osprey", "target/osprey-pkg"):
+            (root/name).write_text("binary")
+        for name in (*NATIVE_ARCHIVES, *archives):
+            (root/"compiler/lib"/name).write_text("archive")
+        return subprocess.run(["bash", "-euo", "pipefail", "-c", script], cwd=root,
+                              capture_output=True, text=True)
+
+
+def package_failures(text):
+    cases = [("Linux without Apple SDK archives", "linux-x64", (), True),
+             ("Darwin with all Apple archives", "darwin-arm64", APPLE_ARCHIVES, True)]
+    cases.extend((f"Darwin missing {missing}", "darwin-arm64",
+                  tuple(name for name in APPLE_ARCHIVES if name != missing), False)
+                 for missing in APPLE_ARCHIVES)
+    failures = []
+    for label, platform, archives, expected in cases:
+        result = package_result(text, platform, archives)
+        if (result.returncode == 0) != expected:
+            failures.append(f"{label}: unexpected packaging result\n{result.stdout}{result.stderr}")
+        else:
+            print(f"  ok   {label}")
+    if "run: make _runtime_ios _runtime_ios_sim _runtime_macos" not in text:
+        failures.append("Darwin build must compile all supported Apple runtime archives")
+    return failures
 
 
 def run(script, results, scope, summary):
@@ -99,33 +144,42 @@ def run(script, results, scope, summary):
     return done.returncode == 0, done.stdout + done.stderr
 
 
-def main():
-    script = gate_script(WORKFLOW.read_text())
-    failures = []
-    with tempfile.NamedTemporaryFile(suffix=".md") as summary:
-        for label, expect_pass, outcomes, *scope in TABLE:
-            results = {job: {"result": OK} for job in ALWAYS_RUN}
-            # The last row drops an unconditional job to prove the gate notices.
-            if label.startswith("a job that should always run"):
-                results["preflight"] = {"result": SKIP}
-            if label.startswith("audit skipped"):
-                results["audit"] = {"result": SKIP}
-            if label.startswith("audit failed"):
-                results["audit"] = {"result": FAIL}
-            results.update({job: {"result": r} for job, r in zip(JOBS, outcomes)})
-            passed, output = run(script, results, scope, summary.name)
-            if passed != expect_pass:
-                failures.append(f"{label}: expected {'pass' if expect_pass else 'fail'}, got "
-                                f"{'pass' if passed else 'fail'}\n{output}")
-            else:
-                print(f"  ok   {label}")
+def case_results(label, outcomes):
+    results = {job: {"result": OK} for job in ALWAYS_RUN}
+    if label.startswith("a job that should always run"):
+        results["preflight"] = {"result": SKIP}
+    if label.startswith("audit skipped"):
+        results["audit"] = {"result": SKIP}
+    if label.startswith("audit failed"):
+        results["audit"] = {"result": FAIL}
+    results.update({job: {"result": r} for job, r in zip(JOBS, outcomes)})
+    return results
 
+
+def decision_failures(script, summary):
+    failures = []
+    for label, expect_pass, outcomes, *scope in TABLE:
+        passed, output = run(script, case_results(label, outcomes), scope, summary)
+        if passed != expect_pass:
+            failures.append(f"{label}: expected {'pass' if expect_pass else 'fail'}, got "
+                            f"{'pass' if passed else 'fail'}\n{output}")
+        else:
+            print(f"  ok   {label}")
+    return failures
+
+
+def main():
+    text = WORKFLOW.read_text()
+    failures = package_failures(text)
+    with tempfile.NamedTemporaryFile(suffix=".md") as summary:
+        failures.extend(decision_failures(gate_script(text), summary.name))
     if failures:
         print("\nrelease gate decision table: FAIL")
         for failure in failures:
             print(f"  - {failure}")
         return 1
     print(f"release gate decision table: OK ({len(TABLE)} cases)")
+    print(f"release packaging: OK ({len(APPLE_ARCHIVES) + 2} cases)")
     return 0
 
 

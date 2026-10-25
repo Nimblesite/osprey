@@ -264,7 +264,7 @@ impl Codegen {
             owner_is_record: c.owner_is_record,
             tag,
             fields,
-            meta: crate::meta::struct_meta(&mf),
+            meta: self.struct_meta(&mf),
         })
     }
 

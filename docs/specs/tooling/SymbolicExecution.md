@@ -124,7 +124,7 @@ KLEE runs natively on the host; there is no container in this pipeline. The supp
 
 ## CLI
 
-### `osprey hunt <file> [--max-time <seconds>] [--max-memory <mb>] [--input-bytes <n>] [--out <dir>] [--json] [--no-html] [--no-json] [--no-replay] [--quiet]` — `[SYMEX-CLI]`
+### `osprey hunt <file> [--max-time <seconds>] [--max-memory <mb>] [--memory=gc|arc] [--input-bytes <n>] [--out <dir>] [--json] [--no-html] [--no-json] [--no-replay] [--quiet]` — `[SYMEX-CLI]`
 
 - Explores the program from `main` with symbolic stdin and files. `<file>` is one `.osp`/`.ospml` program or a project root (a directory holding `osprey.toml`, or that manifest), loaded exactly as `osprey <file>` loads it.
 - `--input-bytes` caps every symbolic byte stream (stdin and each opened file). The default is 64; the maximum is 4096, the mock libc's stream cap. A parse of the input forks on every symbolic byte, so the cap decides whether a run can finish: measured on `tests/hunt/clean.osp` with a 30 s budget, 2 bytes explores 26 paths and completes them all, 4 bytes completes 18 of 122, and 8, 16 and 64 bytes complete about 17 of 347 before the budget cuts the rest. Use a small cap to finish a program's paths and the default to reach as much code as the budget allows.
@@ -136,7 +136,7 @@ KLEE runs natively on the host; there is no container in this pipeline. The supp
 - `--no-replay` skips the native replay.
 - `--quiet` suppresses the progress line on stderr. `--help` prints the synopsis and exits `0`.
 - Exits `0` with no findings (or only `klee-only` findings after replay), `1` when a finding reproduced natively, when any finding exists with `--no-replay`, or when the program does not compile, and `2` for a usage or toolchain error.
-- The `klee` binary comes from `OSPREY_KLEE`, else `klee` on `PATH`, else the Homebrew prefixes `/opt/homebrew/bin`, `/usr/local/bin`, `/home/linuxbrew/.linuxbrew/bin`, which GUI editors often drop from `PATH`. The runtime bitcode is `compiler/bin/libosprey_runtime_klee_gc.bc`, built by `make build` (target `_runtime_klee`); `OSPREY_KLEE_RUNTIME` overrides its path.
+- The `klee` binary comes from `OSPREY_KLEE`, else `klee` on `PATH`, else the Homebrew prefixes `/opt/homebrew/bin`, `/usr/local/bin`, `/home/linuxbrew/.linuxbrew/bin`, which GUI editors often drop from `PATH`. The runtime bitcode is `compiler/bin/libosprey_runtime_klee_gc.bc`, built by `make build` (target `_runtime_klee`); `OSPREY_KLEE_RUNTIME` overrides its path. An override must retain the selected backend's filename (`libosprey_runtime_klee_gc.bc` or `libosprey_runtime_klee_arc.bc`); a missing file or mismatched backend is an error.
 
 `make hunt FILE=<path>` wraps the CLI, and `make hunt-corpus` runs it over the corpus ([SYMEX-CORPUS](#corpus--symex-corpus)).
 
@@ -146,7 +146,11 @@ Hunt defaults to `--memory=gc`; `--memory=arc` selects reference counting. Nativ
 
 KLEE cannot scan the host stack or registers as program roots. For GC, an LLVM 19 pass registers live function frames, SSA values, stack allocations and mutable globals before execution. The collector still marks heap references and sweeps unreachable allocations. Missing instrumentation is an explicit model error. Unsupported stack control is rejected by the pass rather than silently losing roots. `OSPREY_KLEE_LLVM` selects the LLVM 19 bin directory; `libosprey_gc_roots.so` must sit beside the GC runtime. ARC uses `libosprey_runtime_klee_arc.bc` and does not run the GC pass.
 
-The collector regression forces collections, checks caller/global/heap-linked objects survive, and verifies zero objects remain after roots are dropped. It runs in the planted-crash CI gate; success requires one completed path, no unfinished paths and no KLEE errors.
+The runtime is optimized once during its build, before GC instrumentation. Prepared runtime functions retain that code rather than being optimized again inside each KLEE budget; application optimization remains enabled. GC globals share one registration table per module, and values smaller than a pointer need no SSA root slot. ARC starts with a smaller registry under KLEE and uses the same growth and ownership rules.
+
+Under `[SYMEX-GC-ROOTS-NONCOLLECTING]`, a function needs no frame when every call reaches an internal or private function already proven unable to collect. The analysis starts with functions containing no calls, excludes annotated collector entry points, and repeats to a fixed point. Unknown, indirect, intrinsic and replaceable calls retain roots, as do recursive cycles. Unsupported stack control and allocations still fail validation. This relies on collection occurring through calls; a background or signal-driven collector would require a different proof.
+
+The collector regression forces collections, checks caller/global/heap-linked objects survive, and verifies zero objects remain after roots are dropped. The ARC regression checks retained objects survive, finalization follows the last release, and registry growth preserves ownership across 64 objects. Both run in the planted-crash CI gate; success requires one completed path, no unfinished paths and no KLEE errors.
 
 ### KLEE invocation — `[SYMEX-KLEE-INVOCATION]`
 
@@ -155,7 +159,7 @@ Every run uses this command; the tool never lets an option through from the user
 ```text
 klee --libc=klee --ubsan-runtime --external-calls=none --external-call-warnings=all
      -link-llvm-lib=compiler/bin/libosprey_runtime_klee_gc.bc
-     --optimize --kdalloc --rng-initial-seed=5489
+     --optimize --kdalloc --rng-initial-seed=5489 --search=dfs
      --check-div-zero --check-overshift --emit-all-errors
      --max-solver-time=30s --max-time=<S>s --watchdog --max-memory=<MB>
      --output-dir=<run dir> <program.ll>
@@ -167,6 +171,7 @@ The program module is textual `.ll`, which KLEE accepts directly. The compiler l
 - `--external-calls=none` makes any call that reaches outside the module an error instead of a native call: KLEE reports it as a `user.err` whose message begins `external calls disallowed`, which the tool classifies as `unmodelled`. KLEE still lets `printf` and `puts` with concrete arguments through under this policy, so the mock defines both.
 - `--ubsan-runtime` pairs with the runtime bitcode's `-fsanitize=undefined` ([SYMEX-RUNTIME-BITCODE](../compiler/KleeCodegen.md#runtime-bitcode-symex-runtime-bitcode)).
 - `--kdalloc` is KLEE's deterministic allocator with a quarantine that keeps freed addresses out of reuse, which is what makes use-after-free visible and findings identical between runs. The fixed `--rng-initial-seed` is KLEE's default, stated so the determinism claim in [SYMEX-HOSTS](#hosts--symex-hosts) has a named source.
+- `--search=dfs` finishes one symbolic path before selecting another instead of leaving a large interleaved working set unfinished when a finite exploration approaches its budget.
 - `--emit-all-errors` writes a test for every error, not one per (error, instruction) pair, so deduplication is the tool's ([SYMEX-FINDINGS](#classes--symex-findings)) and not KLEE's.
 - `--optimize` runs KLEE's own passes over the unoptimised module, as its documentation recommends for non-trivial programs.
 - `--max-solver-time=30s` bounds one solver query. `--max-time` is checked between instructions, so without it a single hard query could outlive the budget; a query that hits the bound ends its path as "incomplete", not as a finding.
@@ -234,7 +239,7 @@ Each finding is one `test<N>.<suffix>.err` file in KLEE's output directory, pair
 
 The `.early` files (interrupted, max depth, out of memory) and unknown suffixes such as `model.err` and `solver.err` are not findings; the report counts them under "incomplete", grouped by reason, and `--json` carries them so a corpus run can tell "clean" from "ran out of time".
 
-Findings are deduplicated by class and the top Osprey frame (or the top C frame, or the message when there is neither). The report lists the class, the Osprey `file:line` from the top Osprey frame in KLEE's stack, the top C runtime frame, the concrete stdin and file bytes, and the replay verdict. A project's modules share one flattened line numbering in the compiled module, so for a project the tool maps that line back to the module file it was written in and reports that file's own path and line, the same mapping the checker's diagnostics use; a single-file program keeps the name its debug metadata carries. `--json` writes the same data for CI and the editor: `program`, `engine` ("KLEE"), `budgetSeconds`, `inputBytes`, `explored{paths,completed,instructions,elapsed}`, `findings[{test,class,suffix,message,file,line,runtimeFrame,stdin,files[{path,bytes}],replay,replayDetail}]`, `incomplete[{test,reason}]`, and `context` as described in [SYMEX-REPORT-HTML].
+Findings are deduplicated by class and the top Osprey frame (or the top C frame, or the message when there is neither). The report lists the class, the Osprey `file:line` from the top Osprey frame in KLEE's stack, the top C runtime frame, the concrete stdin and file bytes, and the replay verdict. A project's modules share one flattened line numbering in the compiled module, so for a project the tool maps that line back to the module file it was written in and reports that file's own path and line, the same mapping the checker's diagnostics use; a single-file program keeps the name its debug metadata carries. `--json` writes the same data for CI and the editor: `program`, `engine` ("KLEE"), `memory` ("gc" or "arc"), `budgetSeconds`, `inputBytes`, `explored{paths,completed,instructions,elapsed}`, `findings[{test,class,suffix,message,file,line,runtimeFrame,stdin,files[{path,bytes}],replay,replayDetail}]`, `incomplete[{test,reason}]`, and `context` as described in [SYMEX-REPORT-HTML].
 
 Managed Osprey operations do not expose unchecked indexing or null dereferences. A memory failure on those paths points to the compiler, runtime or symbolic model. Explicit C calls can introduce failures outside that boundary: `tests/hunt/crash.osp` intentionally aborts on `"9"`. An `abort` finding alone therefore does not establish a compiler defect. `unmodelled` findings identify operations the model cannot execute.
 

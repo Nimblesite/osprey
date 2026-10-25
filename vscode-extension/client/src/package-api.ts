@@ -2,9 +2,15 @@
 import * as http from "http";
 import * as https from "https";
 
+const loopbackHosts = ["127.0.0.1", "localhost", "[::1]"];
+
+export function isDevelopmentRegistry(origin: string): boolean {
+  return loopbackHosts.includes(registryUrl(origin).hostname);
+}
+
 export function registryUrl(origin: string): URL {
   const url = new URL(origin);
-  const loopback = ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
+  const loopback = loopbackHosts.includes(url.hostname);
   if ((url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) ||
       url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
     throw new Error("Package registry must be an HTTPS origin (HTTP is allowed only on loopback).");

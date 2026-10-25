@@ -16,13 +16,7 @@ impl SourceSet {
         match &self.config {
             Some(config) => {
                 project::CompilationInput::documentation_project(&cli.path, config, &self.sources)
-                    .map_err(|errors| {
-                        errors
-                            .iter()
-                            .map(|error| project::format_project_error(error, &cli.path))
-                            .collect::<Vec<_>>()
-                            .join("\n")
-                    })
+                    .map_err(|errors| project::format_project_errors(&errors, &cli.path))
             }
             None => crate::load_input(cli)
                 .map_err(|_exit_code| "documentation source could not be loaded".into()),
@@ -73,11 +67,5 @@ fn load_project(cli: &Cli) -> Result<SourceSet, String> {
             config: Some(config),
             sources,
         })
-        .map_err(|errors| {
-            errors
-                .iter()
-                .map(|error| project::format_project_error(error, &cli.path))
-                .collect::<Vec<_>>()
-                .join("\n")
-        })
+        .map_err(|errors| project::format_project_errors(&errors, &cli.path))
 }

@@ -19,6 +19,7 @@ mod driver;
 mod validation;
 pub use driver::check_program;
 pub use driver::check_program_exports;
+pub(crate) use driver::infer_annotation_candidate;
 pub(crate) use driver::infer_checked;
 pub use driver::infer_program;
 mod publish;

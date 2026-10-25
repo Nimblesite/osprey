@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Real-engine regressions for the existing 64-byte, 30-second Hunt gate."""
 import json
+from itertools import product
 from pathlib import Path
 import subprocess
 import sys
@@ -14,15 +15,17 @@ class DefaultBudgetTests(unittest.TestCase):
     def test_clean_and_crash_finish_with_default_64_bytes_in_30_seconds(self):
         root = Path(__file__).resolve().parent.parent
         (root/'target/hunt-default-budget-regression').mkdir(parents=True, exist_ok=True)
-        for name in ('clean', 'crash'):
-            with self.subTest(program=name):
-                out = root/'target/hunt-default-budget-regression'/f'{name}-{time.time_ns()}'
+        for memory, name in product(('gc', 'arc'), ('clean', 'crash')):
+            with self.subTest(memory=memory, program=name):
+                out = root/'target/hunt-default-budget-regression'/f'{memory}-{name}-{time.time_ns()}'
                 process = subprocess.run([
                     str(root/'target/release/osprey'), 'hunt', f'tests/hunt/{name}.osp',
+                    f'--memory={memory}',
                     '--json', '--quiet', '--no-replay', '--max-time', '30', '--out', str(out),
                 ], cwd=root, capture_output=True, text=True, timeout=150)
                 self.assertTrue(process.stdout.strip(), process.stderr)
                 report = json.loads(process.stdout)
+                self.assertEqual(report['memory'], memory)
                 validate(report)
                 self.assertEqual(actual_findings(report), expected_findings(root/f'tests/hunt/{name}.expected'))
                 self.assertEqual(process.returncode, int(bool(report['findings'])))

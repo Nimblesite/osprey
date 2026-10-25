@@ -8,7 +8,7 @@ default_namespace = "tiktoken"
 name = "@osprey/tiktoken"
 license = "MIT AND Unicode-3.0"
 summary = "Byte-level BPE tokenization: encodings, pre-tokenizers, decoding and training, ported from tiktoken"
-keywords = ["tiktoken", "tokenizer", "bpe", "python-flavor"]
+keywords = ["bpe", "python-flavor", "tiktoken", "tokenizer"]
 
 [test-dependencies]
 "@osprey/testing" = { epoch = 1, min_release = 1 }

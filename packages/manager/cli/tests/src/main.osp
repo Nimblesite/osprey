@@ -12,6 +12,7 @@ import registry_tests::OverlayTests
 import registry_tests::PublishTests
 import registry_tests::PythonTests
 import registry_tests::TreeTests
+import registry_tests::TreeGraphTests
 import registry_tests::ReportsTests
 
 /// The suites over the package frontend (`packages/manager/cli/lib`), assembled apart
@@ -31,6 +32,7 @@ fn suites() = {
     PublishTests::run()
     PythonTests::run()
     TreeTests::run()
+    TreeGraphTests::run()
     ReportsTests::run()
     0
 }

@@ -208,12 +208,12 @@ def backward_into(g, root, grads):
 
 
 def set_at(xs, i, v):
-    """`xs` with position i replaced by v."""
+    """The persistent gradient table with node i replaced by v."""
     return mapSet(xs, toString(i), v)
 
 
 def add_at(xs, i, d):
-    """micrograd's `grad +=`: `xs` with position i increased by d."""
+    """micrograd's `grad +=`, path-copying the persistent node table."""
     return mapSet(xs, toString(i), unwrap_or(mapGet(xs, toString(i)), 0.0) + d)
 
 
@@ -229,7 +229,7 @@ def operands(n):
 
 
 def set_flag(flags, i):
-    """`flags` with position i marked True."""
+    """The persistent visited set with node i marked True."""
     return mapSet(flags, toString(i), True)
 
 

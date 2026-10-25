@@ -19,22 +19,50 @@ static long g_checks = 0;
   } while (0)
 
 #if defined(OSP_SYMBOLIC) && defined(OSP_HUNT_ARC)
+#include "memory_hooks.h"
 void osp_retain(void *object);
 void osp_release(void *object);
-size_t osp_arc_live_objects(void);
+void *osp_alloc_tagged(int64_t size, int64_t meta);
+static unsigned finalized;
+static void *arc_root;
+
+static void finalized_once(void *body) {
+  CHECK(body == arc_root);
+  CHECK(((unsigned char *)body)[16] == 'A');
+  finalized++;
+}
+
+static unsigned char *new_arc_object(void) {
+  unsigned char *root = osp_alloc_tagged(24, OSP_MEM_LIST_HDR_EXTERN);
+  CHECK(root != NULL);
+  memset(root, 0, 24);
+  root[16] = root[23] = 'A';
+  return root;
+}
+
+static void arc_growth_reclaims_all(void) {
+  unsigned char *objects[64];
+  for (unsigned i = 0; i < 64; i++) objects[i] = new_arc_object();
+  CHECK(finalized == 1);
+  for (unsigned i = 0; i < 64; i++) {
+    arc_root = objects[i];
+    osp_release(objects[i]);
+    CHECK(finalized == i + 2);
+  }
+}
 
 int main(void) {
-  CHECK(osp_arc_live_objects() == 0);
-  unsigned char *root = osp_alloc(8);
-  CHECK(root != NULL);
-  memset(root, 'A', 8);
-  CHECK(osp_arc_live_objects() == 1);
+  osp_mem_set_finalizer(finalized_once);
+  CHECK(finalized == 0);
+  unsigned char *root = new_arc_object();
+  arc_root = root;
   osp_retain(root);
   osp_release(root);
-  CHECK(osp_arc_live_objects() == 1);
-  CHECK(root[0] == 'A' && root[7] == 'A');
+  CHECK(finalized == 0);
+  CHECK(root[16] == 'A' && root[23] == 'A');
   osp_release(root);
-  CHECK(osp_arc_live_objects() == 0);
+  CHECK(finalized == 1);
+  arc_growth_reclaims_all();
   return 0;
 }
 #elif !defined(OSP_SYMBOLIC)

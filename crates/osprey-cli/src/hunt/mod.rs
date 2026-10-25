@@ -88,6 +88,11 @@ fn hunt(options: &Options) -> Result<(String, ExitCode), ExitCode> {
     paths.mark_owned().map_err(|message| tool_error(&message))?;
     let info = std::fs::read_to_string(paths.out_dir.join("info")).unwrap_or_default();
     let exploration = engine::exploration(&info);
+    if exploration.paths == 0 && ending == engine::Ending::Finished {
+        return Err(tool_error(
+            "KLEE exited without valid exploration statistics",
+        ));
+    }
     let scanner = if options.replay {
         findings::scan_all
     } else {

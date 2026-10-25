@@ -43,11 +43,19 @@
         "threshold": 95,
         "language": "rust"
       },
+      "osprey-fmt": {
+        "threshold": 95,
+        "language": "rust"
+      },
       "osprey-lsp": {
         "threshold": 98,
         "language": "rust"
       },
       "osprey-profiler": {
+        "threshold": 95,
+        "language": "rust"
+      },
+      "osprey-project": {
         "threshold": 95,
         "language": "rust"
       },
@@ -69,9 +77,6 @@
       }
     },
     "c_runtime": {
-      "memory_runtime": {
-        "language": "c"
-      },
       "memory_arc": {
         "threshold": 95,
         "language": "c"
@@ -193,6 +198,9 @@
       "http_client_runtime": {
         "language": "c"
       },
+      "http_client_response": {
+        "language": "c"
+      },
       "http_server_request": {
         "threshold": 95,
         "language": "c"
@@ -236,10 +244,10 @@
       },
       "micrograd": {
         "language": "osprey",
-        "threshold": 97.4
+        "threshold": 97.5
       },
       "native": {
-        "threshold": 91.6,
+        "threshold": 91.7,
         "language": "osprey"
       },
       "numpy": {
@@ -289,6 +297,10 @@
       "transformers": {
         "language": "osprey",
         "threshold": 97.5
+      },
+      "vscode": {
+        "language": "osprey",
+        "threshold": 100.0
       }
     }
   }

@@ -40,6 +40,12 @@ type Incoming =
         eventRevision : int
         eventOrdinal : int
         eventValue : Json
+    PreviousControl
+        priorState : string
+        editRegion : string
+        editRevision : int
+        editOrdinal : int
+        editValue : Json
     Finished
         doneTicket : string
         doneOutcome : Result<Json, Error>
@@ -59,6 +65,7 @@ module Events
 
     body (doc, kind) = match kind
         "ui" => Success(value = Control(eventRegion = Doc::text (doc, "region"), eventRevision = Doc::number (doc, "revision"), eventOrdinal = Doc::number (doc, "ordinal"), eventValue = Doc::field (doc, "value")))
+        "ui-edit" => Success(value = PreviousControl(priorState = Doc::text (doc, "prior"), editRegion = Doc::text (doc, "region"), editRevision = Doc::number (doc, "revision"), editOrdinal = Doc::number (doc, "ordinal"), editValue = Doc::field (doc, "value")))
         "completed" => Success(value = Finished(doneTicket = Doc::text (doc, "ticket"), doneOutcome = outcome doc))
         "lifecycle" => Success(value = Lifecycle(lifecyclePhase = Doc::text (doc, "phase")))
         _ => Error(message = "Unknown event kind: ${kind}")

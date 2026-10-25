@@ -102,17 +102,7 @@ pub(super) fn specialize_value(value: &mut Value, bindings: &HashMap<String, Str
             specialize_value(returned, bindings);
         }
     }
-    for nested in value.fields.values_mut() {
-        specialize_value(nested, bindings);
-    }
-    for nested in [
-        value.element.as_mut(),
-        value.result_payload.as_mut(),
-        value.fiber_payload.as_mut(),
-    ]
-    .into_iter()
-    .flatten()
-    {
+    for nested in value.container_children_mut() {
         specialize_value(nested, bindings);
     }
 }

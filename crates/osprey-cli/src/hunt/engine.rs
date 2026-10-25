@@ -39,6 +39,7 @@ pub(crate) fn arguments(
         "--optimize",
         "--kdalloc",
         "--rng-initial-seed=5489",
+        "--search=dfs",
         "--check-div-zero",
         "--check-overshift",
         "--emit-all-errors",
@@ -95,15 +96,21 @@ pub(crate) fn run(
             limit.as_secs()
         )
     })?;
-    if status.success() {
+    let stderr = std::fs::read_to_string(stderr_path).unwrap_or_default();
+    let crashed = stderr.contains("llvm::sys::PrintStackTrace");
+    if status.success() && !crashed {
         return Ok(Ending::Finished);
     }
-    let stderr = std::fs::read_to_string(stderr_path).unwrap_or_default();
-    if halted_by_watchdog(&stderr) {
+    if halted_by_watchdog(&stderr) && !crashed {
         return Ok(Ending::Halted);
     }
+    let reason = if crashed {
+        "interpreter crashed".to_string()
+    } else {
+        status.to_string()
+    };
     Err(format!(
-        "klee failed ({status}):\n{}",
+        "klee failed ({reason}):\n{}",
         excerpt(&stderr).join("\n")
     ))
 }
@@ -198,6 +205,17 @@ mod tests {
     }
 
     #[test]
+    fn depth_first_search_finishes_each_symbolic_path_before_moving_on() {
+        let args = arguments(
+            Path::new("rt.bc"),
+            Path::new("out"),
+            (30, 2000),
+            Path::new("p.ll"),
+        );
+        assert!(args.contains(&"--search=dfs".to_string()));
+    }
+
+    #[test]
     fn info_lines_become_exploration_counts() {
         let info = "Elapsed: 00:01:00\nKLEE: done: explored paths = 488\nKLEE: done: total instructions = 650279\nKLEE: done: completed paths = 106\nKLEE: done: partially completed paths = 382\n";
         let exploration = exploration(info);
@@ -235,6 +253,24 @@ mod tests {
         let path = stderr_path("missing");
         let error = run(Path::new("/nonexistent/klee"), &[], &path, 1).expect_err("missing klee");
         crate::testkit::shows(&error, &["could not run /nonexistent/klee"]);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_crashed_interpreter_is_not_hidden_by_its_watchdog_status() {
+        let path = stderr_path("watchdog-crash");
+        for status in [0, 1, 137] {
+            let script = format!(
+                "printf '%s\\n' 'KLEE: WARNING: KLEE: WATCHDOG: time expired' ' #0 llvm::sys::PrintStackTrace(llvm::raw_ostream&, int)' >&2; exit {status}"
+            );
+            let result = run(Path::new("/bin/sh"), &["-c".into(), script], &path, 1);
+            assert!(
+                result.is_err(),
+                "interpreter crash with watchdog status {status}: {result:?}"
+            );
+            assert!(result.expect_err("crash").contains("PrintStackTrace"));
+        }
         let _ = std::fs::remove_file(&path);
     }
 

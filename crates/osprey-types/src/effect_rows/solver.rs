@@ -230,17 +230,7 @@ pub(super) fn clear_value_verdicts(value: &mut Value) {
     if let Some(Callable::Parameter { projection, .. }) = &mut value.callable {
         map_projection_values(projection, clear_value_verdicts);
     }
-    for nested in value.fields.values_mut() {
-        clear_value_verdicts(nested);
-    }
-    for nested in [
-        value.element.as_mut(),
-        value.result_payload.as_mut(),
-        value.fiber_payload.as_mut(),
-    ]
-    .into_iter()
-    .flatten()
-    {
+    for nested in value.container_children_mut() {
         clear_value_verdicts(nested);
     }
 }

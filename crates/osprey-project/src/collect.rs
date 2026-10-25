@@ -20,7 +20,12 @@ pub(crate) fn collect(
     };
     for (index, contribution) in contributions.iter().enumerate() {
         let namespace = contribution.namespace.label();
-        let _ = collector.graph.namespaces.insert(namespace.to_string());
+        let _ = collector
+            .graph
+            .namespaces
+            .entry(namespace.to_string())
+            .or_default()
+            .insert(contribution.source);
         for statement in &contribution.statements {
             collector.statement(
                 statement,
@@ -409,6 +414,7 @@ impl Collector<'_> {
         opaque: bool,
     ) {
         let info = DeclInfo {
+            source,
             kind,
             visibility,
             owner: owner.to_vec(),

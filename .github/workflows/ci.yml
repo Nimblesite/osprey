@@ -371,6 +371,50 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+  test-registry-gc:
+    name: "Tests: package manager (gc)"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
+      - uses: actions/download-artifact@v4
+        with:
+          name: osprey-build
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey
+      - name: Package manager security and integration suites
+        run: make _test_registry REGISTRY_MEMORY=gc
+
+  test-registry-arc:
+    name: "Tests: package manager (arc)"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
+      - uses: actions/download-artifact@v4
+        with:
+          name: osprey-build
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey
+      - name: Package manager security and integration suites
+        run: make _test_registry REGISTRY_MEMORY=arc
+
   test-python-app-ports:
     name: "Tests: Python application ports"
     needs: [changes, build]
@@ -633,7 +677,7 @@ jobs:
           done
 
       - name: WebAssembly differential — whole tests/ corpus vs the native goldens
-        run: OSPREY_TARGET=wasm32 zsh crates/run_test_corpus.sh
+        run: make _test_wasm_goldens
 
   # Builds the site and runs the Playwright suite: every page template at three
   # breakpoints (no JS errors, no horizontal overflow, dark theme, chrome
@@ -888,11 +932,15 @@ jobs:
   # and simulator tests. macos-15 is ARM64, matching the simulator archive.
   coverage:
     name: Coverage thresholds
-    needs: [changes, test-rust, test-extension, test-packages]
-    if: ${{ needs.changes.outputs.code == 'true' }}
+    needs: [changes, test-rust, test-extension, test-packages, test-registry-gc, test-registry-arc]
+    if: ${{ always() && needs.changes.outputs.code == 'true' }}
     runs-on: macos-15
     timeout-minutes: 45
     steps:
+      - name: Package manager suites passed
+        run: |
+          test "${{ needs.test-registry-gc.result }}" = "success"
+          test "${{ needs.test-registry-arc.result }}" = "success"
       - uses: actions/checkout@v4
         # lsp-profiler is a path dependency in the lspkit submodule, and cargo
         # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].

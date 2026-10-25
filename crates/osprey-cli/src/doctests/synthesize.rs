@@ -93,13 +93,7 @@ fn assemble(
             backend: project.backend_program().clone(),
             checked: project.program,
         })
-        .map_err(|errors| {
-            errors
-                .iter()
-                .map(|error| crate::project::format_project_error(error, "doctest"))
-                .collect::<Vec<_>>()
-                .join("\n")
-        })
+        .map_err(|errors| crate::project::format_project_errors(&errors, "doctest"))
 }
 
 fn inject(statements: &mut Vec<Stmt>, scope: &[usize], body: Program) -> Result<Expr, String> {

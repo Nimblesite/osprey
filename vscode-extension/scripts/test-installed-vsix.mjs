@@ -38,7 +38,7 @@ const compilerHash = createHash("sha256")
   .update(fs.readFileSync(compiler))
   .digest("hex");
 const clientHashes = Object.fromEntries(
-  ["extension", "warning-fixes", "package-api", "package-commands", "package-frontend", "package-listing"].map((name) => [
+  ["extension", "warning-fixes", "package-api", "package-commands", "package-frontend", "package-listing", "package-workspace"].map((name) => [
     name,
     createHash("sha256")
       .update(
@@ -51,6 +51,8 @@ const clientHashes = Object.fromEntries(
 );
 const packageClient = path.resolve(extensionRoot, "..", "target", process.platform === "win32" ? "osprey-pkg.exe" : "osprey-pkg");
 const packageClientHash = createHash("sha256").update(fs.readFileSync(packageClient)).digest("hex");
+const packageWorkspace = path.resolve(extensionRoot, "..", "target", "package-workspace.wasm");
+const packageWorkspaceHash = createHash("sha256").update(fs.readFileSync(packageWorkspace)).digest("hex");
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-installed-vsix-"));
 const extensions = path.join(root, "extensions");
 const profile = path.join(root, "profile");
@@ -142,6 +144,7 @@ try {
       OSPREY_VSIX_EXTENSIONS: extensions,
       OSPREY_VSIX_COMPILER_SHA256: compilerHash,
       OSPREY_VSIX_PACKAGE_CLIENT_SHA256: packageClientHash,
+      OSPREY_VSIX_PACKAGE_WORKSPACE_SHA256: packageWorkspaceHash,
       OSPREY_VSIX_CLIENT_HASHES: JSON.stringify(clientHashes),
       OSPREY_VSIX_SOURCE_EXTENSION: extensionRoot,
       OSPREY_VSIX_PATH_TRAP: trapMarker,

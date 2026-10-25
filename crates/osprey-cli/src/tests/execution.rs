@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn native_float_remainder_links_its_platform_math_runtime() {
-    for backend in ["default", "gc", "arc"] {
+    for backend in ["gc", "arc"] {
         let flags = link_args("%value = frem double %left, %right", "", backend);
         assert_eq!(
             flags.iter().any(|flag| flag == "-lm"),
@@ -16,23 +16,19 @@ fn native_float_remainder_links_its_platform_math_runtime() {
 
 #[test]
 fn link_args_adds_ffi_directives_and_openssl_for_http() {
-    let ffi = link_args(
-        "",
-        "// @link: sqlite3\n// @linkdir: /opt/lib\ncode\n",
-        "default",
-    );
+    let ffi = link_args("", "// @link: sqlite3\n// @linkdir: /opt/lib\ncode\n", "gc");
     assert!(ffi.iter().any(|a| a == "-lsqlite3"), "{ffi:?}");
     assert!(ffi.iter().any(|a| a == "-L/opt/lib"), "{ffi:?}");
-    let http = link_args("call void @http_listen()", "", "default");
+    let http = link_args("call void @http_listen()", "", "arc");
     assert!(http.iter().any(|a| a == "-lssl") && http.iter().any(|a| a == "-lcrypto"));
     // No HTTP markers => no openssl flags.
-    let plain = link_args("call void @osprey_list_empty()", "", "default");
+    let plain = link_args("call void @osprey_list_empty()", "", "gc");
     assert!(!plain.iter().any(|a| a == "-lssl"));
 }
 
 #[test]
 fn link_args_selects_gc_archive_and_validates_backend() {
-    // [MEM-BACKENDS] `gc`/`arc` swap archives; `default` does not.
+    // [MEM-BACKENDS] Each managed backend selects only its own archive.
     let gc = link_args("call void @osprey_list_empty()", "", "gc");
     assert!(
         gc.iter().any(|a| a.contains("_gc.a")) || gc.is_empty(),
@@ -43,9 +39,8 @@ fn link_args_selects_gc_archive_and_validates_backend() {
         arc.iter().any(|a| a.contains("_arc.a")) || arc.is_empty(),
         "arc backend must select a *_arc archive when one is present: {arc:?}"
     );
-    let plain = link_args("call void @osprey_list_empty()", "", "default");
-    assert!(!plain.iter().any(|a| a.contains("_gc.a")), "{plain:?}");
-    assert!(!plain.iter().any(|a| a.contains("_arc.a")), "{plain:?}");
+    assert!(!arc.iter().any(|a| a.contains("_gc.a")), "{arc:?}");
+    assert!(!gc.iter().any(|a| a.contains("_arc.a")), "{gc:?}");
     // Unmanaged execution requires the explicit none option.
     assert_eq!(parse_memory("gc").as_deref(), Ok("gc"));
     assert_eq!(parse_memory("none").as_deref(), Ok("none"));

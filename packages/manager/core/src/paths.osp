@@ -69,6 +69,10 @@ module Paths {
     /// True for the root control files and `.osprey/` state the digest excludes.
     export fn excluded(path) = listContains(excludedFiles, path) || startsWith(path, statePrefix)
 
+    /// Generated tooling state is never publication input, even inside a source root.
+    export fn generatedCache(path) = foldList(split(path, "/") ?: [path], false, fn(found, part) =>
+        found || listContains([".deslop", ".osprey", ".git", "__pycache__"], toLowerCase(part)))
+
     fn legalDocument(path) = foldList(legalStems, false, fn(found, stem) => found
         || foldList(legalSuffixes, false, fn(matched, suffix) => matched || path == "${stem}${suffix}"))
 

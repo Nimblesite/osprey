@@ -8,10 +8,12 @@
 // evidence is presented as unverified, never as safe.
 
 import * as fs from "fs";
+import { createProjectSerializer } from "./keyed-serializer";
+export { createProjectSerializer };
 import * as path from "path";
-import { fetchListingText } from "./package-api";
+import { fetchListingText, registryUrl, isDevelopmentRegistry } from "./package-api";
 import { shipwrightPlatform } from "./client-config";
-import { commands, ProgressLocation, window, workspace } from "vscode";
+import { commands, ProgressLocation, Uri, window, workspace } from "vscode";
 import {
   PackageEntry,
   dependencyKeys,
@@ -44,14 +46,14 @@ export interface PackageCommandDeps {
   ui: Ui;
   frontend: FrontendRunner;
   /** The configured registry base URL ([PACKAGE-API] `--registry`). */
-  registry(): string;
+  registry(root?: string): string;
   projectRoots(): string[];
   /** `osprey.toml` text of a project root, or undefined when absent. */
   manifestText(root: string): string | undefined;
   /** Unsaved editor paths that a mutation would clobber. */
   dirtyFiles(): string[];
   /** The raw `GET /v1/packages` body. */
-  fetchListing(): Promise<string>;
+  fetchListing(root?: string): Promise<string>;
   /** Whether the user cancelled the invoking command. */
   cancelled(): boolean;
 }
@@ -85,12 +87,16 @@ const vscodeUi: Ui = {
     window.withProgress({ location: ProgressLocation.Notification, title: options.title }, () => task()),
 };
 
+function registryFor(root?: string): string {
+  return workspace.getConfiguration("osprey", root ? Uri.file(root) : undefined).get<string>(REGISTRY_CONFIG) || DEFAULT_REGISTRY;
+}
+
 /** The production deps: real editor state, real frontend, configured registry. */
 export function defaultPackageDeps(extensionPath?: string): PackageCommandDeps {
   return {
     ui: vscodeUi,
     frontend: defaultFrontend(extensionPath),
-    registry: () => workspace.getConfiguration("osprey").get<string>(REGISTRY_CONFIG) || DEFAULT_REGISTRY,
+    registry: registryFor,
     projectRoots: () => (workspace.workspaceFolders ?? []).map((folder) => folder.uri.fsPath),
     manifestText: (root) => {
       try {
@@ -101,39 +107,23 @@ export function defaultPackageDeps(extensionPath?: string): PackageCommandDeps {
     },
     dirtyFiles: () =>
       workspace.textDocuments.filter((doc) => doc.isDirty).map((doc) => doc.fileName),
-    fetchListing: () => fetchListingText(workspace.getConfiguration("osprey").get<string>(REGISTRY_CONFIG) || DEFAULT_REGISTRY),
+    fetchListing: (root) => fetchListingText(registryFor(root)),
     cancelled: () => false,
   };
 }
 
-/**
- * Mutations on one project root run strictly one at a time: every task is
- * chained onto the previous one's promise, so overlapping palette invocations
- * queue instead of racing the CLI's atomic relock.
- */
-export function createProjectSerializer() {
-  const tails = new Map<string, Promise<unknown>>();
-  return function serialize<T>(root: string, task: () => Promise<T>): Promise<T> {
-    const tail = tails.get(root) ?? Promise.resolve();
-    const next = tail.then(task, task);
-    const settled = next.catch(() => undefined);
-    tails.set(root, settled);
-    settled.then(() => { if (tails.get(root) === settled) tails.delete(root); });
-    return next;
-  };
-}
 
-function settingsOf(deps: PackageCommandDeps): string[] {
-  return ["--registry", deps.registry(), "--project", "."];
+function settingsOf(deps: PackageCommandDeps, root: string): string[] {
+  return ["--registry", registryUrl(deps.registry(root)).origin, "--project", "."];
 }
 
 /** The single frontend command an add boils down to, run from the project root. */
-function addCommand(deps: PackageCommandDeps, key: string): string {
-  return buildStdinCommand(["--json", "add", key, ...settingsOf(deps)]);
+function addCommand(deps: PackageCommandDeps, key: string, root: string): string {
+  return buildStdinCommand(["--json", "add", key, ...settingsOf(deps, root)]);
 }
 
-function removeCommand(deps: PackageCommandDeps, key: string): string {
-  return buildStdinCommand(["--json", "remove", key, ...settingsOf(deps)]);
+function removeCommand(deps: PackageCommandDeps, key: string, root: string): string {
+  return buildStdinCommand(["--json", "remove", key, ...settingsOf(deps, root)]);
 }
 
 function dirtyBlockers(deps: PackageCommandDeps, root: string): string[] {
@@ -176,9 +166,13 @@ async function pickProject(deps: PackageCommandDeps): Promise<string | undefined
   return chosen?.root;
 }
 
-async function chooseAddition(deps: PackageCommandDeps) {
+async function chooseAddition(deps: PackageCommandDeps, root: string) {
   try {
-    const text = await deps.ui.withProgress({ title: "Osprey Packages: Loading registry" }, () => deps.fetchListing());
+    const text = await deps.ui.withProgress({ title: "Osprey Packages: Loading registry" }, () => deps.fetchListing(root));
+    if (!isDevelopmentRegistry(deps.registry(root))) {
+      deps.ui.showErrorMessage("This registry listing has no security eligibility or advisory evidence. Hosted package installation is unavailable until that API contract is implemented.");
+      return undefined;
+    }
     const entries = listingOf(parseListing(text));
     if (entries.length) return deps.ui.showQuickPick(entries.map(pickOf));
     deps.ui.showErrorMessage("The registry listing is unavailable or lists no org-qualified packages.");
@@ -193,7 +187,7 @@ export function makeAddHandler(deps: PackageCommandDeps, serialize = createProje
   return async () => {
     const root = await pickProject(deps);
     if (!root || deps.cancelled() || warnDirty(deps, root)) return;
-    const entry = await chooseAddition(deps);
+    const entry = await chooseAddition(deps, root);
     if (!entry || deps.cancelled() || warnDirty(deps, root)) return;
     if (!await deps.ui.showWarningMessage(warningFor(entry))) return;
     await queueMutation(deps, serialize, root, entry.key, "Add");
@@ -204,7 +198,7 @@ function queueMutation(deps: PackageCommandDeps, serialize: ReturnType<typeof cr
   return serialize(root, async () => {
     if (deps.cancelled() || warnDirty(deps, root)) return;
     await report(deps, key, verb, () => deps.frontend.run(
-      verb === "Add" ? addCommand(deps, key) : removeCommand(deps, key), root));
+      verb === "Add" ? addCommand(deps, key, root) : removeCommand(deps, key, root), root));
   });
 }
 
@@ -244,24 +238,19 @@ export function makeRemoveHandler(deps: PackageCommandDeps, serialize = createPr
   };
 }
 
-/**
- * Register `osprey.packages.add` and `osprey.packages.remove` on
- * `context.subscriptions`, sharing one per-project serializer so an add and a
- * remove on the same root can never overlap.
- */
-export function registerPackageCommands(
-  context: { extensionPath?: string; subscriptions: { push(item: { dispose(): unknown }): unknown } },
-  deps: PackageCommandDeps = defaultPackageDeps(context.extensionPath),
-): void {
-  const serialize = createProjectSerializer();
-  context.subscriptions.push(commands.registerCommand("osprey.packages.add", trusted(makeAddHandler(deps, serialize))));
-  context.subscriptions.push(commands.registerCommand("osprey.packages.remove", trusted(makeRemoveHandler(deps, serialize))));
+/** VS Code capabilities used by the two package-workspace aliases. */
+export interface PackageCommandHost {
+  registerCommand(id: string, callback: (uri?: Uri) => Thenable<unknown>): { dispose(): unknown };
+  executeCommand(id: string, uri?: Uri): Thenable<unknown>;
 }
 
-function trusted(run: () => Promise<void>): () => Promise<void> {
-  return async () => {
-    if (!workspace.isTrusted) { await window.showErrorMessage("Trust this workspace before changing packages."); return; }
-    try { await run(); }
-    catch (error) { await window.showErrorMessage(`Osprey Packages: ${String((error as Error).message)}`); }
-  };
+/** Register Add/Remove as aliases of the Osprey WASM package workspace. */
+export function registerPackageCommands(
+  context: { subscriptions: { push(item: { dispose(): unknown }): unknown } },
+  host: PackageCommandHost = commands,
+): void {
+  for (const id of ["osprey.packages.add", "osprey.packages.remove"]) {
+    context.subscriptions.push(host.registerCommand(id, (uri) =>
+      host.executeCommand("osprey.packages.open", uri)));
+  }
 }

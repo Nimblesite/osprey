@@ -5,6 +5,17 @@ import registry_api::HostedHeaders
 /// whitespace/controls, size limits and duplicate sensitive headers.
 /// Implements [PACKAGE-HOSTED-EDGE] header controls.
 module HeaderTests {
+    fn flatHeaders() = {
+        let parsed = HostedHeaders::parse("X-One:one\nX-Two:two")
+        let headers = HostedHeaders::headers(parsed)
+        checkAll("headers: flat records retain wire order", [
+            HostedHeaders::isOk(parsed),
+            length(headers) == 2,
+            structuralEquals(mapList(headers, fn(header) => match header { HostedHeaders::Header { name } => name }), ["X-One", "X-Two"]),
+            structuralEquals(mapList(headers, fn(header) => match header { HostedHeaders::Header { value } => value }), ["one", "two"])
+        ])
+    }
+
     fn happy() = {
         let parsed = HostedHeaders::parse("Host: api.example.test\r\nAuthorization: Bearer t0k")
         let headers = HostedHeaders::headers(parsed)
@@ -45,6 +56,7 @@ module HeaderTests {
     ])
 
     export fn run() = {
+        test("hosted headers: flat records", flatHeaders)
         test("hosted headers: happy path", happy)
         test("hosted headers: malformed lines", rejects)
         test("hosted headers: duplicate sensitive headers", duplicates)

@@ -3,6 +3,20 @@ use super::*;
 
 #[test]
 #[cfg(unix)]
+fn an_engine_without_statistics_cannot_fabricate_a_clean_report() {
+    let scene = Scene::new("missing-engine-statistics", "print(\"hello\")\n");
+    let result = run_scene(&scene, 0, &["--json", "--no-replay"]);
+    assert!(
+        matches!(result, Err(code) if code == ExitCode::from(2)),
+        "{result:?}"
+    );
+    let directory = PathBuf::from("target/hunt").join(scratch_stem(&scene.program()));
+    assert!(!directory.join("report.html").exists());
+    assert!(!directory.join("report.json").exists());
+}
+
+#[test]
+#[cfg(unix)]
 fn hunt_saves_both_reports_by_default_and_keeps_json_stdout_parseable() {
     let scene = Scene::new("saved-reports", "print(\"hello\")\n");
     scene.canned_finding();

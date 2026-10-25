@@ -1,5 +1,6 @@
 namespace registry_tests;
 import registry::Toml
+import registry::TomlLexer
 
 /// The TOML subset parser from [PACKAGE-MANIFEST]: the exact spec manifest,
 /// array-of-tables and dotted-key documents, accessors, escape decoding,
@@ -119,6 +120,43 @@ module TomlTests {
         codeAt(Toml::parse("a = @")) == "toml.unexpected-token at 1:5"
     ])
 
+    fn scannedMatches(result, expected, offset) = match result {
+        Success { value } => value.text == expected && value.at.at == offset && value.at.line == 1 && value.at.column == offset + 1
+        Error => false
+    }
+
+    fn longQuotedStrings() = {
+        let plain = repeat("s", 4096) ?: ""
+        let escaped = repeat("\\t", 4096) ?: ""
+        let unicode = repeat("\\u0073", 4096) ?: ""
+        checkAll("long strings retain decoded bytes, cursors and exact failures", [
+            byteLength(plain) == 4096,
+            scannedMatches(TomlLexer::basicString(TomlLexer::start("\"${plain}\" trailing")), plain, 4098),
+            scannedMatches(TomlLexer::basicString(TomlLexer::start("\"${escaped}\"")), repeat("\t", 4096) ?: "", 8194),
+            scannedMatches(TomlLexer::basicString(TomlLexer::start("\"${unicode}\"")), plain, 24578),
+            scannedMatches(TomlLexer::literalString(TomlLexer::start("'${plain}' trailing")), plain, 4098),
+            codeAt(TomlLexer::basicString(TomlLexer::start("\"${plain}"))) == "toml.unterminated-string at 1:1",
+            codeAt(TomlLexer::literalString(TomlLexer::start("'${plain}\n"))) == "toml.unterminated-string at 1:1",
+            codeAt(TomlLexer::basicString(TomlLexer::start("\"${plain}${fromCodePoint(1) ?: ""}\""))) == "toml.control-character at 1:4098"
+        ])
+    }
+
+    fn cursorIs(c, offset, line, column) = c.at == offset && c.line == line && c.column == column
+
+    fn longByteRuns() = {
+        let plain = repeat("x", 8192) ?: ""
+        checkAll("long byte runs preserve boundaries and positions", [
+            cursorIs(TomlLexer::skipSpaces(TomlLexer::start("${repeat(" ", 8192) ?: ""}x")), 8192, 1, 8193),
+            cursorIs(TomlLexer::skipTrivia(TomlLexer::start("#${plain}\nx")), 8194, 2, 1),
+            cursorIs(TomlLexer::skipTrivia(TomlLexer::start("${repeat("\n", 4096) ?: ""}x")), 4096, 4097, 1),
+            match TomlLexer::scanBare(TomlLexer::start("${plain}#tail")) {
+                Success { value } => value.token == plain && cursorIs(value.at, 8192, 1, 8193)
+                Error => false
+            },
+            codeAt(TomlLexer::scanBare(TomlLexer::start("${plain}${fromCodePoint(233) ?: ""}"))) == "toml.non-ascii at 1:8193"
+        ])
+    }
+
     export fn run() = {
         test("toml: manifest example", manifestDoc)
         test("toml: array-of-tables", arrayTables)
@@ -128,5 +166,7 @@ module TomlTests {
         test("toml: integers", integers)
         test("toml: arrays", arrays)
         test("toml: rejections", rejections)
+        test("toml: long quoted strings", longQuotedStrings)
+        test("toml: long byte runs", longByteRuns)
     }
 }

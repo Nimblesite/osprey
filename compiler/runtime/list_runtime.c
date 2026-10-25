@@ -42,7 +42,7 @@ typedef struct OspreyListNode {
  * dup loop and the drop walk serve both. Internal-vs-leaf is intrinsic: growth
  * stacks internals above a subtree, push_tail installs the tail chunk (a leaf)
  * at OSPREY_LIST_BITS — kinds never change. */
-#define NODE_PTRS_LAYOUT OSP_MEM_LAYOUT((uint64_t)0xFFFFFFFFu)
+#define NODE_PTRS_LAYOUT ((int64_t)OSP_MEM_PTR_ARRAY)
 /* A scalar-element leaf: type-blind int64s whose bits may collide with a live
  * heap address, so the drop walk must never touch them. */
 #define NODE_SCALAR_LAYOUT ((int64_t)OSP_MEM_RAW)

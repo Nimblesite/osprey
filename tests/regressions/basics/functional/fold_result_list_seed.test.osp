@@ -17,6 +17,22 @@ fn shown(parsed) = match parsed {
     Error { message } => message
 }
 
-print(shown(foldList(["a", "b", "c"], Success { value: [] }, step)))
-print(shown(foldList(["x"], Success { value: ["seed"] }, step)))
-print(shown(foldList(["a", "", "c"], Success { value: [] }, step)))
+/// Nested Results must preserve the record payload while accumulating a list.
+type FoldEntry = { key: string }
+fn makeEntry(ok) = match ok {
+    true => Success { value: FoldEntry { key: "ok" } }
+    false => Error { message: "no" }
+}
+fn appendEntry(pending, request) = match pending {
+    Error { message } => Error { message: message }
+    Success { values } => match request {
+        Error { message } => Error { message: message }
+        Success { item } => Success { value: listAppend(values, item) }
+    }
+}
+fn entryCount(items) = match foldList(items, Success { value: [] }, appendEntry) {
+    Error { message } => message
+    Success { entries } => "${listLength(entries)}"
+}
+
+print("${shown(foldList(["a", "b", "c"], Success { value: [] }, step))}\n${shown(foldList(["x"], Success { value: ["seed"] }, step))}\n${shown(foldList(["a", "", "c"], Success { value: [] }, step))}\n${entryCount([makeEntry(true)])}|${entryCount([makeEntry(false)])}")

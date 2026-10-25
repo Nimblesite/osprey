@@ -3,9 +3,9 @@
     { "text": "Documentation home", "url": "/docs/", "group": "Docs" },
     { "text": "Algebraic effects", "url": "/docs/effects/", "group": "Docs" },
     { "text": "Language specification", "url": "/spec/", "group": "Docs" },
-    { "text": "Install Osprey", "url": "/docs/installation/", "group": "Tools" },
-    { "text": "Playground", "url": "/playground/", "group": "Tools" },
-    { "text": "Benchmarks", "url": "/benchmarks/", "group": "Tools" },
+    { "text": "Install Osprey", "url": "/docs/installation/", "group": "Docs" },
+    { "text": "Playground", "url": "/playground/" },
+    { "text": "Benchmarks", "url": "/benchmarks/" },
     { "text": "Blog", "url": "/blog/" },
     { "text": "GitHub", "url": "https://github.com/Nimblesite/osprey", "external": true }
   ],
@@ -43,6 +43,7 @@
       "title": "Packages",
       "items": [
         { "text": "Package manager", "url": "/docs/package-manager/" },
+        { "text": "Packages in VS Code", "url": "/docs/packages-in-vscode/" },
         { "text": "Package specification", "url": "/spec/0029-packagemanagement/" }
       ]
     },

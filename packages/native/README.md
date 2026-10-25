@@ -137,17 +137,23 @@ An application exports `Runtime::start (context, init, render, save, theme)` and
 
 Events are `{"kind":"ui","region","revision","ordinal","value","now"}`, `{"kind":"completed","ticket","ok","result","error","now"}` and `{"kind":"lifecycle","phase","now"}`. A host bounds string length, tree depth and node count before decoding.
 
+### Pending edits [UI-EVENTS]
+
+Ordinary `ui` events require the current region revision. A host retaining the opaque session that issued an older control can send `{"kind":"ui-edit","prior","region","revision","ordinal","value","now"}`. The framework validates that original revision, recovers its typed binding, and looks for exactly one structurally equal binding in the current region. Missing or ambiguous bindings refuse the event without changing the current store or issuing capabilities. A successful edit updates the current session; it never restores the prior store. Labels, DOM positions and matching ordinals do not establish binding identity across revisions.
+
+The host selects `prior` from its own bounded history. The VS Code adapter accepts string edits, retains at most 32 issued snapshots, and returns an explicit receipt before rendering the result. A normalized value therefore acknowledges delivery rather than causing repeated input. Expired controls are explicitly refused, and an edit error must remain visible alongside subsequent host diagnostics.
+
 ## Hosts
 
 A host initializes the library once, calls it only from its UI thread, copies every returned string immediately, keeps the slices and the region store, renders nodes with native controls, maps tokens to colours and runs capability adapters off the UI thread before delivering completions back through the dispatcher. It must not filter, sort, label, validate, decide visibility or compose application screens. Vigil's `Sources/OspreyNative` is the SwiftUI, AppKit and UIKit host; Android can supply a Kotlin host over the same protocol.
 
 ## Memory boundary
 
-The Apple targets support only `--memory=default`, whose general allocations live for the process lifetime, and Osprey has no host-facing string release API. Every dispatch therefore leaks the strings it allocates, and a string returned for `Slices.fetch` must remain valid for the process lifetime. Signals bound the leak to what changed: keystrokes refresh small regions and never decode unrelated host-held slices, and large slices are re-encoded only when written. This is a measured mitigation, not bounded memory.
+Apple archives and WebAssembly default to ARC; native executables default to GC and also support ARC. Exported application globals persist across host calls. Hosts must follow the generated target ABI and use its matching runtime when handling returned pointers and host-owned slice strings. The [macOS example](../../examples/macos) exercises the scalar ABI and persistent globals.
 
 ## Using the package
 
-Osprey's package client is not released, so a consumer lists the package's source root today, first ([#277](https://github.com/Nimblesite/osprey/issues/277)):
+A consumer can list the package's source root directly, first ([#277](https://github.com/Nimblesite/osprey/issues/277)):
 
 ```toml
 [project]
@@ -155,4 +161,4 @@ name = "app"
 source_roots = ["../.osprey/packages/@osprey/native/src", "src"]
 ```
 
-Once the registry serves it, the same consumer declares `"@osprey/native" = { epoch = 1, min_release = 1 }` under `[dependencies]` and the client installs it under `.osprey/packages`. The package itself has no entry; `osprey packages/native/tests --check` analyses it, `osprey packages/native/tests --run` runs its suite and `osprey test packages/native/tests --coverage` measures it: every source file is fully covered, and the four lines the report leaves out in `tests/runtime.ospml` are the probe's functions handed to `Runtime::start`, which the coverage counter misses on their first line ([#296](https://github.com/Nimblesite/osprey/issues/296)).
+When the configured registry serves it, the same consumer declares `"@osprey/native" = { epoch = 1, min_release = 1 }` under `[dependencies]` and the client installs it under `.osprey/packages`. The package itself has no entry. `osprey packages/native/tests --check` analyses it, and `osprey packages/native/tests --run --memory=arc` runs its suite; repeat with `--memory=gc`. `python3 scripts/package_coverage.py --collect --package native` measures its own source and enforces its threshold in `coverage-thresholds.json`.

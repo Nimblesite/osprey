@@ -31,6 +31,34 @@ pub fn compile_library(program: &Program) -> Result<String> {
     compile_module(program, CodegenOptions::default(), true)
 }
 
+/// Compile a whole program for wasm32, whose 4-byte pointers change the
+/// allocation-mask stride ([`crate::meta`]).
+///
+/// # Errors
+///
+/// Returns `Err` under the same conditions as [`compile_program`].
+pub fn compile_wasm_program(program: &Program) -> Result<String> {
+    compile_program_with_options(program, wasm_options())
+}
+
+/// Compile app logic for wasm32 whose module state remains live after the
+/// entry returns ([WASM-WEB-ABI]), with wasm32 pointer-width metadata.
+///
+/// # Errors
+///
+/// Returns `Err` under the same conditions as [`compile_program`].
+pub fn compile_wasm_library(program: &Program) -> Result<String> {
+    compile_module(program, wasm_options(), true)
+}
+
+/// The codegen options every wasm32 compilation shares.
+fn wasm_options() -> CodegenOptions {
+    CodegenOptions {
+        wasm32: true,
+        ..CodegenOptions::default()
+    }
+}
+
 /// Compile a whole program with LLVM/DWARF debug metadata rooted at `source`.
 ///
 /// # Errors

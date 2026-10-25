@@ -9,9 +9,10 @@
     reason = "a failed setup step must fail the end-to-end test that needed it"
 )]
 
+use std::fmt::Write as _;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
@@ -34,12 +35,16 @@ impl Server {
     /// The server sees the fixture's `TMPDIR`, so it finds its endpoint where
     /// every program's endpoint lives: `$TMPDIR/osprey-diagnostics-<uid>`.
     fn start(fixture: &Fixture) -> Self {
+        Self::start_in(&fixture.tmp)
+    }
+
+    fn start_in(directory: &std::path::Path) -> Self {
         let mut child = Command::new(env!("CARGO_BIN_EXE_osprey"))
             .arg("lsp")
-            .env("TMPDIR", &fixture.tmp)
+            .env("TMPDIR", directory)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()
             .expect("osprey lsp starts");
         let stdin = child.stdin.take().expect("stdin");
@@ -119,6 +124,113 @@ impl Drop for Server {
         drop(self.child.kill());
         drop(self.child.wait());
     }
+}
+
+fn terminate_server(pid: u32) {
+    assert!(Command::new("kill")
+        .args(["-TERM", &pid.to_string()])
+        .status()
+        .expect("terminate unresponsive test server")
+        .success());
+}
+
+fn with_server_deadline(
+    mut server: Server,
+    deadline: Duration,
+    run: impl FnOnce(&mut Server) -> Value + Send + 'static,
+) -> Result<Value, std::sync::mpsc::RecvTimeoutError> {
+    let pid = server.child.id();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        let reply = run(&mut server);
+        let _ = sender.send(reply);
+    });
+    let reply = receiver.recv_timeout(deadline);
+    if matches!(reply, Err(std::sync::mpsc::RecvTimeoutError::Timeout)) {
+        terminate_server(pid);
+    }
+    let _ = worker.join();
+    reply
+}
+
+fn timely_shutdown(server: Server) -> Result<Value, std::sync::mpsc::RecvTimeoutError> {
+    with_server_deadline(server, Duration::from_secs(3), |server| {
+        let reply = server.request(2, "shutdown", &Value::Null);
+        server.send(&json!({ "jsonrpc": "2.0", "method": "exit" }));
+        assert!(server.child.wait().expect("server exits").success());
+        reply
+    })
+}
+
+fn busy_document_source() -> String {
+    (0..1500).fold(String::new(), |mut text, i| {
+        writeln!(text, "fn identity{i}(x: int) -> int = x").expect("write source");
+        text
+    })
+}
+
+fn change_flood(source: &str) -> String {
+    (2..82).fold(String::new(), |mut frames, version| {
+        let body = json!({ "jsonrpc": "2.0", "method": "textDocument/didChange", "params": {
+            "textDocument": { "uri": "file:///tmp/osprey-overload.osp", "version": version },
+            "contentChanges": [{ "text": source }]
+        }})
+        .to_string();
+        write!(frames, "Content-Length: {}\r\n\r\n{body}", body.len()).expect("frame changes");
+        frames
+    })
+}
+
+fn flooded_session(server: &mut Server) -> Value {
+    let source = format!("{}\n//{}\n", busy_document_source(), "x".repeat(512 * 1024));
+    server.send(&json!({ "jsonrpc": "2.0", "method": "textDocument/didOpen", "params": {
+        "textDocument": { "uri": "file:///tmp/osprey-overload.osp", "languageId": "osprey", "version": 1, "text": source }
+    }}));
+    if let Err(error) = server.stdin.write_all(change_flood(&source).as_bytes()) {
+        assert_eq!(error.kind(), std::io::ErrorKind::BrokenPipe);
+    }
+    let status = server.child.wait().expect("overloaded server exits");
+    let mut stderr = String::new();
+    let _ = server
+        .child
+        .stderr
+        .as_mut()
+        .expect("server stderr")
+        .read_to_string(&mut stderr)
+        .expect("read failure");
+    json!({ "code": status.code(), "stderr": stderr })
+}
+
+#[test]
+fn analysis_backlog_overload_is_explicit_and_bounded() {
+    let mut server = Server::start_in(&std::env::temp_dir());
+    let _ = server.request(1, "initialize", &json!({ "capabilities": {} }));
+    let result = with_server_deadline(server, Duration::from_secs(10), flooded_session)
+        .expect("the overload limit ends the session promptly");
+    assert_eq!(result.get("code"), Some(&json!(1)), "{result}");
+    assert!(
+        result
+            .get("stderr")
+            .and_then(Value::as_str)
+            .is_some_and(|text| text.contains("analysis backlog limit")),
+        "{result}"
+    );
+}
+
+#[test]
+fn shutdown_remains_responsive_while_an_open_document_is_analyzed() {
+    let mut server = Server::start_in(&std::env::temp_dir());
+    let _ = server.request(1, "initialize", &json!({ "capabilities": {} }));
+    let source = busy_document_source();
+    server.send(
+        &json!({ "jsonrpc": "2.0", "method": "textDocument/didOpen", "params": {
+            "textDocument": { "uri": "file:///tmp/osprey-busy-shutdown.osp", "languageId": "osprey",
+                "version": 1, "text": source }
+        }}),
+    );
+    std::thread::sleep(Duration::from_millis(50));
+    let reply = timely_shutdown(server).expect("shutdown responds while diagnostics are busy");
+    assert_eq!(reply.get("result"), Some(&Value::Null), "{reply}");
 }
 
 #[test]

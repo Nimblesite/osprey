@@ -1,0 +1,84 @@
+namespace registry_editor
+import ui::Doc
+
+exactArithmetic work =
+    handle Arith
+        overflow op _ _ wrapped =>
+            check "unexpected arithmetic overflow" "none" op
+            wrapped
+    work ()
+
+reportStatus result = match result
+    Success report => report.reportStatus
+    Error _ => -1
+
+reportFailed result = match result
+    Success _ => false
+    Error _ => true
+
+test ("editor accepts canonical report followed by native status line", \() =>
+    output = "{\"lines\":[\"added @demo/report\"],\"status\":0}\nstatus: 0\n"
+    expect (reportStatus (Reports::process (JsonString output)), 0))
+
+test ("editor rejects crashed and ambiguous subprocess reports", \() =>
+    success = "{\"lines\":[],\"status\":0}"
+    crashed = JsonObject [Doc::num ("code", 1), Doc::str ("stdout", success)]
+    expect (reportFailed (Reports::process crashed), true)
+    expect (reportFailed (Reports::process (JsonString (success + "\n" + success))), true))
+
+test ("editor rejects loopback hostname prefix spoofs", \() =>
+    expect (Packages::isLoopback "http://localhost.attacker.test", false)
+    expect (Packages::isLoopback "http://127.0.0.1.attacker.test", false)
+    expect (Packages::isLoopback "http://localhost:8787", true))
+
+catalogHasEvidence catalog = match Packages::validCatalog catalog
+    Success items => match listGet items 0
+        Success item => item.catalogEvidence
+        Error _ => true
+    Error _ => true
+
+test ("editor never interprets empty findings as audit evidence", \() =>
+    catalog = Doc::parse "{\"packages\":[{\"key\":\"@demo/report\",\"releases\":[{\"epoch\":1,\"ordinal\":1}],\"findings\":[]}]}"
+    expect (exactArithmetic (\() => catalogHasEvidence catalog), false))
+
+unitContext () = ui::Context(now = 1, offset = 0, platform = "vscode", home = "/work", arguments = [])
+
+stepFor (current, action) = Update::apply (unitContext (), current, ui::Act(act = action))
+
+catalogState (registry, findings) =
+    entry = CatalogEntry(catalogKey = "@demo/report", catalogVersions = ["e1.r1"], catalogFindings = findings, catalogEvidence = false)
+    current = Store::withCatalog (Store::create ("file:///work/project", registry), [entry], 0)
+    Store::edit (current, "", "@demo/report", "browse")
+
+test ("editor blocks recorded findings even in a local registry", \() =>
+    step = stepFor (catalogState ("http://localhost:8787", ["source.extern"]), Add)
+    expect (isEmpty step.requests, true)
+    expect (step.stepStore.packageConfirming, "")
+    expect (step.stepStore.packageFault, true))
+
+transitiveState registry =
+    identity = EntryIdentity(entryKey = "@demo/base", entryVersion = "e1.r1", entryDigest = "sha256:fixture")
+    entry = PackageEntry(entryIdentity = identity, entryDirect = false, entryPresent = true, entryDependencies = [], entryDependents = ["@demo/report"], entryFindings = [])
+    graph = Workspace(workspaceProject = "fixture", workspacePackages = [entry], workspaceDirect = [], workspaceFindings = [], workspaceMissing = false, workspaceReason = "")
+    current = Store::withGraph (Store::create ("file:///work/project", registry), graph, 0)
+    Store::edit (current, "", "@demo/base", "installed")
+
+test ("editor cannot bypass audit safeguards by promoting a transitive dependency", \() =>
+    hosted = stepFor (transitiveState "https://registry.example.test", Add)
+    local = stepFor (transitiveState "http://localhost:8787", Add)
+    expect (isEmpty hosted.requests, true)
+    expect (hosted.stepStore.packageFault, true)
+    expect (isEmpty local.requests, true)
+    expect (local.stepStore.packageConfirming, "add"))
+
+test ("changing package selection cancels the previous confirmation", \() =>
+    current = Store::confirm (catalogState ("http://localhost:8787", []), "add", "@demo/report")
+    changed = Store::edit (current, "", "@demo/other", "browse")
+    expect (changed.packageConfirming, "")
+    expect (changed.packageConfirmKey, ""))
+
+test ("a missing lock leaves installation counts unknown", \() =>
+    graph = Graph(graphProject = "new-project", graphPackages = [], graphDirect = ["@demo/report"], graphFindings = ["tree.no-lock"])
+    workspace = Store::workspaceOf graph
+    expect (workspace.workspaceMissing, true)
+    expect (structuralEquals (workspace.workspaceDirect, ["@demo/report"]), true))

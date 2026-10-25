@@ -8,4 +8,4 @@ default_namespace = "sacrebleu"
 name = "@osprey/sacrebleu"
 license = "MIT"
 summary = "BLEU and chrF evaluation metrics with sacrebleu's 13a tokenizer"
-keywords = ["bleu", "chrf", "metrics", "evaluation", "nmt", "python-flavor"]
+keywords = ["bleu", "chrf", "evaluation", "metrics", "nmt", "python-flavor"]

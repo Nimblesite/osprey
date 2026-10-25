@@ -1,0 +1,338 @@
+namespace registry_editor
+
+// Drives the real App.start/App.dispatch entry points. Control events use the
+// ordinal and revision the runtime issued in the previous envelope, and
+// completions use the tickets it issued, never fabricated identifiers.
+
+import ui::Doc
+import ui::Lists
+
+workspace = "file:///work/app"
+loopback = "http://127.0.0.1:8787"
+hosted = "https://registry.example.test"
+unverified = "No findings recorded; audit status unverified"
+cve = "CVE-2026-0002: unsafe native call"
+
+quote value = match jsonQuote value
+    Success text => text
+    Error _ => "null"
+
+launchContext (project, registry) = JsonObject [
+    Doc::num ("now", 1),
+    Doc::num ("offset", 0),
+    Doc::str ("platform", "vscode"),
+    Doc::str ("home", "/work"),
+    JsonMember "arguments" (Doc::strings ([project, registry])),
+]
+
+wrapped doc = mapList (filterList (["body", "pane", "aside", "child"], \key => Doc::has (doc, key)), \key => Doc::field (doc, key))
+
+tabChildren doc = mapList (Doc::items (Doc::field (doc, "tabs")), \item => Doc::field (item, "child"))
+
+rowChildren doc = mapList (Doc::items (Doc::field (doc, "rows")), \item => Doc::field (item, "child"))
+
+kids doc = listConcat (Doc::items (Doc::field (doc, "children"))) (listConcat (Doc::items (Doc::field (doc, "panes"))) (listConcat (Doc::items (Doc::field (doc, "toolbar"))) (listConcat (Doc::items (Doc::field (doc, "items"))) (listConcat (tabChildren doc) (listConcat (rowChildren doc) (wrapped doc))))))
+
+findNode : (Json, (Json) -> bool) -> Result<Json, Error>
+findNode (doc, matches) = match matches doc
+    true => Success(value = doc)
+    false => findIn (kids doc, matches)
+
+nextFound (found, node, matches) = match found
+    Success _ => found
+    Error _ => findNode (node, matches)
+
+findIn (nodes, matches) = foldList (nodes, Error(message = "not found"), \(found, node) => nextFound (found, node, matches))
+
+patchOf (envelope, region) = Lists::find (Doc::items (Doc::field (envelope, "patches")), \item => Doc::text (item, "key") == region)
+
+revisionOf (envelope, region) = match patchOf (envelope, region)
+    Success patch => Doc::number (patch, "revision")
+    Error _ => 0
+
+nodeOf (envelope, region) = match patchOf (envelope, region)
+    Success patch => Doc::field (patch, "node")
+    Error _ => JsonNull
+
+controlAt (envelope, region, matches) = match patchOf (envelope, region)
+    Error _ => Error(message = "region ${region} was not patched")
+    Success patch => findNode (Doc::field (patch, "node"), matches)
+
+isControl (kind, label, doc) = Doc::text (doc, "kind") == kind && Doc::text (doc, "label") == label
+
+controlOf (envelope, region, kind, label) = controlAt (envelope, region, \doc => isControl (kind, label, doc))
+
+fieldOf (result, key) = match result
+    Success node => Doc::text (node, key)
+    Error _ => ""
+
+ordinalOf result = match result
+    Success node => Doc::number (node, "event")
+    Error _ => 0 - 1
+
+buttonOf (envelope, region, label) = controlOf (envelope, region, "button", label)
+
+badgeOf (envelope, region, label) = controlOf (envelope, region, "badge", label)
+
+buttonEnabled (envelope, region, label) = match buttonOf (envelope, region, label)
+    Success node => Doc::flag (node, "enabled")
+    Error _ => false
+
+badgeTone (envelope, region, label) = fieldOf (badgeOf (envelope, region, label), "tone")
+
+evidenceValue (envelope, region, label) = fieldOf (controlOf (envelope, region, "evidence", label), "value")
+
+hasTone (envelope, region, tone) = match controlAt (envelope, region, \doc => Doc::text (doc, "tone") == tone)
+    Success _ => true
+    Error _ => false
+
+rowKeys doc = mapList (Doc::items (Doc::field (doc, "rows")), \item => Doc::text (item, "key"))
+
+rowsNode (envelope, region, key) = controlAt (envelope, region, \doc => Doc::text (doc, "kind") == "rows" && Lists::any (rowKeys doc, \item => item == key))
+
+eventAt (envelope, region, ordinal, value) = "{\"kind\":\"ui\",\"region\":${quote region},\"revision\":${revisionOf (envelope, region)},\"ordinal\":${ordinal},\"value\":${value},\"now\":7}"
+
+tapAt (envelope, region, label) = eventAt (envelope, region, ordinalOf (buttonOf (envelope, region, label)), "null")
+
+chooseRow (envelope, region, key) = eventAt (envelope, region, ordinalOf (rowsNode (envelope, region, key)), quote key)
+
+chooseTab (envelope, region, key) = eventAt (envelope, region, ordinalOf (controlAt (envelope, region, \doc => Doc::text (doc, "kind") == "tabs")), quote key)
+
+stateOf envelope = Doc::field (Doc::parse (Doc::text (envelope, "state")), "store")
+
+noticeOf envelope = Doc::text (stateOf envelope, "notice")
+
+confirmingOf envelope = Doc::text (stateOf envelope, "confirming")
+
+pendingOf envelope = Doc::flag (stateOf envelope, "pending")
+
+faultOf envelope = Doc::flag (stateOf envelope, "fault")
+
+requestAt (envelope, index) = listGet (Doc::items (Doc::field (envelope, "requests"))) index ?: JsonNull
+
+requestCount envelope = length (Doc::items (Doc::field (envelope, "requests")))
+
+ticketAt (envelope, index) = Doc::text (requestAt (envelope, index), "ticket")
+
+requestText (envelope, index) = Doc::write (requestAt (envelope, index))
+
+patchKeys envelope = join (mapList (Doc::items (Doc::field (envelope, "patches")), \item => Doc::text (item, "key"))) ","
+
+problemsOf envelope = join (Doc::texts (envelope, "diagnostics")) ";"
+
+shows (envelope, region, text) = contains (Doc::write (nodeOf (envelope, region))) text
+
+completed (ticket, result) = "{\"kind\":\"completed\",\"ticket\":${quote ticket},\"ok\":true,\"result\":${quote result},\"now\":9}"
+
+release (epoch, ordinal) = JsonObject [Doc::num ("epoch", epoch), Doc::num ("ordinal", ordinal)]
+
+catalogItem (key, epoch, ordinal, findings) = JsonObject [
+    Doc::str ("key", key),
+    JsonMember "releases" (JsonArray (listPrepend [] (release (epoch, ordinal)))),
+    JsonMember "findings" (Doc::strings findings),
+]
+
+catalogDoc () = JsonObject [JsonMember "packages" (JsonArray ([
+    catalogItem ("@demo/report", 1, 1, []),
+    catalogItem ("@demo/new", 2, 0, []),
+    catalogItem ("@demo/risky", 2, 3, [cve]),
+]))]
+
+packageJson (key, version, direct, present, dependencies, dependents, findings) = JsonObject [
+    Doc::str ("key", key),
+    Doc::str ("version", version),
+    Doc::str ("digest", "sha256:${key}"),
+    Doc::bit ("direct", direct),
+    Doc::bit ("present", present),
+    JsonMember "dependencies" (Doc::strings dependencies),
+    JsonMember "dependents" (Doc::strings dependents),
+    JsonMember "findings" (Doc::strings findings),
+]
+
+graphDoc findings = JsonObject [
+    Doc::str ("project", workspace),
+    JsonMember "direct" (Doc::strings (["@demo/report"])),
+    JsonMember "packages" (JsonArray ([
+        packageJson ("@demo/report", "e1.r1", true, true, ["@demo/base"], [], []),
+        packageJson ("@demo/base", "e1.r0", false, true, [], ["@demo/report"], [cve]),
+        packageJson ("@demo/ghost", "e1.r2", false, false, [], [], []),
+    ])),
+    JsonMember "findings" (Doc::strings findings),
+]
+
+graphResult findings = Doc::write (JsonObject [
+    JsonMember "lines" (JsonArray ([JsonString (Doc::write (graphDoc findings))])),
+    Doc::num ("status", 0),
+])
+
+startEnvelope registry = Doc::parse (App::start (Doc::write (launchContext (workspace, registry))))
+
+post (envelope, event) = Doc::parse (App::dispatch (Doc::text (envelope, "state"), event))
+
+completeBoth (envelope, findings) =
+    catalogued = post (envelope, completed (ticketAt (envelope, 0), Doc::write (catalogDoc ())))
+    post (catalogued, completed (ticketAt (envelope, 1), graphResult findings))
+
+browsed envelope = post (envelope, chooseTab (envelope, "packages", "browse"))
+
+test ("missing workspace graph never reports zero installed in the package footer", \() =>
+    handle Arith
+        overflow _ _ _ wrapped => wrapped
+    after = completeBoth (startEnvelope loopback, ["tree.no-lock"])
+    expect (shows (after, "packages", "installed ·"), false)
+    expect (shows (after, "packages", "Installed counts unavailable"), true))
+
+test ("installed counts only present entries while missing lock entries warn", \() =>
+    handle Arith
+        overflow _ _ _ wrapped => wrapped
+    after = completeBoth (startEnvelope loopback, [])
+    expect (evidenceValue (after, "root", "Installed"), "2")
+    expect (evidenceValue (after, "root", "Direct"), "1")
+    expect (evidenceValue (after, "root", "Missing"), "1")
+    expect (shows (after, "packages", "@demo/ghost"), false)
+    expect (shows (after, "root", "@demo/ghost · missing from disk"), true)
+    expect (shows (after, "root", workspace), true)
+    expect (badgeTone (after, "root", "Audit unverified"), "caution"))
+
+test ("empty findings read as unverified caution and never as an audit", \() =>
+    handle Arith
+        overflow _ _ _ wrapped => wrapped
+    after = browsed (completeBoth (startEnvelope loopback, []))
+    chosen = post (after, chooseRow (after, "packages", "@demo/new"))
+    expect (badgeTone (chosen, "details", unverified), "caution")
+    expect (shows (chosen, "details", unverified), true)
+    expect (shows (chosen, "details", "requires explicit confirmation"), true)
+    expect (shows (chosen, "details", "Audited"), false)
+    expect (hasTone (chosen, "details", "good"), false)
+    expect (buttonEnabled (chosen, "details", "Add to project"), true))
+
+test ("missing direct dependencies can be inspected and removed without hiding findings", \() =>
+    handle Arith
+        overflow _ _ _ wrapped => wrapped
+    first = startEnvelope loopback
+    catalogued = post (first, completed (ticketAt (first, 0), Doc::write (catalogDoc ())))
+    graph = JsonObject [Doc::str ("project", workspace), JsonMember "direct" (Doc::strings ["@demo/ghost"]), JsonMember "findings" (Doc::strings []), JsonMember "packages" (JsonArray [packageJson ("@demo/ghost", "e1.r2", true, false, [], [], ["verify.missing"])])]
+    report = Doc::write (JsonObject [Doc::num ("status", 0), JsonMember "lines" (Doc::strings [Doc::write graph])])
+    ready = post (catalogued, completed (ticketAt (first, 1), report))
+    chosen = post (ready, chooseRow (ready, "root", "@demo/ghost"))
+    expect (shows (chosen, "details", "verify.missing"), true)
+    expect (badgeTone (chosen, "details", "Missing from disk"), "caution")
+    expect (buttonEnabled (chosen, "details", "Remove dependency"), true)
+    asked = post (chosen, tapAt (chosen, "details", "Remove dependency"))
+    confirmed = post (asked, tapAt (asked, "details", "Confirm remove @demo/ghost"))
+    expect (requestCount confirmed, 1)
+    expect (contains (requestText (confirmed, 0)) "remove @demo/ghost", true))
+
+test ("recorded findings are visible danger warnings that block adding", \() =>
+    handle Arith
+        overflow _ _ _ wrapped => wrapped
+    after = browsed (completeBoth (startEnvelope loopback, []))
+    chosen = post (after, chooseRow (after, "packages", "@demo/risky"))
+    expect (shows (chosen, "details", cve), true)
+    expect (badgeTone (chosen, "details", "1 findings"), "danger")
+    expect (buttonEnabled (chosen, "details", "Add to project"), false))
+
+test ("a local unverified add needs explicit confirmation and pending work blocks it", \() =>
+    handle Arith
+        overflow _ _ _ wrapped => wrapped
+    first = startEnvelope loopback
+    pending = post (first, completed (ticketAt (first, 0), Doc::write (catalogDoc ())))
+    chosen = post (browsed pending, chooseRow (browsed pending, "packages", "@demo/new"))
+    blocked = post (chosen, tapAt (chosen, "details", "Add to project"))
+    expect (pendingOf blocked, true)
+    expect (requestCount blocked, 0)
+    expect (confirmingOf blocked, "")
+    expect (problemsOf blocked, "")
+    resolved = post (chosen, completed (ticketAt (first, 1), graphResult []))
+    asked = post (resolved, tapAt (resolved, "details", "Add to project"))
+    expect (requestCount asked, 0)
+    expect (confirmingOf asked, "add")
+    expect (shows (asked, "details", "Confirm add @demo/new"), true)
+    expect (buttonEnabled (asked, "details", "Confirm add @demo/new"), true))
+
+test ("confirming a local add issues one change request and stale completions are ignored", \() =>
+    handle Arith
+        overflow _ _ _ wrapped => wrapped
+    first = startEnvelope loopback
+    resolved = completeBoth (first, [])
+    chosen = post (browsed resolved, chooseRow (browsed resolved, "packages", "@demo/new"))
+    asked = post (chosen, tapAt (chosen, "details", "Add to project"))
+    confirmed = post (asked, tapAt (asked, "details", "Confirm add @demo/new"))
+    expect (requestCount confirmed, 1)
+    expect (contains (ticketAt (confirmed, 0)) "package/add:2", true)
+    expect (contains (requestText (confirmed, 0)) "add @demo/new", true)
+    stale = post (confirmed, completed (ticketAt (first, 0), "{\"packages\":[]}"))
+    expect (patchKeys stale, "")
+    expect (problemsOf stale, "")
+    expect (contains (noticeOf stale) "add @demo/new", true))
+
+test ("hosted unverified installs are blocked with a visible warning", \() =>
+    handle Arith
+        overflow _ _ _ wrapped => wrapped
+    after = browsed (completeBoth (startEnvelope hosted, []))
+    chosen = post (after, chooseRow (after, "packages", "@demo/new"))
+    expect (buttonEnabled (chosen, "details", "Add to project"), false)
+    refused = post (chosen, tapAt (chosen, "details", "Add to project"))
+    expect (requestCount refused, 0)
+    expect (faultOf refused, true)
+    expect (contains (noticeOf refused) "installation is disabled", true)
+    expect (shows (refused, "root", "installation is disabled"), true)
+    expect (confirmingOf refused, ""))
+
+test ("removing a direct dependency warns and names the project before confirming", \() =>
+    handle Arith
+        overflow _ _ _ wrapped => wrapped
+    after = completeBoth (startEnvelope loopback, [])
+    chosen = post (after, chooseRow (after, "packages", "@demo/report"))
+    asked = post (chosen, tapAt (chosen, "details", "Remove dependency"))
+    expect (requestCount asked, 0)
+    expect (confirmingOf asked, "remove")
+    expect (shows (asked, "details", "Removing @demo/report"), true)
+    expect (shows (asked, "details", workspace), true)
+    confirmed = post (asked, tapAt (asked, "details", "Confirm remove @demo/report"))
+    expect (requestCount confirmed, 1)
+    expect (contains (requestText (confirmed, 0)) "remove @demo/report", true))
+
+test ("installed and workspace security findings stay visible", \() =>
+    handle Arith
+        overflow _ _ _ wrapped => wrapped
+    after = completeBoth (startEnvelope loopback, [cve])
+    chosen = post (after, chooseRow (after, "packages", "@demo/base"))
+    expect (shows (chosen, "details", cve), true)
+    expect (hasTone (chosen, "details", "danger"), true)
+    expect (shows (after, "root", "Workspace security findings"), true)
+    expect (shows (after, "root", cve), true))
+
+test ("unavailable package data hides counts and keeps the selected project", \() =>
+    handle Arith
+        overflow _ _ _ wrapped => wrapped
+    first = startEnvelope loopback
+    expect (evidenceValue (first, "root", "Installed"), "")
+    expect (shows (first, "root", workspace), true)
+    failure = "{\"kind\":\"completed\",\"ticket\":${quote (ticketAt (first, 1))},\"ok\":false,\"error\":\"Package executable is missing\",\"now\":9}"
+    failed = post (first, failure)
+    expect (evidenceValue (failed, "root", "Installed"), "")
+    expect (evidenceValue (failed, "root", "Catalog"), "")
+    expect (shows (failed, "root", "Package data unavailable"), true)
+    expect (shows (failed, "root", workspace), true))
+
+test ("add waits for verified fetch before refreshing installed packages", \() =>
+    handle Arith
+        overflow _ _ _ wrapped => wrapped
+    ready = browsed (completeBoth (startEnvelope loopback, []))
+    selected = post (ready, chooseRow (ready, "packages", "@demo/new"))
+    asked = post (selected, tapAt (selected, "details", "Add to project"))
+    confirmed = post (asked, tapAt (asked, "details", "Confirm add @demo/new"))
+    report = "{\"lines\":[],\"status\":0}"
+    added = post (confirmed, completed (ticketAt (confirmed, 0), report))
+    expect (requestCount added, 1)
+    expect (contains (requestText (added, 0)) "--json fetch --registry", true)
+    expect (pendingOf added, true)
+    fetched = post (added, completed (ticketAt (added, 0), report))
+    expect (requestCount fetched, 2)
+    failed = post (added, completed (ticketAt (added, 0), "{\"lines\":[\"Digest mismatch\"],\"status\":1}"))
+    expect (requestCount failed, 0)
+    expect (pendingOf failed, false)
+    expect (faultOf failed, true)
+    expect (shows (failed, "root", "Digest mismatch"), true)
+    expect (evidenceValue (failed, "root", "Installed"), ""))

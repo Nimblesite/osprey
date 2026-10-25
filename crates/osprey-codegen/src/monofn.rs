@@ -239,7 +239,7 @@ pub(crate) fn specialize_callback(
     let ret = (
         crate::types::ltype_of(ret_type),
         crate::types::result_inner(ret_type),
-        crate::types::owner_name(&cg.prog, ret_type),
+        return_owner(cg, ret_type),
     );
     let target = emit_at(cg, name, key, &parameters, &body, (&params, ret, &owners))?;
     Ok(Some(target.symbol))
@@ -256,8 +256,14 @@ fn return_slot(cg: &Codegen, name: &str) -> Result<(LType, Option<LType>, Option
     Ok((
         crate::types::ltype_of(ty),
         crate::types::result_inner(ty),
-        crate::types::owner_name(&cg.prog, ty),
+        return_owner(cg, ty),
     ))
+}
+
+/// Share the closure ABI's Result payload and ordinary return ownership rules.
+fn return_owner(cg: &Codegen, ty: &osprey_types::Type) -> Option<String> {
+    let signature = osprey_types::Type::fun(Vec::new(), ty.clone());
+    Codegen::fn_value_sig(&cg.prog, &signature).and_then(|sig| sig.4)
 }
 
 /// The diagnostic for a recursive generic whose return type inference could not

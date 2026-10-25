@@ -24,7 +24,8 @@ fn slices_choose_distinct_sdk_triple_and_runtime() {
         assert!(args.contains(&"/sdk path".to_string()));
         assert!(args.contains(&"-c".to_string()));
     }
-    let runtimes: std::collections::BTreeSet<_> = TARGETS.iter().map(|t| t.runtime()).collect();
+    let runtimes: std::collections::BTreeSet<_> =
+        TARGETS.iter().map(|t| t.runtime("arc")).collect();
     assert_eq!(
         runtimes.len(),
         TARGETS.len(),
@@ -48,13 +49,7 @@ fn archive_contains_program_and_matching_runtime_without_an_executable_entry() {
 
 #[test]
 fn rejects_unsupported_build_options_before_toolchain_work() {
-    for option in [
-        "--memory=gc",
-        "--memory=arc",
-        "--debug",
-        "--profile",
-        "--run",
-    ] {
+    for option in ["--memory=gc", "--debug", "--profile", "--run"] {
         for target in TARGETS {
             let args =
                 ["app.osp", &format!("--target={}", target.name()), option].map(str::to_string);
@@ -71,7 +66,7 @@ fn rejects_unsupported_build_options_before_toolchain_work() {
             "app.osp",
             &format!("--target={}", target.name()),
             "--compile",
-            "--memory=none",
+            "--memory=arc",
         ]
         .map(str::to_string);
         let cli = crate::parse_args(&args).expect("valid arguments");
@@ -174,11 +169,11 @@ fn each_slice_names_itself_in_its_header_and_diagnostics() {
 #[test]
 fn a_missing_runtime_names_the_make_goal_that_builds_it() {
     assert_eq!(
-        TARGETS.map(Target::missing_runtime),
+        TARGETS.map(|target| target.missing_runtime("arc")),
         [
-            "libosprey_runtime_ios.a not found — run `make ios` to build the iOS runtime",
-            "libosprey_runtime_ios_sim.a not found — run `make ios` to build the iOS runtime",
-            "libosprey_runtime_macos.a not found — run `make macos` to build the macOS runtime",
+            "libosprey_runtime_ios_arc.a not found — run `make ios` to build the iOS runtime",
+            "libosprey_runtime_ios_sim_arc.a not found — run `make ios` to build the iOS runtime",
+            "libosprey_runtime_macos_arc.a not found — run `make macos` to build the macOS runtime",
         ]
     );
 }

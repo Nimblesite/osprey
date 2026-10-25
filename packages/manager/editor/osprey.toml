@@ -1,0 +1,8 @@
+[project]
+name = "registry-editor"
+source_roots = ["../../native/src", "../../vscode/src", "../core/src/names.osp", "../core/src/order.osp", "src"]
+default_namespace = "registry_editor"
+entry = "src/main.ospml"
+
+[modules]
+allow_wildcard_imports = false

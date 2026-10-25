@@ -2,7 +2,7 @@
 
 Memory reclamation is an implementation detail. Osprey source cannot select
 allocation sites, release values, or observe when a value is reclaimed. Native
-builds default to tracing GC (`gc`); `arc` selects Perceus reference counting.
+builds default to tracing GC (`gc`); `arc` selects Perceus reference counting. WebAssembly, Apple and Android archives, and Python-hosted libraries default to ARC.
 Unmanaged allocation requires explicit `--memory=none`. The old
 `--memory=default` spelling is rejected.
 
@@ -67,7 +67,7 @@ GC makes ordinary `osp_retain` and `osp_release` calls no-ops, reclaiming unreac
 
 The tradeoff is delayed reclamation, conservative retention and collection pauses. Choose `--memory=arc` when prompt reclamation or avoiding tracing pauses matters, then measure the application. Both backends are automatic and require no ownership annotations. Files, sockets and other external resources still need explicit cleanup under either backend.
 
-The current GC is supported on Apple and glibc-Linux, not Windows, and stops collecting after a second allocator thread appears. Use ARC on Windows and for native programs that need reclamation across allocating fiber threads. WebAssembly, mobile and Python-library targets currently lack managed runtime archives and require explicit `--memory=none`; they do not silently fall back from GC.
+The current GC is supported on Apple and glibc-Linux, not Windows, and stops collecting after a second allocator thread appears. Use ARC on Windows and for native programs that need reclamation across allocating fiber threads. WebAssembly, mobile and Python-library targets default to ARC and reject explicit tracing GC. Their managed runtime selection never falls back to unmanaged allocation. Exported host-library globals remain alive for later calls; `--entry-only` programs release globals on return, and native, WASM and mobile differential suites require zero live ARC allocations.
 
 All code-generated heap allocation sites use the same IR symbols, so native
 backend selection only changes the runtime archive passed to the linker:

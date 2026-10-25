@@ -1,6 +1,6 @@
 # WebAssembly Target [WASM-TARGET]
 
-`osprey --target=wasm32 --compile --memory=none` emits a `wasm32-wasip1` command module.
+`osprey --target=wasm32 --compile` emits a `wasm32-wasip1` command module with ARC memory management.
 The backend reuses Osprey's LLVM IR, compiles it with clang, and links it with
 `wasm-ld`, wasi-libc, and the portable Osprey runtime archive.
 
@@ -13,7 +13,7 @@ stdout byte-for-byte to the same `.expectedoutput` golden the native run must
 match. Only an explicit compiler diagnostic that ``target `wasm32` does not support`` a named capability qualifies as `SKIP`; the excluded programs and their diagnostic reasons are pinned in `tests/WASM_UNPORTABLE.txt`. Unexpected linker errors fail, as do other build or runtime errors. CI requires
 `TEST_CORPUS_FAIL=0`, `TEST_CORPUS_GOLDEN_FAIL=0` and
 `TEST_CORPUS_GOLDEN_MISSING=0`, plus a golden floor so coverage cannot quietly
-shrink — currently 157 on wasm32 and 223 natively (`crates/run_test_corpus.sh`,
+shrink — currently 213 on wasm32 and 285 natively (`crates/run_test_corpus.sh`,
 `OSPREY_GOLDEN_MIN`). The floor ratchets up as goldens are added and is never
 lowered to turn a red build green.
 
@@ -44,6 +44,8 @@ Three paths require an explicit target-independent ABI:
 3. A returned `Result<T, E>` is repacked to the declared success-slot type so
    its discriminator and error-pointer offsets agree on both LP64 and ILP32.
 
+ARC allocation masks also use the target's pointer stride: four bytes on wasm32 and eight on native 64-bit targets. Physical `i64` payload slots retain their eight-byte width; the mask identifies the pointer-bearing words within that layout.
+
 ## WASI Entry Point [WASM-ENTRY]
 
 wasi-libc's command startup calls `__main_void`. The driver appends a thunk that
@@ -59,7 +61,7 @@ The driver:
 2. locates the WASI sysroot from `OSPREY_WASI_SYSROOT`, `WASI_SDK_PATH`, or the
    supported platform paths;
 3. invokes `wasm-ld` with `crt1-command.o`, the program object,
-   `libosprey_runtime_wasm.a`, and wasi-libc.
+   `libosprey_runtime_wasm_arc.a`, and wasi-libc.
 
 `OSPREY_WASM_CC`, `OSPREY_WASM_LD`, and `OSPREY_WASM_RUN` override the clang,
 linker, and runtime commands. Direct linking does not require clang's wasm
@@ -67,8 +69,7 @@ compiler-rt archive.
 
 ## Portable Runtime Archive [WASM-TARGET-RUNTIME]
 
-`make _runtime_wasm` cross-compiles the units named by `WASM_RT_SRC` and creates
-`compiler/bin/libosprey_runtime_wasm.a`. Static archive members are linked on
+`make _runtime_wasm` builds `compiler/bin/libosprey_runtime_wasm_arc.a` from `WASM_ARC_RT_SRC`, with ownership shims on `WASM_ARC_SHIM_SRC`. It also retains the separate unmanaged archive for explicit opt-out builds. Static archive members are linked on
 demand, so a command-line program that does not use the browser bridge has no
 `osprey_web` imports.
 
@@ -115,10 +116,9 @@ Effect meaning is target-independent. Validated static discharge, value dispatch
 
 ## Memory Backend [WASM-TARGET-MEMORY]
 
-The wasm archive contains `memory_runtime.c`, the same unmanaged allocator used by
-native `--memory=none`. General releases do not reclaim aliased values, but
-the compiler's proved-unique release hook frees uniquely consumed temporaries.
-Explicit `--memory=none` is required. `--memory=gc` and `--memory=arc` are compiler errors because matching WebAssembly runtime archives are unavailable; the compiler never silently substitutes the unmanaged `none` allocator. This validation also applies to `--check` and `--llvm`.
+WebAssembly defaults to ARC. The managed archive contains `memory_arc.c`, target-width allocation metadata and ownership shims for runtime units that create or retain managed children. Explicit `--memory=arc` selects the same backend. `--memory=gc` is rejected before linking, including with `--check` and `--llvm`; the compiler does not substitute another backend for it.
+
+The separate `--memory=none` opt-out links `libosprey_runtime_wasm.a`. It is not the default or the managed conformance path.
 
 The native conservative collector is not in `WASM_RT_SRC`: it depends on native
 stack/register/data-segment scanning, `setjmp`, and pthread synchronization.
@@ -132,7 +132,7 @@ ordinary wasm linear memory.
 - `wasm-validate examples/wasm/build/hello.wasm`
 - `node scripts/wasm-smoke.mjs examples/wasm/build/hello.wasm examples/wasm/hello.expectedoutput`
 - `node scripts/wasm-browser-smoke.mjs examples/wasm/build/hello.wasm examples/wasm/hello.expectedoutput`
-- `OSPREY_TARGET=wasm32 zsh crates/run_test_corpus.sh` (or `make _test_wasm_goldens`)
+- `make _test_wasm_goldens` runs the pointer-ownership regression, then the 213-golden ARC corpus with zero live allocations.
 
 The CI `wasm` job runs the validate, Node-WASI, browser-shim, and golden-harness
 checks with a pinned WASI sysroot.

@@ -1,11 +1,40 @@
 import assert from 'node:assert/strict'
-import { readFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { readFileSync, mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { test } from 'node:test'
 import { classify } from './ci-scope.mjs'
 import { targetsMainPullRequests } from './workflow-pr-target.mjs'
+
+function deadCodeFixture(product, tests) {
+  const root = mkdtempSync(join(tmpdir(), 'osprey-dead-code-'))
+  try {
+    mkdirSync(join(root, 'scripts'))
+    mkdirSync(join(root, 'crates/fixture/src'), { recursive: true })
+    writeFileSync(join(root, 'scripts/check.mjs'), readFileSync('scripts/verify-no-dead-code.mjs'))
+    writeFileSync(join(root, 'crates/fixture/src/main.rs'), product)
+    writeFileSync(join(root, 'crates/fixture/src/tests.rs'), tests)
+    return spawnSync(process.execPath, [join(root, 'scripts/check.mjs')], { encoding: 'utf8' })
+  } finally { rmSync(root, { recursive: true, force: true }) }
+}
+
+test('dead-code gate distinguishes test module helpers from unused product code', () => {
+  const helper = deadCodeFixture('#[cfg(test)]\nmod tests;\nfn main() {}',
+    'pub(crate) fn assembled_program() {}')
+  assert.equal(helper.status, 0, helper.stderr)
+  const dead = deadCodeFixture('pub fn orphan() {}\n#[cfg(test)]\nmod tests;\nfn main() {}',
+    '#[test]\nfn regression() { crate::orphan(); }')
+  assert.equal(dead.status, 1)
+  assert.match(dead.stderr, /crates\/fixture\/src\/main.rs:1  fn orphan/)
+  const productModule = deadCodeFixture('mod tests;\nfn main() {}', 'pub fn unused_product() {}')
+  assert.equal(productModule.status, 1)
+  assert.match(productModule.stderr, /fn unused_product/)
+  const comment = deadCodeFixture('// #[cfg(test)]\nmod tests;\nfn main() {}', 'pub fn unused_product() {}')
+  assert.equal(comment.status, 1)
+  const live = deadCodeFixture('pub fn active() {}\nfn main() { active(); }', '')
+  assert.equal(live.status, 0, live.stderr)
+})
 
 const cases = [
   ['book chapter and runnable example', ['Book/manuscript/04.md', 'Book/examples/chapter-04/main.osp'], false, true, false],
@@ -63,16 +92,47 @@ test('malformed detection input fails the gate instead of skipping required jobs
 const workflowJobs = (file) => readFileSync(file, 'utf8').split(/(?=^  [\w-]+:\s*$)/m)
 const job = (name, file = '.github/workflows/release.yml') => workflowJobs(file).find((block) => block.startsWith(`  ${name}:`)) ?? ''
 
-const makeRecipe = (name) => {
+const makeRecipe = (name, file = 'Makefile') => {
   const commands = []
   let active = false
-  for (const line of readFileSync('Makefile', 'utf8').split('\n')) {
+  for (const line of readFileSync(file, 'utf8').split('\n')) {
     if (line.startsWith(`${name}:`)) { active = true; continue }
     if (active && /^[^\s#][^:]*:/.test(line)) break
     if (active && line.startsWith('\t')) commands.push(line.trim())
   }
   return commands
 }
+
+function rustCoverageFixture(entries, covered = 100) {
+  const root = mkdtempSync(join(tmpdir(), 'osprey-rust-coverage-'))
+  try {
+    for (const name of ['one', 'two']) {
+      mkdirSync(join(root, 'crates', name), { recursive: true })
+      writeFileSync(join(root, 'crates', name, 'Cargo.toml'), `[package]\nname = "${name}"\n`)
+    }
+    writeFileSync(join(root, 'thresholds.json'), JSON.stringify({ projects: { rust: entries } }))
+    writeFileSync(join(root, 'lcov.info'), ['one', 'two'].map(name =>
+      `SF:${root}/crates/${name}/src/lib.rs\nLF:100\nLH:${covered}\nend_of_record\n`).join(''))
+    return spawnSync('make', ['-f', resolve('scripts/make/tests.mk'), '_coverage_check_rust',
+      'COVERAGE_THRESHOLDS_FILE=thresholds.json', 'RUST_LCOV=lcov.info'], { cwd: root, encoding: 'utf8' })
+  } finally { rmSync(root, { recursive: true, force: true }) }
+}
+
+test('Rust coverage gate rejects unlisted crates and invalid thresholds', () => {
+  const gate = { threshold: 95, language: 'rust' }
+  const missing = rustCoverageFixture({ one: gate })
+  assert.notEqual(missing.status, 0, missing.stdout)
+  assert.match(missing.stdout, /two FAIL: missing coverage threshold/)
+  for (const threshold of [null, 0, 94, '95', 101]) {
+    const invalid = rustCoverageFixture({ one: gate, two: { threshold } })
+    assert.notEqual(invalid.status, 0, `threshold ${threshold}: ${invalid.stdout}`)
+  }
+  const passing = rustCoverageFixture({ one: gate, two: gate }, 95)
+  assert.equal(passing.status, 0, passing.stdout + passing.stderr)
+  const failing = rustCoverageFixture({ one: gate, two: gate }, 94)
+  assert.notEqual(failing.status, 0, failing.stdout)
+  assert.match(failing.stdout, /two FAIL: 94.0% < 95%/)
+})
 
 test('package coverage preserves the complete test recipe and checks without rerunning suites', () => {
   const commands = makeRecipe('test')
@@ -114,6 +174,25 @@ test('application ports have an independent complete backend gate', () => {
   assert.match(apps, /needs: \[changes, build\]/)
   assert.match(apps, /if:.*needs\.changes\.outputs\.code/)
   assert.match(apps, /run: make _test_python_app_ports/)
+})
+
+test('package manager security suites gate CI and local tests under GC and ARC', () => {
+  const coverage = job('coverage', '.github/workflows/ci.yml')
+  assert.match(coverage, /if:.*always\(\)/)
+  for (const memory of ['gc', 'arc']) {
+    const registry = job(`test-registry-${memory}`, '.github/workflows/ci.yml')
+    assert.match(registry, /needs: \[changes, build\]/)
+    assert.ok(registry.includes(`name: "Tests: package manager (${memory})"`))
+    assert.ok(registry.includes(`run: make _test_registry REGISTRY_MEMORY=${memory}`))
+    assert.ok(coverage.includes(`test-registry-${memory}`))
+    assert.ok(coverage.includes('test "${{ needs.test-registry-' + memory + '.result }}" = "success"'))
+    assert.ok(readFileSync('scripts/verify-branch-protection.mjs', 'utf8').includes(`'Tests: package manager (${memory})'`))
+    assert.ok(makeRecipe('test').includes(`$(MAKE) _test_registry REGISTRY_MEMORY=${memory}`))
+  }
+  const commands = makeRecipe('_test_registry', 'scripts/make/tests.mk')
+  for (const suite of ['fixture-check', 'manifest/tests', 'cli/tests', 'tests', 'e2e']) {
+    assert.ok(commands.includes(`./$(BIN) test packages/manager/${suite} --memory=$(REGISTRY_MEMORY)`), suite)
+  }
 })
 
 test('every release publishes only after an unconditional dependency audit', () => {

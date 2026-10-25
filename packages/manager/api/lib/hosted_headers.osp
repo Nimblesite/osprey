@@ -38,12 +38,14 @@ module HostedHeaders {
 
     fn valueOk(value) = byteLength(value) > 0 && !trimmedEdge(value) && allBytes(value, visible)
 
+    fn afterColon(text) = if startsWith(text, " ") { drop(text, 1) } else { text }
+
     fn parseLine(line) = match indexOf(line, ":") {
         Error => reject(400, "req.header-colon")
         Success { value } => {
             let colon = value
             let name = take(line, colon)
-            let text = drop(line, colon + 1)
+            let text = afterColon(drop(line, colon + 1))
             if !nameOk(name) && hasSpace(name) { reject(400, "req.header-whitespace") }
             else if !nameOk(name) { reject(400, "req.header-name") }
             else if !valueOk(text) { reject(400, "req.header-value") }
@@ -60,7 +62,7 @@ module HostedHeaders {
         } else {
             match parseLine(line) {
                 Reject { status, code } => reject(status, code)
-                Ok { value } => Ok { value: listAppend(headers, [value]) }
+                Ok { value } => Ok { value: listAppend(headers, value) }
             }
         }
     }
@@ -76,8 +78,9 @@ module HostedHeaders {
         Reject => acc
     })
 
-    fn countFolded(headers, folded) = foldList(headers, 0, fn(count, header) =>
-        if toLowerCase(header.name) == folded { count + 1 } else { count })
+    fn countFolded(headers, folded) = foldList(headers, 0, fn(count, header) => match header {
+        Header { name } => if toLowerCase(name) == folded { count + 1 } else { count }
+    })
 
     fn dupCheck(headers) = foldList(sensitive, Ok { value: headers }, fn(acc, folded) => match acc {
         Ok { value } => if countFolded(value, folded) > 1 { reject(400, "req.duplicate-header") } else { Ok { value: value } }
@@ -130,9 +133,11 @@ module HostedHeaders {
 
     /// The first value whose name equals `name` case-insensitively, or
     /// `Error { message: "absent" }`.
-    export fn find(headers, name) = foldList(headers, Error { message: "absent" }, fn(found, header) => match found {
+    export fn find(headers, target) = foldList(headers, Error { message: "absent" }, fn(found, header) => match found {
         Success => found
-        Error => if toLowerCase(header.name) == toLowerCase(name) { Success { value: header.value } } else { found }
+        Error => match header {
+            Header { name, value } => if toLowerCase(name) == toLowerCase(target) { Success { value: value } } else { found }
+        }
     })
 
     /// True when a header with that name is present exactly once-verified input.

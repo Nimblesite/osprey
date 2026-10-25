@@ -11,16 +11,22 @@ ok 10 - start sends every region once with the theme
 ok 11 - a tap refreshes only the region whose signal changed
 ok 12 - text input reaches update through its binding and patches its own region
 ok 13 - stale, unknown and mismatched events are rejected without change
-ok 14 - capability requests carry tickets and completions return to update
-ok 15 - malformed events are diagnosed, never guessed
-ok 16 - contrast follows WCAG relative luminance
-ok 17 - sorting is stable and lists stay total
-ok 18 - tabs carry their pages and bind after the pages' controls, and segments carry their tones
-ok 19 - every constructor encodes as the component it names
-ok 20 - run and http requests encode their bounds, headers and slices
-ok 21 - documents, lists, themes and slice writes are read totally
-ok 22 - filesystem and store requests preserve paths bounds and slices
-ok 23 - desktop requests preserve picker export and cancellation payloads
-ok 24 - semantic text roles preserve every protocol spelling
-1..24
-# tests=24 passed=24 failed=0 skipped=0
+ok 14 - an edit from prior state keeps its meaning when ordinals shift
+ok 15 - an edit whose typed action is gone or ambiguous refuses without change
+ok 16 - an edit with an impossible original refuses without change
+ok 17 - a resolved edit updates the current state
+ok 18 - capability requests carry tickets and completions return to update
+ok 19 - malformed events are diagnosed, never guessed
+ok 20 - contrast follows WCAG relative luminance
+ok 21 - sorting is stable and lists stay total
+ok 22 - tabs carry their pages and bind after the pages' controls, and segments carry their tones
+ok 23 - every constructor encodes as the component it names
+ok 24 - run and http requests encode their bounds, headers and slices
+ok 25 - documents, lists, themes and slice writes are read totally
+ok 26 - filesystem and store requests preserve paths bounds and slices
+ok 27 - desktop requests preserve picker export and cancellation payloads
+ok 28 - semantic text roles preserve every protocol spelling
+ok 29 - host capabilities preserve namespace operation arguments and bounds
+ok 30 - context menus bind actions after their content controls
+1..30
+# tests=30 passed=30 failed=0 skipped=0

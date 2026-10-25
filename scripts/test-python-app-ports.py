@@ -35,6 +35,7 @@ APPS = ("classifier", "vector-search", "text-evaluation")
 MEMORIES = ("gc", "arc")
 ARC_PATTERN = re.compile(r"^\[osp-arc\] exit: (\d+) live objects.*$", re.MULTILINE)
 TIMEOUT_SECONDS = 300
+MAX_APP_WORKERS = 2
 
 
 def parse_args() -> argparse.Namespace:
@@ -111,7 +112,7 @@ def check_safely(compiler, root, name, memory, write_expected):
 
 def check_matrix(compiler, root, apps, memories, write_expected):
     jobs = [(name, memory) for name in apps for memory in memories]
-    with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
+    with ThreadPoolExecutor(max_workers=min(MAX_APP_WORKERS, len(jobs))) as pool:
         results = pool.map(lambda job: check_safely(compiler, root, *job, write_expected), jobs)
         return [problem for failures in results for problem in failures]
 

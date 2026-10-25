@@ -5,12 +5,56 @@
 //! [`super::Snapshot`] it compares against stay in the parent module beside
 //! the diagnostics they serve.
 
-use std::collections::VecDeque;
-
 use osprey_ast::Program;
 
 use super::{preserves, Snapshot};
 use crate::redundant_sites::Site;
+
+// Each proof owns a complete AST and inference state. Bound their simultaneous
+// working sets independently of the source-order search window.
+const MAX_PROOF_WORKERS: usize = 4;
+
+struct Search<'a> {
+    program: &'a Program,
+    baseline: &'a Snapshot,
+    written: &'a [Site],
+}
+
+/// Test individual removals while retaining their original source identities.
+pub(crate) fn individually_removable(
+    program: &Program,
+    baseline: &Snapshot,
+    written: &[Site],
+) -> Vec<usize> {
+    let search = search_input(program, baseline, written);
+    let mut preserved = vec![false; written.len()];
+    if !preserved.is_empty() {
+        judge_chunks(&search, &mut preserved);
+    }
+    preserved
+        .iter()
+        .enumerate()
+        .filter_map(|(index, removable)| removable.then_some(index))
+        .collect()
+}
+
+fn judge_chunks(search: &Search<'_>, preserved: &mut [bool]) {
+    let workers = super::judges()
+        .min(MAX_PROOF_WORKERS)
+        .min(preserved.len())
+        .max(1);
+    let width = preserved.len().div_ceil(workers);
+    std::thread::scope(|scope| {
+        for (chunk, results) in preserved.chunks_mut(width).enumerate() {
+            let start = chunk * width;
+            let _ = scope.spawn(move || {
+                for (offset, result) in results.iter_mut().enumerate() {
+                    *result = keeps(search, &[start + offset]);
+                }
+            });
+        }
+    });
+}
 
 /// Grow the reported set in source order, keeping only the annotations that
 /// stay removable alongside everything already kept.
@@ -21,145 +65,105 @@ use crate::redundant_sites::Site;
 /// hold the type down, and a reader who deletes all of them gets a different
 /// program. Every set this returns has been solved for as a set.
 ///
-/// Each window of `window` undecided candidates first costs one whole-program
-/// solve of the entire window against the set kept so far. Erasing more
-/// annotations only removes constraints: it never restores a type another
-/// erasure changed, nor repairs an error. So when that one solve preserves
-/// the program, the one-at-a-time search would have kept every candidate in
-/// turn, and the whole window is accepted at once. When it fails, the
-/// candidates are judged at once on separate threads, each against the set
-/// kept so far: a candidate rejected against the kept set stays rejected as
-/// the set grows, and when the window's accepted candidates also preserve
-/// the program together, that combined set is solved once; when it fails,
-/// only its first member is kept and the rest are judged again against the
-/// larger set.
-struct Search<'a> {
-    program: &'a Program,
-    baseline: &'a Snapshot,
-    written: &'a [Site],
-}
-
+/// Each window of `window` undecided candidates is a slice. One solve of the
+/// whole slice against the set kept so far either proves every candidate in it
+/// or sends the slice down [`accept_slice`], which bisects until each half is
+/// proven whole or reduced to a single rejected candidate.
+#[cfg(test)]
 pub(crate) fn accumulate(
     program: &Program,
     baseline: &Snapshot,
     written: &[Site],
     window: usize,
 ) -> Vec<usize> {
-    let search = Search {
+    let candidates: Vec<usize> = (0..written.len()).collect();
+    accumulate_candidates(program, baseline, written, &candidates, window)
+}
+
+/// [`accumulate`] over a source-ordered candidate subsequence. Candidates
+/// already known to fail alone are excluded; the accepted set is unchanged
+/// because every exclusion failed the oracle in isolation.
+pub(crate) fn accumulate_candidates(
+    program: &Program,
+    baseline: &Snapshot,
+    written: &[Site],
+    candidates: &[usize],
+    window: usize,
+) -> Vec<usize> {
+    let search = search_input(program, baseline, written);
+    let width = window.max(1);
+    let mut kept = Vec::new();
+    for slice in candidates.chunks(width) {
+        accept_window(&search, &mut kept, slice);
+    }
+    kept
+}
+
+fn search_input<'a>(
+    program: &'a Program,
+    baseline: &'a Snapshot,
+    written: &'a [Site],
+) -> Search<'a> {
+    Search {
         program,
         baseline,
         written,
-    };
-    let mut kept = Vec::new();
-    let mut pending: VecDeque<_> = (0..written.len()).collect();
-    while !pending.is_empty() {
-        let candidates = pending.drain(..pending.len().min(window.max(1))).collect();
-        accept(&search, &mut kept, candidates, &mut pending);
     }
-    kept
 }
 
 fn keeps(search: &Search<'_>, chosen: &[usize]) -> bool {
     preserves(search.program, search.baseline, search.written, chosen)
 }
 
-// The entire batch receives the same whole-program proof as a single erasure.
-fn accept(
-    search: &Search<'_>,
-    kept: &mut Vec<usize>,
-    candidates: Vec<usize>,
-    pending: &mut VecDeque<usize>,
-) {
-    let together: Vec<_> = kept.iter().chain(&candidates).copied().collect();
-    if keeps(search, &together) {
-        kept.extend(candidates);
-        return;
-    }
-    let accepted = judged_all(search, kept, &candidates);
-    settle(search, kept, accepted, pending);
+fn joined(kept: &[usize], candidates: &[usize]) -> Vec<usize> {
+    kept.iter().chain(candidates).copied().collect()
 }
 
-fn judged_all(search: &Search<'_>, kept: &[usize], candidates: &[usize]) -> Vec<usize> {
-    judged(search, kept, candidates)
+fn eligible(search: &Search<'_>, candidates: &[usize]) -> Vec<usize> {
+    let written: Vec<Site> = candidates
+        .iter()
+        .filter_map(|index| search.written.get(*index))
+        .cloned()
+        .collect();
+    individually_removable(search.program, search.baseline, &written)
         .into_iter()
-        .zip(candidates)
-        .filter_map(|(keep, index)| keep.then_some(*index))
+        .filter_map(|index| candidates.get(index).copied())
         .collect()
 }
 
-// A failed joint proof keeps only the first proven member, then retries the rest.
-fn settle(
-    search: &Search<'_>,
-    kept: &mut Vec<usize>,
-    accepted: Vec<usize>,
-    pending: &mut VecDeque<usize>,
-) {
-    let Some((&first, rest)) = accepted.split_first() else {
+fn accept_window(search: &Search<'_>, kept: &mut Vec<usize>, candidates: &[usize]) {
+    if keeps(search, &joined(kept, candidates)) {
+        kept.extend_from_slice(candidates);
+    } else if candidates.len() > 1 {
+        let removable = eligible(search, candidates);
+        if !removable.is_empty() {
+            accept_slice(search, kept, &removable);
+        }
+    }
+}
+
+/// Prove a contiguous candidate slice against the set kept so far.
+///
+/// Erasing more annotations only removes constraints: it never restores a
+/// type another erasure changed, nor repairs an error. A slice that preserves
+/// the program as a whole therefore preserves it for every subset, so a
+/// one-at-a-time search would keep every candidate here and the whole slice is
+/// accepted by that single solve. A failing slice is bisected instead of
+/// judged site by site, and a singleton that still fails is dropped. Splitting
+/// at the midpoint and solving the halves in order keeps the accepted set
+/// exactly the one a source-order greedy search builds, because each half
+/// solves against the kept set left by everything before it. Halving a slice of
+/// two or more always leaves both halves non-empty, so every call proves a
+/// real candidate.
+fn accept_slice(search: &Search<'_>, kept: &mut Vec<usize>, candidates: &[usize]) {
+    if keeps(search, &joined(kept, candidates)) {
+        kept.extend_from_slice(candidates);
         return;
-    };
-    let together: Vec<_> = kept.iter().chain(&accepted).copied().collect();
-    if rest.is_empty() || keeps(search, &together) {
-        kept.extend(accepted);
+    }
+    if candidates.len() == 1 {
         return;
     }
-    kept.push(first);
-    for index in rest.iter().rev() {
-        pending.push_front(*index);
-    }
-}
-
-// Inference needs the main thread's headroom rather than the 2 MiB default.
-const JUDGE_STACK: usize = 64 * 1024 * 1024;
-
-fn trial(search: &Search<'_>, kept: &[usize], index: usize) -> bool {
-    let mut chosen = kept.to_vec();
-    chosen.push(index);
-    keeps(search, &chosen)
-}
-
-fn judged(search: &Search<'_>, kept: &[usize], candidates: &[usize]) -> Vec<bool> {
-    if let [index] = candidates {
-        return vec![trial(search, kept, *index)];
-    }
-    std::thread::scope(|scope| {
-        let judges = candidates
-            .iter()
-            .map(|&index| (index, spawn_trial(scope, search, kept, index)))
-            .collect();
-        verdicts(search, kept, judges)
-    })
-}
-
-fn spawn_trial<'scope, 'env>(
-    scope: &'scope std::thread::Scope<'scope, 'env>,
-    search: &'scope Search<'env>,
-    kept: &'scope [usize],
-    index: usize,
-) -> std::io::Result<std::thread::ScopedJoinHandle<'scope, bool>> {
-    std::thread::Builder::new()
-        .stack_size(JUDGE_STACK)
-        .spawn_scoped(scope, move || trial(search, kept, index))
-}
-
-fn verdicts(
-    search: &Search<'_>,
-    kept: &[usize],
-    judges: Vec<(
-        usize,
-        std::io::Result<std::thread::ScopedJoinHandle<'_, bool>>,
-    )>,
-) -> Vec<bool> {
-    judges
-        .into_iter()
-        .map(|(index, judge)| verdict(judge).unwrap_or_else(|| trial(search, kept, index)))
-        .collect()
-}
-
-// A spawn failure retries locally; a solver panic still propagates to its caller.
-fn verdict(judge: std::io::Result<std::thread::ScopedJoinHandle<'_, bool>>) -> Option<bool> {
-    judge.ok().map(|handle| {
-        handle
-            .join()
-            .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
-    })
+    let (left, right) = candidates.split_at(candidates.len() / 2);
+    accept_slice(search, kept, left);
+    accept_slice(search, kept, right);
 }

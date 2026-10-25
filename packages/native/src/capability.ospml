@@ -53,6 +53,13 @@ type Capability =
         responseLimit : int
         deadline : int
         httpSlice : string
+    HostCall
+        hostNamespace : string
+        hostOperation : string
+        hostArguments : Json
+        hostTimeout : int
+        hostLimit : int
+        hostSlice : string
     RunningApplications
     ChooseFile
         types : List<string>
@@ -104,6 +111,7 @@ module Requests
         StoreList name => [str "kind" "store-list", str "name" name]
         StoreDelete name => [str "kind" "store-delete", str "name" name]
         Http method url headers body limit deadline slice => http method url headers body limit deadline slice
+        HostCall space operation arguments timeout limit slice => [str "kind" "host-call", str "namespace" space, str "operation" operation, JsonMember "arguments" arguments, num "timeout" timeout, num "limit" limit, str "slice" slice]
         RunningApplications => [str "kind" "running-applications"]
         ChooseFile types limit slice => [str "kind" "choose-file", strings "types" types, num "limit" limit, str "slice" slice]
         ChooseFolder => [str "kind" "choose-folder"]

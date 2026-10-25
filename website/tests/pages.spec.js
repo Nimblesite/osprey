@@ -202,7 +202,7 @@ test.describe("mobile interactions", () => {
       await page.goto("/docs/");
       await page.locator("#mobile-menu-toggle").click();
       const controls = page.locator("#site-navigation > li > a, #site-navigation > li > details > summary");
-      await expect(controls).toHaveCount(4);
+      await expect(controls).toHaveCount(5);
       await expectNavigationFits(controls);
       for (const group of await page.locator(".nav-group").all()) {
         await group.locator("summary").click();

@@ -45,6 +45,7 @@ module SurfaceTests {
         let call = "$" + "{readFile(path)}"
         checkAll("executable strings cannot hide ambient calls", [
             structuralEquals(Surface::ofText("fn load(path) = \"" + call + "\""), ["io/files"]),
+            structuralEquals(Surface::ofText("fn load(path) = \"\\" + call + "\""), ["io/files"]),
             structuralEquals(Surface::ofText("load path = \"" + call + "\""), ["io/files"]),
             structuralEquals(Surface::ofText("# osprey: flavor=python\ndef load(path):\n    return f\"{readFile(path)}\""), ["io/files"]),
             structuralEquals(Surface::ofText("# osprey: flavor=python\ndef load(path):\n    return f'{readFile(path)}'"), ["io/files"]),
@@ -53,6 +54,21 @@ module SurfaceTests {
             structuralEquals(Surface::ofText("termCols() + termRows() + termReadKey()"), ["io/terminal"])
         ])
     }
+
+    fn flavorFiles() = checkAll("source paths select each flavor's comment and identifier rules", [
+        structuralEquals(Surface::ofFiles([file("src/a.ospml", "(* readFile is commented out *)\nmain () = print \"done\"")]), []),
+        structuralEquals(Surface::ofFiles([file("src/a.ospml", "(* outer (* extern puts -> int *) readFile *)\nmain () = print \"done\"")]), []),
+        structuralEquals(Surface::ofFiles([file("src/a.ospml", "readFileé = 1\nmain () = print readFileé")]), []),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "# osprey: flavor=python\nreadFileé = 1\nprint(readFileé)")]), []),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "# osprey: flavor=python\nreadFileﻴ = 1\nprint(readFileﻴ)")]), []),
+        !Surface::shadowsBuiltin([file("src/a.py", "# osprey: flavor=python\nreadFileé = 1\nprint(readFileé)")]),
+        !Surface::shadowsBuiltin([file("src/a.ospml", "(* fn readFile(p) = p *)\nmain () = print \"done\"")]),
+        !Surface::shadowsBuiltin([file("src/a.ospml", "readFileé = 1\nmain () = print readFileé")]),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "# readFile note\ninput()")]), ["io/terminal"]),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "x = 'readFile'")]), []),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "@extern\ndef puts(text: str) -> int: ...")]), ["io/unknown"]),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "# osprey: flavor=python\ndef load(path):\n    return" + (fromCodePoint(65279) ?: "") + "readFile(path)")]), ["io/files"])
+    ])
 
     /// A builtin's name declared with `fn`, `let` or `mut` is a shadowing
     /// declaration; a call is not, and the release rules refuse a tree that declares one.
@@ -72,10 +88,46 @@ module SurfaceTests {
 
     fn unknownBuiltin() = checkAll("unclassified terminal operations block publication", [
         structuralEquals(Surface::ofText("termUnclassified()"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("extern fn puts(text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("extern puts (text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("extern // declaration continues\nfn puts(text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("# osprey: flavor=python\n@extern\ndef puts(text: str) -> int: ..."), ["io/unknown"]),
+        structuralEquals(Surface::ofText("# osprey: flavor=python\n@ extern\ndef puts(text: str) -> int: ..."), ["io/unknown"]),
+        structuralEquals(Surface::ofText("// extern fn puts\nfn text() = \"extern\""), []),
+        structuralEquals(Surface::ofText("let external = 1"), []),
+        structuralEquals(Surface::ofText("# osprey: flavor=python\nextern = 1\ndef external():\n    return extern"), []),
         match ReleaseFiles::assemble("@a/b/1.1", [file("src/a.osp", "fn main() = termUnclassified()")]) {
             Error { message } => message == "source.unclassified-builtin"
             Success => false
         }
+    ])
+
+    fn nativeNames() = checkAll("contextual extern identifiers do not declare native functions", [
+        structuralEquals(Surface::ofText("fn main() = {\nlet extern = 1\nprint(\"$" + "{extern}\")\n}"), []),
+        structuralEquals(Surface::ofText("fn extern(x) = x\nfn main() = print(extern(1))"), []),
+        structuralEquals(Surface::ofText("let extern = fn(x) => x\nprint(extern(1))"), []),
+        structuralEquals(Surface::ofText("let extern = 1\nlet value = extern\nfn main() = print(value)"), []),
+        structuralEquals(Surface::ofText("let extern = 1\nlet value =\nextern\nfn main() = print(value)"), [])
+    ])
+
+    fn nativeBoundaries() = checkAll("native declarations remain visible across statement boundaries", [
+        structuralEquals(Surface::ofText("let text = \"ok\"\nextern fn puts(text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("let extern = 1\nextern fn puts(text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("module Foreign {\nexport extern fn puts(text: string) -> int\n}"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("extern\n// declaration continues\nfn puts(text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("namespace prefix; module Empty {} extern fn puts(text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("namespace prefix; signature Api {} extern fn puts(text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("type Record = { value: int } extern fn puts(text: string) -> int"), ["io/unknown"])
+    ])
+
+    fn nativeWhitespace() = checkAll("native declarations use the compiler's whitespace rules", [
+        structuralEquals(Surface::ofText((fromCodePoint(65279) ?: "") + "extern fn puts(text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText((fromCodePoint(12) ?: "") + "extern fn puts(text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("extern" + (fromCodePoint(12) ?: "") + "fn puts(text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText((fromCodePoint(11) ?: "") + "extern fn puts(text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("let number = 1\rextern fn puts(text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("namespace prefix; extern fn puts(text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("// comment\rextern fn puts(text: string) -> int"), ["io/unknown"])
     ])
 
     fn sampleSurface(case) = {
@@ -95,9 +147,13 @@ module SurfaceTests {
         test("surface: table equals the fixture", tableMatchesFixture)
         test("surface: identifier scan", scans)
         test("surface: executable interpolations and terminal input", interpolations)
+        test("surface: source file flavors", flavorFiles)
         test("surface: trees and system capabilities", trees)
         test("surface: shadowed builtin names", shadowing)
         test("surface: unclassified ambient builtins", unknownBuiltin)
+        test("surface: contextual native identifiers", nativeNames)
+        test("surface: native declaration boundaries", nativeBoundaries)
+        test("surface: native declaration whitespace", nativeWhitespace)
         test("surface: sample-registry goldens", sampleSurfaces)
     }
 }

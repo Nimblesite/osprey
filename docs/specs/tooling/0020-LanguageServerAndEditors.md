@@ -71,14 +71,13 @@ implemented in [`crates/osprey-cli/src/main.rs`](../../../crates/osprey-cli/src/
 Standard LSP handshake and document sync:
 
 - `initialize` → advertise capabilities (`[LSP-CAPABILITIES]`); `initialized`.
-- `shutdown` returns `null`; the following `exit` notification terminates the
-  stdio loop.
+- `shutdown` returns `null` without waiting for document analysis; the following `exit` notification terminates the stdio loop and process. Analysis that completes after the session closes is discarded.
 - Document sync (incremental, `textDocumentSync: 2`): `didOpen`, `didChange`,
   `didClose`. A `didChange` applies **either** a full replacement **or** a set
   of incremental edits — never an open+change at the same version (which silently
   drops edits). Dropped edits are surfaced, not swallowed.
-- `$/cancelRequest` is accepted. Requests are served sequentially;
-  request-level concurrency is not supported.
+- `$/cancelRequest` is accepted. Document updates and ordinary requests use one ordered analysis worker. Lifecycle and profiler control messages remain responsive on the transport while analysis runs; ordinary requests are processed sequentially.
+- The pending analysis queue holds at most 256 messages. Queued and running analysis requests retain at most 32 MiB of encoded request data. Exceeding either limit closes the session with an explicit backlog error instead of discarding edits.
 
 ## Capabilities `[LSP-CAPABILITIES]`
 

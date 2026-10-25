@@ -7,10 +7,16 @@
 //! would violate. Non-counting backends ignore the word.
 //!
 //! Encoding (must match `compiler/runtime/memory_arc.c`): low 8 bits a kind,
-//! upper 56 a bitmask — bit `8 + i` set ⇒ the 8-byte word at body offset
-//! `8 * i` is a managed pointer the drop walk releases.
+//! upper 56 a bitmask — bit `8 + i` set ⇒ the pointer-stride word at body
+//! offset `pointer_bytes * i` is a managed pointer the drop walk releases.
+//! The stride is the target's pointer size: 8 natively, 4 on wasm32.
 
 use crate::llty::LType;
+
+/// Pointer size of a native 64-bit target.
+pub(crate) const NATIVE_POINTER_BYTES: u64 = 8;
+/// Pointer size of wasm32 (and every other ILP32 target).
+pub(crate) const WASM32_POINTER_BYTES: u64 = 4;
 
 /// Opaque bytes: no children to release. The default for plain `osp_alloc`.
 pub(crate) const KIND_RAW: i64 = 0;
@@ -39,15 +45,21 @@ pub(crate) enum MetaField {
     /// `i64` slot stays unmarked (leak-safe): a false release could corrupt,
     /// while a missed release can only leak.
     Word,
-    /// 8-byte managed pointer — the drop walk releases it.
+    /// An 8-byte physical slot holding a managed pointer that is boxed into it
+    /// (`Result`'s always-`i64` payload, an `any` box's `i64` payload). The
+    /// slot stays 8 bytes on every target, unlike `PtrManaged`, but its child
+    /// is a heap pointer the drop walk must release.
+    ManagedWord,
+    /// Pointer-size managed pointer — the drop walk releases it.
     PtrManaged,
-    /// 8-byte managed pointer PROVEN to be an ARC body or NULL (a
+    /// Pointer-size managed pointer PROVEN to be an ARC body or NULL (a
     /// declared-union field: only constructors mint such values, and no
     /// extern claims to return the union). When every masked field is
     /// `PtrDirect` the struct takes `KIND_MASK_DIRECT` and its drop walk
     /// skips the per-child registry probe.
     PtrDirect,
-    /// 8-byte pointer the drop walk must NOT release (code pointer, foreign).
+    /// Pointer-size pointer the drop walk must NOT release (code pointer,
+    /// foreign).
     PtrOpaque,
     /// 1-byte field (`i1` / `i8`).
     Byte,
@@ -56,15 +68,23 @@ pub(crate) enum MetaField {
 }
 
 impl MetaField {
-    pub(crate) fn size_align(self) -> u64 {
+    /// Size and natural alignment of this field on a target whose pointers are
+    /// `pointer_bytes` wide. `ManagedWord` is a physical `i64` on every target.
+    pub(crate) fn size_align(self, pointer_bytes: u64) -> u64 {
         match self {
-            MetaField::Word
-            | MetaField::PtrManaged
-            | MetaField::PtrDirect
-            | MetaField::PtrOpaque => 8,
+            MetaField::Word | MetaField::ManagedWord => 8,
+            MetaField::PtrManaged | MetaField::PtrDirect | MetaField::PtrOpaque => pointer_bytes,
             MetaField::Byte => 1,
             MetaField::Half => 4,
         }
+    }
+
+    /// Whether the drop walk releases this field's contents.
+    fn is_managed(self) -> bool {
+        matches!(
+            self,
+            MetaField::ManagedWord | MetaField::PtrManaged | MetaField::PtrDirect
+        )
     }
 
     /// The layout field for a value of LLVM type `lty`: pointers are managed
@@ -98,25 +118,59 @@ impl MetaField {
 
 /// Physical field offsets shared by allocation metadata and native DWARF.
 pub(crate) fn field_offsets(fields: &[MetaField]) -> impl Iterator<Item = (u64, u64)> + '_ {
-    fields.iter().scan(0u64, |offset, field| {
-        let size = field.size_align();
+    field_offsets_for(fields, NATIVE_POINTER_BYTES)
+}
+
+/// Physical field offsets on a target whose pointers are `pointer_bytes` wide.
+pub(crate) fn field_offsets_for(
+    fields: &[MetaField],
+    pointer_bytes: u64,
+) -> impl Iterator<Item = (u64, u64)> + '_ {
+    fields.iter().scan(0u64, move |offset, field| {
+        let size = field.size_align(pointer_bytes);
         let start = offset.div_ceil(size) * size;
         *offset = start + size;
         Some((start, size))
     })
 }
 
+/// Pointer size for a target: 4 bytes when it is wasm32, else native 8.
+pub(crate) fn pointer_bytes_for(wasm32: bool) -> u64 {
+    if wasm32 {
+        WASM32_POINTER_BYTES
+    } else {
+        NATIVE_POINTER_BYTES
+    }
+}
+
+impl crate::builder::Codegen {
+    /// The `@osp_alloc_tagged` layout word for `fields`, computed for THIS
+    /// target's pointer width. Every production struct-meta call site goes
+    /// through here so wasm32 masks stay physically exact.
+    pub(crate) fn struct_meta(&self, fields: &[MetaField]) -> i64 {
+        struct_meta_for(fields, self.pointer_bytes)
+    }
+}
+
+/// The native-64-bit [`struct_meta_for`]; the layout tests pin its encoding.
+#[cfg(test)]
+pub(crate) fn struct_meta(fields: &[MetaField]) -> i64 {
+    struct_meta_for(fields, NATIVE_POINTER_BYTES)
+}
+
 /// The meta word for a struct laid out from `fields` in order, natural
 /// alignment (LLVM's rules for this field set). Falls back to `KIND_RAW`
 /// (leak-safe, never corrupting) when a managed pointer lands beyond the
 /// mask's reach. All-`PtrDirect` masks upgrade to `KIND_MASK_DIRECT`; one
-/// unproven field keeps the whole struct on the probing `KIND_MASK`.
-pub(crate) fn struct_meta(fields: &[MetaField]) -> i64 {
+/// unproven field keeps the whole struct on the probing `KIND_MASK`. The mask
+/// bit of a field is its actual byte offset divided by the target's pointer
+/// stride, so the drop walk can step pointer-sized words on wasm32 too.
+pub(crate) fn struct_meta_for(fields: &[MetaField], pointer_bytes: u64) -> i64 {
     let mut mask: u64 = 0;
     let mut all_direct = true;
-    for (f, (off, _)) in fields.iter().zip(field_offsets(fields)) {
-        if matches!(f, MetaField::PtrManaged | MetaField::PtrDirect) {
-            let word = off / 8;
+    for (f, (off, _)) in fields.iter().zip(field_offsets_for(fields, pointer_bytes)) {
+        if f.is_managed() {
+            let word = off / pointer_bytes;
             if word > MASK_MAX_WORD {
                 return KIND_RAW;
             }

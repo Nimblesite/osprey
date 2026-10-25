@@ -8,7 +8,7 @@ default_namespace = "tokenizers"
 name = "@osprey/tokenizers"
 license = "MIT AND Unicode-DFS-2016"
 summary = "WordPiece, Unigram and WordLevel tokenizers with BERT normalizers, pre-tokenizers and post-processors"
-keywords = ["tokenizers", "wordpiece", "unigram", "bert", "python-flavor"]
+keywords = ["bert", "python-flavor", "tokenizers", "unigram", "wordpiece"]
 
 [test-dependencies]
 "@osprey/testing" = { epoch = 1, min_release = 1 }

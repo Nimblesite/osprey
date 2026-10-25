@@ -47,8 +47,7 @@ function isReportShape(value: any): value is PkgReport {
 /**
  * The JSON report line in frontend stdout, or undefined when stdout is not
  * one. The trailing `status: N` process line is deliberately NOT the answer:
- * the CLI cannot set exit statuses, so only the embedded JSON carries
- * semantics.
+ * a zero process exit alone cannot prove semantic success.
  */
 export function parseFrontendReport(stdout: string): PkgReport | undefined {
   for (const line of stdout.split("\n").reverse()) {
@@ -73,36 +72,23 @@ export interface FrontendSpawnDeps {
   execFile: typeof execFile;
 }
 
-/**
- * Run one frontend command by spawning `executable` with NO arguments,
- * writing `command` to its stdin, and resolving with the parsed `--json`
- * report. A process failure always rejects; a successful process must also return a
- * successful semantic report. Rejects only when the frontend could not
- * be asked at all (spawn failure) or answered nothing parseable.
- */
+function completeFrontend(error: Error | null, stdout: string, stderr: string,
+  resolve: (report: PkgReport) => void, reject: (reason: Error) => void): void {
+  if (error) { reject(new Error(`Osprey package frontend failed: ${error.message}`)); return; }
+  const report = parseFrontendReport(stdout);
+  if (report) resolve(report);
+  else reject(new Error(`The Osprey package frontend did not answer with a JSON report: ${String(stderr || stdout).trim()}`));
+}
+
+/** Return the semantic report; transport/process failures always reject. */
 export function runFrontendCommand(
-  executable: string,
-  command: string,
-  cwd: string,
+  executable: string, command: string, cwd: string,
   spawn: FrontendSpawnDeps = { execFile },
 ): Promise<PkgReport> {
   return new Promise((resolve, reject) => {
-    const child = spawn.execFile(
-      executable,
-      [],
+    const child = spawn.execFile(executable, [],
       { cwd, timeout: 120_000, maxBuffer: 16 * 1024 * 1024, windowsHide: true },
-      (error, stdout, stderr) => {
-        const report = parseFrontendReport(String(stdout ?? ""));
-        if (error) {
-          reject(new Error(`Osprey package frontend failed: ${error.message}`));
-        } else if (report) {
-          resolve(report);
-        } else {
-          const why = String(stderr || stdout).trim();
-          reject(new Error(`the Osprey package frontend did not answer with a JSON report: ${why}`));
-        }
-      },
-    );
+      (error, stdout, stderr) => completeFrontend(error, String(stdout ?? ""), String(stderr ?? ""), resolve, reject));
     child?.stdin?.once?.("error", reject);
     child?.stdin?.end(command + "\n", () => undefined);
   });

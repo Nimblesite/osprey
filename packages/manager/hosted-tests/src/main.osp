@@ -1,4 +1,5 @@
 namespace hosted_tests;
+import registry::Policy
 import hosted_tests::HeaderTests
 import hosted_tests::CookieTests
 import hosted_tests::OriginTests
@@ -14,4 +15,4 @@ fn suites() = {
     0
 }
 
-fn main() = suites
+fn main() = Policy::guarded(suites)

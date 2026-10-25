@@ -8,7 +8,7 @@ default_namespace = "safetensors"
 name = "@osprey/safetensors"
 license = "MIT"
 summary = "Read and write Hugging Face safetensors weight files (header, dtypes, decode, save)"
-keywords = ["safetensors", "weights", "formats", "python-flavor"]
+keywords = ["formats", "python-flavor", "safetensors", "weights"]
 
 [test-dependencies]
 "@osprey/testing" = { epoch = 1, min_release = 1 }

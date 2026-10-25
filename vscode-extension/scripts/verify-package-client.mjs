@@ -6,3 +6,6 @@ const os = process.platform === "win32" ? "win32" : process.platform === "darwin
 const executable = process.platform === "win32" ? "osprey-pkg.exe" : "osprey-pkg";
 const client = path.join(extension, "bin", `${os}-${process.arch === "arm64" ? "arm64" : "x64"}`, executable);
 if (!fs.existsSync(client)) throw new Error(`Missing bundled package client: ${client}. Run make _vsix_bundle before packaging.`);
+const workspace = path.join(path.dirname(client), "package-workspace.wasm");
+if (!fs.existsSync(workspace)) throw new Error(`Missing bundled package workspace: ${workspace}. Run make _vsix_bundle before packaging.`);
+if (!WebAssembly.validate(fs.readFileSync(workspace))) throw new Error(`Invalid package workspace WASM: ${workspace}`);

@@ -301,7 +301,7 @@ impl Resolver<'_> {
             } => {
                 self.rewrite_expr(function, context, locals);
                 if let Expr::FieldAccess { field, .. } = function.as_mut() {
-                    self.rewrite_value_name(field, context, false);
+                    self.rewrite_method_name(field, context);
                 }
                 for argument in type_args {
                     self.rewrite_type(argument, context, locals);
@@ -329,7 +329,7 @@ impl Resolver<'_> {
                 named_arguments,
             } => {
                 self.rewrite_expr(target, context, locals);
-                self.rewrite_value_name(method, context, false);
+                self.rewrite_method_name(method, context);
                 self.rewrite_exprs(arguments, context, locals);
                 for argument in named_arguments {
                     self.rewrite_expr(&mut argument.value, context, locals);

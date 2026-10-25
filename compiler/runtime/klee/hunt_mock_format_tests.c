@@ -271,13 +271,15 @@ static void every_printer_agrees(void) {
   (void)fclose(input);
 }
 
-static void decimal_roundtrip(unsigned long long value) {
+static void integer_roundtrip(unsigned long long value, int base, const char *format) {
   char text[32], *end = NULL;
-  int count = snprintf(text, sizeof(text), "%llu", value);
-  hunt_check(count > 0 && count <= 20 && (size_t)count == strlen(text), "decimal length matches its bytes");
-  hunt_check(text[0] >= '0' && text[0] <= '9' && (count == 1 || text[0] != '0'), "decimal spelling is canonical");
+  int count = snprintf(text, sizeof(text), format, value);
+  int limit = base == 8 ? 22 : base == 10 ? 20 : 16;
+  hunt_check(count > 0 && count <= limit && (size_t)count == strlen(text), "integer length matches its bytes");
+  int first_digit = (text[0] >= '0' && text[0] <= '9') || (base == 16 && text[0] >= 'a' && text[0] <= 'f');
+  hunt_check(first_digit && (count == 1 || text[0] != '0'), "integer spelling is canonical");
   errno = 0;
-  unsigned long long restored = strtoull(text, &end, 10);
+  unsigned long long restored = strtoull(text, &end, base);
   hunt_check(errno == 0 && end != text && *end == 0 && restored == value, "host libc recovers the exact unsigned integer");
 }
 
@@ -286,13 +288,27 @@ static void decimal_roundtrip_oracle(void) {
   const unsigned long long multiplier = 6364136223846793005ULL, increment = 1442695040888963407ULL;
   unsigned long long state = UINT64_MAX;
   for (unsigned i = 0; i < count; i++) {
-    decimal_roundtrip(i);
-    decimal_roundtrip(state);
+    integer_roundtrip(i, 10, "%llu");
+    integer_roundtrip(state, 10, "%llu");
     state = state * multiplier + increment;
   }
 }
 
+static void every_integer_digit_boundary_roundtrips(void) {
+  const unsigned bases[] = {8, 10, 16};
+  const char *formats[] = {"%llo", "%llu", "%llx"};
+  for (size_t i = 0; i < ROWS(bases); i++) {
+    for (unsigned long long boundary = 1;; boundary *= bases[i]) {
+      integer_roundtrip(boundary - 1, (int)bases[i], formats[i]);
+      integer_roundtrip(boundary, (int)bases[i], formats[i]);
+      integer_roundtrip(boundary + 1, (int)bases[i], formats[i]);
+      if (boundary > UINT64_MAX / bases[i]) break;
+    }
+  }
+}
+
 void hunt_mock_format_tests(void) {
+  every_integer_digit_boundary_roundtrips();
   decimal_roundtrip_oracle();
   integer_rows();
   string_and_float_rows();

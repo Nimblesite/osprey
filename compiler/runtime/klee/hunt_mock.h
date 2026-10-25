@@ -70,6 +70,8 @@ extern long osp_hunt_input_bytes;
 // One byte beyond the input cap forces a short read; one holds the NUL.
 size_t osp_hunt_file_buffer_capacity(void);
 int osp_hunt_initial_input(char **out);
+size_t osp_hunt_input_capacity(const char *text);
+int osp_hunt_valid_line_end(const unsigned char *data, long length, long end, long cap);
 
 // Where written bytes go. The default discards them; tests capture them.
 extern void (*osp_hunt_sink)(const char *data, size_t count);

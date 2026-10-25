@@ -5,6 +5,103 @@ use osprey_project::{assemble, AssembledProject, ProjectConfig, SourceFile};
 use osprey_syntax::Flavor;
 use support::{config, parsed};
 
+#[test]
+fn missing_or_ambiguous_entry_never_selects_an_arbitrary_source() {
+    let sources =
+        ["a/main.osp", "b/main.osp"].map(|name| parsed(name, Flavor::Default, "namespace app;\n"));
+    for (entry, expected) in [
+        (Some("missing.osp"), "was not found"),
+        (Some("main.osp"), "is ambiguous"),
+        (None, "cannot infer an entry source"),
+    ] {
+        let mut options = config("main.osp");
+        options.entry = entry.map(Into::into);
+        let errors = assemble(&options, &sources).expect_err(expected);
+        assert!(
+            errors.iter().any(|error| error.message.contains(expected)),
+            "{errors:?}"
+        );
+    }
+}
+
+#[test]
+fn each_supported_implicit_entry_route_is_accepted() -> Result<(), String> {
+    let mut options = config("main.osp");
+    options.entry = None;
+    for text in ["fn main() = 0", "print(0)", "fn helper() = 0"] {
+        let source = parsed("main.osp", Flavor::Default, text);
+        let project = checked(&options, &[source])?;
+        assert_eq!(project.entry_source, 0);
+        assert_eq!(project.sources.len(), 1);
+    }
+    let errors = assemble(&options, &[]).expect_err("empty project rejected");
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.message.contains("contains no Osprey source")),
+        "{errors:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn duplicate_implicit_entries_are_rejected_instead_of_ordered_by_path() {
+    let mut options = config("main.osp");
+    options.entry = None;
+    for text in ["fn main() = 0", "print(0)"] {
+        let sources = ["one", "two"].map(|name| {
+            parsed(
+                &format!("{name}.osp"),
+                Flavor::Default,
+                &format!("namespace {name};\n{text}"),
+            )
+        });
+        let errors = assemble(&options, &sources).expect_err("ambiguous inferred entry");
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.message.contains("is ambiguous")),
+            "{errors:?}"
+        );
+    }
+}
+
+#[test]
+fn project_text_parsing_preserves_flavor_errors_and_explicit_overrides() {
+    let path = std::path::PathBuf::from("buffer.osp");
+    for marker in ["ml", "unknown"] {
+        let source = format!("// osprey: flavor={marker}\nfn main() = 0\n");
+        let errors = osprey_project::parse_text(path.clone(), source.clone(), None)
+            .expect_err("invalid or conflicting marker rejected");
+        assert_ne!(errors, Vec::new());
+        assert!(errors
+            .iter()
+            .all(|error| error.path.as_ref() == Some(&path) && error.line.is_none()));
+        let overridden =
+            osprey_project::parse_text(path.clone(), source.clone(), Some(Flavor::Default))
+                .expect("explicit flavor wins over marker");
+        assert_eq!(overridden.flavor, Flavor::Default);
+        assert_eq!(overridden.source, source);
+    }
+}
+
+#[test]
+fn project_text_syntax_errors_keep_the_physical_buffer_location() {
+    let path = std::path::PathBuf::from("unsaved.osp");
+    let errors = osprey_project::parse_text(path.clone(), "fn main() = )\n".into(), None)
+        .expect_err("invalid buffer rejected");
+    assert_ne!(errors, Vec::new());
+    assert!(errors
+        .iter()
+        .all(|error| error.path.as_ref() == Some(&path)));
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.line == Some(1) && error.column.is_some()),
+        "{errors:?}"
+    );
+}
+
 fn checked(config: &ProjectConfig, sources: &[SourceFile]) -> Result<AssembledProject, String> {
     let project = assemble(config, sources).map_err(|errors| format!("{errors:?}"))?;
     let errors = osprey_types::check_program(&project.program);

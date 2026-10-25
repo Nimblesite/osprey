@@ -34,15 +34,8 @@ impl Harness {
             let reader: BoxedReader = Box::new(server_reads);
             let mut reader = BufReader::new(reader);
             let host = ProfilerHost::new(&writer);
-            serve(
-                &mut reader,
-                &writer,
-                &engine_for_loop,
-                &bus,
-                &dispatcher,
-                &host,
-            )
-            .await
+            let queue = work::Queue::start(&engine_for_loop, &bus, &dispatcher, &writer);
+            serve(&mut reader, &queue, &host).await
         });
         Self {
             to_server: client_writes,

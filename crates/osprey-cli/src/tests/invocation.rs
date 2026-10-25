@@ -53,6 +53,7 @@ fn osprey_build_rejects_every_mode_flag() {
         "--compile",
         "--run",
         "--symbols",
+        "--source-graph",
         "--list-tests",
         "--hover",
     ] {
@@ -171,7 +172,11 @@ fn wasm_rejects_native_only_options_in_ir_and_check_modes() {
     let parsed = osprey_syntax::parse_program("print(1)\n");
     let input = CompilationInput::script("app.osp", "print(1)\n".to_string(), parsed.program);
     for mode in ["--llvm", "--check"] {
-        for flag in ["--memory=gc", "--memory=arc", "--debug"] {
+        let args = ["app.osp", "--target=wasm32", mode, "--memory=arc"].map(str::to_string);
+        let cli = parse_args(&args).expect("valid arguments");
+        assert_eq!(cli.memory, "arc");
+        assert!(target_error(&cli, &input).is_none());
+        for flag in ["--memory=gc", "--debug"] {
             let args = ["app.osp", "--target=wasm32", mode, flag].map(str::to_string);
             let cli = parse_args(&args).expect("valid arguments");
             assert!(
@@ -308,3 +313,10 @@ const INVALID_DEBUG_OPTIONS: &[(&[&str], &str)] = &[
     (&["--compile", "--debug-out"], "requires a path"),
     (&["--compile", "--debug-out="], "cannot be empty"),
 ];
+
+#[test]
+fn parse_args_source_graph_mode() {
+    let cli = parse_args(&args(&["examples/projects/modules", "--source-graph"]))
+        .expect("source graph mode parses");
+    assert_eq!(cli.mode, "--source-graph");
+}

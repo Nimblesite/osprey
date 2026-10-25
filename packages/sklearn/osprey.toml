@@ -8,7 +8,7 @@ default_namespace = "sklearn"
 name = "@osprey/sklearn"
 license = "MIT"
 summary = "scikit-learn metrics, preprocessing and model_selection over array-likes (lists)"
-keywords = ["scikit-learn", "metrics", "preprocessing", "model-selection", "python-flavor"]
+keywords = ["metrics", "model-selection", "preprocessing", "python-flavor", "scikit-learn"]
 
 [test-dependencies]
 "@osprey/testing" = { epoch = 1, min_release = 1 }

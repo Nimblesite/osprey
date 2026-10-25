@@ -80,7 +80,7 @@ Each port publishes as `@osprey/<name>`, epoch 1, release ordinal 1, from its pa
 | `@osprey/tokenizers` | Hugging Face WordPiece, Unigram and WordLevel models, BERT normalizer, pre-tokenizers, decoders and the BERT template post-processor against tokenizers 0.23.3 (1006 oracle assertions) | shipped |
 | `@osprey/einops` | `rearrange`, `reduce`, `repeat` patterns | in progress |
 | `@osprey/sacrebleu` | BLEU (every smoothing method, effective order, multiple references), chrF2 and chrF++, the `none`/`13a`/`char` tokenizers, against sacrebleu 2.6.0 (3084 oracle assertions) | shipped |
-| `@osprey/rouge_score` | `RougeScorer` for rouge1/2/L/Lsum, its tokenizer and nltk's Porter stemmer, against rouge-score 0.1.2 (1137 oracle assertions) | shipped |
+| `@osprey/rouge-score` | `RougeScorer` for rouge1/2/L/Lsum, its tokenizer and nltk's Porter stemmer, against rouge-score 0.1.2 (1137 oracle assertions) | shipped |
 | `@osprey/faiss` | `IndexFlatL2`/`IndexFlatIP`, ID maps, selectors, `normalize_L2`, k-means with explicit init, product and scalar quantizers, against faiss-cpu 1.15.1 (482 oracle assertions) | shipped |
 | `@osprey/re` | CPython's `re`: pattern parser, backtracking matcher, `match`/`search`/`findall`/`sub`/`split` | in progress |
 | `@osprey/safetensors` | the safetensors header and tensor layout, every dtype, `save` byte-identical | in progress |
@@ -91,6 +91,6 @@ Each port publishes as `@osprey/<name>`, epoch 1, release ordinal 1, from its pa
 | `@osprey/transformers` | generation layer of transformers 5.20.2: 19 logits processors and warpers, `LogitsProcessorList` order, softmax/argmax/inverse-CDF sampling, stopping criteria, a model-independent `generate` driver (375 oracle assertions) | generation shipped; LLaMA/GPT-2 models in progress |
 | `@osprey/peft` | LoRA adapters | planned; no package source yet |
 | `@osprey/bitsandbytes` | int8 absmax and 4-bit NF4 quantization | planned; no package source yet |
-| `@osprey/flash_attn` | `flash_attn_func` and `flash_attn_varlen_func` as the online-softmax tiled pass: causal and sliding-window masks, ALiBi, GQA head mapping, log-sum-exp, against torch SDPA in float64 (1035 oracle assertions) | shipped |
+| `@osprey/flash-attn` | `flash_attn_func` and `flash_attn_varlen_func` as the online-softmax tiled pass: causal and sliding-window masks, ALiBi, GQA head mapping, log-sum-exp, against torch SDPA in float64 (1035 oracle assertions) | shipped |
 
 A row moves to shipped only when its suite is in [PORT-SUITE] and passes on every backend.

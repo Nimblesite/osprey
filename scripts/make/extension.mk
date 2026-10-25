@@ -30,10 +30,15 @@ REGISTRY_CLIENT_SOURCES := $(shell find packages/manager -type f \( -name '*.osp
 target/osprey-pkg: $(BIN) $(REGISTRY_CLIENT_SOURCES)
 	$(BIN) build packages/manager/cli -o $@
 
-_vsix_bundle: target/osprey-pkg
+PACKAGE_WORKSPACE_SOURCES := $(shell find packages/manager/editor packages/native/src packages/vscode/src -type f \( -name '*.osp' -o -name '*.ospml' -o -name 'osprey.toml' \))
+target/package-workspace.wasm: $(BIN) $(PACKAGE_WORKSPACE_SOURCES) | _runtime_wasm
+	$(BIN) build packages/manager/editor --target=wasm32 -o $@
+
+_vsix_bundle: target/osprey-pkg target/package-workspace.wasm
 	@set -e; DEST="$(EXT_DIR)/bin/$(EXT_PLATFORM)"; $(MKDIR) "$$DEST"; \
 	cp $(BIN) "$$DEST/osprey"; \
 	cp target/osprey-pkg "$$DEST/osprey-pkg"; \
+	cp target/package-workspace.wasm "$$DEST/package-workspace.wasm"; \
 	cp $(RTB)/libfiber_runtime.a $(RTB)/libhttp_runtime.a \
 	   $(RTB)/libfiber_runtime_gc.a $(RTB)/libhttp_runtime_gc.a \
 	   $(RTB)/libfiber_runtime_arc.a $(RTB)/libhttp_runtime_arc.a "$$DEST/"; \
@@ -53,6 +58,8 @@ _vsix_package: $(EXT_NODE_DEPS) $(PROFILER_UI_BUILT)
 	  { echo "FAIL: $$VSIX carries no extension/bin/$(EXT_PLATFORM)/osprey"; exit 1; }; \
 	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/osprey-pkg" || \
 	  { echo "FAIL: $$VSIX carries no bundled package client"; exit 1; }; \
+	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/package-workspace.wasm" || \
+	  { echo "FAIL: $$VSIX carries no package workspace WASM"; exit 1; }; \
 	unzip -l "$$VSIX" | grep -qF "extension/out/client/src/extension.js" || \
 	  { echo "FAIL: $$VSIX carries no compiled extension (out/client/src/extension.js)"; exit 1; }
 

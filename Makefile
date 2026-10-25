@@ -38,6 +38,8 @@ test: build
 	$(MAKE) _coverage_check_rust
 	$(MAKE) _test_packages
 	$(MAKE) _coverage_check_packages
+	$(MAKE) _test_registry REGISTRY_MEMORY=gc
+	$(MAKE) _test_registry REGISTRY_MEMORY=arc
 	$(MAKE) _test_python_app_ports
 	$(MAKE) _test_c_runtime
 	$(MAKE) _test_hunt_mock
@@ -58,7 +60,7 @@ test: build
 	$(MAKE) _coverage_check_vscode_extension
 	$(MAKE) _test_bench_tools
 
-## package-coverage: per-package source coverage — collect, then gate all 18.
+## package-coverage: per-package source coverage — collect, then gate all 19.
 ##                   Reruns each packages/<name>/tests suite with `osprey test
 ##                   --coverage-json` and enforces every threshold under
 ##                   projects.packages (90% floor, one report per package).

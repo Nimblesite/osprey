@@ -11,17 +11,22 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use osprey_ast::{Position, Program};
 
-use crate::check::infer_checked;
+use crate::check::infer_annotation_candidate;
 use crate::redundant_sites::{erase, sites, Site, Slot};
 use crate::ty::{Type, VarId};
 
+#[cfg(test)]
+#[path = "redundant_cost_tests.rs"]
+mod cost_tests;
 /// The window search that selects one jointly removable annotation set
 /// ([TYPE-ANNOTATION-REDUNDANT]). Its [`preserves`] oracle stays here beside
 /// the diagnostics it serves.
 #[path = "redundant_search.rs"]
 mod search;
 
-pub(crate) use search::accumulate;
+pub(crate) use search::accumulate_candidates;
+#[cfg(test)]
+pub(crate) use search::{accumulate, individually_removable};
 
 /// The rule identifier this diagnostic is reported under, and the name a
 /// per-rule severity setting will address it by ([TYPE-ANNOTATION-REDUNDANT]).
@@ -148,7 +153,7 @@ pub fn redundant_annotation_sites_for(
     let removable = if preserves(program, &baseline, &written, &all) {
         all
     } else {
-        accumulate(program, &baseline, &written, judges())
+        accumulate_candidates(program, &baseline, &written, &all, judges())
     };
     removable
         .iter()
@@ -202,7 +207,9 @@ fn judges() -> usize {
 /// Everything the inferrer resolved, labelled so two runs compare entry by
 /// entry.
 pub(crate) fn published(program: &Program) -> Option<Snapshot> {
-    let types = infer_checked(program).ok()?;
+    #[cfg(test)]
+    let _proof = cost_tests::record(program);
+    let types = infer_annotation_candidate(program).ok()?;
     let functions = types.functions.iter().map(|(name, (params, ret))| {
         let signature = Type::Fun {
             params: params.clone(),

@@ -1,0 +1,119 @@
+namespace registry_editor
+import ui::Doc
+import ui::Lists
+
+// Implements [PACKAGE-EDITOR-COMPLETIONS]: host envelopes carry bounded raw
+// output; semantic success comes only from the CLI report, never exit code 0.
+
+type SemanticReport =
+    reportLines : List<string>
+    reportStatus : int
+
+type GraphCompletion =
+    ResolvedGraph
+        graphValue : Graph
+    MissingLock
+        lockReason : string
+
+module Reports
+    failure message = Error(message = message)
+
+    appendLine (parsed, item) = match parsed
+        Error problem => Error(message = problem)
+        Success lines => match jsonText item
+            Success text => Success(value = listAppend lines text)
+            Error _ => failure "Package report lines must be strings"
+
+    strings doc = match doc
+        JsonArray values => foldList (values, Success(value = []), \(parsed, item) => appendLine (parsed, item))
+        _ => failure "Package report lines must be a list"
+
+    intField (doc, key) = match jsonField doc key
+        Error _ => failure "Package completion is missing ${key}"
+        Success value => match jsonInt value
+            Error _ => failure "Package completion has a non-integer ${key}"
+            Success number => Success(value = number)
+
+    stringField (doc, key) = match jsonField doc key
+        Error _ => failure "Package completion is missing ${key}"
+        Success value => match jsonText value
+            Error _ => failure "Package completion has a non-string ${key}"
+            Success text => Success(value = text)
+
+    report doc = match intField (doc, "status")
+        Error problem => Error(message = problem)
+        Success status => match jsonField doc "lines"
+            Error _ => failure "Package report is missing lines"
+            Success lines => match strings lines
+                Error problem => Error(message = problem)
+                Success parsed => Success(value = SemanticReport(reportLines = parsed, reportStatus = status))
+
+    jsonReportLines stdout = filterList (split stdout "\n" ?: [], \line => startsWith (trim line) "{")
+
+    parseReport stdout = match jsonReportLines stdout
+        [line] => match jsonDecode line
+            Error _ => failure "Package command did not return a JSON report"
+            Success doc => report doc
+        _ => failure "Package command must return exactly one JSON report"
+
+    processCode result = match jsonText result
+        Success _ => Success(value = 0)
+        Error _ => match intField (result, "code")
+            Error problem => Error(message = problem)
+            Success code => Success(value = code)
+
+    processStdout result = match stringField (result, "stdout")
+        Success stdout => Success(value = stdout)
+        Error problem => Error(message = problem)
+
+    export process result = match jsonText result
+        Success stdout => parseReport stdout
+        Error _ => match processCode result
+            Error problem => Error(message = problem)
+            Success code => match processStdout result
+                Error problem => Error(message = problem)
+                Success stdout => match parseReport stdout
+                    Error problem => match code == 0
+                        true => Error(message = problem)
+                        false => failure "Package command exited with code ${code}"
+                    Success parsed => match code == 0 || parsed.reportStatus != 0
+                        true => Success(value = parsed)
+                        false => failure "Package command exited with code ${code}"
+
+    body result = match jsonText result
+        Success text => Success(value = text)
+        Error _ => match intField (result, "status")
+            Error problem => Error(message = problem)
+            Success status => match status == 200
+                false => failure "Registry returned HTTP ${status}"
+                true => match stringField (result, "body")
+                    Error problem => Error(message = problem)
+                    Success text => Success(value = text)
+
+    detail report = match isEmpty report.reportLines
+        true => "Package command failed with semantic status ${report.reportStatus}"
+        false => join report.reportLines "\n"
+
+    export succeeded report = match report.reportStatus == 0
+        true => Success(value = report.reportLines)
+        false => failure (detail report)
+
+    missingLock report = Lists::any (report.reportLines, \line => startsWith line "tree.no-lock ")
+
+    graphLine report = match report.reportStatus == 0
+        false => match missingLock report
+            true => Success(value = MissingLock(lockReason = detail report))
+            false => failure (detail report)
+        true => match length report.reportLines == 1
+            false => failure "Graph report must contain exactly one JSON line"
+            true => match jsonDecode (listGet report.reportLines 0 ?: "")
+                Error _ => failure "Graph report line is not JSON"
+                Success doc => match Packages::validGraph doc
+                    Error problem => Error(message = problem)
+                    Success graph => Success(value = ResolvedGraph(graphValue = graph))
+
+    export graph result = match process result
+        Error problem => Error(message = problem)
+        Success report => graphLine report
+
+    export catalogBody result = body result

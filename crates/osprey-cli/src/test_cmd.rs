@@ -259,7 +259,9 @@ fn run_suite(
         .is_file()
         .then(|| crate::toolchain::Scratch::new(&source.to_string_lossy(), "test-suite"))
         .transpose()
-        .map_err(|_| std::io::Error::other("cannot create suite working directory"))?;
+        .map_err(|error| {
+            std::io::Error::other(format!("cannot create suite working directory: {error:?}"))
+        })?;
     let mut command = suite_command(
         &source,
         opts.filter.as_deref(),

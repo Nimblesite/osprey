@@ -50,6 +50,9 @@ type Node A =
         panes : List<Node<A>>
     Layer
         children : List<Node<A>>
+    ContextMenu
+        menuBody : Node<A>
+        menuActions : List<Node<A>>
     Aside
         side : Side
         aside : Node<A>
@@ -290,3 +293,7 @@ module Ui
     (** A row led by `symbol` under the heading `group`; consecutive rows of one group share that heading. *)
     export entry<A> : (string, string, string, Node<A>) -> Row<A>
     entry (key, symbol, group, cell) = Row(rowKey = key, rowSymbol = symbol, rowGroup = group, cell = cell)
+
+    (** [UI-COMPONENTS-CONTEXT-MENU] Secondary actions for content; the host exposes them by pointer and keyboard context-menu gestures. *)
+    export contextMenu<A> : (Node<A>, List<Node<A>>) -> Node<A>
+    contextMenu (content, actions) = ContextMenu(menuBody = content, menuActions = actions)

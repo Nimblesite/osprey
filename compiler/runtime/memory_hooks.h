@@ -13,7 +13,7 @@
 // --- layout words -----------------------------------------------------------
 // The single source of truth for the `meta` word every backend's
 // osp_alloc_tagged takes: low 8 bits a kind, upper 56 a word bitmask (bit i =>
-// the 8-byte word at body offset 8*i holds a managed pointer). The ARC backend
+// the pointer-sized slot at body offset sizeof(void*)*i holds a managed pointer). The ARC backend
 // stores it in the object header and walks it at drop; default/gc ignore it.
 // crates/osprey-codegen/src/meta.rs emits the same numbers for codegen's own
 // allocations — a mismatch corrupts the heap silently, so both sides name
@@ -26,9 +26,9 @@
 #define OSP_MEM_MASK_DIRECT 5     // MASK whose children codegen PROVED are ARC bodies or NULL: drop reads their headers, no registry probe
 #define OSP_MEM_LIST_HDR_EXTERN 6 // { i64 len, ptr data, ... }: run the finalizer over the intact body, then release data only
 
-// The bit marking the 8-byte word at byte offset `off` (use with offsetof so
+// The bit marking the pointer-sized slot at byte offset `off` (use with offsetof so
 // the layout can never drift from the struct).
-#define OSP_MEM_WORD(off) ((uint64_t)1 << ((off) / 8))
+#define OSP_MEM_WORD(off) ((uint64_t)1 << ((off) / sizeof(void *)))
 // A OSP_MEM_MASK layout word over the given word bits.
 #define OSP_MEM_LAYOUT(bits) ((int64_t)(((uint64_t)(bits) << 8) | OSP_MEM_MASK))
 

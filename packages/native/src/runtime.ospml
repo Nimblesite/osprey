@@ -99,22 +99,62 @@ module Runtime
     refuse<S, A> : (Session<S>, string, (S) -> Json, List<KeyedSnapshot<Node<A>>>) -> string !e
     refuse (session, problem, save, none) = emit (Outgoing(nextSession = session, previousFrames = [], rendered = none, outWrites = [], outRequests = [], diagnostics = [problem], themeJson = JsonNull), save)
 
-    binding<A> : (List<KeyedSnapshot<Node<A>>>, string, int, Json) -> Result<Message<A>, Error>
-    binding (regions, key, ordinal, value) = match Lists::find (regions, \region => region.snapshotKey == key)
+    // One issued binding at `ordinal` inside the region named `key`.
+    issued<A> : (List<KeyedSnapshot<Node<A>>>, string, int) -> Result<Binding<A>, Error>
+    issued (regions, key, ordinal) = match Lists::find (regions, \region => region.snapshotKey == key)
         Error _ => Error(message = "Region ${key} is no longer shown")
         Success region => match listGet (Encode::walk ([], region.snapshotValue)).bindings ordinal
             Error _ => Error(message = "Unknown control ${ordinal} in region ${key}")
-            Success issued => Events::bind (issued, value)
+            Success control => Success(value = control)
+
+    binding<A> : (List<KeyedSnapshot<Node<A>>>, string, int, Json) -> Result<Message<A>, Error>
+    binding (regions, key, ordinal, value) = match issued (regions, key, ordinal)
+        Error problem => Error(message = problem)
+        Success control => Events::bind (control, value)
 
     // Re-renders only the named region from the unchanged store to recover the bindings it was drawn with.
+    drawn<S, A> : (Session<S>, string, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>) -> Result<KeyedSnapshot<Node<A>>, Error> !e
+    drawn (session, key, render) = match Lists::find (render (session.sessionStore, session.sessionStore, signalForced session.sessionFrames key, []), \region => region.snapshotKey == key)
+        Error _ => Error(message = "Region ${key} is no longer shown")
+        Success region => Success(value = region)
+
     resolve<S, A> : (Session<S>, string, int, int, Json, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>) -> Result<Message<A>, Error> !e
     resolve (session, key, revision, ordinal, value, render) = match revision > 0 && signalRevisionOf session.sessionFrames key == revision
         false => Error(message = "Stale control: region ${key} revision ${revision} is not current")
         true => binding (render (session.sessionStore, session.sessionStore, signalForced session.sessionFrames key, []), key, ordinal, value)
 
-    message<S, A> : (Session<S>, Incoming, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>) -> Result<Message<A>, Error> !e
-    message (session, body, render) = match body
+    // [UI-EVENTS]: the trusted host's prior state recovers the control the person actually saw; the
+    // original revision must hold there, and the original binding must survive, by its typed action,
+    // exactly once among the region's current controls. Nothing matches by DOM appearance.
+    original<S, A> : (string, string, int, int, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, (Json) -> S) -> Result<Binding<A>, Error> !e
+    original (prior, key, revision, ordinal, render, restoreStore) =
+        past = loadSession (prior, restoreStore)
+        match revision > 0 && signalRevisionOf past.sessionFrames key == revision
+            false => Error(message = "Stale control: region ${key} revision ${revision} is not current in the prior state")
+            true => match drawn (past, key, render)
+                Error problem => Error(message = problem)
+                Success region => issued ([region], key, ordinal)
+
+    redeliver<A> : (KeyedSnapshot<Node<A>>, Binding<A>, Json) -> Result<Message<A>, Error>
+    redeliver (region, past, value) =
+        twins = filterList ((Encode::walk ([], region.snapshotValue)).bindings, \control => structuralEquals control past)
+        match listGet twins 0
+            Error _ => Error(message = "The edited control no longer exists in region ${region.snapshotKey}")
+            Success only => match length twins
+                1 => Events::bind (only, value)
+                _ => Error(message = "More than one control in region ${region.snapshotKey} matches the edited control")
+
+    resolveEdit<S, A> : (Session<S>, string, string, int, int, Json, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, (Json) -> S) -> Result<Message<A>, Error> !e
+    resolveEdit (session, prior, key, revision, ordinal, value, render, restoreStore) = match original (prior, key, revision, ordinal, render, restoreStore)
+        Error problem => Error(message = problem)
+        Success past => match drawn (session, key, render)
+            Error problem => Error(message = problem)
+            Success region => redeliver (region, past, value)
+
+    message<S, A> : (Session<S>, Incoming, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, (Json) -> S) -> Result<Message<A>, Error> !e
+    message (session, body, render, restoreStore) = match body
         Control key revision ordinal value => resolve (session, key, revision, ordinal, value, render)
+        PreviousControl prior key revision ordinal value => resolveEdit (session, prior, key, revision, ordinal, value, render, restoreStore)
         Finished ticket result => Success(value = Completed(ticket = ticket, outcome = result))
         Lifecycle phase => Success(value = Phase(phase = phase))
 
@@ -125,11 +165,11 @@ module Runtime
         moved = Session(sessionContext = now, sessionStore = next.stepStore, sessionFrames = frames regions)
         emit (Outgoing(nextSession = moved, previousFrames = session.sessionFrames, rendered = regions, outWrites = next.writes, outRequests = next.requests, diagnostics = [], themeJson = JsonNull), save)
 
-    deliver<S, A> : (Session<S>, Event, (Context, S, Message<A>) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, (S) -> Json) -> string !e
-    deliver (session, event, update, render, save) =
+    deliver<S, A> : (Session<S>, Event, (Context, S, Message<A>) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, (S) -> Json, (Json) -> S) -> string !e
+    deliver (session, event, update, render, save, restoreStore) =
         host = session.sessionContext
         now = host(now = event.eventNow)
-        match message (session, event.eventBody, render)
+        match message (session, event.eventBody, render, restoreStore)
             Error problem => refuse (session, problem, save, [])
             Success delivered => advance (session, now, delivered, update, render, save)
 
@@ -139,4 +179,4 @@ module Runtime
         session = loadSession (saved, restoreStore)
         match Events::decode source
             Error problem => refuse (session, problem, save, [])
-            Success event => deliver (session, event, update, render, save)
+            Success event => deliver (session, event, update, render, save, restoreStore)

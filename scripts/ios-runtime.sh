@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Build one default-memory runtime slice with the Makefile's hardened flags.
+# Build one runtime slice with the Makefile's hardened flags.
 # The fingerprint includes every source, header, flag and selected Apple SDK.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+source scripts/runtime-memory.sh
 
 if [[ $(uname -s) != Darwin ]] || ! command -v xcrun >/dev/null; then
     echo "Apple runtime builds require macOS and Xcode with the selected SDK" >&2
@@ -29,18 +30,17 @@ fingerprint="$archive.inputs"
 mirror="compiler/lib/$(basename "$archive")"
 
 {
-    printf '%s\n' "$triple" "$sdk_path" "$clang" "$libtool" "${flags[@]}"
+    printf '%s\n' "$triple" "$sdk_path" "$clang" "$libtool" "${flags[@]}" "${OSPREY_RUNTIME_SHIMS:-}"
     "$clang" --version
     xcrun --sdk "$sdk" --show-sdk-build-version
     for source in "${sources[@]}"; do cksum "compiler/runtime/$source.c"; done
-    cksum compiler/runtime/*.h scripts/ios-runtime.sh scripts/ios.mk Makefile
+    cksum compiler/runtime/*.h scripts/ios-runtime.sh scripts/runtime-memory.sh scripts/ios.mk Makefile
 } >"$scratch/inputs"
 
 if [[ ! -s "$archive" ]] || ! cmp -s "$scratch/inputs" "$fingerprint"; then
     echo "==> building Apple C runtime: $triple"
     for source in "${sources[@]}"; do
-        "$clang" -target "$triple" -isysroot "$sdk_path" "${flags[@]}" \
-            "compiler/runtime/$source.c" -o "$scratch/$source.o"
+        compile_runtime_source "$source" "$clang" -target "$triple" -isysroot "$sdk_path" "${flags[@]}"
     done
     "$libtool" -static -o "$scratch/runtime.a" "$scratch"/*.o
     mv "$scratch/runtime.a" "$archive"

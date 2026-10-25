@@ -10,6 +10,14 @@ The package client, folder-registry server, manifest parser, resolver, digests a
 
 The contracts cover [manifests and commands](/spec/0029-packagemanagement/), [trust services](/spec/0030-packageregistrytrustanddiscovery/), the [domain model](/spec/0031-packagedomainmodel/) and [verification evidence](/spec/0032-packageevidenceanddiscovery/).
 
+## Add and remove packages in VS Code
+
+Browse the registry, inspect a release, add a package and remove it from your project in the package workspace. The video shows all 19 available packages and the actual confirmation and installation screens.
+
+{% videoCard "package-manager", "/docs/packages-in-vscode/" %}
+
+Follow [Packages in VS Code](/docs/packages-in-vscode/) for the screenshots and step-by-step instructions. The registry connection is already configured in the video.
+
 ## Get started with the working registry
 
 The folder registry and package client run today. The public package website, hosted publishing and trust services are planned; you do not need them to try packages locally or run a private registry.
@@ -233,7 +241,7 @@ Spec 0029 `[PACKAGE-THREATS]` defines the threat model. The folder registry impl
 
 | Threat | Control and delivery status |
 | --- | --- |
-| Malicious code inside a dependency | **Ambient capability checks.** `lock` scans named ambient builtins and declared system capabilities, requires the root's `io/…` grants per dependency, and pins the surface in the lock. Grants are not transitive. `fetch`, `verify --offline` and `build` recompute the surface and reject a mismatch with `capability.surface`. **Native FFI is a remaining gap:** source scanning, bundle validation and local `publish --folder` accept raw `extern` declarations without assigning an ambient capability. These checks do not establish complete confinement of untrusted packages. |
+| Malicious code inside a dependency | **Ambient capability checks.** `lock` scans named ambient builtins and declared system capabilities, requires the root's `io/…` grants per dependency, and pins the surface in the lock. Grants are not transitive. `fetch`, `verify --offline` and `build` recompute the surface and reject a mismatch with `capability.surface`. Source scanning marks raw native declarations as unclassified in all three syntax flavors; bundle validation and local `publish --folder` reject them before registry writes. These checks do not establish complete runtime confinement of untrusted packages. |
 | Install-time code execution | Osprey source packages have no lifecycle hooks, build scripts or post-install step. Python interop delegates environment creation to `uv sync --frozen`; the Osprey source-only guarantee does not cover Python dependency installation. |
 | Publisher-supplied archives | Milestone B: the registry will derive releases from bound forge commits. Today, `publish --folder` validates a local source tree and places it in the registry folder; it does not authenticate a forge commit. |
 | Tampered or substituted bytes | A release is its canonical `SourceDigest`. The client recomputes it before writing a single file; a lock pins it; `build` refuses a tree whose digest drifted. |

@@ -198,13 +198,15 @@ mod tests {
         let bytes = encode(&[
             ("stdin", b"9\nxxxxxx"),
             ("stdin.len", &2i32.to_le_bytes()),
+            ("stdin.line.0.len", &1i64.to_le_bytes()),
+            ("stdin.line.1.len", &2i64.to_le_bytes()),
             ("data.txt.ok", &[1, 0, 0, 0]),
             ("data.txt", b"payload!"),
             ("data.txt.len", &7i32.to_le_bytes()),
             ("entropy.0", &[0; 8]),
         ]);
         let ktest = parse(&bytes).expect("ktest");
-        assert_eq!(ktest.objects.len(), 6);
+        assert_eq!(ktest.objects.len(), 8);
         assert_eq!(ktest.stream("stdin"), Some(b"9\n".to_vec()));
         assert_eq!(
             ktest.files(),
@@ -283,12 +285,13 @@ mod tests {
         );
     }
 
-    const TYPED_FILES: [(&str, u8); 5] = [
+    const TYPED_FILES: [(&str, u8); 6] = [
         ("x", b'A'),
         ("x.ok", b'B'),
         ("stdin", b'C'),
         ("x.len", b'D'),
         ("file.data:x", b'E'),
+        ("stdin.line.0.len", b'F'),
     ];
 
     fn typed_files_fixture() -> Ktest {
@@ -296,6 +299,7 @@ mod tests {
             (FILE_PROTOCOL_NAME, &2i32.to_le_bytes()),
             ("stdin", b"9"),
             ("stdin.len", &1i32.to_le_bytes()),
+            ("stdin.line.0.len", &1i64.to_le_bytes()),
         ]))
         .expect("stdin");
         ktest.objects.extend(

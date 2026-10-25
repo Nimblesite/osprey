@@ -62,6 +62,7 @@ pub(crate) enum DeclKind {
 /// One declaration registered in the namespace graph.
 #[derive(Debug, Clone)]
 pub(crate) struct DeclInfo {
+    pub source: usize,
     pub kind: DeclKind,
     pub visibility: Visibility,
     pub owner: Vec<String>,
@@ -107,7 +108,7 @@ pub(crate) struct ProjectGraph {
     pub signatures: BTreeMap<SymbolKey, Vec<SignatureItem>>,
     pub constants: BTreeMap<SymbolKey, ConstantInfo>,
     pub annotations: BTreeMap<SymbolKey, SignatureItem>,
-    pub namespaces: BTreeSet<String>,
+    pub namespaces: BTreeMap<String, BTreeSet<usize>>,
     pub implementations: BTreeMap<SymbolKey, Stmt>,
 }
 

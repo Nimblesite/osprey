@@ -3,6 +3,7 @@ import registry_cli::Flags
 import registry_cli::Reports
 import registry_cli::Project
 import registry_cli::Lockfile
+import registry_cli::TreeGraph
 import registry::Identity
 import registry::ManifestModel
 import registry::Names
@@ -17,7 +18,7 @@ module Tree {
     let failStatus = 1
     let usageCode = "tree.usage"
     let noLockCode = "tree.no-lock"
-    let usageText = ["usage: osprey-pkg tree [--direct] [--project <dir>]"]
+    let usageText = ["usage: osprey-pkg tree [--direct | --graph] [--project <dir>]"]
     let indent = "  "
     let repeatMark = " *"
     let unlocked = " (not locked)"
@@ -95,12 +96,14 @@ module Tree {
         Success { value } => Reports::success(mapList(directNames(value), Names::display))
     }
 
-    fn selected(parsed) = if Flags::has(parsed, "--direct") {
+    fn selected(parsed) = if Flags::has(parsed, "--graph") {
+        TreeGraph::reportAt(Flags::project(parsed))
+    } else if Flags::has(parsed, "--direct") {
         directAt(Flags::project(parsed))
     } else { at(Flags::project(parsed)) }
 
     /// The whole command.
-    export fn run(args) = match Flags::parse(args, [Flags::projectFlag], ["--direct"]) {
+    export fn run(args) = match Flags::parse(args, [Flags::projectFlag], ["--direct", "--graph"]) {
         Error => usageReport()
         Success { value } => selected(value)
     }

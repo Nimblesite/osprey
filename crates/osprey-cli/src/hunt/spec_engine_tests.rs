@@ -94,7 +94,7 @@ fn the_engine_never_gets_linux_only_or_user_options() {
             "{banned}: {actual:?}"
         );
     }
-    assert_eq!(actual.len(), 17);
+    assert_eq!(actual.len(), 18);
     assert_eq!(
         actual.last().map(String::as_str),
         Some("m"),

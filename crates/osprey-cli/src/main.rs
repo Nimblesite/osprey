@@ -166,7 +166,9 @@ fn run_lsp() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    match runtime.block_on(osprey_lsp::run_stdio()) {
+    let served = runtime.block_on(osprey_lsp::run_stdio());
+    runtime.shutdown_background();
+    match served {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("osprey lsp: {e}");

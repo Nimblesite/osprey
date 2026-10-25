@@ -1,9 +1,8 @@
 // The two read-only surfaces the package QuickPicks are built from — the
 // folder registry's `GET /v1/packages` listing
 // ([PACKAGE-FOLDER-REGISTRY]: `{"packages":[{"key","releases":[…]}]}`) and the
-// direct `[dependencies]` lines of `osprey.toml` ([PACKAGE-MANIFEST]:
-// `"@scope/name" = { epoch = N, min_release = M }`). Reading is all the
-// editor ever does to them; every mutation goes through the Osprey CLI.
+// canonical client's direct-dependency report. All manifest parsing and
+// mutation belongs to the Osprey client.
 //
 // The listing carries NO security-audit evidence (spec 0045's audit service
 // is not deployed), so an entry with no evidence must never be presented as
@@ -48,27 +47,18 @@ function rowOf(item: any): ReleaseRow | undefined {
  * — an entry the editor cannot validate is never offered, let alone
  * presented as safe.
  */
+function entryOf(item: any): PackageEntry | undefined {
+  if (typeof item?.key !== "string" || !isOrgQualifiedName(item.key) || !Array.isArray(item.releases)) return undefined;
+  const releases = item.releases.map(rowOf).filter((row: ReleaseRow | undefined): row is ReleaseRow => row !== undefined);
+  return releases.length > 0 ? { key: item.key, releases } : undefined;
+}
+
 export function parseListing(text: string): PackageEntry[] | undefined {
   let parsed: any;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    return undefined;
-  }
-  if (!Array.isArray(parsed?.packages)) {
-    return undefined;
-  }
-  const entries: PackageEntry[] = [];
-  for (const item of parsed.packages) {
-    if (typeof item?.key !== "string" || !isOrgQualifiedName(item.key) || !Array.isArray(item.releases)) {
-      continue;
-    }
-    const releases = (item.releases as any[]).map((row: any) => rowOf(row)).filter((row): row is ReleaseRow => row !== undefined);
-    if (releases.length > 0) {
-      entries.push({ key: item.key, releases });
-    }
-  }
-  return entries;
+  try { parsed = JSON.parse(text); }
+  catch { return undefined; }
+  if (!Array.isArray(parsed?.packages)) return undefined;
+  return parsed.packages.map(entryOf).filter((entry: PackageEntry | undefined): entry is PackageEntry => entry !== undefined);
 }
 
 /** The identity of `entries` — the pick list is the listing, nothing derived. */

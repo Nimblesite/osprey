@@ -192,6 +192,8 @@ endif
 # compiled without the adapter flags, so every kernel and product runs the host
 # oracle and a device selection is the no-adapter error [GPU-BACKEND-DEVICE].
 MOBILE_RT_SRC ?= $(filter-out system_runtime $(basename $(notdir $(GPU_DEVICE_OBJ))),$(basename $(notdir $(FIB_OBJ))))
+MOBILE_ARC_RT_SRC ?= memory_arc $(filter-out memory_runtime,$(MOBILE_RT_SRC))
+MOBILE_ARC_SHIM_SRC ?= $(patsubst bin/arc/%.o,%,$(filter bin/arc/%,$(FIB_OBJ_ARC)))
 NATIVE_RUNTIME_CONFIG ?= compiler/bin/.native-runtime-config
 NATIVE_RUNTIME_STAMP ?= compiler/bin/.native-runtime.stamp
 NATIVE_RUNTIME_INPUTS ?= $(filter-out compiler/runtime/%_tests.c compiler/runtime/test_http_length_validation.c compiler/runtime/test_openssl.c compiler/runtime/test_system_runtime.c compiler/runtime/test_file_runtime.c compiler/runtime/web_runtime.c,$(wildcard compiler/runtime/*.c)) $(wildcard compiler/runtime/*.h)
@@ -243,6 +245,16 @@ endef
 # `#ifndef __wasm__`, so adding them unskips file and random programs on wasm32
 # without pretending fork/exec or pthreads exist.
 WASM_RT_SRC  ?= memory_runtime gpu_runtime gpu_host tensor_file tensor_list string_runtime string_runtime_list float_spelling list_runtime map_runtime map_runtime_hamt json_runtime json_text json_codec effects_runtime test_runtime coverage_runtime web_runtime profiler_runtime wasm_builtins_runtime system_runtime file_runtime random_runtime
+
+# The ARC twin of that archive, linked by `--memory=arc` — the wasm32 default
+# [WASM-TARGET-MEMORY]. Same unit set with memory_arc.c in place of the malloc
+# passthrough, and the value-container units built through osp_arc_shim.h, so a
+# runtime-minted string or node carries the Perceus header the native ARC
+# archive gives it [GC-ARC-PERCEUS]. WASI is single-threaded, so ARC's fiber
+# lock stays untripped, and memory_arc.c reads 4-byte pointer slots there.
+WASM_ARC_LIB      ?= libosprey_runtime_wasm_arc.a
+WASM_ARC_SHIM_SRC ?= string_runtime string_runtime_list list_runtime map_runtime map_runtime_hamt json_runtime json_text json_codec file_runtime
+WASM_ARC_RT_SRC   ?= memory_arc $(filter-out memory_runtime,$(WASM_RT_SRC))
 
 # Symbolic execution with KLEE [SYMEX-RUNTIME-BITCODE]. The portable runtime
 # subset plus the mock C library compile to one bitcode module with the pinned

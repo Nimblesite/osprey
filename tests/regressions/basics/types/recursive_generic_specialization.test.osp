@@ -81,3 +81,32 @@ fn sharedGenericCase() = {
 }
 
 test("nested generic fanout preserves specialized values", sharedGenericCase)
+
+/// A shared Result-returning specialization must retain its payload layout.
+/// The recursive Result return needs this annotation to reach code generation.
+fn payloadResult(marker, present, step) -> Result<List<int>, string> = match step {
+    0 => match present {
+        true => Success { value: [11, 22] }
+        false => Error { message: "missing" }
+    }
+    _ => payloadResult(marker, present, 0)
+}
+fn payloadLength(xs) = match payloadResult(xs, true, 1) {
+    Success { value } => length(value)
+    Error { message } => byteLength(message)
+}
+
+fn sharedResultPayloadCase() = {
+    let expanded = twoFiftySix("r")
+    let numbers = payloadResult("ints", true, 1) ?: []
+    let second = payloadResult(73, true, 1) ?: []
+    checkAll("specialized Result list payloads remain lists", [
+        byteLength(expanded) == 256,
+        length(numbers) == 2,
+        length(second) == 2,
+        payloadLength("marker") == 2,
+        payloadLength(73) == 2
+    ])
+}
+
+test("shared Result specializations preserve list payloads", sharedResultPayloadCase)

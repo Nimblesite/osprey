@@ -49,9 +49,11 @@ Select Default or ML per file using its extension or a leading `// osprey: flavo
 
 ## Packages
 
+See the [screenshot walkthrough](https://www.ospreylang.dev/docs/packages-in-vscode/) for setup, release warnings and the separate fetch/build steps.
+
 Run **Osprey: Add Package** from the Command Palette, search the registry by the complete `@org/package` name, and confirm the selection. **Osprey: Remove Package** lists the project's direct dependencies and removes the selected dependency through the same bundled client. Both operations update the manifest and relock through Osprey; unsaved manifest or lock editors block changes. Multi-folder workspaces prompt for the project first.
 
-Set `osprey.packages.registry` to your registry API origin. HTTPS is required; loopback HTTP supports the local folder registry (`make registry-serve`, default `http://127.0.0.1:8787`). Folder-registry listings provide no audit evidence, so the picker labels releases unverified and requires confirmation. Hosted authentication and public trust enforcement are separate delivery work; this editor flow does not establish either.
+Set `osprey.packages.registry` to your registry API origin. HTTPS is required; loopback HTTP supports the local folder registry (`make registry-serve`, default `http://127.0.0.1:8787`). Folder-registry listings provide no audit evidence, so the picker labels releases unverified and requires confirmation. Hosted listings without security eligibility and advisory evidence cannot offer an installation bypass. Hosted authentication and public trust enforcement remain separate delivery work.
 
 The VSIX bundles `osprey-pkg` for its platform. `osprey.packages.frontendPath` is a machine setting for an explicit client executable; a configured missing executable fails visibly. Package commands work with the language server disabled and require a trusted workspace.
 

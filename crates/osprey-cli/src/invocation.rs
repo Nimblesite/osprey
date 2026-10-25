@@ -5,7 +5,7 @@ use osprey_syntax::Flavor;
 
 pub(crate) const USAGE: &str =
     "usage: osprey <file-or-project> [--check | --ast | --llvm | --compile | --run | \
---symbols | --list-tests | --doctests | --deps] [--quiet] [--debug] [--profile] [--flavor default|ml|python] \
+--symbols | --source-graph | --list-tests | --doctests | --deps] [--quiet] [--debug] [--profile] [--flavor default|ml|python] \
 [--memory=gc|arc|none] [--target=native|wasm32|ios|ios-sim|macos|android-arm64|android-x64|python] [--entry-only] [-o <out>] \
 [--sandbox | --no-http | --no-websocket | --no-fs | --no-ffi]\n\
        osprey build [project] [--quiet] [--debug] [--memory=gc|arc|none] \
@@ -78,31 +78,42 @@ pub(super) fn parse_args(args: &[String]) -> Result<Cli, String> {
         _ => (false, args),
     };
     let mut cli = default_invocation(project_build);
-    let (path, mode_chosen) = parse_options(&mut cli, args, project_build)?;
+    let (path, mode_chosen, memory_given) = parse_options(&mut cli, args, project_build)?;
     cli.path = invocation_path(path, project_build)?;
     cli.exports = mobile_exports(cli.exports.entry_only(), &cli.target)?;
+    apply_default_memory(&mut cli, memory_given);
     apply_profile_rules(&mut cli, mode_chosen)?;
     crate::debug_options::validate(&cli)?;
     Ok(cli)
+}
+
+/// Hosted targets default to ARC: their runtimes do not provide the native
+/// executable's tracing roots. Explicit GC reaches target validation and is
+/// rejected. Native programs retain the GC default. [MEM-BACKENDS]
+fn apply_default_memory(cli: &mut Cli, memory_given: bool) {
+    if !memory_given && cli.target != "native" {
+        cli.memory = "arc".into();
+    }
 }
 
 fn parse_options(
     cli: &mut Cli,
     args: &[String],
     project_build: bool,
-) -> Result<(Option<String>, bool), String> {
+) -> Result<(Option<String>, bool, bool), String> {
     let mut path = None;
     let mut mode_chosen = project_build;
+    let mut memory_given = false;
     let mut arguments = args.iter();
     while let Some(argument) = arguments.next() {
         if is_mode(argument) {
             select_mode(cli, argument, project_build)?;
             mode_chosen = true;
         } else {
-            parse_option(cli, &mut path, argument, &mut arguments)?;
+            parse_option(cli, &mut path, argument, &mut arguments, &mut memory_given)?;
         }
     }
-    Ok((path, mode_chosen))
+    Ok((path, mode_chosen, memory_given))
 }
 
 fn default_invocation(project_build: bool) -> Cli {
@@ -144,6 +155,7 @@ fn is_mode(argument: &str) -> bool {
             | "--compile"
             | "--run"
             | "--symbols"
+            | "--source-graph"
             | "--list-tests"
             | "--hover"
             | "--deps"
@@ -166,6 +178,7 @@ fn parse_option(
     path: &mut Option<String>,
     argument: &str,
     rest: &mut std::slice::Iter<'_, String>,
+    memory_given: &mut bool,
 ) -> Result<(), String> {
     if crate::debug_options::parse(cli, argument)? {
         return Ok(());
@@ -180,7 +193,7 @@ fn parse_option(
         "--no-websocket" => cli.policy.websocket = false,
         "--no-fs" => cli.policy.fs = false,
         "--no-ffi" => cli.policy.ffi = false,
-        _ => return parse_value_option(cli, path, argument, rest),
+        _ => return parse_value_option(cli, path, argument, rest, memory_given),
     }
     Ok(())
 }
@@ -190,6 +203,7 @@ fn parse_value_option(
     path: &mut Option<String>,
     argument: &str,
     rest: &mut std::slice::Iter<'_, String>,
+    memory_given: &mut bool,
 ) -> Result<(), String> {
     match argument {
         "-o" | "--debug-out" => crate::debug_options::set_output(
@@ -203,7 +217,7 @@ fn parse_value_option(
                 "--flavor requires a value (default|ml|python)",
             )?)?);
         }
-        flag if flag.starts_with("--") => return parse_named_value(cli, flag),
+        flag if flag.starts_with("--") => return parse_named_value(cli, flag, memory_given),
         _ if path.is_none() => *path = Some(argument.into()),
         _ => return Err(format!("unexpected argument {argument}\n{USAGE}")),
     }
@@ -219,11 +233,14 @@ fn required_value<'a>(
         .ok_or_else(|| format!("{error}\n{USAGE}"))
 }
 
-fn parse_named_value(cli: &mut Cli, flag: &str) -> Result<(), String> {
+fn parse_named_value(cli: &mut Cli, flag: &str, memory_given: &mut bool) -> Result<(), String> {
     match flag.split_once('=') {
         Some(("--debug-out", value)) => crate::debug_options::set_output(cli, value, true)?,
         Some(("--flavor", value)) => cli.flavor = Some(parse_flavor(value)?),
-        Some(("--memory", value)) => cli.memory = parse_memory(value)?,
+        Some(("--memory", value)) => {
+            cli.memory = parse_memory(value)?;
+            *memory_given = true;
+        }
         Some(("--target", value)) => cli.target = parse_target(value)?,
         _ => return Err(format!("unknown flag {flag}\n{USAGE}")),
     }

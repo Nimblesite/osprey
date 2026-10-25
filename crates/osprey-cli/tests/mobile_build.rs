@@ -44,7 +44,7 @@ impl Fixture {
         fs::create_dir_all(root.join("sdk"))?;
         for runtime in ["ios", "ios_sim", "macos", "android_arm64", "android_x64"] {
             fs::write(
-                root.join(format!("compiler/bin/libosprey_runtime_{runtime}.a")),
+                root.join(format!("compiler/bin/libosprey_runtime_{runtime}_arc.a")),
                 "runtime fixture",
             )?;
         }
@@ -135,7 +135,7 @@ fn mobile_builds_publish_matching_headers_archives_and_clean_scratch() -> std::i
             "{log}"
         );
         assert!(
-            log.contains(&format!("libosprey_runtime_{runtime}.a")),
+            log.contains(&format!("libosprey_runtime_{runtime}_arc.a")),
             "{log}"
         );
         let scratch_ir = log
