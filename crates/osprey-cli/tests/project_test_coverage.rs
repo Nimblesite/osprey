@@ -276,6 +276,7 @@ fn static_handler_arms_record_execution_and_keep_unused_arms_uncovered(
         assert!(output.status.success(), "{output:?}");
         let report = serde_json::from_slice(&std::fs::read(root.join("cov.json"))?)?;
         let lines = file_lines(&report, "calc.osp");
+        assert_eq!(lines.iter().find(|(line, _)| *line == 7), Some(&(7, 1)));
         assert_eq!(lines.iter().find(|(line, _)| *line == 9), Some(&(9, 1)));
         assert_eq!(lines.iter().find(|(line, _)| *line == 10), Some(&(10, 0)));
         if memory == "arc" {
@@ -390,6 +391,40 @@ fn dynamic_handler_coverage_counts_execution_instead_of_registration(
     }
     for memory in ["default", "gc", "arc"] {
         assert_handler_coverage(&root, memory)?;
+    }
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn manifest_namespace_changes_invalidate_codegen_even_when_source_text_is_unchanged(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = project("manifest_cache_identity");
+    write(
+        &root.join("framework/src/calc.ospml"),
+        &CALC.replace("namespace calc\n", ""),
+    );
+    write(
+        &root.join("tests/main.ospml"),
+        &MAIN
+            .replace("namespace app\n", "")
+            .replace("import calc::Words\n", ""),
+    );
+    for (generation, namespace) in [(1, "app"), (2, "alternate")] {
+        write(
+            &root.join("osprey.toml"),
+            &MANIFEST.replace(
+                "default_namespace = \"app\"",
+                &format!("default_namespace = \"{namespace}\""),
+            ),
+        );
+        let output = cached_run(&root, "default")?;
+        assert!(output.status.success(), "{output:?}");
+        assert_eq!(
+            artifact_counts(&root)?,
+            [generation; 3],
+            "assembled namespaces are codegen inputs"
+        );
     }
     std::fs::remove_dir_all(root)?;
     Ok(())
