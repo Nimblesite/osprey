@@ -1,6 +1,9 @@
 """Explicit ML renderings for reference examples requiring layout or patterns."""
 
-HAND_TWINS = {'functions/floattoint.md': 'describe x = match floatToInt x\n'
+HAND_TWINS = {'functions/mapget.md': 'match mapGet (["alice" => 42], "alice")\n'
+                                  '    Success value => print value\n'
+                                  '    Error message => print message',
+ 'functions/floattoint.md': 'describe x = match floatToInt x\n'
                                      '    Success value => toString value\n'
                                      '    Error message => message\n'
                                      'print "${describe (-2.9)}\\n${describe (sqrt (-1.0))}"',

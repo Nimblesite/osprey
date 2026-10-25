@@ -137,7 +137,7 @@ pub(crate) static STRINGS: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "words",
-        "Splits on runs of whitespace; empty results dropped.",
+        "Splits on runs of ASCII whitespace; empty results are dropped.",
         ["s" => "The string to split"],
         "print(join(words(\"a  b\\tc\"), \",\"))",
     ),
@@ -155,8 +155,8 @@ pub(crate) static STRINGS: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "substring",
-        "Extracts s[start, end). Invalid or inverted bounds return Error.",
-        ["s" => "The source string", "start" => "Starting index (inclusive)", "end" => "Ending index (exclusive)"],
+        "Extracts the byte interval s[start, end). Invalid or inverted bounds return Error.",
+        ["s" => "The source string", "start" => "Starting byte offset (inclusive)", "end" => "Ending byte offset (exclusive)"],
         "match substring(\"hello\", 1, 4) {\n    Success { value } => print(value)\n    Error { message } => print(message)\n}",
     ),
     builtin_doc!(
@@ -239,19 +239,19 @@ pub(crate) static STRINGS: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "trim",
-        "Removes leading and trailing whitespace.",
+        "Removes leading and trailing ASCII whitespace.",
         ["s" => "The string to trim"],
         "print(trim(\"  hi  \"))  // \"hi\"",
     ),
     builtin_doc!(
         "trimStart",
-        "Removes leading whitespace.",
+        "Removes leading ASCII whitespace.",
         ["s" => "The string to trim"],
         "print(trimStart(\"  hi  \"))  // \"hi  \"",
     ),
     builtin_doc!(
         "trimEnd",
-        "Removes trailing whitespace.",
+        "Removes trailing ASCII whitespace.",
         ["s" => "The string to trim"],
         "print(trimEnd(\"  hi  \"))  // \"  hi\"",
     ),
