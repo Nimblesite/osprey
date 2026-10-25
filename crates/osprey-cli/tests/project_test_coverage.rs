@@ -138,7 +138,10 @@ fn a_project_suite_runs_without_coverage() {
 fn folded_module_alias_initialization_remains_in_source_coverage(
 ) -> Result<(), Box<dyn std::error::Error>> {
     assert_alias_coverage("alias_top_level", &MAIN.replace("Words", "Facade"))?;
-    assert_alias_coverage("alias_main", "namespace app\nimport calc::Facade\nmain () = test \"greets\" (\\() => expect (Facade::greet \"ann\", \"hi ann\"))\n")
+    assert_alias_coverage(
+        "alias_main",
+        "namespace app\nimport calc::Facade\nmain () = test \"greets\" (\\() => expect (Facade::greet \"ann\", \"hi ann\"))\n",
+    )
 }
 
 fn assert_alias_coverage(name: &str, entry: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -254,6 +257,35 @@ fn shared_codegen_cannot_replay_a_stale_success_after_source_changes(
     Ok(())
 }
 
+fn static_arm_project() -> PathBuf {
+    let root = project("static_arm_hits");
+    let _ = std::fs::remove_file(root.join("framework/src/calc.ospml"));
+    write(
+        &root.join("framework/src/calc.osp"),
+        "namespace calc;\nstatic effect Pick {\n    get: fn() -> int\n    unused: fn() -> int\n}\nmodule Words {\n    export fn greet(name) = {\n        handle static Pick {\n            get => 7\n            unused => 9\n        }\n        let chosen = perform Pick.get()\n        if chosen == 7 { \"hi ${name}\" } else { \"wrong\" }\n    }\n}\n",
+    );
+    root
+}
+
+#[test]
+fn static_handler_arms_record_execution_and_keep_unused_arms_uncovered(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = static_arm_project();
+    for memory in ["default", "gc", "arc"] {
+        let output = cached_run(&root, memory)?;
+        assert!(output.status.success(), "{output:?}");
+        let report = serde_json::from_slice(&std::fs::read(root.join("cov.json"))?)?;
+        let lines = file_lines(&report, "calc.osp");
+        assert_eq!(lines.iter().find(|(line, _)| *line == 9), Some(&(9, 1)));
+        assert_eq!(lines.iter().find(|(line, _)| *line == 10), Some(&(10, 0)));
+        if memory == "arc" {
+            assert_arc_exit(&output.stderr);
+        }
+    }
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
 #[cfg(unix)]
 fn install_driver(root: &Path, generation: usize) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
@@ -293,6 +325,41 @@ fn a_compiler_resolved_from_path_invalidates_all_cached_artifacts_when_changed(
             artifact_counts(&root)?,
             [generation; 3],
             "changed compiler must invalidate every stage"
+        );
+    }
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+fn static_handler_project() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let root = project("static_handler_coverage");
+    std::fs::remove_file(root.join("framework/src/calc.ospml"))?;
+    std::fs::remove_file(root.join("tests/main.ospml"))?;
+    write(&root.join("osprey.toml"), "[project]\nname = \"static-covered\"\nsource_roots = [\"framework/src\", \"tests\"]\npython_sources = [\"framework/src/caps.py\", \"framework/src/reader.py\", \"tests/main.py\"]\ndefault_namespace = \"fixture\"\nentry = \"tests/main.py\"\n");
+    write(&root.join("framework/src/caps.py"), "# osprey: flavor=python\n# osprey: namespace=fixture\n# osprey: module=Caps\n__all__ = [\"Read\"]\n@static_effect\nclass Read:\n    def value() -> int: ...\n    def unused() -> int: ...\n");
+    write(&root.join("framework/src/reader.py"), "# osprey: flavor=python\n# osprey: namespace=fixture\n# osprey: module=Reader\nfrom fixture.Caps import Read\n__all__ = [\"answer\"]\n\n@static_handler(Read)\nclass answer:\n    def value():\n        return 7\n    def unused():\n        return 99\n");
+    write(&root.join("tests/main.py"), "# osprey: flavor=python\nfrom fixture import Reader\nfrom fixture.Caps import Read\ndef main():\n    print(Reader.answer(lambda: perform(Read.value())))\n");
+    Ok(root)
+}
+
+#[test]
+fn static_handler_arm_coverage_records_execution_and_retains_unused_arms(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = static_handler_project()?;
+    let output = cached_run(&root, "default")?;
+    assert!(output.status.success(), "{output:?}");
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .any(|line| line == "7"),
+        "{output:?}"
+    );
+    let report = serde_json::from_slice(&std::fs::read(root.join("cov.json"))?)?;
+    let lines = file_lines(&report, "reader.py");
+    for row in [(8, 1), (9, 1), (11, 0)] {
+        assert!(
+            lines.contains(&row),
+            "missing or incorrect handler coverage {row:?}: {lines:?}"
         );
     }
     std::fs::remove_dir_all(root)?;

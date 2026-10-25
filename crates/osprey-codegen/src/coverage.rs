@@ -10,8 +10,45 @@
 //! at exit when `OSPREY_COVERAGE=<path>` is set [TESTING-COVERAGE-ENV].
 
 use crate::builder::Codegen;
-use osprey_ast::{walk_program, AstVisitor, Position, Program, Stmt};
+use osprey_ast::{mutate, walk_program, AstVisitor, Expr, Position, Program, Stmt};
 use std::collections::BTreeSet;
+
+/// Keep static arms' source entries attached to the code discharge substitutes.
+/// Implements [TESTING-COVERAGE-CODEGEN]; unused arms retain zero counters.
+pub(crate) fn instrumented(program: &Program) -> Program {
+    let mut instrumented = program.clone();
+    for statement in &mut instrumented.statements {
+        mutate::statement_children_mut(statement, &mut mark_static_arms);
+    }
+    instrumented
+}
+
+fn mark_static_arms(expression: &mut Expr) {
+    if let Expr::Handler { stage, arms, .. } = expression {
+        if stage.is_compile_time() {
+            for arm in arms {
+                arm.body = arm_entry(arm.body.clone(), arm.position);
+            }
+        }
+    }
+    mutate::children_mut(expression, &mut mark_static_arms);
+}
+
+fn arm_entry(body: Expr, position: Option<Position>) -> Expr {
+    Expr::Block {
+        statements: vec![Stmt::Expr {
+            value: Expr::Block {
+                statements: Vec::new(),
+                value: None,
+                position: None,
+            },
+            doc: None,
+            position,
+        }],
+        value: Some(Box::new(body)),
+        position: None,
+    }
+}
 
 /// Per-module coverage state: the coverable lines. Seeded from the whole AST
 /// up front so an unexecuted (even never-lowered) line still counts against

@@ -128,7 +128,11 @@ fn reject_opaque_aliases(program: &Program) -> Result<()> {
 fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> Result<String> {
     reject_opaque_aliases(program)?;
     let options = with_kernel_mode(options)?;
-    let lowered = osprey_types::lower_static_checked(program).map_err(|errors| {
+    let instrumented = options
+        .coverage
+        .then(|| crate::coverage::instrumented(program));
+    let original = instrumented.as_ref().unwrap_or(program);
+    let lowered = osprey_types::lower_static_checked(original).map_err(|errors| {
         crate::error::CodegenError::invalid(
             errors
                 .into_iter()
@@ -144,6 +148,7 @@ fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> 
     let mut cg = Codegen::with_options(prog, options);
     // Seed the coverage denominator from the source, not from what lowering
     // happens to reach [TESTING-COVERAGE-CODEGEN].
+    cg.cov_seed(original);
     cg.cov_seed(program);
     // Seed the erased-`any` candidate row table from the declared records,
     // BEFORE any match or erasure site is emitted ([`crate::anybox`]).
