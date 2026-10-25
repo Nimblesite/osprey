@@ -8,6 +8,7 @@ fn string_cursor_and_parse_out_slots_are_entry_allocas() {
         fn nested(s) = fold(range(0, 2), 0, fn(acc, i) => fold(range(0, 2), acc, fn(n, j) => satAdd(n, codePointAt(s, j) ?: 0)))
         print("${scan("123")} ${parsed("12")} ${nested("abc")}")"#,
     );
+    shows(&ir, &["byte_at", "codepoint_at", "parse_int", "parse_float"]);
     for function in ir.split("define ").skip(1) {
         let mut entry = true;
         for line in function.lines() {

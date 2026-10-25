@@ -231,6 +231,17 @@ mod tests {
     use crate::builder::{Codegen, CodegenOptions};
     use osprey_ast::{Expr, Position, Program, Stmt};
 
+    #[test]
+    fn coverage_preserves_static_specialization_of_selected_closure_factories() {
+        let source = "static effect Read<B> { make: fn() -> B; value: fn() -> int }\nfn choose(flag) = if flag { fn() => perform Read.value() } else { fn() => perform Read.value() }\nfn run(flag) = {\nlet work = choose(flag)\nhandle static Read { make => 0; value => 7 }\nprint(work())\n}\nfn main() = run(true)\n";
+        let parsed = osprey_syntax::parse_program(source);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let plain = crate::compile_program(&parsed.program);
+        assert!(plain.is_ok(), "plain: {plain:?}");
+        let covered = crate::compile_program_coverage(&parsed.program);
+        assert!(covered.is_ok(), "coverage: {covered:?}");
+    }
+
     const NESTED_SOURCE: &str = "namespace sample {\n\
       module Stats {\n\
       fn choose(flag) = {\n\

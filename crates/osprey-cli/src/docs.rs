@@ -418,8 +418,8 @@ mod tests {
             "a known builtin page written"
         );
         let index = fs::read_to_string(functions.join("index.md")).expect("index readable");
-        crate::testkit::shows(&index, &["Built-in Functions"]);
-        crate::testkit::shows(&index, &["sleep"]);
+        shows(&index, &["Built-in Functions"]);
+        shows(&index, &["sleep"]);
         let _ = fs::remove_dir_all(&dir);
     }
 

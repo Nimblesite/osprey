@@ -12,6 +12,8 @@ of [Osprey Package Registry and Manager](0029-PackageManagement.md). Its
 requirements are mandatory for the public registry. The full academic and
 standards basis is [annotated here](../../package-manager-research.md).
 
+The [deployment and ownership contract](0044-PackageRegistryDeploymentAndOwnership.md) adds mandatory Cloudflare ingress, Supabase GitHub authentication, organization/package RLS, maintainer grants, authority revocation and rollout gates. It does not replace the signed source-derived publication and independent trust requirements here.
+
 Every executable component covered here MUST be implemented in Osprey under [the implementation-language contract](0029-PackageManagement.md#implementation-language-package-implementation-language). This includes cryptography and verification, TUF and transparency clients, filesystem/CAS transactions, sandbox orchestration, authentication, HSM/forge adapters, publication services, evidence processing, and operational and conformance tooling. Host work has no exception permitting another implementation language. Existing platform APIs and external services are dependencies accessed by Osprey code; they do not authorize a package-specific native host or shim.
 
 The registry accepts open participation without accepting unverifiable bytes.

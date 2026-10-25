@@ -90,9 +90,9 @@ fn every_theme_defines_the_same_variables_and_they_differ() {
         for var in ["--bg", "--text", "--accent", "--border", "--code-bg"] {
             assert!(css.contains(var), "{name} theme is missing {var}");
         }
-        crate::testkit::shows(&css, &[".shell"]);
+        crate::testkit::shows(css, &[".shell"]);
         // Self-contained: no CDN, no remote font.
-        crate::testkit::contents(&css, &[], &["http"]);
+        crate::testkit::contents(css, &[], &["http"]);
     }
     // Every theme must be distinct from every other, not merely from its
     // neighbour: a set collapses any pair that renders identically.

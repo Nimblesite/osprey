@@ -7,6 +7,9 @@ date: 2026-10-25
 tags: ["blog", "python", "packages", "numpy", "pytorch", "uv"]
 author: "Christian Findlay"
 readingTime: 5
+image: /assets/images/blog/python-packages-osprey-uv.png
+imageWebp: /assets/images/blog/python-packages-osprey-uv.webp
+imageAlt: "A cyan wireframe osprey above glass modules holding a .py source file, a tensor grid and a dependency lock"
 ---
 
 A numerical library should be able to describe its calculation while a handler chooses the storage. Osprey's Python-flavor NumPy port does that: array operations request a `Storage.Buffer` effect, and the caller installs either `Host.on_host` or `Device.on_gpu`.
