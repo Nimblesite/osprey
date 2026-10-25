@@ -126,15 +126,27 @@ static void emit_field(sink *out, const spec *s, const char *prefix, const char 
   }
 }
 
+// Compare the original number with concrete powers instead of repeatedly
+// asking the solver whether a symbolic quotient is zero.
+static int digit_length(unsigned long long value, unsigned base) {
+  int length = 0;
+  unsigned long long threshold = 1;
+  do {
+    length++;
+    if (threshold > UINT64_MAX / base) break;
+    threshold *= base;
+  } while (value >= threshold);
+  return length;
+}
+
 // Digits of `value` in `base`, written backwards from the end of `digits`.
 static int unsigned_digits(unsigned long long value, unsigned base, int upper, char *digits) {
-  const char *alphabet = upper ? "0123456789ABCDEF" : "0123456789abcdef";
-  int length = 0;
-  do {
-    digits[DIGITS_MAX - 1 - length] = alphabet[value % base];
+  int length = digit_length(value, base);
+  for (int i = 0; i < length; i++) {
+    unsigned digit = (unsigned)(value % base);
+    digits[DIGITS_MAX - 1 - i] = (char)(digit < 10 ? '0' + digit : (upper ? 'A' : 'a') + digit - 10);
     value /= base;
-    length++;
-  } while (value != 0);
+  }
   return length;
 }
 

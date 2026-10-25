@@ -28,6 +28,7 @@
 .flavor-controls button { background: transparent; border: 0; border-radius: 4px; color: var(--on-surface-variant); padding: 0.4rem 0.65rem; font: inherit; cursor: pointer; }
 .flavor-controls [aria-pressed="true"] { background: #77d7f41c; color: var(--primary); }
 .home .flight-code pre[class*="language-"] { background: transparent; border: 0; padding: 1.4rem 1.15rem; margin: 0; font-size: 0.73rem; line-height: 1.8; min-height: 14.4rem; }
+.home .hero-code pre[class*="language-"] { height: 22rem; overflow: auto; scrollbar-gutter: stable; overscroll-behavior: contain; }
 .code-result { display: flex; gap: 0.7rem; align-items: center; background: #77d7f40a; border-top: 1px solid #77d7f41c; padding: 1rem 1.15rem; color: var(--primary); font: 0.7rem var(--font-mono); }
 .result-label { margin-left: auto; font-size: 0.55rem; letter-spacing: 0.1em; color: var(--on-surface-variant); }
 .home .hero-code-caption { text-align: center; font-size: 0.75rem; }

@@ -246,39 +246,38 @@ char *osp_string_pad_end(const char *s, int64_t target_length, const char *fill)
  * 9223372036854775808 — one past INT64_MAX — and computing it as a
  * signed `acc * 10 + 8` would trap before we get a chance to negate.
  */
+enum { OSP_INT_DIGITS_MAX = 19 };
+
+static int osp_decimal_size(const char *s) {
+    int count = 0;
+    while (s[count]) {
+        if (count == OSP_INT_DIGITS_MAX || s[count] < '0' || s[count] > '9') return -1;
+        count++;
+    }
+    return count;
+}
+
+static int osp_decimal_magnitude(const char *s, const char *limit, uint64_t *out) {
+    while (*s == '0') s++;
+    int count = osp_decimal_size(s);
+    if (count < 0 || (count == OSP_INT_DIGITS_MAX && strcmp(s, limit) > 0)) return 1;
+    uint64_t acc = 0;
+    for (int i = 0; i < count; i++) acc = acc * 10 + (unsigned)(s[i] - '0');
+    *out = acc;
+    return 0;
+}
+
 int64_t osp_parse_int_strict(const char *s, int64_t *out) {
     if (!s || s[0] == '\0' || !out) return 1;
-    const char *p = s;
-    int neg = 0;
-    if (*p == '-' || *p == '+') {
-        neg = (*p == '-');
-        p++;
-        if (*p == '\0') return 1;
-    }
-    /* limit = magnitude of representable value:
-     *   negative: 9223372036854775808 (INT64_MAX + 1)
-     *   positive: 9223372036854775807 (INT64_MAX) */
-    const uint64_t limit = neg ? 9223372036854775808ULL : 9223372036854775807ULL;
+    int neg = *s == '-';
+    const char *p = s + (*s == '-' || *s == '+');
+    if (*p == '\0') return 1;
     uint64_t acc = 0;
-    while (*p) {
-        if (*p < '0' || *p > '9') return 1;
-        unsigned d = (unsigned)(*p - '0');
-        /* overflow guard: acc*10 + d > limit ? */
-        if (acc > limit / 10) return 1;
-        acc *= 10;
-        if (acc > limit - d) return 1;
-        acc += d;
-        p++;
-    }
-    if (neg) {
-        if (acc == 9223372036854775808ULL) {
-            /* INT64_MIN: avoid -(int64_t)acc which overflows for INT64_MAX+1 */
-            *out = (-9223372036854775807LL) - 1;
-        } else {
-            *out = -(int64_t)acc;
-        }
+    if (osp_decimal_magnitude(p, neg ? "9223372036854775808" : "9223372036854775807", &acc)) return 1;
+    if (neg && acc == 9223372036854775808ULL) {
+        *out = (-9223372036854775807LL) - 1;
     } else {
-        *out = (int64_t)acc;
+        *out = neg ? -(int64_t)acc : (int64_t)acc;
     }
     return 0;
 }

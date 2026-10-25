@@ -88,12 +88,13 @@ static void materialise(struct osp_hunt_file *stream) {
 
 // Keep the first newline as a symbolic expression rather than splitting an
 // execution state at every byte. The bytes and EOF length are unchanged.
-static long first_line_end(const struct osp_hunt_file *stream, long cap) {
-  long end = stream->len;
-  for (long i = cap; i > 0; i--) {
-    long index = i - 1;
-    int newline = (index < stream->len) & (stream->data[index] == '\n');
-    end = newline ? index : end;
+static long copy_initial_line(const struct osp_hunt_file *stream, long cap, char *out) {
+  long end = 0;
+  int active = 1;
+  for (long i = 0; i < cap; i++) {
+    active &= (i < stream->len) & (stream->data[i] != '\n');
+    out[i] = active ? (char)stream->data[i] : '\0';
+    end += active;
   }
   return end;
 }
@@ -103,12 +104,8 @@ static char *initial_line(struct osp_hunt_file *stream, long cap) {
   if (out == NULL) {
     return NULL;
   }
-  long end = first_line_end(stream, cap);
-  for (long i = 0; i < cap; i++) {
-    out[i] = (char)stream->data[i];
-  }
+  long end = copy_initial_line(stream, cap, out);
   out[cap] = '\0';
-  out[end] = '\0';
   stream->pos = end + (end < stream->len);
   stream->eof = (unsigned char)(end == stream->len);
   osp_hunt_calls[OSP_HUNT_CALL_READ] += (unsigned)end + 1;

@@ -148,39 +148,38 @@ pub(crate) fn float_to_int(cg: &mut Codegen, value: Value) -> Result<Value> {
 pub(crate) fn bitwise(cg: &mut Codegen, name: &str, left: Value, right: Value) -> Result<Value> {
     let a = as_i64(cg, left)?;
     let b = as_i64(cg, right)?;
-    let op = match name {
-        "bitAnd" => "and",
-        "bitOr" => "or",
-        "bitXor" => "xor",
-        "shiftLeft" => "shl",
-        "shiftRight" => "ashr",
-        "shiftRightLogical" => "lshr",
-        _ => {
-            return Err(CodegenError::invalid(format!(
-                "{name} is not a bitwise builtin"
-            )))
-        }
-    };
+    let op = word_instruction(name)?;
     match op {
         "and" | "or" | "xor" => Ok(word(cg, format!("{op} i64 {}, {}", a.operand, b.operand))),
-        "ashr" => {
-            let ok = cg.emit_reg(format!("icmp ult i64 {}, 64", b.operand));
-            let count = cg.emit_reg(format!("select i1 {ok}, i64 {}, i64 0", b.operand));
-            let shifted = cg.emit_reg(format!("ashr i64 {}, {count}", a.operand));
-            let negative = cg.emit_reg(format!("icmp slt i64 {}, 0", a.operand));
-            let limit = cg.emit_reg(format!("select i1 {negative}, i64 -1, i64 0"));
-            Ok(word(
-                cg,
-                format!("select i1 {ok}, i64 {shifted}, i64 {limit}"),
-            ))
-        }
-        _ => {
-            let ok = cg.emit_reg(format!("icmp ult i64 {}, 64", b.operand));
-            let count = cg.emit_reg(format!("select i1 {ok}, i64 {}, i64 0", b.operand));
-            let shifted = cg.emit_reg(format!("{op} i64 {}, {count}", a.operand));
-            Ok(word(cg, format!("select i1 {ok}, i64 {shifted}, i64 0")))
-        }
+        _ => Ok(total_shift(cg, op, &a.operand, &b.operand)),
     }
+}
+
+fn word_instruction(name: &str) -> Result<&str> {
+    match name {
+        "bitAnd" => Ok("and"),
+        "bitOr" => Ok("or"),
+        "bitXor" => Ok("xor"),
+        "shiftLeft" => Ok("shl"),
+        "shiftRight" => Ok("ashr"),
+        "shiftRightLogical" => Ok("lshr"),
+        _ => Err(CodegenError::invalid(format!(
+            "{name} is not a bitwise builtin"
+        ))),
+    }
+}
+
+fn total_shift(cg: &mut Codegen, op: &str, value: &str, by: &str) -> Value {
+    let ok = cg.emit_reg(format!("icmp ult i64 {by}, 64"));
+    let count = cg.emit_reg(format!("select i1 {ok}, i64 {by}, i64 0"));
+    let shifted = cg.emit_reg(format!("{op} i64 {value}, {count}"));
+    let limit = if op == "ashr" {
+        let negative = cg.emit_reg(format!("icmp slt i64 {value}, 0"));
+        cg.emit_reg(format!("select i1 {negative}, i64 -1, i64 0"))
+    } else {
+        "0".into()
+    };
+    word(cg, format!("select i1 {ok}, i64 {shifted}, i64 {limit}"))
 }
 
 /// [BUILTIN-BITWISE] One's complement: `xor` with -1.

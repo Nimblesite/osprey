@@ -1,7 +1,5 @@
-// User-interaction tests with explicit assertions: navigation, the hero,
-// the mobile menu drawer, and the prose Table-of-Contents.
 const { test, expect } = require("@playwright/test");
-const { paintedColours } = require("./helpers");
+const { paintedColours, VIEWPORTS } = require("./helpers");
 const { mkdir, readFile, writeFile } = require("node:fs/promises");
 const { execFileSync } = require("node:child_process");
 const path = require("node:path");
@@ -33,7 +31,40 @@ async function exampleResult(source, file) {
   }
 }
 
+async function heroBounds(page) {
+  return page.evaluate(() => ({ scrollY, boxes:
+    [".hero", ".hero-title", ".hero-code .flight-code", ".hero-code-caption", ".hero-footnote", ".effect-story"].map(selector => {
+      const { x, y, width, height } = document.querySelector(selector).getBoundingClientRect();
+      return { x, y, width, height };
+    }) }));
+}
+
+async function scrollSource(source) {
+  await source.hover({ position: { x: 20, y: 20 } });
+  await source.page().mouse.wheel(0, 200);
+  await expect.poll(() => source.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+}
+
 test.describe("homepage flight and source examples", () => {
+  for (const viewport of VIEWPORTS) {
+    test(`homepage keeps a fixed code box when switching flavors @ ${viewport.name}`, async ({ page }) => {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await page.goto("/");
+      await page.evaluate(() => document.fonts.ready);
+      await page.locator(".flavor-controls").scrollIntoViewIfNeeded();
+      const initial = await heroBounds(page);
+      for (const flavor of ["ml", "python", "default"]) {
+        await page.locator(`.flavor-controls [data-flavor="${flavor}"]`).click();
+        const source = page.locator(`#example-${flavor}`);
+        await expect(source).toBeVisible();
+        expect(await heroBounds(page)).toEqual(initial);
+        expect(await source.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(2);
+        if (flavor === "python") await scrollSource(source);
+        expect(await heroBounds(page)).toEqual(initial);
+      }
+    });
+  }
   test("homepage opens in Default flavor with inactive examples out of the layout", async ({ page }) => {
     await page.goto("/");
     await expect(page.locator('.flavor-controls [aria-pressed="true"]')).toHaveText("Default");
@@ -287,15 +318,6 @@ test.describe("desktop interactions", () => {
     await page.getByRole("button", { name: "Run", exact: true }).click();
     await expect.poll(() => runBody?.flavor).toBe("default");
     expect(runBody.code).toContain("fn account()");
-  });
-
-  test("homepage example code is not clipped", async ({ page }) => {
-    await page.goto("/");
-    const clips = await page.evaluate(() =>
-      [...document.querySelectorAll(".hero-code pre")].map((pre) => pre.scrollWidth - pre.clientWidth)
-    );
-    expect(clips.length).toBeGreaterThan(0);
-    for (const c of clips) expect(c, "code block horizontal clip (px)").toBeLessThanOrEqual(2);
   });
 
   test("prose page shows a TOC with scroll-spy", async ({ page }) => {
