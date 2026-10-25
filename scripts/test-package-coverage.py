@@ -2,7 +2,7 @@
 """Regressions for independent package coverage thresholds and missing evidence.
 
 The real `coverage-thresholds.json` is asserted to gate every shipped package
-with its own 90%-or-better entry, and `scripts/package_coverage.py` is driven
+with its own entry, a 90% minimum and optional higher thresholds. The checker is driven
 through a throwaway checkout so each rule — threshold boundary, own-source-only
 accounting, cross-host paths, malformed rows, oracle replay, stale evidence and
 ungated packages — is proven by behaviour rather than by mirroring the code.
@@ -94,12 +94,13 @@ class CheckerTests(unittest.TestCase):
 
     def test_higher_package_threshold_still_rejects_90_percent(self):
         fixture = self.fixture({"demo": {"sources": {"src/lib.py": py_source(100)}}}, {"demo": 95})
-        fixture.write_report("demo", own_report("demo", 94, 100))
-        self.assert_exit(fixture.check(), 1)
-        self.assertIn("95%", fixture.check().stdout)
-        self.assertEqual(fixture.result("demo")["threshold"], 95)
-        fixture.write_report("demo", own_report("demo", 95, 100))
-        self.assert_exit(fixture.check(), 0)
+        for covered, code in ((90, 1), (94, 1), (95, 0)):
+            with self.subTest(covered=covered):
+                fixture.write_report("demo", own_report("demo", covered, 100))
+                result = fixture.check()
+                self.assert_exit(result, code)
+                self.assertIn("95%", result.stdout)
+                self.assertEqual(fixture.result("demo")["threshold"], 95)
 
     def test_c_runtime_omitted_threshold_enforces_90_and_keeps_higher_overrides(self):
         for percentage, entry, code in ((89, {}, 2), (90, {}, 0), (94, {"threshold": 95}, 2), (95, {"threshold": 95}, 0)):

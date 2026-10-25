@@ -1,6 +1,6 @@
 {
   "_agent_pmo": "b636503",
-  "_doc": "Required minimums, not measured percentages. make test and CI gate fresh coverage evidence. package_measurements records a dated verified snapshot; unavailable measurements are null. Thresholds only increase.",
+  "_doc": "Required minimums, not measured percentages. make test and CI gate fresh coverage evidence. package_measurements records a dated verified snapshot; unavailable measurements are null. The enforced minimum is 90%; only higher thresholds are explicit. Thresholds only increase.",
   "policy": {
     "rust": [
       "Per-crate line coverage from cargo-llvm-cov lcov.info. Floor: 95%."
@@ -9,13 +9,13 @@
       "Per-library gcov line coverage: best measured suite linking each native library.",
       "Every shipped native archive unit must be gated or explicitly exempt; wasm-only units do not build natively.",
       "Thresholds must pass on both macOS and Linux. Remeasure both before raising; forked child tests must flush gcov counters.",
-      "Target: at least 90%. Existing lower gates remain recorded debt; never lower a threshold to pass CI."
+      "Minimum: 90%. Only higher thresholds are explicit; omission enforces the minimum."
     ],
     "editor": [
       "The VS Code extension threshold applies separately to lines, statements, branches and functions."
     ],
     "packages": [
-      "Each packages/<name>/osprey.toml requires its own entry and tests/osprey.toml suite. Floor: 90%.",
+      "Each packages/<name>/osprey.toml requires its own entry and tests/osprey.toml suite. Minimum: 90%; only higher thresholds are explicit.",
       "Measure with osprey test --coverage-json; gate only that package's src/ files, excluding tests and imported helpers.",
       "Missing, empty, malformed or incomplete source reports fail. Data-only files have no executable line counters.",
       "Reports and per-package totals: target/coverage/packages/. No averaging between packages."
@@ -69,7 +69,6 @@
     },
     "c_runtime": {
       "memory_runtime": {
-        "threshold": 90,
         "language": "c"
       },
       "memory_arc": {
@@ -77,36 +76,28 @@
         "language": "c"
       },
       "memory_gc": {
-        "threshold": 90,
         "language": "c"
       },
       "gpu_runtime": {
-        "threshold": 90,
         "language": "c"
       },
       "gpu_host": {
-        "threshold": 90,
         "language": "c"
       },
       "tensor_file": {
-        "threshold": 90,
         "language": "c"
       },
       "tensor_list": {
-        "threshold": 90,
         "language": "c"
       },
       "gpu_opencl": {
-        "threshold": 90,
         "language": "c"
       },
       "gpu_metal": {
-        "threshold": 90,
         "language": "c",
         "platform": "darwin"
       },
       "effects_runtime": {
-        "threshold": 90,
         "language": "c"
       },
       "effects_coro": {
@@ -130,7 +121,6 @@
         "language": "c"
       },
       "ffi_runtime": {
-        "threshold": 90,
         "language": "c"
       },
       "random_runtime": {
@@ -138,47 +128,36 @@
         "language": "c"
       },
       "system_runtime": {
-        "threshold": 85,
         "language": "c"
       },
       "file_runtime": {
-        "threshold": 85,
         "language": "c"
       },
       "string_runtime": {
-        "threshold": 90,
         "language": "c"
       },
       "string_runtime_list": {
-        "threshold": 90,
         "language": "c"
       },
       "list_runtime": {
-        "threshold": 90,
         "language": "c"
       },
       "map_runtime": {
-        "threshold": 90,
         "language": "c"
       },
       "map_runtime_hamt": {
-        "threshold": 90,
         "language": "c"
       },
       "fiber_runtime": {
-        "threshold": 85,
         "language": "c"
       },
       "coverage_runtime": {
-        "threshold": 85,
         "language": "c"
       },
       "profiler_runtime": {
-        "threshold": 85,
         "language": "c"
       },
       "term_runtime": {
-        "threshold": 67,
         "language": "c"
       },
       "test_runtime": {
@@ -186,11 +165,9 @@
         "language": "c"
       },
       "profiler_sampler": {
-        "threshold": 90,
         "language": "c"
       },
       "profiler_store": {
-        "threshold": 89,
         "language": "c"
       },
       "profiler_dump": {
@@ -206,7 +183,6 @@
         "language": "c"
       },
       "http_shared": {
-        "threshold": 85,
         "language": "c"
       },
       "socket_safety": {
@@ -214,7 +190,6 @@
         "language": "c"
       },
       "http_client_runtime": {
-        "threshold": 85,
         "language": "c"
       },
       "http_server_request": {
@@ -222,7 +197,6 @@
         "language": "c"
       },
       "http_server_response": {
-        "threshold": 87,
         "language": "c"
       },
       "http_server_runtime": {
@@ -230,11 +204,9 @@
         "language": "c"
       },
       "websocket_client_runtime": {
-        "threshold": 85,
         "language": "c"
       },
       "websocket_server_runtime": {
-        "threshold": 85,
         "language": "c"
       }
     },
@@ -246,75 +218,57 @@
     },
     "packages": {
       "einops": {
-        "threshold": 90,
         "language": "osprey"
       },
       "faiss": {
-        "threshold": 90,
         "language": "osprey"
       },
       "flash_attn": {
-        "threshold": 90,
         "language": "osprey"
       },
       "jinja2": {
-        "threshold": 90,
         "language": "osprey"
       },
       "micrograd": {
-        "threshold": 90,
         "language": "osprey"
       },
       "native": {
-        "threshold": 90,
         "language": "osprey"
       },
       "numpy": {
-        "threshold": 90,
         "language": "osprey"
       },
       "re": {
-        "threshold": 90,
         "language": "osprey"
       },
       "rouge_score": {
-        "threshold": 90,
         "language": "osprey"
       },
       "sacrebleu": {
-        "threshold": 90,
         "language": "osprey"
       },
       "safetensors": {
-        "threshold": 90,
         "language": "osprey"
       },
       "scipy": {
-        "threshold": 90,
         "language": "osprey"
       },
       "sklearn": {
-        "threshold": 90,
         "language": "osprey"
       },
       "testing": {
-        "threshold": 90,
         "language": "osprey"
       },
       "tiktoken": {
-        "threshold": 90,
         "language": "osprey"
       },
       "tokenizers": {
-        "threshold": 90,
         "language": "osprey"
       },
       "torch": {
-        "threshold": 90,
         "language": "osprey"
       },
       "transformers": {
-        "threshold": 90,
         "language": "osprey"
       }
     }

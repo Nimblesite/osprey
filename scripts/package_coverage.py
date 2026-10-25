@@ -3,7 +3,7 @@
 Implements [PKG-COVERAGE-GATE].
 
 One report per package under `projects.packages`, never averaged: a package
-passes only when its OWN `packages/<name>/src` lines meet its own threshold.
+passes only when its OWN `packages/<name>/src` lines meet 90% or its higher threshold.
 Test fixtures, helpers and imported libraries (`packages/testing/src/check.py`,
 `tests/*.py`) appear in the compiler's JSON but must never pad the numerator or
 the denominator — a package whose tests are perfect and whose source is not has
@@ -105,7 +105,7 @@ def suite_problems(tests: Path, verify_golden: bool) -> list[str]:
 def validate_entry(root: Path, name: str, entry: object, verify_golden: bool) -> list[str]:
     if not isinstance(entry, dict):
         return [f"{name}: gate entry must be an object"]
-    threshold = entry.get("threshold")
+    threshold = entry.get("threshold", MIN_THRESHOLD)
     problems = []
     if isinstance(threshold, bool) or not isinstance(threshold, int):
         problems.append(f"{name}: threshold must be an integer")
@@ -259,7 +259,7 @@ def percentage(covered: int, total: int) -> float | None:
 def result_template(name: str, configured: dict) -> dict:
     return {
         "name": name,
-        "threshold": configured["threshold"],
+        "threshold": configured.get("threshold", MIN_THRESHOLD),
         "language": configured["language"],
         "covered": 0,
         "total": 0,
@@ -411,14 +411,16 @@ def collected_evidence(root: Path, reports: Path, name: str, configured: dict,
 def print_result(result: dict) -> None:
     shown = "n/a" if result["percentage"] is None else f"{result['percentage']:.1f}%"
     status = "OK  " if result["pass"] else "FAIL"
-    print(f"{status} {result['name']}: {result['covered']}/{result['total']} own source lines, {shown} (threshold {result['threshold']}%)")
+    override = f" (threshold {result['threshold']}%)" if result["threshold"] > MIN_THRESHOLD else ""
+    print(f"{status} {result['name']}: {result['covered']}/{result['total']} own source lines, {shown}{override}")
     for problem in result["missing_evidence"]:
         print(f"     - {problem}")
 
 
 def write_summary(reports: Path, results: list[dict], mode: str) -> str | None:
     failed = sum(0 if result["pass"] else 1 for result in results)
-    payload = {"mode": mode, "metric": "executed statement lines", "packages": results, "passed": len(results) - failed, "failed": failed}
+    reported = [{key: value for key, value in result.items() if key != "threshold" or value > MIN_THRESHOLD} for result in results]
+    payload = {"mode": mode, "metric": "executed statement lines", "packages": reported, "passed": len(results) - failed, "failed": failed}
     try:
         reports.mkdir(parents=True, exist_ok=True)
         (reports / SUMMARY_NAME).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")

@@ -282,7 +282,7 @@ _coverage_check_c_runtime:
 	    echo "[c] FAIL: runtime/$$n.c ships in a native archive but is neither gated in $(COVERAGE_THRESHOLDS_FILE) nor in C_COV_EXEMPT -- an ungated library cannot regress visibly"; fail=1; }; \
 	done; \
 	for lib in $$libs; do \
-	  thr=$$(jq -r --arg l "$$lib" '.projects.c_runtime[$$l].threshold' "$(COVERAGE_THRESHOLDS_FILE)"); \
+	  thr=$$(jq -er --arg l "$$lib" '.projects.c_runtime[$$l] | (if has("threshold") then .threshold else 90 end) | if type == "number" and . >= 90 and . <= 100 and floor == . then . else error("coverage threshold must be an integer in 90..100") end' "$(COVERAGE_THRESHOLDS_FILE)") || exit 1; \
 	  best=$$(for f in compiler/bin/cov/*/summary.txt; do \
 	    [ -f "$$f" ] || continue; \
       sed -n "\#File '.*/runtime/$$lib\.[cmh]'#{n;s/Lines executed:\([0-9.]*\)% of .*/\1/p;}" "$$f"; \
