@@ -7,6 +7,9 @@ date: 2026-10-25
 tags: ["blog", "testing", "symbolic-execution", "fuzzing", "klee"]
 author: "Christian Findlay"
 readingTime: 5
+image: /assets/images/blog/osprey-hunt-symbolic-execution.png
+imageWebp: /assets/images/blog/osprey-hunt-symbolic-execution.webp
+imageAlt: "A cyan wireframe osprey above branching execution paths, with one failing path marked in coral"
 ---
 
 One byte was enough. Osprey Hunt explored a program, found the input `"9"`, and reproduced its crash in a native executable:

@@ -6,6 +6,9 @@ description: "What changed in Osprey's algebraic effects: callable handler value
 tags: ["blog", "algebraic-effects", "handlers", "language-design", "koka", "ocaml"]
 author: "Christian Findlay"
 readingTime: 6
+image: /assets/images/blog/effect-handlers-you-can-call.png
+imageWebp: /assets/images/blog/effect-handlers-you-can-call.webp
+imageAlt: "A glass function module between two interchangeable handler modules beneath a cyan wireframe osprey"
 ---
 
 An algebraic effect is a typed request for work: load a record, write a log line, ask the user a question. A handler answers the request. The code making the request doesn't know or care which handler that is.

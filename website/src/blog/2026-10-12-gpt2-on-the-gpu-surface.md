@@ -7,6 +7,9 @@ modified: 2026-10-17
 tags: ["blog", "gpu", "gpt2", "machine-learning", "python-flavor"]
 author: "Christian Findlay"
 readingTime: 4
+image: /assets/images/blog/gpt2-on-the-gpu-surface.png
+imageWebp: /assets/images/blog/gpt2-on-the-gpu-surface.webp
+imageAlt: "A cyan wireframe osprey above a GPU chip and layered grids of glowing tensor values"
 ---
 
 Osprey can run **GPT-2, the 124-million-parameter language model, on a GPU**. It loads the weights [exactly as Hugging Face publishes them](https://huggingface.co/openai-community/gpt2), generates text and runs a training step. The model itself is Osprey code: attention, matrix multiplication, predictions and weight updates.
