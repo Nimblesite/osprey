@@ -79,8 +79,10 @@ mod tests {
         ];
         let actual = super::attach(lines, &["  register".into()]);
         assert_eq!(
-            &actual[actual.len() - 3..],
-            &[
+            actual,
+            [
+                "  store i8* null, i8** %arc.s0",
+                "  register",
                 "  call void @__osprey_owner_frame_pop(i8* %arc.unwind.raw)",
                 call,
                 "  ret i64 %answer"

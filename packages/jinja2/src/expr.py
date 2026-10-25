@@ -14,9 +14,6 @@ from jinja2 import Filters as F
 
 __all__ = ["eval_expr"]
 
-@extern
-def abort() -> None: ...
-
 
 class Tok:
     """One lexed expression token."""
@@ -930,26 +927,19 @@ def kwargs_dict(kwargs):
 
 
 def range_value(args):
-    """`range(stop)` or `range(start, stop)` as a list of ints."""
-    quarantine_range_step(args)
-    if len(args) >= 2:
-        start = arg0(args).ival
-        stop = unwrap_or(listGet(args, 1), V.int_(start)).ival
-        return V.list_(range_from(start, stop, []))
+    """Render Python's one-, two- and three-argument integer ranges."""
+    start = arg0(args).ival if len(args) >= 2 else 0
+    stop = unwrap_or(listGet(args, 1), V.int_(start)).ival if len(args) >= 2 else arg0(args).ival
+    step = unwrap_or(listGet(args, 2), V.int_(1)).ival
+    if step == 0:
+        return halt("range() arg 3 must not be zero")
     else:
-        return V.list_(range_from(0, arg0(args).ival, []))
+        return V.list_(range_from(start, stop, step, []))
 
 
-def quarantine_range_step(args):
-    # Broken-code quarantine: ignoring a supplied step silently changes values.
-    if len(args) > 2:
-        print("Jinja range step is not implemented; refusing incorrect output")
-        abort()
-
-
-def range_from(i, stop, acc):
-    """Collect `i, i+1, ...` below `stop`."""
-    if i >= stop:
+def range_from(i, stop, step, acc):
+    """Collect values before the exclusive bound in the step's direction."""
+    if (step > 0 and i >= stop) or (step < 0 and i <= stop):
         return acc
     else:
-        return range_from(i + 1, stop, listAppend(acc, V.int_(i)))
+        return range_from(satAdd(i, step), stop, step, listAppend(acc, V.int_(i)))
