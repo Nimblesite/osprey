@@ -89,6 +89,12 @@ pub(crate) static HTTP: &[BuiltinDoc] = &[
         http_response_example!(),
     ),
     builtin_doc!(
+        "httpPostResponse",
+        "Sends an HTTP POST request and returns a response handle as Result<int, Error>; inspect and free it like a GET response.",
+        ["clientID" => "Client identifier from httpCreateClient", "path" => "Request path", "body" => "Request body", "headers" => "Additional request headers"],
+        http_example!("match httpPostResponse(client, \"/\", \"hello\", \"Content-Type: text/plain\") {\n        Success { value } => {\n            let status = httpResponseStatus(value)\n            let released = httpResponseFree(value)\n            \"status=${status}; released=${released}\"\n        }\n        Error { message } => message\n    }"),
+    ),
+    builtin_doc!(
         "httpResponseBody",
         "Returns a copy of the response body as `Result<string, Error>`. An invalid or released handle returns Error; the copied body survives httpResponseFree.",
         ["responseID" => "Handle returned by httpGetResponse"],

@@ -52,10 +52,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--out', type=Path, default=Path('target/hunt-crashes'))
     parser.add_argument('--osprey', type=Path, default=Path('target/release/osprey'))
+    parser.add_argument('--memory', choices=('gc', 'arc'), default='gc')
     args = parser.parse_args()
     cases = json.loads(Path('tests/hunt/crash-cases.json').read_text())
     options = argparse.Namespace(root=Path.cwd(), out=args.out.resolve()/f"run-{time.time_ns()}", osprey=args.osprey.resolve(),
-                                 wall_time=10, max_time=8, input_bytes=1)
+                                 wall_time=10, max_time=8, input_bytes=1, memory=args.memory)
     print(f'Crash reports: {options.out}', flush=True)
     results = [verify(case, options) for case in cases]
     passed = sum(record['assertionsPassed'] for record in results)
@@ -71,7 +72,7 @@ def benign(case, record, options):
     folder.mkdir()
     source = folder/'stdin.bin'
     source.write_bytes(b'Z')
-    command = [str(options.osprey), case['program'], '--run']
+    command = [str(options.osprey), case['program'], '--run', f'--memory={options.memory}']
     (folder/'command.json').write_text(json.dumps(command, indent=2)+'\n')
     code, timed_out, elapsed = execute(command, options, folder, stdin=source)
     record['benign'] = {'exitCode': code, 'timedOut': timed_out, 'wallSeconds': elapsed, 'stdin': 'Z'}

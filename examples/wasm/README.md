@@ -56,12 +56,12 @@ Or drive the compiler directly:
 
 ```sh
 # the language tour
-osprey examples/wasm/hello.osp --target=wasm32 --compile -o examples/wasm/build/hello.wasm
-osprey examples/wasm/hello.osp --target=wasm32 --run        # uses wasmtime under the hood
+osprey examples/wasm/hello.osp --target=wasm32 --memory=none --compile -o examples/wasm/build/hello.wasm
+osprey examples/wasm/hello.osp --target=wasm32 --memory=none --run        # uses wasmtime under the hood
 
 # Osprey Data Studio, both flavors — identical manifest from different syntax
-osprey examples/wasm/studio.osp   --target=wasm32 --compile -o examples/wasm/build/studio.osp.wasm
-osprey examples/wasm/studio.ospml --target=wasm32 --compile -o examples/wasm/build/studio.ospml.wasm
+osprey examples/wasm/studio.osp   --target=wasm32 --memory=none --compile -o examples/wasm/build/studio.osp.wasm
+osprey examples/wasm/studio.ospml --target=wasm32 --memory=none --compile -o examples/wasm/build/studio.ospml.wasm
 osprey examples/wasm/studio.osp   --run    # the manifest, on the console
 diff <(osprey examples/wasm/studio.osp --run) <(osprey examples/wasm/studio.ospml --run) && echo "byte-identical"
 ```

@@ -42,3 +42,42 @@ fn recursiveGenericCase() = {
 }
 
 test("recursive generic functions specialize for integers and strings", fn() => exactArithmetic(recursiveGenericCase))
+
+/// Repeated generic calls share closed instantiations after bounded expansion.
+fn twice(x) = "${x}${x}"
+fn four(x) = "${twice(x)}${twice(x)}"
+fn eight(x) = "${four(x)}${four(x)}"
+fn sixteen(x) = "${eight(x)}${eight(x)}"
+fn thirtyTwo(x) = "${sixteen(x)}${sixteen(x)}"
+fn sixtyFour(x) = "${thirtyTwo(x)}${thirtyTwo(x)}"
+fn oneTwentyEight(x) = "${sixtyFour(x)}${sixtyFour(x)}"
+fn twoFiftySix(x) = "${oneTwentyEight(x)}${oneTwentyEight(x)}"
+type Packet<A> = Packet { payload: A }
+fn unpack(packet) = match packet { Packet { payload } => payload }
+fn recover(result) = match result {
+    Success { value } => satAdd(value, 1)
+    Error { message } => byteLength(message)
+}
+effect GenericProbe { read: fn() -> string }
+fn probed(x) = "${perform GenericProbe.read()}${x}"
+fn withProbe(label) = {
+    handle GenericProbe { read => label }
+    probed("!")
+}
+
+fn sharedGenericCase() = {
+    let expanded = twoFiftySix("q")
+    checkAll("shared generic ABI and Result normalization", [
+        byteLength(expanded) == 256,
+        (byteAt(expanded, 0) ?: 0) == 113,
+        (byteAt(expanded, 255) ?: 0) == 113,
+        unpack(Packet { payload: "payload" }) == "payload",
+        unpack(Packet { payload: 73 }) == 73,
+        recover(Error { message: "bad" }) == 3,
+        recover(Success { value: 41 }) == 42,
+        withProbe("left") == "left!",
+        withProbe("right") == "right!"
+    ])
+}
+
+test("nested generic fanout preserves specialized values", sharedGenericCase)

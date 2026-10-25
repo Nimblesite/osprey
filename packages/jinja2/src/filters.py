@@ -117,8 +117,7 @@ def f_first(v):
     """`|first`: the first element or character; undefined when empty."""
     elems = iterable_elements(v)
     if v.kind == V.K_NONE:
-        # Quarantine: None was silently treated as an empty sequence.
-        return V.quarantine("Jinja first filter accepts a non-iterable None")
+        return halt("'NoneType' object is not iterable")
     elif len(elems) == 0:
         return V.undefined("No first item, sequence was empty.")
     else:
@@ -129,8 +128,7 @@ def f_last(v):
     """`|last`: the last element or character; undefined when empty."""
     elems = iterable_elements(v)
     if v.kind == V.K_NONE:
-        # Quarantine: None was silently treated as an empty sequence.
-        return V.quarantine("Jinja last filter accepts a non-reversible None")
+        return halt("'NoneType' object is not reversible")
     elif len(elems) == 0:
         return V.undefined("No last item, sequence was empty.")
     else:
@@ -150,8 +148,7 @@ def f_string(v):
 def f_items(v):
     """`|items`: a dict's (key, value) pairs; undefined yields an empty list."""
     if v.kind == V.K_STRING:
-        # Quarantine: a string silently produced no mapping pairs.
-        return V.quarantine("Jinja items filter accepts a non-mapping string")
+        return halt("Can only get item pairs from a mapping.")
     elif v.kind == "dict":
         return V.list_(pairs_of(v))
     else:
@@ -160,12 +157,12 @@ def f_items(v):
 
 def iterable_elements(v):
     """The values `for`/`map`/`join`/`list`/`first`/`last` iterate: list elements,
-    dict keys (as strings), string characters, or nothing."""
+    typed dict keys, string characters, or nothing."""
     match v.kind:
         case "list":
             return v.elems
         case "dict":
-            return toList(map(range(len(v.keys)), lambda i: V.text(unwrap_or(listGet(v.keys, i), ""))))
+            return v.keys
         case "string":
             return V.char_values(v.sval)
         case _:
@@ -174,18 +171,34 @@ def iterable_elements(v):
 
 def pairs_of(v):
     """A dict's `(key, value)` pair values."""
-    return toList(map(range(len(v.keys)), lambda i: V.pair(unwrap_or(listGet(v.keys, i), ""), unwrap_or(listGet(v.vals, i), V.none()))))
+    return toList(map(range(len(v.keys)), lambda i: V.typed_pair(unwrap_or(listGet(v.keys, i), V.none()), unwrap_or(listGet(v.vals, i), V.none()))))
 
 
 def select_or_reject(v, args, lookup_attr, keep):
     """The shared body of select/selectattr (keep) and reject/rejectattr (not keep)."""
     elems = iterable_elements(v)
-    return V.list_(filterList(elems, lambda item: keep == select_keep(item, args, lookup_attr)))
+    return select_values(elems, args, lookup_attr, keep, 0, [])
+
+
+def select_values(elems, args, lookup_attr, keep, i, chosen):
+    """Stop on a failed predicate instead of treating it as false."""
+    if i >= len(elems):
+        return V.list_(chosen)
+    else:
+        item = arg(elems, i)
+        decision = select_keep(item, args, lookup_attr)
+        if V.is_error(decision):
+            return decision
+        else:
+            selected = listAppend(chosen, item) if keep == V.truthy(decision) else chosen
+            return select_values(elems, args, lookup_attr, keep, i + 1, selected)
 
 
 def select_keep(item, args, lookup_attr):
     """Whether one item survives: its (attribute's) test, or its truthiness."""
-    if lookup_attr:
+    if V.is_error(item):
+        return item
+    elif lookup_attr:
         return select_test(V.attr_get(item, arg(args, 0).sval), args, 1)
     else:
         return select_test(item, args, 0)
@@ -195,9 +208,24 @@ def select_test(sub, args, off):
     """Apply the test named at `off` (or truthiness when absent) to `sub`."""
     if len(args) > off:
         testname = arg(args, off).sval
-        return V.truthy(apply_test(testname, sub, drop(args, off + 1)))
+        return dynamic_lookup(apply_test(testname, sub, drop(args, off + 1)), "test", testname)
     else:
-        return V.truthy(sub)
+        return sub if V.is_error(sub) else V.bool_(V.truthy(sub))
+
+
+def dynamic_lookup(result, kind, name):
+    """Runtime lookup diagnostics follow Jinja's exception wording."""
+    missing = "No " + kind + " named '" + name + "'"
+    return halt(missing + ".") if V.is_error(result) and result.sval == missing else result
+
+
+def list_result(values, i):
+    """A mapped error remains an error rather than becoming a list element."""
+    if i >= len(values):
+        return V.list_(values)
+    else:
+        item = arg(values, i)
+        return item if V.is_error(item) else list_result(values, i + 1)
 
 
 def f_map(v, args, kwargs):
@@ -206,16 +234,16 @@ def f_map(v, args, kwargs):
     if len(args) == 0 and has_kw(kwargs, "attribute"):
         attr = kw_get(kwargs, "attribute").sval
         default = kw_get(kwargs, "default")
-        return V.list_(mapList(elems, lambda item: attr_default(item, attr, default)))
+        return list_result(mapList(elems, lambda item: attr_default(item, attr, default)), 0)
     else:
         name = arg(args, 0).sval
         rest = drop(args, 1)
-        return V.list_(mapList(elems, lambda item: apply_filter(name, item, rest, [])))
+        return list_result(mapList(elems, lambda item: dynamic_lookup(apply_filter(name, item, rest, []), "filter", name)), 0)
 
 
 def attr_default(item, attr, default):
     """`item.attr`, or `default` when the attribute is absent."""
-    r = V.attr_get(item, attr)
+    r = item if V.is_error(item) else V.attr_get(item, attr)
     if r.kind == V.K_UNDEFINED:
         return default
     else:
@@ -223,7 +251,12 @@ def attr_default(item, attr, default):
 
 
 def apply_filter(name, value, args, kwargs):
-    """Apply the named filter to `value`."""
+    """Preserve evaluation errors through every subsequent filter."""
+    return value if V.is_error(value) else dispatch_filter(name, value, args, kwargs)
+
+
+def dispatch_filter(name, value, args, kwargs):
+    """Apply the named filter to a value that has not already failed."""
     match name:
         case "trim":
             return f_trim(value)
@@ -272,7 +305,12 @@ def apply_filter(name, value, args, kwargs):
 
 
 def apply_test(name, value, args):
-    """Apply the named test to `value`, yielding a boolean Value."""
+    """Preserve evaluation errors rather than converting them into predicates."""
+    return value if V.is_error(value) else dispatch_test(name, value, args)
+
+
+def dispatch_test(name, value, args):
+    """Apply the named test to a value that has not already failed."""
     match name:
         case "defined":
             return V.bool_(value.kind != V.K_UNDEFINED)
@@ -361,11 +399,11 @@ def dict_method(obj, name, args):
         case "items":
             return V.list_(pairs_of(obj))
         case "keys":
-            return V.list_(toList(map(range(len(obj.keys)), lambda i: V.text(unwrap_or(listGet(obj.keys, i), "")))))
+            return V.list_(obj.keys)
         case "values":
             return V.list_(obj.vals)
         case "get":
-            r = V.key_of(obj, arg(args, 0).sval)
+            r = V.dict_get(obj, arg(args, 0))
             if r.kind == V.K_UNDEFINED and len(args) > 1:
                 return arg(args, 1)
             else:

@@ -133,6 +133,7 @@ pub(crate) fn json(report: &Report<'_>) -> Value {
         "program": report.program,
         "context": report.context,
         "engine": "KLEE",
+        "memory": report.options.memory,
         "budgetSeconds": report.options.max_time,
         "inputBytes": report.options.input_bytes,
         "explored": {

@@ -22,7 +22,7 @@ fn execute(
 }
 
 fn assert_output(name: &str, extension: &str, source: &str, expected: &str) {
-    for memory in ["default", "gc", "arc"] {
+    for memory in ["gc", "arc"] {
         let result = execute(name, extension, source, memory);
         assert!(result.is_ok(), "could not run compiler: {result:?}");
         let Ok(output) = result else { return };

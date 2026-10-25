@@ -51,7 +51,6 @@ test: build
 # strictly the stronger of the two observations. Executing the same assertions
 # twice buys nothing and doubles the slowest stage in the build. The `osprey
 # test` subcommand itself stays covered by bank-test and the CLI e2e suite.
-	$(MAKE) _test_goldens
 	$(MAKE) _conformance-gc
 	$(MAKE) _conformance-arc
 	$(MAKE) _test_profiler
@@ -348,7 +347,7 @@ run: build
 install: build
 	cargo install --path crates/osprey-cli --force
 	sudo $(MKDIR) /usr/local/lib
-	sudo cp $(RTB)/libfiber_runtime.a $(RTB)/libhttp_runtime.a /usr/local/lib/
+	sudo cp $(RTB)/libfiber_runtime*.a $(RTB)/libhttp_runtime*.a /usr/local/lib/
 	@echo "==> installed osprey and runtime archives."
 
 ## bench: Build, then run the cross-language performance benchmark suite

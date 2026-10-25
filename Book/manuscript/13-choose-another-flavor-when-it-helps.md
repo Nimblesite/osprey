@@ -12,21 +12,21 @@ The complete Default source remains canonical for the book. One pure file gains 
 
 ## Core sections
 
-1. Flavor changes the source surface, not the language you have learned
+1. A syntax flavor changes how you write Osprey, sharing its types, effects and compiler
 2. Default remains this book's teaching surface
 3. ML replaces braces with layout and defaults to currying
 4. Flat and curried calls are not punctuation twins
 5. One file selects one surface
 6. Use an agent for translation, then check and test
-7. The architecture remains open to future flavors
+7. Python-style syntax is a third option, separate from CPython interop
 
 ## Current rules to preserve
 
-- `.osp` selects Default and `.ospml` selects ML unless an explicit override applies. A leading flavor marker may also select a flavor; without an explicit override, a marker contradicting the extension is an error. For these two flavors, the single-file CLI accepts `--flavor default` or `--flavor ml`.
-- A project can mix `.osp` and `.ospml` files. Setting `[project].flavor` in `osprey.toml` overrides the flavor for every source in that project, so omit it when extensions should select independently.
+- `.osp` selects Default and `.ospml` selects ML unless an explicit override applies. A leading flavor marker may also select a flavor; without an explicit override, a marker contradicting the extension is an error. A directly compiled `.py` file selects Python flavor. The CLI accepts `--flavor default`, `--flavor ml` or `--flavor python`; start Python-flavor samples with `# osprey: flavor=python`.
+- A project can mix `.osp`, `.ospml` and opted-in Python-flavor `.py` files. List Python-flavor files in `[project].python_sources`; a `.py` entry is also included. Other Python scripts under source roots are ignored. Setting `[project].flavor` in `osprey.toml` overrides the flavor for every source in that project, so omit it when extensions should select independently.
 - Default `fn f(x, y) = ...` corresponds to ML `f (x, y) = ...`: both are flat functions. ML `f x y = ...` instead defines a curried function, corresponding to a Default function returning another function. Translating only braces and parentheses can change the callable contract.
 - Imported functions keep that contract across flavor boundaries. An ML caller uses `f (a, b)` for a Default flat function; a Default caller applies a curried result as `f(a)(b)`.
-- Both flavors use the current effect model: callable `handler` values, rest-of-block `handle`, declared value/control operations, and explicit `perform`. Removed `handle ... in` and `handle ... do` forms are not translation alternatives. A handler receives the function whose execution it must surround.
+- All three syntax flavors use the current effect model: callable `handler` values, rest-of-block `handle`, declared value/control operations, and explicit `perform`. Removed `handle ... in` and `handle ... do` forms are not translation alternatives. A handler receives the function whose execution it must surround.
 - `osprey fmt` formats within a file's selected flavor. It is not a flavor converter. Manual or agent-assisted translation still needs checking and execution.
 - Equivalent twins can share exact output and, for specifically matched shapes, identical generated IR. That evidence does not mean an arbitrary flat program and an arbitrary curried rewrite have identical allocation or code-generation behavior.
 
@@ -55,4 +55,4 @@ Create an ML twin of one pure module, run both checks, and compare stdout or tes
 
 ## Edition note
 
-Default and ML are the teaching surfaces here. The Python flavor has a partially implemented frontend; its current supported subset is documented in `docs/specs/language/0041-PythonFlavorSyntax.md`. It is Osprey source, not a Python runtime. Do not assume that an arbitrary Python program can be compiled as Osprey.
+Default and ML remain the teaching surfaces here. The [Python flavor guide](https://www.ospreylang.dev/docs/python-flavor/) covers `def`, `lambda`, f-strings, matching, decorated effects and mixed-flavor imports, with a runnable GPT-2 port. These programs compile through Osprey and gain its inferred static types and checked effects. The supported subset excludes Python runtime behavior such as arbitrary dynamic objects; VS Code still treats `.py` files as ordinary Python. Calling CPython libraries uses the separate [Python interop bridge](https://www.ospreylang.dev/spec/0042-pythoninterop/), not an ordinary Osprey module import.

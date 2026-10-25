@@ -280,7 +280,7 @@ fn doctests_allow_qualified_calls_to_documented_main() {
 #[test]
 fn doctests_run_with_each_native_memory_backend() {
     let path = temp_osp("documentation_allocators", DOCUMENTED);
-    for memory in ["default", "gc", "arc"] {
+    for memory in ["gc", "arc"] {
         let result = run_file(&path, &["--doctests", &format!("--memory={memory}")]);
         assert_eq!(result.code, Some(0), "{memory}: {}", result.stderr);
         assert_eq!(result.stdout, "doctests: 2 passed, 0 failed\n");

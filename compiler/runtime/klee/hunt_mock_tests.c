@@ -11,6 +11,7 @@
 // works [SYMEX-MOCK-CLOSED].
 #include "hunt_mock_tests.h"
 
+#include <math.h>
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stddef.h>
@@ -73,6 +74,8 @@ const char *hunt_last_symbolic(void) { return last_symbolic; }
 
 void klee_make_symbolic(void *address, size_t count, const char *name) {
   strncpy(last_symbolic, name, sizeof(last_symbolic) - 1);
+  // The runtime constrains this metadata to its initialized version, not queued input.
+  if (strcmp(name, OSP_HUNT_FILE_PROTOCOL_NAME) == 0) return;
   for (size_t i = 0; i < count; i++) {
     ((unsigned char *)address)[i] = queue_head < queue_tail ? queue[queue_head++] : 0;
   }
@@ -172,7 +175,7 @@ static void read_file_opens_a_symbolic_stream_named_by_path(void) {
   char path[] = "data.txt";
   char *text = read_file(path);
   hunt_check(text != NULL && strcmp(text, "payload") == 0, "readFile returns the symbolic bytes up to the length");
-  hunt_check(strcmp(hunt_last_symbolic(), "data.txt") == 0, "the file bytes are named by their path");
+  hunt_check(strcmp(hunt_last_symbolic(), "file.data:data.txt") == 0, "the file bytes are named by their path");
   hunt_check(osp_hunt_calls[OSP_HUNT_CALL_FOPEN] == 1 && osp_hunt_calls[OSP_HUNT_CALL_FREAD] >= 1, "readFile went through fopen and fread");
   hunt_check(osp_hunt_calls[OSP_HUNT_CALL_FCLOSE] == 1, "readFile closed the stream");
 }
@@ -263,6 +266,25 @@ static void math_doubles_are_accurate(void) {
   hunt_check(sqrt(-1.0) != sqrt(-1.0), "sqrt of a negative is nan");
 }
 
+static void power_special_cases_match_libm(void) {
+  const double cases[][3] = {
+      {-1, 0x1p53, 1}, {-1, -0x1p53, 1}, {-1, 0x1p53 - 1, -1}, {-1, 0x1p63, 1},
+      {-2, 0x1p53, INFINITY}, {-0.5, 0x1p53, 0}, {-2, -0x1p53, 0}, {-0.5, -0x1p53, INFINITY},
+      {-INFINITY, 0.5, INFINITY}, {-INFINITY, -0.5, 0}, {-INFINITY, 3, -INFINITY}, {-INFINITY, -3, -0.0},
+      {-INFINITY, INFINITY, INFINITY}, {-INFINITY, -INFINITY, 0}, {-0.0, 0.5, 0}, {-0.0, -0.5, INFINITY},
+      {-0.0, 3, -0.0}, {-0.0, -3, -INFINITY}, {0, 0, 1}, {NAN, 0, 1}, {1, NAN, 1}, {-1, NAN, NAN},
+      {NAN, 2, NAN}, {-2, 0.5, NAN}, {-1, INFINITY, 1}, {-1, -INFINITY, 1}, {0.5, INFINITY, 0},
+      {2, -INFINITY, 0}, {2, -1074, 0x1p-1074}, {2, -1024, 0x1p-1024},
+  };
+  for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+    double got = pow(cases[i][0], cases[i][1]), want = cases[i][2];
+    int same = isnan(want) ? isnan(got) : got == want && !!signbit(got) == !!signbit(want);
+    char description[96];
+    (void)snprintf(description, sizeof(description), "pow special case %zu", i);
+    hunt_check(same, description);
+  }
+}
+
 static void unsupported_calls_stop_the_path(void) {
   hunt_reset();
   if (setjmp(on_error) == 0) {
@@ -285,6 +307,7 @@ int main(void) {
   qsort_sorts();
   entropy_is_a_named_symbolic_object();
   math_doubles_are_accurate();
+  power_special_cases_match_libm();
   unsupported_calls_stop_the_path();
   hunt_mock_format_tests();
   hunt_mock_stream_tests();

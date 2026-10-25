@@ -14,6 +14,9 @@ use std::process::{Command, Stdio};
 #[path = "cases/doctest_harness.rs"]
 mod doctest_harness;
 
+#[path = "cases/memory_backend.rs"]
+mod memory_backend;
+
 /// Repo root: `crates/osprey-cli` -> `../..`. The C runtime archives `osprey`
 /// links at `--run`/`--compile` time live under `compiler/bin/` there, and
 /// `find_runtime_lib` resolves them relative to the process cwd — so every
@@ -1622,7 +1625,7 @@ fn bare_result_variants_compile_and_select_the_correct_arm() {
         "// osprey: flavor=ml\na = match checkedAdd (0, 1)\n    Success value => value\n    Error => 0\nb = match checkedAdd (9223372036854775807, 1)\n    Success => 7\n    Error => 9\nprint \"${a},${b}\"\n",
     ].iter().enumerate() {
         let source = temp_osp(&format!("bare_result_variants_{index}"), source);
-        for memory in ["default", "gc", "arc"] {
+        for memory in ["gc", "arc"] {
             let flavor = if index == 4 { "ml" } else { "default" };
             let output = run_file(&source, &[
                 "--run", "--quiet", &format!("--memory={memory}"),

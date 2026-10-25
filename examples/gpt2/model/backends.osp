@@ -2,8 +2,8 @@
 // operations and never names a buffer type; `Cpu::onLists` (cpu.osp) answers
 // every operation with host list code and `Gpu::onGpu` (gpu.osp) with the GPU
 // surface. The handler a program installs decides where the arithmetic runs,
-// and both must agree with examples/gpt2/reference.py bit for bit, because
-// every arm accumulates in the same k order from 0.0.
+// with host runs checked exactly against examples/gpt2/reference.py in the same
+// accumulation order. Device transcendental differences use the README's bounds.
 // Implements [STAGE-BACKEND], [GPU-DEVICE].
 
 namespace gpt2;

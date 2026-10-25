@@ -165,6 +165,15 @@ jobs:
           make _runtime CC=gcc AR=ar SHELL=/usr/bin/bash MKDIR='mkdir -p'
           cargo build --release -p osprey-cli
 
+      - name: Compile package manager client (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: target/release/osprey build packages/manager/cli -o target/osprey-pkg
+      - name: Compile package manager client (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: target/release/osprey.exe build packages/manager/cli -o target/osprey-pkg.exe
+
       # ---- Verify version contract [SWR-VERSION-CLI-OUTPUT] ------------------
       - name: Verify version
         shell: bash
@@ -184,6 +193,7 @@ jobs:
           staging="osprey-$v-$plat"
           mkdir -p "dist/$staging"
           cp "target/release/osprey${exe}" "dist/$staging/"
+          cp "target/osprey-pkg${exe}" "dist/$staging/"
           # The runtime archives used to be copied with `|| true`, so a build
           # that produced none still packaged, published and reached Homebrew —
           # a compiler that can link nothing, shipped green. Find the directory
@@ -490,6 +500,7 @@ jobs:
           set -euo pipefail
           exe=""; [ "${{ runner.os }}" = "Windows" ] && exe=".exe"
           unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/osprey${exe}"
+          unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/osprey-pkg${exe}"
       # Packaging is per-platform (each VSIX bundles the matching native binary);
       # publishing is centralised in the publish-marketplace / publish-openvsx
       # jobs so the registry tokens live in one least-privilege place.

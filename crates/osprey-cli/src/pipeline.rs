@@ -241,9 +241,9 @@ pub(super) fn reject_cross_target_options(
     if let Some(code) = reject_debug_cross_target(cli) {
         return Err(code);
     }
-    if cli.memory != "default" {
+    if cli.memory != "none" {
         return Err(toolchain::fail(&format!(
-            "{platform} supports --memory=default; other runtime archives are not available"
+            "{platform} requires explicit --memory=none; managed runtime archives are not available for this target"
         )));
     }
     match host_hint {

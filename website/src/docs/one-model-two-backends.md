@@ -265,7 +265,7 @@ export under (name, work) = match name
 
 ## What the tests show
 
-[`tests/effects/staged/tensor_backends.test.osp`](https://github.com/Nimblesite/osprey/blob/main/tests/effects/staged/tensor_backends.test.osp) runs a width-4 transformer block under both handlers and checks every element against values an independent oracle computed, then checks that the two handlers print the same doubles. Its ML twin shares the golden and must emit identical LLVM IR. The differential harness runs both under the default, GC and ARC memory backends and on wasm32.
+[`tests/effects/staged/tensor_backends.test.osp`](https://github.com/Nimblesite/osprey/blob/main/tests/effects/staged/tensor_backends.test.osp) runs a width-4 transformer block under both handlers and checks every element against values an independent oracle computed, then checks that the two handlers print the same doubles. Its ML twin shares the golden and must emit identical LLVM IR. The differential harness runs both under the GC and ARC memory backends and on wasm32.
 
 For the full model's default prompt, both handlers print identical tokens and continuation, training loss, 148 gradient-tensor sums and updated loss. The GPU surface uses dense doubles and lifted kernel functions; the list handler boxes every element. Both columns below ran on the CPU (`OSPREY_GPU=host`); the [GPT-2 README](https://github.com/Nimblesite/osprey/tree/main/examples/gpt2) has the Metal and OpenCL timings.
 

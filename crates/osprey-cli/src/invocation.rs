@@ -6,12 +6,12 @@ use osprey_syntax::Flavor;
 pub(crate) const USAGE: &str =
     "usage: osprey <file-or-project> [--check | --ast | --llvm | --compile | --run | \
 --symbols | --list-tests | --doctests | --deps] [--quiet] [--debug] [--profile] [--flavor default|ml|python] \
-[--memory=default|gc|arc] [--target=native|wasm32|ios|ios-sim|macos|android-arm64|android-x64|python] [--entry-only] [-o <out>] \
+[--memory=gc|arc|none] [--target=native|wasm32|ios|ios-sim|macos|android-arm64|android-x64|python] [--entry-only] [-o <out>] \
 [--sandbox | --no-http | --no-websocket | --no-fs | --no-ffi]\n\
-       osprey build [project] [--quiet] [--debug] [--memory=default|gc|arc] \
+       osprey build [project] [--quiet] [--debug] [--memory=gc|arc|none] \
 [--target=native|wasm32|ios|ios-sim|macos|android-arm64|android-x64|python] [-o <out>]\n\
        osprey test [path] [--filter <name>] [--quiet] [--coverage] \
-[--coverage-json <path>] [--memory=default|gc|arc]\n\
+[--coverage-json <path>] [--memory=gc|arc|none]\n\
        osprey fmt [--check | --stdout] [--flavor default|ml|python] <path...>\n\
        osprey hunt <file> [--max-time <seconds>] [--max-memory <mb>] [--input-bytes <n>] [--out <dir>] [--json] [--no-replay] [--quiet]\n\
        osprey --hover <name>\n\
@@ -46,7 +46,7 @@ pub(crate) struct Cli {
     pub(super) mode: String,
     pub(super) quiet: bool,
     pub(super) policy: Policy,
-    /// The memory backend linked behind `@osp_alloc`: `default` (malloc
+    /// The memory backend linked behind `@osp_alloc`: `none` (explicit malloc
     /// passthrough), `gc` (tracing collector), or `arc` (reference counting).
     /// Link-time only; native IR is identical [MEM-BACKENDS].
     pub(super) memory: String,
@@ -116,7 +116,7 @@ fn default_invocation(project_build: bool) -> Cli {
         mode: mode.into(),
         quiet: false,
         policy: Policy::allow_all(),
-        memory: "default".into(),
+        memory: "gc".into(),
         target: "native".into(),
         exports: MobileExports::All,
         output: None,
@@ -277,14 +277,14 @@ pub(super) fn parse_target(value: &str) -> Result<String, String> {
     }
 }
 
-/// Validate the `--memory=` value: the malloc passthrough (`default`), the
+/// Validate the `--memory=` value: the malloc passthrough (`none`), the
 /// tracing collector (`gc`), or Perceus reference counting (`arc`).
 /// Implements [MEM-BACKENDS].
 pub(super) fn parse_memory(value: &str) -> Result<String, String> {
     match value {
-        "default" | "gc" | "arc" => Ok(value.to_string()),
+        "none" | "gc" | "arc" => Ok(value.to_string()),
         other => Err(format!(
-            "unknown memory backend '{other}' (available: default, gc, arc)\n{USAGE}"
+            "unknown memory backend '{other}' (available: gc, arc, none)\n{USAGE}"
         )),
     }
 }

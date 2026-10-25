@@ -24,9 +24,16 @@ _profiler_ui: $(PROFILER_UI_BUILT)
 # time version check either shipped a stale manifest or silently skipped. Local
 # builds report 0.0.0-dev, exactly what the committed manifest expects, so the
 # root manifest is the truthful local copy. [EDITOR-VERSIONING]
-_vsix_bundle:
-	@DEST="$(EXT_DIR)/bin/$(EXT_PLATFORM)"; $(MKDIR) "$$DEST"; \
+# The editor ships a compiled Osprey package client; installations never compile
+# package-manager application sources on the user's machine. [PACKAGE-API]
+REGISTRY_CLIENT_SOURCES := $(shell rg --files packages/manager -g '*.osp' -g 'osprey.toml')
+target/osprey-pkg: $(BIN) $(REGISTRY_CLIENT_SOURCES)
+	$(BIN) build packages/manager/cli -o $@
+
+_vsix_bundle: target/osprey-pkg
+	@set -e; DEST="$(EXT_DIR)/bin/$(EXT_PLATFORM)"; $(MKDIR) "$$DEST"; \
 	cp $(BIN) "$$DEST/osprey"; \
+	cp target/osprey-pkg "$$DEST/osprey-pkg"; \
 	cp $(RTB)/libfiber_runtime.a $(RTB)/libhttp_runtime.a \
 	   $(RTB)/libfiber_runtime_gc.a $(RTB)/libhttp_runtime_gc.a \
 	   $(RTB)/libfiber_runtime_arc.a $(RTB)/libhttp_runtime_arc.a "$$DEST/"; \
@@ -44,6 +51,8 @@ _vsix_package: $(EXT_NODE_DEPS) $(PROFILER_UI_BUILT)
 	if [ -z "$$VSIX" ]; then echo "FAIL: npm run package produced no osprey-*.vsix"; exit 1; fi; \
 	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/osprey" || \
 	  { echo "FAIL: $$VSIX carries no extension/bin/$(EXT_PLATFORM)/osprey"; exit 1; }; \
+	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/osprey-pkg" || \
+	  { echo "FAIL: $$VSIX carries no bundled package client"; exit 1; }; \
 	unzip -l "$$VSIX" | grep -qF "extension/out/client/src/extension.js" || \
 	  { echo "FAIL: $$VSIX carries no compiled extension (out/client/src/extension.js)"; exit 1; }
 

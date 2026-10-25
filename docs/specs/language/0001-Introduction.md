@@ -35,8 +35,7 @@ effect before returning it to ordinary language code.
 ## Runtime and platforms
 
 - Fibers and typed channel communication.
-- Default, tracing-GC, and Perceus ARC memory backends. The default backend does
-  not reclaim every allocation; static-memory checking is not implemented.
+- Native builds use tracing GC by default; Perceus ARC is the alternative managed backend. Unmanaged allocation requires explicit `--memory=none` and does not reclaim every allocation. Static-memory checking is not implemented.
 - Native C interoperability and built-in HTTP and WebSocket runtimes.
 
 Each later chapter states narrower availability or platform limits beside the

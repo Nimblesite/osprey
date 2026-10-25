@@ -26,7 +26,7 @@ module Surface {
     export fn table() = [
         named("readFile", files), named("writeFile", files), named("gpuLoad", files), named("gpuLoadTensor", files), named("loadTensor", files),
         named("spawnProcess", process), named("awaitProcess", process), named("cleanupProcess", process),
-        named("httpGet", network), named("httpPost", network), named("httpPut", network), named("httpDelete", network),
+        named("httpGet", network), named("httpPost", network), named("httpPostResponse", network), named("httpPut", network), named("httpDelete", network),
         named("httpListen", network), named("httpStopServer", network), named("httpCloseClient", network), named("httpResponseFree", network),
         named("websocketClose", network),
         named("input", terminal), named("termRawMode", terminal), named("termReadKey", terminal),

@@ -130,15 +130,23 @@ KLEE runs natively on the host; there is no container in this pipeline. The supp
 - `--input-bytes` caps every symbolic byte stream (stdin and each opened file). The default is 64; the maximum is 4096, the mock libc's stream cap. A parse of the input forks on every symbolic byte, so the cap decides whether a run can finish: measured on `tests/hunt/clean.osp` with a 30 s budget, 2 bytes explores 26 paths and completes them all, 4 bytes completes 18 of 122, and 8, 16 and 64 bytes complete about 17 of 347 before the budget cuts the rest. Use a small cap to finish a program's paths and the default to reach as much code as the budget allows.
 - `--max-time` is KLEE's `--max-time` budget for the run, in seconds, enforced with `--watchdog`. The default is 60. When the watchdog has to kill the engine (a solver query still running at the budget, reported as "WATCHDOG: time expired"), the states it dumped on the way out are read like any other run and the report carries one more "incomplete" entry naming the kill; only an engine failure with no such cause is a tool error (exit 2), reported with the head and tail of what KLEE said.
 - `--max-memory` is KLEE's `--max-memory` cap in megabytes (at least 256). The default is 2000; a whole test suite explored as one long path can need more (Vigil's `app/tests` exceeded 2000 MB after 60 s).
-- `--out <dir>` saves the HTML and JSON reports alongside KLEE's output directory; without it the raw run directory is temporary and reports are saved under `target/hunt/<program-and-run-id>/`. The tool refuses to clear a non-empty `--out` directory that is not a previous KLEE run (one without an `info` file).
+- `--out <dir>` saves the HTML and JSON reports alongside KLEE's output directory; without it the raw run directory is temporary and reports are saved under `target/hunt/<program-and-run-id>/`. Hunt replaces a non-empty `--out` directory only when it bears the ownership marker written by Hunt. An ordinary `info` entry does not establish ownership. Unmarked directories, including partial output from an engine failure, and symlink destinations are refused; choose a fresh directory.
 - `--json` also prints the report as JSON on stdout, with no additional path messages on stdout. It takes no path.
 - HTML and JSON files are enabled by default. `--no-html` and `--no-json` independently disable the corresponding saved file; `--no-json` does not suppress explicitly requested JSON stdout.
 - `--no-replay` skips the native replay.
 - `--quiet` suppresses the progress line on stderr. `--help` prints the synopsis and exits `0`.
 - Exits `0` with no findings (or only `klee-only` findings after replay), `1` when a finding reproduced natively, when any finding exists with `--no-replay`, or when the program does not compile, and `2` for a usage or toolchain error.
-- The `klee` binary comes from `OSPREY_KLEE`, else `klee` on `PATH`, else the Homebrew prefixes `/opt/homebrew/bin`, `/usr/local/bin`, `/home/linuxbrew/.linuxbrew/bin`, which GUI editors often drop from `PATH`. The runtime bitcode is `compiler/bin/libosprey_runtime_klee.bc`, built by `make build` (target `_runtime_klee`); `OSPREY_KLEE_RUNTIME` overrides its path.
+- The `klee` binary comes from `OSPREY_KLEE`, else `klee` on `PATH`, else the Homebrew prefixes `/opt/homebrew/bin`, `/usr/local/bin`, `/home/linuxbrew/.linuxbrew/bin`, which GUI editors often drop from `PATH`. The runtime bitcode is `compiler/bin/libosprey_runtime_klee_gc.bc`, built by `make build` (target `_runtime_klee`); `OSPREY_KLEE_RUNTIME` overrides its path.
 
 `make hunt FILE=<path>` wraps the CLI, and `make hunt-corpus` runs it over the corpus ([SYMEX-CORPUS](#corpus--symex-corpus)).
+
+### GC and ARC — `[SYMEX-GC-ROOTS]`
+
+Hunt defaults to `--memory=gc`; `--memory=arc` selects reference counting. Native replay uses the same backend. Each symbolic runtime contains the actual allocator and the same container ownership shims as its native archive, with the mock library supplying process I/O. Neither backend substitutes an allocator that keeps every object alive.
+
+KLEE cannot scan the host stack or registers as program roots. For GC, an LLVM 19 pass registers live function frames, SSA values, stack allocations and mutable globals before execution. The collector still marks heap references and sweeps unreachable allocations. Missing instrumentation is an explicit model error. Unsupported stack control is rejected by the pass rather than silently losing roots. `OSPREY_KLEE_LLVM` selects the LLVM 19 bin directory; `libosprey_gc_roots.so` must sit beside the GC runtime. ARC uses `libosprey_runtime_klee_arc.bc` and does not run the GC pass.
+
+The collector regression forces collections, checks caller/global/heap-linked objects survive, and verifies zero objects remain after roots are dropped. It runs in the planted-crash CI gate; success requires one completed path, no unfinished paths and no KLEE errors.
 
 ### KLEE invocation — `[SYMEX-KLEE-INVOCATION]`
 
@@ -146,7 +154,7 @@ Every run uses this command; the tool never lets an option through from the user
 
 ```text
 klee --libc=klee --ubsan-runtime --external-calls=none --external-call-warnings=all
-     -link-llvm-lib=compiler/bin/libosprey_runtime_klee.bc
+     -link-llvm-lib=compiler/bin/libosprey_runtime_klee_gc.bc
      --optimize --kdalloc --rng-initial-seed=5489
      --check-div-zero --check-overshift --emit-all-errors
      --max-solver-time=30s --max-time=<S>s --watchdog --max-memory=<MB>
@@ -176,14 +184,16 @@ It lives in `compiler/runtime/klee/`: `hunt_stream.c` (the one stateful model), 
 
 ### Byte streams: the one stateful model — `[SYMEX-MOCK-STREAM]`
 
-A stream is a `malloc`ed buffer of the cap's bytes made symbolic with `klee_make_symbolic`, a length from `klee_range(0, cap + 1, "<name>.len")`, and a cursor. Reads copy from the cursor and return the short count or `0` once the cursor reaches the length. The cap is `--input-bytes`, which the CLI writes into the program module as `@osp_hunt_input_bytes`, overriding the mock's weak default.
+A stream is a `malloc`ed buffer of the cap's bytes made symbolic with `klee_make_symbolic`, a length from `klee_range(0, cap + 1, name)`, and a cursor. Reads copy from the cursor and return the short count or `0` once the cursor reaches the length. The cap is `--input-bytes`, which the CLI writes into the program module as `@osp_hunt_input_bytes`, overriding the mock's weak default.
 
 | Source | Stream |
 |---|---|
 | stdin: `read(0, …)` (the `osp_input` path), `fgets`/`fread` on `stdin` | One stream for the run, named `stdin` |
-| `fopen(path, "r…")` | A fresh independent stream per open, named after the path: contents and length symbolic, `fseeko`/`ftello` consistent with that length. Whether the open succeeds is a fresh symbolic choice named `<path>.ok`, so the open-failure branch is explored too |
+| `fopen(path, "r…")` | A fresh independent stream per open: `file.data:<path>` holds bytes, `file.len:<path>` holds length, and `file.ok:<path>` selects success or failure. `fseeko`/`ftello` remain consistent with the length. Distinct prefixes keep paths such as `stdin`, `x.ok` and `x.len` separate from metadata during native replay. The decoder also reads the earlier path-and-suffix witness format. |
 
 These are the only stateful mocks. Read-until-EOF loops (`osp_input`, `readFile`'s short-read loop in `file_runtime.c`) never terminate if reads don't track a cursor, so stateless reads would turn every input loop into path explosion. Files keep no state between opens: a file written and then reopened reads back as fresh symbolic content. That over-approximates, and replay filters out any false positive it causes.
+
+File witnesses carry the fixed integer marker `osprey.hunt.files.v2 = 2`. The decoder uses this marker to select the namespaced format; a filename prefix alone does not select it. A legacy file with that marker-like name still has its own `.len` metadata and remains a file.
 
 ### Symbolic read buffers — `[SYMEX-MOCK-READ-BUFFER]`
 
@@ -196,7 +206,7 @@ These are the only stateful mocks. Read-until-EOF loops (`osp_input`, `readFile`
 | Memory | `malloc`, `calloc`, `realloc`, `free` | Not defined by the mock; KLEE intercepts them and checks bounds, use-after-free and double free per allocation |
 | Output and formatting | `printf`, `fprintf`, `snprintf`, `vsnprintf`, `puts`, `fputs`, `fwrite`, … | One engine (`hunt_format.c`) formats every byte the call would print — flags `-+ 0#`, width and precision (including `*`), lengths `hh h l ll z j t`, conversions `d i u o x X c s p % f F e E g G` — into a sink, and returns the length a real call would |
 | Exact decimals | float conversions | `hunt_decimal.c` expands a double through a base-1e9 bignum, so printed digits match the host libc's exactly and a program that branches on `toString(x)` explores the same paths |
-| libm | `sqrt`, `exp`, `log`, `tanh`, `pow`, … (`hunt_math.c`) | Plain C — bit-level exponent handling plus short series on reduced arguments, within a few ulp. KLEE concretises floating point and lowers `llvm.sqrt`/`llvm.exp`/`llvm.log` to these names |
+| libm | `sqrt`, `exp`, `log`, `tanh`, `pow`, … (`hunt_math.c`) | Plain C — bit-level exponent handling plus short series on reduced arguments. Native tests cover signed zero, infinities, NaNs and exponent parity, plus sampled finite results; no universal ulp bound is established. KLEE concretises floating point and lowers `llvm.sqrt`/`llvm.exp`/`llvm.log` to these names |
 | Strings and numbers not in `--libc=klee` | `strcspn`, `strspn`, `strerror_r`, `strerror`, `strtod`, `qsort` | Plain C implementations, so symbolic bytes flow through them exactly |
 | Files | `fclose`, `ferror`, `feof`, `fseeko`/`ftello`, `remove`, `rename`, … | The stream's own bookkeeping. Streams are named, not stored, so deleting or renaming a path has nothing to act on and both succeed |
 | Environment | `getenv` | Returns `NULL`, so coverage, profiler and test-filter hooks stay off |
@@ -297,10 +307,10 @@ Tests are written first at each step. The compiler items are specified in [KLEE 
 - [x] **Mock library:** headers, the stream model, stateless models and unsupported stubs, with native unit tests (`make _test_hunt_mock`, part of `make test`) and the `[SYMEX-MOCK-CLOSED]` undefined-symbol check inside `_runtime_klee` (part of `make build`).
 - [x] **`_runtime_klee`** builds the runtime bitcode from the shared `WASM_RT_SRC` list (minus `web_runtime` and `wasm_builtins_runtime`) plus the mock, with KLEE's clang.
 - [x] **Symbolic codegen** (`compile_program_symbolic`; there is no `--klee` CLI flag): `abort()` on fatal paths, debug metadata on, no `optnone`. The planned `llvm-as` parse check over the corpus is not built; KLEE itself parses the module on every hunt.
-- [x] **`osprey hunt` main mode:** deterministic programs under `tests/hunt/`, each with an `.expected` file, run by `make _test_hunt` (part of `make test` when KLEE is installed) — `crash.osp` finds input `"9"` and reproduces its planted C abort at line 4; `clean.osp` expects no findings; `process.osp` expects one unsupported-operation finding. Fixed compiler/runtime regressions remain separate controls. The harness rejects incomplete exploration rather than treating it as a passing control.
+- [ ] **`osprey hunt` main mode completion proof:** the command is implemented, but the unchanged deterministic and default-budget gates must complete every path before this item closes. Deterministic programs under `tests/hunt/`, each with an `.expected` file, run by `make _test_hunt` (part of `make test` when KLEE is installed) — `crash.osp` finds input `"9"` and reproduces its planted C abort at line 4; `clean.osp` expects no findings; `process.osp` expects one unsupported-operation finding. Fixed compiler/runtime regressions remain separate controls. The harness rejects incomplete exploration rather than treating it as a passing control.
 - [ ] **`libkleeRuntest` replay**, including the entropy/clock provider, on top of the native stdin/file replay that ships today; tested by a planted bug that only fires on one symbolic random byte.
 - [ ] **`[SYMEX-HARNESS-TYPED]`:** a planted bug in a function taking `List<int>` and a union must be found with `--fn`; `--all-fns` lists skips with reasons. Not built.
 - [ ] **`[SYMEX-REGRESSION]`** test generation. Not built.
-- [ ] **`make hunt-corpus`** with `tests/HUNT_UNPORTABLE.txt`: the script and the skip list exist and the corpus is green (224 programs, 0 findings); making it a required check is open.
+- [ ] **`make hunt-corpus`** with `tests/HUNT_UNPORTABLE.txt`: the script and skip list exist. The recorded 224-program run found no findings, but only 204 programs completed and 20 hit the budget. A fully completed run and a required check remain open.
 - [ ] **Windows:** WSL2 run plus `--replay-host=windows`. Not yet implemented.
 - [ ] **`[SYMEX-PROOF]`:** the eight cases in four languages, `run.sh`, `report.py` with a unit test, and a checked-in `results/results.json` that meets all four superiority conditions. `make ci` re-renders the README from the JSON and fails on drift. This item closes last and gates the claim in the comparison table.

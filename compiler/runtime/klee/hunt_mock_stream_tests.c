@@ -162,7 +162,7 @@ static void read_one_file(long cap, long length) {
   seeks_stay_inside_the_length(file, cap, length);
   rewind(file);
   hunt_check(ftello(file) == 0 && !feof(file) && fread(buffer, 1, sizeof(buffer), file) == got, about("rewind rereads the same stream", cap, length));
-  int named = strcmp(hunt_range_name(0), "in.dat.ok") == 0 && (cap == 0 || (strcmp(hunt_range_name(1), "in.dat.len") == 0 && strcmp(hunt_last_symbolic(), "in.dat") == 0));
+  int named = strcmp(hunt_range_name(0), "file.ok:in.dat") == 0 && (cap == 0 || (strcmp(hunt_range_name(1), "file.len:in.dat") == 0 && strcmp(hunt_last_symbolic(), "file.data:in.dat") == 0));
   hunt_check(named, about("a file is <path> with <path>.ok and <path>.len", cap, length));
   (void)fclose(file);
 }
@@ -189,7 +189,7 @@ static void every_open_is_a_fresh_stream(void) {
   hunt_queue_range(2);
   FILE_ *second = fopen("a.txt", "r");
   hunt_check(second != NULL && fread(buffer, 1, 8, second) == 2 && buffer[0] == 'Z', "a reopened path reads fresh symbolic bytes");
-  int names = strcmp(hunt_range_name(0), "a.txt.ok") == 0 && strcmp(hunt_range_name(1), "a.txt.len") == 0 && strcmp(hunt_range_name(2), "a.txt.ok") == 0 && strcmp(hunt_range_name(3), "a.txt.len") == 0;
+  int names = strcmp(hunt_range_name(0), "file.ok:a.txt") == 0 && strcmp(hunt_range_name(1), "file.len:a.txt") == 0 && strcmp(hunt_range_name(2), "file.ok:a.txt") == 0 && strcmp(hunt_range_name(3), "file.len:a.txt") == 0;
   hunt_check(names && hunt_range_count() == 4, "each open draws its own .ok and .len");
   (void)fclose(second);
 }
@@ -314,6 +314,16 @@ static void names_carry_their_suffix_and_index(void) {
   long_path[sizeof(long_path) - 1] = '\0';
   osp_hunt_name(name, long_path, ".len");
   hunt_check(strlen(name) == OSP_HUNT_NAME_MAX - 1, "a long name is cut to the name limit and terminated");
+}
+
+static void file_names_cannot_alias_metadata(void) {
+  hunt_reset();
+  FILE_ *file = open_symbolic("x.ok", 1, 1);
+  hunt_check(file != NULL && fgetc(file) >= 0, "the metadata-like file is readable");
+  hunt_check(strcmp(hunt_last_symbolic(), "file.data:x.ok") == 0, "file data has a distinct namespace");
+  hunt_check(strcmp(hunt_range_name(0), "file.ok:x.ok") == 0, "open flags have a distinct namespace");
+  hunt_check(strcmp(hunt_range_name(1), "file.len:x.ok") == 0, "file lengths have a distinct namespace");
+  if (file != NULL) (void)fclose(file);
 }
 
 // Runtime integration: the symbolic-sized buffer retains every byte and NUL.
@@ -460,4 +470,5 @@ void hunt_mock_stream_tests(void) {
   standard_descriptors_go_to_the_sink();
   every_draw_is_a_fresh_numbered_object();
   names_carry_their_suffix_and_index();
+  file_names_cannot_alias_metadata();
 }

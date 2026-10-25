@@ -197,6 +197,8 @@ pub(crate) struct Codegen {
     /// (mutually) recursive generic call falls back to a direct call instead of
     /// inlining forever.
     pub(crate) inlining: HashSet<String>,
+    /// Module-wide generic expansion work before sharing closed instantiations.
+    pub(crate) inline_expansions: usize,
     /// Emitted instantiations of RECURSIVE generic functions, keyed by the call
     /// site's argument representations ([`crate::monofn`]): the one form of
     /// polymorphism resolved by emitting a definition rather than by inlining.
@@ -374,6 +376,7 @@ impl Codegen {
             obj_count: 0,
             fn_defs: HashMap::new(),
             inlining: HashSet::new(),
+            inline_expansions: 0,
             monofns: HashMap::new(),
             monofn_count: 0,
             fn_ptr_locals: HashMap::new(),

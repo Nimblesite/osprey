@@ -38,7 +38,7 @@ Choose the deployment route with its host and test environment:
 
 Mobile handlers may describe commands which their host executes, then receive completion events. Plan that protocol explicitly instead of assuming a synchronous file or HTTP adapter can be copied unchanged. iOS app builds and simulator tests need macOS and Xcode; an Android or shared-language test does not establish that the SwiftUI application builds.
 
-Keep the scope within current runtime capabilities. WebAssembly and mobile use the default memory backend and have host-service boundaries. Native fibers use pthreads; cancellation, scopes, and deadlines are planned. Measure performance on the actual target before making speed claims.
+Keep the scope within current runtime capabilities. WebAssembly and mobile use the explicit unmanaged `none` backend and have host-service boundaries. Native fibers use pthreads; cancellation, scopes, and deadlines are planned. Measure performance on the actual target before making speed claims.
 
 Write these constraints next to the relevant feature in the project README. Osprey continues to evolve; record the compiler build and the checks actually run. A skipped platform build is an evidence gap to report, not a successful test.
 

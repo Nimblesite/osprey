@@ -13,6 +13,7 @@ module ConformanceTests {
     fn classification() = checkAll("only Osprey source and declarative inputs pass", [
         length(Conformance::violations(["packages/manager/core/src/names.osp", "packages/manager/x.ospml", "schemas/package-registry.td"])) == 0,
         length(Conformance::violations(["packages/manager/core/osprey.toml", "packages/manager/tests/fixtures/manifest.json", "packages/manager/README.md", "packages/manager/sample-registry/@demo/pyadd/1.1/uv.lock"])) == 0,
+        length(Conformance::violations(["packages/manager/supabase/migrations/schema.yaml", "packages/manager/ops/terraform/api.tf", "packages/manager/ops/terraform/.terraform.lock.hcl"])) == 0,
         join(Conformance::violations(["packages/manager/host/shim.c", "packages/manager/cli/launch.sh", "packages/manager/web/app.js", "packages/manager/ops/migrate.py", "packages/manager/core/src/lib.rs", "packages/manager/web/index.html"]), ",") == "packages/manager/host/shim.c,packages/manager/cli/launch.sh,packages/manager/web/app.js,packages/manager/ops/migrate.py,packages/manager/core/src/lib.rs,packages/manager/web/index.html",
         join(Conformance::violations(["packages/manager/tests/golden.ospx", "packages/manager/Makefile", "packages/manager/core/src/notes"]), ",") == "packages/manager/tests/golden.ospx,packages/manager/Makefile,packages/manager/core/src/notes"
     ])

@@ -235,7 +235,7 @@ fn artifact_counts(root: &Path) -> Result<[usize; 3], std::io::Error> {
 fn allocator_runs_share_codegen_but_link_and_execute_each_runtime(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let root = project("shared_codegen");
-    for memory in ["default", "gc", "arc"] {
+    for memory in ["gc", "arc"] {
         cached_coverage(&root, memory)?;
     }
     assert_eq!(
@@ -256,7 +256,7 @@ fn shared_codegen_cannot_replay_a_stale_success_after_source_changes(
         &root.join("framework/src/calc.ospml"),
         &CALC.replace("hi ${name}", "bye ${name}"),
     );
-    let failed = cached_run(&root, "default")?;
+    let failed = cached_run(&root, "gc")?;
     assert!(!failed.status.success(), "stale success: {failed:?}");
     assert!(
         String::from_utf8_lossy(&failed.stdout).contains("not ok 1 - greets"),
@@ -281,7 +281,7 @@ fn static_arm_project() -> PathBuf {
 fn static_handler_arms_record_execution_and_keep_unused_arms_uncovered(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let root = static_arm_project();
-    for memory in ["default", "gc", "arc"] {
+    for memory in ["gc", "arc"] {
         let output = cached_run(&root, memory)?;
         assert!(output.status.success(), "{output:?}");
         let report = serde_json::from_slice(&std::fs::read(root.join("cov.json"))?)?;
@@ -317,7 +317,7 @@ fn run_driver(root: &Path) -> Result<std::process::Output, Box<dyn std::error::E
     let path = std::env::join_paths(
         std::iter::once(root.to_path_buf()).chain(std::env::split_paths(&search)),
     )?;
-    Ok(cached_command(root, "default")
+    Ok(cached_command(root, "gc")
         .env("PATH", path)
         .env("OSPREY_CC", "cache-cc")
         .output()?)
@@ -387,7 +387,7 @@ fn assert_branch_rows(root: &Path, memory: &str) -> Result<(), Box<dyn std::erro
 fn python_coverage_counts_selected_returns_and_retains_untaken_branches(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let root = branch_project()?;
-    for memory in ["default", "gc", "arc"] {
+    for memory in ["gc", "arc"] {
         assert_branch_rows(&root, memory)?;
     }
     std::fs::remove_dir_all(root)?;
@@ -406,7 +406,7 @@ fn assert_handler_coverage(root: &Path, memory: &str) -> Result<(), Box<dyn std:
 fn static_handler_arm_coverage_records_execution_and_retains_unused_arms(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let root = handler_project("static_handler_coverage")?;
-    for memory in ["default", "gc", "arc"] {
+    for memory in ["gc", "arc"] {
         assert_handler_coverage(&root, memory)?;
     }
     std::fs::remove_dir_all(root)?;
@@ -424,7 +424,7 @@ fn dynamic_handler_coverage_counts_execution_instead_of_registration(
         let path = root.join("framework/src").join(file);
         std::fs::write(&path, std::fs::read_to_string(&path)?.replace(old, new))?;
     }
-    for memory in ["default", "gc", "arc"] {
+    for memory in ["gc", "arc"] {
         assert_handler_coverage(&root, memory)?;
     }
     std::fs::remove_dir_all(root)?;
@@ -460,7 +460,7 @@ fn manifest_namespace_changes_invalidate_codegen_even_when_source_text_is_unchan
     let root = namespace_project();
     for (generation, namespace) in [(1, "app"), (2, "alternate")] {
         select_namespace(&root, namespace);
-        let output = cached_run(&root, "default")?;
+        let output = cached_run(&root, "gc")?;
         assert!(output.status.success(), "{output:?}");
         assert_eq!(artifact_counts(&root)?, [generation; 3]);
     }
@@ -492,7 +492,7 @@ fn native_match_coverage_keeps_untaken_arms_in_both_flavors(
         let root = project(&format!("match_arm_{flavor}"));
         std::fs::remove_file(root.join("framework/src/calc.ospml"))?;
         write(&root.join(format!("framework/src/calc.{flavor}")), source);
-        for memory in ["default", "gc", "arc"] { assert_native_arm_rows(&root, memory, flavor)?; }
+        for memory in ["gc", "arc"] { assert_native_arm_rows(&root, memory, flavor)?; }
         std::fs::remove_dir_all(root)?;
     }
     Ok(())

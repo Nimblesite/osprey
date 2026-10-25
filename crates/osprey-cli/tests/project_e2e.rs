@@ -179,7 +179,7 @@ fn bank_money_signature_keeps_amounts_opaque_and_cents_manifest(
 }
 
 fn assert_money_runs(project: &Path) {
-    for backend in ["default", "gc", "arc"] {
+    for backend in ["gc", "arc"] {
         let output = run(&[arg(project), "--run".into(), format!("--memory={backend}")]);
         assert_eq!(output.code, Some(0), "{backend}: {}", output.stderr);
         assert_eq!(

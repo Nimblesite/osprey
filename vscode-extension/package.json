@@ -155,6 +155,18 @@
         "icon": "$(book)"
       },
       {
+        "command": "osprey.packages.add",
+        "title": "Add Package",
+        "category": "Osprey",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "osprey.packages.remove",
+        "title": "Remove Package",
+        "category": "Osprey",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
         "command": "osprey.profiler.profileStart",
         "title": "Start Profiling",
         "category": "Osprey",
@@ -586,6 +598,18 @@
           "default": true,
           "description": "After profiling, show inline per-line heat annotations (NN.N% · M samples) and overview-ruler marks in the profiled source files."
         },
+        "osprey.packages.registry": {
+          "type": "string",
+          "default": "http://127.0.0.1:8787",
+          "scope": "resource",
+          "description": "Package registry API origin. HTTPS is required except for loopback development."
+        },
+        "osprey.packages.frontendPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Absolute path to osprey-pkg. Defaults to the client bundled with this extension."
+        },
         "osprey.profiler.sampleRate": {
           "type": "number",
           "default": 100,
@@ -709,7 +733,7 @@
   },
   "scripts": {
     "sync-icon": "node scripts/sync-icon.mjs",
-    "vscode:prepublish": "npm run sync-icon && npm run compile",
+    "vscode:prepublish": "node scripts/verify-package-client.mjs && npm run sync-icon && npm run compile",
     "precompile": "npm run sync-icon && node scripts/sync-profiler-contributions.mjs --check",
     "sync-profiler": "node scripts/sync-profiler-contributions.mjs",
     "compile": "tsc -b",

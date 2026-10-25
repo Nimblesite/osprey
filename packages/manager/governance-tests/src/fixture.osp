@@ -1,0 +1,120 @@
+namespace registry_tests;
+import registry::Governance
+import registry::GovernanceTransitions
+import registry::Names
+
+/// The tiny world the governance suite runs on, plus the one place tests
+/// mint `HostVerified` proofs. The governance model consumes already-verified
+/// proofs and never verifies signatures itself; this mint stands in for the
+/// host's actual WebAuthn/DSSE boundary exactly as [PACKAGE-HOSTED-AUTH]
+/// defines it, so no test pretends verification happened.
+module Fixture {
+    /// Two organizations so one leaf name can live in both
+    /// [PACKAGE-NAMES-NO-SITTING]; two custodians and two members in the
+    /// first, a custodian and a workflow principal in the second, and one
+    /// administered package per organization sharing the leaf `ledger`.
+    export fn world() = Governance::Registry {
+        principals: [
+            principal("p-alice", Governance::Human),
+            principal("p-erin", Governance::Human),
+            principal("p-bob", Governance::Human),
+            principal("p-carol", Governance::Human),
+            principal("p-dave", Governance::Human),
+            principal("p-bot", Governance::Workflow),
+            principal("p-ci", Governance::Workflow)
+        ],
+        organizations: [
+            Governance::Organization { id: "o-finch", orgHandle: "finch", governanceEpoch: 1 },
+            Governance::Organization { id: "o-wren", orgHandle: "wren", governanceEpoch: 1 }
+        ],
+        memberships: [
+            membership("m-alice", "o-finch", "p-alice", Governance::Custodian),
+            membership("m-erin", "o-finch", "p-erin", Governance::Custodian),
+            membership("m-bob", "o-finch", "p-bob", Governance::Member),
+            membership("m-carol", "o-finch", "p-carol", Governance::Member),
+            membership("m-bot", "o-finch", "p-bot", Governance::Member),
+            membership("m-dave", "o-wren", "p-dave", Governance::Custodian),
+            membership("m-ci", "o-wren", "p-ci", Governance::Member)
+        ],
+        packages: [
+            package("pkg-f1", "o-finch", "finch", "ledger", "m-alice"),
+            package("pkg-w1", "o-wren", "wren", "ledger", "m-dave")
+        ],
+        grants: [],
+        transfers: []
+    }
+
+    fn principal(id, kind) = Governance::Principal { id: id, kind: kind, status: Governance::PrincipalActive }
+
+    fn membership(id, org, principal, role) = Governance::Membership {
+        id: id, org: org, principal: principal, role: role,
+        status: Governance::MemberActive, authorityEpoch: 1
+    }
+
+    fn package(id, org, scope, name, admin) = Governance::Package {
+        id: id, key: Names::Key { scope: scope, name: name }, org: org, admin: admin,
+        status: Governance::Active, authorityEpoch: 1
+    }
+
+    /// The verified proof the host boundary hands a transition after the
+    /// actual human ceremony accepted this exact statement.
+    export fn verified(actor, membership, statement) = Governance::Proof {
+        ceremony: Governance::WebAuthn,
+        actor: actor,
+        membership: membership,
+        statement: statement,
+        verification: Governance::HostVerified
+    }
+
+    /// A proof the boundary refused.
+    export fn refused(actor, membership, statement) = Governance::Proof {
+        ceremony: Governance::WebAuthn,
+        actor: actor,
+        membership: membership,
+        statement: statement,
+        verification: Governance::Rejected { reason: "ceremony-failed" }
+    }
+
+    /// A workflow DSSE proof the boundary accepted for a CI act.
+    export fn workflow(actor, membership, statement) = Governance::Proof {
+        ceremony: Governance::EphemeralDsse,
+        actor: actor,
+        membership: membership,
+        statement: statement,
+        verification: Governance::HostVerified
+    }
+
+    /// The reason code of a failed transition, or "" on success.
+    export fn code(result) = match result {
+        Success => ""
+        Error { message } => message
+    }
+
+    /// The package administrator's verified proof for `statement`.
+    export fn adminProof(world, id, statement) = match Governance::packageOf(world, id) {
+        Success { value } => match Governance::membershipOf(world, value.admin) {
+            Success { value } => verified(value.principal, value.id, statement)
+            Error => refused("", "", statement)
+        }
+        Error => refused("", "", statement)
+    }
+
+    /// Record one grant through the real transition; on failure keep `world`.
+    export fn grantOn(world, id, grantId, membership, permission, expiresAt, now) = {
+        let statement = match Governance::packageOf(world, id) {
+            Success { value } => Governance::grantStatement(value.key, value.authorityEpoch, membership, permission, expiresAt)
+            Error => ""
+        }
+        match GovernanceTransitions::grantPermission(world, id, grantId,
+            adminProof(world, id, statement), membership, permission, expiresAt, now) {
+            Success { value } => value
+            Error => world
+        }
+    }
+
+    /// Apply `step(world)` when it succeeds, else keep `world`.
+    export fn orKeep(world, step) = match step(world) {
+        Success { value } => value
+        Error => world
+    }
+}

@@ -1,13 +1,8 @@
-//! Monomorphisation of RECURSIVE generic functions — the one place
-//! polymorphism is resolved by emitting a definition rather than by inlining
-//! ([`crate::genfn`] does the rest by inlining).
+//! Shared instantiations of recursive generic functions and closed first-order
+//! calls that exceed [`crate::genfn`]'s inline expansion budget.
 //!
-//! A generic function has no `@name` symbol: it exists only as the body
-//! [`crate::genfn::try_inline`] expands at each call site with that site's
-//! concrete argument types. A body that calls itself cannot be expanded that
-//! way — the expansion never terminates — so an unannotated recursive helper
-//! was rejected outright (`annotate its parameters and return type so it is
-//! emitted as a real function`).
+//! Each call selects concrete argument types. Recursive bodies cannot expand
+//! indefinitely, and repeated generic fanout must not duplicate whole subtrees.
 //!
 //! Here the call site's argument types fix ONE instantiation, so that
 //! instantiation is emitted as a real function `@name$N` with a concrete
@@ -74,6 +69,17 @@ pub(crate) fn specialize(
         .iter()
         .map(|a| gen_expr(cg, a))
         .collect::<Result<Vec<_>>>()?;
+    specialize_values(cg, name, parameters, body, values)
+}
+
+/// Reuse an instantiation after the caller has normalized its argument values.
+pub(crate) fn specialize_values(
+    cg: &mut Codegen,
+    name: &str,
+    parameters: &[Parameter],
+    body: &Expr,
+    values: Vec<Value>,
+) -> Result<Value> {
     let key = format!(
         "{}{}",
         instantiation_key(name, &values),
@@ -88,8 +94,7 @@ pub(crate) fn specialize(
 }
 
 /// The instantiation this call selects: the function name plus each argument's
-/// lowered representation. Two calls agree exactly when their arguments travel
-/// identically, which is what the emitted signature is built from.
+/// lowered representation and inferred parameter types consumed by the emitted ABI.
 fn instantiation_key(name: &str, values: &[Value]) -> String {
     let args: Vec<String> = values.iter().map(slot_spelling).collect();
     format!("{name}({})", args.join(","))
@@ -101,7 +106,11 @@ fn instantiation_key(name: &str, values: &[Value]) -> String {
 fn slot_spelling(v: &Value) -> String {
     let owner = v.osp_ty.clone().unwrap_or_default();
     let result = v.result_inner.map_or_else(String::new, |i| i.to_string());
-    format!("{}:{owner}:{result}", v.ty.as_str())
+    let inferred = v
+        .inferred_type
+        .as_ref()
+        .map_or_else(String::new, ToString::to_string);
+    format!("{}:{owner}:{result}:{inferred}", v.ty.as_str())
 }
 
 /// The callee's declared signature as the CURRENT call's specialization sees
@@ -291,6 +300,68 @@ fn call(cg: &mut Codegen, target: &Instantiation, args: Vec<Value>) -> Result<Va
 
 #[cfg(test)]
 mod tests {
+    fn fanout_helpers() -> String {
+        use std::fmt::Write;
+        (1..=8).fold(String::new(), |mut source, depth| {
+            let previous = if depth == 1 {
+                "leaf".into()
+            } else {
+                format!("l{}", depth - 1)
+            };
+            writeln!(
+                source,
+                "fn l{depth}(x) = \"${{{previous}(x)}}${{{previous}(x)}}\""
+            )
+            .expect("in-memory source");
+            source
+        })
+    }
+
+    #[test]
+    fn nested_generic_fanout_has_bounded_ir_growth() {
+        let helpers = fanout_helpers();
+        let source = format!("fn leaf(x) = x\n{helpers}print(l8(\"z\"))\n");
+        let parsed = osprey_syntax::parse_program_for_path("fanout.osp", &source);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let ir = crate::compile_program(&parsed.program).expect("generic fanout must compile");
+        assert!(
+            ir.lines().count() < 1000,
+            "generic fanout expanded to {} IR lines",
+            ir.lines().count()
+        );
+    }
+
+    #[test]
+    fn expansion_budget_preserves_stateful_handle_parameter_metadata() {
+        let helpers = fanout_helpers();
+        let source = format!("fn leaf(x) = x\n{helpers}fn greet() = \"done\"\nfn waitIt(f) = await(f)\nfn takeIt(ch) = recv(ch)\nlet warm = l8(\"z\")\nlet ch = Channel(1)\nsend(ch, \"message\")\nprint(\"${{warm}}${{waitIt(spawn greet())}}${{takeIt(ch)}}\")\n");
+        let parsed = osprey_syntax::parse_program_for_path("fiber-fanout.osp", &source);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let ir = crate::compile_program(&parsed.program)
+            .expect("fiber metadata must survive the expansion budget");
+        crate::testkit::shows(&ir, &["fiber_await", "channel_recv", "inttoptr i64"]);
+    }
+
+    #[test]
+    fn instantiation_keys_distinguish_inferred_parameter_abis() {
+        let mut integer = crate::llty::Value::new("%argument", crate::llty::LType::Ptr);
+        integer.inferred_type = Some(osprey_types::Type::con(
+            "Packet",
+            vec![osprey_types::Type::con(osprey_types::names::INT, vec![])],
+        ));
+        let mut text = integer.clone();
+        text.inferred_type = Some(osprey_types::Type::con(
+            "Packet",
+            vec![osprey_types::Type::con(osprey_types::names::STRING, vec![])],
+        ));
+        assert_ne!(super::param_of(&integer), super::param_of(&text));
+        assert_ne!(
+            super::slot_spelling(&integer),
+            super::slot_spelling(&text),
+            "distinct parameter ABIs must not share an instantiation"
+        );
+    }
+
     /// An HTTP handler whose types are inferred — the shape that reaches
     /// [`specialize_callback`]. Its definition is line 1, so line 1's counter
     /// is the one that must move only when the handler runs.

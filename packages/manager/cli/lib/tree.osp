@@ -17,7 +17,7 @@ module Tree {
     let failStatus = 1
     let usageCode = "tree.usage"
     let noLockCode = "tree.no-lock"
-    let usageText = ["usage: osprey-pkg tree [--project <dir>]"]
+    let usageText = ["usage: osprey-pkg tree [--direct] [--project <dir>]"]
     let indent = "  "
     let repeatMark = " *"
     let unlocked = " (not locked)"
@@ -86,9 +86,22 @@ module Tree {
         Success { value } => withLock(project, value)
     }
 
+    fn directNames(manifest: ManifestModel::Manifest) = Names::distinct(mapList(manifest.dependencies, reqKey))
+
+    // Implements [PACKAGE-API]: the editor asks the canonical manifest parser;
+    // no lock, registry connection or editor-side TOML parser is needed.
+    fn directAt(project) = match Project::readAt(project) {
+        Error { message } => failed([message])
+        Success { value } => Reports::success(mapList(directNames(value), Names::display))
+    }
+
+    fn selected(parsed) = if Flags::has(parsed, "--direct") {
+        directAt(Flags::project(parsed))
+    } else { at(Flags::project(parsed)) }
+
     /// The whole command.
-    export fn run(args) = match Flags::parse(args, [Flags::projectFlag], []) {
+    export fn run(args) = match Flags::parse(args, [Flags::projectFlag], ["--direct"]) {
         Error => usageReport()
-        Success { value } => at(Flags::project(value))
+        Success { value } => selected(value)
     }
 }

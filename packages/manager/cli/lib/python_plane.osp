@@ -132,7 +132,7 @@ module PythonPlane {
 
     fn versionText(floor) = {
         let patch = floor % 100
-        if patch == 0 { "${floor / 10000}.${(floor / 100) % 100}" } else { "${floor / 10000}.${(floor / 100) % 100}.${patch}" }
+        if patch == 0 { "${intDiv(floor, 10000)}.${intDiv(floor, 100) % 100}" } else { "${intDiv(floor, 10000)}.${intDiv(floor, 100) % 100}.${patch}" }
     }
 
     fn maxFloor(members) = foldList(members, 0, fn(best, m) => if floorOf(m) > best { floorOf(m) } else { best })

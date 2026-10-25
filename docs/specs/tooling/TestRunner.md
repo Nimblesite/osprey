@@ -4,7 +4,7 @@ The corresponding TestingFramework contract is [here](../language/0027-TestingFr
 
 ## CLI
 
-### `osprey test [path] [--filter <name>] [--quiet] [--coverage] [--coverage-json <path>] [--memory=default|gc|arc]` — `[TESTING-CLI-RUN]`
+### `osprey test [path] [--filter <name>] [--quiet] [--coverage] [--coverage-json <path>] [--memory=gc|arc|none]` — `[TESTING-CLI-RUN]`
 
 Runs test files and aggregates results. `path` (default `.`) is a single file
 (run as-is, regardless of naming), a project directory (see
@@ -29,9 +29,9 @@ other.
 
 One invocation runs every discovered suite under exactly one memory backend.
 `--memory=gc` selects tracing garbage collection, `--memory=arc` selects
-Perceus reference counting, and `--memory=default` explicitly selects the
-non-reclaiming backend. Omitting `--memory` delegates the choice to the compiler
-default.
+Perceus reference counting, and `--memory=none` explicitly selects the
+non-reclaiming backend. Omitting `--memory` uses the compiler default, `gc`.
+The old `--memory=default` spelling is rejected.
 
 **`[TESTING-PARALLEL]`** Independent suites compile and run concurrently by
 default. Their captured stdout and stderr are replayed in sorted suite order,
@@ -44,7 +44,7 @@ argument validation with exit code `2`.
 
 The Android corpus harness defaults to one worker because all suites share the attached device's memory budget. An explicit `OSPREY_TEST_JOBS` overrides that default; host CPU count does not select device concurrency.
 
-**`[TESTING-NATIVE-CACHE]`** Native test runs cache LLVM IR and object code for an assembled program and build configuration. Default, GC and ARC can share those artifacts, while each memory mode links its own executable. Reuse depends on the assembled sources and project settings, Osprey and C compiler identities, build kind and optimization setting. Executable keys additionally include the memory mode and both native runtime archives.
+**`[TESTING-NATIVE-CACHE]`** Native test runs cache LLVM IR and object code for an assembled program and build configuration. Memory backends can share those artifacts, while each memory mode links its own executable. Reuse depends on the assembled sources and project settings, Osprey and C compiler identities, build kind and optimization setting. Executable keys additionally include the memory mode and both native runtime archives.
 
 `OSPREY_TEST_CACHE_DIR` selects the cache directory; the test runner defaults to `osprey-test-cache-v1` under the system temporary directory. Use a new private directory for a fresh build. Custom `@linkdir` search paths bypass caching because their external inputs cannot be validated from source alone. Named system-library `@link` directives remain part of the source key. Builds that preserve debug artifacts or override debug optimization also bypass caching.
 

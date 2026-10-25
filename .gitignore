@@ -17,6 +17,7 @@ Desktop.ini
 *.sublime-project
 *.sublime-workspace
 .vscode/code-navigator/
+.vscode-test/
 
 # Portfolio-wide tooling
 .too_many_cooks/
@@ -26,6 +27,13 @@ coordination/
 nohup.out
 .deslop
 .mcp.json
+packages/manager/ops/terraform/.terraform/
+packages/manager/ops/terraform/*.tfstate
+packages/manager/ops/terraform/*.tfstate.*
+packages/manager/ops/terraform/*.tfplan
+packages/manager/ops/terraform/*.tfvars
+packages/manager/ops/terraform/*.tfvars.json
+packages/manager/ops/terraform/crash.log
 
 # Coverage artifacts
 coverage/

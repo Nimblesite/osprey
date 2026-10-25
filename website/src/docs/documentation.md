@@ -135,7 +135,7 @@ Pass multiple `--docs-css` options to layer styles in order. The generated
 ```sh
 osprey ./my-project --doctests
 osprey ./my-project --doctests --memory=arc
-osprey ./my-project --doctests --target=wasm32
+osprey ./my-project --doctests --target=wasm32 --memory=none
 ```
 
 Every example is type-checked. An immediately following `output` fence makes

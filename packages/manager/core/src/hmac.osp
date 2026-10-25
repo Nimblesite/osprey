@@ -1,0 +1,41 @@
+namespace registry;
+import registry::Bytes
+import registry::Sha256
+
+/// RFC 2104 HMAC-SHA256 over bytes, used for GitHub's raw-body signature.
+/// Implements [PACKAGE-HOSTED-AUTH]. Signature validation never grants
+/// publication authority; delivery deduplication and event admission are separate.
+module Hmac {
+    let blockLength = 64
+    let digestHexLength = 64
+    let innerPad = 54
+    let outerPad = 92
+    let githubPrefix = "sha256="
+
+    fn normalized(key) = if length(key) > blockLength { Sha256::digest(key) } else { key }
+
+    fn padded(key) = {
+        let reduced = normalized(key)
+        listConcat(reduced, mapList(range(length(reduced), blockLength) |> toList, fn(_i) => 0))
+    }
+
+    fn xorPad(key, pad) = mapList(key, fn(b) => bitXor(b, pad))
+
+    /// The 32 digest bytes. Callers supply byte lists, not encoded hex strings.
+    export fn sha256(key, body) = {
+        let block = padded(key)
+        Sha256::digest(listConcat(xorPad(block, outerPad), Sha256::digest(listConcat(xorPad(block, innerPad), body))))
+    }
+
+    fn compareDigest(expected, actual) = fold(range(0, digestHexLength), 0, fn(difference, i) =>
+        bitOr(difference, bitXor(byteAt(expected, i) ?: 0, byteAt(actual, i) ?: 0))) == 0
+
+    fn validDigest(secret, rawBody, actual) = Bytes::lowerHexBetween(actual, 0, digestHexLength)
+    && compareDigest(Bytes::hex(sha256(Bytes::ofString(secret), Bytes::ofString(rawBody))), actual)
+
+    /// Compare every digest byte without an early mismatch return. The header
+    /// must have the exact SHA-256 prefix, length and lowercase hex alphabet.
+    export fn github(secret, rawBody, digestHeader) = if secret == "" || !startsWith(digestHeader, githubPrefix)
+    || byteLength(digestHeader) != byteLength(githubPrefix) + digestHexLength { false }
+    else { validDigest(secret, rawBody, drop(digestHeader, byteLength(githubPrefix))) }
+}

@@ -154,7 +154,7 @@ C_LIBS_http_server_request_tests = -pthread
 C_SRC_fiber_runtime_tests = runtime/fiber_runtime_tests.c runtime/memory_runtime.c $(RT_THREADS)
 C_LIBS_fiber_runtime_tests = -pthread
 C_FLAGS_http_runtime_tests = $(OSSL_CFLAGS)
-C_SRC_http_runtime_tests = runtime/http_runtime_tests.c runtime/http_client_runtime.c runtime/http_server_runtime.c runtime/http_server_request.c runtime/http_server_response.c runtime/http_shared.c runtime/string_runtime.c runtime/float_spelling.c runtime/memory_runtime.c runtime/random_runtime.c $(RT_THREADS)
+C_SRC_http_runtime_tests = runtime/http_runtime_tests.c runtime/http_origin_tests.c runtime/http_tls_tests.c runtime/http_server_live_tests.c runtime/http_client_runtime.c runtime/http_client_response.c runtime/http_server_runtime.c runtime/http_server_request.c runtime/http_server_response.c runtime/http_shared.c runtime/string_runtime.c runtime/float_spelling.c runtime/memory_runtime.c runtime/random_runtime.c $(RT_THREADS)
 C_LIBS_http_runtime_tests = -pthread $(OSSL_LIBS)
 # http_shared.c's coverage number is OWNED by this suite: it is the only one
 # that drives every helper in the unit rather than the subset one transport
@@ -201,7 +201,7 @@ _test_gpu_device: $(GPU_DEVICE_NATIVE)
 # report exactly the findings in <name>.expected (see tests/hunt/README.md).
 # Skipped loudly without KLEE, like the bitcode it needs.
 _test_hunt:
-	@if [ -z "$(KLEE_PREFIX)" ] || [ ! -f compiler/bin/libosprey_runtime_klee.bc ]; then \
+	@if [ -z "$(KLEE_PREFIX)" ] || [ ! -f compiler/bin/libosprey_runtime_klee_gc.bc ]; then \
 	  echo "(KLEE not installed — tests/hunt skipped)"; exit 0; fi; \
 	echo "==> [hunt] tests/hunt expectations..."; \
 	set -e; fail=0; for p in tests/hunt/*.osp; do \
@@ -215,8 +215,9 @@ _test_hunt:
 .PHONY: _test_hunt_crashes
 _test_hunt_crashes:
 	@command -v klee >/dev/null || { echo "FAIL: KLEE is required for planted crash tests"; exit 1; }
-	@test -f compiler/bin/libosprey_runtime_klee.bc
-	python3 scripts/hunt_crashes.py
+	@test -f compiler/bin/libosprey_runtime_klee_gc.bc
+	python3 scripts/test-hunt-gc-roots.py --llvm "$(KLEE_LLVM_BIN)" --klee "$(KLEE_PREFIX)/bin/klee"
+	@set -e; for backend in gc arc; do python3 scripts/hunt_crashes.py --memory $$backend; done
 
 _test_hunt_mock:
 	@echo "==> [hunt] mock C library unit tests..."
@@ -317,9 +318,7 @@ _test_language_corpus:
 # assertions passed. An assertion can only state what someone thought to write
 # down as a value; the goldens pin the ENTIRE observable output — print ORDER,
 # exact formatting, and the TAP tally that exposes a deleted assertion.
-_test_goldens:
-	@echo "==> [language] golden stdout comparison..."
-	@OSPREY_TEST_JOBS=1 zsh crates/run_test_corpus.sh default
+_test_goldens: _conformance-gc
 
 # _test_wasm_goldens: the same corpus, the same goldens, the OTHER code
 # generator. Every program that links on wasm32 is compiled to a module, run

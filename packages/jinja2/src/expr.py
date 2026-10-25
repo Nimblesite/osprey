@@ -506,7 +506,7 @@ def eval_dict(toks, i, env):
         pk = eval_condexpr(toks, i + 1, env)
         if is_op(tok(toks, pk.next), ":"):
             pv = eval_condexpr(toks, pk.next + 1, env)
-            return dict_tail(toks, pv.next, env, [key_text(pk.value)], [pv.value])
+            return dict_tail(toks, pv.next, env, [pk.value], [pv.value])
         else:
             return P(value=halt("expected ':' in dict literal"), next=pk.next)
 
@@ -516,26 +516,19 @@ def dict_tail(toks, i, env, keys, vals):
     t = tok(toks, i)
     if is_op(t, ","):
         if is_op(tok(toks, i + 1), "}"):
-            return P(value=V.dict_(keys, vals), next=i + 2)
+            return P(value=V.typed_dict(keys, vals), next=i + 2)
         else:
             pk = eval_condexpr(toks, i + 1, env)
             if is_op(tok(toks, pk.next), ":"):
                 pv = eval_condexpr(toks, pk.next + 1, env)
-                return dict_tail(toks, pv.next, env, listAppend(keys, key_text(pk.value)), listAppend(vals, pv.value))
+                return dict_tail(toks, pv.next, env, listAppend(keys, pk.value), listAppend(vals, pv.value))
             else:
                 return P(value=halt("expected ':' in dict literal"), next=pk.next)
     elif is_op(t, "}"):
-        return P(value=V.dict_(keys, vals), next=i + 1)
+        return P(value=V.typed_dict(keys, vals), next=i + 1)
     else:
         return P(value=halt("expected ',' or '}' in dict"), next=i)
 
-
-def key_text(v):
-    """A dict key as text (string keys as themselves)."""
-    if v.kind == V.K_STRING:
-        return v.sval
-    else:
-        return V.concat_text(v)
 
 
 def eval_postfix(toks, i, env, obj):
@@ -719,7 +712,7 @@ def eval_test_at(toks, j, env, obj, negated):
                 return P(value=halt(a.error), next=a.next)
             else:
                 result = F.apply_test(nm.name, obj, a.args)
-                final = V.bool_(not V.truthy(result)) if negated else result
+                final = V.bool_(not V.truthy(result)) if negated and not V.is_error(result) else result
                 return eval_filter(toks, a.next, env, final)
 
 

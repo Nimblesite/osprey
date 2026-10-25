@@ -104,6 +104,7 @@ $(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makef
 	        -DWITH_OPENSSL $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` \
 	        runtime/http_shared.c -o bin/http_shared.o && \
 	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/http_client_runtime.c      -o bin/http_client_runtime.o && \
+  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/http_client_response.c     -o bin/http_client_response.o && \
 	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/http_server_request.c     -o bin/http_server_request.o && \
 	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/http_server_response.c    -o bin/http_server_response.o && \
 	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/http_server_runtime.c      -o bin/http_server_runtime.o && \
@@ -143,14 +144,26 @@ _runtime_wasm:
 # itself provide: that is a libc call the mock forgot.
 _runtime_klee:
 	@if [ -z "$(KLEE_PREFIX)" ] || [ ! -x "$(KLEE_CC)" ]; then \
-	  echo "(KLEE toolchain not found — $(KLEE_RUNTIME_BC) not built; 'brew install klee' to enable 'osprey hunt')"; \
-	  exit 0; fi; \
-	echo "==> building symbolic runtime bitcode ($(KLEE_RUNTIME_BC))"; \
-	cd compiler && set -e && $(MKDIR) bin/klee && \
-	  for u in $(KLEE_RT_SRC); do \
-	    $(KLEE_CC) $(KLEE_CFLAGS) runtime/$$u.c -o bin/klee/$$(basename $$u).bc || exit 1; \
-	  done && \
-	  $(KLEE_LINK) $(foreach u,$(KLEE_RT_SRC),bin/klee/$(notdir $(u)).bc) -o bin/libosprey_runtime_klee.bc && \
-	  open="$$($(KLEE_NM) --undefined-only bin/libosprey_runtime_klee.bc | awk '{print $$2}' | grep -Ev '$(KLEE_PROVIDED)' || true)"; \
-	  if [ -n "$$open" ]; then \
-	    echo "ERROR: symbolic runtime is not closed; the mock C library lacks:"; echo "$$open"; exit 1; fi
+	  echo "(KLEE toolchain not found — symbolic GC/ARC runtimes not built)"; exit 0; fi; \
+	set -e; mkdir -p compiler/bin; \
+	$(KLEE_LLVM_BIN)/clang++ -fPIC -fno-exceptions -fno-rtti -shared \
+	  $$($(KLEE_LLVM_BIN)/llvm-config --cxxflags) compiler/llvm/gc_roots.cpp \
+	  -o $(KLEE_ROOT_PLUGIN) $$($(KLEE_LLVM_BIN)/llvm-config --ldflags --libs --system-libs); \
+	cd compiler; \
+	for backend in gc arc; do \
+	  echo "==> building symbolic $$backend runtime"; mkdir -p bin/klee/$$backend; \
+	  case $$backend in gc) shims="$(KLEE_GC_SHIMS)";; arc) shims="$(KLEE_ARC_SHIMS)";; esac; \
+	  objects=""; \
+	  for u in $(KLEE_RT_SRC) memory_$$backend; do \
+	    shim=""; case " $$shims " in *" $$u "*) shim="-include runtime/osp_$${backend}_shim.h";; esac; \
+	    object=bin/klee/$$backend/$$(basename $$u).bc; \
+	    $(KLEE_CC) $(KLEE_CFLAGS) $$shim runtime/$$u.c -o $$object; objects="$$objects $$object"; \
+	  done; \
+	  runtime=bin/libosprey_runtime_klee_$$backend.bc; \
+	  $(KLEE_LINK) $$objects -o $$runtime; \
+	  if [ "$$backend" = gc ]; then \
+	    $(KLEE_LLVM_BIN)/opt -load-pass-plugin=bin/libosprey_gc_roots.so \
+	      -passes=osprey-gc-roots -verify-each $$runtime -o $$runtime; fi; \
+	  open="$$($(KLEE_NM) --undefined-only $$runtime | awk '{print $$2}' | grep -Ev '$(KLEE_PROVIDED)' || true)"; \
+	  if [ -n "$$open" ]; then echo "ERROR: symbolic $$backend runtime is not closed:"; echo "$$open"; exit 1; fi; \
+	done

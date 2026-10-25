@@ -20,7 +20,7 @@ mod effect_execution;
 
 /// `scripts/check-python-gpt2.py` against the compiler under test with
 /// `OSPREY_GPU=device`: every element of 24 tensors under both Tensor handlers
-/// and all three memory modes must match the independent reference.
+/// and both managed memory modes must match the independent reference.
 fn assert_python_gpt2_matches(device: &str) -> std::io::Result<()> {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let python = if cfg!(windows) { "python" } else { "python3" };

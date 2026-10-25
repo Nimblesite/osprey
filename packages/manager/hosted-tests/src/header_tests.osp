@@ -1,0 +1,53 @@
+namespace hosted_tests;
+import registry_api::HostedHeaders
+
+/// Strict header parsing and case-insensitive lookup: token grammar,
+/// whitespace/controls, size limits and duplicate sensitive headers.
+/// Implements [PACKAGE-HOSTED-EDGE] header controls.
+module HeaderTests {
+    fn happy() = {
+        let parsed = HostedHeaders::parse("Host: api.example.test\r\nAuthorization: Bearer t0k")
+        let headers = HostedHeaders::headers(parsed)
+        checkAll("headers: parse and case-insensitive lookup", [
+            HostedHeaders::isOk(parsed),
+            HostedHeaders::statusOf(parsed) == 0,
+            (HostedHeaders::find(headers, "host") ?: "?") == "api.example.test",
+            (HostedHeaders::find(headers, "AUTHORIZATION") ?: "?") == "Bearer t0k",
+            (HostedHeaders::find(headers, "cookie") ?: "absent") == "absent",
+            HostedHeaders::has(headers, "Host")
+        ])
+    }
+
+    fn rejects() = checkAll("headers: malformed lines rejected", [
+        HostedHeaders::codeOf(HostedHeaders::parse("Bad Line")) == "req.header-colon",
+        HostedHeaders::codeOf(HostedHeaders::parse(" Host: h")) == "req.header-whitespace",
+        HostedHeaders::codeOf(HostedHeaders::parse("Host : h")) == "req.header-whitespace",
+        HostedHeaders::codeOf(HostedHeaders::parse("Host: ")) == "req.header-value",
+        HostedHeaders::codeOf(HostedHeaders::parse("Ho(st: v")) == "req.header-name",
+        HostedHeaders::codeOf(HostedHeaders::parse("Host: a\eb")) == "req.header-value"
+    ])
+
+    fn duplicates() = checkAll("headers: duplicate sensitive headers rejected", [
+        HostedHeaders::statusOf(HostedHeaders::parse("Host: a\r\nhost: b")) == 400,
+        HostedHeaders::codeOf(HostedHeaders::parse("Authorization: a\r\nAUTHORIZATION: b")) == "req.duplicate-header",
+        HostedHeaders::codeOf(HostedHeaders::parse("Cookie: a=b\r\nCookie: c=d")) == "req.duplicate-header",
+        HostedHeaders::codeOf(HostedHeaders::parse("X-Edge-Secret: s\r\nx-edge-secret: t")) == "req.duplicate-header",
+        HostedHeaders::isOk(HostedHeaders::parse("X-Trace-Id: a\r\nX-Trace-Id: b"))
+    ])
+
+    fn lines(line, count) = repeat(line + "\r\n", count) ?: ""
+
+    fn limits() = checkAll("headers: count and line limits", [
+        HostedHeaders::statusOf(HostedHeaders::parse(lines("X-Pad: a", 65))) == 431,
+        HostedHeaders::codeOf(HostedHeaders::parse("X-Pad: " + (repeat("a", 8189) ?: ""))) == "req.header-line",
+        HostedHeaders::isOk(HostedHeaders::parse(lines("X-Pad: a", 64))),
+        HostedHeaders::isOk(HostedHeaders::parse(""))
+    ])
+
+    export fn run() = {
+        test("hosted headers: happy path", happy)
+        test("hosted headers: malformed lines", rejects)
+        test("hosted headers: duplicate sensitive headers", duplicates)
+        test("hosted headers: size limits", limits)
+    }
+}

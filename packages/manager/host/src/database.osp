@@ -1,0 +1,96 @@
+namespace registry_host;
+import registry::Bytes
+import registry_host::Host
+
+/// PostgreSQL transport through the platform's psql 16+ extended protocol.
+/// SQL comes only from reviewed application code; request values are hex-bound
+/// parameters, never SQL/psql syntax. Implements [PACKAGE-OWNERSHIP-RLS].
+module Database {
+    /// Identity selected from a verified live registry session, never request JSON.
+    export type Context = { principalId: string, sessionId: string, organizationId: string, authSubject: string, authorityEpoch: int }
+    /// Mounted libpq service, password and CA files; no connection passwords in argv.
+    export type Connection = { serviceFile: string, service: string, passfile: string, rootCertificate: string }
+
+    /// This effect is installed only after the API verifies a live session.
+    export effect Transactions {
+        query: fn(Context, string, List<string>) -> Result<string, string>
+    }
+
+    fn uuid(text) = byteLength(text) == 36 && (substring(text, 8, 9) ?: "") == "-"
+    && (substring(text, 13, 14) ?: "") == "-" && (substring(text, 18, 19) ?: "") == "-"
+    && (substring(text, 23, 24) ?: "") == "-" && Bytes::lowerHexBetween(text, 0, 8)
+    && Bytes::lowerHexBetween(text, 9, 13) && Bytes::lowerHexBetween(text, 14, 18)
+    && Bytes::lowerHexBetween(text, 19, 23) && Bytes::lowerHexBetween(text, 24, 36)
+
+    /// Refuse missing, noncanonical or nonpositive transaction identity fields.
+    export fn contextCode(ctx: Context) =
+    if !uuid(ctx.principalId) || !uuid(ctx.sessionId) || !uuid(ctx.organizationId) || !uuid(ctx.authSubject) { "database.identity" }
+    else if ctx.authorityEpoch < 1 { "database.epoch" } else { "" }
+
+    fn parameter(value) = "'${Bytes::hex(Bytes::ofString(value))}'"
+
+    /// SQL uses convert_from(decode($n, 'hex'), 'UTF8') to recover a value.
+    /// The binding contains only lowercase hex between constant delimiters.
+    export fn binding(values) = "\\bind " + join(mapList(values, parameter), " ") + " \\g\n"
+
+    fn decoded(index) = "convert_from(decode($${index}, 'hex'), 'UTF8')"
+
+    fn contextSql() = "SELECT " + join(mapList(range(0, 5) |> toList, fn(i) =>
+            "set_config('registry.${listGet(["principal_id", "session_id", "organization_id", "auth_subject", "authority_epoch"], i) ?: ""}', ${decoded(i + 1)}, true)"), ", ")
+
+    fn contextValues(ctx: Context) = [ctx.principalId, ctx.sessionId, ctx.organizationId, ctx.authSubject, "${ctx.authorityEpoch}"]
+
+    let roleGuard = "SELECT 1 / ((NOT r.rolsuper AND NOT r.rolbypassrls AND NOT r.rolcreaterole AND NOT r.rolcreatedb AND r.rolname NOT IN ('postgres','service_role','authenticated','anon') AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE n.nspname = 'registry' AND pg_catalog.pg_has_role(current_user, n.nspowner, 'MEMBER')) AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles elevated WHERE (elevated.rolsuper OR elevated.rolbypassrls) AND pg_catalog.pg_has_role(current_user, elevated.oid, 'MEMBER')))::integer) FROM pg_catalog.pg_roles r WHERE r.rolname = current_user;\n"
+
+    fn transaction(ctx, statement, values) = "BEGIN ISOLATION LEVEL SERIALIZABLE;\nSET LOCAL statement_timeout = '5s';\nSET LOCAL lock_timeout = '2s';\nSET LOCAL idle_in_transaction_session_timeout = '10s';\nSET LOCAL search_path = pg_catalog;\n\\o /dev/null\n" + roleGuard + contextSql() + " " + binding(contextValues(ctx)) + "\\o\n" + statement + " " + binding(values) + "COMMIT;\n"
+
+    /// A whole transaction is sent to one psql process/connection. On any
+    /// statement error ON_ERROR_STOP exits and disconnect rolls it back.
+    export fn script(ctx, statement, values) = match contextCode(ctx) {
+        "" => if byteLength(statement) > 65536 || foldList(values, false, fn(over, v) => over || byteLength(v) > 65536) {
+            Error { message: "database.payload-limit" }
+        } else { Success { value: transaction(ctx, statement, values) } }
+        code => Error { message: code }
+    }
+
+    fn connectionString(config: Connection) = "service=${config.service} sslmode=verify-full sslrootcert=${config.rootCertificate} connect_timeout=5"
+
+    fn serviceCode(text) = text != "" && fold(range(0, byteLength(text)), true, fn(ok, i) => {
+            let b = byteAt(text, i) ?: 0
+            ok && ((b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b == 95 || b == 45)
+    })
+
+    fn mountedPath(text) = startsWith(text, "/run/registry/") && fold(range(0, byteLength(text)), true, fn(ok, i) => {
+            let b = byteAt(text, i) ?: 0
+            ok && ((b >= 65 && b <= 90) || (b >= 97 && b <= 122) || (b >= 48 && b <= 57)
+                || b == 47 || b == 46 || b == 95 || b == 45)
+    })
+
+    /// Validate mounted connection references before installing the transport.
+    export fn configurationCode(config: Connection) = if !serviceCode(config.service) || !mountedPath(config.serviceFile)
+    || !mountedPath(config.passfile) || !mountedPath(config.rootCertificate) { "database.configuration" } else { "" }
+
+    fn command(config, source) = "printf '%s' " + Host::shellWord(source)
+    + " | PGSERVICEFILE=" + Host::shellWord(config.serviceFile) + " PGPASSFILE=" + Host::shellWord(config.passfile)
+    + " psql --no-psqlrc --no-password --quiet --tuples-only --no-align --set=ON_ERROR_STOP=1 --dbname=" + Host::shellWord(connectionString(config))
+
+    fn executed(config, source) = {
+        let result = perform Host::Process.run(command(config, source))
+        if result.status == 0 { Success { value: trim(result.stdout) } }
+        else { Error { message: "database.transaction-failed" } }
+    }
+
+    fn run(config, ctx, statement, values) = match script(ctx, statement, values) {
+        Error { message } => Error { message: message }
+        Success { value } => executed(config, value)
+    }
+
+    /// Configuration failures never open a connection; raw DB errors remain
+    /// private because they can contain identifiers, query text or user data.
+    export fn native(config: Connection) = handler Transactions {
+        query ctx statement values => match configurationCode(config) {
+            "" => run(config, ctx, statement, values)
+            code => Error { message: code }
+        }
+    }
+}

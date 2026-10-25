@@ -1,6 +1,6 @@
 # WebAssembly Target [WASM-TARGET]
 
-`osprey --target=wasm32 --compile` emits a `wasm32-wasip1` command module.
+`osprey --target=wasm32 --compile --memory=none` emits a `wasm32-wasip1` command module.
 The backend reuses Osprey's LLVM IR, compiles it with clang, and links it with
 `wasm-ld`, wasi-libc, and the portable Osprey runtime archive.
 
@@ -115,10 +115,10 @@ Effect meaning is target-independent. Validated static discharge, value dispatch
 
 ## Memory Backend [WASM-TARGET-MEMORY]
 
-The wasm archive contains `memory_runtime.c`, the same default allocator used by
-native `--memory=default`. General releases do not reclaim aliased values, but
+The wasm archive contains `memory_runtime.c`, the same unmanaged allocator used by
+native `--memory=none`. General releases do not reclaim aliased values, but
 the compiler's proved-unique release hook frees uniquely consumed temporaries.
-Only `--memory=default` is supported. `--memory=gc` and `--memory=arc` are compiler errors because matching WebAssembly runtime archives are unavailable; the compiler never silently substitutes the default allocator. This validation also applies to `--check` and `--llvm`.
+Explicit `--memory=none` is required. `--memory=gc` and `--memory=arc` are compiler errors because matching WebAssembly runtime archives are unavailable; the compiler never silently substitutes the unmanaged `none` allocator. This validation also applies to `--check` and `--llvm`.
 
 The native conservative collector is not in `WASM_RT_SRC`: it depends on native
 stack/register/data-segment scanning, `setjmp`, and pthread synchronization.

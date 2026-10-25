@@ -71,6 +71,7 @@ fn rejects_unsupported_build_options_before_toolchain_work() {
             "app.osp",
             &format!("--target={}", target.name()),
             "--compile",
+            "--memory=none",
         ]
         .map(str::to_string);
         let cli = crate::parse_args(&args).expect("valid arguments");

@@ -172,6 +172,7 @@ fn every_ordering_of_every_flag_reads_the_same() {
     ];
     let expected = Options {
         path: "demo.osp".into(),
+        memory: "gc",
         max_time: 9,
         max_memory: 300,
         input_bytes: 32,

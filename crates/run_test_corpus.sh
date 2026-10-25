@@ -3,7 +3,7 @@
 # used by conformance CI so moving an assertion suite within tests never drops
 # its GC, ARC or wasm coverage.
 #
-#   run_test_corpus.sh [default|gc|arc]     native backend, chosen allocator
+#   run_test_corpus.sh [gc|arc]     native backend, chosen allocator
 #   OSPREY_TARGET=wasm32 run_test_corpus.sh wasm32 backend under Node's WASI
 #
 # Two independent checks run per program, and BOTH must hold:
@@ -204,7 +204,7 @@ configured_jobs() {
 
 backend_setup
 
-MEMORY=${1:-default}
+MEMORY=${1:-gc}
 # The ARC leak oracle reads the runtime's exit report, which memory_arc.c
 # arms only under OSPREY_ARC_DEBUG. The harness arms it ITSELF whenever it
 # audits the arc backend: the sentinel check below is strict (exactly one

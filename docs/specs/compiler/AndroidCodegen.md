@@ -14,11 +14,11 @@ The archive must match the host application's ABI. The initial targets do not pr
 ## Compiler options [ANDROID-TARGET-OPTIONS]
 
 ```sh
-osprey app.osp --compile --target=android-arm64 -o libApp.a
-osprey app.osp --compile --target=android-x64 -o libApp.a
+osprey app.osp --compile --target=android-arm64 -o libApp.a --memory=none
+osprey app.osp --compile --target=android-x64 -o libApp.a --memory=none
 ```
 
-Compilation emits the requested `.a` and sibling `.h`; other output extensions fail. `--memory=default` is the only supported backend. GC, ARC, native debugger/profiler flags, and `--run` are errors. The target checks also apply to `--check` and `--llvm`, before any external tool invocation.
+Compilation emits the requested `.a` and sibling `.h`; other output extensions fail. Explicit `--memory=none` is the only supported backend. GC, ARC, native debugger/profiler flags, and `--run` are errors. The target checks also apply to `--check` and `--llvm`, before any external tool invocation.
 
 ## C function boundary [ANDROID-HOST-ABI]
 
@@ -28,7 +28,7 @@ The shared mobile ABI exposes the entry source's functions with fully resolved s
 
 ## Entry and lifetime [ANDROID-TARGET-ENTRY]
 
-`osprey_main()` initializes the library once, retains its status, and preserves application globals for subsequent calls. The host serializes all Osprey calls and copies returned strings before the next call. It must not free those pointers. The initial default allocator retains general allocations for process lifetime and supplies no library teardown or returned-string release API.
+`osprey_main()` initializes the library once, retains its status, and preserves application globals for subsequent calls. The host serializes all Osprey calls and copies returned strings before the next call. It must not free those pointers. The unmanaged `none` allocator retains general allocations for process lifetime and supplies no library teardown or returned-string release API.
 
 Records, collections, closures, and effect handlers remain internal. A scalar wrapper can expose them as an application-defined protocol. The sample uses ordinary UTF-8 byte arrays across JNI so Java's modified UTF-8 string convention cannot corrupt Osprey strings; see Android's [JNI string guidance](https://developer.android.com/ndk/guides/jni-tips).
 

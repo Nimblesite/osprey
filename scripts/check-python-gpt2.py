@@ -7,9 +7,11 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 
 ROOT = Path(__file__).resolve().parents[1]
 PORT = ROOT / "examples/gpt2/python"
+MEMORIES = ("gc", "arc")
 
 
 def reference():
@@ -123,6 +125,20 @@ def check_device(result, backend, device):
         raise AssertionError(f"missing actual device identity/dispatch evidence: {labels[0]}\n{result.stderr}")
 
 
+def compile_memory(compiler, directory, memory):
+    binary = directory / f"gpt2-{memory}"
+    run([str(compiler), str(directory), "--compile", f"--memory={memory}", "-o", str(binary)])
+    return binary
+
+
+def check_matrix(compiler, directory, wanted, device):
+    with ThreadPoolExecutor(max_workers=len(MEMORIES)) as pool:
+        binaries = list(pool.map(lambda memory: compile_memory(compiler, directory, memory), MEMORIES))
+    jobs = [(binary, memory, backend) for binary, memory in zip(binaries, MEMORIES) for backend in ("lists", "gpu")]
+    with ThreadPoolExecutor(max_workers=len(jobs)) as pool:
+        list(pool.map(lambda job: check_binary(job[0], wanted, job[1], job[2], device), jobs))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--compiler", type=Path, required=True)
@@ -132,12 +148,8 @@ def main():
     with tempfile.TemporaryDirectory(prefix="osprey-python-gpt2-", dir=ROOT / "target") as temporary:
         directory = Path(temporary)
         project(directory)
-        for memory in ("default", "gc", "arc"):
-            binary = directory / f"gpt2-{memory}"
-            run([str(args.compiler.resolve()), str(directory), "--compile", f"--memory={memory}", "-o", str(binary)])
-            for backend in ("lists", "gpu"):
-                check_binary(binary, wanted, memory, backend, args.device)
-    print(f"matched {len(wanted)} complete tensors across both handlers and all three memory modes")
+        check_matrix(args.compiler.resolve(), directory, wanted, args.device)
+    print(f"matched {len(wanted)} complete tensors across both handlers and GC/ARC memory modes")
 
 
 if __name__ == "__main__":

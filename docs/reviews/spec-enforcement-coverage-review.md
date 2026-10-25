@@ -87,3 +87,14 @@ The manager execution artifact was started during earlier repair work, not by th
 - No CI job, timeout, assertion, threshold or required-check list was changed for this review. Static wiring inspection does not establish that the live ruleset requires every new check or that branch CI passes.
 
 Keep this review open. Closure requires the source defects and stale assertions to be resolved, the existing red Hunt/quarantine cases to pass without narrowing their contracts, and fresh evidence for the exact sources being claimed complete. Independent pi conclusions are review input; the parent must verify them and cannot substitute a clean-sounding agent summary for proof.
+
+## Repair evidence after the reviewed snapshot
+
+25 October 2026: the findings above describe the pinned snapshot, not the subsequently repaired source. Evidence is retained under `/var/folders/v3/49bmt6f55b1csb6snk8fr1mw0000gn/T/osprey-review-fixes-69ntrug7/`.
+
+- Hunt power and alternate-octal defects have regression-first repairs. The extended native tests failed with 42 failures before the fixes, then passed with 690,680 checks and zero failures. All 24 Hunt script tests and 15 sample-runner tests also passed. A separate host-libm oracle passed the same 30 power boundary cases; the symbolic runtime bitcode rebuilt successfully. See `hunt-math-format-red-final.log`, `hunt-math-format-green.log`, `hunt-pow-host-oracle.log` and `hunt-math-format-source-hashes.json`. Neither sampled finite results nor these totals establish universal libm precision; that unsupported claim has been removed.
+- The subsequent read-only GLM math/format review proposed two invalid findings. Binary64 rounds `0x1p53 + 1` to `0x1p53`, so its proposed odd-exponent sign counterexample is not representable. The existing do/while digit counter returns one for zero, and `%#.0o` with zero is explicitly tested. Parent verification and host results are recorded in `pi-math-format-parent-corrections.md` and `.json`. That report is not independent closure approval.
+- Comprehension target binding has parser regressions and the full syntax/grammar run passed 352 tests. The CLI regression `comprehension_aliases_execute_in_their_lexical_scope` additionally executes shadowed `len`/`range`, a filter, nested clauses, repeated target names and outer builtin use under both GC and ARC, asserting exact output `7|10|3|4|6`. It passed against the Cargo-built compiler; see `comprehension-behavior.log`. Its sources use the supported iterator surface, rather than arbitrary Python iterables.
+- The current full manager CLI run under GC is still in progress. No passing result is claimed for it, and no earlier or stopped Default run substitutes for current GC/ARC evidence.
+
+The review remains open pending the remaining suite, gate and independent closure evidence described above.

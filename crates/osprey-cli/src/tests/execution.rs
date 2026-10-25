@@ -46,9 +46,10 @@ fn link_args_selects_gc_archive_and_validates_backend() {
     let plain = link_args("call void @osprey_list_empty()", "", "default");
     assert!(!plain.iter().any(|a| a.contains("_gc.a")), "{plain:?}");
     assert!(!plain.iter().any(|a| a.contains("_arc.a")), "{plain:?}");
-    // Backend validation: default/gc/arc accepted, others rejected.
+    // Unmanaged execution requires the explicit none option.
     assert_eq!(parse_memory("gc").as_deref(), Ok("gc"));
-    assert_eq!(parse_memory("default").as_deref(), Ok("default"));
+    assert_eq!(parse_memory("none").as_deref(), Ok("none"));
+    assert!(parse_memory("default").is_err());
     assert_eq!(parse_memory("arc").as_deref(), Ok("arc"));
     assert!(parse_memory("bogus").is_err());
 }

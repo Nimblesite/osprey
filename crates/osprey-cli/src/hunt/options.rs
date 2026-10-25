@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 pub(crate) const HUNT_USAGE: &str =
     "usage: osprey hunt <file> [--max-time <seconds>] [--max-memory <mb>] \
-[--input-bytes <n>] [--out <dir>] [--json] [--no-html] [--no-json] [--no-replay] [--quiet]";
+[--memory=gc|arc] [--input-bytes <n>] [--out <dir>] [--json] [--no-html] [--no-json] [--no-replay] [--quiet]";
 
 /// Largest symbolic byte stream the mock libc holds (`OSP_HUNT_STREAM_MAX`).
 const INPUT_BYTES_MAX: u64 = 4096;
@@ -14,6 +14,8 @@ const INPUT_BYTES_MAX: u64 = 4096;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Options {
     pub(crate) path: String,
+    /// One backend shared by symbolic analysis and native replay.
+    pub(crate) memory: &'static str,
     /// KLEE's `--max-time` budget in seconds, enforced with `--watchdog`.
     pub(crate) max_time: u64,
     /// KLEE's `--max-memory` cap in megabytes; a long single path (a whole
@@ -41,6 +43,7 @@ pub(crate) struct ReportFormats {
 pub(crate) fn parse(args: &[String]) -> Result<Options, String> {
     let mut options = Options {
         path: String::new(),
+        memory: "gc",
         max_time: 60,
         max_memory: 2000,
         input_bytes: 64,
@@ -71,6 +74,10 @@ fn parse_one(
     rest: &mut std::slice::Iter<'_, String>,
 ) -> Result<(), String> {
     match argument {
+        "--memory" => options.memory = memory(value(argument, rest.next())?)?,
+        flag if flag.starts_with("--memory=") => {
+            options.memory = memory(flag.strip_prefix("--memory=").unwrap_or_default())?;
+        }
         "--json" => options.json = true,
         "--no-html" => options.reports.html = false,
         "--no-json" => options.reports.json = false,
@@ -93,6 +100,16 @@ fn parse_one(
         }
     }
     Ok(())
+}
+
+fn memory(name: &str) -> Result<&'static str, String> {
+    match name {
+        "gc" => Ok("gc"),
+        "arc" => Ok("arc"),
+        _ => Err(format!(
+            "osprey hunt: --memory must be gc or arc, not {name}"
+        )),
+    }
 }
 
 fn value<'a>(flag: &str, next: Option<&'a String>) -> Result<&'a str, String> {
@@ -119,6 +136,22 @@ pub(super) fn args(list: &[&str]) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hunt_selects_gc_or_arc_and_defaults_to_gc() {
+        let gc = parse(&args(&["case.osp", "--memory=gc"])).expect("GC hunt");
+        let arc = parse(&args(&["case.osp", "--memory=arc"])).expect("ARC hunt");
+        assert_eq!(parse(&args(&["case.osp"])).expect("GC by default"), gc);
+        assert_ne!(gc, arc, "the selected backends must remain distinct");
+        for mode in ["gc", "arc"] {
+            let flag = format!("--memory={mode}");
+            assert_eq!(
+                parse(&args(&["case.osp", "--memory", mode])),
+                parse(&args(&["case.osp", &flag]))
+            );
+        }
+        assert!(parse(&args(&["case.osp", "--memory=default"])).is_err());
+    }
 
     #[test]
     fn bad_arguments_name_the_problem() {

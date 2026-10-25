@@ -2,7 +2,9 @@
 
 Memory reclamation is an implementation detail. Osprey source cannot select
 allocation sites, release values, or observe when a value is reclaimed. Native
-builds provide three link-time backends: `default`, `gc`, and `arc`.
+builds default to tracing GC (`gc`); `arc` selects Perceus reference counting.
+Unmanaged allocation requires explicit `--memory=none`. The old
+`--memory=default` spelling is rejected.
 
 ## Collection Is Unobservable [MEM-OPAQUE]
 
@@ -33,10 +35,10 @@ Code generation tracks managed values in an ownership ledger:
 - A returned owner transfers its reference; a returned borrow is retained.
 
 The generated calls are identical for every backend. General retain/release
-calls are no-ops under the default and tracing-GC runtimes and active under ARC.
+calls are no-ops under the unmanaged `none` and tracing-GC runtimes and active under ARC.
 For a proved-unique value, codegen emits the paired `osp_release_unique` hook
 with LLVM allocator/free attributes, allowing `-O2` to remove a non-escaping
-allocation and release. The default runtime also frees that unique value when
+allocation and release. The unmanaged `none` runtime also frees that unique value when
 the pair survives optimization; tracing GC leaves it for the collector.
 
 ## Fiber Boundary Ownership [MEM-FIBER-ISOLATION]
@@ -59,10 +61,18 @@ runs the same ownership protocol without creating a thread.
 
 ## Backend Selection [MEM-BACKENDS]
 
+### Why GC is the native default
+
+GC makes ordinary `osp_retain` and `osp_release` calls no-ops, reclaiming unreachable values during collection instead. ARC updates reference counts at ownership changes and releases an allocation when its last owner is dropped. Osprey defaults to GC to avoid that per-ownership-change bookkeeping as the starting policy for native programs; allocation tracking and collection still cost time and memory. This is a policy choice, not a claim that GC is faster than ARC on every workload.
+
+The tradeoff is delayed reclamation, conservative retention and collection pauses. Choose `--memory=arc` when prompt reclamation or avoiding tracing pauses matters, then measure the application. Both backends are automatic and require no ownership annotations. Files, sockets and other external resources still need explicit cleanup under either backend.
+
+The current GC is supported on Apple and glibc-Linux, not Windows, and stops collecting after a second allocator thread appears. Use ARC on Windows and for native programs that need reclamation across allocating fiber threads. WebAssembly, mobile and Python-library targets currently lack managed runtime archives and require explicit `--memory=none`; they do not silently fall back from GC.
+
 All code-generated heap allocation sites use the same IR symbols, so native
 backend selection only changes the runtime archive passed to the linker:
 
-- `default` uses `compiler/runtime/memory_runtime.c`.
+- Explicit `--memory=none` uses `compiler/runtime/memory_runtime.c`.
 - `gc` uses `compiler/runtime/memory_gc.c`.
 - `arc` uses `compiler/runtime/memory_arc.c`.
 
@@ -104,7 +114,7 @@ Windows reads the stack's high bound from the TEB, covered by the caller-stack
 root regression in the Windows workflow. Windows executable data/BSS ranges
 are still not scanned, so the GC backend is **not part of the supported
 Windows contract** until global-root discovery and its required Windows
-regression are implemented.
+regression are implemented. Windows native callers should select `--memory=arc` explicitly.
 
 Collection is restricted to the initial allocator thread. The first allocation
 from another thread permanently disables collection, while allocation-table
@@ -124,7 +134,7 @@ arrays, and finalized list headers: a header whose body owns a resource beyond
 the heap (a GPU buffer's copy on the device, [GPU-BUFFER-RESIDENT](../runtime/0034-GPUComputation.md#device-resident-buffers--gpu-buffer-resident))
 passes through the one finalizer the owning runtime unit registers
 (`osp_mem_set_finalizer`) before its data is released; the tracing collector
-runs the same finalizer at the sweep that reclaims the header, and the default
+runs the same finalizer at the sweep that reclaims the header, and the unmanaged `none`
 backend, which reclaims no general allocation, never runs it. Releases walk
 managed child slots non-recursively. Persistent list and
 map nodes retain shared structure and release the portion no longer referenced

@@ -42,7 +42,8 @@ impl Scene {
         let dir = Dir::new(&format!("e2e-{name}"));
         dir.write("canned/.keep", b"");
         dir.write("main.osp", program.as_bytes());
-        dir.write("runtime.bc", b"BC");
+        dir.write("libosprey_runtime_klee_gc.bc", b"BC");
+        dir.write("libosprey_gc_roots.so", b"mock pass");
         let root = dir.0.clone();
         Self { dir, root }
     }
@@ -107,11 +108,25 @@ impl Scene {
             .collect()
     }
 
+    fn fake_optimizer(&self) -> PathBuf {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let opt = self.root.join("opt");
+            std::fs::write(&opt, "#!/bin/sh\nfor a in \"$@\"; do case \"$a\" in *.gc.ll) out=\"$a\";; *.ll) input=\"$a\";; esac; done\ncp \"$input\" \"$out\"\n").expect("fake optimizer");
+            std::fs::set_permissions(opt, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        }
+        self.root.clone()
+    }
+
     fn with_toolchain<T>(&self, klee: &Path, run: impl FnOnce() -> T) -> T {
         let _guard = lock();
         std::env::set_var(KLEE_ENV, klee);
-        std::env::set_var(RUNTIME_ENV, self.root.join("runtime.bc"));
+        std::env::set_var(RUNTIME_ENV, self.root.join("libosprey_runtime_klee_gc.bc"));
+        let llvm = self.fake_optimizer();
+        std::env::set_var("OSPREY_KLEE_LLVM", &llvm);
         let result = run();
+        std::env::remove_var("OSPREY_KLEE_LLVM");
         std::env::remove_var(KLEE_ENV);
         std::env::remove_var(RUNTIME_ENV);
         result
@@ -147,6 +162,7 @@ fn a_finding_without_replay_fails_and_is_reported_as_json() {
     assert_eq!(code, ExitCode::FAILURE);
     let value = json(&rendered);
     assert_eq!(value["engine"], "KLEE");
+    assert_eq!(value["memory"], "gc");
     assert_eq!(value["explored"]["paths"], 4);
     assert_eq!(value["findings"][0]["class"], "memory");
     assert_eq!(value["findings"][0]["line"], 1);
@@ -273,50 +289,6 @@ fn a_program_that_does_not_type_check_fails_before_the_engine_runs() {
     assert_eq!(code, ExitCode::FAILURE);
 }
 
-#[test]
-fn run_rejects_bad_arguments_with_usage() {
-    assert_eq!(run(&[]), ExitCode::from(2));
-    assert_eq!(run(&["--bogus".to_string()]), ExitCode::from(2));
-    assert_eq!(run(&["--help".to_string()]), ExitCode::SUCCESS);
-    assert_eq!(run(&["-h".to_string()]), ExitCode::SUCCESS);
-}
-
-#[test]
-fn only_a_klee_output_directory_is_cleared() {
-    let dir = std::env::temp_dir().join(format!("osprey-hunt-clear-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    assert!(clear_run_directory(&dir).is_ok(), "absent is fine");
-    std::fs::create_dir_all(&dir).expect("dir");
-    assert!(clear_run_directory(&dir).is_ok(), "empty is fine");
-    std::fs::create_dir_all(&dir).expect("dir");
-    std::fs::write(dir.join("precious.txt"), "x").expect("file");
-    let error = clear_run_directory(&dir).expect_err("unrelated directory");
-    shows(&error, &["refusing to clear"]);
-    std::fs::write(dir.join("info"), "KLEE").expect("info");
-    assert!(clear_run_directory(&dir).is_ok() && !dir.exists());
-}
-
-/// A program the native build accepts lowers for the engine too: the
-/// symbolic switch changes only the unhandled-effect guard [SYMEX-CODEGEN].
-#[test]
-fn a_fiber_program_lowers_symbolically() {
-    let path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../tests/core/collections/nested_generic_collections_fibers.test.osp"
-    )
-    .to_string();
-    let cli = parse_args(std::slice::from_ref(&path)).expect("args");
-    let input = load_input(&cli).expect("load");
-    let symbolic = module::symbolic_module(&input, 64).expect("symbolic build");
-    shows(
-        &symbolic,
-        &[
-            "target triple = \"x86_64-unknown-linux-gnu\"",
-            "@osp_hunt_input_bytes = global i64 64",
-        ],
-    );
-}
-
 /// The value of `--output-dir=` the engine was given.
 #[cfg(unix)]
 fn output_dir(args: &[String]) -> PathBuf {
@@ -337,7 +309,11 @@ fn the_engine_receives_exactly_the_spec_command_and_module() {
     let scene = Scene::new("command", "print(\"hi\")\n");
     scene.canned_clean_run();
     let out = scene.root.join("kout");
-    let runtime = scene.root.join("runtime.bc").display().to_string();
+    let runtime = scene
+        .root
+        .join("libosprey_runtime_klee_gc.bc")
+        .display()
+        .to_string();
     for (seconds, megabytes, cap) in [
         (1u64, 256u64, 0u64),
         (7, 300, 8),
@@ -410,8 +386,35 @@ fn the_run_directory_is_temporary_unless_out_is_given() {
     );
 }
 
-/// A non-empty `--out` that is not a KLEE run is refused before the engine
-/// starts, and nothing in it is touched; a previous run is replaced.
+#[cfg(unix)]
+fn assert_unowned_output_preserved(scene: &Scene, out: &Path, flags: &[&str]) {
+    assert_eq!(
+        run_scene(scene, 0, flags).expect_err("refused"),
+        ExitCode::from(2)
+    );
+    assert_eq!(
+        std::fs::read(out.join("precious.txt")).expect("preserved"),
+        b"keep"
+    );
+    assert!(scene.engine_args().is_empty(), "the engine never ran");
+}
+
+#[cfg(unix)]
+fn assert_owned_output_replaced(scene: &Scene, out: &Path, flags: &[&str]) {
+    let (_, code) = run_scene(scene, 0, flags).expect("hunt");
+    assert_eq!(code, ExitCode::SUCCESS);
+    assert!(
+        !out.join("precious.txt").exists(),
+        "an owned run is cleared"
+    );
+    assert!(out.join("info").exists());
+    assert_eq!(
+        std::fs::read(out.join(RUN_MARKER)).expect("new marker"),
+        RUN_MARKER_CONTENTS
+    );
+}
+
+/// Only a run bearing Osprey's ownership marker may replace an existing output.
 #[cfg(unix)]
 #[test]
 fn only_a_previous_run_is_cleared_from_out() {
@@ -420,18 +423,13 @@ fn only_a_previous_run_is_cleared_from_out() {
     let out = scene.root.join("mine");
     scene.dir.write("mine/precious.txt", b"keep");
     let flags = ["--quiet", "--out", &out.display().to_string()];
-    let code = run_scene(&scene, 0, &flags).expect_err("refused");
-    assert_eq!(code, ExitCode::from(2));
-    assert!(out.join("precious.txt").exists());
-    assert!(scene.engine_args().is_empty(), "the engine never ran");
+    assert_unowned_output_preserved(&scene, &out, &flags);
     scene.dir.write("mine/info", b"a previous run");
-    let (_, code) = run_scene(&scene, 0, &flags).expect("hunt");
-    assert_eq!(code, ExitCode::SUCCESS);
-    assert!(
-        !out.join("precious.txt").exists(),
-        "a previous run is cleared"
-    );
-    assert!(out.join("info").exists());
+    assert_unowned_output_preserved(&scene, &out, &flags);
+    scene
+        .dir
+        .write(&format!("mine/{RUN_MARKER}"), RUN_MARKER_CONTENTS);
+    assert_owned_output_replaced(&scene, &out, &flags);
 }
 
 /// A failed engine is a tool error and still leaves no temporary files.

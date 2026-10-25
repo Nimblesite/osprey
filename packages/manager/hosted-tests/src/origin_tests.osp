@@ -1,0 +1,32 @@
+namespace hosted_tests;
+import registry_api::HostedOrigin
+
+/// Origin validation for credentialed mutations and CSRF token checks.
+/// Implements [PACKAGE-HOSTED-EDGE] credentialed browser request rules.
+module OriginTests {
+    let site = "https://packages.example.test"
+
+    fn outcome(result) = if HostedOrigin::ok(result) { "" } else { HostedOrigin::codeOf(result) }
+
+    fn origins() = checkAll("origin: exact site origin only", [
+        outcome(HostedOrigin::check("${site}", site, "POST")) == "",
+        outcome(HostedOrigin::check("HTTPS://PACKAGES.EXAMPLE.TEST", site, "POST")) == "",
+        outcome(HostedOrigin::check("${site}/", site, "POST")) == "req.origin-mismatch",
+        outcome(HostedOrigin::check("https://evil.test", site, "POST")) == "req.origin-mismatch",
+        outcome(HostedOrigin::check("", site, "POST")) == "req.origin-required",
+        outcome(HostedOrigin::check("", site, "GET")) == "",
+        outcome(HostedOrigin::check("https://evil.test", site, "GET")) == "req.origin-mismatch"
+    ])
+
+    fn tokens() = checkAll("csrf: token equality on mutations", [
+        outcome(HostedOrigin::csrf("tok", "tok")) == "",
+        outcome(HostedOrigin::csrf("tok", "other")) == "req.csrf-mismatch",
+        outcome(HostedOrigin::csrf("", "tok")) == "req.csrf-missing",
+        outcome(HostedOrigin::csrf("tok", "")) == "req.csrf-unconfigured"
+    ])
+
+    export fn run() = {
+        test("hosted origin: site origin", origins)
+        test("hosted origin: csrf tokens", tokens)
+    }
+}

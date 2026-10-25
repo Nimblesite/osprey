@@ -332,20 +332,6 @@ mod tests {
         }
     }
 
-    fn assemble_web_program(source: &str, root: &str) -> osprey_ast::Program {
-        osprey_project::assemble(
-            &osprey_project::ProjectConfig::for_root(Path::new(root)),
-            &[osprey_project::SourceFile {
-                path: PathBuf::from("client.osp"),
-                flavor: osprey_syntax::Flavor::Default,
-                source: source.to_string(),
-                program: osprey_syntax::parse_program(source).program,
-            }],
-        )
-        .expect("assemble web project")
-        .program
-    }
-
     #[test]
     fn browser_dispatcher_keeps_its_globals_after_wasi_start_returns() {
         // [WASM-WEB-ABI] Browser events arrive after the command entry returns.
@@ -455,7 +441,11 @@ mod tests {
         assert_eq!(web_dispatch_export(&source), Some(WEB_DISPATCH));
 
         let project_source = "namespace app;\nfn osprey_web_dispatch(message: string) -> int = 0\n";
-        let project = assemble_web_program(project_source, "/tmp/web-dispatch-project");
+        let project = crate::tests::assembled_program(
+            project_source,
+            "/tmp/web-dispatch-project",
+            "client.osp",
+        );
         let mangled = web_dispatch_export(&project).expect("find flattened dispatcher");
         assert_ne!(mangled, WEB_DISPATCH);
         assert!(mangled.starts_with("__osp_"));
@@ -712,7 +702,7 @@ mod tests {
     }
 
     fn build_web_abi_fixture() {
-        let web = assemble_web_program(WEB_ABI_SOURCE, "/tmp/web-abi-e2e");
+        let web = crate::tests::assembled_program(WEB_ABI_SOURCE, "/tmp/web-abi-e2e", "client.osp");
         let actual = web_dispatch_export(&web).expect("flattened web dispatcher");
         assert_ne!(actual, WEB_DISPATCH);
         let web_out =

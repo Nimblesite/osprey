@@ -1,0 +1,83 @@
+namespace registry_web;
+import registry_web::Browse
+import registry_web::Model
+import registry_web::PackageView
+import registry_web::WebFixtures
+
+/// The org-scoped browse screen: organization identity beside every
+/// result, warnings surfaced, same leaf names across organizations kept
+/// distinct, and the whole screen hidden when security evidence is
+/// unavailable. Implements [PACKAGE-NAMES-NO-SITTING] and
+/// [PACKAGE-OWNERSHIP-MAINTENANCE] for the listing surface.
+module BrowseTests {
+    fn catalog() = [WebFixtures::warnedAtlasUtil(), WebFixtures::warnedBorderUtil(), WebFixtures::cleanAtlasUtil()]
+
+    fn orgBesideEveryResult() = match Browse::render(catalog(), "") {
+        Model::Shown { html } => checkAll("web: browse shows org identity", [
+            contains(html, "@atlas/util"),
+            contains(html, "Organization: @atlas"),
+            contains(html, "@border/util"),
+            contains(html, "Organization: @border")
+        ])
+        Model::Hidden { reason } => check("web: browse shows org identity", "shown screen", "hidden: ${reason}")
+    }
+
+    /// No false negatives: each warning, and each explicit no-warnings
+    /// statement, is present in the rendered listing.
+    fn warningsSurface() = match Browse::render(catalog(), "") {
+        Model::Shown { html } => checkAll("web: browse surfaces warnings", [
+            contains(html, "OSA-2026-0001"),
+            contains(html, "executes code"),
+            contains(html, "OSB-2026-0007"),
+            contains(html, "No known security warnings.")
+        ])
+        Model::Hidden { reason } => check("web: browse surfaces warnings", "shown screen", "hidden: ${reason}")
+    }
+
+    /// Two organizations may share one leaf name; each result keeps its own
+    /// identity and its own warnings.
+    fn sameLeafAcrossOrgs() = match Browse::render(catalog(), "") {
+        Model::Shown { html } => checkAll("web: browse keeps same leaf names distinct", [
+            contains(html, "id=\"-atlas-util-h\""),
+            contains(html, "id=\"-border-util-h\""),
+            contains(html, "@atlas/util"),
+            contains(html, "@border/util")
+        ])
+        Model::Hidden { reason } => check("web: browse keeps same leaf names distinct", "shown screen", "hidden: ${reason}")
+    }
+
+    /// One package without evidence hides the entire screen, naming the
+    /// package and the reason — never a partial listing.
+    fn missingEvidenceHidesAll() = match Browse::render(listAppend(catalog(), [WebFixtures::orphanWithoutEvidence()]), "") {
+        Model::Shown { html } => check("web: browse hides all when evidence unavailable", "hidden screen", "shown")
+        Model::Hidden { reason } => checkAll("web: browse hides all when evidence unavailable", [
+            startsWith(reason, "web.evidence-unavailable"),
+            contains(reason, "@atlas/orphan"),
+            contains(reason, "registry.status-service-unreachable")
+        ])
+    }
+
+    fn queryFilters() = match Browse::render(catalog(), "border") {
+        Model::Shown { html } => checkAll("web: browse query filters", [
+            contains(html, "@border/util"),
+            !contains(html, "@atlas/util")
+        ])
+        Model::Hidden { reason } => check("web: browse query filters", "shown screen", "hidden: ${reason}")
+    }
+
+    /// The package page hides for the same reason, per package.
+    fn packagePageHidesWithoutEvidence() = match PackageView::render(WebFixtures::orphanWithoutEvidence(), WebFixtures::anonymous(), WebFixtures::now()) {
+        Model::Shown { html } => check("web: package page hides when evidence unavailable", "hidden screen", "shown")
+        Model::Hidden { reason } => check("web: package page hides when evidence unavailable", "web.evidence-unavailable...", reason)
+    }
+
+    /// The suite.
+    export fn run() = {
+        test("web: browse shows org identity", orgBesideEveryResult)
+        test("web: browse surfaces warnings", warningsSurface)
+        test("web: browse keeps same leaf names distinct", sameLeafAcrossOrgs)
+        test("web: browse hides all when evidence unavailable", missingEvidenceHidesAll)
+        test("web: browse query filters", queryFilters)
+        test("web: package page hides when evidence unavailable", packagePageHidesWithoutEvidence)
+    }
+}

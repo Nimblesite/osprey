@@ -19,11 +19,11 @@ Device, simulator and Mac archives are separate products even though all three u
 ## Compiler options [IOS-TARGET-OPTIONS]
 
 ```sh
-osprey app.osp --compile --target=ios -o libApp.a
-osprey app.osp --compile --target=ios-sim -o libApp.a
+osprey app.osp --compile --target=ios -o libApp.a --memory=none
+osprey app.osp --compile --target=ios-sim -o libApp.a --memory=none
 ```
 
-Compilation emits the requested `.a` and a sibling `.h`. Other output extensions are rejected. `--run` is rejected because the result needs an iOS host. `--memory=default` is the only supported memory backend; `--memory=gc` and `--memory=arc` are compiler errors. Native debugger and profiler flags are rejected for these targets. These option restrictions also apply to `--check` and `--llvm`. `--llvm` emits the host-compatible LLVM representation after the same target legality checks; it cannot bypass those checks.
+Compilation emits the requested `.a` and a sibling `.h`. Other output extensions are rejected. `--run` is rejected because the result needs an iOS host. Explicit `--memory=none` is the only supported memory backend; `--memory=gc` and `--memory=arc` are compiler errors. Native debugger and profiler flags are rejected for these targets. These option restrictions also apply to `--check` and `--llvm`. `--llvm` emits the host-compatible LLVM representation after the same target legality checks; it cannot bypass those checks.
 
 ## Compile and link [IOS-TARGET-LINK]
 
@@ -50,7 +50,7 @@ Boolean boundary thunks use Apple's ARM64 zero-extension convention. `Unit` thun
 
 Records, unions including `Result`, collections, closures, unconstrained generic functions, and effects are not C values. Such internal helpers are not exported. The compiler rejects unsupported `extern fn` signatures and scalar exports that require an effect handler supplied by their caller; use a scalar wrapper that handles effects inside Osprey. Compile-time omission of an internal helper from the header does not declare that helper callable by C.
 
-Strings are NUL-terminated UTF-8. Host inputs are borrowed for the synchronous call, must remain valid until it returns, and must not be retained by Osprey. Hosts must copy Osprey output strings before the next call into the library and must not free those pointers. Embedded NUL bytes are outside this string boundary contract. General allocations in the default memory backend remain alive for the process lifetime; a stable host-facing release API is not implemented.
+Strings are NUL-terminated UTF-8. Host inputs are borrowed for the synchronous call, must remain valid until it returns, and must not be retained by Osprey. Hosts must copy Osprey output strings before the next call into the library and must not free those pointers. Embedded NUL bytes are outside this string boundary contract. General allocations in the explicit unmanaged `none` backend remain alive for the process lifetime; a stable host-facing release API is not implemented.
 
 ## Entry and lifetime [IOS-TARGET-ENTRY]
 

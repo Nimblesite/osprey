@@ -160,7 +160,7 @@ fn run_delivers_a_closed_stdin_to_the_program_as_end_of_file() {
             program.as_os_str(),
             "--run".as_ref(),
             "--quiet".as_ref(),
-            "--memory=default".as_ref(),
+            "--memory=gc".as_ref(),
         ],
         Stdio::null(),
     );

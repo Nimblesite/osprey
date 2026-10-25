@@ -52,7 +52,6 @@ const EXPECTED_CONTEXTS = [
   'Tests: Rust workspace (coverage)',
   'Tests: package source coverage',
   'Tests: Python application ports',
-  'Tests: language corpus (default)',
   'Tests: language corpus (gc)',
   'Tests: language corpus (arc)',
   'Tests: C runtime (coverage)',

@@ -18,7 +18,11 @@ use std::time::Duration;
 /// finding; its replay is skipped after this long.
 const REPLAY_TIMEOUT: Duration = Duration::from_secs(30);
 
-pub(crate) fn replay(input: &CompilationInput, findings: &mut [Finding]) -> Result<(), String> {
+pub(crate) fn replay(
+    input: &CompilationInput,
+    findings: &mut [Finding],
+    memory: &str,
+) -> Result<(), String> {
     // An unmodelled finding is skipped whether or not anything else runs, so a
     // report with only unmodelled findings reads the same as a mixed one.
     for finding in findings
@@ -34,12 +38,8 @@ pub(crate) fn replay(input: &CompilationInput, findings: &mut [Finding]) -> Resu
     let stem = scratch_stem(input.display_path());
     let exe = std::env::temp_dir().join(format!("{stem}-hunt.out"));
     let workdir = std::env::temp_dir().join(format!("{stem}-hunt-replay"));
-    build_input(
-        input,
-        &exe,
-        NativeOptions::new("default", BuildKind::Release),
-    )
-    .map_err(|code| format!("the native build for replay failed (exit {code:?})"))?;
+    build_input(input, &exe, NativeOptions::new(memory, BuildKind::Release))
+        .map_err(|code| format!("the native build for replay failed (exit {code:?})"))?;
     let outcome = replay_all(&exe, &workdir, findings);
     let _ = std::fs::remove_file(&exe);
     let _ = std::fs::remove_dir_all(&workdir);

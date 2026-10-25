@@ -32,14 +32,22 @@ def run(case, context):
 
 
 def all_cases():
-    context = {"name": V.text("world"), "nums": V.list_([V.int_(1), V.int_(2), V.int_(3)]), "enabled": V.bool_(True), "nothing": V.none(), "obj": V.dict_(["x"], [V.int_(4)])}
+    context = {"name": V.text("world"), "nums": V.list_([V.int_(1), V.int_(2), V.int_(3)]), "enabled": V.bool_(True), "nothing": V.none(), "obj": V.typed_dict([V.text("x")], [V.int_(4)])}
     renders = toList(map(range(len(Expected.RENDERS)), lambda i: run(unwrap_or(listGet(Expected.RENDERS, i), []), context)))
     rest = listConcat(kind_cases(), listConcat(string_cases(), listConcat(value_cases(), listConcat(scope_cases(), listConcat(syntax_cases(), macro_cases())))))
-    return listConcat(renders, listConcat(rest, expanded_cases(context)))
+    return listConcat(renders, listConcat(error_chain_cases(), listConcat(rest, expanded_cases(context))))
+
+
+def error_chain_cases():
+    failure = V.halt("original evaluation error")
+    return [
+        same("filter preserves error", F.apply_filter("list", failure, [], []), failure),
+        same("predicate preserves error", F.apply_test("defined", failure, []), failure),
+    ]
 
 
 def kind_cases():
-    values = [V.none(), V.bool_(True), V.int_(2), V.float_(2.5), V.text("x"), V.list_([]), V.dict_([], []), V.undefined("x"), V.pair("x", V.int_(1)), V.func("range")]
+    values = [V.none(), V.bool_(True), V.int_(2), V.float_(2.5), V.text("x"), V.list_([]), V.dict_([], []), V.undefined("x"), V.typed_pair(V.text("x"), V.int_(1)), V.func("range")]
     kinds = [V.K_NONE, V.K_BOOL, V.K_INT, V.K_FLOAT, V.K_STRING, V.K_LIST, V.K_DICT, V.K_UNDEFINED, V.K_PAIR, V.K_FUNC]
     return [
         same("value kinds", toList(map(range(len(values)), lambda i: unwrap_or(listGet(values, i), V.none()).kind)), kinds),
@@ -198,6 +206,7 @@ STATEMENT_ERRORS = [
 # filters.py, expr.py, render.py). CPython fails each template too (Template
 # Assertion/Runtime/SyntaxError); the port wording names its own subset limit.
 LOOKUP_ERRORS = [
+    ["negated unknown test", "{{ 1 is not nosuchtest }}", "No test named 'nosuchtest'"],
     ["unknown filter", "{{ 1|nosuchfilter }}", "No filter named 'nosuchfilter'"],
     ["unknown test", "{{ 1 is nosuchtest }}", "No test named 'nosuchtest'"],
     ["unknown string method", "{{ 'a'.foo() }}", "method `foo` is not supported on strings"],

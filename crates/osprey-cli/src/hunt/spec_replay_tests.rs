@@ -89,7 +89,7 @@ fn unmodelled_findings_are_skipped_even_when_nothing_else_is_replayed() {
         None,
         "unmodelled: fork",
     )];
-    replay::replay(&input, &mut findings).expect("nothing to build");
+    replay::replay(&input, &mut findings, "gc").expect("nothing to build");
     assert!(
         matches!(&findings[0].replay, Replay::Skipped(reason) if reason.contains("unmodelled")),
         "{:?}",
@@ -104,6 +104,36 @@ fn script(dir: &Dir, name: &str, body: &str) -> PathBuf {
     std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("script");
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("chmod");
     path
+}
+
+#[cfg(unix)]
+fn stdin_file_inputs() -> super::ktest::Ktest {
+    super::ktest::parse(&super::ktest::encode(&[
+        ("osprey.hunt.files.v2", &2i32.to_le_bytes()),
+        ("stdin", b"S\n"),
+        ("stdin.len", &2i32.to_le_bytes()),
+        ("file.ok:stdin", &1i32.to_le_bytes()),
+        ("file.len:stdin", &1i32.to_le_bytes()),
+        ("file.data:stdin", b"F"),
+    ]))
+    .expect("independent stdin and file streams")
+}
+
+#[cfg(unix)]
+#[test]
+fn stdin_and_a_file_named_stdin_reproduce_independently() {
+    let dir = Dir::new("stdin-file");
+    let exe = script(&dir, "probe", "IFS= read -r value; [ \"$value\" = S ] && [ \"$(cat stdin)\" = F ] && kill -ABRT $$; exit 0");
+    let inputs = stdin_file_inputs();
+    let mut finding = sample(Class::Memory, None, None, "m");
+    finding.stdin = inputs.stream("stdin").expect("stdin");
+    finding.files = inputs.files();
+    assert_eq!(finding.stdin, b"S\n");
+    assert_eq!(finding.files, vec![("stdin".into(), b"F".to_vec())]);
+    assert_eq!(
+        replay::run_one(&exe, &dir.0.join("work"), &finding).expect("replay"),
+        Replay::Reproduced("SIGABRT".into())
+    );
 }
 
 /// The verdict of replaying a memory finding against `exe` in `dir`.

@@ -201,18 +201,20 @@ def backward_into(g, root, grads):
     gradient is set to 1.0, then every node's `_backward` runs in reversed
     topological order, so calling it with an earlier result doubles gradients,
     exactly as micrograd without `zero_grad`."""
-    started = set_at(grads, root, 1.0)
-    return foldList(listReverse(build_topo(g, root)), started, lambda acc, i: step(g, i, acc))
+    indexed = fold(range(len(grads)), {}, lambda acc, i: mapSet(acc, toString(i), unwrap_or(listGet(grads, i), 0.0)))
+    started = set_at(indexed, root, 1.0)
+    result = foldList(listReverse(build_topo(g, root)), started, lambda acc, i: step(g, i, acc))
+    return toList(map(range(len(grads)), lambda i: unwrap_or(mapGet(result, toString(i)), 0.0)))
 
 
 def set_at(xs, i, v):
     """`xs` with position i replaced by v."""
-    return toList(map(range(len(xs)), lambda j: v if j == i else unwrap_or(listGet(xs, j), 0.0)))
+    return mapSet(xs, toString(i), v)
 
 
 def add_at(xs, i, d):
     """micrograd's `grad +=`: `xs` with position i increased by d."""
-    return toList(map(range(len(xs)), lambda j: unwrap_or(listGet(xs, j), 0.0) + d if j == i else unwrap_or(listGet(xs, j), 0.0)))
+    return mapSet(xs, toString(i), unwrap_or(mapGet(xs, toString(i)), 0.0) + d)
 
 
 def operands(n):
@@ -228,12 +230,12 @@ def operands(n):
 
 def set_flag(flags, i):
     """`flags` with position i marked True."""
-    return toList(map(range(len(flags)), lambda j: True if j == i else unwrap_or(listGet(flags, j), False)))
+    return mapSet(flags, toString(i), True)
 
 
 class Walk:
     """`build_topo`'s state: the visited flags and the postorder ids so far."""
-    visited: list[bool]
+    visited: dict[str, bool]
     order: list[int]
 
 
@@ -243,14 +245,14 @@ def build_topo(g, root):
     follows object hashes, so its own traversal order varies run to run; this
     port and the oracle both fix the operand order, which makes every gradient
     reproducible while keeping micrograd's algorithm."""
-    state = visit(g, root, Walk(visited=toList(map(range(size(g)), lambda _: False)), order=[]))
+    state = visit(g, root, Walk(visited={}, order=[]))
     return state.order
 
 
 def visit(g, i, state):
     """One `build_topo` step: mark i visited, visit its operands, then append
     i to the postorder."""
-    if unwrap_or(listGet(state.visited, i), False):
+    if unwrap_or(mapGet(state.visited, toString(i)), False):
         return state
     else:
         marked = Walk(visited=set_flag(state.visited, i), order=state.order)
@@ -263,7 +265,7 @@ def step(g, i, grads):
     gradients, in micrograd's order (self before other, so a node used on both
     sides of an op accumulates twice)."""
     n = node(g, i)
-    og = unwrap_or(listGet(grads, i), 0.0)
+    og = unwrap_or(mapGet(grads, toString(i)), 0.0)
     if n.op == "":
         return grads
     elif n.op == "+":

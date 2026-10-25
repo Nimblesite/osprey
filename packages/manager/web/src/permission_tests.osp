@@ -1,0 +1,106 @@
+namespace registry_web;
+import registry_web::Model
+import registry_web::PackageView
+import registry_web::Permissions
+import registry_web::WebFixtures
+
+/// The organization/permission surfaces: the single administrator seat,
+/// explicit grants only, and the admin-without-publish warning the website
+/// must show before every mutation surface
+/// ([PACKAGE-OWNERSHIP-ADMIN], [PACKAGE-OWNERSHIP-PERMISSIONS]).
+module PermissionTests {
+    /// The administrator holds only edit-metadata: the control screen
+    /// shows the ledger and explicitly denies implied publication.
+    fn adminWithoutPublish() = match Permissions::render(WebFixtures::warnedAtlasUtil(), WebFixtures::adminWithoutPublish(), WebFixtures::atlasGrantLedger(), WebFixtures::now()) {
+        Model::Shown { html } => checkAll("web: admin without publish warned", [
+            contains(html, "Package administrator: mem-admin-atlas"),
+            contains(html, "edit-metadata"),
+            contains(html, "publish-release"),
+            contains(html, "administration alone does not authorize publication")
+        ])
+        Model::Hidden { reason } => check("web: admin without publish warned", "shown screen", "hidden: ${reason}")
+    }
+
+    /// With the explicit grant, the warning is gone.
+    fn adminWithPublish() = match Permissions::render(WebFixtures::warnedAtlasUtil(), WebFixtures::adminWithPublish(), WebFixtures::atlasGrantLedger(), WebFixtures::now()) {
+        Model::Shown { html } => check("web: admin with publish not warned", "no admin-publish warning", html)
+        Model::Hidden { reason } => check("web: admin with publish not warned", "shown screen", "hidden: ${reason}")
+    }
+
+    /// The package page carries the same context and warning for members.
+    fn packageViewShowsAccess() = match PackageView::render(WebFixtures::warnedAtlasUtil(), WebFixtures::adminWithoutPublish(), WebFixtures::now()) {
+        Model::Shown { html } => checkAll("web: package page shows access context", [
+            contains(html, "Package administrator: mem-admin-atlas"),
+            contains(html, "Your effective permissions: edit-metadata"),
+            contains(html, "administration alone does not authorize publication")
+        ])
+        Model::Hidden { reason } => check("web: package page shows access context", "shown screen", "hidden: ${reason}")
+    }
+
+    /// A publisher sees their own effective permission, and no implied
+    /// admin powers.
+    fn publisherSeesOwnGrant() = match PackageView::render(WebFixtures::warnedAtlasUtil(), WebFixtures::publisher(), WebFixtures::now()) {
+        Model::Shown { html } => checkAll("web: publisher sees own grant", [
+            contains(html, "Your effective permissions: publish-release"),
+            !contains(html, "administration alone does not authorize publication")
+        ])
+        Model::Hidden { reason } => check("web: publisher sees own grant", "shown screen", "hidden: ${reason}")
+    }
+
+    /// Anonymous visitors get the public projection only: no seat, no
+    /// grants, no permission panel at all.
+    fn anonymousSeesNoAccess() = match PackageView::render(WebFixtures::warnedAtlasUtil(), WebFixtures::anonymous(), WebFixtures::now()) {
+        Model::Shown { html } => checkAll("web: anonymous sees no access", [
+            !contains(html, "Package administrator"),
+            !contains(html, "Your effective permissions"),
+            contains(html, "@atlas/util"),
+            contains(html, "OSA-2026-0001")
+        ])
+        Model::Hidden { reason } => check("web: anonymous sees no access", "shown screen", "hidden: ${reason}")
+    }
+
+    /// The control screen is admin-only: a publisher, an outsider and an
+    /// anonymous visitor all get the hidden screen.
+    fn controlScreenAdminOnly() = checkAll("web: control screen admin only", [
+        match Permissions::render(WebFixtures::warnedAtlasUtil(), WebFixtures::publisher(), WebFixtures::atlasGrantLedger(), WebFixtures::now()) {
+            Model::Hidden { reason } => reason == "web.permissions.admin-only"
+            Model::Shown { html } => false
+        },
+        match Permissions::render(WebFixtures::warnedAtlasUtil(), WebFixtures::outsider(), WebFixtures::atlasGrantLedger(), WebFixtures::now()) {
+            Model::Hidden { reason } => reason == "web.permissions.admin-only"
+            Model::Shown { html } => false
+        },
+        match Permissions::render(WebFixtures::warnedAtlasUtil(), WebFixtures::anonymous(), WebFixtures::atlasGrantLedger(), WebFixtures::now()) {
+            Model::Hidden { reason } => reason == "web.permissions.admin-only"
+            Model::Shown { html } => false
+        }
+    ])
+
+    /// A member of another organization never sees this package's access
+    /// context on the package page.
+    fn outsiderSeesNoAccess() = match PackageView::render(WebFixtures::warnedAtlasUtil(), WebFixtures::outsider(), WebFixtures::now()) {
+        Model::Shown { html } => check("web: outsider sees no access context", "no access context", html)
+        Model::Hidden { reason } => check("web: outsider sees no access context", "shown screen", "hidden: ${reason}")
+    }
+
+    /// The grant table escapes hostile membership ids.
+    fn hostileLedger() = match Permissions::render(WebFixtures::warnedAtlasUtil(), WebFixtures::adminWithoutPublish(), WebFixtures::hostileGrantLedger(), WebFixtures::now()) {
+        Model::Shown { html } => checkAll("web: hostile ledger escaped", [
+            contains(html, "&lt;td&gt;injected&lt;/td&gt;"),
+            !contains(html, "<td>injected</td>")
+        ])
+        Model::Hidden { reason } => check("web: hostile ledger escaped", "shown screen", "hidden: ${reason}")
+    }
+
+    /// The suite.
+    export fn run() = {
+        test("web: admin without publish warned", adminWithoutPublish)
+        test("web: admin with publish not warned", adminWithPublish)
+        test("web: package page shows access context", packageViewShowsAccess)
+        test("web: publisher sees own grant", publisherSeesOwnGrant)
+        test("web: anonymous sees no access", anonymousSeesNoAccess)
+        test("web: control screen admin only", controlScreenAdminOnly)
+        test("web: outsider sees no access context", outsiderSeesNoAccess)
+        test("web: hostile ledger escaped", hostileLedger)
+    }
+}

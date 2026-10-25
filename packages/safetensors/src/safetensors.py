@@ -523,7 +523,7 @@ def get_slice(file, name, first, last):
     """Decode rows `first`..`last` of the first dimension of `name`."""
     match find_tensor(file.tensors, name):
         case Success(value=value):
-            return Success(value=slice_of(file, value, first, last))
+            return slice_of(file, value, first, last)
         case Error(message=message):
             return Error(message=message)
 
@@ -531,10 +531,8 @@ def get_slice(file, name, first, last):
 def slice_of(file, info, first, last):
     """The decoded rows first..last of `info`."""
     if len(info.shape) == 0:
-        # Quarantine: slicing a scalar silently returned success; its missing
-        # rank validation is pinned by slice.scalar and must not fabricate data.
-        return osprey_tensor_panic("scalar slice rank validation is not implemented")
+        return Error(message=f"Error during slicing [{first}:{last}] with shape []: more slicing indexes than dimensions in tensor")
     else:
         d0 = unwrap_or(listGet(info.shape, 0), 0)
         row = intDiv(element_count(info), d0) if d0 > 0 else 0
-        return decode_range(file, info, first * row, (last - first) * row)
+        return Success(value=decode_range(file, info, first * row, (last - first) * row))

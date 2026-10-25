@@ -80,7 +80,7 @@ def run_one(program, options):
     folder = options.out/slug
     folder.mkdir(parents=True)
     command = [str(options.osprey), 'hunt', program, '--max-time', str(options.max_time),
-               '--input-bytes', str(options.input_bytes), '--out', str(folder/'engine')]
+               '--input-bytes', str(options.input_bytes), '--memory', getattr(options, 'memory', 'gc'), '--out', str(folder/'engine')]
     (folder/'command.json').write_text(json.dumps(command, indent=2)+'\n')
     code, timed_out, elapsed = execute(command, options, folder)
     record = {'program': program, 'directory': str(folder), 'exitCode': code,
@@ -98,6 +98,7 @@ def parse():
     parser.add_argument('--wall-time', type=float, default=10)
     parser.add_argument('--max-time', type=int, default=8)
     parser.add_argument('--input-bytes', type=int, default=2)
+    parser.add_argument('--memory', choices=('gc', 'arc'), default='gc')
     parser.add_argument('--jobs', type=int, default=4)
     parser.add_argument('--manifest', type=Path, help='rerun a safe-runs.json; fail if any program no longer qualifies')
     parser.add_argument('programs', nargs='*')
@@ -135,8 +136,11 @@ def snapshot(options):
     folder.mkdir(parents=True)
     shutil.copy2(options.osprey, folder/'osprey')
     options.osprey = folder/'osprey'
-    runtime = options.root/'compiler/bin/libosprey_runtime_klee.bc'
+    memory = getattr(options, 'memory', 'gc')
+    runtime = options.root/f'compiler/bin/libosprey_runtime_klee_{memory}.bc'
     shutil.copy2(runtime, folder/runtime.name)
+    if memory == 'gc':
+        shutil.copy2(options.root/'compiler/bin/libosprey_gc_roots.so', folder/'libosprey_gc_roots.so')
     os.environ['OSPREY_KLEE_RUNTIME'] = str(folder/runtime.name)
     return {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in folder.iterdir()}
 

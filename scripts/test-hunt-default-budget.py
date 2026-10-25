@@ -16,7 +16,7 @@ class DefaultBudgetTests(unittest.TestCase):
         (root/'target/hunt-default-budget-regression').mkdir(parents=True, exist_ok=True)
         for name in ('clean', 'crash'):
             with self.subTest(program=name):
-                out = root/'target/hunt-default-budget-regression'/name
+                out = root/'target/hunt-default-budget-regression'/f'{name}-{time.time_ns()}'
                 process = subprocess.run([
                     str(root/'target/release/osprey'), 'hunt', f'tests/hunt/{name}.osp',
                     '--json', '--quiet', '--no-replay', '--max-time', '30', '--out', str(out),

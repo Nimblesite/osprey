@@ -34,11 +34,14 @@ installing Osprey is two steps:
 |------|----------------|
 | Compile & run native programs | `clang` (a full LLVM clang, **15 or newer**) |
 | Compile & link on Windows | A MinGW-compatible `clang` and MinGW runtime libraries; Scoop installs `llvm` and `gcc` |
+| Native HTTP or WebSocket programs | OpenSSL libraries (`libssl` and `libcrypto`) available to the linker |
 | Compile to WebAssembly (`--target=wasm32`) | `clang`, `wasm-ld` (from `lld`), a WASI sysroot |
 | Debug info (`--debug`, DWARF line tables) | LLVM **19 or newer** recommended |
 
 Any recent LLVM release works for everyday compilation — there is no exact
 version to match. When in doubt, install your platform's current LLVM.
+
+Native HTTP and WebSocket programs additionally link OpenSSL, even when they use plain HTTP or `ws://`. On macOS, install it with `brew install openssl@3`; the compiler checks the standard Homebrew library paths. On Debian/Ubuntu, use `sudo apt-get install libssl-dev`; on Fedora/RHEL, `sudo dnf install openssl-devel`; on Arch, `sudo pacman -S --needed openssl`. Windows needs OpenSSL libraries compatible with the MinGW toolchain and discoverable by its linker; the Scoop dependencies listed below do not install them. Programs without HTTP or WebSocket calls do not require OpenSSL.
 
 ## macOS
 
@@ -159,8 +162,17 @@ clang on Windows that must match the MinGW-built runtime archive — set
 OSPREY_CC=/opt/homebrew/opt/llvm/bin/clang osprey app.osp --run
 ```
 
+## Why native builds default to GC
+
+Tracing GC avoids updating reference counts each time a managed value gains or loses an owner: ordinary retain/release calls do no work, and collection reclaims unreachable values later. That is Osprey's default tradeoff over ARC's per-ownership-change bookkeeping. It does not promise lower execution time or memory use for every program.
+
+Use `--memory=arc` when prompt reclamation or avoiding tracing pauses matters. Both modes manage memory automatically without ownership annotations. Measure your application's time and peak memory before choosing. Files and sockets still need their explicit cleanup APIs under either mode.
+
+The current GC supports Apple and glibc-Linux. On Windows, select ARC. GC also stops collecting after another allocator thread appears; use ARC when allocating fibers need continued reclamation. WebAssembly, mobile and Python-library targets currently require explicit `--memory=none` because managed runtime archives are unavailable. Unmanaged allocation retains general allocations; the compiler never selects it silently. See the [memory contract](/spec/0018-memorymanagement/#backend-selection-mem-backends) for details.
+
 ## Troubleshooting
 
+- **`library not found for -lssl` / `cannot find -lssl` or `-lcrypto`** — install the OpenSSL libraries listed above for HTTP/WebSocket programs. On Windows, match the libraries to the MinGW toolchain.
 - **`clang: command not found` / `failed to spawn C compiler`** — LLVM is not
   installed, or its `clang` is not on your `PATH`. Install it (above) or point
   `OSPREY_CC` at a working `clang`.
@@ -176,4 +188,4 @@ OSPREY_CC=/opt/homebrew/opt/llvm/bin/clang osprey app.osp --run
 
 ## No install required
 
-Use the [Playground](/playground/) without installing a local toolchain. It sends Default or ML source to the hosted compiler service and displays the result; compilation and execution happen on the server.
+Use the [Playground](/playground/) without installing a local toolchain. It sends Default, ML or Python-flavor source to the hosted compiler service and displays the result; compilation and execution happen on the server.

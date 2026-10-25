@@ -4,20 +4,20 @@ Call compiled Osprey functions from an existing Python application and call Pyth
 
 The substantial application is [LLM dataset audit](osprey/dataset_audit/README.md): an installed tool that produces clean fine-tuning datasets, checks evaluation leakage and context budgets, and quarantines sensitive or invalid records. Its Python-flavor effect driver calls Python data/tokenizer services, which call native Osprey policy back for every record. It has been run on all 15,011 Dolly records with the actual GPT-2 tokenizer.
 
-Install this local package and select a built compiler:
+Build the compiler/runtime first. Install this local package and select that compiler. This example uses a Linux `.so`; on macOS, use `.dylib` in both commands and Python code:
 
 ```sh
 python3 -m pip install -e ./python
 export OSPREY=/absolute/path/to/Osprey/target/debug/osprey
-python3 examples/python/run.py
+"$OSPREY" examples/python/interop.osp --compile --target=python --memory=none -o interop.so
 ```
 
-The compiler and native runtime must be built first. `osprey.build("file.osp")` compiles a temporary native library and returns an object whose methods call scalar Osprey exports. `osprey.load("library.so")` loads a previously compiled `--target=python` artifact (`.dylib` on macOS). `python3 -m osprey file.osp` runs an entry with the Python callbacks installed. The package needs only Python's standard library; an Osprey compiler and clang are needed when building an artifact.
+The Python-library target requires explicit `--memory=none`. The current `osprey.build` helper omits that flag, so it and `python3 -m osprey` need updating for the GC-default compiler. Until then, compile explicitly as above and use `osprey.load` below. Loading installs the Python callbacks before running the entry. The package needs only Python's standard library; compiling an artifact also needs Osprey and clang.
 
 ```python
 import osprey
 
-library = osprey.build("examples/python/interop.osp")
+library = osprey.load("./interop.so")
 print(library.squareRootText(81.0))
 print(library.mockedSquareRoot())
 ```
@@ -26,6 +26,6 @@ Python exceptions return explicit error data for Osprey to handle. `library.keep
 
 The [Python-flavor example](../examples/python/interop.py) also compiles and calls Python through typed `@extern` signatures. The bridge is shared by Default, ML and the implemented Python frontend subset. The proposed `@python("module", "callable")` marker is not delivered syntax.
 
-Current boundaries: Linux/macOS, scalar native exports, one loading thread, retained GIL, default Osprey allocator and explicit object release. [Spec 0042](../docs/specs/platforms/0042-PythonInterop.md) defines the exact supported protocol and [plan 0032](../docs/plans/0032-python-interop.md) tracks typed direct calls and tensor storage.
+Current boundaries: Linux/macOS, scalar native exports, one loading thread, retained GIL, explicit unmanaged `--memory=none` allocation and explicit object release. [Spec 0042](../docs/specs/platforms/0042-PythonInterop.md) defines the exact supported protocol and [plan 0032](../docs/plans/0032-python-interop.md) tracks typed direct calls and tensor storage.
 
 Run integration tests with `cargo test -p osprey-cli --test python_interop`. They use the compiler Cargo builds and do not require PyTorch, NumPy or a GPU.

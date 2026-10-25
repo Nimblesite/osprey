@@ -36,6 +36,25 @@ class QualificationTests(unittest.TestCase):
         return {'exitCode': 0, 'timedOut': False, 'wallSeconds': 1,
                 'report': {'explored': {'paths': 3, 'completed': 3}, 'findings': [], 'incomplete': []}}
 
+    def test_snapshot_preserves_selected_backend_and_gc_plugin(self):
+        from hunt_sample import snapshot
+        for memory in ('gc', 'arc'):
+            with self.subTest(memory=memory), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                fake_sampler_root(root)
+                runtime = root/f'compiler/bin/libosprey_runtime_klee_{memory}.bc'
+                runtime.write_bytes(memory.encode())
+                (root/'compiler/bin/libosprey_gc_roots.so').write_bytes(b'plugin')
+                options = argparse.Namespace(root=root, out=root/'out', osprey=root/'osprey', memory=memory)
+                previous = os.environ.get('OSPREY_KLEE_RUNTIME')
+                try:
+                    files = snapshot(options)
+                    self.assertEqual((options.osprey.parent/runtime.name).read_bytes(), memory.encode())
+                    self.assertEqual('libosprey_gc_roots.so' in files, memory == 'gc')
+                finally:
+                    if previous is None: os.environ.pop('OSPREY_KLEE_RUNTIME', None)
+                    else: os.environ['OSPREY_KLEE_RUNTIME'] = previous
+
     def test_report_for_another_program_cannot_qualify(self):
         record = self.clean() | {'program': 'requested.osp'}
         record['report']['program'] = 'another.osp'
@@ -203,7 +222,8 @@ class ReviewReportTests(unittest.TestCase):
 
 def fake_sampler_root(root):
     (root/'compiler/bin').mkdir(parents=True)
-    (root/'compiler/bin/libosprey_runtime_klee.bc').write_bytes(b'fake runtime')
+    (root/'compiler/bin/libosprey_runtime_klee_gc.bc').write_bytes(b'fake runtime')
+    (root/'compiler/bin/libosprey_gc_roots.so').write_bytes(b'fake plugin')
     (root/'tests/hunt').mkdir(parents=True)
     (root/'tests/hunt/crash-cases.json').write_text('[]')
     script = root/'osprey'

@@ -91,6 +91,7 @@ fn lookup(name: &str) -> Option<Sig> {
         "httpDelete" => sig("http_delete", &[I64, Str, Str], Ret::Int),
         "httpCloseClient" => sig("http_close_client", &[I64], Ret::Int),
         "httpGetResponse" => sig("http_get_response", &[I64, Str, Str], Ret::ResultInt),
+        "httpPostResponse" => sig("http_post_response", &[I64, Str, Str, Str], Ret::ResultInt),
         "httpResponseStatus" => sig("http_response_status", &[I64], Ret::Int),
         "httpResponseBody" => sig("http_response_body", &[I64], Ret::ResultStr(None)),
         "httpResponseHeader" => sig("http_response_header", &[I64, Str], Ret::ResultStr(None)),

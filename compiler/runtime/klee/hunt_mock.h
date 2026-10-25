@@ -14,13 +14,16 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define OSP_HUNT_FILE_PROTOCOL_NAME "osprey.hunt.files.v2"
+
 enum {
+  OSP_HUNT_FILE_PROTOCOL_VERSION = 2,
   // Largest symbolic stream; `osp_hunt_input_bytes` picks the size in use.
   OSP_HUNT_STREAM_MAX = 4096,
   // Files open at once; `fopen` fails with ENFILE beyond this.
   OSP_HUNT_FILE_SLOTS = 8,
-  // Longest symbolic object name, including the `.len` / `.ok` suffixes.
-  OSP_HUNT_NAME_MAX = 128,
+  // Preserve the original path capacity plus the file-kind prefix.
+  OSP_HUNT_NAME_MAX = 128 + sizeof("file.data:"),
 };
 
 // The libc entry points a program can reach, counted per process.

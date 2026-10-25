@@ -54,7 +54,7 @@ Public publishing is planned around a signed intent naming a forge repository an
 
 ```mermaid
 flowchart LR
-  M["osprey.toml<br/>epochs and floors"] -->|lock| S{{"one CDCL solver"}}
+  M["osprey.toml<br/>epochs and floors"] -->|lock| S["one CDCL solver"]
   R[("folder registry<br/>GET /v1/…")] -->|candidates| S
   S -->|writes| L["osprey.lock<br/>RFC 8785 canonical JSON"]
   L -->|fetch| P["installed trees<br/>verified by SourceDigest"]

@@ -11,10 +11,13 @@ Start with algebraic effects: declare an operation, request it with `perform`, a
 | [Storage browser](macos/README.md) | One SwiftUI app for the Mac and iPhone: Osprey owns every screen of a folder-by-folder storage browser, with hidden files on or off |
 | [Graphics scenes](graphics/README.md) | Osprey runs three real-time scenes; a Swift Metal host draws them on macOS and a Direct3D 12 bridge on Windows |
 | [GPT-2](gpt2/README.md) | The published GPT-2 weights, generation and a training step written once against a static `Tensor` effect and run by two handlers — host lists or the GPU surface, on the CPU or on Metal or OpenCL — with identical output on the CPU, checked against a pure-Python reference |
+| [Python application ports](python/ports/README.md) | Train a micrograd classifier, rank vectors with a FAISS-style index, and evaluate text with ROUGE using Osprey's Python syntax flavor |
 
-`handler E { ... }` creates a callable implementation; `h(work)` installs it while the callback runs. `handle E { ... }` handles the rest of its block. Both forms work in Default (`.osp`) and ML (`.ospml`) syntax. See the [effects contract](../docs/specs/language/0017-AlgebraicEffects.md) and [current limits](../docs/plans/0016-algebraic-effects-and-handlers.md).
+`handler E { ... }` creates a callable implementation; `h(work)` installs it while the callback runs. `handle E { ... }` handles the rest of its block. Default (`.osp`) and ML (`.ospml`) support these forms; the [Python syntax flavor](../website/src/docs/python-flavor.md) uses decorators for effects and handlers. See the [effects contract](../docs/specs/language/0017-AlgebraicEffects.md) and [current limits](../docs/plans/0016-algebraic-effects-and-handlers.md).
 
-## Flavor convention
+## Syntax flavors
+
+A syntax flavor is a way to write Osprey: Default uses braces, ML uses indentation and curried calls, and Python flavor uses familiar Python-style syntax. All three share the compiler, types and effects.
 
 | Selector | Effect |
 | --- | --- |
@@ -22,11 +25,11 @@ Start with algebraic effects: declare an operation, request it with `perform`, a
 | `// osprey: flavor=ml` leading marker | ML flavor |
 | `--flavor ml` CLI flag | ML flavor |
 | `.osp` extension (default) | Default flavor |
+| `.py` extension passed directly to the compiler | Python flavor; examples start with `# osprey: flavor=python` |
+| `# osprey: flavor=python` marker | Python flavor |
+| `--flavor python` CLI flag | Python flavor |
 
-Precedence: **flag > marker > extension > Default**. One flavor per file; a project
-folder may mix flavors across files. Because every file lowers to the same AST, a
-`.osp` module and a `.ospml` module in the same folder compile into one program and
-import each other. The [mobile application](mobile/README.md) uses this composition for its C ABI entry file and shared ML application modules.
+Precedence: **flag > marker > extension > Default**. Without a flag, a marker that conflicts with the extension is an error. Choose one syntax flavor per file and import across flavors in a project. Projects select Python-flavor files explicitly through `python_sources` or a `.py` entry in `osprey.toml`; other `.py` files are ignored. See the [Python-flavor project example](../website/src/docs/python-flavor.md). The [mobile application](mobile/README.md) combines a Default C ABI entry file with shared ML modules.
 
 The differential harness ([`../crates/run_test_corpus.sh`](../crates/run_test_corpus.sh))
 discovers programs additively across both flavors. A `.osp`/`.ospml` twin that
@@ -66,6 +69,8 @@ Each exercises a distinct ML-surface feature and runs today:
 | `matching/` | offside-rule matches, literal arms, and wildcard branches |
 | `effects/` | handler-owned `mut` state and `:=` mutation |
 | `workflows/` | Results, partial application, matching, and pipelines together |
+| `operators/` | operator syntax and precedence |
+| `text_and_pipelines/` | text operations and pipeline composition |
 
 ML `add x y = x + y` is curried: it lowers to Default `fn add(x) = fn(y) => x + y`. For a flat multi-parameter function, ML uses `add (x, y) = x + y`, matching Default `fn add(x, y) = x + y`. The parentheses group arguments; Osprey has no tuples. Paired tests compare the corresponding forms' ASTs and emitted LLVM IR.
 
@@ -94,9 +99,7 @@ breaks CI. Never add one without confirming it is actually rejected.
   Default-flavor spellings (`{ … }` records, the `?` sigil) that the ML lexer
   refuses outright `[FLAVOR-BOUNDARY]`.
 - **Each fixture pairs with `<name>.ospo.expectedoutput`** holding the compiler's
-  real stderr, captured verbatim. The file documents the intended diagnostic.
-  The shell ratchet checks only for a nonzero exit, so diagnostic-focused work
-  must compare stderr with this file explicitly.
+  real stderr, captured verbatim. The Rust test `failscompilation_corpus_matches_its_expected_diagnostics` compares every fixture's diagnostics byte-for-byte. The shell ratchet separately checks for a nonzero exit.
 - **A case the compiler cannot reject yet is parked with `.notimplemented`** (for
   example `infinite_handler_recursion.notimplemented`). The extension keeps it
   out of discovery so it neither passes nor inflates the ratchet; rename it back

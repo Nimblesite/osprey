@@ -1,0 +1,143 @@
+namespace registry_api;
+
+/// Strict HTTP header parsing for hosted requests: RFC token names,
+/// case-insensitive lookup, line/count limits and duplicate rejection for
+/// every security-relevant header. Caller headers are untrusted input and
+/// never establish authentication. Implements [PACKAGE-HOSTED-EDGE].
+module HostedHeaders {
+    /// Either a value or a typed HTTP rejection.
+    export type Parsed<T> = Ok { value: T } | Reject { status: int, code: string }
+
+    /// One parsed header line, name and value exactly as received.
+    export type Header = { name: string, value: string }
+
+    let maxLine = 8192
+    let maxCount = 64
+    let sensitive = [
+        "authorization", "cookie", "host", "origin",
+        "content-length", "content-type", "x-edge-secret", "x-csrf-token"
+    ]
+
+    fn reject(status, code) = Reject { status: status, code: code }
+
+    fn alpha(b) = (b >= 65 && b <= 90) || (b >= 97 && b <= 122)
+    fn digit(b) = b >= 48 && b <= 57
+    fn symbol(b) = listContains([33, 35, 37, 38, 39, 42, 43, 45, 46, 94, 95, 96, 126], b)
+    fn tokenByte(b) = alpha(b) || digit(b) || symbol(b)
+    fn allBytes(s, ok) = fold(range(0, byteLength(s)), true, fn(good, i) => good && ok(byteAt(s, i) ?: 0))
+
+    fn hasSpace(s) = fold(range(0, byteLength(s)), false, fn(found, i) => found || (byteAt(s, i) ?: 0) == 32 || (byteAt(s, i) ?: 0) == 9)
+
+    fn visible(b) = b >= 32 && b < 127
+    fn trimmedEdge(s) = (byteAt(s, 0) ?: 0) == 32 || (byteAt(s, 0) ?: 0) == 9
+        || (byteAt(s, byteLength(s) - 1) ?: 0) == 32 || (byteAt(s, byteLength(s) - 1) ?: 0) == 9
+
+    fn nameOk(name) = if byteLength(name) == 0 { false }
+        else if hasSpace(name) { false }
+        else { allBytes(name, tokenByte) }
+
+    fn valueOk(value) = byteLength(value) > 0 && !trimmedEdge(value) && allBytes(value, visible)
+
+    fn parseLine(line) = match indexOf(line, ":") {
+        Error => reject(400, "req.header-colon")
+        Success { value } => {
+            let colon = value
+            let name = take(line, colon)
+            let text = drop(line, colon + 1)
+            if !nameOk(name) && hasSpace(name) { reject(400, "req.header-whitespace") }
+            else if !nameOk(name) { reject(400, "req.header-name") }
+            else if !valueOk(text) { reject(400, "req.header-value") }
+            else { Ok { value: Header { name: name, value: text } } }
+        }
+    }
+
+    /// The parse result of one line; blank interior lines and oversized lines
+    /// are rejected, never skipped.
+    fn one(headers, line) = match line {
+        "" => reject(400, "req.header-blank")
+        _ => if byteLength(line) > maxLine {
+            reject(431, "req.header-line")
+        } else {
+            match parseLine(line) {
+                Reject { status, code } => reject(status, code)
+                Ok { value } => Ok { value: listAppend(headers, [value]) }
+            }
+        }
+    }
+
+    fn stripCr(line) = if endsWith(line, "\r") { take(line, byteLength(line) - 1) } else { line }
+    fn withoutFinal(lines) = mapList(toList(range(0, length(lines) - 1)), fn(i) => listGet(lines, i) ?: "")
+    fn dropFinal(lines) = if (listGet(lines, length(lines) - 1) ?: "x") == "" { withoutFinal(lines) } else { lines }
+
+    fn rawLines(block) = if block == "" { [] } else { split(block, "\n") ?: [] }
+
+    fn collect(lines) = foldList(lines, Ok { value: [] }, fn(acc, line) => match acc {
+        Ok { value } => one(value, line)
+        Reject => acc
+    })
+
+    fn countFolded(headers, folded) = foldList(headers, 0, fn(count, header) =>
+        if toLowerCase(header.name) == folded { count + 1 } else { count })
+
+    fn dupCheck(headers) = foldList(sensitive, Ok { value: headers }, fn(acc, folded) => match acc {
+        Ok { value } => if countFolded(value, folded) > 1 { reject(400, "req.duplicate-header") } else { Ok { value: value } }
+        Reject => acc
+    })
+
+    /// The strictly parsed headers of a raw CRLF/LF header block, or the first
+    /// rejection: malformed grammar is 400, limits are 431 and a duplicated
+    /// sensitive header is 400.
+    export fn parse(block) = {
+        let lines = dropFinal(mapList(rawLines(block), stripCr))
+        if length(lines) > maxCount { reject(431, "req.header-count") }
+        else {
+            match collect(lines) {
+                Ok { value } => dupCheck(value)
+                Reject { status, code } => reject(status, code)
+            }
+        }
+    }
+
+    /// The header list of a parse result; empty for any rejection.
+    export fn headers(parsed) = match parsed {
+        Ok { value } => value
+        _ => []
+    }
+
+    /// True when the parse succeeded.
+    export fn isOk(parsed) = match parsed {
+        Ok => true
+        _ => false
+    }
+
+    /// The parsed value, or `fallback` for any rejection.
+    export fn withDefault(parsed, fallback) = match parsed {
+        Ok { value } => value
+        _ => fallback
+    }
+
+    /// The rejection status, or 0 when the parse succeeded.
+    export fn statusOf(parsed) = match parsed {
+        Reject { status, code } => status
+        _ => 0
+    }
+
+    /// The rejection code, or "" when the parse succeeded.
+    export fn codeOf(parsed) = match parsed {
+        Reject { status, code } => code
+        _ => ""
+    }
+
+    /// The first value whose name equals `name` case-insensitively, or
+    /// `Error { message: "absent" }`.
+    export fn find(headers, name) = foldList(headers, Error { message: "absent" }, fn(found, header) => match found {
+        Success => found
+        Error => if toLowerCase(header.name) == toLowerCase(name) { Success { value: header.value } } else { found }
+    })
+
+    /// True when a header with that name is present exactly once-verified input.
+    export fn has(headers, name) = match find(headers, name) {
+        Success => true
+        Error => false
+    }
+}

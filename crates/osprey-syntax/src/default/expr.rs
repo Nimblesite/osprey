@@ -504,9 +504,6 @@ impl Lowerer<'_> {
             "float" => Expr::Float(self.text(inner).parse().unwrap_or(0.0)),
             "boolean" => Expr::Bool(self.text(inner) == "true"),
             "string" => {
-                // Equal-length `string`/`interpolated_string` token matches let the
-                // plain `string` rule win, so a `"...${e}..."` can arrive tagged as
-                // `string`. Detect the `${` marker here and interpolate either way.
                 let raw = self.text(inner);
                 if raw.contains("${") {
                     Expr::InterpolatedStr(lower_interpolation(
