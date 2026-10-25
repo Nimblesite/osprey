@@ -171,11 +171,17 @@ class CheckerTests(unittest.TestCase):
     def fixture(self, packages, thresholds=None):
         return make_fixture(tempfile.mkdtemp(dir=self.base), packages, thresholds)
 
-    def simple_fixture(self, name="demo", lines=4, expected=GOLDEN):
-        return self.fixture({name: {"sources": {"src/lib.py": py_source(lines)}, "expected": expected}})
+    def simple_fixture(self, name="demo", lines=4, expected=GOLDEN, source=None, relative="src/lib.py"):
+        return self.fixture({name: {"sources": {relative: py_source(lines) if source is None else source}, "expected": expected}})
 
     def assert_exit(self, result, code, context=""):
         self.assertEqual(result.returncode, code, context + result.stdout + result.stderr)
+
+    def assert_invalid(self, fixture, problem):
+        result = fixture.check()
+        self.assert_exit(result, 1)
+        self.assertIn(problem, result.stdout)
+        self.assertIsNone(fixture.result("demo")["percentage"])
 
     def test_check_only_requires_a_successfully_verified_collection(self):
         fixture = self.simple_fixture()
@@ -233,6 +239,8 @@ class CheckerTests(unittest.TestCase):
         self.assertEqual(fixture.result("edge")["percentage"], 90.0)
         self.assertFalse(fixture.result("below")["pass"])
         self.assertEqual(fixture.result("below")["percentage"], 80.0)
+        self.assertEqual(fixture.result("edge")["files"][0]["uncovered_lines"], [10])
+        self.assertEqual(fixture.result("below")["files"][0]["uncovered_lines"], [9, 10])
 
     def test_perfect_test_and_helper_lines_cannot_mask_uncovered_source(self):
         fixture = self.simple_fixture("mask", 10)
@@ -326,7 +334,7 @@ class CheckerTests(unittest.TestCase):
 
     def test_missing_function_rows_cannot_shrink_the_denominator(self):
         source = "def covered(value):\n    return value\n\ndef omitted(value):\n    return value\n"
-        fixture = self.fixture({"demo": {"sources": {"src/lib.py": source}}})
+        fixture = self.simple_fixture(source=source)
         fixture.write_report("demo", own_report("demo", 2, 2))
         result = fixture.check()
         self.assertEqual(result.returncode, 1, "Missing function rows must fail: " + result.stdout)
@@ -371,10 +379,7 @@ class CheckerTests(unittest.TestCase):
             with self.subTest(flavor=suffix):
                 fixture = self.fixture({"demo": {"sources": {f"src/lib.{suffix}": source}}})
                 fixture.write_report("demo", own_report("demo", 1, 1, f"src/lib.{suffix}"))
-                result = fixture.check()
-                self.assert_exit(result, 1, "Unmeasured match arms cannot pass: ")
-                self.assertIn("missing match arm counter", result.stdout)
-                self.assertIsNone(fixture.result("demo")["percentage"])
+                self.assert_invalid(fixture, "missing match arm counter")
 
     def test_repeated_json_counters_cannot_replace_uncovered_lines(self):
         fixture = self.simple_fixture()
@@ -382,13 +387,11 @@ class CheckerTests(unittest.TestCase):
         report.parent.mkdir(parents=True)
         report.write_text('{"files":{"packages/demo/src/lib.py":{"lines":{"1":1,"2":1,"3":1,"4":0,"4":1}}}}')
         seal_evidence(fixture.root, "demo", report, source_inputs(fixture.root, "demo"))
-        result = fixture.check()
-        self.assert_exit(result, 1, "A duplicate counter cannot overwrite the uncovered row: ")
-        self.assertIn("duplicate JSON key", result.stdout)
+        self.assert_invalid(fixture, "duplicate JSON key")
 
     def test_documentation_match_examples_are_not_executable_arms(self):
         source = '(**\n    true => ignored\n    (* nested " quotation *)\n*)\nchoose x = x\n'
-        fixture = self.fixture({"demo": {"sources": {"src/lib.ospml": source}}})
+        fixture = self.simple_fixture(source=source, relative="src/lib.ospml")
         fixture.write_report("demo", {"files": {"packages/demo/src/lib.ospml": {"lines": {"5": 1}}}})
         self.assert_exit(fixture.check(), 0)
 

@@ -965,7 +965,7 @@ mod tests {
                 else {
                     panic!("arm 0 lost its source anchor: {:?}", arms[0].body);
                 };
-                assert!(statements.is_empty());
+                assert_eq!(statements.as_slice(), []);
                 assert_eq!(*position, Some(osprey_ast::Position { line: 2, column: 4 }));
                 assert!(
                     matches!(body.as_ref(), Expr::Call { .. }),

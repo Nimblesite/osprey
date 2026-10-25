@@ -196,13 +196,14 @@ mod tests {
             doc: None,
         };
         let mut wrapped = direct.clone();
-        if let Stmt::Let { value, .. } = &mut wrapped.statements[0] {
+        if let Some(Stmt::Let { value, .. }) = wrapped.statements.first_mut() {
             *value = Expr::Block {
                 statements: Vec::new(),
                 value: Some(Box::new(value.clone())),
                 position: Some(Position { line: 4, column: 2 }),
             };
         }
+        assert_ne!(direct, wrapped);
         assert_eq!(without_positions(&direct), without_positions(&wrapped));
     }
 
@@ -213,13 +214,14 @@ mod tests {
             doc: None,
         };
         let mut scoped = direct.clone();
-        if let Stmt::Let { value, .. } = &mut scoped.statements[0] {
+        if let Some(Stmt::Let { value, .. }) = scoped.statements.first_mut() {
             *value = Expr::Block {
                 statements: vec![let_at("prefix", None)],
                 value: Some(Box::new(value.clone())),
                 position: None,
             };
         }
+        assert_ne!(direct, scoped);
         assert_ne!(without_positions(&direct), without_positions(&scoped));
     }
 }

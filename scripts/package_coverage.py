@@ -227,7 +227,8 @@ def validate_own_file(root: Path, name: str, key: str, rel: tuple[str, ...], bod
     if problems:
         return None, problems
     covered = sum(1 for count in hits.values() if count > 0)
-    return {"path": key, "covered": covered, "total": len(hits), "percentage": percentage(covered, len(hits))}, []
+    entry = {"path": key, "covered": covered, "total": len(hits), "percentage": percentage(covered, len(hits))}
+    return {**entry, "uncovered_lines": sorted(line for line, count in hits.items() if count == 0)}, []
 
 
 def own_entries(files: dict, root: Path, name: str) -> tuple[list[dict], list[str], set[str]]:
@@ -415,7 +416,7 @@ def print_result(result: dict) -> None:
 
 def write_summary(reports: Path, results: list[dict], mode: str) -> str | None:
     failed = sum(0 if result["pass"] else 1 for result in results)
-    payload = {"mode": mode, "packages": results, "passed": len(results) - failed, "failed": failed}
+    payload = {"mode": mode, "metric": "executed statement lines", "packages": results, "passed": len(results) - failed, "failed": failed}
     try:
         reports.mkdir(parents=True, exist_ok=True)
         (reports / SUMMARY_NAME).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")

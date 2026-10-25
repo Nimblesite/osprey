@@ -317,7 +317,7 @@ fn clause_set_renames_divergent_columns_in_the_arm_body() {
         else {
             panic!("clause arm lost its source position: {:?}", arm.body);
         };
-        assert!(statements.is_empty());
+        assert_eq!(statements.as_slice(), []);
         matches!(body.as_ref(), Expr::Block { statements, .. }
             if statements.iter().any(|s| matches!(s, Stmt::Let { name, .. } if name == "other")))
     });
