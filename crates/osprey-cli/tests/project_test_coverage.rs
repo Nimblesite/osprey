@@ -345,12 +345,45 @@ fn handler_project(name: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
 
 fn assert_handler_rows(report: &serde_json::Value) {
     let lines = file_lines(report, "reader.py");
-    for row in [(8, 1), (9, 1), (11, 0)] {
+    for row in [(8, 1), (9, 1), (10, 1), (11, 0), (12, 0)] {
         assert!(
             lines.contains(&row),
             "missing or incorrect handler coverage {row:?}: {lines:?}"
         );
     }
+}
+
+fn branch_project() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let root = handler_project("python_branch_lines")?;
+    write(&root.join("framework/src/reader.py"), "# osprey: flavor=python\n# osprey: namespace=fixture\n# osprey: module=Reader\n__all__ = [\"choose\", \"unused\"]\ndef choose(flag):\n    if flag:\n        return 1\n    else:\n        return 2\ndef unused():\n    return 99\n");
+    write(&root.join("tests/main.py"), "# osprey: flavor=python\nfrom fixture import Reader\ndef main():\n    print(Reader.choose(True))\n");
+    Ok(root)
+}
+
+fn assert_branch_rows(root: &Path, memory: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let output = cached_run(root, memory)?;
+    assert!(output.status.success(), "{output:?}");
+    let report = serde_json::from_slice(&std::fs::read(root.join("cov.json"))?)?;
+    let lines = file_lines(&report, "reader.py");
+    for row in [(5, 1), (6, 1), (7, 1), (9, 0), (10, 0), (11, 0)] {
+        assert!(lines.contains(&row), "missing branch/return {row:?}: {lines:?}");
+    }
+    assert!(file_lines(&report, "main.py").contains(&(3, 1)));
+    if memory == "arc" {
+        assert_arc_exit(&output.stderr);
+    }
+    Ok(())
+}
+
+#[test]
+fn python_coverage_counts_selected_returns_and_retains_untaken_branches(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = branch_project()?;
+    for memory in ["default", "gc", "arc"] {
+        assert_branch_rows(&root, memory)?;
+    }
+    std::fs::remove_dir_all(root)?;
+    Ok(())
 }
 
 fn assert_handler_coverage(root: &Path, memory: &str) -> Result<(), Box<dyn std::error::Error>> {

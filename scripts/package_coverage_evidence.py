@@ -30,19 +30,44 @@ def python_coverable(text):
         return True
 
 
+def concrete_function(node):
+    return isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and not (
+        len(node.body) == 1 and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, ast.Constant) and node.body[0].value.value is Ellipsis)
+
+
+def executable_statement(node):
+    if isinstance(node, ast.Expr):
+        return not (isinstance(node.value, ast.Constant)
+                    and (isinstance(node.value.value, str) or node.value.value is Ellipsis))
+    if isinstance(node, ast.AnnAssign):
+        return node.value is not None
+    if isinstance(node, ast.Assign):
+        return not all(isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets)
+    return isinstance(node, (ast.Return, ast.AugAssign, ast.If, ast.For, ast.While,
+                             ast.With, ast.Match, ast.Assert, ast.Raise, ast.Break, ast.Continue))
+
+
 def definition_problems(path, hits):
     if path.suffix != ".py":
-        return []
+        return match_arm_problems(path, hits)
     try:
-        nodes = ast.walk(ast.parse(path.read_text()))
-        definitions = {node.lineno for node in nodes if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-                       and not (len(node.body) == 1 and isinstance(node.body[0], ast.Expr)
-                                and isinstance(node.body[0].value, ast.Constant)
-                                and node.body[0].value.value is Ellipsis)}
-        return [f"missing function definition counter: {path.name}:{line}"
-                for line in sorted(definitions - set(hits))]
+        nodes = list(ast.walk(ast.parse(path.read_text())))
+        kinds = {node.lineno: "executable statement" for node in nodes if executable_statement(node)}
+        kinds.update({node.lineno: "function definition" for node in nodes if concrete_function(node)})
+        return [f"missing {kinds[line]} counter: {path.name}:{line}"
+                for line in sorted(set(kinds) - set(hits))]
     except (SyntaxError, OSError) as error:
-        return [f"cannot verify function counters: {path}: {error}"]
+        return [f"cannot verify source counters: {path}: {error}"]
+
+
+def match_arm_problems(path, hits):
+    # Cross-check ordinary arm entries independently of compiler-emitted rows.
+    # Bindings, type arrows and lambdas are not match arm declarations.
+    lines = {index for index, line in enumerate(path.read_text().splitlines(), 1)
+             if re.match(r"^\s+(?![/#])[^=\\:\n]+=>", line)}
+    return [f"missing match arm counter: {path.name}:{line}"
+            for line in sorted(lines - set(hits))]
 
 
 def oracle_problems(text):

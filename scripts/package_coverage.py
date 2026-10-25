@@ -287,8 +287,8 @@ def gate_package(root: Path, reports: Path, name: str, configured: dict) -> dict
         result["files"] = entries
         result["covered"] = sum(entry["covered"] for entry in entries)
         result["total"] = sum(entry["total"] for entry in entries)
-        result["percentage"] = percentage(result["covered"], result["total"])
         problems += evidence_problems(root, name, reports / f"{name}{REPORT_SUFFIX}")
+        result["percentage"] = None if problems else percentage(result["covered"], result["total"])
     if not problems:
         problems = threshold_problems(result)
     result["missing_evidence"] = problems

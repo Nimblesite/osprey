@@ -334,12 +334,15 @@ class CheckerTests(unittest.TestCase):
 
     def test_missing_return_and_branch_rows_cannot_report_full_coverage(self):
         source = "def choose(flag):\n    if flag:\n        return 1\n    else:\n        return 2\n"
-        fixture = self.fixture({"demo": {"sources": {"src/lib.py": source}}})
-        fixture.write_report("demo", own_report("demo", 1, 1))
+        fixture = self.fixture({"demo": {"sources": {"src/lib.py": source, "src/good.py": py_source(4)}}})
+        report = own_report("demo", 1, 1)
+        report["files"].update(own_report("demo", 4, 4, "src/good.py")["files"])
+        fixture.write_report("demo", report)
         result = fixture.check()
         self.assert_exit(result, 1, "Only the function entry was measured: ")
         for line in (2, 3, 5):
             self.assertIn(f"missing executable statement counter: lib.py:{line}", result.stdout)
+        self.assertIsNone(fixture.result("demo")["percentage"], "Incomplete evidence has no measured percentage")
 
     def test_abstract_effect_declarations_have_no_body_to_cover(self):
         source = "@effect\nclass Buffer:\n    def length(buffer) -> int: ...\n\n" + py_source(4)
@@ -361,6 +364,17 @@ class CheckerTests(unittest.TestCase):
         result = fixture.check()
         self.assert_exit(result, 1)
         self.assertIn("missing source evidence: src/base.ospml", result.stdout)
+
+    def test_ml_and_default_match_arms_cannot_disappear_from_reports(self):
+        for suffix, source in (("ospml", "choose flag =\n    match flag\n        true => 1\n        false => 2\n"),
+                               ("osp", "fn choose(flag) = match flag {\n    true => 1\n    false => 2\n}\n")):
+            with self.subTest(flavor=suffix):
+                fixture = self.fixture({"demo": {"sources": {f"src/lib.{suffix}": source}}})
+                fixture.write_report("demo", own_report("demo", 1, 1, f"src/lib.{suffix}"))
+                result = fixture.check()
+                self.assert_exit(result, 1, "Unmeasured match arms cannot pass: ")
+                self.assertIn("missing match arm counter", result.stdout)
+                self.assertIsNone(fixture.result("demo")["percentage"])
 
     def test_failed_collection_invalidates_a_stale_report(self):
         fixture = self.simple_fixture()

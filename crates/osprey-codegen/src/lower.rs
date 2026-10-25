@@ -219,7 +219,8 @@ fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> 
         let rest = top_level.get(i + 1..).unwrap_or(&[]);
         crate::arc::release_dead_after(&mut cg, rest, None);
     }
-    if let Some((body, _)) = user_main {
+    if let Some((body, position)) = user_main {
+        cg.cov_hit(position);
         cg.cell_vars = crate::effects::captured_mut_vars(body);
         let _ = cg.within_source_function("main", |cg| crate::expr::gen_body(cg, body))?;
     }
