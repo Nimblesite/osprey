@@ -11,7 +11,7 @@ The audit used source and retained execution evidence. It did not run full CI or
 | Original finding | Status | Evidence and limit |
 |---|---|---|
 | 1. Executable interpolation bypasses capability scanning | Fixed | The scanner maintains nested string/interpolation frames. Surface tests passed 7/7; publication-to-lock tests passed 11/11, including missing and granted interpolation capabilities. |
-| 2. Seven discovered package suites lack required artifacts | Current Jinja verification outstanding | All seven have README, oracle constants and goldens. Retained three-backend proof covers the earlier suites; the newly expanded Jinja suite still needs matching execution evidence. See below. |
+| 2. Seven discovered package suites lack required artifacts | Jinja regression open | All seven have README, oracle constants and goldens. The expanded Jinja suite exposes silently ignored range steps, now quarantined; it cannot satisfy its desired 101-pass golden. See below. |
 | 3. Python installation ignores pinned generated inputs | Fixed | Install and verify share checks of the actual generated project and lock before starting uv. Six retained tampered/clean cases pass; the subsequently regrouped suite was source-reviewed rather than re-executed in this audit. |
 | 4. Bare package builds resolve paths under the derived manifest | Fixed | Derived paths are rebased; canonical compiler entry selection is covered. Eight actual Default/Python invocation forms passed. The registry end-to-end suite remains outside ordinary CI, as the plan states. |
 | 5. GPU binary functions mishandle exceptional inputs | Fixed | Special-value branches are corrected; binary Cartesian-product assertions and the C-extracted shader suite pass. This is sampled library evidence, not universal hardware proof. |
@@ -27,11 +27,13 @@ The latest failure is retained in `target/hunt-profiler-2026-10-25/current-red.l
 
 Close this item only after the existing deterministic and default-budget gates pass with complete exploration at their unchanged settings. Pi suggested reducing fixture input widths or separating the budget gate; those recommendations were rejected because they would narrow the existing gate. Do not increase the timeout, reduce the symbolic input width, skip the case or accept incomplete exploration as success. Plan 0034 must keep this completion proof open while the regression is red.
 
-## Outstanding: verify the expanded Jinja suite
+## Outstanding: quarantined Jinja range-step regression
 
 At audit time, `packages/jinja2/tests/expected_output.txt` ended with `101 passed, 0 failed`, while the retained Default/GC/ARC transcripts under `target/logs/ci-prep-session/jinja-shared-chain-*`, `jinja-parser-shared-*` and `jinja-value-layout-*` ended with 72 passes. Those earlier runs establish the earlier suite, including zero live ARC objects; they cannot prove the added assertions.
 
-The worker expanding Jinja coverage owns the remaining verification. Run the complete current suite under Default, GC and ARC, require byte-for-byte equality with the committed golden and a single zero-live-object ARC sentinel, and retain the exact source/test/oracle/golden inputs associated with those runs. Any newly quarantined defect must remain explicit. A larger handwritten success transcript or a coverage percentage alone does not prove the suite passes.
+After the audit, the worker expanding Jinja coverage confirmed a real failure: the CPython case `range(1, 6, 2)` produced a 100-pass, one-failure result because the port ignored the step. Commit `6041ac74` quarantines that silent failure in `packages/jinja2/src/expr.py` rather than returning incorrect values. The retained `target/logs/ci-prep-session/jinja-range-quarantine.stdout` contains `Jinja range step is not implemented; refusing incorrect output`; the desired 101-pass golden and regression remain. This is a confirmed implementation gap, not merely absent proof.
+
+Keep the quarantine and failing oracle case explicit. Before closure, the complete current suite must pass under Default, GC and ARC, with byte-for-byte equality to the committed golden and a single zero-live-object ARC sentinel. Retain the exact source/test/oracle/golden inputs associated with those runs. A larger handwritten success transcript or a coverage percentage alone does not prove the suite passes.
 
 ## Accepted proof and limits
 
