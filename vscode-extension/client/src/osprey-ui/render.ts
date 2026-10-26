@@ -67,8 +67,8 @@ function valueAttrs(kind: "string" | "bool" | "number" | "null", value: unknown)
   return ` data-value-kind="${kind}" data-value="${escapeHtml(String(value ?? ""))}"`;
 }
 
-function control(ctx: Context, node: Record<string, unknown>, kind: "string" | "bool" | "number" | "null", value: unknown, focus = true): string {
-  return eventAttrs(ctx, node) + valueAttrs(kind, value) + (focus ? focusAttr(ctx, node) : "");
+function control(ctx: Context, node: Record<string, unknown>, kind: "string" | "bool" | "number" | "null", value: unknown): string {
+  return eventAttrs(ctx, node) + valueAttrs(kind, value) + focusAttr(ctx, node);
 }
 
 function child(value: unknown, ctx: Context): string {

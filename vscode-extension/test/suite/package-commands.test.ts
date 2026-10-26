@@ -184,6 +184,79 @@ suite("package remove command", () => {
   });
 });
 
+suite("package command refusal paths", () => {
+  test("a failed mutation without details reports that the reason is missing", async () => {
+    const deps = fakeDeps({ listing, frontend: [{ status: 1, lines: [] }] });
+    deps.ui.picks = [{ label: "@demo/pyadd", key: "@demo/pyadd", detail: "Unverified" }];
+    await makeAddHandler(deps)();
+    assert.deepStrictEqual(deps.ui.messages, ["Add @demo/pyadd? Unverified", "Add @demo/pyadd failed: no reason given"]);
+  });
+
+  test("a multi-root selection mutates only the chosen project", async () => {
+    const deps = fakeDeps({ projects: [root, spaced], listing, frontend: [okAdd("@demo/pyadd")] });
+    deps.ui.picks = [{ label: "my app", root: spaced }, { label: "@demo/pyadd", key: "@demo/pyadd", detail: "Unverified" }];
+    const pick = deps.ui.showQuickPick;
+    let choices = 0;
+    deps.ui.showQuickPick = async (items) => {
+      if (choices++ === 0) assert.deepStrictEqual(items, [
+        { label: path.basename(root), root }, { label: path.basename(spaced), root: spaced },
+      ]);
+      return pick(items);
+    };
+    await makeAddHandler(deps)();
+    assert.strictEqual(choices, 2);
+    assert.deepStrictEqual(deps.frontend.calls, [{
+      command: "--json add @demo/pyadd --registry http://127.0.0.1:8787 --project .", cwd: spaced,
+    }]);
+  });
+
+  test("dismissing the project chooser never reads a registry or mutates", async () => {
+    const deps = fakeDeps({ projects: [root, spaced], listing });
+    deps.ui.picks = [undefined];
+    let fetched = false;
+    deps.fetchListing = async () => { fetched = true; return listing; };
+    await makeAddHandler(deps)();
+    assert.strictEqual(fetched, false);
+    assert.deepStrictEqual(deps.frontend.calls, []);
+    assert.deepStrictEqual(deps.ui.messages, []);
+  });
+
+  test("a registry transport failure is displayed and never launches the client", async () => {
+    const deps = fakeDeps({ listing });
+    deps.fetchListing = async () => { throw new Error("connection refused"); };
+    await makeAddHandler(deps)();
+    assert.deepStrictEqual(deps.ui.messages, ["Could not read the registry listing: connection refused"]);
+    assert.deepStrictEqual(deps.frontend.calls, []);
+  });
+
+  test("failed and empty direct-dependency reports cannot remove anything", async () => {
+    for (const [status, lines, expected] of [
+      [1, ["tree.invalid"], "Cannot read dependencies: tree.invalid"],
+      [0, [], "osprey.toml declares no direct dependencies."],
+    ] as const) {
+      const deps = fakeDeps({ manifest });
+      const calls: string[] = [];
+      deps.frontend.run = async (command) => { calls.push(command); return { status, lines: [...lines] }; };
+      await makeRemoveHandler(deps)();
+      assert.deepStrictEqual(deps.ui.messages, [expected]);
+      assert.deepStrictEqual(calls, ["--json tree --direct --project ."]);
+    }
+  });
+
+  test("declining removal leaves the parsed dependency installed", async () => {
+    const deps = fakeDeps({ manifest });
+    deps.ui.picks = [{ label: "@other/util" }];
+    deps.ui.showWarningMessage = async (message, title) => {
+      assert.strictEqual(title, "Remove Package");
+      deps.ui.messages.push(message);
+      return undefined;
+    };
+    await makeRemoveHandler(deps)();
+    assert.deepStrictEqual(deps.frontend.calls.map((call) => call.command), ["--json tree --direct --project ."]);
+    assert.deepStrictEqual(deps.ui.messages, ["Remove @other/util from osprey.toml and relock?"]);
+  });
+});
+
 suite("serialized per-project mutation", () => {
   test("overlapping operations on one project run one after the other", async () => {
     const order: string[] = [];

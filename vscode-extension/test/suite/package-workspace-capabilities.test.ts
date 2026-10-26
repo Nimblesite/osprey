@@ -183,6 +183,21 @@ suite("package workspace capabilities", () => {
     }
   });
 
+  test("queued package work rejects invalidated arguments without starting a process", async () => {
+    await withRoot(async (root) => {
+      const marker = path.join(root, "started");
+      const script = path.join(root, "marker.cjs");
+      fs.writeFileSync(script, `require("fs").writeFileSync(${JSON.stringify(marker)}, "started");`);
+      const execute = createRequestExecutor(hostFor(root));
+      const first = execute(processFields(root, { argv: ["-e", ""] }));
+      const request = processRequest(root, script);
+      const queued = execute(request);
+      Object.assign(request, { arguments: null });
+      await Promise.all([first, assert.rejects(queued, /process.input is missing its arguments/)]);
+      assert.strictEqual(fs.existsSync(marker), false);
+    });
+  });
+
   test("a dirty manifest or lock blocks the process before it starts", async () => {
     const root = temporary();
     try {
