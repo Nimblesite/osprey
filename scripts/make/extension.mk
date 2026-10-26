@@ -47,6 +47,7 @@ _vsix_bundle: target/osprey-pkg target/package-workspace.wasm
 
 # Refuse missing or stale build artifacts before running the full editor suite.
 # Test jobs have no WASI toolchain and must not compile a second package client.
+.PHONY: _vsix_verify
 _vsix_verify:
 	@test -n "$(filter $(RTB)/%,$(NATIVE_RUNTIME_ARCHIVES))"
 	@set -e; for INPUT in "$(BIN):osprey" "target/osprey-pkg:osprey-pkg" "target/package-workspace.wasm:package-workspace.wasm" \

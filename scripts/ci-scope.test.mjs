@@ -149,6 +149,11 @@ test('staged bundle verification fails closed without recompiling a payload', ()
   })
   assert.notEqual(invalid.status, 0, 'matching invalid WASM accepted')
   assert.match(invalid.stderr, /Invalid package workspace WASM/)
+  const shadowed = stagedBundleFixture((root, platform) => {
+    writeFileSync(join(root, '_vsix_verify'), 'unrelated file')
+    rmSync(join(root, platform, 'osprey-pkg'))
+  })
+  assert.notEqual(shadowed.status, 0, 'a same-named file must not bypass bundle verification')
 })
 
 test('malformed detection input fails the gate instead of skipping required jobs', () => {
