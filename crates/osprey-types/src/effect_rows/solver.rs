@@ -71,7 +71,9 @@ impl ReturnHistory {
         let returns = self.0.entry(id).or_default();
         returns.joined |= before != Some(&computed) && returns.seen.contains(&computed);
         if !returns.joined {
-            returns.seen.push(computed.clone());
+            if returns.seen.last() != Some(&computed) {
+                returns.seen.push(computed.clone());
+            }
             return computed;
         }
         let mut joined = before.cloned().unwrap_or_default();
@@ -232,5 +234,66 @@ pub(super) fn clear_value_verdicts(value: &mut Value) {
     }
     for nested in value.container_children_mut() {
         clear_value_verdicts(nested);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ReturnHistory, Value};
+
+    const FUNCTION: usize = 0;
+    const STABLE_SWEEPS: usize = 512;
+
+    #[test]
+    fn stable_return_sweeps_do_not_retain_duplicate_provenance() {
+        let value = Value::channel(7);
+        let mut history = ReturnHistory::default();
+        let mut before = None;
+        for _ in 0..STABLE_SWEEPS {
+            let returned = history.settle(FUNCTION, before.as_ref(), value.clone());
+            assert_eq!(returned, value);
+            before = Some(returned);
+        }
+        let retained = history
+            .0
+            .values()
+            .map(|returns| returns.seen.len())
+            .sum::<usize>();
+        assert_eq!(
+            retained, 1,
+            "stable sweeps must retain one provenance value"
+        );
+    }
+
+    #[test]
+    fn seeded_stable_return_still_detects_a_later_cycle() {
+        let first = Value::channel(7);
+        let second = Value::channel(9);
+        let mut history = ReturnHistory::default();
+        assert_eq!(history.settle(FUNCTION, Some(&first), first.clone()), first);
+        assert_eq!(
+            history.settle(FUNCTION, Some(&first), second.clone()),
+            second
+        );
+        let returned = history.settle(FUNCTION, Some(&second), first.clone());
+        let mut expected = first;
+        expected.union(second);
+        assert_eq!(returned, expected);
+    }
+
+    #[test]
+    fn non_last_revisits_keep_joining_later_provenance() {
+        let [first, second, third] = [7, 9, 11].map(Value::channel);
+        let mut history = ReturnHistory::default();
+        let mut before = None;
+        for value in [&first, &first, &second, &second, &third, &first] {
+            before = Some(history.settle(FUNCTION, before.as_ref(), value.clone()));
+        }
+        let mut expected = first;
+        expected.union(third);
+        assert_eq!(before, Some(expected.clone()));
+        let joined = history.settle(FUNCTION, before.as_ref(), second.clone());
+        expected.union(second);
+        assert_eq!(joined, expected);
     }
 }

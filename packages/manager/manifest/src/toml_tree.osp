@@ -7,17 +7,14 @@ import registry::TomlValues
 /// `[a.b]`, `[[a]]` and `a.b = 1` into nested tables. Fails are located reason
 /// codes produced through `Toml::failSpan`. Implements [PACKAGE-MANIFEST].
 module TomlTree {
-    /// Where the next statement lands: a key path, plus an array index once a
-    /// `[[header]]` has opened the most recent element.
-    export type Focus = { keys: List<string>, index: int }
-    /// The document under construction: its root and the current focus.
-    export type Doc = { root: Toml::Value, focus: Focus }
-    /// The result of defining an array-of-tables header: the root and the
-    /// index of the element the header appended.
+    type PathStep = Key { name: string } | Item { index: int }
+    type Parent = { root: Toml::Value, path: List<PathStep> }
+    /// Header focus includes array indices, keeping nested tables inside their owning element.
+    export type Doc = { root: Toml::Value, focus: List<PathStep>, arrays: List<List<PathStep>> }
+    /// The result of appending an array-of-tables element.
     export type ArrDef = { root: Toml::Value, index: int }
-
-    /// The sentinel index meaning "no array element is in focus".
-    export let noIndex = -1
+    /// A document with no headers or array-of-tables declarations.
+    export let emptyDoc = Doc { root: Toml::emptyTable, focus: [], arrays: [] }
 
     // -- tree navigation ----------------------------------------------------
 
@@ -44,46 +41,32 @@ module TomlTree {
 
     fn replaceAt(items, index, item) = range(0, length(items)) |> map(fn(i) => if i == index { item } else { listGet(items, i) ?: item }) |> toList
 
-    fn init(keys) = range(0, length(keys) - 1) |> map(fn(i) => listGet(keys, i) ?: "") |> toList
-    fn lastKey(keys) = listGet(keys, length(keys) - 1) ?: ""
-
-    fn tableAt(root, keys) = foldList(keys, root, fn(acc, key) => childOfKey(acc, key))
-
-    fn arrItemAt(root, keys, index) = {
-        let parent = tableAt(root, init(keys))
-        match childOfKey(parent, lastKey(keys)) {
-            Toml::Arr { items } => listGet(items, index) ?: Toml::emptyTable
-            _ => Toml::emptyTable
-        }
+    fn itemAt(v, index) = match v {
+        Toml::Arr { items } => listGet(items, index) ?: Toml::emptyTable
+        _ => Toml::emptyTable
     }
 
-    // Self-recursive: codegen needs the return type spelled out.
-    fn setTableAt(root, keys, table) -> Toml::Value = match isEmpty(keys) {
+    fn stepAt(v, step) = match step {
+        Key { name } => childOfKey(v, name)
+        Item { index } => itemAt(v, index)
+    }
+
+    fn tableAt(root, path) = foldList(path, root, stepAt)
+    fn dropPath(path) = range(1, length(path)) |> map(fn(i) => listGet(path, i) ?: (Key { name: "" })) |> toList
+
+    fn setTableAt(root, path, table) = match isEmpty(path) {
         true => table
         false => {
-            let key = listGet(keys, 0) ?: ""
-            setChildKey(root, key, Toml::zeroSpan, setTableAt(childOfKey(root, key), range(1, length(keys)) |> map(fn(i) => listGet(keys, i) ?: "") |> toList, table))
+            let step = listGet(path, 0) ?: (Key { name: "" })
+            let updated = setTableAt(stepAt(root, step), dropPath(path), table)
+            match step {
+                Key { name } => setChildKey(root, name, Toml::zeroSpan, updated)
+                Item { index } => match root {
+                    Toml::Arr { items } => Toml::Arr { items: replaceAt(items, index, updated) }
+                    _ => root
+                }
+            }
         }
-    }
-
-    fn setArrItemAt(root, keys, index, table) = {
-        let parent = tableAt(root, init(keys))
-        let arr = childOfKey(parent, lastKey(keys))
-        let newArr = match arr {
-            Toml::Arr { items } => Toml::Arr { items: replaceAt(items, index, table) }
-            _ => arr
-        }
-        setTableAt(root, init(keys), setChildKey(parent, lastKey(keys), Toml::zeroSpan, newArr))
-    }
-
-    fn getFocus(root, focus) = match focus.index == noIndex {
-        true => tableAt(root, focus.keys)
-        false => arrItemAt(root, focus.keys, focus.index)
-    }
-
-    fn setFocus(root, focus, table) = match focus.index == noIndex {
-        true => setTableAt(root, focus.keys, table)
-        false => setArrItemAt(root, focus.keys, focus.index, table)
     }
 
     // -- key-path insertion -------------------------------------------------
@@ -132,25 +115,71 @@ module TomlTree {
 
     fn dropSeg(segs) = range(1, length(segs)) |> map(fn(i) => listGet(segs, i) ?: TomlValues::missingKeySeg) |> toList
 
-    /// Define the nested tables a `[header]` key path names. [PACKAGE-MANIFEST]
-    // Recursive through defineDeep: codegen needs the return type spelled out.
-    export fn defineTable(root, segs) -> Result<Toml::Value, string> = match length(segs) == 1 {
-        true => defineLeaf(root, listGet(segs, 0) ?: TomlValues::missingKeySeg)
-        false => defineNested(root, segs)
+    fn knownArray(arrays, path) = foldList(arrays, false, fn(found, candidate) => found || structuralEquals(candidate, path))
+    fn keyPath(parent, seg) = listAppend(parent.path, Key { name: seg.name })
+
+    fn missingParent(parent, seg, table) = Success { value: Parent {
+        root: setTableAt(parent.root, parent.path, setChildKey(table, seg.name, seg.span, Toml::emptyTable)),
+        path: keyPath(parent, seg)
+    } }
+
+    fn existingParent(parent, arrays, seg, child) = if Toml::isTable(child) {
+        Success { value: Parent { root: parent.root, path: keyPath(parent, seg) } }
+    } else { match child {
+        Toml::Arr { items } => if !isEmpty(items) && knownArray(arrays, keyPath(parent, seg)) {
+            Success { value: Parent { root: parent.root, path: listAppend(keyPath(parent, seg), Item { index: length(items) - 1 }) } }
+        } else { Error { message: Toml::failSpan(seg.span, "toml.not-a-table") } }
+        _ => Error { message: Toml::failSpan(seg.span, "toml.not-a-table") }
+    } }
+
+    fn descendParent(parent, arrays, seg) = match tableAt(parent.root, parent.path) {
+        Toml::Table { pairs } => if findPair(pairs, seg.name) < 0 { missingParent(parent, seg, Toml::Table { pairs: pairs }) }
+            else { existingParent(parent, arrays, seg, pairAt(pairs, findPair(pairs, seg.name)).value) }
+        _ => Error { message: Toml::failSpan(seg.span, "toml.not-a-table") }
     }
 
-    fn defineNested(root, segs) = {
-        let seg = listGet(segs, 0) ?: TomlValues::missingKeySeg
-        match childOrCreate(root, seg) {
+    // Recursive header resolution retains every array element in its typed path.
+    fn headerParent(parent, arrays, segs) -> Result<Parent, string> = if isEmpty(segs) { Success { value: parent } } else {
+        match descendParent(parent, arrays, listGet(segs, 0) ?: TomlValues::missingKeySeg) {
             Error { message } => Error { message: message }
-            Success { value } => defineDeep(root, seg, segs, value)
+            Success { value } => headerParent(value, arrays, dropSeg(segs))
         }
     }
 
-    fn defineDeep(root, seg, segs, child) = match defineTable(child, dropSeg(segs)) {
-        Success { value } => Success { value: setChildKey(root, seg.name, seg.span, value) }
+    fn parentSegs(segs) = range(0, length(segs) - 1) |> map(fn(i) => listGet(segs, i) ?: TomlValues::missingKeySeg) |> toList
+    fn withTable(parent, table, focus, arrays) = Doc { root: setTableAt(parent.root, parent.path, table), focus: focus, arrays: arrays }
+
+    fn tableHeader(doc, parent, seg) = match defineLeaf(tableAt(parent.root, parent.path), seg) {
         Error { message } => Error { message: message }
+        Success { value } => Success { value: withTable(parent, value, keyPath(parent, seg), doc.arrays) }
     }
+
+    fn hasKey(table, key) = match table {
+        Toml::Table { pairs } => findPair(pairs, key) >= 0
+        _ => false
+    }
+
+    fn arrayHeader(doc, parent, seg) = {
+        let table = tableAt(parent.root, parent.path)
+        let path = keyPath(parent, seg)
+        let known = knownArray(doc.arrays, path)
+        if hasKey(table, seg.name) && !known { Error { message: Toml::failSpan(seg.span, "toml.not-a-table") } }
+        else { match appendArrayLeaf(table, seg) {
+            Error { message } => Error { message: message }
+            Success { value } => Success { value: withTable(parent, value.root, listAppend(path, Item { index: value.index }), if known { doc.arrays } else { listAppend(doc.arrays, path) }) }
+        } }
+    }
+
+    fn defineHeader(doc, segs, array) = match headerParent(Parent { root: doc.root, path: [] }, doc.arrays, parentSegs(segs)) {
+        Error { message } => Error { message: message }
+        Success { value } => if array { arrayHeader(doc, value, listGet(segs, length(segs) - 1) ?: TomlValues::missingKeySeg) }
+            else { tableHeader(doc, value, listGet(segs, length(segs) - 1) ?: TomlValues::missingKeySeg) }
+    }
+
+    /// Define a table header, descending into the latest declared array elements. [PACKAGE-MANIFEST]
+    export fn defineTable(doc, segs) = defineHeader(doc, segs, false)
+    /// Append an array element; ordinary arrays and inline tables cannot become header arrays.
+    export fn defineArrayTable(doc, segs) = defineHeader(doc, segs, true)
 
     fn defineLeaf(root, seg) = match root {
         Toml::Table { pairs } => match findPair(pairs, seg.name) >= 0 {
@@ -165,26 +194,6 @@ module TomlTree {
     fn defineExisting(pairs, i, seg) = match Toml::isTable(pairAt(pairs, i).value) {
         true => Error { message: Toml::failSpan(seg.span, "toml.duplicate-key") }
         false => Error { message: Toml::failSpan(seg.span, "toml.not-a-table") }
-    }
-
-    /// Append the array-of-tables element a `[[header]]` key path names. [PACKAGE-MANIFEST]
-    // Recursive through defineArrayDeep: codegen needs the return type spelled out.
-    export fn defineArrayTable(root, segs) -> Result<ArrDef, string> = match length(segs) == 1 {
-        true => appendArrayLeaf(root, listGet(segs, 0) ?: TomlValues::missingKeySeg)
-        false => defineArrayNested(root, segs)
-    }
-
-    fn defineArrayNested(root, segs) = {
-        let seg = listGet(segs, 0) ?: TomlValues::missingKeySeg
-        match childOrCreate(root, seg) {
-            Error { message } => Error { message: message }
-            Success { value } => defineArrayDeep(root, seg, segs, value)
-        }
-    }
-
-    fn defineArrayDeep(root, seg, segs, child) = match defineArrayTable(child, dropSeg(segs)) {
-        Success { value } => Success { value: ArrDef { root: setChildKey(root, seg.name, seg.span, value.root), index: value.index } }
-        Error { message } => Error { message: message }
     }
 
     fn appendArrayLeaf(root, seg) = match root {
@@ -203,9 +212,9 @@ module TomlTree {
     /// Insert a key-path value at the focus's current table, or the first
     /// problem. [PACKAGE-MANIFEST]
     export fn insertAtFocus(doc, segs, val) = {
-        let current = getFocus(doc.root, doc.focus)
+        let current = tableAt(doc.root, doc.focus)
         match insertInto(current, segs, val) {
-            Success { value } => Success { value: Doc { root: setFocus(doc.root, doc.focus, value), focus: doc.focus } }
+            Success { value } => Success { value: Doc { root: setTableAt(doc.root, doc.focus, value), focus: doc.focus, arrays: doc.arrays } }
             Error { message } => Error { message: message }
         }
     }

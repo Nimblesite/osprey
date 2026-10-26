@@ -5,9 +5,12 @@
 //! [`super::Snapshot`] it compares against stay in the parent module beside
 //! the diagnostics they serve.
 
+#[cfg(test)]
 use osprey_ast::Program;
 
-use super::{preserves, Snapshot};
+use super::Proofs;
+#[cfg(test)]
+use super::Snapshot;
 use crate::redundant_sites::Site;
 
 // Each proof owns a complete AST and inference state. Bound their simultaneous
@@ -15,21 +18,25 @@ use crate::redundant_sites::Site;
 const MAX_PROOF_WORKERS: usize = 4;
 
 struct Search<'a> {
-    program: &'a Program,
-    baseline: &'a Snapshot,
+    proofs: &'a Proofs<'a>,
     written: &'a [Site],
 }
 
 /// Test individual removals while retaining their original source identities.
+#[cfg(test)]
 pub(crate) fn individually_removable(
     program: &Program,
     baseline: &Snapshot,
     written: &[Site],
 ) -> Vec<usize> {
-    let search = search_input(program, baseline, written);
-    let mut preserved = vec![false; written.len()];
+    let proofs = Proofs::new(program, baseline);
+    individual_candidates(&search_input(&proofs, written))
+}
+
+fn individual_candidates(search: &Search<'_>) -> Vec<usize> {
+    let mut preserved = vec![false; search.written.len()];
     if !preserved.is_empty() {
-        judge_chunks(&search, &mut preserved);
+        judge_chunks(search, &mut preserved);
     }
     preserved
         .iter()
@@ -83,6 +90,7 @@ pub(crate) fn accumulate(
 /// [`accumulate`] over a source-ordered candidate subsequence. Candidates
 /// already known to fail alone are excluded; the accepted set is unchanged
 /// because every exclusion failed the oracle in isolation.
+#[cfg(test)]
 pub(crate) fn accumulate_candidates(
     program: &Program,
     baseline: &Snapshot,
@@ -90,7 +98,17 @@ pub(crate) fn accumulate_candidates(
     candidates: &[usize],
     window: usize,
 ) -> Vec<usize> {
-    let search = search_input(program, baseline, written);
+    let proofs = Proofs::new(program, baseline);
+    accumulate_with(&proofs, written, candidates, window)
+}
+
+pub(super) fn accumulate_with(
+    proofs: &Proofs<'_>,
+    written: &[Site],
+    candidates: &[usize],
+    window: usize,
+) -> Vec<usize> {
+    let search = search_input(proofs, written);
     let width = window.max(1);
     let mut kept = Vec::new();
     for slice in candidates.chunks(width) {
@@ -99,20 +117,12 @@ pub(crate) fn accumulate_candidates(
     kept
 }
 
-fn search_input<'a>(
-    program: &'a Program,
-    baseline: &'a Snapshot,
-    written: &'a [Site],
-) -> Search<'a> {
-    Search {
-        program,
-        baseline,
-        written,
-    }
+fn search_input<'a>(proofs: &'a Proofs<'a>, written: &'a [Site]) -> Search<'a> {
+    Search { proofs, written }
 }
 
 fn keeps(search: &Search<'_>, chosen: &[usize]) -> bool {
-    preserves(search.program, search.baseline, search.written, chosen)
+    search.proofs.keeps(search.written, chosen)
 }
 
 fn joined(kept: &[usize], candidates: &[usize]) -> Vec<usize> {
@@ -125,7 +135,7 @@ fn eligible(search: &Search<'_>, candidates: &[usize]) -> Vec<usize> {
         .filter_map(|index| search.written.get(*index))
         .cloned()
         .collect();
-    individually_removable(search.program, search.baseline, &written)
+    individual_candidates(&search_input(search.proofs, &written))
         .into_iter()
         .filter_map(|index| candidates.get(index).copied())
         .collect()

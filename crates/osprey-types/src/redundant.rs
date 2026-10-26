@@ -18,15 +18,17 @@ use crate::ty::{Type, VarId};
 #[cfg(test)]
 #[path = "redundant_cost_tests.rs"]
 mod cost_tests;
+#[path = "redundant_proofs.rs"]
+mod proofs;
+use proofs::Proofs;
 /// The window search that selects one jointly removable annotation set
 /// ([TYPE-ANNOTATION-REDUNDANT]). Its [`preserves`] oracle stays here beside
 /// the diagnostics it serves.
 #[path = "redundant_search.rs"]
 mod search;
 
-pub(crate) use search::accumulate_candidates;
 #[cfg(test)]
-pub(crate) use search::{accumulate, individually_removable};
+pub(crate) use search::{accumulate, accumulate_candidates, individually_removable};
 
 /// The rule identifier this diagnostic is reported under, and the name a
 /// per-rule severity setting will address it by ([TYPE-ANNOTATION-REDUNDANT]).
@@ -150,10 +152,11 @@ pub fn redundant_annotation_sites_for(
         return Vec::new();
     };
     let all: Vec<usize> = (0..written.len()).collect();
-    let removable = if preserves(program, &baseline, &written, &all) {
+    let proofs = Proofs::new(program, &baseline);
+    let removable = if proofs.keeps(&written, &all) {
         all
     } else {
-        accumulate_candidates(program, &baseline, &written, &all, judges())
+        search::accumulate_with(&proofs, &written, &all, judges())
     };
     removable
         .iter()
@@ -187,12 +190,8 @@ fn annotation(site: &Site) -> RedundantAnnotation {
 /// type variables.
 ///
 /// One checked solve both validates the candidate and publishes its types.
-fn preserves(program: &Program, baseline: &Snapshot, written: &[Site], chosen: &[usize]) -> bool {
-    let erasing: HashSet<usize> = chosen
-        .iter()
-        .filter_map(|index| written.get(*index))
-        .flat_map(|site| site.members.iter().copied())
-        .collect();
+fn preserves(program: &Program, baseline: &Snapshot, members: &[usize]) -> bool {
+    let erasing: HashSet<usize> = members.iter().copied().collect();
     let candidate = erase(program, &mut |slot| !erasing.contains(&slot));
     published(&candidate).is_some_and(|candidate| {
         baseline.methods == candidate.methods && same_types(&baseline.types, &candidate.types)

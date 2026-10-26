@@ -53,6 +53,19 @@ module TomlTests {
         renderRoot(Toml::parse("[[assets]]\nname = \"logo\"\npath = \"logo.png\"\n\n[[assets]]\nname = \"icon\"\npath = \"icon.png\"\n")) == "{assets=[{name=\"logo\",path=\"logo.png\"},{name=\"icon\",path=\"icon.png\"}]}"
     ])
 
+    fn uvPackageTables() = {
+        let source = "version = 1\n[[package]]\nname = \"root\"\nsource = { virtual = \".\" }\n[package.metadata]\nrequires-dist = [{ name = \"member\", directory = \"../member\" }]\n[[package]]\nname = \"member\"\nsource = { directory = \"../member\" }\n[other]\nvalue = 1\n[package.metadata]\nnote = \"second\"\n"
+        let actual = renderRoot(Toml::parse(source))
+        checkAll("uv metadata belongs to the latest package: ${actual}", [
+            actual == "{version=1,package=[{name=\"root\",source={virtual=\".\"},metadata={requires-dist=[{name=\"member\",directory=\"../member\"}]}},{name=\"member\",source={directory=\"../member\"},metadata={note=\"second\"}}],other={value=1}}",
+            codeAt(Toml::parse("package = [{}]\n[package.metadata]\nx = 1\n")) == "toml.not-a-table at 2:1",
+            renderRoot(Toml::parse("[[package]]\n[[package.artifact]]\n[package.artifact.metadata]\nlabel = \"first\"\n[[package]]\n[[package.artifact]]\n[package.artifact.metadata]\nlabel = \"second\"\n")) == "{package=[{artifact=[{metadata={label=\"first\"}}]},{artifact=[{metadata={label=\"second\"}}]}]}",
+            codeAt(Toml::parse("[[package]]\n[[package.artifact]]\n[[package]]\nartifact = [{}]\n[package.artifact.metadata]\nx = 1\n")) == "toml.not-a-table at 5:1",
+            codeAt(Toml::parse("[[package]]\n[package.metadata]\nx = 1\n[package.metadata]\ny = 2\n")) == "toml.duplicate-key at 4:1",
+            codeAt(Toml::parse("package = []\n[[package]]\nx = 1\n")) == "toml.not-a-table at 2:1"
+        ])
+    }
+
     fn dottedKeys() = checkAll("dotted keys create nested tables", [
         renderRoot(Toml::parse("a.b.c = 1\na.b.d = 2\na.e = 3\n")) == "{a={b={c=1,d=2},e=3}}"
     ])
@@ -160,6 +173,7 @@ module TomlTests {
     export fn run() = {
         test("toml: manifest example", manifestDoc)
         test("toml: array-of-tables", arrayTables)
+        test("toml: uv package metadata", uvPackageTables)
         test("toml: dotted keys", dottedKeys)
         test("toml: accessors", accessors)
         test("toml: escapes", escapes)
