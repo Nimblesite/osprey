@@ -231,7 +231,7 @@ def step_position(m, text, best, pos):
     mblen = char_width_at(text, pos)
     score_here = unwrap_or(listGet(best, pos), Node(id=0, score=0.0, starts_at=-1)).score
     rest = unwrap_or(substring(text, pos, len(text)), "")
-    st = fold(range(len(m.tokens)), Step(best=best, has_single=False), lambda acc, ti: consider_token_at(m, rest, pos, mblen, score_here, acc, ti))
+    st = consider_token_at(m, rest, pos, mblen, score_here, Step(best=best, has_single=False), 0)
     if st.has_single:
         return st.best
     else:

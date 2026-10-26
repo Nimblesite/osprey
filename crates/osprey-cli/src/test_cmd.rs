@@ -7,9 +7,11 @@
 //! holding `osprey.toml`) run as one suite, or a directory searched
 //! recursively for `*.test.osp` / `*.test.ospml`, sorted for determinism,
 //! skipping hidden, `target`, and `node_modules` directories. Each file
-//! compiles and runs like `osprey <file> --run`; suites execute concurrently,
-//! then their TAP output is replayed in sorted file order under `# file:`
-//! headers. The exit code aggregates suite outcomes.
+//! compiles and runs like `osprey <file> --run --no-warnings`: a suite is
+//! executed, not reviewed, and the warning pass re-infers the whole program
+//! once per annotation site. Suites execute concurrently, then their TAP
+//! output is replayed in sorted file order under `# file:` headers. The exit
+//! code aggregates suite outcomes.
 //! `--coverage` instruments each suite and reports per-file and total line
 //! coverage; `--coverage-json <path>` also writes the merged hit counts.
 //! `--memory=gc|arc|none` selects one backend for every discovered suite;
@@ -286,7 +288,7 @@ fn suite_command(
         .map_or_else(|| std::env::temp_dir().join(TEST_CACHE_DIR), PathBuf::from);
     let _ = command
         .arg(file)
-        .args(["--run", "--quiet"])
+        .args(["--run", "--quiet", "--no-warnings"])
         .env(TEST_CACHE_DIR_ENV, std::path::absolute(cache_dir)?);
     if let Some(memory) = memory {
         let _ = command.arg(format!("--memory={memory}"));
@@ -393,6 +395,23 @@ mod tests {
         assert!(gc_command
             .get_args()
             .any(|arg| arg == std::ffi::OsStr::new("--memory=gc")));
+    }
+
+    // [TESTING-CLI-RUN]: a suite is executed, not reviewed. 169e5496 restored
+    // the warning pass under `--quiet`, and on the 22k-line package client that
+    // pass costs about 1,850 s against 40 s without, which hung both package
+    // manager CI jobs for 66 minutes until their timeout. Warnings go to stderr
+    // and never reach a suite's oracle, so every child skips them.
+    #[test]
+    fn suite_command_skips_the_warning_pass() {
+        let command =
+            suite_command(Path::new("suite.test.osp"), None, None, None).expect("suite command");
+        assert!(
+            command
+                .get_args()
+                .any(|arg| arg == std::ffi::OsStr::new("--no-warnings")),
+            "{command:?}"
+        );
     }
 
     // [TESTING-COVERAGE-CLI]: --coverage turns instrumentation on;
