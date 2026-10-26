@@ -97,7 +97,7 @@ APPLE_ARCHIVES = tuple(f"libosprey_runtime_{target}{mode}.a" for target in ("ios
                        for mode in ("", "_arc"))
 
 
-def package_result(text, platform, archives):
+def package_result(text, platform, archives, empty_archive=""):
     script = step_script(text, "Package")
     for key, value in {"needs.version.outputs.version": "0.0.0-test", "matrix.platform": platform,
                        "runner.os": "macOS" if platform.startswith("darwin") else "Linux"}.items():
@@ -109,7 +109,7 @@ def package_result(text, platform, archives):
         for name in ("target/release/osprey", "target/osprey-pkg"):
             (root/name).write_text("binary")
         for name in (*NATIVE_ARCHIVES, *archives):
-            (root/"compiler/lib"/name).write_text("archive")
+            (root/"compiler/lib"/name).write_text("" if name == empty_archive else "archive")
         return subprocess.run(["bash", "-euo", "pipefail", "-c", script], cwd=root,
                               capture_output=True, text=True)
 
@@ -121,8 +121,10 @@ def package_failures(text):
                   tuple(name for name in APPLE_ARCHIVES if name != missing), False)
                  for missing in APPLE_ARCHIVES)
     failures = []
-    for label, platform, archives, expected in cases:
-        result = package_result(text, platform, archives)
+    cases.extend((f"Darwin empty {empty}", "darwin-arm64", APPLE_ARCHIVES, False, empty)
+                 for empty in APPLE_ARCHIVES)
+    for label, platform, archives, expected, *empty in cases:
+        result = package_result(text, platform, archives, *empty)
         if (result.returncode == 0) != expected:
             failures.append(f"{label}: unexpected packaging result\n{result.stdout}{result.stderr}")
         else:
@@ -179,7 +181,7 @@ def main():
             print(f"  - {failure}")
         return 1
     print(f"release gate decision table: OK ({len(TABLE)} cases)")
-    print(f"release packaging: OK ({len(APPLE_ARCHIVES) + 2} cases)")
+    print(f"release packaging: OK ({2 * len(APPLE_ARCHIVES) + 2} cases)")
     return 0
 
 
