@@ -3,7 +3,7 @@
 # used by conformance CI so moving an assertion suite within tests never drops
 # its GC, ARC or wasm coverage.
 #
-#   run_test_corpus.sh [default|gc|arc]     native backend, chosen allocator
+#   run_test_corpus.sh [gc|arc]     native backend, chosen allocator
 #   OSPREY_TARGET=wasm32 run_test_corpus.sh wasm32 backend under Node's WASI
 #
 # Two independent checks run per program, and BOTH must hold:
@@ -82,9 +82,9 @@ esac
 # express, each pinned in tests/MOBILE_UNPORTABLE.txt.
 # Ratchet UP as goldens are added; never lower it to turn a red build green.
 case $TARGET in
-  wasm32)            GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-171} ;;
-  ios-sim|macos|android*) GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-186} ;;
-  *)                 GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-239} ;;
+  wasm32)            GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-213} ;;
+  ios-sim|macos|android*) GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-228} ;;
+  *)                 GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-285} ;;
 esac
 
 # [GPU-KERNEL-EXTRACT] differential. The extracted-kernel lowering and the
@@ -122,9 +122,9 @@ run_worker() {
   local memory=$1 resultdir=$2 index=$3 file=$4
   local errfile=$resultdir/$index.stderr out=$resultdir/$index.stdout run_code
   case $TARGET in
-    wasm32) run_wasm "$file" "$out" "$errfile" "$resultdir/$index.wasm" ;;
-    ios-sim|macos) run_apple "$file" "$out" "$errfile" "$resultdir/$index.work" ;;
-    android-*) run_android "$file" "$out" "$errfile" "$resultdir/$index.work" "$index" ;;
+    wasm32) run_wasm "$file" "$out" "$errfile" "$resultdir/$index.wasm" "$memory" ;;
+    ios-sim|macos) run_apple "$file" "$out" "$errfile" "$resultdir/$index.work" "$memory" ;;
+    android-*) run_android "$file" "$out" "$errfile" "$resultdir/$index.work" "$index" "$memory" ;;
     *) run_native "$file" "$out" "$errfile" "$resultdir/$index.work" "$memory" ;;
   esac
   run_code=$?
@@ -204,7 +204,10 @@ configured_jobs() {
 
 backend_setup
 
-MEMORY=${1:-default}
+case $TARGET in
+  wasm32|ios-sim|macos|android*) MEMORY=${1:-arc} ;;
+  *) MEMORY=${1:-gc} ;;
+esac
 # The ARC leak oracle reads the runtime's exit report, which memory_arc.c
 # arms only under OSPREY_ARC_DEBUG. The harness arms it ITSELF whenever it
 # audits the arc backend: the sentinel check below is strict (exactly one

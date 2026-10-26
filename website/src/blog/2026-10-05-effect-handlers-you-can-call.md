@@ -25,7 +25,7 @@ Osprey's handlers changed shape over the last month. A handler is now a value yo
 {{ draftExample.output }}
 ```
 
-`handler` builds a value; creating it runs nothing. `disk(saveDraft)` installs the implementation before calling `saveDraft`. The first handler really writes the draft; the second simulates an unavailable storage service. The same save logic turns the result into a saved or retry message. Neither it nor its callers need to carry a storage object through every layer.
+`handler` builds a value; creating it runs nothing. `disk(onSave)` installs storage around the whole call chain: `onSave` → `saveDraft` → `Drafts.save`. The program writes one draft. Neither intermediate function needs a storage parameter. A test can replace `writeFile(path, text)` in the handler with `Error { message: "offline" }` to exercise the same callback's retry path without writing a file.
 
 The ML flavor spells the same program with layout and currying:
 

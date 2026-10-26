@@ -164,3 +164,15 @@ fn parameter_value(
         }
     }
 }
+
+/// Recover a complete Result stored as a collection word. [BUILTIN-LIST-FOLD]
+pub(crate) fn result_element_word(
+    cg: &mut Codegen,
+    raw: &str,
+    ty: Option<&osprey_types::Type>,
+) -> Option<Value> {
+    let ty = ty.filter(|ty| crate::types::result_inner(ty).is_some())?;
+    let signature = ParamSig::of(&cg.prog, ty);
+    let pointer = crate::conv::unbox_from_i64(cg, raw, LType::Ptr);
+    Some(incoming_param(cg, pointer.operand, signature, None))
+}

@@ -3,11 +3,12 @@
 const fs = require('fs');
 const path = require('path');
 
-// The playground editor is seeded from the same migrated assertion suite in both flavors.
+// Reuse the assertion showcase and the Python guide's runnable effects example.
 const SHOWCASES = {
     osp: path.join(__dirname, '../../tests/regressions/basics/osprey_mega_showcase.test.osp'),
     ospml: path.join(__dirname, '../../tests/regressions/basics/osprey_mega_showcase.test.ospml'),
 };
+const PYTHON_GUIDE = path.join(__dirname, '../src/docs/python-flavor.md');
 const PLAYGROUND_PATH = path.join(__dirname, '../src/playground/index.md');
 
 // Each showcase is embedded inside a JS template literal (`key: \`...\``). Any
@@ -54,8 +55,13 @@ function updatePlayground() {
             console.log('📖 Filled SAMPLES.' + flavor + ' (' + code.length + ' chars)');
         }
 
+        const guide = fs.readFileSync(PYTHON_GUIDE, 'utf8');
+        const effects = guide.split('## Effects and handlers')[1];
+        const sample = effects?.match(/```python\n([\s\S]*?)```/);
+        if (!sample) throw new Error('Python guide effects example is missing');
+        content = fillSample(content, 'py', sample[1]);
         fs.writeFileSync(PLAYGROUND_PATH, content, 'utf8');
-        console.log('✅ Playground seeded with the tested showcase in both flavors!');
+        console.log('✅ Playground seeded with the tested showcase in all three syntax flavors!');
         return true;
     } catch (error) {
         console.error('❌ Error updating playground:', error.message);
@@ -65,7 +71,7 @@ function updatePlayground() {
 
 // Run the update
 if (require.main === module) {
-    console.log('🚀 Updating Osprey Playground with the tested showcase (both flavors)...');
+    console.log('🚀 Updating Osprey Playground with the tested showcase (all three syntax flavors)...');
     const success = updatePlayground();
     process.exit(success ? 0 : 1);
 }

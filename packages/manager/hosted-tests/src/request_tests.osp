@@ -1,0 +1,71 @@
+namespace hosted_tests;
+import registry_api::HostedRequest
+
+/// The request gate in order: edge secret, host, method, URI and body
+/// bounds, then the credentialed origin/CSRF chain. Implements
+/// [PACKAGE-HOSTED-EDGE] and [PACKAGE-HOSTED-AUTH] request admission.
+module RequestTests {
+    let policy = HostedRequest::Policy {
+        allowedOrigin: "https://packages.example.test",
+        allowedHost: "api.example.test",
+        edgeSecret: "s3cr3t-edge",
+        cookieName: "session",
+        csrfToken: "csrf-tok",
+        maxBody: 1024
+    }
+
+    fn incoming(method, uri, headerBlock, body) = HostedRequest::Incoming {
+        method: method, uri: uri, headerBlock: headerBlock, body: body
+    }
+
+    fn verdictOf(v) = if HostedRequest::isAdmitted(v) { "admitted" }
+        else { "${HostedRequest::statusOf(v)}:${HostedRequest::codeOf(v)}" }
+
+    fn headers(method, extra) = "X-Edge-Secret: s3cr3t-edge\r\nHost: api.example.test\r\n" + extra
+        + (if method == "GET" { "" } else { "\r\nX-Csrf-Token: csrf-tok" })
+
+    fn verdict(method, uri, extra, body) = verdictOf(HostedRequest::admit(incoming(method, uri, headers(method, extra), body), policy))
+
+    fn admitted() = checkAll("request: clean requests admitted", [
+        verdict("GET", "/v1/packages", "", "") == "admitted",
+        verdict("GET", "/v1/packages", "Cookie: theme=1", "") == "admitted",
+        verdict("POST", "/v1/auth/logout", "Origin: https://packages.example.test\r\nCookie: session=abc", "") == "admitted"
+    ])
+
+    fn edgeAndHost() = checkAll("request: edge secret and host gates", [
+        verdict("GET", "/v1/health", "Host: api.example.test", "") == "403:req.edge-secret",
+        verdict("GET", "/v1/health", "X-Edge-Secret: wrong\r\nHost: api.example.test", "") == "403:req.edge-secret",
+        verdict("GET", "/v1/health", "X-Edge-Secret: s3cr3t-edge\r\nHost: run.app", "") == "421:req.host",
+        verdict("GET", "/v1/health", "X-Edge-Secret: s3cr3t-edge", "") == "421:req.host"
+    ])
+
+    fn shape() = checkAll("request: method, URI and body bounds", [
+        verdict("TRACE", "/v1/health", "", "") == "405:req.method",
+        verdict("GET", "v1/health", "", "") == "400:req.uri",
+        verdict("GET", "/v1/a b", "", "") == "400:req.uri",
+        verdict("GET", "/${repeat("a", 2100) ?: ""}", "", "") == "414:req.uri",
+        verdict("POST", "/v1/publish", "Origin: https://packages.example.test\r\nContent-Length: 12", repeat("a", 2000) ?: "") == "413:req.body-size",
+        verdict("POST", "/v1/publish", "Origin: https://packages.example.test\r\nContent-Length: 1a", "") == "400:req.content-length"
+    ])
+
+    fn credentialed() = checkAll("request: credentialed origin and CSRF chain", [
+        verdict("POST", "/v1/publish", "Cookie: session=abc", "") == "403:req.origin-required",
+        verdict("POST", "/v1/publish", "Origin: https://evil.test\r\nCookie: session=abc", "") == "403:req.origin-mismatch",
+        verdict("POST", "/v1/publish", "Origin: https://packages.example.test\r\nCookie: session=abc\r\nX-Csrf-Token: nope", "") == "403:req.csrf-mismatch",
+        verdict("GET", "/v1/private", "Origin: https://packages.example.test\r\nCookie: session=abc", "") == "admitted",
+        verdict("POST", "/v1/publish", "Authorization: Bearer cli\r\nOrigin: https://evil.test", "") == "403:req.origin-mismatch"
+    ])
+
+    fn cliBearer() = checkAll("request: CLI bearer requests need no browser challenge", [
+        verdict("POST", "/v1/publish", "Authorization: Bearer cli", "") == "admitted",
+        verdict("POST", "/v1/publish", "Authorization: Bearer cli", "x") == "admitted"
+    ])
+
+    export fn run() = {
+        test("hosted request: admitted", admitted)
+        test("hosted request: edge and host", edgeAndHost)
+        test("hosted request: shape and bounds", shape)
+        test("hosted request: credentialed chain", credentialed)
+        test("hosted request: CLI bearer", cliBearer)
+    }
+}

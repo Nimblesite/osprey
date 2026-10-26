@@ -5,7 +5,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
@@ -130,7 +130,8 @@ impl Drop for Fixture {
     }
 }
 
-/// `<tmp>/osprey-diagnostics-<uid>`, once it holds `<pid>.sock`.
+/// The private endpoint directory once the profiler recognises a ready process.
+/// Binding creates the socket before listening; its filename is not readiness.
 fn wait_for_endpoint(tmp: &Path, pid: u32) -> PathBuf {
     let deadline = Instant::now() + STARTUP;
     while Instant::now() < deadline {
@@ -139,13 +140,23 @@ fn wait_for_endpoint(tmp: &Path, pid: u32) -> PathBuf {
             .flatten()
             .flatten()
             .map(|entry| entry.path())
-            .find(|dir| dir.join(format!("{pid}.sock")).exists());
+            .filter(|dir| dir.join(format!("{pid}.sock")).exists())
+            .find(|dir| endpoint_ready(dir, pid));
         if let Some(dir) = found {
             return dir;
         }
         std::thread::sleep(Duration::from_millis(20));
     }
     panic!("no endpoint for PID {pid} under {}", tmp.display());
+}
+
+fn endpoint_ready(dir: &Path, pid: u32) -> bool {
+    let runtime = Arc::new(lsp_profiler_osprey::OspreyRuntime::new(
+        lsp_profiler_osprey::OspreyConfig {
+            socket_dir: Some(dir.to_path_buf()),
+        },
+    ));
+    lsp_profiler::process::recognise(&[runtime], pid).is_some_and(|process| process.info.attachable)
 }
 
 /// `session`'s entry in a `cpu.list` result: `None` once it has ended.

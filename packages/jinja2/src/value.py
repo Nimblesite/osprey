@@ -14,7 +14,7 @@ Implements [PORT-SCOPE] value semantics for @osprey/jinja2.
 
 __all__ = [
     "Value", "Slice", "Env", "KwVal",
-    "none", "bool_", "int_", "float_", "text", "list_", "dict_", "undefined", "pair",
+    "none", "bool_", "int_", "float_", "text", "list_", "dict_", "typed_dict", "undefined", "pair", "typed_pair",
     "K_NONE", "K_BOOL", "K_INT", "K_FLOAT", "K_STRING", "K_LIST", "K_DICT", "K_UNDEFINED", "K_PAIR", "K_FUNC",
     "truthy", "equal", "less", "concat_text", "repr_text", "contains", "dict_get", "attr_get", "key_of", "chars",
     "str_len", "str_get", "slice_list", "slice_str", "json_text", "str_split", "str_split_sep",
@@ -28,8 +28,7 @@ def osprey_tensor_panic(message: str) -> str: ...
 
 
 def quarantine(message):
-    """Abort a proven silent failure through the existing fatal runtime channel.
-    The panic never returns; `text` only fits this channel to a Value result."""
+    """Abort a proven silent failure; the native fatal-channel test pins this contract."""
     return text(osprey_tensor_panic(message))
 
 
@@ -54,7 +53,7 @@ class Value:
     fval: float
     sval: str
     elems: list[Value]
-    keys: list[str]
+    keys: list[Value]
     vals: list[Value]
 
 
@@ -116,6 +115,11 @@ def list_(elems):
 
 def dict_(keys, vals):
     """A dict value; keys stay in insertion order."""
+    return typed_dict(toList(map(range(len(keys)), lambda i: text(unwrap_or(listGet(keys, i), "")))), vals)
+
+
+def typed_dict(keys, vals):
+    """A dictionary retaining each key's value type and insertion order."""
     return make_value(K_DICT, False, 0, 0.0, "", [], keys, vals)
 
 
@@ -125,8 +129,13 @@ def undefined(name):
 
 
 def pair(key, value):
-    """One `dict.items()` element."""
-    return make_value(K_PAIR, False, 0, 0.0, key, [], [], [value])
+    """One `dict.items()` element with a string key."""
+    return typed_pair(text(key), value)
+
+
+def typed_pair(key, value):
+    """One `dict.items()` element retaining its key's value type."""
+    return make_value(K_PAIR, False, 0, 0.0, concat_text(key), [key], [], [value])
 
 
 def is_undefined(v):
@@ -199,7 +208,7 @@ def equal(a, b):
     elif a.kind == K_LIST:
         return list_equal(a.elems, b.elems)
     elif a.kind == K_PAIR:
-        return a.sval == b.sval and equal(unwrap_or(listGet(a.vals, 0), none()), unwrap_or(listGet(b.vals, 0), none()))
+        return list_equal(a.elems, b.elems) and equal(unwrap_or(listGet(a.vals, 0), none()), unwrap_or(listGet(b.vals, 0), none()))
     else:
         return dict_equal(a, b)
 
@@ -217,7 +226,7 @@ def dict_equal(a, b):
     if len(a.keys) != len(b.keys):
         return False
     else:
-        return all_from(len(a.keys), 0, lambda i: equal(dict_get(a, text(unwrap_or(listGet(a.keys, i), ""))), dict_get(b, text(unwrap_or(listGet(a.keys, i), "")))))
+        return all_from(len(a.keys), 0, lambda i: equal(dict_get(a, unwrap_or(listGet(a.keys, i), none())), dict_get(b, unwrap_or(listGet(a.keys, i), none()))))
 
 
 def all_from(n, i, pred):
@@ -285,7 +294,7 @@ def concat_text(v):
         case "list":
             return repr_list(v.elems)
         case "pair":
-            return "(" + repr_text(text(v.sval)) + ", " + repr_text(unwrap_or(listGet(v.vals, 0), none())) + ")"
+            return "(" + repr_text(unwrap_or(listGet(v.elems, 0), none())) + ", " + repr_text(unwrap_or(listGet(v.vals, 0), none())) + ")"
         case _:
             return repr_dict(v)
 
@@ -297,7 +306,7 @@ def repr_list(elems):
 
 def repr_dict(v):
     """`{'k': 1}`: a dict as Python prints it."""
-    entries = toList(map(range(len(v.keys)), lambda i: repr_text(text(unwrap_or(listGet(v.keys, i), ""))) + ": " + repr_text(unwrap_or(listGet(v.vals, i), none()))))
+    entries = toList(map(range(len(v.keys)), lambda i: repr_text(unwrap_or(listGet(v.keys, i), none())) + ": " + repr_text(unwrap_or(listGet(v.vals, i), none()))))
     return "{" + join(entries, ", ") + "}"
 
 
@@ -310,35 +319,28 @@ def repr_text(v):
 
 
 def quote(s):
-    """A string as Python's repr prints it (single quotes, backslash escapes)."""
-    # Quarantine: the fixed delimiter silently disagrees with CPython's repr.
-    if contains_text(s, "'") and not contains_text(s, '"'):
-        return osprey_tensor_panic("Jinja string repr delimiter selection is not implemented")
-    else:
-        return "'" + escape(s) + "'"
-
-
-def escape(s):
-    """Backslash-escape the characters Python's repr escapes in a string."""
+    """A string as Python's repr prints it, choosing the least escaped delimiter."""
+    delimiter = '"' if contains_text(s, "'") and not contains_text(s, '"') else "'"
     cs = chars(s)
-    return fold(range(len(cs)), "", lambda acc, i: acc + esc_char(unwrap_or(listGet(cs, i), "")))
+    return delimiter + fold(range(len(cs)), "", lambda acc, i: acc + esc_char(unwrap_or(listGet(cs, i), ""), delimiter)) + delimiter
 
 
-def esc_char(c):
-    """The repr escape for one character."""
-    match c:
-        case "\\":
-            return "\\\\"
-        case "'":
-            return "\\'"
-        case "\n":
-            return "\\n"
-        case "\r":
-            return "\\r"
-        case "\t":
-            return "\\t"
-        case _:
-            return c
+def esc_char(c, delimiter):
+    """Escape the chosen repr delimiter, backslashes and control characters."""
+    if c == delimiter:
+        return "\\" + c
+    else:
+        match c:
+            case "\\":
+                return "\\\\"
+            case "\n":
+                return "\\n"
+            case "\r":
+                return "\\r"
+            case "\t":
+                return "\\t"
+            case _:
+                return c
 
 
 def contains(container, item):
@@ -347,7 +349,7 @@ def contains(container, item):
         case "list":
             return any_from(len(container.elems), 0, lambda i: equal(unwrap_or(listGet(container.elems, i), none()), item))
         case "dict":
-            return item.kind == K_STRING and any_from(len(container.keys), 0, lambda i: unwrap_or(listGet(container.keys, i), "") == item.sval)
+            return any_from(len(container.keys), 0, lambda i: equal(unwrap_or(listGet(container.keys, i), none()), item))
         case "string":
             return item.kind == K_STRING and contains_text(container.sval, item.sval)
         case _:
@@ -367,8 +369,7 @@ def dict_get(v, key):
     missing key is undefined; a subscript on undefined faults."""
     match v.kind:
         case "dict":
-            # Quarantine: integer keys lose their identity through `sval`.
-            return quarantine("Jinja integer dictionary keys are not implemented") if key.kind == K_INT else key_of(v, key.sval)
+            return fold(range(len(v.keys)), undefined(concat_text(key)), lambda acc, i: unwrap_or(listGet(v.vals, i), none()) if equal(unwrap_or(listGet(v.keys, i), none()), key) else acc)
         case "list":
             return list_get(v.elems, key)
         case "string":
@@ -381,7 +382,7 @@ def dict_get(v, key):
 
 def key_of(v, key):
     """The value of a dict key, or an undefined when absent."""
-    return fold(range(len(v.keys)), undefined(key), lambda acc, i: unwrap_or(listGet(v.vals, i), none()) if unwrap_or(listGet(v.keys, i), "") == key else acc)
+    return dict_get(v, text(key))
 
 
 def list_get(elems, key):
@@ -541,7 +542,7 @@ def json_compact(v):
         case "list":
             return "[" + join(toList(map(range(len(v.elems)), lambda i: json_compact(unwrap_or(listGet(v.elems, i), none())))), ", ") + "]"
         case _:
-            return "{" + join(toList(map(range(len(v.keys)), lambda i: json_quote(unwrap_or(listGet(v.keys, i), "")) + ": " + json_compact(unwrap_or(listGet(v.vals, i), none())))), ", ") + "}"
+            return "{" + join(toList(map(range(len(v.keys)), lambda i: json_quote(concat_text(unwrap_or(listGet(v.keys, i), none()))) + ": " + json_compact(unwrap_or(listGet(v.vals, i), none())))), ", ") + "}"
 
 
 def json_pretty(v, indent, level):
@@ -579,7 +580,7 @@ def json_pretty_dict(v, indent, level):
     if len(v.keys) == 0:
         return "{}"
     else:
-        inner = join(toList(map(range(len(v.keys)), lambda i: pad(indent, level + 1) + json_quote(unwrap_or(listGet(v.keys, i), "")) + ": " + json_pretty(unwrap_or(listGet(v.vals, i), none()), indent, level + 1))), ",\n")
+        inner = join(toList(map(range(len(v.keys)), lambda i: pad(indent, level + 1) + json_quote(concat_text(unwrap_or(listGet(v.keys, i), none()))) + ": " + json_pretty(unwrap_or(listGet(v.vals, i), none()), indent, level + 1))), ",\n")
         return "{\n" + inner + "\n" + pad(indent, level) + "}"
 
 
@@ -731,7 +732,7 @@ def dict_of(pairs):
 
 def dict_add(v, p):
     """`v` with one (key, value) pair appended."""
-    return make_value(K_DICT, False, 0, 0.0, "", [], listAppend(v.keys, p.sval), listAppend(v.vals, unwrap_or(listGet(p.vals, 0), none())))
+    return make_value(K_DICT, False, 0, 0.0, "", [], listAppend(v.keys, unwrap_or(listGet(p.elems, 0), none())), listAppend(v.vals, unwrap_or(listGet(p.vals, 0), none())))
 
 
 def dict_set(v, key, value):
@@ -742,9 +743,9 @@ def dict_set(v, key, value):
 def dict_set_at(v, key, value, i):
     """Walk `v`'s keys: replace `key` at its position, else append at the end."""
     if i >= len(v.keys):
-        return make_value(K_DICT, False, 0, 0.0, "", [], listAppend(v.keys, key), listAppend(v.vals, value))
-    elif unwrap_or(listGet(v.keys, i), "") == key:
-        return make_value(K_DICT, False, 0, 0.0, "", [], replace_at(v.keys, i, key), replace_at(v.vals, i, value))
+        return make_value(K_DICT, False, 0, 0.0, "", [], listAppend(v.keys, text(key)), listAppend(v.vals, value))
+    elif equal(unwrap_or(listGet(v.keys, i), none()), text(key)):
+        return make_value(K_DICT, False, 0, 0.0, "", [], replace_at(v.keys, i, text(key)), replace_at(v.vals, i, value))
     else:
         return dict_set_at(v, key, value, i + 1)
 

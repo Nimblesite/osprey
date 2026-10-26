@@ -10,10 +10,10 @@ the denominator — a package whose tests are perfect and whose source is not ha
 to fail.
 
     python3 scripts/package_coverage.py [--collect] [--compiler PATH]
-        [--reports PATH] [--thresholds PATH] [--root PATH] [--package NAME]
+        [--reports PATH] [--thresholds PATH] [--root PATH] [--package NAME] [--memory gc|arc]
 
 `--collect` removes the package's stale report and log, reruns
-`<compiler> test packages/<name>/tests --coverage-json <report> --quiet`, and
+`<compiler> test packages/<name>/tests --coverage-json <report> --quiet --memory=gc`, and
 then gates the report. A nonzero exit, a stdout oracle that differs from
 `tests/expected_output.txt`, or an unwritable report invalidates the evidence,
 because the suite can print failures and still exit zero. Without `--collect`
@@ -74,6 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--collect", action="store_true", help="rerun suites")
     selection.add_argument("--record-measurements", action="store_true", help="save verified measurements separately from required thresholds")
     parser.add_argument("--compiler", help="compiler binary for --collect")
+    parser.add_argument("--memory", choices=("gc", "arc"), default="gc", help="collection backend (default: gc)")
     parser.add_argument("--reports", help="per-package evidence directory")
     parser.add_argument("--thresholds", help="coverage-thresholds.json path")
     parser.add_argument("--root", help="checkout root (default: repo root)")
@@ -365,8 +366,8 @@ def collection_failure(name: str, configured: dict, problems: list[str]) -> dict
     return result
 
 
-def run_collector(root: Path, compiler: Path, report: Path, suite: Path):
-    command = [str(compiler), "test", str(suite), "--coverage-json", str(report), "--quiet"]
+def run_collector(root: Path, compiler: Path, report: Path, suite: Path, memory="gc"):
+    command = [str(compiler), "test", str(suite), "--coverage-json", str(report), "--quiet", f"--memory={memory}"]
     try:
         completed = subprocess.run(command, capture_output=True, cwd=root, check=False)
         completed.stdout = completed.stdout.decode("utf-8")
@@ -376,14 +377,14 @@ def run_collector(root: Path, compiler: Path, report: Path, suite: Path):
         return command, None, error
 
 
-def collect_package(root: Path, compiler: Path, reports: Path, name: str, configured: dict) -> dict:
+def collect_package(root: Path, compiler: Path, reports: Path, name: str, configured: dict, memory="gc") -> dict:
     report = (reports / f"{name}{REPORT_SUFFIX}").resolve()
     log = reports / f"{name}{LOG_SUFFIX}"
     suite = root / PACKAGES_DIR / name / "tests"
     if not clear_stale(report, log):
         return collection_failure(name, configured, [f"cannot remove stale evidence in {reports}"])
     before = source_inputs(root, name)
-    command, completed, error = run_collector(root, compiler, report, suite)
+    command, completed, error = run_collector(root, compiler, report, suite, memory)
     if error is not None:
         write_log(log, command, None, f"cannot run collector: {error}")
         return collection_failure(name, configured, [f"cannot run collector: {error}"])
@@ -449,13 +450,13 @@ def selected_names(configured: dict, requested: str | None) -> list[str] | None:
     return [requested] if requested in configured else None
 
 
-def evaluate(root: Path, reports: Path, compiler: Path, configured: dict, names: list[str], collect: bool) -> list[dict]:
+def evaluate(root: Path, reports: Path, compiler: Path, configured: dict, names: list[str], collect: bool, memory="gc") -> list[dict]:
     if collect:
         reports.mkdir(parents=True, exist_ok=True)
         remove_if_exists(reports / SUMMARY_NAME)
     with ThreadPoolExecutor(max_workers=len(names)) as pool:
         return list(pool.map(
-            lambda name: collect_package(root, compiler, reports, name, configured[name])
+            lambda name: collect_package(root, compiler, reports, name, configured[name], memory)
             if collect else gate_package(root, reports, name, configured[name]), names))
 
 
@@ -484,7 +485,7 @@ def main(argv: list[str] | None = None) -> int:
     names = selected_names(configured, args.package)
     if names is None:
         return fail(f"unknown package {args.package!r}")
-    results = evaluate(root, reports, compiler, configured, names, args.collect)
+    results = evaluate(root, reports, compiler, configured, names, args.collect, args.memory)
     for result in results:
         print_result(result)
     return finish(results, reports, "collect" if args.collect else "check", thresholds_path,

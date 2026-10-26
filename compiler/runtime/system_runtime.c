@@ -152,8 +152,8 @@ static void *process_monitor_thread(void *arg) {
         proc->handler(proc->process_id, PROCESS_EXIT, exit_code_str);
       }
       break;
-    } else if (result < 0 && errno != ECHILD) {
-      // Error in waitpid
+    } else if (result < 0 && errno != EINTR) {
+      // ECHILD means the host already reaped the child; its status is unavailable.
       pthread_mutex_lock(&proc->mutex);
       proc->is_running = false;
       proc->exit_code = -1;
@@ -372,11 +372,13 @@ char *spawn_process(char *command) {
     // Resize if needed
     if (total_read + len >= buffer_size) {
       buffer_size *= 2;
-      output = realloc(output, buffer_size);
-      if (!output) {
+      char *grown = realloc(output, buffer_size);
+      if (!grown) {
+        free(output);
         pclose(pipe);
         return NULL;
       }
+      output = grown;
     }
 
     strcpy(output + total_read, buffer);

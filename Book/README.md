@@ -19,13 +19,13 @@ By the end of the finished book, a reader should be able to:
 - test behavior and read compiler feedback without panic;
 - coordinate concurrent work through fibers and channels, with current runtime limits explained;
 - compile a program for a native machine or WebAssembly; and
-- recognise ML and future flavors as optional source surfaces over the same language.
+- recognise Default, ML and Python syntax flavors as ways to write the same language.
 
 ## The teaching path
 
 The book leads with the Default flavor (`.osp`). Its braces, `fn`, `let`, and parenthesised calls are familiar to readers arriving from JavaScript, TypeScript, C#, Java, Kotlin, Swift, Go, or Rust.
 
-ML flavor appears later as an **optional alternative**, not a decision the reader must make before learning Osprey. A file can be translated between surfaces—often conveniently with a coding agent—then checked and tested like any other code change. The design remains open to more flavors in the future; the book teaches the shared language before touring alternative spellings.
+ML flavor appears later as an **optional alternative**, not a decision the reader must make before learning Osprey. A file can be translated between surfaces—often conveniently with a coding agent—then checked and tested like any other code change. Python syntax is also available: `def`, `lambda`, f-strings and decorated effect declarations compile through Osprey, with inferred static types and checked effects. It does not run arbitrary Python packages; CPython libraries require the separate interop bridge. See the [Python flavor guide](../website/src/docs/python-flavor.md).
 
 ## Project map
 

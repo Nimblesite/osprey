@@ -263,12 +263,10 @@ function runOspreyCompiler(args, code = '', flavor = 'default') {
         const requestId = randomUUID()
         const tempBaseDir = '/tmp/osprey-temp'
         const tempRequestDir = path.join(tempBaseDir, requestId)
-        // The compiler picks the source flavor from the file extension
-        // (`.ospml` ⇒ ML, `.osp` ⇒ Default), so name the temp file to match the
-        // flavor the playground selected — ML (offside-rule) source parses only
-        // through the ML frontend. [FLAVOR-SELECT]
-        const isMl = flavor === 'ml' || flavor === 'ospml'
-        const tempFile = path.join(tempRequestDir, isMl ? 'main.ospml' : 'main.osp')
+        // Implements [FLAVOR-SELECT]: use the requested syntax frontend.
+        const extensions = { ml: 'ospml', ospml: 'ospml', python: 'py', py: 'py' }
+        const extension = extensions[flavor] || 'osp'
+        const tempFile = path.join(tempRequestDir, `main.${extension}`)
 
         try {
             // Create the unique temp directory for this request

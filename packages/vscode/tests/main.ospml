@@ -1,0 +1,73 @@
+namespace vscode_tests
+import vscode::Editor
+import ui::Doc
+import ui::Requests
+
+encoded result = match result
+    Success request => Requests::encode request
+    Error _ => JsonNull
+
+refused result = match result
+    Error _ => true
+    Success _ => false
+
+test ("editor workspace requests use the shared framework envelope", \() =>
+    doc = encoded (Editor::workspaces "workspace:1")
+    expect (Doc::text (doc, "kind"), "host-call")
+    expect (Doc::text (doc, "namespace"), "vscode")
+    expect (Doc::text (doc, "operation"), "workspace.snapshot")
+    expect (Doc::text (doc, "ticket"), "workspace:1"))
+
+test ("opening a document preserves its URI and source location", \() =>
+    doc = encoded (Editor::openDocument ("open:1", "file:///work/my%20app/main.osp", 12, 4))
+    args = Doc::field (doc, "arguments")
+    expect (Doc::text (args, "uri"), "file:///work/my%20app/main.osp")
+    expect (Doc::number (args, "line"), 12)
+    expect (Doc::number (args, "column"), 4)
+    expect (refused (Editor::openDocument ("bad", "command:workbench.action.closeWindow", 1, 1)), true)
+    expect (refused (Editor::openDocument ("bad", "file:///work/main.osp", 0, 1)), true))
+
+test ("process input is data with explicit workspace, timeout and output bounds", \() =>
+    doc = encoded (Editor::processInput ("run:1", "osprey-pkg", [], "--json tree --direct\n", "file:///work/my%20app", 30000, 1048576, "client/report"))
+    args = Doc::field (doc, "arguments")
+    expect (Doc::text (doc, "operation"), "process.input")
+    expect (Doc::text (args, "stdin"), "--json tree --direct\n")
+    expect (Doc::text (args, "workspace"), "file:///work/my%20app")
+    expect (Doc::number (doc, "limit"), 1048576)
+    expect (Doc::number (doc, "timeout"), 30000)
+    expect (refused (Editor::processInput ("bad", "tool", [], "", "file:///work", 0, 10, "out")), true)
+    expect (refused (Editor::processInput ("bad", "tool", [], "", "file:///work", 1, 0, "out")), true))
+
+test ("configuration and view requests preserve resource scope", \() =>
+    config = encoded (Editor::configuration ("config:1", "osprey.packages", "vscode-remote://ssh-remote+dev/work/app"))
+    args = Doc::field (config, "arguments")
+    expect (Doc::text (config, "operation"), "configuration.read")
+    expect (Doc::text (args, "section"), "osprey.packages")
+    expect (Doc::text (args, "workspace"), "vscode-remote://ssh-remote+dev/work/app")
+    expect (Doc::text (encoded (Editor::revealView ("view:1", "osprey.packages")), "operation"), "webview.reveal")
+    expect (refused (Editor::configuration ("bad", "", "file:///work")), true)
+    expect (refused (Editor::configuration ("bad", "section", "https://example.test")), true)
+    expect (refused (Editor::revealView ("bad", "")), true))
+
+test ("invalid tickets process scope and excessive limits fail explicitly", \() =>
+    expect (refused (Editor::workspaces ""), true)
+    expect (refused (Editor::processInput ("bad", "", [], "", "file:///work", 1, 10, "out")), true)
+    expect (refused (Editor::processInput ("bad", "tool", [], "", "https://example.test", 1, 10, "out")), true)
+    expect (refused (Editor::processInput ("bad", "tool", [], "", "file:///work", 1, 10, "")), true)
+    expect (refused (Editor::processInput ("bad", "tool", [], "", "file:///work", 120001, 10, "out")), true)
+    expect (refused (Editor::processInput ("bad", "tool", [], "", "file:///work", 1, 16777217, "out")), true))
+
+startProbe source = "start:${source}"
+dispatchProbe (saved, event) = "dispatch:${saved}:${event}"
+answer result = match result
+    Success value => value
+    Error problem => problem
+
+test ("WASM frames route opaque state through real application entry points", \() =>
+    expect (answer (vscode::Webview::evaluate ("{\"operation\":\"start\",\"context\":{\"platform\":\"vscode\"}}", startProbe, dispatchProbe)), "start:{\"platform\":\"vscode\"}")
+    expect (answer (vscode::Webview::evaluate ("{\"operation\":\"dispatch\",\"state\":\"opaque\",\"event\":{\"kind\":\"lifecycle\"}}", startProbe, dispatchProbe)), "dispatch:opaque:{\"kind\":\"lifecycle\"}")
+    expect (answer (vscode::Webview::evaluate ("{}", startProbe, dispatchProbe)), "vscode.frame.unknown-operation")
+    expect (vscode::Webview::respond ("{\"operation\":\"start\",\"context\":{}}", startProbe, dispatchProbe), "start:{}")
+    expect (Doc::text (Doc::parse (vscode::Webview::respond ("{}", startProbe, dispatchProbe)), "error"), "vscode.frame.unknown-operation")
+    expect (answer (vscode::Webview::evaluate ("{\"operation\":\"start\"}", startProbe, dispatchProbe)), "vscode.frame.missing-context")
+    expect (answer (vscode::Webview::evaluate ("{\"operation\":\"dispatch\"}", startProbe, dispatchProbe)), "vscode.frame.missing-state-or-event"))

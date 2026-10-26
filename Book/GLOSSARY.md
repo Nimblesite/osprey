@@ -40,7 +40,7 @@ A concurrent computation created with `spawn`; `await` receives its result. In t
 
 ## Flavor
 
-A source-level way to write Osprey. The book teaches Default and optionally ML; a partially implemented Python flavor is also available. A flavor changes how code is written and read; shared checking and code generation operate after that source has been translated into the language's common program form. More flavors may be added in the future.
+A syntax flavor is a way to write Osprey. Default uses braces, ML uses indentation and curried calls, and Python flavor uses Python-style syntax. They share type checking, effects and code generation. The book teaches Default first and optionally ML; Python flavor supports a documented subset. More syntax flavors may be added.
 
 ## Function
 
@@ -60,7 +60,7 @@ The compiler's ability to work out types from how values are created and used. I
 
 ## Memory backend
 
-The runtime's method for managing allocated values. The default backend retains general allocations. Tracing garbage collection (`gc`) and automatic reference counting (`arc`) are separate native options with platform limits; WebAssembly and mobile libraries currently support only the default backend.
+The runtime's method for managing allocated values. Native builds default to tracing garbage collection (`gc`); automatic reference counting (`arc`) is the alternative managed option. Explicit `--memory=none` selects unmanaged allocation and retains general allocations. WebAssembly and mobile libraries currently require `none`, with no automatic fallback.
 
 ## ML flavor
 
@@ -68,7 +68,7 @@ An optional Osprey source flavor using `.ospml` files, indentation-based layout,
 
 ## Module
 
-A named group of declarations with an explicit public boundary. A project can contain several source files and import exported declarations across Default and ML flavors. Imports refer to logical names rather than file paths.
+A named group of declarations with an explicit public boundary. A project can contain several source files and import exported declarations across Default, ML and Python syntax flavors. Imports refer to logical names rather than file paths.
 
 ## Native program
 
@@ -80,7 +80,7 @@ A named request declared by an effect, with specified argument and result types.
 
 ## Package
 
-A distributable unit of reusable project code. Osprey's package registry and manager are planned; existing project modules and imports do not require them.
+A distributable unit of reusable project code. Osprey's package client resolves folder-registry releases, verifies downloaded source and builds from exact locks. Hosted publishing, the public package website and trust services remain planned. Project modules and imports do not require a registry. See the [package guide](../website/src/docs/package-manager.md).
 
 ## Parameter
 

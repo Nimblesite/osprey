@@ -8,32 +8,30 @@ A functional language built around **algebraic effects**, inferred types and nat
 
 Osprey is actively evolving. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production. It compiles through LLVM to native binaries, WebAssembly and C ABI libraries for iOS, macOS and Android.
 
-## Save a draft. Test an offline failure.
+## Choose storage once, at the application boundary
 
-An editor needs the same save logic to work with real storage and a simulated failure:
+The save callback calls application logic, which requests storage. Neither function takes a storage object:
 
 ```osprey
 effect Drafts { save: fn(string, string) -> Result<int, Error> }
-fn saveDraft() = match perform Drafts.save("draft.txt", "Ship it.") {
+fn saveDraft(path, text) = match perform Drafts.save(path, text) {
     Success _ => "Saved"
     Error { message } => "Retry: ${message}"
 }
+fn onSave() = saveDraft("draft.txt", "Ship it.")
 
 let disk = handler Drafts {
     save path text => writeFile(path, text)
 }
-let offline = handler Drafts {
-    save _ _ => Error { message: "offline" }
-}
 
-print("${disk(saveDraft)} / ${offline(saveDraft)}")
+print(disk(onSave))
 ```
 
 ```text
-Saved / Retry: offline
+Saved
 ```
 
-`disk` really writes the file. `offline` simulates unavailable storage without touching the file system. `saveDraft` handles the outcome while its handler supplies the storage capability. UI and validation helpers can call it without passing storage objects through each layer. The compiler rejects calls with no matching handler.
+`disk(onSave)` supplies storage for the entire call chain: `onSave` → `saveDraft` → `Drafts.save`. The draft is written once. Intermediate functions need no storage parameters. A test can replace the handler's `writeFile(path, text)` with `Error { message: "offline" }` and exercise the same retry logic without touching disk. The compiler rejects the call if no handler supplies storage.
 
 Read the [effects guide, including the ML version](https://www.ospreylang.dev/docs/effects/), or [try Osprey online](https://www.ospreylang.dev/playground/).
 
@@ -53,7 +51,7 @@ scoop install osprey
 ```bash
 osprey program.osp --run
 osprey program.osp --check
-osprey program.osp --target=wasm32 --compile -o program.wasm
+osprey program.osp --target=wasm32 --memory=none --compile -o program.wasm
 ```
 
 See the [installation guide](https://www.ospreylang.dev/docs/installation/) for LLVM setup, supported platforms and verification.
@@ -95,7 +93,9 @@ Run these from the repository root. The compiler is written to `target/release/o
 - **Types:** inference, algebraic data types, exhaustive matching and explicit `Result` failures.
 - **Any syntax, one language:** every flavor's concrete syntax tree lowers into one canonical AST, so types, effects and project modules are shared. Default braces (`.osp`), ML layout (`.ospml`) and the [Python flavor](https://www.ospreylang.dev/docs/python-flavor/) (`.py`, Osprey that looks like Python) ship today and mix in one project.
 - **Arithmetic:** integer faults require an explicit `Arith` policy. [Contract](docs/specs/language/0037-ArithmeticEffects.md).
-- **Native concurrency and memory:** isolated fibers; default non-reclaiming allocation, tracing GC or reference counting.
+- **Native concurrency and memory:** isolated fibers; tracing GC by default, or reference counting with `--memory=arc`. Unmanaged allocation requires explicit `--memory=none`.
+
+GC is the native default to avoid ARC's per-ownership-change reference-count work, at the cost of deferred reclamation and collection pauses. Choose ARC for prompt reclamation, Windows or allocating fibers; neither backend is universally faster. See [memory choices and limits](docs/specs/compiler/0018-MemoryManagement.md#backend-selection-mem-backends).
 
 [Talon Bank](examples/projects/modules/README.md) shares web and mobile application logic; [Issue Inbox](examples/mobile/README.md) shares iOS and Android state, UI descriptions and platform commands. Native hosts execute mobile SQL and HTTP commands and return completion events. [GPT-2](examples/gpt2/README.md) uses two static tensor handlers for host lists and the GPU surface.
 

@@ -1,0 +1,53 @@
+namespace registry_api;
+import registry_api::HostedHeaders
+
+/// Origin validation for credentialed browser requests and CSRF token
+/// checks. The Origin header is a request attribute, never authentication;
+/// an origin match only permits a browser challenge to proceed.
+/// Implements [PACKAGE-HOSTED-EDGE].
+module HostedOrigin {
+    let mutationMethods = ["POST", "PUT", "PATCH", "DELETE"]
+    let forbiddenStatus = 403
+
+    /// An origin verdict: ok, or a typed rejection.
+    export type Verdict = Ok | Reject { status: int, code: string }
+
+    fn reject(code) = Reject { status: forbiddenStatus, code: code }
+
+    fn isMutation(method) = listContains(mutationMethods, toUpperCase(method))
+
+    /// `Ok` only when the request may carry credentials: mutations require an
+    /// Origin that exactly matches the one allowed website origin
+    /// (case-folded); safe methods tolerate its absence but never a mismatch.
+    export fn check(originHeader, allowedOrigin, method) = match originHeader {
+        "" => if isMutation(method) { reject("req.origin-required") } else { Ok }
+        _ => if toLowerCase(originHeader) == toLowerCase(allowedOrigin) { Ok } else { reject("req.origin-mismatch") }
+    }
+
+    /// `Ok` only when the presented CSRF token is non-empty and equal to the
+    /// expected token. Comparison is ordinary equality here; a
+    /// constant-time comparison belongs to the native runtime adapter, not
+    /// this pure module.
+    export fn csrf(presented, expected) = if expected == "" { reject("req.csrf-unconfigured") }
+        else if presented == "" { reject("req.csrf-missing") }
+        else if presented == expected { Ok }
+        else { reject("req.csrf-mismatch") }
+
+    /// True when the verdict is `Ok`.
+    export fn ok(verdict) = match verdict {
+        Ok => true
+        _ => false
+    }
+
+    /// The rejection status, or 0 for `Ok`.
+    export fn statusOf(verdict) = match verdict {
+        Reject { status, code } => status
+        _ => 0
+    }
+
+    /// The rejection code, or "" for `Ok`.
+    export fn codeOf(verdict) = match verdict {
+        Reject { status, code } => code
+        _ => ""
+    }
+}

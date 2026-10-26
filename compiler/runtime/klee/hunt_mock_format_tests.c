@@ -58,6 +58,9 @@ static const unsigned_case unsigned_cases[] = {
     {"%-#8x|", 255u, "0xff    |"}, {"%.4x", 255u, "00ff"}, {"%#.4x", 255u, "0x00ff"}, {"%.0x", 0u, ""},
     {"%#.0x", 0u, ""}, {"%o", 8u, "10"}, {"%o", 0u, "0"}, {"%#o", 8u, "010"}, {"%#o", 0u, "0"},
     {"%o", 4294967295u, "37777777777"}, {"%5o", 8u, "   10"}, {"%05o", 8u, "00010"}, {"%#5o", 8u, "  010"},
+    {"%#.3o", 1u, "001"}, {"%#.0o", 0u, "0"}, {"%#5.3o", 1u, "  001"},
+    {"%-#5.3o|", 1u, "001  |"}, {"%#05o", 1u, "00001"}, {"%#.1o", 8u, "010"},
+    {"%#5.0o", 0u, "    0"}, {"%#.3o", 0u, "000"}, {"%#.1o", 0u, "0"},
     {"%hu", 65537u, "1"}, {"%hx", 0x12345u, "2345"}, {"%hhu", 257u, "1"}, {"%hhx", 0x1ffu, "ff"},
     {"%hhX", 0xabu, "AB"}, {"%10u|", 7u, "         7|"}, {"%-10u|", 7u, "7         |"},
 };
@@ -233,6 +236,22 @@ static void every_truncation_reports_the_full_length(void) {
   }
 }
 
+static void octal_truncation_preserves_counts_and_bounds(void) {
+  for (size_t i = 0; i < ROWS(unsigned_cases); i++) {
+    const unsigned_case *row = &unsigned_cases[i];
+    if (strchr(row->format, 'o') == NULL) continue;
+    size_t whole = strlen(row->expected);
+    for (size_t cap = 0; cap <= whole + 2; cap++) {
+      char out[OUT_MAX];
+      memset(out, '#', sizeof(out));
+      int length = snprintf(out, cap, row->format, row->value);
+      size_t kept = cap == 0 ? 0 : (cap - 1 < whole ? cap - 1 : whole);
+      int prefix = cap == 0 ? out[0] == '#' : strncmp(out, row->expected, kept) == 0 && out[kept] == '\0' && out[kept + 1] == '#';
+      hunt_check(length == (int)whole && prefix, "octal truncation keeps exact text, count and bounds");
+    }
+  }
+}
+
 // sprintf, printf and fprintf share the engine and the returned length; a
 // stream opened for reading cannot be printed to.
 static void every_printer_agrees(void) {
@@ -252,13 +271,15 @@ static void every_printer_agrees(void) {
   (void)fclose(input);
 }
 
-static void decimal_roundtrip(unsigned long long value) {
+static void integer_roundtrip(unsigned long long value, int base, const char *format) {
   char text[32], *end = NULL;
-  int count = snprintf(text, sizeof(text), "%llu", value);
-  hunt_check(count > 0 && count <= 20 && (size_t)count == strlen(text), "decimal length matches its bytes");
-  hunt_check(text[0] >= '0' && text[0] <= '9' && (count == 1 || text[0] != '0'), "decimal spelling is canonical");
+  int count = snprintf(text, sizeof(text), format, value);
+  int limit = base == 8 ? 22 : base == 10 ? 20 : 16;
+  hunt_check(count > 0 && count <= limit && (size_t)count == strlen(text), "integer length matches its bytes");
+  int first_digit = (text[0] >= '0' && text[0] <= '9') || (base == 16 && text[0] >= 'a' && text[0] <= 'f');
+  hunt_check(first_digit && (count == 1 || text[0] != '0'), "integer spelling is canonical");
   errno = 0;
-  unsigned long long restored = strtoull(text, &end, 10);
+  unsigned long long restored = strtoull(text, &end, base);
   hunt_check(errno == 0 && end != text && *end == 0 && restored == value, "host libc recovers the exact unsigned integer");
 }
 
@@ -267,18 +288,33 @@ static void decimal_roundtrip_oracle(void) {
   const unsigned long long multiplier = 6364136223846793005ULL, increment = 1442695040888963407ULL;
   unsigned long long state = UINT64_MAX;
   for (unsigned i = 0; i < count; i++) {
-    decimal_roundtrip(i);
-    decimal_roundtrip(state);
+    integer_roundtrip(i, 10, "%llu");
+    integer_roundtrip(state, 10, "%llu");
     state = state * multiplier + increment;
   }
 }
 
+static void every_integer_digit_boundary_roundtrips(void) {
+  const unsigned bases[] = {8, 10, 16};
+  const char *formats[] = {"%llo", "%llu", "%llx"};
+  for (size_t i = 0; i < ROWS(bases); i++) {
+    for (unsigned long long boundary = 1;; boundary *= bases[i]) {
+      integer_roundtrip(boundary - 1, (int)bases[i], formats[i]);
+      integer_roundtrip(boundary, (int)bases[i], formats[i]);
+      integer_roundtrip(boundary + 1, (int)bases[i], formats[i]);
+      if (boundary > UINT64_MAX / bases[i]) break;
+    }
+  }
+}
+
 void hunt_mock_format_tests(void) {
+  every_integer_digit_boundary_roundtrips();
   decimal_roundtrip_oracle();
   integer_rows();
   string_and_float_rows();
   star_rows();
   mixed_argument_rows();
   every_truncation_reports_the_full_length();
+  octal_truncation_preserves_counts_and_bounds();
   every_printer_agrees();
 }

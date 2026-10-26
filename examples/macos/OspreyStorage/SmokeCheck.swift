@@ -6,7 +6,7 @@ import Foundation
 // the app sends, so hidden files must be measured and filtered for them to pass.
 enum SmokeCheck {
     static func run() -> Bool {
-        let checks = boundaryChecks() + volumeChecks() + browserChecks()
+        let checks = boundaryChecks() + volumeChecks() + browserChecks() + linkChecks()
         let failures = checks.compactMap { $0.1 ? nil : $0.0 }
         let verdict = failures.isEmpty ? "OSPREY_MACOS_STORAGE_SMOKE_OK" : "FAIL: \(failures.joined(separator: ", "))"
         print(verdict)
@@ -92,6 +92,23 @@ enum SmokeCheck {
             ("out-of-range entry", storageEntryBytes(Int64(top.count)) == -1),
             ("photo library status", ["unavailable", "unasked", "denied", "limited", "ready"].contains(photos)),
         ]
+    }
+
+    static func linkChecks() -> [(String, Bool)] {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("osprey-links-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        do {
+            try FileManager.default.createDirectory(at: root.appendingPathComponent("private/etc"), withIntermediateDirectories: true)
+            try Data(repeating: 1, count: 8192).write(to: root.appendingPathComponent("private/etc/config"))
+            try FileManager.default.createSymbolicLink(atPath: root.appendingPathComponent("etc").path, withDestinationPath: "private/etc")
+            guard let tree = DiskTree.measure(canonical(root.path), guarding: DiskTree.Guard(apps: []), progress: { _, _ in }) else { return [("link walk", false)] }
+            let link = tree.listing(of: canonical(root.path)).entries.first { text($0.path).hasSuffix("/etc") }
+            return [
+                ("directory links keep their folder kind", link?.folder == true && link?.link == true),
+                ("directory links do not count targets twice", link?.bytes == 0),
+                ("directory links can be browsed", tree.listing(of: canonical(root.path) + "/etc").entries.count == 1),
+            ]
+        } catch { return [("link fixture: \(error)", false)] }
     }
 
     private struct Envelope {

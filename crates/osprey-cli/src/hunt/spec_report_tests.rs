@@ -83,6 +83,7 @@ fn the_json_report_has_exactly_the_spec_fields() {
         set(&[
             "program",
             "engine",
+            "memory",
             "budgetSeconds",
             "inputBytes",
             "explored",
@@ -91,6 +92,7 @@ fn the_json_report_has_exactly_the_spec_fields() {
             "context"
         ])
     );
+    assert_eq!(value["memory"], "gc");
     assert_eq!(
         keys(&value["explored"]),
         set(&["paths", "completed", "instructions", "elapsed"])

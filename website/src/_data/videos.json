@@ -44,5 +44,24 @@
       "ARC",
       "leak detection"
     ]
+  },
+  "package-manager": {
+    "name": "Add and remove Osprey packages in VS Code",
+    "description": "Browse Osprey packages, review audit warnings, add and verify a dependency, then remove it through the VS Code package workspace.",
+    "content": "/assets/videos/osprey-package-manager.mp4",
+    "poster": "/assets/videos/osprey-package-manager-poster.jpg",
+    "posterAlt": "The VS Code Command Palette with Osprey: Manage Packages selected.",
+    "captions": "/assets/videos/osprey-package-manager.en.vtt",
+    "chapters": "/assets/videos/osprey-package-manager.chapters.vtt",
+    "width": 1920,
+    "height": 1080,
+    "uploadDate": "2026-10-25T21:32:56+11:00",
+    "tags": [
+      "Osprey",
+      "VS Code",
+      "package manager",
+      "dependencies",
+      "package registry"
+    ]
   }
 }

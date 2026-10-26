@@ -38,6 +38,8 @@ test: build
 	$(MAKE) _coverage_check_rust
 	$(MAKE) _test_packages
 	$(MAKE) _coverage_check_packages
+	$(MAKE) _test_registry REGISTRY_MEMORY=gc
+	$(MAKE) _test_registry REGISTRY_MEMORY=arc
 	$(MAKE) _test_python_app_ports
 	$(MAKE) _test_c_runtime
 	$(MAKE) _test_hunt_mock
@@ -51,15 +53,15 @@ test: build
 # strictly the stronger of the two observations. Executing the same assertions
 # twice buys nothing and doubles the slowest stage in the build. The `osprey
 # test` subcommand itself stays covered by bank-test and the CLI e2e suite.
-	$(MAKE) _test_goldens
 	$(MAKE) _conformance-gc
 	$(MAKE) _conformance-arc
 	$(MAKE) _test_profiler
+	$(MAKE) _vsix_bundle
 	$(MAKE) _test_vscode_extension
 	$(MAKE) _coverage_check_vscode_extension
 	$(MAKE) _test_bench_tools
 
-## package-coverage: per-package source coverage — collect, then gate all 18.
+## package-coverage: per-package source coverage — collect, then gate all 19.
 ##                   Reruns each packages/<name>/tests suite with `osprey test
 ##                   --coverage-json` and enforces every threshold under
 ##                   projects.packages (90% floor, one report per package).
@@ -348,7 +350,7 @@ run: build
 install: build
 	cargo install --path crates/osprey-cli --force
 	sudo $(MKDIR) /usr/local/lib
-	sudo cp $(RTB)/libfiber_runtime.a $(RTB)/libhttp_runtime.a /usr/local/lib/
+	sudo cp $(RTB)/libfiber_runtime*.a $(RTB)/libhttp_runtime*.a /usr/local/lib/
 	@echo "==> installed osprey and runtime archives."
 
 ## bench: Build, then run the cross-language performance benchmark suite

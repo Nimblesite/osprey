@@ -11,8 +11,6 @@ import registry::TomlValues
 module TomlParser {
     type Step = { doc: TomlTree::Doc, at: TomlLexer::Cursor }
 
-    let initialFocus = TomlTree::Focus { keys: [], index: TomlTree::noIndex }
-
     /// The span of a table header is the `[` itself, so a manifest error
     /// names the header's line and column rather than the key after it.
     fn headerSegs(segs, start) = mapList(segs, fn(s) => TomlValues::KeySeg { name: s.name, span: Toml::spanOf(start) })
@@ -65,8 +63,8 @@ module TomlParser {
 
     fn tableHeaderDefine(doc, path, tail, start) = {
         let segs = headerSegs(path.segs, start)
-        match TomlTree::defineTable(doc.root, segs) {
-            Success { value } => Success { value: Step { doc: TomlTree::Doc { root: value, focus: TomlTree::Focus { keys: mapList(segs, fn(s) => s.name), index: TomlTree::noIndex } }, at: tail } }
+        match TomlTree::defineTable(doc, segs) {
+            Success { value } => Success { value: Step { doc: value, at: tail } }
             Error { message } => Error { message: message }
         }
     }
@@ -88,8 +86,8 @@ module TomlParser {
 
     fn arrayHeaderDefine(doc, path, tail, start) = {
         let segs = headerSegs(path.segs, start)
-        match TomlTree::defineArrayTable(doc.root, segs) {
-            Success { value } => Success { value: Step { doc: TomlTree::Doc { root: value.root, focus: TomlTree::Focus { keys: mapList(segs, fn(s) => s.name), index: value.index } }, at: tail } }
+        match TomlTree::defineArrayTable(doc, segs) {
+            Success { value } => Success { value: Step { doc: value, at: tail } }
             Error { message } => Error { message: message }
         }
     }
@@ -137,5 +135,5 @@ module TomlParser {
     }
 
     /// Parse a TOML document into its root table, or the first problem.
-    export fn parse(text) -> Result<Toml::Value, Toml::Problem> = parseDocument(TomlTree::Doc { root: Toml::emptyTable, focus: initialFocus }, TomlLexer::start(text))
+    export fn parse(text) -> Result<Toml::Value, Toml::Problem> = parseDocument(TomlTree::emptyDoc, TomlLexer::start(text))
 }

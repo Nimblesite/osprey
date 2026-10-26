@@ -22,7 +22,7 @@ chrF++, and the tokenizers over ASCII, punctuation, digits, accents, CJK and emo
 | `Chrf.CHRFScore` | `CHRFScore` | `score`, `char_order`, `word_order`, `beta` |
 | `Tokenizer.tokenize(name, line)`, `tokenize_13a`, `tokenize_char`, `tokenize_none` | `sacrebleu.tokenizers` `13a`, `char`, `none` | `13a` is `TokenizerV13a`'s rule sequence written as explicit scans |
 | `Ngrams.word_ngrams`, `char_ngrams`, `counter_*` | `sacrebleu.utils.extract_all_word_ngrams`, `extract_all_char_ngrams` | Counters are sorted `(ngram, count)` lists |
-| `Text.codepoints`, `from_codepoints`, `map_codepoints`, `collapse_whitespace`, ... | — | Codepoint primitives shared with `@osprey/rouge_score` |
+| `Text.codepoints`, `from_codepoints`, `map_codepoints`, `collapse_whitespace`, ... | — | Codepoint primitives shared with `@osprey/rouge-score` |
 
 ## Divergences
 

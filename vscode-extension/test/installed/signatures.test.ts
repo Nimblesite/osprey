@@ -103,6 +103,11 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
     ) as Record<string, string>;
     assert.deepStrictEqual(Object.keys(clients).sort(), [
       "extension",
+      "package-api",
+      "package-commands",
+      "package-frontend",
+      "package-listing",
+      "package-workspace",
       "warning-fixes",
     ]);
     for (const [name, hash] of Object.entries(clients)) {

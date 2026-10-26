@@ -461,6 +461,8 @@ class CheckerTests(unittest.TestCase):
         self.assertEqual((demo["covered"], demo["total"], demo["percentage"]), (9, 10, 90.0))
         self.assertEqual(demo["files"][0]["path"], "lib.py")
         self.assertTrue(demo["pass"])
+        fixture.write_spec({name: {"report": own_report(name, 9, 10), "memory": "arc"} for name in names})
+        self.assert_exit(fixture.collect("--memory", "arc"), 0)
         self.assertEqual({row["name"] for row in fixture.summary()["packages"]}, set(names))
         self.assertTrue(all(row["pass"] for row in fixture.summary()["packages"]))
 

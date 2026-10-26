@@ -1,0 +1,27 @@
+// Implements [VSCODE-SDK-WASM]: a generic WASI command boundary for Osprey
+// Native start/dispatch. The host keeps the session string opaque.
+namespace vscode
+import ui::Doc
+
+(** The WASM command boundary shared by Osprey Native VS Code applications. *)
+module Webview
+    started (frame, start) = match Doc::has (frame, "context")
+        false => Error(message = "vscode.frame.missing-context")
+        true => Success(value = start (Doc::write (Doc::field (frame, "context"))))
+
+    dispatched (frame, dispatch) = match Doc::text (frame, "state") != "" && Doc::has (frame, "event")
+        false => Error(message = "vscode.frame.missing-state-or-event")
+        true => Success(value = dispatch (Doc::text (frame, "state"), Doc::write (Doc::field (frame, "event"))))
+
+    (** Route a host frame to the application's actual framework entry points; malformed frames fail explicitly. *)
+    export evaluate (source, start, dispatch) =
+        frame = Doc::parse source
+        match Doc::text (frame, "operation")
+            "start" => started (frame, start)
+            "dispatch" => dispatched (frame, dispatch)
+            _ => Error(message = "vscode.frame.unknown-operation")
+
+    (** One JSON envelope or explicit boundary error for a WASI stdin frame; the application entry only supplies stdin and stdout. *)
+    export respond (source, start, dispatch) = match evaluate (source, start, dispatch)
+        Success envelope => envelope
+        Error problem => Doc::write (JsonObject [Doc::str ("error", problem)])

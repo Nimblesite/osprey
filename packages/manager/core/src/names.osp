@@ -32,7 +32,7 @@ module Names {
     export fn nameCode(s) = component(s, nameMax, "name.name")
 
     fn split(body) = match indexOf(body, "/") {
-        Success { value } => Success { value: Key { scope: take(body, value), name: drop(body, value + 1) } }
+        Success { value } => Success { value: Key { scope: take(body, value), name: drop(body, satAdd(value, 1)) } }
         Error => Error { message: "name.unscoped-or-missing-slash" }
     }
 

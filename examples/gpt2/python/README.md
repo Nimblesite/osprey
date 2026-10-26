@@ -35,7 +35,7 @@ make gpt2 FLAVOR=python BACKEND=lists PROMPT="The capital of France is" TOKENS=1
 
 The output is byte for byte the Default example's output for the same stdin: the banner naming the device, the prompt and token lines, the generated count, the decoded text, and the `generation stopped:` and unknown-backend messages. `GPU=auto`, `GPU=metal` and `GPU=opencl` select the existing device adapters; a missing adapter stops execution with an error. The prompt takes one full forward pass and every later token one `forward_step` over the blocks' cached qkv rows, as in the Default sampler.
 
-The ordinary compiler test compares every element of 24 deterministic tensors against the independent [Python reference](../reference.py), at the real embedding width and sequence lengths 1/2/3, under both handlers and default/GC/ARC memory, including all intermediate values from a transformer block. Run it directly with an existing compiler:
+The E2E compiler test compares every element of 24 deterministic tensors against the independent [Python reference](../reference.py), at the real embedding width and sequence lengths 1/2/3, under both handlers and GC/ARC memory, including all intermediate values from a transformer block. Memory variants compile concurrently, then all handler variants run concurrently. Run it directly with an existing compiler:
 
 ```sh
 python3 scripts/check-python-gpt2.py --compiler target/debug/osprey

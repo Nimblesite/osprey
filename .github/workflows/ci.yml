@@ -245,6 +245,8 @@ jobs:
           # compiler itself resolves them via compiler/lib.
           path: |
             target/release/osprey
+            target/osprey-pkg
+            target/package-workspace.wasm
             compiler/lib/
             compiler/bin/*.a
             examples/projects/modules/src/web/bundle.ospml
@@ -371,6 +373,50 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+  test-registry-gc:
+    name: "Tests: package manager (gc)"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
+      - uses: actions/download-artifact@v4
+        with:
+          name: osprey-build
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey
+      - name: Package manager security and integration suites
+        run: make _test_registry REGISTRY_MEMORY=gc
+
+  test-registry-arc:
+    name: "Tests: package manager (arc)"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
+      - uses: actions/download-artifact@v4
+        with:
+          name: osprey-build
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey
+      - name: Package manager security and integration suites
+        run: make _test_registry REGISTRY_MEMORY=arc
+
   test-python-app-ports:
     name: "Tests: Python application ports"
     needs: [changes, build]
@@ -399,36 +445,12 @@ jobs:
   # [MEM-BACKENDS] [MEM-OPAQUE] oracle: swapping the allocator must not perturb
   # one byte of output.
   #
-  # These are three explicit jobs rather than one matrix ON PURPOSE. The gate
+  # These are two explicit jobs rather than one matrix ON PURPOSE. The gate
   # is verified from inside the tree by scripts/verify-branch-protection.mjs,
   # which matches each required context against a literal job `name:`. A matrix
   # name interpolates (`(${{ matrix.memory }})`) and so matches nothing, which
   # that script correctly reports as a check that can never report. A
-  # verifiable gate is worth more here than three saved stanzas.
-  test-corpus-default:
-    name: "Tests: language corpus (default)"
-    needs: [changes, build]
-    if: ${{ needs.changes.outputs.code == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-        # lsp-profiler is a path dependency in the lspkit submodule, and cargo
-        # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
-        with:
-          submodules: true
-      - name: Setup Osprey toolchain (no rebuild)
-        uses: ./.github/actions/setup-osprey-compiler
-        with:
-          build: "false"
-      - uses: actions/download-artifact@v4
-        with:
-          name: osprey-build
-      - name: Restore artifact permissions
-        run: chmod +x target/release/osprey
-      - name: Corpus and goldens (compiler-default allocator)
-        run: make _test_goldens
-
+  # verifiable gate is worth more here than two saved stanzas.
   test-corpus-gc:
     name: "Tests: language corpus (gc)"
     needs: [changes, build]
@@ -562,8 +584,18 @@ jobs:
         with:
           name: osprey-extension
           path: vscode-extension/
+      - name: Restore bundled extension assets
+        run: |
+          set -euo pipefail
+          bundles=(vscode-extension/osprey-*.vsix)
+          test "${#bundles[@]}" -eq 1
+          bundle_dir=$(mktemp -d)
+          trap 'rm -rf "$bundle_dir"' EXIT
+          unzip -q "${bundles[0]}" 'extension/bin/*' -d "$bundle_dir"
+          mkdir -p vscode-extension/bin
+          cp -R "$bundle_dir/extension/bin/." vscode-extension/bin/
       - name: Restore artifact permissions
-        run: chmod +x target/release/osprey
+        run: chmod +x target/release/osprey target/osprey-pkg vscode-extension/bin/linux-x64/osprey vscode-extension/bin/linux-x64/osprey-pkg
 
       - name: Extension suite with V8 coverage
         run: xvfb-run -a make _test_vscode_extension
@@ -657,7 +689,7 @@ jobs:
           done
 
       - name: WebAssembly differential — whole tests/ corpus vs the native goldens
-        run: OSPREY_TARGET=wasm32 zsh crates/run_test_corpus.sh
+        run: make _test_wasm_goldens
 
   # Builds the site and runs the Playwright suite: every page template at three
   # breakpoints (no JS errors, no horizontal overflow, dark theme, chrome
@@ -912,11 +944,15 @@ jobs:
   # and simulator tests. macos-15 is ARM64, matching the simulator archive.
   coverage:
     name: Coverage thresholds
-    needs: [changes, test-rust, test-extension, test-packages]
-    if: ${{ needs.changes.outputs.code == 'true' }}
+    needs: [changes, test-rust, test-extension, test-packages, test-registry-gc, test-registry-arc]
+    if: ${{ always() && needs.changes.outputs.code == 'true' }}
     runs-on: macos-15
     timeout-minutes: 45
     steps:
+      - name: Package manager suites passed
+        run: |
+          test "${{ needs.test-registry-gc.result }}" = "success"
+          test "${{ needs.test-registry-arc.result }}" = "success"
       - uses: actions/checkout@v4
         # lsp-profiler is a path dependency in the lspkit submodule, and cargo
         # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].

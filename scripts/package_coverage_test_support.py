@@ -17,6 +17,7 @@ args = sys.argv[1:]
 report = Path(args[args.index("--coverage-json") + 1])
 suite = Path(args[args.index("test") + 1])
 spec = json.loads(Path(os.environ["FAKE_PACKAGE_SPEC"]).read_text()).get(suite.parent.name, {})
+assert "--memory=" + spec.get("memory", "gc") in args, "collector must explicitly select GC or ARC"
 if spec.get("barrier"):
     started = Path(os.environ["FAKE_PACKAGE_SPEC"]).parent / "started"
     started.mkdir(exist_ok=True)

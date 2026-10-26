@@ -27,6 +27,8 @@ mod resolve;
 mod rewrite;
 mod signature_collect;
 mod source;
+mod source_dependencies;
+pub use source_dependencies::SourceDependency;
 mod state;
 mod state_support;
 mod symbol_rewrite;
@@ -163,6 +165,10 @@ impl SourceMetadata {
 /// One fully assembled project ready for the shared checker and backend.
 #[derive(Debug, Clone)]
 pub struct AssembledProject {
+    /// Unconditional declaration and import requirements; namespace imports retain all providers.
+    pub source_dependencies: Vec<SourceDependency>,
+    /// Possible UFCS dependencies, requiring checked dispatch before inclusion.
+    pub method_candidates: Vec<SourceDependency>,
     /// Non-fatal style and ownership advice from the resolved project graph.
     pub warnings: Vec<ProjectWarning>,
     /// Every state owner, in deterministic source-name order.

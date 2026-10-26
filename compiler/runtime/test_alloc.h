@@ -36,6 +36,7 @@
 // which is why it cannot simply be a bool: the arm under test is often the
 // SECOND allocation in a function, and failing the first would never reach it.
 static _Atomic long osp_alloc_successes_left = -1;
+static _Atomic size_t osp_alloc_failure_size;
 
 #define OSP_BOOTSTRAP_BYTES 4096
 static char osp_bootstrap_arena[OSP_BOOTSTRAP_BYTES];
@@ -105,7 +106,9 @@ static inline void osp_resolve_real_allocators(void) {
 }
 
 // True exactly once per armed allocation, counting down the successes first.
-static inline int osp_alloc_should_fail(void) {
+static inline int osp_alloc_should_fail(size_t bytes) {
+  size_t selected = atomic_load(&osp_alloc_failure_size);
+  if (selected != 0 && selected != bytes) return 0;
   long left = atomic_load(&osp_alloc_successes_left);
   while (left >= 0) {
     // One armed failure is handed to exactly one caller: whoever wins the
@@ -126,11 +129,17 @@ static inline long osp_alloc_live(void) {
 /// Arm the injector: the allocation `successes` after this one returns NULL.
 /// `osp_alloc_fail_next()` is `osp_alloc_fail_after(0)`.
 static inline void osp_alloc_fail_after(long successes) {
+  atomic_store(&osp_alloc_failure_size, 0);
   atomic_store(&osp_alloc_successes_left, successes);
 }
 static inline void osp_alloc_fail_next(void) { osp_alloc_fail_after(0); }
+static inline void osp_alloc_fail_size(size_t bytes) {
+  atomic_store(&osp_alloc_failure_size, bytes);
+  atomic_store(&osp_alloc_successes_left, 0);
+}
 static inline void osp_alloc_fail_off(void) {
   atomic_store(&osp_alloc_successes_left, -1);
+  atomic_store(&osp_alloc_failure_size, 0);
 }
 
 void *malloc(size_t bytes) {
@@ -138,7 +147,7 @@ void *malloc(size_t bytes) {
   if (osp_real_malloc == NULL) {
     return osp_bootstrap_alloc(bytes);
   }
-  if (osp_alloc_should_fail()) {
+  if (osp_alloc_should_fail(bytes)) {
     return NULL;
   }
   void *at = osp_real_malloc(bytes);
@@ -162,7 +171,7 @@ void *calloc(size_t count, size_t size) {
     void *at = osp_bootstrap_alloc(bytes);
     return at == NULL ? NULL : memset(at, 0, bytes);
   }
-  if (osp_alloc_should_fail()) {
+  if (osp_alloc_should_fail(bytes)) {
     return NULL;
   }
   void *at = osp_real_calloc(count, size);
@@ -174,7 +183,7 @@ void *calloc(size_t count, size_t size) {
 
 void *realloc(void *at, size_t bytes) {
   osp_resolve_real_allocators();
-  if (osp_alloc_should_fail()) {
+  if (osp_alloc_should_fail(bytes)) {
     return NULL; // the caller still owns `at`, exactly as C requires
   }
   if (osp_from_bootstrap(at)) {

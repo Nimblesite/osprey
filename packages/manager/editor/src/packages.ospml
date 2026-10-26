@@ -1,0 +1,272 @@
+namespace registry_editor
+import ui::Doc
+import ui::Lists
+import registry::Names
+
+// Implements [PACKAGE-EDITOR-GRAPH]: the editor consumes the canonical
+// `osprey-pkg tree --graph` semantic report and never scans TOML, a lock or
+// package sources itself.
+
+type EntryIdentity =
+    entryKey : string
+    entryVersion : string
+    entryDigest : string
+
+type PackageEntry =
+    entryIdentity : EntryIdentity
+    entryDirect : bool
+    entryPresent : bool
+    entryDependencies : List<string>
+    entryDependents : List<string>
+    entryFindings : List<string>
+
+type Graph =
+    graphProject : string
+    graphPackages : List<PackageEntry>
+    graphDirect : List<string>
+    graphFindings : List<string>
+
+type CatalogEntry =
+    catalogKey : string
+    catalogVersions : List<string>
+    catalogFindings : List<string>
+    catalogEvidence : bool
+
+module Packages
+    failure message = Error(message = message)
+
+    stringField (doc, key) = match jsonField doc key
+        Error _ => failure "Package data is missing ${key}"
+        Success value => match jsonText value
+            Error _ => failure "Package data has a non-string ${key}"
+            Success text => Success(value = text)
+
+    intField (doc, key) = match jsonField doc key
+        Error _ => failure "Package data is missing ${key}"
+        Success value => match jsonInt value
+            Error _ => failure "Package data has a non-integer ${key}"
+            Success number => Success(value = number)
+
+    boolField (doc, key) = match jsonField doc key
+        Error _ => failure "Package data is missing ${key}"
+        Success value => match jsonBool value
+            Error _ => failure "Package data has a non-boolean ${key}"
+            Success flag => Success(value = flag)
+
+    canonical text = match Names::parse text
+        Error _ => failure "${text} is not a canonical package key"
+        Success key => match Names::display key == text
+            true => Success(value = text)
+            false => failure "${text} is not a canonical package key"
+
+    keyText item = match jsonText item
+        Error _ => failure "Package keys must be strings"
+        Success text => canonical text
+
+    appendKey (parsed, item) = match parsed
+        Error problem => Error(message = problem)
+        Success keys => match keyText item
+            Error problem => Error(message = problem)
+            Success text => Success(value = listAppend keys text)
+
+    keyListAt (doc, key) = match jsonField doc key
+        Error _ => failure "Package data is missing ${key}"
+        Success value => match value
+            JsonArray items => foldList (items, Success(value = []), \(parsed, item) => appendKey (parsed, item))
+            _ => failure "Package data has a non-list ${key}"
+
+    appendText (parsed, item) = match parsed
+        Error problem => Error(message = problem)
+        Success texts => match jsonText item
+            Error _ => failure "Package data has a non-string entry"
+            Success text => Success(value = listAppend texts text)
+
+    textListAt (doc, key) = match jsonField doc key
+        Error _ => failure "Package data is missing ${key}"
+        Success value => match value
+            JsonArray items => foldList (items, Success(value = []), \(parsed, item) => appendText (parsed, item))
+            _ => failure "Package data has a non-list ${key}"
+
+    identity doc = match stringField (doc, "key")
+        Error problem => Error(message = problem)
+        Success text => match canonical text
+            Error problem => Error(message = problem)
+            Success key => match stringField (doc, "version")
+                Error problem => Error(message = problem)
+                Success version => match stringField (doc, "digest")
+                    Error problem => Error(message = problem)
+                    Success digest => Success(value = EntryIdentity(entryKey = key, entryVersion = version, entryDigest = digest))
+
+    flags identityValue doc = match boolField (doc, "direct")
+        Error problem => Error(message = problem)
+        Success direct => match boolField (doc, "present")
+            Error problem => Error(message = problem)
+            Success present => Success(value = PackageEntry(entryIdentity = identityValue, entryDirect = direct, entryPresent = present, entryDependencies = [], entryDependents = [], entryFindings = []))
+
+    links draft doc = match keyListAt (doc, "dependencies")
+        Error problem => Error(message = problem)
+        Success dependencies => match keyListAt (doc, "dependents")
+            Error problem => Error(message = problem)
+            Success dependents => match textListAt (doc, "findings")
+                Error problem => Error(message = problem)
+                Success findings => Success(value = PackageEntry(entryIdentity = draft.entryIdentity, entryDirect = draft.entryDirect, entryPresent = draft.entryPresent, entryDependencies = dependencies, entryDependents = dependents, entryFindings = findings))
+
+    entry doc = match identity doc
+        Error problem => Error(message = problem)
+        Success identityValue => match flags identityValue doc
+            Error problem => Error(message = problem)
+            Success draft => links draft doc
+
+    appendEntry (parsed, item) = match parsed
+        Error problem => Error(message = problem)
+        Success packages => match entry item
+            Error problem => Error(message = problem)
+            Success package => Success(value = listAppend packages package)
+
+    entries items = foldList (items, Success(value = []), \(parsed, item) => appendEntry (parsed, item))
+
+    keyOf item = item.entryIdentity.entryKey
+
+    graph doc = match stringField (doc, "project")
+        Error problem => Error(message = problem)
+        Success project => match keyListAt (doc, "direct")
+            Error problem => Error(message = problem)
+            Success direct => match jsonField doc "packages"
+                Error _ => failure "Package graph is missing packages"
+                Success packagesValue => match packagesValue
+                    JsonArray items => match entries items
+                        Error problem => Error(message = problem)
+                        Success packages => match textListAt (doc, "findings")
+                            Error problem => Error(message = problem)
+                            Success findings => match Lists::distinct (mapList (packages, \item => keyOf item))
+                                false => failure "Package graph repeats a package key"
+                                true => Success(value = Graph(graphProject = project, graphPackages = packages, graphDirect = direct, graphFindings = findings))
+                    _ => failure "Package graph has a non-list packages"
+
+    release doc = match intField (doc, "epoch")
+        Error problem => Error(message = problem)
+        Success epoch => match intField (doc, "ordinal")
+            Error problem => Error(message = problem)
+            Success ordinal => Success(value = "e${epoch}.r${ordinal}")
+
+    appendRelease (parsed, item) = match parsed
+        Error problem => Error(message = problem)
+        Success versions => match release item
+            Error problem => Error(message = problem)
+            Success version => Success(value = listAppend versions version)
+
+    releases items = foldList (items, Success(value = []), \(parsed, item) => appendRelease (parsed, item))
+
+    catalogVersion doc = match jsonField doc "releases"
+        Error _ => failure "Catalog package is missing releases"
+        Success value => match value
+            JsonArray items => match releases items
+                Error problem => Error(message = problem)
+                Success versions => match isEmpty versions
+                    true => failure "Catalog package has no releases"
+                    false => Success(value = versions)
+            _ => failure "Catalog package has a non-list releases"
+
+    catalogFindings doc = match Doc::has (doc, "findings")
+        false => Success(value = [])
+        true => textListAt (doc, "findings")
+
+    catalogEntry doc = match stringField (doc, "key")
+        Error problem => Error(message = problem)
+        Success text => match canonical text
+            Error problem => Error(message = problem)
+            Success key => match catalogVersion doc
+                Error problem => Error(message = problem)
+                Success versions => match catalogFindings doc
+                    Error problem => Error(message = problem)
+                    Success findings => Success(value = CatalogEntry(catalogKey = key, catalogVersions = versions, catalogFindings = findings, catalogEvidence = false))
+
+    appendCatalog (parsed, item) = match parsed
+        Error problem => Error(message = problem)
+        Success entriesValue => match catalogEntry item
+            Error problem => Error(message = problem)
+            Success entryValue => Success(value = listAppend entriesValue entryValue)
+
+    catalog doc = match jsonField doc "packages"
+        Error _ => failure "Registry catalog is missing packages"
+        Success value => match value
+            JsonArray items => foldList (items, Success(value = []), \(parsed, item) => appendCatalog (parsed, item))
+            _ => failure "Registry catalog has a non-list packages"
+
+    catalogKeys entries = mapList (entries, \item => item.catalogKey)
+
+    latestVersion item = match listGet item.catalogVersions (satSub (length item.catalogVersions) 1)
+        Success version => version
+        Error _ => "No release"
+
+    keyOfCatalog item = item.catalogKey
+
+    findPackage (entries, key) = Lists::find (entries, \item => keyOf item == key)
+
+    findCatalog (entries, key) = Lists::find (entries, \item => keyOfCatalog item == key)
+
+    localAuthority authority = authority == "localhost" || authority == "127.0.0.1" || authority == "[::1]"
+
+    localPort (authority, prefix) = match startsWith authority prefix
+        false => false
+        true => match parseInt (drop authority (byteLength prefix))
+            Success port => port > 0 && port <= 65535
+            Error _ => false
+
+    loopbackAuthority authority = localAuthority authority || localPort (authority, "localhost:") || localPort (authority, "127.0.0.1:") || localPort (authority, "[::1]:")
+
+    export isLoopback registry = match startsWith registry "http://"
+        true => loopbackAuthority (drop registry 7)
+        false => match startsWith registry "https://"
+            true => loopbackAuthority (drop registry 8)
+            false => false
+
+    encodePackage item = JsonObject [
+        Doc::str ("key", item.entryIdentity.entryKey),
+        Doc::str ("version", item.entryIdentity.entryVersion),
+        Doc::str ("digest", item.entryIdentity.entryDigest),
+        Doc::bit ("direct", item.entryDirect),
+        Doc::bit ("present", item.entryPresent),
+        JsonMember "dependencies" (Doc::strings item.entryDependencies),
+        JsonMember "dependents" (Doc::strings item.entryDependents),
+        JsonMember "findings" (Doc::strings item.entryFindings),
+    ]
+
+    decodePackage doc = PackageEntry(
+        entryIdentity = EntryIdentity(entryKey = Doc::text (doc, "key"), entryVersion = Doc::text (doc, "version"), entryDigest = Doc::text (doc, "digest")),
+        entryDirect = Doc::flag (doc, "direct"),
+        entryPresent = Doc::flag (doc, "present"),
+        entryDependencies = Doc::texts (doc, "dependencies"),
+        entryDependents = Doc::texts (doc, "dependents"),
+        entryFindings = Doc::texts (doc, "findings"))
+
+    encodeCatalogEntry item = JsonObject [
+        Doc::str ("key", item.catalogKey),
+        JsonMember "versions" (Doc::strings item.catalogVersions),
+        JsonMember "findings" (Doc::strings item.catalogFindings),
+        Doc::bit ("evidence", item.catalogEvidence),
+    ]
+
+    decodeCatalogEntry doc = CatalogEntry(catalogKey = Doc::text (doc, "key"), catalogVersions = Doc::texts (doc, "versions"), catalogFindings = Doc::texts (doc, "findings"), catalogEvidence = Doc::flag (doc, "evidence"))
+
+    export encodePackages items = JsonArray (mapList (items, \item => encodePackage item))
+
+    export decodePackages doc = mapList (Doc::items doc, \item => decodePackage item)
+
+    export encodeCatalog items = JsonArray (mapList (items, \item => encodeCatalogEntry item))
+
+    export decodeCatalog doc = mapList (Doc::items doc, \item => decodeCatalogEntry item)
+
+    export validGraph doc = graph doc
+
+    export validCatalog doc = catalog doc
+
+    export packageKey item = keyOf item
+
+    export catalogKeyOf item = keyOfCatalog item
+
+    export newest item = latestVersion item
+
+    export packageAt (entries, key) = findPackage (entries, key)
+
+    export catalogAt (entries, key) = findCatalog (entries, key)

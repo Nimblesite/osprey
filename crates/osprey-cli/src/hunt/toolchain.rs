@@ -7,7 +7,6 @@ use std::path::{Path, PathBuf};
 
 /// The runtime module `make build` links from `compiler/runtime/klee/`
 /// [SYMEX-RUNTIME-BITCODE].
-pub(crate) const RUNTIME_BITCODE: &str = "libosprey_runtime_klee.bc";
 /// Points at the `klee` executable; `PATH` and the Homebrew prefixes are the
 /// fallbacks.
 pub(crate) const KLEE_ENV: &str = "OSPREY_KLEE";
@@ -23,19 +22,41 @@ pub(crate) struct Toolchain {
     pub(crate) runtime: PathBuf,
 }
 
-pub(crate) fn locate() -> Result<Toolchain, String> {
+pub(crate) fn locate(memory: &str) -> Result<Toolchain, String> {
+    let runtime_bitcode = match memory {
+        "gc" => "libosprey_runtime_klee_gc.bc",
+        "arc" => "libosprey_runtime_klee_arc.bc",
+        _ => return Err("Hunt requires the gc or arc memory backend".into()),
+    };
     let klee = find_klee().ok_or_else(|| format!("klee was not found; {INSTALL_HINT}"))?;
-    let runtime = std::env::var(RUNTIME_ENV)
-        .ok()
-        .filter(|path| Path::new(path).is_file())
-        .or_else(|| find_runtime_lib(RUNTIME_BITCODE))
-        .ok_or_else(|| {
-            format!("{RUNTIME_BITCODE} was not found; `make build` links it when KLEE's clang is installed")
-        })?;
+    let runtime = find_runtime(runtime_bitcode)?;
     Ok(Toolchain {
         klee,
         runtime: PathBuf::from(runtime),
     })
+}
+
+fn find_runtime(expected: &str) -> Result<String, String> {
+    if let Ok(explicit) = std::env::var(RUNTIME_ENV) {
+        return validate_runtime(&explicit, expected).map(|()| explicit);
+    }
+    find_runtime_lib(expected)
+        .ok_or_else(|| format!("{expected} was not found; build the symbolic runtime"))
+}
+
+fn validate_runtime(path: &str, expected: &str) -> Result<(), String> {
+    if Path::new(path)
+        .file_name()
+        .is_none_or(|name| name != expected)
+    {
+        return Err(format!(
+            "{RUNTIME_ENV} must name {expected} for the selected memory backend"
+        ));
+    }
+    if !Path::new(path).is_file() {
+        return Err(format!("symbolic runtime does not exist: {path}"));
+    }
+    Ok(())
 }
 
 fn find_klee() -> Option<PathBuf> {
@@ -69,6 +90,21 @@ fn brew_prefixes() -> [&'static str; 3] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn explicit_runtime_cannot_silently_select_another_backend() {
+        let error = validate_runtime(
+            "libosprey_runtime_klee_gc.bc",
+            "libosprey_runtime_klee_arc.bc",
+        )
+        .expect_err("GC cannot stand in for ARC");
+        assert!(error.contains("selected memory backend"));
+        assert!(validate_runtime(
+            "/missing/libosprey_runtime_klee_gc.bc",
+            "libosprey_runtime_klee_gc.bc"
+        )
+        .is_err());
+    }
 
     #[test]
     fn an_explicit_klee_must_exist() {

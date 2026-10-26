@@ -346,6 +346,8 @@ date: "git Last Modified"
         
         .editor-header {
             padding: 8px 15px;
+            flex-wrap: wrap;
+            gap: 8px;
         }
         
         .header-right {
@@ -355,7 +357,11 @@ date: "git Last Modified"
         .editor-title {
             gap: 5px;
             font-size: 13px;
+            flex-wrap: wrap;
+            width: 100%;
         }
+
+        .flavor-toggle { margin-left: 0; }
         
         .playground-badge {
             display: none;
@@ -444,9 +450,10 @@ date: "git Last Modified"
                 <div class="editor-title">
                     <span>Osprey Editor</span>
                     <span class="playground-badge">⚡ Playground</span>
-                    <div class="flavor-toggle" role="group" aria-label="Source flavor">
+                    <div class="flavor-toggle" role="group" aria-label="Syntax flavor">
                         <button id="flavor-osp" class="flavor-btn active" onclick="setFlavor('osp')" aria-pressed="true">Default .osp</button>
                         <button id="flavor-ospml" class="flavor-btn" onclick="setFlavor('ospml')" aria-pressed="false">ML .ospml</button>
+                        <button id="flavor-py" class="flavor-btn" onclick="setFlavor('py')" aria-pressed="false">Python .py</button>
                     </div>
                 </div>
                 <div class="header-right">
@@ -563,7 +570,7 @@ date: "git Last Modified"
         updateStatus('connected', 'Ready');
     });
 
-    // Same program, two flavors — identical output, proven byte-for-byte.
+    // Default and ML share a showcase; Python demonstrates typed effect handlers.
     // Switch the editor contents with the flavor toggle in the header.
     let currentFlavor = 'osp';
     const SAMPLES = {
@@ -862,25 +869,55 @@ test "mega showcase preserves effect, fiber, and tier state" (\\() =>
     faultSticky megaShowcaseCase
     expectFalse faulted)
 `,
+        py: `# osprey: flavor=python
+
+@effect
+class Log:
+    def write(message: str) -> None: ...
+
+
+@handler(Log)
+class console:
+    def write(message):
+        print(f"log: {message}")
+
+
+@handler(Log)
+class audit:
+    def write(message):
+        print(f"audit: {message}")
+
+
+def load(name):
+    perform(Log.write(f"loading {name}"))
+    return len(name)
+
+
+def main():
+    with console:
+        print(f"loaded {load("gpt2")}")
+    audit(lambda: print(f"loaded {load("weights")}"))
+`,
     };
 
-    // Toggle the editor between the .osp and .ospml versions of the same program.
+    const API_FLAVORS = { osp: 'default', ospml: 'ml', py: 'python' };
+
+    // Select a syntax flavor and its sample.
     // Only swaps when the buffer is still an unedited sample, so we never clobber
     // a user's work; otherwise it just flips the active button label.
     function setFlavor(flavor) {
         if (flavor === currentFlavor) return;
-        const ospBtn = document.getElementById('flavor-osp');
-        const ospmlBtn = document.getElementById('flavor-ospml');
-        const isOsp = flavor === 'osp';
-        ospBtn.classList.toggle('active', isOsp);
-        ospmlBtn.classList.toggle('active', !isOsp);
-        ospBtn.setAttribute('aria-pressed', String(isOsp));
-        ospmlBtn.setAttribute('aria-pressed', String(!isOsp));
+        for (const name of Object.keys(SAMPLES)) {
+            const button = document.getElementById(`flavor-${name}`);
+            button.classList.toggle('active', name === flavor);
+            button.setAttribute('aria-pressed', String(name === flavor));
+        }
 
         if (editor) {
             const current = editor.getValue();
-            const isPristine = current === SAMPLES.osp || current === SAMPLES.ospml;
+            const isPristine = Object.values(SAMPLES).includes(current);
             if (isPristine) editor.setValue(SAMPLES[flavor]);
+            monaco.editor.setModelLanguage(editor.getModel(), flavor === 'py' ? 'python' : 'osprey');
         }
         currentFlavor = flavor;
     }
@@ -904,7 +941,7 @@ test "mega showcase preserves effect, fiber, and tier state" (\\() =>
             const response = await fetch(`${API_URL}/compile`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code, flavor: currentFlavor === 'ospml' ? 'ml' : 'default' })
+                body: JSON.stringify({ code, flavor: API_FLAVORS[currentFlavor] })
             });
             
             let result;
@@ -972,7 +1009,7 @@ test "mega showcase preserves effect, fiber, and tier state" (\\() =>
             const response = await fetch(`${API_URL}/run`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code, flavor: currentFlavor === 'ospml' ? 'ml' : 'default' })
+                body: JSON.stringify({ code, flavor: API_FLAVORS[currentFlavor] })
             });
             
             let result;

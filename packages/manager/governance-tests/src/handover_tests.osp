@@ -1,0 +1,209 @@
+namespace registry_tests;
+import registry::Governance
+import registry::GovernanceHandover
+import registry::GovernanceTransitions
+import registry::Maybe
+import registry::Names
+import registry_tests::Fixture
+
+/// Administrator handover [PACKAGE-OWNERSHIP-ADMIN]: one live proposal, the
+/// recipient's acceptance, the 24-hour hold, guarded atomic completion that
+/// revokes every grant, and evidence retained for every other outcome.
+module HandoverTests {
+    let now = 100
+    let ledger = Names::Key { scope: "finch", name: "ledger" }
+
+    fn propose(world, transferId, proposed) = {
+        let statement = Governance::proposalStatement(ledger, 1, "m-alice", proposed)
+        GovernanceHandover::proposeHandover(world, "pkg-f1", transferId, proposed,
+            Fixture::verified("p-alice", "m-alice", statement), now)
+    }
+
+    fn accept(world, transferId, byPrincipal, byMembership) = {
+        let statement = Governance::handoverAcceptanceStatement(transferId, ledger, 1, "m-alice", "m-bob")
+        GovernanceHandover::acceptHandover(world, transferId,
+            Fixture::verified(byPrincipal, byMembership, statement))
+    }
+
+    fn acceptedWorld() = Fixture::orKeep(Fixture::world(), fn(w) =>
+        match propose(w, "t-1", "m-bob") {
+            Success { value } => match accept(value, "t-1", "p-bob", "m-bob") {
+                Success { value } => Success { value: value }
+                Error => Success { value: value }
+            }
+            Error => Success { value: w }
+        })
+
+    /// Proposal guards: fresh admin proof, active human same-org recipient,
+    /// never the admin themselves, one live proposal per package.
+    fn proposalGuards() = {
+        let world = Fixture::world()
+        checkAll("a proposal needs its guards and its slot", [
+            Fixture::code(propose(world, "t-1", "m-bob")) == "",
+            Fixture::code(propose(world, "t-1", "m-alice")) == "governance.recipient.self",
+            Fixture::code(propose(world, "t-2", "m-bot")) == "governance.principal.workflow",
+            Fixture::code(propose(world, "t-3", "m-dave")) == "governance.membership.other-org",
+            Fixture::code(propose(world, "t-4", "m-nobody")) == "governance.membership.missing",
+            Fixture::code(GovernanceHandover::proposeHandover(world, "pkg-f1", "t-5", "m-bob",
+                Fixture::verified("p-erin", "m-erin", Governance::proposalStatement(ledger, 1, "m-alice", "m-bob")), now)) == "governance.admin.not-current",
+            Fixture::code(GovernanceHandover::proposeHandover(world, "pkg-f1", "t-6", "m-bob",
+                Fixture::verified("p-alice", "m-alice", "wrong-statement"), now)) == "governance.proof.statement-mismatch",
+            Fixture::code(GovernanceHandover::proposeHandover(world, "pkg-f1", "t-7", "m-bob",
+                Fixture::workflow("p-alice", "m-alice", Governance::proposalStatement(ledger, 1, "m-alice", "m-bob")), now)) == "governance.proof.ceremony"
+        ])
+    }
+
+    /// One live proposal occupies the slot; cancel, decline and expiry free
+    /// it while their evidence rows stay.
+    fn oneSlotPerPackage() = {
+        let world = Fixture::world()
+        let pending = Fixture::orKeep(world, fn(w) => propose(w, "t-1", "m-bob"))
+        let cancelled = Fixture::orKeep(pending, fn(w) =>
+            GovernanceHandover::cancelHandover(w, "t-1",
+                Fixture::adminProof(w, "pkg-f1", Governance::cancelStatement("t-1"))))
+        let declined = Fixture::orKeep(Fixture::orKeep(cancelled, fn(w) => propose(w, "t-2", "m-bob")), fn(w) =>
+            GovernanceHandover::declineHandover(w, "t-2",
+                Fixture::verified("p-bob", "m-bob", Governance::declineStatement("t-2"))))
+        checkAll("one live proposal per package, evidence for every outcome", [
+            Fixture::code(propose(pending, "t-9", "m-carol")) == "governance.transfer.pending-exists",
+            Fixture::code(GovernanceHandover::cancelHandover(pending, "t-1",
+                Fixture::verified("p-erin", "m-erin", Governance::cancelStatement("t-1")))) == "governance.admin.not-current",
+            Fixture::code(GovernanceHandover::cancelHandover(pending, "t-1",
+                Fixture::adminProof(pending, "pkg-f1", Governance::cancelStatement("t-1")))) == "",
+            Fixture::code(propose(cancelled, "t-2", "m-bob")) == "",
+            Fixture::code(GovernanceHandover::declineHandover(cancelled, "t-2",
+                Fixture::verified("p-carol", "m-carol", Governance::declineStatement("t-2")))) == "governance.proof.wrong-membership",
+            Fixture::code(GovernanceHandover::declineHandover(cancelled, "t-2",
+                Fixture::verified("p-bob", "m-bob", Governance::declineStatement("t-2")))) == "",
+            Fixture::code(GovernanceHandover::expireHandover(declined, "t-2", 1000)) == "governance.transfer.not-expired",
+            Fixture::code(propose(declined, "t-3", "m-carol")) == "",
+            Fixture::code(GovernanceHandover::expireHandover(Fixture::orKeep(declined, fn(w) => propose(w, "t-3", "m-carol")), "t-3", 1000)) == "",
+            length(declined.transfers) >= 2
+        ])
+    }
+
+    /// Acceptance guards: only the intended recipient, this exact proposal,
+    /// human ceremony; acceptance grants no administration.
+    fn acceptanceGuards() = {
+        let world = Fixture::world()
+        let pending = Fixture::orKeep(world, fn(w) => propose(w, "t-1", "m-bob"))
+        checkAll("acceptance belongs to the intended recipient alone", [
+            Fixture::code(accept(pending, "t-1", "p-carol", "m-carol")) == "governance.proof.wrong-membership",
+            Fixture::code(accept(pending, "t-1", "p-bob", "m-erin")) == "governance.proof.wrong-membership",
+            Fixture::code(accept(pending, "t-1", "p-erin", "m-bob")) == "governance.proof.wrong-actor",
+            Fixture::code(accept(pending, "t-1", "p-bot", "m-bot")) == "governance.proof.wrong-actor",
+            Fixture::code(GovernanceHandover::acceptHandover(pending, "t-1",
+                Fixture::workflow("p-bob", "m-bob", Governance::handoverAcceptanceStatement("t-1", ledger, 1, "m-alice", "m-bob")))) == "governance.proof.ceremony",
+            Fixture::code(accept(pending, "t-1", "p-bob", "m-bob")) == "",
+            Fixture::code(GovernanceHandover::finalizeHandover(pending, "t-1", 124)) == "governance.transfer.acceptance-missing",
+            match Governance::packageOf(accept(pending, "t-1", "p-bob", "m-bob"), "pkg-f1") {
+                Success { value } => value.admin == "m-alice"
+                Error => false
+            }
+        ])
+    }
+
+    /// Atomic completion: the hold, the expected admin and epoch, one admin
+    /// before and after, every grant revoked — the outgoing admin's included.
+    fn completion() = {
+        let world = Fixture::world()
+        let granted = Fixture::grantOn(Fixture::grantOn(Fixture::grantOn(world,
+            "pkg-f1", "g-bob", "m-bob", Governance::PublishRelease, Maybe::none(), 100),
+            "pkg-f1", "g-carol", "m-carol", Governance::EditMetadata, Maybe::none(), 100),
+            "pkg-f1", "g-alice", "m-alice", Governance::YankRelease, Maybe::none(), 100)
+        let pending = Fixture::orKeep(granted, fn(w) => propose(w, "t-1", "m-bob"))
+        let accepted = Fixture::orKeep(pending, fn(w) => accept(w, "t-1", "p-bob", "m-bob"))
+        let done = Fixture::orKeep(accepted, fn(w) => GovernanceHandover::finalizeHandover(w, "t-1", 124))
+        checkAll("completion is one guarded atomic update", [
+            GovernanceHandover::hold() == 24,
+            Fixture::code(GovernanceHandover::finalizeHandover(pending, "t-1", 100)) == "governance.transfer.acceptance-missing",
+            Fixture::code(GovernanceHandover::finalizeHandover(accepted, "t-1", 123)) == "governance.transfer.hold",
+            Fixture::code(GovernanceHandover::finalizeHandover(accepted, "t-1", 292)) == "",
+            Fixture::code(GovernanceHandover::finalizeHandover(accepted, "t-1", 293)) == "governance.transfer.expired",
+            match Governance::packageOf(done, "pkg-f1") {
+                Success { value } => value.admin == "m-bob" && value.authorityEpoch == 2
+                Error => false
+            },
+            length(filterList(done.grants, fn(g: Governance::Grant) => Governance::isActiveGrant(g))) == 0,
+            Fixture::code(GovernanceTransitions::authorize(done, "pkg-f1", "m-bob", Governance::PublishRelease, 200)) == "governance.permission.missing",
+            Fixture::code(GovernanceTransitions::authorize(done, "pkg-f1", "m-carol", Governance::EditMetadata, 200)) == "governance.permission.missing",
+            Fixture::code(GovernanceHandover::finalizeHandover(done, "t-1", 200)) == "governance.transfer.acceptance-missing",
+            length(filterList(done.packages, fn(p: Governance::Package) => p.admin == "m-alice")) == 0
+        ])
+    }
+
+    /// A pending or accepted proposal changes nothing: the admin keeps all
+    /// authority and every grant stays live until the atomic completion.
+    fn proposalGrantsNothing() = {
+        let world = Fixture::world()
+        let granted = Fixture::grantOn(world, "pkg-f1", "g-bob", "m-bob", Governance::PublishRelease, Maybe::none(), 100)
+        let pending = Fixture::orKeep(granted, fn(w) => propose(w, "t-1", "m-bob"))
+        let accepted = Fixture::orKeep(pending, fn(w) => accept(w, "t-1", "p-bob", "m-bob"))
+        checkAll("a proposal and an acceptance grant no rights", [
+            Fixture::code(GovernanceTransitions::authorize(pending, "pkg-f1", "m-bob", Governance::PublishRelease, 150)) == "",
+            Fixture::code(GovernanceTransitions::authorize(accepted, "pkg-f1", "m-bob", Governance::PublishRelease, 150)) == "",
+            match Governance::packageOf(accepted, "pkg-f1") {
+                Success { value } => value.admin == "m-alice" && value.authorityEpoch == 1
+                Error => false
+            }
+        ])
+    }
+
+    /// The new administrator's first acts: fresh grants under the new epoch;
+    /// the outgoing admin's proofs are dead.
+    fn newAdminOwnsThePermissionSet() = {
+        let done = Fixture::orKeep(acceptedWorld(), fn(w) => GovernanceHandover::finalizeHandover(w, "t-1", 124))
+        let freshStatement = Governance::grantStatement(ledger, 2, "m-carol", Governance::PublishRelease, Maybe::none())
+        let staleStatement = Governance::grantStatement(ledger, 1, "m-carol", Governance::PublishRelease, Maybe::none())
+        checkAll("only the new admin's fresh decisions count", [
+            Fixture::code(GovernanceTransitions::grantPermission(done, "pkg-f1", "g-2",
+                Fixture::verified("p-bob", "m-bob", freshStatement), "m-carol", Governance::PublishRelease, Maybe::none(), 150)) == "",
+            Fixture::code(GovernanceTransitions::grantPermission(done, "pkg-f1", "g-3",
+                Fixture::verified("p-alice", "m-alice", staleStatement), "m-carol", Governance::PublishRelease, Maybe::none(), 150)) == "governance.admin.not-current",
+            Fixture::code(GovernanceTransitions::grantPermission(done, "pkg-f1", "g-4",
+                Fixture::verified("p-bob", "m-bob", staleStatement), "m-carol", Governance::PublishRelease, Maybe::none(), 150)) == "governance.proof.statement-mismatch",
+            Fixture::code(GovernanceTransitions::authorize(Fixture::orKeep(done, fn(w) =>
+                GovernanceTransitions::grantPermission(w, "pkg-f1", "g-2",
+                    Fixture::verified("p-bob", "m-bob", freshStatement), "m-carol", Governance::PublishRelease, Maybe::none(), 150)),
+                "pkg-f1", "m-carol", Governance::PublishRelease, 150)) == ""
+        ])
+    }
+
+    /// Stale proposals can never replace a newer admin: the expected admin
+    /// and the expected epoch must both still match, and a frozen package
+    /// refuses the whole control path.
+    fn staleAndFrozen() = {
+        let world = Fixture::world()
+        let pending = Fixture::orKeep(world, fn(w) => propose(w, "t-1", "m-bob"))
+        let staleEpoch = Fixture::orKeep(pending, fn(w) => match Governance::packageOf(w, "pkg-f1") {
+            Success { value } => Success { value: Governance::replacePackage(w, value { authorityEpoch: 7 }) }
+            Error => Success { value: w }
+        })
+        let staleAdmin = Fixture::orKeep(pending, fn(w) => match Governance::packageOf(w, "pkg-f1") {
+            Success { value } => Success { value: Governance::replacePackage(w, value { admin: "m-erin" }) }
+            Error => Success { value: w }
+        })
+        let frozen = Fixture::orKeep(world, fn(w) => GovernanceTransitions::suspendPrincipal(w, "p-alice"))
+        checkAll("stale epochs, stale admins and freeze refuse completion", [
+            Fixture::code(GovernanceHandover::finalizeHandover(Fixture::orKeep(staleEpoch, fn(w) => accept(w, "t-1", "p-bob", "m-bob")), "t-1", 124)) == "governance.transfer.stale-epoch",
+            Fixture::code(GovernanceHandover::finalizeHandover(Fixture::orKeep(staleAdmin, fn(w) => accept(w, "t-1", "p-bob", "m-bob")), "t-1", 124)) == "governance.transfer.stale-admin",
+            Fixture::code(propose(frozen, "t-1", "m-bob")) == "governance.package.frozen",
+            Fixture::code(GovernanceHandover::finalizeHandover(Fixture::orKeep(Fixture::orKeep(pending, fn(w) => accept(w, "t-1", "p-bob", "m-bob")),
+                fn(w) => GovernanceTransitions::suspendPrincipal(w, "p-alice")), "t-1", 124)) == "governance.package.frozen",
+            match Governance::packageOf(frozen, "pkg-f1") {
+                Success { value } => value.admin == "m-alice"
+                Error => false
+            }
+        ])
+    }
+
+    export fn run() = {
+        test("governance handover: proposal guards", proposalGuards)
+        test("governance handover: one slot per package", oneSlotPerPackage)
+        test("governance handover: acceptance guards", acceptanceGuards)
+        test("governance handover: atomic completion", completion)
+        test("governance handover: proposals grant nothing", proposalGrantsNothing)
+        test("governance handover: the new admin owns the permission set", newAdminOwnsThePermissionSet)
+        test("governance handover: stale and frozen", staleAndFrozen)
+    }
+}

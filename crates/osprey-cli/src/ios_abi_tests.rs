@@ -1,6 +1,5 @@
 use super::*;
 use crate::testkit::shows;
-use std::path::{Path, PathBuf};
 
 const SOURCE: &str = "extern fn host_log(message: string) -> int\n\
     fn greet(name: string) -> string = \"hello ${name}\"\n\
@@ -114,17 +113,7 @@ fn header_declares_entry_exports_and_imports_in_c() {
 fn project_symbols_export_under_their_qualified_c_name() {
     // [IOS-HOST-ABI]
     let source = "namespace app;\nfn greet(name: string) -> string = name\nfn main() = print(greet(\"x\"))\n";
-    let program = osprey_project::assemble(
-        &osprey_project::ProjectConfig::for_root(Path::new("/tmp/ios-abi-project")),
-        &[osprey_project::SourceFile {
-            path: PathBuf::from("main.osp"),
-            flavor: osprey_syntax::Flavor::Default,
-            source: source.to_string(),
-            program: osprey_syntax::parse_program(source).program,
-        }],
-    )
-    .expect("assemble")
-    .program;
+    let program = crate::tests::assembled_program(source, "/tmp/ios-abi-project", "main.osp");
     let types = osprey_types::infer_program(&program);
     let ir = osprey_codegen::compile_library(&program).expect("lowers");
     let abi = host_abi(&program, &types, &ir).expect("abi");

@@ -19,6 +19,7 @@ test.log
 # Exclude development dependencies but keep production dependencies
 node_modules/@types/**
 node_modules/@vscode/**
+!node_modules/@vscode/codicons/**
 node_modules/mocha/**
 node_modules/sinon/**
 node_modules/ts-node/**

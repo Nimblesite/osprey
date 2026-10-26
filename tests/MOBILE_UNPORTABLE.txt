@@ -61,6 +61,10 @@ tests/regressions/effects/abort_vs_resume.test.osp a continuation for `Step.run`
 tests/regressions/effects/abort_vs_resume.test.ospml a continuation for `Step.run` (a suspended continuation cannot cross or outlive a synchronous host call)
 tests/regressions/effects/fiber_effects.test.osp a continuation for `Gift.get` (a suspended continuation cannot cross or outlive a synchronous host call)
 tests/regressions/effects/fiber_effects.test.ospml a continuation for `Gift.get` (a suspended continuation cannot cross or outlive a synchronous host call)
+# The newly added generic handler-value regression declares control Fault.halt;
+# it retains full native GC/ARC coverage and has the same host-boundary limit.
+tests/regressions/effects/generic_handler_value.test.osp a continuation for `Fault.halt` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/regressions/effects/generic_handler_value.test.ospml a continuation for `Fault.halt` (a suspended continuation cannot cross or outlive a synchronous host call)
 tests/regressions/effects/handler_scoping.test.osp a continuation for `Ask.ask` (a suspended continuation cannot cross or outlive a synchronous host call)
 tests/regressions/effects/handler_scoping.test.ospml a continuation for `Ask.ask` (a suspended continuation cannot cross or outlive a synchronous host call)
 tests/regressions/effects/http_state_levels.test.osp HTTP builtin `httpResponseBody`

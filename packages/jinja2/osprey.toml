@@ -8,4 +8,4 @@ default_namespace = "jinja2"
 name = "@osprey/jinja2"
 license = "MIT"
 summary = "The Jinja2 chat-template subset: lexer, parser and renderer over JSON-like values"
-keywords = ["jinja2", "templates", "chat-template", "python-flavor"]
+keywords = ["chat-template", "jinja2", "python-flavor", "templates"]

@@ -24,7 +24,8 @@ module Sha256Tests {
 
     fn rawDigest() = checkAll("digest of a byte list and its length", [
         ints(Sha256::digest([0, 255, 128])) == "247,66,185,101,241,86,193,3,116,188,35,174,169,110,58,138,255,143,172,214,252,7,157,239,234,163,2,25,173,134,242,17",
-        length(Sha256::digest(Bytes::ofString("abc"))) == 32
+        length(Sha256::digest(Bytes::ofString("abc"))) == 32,
+        Sha256::ofString(repeated(65536)) == "bf718b6f653bebc184e1479f1935b8da974d701b893afcf49e701f3e2f9f9c5a"
     ])
 
     export fn run() = {

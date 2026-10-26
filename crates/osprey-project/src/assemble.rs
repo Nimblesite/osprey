@@ -52,6 +52,8 @@ pub(crate) fn assemble(
         let warnings =
             crate::advice::warnings(config, &contributions, &graph, &metadata, &state_boundaries);
         Ok(AssembledProject {
+            source_dependencies: resolution.source_dependencies,
+            method_candidates: resolution.method_candidates,
             warnings,
             state_boundaries,
             program: resolution.program,

@@ -16,7 +16,7 @@
     ],
     "packages": [
       "Each packages/<name>/osprey.toml requires its own entry and tests/osprey.toml suite. Minimum: 90%; only higher thresholds are explicit.",
-      "Measure with osprey test --coverage-json; gate only that package's src/ files, excluding tests and imported helpers.",
+      "Measure compiled E2E suites with osprey test --coverage-json and exact output goldens; unit-only results do not qualify. Gate only that package's src/ files, excluding tests and imported helpers.",
       "Missing, empty, malformed or incomplete source reports fail. Data-only files have no executable line counters.",
       "Reports and per-package totals: target/coverage/packages/. No averaging between packages.",
       "Ratchet passing packages to verified covered/total line coverage rounded down to one decimal place. Every supported platform must pass; never lower an existing threshold."
@@ -43,11 +43,19 @@
         "threshold": 95,
         "language": "rust"
       },
+      "osprey-fmt": {
+        "threshold": 95,
+        "language": "rust"
+      },
       "osprey-lsp": {
         "threshold": 98,
         "language": "rust"
       },
       "osprey-profiler": {
+        "threshold": 95,
+        "language": "rust"
+      },
+      "osprey-project": {
         "threshold": 95,
         "language": "rust"
       },
@@ -69,9 +77,6 @@
       }
     },
     "c_runtime": {
-      "memory_runtime": {
-        "language": "c"
-      },
       "memory_arc": {
         "threshold": 95,
         "language": "c"
@@ -193,6 +198,9 @@
       "http_client_runtime": {
         "language": "c"
       },
+      "http_client_response": {
+        "language": "c"
+      },
       "http_server_request": {
         "threshold": 95,
         "language": "c"
@@ -231,14 +239,15 @@
         "threshold": 100.0
       },
       "jinja2": {
+        "threshold": 97.1,
         "language": "osprey"
       },
       "micrograd": {
         "language": "osprey",
-        "threshold": 97.4
+        "threshold": 97.5
       },
       "native": {
-        "threshold": 91.6,
+        "threshold": 91.7,
         "language": "osprey"
       },
       "numpy": {
@@ -258,7 +267,8 @@
         "threshold": 99.6
       },
       "safetensors": {
-        "language": "osprey"
+        "language": "osprey",
+        "threshold": 97.6
       },
       "scipy": {
         "language": "osprey",
@@ -281,11 +291,16 @@
         "threshold": 97.5
       },
       "torch": {
+        "threshold": 96.1,
         "language": "osprey"
       },
       "transformers": {
         "language": "osprey",
         "threshold": 97.5
+      },
+      "vscode": {
+        "language": "osprey",
+        "threshold": 100.0
       }
     }
   }

@@ -101,6 +101,19 @@ mod tests {
         assert_eq!(escapes, [r"\t", r#"\""#]);
     }
 
+    fn assert_structure(source: &str, holes: usize, kind: &str) {
+        let tree = parse(source);
+        assert_eq!(
+            descendants(tree.root_node(), "interpolation").len(),
+            holes,
+            "{source}"
+        );
+        assert!(
+            !descendants(tree.root_node(), kind).is_empty(),
+            "{source}: {kind}"
+        );
+    }
+
     #[test]
     fn interpolation_parses_calls_records_members_and_nested_strings() {
         for (source, holes, kind) in [
@@ -114,16 +127,7 @@ mod tests {
             (r#"let s = "${f("inner ${y}")}""#, 2, "interpolated_string"),
             (r#"let s = "${1\t+ 2}""#, 1, "binary_expression"),
         ] {
-            let tree = parse(source);
-            assert_eq!(
-                descendants(tree.root_node(), "interpolation").len(),
-                holes,
-                "{source}"
-            );
-            assert!(
-                !descendants(tree.root_node(), kind).is_empty(),
-                "{source}: {kind}"
-            );
+            assert_structure(source, holes, kind);
         }
     }
 
@@ -146,27 +150,32 @@ mod tests {
         }
     }
 
-    #[test]
-    fn interpolation_changes_operators_during_incremental_reparse() {
-        let source = r#"let s = "${f(\"inner\")} ${1 + 2}""#;
+    fn operator_edit(start: usize) -> tree_sitter::InputEdit {
+        tree_sitter::InputEdit {
+            start_byte: start,
+            old_end_byte: start + 1,
+            new_end_byte: start + 1,
+            start_position: tree_sitter::Point::new(0, start),
+            old_end_position: tree_sitter::Point::new(0, start + 1),
+            new_end_position: tree_sitter::Point::new(0, start + 1),
+        }
+    }
+
+    fn reparse_operator(source: &str) -> (String, tree_sitter::Tree) {
         let mut parser = tree_sitter::Parser::new();
         parser
             .set_language(&super::LANGUAGE.into())
             .expect("grammar loads");
         let mut tree = parser.parse(source, None).expect("source parses");
-        let start = source.find('+').expect("operator");
-        let point = tree_sitter::Point::new(0, start);
-        let end = tree_sitter::Point::new(0, start + 1);
-        tree.edit(&tree_sitter::InputEdit {
-            start_byte: start,
-            old_end_byte: start + 1,
-            new_end_byte: start + 1,
-            start_position: point,
-            old_end_position: end,
-            new_end_position: end,
-        });
+        tree.edit(&operator_edit(source.find('+').expect("operator")));
         let changed = source.replacen('+', "-", 1);
         let updated = parser.parse(&changed, Some(&tree)).expect("reparse");
+        (changed, updated)
+    }
+
+    #[test]
+    fn interpolation_changes_operators_during_incremental_reparse() {
+        let (changed, updated) = reparse_operator(r#"let s = "${f(\"inner\")} ${1 + 2}""#);
         assert!(!updated.root_node().has_error());
         let mut found = Vec::new();
         binary_expressions(updated.root_node(), &changed, &mut found);
@@ -177,18 +186,35 @@ mod tests {
         );
     }
 
+    fn capture_text(
+        query: &tree_sitter::Query,
+        capture: &tree_sitter::QueryCapture<'_>,
+        source: &str,
+    ) -> (String, String) {
+        (
+            query.capture_names()[capture.index as usize].to_owned(),
+            source[capture.node.byte_range()].to_owned(),
+        )
+    }
+
     fn highlight_captures(source: &str) -> Vec<(String, String)> {
         use streaming_iterator::StreamingIterator;
         let tree = parse(source);
-        let query = tree_sitter::Query::new(&super::LANGUAGE.into(),
-            include_str!("../../queries/highlights.scm")).expect("query compiles");
+        let query = tree_sitter::Query::new(
+            &super::LANGUAGE.into(),
+            include_str!("../../queries/highlights.scm"),
+        )
+        .expect("query compiles");
         let mut cursor = tree_sitter::QueryCursor::new();
         let mut matches = cursor.matches(&query, tree.root_node(), source.as_bytes());
         let mut captures = Vec::new();
         while let Some(found) = matches.next() {
-            captures.extend(found.captures.iter().map(|capture| (
-                query.capture_names()[capture.index as usize].to_owned(),
-                source[capture.node.byte_range()].to_owned())));
+            captures.extend(
+                found
+                    .captures
+                    .iter()
+                    .map(|capture| capture_text(&query, capture, source)),
+            );
         }
         captures
     }
@@ -197,9 +223,26 @@ mod tests {
     fn interpolation_highlights_text_separately_from_executable_code() {
         let captures = highlight_captures(r#"let s = "hello ${x + 1} end""#);
         for (name, text) in [("string", "hello "), ("string", " end"), ("operator", "+")] {
-            assert!(captures.contains(&(name.into(), text.into())), "{captures:?}");
+            assert!(
+                captures.contains(&(name.into(), text.into())),
+                "{captures:?}"
+            );
         }
-        assert!(!captures.iter().any(|(name, text)| name == "string" && text.contains("x + 1")));
+        assert!(!captures
+            .iter()
+            .any(|(name, text)| name == "string" && text.contains("x + 1")));
+    }
+
+    #[test]
+    fn string_scanning_preserves_newline_continuation_operators() {
+        let source = "let s = 1\n* \"x\"\n";
+        let tree = parse(source);
+        let mut found = Vec::new();
+        binary_expressions(tree.root_node(), source, &mut found);
+        assert_eq!(found, [("1\n* \"x\"", "*")]);
+        let unary = parse("let s = 1\n+ \"x\"\n");
+        assert_eq!(descendants(unary.root_node(), "unary_expression").len(), 1);
+        parse(r#"let s = "${{ let x = 1\nx }}""#);
     }
 
     /// Every comment the grammar produces must reach a highlight capture. `//!`

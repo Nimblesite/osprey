@@ -10,8 +10,10 @@
 use super::engine::{self, Exploration};
 use super::module;
 use super::spec_tests::permutations;
+use super::{clear_run_directory, run, RUN_MARKER, RUN_MARKER_CONTENTS};
 use std::collections::BTreeSet;
 use std::path::Path;
+use std::process::ExitCode;
 
 // ---- [SYMEX-KLEE-INVOCATION] ----------------------------------------------
 
@@ -35,7 +37,7 @@ pub(super) fn spec_command(
         .replace("<run dir>", "\u{1}")
         .split_whitespace()
         .map(|token| match token {
-            "-link-llvm-lib=compiler/bin/libosprey_runtime_klee.bc" => {
+            "-link-llvm-lib=compiler/bin/libosprey_runtime_klee_gc.bc" => {
                 format!("-link-llvm-lib={runtime}")
             }
             "--max-time=<S>s" => format!("--max-time={seconds}s"),
@@ -53,7 +55,7 @@ fn the_engine_command_is_the_spec_command_for_every_budget_and_path() {
     let places = [
         ("rt.bc", "out", "p.ll"),
         (
-            "compiler/bin/libosprey_runtime_klee.bc",
+            "compiler/bin/libosprey_runtime_klee_gc.bc",
             "/tmp/x-hunt-klee",
             "/tmp/x-hunt.ll",
         ),
@@ -92,7 +94,7 @@ fn the_engine_never_gets_linux_only_or_user_options() {
             "{banned}: {actual:?}"
         );
     }
-    assert_eq!(actual.len(), 17);
+    assert_eq!(actual.len(), 20);
     assert_eq!(
         actual.last().map(String::as_str),
         Some("m"),
@@ -244,4 +246,107 @@ fn the_hunt_corpus_lowers_symbolically_at_every_cap() {
             crate::testkit::contents(&module, &[], &["optnone"]);
         }
     }
+}
+
+#[test]
+fn arbitrary_info_entries_never_authorize_recursive_deletion() {
+    for entry in ["info", "info/note", RUN_MARKER] {
+        let dir = super::spec_findings_tests::Dir::new("unowned-info");
+        dir.write("precious.txt", b"keep");
+        dir.write(entry, b"ordinary user data");
+        assert!(clear_run_directory(&dir.0).is_err(), "accepted {entry}");
+        assert_eq!(
+            std::fs::read(dir.0.join("precious.txt")).expect("preserved"),
+            b"keep"
+        );
+        assert_eq!(
+            std::fs::read(dir.0.join(entry)).expect("info preserved"),
+            b"ordinary user data"
+        );
+    }
+}
+
+#[test]
+fn only_a_klee_output_directory_is_cleared() {
+    let dir = std::env::temp_dir().join(format!("osprey-hunt-clear-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(clear_run_directory(&dir).is_ok(), "absent is fine");
+    std::fs::create_dir_all(&dir).expect("dir");
+    assert!(clear_run_directory(&dir).is_ok(), "empty is fine");
+    std::fs::create_dir_all(&dir).expect("dir");
+    std::fs::write(dir.join("precious.txt"), "x").expect("file");
+    let error = clear_run_directory(&dir).expect_err("unrelated directory");
+    crate::testkit::shows(&error, &["refusing to clear"]);
+    std::fs::write(dir.join("info"), "KLEE").expect("info");
+    std::fs::write(dir.join(RUN_MARKER), RUN_MARKER_CONTENTS).expect("ownership marker");
+    assert!(clear_run_directory(&dir).is_ok() && !dir.exists());
+}
+
+#[test]
+fn run_rejects_bad_arguments_with_usage() {
+    assert_eq!(run(&[]), ExitCode::from(2));
+    assert_eq!(run(&["--bogus".to_string()]), ExitCode::from(2));
+    assert_eq!(run(&["--help".to_string()]), ExitCode::SUCCESS);
+    assert_eq!(run(&["-h".to_string()]), ExitCode::SUCCESS);
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_output_directories_are_preserved() {
+    let dir = super::spec_findings_tests::Dir::new("symlinked-output");
+    dir.write("owned/info", b"KLEE");
+    dir.write("owned/precious.txt", b"keep");
+    dir.write(&format!("owned/{RUN_MARKER}"), RUN_MARKER_CONTENTS);
+    let link = dir.0.join("alias");
+    std::os::unix::fs::symlink(dir.0.join("owned"), &link).expect("directory symlink");
+    assert!(clear_run_directory(&link).is_err());
+    assert!(std::fs::symlink_metadata(&link)
+        .expect("preserved symlink")
+        .file_type()
+        .is_symlink());
+    assert_eq!(
+        std::fs::read(link.join("precious.txt")).expect("preserved"),
+        b"keep"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_ownership_markers_do_not_authorize_deletion() {
+    let dir = super::spec_findings_tests::Dir::new("symlinked-marker");
+    dir.write("elsewhere", RUN_MARKER_CONTENTS);
+    dir.write("output/precious.txt", b"keep");
+    let output = dir.0.join("output");
+    std::os::unix::fs::symlink(dir.0.join("elsewhere"), output.join(RUN_MARKER))
+        .expect("marker symlink");
+    assert!(clear_run_directory(&output).is_err());
+    assert_eq!(
+        std::fs::read(output.join("precious.txt")).expect("preserved"),
+        b"keep"
+    );
+    assert_eq!(
+        std::fs::read(dir.0.join("elsewhere")).expect("external marker"),
+        RUN_MARKER_CONTENTS
+    );
+}
+
+/// A program the native build accepts lowers for the engine too: the
+/// symbolic switch changes only the unhandled-effect guard [SYMEX-CODEGEN].
+#[test]
+fn a_fiber_program_lowers_symbolically() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../tests/core/collections/nested_generic_collections_fibers.test.osp"
+    )
+    .to_string();
+    let cli = crate::invocation::parse_args(std::slice::from_ref(&path)).expect("args");
+    let input = crate::pipeline::load_input(&cli).expect("load");
+    let symbolic = module::symbolic_module(&input, 64).expect("symbolic build");
+    crate::testkit::shows(
+        &symbolic,
+        &[
+            "target triple = \"x86_64-unknown-linux-gnu\"",
+            "@osp_hunt_input_bytes = global i64 64",
+        ],
+    );
 }

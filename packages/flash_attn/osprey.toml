@@ -5,10 +5,10 @@ python_sources = ["src/core.py", "src/attention.py", "src/naive.py"]
 default_namespace = "flash_attn"
 
 [package]
-name = "@osprey/flash_attn"
+name = "@osprey/flash-attn"
 license = "MIT"
 summary = "FlashAttention's online-softmax tiled attention, flash_attn_func and varlen, as pure Osprey over flat float lists"
-keywords = ["flash-attn", "attention", "transformer", "python-flavor"]
+keywords = ["attention", "flash-attn", "python-flavor", "transformer"]
 
 [test-dependencies]
 "@osprey/testing" = { epoch = 1, min_release = 1 }

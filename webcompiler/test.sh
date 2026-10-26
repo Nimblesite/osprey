@@ -68,11 +68,11 @@ fi
 # An unused forbidden capability must still be rejected before execution.
 # These functions are never called, so the RED run performs no host operation.
 check_capability_rejected() {
-    local endpoint="$1" code="$2" capability="$3"
+    local endpoint="$1" code="$2" capability="$3" flavor="${4:-default}"
     local response status
     response=$(curl -sS -w '\n%{http_code}' -X POST "http://localhost:3001/api/$endpoint" \
       -H 'Content-Type: application/json' \
-      -d "$(jq -n --arg code "$code" '{code: $code}')")
+      -d "$(jq -n --arg code "$code" --arg flavor "$flavor" '{code: $code, flavor: $flavor}')")
     status="${response##*$'\n'}"
     response="${response%$'\n'*}"
     if [ "$status" != 422 ] || ! jq -e --arg capability "$capability" \
@@ -93,3 +93,19 @@ print("safe")' 'httpGet' || exit 1
 print("safe")' 'cleanupProcess' || exit 1
 done
 echo "PASS: compile and run reject filesystem, FFI, HTTP and process capabilities"
+
+# Extension selection must honor Python even without a source marker.
+for endpoint in compile run; do
+    check_capability_rejected "$endpoint" 'def unused():
+    return readFile("unused")
+def main():
+    print("safe")' 'readFile' python || exit 1
+    response=$(curl -sS -X POST "http://localhost:3001/api/$endpoint" \
+        -H 'Content-Type: application/json' \
+        -d '{"code":"def main():\n    print(\"Python flavor works\")\n","flavor":"python"}')
+    jq -e '.success == true' <<< "$response" >/dev/null || { echo "FAIL: Python $endpoint: $response"; exit 1; }
+    if [ "$endpoint" = run ]; then
+        jq -e '.programOutput == "Python flavor works\n"' <<< "$response" >/dev/null || exit 1
+    fi
+done
+echo 'PASS: Python requests compile and run through the Python frontend'

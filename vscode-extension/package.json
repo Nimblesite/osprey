@@ -113,6 +113,11 @@
     ],
     "commands": [
       {
+        "command": "osprey.packages.open",
+        "title": "Manage Packages",
+        "category": "Osprey"
+      },
+      {
         "command": "osprey.compile",
         "title": "Compile Osprey File",
         "category": "Osprey"
@@ -153,6 +158,18 @@
         "title": "Show Test Documentation",
         "category": "Osprey",
         "icon": "$(book)"
+      },
+      {
+        "command": "osprey.packages.add",
+        "title": "Add Package",
+        "category": "Osprey",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "osprey.packages.remove",
+        "title": "Remove Package",
+        "category": "Osprey",
+        "enablement": "isWorkspaceTrusted"
       },
       {
         "command": "osprey.profiler.profileStart",
@@ -406,6 +423,13 @@
           "when": "view == osprey.profiler.processes && viewItem =~ /^(process|blockedProcess)/",
           "group": "9_danger@1"
         }
+      ],
+      "explorer/context": [
+        {
+          "command": "osprey.packages.open",
+          "when": "resourceFilename == osprey.toml",
+          "group": "osprey@1"
+        }
       ]
     },
     "keybindings": [
@@ -586,6 +610,18 @@
           "default": true,
           "description": "After profiling, show inline per-line heat annotations (NN.N% · M samples) and overview-ruler marks in the profiled source files."
         },
+        "osprey.packages.registry": {
+          "type": "string",
+          "default": "http://127.0.0.1:8787",
+          "scope": "resource",
+          "description": "Package registry API origin. HTTPS is required except for loopback development."
+        },
+        "osprey.packages.frontendPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Absolute path to osprey-pkg. Defaults to the client bundled with this extension."
+        },
         "osprey.profiler.sampleRate": {
           "type": "number",
           "default": 100,
@@ -687,6 +723,7 @@
     "@nimblesite/lsp-profiler-ui": "file:../lspkit/packages/lsp-profiler-ui",
     "@nimblesite/shipwright-vscode": "^0.5.4",
     "@preact/signals-core": "^1.14.4",
+    "@vscode/codicons": "^0.0.46-24",
     "vscode-languageclient": "^10.1.2"
   },
   "devDependencies": {
@@ -701,6 +738,7 @@
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
     "mocha": "^12.0.3",
+    "playwright-core": "1.63.0",
     "sinon": "^22.1.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
@@ -709,7 +747,7 @@
   },
   "scripts": {
     "sync-icon": "node scripts/sync-icon.mjs",
-    "vscode:prepublish": "npm run sync-icon && npm run compile",
+    "vscode:prepublish": "node scripts/verify-package-client.mjs && npm run sync-icon && npm run compile && node scripts/verify-package-workspace.mjs",
     "precompile": "npm run sync-icon && node scripts/sync-profiler-contributions.mjs --check",
     "sync-profiler": "node scripts/sync-profiler-contributions.mjs",
     "compile": "tsc -b",

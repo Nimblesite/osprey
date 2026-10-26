@@ -9,7 +9,7 @@ This directory contains the Node.js API and WebSocket bridge used by the [websit
 | `POST /api/run` | Compile and execute submitted source with `osprey --sandbox --run` |
 | WebSocket `/lsp` | Forward JSON-RPC to an `osprey lsp` child over stdio |
 
-POST bodies use `{"code":"print(\"Hello\")","flavor":"default"}`. The server names ML requests `.ospml` and other requests `.osp`; source markers still pass to the compiler. Responses separate `compilerOutput` and `programOutput`, with a `success` flag. Each compiler request gets a UUID-named temporary directory and a 20-second child-process timeout.
+POST bodies use `{"code":"print(\"Hello\")","flavor":"default"}`. Set `flavor` to `default`, `ml` or `python`; the server names their source files `.osp`, `.ospml` or `.py` respectively. Python flavor compiles Osprey source, not arbitrary CPython programs. Source markers still pass to the compiler. Responses separate `compilerOutput` and `programOutput`, with a `success` flag. Each compiler request gets a UUID-named temporary directory and a 20-second child-process timeout.
 
 ## Run the backend
 

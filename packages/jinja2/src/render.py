@@ -185,7 +185,7 @@ def for_elements(v):
         case "list":
             return v.elems
         case "dict":
-            return toList(map(range(len(v.keys)), lambda i: V.text(unwrap_or(listGet(v.keys, i), ""))))
+            return v.keys
         case "string":
             return V.char_values(v.sval)
         case _:
@@ -242,7 +242,7 @@ def bind_var(frame, node, item):
     if node.var2 == "":
         return mapSet(frame, node.var, item)
     else:
-        f = mapSet(frame, node.var, V.text(item.sval))
+        f = mapSet(frame, node.var, unwrap_or(listGet(item.elems, 0), V.none()))
         return mapSet(f, node.var2, unwrap_or(listGet(item.vals, 0), V.none()))
 
 

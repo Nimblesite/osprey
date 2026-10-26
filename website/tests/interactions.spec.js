@@ -11,15 +11,18 @@ async function executeExample(source, file) {
 }
 
 async function verifyDraftExample(source, file) {
-  expect(await executeExample(source, file)).toBe("Saved / Retry: offline\n");
+  expect(await executeExample(source, file)).toBe("Saved\n");
   expect(await readFile(path.join(path.dirname(file), "draft.txt"), "utf8")).toBe("Ship it.");
-  const offline = source.replace('print("${disk(saveDraft)} / ${offline(saveDraft)}")', 'print(offline(saveDraft))')
-    .replace('print "${disk saveDraft} / ${offline saveDraft}"', 'print (offline saveDraft)')
-    .replace('print(f"{disk(saveDraft)} / {offline(saveDraft)}")', 'print(offline(saveDraft))');
+  const offline = source.replace('writeFile(path, text)', source.startsWith('# osprey:') ? 'Error(message="offline")' : 'Error { message: "offline" }')
+    .replace('writeFile path text', 'Error(message = "offline")');
   const isolated = path.join(path.dirname(file), "offline", path.basename(file));
   expect(offline).not.toBe(source);
   expect(await executeExample(offline, isolated)).toBe("Retry: offline\n");
   await expect(readFile(path.join(path.dirname(isolated), "draft.txt"))).rejects.toMatchObject({ code: "ENOENT" });
+  const unhandled = source.replace('disk(onSave)', 'onSave()').replace('disk onSave', 'onSave ()');
+  expect(unhandled).not.toBe(source);
+  expect(await exampleResult(unhandled, path.join(path.dirname(file), "unhandled", path.basename(file))))
+    .toContain("unhandled effect operations at program entry: Drafts.save");
 }
 
 // stdout of a program that runs, or the compiler's diagnostic for one it rejects.
@@ -99,14 +102,14 @@ test.describe("homepage flight and source examples", () => {
         const readme = await readFile(path.resolve("../README.md"), "utf8");
         expect(readme.match(/```osprey\n([\s\S]*?)\n```/)[1]).toBe(text);
       }
-      expect(`${await page.locator(".hero .code-result samp").textContent()}\n`).toBe("Saved / Retry: offline\n");
+      expect(`${await page.locator(".hero .code-result samp").textContent()}\n`).toBe("Saved\n");
     }
   });
 
   test("the effects guide preserves runnable authored examples in both flavors", async ({ page }, testInfo) => {
     await page.goto("/docs/effects/");
     const blocks = page.locator('pre > code.language-osprey, pre > code.language-osprey-ml');
-    const outputs = ["Saved / Retry: offline\n", "Saved / Retry: offline\n", "Retry: offline\n", "Saved: Ship it.\n", "30\n", "Submitted / Cancelled\n", "Report: Saved\n"];
+    const outputs = ["Saved\n", "Saved\n", "Retry: offline\n", "Saved: Ship it.\n", "30\n", "Submitted / Cancelled\n", "Report: Saved\n"];
     await expect(blocks).toHaveCount(outputs.length);
     for (let i = 0; i < outputs.length; i++) {
       const block = blocks.nth(i);
@@ -178,12 +181,30 @@ test.describe("homepage flight and source examples", () => {
   });
 });
 
+for (const width of [1440, 390]) {
+  test(`navigation separates documentation from destinations at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/docs/");
+    if (width < 900) await page.locator("#mobile-menu-toggle").click();
+    const nav = page.locator("#site-navigation");
+    await expect(nav.locator("summary", { hasText: "Tools" })).toHaveCount(0);
+    for (const [label, url] of [["Playground", "/playground/"], ["Benchmarks", "/benchmarks/"]]) {
+      const link = nav.locator(":scope > li > a", { hasText: label });
+      await expect(link).toBeVisible();
+      await expect(link).toHaveAttribute("href", url);
+    }
+    await nav.locator("summary", { hasText: "Docs" }).click();
+    await nav.getByRole("link", { name: "Install Osprey", exact: true }).click();
+    await expect(page).toHaveURL(/\/docs\/installation\/$/);
+  });
+}
+
 test.describe("desktop interactions", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
   test("nav links navigate to the right pages", async ({ page }) => {
     await page.goto("/");
-    await expect(page.locator("#site-navigation > li")).toHaveCount(4);
+    await expect(page.locator("#site-navigation > li")).toHaveCount(5);
     await page.locator(".nav-group > summary", { hasText: "Docs" }).click();
     await page.getByRole("link", { name: "Language specification", exact: true }).click();
     await expect(page).toHaveURL(/\/spec\/$/);
@@ -192,18 +213,20 @@ test.describe("desktop interactions", () => {
     await expect(page).toHaveURL(/\/docs\/$/);
   });
 
-  test("header submenus support keyboard dismissal and one open group", async ({ page }) => {
+  test("Docs submenu supports keyboard and outside-click dismissal", async ({ page }) => {
     await page.goto("/");
-    const docs = page.locator(".nav-group").filter({ has: page.locator("summary", { hasText: "Docs" }) });
-    const tools = page.locator(".nav-group").filter({ has: page.locator("summary", { hasText: "Tools" }) });
-    await docs.locator("summary").focus();
+    const docs = page.locator(".nav-group");
+    const summary = docs.locator("summary");
+    await expect(docs).toHaveCount(1);
+    await summary.focus();
     await page.keyboard.press("Enter");
     await expect(docs.getByRole("link").first()).toBeVisible();
-    await tools.locator("summary").click();
+    await page.locator(".hero-title").click();
     await expect(docs).not.toHaveAttribute("open", "");
+    await summary.click();
     await page.keyboard.press("Escape");
-    await expect(tools).not.toHaveAttribute("open", "");
-    await expect(tools.locator("summary")).toBeFocused();
+    await expect(docs).not.toHaveAttribute("open", "");
+    await expect(summary).toBeFocused();
   });
 
   test("header submenus remain usable without JavaScript", async ({ browser }) => {
@@ -212,7 +235,7 @@ test.describe("desktop interactions", () => {
       const page = await context.newPage();
       await page.goto("/");
       const nav = page.locator("#site-navigation");
-      await nav.locator("summary", { hasText: "Tools" }).click();
+      await nav.locator("summary", { hasText: "Docs" }).click();
       await nav.getByRole("link", { name: "Install Osprey", exact: true }).click();
       await expect(page).toHaveURL(/\/docs\/installation\/$/);
       await context.close();

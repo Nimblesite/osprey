@@ -1,0 +1,8 @@
+[project]
+name = "vscode-tests"
+source_roots = ["../../native/src", "../src", "."]
+default_namespace = "vscode_tests"
+entry = "main.ospml"
+
+[modules]
+allow_wildcard_imports = false

@@ -188,8 +188,26 @@ module ManifestTests {
         }
     ])
 
+    let flashAttn = "packages/flash_attn/osprey.toml"
+    let rougeScore = "packages/rouge_score/osprey.toml"
+
+    fn identityOf(text) = match manifestOf(text) {
+        Success { value } => publicationKey(value)
+        Error { message } => message
+    }
+
+    /// Real shipped manifests, parsed by the canonical parser: each registry
+    /// identity must satisfy [PACKAGE-NAMES], so underscores are refused.
+    fn acceptsPortIdentities() = {
+        check("flash manifest accepted", "accepted", verdict(readFile(flashAttn) ?: ""))
+        check("flash registry identity", "@osprey/flash-attn", identityOf(readFile(flashAttn) ?: ""))
+        check("rouge manifest accepted", "accepted", verdict(readFile(rougeScore) ?: ""))
+        check("rouge registry identity", "@osprey/rouge-score", identityOf(readFile(rougeScore) ?: ""))
+    }
+
     export fn run() = {
         test("manifest: dependency grants", grantsParse)
+        test("manifest: port identities", acceptsPortIdentities)
         test("manifest: accepts the spec example", acceptsLedger)
         test("manifest: accepts application roots", acceptsApplications)
         test("manifest: rejects structure", rejectsStructure)

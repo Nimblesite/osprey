@@ -11,9 +11,24 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use osprey_ast::{Position, Program};
 
-use crate::check::infer_checked;
+use crate::check::infer_annotation_candidate;
 use crate::redundant_sites::{erase, sites, Site, Slot};
 use crate::ty::{Type, VarId};
+
+#[cfg(test)]
+#[path = "redundant_cost_tests.rs"]
+mod cost_tests;
+#[path = "redundant_proofs.rs"]
+mod proofs;
+use proofs::Proofs;
+/// The window search that selects one jointly removable annotation set
+/// ([TYPE-ANNOTATION-REDUNDANT]). Its [`preserves`] oracle stays here beside
+/// the diagnostics it serves.
+#[path = "redundant_search.rs"]
+mod search;
+
+#[cfg(test)]
+pub(crate) use search::{accumulate, accumulate_candidates, individually_removable};
 
 /// The rule identifier this diagnostic is reported under, and the name a
 /// per-rule severity setting will address it by ([TYPE-ANNOTATION-REDUNDANT]).
@@ -137,10 +152,11 @@ pub fn redundant_annotation_sites_for(
         return Vec::new();
     };
     let all: Vec<usize> = (0..written.len()).collect();
-    let removable = if preserves(program, &baseline, &written, &all) {
+    let proofs = Proofs::new(program, &baseline);
+    let removable = if proofs.keeps(&written, &all) {
         all
     } else {
-        accumulate(program, &baseline, &written, judges())
+        search::accumulate_with(&proofs, &written, &all, judges())
     };
     removable
         .iter()
@@ -169,137 +185,13 @@ fn annotation(site: &Site) -> RedundantAnnotation {
     }
 }
 
-/// Grow the reported set in source order, keeping only the annotations that
-/// stay removable alongside everything already kept.
-///
-/// A reader acts on the whole list, so the whole list has to be safe. Judging
-/// each annotation against the untouched program answers a question nobody
-/// asked: mutually-pinning annotations each look removable while the others
-/// hold the type down, and a reader who deletes all of them gets a different
-/// program. Every set this returns has been solved for as a set.
-///
-/// Each candidate costs a whole-program solve, so `window` undecided
-/// candidates are judged at once on separate threads, each against the set
-/// kept so far. Erasing more annotations only removes constraints: it never
-/// restores a type another erasure changed, nor repairs an error. So a
-/// candidate rejected against the kept set stays rejected as the set grows,
-/// and when the window's accepted candidates also preserve the program
-/// together, the one-at-a-time search would have kept each of them in turn.
-/// That combined set is solved once; when it fails, only its first member is
-/// kept and the rest are judged again against the larger set.
-pub(crate) fn accumulate(
-    program: &Program,
-    baseline: &Snapshot,
-    written: &[Site],
-    window: usize,
-) -> Vec<usize> {
-    let mut kept: Vec<usize> = Vec::new();
-    let mut pending: std::collections::VecDeque<usize> = (0..written.len()).collect();
-    while !pending.is_empty() {
-        let width = pending.len().min(window.max(1));
-        let candidates: Vec<usize> = pending.drain(..width).collect();
-        let verdicts = judged(program, baseline, written, &kept, &candidates);
-        let accepted: Vec<usize> = candidates
-            .iter()
-            .zip(verdicts)
-            .filter_map(|(index, keep)| keep.then_some(*index))
-            .collect();
-        settle(
-            program,
-            baseline,
-            written,
-            &mut kept,
-            accepted,
-            &mut pending,
-        );
-    }
-    kept
-}
-
-/// Keep `accepted` at once when the set survives with all of them; otherwise
-/// keep the first, which was judged against exactly `kept`, and requeue the
-/// rest ahead of everything later.
-fn settle(
-    program: &Program,
-    baseline: &Snapshot,
-    written: &[Site],
-    kept: &mut Vec<usize>,
-    accepted: Vec<usize>,
-    pending: &mut std::collections::VecDeque<usize>,
-) {
-    let Some((&first, rest)) = accepted.split_first() else {
-        return;
-    };
-    let together: Vec<usize> = kept.iter().chain(&accepted).copied().collect();
-    if rest.is_empty() || preserves(program, baseline, written, &together) {
-        kept.extend(accepted);
-        return;
-    }
-    kept.push(first);
-    for index in rest.iter().rev() {
-        pending.push_front(*index);
-    }
-}
-
-/// Inference recurses on the syntax tree; a spawned thread gets the main
-/// thread's headroom, not the 2 MiB default.
-const JUDGE_STACK: usize = 64 * 1024 * 1024;
-
-/// Whether each candidate stays removable alongside `kept`, in order.
-fn judged(
-    program: &Program,
-    baseline: &Snapshot,
-    written: &[Site],
-    kept: &[usize],
-    candidates: &[usize],
-) -> Vec<bool> {
-    let trial = |index: usize| {
-        let mut chosen = kept.to_vec();
-        chosen.push(index);
-        preserves(program, baseline, written, &chosen)
-    };
-    if let [index] = candidates {
-        return vec![trial(*index)];
-    }
-    std::thread::scope(|scope| {
-        let judges: Vec<_> = candidates
-            .iter()
-            .map(|&index| {
-                let judge = std::thread::Builder::new()
-                    .stack_size(JUDGE_STACK)
-                    .spawn_scoped(scope, move || trial(index));
-                (index, judge)
-            })
-            .collect();
-        judges
-            .into_iter()
-            .map(|(index, judge)| verdict(judge).unwrap_or_else(|| trial(index)))
-            .collect()
-    })
-}
-
-/// A judge's answer, or `None` when the host could not start it and the
-/// candidate must be judged here instead. A judge that panicked re-raises
-/// here, as the solve would have on this thread.
-fn verdict(judge: std::io::Result<std::thread::ScopedJoinHandle<'_, bool>>) -> Option<bool> {
-    judge.ok().map(|handle| {
-        handle
-            .join()
-            .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
-    })
-}
-
 /// Whether erasing every annotation in `chosen` — all of them at once — leaves
 /// `program` typechecking and publishing the same types, up to renaming of
 /// type variables.
 ///
 /// One checked solve both validates the candidate and publishes its types.
-fn preserves(program: &Program, baseline: &Snapshot, written: &[Site], chosen: &[usize]) -> bool {
-    let erasing: HashSet<usize> = chosen
-        .iter()
-        .filter_map(|index| written.get(*index))
-        .flat_map(|site| site.members.iter().copied())
-        .collect();
+fn preserves(program: &Program, baseline: &Snapshot, members: &[usize]) -> bool {
+    let erasing: HashSet<usize> = members.iter().copied().collect();
     let candidate = erase(program, &mut |slot| !erasing.contains(&slot));
     published(&candidate).is_some_and(|candidate| {
         baseline.methods == candidate.methods && same_types(&baseline.types, &candidate.types)
@@ -314,7 +206,9 @@ fn judges() -> usize {
 /// Everything the inferrer resolved, labelled so two runs compare entry by
 /// entry.
 pub(crate) fn published(program: &Program) -> Option<Snapshot> {
-    let types = infer_checked(program).ok()?;
+    #[cfg(test)]
+    let _proof = cost_tests::record(program);
+    let types = infer_annotation_candidate(program).ok()?;
     let functions = types.functions.iter().map(|(name, (params, ret))| {
         let signature = Type::Fun {
             params: params.clone(),

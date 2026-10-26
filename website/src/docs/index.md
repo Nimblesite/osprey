@@ -37,6 +37,7 @@ Osprey uses typed algebraic effects to separate application requests from their 
 ## Packages
 
 - **[Package manager](/docs/package-manager/)** — folder registry, verified downloads, epoch-based resolution and offline locked builds. Includes a quick start and the planned package website workflow. The client and server are written in Osprey.
+- **[Packages in VS Code](/docs/packages-in-vscode/)** — add and remove direct dependencies, review unverified-release warnings, then fetch and build locked source. Includes real editor screenshots.
 - **[Package specification](/spec/0029-packagemanagement/)** — the normative contract: folder registry, manifests, identity, resolution, locks, the REST API and the command surface.
 
 ## Language

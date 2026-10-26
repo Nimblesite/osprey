@@ -1,0 +1,27 @@
+namespace registry_editor
+import ui::Runtime
+import ui::Keyed
+import ui::Doc
+import vscode::Webview
+
+module App
+    slice () = perform Signal<PackageState>.read ()
+
+    initial context = Store::refresh (Store::create (listGet context.arguments 0 ?: "", listGet context.arguments 1 ?: "http://127.0.0.1:8787"))
+
+    regions (before, current, frames, _) =
+        handle static Signal<PackageState>
+            read => current
+        changed = signalChanges before current Store::save (signalDependencies slice)
+        root = Keyed::region (frames, "root", changed, View::rootView)
+        packages = Keyed::region (frames, "packages", changed, View::listView)
+        details = Keyed::region (frames, "details", changed, View::detailView)
+        [root, packages, details]
+
+    palette = ui::Theme(tokens = [ui::Token(tokenName = "canvas", tokenLight = "#F7F9FC", tokenDark = "#0C1325"), ui::Token(tokenName = "surface", tokenLight = "#FFFFFF", tokenDark = "#191F32"), ui::Token(tokenName = "accent", tokenLight = "#006B86", tokenDark = "#77D7F4"), ui::Token(tokenName = "text", tokenLight = "#17223A", tokenDark = "#DCE1FB")], spacing = [4, 8, 16, 24, 32], feedback = 160, settle = 220)
+
+    export start context = Runtime::start (context, initial, regions, Store::save, palette)
+
+    export dispatch (saved, event) = Runtime::dispatch (saved, event, Update::apply, regions, Store::save, Store::restore)
+
+    export respond frame = Webview::respond (frame, start, dispatch)

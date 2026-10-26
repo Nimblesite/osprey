@@ -363,7 +363,7 @@ suite("Osprey Debugger E2E Workflows", function () {
               variable.name,
             ) && variable.value === String(fixture.innerValue),
         ),
-        "the visible scope exposes its initialized value binding",
+        `the visible scope exposes its initialized value binding: ${JSON.stringify(bindings)}`,
       );
       if (fixture.uniqueValue)
         assert.strictEqual(

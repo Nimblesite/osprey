@@ -18,7 +18,7 @@ module PublishTests {
     fn files() = [Fixture::file("osprey.toml", manifestText()), Fixture::file("src/main.osp", "fn main() = 0\n")]
 
     /// The project directory holds more than the release: a lock and notes.
-    fn projectWalk() = Fixture::walkRoute(project, ["notes.md", "osprey.lock", "osprey.toml", "src/main.osp"])
+    fn projectWalk() = Fixture::walkRoute(project, ["notes.md", "osprey.lock", "osprey.toml", "src/main.osp", "src/.deslop/cache/fingerprint.bin", "src/.osprey/cache/entry.bin", "src/__pycache__/module.pyc", "src/nested/.git/index"])
 
     fn projectReads() = listConcat(mapList(files(), fn(f) => Fixture::readRoute("${project}/${f.relPath}", f.content)), [
         Fixture::readRoute("${project}/notes.md", "scratch"),
@@ -33,6 +33,10 @@ module PublishTests {
         && RegistryFixture::writtenTo(a, "${folder}/${dir}/src/main.osp") == "fn main() = 0\n"
         && RegistryFixture::writesTo(a, "${folder}/${dir}/notes.md") == 0
         && RegistryFixture::writesTo(a, "${folder}/${dir}/osprey.lock") == 0
+        && RegistryFixture::writesTo(a, "${folder}/${dir}/src/.deslop/cache/fingerprint.bin") == 0
+        && RegistryFixture::writesTo(a, "${folder}/${dir}/src/.osprey/cache/entry.bin") == 0
+        && RegistryFixture::writesTo(a, "${folder}/${dir}/src/__pycache__/module.pyc") == 0
+        && RegistryFixture::writesTo(a, "${folder}/${dir}/src/nested/.git/index") == 0
 
     /// The next ordinal of the newest epoch.
     fn nextOrdinal() = {

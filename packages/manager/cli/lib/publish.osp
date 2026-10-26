@@ -57,10 +57,10 @@ module Publish {
 
     fn underRoot(path, root) = startsWith(path, "${root}/")
 
-    fn selected(mf: ManifestModel::Manifest, path) = Paths::publicationMetadata(path)
+    fn selected(mf: ManifestModel::Manifest, path) = if Paths::generatedCache(path) { false } else { Paths::publicationMetadata(path)
         || foldList(mf.sourceRoots, false, fn(found, root) => found || underRoot(path, root))
         || listContains(mf.pythonSources, path)
-        || listContains(mapList(mf.assets, assetPath), path)
+        || listContains(mapList(mf.assets, assetPath), path) }
 
     fn selectedWalk(mf, walk: Host::Walk) = Host::Walk {
         regular: filterList(walk.regular, fn(p) => selected(mf, p)),

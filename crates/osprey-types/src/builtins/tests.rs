@@ -95,6 +95,10 @@ fn network_builtins_match_the_runtime_status_abi() {
             "httpPost",
             "httpPost : (int, string, string, string) -> int",
         ),
+        (
+            "httpPostResponse",
+            "httpPostResponse : (int, string, string, string) -> Result<int, Error>",
+        ),
         ("httpPut", "httpPut : (int, string, string, string) -> int"),
         ("httpDelete", "httpDelete : (int, string, string) -> int"),
         (

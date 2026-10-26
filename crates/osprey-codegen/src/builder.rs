@@ -47,6 +47,9 @@ pub(crate) struct CodegenOptions {
     /// Emit for symbolic execution [SYMEX-CODEGEN]: fatal paths `abort`
     /// instead of `exit`, so the engine reports them as errors.
     pub symbolic: bool,
+    /// Lower for wasm32, whose pointers are 4 bytes wide: allocation metadata
+    /// must then mask pointer-stride words, not native 8-byte words.
+    pub wasm32: bool,
 }
 
 /// A lambda kept for inline application at its direct call sites: its
@@ -75,6 +78,9 @@ pub(crate) struct Lowered {
 /// Accumulates a whole module while lowering one function at a time.
 pub(crate) struct Codegen {
     pub(crate) application_caller: Option<ProgramTypes>,
+    /// Physical pointer width of the target: 8 natively, 4 on wasm32. Every
+    /// allocation-mask bit is a byte offset divided by this stride.
+    pub(crate) pointer_bytes: u64,
     /// `declare` lines, de-duplicated and stably ordered.
     externs: BTreeSet<String>,
     /// Global constant definitions (string literals).
@@ -197,6 +203,8 @@ pub(crate) struct Codegen {
     /// (mutually) recursive generic call falls back to a direct call instead of
     /// inlining forever.
     pub(crate) inlining: HashSet<String>,
+    /// Module-wide generic expansion work before sharing closed instantiations.
+    pub(crate) inline_expansions: usize,
     /// Emitted instantiations of RECURSIVE generic functions, keyed by the call
     /// site's argument representations ([`crate::monofn`]): the one form of
     /// polymorphism resolved by emitting a definition rather than by inlining.
@@ -358,6 +366,7 @@ impl Codegen {
             lambdas: HashMap::new(),
             file_lambdas: HashMap::new(),
             application_caller: None,
+            pointer_bytes: crate::meta::pointer_bytes_for(options.wasm32),
             file_lambda_prefix: HashMap::new(),
             file_aliases: HashMap::new(),
             lambda_envs: HashMap::new(),
@@ -374,6 +383,7 @@ impl Codegen {
             obj_count: 0,
             fn_defs: HashMap::new(),
             inlining: HashSet::new(),
+            inline_expansions: 0,
             monofns: HashMap::new(),
             monofn_count: 0,
             fn_ptr_locals: HashMap::new(),

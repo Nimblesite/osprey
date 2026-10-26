@@ -12,6 +12,7 @@
     {"builtin": "httpGet", "capability": "io/network"},
     {"builtin": "httpListen", "capability": "io/network"},
     {"builtin": "httpPost", "capability": "io/network"},
+    {"builtin": "httpPostResponse", "capability": "io/network"},
     {"builtin": "httpPut", "capability": "io/network"},
     {"builtin": "httpResponseFree", "capability": "io/network"},
     {"builtin": "httpStopServer", "capability": "io/network"},

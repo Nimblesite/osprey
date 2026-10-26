@@ -162,7 +162,7 @@ static void read_one_file(long cap, long length) {
   seeks_stay_inside_the_length(file, cap, length);
   rewind(file);
   hunt_check(ftello(file) == 0 && !feof(file) && fread(buffer, 1, sizeof(buffer), file) == got, about("rewind rereads the same stream", cap, length));
-  int named = strcmp(hunt_range_name(0), "in.dat.ok") == 0 && (cap == 0 || (strcmp(hunt_range_name(1), "in.dat.len") == 0 && strcmp(hunt_last_symbolic(), "in.dat") == 0));
+  int named = strcmp(hunt_range_name(0), "file.ok:in.dat") == 0 && (cap == 0 || (strcmp(hunt_range_name(1), "file.len:in.dat") == 0 && strcmp(hunt_last_symbolic(), "file.data:in.dat") == 0));
   hunt_check(named, about("a file is <path> with <path>.ok and <path>.len", cap, length));
   (void)fclose(file);
 }
@@ -189,7 +189,7 @@ static void every_open_is_a_fresh_stream(void) {
   hunt_queue_range(2);
   FILE_ *second = fopen("a.txt", "r");
   hunt_check(second != NULL && fread(buffer, 1, 8, second) == 2 && buffer[0] == 'Z', "a reopened path reads fresh symbolic bytes");
-  int names = strcmp(hunt_range_name(0), "a.txt.ok") == 0 && strcmp(hunt_range_name(1), "a.txt.len") == 0 && strcmp(hunt_range_name(2), "a.txt.ok") == 0 && strcmp(hunt_range_name(3), "a.txt.len") == 0;
+  int names = strcmp(hunt_range_name(0), "file.ok:a.txt") == 0 && strcmp(hunt_range_name(1), "file.len:a.txt") == 0 && strcmp(hunt_range_name(2), "file.ok:a.txt") == 0 && strcmp(hunt_range_name(3), "file.len:a.txt") == 0;
   hunt_check(names && hunt_range_count() == 4, "each open draws its own .ok and .len");
   (void)fclose(second);
 }
@@ -316,6 +316,16 @@ static void names_carry_their_suffix_and_index(void) {
   hunt_check(strlen(name) == OSP_HUNT_NAME_MAX - 1, "a long name is cut to the name limit and terminated");
 }
 
+static void file_names_cannot_alias_metadata(void) {
+  hunt_reset();
+  FILE_ *file = open_symbolic("x.ok", 1, 1);
+  hunt_check(file != NULL && fgetc(file) >= 0, "the metadata-like file is readable");
+  hunt_check(strcmp(hunt_last_symbolic(), "file.data:x.ok") == 0, "file data has a distinct namespace");
+  hunt_check(strcmp(hunt_range_name(0), "file.ok:x.ok") == 0, "open flags have a distinct namespace");
+  hunt_check(strcmp(hunt_range_name(1), "file.len:x.ok") == 0, "file lengths have a distinct namespace");
+  if (file != NULL) (void)fclose(file);
+}
+
 // Runtime integration: the symbolic-sized buffer retains every byte and NUL.
 static void runtime_file_at_bound(long cap, long length) {
   hunt_reset();
@@ -400,6 +410,7 @@ static void runtime_line_preserves_embedded_nul_and_later_reads(void) {
   hunt_check(line != NULL, "embedded NUL line allocates its result");
   if (line != NULL) {
     hunt_check(memcmp(line, bytes, 3) == 0 && line[3] == '\0', "embedded NUL does not end the input read");
+    hunt_check(line[4] == bytes[4], "fixed-address termination preserves bytes after the delimiter");
     hunt_check(osp_hunt_calls[OSP_HUNT_CALL_READ] == 4, "embedded NUL consumes through the newline");
     free(line);
   }
@@ -425,6 +436,15 @@ static void runtime_line_matches_bytes(const char *bytes, long length, long *cur
   if (*cursor < length) (*cursor)++;
 }
 
+static void line_constraints_have_one_exact_solution(const char *bytes, long length, long cap) {
+  long expected = 0;
+  while (expected < length && bytes[expected] != '\n') expected++;
+  for (long candidate = -1; candidate <= cap + 1; candidate++) {
+    int valid = osp_hunt_valid_line_end((const unsigned char *)bytes, length, candidate, cap);
+    hunt_check(valid == (candidate == expected), "line constraints preserve exactly the first newline or EOF");
+  }
+}
+
 static void runtime_lines_cover_every_byte_position_and_eof(void) {
   char bytes[] = {'a', 'b', '\n', 'c', 'd', '\n', 'e', 'f'};
   for (unsigned byte = 0; byte < 256; byte++) {
@@ -437,6 +457,7 @@ static void runtime_lines_cover_every_byte_position_and_eof(void) {
         hunt_queue_bytes(bytes, sizeof(bytes));
         hunt_queue_range((int)length);
         long cursor = 0;
+        line_constraints_have_one_exact_solution(bytes, length, sizeof(bytes));
         for (int line = 0; line < 5; line++) runtime_line_matches_bytes(bytes, length, &cursor);
         hunt_check(cursor == length && feof(osp_hunt_stdin), "repeated input exhausts the exact symbolic length");
       }
@@ -460,4 +481,5 @@ void hunt_mock_stream_tests(void) {
   standard_descriptors_go_to_the_sink();
   every_draw_is_a_fresh_numbered_object();
   names_carry_their_suffix_and_index();
+  file_names_cannot_alias_metadata();
 }

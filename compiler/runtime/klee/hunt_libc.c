@@ -283,3 +283,4 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex) {
 }
 
 pthread_t pthread_self(void) { return 1; }
+int pthread_equal(pthread_t first, pthread_t second) { return first == second; }

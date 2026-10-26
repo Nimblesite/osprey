@@ -30,20 +30,24 @@ fn target_slices_match_ndk_and_bool_abi() -> Result<(), String> {
         assert!(compile_args(target, Path::new("a.ll"), Path::new("a.o"))
             .contains(&"-fPIC".to_string()));
     }
-    assert_ne!(Target::Arm64.runtime(), Target::X64.runtime());
+    assert_ne!(Target::Arm64.runtime("arc"), Target::X64.runtime("arc"));
     Ok(())
 }
 
 #[test]
 fn unsupported_android_options_are_errors_without_ndk() -> Result<(), String> {
     for target in ["android-arm64", "android-x64"] {
-        for option in [
-            "--memory=gc",
+        let accepted = [
+            "app.osp",
+            &format!("--target={target}"),
+            "--compile",
             "--memory=arc",
-            "--debug",
-            "--profile",
-            "--run",
-        ] {
+        ]
+        .map(str::to_string);
+        let cli = crate::parse_args(&accepted)?;
+        assert_eq!(cli.memory, "arc");
+        assert!(validate(&cli).is_ok());
+        for option in ["--memory=gc", "--debug", "--profile", "--run"] {
             let args = [
                 "app.osp".to_string(),
                 format!("--target={target}"),

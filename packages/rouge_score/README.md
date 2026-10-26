@@ -1,4 +1,4 @@
-# @osprey/rouge_score
+# @osprey/rouge-score
 
 A port of Google's [rouge-score](https://github.com/google-research/google-research/tree/master/rouge)
 0.1.2 to the Osprey Python flavor: `RougeScorer` for `rouge1`, `rouge2`, `rougeL` and `rougeLsum`,

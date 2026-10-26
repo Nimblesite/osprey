@@ -3,12 +3,15 @@
 //! Python-flavor project has assertions comparing the port with
 //! values the real `CPython` package computed. It must print exactly its
 //! committed `expected_output.txt` — one `ok` line per assertion and a
-//! `N passed, 0 failed` total — under the default, GC and ARC memory backends,
+//! `N passed, 0 failed` total — under the GC and ARC memory backends,
 //! and an ARC run must exit with no live objects. The native ML framework also
 //! stays in this execution matrix; `CPython` provenance applies to Python ports.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+#[path = "common/package_matrix.rs"]
+mod package_matrix;
+use package_matrix::{schedule, MATRIX_WORKERS};
 
 fn repo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -177,22 +180,45 @@ fn failures(suite: &Path, memory: &str, cache: &Path) -> Vec<String> {
     problems
 }
 
+/// One job per (suite, backend); problems return in deterministic submission order.
+fn matrix_problems(suites: &[PathBuf], cache: &Path) -> Vec<String> {
+    schedule(&matrix_jobs(suites), MATRIX_WORKERS, |(suite, memory)| {
+        failures(suite, memory, cache)
+    })
+}
+
+fn matrix_jobs(suites: &[PathBuf]) -> Vec<(&Path, &str)> {
+    suites
+        .iter()
+        .map(PathBuf::as_path)
+        .flat_map(|suite| ["gc", "arc"].map(|memory| (suite, memory)))
+        .collect()
+}
+
+#[test]
+fn the_package_matrix_runs_all_38_suite_backend_pairs_once() {
+    let suites = suites();
+    let jobs = matrix_jobs(&suites);
+    let unique: std::collections::BTreeSet<_> = jobs.iter().copied().collect();
+    assert_eq!(jobs.len(), 38, "all 19 packages need both managed backends");
+    assert_eq!(unique.len(), jobs.len(), "duplicate job");
+    for suite in &suites {
+        for memory in ["gc", "arc"] {
+            assert!(unique.contains(&(suite.as_path(), memory)));
+        }
+    }
+}
+
 #[test]
 fn every_ported_package_matches_its_cpython_oracle_under_every_memory_backend(
 ) -> std::io::Result<()> {
     let suites = suites();
     assert!(!suites.is_empty(), "no packages/*/tests suites were found");
     let cache = package_cache()?;
-    let problems: Vec<String> = suites
-        .iter()
-        .flat_map(|suite| {
-            let cache = &cache;
-            ["default", "gc", "arc"]
-                .into_iter()
-                .flat_map(move |memory| failures(suite, memory, cache))
-        })
-        .collect();
-    std::fs::remove_dir_all(cache)?;
+    let mut problems = matrix_problems(&suites, &cache);
+    if let Err(error) = std::fs::remove_dir_all(cache) {
+        problems.push(format!("package cache cleanup failed: {error}"));
+    }
     assert!(problems.is_empty(), "{}", problems.join("\n"));
     Ok(())
 }

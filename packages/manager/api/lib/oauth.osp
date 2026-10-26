@@ -1,0 +1,64 @@
+namespace registry_api;
+import registry::Bytes
+import registry::Dsse
+import registry::Sha256
+
+/// PKCE and pinned provider URLs, shared by login handlers and tests.
+/// Implements [PACKAGE-HOSTED-AUTH]; this module never treats decoded JWT
+/// claims or a client-supplied user ID as a verified identity.
+module OAuth {
+    /// Deployment-owned origins and a Supabase publishable key, never a service key.
+    export type Config = { supabaseOrigin: string, callback: string, websiteOrigin: string, publishableKey: string }
+
+    let callbackPath = "/v1/auth/github/callback"
+
+    fn unreserved(b) = (b >= 65 && b <= 90) || (b >= 97 && b <= 122)
+    || (b >= 48 && b <= 57) || b == 45 || b == 46 || b == 95 || b == 126
+
+    fn character(text, i) = substring(text, i, i + 1) ?: ""
+
+    /// Percent-encode UTF-8 bytes, including every URL delimiter.
+    export fn component(text) = join(mapList(range(0, byteLength(text)) |> toList, fn(i) => {
+                let b = byteAt(text, i) ?: 0
+                if unreserved(b) { character(text, i) } else { "%${Bytes::hexByte(b)}" }
+        }), "")
+
+    fn hostByte(b) = (b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b == 45 || b == 46
+
+    fn origin(text) = startsWith(text, "https://") && byteLength(text) > 8 && byteLength(text) < 262
+    && fold(range(8, byteLength(text)), true, fn(ok, i) => ok && hostByte(byteAt(text, i) ?: 0))
+    && !contains(text, "..") && !endsWith(text, ".") && !startsWith(drop(text, 8), ".")
+
+    fn callbackOrigin(config: Config) = take(config.callback, byteLength(config.callback) - byteLength(callbackPath))
+
+    /// Invalid configuration is an error before redirects or network access.
+    export fn configCode(config: Config) = if !origin(config.supabaseOrigin) || !origin(config.websiteOrigin)
+    || !endsWith(config.callback, callbackPath) || !origin(callbackOrigin(config))
+    || !startsWith(config.publishableKey, "sb_publishable_") || contains(config.publishableKey, "\n")
+    || contains(config.publishableKey, "\r") { "auth.configuration" } else { "" }
+
+    /// A 32-byte OS-entropy nonce encoded without padding. Each random draw has
+    /// 63 unpredictable bits; four draws provide 252 bits of entropy.
+    export fn nonce() = Dsse::base64Url(Bytes::concatAll(mapList(range(0, 4) |> toList, fn(_i) => Bytes::u64be(random()))))
+
+    /// RFC 7636 S256, without the package-signing domain separator.
+    export fn challenge(verifier) = Dsse::base64Url(Sha256::digest(Bytes::ofString(verifier)))
+
+    /// S256 produces exactly 43 characters of the unpadded base64url alphabet.
+    export fn challengeCode(text) = if byteLength(text) != 43 || !fold(range(0, byteLength(text)), true, fn(ok, i) => {
+            let b = byteAt(text, i) ?: 0
+            ok && ((b >= 65 && b <= 90) || (b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b == 45 || b == 95)
+    }) { "auth.pkce" } else { "" }
+
+    fn authorization(config: Config, s256) = "${config.supabaseOrigin}/auth/v1/authorize?provider=github&redirect_to=${component(config.callback)}&code_challenge=${s256}&code_challenge_method=s256"
+
+    /// Only a deployment-pinned callback can reach the provider. A website
+    /// return URL is never accepted from a query string.
+    export fn authorizeUrl(config: Config, s256) = match configCode(config) {
+        "" => match challengeCode(s256) {
+            "" => Success { value: authorization(config, s256) }
+            code => Error { message: code }
+        }
+        code => Error { message: code }
+    }
+}

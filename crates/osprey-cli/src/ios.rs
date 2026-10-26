@@ -96,16 +96,18 @@ impl Target {
         self.slice().triple
     }
 
-    fn runtime(self) -> &'static str {
-        self.slice().runtime
+    fn runtime(self, memory: &str) -> String {
+        crate::linking::runtime_name(self.slice().runtime, memory)
     }
 
     /// The diagnostic for a slice whose runtime archive has not been built.
-    fn missing_runtime(self) -> String {
+    fn missing_runtime(self, memory: &str) -> String {
         let slice = self.slice();
         format!(
             "{} not found — run `make {}` to build the {} runtime",
-            slice.runtime, slice.goal, slice.platform
+            self.runtime(memory),
+            slice.goal,
+            slice.platform
         )
     }
 }
@@ -142,12 +144,13 @@ pub(crate) fn build(
     out: &Path,
     target: Target,
     scope: &ios_abi::ExportScope,
+    memory: &str,
 ) -> Result<(), ExitCode> {
     validate_output(out, target).map_err(|e| fail(&e))?;
     let (ir, header) = source(program, path, target, scope).map_err(|e| fail(&e))?;
     let sdk = sdk_path(target)?;
-    let runtime =
-        find_runtime_lib(target.runtime()).ok_or_else(|| fail(&target.missing_runtime()))?;
+    let runtime = find_runtime_lib(&target.runtime(memory))
+        .ok_or_else(|| fail(&target.missing_runtime(memory)))?;
     let runtime = crate::linking::fresh_runtime(&runtime).map_err(|e| fail(&e))?;
     let scratch = Scratch::new(path, target.sdk())?;
     write(&scratch.path.join("app.ll"), &ir)?;

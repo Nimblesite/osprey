@@ -14,8 +14,8 @@ Elapsed execution time and peak resident memory for arithmetic, collections and 
 
 - **CPU time** is elapsed wall-clock time, including process startup, excluding compilation. Cells show the mean in milliseconds or seconds; lower is better.
 - **Peak memory** is the maximum resident set size (RSS) across three runs, in KiB or MiB. WebAssembly shows `—` because Wasmtime's host RSS does not measure the module's memory alone.
-- **Osprey**, **ARC** and **GC** compile the same source with different memory backends. The default allocator retains general allocations; ARC and GC reclaim them.
-- **Highlighting** identifies Osprey columns and the lowest recorded cells. A star marks a strictly lowest value for the default Osprey backend. Summary ratios are geometric means of Osprey time divided by the comparison language's time: `1.59×` means 1.59 times as long; below `1×` means less time.
+- **Osprey**, **ARC** and **GC** compile the same source with different memory backends. The historical **Osprey** column uses the then-default unmanaged allocator, which retains general allocations; ARC and GC reclaim them. Current native builds default to GC. These stored figures have not been remeasured for that default change.
+- **Highlighting** identifies Osprey columns and the lowest recorded cells. A star marks a strictly lowest value for the historical unmanaged Osprey column. Summary ratios are geometric means of Osprey time divided by the comparison language's time: `1.59×` means 1.59 times as long; below `1×` means less time.
 
 **The tables combine runs from different dates and machines.** Some historical records have no machine metadata. Ratios, wins and highlighted minima describe those stored records; they do not establish a controlled cross-language speedup.
 

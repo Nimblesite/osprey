@@ -27,19 +27,21 @@ import os
 import re
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from package_coverage_evidence import oracle_problems
 
 APPS = ("classifier", "vector-search", "text-evaluation")
-MEMORIES = ("default", "gc", "arc")
+MEMORIES = ("gc", "arc")
 ARC_PATTERN = re.compile(r"^\[osp-arc\] exit: (\d+) live objects.*$", re.MULTILINE)
 TIMEOUT_SECONDS = 300
+MAX_APP_WORKERS = 2
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--compiler", default=str(Path("target") / "release" / "osprey"), help="compiler binary to run")
-    parser.add_argument("--memory", choices=(*MEMORIES, "all"), default="all", help="memory backend, or all three (default)")
+    parser.add_argument("--memory", choices=(*MEMORIES, "all"), default="all", help="memory backend, or both GC and ARC (default)")
     parser.add_argument("--app", choices=APPS, action="append", help="only this app; repeatable (default: all)")
     parser.add_argument("--write-expected", action="store_true", help="refresh expected_output.txt from a real run")
     return parser.parse_args()
@@ -108,6 +110,13 @@ def check_safely(compiler, root, name, memory, write_expected):
         return [f"{name}/{memory}: cannot verify output: {error}"]
 
 
+def check_matrix(compiler, root, apps, memories, write_expected):
+    jobs = [(name, memory) for name in apps for memory in memories]
+    with ThreadPoolExecutor(max_workers=min(MAX_APP_WORKERS, len(jobs))) as pool:
+        results = pool.map(lambda job: check_safely(compiler, root, *job, write_expected), jobs)
+        return [problem for failures in results for problem in failures]
+
+
 def main() -> int:
     args = parse_args()
     root = Path(__file__).resolve().parent.parent
@@ -115,13 +124,12 @@ def main() -> int:
     if not compiler.is_file():
         print(f"compiler not found: {compiler}", file=sys.stderr)
         return 2
-    if args.write_expected and args.memory != "default":
-        print("Refresh goldens with --memory default; verify other backends against that golden.", file=sys.stderr)
+    if args.write_expected and args.memory != "gc":
+        print("Refresh goldens with --memory gc; verify ARC against that golden.", file=sys.stderr)
         return 2
-    apps = tuple(args.app) if args.app else APPS
+    apps = tuple(dict.fromkeys(args.app)) if args.app else APPS
     memories = MEMORIES if args.memory == "all" else (args.memory,)
-    failures = [problem for name in apps for memory in memories
-                for problem in check_safely(compiler, root, name, memory, args.write_expected)]
+    failures = check_matrix(compiler, root, apps, memories, args.write_expected)
     if failures:
         print("\n".join(failures), file=sys.stderr)
         return 1

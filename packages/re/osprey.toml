@@ -8,7 +8,7 @@ default_namespace = "re"
 name = "@osprey/re"
 license = "MIT AND Unicode-DFS-2016"
 summary = "CPython's re regular-expression engine: parser, backtracking matcher and Unicode tables"
-keywords = ["regex", "re", "regular-expressions", "python-flavor"]
+keywords = ["python-flavor", "re", "regex", "regular-expressions"]
 
 [test-dependencies]
 "@osprey/testing" = { epoch = 1, min_release = 1 }

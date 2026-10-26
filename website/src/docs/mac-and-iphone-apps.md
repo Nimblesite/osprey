@@ -47,7 +47,7 @@ dispatch (model, event) = envelope (Browse::dispatch (Browse::decode model) even
 The Mac target compiles the project into a static library and a header beside it:
 
 ```sh
-osprey examples/macos/storage --compile --target=macos -o examples/macos/build/macos/libOspreyApp.a
+osprey examples/macos/storage --compile --target=macos --memory=none -o examples/macos/build/macos/libOspreyApp.a
 ```
 
 Every export gets a plain C prototype. An Osprey `string` is a `const char *`, an `int` is an `int64_t`, and a `bool` is a C `bool`:

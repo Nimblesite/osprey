@@ -1,0 +1,189 @@
+namespace registry_tests;
+import registry_host::Host
+import registry_cli::Dispatch
+import registry_cli::Fetch
+import registry_cli::Lockfile
+import registry_tests::Fixture
+import registry::Json
+import registry::JsonRead
+import registry::ManifestJson
+import registry::ManifestModel
+import registry::Names
+
+/// `tree --graph` over fixture hosts: a shared diamond, identical leaf names
+/// in two orgs, direct versus transitive packages, the `--json` envelope, a
+/// missing lock on a new project, a corrupt lock, a physically missing tree
+/// and altered bytes. Presence and findings come from `verify`; the graph is
+/// never inferred from installed directory names. Implements the editor graph
+/// of [PACKAGE-API] over the folder lock of [PACKAGE-FOLDER-REGISTRY].
+module TreeGraphTests {
+    fn manifestText() = "[project]\nname = \"app\"\nsource_roots = [\"src\"]\n\n[dependencies]\n\"@demo/report\" = { epoch = 1 }\n[build-dependencies]\n\"@demo/tool\" = { epoch = 1 }\n"
+
+    fn runGraph(reads, walks, args) = {
+        let files = handler Host::Files {
+            read path => Fixture::readFor(reads, path)
+            write path content => Error { message: "fixture: graph never writes ${path} (${byteLength(content)} bytes)" }
+        }
+        let tree = handler Host::Tree {
+            walk dir => Fixture::walkFor(walks, dir)
+            ensure dir => Error { message: "fixture: graph never ensures ${dir}" }
+        }
+        let web = handler Host::Web {
+            get base path => Error { message: "fixture: graph never fetches ${base}${path}" }
+        }
+        let process = handler Host::Process {
+            run command => Host::Run { status: 0, stdout: "", stderr: "fixture: graph never runs ${command}" }
+        }
+        process(fn() => files(fn() => tree(fn() => web(fn() => Dispatch::run(args)))))
+    }
+
+    fn key(scope, name) = Names::Key { scope: scope, name: name }
+    fn requirement(scope, name) = ManifestModel::Requirement { package: key(scope, name), epoch: 1, minimumOrdinal: 1 }
+    fn runtime(scope, name) = ManifestModel::Runtime { requirement: requirement(scope, name) }
+    fn buildEdge(scope, name) = ManifestModel::Build { requirement: requirement(scope, name) }
+    fn pkg(s, deps) = Lockfile::Package { release: Fixture::idOf(s), dependencies: deps, surface: [] }
+
+    fn files(name) = [Fixture::file("osprey.toml", "key = ${name}\n"), Fixture::file("src/${name}.osp", "fn ${name}() = 1\n")]
+    fn demoGreeting() = Fixture::served("@demo/greeting/1.1", files("greeting"))
+    fn otherGreeting() = Fixture::served("@other/greeting/1.1", files("greeting"))
+    fn maths() = Fixture::served("@demo/maths/1.1", files("maths"))
+    fn report() = Fixture::served("@demo/report/1.1", files("report"))
+    fn tool() = Fixture::served("@demo/tool/1.1", files("tool"))
+
+    fn all() = [demoGreeting(), maths(), report(), tool(), otherGreeting()]
+    fn packages() = [pkg(demoGreeting(), []), pkg(maths(), [runtime("demo", "greeting")]),
+        pkg(report(), [runtime("demo", "greeting"), runtime("demo", "maths")]),
+        pkg(tool(), [runtime("other", "greeting")]), pkg(otherGreeting(), [])]
+
+    fn manifest() = Fixture::manifestOf(manifestText())
+    fn root() = Lockfile::Root { manifestDigest: ManifestJson::digest(manifest()) ?: "", dependencies: manifest().dependencies }
+    fn lockText() = Lockfile::encode(Lockfile::release(root(), packages())) ?: ""
+
+    fn installDir(s) = Fetch::installDir(Fixture::idOf(s))
+    fn readsOf(s) = mapList(s.files, fn(f) => Fixture::readRoute("${installDir(s)}/${f.relPath}", f.content))
+    fn readsOfMany(served) = foldList(served, [], fn(acc, s) => listConcat(acc, readsOf(s)))
+    fn walksOfMany(served) = mapList(served, fn(s) => Fixture::walkRoute(installDir(s), mapList(s.files, fn(f) => f.relPath)))
+    fn baseReads() = [Fixture::readRoute("osprey.toml", manifestText()), Fixture::readRoute("osprey.lock", lockText())]
+    fn allReads(served) = listConcat(baseReads(), readsOfMany(served))
+
+    fn graphOf(report) = Json::parse(Fixture::line(report, 0)) ?: Json::Null
+    fn nodeFor(doc, keyText) = foldList(JsonRead::items(JsonRead::field(doc, "packages")), Json::Null,
+        fn(found, p) => if JsonRead::text(JsonRead::field(p, "key")) == keyText { p } else { found })
+    fn textField(node, field) = JsonRead::text(JsonRead::field(node, field))
+    fn itemsField(node, field) = JsonRead::texts(JsonRead::field(node, field))
+    fn boolField(node, field) = match JsonRead::field(node, field) {
+        Json::Bool { flag } => flag
+        _ => false
+    }
+
+    fn checkPackage(doc, keyText, direct, deps, dependents, findings, present) = {
+        let node = nodeFor(doc, keyText)
+        checkAll("tree graph: ${keyText}", [
+            textField(node, "key") == keyText,
+            boolField(node, "direct") == direct,
+            textField(node, "version") == "e1.r1",
+            startsWith(textField(node, "digest"), "sha256:"),
+            structuralEquals(itemsField(node, "dependencies"), deps),
+            structuralEquals(itemsField(node, "dependents"), dependents),
+            structuralEquals(itemsField(node, "findings"), findings),
+            boolField(node, "present") == present
+        ])
+    }
+
+    fn diamondGraph() = {
+        let a = runGraph(allReads(all()), walksOfMany(all()), ["tree", "--graph"])
+        let doc = graphOf(a)
+        checkAll("tree graph: project, direct keys and empty findings", [
+            a.status == 0,
+            length(a.lines) == 1,
+            textField(doc, "project") == "app",
+            structuralEquals(itemsField(doc, "direct"), ["@demo/report", "@demo/tool"]),
+            length(JsonRead::items(JsonRead::field(doc, "packages"))) == 5,
+            structuralEquals(itemsField(doc, "findings"), [])
+        ])
+        checkPackage(doc, "@demo/report", true, ["@demo/greeting", "@demo/maths"], [], [], true)
+        checkPackage(doc, "@demo/maths", false, ["@demo/greeting"], ["@demo/report"], [], true)
+        checkPackage(doc, "@demo/greeting", false, [], ["@demo/maths", "@demo/report"], [], true)
+        checkPackage(doc, "@demo/tool", true, ["@other/greeting"], [], [], true)
+        checkPackage(doc, "@other/greeting", false, [], ["@demo/tool"], [], true)
+    }
+
+    fn jsonEnvelope() = {
+        let a = runGraph(allReads(all()), walksOfMany(all()), ["--json", "tree", "--graph"])
+        let outer = graphOf(a)
+        let lines = itemsField(outer, "lines")
+        let inner = Json::parse(listGet(lines, 0) ?: "") ?: Json::Null
+        checkAll("tree graph: --json has one semantic graph line", [
+            a.status == 0,
+            length(a.lines) == 1,
+            length(lines) == 1,
+            JsonRead::number(JsonRead::field(outer, "status")) == 0,
+            textField(inner, "project") == "app"
+        ])
+    }
+
+    fn missingLock() = {
+        let fresh = "[project]\nname = \"fresh\"\nsource_roots = [\"src\"]\n"
+        let a = runGraph([Fixture::readRoute("osprey.toml", fresh)], [], ["tree", "--graph"])
+        let doc = graphOf(a)
+        checkAll("tree graph: a new project without a lock has an explicit state", [
+            a.status == 0,
+            length(a.lines) == 1,
+            textField(doc, "project") == "fresh",
+            structuralEquals(itemsField(doc, "direct"), []),
+            isEmpty(JsonRead::items(JsonRead::field(doc, "packages"))),
+            structuralEquals(itemsField(doc, "findings"), ["tree.no-lock"])
+        ])
+    }
+
+    fn corruptLock() = {
+        let a = runGraph([Fixture::readRoute("osprey.toml", manifestText()), Fixture::readRoute("osprey.lock", "not json")], [], ["tree", "--graph"])
+        checkAll("tree graph: a corrupt lock is a nonzero lock.shape", [
+            a.status == 1,
+            length(a.lines) == 1,
+            Fixture::line(a, 0) == "lock.shape"
+        ])
+    }
+
+    fn invalidManifest() = {
+        let a = runGraph([Fixture::readRoute("osprey.toml", "not toml\n")], [], ["tree", "--graph"])
+        checkAll("tree graph: a rejected manifest is a nonzero source error", [
+            a.status == 1,
+            length(a.lines) == 1,
+            Fixture::line(a, 0) == "toml.expected-equals at 1:5"
+        ])
+    }
+
+    fn missingPackage() = {
+        let present = [maths(), report(), tool(), otherGreeting()]
+        let a = runGraph(allReads(present), walksOfMany(present), ["tree", "--graph"])
+        let doc = graphOf(a)
+        checkAll("tree graph: a locked package without a tree is not present", [
+            a.status == 0,
+            length(JsonRead::items(JsonRead::field(doc, "packages"))) == 5
+        ])
+        checkPackage(doc, "@demo/greeting", false, [], ["@demo/maths", "@demo/report"], ["verify.missing"], false)
+    }
+
+    fn readsOfEdited(s, rel, text) = mapList(s.files, fn(f) =>
+        Fixture::readRoute("${installDir(s)}/${f.relPath}", if f.relPath == rel { text } else { f.content }))
+
+    fn alteredPackage() = {
+        let edited = listConcat(readsOfEdited(report(), "src/report.osp", "fn report() = 2\n"), readsOfMany([demoGreeting(), maths(), tool(), otherGreeting()]))
+        let a = runGraph(listConcat(baseReads(), edited), walksOfMany(all()), ["tree", "--graph"])
+        let doc = graphOf(a)
+        checkAll("tree graph: altered bytes keep the package present", [a.status == 0])
+        checkPackage(doc, "@demo/report", true, ["@demo/greeting", "@demo/maths"], [], ["verify.digest"], true)
+    }
+
+    /// Every graph test.
+    export fn run() = {
+        test("tree graph: diamond and identical leaf across orgs", diamondGraph)
+        test("tree graph: --json envelope", jsonEnvelope)
+        test("tree graph: new project without a lock", missingLock)
+        test("tree graph: corrupt lock", corruptLock)
+        test("tree graph: invalid manifest", invalidManifest)
+        test("tree graph: physically missing package", missingPackage)
+        test("tree graph: altered installed bytes", alteredPackage)
+    }
+}

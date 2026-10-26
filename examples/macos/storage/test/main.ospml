@@ -9,9 +9,9 @@ import storage::View
 
 home = "/Users/ada"
 
-entry path bytes visible hidden folder = storage::Entry(path = path, bytes = bytes, visible = visible, hidden = hidden, folder = folder, guarded = false)
+entry path bytes visible hidden folder = storage::Entry(path = path, bytes = bytes, visible = visible, hidden = hidden, folder = folder, guarded = false, link = false)
 
-guarded path = storage::Entry(path = path, bytes = 0, visible = 0, hidden = false, folder = true, guarded = true)
+guarded path = storage::Entry(path = path, bytes = 0, visible = 0, hidden = false, folder = true, guarded = true, link = false)
 
 homeEntries () = [
     entry "/Users/ada/Downloads" 30000000000 30000000000 false true,
@@ -137,8 +137,20 @@ browseCase () =
     check "progress of a folder since left" 0 (Browse::dispatch chosen.model "{\"type\":\"progress\",\"path\":\"/Volumes/Old\",\"items\":9,\"bytes\":9}").model.items
     check "round trip" (Browse::encode inside) (Browse::encode (Browse::decode (Browse::encode inside)))
 
+linkCase () =
+    linked = entry "/Users/ada/etc" 0 0 false true
+    handle Disk::Facts
+        volume _ => ssd
+        listing _ => storage::Listing(entries = [linked(link = true)], blocked = 0, measured = true)
+        photos => pictures "unavailable" 0
+    links = View::render (browser home true "ready")
+    checkTrue "links explain why no target bytes count here" (contains links "Symbolic link")
+
 screenCase () =
     shown = screen (browser home true "ready")
+    checkTrue "folder totals identify measured bytes" (contains shown "699.0 GB measured · 5 items")
+    disk = browser "/" true "ready"
+    checkTrue "disk title uses the same used space as its gauge" (contains (screen (disk(root = "/"))) "700.0 GB used")
     checkTrue "the open folder names the screen" (contains shown "\"kind\":\"navigation\",\"id\":\"/Users/ada\",\"text\":\"Home\"")
     checkTrue "purgeable space counts as available, as in Settings" (contains shown "700.0 GB of 1.0 TB used")
     checkTrue "and is named" (contains shown "300.0 GB available, 50.0 GB of it purgeable")
@@ -210,3 +222,5 @@ test "paths, trails and symbols" pathCase
 test "events move the browser and request host work" browseCase
 test "screens show what the disk holds" screenCase
 test "an iPhone shows what uses it, as far as iOS lets an app see" phoneCase
+
+test "links explain their disk accounting" linkCase

@@ -146,10 +146,22 @@ impl Checker {
         let declared = env.declared_params(name);
         env.remove(name);
         let mut scheme = self.generalize_with_obligations(env, &fun_ty);
+        self.quantify_declared(env, &declared, &mut scheme);
+        let _ = self
+            .scheme_obligations
+            .insert(format!("fn {name}"), scheme.obligations.clone());
+        env.insert(name, scheme);
+        env.declare_type_params(name, declared);
+    }
+
+    fn quantify_declared(&mut self, env: &TypeEnv, declared: &[Type], scheme: &mut Scheme) {
+        if declared.is_empty() {
+            return;
+        }
         // Explicit binders are quantified even when the signature never uses
         // them. Two applications of a phantom binder are still independent.
         let env_vars = env.free_vars(&mut self.ctx);
-        for param in &declared {
+        for param in declared {
             let mut vars = BTreeSet::new();
             self.ctx.free_vars(param, &mut vars);
             for var in vars.difference(&env_vars) {
@@ -158,10 +170,5 @@ impl Checker {
                 }
             }
         }
-        let _ = self
-            .scheme_obligations
-            .insert(format!("fn {name}"), scheme.obligations.clone());
-        env.insert(name, scheme);
-        env.declare_type_params(name, declared);
     }
 }

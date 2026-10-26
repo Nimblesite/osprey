@@ -1,5 +1,6 @@
 namespace registry_tests;
 import registry::Toml
+import registry::TomlLexer
 
 /// The TOML subset parser from [PACKAGE-MANIFEST]: the exact spec manifest,
 /// array-of-tables and dotted-key documents, accessors, escape decoding,
@@ -51,6 +52,19 @@ module TomlTests {
     fn arrayTables() = checkAll("[[assets]] appends one table per header", [
         renderRoot(Toml::parse("[[assets]]\nname = \"logo\"\npath = \"logo.png\"\n\n[[assets]]\nname = \"icon\"\npath = \"icon.png\"\n")) == "{assets=[{name=\"logo\",path=\"logo.png\"},{name=\"icon\",path=\"icon.png\"}]}"
     ])
+
+    fn uvPackageTables() = {
+        let source = "version = 1\n[[package]]\nname = \"root\"\nsource = { virtual = \".\" }\n[package.metadata]\nrequires-dist = [{ name = \"member\", directory = \"../member\" }]\n[[package]]\nname = \"member\"\nsource = { directory = \"../member\" }\n[other]\nvalue = 1\n[package.metadata]\nnote = \"second\"\n"
+        let actual = renderRoot(Toml::parse(source))
+        checkAll("uv metadata belongs to the latest package: ${actual}", [
+            actual == "{version=1,package=[{name=\"root\",source={virtual=\".\"},metadata={requires-dist=[{name=\"member\",directory=\"../member\"}]}},{name=\"member\",source={directory=\"../member\"},metadata={note=\"second\"}}],other={value=1}}",
+            codeAt(Toml::parse("package = [{}]\n[package.metadata]\nx = 1\n")) == "toml.not-a-table at 2:1",
+            renderRoot(Toml::parse("[[package]]\n[[package.artifact]]\n[package.artifact.metadata]\nlabel = \"first\"\n[[package]]\n[[package.artifact]]\n[package.artifact.metadata]\nlabel = \"second\"\n")) == "{package=[{artifact=[{metadata={label=\"first\"}}]},{artifact=[{metadata={label=\"second\"}}]}]}",
+            codeAt(Toml::parse("[[package]]\n[[package.artifact]]\n[[package]]\nartifact = [{}]\n[package.artifact.metadata]\nx = 1\n")) == "toml.not-a-table at 5:1",
+            codeAt(Toml::parse("[[package]]\n[package.metadata]\nx = 1\n[package.metadata]\ny = 2\n")) == "toml.duplicate-key at 4:1",
+            codeAt(Toml::parse("package = []\n[[package]]\nx = 1\n")) == "toml.not-a-table at 2:1"
+        ])
+    }
 
     fn dottedKeys() = checkAll("dotted keys create nested tables", [
         renderRoot(Toml::parse("a.b.c = 1\na.b.d = 2\na.e = 3\n")) == "{a={b={c=1,d=2},e=3}}"
@@ -119,14 +133,54 @@ module TomlTests {
         codeAt(Toml::parse("a = @")) == "toml.unexpected-token at 1:5"
     ])
 
+    fn scannedMatches(result, expected, offset) = match result {
+        Success { value } => value.text == expected && value.at.at == offset && value.at.line == 1 && value.at.column == offset + 1
+        Error => false
+    }
+
+    fn longQuotedStrings() = {
+        let plain = repeat("s", 4096) ?: ""
+        let escaped = repeat("\\t", 4096) ?: ""
+        let unicode = repeat("\\u0073", 4096) ?: ""
+        checkAll("long strings retain decoded bytes, cursors and exact failures", [
+            byteLength(plain) == 4096,
+            scannedMatches(TomlLexer::basicString(TomlLexer::start("\"${plain}\" trailing")), plain, 4098),
+            scannedMatches(TomlLexer::basicString(TomlLexer::start("\"${escaped}\"")), repeat("\t", 4096) ?: "", 8194),
+            scannedMatches(TomlLexer::basicString(TomlLexer::start("\"${unicode}\"")), plain, 24578),
+            scannedMatches(TomlLexer::literalString(TomlLexer::start("'${plain}' trailing")), plain, 4098),
+            codeAt(TomlLexer::basicString(TomlLexer::start("\"${plain}"))) == "toml.unterminated-string at 1:1",
+            codeAt(TomlLexer::literalString(TomlLexer::start("'${plain}\n"))) == "toml.unterminated-string at 1:1",
+            codeAt(TomlLexer::basicString(TomlLexer::start("\"${plain}${fromCodePoint(1) ?: ""}\""))) == "toml.control-character at 1:4098"
+        ])
+    }
+
+    fn cursorIs(c, offset, line, column) = c.at == offset && c.line == line && c.column == column
+
+    fn longByteRuns() = {
+        let plain = repeat("x", 8192) ?: ""
+        checkAll("long byte runs preserve boundaries and positions", [
+            cursorIs(TomlLexer::skipSpaces(TomlLexer::start("${repeat(" ", 8192) ?: ""}x")), 8192, 1, 8193),
+            cursorIs(TomlLexer::skipTrivia(TomlLexer::start("#${plain}\nx")), 8194, 2, 1),
+            cursorIs(TomlLexer::skipTrivia(TomlLexer::start("${repeat("\n", 4096) ?: ""}x")), 4096, 4097, 1),
+            match TomlLexer::scanBare(TomlLexer::start("${plain}#tail")) {
+                Success { value } => value.token == plain && cursorIs(value.at, 8192, 1, 8193)
+                Error => false
+            },
+            codeAt(TomlLexer::scanBare(TomlLexer::start("${plain}${fromCodePoint(233) ?: ""}"))) == "toml.non-ascii at 1:8193"
+        ])
+    }
+
     export fn run() = {
         test("toml: manifest example", manifestDoc)
         test("toml: array-of-tables", arrayTables)
+        test("toml: uv package metadata", uvPackageTables)
         test("toml: dotted keys", dottedKeys)
         test("toml: accessors", accessors)
         test("toml: escapes", escapes)
         test("toml: integers", integers)
         test("toml: arrays", arrays)
         test("toml: rejections", rejections)
+        test("toml: long quoted strings", longQuotedStrings)
+        test("toml: long byte runs", longByteRuns)
     }
 }

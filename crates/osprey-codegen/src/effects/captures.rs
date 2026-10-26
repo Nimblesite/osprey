@@ -171,7 +171,8 @@ pub(super) fn build_env(cg: &mut Codegen, caps: &[ArmCap]) -> (String, String) {
         .iter()
         .map(|c| crate::meta::MetaField::of_slot_ty(&c.slot_ty()))
         .collect();
-    let cell = cg.malloc_struct(&env_ty, crate::meta::struct_meta(&mf));
+    let meta = cg.struct_meta(&mf);
+    let cell = cg.malloc_struct(&env_ty, meta);
     for (i, c) in caps.iter().enumerate() {
         let slot_ty = c.slot_ty();
         let p = cg.emit_reg(format!(

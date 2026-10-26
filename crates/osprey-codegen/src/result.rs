@@ -28,7 +28,8 @@ pub(crate) fn make_result(
     errmsg: &str,
 ) -> Result<Value> {
     let value = coerce_to(cg, value, inner)?;
-    let obj = cg.malloc_struct(RESULT_STRUCT, result_meta(inner));
+    let meta = result_meta(cg, inner);
+    let obj = cg.malloc_struct(RESULT_STRUCT, meta);
     store_payload(cg, &obj, &value);
     store_status(cg, &obj, disc, errmsg);
     let mut out = Value::result(obj, inner).with_payload_owner(value.osp_ty);
@@ -37,14 +38,16 @@ pub(crate) fn make_result(
     Ok(out)
 }
 
-fn result_meta(inner: LType) -> i64 {
+fn result_meta(cg: &Codegen, inner: LType) -> i64 {
     use crate::meta::MetaField;
+    // The payload is a physical `i64` on every target even when it carries a
+    // managed pointer, so it is a `ManagedWord`, not a pointer-size slot.
     let payload = if inner.is_managed_ptr() {
-        MetaField::PtrManaged
+        MetaField::ManagedWord
     } else {
         MetaField::Word
     };
-    crate::meta::struct_meta(&[payload, MetaField::Byte, MetaField::PtrManaged])
+    cg.struct_meta(&[payload, MetaField::Byte, MetaField::PtrManaged])
 }
 
 fn store_status(cg: &mut Codegen, object: &str, disc: &str, errmsg: &str) {

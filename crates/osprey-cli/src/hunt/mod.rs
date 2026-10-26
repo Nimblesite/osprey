@@ -8,6 +8,7 @@
 
 mod engine;
 mod findings;
+mod gc_roots;
 mod ktest;
 mod module;
 mod options;
@@ -25,8 +26,12 @@ use crate::pipeline::{load_input, report_type_errors};
 use crate::project::CompilationInput;
 use options::Options;
 use std::fmt::Write as _;
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+
+const RUN_MARKER: &str = ".osprey-hunt-run";
+const RUN_MARKER_CONTENTS: &[u8] = b"osprey-hunt-output-v1\n";
 
 pub(crate) fn run(args: &[String]) -> ExitCode {
     if args
@@ -56,7 +61,7 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
 /// toolchain problem, `1` for a program that does not compile or a finding
 /// that reproduced (or any finding without replay), `0` otherwise.
 fn hunt(options: &Options) -> Result<(String, ExitCode), ExitCode> {
-    let toolchain = toolchain::locate().map_err(|message| tool_error(&message))?;
+    let toolchain = toolchain::locate(options.memory).map_err(|message| tool_error(&message))?;
     let input = load(options)?;
     let module = module::symbolic_module(&input, options.input_bytes).map_err(|error| {
         eprintln!("{}: {error}", input.display_path());
@@ -67,6 +72,10 @@ fn hunt(options: &Options) -> Result<(String, ExitCode), ExitCode> {
         .prepare(&module)
         .map_err(|message| tool_error(&message))?;
     let _cleanup = Cleanup(&paths);
+    if options.memory == "gc" {
+        gc_roots::instrument(&paths.module, &toolchain.runtime)
+            .map_err(|message| tool_error(&message))?;
+    }
     announce(options, input.display_path());
     let arguments = engine::arguments(
         &toolchain.runtime,
@@ -76,8 +85,14 @@ fn hunt(options: &Options) -> Result<(String, ExitCode), ExitCode> {
     );
     let ending = engine::run(&toolchain.klee, &arguments, &paths.stderr, options.max_time)
         .map_err(|message| tool_error(&message))?;
+    paths.mark_owned().map_err(|message| tool_error(&message))?;
     let info = std::fs::read_to_string(paths.out_dir.join("info")).unwrap_or_default();
     let exploration = engine::exploration(&info);
+    if exploration.paths == 0 && ending == engine::Ending::Finished {
+        return Err(tool_error(
+            "KLEE exited without valid exploration statistics",
+        ));
+    }
     let scanner = if options.replay {
         findings::scan_all
     } else {
@@ -92,7 +107,8 @@ fn hunt(options: &Options) -> Result<(String, ExitCode), ExitCode> {
         });
     }
     if options.replay {
-        replay::replay(&input, &mut scan.findings).map_err(|message| tool_error(&message))?;
+        replay::replay(&input, &mut scan.findings, options.memory)
+            .map_err(|message| tool_error(&message))?;
     }
     scan.findings = findings::dedupe(scan.findings);
     let mut report = report::Report {
@@ -211,12 +227,21 @@ impl RunPaths {
         }
     }
 
-    /// KLEE refuses an existing output directory, so a previous run's is
-    /// cleared — and only a previous run's, never an unrelated directory.
+    /// KLEE requires a fresh directory. Only an empty directory or a run with
+    /// our ownership marker can be cleared; a KLEE-looking `info` is insufficient.
     fn prepare(&self, module: &str) -> Result<(), String> {
         clear_run_directory(&self.out_dir)?;
         std::fs::write(&self.module, module)
             .map_err(|error| format!("cannot write {}: {error}", self.module.display()))
+    }
+
+    fn mark_owned(&self) -> Result<(), String> {
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(self.out_dir.join(RUN_MARKER))
+            .and_then(|mut file| file.write_all(RUN_MARKER_CONTENTS))
+            .map_err(|error| format!("cannot mark {}: {error}", self.out_dir.display()))
     }
 
     fn finish(&self) {
@@ -239,18 +264,40 @@ impl Drop for Cleanup<'_> {
 }
 
 fn clear_run_directory(directory: &Path) -> Result<(), String> {
-    if !directory.exists() {
-        return Ok(());
+    match std::fs::symlink_metadata(directory) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Ok(metadata) if metadata.is_dir() => clear_existing_run_directory(directory),
+        Ok(_) => Err(unowned_directory(directory)),
+        Err(error) => Err(format!("cannot inspect {}: {error}", directory.display())),
     }
-    let is_empty = std::fs::read_dir(directory).is_ok_and(|mut entries| entries.next().is_none());
-    if !is_empty && !directory.join("info").exists() {
-        return Err(format!(
-            "refusing to clear {}: it is not a KLEE output directory",
-            directory.display()
-        ));
+}
+
+fn unowned_directory(directory: &Path) -> String {
+    format!(
+        "refusing to clear {}: it is not an owned Osprey Hunt output directory",
+        directory.display()
+    )
+}
+
+fn is_owned_run(directory: &Path) -> bool {
+    let marker = directory.join(RUN_MARKER);
+    std::fs::symlink_metadata(&marker).is_ok_and(|metadata| metadata.is_file())
+        && std::fs::read(marker).is_ok_and(|contents| contents == RUN_MARKER_CONTENTS)
+}
+
+fn clear_existing_run_directory(directory: &Path) -> Result<(), String> {
+    let empty = std::fs::read_dir(directory)
+        .and_then(|mut entries| entries.next().transpose().map(|entry| entry.is_none()))
+        .map_err(|error| format!("cannot inspect {}: {error}", directory.display()))?;
+    if !empty && !is_owned_run(directory) {
+        return Err(unowned_directory(directory));
     }
-    std::fs::remove_dir_all(directory)
-        .map_err(|error| format!("cannot clear {}: {error}", directory.display()))
+    if empty {
+        std::fs::remove_dir(directory)
+    } else {
+        std::fs::remove_dir_all(directory)
+    }
+    .map_err(|error| format!("cannot clear {}: {error}", directory.display()))
 }
 
 #[cfg(test)]

@@ -32,7 +32,7 @@ Every operation in this chapter is a **value operation**. Its handler arm return
 
 `load` contains the first important sequencing decision. It decodes only a successful read. A read error stays an error with its original message. There is no blank-string fallback to turn “permission denied” into “the learner saved an empty title.”
 
-The compiler checks the declared operations and required handlers, including requests reached through helper calls. A storage interface does not itself configure an operating-system sandbox. The native handler still runs with the access available to the process; runtime sandbox options are a separate control.
+The compiler checks the declared operations and required handlers, including requests reached through helper calls. A storage interface does not itself configure an operating-system sandbox. The native handler still runs with the access available to the process; compiler capability gates such as `--sandbox` reject restricted builtins and `extern` declarations before code generation. Those checks do not create an operating-system sandbox.
 
 ## Turn outside text into a checked value
 
@@ -169,6 +169,8 @@ fn download() = match perform Web.title() {
 The successful handler supplies our fixed title. The others return `HTTP 404` and `connection unavailable` as their error messages. The output is respectively `Received title: Build a small Osprey CLI`, `Cannot download: HTTP 404`, and `Cannot download: connection unavailable`. The program makes no network request.
 
 This example deliberately stops at receiving text. To use the text as a Flight Log entry, the success route must still call `decodeTitle`. A remote server can return an empty body just as a file can contain an empty title. `Success<string>` does not mean “valid entry.”
+
+Native HTTP/WebSocket programs link OpenSSL (`libssl` and `libcrypto`), including plain HTTP requests. Install its development libraries before building this adapter; see the [installation guide](https://www.ospreylang.dev/docs/installation/).
 
 For an actual native request, `examples/chapter-10/native/http-title.osp` provides a complete adapter. Its companion README starts a local fixture server; no public service or account is needed. The important runtime operations are:
 

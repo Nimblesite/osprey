@@ -11,11 +11,18 @@
 // works [SYMEX-MOCK-CLOSED].
 #include "hunt_mock_tests.h"
 
+#include <math.h>
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
+
+#define OSP_SYMBOLIC 1
+#include "../string_parse_int.h"
+#undef OSP_SYMBOLIC
+
 
 // ---- host-side reporting -------------------------------------------------
 
@@ -71,8 +78,22 @@ size_t hunt_range_count(void) { return range_calls; }
 
 const char *hunt_last_symbolic(void) { return last_symbolic; }
 
+static void concrete_line_end(void *address) {
+  long end = 0;
+  while (end < osp_hunt_stdin->len && osp_hunt_stdin->data[end] != '\n') end++;
+  memcpy(address, &end, sizeof(end));
+}
+
 void klee_make_symbolic(void *address, size_t count, const char *name) {
+  // Derived metadata uses the concrete oracle rather than consuming an input draw.
+  if (strncmp(name, "stdin.line.", sizeof("stdin.line.") - 1) == 0) {
+    hunt_check(count == sizeof(long), "line-end metadata has the target long width");
+    if (count == sizeof(long)) concrete_line_end(address);
+    return;
+  }
   strncpy(last_symbolic, name, sizeof(last_symbolic) - 1);
+  // The runtime constrains this metadata to its initialized version, not queued input.
+  if (strcmp(name, OSP_HUNT_FILE_PROTOCOL_NAME) == 0) return;
   for (size_t i = 0; i < count; i++) {
     ((unsigned char *)address)[i] = queue_head < queue_tail ? queue[queue_head++] : 0;
   }
@@ -105,6 +126,13 @@ void __assert_fail(const char *expression, const char *file, unsigned line, cons
   longjmp(on_error, 2);
 }
 
+static size_t object_size;
+void hunt_set_object_size(size_t size) { object_size = size; }
+size_t klee_get_obj_size(const void *object) {
+  (void)object;
+  return object_size;
+}
+
 void hunt_reset(void) {
   queue_head = queue_tail = 0;
   range_head = range_tail = 0;
@@ -113,6 +141,7 @@ void hunt_reset(void) {
   last_symbolic[0] = '\0';
   last_error[0] = '\0';
   osp_hunt_reset();
+  object_size = 0;
 }
 
 // The runtime units that must reach the doubles.
@@ -172,7 +201,7 @@ static void read_file_opens_a_symbolic_stream_named_by_path(void) {
   char path[] = "data.txt";
   char *text = read_file(path);
   hunt_check(text != NULL && strcmp(text, "payload") == 0, "readFile returns the symbolic bytes up to the length");
-  hunt_check(strcmp(hunt_last_symbolic(), "data.txt") == 0, "the file bytes are named by their path");
+  hunt_check(strcmp(hunt_last_symbolic(), "file.data:data.txt") == 0, "the file bytes are named by their path");
   hunt_check(osp_hunt_calls[OSP_HUNT_CALL_FOPEN] == 1 && osp_hunt_calls[OSP_HUNT_CALL_FREAD] >= 1, "readFile went through fopen and fread");
   hunt_check(osp_hunt_calls[OSP_HUNT_CALL_FCLOSE] == 1, "readFile closed the stream");
 }
@@ -263,6 +292,25 @@ static void math_doubles_are_accurate(void) {
   hunt_check(sqrt(-1.0) != sqrt(-1.0), "sqrt of a negative is nan");
 }
 
+static void power_special_cases_match_libm(void) {
+  const double cases[][3] = {
+      {-1, 0x1p53, 1}, {-1, -0x1p53, 1}, {-1, 0x1p53 - 1, -1}, {-1, 0x1p63, 1},
+      {-2, 0x1p53, INFINITY}, {-0.5, 0x1p53, 0}, {-2, -0x1p53, 0}, {-0.5, -0x1p53, INFINITY},
+      {-INFINITY, 0.5, INFINITY}, {-INFINITY, -0.5, 0}, {-INFINITY, 3, -INFINITY}, {-INFINITY, -3, -0.0},
+      {-INFINITY, INFINITY, INFINITY}, {-INFINITY, -INFINITY, 0}, {-0.0, 0.5, 0}, {-0.0, -0.5, INFINITY},
+      {-0.0, 3, -0.0}, {-0.0, -3, -INFINITY}, {0, 0, 1}, {NAN, 0, 1}, {1, NAN, 1}, {-1, NAN, NAN},
+      {NAN, 2, NAN}, {-2, 0.5, NAN}, {-1, INFINITY, 1}, {-1, -INFINITY, 1}, {0.5, INFINITY, 0},
+      {2, -INFINITY, 0}, {2, -1074, 0x1p-1074}, {2, -1024, 0x1p-1024},
+  };
+  for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+    double got = pow(cases[i][0], cases[i][1]), want = cases[i][2];
+    int same = isnan(want) ? isnan(got) : got == want && !!signbit(got) == !!signbit(want);
+    char description[96];
+    (void)snprintf(description, sizeof(description), "pow special case %zu", i);
+    hunt_check(same, description);
+  }
+}
+
 static void unsupported_calls_stop_the_path(void) {
   hunt_reset();
   if (setjmp(on_error) == 0) {
@@ -273,7 +321,30 @@ static void unsupported_calls_stop_the_path(void) {
   hunt_check(osp_hunt_calls[OSP_HUNT_CALL_UNSUPPORTED] == 1, "the stub counted the call");
 }
 
+static void check_initial_int(const char *bytes, size_t length) {
+  hunt_reset();
+  osp_hunt_input_bytes = (long)length;
+  hunt_queue_bytes(bytes, length);
+  hunt_queue_range((int)length);
+  char *line = osp_input();
+  char *ordinary = malloc(length + 1);
+  memcpy(ordinary, line, length + 1);
+  int64_t want = 0, got = 0;
+  int expected = osp_parse_int_strict(ordinary, &want);
+  int actual = (int)osp_parse_int_strict(line, &got);
+  hunt_check(actual == expected && (expected != 0 || want == got), "initial input parse matches generic strict parsing");
+  free(ordinary);
+  free(line);
+}
+
+static void initial_input_parsing_matches_every_strict_boundary(void) {
+  static const char *cases[] = {"0", "-0", "+42", "00000000000000000000000042", "9223372036854775807", "-9223372036854775808", "", "+", "-", " 1", "1 ", "12x", "9223372036854775808", "-9223372036854775809", "9999999999999999999999999"};
+  for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) check_initial_int(cases[i], strlen(cases[i]));
+  check_initial_int("1\0x", 3);
+}
+
 int main(void) {
+  initial_input_parsing_matches_every_strict_boundary();
   stdin_stream_feeds_the_runtime_line_reader();
   stdin_stream_honours_a_short_symbolic_length();
   read_file_opens_a_symbolic_stream_named_by_path();
@@ -285,9 +356,11 @@ int main(void) {
   qsort_sorts();
   entropy_is_a_named_symbolic_object();
   math_doubles_are_accurate();
+  power_special_cases_match_libm();
   unsupported_calls_stop_the_path();
   hunt_mock_format_tests();
   hunt_mock_stream_tests();
+  hunt_mock_parse_tests();
   char summary[64];
   int length = snprintf(summary, sizeof(summary), "hunt_mock_tests: %d checks, %d failures\n", checks, failures);
   (void)length;

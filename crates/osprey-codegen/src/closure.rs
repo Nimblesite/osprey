@@ -111,7 +111,8 @@ pub(crate) fn cell_value(
         caps.iter()
             .map(|c| crate::meta::MetaField::of_slot_ty(&c.val.llvm_ty())),
     );
-    let cell = cg.malloc_struct(cell_ty, crate::meta::struct_meta(&mf));
+    let meta = cg.struct_meta(&mf);
+    let cell = cg.malloc_struct(cell_ty, meta);
     let fpp = cg.emit_reg(format!(
         "getelementptr {cell_ty}, {cell_ty}* {cell}, i32 0, i32 0"
     ));

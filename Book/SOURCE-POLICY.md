@@ -16,9 +16,9 @@ The repository README is an orientation document, not the final authority when i
 
 ## Flavor language
 
-The book teaches Default first. ML is one currently available optional alternative, and more flavors may arrive later. Statements such as “Osprey has exactly two flavors” are forbidden in forward-looking editorial copy.
+The book teaches Default first. Osprey currently has three syntax flavors: Default, ML and Python. A syntax flavor changes how source is written, while sharing types, effects and compilation.
 
-Name the relevant flavors without implying a fixed count. Default and ML are the book's teaching surfaces; the Python flavor is partially implemented. Explain that a flavor owns source spelling while shared checking and code generation operate on the lowered program. Do not expose compiler-internal vocabulary in the first chapters.
+Default and ML are the book's teaching surfaces. Python syntax is available for real programs, including the GPT-2 port; its supported subset and remaining frontend/tooling limits are documented in the [Python flavor guide](../website/src/docs/python-flavor.md). Distinguish Osprey Python-flavor modules from CPython packages, which require explicit interop. Do not expose compiler-internal vocabulary in the first chapters.
 
 ## Example evidence
 
@@ -36,12 +36,12 @@ ML twins are verification aids and optional comparisons. They do not replace the
 
 The book states that Osprey is actively evolving and separates implemented features from specifications of future work.
 
-Project modules, multi-file assembly, and imports across Default and ML flavors are implemented. The package registry and manager remain planned. Use the [module specification](../docs/specs/language/0025-ModulesAndNamespaces.md) and its executable project tests for module claims; a package-manager specification is not evidence of an available command.
+Project modules, multi-file assembly and imports across syntax flavors are implemented. The package client supports folder registries, verified downloads, locked builds, local overrides and folder publication; hosted authenticated publishing, the public package website and trust services remain planned. Use the [module specification](../docs/specs/language/0025-ModulesAndNamespaces.md) and its executable project tests for module claims, and the [package guide](../website/src/docs/package-manager.md) for available commands and limits. A specification alone does not prove a feature is available.
 
 Qualify runtime claims where they are taught:
 
 - Native dynamic control handlers currently provide single-shot resumption. WebAssembly and mobile C ABI targets support value handlers and static discharge, and reject unsupported dynamic control operations.
-- The default allocator retains general allocations. Native `gc` and `arc` are separate choices with platform limits; neither is the default, and neither is currently available for WebAssembly or mobile libraries.
+- Native compilation defaults to `gc`; `arc` selects reference counting. Both have platform limits. Explicit `--memory=none` selects unmanaged allocation and retains general allocations. WebAssembly and mobile libraries currently require this option because managed runtime archives are unavailable; the compiler does not substitute it silently.
 - Normal native fibers use one operating-system thread each and can co-own immutable allocations. Structured scopes, fiber cancellation, `join`, and deadlines remain design work.
 - Strict static-memory checking remains unimplemented. GPU device support is kernel- and target-dependent; consult plan 0023 and the runtime implementation rather than assuming all work runs on the host or on a device.
 

@@ -1,0 +1,18 @@
+namespace hosted_tests;
+import registry::Policy
+import hosted_tests::HeaderTests
+import hosted_tests::CookieTests
+import hosted_tests::OriginTests
+import hosted_tests::RequestTests
+
+/// The hosted-request security gate suites. Server wiring lives in the root
+/// package and is out of scope here.
+fn suites() = {
+    HeaderTests::run()
+    CookieTests::run()
+    OriginTests::run()
+    RequestTests::run()
+    0
+}
+
+fn main() = Policy::guarded(suites)

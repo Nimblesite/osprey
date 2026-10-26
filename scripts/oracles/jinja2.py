@@ -4,6 +4,11 @@ import json
 from expected_module import write
 
 TEMPLATES = [
+    ("mixed dict keys", "{{ {1: 'number', '1': 'text'}[1] }}:{{ {1: 'number', '1': 'text'}['1'] }}"),
+    ("integer dict repr", "{{ {1: 'a'} }}"),
+    ("integer dict items", "{% for k, v in {1: 'a'}.items() %}{{ k is number }}={{ v }}{% endfor %}"),
+    ("integer dict contains", "{{ 1 in {1: 'a'} }}:{{ '1' in {1: 'a'} }}"),
+    ("integer dict get", "{{ {1: 'a'}.get(1) }}:{{ {1: 'a'}.get('1', 'missing') }}"),
     ("hello", "Hello {{ name }}!"),
     ("repr quote style (known RED)", "{{ [\"'\"] }}"),
     ("int dict key lookup (known RED)", "{{ {1: 'a'}[1] }}"),
@@ -122,6 +127,11 @@ TEMPLATES = [
 # Templates whose CPython failure message the port mirrors verbatim (TypeError/
 # ValueError/UndefinedError texts), asserted as the render `Error` payload.
 ERROR_TEMPLATES = [
+    ("negated failed test", "{{ none|first is not defined }}"),
+    ("select unknown test", "{{ [1]|select('nosuchtest')|join(',') }}"),
+    ("reject unknown test", "{{ [1]|reject('nosuchtest')|join(',') }}"),
+    ("map unknown filter", "{{ ['a']|map('nosuchfilter')|join(',') }}"),
+    ("map failed filter", "{{ [none]|map('first')|join(',') }}"),
     ("items of string", "{{ 'ab'|items|list }}"),
     ("first of none", "{{ none|first }}"),
     ("last of none", "{{ none|last }}"),

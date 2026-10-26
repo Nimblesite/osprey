@@ -1,0 +1,8 @@
+ok 1 - editor workspace requests use the shared framework envelope
+ok 2 - opening a document preserves its URI and source location
+ok 3 - process input is data with explicit workspace, timeout and output bounds
+ok 4 - configuration and view requests preserve resource scope
+ok 5 - invalid tickets process scope and excessive limits fail explicitly
+ok 6 - WASM frames route opaque state through real application entry points
+1..6
+# tests=6 passed=6 failed=0 skipped=0

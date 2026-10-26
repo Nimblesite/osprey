@@ -1,4 +1,4 @@
-# @osprey/flash_attn
+# @osprey/flash-attn
 
 A port of the [flash-attention](https://github.com/Dao-AILab/flash-attention) algorithm,
 compared against flash-attn 2.1+ semantics. The real flash-attn package needs CUDA, so the

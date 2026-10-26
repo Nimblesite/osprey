@@ -150,6 +150,77 @@ test ("stale, unknown and mismatched events are rejected without change", \() =>
     gone = Probes::post (second, Probes::tap ("missing", 1, 0))
     expect (contains (Probes::problems gone) "Stale control", true))
 
+// [UI-EVENTS]: a trusted-host edit resolves the control the prior state meant through its typed binding, not its stale ordinal.
+test ("an edit from prior state keeps its meaning when ordinals shift", \() =>
+    first = Probes::started ()
+    // At count 0 the Go buttons are [Increment, Load]; the host taps ordinal 0.
+    counted = Probes::post (first, Probes::edit (Probes::saved (first), "root", 1, 0, "null"))
+    expect (Probes::problems counted, "")
+    expect (Probes::keys counted, "root")
+    root = Doc::field (listGet (Doc::items (Doc::field (counted, "patches"))) 0 ?: JsonNull, "node")
+    expect (Doc::text (listGet (Doc::items (Doc::field (root, "children"))) 0 ?: JsonNull, "text"), "Count 1")
+    // At count 1 the buttons are [Load]; the host's ordinal 0 (Increment in prior) still means Increment, but it is withdrawn now.
+    shifted = Probes::post (counted, Probes::edit (Probes::saved (first), "root", 1, 0, "null"))
+    expect (Probes::keys shifted, "")
+    expect (Doc::number (Probes::stored counted, "tally"), 1)
+    // Prior ordinal 1 (Load) still means Load even though it now sits at ordinal 0.
+    loaded = Probes::post (counted, Probes::edit (Probes::saved (first), "root", 1, 1, "null"))
+    expect (Probes::problems loaded, "")
+    expect (Doc::text (listGet (Doc::items (Doc::field (loaded, "requests"))) 0 ?: JsonNull, "ticket"), "load:1"))
+
+// [UI-EVENTS]: identical-looking controls are told apart by their typed actions; a withdrawn action refuses.
+test ("an edit whose typed action is gone or ambiguous refuses without change", \() =>
+    first = Probes::started ()
+    // Prior ordinal 1 is Load; the note region draws two identical Load buttons.
+    duped = Probes::post (first, Probes::edit (Probes::saved (first), "note", 1, 1, "null"))
+    expect (contains (Probes::problems duped) "More than one", true)
+    expect (Probes::keys duped, "")
+    expect (length (Doc::items (Doc::field (duped, "patches"))), 0)
+    // At count 1 only Load is drawn; the withdrawn Increment (prior ordinal 0) refuses instead of dispatching Load.
+    counted = Probes::post (first, Probes::edit (Probes::saved (first), "root", 1, 0, "null"))
+    gone = Probes::post (counted, Probes::edit (Probes::saved (first), "root", 1, 0, "null"))
+    expect (contains (Probes::problems gone) "no longer exists", true)
+    expect (Probes::keys gone, "")
+    expect (length (Doc::items (Doc::field (gone, "patches"))), 0)
+    // The refusal changed nothing: the current session still answers its own controls.
+    intact = Probes::post (gone, Probes::tap ("root", 2, 0))
+    expect (Probes::problems intact, "")
+    expect (Doc::text (listGet (Doc::items (Doc::field (intact, "requests"))) 0 ?: JsonNull, "ticket"), "load:1")
+    expect (Doc::number (Probes::stored intact, "tally"), 1))
+
+// [UI-EVENTS]: an edit is refused when its original revision, region or ordinal cannot be recovered from the prior state.
+test ("an edit with an impossible original refuses without change", \() =>
+    first = Probes::started ()
+    outdated = Probes::post (first, Probes::edit (Probes::saved (first), "root", 9, 0, "null"))
+    expect (contains (Probes::problems outdated) "Stale control", true)
+    expect (Probes::keys outdated, "")
+    absent = Probes::post (first, Probes::edit (Probes::saved (first), "gone", 1, 0, "null"))
+    expect (contains (Probes::problems absent) "Stale control", true)
+    unknown = Probes::post (first, Probes::edit (Probes::saved (first), "root", 1, 9, "null"))
+    expect (contains (Probes::problems unknown) "Unknown control", true)
+    unreadable = Probes::post (first, Probes::edit ("\"not a session\"", "root", 1, 0, "null"))
+    expect (contains (Probes::problems unreadable) "Stale control", true)
+    wrongKind = Probes::post (first, Probes::edit (Probes::saved (first), "note", 1, 0, "7"))
+    expect (contains (Probes::problems wrongKind) "wrong kind", true)
+    expect (Probes::keys wrongKind, "")
+    expect (length (Doc::items (Doc::field (wrongKind, "requests"))), 0)
+    // Every refusal left the session whole.
+    after = Probes::post (first, Probes::tap ("root", 1, 0))
+    expect (Probes::problems after, "")
+    expect (Doc::number (Probes::stored after, "tally"), 1))
+
+// [UI-EVENTS]: a resolved edit runs update on the current session, never on the prior state.
+test ("a resolved edit updates the current state", \() =>
+    first = Probes::started ()
+    typed = Probes::post (first, Probes::typed (1, "hello"))
+    counted = Probes::post (typed, Probes::tap ("root", 1, 0))
+    edited = Probes::post (counted, Probes::edit (Probes::saved (first), "note", 1, 0, "\"world\""))
+    expect (Probes::problems edited, "")
+    expect (Doc::text (Probes::stored edited, "memo"), "world")
+    expect (Doc::text (Probes::stored typed, "memo"), "hello")
+    // The carried-over tally proves the prior state was not restored.
+    expect (Doc::number (Probes::stored edited, "tally"), 1))
+
 test ("capability requests carry tickets and completions return to update", \() =>
     asked = Probes::post (Probes::started (), Probes::tap ("note", 1, 1))
     request = listGet (Doc::items (Doc::field (asked, "requests"))) 0 ?: JsonNull
@@ -290,3 +361,26 @@ roleText role =
 test ("semantic text roles preserve every protocol spelling", \() =>
     roles = [ui::Display, ui::Large, ui::Title, ui::Heading, ui::Lead, ui::Headline, ui::Body, ui::Callout, ui::Caption, ui::Eyebrow, ui::Mono]
     expect (join (mapList (roles, roleText)) ",", "display,large,title,heading,lead,headline,body,callout,caption,eyebrow,mono"))
+
+// [UI-EFFECTS-HOST]: host extensions retain the same bounded request envelope.
+test ("host capabilities preserve namespace operation arguments and bounds", \() =>
+    request = ui::HostCall(hostNamespace = "vscode", hostOperation = "workspace.snapshot", hostArguments = JsonObject [Doc::str ("workspace", "file:///app")], hostTimeout = 1000, hostLimit = 4096, hostSlice = "workspace")
+    doc = Requests::encode (Requests::ask ("host:1", request))
+    expect (Doc::text (doc, "kind"), "host-call")
+    expect (Doc::text (doc, "namespace"), "vscode")
+    expect (Doc::text (doc, "operation"), "workspace.snapshot")
+    expect (Doc::number (doc, "timeout"), 1000)
+    expect (Doc::number (doc, "limit"), 4096)
+    expect (Doc::text (doc, "slice"), "workspace")
+    expect (Doc::text (Doc::field (doc, "arguments"), "workspace"), "file:///app"))
+
+// [UI-COMPONENTS-CONTEXT-MENU]: menu commands use the same issued binding IDs.
+test ("context menus bind actions after their content controls", \() =>
+    built = Ui::contextMenu (Ui::button ("Select", "cube", Increment), [Ui::button ("Remove", "trash", Load)])
+    walked = Encode::walk ([], built)
+    doc = listGet walked.nodes 0 ?: JsonNull
+    item = listGet (Doc::items (Doc::field (doc, "items"))) 0 ?: JsonNull
+    expect (Doc::text (doc, "kind"), "context-menu")
+    expect (Doc::number (Doc::field (doc, "body"), "event"), 0)
+    expect (Doc::number (item, "event"), 1)
+    expect (length walked.bindings, 2))

@@ -227,11 +227,13 @@ class InteropTests(unittest.TestCase):
         self.assertEqual(json.loads(library.square_root_json(25.0)), {"ok": 5.0})
 
     def test_invalid_target_options_and_bridge_signatures_fail_before_link(self):
+        accepted = subprocess.run([os.environ["OSPREY"], str(self.source), "--target=python", "--check", "--memory=arc"], capture_output=True, text=True)
+        self.assertEqual(accepted.returncode, 0, accepted.stderr)
         bad = self.root / "bad.osp"
         bad.write_text('extern fn osprey_python_call(x: int) -> int\nfn call() = osprey_python_call(1)\n')
         for source, flags, message in [
             (bad, [], "signature"),
-            (self.source, ["--memory=arc"], "memory"),
+            (self.source, ["--memory=gc"], "memory"),
             (self.source, ["--run"], "Python"),
             (self.source, ["--no-ffi"], "FFI"),
         ]:

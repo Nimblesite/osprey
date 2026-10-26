@@ -18,17 +18,15 @@ const HTTP_RESPONSE_FIELDS: [(&str, &str); 6] = [
     ("partialBody", "i8*"),
 ];
 
-pub(super) fn layout_meta() -> i64 {
-    crate::meta::struct_meta(
-        &HTTP_RESPONSE_FIELDS.map(|(_, ty)| crate::meta::MetaField::of_slot_ty(ty)),
-    )
+pub(super) fn layout_meta(cg: &Codegen) -> i64 {
+    cg.struct_meta(&HTTP_RESPONSE_FIELDS.map(|(_, ty)| crate::meta::MetaField::of_slot_ty(ty)))
 }
 
 pub(super) fn gen_http_response(cg: &mut Codegen, fields: &[FieldAssignment]) -> Result<Value> {
     let layout = cg
         .ctor_layout(HTTP_RESPONSE)
         .ok_or_else(|| CodegenError::unknown(HTTP_RESPONSE))?;
-    let obj = cg.malloc_struct_noinit(HTTP_RESPONSE_STRUCT, layout_meta());
+    let obj = cg.malloc_struct_noinit(HTTP_RESPONSE_STRUCT, layout_meta(cg));
     for (index, (name, ty)) in layout.fields.iter().enumerate() {
         let field = fields
             .iter()

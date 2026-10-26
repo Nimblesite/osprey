@@ -51,7 +51,14 @@ module PathsTests {
         Paths::excluded(".osprey/scratch/x"),
         !Paths::excluded("osprey.toml"),
         !Paths::excluded("src/osprey.lock"),
-        !Paths::excluded(".ospreyrc")
+        !Paths::excluded(".ospreyrc"),
+        Paths::generatedCache("src/.deslop/cache/fingerprint.bin"),
+        Paths::generatedCache("src/nested/.OSPREY/cache/entry.bin"),
+        Paths::generatedCache("src/__pycache__/module.pyc"),
+        Paths::generatedCache("src/nested/.git/index"),
+        !Paths::generatedCache("src/deslop/module.osp"),
+        !Paths::generatedCache("src/.deslop-support/module.osp"),
+        !Paths::generatedCache("src/cache/module.osp")
     ])
 
     fn zeros(n) = range(0, n) |> map(fn(_i) => 0) |> toList

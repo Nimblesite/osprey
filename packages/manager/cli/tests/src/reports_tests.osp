@@ -16,7 +16,15 @@ module ReportsTests {
         Reports::printable("caf" + cp(233) + " " + cp(128512)) == "caf" + cp(233) + " " + cp(128512)
     ])
 
+    fn successIsNotFinding() = {
+        checkAll("reports: success output is not a finding", [
+            isEmpty(Reports::findings(Reports::success(["verified 3 packages"]))),
+            structuralEquals(Reports::findings(Reports::Report { status: 1, lines: ["verify.digest @demo/report"] }), ["verify.digest @demo/report"])
+        ])
+    }
+
     export fn run() = {
         test("reports: control bytes become ?", escapes)
+        test("reports: success output is not a finding", successIsNotFinding)
     }
 }

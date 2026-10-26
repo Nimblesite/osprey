@@ -57,6 +57,10 @@ tests/regressions/effects/algebraic_effects_comprehensive.test.osp fiber concurr
 tests/regressions/effects/algebraic_effects_comprehensive.test.ospml fiber concurrency
 tests/regressions/effects/fiber_effects.test.osp fiber concurrency
 tests/regressions/effects/fiber_effects.test.ospml fiber concurrency
+# The newly added generic handler-value regression declares control Fault.halt;
+# it retains full native GC/ARC coverage and requires the same continuation ABI.
+tests/regressions/effects/generic_handler_value.test.osp a continuation for `Fault.halt` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/regressions/effects/generic_handler_value.test.ospml a continuation for `Fault.halt` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
 tests/regressions/effects/handler_scoping.test.osp a continuation for `Ask.ask` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
 tests/regressions/effects/handler_scoping.test.ospml a continuation for `Ask.ask` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
 tests/regressions/effects/http_state_levels.test.osp HTTP builtin `httpResponseBody`

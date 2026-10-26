@@ -1,0 +1,10 @@
+{
+  "name": "tree-sitter-osprey-ml",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "generate": "../tree-sitter-osprey/node_modules/.bin/tree-sitter generate",
+    "test": "../tree-sitter-osprey/node_modules/.bin/tree-sitter test"
+  }
+}

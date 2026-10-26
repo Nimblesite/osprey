@@ -1,7 +1,7 @@
 // Byte streams: the one stateful model of the mock libc [SYMEX-MOCK-STREAM].
 // stdin and every file opened for reading hold symbolic bytes and a symbolic
-// length, both named after the stream (`stdin`, `stdin.len`, `<path>`,
-// `<path>.len`), plus a cursor. Opening a file forks on `<path>.ok`, so the
+// length (`stdin`, `stdin.len`, `file.data:<path>`, `file.len:<path>`),
+// plus a cursor. Opening a file forks on `file.ok:<path>`, so the
 // open-failure branch is explored too. stdout, stderr and files opened for
 // writing forward their bytes to `osp_hunt_sink`.
 #include "hunt_mock.h"
@@ -31,6 +31,15 @@ static struct osp_hunt_file standard[3] = {
     {"stderr", NULL, 0, 0, 0, 1, 1, 0, 0},
 };
 static struct osp_hunt_file files[OSP_HUNT_FILE_SLOTS];
+static int file_protocol_named;
+static char *initial_input;
+static size_t initial_capacity;
+
+size_t osp_hunt_input_capacity(const char *text) {
+  if (!text || text != initial_input) return 0;
+  size_t physical = klee_get_obj_size(text);
+  return physical < initial_capacity ? physical : initial_capacity;
+}
 
 FILE *osp_hunt_stdin = &standard[0];
 FILE *osp_hunt_stdout = &standard[1];
@@ -57,6 +66,9 @@ void osp_hunt_reset(void) {
   }
   memset(osp_hunt_calls, 0, sizeof(osp_hunt_calls));
   osp_hunt_errno = 0;
+  file_protocol_named = 0;
+  initial_input = NULL;
+  initial_capacity = 0;
 }
 
 static long stream_cap(void) {
@@ -78,23 +90,38 @@ static void materialise(struct osp_hunt_file *stream) {
   }
   long cap = stream_cap();
   char name[OSP_HUNT_NAME_MAX];
-  osp_hunt_name(name, stream->name, ".len");
+  osp_hunt_name(name, stream == standard ? stream->name : "file.len:",
+                stream == standard ? ".len" : stream->name);
   stream->data = cap > 0 ? malloc((size_t)cap) : NULL;
   if (stream->data != NULL) {
-    klee_make_symbolic(stream->data, (size_t)cap, stream->name);
+    char data_name[OSP_HUNT_NAME_MAX];
+    osp_hunt_name(data_name, stream == standard ? "" : "file.data:", stream->name);
+    klee_make_symbolic(stream->data, (size_t)cap, data_name);
   }
   stream->len = stream->data == NULL ? 0 : klee_range(0, (int)cap + 1, name);
 }
 
-// Keep the first newline as a symbolic expression rather than splitting an
-// execution state at every byte. The bytes and EOF length are unchanged.
-static long first_line_end(const struct osp_hunt_file *stream, long cap) {
-  long end = stream->len;
-  for (long i = cap; i > 0; i--) {
-    long index = i - 1;
-    int newline = (index < stream->len) & (stream->data[index] == '\n');
-    end = newline ? index : end;
+int osp_hunt_valid_line_end(const unsigned char *data, long length, long end, long cap) {
+  int valid = (end >= 0) & (end <= length) & (length >= 0) & (length <= cap);
+  for (long i = 0; i < cap; i++) {
+    valid &= ((i >= end) | (data[i] != '\n')) &
+             ((i != end) | (end == length) | (data[i] == '\n'));
   }
+  return valid;
+}
+
+// Each output byte depends only on its prefix, not a stream-wide end witness.
+static long copy_initial_line(char *out, const struct osp_hunt_file *stream, long cap) {
+  long end = stream->len;
+  int stopped = 0;
+  for (long i = 0; i < cap; i++) {
+    int stop = !stopped & ((i == stream->len) | (stream->data[i] == '\n'));
+    volatile uintptr_t mask = (uintptr_t)0 - (uintptr_t)stop;
+    out[i] = (char)(stream->data[i] & ~(unsigned char)mask);
+    end = (long)(((uintptr_t)i & mask) | ((uintptr_t)end & ~mask));
+    stopped |= stop;
+  }
+  out[cap] = '\0';
   return end;
 }
 
@@ -103,12 +130,9 @@ static char *initial_line(struct osp_hunt_file *stream, long cap) {
   if (out == NULL) {
     return NULL;
   }
-  long end = first_line_end(stream, cap);
-  for (long i = 0; i < cap; i++) {
-    out[i] = (char)stream->data[i];
-  }
-  out[cap] = '\0';
-  out[end] = '\0';
+  initial_input = out;
+  initial_capacity = (size_t)cap + 1;
+  long end = copy_initial_line(out, stream, cap);
   stream->pos = end + (end < stream->len);
   stream->eof = (unsigned char)(end == stream->len);
   osp_hunt_calls[OSP_HUNT_CALL_READ] += (unsigned)end + 1;
@@ -261,10 +285,19 @@ static struct osp_hunt_file *free_slot(void) {
   return NULL;
 }
 
-// Whether this open succeeds is a fresh symbolic choice named `<path>.ok`.
+// Whether this open succeeds is a fresh choice named `file.ok:<path>`.
+static void name_file_protocol(void) {
+  if (file_protocol_named) return;
+  int version = OSP_HUNT_FILE_PROTOCOL_VERSION;
+  klee_make_symbolic(&version, sizeof(version), OSP_HUNT_FILE_PROTOCOL_NAME);
+  klee_assume(version == OSP_HUNT_FILE_PROTOCOL_VERSION);
+  file_protocol_named = 1;
+}
+
 static int opens(const char *path) {
+  name_file_protocol();
   char name[OSP_HUNT_NAME_MAX];
-  osp_hunt_name(name, path, ".ok");
+  osp_hunt_name(name, "file.ok:", path);
   return klee_range(0, 2, name);
 }
 

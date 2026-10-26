@@ -24,7 +24,7 @@ module PythonTests {
     let bareWheel = "    { url = \"https://files.pythonhosted.org/numpy-2.2.0-py3-none-any.whl\", size = 1 },\n]\n"
 
     /// What `uv lock` leaves behind: the member by directory, numpy from the index with hashes.
-    fn uvLockOf(wheel) = "version = 1\nrevision = 2\nrequires-python = \">=3.12\"\n\n[[package]]\nname = \"demo-py\"\nversion = \"0.1.0\"\nsource = { directory = \"${pyPath()}\" }\ndependencies = [\n    { name = \"numpy\" },\n]\n\n" + numpyHead + wheel
+    fn uvLockOf(wheel) = "version = 1\nrevision = 2\nrequires-python = \">=3.12\"\n\n[[package]]\nname = \"demo-py\"\nversion = \"0.1.0\"\nsource = { directory = \"${pyPath()}\" }\ndependencies = [\n    { name = \"numpy\" },\n]\n\n[package.metadata]\nrequires-dist = [{ name = \"numpy\" }]\n\n" + numpyHead + wheel
 
     fn uvLockText() = uvLockOf(hashedWheel)
 

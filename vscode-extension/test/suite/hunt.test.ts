@@ -4,6 +4,10 @@
 
 import * as assert from "assert";
 import * as path from "path";
+import * as fs from "fs";
+import * as os from "os";
+import * as vscode from "vscode";
+import { activateWithServer, waitFor } from "./profiler-kit";
 import { DiagnosticSeverity } from "vscode";
 import {
   HUNT_SOURCE,
@@ -17,6 +21,39 @@ import {
 } from "../../client/src/hunt";
 
 const program = path.resolve("/work/app/main.osp");
+
+function huntOutput(root: string, source: string): string {
+  return fs.readdirSync(root, { recursive: true })
+    .filter((name) => String(name).endsWith("Osprey Hunt.log"))
+    .map((name) => fs.readFileSync(path.join(root, String(name)), "utf8"))
+    .find((text) => text.includes(source)) ?? "";
+}
+
+async function runBrokenHunt(root: string, source: string): Promise<string> {
+  fs.writeFileSync(source, "fn main( = @@@\n");
+  const document = await vscode.workspace.openTextDocument(source);
+  await vscode.window.showTextDocument(document);
+  await vscode.commands.executeCommand("osprey.hunt");
+  return waitFor(() => huntOutput(path.join(root, "logs"), source),
+    (text) => text.includes("=== HUNT FAILED (exit"), 15000, "Hunt compiler failure");
+}
+
+suite("Hunt command E2E", () => {
+  test("a real compiler failure reaches the Hunt output channel", async function () {
+    this.timeout(30000);
+    await activateWithServer();
+    const root = process.env.OSPREY_TEST_USER_DATA;
+    assert.ok(root, "the runner supplies its isolated VS Code log directory");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-hunt-editor-"));
+    const source = path.join(dir, "broken.osp");
+    try {
+      const output = await runBrokenHunt(root, source);
+      assert.match(output, /=== HUNT FAILED \(exit 1\) ===\n\S/);
+      assert.match(output, /syntax error near/);
+      assert.ok(!output.includes("Hunt reported no findings"), output);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
 
 function report(overrides: Partial<HuntReport> = {}): HuntReport {
   return {

@@ -7,7 +7,7 @@ default_namespace = "ui"
 name = "@osprey/native"
 license = "MIT"
 summary = "Osprey Native: a centralized store, signals, keyed regions, typed components, bindings and capability effects for native application hosts"
-keywords = ["ui", "native", "reactive", "signals", "macos", "ios"]
+keywords = ["ios", "macos", "native", "reactive", "signals", "ui"]
 
 [modules]
 allow_wildcard_imports = false

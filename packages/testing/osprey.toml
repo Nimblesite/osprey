@@ -8,4 +8,4 @@ default_namespace = "testing"
 name = "@osprey/testing"
 license = "MIT"
 summary = "Assertions with numpy allclose tolerances for Osprey test suites"
-keywords = ["testing", "assertions", "python-flavor"]
+keywords = ["assertions", "python-flavor", "testing"]

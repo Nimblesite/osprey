@@ -101,6 +101,9 @@ fn element_word(
     tag: &str,
 ) -> Value {
     let inferred = collection.element_type(container);
+    if let Some(value) = crate::cast::result_element_word(cg, raw, inferred.as_ref()) {
+        return value;
+    }
     let descriptor = crate::types::elem_tag(&cg.prog, inferred.as_ref())
         .or_else(|| crate::llty::elem_of_tag(collection, tag));
     let mut value = crate::conv::from_word(cg, raw, descriptor.as_deref());

@@ -25,15 +25,19 @@ pub(super) fn link_args(ir: &str, source: &str, memory: &str) -> Vec<String> {
 }
 
 fn runtime_archive(http: bool, memory: &str) -> Option<String> {
+    let name = if http { "http" } else { "fiber" };
+    find_runtime_lib(&runtime_name(&format!("lib{name}_runtime"), memory))
+        .or_else(|| find_runtime_lib(&runtime_name("libfiber_runtime", memory)))
+}
+
+pub(crate) fn runtime_name(base: &str, memory: &str) -> String {
     // [MEM-BACKENDS]: the reclaiming backend is an archive swap.
     let suffix = match memory {
         "gc" => "_gc",
         "arc" => "_arc",
         _ => "",
     };
-    let name = if http { "http" } else { "fiber" };
-    find_runtime_lib(&format!("lib{name}_runtime{suffix}.a"))
-        .or_else(|| find_runtime_lib(&format!("libfiber_runtime{suffix}.a")))
+    format!("{}{suffix}.a", base.trim_end_matches(".a"))
 }
 
 /// The IR spellings that reach libm: `frem` may lower to `fmod`

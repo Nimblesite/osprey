@@ -1,0 +1,25 @@
+namespace registry_auth_tests;
+import registry::Bytes
+import registry::Hmac
+
+module WebhookTests {
+    fn vector() = check("RFC 4231 HMAC-SHA256 case one", "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7", Bytes::hex(Hmac::sha256(mapList(range(0, 20) |> toList, fn(_i) => 11), Bytes::ofString("Hi There"))))
+
+    fn signed() = {
+        let digestHeader = "sha256=" + Bytes::hex(Hmac::sha256(Bytes::ofString("fixture-secret"), Bytes::ofString("{\"action\":\"revoked\"}")))
+        checkAll("GitHub signature covers exact raw body and exact algorithm", [
+                Hmac::github("fixture-secret", "{\"action\":\"revoked\"}", digestHeader),
+                !Hmac::github("other-secret", "{\"action\":\"revoked\"}", digestHeader),
+                !Hmac::github("fixture-secret", "{\"action\":\"revoked\"}\n", digestHeader),
+                !Hmac::github("fixture-secret", "{\"action\":\"revoked\"}", "sha1=" + drop(digestHeader, 7)),
+                !Hmac::github("", "{\"action\":\"revoked\"}", digestHeader),
+                !Hmac::github("fixture-secret", "{\"action\":\"revoked\"}", "sha256=not-hex")
+        ])
+    }
+
+    /// Known-answer cryptography and byte-exact webhook signature checks.
+    export fn run() = {
+        test("auth: HMAC SHA256 standard vector", vector)
+        test("auth: raw GitHub webhook signature", signed)
+    }
+}

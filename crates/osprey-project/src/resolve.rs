@@ -11,6 +11,8 @@ use osprey_ast::{Expr, ModuleItem, ModuleKind, Position, Program, Stmt, TypeExpr
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(crate) struct Resolution {
+    pub source_dependencies: Vec<crate::SourceDependency>,
+    pub method_candidates: Vec<crate::SourceDependency>,
     pub program: Program,
     pub entry_prologue: Vec<Stmt>,
     pub documentation_bindings: Vec<Stmt>,
@@ -46,6 +48,8 @@ pub(crate) struct Locals {
 }
 
 pub(crate) struct Resolver<'a> {
+    pub source_dependencies: BTreeSet<crate::SourceDependency>,
+    pub method_candidates: BTreeSet<crate::SourceDependency>,
     pub graph: &'a ProjectGraph,
     pub scopes: &'a [ImportScope],
     pub sources: &'a [SourceMetadata],
@@ -79,6 +83,8 @@ pub(crate) fn flatten(
 ) -> Resolution {
     let aliases = crate::type_rewrite::collect_aliases(contributions, graph);
     let mut resolver = Resolver {
+        source_dependencies: BTreeSet::new(),
+        method_candidates: BTreeSet::new(),
         graph,
         scopes,
         sources,
@@ -107,6 +113,7 @@ pub(crate) fn flatten(
             namespace: contribution.namespace.label().to_string(),
             module: Vec::new(),
         };
+        resolver.record_imports(&context);
         for statement in &contribution.statements {
             resolver.flatten_statement(statement, &context, false);
         }
@@ -130,6 +137,8 @@ impl Resolver<'_> {
             }
         }
         Resolution {
+            source_dependencies: self.source_dependencies.into_iter().collect(),
+            method_candidates: self.method_candidates.into_iter().collect(),
             program: Program {
                 statements: self.program,
                 // An assembled project is many files merged into one program;

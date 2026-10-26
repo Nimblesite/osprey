@@ -25,7 +25,7 @@ module OverlayTests {
     let localLockPath = "/abs/osprey.local.lock"
     let localPath = "../local-one"
     let localDir = "/abs/../local-one"
-    let derivedPath = ".osprey/build/osprey.toml"
+    fn derivedPath() = "${project}/.osprey/build/osprey.toml"
 
     fn one() = RegistryFixture::one()
     fn two() = RegistryFixture::two()
@@ -105,7 +105,9 @@ module OverlayTests {
         ])
     }
 
-    fn installedTwoDir() = "${project}/${Fetch::installDir(Fixture::idOf(two()))}"
+    fn installedTwoPath() = Fetch::installDir(Fixture::idOf(two()))
+
+    fn installedTwoDir() = "${project}/${installedTwoPath()}"
 
     fn twoReads() = mapList(Fixture::filesOf(two()), fn(f) => Fixture::readRoute("${installedTwoDir()}/${f.relPath}", f.content))
 
@@ -116,12 +118,13 @@ module OverlayTests {
     /// A bare `build` selects the development lock and the checkout's roots.
     fn buildLocal() = {
         let a = RegistryFixture::runWith(devReads(), [localWalk(), twoWalk()], [], ["build", "--project", project])
-        let derived = RegistryFixture::writtenTo(a, derivedPath)
+        let derived = RegistryFixture::writtenTo(a, derivedPath())
         checkAll("a bare build compiles the checkout from the development lock", [
             RegistryFixture::statusOf(a) == 0,
-            contains(derived, "\"${localDir}/src\""),
-            contains(derived, "\"${installedTwoDir()}/src\""),
-            length(RegistryFixture::ranOf(a)) == 1
+            contains(derived, "\"../../${localPath}/src\""),
+            contains(derived, "\"../../${installedTwoPath()}/src\""),
+            length(RegistryFixture::ranOf(a)) == 1,
+            (listGet(RegistryFixture::ranOf(a), 0) ?: "") == "'osprey' build '${project}/.osprey/build' -o '${project}/.osprey/build/app'"
         ])
     }
 
@@ -131,7 +134,7 @@ module OverlayTests {
         checkAll("build --release is build.overrides-active and runs nothing", [
             RegistryFixture::statusOf(a) == 1,
             RegistryFixture::lineOf(a, 0) == "build.overrides-active @demo/one",
-            RegistryFixture::writtenTo(a, derivedPath) == "",
+            RegistryFixture::writtenTo(a, derivedPath()) == "",
             isEmpty(RegistryFixture::ranOf(a))
         ])
     }

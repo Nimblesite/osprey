@@ -11,13 +11,18 @@ impl Lowerer<'_> {
     /// preserving evaluation order ([FLAVOR-PYTHON-EXPRESSIONS]).
     pub(super) fn list_comprehension(&mut self, node: Node<'_>) -> Result<Expr> {
         self.scoped(true, |lowerer| {
-            let body = lowerer.expr(Lowerer::field(node, "body")?)?;
+            let body = Lowerer::field(node, "body")?;
             let clauses: Vec<Node<'_>> = children(node).into_iter().skip(1).collect();
             lowerer.comprehension(node, body, &clauses)
         })
     }
 
-    fn comprehension(&mut self, node: Node<'_>, body: Expr, clauses: &[Node<'_>]) -> Result<Expr> {
+    fn comprehension(
+        &mut self,
+        node: Node<'_>,
+        body: Node<'_>,
+        clauses: &[Node<'_>],
+    ) -> Result<Expr> {
         let Some((first, rest)) = clauses.split_first() else {
             return self.unsupported(node);
         };
@@ -33,7 +38,7 @@ impl Lowerer<'_> {
         &mut self,
         first: Node<'_>,
         filters: &[Node<'_>],
-        body: Expr,
+        body: Node<'_>,
     ) -> Result<Expr> {
         let (name, iter) = self.for_in_clause(first)?;
         let mut source = iter;
@@ -46,7 +51,7 @@ impl Lowerer<'_> {
         }
         let mapped = apply(
             Expr::Identifier("map".into()),
-            vec![source, callback(&name, body, first)],
+            vec![source, callback(&name, self.expr(body)?, first)],
         );
         Ok(apply(Expr::Identifier("toList".into()), vec![mapped]))
     }
@@ -57,7 +62,7 @@ impl Lowerer<'_> {
         &mut self,
         node: Node<'_>,
         clauses: &[Node<'_>],
-        body: Expr,
+        body: Node<'_>,
     ) -> Result<Expr> {
         self.comprehension_from(
             node,
@@ -72,7 +77,7 @@ impl Lowerer<'_> {
         &mut self,
         owner: Node<'_>,
         clauses: &[Node<'_>],
-        body: Expr,
+        body: Node<'_>,
         seed: Expr,
         index: usize,
     ) -> Result<Expr> {
@@ -86,13 +91,13 @@ impl Lowerer<'_> {
         }
     }
 
-    fn append_seed(&self, owner: Node<'_>, body: Expr, seed: Expr) -> Result<Expr> {
+    fn append_seed(&mut self, owner: Node<'_>, body: Node<'_>, seed: Expr) -> Result<Expr> {
         let Expr::Identifier(acc) = seed else {
             return self.unsupported(owner);
         };
         Ok(apply(
             Expr::Identifier("listAppend".into()),
-            vec![Expr::Identifier(acc), body],
+            vec![Expr::Identifier(acc), self.expr(body)?],
         ))
     }
 
@@ -100,31 +105,33 @@ impl Lowerer<'_> {
         &mut self,
         owner: Node<'_>,
         clauses: &[Node<'_>],
-        body: Expr,
+        body: Node<'_>,
         seed: Expr,
         index: usize,
         clause: Node<'_>,
     ) -> Result<Expr> {
-        let (name, iter) = self.for_in_clause(clause)?;
-        let acc = osprey_ast::generated_name("acc", index);
-        let inner = self.comprehension_from(
-            owner,
-            clauses,
-            body,
-            Expr::Identifier(acc.clone()),
-            index + 1,
-        )?;
-        Ok(apply(
-            Expr::Identifier("fold".into()),
-            vec![iter, seed, callback_two(&acc, &name, inner, clause)],
-        ))
+        self.scoped(true, |lowerer| {
+            let (name, iter) = lowerer.for_in_clause(clause)?;
+            let acc = osprey_ast::generated_name("acc", index);
+            let inner = lowerer.comprehension_from(
+                owner,
+                clauses,
+                body,
+                Expr::Identifier(acc.clone()),
+                index + 1,
+            )?;
+            Ok(apply(
+                Expr::Identifier("fold".into()),
+                vec![iter, seed, callback_two(&acc, &name, inner, clause)],
+            ))
+        })
     }
 
     fn filter_clause(
         &mut self,
         owner: Node<'_>,
         clauses: &[Node<'_>],
-        body: Expr,
+        body: Node<'_>,
         seed: &Expr,
         index: usize,
         clause: &Node<'_>,
@@ -142,8 +149,10 @@ impl Lowerer<'_> {
     }
 
     fn for_in_clause(&mut self, node: Node<'_>) -> Result<(String, Expr)> {
-        let name = self.loop_target(Self::field(node, "left")?)?;
+        let target = Self::field(node, "left")?;
+        let name = self.loop_target(target)?;
         let iter = self.expr(Self::field(node, "right")?)?;
+        self.bind(target, false)?;
         Ok((name, iter))
     }
 

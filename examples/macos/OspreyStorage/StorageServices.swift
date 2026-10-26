@@ -79,6 +79,9 @@ func storageEntryHidden(_ index: Int64) -> Bool { listedEntry(index)?.hidden ?? 
 @_cdecl("storage_entry_folder")
 func storageEntryFolder(_ index: Int64) -> Bool { listedEntry(index)?.folder ?? false }
 
+@_cdecl("storage_entry_link")
+func storageEntryLink(_ index: Int64) -> Bool { listedEntry(index)?.link ?? false }
+
 /// A folder the walk left alone because macOS asks before an app reads it.
 @_cdecl("storage_entry_guarded")
 func storageEntryGuarded(_ index: Int64) -> Bool { listedEntry(index)?.guarded ?? false }
@@ -118,6 +121,7 @@ final class DiskTree: @unchecked Sendable {
         let hidden: Bool
         let folder: Bool
         let guarded: Bool
+        var link = false
     }
 
     /// Folders Osprey asks the walk not to enter: every folder inside `apps`,
@@ -150,7 +154,7 @@ final class DiskTree: @unchecked Sendable {
     nonisolated(unsafe) static var current: DiskTree?
 
     private static let keys: [URLResourceKey] = [
-        .isDirectoryKey, .isVolumeKey, .isHiddenKey, .totalFileAllocatedSizeKey, .linkCountKey,
+        .isDirectoryKey, .isSymbolicLinkKey, .isVolumeKey, .isHiddenKey, .totalFileAllocatedSizeKey, .linkCountKey,
         .fileResourceIdentifierKey,
     ]
 
@@ -262,7 +266,8 @@ final class DiskTree: @unchecked Sendable {
     /// A measured folder's direct entries, largest first so Osprey's ranking
     /// rarely reorders. Each folder is listed once per walk, and its strings
     /// stay valid for the process as the boundary requires.
-    func listing(of folder: String) -> Listing {
+    func listing(of requested: String) -> Listing {
+        let folder = canonical(requested)
         if let cached = listings[folder] { return cached }
         guard let id = index[folder] else { return .none }
         let items = (try? FileManager.default.contentsOfDirectory(
@@ -277,6 +282,11 @@ final class DiskTree: @unchecked Sendable {
         guard let values = try? item.resourceValues(forKeys: Set(Self.keys)) else { return nil }
         let hidden = values.isHidden == true
         let path = UnsafePointer(strdup(item.path))
+        if values.isSymbolicLink == true {
+            let target = URL(fileURLWithPath: canonical(item.path))
+            let folder = (try? target.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+            return Entry(path: path, bytes: 0, visible: 0, hidden: hidden, folder: folder, guarded: false, link: true)
+        }
         if values.isDirectory == true, let child = index[item.path] {
             let folder = folders[child]
             return Entry(path: path, bytes: folder.bytes, visible: folder.visible, hidden: hidden, folder: true, guarded: folder.guarded)

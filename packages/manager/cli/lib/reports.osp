@@ -13,6 +13,9 @@ module Reports {
     /// A successful report.
     export fn success(lines) = Report { status: ok, lines: lines }
 
+    /// Verification output projected into editor finding codes.
+    export fn findings(report: Report) = if report.status == ok { [] } else { report.lines }
+
     /// A report for a command line the frontend cannot act on.
     export fn usage(lines) = Report { status: usageError, lines: lines }
 
