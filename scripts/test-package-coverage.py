@@ -8,6 +8,7 @@ accounting, cross-host paths, malformed rows, oracle replay, stale evidence and
 ungated packages — is proven by behaviour rather than by mirroring the code.
 """
 import json
+import os
 import runpy
 import tempfile
 import unittest
@@ -45,6 +46,16 @@ class PackageThresholdTests(unittest.TestCase):
             self.assertEqual(entry["language"], "osprey", name)
             self.assertTrue((ROOT / "packages" / name / "tests" / "osprey.toml").is_file(), name)
             self.assertTrue((ROOT / "packages" / name / "tests" / "expected_output.txt").is_file(), name)
+
+    def test_collection_runs_at_most_one_compiler_per_cpu(self):
+        # 19 concurrent `osprey test` collections exhausted the CI runner's
+        # memory and the runner was shut down mid-step (exit 143), twice.
+        checker = runpy.run_path(str(ROOT / "scripts/package_coverage.py"))
+        names = [f"package-{index}" for index in range(19)]
+        self.assertEqual(checker["worker_count"](names, cpus=4), 4)
+        self.assertEqual(checker["worker_count"](names[:2], cpus=4), 2)
+        self.assertEqual(checker["worker_count"]([], cpus=4), 1)
+        self.assertEqual(checker["worker_count"](names, cpus=None), min(19, os.cpu_count() or 1))
 
     def test_only_thresholds_above_the_minimum_are_explicit(self):
         config = json.loads((ROOT / "coverage-thresholds.json").read_text())
@@ -448,8 +459,15 @@ class CheckerTests(unittest.TestCase):
 
     def test_all_package_suites_overlap_and_write_isolated_reports(self):
         names = ["demo", *(f"peer{i}" for i in range(17))]
+        # The pool runs one collection per CPU, so the suites that can overlap
+        # are the first worker_count of them; every later suite still runs.
+        checker = runpy.run_path(str(ROOT / "scripts/package_coverage.py"))
+        overlapping = names[: checker["worker_count"](names)]
         fixture = self.fixture({name: {"sources": {"src/lib.py": py_source(10)}} for name in names})
-        fixture.write_spec({name: {"report": own_report(name, 9, 10), "barrier": names} for name in names})
+        fixture.write_spec({
+            name: {"report": own_report(name, 9, 10), "barrier": overlapping if name in overlapping else []}
+            for name in names
+        })
         result = fixture.collect()
         self.assert_exit(result, 0)
         self.assertTrue((fixture.reports / "demo.json").is_file())

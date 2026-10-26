@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -450,11 +451,20 @@ def selected_names(configured: dict, requested: str | None) -> list[str] | None:
     return [requested] if requested in configured else None
 
 
+def worker_count(names: list[str], cpus: int | None = None) -> int:
+    """One compiler per CPU, never more. Each collection is a full `osprey test`
+    with the type checker's warning pass, so 19 of them at once exhausted the
+    CI runner's memory and the runner was shut down mid-step (exit 143) with
+    no coverage verdict at all, twice. Fewer workers than packages only
+    lengthens the wall clock on a machine that was already CPU-bound."""
+    return max(1, min(len(names), cpus if cpus is not None else os.cpu_count() or 1))
+
+
 def evaluate(root: Path, reports: Path, compiler: Path, configured: dict, names: list[str], collect: bool, memory="gc") -> list[dict]:
     if collect:
         reports.mkdir(parents=True, exist_ok=True)
         remove_if_exists(reports / SUMMARY_NAME)
-    with ThreadPoolExecutor(max_workers=len(names)) as pool:
+    with ThreadPoolExecutor(max_workers=worker_count(names)) as pool:
         return list(pool.map(
             lambda name: collect_package(root, compiler, reports, name, configured[name], memory)
             if collect else gate_package(root, reports, name, configured[name]), names))
