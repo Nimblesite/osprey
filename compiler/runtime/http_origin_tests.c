@@ -7,6 +7,10 @@
 #include "http_shared.h"
 
 #include <assert.h>
+#include <stdio.h>
+
+// The allocation injector (test_alloc.h) is defined in the main suite TU;
+// these forwarders (declared in the shared header) reach it from here.
 
 // ---------------------------------------------------------------------------
 // Scripted origin: a raw TCP server that answers with EXACT bytes. It lets the
@@ -273,6 +277,40 @@ void test_client_malformed_chunks(void) {
   expect_chunked_body("4", "");                          // size line unfinished
   expect_chunked_body("3\r\nabc\r\nzz\r\n", "abc");      // damage after a chunk
   expect_chunked_body("0\r\n\r\n", "");                  // terminator only
+}
+
+// The client's response-buffer arms are reachable only through allocation
+// failure, and both must close the transport and report -9 rather than
+// crashing or returning a partial body [HTTP-STATUS-CLIENT].
+void test_client_response_allocation_failures(void) {
+  ScriptedOrigin origin;
+  origin_start(&origin, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello");
+  int64_t client_id = origin_client();
+  // Nothing between arming and the response buffer allocates: the request
+  // buffer is stack and the connection is already established, so the very
+  // next allocation is the buffer that must fail.
+  test_alloc_fail_after(0);
+  assert(http_get(client_id, (char *)(uintptr_t) "/buf", (char *)(uintptr_t) "") == -9);
+  test_alloc_fail_off();
+  http_close_client(client_id);
+  origin_stop(&origin);
+
+  // A reply larger than the initial buffer forces exactly one growth to
+  // 2 * MAX_HTTP_BUFFER; failing that realloc must surface as -9 as well.
+  // One success (the initial buffer) is allowed through first.
+  char big[MAX_HTTP_BUFFER + 512];
+  size_t body = MAX_HTTP_BUFFER + 256; // one growth, no more
+  size_t head = (size_t)snprintf(big, sizeof(big),
+                                 "HTTP/1.1 200 OK\r\nContent-Length: %zu\r\n\r\n", body);
+  memset(big + head, 'x', body);
+  big[head + body] = '\0';
+  origin_start(&origin, big);
+  client_id = origin_client();
+  test_alloc_fail_after(1);
+  assert(http_get(client_id, (char *)(uintptr_t) "/grow", (char *)(uintptr_t) "") == -9);
+  test_alloc_fail_off();
+  http_close_client(client_id);
+  origin_stop(&origin);
 }
 
 // An https:// client negotiates TLS before it sends anything; a plaintext peer

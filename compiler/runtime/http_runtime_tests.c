@@ -166,6 +166,12 @@ static HttpResponse *live_handler(char *method, char *path, char *headers,
 #define LIVE_PORT 18085
 #define LIVE_TRIES 50
 
+// Cross-TU forwarders for the allocation injector: test_alloc.h's arming
+// controls are static inline in this TU, so other suite TUs reach them only
+// through these out-of-line symbols (same pattern as http_test_server_handler).
+void test_alloc_fail_after(long successes) { osp_alloc_fail_after(successes); }
+void test_alloc_fail_off(void) { osp_alloc_fail_off(); }
+
 // Allocation rejection must precede handle exhaustion; the following live
 // loopback exchange also proves both services recover after rejection.
 static void check_http_creation_allocation_failures(void) {
@@ -336,6 +342,7 @@ void run_all_http_tests(void) {
   test_client_transport_failures();
   test_client_large_response();
   test_client_malformed_chunks();
+  test_client_response_allocation_failures();
   test_client_tls_handshake_failure();
   test_client_handle_bounds();
   test_server_rejects_bad_requests();
