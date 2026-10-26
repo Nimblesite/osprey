@@ -60,4 +60,5 @@ out/tsconfig.tsbuildinfo
 !README.md
 !LICENSE
 !icon.png
+!media/**
 !node_modules/vscode-languageclient/**

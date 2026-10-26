@@ -94,6 +94,7 @@
   "functions/httpgetresponse.md",
   "functions/httplisten.md",
   "functions/httppost.md",
+  "functions/httppostresponse.md",
   "functions/httpput.md",
   "functions/httpresponsebody.md",
   "functions/httpresponsefree.md",

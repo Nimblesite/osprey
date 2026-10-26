@@ -570,9 +570,9 @@ jobs:
         with:
           submodules: true
       # `pretest` compiles the extension, which copies its icon from this
-      # LFS-stored logo and refuses a pointer. Fetch only the logo.
-      - name: Fetch the logo the extension icon is copied from
-        run: git lfs install --local && git lfs pull --include=website/src/assets/images/logo.png
+      # LFS-stored logo; packaging also requires the README GIF. Refuse pointers.
+      - name: Fetch extension icon and README media
+        run: git lfs install --local && git lfs pull --include="website/src/assets/images/logo.png,vscode-extension/media/package-tour.gif"
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}

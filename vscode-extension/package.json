@@ -743,7 +743,8 @@
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
     "vscode-oniguruma": "^2.0.1",
-    "vscode-textmate": "^9.3.2"
+    "vscode-textmate": "^9.3.2",
+    "yauzl": "3.4.0"
   },
   "scripts": {
     "sync-icon": "node scripts/sync-icon.mjs",
@@ -753,7 +754,7 @@
     "compile": "tsc -b",
     "lint": "tsc -p ./ --noEmit",
     "watch": "tsc -b -w",
-    "package": "vsce package",
+    "package": "vsce package && node scripts/verify-readme.mjs",
     "install-extension": "code --install-extension osprey-0.0.0-dev.vsix",
     "test": "vscode-test",
     "test-compile": "tsc -p ./",

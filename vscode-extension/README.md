@@ -1,16 +1,22 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Nimblesite/osprey/main/website/src/assets/images/logo.png" alt="Osprey logo" width="128" />
+  <img src="https://ospreylang.dev/assets/images/logo.png" alt="Osprey logo" width="96" />
 </p>
 
 # Osprey for VS Code
+
+<p align="center">
+  <img src="https://media.githubusercontent.com/media/Nimblesite/osprey/main/vscode-extension/media/package-tour.gif" alt="Osprey in VS Code: review a package and its audit warnings, then add and verify a dependency" width="960" />
+</p>
+
+Review a package's warnings, add it, and verify the installed dependency in VS Code. [Watch the full walkthrough with captions](https://ospreylang.dev/docs/packages-in-vscode/).
 
 > **Preview.** Osprey is an actively evolving language and the extension follows the
 > compiler's current feature set.
 
 Language support for [Osprey](https://ospreylang.dev) — a functional programming
-language built around algebraic effects, inferred types, fibers, and pattern matching. The [effects guide](../website/src/docs/algebraic-effects.md) introduces callable handlers, block-scoped policies, and static selection.
+language built around algebraic effects, inferred types, fibers, and pattern matching. The [effects guide](https://ospreylang.dev/docs/algebraic-effects/) introduces callable handlers, block-scoped policies, and static selection.
 
-The compiler accepts Default (`.osp`), ML (`.ospml`) and Python flavor (`.py` with `# osprey: flavor=python`). All three lower to the same AST. The extension currently registers Default and ML documents for its language server, commands, debugger and Test Explorer. Use the CLI for Python-flavor files while dedicated editor coverage remains unfinished; see [plan 0031](../docs/plans/0031-python-flavor.md).
+The compiler accepts Default (`.osp`), ML (`.ospml`) and Python flavor (`.py` with `# osprey: flavor=python`). All three lower to the same AST. The extension currently registers Default and ML documents for its language server, commands, debugger and Test Explorer. Use the CLI for Python-flavor files while dedicated editor coverage remains unfinished; see [plan 0031](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0031-python-flavor.md).
 
 Select Default or ML per file using its extension or a leading `// osprey: flavor=ml` marker. Mixed-flavor project imports are supported. The Rust language server (`osprey lsp`, built on [lspkit](https://github.com/Nimblesite/lspkit)) runs the compiler frontend in-process.
 
@@ -43,7 +49,7 @@ Select Default or ML per file using its extension or a leading `// osprey: flavo
   you hover the `test(...)` call, opens as Markdown via
   `Osprey: Show Test Documentation`, and leads the failure message when the case
   fails.
-- **Hunt for bugs** — `Osprey: Hunt for Bugs` runs KLEE, prints the report in the Osprey Hunt output channel and places findings at source locations. [Hunt prerequisites and limits](../website/src/docs/hunt.md) apply.
+- **Hunt for bugs** — `Osprey: Hunt for Bugs` runs KLEE, prints the report in the Osprey Hunt output channel and places findings at source locations. [Hunt prerequisites and limits](https://ospreylang.dev/docs/hunt/) apply.
 - **CPU profiling** — run the current file or attach to a supported native process, then inspect samples in the shared profiler UI. Memory profiling and a Windows sampler remain unfinished.
 - **Bracket matching, auto-closing, and comment toggling.**
 
@@ -76,7 +82,7 @@ brew install nimblesite/tap/osprey            # macOS / Linux
 scoop bucket add nimblesite https://github.com/Nimblesite/scoop-bucket && scoop install osprey   # Windows
 ```
 
-Debugging also requires `lldb-dap`. Set `osprey.debug.lldbDapPath` when it is outside `PATH`. Integrated and external terminal consoles require LLDB-DAP 21 or newer; the default Debug Console has no stdin. See the [debugger contract](../docs/specs/tooling/0021-Debugger.md).
+Debugging also requires `lldb-dap`. Set `osprey.debug.lldbDapPath` when it is outside `PATH`. Integrated and external terminal consoles require LLDB-DAP 21 or newer; the default Debug Console has no stdin. See the [debugger contract](https://github.com/Nimblesite/osprey/blob/main/docs/specs/tooling/0021-Debugger.md).
 
 ## Settings
 
@@ -95,4 +101,4 @@ Debugging also requires `lldb-dap`. Set `osprey.debug.lldbDapPath` when it is ou
 
 ## License
 
-See [LICENSE](LICENSE).
+See [LICENSE](https://github.com/Nimblesite/osprey/blob/main/vscode-extension/LICENSE).

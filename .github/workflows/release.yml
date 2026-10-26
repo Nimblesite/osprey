@@ -487,7 +487,7 @@ jobs:
       # without it the VSIX carries an LFS pointer the Marketplace rejects.
       - name: Fetch the logo the extension icon is copied from
         shell: bash
-        run: git lfs install --local && git lfs pull --include=website/src/assets/images/logo.png
+        run: git lfs install --local && git lfs pull --include="website/src/assets/images/logo.png,vscode-extension/media/package-tour.gif"
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
       - uses: actions/download-artifact@v4
@@ -535,7 +535,9 @@ jobs:
           npm run compile
       - name: Package VSIX
         working-directory: vscode-extension
-        run: npx vsce package --target ${{ matrix.target }}
+        run: |
+          npx vsce package --target ${{ matrix.target }}
+          node scripts/verify-readme.mjs osprey-${{ matrix.target }}-${{ needs.version.outputs.version }}.vsix
       - name: Verify bundled binary is inside the VSIX
         shell: bash
         working-directory: vscode-extension
