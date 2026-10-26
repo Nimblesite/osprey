@@ -11,7 +11,7 @@ osprey-ast = { workspace = true }
 tree-sitter = { workspace = true }
 tree-sitter-osprey = { workspace = true }
 # ABI 14 matches the workspace's tree-sitter 0.24 runtime.
-tree-sitter-python = "=0.23.6"
+tree-sitter-python = "=0.25.0"
 
 [lints]
 workspace = true
