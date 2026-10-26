@@ -42,7 +42,7 @@ RUN make _runtime
 RUN cargo build --release -p osprey-cli
 
 # Runtime stage
-FROM node:20-bookworm
+FROM node:26-bookworm
 
 # Install runtime dependencies including LLVM, compiler toolchain, and utilities.
 # LLVM/clang MUST be >= 15: osprey-codegen emits the swappable-allocator
