@@ -309,6 +309,27 @@ test.describe("documentation sub-page navigation", () => {
     await expect(navigation.getByRole("link", { name: "Web apps", exact: true })).toHaveClass(/active/);
   });
 
+  test("the site Docs menu mirrors the documentation sections", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/docs/");
+    const sections = page.locator(".docs-nav-desktop .docs-nav-section");
+    const landings = await sections.evaluateAll((all) => all.map((section) => section.querySelector("a").getAttribute("href")));
+    const menu = page.locator(".nav-group .nav-submenu a");
+    await expect(menu).toHaveText(DOC_SECTIONS);
+    expect(await menu.evaluateAll((links) => links.map((link) => link.getAttribute("href")))).toEqual(landings);
+  });
+
+  test("Reference lists benchmarks and releases", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/docs/releases/");
+    const reference = page.locator(".docs-nav-desktop .docs-nav-section", { hasText: "Reference" });
+    await expect(reference.getByRole("link", { name: "Benchmarks", exact: true })).toHaveAttribute("href", "/benchmarks/");
+    await expect(reference.getByRole("link", { name: "Releases", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(page.locator("h1")).toHaveText("Releases");
+    await expect(page.locator(".prose a[href='https://github.com/Nimblesite/osprey/releases']")).toHaveCount(1);
+    await expect(page.locator(".nav-submenu a.active")).toHaveText("Reference");
+  });
+
   for (const height of [600, 900]) {
     test(`desktop docs navigation scrolls with the document at ${height}px`, async ({ page }) => {
       await page.setViewportSize({ width: 1440, height });

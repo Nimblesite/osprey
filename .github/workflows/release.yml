@@ -151,9 +151,11 @@ jobs:
           install: >-
             make
             mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-clang
             mingw-w64-ucrt-x86_64-llvm
             mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-openssl
+            mingw-w64-ucrt-x86_64-sqlite3
       # The language server mounts lspkit's profiler, whose build script
       # generates its wire model with typeDiagram [PROF-LSP-HOST]. The
       # Linux/macOS leg gets it from setup-osprey-compiler.
@@ -175,6 +177,17 @@ jobs:
         shell: bash
         # --no-warnings skips the warning pass (see scripts/make/extension.mk).
         run: target/release/osprey build packages/manager/cli --quiet --no-warnings -o target/osprey-pkg
+      # osprey.exe is a native Windows process, so it resolves clang on the
+      # Windows PATH, where the runner's MSVC-target clang shadows the MSYS2 one
+      # and `link.exe` cannot find ssl.lib. Pin the UCRT64 clang, as ci-windows.yml does.
+      - name: Pin the MinGW clang (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          CC_PATH="$(cygpath -m /ucrt64/bin/clang.exe)"
+          "$CC_PATH" --version | head -1
+          echo "OSPREY_CC=$CC_PATH" >> "$GITHUB_ENV"
       - name: Compile package manager client (Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
