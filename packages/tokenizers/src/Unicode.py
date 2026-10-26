@@ -355,7 +355,8 @@ def lower_plus32(cp):
 
 def strip_lookup(cp):
     """The non-mark base of NFD(cp), or cp itself when it does not decompose."""
-    return fold(range(len(STRIP_TABLE)), cp, lambda acc, i: unwrap_or(listGet(unwrap_or(listGet(STRIP_TABLE, i), []), 1), cp) if cp == unwrap_or(listGet(unwrap_or(listGet(STRIP_TABLE, i), []), 0), -1) else acc)
+    table = STRIP_TABLE
+    return fold(range(len(table)), cp, lambda acc, i: unwrap_or(listGet(unwrap_or(listGet(table, i), []), 1), cp) if cp == unwrap_or(listGet(unwrap_or(listGet(table, i), []), 0), -1) else acc)
 
 
 def strip_base(cp):

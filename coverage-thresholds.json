@@ -288,7 +288,7 @@
       },
       "tokenizers": {
         "language": "osprey",
-        "threshold": 97.5
+        "threshold": 97.9
       },
       "torch": {
         "threshold": 96.1,
