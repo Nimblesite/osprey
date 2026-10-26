@@ -285,11 +285,11 @@ test("every published docs page is reachable from documentation home", async ({ 
   expect(await page.evaluate(orphanedDocs, [["/docs/", ""], ["/docs/forgotten/", ""]])).toEqual(["/docs/forgotten/"]);
 });
 
-test("reactive signals is in the Docs submenu and its ML example is highlighted", async ({ page }) => {
+test("reactive signals is in the Language section and its ML example is highlighted", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto("/docs/reactive-signals/");
-  const menu = page.locator("#site-navigation .nav-group");
-  await menu.locator("summary").click();
-  await expect(menu.getByRole("link", { name: "Reactive signals", exact: true })).toBeVisible();
+  const section = page.locator(".docs-nav-desktop .docs-nav-section", { hasText: "Language" });
+  await expect(section.getByRole("link", { name: "Reactive signals", exact: true })).toHaveClass(/active/);
   const code = page.locator('pre[data-flavor="ml"] code').filter({ hasText: "signalSnapshot label" });
   await expect(code).toHaveCount(1);
   await expect(code.locator(".token.keyword").first()).toBeAttached();

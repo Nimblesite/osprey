@@ -2,7 +2,6 @@
   "main": [
     { "text": "Documentation home", "url": "/docs/", "group": "Docs" },
     { "text": "Algebraic effects", "url": "/docs/effects/", "group": "Docs" },
-    { "text": "Reactive signals", "url": "/docs/reactive-signals/", "group": "Docs" },
     { "text": "Language specification", "url": "/spec/", "group": "Docs" },
     { "text": "Install Osprey", "url": "/docs/installation/", "group": "Docs" },
     { "text": "Playground", "url": "/playground/" },
