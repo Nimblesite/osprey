@@ -243,6 +243,9 @@ export default function (eleventyConfig) {
     if (!outputPath || !outputPath.endsWith(".html")) return content;
     ensureOsprey();
     return content.replace(
+      /(class="language-|data-language=")(ospml|osp)(?=")/g,
+      (_, prefix, flavor) => prefix + (flavor === "ospml" ? "osprey-ml" : "osprey")
+    ).replace(
       /<pre([^>]*)><code class="language-(osprey(?:-ml)?|python)">([\s\S]*?)<\/code><\/pre>/g,
       (block, attributes, lang, code) => {
         if (attributes.includes("data-language")) return block;

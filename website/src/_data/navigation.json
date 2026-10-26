@@ -2,6 +2,7 @@
   "main": [
     { "text": "Documentation home", "url": "/docs/", "group": "Docs" },
     { "text": "Algebraic effects", "url": "/docs/effects/", "group": "Docs" },
+    { "text": "Reactive signals", "url": "/docs/reactive-signals/", "group": "Docs" },
     { "text": "Language specification", "url": "/spec/", "group": "Docs" },
     { "text": "Install Osprey", "url": "/docs/installation/", "group": "Docs" },
     { "text": "Playground", "url": "/playground/" },
@@ -14,6 +15,7 @@
       "title": "Start here",
       "items": [
         { "text": "Documentation home", "url": "/docs/" },
+        { "text": "Python flavor for AI agents", "url": "/docs/python-flavor-for-ai/" },
         { "text": "Algebraic effects", "url": "/docs/effects/" },
         { "text": "One model, two backends", "url": "/docs/one-model-two-backends/" },
         { "text": "Python flavor", "url": "/docs/python-flavor/" },
@@ -24,6 +26,7 @@
     {
       "title": "Tutorials",
       "items": [
+        { "text": "CPU profiler", "url": "/docs/tutorials/profiler/" },
         { "text": "All tutorials", "url": "/docs/tutorials/" },
         { "text": "Osprey and Swift (video)", "url": "/docs/tutorials/swift-interop/" }
       ]
@@ -31,6 +34,7 @@
     {
       "title": "Build applications",
       "items": [
+        { "text": "Document your modules", "url": "/docs/documentation/" },
         { "text": "Web apps", "url": "/docs/web-apps/" },
         { "text": "iOS and Android apps", "url": "/docs/mobile-apps/" },
         { "text": "Mac and iPhone apps", "url": "/docs/mac-and-iphone-apps/" },
@@ -50,6 +54,7 @@
     {
       "title": "Language",
       "items": [
+        { "text": "Reactive signals", "url": "/docs/reactive-signals/" },
         { "text": "Language specification", "url": "/spec/language/" },
         { "text": "Feature status", "url": "/status/" },
         { "text": "Keywords", "url": "/docs/keywords/" }
@@ -58,6 +63,7 @@
     {
       "title": "Reference",
       "items": [
+        { "text": "API overview", "url": "/docs/stdlib/" },
         { "text": "Functions", "url": "/docs/functions/" },
         { "text": "Types", "url": "/docs/types/" },
         { "text": "Operators", "url": "/docs/operators/" }

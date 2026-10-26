@@ -7,7 +7,7 @@ const { test, expect } = require("@playwright/test");
 const { PAGES, VIEWPORTS, collectProblems, paintedColours } = require("./helpers");
 
 const SITE = path.resolve(__dirname, "../_site");
-const OSPREY_CODE = /<code([^>]*)class="language-osprey(?:-ml)?"[^>]*>([\s\S]*?)<\/code>/g;
+const OSPREY_CODE = /<code([^>]*)class="language-(?:osprey(?:-ml)?|ospml|osp)"[^>]*>([\s\S]*?)<\/code>/g;
 const COMMENT_TOKEN = /<span class="token comment">[\s\S]*?<\/span>/g;
 const OSPREY_BLOCKS = "pre > code.language-osprey, pre > code.language-osprey-ml";
 
@@ -261,6 +261,39 @@ test.describe("mobile interactions", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(links).toBeHidden();
   });
+});
+
+const orphanedDocs = (sources) => {
+  const pages = new Map(sources.map(([url, html]) => [url, new DOMParser().parseFromString(html, "text/html")]));
+  const reached = new Set(["/docs/"]);
+  for (const url of reached) {
+    for (const link of pages.get(url)?.querySelectorAll("a[href]") || []) {
+      const target = new URL(link.getAttribute("href"), "https://docs.test" + url);
+      if (target.origin === "https://docs.test" && pages.has(target.pathname)) reached.add(target.pathname);
+    }
+  }
+  return [...pages.keys()].filter((url) => !reached.has(url)).sort();
+};
+
+test("every published docs page is reachable from documentation home", async ({ page }) => {
+  const root = path.join(SITE, "docs");
+  const sources = fs.readdirSync(root, { recursive: true }).filter((file) => file.endsWith(".html")).map((file) => [
+    "/docs/" + file.replaceAll(path.sep, "/").replace(/index\.html$/, ""), fs.readFileSync(path.join(root, file), "utf8"),
+  ]);
+  expect(sources.length).toBeGreaterThan(100);
+  expect(await page.evaluate(orphanedDocs, sources)).toEqual([]);
+  expect(await page.evaluate(orphanedDocs, [["/docs/", ""], ["/docs/forgotten/", ""]])).toEqual(["/docs/forgotten/"]);
+});
+
+test("reactive signals is in the Docs submenu and its ML example is highlighted", async ({ page }) => {
+  await page.goto("/docs/reactive-signals/");
+  const menu = page.locator("#site-navigation .nav-group");
+  await menu.locator("summary").click();
+  await expect(menu.getByRole("link", { name: "Reactive signals", exact: true })).toBeVisible();
+  const code = page.locator('pre[data-flavor="ml"] code').filter({ hasText: "signalSnapshot label" });
+  await expect(code).toHaveCount(1);
+  await expect(code.locator(".token.keyword").first()).toBeAttached();
+  expect(await paintedColours(code.locator(".token"))).toBeGreaterThan(1);
 });
 
 const DOC_SECTIONS = ["Start here", "Tutorials", "Build applications", "Packages", "Language", "Reference"];
