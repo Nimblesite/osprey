@@ -17,12 +17,23 @@ function navigationGroup(items, current, pageUrl) {
   return `<li><details class="nav-group" name="site-menu"><summary class="nav-link${active}">${label}</summary><ul class="nav-submenu">${links}</ul></details></li>`;
 }
 
+const longestPrefix = (entries, pageUrl) =>
+  entries.filter(entry => pageUrl.startsWith(entry.url)).sort((a, b) => b.url.length - a.url.length)[0];
+
+// A docs page marks the menu entry of the sidebar section that lists it.
+function currentItem(items, docs, pageUrl) {
+  const listed = docs.flatMap(section => section.items.map(item => ({ url: item.url, landing: section.items[0].url })));
+  const landing = longestPrefix(listed, pageUrl)?.landing;
+  const owner = items.find(item => item.group && item.url === landing);
+  return owner || longestPrefix(items.filter(item => !item.external), pageUrl);
+}
+
 function groupedNavigation(markup, pageUrl) {
-  const data = JSON.parse(readFileSync(source, "utf8")).main;
+  const { main: data, docs } = JSON.parse(readFileSync(source, "utf8"));
   const links = [...markup.matchAll(/<li>\s*(<a\b[\s\S]*?<\/a>)\s*<\/li>/g)];
   if (links.length !== data.length) throw new Error("Theme navigation does not match navigation.json");
   const items = data.map((item, index) => ({ ...item, link: links[index][1] }));
-  const current = items.filter(item => !item.external && pageUrl.startsWith(item.url)).sort((a, b) => b.url.length - a.url.length)[0];
+  const current = currentItem(items, docs, pageUrl);
   const groups = [...new Set(items.map(item => item.group || item.text))];
   return groups.map(group => navigationGroup(items.filter(item => (item.group || item.text) === group), current, pageUrl)).join("");
 }

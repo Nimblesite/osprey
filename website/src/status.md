@@ -30,16 +30,7 @@ The [banking](/docs/web-apps/) and [mobile](/docs/mobile-apps/) examples use the
 
 ## Releases
 
-{% if releases.list.length %}
-| Version | Released | |
-| --- | --- | --- |
-{% for r in releases.list -%}
-| [{{ r.tag }}]({{ r.url }}){% if r.prerelease %} <sup>pre-release</sup>{% endif %} | {{ r.date }} | {% if loop.first %}Latest{% endif %} |
-{% endfor %}
-{% else %}
-The release list was unavailable when this page was built. See
-[GitHub Releases](https://github.com/Nimblesite/osprey/releases).
-{% endif %}
+Every published version is listed on the [Releases](/docs/releases/) page.
 
 ## Implemented foundations
 

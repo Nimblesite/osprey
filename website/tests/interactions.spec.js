@@ -188,14 +188,15 @@ for (const width of [1440, 390]) {
     if (width < 900) await page.locator("#mobile-menu-toggle").click();
     const nav = page.locator("#site-navigation");
     await expect(nav.locator("summary", { hasText: "Tools" })).toHaveCount(0);
-    for (const [label, url] of [["Playground", "/playground/"], ["Benchmarks", "/benchmarks/"]]) {
+    for (const [label, url] of [["Playground", "/playground/"], ["Blog", "/blog/"], ["Discord", "https://discord.gg/faH4xjd5zh"]]) {
       const link = nav.locator(":scope > li > a", { hasText: label });
       await expect(link).toBeVisible();
       await expect(link).toHaveAttribute("href", url);
     }
+    await expect(nav.locator(":scope > li > a", { hasText: "Benchmarks" })).toHaveCount(0);
     await nav.locator("summary", { hasText: "Docs" }).click();
-    await nav.getByRole("link", { name: "Install Osprey", exact: true }).click();
-    await expect(page).toHaveURL(/\/docs\/installation\/$/);
+    await nav.getByRole("link", { name: "Packages", exact: true }).click();
+    await expect(page).toHaveURL(/\/docs\/package-manager\/$/);
   });
 }
 
@@ -206,10 +207,10 @@ test.describe("desktop interactions", () => {
     await page.goto("/");
     await expect(page.locator("#site-navigation > li")).toHaveCount(5);
     await page.locator(".nav-group > summary", { hasText: "Docs" }).click();
-    await page.getByRole("link", { name: "Language specification", exact: true }).click();
-    await expect(page).toHaveURL(/\/spec\/$/);
+    await page.locator(".nav-submenu").getByRole("link", { name: "Language", exact: true }).click();
+    await expect(page).toHaveURL(/\/spec\/language\/$/);
     await page.locator(".nav-group > summary", { hasText: "Docs" }).click();
-    await page.getByRole("link", { name: "Documentation home", exact: true }).first().click();
+    await page.locator(".nav-submenu").getByRole("link", { name: "Start here", exact: true }).click();
     await expect(page).toHaveURL(/\/docs\/$/);
   });
 
@@ -221,7 +222,8 @@ test.describe("desktop interactions", () => {
     await summary.focus();
     await page.keyboard.press("Enter");
     await expect(docs.getByRole("link").first()).toBeVisible();
-    await page.locator(".hero-title").click();
+    // The open menu overlays the title's centre; click its corner, outside the menu.
+    await page.locator(".hero-title").click({ position: { x: 8, y: 8 } });
     await expect(docs).not.toHaveAttribute("open", "");
     await summary.click();
     await page.keyboard.press("Escape");
@@ -236,8 +238,8 @@ test.describe("desktop interactions", () => {
       await page.goto("/");
       const nav = page.locator("#site-navigation");
       await nav.locator("summary", { hasText: "Docs" }).click();
-      await nav.getByRole("link", { name: "Install Osprey", exact: true }).click();
-      await expect(page).toHaveURL(/\/docs\/installation\/$/);
+      await nav.getByRole("link", { name: "Tutorials", exact: true }).click();
+      await expect(page).toHaveURL(/\/docs\/tutorials\/$/);
       await context.close();
     }
   });

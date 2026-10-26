@@ -71,6 +71,10 @@ html:has(.home) { scroll-behavior: auto; }
 .home .mobile-gallery { transform: rotate(-2deg); }
 .home .mobile-gallery .mobile-capture:nth-child(2) { margin-top: 3rem; }
 .home .mobile-actions { align-items: center; }
+.community-section { border-top: 1px solid #77d7f425; background: radial-gradient(ellipse at 85% 100%, #77d7f414, transparent 60%); }
+.community-cta { display: flex; align-items: flex-end; justify-content: space-between; gap: 3rem; flex-wrap: wrap; }
+.community-cta .section-heading { margin-bottom: 0; }
+.community-actions { display: flex; align-items: center; gap: 2rem; flex-wrap: wrap; }
 .home-install { text-align: left; background: radial-gradient(ellipse at 50% 110%, #77d7f418, transparent 65%); padding-block: 6rem; }
 .home-install .section-title { text-align: left; font-size: clamp(3rem, 7vw, 6rem); font-weight: 500; letter-spacing: -0.06em; }
 .home-install .section-subtitle { margin-left: 0; text-align: left; }
@@ -114,6 +118,7 @@ html:has(.home) { scroll-behavior: auto; }
   .home .mobile-gallery { transform: none; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
   .home .mobile-gallery figcaption span { font-size: 0.7rem; }
   .home-install { padding-block: 4rem; }
+  .community-actions .btn { width: 100%; justify-content: center; }
 }
 /* Motion keeps the final layout visible without scripts or animation support. */
 .overview-film { margin: 0; align-self: center; }
@@ -134,10 +139,10 @@ html:has(.home) { scroll-behavior: auto; }
   .home .hero-footnote { --arrive-delay: 360ms; }
   .home.motion-ready .flight-film video { animation: film-in 1100ms ease-out both; }
   .home.motion-ready .hero-code [data-source-flavor]:not([hidden]) { animation: film-in 180ms ease-out; }
-  .home :is(.hero-actions .btn, .text-link, .deployment-target h3) > span { transition: transform 180ms ease; }
-  .home :is(.hero-actions .btn, .text-link):focus-visible > span { transform: translateX(3px); }
+  .home :is(.hero-actions .btn, .community-actions .btn, .text-link, .deployment-target h3) > span { transition: transform 180ms ease; }
+  .home :is(.hero-actions .btn, .community-actions .btn, .text-link):focus-visible > span { transform: translateX(3px); }
   @media (hover: hover) {
-    .home :is(.hero-actions .btn, .text-link, .deployment-target):hover span { transform: translateX(3px); }
+    .home :is(.hero-actions .btn, .community-actions .btn, .text-link, .deployment-target):hover span { transform: translateX(3px); }
   }
   @keyframes arrive { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes film-in { from { opacity: 0.35; } to { opacity: 1; } }

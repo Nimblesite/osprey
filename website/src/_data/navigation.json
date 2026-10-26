@@ -1,12 +1,14 @@
 {
   "main": [
-    { "text": "Documentation home", "url": "/docs/", "group": "Docs" },
-    { "text": "Algebraic effects", "url": "/docs/effects/", "group": "Docs" },
-    { "text": "Language specification", "url": "/spec/", "group": "Docs" },
-    { "text": "Install Osprey", "url": "/docs/installation/", "group": "Docs" },
+    { "text": "Start here", "url": "/docs/", "group": "Docs" },
+    { "text": "Tutorials", "url": "/docs/tutorials/", "group": "Docs" },
+    { "text": "Build applications", "url": "/docs/web-apps/", "group": "Docs" },
+    { "text": "Packages", "url": "/docs/package-manager/", "group": "Docs" },
+    { "text": "Language", "url": "/spec/language/", "group": "Docs" },
+    { "text": "Reference", "url": "/docs/stdlib/", "group": "Docs" },
     { "text": "Playground", "url": "/playground/" },
-    { "text": "Benchmarks", "url": "/benchmarks/" },
     { "text": "Blog", "url": "/blog/" },
+    { "text": "Discord", "url": "https://discord.gg/faH4xjd5zh", "external": true },
     { "text": "GitHub", "url": "https://github.com/Nimblesite/osprey", "external": true }
   ],
   "docs": [
@@ -25,20 +27,20 @@
     {
       "title": "Tutorials",
       "items": [
-        { "text": "CPU profiler", "url": "/docs/tutorials/profiler/" },
         { "text": "All tutorials", "url": "/docs/tutorials/" },
+        { "text": "CPU profiler", "url": "/docs/tutorials/profiler/" },
         { "text": "Osprey and Swift (video)", "url": "/docs/tutorials/swift-interop/" }
       ]
     },
     {
       "title": "Build applications",
       "items": [
-        { "text": "Document your modules", "url": "/docs/documentation/" },
         { "text": "Web apps", "url": "/docs/web-apps/" },
         { "text": "iOS and Android apps", "url": "/docs/mobile-apps/" },
         { "text": "Mac and iPhone apps", "url": "/docs/mac-and-iphone-apps/" },
-        { "text": "Playground", "url": "/playground/" },
         { "text": "WebAssembly studio", "url": "/wasm/" },
+        { "text": "Playground", "url": "/playground/" },
+        { "text": "Document your modules", "url": "/docs/documentation/" },
         { "text": "Hunt for bugs", "url": "/docs/hunt/" }
       ]
     },
@@ -53,10 +55,10 @@
     {
       "title": "Language",
       "items": [
-        { "text": "Reactive signals", "url": "/docs/reactive-signals/" },
         { "text": "Language specification", "url": "/spec/language/" },
-        { "text": "Feature status", "url": "/status/" },
-        { "text": "Keywords", "url": "/docs/keywords/" }
+        { "text": "Keywords", "url": "/docs/keywords/" },
+        { "text": "Reactive signals", "url": "/docs/reactive-signals/" },
+        { "text": "Feature status", "url": "/status/" }
       ]
     },
     {
@@ -65,7 +67,9 @@
         { "text": "API overview", "url": "/docs/stdlib/" },
         { "text": "Functions", "url": "/docs/functions/" },
         { "text": "Types", "url": "/docs/types/" },
-        { "text": "Operators", "url": "/docs/operators/" }
+        { "text": "Operators", "url": "/docs/operators/" },
+        { "text": "Benchmarks", "url": "/benchmarks/" },
+        { "text": "Releases", "url": "/docs/releases/" }
       ]
     }
   ],
@@ -96,6 +100,7 @@
       "title": "Community",
       "items": [
         { "text": "Blog", "url": "/blog/" },
+        { "text": "Discord", "url": "https://discord.gg/faH4xjd5zh" },
         { "text": "GitHub", "url": "https://github.com/Nimblesite/osprey" },
         { "text": "Issues", "url": "https://github.com/Nimblesite/osprey/issues" }
       ]
