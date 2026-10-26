@@ -29,8 +29,8 @@ _profiler_ui: $(PROFILER_UI_BUILT)
 REGISTRY_CLIENT_SOURCES := $(shell find packages/manager -type f \( -name '*.osp' -o -name 'osprey.toml' \))
 # `--quiet` skips the warning pass: the redundant-annotation oracle re-infers
 # the whole program per proof, which on the client's 22k lines is the
-# difference between minutes and the CI job timeout. `make lint` still
-# reports the warnings of every package source.
+# difference between minutes and the CI job timeout. Package warnings are
+# the editor's and `osprey --check`'s to show; a packaging build only ships.
 target/osprey-pkg: $(BIN) $(REGISTRY_CLIENT_SOURCES)
 	$(BIN) build packages/manager/cli --quiet -o $@
 

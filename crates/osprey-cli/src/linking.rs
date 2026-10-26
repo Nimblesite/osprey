@@ -141,7 +141,8 @@ pub(crate) fn unscoped_link_directive(source: &str) -> Option<String> {
 /// Search the conventional install/build locations for a runtime static lib:
 /// the working directory's repo layout, then next to the `osprey` executable
 /// and below each of its ancestors (covering arbitrary in-workspace Cargo
-/// target/profile nesting and release-tarball layouts), the compile-time
+/// target/profile nesting, release-tarball layouts and an installed
+/// `<prefix>/bin` + `<prefix>/lib` pair such as Homebrew's), the compile-time
 /// workspace as a development fallback, then the system lib dir.
 pub(crate) fn find_runtime_lib(lib: &str) -> Option<String> {
     let executable_dir = std::env::current_exe()
@@ -220,7 +221,7 @@ pub(super) fn runtime_lib_candidates(lib: &str, executable_dir: Option<&Path>) -
             roots.extend(library_paths(
                 ancestor,
                 lib,
-                &["compiler/lib", "compiler/bin", "bin"],
+                &["compiler/lib", "compiler/bin", "bin", "lib"],
             ));
         }
     }
@@ -343,5 +344,33 @@ mod tests {
         ] {
             assert!(!needs_libm(ir), "{ir}");
         }
+    }
+}
+
+#[cfg(test)]
+mod install_layout_tests {
+    use super::runtime_lib_candidates;
+    use std::path::Path;
+
+    #[test]
+    fn a_homebrew_prefix_lib_beside_bin_is_searched() {
+        // `brew install` lays the formula out as `<prefix>/bin/osprey` and
+        // `<prefix>/lib/lib*.a`, and links both into the Homebrew prefix. A
+        // lookup that only knows `bin` and `compiler/{bin,lib}` fails the
+        // very first native link on an installed compiler (issue #304).
+        let bin = Path::new("/opt/homebrew/Cellar/osprey/0.22.0/bin");
+        let candidates = runtime_lib_candidates("libfiber_runtime_gc.a", Some(bin));
+        assert!(
+            candidates.contains(
+                &"/opt/homebrew/Cellar/osprey/0.22.0/lib/libfiber_runtime_gc.a".to_owned()
+            ),
+            "{candidates:#?}"
+        );
+        let linked = Path::new("/opt/homebrew/bin");
+        let candidates = runtime_lib_candidates("libosprey_runtime_macos.a", Some(linked));
+        assert!(
+            candidates.contains(&"/opt/homebrew/lib/libosprey_runtime_macos.a".to_owned()),
+            "{candidates:#?}"
+        );
     }
 }
