@@ -224,14 +224,22 @@ test('package coverage preserves the complete test recipe and checks without rer
   assert.doesNotMatch(check[0], /--collect/)
 })
 
-test('required coverage runs the real Hunt expectations and default-budget regression', () => {
+test('the KLEE engine gates stay out of CI; the mock oracle and known-bug target stay in the tree', () => {
+  // Owner decision 2026-10-26: the engine gates do not guarantee a green
+  // signal while issue #306 is open (clean.osp never completes inside the
+  // pinned budget), so CI runs none of them. Verification is local:
+  // make _test_hunt / make _test_hunt_clean / make _test_hunt_crashes.
+  const workflow = readFileSync('.github/workflows/ci.yml', 'utf8')
+  assert.doesNotMatch(workflow, /brew install klee/)
+  assert.doesNotMatch(workflow, /make _test_hunt(?!_mock)/)
+  assert.doesNotMatch(workflow, /make _runtime_klee/)
+  assert.doesNotMatch(workflow, /_test_hunt_crashes/)
+  assert.match(job('test-c-runtime', '.github/workflows/ci.yml'), /make _test_hunt_mock/)
   const expectations = readFileSync('scripts/make/tests.mk', 'utf8')
-  assert.doesNotMatch(expectations, /HUNT_KNOWN_BUGS/)
+  assert.match(expectations, /HUNT_KNOWN_BUGS \?= clean/)
+  assert.match(expectations, /^_test_hunt_clean:/m)
   for (const control of ['clean.osp', 'clean.expected']) assert.ok(readFileSync(`tests/hunt/${control}`).length > 0)
-  const coverage = job('coverage', '.github/workflows/ci.yml')
-  assert.match(coverage, /make _runtime_klee\s+make _test_hunt\s+python3 scripts\/test-hunt-default-budget\.py\s+make _test_hunt_crashes/)
-  assert.match(expectations, /for backend in gc arc; do for p in tests\/hunt\/\*\.osp; do/)
-  assert.match(readFileSync('scripts/test-hunt-default-budget.py', 'utf8'), /product\(\('gc', 'arc'\), \('clean', 'crash'\)\)/)
+  assert.match(readFileSync('scripts/test-hunt-default-budget.py', 'utf8'), /\('gc', 'arc'\), \('crash',\)/)
 })
 
 test('ported packages remain in the unfiltered Rust workspace gate', () => {

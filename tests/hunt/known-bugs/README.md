@@ -1,5 +1,3 @@
-> Historical experiment record: the consolidation preserves the original CI gates and clean-program assertions. Statements below about skipped checks or the former feature branch do not describe the active branch. Known failures remain failures.
-
 # Known bugs — excluded from the CI expectation suite
 
 This directory documents known bugs. `tests/hunt/clean.osp` itself stays in `tests/hunt/` (checkpoint tooling owns that tree); `make _test_hunt` skips it by name via `HUNT_KNOWN_BUGS ?= clean` in `scripts/make/tests.mk`, because its **complete-exploration** expectation cannot be met inside the pinned budget. This is a performance defect, not a correctness one: the findings oracle is trivially satisfied; the gate fails on incomplete paths.

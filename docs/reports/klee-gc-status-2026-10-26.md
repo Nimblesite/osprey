@@ -1,5 +1,3 @@
-> Historical experiment record: the consolidation preserves the original CI gates and clean-program assertions. Statements below about skipped checks or the former feature branch do not describe the active branch. Known failures remain failures.
-
 # KLEE / Hunt status — GC backend and CI (2026-10-26)
 
 Owner: OspreyKleePi1 (pi). Scope: plan 0034 (`docs/plans/0034-symbolic-execution.md`), Phases 3 completion.
