@@ -68,7 +68,7 @@ $(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makef
 	  $(CC) $(B) -include runtime/osp_arc_shim.h runtime/json_text.c           -o bin/arc/json_text.o && \
 	  $(CC) $(B) -include runtime/osp_arc_shim.h runtime/json_codec.c          -o bin/arc/json_codec.o && \
 	  $(CC) $(A) -include runtime/osp_arc_shim.h runtime/file_runtime.c        -o bin/arc/file_runtime.o && \
-	  $(CC) -c -fPIC -O2 $(WARN_MAX) -Wpedantic -std=c11 -D_GNU_SOURCE runtime/fiber_runtime.c -o bin/fiber_runtime.o && \
+	  $(CC) -c -fPIC -O2 $(FRAME_POINTERS) $(WARN_MAX) -Wpedantic -std=c11 -D_GNU_SOURCE runtime/fiber_runtime.c -o bin/fiber_runtime.o && \
 	  $(CC) $(A) runtime/system_runtime.c       -o bin/system_runtime.o && \
 	  $(CC) $(A) runtime/file_runtime.c         -o bin/file_runtime.o && \
 	  $(CC) $(A) runtime/effects_runtime.c      -o bin/effects_runtime.o && \
@@ -97,7 +97,7 @@ $(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makef
 	  $(CC) $(B) runtime/profiler_dump.c        -o bin/profiler_dump.o && \
 	  $(CC) $(B) -DOSP_RUNTIME_VERSION='"$(OSPREY_VERSION)"' runtime/profiler_stream.c -o bin/profiler_stream.o && \
 	  $(CC) $(B) runtime/profiler_endpoint.c     -o bin/profiler_endpoint.o && \
-	  $(CC) -c -fPIC -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong $(WARN_MAX) \
+	  $(CC) -c -fPIC -O2 $(FRAME_POINTERS) -D_FORTIFY_SOURCE=2 -fstack-protector-strong $(WARN_MAX) \
 	        -Wformat -Werror=format-security -Werror=implicit-function-declaration \
 	        -Werror=incompatible-pointer-types -Werror=int-conversion -Warray-bounds -ftrapv \
 	        -fno-delete-null-pointer-checks -fno-strict-overflow -fno-strict-aliasing \

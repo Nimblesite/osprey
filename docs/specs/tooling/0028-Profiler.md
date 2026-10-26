@@ -39,6 +39,15 @@ registration, bounded frame size, depth cap 128. Any failed check ends the
 walk. Frame 0 is the precise PC. On arm64, `lr` is recorded and deduplicated
 against the first chained return address, and PAC bits are stripped.
 
+The walk only works through frames that keep a frame pointer, so every unit
+of the C runtime is compiled with `-fno-omit-frame-pointer`
+(`scripts/make/config.mk`, `FRAME_POINTERS`). Osprey code already pins
+`"frame-pointer"="all"` in its IR. Without the runtime half, a sample taken
+inside the collector or a string allocation has no Osprey ancestor: on x86-64
+Linux, where the C compiler drops the pointer at `-O2`, such a stack keeps only
+runtime frames, is reported as native-only, and the Osprey caller's share
+shrinks by exactly the time it spent in the runtime.
+
 ## [PROF-COLLECT-REGISTRY] Thread registry
 
 `osp_prof_thread_register(fiber_id, label)` / `osp_prof_thread_unregister()`

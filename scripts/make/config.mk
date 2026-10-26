@@ -143,7 +143,13 @@ RUST_LOG     = $(LOG_DIR)/rust-test.log
 WARN     ?= -Werror -Wall -Wextra -Wshadow -Wpointer-arith -Wvla -Wundef -Wredundant-decls -Wcast-qual -Wcast-align -Wold-style-definition -Wbad-function-cast
 WARN_MAX ?= $(WARN) -Wstrict-prototypes -Wwrite-strings
 # C runtime compile flag profiles (hardened; mirror the original recipes).
-A    ?= -c -fPIC -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong $(WARN_MAX) -ftrapv -D_GNU_SOURCE
+# -fno-omit-frame-pointer is load-bearing: the profiler captures stacks by a
+# frame-pointer chain walk only [PROF-COLLECT-UNWIND], so every runtime frame
+# must stay chained or a sample taken inside the runtime (the collector, a
+# string allocation) loses its Osprey callers and is charged to nobody. gcc on
+# x86-64 omits the pointer at -O2 by default; arm64 keeps it regardless.
+FRAME_POINTERS ?= -fno-omit-frame-pointer
+A    ?= -c -fPIC -O2 $(FRAME_POINTERS) -D_FORTIFY_SOURCE=2 -fstack-protector-strong $(WARN_MAX) -ftrapv -D_GNU_SOURCE
 B    ?= $(A) -std=c11
 OSSL ?= -DOPENSSL_SUPPRESS_DEPRECATED -DOPENSSL_API_COMPAT=30000 -Wno-deprecated-declarations
 # C unit-test flag profile: the archive hardening core, but linking an
