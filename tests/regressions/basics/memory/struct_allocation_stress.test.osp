@@ -31,6 +31,16 @@ fn exactArithmetic(work) = {
 // every backend on every `make test`.
 
 type Particle = { id: int, mass: int, spin: int }
+type Kept<T> = { items: List<T> }
+
+fn keepItems(items, keep) = if keep { Kept { items: items } } else { Kept { items: [] } }
+fn keepSuccess(items, ok) = {
+    let selected = if ok { Success { value: 1 } } else { Error { message: "absent" } }
+    match selected {
+        Success => Kept { items: items }
+        Error => Kept { items: [] }
+    }
+}
 
 let COUNT = 100000
 
@@ -75,7 +85,11 @@ fn structAllocationCase() = {
         energy(sample) == 16,
         bumpedOnce.mass == 13,
         !heavy(forge(50000)),
-        heavy(forge(50001))
+        heavy(forge(50001)),
+        length(keepItems(listAppend([], 7), false).items) == 0,
+        (listGet(keepItems(listAppend([], 7), true).items, 0) ?: 0) == 7,
+        length(keepSuccess(listAppend([], 9), false).items) == 0,
+        (listGet(keepSuccess(listAppend([], 9), true).items, 0) ?: 0) == 9
     ])
 }
 

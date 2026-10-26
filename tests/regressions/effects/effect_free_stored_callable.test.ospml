@@ -1,0 +1,35 @@
+(** A callable stored in a record field or a list element and invoked through
+    an eager callback slot keeps its provenance: `map`'s element crosses into
+    `forEach`, `forEachList` and `foldList`, and each hands the callback the
+    element it will receive, so an effect-free stored closure resolves instead
+    of failing closed as an unproven dynamic call. An effectful stored function
+    still flows its own operation to the entry, where a handler discharges it.
+    Implements [EFFECTS-PROVENANCE] and [EFFECTS-STATIC-DISCHARGE]. *)
+
+type Field =
+    label : string
+    edit : (string) -> string
+
+fields = map (range 0 2) (\_ => Field(label = "f", edit = \t => t + "!"))
+
+forEach fields (\field => print (field.edit field.label))
+
+closures = [(\x => x + 1.0), (\x => x + 2.0)]
+
+forEachList closures (\f => print (toString (f 1.0)))
+
+print (toString (foldList closures 0.0 (\(acc, f) => acc + f 1.0)))
+
+effect Alarm
+    ring : Unit => int
+
+ring () = perform Alarm.ring ()
+
+armed = map (range 0 2) (\_ => ring)
+
+handledTotal =
+    handle Alarm
+        ring => 7
+    fold armed 0.0 (\(acc, r) => acc + toFloat (r ()))
+
+print (toString handledTotal)

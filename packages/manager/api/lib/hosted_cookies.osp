@@ -1,0 +1,94 @@
+namespace registry_api;
+
+/// Strict selection from a Cookie header value: exact-name lookup with
+/// duplicate and malformed rejection. A selected cookie is opaque data, never
+/// authentication; the root wiring validates sessions server-side.
+/// Implements [PACKAGE-HOSTED-AUTH].
+module HostedCookies {
+    let rejectStatus = 400
+
+    /// One strict cookie pair.
+    type Pair = { name: string, value: string }
+
+    /// The parsed pairs of a Cookie header value, or a typed rejection.
+    type Pairs = PairsOk { pairs: List<Pair> } | PairsBad { status: int, code: string }
+
+    /// A selection outcome: found, absent, or a typed rejection.
+    export type Selection = Found { value: string } | Missing | Reject { status: int, code: string }
+
+    fn visible(b) = b >= 33 && b < 127
+    fn nameByte(b) = (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b == 95 || b == 45
+    fn allBytes(s, ok) = fold(range(0, byteLength(s)), true, fn(good, i) => good && ok(byteAt(s, i) ?: 0))
+
+    /// One segment after the separator: exactly one optional leading space,
+    /// then `name=value`; the value may itself contain `=` (base64).
+    fn parsePair(segment) = match indexOf(segment, "=") {
+        Error => PairsBad { status: rejectStatus, code: "req.cookie-malformed" }
+        Success { value } => {
+            let colon = value
+            let name = take(segment, colon)
+            let text = drop(segment, colon + 1)
+            if byteLength(name) == 0 || byteLength(text) == 0 { PairsBad { status: rejectStatus, code: "req.cookie-malformed" } }
+            else if !allBytes(name, nameByte) || !allBytes(text, visible) { PairsBad { status: rejectStatus, code: "req.cookie-malformed" } }
+            else { PairsOk { pairs: [Pair { name: name, value: text }] } }
+        }
+    }
+
+    /// A segment with at most one leading space removed; a second leading
+    /// space is part of the name and therefore malformed.
+    fn segmentBody(segment) = if startsWith(segment, " ") { drop(segment, 1) } else { segment }
+
+    fn segmentOk(segment) = match parsePair(segment) {
+        PairsOk => true
+        PairsBad => false
+    }
+
+    fn segmentPairs(segment) = match parsePair(segment) {
+        PairsOk { pairs } => pairs
+        PairsBad => [Pair { name: "", value: "" }]
+    }
+
+    /// The strict pairs of a Cookie header value, or the first rejection.
+    export fn pairs(cookie) = {
+        let segments = mapList(split(cookie, ";") ?: [], segmentBody)
+        if length(segments) == 0 || foldList(segments, false, fn(bad, segment) => bad || !segmentOk(segment)) {
+            PairsBad { status: rejectStatus, code: "req.cookie-malformed" }
+        } else {
+            PairsOk { pairs: foldList(mapList(segments, segmentPairs), [], fn(acc, one) => listConcat(acc, one)) }
+        }
+    }
+
+    fn matches(found, wanted) = foldList(found, 0, fn(count, pair) => if pair.name == wanted { count + 1 } else { count })
+    fn firstOf(found, wanted) = foldList(found, "", fn(acc, pair) => if pair.name == wanted { pair.value } else { acc })
+
+    /// The single cookie named exactly `name`; duplicates reject, absence is
+    /// `Missing`, and any malformed segment rejects the whole header.
+    export fn select(cookie, wanted) = match pairs(cookie) {
+        PairsBad { status, code } => Reject { status: status, code: code }
+        PairsOk { pairs } => if matches(pairs, wanted) > 1 {
+            Reject { status: rejectStatus, code: "req.duplicate-cookie" }
+        } else if matches(pairs, wanted) == 0 {
+            Missing
+        } else {
+            Found { value: firstOf(pairs, wanted) }
+        }
+    }
+
+    /// The selected value, or "" for absence or rejection.
+    export fn foundValue(selection) = match selection {
+        Found { value } => value
+        _ => ""
+    }
+
+    /// The rejection status, or 0 when nothing was rejected.
+    export fn statusOf(selection) = match selection {
+        Reject { status, code } => status
+        _ => 0
+    }
+
+    /// The rejection code, or "" when nothing was rejected.
+    export fn codeOf(selection) = match selection {
+        Reject { status, code } => code
+        _ => ""
+    }
+}

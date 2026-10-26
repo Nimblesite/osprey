@@ -1,0 +1,27 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "Output artifacts sorted by path.",
+  "type": "OutputLayoutProjection",
+  "value": {
+    "artifacts": [
+      {
+        "path": "out/report",
+        "kind": {
+          "Executable": {}
+        },
+        "executable": true
+      },
+      {
+        "path": "out/report.sbom.json",
+        "kind": {
+          "Sbom": {}
+        },
+        "executable": false
+      }
+    ]
+  },
+  "canonical": "{\"artifacts\":[{\"executable\":true,\"kind\":{\"Executable\":{}},\"path\":\"out/report\"},{\"executable\":false,\"kind\":{\"Sbom\":{}},\"path\":\"out/report.sbom.json\"}]}",
+  "canonicalLength": 150,
+  "domain": "osprey.output-layout.v1",
+  "digest": "sha256:4ba1f526fd9e2e4ebe274e562660205d789d19cdaf2b42825cd3f6de9b52191e"
+}

@@ -279,7 +279,7 @@ The goal is not less error handling. It is fewer errors that were never handled.
 
 ## Does Osprey enforce error handling today?
 
-Osprey is alpha software, so here is exactly what works today.
+Osprey is actively evolving, so here is exactly what works today.
 
 The compiler checks the values passed into and returned from effect operations. It runs handlers around a block of code and, in native builds, allows a handler to resume paused work once. For known `Result` values, it checks that matches cover every case and normally prevents code from grabbing the success value directly. The examples above compile and run today, and every linked file under `tests/regressions/effects` now has both a Default and an ML regression test.
 
@@ -287,7 +287,7 @@ Important limits include:
 
 - An `Error` currently always carries a string message. Although signatures use `Result<T, E>`, `E` cannot yet be an arbitrary error value. That is why these examples use `Result<T, string>`.
 - Missing handlers are rejected at the application boundary, including requests through helpers, callbacks and fibers. Callable handlers and rest-of-block `handle` are supported in both flavors. Dynamic control handlers require the native target; WebAssembly and mobile use value handlers or static interpretation. General quantified effect rows and reusable continuations remain unfinished.
-- The compiler automatically extracts the success value from a `Result` in six convenience cases. If the value is actually an `Error`, the current code can discard that error and produce a zero or default value. Osprey therefore does **not** yet force explicit handling of every `Result` on every path. This is an alpha safety gap to fix, not intended language behaviour.
+- The compiler automatically extracts the success value from a `Result` in six convenience cases. If the value is actually an `Error`, the current code can discard that error and produce a zero or default value. Osprey therefore does **not** yet force explicit handling of every `Result` on every path. This is a safety gap to fix, not intended language behaviour.
 Operation arity, whole `Result` transport, managed handler answers and curried ML calls have current regression coverage. See [plan 0016](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0016-algebraic-effects-and-handlers.md) for delivery evidence and remaining ownership work, and the [effects guide](/docs/effects/) for the replacement handler syntax.
 
 ## Stop hiding the second return channel

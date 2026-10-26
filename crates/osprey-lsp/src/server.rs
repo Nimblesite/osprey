@@ -22,6 +22,8 @@ use crate::model::{At, Query, Report};
 use crate::profiler::{self, ProfilerHost};
 use crate::wire;
 
+mod work;
+
 /// The fixed wire position encoding advertised and used throughout.
 /// Implements [LSP-ENCODING].
 const ENCODING: PositionEncoding = PositionEncoding::Utf16;
@@ -46,6 +48,12 @@ pub enum ServerError {
     /// A fatal transport failure.
     #[error(transparent)]
     Framing(#[from] FramingError),
+    /// The ordered analysis worker stopped before accepting a message.
+    #[error("language server analysis worker stopped: {0}")]
+    AnalysisStopped(String),
+    /// Closing the session preserves edits rather than silently dropping work.
+    #[error("language server analysis backlog limit reached; restart the session")]
+    AnalysisBacklog,
 }
 
 /// Run the language server over stdin/stdout until the client disconnects or
@@ -70,8 +78,10 @@ async fn serve_on(reader: BoxedReader, writer: &SharedWriter) -> Result<(), Serv
     }));
     let dispatcher = build_dispatcher(&engine);
     let host = ProfilerHost::new(writer);
+    let queue = work::Queue::start(&engine, &bus, &dispatcher, writer);
     let mut reader = BufReader::new(reader);
-    let served = serve(&mut reader, writer, &engine, &bus, &dispatcher, &host).await;
+    let served = serve(&mut reader, &queue, &host).await;
+    drop(queue);
     host.shutdown().await;
     served
 }
@@ -80,10 +90,7 @@ async fn serve_on(reader: BoxedReader, writer: &SharedWriter) -> Result<(), Serv
 /// Implements [LSP-LIFECYCLE].
 async fn serve(
     reader: &mut BufReader<BoxedReader>,
-    writer: &SharedWriter,
-    engine: &OspreyEngine,
-    bus: &lspkit_server::DiagnosticsBus,
-    dispatcher: &Dispatcher,
+    queue: &work::Queue,
     host: &ProfilerHost,
 ) -> Result<(), ServerError> {
     loop {
@@ -92,25 +99,8 @@ async fn serve(
             Err(FramingError::Closed) => return Ok(()),
             Err(other) => return Err(other.into()),
         };
-        let params = message.params.unwrap_or(Value::Null);
-        match (message.id, message.method) {
-            (Some(id), Some(method)) if host.dispatch(&id, &method, &params) => {}
-            (Some(id), Some(method)) => {
-                let reply = request(dispatcher, &id, &method, params).await;
-                let _ = writer.write_message(&reply).await;
-            }
-            (None, Some(method)) => {
-                if method == "exit" {
-                    return Ok(());
-                }
-                if method == "$/cancelRequest" {
-                    if let Some(id) = cancel_id(&params) {
-                        host.cancel(&id);
-                    }
-                }
-                notify(engine, bus, dispatcher, &method, params).await;
-            }
-            _ => {}
+        if queue.route(message, host).await? {
+            return Ok(());
         }
     }
 }

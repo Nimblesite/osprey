@@ -1,12 +1,16 @@
 /* ============================================================================
    Osprey site styles — entry point loaded by the techdoc shell AFTER its
    structural (colour-free) CSS. Provides the full visual design.
-   Order: fonts → tokens → base → components → syntax.
+   Order: fonts → tokens → base → shared styles → syntax.
    ============================================================================ */
 @import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
 @import url("/css/variables.css");
 @import url("/css/base.css");
 @import url("/css/components.css");
+@import url("/css/studio.css");
+@import url("/css/prose.css");
+@import url("/css/blog.css");
+@import url("/css/responsive.css");
 @import url("/css/syntax.css");
 @import url("/css/video.css");
 @import url("/css/mobile.css");

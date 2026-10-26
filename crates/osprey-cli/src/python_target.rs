@@ -131,7 +131,7 @@ pub(crate) fn build(cli: &Cli, input: &CompilationInput, out: &Path) -> Result<(
     let scratch = Scratch::new(input.debug_path(), "python")?;
     let (ll, bridge) = write_sources(&scratch, &ir, &abi)?;
     let library = scratch.path.join("library.so");
-    link(&ll, &bridge, &library, &ir, input.source())?;
+    link(&ll, &bridge, &library, &ir, input.source(), &cli.memory)?;
     publish(
         &library,
         out,
@@ -165,7 +165,14 @@ fn validate_output(out: &Path) -> Result<(), ExitCode> {
     Ok(())
 }
 
-fn link(ll: &Path, bridge: &Path, out: &Path, ir: &str, source: &str) -> Result<(), ExitCode> {
+fn link(
+    ll: &Path,
+    bridge: &Path,
+    out: &Path,
+    ir: &str,
+    source: &str,
+    memory: &str,
+) -> Result<(), ExitCode> {
     let mut command = Command::new(crate::native::c_compiler());
     let _ = command
         .args([ll, bridge])
@@ -180,6 +187,6 @@ fn link(ll: &Path, bridge: &Path, out: &Path, ir: &str, source: &str) -> Result<
     if cfg!(target_os = "linux") {
         let _ = command.arg("-Wl,-z,defs").arg("-Wl,-Bsymbolic");
     }
-    let _ = command.args(crate::linking::link_args(ir, source, "default"));
+    let _ = command.args(crate::linking::link_args(ir, source, memory));
     crate::native::run_build_step(command, ll)
 }

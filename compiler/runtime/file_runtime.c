@@ -23,6 +23,9 @@
 #include <string.h>
 
 #include "io_error.h"
+#ifdef OSP_SYMBOLIC
+#include "klee/hunt_mock.h"
+#endif
 
 #ifdef _WIN32
 #include "osprey_win_compat.h"
@@ -121,7 +124,13 @@ static char *grow_buffer(char *buf, size_t *cap) {
 // ferror afterwards — so the byte count is whatever the stream actually
 // produced and never a seek's opinion of it.
 static char *read_stream(FILE *file, const char *filename) {
+#ifdef OSP_SYMBOLIC
+  // [SYMEX-MOCK-READ-BUFFER] A symbolic write into a 64 KiB allocation sends
+  // the whole array to the solver. No modeled file exceeds its stream cap.
+  size_t cap = osp_hunt_file_buffer_capacity();
+#else
   size_t cap = FILE_READ_CHUNK_BYTES;
+#endif
   size_t len = 0;
   char *content = malloc(cap);
   if (content == NULL) {

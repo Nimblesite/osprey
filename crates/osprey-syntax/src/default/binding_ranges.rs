@@ -44,11 +44,15 @@ fn walk(
     };
     match node.kind() {
         "extern_declaration" | "signature_declaration" => return,
-        "string" | "interpolated_string" => literals.push(crate::fragment_ranges::Literal {
-            range: node.byte_range(),
-            position: position(node),
-            owner_position: owner,
-        }),
+        "string" | "interpolated_string" => {
+            literals.push(crate::fragment_ranges::Literal {
+                range: node.byte_range(),
+                position: position(node),
+                owner_position: owner,
+            });
+            // Fragment mapping already collects nested binders in decoded coordinates.
+            return;
+        }
         "let_declaration" => add_name(node, source, owner, BindingKind::Variable, out),
         "parameter" => add_name(node, source, owner, BindingKind::Parameter, out),
         "handler_params" => {

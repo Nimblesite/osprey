@@ -9,12 +9,42 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { chromium, type Browser, type Frame } from "playwright-core";
 import type { LanguageClient } from "vscode-languageclient/node";
 import { profilerStatusText, type ProcessesProvider, type ProfilerStore } from "@nimblesite/lsp-profiler-ui";
 import type { ProcessList, ProfileReport, StartProfileResult } from "@nimblesite/lsp-profiler-ui/out/src/wire-generated";
-import { closeAllEditors, removeTestDir } from "@nimblesite/lsp-profiler-ui/out/src/testing/webview-contract-helpers";
+import { closeAllEditors, pollUntilResult, removeTestDir } from "@nimblesite/lsp-profiler-ui/out/src/testing/webview-contract-helpers";
 import type { OspreyExtensionApi } from "../../client/src/extension";
 import { extensionRoot, resolveBuiltOsprey } from "./osprey-test-env";
+
+export async function connectEditorBrowser(): Promise<Browser> {
+  const userData = process.env.OSPREY_TEST_USER_DATA;
+  assert.ok(userData, "runner supplies its isolated browser profile");
+  const portFile = path.join(userData, "DevToolsActivePort");
+  await waitFor(() => fs.existsSync(portFile), Boolean, 8000, "editor browser debugging endpoint");
+  const port = Number(fs.readFileSync(portFile, "utf8").split("\n")[0]);
+  assert.ok(Number.isInteger(port) && port > 0);
+  const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
+  for (const context of browser.contexts()) context.setDefaultTimeout(3000);
+  return browser;
+}
+
+
+export async function editorWebviewFrame(browser: Browser, selector: string): Promise<Frame> {
+  const frame = await pollUntilResult({
+    fn: async () => {
+      for (const candidate of browser.contexts().flatMap((context) => context.pages()).flatMap((page) => page.frames())) {
+        if (await candidate.locator(selector).count() > 0) return candidate;
+      }
+      return undefined;
+    },
+    until: (candidate) => candidate !== undefined,
+    timeoutMs: 5000,
+    description: `actual editor webview matching ${selector}`,
+  });
+  assert.ok(frame);
+  return frame;
+}
 
 export const EXTENSION_ID = "nimblesite.osprey";
 

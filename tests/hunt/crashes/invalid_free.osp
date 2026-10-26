@@ -1,0 +1,4 @@
+/// Deliberately frees static storage across the unsafe C boundary [SYMEX-CRASH-GATE].
+extern fn free(value: string) -> Unit
+let line = input()
+if line == "G" { free("not-heap-allocated") } else { print("safe") }

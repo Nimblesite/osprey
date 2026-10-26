@@ -1,0 +1,138 @@
+{
+  "spec": "[PACKAGE-TRUST]",
+  "description": "Compromised-mirror vectors for spec 0030: a compromised mirror, API, CDN or Supabase row cannot make a conforming client activate content whose trusted metadata, digest or log proof fails, though it can withhold updates, deny service or replay still-valid signed state. Each scenario runs through the same pure TufCheck decisions.",
+  "cases": [
+    {
+      "description": "mirror substitutes the release blob with its own bytes",
+      "source": "TUF 1.0 5.6.3 arbitrary software via compromised mirror",
+      "kind": "targetCheck",
+      "expectedLength": 11811,
+      "expectedDigest": "sha256:be76cd09ac8e4ee6d0d987af335529c2e4c8157dace0de1f71c7d2fac94037b1",
+      "servedLength": 11811,
+      "servedDigest": "sha256:5aaa2b736db43eb55ada5316c96dc9c84e74e8fd20306fa7d13c53368f164258",
+      "expect": "tuf.arbitrary-software"
+    },
+    {
+      "description": "mirror truncates the release blob mid-stream",
+      "source": "TUF 1.0 5.6.3 wrong length via compromised mirror",
+      "kind": "targetCheck",
+      "expectedLength": 11811,
+      "expectedDigest": "sha256:be76cd09ac8e4ee6d0d987af335529c2e4c8157dace0de1f71c7d2fac94037b1",
+      "servedLength": 6400,
+      "servedDigest": "sha256:5aaa2b736db43eb55ada5316c96dc9c84e74e8fd20306fa7d13c53368f164258",
+      "expect": "tuf.wrong-length"
+    },
+    {
+      "description": "mirror pads the release blob past its pinned length",
+      "source": "TUF 1.0 5.6.3 endless data via compromised mirror",
+      "kind": "targetCheck",
+      "expectedLength": 11811,
+      "expectedDigest": "sha256:be76cd09ac8e4ee6d0d987af335529c2e4c8157dace0de1f71c7d2fac94037b1",
+      "servedLength": 15907,
+      "servedDigest": "sha256:be76cd09ac8e4ee6d0d987af335529c2e4c8157dace0de1f71c7d2fac94037b1",
+      "expect": "tuf.endless-data"
+    },
+    {
+      "description": "mirror freezes updates by replaying the last timestamp beyond its expiry",
+      "source": "TUF 1.0 5.4.2 indefinite freeze via compromised mirror",
+      "kind": "roleUpdate",
+      "trusted": {
+        "version": 9,
+        "expiresAt": "2026-02-11T00:00:00.000Z",
+        "metadataDigest": "sha256:cfaf71b4d836544b2994794706465ebfaa77f1072274a63730a958060379bdb0"
+      },
+      "served": {
+        "version": 9,
+        "expiresAt": "2026-02-11T00:00:00.000Z",
+        "metadataDigest": "sha256:cfaf71b4d836544b2994794706465ebfaa77f1072274a63730a958060379bdb0"
+      },
+      "now": "2026-02-11T05:00:00.000Z",
+      "thresholdMet": true,
+      "metaVersion": 9,
+      "metaDigest": "sha256:cfaf71b4d836544b2994794706465ebfaa77f1072274a63730a958060379bdb0",
+      "expect": "tuf.expired"
+    },
+    {
+      "description": "mirror rolls the client back to an older snapshot",
+      "source": "TUF 1.0 5.5.3 rollback via compromised mirror",
+      "kind": "roleUpdate",
+      "trusted": {
+        "version": 12,
+        "expiresAt": "2026-02-17T00:00:00.000Z",
+        "metadataDigest": "sha256:5c56334c438a2997b9c326895ea94229b1257ec63d9b4df44766eea75189be1b"
+      },
+      "served": {
+        "version": 11,
+        "expiresAt": "2026-02-10T00:00:00.000Z",
+        "metadataDigest": "sha256:1abac3369c7b8175831bcd3c2527dbe1b4f025363b465a0943c32e05221de59a"
+      },
+      "now": "2026-02-10T06:00:00.000Z",
+      "thresholdMet": true,
+      "metaVersion": 11,
+      "metaDigest": "sha256:1abac3369c7b8175831bcd3c2527dbe1b4f025363b465a0943c32e05221de59a",
+      "expect": "tuf.rollback"
+    },
+    {
+      "description": "mirror pairs a snapshot with a timestamp that lists a different snapshot version",
+      "source": "TUF 1.0 5.5.2 mix-and-match via compromised mirror",
+      "kind": "roleUpdate",
+      "trusted": {
+        "version": 12,
+        "expiresAt": "2026-02-17T00:00:00.000Z",
+        "metadataDigest": "sha256:5c56334c438a2997b9c326895ea94229b1257ec63d9b4df44766eea75189be1b"
+      },
+      "served": {
+        "version": 15,
+        "expiresAt": "2026-02-17T00:00:00.000Z",
+        "metadataDigest": "sha256:46ec4687e14a7bffc50a0f417f8d4d7319c6e20d4a6d3530e3d2850857c3295d"
+      },
+      "now": "2026-02-10T06:00:00.000Z",
+      "thresholdMet": true,
+      "metaVersion": 16,
+      "metaDigest": "sha256:4f45c2dc7cc03bbca3d5a05008da72380ea50fe5601cefa831b3326306ec7a5d",
+      "expect": "tuf.mix-and-match"
+    },
+    {
+      "description": "mirror serves the honestly signed fresh snapshot the timestamp lists",
+      "source": "TUF 1.0 5.5 conforming mirror",
+      "kind": "roleUpdate",
+      "trusted": {
+        "version": 11,
+        "expiresAt": "2026-02-10T00:00:00.000Z",
+        "metadataDigest": "sha256:1abac3369c7b8175831bcd3c2527dbe1b4f025363b465a0943c32e05221de59a"
+      },
+      "served": {
+        "version": 12,
+        "expiresAt": "2026-02-17T00:00:00.000Z",
+        "metadataDigest": "sha256:5c56334c438a2997b9c326895ea94229b1257ec63d9b4df44766eea75189be1b"
+      },
+      "now": "2026-02-10T06:00:00.000Z",
+      "thresholdMet": true,
+      "metaVersion": 12,
+      "metaDigest": "sha256:5c56334c438a2997b9c326895ea94229b1257ec63d9b4df44766eea75189be1b",
+      "expect": ""
+    },
+    {
+      "description": "mirror serves the exact pinned release blob",
+      "source": "TUF 1.0 5.6.3 conforming mirror",
+      "kind": "targetCheck",
+      "expectedLength": 11811,
+      "expectedDigest": "sha256:be76cd09ac8e4ee6d0d987af335529c2e4c8157dace0de1f71c7d2fac94037b1",
+      "servedLength": 11811,
+      "servedDigest": "sha256:be76cd09ac8e4ee6d0d987af335529c2e4c8157dace0de1f71c7d2fac94037b1",
+      "expect": ""
+    },
+    {
+      "description": "mirror replays a root the client has already retired",
+      "source": "TUF 1.0 5.3.3 root rollback via compromised mirror",
+      "kind": "rootUpdate",
+      "trustedVersion": 3,
+      "candidateVersion": 2,
+      "oldSigs": 3,
+      "newSigs": 3,
+      "oldThreshold": 3,
+      "newThreshold": 3,
+      "expect": "tuf.rollback"
+    }
+  ]
+}

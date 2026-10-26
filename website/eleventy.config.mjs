@@ -14,6 +14,7 @@ import { renderToString as renderTypeDiagram } from "typediagram-core";
 // studio page — one grammar, one colour scheme for the language.
 import { ospreyGrammar } from "./src/js/osprey-grammar.mjs";
 import videos from "./lib/videos.mjs";
+import { renderNavigation } from "./lib/navigation.mjs";
 
 const SITE_URL = "https://www.ospreylang.dev";
 const AUTHOR_URL = "https://www.christianfindlay.com/";
@@ -220,6 +221,14 @@ export default function (eleventyConfig) {
     i18n: { defaultLanguage: "en", languages: ["en"] },
   });
 
+  // Keep the dependency's shell, but use one site-owned menu controller.
+  eleventyConfig.addTransform("site-navigation", function (content, outputPath) {
+    if (!outputPath?.endsWith(".html")) return content;
+    return renderNavigation(content, this.page.url)
+      .replace('aria-label="Toggle menu"', 'aria-label="Open menu" aria-expanded="false" aria-controls="site-navigation"')
+      .replace('src="/techdoc/js/main.js"', 'src="/js/main.js"');
+  });
+
   // Register the Osprey grammar so the theme's bundled syntaxhighlight (and the
   // transform below) can colour `.osp` snippets.
   ensureOsprey();
@@ -234,6 +243,9 @@ export default function (eleventyConfig) {
     if (!outputPath || !outputPath.endsWith(".html")) return content;
     ensureOsprey();
     return content.replace(
+      /(class="language-|data-language=")(ospml|osp)(?=")/g,
+      (_, prefix, flavor) => prefix + (flavor === "ospml" ? "osprey-ml" : "osprey")
+    ).replace(
       /<pre([^>]*)><code class="language-(osprey(?:-ml)?|python)">([\s\S]*?)<\/code><\/pre>/g,
       (block, attributes, lang, code) => {
         if (attributes.includes("data-language")) return block;

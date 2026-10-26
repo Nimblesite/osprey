@@ -19,10 +19,15 @@ include scripts/android.mk
 # =============================================================================
 
 ## build: C runtime archives + Rust workspace (release) + VSCode extension
-build: _runtime $(EXT_NODE_DEPS) $(PROFILER_UI_BUILT)
+build: _runtime _runtime_klee $(EXT_NODE_DEPS) $(PROFILER_UI_BUILT)
 	@echo "==> Building..."
 	cargo build --release --workspace
 	cd $(EXT_DIR) && npm run compile
+
+## audit: Full dependency vulnerability scan; scanner errors and advisories fail.
+.PHONY: audit
+audit:
+	osv-scanner scan source --recursive --all-vulns .
 
 ## test: Fail-fast tests + coverage + per-project threshold enforcement.
 ##       Projects listed in coverage-thresholds.json are each tested + checked.
@@ -31,7 +36,16 @@ test: build
 	$(MAKE) _test_runtime_incremental
 	$(MAKE) _test_rust
 	$(MAKE) _coverage_check_rust
+	$(MAKE) _test_packages
+	$(MAKE) _coverage_check_packages
+	$(MAKE) target/osprey-pkg
+	$(MAKE) _test_registry REGISTRY_MEMORY=gc
+	$(MAKE) _test_registry REGISTRY_MEMORY=arc
+	$(MAKE) _test_python_app_ports
 	$(MAKE) _test_c_runtime
+	$(MAKE) _test_hunt_mock
+	$(MAKE) _test_hunt
+	$(MAKE) _test_hunt_crashes
 	$(MAKE) _coverage_check_c_runtime
 # _test_language_corpus is deliberately NOT here. It runs every program in
 # tests/ through the TAP subcommand, and _test_goldens then runs every one of
@@ -40,25 +54,75 @@ test: build
 # strictly the stronger of the two observations. Executing the same assertions
 # twice buys nothing and doubles the slowest stage in the build. The `osprey
 # test` subcommand itself stays covered by bank-test and the CLI e2e suite.
-	$(MAKE) _test_goldens
 	$(MAKE) _conformance-gc
 	$(MAKE) _conformance-arc
 	$(MAKE) _test_profiler
+	$(MAKE) _vsix_bundle
 	$(MAKE) _test_vscode_extension
 	$(MAKE) _coverage_check_vscode_extension
 	$(MAKE) _test_bench_tools
 
-## registry-test: Osprey package-system suites (registry/tests) under the
-##                registry/core arithmetic policy. Excluded from `test` and
+## package-coverage: per-package source coverage — collect, then gate all 19.
+##                   Reruns each packages/<name>/tests suite with `osprey test
+##                   --coverage-json` and enforces every threshold under
+##                   projects.packages (90% floor, one report per package).
+.PHONY: package-coverage _test_packages _coverage_check_packages
+package-coverage: build
+	$(MAKE) _test_packages
+	$(MAKE) _coverage_check_packages
+
+# [PKG-COVERAGE-GATE] One report per package, never averaged. _test_packages
+# reruns all packages/<name>/tests suites concurrently with --coverage-json
+# into $(COVERAGE_DIR)/packages; _coverage_check_packages gates the collected
+# reports alone — no suite is re-run to check what it already measured — and
+# fails on a package below its projects.packages threshold or on missing,
+# empty, malformed or incomplete evidence.
+_test_packages:
+	python3 scripts/package_coverage.py --collect --compiler $(BIN) --reports $(COVERAGE_DIR)/packages --thresholds $(COVERAGE_THRESHOLDS_FILE)
+
+_coverage_check_packages:
+	python3 scripts/package_coverage.py --compiler $(BIN) --reports $(COVERAGE_DIR)/packages --thresholds $(COVERAGE_THRESHOLDS_FILE)
+
+## python-app-ports: Verify the classifier, vector search and text evaluation ports.
+.PHONY: python-app-ports _test_python_app_ports
+python-app-ports: build
+	$(MAKE) _test_python_app_ports
+
+_test_python_app_ports:
+	python3 scripts/test-python-app-ports.py --compiler $(BIN)
+
+
+## hunt: Symbolic bug hunting with KLEE on one program [SYMEX-CLI]:
+##       make hunt FILE=path/to/program.osp [HUNT_ARGS="--max-time 120"]
+hunt: build
+	./target/release/osprey hunt $(FILE) $(HUNT_ARGS)
+
+## hunt-sample: Qualify all runnable apps for a fast corpus; hard 10-second cutoff.
+.PHONY: hunt-sample hunt-crashes
+hunt-sample: build
+	python3 scripts/hunt_sample.py $(HUNT_ARGS)
+
+## hunt-crashes: Detect and natively reproduce every deliberately planted crash.
+hunt-crashes: build
+	$(MAKE) _test_hunt_crashes
+
+## hunt-corpus: Hunt every program under tests/ and examples/ not listed in
+##              tests/HUNT_UNPORTABLE.txt, then print the table [SYMEX-CORPUS].
+hunt-corpus: build
+	scripts/hunt_corpus.sh $(HUNT_ARGS)
+	python3 scripts/hunt_summary.py target/hunt-corpus --findings-only
+
+## registry-test: Osprey package-system suites (packages/manager/tests) under the
+##                packages/manager/core arithmetic policy. Excluded from `test` and
 ##                CI until the package system stabilises (maintainer decision).
 registry-test: build
 	$(MAKE) _test_registry
 
-## registry-serve: Serve registry/sample-registry over HTTP on
+## registry-serve: Serve packages/manager/sample-registry over HTTP on
 ##                 127.0.0.1:8787 with the Osprey folder-registry server
-##                 (settings in registry/api/registry-server.json).
+##                 (settings in packages/manager/api/registry-server.json).
 registry-serve: build
-	cd registry/api && ../../$(BIN) . --run
+	cd packages/manager/api && $(abspath $(BIN)) . --run
 
 ## registry-blockers: Probe the host capabilities plan 0020 still needs
 ##                    (argv, exit status, binary-safe reads, ...). Expected to
@@ -287,7 +351,7 @@ run: build
 install: build
 	cargo install --path crates/osprey-cli --force
 	sudo $(MKDIR) /usr/local/lib
-	sudo cp $(RTB)/libfiber_runtime.a $(RTB)/libhttp_runtime.a /usr/local/lib/
+	sudo cp $(RTB)/libfiber_runtime*.a $(RTB)/libhttp_runtime*.a /usr/local/lib/
 	@echo "==> installed osprey and runtime archives."
 
 ## bench: Build, then run the cross-language performance benchmark suite

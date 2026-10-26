@@ -15,6 +15,10 @@ pub(crate) struct ImportScope {
 }
 
 impl ImportScope {
+    pub(crate) fn requirements(&self) -> impl Iterator<Item = &SymbolKey> {
+        self.aliases.values().chain(self.members.values())
+    }
+
     pub(crate) fn alias(&self, name: &str) -> Option<&SymbolKey> {
         self.aliases.get(name)
     }
@@ -212,7 +216,7 @@ impl Builder<'_> {
 
     fn target_exists(&self, target: &SymbolKey) -> bool {
         if target.path.is_empty() {
-            self.graph.namespaces.contains(&target.namespace)
+            self.graph.namespaces.contains_key(&target.namespace)
         } else {
             self.graph.modules.contains_key(target)
         }
@@ -221,7 +225,7 @@ impl Builder<'_> {
     fn visible_targets(&self) -> Vec<SymbolKey> {
         self.graph
             .namespaces
-            .iter()
+            .keys()
             .map(|namespace| SymbolKey::new(namespace, Vec::new()))
             .chain(
                 self.graph

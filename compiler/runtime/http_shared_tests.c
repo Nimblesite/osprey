@@ -256,6 +256,7 @@ static void test_send_frame_wire_format(void) {
   int closed_result = send_websocket_frame(pair[0], "gone");
   assert(closed_result == 4 || closed_result < 0);
   close(pair[0]);
+  assert(send_websocket_frame(-1, "invalid socket") < 0);
 }
 
 // get_next_id hands out strictly increasing, never-reused handles.

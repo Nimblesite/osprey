@@ -1,3 +1,5 @@
+The palette and screenshots are visual references. Use `website/src/` and the [messaging guide](../messaging.md) for current copy, runnable examples and supported behavior. Screenshots record earlier design studies.
+
 ![Colors](design.png)
 
 

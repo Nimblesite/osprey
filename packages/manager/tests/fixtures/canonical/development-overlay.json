@@ -1,0 +1,30 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "One local override with its published baseline.",
+  "type": "DevelopmentOverlay",
+  "value": {
+    "overrides": [
+      {
+        "package": {
+          "scope": "demo",
+          "name": "maths"
+        },
+        "path": "../maths",
+        "epoch": 1,
+        "baseline": {
+          "package": {
+            "scope": "demo",
+            "name": "maths"
+          },
+          "epoch": 1,
+          "ordinal": 2,
+          "digest": "sha256:bece9638d8acc5271e28944cba06dac6a161621592faf6bca5e3a48c7350b39f"
+        }
+      }
+    ]
+  },
+  "canonical": "{\"overrides\":[{\"baseline\":{\"digest\":\"sha256:bece9638d8acc5271e28944cba06dac6a161621592faf6bca5e3a48c7350b39f\",\"epoch\":1,\"ordinal\":2,\"package\":{\"name\":\"maths\",\"scope\":\"demo\"}},\"epoch\":1,\"package\":{\"name\":\"maths\",\"scope\":\"demo\"},\"path\":\"../maths\"}]}",
+  "canonicalLength": 247,
+  "domain": "osprey.development-overlay.v1",
+  "digest": "sha256:050ecaa218fbe9758095b8111a7f8de89350cbd7be6f8e8636947f0d09b4c1ba"
+}

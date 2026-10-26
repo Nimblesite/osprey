@@ -1,0 +1,30 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "proofDigest hashes the proof with that field omitted.",
+  "type": "ResolutionProof",
+  "value": {
+    "policyDigest": "sha256:dcce9c2576be8892582edda4b3bedc924909a3ee20e1dc0fced970eee3f7f49a",
+    "decisions": [
+      {
+        "package": {
+          "scope": "demo",
+          "name": "maths"
+        },
+        "selectedDigest": "sha256:bece9638d8acc5271e28944cba06dac6a161621592faf6bca5e3a48c7350b39f",
+        "reasonCodes": [
+          "resolution.floor",
+          "resolution.newest-eligible"
+        ],
+        "antecedents": [
+          {
+            "scope": "demo",
+            "name": "report"
+          }
+        ]
+      }
+    ],
+    "proofDigest": "sha256:9afb515d44a7a67e7c296f994daf95a0c0621cf64dd197665e3da6c69137d5ac"
+  },
+  "canonical": "{\"decisions\":[{\"antecedents\":[{\"name\":\"report\",\"scope\":\"demo\"}],\"package\":{\"name\":\"maths\",\"scope\":\"demo\"},\"reasonCodes\":[\"resolution.floor\",\"resolution.newest-eligible\"],\"selectedDigest\":\"sha256:bece9638d8acc5271e28944cba06dac6a161621592faf6bca5e3a48c7350b39f\"}],\"policyDigest\":\"sha256:dcce9c2576be8892582edda4b3bedc924909a3ee20e1dc0fced970eee3f7f49a\",\"proofDigest\":\"sha256:9afb515d44a7a67e7c296f994daf95a0c0621cf64dd197665e3da6c69137d5ac\"}",
+  "canonicalLength": 440
+}

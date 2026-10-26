@@ -1,0 +1,75 @@
+namespace registry_tests;
+import registry::Governance
+import registry::GovernanceTransitions
+import registry::Names
+import registry_tests::Fixture
+
+/// Org-bound package identity [PACKAGE-NAMES-NO-SITTING] and
+/// [PACKAGE-OWNERSHIP-MODEL]: the leaf name is never a global resource, the
+/// scope is the owning organization's handle, and `(organization, name)` is
+/// the only uniqueness key — tombstones included.
+module IdentityTests {
+    fn key(scope, name) = Names::Key { scope: scope, name: name }
+
+    fn create(world, org, custodianPrincipal, custodianMembership, k, id, admin, adminPrincipal) = {
+        let statement = Governance::creationStatement(id, k, admin)
+        GovernanceTransitions::createPackage(world, org, k, id, admin,
+            Fixture::verified(custodianPrincipal, custodianMembership, statement),
+            Fixture::verified(adminPrincipal, admin, statement))
+    }
+
+    fn createFinch(world, k, id, admin, adminPrincipal) =
+        create(world, "o-finch", "p-alice", "m-alice", k, id, admin, adminPrincipal)
+
+    fn createWren(world, k, id, admin, adminPrincipal) =
+        create(world, "o-wren", "p-dave", "m-dave", k, id, admin, adminPrincipal)
+
+    /// One leaf, two organizations, no interaction between them.
+    fn sameLeafTwoOrganizations() = {
+        let world = Fixture::world()
+        let finchToolkit = Fixture::orKeep(world, fn(w) => createFinch(w, key("finch", "toolkit"), "pkg-f2", "m-bob", "p-bob"))
+        let bothToolkit = Fixture::orKeep(finchToolkit, fn(w) => createWren(w, key("wren", "toolkit"), "pkg-w2", "m-ci", "p-ci"))
+        checkAll("the same leaf name serves two organizations independently", [
+            Fixture::code(createFinch(world, key("finch", "toolkit"), "pkg-f2", "m-bob", "p-bob")) == "",
+            Fixture::code(createFinch(world, key("finch", "ledger"), "pkg-f9", "m-bob", "p-bob")) == "governance.package.duplicate-name",
+            Fixture::code(createWren(finchToolkit, key("wren", "toolkit"), "pkg-w2", "m-ci", "p-ci")) == "",
+            Fixture::code(createWren(world, key("wren", "ledger"), "pkg-w9", "m-dave", "p-dave")) == "governance.package.duplicate-name",
+            Names::same(key("finch", "toolkit"), key("wren", "toolkit")) == false,
+            Names::compare(key("finch", "toolkit"), key("wren", "toolkit")) != 0,
+            length(bothToolkit.packages) == 4
+        ])
+    }
+
+    /// The scope is the owning organization's immutable handle, and the
+    /// components keep the canonical grammar; unscoped and global spellings
+    /// have no creation path at all.
+    fn orgBoundKeys() = checkAll("a package key is bound to its organization's handle", [
+        Fixture::code(createFinch(Fixture::world(), key("wren", "ledger"), "pkg-x", "m-bob", "p-bob")) == "governance.package.org-handle-mismatch",
+        Fixture::code(createFinch(Fixture::world(), key("Finch", "toolkit"), "pkg-x", "m-bob", "p-bob")) == "name.scope.chars",
+        Fixture::code(createFinch(Fixture::world(), key("finch", "Toolkit"), "pkg-x", "m-bob", "p-bob")) == "name.name.chars",
+        Fixture::code(createFinch(Fixture::world(), key("finch", ""), "pkg-x", "m-bob", "p-bob")) == "name.name.length",
+        Fixture::code(Names::parse("ledger")) == "name.missing-at",
+        Fixture::code(Names::parse("finch/ledger")) == "name.missing-at",
+        Fixture::code(Names::parse("HelperFunctions")) == "name.missing-at"
+    ])
+
+    /// A tombstone keeps occupying its organization's key forever.
+    fn tombstonedKeysStayTaken() = {
+        let world = Fixture::world()
+        let statement = Governance::tombstoneStatement(Names::Key { scope: "wren", name: "ledger" }, 1)
+        let tombstoned = Fixture::orKeep(world, fn(w) =>
+            GovernanceTransitions::tombstone(w, "pkg-w1", Fixture::verified("p-dave", "m-dave", statement)))
+        checkAll("tombstoned packages never free their key", [
+            Fixture::code(GovernanceTransitions::tombstone(world, "pkg-w1", Fixture::verified("p-dave", "m-dave", statement))) == "",
+            Fixture::code(createWren(tombstoned, key("wren", "ledger"), "pkg-w3", "m-ci", "p-ci")) == "governance.package.duplicate-name",
+            Fixture::code(createFinch(tombstoned, key("finch", "ledger"), "pkg-f3", "m-bob", "p-bob")) == "governance.package.duplicate-name",
+            Fixture::code(createFinch(tombstoned, key("finch", "ledger2"), "pkg-f4", "m-bob", "p-bob")) == ""
+        ])
+    }
+
+    export fn run() = {
+        test("governance identity: one leaf serves two organizations", sameLeafTwoOrganizations)
+        test("governance identity: keys are organization-bound", orgBoundKeys)
+        test("governance identity: tombstones keep their key", tombstonedKeysStayTaken)
+    }
+}

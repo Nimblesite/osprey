@@ -1,0 +1,434 @@
+namespace registry_cli;
+import registry_host::Host
+import registry_cli::Reports
+import registry::Bundle
+import registry::Bytes
+import registry::Source
+import registry::Digests
+import registry::Identity
+import registry::Json
+import registry::JsonRead
+import registry::Names
+import registry::Order
+import registry::Release
+
+/// `osprey-pkg fetch`: download, verify and install one release of a folder
+/// registry. The transport is never trusted — the source bundle is decoded
+/// and its digest recomputed from the files before anything is written — and
+/// every failure is a stable dotted reason code. Implements the client half
+/// of [PACKAGE-FOLDER-REGISTRY] (plan 0020, Milestone 0 Phase F3).
+module Fetch {
+    /// The folder-registry base URL when no `--registry` flag is given.
+    export let defaultRegistry = "http://127.0.0.1:8787"
+    /// The flag that names a non-default registry base URL.
+    export let registryFlag = "--registry"
+    /// The root under which every fetched release tree is installed.
+    export let packagesRoot = ".osprey/packages"
+    let packagesPrefix = "/v1/packages/"
+    /// The GET path that lists every package key with its releases.
+    export let packagesListingPath = "/v1/packages"
+    let sourcePrefix = "/v1/releases/"
+    let sourceSuffix = "/source"
+    let okStatus = 200
+    let notFoundStatus = 404
+    let failStatus = 1
+    let anyEpoch = -1
+    let slashByte = 47
+    let digestPrefix = "sha256:"
+    let usageCode = "fetch.usage"
+    let notFoundCode = "fetch.not-found"
+    let statusPrefix = "fetch.registry-status"
+    let noReleaseCode = "fetch.no-release"
+    let shapeCode = "fetch.package-shape"
+    let writePrefix = "fetch.write"
+    let usageText = [
+        "usage: osprey-pkg fetch <target> [--registry <base-url>]",
+        "target: @scope/name[@e<epoch>] or sha256:<64 hex>"
+    ]
+
+    /// One `{"digest","epoch","ordinal"}` row of a package listing.
+    export type Row = { digest: string, epoch: int, ordinal: int }
+
+    /// What the target word asks for: the newest release, the newest ordinal
+    /// of one epoch, or the release of one digest.
+    type Ask = Newest { key: Names::Key } | InEpoch { key: Names::Key, epoch: int } | ByDigest { digest: string }
+
+    /// A parsed command line: the target word and the registry base URL.
+    type CommandLine = { target: string, base: string }
+
+    fn failed(code) = Reports::Report { status: failStatus, lines: [code] }
+
+    fn usageReport() = Reports::usage(listPrepend(usageText, usageCode))
+
+    fn withBase(target, base) = Success { value: CommandLine { target: target, base: base } }
+
+    /// `<target> [--registry <base-url>]`, the flag only after the target.
+    fn commandLine(args) = match length(args) {
+        1 => withBase(listGet(args, 0) ?: "", defaultRegistry)
+        3 => match (listGet(args, 1) ?: "") == registryFlag {
+            true => withBase(listGet(args, 0) ?: "", listGet(args, 2) ?: "")
+            false => Error { message: usageCode }
+        }
+        _ => Error { message: usageCode }
+    }
+
+    fn digestAsk(text) = match Digests::parse(text) {
+        Success { value } => Success { value: ByDigest { digest: value } }
+        Error => Error { message: usageCode }
+    }
+
+    fn newestAsk(text) = match Names::parse(text) {
+        Success { value } => Success { value: Newest { key: value } }
+        Error => Error { message: usageCode }
+    }
+
+    fn epochOf(key, versionText) = match decimal(drop(versionText, 1)) {
+        Success { value } => Success { value: InEpoch { key: key, epoch: value } }
+        Error => Error { message: usageCode }
+    }
+
+    fn epochAsk(keyText, versionText) = match Names::parse(keyText) {
+        Error => Error { message: usageCode }
+        Success { value } => epochOf(value, versionText)
+    }
+
+    fn keyAsk(text) = match indexOf(drop(text, 1), "@") {
+        Error => newestAsk(text)
+        Success { value } => epochAsk(take(text, value + 1), drop(text, value + 2))
+    }
+
+    /// Non-negative decimal without a sign or leading zero, as the release
+    /// directory layout writes it.
+    fn decimal(text) = match byteLength(text) == 0 || (startsWith(text, "0") && byteLength(text) > 1) || startsWith(text, "+") || startsWith(text, "-") {
+        true => Error { message: usageCode }
+        false => parseInt(text)
+    }
+
+    fn parseTarget(text) = match startsWith(text, digestPrefix) {
+        true => digestAsk(text)
+        false => keyAsk(text)
+    }
+
+    // `Reply` shares `status` with `Reports::Report` and `Host::Run`; issue
+    // #273 needs the receiver spelled out.
+    fn bodyOf(reply: Host::Reply) = if reply.status == notFoundStatus {
+        Error { message: notFoundCode }
+    } else if reply.status == okStatus {
+        Success { value: reply.body }
+    } else {
+        Error { message: "${statusPrefix}: ${reply.status}" }
+    }
+
+    /// One GET body, or the stable code of a non-200/404 status; `lock`
+    /// reuses this for the listing endpoints.
+    export fn getBody(base, path) = match perform Host::Web.get(base, path) {
+        Error { message } => Error { message: message }
+        Success { value } => bodyOf(value)
+    }
+
+    // `Names::Key` shares no field, but the receiver is annotated to match
+    // the other shared-field readers below.
+    /// The GET path of one key's releases.
+    export fn listingPath(key: Names::Key) = "${packagesPrefix}${key.scope}/${key.name}"
+
+    fn sourcePath(digest) = "${sourcePrefix}${digest}${sourceSuffix}"
+
+    // `JsonRead::field` reads a missing member as `Json::Null` and a
+    // mistyped one as its empty value; matching the concrete value keeps the
+    // strict `fetch.package-shape` refusal without re-implementing a JSON reader.
+    fn stringField(value, field) = match JsonRead::field(value, field) {
+        Json::Str { text } => Success { value: text }
+        _ => Error { message: shapeCode }
+    }
+
+    fn intField(value, field) = match JsonRead::field(value, field) {
+        Json::Num { value } => Success { value: value }
+        _ => Error { message: shapeCode }
+    }
+
+    fn rowWith(item, digest, epoch) = match intField(item, "ordinal") {
+        Error { message } => Error { message: message }
+        Success { value } => Success { value: Row { digest: digest, epoch: epoch, ordinal: value } }
+    }
+
+    fn rowFrom(item, digest) = match intField(item, "epoch") {
+        Error { message } => Error { message: message }
+        Success { value } => rowWith(item, digest, value)
+    }
+
+    fn rowOf(item) = match stringField(item, "digest") {
+        Error { message } => Error { message: message }
+        Success { value } => rowFrom(item, value)
+    }
+
+    fn appendOne(rows, item) = match rowOf(item) {
+        Error { message } => Error { message: message }
+        Success { value } => Success { value: listAppend(rows, value) }
+    }
+
+    fn appendRow(acc, item) = match acc {
+        Error => acc
+        Success { value } => appendOne(value, item)
+    }
+
+    fn rowsOf(items) = foldList(items, Success { value: [] }, appendRow)
+
+    fn releasesOf(root) = match JsonRead::field(root, "releases") {
+        Json::Arr { items } => rowsOf(items)
+        _ => Error { message: shapeCode }
+    }
+
+    /// `{"key":"@s/n","releases":[{"digest","epoch","ordinal"}]}`; any other
+    /// shape is `"fetch.package-shape"`.
+    export fn parseListing(text) = match Json::parse(text) {
+        Error => Error { message: shapeCode }
+        Success { value } => releasesOf(value)
+    }
+
+    fn releaseOf(key, row: Row) = Identity::ReleaseId { key: key, epoch: row.epoch, ordinal: row.ordinal, digest: row.digest }
+
+    fn keyedRows(key, rows) = match rows {
+        Error { message } => Error { message: message }
+        Success { value } => Success { value: mapList(value, fn(row: Row) => releaseOf(key, row)) }
+    }
+
+    fn keyOfItem(item) = match stringField(item, "key") {
+        Error { message } => Error { message: message }
+        Success { value } => match Names::parse(value) {
+            Error => Error { message: shapeCode }
+            Success { value } => Success { value: value }
+        }
+    }
+
+    /// The releases of one `{"key","releases"}` package item as identities.
+    fn packageReleases(item) = match keyOfItem(item) {
+        Error { message } => Error { message: message }
+        Success { value } => keyedRows(value, releasesOf(item))
+    }
+
+    fn concatPackage(done, item) = match packageReleases(item) {
+        Error { message } => Error { message: message }
+        Success { value } => Success { value: listConcat(done, value) }
+    }
+
+    fn appendPackage(acc, item) = match acc {
+        Error => acc
+        Success { value } => concatPackage(value, item)
+    }
+
+    /// Every release of `{"packages":[{"key","releases":[…]}]}` as identities
+    /// in listing order, so `lock` reads the whole registry in one request;
+    /// any other shape is `"fetch.package-shape"`.
+    export fn parsePackages(text) = match Json::parse(text) {
+        Error => Error { message: shapeCode }
+        Success { value } => match JsonRead::field(value, "packages") {
+            Json::Arr { items } => foldList(items, Success { value: [] }, appendPackage)
+            _ => Error { message: shapeCode }
+        }
+    }
+
+    // `Row` shares `digest`/`epoch`/`ordinal` with `Identity::ReleaseId`;
+    // issue #273 needs the receivers spelled out.
+    fn missingRow() = Row { digest: "", epoch: 0, ordinal: 0 }
+
+    fn later(a: Row, b: Row) = Order::thenCompare(Order::compareInts(a.epoch, b.epoch), Order::compareInts(a.ordinal, b.ordinal)) > 0
+
+    fn keepBest(best, row) = if later(row, best) { row } else { best }
+
+    fn bestRow(rows) = match isEmpty(rows) {
+        true => Error { message: noReleaseCode }
+        false => Success { value: foldList(rows, listGet(rows, 0) ?: missingRow(), keepBest) }
+    }
+
+    fn rowsOfEpoch(rows, epoch) = filterList(rows, fn(row: Row) => row.epoch == epoch)
+
+    fn chosen(rows, epoch) = match epoch < 0 {
+        true => bestRow(rows)
+        false => bestRow(rowsOfEpoch(rows, epoch))
+    }
+
+    // `Identity::ReleaseId` shares `key` with `Json::Member` and `digest`
+    // with `Source::Entry`; issue #273 needs the receiver spelled out.
+    /// `.osprey/packages/@scope/name/<hex>` for one release identity.
+    export fn installDir(id: Identity::ReleaseId) = "${packagesRoot}/${Names::display(id.key)}/${Digests::hexOf(id.digest)}"
+
+    /// `installDir` under `project`, or the bare cwd path when `project` is
+    /// `""` or `"."` ([PACKAGE-HARDENING] C2).
+    export fn installDirAt(project, id) = if isEmpty(project) || project == "." { installDir(id) } else { "${project}/${installDir(id)}" }
+
+    // Reading builds `Release::File` (whose fields no other record shares),
+    // then `Source::entryOf` maps them non-recursively exactly as
+    // `ReleaseFiles::assemble` does: an effectful recursive function that
+    // constructs `Source::Entry` (whose `path` is shared with `Asset`) trips
+    // the issue-#273 codegen quarantine.
+    fn readNext(dir, relPaths, i, files, rel) = match perform Host::Files.read("${dir}/${rel}") {
+        Success { value } => readFiles(dir, relPaths, i + 1, listAppend(files, Release::File { relPath: rel, content: value }))
+        Error { message } => Error { message: message }
+    }
+
+    fn readFiles(dir, relPaths, i, files) -> Result<List<Release::File>, string> = if i >= length(relPaths) {
+        Success { value: files }
+    } else {
+        readNext(dir, relPaths, i, files, listGet(relPaths, i) ?: "")
+    }
+
+    fn entriesOf(files) = mapList(files, fn(file: Release::File) => Source::entryOf(file.relPath, Bytes::ofString(file.content)))
+
+    fn kindOf(walk: Host::Walk) = if !isEmpty(walk.executable) { Source::kindCode("executable") }
+        else if !isEmpty(walk.special) { Source::kindCode("special") }
+        else { "" }
+
+    /// The files a walk found, read in walk order; a non-regular entry or an
+    /// unreadable file is its stable code.
+    export fn filesOfWalked(walk: Host::Walk, dir) = {
+        let kind = kindOf(walk)
+        if kind != "" { Error { message: kind } } else { readFiles(dir, walk.regular, 0, []) }
+    }
+
+    /// `SourceDigest` of a file list, recomputed exactly as the server computed
+    /// the release digest ([PACKAGE-SOURCE-CANONICAL]).
+    export fn digestOfFiles(fileList) = Source::digest(entriesOf(fileList))
+
+    export fn installedFiles(dir) = match perform Host::Tree.walk(dir) {
+        Error { message } => Error { message: message }
+        Success { value } => filesOfWalked(value, dir)
+    }
+
+    fn lastSlash(path) = fold(range(0, byteLength(path)), -1, fn(best, i) => if (byteAt(path, i) ?: 0) == slashByte { i } else { best })
+
+    fn ensureParent(dir, relPath) = {
+        let slash = lastSlash(relPath)
+        match slash < 0 {
+            true => Success { value: 0 }
+            false => perform Host::Tree.ensure("${dir}/${take(relPath, slash)}")
+        }
+    }
+
+    fn put(path, content) = match perform Host::Files.write(path, content) {
+        Error { message } => Error { message: message }
+        Success { value } => if value == byteLength(content) { Success { value: 0 } }
+            else { Error { message: "short write ${path}" } }
+    }
+
+    fn writeOne(dir, file) = match ensureParent(dir, file.relPath) {
+        Error { message } => Error { message: message }
+        Success => put("${dir}/${file.relPath}", file.content)
+    }
+
+    fn writeFileList(dir, files) = foldList(files, Success { value: 0 }, fn(acc, file) => match acc {
+        Error => acc
+        Success => writeOne(dir, file)
+    })
+
+    /// Write every file of a tree under `dir`, creating directories first;
+    /// Publication uses this writer; installation also checks the disk layout and digest.
+    export fn writeFiles(dir, files) = match perform Host::Tree.ensure(dir) {
+        Error { message } => Error { message: message }
+        Success => writeFileList(dir, files)
+    }
+
+    fn unexpected(walk: Host::Walk, fileList) = {
+        let expected = mapList(fileList, fn(file: Release::File) => file.relPath)
+        !isEmpty(walk.executable) || !isEmpty(walk.special)
+            || foldList(walk.regular, false, fn(found, path) => found || !listContains(expected, path))
+    }
+
+    fn checkedDigest(served: Release::Served, digest) = if digest == served.id.digest { Success { value: served } }
+        else { Error { message: "fetch.install-integrity" } }
+
+    fn checkedTree(dir, served: Release::Served) = match installedFiles(dir) {
+        Error { message } => Error { message: "fetch.install-integrity ${message}" }
+        Success { value } => match digestOfFiles(value) {
+            Success { value } => checkedDigest(served, value)
+            Error { message } => Error { message: "fetch.install-integrity ${message}" }
+        }
+    }
+
+    fn writtenTree(dir, served: Release::Served) = match writeFileList(dir, served.files) {
+        Error { message } => Error { message: "${writePrefix}: ${message}" }
+        Success => checkedTree(dir, served)
+    }
+
+    // A refetch must never claim success from the served bytes alone. Reject
+    // conflicting entries before writes, then verify the actual installed tree.
+    fn installInto(dir, served: Release::Served) = match perform Host::Tree.walk(dir) {
+        Error { message } => Error { message: "fetch.install-integrity ${message}" }
+        Success { value } => if unexpected(value, served.files) { Error { message: "fetch.install-integrity" } }
+            else { writtenTree(dir, served) }
+    }
+
+    fn written(project, served: Release::Served) = {
+        let dir = installDirAt(project, served.id)
+        match perform Host::Tree.ensure(dir) {
+            Error { message } => Error { message: "${writePrefix}: ${message}" }
+            Success => installInto(dir, served)
+        }
+    }
+
+    fn verifiedAt(project, body, digest) = match Bundle::verify(body, digest) {
+        Error { message } => Error { message: message }
+        Success { value } => written(project, value)
+    }
+
+    /// Download, verify and install one release by digest under
+    /// `<project>/.osprey/packages`, answering the verified release so `lock`
+    /// and `Install` can read its files without touching the disk again
+    /// ([PACKAGE-HARDENING] C2).
+    export fn fetched(project, base, digest) = match getBody(base, sourcePath(digest)) {
+        Error { message } => Error { message: message }
+        Success { value } => verifiedAt(project, value, digest)
+    }
+
+    fn fetchedReport(project, served: Release::Served) = Reports::success([
+        Reports::field("fetched", Identity::display(served.id)),
+        Reports::field("into", installDirAt(project, served.id)),
+        Reports::field("files", "${length(served.files)}")
+    ])
+
+    /// Download, verify and install one release by digest under `.osprey/packages`.
+    export fn install(base, digest) = installAt("", base, digest)
+
+    /// `fetched` as a report: the `fetch <target>` outcome.
+    export fn installAt(project, base, digest) = match fetched(project, base, digest) {
+        Error { message } => failed(message)
+        Success { value } => fetchedReport(project, value)
+    }
+
+    fn installRow(base, row: Row) = install(base, row.digest)
+
+    fn withRows(base, rows, epoch) = match chosen(rows, epoch) {
+        Error { message } => failed(message)
+        Success { value } => installRow(base, value)
+    }
+
+    fn withListing(base, epoch, text) = match parseListing(text) {
+        Error { message } => failed(message)
+        Success { value } => withRows(base, value, epoch)
+    }
+
+    fn installKey(base, key, epoch) = match getBody(base, listingPath(key)) {
+        Error { message } => failed(message)
+        Success { value } => withListing(base, epoch, value)
+    }
+
+    fn runFetch(base, ask) = match ask {
+        ByDigest { digest } => install(base, digest)
+        Newest { key } => installKey(base, key, anyEpoch)
+        InEpoch { key, epoch } => installKey(base, key, epoch)
+    }
+
+    fn asked(cmd) = match parseTarget(cmd.target) {
+        Error => usageReport()
+        Success { value } => runFetch(cmd.base, value)
+    }
+
+    /// The whole command: parse `<target> [--registry <base-url>]`, choose
+    /// the release — newest, newest of one epoch, or the digest's own —
+    /// download and verify its source bundle, and write the tree under
+    /// `.osprey/packages/@scope/name/<digest>/`. Implements
+    /// [PACKAGE-FOLDER-REGISTRY].
+    export fn run(args) = match commandLine(args) {
+        Error => usageReport()
+        Success { value } => asked(value)
+    }
+}

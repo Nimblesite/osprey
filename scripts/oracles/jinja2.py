@@ -1,0 +1,191 @@
+"""CPython Jinja2 render and value oracles for the supported chat subset."""
+import jinja2
+import json
+from expected_module import write
+
+TEMPLATES = [
+    ("mixed dict keys", "{{ {1: 'number', '1': 'text'}[1] }}:{{ {1: 'number', '1': 'text'}['1'] }}"),
+    ("integer dict repr", "{{ {1: 'a'} }}"),
+    ("integer dict items", "{% for k, v in {1: 'a'}.items() %}{{ k is number }}={{ v }}{% endfor %}"),
+    ("integer dict contains", "{{ 1 in {1: 'a'} }}:{{ '1' in {1: 'a'} }}"),
+    ("integer dict get", "{{ {1: 'a'}.get(1) }}:{{ {1: 'a'}.get('1', 'missing') }}"),
+    ("hello", "Hello {{ name }}!"),
+    ("repr quote style (known RED)", "{{ [\"'\"] }}"),
+    ("int dict key lookup (known RED)", "{{ {1: 'a'}[1] }}"),
+    ("missing", "{{ missing|default('fallback') }}"),
+    ("numeric", "{{ 7 // 3 }}:{{ -7 % 3 }}:{{ 2 + 3 * 4 }}"),
+    ("concatenation", "{{ 2 ~ 3 }}"),
+    ("truth", "{% if enabled %}yes{% else %}no{% endif %}"),
+    ("loop", "{% for n in nums %}{{ loop.index }}={{ n }};{% endfor %}"),
+    ("empty loop", "{% for n in [] %}bad{% else %}empty{% endfor %}"),
+    ("set", "{% set n = 3 %}{{ n + 1 }}"),
+    ("join", "{{ nums|join(',') }}"),
+    ("case", "{{ name|upper }}:{{ name|capitalize }}"),
+    ("trim", "{{ ' a '|trim }}"),
+    ("replace", "{{ name|replace('world', 'reader') }}"),
+    ("length", "{{ name|length }}:{{ nums|length }}"),
+    ("endpoints", "{{ nums|first }}:{{ nums|last }}"),
+    ("method", "{{ name.upper() }}:{{ name.startswith('wo') }}"),
+    ("dict", "{{ obj.x }}:{{ obj['x'] }}"),
+    ("tests", "{{ enabled is boolean }}:{{ nothing is none }}:{{ name is string }}"),
+    ("membership", "{{ 2 in nums }}:{{ 'x' in obj }}"),
+    ("slice", "{{ name[1:4] }}:{{ nums[1:]|join(',') }}"),
+    ("whitespace", "a\n  {% if enabled %}\nb\n  {% endif %}\nc"),
+    ("strip markers", "a {{- name -}} b"),
+    ("comment", "a{# ignored #}b"),
+    ("namespace", "{% set ns = namespace(n=0) %}{% for x in nums %}{% set ns.n = ns.n + x %}{% endfor %}{{ ns.n }}"),
+    ("lower filter", "{{ 'WORLD'|lower }}"),
+    ("string filter", "{{ 23|string }}"),
+    ("list filter", "{{ name|list|join(',') }}"),
+    ("items filter", "{{ obj|items|list|length }}"),
+    ("mapped filter", "{{ ['a', 'b']|map('upper')|join(',') }}"),
+    ("mapped attribute", "{{ [obj, dict(x=8)]|map(attribute='x')|join(',') }}"),
+    ("mapped default", "{{ [obj]|map(attribute='missing', default='fallback')|join(',') }}"),
+    ("select truth", "{{ [0, 1, 2]|select|join(',') }}"),
+    ("select test", "{{ nums|select('equalto', 2)|join(',') }}"),
+    ("reject test", "{{ nums|reject('equalto', 2)|join(',') }}"),
+    ("select attribute", "{{ [dict(x=1), dict(x=0)]|selectattr('x')|map(attribute='x')|join(',') }}"),
+    ("reject attribute", "{{ [dict(x=1), dict(x=0)]|rejectattr('x')|map(attribute='x')|join(',') }}"),
+    ("dict methods", "{{ obj.get('x') }}:{{ obj.get('absent', 9) }}:{{ obj.keys()|join(',') }}:{{ obj.values()|join(',') }}"),
+    ("dict iteration", "{% for k, v in obj.items() %}{{ k }}={{ v }}{% endfor %}"),
+    ("filtered loop", "{% for n in nums if n > 1 %}{{ n }};{% endfor %}"),
+    ("conditional", "{{ 'yes' if enabled else 'no' }}"),
+    ("boolean operators", "{{ not false }}:{{ true and false }}:{{ false or 'yes' }}"),
+    ("group and subtraction", "{{ (9 - 4) / 2 }}"),
+    ("exponent literal", "{{ 1.25e2 }}:{{ 2.5e-1 }}"),
+    ("escaped string", "{{ 'a\\nb'|replace('\\n', '-') }}"),
+    ("dict literal", "{{ {'x': 1, 'y': 2}['y'] }}"),
+    ("stepped slices", "{{ nums[::-1]|join(',') }}:{{ name[::2] }}"),
+    ("range function", "{{ range(1, 6, 2)|join(',') }}:{{ range(5, 0, -2)|join(',') }}:{{ range(1, 5, -1)|join(',') }}:{{ range(5, 1, 1)|join(',') }}:{{ range(1, 1, 2)|join(',') }}"),
+    ("list equality", "{{ [1, 2] == [1, 2] }}:{{ [1] == [2] }}"),
+    ("dict equality", "{{ {'x': 1} == {'x': 1} }}:{{ {'x': 1} == {'x': 2} }}"),
+    ("repr containers", "{{ [1, 'x'] }}:{{ {'x': 1} }}"),
+    ("string membership", "{{ 'or' in name }}"),
+    ("list subscript", "{{ nums[-1] }}"),
+    ("exponent int", "{{ 1e2 }}:{{ 2E3 }}:{{ 1e-2 }}"),
+    ("exponent float", "{{ 1.5e2 }}:{{ 1.5 }}"),
+    ("compare operators", "{{ 1 != 2 }}:{{ 1 < 2 }}:{{ 1 <= 1 }}:{{ 2 >= 2 }}:{{ 2 >= 3 }}"),
+    ("not in", "{{ 5 not in nums }}:{{ 2 not in nums }}"),
+    ("unary plus", "{{ +5 }}:{{ -+5 }}"),
+    ("double negation", "{{ - -5 }}:{{ --5 }}"),
+    ("none literal", "{{ none is none }}:{{ none == none }}"),
+    ("float truthiness", "{{ 'yes' if 0.0 else 'no' }}:{{ 'yes' if 0.5 else 'no' }}"),
+    ("string truthiness", "{{ 'yes' if 'x' else 'no' }}:{{ 'yes' if '' else 'no' }}"),
+    ("list truthiness", "{{ 'yes' if nums else 'no' }}:{{ 'yes' if [] else 'no' }}"),
+    ("dict truthiness", "{{ 'yes' if obj else 'no' }}:{{ 'yes' if {} else 'no' }}"),
+    ("undefined branch", "{% if missing %}a{% else %}b{% endif %}"),
+    ("undefined equality", "{{ missing == also_missing }}"),
+    ("cross equality", "{{ 1 == 'a' }}:{{ name == 'world' }}:{{ true == false }}:{{ true == true }}"),
+    ("list length equality", "{{ [1] == [1, 2] }}:{{ [1, 2] == [1] }}"),
+    ("dict length equality", "{{ obj == {} }}:{{ {'a': 1} == {'a': 1} }}"),
+    ("string ordering", "{{ 'a' < 'b' }}:{{ 'b' < 'a' }}"),
+    ("floor division signs", "{{ 6 // 3 }}:{{ 7 // -2 }}:{{ -7 // -2 }}"),
+    ("none output", "[{{ none }}]"),
+    ("undefined string", "{{ missing|string }}"),
+    ("pair render", "{{ obj.items()|first }}:{{ obj.items()|first == obj.items()|first }}"),
+    ("repr control escapes", "{{ ['a\\r\\tb'] }}"),
+    ("empty substring", "{{ '' in 'abc' }}:{{ '' in name }}"),
+    ("negative slices", "{{ name[-4:] }}:{{ nums[-10:1]|join(',') }}:{{ nums[5::-1]|join(',') }}"),
+    ("tojson compact", "{{ {'a': none}|tojson }}:{{ true|tojson }}:{{ false|tojson }}:{{ 1.5|tojson }}:{{ 'a'|tojson }}:{{ [1, 'a']|tojson }}"),
+    ("tojson pretty scalars", "{{ [none]|tojson(indent=2) }}:{{ true|tojson(indent=2) }}:{{ 1.5|tojson(indent=2) }}:{{ 'a'|tojson(indent=2) }}"),
+    ("tojson pretty empty", "{{ []|tojson(indent=2) }}:{{ {}|tojson(indent=2) }}"),
+    ("tojson escapes", "{{ ['\"', '\\\\', '\\n', '\\r', '\\t', '\\b', '\\f']|tojson }}"),
+    ("string escapes", "{{ 'a\\vb'|replace('\\v','v') }}:{{ 'a\\bb'|replace('\\b','b') }}:{{ 'a\\fb'|replace('\\f','f') }}:{{ 'a\\rb'|replace('\\r','r') }}:{{ 'a\\tb'|replace('\\t','t') }}:{{ 'a\\\\b' }}:{{ 'a\\'b' }}:{{ \"a\\\"b\" }}"),
+    ("float promotion", "{{ 1 + 2.5 }}:{{ 0.5 + 0.25 }}:{{ -1.5 }}:{{ 2 * 1.5 }}"),
+    ("string addition", "{{ 'ab' + 'cd' }}:{{ 'a' ~ 'b' ~ 'c' }}"),
+    ("dict trailing comma", "{{ {'x': 1,}['x'] }}"),
+    ("empty dict", "{{ {} }}:{{ {}|length }}:{{ {}|tojson }}"),
+    ("dict length filter", "{{ obj|length }}:{{ nums|length }}:{{ name|length }}"),
+    ("empty first last", "{{ []|first }}|{{ []|last }}|{{ []|first is not defined }}|{{ []|last is defined }}"),
+    ("dict first", "{{ obj|first }}:{{ 'ab'|first }}"),
+    ("nonstring filters", "{{ 5|trim }}:{{ 1.5|upper }}:{{ 2|lower }}:{{ 3.0|capitalize }}"),
+    ("empty capitalize", "{{ ''|capitalize }}:{{ 'hELLO wORLD'|capitalize }}"),
+    ("count alias", "{{ nums|count }}:{{ name|count }}:{{ obj|count }}"),
+    ("default alias", "{{ missing|d('fb') }}:{{ name|d('fb') }}"),
+    ("default boolean", "{{ 0|default('x', true) }}:{{ 1|default('x', true) }}:{{ ''|default('e', true) }}:{{ nothing|default('n', true) }}"),
+    ("string methods", "{{ '  ab  '.strip() }}:{{ '  ab  '.lstrip() }}:{{ '  ab  '.rstrip() }}:{{ 'a b  c'.split()|join(',') }}:{{ 'a,b,,c'.split(',')|join('|') }}"),
+    ("string methods 2", "{{ name.endswith('ld') }}:{{ 'AbC'.lower() }}:{{ 'ab'.upper() }}:{{ 'hELLO'.capitalize() }}:{{ 'aXbXc'.replace('X', '-') }}:{{ 'ab'.startswith('a') }}"),
+    ("string subscript", "{{ name[0] }}:{{ name[-1] }}:{{ name[10] }}:{{ nums['x'] }}:{{ name['x'] }}"),
+    ("string attribute", "{{ 'abc'.foo }}|{{ name.bar }}|"),
+    ("out of range list", "{{ nums[10] }}|{{ nums[-10] }}|"),
+    ("if elif else", "{% if nothing %}a{% elif enabled %}b{% else %}c{% endif %}"),
+    ("if no else", "{% if nothing %}a{% endif %}d"),
+    ("dict loop", "{% for k in obj %}{{ k }};{% endfor %}"),
+    ("string loop", "{% for c in 'ab' %}{{ c }};{% endfor %}"),
+    ("trailing newline", "x\n"),
+    ("lstrip start", "  {{- name -}}!"),
+    ("trim end eof", "x {{ name -}}"),
+    ("brace in string", "{{ '}' }}:{{ '}}' }}"),
+    ("test predicates", "{{ missing is undefined }}:{{ 1 is number }}:{{ 1.5 is float }}:{{ 2 is eq 2 }}:{{ 2 is ne 3 }}:{{ 2 is in nums }}:{{ obj is mapping }}:{{ name is iterable }}:{{ name is sequence }}:{{ nums is sequence }}:{{ nothing is sameas none }}"),
+    ("float equality", "{{ 1.5 == 1.5 }}:{{ 2.5 == 2.0 }}"),
+    ("repr backslash", "{{ ['a\\\\b'] }}"),
+    ("tojson pretty list", "{{ [1, 'a']|tojson(indent=2) }}"),
+    ("default no arg", "{{ missing|default }}:{{ name|default }}"),
+]
+
+
+# Templates whose CPython failure message the port mirrors verbatim (TypeError/
+# ValueError/UndefinedError texts), asserted as the render `Error` payload.
+ERROR_TEMPLATES = [
+    ("negated failed test", "{{ none|first is not defined }}"),
+    ("select unknown test", "{{ [1]|select('nosuchtest')|join(',') }}"),
+    ("reject unknown test", "{{ [1]|reject('nosuchtest')|join(',') }}"),
+    ("map unknown filter", "{{ ['a']|map('nosuchfilter')|join(',') }}"),
+    ("map failed filter", "{{ [none]|map('first')|join(',') }}"),
+    ("items of string", "{{ 'ab'|items|list }}"),
+    ("first of none", "{{ none|first }}"),
+    ("last of none", "{{ none|last }}"),
+    ("str concat int", "{{ 'a' + 1 }}"),
+    ("str concat float", "{{ 'a' + 1.5 }}"),
+    ("str concat list", "{{ 'a' + [1] }}"),
+    ("str concat dict", "{{ 'a' + obj }}"),
+    ("str concat none", "{{ 'a' + none }}"),
+    ("str concat bool", "{{ 'a' + true }}"),
+    ("add undefined left", "{{ missing + 'a' }}"),
+    ("add undefined right", "{{ 'a' + missing }}"),
+    ("arith undefined attr", "{{ missing.x + 1 }}"),
+    ("sub undefined attr", "{{ missing.x - 1 }}"),
+    ("mul undefined attr", "{{ missing.x * 2 }}"),
+    ("div undefined attr", "{{ missing.x / 2 }}"),
+    ("floordiv undefined attr", "{{ missing.x // 2 }}"),
+    ("mod undefined attr", "{{ missing.x % 2 }}"),
+    ("neg undefined", "{{ -missing }}"),
+    ("neg undefined attr", "{{ -missing.x }}"),
+    ("neg string", "{{ -'a' }}"),
+    ("range zero step", "{{ range(1, 5, 0) }}"),
+    ("subscript undefined", "{{ missing[0] }}"),
+    ("add undefined attr right", "{{ 1 + missing.x }}"),
+]
+
+
+def main():
+    env = jinja2.Environment(trim_blocks=True, lstrip_blocks=True)
+    context = dict(name="world", nums=[1, 2, 3], enabled=True, nothing=None, obj={"x": 4})
+    cases = [[name, template, env.from_string(template).render(context)] for name, template in TEMPLATES]
+    errors = [[name, template, error_message(env, template, context)] for name, template in ERROR_TEMPLATES]
+    macro_source = "{% macro hi(x) %}Hi {{ x }}{% endmacro %}"
+    macro = env.parse(macro_source).body[0]
+    write("jinja2", "Jinja2 chat-environment renders and failure messages over a fixed JSON-like context.",
+          {"jinja2": jinja2.__version__}, {
+              "RENDERS": cases, "CHARS": list("aé🙂"), "REVERSED": "aé🙂"[::-1],
+              "SPLIT": " a\t b\n c ".split(), "SEP_SPLIT": "a,,b,".split(","),
+              "CAPITALIZED": "hELLO".capitalize(), "REPR": repr("a\nb"), "BOOL_TEXT": str(True),
+              "JSON": json.dumps({"x": 2}), "PRETTY_JSON": json.dumps({"x": 2}, indent=2),
+              "PRETTY_LIST_JSON": json.dumps([1, 2], indent=2),
+              "FLOORDIV": -7 // 3, "MODULO": -7 % 3,
+              "MACRO_SOURCE": macro_source, "MACRO_NAME": macro.name, "MACRO_PARAMS": [arg.name for arg in macro.args],
+              "ERRORS": errors,
+          })
+
+
+def error_message(env, template, context):
+    """CPython's exception text for a template the port also rejects."""
+    try:
+        env.from_string(template).render(context)
+    except Exception as error:
+        return str(error)
+    raise AssertionError(f"oracle template unexpectedly rendered: {template}")
+
+
+if __name__ == "__main__":
+    main()

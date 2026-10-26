@@ -1,0 +1,26 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "Initial status: Eligible, sequence 1, no previousStatus and no reasonDigest.",
+  "type": "ReleaseStatus",
+  "value": {
+    "release": {
+      "package": {
+        "scope": "demo",
+        "name": "maths"
+      },
+      "epoch": 1,
+      "ordinal": 2,
+      "digest": "sha256:bece9638d8acc5271e28944cba06dac6a161621592faf6bca5e3a48c7350b39f"
+    },
+    "sequence": 1,
+    "state": {
+      "Eligible": {}
+    },
+    "effectiveAt": "2026-10-01T00:00:00.000Z",
+    "roleMetadataVersion": 11
+  },
+  "canonical": "{\"effectiveAt\":\"2026-10-01T00:00:00.000Z\",\"release\":{\"digest\":\"sha256:bece9638d8acc5271e28944cba06dac6a161621592faf6bca5e3a48c7350b39f\",\"epoch\":1,\"ordinal\":2,\"package\":{\"name\":\"maths\",\"scope\":\"demo\"}},\"roleMetadataVersion\":11,\"sequence\":1,\"state\":{\"Eligible\":{}}}",
+  "canonicalLength": 263,
+  "domain": "osprey.release-status.v1",
+  "digest": "sha256:fbadf7e020946fd9a984c3945d685d2054ee5232ae9e18074ce1f143b494e831"
+}

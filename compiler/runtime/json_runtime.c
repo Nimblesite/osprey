@@ -234,7 +234,12 @@ static size_t close_container(Parser *ps, size_t id, size_t base) {
       return out_of_memory(ps);
     }
   }
-  memcpy(doc->slots + doc->nslots, ps->pending + base, count * sizeof(size_t));
+  // An empty container has no children to move, and `slots` may still be
+  // NULL: forming NULL + 0 is undefined, so copy only when there is something.
+  if (count != 0) {
+    memcpy(doc->slots + doc->nslots, ps->pending + base,
+           count * sizeof(size_t));
+  }
   doc->nodes[id].at = doc->nslots;
   doc->nodes[id].count = count;
   doc->nslots += count;

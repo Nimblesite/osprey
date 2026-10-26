@@ -1,0 +1,73 @@
+namespace registry;
+import registry::Json
+import registry::SetOrder
+import registry::TypeDiagram
+
+/// The list rules of a schema-valid value: walks the value by its typeDiagram
+/// type and applies `SetOrder` to every list field it reaches, naming the
+/// field by JSON pointer. `SchemaCheck` owns shape; this owns order, so a
+/// value is canonical exactly when both pass. Implements the list rules of
+/// [PACKAGE-TYPE-INVARIANTS].
+module SchemaOrder {
+    fn child(pointer, key) = "${pointer}/${key}"
+
+    fn firstCode(codes) = foldList(codes, "", fn(found, c) => if found == "" { c } else { found })
+
+    fn elementName(ref) = match ref {
+        TypeDiagram::Named { name } => name
+        _ => ""
+    }
+
+    fn itemsOf(json) = match json {
+        Json::Arr { items } => items
+        _ => []
+    }
+
+    fn walkItems(model, element, field, items, pointer) = firstCode(range(0, length(items)) |> map(fn(i) =>
+        walkTyped(model, element, field, listGet(items, i) ?: Json::Null, child(pointer, "${i}"))) |> toList)
+
+    fn walkList(model, element, field, json, pointer) = {
+        let code = SetOrder::listCode(elementName(element), field, itemsOf(json))
+        if code != "" { "${code} at ${pointer}" } else { walkItems(model, element, field, itemsOf(json), pointer) }
+    }
+
+    fn walkTyped(model, ref, field, json, pointer) -> string = match ref {
+        TypeDiagram::ListOf { element } => walkList(model, element, field, json, pointer)
+        TypeDiagram::OptionOf { element } => walkTyped(model, element, field, json, pointer)
+        TypeDiagram::Named { name } => walkNamed(model, name, json, pointer)
+    }
+
+    fn walkField(model, f, json, pointer) = match Json::get(json, f.name) {
+        Success { value } => walkTyped(model, f.typ, f.name, value, child(pointer, f.name))
+        Error => ""
+    }
+
+    fn walkFields(model, fields, json, pointer) = firstCode(mapList(fields, fn(f) => walkField(model, f, json, pointer)))
+
+    fn variantFields(variants, name) = foldList(variants, [], fn(found, v) => if v.name == name { v.payload } else { found })
+
+    fn walkVariant(model, variants, json, pointer) = match json {
+        Json::Obj { members } => match listGet(members, 0) {
+            Success { value } => walkFields(model, variantFields(variants, value.key), value.value, child(pointer, value.key))
+            Error => ""
+        }
+        _ => ""
+    }
+
+    fn walkDecl(model, decl, json, pointer) = match decl {
+        TypeDiagram::Alias { target } => walkTyped(model, target, "", json, pointer)
+        TypeDiagram::Struct { fields } => walkFields(model, fields, json, pointer)
+        TypeDiagram::Union { variants } => walkVariant(model, variants, json, pointer)
+    }
+
+    /// Builtin scalars have no declaration and hold no lists.
+    fn walkNamed(model, name, json, pointer) = match TypeDiagram::lookup(model, name) {
+        Success { value } => walkDecl(model, value, json, pointer)
+        Error => ""
+    }
+
+    /// "" when every list in `json`, a schema-valid `typeName` value, obeys
+    /// its canonical order; else `"<order code> at <json-pointer>"` for the
+    /// first list that does not.
+    export fn listsCode(model, typeName, json) = walkNamed(model, typeName, json, "")
+}

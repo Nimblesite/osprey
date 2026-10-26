@@ -203,7 +203,7 @@ fn viewsAndCrossCollectionCase() = {
             mapLength(mm2) == 4,
             listLength(xs) == 3,
             mapLength(g3) == 3,
-            listLength(mapKeys(g3) + xs) == 6
+            listLength(mapValues(g3) + xs) == 6
     ])
 
     // Key and value membership checks validate view content without assuming hash iteration order.

@@ -12,7 +12,10 @@
 (float) @number
 (boolean) @constant.builtin
 (string) @string
-(interpolated_string) @string
+(string_content) @string
+(escape_sequence) @string.escape
+(interpolated_string "\"" @string)
+(interpolation "${" @punctuation.special "}" @punctuation.special)
 
 ; --- Keywords ---
 [

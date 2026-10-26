@@ -2,32 +2,16 @@
 #include "http_shared.h"
 #include "test_alloc.h"
 #include <assert.h>
+#include <openssl/err.h>
+#include <openssl/pem.h>
+#include <openssl/ssl.h>
+#include <openssl/x509v3.h>
 
-// Include all runtime modules
-extern int64_t http_create_client(char *base_url, int64_t timeout);
-extern int64_t http_close_client(int64_t client_id);
-extern int64_t http_get(int64_t client_id, char *path, char *headers);
-extern int64_t http_post(int64_t client_id, char *path, char *body,
-                         char *headers);
-extern int64_t http_put(int64_t client_id, char *path, char *body,
-                        char *headers);
-extern int64_t http_delete(int64_t client_id, char *path, char *headers);
+// Runtime APIs and cross-TU test entry points: http_runtime_tests.h
+#include "http_runtime_tests.h"
 
-extern int64_t http_create_server(int64_t port, char *address);
-extern int64_t http_listen(int64_t server_id, HttpRequestHandler handler);
-
-// Defined with the live-server tests below; the lifecycle test needs a real
-// callback now that http_listen is declared with its true signature.
-static HttpResponse *server_test_handler(char *method, char *path,
-                                         char *headers, char *body);
-extern int64_t http_stop_server(int64_t server_id);
-
-
-extern int64_t http_get_response(int64_t client_id, char *path, char *headers);
-extern int64_t http_response_status(int64_t handle);
-extern char *http_response_body(int64_t handle);
-extern char *http_response_header(int64_t handle, char *name);
-extern int64_t http_response_free(int64_t handle);
+// Port burned by test_server_handle_exhaustion (see http_server_live_tests.c).
+#define SERVER_TEST_PORT 18089
 
 void test_http_create_client(void) {
   printf("Testing http_create_client...\n");
@@ -84,7 +68,7 @@ void test_http_server_lifecycle(void) {
   printf("✅ Server created: %" PRId64 "\n", server_id);
 
   // Start listening
-  int64_t listen_result = http_listen(server_id, server_test_handler);
+  int64_t listen_result = http_listen(server_id, http_test_server_handler);
   assert(listen_result == 0);
   printf("✅ Server listening started\n");
 
@@ -182,7 +166,33 @@ static HttpResponse *live_handler(char *method, char *path, char *headers,
 #define LIVE_PORT 18085
 #define LIVE_TRIES 50
 
+// Cross-TU forwarders for the allocation injector: test_alloc.h's arming
+// controls are static inline in this TU, so other suite TUs reach them only
+// through these out-of-line symbols (same pattern as http_test_server_handler).
+void test_alloc_fail_off(void) { osp_alloc_fail_off(); }
+void test_alloc_fail_size(size_t bytes) { osp_alloc_fail_size(bytes); }
+
+// Allocation rejection must precede handle exhaustion; the following live
+// loopback exchange also proves both services recover after rejection.
+static void check_http_creation_allocation_failures(void) {
+  long live = osp_alloc_live();
+  osp_alloc_fail_next();
+  assert(http_create_client("http://127.0.0.1:1", 1) == -3);
+  assert(osp_alloc_live() == live);
+  osp_alloc_fail_next(); // the server record itself
+  assert(http_create_server(SERVER_TEST_PORT,
+                            (char *)(uintptr_t) "127.0.0.1") == -3);
+  assert(osp_alloc_live() == live);
+  osp_alloc_fail_after(1); // the record succeeds; its address copy does not
+  assert(http_create_server(SERVER_TEST_PORT,
+                            (char *)(uintptr_t) "127.0.0.1") == -3);
+  assert(osp_alloc_live() == live &&
+         "the half-built record must be released, not abandoned");
+  osp_alloc_fail_off();
+}
+
 void test_live_loopback_exchange(void) {
+  check_http_creation_allocation_failures();
   printf("Testing live loopback HTTP exchange...\n");
   int64_t server_id = http_create_server(LIVE_PORT, (char *)(uintptr_t) "127.0.0.1");
   assert(server_id > 0);
@@ -216,216 +226,64 @@ void test_live_loopback_exchange(void) {
   printf("✅ Live loopback exchange passed!\n\n");
 }
 
-// ---------------------------------------------------------------------------
-// Scripted origin: a raw TCP server that answers with EXACT bytes. It lets the
-// client be asserted against wire responses the Osprey server would never
-// produce -- chunked framing, a bogus status line, a silent close -- and
-// records the request the client actually sent [HTTP-STATUS-CLIENT].
-// ---------------------------------------------------------------------------
+// http_post_response is the POST twin of http_get_response: the request body
+// reaches the handler and the response body/headers are retained behind the
+// returned handle [HTTP-RESPONSE-HANDLE].
+static char g_post_seen_body[MAX_HTTP_BUFFER];
+static char g_post_seen_method[8];
 
-#define ORIGIN_PORT 18088
-
-typedef struct {
-  int listen_fd;
-  const char *reply; // NULL: accept and close without writing a byte
-  char request[MAX_HTTP_BUFFER];
-  pthread_t thread;
-} ScriptedOrigin;
-
-// Reads one whole HTTP request: headers, then Content-Length bytes of body.
-static void origin_read_request(int fd, char *out, size_t capacity) {
-  size_t len = 0;
-  char *blank = NULL;
-  while (len + 1 < capacity && blank == NULL) {
-    ssize_t n = recv(fd, out + len, capacity - 1 - len, 0);
-    if (n <= 0) {
-      break;
-    }
-    len += (size_t)n;
-    out[len] = '\0';
-    blank = strstr(out, "\r\n\r\n");
-  }
-  if (blank == NULL) {
-    return;
-  }
-  const char *marker = strstr(out, "Content-Length: ");
-  size_t want = marker ? (size_t)atoi(marker + 16) : 0;
-  size_t have = len - (size_t)(blank + 4 - out);
-  while (have < want && len + 1 < capacity) {
-    ssize_t n = recv(fd, out + len, capacity - 1 - len, 0);
-    if (n <= 0) {
-      break;
-    }
-    len += (size_t)n;
-    have += (size_t)n;
-    out[len] = '\0';
-  }
+static HttpResponse *post_handler(char *method, char *path, char *headers,
+                                  char *body) {
+  (void)path;
+  (void)headers;
+  snprintf(g_post_seen_method, sizeof(g_post_seen_method), "%s", method);
+  snprintf(g_post_seen_body, sizeof(g_post_seen_body), "%s", body ? body : "");
+  g_live_response.status = 201;
+  g_live_response.headers =
+      (char *)(uintptr_t) "X-Echo: posted\r\n";
+  g_live_response.contentType = (char *)(uintptr_t) "text/plain";
+  g_live_response.streamFd = -1;
+  g_live_response.isComplete = true;
+  g_live_response.partialBody = (char *)(uintptr_t) "created";
+  return &g_live_response;
 }
 
-static void *origin_thread(void *arg) {
-  ScriptedOrigin *origin = (ScriptedOrigin *)arg;
-  int fd = accept(origin->listen_fd, NULL, NULL);
-  if (fd < 0) {
-    return NULL;
-  }
-  origin_read_request(fd, origin->request, sizeof(origin->request));
-  if (origin->reply) {
-    size_t total = strlen(origin->reply);
-    size_t sent = 0;
-    while (sent < total) {
-      ssize_t n = send(fd, origin->reply + sent, total - sent, 0);
-      if (n <= 0) {
-        break;
-      }
-      sent += (size_t)n;
-    }
-  }
-  close(fd); // Connection: close is what makes the client stop draining
-  return NULL;
-}
+#define POST_PORT 18091
 
-static void origin_start(ScriptedOrigin *origin, const char *reply) {
-  memset(origin, 0, sizeof(*origin));
-  origin->reply = reply;
-  origin->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
-  assert(origin->listen_fd >= 0);
-  int opt = 1;
-  assert(setsockopt(origin->listen_fd, SOL_SOCKET, SO_REUSEADDR,
-                    (const char *)&opt, sizeof(opt)) == 0);
-  struct sockaddr_in addr;
-  memset(&addr, 0, sizeof(addr));
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(ORIGIN_PORT);
-  addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-  assert(bind(origin->listen_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0);
-  assert(listen(origin->listen_fd, 1) == 0);
-  assert(pthread_create(&origin->thread, NULL, origin_thread, origin) == 0);
-}
-
-static void origin_stop(ScriptedOrigin *origin) {
-  assert(pthread_join(origin->thread, NULL) == 0);
-  close(origin->listen_fd);
-}
-
-static int64_t origin_client(void) {
-  int64_t client_id = http_create_client(
-      (char *)(uintptr_t) "http://127.0.0.1:18088", 2000);
+void test_post_response_loopback(void) {
+  printf("Testing http_post_response loopback...\n");
+  int64_t server_id =
+      http_create_server(POST_PORT, (char *)(uintptr_t) "127.0.0.1");
+  assert(server_id > 0);
+  assert(http_listen(server_id, post_handler) == 0);
+  int64_t client_id =
+      http_create_client((char *)(uintptr_t) "http://127.0.0.1:18091", 5000);
   assert(client_id > 0);
-  return client_id;
-}
-
-// A chunked response is decoded before the caller sees it, and header lookup
-// ignores case [HTTP-RESPONSE-HANDLE].
-void test_client_chunked_response(void) {
-  ScriptedOrigin origin;
-  origin_start(&origin, "HTTP/1.1 200 OK\r\n"
-                        "Transfer-Encoding: chunked\r\n"
-                        "X-Mixed-Case: Yes\r\n"
-                        "\r\n"
-                        "5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n");
-  int64_t client_id = origin_client();
-  int64_t handle = http_get_response(client_id, (char *)(uintptr_t) "/chunked",
-                                     (char *)(uintptr_t) "");
-  origin_stop(&origin);
+  int64_t handle = -1;
+  for (int i = 0; i < LIVE_TRIES && handle < 0; i++) {
+    handle = http_post_response(client_id, (char *)(uintptr_t) "/submit",
+                                (char *)(uintptr_t) "payload-42",
+                                (char *)(uintptr_t) "");
+    if (handle < 0) {
+      usleep(100000);
+    }
+  }
   assert(handle >= 1);
-  assert(http_response_status(handle) == 200);
+  assert(strcmp(g_post_seen_method, "POST") == 0);
+  assert(strcmp(g_post_seen_body, "payload-42") == 0);
+  assert(http_response_status(handle) == 201);
   char *body = http_response_body(handle);
-  assert(body != NULL && strcmp(body, "hello world") == 0);
+  assert(body != NULL && strcmp(body, "created") == 0);
   free(body);
-  char *header = http_response_header(handle, (char *)(uintptr_t) "x-mixed-case");
-  assert(header != NULL && strcmp(header, "Yes") == 0);
+  char *header = http_response_header(handle, (char *)(uintptr_t) "X-Echo");
+  assert(header != NULL && strcmp(header, "posted") == 0);
   free(header);
-  // A header name that is a prefix of a real one must NOT match.
-  assert(http_response_header(handle, (char *)(uintptr_t) "X-Mixed") == NULL);
-  assert(http_response_header(handle, NULL) == NULL);
   assert(http_response_free(handle) == 0);
-  assert(strstr(origin.request, "GET /chunked HTTP/1.1\r\n") == origin.request);
-  assert(strstr(origin.request, "Host: 127.0.0.1\r\n") != NULL);
-  assert(strstr(origin.request, "Connection: close\r\n") != NULL);
   http_close_client(client_id);
+  http_stop_server(server_id);
+  printf("✅ http_post_response loopback passed!\n\n");
 }
 
-// HTTP/1.0 status lines parse; anything that is not a status line is -8, and a
-// server that closes without writing is -7 [HTTP-STATUS-CLIENT].
-void test_client_status_line_handling(void) {
-  ScriptedOrigin origin;
-  origin_start(&origin, "HTTP/1.0 404 Not Found\r\n\r\nmissing");
-  int64_t client_id = origin_client();
-  assert(http_get(client_id, (char *)(uintptr_t) "/gone",
-                  (char *)(uintptr_t) "") == 404);
-  origin_stop(&origin);
-
-  origin_start(&origin, "NOT-HTTP AT ALL\r\n\r\n");
-  assert(http_get(client_id, (char *)(uintptr_t) "/junk",
-                  (char *)(uintptr_t) "") == -8);
-  origin_stop(&origin);
-
-  origin_start(&origin, NULL); // accepted, then closed in silence
-  assert(http_get(client_id, (char *)(uintptr_t) "/silent",
-                  (char *)(uintptr_t) "") == -7);
-  origin_stop(&origin);
-  http_close_client(client_id);
-}
-
-// Every method surface reaches the wire with its own verb, and a body arrives
-// with a matching Content-Length [HTTP-STATUS-CLIENT].
-void test_client_methods_and_body(void) {
-  const char *ok = "HTTP/1.1 204 No Content\r\n\r\n";
-  ScriptedOrigin origin;
-  int64_t client_id = origin_client();
-
-  origin_start(&origin, ok);
-  assert(http_post(client_id, (char *)(uintptr_t) "/submit",
-                   (char *)(uintptr_t) "data",
-                   (char *)(uintptr_t) "X-Trace: 7\r\n") == 204);
-  origin_stop(&origin);
-  assert(strstr(origin.request, "POST /submit HTTP/1.1\r\n") == origin.request);
-  assert(strstr(origin.request, "X-Trace: 7\r\n") != NULL);
-  assert(strstr(origin.request, "Content-Length: 4\r\n\r\ndata") != NULL);
-
-  origin_start(&origin, ok);
-  assert(http_put(client_id, (char *)(uintptr_t) "/item",
-                  (char *)(uintptr_t) "v", (char *)(uintptr_t) "") == 204);
-  origin_stop(&origin);
-  assert(strstr(origin.request, "PUT /item HTTP/1.1\r\n") == origin.request);
-
-  origin_start(&origin, ok);
-  assert(http_delete(client_id, (char *)(uintptr_t) "/item",
-                     (char *)(uintptr_t) "") == 204);
-  origin_stop(&origin);
-  assert(strstr(origin.request, "DELETE /item HTTP/1.1\r\n") == origin.request);
-  http_close_client(client_id);
-}
-
-// Transport failures each report their own code rather than a status
-// [HTTP-STATUS-CLIENT].
-void test_client_transport_failures(void) {
-  assert(http_create_client(NULL, 5000) == -1);
-  assert(http_create_client((char *)(uintptr_t) "http://h", -1) == -2);
-  assert(http_create_client((char *)(uintptr_t) "http://:0/", 5000) == -4);
-
-  int64_t refused =
-      http_create_client((char *)(uintptr_t) "http://127.0.0.1:1", 1000);
-  assert(refused > 0);
-  assert(http_get(refused, (char *)(uintptr_t) "/", (char *)(uintptr_t) "") ==
-         -5);
-  assert(http_get(refused, NULL, (char *)(uintptr_t) "") == -2);
-  http_close_client(refused);
-
-  char long_host[400];
-  memcpy(long_host, "http://", 7);
-  memset(long_host + 7, 'a', sizeof(long_host) - 10);
-  memcpy(long_host + sizeof(long_host) - 3, "/x", 3);
-  int64_t unresolvable = http_create_client(long_host, 1000);
-  assert(unresolvable > 0);
-  assert(http_get(unresolvable, (char *)(uintptr_t) "/",
-                  (char *)(uintptr_t) "") == -4);
-  http_close_client(unresolvable);
-}
-
-// A client handle outside the table must be REJECTED, never used as an index:
-// clients[] holds MAX_CLIENTS entries and a raw index is an out-of-bounds
-// access [HTTP-STATUS-CLIENT].
 void test_client_handle_bounds(void) {
   assert(http_get(-1, (char *)(uintptr_t) "/x", (char *)(uintptr_t) "") == -1);
   assert(http_get(0, (char *)(uintptr_t) "/x", (char *)(uintptr_t) "") == -1);
@@ -457,411 +315,14 @@ void test_client_handle_exhaustion(void) {
   assert(http_create_client((char *)(uintptr_t) "http://127.0.0.1:1", 1) == -5);
 }
 
-// A body larger than the initial receive buffer forces the drain loop to grow
-// its buffer; the payload must survive intact [HTTP-RESPONSE-HANDLE].
-void test_client_large_response(void) {
-  enum { BIG_BODY = 12000 };
-  static char reply[BIG_BODY + 256];
-  int head = snprintf(reply, sizeof(reply),
-                      "HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n", BIG_BODY);
-  assert(head > 0);
-  memset(reply + head, 'Z', BIG_BODY);
-  reply[head + BIG_BODY] = '\0';
-  ScriptedOrigin origin;
-  origin_start(&origin, reply);
-  int64_t client_id = origin_client();
-  int64_t handle = http_get_response(client_id, (char *)(uintptr_t) "/big",
-                                     (char *)(uintptr_t) "");
-  origin_stop(&origin);
-  assert(handle >= 1);
-  char *body = http_response_body(handle);
-  assert(body != NULL && strlen(body) == BIG_BODY);
-  assert(body[0] == 'Z' && body[BIG_BODY - 1] == 'Z');
-  free(body);
-  // A response with no Transfer-Encoding header is returned unchanged.
-  char *length_header =
-      http_response_header(handle, (char *)(uintptr_t) "Content-Length");
-  assert(length_header != NULL && strcmp(length_header, "12000") == 0);
-  free(length_header);
-  assert(http_response_free(handle) == 0);
-  http_close_client(client_id);
-}
-
-// Chunked framing the origin got wrong stops decoding at the damage instead of
-// walking off the end of the body [HTTP-RESPONSE-HANDLE].
-static void expect_chunked_body(const char *chunks, const char *expected) {
-  static char reply[512];
-  int written = snprintf(reply, sizeof(reply),
-                         "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n%s",
-                         chunks);
-  assert(written > 0 && (size_t)written < sizeof(reply));
-  ScriptedOrigin origin;
-  origin_start(&origin, reply);
-  int64_t client_id = origin_client();
-  int64_t handle = http_get_response(client_id, (char *)(uintptr_t) "/c",
-                                     (char *)(uintptr_t) "");
-  origin_stop(&origin);
-  assert(handle >= 1);
-  char *body = http_response_body(handle);
-  assert(body != NULL && strcmp(body, expected) == 0);
-  free(body);
-  assert(http_response_free(handle) == 0);
-  http_close_client(client_id);
-}
-
-void test_client_malformed_chunks(void) {
-  expect_chunked_body("zz\r\nhello\r\n0\r\n\r\n", "");   // size is not hex
-  expect_chunked_body("4", "");                          // size line unfinished
-  expect_chunked_body("3\r\nabc\r\nzz\r\n", "abc");      // damage after a chunk
-  expect_chunked_body("0\r\n\r\n", "");                  // terminator only
-}
-
-// An https:// client negotiates TLS before it sends anything; a plaintext peer
-// cannot complete that handshake and the request fails as a TLS error rather
-// than being sent in the clear [HTTP-STATUS-CLIENT].
-void test_client_tls_handshake_failure(void) {
-  ScriptedOrigin origin;
-  origin_start(&origin, NULL); // speaks no TLS
-  int64_t client_id = http_create_client(
-      (char *)(uintptr_t) "https://127.0.0.1:18088", 1000);
-  assert(client_id > 0);
-  assert(http_get(client_id, (char *)(uintptr_t) "/secure",
-                  (char *)(uintptr_t) "") == -12);
-  origin_stop(&origin);
-  assert(origin.request[0] != 'G'); // never reached the wire as plaintext
-  http_close_client(client_id);
-}
-
-// ---------------------------------------------------------------------------
-// Live server: raw clients against a REAL listener, so the reject path, the
-// self-stop path and the listen/stop state machine are asserted end to end
-// [HTTP-SERVER].
-// ---------------------------------------------------------------------------
-
-#define SERVER_TEST_PORT 18089
-
-static int64_t g_self_stop_server = -1;
-
-// Connects to the live listener, writes `request` verbatim, and returns the
-// whole reply. The server sets Connection: close, so read-to-EOF is the reply.
-static void server_exchange(const char *request, char *reply, size_t capacity) {
-  struct sockaddr_in addr;
-  memset(&addr, 0, sizeof(addr));
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(SERVER_TEST_PORT);
-  addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-  int fd = -1;
-  for (int i = 0; i < 100 && fd < 0; i++) {
-    fd = socket(AF_INET, SOCK_STREAM, 0);
-    assert(fd >= 0);
-    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-      close(fd);
-      fd = -1;
-      usleep(20000); // the listener fiber may still be binding
-    }
-  }
-  assert(fd >= 0);
-  struct timeval tv = {10, 0};
-  assert(setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == 0);
-  size_t total = strlen(request);
-  size_t sent = 0;
-  while (sent < total) {
-    ssize_t n = send(fd, request + sent, total - sent, 0);
-    assert(n > 0);
-    sent += (size_t)n;
-  }
-  size_t len = 0;
-  while (len + 1 < capacity) {
-    ssize_t n = recv(fd, reply + len, capacity - 1 - len, 0);
-    if (n <= 0) {
-      break;
-    }
-    len += (size_t)n;
-  }
-  reply[len] = '\0';
-  close(fd);
-}
-
-static HttpResponse g_server_test_response;
-
-static HttpResponse *server_test_handler(char *method, char *path,
-                                         char *headers, char *body) {
-  (void)headers;
-  (void)body;
-  g_server_test_response.status = 200;
-  g_server_test_response.headers = (char *)(uintptr_t) "Content-Type: text/plain\r\n";
-  g_server_test_response.contentType = (char *)(uintptr_t) "text/plain";
-  g_server_test_response.streamFd = -1;
-  g_server_test_response.isComplete = true;
-  g_server_test_response.partialBody =
-      strcmp(method, "GET") == 0 && strcmp(path, "/stop") == 0
-          ? (char *)(uintptr_t) "stopping"
-          : (char *)(uintptr_t) "served";
-  return &g_server_test_response;
-}
-
-// A request the reader refuses never reaches the handler: it is answered with
-// the rejection status and its JSON body, and the exchange is still logged
-// with a labelled method and path [HTTP-SERVER].
-void test_server_rejects_bad_requests(void) {
-  int64_t server_id =
-      http_create_server(SERVER_TEST_PORT, (char *)(uintptr_t) "127.0.0.1");
-  assert(server_id > 0);
-  assert(http_listen(server_id, server_test_handler) == 0);
-  // Listening twice on one server is refused, and so is a second bind of the
-  // same port by another server.
-  assert(http_listen(server_id, server_test_handler) == -7);
-  int64_t rival =
-      http_create_server(SERVER_TEST_PORT, (char *)(uintptr_t) "127.0.0.1");
-  assert(rival > 0);
-  assert(http_listen(rival, server_test_handler) == -4); // port already bound
-  assert(http_stop_server(rival) == 0);
-
-  char reply[2048];
-  server_exchange("GET /ok HTTP/1.1\r\nHost: x\r\n\r\n", reply, sizeof(reply));
-  assert(strstr(reply, "HTTP/1.1 200") == reply);
-  assert(strstr(reply, "served") != NULL);
-
-  server_exchange("GET /chunk HTTP/1.1\r\nHost: x\r\n"
-                  "Transfer-Encoding: chunked\r\n\r\n",
-                  reply, sizeof(reply));
-  assert(strstr(reply, "HTTP/1.1 400") == reply);
-  assert(strstr(reply, "unsupported HTTP transfer encoding") != NULL);
-
-  server_exchange("GET /bad HTTP/1.1\r\nHost: x\r\n"
-                  "Content-Length: not-a-number\r\n\r\n",
-                  reply, sizeof(reply));
-  assert(strstr(reply, "HTTP/1.1 400") == reply);
-  assert(strstr(reply, "malformed HTTP request") != NULL);
-
-  // A declared body far past the cap is refused before a byte of it is read.
-  server_exchange("POST /huge HTTP/1.1\r\nHost: x\r\n"
-                  "Content-Length: 99999999\r\n\r\n",
-                  reply, sizeof(reply));
-  assert(strstr(reply, "HTTP/1.1 413") == reply);
-  assert(strstr(reply, "HTTP request too large") != NULL);
-
-  assert(http_stop_server(server_id) == 0);
-}
-
-// A handler may stop its own server. The listener fiber then owns the teardown
-// and the stop call must not wait on itself [HTTP-SERVER].
-static HttpResponse *self_stopping_handler(char *method, char *path,
-                                           char *headers, char *body) {
-  (void)method;
-  (void)path;
-  (void)headers;
-  (void)body;
-  assert(http_stop_server(g_self_stop_server) == 0);
-  g_server_test_response.status = 200;
-  g_server_test_response.headers = (char *)(uintptr_t) "Content-Type: text/plain\r\n";
-  g_server_test_response.contentType = (char *)(uintptr_t) "text/plain";
-  g_server_test_response.streamFd = -1;
-  g_server_test_response.isComplete = true;
-  g_server_test_response.partialBody = (char *)(uintptr_t) "self-stopped";
-  return &g_server_test_response;
-}
-
-void test_server_self_stop_from_handler(void) {
-  g_self_stop_server =
-      http_create_server(SERVER_TEST_PORT, (char *)(uintptr_t) "127.0.0.1");
-  assert(g_self_stop_server > 0);
-  assert(http_listen(g_self_stop_server, self_stopping_handler) == 0);
-  char reply[1024];
-  server_exchange("GET /stop HTTP/1.1\r\nHost: x\r\n\r\n", reply,
-                  sizeof(reply));
-  assert(strstr(reply, "HTTP/1.1 200") == reply);
-  assert(strstr(reply, "self-stopped") != NULL);
-  // The handle is already gone: stopping it again is a no-op, not a double
-  // free, and the port comes back.
-  assert(http_stop_server(g_self_stop_server) == 0);
-  int64_t reborn =
-      http_create_server(SERVER_TEST_PORT, (char *)(uintptr_t) "127.0.0.1");
-  assert(reborn > 0);
-  assert(http_listen(reborn, server_test_handler) == 0);
-  assert(http_stop_server(reborn) == 0);
-}
-
-// Server handles outside the table are rejected; one inside it that names no
-// server is a no-op [HTTP-SERVER].
-void test_server_handle_bounds(void) {
-  assert(http_listen(-1, server_test_handler) == -1);
-  assert(http_listen(0, server_test_handler) == -1);
-  assert(http_listen(MAX_SERVERS, server_test_handler) == -1);
-  assert(http_listen(MAX_SERVERS - 1, server_test_handler) == -1);
-  assert(http_stop_server(-1) == -1);
-  assert(http_stop_server(0) == -1);
-  assert(http_stop_server(MAX_SERVERS) == -1);
-  assert(http_stop_server(MAX_SERVERS - 1) == 0); // in range, no server
-}
-
-// The fiber id space is shared by spawns and channels, and a channel costs no
-// thread -- so this is how a test can reach the state where no fiber can be
-// spawned without creating a thousand of them.
-extern int64_t channel_create(int64_t capacity);
-
-// A request whose line yields no method and no path is still LOGGED, with both
-// fields carrying HTTP_LOG_UNKNOWN rather than left empty. An empty field in a
-// log line is indistinguishable from a missing one, and the rejection log is
-// the only record that the exchange happened at all [HTTP-SERVER].
-// Run one exchange with this process's stderr on a pipe, and return what the
-// server logged. The log line is written by the server fiber inside THIS
-// process, so a pipe on fd 2 is enough to read it; one line is far short of the
-// pipe buffer, so the writer cannot block.
-static void exchange_capturing_log(const char *request, char *reply,
-                                   size_t reply_size, char *log,
-                                   size_t log_size) {
-  int pipe_fds[2];
-  assert(pipe(pipe_fds) == 0);
-  fflush(stderr);
-  int saved = dup(STDERR_FILENO);
-  assert(saved >= 0);
-  assert(dup2(pipe_fds[1], STDERR_FILENO) == STDERR_FILENO);
-  assert(close(pipe_fds[1]) == 0);
-
-  server_exchange(request, reply, reply_size);
-
-  fflush(stderr);
-  assert(dup2(saved, STDERR_FILENO) == STDERR_FILENO);
-  assert(close(saved) == 0); // the last write end; the read below cannot block
-  ssize_t got = read(pipe_fds[0], log, log_size - 1);
-  log[got > 0 ? (size_t)got : 0] = '\0';
-  assert(close(pipe_fds[0]) == 0);
-}
-
-void test_server_labels_an_unparseable_request(void) {
-  int64_t server_id =
-      http_create_server(SERVER_TEST_PORT, (char *)(uintptr_t) "127.0.0.1");
-  assert(server_id > 0);
-  assert(http_listen(server_id, server_test_handler) == 0);
-
-  // A header block with no request line at all: `sscanf` finds neither token.
-  char reply[1024];
-  char log[1024];
-  exchange_capturing_log("\r\n\r\n", reply, sizeof(reply), log, sizeof(log));
-  assert(strstr(reply, "HTTP/1.1 400") == reply);
-  assert(strstr(reply, "malformed HTTP request") != NULL);
-
-  // The LABELLING this test is named for, asserted rather than implied. An
-  // operator reading the log has only these tokens to tell an unparseable
-  // request from one that simply asked for `/`, and a placeholder that goes
-  // missing makes those two look identical [HTTP-SERVER].
-  assert(strstr(log, "[http] request_id=") != NULL &&
-         "the exchange is logged at all");
-  assert(strstr(log, "read=malformed") != NULL &&
-         "an unparseable read is labelled malformed, never complete");
-  assert(strstr(log, "status=400") != NULL && "and carries the status sent");
-  // The trailing space matters: `path=- ` is the placeholder, `path= ` is the
-  // empty field the query stripper once produced by eating the placeholder.
-  assert(strstr(log, "method=- ") != NULL &&
-         "a request line with no method logs the placeholder");
-  assert(strstr(log, "path=- ") != NULL &&
-         "and the path placeholder survives the query stripper");
-
-  assert(http_stop_server(server_id) == 0);
-}
-
-// When the listener fiber cannot be spawned, `httpListen` reports -6 and the
-// server is left EXACTLY as it was found: not listening, no loop scheduled, and
-// no listening socket held. A server marked live whose loop never ran would
-// accept nothing forever while every retry answered -7 ("already listening").
-//
-// Runs late: exhausting the fiber id space is permanent for the process
-// [HTTP-SERVER], [CONCURRENCY-SPAWN-AWAIT].
-// Descriptors this process holds open. A listener that reports failure while
-// keeping its socket leaks one per attempt, and EVERY return value in this unit
-// looks identical when it does -- the leak is only visible from outside the
-// call, in the process's own table.
-enum { FD_SCAN_LIMIT = 4096 };
-
-static int open_descriptor_count(void) {
-  int limit = getdtablesize();
-  int scanned = limit < FD_SCAN_LIMIT ? limit : FD_SCAN_LIMIT;
-  int open_count = 0;
-  for (int fd = 0; fd < scanned; fd++) {
-    if (fcntl(fd, F_GETFD) != -1) {
-      open_count++;
-    }
-  }
-  return open_count;
-}
-
-void test_listener_spawn_failure_is_reported(void) {
-  int64_t server_id =
-      http_create_server(SERVER_TEST_PORT, (char *)(uintptr_t) "127.0.0.1");
-  assert(server_id > 0);
-
-  // Burn the id space with channels rather than fibers: same counter, no
-  // threads. It is exhausted the moment creation starts refusing.
-  int64_t created = 0;
-  for (int i = 0; i < 1100; i++) {
-    created = channel_create(1);
-    if (created < 0) {
-      break;
-    }
-  }
-  assert(created == -4 && "the fiber id space must report exhaustion");
-
-  int before = open_descriptor_count();
-  assert(http_listen(server_id, server_test_handler) == -6);
-
-  // The socket was opened and BOUND before the spawn failed, so at the moment
-  // -6 is returned it is a live listener on a real port. Unwinding it is the
-  // whole obligation of this arm, and none of it reaches the caller: the record
-  // must survive, disowned of its socket and of the loop it never scheduled.
-  HttpServer *server = servers[server_id];
-  assert(server != NULL && "a failed listen must not unregister the server");
-  assert(server->socket_fd == -1 && "the bound socket must be disowned");
-  assert(!server->is_listening && "a failed listen must not claim to listen");
-  assert(!server->loop_scheduled && "and must schedule no accept loop");
-  assert(server->server_fiber_id == -1 &&
-         "a spawn that produced no fiber must record no fiber id");
-  assert(open_descriptor_count() == before &&
-         "the bound socket must be CLOSED, not merely forgotten");
-
-  // Not -7: a -7 here would mean the failed attempt left the server marked as
-  // listening, which is the state that can never be recovered from. And the
-  // second attempt binds and unwinds its own socket, so a release that only
-  // worked once is caught by the same count.
-  assert(http_listen(server_id, server_test_handler) == -6);
-  assert(open_descriptor_count() == before &&
-         "every retry must release its socket too");
-  assert(http_stop_server(server_id) == 0);
-  assert(open_descriptor_count() == before &&
-         "stopping a server that never listened releases nothing further");
-}
-
 // The server table is finite and its exhaustion is REPORTED. The id counter is
 // shared with clients, so by this point it is already past the table -- and a
 // create that answered with an out-of-range id would write servers[id] outside
 // the array, which is exactly the defect the client handles carried.
-//
-// The same -3 also covers a create that cannot allocate, and that arm has an
-// ownership obligation the return value cannot show: the record is built in two
-// steps, and a failure at the second must release the first. A server record
-// leaked per failed create is invisible to every caller [HTTP-SERVER].
 void test_server_handle_exhaustion(void) {
   assert(http_create_server(SERVER_TEST_PORT,
                             (char *)(uintptr_t) "127.0.0.1") == -3);
   assert(http_create_server(1, (char *)(uintptr_t) "127.0.0.1") == -3);
-
-  // Back inside the table, so the id is no longer what is being refused.
-  long live = osp_alloc_live();
-  next_id = 1;
-  osp_alloc_fail_next(); // the record itself
-  assert(http_create_server(SERVER_TEST_PORT,
-                            (char *)(uintptr_t) "127.0.0.1") == -3);
-  assert(servers[1] == NULL && "a create that failed registers nothing");
-  assert(osp_alloc_live() == live);
-
-  next_id = 1;
-  osp_alloc_fail_after(1); // the record succeeds; its address copy does not
-  assert(http_create_server(SERVER_TEST_PORT,
-                            (char *)(uintptr_t) "127.0.0.1") == -3);
-  assert(servers[1] == NULL);
-  assert(osp_alloc_live() == live &&
-         "the half-built record must be released, not abandoned");
-  osp_alloc_fail_off();
 }
 
 void run_all_http_tests(void) {
@@ -881,12 +342,15 @@ void run_all_http_tests(void) {
   test_client_transport_failures();
   test_client_large_response();
   test_client_malformed_chunks();
+  test_client_response_allocation_failures(); // arms the alloc injector; runs before anything reallocate-hungry
   test_client_tls_handshake_failure();
   test_client_handle_bounds();
   test_server_rejects_bad_requests();
   test_server_self_stop_from_handler();
   test_server_handle_bounds();
   test_live_loopback_exchange();    // full end-to-end request path
+  test_post_response_loopback();    // POST body retained behind a handle
+  test_client_tls_peer_verification(); // untrusted/wrong-host certs rejected
   test_server_labels_an_unparseable_request();
   // The three below burn finite id spaces and are permanent for the process.
   test_listener_spawn_failure_is_reported(); // burns the FIBER id space
@@ -901,3 +365,4 @@ int main(void) {
   run_all_http_tests();
   return 0;
 }
+

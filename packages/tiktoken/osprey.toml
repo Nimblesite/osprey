@@ -1,0 +1,14 @@
+[project]
+name = "tiktoken"
+source_roots = ["src"]
+python_sources = ["src/tables.py", "src/unicode.py", "src/pattern.py", "src/bpe.py", "src/core.py", "src/educational.py"]
+default_namespace = "tiktoken"
+
+[package]
+name = "@osprey/tiktoken"
+license = "MIT AND Unicode-3.0"
+summary = "Byte-level BPE tokenization: encodings, pre-tokenizers, decoding and training, ported from tiktoken"
+keywords = ["bpe", "python-flavor", "tiktoken", "tokenizer"]
+
+[test-dependencies]
+"@osprey/testing" = { epoch = 1, min_release = 1 }

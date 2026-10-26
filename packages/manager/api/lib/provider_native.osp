@@ -1,0 +1,51 @@
+namespace registry_api;
+import registry_api::Supabase
+
+/// Native provider transport; all provider URLs originate in validated,
+/// deployment-pinned OAuth configuration. Implements [PACKAGE-HOSTED-AUTH].
+module ProviderNative {
+    let timeoutMs = 5000
+    let bodyLimit = 131072
+
+    fn response(responseId) = {
+        let status = httpResponseStatus(responseId)
+        let body = httpResponseBody(responseId)
+        let freed = httpResponseFree(responseId)
+        match freed {
+            Error => Error { message: "auth.provider-transport" }
+            Success => match body {
+                Error => Error { message: "auth.provider-transport" }
+                Success { value } => if status < 100 || status > 599 || byteLength(value) > bodyLimit {
+                    Error { message: "auth.provider-transport" }
+                } else { Success { value: Supabase::Reply { status: status, body: value } } }
+            }
+        }
+    }
+
+    fn requestHandle(client, method, path, headers, body) = match method {
+        "GET" => httpGetResponse(client, path, headers)
+        "POST" => httpPostResponse(client, path, body, headers)
+        _ => Error { message: "auth.provider-method" }
+    }
+
+    fn performRequest(client, method, path, headers, body) = {
+        let received = match requestHandle(client, method, path, headers, body) {
+            Error => Error { message: "auth.provider-transport" }
+            Success { value } => response(value)
+        }
+        let closed = httpCloseClient(client)
+        if closed != 0 { Error { message: "auth.provider-transport" } } else { received }
+    }
+
+    fn request(method, base, path, headers, body) = {
+        let client = httpCreateClient(base, timeoutMs)
+        if client < 1 { Error { message: "auth.provider-transport" } }
+        else { performRequest(client, method, path, headers, body) }
+    }
+
+    /// Install only after OAuth::configCode succeeds. TLS requires peer and
+    /// hostname verification; redirects are returned, never followed.
+    export fn transport() = handler Supabase::Provider {
+        request method base path headers body => request(method, base, path, headers, body)
+    }
+}

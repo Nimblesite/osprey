@@ -1,0 +1,11 @@
+# Evaluation report
+
+| candidate | ROUGE-1 | ROUGE-2 | ROUGE-L | ROUGE-Lsum | BLEU | chrF | tokens | UNK |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| strong | 0.9524 | 0.8421 | 0.9524 | 0.9524 | 81.3288 | 90.7994 | 11 | 1 |
+| short | 0.5714 | 0.3333 | 0.5714 | 0.5714 | 17.6253 | 36.3846 | 6 | 1 |
+| off-topic | 0.1053 | 0.0 | 0.1053 | 0.1053 | 5.0736 | 12.5462 | 9 | 7 |
+Corpus BLEU 38.0909 / chrF 48.3087 over 3 references.
+ok 1 - text-evaluation
+1..1
+# tests=1 passed=1 failed=0 skipped=0

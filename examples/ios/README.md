@@ -42,7 +42,7 @@ After changing `app.osp`, rerun `examples/ios/build.sh ios-sim` or `examples/ios
 ## The boundary
 
 ```sh
-target/release/osprey examples/ios/app.osp --compile --target=ios-sim \
+target/release/osprey examples/ios/app.osp --compile --target=ios-sim --memory=none \
     -o examples/ios/build/ios-sim/libOspreyApp.a
 ```
 
@@ -56,7 +56,7 @@ extern fn ios_host_log(message: string) -> int
 
 `iosHostLog` implements that C symbol using Swift's `@_cdecl`, copies the incoming UTF-8 string, and uses Foundation's `NSLog`. The screen displays the copied message after every counter change. A platform service can follow the same pattern: expose a small scalar C function, implement it in Swift, and call it from Osprey.
 
-Calls are synchronous and run on the main thread in this sample. Host strings are borrowed for the duration of the call; Swift copies returned strings immediately with `String(cString:)`. Do not free Osprey-owned strings or keep Swift temporary string pointers in Osprey. The first iOS target uses the default memory backend, which retains general allocations for the process lifetime; it does not yet provide a host release API for returned strings.
+Calls are synchronous and run on the main thread in this sample. Host strings are borrowed for the duration of the call; Swift copies returned strings immediately with `String(cString:)`. Do not free Osprey-owned strings or keep Swift temporary string pointers in Osprey. The first iOS target uses the explicit unmanaged `none` backend, which retains general allocations for the process lifetime; it does not yet provide a host release API for returned strings.
 
 ## Verification and supported scope
 

@@ -208,27 +208,10 @@ impl TypeEnv {
     fn flattened(&self) -> TypeEnv {
         let mut merged = Frame::default();
         for frame in self.frames() {
-            for (name, value) in &frame.vars {
-                let _ = merged
-                    .vars
-                    .entry(name.clone())
-                    .or_insert_with(|| value.clone());
-            }
-            for (name, value) in &frame.type_params {
-                let _ = merged
-                    .type_params
-                    .entry(name.clone())
-                    .or_insert_with(|| value.clone());
-            }
-            for (name, value) in &frame.mutables {
-                let _ = merged.mutables.entry(name.clone()).or_insert(*value);
-            }
-            for (name, value) in &frame.runtime_builtins {
-                let _ = merged
-                    .runtime_builtins
-                    .entry(name.clone())
-                    .or_insert(*value);
-            }
+            merge_missing(&mut merged.vars, &frame.vars);
+            merge_missing(&mut merged.type_params, &frame.type_params);
+            merge_missing(&mut merged.mutables, &frame.mutables);
+            merge_missing(&mut merged.runtime_builtins, &frame.runtime_builtins);
         }
         TypeEnv {
             local: Arc::new(merged),
@@ -265,6 +248,8 @@ impl TypeEnv {
 /// A scheme's free variables: those of its type and obligations it does not
 /// quantify.
 fn scheme_free_vars(ctx: &mut InferCtx, scheme: &Scheme, out: &mut BTreeSet<VarId>) {
+    #[cfg(test)]
+    tests::record_environment_visit(scheme);
     let mut fv = BTreeSet::new();
     ctx.free_vars(&scheme.ty, &mut fv);
     for (_, obligation) in &scheme.obligations {
@@ -274,6 +259,13 @@ fn scheme_free_vars(ctx: &mut InferCtx, scheme: &Scheme, out: &mut BTreeSet<VarI
         let _ = fv.remove(q);
     }
     out.extend(fv);
+}
+
+/// Keep the first visible binding, including an explicit shadowing marker.
+fn merge_missing<T: Clone>(target: &mut HashMap<String, T>, source: &HashMap<String, T>) {
+    for (name, value) in source {
+        let _ = target.entry(name.clone()).or_insert_with(|| value.clone());
+    }
 }
 
 /// A scheme's built-in obligations restated against the substitution `map` —
@@ -310,10 +302,14 @@ pub(crate) fn instantiated(ctx: &mut InferCtx, scheme: &Scheme) -> (Type, Vec<(S
 /// Generalize a type over the variables free in it but not in the environment.
 pub(crate) fn generalize(ctx: &mut InferCtx, env: &TypeEnv, ty: &Type) -> Scheme {
     let ty = ctx.apply(ty);
-    let env_fv = env.free_vars(ctx);
     let mut ty_fv = BTreeSet::new();
     ctx.free_vars(&ty, &mut ty_fv);
-    let vars: Vec<VarId> = ty_fv.difference(&env_fv).copied().collect();
+    let vars = if ty_fv.is_empty() {
+        Vec::new()
+    } else {
+        let env_fv = env.free_vars(ctx);
+        ty_fv.difference(&env_fv).copied().collect()
+    };
     Scheme {
         vars,
         ty,
@@ -329,9 +325,45 @@ pub(crate) fn subst_vars(t: &Type, map: &HashMap<VarId, Type>) -> Type {
     clippy::indexing_slicing,
     reason = "test assertions: an out-of-bounds index is a test failure, not a production panic"
 )]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::unify::unify;
+
+    std::thread_local! {
+        static ENVIRONMENT_VISITS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+        pub(crate) static MARKER_VISITS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    }
+
+    pub(crate) const ENVIRONMENT_MARKER: &str = "EnvScanMarker";
+
+    pub(super) fn record_environment_visit(scheme: &Scheme) {
+        ENVIRONMENT_VISITS.with(|visits| visits.set(visits.get() + 1));
+        if matches!(&scheme.ty, Type::Record { name, .. } | Type::Con { name, .. }
+            if name == ENVIRONMENT_MARKER)
+        {
+            MARKER_VISITS.with(|visits| visits.set(visits.get() + 1));
+        }
+    }
+
+    #[test]
+    fn closed_types_generalize_without_scanning_unrelated_bindings() {
+        let mut ctx = InferCtx::new();
+        let mut env = TypeEnv::new();
+        for index in 0..512 {
+            env.insert(format!("global{index}"), Scheme::mono(Type::int()));
+        }
+        let ty = Type::fun(vec![Type::int()], Type::string());
+        ENVIRONMENT_VISITS.with(|visits| visits.set(0));
+        let scheme = generalize(&mut ctx, &env, &ty);
+        assert_eq!(scheme.ty, ty);
+        assert_eq!(scheme.vars, Vec::new());
+        assert_eq!(scheme.obligations, Vec::new());
+        let visits = ENVIRONMENT_VISITS.with(std::cell::Cell::get);
+        assert_eq!(
+            visits, 0,
+            "a closed type cannot quantify variables from unrelated bindings"
+        );
+    }
 
     #[test]
     fn instantiation_gives_fresh_independent_vars() {

@@ -18,7 +18,7 @@ impl Resolver<'_> {
             path.push(name.to_string());
             let key = SymbolKey::new(context.namespace.clone(), path);
             if self.symbol_visible(&key, context) {
-                return Some(key);
+                return Some(self.tracked(key, context));
             }
         }
         if scope.is_some_and(|scope| scope.is_ambiguous(name)) {
@@ -29,7 +29,8 @@ impl Resolver<'_> {
             );
             return None;
         }
-        scope.and_then(|scope| scope.member(name)).cloned()
+        let key = scope.and_then(|scope| scope.member(name)).cloned();
+        key.map(|key| self.tracked(key, context))
     }
 
     pub(crate) fn resolve_path(
@@ -55,7 +56,7 @@ impl Resolver<'_> {
                 return None;
             }
             if self.symbol_visible(&key, context) {
-                return Some(key);
+                return Some(self.tracked(key, context));
             }
             self.error(
                 context.source,
@@ -154,7 +155,7 @@ impl Resolver<'_> {
         if let Some(base) = scope.and_then(|scope| scope.member(first)) {
             candidates.push(extend_key(base, tail));
         }
-        if self.graph.namespaces.contains(first) {
+        if self.graph.namespaces.contains_key(first) {
             candidates.push(SymbolKey::new(first, tail.to_vec()));
         }
         candidates

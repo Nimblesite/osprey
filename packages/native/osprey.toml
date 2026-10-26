@@ -1,0 +1,13 @@
+[project]
+name = "native"
+source_roots = ["src"]
+default_namespace = "ui"
+
+[package]
+name = "@osprey/native"
+license = "MIT"
+summary = "Osprey Native: a centralized store, signals, keyed regions, typed components, bindings and capability effects for native application hosts"
+keywords = ["ios", "macos", "native", "reactive", "signals", "ui"]
+
+[modules]
+allow_wildcard_imports = false

@@ -42,3 +42,71 @@ fn recursiveGenericCase() = {
 }
 
 test("recursive generic functions specialize for integers and strings", fn() => exactArithmetic(recursiveGenericCase))
+
+/// Repeated generic calls share closed instantiations after bounded expansion.
+fn twice(x) = "${x}${x}"
+fn four(x) = "${twice(x)}${twice(x)}"
+fn eight(x) = "${four(x)}${four(x)}"
+fn sixteen(x) = "${eight(x)}${eight(x)}"
+fn thirtyTwo(x) = "${sixteen(x)}${sixteen(x)}"
+fn sixtyFour(x) = "${thirtyTwo(x)}${thirtyTwo(x)}"
+fn oneTwentyEight(x) = "${sixtyFour(x)}${sixtyFour(x)}"
+fn twoFiftySix(x) = "${oneTwentyEight(x)}${oneTwentyEight(x)}"
+type Packet<A> = Packet { payload: A }
+fn unpack(packet) = match packet { Packet { payload } => payload }
+fn recover(result) = match result {
+    Success { value } => satAdd(value, 1)
+    Error { message } => byteLength(message)
+}
+effect GenericProbe { read: fn() -> string }
+fn probed(x) = "${perform GenericProbe.read()}${x}"
+fn withProbe(label) = {
+    handle GenericProbe { read => label }
+    probed("!")
+}
+
+fn sharedGenericCase() = {
+    let expanded = twoFiftySix("q")
+    checkAll("shared generic ABI and Result normalization", [
+        byteLength(expanded) == 256,
+        (byteAt(expanded, 0) ?: 0) == 113,
+        (byteAt(expanded, 255) ?: 0) == 113,
+        unpack(Packet { payload: "payload" }) == "payload",
+        unpack(Packet { payload: 73 }) == 73,
+        recover(Error { message: "bad" }) == 3,
+        recover(Success { value: 41 }) == 42,
+        withProbe("left") == "left!",
+        withProbe("right") == "right!"
+    ])
+}
+
+test("nested generic fanout preserves specialized values", sharedGenericCase)
+
+/// A shared Result-returning specialization must retain its payload layout.
+/// The recursive Result return needs this annotation to reach code generation.
+fn payloadResult(marker, present, step) -> Result<List<int>, string> = match step {
+    0 => match present {
+        true => Success { value: [11, 22] }
+        false => Error { message: "missing" }
+    }
+    _ => payloadResult(marker, present, 0)
+}
+fn payloadLength(xs) = match payloadResult(xs, true, 1) {
+    Success { value } => length(value)
+    Error { message } => byteLength(message)
+}
+
+fn sharedResultPayloadCase() = {
+    let expanded = twoFiftySix("r")
+    let numbers = payloadResult("ints", true, 1) ?: []
+    let second = payloadResult(73, true, 1) ?: []
+    checkAll("specialized Result list payloads remain lists", [
+        byteLength(expanded) == 256,
+        length(numbers) == 2,
+        length(second) == 2,
+        payloadLength("marker") == 2,
+        payloadLength(73) == 2
+    ])
+}
+
+test("shared Result specializations preserve list payloads", sharedResultPayloadCase)

@@ -1,18 +1,13 @@
 //! Small declaration helpers shared by graph collection.
 
 use crate::model::DeclKind;
-use osprey_ast::{SignatureItem, Stmt};
+use osprey_ast::{stmt_meta, SignatureItem, Stmt};
 
 pub(crate) fn primary_name(statement: &Stmt) -> Option<String> {
     match statement {
-        Stmt::Let { name, .. }
-        | Stmt::Function { name, .. }
-        | Stmt::Extern { name, .. }
-        | Stmt::Type { name, .. }
-        | Stmt::Effect { name, .. }
-        | Stmt::Signature { name, .. } => Some(name.clone()),
+        Stmt::Signature { name, .. } => Some(name.clone()),
         Stmt::Module { path, .. } => path.last().map(str::to_string),
-        _ => None,
+        _ => stmt_meta::declaration_name(statement).map(str::to_string),
     }
 }
 

@@ -1,12 +1,12 @@
 # Arithmetic Effects
 
-**Status:** shipped in [PR #241](https://github.com/Nimblesite/osprey/pull/241). Implementation and verification evidence is recorded below.
+**Status:** runtime arithmetic policies shipped in [PR #241](https://github.com/Nimblesite/osprey/pull/241). Device-kernel fault recovery remains a delivery gap: Metal/OpenCL faults abort instead of invoking the installed runtime policy. See [device recovery](#device-recovery-arith-device-recovery) and the verification matrix below.
 
 The key words `MUST`, `MUST NOT`, `SHOULD`, and `MAY` are to be interpreted as described by BCP 14 (RFC 2119 and RFC 8174) when they appear in capitals. A feature is not implemented merely because this document specifies it.
 
 ## The guarantee — [ARITH-TOTAL]
 
-**In an accepted Osprey program, arithmetic cannot fail silently or trap.** A total operation produces a defined value of its static type. A fallible operation transfers to an explicitly installed `Arith` handler; normal completion of its value arm supplies the typed result. An arm may diverge or request another explicit effect, as allowed by [the effects contract](0017-AlgebraicEffects.md). A conforming compiler MUST reject any program for which it cannot prove every clause below.
+**Required guarantee: in an accepted Osprey program, arithmetic cannot fail silently or trap.** A total operation produces a defined value of its static type. A fallible operation transfers to an explicitly installed `Arith` handler; normal completion of its value arm supplies the typed result. An arm may diverge or request another explicit effect, as allowed by [the effects contract](0017-AlgebraicEffects.md). A conforming compiler MUST reject any program for which it cannot prove every clause below.
 
 - **No trap, panic, or abort.** No arithmetic operation may raise a hardware fault or terminate the program. The zero-divisor and minimum-value guards branch *before* any faulting instruction, overflow is detected by non-trapping intrinsics, and `-9223372036854775808 % -1` produces `0` without executing the faulting `srem` path.
 - **No silent wraparound.** A two's-complement result reaches the program only where the program names it: the `wrapped` payload of `Arith.overflow` inside a handler some region installed, or the total helpers `wrapAdd`/`wrapSub`/`wrapMul` ([ARITH-EFFECT-TOTAL-HELPERS](#total-helpers--arith-effect-total-helpers)).
@@ -56,7 +56,7 @@ No arithmetic type contains a `Result`, so [Result Preservation](0004-TypeSystem
 
 Integer operands are promoted to binary64 when paired with a float, and both operands of `/` are promoted. `toFloat` is the explicit integer conversion; rounding may lose precision outside the exactly representable integer range. Neither promotion nor `toFloat` overflows for an Osprey `int`. Float-to-int coercion is rejected; internal representation conversion uses saturating narrowing with defined NaN and boundary behavior ([FLOAT-CONVERT](0004-TypeSystem.md#internal-numeric-narrowing--float-convert)). The six comparison operators follow [FLOAT-COMPARE](0004-TypeSystem.md#floating-point-comparison--float-compare); in particular, NaN compares unequal to every value including itself. NaN payload bits and NaN's sign are not specified.
 
-Host GPU kernels MUST obey this same scalar contract, including the enclosing `Arith` policy for zero divisors. List/buffer transfers preserve non-finite values and signed zero. This specifies the shipped host backend; it does not claim a device backend is implemented. Programs needing finite-only results must explicitly test their results at the application boundary; arithmetic makes no implicit finite-only guarantee.
+Host GPU kernels MUST obey this same scalar contract, including the enclosing `Arith` policy for zero divisors. List/buffer transfers preserve non-finite values and signed zero. Metal and OpenCL device execution is implemented; its fault-recovery limit is recorded under [device recovery](#device-recovery-arith-device-recovery). Programs needing finite-only results must explicitly test their results at the application boundary; arithmetic makes no implicit finite-only guarantee.
 
 ## The `Arith` effect — [ARITH-EFFECT-OPS]
 
@@ -127,7 +127,7 @@ The compiler provides total integer builtins that never fault and seed nothing: 
 
 ## Policies
 
-A region states its policy once, and every arithmetic fault inside it — through helpers, lambdas and fibers — is answered by that policy.
+On the host runtime, a region states its policy once, and arithmetic faults inside it — through helpers, lambdas and fibers — are answered by that policy. Selected-device faults have the [recovery limit](#device-recovery-arith-device-recovery) below.
 
 Wrapping — modular arithmetic by declared intent, C's `-fwrapv` scoped to a region:
 
@@ -198,9 +198,22 @@ static interpretation for device regions under
 belongs to the staging delivery.
 Shared handler and staging delivery belongs to [plan 0016](../../plans/0016-algebraic-effects-and-handlers.md).
 
+## Device recovery `[ARITH-DEVICE-RECOVERY]`
+
+A device kernel cannot call a runtime `Arith` handler. Its checked operations record a fault word; the current runtime aborts with the kernel name and fault after dispatch ([GPU-DEVICE-FAULT](../runtime/0034-GPUComputation.md#faults--gpu-device-fault)). Installing a recovering host handler does not prevent that abort. This leaves the required no-trap/policy-preservation guarantee above unfinished for faulting device kernels.
+
+Rechecked on 25 October 2026, Apple M4 Max, `--memory=arc`, with completed Metal/OpenCL dispatch traces. For a one-element buffer containing `9223372036854775807` and an installed wrapping handler:
+
+| Kernel expression | Host backend | Metal and OpenCL |
+| --- | --- | --- |
+| `n + 1` | `-9223372036854775808` from the policy | `SIGABRT`, integer-overflow diagnostic |
+| `wrapAdd(n, 1)` | `-9223372036854775808` | `-9223372036854775808` |
+
+Use the host backend when runtime recovery is required. Explicit total wrapping helpers express wrapping directly and remain device-admissible. Device policy preservation or rejection of unsupported recovering regions remains tracked in [plan 0023](../../plans/0023-gpu-computation.md); the no-trap conformance requirements remain binding.
+
 ## Implementation and verification
 
-Integer arithmetic produces plain numeric values. `MathError` and arithmetic Result flattening have been removed; `checkedAdd`, `checkedSub` and `checkedMul` preserve their explicit `Result<int, Error>` interface. `osprey-types::arithmetic` classifies requirements and constant folds, `effect_rows` propagates and discharges them, and `osprey-codegen::arithmetic` sends faults through the ordinary value-handler path.
+Integer arithmetic produces plain numeric values. `MathError` and arithmetic Result flattening have been removed; `checkedAdd`, `checkedSub` and `checkedMul` preserve their explicit `Result<int, Error>` interface. `osprey-types::arithmetic` classifies requirements and constant folds, `effect_rows` propagates and discharges them, and host lowering in `osprey-codegen::arithmetic` sends faults through the ordinary value-handler path.
 
 | Contract | Regression evidence |
 | --- | --- |

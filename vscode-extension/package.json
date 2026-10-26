@@ -113,6 +113,11 @@
     ],
     "commands": [
       {
+        "command": "osprey.packages.open",
+        "title": "Manage Packages",
+        "category": "Osprey"
+      },
+      {
         "command": "osprey.compile",
         "title": "Compile Osprey File",
         "category": "Osprey"
@@ -126,6 +131,12 @@
         "command": "osprey.debug",
         "title": "Debug Osprey File",
         "category": "Osprey"
+      },
+      {
+        "command": "osprey.hunt",
+        "title": "Hunt for Bugs",
+        "category": "Osprey",
+        "icon": "$(bug)"
       },
       {
         "command": "osprey.setLanguage",
@@ -147,6 +158,18 @@
         "title": "Show Test Documentation",
         "category": "Osprey",
         "icon": "$(book)"
+      },
+      {
+        "command": "osprey.packages.add",
+        "title": "Add Package",
+        "category": "Osprey",
+        "enablement": "isWorkspaceTrusted"
+      },
+      {
+        "command": "osprey.packages.remove",
+        "title": "Remove Package",
+        "category": "Osprey",
+        "enablement": "isWorkspaceTrusted"
       },
       {
         "command": "osprey.profiler.profileStart",
@@ -263,6 +286,11 @@
           "when": "resourceLangId == osprey || resourceLangId == osprey-ml",
           "command": "osprey.showTestDocumentation",
           "group": "navigation@5"
+        },
+        {
+          "when": "resourceLangId == osprey || resourceLangId == osprey-ml",
+          "command": "osprey.hunt",
+          "group": "navigation@6"
         }
       ],
       "commandPalette": [
@@ -284,6 +312,10 @@
         },
         {
           "command": "osprey.showTestDocumentation",
+          "when": "resourceLangId == osprey || resourceLangId == osprey-ml"
+        },
+        {
+          "command": "osprey.hunt",
           "when": "resourceLangId == osprey || resourceLangId == osprey-ml"
         },
         {
@@ -390,6 +422,13 @@
           "command": "osprey.profiler.killProcess",
           "when": "view == osprey.profiler.processes && viewItem =~ /^(process|blockedProcess)/",
           "group": "9_danger@1"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "osprey.packages.open",
+          "when": "resourceFilename == osprey.toml",
+          "group": "osprey@1"
         }
       ]
     },
@@ -550,6 +589,12 @@
           "default": true,
           "description": "Enable/disable diagnostic messages"
         },
+        "osprey.hunt.maxTime": {
+          "type": "number",
+          "default": 60,
+          "minimum": 1,
+          "description": "Seconds KLEE explores a program when you run Osprey: Hunt for Bugs. Longer budgets finish more paths."
+        },
         "osprey.server.compilerPath": {
           "type": "string",
           "default": "",
@@ -564,6 +609,18 @@
           "type": "boolean",
           "default": true,
           "description": "After profiling, show inline per-line heat annotations (NN.N% · M samples) and overview-ruler marks in the profiled source files."
+        },
+        "osprey.packages.registry": {
+          "type": "string",
+          "default": "http://127.0.0.1:8787",
+          "scope": "resource",
+          "description": "Package registry API origin. HTTPS is required except for loopback development."
+        },
+        "osprey.packages.frontendPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "description": "Absolute path to osprey-pkg. Defaults to the client bundled with this extension."
         },
         "osprey.profiler.sampleRate": {
           "type": "number",
@@ -666,6 +723,7 @@
     "@nimblesite/lsp-profiler-ui": "file:../lspkit/packages/lsp-profiler-ui",
     "@nimblesite/shipwright-vscode": "^0.5.4",
     "@preact/signals-core": "^1.14.4",
+    "@vscode/codicons": "^0.0.46-24",
     "vscode-languageclient": "^10.1.2"
   },
   "devDependencies": {
@@ -674,27 +732,29 @@
     "@types/node": "20.17.50",
     "@types/sinon": "^17.0.4",
     "@types/vscode": "^1.96.0",
-    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.1.0",
-    "@vscode/vsce": "^3.9.2",
+    "@vscode/vsce": "^4.0.0",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
-    "mocha": "^11.8.0",
-    "sinon": "^20.0.0",
+    "mocha": "^12.0.3",
+    "playwright-core": "1.63.0",
+    "sinon": "^22.1.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
     "vscode-oniguruma": "^2.0.1",
-    "vscode-textmate": "^9.3.2"
+    "vscode-textmate": "^9.3.2",
+    "yauzl": "3.4.0"
   },
   "scripts": {
     "sync-icon": "node scripts/sync-icon.mjs",
-    "vscode:prepublish": "npm run sync-icon && npm run compile",
+    "vscode:prepublish": "node scripts/verify-package-client.mjs && npm run sync-icon && npm run compile && node scripts/verify-package-workspace.mjs",
     "precompile": "npm run sync-icon && node scripts/sync-profiler-contributions.mjs --check",
     "sync-profiler": "node scripts/sync-profiler-contributions.mjs",
     "compile": "tsc -b",
     "lint": "tsc -p ./ --noEmit",
     "watch": "tsc -b -w",
-    "package": "vsce package",
+    "package": "vsce package && node scripts/verify-readme.mjs",
     "install-extension": "code --install-extension osprey-0.0.0-dev.vsix",
     "test": "vscode-test",
     "test-compile": "tsc -p ./",
@@ -704,5 +764,10 @@
     "test:watch": "npm run watch",
     "test:debug": "node scripts/test-launcher.js test:debug",
     "test:launcher": "node scripts/test-launcher.js"
+  },
+  "overrides": {
+    "serialize-javascript": "^7.1.4",
+    "@azure/msal-node": "^7.1.0",
+    "mocha": "$mocha"
   }
 }

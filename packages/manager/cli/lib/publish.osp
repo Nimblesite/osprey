@@ -1,0 +1,147 @@
+namespace registry_cli;
+import registry_host::Host
+import registry_cli::Flags
+import registry_cli::Reports
+import registry_cli::Project
+import registry_cli::Lockfile
+import registry_cli::Fetch
+import registry_cli::Install
+import registry::Identity
+import registry::ManifestModel
+import registry::Maybe
+import registry::Names
+import registry::Paths
+import registry::Release
+import registry::ReleaseFiles
+import registry::ReleasePath
+
+/// `osprey-pkg publish --folder <registry-root> [--breaking] [--project <dir>]`:
+/// place this project as the next release of a folder registry, in the layout
+/// of [PACKAGE-FOLDER-REGISTRY]. The manifest must declare `[package]`; the
+/// release tree is the manifest, supplied legal documents, every file under `source_roots`, every
+/// `python_sources` entry and every declared asset, and it is checked and
+/// digested exactly as the server will (`ReleaseFiles::assemble`, the source
+/// rules of [PACKAGE-PUBLISH]) before a byte is written. The ordinal is the
+/// newest in the current epoch plus one; `--breaking` opens the next epoch;
+/// the first release is `1.1`. The server reads a folder at startup, so the
+/// new release is served after `registry-serve` restarts. The authenticated
+/// `publish` of the trust plane (spec 0030) replaces this in Milestone B.
+module Publish {
+    let failStatus = 1
+    let usageCode = "publish.usage"
+    let noPackageCode = "publish.no-package"
+    let folderFlag = "--folder"
+    let breakingFlag = "--breaking"
+    let usageText = ["usage: osprey-pkg publish --folder <registry-root> [--breaking] [--project <dir>]"]
+
+    type CommandLine = { folder: string, project: string, breaking: bool }
+
+    fn usageReport() = Reports::usage(listPrepend(usageText, usageCode))
+    fn failed(lines) = Reports::Report { status: failStatus, lines: lines }
+
+    fn commandLine(parsed) = CommandLine { folder: Flags::given(parsed, folderFlag, ""), project: Flags::project(parsed), breaking: Flags::has(parsed, breakingFlag) }
+
+    // Shared field names need typed receivers (issue #273).
+    fn folderOf(cmd: CommandLine) = cmd.folder
+    fn projectOf(cmd: CommandLine) = cmd.project
+    fn breakingOf(cmd: CommandLine) = cmd.breaking
+    fn epochOf(id: Identity::ReleaseId) = id.epoch
+    fn ordinalOf(id: Identity::ReleaseId) = id.ordinal
+    fn idOf(s: Release::Served) = s.id
+    fn filesOf(s: Release::Served) = s.files
+    fn assetPath(a: ManifestModel::Asset) = a.path
+
+    fn packageKey(mf: ManifestModel::Manifest) = Maybe::fold(mf.publication, Error { message: noPackageCode }, fn(p: ManifestModel::Publication) => Success { value: p.package })
+
+    // Implements [PACKAGE-LICENSE-DISTRIBUTION] alongside source and asset selection.
+
+    fn underRoot(path, root) = startsWith(path, "${root}/")
+
+    fn selected(mf: ManifestModel::Manifest, path) = if Paths::generatedCache(path) { false } else { Paths::publicationMetadata(path)
+        || foldList(mf.sourceRoots, false, fn(found, root) => found || underRoot(path, root))
+        || listContains(mf.pythonSources, path)
+        || listContains(mapList(mf.assets, assetPath), path) }
+
+    fn selectedWalk(mf, walk: Host::Walk) = Host::Walk {
+        regular: filterList(walk.regular, fn(p) => selected(mf, p)),
+        executable: filterList(walk.executable, fn(p) => selected(mf, p)),
+        special: filterList(walk.special, fn(p) => selected(mf, p))
+    }
+
+    fn treeFiles(project, mf) = match perform Host::Tree.walk(project) {
+        Error { message } => Error { message: message }
+        Success { value } => Install::filesOfWalked(selectedWalk(mf, value), project)
+    }
+
+    // ---- the next identity ----
+
+    fn packageDir(folder, key) = "${folder}/${Names::display(key)}"
+
+    fn releaseDirOf(key, path) = match indexOf(path, "/") {
+        Error => Error { message: "none" }
+        Success { value } => ReleasePath::parse("${Names::display(key)}/${take(path, value)}")
+    }
+
+    fn appendId(ids, key, path) = match releaseDirOf(key, path) {
+        Error => ids
+        Success { value } => listAppend(ids, value)
+    }
+
+    /// Every release identity a package directory already holds.
+    fn existing(folder, key) = match perform Host::Tree.walk(packageDir(folder, key)) {
+        Error => []
+        Success { value } => foldList(value.regular, [], fn(ids, path) => appendId(ids, key, path))
+    }
+
+    fn newestEpoch(ids) = foldList(ids, 0, fn(best, id) => if epochOf(id) > best { epochOf(id) } else { best })
+
+    fn newestOrdinal(ids, epoch) = foldList(ids, 0, fn(best, id) => if epochOf(id) == epoch && ordinalOf(id) > best { ordinalOf(id) } else { best })
+
+    /// `1.1` for a new package; else the next ordinal of the newest epoch, or
+    /// the first ordinal of the next epoch with `--breaking`.
+    fn nextDir(key, ids, breaking) = {
+        let epoch = newestEpoch(ids)
+        if epoch == 0 { "${Names::display(key)}/1.1" }
+        else if breaking { "${Names::display(key)}/${epoch + 1}.1" }
+        else { "${Names::display(key)}/${epoch}.${newestOrdinal(ids, epoch) + 1}" }
+    }
+
+    // ---- placing the release ----
+
+    fn placed(cmd, served) = match Fetch::writeFiles("${folderOf(cmd)}/${ReleasePath::format(idOf(served))}", filesOf(served)) {
+        Error { message } => failed([message])
+        Success => Reports::success([
+            "published ${Lockfile::compact(idOf(served))}",
+            Reports::field("into", "${folderOf(cmd)}/${ReleasePath::format(idOf(served))}"),
+            Reports::field("files", "${length(filesOf(served))}"),
+            "restart registry-serve to serve it"
+        ])
+    }
+
+    /// Check and digest the tree as the server will, then place it.
+    fn assembled(cmd, key, fileList) = match ReleaseFiles::assemble(nextDir(key, existing(folderOf(cmd), key), breakingOf(cmd)), fileList) {
+        Error { message } => failed([message])
+        Success { value } => placed(cmd, value)
+    }
+
+    fn withKey(cmd, mf, key) = match treeFiles(projectOf(cmd), mf) {
+        Error { message } => failed([message])
+        Success { value } => assembled(cmd, key, value)
+    }
+
+    fn withManifest(cmd, mf) = match packageKey(mf) {
+        Error { message } => failed([message])
+        Success { value } => withKey(cmd, mf, value)
+    }
+
+    fn withCommand(cmd) = if folderOf(cmd) == "" { usageReport() } else { match Project::readAt(projectOf(cmd)) {
+        Error { message } => failed([message])
+        Success { value } => withManifest(cmd, value)
+    } }
+
+    /// The whole command.
+    export fn run(args) = match Flags::parse(args, [folderFlag, Flags::projectFlag], [breakingFlag]) {
+        Error => usageReport()
+        Success { value } => withCommand(commandLine(value))
+    }
+}

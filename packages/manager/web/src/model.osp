@@ -1,0 +1,172 @@
+namespace registry_web;
+import registry::Governance
+import registry::Maybe
+import registry::Names
+
+/// The website's view model and the queries screens are allowed to answer.
+/// Identity, permissions, grants and lifecycle states are the governance
+/// domain's own types ([PACKAGE-OWNERSHIP-MODEL]); only website projections
+/// live here — security evidence, the browse listing join, the viewer's
+/// access context and publication view states. `Evidence` is an explicit
+/// variant because a listing without security evidence must hide the whole
+/// screen, never display items as warning-free
+/// ([PACKAGE-OWNERSHIP-MAINTENANCE]).
+module Model {
+    export type Severity = High | Moderate | Low
+    export type Warning = { code: string, summary: string, severity: Severity }
+
+    /// Verified security evidence carries the known warnings and the digest
+    /// of the last evidence-backed review; `Unavailable` carries the reason
+    /// the registry could not produce evidence.
+    export type Evidence = Verified { warnings: List<Warning>, reviewDigest: string } | Unavailable { reason: string }
+
+    /// The public maintenance projection shown beside each package.
+    export type Care = Maintained | Unmaintained
+
+    /// One browse/search result: the governance package row, the
+    /// organization handle it is identified by (display names are never
+    /// authority), and its security evidence — joined by the API so every
+    /// result can display its organization [PACKAGE-NAMES-NO-SITTING].
+    export type Listing = { pkg: Governance::Package, orgHandle: string, care: Care, evidence: Evidence }
+
+    /// The actor viewing a screen: anonymous, or an organization member by
+    /// stable principal and membership IDs (never a mutable handle).
+    export type Viewer = Anonymous | Member { principal: Governance::PrincipalId, membership: Governance::MembershipId, orgHandle: string }
+
+    /// What the website knows about the actor on one package: the viewer,
+    /// the package's single administrator seat, and this package's grant
+    /// rows. The live authorization predicate is the API's
+    /// ([PACKAGE-OWNERSHIP-PERMISSIONS]); these rows arrive already scoped
+    /// to this package.
+    export type Access = { viewer: Viewer, admin: Governance::MembershipId, grants: List<Governance::Grant> }
+
+    /// Why a publication is not an accepted release. A pending intent is a
+    /// proposal, a rejection names its reasons, and quarantined source is
+    /// withheld pending verification [PACKAGE-HOSTED-ROUTES].
+    export type PublicationStatus = Pending { reason: string } | Rejected { reasons: List<string> } | Quarantined { reason: string }
+    export type Publication = { key: Names::Key, actor: Governance::PrincipalId, status: PublicationStatus, evidence: Evidence }
+
+    /// A screen either shows its evidence-checked document or hides itself
+    /// with a stable reason code; showing without security evidence is not a
+    /// representable state.
+    export type Screen = Shown { html: string } | Hidden { reason: string }
+
+    /// A shown screen.
+    export fn shown(html) = Shown { html: html }
+
+    /// A hidden screen with its stable reason code.
+    export fn hidden(reason) = Hidden { reason: reason }
+
+    /// `Success` when `evidence` is verified, else `Error` naming `label`
+    /// and the reason — the gate every listing screen folds over.
+    export fn gate(evidence: Evidence, label) = match evidence {
+        Verified => Success { value: "" }
+        Unavailable { reason } => Error { message: "${label}: ${reason}" }
+    }
+
+    /// The gate over a whole listing: the first item without evidence names
+    /// itself and fails the entire screen — no partial listings.
+    export fn gateAll(items, labelOf, evidenceOf) = foldList(items, Success { value: "" }, fn(acc, item) => match acc {
+        Error => acc
+        Success => gate(evidenceOf(item), labelOf(item))
+    })
+
+    fn none() = {
+        let warnings: List<Warning> = []
+        warnings
+    }
+
+    /// The warnings of verified evidence. Callers must pass the `gate`
+    /// first; an unavailable evidence has no warnings to show, which is
+    /// exactly why the screen hides instead.
+    export fn warningsOf(evidence: Evidence) = match evidence {
+        Verified { warnings } => warnings
+        Unavailable => none()
+    }
+
+    /// The digest of the last evidence-backed review of verified evidence.
+    export fn reviewOf(evidence: Evidence) = match evidence {
+        Verified { reviewDigest } => reviewDigest
+        Unavailable => "unavailable"
+    }
+
+    /// The viewer's organization handle, `""` when anonymous.
+    export fn viewerOrgHandle(viewer: Viewer) = match viewer {
+        Anonymous => ""
+        Member { orgHandle } => orgHandle
+    }
+
+    /// Whether the viewer occupies the package's single administrator seat.
+    /// The seat is a membership reference, not a permission
+    /// [PACKAGE-OWNERSHIP-ADMIN].
+    export fn isAdministeredBy(access: Access) = match access.viewer {
+        Anonymous => false
+        Member { membership } => membership == access.admin
+    }
+
+    fn liveGrant(grant: Governance::Grant, now) = Governance::isActiveGrant(grant)
+        && Maybe::orElse(grant.expiresAt, now + 1) > now
+
+    /// Whether the viewer holds an active, unexpired grant for exactly this
+    /// permission at `now`.
+    export fn holdsNow(access: Access, permission: Governance::Permission, now) = foldList(access.grants, false,
+        fn(held, grant: Governance::Grant) => held || (Governance::samePermission(grant.permission, permission) && liveGrant(grant, now)))
+
+    /// The grantable permissions, in canonical order.
+    export fn allPermissions() = [
+        Governance::PublishRelease,
+        Governance::YankRelease,
+        Governance::EditMetadata,
+        Governance::ManageMaintenance,
+        Governance::ManageSecurity
+    ]
+
+    /// The viewer's effective permission names at `now`, or `"none"`.
+    export fn permissionsOf(access: Access, now) = {
+        let held = foldList(allPermissions(), [], fn(names, p) =>
+            if holdsNow(access, p, now) { listAppend(names, Governance::permissionName(p)) } else { names })
+        if isEmpty(held) { "none" } else { join(held, ", ") }
+    }
+
+    /// The sentence every admin surface shows when the seat lacks a
+    /// publishing grant: administration alone never authorizes publication
+    /// [PACKAGE-OWNERSHIP-ADMIN], [PACKAGE-HOSTED-ROUTES].
+    export fn publishGrantNotice() = "You administer this package, but administration alone does not authorize publication. Submitting a release requires an explicit publish-release grant."
+
+    export fn severityName(severity: Severity) = match severity {
+        High => "high"
+        Moderate => "moderate"
+        Low => "low"
+    }
+
+    /// Worst-severity-first ordering rank.
+    export fn severityRank(severity: Severity) = match severity {
+        High => 0
+        Moderate => 1
+        Low => 2
+    }
+
+    /// The lifecycle label, derived from the governance predicates rather
+    /// than variant patterns: `isDraft` answers draft, `operational` answers
+    /// active, and its refusal reason codes carry the remaining statuses
+    /// (`governance.package.frozen` renders as the spec's `write-frozen`).
+    export fn stateName(pkg: Governance::Package) = match Governance::isDraft(pkg) {
+        true => "draft"
+        false => match Governance::operational(pkg) {
+            Success => "active"
+            Error { message } => frozenLabel(reasonTail(message))
+        }
+    }
+
+    fn reasonTail(code) = match indexOf(code, "package.") {
+        Success { value } => drop(code, value + 8)
+        Error => code
+    }
+
+    fn frozenLabel(tail) = if tail == "frozen" { "write-frozen" } else { tail }
+
+    export fn careName(care: Care) = match care {
+        Maintained => "maintained"
+        Unmaintained => "unmaintained"
+    }
+}

@@ -1,0 +1,81 @@
+namespace registry_database_tests;
+import registry::Policy
+import registry_host::Database
+import registry_host::Host
+
+fn context() = Database::Context {
+    principalId: "11111111-1111-4111-8111-111111111111",
+    sessionId: "22222222-2222-4222-8222-222222222222",
+    organizationId: "33333333-3333-4333-8333-333333333333",
+    authSubject: "44444444-4444-4444-8444-444444444444",
+    authorityEpoch: 1
+}
+
+fn rejectsContext() = {
+    let ctx = context()
+    checkAll("database rejects absent/forged identity before execution", [
+            Database::contextCode(ctx { principalId: "" }) == "database.identity",
+            Database::contextCode(ctx { organizationId: "x'; SET ROLE postgres; --" }) == "database.identity",
+            Database::contextCode(ctx { authorityEpoch: 0 }) == "database.epoch"
+    ])
+}
+
+fn binding() = {
+    let text = "'; \\! touch /tmp/registry-injection\nSELECT secret; --"
+    let bound = Database::binding([text])
+    checkAll("database values use extended-protocol hex parameters", [
+            startsWith(bound, "\\bind '"),
+            !contains(bound, text),
+            !contains(bound, "touch"),
+            !contains(bound, "SELECT"),
+            endsWith(bound, "' \\g\n")
+    ])
+}
+
+fn transaction() = match Database::script(context(), "SELECT $1::text", ["value"]) {
+    Error { message } => check("transaction constructs", "ok", message)
+    Success { value } => checkAll("database context is transaction-local and bounded", [
+            startsWith(value, "BEGIN ISOLATION LEVEL SERIALIZABLE;\n"),
+            contains(value, "SET LOCAL statement_timeout = '5s'"),
+            contains(value, "set_config('registry.principal_id'"),
+            contains(value, "set_config('registry.session_id'"),
+            contains(value, ", true)"),
+            endsWith(value, "COMMIT;\n")
+    ])
+}
+
+fn deniedConfiguration(rootCertificate) = {
+    handle Host::Process {
+        run _command => Host::Run { status: 0, stdout: "unexpected execution", stderr: "" }
+    }
+    let config = Database::Connection {
+        serviceFile: "/run/registry/pg_service.conf", service: "registry",
+        passfile: "/run/registry/pgpass", rootCertificate: rootCertificate
+    }
+    Database::native(config)(fn() => match perform Database::Transactions.query(context(), "SELECT $1::text", ["value"]) {
+            Error { message } => message
+            Success => "unexpected success"
+    })
+}
+
+fn connectionInjection() = checkAll("libpq configuration cannot override verified TLS", [
+        deniedConfiguration("/run/registry/x\tsslmode=disable") == "database.configuration",
+        deniedConfiguration("/run/registry/x\rsslmode=disable") == "database.configuration",
+        deniedConfiguration("/run/registry/x' sslmode=disable") == "database.configuration"
+])
+
+fn configurationInjection() = check("libpq rejects whitespace overrides before handler installation", "database.configuration", Database::configurationCode(Database::Connection {
+            serviceFile: "/run/registry/pg_service.conf", service: "registry",
+            passfile: "/run/registry/pgpass", rootCertificate: "/run/registry/x\tsslmode=disable"
+}))
+
+fn suite() = {
+    test("database: reject invalid context", rejectsContext)
+    test("database: protocol binding rejects injection", binding)
+    test("database: serializable transaction and context", transaction)
+    test("database: connection parameter injection denied", connectionInjection)
+    test("database: configuration parser rejects libpq override", configurationInjection)
+    0
+}
+
+fn main() = Policy::guarded(suite)

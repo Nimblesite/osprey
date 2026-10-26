@@ -1,0 +1,402 @@
+namespace registry;
+import registry::SatClauses
+
+/// Deterministic conflict-driven clause learning over immutable solver-state
+/// records — the propositional engine under [PACKAGE-RESOLUTION]. It knows
+/// nothing about packages: variables are ints 1..n, literals are signed
+/// variables, a formula is a list of clauses.
+///
+/// Choices, all deterministic: the decision variable is the lowest-numbered
+/// unassigned one, assigned negative first (no VSIDS); watching uses the
+/// two-watched-literal scheme; conflict analysis stops at the first unique
+/// implication point and records clauses exactly as derived (no recursive
+/// minimization); learned clauses are never deleted; there are no restarts
+/// beyond deterministic budget rounds, and no clocks or randomness anywhere.
+///
+/// Every loop is a fold over an exact or generous bound, so the module is
+/// recursion-free: recursive functions are fragile in one program today
+/// (compiler issue #277), and folds keep the stack flat regardless of
+/// instance size. Round budgets are sized from the variable and clause
+/// counts alone, so identical input yields an identical verdict.
+module SatSearch {
+    /// `Sat` carries the canonical model, one literal per variable ascending;
+    /// `Unsat` carries the final conflict's root ids — input clause indexes
+    /// ascending, with assumption `i` spelled `-(i+1)` — and the proof trace
+    /// of learned clauses in derivation order.
+    export type Verdict = Sat { model: List<int> } | Unsat { core: List<int>, learned: List<List<int>> }
+
+    /// Per-variable assignment bookkeeping; `reason` is the clause index that
+    /// propagated the variable, or -1 for a decision.
+    type Slot = { value: int, level: int, reason: int }
+
+    /// Assignment trail plus the propagation queue head.
+    type Track = { slots: Map, trail: List<int>, trailLim: List<int>, qhead: int }
+
+    /// Clause database: input clauses, then assumption units, then learned.
+    type Db = { clauses: List<List<int>>, watches: Map, watchers: Map, learned: List<List<int>>, learnedRoots: List<List<int>> }
+
+    type State = { vars: int, inputCount: int, pseudoCount: int, track: Track, db: Db }
+
+    type Run = Clear { at: State } | Clash { at: State, ci: int }
+    type Visit = Hold | Swap { at: State, to: int } | Push { at: State } | Block { at: State, ci: int }
+    type Tick = Ended { verdict: Verdict } | Live { at: State }
+
+    let blank = Slot { value: 0, level: 0, reason: -1 }
+
+    // ---- assignment helpers ----
+
+    /// Field accessor for `Slot.value`, whose name is shared with the
+    /// `Success` payload of `Result`, so the receiver is typed (issue #273).
+    fn valueOf(slot: Slot) = slot.value
+
+    /// The assignment slot for a variable. Rebuilt through a match so the
+    /// result is a tracked record literal, never a bare match arm
+    /// (issue #273); field accesses on the old `?:` result made the backend
+    /// disagree on arm types in `litValue` callers.
+    fn slotOf(s, v) = match mapGet(s.track.slots, "${v}") {
+        Success { slot } => Slot { value: valueOf(slot), level: slot.level, reason: slot.reason }
+        Error => blank
+    }
+
+    fn signOf(l) = if l > 0 { 1 } else { -1 }
+
+    fn litValue(s, l) = signOf(l) * slotOf(s, SatClauses::absLit(l)).value
+
+    fn varLevel(s, v) = slotOf(s, v).level
+
+    fn reasonOf(s, v) = slotOf(s, v).reason
+
+    fn withTrack(s, t) = State { vars: s.vars, inputCount: s.inputCount, pseudoCount: s.pseudoCount, track: t, db: s.db }
+
+    fn withDb(s, db) = State { vars: s.vars, inputCount: s.inputCount, pseudoCount: s.pseudoCount, track: s.track, db: db }
+
+    fn assign(s, l, level, reason) = withTrack(s, Track {
+        slots: mapSet(s.track.slots, "${SatClauses::absLit(l)}", Slot { value: signOf(l), level: level, reason: reason }),
+        trail: listAppend(s.track.trail, SatClauses::absLit(l)),
+        trailLim: s.track.trailLim,
+        qhead: s.track.qhead
+    })
+
+    fn openLevel(s) = withTrack(s, Track { slots: s.track.slots, trail: s.track.trail, trailLim: listAppend(s.track.trailLim, length(s.track.trail)), qhead: s.track.qhead })
+
+    fn currentLevel(s) = length(s.track.trailLim)
+
+    fn slice(xs, from, to) = range(from, to) |> map(fn(i) => listGet(xs, i) ?: 0) |> toList
+
+    /// Trail length at the end of `level` (the prefix `backtrack` keeps when
+    /// undoing every assignment above it). `trailLim[i]` records the trail
+    /// length when level `i + 1` was opened, so the end of level `i` is
+    /// `trailLim[i]`; the current, still-open level ends at the trail length.
+    fn trailLimit(s, level) = listGet(s.track.trailLim, level) ?: length(s.track.trail)
+
+    /// Undo every assignment above `level`, keeping the propagation queue
+    /// consistent with the surviving trail prefix.
+    fn backtrack(s, level) = {
+        let lim = trailLimit(s, level)
+        let undone = slice(s.track.trail, lim, length(s.track.trail))
+        let cleared = foldList(undone, s.track.slots, fn(sl, v) => mapRemove(sl, "${v}"))
+        let qh = if s.track.qhead < lim { s.track.qhead } else { lim }
+        withTrack(s, Track { slots: cleared, trail: slice(s.track.trail, 0, lim), trailLim: slice(s.track.trailLim, 0, level), qhead: qh })
+    }
+
+    // ---- clause database ----
+
+    /// Map value or an empty list. The return annotation is required: an
+    /// untyped `mapGet(…) ?: []` reads the stored list back as an integer word
+    /// and the backend disagrees on the arm types (issue #273).
+    fn listOrEmpty(db, k) -> List<int> = mapGet(db, k) ?: []
+
+    /// List element or an empty list, with the element type pinned by the
+    /// return annotation: an untyped `listGet(…) ?: []` reads the stored
+    /// clause back as an integer word and `length` misreads it (issue #273).
+    fn clauseOrEmpty(xs, i) -> List<int> = listGet(xs, i) ?: []
+
+    fn watchersOf(db, l) = listOrEmpty(db.watchers, "${l}")
+
+    /// Point the two watched literals of clause `ci` at its first two entries.
+    fn attachWatches(db, ci, c) = {
+        let w1 = listGet(c, 0) ?: 0
+        let w2 = listGet(c, 1) ?: 0
+        Db { clauses: db.clauses, watches: mapSet(db.watches, "${ci}", [w1, w2]), watchers: mapSet(mapSet(db.watchers, "${w1}", listAppend(watchersOf(db, w1), ci)), "${w2}", listAppend(watchersOf(db, w2), ci)), learned: db.learned, learnedRoots: db.learnedRoots }
+    }
+
+    fn moveWatch(s, ci, to) = withDb(s, Db { clauses: s.db.clauses, watches: s.db.watches, watchers: mapSet(s.db.watchers, "${to}", listAppend(watchersOf(s.db, to), ci)), learned: s.db.learned, learnedRoots: s.db.learnedRoots })
+
+    fn setWatcherList(s, f, list) = withDb(s, Db { clauses: s.db.clauses, watches: s.db.watches, watchers: mapSet(s.db.watchers, "${f}", list), learned: s.db.learned, learnedRoots: s.db.learnedRoots })
+
+    /// Root ids carried by clause `ci`: itself for input, the assumption
+    /// reference `-(i+1)` for the i-th assumption unit, or the stored
+    /// antecedent set for a learned clause.
+    fn rootIdsOf(s, ci) = if ci < s.inputCount { [ci] }
+        else if ci < s.inputCount + s.pseudoCount { [SatClauses::neg(ci - s.inputCount + 1)] }
+        else { clauseOrEmpty(s.db.learnedRoots, ci - s.inputCount - s.pseudoCount) }
+
+    fn fresh(vars, clauses, pseudos) = State {
+        vars: vars,
+        inputCount: length(clauses),
+        pseudoCount: length(pseudos),
+        track: Track { slots: Map(), trail: [], trailLim: [], qhead: 0 },
+        db: Db { clauses: listConcat(clauses, pseudos), watches: Map(), watchers: Map(), learned: [], learnedRoots: [] }
+    }
+
+    // ---- setup: level 0 units from the input ----
+
+    fn enqueueUnit(s, ci, l) = match litValue(s, l) {
+        1 => Clear { at: s }
+        0 => Clear { at: assign(s, l, 0, ci) }
+        _ => Clash { at: s, ci: ci }
+    }
+
+    /// Two distinct watch literals, or none when every literal is identical
+    /// and the clause behaves as a unit.
+    fn watchPair(c) = {
+        let first = listGet(c, 0) ?: 0
+        match listGet(filterList(c, fn(l) => l != first), 0) {
+            Success { value } => [first, value]
+            Error => []
+        }
+    }
+
+    fn setupLong(s, ci, c) = match watchPair(c) {
+        [] => enqueueUnit(s, ci, listGet(c, 0) ?: 0)
+        _ => Clear { at: withDb(s, attachWatches(s.db, ci, c)) }
+    }
+
+    fn setupStep(s, ci) = {
+        let c = clauseOrEmpty(s.db.clauses, ci)
+        match length(c) {
+            0 => Clash { at: s, ci: ci }
+            1 => enqueueUnit(s, ci, listGet(c, 0) ?: 0)
+            _ => setupLong(s, ci, c)
+        }
+    }
+
+    fn settle(run, ci) = match run {
+        Clear { at } => setupStep(at, ci)
+        Clash => run
+    }
+
+    // ---- unit propagation over the watched literals ----
+
+    /// Literals that can replace a false watch: unassigned or true.
+    fn replacements(s, c, other) = filterList(c, fn(u) => u != other && litValue(s, u) >= 0)
+
+    fn visitEdge(s, ci, other) = match litValue(s, other) {
+        1 => Hold
+        0 => Push { at: assign(s, other, currentLevel(s), ci) }
+        _ => Block { at: s, ci: ci }
+    }
+
+    fn visit(s, ci, f) = {
+        let c = clauseOrEmpty(s.db.clauses, ci)
+        let watched = listOrEmpty(s.db.watches, "${ci}")
+        let w1 = listGet(watched, 0) ?: 0
+        let other = if w1 == f { listGet(watched, 1) ?: 0 } else { w1 }
+        match listGet(replacements(s, c, other), 0) {
+            Success { value } => Swap { at: withDb(s, Db { clauses: s.db.clauses, watches: mapSet(s.db.watches, "${ci}", [value, other]), watchers: s.db.watchers, learned: s.db.learned, learnedRoots: s.db.learnedRoots }), to: value }
+            Error => visitEdge(s, ci, other)
+        }
+    }
+
+    /// A scan in progress, or a clash with the unprocessed tail it must keep.
+    type Scan = Going { at: State, keep: List<int> } | Halted { at: State, ci: int, keep: List<int>, rest: List<int> }
+
+    fn scanStep(f, acc, ci) = match acc {
+        Going { at, keep } => match visit(at, ci, f) {
+            Hold => Going { at: at, keep: listAppend(keep, ci) }
+            Swap { at, to } => Going { at: moveWatch(at, ci, to), keep: keep }
+            Push { at } => Going { at: at, keep: listAppend(keep, ci) }
+            Block { at, ci } => Halted { at: at, ci: ci, keep: keep, rest: [ci] }
+        }
+        Halted { at, ci, keep, rest } => Halted { at: at, ci: ci, keep: keep, rest: listAppend(rest, ci) }
+    }
+
+    fn scan(s, ws, f) = match foldList(ws, Going { at: s, keep: [] }, fn(acc, ci) => scanStep(f, acc, ci)) {
+        Going { at, keep } => Clear { at: setWatcherList(at, f, keep) }
+        Halted { at, ci, keep, rest } => Clash { at: setWatcherList(at, f, listConcat(keep, rest)), ci: ci }
+    }
+
+    /// Pop one queue head and scan the literals its truth falsifies.
+    fn advance(s) = {
+        let v = listGet(s.track.trail, s.track.qhead) ?: 0
+        let falsified = if slotOf(s, v).value > 0 { SatClauses::neg(v) } else { v }
+        let s2 = withTrack(s, Track { slots: s.track.slots, trail: s.track.trail, trailLim: s.track.trailLim, qhead: s.track.qhead + 1 })
+        scan(s2, watchersOf(s2.db, falsified), falsified)
+    }
+
+    /// Each variable is enqueued at most once, so the queue holds at most
+    /// `vars - qhead` further heads: the fold budget is exact.
+    fn propagate(s) = fold(range(0, s.vars + 1 - s.track.qhead), Clear { at: s }, fn(acc, _i) =>
+        match acc {
+            Clear { at } => if at.track.qhead >= length(at.track.trail) { acc } else { advance(at) }
+            Clash => acc
+        })
+
+    // ---- conflict analysis to the first unique implication point ----
+
+    type Marks = { seen: Map, pathC: int, lower: List<int> }
+    type Progress = { m: Marks, roots: List<int>, uip: int }
+    type Analysis = { uip: int, lower: List<int>, roots: List<int> }
+
+    /// Mark an unmarked non-level-0 literal: pending at the current level or
+    /// collected into the learned clause below it.
+    fn absorbLit(s, cur, m, l) = {
+        let v = SatClauses::absLit(l)
+        match (mapGet(m.seen, "${v}") ?: 0) == 0 && varLevel(s, v) > 0 {
+            false => m
+            true => Marks { seen: mapSet(m.seen, "${v}", 1), pathC: if varLevel(s, v) == cur { m.pathC + 1 } else { m.pathC }, lower: if varLevel(s, v) == cur { m.lower } else { listAppend(m.lower, l) } }
+        }
+    }
+
+    fn absorb(s, cur, m, c, skipVar) = foldList(c, m, fn(mm, l) => if SatClauses::absLit(l) == skipVar { mm } else { absorbLit(s, cur, mm, l) })
+
+    /// Resolve pending current-level literals against their antecedents,
+    /// scanning the trail from its deepest entry, until one remains.
+    fn resolveStep(s, cur, len, acc, iRev) = {
+        let i = len - 1 - iRev
+        let v = listGet(s.track.trail, i) ?: 0
+        match acc.uip != 0 || (mapGet(acc.m.seen, "${v}") ?: 0) == 0 {
+            true => acc
+            false => match acc.m.pathC == 1 {
+                true => Progress { m: acc.m, roots: acc.roots, uip: SatClauses::litOf(v, SatClauses::neg(slotOf(s, v).value)) }
+                false => {
+                    let r = reasonOf(s, v)
+                    let m2 = absorb(s, cur, acc.m, clauseOrEmpty(s.db.clauses, r), v)
+                    Progress { m: Marks { seen: m2.seen, pathC: m2.pathC - 1, lower: m2.lower }, roots: listConcat(acc.roots, rootIdsOf(s, r)), uip: 0 }
+                }
+            }
+        }
+    }
+
+    fn analyze(s, ci) = {
+        let cur = currentLevel(s)
+        let len = length(s.track.trail)
+        let m0 = absorb(s, cur, Marks { seen: Map(), pathC: 0, lower: [] }, clauseOrEmpty(s.db.clauses, ci), 0)
+        let p = fold(range(0, len), Progress { m: m0, roots: rootIdsOf(s, ci), uip: 0 }, fn(acc, iRev) => resolveStep(s, cur, len, acc, iRev))
+        Analysis { uip: p.uip, lower: p.m.lower, roots: p.roots }
+    }
+
+    /// Backjump level: the deepest level below the learned clause's UIP.
+    fn targetOf(s, lower) = foldList(lower, 0, fn(best, l) => if varLevel(s, SatClauses::absLit(l)) > best { varLevel(s, SatClauses::absLit(l)) } else { best })
+
+    /// The literal of `lower` falsified most recently: the one at the backjump level.
+    fn deepest(s, lower) = foldList(lower, 0, fn(best, l) =>
+        if best == 0 || varLevel(s, SatClauses::absLit(l)) > varLevel(s, SatClauses::absLit(best)) { l } else { best })
+
+    /// Record the learned clause, its antecedent roots and the proof trace.
+    /// The stored clause is canonical, but its watches are the asserting
+    /// literal and the deepest `lower` literal: after the backjump one is
+    /// unassigned and the other the last falsified, which is the invariant the
+    /// two-watched-literal scheme needs. Watching the two smallest literals
+    /// instead left clauses whose watches were both false and invisible to
+    /// propagation, so the same conflicts were relearned without bound.
+    fn record(s, a, ci) = {
+        let clause = SatClauses::canonical(listPrepend(a.lower, a.uip))
+        let db = Db { clauses: listAppend(s.db.clauses, clause), watches: s.db.watches, watchers: s.db.watchers, learned: listAppend(s.db.learned, clause), learnedRoots: listAppend(s.db.learnedRoots, SatClauses::canonicalInts(a.roots)) }
+        if length(clause) < 2 { withDb(s, db) } else { withDb(s, attachWatches(db, ci, [a.uip, deepest(s, a.lower)])) }
+    }
+
+    // ---- the flat search loop ----
+
+    /// A clash at level 0 is the refutation; deeper, learn the 1-UIP clause,
+    /// backjump and assert it. The asserting literal belongs to the backjump
+    /// level itself, as in every CDCL engine: assigned one level deeper it was
+    /// discarded by the next backjump to that level, an older learned clause
+    /// turned unit without being propagated, and the identical clause was
+    /// relearned without bound (php(4,3) exhausted memory).
+    fn meetClash(s, ci) = {
+        let a = analyze(s, ci)
+        let t = targetOf(s, a.lower)
+        let ci2 = length(s.db.clauses)
+        Live { at: assign(backtrack(record(s, a, ci2), t), a.uip, t, ci2) }
+    }
+
+    fn oneStep(s) = match propagate(s) {
+        Clash { at, ci } => match currentLevel(at) {
+            0 => Ended { verdict: unsatVerdict(at, ci) }
+            _ => meetClash(at, ci)
+        }
+        Clear { at } => match lowestUnassigned(at) {
+            0 => Ended { verdict: Sat { model: model(at) } }
+            v => Live { at: assign(openLevel(at), SatClauses::neg(v), currentLevel(at) + 1, -1) }
+        }
+    }
+
+    fn lowestUnassigned(s) = fold(range(1, s.vars + 1), 0, fn(best, v) => if best > 0 { best } else if slotOf(s, v).value == 0 { v } else { best })
+
+    fn model(s) = range(1, s.vars + 1) |> map(fn(v) => SatClauses::litOf(v, slotOf(s, v).value)) |> toList
+
+    // ---- unsat cores from the implication graph ----
+
+    /// Worklist of clauses to open and variables to explain; decisions
+    /// contribute nothing, being choices rather than derivations.
+    type Pool = { seen: Map, ids: List<int>, pending: List<int>, vars: List<int> }
+
+    fn falseVars(s, c) = foldList(c, [], fn(vs, l) => if litValue(s, l) < 0 { listAppend(vs, SatClauses::absLit(l)) } else { vs })
+
+    fn shifted(pool) = Pool { seen: pool.seen, ids: pool.ids, pending: slice(pool.pending, 1, length(pool.pending)), vars: pool.vars }
+
+    fn openClause(s, pool, ci) = Pool {
+        seen: mapSet(pool.seen, "${ci}", 1),
+        ids: listConcat(pool.ids, rootIdsOf(s, ci)),
+        pending: pool.pending,
+        vars: listConcat(pool.vars, falseVars(s, clauseOrEmpty(s.db.clauses, ci)))
+    }
+
+    fn explainVar(s, pool) = {
+        let v = listGet(pool.vars, 0) ?: 0
+        let rest = Pool { seen: pool.seen, ids: pool.ids, pending: pool.pending, vars: slice(pool.vars, 1, length(pool.vars)) }
+        match reasonOf(s, v) {
+            -1 => rest
+            r => Pool { seen: rest.seen, ids: rest.ids, pending: listAppend(rest.pending, r), vars: rest.vars }
+        }
+    }
+
+    /// Drain one worklist item: an unopened clause opens itself and queues
+    /// its false literals; an unexplained variable queues its reason.
+    fn coreStep(s, pool, _i) = match isEmpty(pool.pending) {
+        false => match mapContains(pool.seen, "${listGet(pool.pending, 0) ?: 0}") {
+            true => shifted(pool)
+            false => openClause(s, shifted(pool), listGet(pool.pending, 0) ?: 0)
+        }
+        true => if isEmpty(pool.vars) { pool } else { explainVar(s, pool) }
+    }
+
+    /// Each clause opens at most once and each queued item costs one step,
+    /// so a budget over the clause and variable counts drains everything.
+    fn unsatVerdict(s, ci) = {
+        let budget = 4 * length(s.db.clauses) + s.vars + 16
+        let pool = fold(range(0, budget), Pool { seen: Map(), ids: [], pending: [ci], vars: [] }, fn(p, i) => coreStep(s, p, i))
+        Unsat { core: SatClauses::canonicalInts(pool.ids), learned: s.db.learned }
+    }
+
+    // ---- entry point ----
+
+    let roundBase = 4096
+    let roundScale = 64
+    let roundCapBase = 512
+    let roundCapScale = 8
+
+    fn finish(r) = match r {
+        Ended { verdict } => verdict
+        Live { at } => Unsat { core: [], learned: at.db.learned }
+    }
+
+    /// Solve `clauses` over variables 1..vars with `assumptions` forced true
+    /// first, as permanent level-0 units. Complete and deterministic.
+    export fn search(vars, clauses, assumptions) = {
+        let pseudos = mapList(assumptions, fn(a) => [a])
+        match foldList(range(0, length(clauses) + length(pseudos)) |> toList, Clear { at: fresh(vars, clauses, pseudos) }, settle) {
+            Clash { at, ci } => unsatVerdict(at, ci)
+            Clear { at } => finish(fold(range(0, roundCapBase + roundCapScale * vars), Live { at: at }, fn(acc, _r) =>
+                match acc {
+                    Ended { _ } => acc
+                    Live { at } => fold(range(0, roundBase + roundScale * at.vars), acc, fn(step, _i) =>
+                        match step {
+                            Ended { _ } => step
+                            Live { at } => oneStep(at)
+                        })
+                }))
+        }
+    }
+}

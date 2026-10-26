@@ -1,0 +1,34 @@
+/// A callable stored in a record field or a list element and invoked through
+/// an eager callback slot keeps its provenance: `map`'s element crosses into
+/// `forEach`, `forEachList` and `foldList`, and each hands the callback the
+/// element it will receive, so an effect-free stored closure resolves instead
+/// of failing closed as an unproven dynamic call. An effectful stored function
+/// still flows its own operation to the entry, where a handler discharges it.
+/// Implements [EFFECTS-PROVENANCE] and [EFFECTS-STATIC-DISCHARGE].
+
+type Field = { label: string, edit: fn(string) -> string }
+
+let fields = map(range(0, 2), fn(_) => Field { label: "f", edit: fn(t) => t + "!" })
+
+forEach(fields, fn(field) => print(field.edit(field.label)))
+
+let closures = [fn(x) => x + 1.0, fn(x) => x + 2.0]
+
+forEachList(closures, fn(f) => print(toString(f(1.0))))
+
+print(toString(foldList(closures, 0.0, fn(acc, f) => acc + f(1.0))))
+
+effect Alarm { ring: fn() -> int }
+
+fn ring() = perform Alarm.ring()
+
+let armed = map(range(0, 2), fn(_) => ring)
+
+let handledTotal = {
+    handle Alarm {
+        ring => 7
+    }
+    fold(armed, 0.0, fn(acc, r) => acc + toFloat(r()))
+}
+
+print(toString(handledTotal))

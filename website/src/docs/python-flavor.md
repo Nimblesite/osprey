@@ -7,11 +7,11 @@ permalink: /docs/python-flavor/
 tags: [flavors, python, algebraic-effects, gpu]
 ---
 
-Osprey reads source code through flavors. Each flavor parses its own concrete syntax tree (CST), the exact text with its indentation, comments and punctuation, and lowers it into Osprey's single canonical AST. Type inference, effect checking, modules, memory management and native code generation all work on that AST and never see how the code was spelled. Every flavor therefore gets the whole compiler: a new syntax is a new parser, not a new language.
+Osprey's flavors share type inference, effect checking, modules, memory management and native code generation. Each parses its own syntax into the same canonical abstract syntax tree (AST).
 
 The Python flavor is Osprey that looks like typed Python. You write `def`, `lambda`, `match`, f-strings and PEP 484/695 annotations, and declare effects and handlers with decorated classes. But the program is Osprey: the `osprey` compiler parses it, checks it with Osprey's types and effects, and produces a native binary.
 
-The largest program written in it is [GPT-2 in the Python flavor](https://github.com/Nimblesite/osprey/tree/main/examples/gpt2/python). It loads the published Hugging Face weights, runs on the CPU or the GPU depending on which effect handler is installed, and prints exactly the same bytes as the Default-flavor GPT-2.
+[GPT-2 in the Python flavor](https://github.com/Nimblesite/osprey/tree/main/examples/gpt2/python) loads published Hugging Face weights and uses effect handlers to choose CPU or GPU execution. Its output matches the Default-flavor generator byte for byte on tested backends.
 
 ## Python flavor is not Python
 
@@ -27,7 +27,7 @@ Python-flavor files and Python files both end in `.py`, but they are different l
 | Imports | Osprey modules, in any flavor | Python packages |
 | GPT-2 in this repository | [`examples/gpt2/python/`](https://github.com/Nimblesite/osprey/tree/main/examples/gpt2/python), the model | [`examples/gpt2/reference.py`](https://github.com/Nimblesite/osprey/blob/main/examples/gpt2/reference.py), the reference it is checked against |
 
-A Python-flavor file is never handed to CPython, and CPython cannot run one: `perform`, `@handler` and `update` mean nothing to it. Every Python-flavor sample on this page starts with the `# osprey: flavor=python` marker. To call real Python from Osprey, use [Python interop](/spec/0042-pythoninterop/).
+Every Python-flavor sample here starts with `# osprey: flavor=python` and runs through Osprey. To call CPython libraries, use [Python interop](/spec/0042-pythoninterop/).
 
 ## Select the flavor
 
@@ -267,7 +267,7 @@ The Python flavor borrows Python's look, not its runtime. Code that depends on P
 - `while`, `break`, `continue`, `try`/`except`, `raise`, `async`/`await` and `yield` are rejected. Use `fold`, recursion, `Result` and fibers instead.
 - Classes are records, effects or handlers. There is no inheritance, `__init__`, `self` or method dispatch.
 
-The specification describes more of the surface than the compiler currently accepts. `for` loops, list comprehensions, `@union` sum types and keyword patterns that bind a different name (`case Circle(radius=r)`) are specified but not implemented yet, and the compiler rejects them at their source position with ``Python `…` has no supported Osprey lowering``. Editor support is also still to come: VS Code opens `.py` files as ordinary Python. [Plan 0031](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0031-python-flavor.md) tracks what remains.
+`for` loops and list comprehensions are implemented over the existing iterator operations; `for` takes an iterator, not an arbitrary Python iterable. `@union` declares sum types, and keyword patterns may bind a different name (`case Circle(radius=r)`). These forms share Osprey's type and effect checks. Frontend and tooling coverage remain incomplete: VS Code still opens `.py` files as ordinary Python. [Plan 0031](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0031-python-flavor.md) tracks the remaining requirements.
 
 ## Run the Python-flavor GPT-2
 

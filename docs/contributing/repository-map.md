@@ -8,7 +8,7 @@ The compiler pipeline follows these directories in order:
 
 | Stage | Source | Responsibility |
 | --- | --- | --- |
-| Parse | `tree-sitter-osprey/`, `crates/osprey-syntax/` | Default grammar and both syntax front ends |
+| Parse | `tree-sitter-osprey/`, `crates/osprey-syntax/` | Default grammar and Default, ML and Python front ends |
 | Lower | `crates/osprey-ast/` | Shared AST and static interpretation |
 | Check | `crates/osprey-types/` | Type inference and effect requirements |
 | Generate | `crates/osprey-codegen/` | LLVM IR, closures, effects and GPU kernels |
@@ -40,13 +40,17 @@ The root Makefile defines every public target, so `make` and editor task panels,
 
 `examples/` contains runnable applications and their platform hosts. `website/src/docs/` contains language guides; generated reference and spec copies are ignored build output. Edit specifications under `docs/specs/`, never under `website/src/spec/`.
 
-The homepage, effects guide and handler post share their runnable draft-saving example through `website/src/_data/draftExample.json`. Browser tests execute both syntax versions, verify the displayed output and actual file contents, and assert that the offline handler writes no file. The README shows the same source and is checked against that data.
+The homepage, effects guide and handler post share their runnable draft-saving example through `website/src/_data/draftExample.json`. Browser tests execute all three homepage syntax flavors and the guide/post examples, verify the displayed output and actual file contents, and assert that the offline handler writes no file. The README shows the same source and is checked against that data.
 
-`vscode-extension/` and `webcompiler/` remain separate Node projects with their own dependency locks. `Book/` and `benchmarks/` contain independent verification and publishing tools.
+`packages/` is the single package tree. `manager/` contains the server, client, resolver and verification suites; its sibling directories contain libraries. Default, ML and Python flavor use the same package system. Some libraries port APIs from Python projects; their implementation syntax does not make them a different package kind. `python/` contains the separate CPython interoperability bridge.
+
+`vscode-extension/` and `webcompiler/` are separate Node projects with their own dependency locks. `Book/` and `benchmarks/` contain verification and publishing tools.
 
 ## Generated files and test isolation
 
 Each native corpus worker runs in a private directory under the harness's temporary result directory. WASI and mobile runners also isolate file writes. The harness compares the same goldens and preserves failure output and exit status. Its cleanup removes the temporary run directory when the harness exits.
+
+Native test runs cache compiled artifacts, then execute the program again on every run. LLVM IR and object code can be shared across memory backends; each memory backend links a separate executable. Source, compiler/toolchain, build settings and runtime archive identities affect cache reuse. `OSPREY_TEST_CACHE_DIR` selects the cache directory; point it at a new private directory when reproducing a compilation or linking problem. See the [native cache contract](../specs/tooling/TestRunner.md#cli).
 
 Manual `osprey program.osp --run` retains normal application semantics: relative paths resolve against the caller's directory. Tests executed directly, outside the corpus harness, can still leave their own files there.
 

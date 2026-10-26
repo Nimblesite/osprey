@@ -1,0 +1,173 @@
+namespace registry_tests;
+import registry::Release
+import registry::ReleaseFiles
+import registry::Surface
+import registry_tests::Fixtures
+
+/// The capability surface scan of [PACKAGE-CAPABILITY-CONFINEMENT]: the
+/// builtin-to-capability table equals the fixture, whole identifiers match
+/// while comments and string literals do not, every `http*`/`websocket*`
+/// name is `io/network`, a declaration counts like a call, non-source files
+/// are skipped, and `[system.*]` capabilities join the set canonically.
+module SurfaceTests {
+    fn file(path, content) = Release::File { relPath: path, content: content }
+
+    fn pair(n: Surface::Named) = "${n.builtin}=${n.capability}"
+
+    fn fixturePairs() = mapList(Fixtures::items(Fixtures::field(Fixtures::load("capabilities/builtins.json"), "builtins")), fn(v) =>
+        "${Fixtures::text(Fixtures::field(v, "builtin"))}=${Fixtures::text(Fixtures::field(v, "capability"))}")
+
+    fn tableMatchesFixture() = checkAll("the builtin table is the capabilities fixture", [
+        structuralEquals(listSort(mapList(Surface::table(), pair)), listSort(fixturePairs())),
+        length(Surface::table()) == length(fixturePairs())
+    ])
+
+    fn scans() = checkAll("whole identifiers outside comments and strings", [
+        structuralEquals(Surface::ofText("fn main() = readFile(\"x\")"), ["io/files"]),
+        structuralEquals(Surface::ofText("fn readFileX() = 1\nlet x = myreadFile\n"), []),
+        structuralEquals(Surface::ofText("// readFile in a comment\nfn f() = 1\n"), []),
+        structuralEquals(Surface::ofText("fn f() = \"readFile \\\" writeFile\"\n"), []),
+        structuralEquals(Surface::ofText("fn f() = \"a\" + input()\n"), ["io/terminal"]),
+        structuralEquals(Surface::ofText("fn readFile(p) = 1\n"), ["io/files"]),
+        structuralEquals(Surface::ofText("httpFetchLater(1)\nwebsocketOpen(2)\n"), ["io/network"]),
+        structuralEquals(Surface::ofText("spawnProcess(\"ls\")\nwriteFile(\"a\", \"b\")\nreadFile(\"a\")\n"), ["io/files", "io/process"]),
+        structuralEquals(Surface::ofText("x / y // readFile\nz\n"), []),
+        structuralEquals(Surface::ofText(""), [])
+    ])
+
+    fn trees() = checkAll("source files are scanned, other files are not, systems join canonically", [
+        structuralEquals(Surface::ofFiles([file("src/a.osp", "input()"), file("README.md", "readFile"), file("src/m.py", "# osprey: flavor=python\nwriteFile(1)")]), ["io/files", "io/terminal"]),
+        structuralEquals(Surface::ofRelease([file("src/a.osp", "input()")], ["zlib", "io/terminal"]), ["io/terminal", "zlib"]),
+        structuralEquals(Surface::ofRelease([file("src/a.osp", "fn pure() = 1")], []), [])
+    ])
+
+    fn interpolations() = {
+        let call = "$" + "{readFile(path)}"
+        checkAll("executable strings cannot hide ambient calls", [
+            structuralEquals(Surface::ofText("fn load(path) = \"" + call + "\""), ["io/files"]),
+            structuralEquals(Surface::ofText("fn load(path) = \"\\" + call + "\""), ["io/files"]),
+            structuralEquals(Surface::ofText("load path = \"" + call + "\""), ["io/files"]),
+            structuralEquals(Surface::ofText("# osprey: flavor=python\ndef load(path):\n    return f\"{readFile(path)}\""), ["io/files"]),
+            structuralEquals(Surface::ofText("# osprey: flavor=python\ndef load(path):\n    return f'{readFile(path)}'"), ["io/files"]),
+            structuralEquals(Surface::ofText("fn load() = \"" + "$" + "{readFile(\"path\")}\" + input()"), ["io/files", "io/terminal"]),
+            structuralEquals(Surface::ofText("# osprey: flavor=python\n# a comment with an unmatched \"\ntermReadKey()"), ["io/terminal"]),
+            structuralEquals(Surface::ofText("termCols() + termRows() + termReadKey()"), ["io/terminal"])
+        ])
+    }
+
+    fn flavorFiles() = checkAll("source paths select each flavor's comment and identifier rules", [
+        structuralEquals(Surface::ofFiles([file("src/a.ospml", "(* readFile is commented out *)\nmain () = print \"done\"")]), []),
+        structuralEquals(Surface::ofFiles([file("src/a.ospml", "(* outer (* extern puts -> int *) readFile *)\nmain () = print \"done\"")]), []),
+        structuralEquals(Surface::ofFiles([file("src/a.ospml", "readFileé = 1\nmain () = print readFileé")]), []),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "# osprey: flavor=python\nreadFileé = 1\nprint(readFileé)")]), []),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "# osprey: flavor=python\nreadFileﻴ = 1\nprint(readFileﻴ)")]), []),
+        !Surface::shadowsBuiltin([file("src/a.py", "# osprey: flavor=python\nreadFileé = 1\nprint(readFileé)")]),
+        !Surface::shadowsBuiltin([file("src/a.ospml", "(* fn readFile(p) = p *)\nmain () = print \"done\"")]),
+        !Surface::shadowsBuiltin([file("src/a.ospml", "readFileé = 1\nmain () = print readFileé")])
+    ])
+
+    fn pythonTokens() = checkAll("Python token separators and formatted prefixes retain capabilities", [
+        structuralEquals(Surface::ofFiles([file("src/a.py", "def load(p):\n    return readFile" + (fromCodePoint(8203) ?: "") + "(p)")]), ["io/files"]),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "def load():\n    return input" + (fromCodePoint(8288) ?: "") + "()")]), ["io/terminal"]),
+        Surface::shadowsBuiltin([file("src/a.py", "def" + (fromCodePoint(8288) ?: "") + "readFile(p):\n    return p")]),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "@" + (fromCodePoint(8203) ?: "") + "extern\ndef puts(text: str) -> int: ...")]), ["io/unknown"]),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "def load(p):\n    return uf\"{readFile(p)}\"")]), ["io/files"]),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "def load(p):\n    return fu\"{readFile(p)}\"")]), ["io/files"]),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "def load(p):\n    return urf\"{readFile(p)}\"")]), ["io/files"]),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "value = u\"readFile(p)\"")]), []),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "value = uf\"{{readFile(p)}}\"")]), []),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "value = \"readFile" + (fromCodePoint(8203) ?: "") + "(p)\"")]), []),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "# readFile note\ninput()")]), ["io/terminal"]),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "x = 'readFile'")]), []),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "@extern\ndef puts(text: str) -> int: ...")]), ["io/unknown"]),
+        structuralEquals(Surface::ofFiles([file("src/a.py", "# osprey: flavor=python\ndef load(path):\n    return" + (fromCodePoint(65279) ?: "") + "readFile(path)")]), ["io/files"])
+    ])
+
+    /// A builtin's name declared with `fn`, `let` or `mut` is a shadowing
+    /// declaration; a call is not, and the release rules refuse a tree that declares one.
+    fn shadowing() = checkAll("declared builtin names are found and refused at publication", [
+        structuralEquals(Surface::declaredBuiltins("fn readFile(p) = 1\nlet input = 2\nmut httpGet = 3\n"), ["httpGet", "input", "readFile"]),
+        structuralEquals(Surface::declaredBuiltins("fn load(p) = readFile(p)\nlet x = input()\n"), []),
+        structuralEquals(Surface::declaredBuiltins("// fn readFile\nfn f() = \"let input\"\n"), []),
+        !Surface::shadowsBuiltin([file("src/a.osp", "fn load(p) = readFile(p)\n")]),
+        Surface::shadowsBuiltin([file("src/a.osp", "fn readFile(p) = 1\n")]),
+        match ReleaseFiles::assemble("@a/b/1.1", [file("osprey.toml", "[project]\nname = \"b\"\n"), file("src/a.osp", "fn writeFile(p, c) = 0\n")]) {
+            Error { message } => message == "source.shadowed-builtin"
+            Success => false
+        }
+    ])
+
+    fn sampleFile(release, path) = file(path, readFile("packages/manager/sample-registry/${release}/${path}") ?: "<missing>")
+
+    fn unknownBuiltin() = checkAll("unclassified terminal operations block publication", [
+        structuralEquals(Surface::ofText("termUnclassified()"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("extern fn puts(text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("extern puts (text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("extern // declaration continues\nfn puts(text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("# osprey: flavor=python\n@extern\ndef puts(text: str) -> int: ..."), ["io/unknown"]),
+        structuralEquals(Surface::ofText("# osprey: flavor=python\n@ extern\ndef puts(text: str) -> int: ..."), ["io/unknown"]),
+        structuralEquals(Surface::ofText("// extern fn puts\nfn text() = \"extern\""), []),
+        structuralEquals(Surface::ofText("let external = 1"), []),
+        structuralEquals(Surface::ofText("# osprey: flavor=python\nextern = 1\ndef external():\n    return extern"), []),
+        match ReleaseFiles::assemble("@a/b/1.1", [file("src/a.osp", "fn main() = termUnclassified()")]) {
+            Error { message } => message == "source.unclassified-builtin"
+            Success => false
+        }
+    ])
+
+    fn nativeNames() = checkAll("contextual extern identifiers do not declare native functions", [
+        structuralEquals(Surface::ofText("fn main() = {\nlet extern = 1\nprint(\"$" + "{extern}\")\n}"), []),
+        structuralEquals(Surface::ofText("fn extern(x) = x\nfn main() = print(extern(1))"), []),
+        structuralEquals(Surface::ofText("let extern = fn(x) => x\nprint(extern(1))"), []),
+        structuralEquals(Surface::ofText("let extern = 1\nlet value = extern\nfn main() = print(value)"), []),
+        structuralEquals(Surface::ofText("let extern = 1\nlet value =\nextern\nfn main() = print(value)"), [])
+    ])
+
+    fn nativeBoundaries() = checkAll("native declarations remain visible across statement boundaries", [
+        structuralEquals(Surface::ofText("let text = \"ok\"\nextern fn puts(text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("let extern = 1\nextern fn puts(text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("module Foreign {\nexport extern fn puts(text: string) -> int\n}"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("extern\n// declaration continues\nfn puts(text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("namespace prefix; module Empty {} extern fn puts(text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("namespace prefix; signature Api {} extern fn puts(text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("type Record = { value: int } extern fn puts(text: string) -> int"), ["io/unknown"])
+    ])
+
+    fn nativeWhitespace() = checkAll("native declarations use the compiler's whitespace rules", [
+        structuralEquals(Surface::ofText((fromCodePoint(65279) ?: "") + "extern fn puts(text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText((fromCodePoint(12) ?: "") + "extern fn puts(text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("extern" + (fromCodePoint(12) ?: "") + "fn puts(text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText((fromCodePoint(11) ?: "") + "extern fn puts(text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("let number = 1\rextern fn puts(text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("namespace prefix; extern fn puts(text: string) -> int"), ["io/unknown"]),
+        structuralEquals(Surface::ofText("// comment\rextern fn puts(text: string) -> int"), ["io/unknown"])
+    ])
+
+    fn sampleSurface(case) = {
+        let release = Fixtures::text(Fixtures::field(case, "release"))
+        let files = mapList(Fixtures::texts(Fixtures::field(case, "files")), fn(p) => sampleFile(release, p))
+        structuralEquals(Surface::ofRelease(files, []), Fixtures::texts(Fixtures::field(case, "surface")))
+    }
+
+    /// Every sample-registry release has the surface the fixture records.
+    fn sampleSurfaces() = {
+        let cases = Fixtures::items(Fixtures::field(Fixtures::load("capabilities/sample-surfaces.json"), "cases"))
+        Fixtures::report("sample-registry surfaces", cases, sampleSurface)
+    }
+
+    /// Every surface test.
+    export fn run() = {
+        test("surface: table equals the fixture", tableMatchesFixture)
+        test("surface: identifier scan", scans)
+        test("surface: executable interpolations and terminal input", interpolations)
+        test("surface: source file flavors", flavorFiles)
+        test("surface: Python token boundaries", pythonTokens)
+        test("surface: trees and system capabilities", trees)
+        test("surface: shadowed builtin names", shadowing)
+        test("surface: unclassified ambient builtins", unknownBuiltin)
+        test("surface: contextual native identifiers", nativeNames)
+        test("surface: native declaration boundaries", nativeBoundaries)
+        test("surface: native declaration whitespace", nativeWhitespace)
+        test("surface: sample-registry goldens", sampleSurfaces)
+    }
+}

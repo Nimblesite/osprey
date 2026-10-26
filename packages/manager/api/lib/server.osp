@@ -1,0 +1,77 @@
+namespace registry_api;
+import registry::Identity
+import registry::Release
+import registry_host::Host
+import registry_api::Config
+import registry_api::Loader
+import registry_api::Router
+
+/// The folder-registry HTTP server: load the catalog once, then answer every
+/// request through `Router::respond`. The listener calls a named function, so
+/// the catalog reaches it through the `Registry` effect rather than a closure.
+/// Implements [PACKAGE-FOLDER-REGISTRY].
+module Server {
+    /// The catalog this server answers from.
+    export effect Registry {
+        catalog: fn() -> Release::Catalog
+    }
+
+    let hour = 3600000
+
+    fn crlfLines(lines) = join(mapList(lines, fn(l) => l + "\r\n"), "")
+
+    /// `Content-Type`, the `ETag` when there is one, then the hardening
+    /// headers of [PACKAGE-HARDENING] S3.
+    fn headersOf(response: Router::Response) = "Content-Type: ${response.contentType}\r\n" + (if response.etag == "" { "" } else { "ETag: ${response.etag}\r\n" }) + crlfLines(Router::hardeningHeaders(response))
+
+    fn toHttp(response: Router::Response) = HttpResponse {
+        status: response.status,
+        headers: headersOf(response),
+        contentType: response.contentType,
+        streamFd: -1,
+        isComplete: true,
+        partialBody: response.body
+    }
+
+    /// The listener callback: one request in, one response out.
+    export fn route(method, path, _headers, _body) = toHttp(Router::respond(perform Registry.catalog(), method, path))
+
+    fn forever() -> int = {
+        sleep(hour)
+        forever()
+    }
+
+    fn line(text) = perform Host::Console.line(text)
+
+    fn announce(catalog: Release::Catalog) = {
+        forEachList(catalog.served, fn(s: Release::Served) => line("serving ${Identity::display(s.id)}"))
+        forEachList(catalog.refused, fn(r: Release::Refused) => line("refused ${r.dir}: ${r.code}"))
+    }
+
+    fn started(settings: Config::Settings, listening) = match listening == 0 {
+        true => {
+            line("listening on http://${settings.address}:${settings.port}/v1/packages")
+            forever()
+        }
+        false => {
+            line("error: cannot listen on ${settings.address}:${settings.port} (${listening})")
+            1
+        }
+    }
+
+    fn listen(settings: Config::Settings, loaded) = {
+        announce(loaded)
+        handle Registry { catalog => loaded }
+        let server = httpCreateServer(settings.port, settings.address)
+        started(settings, httpListen(server, route))
+    }
+
+    /// Serve `settings.root` until the process is stopped; the exit status otherwise.
+    export fn serve(settings: Config::Settings) = match Loader::load(settings.root) {
+        Success { value } => listen(settings, value)
+        Error { message } => {
+            line("error: ${message}")
+            1
+        }
+    }
+}

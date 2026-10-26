@@ -9,7 +9,7 @@
 //! reader who opens one learns nothing they did not already know.
 
 use crate::document_entries::DocEntry;
-use osprey_ast::{EffectRef, Expr, ExternParameter, Parameter, Position, Stmt, TypeExpr};
+use osprey_ast::{stmt_meta, EffectRef, Expr, ExternParameter, Parameter, Stmt, TypeExpr};
 use osprey_lsp::analysis::render_type;
 use osprey_syntax::Flavor;
 use std::fmt::Write;
@@ -274,20 +274,11 @@ fn arguments(effect: &EffectRef, flavor: Flavor) -> String {
 /// from several files merges into one page, and two identical `##` headings on
 /// one page is a worse outcome than a plain sentence.
 fn defined_in(entry: &DocEntry, location: &str) -> String {
-    position(entry).map_or_else(String::new, |position| {
-        format!("*Defined in `{location}`, line {}.*", position.line)
-    })
-}
-
-fn position(entry: &DocEntry) -> Option<Position> {
-    match entry.declaration.as_ref()? {
-        Stmt::Function { position, .. }
-        | Stmt::Let { position, .. }
-        | Stmt::Extern { position, .. }
-        | Stmt::Type { position, .. }
-        | Stmt::Effect { position, .. }
-        | Stmt::Signature { position, .. }
-        | Stmt::Module { position, .. } => *position,
-        _ => None,
-    }
+    entry
+        .declaration
+        .as_ref()
+        .and_then(stmt_meta::declaration_position)
+        .map_or_else(String::new, |position| {
+            format!("*Defined in `{location}`, line {}.*", position.line)
+        })
 }

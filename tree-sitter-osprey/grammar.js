@@ -29,7 +29,7 @@ module.exports = grammar({
 
   // Whitespace + comments are skipped between tokens. DOC_COMMENT (///) is NOT
   // extra — it is consumed by declarations.
-  extras: ($) => [/\s/, $.line_comment],
+  extras: ($) => [/\s/, $.line_comment, $._interpolation_space],
 
   word: ($) => $.identifier,
 
@@ -46,7 +46,11 @@ module.exports = grammar({
   //                    statements, so `let r = add 2 3` silently split into
   //                    `let r = add` plus the orphans `2` and `3`
   //                    [LEX-STATEMENT-BREAK].
-  externals: ($) => [$._call_open_gap, $._statement_break, $._type_application_ahead],
+  externals: ($) => [
+    $._call_open_gap, $._statement_break, $._type_application_ahead,
+    $._string_start, $._string_end, $._interpolation_start, $._interpolation_end,
+    $.string_content, $.escape_sequence, $._interpolation_space,
+  ],
 
   conflicts: ($) => [
     // `control` / `abort` / `once` / `many` / `replayable` opening an operation line are
@@ -822,18 +826,14 @@ module.exports = grammar({
     boolean: ($) => choice('true', 'false'),
     float: ($) => /[0-9]+\.[0-9]+/,
     integer: ($) => /[0-9]+/,
-    string: ($) => /"(\\.|[^"\\])*"/,
-    // Interpolated string: contains at least one ${...}. Kept as a single token
-    // (the AST builder splits it).
+    // Implements [STRING-INTERPOLATION]: embedded code uses ordinary expressions.
+    string: ($) => seq(alias($._string_start, '"'), repeat($._string_text), alias($._string_end, '"')),
     interpolated_string: ($) =>
-      token(
-        seq(
-          '"',
-          repeat(choice(/[^"\\$]/, /\\./, /\$[^{]/)),
-          repeat1(seq('${', /[^}]*/, '}', repeat(choice(/[^"\\$]/, /\\./, /\$[^{]/)))),
-          '"',
-        ),
-      ),
+      seq(alias($._string_start, '"'), repeat($._string_text), $.interpolation,
+        repeat(choice($._string_text, $.interpolation)), alias($._string_end, '"')),
+    interpolation: ($) =>
+      seq(alias($._interpolation_start, '${'), field('expression', $.expression), alias($._interpolation_end, '}')),
+    _string_text: ($) => choice($.string_content, $.escape_sequence),
 
     identifier: ($) => /[a-zA-Z_][a-zA-Z0-9_]*/,
 

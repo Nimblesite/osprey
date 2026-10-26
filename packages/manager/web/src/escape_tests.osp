@@ -1,0 +1,60 @@
+namespace registry_web;
+import registry_web::Browse
+import registry_web::Html
+import registry_web::Model
+import registry_web::WebFixtures
+
+/// Escape and identifier hardening: every untrusted byte reaching a
+/// document is neutralized in text and attribute contexts before any
+/// screen renders it. Implements the browser/cache adversarial row of
+/// [PACKAGE-HOSTED-CONFORMANCE] (hostile prose cannot execute or read
+/// anything).
+module EscapeTests {
+    fn entities() = checkAll("web: escape neutralizes markup, quotes and control bytes", [
+        Html::escape("<script>alert(1)</script>") == "&lt;script&gt;alert(1)&lt;/script&gt;",
+        Html::escape("AT&T") == "AT&amp;T",
+        Html::escape("'") == "&#39;",
+        Html::escape("\"") == "&quot;",
+        Html::escape("<a href=\"x\">y</a>") == "&lt;a href=&quot;x&quot;&gt;y&lt;/a&gt;",
+        Html::escape((fromCodePoint(27) ?: "?") + "[31m") == "?[31m",
+        Html::escape((fromCodePoint(127) ?: "?") + "x") == "?x",
+        Html::escape("") == "",
+        Html::escape("plain ascii") == "plain ascii"
+    ])
+
+    fn identifiers() = checkAll("web: heading identifiers collapse to the name grammar", [
+        Html::id("@atlas/util") == "-atlas-util",
+        Html::id("ok-name-1") == "ok-name-1",
+        Html::id("<img src=x>") == "-img-src-x-",
+        Html::id("\" onload=\"alert(1)") == "-onload-alert-1"
+    ])
+
+    /// The search value rides in an attribute: quote injection must fail.
+    fn attributeInjection() = match Browse::render([WebFixtures::warnedAtlasUtil()], "\" onmouseover=\"alert(1)") {
+        Model::Shown { html } => checkAll("web: browse attribute injection", [
+            contains(html, "value=\"&quot; onmouseover=&quot;alert(1)\""),
+            !contains(html, "onmouseover=\"alert")
+        ])
+        Model::Hidden { reason } => check("web: browse attribute injection", "shown screen", "hidden: ${reason}")
+    }
+
+    /// Hostile warning prose and organization handles come from the
+    /// registry join, not the user, and must be escaped just the same.
+    fn hostileStrings() = match Browse::render([WebFixtures::hostileOrgHandleListing(), WebFixtures::warnedAtlasUtil()], "") {
+        Model::Shown { html } => checkAll("web: browse hostile strings", [
+            contains(html, "Organization: @atlas&quot; onload=&quot;alert(1)"),
+            !contains(html, "onload=\"alert"),
+            contains(html, "&lt;/code&gt;&lt;script&gt;alert(1)&lt;/script&gt;"),
+            !contains(html, "<script>")
+        ])
+        Model::Hidden { reason } => check("web: browse hostile strings", "shown screen", "hidden: ${reason}")
+    }
+
+    /// The suite.
+    export fn run() = {
+        test("web: escape entities", entities)
+        test("web: identifiers", identifiers)
+        test("web: browse attribute injection", attributeInjection)
+        test("web: browse hostile strings", hostileStrings)
+    }
+}

@@ -212,3 +212,149 @@ ulong sqrt64(ulong a) {
     }
     return rounded(0, e / 2, root | (ulong)(rem != 0));
 }
+
+// ---- Total integer-valued float functions [BUILTIN-MATH-ROUNDING] ----
+// Every double with |x| >= 2^52 is an integer already, and to_long/from_long
+// are exact below that, so each rounding picks the neighbouring integer.
+
+// Whether x has any fraction below its integer part.
+bool has_fraction(ulong x) {
+    Parts p = parts(x);
+    if (p.exponent >= 52) return false;
+    if (p.exponent < 0) return true;
+    return (p.mantissa & ((ONE >> p.exponent) - 1ul)) != 0;
+}
+
+// A zero result keeps x's sign: floor(-0.3) is -0.0, as on the host.
+ulong from_long_signed(long n, ulong x) { return n ? from_long(n) : (x & SIGN); }
+
+ulong floor64(ulong x) {
+    if (is_nan(x) || is_inf(x) || is_zero(x)) return x;
+    if (parts(x).exponent >= 52) return x;
+    long n = to_long(x);
+    if ((x & SIGN) && has_fraction(x)) n -= 1;
+    return from_long_signed(n, x);
+}
+
+ulong ceil64(ulong x) {
+    if (is_nan(x) || is_inf(x) || is_zero(x)) return x;
+    if (parts(x).exponent >= 52) return x;
+    long n = to_long(x);
+    if (!(x & SIGN) && has_fraction(x)) n += 1;
+    return from_long_signed(n, x);
+}
+
+ulong trunc64(ulong x) {
+    if (is_nan(x) || is_inf(x) || is_zero(x)) return x;
+    if (parts(x).exponent >= 52) return x;
+    return from_long_signed(to_long(x), x);
+}
+
+// Round halfway cases to even, the host's llvm.roundeven (Python's round).
+ulong round64(ulong x) {
+    if (is_nan(x) || is_inf(x) || is_zero(x)) return x;
+    Parts p = parts(x);
+    if (p.exponent >= 52) return x;
+    if (p.exponent < 0) {
+        // |x| < 1: 0, or 1 when |x| > 1/2; exactly 1/2 rounds to even 0.
+        return (x & ~SIGN) > 0x3fe0000000000000ul ? (x & SIGN) | F64_ONE : (x & SIGN);
+    }
+    uint drop = (uint)(52 - p.exponent);
+    ulong low = p.mantissa & ((ONE >> p.exponent) - 1ul);
+    ulong halfway = 1ul << (drop - 1);
+    long n = to_long(x);
+    bool away = low > halfway || (low == halfway && (n & 1));
+    if (away) n += (x & SIGN) ? -1 : 1;
+    return from_long_signed(n, x);
+}
+
+// ---- Exact binary functions [BUILTIN-MATH-ROUNDING] ----
+
+ulong copysign64(ulong x, ulong y) { return (x & ~SIGN) | (y & SIGN); }
+
+// C fmod: x - trunc(x/y)*y, exact. Restoring division of the aligned
+// significands: the remainder is exactly representable, so the loop is exact.
+ulong fmod64(ulong x, ulong y) {
+    if (is_nan(x) || is_nan(y)) return nan_result(x, y);
+    if (is_inf(x) || is_zero(y)) return nan_result(0, 0);
+    if (is_inf(y)) return x;
+    if (is_zero(x)) return x;
+    if (lt64(abs64(y), abs64(x)) || eq64(abs64(y), abs64(x))) {
+        Parts px = parts(x), py = parts(y);
+        ulong r = px.mantissa, twice = py.mantissa << 1;
+        for (int i = px.exponent - py.exponent; i > 0; i--) {
+            r <<= 1;
+            if (r >= twice) r -= twice;
+        }
+        if (r >= py.mantissa) r -= py.mantissa;
+        if (!r) return x & SIGN;
+        uint shift = (uint)clz(r) - 11;
+        return rounded(x & SIGN, py.exponent - (int)shift, (r << shift) << 3);
+    }
+    return x;
+}
+
+// ---- Binary32 emulation [BUILTIN-FLOAT32] ----
+// narrow32 is the arm64 fcvt d->s contract: the top 23 mantissa bits with the
+// quiet bit forced for NaNs; widen32 is its exact inverse for non-NaNs.
+
+uint narrow32(ulong x) {
+    ulong sign = x >> 32 & 0x80000000ul;
+    if (is_nan(x)) return (uint)sign | 0x7fc00000u | (uint)((x & FRAC) >> 29);
+    if (is_inf(x) || is_zero(x)) return (uint)sign | ((uint)(x >> 32) & 0x7f800000u);
+    Parts p = parts(x);
+    if (p.exponent > 127) return (uint)sign | 0x7f800000u;
+    if (p.exponent < -126) {
+        // Subnormal float32: round the significand, in units of 2^-149.
+        int shift = -97 - p.exponent;
+        ulong r = shift >= 64 ? 0ul : p.mantissa >> (uint)shift;
+        ulong rem = shift >= 64 ? 0ul : p.mantissa & (((ulong)1 << shift) - 1ul);
+        ulong halfway = shift >= 64 ? 1ul : (ulong)1 << (shift - 1);
+        if (rem > halfway || (rem == halfway && (r & 1))) r += 1;
+        return (uint)sign | (r < (1ul << 23) ? (uint)r
+                : 0x00800000u | (uint)(r - (1ul << 23)));
+    }
+    ulong low = p.mantissa & 0x1ffffffful, halfway = 1ul << 28;
+    ulong r = (p.mantissa >> 29) + (ulong)(low > halfway || (low == halfway && ((p.mantissa >> 29) & 1)));
+    if (r == (1ul << 24)) { r = 1ul << 23; p.exponent += 1; }
+    if (p.exponent > 127) return (uint)sign | 0x7f800000u;
+    return (uint)sign | ((uint)(p.exponent + 127) << 23) | (uint)(r - (1ul << 23));
+}
+
+ulong widen32(uint w) {
+    ulong sign = (ulong)(w & 0x80000000u) << 32;
+    uint e = (w >> 23) & 0xffu, m = w & 0x7fffffu;
+    if (e == 255u) return m ? sign | INF | (((ulong)m | 0x400000ul) << 29) : sign | INF;
+    if (!e) {
+        if (!m) return sign;
+        uint shift = (uint)clz((ulong)m) - 11;
+        return sign | ((ulong)(926 - shift) << 52) | (((ulong)m << shift) & FRAC);
+    }
+    return sign | ((ulong)(e + 896) << 52) | ((ulong)m << 29);
+}
+
+// Round to the nearest binary32 and widen back: the value a float32 pipeline
+// holds [BUILTIN-FLOAT32].
+ulong float32_64(ulong x) { return widen32(narrow32(x)); }
+
+// The binary32 pattern of the nearest float32 to x [BUILTIN-FLOAT-BITS].
+ulong float32_bits(ulong x) { return narrow32(x); }
+
+// The double the binary32 pattern `bits` holds, widened exactly.
+ulong float32_from_bits(ulong bits) { return widen32((uint)bits); }
+
+// ---- Total shifts [BUILTIN-BITWISE] ----
+// A count outside 0..63 is the limit of repeated shifting: 0, and -1 for a
+// negative arithmetic shift. The arithmetic shift is built from the logical
+// one so no backend's signed-shift contract is assumed.
+
+long shl64(long a, long n) { return (ulong)n < 64 ? (long)((ulong)a << (ulong)n) : 0; }
+
+long shru64(long a, long n) { return (ulong)n < 64 ? (long)((ulong)a >> (ulong)n) : 0; }
+
+long shr64(long a, long n) {
+    if ((ulong)n >= 64) return a < 0 ? -1 : 0;
+    ulong bits = a < 0 ? ~(ulong)a : (ulong)a;
+    ulong shifted = bits >> (ulong)n;
+    return (long)(a < 0 ? ~shifted : shifted);
+}

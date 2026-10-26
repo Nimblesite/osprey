@@ -33,6 +33,10 @@ use crate::Program;
 /// is reported rather than assumed benign.
 #[must_use]
 pub fn without_positions(program: &Program) -> String {
+    let mut program = program.clone();
+    for statement in &mut program.statements {
+        crate::mutate::statement_children_mut(statement, &mut erase_source_blocks);
+    }
     let dump = format!("{program:#?}");
     let lines: Vec<&str> = dump.lines().collect();
     let mut out = Vec::with_capacity(lines.len());
@@ -47,6 +51,20 @@ pub fn without_positions(program: &Program) -> String {
         }
     }
     out.join("\n")
+}
+
+fn erase_source_blocks(expression: &mut crate::Expr) {
+    crate::mutate::children_mut(expression, &mut erase_source_blocks);
+    if let crate::Expr::Block {
+        statements, value, ..
+    } = expression
+    {
+        if statements.is_empty() {
+            if let Some(value) = value.take() {
+                *expression = *value;
+            }
+        }
+    }
 }
 
 /// If the line at `index` opens a position field, the index just past it.
@@ -169,5 +187,41 @@ mod tests {
             "{}",
             without_positions(&recorded)
         );
+    }
+
+    #[test]
+    fn source_only_expression_blocks_do_not_change_meaning() {
+        let direct = Program {
+            statements: vec![let_at("value", None)],
+            doc: None,
+        };
+        let mut wrapped = direct.clone();
+        if let Some(Stmt::Let { value, .. }) = wrapped.statements.first_mut() {
+            *value = Expr::Block {
+                statements: Vec::new(),
+                value: Some(Box::new(value.clone())),
+                position: Some(Position { line: 4, column: 2 }),
+            };
+        }
+        assert_ne!(direct, wrapped);
+        assert_eq!(without_positions(&direct), without_positions(&wrapped));
+    }
+
+    #[test]
+    fn expression_blocks_keep_their_executed_statements() {
+        let direct = Program {
+            statements: vec![let_at("value", None)],
+            doc: None,
+        };
+        let mut scoped = direct.clone();
+        if let Some(Stmt::Let { value, .. }) = scoped.statements.first_mut() {
+            *value = Expr::Block {
+                statements: vec![let_at("prefix", None)],
+                value: Some(Box::new(value.clone())),
+                position: None,
+            };
+        }
+        assert_ne!(direct, scoped);
+        assert_ne!(without_positions(&direct), without_positions(&scoped));
     }
 }

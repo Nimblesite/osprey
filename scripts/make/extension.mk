@@ -24,14 +24,44 @@ _profiler_ui: $(PROFILER_UI_BUILT)
 # time version check either shipped a stale manifest or silently skipped. Local
 # builds report 0.0.0-dev, exactly what the committed manifest expects, so the
 # root manifest is the truthful local copy. [EDITOR-VERSIONING]
-_vsix_bundle:
-	@DEST="$(EXT_DIR)/bin/$(EXT_PLATFORM)"; $(MKDIR) "$$DEST"; \
+# The editor ships a compiled Osprey package client; installations never compile
+# package-manager application sources on the user's machine. [PACKAGE-API]
+REGISTRY_CLIENT_SOURCES := $(shell find packages/manager -type f \( -name '*.osp' -o -name 'osprey.toml' \))
+# `--no-warnings` skips the warning pass: the redundant-annotation oracle
+# re-infers the whole program once per proof, which on the client is the
+# difference between 40 s and 31 min (one 7 s solve per annotation site).
+# `--quiet` alone silences progress only; warnings are diagnostics and would
+# still be computed. Package warnings are `osprey --check`'s and the editor's
+# to show; a packaging build only ships.
+target/osprey-pkg: $(BIN) $(REGISTRY_CLIENT_SOURCES)
+	$(BIN) build packages/manager/cli --quiet --no-warnings -o $@
+
+PACKAGE_WORKSPACE_SOURCES := $(shell find packages/manager/editor packages/native/src packages/vscode/src -type f \( -name '*.osp' -o -name '*.ospml' -o -name 'osprey.toml' \))
+target/package-workspace.wasm: $(BIN) $(PACKAGE_WORKSPACE_SOURCES) | _runtime_wasm
+	$(BIN) build packages/manager/editor --target=wasm32 --quiet --no-warnings -o $@
+
+_vsix_bundle: target/osprey-pkg target/package-workspace.wasm
+	@set -e; DEST="$(EXT_DIR)/bin/$(EXT_PLATFORM)"; $(MKDIR) "$$DEST"; \
 	cp $(BIN) "$$DEST/osprey"; \
+	cp target/osprey-pkg "$$DEST/osprey-pkg"; \
+	cp target/package-workspace.wasm "$$DEST/package-workspace.wasm"; \
 	cp $(RTB)/libfiber_runtime.a $(RTB)/libhttp_runtime.a \
 	   $(RTB)/libfiber_runtime_gc.a $(RTB)/libhttp_runtime_gc.a \
 	   $(RTB)/libfiber_runtime_arc.a $(RTB)/libhttp_runtime_arc.a "$$DEST/"; \
 	cp shipwright.json $(EXT_DIR)/shipwright.json; \
 	echo "  bundled $(BIN) + all native runtime archives -> $$DEST/"
+
+# Refuse missing or stale build artifacts before running the full editor suite.
+# Test jobs have no WASI toolchain and must not compile a second package client.
+.PHONY: _vsix_verify
+_vsix_verify:
+	@test -n "$(filter $(RTB)/%,$(NATIVE_RUNTIME_ARCHIVES))"
+	@set -e; for INPUT in "$(BIN):osprey" "target/osprey-pkg:osprey-pkg" "target/package-workspace.wasm:package-workspace.wasm" \
+	    $(foreach ARCHIVE,$(filter $(RTB)/%,$(NATIVE_RUNTIME_ARCHIVES)),"$(ARCHIVE):$(notdir $(ARCHIVE))"); do \
+	  cmp -s "$${INPUT%:*}" "$(EXT_DIR)/bin/$(EXT_PLATFORM)/$${INPUT#*:}" || \
+	    { echo "FAIL: missing or stale bundled $${INPUT#*:}; run make _vsix_bundle"; exit 1; }; \
+	done
+	cd $(EXT_DIR) && node scripts/verify-package-client.mjs
 
 # Package, then prove the VSIX carries the bundled compiler: `vsce` ships
 # whatever `.vscodeignore` leaves behind and reports success either way, so a
@@ -44,6 +74,10 @@ _vsix_package: $(EXT_NODE_DEPS) $(PROFILER_UI_BUILT)
 	if [ -z "$$VSIX" ]; then echo "FAIL: npm run package produced no osprey-*.vsix"; exit 1; fi; \
 	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/osprey" || \
 	  { echo "FAIL: $$VSIX carries no extension/bin/$(EXT_PLATFORM)/osprey"; exit 1; }; \
+	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/osprey-pkg" || \
+	  { echo "FAIL: $$VSIX carries no bundled package client"; exit 1; }; \
+	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/package-workspace.wasm" || \
+	  { echo "FAIL: $$VSIX carries no package workspace WASM"; exit 1; }; \
 	unzip -l "$$VSIX" | grep -qF "extension/out/client/src/extension.js" || \
 	  { echo "FAIL: $$VSIX carries no compiled extension (out/client/src/extension.js)"; exit 1; }
 

@@ -1,0 +1,16 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "The detached DSSE envelope whose envelope digest is the receipt's attestationDigest.",
+  "value": {
+    "payloadType": "application/vnd.in-toto+json",
+    "payload": "<base64 of the canonical in-toto statement>",
+    "signatures": [
+      {
+        "keyid": "kid-alice-dev",
+        "sig": "MEUCIQ-fixture"
+      }
+    ]
+  },
+  "canonical": "{\"payload\":\"<base64 of the canonical in-toto statement>\",\"payloadType\":\"application/vnd.in-toto+json\",\"signatures\":[{\"keyid\":\"kid-alice-dev\",\"sig\":\"MEUCIQ-fixture\"}]}",
+  "canonicalLength": 166
+}

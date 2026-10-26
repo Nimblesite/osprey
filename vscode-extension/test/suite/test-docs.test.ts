@@ -23,6 +23,7 @@ import { leafTestId } from "../../client/src/test-explorer-parse";
 import { testDocMarkdown } from "../../client/src/test-explorer-docs";
 import {
   NO_TEST_MESSAGE,
+  SHOW_TEST_DOCS_COMMAND,
   resolveTargetId,
   showTestDocumentation,
 } from "../../client/src/test-docs-panel";
@@ -34,6 +35,7 @@ import {
   registerTestProfileProfile,
 } from "../../client/src/test-profile";
 import { resolveBuiltOsprey } from "./osprey-test-env";
+import { activateWithServer, waitFor } from "./profiler-kit";
 import {
   DOC_FAIL_FIXTURE,
   DOC_FIXTURE,
@@ -533,23 +535,22 @@ suite("Osprey test documentation and profiling", () => {
     });
 
     test("the rendered panel matches testDocMarkdown for the same record", async function () {
-      if (!compiler) {
-        this.skip();
-      }
       this.timeout(30000);
+      await activateWithServer();
       const { file } = await discovered(docUri);
       const item = leaf(file, docUri, "documented case");
       const record = testDocFor(item.id);
       assert.ok(record);
-      assert.strictEqual(
-        showTestDocumentation(
-          item,
-          () => undefined,
-          undefined,
-          () => undefined,
-        ),
-        testDocMarkdown(record, docUri.fsPath),
-      );
+      const existing = new Set(vscode.workspace.textDocuments.map((doc) => doc.uri.toString()));
+      const expected = testDocMarkdown(record, docUri.fsPath);
+      assert.strictEqual(await vscode.commands.executeCommand(SHOW_TEST_DOCS_COMMAND, item), expected);
+      const preview = await waitFor(() => vscode.window.visibleTextEditors.find((editor) =>
+        !existing.has(editor.document.uri.toString()) && editor.document.getText() === expected),
+        Boolean, 5000, "the real documentation preview");
+      assert.ok(preview?.document.isUntitled);
+      assert.strictEqual(preview.document.languageId, "markdown");
+      await vscode.window.showTextDocument(preview.document);
+      await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
     });
   });
 

@@ -98,7 +98,9 @@ impl Analyzer<'_> {
                         .flatten()
                 }) {
                     if let Some(callback) = self.callable(argument, scope, env) {
-                        out.union(self.invoke_with_values(callback, &[]));
+                        let callback_arguments =
+                            self.eager_callback_arguments(name, arguments, scope, env);
+                        out.union(self.invoke_with_values(callback, &callback_arguments));
                     }
                 }
             }

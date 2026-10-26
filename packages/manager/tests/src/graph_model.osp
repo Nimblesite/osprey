@@ -1,0 +1,75 @@
+namespace registry_tests;
+import registry::Json
+import registry::Names
+import registry::Identity
+import registry::ManifestModel
+import registry::Resolution
+import registry_tests::Fixtures
+
+/// The parsed declarative form of one bounded dependency-graph fixture: the
+/// target, granted capabilities, the root's dependency edges, an optional
+/// current lock, and the catalog of candidate releases. Test-only input for
+/// the resolver and the exhaustive oracle; the problem types live in
+/// `Resolution`, and requirements and edges reuse `ManifestModel`. Implements
+/// [PACKAGE-RESOLUTION].
+module GraphModel {
+    fn key(v) = Names::Key { scope: Fixtures::text(Fixtures::field(v, "scope")), name: Fixtures::text(Fixtures::field(v, "name")) }
+
+    fn releaseId(v) = Identity::ReleaseId {
+        key: key(Fixtures::field(v, "package")),
+        epoch: Fixtures::number(Fixtures::field(v, "epoch")),
+        ordinal: Fixtures::number(Fixtures::field(v, "ordinal")),
+        digest: Fixtures::text(Fixtures::field(v, "digest"))
+    }
+
+    fn requirement(v) = ManifestModel::Requirement {
+        package: key(Fixtures::field(v, "package")),
+        epoch: Fixtures::number(Fixtures::field(v, "epoch")),
+        minimumOrdinal: Fixtures::number(Fixtures::field(v, "minimumOrdinal"))
+    }
+
+    /// One edge object `{"Runtime": {"requirement": {...}}}` into its
+    /// `ManifestModel::Edge` variant.
+    fn edge(v) = match Json::get(v, "Runtime") {
+        Success { value } => ManifestModel::Runtime { requirement: requirement(Fixtures::field(value, "requirement")) }
+        Error => match Json::get(v, "Build") {
+            Success { value } => ManifestModel::Build { requirement: requirement(Fixtures::field(value, "requirement")) }
+            Error => match Json::get(v, "Test") {
+                Success { value } => ManifestModel::Test { requirement: requirement(Fixtures::field(value, "requirement")) }
+                Error => ManifestModel::Test { requirement: requirement(Json::Null) }
+            }
+        }
+    }
+
+    fn releaseState(v) = match Json::get(v, "Eligible") {
+        Success => "Eligible"
+        Error => match Json::get(v, "Yanked") {
+            Success => "Yanked"
+            Error => "Revoked"
+        }
+    }
+
+    fn strings(v) = Fixtures::texts(v)
+
+    fn entry(v) = Resolution::Entry {
+        release: releaseId(Fixtures::field(v, "release")),
+        activation: releaseState(Fixtures::field(v, "state")),
+        targets: strings(Fixtures::field(v, "targets")),
+        capabilities: strings(Fixtures::field(v, "capabilities")),
+        dependencies: mapList(Fixtures::items(Fixtures::field(v, "dependencies")), edge)
+    }
+
+    /// One `{"package": {...}, "capabilities": [...]}` grant of the root.
+    fn grant(v) = ManifestModel::Grant { package: key(Fixtures::field(v, "package")), capabilities: strings(Fixtures::field(v, "capabilities")) }
+
+    /// The typed graph of one parsed fixture object; `grants` is optional and
+    /// empty when the fixture carries none.
+    export fn graphOf(v) = Resolution::Graph {
+        target: Fixtures::text(Fixtures::field(v, "target")),
+        granted: strings(Fixtures::field(v, "grantedCapabilities")),
+        grants: mapList(Fixtures::items(Fixtures::field(v, "grants")), grant),
+        rootDeps: mapList(Fixtures::items(Fixtures::field(Fixtures::field(v, "root"), "dependencies")), edge),
+        current: mapList(Fixtures::items(Fixtures::field(v, "current")), releaseId),
+        catalog: mapList(Fixtures::items(Fixtures::field(v, "catalog")), entry)
+    }
+}

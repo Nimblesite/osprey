@@ -6,10 +6,9 @@ semantics live in the linked chapters.
 ## Flavors
 
 Default (`.osp`) uses braces, `fn`, and parenthesized calls. ML (`.ospml`) uses
-layout, whitespace application, and currying by default. Each frontend lowers
-to the same `osprey_ast::Program` before semantic analysis.
+layout, whitespace application, and currying by default. Python (`.py` with `# osprey: flavor=python`) uses `def`, indentation and flat calls; its supported subset is specified in [Python Flavor Syntax](0041-PythonFlavorSyntax.md). All three frontends lower to the same `osprey_ast::Program` before semantic analysis.
 
-Shared AST does not mean every surface form exists in both flavors. Default has
+Shared AST does not mean every surface form exists in every flavor. Default has
 `if` and structural ternary spellings that ML omits. The
 surface/core contract is [FLAVOR-BOUNDARY](0023-LanguageFlavors.md); complete ML
 grammar is in [ML Flavor Syntax](0024-MLFlavorSyntax.md). Multi-file and
@@ -38,37 +37,42 @@ checker therefore permits reassignment only in an effect handler arm. A free
 procedural `x = x + 1` in ordinary statement position is a type error.
 
 ```osprey
+effect Counter { tick: fn() -> int }
+fn run() = perform Counter.tick()
+
 let name = "Alice"
 
-// A `mut` cell owned by a handler: it changes only as the effect is performed
-// and this arm interprets it — the sanctioned form of mutation.
+// Only the handler arm changes the cell.
 mut count = 0
 let counter = handler Counter {
     tick => {
-        count = count + 1 ?: count
+        count = checkedAdd(count, 1) ?: count
         count
     }
 }
 let total = counter(run)
+print(total)
 ```
 
 ML omits `let`; its reassignment operator is `:=` and follows the same rule.
 
 ```osprey-ml
+effect Counter
+    tick : Unit => int
+run () = perform Counter.tick ()
+
 name = "Alice"
 
 mut count = 0
 counter = handler Counter
     tick =>
-        count := count + 1 ?: count
+        count := checkedAdd count 1 ?: count
         count
 total = counter run
+print total
 ```
 
-The mutable cell may be declared in an enclosing lexical scope so the handler
-can capture it, but every assignment must occur in an arm that interprets an
-effect operation. The handled computation is client code, not a handler arm, and
-does not gain mutation authority.
+Both examples print `1`. The mutable cell may be declared in an enclosing lexical scope so the handler can capture it, but every assignment must occur in an arm that interprets an effect operation. The handled computation is client code, not a handler arm, and does not gain mutation authority.
 
 A binding may include a type annotation after `:`. The annotation constrains
 inference; it is not required when inference already fixes the type.

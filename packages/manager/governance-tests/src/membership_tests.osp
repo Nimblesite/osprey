@@ -1,0 +1,172 @@
+namespace registry_tests;
+import registry::Governance
+import registry::GovernanceTransitions
+import registry::Maybe
+import registry_tests::Fixture
+
+/// Organization enrollment, custodian quorum, membership revocation, rejoin
+/// and suspension [PACKAGE-OWNERSHIP-MODEL]: governance roles are never
+/// package authority, an organization never loses its last custodian, and a
+/// departed member's identity never returns with their old grants.
+module MembershipTests {
+    fn enroll(world, id, orgHandle, founder, founderMembership, proof) =
+        GovernanceTransitions::enrollOrganization(world, id, orgHandle, founder, founderMembership, proof)
+
+    fn enrollOk(world, id, orgHandle, founder, founderMembership) =
+        enroll(world, id, orgHandle, founder, founderMembership,
+            Fixture::verified(founder, founderMembership,
+                Governance::organizationStatement(id, orgHandle, founderMembership)))
+
+    fn organizationEnrollment() = {
+        let world = Fixture::world()
+        checkAll("enrollment records the organization and its first custodian atomically", [
+            Fixture::code(enrollOk(world, "o-heron", "heron", "p-alice", "m-alice2")) == "",
+            Fixture::code(enrollOk(world, "o-heron2", "heron", "p-bob", "m-bob2")) == "governance.organization.duplicate-handle",
+            Fixture::code(enrollOk(world, "o-heron3", "Heron", "p-alice", "m-alice3")) == "name.scope.chars",
+            Fixture::code(enrollOk(world, "o-heron4", "heron", "p-bot", "m-bot2")) == "governance.principal.workflow",
+            Fixture::code(enrollOk(world, "o-heron5", "heron", "p-nobody", "m-x")) == "governance.principal.missing",
+            Fixture::code(enroll(world, "o-heron6", "heron", "p-alice", "m-alice6",
+                Fixture::refused("p-alice", "m-alice6", Governance::organizationStatement("o-heron6", "heron", "m-alice6")))) == "governance.proof.rejected:ceremony-failed"
+        ])
+    }
+
+    fn enrolledWorld() = match enrollOk(Fixture::world(), "o-heron", "heron", "p-alice", "m-alice2") {
+        Success { value } => value
+        Error => Fixture::world()
+    }
+
+    fn firstCustodianRecorded() = checkAll("creation records the organization and its first accepted custodian together", [
+        length(enrolledWorld().organizations) == 3,
+        length(enrolledWorld().memberships) == 8,
+        Governance::isCustodian(match Governance::membershipOf(enrolledWorld(), "m-alice2") {
+            Success { value } => value
+            Error => Governance::Membership { id: "", org: "", principal: "", role: Governance::Member, status: Governance::Revoked, authorityEpoch: 0 }
+        })
+    ])
+
+    fn elevate(world, org, target, proofA, proofB) =
+        GovernanceTransitions::grantCustodianship(world, org, target, proofA, proofB)
+
+    fn aliceAndErin(world, org, target) = {
+        let statement = Governance::custodianStatement(org, target)
+        [Fixture::verified("p-alice", "m-alice", statement), Fixture::verified("p-erin", "m-erin", statement)]
+    }
+
+    fn custodianQuorum() = {
+        let world = Fixture::world()
+        let proofs = aliceAndErin(world, "o-finch", "m-bob")
+        let bobProof = Fixture::verified("p-bob", "m-bob", Governance::custodianStatement("o-finch", "m-bob"))
+        let daveProof = Fixture::verified("p-dave", "m-dave", Governance::custodianStatement("o-finch", "m-bob"))
+        let elevated = Fixture::orKeep(world, fn(w) => elevate(w, "o-finch", "m-bob", listGet(proofs, 0) ?: bobProof, listGet(proofs, 1) ?: bobProof))
+        checkAll("custodianship needs two distinct existing custodians' fresh proofs", [
+            Fixture::code(elevate(world, "o-finch", "m-bob", listGet(proofs, 0) ?: bobProof, listGet(proofs, 1) ?: bobProof)) == "",
+            Fixture::code(elevate(world, "o-finch", "m-bob", listGet(proofs, 0) ?: bobProof, listGet(proofs, 0) ?: bobProof)) == "governance.custodian.quorum",
+            Fixture::code(elevate(world, "o-finch", "m-bob", bobProof, listGet(proofs, 1) ?: bobProof)) == "governance.custodian.required",
+            Fixture::code(elevate(world, "o-finch", "m-bob", daveProof, listGet(proofs, 1) ?: bobProof)) == "governance.custodian.required",
+            Fixture::code(elevate(world, "o-finch", "m-bot", listGet(proofs, 0) ?: bobProof, listGet(proofs, 1) ?: bobProof)) == "governance.principal.workflow",
+            Fixture::code(elevate(world, "o-wren", "m-bob", listGet(proofs, 0) ?: bobProof, listGet(proofs, 1) ?: bobProof)) == "governance.membership.other-org",
+            match Governance::membershipOf(elevated, "m-bob") {
+                Success { value } => value.authorityEpoch
+                Error => 0
+            } == 2
+        ])
+    }
+
+    fn revoke(world, target, proof) = GovernanceTransitions::revokeMembership(world, target, proof)
+
+    fn revocationStatement(org, target) = Governance::revocationStatement(org, target)
+
+    fn custodianRevocation() = {
+        let world = Fixture::world()
+        let erinGone = Fixture::orKeep(world, fn(w) =>
+            revoke(w, "m-erin", Fixture::verified("p-alice", "m-alice", revocationStatement("o-finch", "m-erin"))))
+        checkAll("revocation is a custodian's signed decision with structural guards", [
+            Fixture::code(revoke(world, "m-erin", Fixture::verified("p-alice", "m-alice", revocationStatement("o-finch", "m-erin")))) == "",
+            Fixture::code(revoke(world, "m-carol", Fixture::verified("p-bob", "m-bob", revocationStatement("o-finch", "m-carol")))) == "governance.custodian.required",
+            Fixture::code(revoke(world, "m-carol", Fixture::verified("p-dave", "m-dave", revocationStatement("o-finch", "m-carol")))) == "governance.custodian.required",
+            Fixture::code(revoke(world, "m-carol", Fixture::verified("p-alice", "m-alice", "other-statement"))) == "governance.proof.statement-mismatch",
+            Fixture::code(revoke(erinGone, "m-alice", Fixture::verified("p-erin", "m-erin", revocationStatement("o-finch", "m-alice")))) == "governance.custodian.required",
+            Fixture::code(revoke(erinGone, "m-alice", Fixture::verified("p-erin", "m-erin", revocationStatement("o-wren", "m-alice")))) == "governance.membership.other-org",
+            Fixture::code(revoke(world, "m-nobody", Fixture::verified("p-alice", "m-alice", revocationStatement("o-finch", "m-nobody")))) == "governance.membership.missing"
+        ])
+    }
+
+    /// The last accepted custodian cannot be revoked, and an administrator
+    /// membership cannot be removed while it still administers
+    /// [PACKAGE-OWNERSHIP-ADMIN].
+    fn lastCustodianAndAdministrators() = {
+        let world = Fixture::world()
+        let erinGone = Fixture::orKeep(world, fn(w) =>
+            revoke(w, "m-erin", Fixture::verified("p-alice", "m-alice", revocationStatement("o-finch", "m-erin"))))
+        checkAll("the last custodian and administering members are protected", [
+            Fixture::code(revoke(erinGone, "m-alice", Fixture::verified("p-erin", "m-erin", revocationStatement("o-finch", "m-alice")))) == "governance.custodian.required",
+            Fixture::code(revoke(erinGone, "m-alice", Fixture::refused("p-erin", "m-erin", revocationStatement("o-finch", "m-alice")))) == "governance.custodian.required",
+            Fixture::code(revoke(erinGone, "m-alice", Fixture::verified("p-erin", "m-erin", revocationStatement("o-finch", "m-erin")))) == "governance.org.last-custodian",
+            Fixture::code(revoke(world, "m-alice", Fixture::verified("p-erin", "m-erin", revocationStatement("o-finch", "m-alice")))) == "governance.membership.administers-package",
+            Fixture::code(revoke(world, "m-dave", Fixture::verified("p-dave", "m-dave", revocationStatement("o-wren", "m-dave")))) == "governance.org.last-custodian",
+            Fixture::code(revoke(world, "m-carol", Fixture::verified("p-carol", "m-carol", revocationStatement("o-finch", "m-carol")))) == "governance.custodian.required"
+        ])
+    }
+
+    fn rejoin(world, principal, membership) = {
+        let invitation = Fixture::verified("p-alice", "m-alice",
+            Governance::invitationStatement("o-finch", principal, membership))
+        let acceptance = Fixture::verified(principal, membership,
+            Governance::membershipAcceptanceStatement("o-finch", principal, membership))
+        GovernanceTransitions::acceptMembership(world, "o-finch", principal, membership, invitation, acceptance)
+    }
+
+    /// Departure and rejoin [PACKAGE-OWNERSHIP-PERMISSIONS]: a rejoin is a
+    /// new membership id; the revoked row and its grants are never reactivated.
+    fn rejoinCreatesNewIdentity() = {
+        let world = Fixture::world()
+        let granted = Fixture::grantOn(world, "pkg-f1", "g-carol", "m-carol", Governance::ManageSecurity, Maybe::some(200), 100)
+        let departed = Fixture::orKeep(granted, fn(w) =>
+            revoke(w, "m-carol", Fixture::verified("p-alice", "m-alice", revocationStatement("o-finch", "m-carol"))))
+        let rejoined = Fixture::orKeep(departed, fn(w) => rejoin(w, "p-carol", "m-carol2"))
+        checkAll("rejoin is a fresh membership and revives nothing", [
+            Fixture::code(rejoin(departed, "p-carol", "m-carol2")) == "",
+            Fixture::code(rejoin(rejoined, "p-carol", "m-carol3")) == "governance.membership.already-active",
+            Fixture::code(rejoin(rejoined, "p-bob", "m-bob9")) == "governance.membership.already-active",
+            Fixture::code(GovernanceTransitions::authorize(granted, "pkg-f1", "m-carol", Governance::ManageSecurity, 100)) == "",
+            Fixture::code(GovernanceTransitions::authorize(departed, "pkg-f1", "m-carol", Governance::ManageSecurity, 100)) == "governance.membership.inactive",
+            Fixture::code(GovernanceTransitions::authorize(rejoined, "pkg-f1", "m-carol", Governance::ManageSecurity, 100)) == "governance.membership.inactive",
+            Fixture::code(GovernanceTransitions::authorize(rejoined, "pkg-f1", "m-carol2", Governance::ManageSecurity, 100)) == "governance.permission.missing",
+            match Governance::membershipOf(rejoined, "m-carol") {
+                Success { value } => value.authorityEpoch
+                Error => 0
+            } == 2
+        ])
+    }
+
+    /// Suspension freezes administered packages immediately without breaking
+    /// the admin reference [PACKAGE-OWNERSHIP-ADMIN].
+    fn suspensionFreezesWrites() = {
+        let world = Fixture::world()
+        let granted = Fixture::grantOn(world, "pkg-f1", "g-bob", "m-bob", Governance::YankRelease, Maybe::some(200), 100)
+        let bobSuspended = Fixture::orKeep(granted, fn(w) => GovernanceTransitions::suspendPrincipal(w, "p-bob"))
+        let aliceSuspended = Fixture::orKeep(world, fn(w) => GovernanceTransitions::suspendPrincipal(w, "p-alice"))
+        checkAll("principal suspension denies immediately and freezes administered packages", [
+            Fixture::code(GovernanceTransitions::suspendPrincipal(world, "p-nobody")) == "governance.principal.missing",
+            Fixture::code(GovernanceTransitions::authorize(bobSuspended, "pkg-f1", "m-bob", Governance::YankRelease, 100)) == "governance.principal.suspended",
+            Fixture::code(GovernanceTransitions::authorize(bobSuspended, "pkg-f1", "m-carol", Governance::YankRelease, 100)) == "governance.permission.missing",
+            Fixture::code(GovernanceTransitions::authorize(aliceSuspended, "pkg-f1", "m-carol", Governance::YankRelease, 100)) == "governance.package.frozen",
+            match Governance::packageOf(aliceSuspended, "pkg-f1") {
+                Success { value } => value.admin == "m-alice"
+                Error => false
+            },
+            Fixture::code(GovernanceTransitions::grantPermission(aliceSuspended, "pkg-f1", "g-x",
+                Fixture::verified("p-alice", "m-alice", "s"), "m-carol", Governance::EditMetadata, Maybe::some(200), 100)) == "governance.package.frozen"
+        ])
+    }
+
+    export fn run() = {
+        test("governance membership: enrollment", organizationEnrollment)
+        test("governance membership: first custodian recorded", firstCustodianRecorded)
+        test("governance membership: custodian quorum", custodianQuorum)
+        test("governance membership: revocation guards", custodianRevocation)
+        test("governance membership: last custodian and administrators", lastCustodianAndAdministrators)
+        test("governance membership: rejoin creates a new identity", rejoinCreatesNewIdentity)
+        test("governance membership: suspension freezes writes", suspensionFreezesWrites)
+    }
+}

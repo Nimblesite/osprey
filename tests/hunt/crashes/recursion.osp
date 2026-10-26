@@ -1,0 +1,6 @@
+/// Deliberately planted: Recursive base-case invariant [SYMEX-CRASH-GATE].
+extern fn abort() -> int
+fn descend(n) = if n == 0 { abort() } else { descend(checkedSub(n, 1) ?: 0) }
+let line = input()
+let result = if line == "R" { descend(3) } else { 0 }
+print("result ${result}")

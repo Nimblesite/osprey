@@ -1,0 +1,45 @@
+namespace registry_fixture_check;
+import registry::Bytes
+
+/// Spec-section citations: a bracketed token of uppercase letters, digits
+/// and at least one hyphen is defined when some spec under docs/specs marks
+/// it as a section in its backticked, bracketed form. Implements the citation rule of
+/// [PACKAGE-CONFORMANCE].
+module Citations {
+    let closeBracket = 93
+
+    fn idByte(b) = (b >= 65 && b <= 90) || (b >= 48 && b <= 57) || b == 45
+
+    fn upper(b) = b >= 65 && b <= 90
+
+    fn tokenAt(text, i) = substring(text, i, Bytes::runEnd(text, i, idByte)) ?: ""
+
+    fn citationAt(text, i) = {
+        let token = tokenAt(text, i + 1)
+        let closes = (byteAt(text, i + 1 + byteLength(token)) ?: 0) == closeBracket
+        if closes && contains(token, "-") && upper(byteAt(token, 0) ?: 0) { token } else { "" }
+    }
+
+    fn collect(text, from, out) = match indexOf(drop(text, from), "[") {
+        Error => out
+        Success { value } => {
+            let found = citationAt(text, from + value)
+            collect(text, from + value + 1, if found == "" { out } else { listAppend(out, found) })
+        }
+    }
+
+    /// Every citation in `text`, in order of appearance.
+    export fn cited(text) = collect(text, 0, [])
+
+    fn firstMissing(specs, ids) = foldList(ids, "", fn(found, id) => if found != "" || contains(specs, "`[${id}]`") { found } else { id })
+
+    /// "" when every citation in `text` is defined in `specs`, else a problem
+    /// line naming `label` and the first undefined section.
+    export fn undefined(specs, text, label) = {
+        let missing = firstMissing(specs, cited(text))
+        if missing == "" { "" } else { "${label} cites undefined [${missing}]" }
+    }
+
+    /// As `undefined`, and `text` must cite at least one section.
+    export fn problem(specs, text, label) = if isEmpty(cited(text)) { "${label} cites no spec section" } else { undefined(specs, text, label) }
+}

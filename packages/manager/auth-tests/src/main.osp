@@ -1,0 +1,46 @@
+namespace registry_auth_tests;
+import registry::Policy
+import registry_api::OAuth
+import registry_auth_tests::ProviderTests
+import registry_auth_tests::WebhookTests
+
+fn config() = OAuth::Config {
+    supabaseOrigin: "https://project.supabase.co",
+    callback: "https://packages-api.example.test/v1/auth/github/callback",
+    websiteOrigin: "https://packages.example.test",
+    publishableKey: "sb_publishable_fixture"
+}
+
+fn rfcVector() = check("PKCE RFC 7636 Appendix B", "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM", OAuth::challenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"))
+
+fn pinnedRedirect() = match OAuth::authorizeUrl(config(), "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM") {
+    Error { message } => check("configured callback constructs", "ok", message)
+    Success { value } => checkAll("OAuth uses pinned redirect and S256", [
+            startsWith(value, "https://project.supabase.co/auth/v1/authorize?provider=github&"),
+            contains(value, "code_challenge_method=s256"),
+            contains(value, "redirect_to=https%3a%2f%2fpackages-api.example.test%2fv1%2fauth%2fgithub%2fcallback"),
+            !contains(value, "sb_publishable_fixture")
+    ])
+}
+
+fn badConfiguration() = {
+    let c = config()
+    checkAll("OAuth rejects unsafe origins and challenge injection", [
+            OAuth::configCode(c { supabaseOrigin: "http://project.supabase.co" }) == "auth.configuration",
+            OAuth::configCode(c { supabaseOrigin: "https://trusted.test@evil.test" }) == "auth.configuration",
+            OAuth::configCode(c { websiteOrigin: "https://site.test/path" }) == "auth.configuration",
+            OAuth::challengeCode("x&redirect_to=https://evil.test") == "auth.pkce",
+            OAuth::challengeCode(repeat("a", 42) ?: "") == "auth.pkce"
+    ])
+}
+
+fn suite() = {
+    test("auth: PKCE standard vector", rfcVector)
+    test("auth: configuration-pinned OAuth redirect", pinnedRedirect)
+    test("auth: reject insecure configuration", badConfiguration)
+    ProviderTests::run(config())
+    WebhookTests::run()
+    0
+}
+
+fn main() = Policy::guarded(suite)

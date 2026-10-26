@@ -1,6 +1,6 @@
 import * as path from "path";
 import { execFile } from "child_process";
-import { window, OutputChannel } from "vscode";
+import { window, OutputChannel, TextDocument } from "vscode";
 import { isOspreyFile } from "./client-config";
 
 // The two "compile the active file" commands (compile, compile-and-run) differ
@@ -47,7 +47,12 @@ function reportCompileOutput(
   channel.appendLine(`=== END OUTPUT ===`);
 }
 
-function runCompileTask(compilerCommand: string, task: CompileTask) {
+// The guard every "act on the active file" command shares: an active editor
+// holding an Osprey file, saved before the compiler reads it from disk.
+export function withSavedOspreyDocument(
+  fileVerb: string,
+  run: (document: TextDocument) => void,
+) {
   const activeEditor = window.activeTextEditor;
   if (!activeEditor) {
     window.showErrorMessage("No active Osprey file found");
@@ -56,14 +61,18 @@ function runCompileTask(compilerCommand: string, task: CompileTask) {
   const document = activeEditor.document;
   if (!isOspreyFile(document.fileName)) {
     window.showErrorMessage(
-      `Please open a .osp or .ospml file to ${task.fileVerb}`,
+      `Please open a .osp or .ospml file to ${fileVerb}`,
     );
     return;
   }
-  // Save the file first, then compile with the resolved osprey compiler (user
-  // setting → version-matched bundled binary → `osprey` on PATH — same
-  // resolution the language server uses).
-  document.save().then(() => {
+  document.save().then(() => run(document));
+}
+
+function runCompileTask(compilerCommand: string, task: CompileTask) {
+  // Compile with the resolved osprey compiler (user setting → version-matched
+  // bundled binary → `osprey` on PATH — same resolution the language server
+  // uses).
+  withSavedOspreyDocument(task.fileVerb, (document) => {
     const outputChannel = window.createOutputChannel(task.channelName);
     outputChannel.show();
     outputChannel.appendLine(task.startLine(document.fileName));

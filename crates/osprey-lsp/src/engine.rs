@@ -50,6 +50,10 @@ impl OspreyEngine {
         &self.vfs
     }
 
+    pub(crate) fn stop(&self) {
+        self.shutdown.store(true, Ordering::SeqCst);
+    }
+
     fn encoding(&self) -> PositionEncoding {
         self.vfs.encoding()
     }
@@ -179,7 +183,11 @@ impl EngineApi for OspreyEngine {
             return Err(EngineError::ShuttingDown);
         }
         let generation = self.session.generation();
-        Ok(Snapshot::new(generation, self.answer(query)))
+        let report = self.answer(query);
+        if self.shutdown.load(Ordering::SeqCst) {
+            return Err(EngineError::ShuttingDown);
+        }
+        Ok(Snapshot::new(generation, report))
     }
 
     async fn rescan(
@@ -208,7 +216,7 @@ impl EngineApi for OspreyEngine {
     }
 
     async fn shutdown(&self) -> Result<(), Self::Error> {
-        self.shutdown.store(true, Ordering::SeqCst);
+        self.stop();
         Ok(())
     }
 }

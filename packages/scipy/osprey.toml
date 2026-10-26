@@ -1,0 +1,14 @@
+[project]
+name = "scipy"
+source_roots = ["src"]
+python_sources = ["src/support.py", "src/zeta.py", "src/gamma.py", "src/beta.py", "src/combinatorics.py", "src/logistic.py", "src/information.py", "src/boxcox.py", "src/special.py"]
+default_namespace = "scipy"
+
+[package]
+name = "@osprey/scipy"
+license = "MIT AND BSD-3-Clause AND BSL-1.0"
+summary = "scipy.special scalar functions (gamma, zeta, beta, combinatorics, logistic, information, Box-Cox)"
+keywords = ["beta", "gamma", "python-flavor", "scipy", "special", "zeta"]
+
+[test-dependencies]
+"@osprey/testing" = { epoch = 1, min_release = 1 }

@@ -1,0 +1,119 @@
+namespace registry;
+import registry::Names
+import registry::Maybe
+
+/// The canonical manifest: the typeDiagram `PackageManifest` and its parts,
+/// as `osprey.toml` projects onto them. Field names follow
+/// `schemas/package-registry.td` exactly so the JSON projection is mechanical.
+/// Implements the canonical-manifest rule of [PACKAGE-TYPE-INVARIANTS].
+module ManifestModel {
+    export type Requirement = { package: Names::Key, epoch: int, minimumOrdinal: int }
+    export type Edge = Runtime { requirement: Requirement } | Build { requirement: Requirement } | Test { requirement: Requirement }
+    /// The ambient capabilities the root grants one dependency key
+    /// (`capabilities = [...]` on its dependency entry); never transitive
+    /// ([PACKAGE-CAPABILITY-CONFINEMENT]).
+    export type Grant = { package: Names::Key, capabilities: List<string> }
+    export type SystemRequirement = { capability: string, minimumRevision: int }
+    export type AssetKind = Utf8Text | Json | Png
+    export type AssetRole = Documentation { kind: AssetKind } | RuntimeData { kind: AssetKind, requiredCapability: string }
+    export type Asset = { path: string, byteLength: int, digest: string, role: AssetRole }
+    export type Discovery = { summary: string, keywords: List<string> }
+    export type Publication = { package: Names::Key, licenseExpression: string, discovery: Discovery }
+    export type Flavor = Default | Ml
+    export type Manifest = {
+        projectName: string,
+        sourceRoots: List<string>,
+        defaultNamespace: Maybe::Maybe<string>,
+        entry: Maybe::Maybe<string>,
+        flavor: Maybe::Maybe<Flavor>,
+        allowWildcardImports: bool,
+        publication: Maybe::Maybe<Publication>,
+        testRoots: List<string>,
+        pythonSources: List<string>,
+        dependencies: List<Edge>,
+        grants: List<Grant>,
+        systemRequirements: List<SystemRequirement>,
+        assets: List<Asset>
+    }
+
+    // `Grant` shares `package` and `capabilities`; issue #273 needs typed receivers.
+    /// The capabilities `grants` give `key`, in grant order.
+    export fn grantedTo(grants, key) = foldList(grants, [], fn(acc, g: Grant) => if Names::same(g.package, key) { listConcat(acc, g.capabilities) } else { acc })
+
+    /// The manifest no project has: the `?:` fallback where a parsed manifest
+    /// is required and its rejection has already been reported.
+    export fn blank() = Manifest {
+        projectName: "",
+        sourceRoots: [],
+        defaultNamespace: Maybe::none(),
+        entry: Maybe::none(),
+        flavor: Maybe::none(),
+        allowWildcardImports: false,
+        publication: Maybe::none(),
+        testRoots: [],
+        pythonSources: [],
+        dependencies: [],
+        grants: [],
+        systemRequirements: [],
+        assets: []
+    }
+
+    /// The requirement inside any edge.
+    export fn requirementOf(edge) = match edge {
+        Runtime { requirement } => requirement
+        Build { requirement } => requirement
+        Test { requirement } => requirement
+    }
+
+    /// Canonical edge rank: Runtime, Build, Test.
+    export fn edgeRank(edge) = match edge {
+        Runtime => 0
+        Build => 1
+        Test => 2
+    }
+
+    /// The Runtime and Build edges: the ones a non-root release activates,
+    /// since a Test edge fires only at the root ([PACKAGE-RESOLUTION]).
+    export fn activeEdges(edges) = filterList(edges, fn(edge) => edgeRank(edge) != 2)
+
+    /// The package keys the edges require.
+    export fn targets(edges) = mapList(edges, fn(edge) => requirementOf(edge).package)
+
+    /// The package keys the Runtime and Build edges require.
+    export fn activeTargets(edges) = targets(activeEdges(edges))
+
+    /// The variant name of an asset kind, for the JSON projection.
+    export fn kindName(kind) = match kind {
+        Utf8Text => "Utf8Text"
+        Json => "Json"
+        Png => "Png"
+    }
+
+    /// The variant name of a source flavor, for the JSON projection.
+    export fn flavorName(flavor) = match flavor {
+        Default => "Default"
+        Ml => "Ml"
+    }
+
+    /// The asset kind named by a manifest `kind` string.
+    export fn kindOf(text) = match text {
+        "text" => Success { value: Utf8Text }
+        "json" => Success { value: Json }
+        "png" => Success { value: Png }
+        _ => Error { message: "manifest.asset.kind" }
+    }
+
+    /// The flavor named by a manifest `flavor` string.
+    export fn flavorOf(text) = match text {
+        "default" => Success { value: Default }
+        "ml" => Success { value: Ml }
+        _ => Error { message: "manifest.project.flavor" }
+    }
+
+    /// The file extension each asset kind accepts, per [PACKAGE-PUBLISH].
+    export fn kindAccepts(kind, path) = match kind {
+        Utf8Text => endsWith(path, ".txt") || endsWith(path, ".md") || endsWith(path, ".csv") || endsWith(path, ".tsv")
+        Json => endsWith(path, ".json")
+        Png => endsWith(path, ".png")
+    }
+}

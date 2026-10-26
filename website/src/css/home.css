@@ -1,11 +1,12 @@
 /* Flight, intent and explicit boundaries. The homepage shares the site tokens. */
 .home { overflow: clip; }
+html:has(.home) { scroll-behavior: auto; }
 .home [hidden] { display: none !important; }
 .home-hero { position: relative; isolation: isolate; padding-block: 4.5rem 2rem; }
 .home-hero .hero-grid { position: relative; gap: 3rem 2rem; grid-template-columns: 1fr 1fr; }
 .home-eyebrow { color: var(--primary-container); font: 500 0.7rem var(--font-mono); letter-spacing: 0.13em; text-transform: uppercase; }
-.alpha-link { display: flex; align-items: center; gap: 0.6rem; width: fit-content; line-height: 1.7; }
-.alpha-link > span:last-child { margin-left: 0.4rem; }
+.status-link { display: flex; align-items: center; gap: 0.6rem; width: fit-content; line-height: 1.7; }
+.status-link > span:last-child { margin-left: 0.4rem; }
 .status-dot { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: var(--primary-container); box-shadow: 0 0 12px #77d7f470; }
 .home .hero-content { gap: 1.5rem; padding-block: 2rem; align-self: start; }
 .home .hero-title { font-size: clamp(3.7rem, 6vw, 5.4rem); font-weight: 600; letter-spacing: -0.065em; line-height: 1.02; }
@@ -20,14 +21,14 @@
 .home .target-links a:hover { color: var(--primary); }
 .flight-film { position: absolute; z-index: -1; margin: 0; width: min(900px, 75vw); right: -7%; top: -3rem; }
 .flight-film video { display: block; width: 100%; aspect-ratio: 3 / 2; object-fit: cover; mask-image: linear-gradient(90deg, transparent, #000 20%, #000 85%, transparent); }
-#motion-toggle { position: absolute; z-index: 2; top: 1rem; right: 1rem; background: var(--surface-lowest); color: var(--primary); border: 1px solid var(--outline-variant); border-radius: var(--radius-pill); padding: 0.5rem 0.8rem; font: 0.65rem var(--font-mono); cursor: pointer; }
 .home .hero-code { margin-top: 16rem; position: relative; }
 .flight-code { border: 1px solid #77d7f430; border-radius: 12px; background: #070d1fe8; box-shadow: 0 25px 75px #0005, 0 0 60px #77d7f407; overflow: hidden; }
 .code-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 0.85rem 1.15rem; border-bottom: 1px solid #77d7f420; color: var(--on-surface-variant); font: 0.72rem var(--font-mono); }
 .flavor-controls { display: flex; gap: 0.25rem; }
-.flavor-controls button { background: transparent; border: 0; border-radius: 4px; color: var(--on-surface-variant); padding: 0.4rem 0.65rem; font: inherit; cursor: pointer; }
+.flavor-controls button { background: transparent; border: 0; border-radius: 4px; color: var(--on-surface-variant); padding: 0.4rem 0.65rem; font: inherit; cursor: pointer; transition: background-color 180ms ease, color 180ms ease; }
 .flavor-controls [aria-pressed="true"] { background: #77d7f41c; color: var(--primary); }
 .home .flight-code pre[class*="language-"] { background: transparent; border: 0; padding: 1.4rem 1.15rem; margin: 0; font-size: 0.73rem; line-height: 1.8; min-height: 14.4rem; }
+.home .hero-code pre[class*="language-"] { height: 22rem; overflow: auto; scrollbar-gutter: stable; overscroll-behavior: contain; }
 .code-result { display: flex; gap: 0.7rem; align-items: center; background: #77d7f40a; border-top: 1px solid #77d7f41c; padding: 1rem 1.15rem; color: var(--primary); font: 0.7rem var(--font-mono); }
 .result-label { margin-left: auto; font-size: 0.55rem; letter-spacing: 0.1em; color: var(--on-surface-variant); }
 .home .hero-code-caption { text-align: center; font-size: 0.75rem; }
@@ -92,7 +93,7 @@
   .deployment-note a { margin-top: 1rem; }
 }
 @media (max-width: 600px) {
-  .home-hero { padding-block: 2rem; }
+  .home-hero { padding-block: 1.5rem 2rem; }
   .home .hero-content { padding-top: 1rem; }
   .home-eyebrow { font-size: 0.6rem; letter-spacing: 0.07em; }
   .home .hero-title { font-size: clamp(3.25rem, 14vw, 4.7rem); }
@@ -119,12 +120,28 @@
 .overview-film video { display: block; width: 100%; height: auto; border: 1px solid var(--outline-variant); border-radius: var(--radius-lg); background: var(--surface-lowest); }
 .overview-film figcaption { margin-top: var(--space-3); color: var(--on-surface-variant); font-size: 0.78rem; }
 .overview-film figcaption a { white-space: nowrap; }
-.home .is-revealed { animation: arrive 650ms ease-out both; }
 .home .hero-title em { display: inline-block; }
-.home .flight-code .language-python { white-space: pre-wrap; overflow-wrap: anywhere; }
-.home .hero-actions .btn:hover { transform: translateY(-2px); }
-.home .hero-actions .btn { transition: transform var(--transition-fast), background var(--transition-fast); }
-@keyframes arrive { from { opacity: 0.35; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+.home .hero-code [class*="language-"], .home .flight-code .language-python { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.home.motion-ready) { scroll-behavior: smooth; }
+  .home.motion-ready :is(.hero-content > *, .hero-code, .hero-footnote, .is-revealed) { animation: arrive 650ms cubic-bezier(0.22, 1, 0.36, 1) var(--arrive-delay, 0ms) both; }
+  .home .hero-content > :nth-child(2) { --arrive-delay: 60ms; }
+  .home .hero-content > :nth-child(3) { --arrive-delay: 120ms; }
+  .home .hero-content > :nth-child(4) { --arrive-delay: 180ms; }
+  .home .hero-content > :nth-child(5) { --arrive-delay: 240ms; }
+  .home .hero-content > :nth-child(6) { --arrive-delay: 300ms; }
+  .home .hero-code { --arrive-delay: 180ms; }
+  .home .hero-footnote { --arrive-delay: 360ms; }
+  .home.motion-ready .flight-film video { animation: film-in 1100ms ease-out both; }
+  .home.motion-ready .hero-code [data-source-flavor]:not([hidden]) { animation: film-in 180ms ease-out; }
+  .home :is(.hero-actions .btn, .text-link, .deployment-target h3) > span { transition: transform 180ms ease; }
+  .home :is(.hero-actions .btn, .text-link):focus-visible > span { transform: translateX(3px); }
+  @media (hover: hover) {
+    .home :is(.hero-actions .btn, .text-link, .deployment-target):hover span { transform: translateX(3px); }
+  }
+  @keyframes arrive { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes film-in { from { opacity: 0.35; } to { opacity: 1; } }
+}
 @media (prefers-reduced-motion: reduce) {
   .home *, .home *::before, .home *::after { animation: none !important; transition: none !important; }
 }

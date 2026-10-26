@@ -1,0 +1,26 @@
+(* A record update whose new field value is a list literal holding a record
+   used to segfault at runtime (#293). Found by `osprey hunt`. *)
+
+type Item =
+    name : string
+    size : int
+
+type Box =
+    items : List<Item>
+    note : string
+
+shown (box : Box) = match listGet box.items 0
+    Success item => "${item.name}:${item.size}"
+    Error _ => "none"
+
+store (box : Box) = box(items = [Item(name = "notes", size = 3)])
+
+storeHeld (box : Box) =
+    item = Item(name = "held", size = 4)
+    box(items = [item])
+
+empty = Box(items = [], note = "")
+print (shown empty)
+print (shown (store empty))
+print (shown (storeHeld empty))
+print (shown (Box(items = [Item(name = "ctor", size = 5)], note = "")))

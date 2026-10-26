@@ -186,6 +186,19 @@ fn map_literals_span_empty_and_populated() {
     );
 }
 
+#[test]
+fn lambda_arrows_inside_lists_are_not_map_separators() {
+    for source in [
+        "xs = [\\x => x]\n",
+        "xs = [\\x => \\y => x + y, \\x => x]\n",
+    ] {
+        assert!(matches!(value(source), Expr::List(items, _) if !items.is_empty()));
+    }
+    assert!(
+        matches!(value("m = [\"key\" => \\x => x]\n"), Expr::Map(entries) if entries.len() == 1)
+    );
+}
+
 /// A bracket glued to its receiver indexes it; a bracket after whitespace
 /// starts a fresh list argument ([FLAVOR-ML-INDEX]).
 #[test]

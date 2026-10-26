@@ -33,11 +33,12 @@ impl Target {
             Self::X64 => "x86_64-linux-android26",
         }
     }
-    fn runtime(self) -> &'static str {
-        match self {
+    fn runtime(self, memory: &str) -> String {
+        let base = match self {
             Self::Arm64 => "libosprey_runtime_android_arm64.a",
             Self::X64 => "libosprey_runtime_android_x64.a",
-        }
+        };
+        crate::linking::runtime_name(base, memory)
     }
 }
 
@@ -67,14 +68,15 @@ pub(crate) fn build(
     out: &Path,
     target: Target,
     scope: &ios_abi::ExportScope,
+    memory: &str,
 ) -> Result<(), ExitCode> {
     crate::toolchain::validate_archive_output(out, "Android").map_err(|e| fail(&e))?;
     let (ir, header) = source(program, path, target, scope).map_err(|e| fail(&e))?;
     let bin = ndk_bin().map_err(|e| fail(&e))?;
-    let runtime = find_runtime_lib(target.runtime()).ok_or_else(|| {
+    let runtime = find_runtime_lib(&target.runtime(memory)).ok_or_else(|| {
         fail(&format!(
             "{} not found; run `make _runtime_android`",
-            target.runtime()
+            target.runtime(memory)
         ))
     })?;
     let runtime = crate::linking::fresh_runtime(&runtime).map_err(|e| fail(&e))?;

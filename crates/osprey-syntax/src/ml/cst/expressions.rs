@@ -260,6 +260,8 @@ pub(crate) struct MlArm {
     pub pattern: MlPattern,
     /// The arm body.
     pub body: MlExpr,
+    /// Source position of the arm's pattern.
+    pub pos: Position,
 }
 
 /// An ML match pattern.

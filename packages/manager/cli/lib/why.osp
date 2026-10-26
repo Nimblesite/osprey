@@ -1,0 +1,90 @@
+namespace registry_cli;
+import registry_cli::Flags
+import registry_cli::Reports
+import registry_cli::Project
+import registry_cli::Lockfile
+import registry::Identity
+import registry::ManifestModel
+import registry::Names
+
+/// `osprey-pkg why @scope/name [--project <dir>]`: every chain of Runtime/
+/// Build edges from the root manifest to the pinned package, one line each
+/// (`app > @demo/report e1.r1 sha256:… > @demo/maths e1.r2 sha256:…`), read
+/// from `osprey.toml` and `osprey.lock` alone ([PACKAGE-API]). A key the
+/// lock does not pin is `why.not-locked`; a pinned key no chain reaches,
+/// which only a hand-edited lock can produce, is `why.no-path`.
+module Why {
+    let failStatus = 1
+    let usageCode = "why.usage"
+    let noLockCode = "why.no-lock"
+    let notLockedCode = "why.not-locked"
+    let noPathCode = "why.no-path"
+    let usageText = ["usage: osprey-pkg why @scope/name [--project <dir>]"]
+    let arrow = " > "
+
+    /// The labels and keys of the chain walked so far.
+    type Chain = { labels: List<string>, keys: List<Names::Key> }
+
+    fn usageReport() = Reports::usage(listPrepend(usageText, usageCode))
+    fn failed(lines) = Reports::Report { status: failStatus, lines: lines }
+
+    // Shared field names need typed receivers (issue #273).
+    fn releaseOf(p: Lockfile::Package) = p.release
+    fn edgesOf(p: Lockfile::Package) = p.dependencies
+    fn packagesOf(lock: Lockfile::Lock) = lock.packages
+    fn rootEdges(lock: Lockfile::Lock) = lock.root.dependencies
+    fn nameOf(m: ManifestModel::Manifest) = m.projectName
+    fn keyOf(id: Identity::ReleaseId) = id.key
+    fn reqKey(edge) = ManifestModel::requirementOf(edge).package
+
+    fn extended(chain: Chain, pkg) = Chain { labels: listAppend(chain.labels, Lockfile::compact(releaseOf(pkg))), keys: listAppend(chain.keys, keyOf(releaseOf(pkg))) }
+    fn walked(chain: Chain, key) = Names::includes(chain.keys, key)
+    fn lineOf(chain: Chain) = join(chain.labels, arrow)
+
+    /// Every chain through `edges` that ends at `target`.
+    fn pathsFrom(lock, target, chain, edges) -> List<string> = foldList(edges, [], fn(acc, edge) => listConcat(acc, pathsVia(lock, target, chain, edge)))
+
+    fn pathsVia(lock, target, chain, edge) -> List<string> = match Lockfile::packageFor(packagesOf(lock), reqKey(edge)) {
+        Error => []
+        Success { value } => pathsThrough(lock, target, chain, value)
+    }
+
+    fn pathsThrough(lock, target, chain, pkg) -> List<string> = {
+        let key = keyOf(releaseOf(pkg))
+        let next = extended(chain, pkg)
+        if Names::same(key, target) { [lineOf(next)] }
+        else if walked(chain, key) { [] }
+        else { pathsFrom(lock, target, next, edgesOf(pkg)) }
+    }
+
+    fn chains(manifest, lock, key) = {
+        let lines = pathsFrom(lock, key, Chain { labels: [nameOf(manifest)], keys: [] }, rootEdges(lock))
+        if isEmpty(lines) { failed(["${noPathCode} ${Names::display(key)}"]) } else { Reports::success(lines) }
+    }
+
+    fn pinned(manifest, lock, key) = match Lockfile::packageFor(packagesOf(lock), key) {
+        Error => failed(["${notLockedCode} ${Names::display(key)}"])
+        Success => chains(manifest, lock, key)
+    }
+
+    fn withLock(project, lock, key) = match Project::readAt(project) {
+        Error { message } => failed([message])
+        Success { value } => pinned(value, lock, key)
+    }
+
+    fn at(project, key) = match Project::readLockAt(project) {
+        Error { message } => failed(["${noLockCode} ${message}"])
+        Success { value } => withLock(project, value, key)
+    }
+
+    fn withKey(key, flags) = match Flags::parse(flags, [Flags::projectFlag], []) {
+        Error => usageReport()
+        Success { value } => at(Flags::project(value), key)
+    }
+
+    /// The whole command: the key word first, then `[--project <dir>]`.
+    export fn run(args) = match Names::parse(listGet(args, 0) ?: "") {
+        Error => usageReport()
+        Success { value } => withKey(value, Flags::tail(args))
+    }
+}

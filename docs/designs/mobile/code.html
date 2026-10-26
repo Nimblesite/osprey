@@ -198,23 +198,12 @@
 <div class="w-2.5 h-2.5 rounded-full bg-amber-500/50"></div>
 <div class="w-2.5 h-2.5 rounded-full bg-emerald-500/50"></div>
 </div>
-<span class="font-code-sm text-xs text-on-surface-variant ml-2">main.os</span>
+<span class="font-code-sm text-xs text-on-surface-variant ml-2">main.osp</span>
 </div>
 <div class="p-4 overflow-x-auto bg-[#070D1F]">
-<pre class="font-code-sm text-code-sm leading-relaxed"><code class="whitespace-pre"><span class="text-pink-400">import</span> { spawn, channel } <span class="text-pink-400">from</span> <span class="text-orange-300">"std/io"</span>;
-
-<span class="text-pink-400">pub fn</span> <span class="text-cyan-400">main</span>() {
-  <span class="text-lime-400">// Concurrent worker pool</span>
-  <span class="text-pink-400">let</span> (tx, rx) = channel&lt;<span class="text-orange-300">i32</span>&gt;();
-  
-  spawn(<span class="text-pink-400">async move</span> {
-    <span class="text-pink-400">for</span> msg <span class="text-pink-400">in</span> rx {
-      <span class="text-cyan-400">process_task</span>(msg);
-    }
-  });
-
-  tx.send(<span class="text-orange-300">42</span>).<span class="text-cyan-400">unwrap</span>();
-}</code></pre>
+<pre class="font-code-sm text-code-sm leading-relaxed"><code class="whitespace-pre">fn work() = &quot;Hello from a fiber&quot;
+let worker = spawn work()
+print(await(worker))</code></pre>
 </div>
 </div>
 </section>
@@ -226,27 +215,27 @@
 <div class="glass-panel p-6 rounded-xl relative group overflow-hidden">
 <div class="absolute top-0 left-0 w-1 h-full bg-primary-container"></div>
 <span class="material-symbols-outlined text-primary-container mb-4 block" data-icon="security">security</span>
-<h3 class="font-headline-md text-headline-md text-white mb-2">Invisible Ownership</h3>
+<h3 class="font-headline-md text-headline-md text-white mb-2">Memory backends</h3>
 <p class="text-on-surface-variant font-body-md">
-                        Say goodbye to the borrow checker headache. Osprey's compiler uses static linear analysis to ensure memory safety without explicit annotations.
+                        Native builds select the default allocator, tracing GC or reference counting. WebAssembly and mobile currently use the default allocator.
                     </p>
 </div>
 <!-- Pillar 2 -->
 <div class="glass-panel p-6 rounded-xl relative group overflow-hidden">
 <div class="absolute top-0 left-0 w-1 h-full bg-primary-container opacity-50"></div>
 <span class="material-symbols-outlined text-primary-container mb-4 block" data-icon="bolt">bolt</span>
-<h3 class="font-headline-md text-headline-md text-white mb-2">Wings Effect System</h3>
+<h3 class="font-headline-md text-headline-md text-white mb-2">Algebraic effects</h3>
 <p class="text-on-surface-variant font-body-md">
-                        A robust, type-safe effect system that tracks side effects at the function level, enabling pure functional logic in a systems context.
+                        Declare operations with effects and provide their implementations with handlers. The compiler rejects unhandled operations.
                     </p>
 </div>
 <!-- Pillar 3 -->
 <div class="glass-panel p-6 rounded-xl relative group overflow-hidden">
 <div class="absolute top-0 left-0 w-1 h-full bg-primary-container opacity-50"></div>
 <span class="material-symbols-outlined text-primary-container mb-4 block" data-icon="architecture">architecture</span>
-<h3 class="font-headline-md text-headline-md text-white mb-2">Talon Concurrency</h3>
+<h3 class="font-headline-md text-headline-md text-white mb-2">Native fibers and channels</h3>
 <p class="text-on-surface-variant font-body-md">
-                        Scale to millions of concurrent tasks with zero-cost async primitives and a lightning-fast M:N scheduler optimized for modern hardware.
+                        Native fibers communicate through typed channels. The current runtime uses one pthread per fiber.
                     </p>
 </div>
 </div>
@@ -255,7 +244,7 @@
 <section class="px-margin-mobile py-16">
 <div class="mb-10 text-center">
 <span class="font-label-caps text-label-caps text-primary uppercase tracking-widest block mb-2">Efficiency First</span>
-<h2 class="font-headline-md text-headline-md text-white">Native Performance, Zero Tax</h2>
+<h2 class="font-headline-md text-headline-md text-white">Native compilation through LLVM</h2>
 </div>
 <div class="glass-panel rounded-xl p-6 mb-8 border border-primary/20">
 <div class="flex items-center gap-3 mb-4">
@@ -265,20 +254,15 @@
 <span class="font-code-sm text-sm text-primary">C Interop Preview</span>
 </div>
 <div class="bg-surface-container-lowest p-4 rounded-lg mb-6 overflow-x-auto">
-<pre class="font-code-sm text-xs leading-normal"><code class="whitespace-pre"><span class="text-pink-400">@c_import</span> <span class="text-orange-300">"header.h"</span>;
-
-<span class="text-pink-400">pub fn</span> <span class="text-cyan-400">call_native</span>() {
-  <span class="text-pink-400">unsafe</span> {
-    c.legacy_function();
-  }
-}</code></pre>
+<pre class="font-code-sm text-xs leading-normal"><code class="whitespace-pre">extern fn llabs(value: int) -&gt; int
+print(&quot;absolute value: ${llabs(-7)}&quot;)</code></pre>
 </div>
 <ul class="space-y-4">
 <li class="flex gap-3">
 <span class="material-symbols-outlined text-primary" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
 <div>
-<span class="font-bold text-white block">Zero-Copy Interop</span>
-<p class="text-on-surface-variant text-sm">Directly interface with C/C++ libraries without any marshalling overhead.</p>
+<span class="font-bold text-white block">Explicit C ABI</span>
+<p class="text-on-surface-variant text-sm">Declare C functions and link their library. Foreign memory and ownership follow the library contract.</p>
 </div>
 </li>
 <li class="flex gap-3">
@@ -295,18 +279,11 @@
 <section class="px-margin-mobile py-20 bg-surface-container-high relative overflow-hidden">
 <div class="absolute top-0 right-0 w-64 h-64 bg-primary/5 blur-[120px] rounded-full"></div>
 <div class="relative z-10 text-center">
-<h2 class="font-headline-md text-headline-md text-white mb-4">Join the Osprey Revolution</h2>
+<h2 class="font-headline-md text-headline-md text-white mb-4">Build with Osprey</h2>
 <p class="text-on-surface-variant mb-10 max-w-xs mx-auto">
-                    Be the first to know when we release our v1.0 beta and official toolchain.
+                    Try the compiler, run the examples and check current feature support.
                 </p>
-<form class="flex flex-col gap-3">
-<div class="relative">
-<input class="w-full bg-surface-container-lowest border border-outline-variant/50 rounded-xl py-4 px-6 text-on-surface focus:outline-none focus:border-primary-container focus:ring-1 focus:ring-primary-container transition-all" placeholder="dev@example.com" type="email"/>
-</div>
-<button class="bg-primary-container text-on-primary font-bold py-4 rounded-xl shadow-lg hover:scale-[1.01] active:scale-95 transition-all">
-                        Notify Me
-                    </button>
-</form>
+<a href="https://www.ospreylang.dev/docs/installation/">Install Osprey</a> · <a href="https://www.ospreylang.dev/playground/">Try the Playground</a>
 <p class="text-xs text-on-surface-variant mt-4 opacity-60">No spam. Only high-performance updates.</p>
 </div>
 </section>

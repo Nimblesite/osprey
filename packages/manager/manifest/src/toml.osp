@@ -1,0 +1,63 @@
+namespace registry;
+import registry::TomlLexer
+import registry::TomlTree
+import registry::TomlParser
+
+/// The public TOML value model for the subset Osprey manifests use: document
+/// tables, arrays, strings, integers and booleans, each leaf with a 1-based
+/// byte span, plus the accessors, located reason codes and the `parse` facade
+/// the manifest rules and tests consume. Fails are `code at line:column`
+/// strings, never prose. Implements [PACKAGE-MANIFEST].
+module Toml {
+    /// A 1-based byte position in the source text.
+    export type Span = { line: int, column: int }
+    /// A located failure: a stable reason code and its 1-based position.
+    export type Problem = { code: string, line: int, column: int }
+    /// One key/value entry of a table, in document order.
+    export type Pair = { key: string, value: Value, span: Span }
+    /// A TOML value of the manifest subset.
+    export type Value = Str { text: string } | Int { value: int } | Bool { flag: bool } | Arr { items: List<Value> } | Table { pairs: List<Pair> }
+
+    /// The empty table every document starts from.
+    export let emptyTable = Table { pairs: [] }
+    /// The zero span used where a rewrite has no real source position.
+    export let zeroSpan = Span { line: 0, column: 0 }
+    /// A stable pair returned past the end of a pair list.
+    export let missingPair = Pair { key: "", value: Table { pairs: [] }, span: zeroSpan }
+
+    /// A one-line diagnostic `code at line:column`.
+    export fn describe(problem) = "${problem.code} at ${problem.line}:${problem.column}"
+
+    // `c.line`/`c.column` are shared with Span and Problem, so the cursor
+    // receiver must be typed before the field reads (issue #273).
+    /// A located failure from a cursor and a reason code.
+    export fn fail(c: TomlLexer::Cursor, code) = describe(Problem { code: code, line: c.line, column: c.column })
+    /// A located failure from a span and a reason code.
+    export fn failSpan(span: Span, code) = describe(Problem { code: code, line: span.line, column: span.column })
+    /// The span of a cursor position.
+    export fn spanOf(c: TomlLexer::Cursor) = Span { line: c.line, column: c.column }
+
+    /// Parse a TOML document into its root table, or the first problem.
+    export fn parse(text) -> Result<Value, Problem> = TomlParser::parse(text)
+
+    /// True when the value is a table. [PACKAGE-MANIFEST]
+    export fn isTable(v) = match v {
+        Table => true
+        _ => false
+    }
+
+    /// The value stored under `key`, or a stable reason code.
+    export fn get(table, key) = match table {
+        Table { pairs } => match TomlTree::findPair(pairs, key) >= 0 {
+            true => Success { value: TomlTree::pairAt(pairs, TomlTree::findPair(pairs, key)).value }
+            false => Error { message: "toml.missing-key" }
+        }
+        _ => Error { message: "toml.not-a-table" }
+    }
+
+    /// The keys of a table in document order.
+    export fn keys(table) = match table {
+        Table { pairs } => mapList(pairs, fn(p) => p.key)
+        _ => []
+    }
+}

@@ -1,0 +1,14 @@
+[project]
+name = "sklearn"
+source_roots = ["src"]
+python_sources = ["src/Stats.py", "src/Metrics.py", "src/Preprocessing.py", "src/ModelSelection.py"]
+default_namespace = "sklearn"
+
+[package]
+name = "@osprey/sklearn"
+license = "MIT"
+summary = "scikit-learn metrics, preprocessing and model_selection over array-likes (lists)"
+keywords = ["metrics", "model-selection", "preprocessing", "python-flavor", "scikit-learn"]
+
+[test-dependencies]
+"@osprey/testing" = { epoch = 1, min_release = 1 }

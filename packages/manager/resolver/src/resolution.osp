@@ -1,0 +1,80 @@
+namespace registry;
+import registry::Names
+import registry::Identity
+import registry::ManifestModel
+import registry::Order
+
+/// The package-resolution domain types under [PACKAGE-RESOLUTION]. Dependency
+/// requirements and edges are `ManifestModel::Requirement` and
+/// `ManifestModel::Edge`, never redefined; a release identity is
+/// `Identity::ReleaseId`. `Entry` is one catalog candidate, `Graph` is the
+/// complete resolution context the fixtures carry, and `Outcome` is the
+/// optimal lock or its stable explanation.
+module Resolution {
+    /// One catalog candidate: its release, activation state, targets,
+    /// capabilities and activated dependency edges.
+    export type Entry = {
+        release: Identity::ReleaseId,
+        activation: string,
+        targets: List<string>,
+        capabilities: List<string>,
+        dependencies: List<ManifestModel::Edge>
+    }
+
+    /// The complete resolution context the fixtures carry: target, the
+    /// capabilities granted to every key (`granted`) and to one key each
+    /// (`grants`, from the root manifest's dependency entries), root
+    /// dependency edges, the current lock and the catalog.
+    export type Graph = {
+        target: string,
+        granted: List<string>,
+        grants: List<ManifestModel::Grant>,
+        rootDeps: List<ManifestModel::Edge>,
+        current: List<Identity::ReleaseId>,
+        catalog: List<Entry>
+    }
+
+    /// The optimal lock, or its stable explanation.
+    export type Outcome = Lock { releases: List<Identity::ReleaseId> } | Explain { code: string, packages: List<Names::Key> }
+
+    /// The entry no catalog has: the `?:` fallback of every entry lookup.
+    export fn blankEntry() = Entry { release: Identity::blank(), activation: "Revoked", targets: [], capabilities: [], dependencies: [] }
+
+    // Shared field names need typed receivers (issue #273).
+    fn releaseOf(e: Entry) = e.release
+    fn entryAt(xs, i) -> Entry = listGet(xs, i) ?: blankEntry()
+
+    fn requirementKey(edge) = ManifestModel::requirementOf(edge).package
+    fn requirementEpoch(r: ManifestModel::Requirement) = r.epoch
+    fn requirementFloor(r: ManifestModel::Requirement) = r.minimumOrdinal
+
+    /// Edges in canonical order: rank, key, epoch, floor.
+    fn compareEdges(a, b) = Order::thenCompare(Order::compareInts(ManifestModel::edgeRank(a), ManifestModel::edgeRank(b)),
+        Order::thenCompare(Names::compare(requirementKey(a), requirementKey(b)),
+            Order::thenCompare(Order::compareInts(requirementEpoch(ManifestModel::requirementOf(a)), requirementEpoch(ManifestModel::requirementOf(b))),
+                Order::compareInts(requirementFloor(ManifestModel::requirementOf(a)), requirementFloor(ManifestModel::requirementOf(b))))))
+
+    fn blankEdge() = ManifestModel::Runtime { requirement: ManifestModel::Requirement { package: Names::blank(), epoch: 0, minimumOrdinal: 0 } }
+
+    fn sortedEdges(edges) = {
+        let at = fn(i) => listGet(edges, i) ?: blankEdge()
+        mapList(Order::permutation(length(edges), fn(i, j) => compareEdges(at(i), at(j))), fn(i) => at(i))
+    }
+
+    fn sortedEntries(entries) = mapList(Order::permutation(length(entries), fn(i, j) => Identity::compare(releaseOf(entryAt(entries, i)), releaseOf(entryAt(entries, j)))), fn(i) => entryAt(entries, i))
+
+    fn canonicalEntry(e: Entry) = Entry { release: e.release, activation: e.activation, targets: e.targets, capabilities: e.capabilities, dependencies: sortedEdges(e.dependencies) }
+
+    /// The same graph with its catalog in release order and every edge list in
+    /// canonical edge order, so clause numbering, the search and the minimal
+    /// core never depend on how the input was listed ([PACKAGE-RESOLUTION]:
+    /// no permutation changes a lock or an explanation).
+    export fn canonical(g: Graph) = Graph {
+        target: g.target,
+        granted: g.granted,
+        grants: g.grants,
+        rootDeps: sortedEdges(g.rootDeps),
+        current: g.current,
+        catalog: mapList(sortedEntries(g.catalog), canonicalEntry)
+    }
+}

@@ -5,9 +5,10 @@
 // live-attach endpoint in profiler_stream.c.
 #include "profiler_runtime.h"
 
-#if defined(_WIN32) || defined(__wasm__)
+#if defined(_WIN32) || defined(__wasm__) || defined(OSP_SYMBOLIC)
 
-// Profiling is POSIX-only for now; the hooks stay linkable everywhere.
+// Profiling is POSIX-only for now; the hooks stay linkable everywhere. The
+// symbolic build has one thread and no timers [SYMEX-RUNTIME-BITCODE].
 void osp_prof_boot(void) {}
 void osp_prof_thread_register(int64_t fiber_id, const char *label) {
   (void)fiber_id;

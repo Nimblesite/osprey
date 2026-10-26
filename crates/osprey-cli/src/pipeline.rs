@@ -1,6 +1,6 @@
 //! Pipeline support for the compiler driver.
 
-use crate::invocation::{Cli, TEST_COVERAGE_BUILD_ENV};
+use crate::invocation::{Cli, Warnings, TEST_COVERAGE_BUILD_ENV};
 #[cfg(test)]
 use crate::native::stem_of;
 use crate::native::{build_input, compile_ir, execute_native, NativeOptions};
@@ -92,8 +92,17 @@ pub(super) fn dispatch(cli: &Cli, input: &CompilationInput) -> ExitCode {
     match cli.mode.as_str() {
         "--check" => run_check(cli, input),
         "--symbols" => print_metadata(&input.symbols_json()),
+        "--source-graph" => match input.dependency_graph_json() {
+            Ok(graph) => print_metadata(&graph),
+            Err(error) => {
+                eprintln!("{error}");
+                ExitCode::FAILURE
+            }
+        },
         "--list-tests" => print_metadata(&osprey_lsp::tests_json(input.program())),
-        "--llvm" | "--run" | "--compile" if report_type_errors(input) > 0 => ExitCode::FAILURE,
+        "--llvm" | "--run" | "--compile" if report_type_errors(input, cli.warnings) > 0 => {
+            ExitCode::FAILURE
+        }
         "--llvm" | "--run" | "--compile" if target_error(cli, input).is_some() => ExitCode::FAILURE,
         "--llvm" => print_ir(cli, input),
         "--run" => run_program(cli, input),
@@ -127,17 +136,26 @@ fn print_ir(cli: &Cli, input: &CompilationInput) -> ExitCode {
 /// Warnings print alongside the errors and are deliberately not counted: a
 /// redundant annotation is a defect to delete, never a reason to fail a build
 /// ([TYPE-ANNOTATION-REDUNDANT]).
-pub(crate) fn report_type_errors(input: &CompilationInput) -> usize {
+///
+/// `--quiet` never reaches here: it silences progress, and a warning is a
+/// diagnostic, not progress. Only `--no-warnings` ([`Warnings::Skip`]) skips
+/// the warning pass, and it skips the computation too:
+/// the redundant-annotation oracle re-infers the whole program once per
+/// proof, which a packaging build must not pay for advice nobody reads.
+/// Errors are reported either way.
+pub(crate) fn report_type_errors(input: &CompilationInput, warnings: Warnings) -> usize {
     let errors = osprey_types::check_program(input.program());
     for e in &errors {
         eprintln!("{}", input.diagnostic(e.position, &e.message));
     }
-    warnings::report(input, &warnings::collect(input));
+    if warnings == Warnings::Report {
+        warnings::report(input, &warnings::collect(input));
+    }
     errors.len()
 }
 
 pub(super) fn run_check(cli: &Cli, input: &CompilationInput) -> ExitCode {
-    if report_type_errors(input) == 0 && target_error(cli, input).is_none() {
+    if report_type_errors(input, cli.warnings) == 0 && target_error(cli, input).is_none() {
         if !cli.quiet {
             println!(
                 "{}: ok ({} statements)",
@@ -160,7 +178,7 @@ pub(super) fn target_error(cli: &Cli, input: &CompilationInput) -> Option<ExitCo
         return Some(ExitCode::FAILURE);
     }
     match cli.target.as_str() {
-        "wasm32" => reject_cross_target_options(cli, "wasm32", None).err(),
+        "wasm32" => reject_wasm_options(cli),
         "python" => app_target_error(&cli.mode, crate::python_target::validate(cli), || {
             target_ir(cli, input)
         }),
@@ -228,8 +246,25 @@ pub(super) fn reject_debug_cross_target(cli: &Cli) -> Option<ExitCode> {
     None
 }
 
-/// Every cross target refuses the native-only build flags and the non-default
-/// runtime archives. A target that produces a LIBRARY rather than a runnable
+/// wasm32 takes the native-only build-flag rejections, but not the mobile
+/// targets' "no managed archive" one: `--memory=arc` links the ARC runtime
+/// built for wasip1, and the target defaults to it when `--memory` is omitted.
+/// `--memory=gc` is refused — the tracing collector walks a shadow stack that
+/// wasm32 does not have — and `--memory=none` stays the explicit opt-out.
+/// Implements [WASM-TARGET-MEMORY].
+pub(super) fn reject_wasm_options(cli: &Cli) -> Option<ExitCode> {
+    if let Some(code) = reject_debug_cross_target(cli) {
+        return Some(code);
+    }
+    (cli.memory == "gc").then(|| {
+        toolchain::fail(
+            "wasm32 has no garbage-collecting runtime; use --memory=arc (the default) or --memory=none",
+        )
+    })
+}
+
+/// Hosted targets refuse native-only flags and unsupported tracing GC.
+/// A target that produces a LIBRARY rather than a runnable
 /// image also refuses `--run`, and names the host that calls it in `host_hint`;
 /// `None` marks a target with a `--run` form of its own.
 /// Implements [IOS-TARGET-OPTIONS] and [ANDROID-TARGET-OPTIONS].
@@ -241,9 +276,9 @@ pub(super) fn reject_cross_target_options(
     if let Some(code) = reject_debug_cross_target(cli) {
         return Err(code);
     }
-    if cli.memory != "default" {
+    if cli.memory == "gc" {
         return Err(toolchain::fail(&format!(
-            "{platform} supports --memory=default; other runtime archives are not available"
+            "{platform} has no tracing GC runtime; use --memory=arc (the default)"
         )));
     }
     match host_hint {
@@ -290,10 +325,15 @@ fn build_artifact(
     out: &std::path::Path,
 ) -> Result<(), ExitCode> {
     if cli.target == "wasm32" {
-        if let Some(code) = reject_debug_cross_target(cli) {
+        if let Some(code) = reject_wasm_options(cli) {
             return Err(code);
         }
-        return wasm::build(input.debug_path(), input.backend_program(), out);
+        return wasm::build_with_memory(
+            input.debug_path(),
+            input.backend_program(),
+            out,
+            &cli.memory,
+        );
     }
     if cli.target != "native" {
         return build_mobile(cli, input, out);
@@ -313,11 +353,11 @@ fn build_mobile(
     }
     let scope = input.export_scope(cli.exports.entry_only());
     if let Some(target) = android::Target::parse(&cli.target) {
-        return android::build(path, program, out, target, &scope);
+        return android::build(path, program, out, target, &scope, &cli.memory);
     }
     if let Some(target) = ios::Target::parse(&cli.target) {
         ios::validate(cli, target)?;
-        return ios::build(path, program, out, target, &scope);
+        return ios::build(path, program, out, target, &scope, &cli.memory);
     }
     Err(toolchain::fail(&format!(
         "unknown mobile target: {}",
@@ -343,9 +383,9 @@ pub(super) fn run_program(cli: &Cli, input: &CompilationInput) -> ExitCode {
         "python" => {
             toolchain::fail("Python libraries must run inside a Python host; use python -m osprey")
         }
-        "wasm32" => match reject_debug_cross_target(cli) {
+        "wasm32" => match reject_wasm_options(cli) {
             Some(code) => code,
-            None => wasm::run(input.debug_path(), input.backend_program()),
+            None => wasm::run(input.debug_path(), input.backend_program(), &cli.memory),
         },
         "android-arm64" | "android-x64" => {
             toolchain::fail("Android libraries must run inside a host app; use --compile")

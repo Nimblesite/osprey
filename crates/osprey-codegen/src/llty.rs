@@ -356,7 +356,10 @@ impl Value {
     /// The checked payload type of a named generic container.
     pub(crate) fn element_type(&self, container: &str) -> Option<osprey_types::Type> {
         match self.inferred_type.as_ref()? {
-            osprey_types::Type::Con { name, args } if name == container => args.first().cloned(),
+            osprey_types::Type::Con { name, args } if name == container => {
+                let index = usize::from(container == osprey_types::names::MAP);
+                args.get(index).cloned()
+            }
             _ => None,
         }
     }

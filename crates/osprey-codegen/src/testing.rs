@@ -398,10 +398,7 @@ mod tests {
             ("Skip", vec!["Pass", "Fail"]),
         ] {
             let message = rejection(&rest);
-            assert!(
-                message.contains("must declare Pass, Fail and Skip"),
-                "missing {missing} must name the contract: {message}"
-            );
+            crate::testkit::shows(&message, &["must declare Pass, Fail and Skip"]);
             assert!(
                 message.contains(missing),
                 "missing {missing} must be named in: {message}"

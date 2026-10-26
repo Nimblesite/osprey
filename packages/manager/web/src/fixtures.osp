@@ -1,0 +1,118 @@
+namespace registry_web;
+import registry::Governance
+import registry::Maybe
+import registry::Names
+import registry_web::Model
+
+/// Website fixtures: two organizations sharing one leaf name, warned and
+/// clean packages, missing evidence, an administrator without a publishing
+/// grant, a publisher, and hostile strings. Implements the website halves
+/// of the [PACKAGE-OWNERSHIP-CONFORMANCE] scenarios the suites assert.
+module WebFixtures {
+    fn key(scope, name) = Names::Key { scope: scope, name: name }
+
+    fn pkg(id, scope, name, status) = Governance::Package {
+        id: id, key: key(scope, name), org: "org-${scope}", admin: "mem-admin-${scope}",
+        status: status, authorityEpoch: 1 }
+
+    fn warn(code, summary, severity) = Model::Warning { code: code, summary: summary, severity: severity }
+
+    fn digest(ch) = "sha256:" + (repeat(ch, 64) ?: "")
+
+    fn listing(pkg, care, evidence) = Model::Listing { pkg: pkg, orgHandle: pkg.key.scope, care: care, evidence: evidence }
+
+    fn verified(warnings) = Model::Verified { warnings: warnings, reviewDigest: digest("e") }
+
+    /// @atlas/util: clean, maintained, first evidence-backed review.
+    export fn cleanAtlasUtil() = listing(pkg("pkg-1", "atlas", "util", Governance::Active), Model::Maintained, verified([]))
+
+    /// @atlas/util carrying a high-severity warning with hostile prose.
+    export fn warnedAtlasUtil() = listing(pkg("pkg-1", "atlas", "util", Governance::Active), Model::Maintained,
+        verified([warn("OSA-2026-0001", "Deserializing untrusted </code><script>alert(1)</script> records executes code", Model::High)]))
+
+    /// @border/util: the same leaf name under another organization, with its
+    /// own distinct warning [PACKAGE-NAMES-NO-SITTING].
+    export fn warnedBorderUtil() = listing(pkg("pkg-2", "border", "util", Governance::Active), Model::Unmaintained,
+        verified([warn("OSB-2026-0007", "OAuth redirect permits quote-injection of 'alert(1)'", Model::Moderate)]))
+
+    /// @atlas/orphan: a package whose security evidence could not be
+    /// produced — the false-negative case every listing screen must hide
+    /// for, not render around.
+    export fn orphanWithoutEvidence() = listing(pkg("pkg-3", "atlas", "orphan", Governance::Active), Model::Maintained,
+        Model::Unavailable { reason: "registry.status-service-unreachable" })
+
+    /// A listing whose organization handle itself is hostile: the join is
+    /// API-supplied, so the renderer must not trust it either.
+    export fn hostileOrgHandleListing() = Model::Listing {
+        pkg: pkg("pkg-4", "atlas", "util", Governance::Active),
+        orgHandle: "atlas\" onload=\"alert(1)",
+        care: Model::Maintained,
+        evidence: verified([]) }
+
+    /// A fixed clock: rendering stays pure and deterministic.
+    export fn now() = 1800000000
+
+    fn grant(id, membership, permission, expiresAt) = Governance::Grant {
+        id: id, package: "pkg-1", membership: membership, permission: permission,
+        grantor: "mem-admin-atlas", packageEpoch: 1, memberEpoch: 1,
+        expiresAt: Maybe::some(expiresAt), status: Governance::GrantActive }
+
+    /// The administrator of @atlas/util holding only edit-metadata: the
+    /// admin-without-publish case [PACKAGE-OWNERSHIP-ADMIN] requires the
+    /// website to warn about.
+    export fn adminWithoutPublish() = Model::Access {
+        viewer: Model::Member { principal: "prin-admin-1", membership: "mem-admin-atlas", orgHandle: "atlas" },
+        admin: "mem-admin-atlas",
+        grants: [grant("g-1", "mem-admin-atlas", Governance::EditMetadata, now() + 1000000)] }
+
+    /// The same administrator, holding the explicit publishing grant too.
+    export fn adminWithPublish() = {
+        let base = adminWithoutPublish()
+        base { grants: listAppend(base.grants, grant("g-2", "mem-admin-atlas", Governance::PublishRelease, now() + 1000000)) }
+    }
+
+    /// A fellow member who holds the publishing grant but not the seat.
+    export fn publisher() = Model::Access {
+        viewer: Model::Member { principal: "prin-pub-1", membership: "mem-pub-1", orgHandle: "atlas" },
+        admin: "mem-admin-atlas",
+        grants: [grant("g-3", "mem-pub-1", Governance::PublishRelease, now() + 1000000)] }
+
+    /// A member of the other organization: a legitimate viewer who is
+    /// nonetheless outside this package's organization.
+    export fn outsider() = Model::Access {
+        viewer: Model::Member { principal: "prin-out-1", membership: "mem-out-1", orgHandle: "border" },
+        admin: "mem-admin-atlas", grants: [] }
+
+    /// No actor at all.
+    export fn anonymous() = Model::Access { viewer: Model::Anonymous, admin: "mem-admin-atlas", grants: [] }
+
+    /// The package's full grant ledger as its administrator fetched it.
+    export fn atlasGrantLedger() = [
+        grant("g-1", "mem-admin-atlas", Governance::EditMetadata, now() + 1000000),
+        grant("g-3", "mem-pub-1", Governance::PublishRelease, now() + 1000000) ]
+
+    /// A ledger whose membership ids are hostile: the table must escape them.
+    export fn hostileGrantLedger() = [grant("g-x", "<td>injected</td>", Governance::ManageSecurity, now() + 1000000)]
+
+    fn publication(scope, name, actor, status) = Model::Publication {
+        key: key(scope, name), actor: actor, status: status, evidence: verified([]) }
+
+    export fn pendingPublication() = publication("atlas", "util", "prin-pub-1",
+        Model::Pending { reason: "awaiting WebAuthn assertion for the frozen source digest" })
+
+    export fn rejectedPublication() = publication("atlas", "util", "prin-pub-1",
+        Model::Rejected { reasons: ["proof.statement-mismatch: expected 'publish|@atlas/util|epoch:1'", "authority epoch stale: 0 != 1"] })
+
+    export fn quarantinedPublication() = publication("border", "util", "prin-pub-1",
+        Model::Quarantined { reason: "source verification quarantined: forbidden payload in docs/index.html" })
+
+    /// A publication whose security evidence could not be produced.
+    export fn publicationWithoutEvidence() = Model::Publication {
+        key: key("atlas", "util"), actor: "prin-pub-1",
+        status: Model::Pending { reason: "collecting source" },
+        evidence: Model::Unavailable { reason: "registry.evidence-pending" } }
+
+    /// A publication whose status reasons are hostile strings.
+    export fn hostilePublication() = publication("atlas", "util", "prin-'-(1)",
+        Model::Rejected { reasons: ["</article><script>alert(1)</script>"] })
+}

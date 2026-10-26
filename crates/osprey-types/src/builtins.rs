@@ -359,6 +359,7 @@ fn http(e: &mut TypeEnv) {
     mono(e, "httpCloseClient", vec![i()], i());
     mono(e, "httpGet", vec![i(), s(), s()], i());
     mono(e, "httpGetResponse", vec![i(), s(), s()], res(i()));
+    mono(e, "httpPostResponse", vec![i(), s(), s(), s()], res(i()));
     mono(e, "httpResponseBody", vec![i()], res(s()));
     mono(e, "httpResponseFree", vec![i()], res(i()));
     mono(e, "httpResponseStatus", vec![i()], i());

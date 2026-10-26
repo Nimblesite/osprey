@@ -1,0 +1,117 @@
+namespace registry_editor
+import ui::Doc
+import ui::Runtime
+import ui::Requests
+import vscode::Editor
+
+// Implements [PACKAGE-EDITOR-STORE]: all application state and decisions are Osprey.
+
+type Workspace =
+    workspaceProject : string
+    workspacePackages : List<PackageEntry>
+    workspaceDirect : List<string>
+    workspaceFindings : List<string>
+    workspaceMissing : bool
+    workspaceReason : string
+
+type PackageState =
+    packageSearch : string
+    packageSelection : string
+    packageTab : string
+    packageRegistry : string
+    packageWorkspace : string
+    packageCatalog : List<CatalogEntry>
+    packageGraph : Workspace
+    packageNotice : string
+    packagePending : bool
+    packageFault : bool
+    packageConfirming : string
+    packageConfirmKey : string
+    packageGeneration : int
+    packageWaiting : int
+
+type Action = Refresh | Search | Selected | TabSwitch | Add | Remove | Confirm | DismissAlert | Resize
+
+module Store
+    emptyWorkspace reason = Workspace(workspaceProject = "", workspacePackages = [], workspaceDirect = [], workspaceFindings = [], workspaceMissing = true, workspaceReason = reason)
+
+    export create (workspace, registry) = PackageState(packageSearch = "", packageSelection = "", packageTab = "installed", packageRegistry = registry, packageWorkspace = workspace, packageCatalog = [], packageGraph = emptyWorkspace "No workspace graph has been read yet.", packageNotice = "Loading your package workspace…", packagePending = true, packageFault = false, packageConfirming = "", packageConfirmKey = "", packageGeneration = 0, packageWaiting = 0)
+
+    export edit (current, query, selection, tab) = PackageState(packageSearch = query, packageSelection = selection, packageTab = tab, packageRegistry = current.packageRegistry, packageWorkspace = current.packageWorkspace, packageCatalog = current.packageCatalog, packageGraph = current.packageGraph, packageNotice = current.packageNotice, packagePending = current.packagePending, packageFault = current.packageFault, packageConfirming = "", packageConfirmKey = "", packageGeneration = current.packageGeneration, packageWaiting = current.packageWaiting)
+
+    export status (current, notice, pending, fault) = PackageState(packageSearch = current.packageSearch, packageSelection = current.packageSelection, packageTab = current.packageTab, packageRegistry = current.packageRegistry, packageWorkspace = current.packageWorkspace, packageCatalog = current.packageCatalog, packageGraph = current.packageGraph, packageNotice = notice, packagePending = pending, packageFault = fault, packageConfirming = "", packageConfirmKey = "", packageGeneration = current.packageGeneration, packageWaiting = current.packageWaiting)
+
+    export fault (current, notice) = PackageState(packageSearch = current.packageSearch, packageSelection = current.packageSelection, packageTab = current.packageTab, packageRegistry = current.packageRegistry, packageWorkspace = current.packageWorkspace, packageCatalog = current.packageCatalog, packageGraph = current.packageGraph, packageNotice = notice, packagePending = false, packageFault = true, packageConfirming = "", packageConfirmKey = "", packageGeneration = satAdd current.packageGeneration 1, packageWaiting = 0)
+
+    export begin (current, notice, confirming, confirmKey) = PackageState(packageSearch = current.packageSearch, packageSelection = current.packageSelection, packageTab = current.packageTab, packageRegistry = current.packageRegistry, packageWorkspace = current.packageWorkspace, packageCatalog = current.packageCatalog, packageGraph = current.packageGraph, packageNotice = notice, packagePending = false, packageFault = false, packageConfirming = confirming, packageConfirmKey = confirmKey, packageGeneration = current.packageGeneration, packageWaiting = current.packageWaiting)
+
+    export confirm (current, confirming, key) = PackageState(packageSearch = current.packageSearch, packageSelection = current.packageSelection, packageTab = current.packageTab, packageRegistry = current.packageRegistry, packageWorkspace = current.packageWorkspace, packageCatalog = current.packageCatalog, packageGraph = current.packageGraph, packageNotice = current.packageNotice, packagePending = current.packagePending, packageFault = current.packageFault, packageConfirming = confirming, packageConfirmKey = key, packageGeneration = current.packageGeneration, packageWaiting = current.packageWaiting)
+
+    export clearConfirm current = confirm (current, "", "")
+
+    export workspaceOf graph =
+        missing = listContains graph.graphFindings "tree.no-lock"
+        reason = match missing
+            true => "No lockfile is available. Installed package counts are unknown; browse the registry to add a dependency."
+            false => ""
+        Workspace(workspaceProject = graph.graphProject, workspacePackages = graph.graphPackages, workspaceDirect = graph.graphDirect, workspaceFindings = filterList (graph.graphFindings, \code => code != "tree.no-lock"), workspaceMissing = missing, workspaceReason = reason)
+
+
+    export absent reason = emptyWorkspace reason
+
+    waitingNotice waiting = match waiting > 0
+        true => "Refreshing packages…"
+        false => "Workspace refreshed"
+
+    export withCatalog (current, entries, waiting) = PackageState(packageSearch = current.packageSearch, packageSelection = current.packageSelection, packageTab = current.packageTab, packageRegistry = current.packageRegistry, packageWorkspace = current.packageWorkspace, packageCatalog = entries, packageGraph = current.packageGraph, packageNotice = waitingNotice waiting, packagePending = waiting > 0, packageFault = false, packageConfirming = "", packageConfirmKey = "", packageGeneration = current.packageGeneration, packageWaiting = waiting)
+
+    graphNotice (workspace, waiting) = match waiting > 0
+        true => "Refreshing packages…"
+        false => match workspace.workspaceMissing
+            true => workspace.workspaceReason
+            false => "Workspace refreshed"
+
+    export withGraph (current, workspace, waiting) = PackageState(packageSearch = current.packageSearch, packageSelection = current.packageSelection, packageTab = current.packageTab, packageRegistry = current.packageRegistry, packageWorkspace = current.packageWorkspace, packageCatalog = current.packageCatalog, packageGraph = workspace, packageNotice = graphNotice (workspace, waiting), packagePending = waiting > 0, packageFault = false, packageConfirming = "", packageConfirmKey = "", packageGeneration = current.packageGeneration, packageWaiting = waiting)
+
+    export change (current, notice, generation, waiting) = PackageState(packageSearch = current.packageSearch, packageSelection = current.packageSelection, packageTab = current.packageTab, packageRegistry = current.packageRegistry, packageWorkspace = current.packageWorkspace, packageCatalog = current.packageCatalog, packageGraph = current.packageGraph, packageNotice = notice, packagePending = true, packageFault = false, packageConfirming = "", packageConfirmKey = "", packageGeneration = generation, packageWaiting = waiting)
+
+    export graphRequest (current, ticket) = Editor::processInput (ticket, "osprey-pkg", [], "--json tree --graph --project .\n", current.packageWorkspace, 120000, 4194304, "package/graph")
+
+    export fetchRequest (current, ticket) = Editor::processInput (ticket, "osprey-pkg", [], "--json fetch --registry ${current.packageRegistry} --project .\n", current.packageWorkspace, 120000, 4194304, "package/fetch")
+
+    export changeRequest (current, verb, key, ticket) = Editor::processInput (ticket, "osprey-pkg", [], "--json ${verb} ${key} --registry ${current.packageRegistry} --project .\n", current.packageWorkspace, 120000, 4194304, "package/change")
+
+    export refresh current =
+        generation = satAdd current.packageGeneration 1
+        ready = PackageState(packageSearch = current.packageSearch, packageSelection = current.packageSelection, packageTab = current.packageTab, packageRegistry = current.packageRegistry, packageWorkspace = current.packageWorkspace, packageCatalog = current.packageCatalog, packageGraph = current.packageGraph, packageNotice = "Refreshing packages…", packagePending = true, packageFault = false, packageConfirming = "", packageConfirmKey = "", packageGeneration = generation, packageWaiting = 2)
+        catalog = Requests::ask ("package/catalog:${generation}", ui::Http(method = "GET", url = current.packageRegistry + "/v1/packages", headers = [], body = "", responseLimit = 1048576, deadline = 15000, httpSlice = "package/catalog"))
+        match graphRequest (ready, "package/graph:${generation}")
+            Error problem => Runtime::step (fault (ready, problem))
+            Success graph => Runtime::asking (ready, [catalog, graph])
+
+    export request (current, result) = match result
+        Success wanted => Runtime::asking (current, [wanted])
+        Error problem => Runtime::step (fault (current, problem))
+
+    encodeWorkspace workspace = JsonObject [Doc::str ("project", workspace.workspaceProject), JsonMember "packages" (Packages::encodePackages workspace.workspacePackages), JsonMember "direct" (Doc::strings workspace.workspaceDirect), JsonMember "findings" (Doc::strings workspace.workspaceFindings), Doc::bit ("missing", workspace.workspaceMissing), Doc::str ("reason", workspace.workspaceReason)]
+
+    decodeWorkspace doc = Workspace(workspaceProject = Doc::text (doc, "project"), workspacePackages = Packages::decodePackages (Doc::field (doc, "packages")), workspaceDirect = Doc::texts (doc, "direct"), workspaceFindings = Doc::texts (doc, "findings"), workspaceMissing = Doc::flag (doc, "missing"), workspaceReason = Doc::text (doc, "reason"))
+
+    export save current = JsonObject [
+        Doc::str ("query", current.packageSearch),
+        Doc::str ("selection", current.packageSelection),
+        Doc::str ("tab", current.packageTab),
+        Doc::str ("registry", current.packageRegistry),
+        Doc::str ("workspace", current.packageWorkspace),
+        JsonMember "catalog" (Packages::encodeCatalog current.packageCatalog),
+        JsonMember "graph" (encodeWorkspace current.packageGraph),
+        Doc::str ("notice", current.packageNotice),
+        Doc::bit ("pending", current.packagePending),
+        Doc::bit ("fault", current.packageFault),
+        Doc::str ("confirming", current.packageConfirming),
+        Doc::str ("confirmKey", current.packageConfirmKey),
+        Doc::num ("generation", current.packageGeneration),
+        Doc::num ("waiting", current.packageWaiting),
+    ]
+
+    export restore doc = PackageState(packageSearch = Doc::text (doc, "query"), packageSelection = Doc::text (doc, "selection"), packageTab = Doc::text (doc, "tab"), packageRegistry = Doc::text (doc, "registry"), packageWorkspace = Doc::text (doc, "workspace"), packageCatalog = Packages::decodeCatalog (Doc::field (doc, "catalog")), packageGraph = decodeWorkspace (Doc::field (doc, "graph")), packageNotice = Doc::text (doc, "notice"), packagePending = Doc::flag (doc, "pending"), packageFault = Doc::flag (doc, "fault"), packageConfirming = Doc::text (doc, "confirming"), packageConfirmKey = Doc::text (doc, "confirmKey"), packageGeneration = Doc::number (doc, "generation"), packageWaiting = Doc::number (doc, "waiting"))

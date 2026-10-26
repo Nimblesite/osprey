@@ -1,0 +1,77 @@
+namespace registry_tests;
+import registry::Catalog
+import registry::Release
+import registry::ReleasePath
+import registry_api::Loader
+import registry_host::Host
+import registry_tests::Fixtures
+
+/// The folder-registry loader over one fixture walk: every good release is
+/// served and every invalid release directory is reported with its stable
+/// reason, through fixture `Files` and `Tree` hosts. Implements the
+/// validation and refusal rules of [PACKAGE-FOLDER-REGISTRY] over the shared
+/// source rules of [PACKAGE-SOURCE-CANONICAL].
+module LoaderTests {
+    let root = "fixture-root"
+
+    fn fixture() = Fixtures::load("folder/refusals.json")
+
+    fn contentRow(fx, path) = listGet(filterList(Fixtures::items(Fixtures::field(fx, "contents")), fn(c) => Fixtures::text(Fixtures::field(c, "path")) == path), 0)
+
+    /// A listed file's text; any other path is unreadable.
+    fn contentOf(fx, path) = match contentRow(fx, path) {
+        Success { value } => Success { value: Fixtures::text(Fixtures::field(value, "text")) }
+        Error => Error { message: "permission denied" }
+    }
+
+    fn walkOf(fx) = Host::Walk {
+        regular: Fixtures::texts(Fixtures::field(fx, "regular")),
+        executable: Fixtures::texts(Fixtures::field(fx, "executable")),
+        special: Fixtures::texts(Fixtures::field(fx, "special"))
+    }
+
+    // Every arm uses its parameters: an arm whose parameters go unused
+    // leaves its closure generic, which codegen cannot lower.
+    fn neverWrites(path, content) -> Result<int, string> = Error { message: "fixture: the loader never writes ${path} (${byteLength(content)} bytes)" }
+
+    fn neverCreates(dir) -> Result<int, string> = Error { message: "fixture: the loader never creates ${dir}" }
+
+    fn walked(at) = if at == root { Success { value: walkOf(fixture()) } } else { Error { message: "fixture: unexpected walk of ${at}" } }
+
+    fn fixtureFiles() = handler Host::Files {
+        read path => contentOf(fixture(), drop(path, byteLength(root) + 1))
+        write path content => neverWrites(path, content)
+    }
+
+    fn fixtureTree() = handler Host::Tree {
+        walk at => walked(at)
+        ensure dir => neverCreates(dir)
+    }
+
+    /// The handled body answers a concrete catalog: a `Result` answer type
+    /// leaves the handler closures generic. A failed walk loads as a catalog
+    /// refusing the root itself.
+    fn catalogOf(result) = match result {
+        Success { value } => value
+        Error { message } => Catalog::of([], [Release::Refused { dir: root, code: message }])
+    }
+
+    fn loaded() = fixtureFiles()(fn() => fixtureTree()(fn() => catalogOf(Loader::load(root))))
+
+    fn servedDirs(catalog: Release::Catalog) = join(listSort(mapList(catalog.served, fn(s: Release::Served) => ReleasePath::format(s.id))), ",")
+
+    fn refusedRows(catalog: Release::Catalog) = join(listSort(mapList(catalog.refused, fn(r: Release::Refused) => "${r.dir} ${r.code}")), ",")
+
+    fn expectedRows(fx) = join(listSort(mapList(Fixtures::items(Fixtures::field(fx, "refused")), fn(r) =>
+        "${Fixtures::text(Fixtures::field(r, "dir"))} ${Fixtures::text(Fixtures::field(r, "code"))}")), ",")
+
+    fn everyRefusal() = {
+        let fx = fixture()
+        let catalog = loaded()
+        check("served releases", join(Fixtures::texts(Fixtures::field(fx, "served")), ","), servedDirs(catalog))
+        check("refused releases with reasons", expectedRows(fx), refusedRows(catalog))
+    }
+
+    /// One test: the whole walk, served and refused.
+    export fn run() = test("loader: every invalid release is refused with its reason", everyRefusal)
+}

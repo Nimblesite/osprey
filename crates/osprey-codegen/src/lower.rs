@@ -31,6 +31,34 @@ pub fn compile_library(program: &Program) -> Result<String> {
     compile_module(program, CodegenOptions::default(), true)
 }
 
+/// Compile a whole program for wasm32, whose 4-byte pointers change the
+/// allocation-mask stride ([`crate::meta`]).
+///
+/// # Errors
+///
+/// Returns `Err` under the same conditions as [`compile_program`].
+pub fn compile_wasm_program(program: &Program) -> Result<String> {
+    compile_program_with_options(program, wasm_options())
+}
+
+/// Compile app logic for wasm32 whose module state remains live after the
+/// entry returns ([WASM-WEB-ABI]), with wasm32 pointer-width metadata.
+///
+/// # Errors
+///
+/// Returns `Err` under the same conditions as [`compile_program`].
+pub fn compile_wasm_library(program: &Program) -> Result<String> {
+    compile_module(program, wasm_options(), true)
+}
+
+/// The codegen options every wasm32 compilation shares.
+fn wasm_options() -> CodegenOptions {
+    CodegenOptions {
+        wasm32: true,
+        ..CodegenOptions::default()
+    }
+}
+
 /// Compile a whole program with LLVM/DWARF debug metadata rooted at `source`.
 ///
 /// # Errors
@@ -41,6 +69,24 @@ pub fn compile_program_debug(program: &Program, source: DebugSource) -> Result<S
         program,
         CodegenOptions {
             debug_source: Some(source),
+            ..CodegenOptions::default()
+        },
+    )
+}
+
+/// Compile a whole program for symbolic execution [SYMEX-CODEGEN]: debug
+/// metadata rooted at `source` so the engine names Osprey lines, and fatal
+/// paths that `abort` so it reports them.
+///
+/// # Errors
+///
+/// Returns `Err` under the same conditions as [`compile_program`].
+pub fn compile_program_symbolic(program: &Program, source: DebugSource) -> Result<String> {
+    compile_program_with_options(
+        program,
+        CodegenOptions {
+            debug_source: Some(source),
+            symbolic: true,
             ..CodegenOptions::default()
         },
     )
@@ -107,10 +153,8 @@ fn reject_opaque_aliases(program: &Program) -> Result<()> {
     }
 }
 
-fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> Result<String> {
-    reject_opaque_aliases(program)?;
-    let options = with_kernel_mode(options)?;
-    let lowered = osprey_types::lower_static_checked(program).map_err(|errors| {
+fn lower_static_program(program: &Program) -> Result<Program> {
+    osprey_types::lower_static_checked(program).map_err(|errors| {
         crate::error::CodegenError::invalid(
             errors
                 .into_iter()
@@ -118,7 +162,21 @@ fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> 
                 .collect::<Vec<_>>()
                 .join("; "),
         )
-    })?;
+    })
+}
+
+fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> Result<String> {
+    reject_opaque_aliases(program)?;
+    let options = with_kernel_mode(options)?;
+    let instrumented = options
+        .coverage
+        .then(|| crate::coverage::instrumented(program));
+    let original = instrumented.as_ref().unwrap_or(program);
+    let mut lowered = lower_static_program(original)?;
+    if options.coverage {
+        // Source counters must not hide pure closure selection from staging.
+        crate::coverage::instrument_expressions(&mut lowered);
+    }
     let program = &lowered;
     let mut prog = osprey_types::infer_program(program);
     let elaborated = prog.elaborate_calls(program);
@@ -126,6 +184,7 @@ fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> 
     let mut cg = Codegen::with_options(prog, options);
     // Seed the coverage denominator from the source, not from what lowering
     // happens to reach [TESTING-COVERAGE-CODEGEN].
+    cg.cov_seed(original);
     cg.cov_seed(program);
     // Seed the erased-`any` candidate row table from the declared records,
     // BEFORE any match or erasure site is emitted ([`crate::anybox`]).
@@ -196,7 +255,8 @@ fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> 
         let rest = top_level.get(i + 1..).unwrap_or(&[]);
         crate::arc::release_dead_after(&mut cg, rest, None);
     }
-    if let Some((body, _)) = user_main {
+    if let Some((body, position)) = user_main {
+        cg.cov_hit(position);
         cg.cell_vars = crate::effects::captured_mut_vars(body);
         let _ = cg.within_source_function("main", |cg| crate::expr::gen_body(cg, body))?;
     }
@@ -325,7 +385,22 @@ fn gen_function(
     });
 
     cg.begin_function(name, position);
-    cg.source_function = Some(name.to_owned());
+    // The function's own name scopes every position-keyed type lookup inside
+    // it, and only inside it: file-scope statements lowered afterwards look
+    // their types up at file scope again.
+    cg.within_source_function(name, |cg| {
+        emit_function_body(cg, name, parameters, body, position, &param_sig)
+    })
+}
+
+fn emit_function_body(
+    cg: &mut Codegen,
+    name: &str,
+    parameters: &[Parameter],
+    body: &Expr,
+    position: Option<Position>,
+    param_sig: &[(ParamSig, Option<String>)],
+) -> Result<()> {
     // Record any function-typed parameters so a call through one lowers to an
     // indirect call (the higher-order `f(x)` in `fn apply(f, x) = f(x)`).
     let fn_ptr_params: Vec<(String, osprey_types::Type)> = cg

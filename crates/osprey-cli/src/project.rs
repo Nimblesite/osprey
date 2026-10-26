@@ -5,6 +5,9 @@ use osprey_project::{AssembledProject, ProjectConfig, ProjectError, SourceFile};
 use osprey_syntax::Flavor;
 use std::path::{Path, PathBuf};
 
+mod coverage;
+mod dependencies;
+
 /// A parsed script or an assembled multi-file project ready for dispatch.
 #[derive(Debug)]
 pub(crate) struct CompilationInput {
@@ -124,6 +127,12 @@ impl CompilationInput {
             debug_path,
             output,
         }
+    }
+
+    /// Whether this input is a directory project, whose modules share one
+    /// flattened line numbering that [`Self::location`] maps back per file.
+    pub(crate) fn is_project(&self) -> bool {
+        matches!(self.unit, CompilationUnit::Project(_))
     }
 
     /// The flavor-neutral program the checker and every source-level tool read.
@@ -306,6 +315,15 @@ pub(crate) fn format_project_error(error: &ProjectError, fallback: &str) -> Stri
         (Some(line), None) => format!("{path}:{line}: {}", error.message),
         (None, _) => format!("{path}: {}", error.message),
     }
+}
+
+/// Preserve source order and diagnostic formatting when reporting several failures.
+pub(crate) fn format_project_errors(errors: &[ProjectError], fallback: &str) -> String {
+    errors
+        .iter()
+        .map(|error| format_project_error(error, fallback))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn project_root(path: &Path) -> PathBuf {

@@ -20,8 +20,9 @@ fn cli(path: impl Into<String>, mode: &str, policy: Policy) -> Cli {
         path: path.into(),
         mode: mode.to_string(),
         quiet: true,
+        warnings: Warnings::Report,
         policy,
-        memory: "default".to_string(),
+        memory: "gc".to_string(),
         target: "native".to_string(),
         exports: MobileExports::All,
         output: None,
@@ -30,4 +31,19 @@ fn cli(path: impl Into<String>, mode: &str, policy: Policy) -> Cli {
         profile: false,
         flavor: None,
     }
+}
+
+/// Assemble one source with the production project resolver for ABI tests.
+pub(crate) fn assembled_program(source: &str, root: &str, file: &str) -> osprey_ast::Program {
+    osprey_project::assemble(
+        &osprey_project::ProjectConfig::for_root(std::path::Path::new(root)),
+        &[osprey_project::SourceFile {
+            path: PathBuf::from(file),
+            flavor: Flavor::Default,
+            source: source.to_string(),
+            program: osprey_syntax::parse_program(source).program,
+        }],
+    )
+    .expect("assemble fixture")
+    .program
 }

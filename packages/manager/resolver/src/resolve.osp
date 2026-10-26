@@ -1,0 +1,58 @@
+namespace registry;
+import registry::Sat
+import registry::Clauses
+import registry::Optimize
+import registry::Explain
+import registry::Resolution
+
+/// The package resolver of [PACKAGE-RESOLUTION]: hard clauses from
+/// `Clauses`, CDCL from `Sat`, lexicographic optimisation from `Optimize`,
+/// and, on a refutation, the explanation of `Explain` over the keys a minimal
+/// conflict core mentions, never a re-enumeration of assignments. The lock
+/// releases come back sorted by `Identity::compare`.
+module Resolve {
+    // `Problem` shares `clauses` and `vars` with the solver state; issue #273
+    // needs the receivers spelled out.
+    fn varsOf(p: Clauses::Problem) = p.vars
+    fn clausesOf(p: Clauses::Problem) = p.clauses
+
+    fn clauseAt(clauses, i) -> List<int> = listGet(clauses, i) ?: []
+
+    fn kept(clauses, keep) = mapList(keep, fn(i) => clauseAt(clauses, i))
+
+    fn omit(keep, i) = filterList(keep, fn(j) => j != i)
+
+    fn refuted(vars, clauses) = match Sat::solve(vars, clauses) {
+        Success { value } => match value {
+            Sat::Unsatisfiable { core, learned } => true
+            _ => false
+        }
+        Error => false
+    }
+
+    /// Deletion-based minimisation: a core clause whose removal keeps the
+    /// formula refuted was not needed, so the result is a minimal core (no
+    /// proper subset is a core) in the order the solver listed the clauses.
+    fn minimalCore(vars, clauses, core) = foldList(core, core, fn(keep, i) => if refuted(vars, kept(clauses, omit(keep, i))) { omit(keep, i) } else { keep })
+
+    /// The explanation named by the minimal core's keys.
+    fn explained(graph, problem, core) = Explain::fromCore(graph, Clauses::mentioned(problem, minimalCore(varsOf(problem), clausesOf(problem), core)))
+
+    fn outcome(graph, problem, verdict) = match verdict {
+        Sat::Satisfiable { model } => Resolution::Lock { releases: Optimize::select(graph, problem) }
+        Sat::Unsatisfiable { core, learned } => explained(graph, problem, core)
+    }
+
+    fn solveCanonical(graph) = {
+        let problem = Clauses::build(graph)
+        match Sat::solve(varsOf(problem), clausesOf(problem)) {
+            Success { value } => outcome(graph, problem, value)
+            Error => Explain::of(graph)
+        }
+    }
+
+    /// Solve one graph: the optimal lock, or its stable explanation. The input
+    /// is canonicalised first so that no permutation of the catalog or the edge
+    /// lists changes the lock or the explanation.
+    export fn solve(graph) -> Resolution::Outcome = solveCanonical(Resolution::canonical(graph))
+}

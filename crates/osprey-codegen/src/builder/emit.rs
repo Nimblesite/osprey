@@ -44,6 +44,20 @@ impl Codegen {
         (taken, other, join)
     }
 
+    /// Open a guarded branch on `cond`: mint the guarded block's label, then
+    /// the fall-through's, emit the branch, and make the guarded block current.
+    /// Answers the fall-through label. The shared "branch into the work block,
+    /// continue at the fall-through" step of guarded match arms, the
+    /// unhandled-effect guard, guarded list writes and drive dispatch; as with
+    /// [`Self::diamond`], minting labels apart from the `br` that names them is
+    /// how a block ends up unterminated, so the steps are one call.
+    pub(crate) fn open_guard(&mut self, cond: &str) -> String {
+        let (taken, other) = (self.fresh_label(), self.fresh_label());
+        self.emit(format!("br i1 {cond}, label %{taken}, label %{other}"));
+        self.start_block(&taken);
+        other
+    }
+
     pub(crate) fn emit_reg(&mut self, rhs: impl std::fmt::Display) -> String {
         let r = self.fresh_reg();
         self.emit(format!("{r} = {rhs}"));

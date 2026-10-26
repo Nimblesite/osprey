@@ -1,0 +1,6 @@
+[project]
+name = "torch-tests"
+source_roots = [".", "../src", "../../numpy/src", "../../testing/src"]
+python_sources = ["../src/tensor.py", "../src/autograd.py", "../src/optim.py", "../src/lr.py", "../../numpy/src/storage.py", "../../numpy/src/host.py", "../../numpy/src/device.py", "../../numpy/src/errors.py", "../../numpy/src/layout.py", "../../numpy/src/math.py", "../../numpy/src/ndarray.py", "../../numpy/src/linalg.py", "../../testing/src/check.py", "expected.py", "contracts.py", "main.py"]
+default_namespace = "torch_tests"
+entry = "main.py"

@@ -7,10 +7,12 @@
 > [spec 0029](0029-PackageManagement.md); everything in this document layers
 > onto that running service.
 
-**Status:** normative target. This specification is the registry/security half
+**Status:** normative target. This specification is the packages/manager/security half
 of [Osprey Package Registry and Manager](0029-PackageManagement.md). Its
 requirements are mandatory for the public registry. The full academic and
 standards basis is [annotated here](../../package-manager-research.md).
+
+The [deployment and ownership contract](0044-PackageRegistryDeploymentAndOwnership.md) adds mandatory Cloudflare ingress, Supabase GitHub authentication, organization-only package RLS, single-admin permission grants, authority revocation and rollout gates. It does not replace the signed source-derived publication and independent trust requirements here.
 
 Every executable component covered here MUST be implemented in Osprey under [the implementation-language contract](0029-PackageManagement.md#implementation-language-package-implementation-language). This includes cryptography and verification, TUF and transparency clients, filesystem/CAS transactions, sandbox orchestration, authentication, HSM/forge adapters, publication services, evidence processing, and operational and conformance tooling. Host work has no exception permitting another implementation language. Existing platform APIs and external services are dependencies accessed by Osprey code; they do not authorize a package-specific native host or shim.
 
@@ -118,9 +120,11 @@ structure containing themselves.
 
 Publishers cannot upload tarballs or substitute files. The registry fetches the
 revision, stores a forge-independent source snapshot, and performs canonical
-assembly. Accepted roles are Osprey source, `osprey.toml`, UTF-8 Markdown/plain
-documentation, SPDX license text, typeDiagram source, and manifest-declared
-data. Format v1 has three closed asset kinds: `Utf8Text` (`.txt`, `.md`, `.csv`,
+assembly. Accepted roles are Osprey source (`.osp`, `.ospml`, and `.py` files
+whose first line is the Python-flavor marker `# osprey: flavor=python`; any
+other `.py` file refuses the release with `source.python-flavor-header`),
+`osprey.toml`, UTF-8 Markdown/plain documentation, SPDX license text,
+typeDiagram source, and manifest-declared data. Format v1 has three closed asset kinds: `Utf8Text` (`.txt`, `.md`, `.csv`,
 or `.tsv`, valid UTF-8 without NUL, at most 1 MiB); `Json` (`.json`, strict RFC
 8259 without duplicate keys, depth at most 64, at most 1 MiB); and `Png` (`.png`,
 valid CRCs, only IHDR/PLTE/tRNS/IDAT/IEND chunks, at most 4,096 by 4,096 and 16

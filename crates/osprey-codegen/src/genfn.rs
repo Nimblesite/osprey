@@ -1,16 +1,14 @@
-//! Polymorphism lowering: specialise a generic user function at each call site
-//! by inlining its body with the concrete argument types bound to its
-//! parameters, and lower a call through a function-typed parameter (`f(x)` where
-//! `f: (int) -> int`) to an indirect call. Inlining + indirect calls reach the
-//! same runtime behaviour as emitting a name-mangled monomorphic copy per
-//! instantiation (`identity_i64_i64`, `applyInt_fn_i64_i64`) would — without
-//! the mangling.
+//! Generic calls inline within a bounded expansion budget. Closed first-order
+//! calls then reuse emitted instantiations instead of duplicating nested bodies.
+//! Higher-order calls retain inline aliases and indirect closure dispatch.
 
 use crate::builder::Codegen;
 use crate::error::Result;
 use crate::expr::gen_expr;
 use crate::llty::Value;
 use osprey_ast::{Expr, NamedArgument, Parameter};
+
+const INLINE_EXPANSION_BUDGET: usize = 64;
 
 /// Specialize a generic call without exposing its caller's lexical bindings.
 /// Implements [TYPE-GENERICS-FN].
@@ -21,32 +19,107 @@ pub(crate) fn try_inline(
     named: &[NamedArgument],
     rest: &[crate::curry::ArgGroup<'_>],
 ) -> Result<Option<Value>> {
-    // Re-entering a generic already being inlined is the mutual-recursion
-    // cycle (`all` → `kid` → `all`): inlining cannot unwind it, but an emitted
-    // instantiation can — the callee is specialised at THIS call's argument
-    // representations, and the cycle closes on the symbol `monofn` registers
-    // before lowering the body (#278).
     if cg.inlining.contains(name) {
-        if rest.is_empty() {
-            if let Some((params, body, _)) = cg.fn_defs.get(name).cloned() {
-                return specialize_at(cg, name, &params, &body, args, named);
-            }
-        }
-        return Err(recursive_without_signature(name));
+        return recursive_inline(cg, name, args, named, rest);
     }
     let Some((params, body, _)) = cg.fn_defs.get(name).cloned() else {
         return Ok(None);
     };
-    if crate::monofn::calls_itself(name, &body) {
-        if !rest.is_empty() {
-            return Ok(None);
-        }
-        return specialize_at(cg, name, &params, &body, args, named);
+    match (crate::monofn::calls_itself(name, &body), rest.is_empty()) {
+        (true, true) => specialize_at(cg, name, &params, &body, args, named),
+        (true, false) => Ok(None),
+        (false, _) => expand_call(cg, name, &params, &body, args, named, rest),
     }
-    cg.cov_hit_inline_fn(name);
+}
+
+/// Mutual recursion closes on the symbol registered before its body is lowered.
+fn recursive_inline(
+    cg: &mut Codegen,
+    name: &str,
+    args: &[Expr],
+    named: &[NamedArgument],
+    rest: &[crate::curry::ArgGroup<'_>],
+) -> Result<Option<Value>> {
+    match (cg.fn_defs.get(name).cloned(), rest.is_empty()) {
+        (Some((params, body, _)), true) => specialize_at(cg, name, &params, &body, args, named),
+        _ => Err(recursive_without_signature(name)),
+    }
+}
+
+fn expand_call(
+    cg: &mut Codegen,
+    name: &str,
+    params: &[Parameter],
+    body: &Expr,
+    args: &[Expr],
+    named: &[NamedArgument],
+    rest: &[crate::curry::ArgGroup<'_>],
+) -> Result<Option<Value>> {
+    let share = rest.is_empty() && share_instantiation(cg, name);
+    cg.inline_expansions += 1;
+    if !share {
+        cg.cov_hit_inline_fn(name);
+    }
     // Caller arguments precede both the lexical barrier and recursion guard.
-    let lowered = lower_inline_args(cg, name, &params, args, named)?;
-    inline_body(cg, name, &params, &body, lowered, rest).map(Some)
+    let lowered = lower_inline_args(cg, name, params, args, named)?;
+    finish_expansion(cg, name, params, body, lowered, rest, share)
+}
+
+fn finish_expansion(
+    cg: &mut Codegen,
+    name: &str,
+    params: &[Parameter],
+    body: &Expr,
+    lowered: Vec<InlineArg>,
+    rest: &[crate::curry::ArgGroup<'_>],
+    share: bool,
+) -> Result<Option<Value>> {
+    if share {
+        if let Some(values) = shareable_values(&lowered) {
+            return crate::monofn::specialize_values(cg, name, params, body, values).map(Some);
+        }
+        cg.cov_hit_inline_fn(name);
+    }
+    inline_body(cg, name, params, body, lowered, rest).map(Some)
+}
+
+fn share_instantiation(cg: &Codegen, name: &str) -> bool {
+    cg.inline_expansions >= INLINE_EXPANSION_BUDGET
+        && cg
+            .prog
+            .param_types(name)
+            .zip(cg.prog.return_type(name))
+            .is_some_and(|(params, ret)| {
+                params
+                    .iter()
+                    .chain(std::iter::once(ret))
+                    .all(closed_first_order)
+            })
+}
+
+fn closed_first_order(ty: &osprey_types::Type) -> bool {
+    use osprey_types::Type;
+    match ty {
+        Type::Var(_) | Type::Fun { .. } => false,
+        Type::Con { name, .. }
+            if name == osprey_types::names::FIBER || name == osprey_types::names::CHANNEL =>
+        {
+            false
+        }
+        Type::Con { args, .. } => args.iter().all(closed_first_order),
+        Type::Record { fields, .. } => fields.values().all(closed_first_order),
+        Type::Union { variants, .. } => variants.iter().all(closed_first_order),
+    }
+}
+
+fn shareable_values(arguments: &[InlineArg]) -> Option<Vec<Value>> {
+    arguments
+        .iter()
+        .map(|argument| match argument {
+            InlineArg::Value(value, None) => Some(value.as_ref().clone()),
+            InlineArg::Alias(_) | InlineArg::Value(_, Some(_)) => None,
+        })
+        .collect()
 }
 
 /// Emit (or reuse) the instantiation `name` selected by this call's value

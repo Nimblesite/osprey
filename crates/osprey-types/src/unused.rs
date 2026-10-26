@@ -79,6 +79,28 @@ struct Analysis {
     constructors: HashSet<String>,
 }
 
+/// Inferred UFCS reads keyed by expression address in this exact source AST.
+/// Callable record fields do not read same-named fallback functions.
+///
+/// # Errors
+/// Returns type errors or rejects unresolved polymorphic dispatch, neither of
+/// which can prove package usage.
+pub fn checked_method_reads(
+    program: &Program,
+) -> Result<HashMap<usize, String>, Vec<crate::TypeError>> {
+    let types = infer_checked(program)?;
+    if types
+        .methods
+        .values()
+        .any(|target| matches!(target, methods::Target::Deferred(_)))
+    {
+        return Err(vec![crate::TypeError::new(
+            "package usage requires resolved method dispatch; a polymorphic call remains unresolved",
+        )]);
+    }
+    Ok(method_reads(program, &types.methods))
+}
+
 /// Report unread lexical symbols in declaration order in a valid program.
 /// Names beginning with `_`, compiler-generated names, and declarations
 /// outside expression scopes are intentionally excluded. Assigning a mutable

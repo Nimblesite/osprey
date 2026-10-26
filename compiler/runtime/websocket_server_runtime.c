@@ -1,4 +1,5 @@
 #include "http_shared.h"
+#include "socket_safety.h"
 #include "memory_hooks.h"
 #include <signal.h>
 
@@ -62,7 +63,7 @@ void *handle_websocket_connection(void *arg) {
         // Create handshake response
         char *response = create_websocket_handshake_response(key_line);
 
-        if (response && send(client_fd, response, strlen(response), 0) > 0) {
+        if (response && osp_socket_send(client_fd, response, strlen(response)) > 0) {
           // Create WebSocket connection
           int64_t ws_id = get_next_id();
           WebSocket *ws = malloc(sizeof(WebSocket));

@@ -3,8 +3,8 @@ use super::*;
 #[test]
 fn named_device_callbacks_keep_their_defining_scope() {
     let ir = module("let factor = 2.0\nfn scale(x) = x * factor\nfn apply(f, x) = f(x)\nfn caller(factor, x) = apply(scale, x)\nfn main() = {\n    let out = toGpu([3.0]) |> gpuMap(fn(x) => caller(100.0, x))\n    print(gpuLength(out))\n}\n");
-    assert!(!ir.contains("call i32 @osprey_gpu_declined("), "{ir}");
-    assert!(ir.contains("0x4000000000000000ul"), "the device callback must multiply by its defining factor 2.0, not caller's factor 100.0:\n{ir}");
+    testkit::contents(&ir, &[], &["call i32 @osprey_gpu_declined("]);
+    shows(&ir, &["0x4000000000000000ul"]);
 }
 // ---- GPU kernel extraction [GPU-KERNEL-EXTRACT] ----
 
@@ -23,9 +23,9 @@ fn a_lambda_kernel_is_lifted_to_one_function_the_loop_calls() {
              }\n\
              print(f())\n",
     );
-    assert!(
-        ir.contains("define internal double @__gpu_kernel_0(double %$p0)"),
-        "{ir}"
+    shows(
+        &ir,
+        &["define internal double @__gpu_kernel_0(double %$p0)"],
     );
     assert_eq!(
         ir.matches("define internal double @__gpu_kernel_0(")
@@ -33,14 +33,8 @@ fn a_lambda_kernel_is_lifted_to_one_function_the_loop_calls() {
         1
     );
     let host = function_body(&ir, "define internal i64 @f()");
-    assert!(
-        host.contains("call double @__gpu_kernel_0(double "),
-        "{host}"
-    );
-    assert!(
-        !host.contains("fmul double"),
-        "kernel still inlined: {host}"
-    );
+    shows(&host, &["call double @__gpu_kernel_0(double "]);
+    testkit::contents(&host, &[], &["fmul double"]);
 }
 
 #[test]
@@ -81,12 +75,9 @@ fn captures_become_leading_parameters_sorted_by_name() {
     assert!(ir.contains(header), "{ir}");
     let kernel = function_body(&ir, header);
     shows(&kernel, &["fmul double %$p1, %$p2", "fadd double"]);
-    assert!(!kernel.contains("__env"), "{kernel}");
+    testkit::contents(&kernel, &[], &["__env"]);
     let host = function_body(&ir, "define internal i64 @f()");
-    assert!(
-        host.contains("@__gpu_kernel_0(double 2.0, double 5.0, double "),
-        "{host}"
-    );
+    shows(&host, &["@__gpu_kernel_0(double 2.0, double 5.0, double "]);
 }
 
 #[test]
@@ -99,9 +90,9 @@ fn a_captured_buffer_handle_travels_as_a_uniform() {
              }\n\
              print(f())\n",
     );
-    assert!(
-        ir.contains("define internal double @__gpu_kernel_0(i8* %$p0, i64 %$p1)"),
-        "{ir}"
+    shows(
+        &ir,
+        &["define internal double @__gpu_kernel_0(i8* %$p0, i64 %$p1)"],
     );
 }
 
@@ -149,16 +140,13 @@ fn a_known_let_bound_kernel_is_extracted() {
         1,
         "{ir}"
     );
-    assert!(
-        ir.contains("define internal double @__gpu_kernel_0(double %$p0)"),
-        "{ir}"
+    shows(
+        &ir,
+        &["define internal double @__gpu_kernel_0(double %$p0)"],
     );
     let host = function_body(&ir, "define internal i64 @f()");
-    assert!(
-        host.contains("call double @__gpu_kernel_0(double "),
-        "{host}"
-    );
-    assert!(!host.contains("fmul double"), "{host}");
+    shows(&host, &["call double @__gpu_kernel_0(double "]);
+    testkit::contents(&host, &[], &["fmul double"]);
 }
 
 #[test]
@@ -216,7 +204,10 @@ fn twin_flavors_number_their_kernels_identically() {
              print (f ())\n",
     );
     assert_eq!(default_ir, ml_ir);
-    assert!(default_ir.contains("define internal double @__gpu_kernel_0(double %$p0, double %$p1)"));
+    shows(
+        &default_ir,
+        &["define internal double @__gpu_kernel_0(double %$p0, double %$p1)"],
+    );
 }
 
 // ---- host operations [GPU-MATMUL] [GPU-BUFFER-LOAD] [GPU-BUFFER-TENSOR] ----
@@ -315,9 +306,6 @@ fn a_float_function_by_name_is_an_extracted_kernel_in_both_flavors() {
     let header = "define internal double @__gpu_kernel_0(double %$p0)";
     assert!(default_ir.contains(header), "{default_ir}");
     let kernel = function_body(&default_ir, header);
-    assert!(
-        kernel.contains("call double @llvm.exp.f64(double %$p0)"),
-        "{kernel}"
-    );
-    assert!(!kernel.contains("__env"), "{kernel}");
+    shows(&kernel, &["call double @llvm.exp.f64(double %$p0)"]);
+    testkit::contents(&kernel, &[], &["__env"]);
 }

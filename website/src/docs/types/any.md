@@ -2,27 +2,33 @@
 layout: page
 mlTwins: manual
 title: "any (Type)"
-description: "An explicitly dynamic value that must be type-matched before concrete operations"
+description: "An erased value whose fields are accessed through structural pattern matching."
 ---
 
-**Description:** An explicitly dynamic value. Match on its runtime type before
-using it as a concrete value; direct arithmetic, calls and field access are
-rejected.
+An `any` annotation erases a value's static type. Match its structure before accessing fields; direct arithmetic, calls and field access are rejected. Primitive runtime type tests and unchecked casts are not supported.
 
 ## Example
 
 ```osprey
-let value: any = 42
-let text: any = "Hello"
+type Note = { text: string }
+let value: any = Note { text: "Hello" }
+print(match value {
+    { text } => "note: ${text}"
+    _ => "other"
+})
 ```
 
 ```osprey-ml
+type Note =
+    text : string
 value : any
-value = 42
-
-text : any
-text = "Hello"
+value = Note(text = "Hello")
+match value
+    { text } => print "note: ${text}"
+    _ => print "other"
 ```
+
+Both programs print `note: Hello`. The field pattern selects a matching record shape and binds `text` inside that arm. Include a catch-all: erased scalars have no fields and take the fallback arm.
 
 Erasing a record keeps its fields, including complete `Result` values. A record update preserves every field it does not replace; it also leaves the original record unchanged.
 

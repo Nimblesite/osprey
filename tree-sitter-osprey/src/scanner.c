@@ -1,4 +1,5 @@
 // External scanner for tree-sitter-osprey.
+// String scopes expose interpolation expressions while retaining raw byte ranges.
 //
 // Two ZERO-WIDTH markers, each answering a question about the LINE a token sits
 // on — the one thing the parser cannot see, because whitespace is an extra.
@@ -30,6 +31,8 @@
 // which no source in the tree uses.
 
 #include "tree_sitter/parser.h"
+#include <stdlib.h>
+#include <string.h>
 
 // Why STATEMENT_BREAK exists. Default has no statement terminator, so before
 // this marker NOTHING delimited two statements: `let r = add 2 3` parsed as
@@ -43,24 +46,144 @@ enum TokenType {
   CALL_OPEN_GAP,
   STATEMENT_BREAK,
   TYPE_APPLICATION_AHEAD,
+  STRING_START, STRING_END, INTERPOLATION_START, INTERPOLATION_END,
+  STRING_CONTENT, ESCAPE_SEQUENCE, INTERPOLATION_SPACE,
 };
 
-void *tree_sitter_osprey_external_scanner_create(void) { return NULL; }
+// String scopes distinguish raw outer quotes from quotes escaped for the
+// enclosing literal. Interpolation expressions see one layer of decoded escapes.
+enum Scope { RAW_STRING = 1, QUOTED_STRING, INTERPOLATION };
+#define SCOPE_CAPACITY (TREE_SITTER_SERIALIZATION_BUFFER_SIZE - 2)
+typedef struct { unsigned depth; unsigned char scopes[SCOPE_CAPACITY]; } Scanner;
 
-void tree_sitter_osprey_external_scanner_destroy(void *payload) { (void)payload; }
+void *tree_sitter_osprey_external_scanner_create(void) { return calloc(1, sizeof(Scanner)); }
+void tree_sitter_osprey_external_scanner_destroy(void *payload) { free(payload); }
 
-// Stateless: nothing to carry across an incremental reparse.
 unsigned tree_sitter_osprey_external_scanner_serialize(void *payload, char *buffer) {
-  (void)payload;
-  (void)buffer;
-  return 0;
+  const Scanner *scanner = payload;
+  if (!scanner) return 0;
+  buffer[0] = (char)(scanner->depth & 255);
+  buffer[1] = (char)(scanner->depth >> 8);
+  memcpy(buffer + 2, scanner->scopes, scanner->depth);
+  return scanner->depth + 2;
 }
 
 void tree_sitter_osprey_external_scanner_deserialize(void *payload, const char *buffer,
                                                      unsigned length) {
-  (void)payload;
-  (void)buffer;
-  (void)length;
+  Scanner *scanner = payload;
+  if (!scanner) return;
+  scanner->depth = 0;
+  if (length < 2) return;
+  unsigned depth = (unsigned char)buffer[0] | ((unsigned char)buffer[1] << 8);
+  if (depth > SCOPE_CAPACITY || length != depth + 2) return;
+  memcpy(scanner->scopes, buffer + 2, depth);
+  scanner->depth = depth;
+}
+
+static unsigned scope(const Scanner *scanner) {
+  return scanner->depth ? scanner->scopes[scanner->depth - 1] : 0;
+}
+
+static bool push_scope(Scanner *scanner, unsigned value) {
+  if (scanner->depth == SCOPE_CAPACITY) return false;
+  scanner->scopes[scanner->depth++] = (unsigned char)value;
+  return true;
+}
+
+static void advance(TSLexer *lexer) {
+  lexer->advance(lexer, false);
+  lexer->mark_end(lexer);
+}
+
+// Read one source character after the enclosing string's escape decoding.
+static int32_t decoded_character(TSLexer *lexer) {
+  int32_t ch = lexer->lookahead;
+  advance(lexer);
+  if (ch != '\\') return ch;
+  ch = lexer->lookahead;
+  if (ch == '"' || ch == '\\') { advance(lexer); return ch; }
+  if (ch == 'n' || ch == 'r' || ch == 't' || ch == 'e' || ch == '0') {
+    advance(lexer);
+    return ch == 'n' ? '\n' : ch == 'r' ? '\r' : ch == 't' ? '\t' : ch == 'e' ? 27 : 0;
+  }
+  return '\\';
+}
+
+static bool string_start(Scanner *scanner, TSLexer *lexer) {
+  if (!push_scope(scanner, RAW_STRING)) return false;
+  advance(lexer);
+  lexer->result_symbol = STRING_START;
+  return true;
+}
+
+static bool string_end(Scanner *scanner, TSLexer *lexer) {
+  advance(lexer);
+  scanner->depth--;
+  lexer->result_symbol = STRING_END;
+  return true;
+}
+
+static bool string_slash(Scanner *scanner, TSLexer *lexer, const bool *valid) {
+  advance(lexer);
+  if (scope(scanner) == QUOTED_STRING && lexer->lookahead == '"')
+    return valid[STRING_END] && string_end(scanner, lexer);
+  if (lexer->lookahead == '$') {
+    lexer->result_symbol = STRING_CONTENT;
+    return valid[STRING_CONTENT];
+  }
+  if (lexer->eof(lexer) || !valid[ESCAPE_SEQUENCE]) return false;
+  if (scope(scanner) == QUOTED_STRING && lexer->lookahead == '\\') {
+    advance(lexer);
+    if (!lexer->eof(lexer)) decoded_character(lexer);
+  } else { advance(lexer); }
+  lexer->result_symbol = ESCAPE_SEQUENCE;
+  return true;
+}
+
+static bool string_dollar(Scanner *scanner, TSLexer *lexer, const bool *valid) {
+  advance(lexer);
+  if (lexer->lookahead == '{') {
+    if (!valid[INTERPOLATION_START] || !push_scope(scanner, INTERPOLATION)) return false;
+    advance(lexer);
+    lexer->result_symbol = INTERPOLATION_START;
+    return true;
+  }
+  lexer->result_symbol = STRING_CONTENT;
+  return valid[STRING_CONTENT];
+}
+
+static bool string_content(TSLexer *lexer) {
+  bool consumed = false;
+  while (!lexer->eof(lexer) && lexer->lookahead != '"' &&
+         lexer->lookahead != '\\' && lexer->lookahead != '$') {
+    advance(lexer);
+    consumed = true;
+  }
+  lexer->result_symbol = STRING_CONTENT;
+  return consumed;
+}
+
+static bool string_token(Scanner *scanner, TSLexer *lexer, const bool *valid) {
+  if (lexer->lookahead == '"')
+    return scope(scanner) == RAW_STRING && valid[STRING_END] && string_end(scanner, lexer);
+  if (lexer->lookahead == '\\') return string_slash(scanner, lexer, valid);
+  if (lexer->lookahead == '$') return string_dollar(scanner, lexer, valid);
+  return valid[STRING_CONTENT] && string_content(lexer);
+}
+
+static bool interpolation_slash(Scanner *scanner, TSLexer *lexer, const bool *valid) {
+  advance(lexer);
+  if (lexer->lookahead == '"' && valid[STRING_START]) {
+    if (!push_scope(scanner, QUOTED_STRING)) return false;
+    advance(lexer);
+    lexer->result_symbol = STRING_START;
+    return true;
+  }
+  if (!valid[INTERPOLATION_SPACE]) return false;
+  if (lexer->lookahead != 'n' && lexer->lookahead != 'r' && lexer->lookahead != 't') return false;
+  advance(lexer);
+  lexer->result_symbol = INTERPOLATION_SPACE;
+  return true;
 }
 
 // Skips only HORIZONTAL space. A newline (or any other extra, such as a comment
@@ -169,12 +292,19 @@ static bool continues_expression(int32_t first, int32_t second) {
 // expression (`continues_expression`), which keeps multi-line pipelines and
 // trailing conditions legal. Everything here is consumed with skip=true, so a
 // refusal costs nothing: the lexer restarts from the token's start.
-static bool scan_statement_break(TSLexer *lexer) {
+static bool scan_statement_break(TSLexer *lexer, bool interpolation) {
   lexer->result_symbol = STATEMENT_BREAK;
   lexer->mark_end(lexer);
   bool line_ended = false;
   for (;;) {
     skip_blanks(lexer);
+    if (interpolation && lexer->lookahead == '\\') {
+      lexer->advance(lexer, true);
+      if (lexer->lookahead != 'n' && lexer->lookahead != 'r' && lexer->lookahead != 't') return false;
+      line_ended = line_ended || lexer->lookahead != 't';
+      lexer->advance(lexer, true);
+      continue;
+    }
     if (lexer->eof(lexer) || lexer->lookahead == '}') {
       return true;  // The encloser terminates the statement outright.
     }
@@ -201,14 +331,30 @@ static bool scan_statement_break(TSLexer *lexer) {
 // CALL_OPEN_GAP is tried first, and only its failure can end a statement: where
 // both markers are legal — a bare callee in statement position — `f (x)` on one
 // line is the call, and a `(` on the next line is a new statement.
+static bool expression_string(Scanner *scanner, TSLexer *lexer, const bool *valid) {
+  while (lexer->lookahead == ' ' || lexer->lookahead == '\t' ||
+         lexer->lookahead == '\n' || lexer->lookahead == '\r') lexer->advance(lexer, true);
+  if (scope(scanner) == INTERPOLATION) {
+    if (valid[INTERPOLATION_END] && lexer->lookahead == '}') {
+      advance(lexer); scanner->depth--; lexer->result_symbol = INTERPOLATION_END; return true;
+    }
+    if (lexer->lookahead == '\\') return interpolation_slash(scanner, lexer, valid);
+  }
+  return valid[STRING_START] && lexer->lookahead == '"' && string_start(scanner, lexer);
+}
+
 bool tree_sitter_osprey_external_scanner_scan(void *payload, TSLexer *lexer,
                                               const bool *valid_symbols) {
-  (void)payload;
-  if (valid_symbols[TYPE_APPLICATION_AHEAD] && lexer->lookahead == '<') {
+  Scanner *scanner = payload;
+  if (!scanner) return false;
+  if (scope(scanner) == RAW_STRING || scope(scanner) == QUOTED_STRING)
+    return string_token(scanner, lexer, valid_symbols);
+  if (valid_symbols[TYPE_APPLICATION_AHEAD] && lexer->lookahead == '<')
     return scan_type_application(lexer);
-  }
-  if (valid_symbols[CALL_OPEN_GAP] && scan_call_open_gap(lexer)) {
-    return true;
-  }
-  return valid_symbols[STATEMENT_BREAK] && scan_statement_break(lexer);
+  if (valid_symbols[CALL_OPEN_GAP] && scan_call_open_gap(lexer)) return true;
+  // A failed statement lookahead may have advanced past an operator. Never
+  // reuse that cursor to emit a string token; the parser retries from its start.
+  if (valid_symbols[STATEMENT_BREAK])
+    return scan_statement_break(lexer, scope(scanner) == INTERPOLATION);
+  return expression_string(scanner, lexer, valid_symbols);
 }

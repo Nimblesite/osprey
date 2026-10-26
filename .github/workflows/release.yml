@@ -33,8 +33,15 @@ env:
   PRODUCT_REPO: Nimblesite/osprey
   HOMEPAGE: https://ospreylang.dev
   DESCRIPTION: "Osprey — a functional language with algebraic effects, fibers, and compile-time safety"
+  WASI_SDK_VERSION: "24"
 
 jobs:
+  audit:
+    name: Dependency audit release gate
+    uses: ./.github/workflows/ci-audit.yml
+    permissions:
+      contents: read
+
   # --------------------------------------------------------------------------
   # Release scope (COST GATE) — diff this tag against the previous release tag and
   # decide which surfaces must publish, so the expensive macOS/Windows build matrix
@@ -127,6 +134,10 @@ jobs:
         with:
           version: ${{ needs.version.outputs.version }}
 
+      - name: Build Apple app runtime archives
+        if: runner.os == 'macOS'
+        run: make _runtime_ios _runtime_ios_sim _runtime_macos
+
       # ---- Windows: MSYS2 (MinGW C runtime) + cargo -------------------------
       - name: Install Rust (Windows)
         if: runner.os == 'Windows'
@@ -159,6 +170,37 @@ jobs:
           make _runtime CC=gcc AR=ar SHELL=/usr/bin/bash MKDIR='mkdir -p'
           cargo build --release -p osprey-cli
 
+      - name: Compile package manager client (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        # --no-warnings skips the warning pass (see scripts/make/extension.mk).
+        run: target/release/osprey build packages/manager/cli --quiet --no-warnings -o target/osprey-pkg
+      - name: Compile package manager client (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: target/release/osprey.exe build packages/manager/cli --quiet --no-warnings -o target/osprey-pkg.exe
+
+      - name: Build portable package workspace
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y lld wabt
+          curl -fsSL -o /tmp/wasi-sysroot.tar.gz \
+            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sysroot-${WASI_SDK_VERSION}.0.tar.gz"
+          sudo mkdir -p /opt/wasi-sdk/share/wasi-sysroot
+          sudo tar -xzf /tmp/wasi-sysroot.tar.gz -C /opt/wasi-sdk/share/wasi-sysroot --strip-components=1
+          export OSPREY_WASI_SYSROOT=/opt/wasi-sdk/share/wasi-sysroot
+          make target/package-workspace.wasm
+          wasm-validate target/package-workspace.wasm
+      - name: Upload portable package workspace
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-workspace-wasm
+          path: target/package-workspace.wasm
+          if-no-files-found: error
+
       # ---- Verify version contract [SWR-VERSION-CLI-OUTPUT] ------------------
       - name: Verify version
         shell: bash
@@ -178,6 +220,7 @@ jobs:
           staging="osprey-$v-$plat"
           mkdir -p "dist/$staging"
           cp "target/release/osprey${exe}" "dist/$staging/"
+          cp "target/osprey-pkg${exe}" "dist/$staging/"
           # The runtime archives used to be copied with `|| true`, so a build
           # that produced none still packaged, published and reached Homebrew —
           # a compiler that can link nothing, shipped green. Find the directory
@@ -197,6 +240,17 @@ jobs:
               exit 1
             }
           done
+          if [[ "$plat" == darwin-* ]]; then
+            for target in ios ios_sim macos; do
+              for mode in "" _arc; do
+                archive="libosprey_runtime_${target}${mode}.a"
+                [ -s "dist/$staging/$archive" ] || {
+                  echo "::error::$archive missing from $staging"
+                  exit 1
+                }
+              done
+            done
+          fi
           tar -czf "dist/$staging.tar.gz" -C dist "$staging"
           # macOS ships shasum (Perl) but not sha256sum; Windows Git Bash ships
           # sha256sum but not shasum; Linux has both. Identical output format
@@ -213,7 +267,7 @@ jobs:
   # --------------------------------------------------------------------------
   github-release:
     name: Publish GitHub Release
-    needs: [version, build, scope]
+    needs: [version, build, scope, audit]
     # The standalone binary GitHub Release (and the brew/scoop jobs that depend on
     # it) only ship on a full release.
     if: ${{ needs.scope.outputs.full == 'true' }}
@@ -266,7 +320,7 @@ jobs:
   # to install the runtime libs and depend on llvm (osprey shells out to it).
   brew:
     name: Publish Homebrew formula
-    needs: [version, github-release, preflight]
+    needs: [version, github-release, preflight, audit]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -340,7 +394,7 @@ jobs:
   # llc/clang/gcc at compile time.
   scoop:
     name: Publish Scoop manifest
-    needs: [version, github-release, preflight]
+    needs: [version, github-release, preflight, audit]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -408,7 +462,7 @@ jobs:
   # extension launches a version-matched compiler verified by @nimblesite/shipwright-vscode.
   vsix:
     name: Publish VSIX ${{ matrix.target }}
-    needs: [version, build, scope]
+    needs: [version, build, scope, audit]
     # Package the per-platform VSIX only when the extension changed (or a full
     # release). build_matrix is guaranteed true here, so the bundled binary is
     # rebuilt at the new tag version.
@@ -433,13 +487,17 @@ jobs:
       # without it the VSIX carries an LFS pointer the Marketplace rejects.
       - name: Fetch the logo the extension icon is copied from
         shell: bash
-        run: git lfs install --local && git lfs pull --include=website/src/assets/images/logo.png
+        run: git lfs install --local && git lfs pull --include="website/src/assets/images/logo.png,vscode-extension/media/package-tour.gif"
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
       - uses: actions/download-artifact@v4
         with:
           name: osprey-${{ matrix.artifact }}
           path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: package-workspace-wasm
+          path: dist/package-workspace
       - name: Stage bundled compiler + manifest
         shell: bash
         env:
@@ -450,6 +508,7 @@ jobs:
           dest="vscode-extension/bin/${{ matrix.target }}"
           mkdir -p "$dest"
           cp -r "dist/osprey-${VERSION}-${{ matrix.target }}/." "$dest/"
+          cp dist/package-workspace/package-workspace.wasm "$dest/"
           # Stamp + bundle shipwright.json so the extension can version-check the
           # bundled binary at activation. [EDITOR-VERSIONING]
           node -e '
@@ -476,7 +535,9 @@ jobs:
           npm run compile
       - name: Package VSIX
         working-directory: vscode-extension
-        run: npx vsce package --target ${{ matrix.target }}
+        run: |
+          npx vsce package --target ${{ matrix.target }}
+          node scripts/verify-readme.mjs osprey-${{ matrix.target }}-${{ needs.version.outputs.version }}.vsix
       - name: Verify bundled binary is inside the VSIX
         shell: bash
         working-directory: vscode-extension
@@ -484,6 +545,8 @@ jobs:
           set -euo pipefail
           exe=""; [ "${{ runner.os }}" = "Windows" ] && exe=".exe"
           unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/osprey${exe}"
+          unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/osprey-pkg${exe}"
+          unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/package-workspace.wasm"
       # Packaging is per-platform (each VSIX bundles the matching native binary);
       # publishing is centralised in the publish-marketplace / publish-openvsx
       # jobs so the registry tokens live in one least-privilege place.
@@ -506,7 +569,7 @@ jobs:
   # Nimblesite/NimblesiteDeployment docs/vscode-marketplace-oidc.md.
   publish-marketplace:
     name: Publish VSIX to VS Code Marketplace
-    needs: [version, vsix]
+    needs: [version, vsix, audit]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: release
@@ -563,7 +626,7 @@ jobs:
   # publish so one registry hiccup never blocks the other. [EDITOR-VSCODE]
   publish-openvsx:
     name: Publish VSIX to Open VSX
-    needs: [version, vsix, preflight]
+    needs: [version, vsix, preflight, audit]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: release
@@ -612,7 +675,7 @@ jobs:
   # is skipped, so a prerelease never overwrites the live site.
   deploy-site:
     name: Deploy website to GitHub Pages
-    needs: [scope]
+    needs: [scope, audit]
     if: ${{ needs.scope.outputs.website == 'true' && !contains(github.ref_name, '-') }}
     uses: ./.github/workflows/deploy-pages.yml
     permissions:
@@ -622,7 +685,7 @@ jobs:
 
   deploy-webcompiler:
     name: Deploy web compiler
-    needs: [github-release]
+    needs: [github-release, audit]
     # Blocking, like every other channel. This deploy used to be non-fatal, and
     # the live playground consequently served a stale build for weeks behind a
     # green release. Nothing depends on this job, so failing it stops nothing —
@@ -646,6 +709,7 @@ jobs:
   release-complete:
     name: Release complete
     needs:
+      - audit
       - scope
       - version
       - build
@@ -687,7 +751,7 @@ jobs:
             | "\(.key)(\(.value.result))"' <<< "$RESULTS" | tr '\n' ' ')
 
           # These have no `if:` at all, so a skip means the run itself is broken.
-          required="scope version preflight"
+          required="scope version preflight audit"
           [ "$WANT_BUILD" != "true" ] || required="$required build"
           [ "$WANT_VSIX" != "true" ] || required="$required vsix publish-marketplace publish-openvsx"
           [ "$WANT_FULL" != "true" ] || required="$required github-release brew scoop deploy-webcompiler"

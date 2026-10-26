@@ -3,9 +3,7 @@
 Osprey projects use logical namespaces and closed modules. File paths select
 project sources but do not determine exported names.
 
-Both source flavors lower module syntax to the same AST before project
-assembly. The project layer then resolves imports, validates boundaries, and
-flattens the graph into one canonical program.
+Default, ML and Python sources lower to the same AST before project assembly. The project layer then resolves imports, validates boundaries, and flattens the graph into one canonical program. Default and ML module forms appear below; [Python Flavor Syntax](0041-PythonFlavorSyntax.md#modules-and-concurrency--flavor-python-interop) specifies Python's logical module imports and export markers.
 
 ## Canonical Project Model `[MODULES-MODEL]`
 
@@ -13,14 +11,16 @@ flattens the graph into one canonical program.
 text, and canonical `Program`. Project assembly performs these steps in sorted
 source-path order:
 
-```text
-discover .osp/.ospml sources
-  -> parse each source with its selected flavor
-  -> extract logical namespace contributions
-  -> collect modules, declarations, signatures, and constants
-  -> validate imports, exports, signatures, and state ownership
-  -> resolve names and flatten to one Program
+```mermaid
+flowchart TD
+    sources["Discover .osp/.ospml and explicitly selected .py sources"] --> parse["Parse each source with its selected frontend"]
+    parse --> namespaces["Extract logical namespace contributions"]
+    namespaces --> declarations["Collect modules, declarations, signatures and constants"]
+    declarations --> validate["Validate imports, exports, signatures and state ownership"]
+    validate --> program["Resolve names and flatten to one Program"]
 ```
+
+Python sources are selected by `[project].python_sources` or an explicit `.py` entry; other Python files beneath a source root are excluded. All selected paths must be inside a declared source root ([FLAVOR-PYTHON-SELECT](0041-PythonFlavorSyntax.md#source-selection--flavor-python-select)).
 
 `AssembledProject` retains the flat program, entry source, per-source position
 ranges, and a map from internal linkage names back to source-level names.
@@ -40,7 +40,7 @@ Project assembly does not retain which surface produced a declaration.
 
 ## Namespaces `[MODULES-NAMESPACE]`
 
-A namespace is an open logical group. Multiple files and both flavors may
+A namespace is an open logical group. Multiple files and mixed flavors may
 contribute to the same label. Duplicate declarations in the merged namespace
 are errors.
 

@@ -1,0 +1,20 @@
+{
+  "spec": "[PACKAGE-RESOLUTION]",
+  "cases": [
+    "satisfiable",
+    "unsatisfiable",
+    "downgrade",
+    "epoch",
+    "target",
+    "capability",
+    "revocation",
+    "revoked",
+    "technical-lag",
+    "cycle",
+    "test-edge-not-activated",
+    "minimum-ordinal-floor",
+    "tie-break",
+    "missing-package",
+    "grant"
+  ]
+}

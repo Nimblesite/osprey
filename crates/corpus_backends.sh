@@ -39,8 +39,8 @@ target_rejection() {
 # Compile and execute under Node's WASI host. Only explicit capability errors
 # may skip execution; the exact program and reason remain pinned below.
 run_wasm() {
-  local file=$1 out=$2 err=$3 module=$4
-  if ! $BIN "$file" --target=wasm32 --compile -o "$module" >"$err" 2>&1; then
+  local file=$1 out=$2 err=$3 module=$4 memory=$5
+  if ! $BIN "$file" --target=wasm32 --memory="$memory" --compile -o "$module" >"$err" 2>&1; then
     [[ -n $(target_rejection "$err") ]] && return $SKIP_CODE
     return 1
   fi
@@ -67,9 +67,9 @@ int main(int argc, char **argv) {
 # rejection skips; anything else -- a failed clang, a failed link, a non-zero
 # exit -- is a failure. [IOS-TARGET-MACOS]
 run_apple() {
-  local file=$1 out=$2 err=$3 work=$4
+  local file=$1 out=$2 err=$3 work=$4 memory=$5
   mkdir -p "$work" || return 1
-  if ! $BIN "$file" --target=$TARGET --entry-only --compile -o "$work/golden.a" >"$err" 2>&1; then
+  if ! $BIN "$file" --target=$TARGET --memory="$memory" --entry-only --compile -o "$work/golden.a" >"$err" 2>&1; then
     [[ -n $(target_rejection "$err") ]] && return $SKIP_CODE
     return 1
   fi
@@ -80,7 +80,7 @@ run_apple() {
   if [[ $TARGET == macos ]]; then
     "$work/host" "$work" >"$out" 2>>"$err" </dev/null
   else
-    xcrun simctl spawn "$IOS_DEVICE" "$work/host" "$work" >"$out" 2>>"$err" </dev/null
+    SIMCTL_CHILD_OSPREY_ARC_DEBUG=1 xcrun simctl spawn "$IOS_DEVICE" "$work/host" "$work" >"$out" 2>>"$err" </dev/null
   fi
 }
 
@@ -89,10 +89,10 @@ run_apple() {
 # program's exit status back to the harness; `exec-out` returns 0 whatever the
 # program did, which would turn every failing assertion into a silent pass.
 run_android() {
-  local file=$1 out=$2 err=$3 work=$4 index=$5
+  local file=$1 out=$2 err=$3 work=$4 index=$5 memory=$6
   local -a adb=("$ANDROID_ADB_BIN" -s "$ANDROID_SERIAL")
   mkdir -p "$work" || return 1
-  if ! $BIN "$file" --target=$TARGET --entry-only --compile -o "$work/golden.a" >"$err" 2>&1; then
+  if ! $BIN "$file" --target=$TARGET --memory="$memory" --entry-only --compile -o "$work/golden.a" >"$err" 2>&1; then
     [[ -n $(target_rejection "$err") ]] && return $SKIP_CODE
     return 1
   fi
@@ -102,7 +102,7 @@ run_android() {
   local remote=$ANDROID_REMOTE/$index
   $adb shell "mkdir -p $remote" >>"$err" 2>&1 || return 1
   $adb push "$work/host" "$remote/host" >>"$err" 2>&1 || return 1
-  $adb shell "cd $remote && ./host $remote" >"$out" 2>>"$err"
+  $adb shell "cd $remote && OSPREY_ARC_DEBUG=1 ./host $remote" >"$out" 2>>"$err"
 }
 
 # Resolve the device and toolchain a cross target needs, exactly once. Called

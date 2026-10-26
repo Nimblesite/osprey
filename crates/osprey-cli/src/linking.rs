@@ -25,21 +25,56 @@ pub(super) fn link_args(ir: &str, source: &str, memory: &str) -> Vec<String> {
 }
 
 fn runtime_archive(http: bool, memory: &str) -> Option<String> {
+    let name = if http { "http" } else { "fiber" };
+    find_runtime_lib(&runtime_name(&format!("lib{name}_runtime"), memory))
+        .or_else(|| find_runtime_lib(&runtime_name("libfiber_runtime", memory)))
+}
+
+pub(crate) fn runtime_name(base: &str, memory: &str) -> String {
     // [MEM-BACKENDS]: the reclaiming backend is an archive swap.
     let suffix = match memory {
         "gc" => "_gc",
         "arc" => "_arc",
         _ => "",
     };
-    let name = if http { "http" } else { "fiber" };
-    find_runtime_lib(&format!("lib{name}_runtime{suffix}.a"))
-        .or_else(|| find_runtime_lib(&format!("libfiber_runtime{suffix}.a")))
+    format!("{}{suffix}.a", base.trim_end_matches(".a"))
 }
 
 /// The IR spellings that reach libm: `frem` may lower to `fmod`
-/// [FLOAT-IEEE-RESULTS], and the float functions [BUILTIN-MATH] are libm
-/// calls — the `exp`/`ln` intrinsics lower to them, `tanh` is called by name.
-const LIBM_SPELLINGS: [&str; 4] = ["frem ", "@llvm.exp.f64", "@llvm.log.f64", "@tanh("];
+/// [FLOAT-IEEE-RESULTS], and the float functions [BUILTIN-MATH] and its
+/// sections are libm calls — the trig/log/pow intrinsics lower to them and
+/// the rest are called by name. `llvm.sqrt.f64` is deliberately absent: sqrt
+/// lives in libc on every target the compiler links against.
+const LIBM_SPELLINGS: [&str; 28] = [
+    "frem ",
+    "@llvm.exp.f64",
+    "@llvm.log.f64",
+    "@llvm.sin.f64",
+    "@llvm.cos.f64",
+    "@llvm.log2.f64",
+    "@llvm.log10.f64",
+    "@llvm.pow.f64",
+    "@llvm.copysign.f64",
+    "@llvm.floor.f64",
+    "@llvm.ceil.f64",
+    "@llvm.trunc.f64",
+    "@llvm.roundeven.f64",
+    "@tanh(",
+    "@asin(",
+    "@acos(",
+    "@atan(",
+    "@atan2(",
+    "@sinh(",
+    "@cosh(",
+    "@asinh(",
+    "@acosh(",
+    "@atanh(",
+    "@log1p(",
+    "@expm1(",
+    "@erf(",
+    "@erfc(",
+    "@hypot(",
+];
 
 fn needs_libm(ir: &str) -> bool {
     LIBM_SPELLINGS.iter().any(|spelling| ir.contains(spelling))
@@ -106,7 +141,8 @@ pub(crate) fn unscoped_link_directive(source: &str) -> Option<String> {
 /// Search the conventional install/build locations for a runtime static lib:
 /// the working directory's repo layout, then next to the `osprey` executable
 /// and below each of its ancestors (covering arbitrary in-workspace Cargo
-/// target/profile nesting and release-tarball layouts), the compile-time
+/// target/profile nesting, release-tarball layouts and an installed
+/// `<prefix>/bin` + `<prefix>/lib` pair such as Homebrew's), the compile-time
 /// workspace as a development fallback, then the system lib dir.
 pub(crate) fn find_runtime_lib(lib: &str) -> Option<String> {
     let executable_dir = std::env::current_exe()
@@ -185,7 +221,7 @@ pub(super) fn runtime_lib_candidates(lib: &str, executable_dir: Option<&Path>) -
             roots.extend(library_paths(
                 ancestor,
                 lib,
-                &["compiler/lib", "compiler/bin", "bin"],
+                &["compiler/lib", "compiler/bin", "bin", "lib"],
             ));
         }
     }
@@ -263,13 +299,37 @@ mod tests {
 
     #[test]
     fn libm_is_linked_for_each_spelling_that_reaches_it_and_nothing_else() {
-        // [BUILTIN-MATH] / [FLOAT-IEEE-RESULTS]: the four IR spellings whose
+        // [BUILTIN-MATH] / [FLOAT-IEEE-RESULTS]: every IR spelling whose
         // lowering needs libm, and near misses that must not drag it in.
         for ir in [
             "%r = frem double %a, %b",
             "call double @llvm.exp.f64(double 1.0)",
             "call double @llvm.log.f64(double 1.0)",
             "call double @tanh(double 1.0)",
+            "call double @llvm.sin.f64(double 1.0)",
+            "call double @llvm.cos.f64(double 1.0)",
+            "call double @llvm.log2.f64(double 1.0)",
+            "call double @llvm.log10.f64(double 1.0)",
+            "call double @llvm.pow.f64(double 1.0, double 2.0)",
+            "call double @llvm.copysign.f64(double 1.0, double -1.0)",
+            "call double @llvm.floor.f64(double 1.0)",
+            "call double @llvm.ceil.f64(double 1.0)",
+            "call double @llvm.trunc.f64(double 1.0)",
+            "call double @llvm.roundeven.f64(double 1.0)",
+            "call double @asin(double 1.0)",
+            "call double @acos(double 1.0)",
+            "call double @atan(double 1.0)",
+            "call double @atan2(double 1.0, double 2.0)",
+            "call double @sinh(double 1.0)",
+            "call double @cosh(double 1.0)",
+            "call double @asinh(double 1.0)",
+            "call double @acosh(double 1.0)",
+            "call double @atanh(double 1.0)",
+            "call double @log1p(double 1.0)",
+            "call double @expm1(double 1.0)",
+            "call double @erf(double 1.0)",
+            "call double @erfc(double 1.0)",
+            "call double @hypot(double 1.0, double 2.0)",
         ] {
             assert!(needs_libm(ir), "{ir}");
         }
@@ -279,8 +339,38 @@ mod tests {
             "%r = fadd double %a, %b",
             "call float @tanhf(float 1.0)",
             "declare double @tanh2(double)",
+            "call double @sinf(float 1.0)",
+            "call double @powf(float 1.0, float 2.0)",
         ] {
             assert!(!needs_libm(ir), "{ir}");
         }
+    }
+}
+
+#[cfg(test)]
+mod install_layout_tests {
+    use super::runtime_lib_candidates;
+    use std::path::Path;
+
+    #[test]
+    fn a_homebrew_prefix_lib_beside_bin_is_searched() {
+        // `brew install` lays the formula out as `<prefix>/bin/osprey` and
+        // `<prefix>/lib/lib*.a`, and links both into the Homebrew prefix. A
+        // lookup that only knows `bin` and `compiler/{bin,lib}` fails the
+        // very first native link on an installed compiler (issue #304).
+        let bin = Path::new("/opt/homebrew/Cellar/osprey/0.22.0/bin");
+        let candidates = runtime_lib_candidates("libfiber_runtime_gc.a", Some(bin));
+        assert!(
+            candidates.contains(
+                &"/opt/homebrew/Cellar/osprey/0.22.0/lib/libfiber_runtime_gc.a".to_owned()
+            ),
+            "{candidates:#?}"
+        );
+        let linked = Path::new("/opt/homebrew/bin");
+        let candidates = runtime_lib_candidates("libosprey_runtime_macos.a", Some(linked));
+        assert!(
+            candidates.contains(&"/opt/homebrew/lib/libosprey_runtime_macos.a".to_owned()),
+            "{candidates:#?}"
+        );
     }
 }

@@ -9,7 +9,6 @@
 //! seeing `<script>` than by silently losing it.
 
 use pulldown_cmark::{html, BrokenLink, CowStr, Event, Options, Parser, Tag};
-use std::fmt::Write as _;
 use std::path::Path;
 
 pub(super) use crate::docs::prose::{body as without_front_matter, summary as first_paragraph};
@@ -24,36 +23,7 @@ const EXECUTABLE_SCHEMES: [&str; 3] = ["javascript:", "data:", "vbscript:"];
 /// still read the text of, that does nothing when clicked.
 const INERT: &str = "#";
 
-/// Escape text for HTML element content.
-pub(super) fn text(raw: &str) -> String {
-    let mut out = String::with_capacity(raw.len());
-    for c in raw.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            _ => out.push(c),
-        }
-    }
-    out
-}
-
-/// Escape text for a double-quoted HTML attribute. Element escaping is not
-/// enough here: an unescaped quote closes the attribute early.
-pub(super) fn attr(raw: &str) -> String {
-    let mut out = String::with_capacity(raw.len());
-    for c in raw.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&#39;"),
-            _ => out.push(c),
-        }
-    }
-    out
-}
+pub(super) use crate::html_escape::{attr, text};
 
 /// Escape a string as a JSON string body (no surrounding quotes).
 ///
@@ -62,24 +32,7 @@ pub(super) fn attr(raw: &str) -> String {
 /// a `</script>` sequence in a doc comment closes any element the same bytes
 /// are ever inlined into — and that is a change nobody would think to re-audit.
 pub(super) fn json(raw: &str) -> String {
-    let mut out = String::with_capacity(raw.len());
-    for c in raw.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            '<' => out.push_str("\\u003c"),
-            '>' => out.push_str("\\u003e"),
-            '&' => out.push_str("\\u0026"),
-            c if u32::from(c) < 0x20 => {
-                let _ = write!(out, "\\u{:04x}", u32::from(c));
-            }
-            c => out.push(c),
-        }
-    }
-    out
+    osprey_ast::json::content(raw, osprey_ast::json::Escaping::Script)
 }
 
 /// Render `CommonMark` to HTML with the extensions a reference page needs,

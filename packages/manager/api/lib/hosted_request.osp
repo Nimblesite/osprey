@@ -1,0 +1,148 @@
+namespace registry_api;
+import registry_api::HostedHeaders
+import registry_api::HostedCookies
+import registry_api::HostedOrigin
+
+/// The hosted-request admission gate, evaluated in the order required by
+/// [PACKAGE-HOSTED-EDGE]: parse headers, check the edge secret, then the
+/// host, method, URI and body bounds, then the credentialed origin/CSRF
+/// chain. No caller field establishes authentication; this gate only
+/// rejects. Server wiring lives in the root package.
+module HostedRequest {
+    let allowedMethods = ["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"]
+    let mutationMethods = ["POST", "PUT", "PATCH", "DELETE"]
+    let maxUri = 2048
+    let badRequest = 400
+    let forbidden = 403
+    let methodStatus = 405
+    let bodyStatus = 413
+    let uriTooLong = 414
+    let misdirected = 421
+
+    /// The raw request as received from the ingress chain.
+    export type Incoming = { method: string, uri: string, headerBlock: string, body: string }
+
+    /// The environment policy every request is admitted against.
+    export type Policy = {
+        allowedOrigin: string, allowedHost: string, edgeSecret: string,
+        cookieName: string, csrfToken: string, maxBody: int
+    }
+
+    /// The gate's decision: admission, or a stable typed rejection.
+    export type Verdict = Admitted { method: string, uri: string, body: string } | Rejected { status: int, code: string }
+
+    /// An intermediate gate result: pass to the next gate, or stop.
+    type Stage = Pass | Stop { verdict: Verdict }
+
+    fn rejected(status, code) = Rejected { status: status, code: code }
+    fn stop(status, code) = Stop { verdict: rejected(status, code) }
+    fn admitted(method, uri, body) = Admitted { method: method, uri: uri, body: body }
+
+    /// The edge secret first, before routing, auth parsing or body work.
+    /// Ordinary equality here; a constant-time comparison primitive belongs
+    /// to the native runtime adapter, not this pure module.
+    fn edgeStage(headers, policy) = match HostedHeaders::find(headers, "x-edge-secret") {
+        Success { value } => {
+            if value == policy.edgeSecret { Pass } else { stop(forbidden, "req.edge-secret") }
+        }
+        Error => stop(forbidden, "req.edge-secret")
+    }
+
+    fn hostStage(headers, policy) = match HostedHeaders::find(headers, "host") {
+        Success { value } => {
+            if toLowerCase(value) == toLowerCase(policy.allowedHost) { Pass } else { stop(misdirected, "req.host") }
+        }
+        Error => stop(misdirected, "req.host")
+    }
+
+    fn methodStage(method) = if listContains(allowedMethods, toUpperCase(method)) { Pass } else { stop(methodStatus, "req.method") }
+
+    fn uriByte(b) = b >= 33 && b < 127 && b != 92
+    fn uriBytesOk(uri) = fold(range(0, byteLength(uri)), true, fn(ok, i) => ok && uriByte(byteAt(uri, i) ?: 0))
+
+    fn uriStage(uri) = if byteLength(uri) > maxUri { stop(uriTooLong, "req.uri") }
+        else if !startsWith(uri, "/") || !uriBytesOk(uri) { stop(badRequest, "req.uri") }
+        else { Pass }
+
+    fn digits(s) = fold(range(0, byteLength(s)), byteLength(s) > 0, fn(ok, i) => {
+        let b = byteAt(s, i) ?: 0
+        ok && b >= 48 && b <= 57
+    })
+
+    fn lengthHeaderOk(headers, body, maxBody) = match HostedHeaders::find(headers, "content-length") {
+        Error => true
+        Success { value } => digits(value) && byteLength(body) <= maxBody
+    }
+
+    fn bodyStage(headers, incoming, policy) = if byteLength(incoming.body) > policy.maxBody { stop(bodyStatus, "req.body-size") }
+        else if !lengthHeaderOk(headers, incoming.body, policy.maxBody) { stop(badRequest, "req.content-length") }
+        else { Pass }
+
+    /// Credentialed requests: a present session cookie forces the exact
+    /// website origin, and mutations additionally force the CSRF token.
+    /// Bearer-only requests carry no cookie and skip the browser challenge.
+    fn credentialGate(headers, policy, method) = match HostedHeaders::find(headers, "cookie") {
+        Error => admitted(method, "", "")
+        Success { value } => {
+            let cookie = value
+            let selection = HostedCookies::select(cookie, policy.cookieName)
+            if HostedCookies::statusOf(selection) != 0 { rejected(HostedCookies::statusOf(selection), HostedCookies::codeOf(selection)) }
+            else if HostedCookies::foundValue(selection) == "" { admitted(method, "", "") }
+            else { originChain(headers, policy, method) }
+        }
+    }
+
+    fn originChain(headers, policy, method) = {
+        let origin = HostedOrigin::check((HostedHeaders::find(headers, "origin") ?: ""), policy.allowedOrigin, method)
+        if !HostedOrigin::ok(origin) { rejected(HostedOrigin::statusOf(origin), HostedOrigin::codeOf(origin)) }
+        else { csrfChain(headers, policy, method) }
+    }
+
+    fn csrfChain(headers, policy, method) = {
+        let token = HostedOrigin::csrf((HostedHeaders::find(headers, "x-csrf-token") ?: ""), policy.csrfToken)
+        if !listContains(mutationMethods, toUpperCase(method)) || HostedOrigin::ok(token) { admitted(method, "", "") }
+        else { rejected(HostedOrigin::statusOf(token), HostedOrigin::codeOf(token)) }
+    }
+
+    /// The full admission decision for one raw request against one policy.
+    export fn admit(incoming, policy) = {
+        let parsed = HostedHeaders::parse(incoming.headerBlock)
+        if !HostedHeaders::isOk(parsed) { rejected(HostedHeaders::statusOf(parsed), HostedHeaders::codeOf(parsed)) }
+        else { stages(HostedHeaders::headers(parsed), incoming, policy) }
+    }
+
+    fn stages(headers, incoming, policy) = match edgeStage(headers, policy) {
+        Pass => match hostStage(headers, policy) {
+            Pass => match methodStage(incoming.method) {
+                Pass => match uriStage(incoming.uri) {
+                    Pass => match bodyStage(headers, incoming, policy) {
+                        Pass => credentialGate(headers, policy, incoming.method)
+                        Stop { verdict } => verdict
+                    }
+                    Stop { verdict } => verdict
+                }
+                Stop { verdict } => verdict
+            }
+            Stop { verdict } => verdict
+        }
+        Stop { verdict } => verdict
+    }
+
+    /// True when the verdict is admission.
+    export fn isAdmitted(verdict) = match verdict {
+        Admitted => true
+        _ => false
+    }
+
+    /// The rejection status, or 0 for admission.
+    export fn statusOf(verdict) = match verdict {
+        Rejected { status, code } => status
+        _ => 0
+    }
+
+    /// The rejection code, or "" for admission.
+    export fn codeOf(verdict) = match verdict {
+        Rejected { status, code } => code
+        _ => ""
+    }
+}

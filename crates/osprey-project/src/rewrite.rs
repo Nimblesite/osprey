@@ -1,7 +1,7 @@
 //! Lexically aware value, declaration, and constructor rewriting.
 
 use crate::model::SymbolKey;
-use crate::purity::is_pure;
+use crate::purity::{is_function_reference, is_pure};
 use crate::resolve::{symbol_key, Context, Locals, Resolver};
 use osprey_ast::{Expr, Stmt, TypeParam};
 
@@ -60,7 +60,9 @@ impl Resolver<'_> {
         let mut value = constant.value;
         self.rewrite_expr(&mut value, &context, &mut Locals::default());
         let _ = self.constant_active.remove(key);
-        if is_pure(&value) && !self.invalid_constants.contains(key) {
+        if (is_pure(&value) || is_function_reference(&value, self.graph))
+            && !self.invalid_constants.contains(key)
+        {
             let _ = self.constant_cache.insert(key.clone(), value.clone());
             Some(value)
         } else {
@@ -299,7 +301,7 @@ impl Resolver<'_> {
             } => {
                 self.rewrite_expr(function, context, locals);
                 if let Expr::FieldAccess { field, .. } = function.as_mut() {
-                    self.rewrite_value_name(field, context, false);
+                    self.rewrite_method_name(field, context);
                 }
                 for argument in type_args {
                     self.rewrite_type(argument, context, locals);
@@ -327,7 +329,7 @@ impl Resolver<'_> {
                 named_arguments,
             } => {
                 self.rewrite_expr(target, context, locals);
-                self.rewrite_value_name(method, context, false);
+                self.rewrite_method_name(method, context);
                 self.rewrite_exprs(arguments, context, locals);
                 for argument in named_arguments {
                     self.rewrite_expr(&mut argument.value, context, locals);

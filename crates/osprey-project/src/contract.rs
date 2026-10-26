@@ -284,22 +284,12 @@ fn same_operation(
     // of its implementation: a caller reads them off the row to know what its
     // own handler arms owe ([MULTI-AXIS]). A module promising `once next` may
     // not supply `many next`, so they compare alongside the written types.
-    left.multiplicity() == right.multiplicity()
+    left.mode == right.mode
+        && left.multiplicity() == right.multiplicity()
         && left.replayable == right.replayable
-        && left.parameters.len() == right.parameters.len()
-        && left
-            .parameters
-            .iter()
-            .zip(&right.parameters)
-            .all(|(left, right)| match (&left.ty, &right.ty) {
-                (Some(left), Some(right)) => {
-                    same_bound_type(left, right, left_binders, right_binders)
-                }
-                (None, None) => true,
-                _ => false,
-            })
-        && normalize_written_type(&left.return_type, left_binders)
-            == normalize_written_type(&right.return_type, right_binders)
+        // Conformance runs before inference populates parameters and return_type.
+        && normalize_written_type(&left.ty, left_binders)
+            == normalize_written_type(&right.ty, right_binders)
 }
 
 fn same_effects(
@@ -405,12 +395,26 @@ fn same_ascription(left: &SignatureAscription, right: &SignatureAscription) -> b
 }
 
 fn normalize_written_type(value: &str, binders: &[TypeParam]) -> String {
-    let mut normalized = value.to_string();
-    for (index, binder) in binders.iter().enumerate() {
-        normalized = normalized.replace(&binder.name, &format!("${index}"));
-    }
-    normalized
+    value
+        .split_inclusive(|character| !type_name_character(character))
+        .map(|token| normalize_type_token(token, binders))
+        .collect::<String>()
         .chars()
         .filter(|character| !character.is_whitespace())
         .collect()
+}
+
+fn type_name_character(character: char) -> bool {
+    character.is_alphanumeric() || matches!(character, '_' | ':')
+}
+
+fn normalize_type_token(token: &str, binders: &[TypeParam]) -> String {
+    let name = token.trim_end_matches(|character| !type_name_character(character));
+    binders
+        .iter()
+        .position(|binder| binder.name == name)
+        .map_or_else(
+            || token.to_string(),
+            |index| format!("${index}{}", &token[name.len()..]),
+        )
 }

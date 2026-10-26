@@ -90,9 +90,9 @@ fn every_theme_defines_the_same_variables_and_they_differ() {
         for var in ["--bg", "--text", "--accent", "--border", "--code-bg"] {
             assert!(css.contains(var), "{name} theme is missing {var}");
         }
-        assert!(css.contains(".shell"), "{name} theme lost the layout");
+        crate::testkit::shows(css, &[".shell"]);
         // Self-contained: no CDN, no remote font.
-        assert!(!css.contains("http"), "{name} theme reaches the network");
+        crate::testkit::contents(css, &[], &["http"]);
     }
     // Every theme must be distinct from every other, not merely from its
     // neighbour: a set collapses any pair that renders identically.
@@ -136,27 +136,23 @@ fn a_generated_site_is_self_contained_and_navigable() {
 
     let math = read(&dir, "api/math.html");
     // Relative depth is computed per page, so a nested page still finds assets.
-    assert!(math.contains("href=\"../assets/theme.css\""), "{math}");
+    crate::testkit::shows(&math, &["href=\"../assets/theme.css\""]);
     // User CSS is linked AFTER the theme so it can override it.
     let theme_at = math.find("assets/theme.css").unwrap_or(0);
     let custom_at = math.find("custom-0-brand.css").unwrap_or(0);
     assert!(theme_at < custom_at, "user css must load after the theme");
     // Accessibility scaffolding a keyboard user depends on.
-    assert!(math.contains("class=\"skip\""), "no skip link");
-    assert!(
-        math.contains("aria-current=\"page\""),
-        "current page unmarked"
+    crate::testkit::shows(
+        &math,
+        &[
+            "class=\"skip\"",
+            "aria-current=\"page\"",
+            "aria-live",
+            "width=device-width",
+        ],
     );
-    assert!(
-        math.contains("aria-live"),
-        "search results are not announced"
-    );
-    assert!(math.contains("width=device-width"), "not mobile-ready");
     // Nothing is fetched from the network.
-    assert!(
-        !math.contains("https://"),
-        "page reaches the network: {math}"
-    );
+    crate::testkit::contents(&math, &[], &["https://"]);
 
     assert_eq!(search_index(&dir).as_array().map(Vec::len), Some(2));
 }
@@ -200,18 +196,11 @@ fn hostile_documentation_text_cannot_break_out_of_any_context() {
     };
     generate(&dir, std::slice::from_ref(&hostile), "osprey", &[]).expect("generates");
     let html = read(&dir, "api/evil.html");
-    assert!(
-        !html.contains("<script>alert(1)"),
-        "title escaped out: {html}"
-    );
-    assert!(
-        !html.contains("<script>alert(2)"),
-        "body escaped out: {html}"
-    );
+    crate::testkit::contents(&html, &[], &["<script>alert(1)", "<script>alert(2)"]);
     // The index stays parseable even with `</script>` in the text, and cannot
     // close a `<script>` element if it is ever inlined into one.
     let raw = read(&dir, "assets/search-index.js");
-    assert!(!raw.contains("</script>"), "index can close its element");
+    crate::testkit::contents(&raw, &[], &["</script>"]);
     assert_eq!(search_index(&dir).as_array().map(Vec::len), Some(1));
 }
 
@@ -220,7 +209,7 @@ fn an_empty_export_still_produces_a_usable_landing_page() {
     let dir = fresh_dir("empty");
     generate(&dir, &[], "osprey", &[]).expect("generates");
     let index = read(&dir, "index.html");
-    assert!(index.contains("Osprey documentation"), "no landing page");
+    crate::testkit::shows(&index, &["Osprey documentation"]);
     assert!(dir.join("assets/search-index.js").is_file());
     assert_eq!(
         read(&dir, "assets/search-index.js"),
@@ -271,13 +260,9 @@ fn summaries_reach_plain_text_contexts_without_markdown_markers() {
     with_summary.summary = "**Bold** summary".into();
     generate(&dir, std::slice::from_ref(&with_summary), "osprey", &[]).expect("generates");
     let html = read(&dir, "api/m.html");
-    assert!(html.contains("Bold summary"), "markers survived: {html}");
-    assert!(!html.contains("**Bold**"), "raw markdown in page: {html}");
+    crate::testkit::contents(&html, &["Bold summary"], &["**Bold**"]);
     let index = read(&dir, "assets/search-index.js");
-    assert!(
-        !index.contains("**Bold**"),
-        "raw markdown in index: {index}"
-    );
+    crate::testkit::contents(&index, &[], &["**Bold**"]);
 }
 
 #[test]
@@ -291,17 +276,13 @@ fn search_works_from_the_filesystem_without_fetching_anything() {
     generate(&dir, &pages, "osprey", &[]).expect("generates");
 
     let html = read(&dir, "api/math.html");
-    assert!(!html.contains("fetch("), "search still fetches: {html}");
-    assert!(
-        html.contains("src=\"../assets/search-index.js\""),
-        "index is not loaded as a script: {html}"
-    );
+    crate::testkit::contents(&html, &["src=\"../assets/search-index.js\""], &["fetch("]);
     let index = read(&dir, "assets/search-index.js");
     assert!(
         index.starts_with("window.OSPREY_SEARCH="),
         "index is not a script: {index}"
     );
-    assert!(index.contains("\"api/math\""), "page missing from index");
+    crate::testkit::shows(&index, &["\"api/math\""]);
 }
 
 #[test]
@@ -331,25 +312,16 @@ fn documentation_symbol_links_point_at_the_declaration_they_name() {
 
     // A dotted link names its owner, so it resolves even where the leaf alone
     // would not ([DOC-LINK]).
-    assert!(
-        body.contains("href=\"../api/ledger-entries.html\""),
-        "dotted symbol link unresolved: {body}"
-    );
+    crate::testkit::shows(&body, &["href=\"../api/ledger-entries.html\""]);
     // An exact qualified name resolves too.
-    assert!(
-        body.contains("href=\"../api/ledger.html\""),
-        "own name unresolved: {body}"
-    );
+    crate::testkit::shows(&body, &["href=\"../api/ledger.html\""]);
     // `post` is owned by two modules. Picking one would send the reader to a
     // declaration the author did not mean, so the link stays plain text.
     assert!(
         !body.contains("audit-post.html") && !body.contains("ledger-post.html"),
         "an ambiguous leaf was linked anyway: {body}"
     );
-    assert!(
-        body.contains("[post]"),
-        "an unresolved link lost its text: {body}"
-    );
+    crate::testkit::shows(&body, &["[post]"]);
 }
 
 #[test]
@@ -377,20 +349,11 @@ fn guide_links_resolve_to_the_slugs_the_exporter_actually_wrote() {
     generate(&dir, &pages, "osprey", &[]).expect("generates");
 
     let start = read(&dir, "guides/getting-started.html");
-    assert!(
-        start.contains("href=\"deep-dive/advanced-topics.html\""),
-        "nested guide link unresolved: {start}"
-    );
+    crate::testkit::shows(&start, &["href=\"deep-dive/advanced-topics.html\""]);
     let deep = read(&dir, "guides/deep-dive/advanced-topics.html");
-    assert!(
-        deep.contains("href=\"../getting-started.html#intro\""),
-        "encoded-space link unresolved: {deep}"
-    );
+    crate::testkit::shows(&deep, &["href=\"../getting-started.html#intro\""]);
     // An image is not a page: retargeting it would break the reference.
-    assert!(
-        deep.contains("src=\"../logo.png\""),
-        "asset link was rewritten: {deep}"
-    );
+    crate::testkit::shows(&deep, &["src=\"../logo.png\""]);
 }
 
 #[test]
@@ -418,28 +381,19 @@ fn a_symbol_link_resolves_in_its_own_scope_before_anywhere_else() {
     generate(&dir, &pages, "osprey", &[]).expect("generates");
 
     let a = article(&read(&dir, "api/a-read.html"));
-    assert!(
-        a.contains("href=\"../api/a-helper.html\""),
-        "[helper] did not resolve to its own module: {a}"
-    );
-    assert!(
-        !a.contains("b-helper.html\">helper"),
-        "[helper] resolved to the other module: {a}"
+    crate::testkit::contents(
+        &a,
+        &["href=\"../api/a-helper.html\""],
+        &["b-helper.html\">helper"],
     );
     // The same spelling in the sibling module resolves to the sibling's own.
     let b = article(&read(&dir, "api/b-read.html"));
-    assert!(
-        b.contains("href=\"../api/b-helper.html\""),
-        "[helper] did not resolve in module B: {b}"
-    );
+    crate::testkit::shows(&b, &["href=\"../api/b-helper.html\""]);
     // An explicit owner still reaches across.
-    assert!(
-        a.contains("href=\"../api/b-helper.html\""),
-        "[B.helper] did not resolve across modules: {a}"
-    );
+    crate::testkit::shows(&a, &["href=\"../api/b-helper.html\""]);
     // A name this export documents nowhere stays text rather than becoming a
     // link to a page that was never written.
-    assert!(a.contains("[missing]"), "unknown symbol was linked: {a}");
+    crate::testkit::shows(&a, &["[missing]"]);
 }
 
 #[test]
@@ -455,20 +409,18 @@ fn navigation_collapses_on_a_phone_and_opens_from_the_keyboard() {
     // `<details>`/`<summary>` is operable by keyboard with no script of ours,
     // and `open` in the markup means the links are all still there when
     // scripting is off.
-    assert!(html.contains("<details id=\"menu\" open>"), "{html}");
-    assert!(
-        html.contains("<summary>Browse documentation</summary>"),
-        "no disclosure control: {html}"
+    crate::testkit::shows(
+        &html,
+        &[
+            "<details id=\"menu\" open>",
+            "<summary>Browse documentation</summary>",
+        ],
     );
     let css = theme::css("osprey");
-    assert!(
-        css.contains("#menu>summary{display:none}"),
-        "the control is not hidden on a wide screen: {css}"
-    );
-    assert!(
-        css.contains("#menu>summary{display:block"),
-        "the control is not shown on a phone: {css}"
+    crate::testkit::shows(
+        &css,
+        &["#menu>summary{display:none}", "#menu>summary{display:block"],
     );
     // The script closes it where the layout is narrow.
-    assert!(html.contains("menu.open=!narrow.matches"), "{html}");
+    crate::testkit::shows(&html, &["menu.open=!narrow.matches"]);
 }

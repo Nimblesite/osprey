@@ -2,6 +2,7 @@
 #define HTTP_SERVER_INTERNAL_H
 
 #include "http_shared.h"
+#include "socket_safety.h"
 
 #define MAX_HTTP_REQUEST_BYTES (1024U * 1024U)
 #define MAX_HTTP_HEADER_BYTES (32U * 1024U)
@@ -19,11 +20,7 @@
    `method=? path=` for every unparseable request. */
 #define HTTP_LOG_UNKNOWN "-"
 
-#ifdef MSG_NOSIGNAL
-#define HTTP_SEND_FLAGS MSG_NOSIGNAL
-#else
-#define HTTP_SEND_FLAGS 0
-#endif
+#define HTTP_SEND_FLAGS OSPREY_SOCKET_SEND_FLAGS
 
 typedef enum {
   REQUEST_COMPLETE,

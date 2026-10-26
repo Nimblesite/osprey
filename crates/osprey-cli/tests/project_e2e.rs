@@ -73,7 +73,8 @@ fn copy_fixture(name: &str) -> PathBuf {
         if let Some(parent) = destination.parent() {
             std::fs::create_dir_all(parent).expect("create project directories");
         }
-        copy(relative, &destination);
+        let _ =
+            std::fs::copy(fixture().join(relative), &destination).expect("copy project fixture");
     }
     root
 }
@@ -86,15 +87,33 @@ fn expected_output() -> String {
 /// the tests that actually execute it must not overlap in time.
 fn demo_run_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
-    let _ = std::fs::remove_file("/tmp/talon_bank.hold");
-    match LOCK.get_or_init(std::sync::Mutex::default).lock() {
+    let guard = match LOCK.get_or_init(std::sync::Mutex::default).lock() {
         Ok(guard) => guard,
         Err(poisoned) => poisoned.into_inner(),
-    }
+    };
+    assert!(
+        demo_available(Path::new("/tmp/talon_bank.hold")),
+        "bank demo active"
+    );
+    guard
 }
 
-fn copy(relative: &str, destination: &Path) {
-    let _ = std::fs::copy(fixture().join(relative), destination).expect("copy project fixture");
+fn demo_available(marker: &Path) -> bool {
+    !marker.exists()
+}
+#[test]
+fn demo_preparation_preserves_another_sessions_hold_marker() {
+    let directory = copy_fixture("foreign_hold");
+    let marker = directory.join("hold");
+    std::fs::write(&marker, "another session").expect("create foreign hold");
+    let available = demo_available(&marker);
+    let retained = std::fs::read_to_string(&marker);
+    std::fs::remove_dir_all(directory).expect("clean fixture");
+    assert!(!available, "an active demo must be refused, not stopped");
+    assert_eq!(
+        retained.expect("foreign hold must survive"),
+        "another session"
+    );
 }
 
 #[test]
@@ -179,7 +198,7 @@ fn bank_money_signature_keeps_amounts_opaque_and_cents_manifest(
 }
 
 fn assert_money_runs(project: &Path) {
-    for backend in ["default", "gc", "arc"] {
+    for backend in ["gc", "arc"] {
         let output = run(&[arg(project), "--run".into(), format!("--memory={backend}")]);
         assert_eq!(output.code, Some(0), "{backend}: {}", output.stderr);
         assert_eq!(

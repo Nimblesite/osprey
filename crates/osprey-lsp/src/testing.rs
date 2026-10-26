@@ -717,10 +717,7 @@ test(\"undocumented\", fn() => expect(add(1, 1), 2))
              test(\"legacy\", fn() => expect(1, 1))\n",
         )[0]
         .markdown();
-        assert!(
-            md.contains("**Deprecated.** superseded by `commutes`"),
-            "{md}"
-        );
+        shows(&md, &["**Deprecated.** superseded by `commutes`"]);
         assert!(md.starts_with("Legacy check."), "{md}");
     }
 

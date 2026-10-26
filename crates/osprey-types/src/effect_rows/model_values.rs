@@ -2,6 +2,20 @@
 use super::{merge_boxed_value, merge_callable, widen_value, BTreeSet, Callable, Summary, Value};
 
 impl Value {
+    /// Container payloads in field/list/result/fiber order; callable bodies and
+    /// deferred summaries require their own scope-aware traversal.
+    pub(super) fn container_children_mut(&mut self) -> impl Iterator<Item = &mut Self> {
+        self.fields.values_mut().chain(
+            [
+                self.element.as_deref_mut(),
+                self.result_payload.as_deref_mut(),
+                self.fiber_payload.as_deref_mut(),
+            ]
+            .into_iter()
+            .flatten(),
+        )
+    }
+
     pub(super) fn child_count(&self) -> usize {
         self.fields.len()
             + usize::from(self.element.is_some())

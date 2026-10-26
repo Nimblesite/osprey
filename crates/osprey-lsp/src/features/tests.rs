@@ -164,7 +164,7 @@ fn qualified_hover_definition_and_references_resolve_one_module_member() {
                let chosen = sales::Tax::rate()\n";
     let column = col_of(src, 6, "sales::Tax::rate");
     let hover = hover(src, "file:///modules.osp", 6, column, U16).expect("hover");
-    assert!(hover.contains("fn rate() -> int"), "{hover}");
+    crate::testkit::shows(&hover, &["fn rate() -> int"]);
 
     let definitions = definition(src, "file:///modules.osp", 6, column, U16);
     assert_eq!(definitions.len(), 1, "{definitions:?}");
@@ -359,7 +359,7 @@ fn a_symbol_declared_in_a_sibling_file_resolves_across_the_project() {
     let (line, column) = position_of(&text, "Ledger::sqlite");
 
     let hovered = hover(&text, &uri, line, column, U16).expect("cross-file hover");
-    assert!(hovered.contains("sqlite"), "{hovered}");
+    crate::testkit::shows(&hovered, &["sqlite"]);
 
     let definitions = definition(&text, &uri, line, column, U16);
     let first = definitions.first().expect("cross-file definition");

@@ -5,9 +5,15 @@ use crate::{Expr, Program, Stage, Stmt};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Declaration stage does not restrict explicit interpretation selection.
-pub(super) fn all_requirements(program: &Program) -> BTreeMap<String, Vec<String>> {
-    let mut required = crate::stage_rows::requirements(program, Stage::Static);
-    for (name, operations) in crate::stage_rows::requirements(program, Stage::Dynamic) {
+pub(super) fn all_requirements(
+    program: &Program,
+    bindings: &BTreeMap<String, Expr>,
+) -> BTreeMap<String, Vec<String>> {
+    let mut required =
+        crate::stage_rows::requirements_with_bindings(program, Stage::Static, bindings);
+    for (name, operations) in
+        crate::stage_rows::requirements_with_bindings(program, Stage::Dynamic, bindings)
+    {
         let combined = required.entry(name).or_default();
         combined.extend(operations);
         combined.sort();

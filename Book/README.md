@@ -19,13 +19,13 @@ By the end of the finished book, a reader should be able to:
 - test behavior and read compiler feedback without panic;
 - coordinate concurrent work through fibers and channels, with current runtime limits explained;
 - compile a program for a native machine or WebAssembly; and
-- recognise ML and future flavors as optional source surfaces over the same language.
+- recognise Default, ML and Python syntax flavors as ways to write the same language.
 
 ## The teaching path
 
 The book leads with the Default flavor (`.osp`). Its braces, `fn`, `let`, and parenthesised calls are familiar to readers arriving from JavaScript, TypeScript, C#, Java, Kotlin, Swift, Go, or Rust.
 
-ML flavor appears later as an **optional alternative**, not a decision the reader must make before learning Osprey. A file can be translated between surfaces—often conveniently with a coding agent—then checked and tested like any other code change. The design remains open to more flavors in the future; the book teaches the shared language before touring alternative spellings.
+ML flavor appears later as an **optional alternative**, not a decision the reader must make before learning Osprey. A file can be translated between surfaces—often conveniently with a coding agent—then checked and tested like any other code change. Python syntax is also available: `def`, `lambda`, f-strings and decorated effect declarations compile through Osprey, with inferred static types and checked effects. It does not run arbitrary Python packages; CPython libraries require the separate interop bridge. See the [Python flavor guide](../website/src/docs/python-flavor.md).
 
 ## Project map
 
@@ -63,7 +63,7 @@ make release        # run every check and produce both formats
 4. Keep examples runnable against the pinned Osprey edition and store their output where the chapter can verify it.
 5. Let code prove language behavior. Use generated illustration for mood, deterministic diagrams for explanation, and direct captures for product evidence.
 6. Never promise a roadmap feature as shipped behavior.
-7. Do not hide Osprey's alpha status, platform limits, or C safety boundary.
+7. Do not hide Osprey's evolving compatibility, platform limits, or C safety boundary.
 8. Run `make release` before publishing an edition artifact.
 
 See [OUTLINE.md](OUTLINE.md) for the complete journey and [GLOSSARY.md](GLOSSARY.md) for the shared teaching vocabulary.

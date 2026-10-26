@@ -222,10 +222,7 @@ fn static_snapshot_callables_never_capture_the_construction_handler_silently() {
         (osprey_syntax::Flavor::Default, "static effect Signal { read: fn() -> int }\nfn count() = perform Signal.read()\nlet cached = { handle static Signal { read => 1 }\nsignalSnapshot(|| => || => count()) }\nlet answer = { handle static Signal { read => 2 }\ncached.value() }\nprint(answer)\n"),
         (osprey_syntax::Flavor::Ml, "static effect Signal\n    read : Unit => int\ncount () = perform Signal.read ()\ncached =\n    handle static Signal\n        read => 1\n    signalSnapshot (\\() => \\() => count ())\nanswer =\n    handle static Signal\n        read => 2\n    cached.value ()\nprint answer\n"),
     ] {
-        let parsed = osprey_syntax::parse_program_with_flavor(source, flavor);
-        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
-        let errors = check_program(&parsed.program);
-        assert!(errors.iter().any(|error| error.message.contains("Signal.read") && error.message.contains("invocation-time specialization") && error.position.is_some()), "{flavor:?}: {errors:?}");
+        assert_snapshot_rejected(flavor, source);
     }
 }
 
@@ -235,9 +232,20 @@ fn static_snapshot_iterators_never_capture_the_construction_handler_silently() {
         (osprey_syntax::Flavor::Default, "static effect Signal { read: fn() -> int }\nlet cached = { handle static Signal { read => 1 }\nsignalSnapshot(|| => range(0, 2) |> map(fn(_i) => perform Signal.read())) }\nlet values = { handle static Signal { read => 2 }\ncached.value |> toList() }\nprint(length(values))\n"),
         (osprey_syntax::Flavor::Ml, "static effect Signal\n    read : Unit => int\ncached =\n    handle static Signal\n        read => 1\n    signalSnapshot (\\() => range 0 2 |> map (\\_i => perform Signal.read ()))\nvalues =\n    handle static Signal\n        read => 2\n    cached.value |> toList\nprint (length values)\n"),
     ] {
-        let parsed = osprey_syntax::parse_program_with_flavor(source, flavor);
-        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
-        let errors = check_program(&parsed.program);
-        assert!(errors.iter().any(|error| error.message.contains("Signal.read") && error.message.contains("invocation-time specialization") && error.position.is_some()), "{flavor:?}: {errors:?}");
+        assert_snapshot_rejected(flavor, source);
     }
+}
+
+fn assert_snapshot_rejected(flavor: osprey_syntax::Flavor, source: &str) {
+    let parsed = osprey_syntax::parse_program_with_flavor(source, flavor);
+    assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+    let errors = check_program(&parsed.program);
+    assert!(
+        errors
+            .iter()
+            .any(|error| error.message.contains("Signal.read")
+                && error.message.contains("invocation-time specialization")
+                && error.position.is_some()),
+        "{flavor:?}: {errors:?}"
+    );
 }

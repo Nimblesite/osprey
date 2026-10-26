@@ -1,23 +1,34 @@
 ---
 layout: layouts/base.njk
 ---
-{% macro documentationNavigation(extraClass) %}
-    <nav class="toc docs-nav {{ extraClass }}" aria-label="Documentation pages">
-      <a class="docs-nav-home" href="/docs/">Documentation</a>
-{% for section in navigation.docs %}
-      <section class="docs-nav-section" aria-labelledby="docs-nav-{{ loop.index }}-{{ extraClass }}">
-        <p class="docs-nav-section-title" id="docs-nav-{{ loop.index }}-{{ extraClass }}">{{ section.title }}</p>
+{% macro documentationSection(section, id, mobile) %}
+{% set currentSection = false %}
+{% for item in section.items %}
+{% if page.url == item.url or (item.url != '/docs/' and page.url.startsWith(item.url)) %}{% set currentSection = true %}{% endif %}
+{% endfor %}
+{% set groupTag = 'details' if mobile else 'section' %}
+{% set headingTag = 'summary' if mobile else 'h2' %}
+      <{{ groupTag }} class="docs-nav-section{% if currentSection %} docs-nav-current{% endif %}"{% if mobile %}{% if currentSection %} open{% endif %}{% else %} aria-labelledby="docs-nav-{{ id }}"{% endif %}>
+        <{{ headingTag }} class="docs-nav-section-title" id="docs-nav-{{ id }}">{{ section.title }}</{{ headingTag }}>
         <ul class="docs-nav-list">
 {% for item in section.items %}
-          <li><a href="{{ item.url }}"{% if page.url == item.url %} class="active" aria-current="page"{% endif %}>{{ item.text }}</a></li>
+          <li><a href="{{ item.url }}"{% if page.url == item.url %} class="active" aria-current="page"{% elif item.url != '/docs/' and page.url.startsWith(item.url) %} class="active" aria-current="location"{% endif %}>{{ item.text }}</a></li>
 {% endfor %}
         </ul>
-      </section>
+      </{{ groupTag }}>
+{% endmacro %}
+{% macro documentationNavigation(extraClass, mobile=false) %}
+    <nav class="docs-nav {{ extraClass }}" aria-label="Documentation pages">
+{% if not mobile %}
+      <a class="docs-nav-home" href="/docs/">Documentation</a>
+{% endif %}
+{% for section in navigation.docs %}
+{{ documentationSection(section, loop.index ~ '-' ~ extraClass, mobile) }}
 {% endfor %}
     </nav>
 {% endmacro %}
 {# Shared layout for every long-form page (docs, spec, blog posts, status).
-   One prose design for all of them — see src/css/components.css `.prose`.
+   One prose design for all of them — see src/css/prose.css `.prose`.
    The TOC is built client-side from the article's own headings (toc.js), so
    it adds no content — just navigation derived from what's already on the page. #}
 {% set isDocs = page.url.startsWith('/docs/') %}
@@ -27,7 +38,7 @@ layout: layouts/base.njk
 {{ documentationNavigation('docs-nav-desktop') }}
     <details class="docs-nav-mobile">
       <summary>Browse documentation</summary>
-{{ documentationNavigation('docs-nav-mobile-list') }}
+{{ documentationNavigation('docs-nav-mobile-list', true) }}
     </details>
 {% else %}
     <nav class="toc" id="toc" aria-label="On this page">
@@ -51,7 +62,7 @@ layout: layouts/base.njk
 {% endif %}
 {% if author and not authorInContent %}
     <p class="prose-meta">
-      <span>By {{ author }}</span>
+      <span class="prose-author"><span class="prose-author-label">By</span> {{ author }}</span>
       {# `page.date` is the resolved Date. Front matter `date` may be one of
          Eleventy's directives (e.g. "git Last Modified"), which is still a raw
          string here — only `page.date` has been turned into a real date. #}

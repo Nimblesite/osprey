@@ -24,7 +24,8 @@ fn slices_choose_distinct_sdk_triple_and_runtime() {
         assert!(args.contains(&"/sdk path".to_string()));
         assert!(args.contains(&"-c".to_string()));
     }
-    let runtimes: std::collections::BTreeSet<_> = TARGETS.iter().map(|t| t.runtime()).collect();
+    let runtimes: std::collections::BTreeSet<_> =
+        TARGETS.iter().map(|t| t.runtime("arc")).collect();
     assert_eq!(
         runtimes.len(),
         TARGETS.len(),
@@ -48,13 +49,7 @@ fn archive_contains_program_and_matching_runtime_without_an_executable_entry() {
 
 #[test]
 fn rejects_unsupported_build_options_before_toolchain_work() {
-    for option in [
-        "--memory=gc",
-        "--memory=arc",
-        "--debug",
-        "--profile",
-        "--run",
-    ] {
+    for option in ["--memory=gc", "--debug", "--profile", "--run"] {
         for target in TARGETS {
             let args =
                 ["app.osp", &format!("--target={}", target.name()), option].map(str::to_string);
@@ -71,6 +66,7 @@ fn rejects_unsupported_build_options_before_toolchain_work() {
             "app.osp",
             &format!("--target={}", target.name()),
             "--compile",
+            "--memory=arc",
         ]
         .map(str::to_string);
         let cli = crate::parse_args(&args).expect("valid arguments");
@@ -120,17 +116,14 @@ fn app_globals_remain_initialized_after_the_host_calls_entry() {
         &ExportScope::EntrySource(None),
     )
     .expect("library source");
-    assert!(header.contains("osprey_greet(void)"));
-    assert!(
-        !ir.contains("store i8* null, i8** @"),
-        "entry must keep globals live:\n{ir}"
+    crate::testkit::shows(&header, &["osprey_greet(void)"]);
+    crate::testkit::contents(
+        &ir,
+        &["define i32 @osprey_main()"],
+        &["store i8* null, i8** @"],
     );
-    assert!(ir.contains("define i32 @osprey_main()"));
     let executable = osprey_codegen::compile_program(&parsed.program).expect("native source");
-    assert!(
-        executable.contains("store i8* null, i8** @"),
-        "executables still release globals at exit"
-    );
+    crate::testkit::shows(&executable, &["store i8* null, i8** @"]);
 }
 
 #[test]
@@ -152,7 +145,7 @@ fn each_slice_names_itself_in_its_header_and_diagnostics() {
             header.contains(&format!("--target={name}")),
             "{name} header must name its own slice:\n{header}"
         );
-        assert!(header.contains("[IOS-HOST-ABI]"), "{header}");
+        crate::testkit::shows(&header, &["[IOS-HOST-ABI]"]);
     }
 
     // The same slice name must appear in a rejection, so a diagnostic never
@@ -176,11 +169,11 @@ fn each_slice_names_itself_in_its_header_and_diagnostics() {
 #[test]
 fn a_missing_runtime_names_the_make_goal_that_builds_it() {
     assert_eq!(
-        TARGETS.map(Target::missing_runtime),
+        TARGETS.map(|target| target.missing_runtime("arc")),
         [
-            "libosprey_runtime_ios.a not found — run `make ios` to build the iOS runtime",
-            "libosprey_runtime_ios_sim.a not found — run `make ios` to build the iOS runtime",
-            "libosprey_runtime_macos.a not found — run `make macos` to build the macOS runtime",
+            "libosprey_runtime_ios_arc.a not found — run `make ios` to build the iOS runtime",
+            "libosprey_runtime_ios_sim_arc.a not found — run `make ios` to build the iOS runtime",
+            "libosprey_runtime_macos_arc.a not found — run `make macos` to build the macOS runtime",
         ]
     );
 }

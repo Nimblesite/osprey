@@ -233,6 +233,43 @@ impl Analyzer<'_> {
         }
     }
 
+    /// The arguments an eager callback slot passes its callback. Iterator and
+    /// collection consumers hand over their element(s), so a callable stored
+    /// in an element — and invoked through the callback's parameter — resolves
+    /// against that element's provenance instead of failing closed as an
+    /// unproven dynamic call. `fold` also hands back the accumulator, including
+    /// whatever a previous iteration stored in it. Callbacks that take no
+    /// data argument (`test`, `spawnProcess`) get none. Implements
+    /// [EFFECTS-PROVENANCE].
+    pub(super) fn eager_callback_arguments(
+        &self,
+        name: &str,
+        arguments: &[Expr],
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> Vec<Option<Value>> {
+        let element = |arguments: &[Expr]| {
+            arguments
+                .first()
+                .and_then(|argument| self.value(argument, scope, env))
+                .and_then(project_element)
+        };
+        match name {
+            "forEach" | "forEachList" | "mapList" | "filterList" => {
+                vec![element(arguments)]
+            }
+            "listSortBy" => {
+                let element = element(arguments);
+                vec![element.clone(), element]
+            }
+            "fold" | "foldList" => {
+                let accumulator = self.fold_value(arguments, scope, env);
+                vec![Some(accumulator), element(arguments)]
+            }
+            _ => Vec::new(),
+        }
+    }
+
     /// Cached callable values keep their latent effects after the snapshot escapes.
     /// Implements [EFFECTS-PROVENANCE], [STAGE-SIGNALS-REBUILD].
     fn signal_snapshot_value(
@@ -335,6 +372,28 @@ impl Analyzer<'_> {
         copies
     }
 
+    /// `left |> right` answered by `apply` as the call it desugars to: the
+    /// receiver leads a call's arguments, or is a bare callee's one argument.
+    fn piped<T>(
+        &self,
+        left: &Expr,
+        right: &Expr,
+        apply: impl FnOnce(&Expr, &[Expr], &[NamedArgument]) -> T,
+    ) -> T {
+        match right {
+            Expr::Call {
+                function,
+                arguments,
+                named_arguments,
+            } => apply(
+                function,
+                &self.receiver_first(left, arguments),
+                named_arguments,
+            ),
+            _ => apply(right, std::slice::from_ref(left), &[]),
+        }
+    }
+
     pub(super) fn pipe_call(
         &self,
         left: &Expr,
@@ -342,20 +401,9 @@ impl Analyzer<'_> {
         scope: &[String],
         env: &CallableEnv,
     ) -> Summary {
-        match right {
-            Expr::Call {
-                function,
-                arguments,
-                named_arguments,
-            } => self.call(
-                function,
-                &self.receiver_first(left, arguments),
-                named_arguments,
-                scope,
-                env,
-            ),
-            _ => self.call(right, std::slice::from_ref(left), &[], scope, env),
-        }
+        self.piped(left, right, |function, arguments, named| {
+            self.call(function, arguments, named, scope, env)
+        })
     }
 
     pub(super) fn pipe_value(
@@ -365,19 +413,8 @@ impl Analyzer<'_> {
         scope: &[String],
         env: &CallableEnv,
     ) -> Option<Value> {
-        match right {
-            Expr::Call {
-                function,
-                arguments,
-                named_arguments,
-            } => self.call_value(
-                function,
-                &self.receiver_first(left, arguments),
-                named_arguments,
-                scope,
-                env,
-            ),
-            _ => self.call_value(right, std::slice::from_ref(left), &[], scope, env),
-        }
+        self.piped(left, right, |function, arguments, named| {
+            self.call_value(function, arguments, named, scope, env)
+        })
     }
 }

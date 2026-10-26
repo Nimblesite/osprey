@@ -1,0 +1,122 @@
+namespace registry_tests;
+import registry_cli::Lockfile
+import registry_tests::Fixture
+import registry_tests::RegistryFixture
+
+/// `publish --folder` against fixture hosts: the release tree is the
+/// manifest plus the files under the source roots (locks, notes and build
+/// output stay behind), it lands at the next ordinal of the newest epoch or
+/// at `1.1`, `--breaking` opens the next epoch, the printed digest is the
+/// one the server will compute, and a project without `[package]` or a run
+/// without `--folder` is refused before anything is written.
+module PublishTests {
+    let project = "/abs"
+    let folder = "/reg"
+
+    fn manifestText() = "[project]\nname = \"one\"\nsource_roots = [\"src\"]\n\n[package]\nname = \"@demo/one\"\nlicense = \"MIT\"\nsummary = \"one\"\nkeywords = [\"one\"]\n"
+
+    fn files() = [Fixture::file("osprey.toml", manifestText()), Fixture::file("src/main.osp", "fn main() = 0\n")]
+
+    /// The project directory holds more than the release: a lock and notes.
+    fn projectWalk() = Fixture::walkRoute(project, ["notes.md", "osprey.lock", "osprey.toml", "src/main.osp", "src/.deslop/cache/fingerprint.bin", "src/.osprey/cache/entry.bin", "src/__pycache__/module.pyc", "src/nested/.git/index"])
+
+    fn projectReads() = listConcat(mapList(files(), fn(f) => Fixture::readRoute("${project}/${f.relPath}", f.content)), [
+        Fixture::readRoute("${project}/notes.md", "scratch"),
+        Fixture::readRoute("${project}/osprey.lock", "{}")
+    ])
+
+    fn existingWalk() = Fixture::walkRoute("${folder}/@demo/one", ["1.1/osprey.toml", "1.1/src/main.osp", "1.2/osprey.toml", "1.2/src/main.osp"])
+
+    fn expectedDigest(dir) = Fixture::digestOf(Fixture::served(dir, files()))
+
+    fn publishedAt(a, dir) = RegistryFixture::writtenTo(a, "${folder}/${dir}/osprey.toml") == manifestText()
+        && RegistryFixture::writtenTo(a, "${folder}/${dir}/src/main.osp") == "fn main() = 0\n"
+        && RegistryFixture::writesTo(a, "${folder}/${dir}/notes.md") == 0
+        && RegistryFixture::writesTo(a, "${folder}/${dir}/osprey.lock") == 0
+        && RegistryFixture::writesTo(a, "${folder}/${dir}/src/.deslop/cache/fingerprint.bin") == 0
+        && RegistryFixture::writesTo(a, "${folder}/${dir}/src/.osprey/cache/entry.bin") == 0
+        && RegistryFixture::writesTo(a, "${folder}/${dir}/src/__pycache__/module.pyc") == 0
+        && RegistryFixture::writesTo(a, "${folder}/${dir}/src/nested/.git/index") == 0
+
+    /// The next ordinal of the newest epoch.
+    fn nextOrdinal() = {
+        let a = RegistryFixture::runWith(projectReads(), [projectWalk(), existingWalk()], [], ["publish", "--folder", folder, "--project", project])
+        checkAll("publish places the release at the next ordinal with the server's digest", [
+            RegistryFixture::statusOf(a) == 0,
+            publishedAt(a, "@demo/one/1.3"),
+            RegistryFixture::lineOf(a, 0) == "published @demo/one e1.r3 ${expectedDigest("@demo/one/1.3")}",
+            RegistryFixture::lineOf(a, 2) == "files: 2"
+        ])
+    }
+
+    /// `--breaking` opens the next epoch; a new package starts at 1.1.
+    fn epochs() = {
+        let breaking = RegistryFixture::runWith(projectReads(), [projectWalk(), existingWalk()], [], ["publish", "--folder", folder, "--breaking", "--project", project])
+        let first = RegistryFixture::runWith(projectReads(), [projectWalk()], [], ["publish", "--folder", folder, "--project", project])
+        checkAll("--breaking opens epoch 2; a new package is 1.1", [
+            RegistryFixture::statusOf(breaking) == 0,
+            publishedAt(breaking, "@demo/one/2.1"),
+            RegistryFixture::lineOf(breaking, 0) == "published @demo/one e2.r1 ${expectedDigest("@demo/one/2.1")}",
+            RegistryFixture::statusOf(first) == 0,
+            publishedAt(first, "@demo/one/1.1")
+        ])
+    }
+
+    /// No `[package]`, no `--folder`, and a tree the source rules refuse.
+    fn refusals() = {
+        let plain = RegistryFixture::runWith([Fixture::readRoute("${project}/osprey.toml", RegistryFixture::manifestText("app"))], [projectWalk()], [], ["publish", "--folder", folder, "--project", project])
+        let noFolder = RegistryFixture::runWith(projectReads(), [projectWalk()], [], ["publish", "--project", project])
+        let badPython = RegistryFixture::runWith(listAppend(projectReads(), Fixture::readRoute("${project}/src/model.py", "print(1)\n")), [Fixture::walkRoute(project, ["osprey.toml", "src/main.osp", "src/model.py"])], [], ["publish", "--folder", folder, "--project", project])
+        checkAll("publish.no-package, publish.usage and the source rules refuse before writing", [
+            RegistryFixture::statusOf(plain) == 1,
+            RegistryFixture::lineOf(plain, 0) == "publish.no-package",
+            RegistryFixture::statusOf(noFolder) == 2,
+            RegistryFixture::lineOf(noFolder, 0) == "publish.usage",
+            RegistryFixture::statusOf(badPython) == 1,
+            RegistryFixture::lineOf(badPython, 0) == "source.python-flavor-header",
+            isEmpty(RegistryFixture::linesOf(plain)) == false && RegistryFixture::writesTo(badPython, "${folder}/@demo/one/1.1/osprey.toml") == 0
+        ])
+    }
+
+    // Regression for [PACKAGE-CAPABILITY-CONFINEMENT]: raw native calls
+    // bypass the named-builtin surface and must not enter a registry.
+    fn rejectsRawExtern() = {
+        let source = "extern fn puts(text: string) -> int\nfn hello() = puts(\"harmless FFI probe\")\n"
+        let reads = [Fixture::readRoute("${project}/osprey.toml", manifestText()), Fixture::readRoute("${project}/src/main.osp", source)]
+        let a = RegistryFixture::runWith(reads, [projectWalk()], [], ["publish", "--folder", folder, "--project", project])
+        checkAll("unclassified native externs are refused before registry writes", [
+            RegistryFixture::statusOf(a) == 1,
+            RegistryFixture::writesTo(a, "${folder}/@demo/one/1.1/osprey.toml") == 0,
+            RegistryFixture::writesTo(a, "${folder}/@demo/one/1.1/src/main.osp") == 0
+        ])
+    }
+
+    fn legalFiles() = [
+        Fixture::file("LICENSE", "MIT: NIMBLESITE PTY LTD, Australia\n"),
+        Fixture::file("NOTICE.md", "Osprey port; upstream copyrights retained.\n"),
+        Fixture::file("LICENSES/upstream.txt", "Upstream BSD conditions and disclaimer.\n")
+    ]
+
+    /// License texts and attribution survive the publisher's file selection.
+    fn licenses() = {
+        let source = listConcat(files(), legalFiles())
+        let reads = mapList(source, fn(f) => Fixture::readRoute("${project}/${f.relPath}", f.content))
+        let paths = listConcat(mapList(source, fn(f) => f.relPath), ["LICENSES-backup/private.txt", "docs/notes.md"])
+        let a = RegistryFixture::runWith(reads, [Fixture::walkRoute(project, paths)], [], ["publish", "--folder", folder, "--project", project])
+        checkAll("publishing retains MIT, upstream licenses and modification notices", [
+            RegistryFixture::statusOf(a) == 0,
+            foldList(legalFiles(), true, fn(ok, f) => ok && RegistryFixture::writtenTo(a, "${folder}/@demo/one/1.1/${f.relPath}") == f.content),
+            RegistryFixture::lineOf(a, 0) == "published @demo/one e1.r1 ${Fixture::digestOf(Fixture::served("@demo/one/1.1", source))}",
+            RegistryFixture::writesTo(a, "${folder}/@demo/one/1.1/LICENSES-backup/private.txt") == 0
+        ])
+    }
+
+    /// Every publish test.
+    export fn run() = {
+        test("publish: the next ordinal", nextOrdinal)
+        test("publish: epochs", epochs)
+        test("publish: refusals", refusals)
+        test("publish: rejects unclassified raw native externs", rejectsRawExtern)
+        test("publish: licenses survive publication", licenses)
+    }
+}

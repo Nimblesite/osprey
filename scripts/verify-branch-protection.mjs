@@ -36,6 +36,7 @@
 
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { targetsMainPullRequests } from './workflow-pr-target.mjs'
 
 const DEFAULT_REPO = 'Nimblesite/osprey'
 const WORKFLOW_DIR = '.github/workflows'
@@ -49,7 +50,10 @@ const EXPECTED_CONTEXTS = [
   'Detect changed areas',
   'Build, Format & Analyse',
   'Tests: Rust workspace (coverage)',
-  'Tests: language corpus (default)',
+  'Tests: package source coverage',
+  'Tests: package manager (gc)',
+  'Tests: package manager (arc)',
+  'Tests: Python application ports',
   'Tests: language corpus (gc)',
   'Tests: language corpus (arc)',
   'Tests: C runtime (coverage)',
@@ -121,25 +125,12 @@ const hasPathFilter = (text) => {
   return false
 }
 
-// A `pull_request:` key inside the `on:` block. Only these workflows report
-// check runs on a PR, so only their jobs can be required — or advisory.
-const onPullRequest = (text) => {
-  const lines = text.split('\n')
-  const start = lines.findIndex((l) => /^on:\s*$/.test(l))
-  if (start < 0) return false
-  for (const line of lines.slice(start + 1)) {
-    if (indentOf(line) === 0 && line.trim() !== '') break
-    if (/^\s{2}pull_request:/.test(line)) return true
-  }
-  return false
-}
-
 const readWorkflows = () =>
   readdirSync(WORKFLOW_DIR)
     .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
     .map((f) => {
       const text = readFileSync(join(WORKFLOW_DIR, f), 'utf8')
-      return { file: f, jobs: scanJobs(text), pathFiltered: hasPathFilter(text), pullRequest: onPullRequest(text) }
+      return { file: f, jobs: scanJobs(text), pathFiltered: hasPathFilter(text), pullRequest: targetsMainPullRequests(text) }
     })
 
 // --- assertions -------------------------------------------------------------
@@ -209,7 +200,7 @@ const checkContexts = (actual, workflows) => {
   if (missing.length) failures.push(`ruleset does not require: ${missing.join(', ')}`)
   if (extra.length) failures.push(`ruleset requires checks absent from EXPECTED_CONTEXTS: ${extra.join(', ')}`)
 
-  const allJobs = workflows.flatMap((w) => w.jobs.map((j) => ({ ...j, file: w.file, pathFiltered: w.pathFiltered })))
+  const allJobs = workflows.filter((w) => w.pullRequest).flatMap((w) => w.jobs.map((j) => ({ ...j, file: w.file, pathFiltered: w.pathFiltered })))
   for (const context of actual) {
     const job = allJobs.find((j) => j.name === context)
     if (!job) {

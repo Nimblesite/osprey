@@ -1,0 +1,42 @@
+ok near(1.000001, 1.0)
+ok near(1.001, 1.0)
+ok near(0.0, 1e-09)
+ok near(0.0, 1e-07)
+ok near(-1.0, -1.0000001)
+ok near(1e+300, 1.0000001e+300)
+ok near(1e+300, 1.0001e+300)
+ok near(4.940656458e-324, 0.0)
+ok near(-0.0, 0.0)
+ok near(100.0, 100.001)
+ok near(100.0, 100.002)
+ok near(1e-08, 2e-08)
+ok near(-3.5, 3.5)
+ok near(2.0, 1.99998)
+ok near(2.0, 1.99997)
+ok near.special(inf, inf)
+ok near.special(inf, -inf)
+ok near.special(nan, nan)
+ok near.special(nan, 1.0)
+ok near.special(-inf, -inf)
+ok near.special(inf, 1e+308)
+ok strictly.explicit_fault
+ok close.pair
+ok outcome.detail
+ok lenient.remainder
+ok lenient.overflow
+ok specials.infinities
+ok specials.nan
+ok close_all.lists
+ok close_all.length
+ok close_all.detail
+ok ints_equal
+ok ints_equal.detail
+ok ints_text.empty
+ok float_of.number
+ok float_of.unparseable_is_nan
+ok summary
+ok strictly.overflow
+ok strictly.division
+ok strictly.remainder
+ok lenient.division
+41 passed, 0 failed

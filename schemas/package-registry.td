@@ -9,6 +9,82 @@ alias CompatibilityEpoch = Int
 alias ReleaseOrdinal = Int
 alias PrincipalId = String
 type PackageKey { scope: ScopeName name: PackageName }
+alias OrganizationId = String
+alias MembershipId = String
+alias PackageId = String
+alias GovernanceId = String
+alias AuthorityEpoch = Int
+union PrincipalKind { Human {} Workflow {} }
+union HumanPrincipalKind { Human {} }
+union PrincipalState { Active {} Suspended {} }
+union OrganizationState { Active {} Frozen {} Tombstoned {} }
+union OrganizationRole { Custodian {} Member {} }
+union MembershipState { Active {} Revoked {} }
+union ActiveMembershipState { Active {} }
+union RegistryPackageState { Draft {} Active {} WriteFrozen {} Deprecated {} Tombstoned {} }
+union PackagePermission { PublishRelease {} YankRelease {} EditMetadata {} ManageMaintenance {} ManageSecurity {} }
+union PermissionState { Active {} Revoked {} }
+union AdminTransferState { Pending {} Completed {} Cancelled {} Declined {} Expired {} }
+union InvitationState { Pending {} Accepted {} Revoked {} Expired {} }
+union MaintenanceReportState { Open {} Acknowledged {} Resolved {} Withdrawn {} }
+type RegistryPrincipal { id: PrincipalId kind: PrincipalKind state: PrincipalState credentialEpoch: AuthorityEpoch createdAt: DateTime }
+type RegistryAuthBinding { id: GovernanceId principalId: PrincipalId issuer: String provider: String providerSubject: String state: PermissionState verifiedAt: DateTime }
+type Organization { id: OrganizationId handle: ScopeName displayName: String state: OrganizationState governanceEpoch: AuthorityEpoch createdAt: DateTime }
+type OrganizationMembership {
+  id: MembershipId
+  organizationId: OrganizationId
+  principalId: PrincipalId
+  role: OrganizationRole
+  principalKind: PrincipalKind
+  state: MembershipState
+  authorityEpoch: AuthorityEpoch
+  acceptedAt: DateTime
+}
+type OrganizationRecoveryAuthority { id: GovernanceId organizationId: OrganizationId principalId: PrincipalId principalKind: HumanPrincipalKind state: PermissionState governanceEpoch: AuthorityEpoch enrollmentDigest: Digest enrolledAt: DateTime }
+type RegistryPackage {
+  id: PackageId
+  organizationId: OrganizationId
+  name: PackageName
+  adminMembershipId: MembershipId
+  adminMembershipState: ActiveMembershipState
+  adminPrincipalKind: HumanPrincipalKind
+  authorityEpoch: AuthorityEpoch
+  state: RegistryPackageState
+  createdAt: DateTime
+}
+type PackagePermissionGrant {
+  id: GovernanceId
+  organizationId: OrganizationId
+  packageId: PackageId
+  membershipId: MembershipId
+  permission: PackagePermission
+  state: PermissionState
+  grantedByMembershipId: MembershipId
+  authorityEpoch: AuthorityEpoch
+  grantedAt: DateTime
+  expiresAt: Option<DateTime>
+}
+type PackageAdminTransfer {
+  id: GovernanceId
+  organizationId: OrganizationId
+  packageId: PackageId
+  fromMembershipId: MembershipId
+  toMembershipId: MembershipId
+  toMembershipState: ActiveMembershipState
+  toPrincipalKind: HumanPrincipalKind
+  expectedAuthorityEpoch: AuthorityEpoch
+  state: AdminTransferState
+  proposalDigest: Digest
+  acceptanceDigest: Option<Digest>
+  createdAt: DateTime
+  notBefore: DateTime
+  expiresAt: DateTime
+  decidedAt: Option<DateTime>
+}
+type OrganizationInvitation { id: GovernanceId organizationId: OrganizationId targetPrincipalId: PrincipalId issuerMembershipId: MembershipId role: OrganizationRole tokenDigest: Digest state: InvitationState expectedGovernanceEpoch: AuthorityEpoch createdAt: DateTime expiresAt: DateTime }
+type PackageMaintenanceReport { id: GovernanceId organizationId: OrganizationId packageId: PackageId reporterMembershipId: MembershipId summary: String evidenceDigest: Digest state: MaintenanceReportState createdAt: DateTime }
+union GovernanceEventKind { OrganizationCreated {} MembershipChanged {} PackageCreated {} PermissionChanged {} AdminProposed {} AdminReplaced {} MaintenanceChanged {} Recovery {} OrganizationTransfer {} }
+type GovernanceEvent { id: GovernanceId organizationId: OrganizationId packageId: Option<PackageId> actorPrincipalId: PrincipalId kind: GovernanceEventKind authorityEpoch: AuthorityEpoch proofDigest: Digest previousEventDigest: Option<Digest> createdAt: DateTime }
 type SourceRef { forge: String repositoryId: String subdirectory: RelativePath commit: CommitId }
 type RepositoryBinding {
   package: PackageKey
@@ -85,6 +161,7 @@ union ReleaseState { Submitted { submittedAt: DateTime } Quarantined { reason: S
 union ActivationState { Eligible {} Yanked {} Revoked {} }
 type ReleaseStatus { release: ReleaseId sequence: Int state: ActivationState effectiveAt: DateTime reasonDigest: Option<Digest> previousStatus: Option<Digest> roleMetadataVersion: Int }
 type DependencyRequirement { package: PackageKey epoch: CompatibilityEpoch minimumOrdinal: ReleaseOrdinal }
+type DependencyGrant { package: PackageKey capabilities: List<String> }
 type SystemRequirement { capability: String minimumRevision: Int }
 union PackageAssetKind { Utf8Text {} Json {} Png {} }
 union PackageAssetRole { Documentation { kind: PackageAssetKind } RuntimeData { kind: PackageAssetKind requiredCapability: String } }
@@ -102,7 +179,9 @@ type PackageManifest {
   allowWildcardImports: Bool
   publication: Option<PublishedPackageMetadata>
   testRoots: List<RelativePath>
+  pythonSources: List<RelativePath>
   dependencies: List<DependencyEdge>
+  grants: List<DependencyGrant>
   systemRequirements: List<SystemRequirement>
   assets: List<PackageAsset>
 }

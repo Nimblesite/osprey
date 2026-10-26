@@ -24,8 +24,8 @@ echo "Generating Osprey reference documentation..."
 mkdir -p "$DOCS_DIR"
 
 if [ ! -x "$OSPREY_BIN" ]; then
-    echo "NOTE: $OSPREY_BIN not found (build with: cargo build --release)."
-    echo "Using committed docs in $DOCS_DIR"
+    echo "NOTE: $OSPREY_BIN not found (build with: make build)."
+    echo "API reference not regenerated; any existing generated pages are left in place."
     exit 0
 fi
 
@@ -33,7 +33,7 @@ fi
 # script degrades gracefully (leaves any existing docs in place) instead of
 # failing the build.
 if ! "$OSPREY_BIN" --help 2>&1 | grep -q -- '--docs'; then
-    echo "NOTE: osprey does not support --docs yet; using committed docs in $DOCS_DIR"
+    echo "NOTE: osprey has no --docs support; API reference not regenerated."
     exit 0
 fi
 
@@ -66,6 +66,4 @@ echo "API reference documentation generated successfully!"
 echo "Generated files:"
 echo "  - $DOCS_DIR/stdlib.md (Main API Reference)"
 echo "  - $DOCS_DIR/functions/ (Individual function docs)"
-echo "  - $DOCS_DIR/types/ (Individual type docs)"
-echo "  - $DOCS_DIR/operators/ (Individual operator docs)"
-echo "  - $DOCS_DIR/keywords/ (Individual keyword docs)"
+echo "Maintained source references are unchanged: types/, operators/, keywords/."

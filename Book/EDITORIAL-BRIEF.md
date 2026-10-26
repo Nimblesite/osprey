@@ -40,7 +40,7 @@ Default flavor is the book's teaching surface. Every core lesson and complete ru
 
 ML flavor is an optional alternate surface introduced after the reader already understands the shared idea. It is never called a separate language, an advanced mode, or a choice that must be made up front. The book may show a compact ML twin in a “Same flight, different feathers” aside when the comparison reduces confusion.
 
-The language architecture is open to more flavors. Avoid claims that Osprey will always have exactly two. Name the relevant flavors; the Python flavor is partially implemented, so do not imply that its whole specification is available.
+Name all three current syntax flavors: Default, ML and Python. Python-style syntax compiles as Osprey, sharing inferred types and checked effects; it does not provide the CPython runtime or arbitrary Python-package compatibility. Link to the Python flavor guide for its supported subset and tooling limits.
 
 A coding agent can translate surface syntax quickly, which makes experimentation approachable. The book still requires the reader to run `--check` and the relevant tests after translation. Agent assistance lowers typing cost; it does not replace evidence.
 
@@ -84,8 +84,8 @@ The project is intentionally ordinary. It provides enough domain to make types a
 - A generated illustration never contains product output, syntax, diagnostics, or labels.
 - Future work is visibly labelled as future work.
 - Native, WebAssembly, effect-resumption, module, package, GPU, and C-FFI limits remain beside the relevant claim.
-- Teach implemented project modules and cross-flavor imports separately from the planned package manager.
-- Explain the default allocator, GC, and ARC as distinct choices with target limits. Do not imply that default builds reclaim general allocations automatically.
+- Teach project modules and cross-flavor imports separately from package resolution. The package client supports folder registries, verified downloads and locked builds; hosted authenticated publishing, the package website and public trust services remain planned.
+- Explain GC as the native default and ARC as the alternative managed backend. Explicit `--memory=none` opts into unmanaged allocation and retains general allocations; cross targets currently require that option because managed archives are unavailable.
 - Describe the current thread-backed fiber runtime accurately; reserve structured scopes and cancellation for explicitly labelled future work.
 
 ## Explicitly out of scope
@@ -93,7 +93,7 @@ The project is intentionally ordinary. It provides enough domain to make types a
 - A compiler implementation textbook
 - Category theory as a prerequisite
 - A complete standard-library reference
-- A promise that alpha software will never change
+- A promise that an evolving language will never change
 - Treating ML syntax as mandatory for “real” functional programming
 - Pretending a coding agent makes checking and testing optional
-- Teaching the planned package manager, structured cancellation, or strict static memory as shipped features
+- Presenting the hosted package service, structured cancellation or strict static memory as shipped features

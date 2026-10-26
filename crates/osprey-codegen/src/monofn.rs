@@ -1,13 +1,8 @@
-//! Monomorphisation of RECURSIVE generic functions — the one place
-//! polymorphism is resolved by emitting a definition rather than by inlining
-//! ([`crate::genfn`] does the rest by inlining).
+//! Shared instantiations of recursive generic functions and closed first-order
+//! calls that exceed [`crate::genfn`]'s inline expansion budget.
 //!
-//! A generic function has no `@name` symbol: it exists only as the body
-//! [`crate::genfn::try_inline`] expands at each call site with that site's
-//! concrete argument types. A body that calls itself cannot be expanded that
-//! way — the expansion never terminates — so an unannotated recursive helper
-//! was rejected outright (`annotate its parameters and return type so it is
-//! emitted as a real function`).
+//! Each call selects concrete argument types. Recursive bodies cannot expand
+//! indefinitely, and repeated generic fanout must not duplicate whole subtrees.
 //!
 //! Here the call site's argument types fix ONE instantiation, so that
 //! instantiation is emitted as a real function `@name$N` with a concrete
@@ -74,6 +69,17 @@ pub(crate) fn specialize(
         .iter()
         .map(|a| gen_expr(cg, a))
         .collect::<Result<Vec<_>>>()?;
+    specialize_values(cg, name, parameters, body, values)
+}
+
+/// Reuse an instantiation after the caller has normalized its argument values.
+pub(crate) fn specialize_values(
+    cg: &mut Codegen,
+    name: &str,
+    parameters: &[Parameter],
+    body: &Expr,
+    values: Vec<Value>,
+) -> Result<Value> {
     let key = format!(
         "{}{}",
         instantiation_key(name, &values),
@@ -88,8 +94,7 @@ pub(crate) fn specialize(
 }
 
 /// The instantiation this call selects: the function name plus each argument's
-/// lowered representation. Two calls agree exactly when their arguments travel
-/// identically, which is what the emitted signature is built from.
+/// lowered representation and inferred parameter types consumed by the emitted ABI.
 fn instantiation_key(name: &str, values: &[Value]) -> String {
     let args: Vec<String> = values.iter().map(slot_spelling).collect();
     format!("{name}({})", args.join(","))
@@ -101,7 +106,11 @@ fn instantiation_key(name: &str, values: &[Value]) -> String {
 fn slot_spelling(v: &Value) -> String {
     let owner = v.osp_ty.clone().unwrap_or_default();
     let result = v.result_inner.map_or_else(String::new, |i| i.to_string());
-    format!("{}:{owner}:{result}", v.ty.as_str())
+    let inferred = v
+        .inferred_type
+        .as_ref()
+        .map_or_else(String::new, ToString::to_string);
+    format!("{}:{owner}:{result}:{inferred}", v.ty.as_str())
 }
 
 /// The callee's declared signature as the CURRENT call's specialization sees
@@ -174,7 +183,7 @@ fn emit_at(
     let position = cg.fn_defs.get(name).and_then(|(_, _, position)| *position);
     let (plist, emitted) = cg.within_source_function(name, |cg| {
         crate::closure::begin_source(cg, name, position);
-        let plist = bind_params(cg, parameters, owners, params);
+        let plist = crate::cast::bind_params(cg, parameters, params, owners.iter().cloned(), 0);
         crate::closure::source_parameters(cg, parameters, 0);
         // Inside the body, so the definition line is credited when the
         // instantiation RUNS rather than when it is emitted or handed to a C
@@ -230,7 +239,7 @@ pub(crate) fn specialize_callback(
     let ret = (
         crate::types::ltype_of(ret_type),
         crate::types::result_inner(ret_type),
-        crate::types::owner_name(&cg.prog, ret_type),
+        return_owner(cg, ret_type),
     );
     let target = emit_at(cg, name, key, &parameters, &body, (&params, ret, &owners))?;
     Ok(Some(target.symbol))
@@ -247,8 +256,14 @@ fn return_slot(cg: &Codegen, name: &str) -> Result<(LType, Option<LType>, Option
     Ok((
         crate::types::ltype_of(ty),
         crate::types::result_inner(ty),
-        crate::types::owner_name(&cg.prog, ty),
+        return_owner(cg, ty),
     ))
+}
+
+/// Share the closure ABI's Result payload and ordinary return ownership rules.
+fn return_owner(cg: &Codegen, ty: &osprey_types::Type) -> Option<String> {
+    let signature = osprey_types::Type::fun(Vec::new(), ty.clone());
+    Codegen::fn_value_sig(&cg.prog, &signature).and_then(|sig| sig.4)
 }
 
 /// The diagnostic for a recursive generic whose return type inference could not
@@ -272,31 +287,6 @@ fn param_of(v: &Value) -> ParamSig {
     }
 }
 
-/// Bind each parameter to its incoming register, carrying its owner tag in so
-/// the body sees the same typed handle the caller passed (a `Gpu#double` buffer
-/// stays element-typed inside the specialisation).
-fn bind_params(
-    cg: &mut Codegen,
-    parameters: &[Parameter],
-    owners: &[Option<String>],
-    params: &[ParamSig],
-) -> Vec<(LType, String)> {
-    let mut out = Vec::with_capacity(parameters.len());
-    for (i, ((p, sig), owner)) in parameters.iter().zip(params).zip(owners).enumerate() {
-        let reg = crate::llty::param_register(i);
-        // `incoming_param` registers no ownership: parameters are BORROWED for
-        // the call's duration, exactly as a top-level function's are
-        // [GC-ARC-PERCEUS].
-        let value = crate::cast::incoming_param(cg, format!("%{reg}"), sig.clone(), owner.clone());
-        if let Some(ty) = &value.inferred_type {
-            cg.bind_fn_local(&p.name, ty.clone());
-        }
-        cg.bind(p.name.clone(), value);
-        out.push((sig.ty, reg));
-    }
-    out
-}
-
 /// Lower the instantiation's body and emit its `ret`, fitted to the declared
 /// return slot exactly as a top-level function's body is.
 fn lower_body(cg: &mut Codegen, body: &Expr, sig: &FnSig) -> Result<Value> {
@@ -316,6 +306,68 @@ fn call(cg: &mut Codegen, target: &Instantiation, args: Vec<Value>) -> Result<Va
 
 #[cfg(test)]
 mod tests {
+    fn fanout_helpers() -> String {
+        use std::fmt::Write;
+        (1..=8).fold(String::new(), |mut source, depth| {
+            let previous = if depth == 1 {
+                "leaf".into()
+            } else {
+                format!("l{}", depth - 1)
+            };
+            writeln!(
+                source,
+                "fn l{depth}(x) = \"${{{previous}(x)}}${{{previous}(x)}}\""
+            )
+            .expect("in-memory source");
+            source
+        })
+    }
+
+    #[test]
+    fn nested_generic_fanout_has_bounded_ir_growth() {
+        let helpers = fanout_helpers();
+        let source = format!("fn leaf(x) = x\n{helpers}print(l8(\"z\"))\n");
+        let parsed = osprey_syntax::parse_program_for_path("fanout.osp", &source);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let ir = crate::compile_program(&parsed.program).expect("generic fanout must compile");
+        assert!(
+            ir.lines().count() < 1000,
+            "generic fanout expanded to {} IR lines",
+            ir.lines().count()
+        );
+    }
+
+    #[test]
+    fn expansion_budget_preserves_stateful_handle_parameter_metadata() {
+        let helpers = fanout_helpers();
+        let source = format!("fn leaf(x) = x\n{helpers}fn greet() = \"done\"\nfn waitIt(f) = await(f)\nfn takeIt(ch) = recv(ch)\nlet warm = l8(\"z\")\nlet ch = Channel(1)\nsend(ch, \"message\")\nprint(\"${{warm}}${{waitIt(spawn greet())}}${{takeIt(ch)}}\")\n");
+        let parsed = osprey_syntax::parse_program_for_path("fiber-fanout.osp", &source);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let ir = crate::compile_program(&parsed.program)
+            .expect("fiber metadata must survive the expansion budget");
+        crate::testkit::shows(&ir, &["fiber_await", "channel_recv", "inttoptr i64"]);
+    }
+
+    #[test]
+    fn instantiation_keys_distinguish_inferred_parameter_abis() {
+        let mut integer = crate::llty::Value::new("%argument", crate::llty::LType::Ptr);
+        integer.inferred_type = Some(osprey_types::Type::con(
+            "Packet",
+            vec![osprey_types::Type::con(osprey_types::names::INT, vec![])],
+        ));
+        let mut text = integer.clone();
+        text.inferred_type = Some(osprey_types::Type::con(
+            "Packet",
+            vec![osprey_types::Type::con(osprey_types::names::STRING, vec![])],
+        ));
+        assert_ne!(super::param_of(&integer), super::param_of(&text));
+        assert_ne!(
+            super::slot_spelling(&integer),
+            super::slot_spelling(&text),
+            "distinct parameter ABIs must not share an instantiation"
+        );
+    }
+
     /// An HTTP handler whose types are inferred — the shape that reaches
     /// [`specialize_callback`]. Its definition is line 1, so line 1's counter
     /// is the one that must move only when the handler runs.
@@ -388,10 +440,7 @@ print("${listening}${alsoListening}")
             "a second registration must reuse the instantiation, not emit \
              another:\n{module}"
         );
-        assert!(
-            !module.contains("@handler("),
-            "the generic stem must never be referenced:\n{module}"
-        );
+        crate::testkit::contents(&module, &[], &["@handler("]);
 
         // The ABI is the builtin's declared callback type — four strings in,
         // one response pointer out — because that is the one signature the C
@@ -434,9 +483,6 @@ print("${listening}${alsoListening}")
 
         // And the counter still EXISTS — a bump that moved nowhere would pass
         // both assertions above.
-        assert!(
-            module.contains("@__osp_cov_hits.1 = internal global i64 0"),
-            "line 1 must still be a registered coverable line:\n{module}"
-        );
+        crate::testkit::shows(&module, &["@__osp_cov_hits.1 = internal global i64 0"]);
     }
 }

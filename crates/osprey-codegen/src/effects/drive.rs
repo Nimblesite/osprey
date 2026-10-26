@@ -14,13 +14,7 @@ pub(super) fn emit_drive_fn(
     ];
     let done = cg.call("i64", "__osprey_coro_done", "i8*", &["%__coro"]);
     let done_cond = cg.emit_reg(format!("icmp ne i64 {done}, 0"));
-    let done_lbl = cg.fresh_label();
-    let dispatch_lbl = cg.fresh_label();
-    cg.emit(format!(
-        "br i1 {done_cond}, label %{done_lbl}, label %{dispatch_lbl}"
-    ));
-
-    cg.start_block(&done_lbl);
+    let dispatch_lbl = cg.open_guard(&done_cond);
     let result = cg.call("i64", "__osprey_coro_result", "i8*", &["%__coro"]);
     let result = match return_fn {
         Some(function) => cg.emit_reg(format!("call i64 @{function}(i8* %__env, i64 {result})")),

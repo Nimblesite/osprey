@@ -224,15 +224,8 @@ impl Lowerer<'_> {
 }
 
 fn attach_doc(statement: &mut Stmt, doc: osprey_ast::DocComment) {
-    match statement {
-        Stmt::Let { doc: slot, .. }
-        | Stmt::Function { doc: slot, .. }
-        | Stmt::Extern { doc: slot, .. }
-        | Stmt::Type { doc: slot, .. }
-        | Stmt::Effect { doc: slot, .. }
-        | Stmt::Module { doc: slot, .. }
-        | Stmt::Signature { doc: slot, .. } => *slot = Some(doc),
-        _ => {}
+    if let Some(slot) = osprey_ast::stmt_meta::doc_mut(statement) {
+        *slot = Some(doc);
     }
 }
 

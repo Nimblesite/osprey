@@ -1,0 +1,100 @@
+namespace registry_api;
+import registry::Canonical
+import registry::Json
+import registry::JsonRead
+import registry_api::OAuth
+
+/// Supabase Auth is the identity verifier, reached only over verified TLS at
+/// a pinned origin. Application metadata, email and decoded JWT claims never
+/// establish registry authority. Implements [PACKAGE-HOSTED-AUTH].
+module Supabase {
+    /// A bounded provider response; raw errors and tokens never enter logs.
+    export type Reply = { status: int, body: string }
+    /// Stable identity returned by the authenticated /user endpoint.
+    export type Identity = { authSubject: string, githubId: string }
+    /// Provider session material kept on the API side of the browser boundary.
+    export type Session = { accessToken: string, refreshToken: string, expiresIn: int, identity: Identity }
+
+    /// Handler inputs originate in trusted application code, not route JSON.
+    export effect Provider {
+        request: fn(string, string, string, string, string) -> Result<Reply, string>
+    }
+
+    fn bearerCode(text) = if text == "" || byteLength(text) > 16384 || contains(text, "\n")
+    || contains(text, "\r") || contains(text, " ") { "auth.provider-token" } else { "" }
+
+    fn field(document, key) = JsonRead::text(JsonRead::field(document, key))
+
+    fn github(identities) = filterList(identities, fn(identity) => field(identity, "provider") == "github")
+
+    fn identity(document) = {
+        let matches = github(JsonRead::items(JsonRead::field(document, "identities")))
+        let subject = field(document, "id")
+        let providerId = field(listGet(matches, 0) ?: Json::Null, "provider_id")
+        if subject == "" || providerId == "" || length(matches) != 1 { Error { message: "auth.github-identity" } }
+        else { Success { value: Identity { authSubject: subject, githubId: providerId } } }
+    }
+
+    fn parseReply(reply: Reply) = if reply.status != 200 { Error { message: "auth.provider-rejected" } }
+    else if byteLength(reply.body) > 131072 { Error { message: "auth.provider-size" } }
+    else { match Json::parse(reply.body) {
+            Success { value } => Success { value: value }
+            Error => Error { message: "auth.provider-json" }
+        } }
+
+    fn verifiedReply(reply) = match parseReply(reply) {
+        Error { message } => Error { message: message }
+        Success { value } => identity(value)
+    }
+
+    /// The API must still resolve the exact issuer/subject/GitHub-ID binding
+    /// to its registry principal. A changed binding requires explicit linking.
+    export fn verify(config: OAuth::Config, token) = match OAuth::configCode(config) {
+        "" => match bearerCode(token) {
+            "" => match perform Provider.request("GET", config.supabaseOrigin, "/auth/v1/user", "apikey: ${config.publishableKey}\r\nAuthorization: Bearer ${token}", "") {
+                Success { value } => verifiedReply(value)
+                Error => Error { message: "auth.provider-unavailable" }
+            }
+            code => Error { message: code }
+        }
+        code => Error { message: code }
+    }
+
+    fn sessionOf(config, document) = {
+        let access = field(document, "access_token")
+        let refresh = field(document, "refresh_token")
+        let expires = JsonRead::number(JsonRead::field(document, "expires_in"))
+        if bearerCode(access) != "" || bearerCode(refresh) != "" || expires < 1 || expires > 86400 { Error { message: "auth.provider-session" } }
+        else { match verify(config, access) {
+                Error { message } => Error { message: message }
+                Success { value } => Success { value: Session { accessToken: access, refreshToken: refresh, expiresIn: expires, identity: value } }
+            } }
+    }
+
+    fn exchangeReply(config, reply) = match parseReply(reply) {
+        Error { message } => Error { message: message }
+        Success { value } => sessionOf(config, value)
+    }
+
+    fn payload(code, verifier) = Canonical::serialize(Json::Obj { members: [
+                Json::Member { key: "auth_code", value: Json::Str { text: code } },
+                Json::Member { key: "code_verifier", value: Json::Str { text: verifier } }
+            ] })
+
+    fn exchangeBody(config, body) = match perform Provider.request("POST", config.supabaseOrigin,
+        "/auth/v1/token?grant_type=pkce", "apikey: ${config.publishableKey}\r\nContent-Type: application/json", body) {
+        Error => Error { message: "auth.provider-unavailable" }
+        Success { value } => exchangeReply(config, value)
+    }
+
+    /// Call only after atomically claiming the matching unexpired, one-use
+    /// server-side OAuth flow selected by its HttpOnly flow cookie.
+    export fn exchange(config, code, verifier) = match OAuth::configCode(config) {
+        "" => if code == "" || byteLength(code) > 1024 || OAuth::challengeCode(verifier) != "" { Error { message: "auth.callback" } }
+        else { match payload(code, verifier) {
+                Error => Error { message: "auth.callback" }
+                Success { value } => exchangeBody(config, value)
+            } }
+        problem => Error { message: problem }
+    }
+}

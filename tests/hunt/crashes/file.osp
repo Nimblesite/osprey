@@ -1,0 +1,5 @@
+/// Deliberately planted: File-driven invariant [SYMEX-CRASH-GATE].
+extern fn abort() -> int
+let line = input()
+let result = if line == "F" { if (readFile("input.len") ?: "") == "!" { abort() } else { 0 } } else { 0 }
+print("result ${result}")

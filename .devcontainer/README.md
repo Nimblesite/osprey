@@ -1,122 +1,29 @@
-# Osprey Development Container
+# Osprey development container
 
-This directory contains configuration for a development container that provides all necessary dependencies for the Osprey compiler and VS Code extension development.
+The configuration builds a Debian bookworm workspace with Rust, the C toolchain, Node.js 20, benchmark tools and VS Code development extensions. The checkout is mounted at `/workspace`; the user is `vscode`, and ports 3001 and 8080 are forwarded.
 
-## Features
+## Current toolchain gap
 
-- **Rust (stable)** for compiler development (`crates/` workspace)
-- **LLVM 14 / clang** for compiling generated IR and the C runtime
-- **Node.js 20** for the VS Code extension, webcompiler, and website
-- **All necessary VS Code extensions** pre-installed (rust-analyzer, C/C++, Makefile Tools)
+[Dockerfile](Dockerfile) still installs clang/LLVM 14. Osprey's emitted allocator attributes require LLVM 15 or newer, as documented in the [web compiler image](../webcompiler/Dockerfile). The development image needs a toolchain update before its native build can be considered working.
 
-## Getting Started
+[post-create.sh](post-create.sh) installs its configured CLI tools, runs `make setup` and attempts `make build`. It currently converts an initial build failure into a warning, so its completion message does not prove the compiler built. Run `make build` explicitly and inspect its exit status. Use the [installation guide](../website/src/docs/installation.md) for a compatible host toolchain.
 
-### Prerequisites
+## Open the workspace
 
-- [Docker](https://www.docker.com/products/docker-desktop)
-- [Visual Studio Code](https://code.visualstudio.com/)
-- [Dev Containers extension for VS Code](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+With Docker, VS Code and the Dev Containers extension installed, open the repository and select **Dev Containers: Reopen in Container**. Initialize the `lspkit` submodule before setup (`git submodule update --init --recursive`), or clone with `--recurse-submodules`.
 
-### Opening the Project in the Dev Container
+The [container configuration](devcontainer.json) defines mounts, port forwarding, editor extensions and the post-create command. The image build and setup require network access.
 
-1. Open the `osprey.code-workspace` file in VS Code
-2. When prompted to "Reopen in Container", click "Reopen in Container"
-   - Alternatively, press F1, type "Dev Containers: Reopen in Container" and press Enter
+## Build and verify
 
-The container will automatically run the post-create script (`make setup` + an
-initial `make build`).
+From `/workspace`, after resolving the toolchain gap:
 
-## Available Scripts
-
-- `build-compiler.sh` - Builds the Osprey compiler (`make build` at the repo root)
-
-```bash
-# Build the compiler
-.devcontainer/build-compiler.sh
-
-# Build VS Code extension (use the proper build script)
-cd vscode-extension && ./build.sh
+```sh
+make build
+make test
+make lint
 ```
 
-## Development Tasks
+The compiler lands at `target/release/osprey`. [build-compiler.sh](build-compiler.sh) wraps the root build. For extension development, run `npm run compile` from `/workspace/vscode-extension` and use its [test guide](../vscode-extension/TESTING.md).
 
-### Compiler Development
-
-Use the root Makefile:
-```bash
-make build          # C runtime archives + cargo build --release + extension
-make test           # All tests + coverage thresholds + differential harness
-make lint           # cargo clippy + extension lint
-make fmt            # cargo fmt + prettier
-make ci             # lint + test + build (full CI simulation)
-make clean          # Clean build artifacts
-```
-
-The compiler binary lands at `target/release/osprey`.
-
-### VS Code Extension Development
-
-Navigate to the extension directory:
-```bash
-cd /vscode-extension
-npm install         # Install dependencies
-npm run compile     # Compile the extension
-npm run watch       # Watch for changes
-npm run package     # Package the extension
-```
-
-To debug the extension:
-1. Open the Run and Debug view in VS Code (Ctrl+Shift+D)
-2. Select "Run Extension"
-3. Press F5
-
-## Project Structure
-
-```
-/osprey/
-├── crates/             # Osprey compiler (Rust workspace)
-├── tree-sitter-osprey/ # Tree-sitter grammar (parser)
-├── compiler/           # C runtime sources (runtime/)
-├── examples/           # Example programs + golden test suites
-├── vscode-extension/   # VS Code extension (TypeScript)
-├── webcompiler/        # Web compiler (ignored in dev container)
-└── .devcontainer/      # Dev container configuration
-```
-
-## Troubleshooting
-
-### Container Build Issues
-If you encounter issues building the container:
-
-1. Try rebuilding: F1 → "Dev Containers: Rebuild Container"
-2. Clear Docker cache: `docker system prune -a`
-3. Check Docker logs for specific errors
-
-### WSL Issues (Windows)
-If you see WSL-related errors:
-
-1. Restart Docker Desktop
-2. Update WSL2: `wsl --update`
-3. Restart VS Code
-
-### Node.js/npm Issues
-The container uses Node.js 20 which is compatible with the latest npm. If you encounter version conflicts, the setup scripts handle the compatibility automatically.
-
-## Manual Testing
-
-After the container starts, you can verify everything works:
-
-```bash
-# Test individual components
-rustc --version        # Rust
-cargo --version        # Cargo
-llc --version          # LLVM
-node --version         # Node.js
-npm --version          # npm
-```
-
-## Notes
-
-- The container uses a non-root user `vscode` to avoid permission issues
-- All tools are pre-configured and ready to use
-- The post-create script automatically sets up all sub-projects
+Useful version checks are `rustc --version`, `cargo --version`, `clang --version`, `node --version` and `npm --version`. For setup failures, inspect the Docker build and post-create logs; a fresh container alone does not repair a pinned incompatible toolchain.

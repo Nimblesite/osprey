@@ -1,0 +1,6 @@
+namespace registry_web;
+import registry::Policy
+fn suites() = {
+    0
+}
+fn main() = Policy::guarded(suites)

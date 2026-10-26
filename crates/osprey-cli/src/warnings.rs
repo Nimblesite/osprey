@@ -260,11 +260,10 @@ mod tests {
             [("unused-parameter", "unused parameter `unused`")]
         );
         assert_eq!(
-            crate::report_type_errors(&CompilationInput::script(
-                "signed.ospml",
-                String::new(),
-                parsed.program
-            )),
+            crate::report_type_errors(
+                &CompilationInput::script("signed.ospml", String::new(), parsed.program),
+                crate::invocation::Warnings::Report
+            ),
             0
         );
     }
@@ -278,11 +277,10 @@ mod tests {
             Vec::<TypeWarning>::new()
         );
         assert_eq!(
-            crate::report_type_errors(&CompilationInput::script(
-                "broken.osp",
-                String::new(),
-                parsed.program
-            )),
+            crate::report_type_errors(
+                &CompilationInput::script("broken.osp", String::new(), parsed.program),
+                crate::invocation::Warnings::Report
+            ),
             1
         );
     }
@@ -311,7 +309,10 @@ mod tests {
                 "unused handler parameter `id` of `test::Vault.balance`"
             )]
         );
-        assert_eq!(crate::report_type_errors(&input), 0);
+        assert_eq!(
+            crate::report_type_errors(&input, crate::invocation::Warnings::Report),
+            0
+        );
     }
 
     #[test]

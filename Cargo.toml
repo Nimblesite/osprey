@@ -54,13 +54,13 @@ stacker = "0.1.25"
 # crate's getopts/serde extras.
 pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }
 
-# Language-server building blocks, reused from the published lspkit crates
-# (crates.io). [LSP-REUSE-LSPKIT] The LSP is wired to the compiler in-process,
+# Language-server building blocks share the pinned lspkit submodule and its
+# maintained watcher dependencies. [LSP-REUSE-LSPKIT] The LSP is wired in-process,
 # so only the transport/VFS/engine layers are pulled in (no tree-sitter dup).
-lspkit = "0.0.1"
-lspkit-server = "0.0.1"
-lspkit-vfs = "0.0.1"
-lspkit-live = "0.0.1"
+lspkit = { version = "0.0.1", path = "lspkit/crates/lspkit" }
+lspkit-server = { version = "0.0.1", path = "lspkit/crates/lspkit-server" }
+lspkit-vfs = { version = "0.0.1", path = "lspkit/crates/lspkit-vfs" }
+lspkit-live = { version = "0.0.1", path = "lspkit/crates/lspkit-live" }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "io-util", "sync"] }
 async-trait = "0.1"
 futures-util = "0.3"

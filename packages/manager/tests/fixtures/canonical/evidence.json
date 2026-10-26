@@ -1,0 +1,14 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "One evidence record; Option expiresAt present.",
+  "type": "Evidence",
+  "value": {
+    "kind": "advisory",
+    "source": "osv",
+    "digest": "sha256:f5c4275cbde8d427049dd276ea49e69c12e955e14d1ca364ac531497da32a8b2",
+    "observedAt": "2026-10-01T00:00:00.000Z",
+    "expiresAt": "2026-11-01T00:00:00.000Z"
+  },
+  "canonical": "{\"digest\":\"sha256:f5c4275cbde8d427049dd276ea49e69c12e955e14d1ca364ac531497da32a8b2\",\"expiresAt\":\"2026-11-01T00:00:00.000Z\",\"kind\":\"advisory\",\"observedAt\":\"2026-10-01T00:00:00.000Z\",\"source\":\"osv\"}",
+  "canonicalLength": 196
+}

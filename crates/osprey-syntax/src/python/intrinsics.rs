@@ -1,8 +1,8 @@
 //! Fiber, immutable-update and Result-default spelling preserves the shared
 //! runtime contract.
 //! Implements [FLAVOR-PYTHON-INTEROP], [FLAVOR-PYTHON-EXPRESSIONS].
-use super::context::{apply, Lowerer, Result};
-use osprey_ast::Expr;
+use super::context::{apply, position, Lowerer, Result};
+use osprey_ast::{Expr, FieldAssignment, Stmt};
 use tree_sitter::Node;
 
 impl Lowerer<'_> {
@@ -56,12 +56,38 @@ impl Lowerer<'_> {
 
     fn update(&mut self, node: Node<'_>) -> Result<Expr> {
         let (args, named) = self.arguments(Self::field(node, "arguments")?)?;
-        let [Expr::Identifier(record)] = args.as_slice() else {
+        let [record] = args.as_slice() else {
             return self.unsupported(node);
         };
+        let fields = super::expressions::fields(named);
+        let Expr::Identifier(name) = record else {
+            return Ok(self.bound_update(node, record.clone(), fields));
+        };
         Ok(Expr::Update {
-            record: record.clone(),
-            fields: super::expressions::fields(named),
+            record: name.clone(),
+            fields,
         })
+    }
+
+    /// Bind an arbitrary record expression once, then update the binding: the
+    /// canonical `Expr::Update` names a record variable, never an expression
+    /// ([TYPE-RECORD-UPDATE]).
+    fn bound_update(&mut self, node: Node<'_>, record: Expr, fields: Vec<FieldAssignment>) -> Expr {
+        let name = self.fresh("upd");
+        crate::desugar::block(
+            vec![Stmt::Let {
+                name: name.clone(),
+                mutable: false,
+                ty: None,
+                value: record,
+                doc: None,
+                position: None,
+            }],
+            Some(Box::new(Expr::Update {
+                record: name,
+                fields,
+            })),
+            Some(position(node)),
+        )
     }
 }

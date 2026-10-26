@@ -1,0 +1,116 @@
+{
+  "spec": "[PACKAGE-NAMES]",
+  "description": "Unicode confusables, invisible and bidirectional characters in names and paths. Names and paths are ASCII-only, so every look-alike is refused outright rather than compared by skeleton; `lookalike` is the ASCII text each one imitates.",
+  "names": [
+    {
+      "text": "@dеmo/maths",
+      "lookalike": "@demo/maths",
+      "code": "name.scope.chars",
+      "why": "Cyrillic small ie U+0435"
+    },
+    {
+      "text": "@demo/mаths",
+      "lookalike": "@demo/maths",
+      "code": "name.name.chars",
+      "why": "Cyrillic small a U+0430"
+    },
+    {
+      "text": "@demο/maths",
+      "lookalike": "@demo/maths",
+      "code": "name.scope.chars",
+      "why": "Greek small omicron U+03BF"
+    },
+    {
+      "text": "@demo/mathѕ",
+      "lookalike": "@demo/maths",
+      "code": "name.name.chars",
+      "why": "Cyrillic dze U+0455"
+    },
+    {
+      "text": "@demo/ma​ths",
+      "lookalike": "@demo/maths",
+      "code": "name.name.chars",
+      "why": "zero-width space U+200B"
+    },
+    {
+      "text": "@demo/maths‍",
+      "lookalike": "@demo/maths",
+      "code": "name.name.chars",
+      "why": "trailing zero-width joiner U+200D"
+    },
+    {
+      "text": "@demo/‮maths",
+      "lookalike": "@demo/maths",
+      "code": "name.name.chars",
+      "why": "right-to-left override U+202E"
+    },
+    {
+      "text": "@demo/ｍaths",
+      "lookalike": "@demo/maths",
+      "code": "name.name.chars",
+      "why": "fullwidth m U+FF4D"
+    },
+    {
+      "text": "@demo/maṫhs",
+      "lookalike": "@demo/maths",
+      "code": "name.name.chars",
+      "why": "combining dot above U+0307"
+    },
+    {
+      "text": "@demo/ınfo",
+      "lookalike": "@demo/info",
+      "code": "name.name.chars",
+      "why": "dotless i U+0131"
+    }
+  ],
+  "paths": [
+    {
+      "path": "src/mаin.osp",
+      "lookalike": "src/main.osp",
+      "code": "path.non-ascii",
+      "why": "Cyrillic a U+0430"
+    },
+    {
+      "path": "src/Key.osp",
+      "lookalike": "src/Key.osp",
+      "code": "path.non-ascii",
+      "why": "Kelvin sign U+212A, which Unicode case folding maps to k: a fold collision ASCII folding never sees"
+    },
+    {
+      "path": "src/ſecret.osp",
+      "lookalike": "src/secret.osp",
+      "code": "path.non-ascii",
+      "why": "long s U+017F folds to s"
+    },
+    {
+      "path": "src/main‮.osp",
+      "lookalike": "src/main.osp",
+      "code": "path.non-ascii",
+      "why": "Trojan Source bidi override U+202E"
+    },
+    {
+      "path": "src/ma​in.osp",
+      "lookalike": "src/main.osp",
+      "code": "path.non-ascii",
+      "why": "zero-width space U+200B"
+    },
+    {
+      "path": "src/main․osp",
+      "lookalike": "src/main.osp",
+      "code": "path.non-ascii",
+      "why": "one dot leader U+2024"
+    },
+    {
+      "path": "src∕main.osp",
+      "lookalike": "src/main.osp",
+      "code": "path.non-ascii",
+      "why": "division slash U+2215"
+    },
+    {
+      "path": "src/main.osр",
+      "lookalike": "src/main.osp",
+      "code": "path.non-ascii",
+      "why": "Cyrillic er U+0440"
+    }
+  ]
+}

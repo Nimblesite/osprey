@@ -1,0 +1,8 @@
+[project]
+name = "registry-web"
+source_roots = ["src", "../core/src"]
+default_namespace = "registry_web"
+entry = "src/main.osp"
+
+[modules]
+allow_wildcard_imports = false

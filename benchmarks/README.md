@@ -33,7 +33,7 @@ All WebAssembly columns run under Wasmtime with an explicit 4 MiB call-stack bud
 > **Heads-up on RAM.** Allocating cases use substantially more memory under the *default* backend, which never reclaims (see *Findings*).
 > The **`Osprey (ARC)`** and **`Osprey (GC)`** columns compile the same source
 > with `--memory=arc` / `--memory=gc` and reclaim unused values. Run the default
-> column on a machine with a few GB free, or skip it with `BENCH_FILTER`.
+> column on a machine with a few GB free, or select a smaller workload such as `BENCH_FILTER=fib`. This filter selects cases, not memory backends.
 >
 > <!-- binarytrees-results:start -->
 > Current measured peaks: default **633 MB**, `--memory=arc` **3.01 MB**, and `--memory=gc` **18.6 MB**.
@@ -60,7 +60,7 @@ Every case prints a single deterministic **integer** result, so output is
 byte-comparable across languages (a broken implementation is caught and excluded
 from timing) — but that integer is now often a *checksum over non-integer data*
 (strings, maps, lists, algebraic trees), so the suite exercises far more than
-`int` arithmetic. Four cases additionally run in **two input modes** — a fixed
+`int` arithmetic. Six cases additionally run in **two input modes** — a fixed
 constant seed (what we time and verify) or a cryptographically-secure random
 seed — see [Constant vs randomized input](#constant-vs-randomized-input).
 
@@ -139,8 +139,8 @@ Compile commands (source of truth: [`run.sh`](run.sh)):
 | Lang | Command |
 |------|---------|
 | Osprey  | `osprey <f>.osp --compile` (emits LLVM IR, compiled by clang at `-O2`; override with `OSPREY_OPT`) |
-| Osprey (ARC) | `osprey <f>.osp --memory=arc --compile` (same IR; links the Perceus reference-counting runtime archive — [MEM-BACKENDS]) |
-| Osprey (GC) | `osprey <f>.osp --memory=gc --compile` (same IR; links the tracing-GC runtime archive — [MEM-BACKENDS]) |
+| Osprey (ARC) | `osprey <f>.osp --memory=arc --compile` (compiler-inserted ownership operations and the reference-counting runtime archive — [MEM-BACKENDS]) |
+| Osprey (GC) | `osprey <f>.osp --memory=gc --compile` (same source; links the tracing-GC runtime archive — [MEM-BACKENDS]) |
 | Rust    | `rustc -C opt-level=3 -C overflow-checks=off -o <bin> <f>.rs` |
 | Rust (checked) | `rustc -C opt-level=3 -C overflow-checks=on -o <bin> <f>.rs` — the same source with Rust's integer overflow checks on. Osprey checks every integer operation ([spec 0037](../docs/specs/language/0037-ArithmeticEffects.md)), so this column is the like-for-like baseline; `Rust` and `C` run unchecked arithmetic |
 | C       | `cc -O2 -o <bin> <f>.c` |
@@ -172,7 +172,7 @@ VM. Notes and limits:
 
 ### Constant vs randomized input
 
-The four data-structure cases (`wordfreq`, `textstats`, `listops`, `exprtree`)
+The six data-structure cases (`wordfreq`, `textstats`, `listops`, `exprtree`, `quicksort`, `mergesort`)
 read the **first line of stdin** to choose a seed for their token generator:
 
 - **`0` (or empty / not a tty)** — a *fixed* seed: the run is fully deterministic.
@@ -192,8 +192,7 @@ case run on fresh random data each time, set `BENCH_RANDOM=1`:
 BENCH_RANDOM=1 BENCH_FILTER=wordfreq make bench   # prints a randomized demo pass
 ```
 
-This is the only place randomness enters the suite; everything charted is the
-deterministic constant-seed run.
+The Osprey cases fall back to seed `1` if `randomBelow` returns an error, so a successful randomized demo does not establish that fresh entropy was obtained. Everything charted is the deterministic constant-seed run.
 
 ## Reading the numbers fairly
 
@@ -215,17 +214,17 @@ deterministic constant-seed run.
 
 The current compiler uses plain integer values and explicit arithmetic effects. Historical timings from the Result-arithmetic compiler do not describe this implementation. The [benchmark page](../website/src/benchmarks.md) reports fresh Osprey measurements and separates them from retained language baselines.
 
-The default allocator retains general heap allocations for the process lifetime. ARC and GC reclaim them without changing the Osprey program or its expected output. The generated `binarytrees` figures above show the memory difference; the timing tables show its runtime cost. Persistent-map operations in `wordfreq` are also structurally different from the mutable hash tables used by several other language implementations, so that comparison measures the collection choice as well as the compiler.
+The historical unmanaged allocator retains general heap allocations for the process lifetime. Current native builds default to GC; the stored baseline figures still describe the allocator selected when they were recorded. ARC and GC reclaim them without changing the Osprey program or its expected output. The generated `binarytrees` figures above show the memory difference; the timing tables show its runtime cost. Persistent-map operations in `wordfreq` are also structurally different from the mutable hash tables used by several other language implementations, so that comparison measures the collection choice as well as the compiler.
 
 These results do not establish general performance parity with Rust or C. Use the per-case measurements and reproduce the relevant workload before drawing a comparison.
 
 ## Not yet benchmarked (and why)
 
-Blocked on language features Osprey doesn't expose today (left out, not faked):
+These workloads are absent from the suite. Some need an agreed numeric oracle; others need language features that are not exposed today:
 
 | Benchmark | Blocked on |
 |-----------|-----------|
-| mandelbrot, n-body, spectral-norm | `sqrt`/trig support and a common numeric accuracy/output oracle; integer/float conversions already exist |
+| mandelbrot, n-body, spectral-norm | implementations and a common numeric accuracy/output oracle; `sqrt`, trigonometric builtins and numeric conversions already exist |
 | n-queens, fannkuch | no mutable arrays |
 | sieve of Eratosthenes, matrix-multiply, n-sieve | no mutable arrays |
 | pidigits | no arbitrary-precision integers (i64 only) |
@@ -233,12 +232,10 @@ Blocked on language features Osprey doesn't expose today (left out, not faked):
 `collatz`, `digitsum`, and `isqrt` were unblocked by adding the `intDiv` builtin
 (truncating, divide-by-zero-checked integer division — the `/` operator stays
 float-only per spec; see [BUILTIN-INTDIV](../docs/specs/runtime/0012-Built-InFunctions.md)).
-The four data-structure cases (`wordfreq`, `textstats`, `listops`, `exprtree`)
+The initial four data-structure cases (`wordfreq`, `textstats`, `listops`, `exprtree`)
 were unblocked by the persistent `Map`/`List`, string builtins, recursive unions,
 and the new cryptographically-secure `random`/`randomBelow` builtins
-([BUILTIN-RANDOM](../docs/specs/runtime/0012-Built-InFunctions.md)). As Osprey grows a
-math stdlib, numeric conversions, and mutable arrays, the remaining classics
-above become expressible and should be added here.
+([BUILTIN-RANDOM](../docs/specs/runtime/0012-Built-InFunctions.md)). Numeric workloads can now use the math builtins; add them only with comparable implementations and an agreed oracle. Array and arbitrary-precision workloads retain the blockers listed above.
 
 ## Adding a benchmark
 
@@ -248,3 +245,7 @@ above become expressible and should be added here.
 4. Add `<name>.rs`, `<name>.c`, `<name>.ml`, `<name>.hs` — identical algorithm
    and parameters, each printing only the integer result.
 5. `BENCH_FILTER=<name> make bench` and confirm every language reports `ok`.
+
+## Symbolic-execution comparison (planned)
+
+`benchmarks/symex/` will hold the planted-bug suite that measures `osprey hunt` against stock KLEE, Kani and QuickCheck: eight cases in four languages, `run.sh`, `report.py` and tracked `results/`. It does not exist yet; the contract is `[SYMEX-PROOF]` in [the symbolic execution spec](../docs/specs/tooling/SymbolicExecution.md) and delivery is [plan 0034](../docs/plans/0034-symbolic-execution.md).

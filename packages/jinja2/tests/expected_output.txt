@@ -1,0 +1,255 @@
+ok mixed dict keys
+ok integer dict repr
+ok integer dict items
+ok integer dict contains
+ok integer dict get
+ok hello
+ok repr quote style (known RED)
+ok int dict key lookup (known RED)
+ok missing
+ok numeric
+ok concatenation
+ok truth
+ok loop
+ok empty loop
+ok set
+ok join
+ok case
+ok trim
+ok replace
+ok length
+ok endpoints
+ok method
+ok dict
+ok tests
+ok membership
+ok slice
+ok whitespace
+ok strip markers
+ok comment
+ok namespace
+ok lower filter
+ok string filter
+ok list filter
+ok items filter
+ok mapped filter
+ok mapped attribute
+ok mapped default
+ok select truth
+ok select test
+ok reject test
+ok select attribute
+ok reject attribute
+ok dict methods
+ok dict iteration
+ok filtered loop
+ok conditional
+ok boolean operators
+ok group and subtraction
+ok exponent literal
+ok escaped string
+ok dict literal
+ok stepped slices
+ok range function
+ok list equality
+ok dict equality
+ok repr containers
+ok string membership
+ok list subscript
+ok exponent int
+ok exponent float
+ok compare operators
+ok not in
+ok unary plus
+ok double negation
+ok none literal
+ok float truthiness
+ok string truthiness
+ok list truthiness
+ok dict truthiness
+ok undefined branch
+ok undefined equality
+ok cross equality
+ok list length equality
+ok dict length equality
+ok string ordering
+ok floor division signs
+ok none output
+ok undefined string
+ok pair render
+ok repr control escapes
+ok empty substring
+ok negative slices
+ok tojson compact
+ok tojson pretty scalars
+ok tojson pretty empty
+ok tojson escapes
+ok string escapes
+ok float promotion
+ok string addition
+ok dict trailing comma
+ok empty dict
+ok dict length filter
+ok empty first last
+ok dict first
+ok nonstring filters
+ok empty capitalize
+ok count alias
+ok default alias
+ok default boolean
+ok string methods
+ok string methods 2
+ok string subscript
+ok string attribute
+ok out of range list
+ok if elif else
+ok if no else
+ok dict loop
+ok string loop
+ok trailing newline
+ok lstrip start
+ok trim end eof
+ok brace in string
+ok test predicates
+ok float equality
+ok repr backslash
+ok tojson pretty list
+ok default no arg
+ok filter preserves error
+ok predicate preserves error
+ok value kinds
+ok value predicates
+ok truthiness
+ok numeric equality
+ok numeric ordering
+ok numeric view
+ok error propagation
+ok Value construction
+ok unicode characters
+ok unicode length
+ok unicode negative index
+ok character values
+ok reverse string
+ok reverse values
+ok whitespace split
+ok separator split
+ok capitalize
+ok repr text
+ok concat boolean
+ok dictionary get
+ok attribute get
+ok key lookup
+ok dictionary persistence
+ok membership
+ok compact json
+ok pretty json
+ok floor division
+ok modulo
+ok scope lookup
+ok outer binding
+ok scope persistence
+ok explicit frame binding
+ok expression evaluation
+ok filter
+ok keyword filter
+ok pretty list JSON
+ok test
+ok method
+ok environment
+ok lexer
+ok parser
+ok blank node
+ok branch
+ok parser step
+ok tag head
+ok tag end
+ok consumed newline
+ok macro name
+ok macro parameters
+ok unsupported macro rendering
+ok unexpected token
+ok attribute name
+ok test name
+ok unknown statement
+ok unknown in if body
+ok endfor closes if
+ok unknown in elif body
+ok unknown in else body
+ok unknown in for body
+ok unknown in for else
+ok unknown in macro body
+ok unterminated tag
+ok unterminated string
+ok negated unknown test
+ok unknown filter
+ok unknown test
+ok unknown string method
+ok unknown dict method
+ok raise exception
+ok strftime_now
+ok loop cond error
+ok loop filtered body error
+ok loop iterable error
+ok loop body error
+ok set expression error
+ok branch cond error
+ok negated failed test
+ok select unknown test
+ok reject unknown test
+ok map unknown filter
+ok map failed filter
+ok items of string
+ok first of none
+ok last of none
+ok str concat int
+ok str concat float
+ok str concat list
+ok str concat dict
+ok str concat none
+ok str concat bool
+ok add undefined left
+ok add undefined right
+ok arith undefined attr
+ok sub undefined attr
+ok mul undefined attr
+ok div undefined attr
+ok floordiv undefined attr
+ok mod undefined attr
+ok neg undefined
+ok neg undefined attr
+ok neg string
+ok range zero step
+ok subscript undefined
+ok add undefined attr right
+ok int plus string
+ok string times string
+ok list plus int
+ok call non function
+ok string divided
+ok string floordiv
+ok string modulo
+ok pair concatenated
+ok unclosed paren
+ok unclosed list
+ok dict missing colon
+ok dict pair missing colon
+ok dict missing comma
+ok method arg missing comma
+ok call arg missing comma
+ok subscript close
+ok slice close
+ok slice step close
+ok filter name
+ok filter args
+ok test args
+ok chars of empty
+ok length of undefined
+ok method on int
+ok bind fallback innermost
+ok dict append key
+ok dict append count
+ok dict replace key
+ok dict replace persistence
+ok empty macro name
+ok empty macro params
+254 passed, 0 failed

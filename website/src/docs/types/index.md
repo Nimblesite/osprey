@@ -1,14 +1,14 @@
 ---
 layout: page
 title: "Built-in Types"
-description: "Complete reference for all built-in types in Osprey"
+description: "Reference for core value types and runtime handles in Osprey"
 ---
 
-All built-in types available in Osprey.
+These guides cover common values and runtime handles. The [type-system reference](/spec/0004-typesystem/#built-in-types) also covers `Result`, lists, maps, functions, records and unions. [Fibers](/spec/0011-lightweightfibersandconcurrency/) and [GPU buffers](/spec/0034-gpucomputation/) have separate runtime contracts.
 
 ## [Any](any/)
 
-An explicitly dynamic value that must be type-matched before concrete operations.
+An erased value. Match its structure to access fields; primitive runtime type tests are not supported.
 
 ## [Bool](bool/)
 
@@ -20,16 +20,16 @@ A 64-bit IEEE-754 floating-point number. Arithmetic can produce infinity, NaN, s
 
 ## [HttpResponse](httpresponse/)
 
-A built-in type representing an HTTP response with status code, headers, content type, body, and streaming capabilities. Used by HTTP server handlers to return structured responses to clients.
+The record returned by a native HTTP server handler. The runtime sends its status, raw headers and complete text body; streaming is not implemented.
 
 ## [Int](int/)
 
 A 64-bit signed integer type. Can represent whole numbers from -9,223,372,036,854,775,808 to 9,223,372,036,854,775,807.
 
-## [ProcessHandle](processhandle/)
+## [Process handle (int)](processhandle/)
 
-A handle to a spawned async process. Contains the process ID and allows waiting for completion and cleanup. Process output is delivered via callbacks registered with the runtime.
+`spawnProcess` returns an integer process ID inside Result. Use it to wait for completion and release runtime resources; the callback receives output and exit events.
 
 ## [String](string/)
 
-A sequence of characters representing text. Supports string interpolation and escape sequences.
+UTF-8 text with interpolation and byte-based length and slicing operations.

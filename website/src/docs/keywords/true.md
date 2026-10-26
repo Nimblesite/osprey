@@ -4,7 +4,7 @@ title: "true (Keyword)"
 description: "Boolean literal representing the logical value true."
 ---
 
-**Description:** Boolean literal representing the logical value true.
+`true` is a `bool` literal in Default and ML syntax. Python syntax spells it `True`.
 
 ## Example
 

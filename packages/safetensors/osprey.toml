@@ -1,0 +1,14 @@
+[project]
+name = "safetensors"
+source_roots = ["src"]
+python_sources = ["src/bytes.py", "src/dtype.py", "src/json.py", "src/safetensors.py"]
+default_namespace = "safetensors"
+
+[package]
+name = "@osprey/safetensors"
+license = "MIT"
+summary = "Read and write Hugging Face safetensors weight files (header, dtypes, decode, save)"
+keywords = ["formats", "python-flavor", "safetensors", "weights"]
+
+[test-dependencies]
+"@osprey/testing" = { epoch = 1, min_release = 1 }

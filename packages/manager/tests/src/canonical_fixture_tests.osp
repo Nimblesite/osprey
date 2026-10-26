@@ -1,0 +1,90 @@
+namespace registry_tests;
+import registry::Json
+import registry::JsonRead
+import registry::Canonical
+import registry::Digests
+import registry::Bytes
+import registry::Sha256
+import registry::Domains
+import registry_tests::Fixtures
+
+/// Byte-exact canonical forms of every serialized model object, and the
+/// digest bindings between them. Each fixture under fixtures/canonical holds
+/// a value, its RFC 8785 bytes and, when spec 0031 names a domain, its
+/// `H(d, x)`; fixtures/canonical/relations.json pins the acyclic
+/// selection-to-plan-to-lock staging, every self-omitting digest and every
+/// envelope digest. Implements [PACKAGE-TYPE-INVARIANTS].
+module CanonicalFixtureTests {
+    fn fixture(name) = Fixtures::load("canonical/${name}.json")
+
+    fn names() = Fixtures::texts(Fixtures::field(Fixtures::load("canonical/index.json"), "cases"))
+
+    fn canonical(value) = Canonical::serialize(value) ?: "canonical.duplicate-key"
+
+    fn domainDigestHolds(fx) = match Json::get(fx, "domain") {
+        Success { value } => Digests::hashText(Fixtures::text(value), canonical(Fixtures::field(fx, "value"))) == Fixtures::text(Fixtures::field(fx, "digest"))
+        Error => true
+    }
+
+    fn fixtureHolds(name) = {
+        let fx = fixture(name)
+        let bytes = canonical(Fixtures::field(fx, "value"))
+        checkAll("canonical ${name}", [
+            bytes == Fixtures::text(Fixtures::field(fx, "canonical")),
+            byteLength(bytes) == Fixtures::number(Fixtures::field(fx, "canonicalLength")),
+            domainDigestHolds(fx)
+        ])
+    }
+
+    /// The value a `<fixture>#<JSON pointer>` reference names, rooted at the
+    /// fixture's `value`.
+    fn resolve(reference) = {
+        let parts = split(reference, "#") ?: [reference]
+        let pointer = listGet(parts, 1) ?: ""
+        JsonRead::at(Fixtures::field(fixture(listGet(parts, 0) ?: ""), "value"), pointer)
+    }
+
+    fn withoutMember(value, key) = match value {
+        Json::Obj { members } => Json::Obj { members: filterList(members, fn(m) => m.key != key) }
+        _ => value
+    }
+
+    fn omitted(relation, source) = match Json::get(relation, "omit") {
+        Success { value } => withoutMember(source, Fixtures::text(value))
+        Error => source
+    }
+
+    /// `EnvelopeDigest`: SHA-256 of `osprey.envelope.v1\0` and the RFC 8785
+    /// envelope bytes, with no length prefix ([PACKAGE-PUBLISH]).
+    fn envelopeDigest(text) = Digests::format(Sha256::digest(Bytes::concatAll([Bytes::ofString(Domains::envelopeDomain()), [0], Bytes::ofString(text)])))
+
+    fn derived(relation) = {
+        let bytes = canonical(omitted(relation, resolve(Fixtures::text(Fixtures::field(relation, "source")))))
+        let form = Fixtures::text(Fixtures::field(relation, "form"))
+        let hashed = Digests::hashText(Fixtures::text(Fixtures::field(relation, "domain")), bytes)
+        if form == "envelope" { envelopeDigest(bytes) } else if form == "hex" { Digests::hexOf(hashed) } else { hashed }
+    }
+
+    fn relationHolds(relation) = match Fixtures::text(Fixtures::field(relation, "kind")) {
+        "digest" => Fixtures::text(resolve(Fixtures::text(Fixtures::field(relation, "target")))) == derived(relation)
+        "equal" => canonical(resolve(Fixtures::text(Fixtures::field(relation, "left")))) == canonical(resolve(Fixtures::text(Fixtures::field(relation, "right"))))
+        _ => false
+    }
+
+    fn relationTest(relation) = test("canonical relation: ${Fixtures::text(Fixtures::field(relation, "name"))}", fn() => expectTrue(relationHolds(relation)))
+
+    fn nothingDangles() = {
+        let relations = Fixtures::items(Fixtures::field(Fixtures::load("canonical/relations.json"), "relations"))
+        let digests = filterList(relations, fn(r) => Fixtures::text(Fixtures::field(r, "kind")) == "digest")
+        let targets = mapList(digests, fn(r) => resolve(Fixtures::text(Fixtures::field(r, "target"))))
+        Fixtures::report("relation targets resolve to strings", targets, fn(t) => Fixtures::text(t) != "")
+    }
+
+    /// One test per canonical fixture and per relation.
+    export fn run() = {
+        forEachList(names(), fn(name) => test("canonical: ${name}", fn() => fixtureHolds(name)))
+        test("canonical: index lists 44 fixtures", fn() => check("canonical fixture count", 44, length(names())))
+        test("canonical: digest relations name real fields", nothingDangles)
+        forEachList(Fixtures::items(Fixtures::field(Fixtures::load("canonical/relations.json"), "relations")), relationTest)
+    }
+}

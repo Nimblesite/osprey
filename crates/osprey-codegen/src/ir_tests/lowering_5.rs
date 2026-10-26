@@ -1,6 +1,30 @@
 use super::*;
 
 #[test]
+fn string_cursor_and_parse_out_slots_are_entry_allocas() {
+    let ir = module(
+        r#"fn scan(s) = fold(range(0, 3), 0, fn(acc, i) => satAdd(acc, byteAt(s, i) ?: 0))
+        fn parsed(s) = fold(range(0, 2), 0, fn(acc, i) => satAdd(acc, satAdd(parseInt(s) ?: 0, byteLength(toString(parseFloat(s) ?: 0.0)))))
+        fn nested(s) = fold(range(0, 2), 0, fn(acc, i) => fold(range(0, 2), acc, fn(n, j) => satAdd(n, codePointAt(s, j) ?: 0)))
+        print("${scan("123")} ${parsed("12")} ${nested("abc")}")"#,
+    );
+    shows(
+        &ir,
+        &["byte_at", "codepoint_at", "parse_int", "parse_float"],
+    );
+    for function in ir.split("define ").skip(1) {
+        let mut entry = true;
+        for line in function.lines() {
+            entry &= !line.ends_with(':') || line == "entry:";
+            assert!(
+                !line.contains(" = alloca ") || entry,
+                "loop-local slot: {line}"
+            );
+        }
+    }
+}
+
+#[test]
 fn higher_order_calls_through_computed_and_field_callees() {
     // A chained 3-deep application (the outer callee is itself a call
     // result), an iterator callback that is a computed call result
@@ -31,7 +55,7 @@ fn higher_order_calls_through_computed_and_field_callees() {
              }\n",
         );
     // Each higher-order callee loads a function pointer from a closure cell.
-    assert!(ir.contains("to { i8* }*"), "expected a closure cell-call");
+    shows(&ir, &["to { i8* }*"]);
     for (name, value) in [
         ("explicitWitness", 5),
         ("deferredWitness", 7),
@@ -137,7 +161,7 @@ fn channel_with_default_capacity_and_fiberdone_requires_arg() {
                print(\"${recv(ch)}\")\n\
              }\n",
     );
-    assert!(ir.contains("channel_create"));
+    shows(&ir, &["channel_create"]);
 }
 
 // ---- error branches that fail loudly ----
@@ -161,7 +185,7 @@ fn generic_function_into_concrete_slot_specialises() {
              fn apply(f: (int) -> int, v: int) -> int = f(v)\n\
              fn main() -> Unit = print(\"${apply(identity, 3)}\")\n",
     );
-    assert!(ir.contains("__closure_fn_"));
+    shows(&ir, &["__closure_fn_"]);
 }
 
 #[test]
@@ -243,7 +267,7 @@ fn float_literal_match_uses_fcmp() {
              }\n\
              fn main() -> Unit = print(\"${pick(1.5)}\")\n",
     );
-    assert!(ir.contains("fcmp oeq double"));
+    shows(&ir, &["fcmp oeq double"]);
 }
 
 #[test]
@@ -298,7 +322,7 @@ fn code_point_width_cursor_builtin() {
                Error { message } => print(\"no\")\n\
              }\n",
     );
-    assert!(ir.contains("osp_string_codepoint_width"));
+    shows(&ir, &["osp_string_codepoint_width"]);
 }
 
 #[test]
@@ -312,7 +336,7 @@ fn yield_without_value_and_let_bound_lambda_materialize() {
                print(\"${inc(4)}\")\n\
              }\n",
     );
-    assert!(ir.contains("define"));
+    shows(&ir, &["define"]);
 }
 
 #[test]
@@ -444,10 +468,7 @@ fn matching_a_list_lookup_allocates_no_result() {
         "define internal i8* @named(i8* %$p0, i64 %$p1)",
     ] {
         let body = function_body(&ir, header);
-        assert!(
-            !body.contains("@osp_alloc"),
-            "{header} boxed a Result:\n{body}"
-        );
+        testkit::contents(&body, &[], &["@osp_alloc"]);
         let bounds = body.find("@osprey_list_in_bounds").unwrap_or(usize::MAX);
         let read = body.find("@osprey_list_get").unwrap_or(0);
         let branch = body[bounds.min(body.len())..]

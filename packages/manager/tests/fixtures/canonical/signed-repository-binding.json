@@ -1,0 +1,49 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "Detached envelope: one publisher plus the forge-admin attestation, sorted by principal.",
+  "type": "SignedRepositoryBinding",
+  "value": {
+    "payload": {
+      "package": {
+        "scope": "demo",
+        "name": "report"
+      },
+      "forge": "github",
+      "repositoryId": "R_kgDOfixture1",
+      "subdirectory": "packages/report",
+      "releaseBranch": "main",
+      "authorizationExpiresAt": "2026-11-01T00:00:00.000Z",
+      "nonce": "rb-7f3c9a"
+    },
+    "proofs": [
+      {
+        "principal": "principal-alice",
+        "proof": {
+          "Publisher": {
+            "credential": {
+              "WebAuthnPasskey": {
+                "credentialId": "cred-QmFzZTY0",
+                "relyingPartyId": "registry.osprey-lang.org",
+                "origin": "https://registry.osprey-lang.org",
+                "userVerified": true,
+                "assertionDigest": "sha256:1595875098558912e881ce0b2122a8a061123f2eccfc0ccce8381af89c79f435"
+              }
+            }
+          }
+        }
+      },
+      {
+        "principal": "principal-github-app",
+        "proof": {
+          "ForgeAdmin": {
+            "installationId": "inst-42",
+            "repositoryId": "R_kgDOfixture1",
+            "attestationDigest": "sha256:4a0e11d193a03f9e8cc7416c069ace2267141645b7d2a2248703d93c29d15d02"
+          }
+        }
+      }
+    ]
+  },
+  "canonical": "{\"payload\":{\"authorizationExpiresAt\":\"2026-11-01T00:00:00.000Z\",\"forge\":\"github\",\"nonce\":\"rb-7f3c9a\",\"package\":{\"name\":\"report\",\"scope\":\"demo\"},\"releaseBranch\":\"main\",\"repositoryId\":\"R_kgDOfixture1\",\"subdirectory\":\"packages/report\"},\"proofs\":[{\"principal\":\"principal-alice\",\"proof\":{\"Publisher\":{\"credential\":{\"WebAuthnPasskey\":{\"assertionDigest\":\"sha256:1595875098558912e881ce0b2122a8a061123f2eccfc0ccce8381af89c79f435\",\"credentialId\":\"cred-QmFzZTY0\",\"origin\":\"https://registry.osprey-lang.org\",\"relyingPartyId\":\"registry.osprey-lang.org\",\"userVerified\":true}}}}},{\"principal\":\"principal-github-app\",\"proof\":{\"ForgeAdmin\":{\"attestationDigest\":\"sha256:4a0e11d193a03f9e8cc7416c069ace2267141645b7d2a2248703d93c29d15d02\",\"installationId\":\"inst-42\",\"repositoryId\":\"R_kgDOfixture1\"}}}]}",
+  "canonicalLength": 781
+}

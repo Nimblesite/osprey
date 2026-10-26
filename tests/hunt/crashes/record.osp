@@ -1,0 +1,7 @@
+/// Deliberately planted: Record range invariant [SYMEX-CRASH-GATE].
+extern fn abort() -> int
+type Bounds = { start: int, end: int }
+fn validate(bounds) = if bounds.end < bounds.start { abort() } else { 0 }
+let line = input()
+let result = if line == "B" { validate(Bounds { start: 5, end: 2 }) } else { 0 }
+print("result ${result}")

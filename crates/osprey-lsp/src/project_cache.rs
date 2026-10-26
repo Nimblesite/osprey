@@ -174,6 +174,23 @@ mod tests {
         }
     }
 
+    /// Each uri's project loaded and checked through `cache`, in order — the
+    /// alternating entries are what prove separate cache slots, not repeats.
+    fn checked_in_turn(
+        cache: &ProjectCache,
+        uris: &[&str],
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        for uri in uris {
+            let sources = cache
+                .sources(uri, None, None)
+                .ok_or("missing project")?
+                .map_err(|errors| format!("{errors:?}"))?;
+            let checked = cache.checked(&sources.root, &sources.config, &sources.files);
+            assert!(checked.assembled.is_ok(), "{checked:?}");
+        }
+        Ok(())
+    }
+
     /// Every open file of a project republishes on every keystroke, and each
     /// answer needs the whole project assembled, checked and proved. Measured
     /// on `examples/projects/modules`, one such answer takes about 6 s, so the
@@ -228,14 +245,7 @@ mod tests {
         let a = first.write("main", "fn main() = print(\"one\")\n")?;
         let b = second.write("main", "fn main() = print(\"two\")\n")?;
         let cache = ProjectCache::default();
-        for uri in [&a, &b, &a, &b] {
-            let sources = cache
-                .sources(uri, None, None)
-                .ok_or("missing project")?
-                .map_err(|errors| format!("{errors:?}"))?;
-            let checked = cache.checked(&sources.root, &sources.config, &sources.files);
-            assert!(checked.assembled.is_ok(), "{checked:?}");
-        }
+        checked_in_turn(&cache, &[&a, &b, &a, &b])?;
         assert_eq!((cache.parses(), cache.analyses()), (2, 2));
         Ok(())
     }
@@ -259,14 +269,7 @@ mod tests {
         std::fs::write(&helper, "fn helper(x) = x\n")?;
         let uri = lspkit_server::uri::path_to_uri(&helper)?;
         let cache = ProjectCache::default();
-        for uri in [&entry, &uri, &entry, &uri] {
-            let sources = cache
-                .sources(uri, None, None)
-                .ok_or("missing project")?
-                .map_err(|errors| format!("{errors:?}"))?;
-            let checked = cache.checked(&sources.root, &sources.config, &sources.files);
-            assert!(checked.assembled.is_ok(), "{checked:?}");
-        }
+        checked_in_turn(&cache, &[&entry, &uri, &entry, &uri])?;
         assert_eq!(cache.analyses(), 2);
         assert_eq!(cache.parses(), 2);
         Ok(())

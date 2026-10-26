@@ -1,7 +1,7 @@
 //! Expression operators lowering.
 use super::{
-    arg_exprs, as_double, as_i1, as_i64, gen_expr, to_string_value, Codegen, CodegenError, Expr,
-    LType, NamedArgument, Result, Value,
+    as_double, as_i1, as_i64, gen_expr, to_string_value, Codegen, CodegenError, Expr, LType,
+    Result, Value,
 };
 
 pub(super) fn gen_binary(cg: &mut Codegen, op: &str, left: &Expr, right: &Expr) -> Result<Value> {
@@ -177,28 +177,6 @@ pub(super) fn checked_intrinsic(name: &str) -> &'static str {
         "checkedMul" => "smul",
         _ => "sadd",
     }
-}
-
-/// The two evaluated plain operands of a binary integer builtin. The checker
-/// normally proves this shape; the backend also rejects an unhandled Result
-/// instead of extracting its success slot.
-pub(super) fn two_int_args(
-    cg: &mut Codegen,
-    name: &str,
-    arguments: &[Expr],
-    named: &[NamedArgument],
-) -> Result<(Value, Value)> {
-    let args = arg_exprs(arguments, named);
-    let missing = || CodegenError::invalid(format!("{name} needs two arguments"));
-    let (an, bn) = (
-        args.first().ok_or_else(missing)?,
-        args.get(1).ok_or_else(missing)?,
-    );
-    let l = gen_expr(cg, an)?;
-    let l = crate::cast::coerce_to(cg, l, LType::I64)?;
-    let r = gen_expr(cg, bn)?;
-    let r = crate::cast::coerce_to(cg, r, LType::I64)?;
-    Ok((l, r))
 }
 
 /// The Success/Error join every guarded arithmetic builtin shares: `bad`

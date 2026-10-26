@@ -11,11 +11,14 @@
 //! test suites ([TESTING-CLI-RUN], `test_cmd`). Every compiling mode gates on Hindley-Milner
 //! type inference first — an ill-typed program never reaches codegen — and on
 //! the capability sandbox (`--sandbox`, `--no-http`, `--no-websocket`,
-//! `--no-fs`, `--no-ffi`). `--quiet` suppresses non-essential output. The C
+//! `--no-fs`, `--no-ffi`). `--quiet` suppresses progress output and nothing
+//! else: errors and warnings are diagnostics and print regardless.
+//! `--no-warnings` skips the warning pass, which packaging builds use because
+//! the redundant-annotation oracle re-infers the program per proof. The C
 //! driver used to link the emitted IR is `clang`, overridable via `OSPREY_CC`.
 //!
 //! `osprey lsp` runs the Language Server Protocol over stdio (the `osprey-lsp`
-//! crate, built on the published lspkit crates); the `--symbols`/`--hover`
+//! crate, built on the pinned lspkit crates); the `--symbols`/`--hover`
 //! outline/signature helpers it shares now live there too.
 
 mod android;
@@ -25,6 +28,8 @@ mod doctests;
 mod document_entries;
 mod document_source;
 mod fmt;
+mod html_escape;
+mod hunt;
 mod ios;
 mod ios_abi;
 mod project;
@@ -71,6 +76,7 @@ fn main() -> ExitCode {
         Some(("lsp", _)) => run_lsp(),
         Some(("fmt", rest)) => fmt::run(rest),
         Some(("test", rest)) => test_cmd::run(rest),
+        Some(("hunt", rest)) => hunt::run(rest),
         _ if args.iter().any(|arg| arg == "--docs") => docs::run(&args),
         _ => run_arguments(&args),
     }
@@ -163,7 +169,9 @@ fn run_lsp() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    match runtime.block_on(osprey_lsp::run_stdio()) {
+    let served = runtime.block_on(osprey_lsp::run_stdio());
+    runtime.shutdown_background();
+    match served {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("osprey lsp: {e}");

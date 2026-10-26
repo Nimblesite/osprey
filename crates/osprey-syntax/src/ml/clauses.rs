@@ -300,6 +300,7 @@ fn clause_arm(clause: Clause, column: usize, names: &[String]) -> MlArm {
     MlArm {
         pattern,
         body: with_renames(renames, clause.body),
+        pos,
     }
 }
 

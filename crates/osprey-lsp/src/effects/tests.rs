@@ -121,8 +121,10 @@ mod unix {
     fn effect_navigation_crosses_project_files() {
         let (source, uri) = example_source("projects/modules/src/api/routes.ospml");
         let hover = credit_hover(&source, &uri);
-        assert!(hover.contains("bank::Ledger::Store.credit"), "{hover}");
-        assert!(hover.contains("(int, int, string) => int"), "{hover}");
+        crate::testkit::shows(
+            &hover,
+            &["bank::Ledger::Store.credit", "(int, int, string) => int"],
+        );
         let (line, column) = locate(&source, CREDIT_PERFORM);
         let locations = crate::test_support::implementations(
             &source,

@@ -149,6 +149,7 @@ pub(crate) fn gen_list(
     let data = cg.heap_alloc(&(n * 8).to_string());
     let arr = cg.emit_reg(format!("bitcast i8* {data} to {}*", elem.as_str()));
     for (i, v) in vals.into_iter().enumerate() {
+        let v = crate::cast::erase_result(cg, v);
         let v = coerce_to(cg, v, elem)?;
         // The header's drop releases pointer elements, so each store is a new
         // reference [GC-ARC-PERCEUS].

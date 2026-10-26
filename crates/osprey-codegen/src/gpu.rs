@@ -190,7 +190,7 @@ fn kernel_loop(
     mut body: impl FnMut(&mut Codegen, Value, &str) -> Result<()>,
 ) -> Result<()> {
     let lp = open_range_loop(cg, "0", len);
-    crate::arc::push_frame(cg);
+    crate::arc::push_frame(cg, crate::arc::FrameKind::Scope);
     let raw = buffer_get(cg, src, &lp.i);
     let arg = elem_value(cg, raw, elem);
     body(cg, arg, &lp.i)?;

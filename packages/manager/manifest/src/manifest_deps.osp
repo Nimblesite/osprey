@@ -1,0 +1,424 @@
+namespace registry;
+import registry::Toml
+import registry::Names
+import registry::Paths
+import registry::Digests
+import registry::Order
+import registry::ManifestModel
+import registry::ManifestSections
+
+/// `[dependencies]`, `[build-dependencies]`, `[test-dependencies]`,
+/// `[system.*]` and `[[assets]]`. A dependency names one epoch and a minimum
+/// ordinal and nothing else: SemVer, ranges, paths, forge references, peer
+/// and optional dependencies each fail with their own reason code.
+/// Implements the dependency, system and asset rules of [PACKAGE-MANIFEST].
+module ManifestDeps {
+    let requirementKeys = ["epoch", "min_release", "capabilities"]
+    let grantCode = "manifest.dependency.capability"
+    let versionKeys = ["version", "versions", "range", "max_release", "req"]
+    let pathKeys = ["path", "directory"]
+    let forgeKeys = ["git", "url", "repository", "branch", "tag", "rev", "commit", "forge"]
+    let peerKeys = ["peer", "peer_dependency"]
+    let optionalKeys = ["optional", "features", "default_features", "default-features"]
+    let systemKeys = ["capability", "min_revision"]
+    let assetKeys = ["path", "role", "kind", "byte_length", "digest", "required_capability"]
+    let capabilityMax = 128
+    let segmentMax = 64
+
+    fn fail(code, span) = ManifestSections::fail(code, span)
+
+    // `value` and `span` are shared field names (issue #273): the pair
+    // receiver is spelled out once here, like `ManifestSections` does.
+    fn spanOfPair(pair: Toml::Pair) = pair.span
+
+    fn valueOf(pair: Toml::Pair) = pair.value
+
+    fn classify(key) = if listContains(requirementKeys, key) { "" }
+        else if listContains(versionKeys, key) { "manifest.dependency.version" }
+        else if listContains(pathKeys, key) { "manifest.dependency.path" }
+        else if listContains(forgeKeys, key) { "manifest.dependency.forge" }
+        else if listContains(peerKeys, key) { "manifest.dependency.peer" }
+        else if listContains(optionalKeys, key) { "manifest.dependency.optional" }
+        else { "manifest.dependency.unknown-key" }
+
+    // A forbidden key is located at the dependency pair, not the inner key.
+    fn forbiddenKeys(pairs, span) = foldList(pairs, Success { value: 0 }, fn(acc, pair: Toml::Pair) => match acc {
+        Error { message } => Error { message: message }
+        Success => match classify(pair.key) {
+            "" => Success { value: 0 }
+            code => fail(code, span)
+        }
+    })
+
+    /// An integer pair at or above `floor`, else `code` at `span`.
+    fn boundedInt(pair: Toml::Pair, floor, code, span) = match ManifestSections::intOf(pair, code) {
+        Success { value } => if value >= floor { Success { value: value } } else { fail(code, span) }
+        Error { message } => Error { message: message }
+    }
+
+    /// Append a successful element, or keep the failure.
+    fn appended(sofar, result) = match result {
+        Success { value } => Success { value: listAppend(sofar, value) }
+        Error { message } => Error { message: message }
+    }
+
+    fn epochOf(pairs, span) = match ManifestSections::find(pairs, "epoch") {
+        Error => fail("manifest.dependency.epoch", span)
+        Success { value } => boundedInt(value, 1, "manifest.dependency.epoch", span)
+    }
+
+    fn floorOf(pairs, span) = match ManifestSections::find(pairs, "min_release") {
+        Error => Success { value: 0 }
+        Success { value } => boundedInt(value, 0, "manifest.dependency.min-release", span)
+    }
+
+    fn requirementOf(key, pairs, span) = match forbiddenKeys(pairs, span) {
+        Error { message } => Error { message: message }
+        Success => match epochOf(pairs, span) {
+            Error { message } => Error { message: message }
+            Success { value } => requirementWith(key, pairs, value, span)
+        }
+    }
+
+    fn requirementWith(key, pairs, epoch, span) = match floorOf(pairs, span) {
+        Error { message } => Error { message: message }
+        Success { value } => Success { value: ManifestModel::Requirement { package: key, epoch: epoch, minimumOrdinal: value } }
+    }
+
+    fn isString(value) = match value {
+        Toml::Str { text } => byteLength(text) >= 0
+        _ => false
+    }
+
+    /// A string value such as `"^1.2"` is a SemVer selector, which has no place here.
+    fn shapeCode(value) = if isString(value) { "manifest.dependency.version" } else { "manifest.dependency.shape" }
+
+    fn requirementPair(pair: Toml::Pair) = match Names::parse(pair.key) {
+        Error { message } => fail(message, pair.span)
+        Success { value } => match pair.value {
+            Toml::Table { pairs } => requirementOf(value, pairs, pair.span)
+            _ => fail(shapeCode(pair.value), pair.span)
+        }
+    }
+
+    fn edgeOf(kind, requirement) = match kind {
+        "build-dependencies" => ManifestModel::Build { requirement: requirement }
+        "test-dependencies" => ManifestModel::Test { requirement: requirement }
+        _ => ManifestModel::Runtime { requirement: requirement }
+    }
+
+    fn edgePair(kind, pair) = match requirementPair(pair) {
+        Success { value } => Success { value: edgeOf(kind, value) }
+        Error { message } => Error { message: message }
+    }
+
+    fn edgesOf(kind, pairs) = foldList(pairs, Success { value: [] }, fn(acc, pair) => match acc {
+        Error { message } => Error { message: message }
+        Success { value } => appended(value, edgePair(kind, pair))
+    })
+
+    fn concatenated(sofar, result) = match result {
+        Success { value } => Success { value: listConcat(sofar, value) }
+        Error { message } => Error { message: message }
+    }
+
+    fn tableEdges(root, kind, sofar) = match ManifestSections::find(ManifestSections::pairsOf(root), kind) {
+        Error => Success { value: sofar }
+        Success { value } => concatenated(sofar, edgesOf(kind, ManifestSections::pairsOf(valueOf(value))))
+    }
+
+    fn compareEdges(a, b) = {
+        let ra = ManifestModel::requirementOf(a)
+        let rb = ManifestModel::requirementOf(b)
+        Order::thenCompare(Order::compareInts(ManifestModel::edgeRank(a), ManifestModel::edgeRank(b)),
+            Order::thenCompare(Names::compare(ra.package, rb.package),
+                Order::thenCompare(Order::compareInts(ra.epoch, rb.epoch), Order::compareInts(ra.minimumOrdinal, rb.minimumOrdinal))))
+    }
+
+    /// Every edge for one key names the same epoch ([PACKAGE-TYPE-INVARIANTS]).
+    fn epochsAgree(edges) = foldList(edges, true, fn(ok, e) => ok && foldList(edges, true, fn(inner, f) => inner && sameKeySameEpoch(e, f)))
+
+    fn sameKeySameEpoch(e, f) = {
+        let a = ManifestModel::requirementOf(e)
+        let b = ManifestModel::requirementOf(f)
+        Names::compare(a.package, b.package) != 0 || a.epoch == b.epoch
+    }
+
+    fn missingEdge() = ManifestModel::Runtime { requirement: missingRequirement() }
+
+    fn missingRequirement() = ManifestModel::Requirement { package: Names::Key { scope: "", name: "" }, epoch: 0, minimumOrdinal: 0 }
+
+    fn sortedEdges(edges) = {
+        let at = fn(i) => listGet(edges, i) ?: missingEdge()
+        mapList(Order::permutation(length(edges), fn(i, j) => compareEdges(at(i), at(j))), at)
+    }
+
+    fn checkedEdges(edges, root) = if epochsAgree(edges) { Success { value: sortedEdges(edges) } }
+        else { fail("manifest.dependency.epoch-conflict", ManifestSections::spanOf(ManifestSections::pairsOf(root), "dependencies", ManifestSections::rootSpan())) }
+
+    // ---- grants: `capabilities = [...]` on a dependency entry ([PACKAGE-CAPABILITY-CONFINEMENT]) ----
+
+    fn capabilityValue(value, span) = match value {
+        Toml::Str { text } => if capabilityOk(text) { Success { value: text } } else { fail(grantCode, span) }
+        _ => fail(grantCode, span)
+    }
+
+    fn capabilityList(items, span) = foldList(items, Success { value: [] }, fn(acc, item) => match acc {
+        Error { message } => Error { message: message }
+        Success { value } => appended(value, capabilityValue(item, span))
+    })
+
+    fn grantValue(pair: Toml::Pair) = match pair.value {
+        Toml::Arr { items } => capabilityList(items, pair.span)
+        _ => fail(grantCode, pair.span)
+    }
+
+    /// The grant one dependency entry carries, if its table has `capabilities`.
+    fn grantOf(pair: Toml::Pair) = match pair.value {
+        Toml::Table { pairs } => match ManifestSections::find(pairs, "capabilities") {
+            Error => Success { value: [] }
+            Success { value } => grantWith(pair.key, grantValue(value))
+        }
+        _ => Success { value: [] }
+    }
+
+    /// A grant for a parsed key; an unparseable key was already refused as an edge.
+    fn grantFor(parsedKey, capabilities) = match parsedKey {
+        Error => Success { value: [] }
+        Success { value } => Success { value: [ManifestModel::Grant { package: value, capabilities: capabilities }] }
+    }
+
+    fn grantWith(keyText, capabilities) = match capabilities {
+        Error { message } => Error { message: message }
+        Success { value } => grantFor(Names::parse(keyText), value)
+    }
+
+    fn tableGrants(root, kind, sofar) = match ManifestSections::find(ManifestSections::pairsOf(root), kind) {
+        Error => Success { value: sofar }
+        Success { value } => foldList(ManifestSections::pairsOf(valueOf(value)), Success { value: sofar }, fn(acc, pair) => match acc {
+            Error { message } => Error { message: message }
+            Success { value } => concatenated(value, grantOf(pair))
+        })
+    }
+
+    fn missingGrant() = ManifestModel::Grant { package: Names::Key { scope: "", name: "" }, capabilities: [] }
+
+    fn grantKey(g: ManifestModel::Grant) = g.package
+    fn grantCapabilities(g: ManifestModel::Grant) = g.capabilities
+
+    fn distinctStrings(capabilities) = foldList(capabilities, [], fn(acc, c) => if listContains(acc, c) { acc } else { listAppend(acc, c) })
+
+    /// Sorted and duplicate-free: the same capability granted in two tables is one grant.
+    fn canonicalOrEmpty(capabilities) = listSort(distinctStrings(capabilities))
+
+    /// One grant per key: the union of every entry's capabilities, canonical.
+    fn mergedGrant(grants, key) = ManifestModel::Grant {
+        package: key,
+        capabilities: canonicalOrEmpty(foldList(grants, [], fn(acc, g) => if Names::same(grantKey(g), key) { listConcat(acc, grantCapabilities(g)) } else { acc }))
+    }
+
+    fn mergedGrants(grants) = mapList(Names::sorted(Names::distinct(mapList(grants, grantKey))), fn(k) => mergedGrant(grants, k))
+
+    fn nonEmpty(grants) = filterList(grants, fn(g) => !isEmpty(grantCapabilities(g)))
+
+    /// The root's grants from all three dependency tables, one per key,
+    /// sorted by key with canonical capability sets; a bad capability is
+    /// `manifest.dependency.capability`.
+    export fn grants(root) = match tableGrants(root, "dependencies", []) {
+        Error { message } => Error { message: message }
+        Success { value } => match tableGrants(root, "build-dependencies", value) {
+            Error { message } => Error { message: message }
+            Success { value } => match tableGrants(root, "test-dependencies", value) {
+                Error { message } => Error { message: message }
+                Success { value } => Success { value: nonEmpty(mergedGrants(value)) }
+            }
+        }
+    }
+
+    /// All three dependency tables as canonical, sorted edges.
+    export fn dependencies(root) = match tableEdges(root, "dependencies", []) {
+        Error { message } => Error { message: message }
+        Success { value } => withBuild(root, value)
+    }
+
+    fn withBuild(root, sofar) = match tableEdges(root, "build-dependencies", sofar) {
+        Error { message } => Error { message: message }
+        Success { value } => withTest(root, value)
+    }
+
+    fn withTest(root, sofar) = match tableEdges(root, "test-dependencies", sofar) {
+        Error { message } => Error { message: message }
+        Success { value } => checkedEdges(value, root)
+    }
+
+    fn segmentByte(b) = (b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b == 46 || b == 45
+    fn segmentOk(s) = byteLength(s) >= 1 && byteLength(s) <= segmentMax && !startsWith(s, ".") && !startsWith(s, "-")
+        && fold(range(0, byteLength(s)), true, fn(ok, i) => ok && segmentByte(byteAt(s, i) ?: 0))
+
+    /// `[a-z0-9][a-z0-9.-]{0,63}` segments joined by `/`, at most 128 bytes ([PACKAGE-MANIFEST]).
+    export fn capabilityOk(name) = byteLength(name) <= capabilityMax && foldList(split(name, "/") ?: [""], true, fn(ok, s) => ok && segmentOk(s))
+
+    fn systemOf(pair: Toml::Pair) = match ManifestSections::unknownKeys(ManifestSections::pairsOf(pair.value), systemKeys, "manifest.system.unknown-key") {
+        Error { message } => Error { message: message }
+        Success => match ManifestSections::requiredString(ManifestSections::pairsOf(pair.value), "capability", "manifest.system.capability", pair.span) {
+            Error { message } => Error { message: message }
+            Success { value } => systemWith(pair, value)
+        }
+    }
+
+    fn systemWith(pair: Toml::Pair, capability) = if !capabilityOk(capability) { fail("manifest.system.capability", pair.span) }
+        else { match ManifestSections::find(ManifestSections::pairsOf(pair.value), "min_revision") {
+            Error => fail("manifest.system.min-revision", pair.span)
+            Success { value } => systemRevision(capability, boundedInt(value, 0, "manifest.system.min-revision", spanOfPair(value)))
+        } }
+
+    fn systemRevision(capability, result) = match result {
+        Success { value } => Success { value: ManifestModel::SystemRequirement { capability: capability, minimumRevision: value } }
+        Error { message } => Error { message: message }
+    }
+
+    fn systemsOf(pairs) = foldList(pairs, Success { value: [] }, fn(acc, pair) => match acc {
+        Error { message } => Error { message: message }
+        Success { value } => appended(value, systemOf(pair))
+    })
+
+    fn compareSystems(a, b) = Order::thenCompare(Order::compareStrings(a.capability, b.capability), Order::compareInts(a.minimumRevision, b.minimumRevision))
+
+    fn missingSystem() = ManifestModel::SystemRequirement { capability: "", minimumRevision: 0 }
+
+    fn sortedSystems(requirements) = {
+        let at = fn(i) => listGet(requirements, i) ?: missingSystem()
+        mapList(Order::permutation(length(requirements), fn(i, j) => compareSystems(at(i), at(j))), at)
+    }
+
+    fn uniqueCapabilities(requirements, span) = match Order::canonicalSet(mapList(requirements, fn(r) => r.capability)) {
+        Success => Success { value: sortedSystems(requirements) }
+        Error => fail("manifest.system.duplicate", span)
+    }
+
+    /// `[system.*]` as canonical, sorted requirements with unique capabilities.
+    export fn systems(root) = match ManifestSections::find(ManifestSections::pairsOf(root), "system") {
+        Error => Success { value: [] }
+        Success { value } => systemsSorted(systemsOf(ManifestSections::pairsOf(valueOf(value))), spanOfPair(value))
+    }
+
+    fn systemsSorted(result, span) = match result {
+        Error { message } => Error { message: message }
+        Success { value } => uniqueCapabilities(value, span)
+    }
+
+    fn roleOf(role, kind, capability, span) = match role {
+        "documentation" => if capability == "" { Success { value: ManifestModel::Documentation { kind: kind } } } else { fail("manifest.asset.capability", span) }
+        "runtime-data" => if capabilityOk(capability) { Success { value: ManifestModel::RuntimeData { kind: kind, requiredCapability: capability } } } else { fail("manifest.asset.capability", span) }
+        _ => fail("manifest.asset.role", span)
+    }
+
+    fn located(result, span) = match result {
+        Success { value } => Success { value: value }
+        Error { message } => fail(message, span)
+    }
+
+    fn assetKind(pairs, span) = match ManifestSections::requiredString(pairs, "kind", "manifest.asset.kind", span) {
+        Error { message } => Error { message: message }
+        Success { value } => located(ManifestModel::kindOf(value), ManifestSections::spanOf(pairs, "kind", span))
+    }
+
+    fn assetPath(pairs, kind, span) = match ManifestSections::requiredString(pairs, "path", "manifest.asset.path", span) {
+        Error { message } => Error { message: message }
+        Success { value } => match Paths::validate(value) {
+            Error => fail("manifest.asset.path", ManifestSections::spanOf(pairs, "path", span))
+            Success => if ManifestModel::kindAccepts(kind, value) { Success { value: value } } else { fail("manifest.asset.extension", ManifestSections::spanOf(pairs, "path", span)) }
+        }
+    }
+
+    fn assetDigest(pairs, span) = match ManifestSections::requiredString(pairs, "digest", "manifest.asset.digest", span) {
+        Error { message } => Error { message: message }
+        Success { value } => match Digests::parse(value) {
+            Success => Success { value: value }
+            Error { message } => fail(message, ManifestSections::spanOf(pairs, "digest", span))
+        }
+    }
+
+    fn assetLength(pairs, span) = match ManifestSections::find(pairs, "byte_length") {
+        Error => fail("manifest.asset.byte-length", span)
+        Success { value } => boundedInt(value, 0, "manifest.asset.byte-length", spanOfPair(value))
+    }
+
+    fn assetRole(pairs, kind, span) = match ManifestSections::requiredString(pairs, "role", "manifest.asset.role", span) {
+        Error { message } => Error { message: message }
+        Success { value } => roleOf(value, kind, capabilityText(pairs), ManifestSections::spanOf(pairs, "role", span))
+    }
+
+    /// `!` is not a capability character, so a non-string value fails as one.
+    fn capabilityText(pairs) = match ManifestSections::find(pairs, "required_capability") {
+        Success { value } => match valueOf(value) {
+            Toml::Str { text } => text
+            _ => "!"
+        }
+        Error => ""
+    }
+
+    fn assetOf(pairs, span) = match ManifestSections::unknownKeys(pairs, assetKeys, "manifest.asset.unknown-key") {
+        Error { message } => Error { message: message }
+        Success => match assetKind(pairs, span) {
+            Error { message } => Error { message: message }
+            Success { value } => assetWithKind(pairs, span, value)
+        }
+    }
+
+    fn assetWithKind(pairs, span, kind) = match assetPath(pairs, kind, span) {
+        Error { message } => Error { message: message }
+        Success { value } => assetRoled(pairs, span, kind, value)
+    }
+
+    fn assetRoled(pairs, span, kind, path) = match assetRole(pairs, kind, span) {
+        Error { message } => Error { message: message }
+        Success { value } => assetSized(pairs, span, path, value)
+    }
+
+    fn assetSized(pairs, span, path, role) = match assetLength(pairs, span) {
+        Error { message } => Error { message: message }
+        Success { value } => assetDigested(pairs, span, path, role, value)
+    }
+
+    fn assetDigested(pairs, span, path, role, size) = match assetDigest(pairs, span) {
+        Error { message } => Error { message: message }
+        Success { value } => Success { value: ManifestModel::Asset { path: path, byteLength: size, digest: value, role: role } }
+    }
+
+    fn assetItems(items, span) = foldList(items, Success { value: [] }, fn(acc, item) => match acc {
+        Error { message } => Error { message: message }
+        Success { value } => match item {
+            Toml::Table { pairs } => appended(value, assetOf(pairs, span))
+            _ => fail("manifest.asset.shape", span)
+        }
+    })
+
+    fn compareAssets(a: ManifestModel::Asset, b: ManifestModel::Asset) = Order::thenCompare(Order::compareStrings(a.path, b.path), Order::compareStrings(a.digest, b.digest))
+
+    fn missingAsset() = ManifestModel::Asset { path: "", byteLength: 0, digest: "", role: ManifestModel::Documentation { kind: ManifestModel::Utf8Text } }
+
+    fn sortedAssets(assets) = {
+        let at = fn(i) => listGet(assets, i) ?: missingAsset()
+        mapList(Order::permutation(length(assets), fn(i, j) => compareAssets(at(i), at(j))), at)
+    }
+
+    fn uniqueAssets(assets, span) = match Paths::canonicalSet(mapList(assets, fn(a: ManifestModel::Asset) => a.path)) {
+        Success => Success { value: sortedAssets(assets) }
+        Error { message } => fail(message, span)
+    }
+
+    /// `[[assets]]` as canonical, sorted declarations with collision-free paths.
+    export fn assets(root) = match ManifestSections::find(ManifestSections::pairsOf(root), "assets") {
+        Error => Success { value: [] }
+        Success { value } => match valueOf(value) {
+            Toml::Arr { items } => assetsFrom(items, spanOfPair(value))
+            _ => fail("manifest.asset.shape", spanOfPair(value))
+        }
+    }
+
+    fn assetsFrom(items, span) = match assetItems(items, span) {
+        Error { message } => Error { message: message }
+        Success { value } => uniqueAssets(value, span)
+    }
+}

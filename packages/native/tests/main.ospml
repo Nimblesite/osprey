@@ -1,0 +1,386 @@
+namespace uitests
+
+import ui::Ui
+import ui::Encode
+import ui::Doc
+import ui::Lists
+import ui::Contrast
+import ui::Events
+import ui::Messages
+import ui::Requests
+import ui::Signals
+import ui::Splitters
+import ui::Themes
+import uitests::Probes
+
+type Pair =
+    name : string
+    rank : int
+
+tree () = Ui::column [
+    Ui::text "Title \"quoted\"\n",
+    Ui::button ("Go", "play", Increment),
+    Ui::section ("S", "", [ui::Field(label = "Q", value = "", prompt = "", secure = false, multiline = false, commit = ui::OnSubmit, bind = Typed)]),
+    ui::Picker(label = "P", choices = [Ui::choice ("a", "A")], selected = "a", bind = Load),
+]
+
+encoded () = jsonEncode (listGet (Encode::walk ([], tree ())).nodes 0 ?: JsonNull) ?: ""
+
+kindAt doc path = jsonText (jsonField (jsonIndex (jsonField doc "children" ?: JsonNull) path ?: JsonNull) "kind" ?: JsonNull) ?: "missing"
+
+// [UI-COMPONENTS]: a disclosure binds before the controls it reveals.
+revealed () = Ui::layer [Ui::disclosure ("Limits", false, Load, [Ui::label ("Scope", "info"), ui::Spacer, Ui::button ("Go", "play", Increment)]), Ui::slot "alert"]
+
+test ("a disclosure takes its ordinal before the controls it reveals", \() =>
+    walked = Encode::walk ([], revealed ())
+    doc = listGet walked.nodes 0 ?: JsonNull
+    disclosure = jsonIndex (jsonField doc "children" ?: JsonNull) 0 ?: JsonNull
+    go = jsonIndex (jsonField disclosure "children" ?: JsonNull) 2 ?: JsonNull
+    expect (length walked.bindings, 2)
+    expect (kindAt doc 0, "disclosure")
+    expect (jsonInt (jsonField disclosure "event" ?: JsonNull) ?: 0 - 1, 0)
+    expect (jsonInt (jsonField go "event" ?: JsonNull) ?: 0 - 1, 1))
+
+// [UI-EVENTS]: a screen's toolbar controls are bound before its children.
+test ("a screen's toolbar controls take ordinals before its children", \() =>
+    walked = Encode::walk ([], Ui::screen ("T", "", [Ui::field ("F", "", "p", Typed)], [Ui::button ("Go", "play", Increment)]))
+    doc = listGet walked.nodes 0 ?: JsonNull
+    field = jsonIndex (jsonField doc "toolbar" ?: JsonNull) 0 ?: JsonNull
+    button = jsonIndex (jsonField doc "children" ?: JsonNull) 0 ?: JsonNull
+    expect (jsonInt (jsonField field "event" ?: JsonNull) ?: 0 - 1, 0)
+    expect (jsonInt (jsonField button "event" ?: JsonNull) ?: 0 - 1, 1))
+
+// [UI-COMPONENTS]: an aside's pane binds before its column; rows carry their symbol and group.
+inspected () = Ui::aside (Ui::rows ([Ui::entry ("a", "star", "Recent", Ui::text "A")], "a", Load), ui::Trailing, Ui::column [Ui::icon "info", ui::Divider, Ui::button ("Go", "play", Increment)], 420, Typed)
+
+test ("an aside's pane takes ordinals before its column and rows keep their symbol and group", \() =>
+    walked = Encode::walk ([], inspected ())
+    doc = listGet walked.nodes 0 ?: JsonNull
+    pane = jsonField doc "pane" ?: JsonNull
+    row = jsonIndex (jsonField pane "rows" ?: JsonNull) 0 ?: JsonNull
+    go = jsonIndex (jsonField (jsonField doc "aside" ?: JsonNull) "children" ?: JsonNull) 2 ?: JsonNull
+    expect (jsonText (jsonField doc "side" ?: JsonNull) ?: "", "trailing")
+    expect (jsonInt (jsonField pane "event" ?: JsonNull) ?: 0 - 1, 0)
+    expect (jsonInt (jsonField go "event" ?: JsonNull) ?: 0 - 1, 1)
+    expect (jsonText (jsonField row "symbol" ?: JsonNull) ?: "", "star")
+    expect (jsonText (jsonField row "group" ?: JsonNull) ?: "", "Recent"))
+
+// [UI-COMPONENTS-SPLITTER]: the splitter between an aside's pane and its column carries the column's width and
+// limits, and binds after both columns so their controls keep their ordinals.
+test ("an aside's splitter carries the column width and its limits and binds after both columns", \() =>
+    walked = Encode::walk ([], inspected ())
+    doc = listGet walked.nodes 0 ?: JsonNull
+    expect (length walked.bindings, 3)
+    expect (Doc::number (doc, "width"), 420)
+    expect (Doc::number (doc, "least"), Splitters::least)
+    expect (Doc::number (doc, "most"), Splitters::most)
+    expect (Doc::number (doc, "keep"), Splitters::keep)
+    expect (Doc::number (doc, "event"), 2))
+
+resized value = Messages::route (Events::bind (ui::SizeInput(action = Typed), value) ?: ui::Act(act = Load), \_ => 0 - 1, \(_, _) => 0 - 2, \(_, _) => 0 - 3, \(_, points) => points, \(_, _) => 0 - 4, \_ => 0 - 5)
+
+// [UI-COMPONENTS-SPLITTER]: a dragged width reaches the application only within the splitter's limits, and only as a whole number of points.
+test ("a splitter delivers its dragged width clamped to its limits", \() =>
+    expect (resized (JsonInt 420), 420)
+    expect (resized (JsonInt 9000), Splitters::most)
+    expect (resized (JsonInt 10), Splitters::least)
+    expect (resized (JsonInt (0 - 50)), Splitters::least)
+    expect (resized (JsonString "wide"), 0 - 1)
+    expect (resized JsonNull, 0 - 1))
+
+// [UI-COMPONENTS]: a link names its web destination and binds nothing; the host opens it in the browser.
+test ("a link carries its label and web address and takes no ordinal", \() =>
+    walked = Encode::walk ([], Ui::column [Ui::link ("Apple guide", "https://support.apple.com/102445"), Ui::button ("Go", "play", Increment)])
+    doc = listGet walked.nodes 0 ?: JsonNull
+    link = jsonIndex (jsonField doc "children" ?: JsonNull) 0 ?: JsonNull
+    go = jsonIndex (jsonField doc "children" ?: JsonNull) 1 ?: JsonNull
+    expect (kindAt doc 0, "link")
+    expect (jsonText (jsonField link "label" ?: JsonNull) ?: "", "Apple guide")
+    expect (jsonText (jsonField link "url" ?: JsonNull) ?: "", "https://support.apple.com/102445")
+    expect (jsonInt (jsonField link "event" ?: JsonNull) ?: 0 - 1, 0 - 1)
+    expect (length walked.bindings, 1)
+    expect (jsonInt (jsonField go "event" ?: JsonNull) ?: 0 - 1, 0))
+
+test ("controls take depth-first ordinals in drawing order", \() =>
+    expect (length (Encode::walk ([], tree ())).bindings, 3))
+
+test ("an encoded region decodes with its components and text intact", \() =>
+    doc = jsonDecode (encoded ()) ?: JsonNull
+    expect (kindAt doc 2, "section")
+    title = jsonText (jsonField (jsonIndex (jsonField doc "children" ?: JsonNull) 0 ?: JsonNull) "text" ?: JsonNull) ?: "missing"
+    expect (title, "Title \"quoted\"\n"))
+
+test ("a control carries the ordinal of its binding", \() =>
+    doc = jsonDecode (encoded ()) ?: JsonNull
+    picker = jsonIndex (jsonField doc "children" ?: JsonNull) 3 ?: JsonNull
+    expect (jsonInt (jsonField picker "event" ?: JsonNull) ?: 0 - 1, 2))
+
+test ("start sends every region once with the theme", \() =>
+    first = Probes::started ()
+    expect (Probes::keys first, "root,note")
+    expect (Doc::number (first, "version"), 1)
+    expect (Doc::text (Doc::field (first, "theme"), "feedback") == "", true)
+    expect (Doc::number (Doc::field (first, "theme"), "settle"), 220))
+
+test ("a tap refreshes only the region whose signal changed", \() =>
+    second = Probes::post (Probes::started (), Probes::tap ("root", 1, 0))
+    expect (Probes::keys second, "root")
+    expect (Probes::problems second, "")
+    root = Doc::field (listGet (Doc::items (Doc::field (second, "patches"))) 0 ?: JsonNull, "node")
+    label = Doc::text (listGet (Doc::items (Doc::field (root, "children"))) 0 ?: JsonNull, "text")
+    expect (label, "Count 1"))
+
+test ("text input reaches update through its binding and patches its own region", \() =>
+    second = Probes::post (Probes::started (), Probes::typed (1, "hello"))
+    expect (Probes::keys second, "note")
+    echo = listGet (Doc::items (Doc::field (second, "slices"))) 0 ?: JsonNull
+    expect ("${Doc::text (echo, "key")}=${Doc::text (echo, "text")}", "echo=hello")
+    third = Probes::post (second, Probes::tap ("root", 1, 0))
+    expect (Probes::keys third, "root"))
+
+test ("stale, unknown and mismatched events are rejected without change", \() =>
+    second = Probes::post (Probes::started (), Probes::tap ("root", 1, 0))
+    stale = Probes::post (second, Probes::tap ("root", 1, 0))
+    expect (contains (Probes::problems stale) "Stale control", true)
+    expect (Probes::keys stale, "")
+    unknown = Probes::post (second, Probes::tap ("root", 2, 9))
+    expect (contains (Probes::problems unknown) "Unknown control", true)
+    wrongKind = Probes::post (second, "{\"kind\":\"ui\",\"region\":\"note\",\"revision\":1,\"ordinal\":1,\"value\":\"x\",\"now\":6}")
+    expect (contains (Probes::problems wrongKind) "wrong kind", true)
+    gone = Probes::post (second, Probes::tap ("missing", 1, 0))
+    expect (contains (Probes::problems gone) "Stale control", true))
+
+// [UI-EVENTS]: a trusted-host edit resolves the control the prior state meant through its typed binding, not its stale ordinal.
+test ("an edit from prior state keeps its meaning when ordinals shift", \() =>
+    first = Probes::started ()
+    // At count 0 the Go buttons are [Increment, Load]; the host taps ordinal 0.
+    counted = Probes::post (first, Probes::edit (Probes::saved (first), "root", 1, 0, "null"))
+    expect (Probes::problems counted, "")
+    expect (Probes::keys counted, "root")
+    root = Doc::field (listGet (Doc::items (Doc::field (counted, "patches"))) 0 ?: JsonNull, "node")
+    expect (Doc::text (listGet (Doc::items (Doc::field (root, "children"))) 0 ?: JsonNull, "text"), "Count 1")
+    // At count 1 the buttons are [Load]; the host's ordinal 0 (Increment in prior) still means Increment, but it is withdrawn now.
+    shifted = Probes::post (counted, Probes::edit (Probes::saved (first), "root", 1, 0, "null"))
+    expect (Probes::keys shifted, "")
+    expect (Doc::number (Probes::stored counted, "tally"), 1)
+    // Prior ordinal 1 (Load) still means Load even though it now sits at ordinal 0.
+    loaded = Probes::post (counted, Probes::edit (Probes::saved (first), "root", 1, 1, "null"))
+    expect (Probes::problems loaded, "")
+    expect (Doc::text (listGet (Doc::items (Doc::field (loaded, "requests"))) 0 ?: JsonNull, "ticket"), "load:1"))
+
+// [UI-EVENTS]: identical-looking controls are told apart by their typed actions; a withdrawn action refuses.
+test ("an edit whose typed action is gone or ambiguous refuses without change", \() =>
+    first = Probes::started ()
+    // Prior ordinal 1 is Load; the note region draws two identical Load buttons.
+    duped = Probes::post (first, Probes::edit (Probes::saved (first), "note", 1, 1, "null"))
+    expect (contains (Probes::problems duped) "More than one", true)
+    expect (Probes::keys duped, "")
+    expect (length (Doc::items (Doc::field (duped, "patches"))), 0)
+    // At count 1 only Load is drawn; the withdrawn Increment (prior ordinal 0) refuses instead of dispatching Load.
+    counted = Probes::post (first, Probes::edit (Probes::saved (first), "root", 1, 0, "null"))
+    gone = Probes::post (counted, Probes::edit (Probes::saved (first), "root", 1, 0, "null"))
+    expect (contains (Probes::problems gone) "no longer exists", true)
+    expect (Probes::keys gone, "")
+    expect (length (Doc::items (Doc::field (gone, "patches"))), 0)
+    // The refusal changed nothing: the current session still answers its own controls.
+    intact = Probes::post (gone, Probes::tap ("root", 2, 0))
+    expect (Probes::problems intact, "")
+    expect (Doc::text (listGet (Doc::items (Doc::field (intact, "requests"))) 0 ?: JsonNull, "ticket"), "load:1")
+    expect (Doc::number (Probes::stored intact, "tally"), 1))
+
+// [UI-EVENTS]: an edit is refused when its original revision, region or ordinal cannot be recovered from the prior state.
+test ("an edit with an impossible original refuses without change", \() =>
+    first = Probes::started ()
+    outdated = Probes::post (first, Probes::edit (Probes::saved (first), "root", 9, 0, "null"))
+    expect (contains (Probes::problems outdated) "Stale control", true)
+    expect (Probes::keys outdated, "")
+    absent = Probes::post (first, Probes::edit (Probes::saved (first), "gone", 1, 0, "null"))
+    expect (contains (Probes::problems absent) "Stale control", true)
+    unknown = Probes::post (first, Probes::edit (Probes::saved (first), "root", 1, 9, "null"))
+    expect (contains (Probes::problems unknown) "Unknown control", true)
+    unreadable = Probes::post (first, Probes::edit ("\"not a session\"", "root", 1, 0, "null"))
+    expect (contains (Probes::problems unreadable) "Stale control", true)
+    wrongKind = Probes::post (first, Probes::edit (Probes::saved (first), "note", 1, 0, "7"))
+    expect (contains (Probes::problems wrongKind) "wrong kind", true)
+    expect (Probes::keys wrongKind, "")
+    expect (length (Doc::items (Doc::field (wrongKind, "requests"))), 0)
+    // Every refusal left the session whole.
+    after = Probes::post (first, Probes::tap ("root", 1, 0))
+    expect (Probes::problems after, "")
+    expect (Doc::number (Probes::stored after, "tally"), 1))
+
+// [UI-EVENTS]: a resolved edit runs update on the current session, never on the prior state.
+test ("a resolved edit updates the current state", \() =>
+    first = Probes::started ()
+    typed = Probes::post (first, Probes::typed (1, "hello"))
+    counted = Probes::post (typed, Probes::tap ("root", 1, 0))
+    edited = Probes::post (counted, Probes::edit (Probes::saved (first), "note", 1, 0, "\"world\""))
+    expect (Probes::problems edited, "")
+    expect (Doc::text (Probes::stored edited, "memo"), "world")
+    expect (Doc::text (Probes::stored typed, "memo"), "hello")
+    // The carried-over tally proves the prior state was not restored.
+    expect (Doc::number (Probes::stored edited, "tally"), 1))
+
+test ("capability requests carry tickets and completions return to update", \() =>
+    asked = Probes::post (Probes::started (), Probes::tap ("note", 1, 1))
+    request = listGet (Doc::items (Doc::field (asked, "requests"))) 0 ?: JsonNull
+    expect (Doc::text (request, "ticket"), "load:1")
+    expect (Doc::text (request, "kind"), "store-read")
+    done = Probes::post (asked, "{\"kind\":\"completed\",\"ticket\":\"load:1\",\"ok\":true,\"result\":\"from disk\",\"now\":9}")
+    expect (Probes::keys done, "note")
+    field = listGet (Doc::items (Doc::field (Doc::field (listGet (Doc::items (Doc::field (done, "patches"))) 0 ?: JsonNull, "node"), "children"))) 0 ?: JsonNull
+    expect (Doc::text (field, "value"), "from disk"))
+
+test ("malformed events are diagnosed, never guessed", \() =>
+    bad = Probes::post (Probes::started (), "{not json")
+    expect (Probes::problems bad, "The host sent an event that is not JSON")
+    odd = Probes::post (Probes::started (), "{\"kind\":\"telepathy\",\"now\":1}")
+    expect (Probes::problems odd, "Unknown event kind: telepathy"))
+
+test ("contrast follows WCAG relative luminance", \() =>
+    expect (Contrast::ratio ("#000000", "#FFFFFF") > 20.99, true)
+    expect (Contrast::ratio ("#777777", "#777777") < 1.0001, true))
+
+test ("sorting is stable and lists stay total", \() =>
+    pairs = [Pair(name = "b", rank = 1), Pair(name = "a", rank = 2), Pair(name = "b", rank = 3)]
+    sorted = Lists::sortBy (pairs, \(x, y) => x.name < y.name)
+    expect (join (mapList (sorted, \pair => "${pair.name}${pair.rank}")) ",", "a2,b1,b3")
+    expect (Lists::distinct ["a", "b", "a"], false)
+    expect (Lists::position (["a", "b", "b"], \item => item == "b"), 1)
+    expect (Lists::position (["a"], \item => item == "z"), 0 - 1))
+
+// [UI-COMPONENTS] [UI-EVENTS]: tabs encode their pages and bind as one choice after the pages' controls; segments carry their tones.
+tabbed () = Ui::column [
+    ui::Tabs(tabs = [Ui::tab ("one", "One", "1.circle", Ui::button ("Go", "play", Increment)), Ui::tab ("two", "Two", "2.circle", Ui::caption "Second")], selected = "two", bind = Load),
+    ui::Segments(tones = [ui::Good, ui::Danger], label = "2 states"),
+]
+
+test ("tabs carry their pages and bind after the pages' controls, and segments carry their tones", \() =>
+    walked = Encode::walk ([], tabbed ())
+    doc = listGet walked.nodes 0 ?: JsonNull
+    tabs = jsonIndex (jsonField doc "children" ?: JsonNull) 0 ?: JsonNull
+    second = jsonIndex (jsonField tabs "tabs" ?: JsonNull) 1 ?: JsonNull
+    segments = jsonIndex (jsonField doc "children" ?: JsonNull) 1 ?: JsonNull
+    expect (length walked.bindings, 2)
+    expect (Doc::text (tabs, "kind"), "tabs")
+    expect (Doc::text (tabs, "selected"), "two")
+    expect (Doc::number (tabs, "event"), 1)
+    expect (Doc::text (second, "label"), "Two")
+    expect (Doc::text (second, "symbol"), "2.circle")
+    expect (Doc::text (Doc::field (second, "child"), "text"), "Second")
+    expect (Doc::text (Doc::field (second, "child"), "role"), "caption")
+    expect (join (Doc::texts (segments, "tones")) ",", "good,danger")
+    expect (Doc::text (segments, "label"), "2 states"))
+
+// [UI-COMPONENTS]: every constructor encodes as the component it names, with its role, tone, axis and enabled state.
+built () = Ui::split [Ui::row [Ui::styled ("H", ui::Heading, ui::Accent), Ui::evidence ("Label", "Value"), Ui::badge ("Partial", "circle", ui::Caution), Ui::empty ("tray", "Nothing", "Why"), Ui::action ("Stop", "stop", ui::Destructive, false, Load), Ui::toggle ("AI", true, Typed), Ui::picker ("Model", [Ui::choice ("a", "A")], "a", Load), Ui::rows ([Ui::item ("k", Ui::text "cell")], "k", Load)]]
+
+test ("every constructor encodes as the component it names", \() =>
+    doc = listGet (Encode::walk ([], built ())).nodes 0 ?: JsonNull
+    row = jsonIndex (jsonField doc "children" ?: JsonNull) 0 ?: JsonNull
+    parts = Doc::items (Doc::field (row, "children"))
+    expect (Doc::text (doc, "kind"), "split")
+    expect (Doc::text (row, "axis"), "horizontal")
+    expect (join (mapList (parts, \child => Doc::text (child, "kind"))) ",", "text,evidence,badge,empty,button,toggle,picker,rows")
+    expect (Doc::text (listGet parts 0 ?: JsonNull, "role"), "heading")
+    expect (Doc::text (listGet parts 0 ?: JsonNull, "tone"), "accent")
+    expect (Doc::text (listGet parts 2 ?: JsonNull, "tone"), "caution")
+    expect (Doc::text (listGet parts 3 ?: JsonNull, "detail"), "Why")
+    expect (Doc::text (listGet parts 4 ?: JsonNull, "role"), "destructive")
+    expect (Doc::flag (listGet parts 4 ?: JsonNull, "enabled"), false)
+    expect (Doc::flag (listGet parts 5 ?: JsonNull, "on"), true)
+    expect (Doc::text (listGet (Doc::items (Doc::field (listGet parts 7 ?: JsonNull, "rows"))) 0 ?: JsonNull, "key"), "k"))
+
+// [UI-EFFECTS]: a run and an HTTP request encode their bounds, headers and the slices their output lands in.
+test ("run and http requests encode their bounds, headers and slices", \() =>
+    run = Requests::encode (Requests::ask ("ps", ui::Run(executable = "/bin/ps", arguments = ["-axo", "pid="], timeout = 10000, outputLimit = 8000000, plist = false, runSlice = "work/run")))
+    expect (Doc::text (run, "ticket"), "ps")
+    expect (Doc::text (run, "kind"), "run")
+    expect (join (Doc::texts (run, "arguments")) " ", "-axo pid=")
+    expect (Doc::number (run, "timeout"), 10000)
+    expect (Doc::number (run, "limit"), 8000000)
+    expect (Doc::flag (run, "plist"), false)
+    expect (Doc::text (run, "slice"), "work/run")
+    http = Requests::encode (Requests::ask ("kev", ui::Http(method = "GET", url = "https://example.test/feed", headers = [ui::Header(headerName = "Accept", headerValue = "application/json")], body = "", responseLimit = 1000, deadline = 30000, httpSlice = "work/http")))
+    header = listGet (Doc::items (Doc::field (http, "headers"))) 0 ?: JsonNull
+    expect (Doc::text (http, "method"), "GET")
+    expect ("${Doc::text (header, "name")}: ${Doc::text (header, "value")}", "Accept: application/json")
+    expect (Doc::number (http, "limit"), 1000)
+    expect (Doc::number (http, "timeout"), 30000)
+    expect (Doc::text (http, "slice"), "work/http")
+    write = Requests::write ("echo", "text")
+    expect ("${write.sliceKey}=${write.sliceText}", "echo=text"))
+
+named key = match Themes::named (Probes::palette (), key)
+    Success token => token.tokenLight
+    Error _ => "none"
+
+// [UI-SIGNALS] [UI-THEME]: documents, lists and themes read totally, and a host-held slice counts as changed only when written.
+test ("documents, lists, themes and slice writes are read totally", \() =>
+    doc = Doc::parse "{\"a\":1,\"b\":null}"
+    expect (Doc::has (doc, "b"), true)
+    expect (Doc::has (doc, "c"), false)
+    expect (length (Doc::members doc), 2)
+    expect (length (Doc::members JsonNull), 0)
+    expect (Lists::all ([2, 4], \n => n > 1), true)
+    expect (Lists::all ([2, 0], \n => n > 1), false)
+    expect (join (Lists::flatten [["a"], [], ["b", "c"]]) "", "abc")
+    expect (named "canvas", "#FFFFFF")
+    expect (named "ink", "none")
+    expect (join (Signals::written ([Requests::write ("echo", "x")], "echo", ["Memo"])) ",", "Memo")
+    expect (length (Signals::written ([], "echo", ["Memo"])), 0))
+
+
+requestText capability = jsonEncode (Requests::encode (Requests::ask ("job:7", capability))) ?: "encode failed"
+
+// [UI-EFFECTS]: the complete host payload retains the ticket and every requested argument.
+test ("filesystem and store requests preserve paths bounds and slices", \() =>
+    expect (requestText (ui::ListDirectories(directories = ["/tmp", "/Users/me"], entryLimit = 12, listSlice = "listing")), "{\"ticket\":\"job:7\",\"kind\":\"list-directories\",\"paths\":[\"/tmp\",\"/Users/me\"],\"limit\":12,\"slice\":\"listing\"}")
+    expect (requestText (ui::ReadPropertyLists(plists = ["app.plist"], plistKeys = ["CFBundleName"], plistSuffixes = [".plist"], plistLimit = 128, plistSlice = "prefs")), "{\"ticket\":\"job:7\",\"kind\":\"read-plists\",\"paths\":[\"app.plist\"],\"keys\":[\"CFBundleName\"],\"suffixes\":[\".plist\"],\"limit\":128,\"slice\":\"prefs\"}")
+    expect (requestText (ui::ReadTexts(texts = ["a.txt", "b.txt"], textLimit = 256, textSlice = "text")), "{\"ticket\":\"job:7\",\"kind\":\"read-texts\",\"paths\":[\"a.txt\",\"b.txt\"],\"limit\":256,\"slice\":\"text\"}")
+    expect (requestText (ui::Fingerprint(file = "a.txt", fileLimit = 64)), "{\"ticket\":\"job:7\",\"kind\":\"fingerprint\",\"path\":\"a.txt\",\"limit\":64}")
+    expect (requestText (ui::StoreWrite(writeName = "note.txt", writeSlice = "draft")), "{\"ticket\":\"job:7\",\"kind\":\"store-write\",\"name\":\"note.txt\",\"slice\":\"draft\"}")
+    expect (requestText (ui::StoreList(folder = "notes")), "{\"ticket\":\"job:7\",\"kind\":\"store-list\",\"name\":\"notes\"}")
+    expect (requestText (ui::StoreDelete(deleteName = "old.txt")), "{\"ticket\":\"job:7\",\"kind\":\"store-delete\",\"name\":\"old.txt\"}"))
+
+// [UI-EFFECTS]: the complete host payload retains the ticket and every requested argument.
+test ("desktop requests preserve picker export and cancellation payloads", \() =>
+    expect (requestText (ui::RunningApplications), "{\"ticket\":\"job:7\",\"kind\":\"running-applications\"}")
+    expect (requestText (ui::ChooseFile(types = ["txt", "md"], chosenLimit = 2, chosenSlice = "picked")), "{\"ticket\":\"job:7\",\"kind\":\"choose-file\",\"types\":[\"txt\",\"md\"],\"limit\":2,\"slice\":\"picked\"}")
+    expect (requestText (ui::ChooseFolder), "{\"ticket\":\"job:7\",\"kind\":\"choose-folder\"}")
+    expect (requestText (ui::SaveFile(suggested = "report.txt", exportSlice = "export")), "{\"ticket\":\"job:7\",\"kind\":\"save-file\",\"name\":\"report.txt\",\"slice\":\"export\"}")
+    expect (requestText (ui::Reveal(revealPath = "/tmp/report.txt")), "{\"ticket\":\"job:7\",\"kind\":\"reveal\",\"path\":\"/tmp/report.txt\"}")
+    expect (requestText (ui::OpenSettings(pane = "privacy")), "{\"ticket\":\"job:7\",\"kind\":\"open-settings\",\"pane\":\"privacy\"}")
+    expect (requestText (ui::Cancel(cancelled = "old:7")), "{\"ticket\":\"job:7\",\"kind\":\"cancel\",\"target\":\"old:7\"}"))
+
+roleText role =
+    doc = listGet (Encode::walk ([], Ui::column [ui::Text(content = "sample", role = role, tone = ui::Primary), Ui::button ("Go", "play", Increment)])).nodes 0 ?: JsonNull
+    Doc::text (listGet (Doc::items (Doc::field (doc, "children"))) 0 ?: JsonNull, "role")
+
+// [UI-COMPONENTS]: every semantic text role keeps its protocol spelling.
+test ("semantic text roles preserve every protocol spelling", \() =>
+    roles = [ui::Display, ui::Large, ui::Title, ui::Heading, ui::Lead, ui::Headline, ui::Body, ui::Callout, ui::Caption, ui::Eyebrow, ui::Mono]
+    expect (join (mapList (roles, roleText)) ",", "display,large,title,heading,lead,headline,body,callout,caption,eyebrow,mono"))
+
+// [UI-EFFECTS-HOST]: host extensions retain the same bounded request envelope.
+test ("host capabilities preserve namespace operation arguments and bounds", \() =>
+    request = ui::HostCall(hostNamespace = "vscode", hostOperation = "workspace.snapshot", hostArguments = JsonObject [Doc::str ("workspace", "file:///app")], hostTimeout = 1000, hostLimit = 4096, hostSlice = "workspace")
+    doc = Requests::encode (Requests::ask ("host:1", request))
+    expect (Doc::text (doc, "kind"), "host-call")
+    expect (Doc::text (doc, "namespace"), "vscode")
+    expect (Doc::text (doc, "operation"), "workspace.snapshot")
+    expect (Doc::number (doc, "timeout"), 1000)
+    expect (Doc::number (doc, "limit"), 4096)
+    expect (Doc::text (doc, "slice"), "workspace")
+    expect (Doc::text (Doc::field (doc, "arguments"), "workspace"), "file:///app"))
+
+// [UI-COMPONENTS-CONTEXT-MENU]: menu commands use the same issued binding IDs.
+test ("context menus bind actions after their content controls", \() =>
+    built = Ui::contextMenu (Ui::button ("Select", "cube", Increment), [Ui::button ("Remove", "trash", Load)])
+    walked = Encode::walk ([], built)
+    doc = listGet walked.nodes 0 ?: JsonNull
+    item = listGet (Doc::items (Doc::field (doc, "items"))) 0 ?: JsonNull
+    expect (Doc::text (doc, "kind"), "context-menu")
+    expect (Doc::number (Doc::field (doc, "body"), "event"), 0)
+    expect (Doc::number (item, "event"), 1)
+    expect (length walked.bindings, 2))

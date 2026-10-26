@@ -2,41 +2,36 @@ use super::*;
 use crate::testkit::shows;
 use osprey_syntax::{parse_program, parse_program_with_flavor, Flavor};
 
-fn module(src: &str) -> String {
-    let parsed = parse_program(src);
+/// `src` parsed under `flavor`, failing the test on any syntax error.
+fn parsed(src: &str, flavor: Flavor) -> osprey_ast::Program {
+    let parsed = parse_program_with_flavor(src, flavor);
     assert!(
         parsed.errors.is_empty(),
         "syntax errors: {:?}",
         parsed.errors
     );
-    compile_program(&parsed.program).expect("codegen should succeed")
+    parsed.program
+}
+
+/// A debug source named `filename` in `/tmp`.
+fn tmp_source(filename: &str) -> DebugSource {
+    DebugSource {
+        filename: filename.to_string(),
+        directory: "/tmp".to_string(),
+    }
+}
+
+fn module(src: &str) -> String {
+    compile_program(&parsed(src, Flavor::Default)).expect("codegen should succeed")
 }
 
 fn ml_module(src: &str) -> String {
-    let parsed = parse_program_with_flavor(src, Flavor::Ml);
-    assert!(
-        parsed.errors.is_empty(),
-        "syntax errors: {:?}",
-        parsed.errors
-    );
-    compile_program(&parsed.program).expect("ML codegen should succeed")
+    compile_program(&parsed(src, Flavor::Ml)).expect("ML codegen should succeed")
 }
 
 fn debug_module(src: &str) -> String {
-    let parsed = parse_program(src);
-    assert!(
-        parsed.errors.is_empty(),
-        "syntax errors: {:?}",
-        parsed.errors
-    );
-    compile_program_debug(
-        &parsed.program,
-        DebugSource {
-            filename: "debug.osp".to_string(),
-            directory: "/tmp".to_string(),
-        },
-    )
-    .expect("debug codegen should succeed")
+    compile_program_debug(&parsed(src, Flavor::Default), tmp_source("debug.osp"))
+        .expect("debug codegen should succeed")
 }
 
 /// The body of one emitted function, so an assertion about its instructions
@@ -55,13 +50,7 @@ fn function_body(ir: &str, header: &str) -> String {
 /// Compile `src` and assert codegen rejected it (used for the loud-failure
 /// branches that have no surface syntax of their own).
 fn compile_err(src: &str) -> CodegenError {
-    let parsed = parse_program(src);
-    assert!(
-        parsed.errors.is_empty(),
-        "syntax errors: {:?}",
-        parsed.errors
-    );
-    compile_program(&parsed.program).unwrap_err()
+    compile_program(&parsed(src, Flavor::Default)).unwrap_err()
 }
 
 #[path = "ir_tests/gpu.rs"]
@@ -76,3 +65,5 @@ mod lowering_3;
 mod lowering_4;
 #[path = "ir_tests/lowering_5.rs"]
 mod lowering_5;
+#[path = "ir_tests/symbolic.rs"]
+mod symbolic;

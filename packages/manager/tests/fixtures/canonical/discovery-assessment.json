@@ -1,0 +1,31 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "debtRatio is the only field that may be negative.",
+  "type": "DiscoveryAssessment",
+  "value": {
+    "release": {
+      "package": {
+        "scope": "demo",
+        "name": "report"
+      },
+      "epoch": 1,
+      "ordinal": 1,
+      "digest": "sha256:ac86feff5aaabe6d40aeadd8dba484dbfa499c33bc33fd4235944a124f727b51"
+    },
+    "policy": "sha256:53b19daa374cd3b80709840ddf80f9aa79702e95c1482bb7a91ea4ea1e51c0e9",
+    "catalogSnapshot": "sha256:d8522cfbd81aba700a9eb44fff517542c55a83f135862f8239b3dea5f1a2c0ad",
+    "evidenceSnapshot": "sha256:c032b0e452d505518957cfa69b37a3d0c3c0465987fe9653a1461ab941706c0f",
+    "ledgerSnapshot": "sha256:911f892846879dc7856d40f8b0d91b72b25d247a699822188be7e8f298d06926",
+    "cohort": "reporting",
+    "publisher": "principal-alice",
+    "intentMatch": 8000,
+    "securityEvidence": 7000,
+    "adjustedMaintenance": 6027,
+    "compatibility": 10000,
+    "merit": 7600,
+    "debtRatio": -1200,
+    "exposureAdjustedMerit": 7100
+  },
+  "canonical": "{\"adjustedMaintenance\":6027,\"catalogSnapshot\":\"sha256:d8522cfbd81aba700a9eb44fff517542c55a83f135862f8239b3dea5f1a2c0ad\",\"cohort\":\"reporting\",\"compatibility\":10000,\"debtRatio\":-1200,\"evidenceSnapshot\":\"sha256:c032b0e452d505518957cfa69b37a3d0c3c0465987fe9653a1461ab941706c0f\",\"exposureAdjustedMerit\":7100,\"intentMatch\":8000,\"ledgerSnapshot\":\"sha256:911f892846879dc7856d40f8b0d91b72b25d247a699822188be7e8f298d06926\",\"merit\":7600,\"policy\":\"sha256:53b19daa374cd3b80709840ddf80f9aa79702e95c1482bb7a91ea4ea1e51c0e9\",\"publisher\":\"principal-alice\",\"release\":{\"digest\":\"sha256:ac86feff5aaabe6d40aeadd8dba484dbfa499c33bc33fd4235944a124f727b51\",\"epoch\":1,\"ordinal\":1,\"package\":{\"name\":\"report\",\"scope\":\"demo\"}},\"securityEvidence\":7000}",
+  "canonicalLength": 723
+}

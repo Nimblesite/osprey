@@ -7,8 +7,8 @@ use super::lower::{
     lower_items, lower_type_param, render_type, type_expr, MlSig,
 };
 use osprey_ast::{
-    DocComment, DocScope, ModuleItem, SignatureAscription, SignatureItem, SignatureType, Stmt,
-    SymbolPath, TypeExpr, Visibility,
+    stmt_meta, DocComment, DocScope, ModuleItem, SignatureAscription, SignatureItem, SignatureType,
+    Stmt, SymbolPath, TypeExpr, Visibility,
 };
 
 pub(super) fn module_items(items: Vec<MlItem>) -> Vec<ModuleItem> {
@@ -127,15 +127,8 @@ fn item_metadata(item: MlItem) -> (Visibility, bool, MlItem) {
 }
 
 fn attach_declaration_doc(mut stmt: Stmt, doc: Option<DocComment>) -> Stmt {
-    match &mut stmt {
-        Stmt::Function { doc: slot, .. }
-        | Stmt::Let { doc: slot, .. }
-        | Stmt::Extern { doc: slot, .. }
-        | Stmt::Type { doc: slot, .. }
-        | Stmt::Effect { doc: slot, .. }
-        | Stmt::Module { doc: slot, .. }
-        | Stmt::Signature { doc: slot, .. } => *slot = doc,
-        _ => {}
+    if let Some(slot) = stmt_meta::doc_mut(&mut stmt) {
+        *slot = doc;
     }
     stmt
 }

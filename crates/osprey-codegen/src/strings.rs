@@ -235,25 +235,23 @@ fn bool_from_i64(
     Ok(Value::new(r, LType::I1))
 }
 
+/// Call a runtime entry taking two strings, evaluated once from left to right.
+fn call_two_strings(cg: &mut Codegen, args: &[Expr], result: &str, name: &str) -> Result<String> {
+    let first = arg(cg, args, 0, LType::Str)?;
+    let second = arg(cg, args, 1, LType::Str)?;
+    Ok(cg.call(result, name, "i8*, i8*", &[&first.operand, &second.operand]))
+}
+
 /// `contains(s, needle) -> bool` via libc `strstr` (non-NULL ⇒ found).
 fn contains(cg: &mut Codegen, args: &[Expr], _named: &[NamedArgument]) -> Result<Value> {
-    let s = arg(cg, args, 0, LType::Str)?;
-    let needle = arg(cg, args, 1, LType::Str)?;
-    let hit = cg.call("i8*", "strstr", "i8*, i8*", &[&s.operand, &needle.operand]);
+    let hit = call_two_strings(cg, args, "i8*", "strstr")?;
     let r = cg.emit_reg(format!("icmp ne i8* {hit}, null"));
     Ok(Value::new(r, LType::I1))
 }
 
 /// `indexOf(s, needle) -> Result<int, _>` (`-1` ⇒ Error).
 fn index_of(cg: &mut Codegen, args: &[Expr], _named: &[NamedArgument]) -> Result<Value> {
-    let s = arg(cg, args, 0, LType::Str)?;
-    let needle = arg(cg, args, 1, LType::Str)?;
-    let idx = cg.call(
-        "i64",
-        "osp_string_index_of",
-        "i8*, i8*",
-        &[&s.operand, &needle.operand],
-    );
+    let idx = call_two_strings(cg, args, "i64", "osp_string_index_of")?;
     let iserr = cg.emit_reg(format!("icmp slt i64 {idx}, 0"));
     let val = cg.emit_reg(format!("select i1 {iserr}, i64 0, i64 {idx}"));
     make_result_if_err(
@@ -310,7 +308,7 @@ fn parse_strict(
     _named: &[NamedArgument],
 ) -> Result<Value> {
     let s = arg(cg, args, 0, LType::Str)?;
-    let slot = cg.emit_reg(format!("alloca {inner}"));
+    let slot = cg.hoist_slot(&inner.to_string());
     let zero = crate::llty::zero_literal(inner);
     cg.emit(format!("store {inner} {zero}, {inner}* {slot}"));
     let rc = cg.call(
@@ -337,14 +335,7 @@ fn string_list(cg: &mut Codegen, cname: &str, args: &[Expr]) -> Result<Value> {
 
 /// `split(s, sep) -> Result<List<string>, _>` (NULL ⇒ Error, e.g. empty sep).
 fn split(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
-    let s = arg(cg, args, 0, LType::Str)?;
-    let sep = arg(cg, args, 1, LType::Str)?;
-    let ptr = cg.call(
-        "i8*",
-        "osp_string_split",
-        "i8*, i8*",
-        &[&s.operand, &sep.operand],
-    );
+    let ptr = call_two_strings(cg, args, "i8*", "osp_string_split")?;
     crate::arc::own(cg, &Value::new(&ptr, LType::Ptr));
     let iserr = cg.emit_reg(format!("icmp eq i8* {ptr}, null"));
     make_result_if_err(
@@ -362,7 +353,7 @@ fn split(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 /// errmsg slot. `argtys` lists the leading argument types before the out-slot.
 fn cursor_int(cg: &mut Codegen, cname: &str, argtys: &[LType], args: &[Expr]) -> Result<Value> {
     let (mut ops, params) = typed_args_for_types(cg, argtys, args)?;
-    let slot = cg.emit_reg("alloca i64");
+    let slot = cg.hoist_slot("i64");
     cg.emit(format!("store i64 0, i64* {slot}"));
     ops.push(slot.clone());
     let full_params = format!("{params}, i64*");

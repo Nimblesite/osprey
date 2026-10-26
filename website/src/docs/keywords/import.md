@@ -11,7 +11,9 @@ description: "Import declaration keyword. Used to bring modules and their export
 
 ```osprey
 namespace billing {
+    /// Tax calculation helpers.
     module Tax {
+        /// Double cents with explicit wrapping.
         export fn double(cents) = wrapMul(cents, 2)
     }
 }
@@ -24,7 +26,9 @@ namespace app {
 
 ```osprey-ml
 namespace billing
+    (** Tax calculation helpers. *)
     module Tax
+        (** Double cents with explicit wrapping. *)
         export double cents = wrapMul cents 2
 namespace app
     import billing::Tax as T
@@ -39,4 +43,4 @@ Import a whole module with `import billing::Tax`, select members as above, or ch
 
 Wildcard imports require `[modules].allow_wildcard_imports = true`; they are always rejected for state modules and namespaces containing one. Importing a state module does not create an instance or install its handler.
 
-The editor offers repairs for a missing quoted-import alias and mistaken dot qualification when the proposed edit makes the live project compile. It checks the current unsaved files before offering an edit. See the [module specification](/spec/0025-ModulesAndNamespaces/) for signatures, ownership rules and remaining implementation limits.
+The editor offers repairs for a missing quoted-import alias and mistaken dot qualification when the proposed edit makes the live project compile. It checks the current unsaved files before offering an edit. See the [module specification](/spec/0025-modulesandnamespaces/) for signatures, ownership rules and remaining implementation limits.

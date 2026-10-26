@@ -16,9 +16,7 @@
 
 ## Hindley-Milner Inference
 
-Osprey uses Hindley-Milner inference over the canonical AST produced by either
-surface syntax ([FLAVOR-BOUNDARY]). Examples show both surfaces where their
-spellings differ.
+Osprey uses Hindley-Milner inference over the canonical AST produced by Default, ML and Python frontends ([FLAVOR-BOUNDARY]). Examples below show Default and ML syntax. [Python Flavor Syntax](0041-PythonFlavorSyntax.md) specifies its supported annotation and declaration forms over the same type system.
 
 Type annotations are optional everywhere they can be inferred:
 
@@ -462,6 +460,8 @@ list, as specified in [Function Calls](0005-FunctionCalls.md).
 A lambda (`fn(...) => expr` or `|x| => expr`) captures every free identifier from its enclosing lexical scope by reference to its value at capture time. Captured bindings are immutable, so by-reference and by-value capture are observationally identical and the implementation MAY choose either. A captured binding outlives the surrounding stack frame: a closure returned from a function remains callable and continues to read the captured values.
 
 The same holds for a lambda whose type is still generic. It has no single closure value and is specialised at each call site, but it reads the bindings it captured where it was written, whether it is called there, from a nested lambda, from a handler arm or from a fiber, and it keeps them alive for as long as it can be called.
+
+A `Result<T, E>`'s error channel is phantom: the `Error` variant stores a string message, so `E` never shapes the value representation. A closure whose only open variable is a `Result` error channel therefore has a concrete ABI — the success channel `T` decides it — and materializes like any concrete closure, so a generic `with`-suite handler value needs no `Result` annotation to compile.
 
 ```osprey
 fn makeAdder(n: int) -> (int) -> int = fn(x: int) => x + n

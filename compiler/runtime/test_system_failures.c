@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -273,7 +274,51 @@ static void test_thread_failure_reaps_the_child_it_started(void) {
   assert(lowest_free_descriptor() == before);
 }
 
+static void test_legacy_allocation_failures_release_output(void) {
+  char *warm = spawn_process("printf warm");
+  assert(warm != NULL);
+  free(warm);
+  for (size_t size = 4096; size <= 8192; size *= 2) {
+    long before = osp_alloc_live();
+    int descriptors = lowest_free_descriptor();
+    osp_alloc_fail_size(size);
+    char *output = spawn_process("awk 'BEGIN{for(i=0;i<5000;i++)printf \"x\"}'");
+    assert(atomic_load(&osp_alloc_successes_left) == -1 && "failure was exercised");
+    osp_alloc_fail_off();
+    assert(output == NULL && "failed initial allocation or growth reports NULL");
+    assert(osp_alloc_live() == before && "failed growth must free the original buffer");
+    assert(lowest_free_descriptor() == descriptors && "failure closes the pipe");
+  }
+}
+
+static int unknown_exit_events;
+
+static void capture_unknown_exit(int64_t process_id, int64_t event_type, char *data) {
+  assert(process_id > 0);
+  if (event_type == 3) {
+    assert(strcmp(data, "-1") == 0 && "an unavailable child status is not success");
+    unknown_exit_events++;
+  }
+}
+
+static void test_auto_reaped_child_reports_unknown_exit(void) {
+  struct sigaction ignored = {.sa_handler = SIG_IGN}, previous;
+  assert(sigemptyset(&ignored.sa_mask) == 0);
+  assert(sigaction(SIGCHLD, &ignored, &previous) == 0);
+  unknown_exit_events = 0;
+  alarm(SPAWN_STALL_BUDGET_SECONDS);
+  int64_t process_id = spawn_process_with_handler("true", capture_unknown_exit);
+  assert(process_id > 0);
+  assert(await_process(process_id) == -1 && "an auto-reaped child must not hang");
+  alarm(0);
+  cleanup_process(process_id);
+  assert(unknown_exit_events == 1 && "unknown status emits exactly one exit event");
+  assert(sigaction(SIGCHLD, &previous, NULL) == 0);
+}
+
 void run_spawn_failure_tests(void) {
+  test_legacy_allocation_failures_release_output();
+  test_auto_reaped_child_reports_unknown_exit();
   test_record_allocation_failures_are_reported();
   test_mutex_initialisation_failure_is_reported();
   test_thread_failure_reaps_the_child_it_started();

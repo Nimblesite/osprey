@@ -1,5 +1,97 @@
 use super::*;
 
+fn usage_input(body: &str) -> Result<CompilationInput, Vec<ProjectError>> {
+    usage_project(&[
+        ("src/main.osp", format!("namespace app;\n{body}\n")),
+        (
+            "vendor/@demo/actions/fallback.osp",
+            "namespace app;\nfn run(value) = 99\n".into(),
+        ),
+    ])
+}
+
+fn usage_project(inputs: &[(&str, String)]) -> Result<CompilationInput, Vec<ProjectError>> {
+    let sources: Vec<_> = inputs
+        .iter()
+        .map(|(path, source)| SourceFile {
+            path: PathBuf::from(path),
+            flavor: Flavor::Default,
+            program: osprey_syntax::parse_program(source).program,
+            source: source.clone(),
+        })
+        .collect();
+    CompilationInput::documentation_project(".", &ProjectConfig::for_root(Path::new(".")), &sources)
+}
+
+#[test]
+fn checked_source_graph_uses_inferred_method_dispatch() {
+    for (body, required) in [
+        (
+            "fn main() = { let action = { run: fn() => 42 }\naction.run() }",
+            false,
+        ),
+        ("fn main() = 42.run()", true),
+        ("fn main() = run(42)", true),
+    ] {
+        let input = usage_input(body).expect("assembled usage fixture");
+        let graph = input.dependency_graph_json().expect("checked source graph");
+        let value: serde_json::Value = serde_json::from_str(&graph).expect("graph JSON");
+        let edges = value
+            .get("dependencies")
+            .expect("dependencies")
+            .as_array()
+            .expect("dependency array");
+        assert_eq!(
+            edges.iter().any(
+                |edge| edge.get("symbol").and_then(serde_json::Value::as_str) == Some("app::run")
+            ),
+            required
+        );
+    }
+}
+
+#[test]
+fn checked_source_graph_refuses_invalid_and_unresolved_programs() {
+    for body in [
+        "fn main() = missing.run()",
+        "fn apply(value) = value.run()\nfn main() = 42",
+    ] {
+        let input = usage_input(body).expect("assembled usage fixture");
+        assert!(input.dependency_graph_json().is_err(), "{body}");
+    }
+}
+
+#[test]
+fn checked_source_graph_preserves_inlined_method_dependency() {
+    let input = usage_project(&[
+        (
+            "src/main.osp",
+            "namespace app;\nfn main() = action()\n".into(),
+        ),
+        (
+            "vendor/@demo/actions/helper.osp",
+            "namespace app;\nfn invoke() = 42.run()\nlet action = invoke\n".into(),
+        ),
+        (
+            "vendor/@demo/fallback/run.osp",
+            "namespace app;\nfn run(value) = 99\n".into(),
+        ),
+    ])
+    .expect("assembled inline fixture");
+    let graph = input.dependency_graph_json().expect("checked inline graph");
+    let value: serde_json::Value = serde_json::from_str(&graph).expect("graph JSON");
+    let edges = value
+        .get("dependencies")
+        .and_then(serde_json::Value::as_array)
+        .expect("dependencies");
+    assert!(
+        edges
+            .iter()
+            .any(|edge| edge.get("symbol").and_then(serde_json::Value::as_str) == Some("app::run")),
+        "inlined UFCS target must remain required: {graph}"
+    );
+}
+
 #[test]
 fn recognizes_directory_and_manifest_project_inputs() {
     assert!(is_project_path("osprey.toml"));
@@ -74,6 +166,8 @@ fn aggregate_sources_keeps_link_directives_from_every_file() {
         })
         .collect();
     let project = AssembledProject {
+        source_dependencies: Vec::new(),
+        method_candidates: Vec::new(),
         warnings: Vec::new(),
         state_boundaries: Vec::new(),
         program: Program {
@@ -89,8 +183,7 @@ fn aggregate_sources_keeps_link_directives_from_every_file() {
         documentation_bindings: Vec::new(),
     };
     let aggregated = aggregate_sources(&project);
-    assert!(aggregated.contains("// @link: sqlite3"));
-    assert!(aggregated.contains("// @linkdir: /opt/lib"));
+    crate::testkit::shows(&aggregated, &["// @link: sqlite3", "// @linkdir: /opt/lib"]);
 
     let input = CompilationInput::assembled(
         project,
@@ -126,6 +219,8 @@ fn project_symbol_mapping_changes_exact_names_and_localizes_positions() {
     let mut source_names = std::collections::BTreeMap::new();
     let _ = source_names.insert("main".to_string(), "app::main".to_string());
     let project = AssembledProject {
+        source_dependencies: Vec::new(),
+        method_candidates: Vec::new(),
         warnings: Vec::new(),
         state_boundaries: Vec::new(),
         program,
@@ -138,16 +233,23 @@ fn project_symbol_mapping_changes_exact_names_and_localizes_positions() {
         documentation_bindings: Vec::new(),
     };
     let json = project_symbols_json(osprey_lsp::symbols_json(&project.program), &project);
-    assert!(json.contains("\"name\":\"app::main\""));
-    assert!(json.contains("\"name\":\"remaining\""));
-    assert!(!json.contains("reapp::maining"));
-    assert!(json.contains("\"path\":\"src/main.osp\""));
+    crate::testkit::contents(
+        &json,
+        &[
+            "\"name\":\"app::main\"",
+            "\"name\":\"remaining\"",
+            "\"path\":\"src/main.osp\"",
+        ],
+        &["reapp::maining"],
+    );
 }
 
 fn empty_project(
     source_name_by_mangled: std::collections::BTreeMap<String, String>,
 ) -> AssembledProject {
     AssembledProject {
+        source_dependencies: Vec::new(),
+        method_candidates: Vec::new(),
         warnings: Vec::new(),
         state_boundaries: Vec::new(),
         program: Program {
@@ -161,6 +263,31 @@ fn empty_project(
         source_name_by_mangled,
         public_api: std::collections::BTreeMap::new(),
         documentation_bindings: Vec::new(),
+    }
+}
+
+fn folded_initializer_input() -> CompilationInput {
+    let parsed = osprey_syntax::parse_program("let alias = 7\nfn main() = print(\"ok\")\n");
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let mut project = empty_project(std::collections::BTreeMap::new());
+    let mut statements = parsed.program.statements.into_iter();
+    project.documentation_bindings = statements.by_ref().take(1).collect();
+    project.program.statements = statements.collect();
+    CompilationInput::assembled(
+        project,
+        String::new(),
+        "main.osp".into(),
+        OutputDefault::Source("main.osp".into()),
+    )
+}
+
+#[test]
+fn coverage_initializers_preserve_main_and_discard_contracts() {
+    let input = folded_initializer_input();
+    for covered in [false, true] {
+        let program = input.codegen_program(covered);
+        let errors = osprey_types::check_program(&program);
+        assert!(errors.is_empty(), "coverage={covered}: {errors:#?}");
     }
 }
 
@@ -277,8 +404,7 @@ fn a_library_exports_only_the_functions_its_entry_source_declares() {
     );
     std::fs::remove_dir_all(&root).expect("cleanup");
     let (_, header) = built.expect("entry-only exports");
-    assert!(header.contains("osprey_app_start("), "{header}");
-    assert!(!header.contains("osprey_lib_"), "{header}");
+    crate::testkit::contents(&header, &["osprey_app_start("], &["osprey_lib_"]);
 }
 
 /// A project under the system temp directory holding `files`.

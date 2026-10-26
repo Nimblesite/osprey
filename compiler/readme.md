@@ -9,12 +9,7 @@ that compiled programs link against:
   `lib/libhttp_runtime.a` by `make _runtime`; `osprey` links these at
   `--compile`/`--run` time.
 
-Example programs and the golden test suites live at the top-level
-[examples/](../examples) directory: [tests/regressions/](../tests/regressions)
-(golden programs run in CI against `.expectedoutput` via
-[crates/run_test_corpus.sh](../crates/run_test_corpus.sh)),
-[examples/failscompilation/](../examples/failscompilation) (the must-reject
-ratchet), and [examples/tui/](../examples/tui) (the `make _tui` showcase).
+Runnable applications live in [examples/](../examples). Acceptance programs live in [tests/](../tests) and are compared with `.expectedoutput` files by [crates/run_test_corpus.sh](../crates/run_test_corpus.sh). [examples/failscompilation/](../examples/failscompilation) holds must-reject cases; [examples/tui/](../examples/tui) is the `make _tui` showcase.
 
 ## Related Projects
 

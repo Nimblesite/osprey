@@ -13,7 +13,7 @@ tags:
 
 Build a native command-line app that remembers how many times it has run. It reads `first-app.json`, turns the file into typed Osprey data, advances the state, and writes valid JSON back.
 
-The important part is the model. JSON is not `any`, and it is not a map whose values are all strings. JSON has six possible value shapes, so the program represents those shapes with one recursive algebraic data type.
+The program represents JSON's six value shapes with one recursive algebraic data type.
 
 You need a working native installation. Complete [Installing Osprey](/docs/installation/) first if `osprey --version` does not work.
 
@@ -57,7 +57,7 @@ union JsonValue {
 
 This is a tagged union, also called a sum type. A `JsonValue` is exactly one case at a time. Arrays contain more `JsonValue` values, and objects map string keys to more `JsonValue` values, which makes the union recursive.
 
-There is no invalid half-state such as a value claiming to be both a number and a boolean. A `match` over `JsonValue` must account for all six cases.
+A `match` over `JsonValue` must account for all six cases.
 
 ## Encode every case
 
@@ -74,21 +74,21 @@ fn escapeJson(source) = {
 
 fn quoteJson(source) = "\"${escapeJson(source)}\""
 
-fn encodeArray(values: List<JsonValue>) -> string = match values {
+fn encodeArray(values) = match values {
     [] => ""
     [only] => encodeJson(only)
     [head, ...tail] => "${encodeJson(head)},${encodeArray(tail)}"
 }
 
-fn encodeFields(fields: Map<string, JsonValue>, keys: List<string>) -> string = match keys {
+fn encodeFields(fields, keys) = match keys {
     [] => ""
     [only] => "${quoteJson(only)}:${encodeJson(mapGet(fields, only) ?: JsonNull)}"
     [head, ...tail] => "${quoteJson(head)}:${encodeJson(mapGet(fields, head) ?: JsonNull)},${encodeFields(fields, tail)}"
 }
 
-fn encodeObject(fields: Map<string, JsonValue>) -> string = encodeFields(fields, mapKeys(fields))
+fn encodeObject(fields) = encodeFields(fields, mapKeys(fields))
 
-fn encodeJson(value: JsonValue) -> string = match value {
+fn encodeJson(value) = match value {
     JsonNull => "null"
     JsonBoolean { value } => match value { true => "true" false => "false" }
     JsonNumber { value } => toString(value)
@@ -98,11 +98,11 @@ fn encodeJson(value: JsonValue) -> string = match value {
 }
 ```
 
-The annotations on the three recursive functions are useful rather than decorative: they give the compiler a fixed boundary for the mutually recursive encoder. Ordinary non-recursive functions continue to rely on inference.
+The compiler infers the encoder's parameter and return types, including the mutually recursive calls.
 
 `mapKeys` does not promise object-field order. That is fine because JSON object order has no meaning; two runs may produce semantically identical objects with a different field order.
 
-This small encoder escapes every control character used by this app: quotes, backslashes, newlines, carriage returns, and tabs. A general-purpose codec for arbitrary untrusted strings must also escape every remaining character below U+0020. Keep that qualification beside the example instead of treating a tutorial codec as a complete serialization library.
+This encoder handles quotes, backslashes, newlines, carriage returns and tabs. Before using it with arbitrary untrusted strings, add escaping for every remaining character below U+0020.
 
 ## Build the first document
 
@@ -129,8 +129,6 @@ fn defaultDocument() = appDocument(
     JsonNull
 )
 ```
-
-Notice what is absent: there is no `Map<string, any>`, no stringly boolean such as `"true"`, and no magic null sentinel. The constructors retain what each value means.
 
 ## Decode at the boundary
 
@@ -190,7 +188,7 @@ fn decodeTagsFrom(documentId, index, count, decoded) -> Result<JsonValue, Error>
         Error { message } => Error { message: message }
         Success { value } => decodeTagsFrom(
             documentId,
-            index + 1 ?: count,
+            checkedAdd(index, 1) ?: count,
             count,
             listAppend(decoded, value)
         )
@@ -252,7 +250,7 @@ fn parseDocument(source) = match jsonParse(source) {
 }
 ```
 
-The nesting is honest. Every boundary operation can fail, and this first version shows each decision directly. A larger program would extract a reusable validation combinator, but it should preserve the same `Result` behavior.
+Each nested `match` handles a possible failure. A reusable validation combinator should preserve the same `Result` behavior.
 
 ## Update and save
 
@@ -295,7 +293,7 @@ fn main() = {
 }
 ```
 
-For this first-run experience, any `readFile` failure starts from `defaultDocument`. That keeps the initial launch portable, but it is a deliberately small policy. A production CLI should distinguish a missing file from permission, device, and other I/O failures before deciding to create new state.
+Any `readFile` failure starts from `defaultDocument`. Before using this policy in production, distinguish a missing file from permission, device and other I/O failures.
 
 ## Run it twice
 
@@ -320,4 +318,4 @@ Run it again, then open `first-app.json`. The `runs` value advances from `1.0` t
 
 Your object fields may appear in another order. The data is the same JSON object.
 
-You now have a native CLI with a narrow file boundary, visible failures, persistent updates, and a recursive ADT that says exactly what JSON can be. From here, add a command-line argument, introduce another field, or replace the first-run fallback with a stricter file policy—then run `--check` before trusting the change.
+Next, distinguish missing files from other read failures, then run `--check` and test both paths.

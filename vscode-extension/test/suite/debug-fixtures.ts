@@ -181,7 +181,7 @@ const blockFixtures = [
     ...fixture,
     label: "pattern bindings stay in their debugger arm",
     innerLine: 7,
-    bindingLine: 6,
+    bindingLine: 5,
     prefix: "choose",
   })),
   blockFixture(

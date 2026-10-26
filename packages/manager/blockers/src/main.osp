@@ -1,0 +1,50 @@
+namespace registry_blockers;
+import registry::Policy
+
+/// Probes for host capabilities the package system needs and Osprey lacks
+/// (`packages/manager/core/src/capabilities.osp`). Each asserts the behavior the
+/// system requires, so a probe is red until its capability lands and green
+/// means the matching `Capabilities` entry can go. Capabilities with no
+/// builtin at all (argv, exit status, environment, clock, directory
+/// operations) cannot be probed from inside a program and are listed only.
+/// Delivered bitwise primitives are checked by the core conformance suite. Run with `make registry-blockers`; never part of `test`.
+let scratch = ".osprey/scratch"
+let binary = "${scratch}/nul-probe.bin"
+
+fn quiet(_pid, _kind, text) = {
+    let _dropped = text
+}
+
+fn written() = match spawnProcess("mkdir -p ${scratch} && printf 'a\\0b\\377c' > ${binary}", quiet) {
+    Success { value } => awaitProcess(value) == 0
+    Error => false
+}
+
+/// files.binary-read: a 5-byte file with a NUL and a 0xFF byte reads back whole.
+fn binaryRead() = {
+    let ready = written()
+    let content = readFile(binary) ?: ""
+    checkAll("readFile returns every byte of a binary file", [
+        ready,
+        byteLength(content) == 5,
+        (byteAt(content, 1) ?: -1) == 0,
+        (byteAt(content, 3) ?: -1) == 255
+    ])
+}
+
+/// runtime.default-operator-pipeline: `?:` inside a lambda run a million times
+/// must not crash. Last because a crash here ends the process; the `match`
+/// form over the same input is fine, which is what `Bytes::ofString` uses.
+fn defaultOperatorPipeline() = {
+    let text = repeat("a", 1000000) ?: ""
+    let bytes = range(0, byteLength(text)) |> map(fn(i) => byteAt(text, i) ?: 0) |> toList
+    expect(length(bytes), 1000000)
+}
+
+fn probes() = {
+    test("blocked capability files.binary-read", binaryRead)
+    test("runtime defect runtime.default-operator-pipeline", defaultOperatorPipeline)
+    0
+}
+
+fn main() = Policy::guarded(probes)

@@ -459,7 +459,13 @@ pub(crate) fn source_with_abi(
     scope: &ExportScope,
 ) -> Result<(String, HostAbi), String> {
     crate::target_capabilities::validate(program, target)?;
-    let ir = osprey_codegen::compile_library(program).map_err(|e| format!("{path}: {e}"))?;
+    // Entry-only programs have no later host calls needing globals. [IOS-TARGET-ENTRY]
+    let ir = if matches!(scope, ExportScope::EntryOnly) {
+        osprey_codegen::compile_program(program)
+    } else {
+        osprey_codegen::compile_library(program)
+    }
+    .map_err(|e| format!("{path}: {e}"))?;
     let abi = checked_abi(program, path, target, &ir, scope)?;
     let adapted = if extend_bool {
         with_host_abi(&ir, &abi)?

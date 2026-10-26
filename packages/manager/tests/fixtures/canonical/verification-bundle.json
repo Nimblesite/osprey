@@ -1,0 +1,115 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "Roles sorted by (role, version); three of four witnesses, sorted by witnessId.",
+  "type": "VerificationBundle",
+  "value": {
+    "tufRootVersion": 3,
+    "roles": [
+      {
+        "role": "release-status",
+        "version": 12,
+        "expiresAt": "2026-10-03T00:00:00.000Z",
+        "metadataDigest": "sha256:8a94be078eb98d7c521e6bc2a570129f0dba51dc144bad69d1fe467ba67879a7"
+      },
+      {
+        "role": "root",
+        "version": 3,
+        "expiresAt": "2027-09-01T00:00:00.000Z",
+        "metadataDigest": "sha256:5eed3a30587de1bc9440b60971aeec6fe860c2304d6bfc8fd02db06b7848edab"
+      },
+      {
+        "role": "snapshot",
+        "version": 40,
+        "expiresAt": "2026-10-08T00:00:00.000Z",
+        "metadataDigest": "sha256:3112424f430a80e412c214f751a50d7e65e0b394bf9b87bed92f07d856fea43d"
+      },
+      {
+        "role": "targets",
+        "version": 9,
+        "expiresAt": "2026-11-01T00:00:00.000Z",
+        "metadataDigest": "sha256:3a7c1ba13958c37e15e5cd62dcc679bf56b5569c6f42cd188694a602b45615cb"
+      },
+      {
+        "role": "timestamp",
+        "version": 977,
+        "expiresAt": "2026-10-03T12:30:45.123Z",
+        "metadataDigest": "sha256:62f886b2bb31d7a6eef3a8872c38104ab60bca54252ebf8d2a9ab87382abc2fc"
+      }
+    ],
+    "releaseStatuses": [
+      {
+        "release": {
+          "package": {
+            "scope": "demo",
+            "name": "maths"
+          },
+          "epoch": 1,
+          "ordinal": 2,
+          "digest": "sha256:bece9638d8acc5271e28944cba06dac6a161621592faf6bca5e3a48c7350b39f"
+        },
+        "sequence": 1,
+        "state": {
+          "Eligible": {}
+        },
+        "effectiveAt": "2026-10-01T00:00:00.000Z",
+        "roleMetadataVersion": 11
+      }
+    ],
+    "checkpoint": {
+      "logId": "osprey-log-1",
+      "treeSize": 8,
+      "rootHash": "sha256:af718524bffebd6cfa33a52c3b617101ac3c17fd0e72e4812f5548a468a9f403",
+      "issuedAt": "2026-10-02T12:30:45.123Z",
+      "operatorSignatureDigest": "sha256:4954df6ea2ac284ae9ebdba6a83663908f0de78918a1be78e0bba290b757226a"
+    },
+    "inclusionProofs": [
+      {
+        "logId": "osprey-log-1",
+        "leafDigest": "sha256:8a09bf7d56f4da14eb90e075102fda465e30b11740a65326084e4cb9c924bfd4",
+        "leafIndex": 5,
+        "treeSize": 8,
+        "hashes": [
+          "sha256:e404e8bc2b3931194c4e9808fa8c6dd3ea6a48dcd006a59db7f2bc609dc20610",
+          "sha256:0094e0aa3bac2d0d30ecdc2da84855f1c5f7d8ae2d19fca71fe3ea7c202c9f5b",
+          "sha256:31695c2717beb1aa6062af994f5874d2ae6c6a718f3d99060baba2fbd054d8b4"
+        ]
+      }
+    ],
+    "consistencyProof": {
+      "logId": "osprey-log-1",
+      "fromSize": 6,
+      "toSize": 8,
+      "hashes": [
+        "sha256:4b1e59ad8ba1a5415999a3d517099165054dcc739a282e57ea2639fb40d67857",
+        "sha256:0094e0aa3bac2d0d30ecdc2da84855f1c5f7d8ae2d19fca71fe3ea7c202c9f5b",
+        "sha256:4b1e59ad8ba1a5415999a3d517099165054dcc739a282e57ea2639fb40d67857"
+      ]
+    },
+    "witnesses": [
+      {
+        "witnessId": "witness-a",
+        "checkpointDigest": "sha256:92d39bde1bbbae25aa8a76acec24787aa40ace591b09449b001d216330adcf0d",
+        "signatureDigest": "sha256:30735457a0143258d6104d8f566815eed9a8b75771cfc750738cc7ef1b0756db"
+      },
+      {
+        "witnessId": "witness-b",
+        "checkpointDigest": "sha256:92d39bde1bbbae25aa8a76acec24787aa40ace591b09449b001d216330adcf0d",
+        "signatureDigest": "sha256:39ad50630f4fa91a8833e3b892c616076b8ec963da2e5baed257109d47d929bb"
+      },
+      {
+        "witnessId": "witness-d",
+        "checkpointDigest": "sha256:92d39bde1bbbae25aa8a76acec24787aa40ace591b09449b001d216330adcf0d",
+        "signatureDigest": "sha256:9f411a7430c6753352e08b1a19eb7696925b2ad9435a1e4179be95764bc01c77"
+      }
+    ],
+    "crossLogReceiptDigest": "sha256:ffeb9e9d7f6a359859d7b746f8023ff66fe7996cd1e37b2940c1cfc6ebd6b24f",
+    "catalogSnapshot": "sha256:d8522cfbd81aba700a9eb44fff517542c55a83f135862f8239b3dea5f1a2c0ad",
+    "catalogAsOf": "2026-10-02T12:30:45.123Z",
+    "timestampExpiresAt": "2026-10-03T12:30:45.123Z",
+    "policyDigest": "sha256:dcce9c2576be8892582edda4b3bedc924909a3ee20e1dc0fced970eee3f7f49a"
+  },
+  "canonical": "{\"catalogAsOf\":\"2026-10-02T12:30:45.123Z\",\"catalogSnapshot\":\"sha256:d8522cfbd81aba700a9eb44fff517542c55a83f135862f8239b3dea5f1a2c0ad\",\"checkpoint\":{\"issuedAt\":\"2026-10-02T12:30:45.123Z\",\"logId\":\"osprey-log-1\",\"operatorSignatureDigest\":\"sha256:4954df6ea2ac284ae9ebdba6a83663908f0de78918a1be78e0bba290b757226a\",\"rootHash\":\"sha256:af718524bffebd6cfa33a52c3b617101ac3c17fd0e72e4812f5548a468a9f403\",\"treeSize\":8},\"consistencyProof\":{\"fromSize\":6,\"hashes\":[\"sha256:4b1e59ad8ba1a5415999a3d517099165054dcc739a282e57ea2639fb40d67857\",\"sha256:0094e0aa3bac2d0d30ecdc2da84855f1c5f7d8ae2d19fca71fe3ea7c202c9f5b\",\"sha256:4b1e59ad8ba1a5415999a3d517099165054dcc739a282e57ea2639fb40d67857\"],\"logId\":\"osprey-log-1\",\"toSize\":8},\"crossLogReceiptDigest\":\"sha256:ffeb9e9d7f6a359859d7b746f8023ff66fe7996cd1e37b2940c1cfc6ebd6b24f\",\"inclusionProofs\":[{\"hashes\":[\"sha256:e404e8bc2b3931194c4e9808fa8c6dd3ea6a48dcd006a59db7f2bc609dc20610\",\"sha256:0094e0aa3bac2d0d30ecdc2da84855f1c5f7d8ae2d19fca71fe3ea7c202c9f5b\",\"sha256:31695c2717beb1aa6062af994f5874d2ae6c6a718f3d99060baba2fbd054d8b4\"],\"leafDigest\":\"sha256:8a09bf7d56f4da14eb90e075102fda465e30b11740a65326084e4cb9c924bfd4\",\"leafIndex\":5,\"logId\":\"osprey-log-1\",\"treeSize\":8}],\"policyDigest\":\"sha256:dcce9c2576be8892582edda4b3bedc924909a3ee20e1dc0fced970eee3f7f49a\",\"releaseStatuses\":[{\"effectiveAt\":\"2026-10-01T00:00:00.000Z\",\"release\":{\"digest\":\"sha256:bece9638d8acc5271e28944cba06dac6a161621592faf6bca5e3a48c7350b39f\",\"epoch\":1,\"ordinal\":2,\"package\":{\"name\":\"maths\",\"scope\":\"demo\"}},\"roleMetadataVersion\":11,\"sequence\":1,\"state\":{\"Eligible\":{}}}],\"roles\":[{\"expiresAt\":\"2026-10-03T00:00:00.000Z\",\"metadataDigest\":\"sha256:8a94be078eb98d7c521e6bc2a570129f0dba51dc144bad69d1fe467ba67879a7\",\"role\":\"release-status\",\"version\":12},{\"expiresAt\":\"2027-09-01T00:00:00.000Z\",\"metadataDigest\":\"sha256:5eed3a30587de1bc9440b60971aeec6fe860c2304d6bfc8fd02db06b7848edab\",\"role\":\"root\",\"version\":3},{\"expiresAt\":\"2026-10-08T00:00:00.000Z\",\"metadataDigest\":\"sha256:3112424f430a80e412c214f751a50d7e65e0b394bf9b87bed92f07d856fea43d\",\"role\":\"snapshot\",\"version\":40},{\"expiresAt\":\"2026-11-01T00:00:00.000Z\",\"metadataDigest\":\"sha256:3a7c1ba13958c37e15e5cd62dcc679bf56b5569c6f42cd188694a602b45615cb\",\"role\":\"targets\",\"version\":9},{\"expiresAt\":\"2026-10-03T12:30:45.123Z\",\"metadataDigest\":\"sha256:62f886b2bb31d7a6eef3a8872c38104ab60bca54252ebf8d2a9ab87382abc2fc\",\"role\":\"timestamp\",\"version\":977}],\"timestampExpiresAt\":\"2026-10-03T12:30:45.123Z\",\"tufRootVersion\":3,\"witnesses\":[{\"checkpointDigest\":\"sha256:92d39bde1bbbae25aa8a76acec24787aa40ace591b09449b001d216330adcf0d\",\"signatureDigest\":\"sha256:30735457a0143258d6104d8f566815eed9a8b75771cfc750738cc7ef1b0756db\",\"witnessId\":\"witness-a\"},{\"checkpointDigest\":\"sha256:92d39bde1bbbae25aa8a76acec24787aa40ace591b09449b001d216330adcf0d\",\"signatureDigest\":\"sha256:39ad50630f4fa91a8833e3b892c616076b8ec963da2e5baed257109d47d929bb\",\"witnessId\":\"witness-b\"},{\"checkpointDigest\":\"sha256:92d39bde1bbbae25aa8a76acec24787aa40ace591b09449b001d216330adcf0d\",\"signatureDigest\":\"sha256:9f411a7430c6753352e08b1a19eb7696925b2ad9435a1e4179be95764bc01c77\",\"witnessId\":\"witness-d\"}]}",
+  "canonicalLength": 3112,
+  "domain": "osprey.verification-bundle.v1",
+  "digest": "sha256:b5d91112ac09dfc75375deed0eabbc7d7b687097d5a66dfd95521590e1f5fe78"
+}

@@ -1,0 +1,6 @@
+[project]
+name = "classifier"
+source_roots = ["../../../../packages/testing/src", ".", "../common", "../../../../packages/micrograd/src", "../../../../packages/safetensors/src", "../../../../packages/sklearn/src"]
+python_sources = ["../../../../packages/testing/src/check.py", "../common/checkpoint.py", "../common/policy.py", "../../../../packages/micrograd/src/libm.py", "../../../../packages/micrograd/src/engine.py", "../../../../packages/micrograd/src/nn.py", "../../../../packages/safetensors/src/bytes.py", "../../../../packages/safetensors/src/dtype.py", "../../../../packages/safetensors/src/json.py", "../../../../packages/safetensors/src/safetensors.py", "../../../../packages/sklearn/src/Stats.py", "../../../../packages/sklearn/src/Metrics.py", "../../../../packages/sklearn/src/Preprocessing.py", "../../../../packages/sklearn/src/ModelSelection.py", "main.py"]
+default_namespace = "classifier"
+entry = "main.py"

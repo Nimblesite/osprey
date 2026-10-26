@@ -1,0 +1,6 @@
+/// Deliberately planted captured-closure invariant [SYMEX-CRASH-GATE].
+extern fn abort() -> int
+let line = input()
+let callback = |actual| => if actual == line && line == "C" { abort() } else { 0 }
+let result = callback("C")
+print("result ${result}")

@@ -236,52 +236,9 @@ char *osp_string_pad_end(const char *s, int64_t target_length, const char *fill)
     out[(size_t)target_length] = '\0';
     return out;
 }
-
 /* ---------- parsing ---------- */
 
-/* Returns 0 on success, 1 on failure. Strict: no whitespace, optional sign.
- *
- * Accumulate in uint64_t so we never trigger signed overflow under
- * -ftrapv (the runtime is compiled with it). INT64_MIN's magnitude is
- * 9223372036854775808 — one past INT64_MAX — and computing it as a
- * signed `acc * 10 + 8` would trap before we get a chance to negate.
- */
-int64_t osp_parse_int_strict(const char *s, int64_t *out) {
-    if (!s || s[0] == '\0' || !out) return 1;
-    const char *p = s;
-    int neg = 0;
-    if (*p == '-' || *p == '+') {
-        neg = (*p == '-');
-        p++;
-        if (*p == '\0') return 1;
-    }
-    /* limit = magnitude of representable value:
-     *   negative: 9223372036854775808 (INT64_MAX + 1)
-     *   positive: 9223372036854775807 (INT64_MAX) */
-    const uint64_t limit = neg ? 9223372036854775808ULL : 9223372036854775807ULL;
-    uint64_t acc = 0;
-    while (*p) {
-        if (*p < '0' || *p > '9') return 1;
-        unsigned d = (unsigned)(*p - '0');
-        /* overflow guard: acc*10 + d > limit ? */
-        if (acc > limit / 10) return 1;
-        acc *= 10;
-        if (acc > limit - d) return 1;
-        acc += d;
-        p++;
-    }
-    if (neg) {
-        if (acc == 9223372036854775808ULL) {
-            /* INT64_MIN: avoid -(int64_t)acc which overflows for INT64_MAX+1 */
-            *out = (-9223372036854775807LL) - 1;
-        } else {
-            *out = -(int64_t)acc;
-        }
-    } else {
-        *out = (int64_t)acc;
-    }
-    return 0;
-}
+#include "string_parse_int.h"
 
 /* [BUILTIN-STRING-PARSEFLOAT] decimal grammar:
  *   sign? (digits ('.' digits?)? | '.' digits) exponent?

@@ -2,7 +2,7 @@
 //! Implements [FLAVOR-PYTHON-INTEROP], [FLAVOR-PYTHON-SELECT].
 use super::context::{children, position, Lowerer, Result};
 use osprey_ast::{
-    DocScope, Expr, ImportDecl, ImportMember, ImportSelection, ImportTarget, ModuleItem,
+    stmt_meta, DocScope, Expr, ImportDecl, ImportMember, ImportSelection, ImportTarget, ModuleItem,
     ModuleKind, NamespaceName, Position, Program, Stmt, SymbolPath, Visibility,
 };
 use std::collections::BTreeMap;
@@ -16,12 +16,21 @@ impl Lowerer<'_> {
     ) -> Result<Program> {
         let header = Header::read(self, node)?;
         let doc = self.docstring(node, DocScope::Inner)?;
-        let statements = self.module_contribution(&header, statements)?;
+        let has_module = header.module.is_some();
+        let statements = self.module_contribution(&header, statements, doc.clone())?;
         let statements = header.namespace_contribution(statements);
-        Ok(Program { statements, doc })
+        Ok(Program {
+            statements,
+            doc: (!has_module).then_some(doc).flatten(),
+        })
     }
 
-    fn module_contribution(&self, header: &Header, statements: Vec<Stmt>) -> Result<Vec<Stmt>> {
+    fn module_contribution(
+        &self,
+        header: &Header,
+        statements: Vec<Stmt>,
+        doc: Option<osprey_ast::DocComment>,
+    ) -> Result<Vec<Stmt>> {
         self.check_export_context(header)?;
         let Some((path, position)) = &header.module else {
             return Ok(statements);
@@ -31,7 +40,7 @@ impl Lowerer<'_> {
             .partition(|statement| matches!(statement, Stmt::Import(_)));
         let body = self.module_items(declarations)?;
         let mut result = imports;
-        result.push(module_statement(path, *position, body));
+        result.push(module_statement(path, *position, body, doc));
         Ok(result)
     }
 
@@ -58,7 +67,7 @@ impl Lowerer<'_> {
     fn check_export_names(&self, statements: &[Stmt]) -> Result<()> {
         let names = statements
             .iter()
-            .filter_map(declared_name)
+            .filter_map(stmt_meta::declaration_name)
             .collect::<std::collections::BTreeSet<_>>();
         for (name, position) in &self.exports {
             if !names.contains(name.as_str()) {
@@ -73,7 +82,7 @@ impl Lowerer<'_> {
 
     fn module_item(&self, statement: Stmt) -> ModuleItem {
         ModuleItem {
-            visibility: if declared_name(&statement)
+            visibility: if stmt_meta::declaration_name(&statement)
                 .is_some_and(|name| self.exports.contains_key(name))
             {
                 Visibility::Exported
@@ -202,17 +211,6 @@ impl Lowerer<'_> {
     }
 }
 
-fn declared_name(statement: &Stmt) -> Option<&str> {
-    match statement {
-        Stmt::Let { name, .. }
-        | Stmt::Function { name, .. }
-        | Stmt::Extern { name, .. }
-        | Stmt::Type { name, .. }
-        | Stmt::Effect { name, .. } => Some(name),
-        _ => None,
-    }
-}
-
 fn identifier(text: &str) -> bool {
     text.chars()
         .next()
@@ -311,14 +309,19 @@ fn flavor_directive(node: Node<'_>, value: &str) -> Result<()> {
         .map_err(|message| Lowerer::error(node, message))
 }
 
-fn module_statement(path: &str, position: Position, body: Vec<ModuleItem>) -> Stmt {
+fn module_statement(
+    path: &str,
+    position: Position,
+    body: Vec<ModuleItem>,
+    inner_doc: Option<osprey_ast::DocComment>,
+) -> Stmt {
     Stmt::Module {
         path: SymbolPath::new(path.split('.')),
         kind: ModuleKind::Plain,
         signature: None,
         body,
         doc: None,
-        inner_doc: None,
+        inner_doc,
         position: Some(position),
     }
 }

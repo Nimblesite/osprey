@@ -10,6 +10,7 @@ type Entry =
     hidden : bool
     folder : bool
     guarded : bool
+    link : bool
 
 type Volume =
     name : string
@@ -176,7 +177,11 @@ module Disk
         _ => "folder.fill"
 
     (** The symbol and tint for an entry: apps and Finder's folders by name, files by kind. *)
-    export look entry = match entry.folder
+    export look entry = match entry.link
+        true => Look(symbol = "arrowshape.turn.up.right.fill", tint = "blue")
+        false => entryLook entry
+
+    entryLook entry = match entry.folder
         false => fileLook (extension entry.path)
         true => match extension entry.path == "app"
             true => Look(symbol = "app.fill", tint = "indigo")

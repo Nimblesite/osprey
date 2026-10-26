@@ -66,6 +66,58 @@ function findVersionedLldbDap(
   return candidates.sort((left, right) => right[0] - left[0])[0]?.[1];
 }
 
+const HOMEBREW_KEG_DIRS = ["/opt/homebrew/opt", "/usr/local/opt"];
+
+/** The kegs that can hold lldb-dap: the keg-only `lldb` formula (LLVM 23+),
+ * then `llvm`, then each versioned `llvm@NN`, newest first. */
+function homebrewLldbKegs(
+  kegDir: string,
+  readDir: (directory: string) => string[],
+): string[] {
+  let names: string[];
+  try {
+    names = readDir(kegDir);
+  } catch {
+    names = [];
+  }
+  const versioned = names
+    .map((name) => /^llvm@(\d+)$/.exec(name))
+    .filter((match): match is RegExpExecArray => match !== null)
+    .sort((left, right) => Number(right[1]) - Number(left[1]))
+    .map((match) => match[0]);
+  return ["lldb", "llvm", ...versioned];
+}
+
+/** Homebrew's adapters outrank Xcode's, which never completes a terminal
+ * launch [DEBUGGER-CONSOLE]. */
+function findHomebrewLldbDap(
+  existsSync: (filePath: string) => boolean,
+  readDir: (directory: string) => string[],
+): string | undefined {
+  return HOMEBREW_KEG_DIRS.flatMap((kegDir) =>
+    homebrewLldbKegs(kegDir, readDir).flatMap((keg) =>
+      ["lldb-dap", "lldb-vscode"].map((name) =>
+        path.posix.join(kegDir, keg, "bin", name),
+      ),
+    ),
+  ).find(existsSync);
+}
+
+function findXcodeLldbDap(
+  host: LldbDapResolutionHost,
+  existsSync: (filePath: string) => boolean,
+): string | undefined {
+  try {
+    const xcrun = host.execFileSync ?? execFileSync;
+    const resolved = String(
+      xcrun("xcrun", ["-f", "lldb-dap"], { encoding: "utf8" }),
+    ).trim();
+    return resolved && existsSync(resolved) ? resolved : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function resolveLldbDapCommand(
   config: any = {},
   host: LldbDapResolutionHost = {},
@@ -113,16 +165,11 @@ export function resolveLldbDapExecutable(
   }
 
   if (platform === "darwin") {
-    try {
-      const xcrun = host.execFileSync ?? execFileSync;
-      const resolved = String(
-        xcrun("xcrun", ["-f", "lldb-dap"], { encoding: "utf8" }),
-      ).trim();
-      if (resolved && existsSync(resolved)) {
-        return resolved;
-      }
-    } catch {
-      // Fall through to common install locations.
+    const darwin =
+      findHomebrewLldbDap(existsSync, host.readDir ?? fs.readdirSync) ??
+      findXcodeLldbDap(host, existsSync);
+    if (darwin) {
+      return darwin;
     }
   }
 
@@ -150,7 +197,7 @@ export function missingLldbDapMessage(config: any = {}): string {
   return (
     "lldb-dap was not found. Install LLVM/LLDB or set osprey.debug.lldbDapPath " +
     "to an existing lldb-dap executable. Checked launch config, VS Code setting, PATH, " +
-    `xcrun, and common LLVM install paths.${configured}`
+    `Homebrew's lldb and llvm kegs, xcrun, and common LLVM install paths.${configured}`
   );
 }
 

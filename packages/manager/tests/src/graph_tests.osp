@@ -1,0 +1,158 @@
+namespace registry_tests;
+import registry::Json
+import registry::Canonical
+import registry::Identity
+import registry::Names
+import registry::Resolve
+import registry::Resolution
+import registry_tests::GraphModel
+import registry_tests::GraphGen
+import registry_tests::GraphOracle
+import registry_tests::Fixtures
+
+/// Every bounded dependency-graph fixture is solved by both the real CDCL
+/// resolver and the exhaustive oracle, and each result is compared, byte for
+/// byte, with the hand-written expected lock or explanation. A differential
+/// assertion checks the resolver and the oracle agree on every fixture, and
+/// the index is asserted to list exactly the checked-in fixtures. Implements
+/// [PACKAGE-RESOLUTION].
+module GraphTests {
+
+    fn member(key, value) = Json::Member { key: key, value: value }
+    fn str(text) = Json::Str { text: text }
+    fn num(value) = Json::Num { value: value }
+    fn obj(members) = Json::Obj { members: members }
+    fn arr(items) = Json::Arr { items: items }
+
+    fn keyJson(k: Names::Key) = obj([member("scope", str(k.scope)), member("name", str(k.name))])
+
+    fn releaseJson(r: Identity::ReleaseId) = obj([
+        member("package", keyJson(r.key)),
+        member("epoch", num(r.epoch)),
+        member("ordinal", num(r.ordinal)),
+        member("digest", str(r.digest))
+    ])
+
+    fn lockJson(releases) = arr(mapList(releases, releaseJson))
+
+    fn explainJson(code, packages) = obj([
+        member("code", str(code)),
+        member("packages", arr(mapList(packages, keyJson)))
+    ])
+
+    fn canonEq(a, b) = (Canonical::serialize(a) ?: "left-error") == (Canonical::serialize(b) ?: "right-error")
+
+    fn outcomeJson(outcome) = match outcome {
+        Resolution::Lock { releases } => lockJson(releases)
+        Resolution::Explain { code, packages } => explainJson(code, packages)
+    }
+
+    /// A solver result equals the fixture expectation byte for byte.
+    fn matchesFixture(name, solve) = {
+        let fx = Fixtures::load("graphs/${name}.json")
+        let graph = GraphModel::graphOf(fx)
+        let expected = Fixtures::field(fx, "expect")
+        let want = match Json::get(expected, "lock") {
+            Success { value } => value
+            Error => Fixtures::field(expected, "explanation")
+        }
+        canonEq(outcomeJson(solve(graph)), want)
+    }
+
+    fn oracleMatches(name) = matchesFixture(name, GraphOracle::solve)
+
+    fn resolverMatches(name) = matchesFixture(name, Resolve::solve)
+
+    /// The resolver and the oracle agree on one fixture.
+    fn agree(name) = {
+        let graph = GraphModel::graphOf(Fixtures::load("graphs/${name}.json"))
+        canonEq(outcomeJson(Resolve::solve(graph)), outcomeJson(GraphOracle::solve(graph)))
+    }
+
+    fn agreeAll(names) = foldList(names, true, fn(ok, name) => ok && agree(name))
+
+    fn expectedCases() = [
+        "satisfiable",
+        "unsatisfiable",
+        "downgrade",
+        "epoch",
+        "target",
+        "capability",
+        "revocation",
+        "revoked",
+        "technical-lag",
+        "cycle",
+        "test-edge-not-activated",
+        "minimum-ordinal-floor",
+        "tie-break",
+        "missing-package",
+        "grant"
+    ]
+
+    fn indexCheck() = {
+        let fx = Fixtures::load("graphs/index.json")
+        let cases = mapList(Fixtures::items(Fixtures::field(fx, "cases")), Fixtures::text)
+        checkAll("graphs: index lists exactly the checked-in fixtures", [
+            structuralEquals(listSort(cases), listSort(expectedCases())),
+            length(cases) == length(expectedCases())
+        ])
+    }
+
+    let generatedGraphs = 60
+
+    fn outcomeText(outcome) = Canonical::serialize(outcomeJson(outcome)) ?: "serialize failed"
+
+    /// What the two solvers must agree on: a lock byte for byte, or that the
+    /// graph is refuted. A refutation's code and packages differ by design
+    /// when a graph has several causes: the resolver reports the cause its
+    /// minimal conflict core used and names that core's keys, the oracle the
+    /// first cause in spec order over every reachable key.
+    fn comparable(outcome) = match outcome {
+        Resolution::Lock { releases } => outcomeText(Resolution::Lock { releases: releases })
+        Resolution::Explain { code, packages } => "refuted"
+    }
+
+    /// The resolver agrees with the exhaustive oracle on a generated graph.
+    fn agreesOn(n) = comparable(Resolve::solve(GraphGen::graph(n))) == comparable(GraphOracle::solve(GraphGen::graph(n)))
+
+    /// The resolver's outcome does not depend on the order of the catalog or the root edges.
+    fn permutationInvariant(n) = outcomeText(Resolve::solve(GraphGen::graph(n))) == outcomeText(Resolve::solve(GraphGen::permuted(GraphGen::graph(n))))
+
+    fn generatedNumbers() = range(0, generatedGraphs) |> toList
+
+    /// Differential and determinism property tests over generated graphs
+    /// ([PACKAGE-RESOLUTION] exit gate: no valid bounded graph missed, no
+    /// invalid graph emitted, no permutation changes a lock or explanation).
+    fn generatedAgree() = check("generated graphs: resolver disagrees with the oracle on", "", join(mapList(filterList(generatedNumbers(), fn(n) => !agreesOn(n)), fn(n) => "${n}"), ","))
+
+    fn generatedDeterministic() = check("generated graphs: permutation changes the outcome of", "", join(mapList(filterList(generatedNumbers(), fn(n) => !permutationInvariant(n)), fn(n) => "${n}"), ","))
+
+    fn firstOr(xs, fallback) = listGet(xs, 0) ?: fallback
+
+    /// The first disagreement in full: the oracle's outcome against the resolver's.
+    fn generatedDetail() = {
+        let n = firstOr(filterList(generatedNumbers(), fn(n) => !agreesOn(n)), -1)
+        if n < 0 { check("generated graphs: first disagreement", "none", "none") }
+        else { check("generated graph ${n}: oracle vs resolver", outcomeText(GraphOracle::solve(GraphGen::graph(n))), outcomeText(Resolve::solve(GraphGen::graph(n)))) }
+    }
+
+    /// The first permutation-sensitive graph in full: plain against permuted.
+    fn permutationDetail() = {
+        let n = firstOr(filterList(generatedNumbers(), fn(n) => !permutationInvariant(n)), -1)
+        if n < 0 { check("generated graphs: first permutation change", "none", "none") }
+        else { check("generated graph ${n}: plain vs permuted", outcomeText(Resolve::solve(GraphGen::graph(n))), outcomeText(Resolve::solve(GraphGen::permuted(GraphGen::graph(n))))) }
+    }
+
+    /// Every graph case as one oracle test and one resolver test, plus the
+    /// differential assertion, the generated-graph properties and the index.
+    export fn run() = {
+        forEachList(expectedCases(), fn(name) => test("graphs oracle: ${name}", fn() => expectTrue(oracleMatches(name))))
+        forEachList(expectedCases(), fn(name) => test("graphs resolver: ${name}", fn() => expectTrue(resolverMatches(name))))
+        test("graphs: resolver agrees with oracle", fn() => expectTrue(agreeAll(expectedCases())))
+        test("graphs: generated graphs agree with the oracle", generatedAgree)
+        test("graphs: first generated disagreement in full", generatedDetail)
+        test("graphs: generated graphs are permutation-invariant", generatedDeterministic)
+        test("graphs: first permutation change in full", permutationDetail)
+        test("graphs: index", indexCheck)
+    }
+}

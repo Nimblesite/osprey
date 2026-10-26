@@ -24,6 +24,12 @@ use structural::gen_structural_match;
 use union::{gen_union_match, union_owner};
 
 pub(crate) fn gen_match(cg: &mut Codegen, value: &Expr, arms: &[MatchArm]) -> Result<Value> {
+    if std::env::var("OSPREY_DBG_MATCH").is_ok() {
+        eprintln!(
+            "DBG gen_match in {:?}: scrutinee {:?}  arms {:?}",
+            cg.source_function, value, arms
+        );
+    }
     if let Some(fused) = result::gen_list_get_match(cg, value, arms)? {
         return Ok(fused);
     }
@@ -79,13 +85,21 @@ fn match_state(
     cg: &mut Codegen,
     arms: &[MatchArm],
 ) -> (String, Vec<(Value, String)>, usize, usize) {
-    let mark = crate::arc::frame_mark(cg);
+    let mark = match_mark(cg);
     (
         cg.fresh_label(),
         Vec::new(),
         arms.len().saturating_sub(1),
         mark,
     )
+}
+
+/// Stores in an arm cannot consume owners live before the match: a sibling
+/// may return another value without performing that ownership transfer.
+fn match_mark(cg: &mut Codegen) -> usize {
+    let mark = crate::arc::frame_mark(cg);
+    crate::arc::open_conditional(cg, mark);
+    mark
 }
 
 /// Generate a successful match arm and branch to the common result block.
@@ -111,13 +125,7 @@ fn emit_arm(
 /// Open a guarded arm: branch on `cond` into a fresh body block, make that
 /// block current, and hand back the fall-through label the next arm starts at.
 fn open_guarded_arm(cg: &mut Codegen, cond: &str) -> String {
-    let body_lbl = cg.fresh_label();
-    let next_lbl = cg.fresh_label();
-    cg.emit(format!(
-        "br i1 {cond}, label %{body_lbl}, label %{next_lbl}"
-    ));
-    cg.start_block(&body_lbl);
-    next_lbl
+    cg.open_guard(cond)
 }
 
 /// Complete a guarded arm after its shape-specific bindings have been emitted.
@@ -173,6 +181,7 @@ fn finish_phi(
         incoming_values.push((adapted, pred));
     }
     cg.start_block(end);
+    crate::arc::close_conditional(cg);
 
     let Some((first_val, _)) = incoming_values.first() else {
         return Ok(Value::unit());
@@ -181,6 +190,18 @@ fn finish_phi(
     let llvm_ty = first_val.llvm_ty();
     if let Some((odd, _)) = incoming_values.iter().find(|(v, _)| v.llvm_ty() != llvm_ty) {
         if !cg.value_discarded {
+            for (v, blk) in &incoming_values {
+                eprintln!(
+                    "DBG arm blk {blk}: llvm {:?} ty {:?} osp_ty {:?} result_inner {:?} inferred {:?} operand {}",
+                    v.llvm_ty(), v.ty, v.osp_ty, v.result_inner, v.inferred_type, v.operand
+                );
+            }
+            eprintln!(
+                "DBG match arms disagree in {:?}: `{}` vs `{}`",
+                cg.source_function,
+                llvm_ty,
+                odd.llvm_ty()
+            );
             return Err(CodegenError::invalid(format!(
                 "match arms disagree on type: `{}` and `{}`",
                 llvm_ty,
@@ -217,6 +238,7 @@ fn finish_phi(
         Some(inner) => Value::result(reg, inner),
         None => Value::new(reg, ty).with_owner(merged_owner(cg, &incoming_values)),
     };
+    out.inferred_type = merged_inference(&incoming_values);
     out.result_inner_is_placeholder = result_inner.is_some()
         && incoming_values
             .iter()
@@ -242,6 +264,18 @@ fn finish_phi(
         .collect::<Vec<_>>();
     crate::arc::move_phi_owners(cg, &incoming_ops, &out, mark);
     Ok(out)
+}
+
+/// A checked join retains the concrete type even when an empty literal has no
+/// inference of its own. Losing it erases nested list element layouts after a
+/// `?:` default. Conflicting known types never supply a guessed layout.
+fn merged_inference(incoming: &[(Value, String)]) -> Option<osprey_types::Type> {
+    let mut known = incoming
+        .iter()
+        .filter_map(|(value, _)| value.inferred_type.as_ref())
+        .filter(|ty| !osprey_types::has_type_var(ty));
+    let first = known.next()?;
+    known.all(|ty| ty == first).then(|| first.clone())
 }
 
 /// The owner of the merged handle. Arms naming one owner keep it; arms naming
@@ -337,4 +371,29 @@ fn bind_value(cg: &mut Codegen, name: String, value: Value) {
     }
     cg.emit_debug_local(&name, &value);
     cg.bind(name, value);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nested_list_join_keeps_concrete_inference_beside_an_untyped_empty_default() {
+        let mut cg = Codegen::new();
+        let mut row = Value::handle("%row", "List#List#i64");
+        let ints = osprey_types::Type::con("List", vec![osprey_types::Type::con("int", vec![])]);
+        row.inferred_type = Some(osprey_types::Type::con("List", vec![ints.clone()]));
+        let fallback = Value::handle("%empty", "List#List#i8*");
+        let joined = finish_phi(
+            &mut cg,
+            &[(row, "row".into()), (fallback, "empty".into())],
+            "end",
+            0,
+        )
+        .expect("both branches carry list pointers");
+        let element = crate::collections::elem_value(&mut cg, &joined, "%word");
+        assert_eq!(element.ty, LType::Ptr);
+        assert_eq!(element.osp_ty.as_deref(), Some("List#i64"));
+        assert_eq!(element.inferred_type, Some(ints));
+    }
 }

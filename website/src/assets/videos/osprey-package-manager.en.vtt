@@ -1,0 +1,19 @@
+WEBVTT
+
+00:00.300 --> 00:04.047
+Open the Command Palette and choose Osprey: Manage Packages.
+
+00:04.497 --> 00:11.494
+Browse registry shows the available Osprey packages. Scroll through the catalog, or filter it by package name.
+
+00:18.497 --> 00:26.665
+Select a package to inspect its release and security findings. Unverified means there is no authenticated audit evidence.
+
+00:27.115 --> 00:34.125
+Choose Add to project, review the confirmation and confirm. Switch to Installed to see the dependency in your project.
+
+00:34.575 --> 00:40.410
+To remove it, select the direct dependency and choose Remove dependency. Confirm the change.
+
+00:40.860 --> 00:48.039
+The Installed view updates to show the remaining dependencies. Add and remove packages without leaving VS Code.

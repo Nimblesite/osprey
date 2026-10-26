@@ -232,20 +232,26 @@ fn declare_stack(cg: &mut Codegen) {
 
 /// Branch on a null handler pointer: print `unhandled effect: <key>.<op>` and
 /// exit, so a missed lookup fails loudly instead of calling null. Implements
-/// [EFFECTS-GENERIC-RUNTIME].
+/// [EFFECTS-GENERIC-RUNTIME]. A symbolic build aborts instead, because the
+/// engine counts a clean `exit` as a finished path and an `abort` as an error
+/// [SYMEX-CODEGEN].
 fn emit_unhandled_guard(cg: &mut Codegen, raw: &str, lookup_key: &str, operation: &str) {
+    let stop = if cg.symbolic {
+        "call void @abort()"
+    } else {
+        "call void @exit(i32 1)"
+    };
     cg.add_extern("declare i32 @puts(i8*)");
-    cg.add_extern("declare void @exit(i32)");
+    cg.add_extern(if cg.symbolic {
+        "declare void @abort()"
+    } else {
+        "declare void @exit(i32)"
+    });
     let msg = cg.string_constant(&format!("unhandled effect: {lookup_key}.{operation}"));
     let is_null = cg.emit_reg(format!("icmp eq i8* {raw}, null"));
-    let abort_lbl = cg.fresh_label();
-    let ok_lbl = cg.fresh_label();
-    cg.emit(format!(
-        "br i1 {is_null}, label %{abort_lbl}, label %{ok_lbl}"
-    ));
-    cg.start_block(&abort_lbl);
+    let ok_lbl = cg.open_guard(&is_null);
     let _ = cg.emit_reg(format!("call i32 @puts(i8* {})", msg.operand));
-    cg.emit("call void @exit(i32 1)");
+    cg.emit(stop);
     cg.emit("unreachable");
     cg.start_block(&ok_lbl);
 }

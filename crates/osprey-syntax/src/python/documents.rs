@@ -42,6 +42,28 @@ impl Lowerer<'_> {
             && !text.to_ascii_lowercase().contains('f')
     }
 
+    /// A PEP 257 attribute docstring: a plain string-literal statement that
+    /// documents the declaration written directly before it
+    /// ([FLAVOR-PYTHON-CST]). Returns `None` for any other node.
+    pub(super) fn attribute_docstring(&mut self, node: Node<'_>) -> Result<Option<DocComment>> {
+        if node.kind() != "expression_statement" {
+            return Ok(None);
+        }
+        let Ok(string) = Self::first(node) else {
+            return Ok(None);
+        };
+        if string.kind() != "string" {
+            return Ok(None);
+        }
+        let Expr::Str(text) = self.string(string)? else {
+            return Ok(None);
+        };
+        Ok(Some(crate::docparse::parse_doc(
+            text.trim(),
+            DocScope::Outer,
+        )))
+    }
+
     pub(super) fn body_nodes<'t>(&self, node: Node<'t>) -> Vec<Node<'t>> {
         children(node)
             .into_iter()

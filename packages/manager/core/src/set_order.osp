@@ -1,0 +1,109 @@
+namespace registry;
+import registry::Json
+import registry::JsonRead
+import registry::Order
+
+/// The canonical order and duplicate rule of every list in the domain model.
+/// A list of model objects sorts by its element type's key tuple and is
+/// duplicate-free under that key; a list of scalars is a sorted set except
+/// compiler `flags` and Merkle `hashes`, which keep protocol position, and
+/// source/test roots, which are unique in declared order. Implements the
+/// list rules of [PACKAGE-TYPE-INVARIANTS].
+module SetOrder {
+    /// One element type's key: JSON paths into the element. `*` steps into a
+    /// union's single variant, `a|b` takes the first path present, `?p` is 0
+    /// when `p` is absent and 1 when present, and `@variant:A|B` is the rank
+    /// of the variant name.
+    type Rule = { element: string, paths: List<string> }
+
+    let unsorted = "order.unsorted"
+    let duplicate = "order.duplicate"
+    let packageKey = ["package/scope", "package/name"]
+    let release = ["release/package/scope", "release/package/name", "release/epoch", "release/ordinal", "release/digest"]
+    let rules = [
+        Rule { element: "DependencyEdge", paths: ["@variant:Runtime|Build|Test", "*/requirement/package/scope", "*/requirement/package/name", "*/requirement/epoch", "*/requirement/minimumOrdinal"] },
+        Rule { element: "PackageAsset", paths: ["path", "digest"] },
+        Rule { element: "SystemRequirement", paths: ["capability", "minimumRevision"] },
+        Rule { element: "ProviderCatalogEntry", paths: ["capability", "targetSpecDigest", "provider", "revision", "artifactDigest"] },
+        Rule { element: "LockedSystemInput", paths: ["capability", "provider", "revision", "artifactDigest"] },
+        Rule { element: "LocalOverride", paths: packageKey },
+        Rule { element: "LockedReleasePackage", paths: ["release/package/scope", "release/package/name"] },
+        Rule { element: "LockedDevelopmentPackage", paths: ["*/release/release/package/scope|*/package/scope", "*/release/release/package/name|*/package/name"] },
+        Rule { element: "DevelopmentBuildInput", paths: ["?package", "package/scope", "package/name"] },
+        Rule { element: "ResolutionDecision", paths: packageKey },
+        Rule { element: "AuthorizationProof", paths: ["principal"] },
+        Rule { element: "TufRoleState", paths: ["role", "version"] },
+        Rule { element: "ReleaseStatus", paths: release },
+        Rule { element: "MerkleInclusionProof", paths: ["logId", "leafIndex"] },
+        Rule { element: "WitnessReceipt", paths: ["witnessId"] },
+        Rule { element: "Evidence", paths: ["kind", "source", "digest", "observedAt"] },
+        Rule { element: "ModulePlanEntry", paths: ["path"] },
+        Rule { element: "TestPlanEntry", paths: ["path", "namespace", "symbol"] },
+        Rule { element: "OutputArtifact", paths: ["path"] },
+        Rule { element: "PackageKey", paths: ["scope", "name"] }
+    ]
+
+    fn present(value) = !Json::isNull(value)
+
+    fn firstPresent(value, alternatives) = foldList(alternatives, Json::Null, fn(found, path) => if present(found) { found } else { JsonRead::at(value, path) })
+
+    fn variantName(value) = match value {
+        Json::Obj { members } => match listGet(members, 0) {
+            Success { value } => value.key
+            Error => ""
+        }
+        _ => ""
+    }
+
+    fn rank(names, name) = foldList(range(0, length(names)) |> toList, -1, fn(found, i) => if (listGet(names, i) ?: "") == name { i } else { found })
+
+    fn component(value, path) = if startsWith(path, "@variant:") { Json::Num { value: rank(split(drop(path, 9), "|") ?: [], variantName(value)) } }
+        else if startsWith(path, "?") { Json::Num { value: if present(JsonRead::at(value, drop(path, 1))) { 1 } else { 0 } } }
+        else { firstPresent(value, split(path, "|") ?: [path]) }
+
+    fn textVs(left, b) = match b {
+        Json::Str { text } => Order::compareStrings(left, text)
+        _ => 1
+    }
+
+    fn numberVs(left, b) = match b {
+        Json::Num { value } => Order::compareInts(left, value)
+        _ => 1
+    }
+
+    /// An absent component sorts first; like kinds compare by value; mixed
+    /// kinds never occur in schema-valid data and compare as the left greater.
+    fn compareScalars(a, b) = match a {
+        Json::Str { text } => textVs(text, b)
+        Json::Num { value } => numberVs(value, b)
+        _ => if present(b) { -1 } else { 0 }
+    }
+
+    fn compareBy(paths, a, b) = foldList(paths, 0, fn(c, path) => Order::thenCompare(c, compareScalars(component(a, path), component(b, path))))
+
+    fn rulePaths(element) = foldList(rules, [""], fn(found, r) => if r.element == element { r.paths } else { found })
+
+    fn pairCode(paths, items, i) = {
+        let c = compareBy(paths, listGet(items, i - 1) ?: Json::Null, listGet(items, i) ?: Json::Null)
+        if c == 0 { duplicate } else if c > 0 { unsorted } else { "" }
+    }
+
+    fn strictCode(paths, items) = foldList(range(1, length(items)) |> toList, "", fn(code, i) => if code == "" { pairCode(paths, items, i) } else { code })
+
+    fn scalarTexts(items) = mapList(items, fn(v) => match v {
+        Json::Str { text } => text
+        _ => ""
+    })
+
+    fn uniqueCode(items) = match Order::canonicalSet(scalarTexts(items)) {
+        Success => ""
+        Error => duplicate
+    }
+
+    /// "" when `items`, a list field named `field` whose elements have model
+    /// type `element`, obeys its canonical order; else `order.unsorted` or
+    /// `order.duplicate` at the first offending pair.
+    export fn listCode(element, field, items) = if field == "flags" || field == "hashes" { "" }
+        else if field == "sourceRoots" || field == "testRoots" { uniqueCode(items) }
+        else { strictCode(rulePaths(element), items) }
+}

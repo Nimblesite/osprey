@@ -31,9 +31,15 @@ use std::process::{Command, ExitCode};
 /// The canonical wasm target triple (the modern spelling of `wasm32-wasi`).
 /// Implements [WASM-TARGET-TRIPLE].
 const TRIPLE: &str = "wasm32-wasip1";
-/// The browser-portable default-memory C runtime, built by `make wasm`.
-/// Implements [WASM-TARGET-RUNTIME] and [WASM-TARGET-MEMORY].
-const RUNTIME_LIB: &str = "libosprey_runtime_wasm.a";
+/// The `--memory=none` malloc-passthrough C runtime, built by `make wasm`.
+/// Implements [WASM-TARGET-RUNTIME].
+const RUNTIME_LIB_NONE: &str = "libosprey_runtime_wasm.a";
+/// The ARC runtime twin `--memory=arc` links: same portable unit set with the
+/// managed allocator and the ARC ownership shims. It is the wasm32 default, so
+/// this is the archive a plain `--target=wasm32` build takes. [WASM-TARGET-MEMORY]
+const RUNTIME_LIB_ARC: &str = "libosprey_runtime_wasm_arc.a";
+/// The managed backend a wasm32 build links when the user left `--memory` off.
+const DEFAULT_MEMORY: &str = "arc";
 /// Candidate multiarch lib subdir names inside a WASI sysroot, newest first.
 const LIB_SUBDIRS: [&str; 2] = ["wasm32-wasip1", "wasm32-wasi"];
 /// Source-level browser event entry point. When present it is rooted and
@@ -45,13 +51,26 @@ const WEB_DISPATCH_MANGLED_SUFFIX: &str = "_19x6f73707265795f7765625f64697370617
 /// What a failed tool spawn suggests installing.
 const TOOLCHAIN_HINT: &str = "is the wasm toolchain installed?";
 
-/// Lower `program` to the `.wasm` at `out`. [WASM-TARGET]
+/// Lower `program` to the `.wasm` at `out` with the target's default backend.
+/// [WASM-TARGET]
+pub(crate) fn build(path: &str, program: &osprey_ast::Program, out: &Path) -> Result<(), ExitCode> {
+    build_with_memory(path, program, out, DEFAULT_MEMORY)
+}
+
+/// Lower `program` to the `.wasm` at `out` with an explicit memory backend:
+/// `arc` links the managed runtime, anything else the malloc passthrough, which
+/// is what an explicit `--memory=none` means. [WASM-TARGET-MEMORY]
 ///
 /// # Errors
 ///
 /// Returns the CLI failure code if codegen fails, the toolchain (sysroot /
 /// runtime archive / `wasm-ld`) is missing, or clang/`wasm-ld` exits non-zero.
-pub(crate) fn build(path: &str, program: &osprey_ast::Program, out: &Path) -> Result<(), ExitCode> {
+pub(crate) fn build_with_memory(
+    path: &str,
+    program: &osprey_ast::Program,
+    out: &Path,
+    memory: &str,
+) -> Result<(), ExitCode> {
     crate::target_capabilities::validate(program, "wasm32")
         .map_err(|error| fail(&format!("{path}: {error}")))?;
     let web_dispatch = web_dispatch_export(program);
@@ -61,28 +80,35 @@ pub(crate) fn build(path: &str, program: &osprey_ast::Program, out: &Path) -> Re
     };
     let sysroot = wasi_sysroot().map_err(|e| fail(&e))?;
     let libdir = lib_dir(&sysroot).map_err(|e| fail(&e))?;
-    let archive = find_runtime_lib(RUNTIME_LIB).ok_or_else(|| {
-        fail(&format!(
-            "{RUNTIME_LIB} not found — run `make wasm` to build it"
-        ))
-    })?;
+    let lib = runtime_lib(memory);
+    let archive = find_runtime_lib(lib)
+        .ok_or_else(|| fail(&format!("{lib} not found — run `make wasm` to build it")))?;
     let obj = compile_object(&scratch_stem(path), &ir)?;
     link(&obj, &archive, &libdir, out, web_dispatch)
+}
+
+/// The runtime archive a memory backend links. [WASM-TARGET-MEMORY]
+fn runtime_lib(memory: &str) -> &'static str {
+    if memory == "arc" {
+        RUNTIME_LIB_ARC
+    } else {
+        RUNTIME_LIB_NONE
+    }
 }
 
 /// Browser exports continue using module globals after the WASI entry returns.
 pub(crate) fn program_ir(program: &osprey_ast::Program) -> osprey_codegen::Result<String> {
     if web_dispatch_export(program).is_some() {
-        osprey_codegen::compile_library(program)
+        osprey_codegen::compile_wasm_library(program)
     } else {
-        osprey_codegen::compile_program(program)
+        osprey_codegen::compile_wasm_program(program)
     }
 }
 
 /// `--run` for wasm: build to a temp `.wasm`, then execute it under a WASI host.
-pub(crate) fn run(path: &str, program: &osprey_ast::Program) -> ExitCode {
+pub(crate) fn run(path: &str, program: &osprey_ast::Program, memory: &str) -> ExitCode {
     let wasm = std::env::temp_dir().join(format!("{}.wasm", scratch_stem(path)));
-    if let Err(code) = build(path, program, &wasm) {
+    if let Err(code) = build_with_memory(path, program, &wasm, memory) {
         return code;
     }
     run_host(&wasm)
@@ -285,475 +311,4 @@ fn run_host(wasm: &Path) -> ExitCode {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::testkit::shows;
-
-    /// Serializes tests that read/write process-global toolchain env vars
-    /// (`OSPREY_WASM_*`, `*_SYSROOT`) so they neither race each other nor the
-    /// end-to-end build below — env is shared across the parallel test threads.
-    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    const GLOBAL_WEB_SOURCE: &str = "let saved = \"hello\" + \" world\"\n\
-        fn osprey_web_dispatch(message: string) = { print(\"${saved} ${message}\")\n 0 }\n";
-    const WEB_ABI_SOURCE: &str = "namespace app;\n\
-         extern fn osprey_web_render(message: string) -> int\n\
-         extern fn osprey_web_command(message: string) -> int\n\
-         fn osprey_web_dispatch(message: string) -> int = 0\n\
-         fn main() = {\n\
-           let rendered = osprey_web_render(\"boot\")\n\
-           osprey_web_command(\"ready\")\n\
-         }\n";
-
-    fn lock_env() -> std::sync::MutexGuard<'static, ()> {
-        ENV_LOCK
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
-
-    fn assemble_web_program(source: &str, root: &str) -> osprey_ast::Program {
-        osprey_project::assemble(
-            &osprey_project::ProjectConfig::for_root(Path::new(root)),
-            &[osprey_project::SourceFile {
-                path: PathBuf::from("client.osp"),
-                flavor: osprey_syntax::Flavor::Default,
-                source: source.to_string(),
-                program: osprey_syntax::parse_program(source).program,
-            }],
-        )
-        .expect("assemble web project")
-        .program
-    }
-
-    #[test]
-    fn browser_dispatcher_keeps_its_globals_after_wasi_start_returns() {
-        // [WASM-WEB-ABI] Browser events arrive after the command entry returns.
-        let parsed = osprey_syntax::parse_program(GLOBAL_WEB_SOURCE);
-        assert_eq!(
-            osprey_types::check_program(&parsed.program),
-            Vec::<osprey_types::TypeError>::new()
-        );
-        let ir = program_ir(&parsed.program).expect("browser module");
-        assert!(
-            !ir.contains("store i8* null, i8** @"),
-            "browser globals cleared at startup:\n{ir}"
-        );
-    }
-
-    #[test]
-    fn entry_thunk_wraps_main_for_the_wasi_start_path() {
-        // [WASM-ENTRY]
-        let out = with_entry_thunk("define i32 @main() {\n  ret i32 0\n}\n");
-        shows(
-            &out,
-            &[
-                "define i32 @main()",
-                "define i32 @__main_void()",
-                "call i32 @main()",
-            ],
-        );
-    }
-
-    #[test]
-    fn web_dispatch_thunk_stabilizes_a_project_mangled_symbol() {
-        // [WASM-WEB-ABI]
-        let mangled = format!("__osp_3x617070{WEB_DISPATCH_MANGLED_SUFFIX}");
-        let out = with_web_dispatch_thunk("; module", Some(&mangled));
-        shows(
-            &out,
-            &[
-                "define i64 @osprey_web_dispatch(i8* %message)",
-                &format!("call i64 @{mangled}(i8* %message)"),
-                "ret i64 %r",
-            ],
-        );
-
-        let unchanged = with_web_dispatch_thunk("; module", Some(WEB_DISPATCH));
-        assert_eq!(unchanged, "; module", "source spelling needs no thunk");
-    }
-
-    #[test]
-    fn compile_object_reports_an_unwritable_ir_path() {
-        // A stem pointing through a directory that does not exist makes the
-        // temp `.ll` write fail, so compile_object returns the CLI failure code
-        // before it ever needs a real clang — the toolchain-free error path.
-        let stem = format!("osprey_missing_dir_{}/ir", std::process::id());
-        assert!(compile_object(&stem, "; ir").is_err());
-    }
-
-    #[test]
-    fn clang_argv_targets_wasm_and_compiles_only() {
-        // [WASM-TARGET-TRIPLE] [WASM-TARGET-LINK]
-        let argv = clang_argv(Path::new("/tmp/p.ll"), Path::new("/tmp/p.o"));
-        assert!(argv.iter().any(|a| a == "--target=wasm32-wasip1"));
-        assert!(argv.iter().any(|a| a == "-c"), "no link step");
-        assert!(argv.iter().any(|a| a == "-Wno-override-module"));
-        // output is the requested object path, after `-o`.
-        let oi = argv.iter().position(|a| a == "-o").expect("has -o");
-        assert_eq!(argv.get(oi + 1).map(String::as_str), Some("/tmp/p.o"));
-    }
-
-    #[test]
-    fn link_argv_uses_crt1_runtime_archive_and_libc() {
-        // [WASM-TARGET-LINK] [WASM-TARGET-RUNTIME] [WASM-TARGET-MEMORY]
-        let argv = link_argv(
-            Path::new("/tmp/p.o"),
-            "/lib/libosprey_runtime_wasm.a",
-            Path::new("/sys/lib/wasm32-wasip1"),
-            Path::new("/out/p.wasm"),
-            None,
-        );
-        assert!(argv.iter().any(|a| a.ends_with("crt1-command.o")));
-        assert!(argv.iter().any(|a| a == "/lib/libosprey_runtime_wasm.a"));
-        assert!(argv.iter().any(|a| a == "-L/sys/lib/wasm32-wasip1"));
-        assert!(argv.iter().any(|a| a == "-lc"));
-        assert!(argv.iter().any(|a| a == "--export=osp_alloc"));
-        assert!(!argv.iter().any(|a| a.contains(WEB_DISPATCH)));
-        let oi = argv.iter().position(|a| a == "-o").expect("has -o");
-        assert_eq!(argv.get(oi + 1).map(String::as_str), Some("/out/p.wasm"));
-    }
-
-    #[test]
-    fn link_argv_exports_the_discovered_web_dispatch_symbol() {
-        // [WASM-WEB-ABI]
-        let mangled = format!("__osp_3x617070{WEB_DISPATCH_MANGLED_SUFFIX}");
-        let argv = link_argv(
-            Path::new("/tmp/p.o"),
-            "/lib/libosprey_runtime_wasm.a",
-            Path::new("/sys/lib/wasm32-wasip1"),
-            Path::new("/out/p.wasm"),
-            Some(&mangled),
-        );
-        assert!(argv.iter().any(|a| a == "--export=osprey_web_dispatch"));
-        assert!(!argv.iter().any(|a| a == &format!("--export={mangled}")));
-    }
-
-    #[test]
-    fn finds_source_and_project_mangled_web_dispatch_functions() {
-        // [WASM-WEB-ABI]
-        let source =
-            osprey_syntax::parse_program("fn osprey_web_dispatch(message: string) -> int = 0\n")
-                .program;
-        assert_eq!(web_dispatch_export(&source), Some(WEB_DISPATCH));
-
-        let project_source = "namespace app;\nfn osprey_web_dispatch(message: string) -> int = 0\n";
-        let project = assemble_web_program(project_source, "/tmp/web-dispatch-project");
-        let mangled = web_dispatch_export(&project).expect("find flattened dispatcher");
-        assert_ne!(mangled, WEB_DISPATCH);
-        assert!(mangled.starts_with("__osp_"));
-        assert!(mangled.ends_with(WEB_DISPATCH_MANGLED_SUFFIX));
-
-        let ordinary =
-            osprey_syntax::parse_program("fn dispatch(message: string) = message\n").program;
-        assert_eq!(web_dispatch_export(&ordinary), None);
-    }
-
-    fn unique_dir(tag: &str) -> PathBuf {
-        let p = std::env::temp_dir().join(format!("osprey_wasm_test_{tag}_{}", std::process::id()));
-        std::fs::create_dir_all(&p).expect("mk test dir");
-        p
-    }
-
-    #[test]
-    fn pick_sysroot_prefers_existing_override_then_candidates() {
-        let real = unique_dir("sysroot");
-        // explicit override that exists wins.
-        assert_eq!(
-            pick_sysroot(Some(real.display().to_string()), &[]).expect("override ok"),
-            real
-        );
-        // a non-directory override is an error.
-        assert!(pick_sysroot(
-            Some("/no/such/dir/xyz".to_string()),
-            std::slice::from_ref(&real)
-        )
-        .is_err());
-        // no override: first existing candidate is chosen.
-        let missing = PathBuf::from("/no/such/dir/abc");
-        assert_eq!(
-            pick_sysroot(None, &[missing, real.clone()]).expect("candidate ok"),
-            real
-        );
-        // nothing exists: error.
-        assert!(pick_sysroot(None, &[PathBuf::from("/no/such/dir/q")]).is_err());
-    }
-
-    #[test]
-    fn lib_dir_picks_wasip1_then_wasi_else_errors() {
-        let sysroot = unique_dir("libdir");
-        assert!(lib_dir(&sysroot).is_err(), "no lib subdir yet");
-        let want = sysroot.join("lib").join("wasm32-wasip1");
-        std::fs::create_dir_all(&want).expect("mk wasip1");
-        assert_eq!(lib_dir(&sysroot).expect("found"), want);
-    }
-
-    #[test]
-    fn compile_object_lowers_textual_ir_with_clang() {
-        // Other driver tests replace OSPREY_WASM_CC with a no-op stub.
-        let _g = lock_env();
-        // [WASM-TARGET-IR] [WASM-TARGET-LINK]
-        // Requires clang (present wherever `make test` runs); a tiny valid module
-        // exercises the write-IR + `clang -c` lowering path end to end.
-        if Command::new(tool("OSPREY_WASM_CC", "clang"))
-            .arg("--version")
-            .output()
-            .is_err()
-        {
-            eprintln!("skipping compile_object test: clang absent");
-            return;
-        }
-        let stem = format!("osprey_cli_unit_{}", std::process::id());
-        let obj = compile_object(&stem, "define i32 @main() {\n  ret i32 0\n}\n")
-            .expect("clang lowers trivial IR to a wasm object");
-        assert!(obj.exists(), "object emitted at {}", obj.display());
-    }
-
-    #[test]
-    fn link_invokes_the_linker_and_maps_its_exit_code() {
-        let _g = lock_env();
-        let prev = std::env::var("OSPREY_WASM_LD").ok();
-        // A stand-in "linker" that ignores its args and exits 0 → link succeeds.
-        std::env::set_var("OSPREY_WASM_LD", "true");
-        let ok = link(
-            Path::new("/tmp/o.o"),
-            "/tmp/rt.a",
-            Path::new("/tmp/libdir"),
-            Path::new("/tmp/out.wasm"),
-            None,
-        );
-        // A stand-in that exits non-zero → link reports a CLI failure.
-        std::env::set_var("OSPREY_WASM_LD", "false");
-        let err = link(
-            Path::new("/tmp/o.o"),
-            "/tmp/rt.a",
-            Path::new("/tmp/libdir"),
-            Path::new("/tmp/out.wasm"),
-            None,
-        );
-        match prev {
-            Some(v) => std::env::set_var("OSPREY_WASM_LD", v),
-            None => std::env::remove_var("OSPREY_WASM_LD"),
-        }
-        assert!(ok.is_ok(), "linker exit 0 => ok");
-        assert!(err.is_err(), "linker non-zero => failure");
-    }
-
-    #[test]
-    fn run_host_uses_the_configured_runner_and_handles_a_missing_one() {
-        let _g = lock_env();
-        let prev = std::env::var("OSPREY_WASM_RUN").ok();
-        let wasm = std::env::temp_dir().join("osprey_run_host_unit.wasm");
-        let _ = std::fs::write(&wasm, b"\0asm");
-        // A present runner that ignores args and exits 0 → success-code path.
-        std::env::set_var("OSPREY_WASM_RUN", "true");
-        let _ok = run_host(&wasm);
-        // A missing runner → the spawn-error hint path.
-        std::env::set_var("OSPREY_WASM_RUN", "/no/such/runner/osprey_xyz");
-        let _err = run_host(&wasm);
-        match prev {
-            Some(v) => std::env::set_var("OSPREY_WASM_RUN", v),
-            None => std::env::remove_var("OSPREY_WASM_RUN"),
-        }
-    }
-
-    #[test]
-    fn sysroot_candidates_includes_wasi_sdk_path_when_set() {
-        let _g = lock_env();
-        let prev = std::env::var("WASI_SDK_PATH").ok();
-        std::env::set_var("WASI_SDK_PATH", "/opt/osprey-test-wasi-sdk");
-        let cands = sysroot_candidates();
-        match prev {
-            Some(v) => std::env::set_var("WASI_SDK_PATH", v),
-            None => std::env::remove_var("WASI_SDK_PATH"),
-        }
-        assert!(
-            cands.iter().any(|p| p.ends_with("wasi-sysroot")
-                && p.to_string_lossy().contains("osprey-test-wasi-sdk")),
-            "WASI_SDK_PATH contributes a sysroot candidate: {cands:?}"
-        );
-    }
-
-    #[test]
-    fn build_fails_cleanly_when_the_sysroot_override_is_bogus() {
-        let _g = lock_env();
-        let prev = std::env::var("OSPREY_WASI_SYSROOT").ok();
-        std::env::set_var("OSPREY_WASI_SYSROOT", "/no/such/wasi/sysroot/xyz");
-        let program = osprey_syntax::parse_program("let n = 1\nprint(\"${n}\")\n").program;
-        let out = std::env::temp_dir().join("osprey_build_err_unit.wasm");
-        let res = build("unit.osp", &program, &out);
-        match prev {
-            Some(v) => std::env::set_var("OSPREY_WASI_SYSROOT", v),
-            None => std::env::remove_var("OSPREY_WASI_SYSROOT"),
-        }
-        assert!(res.is_err(), "a bogus sysroot override must fail the build");
-    }
-
-    /// Drive the whole build+run driver with the real tools stubbed by `true`
-    /// (exit 0): codegen → entry thunk → sysroot → lib dir → runtime archive →
-    /// `compile_object` → `link` → `run_host`. This exercises the orchestration
-    /// deterministically on any host (no clang/wasm-ld/wasmtime needed); the
-    /// genuine toolchain path is covered separately by the e2e test below and
-    /// the CI `wasm` job.
-    #[test]
-    fn build_and_run_drive_the_full_driver_with_stub_tools() {
-        // [WASM-TARGET] [WASM-TARGET-RUNTIME]
-        let _g = lock_env();
-        let prev = [
-            (
-                "OSPREY_WASI_SYSROOT",
-                std::env::var("OSPREY_WASI_SYSROOT").ok(),
-            ),
-            ("OSPREY_WASM_CC", std::env::var("OSPREY_WASM_CC").ok()),
-            ("OSPREY_WASM_LD", std::env::var("OSPREY_WASM_LD").ok()),
-            ("OSPREY_WASM_RUN", std::env::var("OSPREY_WASM_RUN").ok()),
-        ];
-
-        // A fake sysroot whose lib dir exists so `lib_dir` resolves.
-        let sysroot = unique_dir("full_sysroot");
-        std::fs::create_dir_all(sysroot.join("lib").join("wasm32-wasip1")).expect("mk libdir");
-        // A discoverable runtime archive next to the test binary (the current-exe
-        // search root) so `find_runtime_lib` succeeds without `make wasm`.
-        let archive = std::env::current_exe()
-            .ok()
-            .and_then(|e| e.parent().map(|p| p.join(RUNTIME_LIB)));
-        if let Some(a) = &archive {
-            std::fs::write(a, b"").expect("write stub archive");
-        }
-        std::env::set_var("OSPREY_WASI_SYSROOT", sysroot.display().to_string());
-        for k in ["OSPREY_WASM_CC", "OSPREY_WASM_LD", "OSPREY_WASM_RUN"] {
-            std::env::set_var(k, "true");
-        }
-
-        let program = osprey_syntax::parse_program("let n = 1\nprint(\"${n}\")\n").program;
-        let out = std::env::temp_dir().join("osprey_full_driver_unit.wasm");
-        let built = build("unit.osp", &program, &out);
-        let _ran = run("unit.osp", &program);
-
-        if let Some(a) = &archive {
-            let _ = std::fs::remove_file(a);
-        }
-        for (k, v) in prev {
-            match v {
-                Some(val) => std::env::set_var(k, val),
-                None => std::env::remove_var(k),
-            }
-        }
-        assert!(built.is_ok(), "stubbed toolchain drives a clean build");
-    }
-
-    // End-to-end build+run, exercised only where the wasm toolchain is present
-    // (the dev machine and the CI `ci` job, which installs lld + a WASI sysroot
-    // and `make wasm` before `make test`). Skipped elsewhere so the unit suite
-    // stays toolchain-free.
-    #[test]
-    fn build_and_run_end_to_end_when_toolchain_present() {
-        let _g = lock_env();
-        let have_ld = std::env::var("OSPREY_WASM_LD").is_ok()
-            || Command::new("wasm-ld").arg("--version").output().is_ok();
-        let have_sysroot = wasi_sysroot().is_ok();
-        let have_rt = find_runtime_lib(RUNTIME_LIB).is_some();
-        if !(have_ld && have_sysroot && have_rt) {
-            eprintln!("skipping wasm e2e: toolchain or runtime archive absent");
-            return;
-        }
-        let src = "fn main() = {\n\
-                   let factor = parseInt(\"2\") ?: 0\n\
-                   let large = parseInt(\"4294967296\") ?: 0\n\
-                   mut overflow = false\n\
-                   handle Arith {\n\
-                     overflow op lhs rhs wrapped => {\n\
-                       overflow = op == \"*\" && lhs == 4294967296 && rhs == 4294967296 && wrapped == 0\n\
-                       wrapped\n\
-                     }\n\
-                   }\n\
-                   let product = 21 * factor\n\
-                   let discarded = large * large\n\
-                   print(\"product=${product}, overflow=${overflow}\")\n\
-                   }\n";
-        let program = osprey_syntax::parse_program(src).program;
-        let out = std::env::temp_dir().join(format!("osprey_wasm_e2e_{}.wasm", std::process::id()));
-        build("e2e.osp", &program, &out).expect("wasm build");
-        let bytes = std::fs::read(&out).expect("read wasm");
-        assert!(bytes.starts_with(b"\0asm"), "wasm magic header");
-        assert_wasm_stdout("wasm-smoke.mjs", &out, "product=42, overflow=true");
-        assert_wasm_stdout("wasm-browser-smoke.mjs", &out, "product=42, overflow=true");
-        build_web_abi_fixture();
-        build_browser_globals_fixture();
-    }
-
-    fn build_browser_globals_fixture() {
-        let program = osprey_syntax::parse_program(GLOBAL_WEB_SOURCE).program;
-        let out =
-            std::env::temp_dir().join(format!("osprey_web_globals_{}.wasm", std::process::id()));
-        build("web-globals.osp", &program, &out).expect("browser globals build");
-        let script = "import {readFileSync} from 'node:fs';\n\
-            import {runModule} from './examples/wasm/wasi-shim.mjs';\n\
-            const e = await runModule(readFileSync(process.argv[1]), s => process.stdout.write(s));\n\
-            const p = e.osp_alloc(6n);\n\
-            new Uint8Array(e.memory.buffer).set(new TextEncoder().encode('event\\0'), p);\n\
-            if (e.osprey_web_dispatch(p) !== 0n) throw new Error('dispatch failed');";
-        let result = Command::new("node")
-            .args(["--input-type=module", "-e", script])
-            .arg(&out)
-            .current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
-            .output()
-            .expect("browser event run");
-        assert!(
-            result.status.success(),
-            "{}",
-            String::from_utf8_lossy(&result.stderr)
-        );
-        assert_eq!(
-            String::from_utf8_lossy(&result.stdout),
-            "hello world event\n"
-        );
-        std::fs::remove_file(out).expect("remove fixture");
-    }
-
-    fn assert_wasm_stdout(script: &str, wasm: &Path, expected: &str) {
-        let runner = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../scripts")
-            .join(script);
-        // Plain `node`: `scripts/wasm-smoke.mjs` relaunches itself under a
-        // WASI-sound interpreter when this one is too old, so the version
-        // policy lives there alone ([WASM-TARGET]).
-        let output = Command::new("node")
-            .arg(runner)
-            .arg(wasm)
-            .output()
-            .expect("run wasm smoke script");
-        assert!(
-            output.status.success(),
-            "{script}: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), expected);
-    }
-
-    fn build_web_abi_fixture() {
-        let web = assemble_web_program(WEB_ABI_SOURCE, "/tmp/web-abi-e2e");
-        let actual = web_dispatch_export(&web).expect("flattened web dispatcher");
-        assert_ne!(actual, WEB_DISPATCH);
-        let web_out =
-            std::env::temp_dir().join(format!("osprey_wasm_web_e2e_{}.wasm", std::process::id()));
-        build("web-e2e.osp", &web, &web_out).expect("web ABI wasm build");
-        let web_bytes = std::fs::read(&web_out).expect("read web wasm");
-        assert_web_abi_names(&web_bytes);
-    }
-
-    fn assert_web_abi_names(web_bytes: &[u8]) {
-        for expected in [
-            "osprey_web_dispatch",
-            "osp_alloc",
-            "osprey_web",
-            "render",
-            "command",
-        ] {
-            assert!(
-                web_bytes
-                    .windows(expected.len())
-                    .any(|window| window == expected.as_bytes()),
-                "web module contains import/export name {expected}"
-            );
-        }
-    }
-}
+mod tests;

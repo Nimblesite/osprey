@@ -1,0 +1,8 @@
+[project]
+name = "registry-fixture-check"
+source_roots = ["src", "../core/src", "../host/src"]
+default_namespace = "registry_fixture_check"
+entry = "src/main.osp"
+
+[modules]
+allow_wildcard_imports = false

@@ -1,0 +1,6 @@
+[project]
+name = "transformers-tests"
+source_roots = [".", "../src", "../../testing/src"]
+python_sources = ["../src/math.py", "../src/lists.py", "../src/logits_process.py", "../src/stopping_criteria.py", "../src/generation.py", "../../testing/src/check.py", "expected.py", "main.py"]
+default_namespace = "transformers_tests"
+entry = "main.py"

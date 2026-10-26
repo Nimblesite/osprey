@@ -163,38 +163,56 @@ impl ProgramTypes {
         crate::applications::elaborate(program, self)
     }
 
-    /// Specialize inferred body metadata with one call's type substitution.
-    /// Constructor and effect declarations retain their shared erased ABI.
+    /// Specialize one callee's metadata without fixing other generic bodies.
+    /// Expanded call bindings can mention their variables too, but each body
+    /// needs its own instantiation. Implements [TYPE-GENERICS-APPLY].
     #[must_use]
-    pub fn specialized(&self, bindings: &HashMap<VarId, Type>) -> Self {
+    pub fn specialized(&self, bindings: &HashMap<VarId, Type>, function: Option<&str>) -> Self {
         let mut result = self.clone();
         let substitute = |ty: &mut Type| *ty = crate::env::subst_vars(ty, bindings);
-        for (params, ret) in result.functions.values_mut() {
-            params.iter_mut().for_each(&substitute);
+        result.specialize_body(function, &substitute);
+        result.specialize_operations(&substitute);
+        result
+            .applications
+            .values_mut()
+            .flat_map(HashMap::values_mut)
+            .chain(
+                result
+                    .declared_params
+                    .values_mut()
+                    .flat_map(HashMap::values_mut),
+            )
+            .for_each(substitute);
+        result
+    }
+
+    fn specialize_body(&mut self, function: Option<&str>, substitute: &impl Fn(&mut Type)) {
+        for (_, (params, ret)) in self
+            .functions
+            .iter_mut()
+            .filter(|(name, _)| function.is_none_or(|f| f == name.as_str()))
+        {
+            params.iter_mut().for_each(substitute);
             substitute(ret);
         }
-        for table in [&mut result.lambdas, &mut result.lets, &mut result.lists] {
-            table.values_mut().for_each(substitute);
+        for table in [&mut self.lambdas, &mut self.lets, &mut self.lists] {
+            table.specialize(function, substitute);
         }
-        for site in result.performs.values_mut() {
-            site.effect_args.iter_mut().for_each(&substitute);
-            site.op.params.iter_mut().for_each(&substitute);
+    }
+
+    fn specialize_operations(&mut self, substitute: &impl Fn(&mut Type)) {
+        for site in self.performs.values_mut() {
+            site.effect_args.iter_mut().for_each(substitute);
+            site.op.params.iter_mut().for_each(substitute);
             substitute(&mut site.op.ret);
         }
-        for site in result.handler_ops.values_mut() {
-            site.effect_args.iter_mut().for_each(&substitute);
+        for site in self.handler_ops.values_mut() {
+            site.effect_args.iter_mut().for_each(substitute);
             for op in site.ops.values_mut() {
-                op.params.iter_mut().for_each(&substitute);
+                op.params.iter_mut().for_each(substitute);
                 substitute(&mut op.ret);
             }
         }
-        for args in result.applications.values_mut() {
-            args.values_mut().for_each(&substitute);
-        }
-        for args in result.declared_params.values_mut() {
-            args.values_mut().for_each(&substitute);
-        }
-        result
     }
 
     /// The resolved return type of a named function, if known.
@@ -264,6 +282,14 @@ pub struct SiteTable {
 type Entry = (Option<String>, Type);
 
 impl SiteTable {
+    fn specialize(&mut self, function: Option<&str>, substitute: &impl Fn(&mut Type)) {
+        self.entries
+            .values_mut()
+            .flatten()
+            .filter(|(owner, _)| function.is_none_or(|f| owner.as_deref() == Some(f)))
+            .for_each(|(_, ty)| substitute(ty));
+    }
+
     pub(crate) fn insert(&mut self, function: Option<&str>, position: (u32, u32), ty: Type) {
         let recorded = self.entries.entry(position).or_default();
         match recorded

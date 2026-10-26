@@ -22,6 +22,10 @@ const PICK: &str = "fn pick<T, U>(first: T, second: U) -> T = first\n";
 /// A binder absent from parameters: written arguments or result context can pin it.
 const EMPTY: &str = "fn empty<T>() -> List<T> = []\n";
 
+fn default_binding(prefix: &str, binding: &str, value: &str) -> String {
+    format!("{prefix}let {binding} = {value}\nprint(\"${{{binding}}}\")")
+}
+
 // ---------------------------------------------------------------------------
 // The accepted form — Default flavor
 // ---------------------------------------------------------------------------
@@ -49,16 +53,10 @@ print("${{n}}")"#
         ));
 
     /// Binders are pinned LEFT TO RIGHT.
-    type_application_binds_binders_positionally: accepts(Default, format!(
-            r#"{PICK}let kept = pick<int, string>(1, "two")
-print("${{kept}}")"#
-        ));
+    type_application_binds_binders_positionally: accepts(Default, default_binding(PICK, "kept", r#"pick<int, string>(1, "two")"#));
 
     /// The swapped twin of the case above must NOT type-check.
-    swapped_type_arguments_are_rejected: rejects_with(Default, format!(
-            r#"{PICK}let kept = pick<string, int>(1, "two")
-print("${{kept}}")"#
-        ), "cannot unify");
+    swapped_type_arguments_are_rejected: rejects_with(Default, default_binding(PICK, "kept", r#"pick<string, int>(1, "two")"#), "cannot unify");
 
     /// A type argument may itself be generic: the `>>` closing two argument lists
     /// must lex as two closers, not as one shift operator.
@@ -99,10 +97,7 @@ print("${{quotient ?: 0}}")"#
     two_written_instantiations_coexist_in_one_program: accepts(Default, format!(r#"{IDENTITY}print("${{identity<int>(5)}} ${{identity<string>("os")}}")"#));
 
     /// Named arguments are orthogonal to type arguments.
-    type_application_composes_with_named_arguments: accepts(Default, format!(
-            r#"{PICK}let kept = pick<int, string>(first: 1, second: "two")
-print("${{kept}}")"#
-        ));
+    type_application_composes_with_named_arguments: accepts(Default, default_binding(PICK, "kept", r#"pick<int, string>(first: 1, second: "two")"#));
 
     /// Receiver-first (UFCS) dispatch keeps the type arguments on the member name.
     type_application_composes_with_receiver_first_dispatch: accepts(Default, r#"fn headOr<T>(items: List<T>, fallback: T) -> T = items.listGet(0) ?: fallback
@@ -176,10 +171,7 @@ print(s)"
     too_many_type_arguments_are_rejected_by_count: rejects_with(Default, format!(r#"{IDENTITY}print("${{identity<int, string>(5)}}")"#), fn_arity_message("identity", 1, 2));
 
     /// The same rule in the other direction: two binders, one written argument.
-    too_few_type_arguments_are_rejected_by_count: rejects_with(Default, format!(
-            r#"{PICK}let kept = pick<int>(1, "two")
-print("${{kept}}")"#
-        ), fn_arity_message("pick", 2, 1));
+    too_few_type_arguments_are_rejected_by_count: rejects_with(Default, default_binding(PICK, "kept", r#"pick<int>(1, "two")"#), fn_arity_message("pick", 2, 1));
 
     /// "A callee that declares no binders … takes no type arguments." An
     /// unannotated function is implicitly polymorphic, which is NOT a binder.

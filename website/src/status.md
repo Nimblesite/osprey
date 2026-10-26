@@ -7,9 +7,9 @@ tags: ["status", "features", "roadmap"]
 author: "Christian Findlay"
 ---
 
-Osprey is an alpha language. The compiler is written in Rust, emits LLVM IR and
+Osprey is actively evolving. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production. The compiler is written in Rust, emits LLVM IR and
 builds native executables, `wasm32-wasip1` modules, and app-logic libraries for
-iOS and Android. Each target has an explicit runtime boundary.
+iOS, macOS and Android. Each target has an explicit runtime boundary.
 
 Current version: **{% if releases.latest %}{{ releases.latest.tag }}{% else %}development build{% endif %}**.
 
@@ -43,18 +43,18 @@ The release list was unavailable when this page was built. See
 
 ## Implemented foundations
 
-- Default (`.osp`) and ML (`.ospml`) source parsing, both lowering to the same
-  AST before semantic analysis
+- Default (`.osp`), ML (`.ospml`) and Python-flavor (`.py`, with the Osprey marker)
+  source parsing, all lowering to the same AST before semantic analysis
 - Hindley–Milner type inference, algebraic data types and exhaustive pattern
   matching for supported patterns
 - User-defined generics, declaration-site variance, generic effects and explicit
   call-site type arguments in Default and ML.
 - Immutable persistent lists and maps
 - [Dense computation buffers](/spec/0034-gpucomputation/) with typed kernels and explicit arithmetic policies. Kernels and matrix products run on Metal or OpenCL when `OSPREY_GPU` selects a device, and on the CPU otherwise; buffers stay on the device between kernels. Known let-bound kernels retain their original captures when extracted.
-- Lightweight native fibers and channels
+- Isolated native fibers and channels; the current runtime uses one OS thread per fiber
 - Native HTTP, WebSocket, file, process and C FFI runtime APIs
-- Default, tracing-GC and Perceus-ARC native memory backends
-- Native and `wasm32-wasip1` compilation, plus iOS and Android C ABI targets
+- Tracing GC by default and ARC as the alternative managed native backend
+- Native and `wasm32-wasip1` compilation, iOS, macOS and Android C ABI targets, and [Python-hosted native libraries](/spec/0042-pythoninterop/) with scalar calls, exception results and opaque object handles
 - A shared modular mobile application with reactive native UI, SQLite cache, live GitHub requests, and local notes and priorities
 - Compiler-backed formatting, documentation generation, testing, profiling and
   language-server commands
@@ -72,12 +72,14 @@ are compiled and compared with checked-in expected output.
 
 | Target | Output | Runtime boundary |
 | --- | --- | --- |
-| `native` | Executable for the host platform | Native runtime, including resumable effects; default, GC, or ARC memory |
-| `wasm32` | WebAssembly module | WASI/browser host; default memory; unsupported features rejected before code generation |
-| `ios`, `ios-sim` | ARM64 static archive and C header | Swift host, iOS 15 minimum; default memory; no resumable effects |
-| `android-arm64`, `android-x64` | ARM64 or x86-64 static archive and C header | Android host and JNI, API 26 minimum; default memory; no resumable effects |
+| `native` | Executable for the host platform | Native runtime, including resumable effects; GC by default, ARC, or explicit unmanaged `none` |
+| `python` | Shared library and C header on Linux/macOS | Loaded by CPython through `osprey-interop`; scalar ABI and opaque Python handles; no dynamic control continuations, fibers, HTTP/WebSocket or process spawning |
+| `wasm32` | WebAssembly module | WASI/browser host; explicit `--memory=none`; unsupported features rejected before code generation |
+| `ios`, `ios-sim` | ARM64 static archive and C header | Swift host, iOS 15 minimum; explicit `--memory=none`; no resumable effects |
+| `macos` | ARM64 static archive and C header | Swift host, macOS 12 minimum; same C ABI and unmanaged-memory restrictions as the iOS archive |
+| `android-arm64`, `android-x64` | ARM64 or x86-64 static archive and C header | Android host and JNI, API 26 minimum; explicit `--memory=none`; no resumable effects |
 
-The compiler rejects unsupported target operations during `--check`, `--llvm`, and compilation. iOS and Android reject `resume` and unavailable built-in process, HTTP, and WebSocket operations. Their hosts provide platform networking through the C boundary. WebAssembly also rejects fibers, terminal control, and arbitrary C imports; approved browser imports and supported host filesystem operations remain available.
+The compiler rejects unsupported target operations during `--check`, `--llvm`, and compilation. The iOS, macOS and Android archive targets reject `resume` and unavailable built-in process, HTTP, and WebSocket operations. Their hosts provide platform networking through the C boundary. The `macos` archive target is separate from an ordinary native macOS executable; its [Swift host contract](/spec/0038-iostarget/#mac-host-ios-macos-host) applies. WebAssembly also rejects fibers, terminal control, and arbitrary C imports; approved browser imports and supported host filesystem operations remain available.
 
 [Issue Inbox](/docs/mobile-apps/) demonstrates the same Osprey project on iOS and Android, including ML modules and a small Default-flavor C entry point. Its screenshots come from actual simulator/emulator runs. Earlier builds were verified on a physical iPhone and through the shared C ABI on both Android ABIs. Those platform runs predate the callable handler migration; current checks cover shared domain behavior, LLVM/ABI generation, and native C entrypoints on Linux. Simulator, emulator, device, and hosted CI execution must be refreshed for the migrated sources; see the [validation record](https://github.com/Nimblesite/osprey/blob/main/examples/mobile/README.md#validation).
 
@@ -97,13 +99,14 @@ The current development build rejects these older forms:
 ## Current limits
 
 - Tail-call optimisation is not implemented.
-- The package manager remains roadmap work. Working project/module examples do not imply every module-system feature is complete.
+- The [package manager](/docs/package-manager/) runs a folder registry, dependency resolution, verified fetching, locked builds, local checkout overrides and folder publishing. Named ambient builtin surfaces are checked against root grants, but raw native `extern` declarations remain unclassified and accepted by folder publication; these checks do not establish complete confinement of untrusted packages. Python interop dependencies use uv. Crash-safe activation remains blocked on filesystem primitives. The hosted package website and public trust services remain planned. Working project/module examples do not imply every module-system feature is complete.
 - A project is assembled from source, so a signature item with no implementation is an error. A module constant of an opaque type reaches a client as a bare literal; export a function instead.
-- The strict static-memory mode described in the memory specification is not a current CLI option. Native builds accept `default`, `gc`, and `arc`; mobile and WebAssembly accept `default` only.
+- The strict static-memory mode described in the memory specification is not a current CLI option. Native builds default to `gc` and accept `gc`, `arc` and explicit `none`. Mobile and WebAssembly require explicit `--memory=none`; managed runtime archives are unavailable. The old `--memory=default` spelling is rejected.
 - The initial mobile runtime retains general allocations for process lifetime and has no public library teardown or returned-string release API.
 - The mobile sample reads one public GitHub issue page. Authentication, pagination, background refresh, and posting changes to GitHub are not implemented.
-- GPU kernels run in software binary64 with no kernel fusion, so small kernels are launch-bound: GPT-2 trains about three times faster on an M4 Max GPU than on its CPU and generates no faster. `gpuScan` and `gpuFilter` have no device form; a selected device stops the run on them. Only Apple GPUs have been tested, and iOS, Android and WebAssembly run GPU code on the CPU.
+- GPU kernels run in software binary64 with no kernel fusion, so small kernels are launch-bound: GPT-2 trains about three times faster on an M4 Max GPU than on its CPU and generates no faster. `gpuScan` and `gpuFilter` have no device form; a selected device stops the run on them. Recorded hardware acceptance covers Apple GPUs. iOS, Android and WebAssembly support the CPU buffer backend; an explicit device selection fails because these targets carry no GPU adapter.
 - C integrations are outside Osprey's memory-safety guarantee.
+- Symbolic bug hunting ships as [`osprey hunt`](/docs/hunt/) (symbolic execution by KLEE) with symbolic stdin and files and native replay; the typed function harness, `libkleeRuntest` replay, regression-test generation, Windows and the comparison benchmarks are not built. See [plan 0034](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0034-symbolic-execution.md).
 
 For detailed intended behavior and chapter-specific implementation notes, read
 the [specifications](/spec/). For compiler-generated built-in signatures, use

@@ -24,6 +24,24 @@ use osprey_ast::{Expr, FieldAssignment};
 mod construct;
 pub(crate) use construct::gen_constructor;
 
+/// A field's value as a record stores it: a list literal takes the runtime
+/// layout first, because the field's declared `List<T>` promises an
+/// `OspreyList` to every later read; then the value is coerced to the field
+/// and its `Result` wrapper erased. Construction and update share this so a
+/// literal stored by either reads back the same way (#293) [TYPE-RECORD-UPDATE].
+fn settled_field_value(
+    cg: &mut Codegen,
+    expr: &Expr,
+    owner: &str,
+    field: &str,
+    inferred: Option<&osprey_types::Type>,
+) -> Result<Value> {
+    let value = gen_expr(cg, expr)?;
+    let value = crate::listlit::escaping(cg, value);
+    let value = fields::coerce_field(cg, value, owner, field, inferred)?;
+    Ok(crate::cast::erase_result(cg, value))
+}
+
 /// `{ field: value, … }` — an anonymous object literal: the same `{ i64 tag,
 /// fields… }` heap block as a named record, with a synthetic layout registered so
 /// field access can recover the slots.
@@ -108,7 +126,7 @@ fn build_tagged_object(cg: &mut Codegen, owner: String, vals: &[(String, Value)]
     let mut parts = vec!["i64".to_string()];
     parts.extend(vals.iter().map(|(_, v)| v.ty.as_str().to_string()));
     let struct_ty = format!("{{ {} }}", parts.join(", "));
-    let meta = tagged_fields_meta(&layout_of(vals));
+    let meta = tagged_fields_meta(cg, &layout_of(vals));
     // noinit: the tag and every field are stored below before the block
     // escapes, so ARC skips its drop-safety pre-zero.
     let obj = cg.malloc_struct_noinit(&struct_ty, meta);
@@ -131,8 +149,8 @@ fn build_tagged_object(cg: &mut Codegen, owner: String, vals: &[(String, Value)]
 /// ([`crate::meta`]), from runtime value `LTypes` (named constructors carry the
 /// stronger Osprey-typed `CtorView::meta` instead): the leading discriminant
 /// is a scalar word; each field marks itself by its LLVM type. Generic-variant
-/// slots boxed into `i64` stay unmarked — leak-safe (meta.rs [GC-ARC-PERCEUS]).
-fn tagged_fields_meta(fields: &[crate::builder::ObjField]) -> i64 {
+/// boxed pointer slots get their managed-word metadata in `construct`.
+fn tagged_fields_meta(cg: &Codegen, fields: &[crate::builder::ObjField]) -> i64 {
     let mut mf = Vec::with_capacity(fields.len() + 1);
     mf.push(crate::meta::MetaField::Word);
     mf.extend(
@@ -140,7 +158,7 @@ fn tagged_fields_meta(fields: &[crate::builder::ObjField]) -> i64 {
             .iter()
             .map(|(_, value)| crate::meta::MetaField::of_lty(value.ty)),
     );
-    crate::meta::struct_meta(&mf)
+    cg.struct_meta(&mf)
 }
 
 /// Bitcast a freshly-built struct block to the `i8*` handle callers receive,
@@ -217,7 +235,7 @@ pub(crate) fn record_block(
             fields: view.fields,
             tag: record_has_tag(owner).then_some(view.tag),
             meta: if owner == HTTP_RESPONSE {
-                http::layout_meta()
+                http::layout_meta(cg)
             } else {
                 view.meta
             },
@@ -227,7 +245,7 @@ pub(crate) fn record_block(
         let slots = derived_slots(cg, inferred?)?;
         let _ = cg.register_layout(owner.to_string(), slots);
     }
-    let meta = tagged_fields_meta(cg.obj_layout(owner)?);
+    let meta = tagged_fields_meta(cg, cg.obj_layout(owner)?);
     let (struct_ty, fields) = cg.record_layout(owner)?;
     Some(RecordBlock {
         struct_ty,

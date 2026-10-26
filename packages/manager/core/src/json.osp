@@ -1,0 +1,322 @@
+namespace registry;
+import registry::Bytes
+import registry::JsonScan
+
+/// Strict RFC 8259 parsing into the registry's integer-only JSON model:
+/// integers, strings, booleans, null, arrays and objects. Every failure is a
+/// stable dotted reason code plus the byte offset where the problem starts —
+/// encoded as `"code@offset"`, because the built-in Result's error channel
+/// carries strings only — so a bad manifest still points at an exact byte
+/// (`describe` renders it, `problemCode`/`problemOffset` take it apart).
+/// Recursion stays monomorphic — string/int cursors and this module's concrete
+/// Value tree only — because a recursive generic function is instantiated
+/// once per program (issue #277). Implements [PACKAGE-PUBLISH].
+module Json {
+    export type Value = Null | Bool { flag: bool } | Num { value: int } | Str { text: string } | Arr { items: List<Value> } | Obj { members: List<Member> }
+    export type Member = { key: string, value: Value }
+
+    type Step = { value: Value, next: int }
+    type Seen = { member: Member, keyAt: int }
+
+    let depthMax = 64
+    let quote = 34
+    let colonByte = 58
+    let commaByte = 44
+    let openObject = 123
+    let closeObject = 125
+    let openArray = 91
+    let closeArray = 93
+    let minusByte = 45
+    let dotByte = 46
+    let letterBigE = 69
+    let letterE = 101
+    let letterF = 102
+    let letterN = 110
+    let letterT = 116
+    let digitZero = 48
+    let digitNine = 57
+
+    let duplicateKey = "json.duplicate-key"
+    let depthCode = "json.depth"
+    let nonInteger = "json.non-integer"
+    let rangeCode = "json.integer-range"
+    let trailingText = "json.trailing-text"
+    let unexpectedEnd = "json.unexpected-end"
+    let unexpectedToken = "json.unexpected-token"
+    let missingKey = "json.missing-key"
+    let notObject = "json.not-an-object"
+
+    fn err(code, offset) = JsonScan::failure(code, offset)
+
+    fn isWs(b) = b == 32 || b == 9 || b == 13 || b == 10
+    fn isDigit(b) = b >= digitZero && b <= digitNine
+
+    fn skipWs(text, i) = {
+        let end = Bytes::runEnd(text, i, isWs)
+        if end == i { i } else { skipWs(text, end) }
+    }
+
+    fn digitsEnd(text, k) = if isDigit(byteAt(text, k) ?: 0) { digitsEnd(text, k + 1) } else { k }
+
+    /// One decimal step; negative numbers fold to the negated magnitude so
+    /// -9223372036854775808 itself stays in range.
+    fn digitStep(neg, acc, d) = match checkedMul(acc, 10) {
+        Success { value } => if neg { checkedSub(value, d) } else { checkedAdd(value, d) }
+        Error => Error { message: rangeCode }
+    }
+
+    fn foldDigits(text, from, to, neg, acc) -> Result<int, string> = match from >= to {
+        true => Success { value: acc }
+        false => match digitStep(neg, acc, (byteAt(text, from) ?: 0) - digitZero) {
+            Success { value } => foldDigits(text, from + 1, to, neg, value)
+            Error => Error { message: rangeCode }
+        }
+    }
+
+    /// Leading zeros and `-0` are non-integers; so is any fraction or exponent.
+    fn badShape(first, count, neg) = (first == digitZero && count > 1) || (neg && first == digitZero)
+
+    fn scanNumber(text, i) = {
+        let neg = (byteAt(text, i) ?: 0) == minusByte
+        let j = if neg { i + 1 } else { i }
+        let first = byteAt(text, j) ?: 0
+        let k = digitsEnd(text, j)
+        let tail = byteAt(text, k) ?: -1
+        if j >= byteLength(text) {
+            err(unexpectedEnd, byteLength(text))
+        } else if !isDigit(first) {
+            err(unexpectedToken, j)
+        } else if badShape(first, k - j, neg) {
+            err(nonInteger, i)
+        } else if tail == dotByte || tail == letterE || tail == letterBigE {
+            err(nonInteger, i)
+        } else {
+            finishNumber(text, i, j, k, neg)
+        }
+    }
+
+    fn finishNumber(text, i, j, k, neg) = match foldDigits(text, j, k, neg, 0) {
+        Success { value } => Success { value: Step { value: Num { value: value }, next: k } }
+        Error => err(rangeCode, i)
+    }
+
+    /// A bare literal word: `true`, `false` or `null`.
+    fn expectWord(text, i, word, node) = {
+        let end = i + byteLength(word)
+        if byteLength(text) < end {
+            err(unexpectedEnd, byteLength(text))
+        } else {
+            match substring(text, i, end) {
+                Success { value } => if value == word {
+                    Success { value: Step { value: node, next: end } }
+                } else {
+                    err(unexpectedToken, i)
+                }
+                Error => err(unexpectedEnd, byteLength(text))
+            }
+        }
+    }
+
+    /// Any value at `i`, after whitespace; containers count against `depth`.
+    fn parseValue(text, i, depth) -> Result<Step, string> = {
+        let j = skipWs(text, i)
+        let b = byteAt(text, j) ?: 0
+        if j >= byteLength(text) {
+            err(unexpectedEnd, byteLength(text))
+        } else if b == openObject { parseObject(text, j, depth) }
+        else if b == openArray { parseArray(text, j, depth) }
+        else if b == quote { parseStr(text, j) }
+        else if b == minusByte || isDigit(b) { scanNumber(text, j) }
+        else if b == letterT { expectWord(text, j, "true", Bool { flag: true }) }
+        else if b == letterF { expectWord(text, j, "false", Bool { flag: false }) }
+        else if b == letterN { expectWord(text, j, "null", Null) }
+        else { err(unexpectedToken, j) }
+    }
+
+    fn parseStr(text, j) = match JsonScan::scan(text, j + 1) {
+        Success { value } => Success { value: Step { value: Str { text: value.text }, next: value.next } }
+        Error { message } => Error { message: message }
+    }
+
+    fn membersOf(seen) = mapList(seen, fn(s) => s.member)
+    fn hasKey(seen, key) = foldList(seen, false, fn(found, s) => found || s.member.key == key)
+
+    fn parseObject(text, i, depth) = match depth + 1 > depthMax {
+        true => err(depthCode, i)
+        false => parseMembers(text, skipWs(text, i + 1), depth + 1, [])
+    }
+
+    /// One member position; `[]` and trailing commas never parse.
+    fn parseMembers(text, j, depth, seen) = {
+        let b = byteAt(text, j) ?: 0
+        if j >= byteLength(text) {
+            err(unexpectedEnd, byteLength(text))
+        } else if b == closeObject && isEmpty(seen) {
+            Success { value: Step { value: Obj { members: membersOf(seen) }, next: j + 1 } }
+        } else if b != quote {
+            err(unexpectedToken, j)
+        } else {
+            parseMember(text, j, depth, seen)
+        }
+    }
+
+    fn parseMember(text, j, depth, seen) = match JsonScan::scan(text, j + 1) {
+        Error { message } => Error { message: message }
+        Success { value } => afterKey(text, value, j, depth, seen)
+    }
+
+    fn afterKey(text, scan, keyAt, depth, seen) = {
+        let colon = skipWs(text, scan.next)
+        let b = byteAt(text, colon) ?: 0
+        if colon >= byteLength(text) {
+            err(unexpectedEnd, byteLength(text))
+        } else if b != colonByte {
+            err(unexpectedToken, colon)
+        } else {
+            afterColon(text, colon, keyAt, scan.text, depth, seen)
+        }
+    }
+
+    fn afterColon(text, colon, keyAt, key, depth, seen) = match parseValue(text, colon + 1, depth) {
+        Error { message } => Error { message: message }
+        Success { value } => addMember(text, value, keyAt, key, depth, seen)
+    }
+
+    /// A repeated key is refused at the byte of its opening quote.
+    fn addMember(text, step, keyAt, key, depth, seen) = match hasKey(seen, key) {
+        true => err(duplicateKey, keyAt)
+        false => {
+            let grown = listAppend(seen, Seen { member: Member { key: key, value: step.value }, keyAt: keyAt })
+            nextMember(text, skipWs(text, step.next), depth, grown)
+        }
+    }
+
+    fn nextMember(text, j, depth, seen) = {
+        let b = byteAt(text, j) ?: 0
+        if j >= byteLength(text) {
+            err(unexpectedEnd, byteLength(text))
+        } else if b == commaByte {
+            parseMembers(text, skipWs(text, j + 1), depth, seen)
+        } else if b == closeObject {
+            Success { value: Step { value: Obj { members: membersOf(seen) }, next: j + 1 } }
+        } else {
+            err(unexpectedToken, j)
+        }
+    }
+
+    fn parseArray(text, i, depth) = match depth + 1 > depthMax {
+        true => err(depthCode, i)
+        false => parseItems(text, skipWs(text, i + 1), depth + 1, [])
+    }
+
+    fn parseItems(text, j, depth, items) = {
+        let b = byteAt(text, j) ?: 0
+        if j >= byteLength(text) {
+            err(unexpectedEnd, byteLength(text))
+        } else if b == closeArray && isEmpty(items) {
+            Success { value: Step { value: Arr { items: items }, next: j + 1 } }
+        } else {
+            parseItem(text, j, depth, items)
+        }
+    }
+
+    fn parseItem(text, j, depth, items) = match parseValue(text, j, depth) {
+        Error { message } => Error { message: message }
+        Success { value } => nextItem(text, skipWs(text, value.next), depth, listAppend(items, value.value))
+    }
+
+    fn nextItem(text, j, depth, items) = {
+        let b = byteAt(text, j) ?: 0
+        if j >= byteLength(text) {
+            err(unexpectedEnd, byteLength(text))
+        } else if b == commaByte {
+            parseItems(text, skipWs(text, j + 1), depth, items)
+        } else if b == closeArray {
+            Success { value: Step { value: Arr { items: items }, next: j + 1 } }
+        } else {
+            err(unexpectedToken, j)
+        }
+    }
+
+    /// The strict RFC 8259 parse of `text`, or the code and byte offset of
+    /// its first problem. Implements [PACKAGE-PUBLISH].
+    export fn parse(text) = match parseValue(text, 0, 0) {
+        Error { message } => Error { message: message }
+        Success { value } => {
+            let tail = skipWs(text, value.next)
+            match tail < byteLength(text) {
+                true => err(trailingText, tail)
+                false => Success { value: value.value }
+            }
+        }
+    }
+
+    /// True for the JSON `null` value.
+    export fn isNull(value) = match value {
+        Null => true
+        _ => false
+    }
+
+    fn findMember(members, key) = foldList(members, Error { message: missingKey }, fn(acc, m) => match acc {
+        Success => acc
+        Error => if m.key == key { Success { value: m.value } } else { acc }
+    })
+
+    /// The value at `key`, or `"json.missing-key"` / `"json.not-an-object"`.
+    /// Implements [PACKAGE-PUBLISH].
+    export fn get(object, key) = match object {
+        Obj { members } => findMember(members, key)
+        _ => Error { message: notObject }
+    }
+
+    let wrongType = "json.wrong-type"
+
+    fn textOf(value) = match value {
+        Str { text } => Success { value: text }
+        _ => Error { message: wrongType }
+    }
+
+    fn intOf(value) = match value {
+        Num { value } => Success { value: value }
+        _ => Error { message: wrongType }
+    }
+
+    fn itemsOf(value) = match value {
+        Arr { items } => Success { value: items }
+        _ => Error { message: wrongType }
+    }
+
+    /// The string at `key`, or `json.missing-key` / `json.not-an-object` / `json.wrong-type`.
+    export fn textAt(object, key) = match get(object, key) {
+        Success { value } => textOf(value)
+        Error { message } => Error { message: message }
+    }
+
+    /// The integer at `key`, with the same failure codes as `textAt`.
+    export fn intAt(object, key) = match get(object, key) {
+        Success { value } => intOf(value)
+        Error { message } => Error { message: message }
+    }
+
+    /// The array items at `key`, with the same failure codes as `textAt`.
+    export fn itemsAt(object, key) = match get(object, key) {
+        Success { value } => itemsOf(value)
+        Error { message } => Error { message: message }
+    }
+
+    /// `"${code} at byte ${offset}"` — the one human-facing rendering of a
+    /// parse problem. Implements [PACKAGE-PUBLISH].
+    export fn describe(problem) = "${problemCode(problem)} at byte ${problemOffset(problem)}"
+
+    /// The dotted reason code of an encoded problem.
+    export fn problemCode(problem) = match indexOf(problem, "@") {
+        Success { value } => take(problem, value)
+        Error => problem
+    }
+
+    /// The byte offset of an encoded problem, or -1 when it carries none.
+    export fn problemOffset(problem) = match indexOf(problem, "@") {
+        Success { value } => parseInt(drop(problem, value + 1)) ?: -1
+        Error => -1
+    }
+}

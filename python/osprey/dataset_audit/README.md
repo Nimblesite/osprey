@@ -6,6 +6,8 @@ Osprey's Python flavor owns the decision policy and an `Audit` effect. Its handl
 
 ## Run on your data
 
+**Compiler migration:** the current Python build helper omits the `--memory=none` option now required by the Python-library target. The command below depends on that helper and is blocked with the GC-default compiler until the helper is updated. The [interop guide](../../README.md) gives an explicit compile-and-load workflow for scalar libraries.
+
 Build the Osprey compiler/runtime, install the package, then run:
 
 ```sh
@@ -102,6 +104,6 @@ Run the earlier command using these files, `--max-tokens 1024` and `--near-thres
 
 ## Runtime boundaries
 
-This initial native host supports Linux/macOS, one loading thread and the default allocator. The driver uses ordinary value effects; it does not use fibers or dynamic continuations across Python. Native general allocations are retained, so each configurable batch (default 2,000 records) runs in a fresh process, commits its SQLite transaction and exits. This bounds native lifetime per batch, not a fixed byte memory ceiling; individual line size is separately bounded. SQLite holds cross-batch indexes on disk. `--worker-timeout` defaults to 300 seconds per batch.
+This initial native host supports Linux/macOS, one loading thread and the explicit unmanaged `none` allocator. The driver uses ordinary value effects; it does not use fibers or dynamic continuations across Python. Native general allocations are retained, so each configurable batch (default 2,000 records) runs in a fresh process, commits its SQLite transaction and exits. This bounds native lifetime per batch, not a fixed byte memory ceiling; individual line size is separately bounded. SQLite holds cross-batch indexes on disk. `--worker-timeout` defaults to 300 seconds per batch.
 
 No performance speedup, GPU computation or tensor-storage interchange is claimed by this audit. Its practical role is preparing data before costly training. [Spec 0042](../../../docs/specs/platforms/0042-PythonInterop.md) defines the bridge; [plan 0032](../../../docs/plans/0032-python-interop.md) tracks typed direct calls, memory reclamation and tensor storage.

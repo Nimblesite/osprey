@@ -7,12 +7,14 @@
 //! holding `osprey.toml`) run as one suite, or a directory searched
 //! recursively for `*.test.osp` / `*.test.ospml`, sorted for determinism,
 //! skipping hidden, `target`, and `node_modules` directories. Each file
-//! compiles and runs like `osprey <file> --run`; suites execute concurrently,
-//! then their TAP output is replayed in sorted file order under `# file:`
-//! headers. The exit code aggregates suite outcomes.
+//! compiles and runs like `osprey <file> --run --no-warnings`: a suite is
+//! executed, not reviewed, and the warning pass re-infers the whole program
+//! once per annotation site. Suites execute concurrently, then their TAP
+//! output is replayed in sorted file order under `# file:` headers. The exit
+//! code aggregates suite outcomes.
 //! `--coverage` instruments each suite and reports per-file and total line
 //! coverage; `--coverage-json <path>` also writes the merged hit counts.
-//! `--memory=default|gc|arc` selects one backend for every discovered suite;
+//! `--memory=gc|arc|none` selects one backend for every discovered suite;
 //! when omitted, child compiler invocations use the compiler's default.
 //! Unchanged native suites reuse content-addressed executables across runs.
 
@@ -232,13 +234,7 @@ fn execute_suite(file: &Path, opts: &Opts, index: usize) -> SuiteOutput {
     if let Some(stale) = dump.as_deref() {
         let _ = std::fs::remove_file(stale);
     }
-    let result = suite_command(
-        file,
-        opts.filter.as_deref(),
-        dump.as_deref(),
-        opts.memory.as_deref(),
-    )
-    .and_then(|mut command| command.output());
+    let result = run_suite(file, opts, dump.as_deref());
     match result {
         Ok(output) => SuiteOutput {
             index,
@@ -255,6 +251,31 @@ fn execute_suite(file: &Path, opts: &Opts, index: usize) -> SuiteOutput {
     }
 }
 
+fn run_suite(
+    file: &Path,
+    opts: &Opts,
+    dump: Option<&Path>,
+) -> std::io::Result<std::process::Output> {
+    let source = std::fs::canonicalize(file)?;
+    let scratch = source
+        .is_file()
+        .then(|| crate::toolchain::Scratch::new(&source.to_string_lossy(), "test-suite"))
+        .transpose()
+        .map_err(|error| {
+            std::io::Error::other(format!("cannot create suite working directory: {error:?}"))
+        })?;
+    let mut command = suite_command(
+        &source,
+        opts.filter.as_deref(),
+        dump,
+        opts.memory.as_deref(),
+    )?;
+    if let Some(directory) = &scratch {
+        let _ = command.current_dir(&directory.path);
+    }
+    command.output()
+}
+
 fn suite_command(
     file: &Path,
     filter: Option<&str>,
@@ -267,8 +288,8 @@ fn suite_command(
         .map_or_else(|| std::env::temp_dir().join(TEST_CACHE_DIR), PathBuf::from);
     let _ = command
         .arg(file)
-        .args(["--run", "--quiet"])
-        .env(TEST_CACHE_DIR_ENV, cache_dir);
+        .args(["--run", "--quiet", "--no-warnings"])
+        .env(TEST_CACHE_DIR_ENV, std::path::absolute(cache_dir)?);
     if let Some(memory) = memory {
         let _ = command.arg(format!("--memory={memory}"));
     }
@@ -357,7 +378,7 @@ mod tests {
         let default = parse(&[]).expect("compiler default");
         assert!(default.memory.is_none());
 
-        for memory in ["default", "gc", "arc"] {
+        for memory in ["none", "gc", "arc"] {
             let opts = parse(&[format!("--memory={memory}")]).expect("valid memory backend");
             assert_eq!(opts.memory.as_deref(), Some(memory));
         }
@@ -374,6 +395,23 @@ mod tests {
         assert!(gc_command
             .get_args()
             .any(|arg| arg == std::ffi::OsStr::new("--memory=gc")));
+    }
+
+    // [TESTING-CLI-RUN]: a suite is executed, not reviewed. 169e5496 restored
+    // the warning pass under `--quiet`, and on the 22k-line package client that
+    // pass costs about 1,850 s against 40 s without, which hung both package
+    // manager CI jobs for 66 minutes until their timeout. Warnings go to stderr
+    // and never reach a suite's oracle, so every child skips them.
+    #[test]
+    fn suite_command_skips_the_warning_pass() {
+        let command =
+            suite_command(Path::new("suite.test.osp"), None, None, None).expect("suite command");
+        assert!(
+            command
+                .get_args()
+                .any(|arg| arg == std::ffi::OsStr::new("--no-warnings")),
+            "{command:?}"
+        );
     }
 
     // [TESTING-COVERAGE-CLI]: --coverage turns instrumentation on;

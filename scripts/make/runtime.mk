@@ -39,7 +39,7 @@ _runtime:
 	  done
 	@$(MAKE) --no-print-directory -s $(NATIVE_RUNTIME_STAMP)
 
-GPU_SHADER_SRC := compiler/runtime/gpu_f64.metal compiler/runtime/gpu_math64.metal compiler/runtime/gpu_device_lib.metal
+GPU_SHADER_SRC := compiler/runtime/gpu_f64.metal compiler/runtime/gpu_math64.metal compiler/runtime/gpu_math_ext.metal compiler/runtime/gpu_device_lib.metal
 compiler/bin/gpu_shader_source.h: $(GPU_SHADER_SRC) scripts/embed_gpu_shader.awk
 	@$(MKDIR) compiler/bin
 	awk -f scripts/embed_gpu_shader.awk $(GPU_SHADER_SRC) > $@
@@ -68,7 +68,7 @@ $(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makef
 	  $(CC) $(B) -include runtime/osp_arc_shim.h runtime/json_text.c           -o bin/arc/json_text.o && \
 	  $(CC) $(B) -include runtime/osp_arc_shim.h runtime/json_codec.c          -o bin/arc/json_codec.o && \
 	  $(CC) $(A) -include runtime/osp_arc_shim.h runtime/file_runtime.c        -o bin/arc/file_runtime.o && \
-	  $(CC) -c -fPIC -O2 $(WARN_MAX) -Wpedantic -std=c11 -D_GNU_SOURCE runtime/fiber_runtime.c -o bin/fiber_runtime.o && \
+	  $(CC) -c -fPIC -O2 $(FRAME_POINTERS) $(WARN_MAX) -Wpedantic -std=c11 -D_GNU_SOURCE runtime/fiber_runtime.c -o bin/fiber_runtime.o && \
 	  $(CC) $(A) runtime/system_runtime.c       -o bin/system_runtime.o && \
 	  $(CC) $(A) runtime/file_runtime.c         -o bin/file_runtime.o && \
 	  $(CC) $(A) runtime/effects_runtime.c      -o bin/effects_runtime.o && \
@@ -97,13 +97,14 @@ $(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makef
 	  $(CC) $(B) runtime/profiler_dump.c        -o bin/profiler_dump.o && \
 	  $(CC) $(B) -DOSP_RUNTIME_VERSION='"$(OSPREY_VERSION)"' runtime/profiler_stream.c -o bin/profiler_stream.o && \
 	  $(CC) $(B) runtime/profiler_endpoint.c     -o bin/profiler_endpoint.o && \
-	  $(CC) -c -fPIC -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong $(WARN_MAX) \
+	  $(CC) -c -fPIC -O2 $(FRAME_POINTERS) -D_FORTIFY_SOURCE=2 -fstack-protector-strong $(WARN_MAX) \
 	        -Wformat -Werror=format-security -Werror=implicit-function-declaration \
 	        -Werror=incompatible-pointer-types -Werror=int-conversion -Warray-bounds -ftrapv \
 	        -fno-delete-null-pointer-checks -fno-strict-overflow -fno-strict-aliasing \
 	        -DWITH_OPENSSL $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` \
 	        runtime/http_shared.c -o bin/http_shared.o && \
 	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/http_client_runtime.c      -o bin/http_client_runtime.o && \
+  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/http_client_response.c     -o bin/http_client_response.o && \
 	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/http_server_request.c     -o bin/http_server_request.o && \
 	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/http_server_response.c    -o bin/http_server_response.o && \
 	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/http_server_runtime.c      -o bin/http_server_runtime.o && \
@@ -122,15 +123,57 @@ $(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makef
 # Cross-compile the portable C-runtime subset to a wasm32-wasip1 archive that
 # osprey links for `--target=wasm32`. One shell so `cd` persists. Fails loudly
 # if no WASI sysroot is found. Output: compiler/{bin,lib}/libosprey_runtime_wasm.a
+# (the `--memory=none` passthrough) and the ARC twin
+# libosprey_runtime_wasm_arc.a that `--memory=arc` links [WASM-TARGET-MEMORY].
 _runtime_wasm:
 	@if [ -z "$(WASI_SYSROOT)" ]; then \
 	  echo "ERROR: no WASI sysroot found. Install it with 'brew install lld wasi-libc'"; \
 	  echo "       (macOS) or the wasi-sdk, or set WASI_SYSROOT=/path/to/wasi-sysroot."; \
 	  exit 1; fi
-	@echo "==> building wasm runtime archive ($(WASM_TARGET), sysroot $(WASI_SYSROOT))"
-	@cd compiler && set -e && $(MKDIR) bin/wasm lib && \
+	@echo "==> building wasm runtime archives ($(WASM_TARGET), sysroot $(WASI_SYSROOT))"
+	@cd compiler && set -e && $(MKDIR) bin/wasm bin/wasm/arc lib && \
 	  for u in $(WASM_RT_SRC); do \
 	    $(WASM_CC) $(WASM_CFLAGS) runtime/$$u.c -o bin/wasm/$$u.o || exit 1; \
 	  done && \
 	  $(WASM_AR) rcs bin/libosprey_runtime_wasm.a $(addprefix bin/wasm/,$(addsuffix .o,$(WASM_RT_SRC))) && \
-	  cp bin/libosprey_runtime_wasm.a lib/
+	  for u in $(WASM_ARC_RT_SRC); do \
+	    shim=""; case " $(WASM_ARC_SHIM_SRC) " in *" $$u "*) shim="-include runtime/osp_arc_shim.h";; esac; \
+	    $(WASM_CC) $(WASM_CFLAGS) $$shim runtime/$$u.c -o bin/wasm/arc/$$u.o || exit 1; \
+	  done && \
+	  $(WASM_AR) rcs bin/$(WASM_ARC_LIB) $(addprefix bin/wasm/arc/,$(addsuffix .o,$(WASM_ARC_RT_SRC))) && \
+	  cp bin/libosprey_runtime_wasm.a bin/$(WASM_ARC_LIB) lib/
+
+# The runtime bitcode `osprey hunt` links under KLEE [SYMEX-RUNTIME-BITCODE]:
+# the portable runtime subset plus the mock C library, compiled with KLEE's
+# clang and linked into one module. Skips loudly without the toolchain, so
+# `make build` stays green on a machine without KLEE. The closed-module check
+# [SYMEX-MOCK-CLOSED] fails the build on any undefined symbol KLEE does not
+# itself provide: that is a libc call the mock forgot.
+_runtime_klee:
+	@if [ -z "$(KLEE_PREFIX)" ] || [ ! -x "$(KLEE_CC)" ]; then \
+	  echo "(KLEE toolchain not found — symbolic GC/ARC runtimes not built)"; exit 0; fi; \
+	set -e; mkdir -p compiler/bin; \
+	$(KLEE_LLVM_BIN)/clang++ -fPIC -fno-exceptions -fno-rtti -shared \
+	  $$($(KLEE_LLVM_BIN)/llvm-config --cxxflags) compiler/llvm/gc_roots.cpp \
+	  -o $(KLEE_ROOT_PLUGIN) $$($(KLEE_LLVM_BIN)/llvm-config --ldflags --libs --system-libs); \
+	cd compiler; \
+	for backend in gc arc; do \
+	  echo "==> building symbolic $$backend runtime"; mkdir -p bin/klee/$$backend; \
+	  case $$backend in gc) shims="$(KLEE_GC_SHIMS)";; arc) shims="$(KLEE_ARC_SHIMS)";; esac; \
+	  objects=""; \
+	  for u in $(KLEE_RT_SRC) memory_$$backend; do \
+	    shim=""; case " $$shims " in *" $$u "*) shim="-include runtime/osp_$${backend}_shim.h";; esac; \
+	    object=bin/klee/$$backend/$$(basename $$u).bc; \
+	    $(KLEE_CC) $(KLEE_CFLAGS) $$shim runtime/$$u.c -o $$object; objects="$$objects $$object"; \
+	  done; \
+	  runtime=bin/libosprey_runtime_klee_$$backend.bc; \
+	  $(KLEE_LINK) $$objects -o $$runtime; \
+	  $(KLEE_LLVM_BIN)/opt -disable-simplify-libcalls -vectorize-loops=false -vectorize-slp=false -passes='default<O2>' $$runtime -o $$runtime; \
+	  if [ "$$backend" = gc ]; then \
+	    $(KLEE_LLVM_BIN)/opt -load-pass-plugin=bin/libosprey_gc_roots.so \
+	      -passes=osprey-gc-roots -verify-each $$runtime -o $$runtime; fi; \
+	  $(KLEE_LLVM_BIN)/opt -load-pass-plugin=bin/libosprey_gc_roots.so \
+	      -passes=osprey-runtime-prepared -verify-each $$runtime -o $$runtime; \
+	  open="$$($(KLEE_NM) --undefined-only $$runtime | awk '{print $$2}' | grep -Ev '$(KLEE_PROVIDED)' || true)"; \
+	  if [ -n "$$open" ]; then echo "ERROR: symbolic $$backend runtime is not closed:"; echo "$$open"; exit 1; fi; \
+	done

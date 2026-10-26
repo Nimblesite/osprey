@@ -4,7 +4,10 @@ use super::{Lowering, Region};
 use crate::{Expr, Parameter, Position, Program, Stmt};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub(super) fn collect(program: &Program) -> BTreeMap<String, Expr> {
+pub(super) fn collect(
+    program: &Program,
+    definitions: &BTreeMap<String, Stmt>,
+) -> BTreeMap<String, Expr> {
     #[derive(Default)]
     struct Bindings(BTreeMap<String, Expr>);
     impl crate::AstVisitor for Bindings {
@@ -45,6 +48,9 @@ pub(super) fn collect(program: &Program) -> BTreeMap<String, Expr> {
     }
     let mut bindings = Bindings::default();
     crate::walk_program(program, &mut bindings);
+    bindings
+        .0
+        .extend(super::factories::collect(program, definitions));
     bindings.0
 }
 
@@ -165,7 +171,7 @@ impl Installation {
 
 /// A call without named arguments: its callee and positional arguments. Named
 /// arguments never select an installer.
-fn positional_call(expression: &Expr) -> Option<(&Expr, &[Expr])> {
+pub(super) fn positional_call(expression: &Expr) -> Option<(&Expr, &[Expr])> {
     match expression {
         Expr::Call {
             function,

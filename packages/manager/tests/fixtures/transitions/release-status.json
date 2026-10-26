@@ -1,0 +1,582 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "Release-status state transitions per spec 0031: sequence starts at one and increments exactly; only Eligible-to-Yanked, Eligible-to-Revoked and Yanked-to-Revoked; later records carry previousStatus = H(\"osprey.release-status.v1\", precedingRecord) and a reason digest, initial Eligible carries neither. Records follow schemas/package-registry.td type ReleaseStatus; digests computed independently with python hashlib.",
+  "chains": [
+    {
+      "description": "valid Eligible(1) -> Yanked(2) -> Revoked(3) for @finch/ledger",
+      "goldenPreviousStatus": true,
+      "steps": [
+        {
+          "previous": null,
+          "next": {
+            "effectiveAt": "2026-02-01T09:00:00.000Z",
+            "release": {
+              "package": {
+                "scope": "finch",
+                "name": "ledger"
+              },
+              "epoch": 1,
+              "ordinal": 3,
+              "digest": "sha256:d9c1e14d5ff07b093a1682e1881e93e28cdb0be8e210691bd0053cc362c856e3"
+            },
+            "roleMetadataVersion": 11,
+            "sequence": 1,
+            "state": {
+              "Eligible": {}
+            }
+          },
+          "expect": ""
+        },
+        {
+          "previous": {
+            "effectiveAt": "2026-02-01T09:00:00.000Z",
+            "release": {
+              "package": {
+                "scope": "finch",
+                "name": "ledger"
+              },
+              "epoch": 1,
+              "ordinal": 3,
+              "digest": "sha256:d9c1e14d5ff07b093a1682e1881e93e28cdb0be8e210691bd0053cc362c856e3"
+            },
+            "roleMetadataVersion": 11,
+            "sequence": 1,
+            "state": {
+              "Eligible": {}
+            }
+          },
+          "next": {
+            "effectiveAt": "2026-02-03T12:30:00.000Z",
+            "previousStatus": "sha256:8ca8240bd6e3a036e42d5e8c45fc4134d1fde8f474c5703e8b1190f25058e42d",
+            "reasonDigest": "sha256:6dd1f114e7de1c0f06d178774d0702f0af4daf988ef850781f0f41c7340db00b",
+            "release": {
+              "package": {
+                "scope": "finch",
+                "name": "ledger"
+              },
+              "epoch": 1,
+              "ordinal": 3,
+              "digest": "sha256:d9c1e14d5ff07b093a1682e1881e93e28cdb0be8e210691bd0053cc362c856e3"
+            },
+            "roleMetadataVersion": 12,
+            "sequence": 2,
+            "state": {
+              "Yanked": {}
+            }
+          },
+          "expect": ""
+        },
+        {
+          "previous": {
+            "effectiveAt": "2026-02-03T12:30:00.000Z",
+            "previousStatus": "sha256:8ca8240bd6e3a036e42d5e8c45fc4134d1fde8f474c5703e8b1190f25058e42d",
+            "reasonDigest": "sha256:6dd1f114e7de1c0f06d178774d0702f0af4daf988ef850781f0f41c7340db00b",
+            "release": {
+              "package": {
+                "scope": "finch",
+                "name": "ledger"
+              },
+              "epoch": 1,
+              "ordinal": 3,
+              "digest": "sha256:d9c1e14d5ff07b093a1682e1881e93e28cdb0be8e210691bd0053cc362c856e3"
+            },
+            "roleMetadataVersion": 12,
+            "sequence": 2,
+            "state": {
+              "Yanked": {}
+            }
+          },
+          "next": {
+            "effectiveAt": "2026-02-05T08:15:00.000Z",
+            "previousStatus": "sha256:5c464fc48eaf774fd86f343ac24109a3618791bdcfab33ac7cede94142349d19",
+            "reasonDigest": "sha256:7379f786c4b8b968d4122289475bcb52b15e3b3ffed7b14a45360351eab50a04",
+            "release": {
+              "package": {
+                "scope": "finch",
+                "name": "ledger"
+              },
+              "epoch": 1,
+              "ordinal": 3,
+              "digest": "sha256:d9c1e14d5ff07b093a1682e1881e93e28cdb0be8e210691bd0053cc362c856e3"
+            },
+            "roleMetadataVersion": 13,
+            "sequence": 3,
+            "state": {
+              "Revoked": {}
+            }
+          },
+          "expect": ""
+        }
+      ]
+    },
+    {
+      "description": "valid Eligible(1) -> Revoked(2) for @osprey/http",
+      "goldenPreviousStatus": true,
+      "steps": [
+        {
+          "previous": null,
+          "next": {
+            "effectiveAt": "2026-02-02T10:00:00.000Z",
+            "release": {
+              "package": {
+                "scope": "osprey",
+                "name": "http"
+              },
+              "epoch": 2,
+              "ordinal": 7,
+              "digest": "sha256:8dfe0a3d7cc0f6b40149496babbedc97c71a8fa66133deeb4d2f08b0102af53f"
+            },
+            "roleMetadataVersion": 5,
+            "sequence": 1,
+            "state": {
+              "Eligible": {}
+            }
+          },
+          "expect": ""
+        },
+        {
+          "previous": {
+            "effectiveAt": "2026-02-02T10:00:00.000Z",
+            "release": {
+              "package": {
+                "scope": "osprey",
+                "name": "http"
+              },
+              "epoch": 2,
+              "ordinal": 7,
+              "digest": "sha256:8dfe0a3d7cc0f6b40149496babbedc97c71a8fa66133deeb4d2f08b0102af53f"
+            },
+            "roleMetadataVersion": 5,
+            "sequence": 1,
+            "state": {
+              "Eligible": {}
+            }
+          },
+          "next": {
+            "effectiveAt": "2026-02-06T16:45:00.000Z",
+            "previousStatus": "sha256:aab920399dd49c3030dfa563d4ea60a2319e4e3e10191c214d2883146a2f865f",
+            "reasonDigest": "sha256:8a7cd71953613d8abf8eb170fbf7b21474b7fb9ac42cf5bd1b47dfc1fd2abe0e",
+            "release": {
+              "package": {
+                "scope": "osprey",
+                "name": "http"
+              },
+              "epoch": 2,
+              "ordinal": 7,
+              "digest": "sha256:8dfe0a3d7cc0f6b40149496babbedc97c71a8fa66133deeb4d2f08b0102af53f"
+            },
+            "roleMetadataVersion": 6,
+            "sequence": 2,
+            "state": {
+              "Revoked": {}
+            }
+          },
+          "expect": ""
+        }
+      ]
+    },
+    {
+      "description": "Revoked -> Eligible is never allowed",
+      "goldenPreviousStatus": false,
+      "steps": [
+        {
+          "previous": {
+            "effectiveAt": "2026-02-05T08:15:00.000Z",
+            "previousStatus": "sha256:5c464fc48eaf774fd86f343ac24109a3618791bdcfab33ac7cede94142349d19",
+            "reasonDigest": "sha256:7379f786c4b8b968d4122289475bcb52b15e3b3ffed7b14a45360351eab50a04",
+            "release": {
+              "package": {
+                "scope": "finch",
+                "name": "ledger"
+              },
+              "epoch": 1,
+              "ordinal": 3,
+              "digest": "sha256:d9c1e14d5ff07b093a1682e1881e93e28cdb0be8e210691bd0053cc362c856e3"
+            },
+            "roleMetadataVersion": 13,
+            "sequence": 3,
+            "state": {
+              "Revoked": {}
+            }
+          },
+          "next": {
+            "effectiveAt": "2026-02-07T00:00:00.000Z",
+            "previousStatus": "sha256:f085c4964ee4d3191d6a86f2b154a4d0502253e4e58f0e7ca090a8cedb8e94d0",
+            "reasonDigest": "sha256:6835c3d082fca6fc7de51104089aaa5e25256d5423227008f9a82b8762858956",
+            "release": {
+              "package": {
+                "scope": "finch",
+                "name": "ledger"
+              },
+              "epoch": 1,
+              "ordinal": 3,
+              "digest": "sha256:d9c1e14d5ff07b093a1682e1881e93e28cdb0be8e210691bd0053cc362c856e3"
+            },
+            "roleMetadataVersion": 14,
+            "sequence": 4,
+            "state": {
+              "Eligible": {}
+            }
+          },
+          "expect": "status.transition"
+        }
+      ]
+    },
+    {
+      "description": "Yanked -> Eligible is never allowed",
+      "goldenPreviousStatus": false,
+      "steps": [
+        {
+          "previous": {
+            "effectiveAt": "2026-02-03T12:30:00.000Z",
+            "previousStatus": "sha256:8ca8240bd6e3a036e42d5e8c45fc4134d1fde8f474c5703e8b1190f25058e42d",
+            "reasonDigest": "sha256:6dd1f114e7de1c0f06d178774d0702f0af4daf988ef850781f0f41c7340db00b",
+            "release": {
+              "package": {
+                "scope": "finch",
+                "name": "ledger"
+              },
+              "epoch": 1,
+              "ordinal": 3,
+              "digest": "sha256:d9c1e14d5ff07b093a1682e1881e93e28cdb0be8e210691bd0053cc362c856e3"
+            },
+            "roleMetadataVersion": 12,
+            "sequence": 2,
+            "state": {
+              "Yanked": {}
+            }
+          },
+          "next": {
+            "effectiveAt": "2026-02-04T00:00:00.000Z",
+            "previousStatus": "sha256:5c464fc48eaf774fd86f343ac24109a3618791bdcfab33ac7cede94142349d19",
+            "reasonDigest": "sha256:12bb103667f4d795eb7f9198a487b2aa70dc66b3729500f75831cf005c2b9d27",
+            "release": {
+              "package": {
+                "scope": "finch",
+                "name": "ledger"
+              },
+              "epoch": 1,
+              "ordinal": 3,
+              "digest": "sha256:d9c1e14d5ff07b093a1682e1881e93e28cdb0be8e210691bd0053cc362c856e3"
+            },
+            "roleMetadataVersion": 13,
+            "sequence": 3,
+            "state": {
+              "Eligible": {}
+            }
+          },
+          "expect": "status.transition"
+        }
+      ]
+    },
+    {
+      "description": "sequence skips from 1 to 3",
+      "goldenPreviousStatus": false,
+      "steps": [
+        {
+          "previous": {
+            "effectiveAt": "2026-02-01T09:00:00.000Z",
+            "release": {
+              "package": {
+                "scope": "finch",
+                "name": "ledger"
+              },
+              "epoch": 1,
+              "ordinal": 3,
+              "digest": "sha256:d9c1e14d5ff07b093a1682e1881e93e28cdb0be8e210691bd0053cc362c856e3"
+            },
+            "roleMetadataVersion": 11,
+            "sequence": 1,
+            "state": {
+              "Eligible": {}
+            }
+          },
+          "next": {
+            "effectiveAt": "2026-02-03T12:30:00.000Z",
+            "previousStatus": "sha256:8ca8240bd6e3a036e42d5e8c45fc4134d1fde8f474c5703e8b1190f25058e42d",
+            "reasonDigest": "sha256:6dd1f114e7de1c0f06d178774d0702f0af4daf988ef850781f0f41c7340db00b",
+            "release": {
+              "package": {
+                "scope": "finch",
+                "name": "ledger"
+              },
+              "epoch": 1,
+              "ordinal": 3,
+              "digest": "sha256:d9c1e14d5ff07b093a1682e1881e93e28cdb0be8e210691bd0053cc362c856e3"
+            },
+            "roleMetadataVersion": 12,
+            "sequence": 3,
+            "state": {
+              "Yanked": {}
+            }
+          },
+          "expect": "status.sequence"
+        }
+      ]
+    },
+    {
+      "description": "sequence restart: record 2 replayed after record 2",
+      "goldenPreviousStatus": false,
+      "steps": [
+        {
+          "previous": {
+            "effectiveAt": "2026-02-03T12:30:00.000Z",
+            "previousStatus": "sha256:8ca8240bd6e3a036e42d5e8c45fc4134d1fde8f474c5703e8b1190f25058e42d",
+            "reasonDigest": "sha256:6dd1f114e7de1c0f06d178774d0702f0af4daf988ef850781f0f41c7340db00b",
+            "release": {
+              "package": {
+                "scope": "finch",
+                "name": "ledger"
+              },
+              "epoch": 1,
+              "ordinal": 3,
+              "digest": "sha256:d9c1e14d5ff07b093a1682e1881e93e28cdb0be8e210691bd0053cc362c856e3"
+            },
+            "roleMetadataVersion": 12,
+            "sequence": 2,
+            "state": {
+              "Yanked": {}
+            }
+          },
+          "next": {
+            "effectiveAt": "2026-02-03T12:30:00.000Z",
+            "previousStatus": "sha256:8ca8240bd6e3a036e42d5e8c45fc4134d1fde8f474c5703e8b1190f25058e42d",
+            "reasonDigest": "sha256:6dd1f114e7de1c0f06d178774d0702f0af4daf988ef850781f0f41c7340db00b",
+            "release": {
+              "package": {
+                "scope": "finch",
+                "name": "ledger"
+              },
+              "epoch": 1,
+              "ordinal": 3,
+              "digest": "sha256:d9c1e14d5ff07b093a1682e1881e93e28cdb0be8e210691bd0053cc362c856e3"
+            },
+            "roleMetadataVersion": 12,
+            "sequence": 2,
+            "state": {
+              "Yanked": {}
+            }
+          },
+          "expect": "status.sequence"
+        }
+      ]
+    },
+    {
+      "description": "previousStatus is not H over the canonical preceding record",
+      "goldenPreviousStatus": false,
+      "steps": [
+        {
+          "previous": {
+            "effectiveAt": "2026-02-01T09:00:00.000Z",
+            "release": {
+              "package": {
+                "scope": "finch",
+                "name": "ledger"
+              },
+              "epoch": 1,
+              "ordinal": 3,
+              "digest": "sha256:d9c1e14d5ff07b093a1682e1881e93e28cdb0be8e210691bd0053cc362c856e3"
+            },
+            "roleMetadataVersion": 11,
+            "sequence": 1,
+            "state": {
+              "Eligible": {}
+            }
+          },
+          "next": {
+            "effectiveAt": "2026-02-03T12:30:00.000Z",
+            "previousStatus": "sha256:b7108403ea04bdd43f45b9f93537bed4392756a3e0d2b078b483ff84ce5da975",
+            "reasonDigest": "sha256:6dd1f114e7de1c0f06d178774d0702f0af4daf988ef850781f0f41c7340db00b",
+            "release": {
+              "package": {
+                "scope": "finch",
+                "name": "ledger"
+              },
+              "epoch": 1,
+              "ordinal": 3,
+              "digest": "sha256:d9c1e14d5ff07b093a1682e1881e93e28cdb0be8e210691bd0053cc362c856e3"
+            },
+            "roleMetadataVersion": 12,
+            "sequence": 2,
+            "state": {
+              "Yanked": {}
+            }
+          },
+          "expect": "status.chain"
+        }
+      ]
+    },
+    {
+      "description": "yank without a reason/advisory digest",
+      "goldenPreviousStatus": false,
+      "steps": [
+        {
+          "previous": {
+            "effectiveAt": "2026-02-01T09:00:00.000Z",
+            "release": {
+              "package": {
+                "scope": "finch",
+                "name": "ledger"
+              },
+              "epoch": 1,
+              "ordinal": 3,
+              "digest": "sha256:d9c1e14d5ff07b093a1682e1881e93e28cdb0be8e210691bd0053cc362c856e3"
+            },
+            "roleMetadataVersion": 11,
+            "sequence": 1,
+            "state": {
+              "Eligible": {}
+            }
+          },
+          "next": {
+            "effectiveAt": "2026-02-03T12:30:00.000Z",
+            "previousStatus": "sha256:8ca8240bd6e3a036e42d5e8c45fc4134d1fde8f474c5703e8b1190f25058e42d",
+            "release": {
+              "package": {
+                "scope": "finch",
+                "name": "ledger"
+              },
+              "epoch": 1,
+              "ordinal": 3,
+              "digest": "sha256:d9c1e14d5ff07b093a1682e1881e93e28cdb0be8e210691bd0053cc362c856e3"
+            },
+            "roleMetadataVersion": 12,
+            "sequence": 2,
+            "state": {
+              "Yanked": {}
+            }
+          },
+          "expect": "status.reason"
+        }
+      ]
+    },
+    {
+      "description": "initial record is not Eligible",
+      "goldenPreviousStatus": false,
+      "steps": [
+        {
+          "previous": null,
+          "next": {
+            "effectiveAt": "2026-02-01T09:00:00.000Z",
+            "release": {
+              "package": {
+                "scope": "finch",
+                "name": "ledger"
+              },
+              "epoch": 1,
+              "ordinal": 3,
+              "digest": "sha256:d9c1e14d5ff07b093a1682e1881e93e28cdb0be8e210691bd0053cc362c856e3"
+            },
+            "roleMetadataVersion": 11,
+            "sequence": 1,
+            "state": {
+              "Yanked": {}
+            }
+          },
+          "expect": "status.transition"
+        }
+      ]
+    },
+    {
+      "description": "initial record carries a previousStatus",
+      "goldenPreviousStatus": false,
+      "steps": [
+        {
+          "previous": null,
+          "next": {
+            "effectiveAt": "2026-02-01T09:00:00.000Z",
+            "release": {
+              "package": {
+                "scope": "finch",
+                "name": "ledger"
+              },
+              "epoch": 1,
+              "ordinal": 3,
+              "digest": "sha256:d9c1e14d5ff07b093a1682e1881e93e28cdb0be8e210691bd0053cc362c856e3"
+            },
+            "roleMetadataVersion": 11,
+            "sequence": 1,
+            "state": {
+              "Eligible": {}
+            },
+            "previousStatus": "sha256:8ca8240bd6e3a036e42d5e8c45fc4134d1fde8f474c5703e8b1190f25058e42d"
+          },
+          "expect": "status.chain"
+        }
+      ]
+    },
+    {
+      "description": "initial record carries a reasonDigest",
+      "goldenPreviousStatus": false,
+      "steps": [
+        {
+          "previous": null,
+          "next": {
+            "effectiveAt": "2026-02-01T09:00:00.000Z",
+            "release": {
+              "package": {
+                "scope": "finch",
+                "name": "ledger"
+              },
+              "epoch": 1,
+              "ordinal": 3,
+              "digest": "sha256:d9c1e14d5ff07b093a1682e1881e93e28cdb0be8e210691bd0053cc362c856e3"
+            },
+            "roleMetadataVersion": 11,
+            "sequence": 1,
+            "state": {
+              "Eligible": {}
+            },
+            "reasonDigest": "sha256:6a2c74a4f774af0dafa3521ae1bddf3bfa32b271fb5c3c86d8f79bc557567f4a"
+          },
+          "expect": "status.reason"
+        }
+      ]
+    },
+    {
+      "description": "later record switches to another release",
+      "goldenPreviousStatus": false,
+      "steps": [
+        {
+          "previous": {
+            "effectiveAt": "2026-02-01T09:00:00.000Z",
+            "release": {
+              "package": {
+                "scope": "finch",
+                "name": "ledger"
+              },
+              "epoch": 1,
+              "ordinal": 3,
+              "digest": "sha256:d9c1e14d5ff07b093a1682e1881e93e28cdb0be8e210691bd0053cc362c856e3"
+            },
+            "roleMetadataVersion": 11,
+            "sequence": 1,
+            "state": {
+              "Eligible": {}
+            }
+          },
+          "next": {
+            "effectiveAt": "2026-02-03T12:30:00.000Z",
+            "previousStatus": "sha256:8ca8240bd6e3a036e42d5e8c45fc4134d1fde8f474c5703e8b1190f25058e42d",
+            "reasonDigest": "sha256:6dd1f114e7de1c0f06d178774d0702f0af4daf988ef850781f0f41c7340db00b",
+            "release": {
+              "package": {
+                "scope": "osprey",
+                "name": "http"
+              },
+              "epoch": 2,
+              "ordinal": 7,
+              "digest": "sha256:8dfe0a3d7cc0f6b40149496babbedc97c71a8fa66133deeb4d2f08b0102af53f"
+            },
+            "roleMetadataVersion": 12,
+            "sequence": 2,
+            "state": {
+              "Yanked": {}
+            }
+          },
+          "expect": "status.release"
+        }
+      ]
+    }
+  ]
+}

@@ -8,8 +8,8 @@ Osprey ships through a single **tag-triggered** pipeline
 
 | Event | What runs |
 |-------|-----------|
-| **Push a tag `v*`** | The full release: build → GitHub Release → Homebrew + Scoop + Marketplace → website. |
-| **Open a PR to `main`** | CI only ([`ci.yml`](../.github/workflows/ci.yml) + [`ci-windows.yml`](../.github/workflows/ci-windows.yml)). |
+| **Push a tag `v*`** | Resolve the tag version, audit its SHA and publish the channels selected by the release-scope classifier. |
+| **Open a PR to `main`** | PR checks in [`ci.yml`](../.github/workflows/ci.yml) and [`ci-windows.yml`](../.github/workflows/ci-windows.yml); Windows also permits manual dispatch. |
 | **Merge to `main`** | **Nothing.** No build, no deploy. |
 
 ## Cutting a release
@@ -20,50 +20,29 @@ git tag v1.2.3
 git push origin v1.2.3
 ```
 
-That's it. The pipeline does the rest:
+The classifier compares the tag with its predecessor using [`.github/release-scope.json`](../.github/release-scope.json). It determines which artifacts and channels the tag requires:
 
-1. **Resolve version** — `1.2.3` is derived from the tag and validated against
-   `shipwright.json`.
-2. **Build** the compiler for `darwin-arm64`, `linux-x64` and `win32-x64`
-   (there is no Intel-mac leg — GitHub no longer allocates the free `macos-13`
-   runner), verify `osprey --version` prints `osprey 1.2.3`, and package each as
-   `osprey-1.2.3-<platform>.tar.gz` (binary + every runtime archive) + `.sha256`.
-3. **GitHub Release** on `Nimblesite/osprey` with all tarballs.
-4. **Homebrew** — writes `Formula/osprey.rb` to
-   [`Nimblesite/homebrew-tap`](https://github.com/Nimblesite/homebrew-tap).
-5. **Scoop** — writes `bucket/osprey.json` to
-   [`Nimblesite/scoop-bucket`](https://github.com/Nimblesite/scoop-bucket).
-6. **VS Code Marketplace and Open VSX** — publish the per-platform VSIX as
-   `nimblesite.osprey` (binary bundled and version-checked at activation).
-7. **Website + web compiler** deploy — only after every step above succeeds.
+| Changed surface | Release work |
+| --- | --- |
+| Compiler/runtime or another binary-classified path | Build the platform matrix and publish the full binary/extension channels; deploy the web compiler. |
+| Extension only | Build the version-matched compiler matrix and VSIX packages; publish Marketplace and Open VSX. |
+| Website/benchmarks only | Deploy the website on a stable tag; skip the compiler matrix and binary/package channels. |
+| Unclassified paths | Select a full release. |
 
-## Any failure makes the run red
+The classifier also contains explicitly ignored paths; consult the file rather than assuming every documentation edit deploys the site. A prerelease tag does not overwrite the live website.
 
-A release is either published or it is not, so every channel blocks and nothing
-downgrades a failure to a warning.
+For a full release, the matrix builds `darwin-arm64`, `linux-x64` and `win32-x64`. Each binary's version is checked before archives and SHA-256 files are uploaded to GitHub Releases. Homebrew and Scoop consume those archives; per-platform VSIX packages bundle the matching compiler and publish as `nimblesite.osprey` to Marketplace and Open VSX.
 
-- **No job is optional.** The win32 build and VSIX legs were once
-  `continue-on-error`, and the web compiler deploy was non-fatal. A Windows
-  binary that never built, or a playground left on a stale image, reported green
-  and was found by users rather than by the pipeline.
-- **A missing credential fails before anything is built.** The publish tokens
-  used to be probed, and a missing one skipped its channel with a warning — a
-  release that never reached Homebrew still passed. `preflight` now requires
-  every one and names the ones that are absent.
-- **A skipped job is a failure too.** GitHub scores a skipped job as green, so a
-  wrong `if:` publishes nothing and still succeeds. The `release-complete` job
-  runs `if: always()` after every other job and fails unless each channel a full
-  stable release requires actually succeeded.
-- **Failing does not cancel.** `fail-fast: false` stays on both matrices, so a
-  broken leg still lets its siblings finish and one run shows every platform's
-  result. The run just ends red.
+Website deployment depends on scope and the dependency audit; it does not wait for the binary publishing channels. The web compiler deployment depends on the GitHub Release and audit. `release-complete` evaluates the outcome of every required channel.
 
-[`scripts/verify-release-gates.mjs`](../scripts/verify-release-gates.mjs) holds
-this shape in place: it runs in `make lint` and in the required "Build, Format &
-Analyse" job, and fails the PR that reintroduces a swallowed failure or adds a
-release job without wiring it into `release-complete`. A `|| true` that is
-genuinely correct goes in that script's reviewed list with its reason; an entry
-that stops matching anything fails too, so the list cannot go stale.
+## Required release gates
+
+- **Fresh audit of the exact tag SHA.** Every publishing/deployment path depends on the unconditional `audit` job, including website-only and prerelease runs. Scanner or network failures fail the release. `make audit` is the shared local check.
+- **Required credentials.** `preflight` checks its four configured publication credentials and fails when any is missing. Builds can run in parallel with this check; it is not a dependency of the build matrix.
+- **Required channels must succeed.** `release-complete` runs with `if: always()`, rejects failed/cancelled jobs, and requires success for each channel selected by scope and tag type. An expected scope-based skip is permitted; skipping a required channel fails.
+- **Matrix failures remain visible.** `fail-fast: false` lets sibling build/package legs finish; it does not suppress a failing result.
+
+[`scripts/verify-release-gates.mjs`](../scripts/verify-release-gates.mjs) checks the workflow shape during `make lint` and the required build job. Publication/deployment jobs must remain connected to `audit` and `release-complete`. The verifier's reviewed exceptions must still match their intended commands; stale exceptions fail.
 
 ## Versioning — never hard-code it ([SWR-VERSION-BUILD-STAMPING])
 
@@ -110,9 +89,7 @@ The GitHub Release uses the built-in `GITHUB_TOKEN` (`contents: write`), and the
 Marketplace publish mints a short-lived token from the Entra OIDC session rather
 than storing a PAT.
 
-`preflight` checks all four publish credentials before the build starts and
-fails the release naming any that are missing, so a token expiring is a red run
-at minute one rather than a channel that quietly did not publish.
+`preflight` checks `BREW_SCOOP_PAT`, `OPEN_VSX_PAT`, `AZURE_CLIENT_ID` and `AZURE_TENANT_ID`. The web compiler deployment uses `FLY_API_TOKEN` separately. Missing credentials fail their required checks; they do not turn a publication channel into a successful skip.
 
 ## Installing released builds
 
@@ -125,17 +102,10 @@ scoop bucket add nimblesite https://github.com/Nimblesite/scoop-bucket
 scoop install osprey
 ```
 
-Osprey shells out to LLVM (`llc`) and a C compiler (`clang`/`gcc`) at compile
-time, so those are package-manager dependencies (`llvm` for brew; `llvm` + `gcc`
-for scoop).
+Osprey invokes the native LLVM/C toolchain to compile and link generated IR. Released package-manager definitions declare these dependencies: `llvm` for Homebrew and `llvm` plus `gcc` for Scoop. See the [installation guide](../website/src/docs/installation.md) for host prerequisites.
 
 ## Windows support status
 
-The Windows build is delivered in phases (see the `[WINDOWS-PORT-*]` markers and
-the C runtime under `compiler/runtime/`):
+The Windows build uses MSYS2 UCRT64, MinGW/clang and winpthreads. The runtime includes Winsock2 HTTP/WebSocket adapters and a Win32 process implementation using `CreateProcessA` with stdout/stderr pipes; process spawning is no longer a stub.
 
-- **Phase 1 (shipped):** core language — collections, strings, fibers (via
-  winpthreads), effects, pattern matching. Built under MSYS2 UCRT64.
-- **Phase 2 (in progress):** HTTP / WebSocket via Winsock2.
-- **Phase 3 (planned):** process spawning via the Win32 process APIs
-  (`CreateProcess`); currently stubbed on Windows.
+[Windows CI](../.github/workflows/ci-windows.yml) builds the runtime/compiler, checks the version contract, runs fiber and feature smokes, checks caller-stack GC roots and invokes the Default/ML test tree under the three memory backends. This describes the configured checks, not a claim that every Windows runtime path has passed. [The memory contract](specs/compiler/0018-MemoryManagement.md) records the remaining Windows GC qualification; platform parity requires its own evidence.

@@ -240,30 +240,29 @@ mod tests {
     #[test]
     fn fiber_line_reports_oncpu_share_and_waiting() {
         let report = render(false);
-        assert!(
-            report.contains("fibers: main 100% on-cpu · fiber-3 waiting"),
-            "{report}"
-        );
+        shows(&report, &["fibers: main 100% on-cpu · fiber-3 waiting"]);
     }
 
     #[test]
     fn table_has_header_rows_bars_and_locations_without_color() {
         let report = render(false);
-        assert!(
-            report.contains("SELF%  TOTAL%     SELF    TOTAL  FUNCTION  LOCATION"),
-            "{report}"
+        shows(
+            &report,
+            &["SELF%  TOTAL%     SELF    TOTAL  FUNCTION  LOCATION"],
         );
         // parse: 100/200 self = 50.0%, total 50.0%, 0.10s at 1000 Hz; the
         // 50% bar is exactly 3 of 6 cells.
-        assert!(
-            report.contains("███     50.0%   50.0%    0.10s    0.10s  parse  app.osp:142"),
-            "{report}"
+        shows(
+            &report,
+            &["███     50.0%   50.0%    0.10s    0.10s  parse  app.osp:142"],
         );
         // tick keeps its runtime location; main has self 0 and an empty bar.
-        assert!(report.contains("tick  loop.c:7"), "{report}");
-        assert!(
-            report.contains("         0.0%   51.0%    0.00s    0.10s  main  app.osp:3"),
-            "{report}"
+        shows(
+            &report,
+            &[
+                "tick  loop.c:7",
+                "         0.0%   51.0%    0.00s    0.10s  main  app.osp:3",
+            ],
         );
         assert!(!report.contains('\x1b'));
     }
@@ -271,14 +270,7 @@ mod tests {
     #[test]
     fn color_thresholds_wrap_rows() {
         let report = render(true);
-        assert!(
-            report.contains("\x1b[1;31m"),
-            "hot row must be red+bold: {report}"
-        );
-        assert!(
-            report.contains("\x1b[33m"),
-            "warm row must be yellow: {report}"
-        );
+        shows(&report, &["\x1b[1;31m", "\x1b[33m"]);
         shows(&report, &["\x1b[2m", RESET]);
     }
 
@@ -291,9 +283,9 @@ mod tests {
     fn low_sample_note_states_the_sqrt_n_margin() {
         let report = render_report("fib.osp", "fib", &tiny_model(25), false);
         // sqrt(25)/25 = 20%.
-        assert!(
-            report.contains("note: only 25 on-CPU samples — treat percentages as ±20.0%"),
-            "{report}"
+        shows(
+            &report,
+            &["note: only 25 on-CPU samples — treat percentages as ±20.0%"],
         );
     }
 

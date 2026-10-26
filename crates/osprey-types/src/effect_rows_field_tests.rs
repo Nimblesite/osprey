@@ -1,18 +1,34 @@
 //! Effect rows written on function-typed fields ([EFFECTS-FIELD-ROWS]).
 use crate::effect_rows_tests::{assert_accepted, assert_rejected_with};
 
-/// A record crossing `map` into a separate `forEach` callback is no longer a
-/// tracked value path; the field's written row is what makes the call safe.
+/// A record crossing `map` into a separate `forEach` callback keeps its
+/// element provenance now, so an effect-free stored function is provable with
+/// no written row. A stored function that does perform is rejected for the
+/// operation it actually runs. The written row remains the one trust the
+/// analyser needs where provenance really is lost (see the corpus twin).
 const CROSSING: &str = "type Field = { label: string, edit: fn(string) -> string ROW }\n\
     let fields = map(range(0, 2), fn(n) => Field { label: \"f\", edit: fn(t) => t + \"!\" })\n\
     forEach(fields, fn(field) => print(field.edit(field.label)))\n";
 
 #[test]
-fn a_written_row_is_trusted_where_the_stored_value_lost_its_provenance() {
+fn an_effect_free_stored_function_through_map_and_foreach_is_proven() {
+    assert_accepted(&CROSSING.replace(" ROW", ""));
+}
+
+#[test]
+fn an_effectful_stored_function_through_map_and_foreach_is_rejected() {
     assert_rejected_with(
-        &CROSSING.replace(" ROW", ""),
-        &["effect provenance cannot be proven"],
+        "effect Alarm { ring: fn() -> int }\n\
+         fn ring() = perform Alarm.ring()\n\
+         type Field = { label: string, edit: fn(string) -> int }\n\
+         let fields = map(range(0, 2), fn(n) => Field { label: \"f\", edit: fn(t) => ring() })\n\
+         forEach(fields, fn(field) => print(field.edit(field.label)))\n",
+        &["unhandled effect operations at program entry: Alarm.ring"],
     );
+}
+
+#[test]
+fn a_written_row_is_trusted_where_the_stored_value_lost_its_provenance() {
     assert_accepted(&CROSSING.replace("ROW", "![]"));
 }
 

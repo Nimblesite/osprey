@@ -468,23 +468,7 @@ fn params_json(params: &[(String, String)]) -> String {
 }
 
 pub(crate) fn json_str(s: &str) -> String {
-    let mut out = String::with_capacity(s.len().saturating_add(2));
-    out.push('"');
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if u32::from(c) < 0x20 => {
-                let _ = write!(out, "\\u{:04x}", u32::from(c));
-            }
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
+    osprey_ast::json::quoted(s, osprey_ast::json::Escaping::UnicodeControls)
 }
 
 #[cfg(test)]

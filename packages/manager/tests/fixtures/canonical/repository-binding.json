@@ -1,0 +1,19 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "Proof-free payload, media type application/vnd.osprey.repository-binding.v1+json.",
+  "type": "RepositoryBinding",
+  "value": {
+    "package": {
+      "scope": "demo",
+      "name": "report"
+    },
+    "forge": "github",
+    "repositoryId": "R_kgDOfixture1",
+    "subdirectory": "packages/report",
+    "releaseBranch": "main",
+    "authorizationExpiresAt": "2026-11-01T00:00:00.000Z",
+    "nonce": "rb-7f3c9a"
+  },
+  "canonical": "{\"authorizationExpiresAt\":\"2026-11-01T00:00:00.000Z\",\"forge\":\"github\",\"nonce\":\"rb-7f3c9a\",\"package\":{\"name\":\"report\",\"scope\":\"demo\"},\"releaseBranch\":\"main\",\"repositoryId\":\"R_kgDOfixture1\",\"subdirectory\":\"packages/report\"}",
+  "canonicalLength": 221
+}

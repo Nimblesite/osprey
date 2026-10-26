@@ -1,8 +1,0 @@
-[project]
-name = "registry-cli"
-source_roots = ["src", "lib", "../core/src", "../host/src"]
-default_namespace = "osprey_pkg"
-entry = "src/main.osp"
-
-[modules]
-allow_wildcard_imports = false

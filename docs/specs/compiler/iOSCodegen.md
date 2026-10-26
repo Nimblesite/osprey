@@ -14,16 +14,16 @@ Device, simulator and Mac archives are separate products even though all three u
 
 ## The Mac slice [IOS-TARGET-MACOS]
 
-`--target=macos` is the iPhone target built for a Mac: the same options, header, thunks, entry, capability rules and runtime sources (`libosprey_runtime_macos.a` compiles the iOS runtime sources with the iOS flags against the macOS SDK). For one program, the Mac slice emits the same adapted LLVM IR as `--target=ios` and a header that differs only in the slice it names, so Swift `@_cdecl` imports and calls written against one compile unchanged against the other. A Swift macOS host, command-line or app, links the archive exactly as an iPhone app does and owns every platform API. `--run` is rejected for this slice too; the host runs the program.
+`--target=macos` is the iPhone target built for a Mac: the same options, header, thunks, entry, capability rules and runtime sources (`libosprey_runtime_macos_arc.a` compiles the iOS runtime sources with the iOS flags against the macOS SDK). For one program, the Mac slice emits the same adapted LLVM IR as `--target=ios` and a header that differs only in the slice it names, so Swift `@_cdecl` imports and calls written against one compile unchanged against the other. A Swift macOS host, command-line or app, links the archive exactly as an iPhone app does and owns every platform API. `--run` is rejected for this slice too; the host runs the program.
 
 ## Compiler options [IOS-TARGET-OPTIONS]
 
 ```sh
-osprey app.osp --compile --target=ios -o libApp.a
-osprey app.osp --compile --target=ios-sim -o libApp.a
+osprey app.osp --compile --target=ios -o libApp.a --memory=arc
+osprey app.osp --compile --target=ios-sim -o libApp.a --memory=arc
 ```
 
-Compilation emits the requested `.a` and a sibling `.h`. Other output extensions are rejected. `--run` is rejected because the result needs an iOS host. `--memory=default` is the only supported memory backend; `--memory=gc` and `--memory=arc` are compiler errors. Native debugger and profiler flags are rejected for these targets. These option restrictions also apply to `--check` and `--llvm`. `--llvm` emits the host-compatible LLVM representation after the same target legality checks; it cannot bypass those checks.
+Compilation emits the requested `.a` and a sibling `.h`. Other output extensions are rejected. `--run` is rejected because the result needs an iOS host. ARC is the default memory backend; `--memory=arc` selects it explicitly. Tracing GC is unsupported for these hosted archives and is rejected before toolchain work. Unmanaged allocation remains an explicit `--memory=none` opt-out. Native debugger and profiler flags are rejected for these targets. These option restrictions also apply to `--check` and `--llvm`. `--llvm` emits the host-compatible LLVM representation after the same target legality checks; it cannot bypass those checks.
 
 ## Compile and link [IOS-TARGET-LINK]
 
@@ -50,7 +50,7 @@ Boolean boundary thunks use Apple's ARM64 zero-extension convention. `Unit` thun
 
 Records, unions including `Result`, collections, closures, unconstrained generic functions, and effects are not C values. Such internal helpers are not exported. The compiler rejects unsupported `extern fn` signatures and scalar exports that require an effect handler supplied by their caller; use a scalar wrapper that handles effects inside Osprey. Compile-time omission of an internal helper from the header does not declare that helper callable by C.
 
-Strings are NUL-terminated UTF-8. Host inputs are borrowed for the synchronous call, must remain valid until it returns, and must not be retained by Osprey. Hosts must copy Osprey output strings before the next call into the library and must not free those pointers. Embedded NUL bytes are outside this string boundary contract. General allocations in the default memory backend remain alive for the process lifetime; a stable host-facing release API is not implemented.
+Strings are NUL-terminated UTF-8. Host inputs are borrowed for the synchronous call, must remain valid until it returns, and must not be retained by Osprey. Hosts must copy Osprey output strings before the next call into the library and must not free those pointers. Embedded NUL bytes are outside this string boundary contract. ARC reclaims internal values when their last owner is released. Application globals remain owned by the library, and returned strings have no host-facing release API. `--entry-only` has no callable exports and releases its program globals on return; its corpus must finish with zero live ARC allocations.
 
 ## Entry and lifetime [IOS-TARGET-ENTRY]
 

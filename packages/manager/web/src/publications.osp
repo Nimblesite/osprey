@@ -1,0 +1,39 @@
+namespace registry_web;
+import registry::Names
+import registry_web::Html
+import registry_web::Model
+
+/// The organization's publication monitor: every intent with its status and
+/// the reason it is pending, rejected or quarantined — a proposal is
+/// labelled as one, never as an accepted release [PACKAGE-HOSTED-ROUTES].
+/// Member-only, and hidden entirely when any entry's security evidence is
+/// unavailable.
+module Publications {
+    export fn render(publications, access: Model::Access) = match Model::viewerOrgHandle(access.viewer) == "" {
+        true => Model::hidden("web.publications.member-only")
+        false => match Model::gateAll(publications, fn(p) => Names::display(p.key), fn(p) => p.evidence) {
+            Error { message } => Model::hidden("web.evidence-unavailable: ${message}")
+            Success => Model::shown(Html::document("Publications - Osprey Package Registry", body(publications)))
+        }
+    }
+
+    fn body(publications) = join([
+        "<main id=\"publications\"><h1>Publications</h1>",
+        Html::note("A pending intent is a proposal, not an accepted release; only the registry's signed eligibility status makes a release public."),
+        join(mapList(publications, item), ""),
+        "</main>"], "")
+
+    /// One publication. Only called after `render`'s gate passed, so the
+    /// evidence is verified; a hidden screen renders no items at all.
+    fn item(p) = join([
+        "<article class=\"publication\" aria-labelledby=\"${Html::id(Names::display(p.key))}-pub\"><h2>${Html::escape(Names::display(p.key))}</h2>",
+        Html::field("Actor", p.actor),
+        statusLine(p.status),
+        "</article>"], "")
+
+    fn statusLine(status: Model::PublicationStatus) = match status {
+        Model::Pending { reason } => Html::field("Pending", reason)
+        Model::Rejected { reasons } => Html::field("Rejected", join(reasons, "; "))
+        Model::Quarantined { reason } => Html::field("Quarantined", reason)
+    }
+}

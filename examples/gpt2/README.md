@@ -2,7 +2,7 @@
 
 Run OpenAI's 124M-parameter GPT-2 in Osprey's **Python flavor**: familiar `def`, `lambda` and f-strings, compiled to native code, with one model running on CPU or GPU. Algebraic effects let the caller choose where the arithmetic runs; inferred types and compiler-checked handlers keep that choice out of the transformer.
 
-**Keep Python in your workflow.** Osprey also supports [calling native Osprey functions from Python and Python libraries from Osprey](../../docs/specs/platforms/0042-PythonInterop.md). You can retain Python tooling while moving computation into a compiled language with GPU kernels. The Python flavor is Osprey source, marked `# osprey: flavor=python`; ordinary Python packages are reached through the explicit interop bridge. Osprey is alpha software, and shared tensor storage across that bridge remains planned.
+**Keep Python in your workflow.** Osprey also supports [calling native Osprey functions from Python and Python libraries from Osprey](../../docs/specs/platforms/0042-PythonInterop.md). You can retain Python tooling while moving computation into a compiled language with GPU kernels. The Python flavor is Osprey source, marked `# osprey: flavor=python`; ordinary Python packages are reached through the explicit interop bridge. Osprey is actively evolving, and shared tensor storage across that bridge remains planned.
 
 This example loads [Hugging Face's published weights](https://huggingface.co/openai-community/gpt2) directly from `model.safetensors`, rebuilds the byte-level BPE tokenizer from `merges.txt`, and implements the transformer, KV-cached generation and greedy sampling in Osprey. No retraining or checkpoint conversion is needed.
 
@@ -127,7 +127,7 @@ Enter the prompt, token count and backend (`gpu` or `lists`) on three lines. Set
 
 On a selected device, embeddings, LayerNorm, attention, softmax, GELU, residuals, reductions, token selection, training loss and all matrix products execute there ([device contract](../../docs/specs/runtime/0034-GPUComputation.md#device-backends--gpu-backend-device)). Both adapters use software binary64 arithmetic with the host's accumulation order. Tokenization, buffer construction/loading and readbacks stay on the host. Buffers are [device-resident](../../docs/specs/runtime/0034-GPUComputation.md#device-resident-buffers--gpu-buffer-resident) from first launch: weights upload once and layer intermediates stay on device. Unsupported kernels abort rather than falling back to CPU; there is no kernel fusion yet.
 
-Device `exp`, `ln` and `tanh` are correctly rounded where host libm can differ in the last digit. Generated text matches across tested paths; training loss is `4.503189215447316` on host and `4.503189215447317` on Metal. Across the step's 150 numbers, the largest host/device difference is 2.4 × 10⁻¹³. Near-zero gradient sums can differ in every digit. Metal and OpenCL print identical bytes apart from the device name.
+Device `exp`, `ln` and `tanh` use a different implementation from host libm and can differ in the last digit. Generated text matches across tested paths; training loss is `4.503189215447316` on host and `4.503189215447317` on Metal. Across the step's 150 numbers, the largest host/device difference is 2.4 × 10⁻¹³. Near-zero gradient sums can differ in every digit. Metal and OpenCL print identical bytes apart from the device name.
 
 | Measured 2026-10-13, AMD Ryzen 9 3900X, Linux 6.18 (WSL2), release build, `--memory=arc`, `GPU=host` | `BACKEND=gpu` | `BACKEND=lists` |
 | --- | --- | --- |

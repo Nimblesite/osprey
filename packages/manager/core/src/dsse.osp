@@ -1,0 +1,72 @@
+namespace registry;
+import registry::Bytes
+import registry::Sha256
+import registry::Digests
+import registry::Domains
+
+/// The DSSE protocol v1 pre-authentication encoding and the two detached
+/// hash forms spec 0030 builds on it: the PAE bytes a detached envelope
+/// signs, the base64url WebAuthn challenge over those bytes, and the
+/// EnvelopeDigest of canonical envelope bytes. Implements [PACKAGE-PUBLISH].
+module Dsse {
+    let versionTag = "DSSEv1"
+    let space = 32
+    let nul = 0
+    let b64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+    let b64Shift18 = 262144
+    let b64Shift12 = 4096
+    let b64Shift6 = 64
+
+    fn ascii(text) = Bytes::ofString(text)
+    fn sp() = [space]
+
+    fn b64Char(n) = substring(b64Alphabet, n, n + 1) ?: ""
+
+    fn triple(bytes, i) = wrapAdd(wrapMul(listGet(bytes, i) ?: 0, 65536),
+        wrapAdd(wrapMul(listGet(bytes, wrapAdd(i, 1)) ?: 0, 256), listGet(bytes, wrapAdd(i, 2)) ?: 0))
+
+    /// Bits 23..18, 17..12, 11..6, 5..0 of the 24-bit group as a 0..63 index.
+    fn sixBits(n, part) = match part {
+        0 => intDiv(n, b64Shift18)
+        1 => intDiv(n, b64Shift12) % 64
+        2 => intDiv(n, b64Shift6) % 64
+        _ => n % 64
+    }
+
+    fn chunkChars(bytes, i, parts) = join(mapList(parts, fn(p) => b64Char(sixBits(triple(bytes, i), p))), "")
+
+    fn b64Chunk(bytes, i) = match length(bytes) - i {
+        1 => chunkChars(bytes, i, [0, 1])
+        2 => chunkChars(bytes, i, [0, 1, 2])
+        _ => chunkChars(bytes, i, [0, 1, 2, 3])
+    }
+
+    /// Base64url without padding of RFC 4648 section 5 — the alphabet and
+    /// the dropped `=` tail the WebAuthn challenge spelling requires.
+    /// Implements [PACKAGE-PUBLISH].
+    export fn base64Url(bytes) = join(range(0, intDiv(wrapAdd(length(bytes), 2), 3))
+        |> map(fn(i) => b64Chunk(bytes, wrapMul(i, 3))) |> toList, "")
+
+    /// The PAE bytes `"DSSEv1" SP len(type) SP type SP len(payload) SP
+    /// payload`, both lengths counting bytes — the exact bytes a detached
+    /// envelope signs. Implements [PACKAGE-PUBLISH].
+    export fn pae(payloadType, payloadBytes) = Bytes::concatAll([
+        ascii(versionTag), sp(),
+        ascii(toString(byteLength(payloadType))), sp(),
+        ascii(payloadType), sp(),
+        ascii(toString(length(payloadBytes))), sp(),
+        payloadBytes
+    ])
+
+    fn domainChained(domain, bytes) = Bytes::concatAll([ascii(domain), [nul], bytes])
+
+    /// base64url(SHA256("osprey.webauthn.v1" || 0x00 || PAE)) without
+    /// padding — the WebAuthn challenge of spec 0030. Implements
+    /// [PACKAGE-PUBLISH].
+    export fn webAuthnChallenge(paeBytes) = base64Url(Sha256::digest(domainChained(Domains::webAuthnDomain(), paeBytes)))
+
+    /// "sha256:" + lowercase hex of SHA256("osprey.envelope.v1" || 0x00 ||
+    /// canonical envelope bytes), with no length prefix — the EnvelopeDigest
+    /// of spec 0030. Implements [PACKAGE-PUBLISH].
+    export fn envelopeDigest(canonicalEnvelopeBytes) = Digests::format(Sha256::digest(domainChained(Domains::envelopeDomain(), canonicalEnvelopeBytes)))
+}

@@ -134,6 +134,10 @@ fn default_edits(source: &str) -> Vec<AnnotationEdit> {
     let mut result = Vec::new();
     let mut pending = vec![tree.root_node()];
     while let Some(node) = pending.pop() {
+        // Fragment mapping already collects annotations inside decoded strings.
+        if matches!(node.kind(), "string" | "interpolated_string") {
+            continue;
+        }
         default_annotations(source, node, &mut result);
         let mut cursor = node.walk();
         let children: Vec<_> = node.children(&mut cursor).collect();

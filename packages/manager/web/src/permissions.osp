@@ -1,0 +1,54 @@
+namespace registry_web;
+import registry::Governance
+import registry::Maybe
+import registry::Names
+import registry_web::Html
+import registry_web::Model
+
+/// The package administrator's control screen: the organization context,
+/// the single administrator seat and the explicit grant ledger. It hides
+/// for anyone who is not this package's current administrator, and it never
+/// implies the administrator can publish without a publish-release grant
+/// ([PACKAGE-OWNERSHIP-ADMIN], [PACKAGE-HOSTED-ROUTES]). UI hiding is not
+/// authorization: the API re-checks every operation.
+module Permissions {
+    export fn render(l, access: Model::Access, ledger, now) = match Model::gate(l.evidence, Names::display(l.pkg.key)) {
+        Error { message } => Model::hidden("web.evidence-unavailable: ${message}")
+        Success => match Model::isAdministeredBy(access) && Model::viewerOrgHandle(access.viewer) == l.orgHandle {
+            false => Model::hidden("web.permissions.admin-only")
+            true => Model::shown(Html::document("Permissions for ${Names::display(l.pkg.key)} - Osprey Package Registry", body(l, access, ledger, now)))
+        }
+    }
+
+    fn body(l, access: Model::Access, ledger, now) = join([
+        "<main id=\"permissions\"><h1>Permissions for ${Html::escape(Names::display(l.pkg.key))}</h1>",
+        Html::field("Organization", "@${l.orgHandle}"),
+        Html::field("Package administrator", access.admin),
+        grantTable(ledger),
+        notices(access, now),
+        "</main>"], "")
+
+    fn grantRow(grant: Governance::Grant) = join([
+        "<tr><td>${Html::escape(grant.membership)}</td>",
+        "<td>${Html::escape(Governance::permissionName(grant.permission))}</td>",
+        "<td>${expiry(grant)}</td><td>${rowState(grant)}</td></tr>"], "")
+
+    fn expiry(grant: Governance::Grant) = if Maybe::isPresent(grant.expiresAt) { "until ${Maybe::orElse(grant.expiresAt, 0)}" } else { "no expiry" }
+
+    fn rowState(grant: Governance::Grant) = if Governance::isActiveGrant(grant) { "active" } else { "revoked" }
+
+    fn grantTable(ledger) = if isEmpty(ledger) {
+        "<p class=\"grants none\">No explicit grants: every operation, including publication, is currently denied for everyone.</p>"
+    } else {
+        join([
+            "<table><caption>Explicit package permissions</caption>",
+            "<thead><tr><th scope=\"col\">Member</th><th scope=\"col\">Permission</th><th scope=\"col\">Expiry</th><th scope=\"col\">State</th></tr></thead>",
+            "<tbody>${join(mapList(ledger, grantRow), "")}</tbody></table>"], "")
+    }
+
+    fn notices(access: Model::Access, now) = {
+        let seat = Html::note("Only the current administrator changes grants; permission holders cannot delegate, renew or widen them.")
+        let publishing = if !Model::holdsNow(access, Governance::PublishRelease, now) { Html::note(Model::publishGrantNotice()) } else { "" }
+        seat + publishing
+    }
+}

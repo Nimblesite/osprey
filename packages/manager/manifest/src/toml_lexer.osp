@@ -1,0 +1,192 @@
+namespace registry;
+import registry::Bytes
+
+/// Character-level scanning for the TOML subset Osprey manifests use: a byte
+/// cursor with 1-based byte line/column, whitespace/comment trivia, bare-token
+/// scanning and single-line string decoding with escape expansion. This module
+/// knows nothing about the document structure; it only moves over bytes.
+/// Failures are `code at line:column` strings, never prose.
+/// Implements the lexical half of [PACKAGE-MANIFEST].
+module TomlLexer {
+    export type Cursor = { text: string, at: int, line: int, column: int }
+    export type Scan = { token: string, at: Cursor }
+    export type Text = { text: string, at: Cursor }
+    type Walk = { at: Cursor, text: string, finished: bool, reason: string }
+
+    let space = 32
+    let tab = 9
+    let cr = 13
+    let newline = 10
+    let quote = 34
+    let apostrophe = 39
+    let backslash = 92
+    let hash = 35
+    let comma = 44
+    let eq = 61
+    let rbracket = 93
+    let rbrace = 125
+    let nonAsciiFloor = 128
+    let del = 127
+
+    fn failStr(code, c) = "${code} at ${c.line}:${c.column}"
+
+    /// The cursor at the first byte of `text`, line 1, column 1.
+    export fn start(text) = Cursor { text: text, at: 0, line: 1, column: 1 }
+
+    /// True once the cursor has passed the last byte.
+    export fn eof(c) = c.at >= byteLength(c.text)
+
+    /// The byte under the cursor, or -1 past the end.
+    export fn cur(c) = byteAt(c.text, c.at) ?: -1
+
+    /// The byte `n` positions ahead of the cursor, or -1 past the end.
+    export fn peek(c, n) = byteAt(c.text, c.at + n) ?: -1
+
+    /// Advance one byte within the current line.
+    export fn advance(c) = movedTo(c, c.at + 1)
+
+    fn movedTo(c, offset) = Cursor { text: c.text, at: offset, line: c.line, column: c.column + (offset - c.at) }
+
+    /// Advance past one newline byte onto the next line.
+    export fn breakLine(c) = Cursor { text: c.text, at: c.at + 1, line: c.line + 1, column: 1 }
+
+    fn isSpaceByte(b) = b == space || b == tab || b == cr
+
+    /// Skip horizontal whitespace (space, tab, carriage return).
+    export fn skipSpaces(c) = scannedRun(c, isSpaceByte)
+
+    fn commentEnd(c) = scannedRun(c, fn(b) => b != newline)
+
+    fn scannedRun(c, keep) = walkedFrom(c, fn(s) => runStep(s, keep)).at
+    fn runStep(s, keep) = runAt(s, Bytes::runEnd(s.at.text, s.at.at, keep))
+    fn runAt(s, offset) = walkState(movedTo(s.at, offset), "", offset == s.at.at, "")
+
+    /// Skip whitespace, `#` comments and whole newlines; the cursor lands on
+    /// the first significant byte or at EOF.
+    export fn skipTrivia(c) = walkedFrom(c, triviaStep).at
+    fn triviaStep(s) = {
+        let c1 = skipSpaces(s.at)
+        match cur(c1) == hash {
+            true => walkState(commentEnd(c1), "", false, "")
+            false => match cur(c1) == newline {
+                true => walkState(breakLine(c1), "", false, "")
+                false => walkState(c1, "", true, "")
+            }
+        }
+    }
+
+    /// After a value or header: whitespace and one `#` comment are allowed;
+    /// the cursor is left at the newline or EOF. Anything else is a reason.
+    export fn skipLineTail(c) = skipLineTailUpTo(skipSpaces(c))
+    fn skipLineTailUpTo(c) = match cur(c) == hash {
+        true => Success { value: commentEnd(c) }
+        false => match cur(c) == newline || eof(c) {
+            true => Success { value: c }
+            false => match cur(c) >= nonAsciiFloor {
+                true => Error { message: failStr("toml.non-ascii", c) }
+                false => Error { message: failStr("toml.trailing-text", c) }
+            }
+        }
+    }
+
+    fn oneByte(c) = substring(c.text, c.at, c.at + 1) ?: ""
+
+    fn bareTerm(b) = b == space || b == tab || b == cr || b == newline || b == comma || b == rbracket || b == rbrace || b == hash || b == eq || b == -1
+
+    /// The bare token up to the next value terminator; a non-ASCII byte fails.
+    export fn scanBare(c) = bareAt(c, scannedRun(c, fn(b) => !bareTerm(b) && b < nonAsciiFloor))
+    fn bareAt(start, end) = if cur(end) >= nonAsciiFloor { Error { message: failStr("toml.non-ascii", end) } }
+        else { Success { value: Scan { token: substring(start.text, start.at, end.at) ?: "", at: end } } }
+
+    fn controlByte(b) = (b < 32 && b != tab) || b == del
+
+    /// A basic `"..."` string from its opening quote, escapes decoded. Control
+    /// bytes other than tab, newlines and the end of input are rejected.
+    export fn basicString(c) = quotedString(c, quote, true)
+
+    fn walkState(at, text, finished, reason) = Walk { at: at, text: text, finished: finished, reason: reason }
+    fn stringFault(s, code, at) = walkState(s.at, s.text, true, failStr(code, at))
+    fn decoded(c, text) = Success { value: Text { text: text, at: c } }
+
+    fn quotedString(c, delimiter, basic) = {
+        let result = walkedFrom(advance(c), fn(s) => stringStep(s, c, delimiter, basic))
+        if result.reason != "" { Error { message: result.reason } }
+        else { decoded(result.at, result.text) }
+    }
+
+    // Split the byte budget so stack depth is logarithmic without requiring tail calls.
+    fn walkedFrom(c, step) = walkBlock(walkState(c, "", false, ""), byteLength(c.text) - c.at + 1, step)
+
+    fn walkBlock(s, budget, step) -> Walk = if s.finished { s }
+        else if budget <= 1 { step(s) }
+        else { walkSplit(s, budget, step, intDiv(budget, 2)) }
+
+    fn walkSplit(s, budget, step, leftBudget) = walkBlock(walkBlock(s, leftBudget, step), budget - leftBudget, step)
+
+    fn stringStep(s, start, delimiter, basic) = if eof(s.at) { stringFault(s, "toml.unterminated-string", start) }
+        else if cur(s.at) == delimiter { walkState(advance(s.at), s.text, true, "") }
+        else if basic && cur(s.at) == backslash { escapedStep(s, start) }
+        else if cur(s.at) == newline { stringFault(s, "toml.unterminated-string", start) }
+        else if controlByte(cur(s.at)) { stringFault(s, "toml.control-character", s.at) }
+        else { walkState(advance(s.at), s.text + oneByte(s.at), false, "") }
+
+    fn escapedStep(s, start) = match basicEscape(advance(s.at), s.text, start) {
+        Error { message } => walkState(s.at, s.text, true, message)
+        Success { value } => walkState(value.at, value.text, false, "")
+    }
+
+    fn basicEscape(c, acc, start) = match eof(c) {
+        true => Error { message: failStr("toml.unterminated-string", start) }
+        false => escapeByte(cur(c), c, acc, start)
+    }
+
+    fn escapeByte(b, c, acc, start) =
+        if b == quote { decoded(advance(c), acc + "\"") }
+        else if b == backslash { decoded(advance(c), acc + "\\") }
+        else if b == 98 { decoded(advance(c), acc + (fromCodePoint(8) ?: "")) }
+        else if b == 116 { decoded(advance(c), acc + "\t") }
+        else if b == 110 { decoded(advance(c), acc + "\n") }
+        else if b == 102 { decoded(advance(c), acc + (fromCodePoint(12) ?: "")) }
+        else if b == 114 { decoded(advance(c), acc + "\r") }
+        else if b == 117 { unicodeEscape(advance(c), acc, start, 4) }
+        else if b == 85 { unicodeEscape(advance(c), acc, start, 8) }
+        else { Error { message: failStr("toml.bad-escape", c) } }
+
+    fn hexVal(b) = if b >= 48 && b <= 57 { b - 48 }
+        else if b >= 97 && b <= 102 { b - 87 }
+        else if b >= 65 && b <= 70 { b - 55 }
+        else { -1 }
+
+    fn readHex(c, n, acc) -> Result<int, string> = match n == 0 {
+        true => Success { value: acc }
+        false => match eof(c) {
+            true => Error { message: failStr("toml.bad-escape", c) }
+            false => {
+                let d = hexVal(cur(c))
+                match d == -1 {
+                    true => Error { message: failStr("toml.bad-escape", c) }
+                    false => readHex(advance(c), n - 1, acc * 16 + d)
+                }
+            }
+        }
+    }
+
+    fn unicodeEscape(c, acc, start, n) = match readHex(c, n, 0) {
+        Error { message } => Error { message: message }
+        Success { value } => unicodeEscapeChar(c, n, acc, start, value)
+    }
+
+    fn unicodeEscapeChar(c, n, acc, start, cp) = match fromCodePoint(cp) {
+        Success { value } => decoded(afterHex(c, n), acc + value)
+        Error => Error { message: failStr("toml.bad-escape", start) }
+    }
+
+    fn afterHex(c, n) = match n == 0 {
+        true => c
+        false => afterHex(advance(c), n - 1)
+    }
+
+    /// A `'...'` literal string from its opening quote: no escapes, same
+    /// control-byte and termination rules as a basic string.
+    export fn literalString(c) = quotedString(c, apostrophe, false)
+}

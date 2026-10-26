@@ -1,0 +1,44 @@
+namespace registry_cli;
+import registry_host::Host
+import registry_cli::Reports
+import registry::Capabilities
+
+/// `osprey doctor`: report what this host can do for the package system and
+/// which capabilities are still blocked. It never installs anything.
+/// Implements the local half of `[PACKAGE-MANIFEST]` doctor behavior.
+module Doctor {
+    let probePath = ".osprey/scratch/doctor.probe"
+    let probeText = "osprey doctor probe"
+
+    fn processLine() = {
+        let run = perform Host::Process.run("printf ok")
+        Reports::field("process", if run.status == 0 && run.stdout == "ok" { "ok" } else { "failed (status ${run.status})" })
+    }
+
+    fn readBack(written) = match written {
+        Success => match perform Host::Files.read(probePath) {
+            Success { value } => if value == probeText { "ok" } else { "corrupt read" }
+            Error { message } => "read failed: ${message}"
+        }
+        Error { message } => "write failed: ${message}"
+    }
+
+    fn filesLine() = Reports::field("files", readBack(perform Host::Files.write(probePath, probeText)))
+
+    fn compilerLine() = {
+        let found = perform Host::Process.run("command -v osprey")
+        Reports::field("compiler", if found.status == 0 { trim(found.stdout) } else { "missing (osprey is not on PATH)" })
+    }
+
+    /// uv is the provider of the one system capability Osprey invokes,
+    /// `python/interop`; it is reported as guidance, never installed ([PACKAGE-PYTHON-UV]).
+    fn uvLine() = {
+        let found = perform Host::Process.run("command -v uv")
+        Reports::field("uv", if found.status == 0 { trim(found.stdout) } else { "missing (python/uv: needed only by packages declaring python/interop)" })
+    }
+
+    fn blockedLines() = mapList(Capabilities::blocked(), fn(c) => Reports::field("blocked", "${c.id} (${c.summary})"))
+
+    /// The whole report; the scratch directory exists once `process` has run.
+    export fn report() = Reports::success(listConcat([processLine(), filesLine(), compilerLine(), uvLine()], blockedLines()))
+}

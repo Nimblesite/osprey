@@ -17,7 +17,7 @@ Osprey's VS Code extension has a CPU profiler built in. It samples a running Osp
 - **Run & Profile CPU.** In the Osprey Debug view, the Processes panel offers **Run & Profile CPU (Current File)**. It builds the open file, starts it under the debugger and samples it. While it runs, the panel and the status bar count the samples and name the hottest function so far: the one with the most samples of its own.
 - **The results.** Click the counter in the status bar to stop. The results panel opens on its own, with a flame graph (left-heavy or in time order), the hot functions and the hot lines. Each hot line in the editor carries its share of the samples.
 - **Attach to a running program.** Every Osprey program can be profiled while it runs, with no restart. Build it with `--profile` for line-level results, start it, and press the flame on its row in Processes. Hovering the row shows its CPU and memory.
-- **Memory.** Osprey values never change once built, so the managed heap can never hold a reference cycle. You choose a memory backend when you build: `default` allocates and never collects, `gc` is a conservative tracing collector, and `arc` frees each value the moment its last owner lets go. Osprey has no live heap tracker yet, so the profiler offers no memory tracking.
+- **Memory.** Osprey values never change once built, so the managed heap can never hold a reference cycle. You choose a memory backend when you build: `gc` is the default conservative tracing collector; `arc` releases a value when its last owner is dropped. Explicit `--memory=none` selects unmanaged allocation, which retains general allocations. Osprey has no live heap tracker yet, so the profiler offers no memory tracking.
 - **Leaks.** Build with `--memory=arc` and run with `OSPREY_ARC_DEBUG=1`. When the program exits, ARC reports how many objects are still alive. `OSPREY_ARC_DEBUG=2` also lists each one by kind.
 
 Every frame in the video is the real editor and language server. Both programs are in [`examples/profiling`](https://github.com/Nimblesite/osprey/tree/main/examples/profiling).
@@ -40,7 +40,7 @@ OSPREY_ARC_DEBUG=1 ./words
 # [osp-arc] exit: 0 live objects, 0 KiB (+0 immortal)
 ```
 
-Osprey is alpha software.
+Osprey is actively evolving.
 
 ## Transcript
 

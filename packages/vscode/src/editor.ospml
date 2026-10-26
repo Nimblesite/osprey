@@ -1,0 +1,39 @@
+// Implements [VSCODE-SDK-CAPABILITIES]: typed requests reuse Osprey Native's
+// store, event delivery and bounded capability protocol. No application
+// serializes host operation names or editor protocol dictionaries.
+namespace vscode
+import ui::Doc
+import ui::Requests
+
+(** VS Code capabilities for applications using the Osprey Native runtime. *)
+module Editor
+    fileUri uri = startsWith uri "file:///" || startsWith uri "vscode-remote://"
+
+    bounded (timeout, limit) = timeout > 0 && timeout <= 120000 && limit > 0 && limit <= 16777216
+
+    request (ticket, operation, arguments, timeout, limit, slice) = match ticket != "" && bounded (timeout, limit)
+        false => Error(message = "vscode.request.invalid-bounds-or-ticket")
+        true => Success(value = Requests::ask (ticket, ui::HostCall(hostNamespace = "vscode", hostOperation = operation, hostArguments = arguments, hostTimeout = timeout, hostLimit = limit, hostSlice = slice)))
+
+    (** The trusted host's workspace folders, active document and trust state. *)
+    export workspaces ticket = request (ticket, "workspace.snapshot", JsonObject [], 10000, 1048576, "")
+
+    (** Open an editor resource at a one-based source location; command URIs are never resources. *)
+    export openDocument (ticket, uri, line, column) = match fileUri uri && line > 0 && column > 0
+        false => Error(message = "vscode.document.invalid-resource-or-location")
+        true => request (ticket, "document.open", JsonObject [Doc::str ("uri", uri), Doc::num ("line", line), Doc::num ("column", column)], 10000, 1024, "")
+
+    (** Run an authorized executable without a shell, with explicit stdin, workspace and hard limits. The host independently checks workspace trust, executable authority and bounds. *)
+    export processInput (ticket, executable, arguments, input, workspace, timeout, limit, slice) = match fileUri workspace && executable != "" && slice != ""
+        false => Error(message = "vscode.process.invalid-executable-workspace-or-slice")
+        true => request (ticket, "process.input", JsonObject [Doc::str ("executable", executable), JsonMember "argv" (Doc::strings arguments), Doc::str ("stdin", input), Doc::str ("workspace", workspace)], timeout, limit, slice)
+
+    (** Read resource-scoped editor configuration; executable settings remain machine-scoped in the host. *)
+    export configuration (ticket, section, workspace) = match section != "" && fileUri workspace
+        false => Error(message = "vscode.configuration.invalid-section-or-workspace")
+        true => request (ticket, "configuration.read", JsonObject [Doc::str ("section", section), Doc::str ("workspace", workspace)], 10000, 1048576, "")
+
+    (** Reveal an existing host-registered Osprey Native webview, never arbitrary HTML or script. *)
+    export revealView (ticket, view) = match view == ""
+        true => Error(message = "vscode.view.missing-id")
+        false => request (ticket, "webview.reveal", JsonObject [Doc::str ("view", view)], 10000, 1024, "")

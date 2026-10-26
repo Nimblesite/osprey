@@ -52,6 +52,8 @@ pub(crate) fn assemble(
         let warnings =
             crate::advice::warnings(config, &contributions, &graph, &metadata, &state_boundaries);
         Ok(AssembledProject {
+            source_dependencies: resolution.source_dependencies,
+            method_candidates: resolution.method_candidates,
             warnings,
             state_boundaries,
             program: resolution.program,
@@ -142,9 +144,13 @@ fn choose_entry(
     // ill-formed whether or not it is the one selected.
     report_entry_conflicts(sources, metadata, errors);
     if let Some(configured) = &config.entry {
+        let resolved = config.directory.join(configured).canonicalize().ok();
         let candidates = metadata
             .iter()
-            .filter(|source| source.path == *configured || source.path.ends_with(configured))
+            .filter(|source| match &resolved {
+                Some(entry) => source.path.canonicalize().is_ok_and(|path| path == *entry),
+                None => source.path == *configured || source.path.ends_with(configured),
+            })
             .map(|source| source.index)
             .collect::<Vec<_>>();
         return unique_entry(&candidates, configured.to_string_lossy().as_ref(), errors);

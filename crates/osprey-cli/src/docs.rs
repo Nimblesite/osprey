@@ -208,7 +208,7 @@ fn page(v: &BuiltinDocView) -> String {
         v.signature, v.summary
     );
     push_parameters(&mut out, v);
-    let _ = writeln!(out, "**Returns:** {}", v.return_type);
+    let _ = writeln!(out, "**Returns:** `{}`", v.return_type);
     push_example(&mut out, v);
     out
 }
@@ -219,7 +219,7 @@ fn push_parameters(out: &mut String, v: &BuiltinDocView) {
     }
     out.push_str("## Parameters\n\n");
     for p in &v.params {
-        let _ = writeln!(out, "- **{}** ({}): {}", p.name, p.ty, p.description);
+        let _ = writeln!(out, "- **{}** (`{}`): {}", p.name, p.ty, p.description);
     }
     out.push('\n');
 }
@@ -298,25 +298,63 @@ fn yaml(s: &str) -> String {
 )]
 mod tests {
     use super::*;
+    use crate::testkit::shows;
     use std::path::PathBuf;
+
+    const TYPED_SUMMARIES: [&str; 5] = [
+        "fromGpu",
+        "gpuLoadTensor",
+        "loadTensor",
+        "listSort",
+        "signalDependencies",
+    ];
+
+    #[test]
+    fn generic_types_in_summaries_are_text() -> Result<(), Box<dyn std::error::Error>> {
+        for name in TYPED_SUMMARIES {
+            let view = builtin_doc_view(name).ok_or("builtin documentation missing")?;
+            assert!(
+                !pulldown_cmark::Parser::new(&view.summary).any(|event| matches!(
+                    event,
+                    pulldown_cmark::Event::Html(_) | pulldown_cmark::Event::InlineHtml(_)
+                )),
+                "{}: {}",
+                name,
+                view.summary
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn page_quotes_generic_types_in_markdown() -> Result<(), Box<dyn std::error::Error>> {
+        for name in ["gpuMatMul", "map", "mapGet"] {
+            let view = builtin_doc_view(name).ok_or("builtin documentation missing")?;
+            let md = page(&view);
+            assert!(md.contains(&format!("**Returns:** `{}`", view.return_type)));
+            for param in view.params {
+                assert!(md.contains(&format!("**{}** (`{}`)", param.name, param.ty)));
+            }
+        }
+        Ok(())
+    }
 
     #[test]
     fn page_uses_scheme_types_and_omits_empty_sections() {
         let view = builtin_doc_view("sleep").expect("sleep documented");
         let md = page(&view);
         // The signature follows the scheme (`-> Unit`), not the old prose `-> int`.
-        assert!(
-            md.contains("**Signature:** `sleep(milliseconds: int) -> Unit`"),
-            "{md}"
+        shows(
+            &md,
+            &[
+                "**Signature:** `sleep(milliseconds: int) -> Unit`",
+                "- **milliseconds** (`int`): Number of milliseconds",
+                "**Returns:** `Unit`",
+            ],
         );
-        assert!(
-            md.contains("- **milliseconds** (int): Number of milliseconds"),
-            "{md}"
-        );
-        assert!(md.contains("**Returns:** Unit"), "{md}");
         // A zero-arg builtin renders no Parameters section.
         let input = page(&builtin_doc_view("input").expect("input documented"));
-        assert!(!input.contains("## Parameters"), "{input}");
+        crate::testkit::contents(&input, &[], &["## Parameters"]);
     }
 
     #[test]
@@ -380,14 +418,7 @@ mod tests {
             "a known builtin page written"
         );
         let index = fs::read_to_string(functions.join("index.md")).expect("index readable");
-        assert!(
-            index.contains("Built-in Functions"),
-            "index carries its heading"
-        );
-        assert!(
-            index.contains("sleep"),
-            "index lists each builtin: {index:.80}"
-        );
+        shows(&index, &["Built-in Functions", "sleep"]);
         let _ = fs::remove_dir_all(&dir);
     }
 

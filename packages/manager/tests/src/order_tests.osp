@@ -1,0 +1,19 @@
+namespace registry_tests;
+import registry::SetOrder
+import registry_tests::Fixtures
+
+/// Every list order and duplicate rule of spec 0031, one fixture row per
+/// sorted, swapped and same-key case. Implements the list rules of
+/// [PACKAGE-TYPE-INVARIANTS].
+module OrderTests {
+    fn verdict(c) = SetOrder::listCode(Fixtures::text(Fixtures::field(c, "element")), Fixtures::text(Fixtures::field(c, "field")), Fixtures::items(Fixtures::field(c, "items")))
+
+    fn caseHolds(c) = verdict(c) == Fixtures::text(Fixtures::field(c, "code"))
+
+    fn cases() = Fixtures::items(Fixtures::field(Fixtures::load("order/lists.json"), "cases"))
+
+    fn caseTest(c) = test("order: ${Fixtures::text(Fixtures::field(c, "why"))}", fn() => check(Fixtures::text(Fixtures::field(c, "why")), Fixtures::text(Fixtures::field(c, "code")), verdict(c)))
+
+    /// One test per order vector.
+    export fn run() = forEachList(cases(), caseTest)
+}

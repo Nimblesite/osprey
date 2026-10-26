@@ -2,6 +2,7 @@
 use crate::builder::Codegen;
 use crate::error::{CodegenError, Result};
 use crate::llty::{LType, Value};
+use crate::meta::MetaField;
 use osprey_ast::FieldAssignment;
 
 pub(crate) fn gen_constructor(
@@ -42,10 +43,21 @@ fn tagged_constructor(
     let struct_ty = cg
         .ctor_struct_ty(name)
         .ok_or_else(|| CodegenError::unknown(name))?;
-    let obj = cg.malloc_struct_noinit(&struct_ty, view.meta);
+    let values = view
+        .fields
+        .iter()
+        .map(|(field, ty)| constructor_field(cg, name, field, fields, *ty))
+        .collect::<Result<Vec<_>>>()?;
+    let meta = constructor_meta(cg, view.meta, &values);
+    let obj = cg.malloc_struct_noinit(&struct_ty, meta);
     super::store_tag(cg, &struct_ty, &obj, view.tag);
-    for (i, (field, ty)) in view.fields.iter().enumerate() {
-        let value = constructor_field(cg, name, field, fields, *ty)?;
+    for (i, ((_, ty), (value, field_meta))) in view.fields.iter().zip(&values).enumerate() {
+        // A later initializer can abandon construction through a control effect.
+        // Retain boxed children only after every initializer has completed.
+        if *field_meta == MetaField::ManagedWord {
+            let pointer = crate::conv::unbox_from_i64(cg, &value.operand, LType::Ptr);
+            crate::arc::dup_store(cg, pointer.ty.as_str(), &pointer.operand);
+        }
         super::store_field(cg, &struct_ty, &obj, i + 1, *ty, &value.operand);
     }
     Ok(super::own_struct_handle(cg, &struct_ty, &obj, view.owner))
@@ -57,18 +69,33 @@ fn constructor_field(
     field: &str,
     fields: &[FieldAssignment],
     ty: LType,
-) -> Result<Value> {
+) -> Result<(Value, MetaField)> {
     let assignment = fields
         .iter()
         .find(|f| f.name == field)
         .ok_or_else(|| CodegenError::invalid(format!("missing field `{field}` for `{owner}`")))?;
-    let value = crate::expr::gen_expr(cg, &assignment.value)?;
-    let value = crate::listlit::escaping(cg, value);
-    let value = super::fields::coerce_field(cg, value, owner, field, None)?;
-    let stored = crate::cast::erase_result(cg, value);
-    if ty == LType::I64 {
-        Ok(crate::conv::box_to_i64(cg, stored))
+    let stored = super::settled_field_value(cg, &assignment.value, owner, field, None)?;
+    let meta = if ty == LType::I64 && stored.ty.is_managed_ptr() {
+        MetaField::ManagedWord
     } else {
-        crate::cast::coerce_to(cg, stored, ty)
+        MetaField::of_lty(ty)
+    };
+    if ty == LType::I64 {
+        Ok((crate::conv::box_to_i64(cg, stored), meta))
+    } else {
+        Ok((crate::cast::coerce_to(cg, stored, ty)?, meta))
     }
+}
+
+fn constructor_meta(cg: &Codegen, declared: i64, values: &[(Value, MetaField)]) -> i64 {
+    if !values
+        .iter()
+        .any(|(_, meta)| *meta == MetaField::ManagedWord)
+    {
+        return declared;
+    }
+    let fields = std::iter::once(MetaField::Word)
+        .chain(values.iter().map(|(_, meta)| *meta))
+        .collect::<Vec<_>>();
+    cg.struct_meta(&fields)
 }

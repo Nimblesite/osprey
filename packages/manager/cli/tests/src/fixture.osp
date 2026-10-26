@@ -1,0 +1,90 @@
+namespace registry_tests;
+import registry_host::Host
+import registry_cli::Reports
+import registry::Identity
+import registry::Manifest
+import registry::ManifestModel
+import registry::Names
+import registry::Release
+import registry::ReleaseFiles
+
+/// The fixture vocabulary every CLI suite drives its handlers with: read
+/// routes, tree walks, served releases assembled from in-memory files, and
+/// the root manifest a test's project reads. One definition, so a suite is
+/// its cases and nothing else ([PACKAGE-FOLDER-REGISTRY] tests).
+module Fixture {
+    /// One `Host::Files.read` answer: the exact path and its content.
+    export type ReadRoute = { path: string, content: string }
+    /// One `Host::Tree.walk` answer: the exact directory and its regular files.
+    export type WalkRoute = { dir: string, files: List<string> }
+
+    /// Line `i` of a report, or "".
+    export fn line(report: Reports::Report, i) = listGet(report.lines, i) ?: ""
+
+    export fn readRoute(path, content) = ReadRoute { path: path, content: content }
+    export fn walkRoute(dir, files) = WalkRoute { dir: dir, files: files }
+
+    // `path` is shared with `Source::Entry` and `ManifestModel::Asset`; issue
+    // #273 needs the receiver spelled out.
+    fn readPath(r: ReadRoute) = r.path
+    fn readContent(r: ReadRoute) = r.content
+
+    /// The content routed for `path`, else the fixture's own refusal.
+    export fn readFor(reads, path) = foldList(reads, Error { message: "fixture: no read ${path}" }, fn(answer, r) => match answer {
+        Success => answer
+        Error => if readPath(r) == path { Success { value: readContent(r) } } else { answer }
+    })
+
+    /// The walk routed for `dir`, all files regular, else the fixture's own refusal.
+    export fn walkFor(walks, dir) = foldList(walks, Error { message: "fixture: no tree ${dir}" }, fn(answer, w: WalkRoute) => match answer {
+        Success => answer
+        Error => if w.dir == dir { Success { value: Host::Walk { regular: w.files, executable: [], special: [] } } } else { answer }
+    })
+
+    export fn readAfter(written, reads, path) = readFor(listConcat(written, reads), path)
+
+    fn pathsUnder(written, dir) = mapList(filterList(written, fn(r: ReadRoute) => startsWith(r.path, "${dir}/")),
+        fn(r: ReadRoute) => drop(r.path, byteLength(dir) + 1))
+
+    fn joinedPaths(before, after) = listSort(foldList(after, before, fn(paths, path) =>
+        if listContains(paths, path) { paths } else { listAppend(paths, path) }))
+
+    fn withWrites(walk: Host::Walk, paths) = Host::Walk {
+        regular: joinedPaths(walk.regular, paths), executable: walk.executable, special: walk.special
+    }
+
+    /// Writes become readable and walkable; pre-existing unexpected files stay visible.
+    export fn walkAfter(written, walks, ensured, dir) = match walkFor(walks, dir) {
+        Success { value } => Success { value: withWrites(value, pathsUnder(written, dir)) }
+        Error { message } => if listContains(ensured, dir) {
+            Success { value: Host::Walk { regular: joinedPaths([], pathsUnder(written, dir)), executable: [], special: [] } }
+        } else { Error { message: message } }
+    }
+
+    /// The served release no registry has: the `?:` fallback of `served`.
+    export fn missingServed() = Release::Served { id: Identity::blank(), files: [] }
+
+    /// A served release assembled from in-memory files, as the server would
+    /// serve `@scope/name/<epoch>.<ordinal>`.
+    export fn served(dir, files) = ReleaseFiles::assemble(dir, files) ?: missingServed()
+
+    /// A release file.
+    export fn file(relPath, content) = Release::File { relPath: relPath, content: content }
+
+    /// The parsed manifest of `text`; a rejected text is the blank manifest,
+    /// which the test that wrote the text would notice at once.
+    export fn manifestOf(text) -> ManifestModel::Manifest = Manifest::accepted(Manifest::parse(text)) ?: ManifestModel::blank()
+
+    // `Served.id` is shared with `Capabilities::Blocked`; the receiver is typed.
+    /// `@scope/name` of a served release.
+    export fn keyText(s: Release::Served) = Names::display(s.id.key)
+
+    /// The digest of a served release.
+    export fn digestOf(s: Release::Served) = s.id.digest
+
+    /// The identity of a served release.
+    export fn idOf(s: Release::Served) = s.id
+
+    /// The files of a served release.
+    export fn filesOf(s: Release::Served) = s.files
+}

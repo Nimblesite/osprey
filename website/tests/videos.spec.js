@@ -11,7 +11,7 @@ const SITE = path.resolve(__dirname, "../_site");
 const ORIGIN = "https://www.ospreylang.dev";
 const WATCH = "/docs/tutorials/swift-interop/";
 /** Every watch page, each with its own video. */
-const WATCH_PAGES = [WATCH, "/docs/tutorials/profiler/"];
+const WATCH_PAGES = [WATCH, "/docs/tutorials/profiler/", "/docs/packages-in-vscode/"];
 const read = (file) => fs.readFileSync(path.join(SITE, file), "utf8");
 const jsonLd = (html) =>
   [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map(([, json]) => JSON.parse(json));
@@ -82,6 +82,13 @@ test("only the watch page carries the video's markup", () => {
   const pages = fs.readdirSync(SITE, { recursive: true }).filter((file) => file.endsWith(".html"));
   const watchPages = pages.filter((file) => read(file).includes('"@type": "VideoObject"'));
   expect(watchPages.sort()).toEqual(WATCH_PAGES.map((watch) => `${watch.slice(1)}index.html`).sort());
+});
+
+test("the package guide links to the canonical package video watch page", () => {
+  const html = read("docs/package-manager/index.html");
+  expect(html).toContain('class="video-card" href="/docs/packages-in-vscode/"');
+  expect(jsonLd(html).some((data) => data["@type"] === "VideoObject")).toBe(false);
+  expect(read("video-sitemap.xml")).toContain(`${ORIGIN}/docs/packages-in-vscode/`);
 });
 
 test("a ?t= link starts the video there and a chapter seeks in place", async ({ page }) => {

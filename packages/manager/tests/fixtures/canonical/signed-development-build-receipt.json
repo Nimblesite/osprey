@@ -1,0 +1,39 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "The proof-free payload cannot hash its own attestationDigest.",
+  "type": "SignedDevelopmentBuildReceipt",
+  "value": {
+    "payload": {
+      "builder": "principal-alice",
+      "developmentLockDigest": "sha256:85d76cc54097e8ae1442715625c91d6736da33b0c011d863316d5271cc25becb",
+      "buildEnvironmentDigest": "sha256:f4bc78699316058bcd58f645d6a86051d84dd30de6397f7e6066f5bb1b3a028e",
+      "inputs": [
+        {
+          "sourceDigest": "sha256:a7a65655016bb7bff859bbd5f5a6561e6f231508ffccefa7bb4f5bdaf0aa5bdf",
+          "manifestDigest": "sha256:e79f867f038054cb369a62aba515a9c0aa5c0e9951f8ef86514a3d5739fb0d4c",
+          "buildPlanDigest": "sha256:d1afda20893f49e392dd51488f49bd1ea3bc77a89b11ec662c76d39343ed095a",
+          "sbomDigest": "sha256:800eeb64857f65daf689b5de03860ec1c391b116c292fdb9f08ef46deec17e76",
+          "inferredCapabilities": [
+            "net.http"
+          ]
+        },
+        {
+          "package": {
+            "scope": "demo",
+            "name": "maths"
+          },
+          "sourceDigest": "sha256:7dbfb158b1f1fe822b621f10233738e638b97cfd8dc6fccdfdf5fc5a0bca7a37",
+          "manifestDigest": "sha256:045424f4b9731e2f905b49eb4fe802e4b6cfcecfc1257d3c0ad46e8ede60bad1",
+          "buildPlanDigest": "sha256:2234b4f4f3ad08d5e44947ac790b7972313faad3250e454fdd2e3d2c1ff4382b",
+          "sbomDigest": "sha256:57fe2f7713572604a7c6b827326df036e6df25a708bd9364357310cc1fb4e357",
+          "inferredCapabilities": []
+        }
+      ],
+      "outputDigest": "sha256:1cee16aa45218c2735ccb53338b4251625275261d5771f954a14d66061ed9774",
+      "observedAt": "2026-10-02T12:30:45.123Z"
+    },
+    "attestationDigest": "sha256:56b46d62ee0b46b0eddb386898e0313885a39f194e47f8441c97f1007e19e5bc"
+  },
+  "canonical": "{\"attestationDigest\":\"sha256:56b46d62ee0b46b0eddb386898e0313885a39f194e47f8441c97f1007e19e5bc\",\"payload\":{\"buildEnvironmentDigest\":\"sha256:f4bc78699316058bcd58f645d6a86051d84dd30de6397f7e6066f5bb1b3a028e\",\"builder\":\"principal-alice\",\"developmentLockDigest\":\"sha256:85d76cc54097e8ae1442715625c91d6736da33b0c011d863316d5271cc25becb\",\"inputs\":[{\"buildPlanDigest\":\"sha256:d1afda20893f49e392dd51488f49bd1ea3bc77a89b11ec662c76d39343ed095a\",\"inferredCapabilities\":[\"net.http\"],\"manifestDigest\":\"sha256:e79f867f038054cb369a62aba515a9c0aa5c0e9951f8ef86514a3d5739fb0d4c\",\"sbomDigest\":\"sha256:800eeb64857f65daf689b5de03860ec1c391b116c292fdb9f08ef46deec17e76\",\"sourceDigest\":\"sha256:a7a65655016bb7bff859bbd5f5a6561e6f231508ffccefa7bb4f5bdaf0aa5bdf\"},{\"buildPlanDigest\":\"sha256:2234b4f4f3ad08d5e44947ac790b7972313faad3250e454fdd2e3d2c1ff4382b\",\"inferredCapabilities\":[],\"manifestDigest\":\"sha256:045424f4b9731e2f905b49eb4fe802e4b6cfcecfc1257d3c0ad46e8ede60bad1\",\"package\":{\"name\":\"maths\",\"scope\":\"demo\"},\"sbomDigest\":\"sha256:57fe2f7713572604a7c6b827326df036e6df25a708bd9364357310cc1fb4e357\",\"sourceDigest\":\"sha256:7dbfb158b1f1fe822b621f10233738e638b97cfd8dc6fccdfdf5fc5a0bca7a37\"}],\"observedAt\":\"2026-10-02T12:30:45.123Z\",\"outputDigest\":\"sha256:1cee16aa45218c2735ccb53338b4251625275261d5771f954a14d66061ed9774\"}}",
+  "canonicalLength": 1298
+}

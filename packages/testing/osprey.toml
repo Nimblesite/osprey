@@ -1,0 +1,11 @@
+[project]
+name = "testing"
+source_roots = ["src"]
+python_sources = ["src/check.py"]
+default_namespace = "testing"
+
+[package]
+name = "@osprey/testing"
+license = "MIT"
+summary = "Assertions with numpy allclose tolerances for Osprey test suites"
+keywords = ["assertions", "python-flavor", "testing"]

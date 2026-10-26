@@ -1,0 +1,14 @@
+{
+  "spec": "[PACKAGE-TYPE-INVARIANTS]",
+  "description": "A first transaction: no previous lock or generation; journalDigest omits itself.",
+  "type": "WorkspaceTransaction",
+  "value": {
+    "previousManifest": "sha256:e77d94c8d26f17317885e5ac3110dcafdf9e3bbea8f5600065ccb035e6ea3548",
+    "nextManifest": "sha256:e79f867f038054cb369a62aba515a9c0aa5c0e9951f8ef86514a3d5739fb0d4c",
+    "nextReleaseLock": "sha256:68876afbe6ee379a46145a4a1bce3abcafbcae930f683b640c376a84c365127f",
+    "nextGeneration": "sha256:8f976c76d3f71bf929b2ca9b814b7ed5d1b1de138a3b55bf47bfb644e8bf741e",
+    "journalDigest": "sha256:8b08b8be0ad18957b1e1e854f4fec33e6e76c7b04d3ee9e3bcbf24add09506e9"
+  },
+  "canonical": "{\"journalDigest\":\"sha256:8b08b8be0ad18957b1e1e854f4fec33e6e76c7b04d3ee9e3bcbf24add09506e9\",\"nextGeneration\":\"sha256:8f976c76d3f71bf929b2ca9b814b7ed5d1b1de138a3b55bf47bfb644e8bf741e\",\"nextManifest\":\"sha256:e79f867f038054cb369a62aba515a9c0aa5c0e9951f8ef86514a3d5739fb0d4c\",\"nextReleaseLock\":\"sha256:68876afbe6ee379a46145a4a1bce3abcafbcae930f683b640c376a84c365127f\",\"previousManifest\":\"sha256:e77d94c8d26f17317885e5ac3110dcafdf9e3bbea8f5600065ccb035e6ea3548\"}",
+  "canonicalLength": 456
+}

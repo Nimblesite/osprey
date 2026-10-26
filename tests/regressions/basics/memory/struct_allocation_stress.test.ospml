@@ -24,6 +24,21 @@ type Particle =
     mass : int
     spin : int
 
+type Kept A =
+    items : List<A>
+
+keepItems (items, keep) =
+    match keep
+        true => Kept(items = items)
+        false => Kept(items = [])
+keepSuccess (items, ok) =
+    selected = match ok
+        true => Success(value = 1)
+        false => Error(message = "absent")
+    match selected
+        Success => Kept(items = items)
+        Error => Kept(items = [])
+
 COUNT = 100000
 
 forge i = Particle(id = i, mass = (i * 3) , spin = (i % 5) )
@@ -69,7 +84,11 @@ structAllocationCase () =
         energy sample == 16,
         bumpedOnce.mass == 13,
         !(heavy (forge 50000)),
-        heavy (forge 50001)
+        heavy (forge 50001),
+        length (keepItems (listAppend [] 7, false)).items == 0,
+        (listGet (keepItems (listAppend [] 7, true)).items 0 ?: 0) == 7,
+        length (keepSuccess (listAppend [] 9, false)).items == 0,
+        (listGet (keepSuccess (listAppend [] 9, true)).items 0 ?: 0) == 9
     ]
 
 test "record allocation preserves aggregate values" (\() => exactArithmetic (structAllocationCase))

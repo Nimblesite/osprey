@@ -110,3 +110,13 @@ pub(crate) fn block(
         },
     }
 }
+
+/// Preserve an executable expression's source anchor without adding work.
+/// Implements [TESTING-COVERAGE-CODEGEN]; position-blind rendering erases this scope.
+pub(crate) fn positioned(value: Expr, position: Option<osprey_ast::Position>) -> Expr {
+    Expr::Block {
+        statements: Vec::new(),
+        value: Some(Box::new(value)),
+        position,
+    }
+}

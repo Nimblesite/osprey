@@ -185,6 +185,12 @@ jobs:
           node scripts/verify-release-gates.mjs
           python3 scripts/test-release-gate.py
 
+      - name: Package coverage wiring contracts
+        run: python3 scripts/test-package-coverage.py
+
+      - name: Python application runner contracts
+        run: python3 scripts/test-python-app-ports-contracts.py
+
       - name: Format check
         run: cargo fmt --all --check
 
@@ -239,6 +245,8 @@ jobs:
           # compiler itself resolves them via compiler/lib.
           path: |
             target/release/osprey
+            target/osprey-pkg
+            target/package-workspace.wasm
             compiler/lib/
             compiler/bin/*.a
             examples/projects/modules/src/web/bundle.ospml
@@ -333,28 +341,16 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # The assertion corpus, once per memory backend. `run_test_corpus.sh` checks
-  # BOTH the in-language assertions and the byte-exact stdout golden in a
-  # single pass, and comparing one golden across every backend is the
-  # [MEM-BACKENDS] [MEM-OPAQUE] oracle: swapping the allocator must not perturb
-  # one byte of output.
-  #
-  # These are three explicit jobs rather than one matrix ON PURPOSE. The gate
-  # is verified from inside the tree by scripts/verify-branch-protection.mjs,
-  # which matches each required context against a literal job `name:`. A matrix
-  # name interpolates (`(${{ matrix.memory }})`) and so matches nothing, which
-  # that script correctly reports as a check that can never report. A
-  # verifiable gate is worth more here than three saved stanzas.
-  test-corpus-default:
-    name: "Tests: language corpus (default)"
+  # [PKG-COVERAGE-GATE] Each package has its own source threshold. Keep this
+  # collection independent of the Rust workspace's existing time budget.
+  test-packages:
+    name: "Tests: package source coverage"
     needs: [changes, build]
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
-        # lsp-profiler is a path dependency in the lspkit submodule, and cargo
-        # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
         with:
           submodules: true
       - name: Setup Osprey toolchain (no rebuild)
@@ -366,9 +362,115 @@ jobs:
           name: osprey-build
       - name: Restore artifact permissions
         run: chmod +x target/release/osprey
-      - name: Corpus and goldens (compiler-default allocator)
-        run: make _test_goldens
+      - name: Package coverage collection
+        run: make _test_packages
+      - name: Upload package coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-packages
+          path: target/coverage/packages/
+          retention-days: 7
+          if-no-files-found: error
 
+  test-registry-gc:
+    name: "Tests: package manager (gc)"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
+      - uses: actions/download-artifact@v4
+        with:
+          name: osprey-build
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey target/osprey-pkg
+      - name: Install uv for Python integration
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.11.3"
+          python-version: "3.12"
+          enable-cache: false
+      - name: Require Python integration prerequisites
+        run: |
+          uv --version
+          uv python install 3.12
+      - name: Package manager security and integration suites
+        run: make _test_registry REGISTRY_MEMORY=gc
+
+  test-registry-arc:
+    name: "Tests: package manager (arc)"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
+      - uses: actions/download-artifact@v4
+        with:
+          name: osprey-build
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey target/osprey-pkg
+      - name: Install uv for Python integration
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.11.3"
+          python-version: "3.12"
+          enable-cache: false
+      - name: Require Python integration prerequisites
+        run: |
+          uv --version
+          uv python install 3.12
+      - name: Package manager security and integration suites
+        run: make _test_registry REGISTRY_MEMORY=arc
+
+  test-python-app-ports:
+    name: "Tests: Python application ports"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
+      - uses: actions/download-artifact@v4
+        with:
+          name: osprey-build
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey
+      - name: Python application ports under every memory backend
+        run: make _test_python_app_ports
+
+  # The assertion corpus, once per memory backend. `run_test_corpus.sh` checks
+  # BOTH the in-language assertions and the byte-exact stdout golden in a
+  # single pass, and comparing one golden across every backend is the
+  # [MEM-BACKENDS] [MEM-OPAQUE] oracle: swapping the allocator must not perturb
+  # one byte of output.
+  #
+  # These are two explicit jobs rather than one matrix ON PURPOSE. The gate
+  # is verified from inside the tree by scripts/verify-branch-protection.mjs,
+  # which matches each required context against a literal job `name:`. A matrix
+  # name interpolates (`(${{ matrix.memory }})`) and so matches nothing, which
+  # that script correctly reports as a check that can never report. A
+  # verifiable gate is worth more here than two saved stanzas.
   test-corpus-gc:
     name: "Tests: language corpus (gc)"
     needs: [changes, build]
@@ -443,6 +545,9 @@ jobs:
       - name: C runtime suites with coverage
         run: make _test_c_runtime
 
+      - name: Hunt mock runtime and corpus tooling assertions
+        run: make _test_hunt_mock
+
       - name: C runtime coverage thresholds
         run: make _coverage_check_c_runtime
 
@@ -465,9 +570,9 @@ jobs:
         with:
           submodules: true
       # `pretest` compiles the extension, which copies its icon from this
-      # LFS-stored logo and refuses a pointer. Fetch only the logo.
-      - name: Fetch the logo the extension icon is copied from
-        run: git lfs install --local && git lfs pull --include=website/src/assets/images/logo.png
+      # LFS-stored logo; packaging also requires the README GIF. Refuse pointers.
+      - name: Fetch extension icon and README media
+        run: git lfs install --local && git lfs pull --include="website/src/assets/images/logo.png,vscode-extension/media/package-tour.gif"
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -481,6 +586,22 @@ jobs:
 
       - name: Install jq and Xvfb
         run: sudo apt-get install -y jq xvfb
+
+      # The package-workspace SDK host E2E tests compile fresh wasm32 fixtures
+      # with the bundled compiler (compileSdkWasm), so this job needs the same
+      # linker and sysroot the wasm job installs. The wasm runtime archive
+      # itself arrives in the osprey-build artifact. Without this step eight
+      # suites fail with "no WASI sysroot found".
+      - name: Install the wasm toolchain
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y lld wabt
+          curl -fsSL -o /tmp/wasi-sysroot.tar.gz \
+            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sysroot-${WASI_SDK_VERSION}.0.tar.gz"
+          sudo mkdir -p /opt/wasi-sdk/share/wasi-sysroot
+          sudo tar -xzf /tmp/wasi-sysroot.tar.gz -C /opt/wasi-sdk/share/wasi-sysroot --strip-components=1
+          test -d /opt/wasi-sdk/share/wasi-sysroot/lib/wasm32-wasip1
+          echo "OSPREY_WASI_SYSROOT=/opt/wasi-sdk/share/wasi-sysroot" >> "$GITHUB_ENV"
 
       # npm installs a packed copy of the built UI, so it is built first.
       - name: Build the shared profiler UI (lspkit submodule)
@@ -499,8 +620,18 @@ jobs:
         with:
           name: osprey-extension
           path: vscode-extension/
+      - name: Restore bundled extension assets
+        run: |
+          set -euo pipefail
+          bundles=(vscode-extension/osprey-*.vsix)
+          test "${#bundles[@]}" -eq 1
+          bundle_dir=$(mktemp -d)
+          trap 'rm -rf "$bundle_dir"' EXIT
+          unzip -q "${bundles[0]}" 'extension/bin/*' -d "$bundle_dir"
+          mkdir -p vscode-extension/bin
+          cp -R "$bundle_dir/extension/bin/." vscode-extension/bin/
       - name: Restore artifact permissions
-        run: chmod +x target/release/osprey
+        run: chmod +x target/release/osprey target/osprey-pkg vscode-extension/bin/linux-x64/osprey vscode-extension/bin/linux-x64/osprey-pkg
 
       - name: Extension suite with V8 coverage
         run: xvfb-run -a make _test_vscode_extension
@@ -594,7 +725,7 @@ jobs:
           done
 
       - name: WebAssembly differential — whole tests/ corpus vs the native goldens
-        run: OSPREY_TARGET=wasm32 zsh crates/run_test_corpus.sh
+        run: make _test_wasm_goldens
 
   # Builds the site and runs the Playwright suite: every page template at three
   # breakpoints (no JS errors, no horizontal overflow, dark theme, chrome
@@ -849,11 +980,15 @@ jobs:
   # and simulator tests. macos-15 is ARM64, matching the simulator archive.
   coverage:
     name: Coverage thresholds
-    needs: [changes, test-rust, test-extension]
-    if: ${{ needs.changes.outputs.code == 'true' }}
+    needs: [changes, test-rust, test-extension, test-packages, test-registry-gc, test-registry-arc]
+    if: ${{ always() && needs.changes.outputs.code == 'true' }}
     runs-on: macos-15
     timeout-minutes: 45
     steps:
+      - name: Package manager suites passed
+        run: |
+          test "${{ needs.test-registry-gc.result }}" = "success"
+          test "${{ needs.test-registry-arc.result }}" = "success"
       - uses: actions/checkout@v4
         # lsp-profiler is a path dependency in the lspkit submodule, and cargo
         # reads its manifest to resolve the workspace [PROF-LSP-RUNTIME].
@@ -879,6 +1014,10 @@ jobs:
         with:
           name: coverage-extension
           path: vscode-extension/coverage/
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-packages
+          path: target/coverage/packages/
 
       - name: Rust per-crate thresholds
         run: make _coverage_check_rust
@@ -886,8 +1025,18 @@ jobs:
       - name: VS Code extension thresholds
         run: make _coverage_check_vscode_extension
 
+      - name: Package thresholds
+        run: make _coverage_check_packages
+
       - name: iOS and macOS builds, ABI, goldens and app persistence
         run: make ios-test macos-test mobile-ios-test bank-ios-test
+
+      # [SYMEX-CRASH-GATE] The KLEE engine gates (hunt expectations, planted
+      # crashes, default budget, safe sweep) are intentionally NOT run in CI:
+      # clean.osp cannot complete inside the pinned 64-byte/30s settings on
+      # any backend (issues #306, #307). Verification is local — the hunt
+      # targets live in scripts/make/tests.mk and stay red until issue #306
+      # is fixed. The host-only mock oracle below stays (no KLEE involved).
 
       - name: Native bank simulator results
         if: always()
@@ -904,5 +1053,6 @@ jobs:
           name: coverage-report
           path: |
             target/coverage/lcov.info
+            target/coverage/packages/
             vscode-extension/coverage/
           retention-days: 7
