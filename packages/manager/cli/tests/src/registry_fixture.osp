@@ -45,8 +45,10 @@ module RegistryFixture {
     fn writtenAt(w: Written) = w.at
     fn writtenText(w: Written) = w.text
 
+    fn readRoutes(written) = foldList(written, [], fn(reads, w) => listPrepend(reads, Fixture::readRoute(writtenAt(w), writtenText(w))))
+
     /// The last text written to `path`, if any.
-    fn latest(written, path) = foldList(written, Error { message: "none" }, fn(acc, w) => if writtenAt(w) == path { Success { value: writtenText(w) } } else { acc })
+    fn latest(written, path) = Fixture::readFor(readRoutes(written), path)
 
     fn readOf(written, reads, path) = match latest(written, path) {
         Success { value } => Success { value: value }
@@ -59,6 +61,7 @@ module RegistryFixture {
     export fn runWith(reads, walks, webs, args) = {
         mut written: List<Written> = []
         mut ran: List<string> = []
+        mut ensured: List<string> = []
         let files = handler Host::Files {
             read path => readOf(written, reads, path)
             write path content => {
@@ -67,8 +70,11 @@ module RegistryFixture {
             }
         }
         let tree = handler Host::Tree {
-            walk dir => Fixture::walkFor(walks, dir)
-            ensure dir => Success { value: byteLength(dir) }
+            walk dir => Fixture::walkAfter(readRoutes(written), walks, ensured, dir)
+            ensure dir => {
+                ensured = listAppend(ensured, dir)
+                Success { value: byteLength(dir) }
+            }
         }
         let web = handler Host::Web {
             get b path => replyFor(webs, b, path)

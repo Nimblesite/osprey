@@ -2,6 +2,8 @@ namespace registry_cli;
 import registry_host::Host
 import registry_cli::Reports
 import registry::Bundle
+import registry::Bytes
+import registry::Source
 import registry::Digests
 import registry::Identity
 import registry::Json
@@ -254,6 +256,44 @@ module Fetch {
     /// `""` or `"."` ([PACKAGE-HARDENING] C2).
     export fn installDirAt(project, id) = if isEmpty(project) || project == "." { installDir(id) } else { "${project}/${installDir(id)}" }
 
+    // Reading builds `Release::File` (whose fields no other record shares),
+    // then `Source::entryOf` maps them non-recursively exactly as
+    // `ReleaseFiles::assemble` does: an effectful recursive function that
+    // constructs `Source::Entry` (whose `path` is shared with `Asset`) trips
+    // the issue-#273 codegen quarantine.
+    fn readNext(dir, relPaths, i, files, rel) = match perform Host::Files.read("${dir}/${rel}") {
+        Success { value } => readFiles(dir, relPaths, i + 1, listAppend(files, Release::File { relPath: rel, content: value }))
+        Error { message } => Error { message: message }
+    }
+
+    fn readFiles(dir, relPaths, i, files) -> Result<List<Release::File>, string> = if i >= length(relPaths) {
+        Success { value: files }
+    } else {
+        readNext(dir, relPaths, i, files, listGet(relPaths, i) ?: "")
+    }
+
+    fn entriesOf(files) = mapList(files, fn(file: Release::File) => Source::entryOf(file.relPath, Bytes::ofString(file.content)))
+
+    fn kindOf(walk: Host::Walk) = if !isEmpty(walk.executable) { Source::kindCode("executable") }
+        else if !isEmpty(walk.special) { Source::kindCode("special") }
+        else { "" }
+
+    /// The files a walk found, read in walk order; a non-regular entry or an
+    /// unreadable file is its stable code.
+    export fn filesOfWalked(walk: Host::Walk, dir) = {
+        let kind = kindOf(walk)
+        if kind != "" { Error { message: kind } } else { readFiles(dir, walk.regular, 0, []) }
+    }
+
+    /// `SourceDigest` of a file list, recomputed exactly as the server computed
+    /// the release digest ([PACKAGE-SOURCE-CANONICAL]).
+    export fn digestOfFiles(fileList) = Source::digest(entriesOf(fileList))
+
+    export fn installedFiles(dir) = match perform Host::Tree.walk(dir) {
+        Error { message } => Error { message: message }
+        Success { value } => filesOfWalked(value, dir)
+    }
+
     fn lastSlash(path) = fold(range(0, byteLength(path)), -1, fn(best, i) => if (byteAt(path, i) ?: 0) == slashByte { i } else { best })
 
     fn ensureParent(dir, relPath) = {
@@ -266,7 +306,8 @@ module Fetch {
 
     fn put(path, content) = match perform Host::Files.write(path, content) {
         Error { message } => Error { message: message }
-        Success => Success { value: 0 }
+        Success { value } => if value == byteLength(content) { Success { value: 0 } }
+            else { Error { message: "short write ${path}" } }
     }
 
     fn writeOne(dir, file) = match ensureParent(dir, file.relPath) {
@@ -280,17 +321,48 @@ module Fetch {
     })
 
     /// Write every file of a tree under `dir`, creating directories first;
-    /// `fetch` installs with it and `publish` places a release with it.
+    /// Publication uses this writer; installation also checks the disk layout and digest.
     export fn writeFiles(dir, files) = match perform Host::Tree.ensure(dir) {
         Error { message } => Error { message: message }
         Success => writeFileList(dir, files)
     }
 
-    // `Release::Served` shares `id` with `Capabilities::Blocked`; issue #273
-    // needs the receiver spelled out.
-    fn written(project, served: Release::Served) = match writeFiles(installDirAt(project, served.id), served.files) {
+    fn unexpected(walk: Host::Walk, fileList) = {
+        let expected = mapList(fileList, fn(file: Release::File) => file.relPath)
+        !isEmpty(walk.executable) || !isEmpty(walk.special)
+            || foldList(walk.regular, false, fn(found, path) => found || !listContains(expected, path))
+    }
+
+    fn checkedDigest(served: Release::Served, digest) = if digest == served.id.digest { Success { value: served } }
+        else { Error { message: "fetch.install-integrity" } }
+
+    fn checkedTree(dir, served: Release::Served) = match installedFiles(dir) {
+        Error { message } => Error { message: "fetch.install-integrity ${message}" }
+        Success { value } => match digestOfFiles(value) {
+            Success { value } => checkedDigest(served, value)
+            Error { message } => Error { message: "fetch.install-integrity ${message}" }
+        }
+    }
+
+    fn writtenTree(dir, served: Release::Served) = match writeFileList(dir, served.files) {
         Error { message } => Error { message: "${writePrefix}: ${message}" }
-        Success => Success { value: served }
+        Success => checkedTree(dir, served)
+    }
+
+    // A refetch must never claim success from the served bytes alone. Reject
+    // conflicting entries before writes, then verify the actual installed tree.
+    fn installInto(dir, served: Release::Served) = match perform Host::Tree.walk(dir) {
+        Error { message } => Error { message: "fetch.install-integrity ${message}" }
+        Success { value } => if unexpected(value, served.files) { Error { message: "fetch.install-integrity" } }
+            else { writtenTree(dir, served) }
+    }
+
+    fn written(project, served: Release::Served) = {
+        let dir = installDirAt(project, served.id)
+        match perform Host::Tree.ensure(dir) {
+            Error { message } => Error { message: "${writePrefix}: ${message}" }
+            Success => installInto(dir, served)
+        }
     }
 
     fn verifiedAt(project, body, digest) = match Bundle::verify(body, digest) {

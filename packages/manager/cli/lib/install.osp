@@ -7,14 +7,12 @@ import registry_cli::Lockfile
 import registry_cli::Fetch
 import registry_cli::Overlay
 import registry_cli::PythonPlane
-import registry::Bytes
 import registry::Manifest
 import registry::ManifestJson
 import registry::ManifestModel
 import registry::Maybe
 import registry::Names
 import registry::Release
-import registry::Source
 import registry::Surface
 
 /// `osprey-pkg fetch` with no target: install every release the folder lock
@@ -38,38 +36,9 @@ module Install {
 
     fn commandLine(parsed) = CommandLine { base: Flags::given(parsed, Fetch::registryFlag, Fetch::defaultRegistry), project: Flags::project(parsed) }
 
-    // Reading builds `Release::File` (whose fields no other record shares),
-    // then `Source::entryOf` maps them non-recursively exactly as
-    // `ReleaseFiles::assemble` does: an effectful recursive function that
-    // constructs `Source::Entry` (whose `path` is shared with `Asset`) trips
-    // the issue-#273 codegen quarantine.
-    fn readNext(dir, relPaths, i, files, rel) = match perform Host::Files.read("${dir}/${rel}") {
-        Success { value } => readFiles(dir, relPaths, i + 1, listAppend(files, Release::File { relPath: rel, content: value }))
-        Error { message } => Error { message: message }
-    }
+    export fn filesOfWalked(walk, dir) = Fetch::filesOfWalked(walk, dir)
 
-    fn readFiles(dir, relPaths, i, files) -> Result<List<Release::File>, string> = if i >= length(relPaths) {
-        Success { value: files }
-    } else {
-        readNext(dir, relPaths, i, files, listGet(relPaths, i) ?: "")
-    }
-
-    fn entriesOf(files) = mapList(files, fn(file: Release::File) => Source::entryOf(file.relPath, Bytes::ofString(file.content)))
-
-    fn kindOf(walk: Host::Walk) = if !isEmpty(walk.executable) { Source::kindCode("executable") }
-        else if !isEmpty(walk.special) { Source::kindCode("special") }
-        else { "" }
-
-    /// The files a walk found, read in walk order; a non-regular entry or an
-    /// unreadable file is its stable code.
-    export fn filesOfWalked(walk: Host::Walk, dir) = {
-        let kind = kindOf(walk)
-        if kind != "" { Error { message: kind } } else { readFiles(dir, walk.regular, 0, []) }
-    }
-
-    /// `SourceDigest` of a file list, recomputed exactly as the server computed
-    /// the release digest ([PACKAGE-SOURCE-CANONICAL]).
-    export fn digestOfFiles(fileList) = Source::digest(entriesOf(fileList))
+    export fn digestOfFiles(fileList) = Fetch::digestOfFiles(fileList)
 
     /// The manifest text among a tree's files, "" when the tree has none.
     export fn manifestTextIn(fileList) = foldList(fileList, "", fn(found, f: Release::File) => if f.relPath == "osprey.toml" { f.content } else { found })
@@ -92,11 +61,6 @@ module Install {
     /// Whether the recomputed surface is the one the lock pins.
     export fn surfaceMatches(pkg: Lockfile::Package, fileList) = join(surfaceOfFiles(fileList), "\n") == join(pkg.surface, "\n")
 
-    fn installedFiles(dir) = match perform Host::Tree.walk(dir) {
-        Error { message } => Error { message: message }
-        Success { value } => filesOfWalked(value, dir)
-    }
-
     fn digestMatches(pkg: Lockfile::Package, fileList) = match digestOfFiles(fileList) {
         Success { value } => value == pkg.release.digest
         Error => false
@@ -115,7 +79,7 @@ module Install {
 
     fn present(base, project, tally, pkg, fileList) = if digestMatches(pkg, fileList) { checkedSurface(tally, pkg, fileList, "=") } else { fetched(base, project, tally, pkg) }
 
-    fn installOne(base, project, tally, pkg: Lockfile::Package) = match installedFiles(Fetch::installDirAt(project, pkg.release)) {
+    fn installOne(base, project, tally, pkg: Lockfile::Package) = match Fetch::installedFiles(Fetch::installDirAt(project, pkg.release)) {
         Success { value } => present(base, project, tally, pkg, value)
         Error => fetched(base, project, tally, pkg)
     }

@@ -160,6 +160,7 @@ Every run uses this command; the tool never lets an option through from the user
 klee --libc=klee --ubsan-runtime --external-calls=none --external-call-warnings=all
      -link-llvm-lib=compiler/bin/libosprey_runtime_klee_gc.bc
      --optimize --kdalloc --rng-initial-seed=5489 --search=dfs
+     --solver-backend=z3 --solver-optimize-divides
      --check-div-zero --check-overshift --emit-all-errors
      --max-solver-time=30s --max-time=<S>s --watchdog --max-memory=<MB>
      --output-dir=<run dir> <program.ll>
@@ -172,6 +173,8 @@ The program module is textual `.ll`, which KLEE accepts directly. The compiler l
 - `--ubsan-runtime` pairs with the runtime bitcode's `-fsanitize=undefined` ([SYMEX-RUNTIME-BITCODE](../compiler/KleeCodegen.md#runtime-bitcode-symex-runtime-bitcode)).
 - `--kdalloc` is KLEE's deterministic allocator with a quarantine that keeps freed addresses out of reuse, which is what makes use-after-free visible and findings identical between runs. The fixed `--rng-initial-seed` is KLEE's default, stated so the determinism claim in [SYMEX-HOSTS](#hosts--symex-hosts) has a named source.
 - `--search=dfs` finishes one symbolic path before selecting another instead of leaving a large interleaved working set unfinished when a finite exploration approaches its budget.
+- `--solver-backend=z3` answers the bit-vector queries the runtime's integer formatting and bounded decimal fold generate several times faster than the default STP backend, which is the difference between finishing a finite exploration inside the budget and stranding its last paths.
+- `--solver-optimize-divides` rewrites constant divisions before the solver sees them; the decimal emitters divide by concrete powers, and the rewritten forms solve faster.
 - `--emit-all-errors` writes a test for every error, not one per (error, instruction) pair, so deduplication is the tool's ([SYMEX-FINDINGS](#classes--symex-findings)) and not KLEE's.
 - `--optimize` runs KLEE's own passes over the unoptimised module, as its documentation recommends for non-trivial programs.
 - `--max-solver-time=30s` bounds one solver query. `--max-time` is checked between instructions, so without it a single hard query could outlive the budget; a query that hits the bound ends its path as "incomplete", not as a finding.

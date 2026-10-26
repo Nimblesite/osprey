@@ -6,12 +6,14 @@ import registry::Names
 import registry::Manifest
 import registry::ManifestJson
 import registry::Release
+import registry::Paths
 import registry_api::Loader
 import registry_api::Router
 import registry_cli::Dispatch
 import registry_cli::Build
 import registry_cli::Fetch
 import registry_cli::Lockfile
+import registry_cli::Install
 import registry_host::Host
 
 /// What the end-to-end run observes, as expected/actual pairs: the live
@@ -225,6 +227,9 @@ module Probes {
     // ---- the Python plane at the real boundary ([PACKAGE-PYTHON-UV]) ----
 
     let pyConsumerManifest = "[project]\nname = \"pyconsumer\"\nsource_roots = [\"src\"]\n\n[dependencies]\n\"@demo/pyadd\" = { epoch = 1, min_release = 1 }\n"
+    let consumerPyproject = "[project]\nname = \"osprey-consumer-probe\"\nversion = \"0.1.0\"\nrequires-python = \">=3.12\"\n[build-system]\nrequires = [\"setuptools\"]\nbuild-backend = \"setuptools.build_meta\"\n[tool.setuptools]\npy-modules = [\"osprey_consumer_probe\"]\n"
+    let consumerPython = "def answer():\n    return 42\n"
+    let pyConsumerPlane = "\n[system.python]\ncapability = \"python/interop\"\nmin_revision = 31200\n"
     let uvGuidance = "uv: missing (python/uv: needed only by packages declaring python/interop)"
 
     fn uvFound() = sh("command -v uv")
@@ -233,14 +238,54 @@ module Probes {
 
     fn pythonPinned(dir) = contains(readFile("${dir}/osprey.lock") ?: "", "\"python\":{\"pyprojectDigest\":\"sha256:")
 
-    /// With uv on the host: `lock` pins the plane, `fetch` syncs it, `verify --offline` passes.
-    fn withUv(dir, locked) = {
-        let _fetched = Dispatch::run(["fetch", "--registry", base, "--project", dir])
+    fn rootPythonFiles(dir) = match perform Host::Tree.walk(dir) {
+        Error { message } => Error { message: message }
+        Success { value } => Install::filesOfWalked(Host::Walk {
+            regular: filterList(value.regular, fn(path) => !Paths::excluded(path)),
+            executable: filterList(value.executable, fn(path) => !Paths::excluded(path)),
+            special: filterList(value.special, fn(path) => !Paths::excluded(path))
+        }, dir)
+    }
+
+    fn pythonFiles(dir) = match perform Host::Tree.walk("${dir}/.osprey/packages") {
+        Error { message } => Error { message: message }
+        Success { value } => Install::filesOfWalked(value, "${dir}/.osprey/packages")
+    }
+
+    fn comparedPythonFiles(original, after) = match after {
+        Error => false
+        Success { value } => structuralEquals(original, value)
+    }
+
+    fn samePythonFiles(before, after) = match before {
+        Error => false
+        Success { value } => comparedPythonFiles(value, after)
+    }
+
+    fn rejectedPythonLink(dir) = {
+        let link = "${dir}/untrusted-link"
+        let made = sh("ln -s ${Host::shellWord(dir + "/osprey_consumer_probe.py")} ${Host::shellWord(link)}")
+        let rejected = Dispatch::run(["fetch", "--registry", base, "--project", dir])
+        let removed = sh("rm -f ${Host::shellWord(link)}")
+        Probe { label: "Python mirror rejects symbolic links", expected: "0 1 0", actual: "${made.status} ${rejected.status} ${removed.status}" }
+    }
+
+    /// With uv on the host: sync preserves every installed source byte and verifies offline.
+    fn withUv(dir, locked, original) = {
+        let before = pythonFiles(dir)
+        let fetched = Dispatch::run(["fetch", "--registry", base, "--project", dir])
+        let unchanged = samePythonFiles(before, pythonFiles(dir))
         let verified = Dispatch::run(["verify", "--offline", "--project", dir])
+        let imported = sh("${Host::shellWord(dir + "/.osprey/python/.venv/bin/python")} -c ${Host::shellWord("import osprey_consumer_probe; print(osprey_consumer_probe.answer())")}")
         [
             Probe { label: "python consumer lock pins the uv plane", expected: "python: locked ${dir}/.osprey/python", actual: lastLine(locked) },
             Probe { label: "python consumer lock carries root.python", expected: "true", actual: "${pythonPinned(dir)}" },
-            Probe { label: "python consumer verifies offline", expected: "verified 1 packages", actual: firstLine(verified) }
+            Probe { label: "python consumer fetch succeeds", expected: "0", actual: "${fetched.status}" },
+            Probe { label: "python build preserves canonical source files", expected: "true", actual: "${unchanged}" },
+            Probe { label: "python build preserves root source files", expected: "true", actual: "${samePythonFiles(original, rootPythonFiles(dir))}" },
+            Probe { label: "Python import survives mirror cleanup", expected: "0 42", actual: "${imported.status} ${trim(imported.stdout)}" },
+            Probe { label: "python consumer verifies offline", expected: "verified 1 packages", actual: firstLine(verified) },
+            rejectedPythonLink(dir)
         ]
     }
 
@@ -253,12 +298,15 @@ module Probes {
     /// A consumer of `@demo/pyadd`, which declares `python/interop`: the outcome
     /// depends on whether the host has uv, and both outcomes are asserted.
     fn pythonConsumer(cwd) = {
-        let dir = "${cwd}/${work}/consumer-py"
+        let dir = "${cwd}/${work}/consumer-py space's \\path"
         let _reset = sh("rm -rf ${Host::shellWord(dir)}")
         let _made = perform Host::Tree.ensure("${dir}/src")
-        let _manifest = perform Host::Files.write("${dir}/osprey.toml", pyConsumerManifest)
+        let _manifest = perform Host::Files.write("${dir}/osprey.toml", pyConsumerManifest + pyConsumerPlane)
+        let _python = perform Host::Files.write("${dir}/osprey_consumer_probe.py", consumerPython)
+        let _pyproject = perform Host::Files.write("${dir}/pyproject.toml", consumerPyproject)
+        let original = rootPythonFiles(dir)
         let locked = Dispatch::run(["lock", "--registry", base, "--project", dir])
-        if uvFound().status == 0 { withUv(dir, locked) } else { withoutUv(dir, locked) }
+        if uvFound().status == 0 { withUv(dir, locked, original) } else { withoutUv(dir, locked) }
     }
 
     /// `doctor` names uv's path, or says it is missing and who needs it.

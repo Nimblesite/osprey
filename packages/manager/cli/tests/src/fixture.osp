@@ -41,6 +41,26 @@ module Fixture {
         Error => if w.dir == dir { Success { value: Host::Walk { regular: w.files, executable: [], special: [] } } } else { answer }
     })
 
+    export fn readAfter(written, reads, path) = readFor(listConcat(written, reads), path)
+
+    fn pathsUnder(written, dir) = mapList(filterList(written, fn(r: ReadRoute) => startsWith(r.path, "${dir}/")),
+        fn(r: ReadRoute) => drop(r.path, byteLength(dir) + 1))
+
+    fn joinedPaths(before, after) = listSort(foldList(after, before, fn(paths, path) =>
+        if listContains(paths, path) { paths } else { listAppend(paths, path) }))
+
+    fn withWrites(walk: Host::Walk, paths) = Host::Walk {
+        regular: joinedPaths(walk.regular, paths), executable: walk.executable, special: walk.special
+    }
+
+    /// Writes become readable and walkable; pre-existing unexpected files stay visible.
+    export fn walkAfter(written, walks, ensured, dir) = match walkFor(walks, dir) {
+        Success { value } => Success { value: withWrites(value, pathsUnder(written, dir)) }
+        Error { message } => if listContains(ensured, dir) {
+            Success { value: Host::Walk { regular: joinedPaths([], pathsUnder(written, dir)), executable: [], special: [] } }
+        } else { Error { message: message } }
+    }
+
     /// The served release no registry has: the `?:` fallback of `served`.
     export fn missingServed() = Release::Served { id: Identity::blank(), files: [] }
 

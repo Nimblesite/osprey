@@ -38,6 +38,7 @@ test: build
 	$(MAKE) _coverage_check_rust
 	$(MAKE) _test_packages
 	$(MAKE) _coverage_check_packages
+	$(MAKE) target/osprey-pkg
 	$(MAKE) _test_registry REGISTRY_MEMORY=gc
 	$(MAKE) _test_registry REGISTRY_MEMORY=arc
 	$(MAKE) _test_python_app_ports

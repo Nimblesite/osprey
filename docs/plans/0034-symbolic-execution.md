@@ -98,6 +98,7 @@ A driver that installs a `control` effect handler stops at the handler region's 
 - [x] Phase 1: mock library with unit tests (`make _test_hunt_mock`, part of `make test`); `_runtime_klee` with the `[SYMEX-MOCK-CLOSED]` check inside it (part of `make build`).
 - [x] Phase 2: symbolic codegen (`compile_program_symbolic`) with the IR tests in `crates/osprey-codegen/src/ir_tests/symbolic.rs`; the planned `llvm-as` corpus parse check is not built.
 - [ ] Phase 3 completion proof: main mode and HTML/JSON artifacts are implemented, and planted-crash/native-replay tests pass. The deterministic `make _test_hunt` and default-budget regression must pass without incomplete exploration at their unchanged settings before this phase is complete.
+- [ ] Known performance defect: `clean.osp` can exceed the unchanged exploration budget under GC and ARC. The original CI checks remain required; no known-bug exclusion is active. See the historical experiment report in `docs/reports/klee-gc-status-2026-10-26.md`.
 - [ ] Phase 4: `--fn` / `--all-fns`; `libkleeRuntest` replay with the entropy/clock provider (native stdin/file replay ships without it); planted single-random-byte bug.
 - [ ] Phase 5: regression writer; fully completed corpus made a required check (the scripts and recorded budget-limited sweeps exist, but that proof and gate do not); WSL2 and `--replay-host=windows`.
 - [ ] Phase 6: `benchmarks/symex/` results meeting all four `[SYMEX-PROOF]` conditions; README rendered from JSON in `make ci`.

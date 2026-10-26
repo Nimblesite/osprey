@@ -1,6 +1,7 @@
 namespace registry_cli;
 import registry_host::Host
 import registry_cli::Lockfile
+import registry_cli::PythonMirror
 import registry::Bytes
 import registry::Digests
 import registry::ManifestModel
@@ -198,7 +199,7 @@ module PythonPlane {
     export fn uvLockPath(project) = "${inDir(project)}/${uvLockName}"
     fn venvPath(project) = "${inDir(project)}/${venvName}"
 
-    fn uv(project, words) = perform Host::Process.run("cd ${Host::shellWord(inDir(project))} && uv ${words}")
+    fn uv(project, paths, words, writeLock, projectDigest, lockDigest) = perform Host::Process.run(PythonMirror::command(project, paths, words, writeLock, projectDigest, lockDigest))
 
     fn failedRun(code, r) = Error { message: "${code} status ${statusOf(r)}" }
 
@@ -207,23 +208,23 @@ module PythonPlane {
     fn pinned(text, uvLockText) = if !isEmpty(hashFindings(uvLockText)) { Error { message: uvLockHashes } }
         else { Success { value: Lockfile::PythonPins { pyprojectDigest: digestOf(text), uvLockDigest: digestOf(uvLockText) } } }
 
-    fn uvLocked(project, text) = {
-        let r = uv(project, "lock")
+    fn uvLocked(project, paths, text) = {
+        let r = uv(project, paths, "lock", true, digestOf(text), "")
         if statusOf(r) != 0 { failedRun(uvLockFailed, r) } else { match perform Host::Files.read(uvLockPath(project)) {
             Error => Error { message: uvLockMissing }
             Success { value } => pinned(text, value)
         } }
     }
 
-    fn writtenProject(project, text) = match perform Host::Files.write(pyprojectPath(project), text) {
+    fn writtenProject(project, paths, text) = match perform Host::Files.write(pyprojectPath(project), text) {
         Error { message } => Error { message: message }
-        Success => uvLocked(project, text)
+        Success => uvLocked(project, paths, text)
     }
 
     /// `lock`: write the composed project, run `uv lock`, read `uv.lock` and pin both digests.
     export fn locked(project, members) = match perform Host::Tree.ensure(inDir(project)) {
         Error { message } => Error { message: message }
-        Success => writtenProject(project, compose(members))
+        Success => writtenProject(project, mapList(members, pathOf), compose(members))
     }
 
     /// The line `lock` prints for a pinned plane.
@@ -231,15 +232,51 @@ module PythonPlane {
 
     // ---- fetch ----
 
-    fn syncVerified(project) = {
-        let r = uv(project, "sync --frozen")
+    fn syncVerified(project, pins, paths) = {
+        let r = uv(project, paths, "sync --frozen --no-editable", false, pyprojectPin(pins), uvLockPin(pins))
         if statusOf(r) == 0 { Success { value: "python: synced ${inDir(project)}" } } else { failedRun(uvSyncFailed, r) }
+    }
+
+    fn sourcePath(source) = match Toml::get(source, "path") {
+        Success { value } => match value {
+            Toml::Str { text } => Success { value: text }
+            _ => Error { message: sourceForbidden }
+        }
+        Error => Error { message: sourceForbidden }
+    }
+
+    fn appendedPath(paths, source) = match sourcePath(source) {
+        Error { message } => Error { message: message }
+        Success { value } => Success { value: listAppend(paths, value) }
+    }
+
+    fn pathsIn(root) = {
+        let sources = valueAt(uvTable(root), "sources")
+        foldList(Toml::keys(sources), Success { value: [] }, fn(acc, key) => match acc {
+            Error { message } => Error { message: message }
+            Success { value } => appendedPath(value, valueAt(sources, key))
+        })
+    }
+
+    fn syncedPaths(project, pins, paths) = match paths {
+        Error { message } => Error { message: message }
+        Success { value } => syncVerified(project, pins, value)
+    }
+
+    fn parsedSources(project, pins, text) = match Toml::parse(text) {
+        Error { message } => Error { message: message }
+        Success { value } => syncedPaths(project, pins, pathsIn(value))
+    }
+
+    fn syncFromProject(project, pins) = match perform Host::Files.read(pyprojectPath(project)) {
+        Error { message } => Error { message: message }
+        Success { value } => parsedSources(project, pins, value)
     }
 
     /// No uv process may consume generated files that differ from the folder lock.
     export fn synced(project, pins) = {
         let problems = inputFindings(project, pins)
-        if isEmpty(problems) { syncVerified(project) }
+        if isEmpty(problems) { syncFromProject(project, pins) }
         else { Error { message: listGet(problems, 0) ?: workspaceDigest } }
     }
 
@@ -250,8 +287,8 @@ module PythonPlane {
 
     fn workspaceFindings(members, pins) = if digestOf(compose(members)) == pyprojectPin(pins) { [] } else { [workspaceDigest] }
 
-    fn checkFindings(project) = {
-        let r = uv(project, "lock --check --offline")
+    fn checkFindings(project, members, pins) = {
+        let r = uv(project, mapList(members, pathOf), "lock --check --offline", false, pyprojectPin(pins), uvLockPin(pins))
         if statusOf(r) == 0 { [] } else { [uvLockStale] }
     }
 
@@ -276,6 +313,6 @@ module PythonPlane {
     /// before the offline uv check, then require the installed environment.
     export fn findings(project, members, pins) = {
         let problems = listConcat(workspaceFindings(members, pins), inputFindings(project, pins))
-        listConcat(if isEmpty(problems) { checkFindings(project) } else { problems }, environmentFindings(project))
+        listConcat(if isEmpty(problems) { checkFindings(project, members, pins) } else { problems }, environmentFindings(project))
     }
 }

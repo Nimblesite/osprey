@@ -11,11 +11,14 @@ const SENTINEL: &str = "annotation_cost_sentinel";
 const PARALLEL_SENTINEL: &str = "annotation_parallelism_sentinel";
 const MEMO_SENTINEL: &str = "annotation_memo_sentinel";
 const FLIGHT_SENTINEL: &str = "annotation_flight_sentinel";
+const DENSE_SENTINEL: &str = "annotation_dense_cost_sentinel";
 static CALLS: AtomicUsize = AtomicUsize::new(0);
 static MEMO_CALLS: AtomicUsize = AtomicUsize::new(0);
 static FLIGHT_CALLS: AtomicUsize = AtomicUsize::new(0);
+static DENSE_CALLS: AtomicUsize = AtomicUsize::new(0);
 static ACTIVE: AtomicUsize = AtomicUsize::new(0);
 static PEAK: AtomicUsize = AtomicUsize::new(0);
+type CostExample = (String, usize, Vec<usize>);
 
 pub(super) fn record(program: &Program) -> ProofGuard {
     count_calls(program);
@@ -32,6 +35,7 @@ fn count_calls(program: &Program) {
         (SENTINEL, &CALLS),
         (MEMO_SENTINEL, &MEMO_CALLS),
         (FLIGHT_SENTINEL, &FLIGHT_CALLS),
+        (DENSE_SENTINEL, &DENSE_CALLS),
     ] {
         if contains_marker(program, marker) {
             let _previous = calls.fetch_add(1, Ordering::Relaxed);
@@ -75,6 +79,114 @@ fn program(source: &str) -> Program {
     let parsed = parse_program_with_flavor(source, Flavor::Default);
     assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
     parsed.program
+}
+
+#[test]
+fn dense_mutually_pinning_sites_bound_full_typechecker_work() -> Result<(), String> {
+    for (source, site_count, expected) in cost_examples().map_err(|error| error.to_string())? {
+        let program = program(&format!("fn {DENSE_SENTINEL}() = 0\n{source}"));
+        assert_eq!(crate::redundant_sites::sites(&program).len(), site_count);
+        assert_cost_windows(&program, &expected)?;
+    }
+    Ok(())
+}
+
+fn cost_examples() -> Result<[CostExample; 5], std::fmt::Error> {
+    let greetings = definitions(64, "greet", "(name: string) -> string = \"hi \" + name")?;
+    let pins = definitions(32, "pin", "(x: int) -> int = x")?;
+    let necessary = definitions(32, "required", "(x: int) = 0")?;
+    let sparse = format!("fn pin(x: int) -> int = x\n{greetings}");
+    let isolated = format!("fn required(x: int) = 0\n{greetings}");
+    Ok([
+        (pins, 64, (0..64).step_by(2).collect()),
+        (necessary, 32, Vec::new()),
+        (sparse, 130, (0..130).filter(|i| *i != 1).collect()),
+        (isolated, 129, (1..129).collect()),
+        (
+            periodic_definitions()?,
+            48,
+            (0..48).filter(|i| i % 3 != 0).collect(),
+        ),
+    ])
+}
+
+fn periodic_definitions() -> Result<String, std::fmt::Error> {
+    (0..16).try_fold(String::new(), |mut text, index| {
+        writeln!(text, "fn required{index}(x: int) = 0\nfn greet{index}(name: string) -> string = \"hi \" + name")?;
+        Ok(text)
+    })
+}
+
+fn assert_cost_windows(program: &Program, expected: &[usize]) -> Result<(), String> {
+    let baseline = super::published(program).ok_or("fixture must typecheck")?;
+    let written = crate::redundant_sites::sites(program);
+    for window in [1, 2, 4, 8, 14, 32] {
+        assert_window_cost(program, &baseline, &written, expected, window);
+    }
+    assert_default_cost(program, &written, expected);
+    Ok(())
+}
+
+fn assert_window_cost(
+    program: &Program,
+    baseline: &super::Snapshot,
+    written: &[crate::redundant_sites::Site],
+    expected: &[usize],
+    window: usize,
+) {
+    DENSE_CALLS.store(0, Ordering::Relaxed);
+    assert_eq!(
+        super::accumulate(program, baseline, written, window),
+        expected
+    );
+    let calls = DENSE_CALLS.load(Ordering::Relaxed);
+    let budget = written.len() + window + 2;
+    assert_proof_budget(written.len(), calls, budget, &format!("window {window}"));
+}
+
+fn assert_default_cost(
+    program: &Program,
+    written: &[crate::redundant_sites::Site],
+    expected: &[usize],
+) {
+    DENSE_CALLS.store(0, Ordering::Relaxed);
+    assert_default_sites(program, written, expected);
+    let calls = DENSE_CALLS.load(Ordering::Relaxed);
+    let budget = default_cost_budget(written.len(), expected.len());
+    assert_proof_budget(written.len(), calls, budget, "default search");
+}
+
+fn assert_default_sites(
+    program: &Program,
+    written: &[crate::redundant_sites::Site],
+    expected: &[usize],
+) {
+    let found = super::redundant_annotation_sites_for(program, |_| true, &|_| false);
+    let positions: Vec<_> = found
+        .iter()
+        .map(|annotation| Some(annotation.annotation_position))
+        .collect();
+    let expected_positions: Vec<_> = expected
+        .iter()
+        .map(|index| written.get(*index).map(|site| site.source))
+        .collect();
+    assert_eq!(positions, expected_positions);
+}
+
+fn default_cost_budget(sites: usize, kept: usize) -> usize {
+    if kept + 1 == sites {
+        sites.div_ceil(16) + 34
+    } else {
+        sites + 18
+    }
+}
+
+fn assert_proof_budget(sites: usize, calls: usize, budget: usize, search: &str) {
+    assert!(
+        calls <= budget,
+        "{search}: {calls} full solves exceeds {budget}"
+    );
+    eprintln!("{sites} sites, {search}: {calls} full solves");
 }
 
 #[test]

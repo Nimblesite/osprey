@@ -74,8 +74,8 @@ fn judge_chunks(search: &Search<'_>, preserved: &mut [bool]) {
 ///
 /// Each window of `window` undecided candidates is a slice. One solve of the
 /// whole slice against the set kept so far either proves every candidate in it
-/// or sends the slice down [`accept_slice`], which bisects until each half is
-/// proven whole or reduced to a single rejected candidate.
+/// or proves its individually eligible sites together before trying them in
+/// source order. Dense rejection or consecutive failed windows stop batching.
 #[cfg(test)]
 pub(crate) fn accumulate(
     program: &Program,
@@ -109,10 +109,22 @@ pub(super) fn accumulate_with(
     window: usize,
 ) -> Vec<usize> {
     let search = search_input(proofs, written);
-    let width = window.max(1);
+    accumulate_search(&search, candidates, window)
+}
+
+fn accumulate_search(search: &Search<'_>, candidates: &[usize], window: usize) -> Vec<usize> {
+    let mut width = window.max(1);
+    let mut previous_failed = false;
     let mut kept = Vec::new();
-    for slice in candidates.chunks(width) {
-        accept_window(&search, &mut kept, slice);
+    let mut remaining = candidates;
+    while !remaining.is_empty() {
+        let (slice, rest) = remaining.split_at(width.min(remaining.len()));
+        let failure = accept_window(search, &mut kept, slice);
+        if failure.is_some_and(|dense| dense || previous_failed) {
+            width = 1;
+        }
+        previous_failed = failure.is_some();
+        remaining = rest;
     }
     kept
 }
@@ -141,39 +153,35 @@ fn eligible(search: &Search<'_>, candidates: &[usize]) -> Vec<usize> {
         .collect()
 }
 
-fn accept_window(search: &Search<'_>, kept: &mut Vec<usize>, candidates: &[usize]) {
+fn accept_window(search: &Search<'_>, kept: &mut Vec<usize>, candidates: &[usize]) -> Option<bool> {
+    let before = kept.len();
     if keeps(search, &joined(kept, candidates)) {
         kept.extend_from_slice(candidates);
-    } else if candidates.len() > 1 {
+        return None;
+    }
+    if candidates.len() > 1 {
         let removable = eligible(search, candidates);
-        if !removable.is_empty() {
-            accept_slice(search, kept, &removable);
-        }
+        accept_eligible(search, kept, &removable);
+    }
+    Some(kept.len() - before <= candidates.len() / 2)
+}
+
+fn accept_eligible(search: &Search<'_>, kept: &mut Vec<usize>, candidates: &[usize]) {
+    if candidates.is_empty() {
+        return;
+    }
+    if keeps(search, &joined(kept, candidates)) {
+        kept.extend_from_slice(candidates);
+    } else {
+        accept_greedy(search, kept, candidates);
     }
 }
 
-/// Prove a contiguous candidate slice against the set kept so far.
-///
-/// Erasing more annotations only removes constraints: it never restores a
-/// type another erasure changed, nor repairs an error. A slice that preserves
-/// the program as a whole therefore preserves it for every subset, so a
-/// one-at-a-time search would keep every candidate here and the whole slice is
-/// accepted by that single solve. A failing slice is bisected instead of
-/// judged site by site, and a singleton that still fails is dropped. Splitting
-/// at the midpoint and solving the halves in order keeps the accepted set
-/// exactly the one a source-order greedy search builds, because each half
-/// solves against the kept set left by everything before it. Halving a slice of
-/// two or more always leaves both halves non-empty, so every call proves a
-/// real candidate.
-fn accept_slice(search: &Search<'_>, kept: &mut Vec<usize>, candidates: &[usize]) {
-    if keeps(search, &joined(kept, candidates)) {
-        kept.extend_from_slice(candidates);
-        return;
+// Every accepted singleton is checked together with the full accepted prefix.
+fn accept_greedy(search: &Search<'_>, kept: &mut Vec<usize>, candidates: &[usize]) {
+    for candidate in candidates {
+        if keeps(search, &joined(kept, &[*candidate])) {
+            kept.push(*candidate);
+        }
     }
-    if candidates.len() == 1 {
-        return;
-    }
-    let (left, right) = candidates.split_at(candidates.len() / 2);
-    accept_slice(search, kept, left);
-    accept_slice(search, kept, right);
 }

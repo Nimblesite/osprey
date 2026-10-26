@@ -78,6 +78,15 @@ module PythonTests {
 
     fn observed(a) = "pyproject<<${RegistryFixture::writtenTo(a, pyprojectPath())}>> lock<<${RegistryFixture::writtenTo(a, RegistryFixture::lockPath)}>> ran<<${bar(RegistryFixture::ranOf(a))}>> lines<<${bar(RegistryFixture::linesOf(a))}>>"
 
+    fn ranUv(a, words) = {
+        let commands = RegistryFixture::ranOf(a)
+        let command = listGet(commands, 0) ?: ""
+        length(commands) == 1 && contains(command, "cd '/abs'")
+            && contains(command, "UV_PROJECT_ENVIRONMENT=\"$origin/.osprey/python/.venv\" uv ${words} )")
+            && contains(command, "trap 'rm -rf \"$stage\"' 0")
+            && contains(command, PythonPlane::digestOf(expectedPyproject()))
+    }
+
     /// `lock` composes the project, runs `uv lock` and pins both digests.
     fn lockPins() = {
         let a = lockOver(py(), uvLockText())
@@ -85,7 +94,7 @@ module PythonTests {
             RegistryFixture::statusOf(a) == 0,
             RegistryFixture::writtenTo(a, "${pythonDir}/pyproject.toml") == expectedPyproject(),
             RegistryFixture::writtenTo(a, RegistryFixture::lockPath) == expectedLock(),
-            structuralEquals(RegistryFixture::ranOf(a), ["cd '${pythonDir}' && uv lock"]),
+            ranUv(a, "lock"),
             RegistryFixture::lineOf(a, 0) == "+ ${RegistryFixture::compact(py())}",
             RegistryFixture::lineOf(a, 1) == "python: locked ${pythonDir}"
         ])
@@ -168,7 +177,7 @@ module PythonTests {
         checkAll("a pinned plane verifies with one offline uv check: ${observed(a)}", [
             RegistryFixture::statusOf(a) == 0,
             RegistryFixture::lineOf(a, 0) == "verified 1 packages",
-            structuralEquals(RegistryFixture::ranOf(a), ["cd '${pythonDir}' && uv lock --check --offline"])
+            ranUv(a, "lock --check --offline")
         ])
     }
 
@@ -192,7 +201,7 @@ module PythonTests {
             RegistryFixture::statusOf(a) == 0,
             RegistryFixture::lineOf(a, 0) == "= ${RegistryFixture::compact(py())}",
             RegistryFixture::lineOf(a, 1) == "python: synced ${pythonDir}",
-            structuralEquals(RegistryFixture::ranOf(a), ["cd '${pythonDir}' && uv sync --frozen"])
+            ranUv(a, "sync --frozen --no-editable")
         ])
     }
 
