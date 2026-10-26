@@ -57,6 +57,11 @@ class PackageThresholdTests(unittest.TestCase):
         self.assertEqual(checker["worker_count"](names[:2], cpus=4), 2)
         self.assertEqual(checker["worker_count"]([], cpus=4), 1)
         self.assertEqual(checker["worker_count"](names, cpus=None), min(19, os.cpu_count() or 1))
+        with patch.dict(os.environ, {"OSPREY_PACKAGE_JOBS": "6"}):
+            self.assertEqual(checker["worker_count"](names, cpus=4), 6)
+        for invalid in ("0", "-1", "two", "\u00b2"):
+            with patch.dict(os.environ, {"OSPREY_PACKAGE_JOBS": invalid}), self.assertRaises(SystemExit):
+                checker["worker_count"](names, cpus=4)
 
     def test_only_thresholds_above_the_minimum_are_explicit(self):
         config = json.loads((ROOT / "coverage-thresholds.json").read_text())

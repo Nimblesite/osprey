@@ -447,7 +447,7 @@ def worker_count(names: list[str], cpus: int | None = None) -> int:
     """
     configured = os.environ.get(JOBS_ENV)
     if configured is not None:
-        if not configured.isdigit() or int(configured) < 1:
+        if not configured.isdecimal() or int(configured) < 1:
             raise SystemExit(fail(f"{JOBS_ENV} must be a positive integer, got {configured!r}"))
         cpus = int(configured)
     return max(1, min(len(names), cpus if cpus is not None else os.cpu_count() or 1))
