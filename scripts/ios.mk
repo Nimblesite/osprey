@@ -37,6 +37,7 @@ _test_macos:
 	OSPREY_MACOS_SKIP_BUILD=1 bash examples/macos/run.sh --smoke
 
 _test_ios: _test_ios_goldens
+	/bin/bash scripts/test-runtime-memory.sh
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash scripts/test-ios.sh
 	OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_IOS_SKIP_BUILD=1 bash examples/ios/run.sh --smoke
 
