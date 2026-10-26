@@ -20,7 +20,7 @@ module Host {
     }
 
     /// Every non-directory entry under a root, by path relative to it:
-    /// regular files, executable regular files, and anything else (symlinks,
+    /// single-link regular files, single-link executable files, and anything else (hard links, symlinks,
     /// devices, sockets, fifos), each sorted by unsigned bytes.
     export type Walk = { regular: List<string>, executable: List<string>, special: List<string> }
 

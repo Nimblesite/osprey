@@ -112,7 +112,7 @@ class PackagePublicationTests(unittest.TestCase):
 
 class PackageFetchIntegrityTests(unittest.TestCase):
     def test_refetch_cannot_succeed_with_a_corrupt_tree(self):
-        for kind in ("extra", "direct-extra", "modified", "symlink", "offline"):
+        for kind in ("extra", "direct-extra", "modified", "symlink", "hardlink", "offline"):
             with self.subTest(kind=kind), installed_package() as (project, tree, origin, child):
                 corrupt(kind, project, tree, child)
                 report = (command("fetch", "@demo/proof", "--registry", origin, directory=project)
@@ -123,21 +123,25 @@ class PackageFetchIntegrityTests(unittest.TestCase):
                 if kind == "modified":
                     self.assertEqual((report["status"], verified["status"]), (0, 0))
                     self.assertEqual((tree / "src/main.osp").read_text(), 'fn main() = print("ok")\n')
-                if kind in ("symlink", "offline"):
+                if kind in ("symlink", "hardlink"):
+                    self.assertEqual((project / "outside.txt").read_text(), "preserve\n",
+                                     "Fetch must never overwrite a file outside the package through a link")
+                if kind in ("symlink", "hardlink", "offline"):
                     self.assertNotEqual(report["status"], 0, report)
-                if kind == "symlink":
-                    self.assertEqual((project / "outside.txt").read_text(), "preserve\n")
                 if kind == "offline":
                     self.assertNotEqual(verified["status"], 0, verified)
 
 
 def corrupt(kind, project, tree, child):
     target = tree / ("src/unexpected.osp" if kind in ("extra", "direct-extra") else "src/main.osp")
-    if kind == "symlink":
+    if kind in ("symlink", "hardlink"):
         outside = project / "outside.txt"
         outside.write_text("preserve\n")
         target.unlink()
-        target.symlink_to(outside)
+        if kind == "hardlink":
+            os.link(outside, target)
+        else:
+            target.symlink_to(outside)
     else:
         target.write_text("fn wrong() = 0\n")
     if kind == "offline":

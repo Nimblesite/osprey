@@ -50,10 +50,11 @@ module Native {
     /// The walk, or `host.tree.unreadable` with the OS reason. Osprey has no
     /// directory builtin yet (`files.directory`), so `find` lists the entries.
     fn walked(root) = {
-        let regular = found(root, "-type f ! -perm -u+x")
-        let executable = found(root, "-type f -perm -u+x")
-        let special = found(root, "! -type d ! -type f")
-        if regular.status != 0 { Error { message: "host.tree.unreadable: ${trim(regular.stderr)}" } }
+        let regular = found(root, "-type f -links 1 ! -perm -u+x")
+        let executable = found(root, "-type f -links 1 -perm -u+x")
+        let special = found(root, "! -type d ! -type f -o -type f ! -links 1")
+        let failed = if regular.status != 0 { regular } else if executable.status != 0 { executable } else { special }
+        if failed.status != 0 { Error { message: "host.tree.unreadable: ${trim(failed.stderr)}" } }
         else { Success { value: Host::Walk { regular: listed(regular), executable: listed(executable), special: listed(special) } } }
     }
 
